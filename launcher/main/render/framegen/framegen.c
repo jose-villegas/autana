@@ -40,15 +40,29 @@ typedef struct {
     projectf_t project;
 } warp_rows_t;
 
-/* One lens-space axis of the map along a row, the row's v folded in:
- * the axis is du u + base + dw w. */
+/* The map along one row, each target axis as a value at the row's first
+ * pixel, its step per pixel and its gain per depth word: x and y already
+ * carry the picture's centre, so x / z is the target column. */
 typedef struct {
-    float du, base, dw;
-} lens_axis_t;
+    float at[3], step[3], per_depth[3];
+} row_map_t;
 
-static inline float
-axis_at(lens_axis_t a, float u, float w) {
-    return (a.du * u) + a.base + (a.dw * w);
+static void
+row_map(const warp_rows_t* job, int y, float to_w, row_map_t* r) {
+    const float (*m)[4] = job->map->m;
+    const float u = 0.5F - job->project.cx;
+    const float v = (float)y + 0.5F - job->project.cy;
+    const float centre[3] = {job->project.cx, job->project.cy, 0.0F};
+    for (int i = 0; i < 3; i++) {
+        /* Axis i plus the centre times the z axis, so the divide lands on pixels. */
+        const float du = m[i][0] + (centre[i] * m[2][0]);
+        const float dv = m[i][1] + (centre[i] * m[2][1]);
+        const float base = m[i][2] + (centre[i] * m[2][2]);
+        const float dw = m[i][3] + (centre[i] * m[2][3]);
+        r->at[i] = (du * u) + (dv * v) + base;
+        r->step[i] = du;
+        r->per_depth[i] = dw * to_w;
+    }
 }
 
 /* The warped depth word: the sky stays the farthest, anything drawn sits above it. */
@@ -57,34 +71,31 @@ moved_depth(uint16_t depth, float moved) {
     if (depth == R3D_DEPTH_EMPTY) {
         return DEPTH_SKY;
     }
-    const float nearest = (float)R3D_DEPTH_NEAREST;
-    const float above_sky = (float)(DEPTH_SKY + 1U);
-    return (uint32_t)(moved >= nearest ? nearest : moved < above_sky ? above_sky : moved);
+    const uint32_t word = moved >= (float)R3D_DEPTH_NEAREST ? R3D_DEPTH_NEAREST : (uint32_t)moved;
+    return word > DEPTH_SKY ? word : DEPTH_SKY + 1U;
 }
 
 /* Lens space is pixels at unit depth: depth word d is the point (u, v, 1)
  * near_z / iz, and through the map its new inverse depth is d / z. The sky
- * (d = 0) has w = 0, so it only turns. to_w turns a depth word into w. */
+ * (d = 0) gains nothing from depth, so it only turns. */
 static inline void
-splat(const warp_rows_t* job, const lens_axis_t axes[3], float to_w, float u, uint16_t depth, uint16_t colour) {
-    const framegen_target_t* out = job->out;
+splat(const framegen_target_t* out, const float at[3], const float per_depth[3], uint16_t depth, uint16_t colour) {
     const float d = (float)depth;
-    const float w = d * to_w;
-    const float z = axis_at(axes[2], u, w);
+    const float z = at[2] + (per_depth[2] * d);
     if (!(z > 0.0F)) {
         return;
     }
     const float inv = mathf_recip(z);
-    const float px = (axis_at(axes[0], u, w) * inv) + job->project.cx;
-    const float py = (axis_at(axes[1], u, w) * inv) + job->project.cy;
+    const float px = (at[0] + (per_depth[0] * d)) * inv;
+    const float py = (at[1] + (per_depth[1] * d)) * inv;
     if (!(px >= 0.0F && py >= 0.0F && px < (float)out->width && py < (float)out->height)) {
         return;
     }
-    const size_t at = ((size_t)py * (size_t)out->width) + (size_t)px;
+    const size_t to = ((size_t)py * (size_t)out->width) + (size_t)px;
     const uint32_t nd = moved_depth(depth, d * inv);
-    if (nd > out->depth[at]) {
-        out->depth[at] = (uint16_t)nd;
-        out->colour[at] = colour;
+    if (nd > out->depth[to]) {
+        out->depth[to] = (uint16_t)nd;
+        out->colour[to] = colour;
     }
 }
 
@@ -92,19 +103,16 @@ static void
 warp_rows(void* ctx) {
     const warp_rows_t* job = ctx;
     const float to_w = DEPTH_SCALE / job->project.near_z;
-    const float (*m)[4] = job->map->m;
     const int width = job->out->width;
     for (int y = job->first; y < job->end; y++) {
-        const float v = (float)y + 0.5F - job->project.cy;
-        const lens_axis_t axes[3] = {
-            {m[0][0], (m[0][1] * v) + m[0][2], m[0][3]},
-            {m[1][0], (m[1][1] * v) + m[1][2], m[1][3]},
-            {m[2][0], (m[2][1] * v) + m[2][2], m[2][3]},
-        };
+        row_map_t r;
+        row_map(job, y, to_w, &r);
         const size_t row = (size_t)y * (size_t)width;
-        float u = 0.5F - job->project.cx;
-        for (int x = 0; x < width; x++, u += 1.0F) {
-            splat(job, axes, to_w, u, job->depth[row + (size_t)x], job->colour[row + (size_t)x]);
+        for (int x = 0; x < width; x++) {
+            splat(job->out, r.at, r.per_depth, job->depth[row + (size_t)x], job->colour[row + (size_t)x]);
+            r.at[0] += r.step[0];
+            r.at[1] += r.step[1];
+            r.at[2] += r.step[2];
         }
     }
 }
