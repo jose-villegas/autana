@@ -1,6 +1,7 @@
 #include "render/raster.h"
 
 #include <assert.h>
+#include <math.h>
 #include <stdbool.h>
 #include <string.h>
 
@@ -14,6 +15,9 @@
 TUNE_OWNER(render);
 /* The generated meshlet-size table measures both culling settings. */
 TUNE(render, cull, 1, 0, 1);
+/* 0 encodes depth with the clip plane's near_z, as before the fit: the
+ * depth-precision figures render both. */
+TUNE(render, depth_fit, 1, 0, 1);
 
 typedef struct {
     const raster_t* raster;
@@ -131,6 +135,11 @@ uint16_t*
 raster_depth(const raster_t* raster) {
     const raster_buffers_t b = raster_carve(raster);
     return gfx_target_depth(&b.picture, 0);
+}
+
+float
+raster_depth_near(const raster_t* raster) {
+    return *raster_carve(raster).depth_near;
 }
 
 static void
@@ -255,6 +264,34 @@ cull_instance(const r3d_instance_t* instance, const r3d_lens_t* lens, uint16_t* 
     return visible;
 }
 
+/* Culls every instance into the census list and returns the depth scale
+ * the picture is drawn with: the nearest bound of what was kept, at least
+ * the view's near_z, and near_z when nothing was. */
+static float
+cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, raster_stats_t* stats,
+               draw_work_t* work) {
+    uint16_t* culled = work->buffers.culled;
+    float nearest = INFINITY;
+    for (int i = 0; i < raster->instance_count; i++) {
+        const r3d_instance_t* instance = &raster->instances[i];
+        r3d_lens_t lens;
+        instance_lens(raster, instance, view, fitted, &lens);
+        culled[0] = (uint16_t)cull_instance(instance, &lens, culled + 1, stats, work->buffers.work[0]);
+        if (depth_fit) {
+            /* Through the picture's own lens at every render size, so a
+             * census and a draw at another size fit the same scale. */
+            if (fitted) {
+                instance_lens(raster, instance, view, false, &lens);
+            }
+            nearest = r3d_pipeline_nearest(instance->mesh, &lens, culled + 1, culled[0], nearest);
+        }
+        culled += 1 + (size_t)instance->mesh->cluster_count;
+    }
+    /* A power of two keeps the scale still while the bound drifts, so ties
+     * do not flip from frame to frame, and the same at every render size. */
+    return nearest < INFINITY ? mathf_max(view->lens.near_z, mathf_floor_pow2(nearest)) : view->lens.near_z;
+}
+
 /* The writers of the attachments that write while instance `index` is
  * drawn; returns how many. */
 static int
@@ -345,6 +382,13 @@ static inline __attribute__((always_inline)) void
 draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t* stats) {
     assert(raster->instance_count > 0);
     assert_view_size(raster, view);
+    draw_work_t* work = scratch_draw(raster);
+    /* Every instance is culled before any is drawn: they share one depth scale. */
+    if (stats != NULL) {
+        FRAME_COST_BEGIN(culled_from);
+        *work->buffers.depth_near = cull_instances(raster, view, true, stats, work);
+        FRAME_COST_END(culled_from, "r3d.cull");
+    }
     bool resolves = false;
     for (int i = 0; i < raster->attachment_count; i++) {
         const raster_attachment_t* a = raster->attachments[i];
@@ -353,18 +397,13 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
         }
         resolves = resolves || a->resolve != NULL;
     }
-    draw_work_t* work = scratch_draw(raster);
     r3d_span_small_fill_resolve(&work->small_fill, view->small_fill);
     uint16_t* culled = work->buffers.culled;
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];
         r3d_lens_t* lens = &work->lens;
         instance_lens(raster, instance, view, true, lens);
-        if (stats != NULL) {
-            FRAME_COST_BEGIN(culled_from);
-            culled[0] = (uint16_t)cull_instance(instance, lens, culled + 1, stats, work->buffers.work[0]);
-            FRAME_COST_END(culled_from, "r3d.cull");
-        }
+        r3d_lens_set_depth_near(lens, *work->buffers.depth_near);
         draw_visible(raster, i, lens, culled + 1, culled[0], work);
         culled += 1 + (size_t)instance->mesh->cluster_count;
     }
@@ -402,14 +441,7 @@ raster_census(const raster_t* raster, const render_view_t* view) {
     raster_stats_t stats = {0, 0};
     FRAME_COST_BEGIN(counted_from);
     draw_work_t* work = scratch_draw(raster);
-    uint16_t* culled = work->buffers.culled;
-    for (int i = 0; i < raster->instance_count; i++) {
-        const r3d_instance_t* instance = &raster->instances[i];
-        r3d_lens_t lens;
-        instance_lens(raster, instance, view, false, &lens);
-        culled[0] = (uint16_t)cull_instance(instance, &lens, culled + 1, &stats, work->buffers.work[0]);
-        culled += 1 + (size_t)instance->mesh->cluster_count;
-    }
+    *work->buffers.depth_near = cull_instances(raster, view, false, &stats, work);
     FRAME_COST_END(counted_from, "r3d.census");
     return stats;
 }

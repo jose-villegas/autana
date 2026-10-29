@@ -45,6 +45,7 @@ These take and return plain integers, not structs.
 | `mathf_lerp(a, b, t)` | single-precision interpolation | $`a + (b - a)t`$ |
 | `mathf_min(a, b)` | smaller value by comparison | $`\min(a,b)`$ |
 | `mathf_max(a, b)` | larger value by comparison | $`\max(a,b)`$ |
+| `mathf_floor_pow2(a)` | the largest power of two at or below a positive finite `a`, from its exponent alone | $`2^{\lfloor \log_2 a\rfloor}`$ |
 | `mathf_clamp(v, lo, hi)` | inclusive bounds | $`\min(\max(v,lo),hi)`$ |
 | `mathf_repeat(v, len)` | into `[0, len)`; `len > 0`; a remainder rounded to `len` maps to zero | $`v - \lfloor v/len\rfloor len`$ |
 | `mathf_wrap(v, lo, hi)` | into `[lo, hi)`; `lo < hi` | $`lo + \mathrm{repeat}(v-lo,hi-lo)`$ |

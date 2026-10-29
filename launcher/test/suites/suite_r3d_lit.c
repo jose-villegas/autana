@@ -1706,7 +1706,7 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
     const span_of_bytes_t parts[] = {
         {(const char*)b.cs, sizeof(r3d_pipeline_vertex_t) * (size_t)p->mesh.vertex_count},
         {(const char*)b.rows, sizeof(r3d_pipeline_rows_t) * (size_t)p->mesh.cluster_count},
-        {(const char*)b.culled, raster_culled_bytes(&raster)},
+        {(const char*)b.depth_near, raster_culled_bytes(&raster)},
         {(const char*)b.work[0], r3d_pipeline_work_bytes()},
         {(const char*)b.work[1], r3d_pipeline_work_bytes()},
         {(const char*)b.draw, bytes - (size_t)((const char*)b.draw - scratch)},
@@ -1731,13 +1731,17 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
     TEST_ASSERT_EQUAL_UINT32((uint32_t)bytes, (uint32_t)(total + padding));
     TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_target_color(&b.picture, 0) % 4);
     TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_target_depth(&b.picture, 0) % 4);
-    /* The census list holds every instance's slot and takes whole cache ways,
-     * so the parts after it keep the cache sets they have without it. */
-    TEST_ASSERT_TRUE(raster_culled_bytes(&raster) >= sizeof(uint16_t) * raster_culled_length(&raster));
-    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)(((const char*)b.cs - (const char*)b.culled) % RASTER_CACHE_WAY));
+    /* The census holds its depth scale and every instance's slot and takes
+     * whole cache ways, so the parts after it keep the cache sets they have
+     * without it. */
+    TEST_ASSERT_TRUE(raster_culled_bytes(&raster)
+                     >= sizeof(float) + (sizeof(uint16_t) * raster_culled_length(&raster)));
+    TEST_ASSERT_TRUE((const char*)b.culled == (const char*)b.depth_near + sizeof(float));
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)(((const char*)b.cs - (const char*)b.depth_near) % RASTER_CACHE_WAY));
     raster.width /= 2;
     raster.height /= 2;
-    TEST_ASSERT_TRUE(b.culled == raster_carve(&raster).culled);
+    const raster_buffers_t smaller = raster_carve(&raster);
+    TEST_ASSERT_TRUE(b.culled == smaller.culled && b.depth_near == smaller.depth_near);
     free(scratch);
 }
 

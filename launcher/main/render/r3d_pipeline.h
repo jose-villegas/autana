@@ -31,7 +31,7 @@ typedef struct r3d_lens {
     projectf_t project; /* m already applies the focal lengths and turn, so lens space's pinhole is {1, -1}. */
     int width, height;
     float snap_cx, snap_cy; /* the centre in subpixels, plus R3D_SNAP_BIAS */
-    float near_subpixels;   /* near_z / R3D_SUBPIXEL */
+    float depth_subpixels;  /* depth_near / R3D_SUBPIXEL */
 } r3d_lens_t;
 
 /* 8 bytes: the screen position is snapped to r3d_span's subpixels once, so
@@ -39,11 +39,18 @@ typedef struct r3d_lens {
  * here is rebuilt from the mesh, as near clipping needs. */
 typedef struct r3d_pipeline_vertex {
     int16_t sx, sy; /* 1/R3D_SUBPIXEL pixels, valid while iz > 0 */
-    float iz;       /* near_z / z; 0 behind the near plane, below 0 in front but too far off screen to snap */
+    float iz;       /* depth_near / z; 0 behind the near plane, below 0 in front but too far off screen to snap */
 } r3d_pipeline_vertex_t;
 
-/* Scales the frame's ready basis to the mesh's position ticks. */
+/* Scales the frame's ready basis to the mesh's position ticks. Depth is
+ * encoded with depth_near = near_z until r3d_lens_set_depth_near(). */
 void r3d_lens_init(r3d_lens_t* lens, const render_view_t* view, int position_scale);
+
+/* The inverse-depth encoding's scale: a point at view depth z stores
+ * depth_near / z, so depth_near is the nearest depth the 16 bits can tell
+ * apart and the steps per unit at z are R3D_DEPTH_NEAREST depth_near / z^2.
+ * Every instance of one picture must share it; the clip plane stays near_z. */
+void r3d_lens_set_depth_near(r3d_lens_t* lens, float depth_near);
 
 /* Refits a lens made for one picture size to a render `width` by `height`
  * stretched back to it on the way out, each axis on its own, so a render
@@ -64,6 +71,14 @@ size_t r3d_pipeline_work_bytes(void);
  * screen, roughly nearest first, returning how many. `out` holds
  * mesh->cluster_count entries. */
 int r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* out, r3d_pipeline_work_t* work);
+
+/* A lower bound on the view depth of anything of `count` clusters inside the
+ * lens's frustum, never above `nearest`, so calls over several meshes fold
+ * into one bound: per box, the best of its least depth inside each frustum
+ * plane (box3f_plane_min_inside()). A box that reaches the near plane on
+ * screen gives a value at or below near_z. */
+float r3d_pipeline_nearest(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
+                           float nearest);
 
 /* The screen rows a cluster's vertices span, for a caller drawing only some
  * rows to skip it whole. A cluster with a vertex behind the near plane or
