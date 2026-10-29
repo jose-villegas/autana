@@ -115,23 +115,29 @@ replay_pose(scene_t* scene, scene_entity_t entity, uint32_t duration_ms, int32_t
     ESP_LOGI(TAG, FRAME_PROFILE_REPLAY R3D_PERF_QUARTER_FORMAT, row, (int)path_ms, counts, report, quarter);
 }
 
-/* The traced playback's frames and worst frames, then each replayed pose:
- * evenly along the path for the counts' curves, then the worst frames'. */
+/* The traced playback's frames and peaks, then each replayed pose:
+ * evenly along the path for the counts' curves, then every peak's. */
 static void
 report_path(scene_t* scene, scene_entity_t entity, uint32_t duration_ms, const frame_profile_trace_t* trace,
             const char* row, const char* quarter) {
-    int worst[FRAME_PROFILE_WORST_K];
-    const int count = frame_profile_worst(trace, FRAME_PROFILE_WORST_K, worst);
-    frame_profile_log_trace(TAG, row, trace, worst, count, quarter);
+    const int count = frame_profile_peaks(trace, NULL, 0);
+    frame_profile_peak_t* peak = memory_alloc((size_t)count * sizeof *peak, MEMORY_PSRAM);
     char* report = memory_alloc(FRAME_COST_REPORT_MAX, MEMORY_INTERNAL);
-    TEST_ASSERT_NOT_NULL(report);
+    if (peak == NULL || report == NULL) {
+        memory_free(peak);
+        memory_free(report);
+        TEST_FAIL_MESSAGE("frame peak allocation failed");
+    }
+    TEST_ASSERT_EQUAL_INT(count, frame_profile_peaks(trace, peak, count));
+    frame_profile_log_trace(TAG, row, trace, peak, count, quarter);
     for (int i = 0; i < FRAME_PROFILE_PATH_POSES; i++) {
         replay_pose(scene, entity, duration_ms, (int32_t)((int64_t)duration_ms * i / FRAME_PROFILE_PATH_POSES), row,
                     quarter, report);
     }
     for (int rank = 0; rank < count; rank++) {
-        replay_pose(scene, entity, duration_ms, trace->frame[worst[rank]].path_ms, row, quarter, report);
+        replay_pose(scene, entity, duration_ms, trace->frame[peak[rank].frame].path_ms, row, quarter, report);
     }
+    memory_free(peak);
     memory_free(report);
 }
 
@@ -181,7 +187,7 @@ test_real_time_frame_profile(void) {
     const frame_profile_t p = frame_profile_play(&playback, whole_frame, &remainder_us, &played);
     frame_profile_log(TAG, scenario->scene->key, &p, r3d_perf_quarters[quarter_index].name);
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, p.frames, "frame profile failed");
-    /* The worst frames first: a row over its budget is the one they explain. */
+    /* The peaks first: a row over its budget is the one they explain. */
     report_path(path.scene, path.entity, path.duration_ms, &played, scenario->scene->key,
                 r3d_perf_quarters[quarter_index].name);
     r3d_perf_budget(scenario->scene->key, &r3d_perf_quarters[quarter_index], p.frame_us.avg, p.frame_us.p95,
