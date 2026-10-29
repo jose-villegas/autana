@@ -13,7 +13,8 @@ every step. A replay draws frame i at the step the predictor picks and pays
 that step's measured cost; the whole frame is the measured whole frame at
 that step. dynres_replay_probe.c runs the engine's own fit and predictor.
 
-It prints the refit model and its error per scenario and step, then for each
+It prints the refit model and its miss per scenario and step (the up margin
+is set at the 90th percentile of |miss|), then for each
 target, margin and step-up delay each scenario's whole-frame mean, p95 and
 spread against the fixed scale at the top step.
 """
@@ -42,12 +43,15 @@ PROBE_SOURCES = (ROOT / "launcher/tools/r3d/dynres_replay_probe.c",
 US_PER_MS = 1000
 PERCENT = 100
 P95 = 0.95
+MARGIN_SHARE = 0.90  # the up margin covers this share of the prediction's misses
 
 LINE = re.compile(r"dynres_steps: (\S+) step=(\d+) (\d+)x(\d+) dt=(\d+)ms first=(\d+) n=(\d+)((?: -?\d+:-?\d+:-?\d+:-?\d+)*)")
 
 
-def read_capture(path):
-    """{scenario: {step: [(whole, draw, upscale, triangles), ...]}} and the ladder's sizes."""
+def read_capture(path, chosen):
+    """{scenario: {step: [(whole, draw, upscale, triangles), ...]}} over the
+    captured sizes `chosen`, renumbered from 0, and their sizes; a scenario
+    not captured at all of them is left out."""
     text = select_quarter(pathlib.Path(path).read_text(encoding="utf-8", errors="replace"))
     scenarios, sizes = {}, {}
     for m in LINE.finditer(text):
@@ -56,11 +60,12 @@ def read_capture(path):
         frames = scenarios.setdefault(m[1], {}).setdefault(step, {})
         for i, field in enumerate(m[8].split()):
             frames[first + i] = tuple(int(v) for v in field.split(":"))
-    ladder = [sizes[s] for s in sorted(sizes)]
+    ladder = [sizes[s] for s in chosen if s in sizes]
     out = {}
     for name, steps in scenarios.items():
-        count = min(len(f) for f in steps.values())
-        out[name] = {s: [steps[s][i] for i in range(count)] for s in sorted(steps)}
+        if all(s in steps for s in chosen):
+            count = min(len(steps[s]) for s in chosen)
+            out[name] = {i: [steps[s][f] for f in range(count)] for i, s in enumerate(chosen)}
     return out, ladder
 
 
@@ -79,14 +84,15 @@ def percentile(values, share):
 
 
 def refit(binary, scenarios, ladder, recovery):
-    """The model fitted on every frame of every scenario, and its error per scenario and step."""
+    """The model fitted on every frame of every scenario, and its signed miss
+    (measured - predicted) / predicted per scenario and step."""
     samples = [(name, step, f) for name, steps in scenarios.items() for step, frames in steps.items() for f in frames]
     stdin = ladder_text(ladder, recovery) + f"{len(samples)}\n" + "".join(
         f"{step} {f[3]} {f[1]} {f[2]}\n" for _, step, f in samples)
     fitted = run(binary, ["fit"], stdin)
     errors = {}
     for (name, step, f), price in zip(samples, fitted["predicted"]):
-        errors.setdefault(name, {}).setdefault(step, []).append((price - (f[1] + f[2])) / (f[1] + f[2]))
+        errors.setdefault(name, {}).setdefault(step, []).append((f[1] + f[2] - price) / price)
     return fitted, errors
 
 
@@ -119,22 +125,31 @@ def main():
     parser.add_argument("--holds", default="500", help="step-up holds in ms")
     parser.add_argument("--top", type=int, default=read_define(DYNRES, "RENDER_LAB_LADDER_HALF"))
     parser.add_argument("--first", type=int, help="the step the flight starts at; the top when omitted")
+    parser.add_argument("--steps", help="captured sizes forming the ladder, by capture index; the ladder's when omitted")
+    parser.add_argument("--recovery", type=int, help="the first recovery-only step of --steps; the ladder's when omitted")
+    parser.add_argument("--lead", help="the scenario reported first")
     parser.add_argument("--json", type=pathlib.Path)
     args = parser.parse_args()
-    recovery = read_define(DYNRES, "RENDER_LAB_LADDER_RECOVERY")
-    scenarios, ladder = read_capture(args.capture)
+    recovery = args.recovery or read_define(DYNRES, "RENDER_LAB_LADDER_RECOVERY")
+    chosen = ([int(v) for v in args.steps.split(",")] if args.steps
+              else list(range(read_define(DYNRES, "RENDER_LAB_LADDER_STEPS"))))
+    scenarios, ladder = read_capture(args.capture, chosen)
+    scenarios = dict(sorted(scenarios.items(), key=lambda item: item[0] != args.lead))
     if not scenarios:
         sys.exit(f"{args.capture}: no dynres_steps lines")
     with tempfile.TemporaryDirectory() as work:
         binary = build_probe(args.cc, PROBE_SOURCES, work)
         fitted, errors = refit(binary, scenarios, ladder, recovery)
         print("model", fitted["model"], "upscale", fitted["upscale"])
+        print(f"cells: median miss / p{MARGIN_SHARE * PERCENT:.0f} |miss|, miss = (measured - predicted) / predicted")
         print("| Scenario | " + " | ".join(f"{w}x{h}" for w, h in ladder) + " |")
         print("|---|" + "---|" * len(ladder))
         for name, steps in errors.items():
-            cells = [f"{statistics.median(e) * PERCENT:+.1f}% / {percentile([abs(v) for v in e], P95) * PERCENT:.1f}%"
+            cells = [f"{statistics.median(e) * PERCENT:+.1f}% / {percentile([abs(v) for v in e], MARGIN_SHARE) * PERCENT:.1f}%"
                      for _, e in sorted(steps.items())]
             print(f"| {name} | " + " | ".join(cells) + " |")
+        every = [abs(v) for steps in errors.values() for e in steps.values() for v in e]
+        print(f"p{MARGIN_SHARE * PERCENT:.0f} |miss| over every frame: {percentile(every, MARGIN_SHARE) * PERCENT:.1f}%")
         results = []
         for name, steps in scenarios.items():
             fixed = whole_stats([f[0] for f in steps[args.top]])
