@@ -58,13 +58,17 @@ def local_time(name, value=None):
     return tuple(map(int, value.split(":")))
 
 
+def night_zone():
+    name = os.environ.get("NIGHT_ZONE") or NIGHT_ZONE
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError) as error:
+        raise ValueError(f"NIGHT_ZONE must be an IANA name: {name!r}") from error
+
+
 def next_marker(trigger, night_start=None, start="NIGHT_START"):
     hour, minute = local_time(start, night_start)
-    night_zone = os.environ.get("NIGHT_ZONE") or NIGHT_ZONE
-    try:
-        zone = ZoneInfo(night_zone)
-    except (ZoneInfoNotFoundError, ValueError) as error:
-        raise ValueError(f"NIGHT_ZONE must be an IANA name: {night_zone!r}") from error
+    zone = night_zone()
     date = trigger.astimezone(zone).date()
     candidate = datetime(date.year, date.month, date.day, hour, minute, tzinfo=zone)
     if candidate < trigger:
@@ -141,7 +145,8 @@ def main():
     clock = Clock()
     if args.mode == "marker":
         now = clock.now()
-        marker = now if os.environ.get("OVERRIDE") == "true" else next_marker(
+        # In NIGHT_ZONE either way: the night's cut-off is read in the marker's offset.
+        marker = now.astimezone(night_zone()) if os.environ.get("OVERRIDE") == "true" else next_marker(
             trigger_time(os.environ.get("GITHUB_EVENT_NAME"), os.environ.get("SCHEDULE", ""), now), start=args.start)
         print(marker.isoformat(), flush=True)
         if os.environ.get("GITHUB_OUTPUT"):
