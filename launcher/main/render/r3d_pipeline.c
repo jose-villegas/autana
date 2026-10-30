@@ -218,11 +218,11 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_
         out->sx = (int16_t)r3d_span_unbias(b.x);
         out->sy = (int16_t)r3d_span_unbias(b.y);
         out->iz = lens->near_subpixels * inv;
-        x0 = out->sx < x0 ? out->sx : x0;
-        x1 = out->sx > x1 ? out->sx : x1;
-        y0 = out->sy < y0 ? out->sy : y0;
-        y1 = out->sy > y1 ? out->sy : y1;
-        iz = out->iz > iz ? out->iz : iz;
+        x0 = mathi_min(out->sx, x0);
+        x1 = mathi_max(out->sx, x1);
+        y0 = mathi_min(out->sy, y0);
+        y1 = mathi_max(out->sy, y1);
+        iz = mathf_max(out->iz, iz);
     }
     FRAME_LAP("r3d.transform.cluster");
     return (r3d_pipeline_rows_t){(int16_t)x0, (int16_t)y0, (int16_t)x1, (int16_t)y1, r3d_span_depth_limit(iz),
@@ -406,8 +406,9 @@ rows_miss_target(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target) 
 /* Drawn nearest first, a cluster behind what is already drawn is skipped
  * before any of its triangles is tested. Its box holds every centre its
  * triangles cover, as r3d_span_extent() finds them. Out of line, so its box
- * stays off the stack of the draw it guards while that draw fills. */
-RENDER_IRAM_ATTR __attribute__((noinline)) bool
+ * stays off the stack of the draw it guards while that draw fills, and in
+ * flash: once a cluster, it costs too little to earn IRAM. */
+__attribute__((noinline)) bool
 r3d_pipeline_cluster_hidden(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target) {
     if (r->unbounded) {
         return false;
@@ -446,22 +447,23 @@ end_hidden_draw(r3d_pipeline_work_t* work) {
     work->hidden_draw = paid ? 0 : (uint8_t)(work->hidden_draw + 1);
 }
 
-/* Rows outside the target's skip a cluster always; depth already drawn, only
- * on a draw that looks for it. */
-static inline bool
-cluster_skipped(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target, r3d_pipeline_work_t* work) {
-    if (rows_miss_target(r, target)) {
-        return true;
-    }
-    if (!work->test_hidden) {
-        return false;
-    }
+/* A tested cluster, counted toward the payoff. Out of line and in flash, so
+ * the draw loops in IRAM carry only the call. */
+static __attribute__((noinline)) bool
+cluster_tested_hidden(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target, r3d_pipeline_work_t* work) {
     work->payoff--;
     if (r3d_pipeline_cluster_hidden(r, target)) {
         work->payoff += R3D_HIDDEN_PAYS_ONE_IN;
         return true;
     }
     return false;
+}
+
+/* Rows outside the target's skip a cluster always; depth already drawn, only
+ * on a draw that looks for it. */
+static inline bool
+cluster_skipped(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target, r3d_pipeline_work_t* work) {
+    return rows_miss_target(r, target) || (work->test_hidden && cluster_tested_hidden(r, target, work));
 }
 
 /* A triangle with a corner behind the near plane or too far off screen to
