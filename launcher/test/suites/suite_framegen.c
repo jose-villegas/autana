@@ -139,16 +139,16 @@ test_dynamic_resolution_prices_a_drawn_frame_with_the_one_generated_from_it(void
     framegen_example(c, &ladder);
     const int32_t generated[] = {shown_us / 4, shown_us + shown_us / 2};
     TEST_ASSERT_TRUE(render_context_draw(c, r->instance, RASTER_RIG_QUADS, &view, 0));
-    (void)render_context_compose(c, destination, NULL);
+    (void)render_context_compose(c, destination, NULL, NULL);
     TEST_ASSERT_FALSE(framegen_example_generated(c));
     for (size_t i = 0; i < sizeof generated / sizeof generated[0]; i++) {
         TEST_ASSERT_TRUE(render_context_draw(c, r->instance, RASTER_RIG_QUADS, &view, 0));
-        (void)render_context_compose(c, destination, NULL);
+        (void)render_context_compose(c, destination, NULL, NULL);
         TEST_ASSERT_TRUE(framegen_example_generated(c));
         c->generated_us = generated[i];
         render_context_set_frame_generation(c, true); /* as an app re-applying its settings each frame */
         TEST_ASSERT_TRUE(render_context_draw(c, r->instance, RASTER_RIG_QUADS, &view, 0));
-        (void)render_context_compose(c, destination, NULL);
+        (void)render_context_compose(c, destination, NULL, NULL);
         TEST_ASSERT_FALSE(framegen_example_generated(c));
         const int32_t shared_us =
             (FRAMEGEN_SHOWN_PER_DRAWN * shown_us) - ((FRAMEGEN_SHOWN_PER_DRAWN - 1) * generated[i]);
