@@ -23,6 +23,9 @@ typedef struct {
     int width, height;
 } framegen_target_t;
 
+/* Room for a target's colour and depth as a picture. */
+typedef GFX_TARGET_STORAGE(GFX_ATTACHMENT_FURTHER) framegen_picture_t;
+
 /* Allocates `out` for a raster of `width` x `height`; false, with `out` empty,
  * when there is no memory. */
 bool framegen_target_alloc(framegen_target_t* out, int width, int height);
@@ -34,7 +37,10 @@ void framegen_target_free(framegen_target_t* target);
 void framegen_warp(const raster_t* raster, const render_view_t* drawn, const render_view_t* now,
                    framegen_target_t* out);
 
-/* Writes the generated frame into `raster`'s own colour and depth, so it
- * composes as a drawn frame does: the target where something landed, the
- * drawn frame's pixel elsewhere. Returns the pixels nothing landed on. */
+/* Completes the generated frame in `target`, so its picture composes as a
+ * drawn frame does: the drawn frame's pixel where nothing landed. `raster`
+ * keeps the drawn frame. Returns the pixels nothing landed on. */
 int framegen_fill(const raster_t* raster, const framegen_target_t* target);
+
+/* `target` as the picture raster_upscale_picture() composes, in `storage`. */
+const gfx_target_t* framegen_target_picture(const framegen_target_t* target, framegen_picture_t* storage);

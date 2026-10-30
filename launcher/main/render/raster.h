@@ -99,6 +99,8 @@ resolution_step_t raster_compose_size(const raster_t* raster);
 /* Fills `destination` from what was last drawn, both cores taking
  * half the destination rows. The destination is at least the drawn size. */
 void raster_upscale(raster_t* raster, uint16_t* destination, int width, int height);
-/* raster_upscale() through raster->upscale.filter, marking `seams` (GFX_SEAM_BYTES
- * of the destination size) where it blends; NULL marks none. */
-void raster_upscale_seamed(raster_t* raster, uint16_t* destination, uint8_t* seams, int width, int height);
+/* raster_upscale() of `picture` (colour and depth at the drawn size; NULL is
+ * what was last drawn) through raster->upscale.filter, marking `seams`
+ * (GFX_SEAM_BYTES of the destination size) where it blends; NULL marks none. */
+void raster_upscale_picture(raster_t* raster, const gfx_target_t* picture, uint16_t* destination, uint8_t* seams,
+                            int width, int height);

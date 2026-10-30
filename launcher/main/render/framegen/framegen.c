@@ -155,8 +155,8 @@ framegen_warp(const raster_t* raster, const render_view_t* drawn, const render_v
 
 /* One core's share of the fill: pixels [first, end). */
 typedef struct {
-    uint16_t* colour;
-    uint16_t* depth;
+    const uint16_t* colour;
+    const uint16_t* depth;
     const framegen_target_t* target;
     size_t first, end;
     int* holes; /* the caller's: core 1 runs on a copy of this context */
@@ -170,10 +170,11 @@ fill_span(void* ctx) {
         const uint16_t d = job->target->depth[i];
         if (d == R3D_DEPTH_EMPTY) {
             holes++;
-            continue;
+            job->target->colour[i] = job->colour[i];
+            job->target->depth[i] = job->depth[i];
+        } else if (d == DEPTH_SKY) {
+            job->target->depth[i] = R3D_DEPTH_EMPTY;
         }
-        job->colour[i] = job->target->colour[i];
-        job->depth[i] = d == DEPTH_SKY ? R3D_DEPTH_EMPTY : d;
     }
     *job->holes = holes;
 }
@@ -189,4 +190,13 @@ framegen_fill(const raster_t* raster, const framegen_target_t* target) {
     second.holes = &holes[1];
     (void)job_run_split(fill_span, &first, &second, sizeof second);
     return holes[0] + holes[1];
+}
+
+const gfx_target_t*
+framegen_target_picture(const framegen_target_t* target, framegen_picture_t* storage) {
+    gfx_target_of_color(&storage->target, target->colour, target->width, target->height, 0);
+    storage->count = GFX_ATTACHMENT_FURTHER;
+    storage->attachment[GFX_ATTACHMENT_DEPTH] =
+        (image_t){target->depth, IMAGE_U16, target->width, target->height, IMAGE_PITCH(IMAGE_U16, target->width)};
+    return &storage->target;
 }
