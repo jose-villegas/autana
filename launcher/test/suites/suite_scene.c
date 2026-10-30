@@ -694,7 +694,7 @@ fixture_with_skin(const skin_fixture_options_t* options) {
     TEST_ASSERT_NOT_NULL(fx.instances);
     const uint32_t total = make_pack(fx.bytes, options);
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, total));
-    fx.target = (scene_target_t){fx.pixels, SIZE, SIZE, NULL};
+    fx.target = (scene_target_t){fx.pixels, SIZE, SIZE, NULL, NULL};
 }
 
 static void
@@ -769,7 +769,7 @@ test_a_scaled_context_preserves_the_non_square_views_destination(void) {
         TEST_ASSERT_EQUAL_INT(SIZE / 2, c->raster.destination_height);
         TEST_ASSERT_EQUAL_INT(SIZE * scale / 100, c->raster.width);
         TEST_ASSERT_EQUAL_INT(SIZE * scale / 200, c->raster.height);
-        render_context_compose(c, fx.pixels, NULL);
+        render_context_compose(c, fx.pixels, NULL, NULL);
         TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x00FF00),
                                 fx.pixels[((PICTURE_HEIGHT / 2) * SIZE) + CENTER + GREEN_PIXEL_OFFSET]);
         TEST_ASSERT_EQUAL_HEX16(RGB565BE(CLEAR_RGB),
@@ -2316,7 +2316,7 @@ test_a_compose_with_no_framebuffer_writes_nothing(void) {
         fx.pixels[i] = SENTINEL;
     }
     scene_render(16, 0, SIZE, SIZE);
-    const scene_target_t none = {NULL, SIZE, SIZE, NULL};
+    const scene_target_t none = {NULL, SIZE, SIZE, NULL, NULL};
     scene_compose(16, 0, &none);
     TEST_ASSERT_EQUAL_INT(4, render_context_frame(render_context_main()).stats.triangles);
     TEST_ASSERT_EQUAL_HEX16(SENTINEL, pixel(0.0F));
@@ -2515,7 +2515,7 @@ expanded_picture(void) {
     raster_t* raster = &render_context_main()->raster;
     raster_upscale(raster, fx.held, GFX_WIDTH, GFX_HEIGHT);
     const size_t before_half = memory_free_bytes(MEMORY_PSRAM);
-    const scene_target_t half = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture()};
+    const scene_target_t half = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture(), NULL};
     TEST_ASSERT_NOT_NULL(half.half_pixels);
     TEST_ASSERT_TRUE(half.half_pixels != half.pixels);
     TEST_ASSERT_TRUE(scene_compose(16, 0, &half));
@@ -2534,6 +2534,43 @@ expanded_picture(void) {
 static void
 test_expanded_scene_in_separate_picture_matches_upscale(void) {
     expanded_picture();
+}
+
+static void
+test_blended_expand_blends_within_seams_and_doubles_across_them(void) {
+    enum { HALF_WIDTH = GFX_WIDTH / 2, HALF_HEIGHT = GFX_HEIGHT / 2, NEIGHBOUR = RGB565_SCALE_UNIT / 4 };
+
+    expanded_fixture();
+    gfx_color_t* half = gfx_half_picture();
+    uint8_t* seams = gfx_half_seams();
+    TEST_ASSERT_NOT_NULL(seams);
+    /* Every row alike, so only the horizontal blend shows. */
+    for (int y = 0; y < HALF_HEIGHT; y++) {
+        for (int x = 0; x < HALF_WIDTH; x++) {
+            half[(y * HALF_WIDTH) + x] = (gfx_color_t)RGB565BE((uint32_t)(x * 0x010101));
+        }
+    }
+    gfx_color_t* row = malloc(sizeof(*row) * GFX_WIDTH);
+    TEST_ASSERT_NOT_NULL(row);
+    const gfx_color_t* line = half + HALF_WIDTH;
+
+    memset(seams, 0, GFX_SEAM_BYTES(HALF_WIDTH, HALF_HEIGHT));
+    gfx_expand_frame_blended();
+    gfx_read_panel_row(2, row);
+    TEST_ASSERT_EQUAL_HEX16(line[0], row[0]);
+    TEST_ASSERT_EQUAL_HEX16(line[HALF_WIDTH - 1], row[GFX_WIDTH - 1]);
+    for (int x = 1; x + 1 < HALF_WIDTH; x++) {
+        TEST_ASSERT_EQUAL_HEX16(rgb565be_blend(line[x], line[x - 1], NEIGHBOUR), row[2 * x]);
+        TEST_ASSERT_EQUAL_HEX16(rgb565be_blend(line[x], line[x + 1], NEIGHBOUR), row[(2 * x) + 1]);
+    }
+
+    memset(seams, UINT8_MAX, GFX_SEAM_BYTES(HALF_WIDTH, HALF_HEIGHT));
+    gfx_expand_frame_blended();
+    gfx_read_panel_row(2, row);
+    for (int x = 0; x < GFX_WIDTH; x++) {
+        TEST_ASSERT_EQUAL_HEX16(line[x / 2], row[x]);
+    }
+    free(row);
 }
 
 static void
@@ -2610,7 +2647,7 @@ test_camera_present_composes_half_picture_at_any_height(void) {
     render_context_set_scale(c, RENDER_CONTEXT_DEFAULT_SCALE_PERCENT);
     TEST_ASSERT_TRUE(scene_camera_set_present(scene_loaded_at(0), scene_find(scene_loaded_at(0), name_hash("camera")),
                                               CAMERA_PRESENT_SCANLINE));
-    const scene_target_t target = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture()};
+    const scene_target_t target = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture(), NULL};
     TEST_ASSERT_NOT_NULL(target.half_pixels);
     for (int quarter = 0; quarter <= 1; quarter++) {
         scene_render(0, quarter, GFX_WIDTH, GFX_HEIGHT);
@@ -2632,7 +2669,7 @@ assert_composed_scanlines(render_context_t* context, int quarter, camera_present
     scene_render(0, quarter, GFX_WIDTH, GFX_HEIGHT);
     raster_t* raster = &context->raster;
     memset(raster_depth(raster), 0, sizeof(uint16_t) * raster->width * raster->height);
-    const scene_target_t target = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture()};
+    const scene_target_t target = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture(), NULL};
     const bool half = scene_compose(0, quarter, &target);
     const resolution_step_t size = raster_compose_size(raster);
     const int run = size.height / raster->height;
@@ -2749,7 +2786,7 @@ test_non_half_compose_upscales_to_the_full_destination(void) {
     scene_render(16, 0, GFX_WIDTH, GFX_HEIGHT);
     render_context_t* context = render_context_main();
     raster_upscale(&context->raster, fx.held, GFX_WIDTH, GFX_HEIGHT);
-    const scene_target_t target = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture()};
+    const scene_target_t target = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture(), NULL};
     target.half_pixels[0] = SENTINEL;
     TEST_ASSERT_FALSE(scene_compose(16, 0, &target));
     TEST_ASSERT_EQUAL_HEX16(SENTINEL, target.half_pixels[0]);
@@ -2810,7 +2847,7 @@ test_ui_replay_over_expanded_scene_matches_full_frame(void) {
             build_expanded_ui((ui_text_style_t)style);
             memcpy(fx.held, gfx_framebuffer(), GFX_FRAMEBUFFER_BYTES);
             scene_render(0, 0, GFX_WIDTH, GFX_HEIGHT);
-            const scene_target_t half = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture()};
+            const scene_target_t half = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture(), NULL};
             TEST_ASSERT_TRUE(scene_compose(0, 0, &half));
             gfx_expand_frame();
             gfx_set_frame_overlay(ui_replay_band);
@@ -2873,9 +2910,9 @@ test_paused_or_empty_expanded_scene_retains_its_picture(void) {
         TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, GFX_FRAMEBUFFER_BYTES));
         gfx_present();
     }
-    const scene_target_t full = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, NULL};
+    const scene_target_t full = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, NULL, NULL};
     TEST_ASSERT_FALSE(scene_compose(16, 0, &full));
-    const scene_target_t half = {full.pixels, GFX_WIDTH, GFX_HEIGHT, gfx_half_picture()};
+    const scene_target_t half = {full.pixels, GFX_WIDTH, GFX_HEIGHT, gfx_half_picture(), NULL};
     TEST_ASSERT_FALSE(scene_compose(16, 0, &half));
     scene_t* scene = scene_loaded_at(0);
     scene_entity_set_enabled(scene, scene_find(scene, name_hash("red")), true);
@@ -2888,7 +2925,7 @@ static void
 test_expanded_frame_without_ui_does_not_replay_the_previous_hud(void) {
     expanded_picture();
     scene_render(0, 0, GFX_WIDTH, GFX_HEIGHT);
-    const scene_target_t half = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture()};
+    const scene_target_t half = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture(), NULL};
     TEST_ASSERT_TRUE(scene_compose(0, 0, &half));
     gfx_expand_frame();
     gfx_set_frame_overlay(ui_replay_band);
@@ -4197,6 +4234,7 @@ run_scene_suite(void) {
     RUN_TEST(test_paused_or_empty_expanded_scene_retains_its_picture);
     RUN_TEST(test_expanded_scene_in_separate_picture_matches_upscale);
     RUN_TEST(test_expanded_frame_lifecycle_and_raw_draw_guard);
+    RUN_TEST(test_blended_expand_blends_within_seams_and_doubles_across_them);
     RUN_TEST(test_expanded_overlay_resets_and_restores_clip);
     RUN_TEST(test_ui_replay_over_expanded_scene_matches_full_frame);
     RUN_TEST(test_camera_present_composes_half_picture_at_any_height);

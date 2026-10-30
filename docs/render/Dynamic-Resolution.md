@@ -221,6 +221,57 @@ What the table shows:
 
 ![Frame cost and render size along the path, per policy and budget](../images/render/dynamic-resolution-flight.png)
 
+## Upscaling within a surface
+
+Off by default: `UPSCALE_FILTER_SURFACE` in `render/upscale.h`, set with
+`render_context_set_upscale_filter()`. It applies to the steps that compose into the
+half picture, and is joint bilateral upsampling<sup>[[101]](../Citations.md#kopf-2007)</sup> with a yes-or-no range weight.
+
+| Stage | Nearest | Surface |
+|---|---|---|
+| Compose, rows to the half height | each row its nearest source row | blends the two source rows around it when their depths are one surface, else takes the nearer |
+| Compose, same loop | - | writes a seam bit per half-picture pixel: another surface right of it or below it |
+| Present, 2x expand | each pixel to a 2x2 block | centre-aligned 2x bilinear, a quarter of each neighbour, except across a seam |
+
+Two depths are one surface when they differ by at most the nearer's
+1/2^`UPSCALE_SURFACE_STEP_SHIFT`. Clear against drawn is always a seam.
+
+<!-- generated: dynres-upscale sha256=649d14f264560cb96f309433d69be7e04cf51716516358d14477fc0ce3336af5 -->
+| Scene | Size | mean dE | p95 dE | SSIM | edge dE | interior dE |
+|---|---|---|---|---|---|---|
+| bistro-fitted-full | 184x224 | 7.40 → 7.37 | 23.2 → 22.6 | 0.551 → 0.556 | 11.24 → 11.18 | 4.96 → 4.95 |
+| bistro-fitted-full | 184x149 | 7.54 → 7.48 | 23.8 → 22.9 | 0.538 → 0.546 | 11.57 → 11.44 | 5.00 → 4.99 |
+| bistro-fitted-full | 184x112 | 7.58 → 7.56 | 24.0 → 23.2 | 0.534 → 0.539 | 11.67 → 11.60 | 5.00 → 5.02 |
+| sponza-fitted-full | 184x224 | 5.96 → 5.93 | 16.4 → 15.9 | 0.703 → 0.710 | 10.27 → 10.18 | 4.60 → 4.60 |
+| sponza-fitted-full | 184x149 | 6.13 → 6.06 | 17.2 → 16.4 | 0.688 → 0.700 | 10.79 → 10.57 | 4.65 → 4.64 |
+| sponza-fitted-full | 184x112 | 6.17 → 6.16 | 17.5 → 16.7 | 0.683 → 0.692 | 10.94 → 10.82 | 4.67 → 4.68 |
+| sponza-fitted | 184x224 | 6.61 → 6.57 | 18.9 → 18.4 | 0.657 → 0.664 | 11.55 → 11.43 | 5.06 → 5.05 |
+| sponza-fitted | 184x149 | 6.74 → 6.67 | 19.5 → 18.7 | 0.646 → 0.657 | 11.95 → 11.73 | 5.10 → 5.08 |
+| sponza-fitted | 184x112 | 6.77 → 6.73 | 19.6 → 18.8 | 0.643 → 0.652 | 12.03 → 11.89 | 5.11 → 5.11 |
+| sponza-flat-fitted | 184x224 | 5.82 → 5.75 | 16.8 → 16.0 | 0.694 → 0.708 | 10.31 → 10.08 | 4.41 → 4.38 |
+| sponza-flat-fitted | 184x149 | 6.00 → 5.89 | 17.7 → 16.5 | 0.678 → 0.700 | 10.86 → 10.50 | 4.46 → 4.43 |
+| sponza-flat-fitted | 184x112 | 6.04 → 5.99 | 17.9 → 16.9 | 0.675 → 0.692 | 10.98 → 10.78 | 4.48 → 4.48 |
+| sponza | 184x224 | 9.76 → 9.66 | 28.7 → 28.0 | 0.550 → 0.559 | 15.85 → 15.59 | 7.84 → 7.80 |
+| sponza | 184x149 | 9.82 → 9.70 | 28.9 → 28.0 | 0.544 → 0.556 | 16.03 → 15.70 | 7.87 → 7.81 |
+| sponza | 184x112 | 9.84 → 9.70 | 28.9 → 28.0 | 0.541 → 0.554 | 16.09 → 15.73 | 7.87 → 7.81 |
+| sponza-flat | 184x224 | 12.96 → 12.73 | 44.3 → 43.1 | 0.408 → 0.430 | 20.67 → 20.06 | 10.53 → 10.42 |
+| sponza-flat | 184x149 | 13.03 → 12.72 | 44.6 → 42.9 | 0.404 → 0.433 | 20.90 → 20.06 | 10.55 → 10.41 |
+| sponza-flat | 184x112 | 13.02 → 12.71 | 44.5 → 42.8 | 0.405 → 0.434 | 20.85 → 20.05 | 10.55 → 10.39 |
+| sponza-lite | 184x224 | 11.51 → 11.44 | 34.1 → 33.6 | 0.491 → 0.497 | 18.51 → 18.33 | 9.33 → 9.30 |
+| sponza-lite | 184x149 | 11.55 → 11.45 | 34.2 → 33.5 | 0.488 → 0.496 | 18.64 → 18.37 | 9.35 → 9.30 |
+| sponza-lite | 184x112 | 11.56 → 11.46 | 34.2 → 33.5 | 0.486 → 0.496 | 18.64 → 18.39 | 9.35 → 9.29 |
+
+Each cell is nearest → surface, the mean over the path's frames against the reference at full size; lower dE and higher SSIM are closer.
+<!-- /generated: dynres-upscale -->
+
+Surface lowers p95 dE and raises SSIM at every step of every scored scene;
+mean dE moves less. The interiors blend, while depth edges keep their stairs,
+which is most of the edge error left.
+
+![Nearest and surface against the reference, with each one's dE](../images/render/upscale-surface.png)
+
+![Edge crops: reference, nearest, surface](../images/render/upscale-surface.crops.png)
+
 ## Camera presentation
 
 A camera can draw half the rows and let the present fill the rest.
@@ -270,7 +321,8 @@ The tables and the chart are made by the docs generator,
 `launcher/tools/render/render_doc_images.sh`, like every other measured page,
 from the board capture and per-path quality CSVs in `data/`:
 `dynamic-resolution-quality-camera.csv` and
-`dynamic-resolution-quality-tour.csv`.
+`dynamic-resolution-quality-tour.csv`, and the upscale filter's scores,
+`upscale-filter-quality.csv`.
 The capture is the suite's `scale_split`, `scale_spans`, `dynres_step` and
 `dynres_frames` lines; each CSV is made by the test scene's quality script, which
 renders the path at each size on a host and scores it. A new board run
@@ -280,6 +332,9 @@ replaces the capture, and the generator does the rest:
 autana suite run_raster_scale_perf_suite --flash --out docs/render/data/dynamic-resolution-board.log
 sh launcher/tools/render/render_doc_images.sh
 ```
+
+The upscale filter's scores and figures come from the test app's upscale
+quality script, one host run per scene and filter; its tools README has the command.
 
 For the pipeline captures and GPU-stage tables, see
 [Render-Pipeline.md](Render-Pipeline.md#refreshing).
