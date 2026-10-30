@@ -14,6 +14,13 @@
 /* Frames shown per drawn frame with generation on: the drawn one and the one
  * generated from it. */
 #define FRAMEGEN_SHOWN_PER_DRAWN 2
+/* A frame is generated only when the last generated one cost at least this
+ * share less than the last drawn one: a generated frame shows the scene less
+ * exactly, so a cheaper one has to save time to be worth it. */
+#define FRAMEGEN_GAIN_PERCENT    10
+/* Drawn frames in a row after which a frame is generated anyway, to measure
+ * its cost again: the scene, the view or the drawn size may have changed. */
+#define FRAMEGEN_RETRY_DRAWN     30
 
 /* The warp's own picture at the raster's size, in PSRAM: the warped colour,
  * and the depth its splats test, R3D_DEPTH_EMPTY where nothing landed. */
