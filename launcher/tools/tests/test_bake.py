@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 import time
 import types
 import unittest
@@ -111,7 +112,7 @@ class MeshCommandTests(unittest.TestCase):
                 mock.patch.object(budget, "cores_available", return_value=4), \
                 mock.patch.object(bake, "cpu_vendor", return_value=None), \
                 mock.patch.object(produce, "produce", mesh_process_stub), \
-                mock.patch.object(produce, "export", side_effect=lambda made, *_: rows.extend(made)), \
+                mock.patch.object(produce, "export", side_effect=lambda row, *_: rows.append(row)), \
                 contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             code = bake.main(["bake", "--kind", "mesh", "--cache", str(self.root), "--out", str(self.root / "out"),
                               *(["--again"] if again else [])])
@@ -122,7 +123,7 @@ class MeshCommandTests(unittest.TestCase):
         self.found[1] = dataclasses.replace(self.found[1], holder="later")
         done = self.command()
         self.assertEqual(done.code, 0, done.err)
-        self.assertEqual([row["output"] for row in done.rows], [item.output for item in self.found])
+        self.assertEqual(sorted(row["output"] for row in done.rows), sorted(item.output for item in self.found))
         self.assertEqual([line.split()[1] for line in done.out.splitlines() if line.startswith("made ")],
                          [item.output for item in self.found])
         pids = {bake.cached(row, row["suffix"], self.root).read_text() for row in done.rows}
@@ -154,14 +155,29 @@ class MeshCommandTests(unittest.TestCase):
                 done = self.command()
                 self.assertEqual(done.code, 1)
                 self.assertIn(f"bake.py: {message}", done.err)
-                self.assertEqual(done.rows, [])
+                self.assertNotIn(self.found[0].output, [row["output"] for row in done.rows])
+
+    def test_a_failed_worker_stops_new_meshes_and_every_finished_one_is_exported(self):
+        self.found[2] = dataclasses.replace(self.found[2], holder="fail")
+        for capacity in (1, 2):
+            with self.subTest(capacity=capacity):
+                done = self.command(capacity=capacity)
+                self.assertEqual(done.code, 1)
+                exported = sorted(row["output"] for row in done.rows)
+                made = {path.stem for path in self.root.glob("*.done")}
+                self.assertEqual(exported, sorted(item.output for item in self.found if item.holder in made))
+                self.assertIn(self.found[0].output, exported)
+                if capacity == 1:
+                    self.assertEqual(exported, [item.output for item in self.found[:2]])
+                for path in self.root.glob("*.done"):
+                    path.unlink()
 
     def test_duplicate_keys_are_produced_once_even_with_again(self):
         self.found[0] = dataclasses.replace(self.found[0], holder="once")
         self.found = [self.found[0], self.found[1], self.found[0]]
         done = self.command()
         self.assertEqual(done.code, 0, done.err)
-        self.assertEqual(done.rows[0], done.rows[2])
+        self.assertEqual(sorted(row["output"] for row in done.rows), sorted({item.output for item in self.found}))
         self.assertEqual(len(list(self.root.glob("*.payload"))), 2)
 
     def test_cached_rows_need_no_workers(self):
@@ -1098,6 +1114,119 @@ class FitGpuTests(FittedBakeCase):
         self.assertIn(f'gpu = "{self.GPU}"', path.read_text(encoding="utf-8"))
 
 
+class KeptWorkTests(FittedBakeCase):
+    """A run that fails after making some fits uploads each one it finished, and a rerun makes only the rest:
+    from this cache, or on a cold one from the run's uploads made on a host like this one."""
+
+    names = ("first", "second", "third")
+    GPU = "NVIDIA GeForce RTX 2060"
+
+    def setUp(self):
+        super().setUp()
+        self.lock = self.locked(LOCKED_SHA256, run=RUN)
+        self.outputs = [item.output for item in self.fits(LOCKED_SHA256)]
+        self.out = self.root / "upload"
+
+    def bake(self, cache, fail=None, from_run=None, gpu=GPU):
+        """`bake --kind fit --out` into `cache`; making the fit `fail` raises as a lost lock stops the bake.
+        Returns its exit code and the outputs it made."""
+        produced = []
+
+        def stub(item, cache, lock=None, blender=None):
+            if item.output == fail:
+                raise bake.BakeMissing("the heavy lock was lost")
+            produced.append(item.output)
+            path = self.root / item.output
+            path.write_text(item.key, encoding="utf-8")
+            return produce.record(item, path, cache)
+
+        argv = ["bake", "--kind", "fit", str(self.root), "--cache", str(cache), "--out", str(self.out)]
+        with mock.patch.object(bake, "read_lock_tables", return_value={"bake": self.lock, "poses": {}}), \
+                mock.patch.object(bake, "cpu_vendor", return_value="AuthenticAMD"), \
+                mock.patch.object(bake, "gpu_name", return_value=gpu), \
+                mock.patch.object(bake, "run_files", side_effect=lambda run, folder: self.uploads[run]), \
+                mock.patch.object(produce, "produce", side_effect=stub), \
+                contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            code = bake.main(argv + (["--from-run", str(from_run)] if from_run else []))
+        return code, produced
+
+    def uploaded(self):
+        return sorted(row["output"] for row in produce.import_run(self.out, RUN, self.root / "lock-cache").values())
+
+    def failed_run(self):
+        """A run that made two fits and failed making the third; its upload is kept as run RUN's."""
+        code, produced = self.bake(self.cache, fail=self.outputs[2])
+        self.assertEqual(code, 1)
+        self.assertEqual(produced, self.outputs[:2])
+        self.uploads = {RUN: self.root / "run-upload"}
+        shutil.copytree(self.out, self.uploads[RUN])
+        shutil.rmtree(self.out)
+
+    def test_a_run_that_fails_after_two_fits_uploads_both(self):
+        self.failed_run()
+        self.assertEqual(sorted(row["output"] for row in
+                                produce.import_run(self.uploads[RUN], RUN, self.root / "lock-cache").values()),
+                         sorted(self.outputs[:2]))
+
+    def test_a_rerun_on_the_same_cache_makes_only_the_unfinished_fit_and_uploads_all_three(self):
+        self.failed_run()
+        code, produced = self.bake(self.cache)
+        self.assertEqual(code, 0)
+        self.assertEqual(produced, self.outputs[2:])
+        self.assertEqual(self.uploaded(), sorted(self.outputs))
+
+    def test_a_rerun_on_a_cold_cache_takes_the_runs_uploads_and_makes_only_the_rest(self):
+        self.failed_run()
+        code, produced = self.bake(self.root / "cold", from_run=RUN)
+        self.assertEqual(code, 0)
+        self.assertEqual(produced, self.outputs[2:])
+        self.assertEqual(self.uploaded(), sorted(self.outputs))
+
+    def test_a_rerun_on_another_gpu_model_remakes_every_fit(self):
+        self.failed_run()
+        code, produced = self.bake(self.root / "cold", from_run=RUN, gpu="NVIDIA GeForce RTX 5080 Laptop GPU")
+        self.assertEqual(code, 0)
+        self.assertEqual(produced, self.outputs)
+
+    def test_a_bake_killed_mid_fit_leaves_every_finished_fit_uploadable(self):
+        """A lost heavy lock stops the bake's whole process tree (device.run_to_end): no handler of its own runs."""
+        script = textwrap.dedent("""
+            import pathlib, sys, time
+            from unittest import mock
+            sys.path.insert(0, sys.argv[1])
+            from bake import bake, produce
+            root, lock_sha, last = pathlib.Path(sys.argv[2]), sys.argv[3], sys.argv[4]
+            start = next(item for item in bake.bakes([root], {}) if not item.packed)
+            lock = {start.key: {"output": start.output, "key": start.key, "sha256": lock_sha, "run": 1}}
+
+            def stub(item, cache, lock=None, blender=None):
+                if item.output == last:
+                    (root / "started").touch()
+                    time.sleep(600)
+                path = root / item.output
+                path.write_text(item.key, encoding="utf-8")
+                return produce.record(item, path, cache)
+
+            with (mock.patch.object(bake, "read_lock_tables", return_value={"bake": lock, "poses": {}}),
+                  mock.patch.object(bake, "gpu_name", return_value=None),
+                  mock.patch.object(produce, "produce", side_effect=stub)):
+                bake.main(["bake", "--kind", "fit", str(root), "--cache", str(root / "cache"), "--out", sys.argv[5]])
+            """)
+        process = subprocess.Popen([sys.executable, "-c", script, str(TOOLS), str(self.root), LOCKED_SHA256,
+                                    self.outputs[2], str(self.out)],
+                                   stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            deadline = time.monotonic() + 60
+            while not (self.root / "started").exists():
+                self.assertIsNone(process.poll(), "the bake ended before its last fit")
+                self.assertLess(time.monotonic(), deadline, "the last fit never started")
+                time.sleep(0.05)
+        finally:
+            process.kill()
+            process.wait()
+        self.assertEqual(self.uploaded(), sorted(self.outputs[:2]))
+
+
 class OnlyTests(FittedBakeCase):
     def test_an_output_of_another_kind_is_refused_before_making_anything(self):
         def refuse(parser, message):
@@ -1462,7 +1591,7 @@ class ProduceTests(unittest.TestCase):
     def test_a_runs_uploads_lock_with_the_run_and_are_checked(self):
         row = self.produce()
         out = self.root / "upload"
-        produce.export([row], self.cache, out)
+        produce.export(row, self.cache, out)
         made = produce.import_run(out, 41, self.root / "other")
         self.assertEqual(bake.lock_rows(self.found, {}, made)[0]["run"], 41)
         (out / "files" / f"{row['sha256']}.mesh").write_bytes(b"other")
@@ -1473,9 +1602,9 @@ class ProduceTests(unittest.TestCase):
         """A Bakes run's meshes and a Bakes GPU run's fits: neither run alone has every key, both together do."""
         row = self.produce()
         uploads = {41: self.root / "run41", 42: self.root / "run42"}
-        produce.export([row], self.cache, uploads[41])
+        produce.export(row, self.cache, uploads[41])
         other = {**row, "key": "k" * 64}
-        produce.export([row], self.cache, uploads[42])
+        produce.export(row, self.cache, uploads[42])
         (uploads[42] / produce.KEY_INDEX / f"{row['key']}.json").unlink()
         (uploads[42] / produce.KEY_INDEX / f"{other['key']}.json").write_text(json.dumps(other), encoding="utf-8")
         found = [self.found[0], bake_of(other["key"], self.root / "tree")]
@@ -1490,7 +1619,7 @@ class ProduceTests(unittest.TestCase):
         row = self.produce()
         uploads = {41: self.root / "run41", 42: self.root / "run42", 43: self.root / "run43"}
         for upload in uploads.values():
-            produce.export([row], self.cache, upload)
+            produce.export(row, self.cache, upload)
         other = {**row, "sha256": hashlib.sha256(b"other").hexdigest()}
         (uploads[42] / "files" / f"{other['sha256']}.mesh").write_bytes(b"other")
         (uploads[42] / produce.KEY_INDEX / f"{row['key']}.json").write_text(json.dumps(other), encoding="utf-8")
@@ -1526,7 +1655,7 @@ class ProduceTests(unittest.TestCase):
     def test_publish_takes_a_rows_file_from_its_run(self):
         row = self.produce()
         out = self.root / "upload"
-        produce.export([row], self.cache, out)
+        produce.export(row, self.cache, out)
         lock = {row["key"]: {**row, "run": 41}}
         uploads = []
 

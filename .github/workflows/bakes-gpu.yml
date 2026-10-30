@@ -20,6 +20,11 @@ name: Bakes GPU
 # every fit it makes comes from one GPU, which each fit's lock row names (a fit
 # is byte-reproducible only on its GPU model). Runs on different runners do
 # not wait for each other; each runner takes its host's heavy lock.
+#
+# Each fit is kept the moment it is made: in the runner's cache, where a later
+# dispatch finds it, and in the upload, which runs whatever fails after, a lost
+# heavy lock too. A rerun's attempt uploads under its own name and first takes
+# the fits its run's earlier attempts uploaded, so it fits only what is left.
 
 on:
   workflow_dispatch:
@@ -110,10 +115,12 @@ jobs:
           args=(--kind fit --out "$RUNNER_TEMP/bakes")
           for name in $ONLY; do args+=(--only "$name"); done
           if [ "$AGAIN" = true ]; then args+=(--again); fi
+          if [ "$GITHUB_RUN_ATTEMPT" -gt 1 ]; then args+=(--from-run "$GITHUB_RUN_ID"); fi
           sh scripts/ci/gpu_stage.sh sh launcher/tools/r3d/gpu_python.sh launcher/tools/bake/bake.py bake "${args[@]}"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
         with:
-          name: bakes-gpu
+          name: bakes-gpu-${{ github.run_attempt }}
           path: ${{ runner.temp }}/bakes
           if-no-files-found: ignore
