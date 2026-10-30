@@ -51,8 +51,8 @@ def parse_target(text, execution="hardware"):
     return f"{target} ({architecture}{', ' + core if core else ''})"
 
 
-def parse_capture(text, rows, allow_missing=False):
-    if text.rstrip("\r\n") == PLACEHOLDER:
+def parse_capture(text, rows, allow_missing=False, *, prefix="MATHBENCH", placeholder=PLACEHOLDER):
+    if text.rstrip("\r\n") == placeholder:
         return None, {}
     provenance = [line for line in text.splitlines() if line.startswith("BUILD_ID")]
     if any("scope=" in line for line in provenance):
@@ -65,9 +65,9 @@ def parse_capture(text, rows, allow_missing=False):
     expected = {(label, kind): (key, ops) for key, label, kind, ops, family in rows}
     measured = {}
     for line in text.splitlines():
-        if not line.startswith("MATHBENCH"):
+        if not line.startswith(prefix):
             continue
-        match = CAPTURE_ROW.fullmatch(line)
+        match = CAPTURE_ROW.fullmatch("MATHBENCH" + line[len(prefix):])
         if match is None:
             raise ValueError(f"malformed measurement: {line}")
         label, kind, ops, *values = match.groups()

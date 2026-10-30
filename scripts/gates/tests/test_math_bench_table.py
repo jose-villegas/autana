@@ -22,6 +22,16 @@ class MathBenchTableTests(unittest.TestCase):
                "MATHBENCH name=dot (vec3) type=f ops=64 warm=12.0 cold=24.0 insn=6.0\n"
                "MATHBENCH name=sinf type=f ops=64 warm=90.0 cold=110.0 insn=30.0\n")
 
+    def test_package_capture_prefix_and_placeholder(self):
+        rows = [("crc32_update_rom_64_ram", "crc32_update_rom", "64_ram", 1, "hash")]
+        capture = "BUILD_ID=example\nHASHBENCH name=crc32_update_rom type=64_ram ops=1 warm=2.0 cold=3.0 insn=4.0\n"
+        build, measured = bench.parse_capture(capture, rows, prefix="HASHBENCH", placeholder="pending")
+        self.assertEqual(measured[rows[0][0]], (2.0, 3.0, 4.0))
+        self.assertEqual(bench.parse_capture("pending", rows, prefix="HASHBENCH", placeholder="pending"), (None, {}))
+        for bad in (capture + capture.splitlines()[-1] + "\n", capture.replace("ops=1", "ops=2")):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                bench.parse_capture(bad, rows, prefix="HASHBENCH")
+
     def test_error_measurements_join_by_label_and_type(self):
         text = ("noise\nMATHERROR name=normalize (vec3) type=f max=0 unit=ulp method=sweep\n"
                 "MATHERROR name=arbitrary label type=x max=5.94258e-05 unit=relative method=proof\n")
@@ -45,18 +55,18 @@ class MathBenchTableTests(unittest.TestCase):
         rows = [("rsqrt_f", "mathf_rsqrt", "f", self.batch, "scalar")]
         table = bench.render_table(rows, {}, {}, {"rsqrt_f": "rsqrt0.s"},
                                    errors={("mathf_rsqrt", "f"): "1 ulp (proof)"},
-                                   error_links={"rsqrt_f": "Fast-Paths.md#mathf-rsqrt"})
-        self.assertIn("| mathf_rsqrt | f | - | - | - | device-only instruction | - | rsqrt0.s | [fast paths](Fast-Paths.md#mathf-rsqrt) |", table)
+                                   error_links={"rsqrt_f": "../packages/Fast-Paths.md#mathf-rsqrt"})
+        self.assertIn("| mathf_rsqrt | f | - | - | - | device-only instruction | - | rsqrt0.s | [fast paths](../packages/Fast-Paths.md#mathf-rsqrt) |", table)
         self.assertIn("max error", table)
 
     def test_grouped_table_keeps_errors_not_rendered_in_fast_paths(self):
-        links = {"dot_f": "Fast-Paths.md#example", "sinf_f": "Fast-Paths.md#example"}
+        links = {"dot_f": "../packages/Fast-Paths.md#example", "sinf_f": "../packages/Fast-Paths.md#example"}
         table = bench.render_table(self.rows, {}, {}, {"dot_f": "-", "sinf_f": "-"}, links=links,
                                    errors={("dot (vec3)", "f"): "1 ulp (sweep)"})
         self.assertLess(table.index("#### Vector"), table.index("#### Libm"))
         self.assertIn("\n\n#### Libm\n", table)
-        self.assertIn("[dot (vec3)](Fast-Paths.md#example)", table)
-        self.assertIn("[sinf](Fast-Paths.md#example)", table)
+        self.assertIn("[dot (vec3)](../packages/Fast-Paths.md#example)", table)
+        self.assertIn("[sinf](../packages/Fast-Paths.md#example)", table)
         self.assertIn("| 1 ulp (sweep) |", table)
         self.assertIn("max error", table)
 

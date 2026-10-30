@@ -29,6 +29,7 @@ same. Every checked-in output, from the banner each one carries:
 | [draw_dither_patterns_generated.h](../../main/draw/draw_dither_patterns_generated.h) | [gen_draw_dither_patterns.py](gen_draw_dither_patterns.py) | `launcher/` | `python tools/gen/gen_draw_dither_patterns.py main/draw/draw_dither_patterns_generated.h` |
 | [draw_palette_standard_generated.h](../../main/draw/draw_palette_standard_generated.h) | [gen_draw_palette_standard.py](gen_draw_palette_standard.py) | `launcher/` | `python tools/gen/gen_draw_palette_standard.py > main/draw/draw_palette_standard_generated.h` |
 | [r3d_skin_light_directions.h](../../main/render/skin/r3d_skin_light_directions.h) | [gen_skin_light_directions.sh](gen_skin_light_directions.sh) | `launcher/` | `sh tools/gen/gen_skin_light_directions.sh > main/render/skin/r3d_skin_light_directions.h` |
+| [crc32_tables.inc](../../packages/hash/src/crc32_tables.inc) | [gen_crc32_tables.py](gen_crc32_tables.py) | `./` | `python launcher/tools/gen/gen_crc32_tables.py launcher/packages/hash/src/crc32_tables.inc` |
 <!-- /generated: generated-files -->
 
 **The output is checked in, beside the code that reads it.** A build-time
