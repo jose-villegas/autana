@@ -1,11 +1,13 @@
 /* A scene-file harness: the scene manager owns camera time and drawing. */
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "gfx/gfx.h"
 #include "math/text/math_text.h"
 #include "render/context/render_context.h"
+#include "render/view/raster_boxes.h"
 #include "render/view/raster_cull_view.h"
 #include "render_host.h"
 #include "scene/scene.h"
@@ -22,6 +24,10 @@ static int view = RENDER_DEBUG_VIEW_SHADED;
 static const char* counts_path;
 static FILE* counts;
 static const char* poses_path;
+static const char* object_boxes_path;
+/* What the first read of --object-boxes makes room for; each further one doubles it. */
+#define OBJECT_BOXES_FIRST_ROOM 256
+static raster_box_t* object_boxes;
 static FILE* poses;
 static const scene_t* shown;
 static scene_entity_t camera;
@@ -73,6 +79,8 @@ options(int argc, char** argv) {
             counts_path = value;
         } else if (strcmp(flag, "--poses") == 0) {
             poses_path = value;
+        } else if (strcmp(flag, "--object-boxes") == 0) {
+            object_boxes_path = value;
         } else if (strcmp(flag, "--view") == 0) {
             view = render_context_debug_view_named(value);
             if (view == RENDER_DEBUG_VIEW_UNKNOWN) {
@@ -92,6 +100,10 @@ options(int argc, char** argv) {
     }
     if (counts_path != NULL && view != render_context_debug_view_named("cull")) {
         fprintf(stderr, "scene_viewer: --counts needs --view cull\n");
+        return false;
+    }
+    if (object_boxes_path != NULL && view != render_context_debug_view_named("boxes")) {
+        fprintf(stderr, "scene_viewer: --object-boxes needs --view boxes\n");
         return false;
     }
     return true;
@@ -130,6 +142,40 @@ select_objects(scene_t* scene) {
         scene_entity_set_enabled(scene, entity, enabled);
     }
     return true;
+}
+
+/* object_boxes.py's lines, `shape lo.x lo.y lo.z hi.x hi.y hi.z`, into
+ * object_boxes; their count, or -1, said on stderr, when unreadable. */
+static int
+read_object_boxes(const char* path) {
+    FILE* in = fopen(path, "r");
+    if (in == NULL) {
+        fprintf(stderr, "scene_viewer: cannot read %s\n", path);
+        return -1;
+    }
+    int count = 0;
+    int room = 0;
+    unsigned shape;
+    box3f_t b;
+    while (fscanf(in, "%u %f %f %f %f %f %f", &shape, &b.lo.x, &b.lo.y, &b.lo.z, &b.hi.x, &b.hi.y, &b.hi.z) == 7) {
+        if (count == room) {
+            room = room == 0 ? OBJECT_BOXES_FIRST_ROOM : room * 2;
+            raster_box_t* grown = realloc(object_boxes, (size_t)room * sizeof *object_boxes);
+            if (grown == NULL) {
+                fclose(in);
+                return -1;
+            }
+            object_boxes = grown;
+        }
+        object_boxes[count++] = (raster_box_t){b, (uint16_t)shape};
+    }
+    const bool whole = feof(in);
+    fclose(in);
+    if (!whole) {
+        fprintf(stderr, "scene_viewer: %s line %d is not a box\n", path, count + 1);
+        return -1;
+    }
+    return count;
 }
 
 /* The camera entity scene_activate() chose: the named one, or the first whose lens is the first camera's. */
@@ -206,6 +252,15 @@ setup(int quarter) {
     fprintf(stderr, "scene_viewer: camera path %u ms\n", (unsigned)scene_animator_clip_duration_ms(scene, camera, 0));
     render_context_t* context = render_context_main();
     render_context_set_debug_view(context, view);
+    if (object_boxes_path != NULL) {
+        const int count = read_object_boxes(object_boxes_path);
+        if (count < 0) {
+            scene_unload(scene);
+            return false;
+        }
+        raster_boxes_set_objects(render_context_debug_view_state(context), object_boxes, count);
+        fprintf(stderr, "scene_viewer: %d object boxes\n", count);
+    }
 #define COUNT_NAME(name, member) "," #name
     if (counts_path != NULL
         && (counts = open_rows(counts_path, "frame,ms" RASTER_CULL_FRAME_FIELDS(COUNT_NAME))) == NULL) {

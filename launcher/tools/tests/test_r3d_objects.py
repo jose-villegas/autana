@@ -602,5 +602,25 @@ class InstancesFigureTests(unittest.TestCase):
         self.assertEqual(calls[0][1:], ('test', 'mesh', 'near', 1000))
 
 
+
+class ObjectBoxesTests(unittest.TestCase):
+    def test_copies_share_a_shape_and_boxes_take_the_renderer_placement(self):
+        from types import SimpleNamespace
+        from r3d.objects.object_boxes import box_lines
+        lone = SourceObject('lone', np.array([[0., 0., 0.], [1., 0., 0.], [0., 1., 0.]]), np.array([[0, 1, 2]]),
+                            np.array([0]))
+        shapes = match_instances([SourceObject('original', POINTS, TRIANGLES, MATERIALS),
+                                  SourceObject('copy', POINTS + [10, 0, 0], TRIANGLES, MATERIALS), lone])
+        job = SimpleNamespace(object=SimpleNamespace(matrix=np.diag([2., 2., 2.]), position=np.array([0., 5., 0.])))
+        rows = [line.split() for line in box_lines(shapes, job)]
+        self.assertEqual(len(rows), 3)
+        shapes_of = [int(row[0]) for row in rows]
+        self.assertEqual(shapes_of[0], shapes_of[1])
+        self.assertNotEqual(shapes_of[0], shapes_of[2])
+        boxes = sorted(tuple(float(v) for v in row[1:]) for row in rows[:2])
+        low, high = POINTS.min(axis=0), POINTS.max(axis=0)
+        for box, shift in zip(boxes, ([0, 0, 0], [10, 0, 0])):
+            np.testing.assert_allclose(box, [*(2 * (low + shift) + [0, 5, 0]), *(2 * (high + shift) + [0, 5, 0])])
+
 if __name__ == '__main__':
     unittest.main()
