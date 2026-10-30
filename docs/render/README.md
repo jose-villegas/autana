@@ -29,6 +29,7 @@ the [demo assets](../../launcher/demo/README.md).
 | [Skinned-Lighting.md](Skinned-Lighting.md) | Lighting a skinned mesh every frame: direct N.L against a per-object lookup table, measured, and the recommended path. |
 | [Mesh-Rendering.md](Mesh-Rendering.md) | The runtime: cameras, culling, the span rasterizer, instances at transforms, the two-core frame and the view modes. |
 | [Dynamic-Resolution.md](Dynamic-Resolution.md) | The render size picked per frame to hold a budget: where a frame's time goes at each size, the stepped controller and the predictor, and how they flew the test path on the board. |
+| [Frame-Generation.md](Frame-Generation.md) | Frames warped from the last render to the next camera pose and shown between renders: picture quality on the host, cost on the board, how it prices into dynamic resolution, and the per-context calls an app makes. |
 
 Related: [Animation Tracks](Animation-Tracks.md) for the camera path,
 [Firmware](../firmware/README.md) for the layers, and the
