@@ -3026,6 +3026,33 @@ class WaiterNoticeTests(unittest.TestCase):
         self.assertEqual(stderr.getvalue(), "")
 
 
+class HeartbeatRetryTests(unittest.TestCase):
+    """A heartbeat that raises (WSL meeting a guard Windows is still deleting)
+    is retried, not the end of the thread that keeps the lock alive."""
+
+    def test_a_raising_heartbeat_is_retried(self):
+        store = mock_store()
+        store.heartbeat.side_effect = [FileNotFoundError(2, "No such file or directory"), True]
+        lock = device.HeldLock(store, BOARD, "agent", "flash", 0)
+        lock.stop.wait = mock.Mock(side_effect=[False, False, True])
+        with mock.patch.object(device.HeldLock, "HEARTBEAT_SECONDS", 0),              contextlib.redirect_stderr(io.StringIO()) as stderr:
+            lock.keep_alive()
+        self.assertEqual(store.heartbeat.call_count, 2)
+        self.assertFalse(lock.lost.is_set())
+        self.assertIn("retrying", stderr.getvalue())
+
+    def test_a_raising_borrowed_check_is_retried(self):
+        store = mock_store()
+        store.check_token.side_effect = [FileNotFoundError(2, "No such file or directory"), True]
+        lock = device.HeldLock(store, BOARD, "agent", "flash", 0)
+        lock.borrowed = True
+        lock.stop.wait = mock.Mock(side_effect=[False, False, True])
+        with contextlib.redirect_stderr(io.StringIO()):
+            lock.keep_alive()
+        self.assertEqual(store.check_token.call_count, 2)
+        self.assertFalse(lock.lost.is_set())
+
+
 class ResetCommandTests(unittest.TestCase):
     def test_parser_forwards_capture_options(self):
         store = mock.Mock()

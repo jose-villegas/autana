@@ -483,13 +483,15 @@ class LockStore:
         path.parent.mkdir(parents=True, exist_ok=True)
         # On Windows a guard another process is still deleting, or merely
         # stat()ing, refuses create and unlink with PermissionError: busy, not
-        # an error.
+        # an error. WSL on a Windows drive reports that same delete-pending
+        # guard as FileNotFoundError, even with O_CREAT.
         while True:
             try:
                 descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
                 os.close(descriptor)
                 break
-            except (FileExistsError, PermissionError):
+            except (FileExistsError, PermissionError, FileNotFoundError):
+                path.parent.mkdir(parents=True, exist_ok=True)
                 try:
                     age = self.resource_now(board) - path.stat().st_mtime
                     if age > GUARD_STALE_SECONDS:
