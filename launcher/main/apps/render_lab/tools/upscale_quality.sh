@@ -2,14 +2,15 @@
 #
 # Nearest against surface upscaling: each scene's camera path drawn at the
 # half-width steps under the half picture with each filter, scored against the
-# reference at full size, and one frame's sheet and edge crops.
+# reference at full size, and the frames of one for the docs' sheet.
 #
-#   upscale_quality.sh <work-dir> <out.csv> <figures-prefix> <camera> \
+#   upscale_quality.sh <work-dir> <out.csv> <frames-dir> <camera> \
 #       <scene-file>:<key> [<scene-file>:<key> ...]
 #
-# The CSV is dynres_quality.sh's columns after scene and filter. The figures
-# are the first scene's frame at the middle size where the surface filter
-# lowers the edge error most: <prefix>-sheet.png and <prefix>-crops.png.
+# The CSV is dynres_quality.sh's columns after scene and filter. The frames
+# are the first scene's at the middle size where the surface filter lowers
+# the edge error most: <frames-dir>/<scene>-<size>-<frame>-reference.png,
+# -nearest.png and -surface.png, which render_doc_images.sh lays out.
 # Run from the repository root with $PYTHON set as dynres_quality.sh needs.
 
 set -eu
@@ -17,14 +18,13 @@ set -eu
 SIZES="184x224 184x149 184x112"
 FIGURE_SIZE=184x149
 FILTERS="nearest surface"
-CROPS=3
 
 W=$1
 CSV=$2
-FIGURES=$3
+FRAMES=$3
 CAMERA=$4
 shift 4
-mkdir -p "$W"
+mkdir -p "$W" "$FRAMES"
 
 echo "scene,filter,width,height,frame,t_ms,mean_delta_e,p95_delta_e,ssim,edge_delta_e,interior_delta_e" > "$CSV"
 for scene in "$@"; do
@@ -44,14 +44,14 @@ first=${1##*:}
 REFERENCE=$(sh launcher/tools/render/render_compare.sh --reference-frames \
     --reference "${1%:*}" --poses "$W/$first-nearest/poses.txt" 2> /dev/null)
 "$PYTHON" - "$W/$first-nearest/$FIGURE_SIZE.avi" "$W/$first-surface/$FIGURE_SIZE.avi" "$REFERENCE" \
-    "$FIGURE_SIZE" "$CROPS" "$FIGURES" <<'PY'
+    "$FRAMES/$first-$FIGURE_SIZE" <<'PY'
 import pathlib
 import sys
 sys.path.insert(0, "launcher/tools/render")
 from PIL import Image
 import render_compare
 
-nearest_avi, surface_avi, reference_dir, size, crops, prefix = sys.argv[1:]
+nearest_avi, surface_avi, reference_dir, prefix = sys.argv[1:]
 references = sorted(pathlib.Path(reference_dir).glob("*.png"))
 _, nearest = render_compare.read_video(nearest_avi)
 _, surface = render_compare.read_video(surface_avi)
@@ -64,8 +64,6 @@ for index, (a, b) in enumerate(zip(nearest, surface)):
     if best is None or gain > best[0]:
         best = (gain, index, a, b, reference)
 _, index, a, b, reference = best
-render_compare.reference_sheet([(f"frame {index}", [a, b], reference)],
-                               [f"nearest {size}", f"surface {size}"]).save(prefix + "-sheet.png", optimize=True)
-render_compare.reference_crop_sheet(reference, a, b, int(crops), "reference", "nearest", "surface").save(
-    prefix + "-crops.png", optimize=True)
+for name, picture in (("reference", reference), ("nearest", a), ("surface", b)):
+    picture.save(f"{prefix}-{index}-{name}.png", optimize=True)
 PY

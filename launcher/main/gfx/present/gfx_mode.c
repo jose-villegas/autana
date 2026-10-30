@@ -458,6 +458,36 @@ blend_column(const uint32_t* mine, const uint32_t* theirs, const uint8_t* betwee
     }
 }
 
+/* One seam byte's eight pixels, each doubled across: a pixel blends a quarter
+ * toward its left neighbour unless `left` (bit 0) marks a seam there, and
+ * toward its right one unless `bits` does. */
+static void
+spread_byte(const uint32_t* column, int first, unsigned left, unsigned bits, gfx_color_t* out) {
+    for (int x = first; x < first + GFX_SEAM_BITS; x++, bits >>= 1) {
+        const bool right = (bits & 1U) == 0 && x + 1 < HALF_WIDTH;
+        out[2 * x] = rgb565be_unspread(left == 0 ? rgb565_spread_quarter(column[x], column[x - 1]) : column[x]);
+        out[(2 * x) + 1] = rgb565be_unspread(right ? rgb565_spread_quarter(column[x], column[x + 1]) : column[x]);
+        left = bits & 1U;
+    }
+}
+
+/* A seam byte with no seam inside or at its edges: every pixel blends both ways. */
+static void
+spread_byte_blended(const uint32_t* column, int first, gfx_color_t* out) {
+    for (int x = first; x < first + GFX_SEAM_BITS; x++) {
+        out[2 * x] = rgb565be_unspread(rgb565_spread_quarter(column[x], column[x - 1]));
+        out[(2 * x) + 1] = rgb565be_unspread(rgb565_spread_quarter(column[x], column[x + 1]));
+    }
+}
+
+/* A seam byte with seams all round: every pixel doubled. */
+static void
+spread_byte_doubled(const uint32_t* column, int first, gfx_color_t* out) {
+    for (int x = first; x < first + GFX_SEAM_BITS; x++) {
+        out[2 * x] = out[(2 * x) + 1] = rgb565be_unspread(column[x]);
+    }
+}
+
 /* Each spread pixel doubled across, blending a quarter toward each
  * neighbour it shares a surface with. */
 static void
@@ -465,28 +495,15 @@ spread_across(const uint32_t* column, const uint8_t* across, gfx_color_t* out) {
     unsigned before = 1; /* the seam left of the first pixel: the panel edge */
     for (int byte = 0; byte < HALF_WIDTH / GFX_SEAM_BITS; byte++) {
         const int first = byte * GFX_SEAM_BITS;
-        const bool last = first + GFX_SEAM_BITS == HALF_WIDTH;
-        unsigned bits = across[byte];
+        const unsigned bits = across[byte];
         if (bits == SEAM_BYTE_ALL && before != 0) {
-            for (int x = first; x < first + GFX_SEAM_BITS; x++) {
-                out[2 * x] = out[(2 * x) + 1] = rgb565be_unspread(column[x]);
-            }
-        } else if (bits == 0 && before == 0 && !last) {
-            for (int x = first; x < first + GFX_SEAM_BITS; x++) {
-                out[2 * x] = rgb565be_unspread(rgb565_spread_quarter(column[x], column[x - 1]));
-                out[(2 * x) + 1] = rgb565be_unspread(rgb565_spread_quarter(column[x], column[x + 1]));
-            }
+            spread_byte_doubled(column, first, out);
+        } else if (bits == 0 && before == 0 && first + GFX_SEAM_BITS < HALF_WIDTH) {
+            spread_byte_blended(column, first, out);
         } else {
-            unsigned left = before;
-            for (int x = first; x < first + GFX_SEAM_BITS; x++, bits >>= 1) {
-                const bool right = (bits & 1U) == 0 && x + 1 < HALF_WIDTH;
-                out[2 * x] = rgb565be_unspread(left == 0 ? rgb565_spread_quarter(column[x], column[x - 1]) : column[x]);
-                out[(2 * x) + 1] =
-                    rgb565be_unspread(right ? rgb565_spread_quarter(column[x], column[x + 1]) : column[x]);
-                left = bits & 1U;
-            }
+            spread_byte(column, first, before, bits, out);
         }
-        before = across[byte] >> (GFX_SEAM_BITS - 1);
+        before = bits >> (GFX_SEAM_BITS - 1);
     }
 }
 
