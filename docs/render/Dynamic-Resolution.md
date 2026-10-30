@@ -264,9 +264,9 @@ Surface lowers p95 dE and raises SSIM at every step of every scored scene;
 mean dE moves less. The interiors blend, while depth edges keep their stairs,
 which is most of the edge error left.
 
-![Nearest and surface against the reference, with each one's dE](../images/render/upscale-surface-sheet.png)
+![Nearest and surface against the reference, with each one's dE](../images/render/upscale-surface.png)
 
-![Edge crops: reference, nearest, surface](../images/render/upscale-surface-crops.png)
+![Edge crops: reference, nearest, surface](../images/render/upscale-surface.crops.png)
 
 ## Camera presentation
 

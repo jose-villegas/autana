@@ -10,7 +10,14 @@
 
     render_compare.py --out sheet.png --still-column LABEL FILE [--still-column ...]
 
+    render_compare.py --out sheet.png --reference-stills TITLE REFERENCE A B
+        --label-a TEXT --label-b TEXT [--crops N]
+
     render_compare.py --out angles.png --angle-column LABEL DIR [--angle-column ...]
+
+--reference-stills writes the reference sheet of one frame from three PNGs:
+the reference, A and B, then A's and B's dE heatmaps; with --crops N,
+<out>.crops.png holds the N places A and B differ most, the reference above.
 
 --angle-column writes one sheet of normal-angle heatmaps, a column per DIR of
 NNNN.angle.npy files (appearance_simplify.py --score --angle-dir), a row per
@@ -877,6 +884,7 @@ def main():
     parser.add_argument("--row", nargs=3, action="append", metavar=("LABEL", "A", "B"))
     parser.add_argument("--reference-row", nargs=3, action="append", metavar=("LABEL", "RENDER", "REFERENCE"))
     parser.add_argument("--reference-crops", nargs=3, metavar=("REFERENCE", "A", "B"))
+    parser.add_argument("--reference-stills", nargs=4, metavar=("TITLE", "REFERENCE", "A", "B"))
     parser.add_argument("--reference-video", nargs=2, metavar=("VIDEO", "REFERENCE_DIR"))
     parser.add_argument("--reference-scale", type=int, help="render pixels per reference pixel; default from the first frame")
     parser.add_argument("--reference-first", type=int, default=0, help="video frames to skip before the reference images begin")
@@ -902,7 +910,7 @@ def main():
     parser.add_argument("--crops", type=int, default=0)
     args = parser.parse_args()
 
-    if (args.row or args.video or args.reference_crops) and not (args.label_a and args.label_b):
+    if (args.row or args.video or args.reference_crops or args.reference_stills) and not (args.label_a and args.label_b):
         parser.error("--label-a and --label-b are required: every panel is labelled")
     if args.reference_video and (args.reference_sheet or args.reference_mp4) and not args.label_a:
         parser.error("--label-a, naming the render, is required with --reference-sheet or --reference-mp4")
@@ -937,6 +945,16 @@ def main():
             with open(args.summary, "a") as handle:
                 handle.write("\n".join(lines) + "\n")
         return
+    if args.reference_stills:
+        title, *paths = args.reference_stills
+        reference, a, b = (Image.open(path).convert("RGB") for path in paths)
+        reference_sheet([(title, [a, b], reference)], [args.label_a, args.label_b]).save(args.out, optimize=True)
+        if args.crops:
+            out = pathlib.Path(args.out)
+            reference_crop_sheet(reference, a, b, args.crops, "reference", args.label_a, args.label_b).save(
+                out.with_suffix(".crops.png"), optimize=True)
+        return
+
     if not args.row and not args.reference_row and not args.reference_video and not args.reference_crops:
         parser.error("--row, --reference-row, --reference-bakes or --video is required")
 
