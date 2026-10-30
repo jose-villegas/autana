@@ -1246,7 +1246,8 @@ def main(argv=None):
             for run in args.from_run or ():
                 # Each upload apart: two attempts of one run may have made one key on different hosts.
                 with tempfile.TemporaryDirectory() as folder:
-                    reused = [row for upload in sorted(run_files(run, pathlib.Path(folder)).iterdir())
+                    reused = [row for upload in sorted(run_files(run, pathlib.Path(folder)).iterdir(),
+                                                         key=lambda upload: (produce.attempt(upload), upload))
                               for row in produce.adopt(produce.import_run(upload, run, cache).values(), cache)]
                 print(f"run {run}: {len(reused)} bakes made on a host like this one are taken as made here")
 

@@ -234,7 +234,8 @@ def export(row, cache, out):
 
 def adopt(rows, cache):
     """Indexes in this cache each row a run made on a host like this one (maker), its file already there, so a
-    rerun takes it as made here; returns those rows."""
+    rerun takes it as made here; returns those rows. A row without a `gpu` is taken as no fit's: a fit runs only
+    where nvidia-smi names the GPU."""
     adopted = []
     for row in rows:
         made_on = {name: row[name] for name in ("host", "cpu_vendor", "gpu") if name in row}
@@ -244,9 +245,9 @@ def adopt(rows, cache):
     return adopted
 
 
-def attempt(index):
-    """The run attempt an index row's artifact names last (bakes-gpu-2 is 2), 0 when it names none."""
-    tail = index.parent.parent.name.rsplit("-", 1)[-1]
+def attempt(artifact):
+    """The run attempt an artifact's folder names last (bakes-gpu-2 is 2), 0 when it names none."""
+    tail = pathlib.Path(artifact).name.rsplit("-", 1)[-1]
     return int(tail) if tail.isdigit() else 0
 
 
@@ -254,7 +255,7 @@ def import_run(folder, run, cache):
     """{key: row} of the files a CI run uploaded, each checked against its row and put in the cache. Each attempt
     uploads its own artifact (bakes-gpu-2); a key two attempts made takes the later attempt's row."""
     rows = {}
-    for index in sorted(pathlib.Path(folder).rglob(f"{KEY_INDEX}/*.json"), key=lambda path: (attempt(path), path)):
+    for index in sorted(pathlib.Path(folder).rglob(f"{KEY_INDEX}/*.json"), key=lambda index: (attempt(index.parent.parent), index)):
         row = json.loads(index.read_text(encoding="utf-8"))
         file = index.parent.parent / "files" / f"{row['sha256']}{row['suffix']}"
         if not file.is_file() or keys.file_sha256(file) != row["sha256"]:

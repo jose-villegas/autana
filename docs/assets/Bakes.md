@@ -42,7 +42,8 @@ re-run the failed job until it lands on the lock's vendor.
 
 A fit repeats byte for byte only on one GPU model, so a fit's row also names
 its `gpu`. The Bakes GPU run's `runner` input picks the self-hosted runner by
-its label (default `gpu`). One run fits on one runner, so its fits share one GPU.
+its label (default `gpu`). One attempt fits on one runner; a rerun attempt may land on
+another, and each fit's row names its own GPU.
 
 A run keeps each bake it finishes: the bake goes to the cache and the upload as
 it is made, and the upload runs even when the job fails, so a failed run locks too.
