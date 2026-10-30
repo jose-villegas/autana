@@ -17,9 +17,10 @@
 #define NEIGHBOURS   1
 
 void
-raster_lines_depth(raster_lines_depth_t* depth, const raster_t* raster, int width, int height) {
+raster_lines_depth(raster_lines_depth_t* depth, const raster_t* raster, int width, int height, unsigned behind_keep) {
     const raster_buffers_t b = raster_carve(raster);
-    *depth = (raster_lines_depth_t){b.picture.attachment[GFX_ATTACHMENT_DEPTH], *b.depth_near, width, height};
+    *depth =
+        (raster_lines_depth_t){b.picture.attachment[GFX_ATTACHMENT_DEPTH], *b.depth_near, width, height, behind_keep};
 }
 
 /* Whether `p`, in lens space, lies behind what the picture drew at `at`. */
@@ -60,7 +61,7 @@ raster_lines_segment(const r3d_lens_t* lens, const raster_lines_depth_t* depth, 
         draw_line((int)from.x, (int)from.y, (int)to.x, (int)to.y, color);
         return;
     }
-    const gfx_color_t dimmed = rgb565be_scale(color, RASTER_LINES_BEHIND_KEEP);
+    const gfx_color_t dimmed = rgb565be_scale(color, depth->behind_keep);
     const vec2f_t span = {to.x - from.x, to.y - from.y};
     const float length = mathf_sqrt((span.x * span.x) + (span.y * span.y));
     /* Off-picture lengths can be huge; a stretch never needs to be finer than a pixel of the picture. */
@@ -74,7 +75,10 @@ raster_lines_segment(const r3d_lens_t* lens, const raster_lines_depth_t* depth, 
         const vec3f_t mid3 = vec3f_lerp(a, b, ((float)i - 0.5F) / (float)steps);
         const vec2f_t end = projectf_screen(&lens->project, end3);
         const vec2f_t mid = projectf_screen(&lens->project, mid3);
-        draw_line((int)start.x, (int)start.y, (int)end.x, (int)end.y, behind(depth, mid3, mid) ? dimmed : color);
+        const bool hidden = behind(depth, mid3, mid);
+        if (!hidden || depth->behind_keep != 0) {
+            draw_line((int)start.x, (int)start.y, (int)end.x, (int)end.y, hidden ? dimmed : color);
+        }
         start = end;
     }
 }

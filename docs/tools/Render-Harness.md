@@ -51,7 +51,10 @@ first `--object` (else the scene's first mesh renderer) into
 `scene_viewer/object_boxes/`. It writes them again only when the scene, the
 import settings, the source files or its own code changed.
 `--object-boxes FILE` passes another file of the same lines instead:
-`shape lo.x lo.y lo.z hi.x hi.y hi.z`.
+`shape copies lo.x lo.y lo.z hi.x hi.y hi.z`. By default only shapes with
+copies are drawn and edges behind what was drawn are left out;
+`--set boxview.copies=1` draws every box, and `--set boxview.behind=1` dims
+hidden edges (2 draws them in full).
 
 `--set owner.name=value` sets any registered tunable before drawing; repeat it
 for several values. Invalid names, values and ranges fail the render.
