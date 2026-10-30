@@ -27,14 +27,7 @@ raster_boxes_view(void* state) {
     return (raster_attachment_t){.begin = begin, .state = state};
 }
 
-void
-raster_boxes_set_objects(raster_boxes_t* state, const raster_box_t* boxes, int count) {
-    state->objects = boxes;
-    state->object_count = count;
-}
-
-/* The shape of instance `i`, the first instance drawing the same mesh, and
- * how many instances draw it. */
+/* The first instance drawing instance `i`'s mesh, and how many instances draw it. */
 static int
 instance_shape(const raster_t* raster, int i, int* copies) {
     int first = -1;
@@ -74,13 +67,5 @@ raster_boxes_overlay(void* state, int width, int height) {
         }
         const gfx_color_t color = raster_meshlets_color(1U + (uint32_t)shape);
         raster_lines_box(&lens, tested, box3f_from_box3s(instance->mesh->nodes[0].bounds, 1.0F), color);
-    }
-    r3d_lens_t world;
-    r3d_lens_init(&world, &seen, 1);
-    for (int i = 0; i < s->object_count; i++) {
-        const raster_box_t* object = &s->objects[i];
-        if (object->copies >= copies) {
-            raster_lines_box(&world, tested, object->box, raster_meshlets_color(1U + object->shape));
-        }
     }
 }
