@@ -322,6 +322,17 @@ done
 [ -f docs/render/data/upscale-filter-quality.csv ] && set -- "$@" --upscale docs/render/data/upscale-filter-quality.csv
 run "$PYTHON" launcher/tools/r3d/dynres_report.py docs/render/data/dynamic-resolution-board.log \
     "$@" --tables "$OUT/tables" --chart "$OUT/render/dynamic-resolution-flight.png" > "$WORK/dynres.log"
+# Surface upscaling's sheet and edge crops, from the frame the upscale
+# quality script keeps beside the page (<scene>-<size>-<frame>-*.png).
+UPSCALE_CROPS=3
+for reference in docs/render/data/upscale-frames/*-reference.png; do
+    [ -f "$reference" ] || continue
+    stem=${reference%-reference.png}
+    frame=${stem##*-}
+    size=${stem%-*}
+    size=${size##*-}
+    run "$PYTHON" launcher/tools/render/render_compare.py --out "$OUT/render/upscale-surface.png"         --reference-stills "frame $frame" "$reference" "$stem-nearest.png" "$stem-surface.png"         --label-a "nearest $size" --label-b "surface $size" --crops "$UPSCALE_CROPS" > "$WORK/upscale_surface.log"
+done
 # Every mesh scene's frame at each ladder step, and the predictor flown over it.
 run "$PYTHON" launcher/tools/r3d/dynres_replay.py docs/render/data/dynamic-resolution-steps-board.log --cc "$cc" \
     --lead bistro-fitted-full --tables "$OUT/tables" > "$WORK/dynres_replay.log"
