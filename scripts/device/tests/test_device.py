@@ -3026,6 +3026,46 @@ class WaiterNoticeTests(unittest.TestCase):
         self.assertEqual(stderr.getvalue(), "")
 
 
+class HeartbeatRetryTests(unittest.TestCase):
+    """A renewal that raises (WSL meeting a guard Windows is still deleting)
+    is retried, not the end of the thread that keeps the lock alive."""
+    MISSING = FileNotFoundError(2, "No such file or directory")
+
+    def keep_alive(self, renewals, borrowed=False, failing_for=0):
+        """Runs keep_alive over len(renewals) renewal polls; returns the lock,
+        the renewal mock and stderr."""
+        store = mock_store()
+        renew = store.check_token if borrowed else store.heartbeat
+        renew.side_effect = renewals
+        lock = device.HeldLock(store, BOARD, "agent", "flash", 0)
+        lock.borrowed = borrowed
+        lock.renewed_at = time.monotonic() - failing_for
+        lock.stop.wait = mock.Mock(side_effect=[False] * len(renewals) + [True])
+        with mock.patch.object(device.HeldLock, "HEARTBEAT_SECONDS", 0),              contextlib.redirect_stderr(io.StringIO()) as stderr:
+            lock.keep_alive()
+        return lock, renew, stderr.getvalue()
+
+    def test_a_raising_heartbeat_is_retried(self):
+        lock, renew, stderr = self.keep_alive([self.MISSING, True])
+        self.assertEqual(renew.call_count, 2)
+        self.assertFalse(lock.lost.is_set())
+        self.assertIn("retrying", stderr)
+
+    def test_a_retried_heartbeat_that_is_refused_loses_the_lock(self):
+        lock, _, _ = self.keep_alive([self.MISSING, False])
+        self.assertTrue(lock.lost.is_set())
+
+    def test_a_heartbeat_failing_past_the_stale_window_loses_the_lock(self):
+        lock, renew, _ = self.keep_alive([self.MISSING], failing_for=device_lock.DEFAULT_STALE_SECONDS)
+        self.assertEqual(renew.call_count, 1)
+        self.assertTrue(lock.lost.is_set())
+
+    def test_a_raising_borrowed_check_is_retried(self):
+        lock, renew, _ = self.keep_alive([self.MISSING, True], borrowed=True)
+        self.assertEqual(renew.call_count, 2)
+        self.assertFalse(lock.lost.is_set())
+
+
 class ResetCommandTests(unittest.TestCase):
     def test_parser_forwards_capture_options(self):
         store = mock.Mock()

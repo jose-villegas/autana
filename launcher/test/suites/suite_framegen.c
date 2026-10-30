@@ -142,7 +142,7 @@ open_context(void) {
 static bool
 show(render_context_t* c, raster_rig_t* r, const render_view_t* view, int32_t cost_us) {
     TEST_ASSERT_TRUE(render_context_draw(c, r->instance, RASTER_RIG_QUADS, view, 0));
-    (void)render_context_compose(c, destination, NULL);
+    (void)render_context_compose(c, destination, NULL, NULL);
     const bool generated = framegen_example_generated(c);
     /* After compose: the context decides and prices from the costs before this frame's. */
     *(generated ? &c->generated_us : &c->drawn_us) = cost_us;

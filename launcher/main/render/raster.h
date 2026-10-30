@@ -66,6 +66,12 @@ void raster_picture(const raster_t* raster, gfx_target_t* picture);
 gfx_color_t* raster_color(const raster_t* raster);
 uint16_t* raster_depth(const raster_t* raster);
 
+/* The depth encoding's scale that picture was drawn with: a stored depth d
+ * is the view depth raster_depth_near() R3D_DEPTH_NEAREST / d. Each draw
+ * fits it to the nearest bound of what it kept, never under the view's
+ * near_z, so far surfaces keep their depth steps (r3d_lens_set_depth_near()). */
+float raster_depth_near(const raster_t* raster);
+
 /* Everything a raster works in (per-vertex, per-cluster, the census list,
  * the picture's attachments and the upscale maps) as one block, from its
  * instances' meshes and size: the caller obtains it once, from any memory,
@@ -93,3 +99,6 @@ resolution_step_t raster_compose_size(const raster_t* raster);
 /* Fills `destination` from what was last drawn, both cores taking
  * half the destination rows. The destination is at least the drawn size. */
 void raster_upscale(raster_t* raster, uint16_t* destination, int width, int height);
+/* raster_upscale() through raster->upscale.filter, marking `seams` (GFX_SEAM_BYTES
+ * of the destination size) where it blends; NULL marks none. */
+void raster_upscale_seamed(raster_t* raster, uint16_t* destination, uint8_t* seams, int width, int height);

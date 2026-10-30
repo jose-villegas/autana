@@ -230,7 +230,7 @@ report_stage_split(int bake) {
     int poses = 0;
     for (uint32_t t_ms = 0; t_ms < period; t_ms += SPONZA_POSE_EVERY_MS) {
         view_at(&meshes[bake], t_ms, &b->lens);
-        const int visible = r3d_pipeline_cull(&meshes[bake], lens, parts->culled + 1, parts->work[0]);
+        const int visible = r3d_pipeline_cull(&meshes[bake], lens, parts->culled + 1, parts->work[0], NULL);
         r3d_pipeline_transform(&meshes[bake], lens, parts->culled + 1, visible, parts->cs, parts->rows);
         for (int stop = 0; stop <= 3; stop++) {
             stopped[stop] += one_core_draw_us(&b->raster, parts, lens, visible, stop);
@@ -259,7 +259,7 @@ test_sponza_draw_stage_breakdown(void) {
     view_at(atrium.mesh, 0, &b->lens);
     const r3d_lens_t* lens = &b->lens;
     const raster_buffers_t* parts = &b->buffers;
-    const int visible = r3d_pipeline_cull(atrium.mesh, lens, parts->culled + 1, parts->work[0]);
+    const int visible = r3d_pipeline_cull(atrium.mesh, lens, parts->culled + 1, parts->work[0], NULL);
     int64_t start = timing_now_us();
     r3d_pipeline_transform(atrium.mesh, lens, parts->culled + 1, visible, parts->cs, parts->rows);
     ESP_LOGI(TAG, "stage, one core: %-22s %7lldus" R3D_PERF_QUARTER_FORMAT, "transform",

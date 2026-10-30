@@ -179,6 +179,18 @@ gfx_target_fill_rect(const gfx_target_t* target, recti_t clip, recti_t shape, gf
     return rect;
 }
 
+/* A seam mask: one bit per pixel, set where a filter must not blend the pixel
+ * with the one right of it or below it. Bit x % GFX_SEAM_BITS of byte
+ * x / GFX_SEAM_BITS of its row. */
+#define GFX_SEAM_BITS                 8
+#define GFX_SEAM_PITCH(width)         (((width) + GFX_SEAM_BITS - 1) / GFX_SEAM_BITS)
+#define GFX_SEAM_BYTES(width, height) ((size_t)GFX_SEAM_PITCH(width) * (size_t)(height))
+
+static inline bool
+gfx_seam_at(const uint8_t* seams, int x) {
+    return (seams[x / GFX_SEAM_BITS] >> (x % GFX_SEAM_BITS)) & 1U;
+}
+
 /* A source pixel as shown: `clear` where nothing was drawn. */
 static inline uint16_t
 gfx_target_shown_pixel(const uint16_t* input, const uint16_t* input_depth, int x, uint16_t clear) {
