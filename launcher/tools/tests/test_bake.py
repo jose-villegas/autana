@@ -573,7 +573,8 @@ class StageTests(unittest.TestCase):
         starts = {item.key: item for item in found if not item.packed and item.kind == "mesh"}
         for fit in fits:
             self.assertIn(fit.stages["start"], starts)
-            self.assertTrue(starts[fit.stages["start"]].output.endswith(bake.START_SUFFIX))
+            self.assertEqual(starts[fit.stages["start"]].output,
+                             fit.output.removesuffix(fit.suffix) + bake.START_MARKER + fit.suffix)
 
 
 def write_fitted_tree(root, names=("fit",), visibility=PATH):
