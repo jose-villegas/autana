@@ -32,6 +32,20 @@ def night_manifest(board, machine, night, lane, results, stop_reason, last_measu
                 stop_reason=stop_reason, last_measured=last_measured, selftest=selftest, started=started, ended=ended)
 
 
+def night_ran(manifest):
+    """Whether a lane ran its self-test and chain to the end, whatever its tests reported: its board
+    was up. A missing or unfinished manifest, a self-test that never completed or a stop other than
+    another job taking the board means the board could not run."""
+    return (bool(manifest and manifest.get("ended")) and manifest.get("stop_reason") in (None, "busy")
+            and manifest.get("selftest", {}).get("outcome") != "incomplete")
+
+
+def read_night(data_dir, board, key):
+    """A lane's manifest for the night keyed `key`, or None."""
+    path = Path(data_dir) / "scoped" / board / key / "night.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
+
+
 def read_last_night(data_dir, board):
     paths = sorted((Path(data_dir) / "scoped" / board).glob("????-??-??-????/night.json"))
     return json.loads(paths[-1].read_text(encoding="utf-8")) if paths else None

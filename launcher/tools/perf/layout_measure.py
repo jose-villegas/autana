@@ -83,6 +83,8 @@ def parse_report(path):
 
 
 REPORT_LINE = re.compile(r"^report: (.+\.md)\s*$")
+# A self-test whose capture reached its completion line, whatever its tests reported.
+SELFTEST_COMPLETE_LINE = "selftest capture ended: complete"
 RUN_LINE = re.compile(r"^batch: (\S+) run (\d+)/(\d+)")
 
 def autana_command(*words, override=None):

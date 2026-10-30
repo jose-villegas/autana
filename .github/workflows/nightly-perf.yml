@@ -82,7 +82,8 @@ jobs:
       # A command that reaches other machines' boards (nightly/scoped_chain.py); unset, this machine's only.
       REMOTE_LANE_COMMAND: ${{ vars.REMOTE_LANE_COMMAND }}
     outputs:
-      held: ${{ steps.lanes.outcome == 'success' || steps.lanes.outcome == 'failure' }}
+      # True when every lane ran its suites to the end, whatever they reported (scoped_chain.py night).
+      boards_ran: ${{ steps.lanes.outputs.boards_ran }}
     runs-on: [self-hosted, windows, board]
     # Hang guard under the 24 h GITHUB_TOKEN life; work gets a fresh token after the hosted wait.
     timeout-minutes: 1380
@@ -276,12 +277,13 @@ jobs:
           lfs: false
           persist-credentials: false
 
+      # Failed tests (a scene over its frame-time ceiling) leave the nightly red, not the boards down.
       - name: Raise the board-ci-down alarm
-        if: needs.nightly.result == 'failure' || needs.nightly.result == 'cancelled'
+        if: needs.nightly.result == 'cancelled' || (needs.nightly.result == 'failure' && needs.nightly.outputs.boards_ran != 'true')
         env:
           BOARD_RESULT: ${{ needs.nightly.result }}
-        run: python3 scripts/ci/board_alarm.py raise --reason "nightly job $BOARD_RESULT"
+        run: python3 scripts/ci/board_alarm.py raise --reason "nightly job $BOARD_RESULT; the boards did not run every suite"
 
       - name: Clear the board-ci-down alarm
-        if: needs.nightly.result == 'success' && needs.nightly.outputs.held == 'true'
+        if: (needs.nightly.result == 'success' || needs.nightly.result == 'failure') && needs.nightly.outputs.boards_ran == 'true'
         run: python3 scripts/ci/board_alarm.py clear
