@@ -70,6 +70,15 @@ r3d_span_first_centre(int32_t v) {
     return (v + (R3D_SUBPIXEL / 2) - 1) >> R3D_SUBPIXEL_SHIFT;
 }
 
+/* The pixel centres inside a subpixel box, over the whole screen; empty when
+ * it holds none. first_centre keeps order, so the edges never cross. */
+static inline recti_t
+r3d_span_centres(int32_t lo_x, int32_t lo_y, int32_t hi_x, int32_t hi_y) {
+    const int left = r3d_span_first_centre(lo_x);
+    const int top = r3d_span_first_centre(lo_y);
+    return (recti_t){left, top, r3d_span_first_centre(hi_x) - left, r3d_span_first_centre(hi_y) - top};
+}
+
 /* Channels as 8.8 fixed point (0..0xFF00), packed to the target's pixel
  * format. */
 static inline uint16_t
@@ -113,11 +122,8 @@ r3d_span_extent_limits(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, c
                        int max_width) {
     const int32_t lo_x = r3d_span_min3(a->x, b->x, c->x);
     const int32_t hi_x = r3d_span_max3(a->x, b->x, c->x);
-    /* first_centre keeps order, so the edges never cross and need no clamp. */
-    const int left = r3d_span_first_centre(lo_x);
-    const int top = r3d_span_first_centre(r3d_span_min3(a->y, b->y, c->y));
-    const recti_t centres = {left, top, r3d_span_first_centre(hi_x) - left,
-                             r3d_span_first_centre(r3d_span_max3(a->y, b->y, c->y)) - top};
+    const recti_t centres =
+        r3d_span_centres(lo_x, r3d_span_min3(a->y, b->y, c->y), hi_x, r3d_span_max3(a->y, b->y, c->y));
     return (r3d_span_extent_t){centres, centres.h <= max_rows && hi_x - lo_x <= max_width};
 }
 
