@@ -38,6 +38,7 @@ typedef struct {
     int first, end;
     const mat4f_t* map;
     projectf_t project;
+    float depth_near; /* the drawn frame's depth scale (raster_depth_near()) */
 } warp_rows_t;
 
 /* The map along one row, each target axis as a value at the row's first
@@ -82,7 +83,7 @@ typedef struct {
 } carried_t;
 
 /* Lens space is pixels at unit depth: depth word d is the point (u, v, 1)
- * near_z / iz, and through the map its new inverse depth is d / z. The sky
+ * depth_near / iz, and through the map its new inverse depth is d / z. The sky
  * (d = 0) gains nothing from depth, so it only turns. No branch, so two
  * pixels' dependent chains can interleave. */
 static inline carried_t
@@ -110,7 +111,7 @@ land(const framegen_target_t* out, carried_t c, uint16_t depth, uint16_t colour)
 static void
 warp_rows(void* ctx) {
     const warp_rows_t* job = ctx;
-    const float to_w = DEPTH_SCALE / job->project.near_z;
+    const float to_w = DEPTH_SCALE / job->depth_near;
     const int width = job->out->width;
     for (int y = job->first; y < job->end; y++) {
         row_map_t r;
@@ -144,7 +145,8 @@ framegen_warp(const raster_t* raster, const render_view_t* drawn, const render_v
     const mat4f_t map = mat4f_mul_affine(after.m, mat4f_invert_affine(before.m));
     memset(out->depth, 0, (size_t)out->width * (size_t)out->height * sizeof(uint16_t));
     /* Two rows may race for one target pixel; either splat is a fair pick. */
-    warp_rows_t first = {raster_color(raster), raster_depth(raster), out, 0, out->height / 2, &map, before.project};
+    warp_rows_t first = {raster_color(raster), raster_depth(raster),     out, 0, out->height / 2, &map,
+                         before.project,       raster_depth_near(raster)};
     warp_rows_t second = first;
     second.first = first.end;
     second.end = out->height;
