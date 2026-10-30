@@ -104,7 +104,6 @@ render_lab_render_size(int width, int height) {
 void
 render_lab_apply_raster_settings(void) {
     render_context_set_scale(render_context_main(), RENDER_LAB_SCALE_UNIT * RENDER_LAB_SCALE_UNIT / render_lab_scale());
-    render_context_set_frame_generation(render_context_main(), render_lab_framegen_on());
 }
 
 bool
