@@ -321,7 +321,8 @@ for csv in docs/render/data/dynamic-resolution-quality-*.csv; do
 done
 [ -f docs/render/data/upscale-filter-quality.csv ] && set -- "$@" --upscale docs/render/data/upscale-filter-quality.csv
 run "$PYTHON" launcher/tools/r3d/dynres_report.py docs/render/data/dynamic-resolution-board.log \
-    "$@" --tables "$OUT/tables" --chart "$OUT/render/dynamic-resolution-flight.png" > "$WORK/dynres.log"
+    "$@" --tables "$OUT/tables" --chart "$OUT/render/dynamic-resolution-flight.png" --figures "$OUT/render" > "$WORK/dynres.log"
+# --orphans scans this runner: dynamic-resolution-stages.png, dynamic-resolution-stages-dark.png, dynamic-resolution-one-core.png, dynamic-resolution-one-core-dark.png, dynamic-resolution-sizes.png, dynamic-resolution-sizes-dark.png, dynamic-resolution-flight-sizes.png, dynamic-resolution-flight-sizes-dark.png
 # Surface upscaling's sheet and edge crops, from the frame the upscale
 # quality script keeps beside the page (<scene>-<size>-<frame>-*.png).
 UPSCALE_CROPS=3
@@ -335,7 +336,7 @@ for reference in docs/render/data/upscale-frames/*-reference.png; do
 done
 # Every mesh scene's frame at each ladder step, and the predictor flown over it.
 run "$PYTHON" launcher/tools/r3d/dynres_replay.py docs/render/data/dynamic-resolution-steps-board.log --cc "$cc" \
-    --lead bistro-fitted-full --tables "$OUT/tables" > "$WORK/dynres_replay.log"
+    --lead bistro-fitted-full --tables "$OUT/tables" --figures "$OUT/render" > "$WORK/dynres_replay.log"
 
 # Frame generation: every mesh scene's warped frames scored on the host.
 run sh launcher/tools/r3d/framegen/framegen_docs.sh --out "$OUT/render" "$OUT/tables" > "$WORK/framegen.log" 2>&1
