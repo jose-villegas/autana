@@ -137,11 +137,15 @@ push_children(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_
 
 /* Lowers `fit` to the scale of the least view depth of the part of `box`
  * inside the planes it crosses (`crossing`, a mask of `planes`): a box
- * reaching behind the eye is drawn only where the frustum keeps it. A bound
- * at or past fit->depth_near cannot lower the scale, so the planes are tried
- * only until it gets there. */
+ * reaching behind the eye is drawn only where the frustum keeps it. A NULL
+ * fit, or one already at near_z, needs nothing. A bound at or past
+ * fit->depth_near cannot lower the scale, so the planes are tried only until
+ * it gets there. */
 static void
 fit_inside(box3f_t box, const planef_t* planes, unsigned crossing, planef_t depth, r3d_depth_fit_t* fit) {
+    if (fit == NULL || !(fit->depth_near > fit->near_z)) {
+        return;
+    }
     float least = box3f_plane_distance_min(box, depth);
     for (int p = 0; p < PLANE_FRUSTUM_COUNT && least < fit->depth_near; p++) {
         if (crossing & (1U << p)) {
@@ -151,6 +155,23 @@ fit_inside(box3f_t box, const planef_t* planes, unsigned crossing, planef_t dept
     if (least < fit->depth_near) {
         fit->depth_near = mathf_min(fit->depth_near, inverse_depth_scale_fit(fit->near_z, least));
     }
+}
+
+/* Writes the clusters of a leaf the planes in `mask` keep to `out` from
+ * `count`, lowering `fit`, and returns the new count. */
+static int
+cull_leaf(const r3d_lit_mesh_t* mesh, const r3d_lit_node_t* leaf, unsigned mask, const planef_t* planes, planef_t depth,
+          uint16_t* out, int count, r3d_depth_fit_t* fit) {
+    for (int i = 0; i < leaf->count; i++) {
+        const int c = leaf->first + i;
+        unsigned cluster_mask = mask;
+        const box3f_t box = box3f_from_box3s(mesh->clusters[c].bounds, 1.0F);
+        if (cluster_mask == 0 || !box3f_outside_planes(box, planes, PLANE_FRUSTUM_COUNT, &cluster_mask)) {
+            out[count++] = (uint16_t)c;
+            fit_inside(box, planes, cluster_mask, depth, fit);
+        }
+    }
+    return count;
 }
 
 int
@@ -176,17 +197,7 @@ r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* 
             top = push_children(mesh, lens, node, mask, stack, top);
             continue;
         }
-        for (int i = 0; i < node->count; i++) {
-            const int c = node->first + i;
-            unsigned cluster_mask = mask;
-            const box3f_t box = box3f_from_box3s(mesh->clusters[c].bounds, 1.0F);
-            if (cluster_mask == 0 || !box3f_outside_planes(box, planes, PLANE_FRUSTUM_COUNT, &cluster_mask)) {
-                out[count++] = (uint16_t)c;
-                if (fit != NULL && fit->depth_near > fit->near_z) {
-                    fit_inside(box, planes, cluster_mask, depth, fit);
-                }
-            }
-        }
+        count = cull_leaf(mesh, node, mask, planes, depth, out, count, fit);
     }
     return count;
 }
