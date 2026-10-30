@@ -111,8 +111,8 @@ captures, failed runs included.
 - It is not a required check. If no board frees up within the wait, the job succeeds with a neutral skipped notice.
 - The [nightly scoped performance](../../launcher/tools/perf/README.md#nightly-scoped-chain) workflow's designated board also runs Board CI's steps (`scripts/ci/board-steps.sh`: self-test, then console tests) in the same overnight hold.
 
-The `board-ci-down` issue means the boards could not run: a lane that did not start, hung or stopped early, a self-test capture that never completed, a board missing from USB, a board job stuck in the queue, or a crashed or cancelled job.
-A night whose lanes all ran to the end clears it even when tests failed; those, such as a scene over its frame-time ceiling, leave the nightly run red.
+The `board-ci-down` issue means the boards could not run: a lane that did not start, hung or stopped early, a self-test capture or console tests that never completed, a board missing from USB, a board job stuck in the queue, or a crashed or cancelled job.
+A night whose lanes all ran to the end, or a Board CI run whose board did, clears it even when tests failed; those, such as a scene over its frame-time ceiling, leave that run red.
 Disabling the nightly workflow pauses health checks.
 
 ## Console recipes and lifecycle coverage

@@ -22,7 +22,7 @@ if [ "$console_status" -eq 0 ]; then
     --junitxml=.records/device/pytest-logs/results.xml \
     | tee .records/device/pytest-logs/pytest.log || console_status=$?
   # pytest's own exit codes: 0 all passed, 1 tests ran and some failed; others mean they did not run.
-  # The nightly (layout_measure.py CONSOLE_COMPLETE_LINE) reads this line as the console stage running.
+  # device_capture.py CONSOLE_COMPLETE_LINE: the board alarm reads this line as the console stage running.
   PYTEST_TESTS_FAILED=1
   if [ "$console_status" -le "$PYTEST_TESTS_FAILED" ]; then echo "console tests ended: complete"; fi
 fi

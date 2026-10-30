@@ -26,6 +26,18 @@ def capture_ended_line(command, reason):
     """The line a capture command prints as it stops."""
     return f"{command} capture ended: {reason}"
 
+
+# scripts/ci/board-steps.sh prints this once its console tests ran, whatever they reported.
+CONSOLE_COMPLETE_LINE = "console tests ended: complete"
+
+
+def board_steps_completed(lines):
+    """Whether board-steps.sh ran its self-test capture and its console tests to the end, whatever
+    their tests reported: failed tests are a result, a stage that never completed means the board
+    did not run them."""
+    ended = {line.strip() for line in lines}
+    return {capture_ended_line("selftest", CAPTURE_COMPLETE), CONSOLE_COMPLETE_LINE} <= ended
+
 # Each is a line the firmware prints as it dies: ESP-IDF's panic banner (the
 # exception in brackets after "panic'ed"), abort()'s own line, and a failed
 # assert(), which aborts after it. Searched, not anchored: a capture can carry
