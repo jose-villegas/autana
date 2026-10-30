@@ -24,7 +24,8 @@ name: Bakes GPU
 # Each fit is kept the moment it is made: in the runner's cache, where a later
 # dispatch finds it, and in the upload, which runs whatever fails after, a lost
 # heavy lock too. A rerun's attempt uploads under its own name and first takes
-# the fits its run's earlier attempts uploaded, so it fits only what is left.
+# the fits its run's earlier attempts uploaded on the same GPU model, which
+# matters when the rerun lands on another runner than the cache's.
 
 on:
   workflow_dispatch:

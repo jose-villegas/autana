@@ -49,8 +49,10 @@ it is made, and the upload runs even when the job fails, so a failed run locks t
 
 | A later run on | Makes only what is left, taking the rest from |
 |---|---|
-| the same runner | its cache |
+| the GPU runner | its cache, which persists between runs |
 | a rerun attempt | the earlier attempts' uploads made on a host like its own (`bake --from-run`) |
+
+Each attempt uploads its own artifact; a key two attempts made locks with the later attempt's bytes.
 
 A renderer whose import carves shared meshes has a `.bundle` row; an uncarved
 one has a `.mesh` row. A carved fit's CPU start is `.start.bundle`. The GPU fit

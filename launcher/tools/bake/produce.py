@@ -244,10 +244,17 @@ def adopt(rows, cache):
     return adopted
 
 
+def attempt(index):
+    """The run attempt an index row's artifact names last (bakes-gpu-2 is 2), 0 when it names none."""
+    tail = index.parent.parent.name.rsplit("-", 1)[-1]
+    return int(tail) if tail.isdigit() else 0
+
+
 def import_run(folder, run, cache):
-    """{key: row} of the files a CI run uploaded, each checked against its row and put in the cache."""
+    """{key: row} of the files a CI run uploaded, each checked against its row and put in the cache. Each attempt
+    uploads its own artifact (bakes-gpu-2); a key two attempts made takes the later attempt's row."""
     rows = {}
-    for index in sorted(pathlib.Path(folder).rglob(f"{KEY_INDEX}/*.json")):
+    for index in sorted(pathlib.Path(folder).rglob(f"{KEY_INDEX}/*.json"), key=lambda path: (attempt(path), path)):
         row = json.loads(index.read_text(encoding="utf-8"))
         file = index.parent.parent / "files" / f"{row['sha256']}{row['suffix']}"
         if not file.is_file() or keys.file_sha256(file) != row["sha256"]:
