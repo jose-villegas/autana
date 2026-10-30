@@ -1,4 +1,5 @@
-"""board_alarm raises one outage issue once, clears it, and reads recovery and stuck-job evidence from runs."""
+"""board_alarm raises one outage issue once, clears it, and reads recovery evidence from night manifests and
+board CI runs, and stuck-job evidence from runs."""
 import io
 import json
 import os
@@ -15,6 +16,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import board_alarm as alarm
+from device_capture import CAPTURE_COMPLETE, CONSOLE_COMPLETE_LINE, capture_ended_line
 
 NOW = datetime(2026, 10, 24, 8, tzinfo=timezone.utc)
 
@@ -42,6 +44,15 @@ class Repository:
         if route.endswith('/jobs'):
             return {'jobs': self.jobs.get(route, [])}
         return {}
+
+
+def night(directory, board, selftest='passed', stop_reason=None, ended=NOW, steps=()):
+    """A lane manifest on perf-data, as scoped_chain.py writes it, with steps of these outcomes."""
+    path = Path(directory) / 'scoped' / board / '2026-10-23-1900' / 'night.json'
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(dict(board=board, stop_reason=stop_reason, selftest=dict(outcome=selftest),
+                                    ended=ended and ended.isoformat(),
+                                    steps=[dict(outcome=outcome) for outcome in steps])))
 
 
 def board_job(status='completed', age=timedelta(), conclusion='success'):
@@ -78,7 +89,7 @@ class BoardAlarmTests(unittest.TestCase):
     def test_completed_runs_query_has_utc_success_window(self):
         request = Repository()
         alarm.last_board_success(request, NOW.astimezone(timezone(timedelta(hours=2))))
-        self.assertEqual(len(request.calls), 2)
+        self.assertEqual(len(request.calls), 1)
         for _, path, _ in request.calls:
             query = parse_qs(urlsplit(path).query)
             self.assertEqual(query['status'], ['completed'])
@@ -100,9 +111,34 @@ class BoardAlarmTests(unittest.TestCase):
                 [{'name': 'nightly', 'labels': [alarm.BOARD_LABEL], 'conclusion': 'success'},
                  {'name': 'alarm', 'steps': []}]):
             request = Repository()
-            request.runs[f'/actions/workflows/{alarm.NIGHTLY_WORKFLOW}/runs'] = [{'id': 1}]
+            request.runs[f'/actions/workflows/{alarm.BOARD_WORKFLOW}/runs'] = [{'id': 1}]
             request.jobs['/actions/runs/1/jobs'] = jobs
             self.assertIsNone(alarm.last_board_success(request, NOW))
+
+    def test_nights_that_ran_count_whatever_their_tests_reported(self):
+        with tempfile.TemporaryDirectory() as directory:
+            night(directory, '2124', selftest='failed', steps=('capture_failed', 'measured', 'build_failed'))
+            night(directory, '20E8', ended=NOW - timedelta(hours=1))
+            later = NOW + timedelta(hours=1)
+            night(directory, 'eeee', steps=('skipped_same_image', 'capture_failed'), ended=later)
+            night(directory, 'aaaa', selftest='incomplete', ended=later)
+            night(directory, 'bbbb', stop_reason='unplugged', ended=later)
+            night(directory, 'cccc', stop_reason='capture_failures', ended=later)
+            night(directory, 'dddd', ended=None)
+            self.assertEqual(sorted(alarm.night_ends(directory)), [NOW - timedelta(hours=1), NOW])
+            self.assertEqual(alarm.last_board_success(Repository(), NOW, alarm.night_ends(directory)), NOW)
+
+    def test_night_red_only_on_ceilings_clears_but_a_missing_board_still_raises(self):
+        with tempfile.TemporaryDirectory() as directory:
+            # The self-test completed with scenes over their frame-time ceilings: the lane failed, the board ran.
+            night(directory, '2124', selftest='failed')
+            nights = list(alarm.night_ends(directory))
+            self.assertEqual(alarm.check(Repository(), NOW, ['2124'], ['2124'], nights=nights), [])
+            self.assertEqual(alarm.check(Repository(), NOW, ['2124', '20E8'], ['2124'], nights=nights),
+                             ['Boards missing from USB: 20E8'])
+            night(directory, '2124', selftest='incomplete')
+            self.assertEqual(alarm.check(Repository(), NOW, ['2124'], ['2124'], nights=alarm.night_ends(directory)),
+                             [f'No board success within {alarm.SUCCESS_WINDOW}'])
 
     def test_stuck_jobs_need_old_queue_and_no_board_in_progress(self):
         for age, running, expected in [(alarm.QUEUED_LIMIT, False, False),
@@ -336,11 +372,44 @@ class BoardAlarmTests(unittest.TestCase):
             self.assertEqual(job['concurrency']['group'], 'board-ci-alarm')
             self.assertEqual(job['timeout-minutes'], 5)
 
-    def test_nightly_held_output_uses_lane_outcome_only(self):
+    def test_nightly_alarm_follows_whether_the_boards_ran_not_the_job_result(self):
         workflow = Path(__file__).resolve().parents[3] / '.github/workflows/nightly-perf.yml'
-        nightly = yaml.safe_load(workflow.read_text())['jobs']['nightly']
-        self.assertEqual(nightly['outputs']['held'],
-                         "${{ steps.lanes.outcome == 'success' || steps.lanes.outcome == 'failure' }}")
+        jobs = yaml.safe_load(workflow.read_text())['jobs']
+        self.assertEqual(jobs['nightly']['outputs']['boards_ran'], '${{ steps.lanes.outputs.boards_ran }}')
+        conditions = {step['name']: step['if'] for step in jobs['alarm']['steps'] if 'if' in step}
+        self.assertEqual(conditions['Raise the board-ci-down alarm'], "needs.nightly.result == 'cancelled' || "
+                         "(needs.nightly.result != 'skipped' && needs.nightly.outputs.boards_ran != 'true')")
+        self.assertEqual(conditions[alarm.CLEAR_STEP], "(needs.nightly.result == 'success' || "
+                         "needs.nightly.result == 'failure') && needs.nightly.outputs.boards_ran == 'true'")
+
+    def test_board_ci_alarm_follows_whether_the_board_ran_not_the_job_result(self):
+        workflow = Path(__file__).resolve().parents[3] / '.github/workflows/board-ci.yml'
+        jobs = yaml.safe_load(workflow.read_text())['jobs']
+        self.assertEqual(jobs['board']['outputs']['boards_ran'], '${{ steps.device.outputs.boards_ran }}')
+        self.assertEqual(jobs['board']['outputs']['prepared'], '${{ steps.prepare.outcome }}')
+        self.assertIn('board_alarm.py ran --log', next(step['run'] for step in jobs['board']['steps']
+                                                       if step.get('id') == 'device'))
+        conditions = {step['name']: step['if'] for step in jobs['alarm']['steps'] if 'if' in step}
+        # A failed build never reached the board; a board that ran its tests is up whatever they reported.
+        self.assertEqual(conditions['Raise the board-ci-down alarm'], "needs.board.result == 'cancelled' || "
+                         "(needs.board.result == 'failure' && needs.board.outputs.prepared != 'failure' && "
+                         "needs.board.outputs.boards_ran != 'true')")
+        self.assertEqual(conditions[alarm.CLEAR_STEP], "(needs.board.result == 'success' || "
+                         "needs.board.result == 'failure') && needs.board.outputs.boards_ran == 'true'")
+
+    def test_cli_ran_needs_both_board_steps_stages_whatever_their_tests_reported(self):
+        selftest = capture_ended_line('selftest', CAPTURE_COMPLETE)
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / 'steps.log'
+            for lines, ran in [([selftest + '\r', 'selftest results: 2998 PASS, 6 FAIL', CONSOLE_COMPLETE_LINE], 'true'),
+                               ([selftest], 'false'), ([CONSOLE_COMPLETE_LINE], 'false'), (None, 'false')]:
+                with self.subTest(lines=lines):
+                    log.unlink(missing_ok=True)
+                    if lines is not None:
+                        log.write_text('\n'.join(lines))
+                    with mock.patch('sys.stdout', new_callable=io.StringIO) as output:
+                        self.assertEqual(alarm.main(['ran', '--log', str(log)]), 0)
+                    self.assertEqual(output.getvalue(), f'boards_ran={ran}\n')
 
 
 if __name__ == '__main__':
