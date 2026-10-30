@@ -180,6 +180,23 @@ to the maths. The warp is bound by its arithmetic, a reciprocal and about ten
 multiply-adds per pixel, so it takes two pixels a step and lets their
 dependent chains overlap.
 
+## When it pays
+
+A generated frame only helps when it costs less than a drawn one. A scene
+that draws faster than the warp runs would show fewer frames with generation
+on, so the render context times both and decides each frame:
+
+| Last measured | Next frame after a drawn one |
+|---|---|
+| No generated frame yet | Generated |
+| The generated frame cost under (100 − `FRAMEGEN_GAIN_PERCENT`)% of the drawn one | Generated |
+| Already generating, and it still costs less than the drawn one | Generated |
+| It saved less | Drawn, priced alone at one frame's budget |
+| `FRAMEGEN_RETRY_DRAWN` drawn frames in a row | Generated, to measure it again |
+
+The margin keeps a generated frame, which shows the scene less exactly than
+a drawn one, from being shown for a saving too small to see.
+
 ## With dynamic resolution
 
 A [dynamic-resolution](Dynamic-Resolution.md) budget is the cost of a shown
@@ -187,7 +204,7 @@ frame. With frame generation on, a drawn frame and the one generated from it
 are shown in the time of two, so the render context prices each drawn frame
 against what the pair may spend. With B the budget per shown frame, g the
 last generated frame's cost and N = `FRAMEGEN_SHOWN_PER_DRAWN` frames shown
-per drawn one:
+per drawn one, while generation pays:
 
 | Quantity | Value |
 |---|---|
@@ -257,8 +274,9 @@ loop applies.
 
 <!-- generated: render-framegen-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
-/* Frame generation with dynamic resolution: every second frame is warped from
- * the one drawn before it, and each drawn frame is priced for the pair. */
+/* Frame generation with dynamic resolution: while it pays, every second frame
+ * is warped from the one drawn before it, and each drawn frame is priced for
+ * the pair. */
 #include "render/context/render_context.h"
 
 static void
@@ -277,7 +295,7 @@ framegen_example_generated(const render_context_t* context) {
 
 | Call | Use |
 |---|---|
-| `render_context_set_frame_generation(context, on)` | On for scenes whose objects do not move on their own; off costs nothing. A debug view, a camera cut or a new viewport draws the next frame instead |
+| `render_context_set_frame_generation(context, on)` | On for scenes whose objects do not move on their own; off costs nothing. The context generates a frame only [when it pays](#when-it-pays); a debug view, a camera cut or a new viewport draws the next frame instead |
 | `render_context_set_dynamic_resolution(context, config, model, step)` | `config->budget_us` stays the budget per shown frame; with generation on, the context prices each drawn frame for the pair |
 | `render_context_frame(context).generated` | Whether the last frame was generated rather than drawn |
 
