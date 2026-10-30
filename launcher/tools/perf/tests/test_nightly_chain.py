@@ -458,11 +458,7 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual(json.loads(path.read_text()), planned)
 
     def test_supervisor_default_launch_owns_and_closes_process_tree(self):
-        path = self.root / "plan.json"
-        chain.write_json(path, dict(marker=self.clock.now().isoformat(), **self.window(),
-                                   lanes={"FAK1": dict(lane="0/1", estimate=chain.FIRST_STEP_SECONDS)}))
-        args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data,
-                               out=self.args.out, suite=self.args.suite)
+        args = self.night(self.fak1_lane())
         process = SimpleNamespace(poll=lambda: 0, wait=lambda: 0)
         with patch.object(chain, "launch_process_tree", return_value=process) as launch, \
                 patch.object(chain, "close_process_tree") as close:
@@ -574,13 +570,29 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual(len(commands), 2)
         self.assertEqual([step["outcome"] for step in manifests["2124"]["steps"]], ["measured"] * 2)
 
-    def empty_night(self, scans):
-        self.before_cutoff(scans)
+    def night(self, lanes=None, window=None):
+        """The night's arguments, with a plan written from the clock: `lanes` (none) and `window` (self.window())."""
         path = self.root / "plan.json"
         chain.write_json(path, dict(tip=self.commits[-1], night="2026-10-18", started=self.clock.now().isoformat(),
-                                    marker=self.clock.now().isoformat(), **self.window(), lanes={}))
+                                    marker=self.clock.now().isoformat(), **(window or self.window()),
+                                    lanes=lanes or {}))
         return SimpleNamespace(plan=path, repo=self.repo, data=self.args.data, out=self.args.out,
                                suite=self.args.suite)
+
+    def empty_night(self, scans):
+        self.before_cutoff(scans)
+        return self.night()
+
+    @staticmethod
+    def fak1_lane():
+        return {"FAK1": dict(lane="0/1", estimate=chain.FIRST_STEP_SECONDS)}
+
+    def running_until(self, finish, launched):
+        """A launch whose lanes run until `finish`, recording each board it starts in `launched`."""
+        def launch(command, **options):
+            launched.append(self.launched_board(command))
+            return SimpleNamespace(poll=lambda: 0 if self.clock.now() >= finish else None, wait=lambda: 0)
+        return launch
 
     def test_night_starts_lanes_on_any_hosts_boards_as_they_free_until_the_cutoff(self):
         args = self.empty_night(4)
@@ -659,18 +671,10 @@ class NightlyTests(unittest.TestCase):
 
     def test_lane_started_before_the_cutoff_runs_on_after_it_and_no_lane_starts_after(self):
         self.before_cutoff(2)
-        path = self.root / "plan.json"
-        chain.write_json(path, dict(tip=self.commits[-1], night="2026-10-18", started=self.clock.now().isoformat(),
-                                    marker=self.clock.now().isoformat(), **self.window(),
-                                    lanes={"FAK1": dict(lane="0/1", estimate=chain.FIRST_STEP_SECONDS)}))
-        args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data, out=self.args.out,
-                               suite=self.args.suite)
+        args = self.night(self.fak1_lane())
         finish = schedule.night_cutoff(self.clock.now()) + timedelta(seconds=3 * chain.RESCAN_SECONDS)
         launched = []
-
-        def launch(command, **options):
-            launched.append(self.launched_board(command))
-            return SimpleNamespace(poll=lambda: 0 if self.clock.now() >= finish else None, wait=lambda: 0)
+        launch = self.running_until(finish, launched)
         with self.fleet(([self.row("2124", state="held")], []), ([self.row("2124")], [])) as scans:
             self.assertEqual(chain.run_night(args, clock=self.clock, launch=launch), 0)
         self.assertEqual(launched, ["FAK1"])
@@ -698,19 +702,10 @@ class NightlyTests(unittest.TestCase):
             with self.subTest(cutoff=cutoff):
                 self.clock = Clock(22, 30)
                 self.before_cutoff(3)
-                path = self.root / "plan.json"
                 window = self.window() if cutoff == "window" else dict(cutoff=self.clock.now().isoformat(), listed=[])
-                chain.write_json(path, dict(tip=self.commits[-1], night="2026-10-18",
-                                            started=self.clock.now().isoformat(), marker=self.clock.now().isoformat(),
-                                            **window, lanes={"FAK1": dict(lane="0/1", estimate=chain.FIRST_STEP_SECONDS)}))
-                args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data, out=self.args.out,
-                                       suite=self.args.suite)
-                finish = self.clock.now() + timedelta(seconds=2 * chain.RESCAN_SECONDS)
+                args = self.night(self.fak1_lane(), window)
                 launched = []
-
-                def launch(command, **options):
-                    launched.append(self.launched_board(command))
-                    return SimpleNamespace(poll=lambda: 0 if self.clock.now() >= finish else None, wait=lambda: 0)
+                launch = self.running_until(self.clock.now() + timedelta(seconds=2 * chain.RESCAN_SECONDS), launched)
                 with self.fleet(([self.row("2124")], [])):
                     self.assertEqual(chain.run_night(args, clock=self.clock, launch=launch), 0)
                 self.assertEqual(launched, ["FAK1", *joined])
@@ -719,12 +714,7 @@ class NightlyTests(unittest.TestCase):
         # Boards the plan listed busy are working, not down, even when no later scan lists them.
         for listed, status in ((["2124"], 0), ([], 1)):
             with self.subTest(listed=listed):
-                path = self.root / "plan.json"
-                chain.write_json(path, dict(tip=self.commits[-1], night="2026-10-18",
-                                            started=self.clock.now().isoformat(), marker=self.clock.now().isoformat(),
-                                            cutoff=self.clock.now().isoformat(), listed=listed, lanes={}))
-                args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data, out=self.args.out,
-                                       suite=self.args.suite)
+                args = self.night(window=dict(cutoff=self.clock.now().isoformat(), listed=listed))
                 with self.fleet() as scans, patch("builtins.print"):
                     self.assertEqual(chain.run_night(args, clock=self.clock, launch=Mock()), status)
                 scans.assert_not_called()
