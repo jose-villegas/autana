@@ -658,6 +658,11 @@ def compose_frame(a, b, clear, gain, label_a, label_b, note=""):
     return Image.fromarray(np.concatenate([_pixels(captioned(p, t)) for p, t in zip(panels, texts)], axis=1).astype(np.uint8))
 
 
+def frame_note(index, dt_ms, stats):
+    """A video frame's label: its index and time, so a frame can be named and rendered again, and how much changed."""
+    return "frame %d  %d ms  changed %.1f%%" % (index, round(index * dt_ms), 100.0 * stats.changed / stats.total)
+
+
 def frame_line(index, dt_ms, stats):
     """One CSV row: frame, time, changed share, mean abs diff, holes per side."""
     return "%d,%d,%.4f,%.4f,%d,%d" % (
@@ -750,8 +755,7 @@ def compare_videos(path_a, path_b, out, csv_path, clear, gain, label_a, label_b,
             stats = measure(a, b, clear)
             all_stats.append(stats)
             lines.append(frame_line(index, dt_ms, stats))
-            note = "t %.1f s  changed %.1f%%" % (index * dt_ms / 1000.0, 100.0 * stats.changed / stats.total)
-            picture = compose_frame(a, b, clear, gain, label_a, label_b, note)
+            picture = compose_frame(a, b, clear, gain, label_a, label_b, frame_note(index, dt_ms, stats))
             if process is None:
                 command = _ffmpeg_command(ffmpeg, picture.size, fps or fps_a, out)
                 process = subprocess.Popen(command, stdin=subprocess.PIPE)
@@ -871,26 +875,42 @@ def write_reference_bake_sheet(reference_dir, bakes, scale, frame_indices, out, 
     return lines
 
 
-class ReferenceVideoWriter:
-    """Packs reference_sheet's one-frame sheets into an mp4 through ffmpeg."""
+class VideoWriter:
+    """Packs RGB pictures of one size into an H.264 mp4 through ffmpeg."""
 
-    def __init__(self, out, label, fps=None):
-        self.out, self.label, self.fps, self.process = out, label, fps, None
+    def __init__(self, out, fps):
+        self.out, self.fps, self.process = out, fps, None
 
-    def add(self, fps, index, render, reference):
-        ffmpeg = shutil.which("ffmpeg")
-        if ffmpeg is None:
-            raise RuntimeError("ffmpeg not found; --reference-mp4 needs it to pack the frames")
-        picture = reference_sheet([("frame %d" % index, [render], reference)], [self.label], tile=1.0)
+    def add(self, picture):
         if self.process is None:
-            self.process = subprocess.Popen(_ffmpeg_command(ffmpeg, picture.size, self.fps or fps, self.out), stdin=subprocess.PIPE)
-        self.process.stdin.write(picture.tobytes())
+            ffmpeg = shutil.which("ffmpeg")
+            if ffmpeg is None:
+                raise RuntimeError("ffmpeg not found; writing %s needs it to pack the frames" % self.out)
+            self.process = subprocess.Popen(_ffmpeg_command(ffmpeg, picture.size, self.fps, self.out), stdin=subprocess.PIPE)
+        self.process.stdin.write(picture.convert("RGB").tobytes())
 
     def close(self):
         if self.process is not None:
             self.process.stdin.close()
             if self.process.wait() != 0:
                 raise RuntimeError("ffmpeg failed writing %s" % self.out)
+
+
+class ReferenceVideoWriter:
+    """Packs reference_sheet's one-frame sheets into an mp4 through ffmpeg."""
+
+    def __init__(self, out, label, fps=None):
+        self.out, self.label, self.fps, self.video = out, label, fps, None
+
+    def add(self, fps, index, render, reference):
+        picture = reference_sheet([("frame %d" % index, [render], reference)], [self.label], tile=1.0)
+        if self.video is None:
+            self.video = VideoWriter(self.out, self.fps or fps)
+        self.video.add(picture)
+
+    def close(self):
+        if self.video is not None:
+            self.video.close()
 
 
 def main():

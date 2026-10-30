@@ -143,7 +143,7 @@ upscale_init_blends(upscale_t* scale, uint16_t* blends) {
     /* Destination row y's centre falls on source row (2y + 1) * source / (2 * destination) - 1/2. */
     const int span = 2 * scale->destination_height;
     for (int y = 0; y < scale->destination_height; y++) {
-        const int at = ((2 * y) + 1) * scale->source_height - scale->destination_height;
+        const int at = (((2 * y) + 1) * scale->source_height) - scale->destination_height;
         int row = at <= 0 ? 0 : at / span;
         int share = at <= 0 ? 0 : (((at % span) * RGB565_SCALE_UNIT) + (span / 2)) / span;
         if (share == RGB565_SCALE_UNIT) {

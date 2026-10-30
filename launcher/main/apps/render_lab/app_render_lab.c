@@ -360,6 +360,8 @@ render_lab_frame(uint32_t dt_ms, const input_t* input) {
 #endif
     const bool hud = hud_showing();
     update_scene_title(dt_ms);
+    render_context_set_frame_generation(render_context_main(),
+                                        current_scene()->generates_frames && render_lab_framegen_on());
     current_scene()->frame(dt_ms);
     render_lab_dynres_apply();
     if (hud) {
