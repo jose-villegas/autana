@@ -670,7 +670,12 @@ class HeldLock:
     def keep_alive(self):
         if self.borrowed:
             while not self.stop.wait(self.HEARTBEAT_SECONDS):
-                if not self.store.check_token(self.board, self.held["token"]):
+                try:
+                    live = self.store.check_token(self.board, self.held["token"])
+                except OSError as error:
+                    print(f"device lock check failed, retrying: {error}", file=sys.stderr)
+                    continue
+                if not live:
                     self.lost.set()
                     return
             return
@@ -684,7 +689,14 @@ class HeldLock:
                     print(f'{ticket["owner"]} is waiting for the board '
                           f'({ticket.get("purpose", "unknown")}) - Ctrl+C to hand it over', file=sys.stderr)
             if time.monotonic() >= next_heartbeat:
-                if not self.store.heartbeat(self.board, self.held["token"]):
+                # A failed renewal is retried on the next poll: the lock only
+                # lapses after DEFAULT_STALE_SECONDS without one.
+                try:
+                    renewed = self.store.heartbeat(self.board, self.held["token"])
+                except OSError as error:
+                    print(f"device lock heartbeat failed, retrying: {error}", file=sys.stderr)
+                    continue
+                if not renewed:
                     self.lost.set()
                     print("device lock was lost", file=sys.stderr)
                     return
