@@ -45,16 +45,10 @@ With `--view cull`, `--counts FILE` writes one CSV row per frame of what the
 cull kept and drew ([Mesh-Rendering.md](../render/Mesh-Rendering.md#the-cull-seen));
 without it, `--counts` is refused.
 
-`--view boxes` also draws the source objects the import detected, one hue per
-matched shape. `r3d/objects/object_boxes.py` writes their world boxes for the
-first `--object` (else the scene's first mesh renderer) into
-`scene_viewer/object_boxes/`. It writes them again only when the scene, the
-import settings, the source files or its own code changed.
-`--object-boxes FILE` passes another file of the same lines instead:
-`shape copies lo.x lo.y lo.z hi.x hi.y hi.z`. By default only shapes with
-copies are drawn and edges behind what was drawn are left out;
-`--set boxview.copies=1` draws every box, and `--set boxview.behind=1` dims
-hidden edges (2 draws them in full).
+`--view boxes` draws what the renderer drew: each instance's root box under its
+model matrix, one hue per mesh. `--set boxview.copies=2` keeps only meshes drawn
+more than once; edges behind the drawn depth are left out, and
+`--set boxview.behind=1` dims them instead (2 draws them in full).
 
 `--set owner.name=value` sets any registered tunable before drawing; repeat it
 for several values. Invalid names, values and ranges fail the render.

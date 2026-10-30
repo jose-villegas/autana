@@ -25,8 +25,7 @@ from panel_size import PANEL_HEIGHT, PANEL_WIDTH  # noqa: E402
 from r3d.appearance_simplify import projection  # noqa: E402
 from r3d.cost_model import clusters_in_view  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402
-from r3d.objects.instances import bounds_diagonal, match_instances  # noqa: E402
-from r3d.objects.object_boxes import placed_boxes  # noqa: E402
+from r3d.objects.instances import bounds_diagonal, match_instances, placed_corners  # noqa: E402
 from r3d.objects.objects_report import DEFAULT_EVERY_MS, masked_objects  # noqa: E402
 from r3d.mesh_import import load_source  # noqa: E402
 from r3d.poses import sample_camera_path  # noqa: E402
@@ -44,6 +43,19 @@ LINE_WIDTH = 2
 CORNER_BITS = np.array(list(product((0, 1), repeat=3)))
 BOX_EDGES = tuple((a, b) for a in range(len(CORNER_BITS)) for b in range(a + 1, len(CORNER_BITS))
                   if np.count_nonzero(CORNER_BITS[a] != CORNER_BITS[b]) == 1)
+
+
+def placed_boxes(shapes, job):
+    """Local bounds under rigid instance and renderer placements, with their shape indices."""
+    boxes, owners = [], []
+    matrix, position = np.asarray(job.object.matrix), np.asarray(job.object.position)
+    for index, shape in enumerate(shapes):
+        if len(shape.instances) < 2:
+            continue
+        for instance in shape.instances:
+            boxes.append(placed_corners(shape, instance, matrix, position))
+            owners.append(index)
+    return np.asarray(boxes).reshape(-1, len(CORNER_BITS), 3), np.asarray(owners, dtype=int)
 
 
 def choose_view(boxes, owners, poses, size, lens, near, query):
@@ -180,7 +192,7 @@ def generate(scene, job, cameras, host, out, every_ms, host_render=render_host):
     src = load_source(job.settings)
     objects, triangles = masked_objects(src, job.settings)
     shapes = match_instances(objects)
-    boxes, owners = placed_boxes(shapes, job, min_copies=2)
+    boxes, owners = placed_boxes(shapes, job)
     positions = src.p @ np.asarray(job.object.matrix).T + job.object.position
     query = RayQuery(positions, triangles)
     best, chosen = (-1, -1, -1, -1), None

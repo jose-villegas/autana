@@ -231,7 +231,7 @@ flowchart LR
 | motion | mid-grey for none, red for x and green for y |
 | meshlets | a flat hue for each cluster, with disjoint IDs for each instance |
 | cull | each cluster in the colour of its fate this frame; see [The cull, seen](#the-cull-seen) |
-| boxes | untouched; its overlay draws bounding boxes, one hue per shape, of shapes with `boxview.copies` copies, edges behind the drawn depth hidden, dimmed or full by `boxview.behind` |
+| boxes | untouched; its overlay draws each instance's box as the frame placed it, one hue per mesh, for meshes drawn at least `boxview.copies` times; edges behind the drawn depth hidden, dimmed or full by `boxview.behind` |
 
 A row may also carry two optional hooks:
 
@@ -241,8 +241,6 @@ A row may also carry two optional hooks:
 | `overlay` | Draws lines over the composed picture; the shell then composes at full size, not into a half picture |
 
 Overlays draw with `render/view/raster_lines.h`: segments and boxes in a lens's space, cut at the near plane, optionally dimmed or left out where the drawn depth is nearer.
-
-The boxes view draws every instance's root box, instances of one mesh in one hue. A caller may add world boxes with `raster_boxes_set_objects()`, each with its shape, so copies of one shape share a hue.
 
 - The ramp is stretched over the range this frame drew: the most detail
   within a frame, not comparable between frames.
