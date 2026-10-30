@@ -72,42 +72,6 @@ every frame through the shared harness's video writer. `--deps` compiles
 nothing and prints what the viewer is compiled from: a `flags` line, then the
 compiler's `-MM` list.
 
-### Playing the path in a window
-
-```sh
-sh launcher/tools/render/scene_viewer.sh PATH.scene.toml --window --view boxes
-```
-
-`--window` opens `render/scene_window.py` over the built viewer. Each frame
-is drawn by the renderer when the window asks for it; nothing is recorded.
-
-| Control | Does |
-| --- | --- |
-| slider, Home, End | puts the camera at that time of its path |
-| Play, Space | plays the path at wall-clock pace, looping |
-| `<` `>`, Left, Right | one frame time back or forward; a second with Shift |
-| view menu | attaches another view, with a box per tunable it has |
-| readout | path time, frame, the draw's own time, the view |
-
-The window keeps the object boxes ready for the boxes view. Renderer arguments
-such as `--object` and `--set` pass through; `--compare` and `--frame` are refused.
-
-The viewer's `--serve` is what the window drives. It reads one command per
-stdin line and answers each on stdout; everything else it prints goes to stderr.
-
-| Command | Reply |
-| --- | --- |
-| `frame` | `frame W H STRIDE DRAW_US`, then `STRIDE * H` bytes of bottom-up 24-bit BGR rows |
-| `at MS` | `ok`: the camera stands at that time of its path; other animation does not move |
-| `duration` | `ok MS`, the camera path's length |
-| `views` | `ok` and each view's name, `name:owner` for one whose tunables `owner` holds |
-| `view NAME` | `ok` once attached |
-| `set owner.name=V` | `ok` once set |
-| `tunables PREFIX` | `ok` and `name=value:low:high` for each tunable named `PREFIX...` |
-| `quit` | none; the viewer exits |
-
-A command it cannot carry out is answered `error` and the reason.
-
 ### A whole camera path, A against B, and one frame of it
 
 ```sh
