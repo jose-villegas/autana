@@ -3027,52 +3027,42 @@ class WaiterNoticeTests(unittest.TestCase):
 
 
 class HeartbeatRetryTests(unittest.TestCase):
-    """A heartbeat that raises (WSL meeting a guard Windows is still deleting)
+    """A renewal that raises (WSL meeting a guard Windows is still deleting)
     is retried, not the end of the thread that keeps the lock alive."""
+    MISSING = FileNotFoundError(2, "No such file or directory")
+
+    def keep_alive(self, renewals, borrowed=False, failing_for=0):
+        """Runs keep_alive over len(renewals) renewal polls; returns the lock,
+        the renewal mock and stderr."""
+        store = mock_store()
+        renew = store.check_token if borrowed else store.heartbeat
+        renew.side_effect = renewals
+        lock = device.HeldLock(store, BOARD, "agent", "flash", 0)
+        lock.borrowed = borrowed
+        lock.renewed_at = time.monotonic() - failing_for
+        lock.stop.wait = mock.Mock(side_effect=[False] * len(renewals) + [True])
+        with mock.patch.object(device.HeldLock, "HEARTBEAT_SECONDS", 0),              contextlib.redirect_stderr(io.StringIO()) as stderr:
+            lock.keep_alive()
+        return lock, renew, stderr.getvalue()
 
     def test_a_raising_heartbeat_is_retried(self):
-        store = mock_store()
-        store.heartbeat.side_effect = [FileNotFoundError(2, "No such file or directory"), True]
-        lock = device.HeldLock(store, BOARD, "agent", "flash", 0)
-        lock.stop.wait = mock.Mock(side_effect=[False, False, True])
-        with mock.patch.object(device.HeldLock, "HEARTBEAT_SECONDS", 0), \
-             contextlib.redirect_stderr(io.StringIO()) as stderr:
-            lock.keep_alive()
-        self.assertEqual(store.heartbeat.call_count, 2)
+        lock, renew, stderr = self.keep_alive([self.MISSING, True])
+        self.assertEqual(renew.call_count, 2)
         self.assertFalse(lock.lost.is_set())
-        self.assertIn("retrying", stderr.getvalue())
+        self.assertIn("retrying", stderr)
 
     def test_a_retried_heartbeat_that_is_refused_loses_the_lock(self):
-        store = mock_store()
-        store.heartbeat.side_effect = [FileNotFoundError(2, "No such file or directory"), False]
-        lock = device.HeldLock(store, BOARD, "agent", "flash", 0)
-        lock.stop.wait = mock.Mock(side_effect=[False, False, True])
-        with mock.patch.object(device.HeldLock, "HEARTBEAT_SECONDS", 0), \
-             contextlib.redirect_stderr(io.StringIO()):
-            lock.keep_alive()
+        lock, _, _ = self.keep_alive([self.MISSING, False])
         self.assertTrue(lock.lost.is_set())
 
     def test_a_heartbeat_failing_past_the_stale_window_loses_the_lock(self):
-        store = mock_store()
-        store.heartbeat.side_effect = FileNotFoundError(2, "No such file or directory")
-        lock = device.HeldLock(store, BOARD, "agent", "flash", 0)
-        lock.renewed_at = time.monotonic() - device_lock.DEFAULT_STALE_SECONDS
-        lock.stop.wait = mock.Mock(side_effect=[False, True])
-        with mock.patch.object(device.HeldLock, "HEARTBEAT_SECONDS", 0), \
-             contextlib.redirect_stderr(io.StringIO()):
-            lock.keep_alive()
-        self.assertEqual(store.heartbeat.call_count, 1)
+        lock, renew, _ = self.keep_alive([self.MISSING], failing_for=device_lock.DEFAULT_STALE_SECONDS)
+        self.assertEqual(renew.call_count, 1)
         self.assertTrue(lock.lost.is_set())
 
     def test_a_raising_borrowed_check_is_retried(self):
-        store = mock_store()
-        store.check_token.side_effect = [FileNotFoundError(2, "No such file or directory"), True]
-        lock = device.HeldLock(store, BOARD, "agent", "flash", 0)
-        lock.borrowed = True
-        lock.stop.wait = mock.Mock(side_effect=[False, False, True])
-        with contextlib.redirect_stderr(io.StringIO()):
-            lock.keep_alive()
-        self.assertEqual(store.check_token.call_count, 2)
+        lock, renew, _ = self.keep_alive([self.MISSING, True], borrowed=True)
+        self.assertEqual(renew.call_count, 2)
         self.assertFalse(lock.lost.is_set())
 
 
