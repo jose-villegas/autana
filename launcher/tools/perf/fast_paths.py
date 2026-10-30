@@ -20,6 +20,8 @@ COMMAND = "python launcher/tools/perf/fast_paths.py --check"
 ANNOTATION = re.compile(r"^/\* MATH_FAST_PATH\(\s*(\w+),\s*(\w+),\s*(\w+)(?:=([^ )]+) (ulp|relative|lsb))?\) \*/", re.M)
 FUNCTION = re.compile(r"^[ \t]*(?!(?:return|if|for|while|switch|case|else)\b)(?:(?:static[ \t]+)?(?:inline[ \t]+)?[\w*]+[ \t\n]+)(\w+)[ \t]*\([^;{}]*\)[ \t]*\{", re.M)
 MEASUREMENT_SIGNIFICANT_DIGITS = 2
+BIN_EDGE_DECIMAL_PLACES = 2
+TARGET_ULONG_BITS = 32
 CALL = re.compile(r"\b(\w+)\s*\(")
 
 
@@ -41,6 +43,8 @@ class Annotation:
     original: str
     coverage: str
     citations: tuple = ()
+    bits: int | None = None
+    period_bins: bool = False
 
     @property
     def anchor(self):
@@ -87,7 +91,16 @@ def annotations(root=ROOT):
             if not define:
                 raise ValueError(f"missing limit {limit_name}: {header}")
             value = define[1].strip().removesuffix("F").removesuffix("f")
-            limit = float.fromhex(value) if value.lower().startswith("0x") else float(value)
+            bits_expression = re.fullmatch(r"\(1\.0F / \(float\)\(1UL << (\w+_BITS)\)\)", value)
+            bits = None
+            if bits_expression:
+                owner = re.search(r"^#define\s+" + bits_expression[1] + r"[ \t]+([0-9]+)$", definition_text, re.M)
+                if not owner or not 0 <= int(owner[1]) < TARGET_ULONG_BITS:
+                    raise ValueError(f"invalid bits owner: {bits_expression[1]}")
+                bits = int(owner[1])
+                limit = 2.0 ** -bits
+            else:
+                limit = bench.error_number(value)
             if not math.isfinite(limit) or limit < 0:
                 raise ValueError(f"invalid limit {limit_name}")
             if literal is not None and (float(literal) != limit or literal_unit != contracts[key][0]):
@@ -115,7 +128,9 @@ def annotations(root=ROOT):
             unit, method = contracts[key]
             result.append(Annotation(key, kind, fast, plain, limit_name, unit, method, target,
                                      header.relative_to(root), before.count("\n") + 1,
-                                     limit, description, formula, exact[1], coverage, citations))
+                                     limit, description, formula, exact[1], coverage, citations, bits,
+                                     bool(re.search(r'MATHERRORBIN name=' + re.escape(key)
+                                                    + r' type=\w+ .*axis=period', source))))
     if not result:
         raise ValueError("no fast-path annotations")
     return result
@@ -186,6 +201,8 @@ def validate(items, rows, capture):
             if key not in manifest:
                 raise ValueError(f"annotation row missing: {key}")
         identity = (item.key, item.kind)
+        if item.unit == "relative" and item.period_bins and identity in errors:
+            worst_bin_line(bins.get(identity, []))
         if identity in bins and identity not in errors:
             raise ValueError(f"missing error summary for bins: {identity}")
         if identity in errors:
@@ -354,6 +371,30 @@ def format_limit(value):
     return f"2^{exponent - 1}" if fraction == 0.5 and value < 1 else f"{value:g}"
 
 
+def limit_label(item):
+    unit = ("step" if item.limit == 1 else "steps") if item.unit == "ulp" else item.unit
+    bits = f" ({item.bits} bits)" if item.bits is not None else ""
+    return f"{format_limit(item.limit)} {unit}{bits}"
+
+
+def worst_bin_line(points):
+    if len(points) < 2:
+        raise ValueError("missing period bins for relative error")
+    points = sorted(points)
+    worst = max(range(len(points)), key=lambda index: points[index][1])
+    centre, maximum, _ = points[worst]
+    left = (points[worst - 1][0] + centre) / 2 if worst else centre - (points[1][0] - centre) / 2
+    right = (centre + points[worst + 1][0]) / 2 if worst + 1 < len(points) else centre + (centre - points[-2][0]) / 2
+    other = max(value for index, (_, value, _) in enumerate(points) if index != worst)
+    def bound(value):
+        if value == 0:
+            return "0"
+        fraction, exponent = math.frexp(value)
+        return f"2^{exponent - (fraction == 0.5)}"
+    return (f"Worst bin: mantissa {left:.{BIN_EDGE_DECIMAL_PLACES}f}-{right:.{BIN_EDGE_DECIMAL_PLACES}f} at {bound(maximum)}; "
+            f"every other bin <= {bound(other)}.")
+
+
 def format_measurement(value):
     rounded = f"{value:.{MEASUREMENT_SIGNIFICANT_DIGITS}g}"
     mantissa, separator, exponent = rounded.partition("e")
@@ -428,11 +469,12 @@ def render(root, items, rows, measured, errors, bins, sizes, fpu, target, source
         lines += [f"Target: {hardware}.", "", build_rows(item, root), "", f"Callers: {modules}.", ""]
         for row in group:
             _, expression, _ = entry_details[row.fast]
-            limit_unit = ("step" if row.limit == 1 else "steps") if row.unit == "ulp" else "rel" if row.unit == "relative" else row.unit
             lines += [f"Bench rows `{row.fast}` vs `{row.plain}`; limit `{row.limit_name}` "
-                      f"({format_limit(row.limit)} {limit_unit}); {row.method}.", "",
+                      f"({limit_label(row)}); {row.method}.", "",
                       f"Plain way: {expression}.", ""]
         identity = key, item.kind
+        if item.unit == "relative" and item.period_bins:
+            lines += [worst_bin_line(bins.get(identity, [])), ""]
         if identity in errors and float(errors[identity].split()[0]) == 0:
             count = (input_counts or {}).get(identity)
             sweep = f"{count} inputs of the sweep" if count is not None else "the sweep"

@@ -124,6 +124,15 @@ test $`m(y+\tfrac12)^2 \le 2^{92}`$ for rounding to nearest.
 
 `MATH_FLOAT_INT_LIMIT` is the largest float below 2^31 that converts to int32.
 
+## Reciprocal (`mathf.h`)
+
+| Function | Board formula | Bound source |
+|---|---|---|
+| `mathf_recip(x)` | `recip0.s` seed, two Newton steps | `MATHF_RECIP_ULP_LIMIT` in `mathf.h` |
+| `mathf_recip_approx(x)` | `recip0.s` seed, one Newton step | `MATHF_RECIP_APPROX_RELATIVE_LIMIT` / `MATHF_RECIP_APPROX_BITS` in `mathf.h` |
+
+Both accept normal inputs with normal reciprocals, of either sign; host and QEMU use `1.0F / x`.
+
 ## Reciprocal square root (`mathf.h`)
 
 | Function | Board formula | Bound source |
