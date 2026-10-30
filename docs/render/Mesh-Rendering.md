@@ -428,7 +428,7 @@ Bistro along its camera path:
 
 ![Bistro's counts along its path](../images/render/cull-bistro-counts.png)
 
-<!-- generated: cull-bistro sha256=c8ab3c5c527ead3520e2b7fdb145fecf73a3df5be49e08e26952397ff5fe8552 -->
+<!-- generated: cull-bistro sha256=df039d4134aca586824413237d49830882a8eb6305f69168800ba26331886d6a -->
 | Per frame, path mean | Bistro |
 |---|---|
 | Nodes visited / cut | 145 / 32 |
@@ -440,7 +440,7 @@ Bistro along its camera path:
 | Submitted triangles miss every pixel centre | 2371 (31 %) |
 | Submitted triangles facing away | 1648 (21 %) |
 | Submitted triangles set up | 3589 (46 %) |
-| Submitted triangles covering pixels | 1574 (20 %) |
+| Submitted triangles covering pixels | 1578 (20 %) |
 <!-- /generated: cull-bistro -->
 
 Sponza's fitted full bake along its flythrough:
@@ -451,19 +451,19 @@ Sponza's fitted full bake along its flythrough:
 
 ![Sponza's counts along its path](../images/render/cull-sponza-counts.png)
 
-<!-- generated: cull-sponza sha256=464a55906b51d0a10196a6c861853fce41a28670d872dd60dba95156104b226e -->
+<!-- generated: cull-sponza sha256=0b395add20f18134a107b5930713250d22dc952fb76cca17aaf7b2022c396dc0 -->
 | Per frame, path mean | Sponza |
 |---|---|
 | Nodes visited / cut | 175 / 49 |
 | Clusters tested / kept | 371 / 300 |
-| Kept clusters: nothing set up / hidden / drawn | 11 / 43 / 246 |
+| Kept clusters: nothing set up / hidden / drawn | 11 / 42 / 246 |
 | Triangles submitted | 8369 |
 | Submitted triangles behind the near plane | 67 (1 %) |
 | Submitted triangles clipped | 77 (1 %) |
 | Submitted triangles miss every pixel centre | 2291 (27 %) |
 | Submitted triangles facing away | 704 (8 %) |
 | Submitted triangles set up | 5230 (62 %) |
-| Submitted triangles covering pixels | 2692 (32 %) |
+| Submitted triangles covering pixels | 2706 (32 %) |
 <!-- /generated: cull-sponza -->
 
 ### What a cluster and a triangle cost
@@ -620,13 +620,13 @@ Clips show the same full renderer frames and camera window, one look per GIF.
 The [temporal method](../tools/Render-Harness.md#temporal-video-columns)
 measures triangle-scale pops; the difference clips also show spatial noise.
 
-<!-- generated: small-fill-temporal sha256=348854d83f0b4c0a5dc518fade64b76bc25fe53a467917f162e3356f235f3b5c -->
+<!-- generated: small-fill-temporal sha256=ce68434eece113a522cfb6a97a8ff15882960a1d5b85ea02e3a365edf07280f3 -->
 | Look vs SMOOTH | Extra frame-to-frame change (levels of 255) | Blocks popping (>8/255) |
 |---|---|---|
 | SMOOTH (4/0 FLAT) | 0.000 | 0.0000% |
-| FAST (12/16 FLAT) | 0.809 | 1.7679% |
-| 12/16 GRAIN | 0.909 | 1.9629% |
-| 12/16 DITHER | 1.048 | 3.0372% |
+| FAST (12/16 FLAT) | 0.806 | 1.7505% |
+| 12/16 GRAIN | 0.906 | 1.9444% |
+| 12/16 DITHER | 1.045 | 3.0237% |
 <!-- /generated: small-fill-temporal -->
 
 #### Board frame-cost gains when opted in
