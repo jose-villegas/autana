@@ -28,3 +28,6 @@ CONFIG_LAUNCHER_QEMU=y
 # QEMU lacks the FPU reciprocal and reciprocal-square-root seed instructions.
 CONFIG_MATH_FPU_RECIP=n
 CONFIG_MATH_FPU_FUSED_MADD=n
+
+# QEMU stops at the first PIE (EE) vector instruction.
+CONFIG_SIMD_PIE=n

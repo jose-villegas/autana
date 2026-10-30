@@ -67,7 +67,11 @@ for include_dir in $(package_include_dirs "$LAUNCHER_DIR"); do
         # shellcheck disable=SC2086
         check "$package_dir" "${source#"$package_dir"/}" "$CC_BIN" $CFLAGS $roots "$source"
     done
+    # Tests and benchmarks get testkit with what testkit itself declares.
     test_roots="$roots $(testkit_includes "$LAUNCHER_DIR")"
+    for reached in $(package_reachable "$LAUNCHER_DIR/packages/testkit"); do
+        [ -d "$reached/include" ] && test_roots="$test_roots -I $reached/include"
+    done
     for folder in tests bench; do
         [ -d "$package_dir/$folder" ] || continue
         for source in $(find "$package_dir/$folder" -name '*.c' | sort); do
