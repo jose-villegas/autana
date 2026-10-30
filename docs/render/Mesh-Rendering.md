@@ -132,13 +132,16 @@ Culling and clipping use caller-owned workspace sized by
   per row slice; culling reuses the first before drawing starts.
 - Direct pipeline callers supply the workspace explicitly; simultaneous draws
   need distinct blocks.
+- Between draws a block keeps its place in the hidden-cluster test's cycle.
+  Any bytes are a valid place, so a block needs no setup.
 
 The stages are split so two cores can share them:
 
 - Transforming disjoint cluster lists writes disjoint vertex ranges.
 - Drawing touches only the rows of its own target.
-  `r3d_pipeline_transform()` records the screen rows each cluster spans, so a
-  core drawing half the rows skips a cluster wholly outside them.
+  `r3d_pipeline_transform()` records each cluster's screen box and nearest
+  depth. A core drawing half the rows skips a cluster wholly outside them, or
+  one whose box already holds nearer depth.
 
 The raster draws at the caller's width and height and can upscale into a
 destination picture: rendering at half the panel's size quarters the pixels
@@ -345,7 +348,7 @@ only drawn clusters show, so it redraws from a spectator.
 |---|---|---|
 | culled | grey | its box, or a box above it, is outside the frustum |
 | not set up | blue | kept, but every triangle is behind the camera, misses every pixel centre or faces away |
-| hidden | red | triangles were set up and filled, but each lost its depth test |
+| hidden | red | each triangle lost its depth test; the frame may have skipped it whole before setup, which this view does not see |
 | drawn | green | owns at least one pixel |
 
 | Tunable | Values |
