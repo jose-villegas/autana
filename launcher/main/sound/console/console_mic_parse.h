@@ -36,11 +36,6 @@ typedef struct {
 } console_mic_args_t;
 
 static inline bool
-console_mic_number(const char** text, unsigned max, uint32_t* out) {
-    return console_u32(text, max, false, out);
-}
-
-static inline bool
 console_mic_write_parse(const char** text, console_mic_args_t* out) {
     uint32_t ms;
     uint8_t reg, value;
@@ -48,7 +43,7 @@ console_mic_write_parse(const char** text, console_mic_args_t* out) {
         return false;
     }
     *text += sizeof("at ") - 1;
-    if (!console_mic_number(text, out->ms - 1u, &ms) || !console_codec_byte(text, &reg)
+    if (!console_u32(text, out->ms - 1u, false, &ms) || !console_codec_byte(text, &reg)
         || !console_codec_byte(text, &value)) {
         return false;
     }
@@ -64,10 +59,10 @@ console_mic_parse(const char* args, console_mic_args_t* out) {
     }
     args += sizeof prefix - 1;
     console_mic_args_t parsed = {.settle_ms = AUDIO_LOOPBACK_SETTLE_MS};
-    if (!console_mic_number(&args, MIC_RECORD_MAX_MS, &parsed.ms) || !parsed.ms) {
+    if (!console_u32(&args, MIC_RECORD_MAX_MS, false, &parsed.ms) || !parsed.ms) {
         return false;
     }
-    if (*args && *args != 'a' && !console_mic_number(&args, MIC_RECORD_MAX_MS, &parsed.settle_ms)) {
+    if (*args && *args != 'a' && !console_u32(&args, MIC_RECORD_MAX_MS, false, &parsed.settle_ms)) {
         return false;
     }
     while (*args) {

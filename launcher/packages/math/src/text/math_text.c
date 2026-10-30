@@ -52,6 +52,14 @@ mathi_parse(const char* s, const char** end, int32_t* out) {
     return text_integer(s, end, out, INT32_MIN, INT32_MAX);
 }
 
+static int
+text_digit_value(char c, int radix) {
+    int d = text_digit(c)               ? c - '0'
+            : isalpha((unsigned char)c) ? tolower((unsigned char)c) - 'a' + MATH_TEXT_RADIX
+                                        : radix;
+    return d < radix ? d : -1;
+}
+
 static bool
 text_unsigned(const char* s, const char** end, uint32_t* out, int radix) {
     const char* p = s;
@@ -62,15 +70,14 @@ text_unsigned(const char* s, const char** end, uint32_t* out, int radix) {
         p += 2;
     }
     const char* digits = p;
-    while (radix == MATH_TEXT_HEX_RADIX ? isxdigit((unsigned char)*p) : text_digit(*p)) {
-        ++p;
+    uint64_t value = 0;
+    for (int d; (d = text_digit_value(*p, radix)) >= 0; ++p) {
+        value = (value * (unsigned)radix) + (unsigned)d;
+        if (value > UINT32_MAX) {
+            return false;
+        }
     }
     if (p == digits || (end == NULL && *p != '\0')) {
-        return false;
-    }
-    errno = 0;
-    uintmax_t value = strtoumax(digits, NULL, radix);
-    if (errno == ERANGE || value > UINT32_MAX) {
         return false;
     }
     *out = (uint32_t)value;

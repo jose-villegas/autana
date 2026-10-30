@@ -37,7 +37,8 @@ console_touch_parse(const char* args, bool* down, vec2i_t* point) {
     const bool is_down = console_word(&args, "down");
     int32_t px, py;
 
-    if ((!is_down && !console_word(&args, "up")) || !console_i32(&args, &px) || !console_i32(&args, &py)) {
+    if ((!is_down && !console_word(&args, "up")) || !console_i32(&args, &px) || !console_i32(&args, &py)
+        || *args != '\0') {
         return false;
     }
     *down = is_down;

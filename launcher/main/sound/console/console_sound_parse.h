@@ -19,7 +19,12 @@ static const char* const console_sound_events[] = {"amp-on", "start", "stop", "s
 
 static inline bool
 console_sound_number(const char* text, uint32_t max, uint32_t* out) {
-    return mathu_parse(text, NULL, out) && *out <= max;
+    uint32_t value;
+    if (!mathu_parse(text, NULL, &value) || value > max) {
+        return false;
+    }
+    *out = value;
+    return true;
 }
 
 static inline bool

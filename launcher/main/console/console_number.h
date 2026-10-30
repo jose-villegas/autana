@@ -30,7 +30,7 @@ static inline bool
 console_word(const char** cursor, const char* word) {
     const char* text = console_token_skip(*cursor);
     const size_t length = strlen(word);
-    return console_token_done(cursor, text + length, strncmp(text, word, length) == 0);
+    return strncmp(text, word, length) == 0 && console_token_done(cursor, text + length, true);
 }
 
 /* An unsigned count up to max; with hex, 0x-prefixed hexadecimal also reads. */
