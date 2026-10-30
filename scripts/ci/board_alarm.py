@@ -14,6 +14,8 @@ from github_api import call, pages
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'device'))
 from device_lock import short_id
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'lib'))
+from device_capture import board_steps_completed
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'launcher/tools/perf'))
 from nightly.lnt import night_ran
 
@@ -210,6 +212,8 @@ def main(argv=None):
     health.add_argument('--lanes-from', required=True, type=Path)
     health.add_argument('--devices', required=True, type=Path)
     health.add_argument('--reason-file', required=True, type=Path)
+    ran = commands.add_parser('ran', help="print boards_ran=true|false for a board-steps.sh log")
+    ran.add_argument('--log', required=True, type=Path)
     probe = commands.add_parser('probe')
     probe.add_argument('--devices', required=True, type=Path)
     probe.add_argument('--reason-file', required=True, type=Path)
@@ -224,6 +228,9 @@ def main(argv=None):
         raise_alarm(reason, run_url())
     elif args.command == 'clear':
         clear_alarm(run_url())
+    elif args.command == 'ran':
+        lines = args.log.read_text(encoding='utf-8', errors='replace').splitlines() if args.log.is_file() else []
+        print(f'boards_ran={str(board_steps_completed(lines)).lower()}')
     elif args.command == 'probe':
         return probe_devices(args.devices, args.reason_file)
     else:

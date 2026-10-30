@@ -28,7 +28,9 @@ from test_perf_compare import FakeAutana
 from layout_measure import make_table, parse_report, parse_timings
 import layout_measure
 import autana_config
+from device_capture import CAPTURE_COMPLETE, CONSOLE_COMPLETE_LINE, capture_ended_line
 
+SELFTEST_COMPLETE_LINE = capture_ended_line("selftest", CAPTURE_COMPLETE)
 MACHINE = "00:11:22:33:20:E8"
 OTHER_MACHINE = "00:11:22:33:21:24"
 
@@ -57,7 +59,7 @@ Clock = partial(ScheduleClock, day=18, tzinfo=timezone.utc)
 
 class Replay(FakeAutana):
     def __init__(self, root, clock, builds=(), captures=(), durations=(), selftest_code=0, heavy_wait=0, capture_wait=0,
-                 selftest_ended=(layout_measure.SELFTEST_COMPLETE_LINE, layout_measure.CONSOLE_COMPLETE_LINE)):
+                 selftest_ended=(SELFTEST_COMPLETE_LINE, CONSOLE_COMPLETE_LINE)):
         super().__init__(root)
         self.selftest_ended = selftest_ended
         self.clock = clock
@@ -915,7 +917,7 @@ class NightlyTests(unittest.TestCase):
 
     def test_selftest_stage_that_never_completed_means_the_board_did_not_run(self):
         self.args.selftest = ["selftest-replay"]
-        for ended in ((), (layout_measure.SELFTEST_COMPLETE_LINE,), (layout_measure.CONSOLE_COMPLETE_LINE,)):
+        for ended in ((), (SELFTEST_COMPLETE_LINE,), (CONSOLE_COMPLETE_LINE,)):
             with self.subTest(ended=ended):
                 _, _, writes = self.run_chain(selftest_code=1, selftest_ended=ended)
                 self.assertEqual(writes[-1]["selftest"]["outcome"], "incomplete")

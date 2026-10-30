@@ -16,6 +16,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import board_alarm as alarm
+from device_capture import CAPTURE_COMPLETE, CONSOLE_COMPLETE_LINE, capture_ended_line
 
 NOW = datetime(2026, 10, 24, 8, tzinfo=timezone.utc)
 
@@ -380,6 +381,35 @@ class BoardAlarmTests(unittest.TestCase):
                          "(needs.nightly.result != 'skipped' && needs.nightly.outputs.boards_ran != 'true')")
         self.assertEqual(conditions[alarm.CLEAR_STEP], "(needs.nightly.result == 'success' || "
                          "needs.nightly.result == 'failure') && needs.nightly.outputs.boards_ran == 'true'")
+
+    def test_board_ci_alarm_follows_whether_the_board_ran_not_the_job_result(self):
+        workflow = Path(__file__).resolve().parents[3] / '.github/workflows/board-ci.yml'
+        jobs = yaml.safe_load(workflow.read_text())['jobs']
+        self.assertEqual(jobs['board']['outputs']['boards_ran'], '${{ steps.device.outputs.boards_ran }}')
+        self.assertEqual(jobs['board']['outputs']['prepared'], '${{ steps.prepare.outcome }}')
+        self.assertIn('board_alarm.py ran --log', next(step['run'] for step in jobs['board']['steps']
+                                                       if step.get('id') == 'device'))
+        conditions = {step['name']: step['if'] for step in jobs['alarm']['steps'] if 'if' in step}
+        # A failed build never reached the board; a board that ran its tests is up whatever they reported.
+        self.assertEqual(conditions['Raise the board-ci-down alarm'], "needs.board.result == 'cancelled' || "
+                         "(needs.board.result == 'failure' && needs.board.outputs.prepared != 'failure' && "
+                         "needs.board.outputs.boards_ran != 'true')")
+        self.assertEqual(conditions[alarm.CLEAR_STEP], "(needs.board.result == 'success' || "
+                         "needs.board.result == 'failure') && needs.board.outputs.boards_ran == 'true'")
+
+    def test_cli_ran_needs_both_board_steps_stages_whatever_their_tests_reported(self):
+        selftest = capture_ended_line('selftest', CAPTURE_COMPLETE)
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / 'steps.log'
+            for lines, ran in [([selftest + '\r', 'selftest results: 2998 PASS, 6 FAIL', CONSOLE_COMPLETE_LINE], 'true'),
+                               ([selftest], 'false'), ([CONSOLE_COMPLETE_LINE], 'false'), (None, 'false')]:
+                with self.subTest(lines=lines):
+                    log.unlink(missing_ok=True)
+                    if lines is not None:
+                        log.write_text('\n'.join(lines))
+                    with mock.patch('sys.stdout', new_callable=io.StringIO) as output:
+                        self.assertEqual(alarm.main(['ran', '--log', str(log)]), 0)
+                    self.assertEqual(output.getvalue(), f'boards_ran={ran}\n')
 
 
 if __name__ == '__main__':
