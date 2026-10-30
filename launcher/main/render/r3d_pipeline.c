@@ -407,9 +407,10 @@ rows_miss_target(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target) 
 
 /* Drawn nearest first, a cluster behind what is already drawn is skipped
  * before any of its triangles is tested. Its box holds every centre its
- * triangles cover, as r3d_span_extent() finds them. */
-static inline bool
-cluster_hidden(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target) {
+ * triangles cover, as r3d_span_extent() finds them. Out of line, so its box
+ * stays off the stack of the draw it guards while that draw fills. */
+RENDER_IRAM_ATTR __attribute__((noinline)) bool
+r3d_pipeline_cluster_hidden(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target) {
     if (r->unbounded) {
         return false;
     }
@@ -419,15 +420,10 @@ cluster_hidden(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target) {
     return r3d_span_hidden(target, (int32_t)r->depth + 1, r3d_span_window_box(target, centres));
 }
 
-bool
-r3d_pipeline_cluster_hidden(const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target) {
-    return cluster_hidden(rows, target);
-}
-
 /* A cluster this target's draw can skip whole. */
 static inline bool
 cluster_skipped(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target) {
-    return rows_miss_target(r, target) || cluster_hidden(r, target);
+    return rows_miss_target(r, target) || r3d_pipeline_cluster_hidden(r, target);
 }
 
 /* A triangle with a corner behind the near plane or too far off screen to
