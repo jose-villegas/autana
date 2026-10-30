@@ -2139,7 +2139,7 @@
 2	launcher/main/gfx/present/gfx_debug.c:97	save_border
 2	launcher/main/gfx/present/gfx_mode.c:415	gfx_band_dirty
 2	launcher/main/gfx/present/gfx_mode.c:386	gfx_band_frame_begin
-2	launcher/main/gfx/present/gfx_mode.c:68	indexed_active_table
+2	launcher/main/gfx/present/modes/indexed/gfx_indexed.c:43	indexed_active_table
 2	launcher/main/gfx/present/panel/gfx_null_panel_device.c:39	strip_left_the_bus
 2	launcher/main/gfx/present/gfx_present.c:818	dispatch_present
 2	launcher/main/gfx/present/gfx_present.c:172	display_bring_up
