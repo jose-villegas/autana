@@ -48,8 +48,18 @@ r3d_span_window_box(const r3d_span_target_t* target, recti_t centres) {
  * is truncated, across the widest box a span takes, both axes. */
 #define R3D_SPAN_DEPTH_DRIFT (1 + ((2 * 2 * R3D_SPAN_RANGE / R3D_SUBPIXEL) >> R3D_DEPTH_SHIFT))
 
+/* The nearest 16-bit depth a fill from vertices no nearer than `iz` writes.
+ * The drift covers a plane set up from a triangle of real area; a sliver's
+ * float set-up can stray past it, so the fill clamps every depth it writes
+ * to this. Saturates, as the fill does. */
+static inline uint16_t
+r3d_span_depth_limit(float iz) {
+    const int32_t depth = (int32_t)(iz * (float)R3D_DEPTH_NEAREST) + R3D_SPAN_DEPTH_DRIFT;
+    return (uint16_t)(depth < R3D_DEPTH_NEAREST ? depth : R3D_DEPTH_NEAREST);
+}
+
 /* Added before truncating, so the sum is positive and truncating floors. */
-#define R3D_SNAP_BIAS        ((float)R3D_SPAN_RANGE + 0.5F)
+#define R3D_SNAP_BIAS ((float)R3D_SPAN_RANGE + 0.5F)
 
 /* A subpixel position plus R3D_SNAP_BIAS, as a float, to the nearest
  * subpixel. `biased` must lie in (0, 2 R3D_SPAN_RANGE). */

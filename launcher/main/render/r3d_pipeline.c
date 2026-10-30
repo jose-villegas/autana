@@ -187,14 +187,6 @@ biased_screen(const r3d_lens_t* lens, float lx, float ly, float inv) {
     return (biased_t){lens->snap_cx + (lx * inv), lens->snap_cy + (ly * inv)};
 }
 
-/* The nearest depth a fill from vertices no nearer than `iz` writes, by
- * r3d_span's drift; it saturates, as the fill does. */
-static inline uint16_t
-fill_depth_limit(float iz) {
-    const int32_t depth = (int32_t)(iz * (float)R3D_DEPTH_NEAREST) + R3D_SPAN_DEPTH_DRIFT;
-    return (uint16_t)(depth < R3D_DEPTH_NEAREST ? depth : R3D_DEPTH_NEAREST);
-}
-
 static inline r3d_pipeline_rows_t
 transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_cluster_t* c,
                   r3d_pipeline_vertex_t* cs) {
@@ -233,7 +225,8 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_
         iz = out->iz > iz ? out->iz : iz;
     }
     FRAME_LAP("r3d.transform.cluster");
-    return (r3d_pipeline_rows_t){(int16_t)x0, (int16_t)y0, (int16_t)x1, (int16_t)y1, fill_depth_limit(iz), unbounded};
+    return (r3d_pipeline_rows_t){(int16_t)x0, (int16_t)y0, (int16_t)x1, (int16_t)y1, r3d_span_depth_limit(iz),
+                                 unbounded};
 }
 
 void

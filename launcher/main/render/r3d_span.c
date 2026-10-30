@@ -51,7 +51,8 @@ typedef struct {
     int32_t dx[ATTRIBUTES];
     int32_t dy[ATTRIBUTES];
     int x_origin;
-    bool in_range; /* every plane stays inside its range across the whole box */
+    uint16_t depth_cap; /* r3d_span_depth_limit() its depth may not pass; 0 when the plane stays under it */
+    bool in_range;      /* every plane stays inside its range across the whole box */
 } gradients_t;
 
 static inline int32_t
@@ -110,17 +111,54 @@ colour_gradients(const plane_t* p, const r3d_span_vertex_t* a, const r3d_span_ve
     gradient(p, a->b * R3D_SPAN_COLOR_SCALE, b->b * R3D_SPAN_COLOR_SCALE, c->b * R3D_SPAN_COLOR_SCALE, 3, out);
 }
 
+/* The last 16.8 depth under a 16-bit cap, so only a depth that would pass
+ * the cap is ever clamped. */
+static inline int32_t
+depth_cap_max(uint16_t cap) {
+    const int32_t max = ((int32_t)cap << R3D_DEPTH_SHIFT) | ((1 << R3D_DEPTH_SHIFT) - 1);
+    return max < DEPTH_MAX ? max : DEPTH_MAX;
+}
+
+/* Whether the depth plane stays inside [0, DEPTH_MAX] and under
+ * r3d_span_depth_limit() of the nearest vertex over `box`. Past the box's
+ * corners is where a plane leaves the triangle, so most capped triangles
+ * never write past the limit; their spans are checked one by one and only
+ * one that would pass it is clamped. */
+static inline void
+depth_range(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, recti_t box,
+            gradients_t* g) {
+    const uint16_t limit = r3d_span_depth_limit(mathf_max(a->z, mathf_max(b->z, c->z)));
+    const bool capped = !r3d_span_plane_in_range(g->base[0], g->dx[0], g->dy[0], depth_cap_max(limit), box);
+    g->depth_cap = capped ? limit : 0;
+    g->in_range = !capped || r3d_span_plane_in_range(g->base[0], g->dx[0], g->dy[0], DEPTH_MAX, box);
+}
+
+static inline int32_t
+range_max(const gradients_t* g, int k) {
+    return k == 0 && g->depth_cap != 0 ? depth_cap_max(g->depth_cap) : value_max[k];
+}
+
+/* A capped span whose depth would pass the cap at either end. */
+static inline bool
+depth_passes_limit(const gradients_t* g, int32_t start, int32_t step, int count) {
+    if (g->depth_cap == 0) {
+        return false;
+    }
+    const int32_t max = depth_cap_max(g->depth_cap);
+    return start > max || start + (step * count) > max;
+}
+
 /* A pixel centre just outside the triangle extrapolates past the vertex
  * range, and a wrapped channel would be a wrong-coloured pixel. Each span's
  * start is clamped; only a span whose end would still leave the range pays
  * for a step recomputed from both clamped ends. */
 static inline void
-clamp_span(int k, int count, int32_t* value, int32_t* step) {
-    const int32_t start = mathi_clamp(*value, 0, value_max[k]);
+clamp_span(int32_t max, int count, int32_t* value, int32_t* step) {
+    const int32_t start = mathi_clamp(*value, 0, max);
     const int32_t end = start + (*step * count);
     *value = start;
-    if (count > 0 && (end < 0 || end > value_max[k])) {
-        *step = (mathi_clamp(end, 0, value_max[k]) - start) / count;
+    if (count > 0 && (end < 0 || end > max)) {
+        *step = (mathi_clamp(end, 0, max) - start) / count;
     }
 }
 
@@ -131,8 +169,8 @@ span_start(const gradients_t* g, uint32_t carried, int k, int skip, int count, i
     if (skip > 0) {
         *value = (int32_t)(carried + ((uint32_t)*step * (uint32_t)skip));
     }
-    if (!g->in_range) {
-        clamp_span(k, count, value, step);
+    if (!g->in_range || (k == 0 && depth_passes_limit(g, *value, *step, count))) {
+        clamp_span(range_max(g, k), count, value, step);
     }
 }
 
@@ -329,7 +367,8 @@ fill_carried_span(const r3d_span_target_t* target, const fill_t* f, const uint32
         } else {
             fill_solid(span->depth, span->color, span->last - span->first + 1, z, dz, f->flat_color);
         }
-    } else if (g->in_range && column >= 0) {
+    } else if (g->in_range && column >= 0
+               && !depth_passes_limit(g, (int32_t)row[0], g->dx[0], span->last - span->first)) {
         fill_gouraud(span->depth, span->color, span->last - span->first + 1, row, g->dx);
     } else {
         fill_clipped_gouraud(g, row, column, span);
@@ -784,7 +823,7 @@ r3d_span_hidden(const r3d_span_target_t* target, int32_t bound, recti_t box) {
 static void
 set_up_planes(const fill_t* f, const r3d_span_vertex_t* const v[TRIANGLE_VERTICES], const plane_t* p, recti_t box,
               int y_anchor, gradients_t* g) {
-    g->in_range = r3d_span_plane_in_range(g->base[0], g->dx[0], g->dy[0], value_max[0], box);
+    depth_range(v[0], v[1], v[2], box, g);
     if (f->shading == FILL_FACE) {
         return;
     }
@@ -803,6 +842,7 @@ set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[TR
             int y_anchor, const uint16_t* face, fill_t* f, gradients_t* g) {
     plane_t p;
     g->x_origin = box.x;
+    g->depth_cap = 0;
     if (f->shading == FILL_FLAT) {
         p = (plane_t){0};
         set_flat(f, v[0], v[1], v[2]);
@@ -917,7 +957,7 @@ r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t
     } else if (plane_of(a, b, c, box.x, y_anchor, &p)) {
         gradient(&p, a->z * DEPTH_SCALE, b->z * DEPTH_SCALE, c->z * DEPTH_SCALE, 0, &g);
         g.base[0] = first_row_value(&g, 0, box.y, y_anchor);
-        g.in_range = r3d_span_plane_in_range(g.base[0], g.dx[0], g.dy[0], value_max[0], box);
+        depth_range(a, b, c, box, &g);
     } else {
         return;
     }
