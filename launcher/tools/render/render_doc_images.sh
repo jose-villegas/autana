@@ -321,6 +321,10 @@ run "$PYTHON" launcher/tools/r3d/dynres_report.py docs/render/data/dynamic-resol
 run "$PYTHON" launcher/tools/r3d/dynres_replay.py docs/render/data/dynamic-resolution-steps-board.log --cc "$cc" \
     --lead bistro-fitted-full --tables "$OUT/tables" > "$WORK/dynres_replay.log"
 
+# Frame generation: every mesh scene's warped frames scored on the host.
+run sh launcher/tools/r3d/framegen/framegen_docs.sh --out "$OUT/render" "$OUT/tables" > "$WORK/framegen.log" 2>&1
+# --orphans scans this runner: framegen-bistro-holes.png, framegen-bistro-path.png, framegen-bistro-path-dark.png, framegen-bistro.gif, framegen-sponza-holes.png, framegen-pricing.png, framegen-pricing-dark.png, framegen-bistro-sheet.png, framegen-bistro-sheet.crops.png
+
 # The frame stages as shipped, what is inside transform and draw, and what
 # each debug view adds, from the pipeline captures beside the page.
 run "$PYTHON" launcher/tools/render/frame_stages.py --present docs/render/data/pipeline-present-board.log \
