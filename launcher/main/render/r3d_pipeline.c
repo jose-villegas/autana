@@ -83,6 +83,9 @@ struct r3d_pipeline_work {
             planef_t planes[PLANE_FRUSTUM_COUNT];
         } clip;
     };
+
+    uint8_t idle_draws; /* this block's draws in a row with no cluster hidden */
+    bool test_hidden;   /* the current draw looks for clusters behind drawn depth */
 };
 
 _Static_assert(_Alignof(r3d_pipeline_work_t) <= R3D_PIPELINE_WORK_ALIGNMENT, "pipeline work alignment");
@@ -420,10 +423,41 @@ r3d_pipeline_cluster_hidden(const r3d_pipeline_rows_t* r, const r3d_span_target_
     return r3d_span_hidden(target, (int32_t)r->depth + 1, r3d_span_window_box(target, centres));
 }
 
-/* A cluster this target's draw can skip whole. */
+/* A view where no cluster hides behind another, an open floor or one mesh
+ * facing the camera, pays the hidden test for nothing. After
+ * R3D_HIDDEN_IDLE_DRAWS draws in a row on one work block with none hidden, it
+ * tests one draw in every R3D_HIDDEN_PAUSE_DRAWS + 1, until one hides a
+ * cluster again. Skipping the test changes no pixel. */
+#define R3D_HIDDEN_IDLE_DRAWS  8
+#define R3D_HIDDEN_PAUSE_DRAWS 7
+#define R3D_HIDDEN_PROBE_DRAW  (R3D_HIDDEN_IDLE_DRAWS + R3D_HIDDEN_PAUSE_DRAWS)
+
 static inline bool
-cluster_skipped(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target) {
-    return rows_miss_target(r, target) || r3d_pipeline_cluster_hidden(r, target);
+hidden_test_due(const r3d_pipeline_work_t* work) {
+    return work->idle_draws < R3D_HIDDEN_IDLE_DRAWS || work->idle_draws >= R3D_HIDDEN_PROBE_DRAW;
+}
+
+/* Counts a draw as hiding nothing before it runs; a cluster it hides resets
+ * the count. Any value past the probe, a fresh block's included, tests, and
+ * is back in the cycle after one draw. */
+static inline void
+begin_hidden_draw(r3d_pipeline_work_t* work) {
+    work->test_hidden = hidden_test_due(work);
+    work->idle_draws = work->idle_draws >= R3D_HIDDEN_PROBE_DRAW ? R3D_HIDDEN_IDLE_DRAWS : work->idle_draws + 1;
+}
+
+/* Rows outside the target's skip a cluster always; depth already drawn, only
+ * on a draw that looks for it. */
+static inline bool
+cluster_skipped(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target, r3d_pipeline_work_t* work) {
+    if (rows_miss_target(r, target)) {
+        return true;
+    }
+    if (work->test_hidden && r3d_pipeline_cluster_hidden(r, target)) {
+        work->idle_draws = 0;
+        return true;
+    }
+    return false;
 }
 
 /* A triangle with a corner behind the near plane or too far off screen to
@@ -509,7 +543,7 @@ draw_writing(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
     }
     for (int i = 0; i < count; i++) {
         const r3d_lit_cluster_t* c = &mesh->clusters[clusters[i]];
-        if (rows != NULL && cluster_skipped(&rows[clusters[i]], target)) {
+        if (rows != NULL && cluster_skipped(&rows[clusters[i]], target, work)) {
             continue;
         }
         /* Whole clusters, or one triangle at a time when a writer steps per
@@ -536,7 +570,7 @@ draw_reading(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
              const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
              r3d_pipeline_work_t* work) {
     for (int i = 0; i < count; i++) {
-        if (rows != NULL && cluster_skipped(&rows[clusters[i]], target)) {
+        if (rows != NULL && cluster_skipped(&rows[clusters[i]], target, work)) {
             continue;
         }
         const r3d_lit_cluster_t* c = &mesh->clusters[clusters[i]];
@@ -545,12 +579,14 @@ draw_reading(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
     }
 }
 
-/* Chooses once per draw whether the target's writers follow each fill. */
+/* Chooses once per draw whether the target's writers follow each fill, and
+ * whether clusters behind drawn depth are looked for. */
 void
 r3d_pipeline_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
                   const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
                   r3d_pipeline_work_t* work) {
     build_guard_planes(lens, work);
+    begin_hidden_draw(work);
     if (target->writer_count != 0) {
         draw_writing(mesh, lens, clusters, count, cs, rows, target, work);
         return;

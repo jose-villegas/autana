@@ -170,10 +170,49 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
     }
 }
 
+/* One draw on `work`: whether it looked for hidden clusters, and whether it
+ * found one. */
+static bool
+hidden_draw(bool hides) {
+    begin_hidden_draw(work);
+    const bool looked = work->test_hidden;
+    if (looked && hides) {
+        work->idle_draws = 0;
+    }
+    return looked;
+}
+
+static void
+test_the_hidden_test_pauses_while_nothing_hides_and_resumes_when_something_does(void) {
+    work = malloc(r3d_pipeline_work_bytes());
+    suite_set_test_cleanup(cleanup);
+    TEST_ASSERT_NOT_NULL(work);
+    for (int fresh = 0; fresh <= UINT8_MAX; fresh++) {
+        work->idle_draws = (uint8_t)fresh;
+        TEST_ASSERT_TRUE(hidden_draw(false) || fresh < R3D_HIDDEN_PROBE_DRAW);
+        TEST_ASSERT_LESS_OR_EQUAL(R3D_HIDDEN_PROBE_DRAW, work->idle_draws);
+    }
+    work->idle_draws = 0;
+    for (int draw = 0; draw < R3D_HIDDEN_IDLE_DRAWS; draw++) {
+        TEST_ASSERT_TRUE(hidden_draw(false));
+    }
+    for (int cycle = 0; cycle < 2; cycle++) {
+        for (int draw = 0; draw < R3D_HIDDEN_PAUSE_DRAWS; draw++) {
+            TEST_ASSERT_FALSE(hidden_draw(true));
+        }
+        TEST_ASSERT_TRUE(hidden_draw(cycle == 1));
+    }
+    for (int draw = 0; draw < R3D_HIDDEN_IDLE_DRAWS; draw++) {
+        TEST_ASSERT_TRUE(hidden_draw(false));
+    }
+    TEST_ASSERT_FALSE(hidden_draw(false));
+}
+
 void
 run_r3d_style_pipeline_suite(void) {
     RUN_TEST(test_clipped_and_mixed_clusters_keep_the_target_style);
     RUN_TEST(test_styles_match_pipeline_colours);
+    RUN_TEST(test_the_hidden_test_pauses_while_nothing_hides_and_resumes_when_something_does);
 }
 
 SUITE_REGISTER(run_r3d_style_pipeline_suite);
