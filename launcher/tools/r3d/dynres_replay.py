@@ -20,7 +20,7 @@ target, margin and step-up delay each scenario's whole-frame mean, p95 and
 spread against the fixed scale at the top step. --tables writes the docs
 generator's blocks: dynres-steps.md, each scenario's mean whole frame and
 compose at every step, and dynres-flight.md, the first replay of each
-scenario against the fixed scale.
+scenario against the fixed scale. --figures adds the time at each size of that replay.
 """
 
 import argparse
@@ -42,6 +42,8 @@ from build.c_header import read_define  # noqa: E402
 from capture import QUARTER_RE, QUARTERS, select_quarter  # noqa: E402
 from math_figures import build_probe  # noqa: E402
 from dynres_report import percentile  # noqa: E402
+
+FLIGHT_FIGURE = "dynamic-resolution-flight-sizes.png"
 
 DYNRES = ROOT / "launcher/main/apps/render_lab/render_lab_dynres.h"
 RESOLUTION = ROOT / "launcher/main/render/resolution/resolution.c"
@@ -149,18 +151,28 @@ def steps_table(scenarios, ladder):
     return head + "\n".join(rows) + "\n\nMean whole frame in milliseconds; compose is the upscale into the panel's picture.\n"
 
 
-def flight_table(results, ladder):
-    head = ("| Scenario | Fixed mean | p95 | sd | Dynamic mean | p95 | sd | max | Switches | Time at each size |\n"
-            "|---|---|---|---|---|---|---|---|---|---|\n")
+def first_results(results):
     seen, rows = set(), []
     for r in results:
-        if r["scenario"] in seen:
-            continue
-        seen.add(r["scenario"])
-        at = ", ".join(f"{ladder[s][0]}x{ladder[s][1]} {v:.0%}" for s, v in r["share"].items())
-        rows.append(f"| {r['scenario']} | {r['fixed']['mean']:.1f} | {r['fixed']['p95']:.1f} | {r['fixed']['sd']:.1f} | "
-                    f"{r['mean']:.1f} | {r['p95']:.1f} | {r['sd']:.1f} | {r['max']:.1f} | {r['switches']} | {at} |")
+        if r["scenario"] not in seen:
+            seen.add(r["scenario"])
+            rows.append(r)
+    return rows
+
+
+def flight_table(results):
+    head = ("| Scenario | Fixed mean | p95 | Dynamic mean | p95 | max | Switches |\n"
+            "|---|---|---|---|---|---|---|\n")
+    rows = [f"| {r['scenario']} | {r['fixed']['mean']:.1f} | {r['fixed']['p95']:.1f} | "
+            f"{r['mean']:.1f} | {r['p95']:.1f} | {r['max']:.1f} | {r['switches']} |" for r in first_results(results)]
     return head + "\n".join(rows) + "\n\nWhole frame in milliseconds.\n"
+
+
+def flight_figure(results, ladder, path):
+    """Time at each size, per scenario."""
+    from dynres_report import share_figure
+    rows = [(r["scenario"], {ladder[s]: v for s, v in r["share"].items()}) for r in first_results(results)]
+    share_figure([("predictor over each scenario", [tuple(size) for size in ladder], rows)], path)
 
 
 def main():
@@ -177,6 +189,7 @@ def main():
     parser.add_argument("--steps", help="captured sizes forming the ladder, by capture index; the ladder's when omitted")
     parser.add_argument("--recovery", type=int, help="the first recovery-only step of --steps; none when omitted")
     parser.add_argument("--lead", help="the scenario reported first")
+    parser.add_argument("--figures", type=pathlib.Path, help="directory for the size-share figure")
     parser.add_argument("--json", type=pathlib.Path)
     parser.add_argument("--tables", type=pathlib.Path, help="directory for the docs generator's blocks")
     args = parser.parse_args()
@@ -222,7 +235,9 @@ def main():
     if args.tables:
         args.tables.mkdir(parents=True, exist_ok=True)
         (args.tables / "dynres-steps.md").write_text(steps_table(scenarios, ladder), encoding="utf-8")
-        (args.tables / "dynres-flight.md").write_text(flight_table(results, ladder), encoding="utf-8")
+        (args.tables / "dynres-flight.md").write_text(flight_table(results), encoding="utf-8")
+        if args.figures:
+            flight_figure(results, ladder, args.figures / FLIGHT_FIGURE)
     if args.json:
         args.json.write_text(json.dumps({"fit": fitted, "results": results}, indent=1), encoding="utf-8")
 
