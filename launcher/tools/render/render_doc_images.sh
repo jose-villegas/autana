@@ -68,6 +68,8 @@ CULL_LEVEL=2
 CULL_GIF_FPS=8
 # Colours in their palette: the camera moves every frame, so fewer keep them small.
 CULL_GIF_COLORS=64
+# Where Bistro's high view looks down on its street over the ground square: the depth figure's first frame.
+DEPTH_FIT_AT_MS=54300
 
 AUDIO_ONLY=0
 if [ "${1:-}" = --audio ]; then
@@ -257,6 +259,8 @@ run "$PYTHON" launcher/tools/math/signal_figures.py --cc "$cc" --out "$OUT/math"
 # --orphans scans this runner: goertzel-response.png, goertzel-sweep.gif, pitch-curve.png
 run "$PYTHON" launcher/tools/math/stats_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/stats_figures.log"
 # --orphans scans this runner: stats-percentile-ranks.png
+run "$PYTHON" launcher/tools/math/inverse_depth_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/inverse_depth_figures.log"
+# --orphans scans this runner: inverse-depth-step.png
 run "$PYTHON" launcher/tools/physics/spring_figures.py --cc "$cc" --out "$OUT/physics" > "$WORK/spring_figures.log"
 # --orphans scans this runner: spring-line-wave.gif, spring-line-spacetime.png
 run "$PYTHON" launcher/tools/kinematics/orbit_figures.py --cc "$cc" --out "$OUT/kinematics" > "$WORK/orbit_figures.log"
@@ -360,6 +364,12 @@ done
 # cull-sponza-sheet.png, cull-sponza-counts.png, cull-sponza-chase.gif
 run "$PYTHON" launcher/tools/render/cull_cost.py docs/render/data/cull-cost-board.log --tables "$OUT/tables" \
     --chart "$OUT/render/cull-cost.png" > "$WORK/cull_cost.log"
+
+# The same frames with depth scaled by near_z and by the per-frame fit, cut
+# where the fit stops the most surfaces fighting.
+run "$PYTHON" launcher/tools/render/depth_figures.py --scene launcher/demo/bistro/bistro.scene.toml \
+    --object street_fitted_full --object ground --camera camera --at-ms "$DEPTH_FIT_AT_MS" \
+    --out "$OUT/render/depth-fit-bistro.png" --work "$WORK/depth" > "$WORK/depth.log"
 
 # Each picture's frame cost in each framebuffer layout, from the scene and
 # boot animation captures beside the render pages.

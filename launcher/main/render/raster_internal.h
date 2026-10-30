@@ -32,6 +32,7 @@ typedef struct {
 
     uint16_t* upscale;            /* the upscale maps: destination columns, rows, then row blends */
     r3d_pipeline_work_t* work[2]; /* one block per row slice */
+    float* depth_near;            /* the census's depth scale, which a draw from its list encodes with */
     uint16_t* culled;             /* raster_culled_length() entries */
     void* draw;                   /* raster-owned instance and slice state */
 
@@ -41,11 +42,11 @@ typedef struct {
     }; /* raster_picture(), every row */
 } raster_buffers_t;
 
-/* The census list's share of the scratch block: raster_culled_length()
- * entries, rounded up to whole cache ways. */
+/* The census's share of the scratch block: its depth scale and
+ * raster_culled_length() entries, rounded up to whole cache ways. */
 static inline size_t
 raster_culled_bytes(const raster_t* raster) {
-    return mathi_size_ceil(sizeof(uint16_t) * raster_culled_length(raster), RASTER_CACHE_WAY);
+    return mathi_size_ceil(sizeof(float) + (sizeof(uint16_t) * raster_culled_length(raster)), RASTER_CACHE_WAY);
 }
 
 /* The lens `raster` draws through: framed on its picture's shape, fitted to
@@ -58,7 +59,8 @@ raster_carve(const raster_t* raster) {
     const uintptr_t base = (uintptr_t)raster->scratch;
     uintptr_t p = base;
     raster_buffers_t b;
-    b.culled = (uint16_t*)p;
+    b.depth_near = (float*)p;
+    b.culled = (uint16_t*)(p + sizeof(float));
     p += raster_culled_bytes(raster);
     b.cs = (r3d_pipeline_vertex_t*)p;
     p += sizeof(r3d_pipeline_vertex_t) * (size_t)raster_vertex_capacity(raster);
