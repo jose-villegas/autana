@@ -309,30 +309,29 @@ path = { animation = "fly.anim.toml", node = "camera" }
         self.assertEqual(scene_path.timing(side, work), (duration_ms // dt_default + 1, dt_default))
         self.assertEqual(scene_path.timing(side, work, frames=3, dt_ms=7), (3, 7))
 
+    def wrapper(self, *arguments):
+        """scene_viewer.sh on the test scene, run from the repository (--compare needs it)."""
+        return subprocess.run([shutil.which("sh"), str(TOOLS / "render/scene_viewer.sh"), str(self.scene), *arguments],
+                              cwd=REPO, capture_output=True, text=True, timeout=300)
+
     @unittest.skipUnless(shutil.which("ffmpeg"), "needs ffmpeg")
     def test_wrapper_compares_this_checkout_against_itself_with_other_arguments(self):
         out = self.root / "compare.mp4"
-        run = subprocess.run([shutil.which("sh"), str(TOOLS / "render/scene_viewer.sh"), str(self.scene),
-                              "--compare", ".", "--b-args", "--object card", "--frames", "3", "--dt", "100",
-                              "-o", str(out)], cwd=REPO, capture_output=True, text=True, timeout=300)
+        run = self.wrapper("--compare", ".", "--b-args", "--object card", "--frames", "3", "--dt", "100", "-o", str(out))
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertIn("video: 3 frames", run.stderr)
         self.assertGreater(out.stat().st_size, 0)
 
     def test_wrapper_frame_writes_both_sides(self):
         out = self.root / "wrapper frame.png"
-        run = subprocess.run([shutil.which("sh"), str(TOOLS / "render/scene_viewer.sh"), str(self.scene),
-                              "--compare", ".", "--b-args", "--object card", "--dt", "100", "--frame", "1",
-                              "-o", str(out)], cwd=REPO, capture_output=True, text=True, timeout=300)
+        run = self.wrapper("--compare", ".", "--b-args", "--object card", "--dt", "100", "--frame", "1", "-o", str(out))
         self.assertEqual(run.returncode, 0, run.stderr)
         for path in (out, out.with_name("wrapper frame-b.png")):
             with Image.open(path) as image:
                 self.assertEqual(image.size, (448, 368))
 
     def test_wrapper_refuses_b_args_without_compare(self):
-        run = subprocess.run([shutil.which("sh"), str(TOOLS / "render/scene_viewer.sh"), self.scene.name,
-                              "--b-args", "--object card"], cwd=self.root, capture_output=True, text=True,
-                             timeout=120)
+        run = self.wrapper("--b-args", "--object card")
         self.assertEqual(run.returncode, 2)
         self.assertIn("--b-args needs --compare", run.stderr)
 
