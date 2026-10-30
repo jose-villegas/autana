@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Each frame stage of the scene as shipped, what is inside transform and
 draw, and what each debug view adds on top, as charts and tables for
-Render-Pipeline.md's `pipeline-frame-stages` block.
+docs/render/frame/README.md's `pipeline-frame-stages` block.
 launcher/tools/render/render_doc_images.sh runs it on the captures kept in
 docs/render/data/.
 

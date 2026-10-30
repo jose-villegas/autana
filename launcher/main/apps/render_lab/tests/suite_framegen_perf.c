@@ -1,5 +1,5 @@
 /* On request: what a generated frame costs on the board (render/framegen,
- * docs/render/Frame-Generation.md). Each scenario's path is drawn at every
+ * docs/render/frame/Frame-Generation.md). Each scenario's path is drawn at every
  * half-picture ladder step; at poses along it the drawn frame is warped one
  * display step on and filled, as the render context does with frame
  * generation on. The present is the frame's own half-picture expand. */

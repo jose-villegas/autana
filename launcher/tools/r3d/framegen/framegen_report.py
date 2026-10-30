@@ -1,4 +1,4 @@
-"""The tables and figures of docs/render/Frame-Generation.md.
+"""The tables and figures of docs/render/frame/Frame-Generation.md.
 
 From framegen_score.py's CSVs: per scene, render size and look-ahead, the
 holes the warp leaves and the reference scorer's numbers for the warp (each

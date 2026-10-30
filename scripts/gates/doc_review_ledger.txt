@@ -23,12 +23,12 @@ docs/render/animation/Animation-Tracks.md	2026-10-05	PR 625 round 3: reviewed ag
 docs/render/offline/Mesh-Import.md	2026-10-05	PR 625 round 3: BOUNDS/FORMAT reviewed against r3d_lit_mesh.c, accurate
 docs/render/animation/Animation-Tracks.md	2026-10-06	tracks final sweep: reviewed against tracks_asset.py, track_host.py and test_anim_bake.py, accurate
 launcher/tools/anim/README.md	2026-10-06	tracks final sweep: reviewed against tracks_asset.py and track_host.py, accurate
-docs/render/Dynamic-Resolution.md	2026-10-07	PR #684 round 2: hand-written prose reviewed against choose_path() and the capture, accurate
+docs/render/frame/Dynamic-Resolution.md	2026-10-07	PR #684 round 2: hand-written prose reviewed against choose_path() and the capture, accurate
 docs/render/scene/Scene-Manager.md	2026-10-07	PR #684 round 2: frame sequence reviewed against scene_render(), accurate
 docs/render/Mesh-Rendering.md	2026-10-07	PR #684 round 3: census/draw_culled prose reviewed against raster.c and raster.h, accurate
 docs/tools/Render-Harness.md	2026-10-09	generated-block marker forms reviewed against generated_blocks.py and check_doc_generated.py, accurate
 docs/render/animation/Animation-Tracks.md	2026-10-10	citations: reviewed against anim_track.c and camera_keys.py, accurate
-docs/render/Dynamic-Resolution.md	2026-10-10	citations: reviewed against resolution.c, accurate
+docs/render/frame/Dynamic-Resolution.md	2026-10-10	citations: reviewed against resolution.c, accurate
 docs/render/animation/Skinned-Lighting.md	2026-10-10	citations: reviewed against vec3f.h, accurate
 docs/Citations.md	2026-10-10	citations: rows checked against their DOI and publisher pages, cited-by against the gate
 docs/math/README.md	2026-10-10
