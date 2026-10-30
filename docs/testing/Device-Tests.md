@@ -113,7 +113,7 @@ captures, failed runs included.
 
 The `board-ci-down` issue means the boards could not run: a lane that did not start, hung or stopped early, a self-test capture that never completed, a board missing from USB, a board job stuck in the queue, or a crashed or cancelled job.
 A night whose lanes all ran to the end clears it even when tests failed; those, such as a scene over its frame-time ceiling, leave the nightly run red.
-The daily health check also closes it once a board success is newer than the issue's last update; disabling the nightly workflow pauses health checks.
+Disabling the nightly workflow pauses health checks.
 
 ## Console recipes and lifecycle coverage
 

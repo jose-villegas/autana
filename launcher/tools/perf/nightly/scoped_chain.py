@@ -24,7 +24,8 @@ from build_paths import remove_output
 import autana_config
 from capture import require_same_board
 from device_lock import normalise_board, short_id, write_json
-from layout_measure import autana_command, run_flash, run_stamped, REPORT_LINE, SELFTEST_COMPLETE_LINE, latest_build
+from layout_measure import (autana_command, run_flash, run_stamped, REPORT_LINE, SELFTEST_COMPLETE_LINE,
+                            CONSOLE_COMPLETE_LINE, latest_build)
 from process_tree import (launch_process_tree, stop_process_tree, close_process_tree, install_console_interrupt_handler,
                           terminate_unwinds)
 from local_schedule import (Clock, wait_idle, gpu_pending, gpu_on_host, GPU_NOT_ON_HOST,
@@ -205,8 +206,9 @@ def run_chain(steps, args, runner=None, clock=None):
         with log_path.open("w", encoding="utf-8") as log:
             try:
                 code, lines, _ = runner(args.selftest, log, SELFTEST_ALLOWANCE_SECONDS)
-                # Failed tests are a result; a capture that never completed means the board did not run them.
-                complete = any(line.strip() == SELFTEST_COMPLETE_LINE for _, line in lines)
+                # Failed tests are a result; a stage that never completed means the board did not run them.
+                ended = {line.strip() for _, line in lines}
+                complete = {SELFTEST_COMPLETE_LINE, CONSOLE_COMPLETE_LINE} <= ended
                 selftest["outcome"] = "passed" if not code else "failed" if complete else "incomplete"
                 reports = [match[1] for _, line in lines if (match := REPORT_LINE.match(line))]
                 selftest["report"] = reports[-1] if reports else str(log_path.relative_to(output))

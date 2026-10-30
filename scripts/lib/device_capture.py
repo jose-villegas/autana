@@ -18,6 +18,13 @@ PERF_SEGMENT = re.compile(r"perf: (\S+) cyc avg/min/max (\d+)/(\d+)/(\d+) (\S+) 
 # RUNSUITE never prints it at all, which is what --no-complete is for.
 SELFTEST_COMPLETE_RE = re.compile(r"SELFTEST_COMPLETE(?:\s+failures=(\d+)\s+elapsed_ms=(\d+))?")
 SUITE_OVERFLOW_RE = re.compile(r"SUITE OVERFLOW:")
+# Why a capture stopped: its completion line arrived, whatever its tests reported.
+CAPTURE_COMPLETE = "complete"
+
+
+def capture_ended_line(command, reason):
+    """The line a capture command prints as it stops."""
+    return f"{command} capture ended: {reason}"
 
 # Each is a line the firmware prints as it dies: ESP-IDF's panic banner (the
 # exception in brackets after "panic'ed"), abort()'s own line, and a failed

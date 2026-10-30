@@ -20,7 +20,8 @@ sys.path.insert(0, str(REPO / "scripts/lib"))
 sys.path.insert(0, str(REPO / "launcher/tools/render"))
 from doc_tables import table_rows  # noqa: E402
 from process_tree import stop_process_tree, launch_process_tree, close_process_tree, terminate_unwinds  # noqa: E402
-from device_capture import RESULT_RE, BUILD_ID_RE as BUILD_LINE  # noqa: E402
+from device_capture import (RESULT_RE, BUILD_ID_RE as BUILD_LINE, CAPTURE_COMPLETE,  # noqa: E402
+                            capture_ended_line)
 
 from frame_profile import PROFILE_RE
 MEAN_RE = re.compile(r"\b(?P<name>\S+) (?:(?:both cores|one core): )?mean\s+(?P<value>\d+)us\b")
@@ -83,8 +84,10 @@ def parse_report(path):
 
 
 REPORT_LINE = re.compile(r"^report: (.+\.md)\s*$")
-# A self-test whose capture reached its completion line, whatever its tests reported.
-SELFTEST_COMPLETE_LINE = "selftest capture ended: complete"
+# A self-test whose capture reached its completion line, and board-steps.sh's console tests that ran,
+# whatever their tests reported.
+SELFTEST_COMPLETE_LINE = capture_ended_line("selftest", CAPTURE_COMPLETE)
+CONSOLE_COMPLETE_LINE = "console tests ended: complete"
 RUN_LINE = re.compile(r"^batch: (\S+) run (\d+)/(\d+)")
 
 def autana_command(*words, override=None):

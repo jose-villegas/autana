@@ -32,7 +32,7 @@ FAILURE_REASON = 'Board health check failed; see the job logs'
 
 
 def open_alarm(request=call):
-    return next((issue for issue in pages(
+    return next((issue['number'] for issue in pages(
         f'/issues?state=open&labels={LABEL}', None, request) if 'pull_request' not in issue), None)
 
 
@@ -40,9 +40,9 @@ def raise_alarm(reason, run_url, request=call):
     workflow = os.environ.get('GITHUB_WORKFLOW', 'Board health')
     job = os.environ.get('GITHUB_JOB', 'check')
     body = f'{reason}\n\nWorkflow/job: {workflow} / {job}\n\nLogs: {run_url}'
-    issue = open_alarm(request)
-    if issue is not None:
-        request('POST', f"/issues/{issue['number']}/comments", {'body': body})
+    number = open_alarm(request)
+    if number is not None:
+        request('POST', f'/issues/{number}/comments', {'body': body})
         return
     try:
         request('GET', f'/labels/{LABEL}')
@@ -53,17 +53,11 @@ def raise_alarm(reason, run_url, request=call):
     request('POST', '/issues', {'title': 'Board CI is down', 'labels': [LABEL], 'body': body})
 
 
-def clear_alarm(run_url, request=call, since=None):
-    """Close the alarm. With `since`, the board success that shows recovery, only when that came after
-    the alarm's last update, so an older success cannot close a newer outage."""
-    issue = open_alarm(request)
-    if issue is None:
-        return
-    if since is not None and since <= stamp(issue['updated_at']):
-        print(f"::notice::Board success at {since} predates the alarm's last update; it stays open")
-        return
-    request('POST', f"/issues/{issue['number']}/comments", {'body': f'Recovered: {run_url}'})
-    request('PATCH', f"/issues/{issue['number']}", {'state': 'closed'})
+def clear_alarm(run_url, request=call):
+    number = open_alarm(request)
+    if number is not None:
+        request('POST', f'/issues/{number}/comments', {'body': f'Recovered: {run_url}'})
+        request('PATCH', f'/issues/{number}', {'state': 'closed'})
 
 
 def stamp(text):
@@ -133,9 +127,8 @@ def night_running(request):
 
 
 def check(request, now, lanes, plugged, unreachable=(), nights=()):
-    """The problems found, and the latest board success."""
     if night_running(request):
-        return [], None
+        return []
     problems = []
     success = last_board_success(request, now, nights)
     if success is None or now - success > SUCCESS_WINDOW:
@@ -148,7 +141,7 @@ def check(request, now, lanes, plugged, unreachable=(), nights=()):
               + '; not checked: ' + ', '.join(missing))
     elif missing:
         problems.append('Boards missing from USB: ' + ', '.join(missing))
-    return problems, success
+    return problems
 
 
 def latest_lanes(directory):
@@ -236,15 +229,13 @@ def main(argv=None):
     else:
         if not nights_enabled(call):
             return 0
-        problems, success = check(call, datetime.now(timezone.utc), latest_lanes(args.lanes_from),
-                                  *read_plugged(args.devices), night_ends(args.lanes_from))
+        problems = check(call, datetime.now(timezone.utc), latest_lanes(args.lanes_from),
+                         *read_plugged(args.devices), night_ends(args.lanes_from))
         if problems:
             reason = '\n'.join(problems)
             args.reason_file.write_text(reason, encoding='utf-8')
             print(reason, file=sys.stderr)
             return 1
-        if success is not None:
-            clear_alarm(run_url(), call, since=success)
     return 0
 
 

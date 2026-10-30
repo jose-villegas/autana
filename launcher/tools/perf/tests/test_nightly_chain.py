@@ -57,9 +57,9 @@ Clock = partial(ScheduleClock, day=18, tzinfo=timezone.utc)
 
 class Replay(FakeAutana):
     def __init__(self, root, clock, builds=(), captures=(), durations=(), selftest_code=0, heavy_wait=0, capture_wait=0,
-                 selftest_complete=True):
+                 selftest_ended=(layout_measure.SELFTEST_COMPLETE_LINE, layout_measure.CONSOLE_COMPLETE_LINE)):
         super().__init__(root)
-        self.selftest_complete = selftest_complete
+        self.selftest_ended = selftest_ended
         self.clock = clock
         self.builds, self.captures, self.durations = iter(builds), iter(captures), iter(durations)
         self.selftest_code = selftest_code
@@ -73,7 +73,7 @@ class Replay(FakeAutana):
         if command == ["selftest-replay"]:
             self.boundaries.append(self.clock.now())
             self.clock.sleep(60)
-            ended = [(60, layout_measure.SELFTEST_COMPLETE_LINE)] if self.selftest_complete else []
+            ended = [(60, line) for line in self.selftest_ended]
             return self.selftest_code, [(0, "report: first.md"), *ended, (60, "report: selftest.md")], 60
         if "build" in command:
             self.clock.sleep(self.heavy_wait + next(self.durations, 60))
@@ -913,11 +913,13 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual(writes[-1]["selftest"]["report"], "selftest.md")
         self.assertTrue(lnt.night_ran(writes[-1]))
 
-    def test_selftest_that_never_completed_means_the_board_did_not_run(self):
+    def test_selftest_stage_that_never_completed_means_the_board_did_not_run(self):
         self.args.selftest = ["selftest-replay"]
-        _, _, writes = self.run_chain(selftest_code=1, selftest_complete=False)
-        self.assertEqual(writes[-1]["selftest"]["outcome"], "incomplete")
-        self.assertFalse(lnt.night_ran(writes[-1]))
+        for ended in ((), (layout_measure.SELFTEST_COMPLETE_LINE,), (layout_measure.CONSOLE_COMPLETE_LINE,)):
+            with self.subTest(ended=ended):
+                _, _, writes = self.run_chain(selftest_code=1, selftest_ended=ended)
+                self.assertEqual(writes[-1]["selftest"]["outcome"], "incomplete")
+                self.assertFalse(lnt.night_ran(writes[-1]))
 
     def test_selftest_runs_first_without_waiting(self):
         self.args.selftest = ["selftest-replay"]
