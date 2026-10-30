@@ -692,6 +692,43 @@ class NightlyTests(unittest.TestCase):
             self.assertEqual(chain.run_night(args, clock=self.clock, launch=launch), 1)
         self.assertEqual(launched, ["1"])
 
+    def test_night_keeps_the_plans_cutoff(self):
+        # A named plan's cut-off is its start: well before BOARD_LAST_START it still takes no joiner.
+        for cutoff, joined in (("start", []), ("window", ["2124"])):
+            with self.subTest(cutoff=cutoff):
+                self.clock = Clock(22, 30)
+                self.before_cutoff(3)
+                path = self.root / "plan.json"
+                window = self.window() if cutoff == "window" else dict(cutoff=self.clock.now().isoformat(), listed=[])
+                chain.write_json(path, dict(tip=self.commits[-1], night="2026-10-18",
+                                            started=self.clock.now().isoformat(), marker=self.clock.now().isoformat(),
+                                            **window, lanes={"FAK1": dict(lane="0/1", estimate=chain.FIRST_STEP_SECONDS)}))
+                args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data, out=self.args.out,
+                                       suite=self.args.suite)
+                finish = self.clock.now() + timedelta(seconds=2 * chain.RESCAN_SECONDS)
+                launched = []
+
+                def launch(command, **options):
+                    launched.append(self.launched_board(command))
+                    return SimpleNamespace(poll=lambda: 0 if self.clock.now() >= finish else None, wait=lambda: 0)
+                with self.fleet(([self.row("2124")], [])):
+                    self.assertEqual(chain.run_night(args, clock=self.clock, launch=launch), 0)
+                self.assertEqual(launched, ["FAK1", *joined])
+
+    def test_plans_listed_boards_count_as_seen(self):
+        # Boards the plan listed busy are working, not down, even when no later scan lists them.
+        for listed, status in ((["2124"], 0), ([], 1)):
+            with self.subTest(listed=listed):
+                path = self.root / "plan.json"
+                chain.write_json(path, dict(tip=self.commits[-1], night="2026-10-18",
+                                            started=self.clock.now().isoformat(), marker=self.clock.now().isoformat(),
+                                            cutoff=self.clock.now().isoformat(), listed=listed, lanes={}))
+                args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data, out=self.args.out,
+                                       suite=self.args.suite)
+                with self.fleet() as scans, patch("builtins.print"):
+                    self.assertEqual(chain.run_night(args, clock=self.clock, launch=Mock()), status)
+                scans.assert_not_called()
+
     def test_scan_that_reaches_the_cutoff_starts_no_lane(self):
         args = self.empty_night(1)
         # The scan starts half a scan before the cut-off and takes a whole one.
