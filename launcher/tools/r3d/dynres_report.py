@@ -368,21 +368,18 @@ def chart(rows, path):
 
     budgets = sorted({r["budget"] for r in rows})
     cameras = sorted({r["camera"] for r in rows})
-    figure, axes = subplots(2 * len(cameras), len(budgets), (6 * len(budgets), 6 * len(cameras)), squeeze=False)
+    figure, axes = subplots(len(cameras), len(budgets), (6 * len(budgets), 3.5 * len(cameras)), squeeze=False)
     for row, camera in enumerate(cameras):
         for column, budget in enumerate(budgets):
-            cost_axis, size_axis = axes[2 * row][column], axes[2 * row + 1][column]
+            cost_axis = axes[row][column]
             for r in (r for r in rows if r["camera"] == camera and r["budget"] == budget):
                 label = r["policy"] if r["ladder"] == "half" else f"{r['policy']}, {r['ladder']}"
                 seconds = [(i + 1) * 0.05 for i in range(len(r["costs"]))]
                 cost_axis.plot(seconds, [c / 1000 for c in r["costs"]], linewidth=0.8, label=label)
-                share = [100 * w * h / (DESTINATION[0] * DESTINATION[1]) for w, h in r["sizes"]]
-                size_axis.step(seconds, share, linewidth=0.8, where="post", label=label)
             cost_axis.axhline(budget / 1000, color="black", linestyle="--", linewidth=0.8)
             cost_axis.set_title(f"{camera}, budget {budget / 1000:.0f} ms")
             cost_axis.set_ylabel("draw + upscale, ms")
-            size_axis.set_ylabel("pixels drawn, % of panel")
-            size_axis.set_xlabel("path time, s")
+            cost_axis.set_xlabel("path time, s")
             cost_axis.legend(fontsize=7, loc="upper right")
     save(figure, path)
 
