@@ -397,8 +397,10 @@ render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* hal
         return expanded;
     }
     const int64_t began_us = timing_now_us();
-    framegen_picture_t generated;
-    const gfx_target_t* picture = c->frame.generated ? framegen_target_picture(&c->framegen, &generated) : NULL;
+    GFX_TARGET_STORAGE(GFX_ATTACHMENT_FURTHER) generated;
+    gfx_target_of_color_depth(&generated.target, c->framegen.colour, c->framegen.depth, c->framegen.width,
+                              c->framegen.height, 0);
+    const gfx_target_t* picture = c->frame.generated ? &generated.target : NULL;
     raster_upscale_picture(&c->raster, picture, destination, seams, size.width, size.height);
     c->frame.upscale_us = (int32_t)(timing_now_us() - began_us);
     if (c->frame.generated) {
