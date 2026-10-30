@@ -83,6 +83,7 @@ render_context_drop_scratch(render_context_t* c) {
 void
 render_context_release(render_context_t* c) {
     render_context_drop_scratch(c);
+    framegen_target_free(&c->framegen);
     memory_free(c->debug_view_state);
     *c = (render_context_t){
         .scale_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT,
@@ -100,6 +101,20 @@ render_context_set_take(render_context_t* c, memory_take_fn take) {
 void
 render_context_forget(render_context_t* c) {
     raster_split_forget(&c->split);
+    c->kept = false;
+}
+
+void
+render_context_set_frame_generation(render_context_t* c, bool on) {
+    /* A caller may set it every frame: only a change forgets the generated cost. */
+    if (on == c->generating) {
+        return;
+    }
+    c->generating = on;
+    c->generated_us = 0;
+    if (!on) {
+        framegen_target_free(&c->framegen);
+    }
 }
 
 void
@@ -116,6 +131,7 @@ render_context_set_dynamic_resolution(render_context_t* c, const resolution_conf
         return;
     }
     c->ladder = *config;
+    c->shown_us = config->budget_us;
     c->chose_at_us = 0;
     c->policy = model == NULL ? RENDER_STEPPED : RENDER_PREDICTED;
     if (c->policy == RENDER_STEPPED) {
@@ -223,9 +239,58 @@ draw_second_view(render_context_t* c) {
 }
 #endif
 
+/* The ladder the policies price a drawn frame against. With generation on,
+ * a drawn frame and the frames generated from it share their budgets: the
+ * drawn one gets what the generated ones leave, never less than one frame's. */
+static const resolution_config_t*
+policy_config(render_context_t* c) {
+    c->ladder.budget_us = c->shown_us;
+    if (c->generating && c->generated_us != 0) {
+        const int32_t shared_us =
+            (FRAMEGEN_SHOWN_PER_DRAWN * c->shown_us) - ((FRAMEGEN_SHOWN_PER_DRAWN - 1) * c->generated_us);
+        c->ladder.budget_us = shared_us > c->shown_us ? shared_us : c->shown_us;
+    }
+    return &c->ladder;
+}
+
+/* Whether this frame can be warped from the kept one: generation on, a drawn
+ * frame kept, no debug view, the same viewport, and a target. */
+static bool
+can_generate(render_context_t* c, const render_view_t* view) {
+    const raster_t* r = &c->raster;
+    const viewport_t a = c->kept_view.viewport;
+    const viewport_t b = view->viewport;
+    if (!c->generating || !c->kept || r->attachment_count != 0 || a.width != b.width || a.height != b.height
+        || a.quarter != b.quarter) {
+        return false;
+    }
+    if (c->framegen.width != r->width || c->framegen.height != r->height) {
+        framegen_target_free(&c->framegen);
+        return framegen_target_alloc(&c->framegen, r->width, r->height);
+    }
+    return true;
+}
+
+/* The kept frame warped to `view`, written over the raster's own picture. */
+static void
+generate(render_context_t* c, const render_view_t* view) {
+    const int64_t began_us = timing_now_us();
+    framegen_warp(&c->raster, &c->kept_view, view, &c->framegen);
+    (void)framegen_fill(&c->raster, &c->framegen);
+    c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
+    c->frame.generated = true;
+    c->kept = false; /* the generated frame is written over it */
+}
+
 bool
 render_context_draw(render_context_t* c, const r3d_instance_t* instances, int count, const render_view_t* view,
                     uint16_t clear) {
+    if (can_generate(c, view)) {
+        generate(c, view);
+        return true;
+    }
+    c->frame.generated = false;
+    c->kept = false;
     c->frame.predicted_us = 0;
     const int step = current_step(c);
     raster_t* r = &c->raster;
@@ -256,7 +321,8 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
             c->frame.stats = raster_census(r, view);
             const int32_t elapsed_us = c->chose_at_us == 0 ? 0 : (int32_t)(began_us - c->chose_at_us);
             c->chose_at_us = began_us;
-            const int chosen = resolution_predict_choose(&c->predict, &c->ladder, c->frame.stats.triangles, elapsed_us);
+            const int chosen =
+                resolution_predict_choose(&c->predict, policy_config(c), c->frame.stats.triangles, elapsed_us);
             c->frame.predicted_us = (int32_t)c->predict.chosen_us;
             r->width = c->ladder.steps[chosen].width;
             r->height = raster_present_size(c->ladder.steps[chosen], r->present).height;
@@ -275,6 +341,8 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
         raster_show(r);
     }
 #endif
+    c->kept = true;
+    c->kept_view = *view;
     return true;
 }
 
@@ -303,11 +371,16 @@ render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* hal
     const int64_t began_us = timing_now_us();
     raster_upscale_seamed(&c->raster, destination, seams, size.width, size.height);
     c->frame.upscale_us = (int32_t)(timing_now_us() - began_us);
+    if (c->frame.generated) {
+        /* Not priced itself: its cost sets what the next drawn frame may spend. */
+        c->generated_us = c->frame.draw_us + c->frame.upscale_us;
+        return expanded;
+    }
     const int32_t cost_us = c->frame.draw_us + c->frame.upscale_us;
     if (c->policy == RENDER_STEPPED) {
-        (void)resolution_control_update(&c->control, &c->ladder, cost_us);
+        (void)resolution_control_update(&c->control, policy_config(c), cost_us);
     } else if (c->policy == RENDER_PREDICTED) {
-        resolution_predict_measured(&c->predict, &c->ladder, c->frame.stats.triangles, cost_us);
+        resolution_predict_measured(&c->predict, policy_config(c), c->frame.stats.triangles, cost_us);
     }
     return expanded;
 }
