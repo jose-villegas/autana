@@ -27,7 +27,10 @@
 #include <stdint.h>
 
 /* 16-bit lanes in one vector register. */
-#define SIMD_LANES_U16 (SIMD_ALIGN / (int)sizeof(uint16_t))
+#define SIMD_LANES_U16   (SIMD_ALIGN / (int)sizeof(uint16_t))
+
+/* `v` in both 16-bit halves of a 32-bit word: one u16 broadcast to a pair. */
+#define SIMD_U16_PAIR(v) ((uint32_t)(uint16_t)(v) * 0x10001U)
 
 /* True if `p` sits on a SIMD_ALIGN boundary. */
 static inline bool

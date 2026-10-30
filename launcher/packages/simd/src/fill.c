@@ -23,7 +23,7 @@ simd_fill_u16(uint16_t* dst, uint16_t value, size_t count) {
         dst += head;
         count -= head;
         const size_t blocks = count / SIMD_LANES_U16;
-        simd_pie_fill_u16(dst, value * 0x10001U, blocks);
+        simd_pie_fill_u16(dst, SIMD_U16_PAIR(value), blocks);
         dst += blocks * SIMD_LANES_U16;
         count -= blocks * SIMD_LANES_U16;
     }
