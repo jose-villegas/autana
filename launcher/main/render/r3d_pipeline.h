@@ -71,14 +71,21 @@ size_t r3d_pipeline_work_bytes(void);
 /* The planes of the lens's picture, in mesh ticks: near, then its four sides. */
 void r3d_lens_frustum(const r3d_lens_t* lens, planef_t out[PLANE_FRUSTUM_COUNT]);
 
+/* The depth scale a picture's kept clusters allow, folded over its meshes:
+ * depth_near starts at INFINITY (nothing kept) and only falls. */
+typedef struct r3d_depth_fit {
+    float near_z;     /* the clip plane, the least scale */
+    float depth_near; /* inverse_depth_scale_fit(near_z, the nearest bound so far) */
+} r3d_depth_fit_t;
+
 /* Walks the node tree and writes the clusters any part of which may be on
  * screen, roughly nearest first, returning how many. `out` holds
- * mesh->cluster_count entries. A `nearest` not NULL is lowered to a bound on
- * the view depth of every kept cluster's box where the frustum keeps it
- * (box3f_plane_distance_min_inside() per plane the box crosses), so calls over
- * several meshes fold into one bound; a box reaching the near plane gives near_z. */
+ * mesh->cluster_count entries. A `fit` not NULL is lowered to the scale of a
+ * bound on the view depth of every kept cluster's box where the frustum keeps
+ * it (box3f_plane_distance_min_inside() per plane the box crosses); a box
+ * reaching the near plane gives near_z. */
 int r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* out, r3d_pipeline_work_t* work,
-                      float* nearest);
+                      r3d_depth_fit_t* fit);
 
 /* The screen rows a cluster's vertices span, for a caller drawing only some
  * rows to skip it whole. A cluster with a vertex behind the near plane or

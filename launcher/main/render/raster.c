@@ -7,7 +7,6 @@
 
 #include "core/job.h"
 #include "core/tune.h"
-#include "math/projection/inverse_depth.h"
 #include "profile/frame_cost.h"
 #include "profile/frame_laps.h"
 #include "render/raster_internal.h"
@@ -247,11 +246,11 @@ instance_lens(const raster_t* raster, const r3d_instance_t* instance, const rend
 
 static int
 cull_instance(const r3d_instance_t* instance, const r3d_lens_t* lens, uint16_t* out, raster_stats_t* stats,
-              r3d_pipeline_work_t* work, float* nearest) {
+              r3d_pipeline_work_t* work, r3d_depth_fit_t* fit) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
     int visible;
     if (cull) {
-        visible = r3d_pipeline_cull(mesh, lens, out, work, nearest);
+        visible = r3d_pipeline_cull(mesh, lens, out, work, fit);
     } else {
         visible = mesh->cluster_count;
         for (int i = 0; i < visible; i++) {
@@ -266,24 +265,24 @@ cull_instance(const r3d_instance_t* instance, const r3d_lens_t* lens, uint16_t* 
 }
 
 /* Culls every instance into the census list and returns the depth scale
- * the picture is drawn with: the nearest bound of what was kept, at least
- * the view's near_z, and near_z when nothing was. */
+ * the picture is drawn with: the fit of the nearest bound of what was kept,
+ * and near_z when nothing was. The fit's power of two keeps the scale still
+ * while the bound drifts, so ties do not flip from frame to frame, and the
+ * same at every size. */
 static float
 cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, raster_stats_t* stats,
                draw_work_t* work) {
     uint16_t* culled = work->buffers.culled;
-    float nearest = INFINITY;
+    r3d_depth_fit_t fit = {view->lens.near_z, INFINITY};
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];
         r3d_lens_t lens;
         instance_lens(raster, instance, view, fitted, &lens);
-        culled[0] = (uint16_t)cull_instance(instance, &lens, culled + 1, stats, work->buffers.work[0],
-                                            depth_fit ? &nearest : NULL);
+        culled[0] =
+            (uint16_t)cull_instance(instance, &lens, culled + 1, stats, work->buffers.work[0], depth_fit ? &fit : NULL);
         culled += 1 + (size_t)instance->mesh->cluster_count;
     }
-    /* The fit's power of two keeps the scale still while the bound drifts,
-     * so ties do not flip from frame to frame, and the same at every size. */
-    return nearest < INFINITY ? inverse_depth_scale_fit(view->lens.near_z, nearest) : view->lens.near_z;
+    return fit.depth_near < INFINITY ? fit.depth_near : view->lens.near_z;
 }
 
 /* The writers of the attachments that write while instance `index` is
