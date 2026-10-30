@@ -2,17 +2,6 @@
  * render_host: the shared host render procedure. Real scene code draws into
  * gfx-owned pictures; gfx_read_panel_row() supplies completed output.
  * BMP and AVI encoding use gfx/capture/screenshot.h. No device access.
- *
- * --serve draws on demand instead, one command per stdin line, each answered
- * on stdout; anything else the process prints goes to stderr:
- *
- *   frame               draws a frame: "frame w h stride us", us the draw's time,
- *                       then stride * h bytes of bottom-up 24-bit BGR rows
- *   set owner.name=V    sets a tunable: "ok" or "error ..."
- *   tunables PREFIX     "ok" then " name=value:low:high" per tunable named PREFIX...
- *   quit                ends the process
- *
- * and the scene's own commands (render_scene_t.command).
  */
 
 #include "render_host.h"
@@ -22,7 +11,6 @@
 #include <string.h>
 
 #include "console/console_tune.h"
-#include "core/timing.h"
 #include "core/tune.h"
 #include "draw/draw.h"
 #include "gfx/capture/screenshot.h"
@@ -40,8 +28,6 @@
 #include <fcntl.h>
 #include <io.h>
 #include "image/pixel/rgb565.h"
-#else
-#include <unistd.h>
 #endif
 
 #define DEFAULT_DT_MS   16
@@ -49,10 +35,6 @@
 /* RIFF AVI 1.0 keeps its whole size in a 32-bit field; players choke well
  * before that wraps, so a run past this is refused instead of written. */
 #define VIDEO_MAX_BYTES ((int64_t)1024 * 1024 * 1024)
-
-/* The longest command --serve reads and reply it writes. */
-#define SERVE_LINE_MAX  256
-#define SERVE_REPLY_MAX 4096
 
 static void
 tune_reply(const char* line) {
@@ -241,97 +223,10 @@ apply_input(const render_scene_t* scene, int index, input_t* state) {
     }
 }
 
-/* The stdout the process started with, for --serve's replies alone: from
- * here on stdout is stderr, so nothing else printed lands among the frames. */
-static FILE*
-serve_channel(void) {
-    (void)fflush(stdout);
-#if defined(_WIN32)
-    const int channel = _dup(_fileno(stdout));
-    if (channel < 0 || _dup2(_fileno(stderr), _fileno(stdout)) != 0) {
-        return NULL;
-    }
-    (void)_setmode(channel, _O_BINARY);
-    return _fdopen(channel, "wb");
-#else
-    const int channel = dup(STDOUT_FILENO);
-    if (channel < 0 || dup2(STDERR_FILENO, STDOUT_FILENO) < 0) {
-        return NULL;
-    }
-    return fdopen(channel, "wb");
-#endif
-}
-
-/* `line` past `command` and its space, or NULL when it is another command. */
-static const char*
-argument_of(const char* line, const char* command) {
-    const size_t length = strlen(command);
-    return strncmp(line, command, length) == 0 && line[length] == ' ' ? line + length + 1 : NULL;
-}
-
-/* "ok", then " name=value:low:high" for each tunable whose name starts with `prefix`. */
-static void
-tunables_reply(const char* prefix, char* reply, size_t size) {
-    int used = snprintf(reply, size, "ok");
-    for (const tune_entry_t* e = tune_shared()->first; e != NULL && used >= 0 && (size_t)used < size; e = e->next) {
-        if (strncmp(e->name, prefix, strlen(prefix)) == 0) {
-            used += snprintf(reply + used, size - (size_t)used, " %s=%ld:%ld:%ld", e->name, (long)*e->value,
-                             (long)e->low, (long)e->high);
-        }
-    }
-}
-
-/* --serve: draws when asked, until "quit" or the end of stdin. */
-static int
-serve(const render_scene_t* scene, render_frame_t* frame, affine2x_t t, bool panel, int out_w, int out_h,
-      int32_t stride, uint8_t* frame_buf) {
-    FILE* channel = serve_channel();
-    if (channel == NULL) {
-        fprintf(stderr, "%s: --serve cannot keep stdout for its replies\n", scene->name);
-        return 1;
-    }
-    char line[SERVE_LINE_MAX];
-    char reply[SERVE_REPLY_MAX];
-    while (fgets(line, sizeof line, stdin) != NULL) {
-        line[strcspn(line, "\r\n")] = '\0';
-        const char* argument;
-        if (strcmp(line, "quit") == 0) {
-            break;
-        }
-        if (strcmp(line, "frame") == 0) {
-            const int64_t start_us = timing_now_us();
-            scene_shell_compose(0); /* the scene as it stands: no time passes */
-            scene->draw(frame);
-            const int64_t draw_us = timing_now_us() - start_us;
-            convert_frame(t, panel, out_w, out_h, stride, frame_buf);
-            gfx_present();
-            frame->index++;
-            fprintf(channel, "frame %d %d %ld %lld\n", out_w, out_h, (long)stride, (long long)draw_us);
-            (void)fwrite(frame_buf, (size_t)stride, (size_t)out_h, channel);
-        } else {
-            if ((argument = argument_of(line, "set")) != NULL) {
-                if (render_host_set_tunable_text(argument)) {
-                    (void)snprintf(reply, sizeof reply, "ok");
-                } else {
-                    (void)snprintf(reply, sizeof reply, "error cannot set %s", argument);
-                }
-            } else if ((argument = argument_of(line, "tunables")) != NULL) {
-                tunables_reply(argument, reply, sizeof reply);
-            } else if (scene->command == NULL || !scene->command(line, reply, sizeof reply)) {
-                (void)snprintf(reply, sizeof reply, "error unknown command: %s", line);
-            }
-            fprintf(channel, "%s\n", reply);
-        }
-        (void)fflush(channel);
-    }
-    (void)fclose(channel);
-    return 0;
-}
-
 static int
 usage(const char* argv0) {
     fprintf(stderr,
-            "usage: %s [--quarter N] [--panel] [--frames N] [--dt N] [-o PATH] [--video PATH] [--serve]\n"
+            "usage: %s [--quarter N] [--panel] [--frames N] [--dt N] [-o PATH] [--video PATH]\n"
             "       [--set owner.name=value ...] [--tunables] [--crop]\n"
             "       docs/tools/Render-Harness.md lists options; the scene may take more.\n",
             argv0);
@@ -349,7 +244,6 @@ main(int argc, char** argv) {
     const char* out_path = NULL;
     const char* video_path = NULL;
     bool crop = false;
-    bool serving = false;
 
     char* rest[64];
     int rest_count = 0;
@@ -378,8 +272,6 @@ main(int argc, char** argv) {
             video_path = argv[++i];
         } else if (strcmp(a, "--crop") == 0) {
             crop = true;
-        } else if (strcmp(a, "--serve") == 0) {
-            serving = true;
         } else if (rest_count < (int)(sizeof(rest) / sizeof(rest[0]))) {
             rest[rest_count++] = argv[i];
         } else {
@@ -447,14 +339,6 @@ main(int argc, char** argv) {
     if (frame_buf == NULL) {
         fprintf(stderr, "out of memory\n");
         return 1;
-    }
-
-    if (serving) {
-        render_frame_t served = {.count = 1, .quarter = quarter};
-        const int code = serve(scene, &served, t, panel, out_w, out_h, stride, frame_buf);
-        gfx_readback_end();
-        free(frame_buf);
-        return code;
     }
 
     render_video_t video;

@@ -17,12 +17,12 @@
 #include "render/view/raster_show.h"
 
 static const render_debug_view_t views[] = {
-    {"depth", 0, raster_depth_view, NULL, NULL, NULL},
-    {"tiles", 0, raster_depth_tiles_view, NULL, NULL, NULL},
-    {"motion", sizeof(raster_motion_t), raster_motion_view, NULL, NULL, NULL},
-    {"meshlets", sizeof(raster_meshlets_t), raster_meshlets_view, NULL, NULL, NULL},
-    {"cull", sizeof(raster_cull_t), raster_cull_view, raster_cull_second_view, raster_cull_overlay, "cullview"},
-    {"boxes", sizeof(raster_boxes_t), raster_boxes_view, NULL, raster_boxes_overlay, "boxview"},
+    {"depth", 0, raster_depth_view, NULL, NULL},
+    {"tiles", 0, raster_depth_tiles_view, NULL, NULL},
+    {"motion", sizeof(raster_motion_t), raster_motion_view, NULL, NULL},
+    {"meshlets", sizeof(raster_meshlets_t), raster_meshlets_view, NULL, NULL},
+    {"cull", sizeof(raster_cull_t), raster_cull_view, raster_cull_second_view, raster_cull_overlay},
+    {"boxes", sizeof(raster_boxes_t), raster_boxes_view, NULL, raster_boxes_overlay},
 };
 _Static_assert(RENDER_DEBUG_VIEW_COUNT == sizeof views / sizeof views[0], "view table length");
 #endif
