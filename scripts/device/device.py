@@ -32,7 +32,7 @@ import autana_config  # noqa: E402
 import board_serial
 from console_protocol import FRAMED_ENDINGS, replies_to, require_development, reply_prefix
 from device_capture import (BOOTS_FROM_RESET, BOOTS_ON_RUNNING, BUILD_ID_BYTES_RE as BUILD_ID, BUILD_ID_REQUEST,
-                            ERROR_LINE_RE, crash_signs, suite_failure_signs)
+                            CAPTURE_COMPLETE, ERROR_LINE_RE, capture_ended_line, crash_signs, suite_failure_signs)
 
 from process_tree import (stop_process_tree, launch_process_tree, close_process_tree,
                           install_console_interrupt_handler)
@@ -549,9 +549,9 @@ def print_suite_output(data, record_path, command, reason, verbose, boots_allowe
     for sign in signs:
         print(sign)
     print(f"{command} capture: {record_path}")
-    print(f"{command} capture ended: {reason}")
+    print(capture_ended_line(command, reason))
     print_report_summary(report_path)
-    if reason != "complete":
+    if reason != CAPTURE_COMPLETE:
         raise RuntimeError(f"no completion line arrived: the capture ended {reason}")
     return failed + crashed + len(signs)
 
@@ -838,9 +838,9 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
                     if (b"no suite named '" + suite_name.encode("ascii") + b"'") in text:
                         raise RuntimeError("no suite named " + suite_name + " on this build")
                     if text.startswith(suite_complete):
-                        return bytes(data), "complete"
+                        return bytes(data), CAPTURE_COMPLETE
             if complete is not None and complete(data):
-                return bytes(data), "complete"
+                return bytes(data), CAPTURE_COMPLETE
     return bytes(data), "timeout"
 
 
@@ -959,7 +959,7 @@ def await_console(args, board, build_id, acquired_at, connection):
                               build_id=latest_build_id_from_bytes(data), reason=reason,
                               worktree=str(Path(args.worktree).resolve()),
                               commit=git_commit(args.worktree), acquired_at=acquired_at)
-    if reason == "complete":
+    if reason == CAPTURE_COMPLETE:
         print("booted BUILD_ID=" + build_id + " to its console")
     else:
         print(f"no console from BUILD_ID={build_id} within {BOOT_WAIT_SECONDS}s ({reason}) - "
