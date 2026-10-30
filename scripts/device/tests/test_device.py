@@ -3035,11 +3035,34 @@ class HeartbeatRetryTests(unittest.TestCase):
         store.heartbeat.side_effect = [FileNotFoundError(2, "No such file or directory"), True]
         lock = device.HeldLock(store, BOARD, "agent", "flash", 0)
         lock.stop.wait = mock.Mock(side_effect=[False, False, True])
-        with mock.patch.object(device.HeldLock, "HEARTBEAT_SECONDS", 0),              contextlib.redirect_stderr(io.StringIO()) as stderr:
+        with mock.patch.object(device.HeldLock, "HEARTBEAT_SECONDS", 0), \
+             contextlib.redirect_stderr(io.StringIO()) as stderr:
             lock.keep_alive()
         self.assertEqual(store.heartbeat.call_count, 2)
         self.assertFalse(lock.lost.is_set())
         self.assertIn("retrying", stderr.getvalue())
+
+    def test_a_retried_heartbeat_that_is_refused_loses_the_lock(self):
+        store = mock_store()
+        store.heartbeat.side_effect = [FileNotFoundError(2, "No such file or directory"), False]
+        lock = device.HeldLock(store, BOARD, "agent", "flash", 0)
+        lock.stop.wait = mock.Mock(side_effect=[False, False, True])
+        with mock.patch.object(device.HeldLock, "HEARTBEAT_SECONDS", 0), \
+             contextlib.redirect_stderr(io.StringIO()):
+            lock.keep_alive()
+        self.assertTrue(lock.lost.is_set())
+
+    def test_a_heartbeat_failing_past_the_stale_window_loses_the_lock(self):
+        store = mock_store()
+        store.heartbeat.side_effect = FileNotFoundError(2, "No such file or directory")
+        lock = device.HeldLock(store, BOARD, "agent", "flash", 0)
+        lock.renewed_at = time.monotonic() - device_lock.DEFAULT_STALE_SECONDS
+        lock.stop.wait = mock.Mock(side_effect=[False, True])
+        with mock.patch.object(device.HeldLock, "HEARTBEAT_SECONDS", 0), \
+             contextlib.redirect_stderr(io.StringIO()):
+            lock.keep_alive()
+        self.assertEqual(store.heartbeat.call_count, 1)
+        self.assertTrue(lock.lost.is_set())
 
     def test_a_raising_borrowed_check_is_retried(self):
         store = mock_store()
