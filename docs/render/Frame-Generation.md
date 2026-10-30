@@ -189,9 +189,10 @@ on, so the render context times both and decides each frame:
 | Last measured | Next frame after a drawn one |
 |---|---|
 | No generated frame yet | Generated |
-| The generated frame cost `FRAMEGEN_GAIN_PERCENT` less than the drawn one | Generated |
+| The generated frame cost under (100 − `FRAMEGEN_GAIN_PERCENT`)% of the drawn one | Generated |
+| Already generating, and it still costs less than the drawn one | Generated |
 | It saved less | Drawn, priced alone at one frame's budget |
-| `FRAMEGEN_RETRY_DRAWN` drawn frames in a row | Generated, to measure it again: the view, the scene or the drawn size may have changed |
+| `FRAMEGEN_RETRY_DRAWN` drawn frames in a row | Generated, to measure it again |
 
 The margin keeps a generated frame, which shows the scene less exactly than
 a drawn one, from being shown for a saving too small to see.
