@@ -23,9 +23,6 @@ static GFX_TARGET_STORAGE(1) half_target = GFX_TARGET_COLOR_INIT(NULL, GFX_WIDTH
 /* Every half row starts on a PIE load's 16 bytes. */
 #define HALF_ALIGN  16
 _Static_assert((HALF_WIDTH * sizeof(gfx_color_t)) % HALF_ALIGN == 0, "half rows stay aligned");
-/* At 2x each panel pixel's centre sits a quarter of a half-picture pixel from
- * its own pixel's centre, towards one neighbour: bilinear gives that neighbour
- * a quarter (rgb565_spread_quarter). */
 static gfx_band_overlay_fn frame_overlay;
 
 gfx_color_t*
@@ -99,6 +96,10 @@ clear_expanded_frame(bool free_picture) {
         half_target.attachment[0].pixels = half_image;
     }
 }
+
+/* At 2x each panel pixel's centre sits a quarter of a half-picture pixel from
+ * its own pixel's centre, towards one neighbour: bilinear gives that neighbour
+ * a quarter (rgb565_spread_quarter). */
 
 /* Seam bytes cover whole half rows, so each byte's eight pixels share one test. */
 _Static_assert(HALF_WIDTH % GFX_SEAM_BITS == 0, "a half row is whole seam bytes");

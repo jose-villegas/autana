@@ -360,9 +360,7 @@ gfx_mode_enter(const gfx_mode_request_t* request) {
         fb_filled = false;
         dirty_mark_all();
     } else if (granted.layout == GFX_LAYOUT_INDEXED) {
-        if (granted.index_grid_w <= 0 || granted.index_grid_h <= 0 || granted.cell_size <= 0
-            || !indexed_begin(&granted)) {
-            indexed_end();
+        if (!indexed_begin(&granted)) {
             note_denial();
             return &current_mode; /* stays GFX_LAYOUT_FULL_FB */
         }
