@@ -34,10 +34,13 @@ def night_manifest(board, machine, night, lane, results, stop_reason, last_measu
 
 def night_ran(manifest):
     """Whether a lane ran its self-test and chain to the end, whatever its tests reported: its board
-    was up. A missing or unfinished manifest, a self-test that never completed or a stop other than
-    another job taking the board means the board could not run."""
-    return (bool(manifest and manifest.get("ended")) and manifest.get("stop_reason") in (None, "busy")
-            and manifest.get("selftest", {}).get("outcome") != "incomplete")
+    was up. A missing or unfinished manifest, a self-test that never completed, captures that all
+    failed or a stop other than another job taking the board means the board could not run."""
+    if not (manifest and manifest.get("ended")) or manifest.get("stop_reason") not in (None, "busy"):
+        return False
+    outcomes = {step["outcome"] for step in manifest.get("steps", [])}
+    return (manifest.get("selftest", {}).get("outcome") != "incomplete"
+            and ("capture_failed" not in outcomes or "measured" in outcomes))
 
 
 def read_night(data_dir, board, key):

@@ -45,12 +45,13 @@ class Repository:
         return {}
 
 
-def night(directory, board, selftest='passed', stop_reason=None, ended=NOW):
-    """A lane manifest on perf-data, as scoped_chain.py writes it."""
+def night(directory, board, selftest='passed', stop_reason=None, ended=NOW, steps=()):
+    """A lane manifest on perf-data, as scoped_chain.py writes it, with steps of these outcomes."""
     path = Path(directory) / 'scoped' / board / '2026-10-23-1900' / 'night.json'
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(dict(board=board, stop_reason=stop_reason, selftest=dict(outcome=selftest),
-                                    ended=ended and ended.isoformat(), steps=[])))
+                                    ended=ended and ended.isoformat(),
+                                    steps=[dict(outcome=outcome) for outcome in steps])))
 
 
 def board_job(status='completed', age=timedelta(), conclusion='success'):
@@ -84,14 +85,6 @@ class BoardAlarmTests(unittest.TestCase):
                 ('POST', '/issues/7/comments', {'body': 'Recovered: https://run'}),
                 ('PATCH', '/issues/7', {'state': 'closed'})] if opened else [])
 
-    def test_clear_with_success_closes_only_after_the_alarms_last_update(self):
-        for since, closed in [(NOW - timedelta(seconds=1), False), (NOW, False), (NOW + timedelta(seconds=1), True)]:
-            request = Repository()
-            request.issues = [{'number': 7, 'updated_at': NOW.isoformat().replace('+00:00', 'Z')}]
-            with mock.patch('sys.stdout', new_callable=io.StringIO):
-                alarm.clear_alarm('https://run', request, since=since)
-            self.assertEqual(('PATCH', '/issues/7', {'state': 'closed'}) in request.calls, closed)
-
     def test_completed_runs_query_has_utc_success_window(self):
         request = Repository()
         alarm.last_board_success(request, NOW.astimezone(timezone(timedelta(hours=2))))
@@ -123,9 +116,10 @@ class BoardAlarmTests(unittest.TestCase):
 
     def test_nights_that_ran_count_whatever_their_tests_reported(self):
         with tempfile.TemporaryDirectory() as directory:
-            night(directory, '2124', selftest='failed')
+            night(directory, '2124', selftest='failed', steps=('capture_failed', 'measured', 'build_failed'))
             night(directory, '20E8', ended=NOW - timedelta(hours=1))
             later = NOW + timedelta(hours=1)
+            night(directory, 'eeee', steps=('skipped_same_image', 'capture_failed'), ended=later)
             night(directory, 'aaaa', selftest='incomplete', ended=later)
             night(directory, 'bbbb', stop_reason='unplugged', ended=later)
             night(directory, 'cccc', stop_reason='capture_failures', ended=later)
@@ -138,12 +132,12 @@ class BoardAlarmTests(unittest.TestCase):
             # The self-test completed with scenes over their frame-time ceilings: the lane failed, the board ran.
             night(directory, '2124', selftest='failed')
             nights = list(alarm.night_ends(directory))
-            self.assertEqual(alarm.check(Repository(), NOW, ['2124'], ['2124'], nights=nights), ([], NOW))
+            self.assertEqual(alarm.check(Repository(), NOW, ['2124'], ['2124'], nights=nights), [])
             self.assertEqual(alarm.check(Repository(), NOW, ['2124', '20E8'], ['2124'], nights=nights),
-                             (['Boards missing from USB: 20E8'], NOW))
+                             ['Boards missing from USB: 20E8'])
             night(directory, '2124', selftest='incomplete')
             self.assertEqual(alarm.check(Repository(), NOW, ['2124'], ['2124'], nights=alarm.night_ends(directory)),
-                             ([f'No board success within {alarm.SUCCESS_WINDOW}'], None))
+                             [f'No board success within {alarm.SUCCESS_WINDOW}'])
 
     def test_stuck_jobs_need_old_queue_and_no_board_in_progress(self):
         for age, running, expected in [(alarm.QUEUED_LIMIT, False, False),
@@ -166,7 +160,7 @@ class BoardAlarmTests(unittest.TestCase):
                 {'name': 'marker', 'labels': ['ubuntu-24.04'], 'status': 'completed'},
                 {'name': 'wait (1)', 'labels': ['ubuntu-24.04'], 'status': status}, job]
             with mock.patch('sys.stdout', new_callable=io.StringIO) as output:
-                self.assertEqual(alarm.check(request, NOW, ['missing'], []), ([], None))
+                self.assertEqual(alarm.check(request, NOW, ['missing'], []), [])
                 with tempfile.TemporaryDirectory() as directory, mock.patch.dict(os.environ,
                         GITHUB_OUTPUT=str(Path(directory) / 'output')):
                     self.assertEqual(alarm.probe_devices('/absent', '/absent', request), 0)
@@ -180,7 +174,7 @@ class BoardAlarmTests(unittest.TestCase):
         request.runs['/actions/runs'] = [dict(id=1, status='queued')]
         request.jobs['/actions/runs/1/jobs'] = [board_job('queued', alarm.SUCCESS_WINDOW)]
         with mock.patch('sys.stdout', new_callable=io.StringIO) as output:
-            problems, _ = alarm.check(request, NOW, [], [])
+            problems = alarm.check(request, NOW, [], [])
         self.assertTrue(any('Board job queued beyond' in problem for problem in problems))
         self.assertNotIn('night is still running', output.getvalue())
 
@@ -211,9 +205,9 @@ class BoardAlarmTests(unittest.TestCase):
         with mock.patch.object(alarm, 'last_board_success', return_value=NOW), \
                 mock.patch.object(alarm, 'stuck_board_jobs', return_value=[]), \
                 mock.patch('sys.stdout', new_callable=io.StringIO) as output:
-            self.assertEqual(alarm.check(Repository(), NOW, ['20E8', '2124'], ['2124'], ['book2']), ([], NOW))
+            self.assertEqual(alarm.check(Repository(), NOW, ['20E8', '2124'], ['2124'], ['book2']), [])
             self.assertEqual(alarm.check(Repository(), NOW, ['20E8', '2124'], ['2124']),
-                             (['Boards missing from USB: 20E8'], NOW))
+                             ['Boards missing from USB: 20E8'])
         self.assertIn('not checked: 20E8', output.getvalue())
 
     def test_check_success_window(self):
@@ -221,7 +215,7 @@ class BoardAlarmTests(unittest.TestCase):
                               (alarm.SUCCESS_WINDOW + timedelta(seconds=1), True)]:
             with mock.patch.object(alarm, 'last_board_success', return_value=NOW - age), \
                     mock.patch.object(alarm, 'stuck_board_jobs', return_value=[]):
-                self.assertEqual(bool(alarm.check(Repository(), NOW, [], [])[0]), expected)
+                self.assertEqual(bool(alarm.check(Repository(), NOW, [], [])), expected)
 
     def test_latest_lanes_and_usb_use_shared_short_id(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -318,9 +312,8 @@ class BoardAlarmTests(unittest.TestCase):
             reason = Path(directory) / 'reason'
             for problems in ([], ['offline', 'missing']):
                 with mock.patch.object(alarm, 'nights_enabled', return_value=True) as enabled, \
-                        mock.patch.object(alarm, 'check', return_value=(problems, NOW)), \
-                        mock.patch.object(alarm, 'raise_alarm') as raised, \
-                        mock.patch.object(alarm, 'clear_alarm') as cleared:
+                        mock.patch.object(alarm, 'check', return_value=problems), \
+                        mock.patch.object(alarm, 'raise_alarm') as raised:
                     result = alarm.main(['check', '--lanes-from', directory, '--devices', str(devices),
                                          '--reason-file', str(reason)])
                     self.assertEqual(result, int(bool(problems)))
@@ -328,11 +321,8 @@ class BoardAlarmTests(unittest.TestCase):
                     raised.assert_not_called()
                     if problems:
                         self.assertEqual(reason.read_text(), 'offline\nmissing')
-                        cleared.assert_not_called()
                     else:
                         self.assertFalse(reason.exists())
-                        cleared.assert_called_once_with('https://github.com/owner/repo/actions/runs/42', alarm.call,
-                                                        since=NOW)
             with mock.patch.object(alarm, 'raise_alarm') as raised, \
                     mock.patch.object(alarm, 'clear_alarm') as cleared:
                 self.assertEqual(alarm.main(['raise', '--reason', 'failed']), 0)
@@ -387,7 +377,7 @@ class BoardAlarmTests(unittest.TestCase):
         self.assertEqual(jobs['nightly']['outputs']['boards_ran'], '${{ steps.lanes.outputs.boards_ran }}')
         conditions = {step['name']: step['if'] for step in jobs['alarm']['steps'] if 'if' in step}
         self.assertEqual(conditions['Raise the board-ci-down alarm'], "needs.nightly.result == 'cancelled' || "
-                         "(needs.nightly.result == 'failure' && needs.nightly.outputs.boards_ran != 'true')")
+                         "(needs.nightly.result != 'skipped' && needs.nightly.outputs.boards_ran != 'true')")
         self.assertEqual(conditions[alarm.CLEAR_STEP], "(needs.nightly.result == 'success' || "
                          "needs.nightly.result == 'failure') && needs.nightly.outputs.boards_ran == 'true'")
 
