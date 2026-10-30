@@ -7,7 +7,7 @@ first.
 `render_context_compose()` presents a draw one of two ways:
 
 - **Width exactly half, height at most the half height:** it expands into the half picture. An uneven height spreads through the row map, its row edges on even panel rows.
-- **Anything else:** it upscales to the panel size with `render/upscale.h`, which takes any ratio in either axis.
+- **Anything else:** it upscales to the panel size with [`render/upscale.h`](../../launcher/main/render/upscale.h), which takes any ratio in either axis.
 
 The caller's chosen size is the top step; neither policy draws finer. A frame under budget keeps its speed, and only a frame over budget steps down.
 
@@ -203,11 +203,11 @@ What the table shows:
 - **Quality.** The scorer's dE is mostly the bake against the reference, a floor every size shares, so the differences are small and the order is what counts.
 - **Ladder.** At the same budget, cutting the height first keeps the full width longer and scores closer to the reference than cutting the width first.
 
-![Frame cost and render size along the path, per policy and budget](../images/render/dynamic-resolution-flight.png)
+![Frame cost along the path, per policy and budget](../images/render/dynamic-resolution-flight.png)
 
 ## Upscaling within a surface
 
-Off by default: `UPSCALE_FILTER_SURFACE` in `render/upscale.h`, set with `render_context_set_upscale_filter()`.
+Off by default: `UPSCALE_FILTER_SURFACE` in [`render/upscale.h`](../../launcher/main/render/upscale.h), set with `render_context_set_upscale_filter()`.
 
 It applies to the steps that compose into the half picture, and is joint bilateral upsampling<sup>[[101]](../Citations.md#kopf-2007)</sup> with a yes-or-no range weight.
 
