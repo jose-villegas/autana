@@ -372,8 +372,8 @@ def format_limit(value):
 
 
 def limit_label(item):
-    unit = ("step" if item.limit == 1 else "steps") if item.unit == "ulp" else item.unit
-    bits = f" ({item.bits} bits)" if item.bits is not None else ""
+    unit = ("step" if item.limit == 1 else "steps") if item.unit == "ulp" else "rel" if item.unit == "relative" else item.unit
+    bits = f", {item.bits} bits" if item.bits is not None else ""
     return f"{format_limit(item.limit)} {unit}{bits}"
 
 
@@ -386,13 +386,16 @@ def worst_bin_line(points):
     left = (points[worst - 1][0] + centre) / 2 if worst else centre - (points[1][0] - centre) / 2
     right = (centre + points[worst + 1][0]) / 2 if worst + 1 < len(points) else centre + (centre - points[-2][0]) / 2
     other = max(value for index, (_, value, _) in enumerate(points) if index != worst)
-    def bound(value):
-        if value == 0:
-            return "0"
-        fraction, exponent = math.frexp(value)
-        return f"2^{exponent - (fraction == 0.5)}"
-    return (f"Worst bin: mantissa {left:.{BIN_EDGE_DECIMAL_PLACES}f}-{right:.{BIN_EDGE_DECIMAL_PLACES}f} at {bound(maximum)}; "
-            f"every other bin <= {bound(other)}.")
+    return (f"Worst bin: mantissa {left:.{BIN_EDGE_DECIMAL_PLACES}f}-{right:.{BIN_EDGE_DECIMAL_PLACES}f} "
+            f"at {format_measurement(maximum)}; every other bin <= {ceil_measurement(other)}.")
+
+
+def ceil_measurement(value):
+    """Rounds up to the measurement digits, so a stated bound is never below the value."""
+    if value == 0:
+        return "0"
+    digits = MEASUREMENT_SIGNIFICANT_DIGITS - 1 - math.floor(math.log10(value))
+    return format_measurement(math.ceil(value * 10 ** digits) / 10 ** digits)
 
 
 def format_measurement(value):
@@ -473,7 +476,7 @@ def render(root, items, rows, measured, errors, bins, sizes, fpu, target, source
                       f"({limit_label(row)}); {row.method}.", "",
                       f"Plain way: {expression}.", ""]
         identity = key, item.kind
-        if item.unit == "relative" and item.period_bins:
+        if item.unit == "relative" and item.period_bins and identity in errors:
             lines += [worst_bin_line(bins.get(identity, [])), ""]
         if identity in errors and float(errors[identity].split()[0]) == 0:
             count = (input_counts or {}).get(identity)
