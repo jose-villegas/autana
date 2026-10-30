@@ -257,6 +257,7 @@ sequenceDiagram
     participant GPU as GPU stage
     participant Heavy as Heavy lock
     participant Plan as Board plan
+    participant Night as Board night
     participant Lanes as Board lanes
     Marker->>Wait: Compute the marker in NIGHT_ZONE
     Wait->>Wait: Sleep until marker within each leg budget
@@ -267,13 +268,13 @@ sequenceDiagram
     GPU->>Heavy: Release heavy
     Wait->>Plan: Start work with a fresh token
     Plan->>Plan: Wait for two GPU idle polls
-    Plan->>Lanes: Start a lane on each free board
+    Plan->>Night: Lanes for the free boards, maybe none
+    Night->>Lanes: Start the planned lanes
     loop Every minute until BOARD_LAST_START
-        Plan->>Lanes: Start a lane on each newly free board, on any host
+        Night->>Lanes: Start a lane on each newly free board, on any host
     end
-    Plan->>Plan: Wait for lanes to complete
-    Lanes-->>Plan: Lane outcomes and timestamps
-    Plan->>Plan: Record timeline and host free time
+    Lanes-->>Night: Lane outcomes and timestamps
+    Night->>Night: Record timeline and host free time
 ```
 
 GPU work starts at `vars.NIGHT_START`; the board night starts at `vars.BOARD_START`, later.
@@ -317,7 +318,9 @@ lane that queues behind a day job.
 
 Until `BOARD_LAST_START` the night asks every host for its boards each minute and starts a
 lane on any free board without one. A board freed, plugged in or ungated mid-night still runs;
-a host that does not answer is asked again next minute.
+a host that does not answer is asked again next minute. After the cut-off nothing new starts.
+
+A plan with named `--boards` is the whole night: it starts no lane after its plan.
 
 Initial boards split first-parent commits on main by position modulo their count.
 Joiners use independent `0/1` series.
@@ -344,7 +347,8 @@ Build failures advance `last_attempted`; measured steps advance both cursors
 and `last_image_hash`. Capture failures keep the cursors.
 
 The first board plugged into this machine runs `scripts/ci/board-steps.sh` before its chain
-inside the same board hold. A night that starts no lane before `BOARD_LAST_START` fails.
+inside the same board hold. A night that never lists a board fails; one whose boards all
+stay busy until the cut-off warns.
 Partial manifests are saved after every step and after cleanup.
 Raw captures upload even when a lane fails.
 
