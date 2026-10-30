@@ -86,59 +86,46 @@ whole_frame(void* ctx, int64_t dt_us) {
     return timing_now_us() - start;
 }
 
+/* A replayed pose's log line parts, too big for the stack its draws run on. */
+#define COUNT_BYTES(name, member) char name[sizeof(" " #name "=-2147483648")];
+
+typedef struct {
+    char counts[sizeof(struct { RASTER_CULL_FRAME_FIELDS(COUNT_BYTES) char end; })];
+    char report[FRAME_COST_REPORT_MAX];
+} pose_line_t;
+
+/* The cull view's counts of the frame just drawn, in a frame of their own
+ * that is gone before the next draw. */
+static __attribute__((noinline)) void
+write_cull_counts(pose_line_t* out) {
+    const raster_cull_t* cull = render_context_debug_view_state(render_context_main());
+    TEST_ASSERT_NOT_NULL(cull);
+    const raster_cull_frame_t f = raster_cull_frame(cull);
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, f.counts.nodes_visited, "the cull view did not draw");
+    strbuf_t line = strbuf_make(out->counts, sizeof out->counts);
+#define COUNT_PAIR(name, member) strbuf_appendf(&line, "%s" #name "=%d", line.length == 0 ? "" : " ", f.member);
+    RASTER_CULL_FRAME_FIELDS(COUNT_PAIR)
+}
+
 /* Draws the pose `path_ms` along the played path, paused there (dt 0, so a skinned
  * subject is not skinned again): one frame through the cull view for its
  * counts, then FRAME_PROFILE_REPLAY_DRAWS shaded frames for their frame-cost
  * report. */
 static void
 replay_pose(scene_t* scene, scene_entity_t entity, uint32_t duration_ms, int32_t path_ms, const char* row,
-            const char* quarter, char* report) {
+            const char* quarter, pose_line_t* out) {
     TEST_ASSERT_TRUE(scene_animator_seek(scene, entity, SCENE_ANIMATOR_CURRENT, (uint32_t)path_ms % duration_ms));
     show_view(render_context_debug_view_named("cull"));
     (void)render_lab_test_frame_dt(0, false, NULL);
-    const raster_cull_t* cull = render_context_debug_view_state(render_context_main());
-    TEST_ASSERT_NOT_NULL(cull);
-    const raster_cull_frame_t f = raster_cull_frame(cull);
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, f.counts.nodes_visited, "the cull view did not draw");
-#define COUNT_BYTES(name, member) char name[sizeof(" " #name "=-2147483648")];
-    char counts[sizeof(struct { RASTER_CULL_FRAME_FIELDS(COUNT_BYTES) char end; })];
-    strbuf_t line = strbuf_make(counts, sizeof counts);
-#define COUNT_PAIR(name, member) strbuf_appendf(&line, "%s" #name "=%d", line.length == 0 ? "" : " ", f.member);
-    RASTER_CULL_FRAME_FIELDS(COUNT_PAIR)
+    write_cull_counts(out);
     show_view(RENDER_DEBUG_VIEW_SHADED);
     (void)render_lab_test_frame_dt(0, false, NULL);
-    (void)frame_cost_take_report(1, report, FRAME_COST_REPORT_MAX);
+    (void)frame_cost_take_report(1, out->report, sizeof out->report);
     for (int i = 0; i < FRAME_PROFILE_REPLAY_DRAWS; i++) {
         (void)render_lab_test_frame_dt(0, false, NULL);
     }
-    (void)frame_cost_take_report(FRAME_PROFILE_REPLAY_DRAWS, report, FRAME_COST_REPORT_MAX);
-    ESP_LOGI(TAG, FRAME_PROFILE_REPLAY R3D_PERF_QUARTER_FORMAT, row, (int)path_ms, counts, report, quarter);
-}
-
-/* The traced playback's frames and peaks, then each replayed pose:
- * evenly along the path for the counts' curves, then every peak's. */
-static void
-report_path(scene_t* scene, scene_entity_t entity, uint32_t duration_ms, const frame_profile_trace_t* trace,
-            const char* row, const char* quarter) {
-    const int count = frame_profile_peaks(trace, NULL, 0);
-    frame_profile_peak_t* peak = memory_alloc((size_t)count * sizeof *peak, MEMORY_PSRAM);
-    char* report = memory_alloc(FRAME_COST_REPORT_MAX, MEMORY_INTERNAL);
-    if (peak == NULL || report == NULL) {
-        memory_free(peak);
-        memory_free(report);
-        TEST_FAIL_MESSAGE("frame peak allocation failed");
-    }
-    TEST_ASSERT_EQUAL_INT(count, frame_profile_peaks(trace, peak, count));
-    frame_profile_log_trace(TAG, row, trace, peak, count, quarter);
-    for (int i = 0; i < FRAME_PROFILE_PATH_POSES; i++) {
-        replay_pose(scene, entity, duration_ms, (int32_t)((int64_t)duration_ms * i / FRAME_PROFILE_PATH_POSES), row,
-                    quarter, report);
-    }
-    for (int rank = 0; rank < count; rank++) {
-        replay_pose(scene, entity, duration_ms, trace->frame[peak[rank].frame].path_ms, row, quarter, report);
-    }
-    memory_free(peak);
-    memory_free(report);
+    (void)frame_cost_take_report(FRAME_PROFILE_REPLAY_DRAWS, out->report, sizeof out->report);
+    ESP_LOGI(TAG, FRAME_PROFILE_REPLAY R3D_PERF_QUARTER_FORMAT, row, (int)path_ms, out->counts, out->report, quarter);
 }
 
 /* The scenario and quarter the next test plays: one test each, so a row over its
@@ -152,6 +139,37 @@ typedef struct {
     scene_entity_t entity;
     uint32_t duration_ms;
 } scenario_path_t;
+
+/* The played profile, its traced frames and peaks, then each replayed pose:
+ * evenly along the path for the counts' curves, then every peak's. A frame
+ * of its own, so the test's stays small under the played frames. */
+static __attribute__((noinline)) void
+report_path(const scenario_path_t* path, const frame_profile_t* p) {
+    const char* row = scenario->scene->key;
+    const char* quarter = r3d_perf_quarters[quarter_index].name;
+    frame_profile_log(TAG, row, p, quarter);
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, p->frames, "frame profile failed");
+    const int count = frame_profile_peaks(&played, NULL, 0);
+    frame_profile_peak_t* peak = memory_alloc((size_t)count * sizeof *peak, MEMORY_PSRAM);
+    pose_line_t* line = memory_alloc(sizeof *line, MEMORY_INTERNAL);
+    if (peak == NULL || line == NULL) {
+        memory_free(peak);
+        memory_free(line);
+        TEST_FAIL_MESSAGE("frame peak allocation failed");
+    }
+    TEST_ASSERT_EQUAL_INT(count, frame_profile_peaks(&played, peak, count));
+    frame_profile_log_trace(TAG, row, &played, peak, count, quarter);
+    for (int i = 0; i < FRAME_PROFILE_PATH_POSES; i++) {
+        replay_pose(path->scene, path->entity, path->duration_ms,
+                    (int32_t)((int64_t)path->duration_ms * i / FRAME_PROFILE_PATH_POSES), row, quarter, line);
+    }
+    for (int rank = 0; rank < count; rank++) {
+        replay_pose(path->scene, path->entity, path->duration_ms, played.frame[peak[rank].frame].path_ms, row, quarter,
+                    line);
+    }
+    memory_free(peak);
+    memory_free(line);
+}
 
 static scenario_path_t
 enter_scenario(void) {
@@ -176,6 +194,13 @@ enter_scenario(void) {
     return (scenario_path_t){scene, entity, duration_ms};
 }
 
+/* The played profile against its budget, in a frame of its own for the same reason. */
+static __attribute__((noinline)) void
+judge_profile(const frame_profile_t* p) {
+    r3d_perf_budget(scenario->scene->key, &r3d_perf_quarters[quarter_index], p->frame_us.avg, p->frame_us.p95,
+                    &scenario->quarters[quarter_index], true);
+}
+
 static void
 test_real_time_frame_profile(void) {
     const scenario_path_t path = enter_scenario();
@@ -185,13 +210,9 @@ test_real_time_frame_profile(void) {
     };
     int64_t remainder_us = 0;
     const frame_profile_t p = frame_profile_play(&playback, whole_frame, &remainder_us, &played);
-    frame_profile_log(TAG, scenario->scene->key, &p, r3d_perf_quarters[quarter_index].name);
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, p.frames, "frame profile failed");
     /* The peaks first: a row over its budget is the one they explain. */
-    report_path(path.scene, path.entity, path.duration_ms, &played, scenario->scene->key,
-                r3d_perf_quarters[quarter_index].name);
-    r3d_perf_budget(scenario->scene->key, &r3d_perf_quarters[quarter_index], p.frame_us.avg, p.frame_us.p95,
-                    &scenario->quarters[quarter_index], true);
+    report_path(&path, &p);
+    judge_profile(&p);
     release_fixture();
     suite_clear_test_cleanup();
 }
