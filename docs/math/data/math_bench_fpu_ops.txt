@@ -1,5 +1,5 @@
 # Device ELF wrapper and direct-callee mnemonics; wrapper call targets.
-# ELF sha256=70eac0197d1e7648c179216eb574c08c8e22f3e72aefbfd888123909cba7bf53
+# ELF sha256=172583edfb89ab63df1936e8592045c8dae2e5894fcfbfbb3c0aaf6b9c5a69ca
 add_f	add (vec3)	f	64	vector	-
 add_i	add (vec3)	i	64	vector	-
 add_s	add (vec3)	s	64	vector	-
@@ -25,6 +25,7 @@ lerp_s	lerp (vec3)	s	64	vector	-
 lerp_x	lerp (vec3)	x	64	vector	-
 mat4_mul_f	mat4 mul	f	64	matrix	madd.s; calls memcpy
 mat4_mul_x	mat4 mul	x	64	matrix	calls memcpy
+mathf_recip_approx_f	mathf_recip_approx	f	64	scalar	madd.s msub.s recip0.s
 mathf_recip_f	mathf_recip	f	64	scalar	madd.s msub.s recip0.s
 mathf_rsqrt_approx_f	mathf_rsqrt_approx	f	64	scalar	msub.s rsqrt0.s
 mathf_rsqrt_f	mathf_rsqrt	f	64	scalar	madd.s msub.s rsqrt0.s; calls __divsf3, sqrtf
