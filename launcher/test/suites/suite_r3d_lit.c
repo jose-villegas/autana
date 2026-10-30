@@ -1224,7 +1224,7 @@ quad_mesh(const uint16_t (*triangles)[3], bool double_sided, const uint16_t* fac
 static int
 draw_quad_mesh(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_span_target_t* target) {
     uint16_t visible[1];
-    const int count = r3d_pipeline_cull(mesh, lens, visible, pipeline_work());
+    const int count = r3d_pipeline_cull(mesh, lens, visible, pipeline_work(), NULL);
     r3d_pipeline_vertex_t cs[4];
     r3d_pipeline_transform(mesh, lens, visible, count, cs, NULL);
     r3d_pipeline_draw(mesh, lens, visible, count, cs, NULL, target, pipeline_work());
@@ -1299,7 +1299,7 @@ test_a_cluster_behind_the_camera_is_culled(void) {
         render_view_fixture_at(&(fixture_camera_t){{0, 0, -400}, {0, 0, -1}, 0.5f, 1.0f}, (viewport_t){W, H, 0});
     r3d_lens_init(&lens, &frame_view, 1);
     uint16_t visible[1];
-    TEST_ASSERT_EQUAL_INT(0, r3d_pipeline_cull(&mesh, &lens, visible, pipeline_work()));
+    TEST_ASSERT_EQUAL_INT(0, r3d_pipeline_cull(&mesh, &lens, visible, pipeline_work(), NULL));
 }
 
 /* A floor running from behind the camera to far ahead, seen from above it
@@ -1503,7 +1503,7 @@ draw_parts(const parts_t* p, const r3d_lens_t* lens, const r3d_span_target_t* t,
     TEST_ASSERT_NOT_NULL(visible);
     TEST_ASSERT_NOT_NULL(cs);
     TEST_ASSERT_NOT_NULL(rows);
-    const int count = r3d_pipeline_cull(&p->mesh, lens, visible, pipeline_work());
+    const int count = r3d_pipeline_cull(&p->mesh, lens, visible, pipeline_work(), NULL);
     r3d_pipeline_transform(&p->mesh, lens, visible, count, cs, use_rows ? rows : NULL);
     r3d_pipeline_draw(&p->mesh, lens, visible, count, cs, use_rows ? rows : NULL, t, pipeline_work());
     free(rows);
@@ -1708,7 +1708,7 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
     const span_of_bytes_t parts[] = {
         {(const char*)b.cs, sizeof(r3d_pipeline_vertex_t) * (size_t)p->mesh.vertex_count},
         {(const char*)b.rows, sizeof(r3d_pipeline_rows_t) * (size_t)p->mesh.cluster_count},
-        {(const char*)b.culled, raster_culled_bytes(&raster)},
+        {(const char*)b.depth_near, raster_culled_bytes(&raster)},
         {(const char*)b.work[0], r3d_pipeline_work_bytes()},
         {(const char*)b.work[1], r3d_pipeline_work_bytes()},
         {(const char*)b.draw, bytes - (size_t)((const char*)b.draw - scratch)},
@@ -1733,13 +1733,17 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
     TEST_ASSERT_EQUAL_UINT32((uint32_t)bytes, (uint32_t)(total + padding));
     TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_target_color(&b.picture, 0) % 4);
     TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_target_depth(&b.picture, 0) % 4);
-    /* The census list holds every instance's slot and takes whole cache ways,
-     * so the parts after it keep the cache sets they have without it. */
-    TEST_ASSERT_TRUE(raster_culled_bytes(&raster) >= sizeof(uint16_t) * raster_culled_length(&raster));
-    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)(((const char*)b.cs - (const char*)b.culled) % RASTER_CACHE_WAY));
+    /* The census holds its depth scale and every instance's slot and takes
+     * whole cache ways, so the parts after it keep the cache sets they have
+     * without it. */
+    TEST_ASSERT_TRUE(raster_culled_bytes(&raster)
+                     >= sizeof(float) + (sizeof(uint16_t) * raster_culled_length(&raster)));
+    TEST_ASSERT_TRUE((const char*)b.culled == (const char*)b.depth_near + sizeof(float));
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)(((const char*)b.cs - (const char*)b.depth_near) % RASTER_CACHE_WAY));
     raster.width /= 2;
     raster.height /= 2;
-    TEST_ASSERT_TRUE(b.culled == raster_carve(&raster).culled);
+    const raster_buffers_t smaller = raster_carve(&raster);
+    TEST_ASSERT_TRUE(b.culled == smaller.culled && b.depth_near == smaller.depth_near);
     free(scratch);
 }
 

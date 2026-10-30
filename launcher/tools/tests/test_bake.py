@@ -11,6 +11,7 @@ import json
 import os
 import pathlib
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -572,7 +573,8 @@ class StageTests(unittest.TestCase):
         starts = {item.key: item for item in found if not item.packed and item.kind == "mesh"}
         for fit in fits:
             self.assertIn(fit.stages["start"], starts)
-            self.assertTrue(starts[fit.stages["start"]].output.endswith(bake.START_SUFFIX))
+            self.assertEqual(starts[fit.stages["start"]].output,
+                             fit.output.removesuffix(fit.suffix) + bake.START_MARKER + fit.suffix)
 
 
 def write_fitted_tree(root, names=("fit",), visibility=PATH):
@@ -1065,6 +1067,45 @@ class CpuVendorTests(FittedBakeCase):
         bake.write_lock([row_of(self.start, MADE_SHA256, run=RUN)], path)
         self.assertIsNone(bake.read_lock_tables(path)["mesh_cpu_vendor"])
         self.assertNotIn("mesh_cpu_vendor", path.read_text())
+
+
+class FitGpuTests(FittedBakeCase):
+    """A fit's bytes differ between GPU models: a fit's make names its GPU, and its lock row keeps it."""
+
+    GPU = "NVIDIA GeForce RTX 5080 Laptop GPU"
+
+    def test_the_gpu_is_read_from_nvidia_smi_and_recorded_only_with_a_fit(self):
+        tree = self.root / "one.bundle"
+        tree.write_bytes(b"fit baked")
+        with mock.patch.object(bake, "NVIDIA_SMI_NAME", (sys.executable, "-c", f"print({self.GPU!r}); print('x')")):
+            self.assertEqual(bake.gpu_name(), self.GPU)
+            self.assertEqual(produce.record(bake_of("k" * 64, tree, kind="fit"), tree, self.cache)["gpu"], self.GPU)
+            self.assertNotIn("gpu", produce.record(bake_of("j" * 64, tree), tree, self.cache))
+        for absent in ((str(self.root / "no-nvidia-smi"),), (sys.executable, "-c", "pass")):
+            with self.subTest(absent=absent), mock.patch.object(bake, "NVIDIA_SMI_NAME", absent):
+                self.assertIsNone(bake.gpu_name())
+                self.assertNotIn("gpu", produce.record(bake_of("i" * 64, tree, kind="fit"), tree, self.cache))
+
+    def test_a_locked_fit_keeps_the_gpu_its_run_made_it_on(self):
+        fit = self.fit(MADE_SHA256)
+        made = {self.start.key: row_of(self.start, MADE_SHA256, run=RUN, cpu_vendor="AuthenticAMD"),
+                fit.key: row_of(fit, FIT_SHA256, run=RUN, gpu=self.GPU)}
+        done = self.command(["lock", "--from-run", str(RUN)], {}, made, mesh_cpu_vendor="AuthenticAMD")
+        self.assertEqual(done.code, 0, done.err)
+        self.assertEqual(done.rows[fit.output]["gpu"], self.GPU)
+        self.assertNotIn("gpu", done.rows[self.start.output])
+        path = self.root / "bakes.lock"
+        bake.write_lock(list(done.rows.values()), path, mesh_cpu_vendor="AuthenticAMD")
+        self.assertIn(f'gpu = "{self.GPU}"', path.read_text(encoding="utf-8"))
+
+
+class OnlyTests(FittedBakeCase):
+    def test_an_output_of_another_kind_is_refused_before_making_anything(self):
+        def refuse(parser, message):
+            raise ValueError(message)
+        with mock.patch.object(bake.argparse.ArgumentParser, "error", refuse), \
+                self.assertRaisesRegex(ValueError, f"{re.escape(self.start.output)} not of --kind fit"):
+            self.command(["bake", "--kind", "fit", "--only", self.start.output], {})
 
 
 class SharedStartTests(FittedBakeCase):
@@ -1727,7 +1768,7 @@ class SkipUnlockedTests(unittest.TestCase):
         self.found, self.lock = filled_cache(self.cache, self)
         self.packs = build_pack.pack_files([build_pack.DEFAULT_SEARCH])
         self.waiting = self.found[0]
-        entry = self.waiting.output.removesuffix(bake.MESH_SUFFIX)
+        entry = self.waiting.output.removesuffix(self.waiting.suffix)
         self.holder = next(name for name, entries in self.packs.items() if entry in entries)
 
     def build(self, rows, *flags):
@@ -1760,7 +1801,7 @@ class SkipUnlockedTests(unittest.TestCase):
         self.assertIn("has no row for this key", err)
 
     def test_a_locked_bake_the_cache_cannot_give_still_fails_with_the_flag(self):
-        bake.cached(self.lock[self.waiting.key], bake.MESH_SUFFIX, self.cache).unlink()
+        bake.cached(self.lock[self.waiting.key], self.waiting.suffix, self.cache).unlink()
         code, err = self.build(self.lock, "--skip-unlocked", str(self.listed))
         self.assertEqual(code, 2)
         self.assertIn(self.waiting.output, err)
@@ -1769,8 +1810,8 @@ class SkipUnlockedTests(unittest.TestCase):
 
     def test_one_pack_waiting_and_another_broken_still_fails_naming_the_broken_one(self):
         broken = next(found for found in self.found
-                      if found.output.removesuffix(bake.MESH_SUFFIX) not in self.packs[self.holder])
-        bake.cached(self.lock[broken.key], bake.MESH_SUFFIX, self.cache).unlink()
+                      if found.packed and found.output.removesuffix(found.suffix) not in self.packs[self.holder])
+        bake.cached(self.lock[broken.key], broken.suffix, self.cache).unlink()
         rows = {key: row for key, row in self.lock.items() if key != self.waiting.key}
         code, err = self.build(rows, "--skip-unlocked", str(self.listed))
         self.assertEqual(code, 2)

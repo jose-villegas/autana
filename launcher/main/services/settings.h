@@ -10,6 +10,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 /* True with `*out` set when the key holds a value; false when it was never
@@ -21,3 +22,6 @@ bool settings_write_i32(const char* space, const char* key, int32_t value);
 bool settings_read_i64(const char* space, const char* key, int64_t* out);
 bool settings_write_i64(const char* space, const char* key, int64_t value);
 bool settings_erase_space(const char* space);
+
+/* Writes the keys with one open and one commit; false on any storage failure. */
+bool settings_write_i32_batch(const char* space, const char* const keys[], const int32_t values[], size_t n);

@@ -4,7 +4,12 @@
 # the scene drawn at every WxH given, scored frame by frame against the
 # reference render at full size, one CSV row per size and frame.
 #
-#   dynres_quality.sh <work-dir> <out.csv> <camera> WxH [WxH ...]
+#   dynres_quality.sh [--scene-file F.scene.toml --scene KEY] [--args "ARGS"] \
+#       <work-dir> <out.csv> <camera> WxH [WxH ...]
+#
+# --scene-file and --scene pick the scene and its render lab key (default
+# Sponza's full bake); --args are more renderer arguments, such as
+# "--tune render_lab.upscale=1", split on spaces.
 #
 # Frames are every POSE_MS from one step in, matching the poses the device
 # suite measures (suite_raster_scale_perf.c), so launcher/tools/r3d/
@@ -16,6 +21,18 @@ set -eu
 
 POSE_MS=2500
 
+SCENE_FILE=launcher/demo/sponza/sponza.scene.toml
+SCENE=sponza
+ARGS=""
+while [ $# -gt 0 ]; do
+    case $1 in
+        --scene-file) SCENE_FILE=$2; shift 2 ;;
+        --scene) SCENE=$2; shift 2 ;;
+        --args) ARGS=$2; shift 2 ;;
+        *) break ;;
+    esac
+done
+
 W=$1
 CSV=$2
 CAMERA=$3
@@ -23,8 +40,7 @@ shift 3
 mkdir -p "$W"
 
 sh launcher/main/apps/render_lab/tools/render_lab_render_host.sh --build-only -o "$W" > "$W/build.log"
-DEMO=launcher/demo/sponza
-"$PYTHON" - "$DEMO/sponza.scene.toml" "$CAMERA" "$POSE_MS" "$W" <<'PY'
+"$PYTHON" - "$SCENE_FILE" "$CAMERA" "$POSE_MS" "$W" <<'PY'
 import pathlib
 import sys
 sys.path.insert(0, "launcher/tools")
@@ -46,16 +62,17 @@ poses = track_host.sample(camera.path.animation, ["--every", interval, "--until"
 PY
 FRAMES=$(cat "$W/frames.txt")
 REFERENCE=$(sh launcher/tools/render/render_compare.sh --reference-frames \
-    --reference "$DEMO/sponza.scene.toml" --poses "$W/poses.txt" 2> "$W/reference.log")
+    --reference "$SCENE_FILE" --poses "$W/poses.txt" 2> "$W/reference.log")
 
-echo "width,height,frame,t_ms,mean_delta_e,p95_delta_e,ssim" > "$CSV"
+echo "width,height,frame,t_ms,mean_delta_e,p95_delta_e,ssim,edge_delta_e,interior_delta_e" > "$CSV"
 for size in "$@"; do
-    "$W/render_lab_render" --quarter 0 --no-hud --scene sponza --camera "$CAMERA" --size "$size" --frames "$FRAMES" --dt "$POSE_MS" \
-        -o "$W/$size.bmp" --video "$W/$size.avi" 2> "$W/$size.log"
+    # shellcheck disable=SC2086 # ARGS splits on spaces, as documented above
+    "$W/render_lab_render" --quarter 0 --no-hud --scene "$SCENE" --camera "$CAMERA" --size "$size" \
+        --frames "$FRAMES" --dt "$POSE_MS" $ARGS -o "$W/$size.bmp" --video "$W/$size.avi" 2> "$W/$size.log"
     "$PYTHON" launcher/tools/render/render_compare.py --out "$W/$size-unused.png" \
         --reference-video "$W/$size.avi" "$REFERENCE" --reference-scale 1 > "$W/$size-compare.log"
-    sed -n 's/^frame \([0-9]*\): mean DeltaE76 \([0-9.]*\), p95 DeltaE76 \([0-9.]*\), luma SSIM \(-\{0,1\}[0-9.]*\),.*/\1 \2 \3 \4/p' \
-        "$W/$size-compare.log" | while read -r frame mean p95 ssim; do
-        echo "${size%x*},${size#*x},$frame,$(((frame + 1) * POSE_MS)),$mean,$p95,$ssim"
+    sed -n 's/^frame \([0-9]*\): mean DeltaE76 \([0-9.]*\), p95 DeltaE76 \([0-9.]*\), luma SSIM \(-\{0,1\}[0-9.]*\), edge DeltaE76 \([0-9.]*\), interior DeltaE76 \([0-9.]*\),.*/\1 \2 \3 \4 \5 \6/p' \
+        "$W/$size-compare.log" | while read -r frame mean p95 ssim edge interior; do
+        echo "${size%x*},${size#*x},$frame,$(((frame + 1) * POSE_MS)),$mean,$p95,$ssim,$edge,$interior"
     done >> "$CSV"
 done

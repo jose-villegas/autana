@@ -18,9 +18,10 @@ simplify = { dense_edge = 45.0, props = [], props_share = 0.0, seal_seams = true
 
 # The free-standing props: one mesh per repeated shape, each copy drawing
 # `triangles` (as many as the old pooled props share gave it) times its
-# variant's objects_scale. Chains stay in the rest: the pooled share gave
-# them none. Seams are free: a locked contact keeps every copy's border
-# vertices, which a prop of a few dozen triangles cannot afford.
+# variant's objects_scale. The flagpoles stay in the rest: each passes
+# through the wall, and a carved pole too thin to fill its socket shows sky
+# around it. Seams are free: a locked contact keeps every copy's
+# border vertices, which a prop of a few dozen triangles cannot afford.
 [[objects.meshes]]
 match = { material = "vase" }
 triangles = 235
@@ -37,13 +38,8 @@ triangles = 19
 seam = "free"
 
 [[objects.meshes]]
-match = { material = "flagpole" }
-triangles = 22
-seam = "free"
-
-[[objects.meshes]]
 match = { material = "leaf" }
-triangles = 14
+triangles = 45
 seam = "free"
 
 [[objects.meshes]]
@@ -56,26 +52,36 @@ match = { material = "Material__47" }
 triangles = 45
 seam = "free"
 
-# Each variant's triangles budget the rest; the props add 5181 at
-# objects_scale 1 and 2606 at 0.5, so each ceiling is the old total.
+# The chains draw a triangle each, as little as the pooled share gave them,
+# so their triangles go to the rest's walls and arches.
+[[objects.meshes]]
+match = { material = "chain" }
+triangles = 1
+seam = "free"
+
+# Each variant's triangles budget the rest; the props add 4433 at
+# objects_scale 1 and 2236 at 0.5, so each ceiling is the old total. The
+# fitted variants scale their props lower: the fit's prune (sponza.scene.toml)
+# then keeps every rest triangle the camera sees within the old drawn total.
 [[variants]]
 name = "sponza"
-triangles = 12200
+triangles = 12948
 ceiling = 17381
 
 [[variants]]
 name = "sponza_lite"
-triangles = 6066
+triangles = 6436
 objects_scale = 0.5
 ceiling = 8672
 
 [[variants]]
 name = "sponza_fitted"
-triangles = 10894
-objects_scale = 0.5
+triangles = 11188
+objects_scale = 0.43
 ceiling = 13500
 
 [[variants]]
 name = "sponza_fitted_full"
-triangles = 24819
+triangles = 25491
+objects_scale = 0.92
 ceiling = 30000

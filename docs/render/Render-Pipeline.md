@@ -425,7 +425,7 @@ cost or, predicted, from what the census kept.
 
 Cost: part of `frame.rest` in the frame-stages chart.
 
-![The size chosen along the path](../images/render/dynamic-resolution-flight.png)
+![Frame cost along the path under each policy](../images/render/dynamic-resolution-flight.png)
 
 Reference: [Dynamic-Resolution.md](Dynamic-Resolution.md).
 
@@ -541,8 +541,8 @@ After the frame waits for the previous send, the render context picks a half
 picture or the panel's framebuffer; raster fills it through precomputed row
 and column maps, the two cores taking halves.
 
-A frame whose width is exactly half and whose height divides the half height
-expands into a half picture, which present doubles as it sends. A camera's
+A frame whose width is exactly half and whose height is at most the half
+height expands into a half picture, which present doubles as it sends. A camera's
 present mode uses this to draw half the rows
 ([camera presentation](Dynamic-Resolution.md#camera-presentation)).
 

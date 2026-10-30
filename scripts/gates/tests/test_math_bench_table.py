@@ -29,6 +29,18 @@ class MathBenchTableTests(unittest.TestCase):
         self.assertEqual("0 ulp (sweep)", errors["normalize (vec3)", "f"])
         self.assertEqual("5.94258e-05 relative (proof)", errors["arbitrary label", "x"])
 
+    def test_hex_error_maxima_are_exact_for_all_readers(self):
+        for token in ('0x1p-14', '0X1.FFFFFEp-15', '0x0p+0'):
+            with self.subTest(token=token):
+                text = (f'MATHERROR name=example type=f max={token} unit=relative method=proof\n'
+                        f'MATHERRORBIN name=example type=f x=1.5 max={token} unit=relative axis=period\n')
+                maximum = float.fromhex(token)
+                self.assertEqual(float(bench.parse_errors(text)['example', 'f'].split()[0]), maximum)
+                self.assertEqual(bench.parse_bins(text)['example', 'f'], [(1.5, maximum, 'relative')])
+        for token in ('0x1p+', '0x1', '0x1p+99999', '-0x1p-14'):
+            with self.subTest(token=token), self.assertRaises(ValueError):
+                bench.parse_errors(f'MATHERROR name=example type=f max={token} unit=relative method=proof')
+
     def test_scalar_table_links_rendered_error(self):
         rows = [("rsqrt_f", "mathf_rsqrt", "f", self.batch, "scalar")]
         table = bench.render_table(rows, {}, {}, {"rsqrt_f": "rsqrt0.s"},
