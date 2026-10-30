@@ -23,7 +23,7 @@ class FastPathTests(unittest.TestCase):
         self.header.write_text('#define EXAMPLE_LIMIT 1\n'
                                '/* Seed correction. | y = y(2 - ay) | positive normal inputs */\n'
                                '/* exact: y = 1/x */\n'
-                               '/* MATH_FAST_PATH(fast_f, plain_f, EXAMPLE_LIMIT) */\n'
+                               '/* FAST_PATH(fast_f, plain_f, EXAMPLE_LIMIT) */\n'
                                'static inline float example(float x) { return x; }\n')
         source = self.root / 'launcher/packages/math/tests/suite_math_numbers.c'
         source.parent.mkdir(parents=True)
@@ -36,20 +36,36 @@ class FastPathTests(unittest.TestCase):
         self.capture = ('MATHERROR name=example type=f max=1 unit=ulp method=sweep\n'
                         'MATHERRORBIN name=example type=f x=2 max=1 unit=ulp\n')
 
+    def test_package_headers_are_discovered_and_bit_limit_is_named(self):
+        header = self.root / 'launcher/packages/other/include/other/check.h'
+        header.parent.mkdir(parents=True)
+        header.write_text('#define OTHER_BIT_LIMIT 0\n'
+                          '/* FAST_PATH(check, check_reference, OTHER_BIT_LIMIT=0 bit) */\n'
+                          'static inline unsigned check(unsigned x) { return x; }\n')
+        source = self.root / 'launcher/packages/other/tests/suite_check.c'
+        source.parent.mkdir(parents=True)
+        source.write_text('FASTERROR name=check type=bits max=0 unit=bit method=sweep')
+        items = paths.annotations(self.root)
+        item = next(item for item in items if item.key == 'check')
+        self.assertEqual((item.limit, item.unit), (0, 'bit'))
+        header.write_text(header.read_text().replace('OTHER_BIT_LIMIT=0', 'OTHER_BIT_LIMIT=1'))
+        with self.assertRaisesRegex(ValueError, 'limit mismatch'):
+            paths.annotations(self.root)
+
     def test_shared_plain_row_links_to_first_page_section(self):
         from dataclasses import replace
         first = replace(self.annotations[0], key="first_path")
         second = replace(first, key="second_path", fast="second_f")
         links = paths.benchmark_links([first, second], self.rows)
-        self.assertEqual(links["plain_f"], "Fast-Paths.md#first-path")
-        self.assertEqual(links["fast_f"], "Fast-Paths.md#first-path")
+        self.assertEqual(links["plain_f"], "../packages/Fast-Paths.md#first-path")
+        self.assertEqual(links["fast_f"], "../packages/Fast-Paths.md#first-path")
 
     def test_links_include_benchmarked_function_but_not_unrendered_error(self):
         item = self.annotations[0]
         rows = [*self.rows, ("example_f", "example", "f", 1, "scalar"),
                 ("normalize_f", "normalize (vec3)", "f", 1, "vector")]
         links = paths.benchmark_links([item], rows)
-        self.assertEqual(links["example_f"], "Fast-Paths.md#example")
+        self.assertEqual(links["example_f"], "../packages/Fast-Paths.md#example")
         self.assertNotIn("normalize_f", links)
 
     def test_main_benchmark_error_cells_follow_fast_rows(self):
@@ -72,7 +88,7 @@ class FastPathTests(unittest.TestCase):
                                      ("mathx_rsqrt_q30", "x", "mathx-rsqrt-q30")):
             with self.subTest(label=label):
                 row = next(line for line in lines if line.startswith(f"| [{label}]") and f" | {kind} |" in line)
-                self.assertTrue(row.endswith(f"| [fast paths](Fast-Paths.md#{section}) |"), row)
+                self.assertTrue(row.endswith(f"| [fast paths](../packages/Fast-Paths.md#{section}) |"), row)
         ordinary = next(line for line in lines if line.startswith("| normalize (vec3) | f |"))
         self.assertTrue(ordinary.endswith("| 1 step (sweep) |"), ordinary)
         unmeasured = next(line for line in lines if line.startswith("| add (vec3) | f |"))
@@ -304,7 +320,7 @@ class FastPathTests(unittest.TestCase):
         doc.write_text('Scalar\n')
         with self.assertRaisesRegex(ValueError, 'Scalar'):
             paths.validate_links(self.root, self.annotations)
-        doc.write_text('[example](Fast-Paths.md#example)\n')
+        doc.write_text('[example](../packages/Fast-Paths.md#example)\n')
         paths.validate_links(self.root, self.annotations)
         moved = self.header.parent.parent / 'linear/example.h'
         moved.parent.mkdir()
@@ -334,7 +350,7 @@ class FastPathTests(unittest.TestCase):
                 bench.parse_bins(capture)
 
     def test_short_annotation_and_source_contract(self):
-        self.assertIsNotNone(paths.ANNOTATION.fullmatch('/* MATH_FAST_PATH(fast_f, plain_f, LIMIT) */'))
+        self.assertIsNotNone(paths.ANNOTATION.fullmatch('/* FAST_PATH(fast_f, plain_f, LIMIT) */'))
         source = self.root / 'launcher/packages/math/tests/suite_math_numbers.c'
         source.write_text('')
         with self.assertRaisesRegex(ValueError, 'MATHERROR'):
@@ -439,7 +455,7 @@ class FastPathTests(unittest.TestCase):
         self.assertEqual(paths.format_error("-", "hardware"), "-")
 
     def test_compact_tables_and_formula_details(self):
-        items = paths.annotations()
+        items = [item for item in paths.annotations() if item.unit != "bit"]
         rows, fpu = bench.read_fpu(ROOT / "docs/math/data/math_bench_fpu_ops.txt")
         sizes = paths.parse_sizes((ROOT / "docs/math/data/math_bench_sizes.txt").read_text())
         measured = {row[0]: (10.0, 20.0, 5.0) for row in rows}

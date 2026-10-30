@@ -3,7 +3,7 @@
 Per-type arithmetic, fixed point, random draws and units. [Math index](README.md).
 
 <!-- generated: math-fast-links-scalar check: python launcher/tools/perf/fast_paths.py --check -->
-Fast-path evidence: [mathf_recip](Fast-Paths.md#mathf-recip), [mathf_rsqrt](Fast-Paths.md#mathf-rsqrt), [mathf_rsqrt_approx](Fast-Paths.md#mathf-rsqrt-approx), [mathx_rsqrt_q30](Fast-Paths.md#mathx-rsqrt-q30), [mathf_repeat](Fast-Paths.md#mathf-repeat), [trig_sin](Fast-Paths.md#trig-sin), [mathf_recip_approx](Fast-Paths.md#mathf-recip-approx).
+Fast-path evidence: [mathf_recip](../packages/Fast-Paths.md#mathf-recip), [mathf_rsqrt](../packages/Fast-Paths.md#mathf-rsqrt), [mathf_rsqrt_approx](../packages/Fast-Paths.md#mathf-rsqrt-approx), [mathx_rsqrt_q30](../packages/Fast-Paths.md#mathx-rsqrt-q30), [mathf_repeat](../packages/Fast-Paths.md#mathf-repeat), [trig_sin](../packages/Fast-Paths.md#trig-sin), [mathf_recip_approx](../packages/Fast-Paths.md#mathf-recip-approx).
 <!-- /generated: math-fast-links-scalar -->
 
 `math/scalar/` holds per-type arithmetic, fixed point, random draws, trigonometry
@@ -150,7 +150,7 @@ The approximate path evaluates its single correction as $`y_0\,(1.5-0.5xy_0^2)`$
 `mathf_rsqrt` uses that same formula and preserves its bits.
 
 The limits in `mathf.h` define the accuracy contract; the
-[fast-path evidence](Fast-Paths.md) reports measured maxima and coverage.
+[fast-path evidence](../packages/Fast-Paths.md) reports measured maxima and coverage.
 
 The suite's integer product bracket rounds the exact reciprocal root without
 using the twice-rounded `1 / sqrtf` as a reference. The suite prints
