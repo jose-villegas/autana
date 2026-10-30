@@ -84,9 +84,10 @@ struct r3d_pipeline_work {
         } clip;
     };
 
+    /* Kept between draws, valid at any bytes, as r3d_pipeline.h says. */
     uint8_t hidden_draw; /* this block's place in its hidden test cycle */
     bool test_hidden;    /* the current draw looks for clusters behind drawn depth */
-    int32_t payoff;      /* R3D_HIDDEN_PAYS_ONE_IN a cluster hidden, less one a cluster tested */
+    uint32_t payoff;     /* R3D_HIDDEN_PAYS_ONE_IN a cluster hidden, less one a cluster tested; wraps, read signed */
 };
 
 _Static_assert(_Alignof(r3d_pipeline_work_t) <= R3D_PIPELINE_WORK_ALIGNMENT, "pipeline work alignment");
@@ -418,10 +419,9 @@ r3d_pipeline_cluster_hidden(const r3d_pipeline_rows_t* r, const r3d_span_target_
     if (r->unbounded) {
         return false;
     }
-    const int left = r3d_span_first_centre(r->x0);
-    const int top = r3d_span_first_centre(r->y0);
-    const recti_t centres = {left, top, r3d_span_first_centre(r->x1) - left, r3d_span_first_centre(r->y1) - top};
-    return r3d_span_hidden(target, (int32_t)r->depth + 1, r3d_span_window_box(target, centres));
+    /* + 1: a tag writer also writes where the fill's depth equals what is there. */
+    return r3d_span_hidden(target, (int32_t)r->depth + 1,
+                           r3d_span_window_box(target, r3d_span_centres(r->x0, r->y0, r->x1, r->y1)));
 }
 
 /* A view where few clusters hide behind others, an open floor or one mesh
@@ -435,7 +435,9 @@ r3d_pipeline_cluster_hidden(const r3d_pipeline_rows_t* r, const r3d_span_target_
 #define R3D_HIDDEN_WINDOW_DRAWS 8
 #define R3D_HIDDEN_CYCLE_DRAWS  64
 
-/* Any place past the cycle, a fresh block's included, starts a window. */
+/* Any place past the cycle, a fresh block's included, starts a window. A
+ * window started mid-way on a block's stale bytes judges once on a stale
+ * payoff, which counts in unsigned arithmetic so it wraps and never overflows. */
 static inline void
 begin_hidden_draw(r3d_pipeline_work_t* work) {
     if (work->hidden_draw == 0 || work->hidden_draw >= R3D_HIDDEN_CYCLE_DRAWS) {
@@ -447,7 +449,7 @@ begin_hidden_draw(r3d_pipeline_work_t* work) {
 
 static inline void
 end_hidden_draw(r3d_pipeline_work_t* work) {
-    const bool paid = work->hidden_draw + 1 == R3D_HIDDEN_WINDOW_DRAWS && work->payoff >= 0;
+    const bool paid = work->hidden_draw + 1 == R3D_HIDDEN_WINDOW_DRAWS && (int32_t)work->payoff >= 0;
     work->hidden_draw = paid ? 0 : (uint8_t)(work->hidden_draw + 1);
 }
 

@@ -56,7 +56,10 @@ void r3d_lens_fit(r3d_lens_t* lens, int width, int height);
 void r3d_lens_place(r3d_lens_t* lens, const mat4f_t* model, int position_scale);
 
 /* Caller-owned workspace, reusable between culling and drawing. Concurrent
- * draws each need their own block, aligned as malloc provides. */
+ * draws each need their own block, aligned as malloc provides. Between its
+ * draws a block also keeps where it is in the hidden cluster test's cycle;
+ * any bytes are a valid place, so a fresh, reused or overwritten block needs
+ * no setup; at worst it waits out one cycle before it tests. */
 typedef struct r3d_pipeline_work r3d_pipeline_work_t;
 size_t r3d_pipeline_work_bytes(void);
 
