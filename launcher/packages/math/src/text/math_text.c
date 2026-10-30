@@ -1,6 +1,7 @@
 /* math_text: scalar decimal conversion without allocation. */
 #include "math/text/math_text.h"
 
+#include <ctype.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <limits.h>
@@ -49,6 +50,49 @@ mathi_format(char* buf, size_t cap, int32_t v) {
 bool
 mathi_parse(const char* s, const char** end, int32_t* out) {
     return text_integer(s, end, out, INT32_MIN, INT32_MAX);
+}
+
+static bool
+text_unsigned(const char* s, const char** end, uint32_t* out, int radix) {
+    const char* p = s;
+    if (radix == MATH_TEXT_HEX_RADIX) {
+        if (p[0] != '0' || (p[1] != 'x' && p[1] != 'X')) {
+            return false;
+        }
+        p += 2;
+    }
+    const char* digits = p;
+    while (radix == MATH_TEXT_HEX_RADIX ? isxdigit((unsigned char)*p) : text_digit(*p)) {
+        ++p;
+    }
+    if (p == digits || (end == NULL && *p != '\0')) {
+        return false;
+    }
+    errno = 0;
+    uintmax_t value = strtoumax(digits, NULL, radix);
+    if (errno == ERANGE || value > UINT32_MAX) {
+        return false;
+    }
+    *out = (uint32_t)value;
+    if (end != NULL) {
+        *end = p;
+    }
+    return true;
+}
+
+int
+mathu_format(char* buf, size_t cap, uint32_t v) {
+    return snprintf(buf, cap, "%" PRIu32, v);
+}
+
+bool
+mathu_parse(const char* s, const char** end, uint32_t* out) {
+    return text_unsigned(s, end, out, MATH_TEXT_RADIX);
+}
+
+bool
+mathu_parse_hex(const char* s, const char** end, uint32_t* out) {
+    return text_unsigned(s, end, out, MATH_TEXT_HEX_RADIX);
 }
 
 int

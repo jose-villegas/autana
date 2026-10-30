@@ -182,6 +182,41 @@ test_all_types(void) {
 }
 
 static void
+test_unsigned_text(void) {
+    char text[MATHU_TEXT_MAX];
+    static const uint32_t samples[] = {0, 1, 255, 65536, UINT32_MAX};
+    for (size_t i = 0; i < sizeof samples / sizeof *samples; ++i) {
+        uint32_t got = 7;
+        TEST_ASSERT_LESS_THAN(MATHU_TEXT_MAX, mathu_format(text, sizeof text, samples[i]));
+        TEST_ASSERT_TRUE(mathu_parse(text, NULL, &got));
+        TEST_ASSERT_EQUAL_UINT32(samples[i], got);
+    }
+    static const char* const bad[] = {"", " 1", "1 ", "-1", "+1", "4294967296", "99999999999999999999", "1x", "0x10"};
+    for (size_t i = 0; i < sizeof bad / sizeof *bad; ++i) {
+        uint32_t got = 7;
+        TEST_ASSERT_FALSE(mathu_parse(bad[i], NULL, &got));
+        TEST_ASSERT_EQUAL_UINT32(7, got);
+    }
+    uint32_t got = 7;
+    const char* end = NULL;
+    TEST_ASSERT_TRUE(mathu_parse("12 34", &end, &got));
+    TEST_ASSERT_EQUAL_UINT32(12, got);
+    TEST_ASSERT_EQUAL_STRING(" 34", end);
+    TEST_ASSERT_TRUE(mathu_parse_hex("0xFf", NULL, &got));
+    TEST_ASSERT_EQUAL_UINT32(255, got);
+    TEST_ASSERT_TRUE(mathu_parse_hex("0XFFFFFFFF", NULL, &got));
+    TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, got);
+    static const char* const bad_hex[] = {"", "10", "0x", "0xg", "0x100000000", "-0x1", "0x1 ", " 0x1"};
+    for (size_t i = 0; i < sizeof bad_hex / sizeof *bad_hex; ++i) {
+        got = 7;
+        TEST_ASSERT_FALSE(mathu_parse_hex(bad_hex[i], NULL, &got));
+        TEST_ASSERT_EQUAL_UINT32(7, got);
+    }
+    TEST_ASSERT_TRUE(mathu_parse_hex("0x1Z", &end, &got));
+    TEST_ASSERT_EQUAL_STRING("Z", end);
+}
+
+static void
 test_scalar_grammar(void) {
     static const char* const invalid[] = {"", " ", " 1", "1 ", "--1", "+", ".", "1junk"};
     for (size_t i = 0; i < sizeof invalid / sizeof *invalid; ++i) {
@@ -286,6 +321,7 @@ run_text_suite(void) {
     RUN_TEST(test_scalar_round_trips);
     RUN_TEST(test_float_round_trips);
     RUN_TEST(test_all_types);
+    RUN_TEST(test_unsigned_text);
     RUN_TEST(test_scalar_grammar);
     RUN_TEST(test_examples_and_failure);
 }
