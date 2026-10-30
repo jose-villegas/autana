@@ -46,17 +46,38 @@ name = "hall"
 
 [objects.mesh_renderer]
 mesh = "hall.import.toml"
-variant = "hall"                 # only for an import with variants
+variant = "hall_fitted_full"     # a variant with `triangles`, the fit's start
 bake = true
 visibility = { source = "camera_region", rounds = 160 }
+
+[objects.mesh_renderer.fit]      # fitted to reference renders of the source
+prune = { budget = 13313, coverage_every_ms = 20 }
+poses = { size = [184, 224], train_every_ms = 1000, held_out_every_ms = 5000 }
+
+[objects.mesh_renderer.fit.optimise]
+steps = 2000
+batch = 8
+laplacian = 10.0
+normal_weight = 1.0
+surface_weight = 10.0
+surface_margin = 0.25
 
 [[objects]]
 name = "statue"
 position = [0.0, 0.0, 300.0]
 scale = [2.0, 2.0, 2.0]
 
-[objects.mesh_renderer]
+[objects.mesh_renderer]          # a flat fit: one colour per face
 mesh = "statue.import.toml"
+variant = "statue_flat_fitted"
+bake = true
+shading = { flat = { auto = { min = 1, max = 16, area = "median" } } }
+visibility = { source = "camera_region", rounds = 160 }
+
+[objects.mesh_renderer.fit]
+prune = { budget = 4000, coverage_every_ms = 20 }
+poses = { size = [184, 224], train_every_ms = 1000, held_out_every_ms = 5000 }
+optimise = { steps = 2000, batch = 8, laplacian = 10.0, normal_weight = 1.0, surface_weight = 10.0, surface_margin = 0.25 }
 ```
 
 ## Objects
@@ -110,9 +131,10 @@ is in [Mesh-Import.md](Mesh-Import.md#import-options).
 
 `ray_offset` starts a tracing ray clear of its source surface and
 `colour_merge_step` controls colour merging after the bake. The image compares
-the renderer's `bake = true` result with albedo.
+albedo with the result of a renderer whose `bake = true` light is then
+[fitted](Appearance-Fit.md).
 
-![Albedo against baked light](../images/render/import-light.png)
+![Albedo against the fitted bake](../images/render/import-light.png)
 
 #### bake: indirect
 
@@ -287,7 +309,11 @@ lighting points per face; `auto` chooses a count from face area. One point light
 from one place, so a shadow edge lands on whole faces
 ([smooth against flat](Bake-Quality.md#the-sponza-variants)).
 
-![One fixed face sample against adaptive](../images/render/import-face-samples.png)
+A flat fit starts from these sampled colours, then fits them. Top: one fixed
+sample against adaptive on the fit's start mesh. Bottom: adaptive against the
+finished fit.
+
+![One fixed face sample against adaptive, then adaptive against the flat fit](../images/render/import-face-samples.png)
 
 Face samples are the useful control; extra samples converge, and a face's one
 colour leaves edge error that sampling cannot remove. A flat bake's sky rays
