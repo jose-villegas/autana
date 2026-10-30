@@ -140,11 +140,9 @@ path = { animation = "fly.anim.toml", node = "camera" }
         run, _ = self.render("--view", "invalid")
         names = run.stderr.split("--view is ", 1)[1].split(", not ", 1)[0].split(", ")
         shaded = self.pixels("--object", "card", "--view", "shaded")
-        # The room draws each mesh once, which boxes leaves out unless asked.
-        own = {"boxes": ("--set", "boxview.copies=1")}
         for name in names[1:]:
             with self.subTest(name=name):
-                picture = self.pixels("--object", "card", "--view", name, *own.get(name, ()))
+                picture = self.pixels("--object", "card", "--view", name)
                 self.assertFalse(shaded.tobytes() == picture.tobytes())
 
     def test_unknown_object_names_it_and_lists_renderers(self):
