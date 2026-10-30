@@ -85,13 +85,19 @@ on_card(uint16_t depth, uint16_t card_depth) {
     return depth > card_depth;
 }
 
+/* The view STEP to the side of the rig's camera. */
+static render_view_t
+stepped_view(raster_rig_t* r) {
+    fixture_camera_t moved = raster_rig_camera;
+    moved.eye.x += STEP;
+    return render_view_fixture(&moved, &r->raster, 0);
+}
+
 static void
 test_a_warp_to_a_moved_camera_puts_the_card_where_a_draw_does(void) {
     raster_rig_t* r = open_rig();
-    fixture_camera_t moved = raster_rig_camera;
-    moved.eye.x += STEP;
     const render_view_t drawn = render_view_fixture(&raster_rig_camera, &r->raster, 0);
-    const render_view_t now = render_view_fixture(&moved, &r->raster, 0);
+    const render_view_t now = stepped_view(r);
     (void)raster_draw(&r->raster, &now);
     uint16_t* truth = malloc(sizeof(uint16_t) * W * H);
     TEST_ASSERT_NOT_NULL(truth);
@@ -127,10 +133,8 @@ test_a_warp_to_a_moved_camera_puts_the_card_where_a_draw_does(void) {
 static void
 test_the_fill_completes_the_target_and_keeps_the_drawn_frame(void) {
     raster_rig_t* r = open_rig();
-    fixture_camera_t moved = raster_rig_camera;
-    moved.eye.x += STEP;
     const render_view_t drawn = render_view_fixture(&raster_rig_camera, &r->raster, 0);
-    const render_view_t now = render_view_fixture(&moved, &r->raster, 0);
+    const render_view_t now = stepped_view(r);
     (void)raster_draw(&r->raster, &drawn);
     framegen_warp(&r->raster, &drawn, &now, &target);
     const size_t bytes = sizeof(uint16_t) * W * H;
@@ -209,10 +213,8 @@ static void
 test_a_generated_frame_composes_from_its_own_picture(void) {
     raster_rig_t* r = open_rig();
     render_context_t* c = open_context();
-    fixture_camera_t moved = raster_rig_camera;
-    moved.eye.x += STEP;
     const render_view_t drawn = render_view_fixture(&raster_rig_camera, &r->raster, 0);
-    const render_view_t now = render_view_fixture(&moved, &r->raster, 0);
+    const render_view_t now = stepped_view(r);
     TEST_ASSERT_FALSE(show(c, r, &drawn, BUDGET_US));
     const uint16_t overwritten = (uint16_t)~destination[0];
     TEST_ASSERT_TRUE(render_context_draw(c, r->instance, RASTER_RIG_QUADS, &now, 0));
