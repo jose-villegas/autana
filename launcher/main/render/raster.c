@@ -30,7 +30,6 @@ typedef struct {
     const r3d_span_writer_t* writers;
     int writer_count;
     uint16_t* destination;
-    uint8_t* seams; /* the upscale's, or NULL */
     int work_index;
     const raster_buffers_t* buffers;
     r3d_span_target_t* target;
@@ -184,9 +183,17 @@ resolve_slice(void* ctx) {
     }
 }
 
+/* An upscale job's rows: its own type, so the draw's slice_t stays small. */
+typedef struct {
+    const raster_t* raster;
+    int first, count;
+    uint16_t* destination;
+    uint8_t* seams; /* the upscale's, or NULL */
+} upscale_slice_t;
+
 static void
 upscale_slice(void* ctx) {
-    const slice_t* s = ctx;
+    const upscale_slice_t* s = ctx;
     const raster_buffers_t b = raster_carve(s->raster);
     if (s->raster->present != CAMERA_PRESENT_SCANLINE) {
         upscale_rows_filtered(&s->raster->upscale, &b.picture, s->raster->clear, s->destination, s->seams, s->first,
@@ -490,8 +497,9 @@ raster_upscale_seamed(raster_t* raster, uint16_t* destination, uint8_t* seams, i
     }
     int16_t* share = raster->split != NULL ? &raster->split->upscale_offset : NULL;
     const int mid = job_share_core1_count(share, height);
-    slice_t mine = {.raster = raster, .first = mid, .count = height - mid, .destination = destination, .seams = seams};
-    const slice_t other = {.raster = raster, .count = mid, .destination = destination, .seams = seams};
+    upscale_slice_t mine = {
+        .raster = raster, .first = mid, .count = height - mid, .destination = destination, .seams = seams};
+    const upscale_slice_t other = {.raster = raster, .count = mid, .destination = destination, .seams = seams};
     job_run_steered(share, upscale_slice, &mine, &other, sizeof mine);
     FRAME_COST_END(upscaled_from, "r3d.upscale");
 }

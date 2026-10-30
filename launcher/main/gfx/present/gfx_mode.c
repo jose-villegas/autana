@@ -530,8 +530,9 @@ spread_row(int row, int keep, int cached[SPREAD_ROWS]) {
     return spread_rows[entry];
 }
 
-/* Bilinear at 2x, except across a seam, where each pixel keeps its own colour. */
-static void
+/* Bilinear at 2x, except across a seam, where each pixel keeps its own colour.
+ * Out of line, so the nearest expand's caller stays as small as it was. */
+static __attribute__((noinline)) void
 expand_blended_rows(int y0, int y1, gfx_color_t* destination) {
     const uint8_t* seams = (const uint8_t*)(half_image + ((size_t)HALF_WIDTH * HALF_HEIGHT));
     const size_t seam_pitch = GFX_SEAM_PITCH(HALF_WIDTH);

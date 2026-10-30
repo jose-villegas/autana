@@ -1,4 +1,5 @@
 """The scene-file viewer through the shared harness, using temporary authored assets."""
+import csv
 import os
 import pathlib
 import re
@@ -20,8 +21,10 @@ from anim import track_host
 from build.c_header import read_define
 from r3d import build_pack, import_settings
 from r3d.lit_mesh import write_lit_mesh  # noqa: E402
+from render import render_compare, scene_path  # noqa: E402
 
 SCRIPT = TOOLS / "render/scenes/scene_viewer_render_host.sh"
+REPO = TOOLS.parents[1]
 
 
 @unittest.skipUnless(has_compiler(), "needs sh and a C compiler")
@@ -256,6 +259,81 @@ path = { animation = "fly.anim.toml", node = "camera" }
             self.assertEqual(image.size, (448, 368))
             self.assertGreater(dict((rgb, count) for count, rgb in image.getcolors(448 * 368)).get((255, 40, 16), 0),
                                1000)
+
+    def test_poses_follow_the_camera_one_row_per_frame(self):
+        rows = self.root / "poses.csv"
+        run, _ = self.render("--poses", str(rows), "--frames", "3")
+        self.assertEqual(run.returncode, 0, run.stderr)
+        with open(rows) as handle:
+            poses = list(csv.DictReader(handle))
+        self.assertEqual([pose["ms"] for pose in poses], ["0", "100", "200"])
+        self.assertNotEqual([poses[0][axis] for axis in ("px", "py", "pz")],
+                            [poses[2][axis] for axis in ("px", "py", "pz")])
+        for pose in poses:
+            self.assertAlmostEqual(float(np.linalg.norm([float(pose[q]) for q in ("qx", "qy", "qz", "qw")])), 1.0,
+                                   places=5)
+
+    def sides(self, b_args="--object\ncard"):
+        assets = str(self.out / "assets")
+        return [scene_path.Side("all", self.binary, assets, "--scene\nroom"),
+                scene_path.Side("card", self.binary, assets, "--scene\nroom\n" + b_args)]
+
+    def test_frame_n_is_frame_n_of_the_rendered_path_on_both_sides(self):
+        work = self.root / "path"
+        work.mkdir(exist_ok=True)
+        sides = self.sides()
+        scene_path.render(sides, 4, 100, work)
+        written = scene_path.write_frame(sides, 2, 4, 100, work, self.root / "frame.png")
+        self.assertEqual([path.name for path in written], ["frame.png", "frame-b.png"])
+        pictures = []
+        for name, path in zip(scene_path.SIDES, written):
+            frames = list(render_compare.read_video(work / f"{name}.avi")[1])
+            self.assertEqual(len(frames), 4)
+            with Image.open(path) as image:
+                pictures.append(np.asarray(image.convert("RGB")))
+            np.testing.assert_array_equal(pictures[-1], frames[2])
+        self.assertFalse(np.array_equal(pictures[0], pictures[1]), "the offset card should pop out on side b")
+
+    def test_a_frame_past_the_path_end_is_refused(self):
+        with self.assertRaises(SystemExit) as refusal:
+            scene_path.write_frame(self.sides(), 4, 4, 100, self.root, self.root / "late.png")
+        self.assertIn("frames 0 to 3", str(refusal.exception))
+
+    def test_default_timing_is_the_viewers_frame_time_over_the_whole_path(self):
+        work = self.root / "timing"
+        work.mkdir(exist_ok=True)
+        side = self.sides()[0]
+        run, _ = self.render("--frames", "1")
+        duration_ms = int(re.search(r"camera path (\d+) ms", run.stderr).group(1))
+        dt_default = int(re.search(r"\.dt_ms = (\d+)", (TOOLS / "render/scene_viewer.c").read_text()).group(1))
+        self.assertEqual(scene_path.timing(side, work), (duration_ms // dt_default + 1, dt_default))
+        self.assertEqual(scene_path.timing(side, work, frames=3, dt_ms=7), (3, 7))
+
+    def wrapper(self, *arguments):
+        """scene_viewer.sh on the test scene, run from the repository (--compare needs it)."""
+        return subprocess.run([shutil.which("sh"), str(TOOLS / "render/scene_viewer.sh"), str(self.scene), *arguments],
+                              cwd=REPO, capture_output=True, text=True, timeout=300)
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "needs ffmpeg")
+    def test_wrapper_compares_this_checkout_against_itself_with_other_arguments(self):
+        out = self.root / "compare.mp4"
+        run = self.wrapper("--compare", ".", "--b-args", "--object card", "--frames", "3", "--dt", "100", "-o", str(out))
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertIn("video: 3 frames", run.stderr)
+        self.assertGreater(out.stat().st_size, 0)
+
+    def test_wrapper_frame_writes_both_sides(self):
+        out = self.root / "wrapper frame.png"
+        run = self.wrapper("--compare", ".", "--b-args", "--object card", "--dt", "100", "--frame", "1", "-o", str(out))
+        self.assertEqual(run.returncode, 0, run.stderr)
+        for path in (out, out.with_name("wrapper frame-b.png")):
+            with Image.open(path) as image:
+                self.assertEqual(image.size, (448, 368))
+
+    def test_wrapper_refuses_b_args_without_compare(self):
+        run = self.wrapper("--b-args", "--object card")
+        self.assertEqual(run.returncode, 2)
+        self.assertIn("--b-args needs --compare", run.stderr)
 
     def test_packer_replaces_a_scratch_mesh_for_one_render_only(self):
         scratch = self.root / "scratch mesh"

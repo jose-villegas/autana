@@ -240,6 +240,9 @@ A pose of a camera path is `--frames` times `--dt`. `--camera NAME`
 selects a scene camera; omitted, it draws the first camera.
 `--console FRAME:WORDS` runs the board's `render WORDS` command, such as
 `clip walk 400`, before frame FRAME draws; repeat it for a sequence.
+`--dump DIR` writes each frame's raster colour and depth, before the
+upscale, to `DIR/NNNN.raw` for the frame generation experiment
+([Frame-Generation.md](../../../../../docs/render/Frame-Generation.md)).
 
 `dynres_quality.sh [--scene-file F --scene KEY] [--args "ARGS"] WORK OUT.csv CAMERA WxH [WxH ...]`
 scores each size against the reference along that camera's clip, at
@@ -276,6 +279,7 @@ its scene by name rather than through the menu:
 | `autana render pose <ms>` | holds a Sponza or Bistro scene's camera at that time along its path; `autana render pose play` lets it move again |
 | `autana tune render_lab.scale <n>` | the fixed render scale in hundredths of the panel: 200 is half size |
 | `autana tune render_lab.budget <ms>` | dynamic resolution on the scene showing; 0 turns it off, as does the menu's DYNAMIC RES |
+| `autana tune render_lab.framegen 1` | every other frame is generated from the one before instead of drawn; 0 draws them all, as does the menu's FRAME GEN |
 | `autana tune render_lab.orbit_ms <ms>` | turns the Capybara scene's camera once about the capybara every that many milliseconds; 0 stops it |
 
 The Capybara scene's BOOT menu holds the same clip picker: the CLIP
