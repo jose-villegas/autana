@@ -14,6 +14,7 @@ TUNE_SETTING(render_lab, small_fill_style, SMALL_FILL_FLAT, SMALL_FILL_FLAT, SMA
 TUNE_SETTING(render_lab, budget, 0, 0, RENDER_LAB_BUDGET_MAX_MS);
 TUNE(render_lab, layout, RENDER_LAB_LAYOUT_FULL, RENDER_LAB_LAYOUT_FULL, RENDER_LAB_LAYOUT_COUNT - 1);
 TUNE(render_lab, orbit_ms, 0, 0, RENDER_LAB_ORBIT_MAX_MS);
+TUNE_SETTING(render_lab, upscale, UPSCALE_FILTER_NEAREST, UPSCALE_FILTER_NEAREST, UPSCALE_FILTER_SURFACE);
 TUNE_SETTING(render_lab, framegen, 0, 0, 1);
 
 int
@@ -87,6 +88,25 @@ render_lab_small_fill_select(int index) {
            && TUNE_SETTING_SET(small_fill_style, fill.style);
 }
 
+/* In upscale_filter_t order. */
+static const char* const upscale_names[] = {"SHARP", "SMOOTH"};
+
+const char* const*
+render_lab_upscale_names(int* count) {
+    *count = (int)(sizeof upscale_names / sizeof upscale_names[0]);
+    return upscale_names;
+}
+
+int
+render_lab_upscale_selected(void) {
+    return upscale;
+}
+
+bool
+render_lab_upscale_select(int index) {
+    return TUNE_SETTING_SET(upscale, index);
+}
+
 bool
 render_lab_apply_camera_settings(scene_t* scene, scene_entity_t camera) {
     return scene_camera_set_present(scene, camera, render_lab_present())
@@ -104,6 +124,7 @@ render_lab_render_size(int width, int height) {
 void
 render_lab_apply_raster_settings(void) {
     render_context_set_scale(render_context_main(), RENDER_LAB_SCALE_UNIT * RENDER_LAB_SCALE_UNIT / render_lab_scale());
+    render_context_set_upscale_filter(render_context_main(), (upscale_filter_t)upscale);
 }
 
 bool

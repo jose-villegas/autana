@@ -47,11 +47,11 @@ targets_for(scene_t* scene, scene_entity_t owner) {
 }
 
 static bool
-finish(scene_failure_t* why, scene_failure_t result) {
+finish(scene_failure_t* why, scene_status_t status, asset_status_t asset, const char* what) {
     if (why != NULL) {
-        *why = result;
+        *why = scene_failure_make(status, asset, what);
     }
-    return result.status == SCENE_OK;
+    return status == SCENE_OK;
 }
 
 typedef struct {
@@ -165,7 +165,7 @@ bool
 scene_animator_set_clips(scene_t* scene, scene_entity_t entity, const char* skeleton_id, const char* const* ids,
                          int count, scene_failure_t* why) {
     if (entity >= scene->asset.entity_count || !clip_count_fits(count, skeleton_id)) {
-        return finish(why, scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_BOUNDS, scene->id));
+        return finish(why, SCENE_ERR_ASSET, ASSET_ERR_BOUNDS, scene->id);
     }
     scene_animator_t a = {.root = skeleton_id == NULL ? ANIM_ROOT_SCENE : ANIM_ROOT_SKELETON, .wrap = ANIM_LOOP};
     asset_status_t status = skeleton_id == NULL ? ASSET_OK : anim_skeleton_open(scene->pack, skeleton_id, &a.skeleton);
@@ -179,15 +179,15 @@ scene_animator_set_clips(scene_t* scene, scene_entity_t entity, const char* skel
         status = ASSET_ERR_FORMAT;
     }
     if (status != ASSET_OK) {
-        return finish(why, scene_failure_make(SCENE_ERR_ASSET, status, failed));
+        return finish(why, SCENE_ERR_ASSET, status, failed);
     }
     if (!allocate_animator(&a, count, curves)) {
-        return finish(why, scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, failed));
+        return finish(why, SCENE_ERR_MEMORY, ASSET_OK, failed);
     }
     status = bind_clips(scene, &a, ids, curves, entity, &failed);
     if (status != ASSET_OK) {
         scene_free_kept(a.storage);
-        return finish(why, scene_failure_make(SCENE_ERR_ASSET, status, failed));
+        return finish(why, SCENE_ERR_ASSET, status, failed);
     }
     if (a.root == ANIM_ROOT_SKELETON) {
         a.posed = true;
@@ -207,7 +207,7 @@ scene_animator_set_clips(scene_t* scene, scene_entity_t entity, const char* skel
     scene_free_kept(old->storage);
     a.dirty = true;
     scene->animators[entity] = a;
-    return finish(why, scene_failure_make(SCENE_OK, ASSET_OK, scene->id));
+    return finish(why, SCENE_OK, ASSET_OK, scene->id);
 }
 
 static asset_status_t
@@ -262,20 +262,20 @@ bool
 scene_renderer_set_skin(scene_t* scene, scene_entity_t entity, const char* id, scene_failure_t* why) {
     const int renderer = scene_renderer_index(scene, entity);
     if (renderer < 0) {
-        return finish(why, scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_NOT_FOUND, id));
+        return finish(why, SCENE_ERR_ASSET, ASSET_ERR_NOT_FOUND, id);
     }
     /* Its normals are lit in its own frame, so a skinned renderer is a root. */
     if (scene_entity_parent(scene, entity) != SCENE_ENTITY_NONE) {
-        return finish(why, scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, id));
+        return finish(why, SCENE_ERR_ASSET, ASSET_ERR_FORMAT, id);
     }
     scene_skinned_renderer_t next = {0};
     const asset_status_t status = open_renderer_skin(scene, entity, renderer, id, &next);
     if (status != ASSET_OK) {
-        return finish(why, scene_failure_make(SCENE_ERR_ASSET, status, id));
+        return finish(why, SCENE_ERR_ASSET, status, id);
     }
     const bool lit = scene->light_count > 0 || scene->ambient_intensity > 0.0F;
     if (lit && next.bind.colors == NULL) {
-        return finish(why, scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, SCENE_LIGHT_FAILURE_ALBEDO));
+        return finish(why, SCENE_ERR_ASSET, ASSET_ERR_FORMAT, SCENE_LIGHT_FAILURE_ALBEDO);
     }
     const size_t size = r3d_skin_output_bytes(&next.bind);
     size_t end = size;
@@ -288,11 +288,11 @@ scene_renderer_set_skin(scene_t* scene, scene_entity_t entity, const char* id, s
     SCENE_STORAGE_RESERVE(layout, end, palette, mat4f_t, next.skin.joint_count);
     next.internal_storage = memory_alloc(end, MEMORY_INTERNAL);
     if (next.internal_storage == NULL) {
-        return finish(why, scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id));
+        return finish(why, SCENE_ERR_MEMORY, ASSET_OK, id);
     }
     if (lit && !scene_skin_light_allocate(&next)) {
         memory_free(next.internal_storage);
-        return finish(why, scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id));
+        return finish(why, SCENE_ERR_MEMORY, ASSET_OK, id);
     }
     (void)r3d_skin_output_init(&next.bind, next.internal_storage, size, &next.output);
     next.model = (mat4f_t*)(void*)((uint8_t*)next.internal_storage + layout.model);
@@ -305,10 +305,10 @@ scene_renderer_set_skin(scene_t* scene, scene_entity_t entity, const char* id, s
     if (!prepare_skin_lighting(scene, entity, &next, lit)) {
         memory_free(next.light_storage);
         memory_free(next.internal_storage);
-        return finish(why, scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id));
+        return finish(why, SCENE_ERR_MEMORY, ASSET_OK, id);
     }
     attach_renderer_skin(scene, entity, renderer, &next);
-    return finish(why, scene_failure_make(SCENE_OK, ASSET_OK, id));
+    return finish(why, SCENE_OK, ASSET_OK, id);
 }
 
 static scene_animator_t*

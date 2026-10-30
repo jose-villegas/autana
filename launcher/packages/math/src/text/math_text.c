@@ -1,6 +1,7 @@
 /* math_text: scalar decimal conversion without allocation. */
 #include "math/text/math_text.h"
 
+#include <ctype.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <limits.h>
@@ -13,28 +14,59 @@ text_digit(char c) {
     return c >= '0' && c <= '9';
 }
 
+static int
+text_digit_value(char c, int radix) {
+    int d = text_digit(c)               ? c - '0'
+            : isalpha((unsigned char)c) ? tolower((unsigned char)c) - 'a' + MATH_TEXT_RADIX
+                                        : radix;
+    return d < radix ? d : -1;
+}
+
+/* The digits of `s` in `radix` as a magnitude up to `limit`; the end, or NULL without digits or past the limit. */
+static const char*
+text_magnitude(const char* s, int radix, uint64_t limit, uint64_t* out) {
+    const char* p = s;
+    uint64_t value = 0;
+    for (int d; (d = text_digit_value(*p, radix)) >= 0; ++p) {
+        value = (value * (unsigned)radix) + (unsigned)d;
+        if (value > limit) {
+            return NULL;
+        }
+    }
+    *out = value;
+    return p == s ? NULL : p;
+}
+
 static bool
 text_integer(const char* s, const char** end, int32_t* out, int32_t low, int32_t high) {
-    const char* p = s;
-    if (*p == '-' || *p == '+') {
-        ++p;
-    }
-    if (!text_digit(*p)) {
+    const bool negative = *s == '-';
+    uint64_t magnitude = 0;
+    const char* p = text_magnitude(*s == '-' || *s == '+' ? s + 1 : s, MATH_TEXT_RADIX,
+                                   negative ? (uint64_t)-(int64_t)low : (uint64_t)high, &magnitude);
+    if (p == NULL || (end == NULL && *p != '\0')) {
         return false;
     }
-    while (text_digit(*p)) {
-        ++p;
+    *out = (int32_t)(negative ? -(int64_t)magnitude : (int64_t)magnitude);
+    if (end != NULL) {
+        *end = p;
     }
-    if (end == NULL && *p != '\0') {
+    return true;
+}
+
+static bool
+text_unsigned(const char* s, const char** end, uint32_t* out, int radix) {
+    if (radix == MATH_TEXT_HEX_RADIX) {
+        if (s[0] != '0' || (s[1] != 'x' && s[1] != 'X')) {
+            return false;
+        }
+        s += 2;
+    }
+    uint64_t value;
+    const char* p = text_magnitude(s, radix, UINT32_MAX, &value);
+    if (p == NULL || (end == NULL && *p != '\0')) {
         return false;
     }
-    errno = 0;
-    char* stop;
-    intmax_t value = strtoimax(s, &stop, MATH_TEXT_RADIX);
-    if (errno == ERANGE || value < low || value > high) {
-        return false;
-    }
-    *out = (int32_t)value;
+    *out = (uint32_t)value;
     if (end != NULL) {
         *end = p;
     }
@@ -49,6 +81,21 @@ mathi_format(char* buf, size_t cap, int32_t v) {
 bool
 mathi_parse(const char* s, const char** end, int32_t* out) {
     return text_integer(s, end, out, INT32_MIN, INT32_MAX);
+}
+
+int
+mathu_format(char* buf, size_t cap, uint32_t v) {
+    return snprintf(buf, cap, "%" PRIu32, v);
+}
+
+bool
+mathu_parse(const char* s, const char** end, uint32_t* out) {
+    return text_unsigned(s, end, out, MATH_TEXT_RADIX);
+}
+
+bool
+mathu_parse_hex(const char* s, const char** end, uint32_t* out) {
+    return text_unsigned(s, end, out, MATH_TEXT_HEX_RADIX);
 }
 
 int

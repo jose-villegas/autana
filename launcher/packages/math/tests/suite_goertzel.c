@@ -236,6 +236,7 @@ test_goertzel_amplitude_and_scale(void) {
     TEST_ASSERT_EQUAL_FLOAT(MATH_DB_FLOOR, goertzel_level_db(&state, TEST_TINY_FULL_SCALE));
 }
 
+#ifndef ESP_PLATFORM
 #define TEST_PHASE_SAMPLES        441u
 #define TEST_PHASE_LONG_SAMPLES   65537u
 #define TEST_PHASE_LONG_TOLERANCE 0.03F
@@ -322,6 +323,7 @@ test_goertzel_phase_negative_pi(void) {
     const goertzel_t state = {.omega = MATH_PI / 2, .previous = -1, .previous2 = -0.0F, .samples = 1};
     TEST_ASSERT_EQUAL_FLOAT(MATH_PI, goertzel_phase(&state));
 }
+#endif
 
 void
 run_goertzel_suite(void) {

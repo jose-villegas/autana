@@ -6,7 +6,7 @@ launcher/tools/render/render_doc_images.sh runs it on the capture and scores
 kept in docs/render/data/.
 
     python launcher/tools/r3d/dynres_report.py CAPTURE [CAPTURE ...] --tables DIR --chart PNG
-        [--quality CAMERA=CSV ...]
+        [--quality CAMERA=CSV ...] [--upscale CSV] [--figures DIR]
 
 CAPTURE is a device log holding the frame-cost suite's `scale_split`,
 `scale_spans`, `dynres_step` and `dynres_frames` lines; a later line replaces
@@ -15,7 +15,10 @@ last. CSV is the per-size reference score a scene's quality script writes
 (width,height,frame,t_ms,mean_delta_e,p95_delta_e,ssim); each flown frame takes
 the score of its size at the nearest scored time. DIR receives
 dynres-stages.md, dynres-findings.md, dynres-policies.md and
-dynres-prediction.md, one per block.
+dynres-prediction.md, one per block. --upscale takes the upscale filter
+scores (upscale_quality.sh: those columns after scene and filter) and adds
+dynres-upscale.md. --figures DIR receives the stage, one-core and
+size-share figures the tables leave out.
 """
 
 import argparse
@@ -97,23 +100,56 @@ def ms(us):
     return f"{us / 1000:.1f}"
 
 
-def stages_table(splits, spans):
-    stages = [("cull", "r3d.cull"), ("transform", "r3d.transform"), ("draw", "r3d.draw")]
-    if any("r3d.resolve" in row for row in splits.values()):
-        stages.append(("resolve", "r3d.resolve"))
-    stages.append(("upscale", "r3d.upscale"))
-    headers = ["Render size", "Divisor", "Pixels", "Frame mean", "p50", "max",
-               *(label for label, _ in stages), "1 core: setup", "edges", "carry", "fill"]
+STAGES = (("cull", "r3d.cull"), ("transform", "r3d.transform"), ("draw", "r3d.draw"),
+          ("resolve", "r3d.resolve"), ("upscale", "r3d.upscale"))
+SPAN_STAGES = ("setup", "edges", "carry", "fill")
+STAGE_FIGURE = "dynamic-resolution-stages.png"
+ONE_CORE_FIGURE = "dynamic-resolution-one-core.png"
+SIZES_FIGURE = "dynamic-resolution-sizes.png"
+ROW_HEIGHT = 0.3  # inches per bar row of a figure
+FIGURE_WIDTH = 7.0
+
+
+def by_pixels(sizes):
+    """Largest picture first, the wider of two equal pictures first."""
+    return sorted(sizes, key=lambda size: (-size[0] * size[1], -size[0]))
+
+
+def stages_table(splits):
+    headers = ["Render size", "Divisor", "Pixels", "Frame mean", "p50", "max"]
     lines = ["| " + " | ".join(headers) + " |", "|" + "---|" * len(headers)]
     full = DESTINATION[0] * DESTINATION[1]
-    for size, s in splits.items():
-        o = spans.get(size, {})
-        cells = [f"{size[0]}x{size[1]}", divisor(size), f"{100 * size[0] * size[1] / full:.0f}%",
-                 ms(s['mean']), ms(s['p50']), ms(s['max']),
-                 *(f"{s[name]:.1f}" if name in s else "not in capture" for _, name in stages),
-                 *(ms(o[key]) for key in ("setup", "edges", "carry", "fill"))]
-        lines.append("| " + " | ".join(cells) + " |")
-    return "\n".join(lines) + "\n\nMilliseconds; both cores unless marked one core."
+    for size in by_pixels(splits):
+        s = splits[size]
+        lines.append(f"| {size[0]}x{size[1]} | {divisor(size)} | {100 * size[0] * size[1] / full:.0f}% "
+                     f"| {ms(s['mean'])} | {ms(s['p50'])} | {ms(s['max'])} |")
+    return "\n".join(lines) + "\n\nMilliseconds, both cores."
+
+
+def stage_figures(splits, spans, directory):
+    """The stage split as stacked bars per render size: both cores, then one core."""
+    from docs.plot_style import SLOTS, figure, save_themes, stacked_barh, style_axes
+
+    sizes = by_pixels(splits)
+    height = ROW_HEIGHT * len(sizes) + 1.2
+    labels = [f"{w}x{h}" for w, h in sizes]
+    both = [(name, key) for name, key in STAGES if any(key in splits[size] for size in sizes)]
+    one = [(name, name) for name in SPAN_STAGES]
+    for path, title, parts, value in (
+            (STAGE_FIGURE, "frame time by stage, both cores (ms)", both,
+             lambda size, key: splits[size].get(key, 0.0)),
+            (ONE_CORE_FIGURE, "one core, per pose (ms)", one,
+             lambda size, key: spans.get(size, {}).get(key, 0) / 1000)):
+        colours = {name: SLOTS[i] for i, (name, _) in enumerate(parts)}
+        rows = [(label, [(name, value(size, key)) for name, key in parts]) for label, size in zip(labels, sizes)]
+        ends = [ms(splits[size]["mean"]) if path == STAGE_FIGURE else f"{sum(v for _, v in segments):.1f}"
+                for size, (_, segments) in zip(sizes, rows)]
+        fig = figure((FIGURE_WIDTH, height))
+        axis = fig.add_subplot()
+        stacked_barh(axis, rows, colours, ends)
+        style_axes(axis, title)
+        axis.legend(fontsize=8, loc="lower right", ncol=len(parts), frameon=False)
+        save_themes(fig, pathlib.Path(directory) / path)
 
 
 def findings_table(splits, spans):
@@ -179,18 +215,85 @@ def policy_rows(runs, ladders, scores, splits):
     return rows
 
 
+def size_spread(row):
+    total = sum(row["steps"].values())
+    return {size: n / total for size, n in row["steps"].items()}
+
+
 def policies_table(rows):
-    lines = ["| Path | Budget | Policy | Ladder | p50 | p95 | max | Over budget | Switches | Time at each size | Mean dE | SSIM |",
-             "|---|---|---|---|---|---|---|---|---|---|---|---|"]
-    for r in rows:
-        total = sum(r["steps"].values())
-        spread = ", ".join(f"{w}x{h} {100 * n / total:.0f}%" for (w, h), n in
-                           sorted(r["steps"].items(), key=lambda item: -item[0][0] * item[0][1]))
-        quality = "" if r["delta_e"] is None else f"{r['delta_e']:.2f} | {r['ssim']:.4f}"
-        lines.append(f"| {r['camera']} | {ms(r['budget'])} | {r['policy']} | {r['ladder']} | {ms(r['p50'])} | {ms(r['p95'])} "
-                     f"| {ms(r['max'])} | {100 * r['over']:.1f}% | {r['switches']} | {spread} | {quality or '- | -'} |")
-    return "\n".join(lines) + ("\n\nFrame time is the scaled part, draw plus upscale, in milliseconds; dE and SSIM "
+    """One table per path; the fixed run is the same at every budget, so it is shown once."""
+    out = []
+    for camera in sorted({r["camera"] for r in rows}):
+        lines = [f"**{camera}**", "",
+                 "| Budget | Policy | Ladder | p50 | p95 | max | Over budget | Switches | Mean dE | SSIM |",
+                 "|---|---|---|---|---|---|---|---|---|---|"]
+        seen = set()
+        for r in (r for r in rows if r["camera"] == camera):
+            if r["policy"] == "fixed":
+                if (r["ladder"], r["policy"]) in seen:
+                    continue
+                seen.add((r["ladder"], r["policy"]))
+            budget = "any" if r["policy"] == "fixed" else ms(r["budget"])
+            quality = "- | -" if r["delta_e"] is None else f"{r['delta_e']:.2f} | {r['ssim']:.4f}"
+            lines.append(f"| {budget} | {r['policy']} | {r['ladder']} | {ms(r['p50'])} | {ms(r['p95'])} "
+                         f"| {ms(r['max'])} | {100 * r['over']:.1f}% | {r['switches']} | {quality} |")
+        out.append("\n".join(lines))
+    return "\n\n".join(out) + ("\n\nFrame time is the scaled part, draw plus upscale, in milliseconds; dE and SSIM "
                                "are against the reference at full size, lower dE and higher SSIM being closer.")
+
+
+SHARE_COLOURMAP = "turbo"  # one distinct colour per step, like a height map
+SHARE_RANGE = (0.1, 0.9)
+MIN_LABELLED = 5  # a bar segment narrower than this share of frames carries no number
+OUTLINE_ALPHA = 0.55
+OUTLINE_WIDTH = 3  # points of translucent dark outline that keep a number readable on any segment colour
+LEGEND_BESIDE = (1.01, 0.5)  # the steps listed down the bars' right, first on top
+
+
+def share_figure(panels, path):
+    """Time at each render size as 100% bars, one panel per ladder with its steps numbered in ladder order,
+    finest first: panels is [(title, [steps], [(label, {size: share})])]."""
+    import numpy as np
+    from matplotlib import colormaps
+    from matplotlib.patheffects import withStroke
+    from docs.plot_style import figure, save_themes, stacked_barh, style_axes
+
+    count = sum(len(rows) for _, _, rows in panels)
+    fig = figure((FIGURE_WIDTH, ROW_HEIGHT * count + 0.8 * len(panels) + 0.3))
+    grid = fig.subplots(len(panels), 1, gridspec_kw={"height_ratios": [len(rows) + 2 for _, _, rows in panels]})
+    grid = [grid] if len(panels) == 1 else list(grid)
+    for axis, (title, steps, rows) in zip(grid, panels):
+        used = [i for i, size in enumerate(steps) if any(spread.get(size) for _, spread in rows)]
+        steps = steps[:used[-1] + 1]
+        shades = colormaps[SHARE_COLOURMAP](np.linspace(*SHARE_RANGE, len(steps)))
+        names = [f"{i + 1}: {w}x{h}" for i, (w, h) in enumerate(steps)]
+        colours = dict(zip(names, shades))
+        bars = [(label, [(name, 100 * spread.get(size, 0)) for name, size in zip(names, steps)])
+                for label, spread in rows]
+        stacked_barh(axis, bars, colours, extent=100)
+        for row, (_, segments) in enumerate(bars):
+            left = 0.0
+            for name, value in segments:
+                if value >= MIN_LABELLED:
+                    label = axis.text(left + value / 2, row, f"{value:.0f}", ha="center", va="center", fontsize=9,
+                                      color="white")
+                    label.set_path_effects([withStroke(linewidth=OUTLINE_WIDTH, foreground="black", alpha=OUTLINE_ALPHA)])
+                left += value
+        style_axes(axis, f"{title}, share of frames (%)")
+        axis.legend(fontsize=8, loc="center left", bbox_to_anchor=LEGEND_BESIDE, frameon=False)
+    save_themes(fig, path)
+
+
+def policy_share_figure(rows, ladders, path):
+    """Each path's stepped and predicted runs, one panel per ladder; the fixed run is the table's."""
+    panels = []
+    for camera in sorted({r["camera"] for r in rows}):
+        for ladder in sorted({r["ladder"] for r in rows if r["camera"] == camera and r["policy"] != "fixed"}):
+            bars = [(f"{r['policy']}, {ms(r['budget'])} ms", size_spread(r)) for r in rows
+                    if r["camera"] == camera and r["ladder"] == ladder and r["policy"] != "fixed"]
+            steps = [size for _, size in sorted(ladders[ladder].items())]
+            panels.append((f"{camera}, {ladder} ladder", steps, bars))
+    share_figure(panels, path)
 
 
 def prediction_table(runs, refit=None):
@@ -213,26 +316,70 @@ def prediction_table(runs, refit=None):
     return "\n".join(lines)
 
 
+UPSCALE_COLUMNS = (("mean_delta_e", "mean dE", "%.2f"), ("p95_delta_e", "p95 dE", "%.1f"), ("ssim", "SSIM", "%.3f"),
+                   ("edge_delta_e", "edge dE", "%.2f"), ("interior_delta_e", "interior dE", "%.2f"))
+UPSCALE_MAIN = ("mean_delta_e", "p95_delta_e", "ssim")
+MAIN_SIZE = (DESTINATION[0] // 2, DESTINATION[1] // 2)
+
+
+def upscale_table(path):
+    """The main size inline, one row per scene, each metric as first filter in the file → second
+    (change); every size and column in a details block."""
+    groups = {}
+    with open(path, newline="") as handle:
+        for row in csv.DictReader(handle):
+            key = (row["scene"], (int(row["width"]), int(row["height"])))
+            groups.setdefault(key, {}).setdefault(row["filter"], []).append(row)
+    filters = list(next(iter(groups.values())))
+    if len(filters) != 2:
+        raise SystemExit(f"{path}: needs two filters, has {filters}")
+
+    def means(by_filter, field):
+        return [statistics.mean(float(row[field]) for row in by_filter[name]) for name in filters]
+
+    columns = {field: (label, form) for field, label, form in UPSCALE_COLUMNS}
+    lines = ["| Scene | " + " | ".join(columns[f][0] for f in UPSCALE_MAIN) + " |", "|---|" + "---|" * len(UPSCALE_MAIN)]
+    for (scene, size), by_filter in groups.items():
+        if size != MAIN_SIZE:
+            continue
+        row = []
+        for field in UPSCALE_MAIN:
+            a, b = means(by_filter, field)
+            form = columns[field][1]
+            row.append(f"{form % a} → {form % b} ({form.replace('%', '%+') % (b - a)})")
+        lines.append(f"| {scene} | " + " | ".join(row) + " |")
+    lines += ["", f"At {MAIN_SIZE[0]}x{MAIN_SIZE[1]}, each cell is {filters[0]} → {filters[1]} (change), the mean over the "
+                  "path's frames against the reference at full size; lower dE and higher SSIM are closer.", "",
+              "<details>", "<summary>Every size, with edge and interior dE</summary>", "",
+              "| Scene | Size | " + " | ".join(label for _f, label, _m in UPSCALE_COLUMNS) + " |",
+              "|---|---|" + "---|" * len(UPSCALE_COLUMNS)]
+    for (scene, (width, height)), by_filter in groups.items():
+        cells = []
+        for field, _label, form in UPSCALE_COLUMNS:
+            a, b = means(by_filter, field)
+            cells.append(f"{form % a} → {form % b}")
+        lines.append(f"| {scene} | {width}x{height} | " + " | ".join(cells) + " |")
+    lines += ["", f"Each cell is {filters[0]} → {filters[1]}.", "", "</details>"]
+    return "\n".join(lines)
+
+
 def chart(rows, path):
     from docs.plot_style import save, subplots
 
     budgets = sorted({r["budget"] for r in rows})
     cameras = sorted({r["camera"] for r in rows})
-    figure, axes = subplots(2 * len(cameras), len(budgets), (6 * len(budgets), 6 * len(cameras)), squeeze=False)
+    figure, axes = subplots(len(cameras), len(budgets), (6 * len(budgets), 3.5 * len(cameras)), squeeze=False)
     for row, camera in enumerate(cameras):
         for column, budget in enumerate(budgets):
-            cost_axis, size_axis = axes[2 * row][column], axes[2 * row + 1][column]
+            cost_axis = axes[row][column]
             for r in (r for r in rows if r["camera"] == camera and r["budget"] == budget):
                 label = r["policy"] if r["ladder"] == "half" else f"{r['policy']}, {r['ladder']}"
                 seconds = [(i + 1) * 0.05 for i in range(len(r["costs"]))]
                 cost_axis.plot(seconds, [c / 1000 for c in r["costs"]], linewidth=0.8, label=label)
-                share = [100 * w * h / (DESTINATION[0] * DESTINATION[1]) for w, h in r["sizes"]]
-                size_axis.step(seconds, share, linewidth=0.8, where="post", label=label)
             cost_axis.axhline(budget / 1000, color="black", linestyle="--", linewidth=0.8)
             cost_axis.set_title(f"{camera}, budget {budget / 1000:.0f} ms")
             cost_axis.set_ylabel("draw + upscale, ms")
-            size_axis.set_ylabel("pixels drawn, % of panel")
-            size_axis.set_xlabel("path time, s")
+            cost_axis.set_xlabel("path time, s")
             cost_axis.legend(fontsize=7, loc="upper right")
     save(figure, path)
 
@@ -244,6 +391,8 @@ def main():
     parser.add_argument("--chart", required=True)
     parser.add_argument("--quarter", choices=QUARTERS, default="portrait")
     parser.add_argument("--quality", action="append", default=[], metavar="CAMERA=CSV")
+    parser.add_argument("--upscale", metavar="CSV")
+    parser.add_argument("--figures", type=pathlib.Path, help="directory for the stage and size-share figures")
     args = parser.parse_args()
     refit = {}
     splits, spans, ladders, runs = read_captures(args.captures, refit, args.quarter)
@@ -257,12 +406,17 @@ def main():
         scores[camera] = read_quality(csv_path)
     rows = policy_rows(runs, ladders, scores, splits)
     args.tables.mkdir(parents=True, exist_ok=True)
-    tables = {"dynres-stages": stages_table(splits, spans), "dynres-findings": findings_table(splits, spans),
+    tables = {"dynres-stages": stages_table(splits), "dynres-findings": findings_table(splits, spans),
               "dynres-policies": policies_table(rows), "dynres-prediction": prediction_table(runs, refit)}
+    if args.upscale:
+        tables["dynres-upscale"] = upscale_table(args.upscale)
     for name, body in tables.items():
         label = f"Render quarter={args.quarter}.\n\n" if args.quarter != "portrait" else ""
         (args.tables / f"{name}.md").write_text(label + body + "\n", encoding="utf-8")
     chart(rows, args.chart)
+    if args.figures:
+        stage_figures(splits, spans, args.figures)
+        policy_share_figure(rows, ladders, args.figures / SIZES_FIGURE)
 
 
 if __name__ == "__main__":
