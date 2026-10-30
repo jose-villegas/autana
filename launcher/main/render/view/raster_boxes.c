@@ -1,8 +1,19 @@
 #include "render/view/raster_boxes.h"
 
+#include "core/tune.h"
 #include "render/r3d_pipeline.h"
 #include "render/view/raster_lines.h"
 #include "render/view/raster_meshlets.h"
+
+TUNE_OWNER(boxview);
+TUNE(boxview, copies, RASTER_BOXES_COPIES_DEFAULT, 1, UINT16_MAX);
+TUNE(boxview, behind, RASTER_BOXES_BEHIND_HIDE, 0, RASTER_BOXES_BEHIND_COUNT - 1);
+
+/* What a stretch behind keeps under each boxview.behind but full, which tests nothing. */
+static const unsigned BEHIND_KEEP[RASTER_BOXES_BEHIND_COUNT] = {
+    [RASTER_BOXES_BEHIND_HIDE] = 0,
+    [RASTER_BOXES_BEHIND_DIM] = RASTER_LINES_BEHIND_KEEP,
+};
 
 static void
 begin(const raster_attachment_t* self, const raster_t* raster, const render_view_t* view) {
@@ -22,12 +33,17 @@ raster_boxes_set_objects(raster_boxes_t* state, const raster_box_t* boxes, int c
     state->object_count = count;
 }
 
-/* The shape of instance `i`: the first instance drawing the same mesh. */
+/* The shape of instance `i`, the first instance drawing the same mesh, and
+ * how many instances draw it. */
 static int
-instance_shape(const raster_t* raster, int i) {
-    int first = 0;
-    while (raster->instances[first].mesh != raster->instances[i].mesh) {
-        first++;
+instance_shape(const raster_t* raster, int i, int* copies) {
+    int first = -1;
+    *copies = 0;
+    for (int j = 0; j < raster->instance_count; j++) {
+        if (raster->instances[j].mesh == raster->instances[i].mesh) {
+            first = first < 0 ? j : first;
+            ++*copies;
+        }
     }
     return first;
 }
@@ -42,20 +58,29 @@ raster_boxes_overlay(void* state, int width, int height) {
     render_view_t seen = s->camera;
     render_view_refit(&seen, (viewport_t){width, height, seen.viewport.quarter});
     raster_lines_depth_t depth;
-    raster_lines_depth(&depth, raster, width, height);
+    raster_lines_depth(&depth, raster, width, height, BEHIND_KEEP[behind]);
+    const raster_lines_depth_t* tested = behind == RASTER_BOXES_BEHIND_FULL ? NULL : &depth;
     for (int i = 0; i < raster->instance_count; i++) {
+        int shape_copies;
+        const int shape = instance_shape(raster, i, &shape_copies);
+        if (shape_copies < copies) {
+            continue;
+        }
         const r3d_instance_t* instance = &raster->instances[i];
         r3d_lens_t lens;
         r3d_lens_init(&lens, &seen, instance->mesh->position_scale);
         if (instance->model != NULL) {
             r3d_lens_place(&lens, instance->model, instance->mesh->position_scale);
         }
-        const gfx_color_t color = raster_meshlets_color(1U + (uint32_t)instance_shape(raster, i));
-        raster_lines_box(&lens, &depth, box3f_from_box3s(instance->mesh->nodes[0].bounds, 1.0F), color);
+        const gfx_color_t color = raster_meshlets_color(1U + (uint32_t)shape);
+        raster_lines_box(&lens, tested, box3f_from_box3s(instance->mesh->nodes[0].bounds, 1.0F), color);
     }
     r3d_lens_t world;
     r3d_lens_init(&world, &seen, 1);
     for (int i = 0; i < s->object_count; i++) {
-        raster_lines_box(&world, &depth, s->objects[i].box, raster_meshlets_color(1U + s->objects[i].shape));
+        const raster_box_t* object = &s->objects[i];
+        if (object->copies >= copies) {
+            raster_lines_box(&world, tested, object->box, raster_meshlets_color(1U + object->shape));
+        }
     }
 }

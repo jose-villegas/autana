@@ -11,20 +11,23 @@
 #include "render/r3d_pipeline.h"
 #include "render/raster.h"
 
-/* What a dimmed stretch keeps of its colour, out of RGB565_SCALE_UNIT. */
+/* What a dimmed stretch keeps of its colour by default, out of RGB565_SCALE_UNIT. */
 #define RASTER_LINES_BEHIND_KEEP (RGB565_SCALE_UNIT * 3 / 8)
 /* The stretch, in picture pixels, that one depth sample decides. */
 #define RASTER_LINES_STEP_PX     4
 
 /* The drawn picture's depth, read where a line crosses the composed picture. */
 typedef struct {
-    image_t drawn;     /* the raster's depth attachment, at its render size */
-    float depth_near;  /* the encoding raster_draw() last used */
-    int width, height; /* the composed picture the lines go over */
+    image_t drawn;        /* the raster's depth attachment, at its render size */
+    float depth_near;     /* the encoding raster_draw() last used */
+    int width, height;    /* the composed picture the lines go over */
+    unsigned behind_keep; /* what a stretch behind keeps, out of RGB565_SCALE_UNIT; 0 leaves it out */
 } raster_lines_depth_t;
 
-/* The depth `raster` last drew, for lines over a `width` by `height` picture. */
-void raster_lines_depth(raster_lines_depth_t* depth, const raster_t* raster, int width, int height);
+/* The depth `raster` last drew, for lines over a `width` by `height` picture,
+ * a stretch behind it keeping `behind_keep` of its colour. */
+void raster_lines_depth(raster_lines_depth_t* depth, const raster_t* raster, int width, int height,
+                        unsigned behind_keep);
 
 /* From `a` to `b` in `lens`'s space; `depth` NULL draws it all at full colour. */
 void raster_lines_segment(const r3d_lens_t* lens, const raster_lines_depth_t* depth, vec3f_t a, vec3f_t b,

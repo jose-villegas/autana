@@ -617,7 +617,8 @@ class ObjectBoxesTests(unittest.TestCase):
         shapes_of = [int(row[0]) for row in rows]
         self.assertEqual(shapes_of[0], shapes_of[1])
         self.assertNotEqual(shapes_of[0], shapes_of[2])
-        boxes = sorted(tuple(float(v) for v in row[1:]) for row in rows[:2])
+        self.assertEqual([int(row[1]) for row in rows], [2, 2, 1])
+        boxes = sorted(tuple(float(v) for v in row[2:]) for row in rows[:2])
         low, high = POINTS.min(axis=0), POINTS.max(axis=0)
         for box, shift in zip(boxes, ([0, 0, 0], [10, 0, 0])):
             np.testing.assert_allclose(box, [*(2 * (low + shift) + [0, 5, 0]), *(2 * (high + shift) + [0, 5, 0])])

@@ -1,6 +1,7 @@
 /*
  * Portable suite: the "boxes" debug view. It leaves the shaded picture as it
- * was, colours boxes by shape, and dims the stretches behind what was drawn.
+ * was, colours boxes by shape, draws only shapes with boxview.copies copies,
+ * and hides or dims the stretches behind what was drawn (boxview.behind).
  */
 
 #include "suites.h"
@@ -11,6 +12,7 @@
 
 #include "raster_rig.h"
 
+#include "core/tune.h"
 #include "draw/draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_test.h"
@@ -35,13 +37,40 @@
 #define BACK_FAR     80.0F
 /* The second card's offset from the first, in world units: still in the picture. */
 #define CARD_SHIFT   20.0F
+/* An object box's copies: enough for boxview.copies' default. */
+#define COPIES       RASTER_BOXES_COPIES_DEFAULT
+
+static int32_t saved_copies, saved_behind;
+
+static void
+tunables_restore(void) {
+    (void)tune_set(tune_shared(), TUNE_NAME(boxview, copies), saved_copies);
+    (void)tune_set(tune_shared(), TUNE_NAME(boxview, behind), saved_behind);
+}
+
+static int32_t
+tunable(const char* name) {
+    const tune_entry_t* entry = tune_find(tune_shared(), name);
+    TEST_ASSERT_NOT_NULL(entry);
+    return *entry->value;
+}
 
 static raster_rig_t*
 rig_open(unsigned placed) {
     raster_rig_t* r = raster_rig_open(raster_rig_wall_and_card, 2, placed, W, H, sizeof(raster_boxes_t));
     TEST_ASSERT_TRUE(gfx_init());
     suite_add_test_cleanup(gfx_reset_for_test);
+    saved_copies = tunable(TUNE_NAME(boxview, copies));
+    saved_behind = tunable(TUNE_NAME(boxview, behind));
+    suite_add_test_cleanup(tunables_restore);
+    TEST_ASSERT_EQUAL_INT(RASTER_BOXES_COPIES_DEFAULT, saved_copies);
+    TEST_ASSERT_EQUAL_INT(RASTER_BOXES_BEHIND_HIDE, saved_behind);
     return r;
+}
+
+static void
+set_behind(raster_boxes_behind_t behind) {
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(boxview, behind), behind));
 }
 
 static raster_boxes_t*
@@ -105,8 +134,8 @@ test_boxes_view_leaves_the_shaded_picture_as_drawn(void) {
 static void
 test_an_object_before_everything_is_drawn_at_full_colour(void) {
     raster_rig_t* r = rig_open(0);
-    const raster_box_t front = {{{-OBJECT_HALF, -OBJECT_HALF, FRONT_NEAR}, {OBJECT_HALF, OBJECT_HALF, FRONT_FAR}},
-                                OBJECT_SHAPE};
+    const raster_box_t front = {
+        {{-OBJECT_HALF, -OBJECT_HALF, FRONT_NEAR}, {OBJECT_HALF, OBJECT_HALF, FRONT_FAR}}, OBJECT_SHAPE, COPIES};
     raster_boxes_set_objects(boxes_of(r), &front, 1);
     raster_attachment_t view;
     draw_with_boxes(r, &view);
@@ -115,11 +144,24 @@ test_an_object_before_everything_is_drawn_at_full_colour(void) {
     TEST_ASSERT_EQUAL_INT(0, screen_pixels_of(dimmed(color)));
 }
 
+static const raster_box_t back = {
+    {{-OBJECT_HALF, -OBJECT_HALF, BACK_NEAR}, {OBJECT_HALF, OBJECT_HALF, BACK_FAR}}, OBJECT_SHAPE, COPIES};
+
 static void
-test_an_object_behind_the_wall_is_dimmed(void) {
+test_an_object_behind_the_wall_is_hidden_by_default(void) {
     raster_rig_t* r = rig_open(0);
-    const raster_box_t back = {{{-OBJECT_HALF, -OBJECT_HALF, BACK_NEAR}, {OBJECT_HALF, OBJECT_HALF, BACK_FAR}},
-                               OBJECT_SHAPE};
+    raster_boxes_set_objects(boxes_of(r), &back, 1);
+    raster_attachment_t view;
+    draw_with_boxes(r, &view);
+    const gfx_color_t color = raster_meshlets_color(1U + OBJECT_SHAPE);
+    TEST_ASSERT_EQUAL_INT(0, screen_pixels_of(color));
+    TEST_ASSERT_EQUAL_INT(0, screen_pixels_of(dimmed(color)));
+}
+
+static void
+test_an_object_behind_the_wall_is_dimmed_when_asked(void) {
+    raster_rig_t* r = rig_open(0);
+    set_behind(RASTER_BOXES_BEHIND_DIM);
     raster_boxes_set_objects(boxes_of(r), &back, 1);
     raster_attachment_t view;
     draw_with_boxes(r, &view);
@@ -130,14 +172,52 @@ test_an_object_behind_the_wall_is_dimmed(void) {
 }
 
 static void
+test_an_object_behind_the_wall_is_full_when_asked(void) {
+    raster_rig_t* r = rig_open(0);
+    set_behind(RASTER_BOXES_BEHIND_FULL);
+    raster_boxes_set_objects(boxes_of(r), &back, 1);
+    raster_attachment_t view;
+    draw_with_boxes(r, &view);
+    const gfx_color_t color = raster_meshlets_color(1U + OBJECT_SHAPE);
+    TEST_ASSERT_TRUE(screen_pixels_of(color) > 0);
+    TEST_ASSERT_EQUAL_INT(0, screen_pixels_of(dimmed(color)));
+}
+
+static void
+test_a_shape_with_fewer_copies_than_boxview_copies_is_left_out(void) {
+    raster_rig_t* r = rig_open(0);
+    raster_box_t alone = {
+        {{-OBJECT_HALF, -OBJECT_HALF, FRONT_NEAR}, {OBJECT_HALF, OBJECT_HALF, FRONT_FAR}}, OBJECT_SHAPE, COPIES - 1};
+    raster_boxes_set_objects(boxes_of(r), &alone, 1);
+    raster_attachment_t view;
+    draw_with_boxes(r, &view);
+    const gfx_color_t color = raster_meshlets_color(1U + OBJECT_SHAPE);
+    TEST_ASSERT_EQUAL_INT(0, screen_pixels_of(color));
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(boxview, copies), COPIES - 1));
+    draw_with_boxes(r, &view);
+    TEST_ASSERT_TRUE(screen_pixels_of(color) > 0);
+}
+
+static void
 test_instances_of_one_mesh_share_a_colour(void) {
     raster_rig_t* r = rig_open(1U << 1);
     r->model[1] = (mat4f_t)MAT4F_IDENTITY;
     r->model[1].m[0][MAT3F_AXES] = CARD_SHIFT;
     r->instance[0].mesh = r->instance[1].mesh; /* two cards, no wall */
+    set_behind(RASTER_BOXES_BEHIND_FULL);
     raster_attachment_t view;
     draw_with_boxes(r, &view);
     TEST_ASSERT_TRUE(screen_pixels_of(raster_meshlets_color(1U)) > 0);
+    TEST_ASSERT_EQUAL_INT(0, screen_pixels_of(raster_meshlets_color(2U)));
+}
+
+static void
+test_instances_of_meshes_drawn_once_are_left_out(void) {
+    raster_rig_t* r = rig_open(0);
+    set_behind(RASTER_BOXES_BEHIND_FULL);
+    raster_attachment_t view;
+    draw_with_boxes(r, &view);
+    TEST_ASSERT_EQUAL_INT(0, screen_pixels_of(raster_meshlets_color(1U)));
     TEST_ASSERT_EQUAL_INT(0, screen_pixels_of(raster_meshlets_color(2U)));
 }
 #endif
@@ -147,8 +227,12 @@ run_raster_boxes_suite(void) {
 #ifndef DEVICE_BUILD
     RUN_TEST(test_boxes_view_leaves_the_shaded_picture_as_drawn);
     RUN_TEST(test_an_object_before_everything_is_drawn_at_full_colour);
-    RUN_TEST(test_an_object_behind_the_wall_is_dimmed);
+    RUN_TEST(test_an_object_behind_the_wall_is_hidden_by_default);
+    RUN_TEST(test_an_object_behind_the_wall_is_dimmed_when_asked);
+    RUN_TEST(test_an_object_behind_the_wall_is_full_when_asked);
+    RUN_TEST(test_a_shape_with_fewer_copies_than_boxview_copies_is_left_out);
     RUN_TEST(test_instances_of_one_mesh_share_a_colour);
+    RUN_TEST(test_instances_of_meshes_drawn_once_are_left_out);
 #endif
 }
 

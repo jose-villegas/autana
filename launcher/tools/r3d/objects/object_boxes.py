@@ -3,9 +3,9 @@
 
     object_boxes.py SCENE.scene.toml --out FILE [--object NAME] [--tolerance X]
 
-One line per source object, `shape lo.x lo.y lo.z hi.x hi.y hi.z`: copies of
-one shape (match_instances) share `shape`, and the renderer's placement is
-applied. --object defaults to the scene's first mesh renderer. FILE.key
+One line per source object, `shape copies lo.x lo.y lo.z hi.x hi.y hi.z`:
+copies of one shape (match_instances) share `shape`, `copies` counts them,
+and the renderer's placement is applied. --object defaults to the scene's first mesh renderer. FILE.key
 records what FILE was made from (the scene, the import settings, the source
 files and this tool's code); a run whose key matches leaves FILE as it is.
 """
@@ -58,7 +58,7 @@ def placed_boxes(shapes, job, min_copies=1):
 def box_lines(shapes, job):
     """Each copy's world box, by shape."""
     corners, owners = placed_boxes(shapes, job)
-    return [' '.join([str(owner), *(f'{value:.9g}' for value in (*box.min(axis=0), *box.max(axis=0)))])
+    return [' '.join([str(owner), str(len(shapes[owner].instances)), *(f'{value:.9g}' for value in (*box.min(axis=0), *box.max(axis=0)))])
             for box, owner in zip(corners, owners)]
 
 
