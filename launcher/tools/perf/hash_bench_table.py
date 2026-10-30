@@ -10,31 +10,26 @@ from generated_blocks import replace_block
 ROOT = bench.ROOT
 CAPTURE = Path("docs/packages/data/hash_bench_capture.txt")
 PLACEHOLDER = "# Board capture pending: run autana suite hash_perf --flash."
-CANDIDATES = ("nibble", "slice4", "rom")
-SIZES = (64, 4096, 65536)
-MEMORIES = ("ram", "flash")
 COMMAND = "python launcher/tools/perf/hash_bench_table.py --check"
 
 
-def rows():
-    return [(f"crc32_update_{candidate}_{size}_{memory}", f"crc32_update_{candidate}",
-             f"{size}_{memory}", 1, "hash")
-            for candidate in CANDIDATES for size in SIZES for memory in MEMORIES]
-
-
 def render(capture):
-    build, measured = bench.parse_capture(capture, rows(), prefix="HASHBENCH", placeholder=PLACEHOLDER)
-    target = bench.parse_target(capture.replace("HASHTARGET", "MATHTARGET"))
+    build, measured = bench.parse_capture(capture, prefix="HASHBENCH", placeholder=PLACEHOLDER)
+    target = bench.parse_target(capture, prefix="HASHTARGET")
     if measured and not target:
         raise ValueError("hash measurements require a hardware HASHTARGET record")
-    lines = [f"Build: `{build or '-'}`; target: {target or '-' }.", "",
-             "| Candidate | Bytes | Source | Warm cycles | Cold cycles | Instructions |",
-             "|---|---|---|---|---|---|"]
-    for key, label, kind, _, _ in rows():
-        size, memory = kind.split("_")
-        values = measured.get(key)
-        cells = [f"{value:.1f}" for value in values] if values else ["-", "-", "-"]
-        lines.append("| " + " | ".join([f"`{label}`", size, memory, *cells]) + " |")
+    lines = [f"Build: `{build or '-'}`; target: {target or '-' }.", ""]
+    if not measured:
+        lines.extend(["Capture pending.", ""])
+    lines.extend(["| Candidate | Bytes | Source | Warm cycles | Cold cycles | Instructions |",
+                  "|---|---|---|---|---|---|"])
+    rows = []
+    for (label, kind), values in measured.items():
+        size, memory = kind.split("_", 1)
+        rows.append((label, int(size), memory, values))
+    for label, size, memory, values in sorted(rows):
+        cells = [f"{value:.1f}" for value in values]
+        lines.append("| " + " | ".join([f"`{label}`", str(size), memory, *cells]) + " |")
     return "\n".join(lines)
 
 
