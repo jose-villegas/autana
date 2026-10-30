@@ -44,11 +44,9 @@ map_instances(raster_motion_t* m, const raster_t* raster, const render_view_t* v
         const mat4f_t* p = raster->instances[i].model;
         const int seen = p == NULL ? -1 : seen_index(m, p);
         if (seen >= 0 && memcmp(&m->seen[seen], p, sizeof(*p)) != 0) {
-            r3d_lens_t before;
-            r3d_lens_t now;
-            lens_map(&m->previous, raster, &m->seen[seen], &before);
-            lens_map(view, raster, p, &now);
-            m->map[i + 1] = mat4f_mul_affine(before.m, mat4f_invert_affine(now.m));
+            lens_map(&m->previous, raster, &m->seen[seen], &m->before);
+            lens_map(view, raster, p, &m->now);
+            m->map[i + 1] = mat4f_mul_affine(m->before.m, mat4f_invert_affine(m->now.m));
             m->moved[i] = true;
             m->first_moved = m->first_moved < 0 ? i : m->first_moved;
         }
@@ -81,17 +79,15 @@ begin(const raster_attachment_t* self, const raster_t* raster, const render_view
         m->first_moved = -1;
         return;
     }
-    r3d_lens_t now;
-    lens_map(view, raster, NULL, &now);
-    m->project = now.project;
+    lens_map(view, raster, NULL, &m->now);
+    m->project = m->now.project;
     m->known = m->has_previous;
     m->first_moved = -1;
     memset(m->moved, 0, sizeof(m->moved));
     if (m->known) {
         render_view_refit(&m->previous, view->viewport);
-        r3d_lens_t before;
-        lens_map(&m->previous, raster, NULL, &before);
-        m->map[0] = mat4f_mul_affine(before.m, mat4f_invert_affine(now.m));
+        lens_map(&m->previous, raster, NULL, &m->before);
+        m->map[0] = mat4f_mul_affine(m->before.m, mat4f_invert_affine(m->now.m));
         map_instances(m, raster, view);
     }
     remember(m, raster, view);

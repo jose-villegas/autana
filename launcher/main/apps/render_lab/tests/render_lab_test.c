@@ -59,7 +59,7 @@ render_lab_test_exit(const render_lab_test_t* saved) {
 int64_t
 render_lab_test_frame_dt(uint32_t dt_ms, bool switching, const input_t* input) {
     TEST_ASSERT_TRUE_MESSAGE(display_quarter_held(), "a test frame needs a held quarter");
-    const input_t idle = {0};
+    static const input_t idle = {0};
     if (input == NULL) {
         input = &idle;
     }
