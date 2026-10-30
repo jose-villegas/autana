@@ -245,7 +245,7 @@ def policies_table(rows):
 SHARE_COLOURMAP = "turbo"  # one distinct colour per step, like a height map
 SHARE_RANGE = (0.1, 0.9)
 MIN_LABELLED = 5  # a bar segment narrower than this share of frames carries no number
-OUTLINE_WIDTH = 2  # points of dark outline that keep a number readable on any segment colour
+OUTLINE_WIDTH = 3.5  # points of dark outline that keep a number readable on any segment colour
 LEGEND_BESIDE = (1.01, 0.5)  # the steps listed down the bars' right, first on top
 
 
@@ -274,8 +274,8 @@ def share_figure(panels, path):
             left = 0.0
             for name, value in segments:
                 if value >= MIN_LABELLED:
-                    label = axis.text(left + value / 2, row, f"{value:.0f}", ha="center", va="center", fontsize=8,
-                                      color="white")
+                    label = axis.text(left + value / 2, row, f"{value:.0f}", ha="center", va="center", fontsize=9,
+                                      fontweight="bold", color="white")
                     label.set_path_effects([withStroke(linewidth=OUTLINE_WIDTH, foreground="black")])
                 left += value
         style_axes(axis, f"{title}, share of frames (%)")
