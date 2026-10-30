@@ -53,7 +53,8 @@ int render_lab_budget_ms(void);
 bool render_lab_budget_set_ms(int budget_ms);
 
 /* The tunable render_lab.framegen: 1 follows each drawn frame with one
- * warped from it (render/framegen), 0 draws every frame. */
+ * warped from it (render/framegen) in a scene that declares
+ * generates_frames, 0 draws every frame. */
 bool render_lab_framegen_on(void);
 bool render_lab_framegen_set_on(bool on);
 

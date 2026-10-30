@@ -55,6 +55,7 @@ scene_baked_controls(int width) {
                            .exit = scene_baked_exit,                                                                   \
                            .status = RENDER_LAB_SCENE_DEV(scene_baked_status),                                         \
                            .controls = scene_baked_controls,                                                           \
+                           .generates_frames = true,                                                                   \
                            .console = RENDER_LAB_SCENE_DEV(scene_baked_console)},
 
 /* Defines `id`, family `family_`'s scenes indexed by variant: the menu family
