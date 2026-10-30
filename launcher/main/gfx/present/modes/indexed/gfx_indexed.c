@@ -1,3 +1,8 @@
+/*
+ * gfx_indexed (state): GFX_LAYOUT_INDEXED's index image and LUTs, gfx_mode.h's
+ * indexed calls, and the begin/end gfx_mode.c grants the layout through. The
+ * expansion kernels they feed are gfx_indexed.h's.
+ */
 #include "core/memory.h"
 #include "gfx/present/gfx_internal.h"
 #include "gfx/present/gfx_present_guard.h"
@@ -96,7 +101,8 @@ free_indexed_image(void) {
 
 bool
 indexed_begin(const gfx_mode_t* granted) {
-    if (!alloc_indexed_image(granted->index_grid_w, granted->index_grid_h)) {
+    if (granted->index_grid_w <= 0 || granted->index_grid_h <= 0 || granted->cell_size <= 0
+        || !alloc_indexed_image(granted->index_grid_w, granted->index_grid_h)) {
         return false;
     }
     indexed_grid_w = granted->index_grid_w;

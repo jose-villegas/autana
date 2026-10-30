@@ -52,7 +52,8 @@ bool alloc_full_framebuffer(void);
 void replay_overlay(gfx_band_overlay_fn overlay, const gfx_target_t* target, int y0, int y1);
 
 /* modes/indexed/gfx_indexed.c: the index image and its tables. Begin takes
- * the granted grid (false when its image cannot be allocated); end frees it. */
+ * the granted grid: false, holding nothing, when the grid is empty or its
+ * image cannot be allocated. End frees it. */
 bool indexed_begin(const gfx_mode_t* granted);
 void indexed_end(void);
 gfx_indexed_frame_t indexed_frame(void);
