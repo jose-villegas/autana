@@ -69,6 +69,19 @@ class LocalScheduleTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, '00:00–05:59'):
                     schedule.next_marker(trigger)
 
+    def test_cutoff_is_board_last_start_on_the_markers_date_and_offset(self):
+        marker = datetime(2026, 10, 25, 3, tzinfo=self.zone)
+        for value, hour in (('', 5), ('04:30', 4)):
+            with patch.dict(os.environ, BOARD_LAST_START=value):
+                cutoff = schedule.night_cutoff(marker)
+            self.assertEqual(cutoff.utcoffset(), marker.utcoffset())
+            self.assertEqual((cutoff.date(), cutoff.hour), (marker.date(), hour))
+        # A daytime run's cut-off has passed: it starts no lane after its plan.
+        afternoon = datetime(2026, 10, 25, 14, tzinfo=self.zone)
+        self.assertLess(schedule.night_cutoff(afternoon), afternoon)
+        with patch.dict(os.environ, BOARD_LAST_START='06:00'), self.assertRaisesRegex(ValueError, 'BOARD_LAST_START'):
+            schedule.night_cutoff(marker)
+
     def test_invalid_night_zone_raises(self):
         trigger = Clock(0, tzinfo=timezone.utc).now()
         for value in ('Invalid/Zone', '/invalid/zone'):

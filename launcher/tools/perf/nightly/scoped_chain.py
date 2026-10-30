@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -27,7 +28,7 @@ from layout_measure import autana_command, run_flash, run_stamped, REPORT_LINE, 
 from process_tree import (launch_process_tree, stop_process_tree, close_process_tree, install_console_interrupt_handler,
                           terminate_unwinds)
 from local_schedule import (Clock, wait_idle, gpu_pending, gpu_on_host, GPU_NOT_ON_HOST,
-                            NIGHT_STEP_HANG_SECONDS, MARKER_KEY_FORMAT, heavy_root)
+                            NIGHT_STEP_HANG_SECONDS, MARKER_KEY_FORMAT, heavy_root, night_cutoff)
 from nightly.lnt import lnt_report, night_manifest, read_last_night, VARIANT, BUILD_FLAGS, LAYOUT_SEED
 
 IMAGE_HEADER_BYTES = 24
@@ -366,22 +367,28 @@ def remote_command():
 
 
 def remote_boards():
-    """The other machines' plugged boards (short id, port, host, name) and the hosts that did not answer."""
+    """The other machines' plugged boards (short id, host, name and their lock state) and the hosts that did
+    not answer."""
     if not remote_command():
         return [], []
     try:
         listing = json.loads(subprocess.check_output([*remote_command(), "boards"], text=True))
-        boards = [dict(board=short_id(board["board"]), port=board["port"], host=board["host"],
-                       name=board.get("name") or board["host"], gated=board.get("gated"))
+        boards = [dict(board, board=short_id(board["board"]), name=board.get("name") or board["host"])
                   for board in listing["boards"] if board["port"]]
         unreachable = list(listing.get("unreachable", []))
     except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as error:
         boards, unreachable = [], [REMOTE_LANE_ENV]
         print(f"remote boards: {error}", file=sys.stderr)
-    if unreachable:
-        # An unreachable host costs its lanes, not the night; the summary says which.
-        print("::warning::remote boards not listed from " + ", ".join(unreachable), file=sys.stderr)
     return boards, unreachable
+
+
+def report_unreachable(unreachable, before=()):
+    """Warn of hosts that stopped answering since `before`, and note those that answer again."""
+    # An unreachable host costs its lanes, not the night; the summary says which.
+    if lost := [host for host in unreachable if host not in before]:
+        print("::warning::remote boards not listed from " + ", ".join(lost), file=sys.stderr)
+    if back := [host for host in before if host not in unreachable]:
+        print("::notice::remote boards listed again from " + ", ".join(back), file=sys.stderr)
 
 
 def board_listing():
@@ -390,6 +397,28 @@ def board_listing():
     seen = {short_id(board["board"]) for board in local}
     remote, unreachable = remote_boards()
     return dict(boards=local + [board for board in remote if board["board"] not in seen], unreachable=unreachable)
+
+
+def busy(board):
+    """Why a listed board takes no new lane now, or None when its lock is free: a lane never queues behind
+    a day job, and a host whose person is present refuses other machines' jobs."""
+    if board.get("gated"):
+        return board["gated"]
+    if board.get("state") != "unlocked":
+        return "held by " + ((board.get("holder") or {}).get("owner") or str(board.get("state")))
+    if board.get("waiting"):
+        return f"{len(board['waiting'])} job(s) queued for it"
+    return None
+
+
+def fleet_scan(taken, before=()):
+    """Free boards on any host the night has no lane for (`taken` short ids), and the hosts that did not answer.
+    Held, queued and gated boards are left for a later scan."""
+    listing = board_listing()
+    report_unreachable(listing["unreachable"], before)
+    free = [dict(board, board=short_id(board["board"])) for board in listing["boards"]
+            if short_id(board["board"]) not in taken and not busy(board)]
+    return free, listing["unreachable"]
 
 
 def plan_lane(args, selection, board, lane, lanes, selftest=False, remote=None):
@@ -404,14 +433,15 @@ def plan_lane(args, selection, board, lane, lanes, selftest=False, remote=None):
 def run_night(args, clock=None, launch=None):
     clock, launch = clock or Clock(), launch or launch_process_tree
     planned = json.loads(args.plan.read_text(encoding="utf-8"))
+    cutoff = night_cutoff(datetime.fromisoformat(planned["marker"]))
     processes, skipped = [], set()
     failed, interrupted = False, False
     hung = set()
+    unreachable = []
 
-    def start(board, lane, lane_plan):
+    def start(board, lane, lane_plan, wait=NIGHT_STEP_HANG_SECONDS):
         if lane.get("host"):
-            return start_remote(board, lane, lane_plan)
-        wait = NIGHT_STEP_HANG_SECONDS
+            return start_remote(board, lane, lane_plan, wait)
         command = autana_command("--board", board, "--wait", str(wait), "lock", "run",
                                  "--estimate", str(lane["estimate"]), "--", sys.executable,
                                  str(Path(__file__).resolve()), "run", "--plan", str(lane_plan.resolve()),
@@ -434,12 +464,12 @@ def run_night(args, clock=None, launch=None):
         process = launch(command, cwd=args.repo, env=env)
         processes.append((process, clock.now(), lane["estimate"], board))
 
-    def start_remote(board, lane, lane_plan):
+    def start_remote(board, lane, lane_plan, wait):
         # The lane's folder travels: its plan in, its data and captures back.
         folder = args.out.resolve() / board
         write_json(folder / "lane.json", dict(json.loads(lane_plan.read_text(encoding="utf-8")), lanes={board: lane}))
         script = args.repo.resolve() / Path(__file__).resolve().relative_to(REPO)
-        command = [*remote_command(), "run", lane["host"], board, str(folder), str(NIGHT_STEP_HANG_SECONDS), "--",
+        command = [*remote_command(), "run", lane["host"], board, str(folder), str(wait), "--",
                    str(script), "run",
                    "--plan", str(folder / "lane.json"), "--repo", str(args.repo.resolve()),
                    "--data", str(folder / "data"), "--out", str(folder), "--board", board, "--lane", lane["lane"]]
@@ -477,7 +507,9 @@ def run_night(args, clock=None, launch=None):
                 print(f"lane {board}: {error}", file=sys.stderr)
                 failed = True
                 skipped.add(board)
-        while any(id(process) not in hung and process.poll() is None for process, *_ in processes):
+        # Before the cut-off the night watches the fleet even with no lane running; after it, only its lanes.
+        while (clock.now() < cutoff
+               or any(id(process) not in hung and process.poll() is None for process, *_ in processes)):
             clock.sleep(RESCAN_SECONDS)
             for process, started, estimate, board in processes:
                 if id(process) not in hung and process.poll() is None and (clock.now() - started).total_seconds() >= LANE_HANG_FACTOR * max(estimate, FIRST_STEP_SECONDS):
@@ -485,19 +517,22 @@ def run_night(args, clock=None, launch=None):
                     stop(process, board, REMOTE_STOP_SECONDS)
                     hung.add(id(process))
                     failed = True
+            left = (cutoff - clock.now()).total_seconds()
+            if left <= 0:
+                continue
             try:
-                boards = plugged_boards()
+                free, unreachable = fleet_scan({*planned["lanes"], *skipped}, unreachable)
             except (OSError, ValueError, subprocess.CalledProcessError) as error:
                 print(f"devices: {error}", file=sys.stderr)
-                failed, boards = True, []
-            for board in boards:
-                if board in planned["lanes"] or board in skipped:
-                    continue
+                failed, free = True, []
+            for row in free:
+                board = row["board"]
                 try:
-                    lane = plan_lane(args, planned, board, 0, 1)
+                    lane = plan_lane(args, planned, board, 0, 1, remote=row if row.get("host") else None)
                     lane_plan = args.out / board / "lane.json"
                     write_json(lane_plan, dict(planned, lanes={board: lane}))
-                    start(board, lane, lane_plan)
+                    # Taken between the scan and its lock, the board is queued on no later than the cut-off.
+                    start(board, lane, lane_plan, math.ceil(left))
                     planned["lanes"][board] = lane
                     write_json(args.plan, planned)
                 except (OSError, ValueError, subprocess.CalledProcessError) as error:
@@ -529,6 +564,9 @@ def run_night(args, clock=None, launch=None):
             signal.signal(signal.SIGTERM, previous_handler)
     if interrupted:
         raise KeyboardInterrupt
+    if not planned["lanes"]:
+        print("night: no board was free before BOARD_LAST_START", file=sys.stderr)
+        failed = True
     return int(failed)
 
 
@@ -545,17 +583,24 @@ def plan(args, clock=None, request=None):
     now = clock.now()
     discovered = not args.boards
     if discovered:
-        listing = board_listing()["boards"]
-        args.boards = [short_id(board["board"]) for board in listing]
-        remote = {board["board"]: board for board in listing if board.get("host")}
+        listing = board_listing()
+        listing, unreachable = listing["boards"], listing["unreachable"]
     else:
-        remote = {board["board"]: board for board in remote_boards()[0]}
-    # A host whose person is present refuses other machines' jobs; its boards sit this night out.
-    for board in [board for board in remote.values() if board.get("gated")]:
-        print(f"::notice::board {board['board']} on {board['name']} skipped: {board['gated']}", file=sys.stderr)
-        args.boards = [name for name in args.boards if short_id(name) != board["board"]]
+        listing, unreachable = remote_boards()
+    report_unreachable(unreachable)
+    remote = {board["board"]: board for board in listing if board.get("host")}
+    # Discovered boards plan only while free; named ones skip only a gated host. The night's rescan
+    # starts a lane on any of them that frees before BOARD_LAST_START.
+    waiting = {short_id(board["board"]): board for board in listing
+               if busy(board) and (discovered or board.get("gated"))}
+    for name, board in waiting.items():
+        print(f"::notice::board {name} on {board.get('name', 'this machine')} waits for the rescan: {busy(board)}",
+              file=sys.stderr)
+    if discovered:
+        args.boards = [short_id(board["board"]) for board in listing]
+    args.boards = [board for board in args.boards if short_id(board) not in waiting]
     if not args.boards:
-        raise SystemExit("plan: no board is plugged in")
+        print("::notice::plan: no free board; the night waits for one until BOARD_LAST_START", file=sys.stderr)
     if discovered:
         # The self-test runs on one board of this machine, whichever is plugged in first.
         args.selftest_board = args.selftest_board or next((board for board in args.boards if board not in remote), None)
@@ -644,7 +689,9 @@ def main():
     args = parser.parse_args()
     os.environ[autana_config.BUILD_PRIORITY_ENV] = autana_config.BUILD_PRIORITY_BELOW_NORMAL
     if args.command == "boards":
-        print(json.dumps(board_listing()))
+        listing = board_listing()
+        report_unreachable(listing["unreachable"])
+        print(json.dumps(listing))
         return 0
     if args.command == "timeline":
         timeline(args)
