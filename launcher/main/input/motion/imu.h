@@ -2,6 +2,8 @@
  * imu: QMI8658 stream FIFO drained by a polling task.
  * imu_read() returns the newest sample read by the task. Register values follow the
  * QST QMI8658A datasheet Rev A (2022).
+ * The task works only for recent readers (imu_demand.h): FIFO takes keep the drains,
+ * imu_read() alone keeps register reads, and with neither it parks until the next call.
  */
 #pragma once
 
@@ -56,13 +58,14 @@ int imu_take_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t lost_before[IMU_FI
 bool imu_init(void);
 
 /* Starts the polling task on the core-1 job worker's core, one priority below it.
- * Safe when the sensor is absent. */
+ * It parks until the first read. Safe when the sensor is absent. */
 void imu_start(void);
 
 bool imu_ready(void);
 
 /* Copies the newest sample and its sequence (when non-NULL) under one lock.
- * False when no sensor or no sample is available. */
+ * False when no sensor or no sample is available. After a park the sample is the
+ * last one read before it, until the woken task advances the sequence. */
 bool imu_read(imu_sample_t* out, uint32_t* sequence);
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST

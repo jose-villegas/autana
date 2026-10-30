@@ -257,6 +257,7 @@ sequenceDiagram
     participant GPU as GPU stage
     participant Heavy as Heavy lock
     participant Plan as Board plan
+    participant Night as Board night
     participant Lanes as Board lanes
     Marker->>Wait: Compute the marker in NIGHT_ZONE
     Wait->>Wait: Sleep until marker within each leg budget
@@ -267,14 +268,19 @@ sequenceDiagram
     GPU->>Heavy: Release heavy
     Wait->>Plan: Start work with a fresh token
     Plan->>Plan: Wait for two GPU idle polls
-    Plan->>Lanes: Run lanes to completion
-    Lanes-->>Plan: Lane outcomes and timestamps
-    Plan->>Plan: Record timeline and host free time
+    Plan->>Night: Lanes for the free boards, maybe none
+    Night->>Lanes: Start the planned lanes
+    loop Every minute until BOARD_LAST_START
+        Night->>Lanes: Start a lane on each newly free board, on any host
+    end
+    Lanes-->>Night: Lane outcomes and timestamps
+    Night->>Night: Record timeline and host free time
 ```
 
 GPU work starts at `vars.NIGHT_START`; the board night starts at `vars.BOARD_START`, later.
-Both accept HH:MM in 00:00–05:59; an empty value uses the constant of the same name
-in `scripts/lib/local_schedule.py`. The board night has no end time: lanes run to
+It starts no new lane after `vars.BOARD_LAST_START` on the marker's date.
+All three accept HH:MM in 00:00–05:59; an empty value uses the constant of the same name
+in `scripts/lib/local_schedule.py`. Started lanes have no end time: they run to
 completion under their hang guards, and day board jobs queue on the lock behind them.
 
 The zone is the NIGHT_ZONE repository variable (IANA name; UTC when unset).
@@ -307,8 +313,17 @@ and comes back with the lane's data and captures; the captures sync under that h
 a board on a host that does not answer is reported unchecked, not missing.
 A hung or cancelled remote lane is asked to stop first, so its host frees the board.
 
+The plan takes the boards whose lock is free; a held, queued or gated board never gets a
+lane that queues behind a day job.
+
+Until `BOARD_LAST_START` the night asks every host for its boards each minute and starts a
+lane on any free board without one. A board freed, plugged in or ungated mid-night still runs;
+a host that does not answer is asked again next minute. After the cut-off nothing new starts.
+
+A plan with named `--boards` is the whole night: it starts no lane after its plan.
+
 Initial boards split first-parent commits on main by position modulo their count.
-Joiners use independent `0/1` series while any lane runs.
+Joiners use independent `0/1` series.
 Boards repeat their last measured anchor and resume after `last_attempted`;
 fresh boards start at their newest commit.
 
@@ -332,7 +347,8 @@ Build failures advance `last_attempted`; measured steps advance both cursors
 and `last_image_hash`. Capture failures keep the cursors.
 
 The first board plugged into this machine runs `scripts/ci/board-steps.sh` before its chain
-inside the same board hold. A night with no board at plan time fails.
+inside the same board hold. A night that never lists a board fails; one whose boards all
+stay busy until the cut-off warns.
 Partial manifests are saved after every step and after cleanup.
 Raw captures upload even when a lane fails.
 

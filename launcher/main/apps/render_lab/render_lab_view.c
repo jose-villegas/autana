@@ -14,6 +14,7 @@ TUNE_SETTING(render_lab, small_fill_style, SMALL_FILL_FLAT, SMALL_FILL_FLAT, SMA
 TUNE_SETTING(render_lab, budget, 0, 0, RENDER_LAB_BUDGET_MAX_MS);
 TUNE(render_lab, layout, RENDER_LAB_LAYOUT_FULL, RENDER_LAB_LAYOUT_FULL, RENDER_LAB_LAYOUT_COUNT - 1);
 TUNE(render_lab, orbit_ms, 0, 0, RENDER_LAB_ORBIT_MAX_MS);
+TUNE_SETTING(render_lab, framegen, 0, 0, 1);
 
 int
 render_lab_debug_view(void) {
@@ -103,6 +104,16 @@ render_lab_render_size(int width, int height) {
 void
 render_lab_apply_raster_settings(void) {
     render_context_set_scale(render_context_main(), RENDER_LAB_SCALE_UNIT * RENDER_LAB_SCALE_UNIT / render_lab_scale());
+}
+
+bool
+render_lab_framegen_on(void) {
+    return framegen != 0;
+}
+
+bool
+render_lab_framegen_set_on(bool on) {
+    return TUNE_SETTING_SET(framegen, on ? 1 : 0);
 }
 
 int
