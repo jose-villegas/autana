@@ -112,6 +112,7 @@ render_context_set_frame_generation(render_context_t* c, bool on) {
     }
     c->generating = on;
     c->generated_us = 0;
+    c->drawn_in_row = 0;
     if (!on) {
         framegen_target_free(&c->framegen);
     }
@@ -239,13 +240,22 @@ draw_second_view(render_context_t* c) {
 }
 #endif
 
-/* The ladder the policies price a drawn frame against. With generation on,
- * a drawn frame and the frames generated from it share their budgets: the
- * drawn one gets what the generated ones leave, never less than one frame's. */
+/* Whether the last generated frame cost FRAMEGEN_GAIN_PERCENT less than the
+ * last drawn one. */
+static bool
+generation_pays(const render_context_t* c) {
+    return c->generating && c->generated_us != 0
+           && (int64_t)c->generated_us * 100 < (int64_t)c->drawn_us * (100 - FRAMEGEN_GAIN_PERCENT);
+}
+
+/* The ladder the policies price a drawn frame against. While generation
+ * pays, a drawn frame and the frames generated from it share their budgets:
+ * the drawn one gets what the generated ones leave, never less than one
+ * frame's. */
 static const resolution_config_t*
 policy_config(render_context_t* c) {
     c->ladder.budget_us = c->shown_us;
-    if (c->generating && c->generated_us != 0) {
+    if (generation_pays(c)) {
         const int32_t shared_us =
             (FRAMEGEN_SHOWN_PER_DRAWN * c->shown_us) - ((FRAMEGEN_SHOWN_PER_DRAWN - 1) * c->generated_us);
         c->ladder.budget_us = shared_us > c->shown_us ? shared_us : c->shown_us;
@@ -254,13 +264,15 @@ policy_config(render_context_t* c) {
 }
 
 /* Whether this frame can be warped from the kept one: generation on, a drawn
- * frame kept, no debug view, the same viewport, and a target. */
+ * frame kept, no debug view, the same viewport, and a target; and it pays,
+ * has not been measured, or is due to be measured again. */
 static bool
 can_generate(render_context_t* c, const render_view_t* view) {
     const raster_t* r = &c->raster;
     const viewport_t a = c->kept_view.viewport;
     const viewport_t b = view->viewport;
-    if (!c->generating || !c->kept || r->attachment_count != 0 || a.width != b.width || a.height != b.height
+    const bool worth = c->generated_us == 0 || c->drawn_in_row >= FRAMEGEN_RETRY_DRAWN || generation_pays(c);
+    if (!c->generating || !worth || !c->kept || r->attachment_count != 0 || a.width != b.width || a.height != b.height
         || a.quarter != b.quarter) {
         return false;
     }
@@ -280,6 +292,7 @@ generate(render_context_t* c, const render_view_t* view) {
     c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
     c->frame.generated = true;
     c->kept = false; /* the generated frame is written over it */
+    c->drawn_in_row = 0;
 }
 
 bool
@@ -291,6 +304,9 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     }
     c->frame.generated = false;
     c->kept = false;
+    if (c->drawn_in_row < FRAMEGEN_RETRY_DRAWN) {
+        c->drawn_in_row++;
+    }
     c->frame.predicted_us = 0;
     const int step = current_step(c);
     raster_t* r = &c->raster;
@@ -311,8 +327,8 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     }
     c->frame.width = r->width;
     c->frame.height = r->height;
-    if (c->policy == RENDER_FIXED) {
-        /* Off: the plain draw, nothing timed or chosen. */
+    if (c->policy == RENDER_FIXED && !c->generating) {
+        /* Off: the plain draw, nothing timed or chosen; frame generation times it to weigh against. */
         c->frame.stats = raster_draw(r, view);
     } else {
         const int64_t began_us = timing_now_us();
@@ -353,7 +369,7 @@ render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* hal
         half != NULL ? raster_compose_size(r) : (resolution_step_t){r->destination_width, r->destination_height};
     const bool expanded = half != NULL && size.width != r->destination_width;
     destination = expanded ? half : destination;
-    if (c->policy == RENDER_FIXED) {
+    if (c->policy == RENDER_FIXED && !c->generating) {
         raster_upscale(&c->raster, destination, size.width, size.height);
         return expanded;
     }
@@ -371,6 +387,7 @@ render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* hal
     } else if (c->policy == RENDER_PREDICTED) {
         resolution_predict_measured(&c->predict, policy_config(c), c->frame.stats.triangles, cost_us);
     }
+    c->drawn_us = cost_us; /* after pricing: this frame was drawn as the last one decided */
     return expanded;
 }
 
