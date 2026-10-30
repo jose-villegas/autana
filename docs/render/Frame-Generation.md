@@ -140,17 +140,17 @@ half-picture step. At 24 poses along it, it warps the drawn frame one display
 step on, both cores taking half the rows, and fills the holes. Compose is
 the frame's own upscale into the half picture; the send overlaps it.
 
-<!-- generated: framegen-board sha256=90325600d36705beecfff66387db6d116777f532da4dd0a5b1b66e1a2a2546e1 -->
+<!-- generated: framegen-board sha256=22c6e04ff2ccbebac074a209146e63d5f3166699f58b0e3bdb739a1b1468c42c -->
 | Scene | Size | Drawn frame | Warp | Fill | Compose | Generated frame |
 |---|---|---|---|---|---|---|
-| bistro-fitted-full | 184x224 | 43.7 ms | 10.5 ms | 3.8 ms | 2.5 ms | 16.8 ms |
-| bistro-fitted-full | 184x179 | 40.2 ms | 8.1 ms | 2.9 ms | 2.2 ms | 13.2 ms |
-| bistro-fitted-full | 184x149 | 37.7 ms | 6.8 ms | 2.5 ms | 2.0 ms | 11.3 ms |
-| bistro-fitted-full | 184x112 | 34.8 ms | 5.1 ms | 1.9 ms | 1.7 ms | 8.7 ms |
-| sponza-fitted-full | 184x224 | 50.5 ms | 10.6 ms | 3.8 ms | 2.7 ms | 17.0 ms |
-| sponza-fitted-full | 184x179 | 46.0 ms | 8.3 ms | 3.0 ms | 2.3 ms | 13.6 ms |
-| sponza-fitted-full | 184x149 | 43.0 ms | 6.9 ms | 2.5 ms | 2.1 ms | 11.5 ms |
-| sponza-fitted-full | 184x112 | 39.0 ms | 5.1 ms | 1.9 ms | 1.8 ms | 8.8 ms |
+| bistro-fitted-full | 184x224 | 43.5 ms | 9.9 ms | 3.7 ms | 2.5 ms | 16.1 ms |
+| bistro-fitted-full | 184x179 | 40.1 ms | 7.6 ms | 2.9 ms | 2.2 ms | 12.7 ms |
+| bistro-fitted-full | 184x149 | 37.6 ms | 6.4 ms | 2.5 ms | 2.0 ms | 10.9 ms |
+| bistro-fitted-full | 184x112 | 34.7 ms | 4.8 ms | 1.9 ms | 1.7 ms | 8.3 ms |
+| sponza-fitted-full | 184x224 | 50.3 ms | 10.0 ms | 3.9 ms | 2.6 ms | 16.4 ms |
+| sponza-fitted-full | 184x179 | 45.9 ms | 7.8 ms | 3.0 ms | 2.3 ms | 13.1 ms |
+| sponza-fitted-full | 184x149 | 42.9 ms | 6.5 ms | 2.5 ms | 2.0 ms | 11.0 ms |
+| sponza-fitted-full | 184x112 | 38.9 ms | 4.8 ms | 1.9 ms | 1.8 ms | 8.4 ms |
 <!-- /generated: framegen-board -->
 
 - A generated frame costs a third to two fifths of a drawn one at 184x224
@@ -162,23 +162,25 @@ Where the warp's time goes. The same warp is timed with every splat off screen
 (the clear, the maths and the source reads), to the drawn view itself (adding
 every write, in order), and to the next view (adding their scatter):
 
-<!-- generated: framegen-profile sha256=2843de71907fbba4598fa433f07415710048ff3f9cc97b0fd59874b06c7ae7fe -->
+<!-- generated: framegen-profile sha256=e35c48d3da642a0a93ab88915900db06492325724eaad3f42b445b5cb9704608 -->
 | Scene | Size | Clear | Off screen | To the drawn view | To the next view |
 |---|---|---|---|---|---|
-| bistro-fitted-full | 184x224 | 0.8 ms | 10.8 ms | 10.5 ms | 10.5 ms |
-| bistro-fitted-full | 184x179 | 0.6 ms | 7.7 ms | 8.3 ms | 8.1 ms |
-| bistro-fitted-full | 184x149 | 0.5 ms | 6.5 ms | 6.9 ms | 6.8 ms |
-| bistro-fitted-full | 184x112 | 0.3 ms | 4.9 ms | 5.1 ms | 5.1 ms |
-| sponza-fitted-full | 184x224 | 0.8 ms | 10.9 ms | 10.5 ms | 10.6 ms |
-| sponza-fitted-full | 184x179 | 0.6 ms | 7.8 ms | 8.3 ms | 8.3 ms |
-| sponza-fitted-full | 184x149 | 0.5 ms | 6.5 ms | 6.9 ms | 6.9 ms |
-| sponza-fitted-full | 184x112 | 0.3 ms | 4.9 ms | 5.1 ms | 5.1 ms |
+| bistro-fitted-full | 184x224 | 0.8 ms | 10.2 ms | 9.8 ms | 9.9 ms |
+| bistro-fitted-full | 184x179 | 0.6 ms | 7.3 ms | 7.7 ms | 7.6 ms |
+| bistro-fitted-full | 184x149 | 0.5 ms | 6.1 ms | 6.4 ms | 6.4 ms |
+| bistro-fitted-full | 184x112 | 0.3 ms | 4.6 ms | 4.8 ms | 4.8 ms |
+| sponza-fitted-full | 184x224 | 0.8 ms | 10.3 ms | 9.8 ms | 10.0 ms |
+| sponza-fitted-full | 184x179 | 0.6 ms | 7.3 ms | 7.8 ms | 7.8 ms |
+| sponza-fitted-full | 184x149 | 0.5 ms | 6.1 ms | 6.4 ms | 6.5 ms |
+| sponza-fitted-full | 184x112 | 0.4 ms | 4.6 ms | 4.8 ms | 4.8 ms |
 <!-- /generated: framegen-profile -->
 
 The three warps cost the same: writing and scattering the splats is free next
 to the maths. The warp is bound by its arithmetic, a reciprocal and about ten
 multiply-adds per pixel, so it takes two pixels a step and lets their
-dependent chains overlap.
+dependent chains overlap. The reciprocal keeps 14 bits
+(`mathf_recip_approx`), a hundredth of a pixel across the picture, which
+saves 6% of the warp over a full-precision one.
 
 ## When it pays
 
