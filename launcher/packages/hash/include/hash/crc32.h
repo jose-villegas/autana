@@ -1,4 +1,7 @@
-/* crc32: incremental RFC 1952 checksums with interchangeable exact implementations. */
+/*
+ * crc32: crc32_update computes incremental RFC 1952 checksums; Kconfig HASH_CRC32_*
+ * selects the implementation. Every candidate must equal crc32_update_nibble.
+ */
 #pragma once
 
 #include <stddef.h>
@@ -10,6 +13,7 @@
 
 #define HASH_CRC32_BIT_LIMIT 0
 
+/* Reference: no table in RAM, two lookups per byte. */
 static inline uint32_t
 crc32_update_nibble(uint32_t crc, const void* data, size_t size) {
     static const uint32_t nibble[16] = {0x00000000U, 0x1DB71064U, 0x3B6E20C8U, 0x26D930ACU, 0x76DC4190U, 0x6B6B51F4U,

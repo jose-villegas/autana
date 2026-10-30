@@ -37,7 +37,7 @@ The C and Python tests share `tests/name_hash_vectors.h`.
 <!-- generated: package-hash-headers check: python launcher/tools/gen/package_headers.py --check -->
 | Header | Purpose |
 |---|---|
-| [include/hash/crc32.h](include/hash/crc32.h) | crc32: incremental RFC 1952 checksums with interchangeable exact implementations. |
+| [include/hash/crc32.h](include/hash/crc32.h) | crc32: crc32_update computes incremental RFC 1952 checksums; Kconfig HASH_CRC32_* selects the implementation. |
 | [include/hash/name_hash.h](include/hash/name_hash.h) | Names become stable numeric keys for lookup at initialization or load time. |
 | [include/hash/name_hash64.h](include/hash/name_hash64.h) | Seeded 64-bit name hashes support incremental byte-span fingerprints. |
 <!-- /generated: package-hash-headers -->

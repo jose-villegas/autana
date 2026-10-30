@@ -32,12 +32,12 @@ ROW_FAMILIES = ("vector", "scalar", "quaternion", "matrix", "libm", "calibration
 CALL_SYMBOL = re.compile(r"[\w.$@]+")
 
 
-def parse_target(text, execution="hardware"):
+def parse_target(text, execution="hardware", *, prefix="MATHTARGET"):
     targets = set()
     for line in text.splitlines():
-        if not line.startswith("MATHTARGET"):
+        if not line.startswith(prefix):
             continue
-        match = re.fullmatch(r"MATHTARGET target=(\w+) arch=([\w-]+)(?: core=([\w.-]+))? execution=(hardware|qemu|host)", line)
+        match = re.fullmatch(rf"{re.escape(prefix)} target=(\w+) arch=([\w-]+)(?: core=([\w.-]+))? execution=(hardware|qemu|host)", line)
         if not match:
             raise ValueError(f"malformed math target: {line}")
         targets.add(match.groups())
@@ -51,7 +51,7 @@ def parse_target(text, execution="hardware"):
     return f"{target} ({architecture}{', ' + core if core else ''})"
 
 
-def parse_capture(text, rows, allow_missing=False, *, prefix="MATHBENCH", placeholder=PLACEHOLDER):
+def parse_capture(text, rows=None, allow_missing=False, *, prefix="MATHBENCH", placeholder=PLACEHOLDER):
     if text.rstrip("\r\n") == placeholder:
         return None, {}
     provenance = [line for line in text.splitlines() if line.startswith("BUILD_ID")]
@@ -62,7 +62,7 @@ def parse_capture(text, rows, allow_missing=False, *, prefix="MATHBENCH", placeh
         build = build_id(next("BUILD_ID=" + match[1] for match in scoped if match[2] == "bench"))
     else:
         build = build_id(text)
-    expected = {(label, kind): (key, ops) for key, label, kind, ops, family in rows}
+    expected = {(label, kind): (key, ops) for key, label, kind, ops, family in rows} if rows is not None else None
     measured = {}
     for line in text.splitlines():
         if not line.startswith(prefix):
@@ -71,13 +71,13 @@ def parse_capture(text, rows, allow_missing=False, *, prefix="MATHBENCH", placeh
         if match is None:
             raise ValueError(f"malformed measurement: {line}")
         label, kind, ops, *values = match.groups()
-        if (label, kind) not in expected:
+        if expected is not None and (label, kind) not in expected:
             raise ValueError(f"unexpected capture row: {label} {kind}")
-        key, count = expected[label, kind]
+        key, count = expected[label, kind] if expected is not None else ((label, kind), int(ops))
         if key in measured or int(ops) != count or any(float(value) <= 0 for value in values):
             raise ValueError(f"invalid or duplicate measurement: {line}")
         measured[key] = tuple(map(float, values))
-    if not allow_missing and len(measured) != len(rows):
+    if rows is not None and not allow_missing and len(measured) != len(rows):
         raise ValueError("missing capture rows")
     return build, measured
 
