@@ -56,8 +56,10 @@ Clock = partial(ScheduleClock, day=18, tzinfo=timezone.utc)
 
 
 class Replay(FakeAutana):
-    def __init__(self, root, clock, builds=(), captures=(), durations=(), selftest_code=0, heavy_wait=0, capture_wait=0):
+    def __init__(self, root, clock, builds=(), captures=(), durations=(), selftest_code=0, heavy_wait=0, capture_wait=0,
+                 selftest_complete=True):
         super().__init__(root)
+        self.selftest_complete = selftest_complete
         self.clock = clock
         self.builds, self.captures, self.durations = iter(builds), iter(captures), iter(durations)
         self.selftest_code = selftest_code
@@ -71,7 +73,8 @@ class Replay(FakeAutana):
         if command == ["selftest-replay"]:
             self.boundaries.append(self.clock.now())
             self.clock.sleep(60)
-            return self.selftest_code, [(0, "report: first.md"), (60, "report: selftest.md")], 60
+            ended = [(60, layout_measure.SELFTEST_COMPLETE_LINE)] if self.selftest_complete else []
+            return self.selftest_code, [(0, "report: first.md"), *ended, (60, "report: selftest.md")], 60
         if "build" in command:
             self.clock.sleep(self.heavy_wait + next(self.durations, 60))
             code = next(self.builds, 0)
@@ -406,7 +409,7 @@ class NightlyTests(unittest.TestCase):
 
     def test_supervisor_empty_lane_can_finish_after_multiple_rescans(self):
         path = self.root / "plan.json"
-        chain.write_json(path, dict(marker=self.clock.now().isoformat(), **self.window(),
+        chain.write_json(path, dict(started=self.clock.now().isoformat(), marker=self.clock.now().isoformat(), **self.window(),
                                    lanes={"FAK1": dict(lane="0/1", steps=[], estimate=0)}))
         args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data, out=self.args.out,
                                suite=self.args.suite)
@@ -419,7 +422,7 @@ class NightlyTests(unittest.TestCase):
 
     def test_supervisor_hang_guard_stops_each_lane_and_waits_for_all(self):
         path = self.root / "plan.json"
-        chain.write_json(path, dict(marker=self.clock.now().isoformat(), **self.window(),
+        chain.write_json(path, dict(started=self.clock.now().isoformat(), marker=self.clock.now().isoformat(), **self.window(),
                                    lanes={board: dict(lane=f"{i}/2", estimate=42) for i, board in enumerate(("FAK1", "FAK2"))}))
         args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data, out=self.args.out,
                                suite=self.args.suite)
@@ -441,7 +444,7 @@ class NightlyTests(unittest.TestCase):
     def test_supervisor_does_not_publish_joiner_when_launch_fails(self):
         self.before_cutoff(2)
         path = self.root / "plan.json"
-        planned = dict(tip=self.commits[-1], marker=self.clock.now().isoformat(), **self.window(),
+        planned = dict(tip=self.commits[-1], started=self.clock.now().isoformat(), marker=self.clock.now().isoformat(), **self.window(),
                        from_sha=self.commits[3], max_steps=1,
                        lanes={"FAK1": dict(lane="0/1", estimate=chain.FIRST_STEP_SECONDS)})
         chain.write_json(path, planned)
@@ -469,7 +472,7 @@ class NightlyTests(unittest.TestCase):
     def test_supervisor_lane_plan_error_skips_the_board_for_the_night(self):
         self.before_cutoff(2)
         path = self.root / "plan.json"
-        planned = dict(tip=self.commits[-1], marker=self.clock.now().isoformat(), **self.window(),
+        planned = dict(tip=self.commits[-1], started=self.clock.now().isoformat(), marker=self.clock.now().isoformat(), **self.window(),
                        lanes={"20E8": dict(lane="0/1", estimate=42)})
         chain.write_json(path, planned)
         args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data,
@@ -502,7 +505,7 @@ class NightlyTests(unittest.TestCase):
     def test_supervisor_lane_settings_and_plan_selection(self):
         self.before_cutoff(2)
         path = self.root / "plan.json"
-        chain.write_json(path, dict(tip=self.commits[-1], marker=self.clock.now().isoformat(), **self.window(),
+        chain.write_json(path, dict(tip=self.commits[-1], started=self.clock.now().isoformat(), marker=self.clock.now().isoformat(), **self.window(),
             from_sha=self.commits[3], max_steps=1, lanes={"20E8": dict(lane="0/2", estimate=42)}))
         args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data,
                                out=self.args.out, suite=[("suite", "-", "table with spaces")])
@@ -563,6 +566,19 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual([step["outcome"] for step in manifests["20E8"]["steps"]],
                          ["measured", "not_run_unplugged", "not_run_unplugged"])
         self.assertEqual([step["outcome"] for step in manifests["2124"]["steps"]], ["measured"] * 2)
+
+    def boards_ran(self, **options):
+        """The night's exit status and the boards_ran line it hands the workflow."""
+        output = self.root / "github-output"
+        with patch.dict(os.environ, GITHUB_OUTPUT=str(output)):
+            status = self.supervise(**options)[0]
+        return status, output.read_text()
+
+    def test_night_whose_lanes_ran_reports_boards_ran_even_with_failed_tests(self):
+        self.assertEqual(self.boards_ran(failed=True), (1, "boards_ran=true\n"))
+
+    def test_night_with_an_unplugged_lane_reports_boards_did_not_run(self):
+        self.assertEqual(self.boards_ran(unplugged=True), (0, "boards_ran=false\n"))
 
     def test_supervisor_failed_lane_does_not_stop_joiner(self):
         status, commands, _, manifests = self.supervise(failed=True)
@@ -895,6 +911,13 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual(replay.boundaries, [datetime(2026, 10, 18, 22, 30, tzinfo=timezone.utc)])
         self.assertEqual(writes[-1]["selftest"]["outcome"], "failed")
         self.assertEqual(writes[-1]["selftest"]["report"], "selftest.md")
+        self.assertTrue(lnt.night_ran(writes[-1]))
+
+    def test_selftest_that_never_completed_means_the_board_did_not_run(self):
+        self.args.selftest = ["selftest-replay"]
+        _, _, writes = self.run_chain(selftest_code=1, selftest_complete=False)
+        self.assertEqual(writes[-1]["selftest"]["outcome"], "incomplete")
+        self.assertFalse(lnt.night_ran(writes[-1]))
 
     def test_selftest_runs_first_without_waiting(self):
         self.args.selftest = ["selftest-replay"]

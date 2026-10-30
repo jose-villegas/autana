@@ -14,6 +14,8 @@ from github_api import call, pages
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'device'))
 from device_lock import short_id
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'launcher/tools/perf'))
+from nightly.lnt import night_ran
 
 LABEL = 'board-ci-down'
 QUEUED_LIMIT = timedelta(minutes=30)
@@ -30,7 +32,7 @@ FAILURE_REASON = 'Board health check failed; see the job logs'
 
 
 def open_alarm(request=call):
-    return next((issue['number'] for issue in pages(
+    return next((issue for issue in pages(
         f'/issues?state=open&labels={LABEL}', None, request) if 'pull_request' not in issue), None)
 
 
@@ -38,9 +40,9 @@ def raise_alarm(reason, run_url, request=call):
     workflow = os.environ.get('GITHUB_WORKFLOW', 'Board health')
     job = os.environ.get('GITHUB_JOB', 'check')
     body = f'{reason}\n\nWorkflow/job: {workflow} / {job}\n\nLogs: {run_url}'
-    number = open_alarm(request)
-    if number is not None:
-        request('POST', f'/issues/{number}/comments', {'body': body})
+    issue = open_alarm(request)
+    if issue is not None:
+        request('POST', f"/issues/{issue['number']}/comments", {'body': body})
         return
     try:
         request('GET', f'/labels/{LABEL}')
@@ -51,11 +53,21 @@ def raise_alarm(reason, run_url, request=call):
     request('POST', '/issues', {'title': 'Board CI is down', 'labels': [LABEL], 'body': body})
 
 
-def clear_alarm(run_url, request=call):
-    number = open_alarm(request)
-    if number is not None:
-        request('POST', f'/issues/{number}/comments', {'body': f'Recovered: {run_url}'})
-        request('PATCH', f'/issues/{number}', {'state': 'closed'})
+def clear_alarm(run_url, request=call, since=None):
+    """Close the alarm. With `since`, the board success that shows recovery, only when that came after
+    the alarm's last update, so an older success cannot close a newer outage."""
+    issue = open_alarm(request)
+    if issue is None:
+        return
+    if since is not None and since <= stamp(issue['updated_at']):
+        print(f"::notice::Board success at {since} predates the alarm's last update; it stays open")
+        return
+    request('POST', f"/issues/{issue['number']}/comments", {'body': f'Recovered: {run_url}'})
+    request('PATCH', f"/issues/{issue['number']}", {'state': 'closed'})
+
+
+def stamp(text):
+    return datetime.fromisoformat(text.replace('Z', '+00:00'))
 
 
 def nights_enabled(request):
@@ -65,26 +77,28 @@ def nights_enabled(request):
     return active
 
 
-def last_board_success(request, now):
-    latest = None
+def night_ends(directory):
+    """When each nightly lane on perf-data that ran to the end finished, whatever its tests reported."""
+    for path in (Path(directory) / 'scoped').glob('*/*/night.json'):
+        manifest = json.loads(path.read_text(encoding='utf-8'))
+        if night_ran(manifest):
+            yield datetime.fromisoformat(manifest['ended'])
+
+
+def last_board_success(request, now, nights=()):
+    """The latest board success: a nightly lane's end from `nights`, or a board CI run that cleared the alarm."""
+    successes = list(nights)
     cutoff = (now - SUCCESS_WINDOW).astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
-    for workflow in (NIGHTLY_WORKFLOW, BOARD_WORKFLOW):
-        for run in pages(f'/actions/workflows/{workflow}/runs?status=completed&created=>={cutoff}',
-                         'workflow_runs', request):
-            jobs = list(pages(f"/actions/runs/{run['id']}/jobs", 'jobs', request))
-            cleared = any(job['name'] == 'alarm' and any(
-                step['name'] == CLEAR_STEP and step['conclusion'] == 'success'
-                for step in job.get('steps', [])) for job in jobs)
-            if not cleared:
-                continue
-            completed = [datetime.fromisoformat(job['completed_at'].replace('Z', '+00:00'))
-                         for job in jobs if BOARD_LABEL in job.get('labels', [])
-                         and job.get('conclusion') == 'success']
-            completed = [stamp for stamp in completed if stamp <= now]
-            if completed:
-                stamp = max(completed)
-                latest = max(latest, stamp) if latest else stamp
-    return latest
+    for run in pages(f'/actions/workflows/{BOARD_WORKFLOW}/runs?status=completed&created=>={cutoff}',
+                     'workflow_runs', request):
+        jobs = list(pages(f"/actions/runs/{run['id']}/jobs", 'jobs', request))
+        cleared = any(job['name'] == 'alarm' and any(
+            step['name'] == CLEAR_STEP and step['conclusion'] == 'success'
+            for step in job.get('steps', [])) for job in jobs)
+        if cleared:
+            successes.extend(stamp(job['completed_at']) for job in jobs
+                             if BOARD_LABEL in job.get('labels', []) and job.get('conclusion') == 'success')
+    return max((success for success in successes if success <= now), default=None)
 
 
 def stuck_board_jobs(request, now):
@@ -118,11 +132,12 @@ def night_running(request):
     return running
 
 
-def check(request, now, lanes, plugged, unreachable=()):
+def check(request, now, lanes, plugged, unreachable=(), nights=()):
+    """The problems found, and the latest board success."""
     if night_running(request):
-        return []
+        return [], None
     problems = []
-    success = last_board_success(request, now)
+    success = last_board_success(request, now, nights)
     if success is None or now - success > SUCCESS_WINDOW:
         problems.append(f'No board success within {SUCCESS_WINDOW}')
     problems.extend(stuck_board_jobs(request, now))
@@ -133,7 +148,7 @@ def check(request, now, lanes, plugged, unreachable=()):
               + '; not checked: ' + ', '.join(missing))
     elif missing:
         problems.append('Boards missing from USB: ' + ', '.join(missing))
-    return problems
+    return problems, success
 
 
 def latest_lanes(directory):
@@ -221,12 +236,15 @@ def main(argv=None):
     else:
         if not nights_enabled(call):
             return 0
-        problems = check(call, datetime.now(timezone.utc), latest_lanes(args.lanes_from), *read_plugged(args.devices))
+        problems, success = check(call, datetime.now(timezone.utc), latest_lanes(args.lanes_from),
+                                  *read_plugged(args.devices), night_ends(args.lanes_from))
         if problems:
             reason = '\n'.join(problems)
             args.reason_file.write_text(reason, encoding='utf-8')
             print(reason, file=sys.stderr)
             return 1
+        if success is not None:
+            clear_alarm(run_url(), call, since=success)
     return 0
 
 
