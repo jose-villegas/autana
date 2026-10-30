@@ -20,6 +20,10 @@ An app opts in with `render_context_set_dynamic_resolution()`
 ([Mesh-Rendering.md](Mesh-Rendering.md#the-render-context)). With no call every
 frame draws at the context's fixed scale.
 
+With [frame generation](Frame-Generation.md#with-dynamic-resolution) on, the
+budget stays the cost of a shown frame, and each drawn frame is priced for
+itself and the frame generated from it.
+
 | Policy | Chooses | From | Guards against flapping |
 |---|---|---|---|
 | Stepped controller | one step at a time, after the cost, never above the top | the mean of a window of measured frames against an up and a down threshold | a cooldown after each step that doubles when a step reverses the last one; a panic drop for one frame far over budget |
@@ -221,7 +225,7 @@ What the table shows:
 
 Off by default: `UPSCALE_FILTER_SURFACE` in `render/upscale.h`, set with
 `render_context_set_upscale_filter()`. It applies to the steps that compose into the
-half picture, and is joint bilateral upsampling<sup>[[97]](../Citations.md#kopf-2007)</sup> with a yes-or-no range weight.
+half picture, and is joint bilateral upsampling<sup>[[101]](../Citations.md#kopf-2007)</sup> with a yes-or-no range weight.
 
 | Stage | Nearest | Surface |
 |---|---|---|

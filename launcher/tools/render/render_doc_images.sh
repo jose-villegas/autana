@@ -250,7 +250,7 @@ run "$PYTHON" launcher/tools/math/math_figures.py --cc "$cc" --trs "$OUT/math" \
 run "$PYTHON" launcher/tools/math/math_bench_figures.py --out "$OUT/math" > "$WORK/math_bench_figures.log"
 # --orphans scans this runner: benchmark-families.png
 run "$PYTHON" launcher/tools/math/fast_path_figures.py --out "$OUT/math" > "$WORK/fast_path_figures.log"
-# --orphans scans this runner: fast-path-mathf_recip.png, fast-path-mathf_rsqrt.png, fast-path-mathf_rsqrt_approx.png, fast-path-mathf_repeat.png, fast-path-mathx_rsqrt_q30.png, fast-path-trig_sin.png
+# --orphans scans this runner: fast-path-mathf_recip.png, fast-path-mathf_recip_approx.png, fast-path-mathf_rsqrt.png, fast-path-mathf_rsqrt_approx.png, fast-path-mathf_repeat.png, fast-path-mathx_rsqrt_q30.png, fast-path-trig_sin.png
 run "$PYTHON" launcher/tools/math/geometry_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/geometry_figures.log"
 # --orphans scans this runner: rect-queries.png, circle-rect-queries.png, plane-distance.png, plane-from-points.png, plane-from-rows.png, frustum.png, box3-frustum.gif, box3-sphere-overlap.gif, box3-sphere-segments.png
 run "$PYTHON" launcher/tools/math/signal_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/signal_figures.log"
@@ -332,6 +332,10 @@ done
 # Every mesh scene's frame at each ladder step, and the predictor flown over it.
 run "$PYTHON" launcher/tools/r3d/dynres_replay.py docs/render/data/dynamic-resolution-steps-board.log --cc "$cc" \
     --lead bistro-fitted-full --tables "$OUT/tables" > "$WORK/dynres_replay.log"
+
+# Frame generation: every mesh scene's warped frames scored on the host.
+run sh launcher/tools/r3d/framegen/framegen_docs.sh --out "$OUT/render" "$OUT/tables" > "$WORK/framegen.log" 2>&1
+# --orphans scans this runner: framegen-bistro-holes.png, framegen-bistro-path.png, framegen-bistro-path-dark.png, framegen-bistro.gif, framegen-sponza-holes.png, framegen-pricing.png, framegen-pricing-dark.png, framegen-bistro-sheet.png, framegen-bistro-sheet.crops.png
 
 # The frame stages as shipped, what is inside transform and draw, and what
 # each debug view adds, from the pipeline captures beside the page.
