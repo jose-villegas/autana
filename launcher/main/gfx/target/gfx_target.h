@@ -16,6 +16,9 @@
 
 #include "gfx/target/gfx_color.h"
 #include "image/image.h"
+#include "simd/copy.h"
+#include "simd/fill.h"
+#include "simd/repeat.h"
 
 #define GFX_PIXEL_FORMAT            IMAGE_RGB565BE
 #define GFX_ATTACHMENT_COLOR        0
@@ -143,12 +146,8 @@ gfx_target_clip_rect(const gfx_target_t* target, recti_t clip, recti_t rect) {
  * rows are whole and its buffer word-aligned. */
 static inline void
 gfx_target_fill(const gfx_target_t* target, gfx_color_t colour) {
-    const uint32_t pair = ((uint32_t)colour << 16) | colour;
-    uint32_t* words = target->attachment[0].pixels;
-    const size_t count = ((size_t)target->attachment[0].pitch * target->attachment[0].height) / sizeof(uint32_t);
-    for (size_t i = 0; i < count; i++) {
-        words[i] = pair;
-    }
+    simd_fill_u16(target->attachment[0].pixels, colour,
+                  ((size_t)target->attachment[0].pitch * target->attachment[0].height) / sizeof(uint16_t));
 }
 
 /* True if a shape whose own row extent is [y0, y1) has anything at all to
@@ -174,10 +173,7 @@ static inline recti_t
 gfx_target_fill_rect(const gfx_target_t* target, recti_t clip, recti_t shape, gfx_color_t color) {
     const recti_t rect = gfx_target_clip_rect(target, clip, shape);
     for (int row = rect.y; row < recti_bottom(rect); row++) {
-        gfx_color_t* dst = gfx_target_color(target, row) + rect.x;
-        for (int i = 0; i < rect.w; i++) {
-            *dst++ = color;
-        }
+        simd_fill_u16(gfx_target_color(target, row) + rect.x, color, (size_t)rect.w);
     }
     return rect;
 }
@@ -202,6 +198,22 @@ gfx_target_paired_rows_shaded(const gfx_target_t* target, const image_t* source,
     const int row0 = target->first_row;
     const int end = first_row + row_count;
     const int stores = target_pitch / sizeof(uint32_t);
+    if (doubled && depth == NULL && dark_run == 0) {
+        /* Nothing per pixel but the doubling: each row is one repeat, and a
+         * second row from the same source row is a copy of the first. */
+        for (int y = first_row; y < end;) {
+            const int source_y = rows == NULL ? y / 2 : rows[y];
+            char* top = output + ((size_t)(y - row0) * target_pitch);
+            simd_repeat2_u16((uint16_t*)top, (const uint16_t*)((const char*)color + ((size_t)source_y * source_pitch)),
+                             (size_t)stores);
+            const bool both = y + 1 < end && (rows == NULL ? (y + 1) / 2 : rows[y + 1]) == source_y;
+            if (both) {
+                simd_copy(top + target_pitch, top, target_pitch);
+            }
+            y += both ? 2 : 1;
+        }
+        return;
+    }
     for (int y = first_row; y < end;) {
         const int source_y = rows == NULL ? y / 2 : rows[y];
         const uint16_t* input = (const uint16_t*)((const char*)color + (size_t)source_y * source_pitch);
