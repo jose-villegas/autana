@@ -51,7 +51,10 @@ void r3d_lens_init(r3d_lens_t* lens, const render_view_t* view, int position_sca
  * depth_near / z, so depth_near is the nearest depth the 16 bits can tell
  * apart and the steps per unit at z are R3D_DEPTH_NEAREST depth_near / z^2.
  * Every instance of one picture must share it; the clip plane stays near_z. */
-void r3d_lens_set_depth_near(r3d_lens_t* lens, float depth_near);
+static inline void
+r3d_lens_set_depth_near(r3d_lens_t* lens, float depth_near) {
+    lens->depth_subpixels = depth_near / (float)R3D_SUBPIXEL;
+}
 
 /* Refits a lens made for one picture size to a render `width` by `height`
  * stretched back to it on the way out, each axis on its own, so a render
@@ -69,7 +72,11 @@ typedef struct r3d_pipeline_work r3d_pipeline_work_t;
 size_t r3d_pipeline_work_bytes(void);
 
 /* The planes of the lens's picture, in mesh ticks: near, then its four sides. */
-void r3d_lens_frustum(const r3d_lens_t* lens, planef_t out[PLANE_FRUSTUM_COUNT]);
+static inline void
+r3d_lens_frustum(const r3d_lens_t* lens, planef_t out[PLANE_FRUSTUM_COUNT]) {
+    planef_frustum(&lens->m, &lens->project, rectf_from_edges(0.0F, 0.0F, (float)lens->width, (float)lens->height),
+                   out);
+}
 
 /* The depth scale a picture's kept clusters allow, folded over its meshes:
  * depth_near starts at INFINITY (nothing kept) and only falls. */

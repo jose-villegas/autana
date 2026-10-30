@@ -36,11 +36,6 @@ r3d_lens_init(r3d_lens_t* lens, const render_view_t* view, int position_scale) {
 }
 
 void
-r3d_lens_set_depth_near(r3d_lens_t* lens, float depth_near) {
-    lens->depth_subpixels = depth_near / (float)R3D_SUBPIXEL;
-}
-
-void
 r3d_lens_fit(r3d_lens_t* lens, int width, int height) {
     const float scale_x = (float)width / (float)lens->width;
     const float scale_y = (float)height / (float)lens->height;
@@ -116,12 +111,6 @@ static inline planef_t
 lens_depth_plane(const r3d_lens_t* lens) {
     const float* f = lens->m.m[2];
     return (planef_t){{f[0], f[1], f[2]}, f[3]};
-}
-
-void
-r3d_lens_frustum(const r3d_lens_t* lens, planef_t out[PLANE_FRUSTUM_COUNT]) {
-    planef_frustum(&lens->m, &lens->project, rectf_from_edges(0.0F, 0.0F, (float)lens->width, (float)lens->height),
-                   out);
 }
 
 /* Children go on the stack farthest first, so the nearest pops first and
