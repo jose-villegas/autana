@@ -14,11 +14,15 @@
 # --view boxes without --object-boxes FILE draws the source objects of the
 # first --object (else the scene's first mesh renderer) too: object_boxes.py
 # writes them into the results tree, redone only when what they came from changed.
+#
+# --window plays the camera path in a window (scene_window.py), each frame drawn
+# live by the host as it is asked for; the views menu offers boxes too.
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO=$(CDPATH= cd -- "$SCRIPT_DIR/../../.." && pwd -P)
 if [ $# -eq 0 ]; then
     echo "usage: $0 SCENE.scene.toml [--build-only -o DIR | --deps] [--object NAME ...] [--camera NAME] [--frames N --dt MS] [--view NAME (an unknown NAME lists them)] [--object-boxes FILE] [--counts out.csv] [--poses out.csv] [--size WxH] [--present nearest|scanline|double] [--small-fill CEILING,GATE,STYLE] [--set owner.name=value ...] [--tunables] [--quarter 0|1] [--panel] [-o out.bmp] [--video out.avi]" >&2
+    echo "       $0 SCENE.scene.toml --window [--view NAME] [renderer arguments]" >&2
     echo "       $0 SCENE.scene.toml [--compare REV|DIR [--b-args ARGS]] [--frame N] [-o out.mp4|out.png] [renderer arguments]" >&2
     exit 2
 fi
@@ -34,6 +38,7 @@ if [ ! -f "$scene_file" ]; then
 fi
 build_only=0
 deps=0
+window=0
 build_dir=$SCRIPT_DIR/../results/render/scene_viewer
 compare=
 b_args=
@@ -46,6 +51,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --build-only) build_only=1; shift ;;
         --deps) deps=1; shift ;;
+        --window) window=1; shift ;;
         -o|--compare|--b-args|--frame|--frames|--dt)
             [ $# -ge 2 ] || { echo "$1 needs a value" >&2; exit 2; }
             case "$1" in
@@ -80,6 +86,10 @@ if [ -n "$output" ]; then
 $output"
     fi
 fi
+if [ "$window" = 1 ] && [ -n "$compare$frame" ]; then
+    echo "scene_viewer: --window draws live; it takes no --compare or --frame" >&2
+    exit 2
+fi
 if [ "$deps" = 1 ]; then
     exec sh "$SCRIPT_DIR/scenes/scene_viewer_render_host.sh" --deps --asset-file "$scene_file"
 fi
@@ -113,7 +123,7 @@ for argument in $render_args; do
     previous=$argument
 done
 unset IFS
-if [ "$view_name" = boxes ] && [ "$given_boxes" = 0 ]; then
+if { [ "$view_name" = boxes ] || [ "$window" = 1 ]; } && [ "$given_boxes" = 0 ]; then
     . "$SCRIPT_DIR/../../../scripts/lib/python.sh"
     boxes_file=$build_dir/object_boxes/$id${object_name:+-$object_name}.txt
     "$(find_python numpy scipy matplotlib)" "$(to_native "$SCRIPT_DIR/../r3d/objects/object_boxes.py")" \
@@ -180,4 +190,8 @@ for argument in $render_args; do
     set -- "$@" "$argument"
 done
 unset IFS
+if [ "$window" = 1 ]; then
+    . "$SCRIPT_DIR/../../../scripts/lib/python.sh"
+    exec "$(find_python PIL tkinter)" "$(to_native "$SCRIPT_DIR/scene_window.py")" "$(to_native "$binary")"         --scene "$id" --view "${view_name:-shaded}" -- "$@"
+fi
 exec "$binary" --scene "$id" "$@"

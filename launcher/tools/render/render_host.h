@@ -6,6 +6,7 @@
 #define RENDER_HOST_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "app/app.h"
@@ -59,6 +60,11 @@ typedef struct {
     bool (*setup)(int quarter);
 
     void (*draw)(const render_frame_t* frame);
+
+    /* Optional. Under --serve, a command line render_host.c does not answer
+     * itself: one reply line without its newline into `reply` (`size`
+     * bytes), "ok ..." or "error ...". False for a command it does not know. */
+    bool (*command)(const char* line, char* reply, size_t size);
 } render_scene_t;
 
 /* Fully qualified tunable names use the same validation as the console. */

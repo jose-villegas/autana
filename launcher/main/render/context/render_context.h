@@ -63,6 +63,7 @@ typedef struct {
     bool (*second_view)(void* state, const raster_t* raster, render_view_t* out, bool* listed);
     /* Optional. Over the composed picture, `width` by `height`, with draw/. */
     void (*overlay)(void* state, int width, int height);
+    const char* tunables; /* the owner of the view's tunables; NULL when it has none */
 } render_debug_view_t;
 
 #define RENDER_DEBUG_VIEW_UNKNOWN -2
