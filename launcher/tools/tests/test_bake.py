@@ -1768,7 +1768,7 @@ class SkipUnlockedTests(unittest.TestCase):
         self.found, self.lock = filled_cache(self.cache, self)
         self.packs = build_pack.pack_files([build_pack.DEFAULT_SEARCH])
         self.waiting = self.found[0]
-        entry = self.waiting.output.removesuffix(bake.MESH_SUFFIX)
+        entry = self.waiting.output.removesuffix(self.waiting.suffix)
         self.holder = next(name for name, entries in self.packs.items() if entry in entries)
 
     def build(self, rows, *flags):
@@ -1801,7 +1801,7 @@ class SkipUnlockedTests(unittest.TestCase):
         self.assertIn("has no row for this key", err)
 
     def test_a_locked_bake_the_cache_cannot_give_still_fails_with_the_flag(self):
-        bake.cached(self.lock[self.waiting.key], bake.MESH_SUFFIX, self.cache).unlink()
+        bake.cached(self.lock[self.waiting.key], self.waiting.suffix, self.cache).unlink()
         code, err = self.build(self.lock, "--skip-unlocked", str(self.listed))
         self.assertEqual(code, 2)
         self.assertIn(self.waiting.output, err)
@@ -1810,8 +1810,8 @@ class SkipUnlockedTests(unittest.TestCase):
 
     def test_one_pack_waiting_and_another_broken_still_fails_naming_the_broken_one(self):
         broken = next(found for found in self.found
-                      if found.output.removesuffix(bake.MESH_SUFFIX) not in self.packs[self.holder])
-        bake.cached(self.lock[broken.key], bake.MESH_SUFFIX, self.cache).unlink()
+                      if found.packed and found.output.removesuffix(found.suffix) not in self.packs[self.holder])
+        bake.cached(self.lock[broken.key], broken.suffix, self.cache).unlink()
         rows = {key: row for key, row in self.lock.items() if key != self.waiting.key}
         code, err = self.build(rows, "--skip-unlocked", str(self.listed))
         self.assertEqual(code, 2)
