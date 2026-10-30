@@ -8,7 +8,7 @@ framegen_modes suites): what a generated frame costs, where the warp's time
 goes, each scene played in every mode, and the pricing rule drawn over the
 measured generated frames.
 
-    framegen_report.py --tables DIR --images DIR --plot-scene KEY --plot-size WxH
+    framegen_report.py --tables DIR --path-plot PNG --pricing-plot PNG --plot-scene KEY --plot-size WxH
         --board LOG [--board LOG ...] CSV [CSV ...]
 
 Needs matplotlib, Pillow and numpy (tools/r3d/requirements.txt).
@@ -186,7 +186,8 @@ def pricing_plot(rows, scene, budgets_ms, path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--tables", type=pathlib.Path, required=True)
-    parser.add_argument("--images", type=pathlib.Path, required=True)
+    parser.add_argument("--path-plot", type=pathlib.Path, required=True)
+    parser.add_argument("--pricing-plot", type=pathlib.Path, required=True)
     parser.add_argument("--plot-scene", required=True)
     parser.add_argument("--plot-size", required=True)
     parser.add_argument("--board", action="append", default=[])
@@ -199,9 +200,9 @@ def main():
               "framegen-modes": modes_table(board["framegen_modes"])}
     for name, text in tables.items():
         (args.tables / (name + ".md")).write_text(text, newline="\n")
-    path_plot(groups, args.plot_scene, args.plot_size, args.images / "framegen-bistro-path.png")
+    path_plot(groups, args.plot_scene, args.plot_size, args.path_plot)
     budgets = sorted({int(f["budget_ms"]) for f in board["framegen_modes"].values() if f["budget_ms"]}, reverse=True)
-    pricing_plot(board["framegen"], args.plot_scene, budgets, args.images / "framegen-pricing.png")
+    pricing_plot(board["framegen"], args.plot_scene, budgets, args.pricing_plot)
 
 
 if __name__ == "__main__":
