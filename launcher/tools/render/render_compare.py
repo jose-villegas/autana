@@ -376,6 +376,23 @@ def _compose(rows, label_a, label_b, tile=1.0):
     return Image.fromarray(np.concatenate(padded, axis=0).astype(np.uint8))
 
 
+def still_row(panels):
+    """One labelled row of still pictures, [(label, picture), ...]: at least two."""
+    (label_a, a), (label_b, b), *after = panels
+    return _compose([(("", a, b), after)], label_a, label_b)
+
+
+def still_sheet(rows):
+    """still_row() per row of panels, stacked top to bottom on white."""
+    pictures = [still_row(panels) for panels in rows]
+    sheet = Image.new("RGB", (max(p.width for p in pictures), sum(p.height for p in pictures)), "white")
+    top = 0
+    for picture in pictures:
+        sheet.paste(picture, (0, top))
+        top += picture.height
+    return sheet
+
+
 def _scaled(picture, tile):
     if tile == 1.0:
         return picture
@@ -921,8 +938,7 @@ def main():
         for label, path in args.still_column:
             with Image.open(path) as picture:
                 panels.append((label, picture.convert("RGB")))
-        (label_a, a), (label_b, b), *after = panels
-        _compose([(("", a, b), after)], label_a, label_b).save(args.out, optimize=True)
+        still_row(panels).save(args.out, optimize=True)
         return
     if args.angle_column:
         angle_sheet(args.angle_column).save(args.out, optimize=True)

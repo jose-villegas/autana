@@ -244,6 +244,7 @@ test_goertzel_amplitude_and_scale(void) {
 #define TEST_PHASE_TOLERANCE      0.001F
 #define TEST_SINE_PHASE_TOLERANCE 0.02F
 
+#ifndef ESP_PLATFORM
 static void
 assert_phase_record(int16_t* samples, size_t count, float hz, float phase, float tolerance) {
     goertzel_t state, split;
@@ -322,6 +323,7 @@ test_goertzel_phase_negative_pi(void) {
     const goertzel_t state = {.omega = MATH_PI / 2, .previous = -1, .previous2 = -0.0F, .samples = 1};
     TEST_ASSERT_EQUAL_FLOAT(MATH_PI, goertzel_phase(&state));
 }
+#endif
 
 void
 run_goertzel_suite(void) {

@@ -2,7 +2,8 @@
  * greatest signed distance, and its least objective inside a half-space. */
 #pragma once
 
-/* Distance min and max are plane(centre) -+ sum |n_k| half_extent_k.
+/* Distance min is plane(centre) - sum |n_k| half_extent_k; max is min of
+ * the flipped plane, negated.
  * distance_min_inside is a linear programme solved by duality: the best
  * distance_min(b, objective - lambda constraint) at lambda = 0 and each kink
  * a_k / n_k > 0. Exact when b meets the half-space, a lower bound when not. */
@@ -18,7 +19,8 @@
     }                                                                                                                  \
                                                                                                                        \
     static inline T P##_plane_distance_max(P##_t b, L##_t plane) {                                                     \
-        return OPS##_add(L##_distance(plane, P##_centre(b)), _##P##_plane_radius(P##_half_extent(b), plane));          \
+        const L##_t flipped = {V##_scale(plane.normal, OPS##_neg(OPS##_one())), OPS##_neg(plane.d)};                   \
+        return OPS##_neg(P##_plane_distance_min(b, flipped));                                                          \
     }                                                                                                                  \
                                                                                                                        \
     static inline T P##_plane_distance_min_inside(P##_t b, L##_t objective, L##_t constraint) {                        \

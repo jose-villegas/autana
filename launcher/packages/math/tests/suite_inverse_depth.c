@@ -17,7 +17,7 @@ test_steps_per_unit_is_the_code_slope(void) {
     const float slope = CODE_MAX * scale / (z * z);
     TEST_ASSERT_EQUAL_FLOAT(slope, inverse_depth_steps_per_unit(scale, CODE_MAX, z));
     /* In double: the two codes agree to more digits than a float holds. */
-    const double fall = ((double)scale / z - (double)scale / (z + 1.0)) * CODE_MAX;
+    const double fall = ((double)scale / (double)z - (double)scale / ((double)z + 1.0)) * (double)CODE_MAX;
     TEST_ASSERT_FLOAT_WITHIN(slope / z, slope, (float)fall);
     /* A larger scale gives proportionally more steps at the same depth. */
     TEST_ASSERT_EQUAL_FLOAT(slope * 2.0F, inverse_depth_steps_per_unit(scale * 2.0F, CODE_MAX, z));

@@ -16,14 +16,13 @@ smoothing.
 import argparse
 import pathlib
 import subprocess
-import sys
 
 import numpy as np
 from PIL import Image
+from render_compare import still_sheet
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 VIEWER = ROOT / "launcher/tools/render/scene_viewer.sh"
-COMPARE = ROOT / "launcher/tools/render/render_compare.py"
 FRAME_MS = 16  # one host frame, as the viewer steps by default
 FRAMES = 6  # consecutive frames per row: enough to see a fight come and go
 WINDOW = (160, 96)  # the cut, in rendered pixels: wide enough to read the place
@@ -79,23 +78,12 @@ def main(argv=None):
     removed = np.maximum(flips(rows[SETTINGS[0][1]]) - flips(rows[SETTINGS[1][1]]), 0)
     x, y = busiest(removed)
     width, height = WINDOW
-    pictures = []
+    sheet = []
     for label, fit in SETTINGS:
-        command = [sys.executable, str(COMPARE), "--out", str(args.work / f"row{fit}.png")]
-        for k, frame in enumerate(rows[fit]):
-            cut = Image.fromarray(frame[y:y + height, x:x + width].astype(np.uint8))
-            path = args.work / f"cut{fit}-{k}.png"
-            cut.resize((width * ZOOM, height * ZOOM), Image.NEAREST).save(path)
-            seconds = (first + k) * FRAME_MS / 1000
-            command += ["--still-column", f"{label}, {seconds:.3f} s", str(path)]
-        subprocess.run(command, check=True, stdout=subprocess.DEVNULL)
-        pictures.append(Image.open(args.work / f"row{fit}.png").convert("RGB"))
-    sheet = Image.new("RGB", (max(p.width for p in pictures), sum(p.height for p in pictures)), "white")
-    top = 0
-    for picture in pictures:
-        sheet.paste(picture, (0, top))
-        top += picture.height
-    sheet.save(args.out, optimize=True)
+        cuts = [Image.fromarray(frame[y:y + height, x:x + width].astype(np.uint8)) for frame in rows[fit]]
+        sheet.append([(f"{label}, {(first + k) * FRAME_MS / 1000:.3f} s",
+                       cut.resize((width * ZOOM, height * ZOOM), Image.NEAREST)) for k, cut in enumerate(cuts)])
+    still_sheet(sheet).save(args.out, optimize=True)
 
 
 if __name__ == "__main__":
