@@ -140,6 +140,18 @@ typedef struct {
     uint32_t duration_ms;
 } scenario_path_t;
 
+/* report_path()'s heap, freed after a failed assertion too. */
+static frame_profile_peak_t* peaks;
+static pose_line_t* pose_line;
+
+static void
+release_report(void) {
+    memory_free(peaks);
+    memory_free(pose_line);
+    peaks = NULL;
+    pose_line = NULL;
+}
+
 /* The played profile, its traced frames and peaks, then each replayed pose:
  * evenly along the path for the counts' curves, then every peak's. A frame
  * of its own, so the test's stays small under the played frames. */
@@ -150,25 +162,22 @@ report_path(const scenario_path_t* path, const frame_profile_t* p) {
     frame_profile_log(TAG, row, p, quarter);
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, p->frames, "frame profile failed");
     const int count = frame_profile_peaks(&played, NULL, 0);
-    frame_profile_peak_t* peak = memory_alloc((size_t)count * sizeof *peak, MEMORY_PSRAM);
-    pose_line_t* line = memory_alloc(sizeof *line, MEMORY_INTERNAL);
-    if (peak == NULL || line == NULL) {
-        memory_free(peak);
-        memory_free(line);
-        TEST_FAIL_MESSAGE("frame peak allocation failed");
-    }
-    TEST_ASSERT_EQUAL_INT(count, frame_profile_peaks(&played, peak, count));
-    frame_profile_log_trace(TAG, row, &played, peak, count, quarter);
+    suite_add_test_cleanup(release_report);
+    peaks = memory_alloc((size_t)count * sizeof *peaks, MEMORY_PSRAM);
+    pose_line = memory_alloc(sizeof *pose_line, MEMORY_INTERNAL);
+    TEST_ASSERT_NOT_NULL_MESSAGE(peaks, "frame peak allocation failed");
+    TEST_ASSERT_NOT_NULL_MESSAGE(pose_line, "frame peak allocation failed");
+    TEST_ASSERT_EQUAL_INT(count, frame_profile_peaks(&played, peaks, count));
+    frame_profile_log_trace(TAG, row, &played, peaks, count, quarter);
     for (int i = 0; i < FRAME_PROFILE_PATH_POSES; i++) {
         replay_pose(path->scene, path->entity, path->duration_ms,
-                    (int32_t)((int64_t)path->duration_ms * i / FRAME_PROFILE_PATH_POSES), row, quarter, line);
+                    (int32_t)((int64_t)path->duration_ms * i / FRAME_PROFILE_PATH_POSES), row, quarter, pose_line);
     }
     for (int rank = 0; rank < count; rank++) {
-        replay_pose(path->scene, path->entity, path->duration_ms, played.frame[peak[rank].frame].path_ms, row, quarter,
-                    line);
+        replay_pose(path->scene, path->entity, path->duration_ms, played.frame[peaks[rank].frame].path_ms, row, quarter,
+                    pose_line);
     }
-    memory_free(peak);
-    memory_free(line);
+    release_report();
 }
 
 static scenario_path_t
