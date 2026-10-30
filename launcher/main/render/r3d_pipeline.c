@@ -11,8 +11,10 @@
 #include "collections/sort.h"
 #include "core/job.h"
 #include "display/viewport.h"
+#include "math/geometry/box3f_plane.h"
 #include "math/geometry/planef.h"
 #include "math/linear/mat3f.h"
+#include "math/projection/inverse_depth.h"
 #include "math/scalar/mathf.h"
 #include "math/scalar/mathi.h"
 #include "profile/frame_laps.h"
@@ -26,7 +28,7 @@ r3d_lens_init(r3d_lens_t* lens, const render_view_t* view, int position_scale) {
     const mat4f_t pixels = mat4f_scale_rows(camera, (vec3f_t){view->lens.fx, view->lens.fy, 1.0F});
     lens->m = mat4f_scale_columns(pixels, (vec3f_t){ticks_to_units, ticks_to_units, ticks_to_units});
     lens->project = (projectf_t){1.0F, -1.0F, view->lens.cx, view->lens.cy, view->lens.near_z};
-    lens->near_subpixels = view->lens.near_z / (float)R3D_SUBPIXEL;
+    r3d_lens_set_depth_near(lens, view->lens.near_z);
     lens->snap_cx = (lens->project.cx * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
     lens->snap_cy = (lens->project.cy * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
     lens->width = view->viewport.width;
@@ -104,14 +106,20 @@ farther(child_depth_t a, child_depth_t b) {
 
 SORT_DEFINE_INSERTION(children, child_depth_t, farther)
 
+/* Lens space's z is view depth: the plane z = 0, read in mesh ticks. */
+static inline planef_t
+lens_depth_plane(const r3d_lens_t* lens) {
+    const float* f = lens->m.m[2];
+    return (planef_t){{f[0], f[1], f[2]}, f[3]};
+}
+
 /* Children go on the stack farthest first, so the nearest pops first and
  * the walk visits leaves roughly front to back. */
 static int
 push_children(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_node_t* node, unsigned mask,
               walk_entry_t* stack, int top) {
     child_depth_t order[R3D_LIT_NODE_CHILDREN_MAX];
-    const float* f = lens->m.m[2];
-    const planef_t depth = {{f[0], f[1], f[2]}, f[3]};
+    const planef_t depth = lens_depth_plane(lens);
     const int n = node->count;
     assert(n <= R3D_LIT_NODE_CHILDREN_MAX);
     for (int i = 0; i < n; i++) {
@@ -127,11 +135,51 @@ push_children(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_
     return top;
 }
 
+/* Lowers `fit` to the scale of the least view depth of the part of `box`
+ * inside the planes it crosses (`crossing`, a mask of `planes`): a box
+ * reaching behind the eye is drawn only where the frustum keeps it. A NULL
+ * fit, or one already at near_z, needs nothing. A bound at or past
+ * fit->depth_near cannot lower the scale, so the planes are tried only until
+ * it gets there. */
+static void
+fit_inside(box3f_t box, const planef_t* planes, unsigned crossing, planef_t depth, r3d_depth_fit_t* fit) {
+    if (fit == NULL || !(fit->depth_near > fit->near_z)) {
+        return;
+    }
+    float least = box3f_plane_distance_min(box, depth);
+    for (int p = 0; p < PLANE_FRUSTUM_COUNT && least < fit->depth_near; p++) {
+        if (crossing & (1U << p)) {
+            least = mathf_max(least, box3f_plane_distance_min_inside(box, depth, planes[p]));
+        }
+    }
+    if (least < fit->depth_near) {
+        fit->depth_near = mathf_min(fit->depth_near, inverse_depth_scale_fit(fit->near_z, least));
+    }
+}
+
+/* Writes the clusters of a leaf the planes in `mask` keep to `out` from
+ * `count`, lowering `fit`, and returns the new count. */
+static int
+cull_leaf(const r3d_lit_mesh_t* mesh, const r3d_lit_node_t* leaf, unsigned mask, const planef_t* planes, planef_t depth,
+          uint16_t* out, int count, r3d_depth_fit_t* fit) {
+    for (int i = 0; i < leaf->count; i++) {
+        const int c = leaf->first + i;
+        unsigned cluster_mask = mask;
+        const box3f_t box = box3f_from_box3s(mesh->clusters[c].bounds, 1.0F);
+        if (cluster_mask == 0 || !box3f_outside_planes(box, planes, PLANE_FRUSTUM_COUNT, &cluster_mask)) {
+            out[count++] = (uint16_t)c;
+            fit_inside(box, planes, cluster_mask, depth, fit);
+        }
+    }
+    return count;
+}
+
 int
-r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* out, r3d_pipeline_work_t* work) {
+r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* out, r3d_pipeline_work_t* work,
+                  r3d_depth_fit_t* fit) {
     planef_t* planes = work->cull.planes;
-    planef_frustum(&lens->m, &lens->project, rectf_from_edges(0.0F, 0.0F, (float)lens->width, (float)lens->height),
-                   planes);
+    r3d_lens_frustum(lens, planes);
+    const planef_t depth = lens_depth_plane(lens);
 
     walk_entry_t* stack = work->cull.stack;
     int top = 0;
@@ -149,15 +197,7 @@ r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* 
             top = push_children(mesh, lens, node, mask, stack, top);
             continue;
         }
-        for (int i = 0; i < node->count; i++) {
-            const int c = node->first + i;
-            unsigned cluster_mask = mask;
-            if (cluster_mask == 0
-                || !box3f_outside_planes(box3f_from_box3s(mesh->clusters[c].bounds, 1.0F), planes, PLANE_FRUSTUM_COUNT,
-                                         &cluster_mask)) {
-                out[count++] = (uint16_t)c;
-            }
-        }
+        count = cull_leaf(mesh, node, mask, planes, depth, out, count, fit);
     }
     return count;
 }
@@ -209,7 +249,7 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_
         }
         out->sx = (int16_t)r3d_span_unbias(b.x);
         out->sy = (int16_t)r3d_span_unbias(b.y);
-        out->iz = lens->near_subpixels * inv;
+        out->iz = lens->depth_subpixels * inv;
         y0 = out->sy < y0 ? out->sy : y0;
         y1 = out->sy > y1 ? out->sy : y1;
     }
@@ -302,7 +342,7 @@ project(const r3d_lens_t* lens, const clip_vertex_t* v) {
     const float inv = (float)R3D_SUBPIXEL * mathf_recip(v->z);
     const biased_t b = biased_screen(lens, v->x, v->y, inv);
     return (r3d_span_vertex_t){
-        r3d_span_unbias(b.x), r3d_span_unbias(b.y), lens->near_subpixels * inv, v->r, v->g, v->b};
+        r3d_span_unbias(b.x), r3d_span_unbias(b.y), lens->depth_subpixels * inv, v->r, v->g, v->b};
 }
 
 /* One Sutherland-Hodgman pass (Sutherland and Hodgman 1974): the polygon's part on the plane's inside. */

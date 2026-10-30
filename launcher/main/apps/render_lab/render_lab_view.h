@@ -28,6 +28,12 @@ const char* const* render_lab_small_fill_names(int* count);
 int render_lab_small_fill_selected(void);
 bool render_lab_small_fill_select(int index);
 
+/* The menu's upscale choice, render_lab.upscale: SHARP keeps nearest, SMOOTH
+ * blends within a surface (UPSCALE_FILTER_SURFACE). */
+const char* const* render_lab_upscale_names(int* count);
+int render_lab_upscale_selected(void);
+bool render_lab_upscale_select(int index);
+
 bool render_lab_apply_camera_settings(scene_t* scene, scene_entity_t camera);
 
 /* The tunable render_lab.layout, the framebuffer layout render_lab asks for

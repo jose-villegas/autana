@@ -106,7 +106,7 @@ add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
     r3d_lens_fit(draw_lens, raster->width, raster->height);
     sum->buffers = raster_carve(raster);
     const raster_buffers_t* b = &sum->buffers;
-    const int visible = r3d_pipeline_cull(&mesh, draw_lens, b->culled + 1, b->work[0]);
+    const int visible = r3d_pipeline_cull(&mesh, draw_lens, b->culled + 1, b->work[0], NULL);
     r3d_pipeline_transform(&mesh, draw_lens, b->culled + 1, visible, b->cs, b->rows);
     const size_t pixels = (size_t)raster->width * (size_t)raster->height;
     const int64_t clear_from = timing_now_us();
@@ -344,7 +344,7 @@ calibrate(const resolution_config_t* config, resolution_model_t* model) {
                 const int64_t start = timing_now_us();
                 const raster_stats_t stats = raster_draw(raster, view);
                 const int64_t drawn = timing_now_us();
-                (void)render_context_compose(context, destination, half);
+                (void)render_context_compose(context, destination, half, NULL);
                 samples[count++] = (resolution_sample_t){step, stats.triangles, (int32_t)(drawn - start),
                                                          (int32_t)(timing_now_us() - drawn)};
             }
@@ -416,7 +416,7 @@ fly(const char* camera, const char* policy, const ladder_t* ladder, const resolu
     TEST_ASSERT_TRUE(frames > 0 && frames <= FRAMES_MAX);
     render_lab_apply_raster_settings();
     render_context_set_dynamic_resolution(render_context_main(), config, model, ladder == NULL ? 0 : ladder->half);
-    scene_target_t target = {picture, GFX_WIDTH, GFX_HEIGHT, NULL};
+    scene_target_t target = {picture, GFX_WIDTH, GFX_HEIGHT, NULL, NULL};
     gfx_color_t* half = memory_alloc(sizeof(*half) * (GFX_WIDTH / 2) * (GFX_HEIGHT / 2), MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(half);
     target.half_pixels = half;
