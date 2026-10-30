@@ -166,6 +166,15 @@ class BoardAlarmTests(unittest.TestCase):
     def test_missing_boards(self):
         self.assertEqual(alarm.missing_boards(['2124', 'abcd'], ['abcd', 'eeee']), ['2124'])
 
+    def test_unreachable_host_leaves_its_boards_unchecked(self):
+        with mock.patch.object(alarm, 'last_board_success', return_value=NOW), \
+                mock.patch.object(alarm, 'stuck_board_jobs', return_value=[]), \
+                mock.patch('sys.stdout', new_callable=io.StringIO) as output:
+            self.assertEqual(alarm.check(Repository(), NOW, ['20E8', '2124'], ['2124'], ['book2']), [])
+            self.assertEqual(alarm.check(Repository(), NOW, ['20E8', '2124'], ['2124']),
+                             ['Boards missing from USB: 20E8'])
+        self.assertIn('not checked: 20E8', output.getvalue())
+
     def test_check_success_window(self):
         for age, expected in [(alarm.SUCCESS_WINDOW, False),
                               (alarm.SUCCESS_WINDOW + timedelta(seconds=1), True)]:
@@ -186,7 +195,9 @@ class BoardAlarmTests(unittest.TestCase):
             devices.write_text(json.dumps({'boards': [
                 {'board': 'AA:BB:CC:DD:21:24', 'port': 'COM3'},
                 {'board': 'AA:BB:CC:DD:AB:CD', 'port': None}]}))
-            self.assertEqual(alarm.read_plugged(devices), ['2124'])
+            self.assertEqual(alarm.read_plugged(devices), (['2124'], []))
+            devices.write_text(json.dumps({'boards': [], 'unreachable': ['book2']}))
+            self.assertEqual(alarm.read_plugged(devices), ([], ['book2']))
 
     def test_cli_disabled_needs_no_devices_file(self):
         request = Repository()

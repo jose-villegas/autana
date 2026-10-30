@@ -10,8 +10,8 @@
 #define PROBE_DURATION_S  (GRAVITY_BIAS_SETTLE_S * 1.5F)
 /* Figure frames per second of simulated time; each frame's samples arrive as one batch. */
 #define PROBE_FRAME_HZ    4
-/* Gyro offset on chip X, Y and Z in deg/s: datasheet-sized, inside GRAVITY_BIAS_MAX_DPS. */
-#define PROBE_BIAS_DPS    {GRAVITY_GYRO_OFFSET_TOL_DPS, -GRAVITY_GYRO_OFFSET_TOL_DPS / 2, GRAVITY_GYRO_OFFSET_TOL_DPS / 2}
+/* Gyro offset on chip X, Y and Z in deg/s: datasheet-sized, inside IMU_GYRO_BIAS_MAX_DPS. */
+#define PROBE_BIAS_DPS    {IMU_GYRO_OFFSET_TOL_DPS, -IMU_GYRO_OFFSET_TOL_DPS / 2, IMU_GYRO_OFFSET_TOL_DPS / 2}
 /* The rocking about flat, screen up: two slow tilts about device x and y. */
 #define PROBE_PITCH_DEG   20.0F
 #define PROBE_PITCH_S     7.0F

@@ -33,3 +33,7 @@ indirect render_lab_clips.c:reply_line : console_reply_stdio suite_render_lab_cl
 root test_boot_menu_draws_controls_only_for_animated_scene test
 indirect render_context_draw : app_arena_take
 indirect scene_allocate_kept : app_arena_take
+
+root test_real_time_frame_profile test
+indirect frame_profile_play : suite_render_lab_frame_profile.c:whole_frame
+indirect suite_render_lab_frame_profile.c:enter_scenario : render_lab_console

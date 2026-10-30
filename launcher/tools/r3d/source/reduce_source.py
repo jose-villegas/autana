@@ -36,7 +36,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from r3d.meshopt import _library  # noqa: E402
 from r3d.obj import load_obj  # noqa: E402
-from r3d.objects.instances import match_instances, source_objects  # noqa: E402
+from r3d.objects.instances import match_instances, place, source_objects  # noqa: E402
 
 HERE = pathlib.Path(__file__).resolve().parent
 # meshoptimizer.h's meshopt_SimplifyErrorAbsolute (the error is in model units)
@@ -122,7 +122,7 @@ def place_copies(shapes, index, positions, uvs, kept, materials, objects):
         local = positions[corners] - first.position
         for copy in shape.instances[1:]:
             placed = faces[:, ::-1] if copy.mirrored else faces
-            parts.append((local @ copy.linear.T + copy.position, uvs[corners], placed + base, materials[mine],
+            parts.append((place(local, copy.linear, copy.position), uvs[corners], placed + base, materials[mine],
                           np.full(len(faces), index[copy.object_name])))
             base += len(corners)
     return tuple(np.concatenate(column) for column in zip(*parts))

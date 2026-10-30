@@ -24,6 +24,7 @@ typedef struct {
     uint16_t* pixels;
     int width, height;
     uint16_t* half_pixels; /* NULL disables expansion */
+    uint8_t* half_seams;   /* the half picture's seam mask, or NULL */
 } scene_target_t;
 
 /* Whether a camera needs a frame pass, including a paused expanded picture. */

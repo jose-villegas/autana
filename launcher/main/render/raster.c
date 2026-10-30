@@ -1,6 +1,7 @@
 #include "render/raster.h"
 
 #include <assert.h>
+#include <math.h>
 #include <stdbool.h>
 #include <string.h>
 
@@ -14,6 +15,9 @@
 TUNE_OWNER(render);
 /* The generated meshlet-size table measures both culling settings. */
 TUNE(render, cull, 1, 0, 1);
+/* 0 encodes depth with the clip plane's near_z: the depth-precision figures
+ * render both. */
+TUNE(render, depth_fit, 1, 0, 1);
 /* Off draws one instance a batch, the per-instance draw batching replaced. */
 TUNE(render, batched, 1, 0, 1);
 
@@ -26,7 +30,7 @@ typedef struct {
     int visible_count;
     int vertex_base, cluster_base;
     int writer_count;
-    r3d_span_writer_t writers[GFX_ATTACHMENTS_MAX];
+    r3d_span_writer_t writers[GFX_ATTACHMENTS_FURTHER_MAX];
 } batch_item_t;
 
 int
@@ -132,7 +136,7 @@ attachment_at(const raster_t* raster, int index) {
 
 void
 raster_picture(const raster_t* raster, gfx_target_t* picture) {
-    assert(raster->attachment_count >= 0 && raster->attachment_count <= GFX_ATTACHMENTS_MAX - GFX_ATTACHMENT_FURTHER);
+    assert(raster->attachment_count >= 0 && raster->attachment_count <= GFX_ATTACHMENTS_FURTHER_MAX);
     picture->first_row = 0;
     picture->count = GFX_ATTACHMENT_FURTHER + raster->attachment_count;
     for (int i = 0; i < picture->count; i++) {
@@ -149,14 +153,18 @@ raster_attachment_tag(const r3d_span_writer_t* writer, const gfx_target_t* rows,
     const size_t offset = (size_t)(y - rows->first_row) * a->pitch;
     uint32_t* wide_tag = (uint32_t*)((char*)a->pixels + offset);
     uint16_t* narrow_tag = (uint16_t*)((char*)a->pixels + offset);
-    const bool wide = a->format == IMAGE_U32;
+    /* One loop per width, so a pixel tests nothing but its depth. */
+    if (a->format == IMAGE_U32) {
+        for (int x = x_first; x <= x_last; x++, z += dz) {
+            if ((uint16_t)(z >> R3D_DEPTH_SHIFT) == depth[x]) {
+                wide_tag[x] = writer->value;
+            }
+        }
+        return;
+    }
     for (int x = x_first; x <= x_last; x++, z += dz) {
         if ((uint16_t)(z >> R3D_DEPTH_SHIFT) == depth[x]) {
-            if (wide) {
-                wide_tag[x] = writer->value;
-            } else {
-                narrow_tag[x] = (uint16_t)writer->value;
-            }
+            narrow_tag[x] = (uint16_t)writer->value;
         }
     }
 }
@@ -171,6 +179,11 @@ uint16_t*
 raster_depth(const raster_t* raster) {
     const raster_buffers_t b = raster_carve(raster);
     return gfx_target_depth(&b.picture, 0);
+}
+
+float
+raster_depth_near(const raster_t* raster) {
+    return *raster_carve(raster).depth_near;
 }
 
 static void
@@ -219,12 +232,21 @@ resolve_slice(void* ctx) {
     }
 }
 
+/* An upscale job's rows: its own type, so the draw's slice_t stays small. */
+typedef struct {
+    const raster_t* raster;
+    int first, count;
+    uint16_t* destination;
+    uint8_t* seams; /* the upscale's, or NULL */
+} upscale_slice_t;
+
 static void
 upscale_slice(void* ctx) {
-    const slice_t* s = ctx;
+    const upscale_slice_t* s = ctx;
     const raster_buffers_t b = raster_carve(s->raster);
     if (s->raster->present != CAMERA_PRESENT_SCANLINE) {
-        upscale_rows(&s->raster->upscale, &b.picture, s->raster->clear, s->destination, s->first, s->count);
+        upscale_rows_filtered(&s->raster->upscale, &b.picture, s->raster->clear, s->destination, s->seams, s->first,
+                              s->count);
     } else {
         upscale_rows_scanlined(&s->raster->upscale, &b.picture, s->raster->clear, s->destination, s->first, s->count);
     }
@@ -280,11 +302,11 @@ instance_lens(const raster_t* raster, const r3d_instance_t* instance, const rend
 
 static int
 cull_instance(const r3d_instance_t* instance, const r3d_lens_t* lens, uint16_t* out, raster_stats_t* stats,
-              r3d_pipeline_work_t* work) {
+              r3d_pipeline_work_t* work, r3d_depth_fit_t* fit) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
     int visible;
     if (cull) {
-        visible = r3d_pipeline_cull(mesh, lens, out, work);
+        visible = r3d_pipeline_cull(mesh, lens, out, work, fit);
     } else {
         visible = mesh->cluster_count;
         for (int i = 0; i < visible; i++) {
@@ -298,10 +320,31 @@ cull_instance(const r3d_instance_t* instance, const r3d_lens_t* lens, uint16_t* 
     return visible;
 }
 
+/* Culls every instance into the census list and returns the depth scale
+ * the picture is drawn with: the fit of the nearest bound of what was kept,
+ * and near_z when nothing was. The fit's power of two keeps the scale still
+ * while the bound drifts, so ties do not flip from frame to frame, and the
+ * same at every size. */
+static float
+cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, raster_stats_t* stats,
+               draw_work_t* work) {
+    uint16_t* culled = work->buffers.culled;
+    r3d_depth_fit_t fit = {view->lens.near_z, INFINITY};
+    for (int i = 0; i < raster->instance_count; i++) {
+        const r3d_instance_t* instance = &raster->instances[i];
+        r3d_lens_t lens;
+        instance_lens(raster, instance, view, fitted, &lens);
+        culled[0] =
+            (uint16_t)cull_instance(instance, &lens, culled + 1, stats, work->buffers.work[0], depth_fit ? &fit : NULL);
+        culled += 1 + (size_t)instance->mesh->cluster_count;
+    }
+    return fit.depth_near < INFINITY ? fit.depth_near : view->lens.near_z;
+}
+
 /* The writers of the attachments that write while instance `index` is
  * drawn; returns how many. */
 static int
-instance_writers(const raster_t* raster, int index, r3d_span_writer_t out[GFX_ATTACHMENTS_MAX]) {
+instance_writers(const raster_t* raster, int index, r3d_span_writer_t out[GFX_ATTACHMENTS_FURTHER_MAX]) {
     int count = 0;
     for (int i = 0; i < raster->attachment_count; i++) {
         const raster_attachment_t* a = raster->attachments[i];
@@ -383,6 +426,13 @@ static inline __attribute__((always_inline)) void
 draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t* stats) {
     assert(raster->instance_count > 0);
     assert_view_size(raster, view);
+    draw_work_t* work = scratch_draw(raster);
+    /* Every instance is culled before any is drawn: they share one depth scale. */
+    if (stats != NULL) {
+        FRAME_COST_BEGIN(culled_from);
+        *work->buffers.depth_near = cull_instances(raster, view, true, stats, work);
+        FRAME_COST_END(culled_from, "r3d.cull");
+    }
     bool resolves = false;
     for (int i = 0; i < raster->attachment_count; i++) {
         const raster_attachment_t* a = raster->attachments[i];
@@ -391,8 +441,9 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
         }
         resolves = resolves || a->resolve != NULL;
     }
-    draw_work_t* work = scratch_draw(raster);
     r3d_span_small_fill_resolve(&work->small_fill, view->small_fill);
+    /* A list drawn with no census, or rewritten without its scale, fails here. */
+    assert(*work->buffers.depth_near >= view->lens.near_z);
     uint16_t* culled = work->buffers.culled;
     batch_t* batch = &work->batch;
     for (int first = 0, index = 0; first < raster->instance_count; index++) {
@@ -405,11 +456,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
             batch_item_t* item = &batch->items[batch->count++];
             item->mesh = mesh;
             instance_lens(raster, instance, view, true, &item->lens);
-            if (stats != NULL) {
-                FRAME_COST_BEGIN(culled_from);
-                culled[0] = (uint16_t)cull_instance(instance, &item->lens, culled + 1, stats, work->buffers.work[0]);
-                FRAME_COST_END(culled_from, "r3d.cull");
-            }
+            r3d_lens_set_depth_near(&item->lens, *work->buffers.depth_near);
             item->visible = culled + 1;
             item->visible_count = culled[0];
             item->vertex_base = vertices;
@@ -455,14 +502,7 @@ raster_census(const raster_t* raster, const render_view_t* view) {
     raster_stats_t stats = {0, 0};
     FRAME_COST_BEGIN(counted_from);
     draw_work_t* work = scratch_draw(raster);
-    uint16_t* culled = work->buffers.culled;
-    for (int i = 0; i < raster->instance_count; i++) {
-        const r3d_instance_t* instance = &raster->instances[i];
-        r3d_lens_t lens;
-        instance_lens(raster, instance, view, false, &lens);
-        culled[0] = (uint16_t)cull_instance(instance, &lens, culled + 1, &stats, work->buffers.work[0]);
-        culled += 1 + (size_t)instance->mesh->cluster_count;
-    }
+    *work->buffers.depth_near = cull_instances(raster, view, false, &stats, work);
     FRAME_COST_END(counted_from, "r3d.census");
     return stats;
 }
@@ -484,7 +524,7 @@ bool
 raster_fits_half_picture(const raster_t* raster) {
     return raster->width > 0 && raster->height > 0 && raster->destination_height > 0
            && 2 * raster->width == raster->destination_width && raster->destination_height % 2 == 0
-           && (raster->destination_height / 2) % raster->height == 0;
+           && raster->height <= raster->destination_height / 2;
 }
 
 resolution_step_t
@@ -495,6 +535,11 @@ raster_compose_size(const raster_t* raster) {
 
 void
 raster_upscale(raster_t* raster, uint16_t* destination, int width, int height) {
+    raster_upscale_seamed(raster, destination, NULL, width, height);
+}
+
+void
+raster_upscale_seamed(raster_t* raster, uint16_t* destination, uint8_t* seams, int width, int height) {
     assert(raster->upscaled && destination != NULL);
     assert(raster->width > 0 && raster->height > 0);
     assert(width >= raster->width && height >= raster->height);
@@ -507,11 +552,13 @@ raster_upscale(raster_t* raster, uint16_t* destination, int width, int height) {
         const bool initialized =
             upscale_init(&raster->upscale, raster->width, raster->height, width, height, columns, rows);
         assert(initialized);
+        upscale_init_blends(&raster->upscale, rows + height);
     }
     int16_t* share = raster->split != NULL ? &raster->split->upscale_offset : NULL;
     const int mid = job_share_core1_count(share, height);
-    slice_t mine = {.raster = raster, .first = mid, .count = height - mid, .destination = destination};
-    const slice_t other = {.raster = raster, .count = mid, .destination = destination};
+    upscale_slice_t mine = {
+        .raster = raster, .first = mid, .count = height - mid, .destination = destination, .seams = seams};
+    const upscale_slice_t other = {.raster = raster, .count = mid, .destination = destination, .seams = seams};
     job_run_steered(share, upscale_slice, &mine, &other, sizeof mine);
     FRAME_COST_END(upscaled_from, "r3d.upscale");
 }

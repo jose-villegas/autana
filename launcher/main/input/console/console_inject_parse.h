@@ -1,10 +1,11 @@
 /*
  * console_inject_parse: reading the args of the verbs that stand in for
  * touch, the IMU and the board buttons (see console_inject.c). Pure and
- * portable: no verb dispatch, no controller, just sscanf() and bounds.
+ * portable: no verb dispatch, no controller, just token reads and bounds.
  */
 #pragma once
 
+#include "console/console_number.h"
 #include "display/display_judge.h"
 #include "display/viewport.h"
 #include "input/motion/imu_sample.h"
@@ -33,19 +34,14 @@ console_imu_reply(char* line, size_t size, int quarter) {
  * sample past the edge is a caller's question. */
 static inline bool
 console_touch_parse(const char* args, bool* down, vec2i_t* point) {
-    char state[5];
-    int px, py;
+    const bool is_down = console_word(&args, "down");
+    int32_t px, py;
 
-    if (sscanf(args, "%4s %d %d", state, &px, &py) != 3) {
+    if ((!is_down && !console_word(&args, "up")) || !console_i32(&args, &px) || !console_i32(&args, &py)
+        || *args != '\0') {
         return false;
     }
-    if (strcmp(state, "down") == 0) {
-        *down = true;
-    } else if (strcmp(state, "up") == 0) {
-        *down = false;
-    } else {
-        return false;
-    }
+    *down = is_down;
     *point = (vec2i_t){px, py};
     return true;
 }
@@ -55,13 +51,10 @@ console_touch_parse(const char* args, bool* down, vec2i_t* point) {
  * could not give. */
 static inline bool
 console_imu_parse(const char* args, int* ax, int* ay, int* az) {
-    int a, b, c;
-    char trailing;
+    int32_t a, b, c;
 
-    if (sscanf(args, "%d %d %d%c", &a, &b, &c, &trailing) != 3) {
-        return false;
-    }
-    if (a < INT16_MIN || a > INT16_MAX || b < INT16_MIN || b > INT16_MAX || c < INT16_MIN || c > INT16_MAX) {
+    if (!console_i32(&args, &a) || !console_i32(&args, &b) || !console_i32(&args, &c) || *args != '\0' || a < INT16_MIN
+        || a > INT16_MAX || b < INT16_MIN || b > INT16_MAX || c < INT16_MIN || c > INT16_MAX) {
         return false;
     }
     *ax = a;
@@ -74,9 +67,9 @@ console_imu_parse(const char* args, int* ax, int* ay, int* az) {
  * whose gravity follows the viewport's down axis. */
 static inline bool
 console_imu_quarter_parse(const char* args, imu_sample_t* sample, int* parsed_quarter) {
-    int quarter;
-    char trailing;
-    if (sscanf(args, "quarter %d %c", &quarter, &trailing) != 1 || quarter < 0 || quarter >= DISPLAY_QUARTER_COUNT) {
+    int32_t quarter;
+    if (!console_word(&args, "quarter") || !console_i32(&args, &quarter) || *args != '\0' || quarter < 0
+        || quarter >= DISPLAY_QUARTER_COUNT) {
         return false;
     }
     *parsed_quarter = quarter;
@@ -105,20 +98,10 @@ typedef struct {
 
 static inline bool
 console_press_parse(const char* args, console_touch_gesture_t* out) {
-    int x, y;
-    unsigned ms = 0;
-    char trailing;
-    const int fields = sscanf(args, "%d %d %u %c", &x, &y, &ms, &trailing);
-    if (fields == 2 && sscanf(args, "%d %d %c", &x, &y, &trailing) != 2) {
-        return false;
-    }
-    if (fields != 2 && fields != 3) {
-        return false;
-    }
-    if (fields == 2) {
-        ms = CONSOLE_PRESS_DEFAULT_MS;
-    }
-    if (ms == 0 || ms > CONSOLE_GESTURE_MAX_MS) {
+    int32_t x, y;
+    uint32_t ms = CONSOLE_PRESS_DEFAULT_MS;
+    if (!console_i32(&args, &x) || !console_i32(&args, &y)
+        || (*args != '\0' && !console_u32(&args, CONSOLE_GESTURE_MAX_MS, false, &ms)) || *args != '\0' || ms == 0) {
         return false;
     }
     out->from = out->to = (vec2i_t){x, y};
@@ -128,9 +111,8 @@ console_press_parse(const char* args, console_touch_gesture_t* out) {
 
 static inline bool
 console_tap_parse(const char* args, console_touch_gesture_t* out) {
-    int x, y;
-    char trailing;
-    if (sscanf(args, "%d %d %c", &x, &y, &trailing) != 2) {
+    int32_t x, y;
+    if (!console_i32(&args, &x) || !console_i32(&args, &y) || *args != '\0') {
         return false;
     }
     *out = (console_touch_gesture_t){.from = {x, y}, .to = {x, y}, .ms = CONSOLE_TAP_DEFAULT_MS};
@@ -139,11 +121,10 @@ console_tap_parse(const char* args, console_touch_gesture_t* out) {
 
 static inline bool
 console_drag_parse(const char* args, console_touch_gesture_t* out) {
-    int x0, y0, x1, y1;
-    unsigned ms;
-    char trailing;
-    if (sscanf(args, "%d %d %d %d %u %c", &x0, &y0, &x1, &y1, &ms, &trailing) != 5 || ms == 0
-        || ms > CONSOLE_GESTURE_MAX_MS) {
+    int32_t x0, y0, x1, y1;
+    uint32_t ms;
+    if (!console_i32(&args, &x0) || !console_i32(&args, &y0) || !console_i32(&args, &x1) || !console_i32(&args, &y1)
+        || !console_u32(&args, CONSOLE_GESTURE_MAX_MS, false, &ms) || *args != '\0' || ms == 0) {
         return false;
     }
     out->from = (vec2i_t){x0, y0};
