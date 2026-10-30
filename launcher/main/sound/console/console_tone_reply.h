@@ -12,8 +12,9 @@
 #define CONSOLE_TONE_INTEGER_BYTES (sizeof(size_t) * 3u)
 #define CONSOLE_TONE_REPLY_BYTES                                                                                       \
     (sizeof("TONE not heard  Hz:  dB (silence  dB), noise  dBFS, path acoustic, measured , open  B DMA, thd  dB, "     \
-            "peak  dBFS, shake  mg rms  mg peak (silence  mg rms)")                                                    \
-     + (9u * CONSOLE_TONE_DB_BYTES) + (2u * CONSOLE_TONE_INTEGER_BYTES) + CONSOLE_TONE_MEASURED_BYTES)
+            "peak  dBFS, pulse_ms , shake  mg rms  mg peak (silence  mg rms), gx_mg , gy_mg , gz_mg , "                \
+            "imu_gaps , shake_reason too few samples; other reader or short window")                                   \
+     + (13u * CONSOLE_TONE_DB_BYTES) + (4u * CONSOLE_TONE_INTEGER_BYTES) + CONSOLE_TONE_MEASURED_BYTES)
 #define CONSOLE_TONE_MEASURED_BYTES 32u
 
 static inline bool
@@ -32,27 +33,43 @@ console_tone_reply(char* line, size_t capacity, const console_tone_args_t* args,
     if (thd_length < 0 || (size_t)thd_length >= sizeof thd) {
         return false;
     }
-    const int length = snprintf(line, capacity,
-                                "TONE %s %u Hz: %.1f dB (silence %.1f dB), noise %.1f dBFS, path %s, measured %s, open "
-                                "%zu B DMA, thd %s dB, peak %.1f dBFS",
-                                heard ? "heard" : "not heard", (unsigned)args->hz, (double)tone_db, (double)silence_db,
-                                (double)result->noise_dbfs, args->internal ? "internal" : "acoustic", measured,
-                                dma_open, thd, (double)result->peak_dbfs);
+    const int length =
+        snprintf(line, capacity,
+                 "TONE %s %u Hz: %.1f dB (silence %.1f dB), noise %.1f dBFS, path %s, measured %s, open %zu B DMA, thd "
+                 "%s dB, peak %.1f dBFS, pulse_ms %u",
+                 heard ? "heard" : "not heard", (unsigned)args->hz, (double)tone_db, (double)silence_db,
+                 (double)result->noise_dbfs, args->internal ? "internal" : "acoustic", measured, dma_open, thd,
+                 (double)result->peak_dbfs, (unsigned)args->pulse_ms);
     return length >= 0 && (size_t)length < capacity;
 }
 
 /* Appends the board's vibration in both windows, or "n/a" when either has no IMU reading. */
 static inline bool
-console_tone_append_shake(char* line, size_t capacity, const imu_vibration_t* silence, const imu_vibration_t* tone) {
+console_tone_append_shake(char* line, size_t capacity, const imu_vibration_t* silence, const imu_vibration_t* tone,
+                          unsigned gaps, const char* reason) {
     const char* end = memchr(line, '\0', capacity);
     if (!end) {
         return false;
     }
-    const size_t used = (size_t)(end - line);
+    size_t used = (size_t)(end - line);
     const int length =
         silence->samples && tone->samples
             ? snprintf(line + used, capacity - used, ", shake %.2f mg rms %.2f mg peak (silence %.2f mg rms)",
                        (double)tone->rms_mg, (double)tone->peak_mg, (double)silence->rms_mg)
             : snprintf(line + used, capacity - used, ", shake n/a");
-    return length >= 0 && (size_t)length < capacity - used;
+    if (length < 0 || (size_t)length >= capacity - used) {
+        return false;
+    }
+    used += (size_t)length;
+    if (silence->samples) {
+        const int gravity_length = snprintf(line + used, capacity - used, ", gx_mg %.2f, gy_mg %.2f, gz_mg %.2f",
+                                            (double)silence->gx_mg, (double)silence->gy_mg, (double)silence->gz_mg);
+        if (gravity_length < 0 || (size_t)gravity_length >= capacity - used) {
+            return false;
+        }
+        used += (size_t)gravity_length;
+    }
+    const int status_length = snprintf(line + used, capacity - used, ", imu_gaps %u%s%s", gaps,
+                                       reason ? ", shake_reason " : "", reason ? reason : "");
+    return status_length >= 0 && (size_t)status_length < capacity - used;
 }

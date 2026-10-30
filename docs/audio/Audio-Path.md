@@ -47,8 +47,8 @@ startup keeps short tones at the same level as long tones.
 
 ## Development check
 
-Run `autana tone <hz> <ms> [volume] [--internal] [--json]`, or the console verb
-`tone <hz> <ms> [volume] [internal]`.
+Run `autana tone <hz> <ms> [volume] [--pulse MS] [--internal] [--json]`, or the console verb
+`tone <hz> <ms> [volume] [pulse <ms>] [internal]`.
 
 `console_tone_check()` opens capture, measures its DMA-capable heap cost,
 runs the check, and closes capture. `melody check` uses the same function
@@ -57,6 +57,17 @@ runs the check, and closes capture. `melody check` uses the same function
 The console uses `audio_loopback_measure()` for a baseline, starts a SYSTEM-bus
 tone through the mixer, measures again, then stops the voice. It waits for
 amplifier warm-up before measuring. A Goertzel filter measures the requested frequency.<sup>[[72]](../Citations.md#goertzel-1958)</sup>
+
+With `--pulse`, capture keeps its initial samples and drains the IMU between
+audio blocks to estimate onset-to-end shake. A pulse window must hold a full
+IMU queue and fit `CONSOLE_TONE_PULSE_WINDOW_MAX_MS`.
+
+Pulse shake needs `IMU_VIBRATION_MIN_SAMPLES` samples in the pulse span.
+Gaps and lost samples invalidate shake only when their placed interval intersects
+that span. `imu_gaps` counts queue gap reports across both capture windows.
+
+Unavailable shake carries `shake_reason`, the warning text, in the reply and JSON.
+Old replies without these fields parse with null values.
 
 `--internal` routes DAC data to both ADCDAT slots inside the ES8311. It holds
 the speaker amplifier off for the whole check. The verb restores the exact register

@@ -9,46 +9,65 @@
 #include <string.h>
 
 #include "audio/audio_out.h"
+#include "input/motion/imu.h"
 
-#define CONSOLE_TONE_DEFAULT_VOLUME_PCT 30u
-#define CONSOLE_TONE_INTERNAL           "internal"
+#define CONSOLE_TONE_PULSE_WINDOW_MAX_MS 500u
+#define CONSOLE_TONE_DEFAULT_VOLUME_PCT  30u
+#define CONSOLE_TONE_PULSE               "pulse"
+#define CONSOLE_TONE_INTERNAL            "internal"
 
 typedef struct {
     uint16_t hz;
     uint16_t ms;
+    uint16_t pulse_ms;
     uint8_t volume_pct;
     bool internal;
 } console_tone_args_t;
 
 static inline bool
+console_tone_decimal(const char** args, unsigned long long maximum, unsigned long long* value) {
+    int consumed = 0;
+    errno = 0;
+    if (!isdigit((unsigned char)**args) || sscanf(*args, "%llu%n", value, &consumed) != 1 || errno == ERANGE
+        || *value > maximum) {
+        return false;
+    }
+    *args += consumed;
+    if (**args && !isspace((unsigned char)**args)) {
+        return false;
+    }
+    *args += strspn(*args, " \t\r\n\v\f");
+    return true;
+}
+
+static inline bool
 console_tone_parse_options(const char* args, console_tone_args_t* out) {
     unsigned long long volume = CONSOLE_TONE_DEFAULT_VOLUME_PCT;
-    size_t length = strlen(args);
-    while (length && isspace((unsigned char)args[length - 1])) {
-        length--;
-    }
-    size_t token = length;
-    while (token && !isspace((unsigned char)args[token - 1])) {
-        token--;
-    }
-    const bool internal = length - token == sizeof CONSOLE_TONE_INTERNAL - 1
-                          && strncmp(args + token, CONSOLE_TONE_INTERNAL, length - token) == 0;
-    length = internal ? token : strlen(args);
-    if (strspn(args, "0123456789 \t\r\n\v\f") != length) {
+    unsigned long long pulse = 0;
+    args += strspn(args, " \t\r\n\v\f");
+    if (isdigit((unsigned char)*args) && !console_tone_decimal(&args, AUDIO_OUT_VOLUME_MAX_PCT, &volume)) {
         return false;
     }
-    errno = 0;
-    int consumed = 0;
-    if (strspn(args, " \t\r\n\v\f") < length && sscanf(args, "%llu %n", &volume, &consumed) != 1) {
-        return false;
+    if (strncmp(args, CONSOLE_TONE_PULSE, sizeof CONSOLE_TONE_PULSE - 1) == 0) {
+        args += sizeof CONSOLE_TONE_PULSE - 1;
+        if (!isspace((unsigned char)*args)) {
+            return false;
+        }
+        args += strspn(args, " \t\r\n\v\f");
+        if (!console_tone_decimal(&args, out->ms, &pulse) || !pulse || out->ms > CONSOLE_TONE_PULSE_WINDOW_MAX_MS
+            || out->ms < IMU_BUZZ_WINDOW_MS) {
+            return false;
+        }
     }
-    if (!consumed) {
-        consumed = (int)strspn(args, " \t\r\n\v\f");
+    const bool internal = strncmp(args, CONSOLE_TONE_INTERNAL, sizeof CONSOLE_TONE_INTERNAL - 1) == 0;
+    if (internal) {
+        args += sizeof CONSOLE_TONE_INTERNAL - 1;
     }
-    if ((size_t)consumed != length || errno == ERANGE || volume > AUDIO_OUT_VOLUME_MAX_PCT) {
+    if (strspn(args, " \t\r\n\v\f") != strlen(args)) {
         return false;
     }
     out->volume_pct = (uint8_t)volume;
+    out->pulse_ms = (uint16_t)pulse;
     out->internal = internal;
     return true;
 }

@@ -82,7 +82,7 @@ the project file that sets them for a checkout is in [Settings.md](Settings.md).
 |---|---|
 | `status`, `devices` | `boards`, one object per board ([Device-Lock.md](Device-Lock.md#exit-codes-and-json-status)). |
 | `buildid` | `build_id` |
-| `tone` | `hz`, `tone_db`, `silence_db`, `heard`, `open_dma_bytes` |
+| `tone` | `hz`, `pulse_ms`, `tone_db`, `silence_db`, `heard`, `open_dma_bytes`, `shake_rms_mg`, `shake_peak_mg`, `silence_shake_rms_mg`, `gx_mg`, `gy_mg`, `gz_mg` |
 | `heap` | `free`, `largest`, `total` (bytes in `MEMORY_DMA`) |
 | `framewatch` | `frames`, `allocs`, `frees`, `console`, `repeating`, `dropped`, `sites` |
 | `apps` | `apps`: `name`, `running` |
