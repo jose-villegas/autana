@@ -149,6 +149,20 @@ show(render_context_t* c, raster_rig_t* r, const render_view_t* view, int32_t co
     return generated;
 }
 
+/* A frame's measured cost and whether it was generated. */
+typedef struct {
+    int32_t cost_us;
+    bool generated;
+} shown_t;
+
+/* `steps` shown in turn, each generated or drawn as it says. */
+static void
+play(render_context_t* c, raster_rig_t* r, const render_view_t* view, const shown_t* steps, size_t count) {
+    for (size_t i = 0; i < count; i++) {
+        TEST_ASSERT_EQUAL(steps[i].generated, show(c, r, view, steps[i].cost_us));
+    }
+}
+
 /* A drawn frame's budget with frame generation on: the shown frames' budgets
  * less what the generated ones cost, and never less than one frame's. */
 static void
@@ -184,22 +198,21 @@ test_frames_are_generated_only_while_a_generated_one_costs_less(void) {
     const int32_t drawn_us = BUDGET_US;
     const int32_t saves_too_little = drawn_us * (100 - FRAMEGEN_GAIN_PERCENT) / 100;
     const int32_t saves_enough = saves_too_little - 1;
-    TEST_ASSERT_FALSE(show(c, r, &view, drawn_us));
-    TEST_ASSERT_TRUE(show(c, r, &view, saves_too_little)); /* not measured yet: tried */
+    const shown_t before[] = {{drawn_us, false}, {saves_too_little, true}}, /* not measured yet: tried */
+        after[] = {
+            {saves_enough, true},                           /* retried, and it pays */
+            {drawn_us, false},    {saves_too_little, true}, /* paying: held */
+            {drawn_us, false},    {drawn_us, true},         /* saves nothing */
+            {drawn_us, false},    {drawn_us, false},
+        };
+    play(c, r, &view, before, sizeof before / sizeof before[0]);
     for (int i = 0; i < FRAMEGEN_RETRY_DRAWN; i++) {
         TEST_ASSERT_FALSE(show(c, r, &view, drawn_us));
         TEST_ASSERT_EQUAL_INT32(BUDGET_US, c->ladder.budget_us);
     }
-    TEST_ASSERT_TRUE(show(c, r, &view, saves_enough));
-    TEST_ASSERT_FALSE(show(c, r, &view, drawn_us));
-    TEST_ASSERT_TRUE(show(c, r, &view, saves_too_little)); /* paying: held */
-    TEST_ASSERT_FALSE(show(c, r, &view, drawn_us));
-    TEST_ASSERT_TRUE(show(c, r, &view, drawn_us)); /* saves nothing */
-    TEST_ASSERT_FALSE(show(c, r, &view, drawn_us));
-    TEST_ASSERT_FALSE(show(c, r, &view, drawn_us));
-    render_context_forget(c);
-    TEST_ASSERT_FALSE(show(c, r, &view, drawn_us));
-    TEST_ASSERT_TRUE(show(c, r, &view, drawn_us));
+    play(c, r, &view, after, sizeof after / sizeof after[0]);
+    render_context_forget(c); /* measured again, as at the start */
+    play(c, r, &view, before, sizeof before / sizeof before[0]);
     release_target();
 }
 
