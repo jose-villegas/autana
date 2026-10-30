@@ -27,9 +27,25 @@ test_codec_parse_valid(void) {
 
 static void
 test_codec_parse_invalid(void) {
-    static const char* const invalid[] = {"",     " ",     "-1",   "+1",   "256",   "0x100",
-                                          "0x",   "0xffg", "1 -1", "1 +1", "1 256", "1 0x100",
-                                          "1 0x", "1 2 3", "1x",   "1.0",  "1 2x",  "99999999999999999999999999"};
+    static const char* const invalid[] = {"",
+                                          " ",
+                                          "-1",
+                                          "+1",
+                                          "256",
+                                          "0x100",
+                                          "0x",
+                                          "0xffg",
+                                          "1 -1",
+                                          "1 +1",
+                                          "1 256",
+                                          "1 0x100",
+                                          "1 0x",
+                                          "0x0x5",
+                                          "1 2 3",
+                                          "1x",
+                                          "1.0",
+                                          "1 2x",
+                                          "99999999999999999999999999"};
     console_codec_args_t args = fixture();
     for (unsigned i = 0; i < sizeof invalid / sizeof invalid[0]; i++) {
         TEST_ASSERT_FALSE_MESSAGE(console_codec_parse(invalid[i], &args), invalid[i]);

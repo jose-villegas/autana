@@ -25,6 +25,7 @@ Look the plain name up on a page in the [pages table](#pages); read `*_template.
 | `f` | float, single precision | about ±3.4e38 | 24-bit mantissa, ~7 digits | `vec2f`, `vec3f`, `quatf`, `affine2f`, `mat3f`, `mat4f`, `transformf`, `rectf`, `planef` | the default |
 | `i` | int32 | ±2.1e9 | exact; sums and products wrap | `vec2i`, `vec3i`, `recti` | grid, pixel and cell coordinates |
 | `s` | int16 | -32768 to 32767 | exact; sums and products saturate | `vec2s`, `vec3s`, `rects` | coordinates kept compact where memory is short |
+| `u` | uint32 | 0 to 4.29e9 | exact; text only (`mathu`), no vector families | | counts and byte values read from text |
 | `x` | Q16.16 fixed point | ±32768 | 1/65536 (1.5e-5); sine good to ~1e-3; saturates | `vec2x`, `vec3x`, `quatx`, `affine2x`, `mat4x`, `transformx`, `rectx`, `planex` | deterministic maths, or a chip with no FPU |
 
 | Rule | Applies to |
