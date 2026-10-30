@@ -1,8 +1,9 @@
 /* On request: what a generated frame costs on the board (render/framegen,
  * docs/render/Frame-Generation.md). Each scenario's path is drawn at every
  * half-picture ladder step; at poses along it the drawn frame is warped one
- * display step on and filled, as the render context does with frame
- * generation on. The present is the frame's own half-picture expand. */
+ * display step on, filled and composed into the half picture, as the render
+ * context does with frame generation on. The present is the drawn frame's
+ * own compose. */
 #include "suites.h"
 #ifdef DEVICE_BUILD
 #include <string.h>
@@ -19,6 +20,7 @@
 #include "esp_log.h"
 #include "frame_profile.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_mode.h"
 #include "render/context/render_context.h"
 #include "render/framegen/framegen.h"
 #include "scene/camera/camera.h"
@@ -42,7 +44,8 @@ static const char* TAG = "framegen";
 #define FRAMEGEN_PROFILE_LINE    "framegen_profile: %s %dx%d clear_us=%d offscreen_us=%d same_view_us=%d warp_us=%d"
 /* A lens shift, in picture short sides, that leaves every splat off screen. */
 #define FRAMEGEN_OFFSCREEN_SHIFT 4.0F
-#define FRAMEGEN_LINE            "framegen: %s %dx%d poses=%d frame_us=%d present_us=%d warp_us=%d/%d fill_us=%d holes_pct=%d.%02d"
+#define FRAMEGEN_LINE                                                                                                  \
+    "framegen: %s %dx%d poses=%d frame_us=%d present_us=%d warp_us=%d/%d fill_us=%d compose_us=%d holes_pct=%d.%02d"
 
 typedef struct {
     const render_lab_scene_t* scene;
@@ -75,18 +78,18 @@ view_at(scene_t* scene, scene_entity_t camera, const camera_t* lens, uint32_t t_
 }
 
 typedef struct {
-    int64_t frame, present, warp, warp_max, fill, holes, pixels;
+    int64_t frame, present, warp, warp_max, fill, compose, holes, pixels;
     int64_t clear, offscreen, same_view;
 } totals_t;
 
 /* The test's sums; static, so the deep frame draw below has the stack to itself. */
 static totals_t sum;
 
-/* The frame drawn at `t_ms` warped one display step on, timed. Not inlined: its
- * views are off the stack while the frame draws. */
+/* The frame drawn at `t_ms` warped one display step on, filled and composed,
+ * timed. Not inlined: its views are off the stack while the frame draws. */
 static __attribute__((noinline)) void
 time_warp(scene_t* scene, scene_entity_t camera, const camera_t* lens, uint32_t t_ms) {
-    const raster_t* raster = &render_context_main()->raster;
+    raster_t* raster = &render_context_main()->raster;
     const render_view_t now = view_at(scene, camera, lens, t_ms);
     const render_view_t next = view_at(scene, camera, lens, t_ms + FRAMEGEN_AHEAD_MS);
     const int64_t cleared = timing_now_us();
@@ -104,7 +107,15 @@ time_warp(scene_t* scene, scene_entity_t camera, const camera_t* lens, uint32_t 
     framegen_warp(raster, &now, &next, &target);
     const int64_t warped = timing_now_us();
     sum.holes += framegen_fill(raster, &target);
-    sum.fill += timing_now_us() - warped;
+    const int64_t filled = timing_now_us();
+    sum.fill += filled - warped;
+    framegen_picture_t picture;
+    TEST_ASSERT_TRUE(raster_fits_half_picture(raster)); /* every ladder step here is a half-picture one */
+    const resolution_step_t half = raster_compose_size(raster);
+    const bool blended = render_context_upscale_filter(render_context_main()) == UPSCALE_FILTER_SURFACE;
+    raster_upscale_picture(raster, framegen_target_picture(&target, &picture), gfx_half_picture(),
+                           blended ? gfx_half_seams() : NULL, half.width, half.height);
+    sum.compose += timing_now_us() - filled;
     sum.warp += warped - start;
     sum.warp_max = warped - start > sum.warp_max ? warped - start : sum.warp_max;
     sum.pixels += (int64_t)raster->width * raster->height;
@@ -166,8 +177,8 @@ test_generated_frame_cost(void) {
     const int64_t hundredths = (sum.holes * FRAMEGEN_PERCENT * FRAMEGEN_PERCENT) / sum.pixels;
     ESP_LOGI(TAG, FRAMEGEN_LINE, scenario->scene->key, size.width, size.height, FRAMEGEN_POSES,
              (int)(sum.frame / FRAMEGEN_POSES), (int)(sum.present / FRAMEGEN_POSES), (int)(sum.warp / FRAMEGEN_POSES),
-             (int)sum.warp_max, (int)(sum.fill / FRAMEGEN_POSES), (int)(hundredths / FRAMEGEN_PERCENT),
-             (int)(hundredths % FRAMEGEN_PERCENT));
+             (int)sum.warp_max, (int)(sum.fill / FRAMEGEN_POSES), (int)(sum.compose / FRAMEGEN_POSES),
+             (int)(hundredths / FRAMEGEN_PERCENT), (int)(hundredths % FRAMEGEN_PERCENT));
     ESP_LOGI(TAG, FRAMEGEN_PROFILE_LINE, scenario->scene->key, size.width, size.height,
              (int)(sum.clear / FRAMEGEN_POSES), (int)(sum.offscreen / FRAMEGEN_POSES),
              (int)(sum.same_view / FRAMEGEN_POSES), (int)(sum.warp / FRAMEGEN_POSES));
