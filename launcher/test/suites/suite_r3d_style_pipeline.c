@@ -170,20 +170,26 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
     }
 }
 
-/* One draw on `work`: whether it looked for hidden clusters, and whether it
- * found one. */
+/* One draw on `work` testing R3D_HIDDEN_PAYS_ONE_IN clusters, `hidden` of
+ * them hidden: whether it looked for them. */
 static bool
-hidden_draw(bool hides) {
+hidden_draw_of(int hidden) {
     begin_hidden_draw(work);
     const bool looked = work->test_hidden;
-    if (looked && hides) {
-        work->idle_draws = 0;
+    if (looked) {
+        work->payoff += (hidden * R3D_HIDDEN_PAYS_ONE_IN) - R3D_HIDDEN_PAYS_ONE_IN;
     }
+    end_hidden_draw(work);
     return looked;
 }
 
+static bool
+hidden_draw(bool pays) {
+    return hidden_draw_of(pays ? 1 : 0);
+}
+
 static void
-test_the_hidden_test_pauses_while_nothing_hides_and_resumes_when_something_does(void) {
+test_the_hidden_test_pauses_while_it_does_not_pay_and_resumes_when_it_does(void) {
     work = malloc(r3d_pipeline_work_bytes());
     suite_set_test_cleanup(cleanup);
     TEST_ASSERT_NOT_NULL(work);
@@ -208,11 +214,28 @@ test_the_hidden_test_pauses_while_nothing_hides_and_resumes_when_something_does(
     TEST_ASSERT_FALSE(hidden_draw(false));
 }
 
+/* One cluster hidden in more than R3D_HIDDEN_PAYS_ONE_IN tested does not pay. */
+static void
+test_a_draw_hiding_too_few_clusters_does_not_pay(void) {
+    work = malloc(r3d_pipeline_work_bytes());
+    suite_set_test_cleanup(cleanup);
+    TEST_ASSERT_NOT_NULL(work);
+    work->idle_draws = 0;
+    for (int draw = 0; draw < R3D_HIDDEN_IDLE_DRAWS; draw++) {
+        begin_hidden_draw(work);
+        TEST_ASSERT_TRUE(work->test_hidden);
+        work->payoff += R3D_HIDDEN_PAYS_ONE_IN - (R3D_HIDDEN_PAYS_ONE_IN + 1);
+        end_hidden_draw(work);
+    }
+    TEST_ASSERT_FALSE(hidden_test_due(work));
+}
+
 void
 run_r3d_style_pipeline_suite(void) {
     RUN_TEST(test_clipped_and_mixed_clusters_keep_the_target_style);
     RUN_TEST(test_styles_match_pipeline_colours);
-    RUN_TEST(test_the_hidden_test_pauses_while_nothing_hides_and_resumes_when_something_does);
+    RUN_TEST(test_the_hidden_test_pauses_while_it_does_not_pay_and_resumes_when_it_does);
+    RUN_TEST(test_a_draw_hiding_too_few_clusters_does_not_pay);
 }
 
 SUITE_REGISTER(run_r3d_style_pipeline_suite);
