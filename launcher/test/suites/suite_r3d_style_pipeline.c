@@ -183,51 +183,45 @@ hidden_draw_of(int hidden) {
     return looked;
 }
 
-static bool
-hidden_draw(bool pays) {
-    return hidden_draw_of(pays ? 1 : 0);
-}
-
 static void
 test_the_hidden_test_pauses_while_it_does_not_pay_and_resumes_when_it_does(void) {
     work = malloc(r3d_pipeline_work_bytes());
     suite_set_test_cleanup(cleanup);
     TEST_ASSERT_NOT_NULL(work);
-    for (int fresh = 0; fresh <= UINT8_MAX; fresh++) {
-        work->idle_draws = (uint8_t)fresh;
-        TEST_ASSERT_TRUE(hidden_draw(false) || fresh < R3D_HIDDEN_PROBE_DRAW);
-        TEST_ASSERT_LESS_OR_EQUAL(R3D_HIDDEN_PROBE_DRAW, work->idle_draws);
+    for (int fresh = R3D_HIDDEN_CYCLE_DRAWS; fresh <= UINT8_MAX; fresh++) {
+        work->hidden_draw = (uint8_t)fresh;
+        TEST_ASSERT_TRUE(hidden_draw_of(0));
+        TEST_ASSERT_EQUAL(1, work->hidden_draw);
     }
-    work->idle_draws = 0;
-    for (int draw = 0; draw < R3D_HIDDEN_IDLE_DRAWS; draw++) {
-        TEST_ASSERT_TRUE(hidden_draw(false));
-    }
+    work->hidden_draw = 0;
     for (int cycle = 0; cycle < 2; cycle++) {
-        for (int draw = 0; draw < R3D_HIDDEN_PAUSE_DRAWS; draw++) {
-            TEST_ASSERT_FALSE(hidden_draw(true));
+        for (int draw = 0; draw < R3D_HIDDEN_WINDOW_DRAWS; draw++) {
+            TEST_ASSERT_TRUE(hidden_draw_of(0));
         }
-        TEST_ASSERT_TRUE(hidden_draw(cycle == 1));
+        for (int draw = R3D_HIDDEN_WINDOW_DRAWS; draw < R3D_HIDDEN_CYCLE_DRAWS; draw++) {
+            TEST_ASSERT_FALSE(hidden_draw_of(1));
+        }
     }
-    for (int draw = 0; draw < R3D_HIDDEN_IDLE_DRAWS; draw++) {
-        TEST_ASSERT_TRUE(hidden_draw(false));
-    }
-    TEST_ASSERT_FALSE(hidden_draw(false));
+    TEST_ASSERT_TRUE(hidden_draw_of(0));
 }
 
-/* One cluster hidden in more than R3D_HIDDEN_PAYS_ONE_IN tested does not pay. */
+/* A window pays as a whole: one draw hiding plenty carries the rest, and
+ * hiding too few clusters over the window pauses the test. */
 static void
-test_a_draw_hiding_too_few_clusters_does_not_pay(void) {
+test_the_hidden_test_pays_over_its_window(void) {
     work = malloc(r3d_pipeline_work_bytes());
     suite_set_test_cleanup(cleanup);
     TEST_ASSERT_NOT_NULL(work);
-    work->idle_draws = 0;
-    for (int draw = 0; draw < R3D_HIDDEN_IDLE_DRAWS; draw++) {
-        begin_hidden_draw(work);
-        TEST_ASSERT_TRUE(work->test_hidden);
-        work->payoff += R3D_HIDDEN_PAYS_ONE_IN - (R3D_HIDDEN_PAYS_ONE_IN + 1);
-        end_hidden_draw(work);
+    work->hidden_draw = 0;
+    TEST_ASSERT_TRUE(hidden_draw_of(R3D_HIDDEN_WINDOW_DRAWS));
+    for (int draw = 1; draw < R3D_HIDDEN_WINDOW_DRAWS; draw++) {
+        TEST_ASSERT_TRUE(hidden_draw_of(0));
     }
-    TEST_ASSERT_FALSE(hidden_test_due(work));
+    TEST_ASSERT_TRUE(hidden_draw_of(1));
+    for (int draw = 1; draw < R3D_HIDDEN_WINDOW_DRAWS; draw++) {
+        TEST_ASSERT_TRUE(hidden_draw_of(0));
+    }
+    TEST_ASSERT_FALSE(hidden_draw_of(0));
 }
 
 void
@@ -235,7 +229,7 @@ run_r3d_style_pipeline_suite(void) {
     RUN_TEST(test_clipped_and_mixed_clusters_keep_the_target_style);
     RUN_TEST(test_styles_match_pipeline_colours);
     RUN_TEST(test_the_hidden_test_pauses_while_it_does_not_pay_and_resumes_when_it_does);
-    RUN_TEST(test_a_draw_hiding_too_few_clusters_does_not_pay);
+    RUN_TEST(test_the_hidden_test_pays_over_its_window);
 }
 
 SUITE_REGISTER(run_r3d_style_pipeline_suite);

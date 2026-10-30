@@ -84,9 +84,9 @@ struct r3d_pipeline_work {
         } clip;
     };
 
-    uint8_t idle_draws; /* this block's draws in a row the hidden test did not pay for */
-    bool test_hidden;   /* the current draw looks for clusters behind drawn depth */
-    int32_t payoff;     /* this draw's: R3D_HIDDEN_PAYS_ONE_IN a cluster hidden, less one a cluster tested */
+    uint8_t hidden_draw; /* this block's place in its hidden test cycle */
+    bool test_hidden;    /* the current draw looks for clusters behind drawn depth */
+    int32_t payoff;      /* R3D_HIDDEN_PAYS_ONE_IN a cluster hidden, less one a cluster tested */
 };
 
 _Static_assert(_Alignof(r3d_pipeline_work_t) <= R3D_PIPELINE_WORK_ALIGNMENT, "pipeline work alignment");
@@ -425,34 +425,30 @@ r3d_pipeline_cluster_hidden(const r3d_pipeline_rows_t* r, const r3d_span_target_
 }
 
 /* A view where few clusters hide behind others, an open floor or one mesh
- * facing the camera, pays the hidden test for little. A draw pays for it when
- * at least one cluster in R3D_HIDDEN_PAYS_ONE_IN of those it tests is hidden.
- * After R3D_HIDDEN_IDLE_DRAWS draws in a row on one work block that do not
- * pay, it tests one draw in every R3D_HIDDEN_PAUSE_DRAWS + 1, until one pays
- * again. Skipping the test changes no pixel. */
-#define R3D_HIDDEN_PAYS_ONE_IN 32
-#define R3D_HIDDEN_IDLE_DRAWS  8
-#define R3D_HIDDEN_PAUSE_DRAWS 7
-#define R3D_HIDDEN_PROBE_DRAW  (R3D_HIDDEN_IDLE_DRAWS + R3D_HIDDEN_PAUSE_DRAWS)
+ * facing the camera, pays the hidden test for little. Each work block runs
+ * it in a cycle of R3D_HIDDEN_CYCLE_DRAWS draws: the first
+ * R3D_HIDDEN_WINDOW_DRAWS test, and when at least one cluster in
+ * R3D_HIDDEN_PAYS_ONE_IN of those they tested was hidden, the cycle starts
+ * over; when not, the rest of it skips the test. Skipping the test changes
+ * no pixel. */
+#define R3D_HIDDEN_PAYS_ONE_IN  64
+#define R3D_HIDDEN_WINDOW_DRAWS 8
+#define R3D_HIDDEN_CYCLE_DRAWS  64
 
-static inline bool
-hidden_test_due(const r3d_pipeline_work_t* work) {
-    return work->idle_draws < R3D_HIDDEN_IDLE_DRAWS || work->idle_draws >= R3D_HIDDEN_PROBE_DRAW;
-}
-
-/* Any value past the probe, a fresh block's included, tests, and is back in
- * the cycle after one draw. */
+/* Any place past the cycle, a fresh block's included, starts a window. */
 static inline void
 begin_hidden_draw(r3d_pipeline_work_t* work) {
-    work->test_hidden = hidden_test_due(work);
-    work->payoff = 0;
+    if (work->hidden_draw == 0 || work->hidden_draw >= R3D_HIDDEN_CYCLE_DRAWS) {
+        work->hidden_draw = 0;
+        work->payoff = 0;
+    }
+    work->test_hidden = work->hidden_draw < R3D_HIDDEN_WINDOW_DRAWS;
 }
 
 static inline void
 end_hidden_draw(r3d_pipeline_work_t* work) {
-    work->idle_draws = work->test_hidden && work->payoff >= 0      ? 0
-                       : work->idle_draws >= R3D_HIDDEN_PROBE_DRAW ? R3D_HIDDEN_IDLE_DRAWS
-                                                                   : work->idle_draws + 1;
+    const bool paid = work->hidden_draw + 1 == R3D_HIDDEN_WINDOW_DRAWS && work->payoff >= 0;
+    work->hidden_draw = paid ? 0 : (uint8_t)(work->hidden_draw + 1);
 }
 
 /* Rows outside the target's skip a cluster always; depth already drawn, only
