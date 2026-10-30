@@ -243,8 +243,7 @@ def policies_table(rows):
 
 
 SHARE_SHADES = (0.9, 0.3)  # Blues, darkest for the first step of a ladder
-LEGEND_BELOW = (0.5, -0.1)
-LEGEND_COLUMNS = 5  # steps of a ladder per legend line
+LEGEND_BESIDE = (1.01, 0.5)  # the steps listed down the bars' right, first on top
 
 
 def share_figure(panels, path):
@@ -255,7 +254,7 @@ def share_figure(panels, path):
     from docs.plot_style import figure, save_themes, stacked_barh, style_axes
 
     count = sum(len(rows) for _, _, rows in panels)
-    fig = figure((FIGURE_WIDTH, ROW_HEIGHT * count + 1.3 * len(panels) + 0.3))
+    fig = figure((FIGURE_WIDTH, ROW_HEIGHT * count + 0.8 * len(panels) + 0.3))
     grid = fig.subplots(len(panels), 1, gridspec_kw={"height_ratios": [len(rows) + 2 for _, _, rows in panels]})
     grid = [grid] if len(panels) == 1 else list(grid)
     for axis, (title, steps, rows) in zip(grid, panels):
@@ -268,7 +267,7 @@ def share_figure(panels, path):
                 for label, spread in rows]
         stacked_barh(axis, bars, colours, extent=100)
         style_axes(axis, f"{title}, share of frames (%)")
-        axis.legend(fontsize=8, loc="upper center", bbox_to_anchor=LEGEND_BELOW, ncol=min(len(names), LEGEND_COLUMNS), frameon=False)
+        axis.legend(fontsize=8, loc="center left", bbox_to_anchor=LEGEND_BESIDE, frameon=False)
     save_themes(fig, path)
 
 
