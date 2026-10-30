@@ -3,7 +3,7 @@
 Per-type arithmetic, fixed point, random draws and units. [Math index](README.md).
 
 <!-- generated: math-fast-links-scalar check: python launcher/tools/perf/fast_paths.py --check -->
-Fast-path evidence: [mathf_recip](Fast-Paths.md#mathf-recip), [mathf_rsqrt](Fast-Paths.md#mathf-rsqrt), [mathf_rsqrt_approx](Fast-Paths.md#mathf-rsqrt-approx), [mathx_rsqrt_q30](Fast-Paths.md#mathx-rsqrt-q30), [mathf_repeat](Fast-Paths.md#mathf-repeat), [trig_sin](Fast-Paths.md#trig-sin).
+Fast-path evidence: [mathf_recip](Fast-Paths.md#mathf-recip), [mathf_rsqrt](Fast-Paths.md#mathf-rsqrt), [mathf_rsqrt_approx](Fast-Paths.md#mathf-rsqrt-approx), [mathx_rsqrt_q30](Fast-Paths.md#mathx-rsqrt-q30), [mathf_repeat](Fast-Paths.md#mathf-repeat), [trig_sin](Fast-Paths.md#trig-sin), [mathf_recip_approx](Fast-Paths.md#mathf-recip-approx).
 <!-- /generated: math-fast-links-scalar -->
 
 `math/scalar/` holds per-type arithmetic, fixed point, random draws, trigonometry

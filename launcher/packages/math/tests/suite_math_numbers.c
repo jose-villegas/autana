@@ -893,7 +893,7 @@ test_recip_approx_mantissas_and_normal_exponent_edges(void) {
                1.0 + (bin + 0.5) / FAST_PATH_BINS_PER_UNIT, bins[bin]);
     }
     printf("MATHERROR name=mathf_recip_approx type=f max=%a unit=relative method=proof\n", maximum);
-    TEST_ASSERT_TRUE(maximum <= MATHF_RECIP_APPROX_RELATIVE_LIMIT);
+    TEST_ASSERT_TRUE(maximum <= (double)MATHF_RECIP_APPROX_RELATIVE_LIMIT);
 }
 #endif
 
