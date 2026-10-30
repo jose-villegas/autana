@@ -236,6 +236,7 @@ test_goertzel_amplitude_and_scale(void) {
     TEST_ASSERT_EQUAL_FLOAT(MATH_DB_FLOOR, goertzel_level_db(&state, TEST_TINY_FULL_SCALE));
 }
 
+#ifndef ESP_PLATFORM
 #define TEST_PHASE_SAMPLES        441u
 #define TEST_PHASE_LONG_SAMPLES   65537u
 #define TEST_PHASE_LONG_TOLERANCE 0.03F
@@ -244,7 +245,6 @@ test_goertzel_amplitude_and_scale(void) {
 #define TEST_PHASE_TOLERANCE      0.001F
 #define TEST_SINE_PHASE_TOLERANCE 0.02F
 
-#ifndef ESP_PLATFORM
 static void
 assert_phase_record(int16_t* samples, size_t count, float hz, float phase, float tolerance) {
     goertzel_t state, split;
