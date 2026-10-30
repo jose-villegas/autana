@@ -425,7 +425,7 @@ cost or, predicted, from what the census kept.
 
 Cost: part of `frame.rest` in the frame-stages chart.
 
-![The size chosen along the path](../images/render/dynamic-resolution-flight.png)
+![Frame cost along the path under each policy](../images/render/dynamic-resolution-flight.png)
 
 Reference: [Dynamic-Resolution.md](Dynamic-Resolution.md).
 
