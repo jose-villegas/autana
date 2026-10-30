@@ -31,6 +31,25 @@ class MeshPolicyTests(unittest.TestCase):
         self.assertEqual(import_settings.load_variant({'name': 'test', 'triangles': 80, 'ceiling': 120},
                                       SimpleNamespace(simplify=True), 'variant').ceiling, 120)
 
+    def test_copy_budget_per_variant(self):
+        rules = [{'match': {'material': 'vase'}, 'triangles': 40},
+                 {'match': {'material': 'pot'}, 'triangles': 40, 'variants': {'lite': 7}},
+                 {'match': {'material': 'leaf'}, 'triangles': 3, 'min_triangles': 2}]
+        self.assertEqual(import_settings.load_object_meshes({'meshes': rules}), rules)
+        steps = SimpleNamespace(simplify=True)
+        full = import_settings.load_variant({'name': 'full', 'triangles': 80}, steps, 'variant')
+        lite = import_settings.load_variant({'name': 'lite', 'triangles': 60, 'objects_scale': 0.25}, steps, 'variant')
+        self.assertEqual([rule['triangles'] for rule in import_settings.variant_meshes(rules, full)], [40, 40, 3])
+        self.assertEqual([rule['triangles'] for rule in import_settings.variant_meshes(rules, lite)], [10, 7, 2])
+        self.assertEqual(rules[0]['triangles'], 40)
+        for invalid in ({**rules[0], 'variants': {'lite': 0}}, {**rules[0], 'variants': 3},
+                        {**rules[0], 'min_triangles': 41}):
+            with self.subTest(invalid=invalid), self.assertRaises(SettingsError):
+                import_settings.load_object_meshes({'meshes': [invalid]})
+        for scale in (0, -1, 'half'):
+            with self.subTest(scale=scale), self.assertRaises(SettingsError):
+                import_settings.load_variant({'name': 'lite', 'triangles': 60, 'objects_scale': scale}, steps, 'variant')
+
     def test_surface_contact_without_shared_vertices(self):
         from r3d.objects.contact import contact_graph
         p = np.array([[0., 0, 0], [4, 0, 0], [0, 4, 0],
@@ -112,7 +131,7 @@ class MeshPolicyTests(unittest.TestCase):
         *_, labels = simplify(points, np.full_like(points, 100), faces, owners, 80, colour_deviation=1, allocation=allocation)
         self.assertEqual([np.count_nonzero(labels == i) for i in range(3)], [40, 40, 80])
 
-    def test_lock_keeps_both_sides(self):
+    def test_lock_keeps_both_sides_and_free_keeps_the_rests(self):
         for seed in range(3):
             p, t = sphere(seed)
             owners = (p[t].mean(axis=1)[:, 0] > 0).astype(int)
@@ -132,7 +151,7 @@ class MeshPolicyTests(unittest.TestCase):
                     counts = edge_counts(welded)
                     np.testing.assert_array_equal(counts, np.full(len(counts), 2))
             self.assertEqual(results['lock'], [True, True])
-            self.assertNotEqual(results['free'], [True, True])
+            self.assertTrue(results['free'][1])  # the rest keeps its border; a welded vertex is the mesh's too
 
     def test_ceiling_counts_lock_excess(self):
         report = {}
@@ -202,7 +221,7 @@ class MeshPolicyTests(unittest.TestCase):
         settings = SimpleNamespace(seed=0, position_scale=None, alpha_keep=None, thin=None, double_sided=set(),
                      meshes=[{'match': {'object': 'vase*'}, 'triangles': 40}],
                      simplify=SimpleNamespace(dense_edge=10, props=set(), props_share=0, seal_seams=False, colour_deviation=1))
-        job = SimpleNamespace(settings=settings, renderer=SimpleNamespace(visibility=None, variant=SimpleNamespace(triangles=80)),
+        job = SimpleNamespace(settings=settings, renderer=SimpleNamespace(visibility=None, variant=SimpleNamespace(name="mesh", triangles=80, objects_scale=1.0)),
                               bake=SimpleNamespace(indirect=None, ray_offset=0.01, ao=None, colour_merge_step=6))
         scene = SimpleNamespace(lights=[{'type': 'directional', 'direction': [1, 0, 0], 'color': [1, 1, 1], 'intensity': 1}],
                                 tonemap_white=1, indirect=SimpleNamespace(intensity=1))

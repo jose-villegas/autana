@@ -5,9 +5,9 @@ Licensed under Creative Commons Attribution 4.0 International (CC BY 4.0);
 the licence text is in LICENSE.txt beside this file.
 
 Changes: this is not the original. BistroExterior.fbx from Bistro_v5_2.zip was
-reduced from 2.83 million to about 323 thousand triangles by meshoptimizer's
+reduced from 2.83 million to about 325 thousand triangles by meshoptimizer's
 simplifier, no surface moved more than 5 cm (40 cm for the leaf, hedge and ivy
-cards); only the base-colour textures are kept, downscaled to at most 256
+cards), each repeated object reduced once and its copies placed from it; only the base-colour textures are kept, downscaled to at most 256
 pixels and saved as PNG; normal, specular and emissive maps, the interior
 scenes and the environment map are dropped. Made with
 launcher/tools/r3d/source/reduce_source.py:
