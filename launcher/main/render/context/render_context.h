@@ -67,7 +67,7 @@ typedef struct {
 
 #define RENDER_DEBUG_VIEW_UNKNOWN -2
 #define RENDER_DEBUG_VIEW_SHADED  0
-#define RENDER_DEBUG_VIEW_COUNT   5 /* table rows; views run 0 to this */
+#define RENDER_DEBUG_VIEW_COUNT   6 /* table rows; views run 0 to this */
 
 typedef struct {
     raster_split_t split;
@@ -174,4 +174,4 @@ bool render_context_has_overlay(const render_context_t* context);
 void render_context_overlay(const render_context_t* context, int width, int height);
 
 /* The debug view's own state, as its row's hooks see it; NULL when shaded. */
-const void* render_context_debug_view_state(const render_context_t* context);
+void* render_context_debug_view_state(const render_context_t* context);

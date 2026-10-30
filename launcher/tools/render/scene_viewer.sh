@@ -10,11 +10,15 @@
 # the results tree's scene_viewer/compare/<scene>.mp4). --frame N renders frame N
 # of the same path to a PNG, both sides' with --compare (-o names A's; B's
 # adds -b). scene_path.py says how the path is timed.
+#
+# --view boxes without --object-boxes FILE draws the source objects of the
+# first --object (else the scene's first mesh renderer) too: object_boxes.py
+# writes them into the results tree, redone only when what they came from changed.
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO=$(CDPATH= cd -- "$SCRIPT_DIR/../../.." && pwd -P)
 if [ $# -eq 0 ]; then
-    echo "usage: $0 SCENE.scene.toml [--build-only -o DIR | --deps] [--object NAME ...] [--camera NAME] [--frames N --dt MS] [--view shaded|depth|tiles|motion|meshlets|cull] [--counts out.csv] [--poses out.csv] [--size WxH] [--present nearest|scanline|double] [--small-fill CEILING,GATE,STYLE] [--set owner.name=value ...] [--tunables] [--quarter 0|1] [--panel] [-o out.bmp] [--video out.avi]" >&2
+    echo "usage: $0 SCENE.scene.toml [--build-only -o DIR | --deps] [--object NAME ...] [--camera NAME] [--frames N --dt MS] [--view NAME (an unknown NAME lists them)] [--object-boxes FILE] [--counts out.csv] [--poses out.csv] [--size WxH] [--present nearest|scanline|double] [--small-fill CEILING,GATE,STYLE] [--set owner.name=value ...] [--tunables] [--quarter 0|1] [--panel] [-o out.bmp] [--video out.avi]" >&2
     echo "       $0 SCENE.scene.toml [--compare REV|DIR [--b-args ARGS]] [--frame N] [-o out.mp4|out.png] [renderer arguments]" >&2
     exit 2
 fi
@@ -92,6 +96,32 @@ binary=${build#built }
 AUTANA_ASSET_DIR=$(to_native "$(dirname "$binary")/assets")
 export AUTANA_ASSET_DIR
 id=$(basename "$scene_file" .scene.toml)
+
+# The boxes view's source objects, unless the caller gave a file.
+view_name=
+object_name=
+given_boxes=0
+previous=
+IFS='
+'
+for argument in $render_args; do
+    case "$previous" in
+        --view) view_name=$argument ;;
+        --object) [ -n "$object_name" ] || object_name=$argument ;;
+        --object-boxes) given_boxes=1 ;;
+    esac
+    previous=$argument
+done
+unset IFS
+if [ "$view_name" = boxes ] && [ "$given_boxes" = 0 ]; then
+    . "$SCRIPT_DIR/../../../scripts/lib/python.sh"
+    boxes_file=$build_dir/object_boxes/$id${object_name:+-$object_name}.txt
+    "$(find_python numpy scipy matplotlib)" "$(to_native "$SCRIPT_DIR/../r3d/objects/object_boxes.py")" \
+        "$(to_native "$scene_file")" --out "$(to_native "$boxes_file")" ${object_name:+--object "$object_name"}
+    render_args="${render_args}
+--object-boxes
+$(to_native "$boxes_file")"
+fi
 
 if [ -n "$compare$frame" ]; then
     . "$SCRIPT_DIR/../../../scripts/lib/python.sh"
