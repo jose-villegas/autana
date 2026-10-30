@@ -89,8 +89,9 @@ test_simd_board_rows(void) {
      * so the unaligned source rows run too. */
     uint16_t* dst = bench_alloc_internal((2 * LONGEST + SIMD_LANES_U16) * sizeof(uint16_t), "simd bench dst");
     uint16_t* src = bench_alloc_internal((LONGEST + SIMD_LANES_U16) * sizeof(uint16_t), "simd bench src");
+    /* Any data: the copies cost the same whatever they carry. */
     for (size_t i = 0; i < LONGEST + SIMD_LANES_U16; i++) {
-        src[i] = (uint16_t)rand();
+        src[i] = (uint16_t)i;
     }
     uint16_t* aligned_dst = dst + (simd_head_bytes(dst) / sizeof *dst);
     uint16_t* aligned_src = src + (simd_head_bytes(src) / sizeof *src);
