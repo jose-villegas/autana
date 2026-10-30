@@ -339,7 +339,7 @@ unknown key is an error.
 | `python launcher/tools/r3d/mesh_import.py IMPORT` | The import's authored albedo mesh into the bake cache. |
 | `python launcher/tools/r3d/mesh_import.py SCENE` | Each renderer's mesh: a `bake = true` renderer traced with the scene's lights, camera visibility and tone map; an albedo renderer its import's shared mesh. |
 | `python launcher/tools/r3d/mesh_import.py PATH --mesh NAME` | That one mesh only. |
-| `python launcher/tools/r3d/build_pack.py -o DIR` | One [pack](../assets/Building-Packs.md#packs) per root from the `.mesh` entries it names, baking each scene's [entry](Scene-Files.md#scne-v5) on the way. |
+| `python launcher/tools/r3d/build_pack.py -o DIR` | One [pack](../assets/Building-Packs.md#packs) per root from the `.mesh` entries it names, baking each scene's [entry](../assets/formats/SCNE.md) on the way. |
 | `python launcher/tools/r3d/rebake.py MESH.mesh` | That cached `.mesh` in place, its clusters and octree only; rerun `build_pack.py` to pack it. |
 
 A cached `<name>.mesh` is an entry of the [asset pack](../assets/README.md),
