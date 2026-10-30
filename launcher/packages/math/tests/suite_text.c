@@ -206,7 +206,8 @@ test_unsigned_text(void) {
     TEST_ASSERT_EQUAL_UINT32(255, got);
     TEST_ASSERT_TRUE(mathu_parse_hex("0XFFFFFFFF", NULL, &got));
     TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, got);
-    static const char* const bad_hex[] = {"", "10", "0x", "0xg", "0x100000000", "-0x1", "0x1 ", " 0x1"};
+    static const char* const bad_hex[] = {"",     "10",   "0x",   "0xg",   "0x100000000",
+                                          "-0x1", "0x1 ", " 0x1", "0x0x5", "0x0X1"};
     for (size_t i = 0; i < sizeof bad_hex / sizeof *bad_hex; ++i) {
         got = 7;
         TEST_ASSERT_FALSE(mathu_parse_hex(bad_hex[i], NULL, &got));
