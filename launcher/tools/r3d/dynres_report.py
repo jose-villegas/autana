@@ -242,15 +242,19 @@ def policies_table(rows):
                                "are against the reference at full size, lower dE and higher SSIM being closer.")
 
 
-SHARE_SHADES = (0.9, 0.3)  # Blues, darkest for the first step of a ladder
+SHARE_COLOURMAP = "turbo"  # one distinct colour per step, like a height map
+SHARE_RANGE = (0.1, 0.9)
+MIN_LABELLED = 5  # a bar segment narrower than this share of frames carries no number
+OUTLINE_WIDTH = 2  # points of dark outline that keep a number readable on any segment colour
 LEGEND_BESIDE = (1.01, 0.5)  # the steps listed down the bars' right, first on top
 
 
 def share_figure(panels, path):
     """Time at each render size as 100% bars, one panel per ladder with its steps numbered in ladder order,
-    finest first, the darkest: panels is [(title, [steps], [(label, {size: share})])]."""
+    finest first: panels is [(title, [steps], [(label, {size: share})])]."""
     import numpy as np
     from matplotlib import colormaps
+    from matplotlib.patheffects import withStroke
     from docs.plot_style import figure, save_themes, stacked_barh, style_axes
 
     count = sum(len(rows) for _, _, rows in panels)
@@ -260,12 +264,20 @@ def share_figure(panels, path):
     for axis, (title, steps, rows) in zip(grid, panels):
         used = [i for i, size in enumerate(steps) if any(spread.get(size) for _, spread in rows)]
         steps = steps[:used[-1] + 1]
-        shades = colormaps["Blues"](np.linspace(*SHARE_SHADES, len(steps)))
+        shades = colormaps[SHARE_COLOURMAP](np.linspace(*SHARE_RANGE, len(steps)))
         names = [f"{i + 1}: {w}x{h}" for i, (w, h) in enumerate(steps)]
         colours = dict(zip(names, shades))
         bars = [(label, [(name, 100 * spread.get(size, 0)) for name, size in zip(names, steps)])
                 for label, spread in rows]
         stacked_barh(axis, bars, colours, extent=100)
+        for row, (_, segments) in enumerate(bars):
+            left = 0.0
+            for name, value in segments:
+                if value >= MIN_LABELLED:
+                    label = axis.text(left + value / 2, row, f"{value:.0f}", ha="center", va="center", fontsize=8,
+                                      color="white")
+                    label.set_path_effects([withStroke(linewidth=OUTLINE_WIDTH, foreground="black")])
+                left += value
         style_axes(axis, f"{title}, share of frames (%)")
         axis.legend(fontsize=8, loc="center left", bbox_to_anchor=LEGEND_BESIDE, frameon=False)
     save_themes(fig, path)
