@@ -28,7 +28,7 @@ console_tone_parse_options(const char* args, console_tone_args_t* out) {
     }
     out->internal = console_word(&args, CONSOLE_TONE_INTERNAL);
     out->volume_pct = (uint8_t)volume;
-    return *args == '\0';
+    return *console_token_skip(args) == '\0';
 }
 
 static inline bool
