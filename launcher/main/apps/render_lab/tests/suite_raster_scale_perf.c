@@ -106,7 +106,7 @@ add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
     r3d_lens_fit(draw_lens, raster->width, raster->height);
     sum->buffers = raster_carve(raster);
     const raster_buffers_t* b = &sum->buffers;
-    const int visible = r3d_pipeline_cull(&mesh, draw_lens, b->culled + 1, b->work[0]);
+    const int visible = r3d_pipeline_cull(&mesh, draw_lens, b->culled + 1, b->work[0], NULL);
     r3d_pipeline_transform(&mesh, draw_lens, b->culled + 1, visible, b->cs, b->rows);
     const size_t pixels = (size_t)raster->width * (size_t)raster->height;
     const int64_t clear_from = timing_now_us();

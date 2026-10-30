@@ -145,9 +145,10 @@ row_map(const mat4f_t* a, float v, row_map_t* r) {
 }
 
 /* Lens space is pixels at unit depth: a pixel at (u, v) from the centre
- * with inverse depth iz is the point (u, v, 1) near_z / iz. Through a map
- * (A, t) it lands at (A (u, v, 1) + t iz / near_z) near_z / iz, whose
- * screen position is the first two over the third; w is iz / near_z. */
+ * with inverse depth iz is the point (u, v, 1) depth_near / iz. Through a map
+ * (A, t) it lands at (A (u, v, 1) + t iz / depth_near) depth_near / iz, whose
+ * screen position is the first two over the third; w is iz / depth_near,
+ * with depth_near the picture's own (raster_depth_near()). */
 static inline raster_motion_px_t
 moved(const row_map_t* r, float u, float v, float w) {
     const float pz = (r->u[2] * u) + r->at[2] + (r->w[2] * w);
@@ -161,9 +162,10 @@ moved(const row_map_t* r, float u, float v, float w) {
 }
 
 static void
-resolve_row(const raster_motion_t* m, const uint16_t* depth, raster_motion_px_t* out, int width, float v) {
+resolve_row(const raster_motion_t* m, const uint16_t* depth, float depth_near, raster_motion_px_t* out, int width,
+            float v) {
     const tag_t* tag = (const tag_t*)out;
-    const float to_w = DEPTH_SCALE / m->project.near_z;
+    const float to_w = DEPTH_SCALE / depth_near;
     row_map_t still;
     row_map_t own;
     tag_t own_tag = 0;
@@ -185,8 +187,8 @@ resolve_row(const raster_motion_t* m, const uint16_t* depth, raster_motion_px_t*
 
 static void
 resolve(const raster_attachment_t* self, const raster_t* raster, const gfx_target_t* rows, int index) {
-    (void)raster;
     const raster_motion_t* m = self->state;
+    const float depth_near = raster_depth_near(raster);
     for (int y = rows->first_row; y < gfx_target_end_row(rows); y++) {
         raster_motion_px_t* out = gfx_target_row(rows, index, y);
         if (!m->known) {
@@ -195,7 +197,8 @@ resolve(const raster_attachment_t* self, const raster_t* raster, const gfx_targe
             }
             continue;
         }
-        resolve_row(m, gfx_target_depth(rows, y), out, rows->attachment[0].width, (float)y + 0.5F - m->project.cy);
+        resolve_row(m, gfx_target_depth(rows, y), depth_near, out, rows->attachment[0].width,
+                    (float)y + 0.5F - m->project.cy);
     }
 }
 
