@@ -144,7 +144,7 @@ select_objects(scene_t* scene) {
     return true;
 }
 
-/* object_boxes.py's lines, `shape lo.x lo.y lo.z hi.x hi.y hi.z`, into
+/* object_boxes.py's lines, `shape copies lo.x lo.y lo.z hi.x hi.y hi.z`, into
  * object_boxes; their count, or -1, said on stderr, when unreadable. */
 static int
 read_object_boxes(const char* path) {
@@ -156,8 +156,10 @@ read_object_boxes(const char* path) {
     int count = 0;
     int room = 0;
     unsigned shape;
+    unsigned copies;
     box3f_t b;
-    while (fscanf(in, "%u %f %f %f %f %f %f", &shape, &b.lo.x, &b.lo.y, &b.lo.z, &b.hi.x, &b.hi.y, &b.hi.z) == 7) {
+    while (fscanf(in, "%u %u %f %f %f %f %f %f", &shape, &copies, &b.lo.x, &b.lo.y, &b.lo.z, &b.hi.x, &b.hi.y, &b.hi.z)
+           == 8) {
         if (count == room) {
             room = room == 0 ? OBJECT_BOXES_FIRST_ROOM : room * 2;
             raster_box_t* grown = realloc(object_boxes, (size_t)room * sizeof *object_boxes);
@@ -167,7 +169,7 @@ read_object_boxes(const char* path) {
             }
             object_boxes = grown;
         }
-        object_boxes[count++] = (raster_box_t){b, (uint16_t)shape};
+        object_boxes[count++] = (raster_box_t){b, (uint16_t)shape, (uint16_t)copies};
     }
     const bool whole = feof(in);
     fclose(in);

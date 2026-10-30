@@ -6,6 +6,9 @@
  * Two layers: every instance the raster draws (its root box under its
  * model; instances of one mesh are one shape) and, when a caller gives them,
  * the source objects an import detected, in world units.
+ *
+ * Tunables: boxview.copies (the fewest copies a shape needs for its boxes to
+ * be drawn; 1 draws every box) and boxview.behind (raster_boxes_behind_t).
  */
 #pragma once
 
@@ -15,9 +18,20 @@
 #include "render/raster.h"
 #include "render/render_view.h"
 
+typedef enum {
+    RASTER_BOXES_BEHIND_HIDE, /* an edge behind what was drawn is left out */
+    RASTER_BOXES_BEHIND_DIM,  /* drawn at RASTER_LINES_BEHIND_KEEP */
+    RASTER_BOXES_BEHIND_FULL, /* drawn as if nothing hid it */
+    RASTER_BOXES_BEHIND_COUNT,
+} raster_boxes_behind_t;
+
+/* boxview.copies' default: only shapes with copies are drawn. */
+#define RASTER_BOXES_COPIES_DEFAULT 2
+
 typedef struct {
-    box3f_t box;    /* world units, the renderer's placement applied */
-    uint16_t shape; /* copies of one shape share it */
+    box3f_t box;     /* world units, the renderer's placement applied */
+    uint16_t shape;  /* copies of one shape share it */
+    uint16_t copies; /* how many boxes share the shape */
 } raster_box_t;
 
 typedef struct {
