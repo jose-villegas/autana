@@ -663,6 +663,7 @@ class HeldLock:
         self.started = time.monotonic()
         self.kind = kind
         self.error = None
+        self.renewed_at = time.monotonic()
 
     def wait_notice(self, ticket):
         wait_notice(self.store, self.board, self.notice_state, ticket)
@@ -670,10 +671,8 @@ class HeldLock:
     def keep_alive(self):
         if self.borrowed:
             while not self.stop.wait(self.HEARTBEAT_SECONDS):
-                try:
-                    live = self.store.check_token(self.board, self.held["token"])
-                except OSError as error:
-                    print(f"device lock check failed, retrying: {error}", file=sys.stderr)
+                live = self.renews(self.store.check_token)
+                if live is None:
                     continue
                 if not live:
                     self.lost.set()
@@ -683,24 +682,39 @@ class HeldLock:
         poll = 1 if self.announce_waiters else self.HEARTBEAT_SECONDS
         next_heartbeat = time.monotonic() + self.HEARTBEAT_SECONDS
         while not self.stop.wait(poll):
-            for ticket in (self.store.tickets(self.board) if self.announce_waiters else ()):
+            try:
+                tickets = self.store.tickets(self.board) if self.announce_waiters else ()
+            except OSError:
+                tickets = ()
+            for ticket in tickets:
                 if ticket["ticket"] not in self.notified:
                     self.notified.add(ticket["ticket"])
                     print(f'{ticket["owner"]} is waiting for the board '
                           f'({ticket.get("purpose", "unknown")}) - Ctrl+C to hand it over', file=sys.stderr)
             if time.monotonic() >= next_heartbeat:
-                # A failed renewal is retried on the next poll: the lock only
-                # lapses after DEFAULT_STALE_SECONDS without one.
-                try:
-                    renewed = self.store.heartbeat(self.board, self.held["token"])
-                except OSError as error:
-                    print(f"device lock heartbeat failed, retrying: {error}", file=sys.stderr)
+                renewed = self.renews(self.store.heartbeat)
+                if renewed is None:
                     continue
                 if not renewed:
                     self.lost.set()
                     print("device lock was lost", file=sys.stderr)
                     return
                 next_heartbeat = time.monotonic() + self.HEARTBEAT_SECONDS
+
+    def renews(self, renew):
+        """renew(board, token): True or False, or None for one that raised and is
+        retried on the next poll. The lock lapses DEFAULT_STALE_SECONDS after
+        its last renewal, so failing until then is a loss."""
+        try:
+            renewed = renew(self.board, self.held["token"])
+        except OSError as error:
+            if time.monotonic() - self.renewed_at < device_lock.DEFAULT_STALE_SECONDS:
+                print(f"device lock renewal failed, retrying: {error}", file=sys.stderr)
+                return None
+            renewed = False
+        if renewed:
+            self.renewed_at = time.monotonic()
+        return renewed
 
     def __enter__(self):
         self.previous_lock = getattr(ACTIVE_LOCK, "held", None)
