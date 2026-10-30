@@ -1252,6 +1252,199 @@ test_an_unbounded_cluster_is_never_hidden(void) {
     TEST_ASSERT_FALSE(r3d_pipeline_cluster_hidden(&rows, &target));
 }
 
+/* A target taller than the fixture's, for triangles that run far down. */
+static gfx_color_t* tall_color;
+static uint16_t* tall_depth;
+
+static void
+release_tall(void) {
+    free(tall_color);
+    tall_color = NULL;
+    free(tall_depth);
+    tall_depth = NULL;
+}
+
+/* The sliver whose fill once carried its depth plane far past its nearest
+ * vertex's: (x, y) in pixels and inverse depth, 1/16 pixel steps. */
+#define SLIVER_BOTTOM_ROW 400
+#define SLIVER_NEAR_Z     0.25F
+#define SLIVER_FAR_Z      0.125F
+#define SLIVER_RIGHT_X    (22.0F + (1.0F / R3D_SUBPIXEL))
+
+/* The pixel the old fill wrote R3D_DEPTH_NEAREST at. */
+#define SLIVER_WITNESS_X  21
+#define SLIVER_WITNESS_Y  299
+
+/* Over depth one above the triangle's limit everywhere, a full draw of a
+ * sliver changes neither colour nor depth: the same as skipping its cluster. */
+static void
+test_a_sliver_over_depth_above_its_limit_draws_nothing(void) {
+    const int rows = SLIVER_BOTTOM_ROW + 1;
+    tall_color = calloc((size_t)W * rows, sizeof(*tall_color));
+    tall_depth = malloc(sizeof(*tall_depth) * W * rows);
+    suite_set_test_cleanup(release_tall);
+    TEST_ASSERT_NOT_NULL(tall_color);
+    TEST_ASSERT_NOT_NULL(tall_depth);
+    const uint16_t limit = r3d_span_depth_limit(SLIVER_NEAR_Z);
+    const uint16_t above = (uint16_t)(limit + 1);
+    for (int i = 0; i < W * rows; i++) {
+        tall_depth[i] = above;
+    }
+    const r3d_span_vertex_t v[3] = {sv(20.0F, 0.0F, SLIVER_FAR_Z, 9, 9, 9),
+                                    sv(22.0F, (float)SLIVER_BOTTOM_ROW, SLIVER_NEAR_Z, 9, 9, 9),
+                                    sv(SLIVER_RIGHT_X, (float)SLIVER_BOTTOM_ROW, SLIVER_FAR_Z, 9, 9, 9)};
+    const r3d_span_target_t target = r3d_span_target(tall_color, tall_depth, W, 0, rows);
+    r3d_span_triangle(&target, &v[0], &v[1], &v[2]);
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE(above, tall_depth[(SLIVER_WITNESS_Y * W) + SLIVER_WITNESS_X],
+                                    "the sliver wrote depth past its limit");
+    TEST_ASSERT_EACH_EQUAL_HEX16_MESSAGE(above, tall_depth, W * rows, "the sliver changed a depth");
+    for (int i = 0; i < W * rows; i++) {
+        TEST_ASSERT_EQUAL_HEX16_MESSAGE(0, native_of(tall_color[i]), "the sliver coloured a pixel");
+    }
+    const r3d_pipeline_rows_t carried = {.x0 = (int16_t)(20 * R3D_SUBPIXEL),
+                                         .y0 = 0,
+                                         .x1 = (int16_t)v[2].x,
+                                         .y1 = (int16_t)(SLIVER_BOTTOM_ROW * R3D_SUBPIXEL),
+                                         .depth = limit};
+    TEST_ASSERT_TRUE(r3d_pipeline_cluster_hidden(&carried, &target));
+}
+
+/* The hidden test's box: a cluster spanning these subpixels holds the pixel
+ * columns and rows below. */
+#define EDGE_FIRST_COL 10
+#define EDGE_END_COL   20
+#define EDGE_FIRST_ROW 5
+#define EDGE_END_ROW   15
+
+static r3d_pipeline_rows_t
+edge_rows(void) {
+    return (r3d_pipeline_rows_t){.x0 = (int16_t)(EDGE_FIRST_COL * R3D_SUBPIXEL),
+                                 .y0 = (int16_t)(EDGE_FIRST_ROW * R3D_SUBPIXEL),
+                                 .x1 = (int16_t)(EDGE_END_COL * R3D_SUBPIXEL),
+                                 .y1 = (int16_t)(EDGE_END_ROW * R3D_SUBPIXEL),
+                                 .depth = 1000};
+}
+
+/* Whether the cluster is hidden with every pixel of the target nearer than
+ * its limit but one that is not, at (x, y). */
+static bool
+hidden_but_for(const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target, int x, int y) {
+    const uint16_t nearer = (uint16_t)(rows->depth + 1);
+    for (int i = 0; i < W * H; i++) {
+        depth[i] = nearer;
+    }
+    depth[(y * W) + x] = rows->depth;
+    return r3d_pipeline_cluster_hidden(rows, target);
+}
+
+/* A not-nearer pixel in any outermost row or column of the box keeps the
+ * cluster; the same pixel one step outside does not count. */
+static void
+test_a_not_nearer_pixel_on_the_box_edge_keeps_the_cluster_and_just_outside_does_not(void) {
+    const r3d_pipeline_rows_t rows = edge_rows();
+    const r3d_span_target_t target = fixture();
+    for (int y = EDGE_FIRST_ROW - 1; y <= EDGE_END_ROW; y++) {
+        for (int x = EDGE_FIRST_COL - 1; x <= EDGE_END_COL; x++) {
+            const bool inside = x >= EDGE_FIRST_COL && x < EDGE_END_COL && y >= EDGE_FIRST_ROW && y < EDGE_END_ROW;
+            const bool hidden = hidden_but_for(&rows, &target, x, y);
+            char message[64];
+            snprintf(message, sizeof message, "pixel (%d, %d) %s the box", x, y, inside ? "in" : "outside");
+            TEST_ASSERT_EQUAL_MESSAGE(!inside, hidden, message);
+        }
+    }
+    TEST_ASSERT_FALSE(hidden_but_for(&rows, &target, EDGE_FIRST_COL, EDGE_FIRST_ROW));
+    depth[(EDGE_FIRST_ROW * W) + EDGE_FIRST_COL] = R3D_DEPTH_EMPTY;
+    TEST_ASSERT_FALSE(r3d_pipeline_cluster_hidden(&rows, &target));
+}
+
+/* A window of rows narrower than the cluster tests only its own rows of the
+ * box: a not-nearer pixel in the box's rows outside the window is not seen. */
+#define EDGE_WINDOW_FIRST_ROW 8
+#define EDGE_WINDOW_END_ROW   12
+
+static void
+test_a_row_window_narrower_than_the_cluster_tests_the_clipped_box(void) {
+    const r3d_pipeline_rows_t rows = edge_rows();
+    (void)fixture();
+    const r3d_span_target_t window = fixture_rows(EDGE_WINDOW_FIRST_ROW, EDGE_WINDOW_END_ROW);
+    const int column = (EDGE_FIRST_COL + EDGE_END_COL) / 2;
+    for (int y = EDGE_FIRST_ROW; y < EDGE_END_ROW; y++) {
+        const bool in_window = y >= EDGE_WINDOW_FIRST_ROW && y < EDGE_WINDOW_END_ROW;
+        char message[64];
+        snprintf(message, sizeof message, "row %d, %s the window", y, in_window ? "in" : "outside");
+        TEST_ASSERT_EQUAL_MESSAGE(!in_window, hidden_but_for(&rows, &window, column, y), message);
+    }
+    TEST_ASSERT_FALSE(hidden_but_for(&rows, &window, EDGE_FIRST_COL, EDGE_WINDOW_FIRST_ROW));
+    TEST_ASSERT_FALSE(hidden_but_for(&rows, &window, EDGE_END_COL - 1, EDGE_WINDOW_END_ROW - 1));
+    TEST_ASSERT_TRUE(hidden_but_for(&rows, &window, EDGE_FIRST_COL - 1, EDGE_WINDOW_FIRST_ROW));
+    TEST_ASSERT_TRUE(hidden_but_for(&rows, &window, EDGE_END_COL, EDGE_WINDOW_END_ROW - 1));
+}
+
+/* Triangles as large as the span's range allows, every depth they write at
+ * or below the limit of their nearest vertex, which saturates at the
+ * nearest depth for an inverse depth of one. Every other one is a sliver
+ * running the range's length across the window, its far end a few subpixels
+ * wide: the shape whose plane the float set-up carries furthest. */
+#define LARGE_TRIANGLES   600
+#define LARGE_SEED        0x2545F491u
+#define SLIVER_WIDTH_MAX  3
+#define NEAREST_EVERY     3
+#define INVERSE_DEPTH_MAX 1000
+
+static int32_t
+random_within(uint32_t* state, int32_t lo, int32_t hi) {
+    return lo + (int32_t)(next_random(state) % (uint32_t)(hi - lo + 1));
+}
+
+static void
+large_triangle(uint32_t* state, int n, r3d_span_vertex_t v[3]) {
+    const int32_t reach = R3D_SPAN_RANGE - 1;
+    const int32_t window_x = W * R3D_SUBPIXEL;
+    for (int k = 0; k < 3; k++) {
+        v[k] = (r3d_span_vertex_t){random_within(state, -reach, reach),
+                                   random_within(state, -reach, reach),
+                                   (float)random_within(state, 1, INVERSE_DEPTH_MAX) / (float)INVERSE_DEPTH_MAX,
+                                   9,
+                                   9,
+                                   9};
+    }
+    if (n % 2 == 1) {
+        v[0].x = random_within(state, 0, window_x);
+        v[0].y = -reach;
+        v[1].x = random_within(state, 0, window_x);
+        v[1].y = reach;
+        v[2].x = v[1].x + random_within(state, 1, SLIVER_WIDTH_MAX);
+        v[2].y = reach;
+    }
+    if (n % NEAREST_EVERY == 0) {
+        v[n % 3].z = 1.0F;
+    }
+}
+
+static void
+test_large_steep_triangles_write_no_depth_past_their_limit(void) {
+    uint32_t state = LARGE_SEED;
+    int written = 0;
+    int saturated = 0;
+    for (int n = 0; n < LARGE_TRIANGLES; n++) {
+        r3d_span_vertex_t v[3];
+        large_triangle(&state, n, v);
+        const uint16_t limit = r3d_span_depth_limit(fmaxf(v[0].z, fmaxf(v[1].z, v[2].z)));
+        saturated += limit == R3D_DEPTH_NEAREST;
+        const int row0 = random_within(&state, 0, H / 2);
+        (void)fixture();
+        const r3d_span_target_t window = fixture_rows(row0, row0 + (H / 2));
+        r3d_span_triangle(&window, &v[0], &v[1], &v[2]);
+        r3d_span_triangle(&window, &v[0], &v[2], &v[1]);
+        for (int i = 0; i < W * H; i++) {
+            TEST_ASSERT_LESS_OR_EQUAL_UINT16_MESSAGE(limit, depth[i], "a fill wrote depth past its limit");
+            written += depth[i] != R3D_DEPTH_EMPTY;
+        }
+    }
+    TEST_ASSERT_GREATER_THAN_INT(0, written);
+    TEST_ASSERT_GREATER_THAN_INT(0, saturated);
+}
+
 /* A fan whose outer corners sit just inside and just past the fast path's
  * reach, so rebuilt, clipped triangles share edges across the screen with
  * fast ones: each drawn alone, together they fill every pixel once. */
@@ -2568,6 +2761,10 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_a_cluster_writes_no_depth_nearer_than_its_limit);
     RUN_TEST(test_a_cluster_behind_drawn_depth_is_hidden_and_draws_nothing);
     RUN_TEST(test_an_unbounded_cluster_is_never_hidden);
+    RUN_TEST(test_a_sliver_over_depth_above_its_limit_draws_nothing);
+    RUN_TEST(test_a_not_nearer_pixel_on_the_box_edge_keeps_the_cluster_and_just_outside_does_not);
+    RUN_TEST(test_a_row_window_narrower_than_the_cluster_tests_the_clipped_box);
+    RUN_TEST(test_large_steep_triangles_write_no_depth_past_their_limit);
     RUN_TEST(test_rebuilt_and_fast_triangles_sharing_edges_fill_every_pixel_once);
 
     RUN_TEST(test_a_counter_clockwise_face_toward_the_camera_is_drawn);
