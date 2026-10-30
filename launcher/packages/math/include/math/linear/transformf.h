@@ -63,6 +63,13 @@ transformf_scale_is_even(const transformf_t* t) {
     return most - least <= TRANSFORMF_MATRIX_TOLERANCE * largest;
 }
 
+/* True when the transform turns the space inside out: an odd count of
+ * negative scales, as transformf_from_mat gives a reflection. */
+static inline bool
+transformf_mirrors(const transformf_t* t) {
+    return t->scale.x * t->scale.y * t->scale.z < 0.0F;
+}
+
 /* The inverse of transformf_compose: the child that, placed in `parent`,
  * stands at `world`. `parent`'s scale must be even and nonzero. */
 static inline transformf_t
@@ -77,7 +84,8 @@ transformf_relative(const transformf_t* parent, const transformf_t* world) {
         .cached = false};
 }
 
-/* Decomposes affine TRS; refuses shear, reflection, singular or nonfinite matrices. */
+/* Decomposes affine TRS; a reflection comes back as a negative scale.x.
+ * Refuses shear, singular or nonfinite matrices. */
 static inline bool
 transformf_from_mat(mat4f_t matrix, transformf_t* out) {
     vec3f_t axes[3];
@@ -99,9 +107,12 @@ transformf_from_mat(mat4f_t matrix, transformf_t* out) {
     }
     if (fabsf(vec3f_dot(axes[0], axes[1])) > TRANSFORMF_MATRIX_TOLERANCE
         || fabsf(vec3f_dot(axes[0], axes[2])) > TRANSFORMF_MATRIX_TOLERANCE
-        || fabsf(vec3f_dot(axes[1], axes[2])) > TRANSFORMF_MATRIX_TOLERANCE
-        || vec3f_dot(vec3f_cross(axes[0], axes[1]), axes[2]) <= 0.0F) {
+        || fabsf(vec3f_dot(axes[1], axes[2])) > TRANSFORMF_MATRIX_TOLERANCE) {
         return false;
+    }
+    if (vec3f_dot(vec3f_cross(axes[0], axes[1]), axes[2]) < 0.0F) {
+        axes[0] = vec3f_scale(axes[0], -1.0F);
+        scale[0] = -scale[0];
     }
     *out = (transformf_t){.position = {matrix.m[0][3], matrix.m[1][3], matrix.m[2][3]},
                           .rotation = quatf_normalize(quatf_from_basis(axes[0], axes[1], axes[2])),

@@ -12,10 +12,12 @@
 #include "render/r3d_span_internal.h"
 
 /* Front faces wind negative on screen: counter-clockwise in a y-up world
- * turns clockwise once screen y points down. */
+ * turns clockwise once screen y points down. A mirrored placement (`flip`
+ * -1, r3d_lens_t) winds them positive: area2 ^ -1 is -area2 - 1, so the test
+ * becomes area2 <= 0, one more op than the unmirrored area2 >= 0. */
 static inline bool
-facing_away(int32_t area2, bool double_sided) {
-    return !double_sided && area2 >= 0;
+facing_away(int32_t area2, int32_t flip, bool double_sided) {
+    return !double_sided && (area2 ^ flip) >= flip;
 }
 
 /* Twice the signed area; with coordinates inside R3D_SPAN_RANGE each

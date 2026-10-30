@@ -630,15 +630,19 @@ and its clip cannot share a stem ([assets/README.md](../assets/Building-Packs.md
 
 Objects are entities in file order, found by the `name_hash()` of their name
 ([hash package](../../launcher/packages/hash/README.md)), which each names row
-stores beside the name. Transforms store a 3x3
-rotation-times-scale matrix and position, in the parent's frame; the scale
-is positive, and `scene_load()` refuses a shear or a reflection (determinant
-−1) and names its entity. Each entity has one parent listed before it, or
-none; a parent's transform and enabled state carry to its descendants
+stores beside the name. Transforms store a 3x3 rotation-times-scale matrix
+and position, in the parent's frame.
+
+`scene_load()` refuses a shear and names its entity. A reflection
+(determinant −1) loads as a negative x scale and draws mirrored. A parent,
+camera, light or skinned renderer cannot mirror.
+
+Each entity has one parent listed before it, or none; a parent's transform
+and enabled state carry to its descendants
 ([Scene-Manager.md](Scene-Manager.md#hierarchy)). A scene file names no
 parents, so its objects are roots; `scene_asset.encode()` writes the parent of
-an object that carries one. Names hold letters, digits and
-`_`, start with a letter or `_`, and fit 31 bytes.
+an object that carries one. Names hold letters, digits and `_`, start with a
+letter or `_`, and fit 31 bytes.
 
 Directional lights rotate `SCENE_LIGHT_AXIS` (+Y) by their entity's rotation.
 Baked renderers read LMSH or LCOL colours; runtime lights shade only skinned

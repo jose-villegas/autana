@@ -146,6 +146,7 @@ the columns of `L = [a c; b d]` and its translation.
 - `mat3f_cofactor()` is the determinant times the inverse-transpose, with no division.
 - It satisfies `cofactor(M) * transpose(M) = det(M) * I`, a reflection's determinant negative.
 - Dividing it by the determinant gives the inverse-transpose.
+- `mat3f_determinant()` is that det(M): below zero when the matrix mirrors, zero when it is singular.
 
 ## mat4 (`f x`)
 
@@ -178,7 +179,8 @@ the columns of `L = [a c; b d]` and its translation.
 | `transformf_compose(&parent, &child)` | float only: the child placed in the parent's frame; exact unless an unevenly scaled parent holds a turned child, where the sheared result has no TRS form and the scale is per axis | $`\mathit{position} = p_t + p_q\,(p_s \odot c_t)`$<br>$`\mathit{rotation} = \mathrm{normalize}(p_q\,c_q)`$<br>$`\mathit{scale} = p_s \odot c_s`$ |
 | `transformf_relative(&parent, &world)` | float only: the inverse of `transformf_compose`, the child that placed in `parent` stands at `world`; the parent's scale must be even and nonzero | $`q = \overline{p_q}`$<br>$`\mathit{position} = q\,(w_t - p_t) / p_s`$<br>$`\mathit{rotation} = \mathrm{normalize}(q\,w_q)`$<br>$`\mathit{scale} = w_s / p_s`$ |
 | `transformf_scale_is_even(&t)` | float only: the three scales agree within `TRANSFORMF_MATRIX_TOLERANCE` of the largest | $`\max_i s_i - \min_i s_i \le \epsilon \max_i \lvert s_i \rvert`$ |
-| `transformf_from_mat(m, &t)` | float only: affine TRS decomposition, refuses singular, nonfinite, sheared or reflected matrices; orthogonality uses `TRANSFORMF_MATRIX_TOLERANCE` | $`s_i = \lVert M_{:i}\rVert`$<br>$`R_{:i} = M_{:i}/s_i`$<br>$`t = M_{:3}`$<br>Require orthogonal columns and $`\det R > 0`$, quaternion from basis<sup>[[53]](../Citations.md#shepperd-1978)</sup> |
+| `transformf_mirrors(&t)` | float only: an odd count of negative scales, so the transform turns space inside out | $`s_x s_y s_z < 0`$ |
+| `transformf_from_mat(m, &t)` | float only: affine TRS decomposition, refuses singular, nonfinite or sheared matrices; a reflection comes back as a negative `scale.x`; orthogonality uses `TRANSFORMF_MATRIX_TOLERANCE` | $`s_i = \lVert M_{:i}\rVert`$<br>$`R_{:i} = M_{:i}/s_i`$<br>$`t = M_{:3}`$<br>Require orthogonal columns; when $`\det R < 0`$, negate $`R_{:0}`$ and $`s_0`$; quaternion from basis<sup>[[53]](../Citations.md#shepperd-1978)</sup> |
 | `P_looking(position, forward, up)` | unit-scale pose looking along `forward` from `position` | $`\mathit{look\_along}(\mathit{forward}, \mathit{up})`$ |
 | `P_look_along(&t, direction, up)` | faces a nonzero `direction`; `up` must not be parallel to it | $`f = \frac{\mathit{direction}}{\lVert \mathit{direction} \rVert}`$<br> $`r = \frac{\mathit{up} \times f}{\lVert \mathit{up} \times f \rVert}`$<br> $`u = f \times r`$<br> then $`\mathit{rotation} = \mathrm{from\_basis}(r, u, f)`$ |
 | `P_look_at(&t, target, up)` | faces `target` with `up` as the sky; `up` must not be parallel to the line to `target`, and `target` must not be the position | $`f = \frac{\mathit{target} - \mathit{position}}{\lVert \mathit{target} - \mathit{position} \rVert}`$<br> $`r = \frac{\mathit{up} \times f}{\lVert \mathit{up} \times f \rVert}`$<br> $`u = f \times r`$<br> then $`\mathit{rotation} = \mathrm{from\_basis}(r, u, f)`$ |

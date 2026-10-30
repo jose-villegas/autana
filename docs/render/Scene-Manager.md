@@ -19,7 +19,7 @@ block transactionally; attachment failure preserves the scene.
 
 | Array | One per | Holds |
 |---|---|---|
-| `locals[]` | entity | canonical local position, quaternion rotation and scale, in the parent's frame; loaded placements must decompose without shear or reflection |
+| `locals[]` | entity | canonical local position, quaternion rotation and scale, in the parent's frame; loaded placements must decompose without shear; a reflection loads as a negative x scale |
 | parents | entity | the scene entry's `entity_parents`, read in the pack: a lower entity or none |
 | `world_slots[]` | entity | its index in `worlds[]`, or none when it has no children |
 | `worlds[]` | entity with children | its world matrix, kept for its children; a separate block, absent when no entity has children |
