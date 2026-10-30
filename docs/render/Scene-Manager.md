@@ -33,7 +33,7 @@ block transactionally; attachment failure preserves the scene.
 | names | entity | the scene entry's, read in the pack with each name's hash; looked up only by `scene_find()` |
 
 Array lengths come from the scene's `SCNE` entry
-([Scene-Files.md](Scene-Files.md#scne-v5)). SCNE v5 carries entity name hashes, parents, authored lights, lighting settings, skins, animators and renderer colour-set selections.
+([SCNE.md](../assets/formats/SCNE.md)). SCNE v5 carries entity name hashes, parents, authored lights, lighting settings, skins, animators and renderer colour-set selections.
 Authored lights attach at load, and `scene_light_set_*()` attaches or changes
 them at run time; only skinned renderers are lit at run time, baked renderers
 keep their pack colors. Names and immutable mesh and track views point into
@@ -135,7 +135,7 @@ Every entity has at most one parent, listed before it in the entry, so one
 forward pass meets every parent before its children. A local transform is in
 the parent's frame; a world is the parent's world times the local, an exact
 `transformf_t` (content keeps parents' scale even:
-[Scene-Files.md](Scene-Files.md#scne-v5)).
+[SCNE.md](../assets/formats/SCNE.md)).
 
 | Step | When | Does |
 |---|---|---|
