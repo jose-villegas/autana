@@ -98,10 +98,19 @@ render_context_set_take(render_context_t* c, memory_take_fn take) {
     c->take = take;
 }
 
+/* Frame generation's measurements, gone: the next pair measures them. */
+static void
+forget_costs(render_context_t* c) {
+    c->generated_us = 0;
+    c->drawn_in_row = 0;
+    c->paying = false;
+}
+
 void
 render_context_forget(render_context_t* c) {
     raster_split_forget(&c->split);
     c->kept = false;
+    forget_costs(c); /* a new scene or view measures its own */
 }
 
 void
@@ -111,8 +120,7 @@ render_context_set_frame_generation(render_context_t* c, bool on) {
         return;
     }
     c->generating = on;
-    c->generated_us = 0;
-    c->drawn_in_row = 0;
+    forget_costs(c);
     if (!on) {
         framegen_target_free(&c->framegen);
     }
@@ -240,12 +248,14 @@ draw_second_view(render_context_t* c) {
 }
 #endif
 
-/* Whether the last generated frame cost FRAMEGEN_GAIN_PERCENT less than the
- * last drawn one. */
+/* Whether the last generated frame cost under (100 - FRAMEGEN_GAIN_PERCENT)%
+ * of the last drawn one, or while paying already, under all of it. While the
+ * drawn size changes the two were drawn at different sizes; the next pair
+ * corrects it. */
 static bool
 generation_pays(const render_context_t* c) {
-    return c->generating && c->generated_us != 0
-           && (int64_t)c->generated_us * 100 < (int64_t)c->drawn_us * (100 - FRAMEGEN_GAIN_PERCENT);
+    const int share = c->paying ? 100 : 100 - FRAMEGEN_GAIN_PERCENT;
+    return c->generating && c->generated_us != 0 && (int64_t)c->generated_us * 100 < (int64_t)c->drawn_us * share;
 }
 
 /* The ladder the policies price a drawn frame against. While generation
@@ -255,7 +265,7 @@ generation_pays(const render_context_t* c) {
 static const resolution_config_t*
 policy_config(render_context_t* c) {
     c->ladder.budget_us = c->shown_us;
-    if (generation_pays(c)) {
+    if (c->paying) {
         const int32_t shared_us =
             (FRAMEGEN_SHOWN_PER_DRAWN * c->shown_us) - ((FRAMEGEN_SHOWN_PER_DRAWN - 1) * c->generated_us);
         c->ladder.budget_us = shared_us > c->shown_us ? shared_us : c->shown_us;
@@ -264,14 +274,16 @@ policy_config(render_context_t* c) {
 }
 
 /* Whether this frame can be warped from the kept one: generation on, a drawn
- * frame kept, no debug view, the same viewport, and a target; and it pays,
- * has not been measured, or is due to be measured again. */
+ * frame kept, no debug view, the same viewport, and a target; and it pays
+ * (the verdict the drawn frame is then priced by), has not been measured, or
+ * is due to be measured again. */
 static bool
 can_generate(render_context_t* c, const render_view_t* view) {
     const raster_t* r = &c->raster;
     const viewport_t a = c->kept_view.viewport;
     const viewport_t b = view->viewport;
-    const bool worth = c->generated_us == 0 || c->drawn_in_row >= FRAMEGEN_RETRY_DRAWN || generation_pays(c);
+    c->paying = generation_pays(c);
+    const bool worth = c->generated_us == 0 || c->drawn_in_row >= FRAMEGEN_RETRY_DRAWN || c->paying;
     if (!c->generating || !worth || !c->kept || r->attachment_count != 0 || a.width != b.width || a.height != b.height
         || a.quarter != b.quarter) {
         return false;
@@ -328,7 +340,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     c->frame.width = r->width;
     c->frame.height = r->height;
     if (c->policy == RENDER_FIXED && !c->generating) {
-        /* Off: the plain draw, nothing timed or chosen; frame generation times it to weigh against. */
+        /* Off: the plain draw, nothing timed or chosen, unless frame generation needs the drawn cost. */
         c->frame.stats = raster_draw(r, view);
     } else {
         const int64_t began_us = timing_now_us();

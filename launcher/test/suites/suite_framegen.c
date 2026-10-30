@@ -144,6 +144,7 @@ show(render_context_t* c, raster_rig_t* r, const render_view_t* view, int32_t co
     TEST_ASSERT_TRUE(render_context_draw(c, r->instance, RASTER_RIG_QUADS, view, 0));
     (void)render_context_compose(c, destination, NULL);
     const bool generated = framegen_example_generated(c);
+    /* After compose: the context decides and prices from the costs before this frame's. */
     *(generated ? &c->generated_us : &c->drawn_us) = cost_us;
     return generated;
 }
@@ -170,10 +171,11 @@ test_dynamic_resolution_prices_a_drawn_frame_with_the_one_generated_from_it(void
     release_target();
 }
 
-/* Frames are generated only while a generated one costs FRAMEGEN_GAIN_PERCENT
- * less than a drawn one: one that saves less stops it, the drawn frames are
- * priced alone, and after FRAMEGEN_RETRY_DRAWN drawn frames one is generated
- * to measure it again. */
+/* Frames are generated once a generated one costs under
+ * (100 - FRAMEGEN_GAIN_PERCENT)% of a drawn one, and then while it costs less:
+ * one that saves less stops it, the drawn frames are priced alone, and after
+ * FRAMEGEN_RETRY_DRAWN drawn frames, or a forgotten view, one is generated to
+ * measure it again. */
 static void
 test_frames_are_generated_only_while_a_generated_one_costs_less(void) {
     raster_rig_t* r = open_rig();
@@ -190,7 +192,14 @@ test_frames_are_generated_only_while_a_generated_one_costs_less(void) {
     }
     TEST_ASSERT_TRUE(show(c, r, &view, saves_enough));
     TEST_ASSERT_FALSE(show(c, r, &view, drawn_us));
-    TEST_ASSERT_TRUE(show(c, r, &view, saves_enough));
+    TEST_ASSERT_TRUE(show(c, r, &view, saves_too_little)); /* paying: held */
+    TEST_ASSERT_FALSE(show(c, r, &view, drawn_us));
+    TEST_ASSERT_TRUE(show(c, r, &view, drawn_us)); /* saves nothing */
+    TEST_ASSERT_FALSE(show(c, r, &view, drawn_us));
+    TEST_ASSERT_FALSE(show(c, r, &view, drawn_us));
+    render_context_forget(c);
+    TEST_ASSERT_FALSE(show(c, r, &view, drawn_us));
+    TEST_ASSERT_TRUE(show(c, r, &view, drawn_us));
     release_target();
 }
 
