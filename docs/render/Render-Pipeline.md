@@ -253,7 +253,7 @@ Cost: `fit` in the bake-steps rows.
 
 ![A fitted mesh against the reference](../images/render/appearance-fitted-full-reference.png)
 
-Reference: [Scene-Files.md](Scene-Files.md#fitprune); measured in
+Reference: [Appearance-Fit.md](Appearance-Fit.md); measured in
 [Bake-Quality.md](Bake-Quality.md#appearance-fit-of-the-lite-and-full-meshes).
 
 ### Output
