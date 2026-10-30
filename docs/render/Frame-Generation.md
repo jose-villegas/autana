@@ -137,8 +137,8 @@ near objects (a lamp post, chair legs) is what is left.
 
 The on-request `run_framegen_perf_suite` draws each path at every
 half-picture step. At 24 poses along it, it warps the drawn frame one display
-step on, both cores taking half the rows, and fills the holes. Compose is
-the frame's own upscale into the half picture; the send overlaps it.
+step on, both cores taking half the rows, fills the holes and composes the
+generated picture into the half picture; the send overlaps it.
 
 <!-- generated: framegen-board sha256=22c6e04ff2ccbebac074a209146e63d5f3166699f58b0e3bdb739a1b1468c42c -->
 | Scene | Size | Drawn frame | Warp | Fill | Compose | Generated frame |
@@ -155,8 +155,9 @@ the frame's own upscale into the half picture; the send overlaps it.
 
 - A generated frame costs a third to two fifths of a drawn one at 184x224
   and about a quarter at 184x112.
-- The fill writes the whole generated picture back over the drawn one, colour
-  and depth, so compose reads it as a drawn frame; the holes alone are a few percent of the pixels.
+- The fill writes only the holes, a few percent of the pixels, from the
+  drawn frame into the warp's own picture, and compose reads that picture
+  (`raster_upscale_picture()`). The drawn frame stays as it was drawn.
 
 Where the warp's time goes. The same warp is timed with every splat off screen
 (the clear, the maths and the source reads), to the drawn view itself (adding
