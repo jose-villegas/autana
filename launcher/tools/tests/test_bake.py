@@ -73,11 +73,20 @@ def bake_of(key, tree, kind="mesh"):
 
 
 def mesh_process_stub(item, cache, lock=None, blender=None):
+    cache = pathlib.Path(cache)
     if item.holder == "fail":
+        (cache / "failed").touch()
         raise bake.BakeMissing("mesh worker failed")
     if item.holder == "settings":
         raise bake.SettingsError("mesh settings failed")
-    cache = pathlib.Path(cache)
+    if item.holder == "after-fail":
+        # Finishes well after its sibling failed, so only the keep after the pool's shutdown can export it.
+        deadline = time.monotonic() + 15
+        while not (cache / "failed").exists():
+            if time.monotonic() >= deadline:
+                raise bake.BakeMissing("the failing mesh never ran")
+            time.sleep(0.01)
+        time.sleep(1)
     if item.holder == "wait":
         deadline = time.monotonic() + 15
         while not (cache / "later.done").exists():
@@ -172,6 +181,14 @@ class MeshCommandTests(unittest.TestCase):
                 for path in self.root.glob("*.done"):
                     path.unlink()
 
+    def test_a_mesh_still_running_when_its_sibling_fails_is_exported_when_it_finishes(self):
+        self.found[0] = dataclasses.replace(self.found[0], holder="after-fail")
+        self.found[1] = dataclasses.replace(self.found[1], holder="fail")
+        done = self.command(capacity=2)
+        self.assertEqual(done.code, 1)
+        self.assertEqual([row["output"] for row in done.rows], [self.found[0].output])
+        self.assertFalse(list(self.root.glob("[23].done")), "no new mesh starts after the failure")
+
     def test_duplicate_keys_are_produced_once_even_with_again(self):
         self.found[0] = dataclasses.replace(self.found[0], holder="once")
         self.found = [self.found[0], self.found[1], self.found[0]]
@@ -187,6 +204,7 @@ class MeshCommandTests(unittest.TestCase):
         self.assertEqual({path: path.stat().st_mtime_ns for path in payloads}, payloads)
         self.assertEqual(done.code, 0, done.err)
         self.assertNotIn("mesh workers:", done.out)
+        self.assertEqual(sorted(row["output"] for row in done.rows), sorted(item.output for item in self.found))
 
 
 class TokenTests(unittest.TestCase):
@@ -1153,13 +1171,15 @@ class KeptWorkTests(FittedBakeCase):
     def uploaded(self):
         return sorted(row["output"] for row in produce.import_run(self.out, RUN, self.root / "lock-cache").values())
 
-    def failed_run(self):
-        """A run that made two fits and failed making the third; its upload is kept as run RUN's."""
-        code, produced = self.bake(self.cache, fail=self.outputs[2])
+    def failed_run(self, attempt=1, cache=None, gpu=GPU):
+        """Attempt `attempt` of run RUN, which made two fits and failed making the third; its upload is kept
+        as run_files gives it, one folder per artifact."""
+        code, produced = self.bake(cache or self.cache, fail=self.outputs[2], gpu=gpu,
+                                   from_run=RUN if attempt > 1 else None)
         self.assertEqual(code, 1)
         self.assertEqual(produced, self.outputs[:2])
         self.uploads = {RUN: self.root / "run-upload"}
-        shutil.copytree(self.out, self.uploads[RUN])
+        shutil.copytree(self.out, self.uploads[RUN] / f"bakes-gpu-{attempt}")
         shutil.rmtree(self.out)
 
     def test_a_run_that_fails_after_two_fits_uploads_both(self):
@@ -1167,6 +1187,14 @@ class KeptWorkTests(FittedBakeCase):
         self.assertEqual(sorted(row["output"] for row in
                                 produce.import_run(self.uploads[RUN], RUN, self.root / "lock-cache").values()),
                          sorted(self.outputs[:2]))
+
+    def test_a_rerun_takes_its_hosts_fits_though_a_later_attempt_made_them_on_another_gpu(self):
+        self.failed_run()
+        other = "NVIDIA GeForce RTX 5080 Laptop GPU"
+        self.failed_run(attempt=2, cache=self.root / "other", gpu=other)
+        code, produced = self.bake(self.root / "cold", from_run=RUN)
+        self.assertEqual(code, 0)
+        self.assertEqual(produced, self.outputs[2:])
 
     def test_a_rerun_on_the_same_cache_makes_only_the_unfinished_fit_and_uploads_all_three(self):
         self.failed_run()
@@ -1182,11 +1210,26 @@ class KeptWorkTests(FittedBakeCase):
         self.assertEqual(produced, self.outputs[2:])
         self.assertEqual(self.uploaded(), sorted(self.outputs))
 
-    def test_a_rerun_on_another_gpu_model_remakes_every_fit(self):
+    def test_a_rerun_on_another_gpu_model_or_none_remakes_every_fit(self):
         self.failed_run()
-        code, produced = self.bake(self.root / "cold", from_run=RUN, gpu="NVIDIA GeForce RTX 5080 Laptop GPU")
-        self.assertEqual(code, 0)
-        self.assertEqual(produced, self.outputs)
+        for gpu in ("NVIDIA GeForce RTX 5080 Laptop GPU", None):
+            with self.subTest(gpu=gpu):
+                code, produced = self.bake(self.root / f"cold-{gpu}", from_run=RUN, gpu=gpu)
+                self.assertEqual(code, 0)
+                self.assertEqual(produced, self.outputs)
+
+    def test_a_mesh_or_export_is_adopted_only_from_the_same_host_and_cpu_vendor(self):
+        here = {"host": f"{platform.system()} {platform.machine()}", "cpu_vendor": "AuthenticAMD"}
+        rows = {"like": here, "vendor": {**here, "cpu_vendor": "GenuineIntel"},
+                "host": {**here, "host": "Windows AMD64" if platform.system() != "Windows" else "Linux x86_64"},
+                "unnamed": {"host": here["host"]}}
+        rows = [{"key": name * 8, "sha256": FIT_SHA256, "suffix": bake.MESH_SUFFIX, **fields}
+                for name, fields in rows.items()]
+        with mock.patch.object(bake, "cpu_vendor", return_value="AuthenticAMD"), \
+                mock.patch.object(bake, "gpu_name", return_value=self.GPU):
+            adopted = produce.adopt(rows, self.cache)
+        self.assertEqual([row["key"] for row in adopted], ["like" * 8])
+        self.assertEqual(sorted(path.stem for path in (self.cache / produce.KEY_INDEX).glob("*.json")), ["like" * 8])
 
     def test_a_bake_killed_mid_fit_leaves_every_finished_fit_uploadable(self):
         """A lost heavy lock stops the bake's whole process tree (device.run_to_end): no handler of its own runs."""
@@ -1614,6 +1657,20 @@ class ProduceTests(unittest.TestCase):
                     bake.lock_rows(found, {}, bake.runs_made([alone], self.root / f"c{alone}"))
             rows = bake.lock_rows(found, {}, bake.runs_made([41, 42], self.root / "both"))
         self.assertEqual([row["run"] for row in rows], [41, 42])
+
+    def test_a_key_two_attempts_of_one_run_made_differently_locks_with_the_later_attempts_bytes(self):
+        row = self.produce()
+        upload = self.root / "run41"
+        later = {**row, "sha256": hashlib.sha256(b"later").hexdigest()}
+        for attempt, made in ((10, later), (2, row)):
+            produce.export(row, self.cache, upload / f"bakes-cpu-{attempt}")
+            if made is later:
+                artifact = upload / f"bakes-cpu-{attempt}"
+                (artifact / "files" / f"{later['sha256']}.mesh").write_bytes(b"later")
+                (artifact / produce.KEY_INDEX / f"{row['key']}.json").write_text(json.dumps(later), encoding="utf-8")
+        with mock.patch.object(bake, "run_files", side_effect=lambda run, folder: upload):
+            made = bake.runs_made([41], self.root / "attempts")
+        self.assertEqual(made[row["key"]]["sha256"], later["sha256"])
 
     def test_two_runs_that_made_one_key_differently_fail_naming_both(self):
         row = self.produce()

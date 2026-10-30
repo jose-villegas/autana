@@ -1243,10 +1243,12 @@ def main(argv=None):
                       f"the lock's meshes: {mesh_cpu_vendor or 'not named'}")
                 if mesh_cpu_vendor and cpu != mesh_cpu_vendor and any(to_make(bake, "mesh") for bake in found):
                     raise BakeMissing(f"this host's CPU is {cpu or 'not named'}, but {rerun_on(mesh_cpu_vendor)}")
-            if args.from_run:
-                reused = produce.adopt(runs_made(args.from_run, cache).values(), cache)
-                print(f"run {', '.join(map(str, args.from_run))}: {len(reused)} bakes made on a host like this one "
-                      "are taken as made here")
+            for run in args.from_run or ():
+                # Each upload apart: two attempts of one run may have made one key on different hosts.
+                with tempfile.TemporaryDirectory() as folder:
+                    reused = [row for upload in sorted(run_files(run, pathlib.Path(folder)).iterdir())
+                              for row in produce.adopt(produce.import_run(upload, run, cache).values(), cache)]
+                print(f"run {run}: {len(reused)} bakes made on a host like this one are taken as made here")
 
             def keep(row):
                 if args.out:
