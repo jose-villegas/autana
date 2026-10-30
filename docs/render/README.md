@@ -22,7 +22,7 @@ the [demo assets](../../launcher/demo/README.md).
 | Folder | Pages |
 |---|---|
 | [offline/](offline/README.md): import, bake, fit, on the host | [Mesh-Import](offline/Mesh-Import.md), [Bake-Method](offline/Bake-Method.md), [Appearance-Fit](offline/Appearance-Fit.md), [Bake-Quality](offline/Bake-Quality.md), [Baked-Mesh](offline/Baked-Mesh.md) |
-| [scene/](scene/README.md): the scene file and its runtime | [Scene-Files](scene/Scene-Files.md), [Scene-Manager](scene/Scene-Manager.md), [Camera](scene/Camera.md) |
+| [scene/](scene/README.md): the scene file and its runtime | [Scene-Files](scene/Scene-Files.md), [Scene-Manager](scene/Scene-Manager.md), [Camera](scene/Camera.md); entry bytes [SCNE](../assets/formats/SCNE.md) |
 | [animation/](animation/README.md): tracks and skinned meshes | [Skinned-Meshes](animation/Skinned-Meshes.md), [Animation-Tracks](animation/Animation-Tracks.md), [Skeleton-and-Skin](animation/Skeleton-and-Skin.md), [Skinned-Lighting](animation/Skinned-Lighting.md) |
 
 | Every frame, on the board | |
