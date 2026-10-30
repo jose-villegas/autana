@@ -140,6 +140,26 @@ class NightlyTests(unittest.TestCase):
                                     board="20E8", lane="0/2", previous=None,
                                     suite=[("suite", "-", "-")], selftest=None)
 
+    def before_cutoff(self, scans):
+        """Puts the test clock `scans` fleet scans before the night's BOARD_LAST_START."""
+        self.clock.value = schedule.night_cutoff(self.clock.now()) - timedelta(seconds=scans * chain.RESCAN_SECONDS)
+
+    @staticmethod
+    def row(board, **fields):
+        """A board as the fleet lists it, free unless `fields` say otherwise."""
+        return dict(dict(board=board, port="COM5", state="unlocked", holder=None, waiting=[]), **fields)
+
+    def fleet(self, *listings):
+        """Each fleet scan answers the next (rows, unreachable hosts) listing; the last one repeats."""
+        answers = iter(listings)
+        last = [([], [])]
+
+        def listing():
+            last[0] = next(answers, last[0])
+            boards, unreachable = last[0]
+            return dict(boards=list(boards), unreachable=list(unreachable))
+        return patch.object(chain, "board_listing", side_effect=listing)
+
     def steps(self, indices=(1, 3, 5), anchor=False):
         return [chain.Step(self.commits[i], 100 + i, "anchor" if anchor and n == 0 else "new", i + 1)
                 for n, i in enumerate(indices)]
@@ -335,6 +355,8 @@ class NightlyTests(unittest.TestCase):
             self.assertEqual(chain.main(), 1)
 
     def supervise(self, *, failed=False, unplugged=False):
+        # Room for the replayed first lane, which moves the clock, to finish before the cut-off.
+        self.before_cutoff(30)
         previous = dict(last_measured=self.commits[2], last_attempted=self.commits[4], machine=OTHER_MACHINE)
         chain.write_json(self.args.data / "scoped/2124/2026-10-17-2230/night.json", previous)
         planned = dict(tip=self.commits[-1], night="2026-10-18", started=self.clock.now().isoformat(),
@@ -370,8 +392,7 @@ class NightlyTests(unittest.TestCase):
             return SimpleNamespace(poll=lambda: next(polls, int(any(r.outcome == "build_failed" for r in results))),
                                    wait=lambda: int(any(r.outcome == "build_failed" for r in results)))
 
-        boards = iter((["20E8", "2124"],))
-        with patch.object(chain, "plugged_boards", side_effect=lambda: next(boards, ["20E8", "2124"])):
+        with self.fleet(([self.row("20E8"), self.row("2124")], [])):
             status = chain.run_night(args, clock=self.clock, launch=launch)
         return status, commands, json.loads(path.read_text()), manifests
 
@@ -410,6 +431,7 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual(events, ["start FAK1", "start FAK2", "finish FAK1", "finish FAK2"])
 
     def test_supervisor_does_not_publish_joiner_when_launch_fails(self):
+        self.before_cutoff(2)
         path = self.root / "plan.json"
         planned = dict(tip=self.commits[-1], marker=self.clock.now().isoformat(),
                        from_sha=self.commits[3], max_steps=1,
@@ -423,7 +445,7 @@ class NightlyTests(unittest.TestCase):
                 raise OSError("cannot start joining lane")
             polls = iter((None, None))
             return SimpleNamespace(poll=lambda: next(polls, 0), wait=lambda: 0)
-        with patch.object(chain, "plugged_boards", return_value=["FAK1", "FAK2"]):
+        with self.fleet(([self.row("FAK1"), self.row("FAK2")], [])):
             self.assertEqual(chain.run_night(args, clock=self.clock, launch=launch), 1)
         self.assertEqual(json.loads(path.read_text()), planned)
 
@@ -441,6 +463,7 @@ class NightlyTests(unittest.TestCase):
         close.assert_called_once_with(process)
 
     def test_supervisor_handles_rescan_errors_and_releases_early(self):
+        self.before_cutoff(2)
         path = self.root / "plan.json"
         planned = dict(tip=self.commits[-1], marker=self.clock.now().isoformat(),
                        lanes={"20E8": dict(lane="0/1", estimate=42)})
@@ -448,14 +471,14 @@ class NightlyTests(unittest.TestCase):
         args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data,
                                out=self.args.out, suite=self.args.suite)
         process = Mock()
-        process.poll.side_effect = [None, None, 0]
+        process.poll.return_value = 0
         process.wait.return_value = 0
-        with patch.object(chain, "plugged_boards", return_value=["20E8", "2124"]), \
+        with self.fleet(([self.row("20E8"), self.row("2124")], [])), \
                 patch.object(chain, "plan_lane", side_effect=ValueError("bad history")) as lane:
             self.assertEqual(chain.run_night(args, clock=self.clock, launch=lambda *a, **kw: process), 1)
         lane.assert_called_once()
         process.wait.assert_called_once()
-        self.assertLess(len(self.clock.sleeps), 10)
+        self.assertEqual(self.clock.sleeps, [chain.RESCAN_SECONDS] * 2)
 
     def test_supervisor_interrupt_terminates_and_waits_every_child(self):
         path = self.root / "plan.json"
@@ -473,6 +496,7 @@ class NightlyTests(unittest.TestCase):
         process.wait.assert_called_once()
 
     def test_supervisor_lane_settings_and_plan_selection(self):
+        self.before_cutoff(2)
         path = self.root / "plan.json"
         chain.write_json(path, dict(tip=self.commits[-1], marker=self.clock.now().isoformat(),
             from_sha=self.commits[3], max_steps=1, lanes={"20E8": dict(lane="0/2", estimate=42)}))
@@ -486,6 +510,7 @@ class NightlyTests(unittest.TestCase):
                 return "C:/bash.exe\n" if command[1] == "-w" else "/captures/ci.log\n"
             return original(command, **options)
         with patch.dict(os.environ, SELFTEST_BOARD="20E8", BOARD_CI_LOG="inherited"), \
+                self.fleet(([self.row("20E8"), self.row("2124")], [])), \
                 patch.object(chain.shutil, "which", side_effect=lambda name: "/tools/" + name), \
                 patch.object(chain.subprocess, "check_output", side_effect=converted):
             self.assertEqual(chain.run_night(args, clock=self.clock, launch=launch), 0)
@@ -540,6 +565,57 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual(status, 1)
         self.assertEqual(len(commands), 2)
         self.assertEqual([step["outcome"] for step in manifests["2124"]["steps"]], ["measured"] * 2)
+
+    def empty_night(self, scans):
+        self.before_cutoff(scans)
+        path = self.root / "plan.json"
+        chain.write_json(path, dict(tip=self.commits[-1], night="2026-10-18", started=self.clock.now().isoformat(),
+                                    marker=self.clock.now().isoformat(), lanes={}))
+        return SimpleNamespace(plan=path, repo=self.repo, data=self.args.data, out=self.args.out,
+                               suite=self.args.suite)
+
+    def test_night_starts_lanes_on_any_hosts_boards_as_they_free_until_the_cutoff(self):
+        args = self.empty_night(4)
+        cutoff = schedule.night_cutoff(self.clock.now())
+        launched = {}
+
+        def launch(command, **options):
+            remote = "remote-lane.sh" in command
+            board = command[4] if remote else command[command.index("--board") + 1]
+            wait = command[6] if remote else command[command.index("--wait") + 1]
+            launched[board] = (self.clock.now(), wait)
+            return SimpleNamespace(poll=lambda: 0, wait=lambda: 0)
+        book2, legion = dict(host="book2", name="Book2"), dict(host="legion", name="Legion")
+        held = self.row("2124", state="held", holder=dict(owner="day@job:1"))
+        gated = self.row("20E8", gated="person at the desk", **book2)
+        queued = self.row("A308", waiting=[dict(owner="day@job:2")], **legion)
+        free = [self.row("2124"), self.row("20E8", **book2), self.row("A308", **legion)]
+        with patch.dict(os.environ, REMOTE_LANE_COMMAND="bash remote-lane.sh"), \
+                patch.object(chain.shutil, "which", side_effect=lambda name: name), \
+                self.fleet(([held, gated], ["legion"]), ([held, gated, queued], []), (free, [])) as scans, \
+                patch("builtins.print") as said:
+            self.assertEqual(chain.run_night(args, clock=self.clock, launch=launch), 0)
+        # Each board starts at the first scan that finds it free, and queues on its lock no later than the cut-off.
+        last_scan = cutoff - timedelta(seconds=chain.RESCAN_SECONDS)
+        self.assertEqual(launched, {board: (last_scan, str(chain.RESCAN_SECONDS)) for board in ("2124", "20E8", "A308")})
+        lanes = json.loads(args.plan.read_text())["lanes"]
+        self.assertEqual({board: (lane["lane"], lane.get("host")) for board, lane in lanes.items()},
+                         {"2124": ("0/1", None), "20E8": ("0/1", "book2"), "A308": ("0/1", "legion")})
+        self.assertEqual(scans.call_count, 3)
+        said = [c.args[0] for c in said.call_args_list]
+        self.assertEqual([line for line in said if "legion" in line],
+                         ["::warning::remote boards not listed from legion",
+                          "::notice::remote boards listed again from legion"])
+
+    def test_night_with_no_free_board_waits_until_the_cutoff_and_fails(self):
+        args = self.empty_night(3)
+        cutoff = schedule.night_cutoff(self.clock.now())
+        launch = Mock(side_effect=AssertionError("no board was free"))
+        with self.fleet(([self.row("2124", state="held")], [])) as scans, patch("builtins.print"):
+            self.assertEqual(chain.run_night(args, clock=self.clock, launch=launch), 1)
+        self.assertEqual(self.clock.now(), cutoff)
+        self.assertEqual(scans.call_count, 2)
+        self.assertEqual(json.loads(args.plan.read_text())["lanes"], {})
 
     def test_image_hash_excludes_metadata_but_includes_code_and_assets(self):
         build = self.root / "image"
@@ -797,7 +873,7 @@ class NightlyTests(unittest.TestCase):
                 self.assertTrue(json.loads(args.out.read_text())["lanes"])
 
     def remote_listing(self, *boards, unreachable=()):
-        listing = json.dumps({"boards": [dict(board=board, port="COM5", host=host, name=host.title())
+        listing = json.dumps({"boards": [self.row(board, host=host, name=host.title())
                                          for board, host in boards], "unreachable": list(unreachable)})
         original = subprocess.check_output
 
@@ -813,7 +889,7 @@ class NightlyTests(unittest.TestCase):
                                from_sha=None, max_steps=None, selftest_board=None)
         # A host that sees this machine's board too (a loop back) does not take its lane.
         with patch.dict(os.environ, REMOTE_LANE_COMMAND="remote-lane"), \
-                patch.object(chain, "local_boards", return_value=[dict(board="44:BD:8D:78:21:24", port="COM4")]), \
+                patch.object(chain, "local_boards", return_value=[self.row("44:BD:8D:78:21:24", port="COM4")]), \
                 self.remote_listing(("44:BD:8D:78:20:E8", "book2"), ("2124", "gpu-runner")), \
                 patch.object(chain, "gpu_on_host", return_value=True), \
                 patch.object(chain, "wait_idle"), \
@@ -829,11 +905,11 @@ class NightlyTests(unittest.TestCase):
         args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=None, data=self.args.data,
                                out=self.root / "plan.json", marker=self.clock.now().isoformat(),
                                from_sha=None, max_steps=None, selftest_board=None)
-        listing = json.dumps({"boards": [dict(board="A308", port="COM5", host="legion", name="Legion",
-                                              gated="person at the desk")], "unreachable": []})
+        listing = json.dumps({"boards": [self.row("A308", host="legion", name="Legion",
+                                                  gated="person at the desk")], "unreachable": []})
         real = subprocess.check_output
         with patch.dict(os.environ, REMOTE_LANE_COMMAND="remote-lane"), \
-                patch.object(chain, "local_boards", return_value=[dict(board="2124", port="COM4")]), \
+                patch.object(chain, "local_boards", return_value=[self.row("2124", port="COM4")]), \
                 patch.object(chain.subprocess, "check_output",
                              side_effect=lambda command, **o: listing if command[1:] == ["boards"] else real(command, **o)), \
                 patch.object(chain, "gpu_on_host", return_value=True), \
@@ -841,15 +917,14 @@ class NightlyTests(unittest.TestCase):
                 patch("builtins.print") as said:
             chain.plan(args, self.clock)
         self.assertEqual(list(json.loads(args.out.read_text())["lanes"]), ["2124"])
-        self.assertTrue(any("A308 on Legion skipped: person at the desk" in c.args[0] for c in said.call_args_list))
+        self.assertTrue(any("A308 on Legion waits for the rescan: person at the desk" in c.args[0] for c in said.call_args_list))
 
     def test_unreachable_remote_hosts_leave_this_machines_lanes_and_warn(self):
         failure = subprocess.CalledProcessError(1, ["remote-lane", "boards"])
         with patch.dict(os.environ, REMOTE_LANE_COMMAND="remote-lane"), \
                 patch.object(chain.subprocess, "check_output", side_effect=failure), \
-                patch("builtins.print") as said:
+                patch("builtins.print"):
             self.assertEqual(chain.remote_boards(), ([], [chain.REMOTE_LANE_ENV]))
-        self.assertTrue(any(c.args[0].startswith("::warning::") for c in said.call_args_list))
         with patch.dict(os.environ, REMOTE_LANE_COMMAND="remote-lane"), self.remote_listing(unreachable=["book2"]), \
                 patch("builtins.print"):
             self.assertEqual(chain.remote_boards(), ([], ["book2"]))
@@ -862,7 +937,7 @@ class NightlyTests(unittest.TestCase):
             self.assertEqual(chain.remote_command(), ["/git/bash", "/x/remote-lane.sh"])
 
     def test_boards_lists_this_machines_and_remote_boards_once(self):
-        local = [dict(board="44:BD:8D:78:21:24", port="COM4")]
+        local = [self.row("44:BD:8D:78:21:24", port="COM4")]
         with patch.dict(os.environ, REMOTE_LANE_COMMAND="remote-lane"), \
                 patch.object(chain, "local_boards", return_value=local), \
                 self.remote_listing(("20E8", "book2"), ("2124", "gpu-runner"), unreachable=["legion"]):
@@ -1063,9 +1138,11 @@ class NightlyTests(unittest.TestCase):
 
     def test_plan_without_boards_takes_every_plugged_board(self):
         self.plugged_patch.stop()
-        listing = {"boards": [{"board": "44:BD:8D:78:20:E8", "port": "COM3"},
-                              {"board": "44:BD:8D:78:21:24", "port": None},
-                              {"board": "90:70:69:FE:A3:08", "port": "COM5"}]}
+        listing = {"boards": [self.row("44:BD:8D:78:20:E8", port="COM3"),
+                              self.row("44:BD:8D:78:21:24", port=None),
+                              self.row("90:70:69:FE:A3:08"),
+                              # A held board waits for the night's rescan instead of queueing behind its holder.
+                              self.row("44:BD:8D:78:B0:B0", state="held", holder=dict(owner="day@job:1"))]}
         args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=None, data=self.args.data,
                                out=self.root / "plan.json", marker=self.clock.now().isoformat(), from_sha=None, max_steps=None,
                                selftest_board=None)
@@ -1080,11 +1157,14 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual({board: lane["lane"] for board, lane in planned["lanes"].items()},
                          {"20E8": "0/2", "A308": "1/2"})
         self.assertEqual(output.getvalue().splitlines(), ["SCOPED_BOARDS=20E8 A308", "SELFTEST_BOARD=20E8"])
+        # No free board: the plan is empty and the night waits for one.
         listing["boards"] = [dict(board, port=None) for board in listing["boards"]]
-        args.boards = None
+        args.boards = args.selftest_board = None
         with patch.object(chain.subprocess, "check_output", side_effect=devices), \
-                self.assertRaises(SystemExit):
+                patch("sys.stdout", new_callable=io.StringIO) as output:
             chain.plan(args, self.clock, request=lambda *a: {"workflow_runs": []})
+        self.assertEqual(json.loads(args.out.read_text())["lanes"], {})
+        self.assertEqual(output.getvalue().splitlines(), ["SCOPED_BOARDS=", "SELFTEST_BOARD="])
 
     def test_cleanup_fallback_deletes_tree_and_copies_records(self):
         original_git, original_replay, original_remove = chain.git, Replay.__call__, chain.remove_output
@@ -1144,7 +1224,7 @@ class LaneSettingsTests(unittest.TestCase):
         workflow = yaml.safe_load((PERF.parents[2] / ".github/workflows/nightly-perf.yml").read_text())
         steps = {step.get("name"): step for step in workflow["jobs"]["nightly"]["steps"]}
         lane_step = steps["Run each board lane and wait for all"]
-        self.assertEqual(lane_step["if"], "${{ !cancelled() && env.SCOPED_BOARDS != '' }}")
+        self.assertEqual(lane_step["if"], "${{ !cancelled() && steps.plan.outcome == 'success' }}")
         for step in ("Summarize board outcomes", "Publish night manifests and LNT reports"):
             self.assertEqual(steps[step]["if"], "always() && env.PERF_DATA != ''")
 

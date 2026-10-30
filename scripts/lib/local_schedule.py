@@ -19,6 +19,9 @@ NIGHT_START = "01:00"
 # Boards start after the GPU's night work: two hours of day board time when no GPU work is queued.
 BOARD_START = "03:00"
 STARTS = {"NIGHT_START": NIGHT_START, "BOARD_START": BOARD_START}
+# The board night starts no new lane after this local time on its marker's date; running lanes finish.
+BOARD_LAST_START = "05:00"
+LOCAL_TIMES = dict(STARTS, BOARD_LAST_START=BOARD_LAST_START)
 NIGHT_ZONE = "UTC"
 HOSTED_WAIT_SECONDS = 350 * 60
 GPU_LABEL = "gpu"
@@ -47,11 +50,16 @@ class Clock:
         time.sleep(seconds)
 
 
+def local_time(name, value=None):
+    """The hour and minute of the local time setting `name`: `value`, else its variable, else its constant."""
+    value = value or os.environ.get(name) or LOCAL_TIMES[name]
+    if not re.fullmatch(r"0[0-5]:[0-5][0-9]", value):
+        raise ValueError(f"{name} must be HH:MM in 00:00–05:59: {value!r}")
+    return tuple(map(int, value.split(":")))
+
+
 def next_marker(trigger, night_start=None, start="NIGHT_START"):
-    night_start = night_start or os.environ.get(start) or STARTS[start]
-    if not re.fullmatch(r"0[0-5]:[0-5][0-9]", night_start):
-        raise ValueError(f"{start} must be HH:MM in 00:00–05:59: {night_start!r}")
-    hour, minute = map(int, night_start.split(":"))
+    hour, minute = local_time(start, night_start)
     night_zone = os.environ.get("NIGHT_ZONE") or NIGHT_ZONE
     try:
         zone = ZoneInfo(night_zone)
@@ -63,6 +71,13 @@ def next_marker(trigger, night_start=None, start="NIGHT_START"):
         date += timedelta(days=1)
         candidate = datetime(date.year, date.month, date.day, hour, minute, tzinfo=zone)
     return candidate
+
+
+def night_cutoff(marker):
+    """When the board night that starts at `marker` stops starting lanes: BOARD_LAST_START on its date.
+    The marker carries NIGHT_ZONE's offset, so the board machine needs no time zone data."""
+    hour, minute = local_time("BOARD_LAST_START")
+    return marker.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
 
 def trigger_time(event, schedule, now):
