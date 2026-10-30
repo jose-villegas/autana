@@ -6,7 +6,7 @@ launcher/tools/render/render_doc_images.sh runs it on the capture and scores
 kept in docs/render/data/.
 
     python launcher/tools/r3d/dynres_report.py CAPTURE [CAPTURE ...] --tables DIR --chart PNG
-        [--quality CAMERA=CSV ...]
+        [--quality CAMERA=CSV ...] [--upscale CSV]
 
 CAPTURE is a device log holding the frame-cost suite's `scale_split`,
 `scale_spans`, `dynres_step` and `dynres_frames` lines; a later line replaces
@@ -15,7 +15,9 @@ last. CSV is the per-size reference score a scene's quality script writes
 (width,height,frame,t_ms,mean_delta_e,p95_delta_e,ssim); each flown frame takes
 the score of its size at the nearest scored time. DIR receives
 dynres-stages.md, dynres-findings.md, dynres-policies.md and
-dynres-prediction.md, one per block.
+dynres-prediction.md, one per block. --upscale takes the upscale filter
+scores (upscale_quality.sh: those columns after scene and filter) and adds
+dynres-upscale.md.
 """
 
 import argparse
@@ -213,6 +215,33 @@ def prediction_table(runs, refit=None):
     return "\n".join(lines)
 
 
+UPSCALE_COLUMNS = (("mean_delta_e", "mean dE", "%.2f"), ("p95_delta_e", "p95 dE", "%.1f"), ("ssim", "SSIM", "%.3f"),
+                   ("edge_delta_e", "edge dE", "%.2f"), ("interior_delta_e", "interior dE", "%.2f"))
+
+
+def upscale_table(path):
+    """Each scene and size's path mean under each filter, the first filter
+    in the file against the second."""
+    groups = {}
+    with open(path, newline="") as handle:
+        for row in csv.DictReader(handle):
+            key = (row["scene"], (int(row["width"]), int(row["height"])))
+            groups.setdefault(key, {}).setdefault(row["filter"], []).append(row)
+    filters = list(next(iter(groups.values())))
+    if len(filters) != 2:
+        raise SystemExit(f"{path}: needs two filters, has {filters}")
+    lines = ["| Scene | Size | " + " | ".join(label for _field, label, _form in UPSCALE_COLUMNS) + " |",
+             "|---|---|" + "---|" * len(UPSCALE_COLUMNS)]
+    for (scene, (width, height)), by_filter in groups.items():
+        cells = []
+        for field, _label, form in UPSCALE_COLUMNS:
+            a, b = (statistics.mean(float(row[field]) for row in by_filter[name]) for name in filters)
+            cells.append(f"{form % a} → {form % b}")
+        lines.append(f"| {scene} | {width}x{height} | " + " | ".join(cells) + " |")
+    return "\n".join(lines) + (f"\n\nEach cell is {filters[0]} → {filters[1]}, the mean over the path's frames against "
+                               "the reference at full size; lower dE and higher SSIM are closer.")
+
+
 def chart(rows, path):
     from docs.plot_style import save, subplots
 
@@ -244,6 +273,7 @@ def main():
     parser.add_argument("--chart", required=True)
     parser.add_argument("--quarter", choices=QUARTERS, default="portrait")
     parser.add_argument("--quality", action="append", default=[], metavar="CAMERA=CSV")
+    parser.add_argument("--upscale", metavar="CSV")
     args = parser.parse_args()
     refit = {}
     splits, spans, ladders, runs = read_captures(args.captures, refit, args.quarter)
@@ -259,6 +289,8 @@ def main():
     args.tables.mkdir(parents=True, exist_ok=True)
     tables = {"dynres-stages": stages_table(splits, spans), "dynres-findings": findings_table(splits, spans),
               "dynres-policies": policies_table(rows), "dynres-prediction": prediction_table(runs, refit)}
+    if args.upscale:
+        tables["dynres-upscale"] = upscale_table(args.upscale)
     for name, body in tables.items():
         label = f"Render quarter={args.quarter}.\n\n" if args.quarter != "portrait" else ""
         (args.tables / f"{name}.md").write_text(label + body + "\n", encoding="utf-8")

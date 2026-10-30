@@ -18,7 +18,10 @@
 /* Attributes run in fixed point: depth as 16.8, colour channels as 8.8, whose
  * steepest real step (255 levels in one pixel) is far below the clamp. Only a
  * sliver's depth step can reach 2^22; with that bound and at most a screen of
- * steps from the triangle's corner, every sum stays inside int32. */
+ * steps from the triangle's corner, every sum stays inside int32. A vertex
+ * past the screen's edge may store more than DEPTH_MAX, as depth is scaled to
+ * the nearest thing on screen; the plane's base, taken on screen, comes back
+ * in range at the cost of a code or two of float rounding. */
 #define ATTRIBUTES  4
 #define DEPTH_MAX   ((int32_t)R3D_DEPTH_NEAREST << R3D_DEPTH_SHIFT)
 #define DEPTH_SCALE ((float)DEPTH_MAX)

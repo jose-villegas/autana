@@ -103,15 +103,16 @@ flowchart TB
     subgraph Census["raster_census()"]
         direction LR
         Picture["r3d_lens_init()<br/><i>for the picture</i><br/>r3d_lens_place()<br/><i>per instance</i>"] --> Cull
-        Cull["r3d_pipeline_cull()<br/><i>walk the tree, nearest first</i>"]
+        Cull["r3d_pipeline_cull()<br/><i>walk the tree, nearest first;<br/>bound each kept box's depth</i>"] --> Scale
+        Scale["inverse_depth_scale_fit()<br/><i>the depth scale</i>"]
     end
-    Census --> List["the scratch block's culled list<br/><i>fixed offset across render sizes</i>"]
+    Census --> List["the scratch block's census<br/><i>depth scale, then culled list;<br/>fixed offset across render sizes</i>"]
     View --> Draw
     Size["the render size"] --> Draw
     List --> Draw
     subgraph Draw["raster_draw_culled()"]
         direction LR
-        Fit["r3d_lens_init(), r3d_lens_fit(), r3d_lens_place()<br/><i>per instance, fitted to the render size</i>"] --> Transform["r3d_pipeline_transform()<br/><i>each vertex once</i>"]
+        Fit["r3d_lens_init(), r3d_lens_fit(), r3d_lens_place(),<br/>r3d_lens_set_depth_near()<br/><i>per instance, fitted to the render size</i>"] --> Transform["r3d_pipeline_transform()<br/><i>each vertex once</i>"]
         Transform --> DrawStage["r3d_pipeline_draw()<br/><i>near clip, r3d_span</i>"]
     end
     Draw --> Upscale["raster_upscale()<br/><i>into the destination</i>"]
@@ -121,7 +122,7 @@ A caller builds a frame view and passes its `const render_view_t*`:
 
 | Caller | Calls |
 |---|---|
-| Draws at a set size | `raster_draw()`, which culls and draws each instance in turn with one fitted lens shared by culling and drawing, then `raster_upscale()` with the destination width and height |
+| Draws at a set size | `raster_draw()`, which culls every instance, fits the [depth scale](#depth) to what it kept, then draws each in turn with the fitted lens culling used, then `raster_upscale()` with the destination width and height |
 | Picks the render size from what culling kept, as the render context does | `raster_census()`, sets the size, then `raster_draw_culled()` with the same view, then `raster_upscale()` |
 | A suite or tool that schedules the stages itself | `r3d_pipeline.h`'s stages |
 
@@ -238,7 +239,7 @@ A row may also carry two optional hooks:
 
 | Row hook | What it does |
 |---|---|
-| `second_view` | After the frame's draw and after each draw it asks for, may name another view and fill the census list with the clusters to draw through it; the frame's stats stay those of the first draw |
+| `second_view` | After the frame's draw and after each draw it asks for, may name another view and fill the census list with the clusters to draw through it, and its depth scale; the frame's stats stay those of the first draw |
 | `overlay` | Draws lines over the composed picture; the shell then composes at full size, not into a half picture |
 
 - The ramp is stretched over the range this frame drew: the most detail
@@ -253,6 +254,50 @@ The depth and depth-tile views along a flythrough:
 
 ![The depth view along a flythrough](../images/render/sponza-depth.gif)
 ![The depth-tile view along a flythrough](../images/render/sponza-tiles.gif)
+
+## Depth
+
+The depth buffer holds 16-bit inverse depth: a point at view depth $`z`$
+stores $`\mathrm{R3D\_DEPTH\_NEAREST}\cdot d_{near}/z`$, larger when nearer.
+Inverse depth interpolates linearly across the screen, so a span steps it
+with one add per pixel.
+
+Two surfaces a gap $`h`$ apart, seen from height $`H`$ above them at view
+depth $`z`$, are this many steps apart:
+
+```math
+N = \mathrm{R3D\_DEPTH\_NEAREST}\cdot\frac{d_{near}\,h}{H\,z}
+```
+
+Below one step they tie, and which one shows flips as the camera moves.
+
+$`d_{near}`$ is fitted each frame, apart from the clip plane:
+
+| Step | Owner | What it does |
+|---|---|---|
+| Cull every instance | `raster_draw()`, `raster_census()` | all lists first, so every instance draws with one scale |
+| Bound each kept cluster | `r3d_pipeline_cull()` | the least view depth of its box inside each frustum plane it crosses, the best of them (`box3f_plane_distance_min_inside()`) |
+| Fit | `raster.c` | the least bound, `inverse_depth_scale_fit()`: down to a power of two, never under `near_z` |
+| Draw | `r3d_lens_set_depth_near()` | each instance's lens encodes with it; the clip plane stays `near_z` |
+| Decode | `raster_depth_near()` | the scale the picture was drawn with, for readers such as motion vectors |
+
+The bound looks only at the part of a box the frustum keeps. A cluster as
+large as a ground square reaching behind the eye still bounds the nearest
+ground the picture can see.
+
+The scale is stored beside the census list, so a draw at another render
+size encodes with the census's. Snapping to a power of two keeps it still
+while the bound drifts, so ties do not flip from frame to frame.
+
+Looking down from 26 m, the nearest roof is metres away while `near_z` is
+6 cm. The fitted scale gives the street about a hundred times the steps. Below,
+the same six frames have depth scaled by `near_z` (top) and by the fit
+(bottom). On top, a ground square 2 to 7 cm under the street shows through
+as dashes that come and go.
+
+![Six consecutive frames of a street seen from above: with depth scaled by near_z the ground under it flickers through as grey dashes; with the fitted scale it does not](../images/render/depth-fit-bistro.png)
+
+`render.depth_fit = 0` encodes with `near_z`, for comparisons.
 
 ## Attachments
 
@@ -642,8 +687,9 @@ The layer allocates nothing. Raster draw work owns the resolved camera
 settings and per-side spread table, shared read-only by the row workers.
 
 Per-vertex and per-cluster buffers, the census list, picture attachments and
-upscale maps share one block. The list comes first, at an offset
-independent of render size; storage is padded for picture attachments.
+upscale maps share one block. The census comes first, its depth scale then
+its list, at an offset independent of render size; storage is padded for
+picture attachments.
 
 `raster_carve()` in `raster_internal.h` states the layout once, and
 `raster_scratch_bytes()` sizes the block from it.

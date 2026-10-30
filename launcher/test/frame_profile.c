@@ -10,47 +10,50 @@
 #include "console/console.h"
 #endif
 
-static frame_profile_t
+/* Plays the frames into `samples` (and `traced`), counting them and their sum
+ * in `p`; zero on a frame time out of range or more frames than `capacity`. */
+static void
 play(const frame_profile_scenario_t* s, frame_profile_frame_fn frame, void* ctx, int32_t* samples, int capacity,
-     frame_profile_frame_t* traced) {
-    frame_profile_t p = {0};
+     frame_profile_frame_t* traced, frame_profile_t* p) {
     int64_t previous_us = frame(ctx, 0);
     if (previous_us <= 0 || previous_us > INT32_MAX) {
         ESP_LOGE("frame_profile", "%s: invalid warm-up frame time", s->row);
-        return p;
+        return;
     }
     int64_t elapsed_us = 0;
     while (elapsed_us < s->duration_us) {
-        if (p.frames == capacity) {
+        if (p->frames == capacity) {
             ESP_LOGE("frame_profile", "%s: sample capacity exhausted", s->row);
-            return (frame_profile_t){0};
+            *p = (frame_profile_t){0};
+            return;
         }
         elapsed_us += previous_us;
         const int64_t us = frame(ctx, previous_us);
         if (us <= 0 || us > INT32_MAX) {
             ESP_LOGE("frame_profile", "%s: invalid frame time", s->row);
-            return (frame_profile_t){0};
+            *p = (frame_profile_t){0};
+            return;
         }
         if (traced != NULL) {
-            traced[p.frames] = (frame_profile_frame_t){(int32_t)(elapsed_us / MATH_US_PER_MS), (int32_t)us};
+            traced[p->frames] = (frame_profile_frame_t){(int32_t)(elapsed_us / MATH_US_PER_MS), (int32_t)us};
         }
-        samples[p.frames++] = (int32_t)us;
-        p.total_us += us;
+        samples[p->frames++] = (int32_t)us;
+        p->total_us += us;
         previous_us = us;
     }
-    p.frame_us = bench_stats_compute(samples, p.frames);
-    return p;
 }
 
+/* One result filled in place: a copy of it would sit on the stack under every played frame. */
 frame_profile_t
 frame_profile_play(const frame_profile_scenario_t* s, frame_profile_frame_fn frame, void* ctx,
                    frame_profile_trace_t* trace) {
+    frame_profile_t p = {0};
     if (trace != NULL) {
         *trace = (frame_profile_trace_t){0};
     }
     if (s->duration_us <= 0 || s->duration_us / FRAME_PROFILE_MIN_FRAME_US >= INT_MAX - 1) {
         ESP_LOGE("frame_profile", "invalid scenario duration");
-        return (frame_profile_t){0};
+        return p;
     }
     const int capacity = (int)((s->duration_us - 1) / FRAME_PROFILE_MIN_FRAME_US) + 2;
     int32_t* samples = memory_alloc((size_t)capacity * sizeof *samples, MEMORY_PSRAM);
@@ -60,9 +63,12 @@ frame_profile_play(const frame_profile_scenario_t* s, frame_profile_frame_fn fra
         ESP_LOGE("frame_profile", "%s: sample allocation failed", s->row);
         memory_free(samples);
         memory_free(traced);
-        return (frame_profile_t){0};
+        return p;
     }
-    const frame_profile_t p = play(s, frame, ctx, samples, capacity, traced);
+    play(s, frame, ctx, samples, capacity, traced, &p);
+    if (p.frames > 0) {
+        p.frame_us = bench_stats_compute(samples, p.frames);
+    }
     memory_free(samples);
     if (trace != NULL && p.frames > 0) {
         *trace = (frame_profile_trace_t){traced, p.frames};

@@ -109,7 +109,7 @@ sizes_at(const grid_mesh_t* g, float distance) {
     r3d_pipeline_work_t* work = malloc(r3d_pipeline_work_bytes());
     TEST_ASSERT_NOT_NULL(work);
     uint16_t visible[1];
-    const int count = r3d_pipeline_cull(&g->mesh, &lens, visible, work);
+    const int count = r3d_pipeline_cull(&g->mesh, &lens, visible, work, NULL);
     r3d_sizes_t s = {0};
     r3d_sizes_count(&g->mesh, &lens, visible, count, &s);
     free(work);
