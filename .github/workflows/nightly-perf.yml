@@ -29,6 +29,7 @@ env:
     run_capybara_perf_suite|-|python3 launcher/main/apps/render_lab/tools/report_performance.py @CAPTURE@ @TABLE@ --table
   NIGHT_START: ${{ vars.NIGHT_START }}
   NIGHT_ZONE: ${{ vars.NIGHT_ZONE }}
+  BOARD_LAST_START: ${{ vars.BOARD_LAST_START }}
   GH_TOKEN: ${{ github.token }}
   GIT_CONFIG_COUNT: '4'
   GIT_CONFIG_KEY_0: core.hooksPath
@@ -97,6 +98,7 @@ jobs:
           set-safe-directory: false
 
       - name: Prepare the data branch and shared plan
+        id: plan
         env:
           FROM_SHA: ${{ inputs.from }}
           MAX_STEPS: ${{ inputs.max_steps }}
@@ -127,7 +129,8 @@ jobs:
 
       - name: Run each board lane and wait for all
         id: lanes
-        if: ${{ !cancelled() && env.SCOPED_BOARDS != '' }}
+        # A plan with no free board still runs: the night waits for one until BOARD_LAST_START.
+        if: ${{ !cancelled() && steps.plan.outcome == 'success' }}
         run: |
           export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/tools:$PATH"
           suites=()
