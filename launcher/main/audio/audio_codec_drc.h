@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#define AUDIO_CODEC_DAC_VOLUME_REG   0x32
 #define AUDIO_CODEC_DRC_ENABLE_REG   0x34
 #define AUDIO_CODEC_DRC_LEVEL_REG    0x35
 #define AUDIO_CODEC_DRC_RAMP_REG     0x37
