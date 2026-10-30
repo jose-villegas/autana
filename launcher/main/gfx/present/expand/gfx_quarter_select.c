@@ -1,6 +1,24 @@
-#include "gfx/present/expand/gfx_expand_pie.h"
+#include "gfx/present/expand/gfx_quarter_select.h"
 
-#ifdef ESP_PLATFORM
+#include <stdbool.h>
+
+#include "image/pixel/rgb565.h"
+
+void
+gfx_quarter_select_scalar(const uint16_t* mine, const uint16_t* other, const uint8_t* keep, uint16_t* out, int steps) {
+    for (int x = 0; x < steps * GFX_QUARTER_LANES; x++) {
+        const bool kept = (keep[x / GFX_QUARTER_LANES] >> (x % GFX_QUARTER_LANES)) & 1U;
+        out[x] = kept ? mine[x]
+                      : rgb565be_unspread(rgb565_spread_quarter(rgb565be_spread(mine[x]), rgb565be_spread(other[x])));
+    }
+}
+
+#ifndef ESP_PLATFORM
+void
+gfx_quarter_select(const uint16_t* mine, const uint16_t* other, const uint8_t* keep, uint16_t* out, int steps) {
+    gfx_quarter_select_scalar(mine, other, keep, out, steps);
+}
+#else
 
 /*
  * The PIE conventions this file sets:
@@ -15,12 +33,11 @@
  * - Shifts: EE.VSR.32 and EE.VSL.32 shift 32-bit lanes by SAR, so bits cross
  *   between a pair of 16-bit lanes; every shift is followed by a mask that
  *   drops them. EE.VSR.32 is arithmetic, and the mask drops the sign fill too.
- * - Stack: a scratch store goes at the low end of the frame; the top 16 bytes
- *   are the caller's window spill area (writing there corrupts its return).
- * - Per-lane choice: a mask from a byte of lane bits (broadcast, AND with
- *   1, 2, 4 ... 128, compare equal), then out = a ^ ((a ^ b) & mask).
+ * - Per-lane choice: a mask from the step's keep byte (EE.VLDBC.8 puts it in
+ *   both halves of every lane; AND with 1, 2, 4 ... 128 keeps the low copy's
+ *   bit, compare equal), then out = a ^ ((a ^ b) & mask).
  *
- * a2 mine, a3 other, a4 keep, a5 out, a6 steps; a7 constants, a8 scratch.
+ * a2 mine, a3 other, a4 keep, a5 out, a6 steps; a7 and a8 constants.
  */
 __asm__(".section .rodata.gfx_pie_constants, \"a\"\n"
         ".align 16\n"
@@ -29,10 +46,10 @@ __asm__(".section .rodata.gfx_pie_constants, \"a\"\n"
         "gfx_pie_masks: .short 0x1F00, 0x001F, 0x0202, 0x07E0, 0x0040, 0xF800\n"
         ".text\n"
         ".align 4\n"
-        ".global gfx_pie_quarter_select\n"
-        ".type gfx_pie_quarter_select, @function\n"
-        "gfx_pie_quarter_select:\n"
-        "    entry a1, 32\n"
+        ".global gfx_quarter_select\n"
+        ".type gfx_quarter_select, @function\n"
+        "gfx_quarter_select:\n"
+        "    entry a1, 16\n" /* a leaf: nothing on the stack */
         "    beqz a6, 2f\n"
         "1:\n"
         "    ee.vld.128.ip q0, a2, 16\n"
@@ -74,11 +91,8 @@ __asm__(".section .rodata.gfx_pie_constants, \"a\"\n"
         "    ee.vldbc.16 q7, a7\n" /* red out */
         "    ee.andq q3, q3, q7\n"
         "    ee.orq q2, q2, q3\n"
-        "    ee.orq q2, q2, q5\n" /* the blend, native */
-        "    l8ui a8, a4, 0\n"
-        "    addi a4, a4, 1\n"
-        "    s16i a8, a1, 0\n" /* the frame's low end, as the conventions say */
-        "    ee.vldbc.16 q3, a1\n"
+        "    ee.orq q2, q2, q5\n"       /* the blend, native */
+        "    ee.vldbc.8.ip q3, a4, 1\n" /* the keep byte, in every byte */
         "    movi a8, gfx_pie_lane_bits\n"
         "    ee.vld.128.ip q4, a8, 0\n"
         "    ee.andq q3, q3, q4\n"
@@ -93,6 +107,6 @@ __asm__(".section .rodata.gfx_pie_constants, \"a\"\n"
         "    bnez a6, 1b\n"
         "2:\n"
         "    retw.n\n"
-        ".size gfx_pie_quarter_select, . - gfx_pie_quarter_select\n");
+        ".size gfx_quarter_select, . - gfx_quarter_select\n");
 
 #endif
