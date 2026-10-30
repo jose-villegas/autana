@@ -559,11 +559,10 @@ draw_counting(const r3d_span_vertex_t* const tri[3], uint8_t* hits) {
     for (int p = 0; p < W * H; p++) {
         hits[p] += depth[p] != 0;
     }
-    const int columns = r3d_span_first_centre(r3d_span_max3(tri[0]->x, tri[1]->x, tri[2]->x))
-                        - r3d_span_first_centre(r3d_span_min3(tri[0]->x, tri[1]->x, tri[2]->x));
-    const int rows = r3d_span_first_centre(r3d_span_max3(tri[0]->y, tri[1]->y, tri[2]->y))
-                     - r3d_span_first_centre(r3d_span_min3(tri[0]->y, tri[1]->y, tri[2]->y));
-    return columns <= 2 && rows <= 2 && covered() > 0;
+    const recti_t centres = r3d_span_centres(
+        r3d_span_min3(tri[0]->x, tri[1]->x, tri[2]->x), r3d_span_min3(tri[0]->y, tri[1]->y, tri[2]->y),
+        r3d_span_max3(tri[0]->x, tri[1]->x, tri[2]->x), r3d_span_max3(tri[0]->y, tri[1]->y, tri[2]->y));
+    return centres.w <= 2 && centres.h <= 2 && covered() > 0;
 }
 
 /* A mesh whose cells run from half a pixel to six, so triangles tested
