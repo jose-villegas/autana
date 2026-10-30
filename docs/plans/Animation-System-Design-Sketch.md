@@ -3,7 +3,7 @@
 **Status:** TRCK, SKEL, SKIN, pose, transition blend, CPU skinning, the scene
 animator and skinned-renderer components, and per-renderer lighting (direct
 by default), mode selection from the SKIN entry, SCNE v3 and the clip
-picker are implemented; [Skinned Meshes](../render/Skinned-Meshes.md) is
+picker are implemented; [Skinned Meshes](../render/animation/Skinned-Meshes.md) is
 the user guide. `[A]` marks a proposal of this sketch.
 
 Two systems share one sampler and one binding resolver:
@@ -77,20 +77,20 @@ core 1 through `job_try_core1()`, core 0 runs the other half, and
 
 The implemented SKEL v1 and SKIN v2 layouts, checks, model-space constraint,
 LMSH position matching, influence quantization and ids are owned by
-[Skeleton and skin entries](../render/Skeleton-and-Skin.md). The uncached
+[Skeleton and skin entries](../render/animation/Skeleton-and-Skin.md). The uncached
 pack step reads the finished LMSH rather
 than adding work to the mesh bake. `max_influences` is its parameter until
 the import setting lands with the next rebake of the meshes. The skin is
 planned to move into the mesh bake at that rebake.
 
-TRCK v2 is defined by [Animation tracks](../render/Animation-Tracks.md#the-pack-entry).
+TRCK v2 is defined by [Animation tracks](../render/animation/Animation-Tracks.md#the-pack-entry).
 Skeleton clips use joint paths from each root joint. SKIN normals hold the
 bind normals; LMSH colors for skinned meshes are unlit albedo (`COLOR_0`).
 
 SCNE v3 carries authored skinned-renderer, animator and light rows, plus ambient
 and tone-map settings. [SCNE.md](../assets/formats/SCNE.md)
 owns the layout and syntax. SKIN v2 supplies the renderer's lighting mode;
-[lighting modes](../render/Skinned-Lighting.md#lighting-modes) holds costs and
+[lighting modes](../render/animation/Skinned-Lighting.md#lighting-modes) holds costs and
 quality. Runtime lights shade skinned albedo; static renderers keep baked
 colours. TRCK v1 is refused (`ASSET_ERR_VERSION`).
 
@@ -102,11 +102,11 @@ The implemented internal types and signatures live in
 [`anim/playback/anim_playhead.h`](../../launcher/main/anim/playback/anim_playhead.h),
 and [`render/skin/r3d_skinning.h`](../../launcher/main/render/skin/r3d_skinning.h).
 Pose sampling preserves unkeyed rest channels.
-Pose blending is in [Animation tracks](../render/Animation-Tracks.md#scene-playback).
+Pose blending is in [Animation tracks](../render/animation/Animation-Tracks.md#scene-playback).
 CPU skinning uses linear blend skinning<sup>[[57]](../Citations.md#lewis-2000)</sup>,
 separate influence-count kernels and cluster ranges.
 
-The frame order is in [Skeleton and skin](../render/Skeleton-and-Skin.md#runtime).
+The frame order is in [Skeleton and skin](../render/animation/Skeleton-and-Skin.md#runtime).
 
 **Scene side**: a `skinned_renderer` component (mesh, skin, skeleton) and
 an `animator` component (clip ids, one layer). Runtime asset-id

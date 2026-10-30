@@ -45,7 +45,7 @@ On the host, every scene's camera path is drawn at each half-picture size of
 the [dynamic-resolution](Dynamic-Resolution.md) ladder, one frame per display
 step of a 30 fps display. A sample of frames is warped one and two steps
 ahead and scored against the frame really drawn there with the reference
-scorer ([Bake-Method.md](Bake-Method.md)): mean CIE76 dE and luma SSIM.
+scorer ([Bake-Method.md](offline/Bake-Method.md)): mean CIE76 dE and luma SSIM.
 Repeating the last frame, what the panel shows without frame generation, is
 scored beside it.
 

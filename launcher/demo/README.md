@@ -19,7 +19,7 @@ product the build fetches by its row in `launcher/bakes.lock`
   one sun, lit directly and baked per vertex. Its
   [import](capybara/capybara.import.toml) names the Blender source, whose glTF
   export is a cached bake the import reads the bind pose from; the
-  [skinned lighting measurements](../../docs/render/Skinned-Lighting.md) read
+  [skinned lighting measurements](../../docs/render/animation/Skinned-Lighting.md) read
   that export too.
 - [Bistro](bistro/bistro.scene.toml) is an open street with a far plane, for
   measuring what distance buys: a plaza, a long lane and a camera loop that
