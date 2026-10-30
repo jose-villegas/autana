@@ -39,6 +39,10 @@ typedef struct render_lab_scene {
     /* Optional. Drawn in the BOOT menu below the Scene row while the scene is
      * paused; may call public scene_* calls only. */
     render_lab_controls_fn controls;
+    /* Whether frame generation suits the scene: true where nothing moves on
+     * its own, so the camera's pose alone warps a frame. Render Lab turns it
+     * on for such a scene only, when render_lab.framegen asks. */
+    bool generates_frames;
     /* Optional. Handles `render <args>` that Render Lab's scene commands did not;
      * false means the command is not this scene's. */
     bool (*console)(const char* args, console_reply_fn reply);
