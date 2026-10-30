@@ -1,5 +1,6 @@
 """Recover shared geometry under rigid placements, including reflections, never scale."""
 
+import math
 from collections import Counter
 from dataclasses import dataclass, replace
 from itertools import product
@@ -56,10 +57,18 @@ def source_objects(positions, tri_v, tri_m, tri_o, object_names) -> list[SourceO
     return objects
 
 
+def place(points, linear, position):
+    """points x linear^T + position, each coordinate one product per axis added in axis order: a matrix product's
+    bits follow the host's BLAS kernels, and a copy placed by them would bake differently by host."""
+    points = np.asarray(points, dtype=np.float64)
+    linear = np.asarray(linear, dtype=np.float64)
+    return points[:, :1] * linear[:, 0] + points[:, 1:2] * linear[:, 1] + points[:, 2:3] * linear[:, 2] + position
+
+
 def placed_corners(shape, instance, matrix, position):
     """Eight local bounds corners under instance and renderer placement."""
     corners = np.array(list(product(*zip(shape.positions.min(axis=0), shape.positions.max(axis=0)))))
-    return (corners @ instance.linear.T + instance.position) @ matrix.T + position
+    return place(place(corners, instance.linear, instance.position), matrix, position)
 
 
 def triangle_materials(triangles, materials):
@@ -67,21 +76,76 @@ def triangle_materials(triangles, materials):
     return Counter((oriented(face), int(material)) for face, material in zip(triangles, materials))
 
 
+JACOBI_SWEEPS = 32
+# A singular value below this share of the largest counts as zero: the object is flat (or a line) across it.
+MIN_SINGULAR_RATIO = 1e-6
+
+
+def symmetric_eigen(a):
+    """Eigenvalues (descending) and unit eigenvectors (columns) of a symmetric 3x3, by cyclic Jacobi rotations
+    (Golub and Van Loan 2013, 8.5): only products, sums and square roots, so every host gets the same bits."""
+    a = [[float(a[i][j]) for j in range(3)] for i in range(3)]
+    v = [[1.0 if i == j else 0.0 for j in range(3)] for i in range(3)]
+    for _ in range(JACOBI_SWEEPS):
+        if a[0][1] == 0.0 and a[0][2] == 0.0 and a[1][2] == 0.0:
+            break
+        for p, q in ((0, 1), (0, 2), (1, 2)):
+            if a[p][q] == 0.0:
+                continue
+            theta = (a[q][q] - a[p][p]) / (2.0 * a[p][q])
+            t = (1.0 if theta >= 0.0 else -1.0) / (abs(theta) + math.sqrt(theta * theta + 1.0))
+            c = 1.0 / math.sqrt(t * t + 1.0)
+            s = t * c
+            _turn_columns(a, p, q, c, s)
+            a[p], a[q] = [c * x - s * y for x, y in zip(a[p], a[q])], [s * x + c * y for x, y in zip(a[p], a[q])]
+            _turn_columns(v, p, q, c, s)
+    order = sorted(range(3), key=lambda i: -a[i][i])
+    return [a[i][i] for i in order], np.array([[v[k][i] for i in order] for k in range(3)])
+
+
+def _turn_columns(m, p, q, c, s):
+    """Rotates columns p and q of every row of m by the angle with cosine c and sine s."""
+    for row in m:
+        row[p], row[q] = c * row[p] - s * row[q], s * row[p] + c * row[q]
+
+
+def unit(vector):
+    return vector / math.sqrt(math.fsum(vector * vector))
+
+
+def cross(a, b):
+    return np.array([a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]])
+
+
 def rigid_fit(local, target, reflected=False):
-    """Kabsch 1976 rotation fit, column-vector convention.
+    """Kabsch 1976 rotation fit, column-vector convention, computed so every host gets the same bits: exactly
+    rounded sums, the singular vectors from symmetric_eigen() of H^T H, and the third left one as the cross product
+    of the first two, which picks the same rotation as Kabsch's sign correction and holds for flat objects.
 
     Reflections are fitted only when a rotation fails residual or winding acceptance.
     """
     offset = target[0] - local[0]
     if not reflected and np.array_equal(local + offset, target):
         return np.eye(3), offset, 0.0
-    mean_local, mean_target = local.mean(axis=0), target.mean(axis=0)
-    u, _, vt = np.linalg.svd((local - mean_local).T @ (target - mean_target))
-    correction = np.ones(3)
-    correction[-1] = np.sign(np.linalg.det(vt.T @ u.T)) * (-1 if reflected else 1)
-    linear = vt.T @ np.diag(correction) @ u.T
-    position = mean_target - linear @ mean_local
-    residual = float(np.linalg.norm(local @ linear.T + position - target, axis=1).max())
+    mean_local = np.array([math.fsum(column) / len(local) for column in local.T])
+    mean_target = np.array([math.fsum(column) / len(target) for column in target.T])
+    a, b = local - mean_local, target - mean_target
+    h = np.array([[math.fsum(a[:, i] * b[:, j]) for j in range(3)] for i in range(3)])
+    hth = [[math.fsum(h[:, i] * h[:, j]) for j in range(3)] for i in range(3)]
+    values, v = symmetric_eigen(hth)
+    u1 = unit(place(v[:, :1].T, h, 0.0)[0]) if values[0] > 0.0 else np.array([1.0, 0.0, 0.0])
+    u2 = place(v[:, 1:2].T, h, 0.0)[0] if values[1] > values[0] * MIN_SINGULAR_RATIO ** 2 else cross(
+        u1, np.eye(3)[int(np.argmin(np.abs(u1)))])
+    u2 = unit(u2 - math.fsum(u2 * u1) * u1)
+    u = np.column_stack([u1, u2, cross(u1, u2)])
+    det_v = math.fsum([v[0, 0] * (v[1, 1] * v[2, 2] - v[1, 2] * v[2, 1]),
+                       -v[0, 1] * (v[1, 0] * v[2, 2] - v[1, 2] * v[2, 0]),
+                       v[0, 2] * (v[1, 0] * v[2, 1] - v[1, 1] * v[2, 0])])
+    v = v * [1.0, 1.0, (1.0 if det_v > 0.0 else -1.0) * (-1.0 if reflected else 1.0)]
+    # Rounded to the float32 a copy is stored in, so a copy samples what its manifest holds.
+    linear = np.array([[math.fsum(v[i] * u[j]) for j in range(3)] for i in range(3)]).astype(np.float32).astype(np.float64)
+    position = (mean_target - place(mean_local[None], linear, 0.0)[0]).astype(np.float32).astype(np.float64)
+    residual = float(np.sqrt(((place(local, linear, position) - target) ** 2).sum(axis=1)).max())
     return linear, position, residual
 
 
