@@ -388,7 +388,7 @@ test_failed_view_allocation_leaves_shaded(void) {
 
 static void
 test_view_table_and_context_ownership(void) {
-    render_context_t* c = calloc(1, sizeof(*c));
+    render_context_t* c = calloc(1, sizeof(*c)); /* too big for the device stack */
     TEST_ASSERT_NOT_NULL(c);
 #ifdef HOST_HEAP_ARENA
     size_t before_blocks, before_bytes, blocks, bytes;

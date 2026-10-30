@@ -28,11 +28,20 @@
 /* The share of the destination a frame draws at until set. */
 #define RENDER_CONTEXT_DEFAULT_SCALE_PERCENT 50
 
+/* Frame generation starts only once a generated frame costs under
+ * (100 - FRAMEGEN_GAIN_PERCENT)% of a drawn one, since it shows the scene less
+ * exactly; it then holds while a generated frame costs less than a drawn one,
+ * so a cost near the line does not turn it on and off. */
+#define FRAMEGEN_GAIN_PERCENT                10
+/* Drawn frames in a row after which a frame is generated anyway, to measure
+ * its cost again: the view or the drawn size may have changed. */
+#define FRAMEGEN_RETRY_DRAWN                 30
+
 /* The last frame: its step (-1 at the fixed scale), the size it drew at,
- * what culling kept and, under dynamic resolution only, what its draw (with
- * any census) and upscale cost: at the fixed scale nothing is timed. A
- * generated frame keeps the drawn one's size, step and stats; its draw_us is
- * the warp's, always timed. */
+ * what culling kept and, under dynamic resolution or frame generation only,
+ * what its draw (with any census) and upscale cost: otherwise nothing is
+ * timed. A generated frame keeps the drawn one's size, step and stats; its
+ * draw_us is the warp's. */
 typedef struct {
     int step;
     int width, height;
@@ -80,11 +89,15 @@ typedef struct {
     const raster_attachment_t* debug_view_attached[1];
     render_context_frame_t frame;
     /* Frame generation (render/framegen): one generated frame after each
-     * drawn one. The raster holds the drawn frame, through kept_view, until a
-     * generated frame is written over it. */
+     * drawn one, while it costs less than a drawn one. The raster holds the
+     * drawn frame, through kept_view, until a generated frame is written
+     * over it. */
     bool generating;
     bool kept;
     int32_t generated_us; /* the last generated frame's warp, fill and compose; 0 before one */
+    int32_t drawn_us;     /* the last drawn frame's draw and compose; 0 before one */
+    int drawn_in_row;     /* drawn frames since the last generated one */
+    bool paying;          /* the last verdict: a generated frame costs less than a drawn one */
     int32_t shown_us;     /* the caller's budget per shown frame; the ladder's is per drawn frame */
     render_view_t kept_view;
     framegen_target_t framegen;
@@ -113,8 +126,10 @@ void render_context_forget(render_context_t* context);
 void render_context_set_scale(render_context_t* context, int percent);
 
 /* Frame generation: after each drawn frame, the next one is warped from it
- * to its own view instead of drawn. A debug view, a camera cut or a new
- * viewport draws the next frame. */
+ * to its own view instead of drawn, while a generated frame costs less than a
+ * drawn one (FRAMEGEN_GAIN_PERCENT less to start); otherwise frames are drawn,
+ * and one in FRAMEGEN_RETRY_DRAWN is generated to measure it again. A debug
+ * view, a camera cut or a new viewport draws the next frame. */
 void render_context_set_frame_generation(render_context_t* context, bool on);
 
 /* Opts in: each frame draws at a step of `config` to hold its budget, chosen

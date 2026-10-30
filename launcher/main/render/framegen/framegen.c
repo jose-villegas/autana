@@ -88,7 +88,7 @@ typedef struct {
 static inline carried_t
 carry(const float at[3], const float per_depth[3], float d) {
     const float z = at[2] + (per_depth[2] * d);
-    const float inv = mathf_recip(z);
+    const float inv = mathf_recip_approx(z); /* 14 bits: a hundredth of a pixel across the picture */
     return (carried_t){(at[0] + (per_depth[0] * d)) * inv, (at[1] + (per_depth[1] * d)) * inv, inv};
 }
 
