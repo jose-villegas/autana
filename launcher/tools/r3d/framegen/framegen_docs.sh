@@ -72,5 +72,7 @@ for scene in $SCENES; do
     done
 done
 # shellcheck disable=SC2086
-"$PYTHON" launcher/tools/r3d/framegen/framegen_report.py --tables "${TABLES:-$WORK/tables}" --images "$IMAGES"     --plot-scene "$LEAD" --plot-size "$SHOWN_SIZE" --board docs/render/data/framegen-board.log $csvs
+"$PYTHON" launcher/tools/r3d/framegen/framegen_report.py --tables "${TABLES:-$WORK/tables}" \
+    --path-plot "$IMAGES/framegen-bistro-path.png" --pricing-plot "$IMAGES/framegen-pricing.png" \
+    --plot-scene "$LEAD" --plot-size "$SHOWN_SIZE" --board docs/render/data/framegen-board.log $csvs
 [ -n "$TABLES" ] || "$PYTHON" launcher/tools/render/generated_blocks.py --tables "$WORK/tables"
