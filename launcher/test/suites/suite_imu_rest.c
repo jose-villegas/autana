@@ -1,5 +1,6 @@
 #include <math.h>
 #include "input/motion/gravity.h"
+#include "input/motion/imu_demand.h"
 #include "input/motion/imu_rest.h"
 #include "math/linear/vec_convert.h"
 #include "math/scalar/math_const.h"
@@ -157,6 +158,19 @@ test_rest_settle_excluded_and_negative_rounding(void) {
     TEST_ASSERT_EQUAL_INT(0, test.n);
 }
 
+/* The first sample after an IMU park comes at least IMU_DEMAND_IDLE_US after the last: the
+ * window restarts there, so a rest never spans the park. */
+static void
+test_rest_restarts_across_park(void) {
+    imu_rest_t rest = {0};
+    const input_motion_t sample = fixture();
+    vec3i_t mean;
+    const uint32_t before_done = REST_TEST_DURATION_US - REST_TEST_DT_US;
+    TEST_ASSERT_FALSE(run_window(&rest, sample, before_done, &mean));
+    TEST_ASSERT_EQUAL_INT(IMU_REST_MOVING, imu_rest_step(&rest, &sample, (uint32_t)IMU_DEMAND_IDLE_US, true));
+    TEST_ASSERT_FALSE(run_window(&rest, sample, before_done, &mean));
+}
+
 static void
 test_rest_drift_formula(void) {
     const float drift = INPUT_ACCEL_ONE_G
@@ -173,6 +187,7 @@ run_imu_rest_suite(void) {
     RUN_TEST(test_rest_smooth_tilt);
     RUN_TEST(test_rest_bias_and_noise);
     RUN_TEST(test_rest_restarts_and_magnitude);
+    RUN_TEST(test_rest_restarts_across_park);
 }
 
 SUITE_REGISTER(run_imu_rest_suite);
