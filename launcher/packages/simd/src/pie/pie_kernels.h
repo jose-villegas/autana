@@ -1,4 +1,10 @@
-/* pie_kernels: the PIE kernels' C prototypes, for the calls in src/ only. */
+/*
+ * pie_kernels: the PIE kernels' C prototypes, for the calls in src/ only.
+ * An _unaligned kernel loads whole aligned blocks around src, so it reads up
+ * to SIMD_ALIGN - 1 bytes before and after the source run. Those bytes sit in
+ * the 16-byte blocks that hold its first and last element, so no read can
+ * cross into another page or memory region.
+ */
 #pragma once
 
 #include <stddef.h>
