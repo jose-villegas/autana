@@ -109,12 +109,13 @@ time_warp(scene_t* scene, scene_entity_t camera, const camera_t* lens, uint32_t 
     sum.holes += framegen_fill(raster, &target);
     const int64_t filled = timing_now_us();
     sum.fill += filled - warped;
-    framegen_picture_t picture;
+    GFX_TARGET_STORAGE(GFX_ATTACHMENT_FURTHER) picture;
+    gfx_target_of_color_depth(&picture.target, target.colour, target.depth, target.width, target.height, 0);
     TEST_ASSERT_TRUE(raster_fits_half_picture(raster)); /* every ladder step here is a half-picture one */
     const resolution_step_t half = raster_compose_size(raster);
     const bool blended = render_context_upscale_filter(render_context_main()) == UPSCALE_FILTER_SURFACE;
-    raster_upscale_picture(raster, framegen_target_picture(&target, &picture), gfx_half_picture(),
-                           blended ? gfx_half_seams() : NULL, half.width, half.height);
+    raster_upscale_picture(raster, &picture.target, gfx_half_picture(), blended ? gfx_half_seams() : NULL, half.width,
+                           half.height);
     sum.compose += timing_now_us() - filled;
     sum.warp += warped - start;
     sum.warp_max = warped - start > sum.warp_max ? warped - start : sum.warp_max;

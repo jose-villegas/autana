@@ -114,16 +114,10 @@ def read_board(paths):
     return rows
 
 
-def compose_us(f):
-    """A generated frame's compose: its own picture's (compose_us), or, in captures
-    from before it had one, the drawn frame's (present_us), which it then shared."""
-    return f.get("compose_us", f["present_us"])
-
-
 def generated_ms(f):
     """A generated frame's cost: the warp on both cores, the fill and its compose."""
     # The first capture timed the warp on one core too (warp1_us) and called both cores warp2_us.
-    return (f.get("warp2_us", f.get("warp_us")) + f["fill_us"] + compose_us(f)) / US_PER_MS
+    return (f.get("warp2_us", f.get("warp_us")) + f["fill_us"] + f["compose_us"]) / US_PER_MS
 
 
 def cost_table(rows):
@@ -133,7 +127,7 @@ def cost_table(rows):
     for (scene, size), f in rows.items():
         lines.append("| %s | %s | %.1f ms | %.1f ms | %.1f ms | %.1f ms | %.1f ms |" % (
             scene, size, f["frame_us"] / US_PER_MS, f.get("warp2_us", f.get("warp_us")) / US_PER_MS,
-            f["fill_us"] / US_PER_MS, compose_us(f) / US_PER_MS, generated_ms(f)))
+            f["fill_us"] / US_PER_MS, f["compose_us"] / US_PER_MS, generated_ms(f)))
     return "\n".join(lines) + "\n"
 
 

@@ -191,12 +191,3 @@ framegen_fill(const raster_t* raster, const framegen_target_t* target) {
     (void)job_run_split(fill_span, &first, &second, sizeof second);
     return holes[0] + holes[1];
 }
-
-const gfx_target_t*
-framegen_target_picture(const framegen_target_t* target, framegen_picture_t* storage) {
-    gfx_target_of_color(&storage->target, target->colour, target->width, target->height, 0);
-    storage->count = GFX_ATTACHMENT_FURTHER;
-    storage->attachment[GFX_ATTACHMENT_DEPTH] =
-        (image_t){target->depth, IMAGE_U16, target->width, target->height, IMAGE_PITCH(IMAGE_U16, target->width)};
-    return &storage->target;
-}
