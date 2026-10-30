@@ -19,8 +19,8 @@ from tracked import tracked_files
 MARKER = re.compile(r"^<!-- (/?generated): ([a-z0-9][a-z0-9-]*)"
                     r"(?: sha256=([0-9a-f]{64})| check: (\S.*?))? -->$", re.M)
 TOKEN = re.compile(r"^<!--\s*/?generated:", re.M)
-# A table under apply_tables does not know the page that owns its block, so its
-# relative links are written as from a page one folder below docs/.
+# A table does not know which page owns its block, so its relative links are
+# written as from docs/<folder>/page.md and re-based to the real owner.
 TABLE_BASE = "docs/page"
 LINK = re.compile(r"(\]\()([^)\s#][^)\s]*)(\))")
 

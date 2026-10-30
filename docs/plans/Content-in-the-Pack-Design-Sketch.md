@@ -200,7 +200,7 @@ first loads. First-frame time is measured on the board (`autana status` and
 | render-lab flythrough | `flythrough_tracks_generated.{c,h}`, `sample_tracks.sh`, `sample_tracks_main.c`, its `doc_images.sh` and README lines, `write_ao_scene`'s tracks copy and its test |
 | boot | `boot_anim_tracks_generated.{c,h}`; includes, CMake, `run_tests.sh`, `boot_anim_render_host.sh`, `gen_boot_anim_timeline.py` and its test, README |
 | scenes | `sponza_scene_generated.{c,h}`, `scene_table.py`'s C output, `SCENE_REGISTER`, `scene_def_t`, every `*_SCENE_*` macro (users: the render-lab scene, its suites and flythrough module, `suite_scene.c`) |
-| docs | `Animation-Tracks.md`, `render/Scene-Files.md`, `render/Building-a-Scene.md`, `render/Scene-Manager.md`, `assets/README.md`, `anim/README.md`, the render-lab tools README, `r3d/README.md`, `tools/Render-Harness.md`: rewritten for `.anim.toml` to pack |
+| docs | `render/animation/Animation-Tracks.md`, `render/scene/Scene-Files.md`, `render/Building-a-Scene.md`, `render/scene/Scene-Manager.md`, `assets/README.md`, `anim/README.md`, the render-lab tools README, `r3d/README.md`, `tools/Render-Harness.md`: rewritten for `.anim.toml` to pack |
 
 Final check: `git grep -n "_tracks_generated\|_scene_generated\|sample_tracks\|SCENE_REGISTER\|scene_def_t"` prints nothing.
 The build's pack command gains the `.anim.toml`, `.glb` and boot-directory
