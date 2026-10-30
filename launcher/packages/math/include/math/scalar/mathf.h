@@ -113,8 +113,9 @@ mathf_recip_approx(float a) {
 #endif
 }
 
-/* The board proof's maximum rounded up to a power of two bounds relative error (16 bits). */
-#define MATHF_RECIP_APPROX_RELATIVE_LIMIT 0x1p-16F
+/* The board proof's maximum rounded up to a power of two: the approximation keeps this many bits. */
+#define MATHF_RECIP_APPROX_BITS           13
+#define MATHF_RECIP_APPROX_RELATIVE_LIMIT (1.0F / (float)(1UL << MATHF_RECIP_APPROX_BITS))
 /* One seed correction trades accuracy for throughput; the suite proves this bound. */
 #define MATHF_RSQRT_APPROX_RELATIVE_LIMIT 0.0001F
 /* Two seed corrections must stay close to the correctly rounded reciprocal root. */

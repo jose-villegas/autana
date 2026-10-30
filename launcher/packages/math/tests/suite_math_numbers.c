@@ -889,10 +889,10 @@ test_recip_approx_mantissas_and_normal_exponent_edges(void) {
     const uint32_t upper = (RECIP_EXPONENT_LAST + 1) << FLOAT_FRACTION_BITS;
     recip_approx_measure(upper, &maximum, bins);
     for (unsigned bin = 0; bin < FAST_PATH_BINS_PER_UNIT; bin++) {
-        printf("MATHERRORBIN name=mathf_recip_approx type=f x=%g max=%g unit=relative axis=period\n",
+        printf("MATHERRORBIN name=mathf_recip_approx type=f x=%g max=%a unit=relative axis=period\n",
                1.0 + (bin + 0.5) / FAST_PATH_BINS_PER_UNIT, bins[bin]);
     }
-    printf("MATHERROR name=mathf_recip_approx type=f max=%g unit=relative method=proof\n", maximum);
+    printf("MATHERROR name=mathf_recip_approx type=f max=%a unit=relative method=proof\n", maximum);
     TEST_ASSERT_TRUE(maximum <= MATHF_RECIP_APPROX_RELATIVE_LIMIT);
 }
 #endif
