@@ -4,7 +4,7 @@ A skinned mesh is lit on the CPU, one colour per vertex, in each frame its
 pose or lights change. Each vertex's albedo is multiplied by the light its
 skinned normal receives, then tone mapped and gamma encoded like the bake.
 
-![Albedo, the light from the ambient and from each of four lights alone, and the albedo lit by their sum, over a gallop](images/skin-light-terms.gif)
+![Albedo, the light from the ambient and from each of four lights alone, and the albedo lit by their sum, over a gallop](../images/skin-light-terms.gif)
 
 | Term | What it adds |
 |---|---|
@@ -55,7 +55,7 @@ light setter or a light entity's `SCENE_FLAG_SKIN_DIRTY` rebuilds the table.
 
 ## How normals follow the bones
 
-![The skinned normal as colour, how much blending shortened it, the mesh lit direct and renormalised, and how much darker direct is, over a gallop](images/skin-light-normals.gif)
+![The skinned normal as colour, how much blending shortened it, the mesh lit direct and renormalised, and how much darker direct is, over a gallop](../images/skin-light-normals.gif)
 
 Each joint's normal palette entry is the inverse-transpose of
 `entity_world * joint_palette`: its cofactor matrix over its determinant. So
@@ -72,7 +72,7 @@ That is the difference between the modes:
 | Renormalised | the blended normal scaled back to unit length by `mathf_rsqrt_approx()` |
 | Table | the blended normal's direction only, so length never matters |
 
-![Light against the angle between normal and light: unit length, a normal blended to 0.8 long, and the 16x16 table, with the table's error below](images/skin-light-angle.png)
+![Light against the angle between normal and light: unit length, a normal blended to 0.8 long, and the 16x16 table, with the table's error below](../images/skin-light-angle.png)
 
 The table follows N.L to within about 0.02 of full light, except near 90°:
 its bilinear blend carries a little light past the edge, where N.L is zero.
@@ -83,7 +83,7 @@ step; host and QEMU use an exact square root. The device tests hold it to
 
 ## Lighting modes
 
-The import's [`[skin].lighting`](Mesh-Import.md#skin-lighting) picks the mode.
+The import's [`[skin].lighting`](../offline/Mesh-Import.md#skin-lighting) picks the mode.
 
 | Mode | Per vertex | Cost on the board | Pick it when |
 |---|---|---|---|
@@ -91,14 +91,14 @@ The import's [`[skin].lighting`](Mesh-Import.md#skin-lighting) picks the mode.
 | renormalised | the same after `mathf_rsqrt_approx()` | about 40 cycles above direct | normal length must not change brightness |
 | table | one bilinear lookup in a shared irradiance table | flat, about 860 cycles, plus a rebuild per light change | many lights: it costs more than direct up to the current `R3D_SKIN_LIGHT_MAX`, with the crossover estimated near 10 lights; scenes with many or dynamic lights are not yet measured |
 
-![Mean byte error against cycles per vertex for each lighting mode, the one, two and four light points joined](images/skin-light-board.png)
+![Mean byte error against cycles per vertex for each lighting mode, the one, two and four light points joined](../images/skin-light-board.png)
 
 An exact float evaluation costs about 5,700 cycles per vertex ([every kernel](#board-measurement)).
 
 Errors are 0-255 steps of a light channel against float lighting of the
 packed normals; the plot shows the mean. Board measurements, from the [capture](#board-measurement):
 
-<!-- generated: skin-light-modes check: python launcher/tools/r3d/skin_light/report_skin_light_board.py docs/render/data/skin-light-board.txt docs/render/Skinned-Lighting.md --check -->
+<!-- generated: skin-light-modes check: python launcher/tools/r3d/skin_light/report_skin_light_board.py docs/render/data/skin-light-board.txt docs/render/animation/Skinned-Lighting.md --check -->
 Skinning alone costs 353 cycles per vertex.
 
 In every row the normal palette costs 5104 cycles to build per frame, the renderer holds 3744 bytes of internal memory and the scene holds 124 bytes of PSRAM.
@@ -118,11 +118,11 @@ In every row the normal palette costs 5104 cycles to build per frame, the render
 
 ### The table
 
-![The table's cell directions, then the light each cell holds at 8x8, 16x16 and 32x32 under the benchmark's four lights](images/skin-light-table.png)
+![The table's cell directions, then the light each cell holds at 8x8, 16x16 and 32x32 under the benchmark's four lights](../images/skin-light-table.png)
 
-A normal-indexed irradiance table<sup>[[58]](../Citations.md#miller-1984)</sup> holds
+A normal-indexed irradiance table<sup>[[58]](../../Citations.md#miller-1984)</sup> holds
 the light arriving from every direction. The sphere of directions unfolds
-onto a square by its octahedral coordinate<sup>[[21]](../Citations.md#cigolle-2014)</sup>.
+onto a square by its octahedral coordinate<sup>[[21]](../../Citations.md#cigolle-2014)</sup>.
 
 A vertex finds its normal's point on the square and blends the four nearest
 cells. The square's centre faces +Z, its edges' middles ±X and ±Y, its corners -Z.
@@ -141,7 +141,7 @@ The [host benchmark](#host-comparison)'s variants, each beside its error
 against renormalised float lighting of the source normals; the board table
 above measures packed normals, so its errors differ:
 
-![The capybara lit by each variant over a gallop, each beside its error against the reference](images/skin-light-sheet.gif)
+![The capybara lit by each variant over a gallop, each beside its error against the reference](../images/skin-light-sheet.gif)
 
 ## Light and transfer
 
@@ -152,7 +152,7 @@ Per channel, with intensity unscaled as in `light.py:bake_directional`:
 | Albedo decode | `(a / 255)^2.2` for albedo byte `a` |
 | Light | `ambient_color * ambient_intensity + sum(light_color * intensity * max(0, N.L))` |
 | Radiance | `albedo * light` |
-| Tone map, Reinhard<sup>[[7]](../Citations.md#reinhard-2002)</sup> | `radiance / (1 + radiance * tonemap_white)`; white 0 (`SCENE_TONEMAP_WHITE_NONE`) is identity |
+| Tone map, Reinhard<sup>[[7]](../../Citations.md#reinhard-2002)</sup> | `radiance / (1 + radiance * tonemap_white)`; white 0 (`SCENE_TONEMAP_WHITE_NONE`) is identity |
 | Encode | clamp to [0,1], gamma 1/2.2, round to a byte |
 
 A light's direction is its entity's +Y turned by its rotation, as
@@ -207,12 +207,12 @@ Runtime tests and device suites set the mode through `scene_internal.h`.
 The suite times skin-only, the normal-palette build, an exact float
 reference, each mode at 1, 2 and 4 lights, and table builds; it also records
 RAM and free heap. The tables take the median time and worst error over the
-[capture lines](data/skin-light-board.txt), skipping each session's warm-up.
+[capture lines](../data/skin-light-board.txt), skipping each session's warm-up.
 
 <details>
 <summary>Every captured kernel</summary>
 
-<!-- generated: skin-light-board check: python launcher/tools/r3d/skin_light/report_skin_light_board.py docs/render/data/skin-light-board.txt docs/render/Skinned-Lighting.md --check -->
+<!-- generated: skin-light-board check: python launcher/tools/r3d/skin_light/report_skin_light_board.py docs/render/data/skin-light-board.txt docs/render/animation/Skinned-Lighting.md --check -->
 | Build id | Kernel | Cycles | Per | Build / vertex | Max byte error | Mean byte error |
 |---|---|---:|---|---:|---:|---:|
 | 8d0d33ecbdb9-diag | normal_palette_build | 5104.000 | build | 5.187 | — | — |
@@ -240,7 +240,7 @@ RAM and free heap. The tables take the median time and worst error over the
 autana --wait 3600 suite suite_skin_light_perf --runs 6 --flash
 # Copy BUILD_ID, POSE, timing, COST, QUALITY, CHECKSUM, HEAP and RAM lines from
 # the printed capture path into docs/render/data/skin-light-board.txt.
-python launcher/tools/r3d/skin_light/report_skin_light_board.py docs/render/data/skin-light-board.txt docs/render/Skinned-Lighting.md
+python launcher/tools/r3d/skin_light/report_skin_light_board.py docs/render/data/skin-light-board.txt docs/render/animation/Skinned-Lighting.md
 ```
 
 ## Host comparison
@@ -261,7 +261,7 @@ A table cell holds the light of its centre's direction, three bytes padded to fo
 | Table, bilinear | the same point blends the four nearest cells with 8-bit weights |
 
 Operation counts are read off each kernel in
-[skin_light_bench.c](../../launcher/tools/r3d/skin_light/skin_light_bench.c);
+[skin_light_bench.c](../../../launcher/tools/r3d/skin_light/skin_light_bench.c);
 they are the board's proxy, since host nanoseconds do not carry over to the
 S3's FPU, where a divide or square root costs several instructions.
 

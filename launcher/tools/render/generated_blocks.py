@@ -10,6 +10,7 @@ import argparse
 import sys
 import hashlib
 import pathlib
+import posixpath
 import re
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3] / "scripts/gates"))
@@ -18,6 +19,10 @@ from tracked import tracked_files
 MARKER = re.compile(r"^<!-- (/?generated): ([a-z0-9][a-z0-9-]*)"
                     r"(?: sha256=([0-9a-f]{64})| check: (\S.*?))? -->$", re.M)
 TOKEN = re.compile(r"^<!--\s*/?generated:", re.M)
+# A table under apply_tables does not know the page that owns its block, so its
+# relative links are written as from a page one folder below docs/.
+TABLE_BASE = "docs/page"
+LINK = re.compile(r"(\]\()([^)\s#][^)\s]*)(\))")
 
 
 def digest(body):
@@ -105,6 +110,21 @@ def block_body(root, name):
     return blocks((root / block_owners(root)[name]).read_text(encoding="utf-8"))[name][2]
 
 
+def rebase_links(body, page):
+    """`body` with each relative link moved from TABLE_BASE to `page`'s folder."""
+    folder = posixpath.dirname(page)
+
+    def move(match):
+        target = match.group(2)
+        if re.match(r"^[a-z][a-z0-9+.-]*:|^/", target):
+            return match.group(0)
+        path, _, fragment = target.partition("#")
+        moved = posixpath.relpath(posixpath.normpath(posixpath.join(TABLE_BASE, path)), folder or ".")
+        return match.group(1) + moved + ("#" + fragment if fragment else "") + match.group(3)
+
+    return LINK.sub(move, body)
+
+
 def apply_tables(root, tables, check=False):
     owners = block_owners(root)
     changed = False
@@ -113,7 +133,8 @@ def apply_tables(root, tables, check=False):
         if name not in owners:
             raise ValueError(f"no document owns generated table {name}")
         doc = owners[name]
-        different = replace_block(root / doc, name, table.read_text(encoding="utf-8"), check)
+        body = rebase_links(table.read_text(encoding="utf-8"), doc)
+        different = replace_block(root / doc, name, body, check)
         print(f"{'changed' if different else 'same'} {doc}#{name}")
         changed |= different
     return changed

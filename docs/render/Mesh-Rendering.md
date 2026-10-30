@@ -1,8 +1,8 @@
 # Mesh Rendering
 
 How the runtime draws a baked lit-mesh: the frame view, culling, the rasterizer, the
-two-core frame and the view modes. The mesh's format is [Baked-Mesh.md](Baked-Mesh.md); how it is made is
-[Mesh-Import.md](Mesh-Import.md).
+two-core frame and the view modes. The mesh's format is [Baked-Mesh.md](offline/Baked-Mesh.md); how it is made is
+[Mesh-Import.md](offline/Mesh-Import.md).
 
 `launcher/main/render/` is the engine's 3D layer: the frame view, projection, a
 span rasterizer, and a pipeline that draws a mesh whose light was baked
@@ -24,7 +24,7 @@ and picture basis from `render_view_t`.
 
 | Noun | What it is |
 |---|---|
-| `r3d_lit_mesh_t` | A mesh whose light is baked into its colours, made offline ([Mesh-Import.md](Mesh-Import.md)); a view of arrays that stay in the asset pack ([Baked-Mesh.md](Baked-Mesh.md#clusters-and-the-tree)) |
+| `r3d_lit_mesh_t` | A mesh whose light is baked into its colours, made offline ([Mesh-Import.md](offline/Mesh-Import.md)); a view of arrays that stay in the asset pack ([Baked-Mesh.md](offline/Baked-Mesh.md#clusters-and-the-tree)) |
 | `render_view_t` | One frame: eye, picture axes and forward in world units, pixels per unit depth, centre, near plane and picture size |
 | `viewport_t` | The picture's size and the quarter turn the panel is read at; `render_view_make()` and `render_view_refit()` take one |
 | `r3d_instance_t` | One mesh and, optionally, its baked placement: a 3x3 (rotation times a positive scale) and a position. No placement draws the mesh as it is |
@@ -55,7 +55,7 @@ all see the mesh where it sits. With no model, an instance is the unplaced
 lens exactly.
 
 The importer bakes the placement from a position, a rotation and a scale
-([Scene-Files.md](Scene-Files.md)), so the device does no trigonometry.
+([Scene-Files.md](scene/Scene-Files.md)), so the device does no trigonometry.
 
 ## The files
 
@@ -574,7 +574,7 @@ style; `render_view_t.small_fill` carries them to the frame's row workers.
 <!-- /generated: small-fill-levers -->
 
 The presets are defined in `render_view.h`. Opt in with the
-[scene camera API](Scene-Manager.md#what-an-app-calls), or pass custom `small_fill_t` values:
+[scene camera API](scene/Scene-Manager.md#what-an-app-calls), or pass custom `small_fill_t` values:
 
 <!-- generated: scene-small-fill-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c

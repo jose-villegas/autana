@@ -24,10 +24,10 @@ mesh. Nothing here runs on the board.
 | [gltf_skin.py](gltf_skin.py) | Reads a binary glTF 2.0 and poses its skinned mesh on the CPU: accessors, node tree, one skin, animation sampling (LINEAR, STEP, CUBICSPLINE), linear-blend skinning; reads through [`tools/gltf/`](../gltf/gltf_read.py), the reader and reference sampler [`tools/anim/`](../anim/README.md) shares. Standard library only. |
 | [../gltf/blend_skin_to_glb.py](../gltf/blend_skin_to_glb.py) | Run inside Blender: exports any `.blend` armature and the meshes it deforms to a skinned `.glb`, every action (or `--clips`) as an animation; see its header. |
 | [gltf_preview.py](gltf_preview.py) | Renders any skinned `.glb` with Pillow: a looping GIF of one animation (`--gif NAME`) or the bind pose from four sides (`--sheet`). |
-| [skin_light/](skin_light/report_skin_light.sh) | Skinned-mesh lighting measured on the host, direct N.L against a lookup table: from a skinned glTF, runs the benchmark, draws the sheet and rewrites the document's tables; see [Skinned-Mesh Lighting](../../../docs/render/Skinned-Lighting.md). |
+| [skin_light/](skin_light/report_skin_light.sh) | Skinned-mesh lighting measured on the host, direct N.L against a lookup table: from a skinned glTF, runs the benchmark, draws the sheet and rewrites the document's tables; see [Skinned-Mesh Lighting](../../../docs/render/animation/Skinned-Lighting.md). |
 | [triangle_sizes.c](triangle_sizes.c) | A baked mesh's drawn triangles by the pixel centres they cover from a view, the rasterized ones by bounding box and shading mode, and the poses file; host-tested by `suite_r3d_triangle_sizes.c`. |
 | [triangle_sizes_main.c](triangle_sizes_main.c), [report_triangle_sizes.sh](report_triangle_sizes.sh) | The tool over a mesh and a poses file; see [Triangle sizes](#triangle-sizes). |
-| [bake_fidelity.py](bake_fidelity.py) | Re-lights a flat mesh's geometry with chosen sample count, placement and sky rays into a scratch directory, renders it on the host and scores it against the reference; see [shading: flat](../../../docs/render/Scene-Files.md#shading-flat). |
+| [bake_fidelity.py](bake_fidelity.py) | Re-lights a flat mesh's geometry with chosen sample count, placement and sky rays into a scratch directory, renders it on the host and scores it against the reference; see [shading: flat](../../../docs/render/scene/Scene-Files.md#shading-flat). |
 | [appearance_simplify.py](appearance_simplify.py) | Fits a smooth or flat mesh's vertex positions and colours to reference renders along a camera path with a differentiable rasterizer, its triangles unchanged; see [Appearance fit](#appearance-fit). |
 | [objects/](objects/objects_report.py) | Rigid instances, triangles saved, residuals and camera-path density LOD estimates: `objects_report.py SCENE.scene.toml --object NAME --out DIR`. |
 | [poses.py](poses.py) | Reads the camera poses file `tools/anim/track_host.py` writes, samples a scene camera's path through it from the clip's `.anim.toml`, and casts a pose's pinhole rays. |
@@ -35,7 +35,7 @@ mesh. Nothing here runs on the board.
 | [cost_model.py](cost_model.py), [board_cost_weights.txt](board_cost_weights.txt) | A linear model of a mesh's frame time from a pose (submitted and drawn triangles, rows, pixels with overdraw, clusters in view), and its weights with the board frames they were fitted to; see [Cost-aware fit](#cost-aware-fit). |
 | [reference_render.py](reference_render.py) | Traces the undecimated source mesh through the scene's bake lights at supersampled device resolution; writes linear arrays and RGB565-expanded PNGs for fidelity comparisons. |
 | [light_preview.py](light_preview.py) | Tries a scene's directional light at other rotations before a bake: a path-traced still per rotation and camera-path time, the share of chosen materials in direct sun (`--share floor`), the bounced light at other `[indirect]` intensities (`--indirect 2 1`), and `--save` to write the chosen rotation into the scene file; `--live` turns the sun with the arrow keys in a window that refines while idle, Ctrl+S saving it. |
-| [path_bake.py](path_bake.py) | `PathLight`: the bake's bounced light, Mitsuba's path integrator along each point's fixed cosine-weighted rays against the full-detail source; see [Bounced-light implementation](../../../docs/render/Bake-Method.md#bounced-light-implementation). |
+| [path_bake.py](path_bake.py) | `PathLight`: the bake's bounced light, Mitsuba's path integrator along each point's fixed cosine-weighted rays against the full-detail source; see [Bounced-light implementation](../../../docs/render/offline/Bake-Method.md#bounced-light-implementation). |
 | [ray_query.py](ray_query.py) | First-hit, any-hit and every-hit ray queries against a triangle mesh, traced by Mitsuba; the bake, visibility culling and the reference renderer all use it. |
 | [mitsuba_reference.py](mitsuba_reference.py), [reference_sweep.py](reference_sweep.py) | The path-traced backend of `reference_render.py` (Mitsuba 3, CUDA or CPU), and the measurement of its noise, depth bias, time and GPU memory on one pose; see [Path-traced reference](#path-traced-reference). |
 | [source/reduce_source.py](source/reduce_source.py), [source/blend_export_obj.py](source/blend_export_obj.py) | Reduces a model too large to commit or to trace to an OBJ an import reads: Blender exports its meshes and base-colour textures, then meshoptimizer removes what moves the surface less than an error cap, object by object, each written as its own group. |
@@ -80,7 +80,7 @@ canonicalizes triangle order and the latter uses the import file's fixed seed.
 **The `seal_seams` import option.** `simplify(seal_seams=True)`, off by default,
 is another way to import the same mesh, with fewer empty pixel-sized spots at
 the price of frame time; what it does and costs is in
-[Mesh-Import.md](../../../docs/render/Mesh-Import.md#seal_seams). An import turns it on with `seal_seams = true` in `[geometry.simplify]`.
+[Mesh-Import.md](../../../docs/render/offline/Mesh-Import.md#seal_seams). An import turns it on with `seal_seams = true` in `[geometry.simplify]`.
 
 `mesh_import.py` is the shared full-import command. Each import file, the
 scene file that places it and the `.mesh` it bakes live together.
@@ -94,7 +94,7 @@ It uses the source mesh after alpha masking, before simplification, and the
 same lights, albedo sampling, tone map and RGB565 quantisation as the bake.
 The .npy output retains the linear, box-filtered image; the PNG is the form a
 host render compares with `render_compare.py`. What the scores mean is in
-[Bake-Method.md](../../../docs/render/Bake-Method.md#fidelity-against-a-reference).
+[Bake-Method.md](../../../docs/render/offline/Bake-Method.md#fidelity-against-a-reference).
 
 These commands run from `launcher/`; `PY` is the venv's interpreter
 (`tools/r3d/.cache/venv/Scripts/python` on Windows, `.../bin/python` elsewhere).
@@ -189,7 +189,7 @@ triangle budget and moves its vertices and changes their colours until its
 renders match the reference along a camera path: appearance-driven
 simplification<sup>[[1]](../../../docs/Citations.md#hasselgren-2021)</sup>. The
 triangles stay as the simplifier left them, so the budget holds.
-[Appearance-Fit.md](../../../docs/render/Appearance-Fit.md#against-the-paper) lists
+[Appearance-Fit.md](../../../docs/render/offline/Appearance-Fit.md#against-the-paper) lists
 what the fit changes from the paper.
 
 | | |
@@ -308,7 +308,7 @@ reductions and seeded sampling; the lock pins the bytes a fit made.
 
 The surface term anchors fitted triangles to the alpha-masked source, with a
 recipe weight and a margin in each triangle's start edge scale;
-[Appearance-Fit.md describes the surface term](../../../docs/render/Appearance-Fit.md#surface).
+[Appearance-Fit.md describes the surface term](../../../docs/render/offline/Appearance-Fit.md#surface).
 
 ### Reference on the GPU
 
@@ -377,7 +377,7 @@ as well as colour, and weigh appearance against frame time.
 
 | Stage | What it does | Where |
 |---|---|---|
-| Path visibility | A renderer's `visibility` with `source = "camera_path"` keeps only source triangles a ray from some pose of the camera's path lands on, before lighting and simplification, so the budget goes to surfaces the path shows | `light.visible_from_path`, [Scene-Files.md](../../../docs/render/Scene-Files.md#visibility-camera_path) |
+| Path visibility | A renderer's `visibility` with `source = "camera_path"` keeps only source triangles a ray from some pose of the camera's path lands on, before lighting and simplification, so the budget goes to surfaces the path shows | `light.visible_from_path`, [Scene-Files.md](../../../docs/render/scene/Scene-Files.md#visibility-camera_path) |
 | Pruning | `--budget N` draws every pose of `--coverage-poses` (the training poses when omitted) and counts the pixels each triangle shows; triangles no pose shows go first, then those showing fewest, down to N. Simplifying to more than N and pruning back puts the triangles where they show | `appearance_simplify.coverage`, `prune` |
 | Cost term | `--cost-model board_cost_weights.txt --cost-weight L` adds L dE76 per predicted millisecond to the loss: the model's drawn-triangle, row and pixel terms, differentiable in the vertex positions | `appearance_simplify.predicted_ms`, `cost_model.triangle_terms` |
 | Normal term | `--normal-weight L` adds L times the mean L1 distance between the mesh's interpolated vertex normals and the reference's normal buffer (`reference_render.py --normals`, `NNNN.normal.npy` beside each image) where both cover a pixel; `--score` fits nothing and prints the start's mean normal angle, and with `--angle-dir` writes each pose's per-pixel angle for `render_compare.py --angle-column` | `appearance_simplify.normal_l1`, `normal_error` |

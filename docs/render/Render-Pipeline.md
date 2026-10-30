@@ -146,13 +146,13 @@ loads it whole.
 Cost: `source load` in the bake-steps rows.
 
 The source lit per pixel is the reference every bake is scored against (left,
-in the [fidelity sheets](Bake-Quality.md#fidelity-against-the-source)):
+in the [fidelity sheets](offline/Bake-Quality.md#fidelity-against-the-source)):
 
 ![The source lit per pixel beside flat and flat fitted](../images/render/bake-fidelity-sheet.png)
 
 ![The source lit per pixel beside full and fitted full](../images/render/bake-fidelity-full-sheet.png)
 
-Reference: [Mesh-Import.md](Mesh-Import.md#source).
+Reference: [Mesh-Import.md](offline/Mesh-Import.md#source).
 
 #### Alpha mask
 
@@ -166,7 +166,7 @@ Cost: `alpha mask` in the bake-steps rows.
 
 ![Triangles kept and dropped by the alpha mask](images/import-alpha-mask.png)
 
-Reference: [Mesh-Import.md](Mesh-Import.md#alpha_mask).
+Reference: [Mesh-Import.md](offline/Mesh-Import.md#alpha_mask).
 
 #### Visibility
 
@@ -181,7 +181,7 @@ Cost: `visibility` in the bake-steps rows.
 
 ![Triangles the camera region sees](images/import-visibility.png)
 
-Reference: [Scene-Files.md](Scene-Files.md#visibility-camera_region).
+Reference: [Scene-Files.md](scene/Scene-Files.md#visibility-camera_region).
 
 #### Thin
 
@@ -196,7 +196,7 @@ Cost: `thin` in the bake-steps rows.
 
 ![A thinned material](images/import-thin.png)
 
-Reference: [Mesh-Import.md](Mesh-Import.md#thin).
+Reference: [Mesh-Import.md](offline/Mesh-Import.md#thin).
 
 ### Light
 
@@ -213,8 +213,8 @@ Cost: `light`, and `face colours` for flat meshes, in the bake-steps rows.
 ![Albedo against baked light](../images/render/import-light.png)
 
 What occlusion and bounced light buy is measured in
-[Bake-Quality.md](Bake-Quality.md#indirect-light). Reference:
-[Scene-Files.md](Scene-Files.md#bake).
+[Bake-Quality.md](offline/Bake-Quality.md#indirect-light). Reference:
+[Scene-Files.md](scene/Scene-Files.md#bake).
 
 ### Shape
 
@@ -234,7 +234,7 @@ Cost: `simplify` in the bake-steps rows.
 
 ![A seam left open and sealed](images/import-seal-seams.png)
 
-Reference: [Mesh-Import.md](Mesh-Import.md#simplify).
+Reference: [Mesh-Import.md](offline/Mesh-Import.md#simplify).
 
 #### Fit
 
@@ -253,8 +253,8 @@ Cost: `fit` in the bake-steps rows.
 
 ![A fitted mesh against the reference](../images/render/appearance-fitted-full-reference.png)
 
-Reference: [Appearance-Fit.md](Appearance-Fit.md); measured in
-[Bake-Quality.md](Bake-Quality.md#appearance-fit-of-the-lite-and-full-meshes).
+Reference: [Appearance-Fit.md](offline/Appearance-Fit.md); measured in
+[Bake-Quality.md](offline/Bake-Quality.md#appearance-fit-of-the-lite-and-full-meshes).
 
 ### Output
 
@@ -297,7 +297,7 @@ board, against submitting every cluster:
 </details>
 <!-- /generated: meshlet-sizes -->
 
-Reference: [Baked-Mesh.md](Baked-Mesh.md#meshlets).
+Reference: [Baked-Mesh.md](offline/Baked-Mesh.md#meshlets).
 
 #### Asset pack
 
@@ -411,7 +411,7 @@ Cost: part of `frame.rest` in the frame-stages chart.
 
 ![The demo scene along its flythrough](../images/render/sponza-fitted-full.gif)
 
-Reference: [Scene-Manager.md](Scene-Manager.md#each-frame).
+Reference: [Scene-Manager.md](scene/Scene-Manager.md#each-frame).
 
 ### Render size
 
