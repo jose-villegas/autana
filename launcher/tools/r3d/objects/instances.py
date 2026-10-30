@@ -96,17 +96,17 @@ def symmetric_eigen(a):
             t = (1.0 if theta >= 0.0 else -1.0) / (abs(theta) + math.sqrt(theta * theta + 1.0))
             c = 1.0 / math.sqrt(t * t + 1.0)
             s = t * c
-            for k in range(3):
-                akp, akq = a[k][p], a[k][q]
-                a[k][p], a[k][q] = c * akp - s * akq, s * akp + c * akq
-            for k in range(3):
-                apk, aqk = a[p][k], a[q][k]
-                a[p][k], a[q][k] = c * apk - s * aqk, s * apk + c * aqk
-            for k in range(3):
-                vkp, vkq = v[k][p], v[k][q]
-                v[k][p], v[k][q] = c * vkp - s * vkq, s * vkp + c * vkq
+            _turn_columns(a, p, q, c, s)
+            a[p], a[q] = [c * x - s * y for x, y in zip(a[p], a[q])], [s * x + c * y for x, y in zip(a[p], a[q])]
+            _turn_columns(v, p, q, c, s)
     order = sorted(range(3), key=lambda i: -a[i][i])
     return [a[i][i] for i in order], np.array([[v[k][i] for i in order] for k in range(3)])
+
+
+def _turn_columns(m, p, q, c, s):
+    """Rotates columns p and q of every row of m by the angle with cosine c and sine s."""
+    for row in m:
+        row[p], row[q] = c * row[p] - s * row[q], s * row[p] + c * row[q]
 
 
 def unit(vector):
