@@ -12,7 +12,7 @@
 # adds -b). scene_path.py says how the path is timed.
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-REPO=$(CDPATH= cd -- "$SCRIPT_DIR/../../.." && pwd)
+REPO=$(CDPATH= cd -- "$SCRIPT_DIR/../../.." && pwd -P)
 if [ $# -eq 0 ]; then
     echo "usage: $0 SCENE.scene.toml [--build-only -o DIR | --deps] [--object NAME ...] [--camera NAME] [--frames N --dt MS] [--view shaded|depth|tiles|motion|meshlets|cull] [--counts out.csv] [--poses out.csv] [--size WxH] [--present nearest|scanline|double] [--small-fill CEILING,GATE,STYLE] [--set owner.name=value ...] [--tunables] [--quarter 0|1] [--panel] [-o out.bmp] [--video out.avi]" >&2
     echo "       $0 SCENE.scene.toml [--compare REV|DIR [--b-args ARGS]] [--frame N] [-o out.mp4|out.png] [renderer arguments]" >&2
@@ -108,9 +108,10 @@ $id${render_args:+
         revision_worktree_setup "$REPO" "$work"
         trap 'revision_worktree_cleanup; rm -rf "$work"' EXIT
         b_root=$(revision_worktree_checkout "$compare" b)
+        b_root=$(CDPATH= cd -- "$b_root" && pwd -P)
         b_pack=$AUTANA_ASSET_DIR
         if [ "$b_root" != "$REPO" ]; then
-            scene_abs=$(CDPATH= cd -- "$(dirname -- "$scene_file")" && pwd)/$(basename -- "$scene_file")
+            scene_abs=$(CDPATH= cd -- "$(dirname -- "$scene_file")" && pwd -P)/$(basename -- "$scene_file")
             scene_rel=${scene_abs#"$REPO"/}
             [ "$scene_rel" != "$scene_abs" ] || { echo "scene_viewer: --compare needs a scene file inside $REPO" >&2; exit 2; }
             [ -f "$b_root/$scene_rel" ] || { echo "scene_viewer: $compare has no $scene_rel" >&2; exit 2; }
