@@ -121,39 +121,98 @@ test_a_warp_to_a_moved_camera_puts_the_card_where_a_draw_does(void) {
     TEST_ASSERT_EQUAL_INT(holes, framegen_fill(&r->raster, &target));
 }
 
+/* A context with frame generation and dynamic resolution on, its ladder one
+ * step of the rig's size at BUDGET_US per shown frame. */
+static render_context_t*
+open_context(void) {
+    context = calloc(1, sizeof(*context));
+    destination = malloc(sizeof(uint16_t) * W * H);
+    TEST_ASSERT_NOT_NULL(context);
+    TEST_ASSERT_NOT_NULL(destination);
+    context->scale_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT;
+    const resolution_step_t size = {W, H};
+    const resolution_config_t ladder = resolution_config(&size, 1, 1, BUDGET_US);
+    framegen_example(context, &ladder);
+    return context;
+}
+
+/* One frame drawn or generated and composed, then given `cost_us` as its
+ * measured cost: the host's own timings are not the board's. Whether it was
+ * generated. */
+static bool
+show(render_context_t* c, raster_rig_t* r, const render_view_t* view, int32_t cost_us) {
+    TEST_ASSERT_TRUE(render_context_draw(c, r->instance, RASTER_RIG_QUADS, view, 0));
+    (void)render_context_compose(c, destination, NULL, NULL);
+    const bool generated = framegen_example_generated(c);
+    /* After compose: the context decides and prices from the costs before this frame's. */
+    *(generated ? &c->generated_us : &c->drawn_us) = cost_us;
+    return generated;
+}
+
+/* A frame's measured cost and whether it was generated. */
+typedef struct {
+    int32_t cost_us;
+    bool generated;
+} shown_t;
+
+/* `steps` shown in turn, each generated or drawn as it says. */
+static void
+play(render_context_t* c, raster_rig_t* r, const render_view_t* view, const shown_t* steps, size_t count) {
+    for (size_t i = 0; i < count; i++) {
+        TEST_ASSERT_EQUAL(steps[i].generated, show(c, r, view, steps[i].cost_us));
+    }
+}
+
 /* A drawn frame's budget with frame generation on: the shown frames' budgets
  * less what the generated ones cost, and never less than one frame's. */
 static void
 test_dynamic_resolution_prices_a_drawn_frame_with_the_one_generated_from_it(void) {
     raster_rig_t* r = open_rig();
-    context = calloc(1, sizeof(*context));
-    destination = malloc(sizeof(uint16_t) * W * H);
-    render_context_t* c = context;
-    TEST_ASSERT_NOT_NULL(c);
-    TEST_ASSERT_NOT_NULL(destination);
-    c->scale_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT;
+    render_context_t* c = open_context();
     const render_view_t view = render_view_fixture(&raster_rig_camera, &r->raster, 0);
-    const resolution_step_t size = {W, H};
     const int32_t shown_us = BUDGET_US;
-    const resolution_config_t ladder = resolution_config(&size, 1, 1, shown_us);
-    framegen_example(c, &ladder);
+    const int32_t drawn_us = FRAMEGEN_SHOWN_PER_DRAWN * shown_us; /* a drawn frame that spent its pair's budget */
     const int32_t generated[] = {shown_us / 4, shown_us + shown_us / 2};
-    TEST_ASSERT_TRUE(render_context_draw(c, r->instance, RASTER_RIG_QUADS, &view, 0));
-    (void)render_context_compose(c, destination, NULL, NULL);
-    TEST_ASSERT_FALSE(framegen_example_generated(c));
+    TEST_ASSERT_FALSE(show(c, r, &view, drawn_us));
     for (size_t i = 0; i < sizeof generated / sizeof generated[0]; i++) {
-        TEST_ASSERT_TRUE(render_context_draw(c, r->instance, RASTER_RIG_QUADS, &view, 0));
-        (void)render_context_compose(c, destination, NULL, NULL);
-        TEST_ASSERT_TRUE(framegen_example_generated(c));
-        c->generated_us = generated[i];
+        TEST_ASSERT_TRUE(show(c, r, &view, generated[i]));
         render_context_set_frame_generation(c, true); /* as an app re-applying its settings each frame */
-        TEST_ASSERT_TRUE(render_context_draw(c, r->instance, RASTER_RIG_QUADS, &view, 0));
-        (void)render_context_compose(c, destination, NULL, NULL);
-        TEST_ASSERT_FALSE(framegen_example_generated(c));
+        TEST_ASSERT_FALSE(show(c, r, &view, drawn_us));
         const int32_t shared_us =
             (FRAMEGEN_SHOWN_PER_DRAWN * shown_us) - ((FRAMEGEN_SHOWN_PER_DRAWN - 1) * generated[i]);
         TEST_ASSERT_EQUAL_INT32(shared_us > shown_us ? shared_us : shown_us, c->ladder.budget_us);
     }
+    release_target();
+}
+
+/* Frames are generated once a generated one costs under
+ * (100 - FRAMEGEN_GAIN_PERCENT)% of a drawn one, and then while it costs less:
+ * one that saves less stops it, the drawn frames are priced alone, and after
+ * FRAMEGEN_RETRY_DRAWN drawn frames, or a forgotten view, one is generated to
+ * measure it again. */
+static void
+test_frames_are_generated_only_while_a_generated_one_costs_less(void) {
+    raster_rig_t* r = open_rig();
+    render_context_t* c = open_context();
+    const render_view_t view = render_view_fixture(&raster_rig_camera, &r->raster, 0);
+    const int32_t drawn_us = BUDGET_US;
+    const int32_t saves_too_little = drawn_us * (100 - FRAMEGEN_GAIN_PERCENT) / 100;
+    const int32_t saves_enough = saves_too_little - 1;
+    const shown_t before[] = {{drawn_us, false}, {saves_too_little, true}}, /* not measured yet: tried */
+        after[] = {
+            {saves_enough, true},                           /* retried, and it pays */
+            {drawn_us, false},    {saves_too_little, true}, /* paying: held */
+            {drawn_us, false},    {drawn_us, true},         /* saves nothing */
+            {drawn_us, false},    {drawn_us, false},
+        };
+    play(c, r, &view, before, sizeof before / sizeof before[0]);
+    for (int i = 0; i < FRAMEGEN_RETRY_DRAWN; i++) {
+        TEST_ASSERT_FALSE(show(c, r, &view, drawn_us));
+        TEST_ASSERT_EQUAL_INT32(BUDGET_US, c->ladder.budget_us);
+    }
+    play(c, r, &view, after, sizeof after / sizeof after[0]);
+    render_context_forget(c); /* measured again, as at the start */
+    play(c, r, &view, before, sizeof before / sizeof before[0]);
     release_target();
 }
 
@@ -162,6 +221,7 @@ run_framegen_suite(void) {
     RUN_TEST(test_a_warp_to_the_drawn_view_gives_the_frame_back);
     RUN_TEST(test_a_warp_to_a_moved_camera_puts_the_card_where_a_draw_does);
     RUN_TEST(test_dynamic_resolution_prices_a_drawn_frame_with_the_one_generated_from_it);
+    RUN_TEST(test_frames_are_generated_only_while_a_generated_one_costs_less);
 }
 
 SUITE_REGISTER(run_framegen_suite);
