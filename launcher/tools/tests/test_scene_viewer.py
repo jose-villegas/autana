@@ -21,7 +21,7 @@ from anim import track_host
 from build.c_header import read_define
 from r3d import build_pack, import_settings
 from r3d.lit_mesh import write_lit_mesh  # noqa: E402
-from render import render_compare, scene_path, scene_window  # noqa: E402
+from render import render_compare, scene_path  # noqa: E402
 
 SCRIPT = TOOLS / "render/scenes/scene_viewer_render_host.sh"
 REPO = TOOLS.parents[1]
@@ -331,50 +331,6 @@ path = { animation = "fly.anim.toml", node = "camera" }
         for path in (out, out.with_name("wrapper frame-b.png")):
             with Image.open(path) as image:
                 self.assertEqual(image.size, (448, 368))
-
-    def serve(self, *arguments):
-        """The test scene's host under --serve, closed at the test's end."""
-        host = scene_window.ViewerHost(self.binary, "room", arguments,
-                                       env=dict(os.environ, AUTANA_ASSET_DIR=str(self.out / "assets")))
-        self.addCleanup(host.close)
-        return host
-
-    def test_serve_draws_the_batch_frame_and_moves_with_at(self):
-        host = self.serve("--object", "card")
-        host.ask("at 100")  # the batch's one frame composes one --dt first
-        first, draw_us = host.frame()
-        self.assertGreaterEqual(draw_us, 0)
-        self.assertTrue(first.tobytes() == self.pixels("--object", "card", "--frames", "1").tobytes())
-        self.assertGreater(host.duration_ms(), 0)
-        host.ask(f"at {host.duration_ms()}")
-        self.assertFalse(first.tobytes() == host.frame()[0].tobytes())
-
-    def test_serve_lists_the_views_and_attaches_one_with_its_tunables(self):
-        run, _ = self.render("--view", "invalid")
-        names = run.stderr.split("--view is ", 1)[1].split(", not ", 1)[0].split(", ")
-        host = self.serve("--object", "card")
-        views = dict(host.views())
-        self.assertEqual(list(views), names)
-        self.assertEqual(views["boxes"], "boxview")
-        self.assertEqual(sorted(t[0] for t in host.tunables("boxview")), ["boxview.behind", "boxview.copies"])
-        shaded = host.frame()[0]
-        host.ask("view depth")
-        self.assertFalse(shaded.tobytes() == host.frame()[0].tobytes())
-        host.ask("set boxview.behind=2")
-        self.assertEqual(dict((t[0], t[1]) for t in host.tunables("boxview"))["boxview.behind"], 2)
-
-    def test_serve_refuses_what_it_cannot_do_and_quits(self):
-        host = self.serve()
-        for command in ("view invalid", "set boxview.nothing=1", "set boxview.behind=99", "fly"):
-            with self.subTest(command=command), self.assertRaises(scene_window.ServeError):
-                host.ask(command)
-        host.close()
-        self.assertEqual(host.process.returncode, 0)
-
-    def test_wrapper_refuses_window_with_compare(self):
-        run = self.wrapper("--window", "--compare", ".")
-        self.assertEqual(run.returncode, 2)
-        self.assertIn("--window draws live", run.stderr)
 
     def test_wrapper_refuses_b_args_without_compare(self):
         run = self.wrapper("--b-args", "--object card")

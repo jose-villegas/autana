@@ -28,9 +28,8 @@ static const char* object_boxes_path;
 /* What the first read of --object-boxes makes room for; each further one doubles it. */
 #define OBJECT_BOXES_FIRST_ROOM 256
 static raster_box_t* object_boxes;
-static int object_box_count;
 static FILE* poses;
-static scene_t* shown;
+static const scene_t* shown;
 static scene_entity_t camera;
 
 static bool
@@ -101,6 +100,10 @@ options(int argc, char** argv) {
     }
     if (counts_path != NULL && view != render_context_debug_view_named("cull")) {
         fprintf(stderr, "scene_viewer: --counts needs --view cull\n");
+        return false;
+    }
+    if (object_boxes_path != NULL && view != render_context_debug_view_named("boxes")) {
+        fprintf(stderr, "scene_viewer: --object-boxes needs --view boxes\n");
         return false;
     }
     return true;
@@ -177,17 +180,6 @@ read_object_boxes(const char* path) {
     return count;
 }
 
-/* Attaches `chosen`, with the source objects' boxes when it is the boxes view. */
-static void
-use_view(int chosen) {
-    render_context_t* context = render_context_main();
-    view = chosen;
-    render_context_set_debug_view(context, view);
-    if (view == render_context_debug_view_named("boxes") && render_context_debug_view_state(context) != NULL) {
-        raster_boxes_set_objects(render_context_debug_view_state(context), object_boxes, object_box_count);
-    }
-}
-
 /* The camera entity scene_activate() chose: the named one, or the first whose lens is the first camera's. */
 static scene_entity_t
 active_camera(const scene_t* scene) {
@@ -261,15 +253,16 @@ setup(int quarter) {
     /* What a caller sampling the path along its length reads. */
     fprintf(stderr, "scene_viewer: camera path %u ms\n", (unsigned)scene_animator_clip_duration_ms(scene, camera, 0));
     render_context_t* context = render_context_main();
+    render_context_set_debug_view(context, view);
     if (object_boxes_path != NULL) {
-        object_box_count = read_object_boxes(object_boxes_path);
-        if (object_box_count < 0) {
+        const int count = read_object_boxes(object_boxes_path);
+        if (count < 0) {
             scene_unload(scene);
             return false;
         }
-        fprintf(stderr, "scene_viewer: %d object boxes\n", object_box_count);
+        raster_boxes_set_objects(render_context_debug_view_state(context), object_boxes, count);
+        fprintf(stderr, "scene_viewer: %d object boxes\n", count);
     }
-    use_view(view);
 #define COUNT_NAME(name, member) "," #name
     if (counts_path != NULL
         && (counts = open_rows(counts_path, "frame,ms" RASTER_CULL_FRAME_FIELDS(COUNT_NAME))) == NULL) {
@@ -315,54 +308,6 @@ draw(const render_frame_t* frame) {
     }
 }
 
-/* "ok", then " name" or " name:owner" for each view, owner naming its tunables. */
-static void
-views_reply(char* reply, size_t size) {
-    int used = snprintf(reply, size, "ok shaded");
-    for (int i = 1; i <= RENDER_DEBUG_VIEW_COUNT && used >= 0 && (size_t)used < size; i++) {
-        const render_debug_view_t* row = render_context_debug_view(i);
-        if (row != NULL) {
-            used += snprintf(reply + used, size - (size_t)used, row->tunables != NULL ? " %s:%s" : " %s", row->name,
-                             row->tunables);
-        }
-    }
-}
-
-/* --serve's own: "at MS" puts the camera at that time of its path,
- * "duration" is the path's length in ms, "views" lists them and "view NAME"
- * attaches one. */
-static bool
-command(const char* line, char* reply, size_t size) {
-    static const char VIEW[] = "view ";
-    unsigned at_ms;
-    char trailing;
-    if (sscanf(line, "at %u%c", &at_ms, &trailing) == 1) {
-        if (!scene_animator_seek(shown, camera, SCENE_ANIMATOR_CURRENT, at_ms)) {
-            (void)snprintf(reply, size, "error the camera has no path to seek");
-            return true;
-        }
-        (void)snprintf(reply, size, "ok");
-    } else if (strcmp(line, "duration") == 0) {
-        (void)snprintf(reply, size, "ok %u", (unsigned)scene_animator_clip_duration_ms(shown, camera, 0));
-    } else if (strcmp(line, "views") == 0) {
-        views_reply(reply, size);
-    } else if (strncmp(line, VIEW, sizeof VIEW - 1) == 0) {
-        const char* name = line + sizeof VIEW - 1;
-        const int chosen = render_context_debug_view_named(name);
-        if (chosen == RENDER_DEBUG_VIEW_UNKNOWN) {
-            (void)snprintf(reply, size, "error no view %s", name);
-        } else if (counts != NULL) {
-            (void)snprintf(reply, size, "error --counts keeps the cull view");
-        } else {
-            use_view(chosen);
-            (void)snprintf(reply, size, "ok");
-        }
-    } else {
-        return false;
-    }
-    return true;
-}
-
 const render_scene_t render_scene = {
     .name = "scene_viewer",
     .quarter = 1,
@@ -371,5 +316,4 @@ const render_scene_t render_scene = {
     .options = options,
     .setup = setup,
     .draw = draw,
-    .command = command,
 };
