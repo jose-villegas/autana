@@ -220,7 +220,7 @@ Target: Xtensa: `recip0.s`, `madd.s`, `msub.s`.
 
 Builds: `CONFIG_MATH_FPU_RECIP`; QEMU plain; host plain.
 
-Callers: none.
+Callers: `render`.
 
 Bench rows `mathf_recip_approx_f` vs `div_recip_f`; limit `MATHF_RECIP_APPROX_RELATIVE_LIMIT` (2^-14 rel, 14 bits); proof.
 
