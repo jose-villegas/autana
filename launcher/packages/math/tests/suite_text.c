@@ -184,7 +184,7 @@ test_all_types(void) {
 static void
 test_unsigned_text(void) {
     char text[MATHU_TEXT_MAX];
-    static const uint32_t samples[] = {0, 1, 255, 65536, UINT32_MAX};
+    static const uint32_t samples[] = {0, 1, UINT8_MAX, UINT16_MAX, UINT32_MAX};
     for (size_t i = 0; i < sizeof samples / sizeof *samples; ++i) {
         uint32_t got = 7;
         TEST_ASSERT_LESS_THAN(MATHU_TEXT_MAX, mathu_format(text, sizeof text, samples[i]));
