@@ -153,10 +153,15 @@ void render_context_print_debug_views(FILE* out);
 bool render_context_draw(render_context_t* context, const r3d_instance_t* instances, int count,
                          const render_view_t* view, uint16_t clear);
 
+/* How a kept-width upscale fills its rows; UPSCALE_FILTER_NEAREST until set. */
+void render_context_set_upscale_filter(render_context_t* context, upscale_filter_t filter);
+upscale_filter_t render_context_upscale_filter(const render_context_t* context);
+
 /* With `half`, expands a compatible draw into the half picture and
- * returns true; otherwise upscales into `destination` at the view's
- * destination size. Either path feeds its cost to dynamic resolution. */
-bool render_context_compose(render_context_t* context, uint16_t* destination, uint16_t* half);
+ * returns true, marking `half_seams` (when not NULL) through the upscale
+ * filter; otherwise upscales into `destination` at the view's destination
+ * size. Either path feeds its cost to dynamic resolution. */
+bool render_context_compose(render_context_t* context, uint16_t* destination, uint16_t* half, uint8_t* half_seams);
 
 render_context_frame_t render_context_frame(const render_context_t* context);
 

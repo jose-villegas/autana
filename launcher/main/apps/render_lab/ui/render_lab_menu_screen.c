@@ -69,6 +69,13 @@ render_lab_menu_screen_draw(const render_lab_menu_screen_state_t* state) {
     if (ui_dropdown(ui_next(), RENDER_LAB_SMALL_FILL_LABEL, &fill, names, count)) {
         (void)render_lab_small_fill_select(fill);
     }
+    const char* const* upscales = render_lab_upscale_names(&count);
+    int upscale = render_lab_upscale_selected();
+    render_lab_menu_caption(MENU_BTN_W, RENDER_LAB_UPSCALE_LABEL);
+    ui_row_centre(MENU_BTN_W, UI_ROW_HEIGHT);
+    if (ui_dropdown(ui_next(), RENDER_LAB_UPSCALE_LABEL, &upscale, upscales, count)) {
+        (void)render_lab_upscale_select(upscale);
+    }
     bool dynamic = render_lab_dynres_on();
     ui_row_centre(MENU_BTN_W, UI_ROW_HEIGHT);
     if (ui_toggle(ui_next(), DYNAMIC_RES_LABEL, &dynamic)) {
