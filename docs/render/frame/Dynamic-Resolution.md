@@ -7,13 +7,13 @@ first.
 `render_context_compose()` presents a draw one of two ways:
 
 - **Width exactly half, height at most the half height:** it expands into the half picture. An uneven height spreads through the row map, its row edges on even panel rows.
-- **Anything else:** it upscales to the panel size with [`render/upscale.h`](../../launcher/main/render/upscale.h), which takes any ratio in either axis.
+- **Anything else:** it upscales to the panel size with [`render/upscale.h`](../../../launcher/main/render/upscale.h), which takes any ratio in either axis.
 
 The caller's chosen size is the top step; neither policy draws finer. A frame under budget keeps its speed, and only a frame over budget steps down.
 
 The code is `launcher/main/render/resolution/`. Resolution selection is a setting of the render context, not of a scene or a camera.
 
-An app opts in with `render_context_set_dynamic_resolution()` ([Mesh-Rendering.md](Mesh-Rendering.md#the-render-context)); with no call every frame draws at the context's fixed scale.
+An app opts in with `render_context_set_dynamic_resolution()` ([Mesh-Rendering.md](../Mesh-Rendering.md#the-render-context)); with no call every frame draws at the context's fixed scale.
 
 With [frame generation](Frame-Generation.md#with-dynamic-resolution) on, the
 budget stays the cost of a shown frame, and each drawn frame is priced for
@@ -24,7 +24,7 @@ itself and the frame generated from it.
 | Stepped controller | one step at a time, after the cost, never above the top | the mean of a window of measured frames against an up and a down threshold | a cooldown after each step that doubles when a step reverses the last one; a panic drop for one frame far over budget |
 | Predictor | down any number of steps, up one, before the cost, never above the top | a linear model of the frame, priced at every step from the triangles culling kept this frame, then scaled and offset by what recent frames cost | going finer needs the next step to fit with a margin under the budget for a hold in time, which doubles when a step reverses the last one |
 
-The predictor's model is fitted on the board on every mesh scene at every step ([below](#the-ladder-on-every-mesh-scene)). Live frames refit it with a two-state Kalman filter<sup>[[22]](../Citations.md#kalman-1960)</sup>:
+The predictor's model is fitted on the board on every mesh scene at every step ([below](#the-ladder-on-every-mesh-scene)). Live frames refit it with a two-state Kalman filter<sup>[[22]](../../Citations.md#kalman-1960)</sup>:
 
 - It learns a scale and an offset on the fitted price from each frame's measured cost, and clips a single hitch frame.
 - It leans back to the plain fit when frames stop disagreeing with it.
@@ -42,7 +42,7 @@ The cost a policy holds is the part that scales: the draw and the compose each s
 
 ## Where a frame's time goes at each size
 
-The raster brackets its stages for [frame cost](../tools/Frame-Cost.md): `r3d.cull` (through the predictor, the census, `r3d.census`), `r3d.transform`, `r3d.draw` and `r3d.upscale`.
+The raster brackets its stages for [frame cost](../../tools/Frame-Cost.md): `r3d.cull` (through the predictor, the census, `r3d.census`), `r3d.transform`, `r3d.draw` and `r3d.upscale`.
 
 The suite draws the test scene's path at every size on both cores, then again on one core with the span rasterizer stopped after each stage.
 
@@ -70,9 +70,9 @@ The suite draws the test scene's path at every size on both cores, then again on
 Milliseconds, both cores.
 <!-- /generated: dynres-stages -->
 
-![Frame time by stage at each render size](../images/render/dynamic-resolution-stages.png)
+![Frame time by stage at each render size](../../images/render/dynamic-resolution-stages.png)
 
-![One-core time by span stage at each render size](../images/render/dynamic-resolution-one-core.png)
+![One-core time by span stage at each render size](../../images/render/dynamic-resolution-one-core.png)
 
 The questions the split answers, as differences between two sizes:
 
@@ -135,7 +135,7 @@ Below, the predictor flown over the same frames against the fixed half scale: it
 Whole frame in milliseconds.
 <!-- /generated: dynres-flight -->
 
-![Time at each render size, per scenario](../images/render/dynamic-resolution-flight-sizes.png)
+![Time at each render size, per scenario](../../images/render/dynamic-resolution-flight-sizes.png)
 
 - A scene under budget at the top stays there at its fixed speed.
 - On a scene over budget the predictor spends most frames at the floor, which cuts the mean and cuts the p95 more.
@@ -145,7 +145,7 @@ Whole frame in milliseconds.
 
 Each policy flew each camera's whole path at a fixed frame step through the scene manager, at two budgets. The fixed row is the camera's half scale, the same at both budgets.
 
-The quality columns score every frame's size against the reference render of the same pose at full size ([Render-Harness.md](../tools/Render-Harness.md)).
+The quality columns score every frame's size against the reference render of the same pose at full size ([Render-Harness.md](../../tools/Render-Harness.md)).
 
 <!-- generated: dynres-policies sha256=762d99b5a117fa98a434c5a7ec7a70bca44f89b813621a76e318b75e4f00dbd8 -->
 **camera**
@@ -175,7 +175,7 @@ The quality columns score every frame's size against the reference render of the
 Frame time is the scaled part, draw plus upscale, in milliseconds; dE and SSIM are against the reference at full size, lower dE and higher SSIM being closer.
 <!-- /generated: dynres-policies -->
 
-![Time at each render size along each ladder, per policy and budget](../images/render/dynamic-resolution-sizes.png)
+![Time at each render size along each ladder, per policy and budget](../../images/render/dynamic-resolution-sizes.png)
 
 Prediction error compares each predicted frame's corrected price with its
 measured cost, grouped by path, ladder and budget.
@@ -203,13 +203,13 @@ What the table shows:
 - **Quality.** The scorer's dE is mostly the bake against the reference, a floor every size shares, so the differences are small and the order is what counts.
 - **Ladder.** At the same budget, cutting the height first keeps the full width longer and scores closer to the reference than cutting the width first.
 
-![Frame cost along the path, per policy and budget](../images/render/dynamic-resolution-flight.png)
+![Frame cost along the path, per policy and budget](../../images/render/dynamic-resolution-flight.png)
 
 ## Upscaling within a surface
 
-Off by default: `UPSCALE_FILTER_SURFACE` in [`render/upscale.h`](../../launcher/main/render/upscale.h), set with `render_context_set_upscale_filter()`.
+Off by default: `UPSCALE_FILTER_SURFACE` in [`render/upscale.h`](../../../launcher/main/render/upscale.h), set with `render_context_set_upscale_filter()`.
 
-It applies to the steps that compose into the half picture, and is joint bilateral upsampling<sup>[[101]](../Citations.md#kopf-2007)</sup> with a yes-or-no range weight.
+It applies to the steps that compose into the half picture, and is joint bilateral upsampling<sup>[[101]](../../Citations.md#kopf-2007)</sup> with a yes-or-no range weight.
 
 | Stage | Nearest | Surface |
 |---|---|---|
@@ -267,9 +267,9 @@ Each cell is nearest → surface.
 
 Surface lowers p95 dE and raises SSIM at every step of every scored scene; mean dE moves less. Interiors blend, while depth edges keep their stairs, which is most of the edge error left.
 
-![Nearest and surface against the reference, with each one's dE](../images/render/upscale-surface.png)
+![Nearest and surface against the reference, with each one's dE](../../images/render/upscale-surface.png)
 
-![Edge crops: reference, nearest, surface](../images/render/upscale-surface.crops.png)
+![Edge crops: reference, nearest, surface](../../images/render/upscale-surface.crops.png)
 
 ## Camera presentation
 
@@ -308,7 +308,7 @@ panel's rows, which is vertical in this orientation.
 
 | NEAREST | SCANLINE | DOUBLE |
 |---|---|---|
-| ![Nearest presentation](../images/render/sponza-present-nearest.gif) | ![Scanline presentation](../images/render/sponza-present-scanline.gif) | ![Doubled presentation](../images/render/sponza-present-double.gif) |
+| ![Nearest presentation](../../images/render/sponza-present-nearest.gif) | ![Scanline presentation](../../images/render/sponza-present-scanline.gif) | ![Doubled presentation](../../images/render/sponza-present-double.gif) |
 
 ## Refreshing
 
@@ -327,8 +327,8 @@ sh launcher/tools/render/render_doc_images.sh
 
 The upscale filter's scores and figures come from the test app's upscale quality script, one host run per scene and filter; its tools README has the command.
 
-For the pipeline captures and GPU-stage tables, see
-[Render-Pipeline.md](Render-Pipeline.md#refreshing).
+For the frame-stage captures see [frame/README.md](README.md#refreshing);
+for the GPU-stage bake tables, [offline/README.md](../offline/README.md#where-the-time-goes).
 
 The raster-scale perf suite forces portrait and landscape for every timed window:
 

@@ -38,7 +38,29 @@ emitted order, since meshoptimizer has no per-triangle hook.*
 
 ![Clusters and submitted triangles against the meshlet size](../../images/render/meshlets/meshlet-size-trade.png)
 
-*Measured rows: the [size table](../Render-Pipeline.md#meshlets).*
+Culling clusters about halves the triangles submitted and takes roughly a
+third off the frame. Meshlets of 16 and 32 tie; 64 loses, because its coarser
+boxes let through more triangles than its fewer culls save. Each size on the
+board, against submitting every cluster:
+
+<!-- generated: meshlet-sizes sha256=7b9138a62b58e43fbb9da4dd918030b2d9994d8c7af7375db57f1d0603b659f3 -->
+![Frame cost by meshlet size](../../images/render/meshlets/meshlet-sizes.png)
+
+<details><summary>Meshlet sizes on the board</summary>
+
+| Row | Clusters | Vertices/triangle | Mean submitted triangles | Cull ms | Transform ms | Draw ms | Frame ms |
+|---|---|---|---|---|---|---|---|
+| cull off | 605 | 1.040 | 16929.0 | 0.34 | 5.70 | 48.46 | 57.28 |
+| meshlets of 16 | 1290 | 1.166 | 8082.3 | 0.94 | 3.62 | 32.98 | 40.36 |
+| meshlets of 32 (shipped) | 605 | 1.040 | 8652.7 | 0.60 | 3.24 | 33.89 | 40.57 |
+| meshlets of 64 | 296 | 0.959 | 9529.5 | 0.43 | 3.17 | 35.45 | 41.67 |
+
+</details>
+<!-- /generated: meshlet-sizes -->
+
+The `meshlet-sizes` chart and rows are generated from each size's own suite capture and
+regenerated bake. The [meshlet capture recipe](../../../launcher/tools/render/README.md#meshlet-size-captures)
+owns preparation, capture validation and refresh commands.
 
 Meshlets share vertices, so a frame transforms fewer than with octree-cut
 leaves. The draw order they set decides depth ties, a fraction of a percent of

@@ -3,9 +3,9 @@
 Frame generation shows a warped copy of the last drawn frame between drawn
 frames, so more frames reach the panel without drawing more triangles. Each
 drawn frame's colour and depth are forward-warped to the camera view of the
-next update<sup>[[97]](../Citations.md#mark-1997)</sup>. The warp
+next update<sup>[[97]](../../Citations.md#mark-1997)</sup>. The warp
 extrapolates rather than interpolates, so it adds no frame of
-latency<sup>[[98]](../Citations.md#meta-asw-2016)</sup>.
+latency<sup>[[98]](../../Citations.md#meta-asw-2016)</sup>.
 
 The view is the camera's exact pose at that update, so a scene whose objects
 do not move on their own needs no per-pixel motion vectors. `render/framegen/` holds the warp, and the render
@@ -31,10 +31,10 @@ flowchart LR
 
 Lighting is baked, so a surface's colour does not change with the view and
 a warped pixel is the right colour. Depth-based warps for head motion work
-the same way<sup>[[100]](../Citations.md#meta-asw2-2019)</sup>.
+the same way<sup>[[100]](../../Citations.md#meta-asw2-2019)</sup>.
 
 A filled hole is the frame before's pixel, not the background it uncovered.
-Filling holes from neighbouring background instead<sup>[[99]](../Citations.md#didyk-2010)</sup>
+Filling holes from neighbouring background instead<sup>[[99]](../../Citations.md#didyk-2010)</sup>
 scored worse on the host, and filling the pinholes from their neighbours first
 gained less than 0.02 dE: what error is left comes from the warp's
 nearest-pixel resampling, not from holes.
@@ -45,7 +45,7 @@ On the host, every scene's camera path is drawn at each half-picture size of
 the [dynamic-resolution](Dynamic-Resolution.md) ladder, one frame per display
 step of a 30 fps display. A sample of frames is warped one and two steps
 ahead and scored against the frame really drawn there with the reference
-scorer ([Bake-Method.md](offline/Bake-Method.md)): mean CIE76 dE and luma SSIM.
+scorer ([Bake-Method.md](../offline/Bake-Method.md)): mean CIE76 dE and luma SSIM.
 Repeating the last frame, what the panel shows without frame generation, is
 scored beside it.
 
@@ -111,27 +111,27 @@ scored beside it.
 Bistro along its whole path at 184x224: where repeating the frame jumps
 (turns and fast passes), the generated frame stays close to the true one.
 
-![Bistro: mean dE of the generated frame against the true one along the path](../images/render/framegen-bistro-path.png)
+![Bistro: mean dE of the generated frame against the true one along the path](../../images/render/framegen-bistro-path.png)
 
 The frame with the most holes that are not pinholes, and the frame the
 generated one strays from most, against the true frame, with where they
 differ most enlarged:
 
-![Bistro: true and generated frames with their difference](../images/render/framegen-bistro-sheet.png)
+![Bistro: true and generated frames with their difference](../../images/render/framegen-bistro-sheet.png)
 
-![Bistro: the places the generated frame differs most, enlarged](../images/render/framegen-bistro-sheet.crops.png)
+![Bistro: the places the generated frame differs most, enlarged](../../images/render/framegen-bistro-sheet.crops.png)
 
 The holes themselves, in red over the warp, before the fill:
 
-![Bistro: true frame, generated frame and its holes](../images/render/framegen-bistro-holes.png)
+![Bistro: true frame, generated frame and its holes](../../images/render/framegen-bistro-holes.png)
 
-![Sponza: true frame, generated frame and its holes](../images/render/framegen-sponza-holes.png)
+![Sponza: true frame, generated frame and its holes](../../images/render/framegen-sponza-holes.png)
 
 The screen edge opens most holes on a turn: a guard band, drawing a few
 pixels past each edge, would remove them. Uncovered background behind thin
 near objects (a lamp post, chair legs) is what is left.
 
-![Bistro: the generated frames around the one with the most holes](../images/render/framegen-bistro.gif)
+![Bistro: the generated frames around the one with the most holes](../../images/render/framegen-bistro.gif)
 
 ## Cost on the board
 
@@ -225,7 +225,7 @@ The floor of one frame's budget keeps a slow generated frame from starving
 the drawn one. The drawn frame's budget against the generated frame's cost,
 with this board's generated frames marked:
 
-![A drawn frame's budget against the generated frame's cost](../images/render/framegen-pricing.png)
+![A drawn frame's budget against the generated frame's cost](../../images/render/framegen-pricing.png)
 
 The budget sets the trade. At the same budget the saving buys resolution: the
 drawn frame gets more than one frame's time and draws a finer step. At a
@@ -307,7 +307,7 @@ The warp moves everything with the camera, so an object moving on its own
 lands where it was. What it would need, not built:
 
 - A rigid object: one map per moved instance, which the
-  [motion-vector attachment](Mesh-Rendering.md#motion-vectors) already builds
+  [motion-vector attachment](../Mesh-Rendering.md#motion-vectors) already builds
   from the previous transform, taking only its own pixels.
 - A skinned one: a map per bone. Each triangle writes its dominant bone to a
   tag plane, and each pixel moves by that bone's change over the step.
@@ -316,15 +316,15 @@ lands where it was. What it would need, not built:
 
 ## Reproducing
 
-[`launcher/tools/r3d/framegen/`](../../launcher/tools/r3d/framegen/) holds
+[`launcher/tools/r3d/framegen/`](../../../launcher/tools/r3d/framegen/) holds
 the host experiment, with the host scene renderer's `--dump` option. The
 board numbers come from the on-request `run_framegen_perf_suite` and
 `run_framegen_modes_suite`, captured in
-[`docs/render/data/framegen-board.log`](data/framegen-board.log).
+[`docs/render/data/framegen-board.log`](../data/framegen-board.log).
 
 | File | Role |
 |---|---|
-| [`warp.py`](../../launcher/tools/r3d/framegen/warp.py) | The warp and the fills, on a raster dump |
-| [`framegen_score.py`](../../launcher/tools/r3d/framegen/framegen_score.py) | One scene and size: render, warp, score; stills, sheet, clip and video |
-| [`framegen_report.py`](../../launcher/tools/r3d/framegen/framegen_report.py) | The tables and figures, from the scores and the board capture |
-| [`framegen_docs.sh`](../../launcher/tools/r3d/framegen/framegen_docs.sh) | Regenerates this page's tables and images |
+| [`warp.py`](../../../launcher/tools/r3d/framegen/warp.py) | The warp and the fills, on a raster dump |
+| [`framegen_score.py`](../../../launcher/tools/r3d/framegen/framegen_score.py) | One scene and size: render, warp, score; stills, sheet, clip and video |
+| [`framegen_report.py`](../../../launcher/tools/r3d/framegen/framegen_report.py) | The tables and figures, from the scores and the board capture |
+| [`framegen_docs.sh`](../../../launcher/tools/r3d/framegen/framegen_docs.sh) | Regenerates this page's tables and images |

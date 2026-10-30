@@ -30,7 +30,7 @@ and picture basis from `render_view_t`.
 | `r3d_instance_t` | One mesh and, optionally, its baked placement: a 3x3 (rotation times a positive scale) and a position. No placement draws the mesh as it is |
 | `raster_t` | The `r3d_instance_t` array it draws (one mesh is a count of one), at one size, into a scratch block the caller hands it. Its options are fields the caller sets: `clear`, and `upscaled` with a destination picture at least as large |
 | `raster_draw()` | Takes a `const render_view_t*` and draws every instance through that frame view |
-| `raster_census()` | `raster_draw()`'s cull alone, into the scratch block's list: on an upscaled raster with unchanged destination dimensions it holds at any render size, so a caller can price sizes first ([Dynamic-Resolution.md](Dynamic-Resolution.md)) |
+| `raster_census()` | `raster_draw()`'s cull alone, into the scratch block's list: on an upscaled raster with unchanged destination dimensions it holds at any render size, so a caller can price sizes first ([Dynamic-Resolution.md](frame/Dynamic-Resolution.md)) |
 | `raster_draw_culled()` | `raster_draw()` from that list at the raster's size now, without culling again |
 | `raster_upscale()` | Nearest-neighbour scales what was drawn up into `destination`; its retained maps change only when either size changes |
 | `r3d_span_triangle()` | A scene that projects its own triangles fills them with this, into a window of rows of a render target holding colour and depth, from `render/r3d_span.h` |
@@ -163,8 +163,8 @@ app exits.
 | Call | Meaning |
 |---|---|
 | `render_context_set_scale()` | the share of the destination each axis draws at; half until set |
-| `render_context_set_dynamic_resolution(config, model, step)` | opt-in: each frame draws at a step of `config` to hold its budget ([Dynamic-Resolution.md](Dynamic-Resolution.md)); NULL returns to the fixed scale |
-| `render_context_set_frame_generation(on)` | each drawn frame is followed by one warped from it to its own view instead of drawn ([Frame-Generation.md](Frame-Generation.md)); a debug view, a cut or a new viewport draws |
+| `render_context_set_dynamic_resolution(config, model, step)` | opt-in: each frame draws at a step of `config` to hold its budget ([Dynamic-Resolution.md](frame/Dynamic-Resolution.md)); NULL returns to the fixed scale |
+| `render_context_set_frame_generation(on)` | each drawn frame is followed by one warped from it to its own view instead of drawn ([Frame-Generation.md](frame/Frame-Generation.md)); a debug view, a cut or a new viewport draws |
 | `render_context_set_debug_view()` | a [view mode](#view-modes), development builds only |
 | `render_context_frame()` | the last frame: its step, size, what culling kept, and what its draw and upscale cost |
 
