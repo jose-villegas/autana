@@ -154,24 +154,29 @@ depth_range(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_sp
     g->in_range = !capped && low >= 0 && high <= DEPTH_MAX;
 }
 
-/* `capped` is a constant wherever it is inlined, so an uncapped walk keeps
- * the plain table. */
-static inline int32_t
-range_max(const gradients_t* g, int k, bool capped) {
-    return capped && k == 0 ? depth_cap_max(g->depth_cap) : value_max[k];
-}
-
 /* A pixel centre just outside the triangle extrapolates past the vertex
  * range, and a wrapped channel would be a wrong-coloured pixel. Each span's
  * start is clamped; only a span whose end would still leave the range pays
  * for a step recomputed from both clamped ends. */
 static inline void
-clamp_span(int32_t max, int count, int32_t* value, int32_t* step) {
+clamp_span_to(int32_t max, int count, int32_t* value, int32_t* step) {
     const int32_t start = mathi_clamp(*value, 0, max);
     const int32_t end = start + (*step * count);
     *value = start;
     if (count > 0 && (end < 0 || end > max)) {
         *step = (mathi_clamp(end, 0, max) - start) / count;
+    }
+}
+
+/* Indexing the table, not passing its value, keeps the IRAM walk's frame
+ * at its size. */
+static inline void
+clamp_span(int k, int count, int32_t* value, int32_t* step) {
+    const int32_t start = mathi_clamp(*value, 0, value_max[k]);
+    const int32_t end = start + (*step * count);
+    *value = start;
+    if (count > 0 && (end < 0 || end > value_max[k])) {
+        *step = (mathi_clamp(end, 0, value_max[k]) - start) / count;
     }
 }
 
@@ -184,7 +189,12 @@ span_start(const gradients_t* g, uint32_t carried, int k, int skip, int count, i
         *value = (int32_t)(carried + ((uint32_t)*step * (uint32_t)skip));
     }
     if (!g->in_range) {
-        clamp_span(range_max(g, k, capped), count, value, step);
+        /* `capped` is a constant wherever this is inlined. */
+        if (capped && k == 0) {
+            clamp_span_to(depth_cap_max(g->depth_cap), count, value, step);
+        } else {
+            clamp_span(k, count, value, step);
+        }
     }
 }
 

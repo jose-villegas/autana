@@ -559,9 +559,7 @@ draw_counting(const r3d_span_vertex_t* const tri[3], uint8_t* hits) {
     for (int p = 0; p < W * H; p++) {
         hits[p] += depth[p] != 0;
     }
-    const recti_t centres = r3d_span_centres(
-        r3d_span_min3(tri[0]->x, tri[1]->x, tri[2]->x), r3d_span_min3(tri[0]->y, tri[1]->y, tri[2]->y),
-        r3d_span_max3(tri[0]->x, tri[1]->x, tri[2]->x), r3d_span_max3(tri[0]->y, tri[1]->y, tri[2]->y));
+    const recti_t centres = r3d_span_extent_limits(tri[0], tri[1], tri[2], 0, 0).centres;
     return centres.w <= 2 && centres.h <= 2 && covered() > 0;
 }
 
