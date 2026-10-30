@@ -14,6 +14,7 @@
 #include "math/geometry/box3f_plane.h"
 #include "math/geometry/planef.h"
 #include "math/linear/mat3f.h"
+#include "math/projection/inverse_depth.h"
 #include "math/scalar/mathf.h"
 #include "math/scalar/mathi.h"
 #include "profile/frame_laps.h"
@@ -145,23 +146,27 @@ push_children(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_
     return top;
 }
 
-/* The least view depth of the part of `box` inside the planes it crosses
- * (`crossing`, a mask of `planes`); below `nearest` only when it lowers it.
- * A box reaching behind the eye is drawn only where the frustum keeps it. */
-static float
-nearest_inside(box3f_t box, const planef_t* planes, unsigned crossing, planef_t depth, float nearest) {
+/* Lowers `fit` to the scale of the least view depth of the part of `box`
+ * inside the planes it crosses (`crossing`, a mask of `planes`): a box
+ * reaching behind the eye is drawn only where the frustum keeps it. A bound
+ * at or past fit->depth_near cannot lower the scale, so the planes are tried
+ * only until it gets there. */
+static void
+fit_inside(box3f_t box, const planef_t* planes, unsigned crossing, planef_t depth, r3d_depth_fit_t* fit) {
     float least = box3f_plane_distance_min(box, depth);
-    for (int p = 0; p < PLANE_FRUSTUM_COUNT && least < nearest; p++) {
+    for (int p = 0; p < PLANE_FRUSTUM_COUNT && least < fit->depth_near; p++) {
         if (crossing & (1U << p)) {
             least = mathf_max(least, box3f_plane_distance_min_inside(box, depth, planes[p]));
         }
     }
-    return mathf_min(nearest, least);
+    if (least < fit->depth_near) {
+        fit->depth_near = mathf_min(fit->depth_near, inverse_depth_scale_fit(fit->near_z, least));
+    }
 }
 
 int
 r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* out, r3d_pipeline_work_t* work,
-                  float* nearest) {
+                  r3d_depth_fit_t* fit) {
     planef_t* planes = work->cull.planes;
     r3d_lens_frustum(lens, planes);
     const planef_t depth = lens_depth_plane(lens);
@@ -188,8 +193,8 @@ r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* 
             const box3f_t box = box3f_from_box3s(mesh->clusters[c].bounds, 1.0F);
             if (cluster_mask == 0 || !box3f_outside_planes(box, planes, PLANE_FRUSTUM_COUNT, &cluster_mask)) {
                 out[count++] = (uint16_t)c;
-                if (nearest != NULL) {
-                    *nearest = nearest_inside(box, planes, cluster_mask, depth, *nearest);
+                if (fit != NULL && fit->depth_near > fit->near_z) {
+                    fit_inside(box, planes, cluster_mask, depth, fit);
                 }
             }
         }
