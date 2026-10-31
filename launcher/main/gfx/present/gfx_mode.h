@@ -1,6 +1,6 @@
 /*
- * gfx_mode: the frame loop's side of the modes gfx.h declares - the half
- * picture, its expansion and readback of the panel's frame.
+ * gfx_mode: the half picture, its expansion and readback of the panel's
+ * frame, for the modes gfx.h declares.
  * gfx_mode_resolve() is the pure grant arithmetic a host suite drives
  * without a framebuffer or a panel.
  */

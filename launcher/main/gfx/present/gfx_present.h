@@ -10,7 +10,7 @@
 #include "gfx/gfx.h"
 #include "gfx/target/gfx_target.h"
 
-/* The band ring's compile-time band height (gfx_mode.h, gfx_band.h), a
+/* The band ring's compile-time band height (gfx.h's gfx_mode_t; gfx_band.h), a
  * divisor of GFX_HEIGHT (448): 64, 32 or 16. The default is 32; see
  * docs/gfx/Targets-and-Modes.md. Override with -DGFX_BAND_HEIGHT=N to try
  * another. */

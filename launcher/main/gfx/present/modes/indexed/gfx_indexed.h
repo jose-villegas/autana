@@ -1,62 +1,21 @@
 /*
- * gfx_indexed: expanding a row of palette-index bytes into panel pixels,
- * as a standalone, ESP-IDF-free module so a host suite can drive it
- * without a framebuffer or a panel.
- *
- * GFX_LAYOUT_INDEXED (gfx.h) keeps an index image in internal RAM
- * instead of an RGB565 band: one byte per grid cell, not per panel pixel.
- * The present task is what turns that back into pixels, once per dirty
- * band, by calling the functions here: a LUT lookup per cell plus a
- * nearest-neighbour upscale by the grid's own cell size, never a per-pixel
- * divide. gfx_present.c and gfx_mode.c (readback) are the only real callers,
- * with the state they read in gfx_indexed.c; everything below is pure enough
- * for a host test to call directly.
+ * gfx_indexed: what an app writing an index image needs - the palette and
+ * dither-table sizes, the dither modes, and the per-cell repaint decision.
+ * GFX_LAYOUT_INDEXED (gfx.h) keeps one byte per grid cell in internal RAM
+ * instead of an RGB565 band. Turning cells back into pixels is the present
+ * task's, in gfx_indexed_expand.h. ESP-IDF-free, so a host suite drives it
+ * directly.
  */
 #pragma once
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
 #include "gfx/target/gfx_color.h"
 #include "image/pixel/bayer.h"
 
-#define GFX_INDEXED_PALETTE_SIZE 256
-
-/* The grid row a panel row belongs to, and the reverse: the first/last
- * panel row a grid row occupies. `cell_size` need not divide the panel's
- * own height evenly (a caller may reserve a margin below the grid's own
- * rows), so these floor/ceil consistently rather than assume it does. */
-static inline int
-gfx_indexed_panel_row_to_grid_row(int panel_row, int cell_size) {
-    return panel_row / cell_size;
-}
-
-static inline int
-gfx_indexed_grid_row_to_panel_row(int grid_row, int cell_size) {
-    return grid_row * cell_size;
-}
-
-/* Expands one panel output row from a row of palette-index bytes: pixel x
- * reads `grid_row[x / cell_size]`, looked up in `lut`. `grid_row` may be
- * NULL (a panel row past the grid's own height, such as a margin a caller
- * reserves below its grid), in which case the whole row reads `lut[0]`,
- * the reserved UI/background entry. `out_width` may exceed
- * `grid_w * cell_size`; the remainder past the grid's own width is
- * `lut[0]` too, the same margin on the other axis. */
-static inline void
-gfx_indexed_expand_row(const uint8_t* grid_row, int grid_w, const gfx_color_t lut[GFX_INDEXED_PALETTE_SIZE],
-                       int cell_size, gfx_color_t* out_row, int out_width) {
-    const int grid_pixels = grid_w * cell_size;
-    const int solid_pixels = grid_pixels < out_width ? grid_pixels : out_width;
-
-    for (int x = 0; x < solid_pixels; x++) {
-        const int gx = x / cell_size;
-        out_row[x] = grid_row != NULL ? lut[grid_row[gx]] : lut[0];
-    }
-    for (int x = solid_pixels; x < out_width; x++) {
-        out_row[x] = lut[0];
-    }
-}
+#define GFX_INDEXED_PALETTE_SIZE    256
 
 /* One entry per (palette index, Bayer phase): the RGB565 colour that
  * index's dither against the shared 16-colour table resolves to at panel
@@ -64,32 +23,6 @@ gfx_indexed_expand_row(const uint8_t* grid_row, int grid_w, const gfx_color_t lu
  * once offline, so expansion never calls bayer_covers() itself.
  * 256 * 16 * 2 bytes = 8 KiB flat. */
 #define GFX_INDEXED_DITHER16_PHASES 16
-
-/* Same as gfx_indexed_expand_row(), but every pixel is one lookup into a
- * precomputed (index, phase) table instead of a 256-colour LUT read.
- * `panel_row`/`panel_col0` are the OUTPUT row's absolute panel coordinates:
- * the phase is keyed off them, not a position local to this call, so two
- * dithered bands sent side by side stay in phase (see bayer_covers()'s
- * own comment in bayer.h, whose table this one is baked from). */
-static inline void
-gfx_indexed_expand_row_dither16(const uint8_t* grid_row, int grid_w,
-                                const gfx_color_t dither16_rgb[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES],
-                                int cell_size, int panel_row, int panel_col0, gfx_color_t* out_row, int out_width) {
-    const int grid_pixels = grid_w * cell_size;
-    const int solid_pixels = grid_pixels < out_width ? grid_pixels : out_width;
-    const int py = (panel_row & 3) * 4;
-
-    for (int x = 0; x < solid_pixels; x++) {
-        const int gx = x / cell_size;
-        const uint8_t idx = grid_row != NULL ? grid_row[gx] : 0u;
-        const int px = (panel_col0 + x) & 3;
-        out_row[x] = dither16_rgb[idx * GFX_INDEXED_DITHER16_PHASES + py + px];
-    }
-    for (int x = solid_pixels; x < out_width; x++) {
-        const int px = (panel_col0 + x) & 3;
-        out_row[x] = dither16_rgb[py + px]; /* index 0: reserved background */
-    }
-}
 
 /* Groups the 256 indices by whether a `phases`-wide table renders them
  * IDENTICALLY: a cell whose index moves within a class has provably
@@ -170,29 +103,6 @@ typedef enum {
  * the four positions of a 2x2 Bayer block over cells, not pixels. */
 #define GFX_INDEXED_CELL_BAYER2_PHASES  4
 
-/* One lookup per CELL, keyed by its own (cx, cy) phase, filled solid
- * across its pixels by a run fill; `bayer2` picks the phase formula
- * matching whichever table `cell_table` was baked for, resolved once per
- * cell rather than the divide, ternary and multiply gfx_indexed_expand_row()
- * never needs repeated once per PANEL PIXEL. `cy` is the GRID row: a cell's
- * phase never depends on which panel pixel is being written. */
-static inline void
-gfx_indexed_expand_row_dither_cell(const uint8_t* grid_row, int grid_w, const gfx_color_t* cell_table, bool bayer2,
-                                   int cell_size, int cy, gfx_color_t* out_row, int out_width) {
-    const int phases = bayer2 ? GFX_INDEXED_CELL_BAYER2_PHASES : GFX_INDEXED_CELL_CHECKER_PHASES;
-    const int cy_term = bayer2 ? (cy & 1) * 2 : (cy & 1);
-    int x = 0;
-    for (int gx = 0; x < out_width; gx++) {
-        const uint8_t idx = (grid_row != NULL && gx < grid_w) ? grid_row[gx] : 0u;
-        const int phase = bayer2 ? (cy_term + (gx & 1)) : ((cy_term + gx) & 1);
-        const gfx_color_t colour = cell_table[idx * phases + phase];
-        const int run_end = x + cell_size < out_width ? x + cell_size : out_width;
-        for (; x < run_end; x++) {
-            out_row[x] = colour;
-        }
-    }
-}
-
 /* Exact, not an approximation: a fixed cell never leaves its own (cx, cy)
  * phase, so comparing the two indices' resolved colours at THAT phase
  * alone is the whole answer, unlike gfx_indexed_dither16_classify()'s
@@ -258,71 +168,3 @@ gfx_indexed_cell_repaint(gfx_indexed_repaint_kind_t kind, const uint8_t* class_t
  * phase 0-1); GFX_DITHER_PIXEL_BAYER4 keeps the finer 4x4 pattern. */
 #define GFX_INDEXED_CHECKER2_ROW_PHASES 2
 #define GFX_INDEXED_CHECKER2_CHUNK_PX   2
-
-/* Same shape as gfx_indexed_expand_row_dither16(), read at a 2-pixel
- * period instead of 4: `panel_row`/`panel_col0` are absolute panel
- * coordinates, so two dithered bands sent side by side stay in phase. */
-static inline void
-gfx_indexed_expand_row_dither_checker2(
-    const uint8_t* grid_row, int grid_w,
-    const gfx_color_t
-        checker2_rgb[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX],
-    int cell_size, int panel_row, int panel_col0, gfx_color_t* out_row, int out_width) {
-    const int stride = GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX;
-    const int grid_pixels = grid_w * cell_size;
-    const int solid_pixels = grid_pixels < out_width ? grid_pixels : out_width;
-    const int py = (panel_row & 1) * GFX_INDEXED_CHECKER2_CHUNK_PX;
-
-    for (int x = 0; x < solid_pixels; x++) {
-        const int gx = x / cell_size;
-        const uint8_t idx = grid_row != NULL ? grid_row[gx] : 0u;
-        const int px = (panel_col0 + x) & 1;
-        out_row[x] = checker2_rgb[idx * stride + py + px];
-    }
-    for (int x = solid_pixels; x < out_width; x++) {
-        const int px = (panel_col0 + x) & 1;
-        out_row[x] = checker2_rgb[py + px]; /* index 0: reserved background */
-    }
-}
-
-/* Everything that decides how an index image reaches the panel. `table` is
- * the plain 256-colour LUT while `dither16_on` is false, otherwise the one
- * installed for `dither_mode`, sized as that mode's own comment says. */
-typedef struct {
-    const uint8_t* image;
-    int grid_w, grid_h, cell_size;
-    bool dither16_on;
-    gfx_dither_mode_t dither_mode;
-    const gfx_color_t* table;
-} gfx_indexed_frame_t;
-
-/* Panel row `y` of `frame`, exactly as the present path sends it. The one
- * place the per-mode choice is made, so a read-back of the panel cannot
- * drift from what was sent. */
-static inline void
-gfx_indexed_expand_panel_row(const gfx_indexed_frame_t* frame, int y, gfx_color_t* out_row, int out_width) {
-    const int grid_row = gfx_indexed_panel_row_to_grid_row(y, frame->cell_size);
-    const uint8_t* row = grid_row < frame->grid_h ? frame->image + (size_t)grid_row * frame->grid_w : NULL;
-    const int w = frame->grid_w;
-    const int cell = frame->cell_size;
-
-    if (!frame->dither16_on) {
-        gfx_indexed_expand_row(row, w, frame->table, cell, out_row, out_width);
-        return;
-    }
-    switch (frame->dither_mode) {
-        case GFX_DITHER_CELL_CHECKER:
-            gfx_indexed_expand_row_dither_cell(row, w, frame->table, false, cell, grid_row, out_row, out_width);
-            return;
-        case GFX_DITHER_CELL_BAYER2:
-            gfx_indexed_expand_row_dither_cell(row, w, frame->table, true, cell, grid_row, out_row, out_width);
-            return;
-        case GFX_DITHER_PIXEL_CHECKER2:
-            gfx_indexed_expand_row_dither_checker2(row, w, frame->table, cell, y, 0, out_row, out_width);
-            return;
-        case GFX_DITHER_NONE: gfx_indexed_expand_row(row, w, frame->table, cell, out_row, out_width); return;
-        case GFX_DITHER_PIXEL_BAYER4:
-        case GFX_DITHER_MODE_COUNT:
-        default: gfx_indexed_expand_row_dither16(row, w, frame->table, cell, y, 0, out_row, out_width); return;
-    }
-}
