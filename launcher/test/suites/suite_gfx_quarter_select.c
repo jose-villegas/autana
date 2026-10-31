@@ -32,6 +32,28 @@ aligned(size_t bytes, memory_kind_t kind, void** block) {
     return got.at;
 }
 
+/* A pixel for check `check`: every fourth check runs the channel extremes. */
+static uint16_t
+check_pixel(int check) {
+    if (check % 4 != 0) {
+        return (uint16_t)rand();
+    }
+    return rand() & 1 ? UINT16_MAX : 0;
+}
+
+/* Check `check`'s rows and keep bytes: none kept, all kept, then random. */
+static void
+fill_check(int check, uint16_t* mine, uint16_t* other, uint8_t* keep) {
+    for (int x = 0; x < ROW_PIXELS; x++) {
+        mine[x] = check_pixel(check);
+        other[x] = check_pixel(check);
+    }
+    static const uint8_t fixed[] = {0, UINT8_MAX};
+    for (int step = 0; step < ROW_STEPS; step++) {
+        keep[step] = check % 3 < 2 ? fixed[check % 3] : (uint8_t)rand();
+    }
+}
+
 static void
 test_quarter_select_matches_scalar(void) {
     void* blocks[4];
@@ -42,23 +64,9 @@ test_quarter_select_matches_scalar(void) {
     uint8_t keep[ROW_STEPS];
     srand(1);
     for (int check = 0; check < CHECKS; check++) {
-        for (int x = 0; x < ROW_PIXELS; x++) {
-            /* Every fourth check runs the channel extremes. */
-            mine[x] = check % 4 == 0 ? (rand() & 1 ? UINT16_MAX : 0) : (uint16_t)rand();
-            other[x] = check % 4 == 0 ? (rand() & 1 ? UINT16_MAX : 0) : (uint16_t)rand();
-        }
-        for (int step = 0; step < ROW_STEPS; step++) {
-            keep[step] = check % 3 == 0 ? 0 : check % 3 == 1 ? UINT8_MAX : (uint8_t)rand();
-        }
+        fill_check(check, mine, other, keep);
         gfx_quarter_select_scalar(mine, other, keep, scalar, ROW_STEPS);
         gfx_quarter_select(mine, other, keep, pie, ROW_STEPS);
-        for (int x = 0; x < ROW_PIXELS; x++) {
-            if (pie[x] != scalar[x]) {
-                ESP_LOGE("quarter_select", "check %d x %d mine %04x other %04x keep %d: pie %04x scalar %04x", check, x,
-                         mine[x], other[x], (keep[x / GFX_QUARTER_LANES] >> (x % GFX_QUARTER_LANES)) & 1, pie[x],
-                         scalar[x]);
-            }
-        }
         TEST_ASSERT_EQUAL_HEX16_ARRAY(scalar, pie, ROW_PIXELS);
     }
     for (int i = 0; i < 4; i++) {
