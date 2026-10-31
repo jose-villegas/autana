@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#define TESTKIT_SUITE_MAX 256
+#define TESTKIT_SUITE_MAX 320
 /* The longest suite name a RUNSUITE request can carry; a longer one is refused at compile time. */
 #define SUITE_NAME_MAX    38
 
