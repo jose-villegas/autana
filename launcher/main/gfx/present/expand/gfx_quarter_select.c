@@ -4,12 +4,26 @@
 
 #include "image/pixel/rgb565.h"
 
+/* Pixel x's pick: mine where its bit in `keep` is set, else the quarter step. */
+static uint16_t
+quarter_or_kept(uint16_t mine, uint16_t other, const uint8_t* keep, int x) {
+    const bool kept = (keep[x / GFX_QUARTER_LANES] >> (x % GFX_QUARTER_LANES)) & 1U;
+    return kept ? mine : rgb565be_unspread(rgb565_spread_quarter(rgb565be_spread(mine), rgb565be_spread(other)));
+}
+
 void
 gfx_quarter_select_scalar(const uint16_t* mine, const uint16_t* other, const uint8_t* keep, uint16_t* out, int steps) {
     for (int x = 0; x < steps * GFX_QUARTER_LANES; x++) {
-        const bool kept = (keep[x / GFX_QUARTER_LANES] >> (x % GFX_QUARTER_LANES)) & 1U;
-        out[x] = kept ? mine[x]
-                      : rgb565be_unspread(rgb565_spread_quarter(rgb565be_spread(mine[x]), rgb565be_spread(other[x])));
+        out[x] = quarter_or_kept(mine[x], other[x], keep, x);
+    }
+}
+
+void
+gfx_quarter_spread_scalar(const uint16_t* mine, const uint16_t* left, const uint16_t* right, const uint8_t* keeps,
+                          uint16_t* out, int steps) {
+    for (int x = 0; x < steps * GFX_QUARTER_LANES; x++) {
+        out[2 * x] = quarter_or_kept(mine[x], left[x], keeps, x);
+        out[(2 * x) + 1] = quarter_or_kept(mine[x], right[x], keeps + steps, x);
     }
 }
 
@@ -17,6 +31,12 @@ gfx_quarter_select_scalar(const uint16_t* mine, const uint16_t* other, const uin
 void
 gfx_quarter_select(const uint16_t* mine, const uint16_t* other, const uint8_t* keep, uint16_t* out, int steps) {
     gfx_quarter_select_scalar(mine, other, keep, out, steps);
+}
+
+void
+gfx_quarter_spread(const uint16_t* mine, const uint16_t* left, const uint16_t* right, const uint8_t* keeps,
+                   uint16_t* out, int steps) {
+    gfx_quarter_spread_scalar(mine, left, right, keeps, out, steps);
 }
 #else
 
@@ -116,6 +136,108 @@ __asm__(".section .rodata.gfx_pie_constants, \"a\"\n"
         "    ee.vst.128.ip q3, a5, 16\n"
         "2:\n"
         "    retw.n\n"
-        ".size gfx_quarter_select, . - gfx_quarter_select\n");
+        ".size gfx_quarter_select, . - gfx_quarter_select\n"
+        /* gfx_quarter_spread works out 3 mine + rounding once for both sides, blends
+         * the left, then the right, swaps the pair back to big-endian at once, selects
+         * each against mine, and EE.VZIP.16 lays the two out as the panel row: a2
+         * mine, a3 left, a4 right, a5 keeps, a6 out, a7 steps; a8 to a14 constants
+         * and the right keeps. */
+        ".global gfx_quarter_spread\n"
+        ".type gfx_quarter_spread, @function\n"
+        "gfx_quarter_spread:\n"
+        "    entry a1, 16\n"
+        "    movi a8, gfx_pie_red_lane\n"
+        "    movi a9, gfx_pie_rb_round\n"
+        "    movi a10, gfx_pie_green_round\n"
+        "    movi a11, gfx_pie_red_out\n"
+        "    movi a12, gfx_pie_lane_bits\n"
+        "    movi a13, gfx_pie_blue\n"
+        "    ee.vldbc.16 q6, a13\n"
+        "    movi a13, gfx_pie_green\n"
+        "    ee.vldbc.16 q7, a13\n"
+        "    add a14, a5, a7\n" /* the right keeps */
+        "    loopnez a7, 2f\n"
+        "    ee.vld.128.ip q0, a2, 0\n" /* mine, read again for the select */
+        "    ee.vld.128.ip q1, a3, 16\n"
+        "    ee.vunzip.8 q0, q1\n"
+        "    ee.vzip.8 q1, q0\n" /* q1 mine, q0 left, native */
+        "    ee.vldbc.16 q4, a8\n"
+        "    ssai 3\n"
+        "    ee.vsr.32 q5, q1\n"
+        "    ee.andq q2, q1, q7\n"
+        "    ee.andq q5, q5, q4\n"
+        "    ee.andq q1, q1, q6\n"
+        "    ee.vadds.s16 q3, q2, q2\n"
+        "    ee.orq q5, q5, q1\n" /* mine red-blue */
+        "    ee.vadds.s16 q3, q3, q2\n"
+        "    ee.vadds.s16 q2, q5, q5\n"
+        "    ee.vldbc.16 q1, a10\n"
+        "    ee.vadds.s16 q2, q2, q5\n"
+        "    ee.vadds.s16 q3, q3, q1\n" /* 3 mine + 2, green: both sides' */
+        "    ee.vldbc.16 q1, a9\n"
+        "    ee.vadds.s16 q2, q2, q1\n" /* 3 mine + 2, red-blue: both sides' */
+        "    ee.vsr.32 q5, q0\n"
+        "    ee.andq q1, q0, q6\n"
+        "    ee.andq q5, q5, q4\n"
+        "    ee.andq q0, q0, q7\n"
+        "    ee.orq q5, q5, q1\n"       /* left red-blue */
+        "    ee.vadds.s16 q0, q0, q3\n" /* + left, green */
+        "    ee.vadds.s16 q5, q5, q2\n" /* + left, red-blue */
+        "    ssai 2\n"
+        "    ee.vsr.32 q0, q0\n"
+        "    ee.vsr.32 q1, q5\n"
+        "    ee.andq q0, q0, q7\n"
+        "    ee.andq q1, q1, q6\n"
+        "    ssai 1\n"
+        "    ee.vsl.32 q5, q5\n"
+        "    ee.vldbc.16 q4, a11\n"
+        "    ee.orq q0, q0, q1\n"
+        "    ee.andq q5, q5, q4\n"
+        "    ee.orq q5, q5, q0\n" /* the left blend, native */
+        "    ee.vld.128.ip q0, a4, 16\n"
+        "    ee.vunzip.8 q0, q1\n"
+        "    ee.vzip.8 q1, q0\n" /* q1 right, native; q0 spent */
+        "    ee.vldbc.16 q4, a8\n"
+        "    ssai 3\n"
+        "    ee.vsr.32 q0, q1\n"
+        "    ee.andq q0, q0, q4\n"
+        "    ee.andq q4, q1, q6\n"
+        "    ee.andq q1, q1, q7\n"
+        "    ee.orq q0, q0, q4\n"       /* right red-blue */
+        "    ee.vadds.s16 q1, q1, q3\n" /* + right, green */
+        "    ee.vadds.s16 q0, q0, q2\n" /* + right, red-blue */
+        "    ssai 2\n"
+        "    ee.vsr.32 q1, q1\n"
+        "    ee.vsr.32 q2, q0\n"
+        "    ee.andq q1, q1, q7\n"
+        "    ee.andq q2, q2, q6\n"
+        "    ssai 1\n"
+        "    ee.vsl.32 q0, q0\n"
+        "    ee.vldbc.16 q4, a11\n"
+        "    ee.orq q1, q1, q2\n"
+        "    ee.andq q0, q0, q4\n"
+        "    ee.orq q0, q0, q1\n" /* the right blend, native */
+        "    ee.vunzip.8 q5, q0\n"
+        "    ee.vzip.8 q0, q5\n" /* q0 left, q5 right, big-endian */
+        "    ee.vld.128.ip q1, a2, 16\n"
+        "    ee.vld.128.ip q4, a12, 0\n"
+        "    ee.vldbc.8.ip q2, a5, 1\n"
+        "    ee.vldbc.8.ip q3, a14, 1\n"
+        "    ee.andq q2, q2, q4\n"
+        "    ee.andq q3, q3, q4\n"
+        "    ee.vcmp.eq.s16 q2, q2, q4\n"
+        "    ee.vcmp.eq.s16 q3, q3, q4\n"
+        "    ee.xorq q4, q0, q1\n"
+        "    ee.andq q4, q4, q2\n"
+        "    ee.xorq q0, q0, q4\n"
+        "    ee.xorq q4, q5, q1\n"
+        "    ee.andq q4, q4, q3\n"
+        "    ee.xorq q5, q5, q4\n"
+        "    ee.vzip.16 q0, q5\n" /* q0 the first four pixel pairs, q5 the last four */
+        "    ee.vst.128.ip q0, a6, 16\n"
+        "    ee.vst.128.ip q5, a6, 16\n"
+        "2:\n"
+        "    retw.n\n"
+        ".size gfx_quarter_spread, . - gfx_quarter_spread\n");
 
 #endif
