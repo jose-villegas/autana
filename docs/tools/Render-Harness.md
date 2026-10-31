@@ -38,12 +38,17 @@ Stderr names the camera's path duration in ms, and `--poses FILE` writes one
 CSV row per frame of where it stands: `frame,ms`, its world position and
 rotation quaternion.
 The camera follows its own path at `--frames N` times `--dt MS` (defaults:
-30 frames, 16 ms). `--view shaded|depth|tiles|motion|meshlets|cull` selects the render
-context's view, with shaded as the default. The names match the declared
-`render_debug_view_t` table in `render/context/render_context.c`. A debug view needs an enabled mesh.
+30 frames, 16 ms). `--view NAME` selects the render context's view, with
+shaded as the default; an unknown name lists them. The names are the
+`render_debug_view_t` table's in `render/context/render_context.c`. A debug view needs an enabled mesh.
 With `--view cull`, `--counts FILE` writes one CSV row per frame of what the
 cull kept and drew ([Mesh-Rendering.md](../render/Mesh-Rendering.md#the-cull-seen));
 without it, `--counts` is refused.
+
+`--view boxes` draws what the renderer drew: each instance's root box under its
+model matrix, one hue per mesh. `--set boxview.copies=2` keeps only meshes drawn
+more than once; edges behind the drawn depth are left out, and
+`--set boxview.behind=1` dims them instead (2 draws them in full).
 
 `--set owner.name=value` sets any registered tunable before drawing; repeat it
 for several values. Invalid names, values and ranges fail the render.

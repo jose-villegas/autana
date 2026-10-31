@@ -51,16 +51,22 @@ def made(key, cache):
     return row if file.is_file() and keys.file_sha256(file) == row["sha256"] else None
 
 
+def maker(kind):
+    """Where a bake of `kind` is made, as its row names it: the host, and what its bytes differ by."""
+    fields = {"host": f"{platform.system()} {platform.machine()}"}
+    if keys.cpu_vendor() is not None:
+        fields["cpu_vendor"] = keys.cpu_vendor()  # a mesh's bytes differ between CPU vendors (bake.runs_mesh_cpu_vendor)
+    if kind == "fit" and (gpu := keys.gpu_name()) is not None:
+        fields["gpu"] = gpu  # a fit's bytes differ between GPU models: its lock row names the one
+    return fields
+
+
 def record(bake, path, cache, run=None):
     """Puts the file `path` made for `bake` in the cache and indexes it by key."""
     data = pathlib.Path(path).read_bytes()
     row = {"output": bake.output, "source": keys.relative(bake.source), "key": bake.key,
            "sha256": keys.hashlib.sha256(data).hexdigest(), "size": len(data), "suffix": bake.suffix,
-           "host": f"{platform.system()} {platform.machine()}"}
-    if keys.cpu_vendor() is not None:
-        row["cpu_vendor"] = keys.cpu_vendor()  # a mesh's bytes differ between CPU vendors (bake.runs_mesh_cpu_vendor)
-    if bake.kind == "fit" and (gpu := keys.gpu_name()) is not None:
-        row["gpu"] = gpu  # a fit's bytes differ between GPU models: its lock row names the one
+           **maker(bake.kind)}
     if run is not None:
         row["run"] = run
     keys.store(path, row, bake.suffix, cache)
@@ -218,19 +224,38 @@ def produce(bake, cache, lock=None, blender=None):
     return produce_mesh(bake, cache, lock or {})
 
 
-def export(rows, cache, out):
-    """Copies each made file and its index row into `out`, the folder a CI run uploads."""
+def export(row, cache, out):
+    """Copies a made file and its index row into `out`, the folder a CI run uploads, each by rename and the row
+    last, so a run cut short uploads every bake it finished and no half of one."""
+    keys.place(keys.cached(row, row["suffix"], cache).read_bytes(), out / "files" / f"{row['sha256']}{row['suffix']}",
+               row["sha256"])
+    keys.place((json.dumps(row, sort_keys=True) + "\n").encode("utf-8"), out / KEY_INDEX / f"{row['key']}.json")
+
+
+def adopt(rows, cache):
+    """Indexes in this cache each row a run made on a host like this one (maker), its file already there, so a
+    rerun takes it as made here; returns those rows. A row without a `gpu` is taken as no fit's: a fit runs only
+    where nvidia-smi names the GPU."""
+    adopted = []
     for row in rows:
-        (out / "files").mkdir(parents=True, exist_ok=True)
-        (out / KEY_INDEX).mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(keys.cached(row, row["suffix"], cache), out / "files" / f"{row['sha256']}{row['suffix']}")
-        (out / KEY_INDEX / f"{row['key']}.json").write_text(json.dumps(row, sort_keys=True) + "\n", encoding="utf-8")
+        made_on = {name: row[name] for name in ("host", "cpu_vendor", "gpu") if name in row}
+        if made_on == maker("fit" if "gpu" in row else None):
+            write_atomically(index_path(row["key"], cache), json.dumps(row, sort_keys=True) + "\n")
+            adopted.append(row)
+    return adopted
+
+
+def attempt(artifact):
+    """The run attempt an artifact's folder names last (bakes-gpu-2 is 2), 0 when it names none."""
+    tail = pathlib.Path(artifact).name.rsplit("-", 1)[-1]
+    return int(tail) if tail.isdigit() else 0
 
 
 def import_run(folder, run, cache):
-    """{key: row} of the files a CI run uploaded, each checked against its row and put in the cache."""
+    """{key: row} of the files a CI run uploaded, each checked against its row and put in the cache. Each attempt
+    uploads its own artifact (bakes-gpu-2); a key two attempts made takes the later attempt's row."""
     rows = {}
-    for index in sorted(pathlib.Path(folder).rglob(f"{KEY_INDEX}/*.json")):
+    for index in sorted(pathlib.Path(folder).rglob(f"{KEY_INDEX}/*.json"), key=lambda index: (attempt(index.parent.parent), index)):
         row = json.loads(index.read_text(encoding="utf-8"))
         file = index.parent.parent / "files" / f"{row['sha256']}{row['suffix']}"
         if not file.is_file() or keys.file_sha256(file) != row["sha256"]:
