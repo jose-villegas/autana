@@ -50,6 +50,7 @@
 #                   own; AUTANA_ASSET_DIR still overrides it per run.
 #   scene_asset_file OPTIONAL runtime root file, overriding scene_assets;
 #                   --asset-file PATH sets it when building a viewer.
+#   scene_provider  OPTIONAL provider symbol; defaults to ${scene_name}_provider.
 #   scene_defines   OPTIONAL extra compiler flags
 #   scene_out_dir   OPTIONAL; the default is results/render/<name> under the
 #                   nearest tools/ folder above the scene script
@@ -137,6 +138,7 @@ render_scene_build() {
     : "${scene_asset_file:=}"
     : "${scene_defines:=}"
     : "${scene_pin:=1}"
+    : "${scene_provider:=${scene_name}_provider}"
 
     # launcher/, wherever this scene lives: beside tools/render/render_scene.sh, or
     # further down in an app's own tools/. Found by walking up to the folder
@@ -213,7 +215,7 @@ render_scene_build() {
     # the real header is used for, so a scene reaching a call nothing has
     # stubbed fails at the link rather than compiling into something else.
     # 64-bit pointers and 8-byte alignment make every command bigger on the host.
-    _rs_flags="-I $_rs_launcher/main $(package_includes "$_rs_launcher")"
+    _rs_flags="-DRENDER_HOST_PROVIDER=$scene_provider -I $_rs_launcher/main $(package_includes "$_rs_launcher")"
     _rs_flags="$_rs_flags -I $_rs_launcher/components/microui/include"
     _rs_flags="$_rs_flags -I $_rs_tools/render -I $_rs_launcher/test -I $_rs_launcher/test/stubs"
     for _rs_inc in $scene_includes; do
