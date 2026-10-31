@@ -369,18 +369,19 @@ run "$PYTHON" launcher/tools/render/frame_stages.py --present docs/render/data/p
 
 # What the cull keeps along each scene's camera path, from the cull view, and
 # what a cluster and a triangle cost, from the board capture beside the page.
-for cull in "launcher/demo/bistro/bistro.scene.toml street_fitted_full cull-bistro Bistro" \
+# A fifth word also draws that scene's overdraw sheet under that stem.
+for cull in "launcher/demo/bistro/bistro.scene.toml street_fitted_full cull-bistro Bistro overdraw-bistro" \
     "$DEMO_SCENE atrium_fitted_full cull-sponza Sponza"; do
-    # shellcheck disable=SC2086 # four words: scene, object, stem, label
+    # shellcheck disable=SC2086 # four or five words: scene, object, stem, label, overdraw stem
     set -- $cull
     run "$PYTHON" launcher/tools/render/cull_figures.py --scene "$1" --object "$2" --camera camera --stem "$3" \
         --label "$4" --level "$CULL_LEVEL" --out "$OUT/render" --tables "$OUT/tables" --work "$WORK/cull" \
-        > "$WORK/$3.log"
+        ${5:+--overdraw "$5"} > "$WORK/$3.log"
     gif_from_avi "$WORK/cull/$3-chase.avi" "$OUT/render/$3-chase.gif" "setpts=N/$CULL_GIF_FPS/TB,fps=$CULL_GIF_FPS" \
         "stats_mode=diff:max_colors=$CULL_GIF_COLORS"
 done
 # --orphans scans this runner: cull-bistro-sheet.png, cull-bistro-counts.png, cull-bistro-chase.gif,
-# cull-sponza-sheet.png, cull-sponza-counts.png, cull-sponza-chase.gif
+# overdraw-bistro-sheet.png, cull-sponza-sheet.png, cull-sponza-counts.png, cull-sponza-chase.gif
 run "$PYTHON" launcher/tools/render/cull_cost.py docs/render/data/cull-cost-board.log --tables "$OUT/tables" \
     --chart "$OUT/render/cull-cost.png" > "$WORK/cull_cost.log"
 
