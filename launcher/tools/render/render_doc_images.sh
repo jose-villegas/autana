@@ -297,6 +297,9 @@ run "$PYTHON" launcher/tools/audio/sound_onset_figures.py --out "$OUT/audio" > "
 
 if [ "$AUDIO_ONLY" = 0 ]; then
 
+run "$PYTHON" launcher/tools/power/power_budget_doc.py --figures "$OUT/power" > "$WORK/power_budget_doc.log"
+# --orphans scans this runner: power_budget_states.png, power_budget_states-dark.png
+
 # The skeleton and skin figures: the demo rig over one clip, and a limb through the skinning kernel.
 run mkdir -p "$OUT/render" "$OUT/tables"
 skin_asset=$("$PYTHON" launcher/tools/bake/bake.py path "$SKIN_BAKE") || exit 2
