@@ -59,7 +59,9 @@ typedef struct {
     bool (*setup)(int quarter);
 
     void (*draw)(const provider_frame_t* frame);
+    /* Optional path duration in milliseconds; NULL for a provider without a path. */
     uint32_t (*path_ms)(void);
+    /* Optional path cut: frame history starts over; NULL without a path. */
     void (*seek)(uint32_t t_ms);
 } frame_provider_t;
 
@@ -68,9 +70,14 @@ bool render_host_set_tunable(const char* name, int32_t value);
 /* "owner.name=value", as --set takes it; false, said on stderr, for anything else. */
 bool render_host_set_tunable_text(const char* assignment);
 
-/* False means no run opened; exit_code distinguishes success from an error. */
+/* Parse options and prepare the provider, graphics and outputs for a run.
+ * False means no run opened; exit_code is 0 for a successful query, nonzero
+ * for an error. */
 bool render_host_open(const frame_provider_t* provider, int argc, char** argv, int* exit_code);
+/* Draw one composed frame; advance its index by one and elapsed time by dt_ms. */
 void render_host_step(uint32_t dt_ms, const input_t* input);
+/* Draw warm-up frames for the frame watch, write the saved image and close
+ * outputs. False means the run failed, including a frame-watch violation. */
 bool render_host_close(void);
 
 #endif
