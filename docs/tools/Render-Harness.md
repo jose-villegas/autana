@@ -400,13 +400,23 @@ Two files, the same declare-then-source shape a report script uses:
   firmware and the host tests build too.
 
 The script selects `<scene_name>_provider` with `RENDER_HOST_PROVIDER`;
-`scene_provider` overrides the symbol. Without the define, `render_host.c`
-builds without `main()`.
+`scene_provider` overrides the symbol, and an empty value builds
+`render_host.c` without `main()` as a library.
 
-`render_host_open(provider, argc, argv, &exit_code)` prepares a run. False
-means no run opened; `exit_code` carries the command's result.
-`render_host_step(dt_ms, input)` composes one frame; callers supply input.
-`render_host_close()` judges warm-up frames, writes outputs and returns success.
+```mermaid
+stateDiagram-v2
+    direction LR
+    state "render_host_open" as Open
+    state "render_host_step" as Step
+    state "render_host_close" as Close
+    [*] --> Open
+    Open --> Step: run opened
+    Step --> Step: elapsed time and input
+    Step --> Close: judge warm-up frames, write outputs
+    Close --> [*]: success or failure
+```
+
+If `render_host_open()` returns false, no run opened and `exit_code` carries the command's result.
 
 Each draw receives a `provider_frame_t`. Optional `path_ms` and `seek` hooks
 expose a provider's path duration and camera cuts. The scene-file provider

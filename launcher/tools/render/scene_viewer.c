@@ -259,11 +259,8 @@ path_ms(void) {
 static void
 seek(uint32_t t_ms) {
     for (int i = 0; i < scene_entity_count(shown); i++) {
-        for (scene_animator_slot_t slot = SCENE_ANIMATOR_CURRENT; slot <= SCENE_ANIMATOR_PREVIOUS; slot++) {
-            (void)scene_animator_seek(shown, (scene_entity_t)i, slot, t_ms);
-        }
+        (void)scene_animator_seek(shown, (scene_entity_t)i, SCENE_ANIMATOR_CURRENT, t_ms);
     }
-    render_context_forget(render_context_main());
 }
 
 const frame_provider_t scene_provider = {

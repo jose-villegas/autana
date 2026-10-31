@@ -35,12 +35,17 @@ check_path(void) {
     if (duration == 0 || scene_provider.path_ms() != duration) {
         return false;
     }
+    const transformf_t initial = scene_entity_world(shown, camera);
     const input_t input = {0};
     for (int i = 0; i < FIXTURE_STEPS; i++) {
         render_host_step(FIXTURE_STEP_MS, &input);
     }
     const transformf_t expected = scene_entity_world(shown, camera);
     scene_provider.seek(0);
+    const transformf_t reset = scene_entity_world(shown, camera);
+    if (!pose_near(reset, initial) || pose_near(reset, expected)) {
+        return false;
+    }
     render_context_t* context = render_context_main();
     context->kept = true;
     context->paying = true;
