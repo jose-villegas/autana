@@ -244,8 +244,8 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const mat4
         const float r = mathf_recip(l.z);
         const biased_t b = biased_screen(lens, l.x, l.y, r);
         /* Positive floats order like their bits; negatives and NaNs fall outside the span. */
-        if (!((uint32_t)(mathf_bits(b.x) - lo_bits - 1u) < hi_bits - lo_bits - 1u
-              && (uint32_t)(mathf_bits(b.y) - lo_bits - 1u) < hi_bits - lo_bits - 1u)) {
+        if (!((uint32_t)(mathf_bits(b.x) - lo_bits - 1U) < hi_bits - lo_bits - 1U
+              && (uint32_t)(mathf_bits(b.y) - lo_bits - 1U) < hi_bits - lo_bits - 1U)) {
             out->iz = -1.0F;
             unbounded = true;
             continue;
