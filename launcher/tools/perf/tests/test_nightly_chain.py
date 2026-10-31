@@ -789,6 +789,54 @@ class NightlyTests(unittest.TestCase):
                       said.call_args_list)
         self.assertIn(call("::warning::remote boards not listed from helios", file=sys.stderr), said.call_args_list)
 
+    def late_plan(self, after, boards=()):
+        """plan() run `after` the cut-off of its night (GPU night work held it); returns its
+        arguments, the plan and what it printed."""
+        marker = schedule.night_cutoff(self.clock.now()) - timedelta(hours=2)
+        self.clock.value = schedule.night_cutoff(marker) + after
+        args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=list(boards), data=self.args.data,
+                               out=self.root / "plan.json", marker=marker.isoformat(),
+                               from_sha=None, max_steps=None, selftest_board=None)
+        listing = dict(boards=[self.row("2124")], unreachable=[])
+        with patch.object(chain, "board_listing", return_value=listing), \
+                patch.object(chain, "gpu_on_host", return_value=True), patch.object(chain, "wait_idle"), \
+                patch("builtins.print") as said:
+            chain.plan(args, self.clock)
+        return args, json.loads(args.out.read_text()), [str(c.args[0]) for c in said.call_args_list]
+
+    def test_a_plan_held_to_the_cutoff_starts_no_lane_and_its_night_passes(self):
+        for after, lanes in ((timedelta(seconds=-1), ["2124"]), (timedelta(0), []), (timedelta(hours=2), [])):
+            with self.subTest(after=after):
+                args, planned, said = self.late_plan(after)
+                self.assertEqual(list(planned["lanes"]), lanes)
+                self.assertEqual(planned["listed"], ["2124"])
+        self.assertTrue(any("the night runs no lane" in line for line in said))
+        self.assertFalse(any("no free board" in line for line in said))
+        self.assertIn("SELFTEST_BOARD=", said)
+        # The night from that plan passes at once: nothing launched, no scan, no wait.
+        night = SimpleNamespace(plan=args.out, repo=self.repo, data=self.args.data, out=self.args.out,
+                                suite=self.args.suite)
+        started = self.clock.now()
+        launch = Mock(side_effect=AssertionError("started after the cut-off"))
+        with patch.object(chain, "board_listing", side_effect=AssertionError("scanned after the cut-off")), \
+                patch("builtins.print"):
+            self.assertEqual(chain.run_night(night, clock=self.clock, launch=launch), 0)
+        self.assertEqual(self.clock.now(), started)
+
+    def test_named_boards_and_an_override_plan_however_late(self):
+        _, planned, _ = self.late_plan(timedelta(hours=2), boards=["2124"])
+        self.assertEqual(list(planned["lanes"]), ["2124"])
+        # An override is marked when it starts, after its date's cut-off: it is not held, so it takes its boards.
+        self.clock.value = schedule.night_cutoff(self.clock.now()) + timedelta(hours=9)
+        args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=[], data=self.args.data,
+                               out=self.root / "plan.json", marker=self.clock.now().isoformat(),
+                               from_sha=None, max_steps=None, selftest_board=None)
+        with patch.object(chain, "board_listing", return_value=dict(boards=[self.row("2124")], unreachable=[])), \
+                patch.object(chain, "gpu_on_host", return_value=True), patch.object(chain, "wait_idle"), \
+                patch("builtins.print"):
+            chain.plan(args, self.clock)
+        self.assertEqual(list(json.loads(args.out.read_text())["lanes"]), ["2124"])
+
     def test_image_hash_excludes_metadata_but_includes_code_and_assets(self):
         build = self.root / "image"
         build.mkdir()

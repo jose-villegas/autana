@@ -1,6 +1,6 @@
 /*
- * gfx_quarter_select: the blended expand's step between two half rows, eight
- * big-endian RGB565 pixels at a time. On the device it runs on the S3's PIE
+ * gfx_quarter_select: the blended expand's quarter step toward a neighbour,
+ * down or across, eight big-endian RGB565 pixels at a time. On the device it runs on the S3's PIE
  * vector unit; elsewhere, and as the device's reference, it is plain C. Both
  * give the same bytes as rgb565_spread_quarter().
  */
