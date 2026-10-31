@@ -22,6 +22,7 @@
 #include "esp_rom_sys.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "input/motion/imu_bringup.h"
 #include "input/motion/imu_demand.h"
 #include "input/motion/imu_odr.h"
 #include "input/motion/imu_queue.h"
@@ -277,8 +278,8 @@ imu_init(void) {
         return false;
     }
 
-    if (!configure(IMU_ODR_CODE)) {
-        ESP_LOGE(TAG, "Configuration write failed");
+    if (!imu_bringup(IMU_ODR_CODE, write_reg, read_regs, timing_now_us, esp_rom_delay_us, configure)) {
+        ESP_LOGE(TAG, "Reset or configuration failed");
         return false;
     }
 
@@ -412,7 +413,7 @@ log_suspect_burst(const imu_sample_t* samples, int count, const uint8_t status[F
     const bool reg_ok = read_regs(REG_AX_L, (uint8_t*)&reg, sizeof reg);
     ESP_LOGW(TAG, "m9hqv suspect burst count %d first %d status %02x %02x reg%s %d %d %d %d %d %d", count, first,
              status[0], status[1], reg_ok ? "" : "(failed)", reg.ax, reg.ay, reg.az, reg.gx, reg.gy, reg.gz);
-    char line[IMU_HEX_LINE_SAMPLES * sizeof(imu_sample_t) * 2 + 1];
+    char line[(IMU_HEX_LINE_SAMPLES * sizeof(imu_sample_t) * 2) + 1];
     for (int start = 0; start < count; start += IMU_HEX_LINE_SAMPLES) {
         const int end = start + IMU_HEX_LINE_SAMPLES < count ? start + IMU_HEX_LINE_SAMPLES : count;
         const uint8_t* bytes = (const uint8_t*)&samples[start];
