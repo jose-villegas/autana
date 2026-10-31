@@ -1,6 +1,6 @@
 # LCOL v1 colour sets
 
-Colour sets for a shared LMSH prototype, one set a placed copy ([Mesh-Import.md](../../render/Mesh-Import.md#simplify) carves them). Layout defines: [`render/lcol_format.h`](../../../launcher/main/render/lcol_format.h).
+Colour sets for a shared LMSH prototype, one set a placed copy ([Mesh-Import.md](../../render/offline/Mesh-Import.md#simplify) carves them). Layout defines: [`render/lcol_format.h`](../../../launcher/main/render/lcol_format.h).
 
 A shared LMSH prototype has neither colour array. Each renderer selects a
 mapped set from its `LCOL` entry; its mesh view owns the colour pointers

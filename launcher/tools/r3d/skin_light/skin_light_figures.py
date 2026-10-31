@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The light-against-angle figure of docs/render/Skinned-Lighting.md: one white
+"""The light-against-angle figure of docs/render/animation/Skinned-Lighting.md: one white
 light on a normal swept from facing it to facing away, lit by the runtime's
 direct sum at unit and blended length and by its irradiance table. The numbers
 come from skin_light_figures_probe.c, which calls the runtime's kernels.

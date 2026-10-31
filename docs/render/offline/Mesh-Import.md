@@ -3,7 +3,7 @@
 How a source mesh becomes a baked lit-mesh: the offline tools and the bake
 stages. The entry a renderer consumes is [Baked-Mesh.md](Baked-Mesh.md), how
 its light is computed and scored is [Bake-Method.md](Bake-Method.md), and
-drawing it is [Mesh-Rendering.md](Mesh-Rendering.md).
+drawing it is [Mesh-Rendering.md](../Mesh-Rendering.md).
 
 ```mermaid
 flowchart TB
@@ -62,7 +62,7 @@ git lfs pull --exclude=""
 The empty exclude clears the clone's default exclusion for this pull.
 
 A model too large to commit or to trace is first reduced to an OBJ by
-[`source/reduce_source.py`](../../launcher/tools/r3d/source/reduce_source.py),
+[`source/reduce_source.py`](../../../launcher/tools/r3d/source/reduce_source.py),
 which keeps its objects and textures; the import's `simplify` then starts
 from that OBJ.
 
@@ -95,7 +95,7 @@ Unknown values fail naming the import file and allowed modes.
 - `renormalised`: normalises the blended normal before direct shading.
 - `table`: samples bilinear irradiance from the scene's normal-direction table.
 
-[Lighting modes](Skinned-Lighting.md#lighting-modes) has the comparison sheet and the
+[Lighting modes](../animation/Skinned-Lighting.md#lighting-modes) has the comparison sheet and the
 cost and error of each mode on the board.
 
 ### Process options
@@ -124,7 +124,7 @@ Every Geometry table opts its step in; without it the step does not run.
 rasterizer does not alpha-test them. Off is above on; this step also changes
 what the simplifier keeps elsewhere, so not every difference is a card.
 
-![alpha_mask off against on](images/import-alpha-mask.png)
+![alpha_mask off against on](../images/import-alpha-mask.png)
 
 #### thin
 
@@ -132,13 +132,13 @@ what the simplifier keeps elsewhere, so not every difference is a card.
 for material whose geometry occupies more of the budget than it shows. The
 share is random, so `process.seed` makes it repeatable.
 
-![thin off against on](images/import-thin.png)
+![thin off against on](../images/import-thin.png)
 
 #### simplify
 
 `geometry.simplify` splits long edges and simplifies each variant to its
-budget with meshoptimizer's<sup>[[11]](../Citations.md#meshoptimizer)</sup> quadric error simplifier<sup>[[12]](../Citations.md#garland-1997)</sup>,
-with the baked colour as an appearance attribute<sup>[[13]](../Citations.md#hoppe-1999)</sup>.
+budget with meshoptimizer's<sup>[[11]](../../Citations.md#meshoptimizer)</sup> quadric error simplifier<sup>[[12]](../../Citations.md#garland-1997)</sup>,
+with the baked colour as an appearance attribute<sup>[[13]](../../Citations.md#hoppe-1999)</sup>.
 
 | Key | Meaning |
 |---|---|
@@ -180,7 +180,7 @@ The tolerance is the reciprocal of `output.position_scale`.
 | `lock` | Own pass; fix contact vertices on both sides. | Closed |
 | `free` | Own pass; only the rest's side of a contact is fixed. | May open on the mesh's side; the rest stays closed |
 
-![Free and locked pillar contacts](images/import-mesh-contact.png)
+![Free and locked pillar contacts](../images/import-mesh-contact.png)
 
 Free shifts the contact footprint; lock retains the base vertices.
 
@@ -238,7 +238,7 @@ triangles it keeps.
 The same import with `seal_seams` off against on, at a pose where it shows,
 off above on: a pixel-sized hole that shows the sky is sealed.
 
-![seal_seams off against on](images/import-seal-seams.png)
+![seal_seams off against on](../images/import-seal-seams.png)
 
 ### Geometry variants
 
@@ -270,21 +270,21 @@ An OBJ object is an `o` or `g` group; an ungrouped file uses its stem.
 A glTF object is a mesh node, placed by its world transform. A nameless
 node uses its index. Only vertices referenced by triangles belong to an object.
 
-[`objects/objects_report.py`](../../launcher/tools/r3d/objects/objects_report.py)
+[`objects/objects_report.py`](../../../launcher/tools/r3d/objects/objects_report.py)
 reports shared shapes after the import's alpha mask. Matching is rigid:
 scaled copies remain separate shapes. Reflections are recorded per instance.
 
 | Test | Requirement |
 |---|---|
 | Candidate bucket | Equal vertex and triangle counts, and material multiset |
-| Correspondence | Matching topology uses Kabsch<sup>[[86]](../Citations.md#kabsch-1976)</sup>; reordered vertices use signed PCA frames and bijective nearest neighbours, then Kabsch |
+| Correspondence | Matching topology uses Kabsch<sup>[[86]](../../Citations.md#kabsch-1976)</sup>; reordered vertices use signed PCA frames and bijective nearest neighbours, then Kabsch |
 | Acceptance | Largest vertex residual within `MATCH_TOLERANCE` times the object's bounds diagonal; mapped triangle winding and materials agree as multisets |
 
 Each colour below is one repeated shape, boxed at every copy in view. The
 view is the camera-path pose where those boxes show the most visible edge;
 `render_doc_images.sh` regenerates it.
 
-![Detected repeated shapes in the atrium](../images/render/sponza-instances.png)
+![Detected repeated shapes in the atrium](../../images/render/sponza-instances.png)
 
 | Report output (`--out` directory) | What it shows |
 |---|---|
@@ -297,10 +297,10 @@ view is the camera-path pose where those boxes show the most visible edge;
 ## The offline tools
 
 Two kinds of file drive the mesh tools in
-[`launcher/tools/r3d/`](../../launcher/tools/r3d/README.md). An **import
+[`launcher/tools/r3d/`](../../../launcher/tools/r3d/README.md). An **import
 file** beside a source asset describes that one mesh. A **scene file** places
 meshes and owns lights, camera region and tone map
-([Scene-Files.md](Scene-Files.md)).
+([Scene-Files.md](../scene/Scene-Files.md)).
 
 ```mermaid
 flowchart LR
@@ -332,7 +332,7 @@ flowchart LR
     Inputs --> Bake --> Cache --> Build
 ```
 
-[`import_settings.py`](../../launcher/tools/r3d/import_settings.py) reads and
+[`import_settings.py`](../../../launcher/tools/r3d/import_settings.py) reads and
 checks both files with the standard library alone. Every table is closed: an
 unknown key is an error.
 
@@ -341,12 +341,12 @@ unknown key is an error.
 | `python launcher/tools/r3d/mesh_import.py IMPORT` | The import's authored albedo mesh into the bake cache. |
 | `python launcher/tools/r3d/mesh_import.py SCENE` | Each renderer's mesh: a `bake = true` renderer traced with the scene's lights, camera visibility and tone map; an albedo renderer its import's shared mesh. |
 | `python launcher/tools/r3d/mesh_import.py PATH --mesh NAME` | That one mesh only. |
-| `python launcher/tools/r3d/build_pack.py -o DIR` | One [pack](../assets/Building-Packs.md#packs) per root from the `.mesh` entries it names, baking each scene's [entry](../assets/formats/SCNE.md) on the way. |
+| `python launcher/tools/r3d/build_pack.py -o DIR` | One [pack](../../assets/Building-Packs.md#packs) per root from the `.mesh` entries it names, baking each scene's [entry](../../assets/formats/SCNE.md) on the way. |
 | `python launcher/tools/r3d/rebake.py MESH.mesh` | That cached `.mesh` in place, its clusters and octree only; rerun `build_pack.py` to pack it. |
 
-A cached `<name>.mesh` is an entry of the [asset pack](../assets/README.md),
+A cached `<name>.mesh` is an entry of the [asset pack](../../assets/README.md),
 held in the bake cache
-([`launcher/tools/bake/bake.py`](../../launcher/tools/bake/bake.py)). It
+([`launcher/tools/bake/bake.py`](../../../launcher/tools/bake/bake.py)). It
 carries no normals: shading is already baked.
 
 ### Frames
@@ -354,10 +354,10 @@ carries no normals: shading is already baked.
 | Frame | Axes | Used by |
 |---|---|---|
 | Source | Right-handed: +x right, +y up, camera looking down -z. | Source assets, scene TOMLs, cached bakes, bake-time tools, poses files. |
-| [Engine](../math/Conventions.md#conventions) | Source with z negated. | Built packs. |
+| [Engine](../../math/Conventions.md#conventions) | Source with z negated. | Built packs. |
 
 `build_pack.py` mirrors each entry once, through
-[`asset/engine_frame.py`](../../launcher/tools/asset/engine_frame.py):
+[`asset/engine_frame.py`](../../../launcher/tools/asset/engine_frame.py):
 
 | Mirrored | Kept as authored |
 |---|---|
@@ -369,7 +369,7 @@ carries no normals: shading is already baked.
 
 A z equal to the int16 minimum is rejected: its negation cannot fit.
 
-[`track_host.py`](../../launcher/tools/anim/track_host.py) `--poses` writes a
+[`track_host.py`](../../../launcher/tools/anim/track_host.py) `--poses` writes a
 poses file from a `.anim.toml`, baked into an unmirrored scratch pack, and
 `triangle_sizes` mirrors each pose as it reads it. A built pack's clips are
 already mirrored, so `--poses` on a `--pack` gives wrong poses.
@@ -378,7 +378,7 @@ already mirrored, so `--poses` on a `--pack` gives wrong poses.
 
 **Rule: an import brings geometry in as authored, and each geometry table
 present turns its step on.** Visibility and lighting belong to the renderer in
-its scene ([Scene-Files.md](Scene-Files.md)).
+its scene ([Scene-Files.md](../scene/Scene-Files.md)).
 
 With only `[source]` and `[output]`:
 
@@ -392,12 +392,12 @@ With only `[source]` and `[output]`:
 Two variants of one import differ in what `simplify` keeps. Below, one
 pose at the full budget (top) and at about half of it, the lite (bottom).
 
-![Full against lite](../images/render/compare-full-lite.png)
-![Full against lite, the places they differ most](../images/render/compare-full-lite.crops.png)
+![Full against lite](../../images/render/compare-full-lite.png)
+![Full against lite, the places they differ most](../../images/render/compare-full-lite.crops.png)
 
 Scene-owned bake, visibility, shading and fit settings are described in
-[Scene-Files.md](Scene-Files.md#option-reference).
+[Scene-Files.md](../scene/Scene-Files.md#option-reference).
 
 Each tool and its module, `rebake.py` and when to rebake rather than bake in
 full, and the triangle-size report are in
-[`launcher/tools/r3d/README.md`](../../launcher/tools/r3d/README.md).
+[`launcher/tools/r3d/README.md`](../../../launcher/tools/r3d/README.md).
