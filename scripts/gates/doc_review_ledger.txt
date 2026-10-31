@@ -93,3 +93,5 @@ docs/render/frame/Attachments.md	2026-10-31	moved from Mesh-Rendering, intro add
 docs/render/frame/View-Modes.md	2026-10-31	moved from Mesh-Rendering: reviewed
 docs/power/Power-Budget.md	2026-10-31	new page: reviewed
 docs/power/README.md	2026-10-31	new index: reviewed
+docs/render/frame/Culling.md	2026-10-31	autana-dnstt: reviewed against r3d_pipeline.c, raster.c, r3d_triangle_tests.h and r3d_pipeline_count.h, accurate
+docs/render/Mesh-Rendering.md	2026-10-31	autana-dnstt: cull sections moved to frame/Culling.md, reviewed
