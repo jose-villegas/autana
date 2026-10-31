@@ -317,7 +317,7 @@ lands where it was. What it would need, not built:
 
 ## Reproducing
 
-[`launcher/tools/r3d/framegen/`](../../../launcher/tools/r3d/framegen) holds
+[`launcher/tools/r3d/framegen/`](../../../launcher/tools/r3d/framegen/) holds
 the host experiment, with the host scene renderer's `--dump` option. The
 board numbers come from the on-request `run_framegen_perf_suite` and
 `run_framegen_modes_suite`, captured in

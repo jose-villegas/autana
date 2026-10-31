@@ -1,5 +1,8 @@
 # Coverage and Small Triangles
 
+What the span rasterizer fills for each triangle, and how a triangle only a
+few pixels wide is drawn more cheaply (small fill).
+
 A pixel belongs to a triangle when its centre is inside by the top-left
 rule, decided in integers on positions snapped to 1/16 pixel. Two triangles
 sharing an edge therefore never both fill a pixel, nor both miss one, in any
