@@ -10,7 +10,7 @@ Every view, drawn at the same pose:
 | shaded | ![The shaded view](../../images/render/sponza-view-shaded.png) | untouched: the baked colours as drawn |
 | depth | ![The depth view](../../images/render/sponza-view-depth.png) | the depth as a grey ramp, nearest white and farthest black |
 | tiles | ![The tiles view](../../images/render/sponza-view-tiles.png) | the same ramp, each `RASTER_SHOW_TILE` square at its farthest depth |
-| motion | ![The motion view](../../images/render/sponza-view-motion.png) | mid-grey for none, red for x and green for y |
+| motion | — | mid-grey for none, red for x and green for y |
 | meshlets | ![The meshlets view](../../images/render/sponza-view-meshlets.png) | a flat hue for each cluster, with disjoint IDs for each instance |
 | cull | ![The cull view](../../images/render/sponza-view-cull.png) | each cluster in the colour of its fate this frame; see [The cull, seen](Culling.md#the-cull-seen) |
 | boxes | ![The boxes view](../../images/render/sponza-view-boxes.png) | untouched; its overlay draws each instance's box as the frame placed it, one hue per mesh, for meshes drawn at least `boxview.copies` times; edges behind the drawn depth hidden, dimmed or full by `boxview.behind` |
