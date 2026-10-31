@@ -63,12 +63,12 @@ blue for one layer, through cyan, green and yellow, to red at
   pixel) are kept for a caller to print; `RASTER_OVERDRAW_LINE` is their line.
 
 Bistro in landscape at the scene's own render size, at the same poses as its
-[cull sheet](../Mesh-Rendering.md#the-cull-seen):
+[cull sheet](Culling.md#the-cull-seen):
 
 ![Bistro's overdraw along its path](../../images/render/overdraw-bistro-sheet.png)
 
 Most extra layers lose their depth test at once, because the cull walk visits
 clusters roughly near to far. Each costs a depth compare, not a shaded pixel,
 so a frame's time follows the triangles set up
-([What a cluster and a triangle cost](../Mesh-Rendering.md#what-a-cluster-and-a-triangle-cost))
+([What a cluster and a triangle cost](Culling.md#what-a-cluster-and-a-triangle-cost))
 more than its layers.
