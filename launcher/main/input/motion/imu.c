@@ -458,7 +458,7 @@ log_stats(int64_t now_us) {
                  (unsigned long long)(stats.parked_us / MATH_US_PER_MS), (unsigned)uxTaskGetStackHighWaterMark(NULL),
                  touch_reads, (long long)touch_read_p95_us, (long long)touch_read_max_us);
     }
-    stats = (imu_stats_t){.last_log_us = now_us};
+    stats = (imu_stats_t){.last_log_us = now_us, .last_wake_us = stats.last_wake_us};
 }
 
 static void
