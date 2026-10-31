@@ -184,7 +184,9 @@ test_instances_of_one_mesh_share_a_colour(void) {
     raster_rig_t* r = rig_open(1U << CARD);
     r->model[CARD] = (mat4f_t)MAT4F_IDENTITY;
     r->model[CARD].m[0][MAT3F_AXES] = CARD_SHIFT;
-    const r3d_lit_mesh_t copy = *r->instance[1].mesh; /* two cards, no wall */
+    static const uint8_t red[4][3] = {{255, 0, 0}, {255, 0, 0}, {255, 0, 0}, {255, 0, 0}};
+    r3d_lit_mesh_t copy = *r->instance[1].mesh; /* two cards, no wall, the copy in its own colour set */
+    copy.colors = red;
     r->instance[0].mesh = &copy;
     set_behind(RASTER_BOXES_BEHIND_FULL);
     raster_attachment_t view;

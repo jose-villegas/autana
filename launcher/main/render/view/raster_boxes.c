@@ -29,7 +29,8 @@ raster_boxes_view(void* state) {
 
 /* The first instance drawing instance `i`'s mesh, and how many instances draw
  * it. Each renderer holds its own view of a mesh, so copies are the instances
- * whose views map the same positions. */
+ * whose views map the same positions. A skinned or dynamic mesh writes its
+ * own positions, so it is a shape of its own. */
 static int
 instance_shape(const raster_t* raster, int i, int* copies) {
     int first = -1;
