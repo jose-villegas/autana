@@ -25,6 +25,7 @@
 #include "input/motion/imu_demand.h"
 #include "input/motion/imu_odr.h"
 #include "input/motion/imu_queue.h"
+#include "input/touch/touch.h"
 
 static const char* TAG = "imu";
 
@@ -440,16 +441,22 @@ log_stats(int64_t now_us) {
     reader_age_count = 0;
     portEXIT_CRITICAL(&lock);
     if (log_ms > 0) {
+        /* Touch reads share the bus: their worst wait is what a drain costs input. */
+        unsigned touch_reads = 0;
+        int64_t touch_read_p95_us = 0;
+        int64_t touch_read_max_us = 0;
+        touch_take_read_times(&touch_reads, &touch_read_p95_us, &touch_read_max_us);
         ESP_LOGI(TAG,
                  "register_reads %u drains %u drain_mean_us %llu drain_max_us %lld delivered %u lost %u "
                  "reader_age_mean_us %llu reader_age_max_us %lld wake_gap_max_us %lld bus_ms %llu parks %u "
-                 "parked_ms %llu stack_free_bytes %u",
+                 "parked_ms %llu stack_free_bytes %u touch_reads %u touch_read_p95_us %lld touch_read_max_us %lld",
                  stats.register_reads, stats.drains,
                  (unsigned long long)(stats.drains > 0 ? stats.drain_total_us / stats.drains : 0),
                  (long long)stats.drain_max_us, stats.delivered, stats.lost, (unsigned long long)age_mean_us,
                  (long long)age_max_us, (long long)stats.wake_gap_max_us,
                  (unsigned long long)(stats.bus_us / MATH_US_PER_MS), stats.parks,
-                 (unsigned long long)(stats.parked_us / MATH_US_PER_MS), (unsigned)uxTaskGetStackHighWaterMark(NULL));
+                 (unsigned long long)(stats.parked_us / MATH_US_PER_MS), (unsigned)uxTaskGetStackHighWaterMark(NULL),
+                 touch_reads, (long long)touch_read_p95_us, (long long)touch_read_max_us);
     }
     stats = (imu_stats_t){.last_log_us = now_us};
 }

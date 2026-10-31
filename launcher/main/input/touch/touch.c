@@ -63,6 +63,33 @@ static TaskHandle_t touch_task_handle;
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static uint32_t point_samples, moved_samples;
 static vec2i_t last_point = {-1, -1};
+
+/* Reads the controller every poll even with no contact, so a board nobody
+ * touches still measures how long a touch read waits for the shared bus. */
+TUNE(touch, probe, 0, 0, 1);
+
+/* Controller read times since the last touch_take_read_times(): a histogram for
+ * the p95, the exact worst. The read includes its wait for the shared I2C bus. */
+#define TOUCH_READ_BUCKET_US 250
+#define TOUCH_READ_BUCKETS   128
+
+typedef struct {
+    uint32_t buckets[TOUCH_READ_BUCKETS];
+    int64_t max_us;
+    unsigned count;
+} touch_read_times_t;
+
+static touch_read_times_t read_times;
+
+static void
+count_read_time(int64_t read_us) {
+    const int64_t bucket = read_us / TOUCH_READ_BUCKET_US;
+    portENTER_CRITICAL(&lock);
+    read_times.buckets[bucket < TOUCH_READ_BUCKETS ? bucket : TOUCH_READ_BUCKETS - 1]++;
+    read_times.max_us = read_us > read_times.max_us ? read_us : read_times.max_us;
+    read_times.count++;
+    portEXIT_CRITICAL(&lock);
+}
 #endif
 
 /* Need not be cache-off safe: esp_lcd_touch installs the GPIO ISR service with flags 0.
@@ -162,8 +189,20 @@ poll_controller(bool* have_point, vec2i_t* point) {
      * timeout; polling blindly at this rate would swamp the system. */
     const bool pending = report_pending;
     report_pending = false;
-    if (panel != NULL && (pending || was_touching || gpio_get_level(BSP_LCD_TOUCH_INT) == 0)) {
-        if (esp_lcd_touch_read_data(panel) == ESP_OK) {
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    const bool probing = probe != 0;
+#else
+    const bool probing = false;
+#endif
+    if (panel != NULL && (pending || was_touching || probing || gpio_get_level(BSP_LCD_TOUCH_INT) == 0)) {
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        const int64_t start_us = timing_now_us();
+        const esp_err_t read = esp_lcd_touch_read_data(panel);
+        count_read_time(timing_now_us() - start_us);
+#else
+        const esp_err_t read = esp_lcd_touch_read_data(panel);
+#endif
+        if (read == ESP_OK) {
             esp_lcd_touch_point_data_t raw = {0};
             uint8_t count = 0;
             if (esp_lcd_touch_get_data(panel, &raw, &count, 1) == ESP_OK && count > 0) {
@@ -280,5 +319,24 @@ touch_take_sample_counts(uint32_t* points, uint32_t* moved) {
     point_samples = 0;
     moved_samples = 0;
     portEXIT_CRITICAL(&lock);
+}
+
+void
+touch_take_read_times(unsigned* reads, int64_t* p95_us, int64_t* max_us) {
+    portENTER_CRITICAL(&lock);
+    const touch_read_times_t taken = read_times;
+    read_times = (touch_read_times_t){0};
+    portEXIT_CRITICAL(&lock);
+    /* The p95 is the upper edge of the bucket holding the 95th-percentile read. */
+    const unsigned rank = (taken.count * 95U + 99U) / 100U;
+    unsigned seen = 0;
+    int bucket = 0;
+    while (bucket < TOUCH_READ_BUCKETS - 1 && seen + taken.buckets[bucket] < rank) {
+        seen += taken.buckets[bucket];
+        bucket++;
+    }
+    *reads = taken.count;
+    *p95_us = taken.count > 0 ? (int64_t)(bucket + 1) * TOUCH_READ_BUCKET_US : 0;
+    *max_us = taken.max_us;
 }
 #endif
