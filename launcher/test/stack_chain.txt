@@ -21,6 +21,8 @@ indirect raster_show : raster_motion.c:show raster_meshlets.c:show depth_show ti
 indirect raster_show_map : raster_motion.c:pixel_color raster_meshlets.c:pixel_color
 indirect render_context_set_debug_view : raster_depth_view raster_depth_tiles_view raster_motion_view raster_meshlets_view raster_cull_view
 indirect render_context_overlay : raster_cull_overlay
+indirect reserve_view : raster_motion_reserve_view
+indirect free_view_state : raster_motion_release_view
 indirect job_run_core1 : sweep_one_chunk step_one_gas_chunk equalise_gas_one_chunk equalise_one_chunk react_one_chunk
 indirect replay_overlay : shell_frame_overlay
 indirect job_dispatch job_on_worker_started : frame_watch_add_task
