@@ -264,6 +264,7 @@ build_full_size_step_scene(sand_t* real, uint8_t* big) {
 #include "panel_clock_pin.h"
 #include "profile/frame_cost.h"
 #include "testkit/bench.h"
+#include "testkit/cleanup.h"
 
 /* Each pass's time for one step, summed over a window, and the split of the
  * window's dearest step. */
@@ -3539,10 +3540,7 @@ test_water_slope_captured_scene_diagonal_flip_logs_a_per_step_table(void) {
  */
 
 #include "app/app.h"
-#if CONFIG_LAUNCHER_DEVELOPMENT
-#include "input/motion/imu.h"
 #include "input/motion/motion_reader.h"
-#endif
 
 extern app_t app_sand;
 extern int sand_app_enter_running_for_test(void);
@@ -3599,12 +3597,6 @@ clock_row_measure(int frames, bool pouring, int* frame_index) {
 static void
 clock_row_run(int brush, clock_row_t row, clock_row_window_t* pour, clock_row_window_t* settled) {
     gfx_set_panel_clock_hz(row == CLOCK_ROW_40 ? GFX_PANEL_CLOCK_SLOW_HZ : GFX_PANEL_CLOCK_FAST_HZ);
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    const imu_sample_t upright = {.ax = IMU_COUNTS_PER_G};
-    imu_inject(&upright);
-    /* The gravity filter holds the board's real tilt for seconds; reset it so the first sample seeds upright. */
-    motion_reader_reset();
-#endif
     app_sand.enter();
     frame_watch_restart();
     const int previous_mode = sand_app_enter_running_for_test();
@@ -3621,15 +3613,15 @@ clock_row_run(int brush, clock_row_t row, clock_row_window_t* pour, clock_row_wi
     *settled = clock_row_measure(CLOCK_ROW_SETTLED_FRAMES, false, &frame_index);
 
     app_sand.exit();
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    imu_inject_release();
-#endif
     frame_watch_restart();
     sand_app_restore_colour_mode_for_test(previous_mode);
 }
 
 static void
 test_present_cost_at_40_and_80_mhz_on_a_real_pour(void) {
+    const imu_sample_t upright = IMU_SAMPLE_UPRIGHT;
+    input_motion_pin(&upright);
+    suite_add_test_cleanup(input_motion_unpin);
     static const char* const brush_names[] = {"sand", "water"};
     static const char* const row_names[CLOCK_ROW_COUNT] = {"40", "80"};
     const two_core_scope_t core = two_core_scope_begin(true);

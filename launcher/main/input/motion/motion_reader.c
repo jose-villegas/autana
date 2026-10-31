@@ -19,6 +19,7 @@
 TUNE_OWNER(motion);
 TUNE(motion, log_ms, 0, 0, MOTION_LOG_MAX_MS);
 static int64_t last_log_us;
+static bool pinned;
 #endif
 
 /* The first sample after a park arrives at least the idle window after the last one, so a rest
@@ -42,6 +43,22 @@ motion_reader_reset(void) {
     updated_sequence = 0;
 }
 
+#if CONFIG_LAUNCHER_DEVELOPMENT
+void
+input_motion_pin(const imu_sample_t* s) {
+    imu_inject(s);
+    motion_reader_reset();
+    pinned = true;
+}
+
+void
+input_motion_unpin(void) {
+    imu_inject_release();
+    motion_reader_reset();
+    pinned = false;
+}
+#endif
+
 static void
 update_without_sample(void) {
     imu_rest_reset(&rest);
@@ -61,6 +78,11 @@ sample_elapsed_us(int64_t now_us) {
 
 static void
 update_rest_learning(const input_motion_t* sample, int64_t elapsed) {
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    if (pinned) {
+        return;
+    }
+#endif
     const vec3f_t a = vec3f_scale(vec3f_from_vec3i(sample->acceleration), 1.0F / INPUT_ACCEL_ONE_G);
     const uint32_t rest_dt_us = elapsed > UINT32_MAX ? UINT32_MAX : (uint32_t)elapsed;
     if (imu_rest_step(&rest, sample, rest_dt_us, gravity_accel_trusted(sqrtf(vec3f_dot(a, a)))) == IMU_REST_DONE
