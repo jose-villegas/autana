@@ -1,8 +1,8 @@
 # Mesh Rendering
 
 How the runtime draws a baked lit-mesh: the frame view, culling, the rasterizer, the
-two-core frame and the view modes. The mesh's format is [Baked-Mesh.md](Baked-Mesh.md); how it is made is
-[Mesh-Import.md](Mesh-Import.md).
+two-core frame and the view modes. The mesh's format is [Baked-Mesh.md](offline/Baked-Mesh.md); how it is made is
+[Mesh-Import.md](offline/Mesh-Import.md).
 
 `launcher/main/render/` is the engine's 3D layer: the frame view, projection, a
 span rasterizer, and a pipeline that draws a mesh whose light was baked
@@ -24,15 +24,16 @@ and picture basis from `render_view_t`.
 
 | Noun | What it is |
 |---|---|
-| `r3d_lit_mesh_t` | A mesh whose light is baked into its colours, made offline ([Mesh-Import.md](Mesh-Import.md)); a view of arrays that stay in the asset pack ([Baked-Mesh.md](Baked-Mesh.md#clusters-and-the-tree)) |
+| `r3d_lit_mesh_t` | A mesh whose light is baked into its colours, made offline ([Mesh-Import.md](offline/Mesh-Import.md)); a view of arrays that stay in the asset pack ([Baked-Mesh.md](offline/Baked-Mesh.md#clusters-and-the-tree)) |
 | `render_view_t` | One frame: eye, picture axes and forward in world units, pixels per unit depth, centre, near plane and picture size |
 | `viewport_t` | The picture's size and the quarter turn the panel is read at; `render_view_make()` and `render_view_refit()` take one |
 | `r3d_instance_t` | One mesh and, optionally, its baked placement: a 3x3 (rotation times a positive scale) and a position. No placement draws the mesh as it is |
 | `raster_t` | The `r3d_instance_t` array it draws (one mesh is a count of one), at one size, into a scratch block the caller hands it. Its options are fields the caller sets: `clear`, and `upscaled` with a destination picture at least as large |
 | `raster_draw()` | Takes a `const render_view_t*` and draws every instance through that frame view |
-| `raster_census()` | `raster_draw()`'s cull alone, into the scratch block's list: on an upscaled raster with unchanged destination dimensions it holds at any render size, so a caller can price sizes first ([Dynamic-Resolution.md](Dynamic-Resolution.md)) |
+| `raster_census()` | `raster_draw()`'s cull alone, into the scratch block's list: on an upscaled raster with unchanged destination dimensions it holds at any render size, so a caller can price sizes first ([Dynamic-Resolution.md](frame/Dynamic-Resolution.md)) |
 | `raster_draw_culled()` | `raster_draw()` from that list at the raster's size now, without culling again |
 | `raster_upscale()` | Nearest-neighbour scales what was drawn up into `destination`; its retained maps change only when either size changes |
+| `raster_upscale_picture()` | The same through the upscale filter, of another colour and depth picture at the drawn size when given one, marking the seams it blends |
 | `r3d_span_triangle()` | A scene that projects its own triangles fills them with this, into a window of rows of a render target holding colour and depth, from `render/r3d_span.h` |
 | `raster_attachment_t` | A per-pixel map the raster draws beside colour and depth ([Attachments](#attachments)) |
 | `raster_show()` | Development builds: the attached [view](#view-modes) paints the colour before the upscale |
@@ -55,7 +56,7 @@ all see the mesh where it sits. With no model, an instance is the unplaced
 lens exactly.
 
 The importer bakes the placement from a position, a rotation and a scale
-([Scene-Files.md](Scene-Files.md)), so the device does no trigonometry.
+([Scene-Files.md](scene/Scene-Files.md)), so the device does no trigonometry.
 
 ## The files
 
@@ -163,8 +164,8 @@ app exits.
 | Call | Meaning |
 |---|---|
 | `render_context_set_scale()` | the share of the destination each axis draws at; half until set |
-| `render_context_set_dynamic_resolution(config, model, step)` | opt-in: each frame draws at a step of `config` to hold its budget ([Dynamic-Resolution.md](Dynamic-Resolution.md)); NULL returns to the fixed scale |
-| `render_context_set_frame_generation(on)` | each drawn frame is followed by one warped from it to its own view instead of drawn ([Frame-Generation.md](Frame-Generation.md)); a debug view, a cut or a new viewport draws |
+| `render_context_set_dynamic_resolution(config, model, step)` | opt-in: each frame draws at a step of `config` to hold its budget ([Dynamic-Resolution.md](frame/Dynamic-Resolution.md)); NULL returns to the fixed scale |
+| `render_context_set_frame_generation(on)` | a drawn frame may be followed by one warped from it instead of drawn; when, and what draws instead: [Frame-Generation.md](frame/Frame-Generation.md#for-an-app) |
 | `render_context_set_debug_view()` | a [view mode](#view-modes), development builds only |
 | `render_context_frame()` | the last frame: its step, size, what culling kept, and what its draw and upscale cost |
 
@@ -574,7 +575,7 @@ style; `render_view_t.small_fill` carries them to the frame's row workers.
 <!-- /generated: small-fill-levers -->
 
 The presets are defined in `render_view.h`. Opt in with the
-[scene camera API](Scene-Manager.md#what-an-app-calls), or pass custom `small_fill_t` values:
+[scene camera API](scene/Scene-Manager.md#what-an-app-calls), or pass custom `small_fill_t` values:
 
 <!-- generated: scene-small-fill-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c

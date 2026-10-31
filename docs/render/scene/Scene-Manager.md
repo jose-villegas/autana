@@ -3,7 +3,7 @@
 Scenes are engine machinery the shell drives. An app loads a scene by name and
 activates a camera; the shell advances every loaded scene and draws through the
 active camera each frame, so an app never calls draw. The code is
-`launcher/main/scene/`; [Building-a-Scene.md](Building-a-Scene.md#6-draw-it)
+`launcher/main/scene/`; [Building-a-Scene.md](../Building-a-Scene.md#6-draw-it)
 shows an app using it.
 
 ## What a scene holds
@@ -33,7 +33,7 @@ block transactionally; attachment failure preserves the scene.
 | names | entity | the scene entry's, read in the pack with each name's hash; looked up only by `scene_find()` |
 
 Array lengths come from the scene's `SCNE` entry
-([Scene-Files.md](Scene-Files.md#scne-v5)). SCNE v5 carries entity name hashes, parents, authored lights, lighting settings, skins, animators and renderer colour-set selections.
+([SCNE.md](../../assets/formats/SCNE.md)). SCNE v5 carries entity name hashes, parents, authored lights, lighting settings, skins, animators and renderer colour-set selections.
 Authored lights attach at load, and `scene_light_set_*()` attaches or changes
 them at run time; only skinned renderers are lit at run time, baked renderers
 keep their pack colors. Names and immutable mesh and track views point into
@@ -48,7 +48,7 @@ App-exit cleanup of async requests leaves that handle held.
 
 | Call | Meaning |
 |---|---|
-| `scene_load(id, &why)` | mounts the [asset pack](../assets/Loading-Packs.md#counted-mounts) `id` and loads its scene entry `id`, every mesh, skin, skeleton and clip it names, beside any scene already loaded; NULL on failure, and `why` (which may be NULL) says what failed: no such scene, the manager full, no memory, or no pack or an entry it could not open, or an entity whose placement does not decompose, with the entry's id and the pack's status |
+| `scene_load(id, &why)` | mounts the [asset pack](../../assets/Loading-Packs.md#counted-mounts) `id` and loads its scene entry `id`, every mesh, skin, skeleton and clip it names, beside any scene already loaded; NULL on failure, and `why` (which may be NULL) says what failed: no such scene, the manager full, no memory, or no pack or an entry it could not open, or an entity whose placement does not decompose, with the entry's id and the pack's status |
 | `scene_unload(scene)` | unloads it and releases its pack; its camera, if active, is deactivated; its arena memory waits for the app's rewind ([Ownership](#ownership)) |
 | `scene_find(scene, name_hash(name))` | the entity with that name: look it up once, after the load, and keep it |
 | `scene_entity_mesh_id(scene, entity)` | the pack id of the mesh the entity draws, or NULL |
@@ -56,7 +56,7 @@ App-exit cleanup of async requests leaves that handle held.
 | `scene_camera_lens(scene, name_hash(camera))` | a camera's lens (`SCENE_CAMERA_FIRST`: the first); its pose is its entity's transform |
 | `scene_camera_set_present(scene, camera, present)` | sets the camera's presentation; false for a non-camera entity or invalid mode |
 | `scene_camera_set_shift(scene, camera, shift)` | sets its lens shift, an off-axis view along the camera's right and up in picture short sides ([Camera](Camera.md#lens-shift)); false for a non-camera entity or a shift that is not finite |
-| `scene_camera_set_small_fill(scene, camera, fill)` | sets its `small_fill_t` ceiling, colour gate and style; defaults are `SMALL_FILL_SMOOTH`; pass `SMALL_FILL_FAST` to opt into tuned filling; false for a non-camera entity or invalid ceiling or style ([Small fill](Mesh-Rendering.md#small-fill)) |
+| `scene_camera_set_small_fill(scene, camera, fill)` | sets its `small_fill_t` ceiling, colour gate and style; defaults are `SMALL_FILL_SMOOTH`; pass `SMALL_FILL_FAST` to opt into tuned filling; false for a non-camera entity or invalid ceiling or style ([Small fill](../Mesh-Rendering.md#small-fill)) |
 | `scene_entity_local()` / `scene_entity_set_local()` | the transform component's stored `transformf_t`, in the parent's frame; a root's is its world |
 | `scene_entity_set_enabled()` | hide or show the entity with its descendants |
 | `scene_entity_parent()` / `scene_entity_is_within()` | its parent, or `SCENE_ENTITY_NONE` for a root; whether it is an entity or one of its descendants |
@@ -70,7 +70,7 @@ App-exit cleanup of async requests leaves that handle held.
 | `scene_light_color()` / `_intensity()` | read a light field, or zero when none is attached |
 | `scene_activate(scene, name_hash(camera))` | makes that camera (`SCENE_CAMERA_FIRST`: the first) the one active camera |
 | `scene_deactivate()` / `scene_set_paused()` | stop drawing, or hold the scene in place for an app that draws its own full screen |
-| `render_context_set_scale()`, `render_context_set_dynamic_resolution()`, `render_context_frame()` | not the scene's: the render size, dynamic resolution and what the last frame drew belong to the render context the scene draws through ([Mesh-Rendering.md](Mesh-Rendering.md#the-render-context)) |
+| `render_context_set_scale()`, `render_context_set_dynamic_resolution()`, `render_context_frame()` | not the scene's: the render size, dynamic resolution and what the last frame drew belong to the render context the scene draws through ([Mesh-Rendering.md](../Mesh-Rendering.md#the-render-context)) |
 
 A new light starts white with zero intensity. Its world direction is its
 entity's rotated +Y axis; moving its rotation changes skin shading next frame,
@@ -103,9 +103,9 @@ sequenceDiagram
 `scene_render()` touches no framebuffer, so it runs while the last frame is
 still being sent.
 
-`scene_compose()` expands the draw into the half picture when it is exactly
-half the panel width and its height divides the half-panel height. Otherwise
-it writes the full framebuffer, once the send is done.
+`scene_compose()` expands the draw into the half picture when it fits
+([the rule](../Rendering-Options.md#render-scale-and-the-half-picture)).
+Otherwise it writes the full framebuffer, once the send is done.
 
 If `scene_render()` did not run (the first frame after activating), compose
 draws first. An app gets this overlap whenever a camera is active, with or
@@ -119,7 +119,7 @@ needs full-framebuffer layout; in band mode the scene draws into scratch
 with no destination for upscaling.
 
 `scene_render()` runs the animation and skinning stages
-([Skeleton-and-Skin.md](Skeleton-and-Skin.md#runtime)),
+([Skeleton-and-Skin.md](../animation/Skeleton-and-Skin.md#runtime)),
 then resolves the hierarchy ([Hierarchy](#hierarchy)), fills `instances[]`
 from the active renderers and draws. The raster's scratch block is the engine's, sized
 for the largest enabled mesh's working buffers, every enabled instance's
@@ -135,7 +135,7 @@ Every entity has at most one parent, listed before it in the entry, so one
 forward pass meets every parent before its children. A local transform is in
 the parent's frame; a world is the parent's world times the local, an exact
 `transformf_t` (content keeps parents' scale even:
-[Scene-Files.md](Scene-Files.md#scne-v5)).
+[SCNE.md](../../assets/formats/SCNE.md)).
 
 | Step | When | Does |
 |---|---|---|
@@ -195,16 +195,16 @@ Host tools and tests pass a `const render_view_t*` to `raster_draw()`
 and compose its picture with `raster_upscale()`. `camera_view()` builds a
 frame view from a lens (`camera_t`, `scene/camera/camera.h`) and a pose; a
 scene camera's pose is its entity's, which an [animation
-track](Animation-Tracks.md) moves.
+track](../animation/Animation-Tracks.md) moves.
 
 The shell's half of the API (the two frame halves and the unload on exit) is
 `scene/scene_shell.h`; apps include only `scene/scene.h`.
 The shell does not call it by name: `shell/scene_system.c` registers it as the
 engine system `scene`, at `SHELL_ORDER_SCENE`
-([firmware/Frame-Loop.md](../firmware/Frame-Loop.md#engine-systems)).
+([firmware/Frame-Loop.md](../../firmware/Frame-Loop.md#engine-systems)).
 
 ## Per-renderer lighting mode
 
 Each skinned renderer reads its lighting mode from SKIN, direct by default;
 tests set it with `scene_skin_light_set_mode()` in `scene_internal.h`. See
-[Lighting modes](Skinned-Lighting.md#lighting-modes).
+[Lighting modes](../animation/Skinned-Lighting.md#lighting-modes).

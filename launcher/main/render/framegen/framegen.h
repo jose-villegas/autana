@@ -1,6 +1,6 @@
 /*
  * framegen: a generated frame, the last drawn picture forward-warped from the
- * view it was drawn through to a later one, by its depth (docs/render/Frame-Generation.md).
+ * view it was drawn through to a later one, by its depth (docs/render/frame/Frame-Generation.md).
  * Removable as this folder plus the render context's frame generation setting.
  */
 #pragma once
@@ -34,7 +34,7 @@ void framegen_target_free(framegen_target_t* target);
 void framegen_warp(const raster_t* raster, const render_view_t* drawn, const render_view_t* now,
                    framegen_target_t* out);
 
-/* Writes the generated frame into `raster`'s own colour and depth, so it
- * composes as a drawn frame does: the target where something landed, the
- * drawn frame's pixel elsewhere. Returns the pixels nothing landed on. */
+/* Completes the generated frame in `target`, so its picture composes as a
+ * drawn frame does: the drawn frame's pixel where nothing landed. `raster`
+ * keeps the drawn frame. Returns the pixels nothing landed on. */
 int framegen_fill(const raster_t* raster, const framegen_target_t* target);

@@ -13,7 +13,10 @@ permissions:
 jobs:
   board:
     outputs:
-      held: ${{ (steps.device.outcome == 'success' || steps.device.outcome == 'failure') && steps.device.outputs.skipped != 'true' }}
+      # Whether board-steps.sh ran both stages to the end, whatever its tests reported; unset while the
+      # boards were busy. A failed build never reached the board.
+      boards_ran: ${{ steps.device.outputs.boards_ran }}
+      prepared: ${{ steps.prepare.outcome }}
     runs-on: [self-hosted, windows, board]
     timeout-minutes: 120
     defaults:
@@ -40,6 +43,7 @@ jobs:
           set-safe-directory: false
 
       - name: Prepare the shell image and console tests
+        id: prepare
         run: |
           export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/tools:$PATH"
           bash scripts/ci/board-prepare.sh
@@ -50,8 +54,9 @@ jobs:
         run: |
           rm -f "$RUNNER_TEMP/board-ci-selftest.log"
           export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/tools:$PATH"
-          if autana --wait 1800 lock run -- "$(cygpath -w "$BASH")" scripts/ci/board-steps.sh; then
-            exit 0
+          steps_log="$RUNNER_TEMP/board-ci-steps.log"
+          if autana --wait 1800 lock run -- "$(cygpath -w "$BASH")" scripts/ci/board-steps.sh | tee "$steps_log"; then
+            status=0
           else
             status=$?
           fi
@@ -61,6 +66,8 @@ jobs:
             echo 'Board CI skipped: boards busy' >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
+          PY=$(. scripts/lib/python.sh && find_python)
+          "$PY" scripts/ci/board_alarm.py ran --log "$steps_log" >> "$GITHUB_OUTPUT"
           exit "$status"
 
       - name: Summarize the device capture
@@ -106,12 +113,13 @@ jobs:
           lfs: false
           persist-credentials: false
 
+      # Failed tests leave this run red, not the boards down.
       - name: Raise the board-ci-down alarm
-        if: needs.board.result == 'failure' || needs.board.result == 'cancelled'
+        if: needs.board.result == 'cancelled' || (needs.board.result == 'failure' && needs.board.outputs.prepared != 'failure' && needs.board.outputs.boards_ran != 'true')
         env:
           BOARD_RESULT: ${{ needs.board.result }}
-        run: python3 scripts/ci/board_alarm.py raise --reason "board job $BOARD_RESULT"
+        run: python3 scripts/ci/board_alarm.py raise --reason "board job $BOARD_RESULT; the board did not run every suite"
 
       - name: Clear the board-ci-down alarm
-        if: needs.board.result == 'success' && needs.board.outputs.held == 'true'
+        if: (needs.board.result == 'success' || needs.board.result == 'failure') && needs.board.outputs.boards_ran == 'true'
         run: python3 scripts/ci/board_alarm.py clear
