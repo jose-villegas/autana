@@ -64,16 +64,21 @@ def eq_decode(word):
     return result
 
 
-def eq_design_biquad(kind, f0, q, rate=SAMPLE_RATE_HZ):
+def eq_design_biquad(kind, f0, q, rate=SAMPLE_RATE_HZ, *, gain_db=0):
     """RBJ [b0,b1,b2,a1,a2], stored feedback added to the output recurrence."""
-    if kind not in ('highpass', 'lowpass', 'bandpass') or not 0 < f0 < rate / 2 or not math.isfinite(q) or q <= 0:
-        raise ValueError('highpass/lowpass/bandpass, frequency below Nyquist and positive Q required')
+    if kind not in ('highpass', 'lowpass', 'bandpass', 'peaking') or not 0 < f0 < rate / 2 or not math.isfinite(q) or q <= 0 or not math.isfinite(gain_db):
+        raise ValueError('supported biquad, frequency below Nyquist, positive Q and finite gain required')
     omega = 2 * math.pi * f0 / rate
     c = math.cos(omega)
     alpha = math.sin(omega) / (2 * q)
     b = [(1 + c) / 2, -(1 + c), (1 + c) / 2] if kind == 'highpass' else [(1 - c) / 2, 1 - c, (1 - c) / 2]
     if kind == 'bandpass':
         b = [alpha, 0, -alpha]
+    if kind == 'peaking':
+        amplitude = 10 ** (gain_db / (2 * AMPLITUDE_DB))
+        denominator = 1 + alpha / amplitude
+        return [value / denominator for value in
+                (1 + alpha * amplitude, -2 * c, 1 - alpha * amplitude, 2 * c, alpha / amplitude - 1)]
     return [value / (1 + alpha) for value in (*b, 2 * c, alpha - 1)]
 
 

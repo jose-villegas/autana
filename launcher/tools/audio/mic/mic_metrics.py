@@ -197,6 +197,19 @@ def speech_band_snr_db(x, ref, rate=SAMPLE_RATE_HZ):
     return _db(np.mean(speech * speech)) - _db(np.mean(error * error))
 
 
+def speech_gap_snr_db(x, ref, rate=SAMPLE_RATE_HZ):
+    """Speech-frame versus gap-frame band power, using the aligned clean reference gate."""
+    x, ref = _mono(x), _mono(ref)
+    if len(x) != len(ref) or rate / 2 <= SPEECH_HIGH_HZ:
+        raise ValueError('equal aligned lengths and a speech-band sample rate required')
+    mask = speech_mask(ref, rate)
+    if not mask.any() or mask.all():
+        raise ValueError('reference needs speech and gap frames')
+    filtered = signal.sosfilt(signal.butter(FILTER_ORDER, [SPEECH_LOW_HZ, SPEECH_HIGH_HZ],
+                                          btype='bandpass', fs=rate, output='sos'), x)
+    return _db(np.mean(filtered[mask] ** 2)) - _db(np.mean(filtered[~mask] ** 2))
+
+
 def stoi_score(x, ref, rate=SAMPLE_RATE_HZ):
     from pystoi import stoi
     x, ref = _mono(x), _mono(ref)
