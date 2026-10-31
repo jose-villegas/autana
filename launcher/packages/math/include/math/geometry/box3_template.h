@@ -54,6 +54,7 @@
         return (V##_t){(k & 1) ? b.hi.x : b.lo.x, (k & 2) ? b.hi.y : b.lo.y, (k & 4) ? b.hi.z : b.lo.z};               \
     }
 
+/* clang-format off */
 #define MATH_DEFINE_BOX3_REAL(P, V, L, T, OPS)                                                                         \
                                                                                                                        \
     /* centre = 0.5 * (lo + hi). */                                                                                    \
@@ -62,11 +63,11 @@
     /* half_extent = 0.5 * (hi - lo). */                                                                               \
     static inline V##_t P##_half_extent(P##_t b) { return V##_scale(V##_sub(b.hi, b.lo), OPS##_half()); }              \
                                                                                                                        \
-    /* Distance min is plane(centre) - sum |n_k| half_extent_k; max is min of
-     * the flipped plane, negated.
-     * distance_min_inside is a linear programme solved by duality: the best
-     * distance_min(b, objective - lambda constraint) at lambda = 0 and each kink
-     * a_k / n_k > 0. Exact when b meets the half-space, a lower bound when not. */                                          \
+    /* Distance min is plane(centre) - sum |n_k| half_extent_k; max is min of                                         \
+     * the flipped plane, negated. distance_min_inside uses duality: the best                                         \
+     * distance_min(b, objective - lambda constraint) at lambda = 0 and each                                          \
+     * kink a_k / n_k > 0.                                                                                            \
+     * Exact if feasible; else a lower bound. */                                                                      \
     static inline T _##P##_plane_radius(V##_t half_extent, L##_t plane) {                                              \
         return OPS##_add(OPS##_add(OPS##_mul(OPS##_abs(plane.normal.x), half_extent.x),                                \
                                    OPS##_mul(OPS##_abs(plane.normal.y), half_extent.y)),                               \
@@ -149,3 +150,5 @@
         }                                                                                                              \
         return false;                                                                                                  \
     }
+
+/* clang-format on */
