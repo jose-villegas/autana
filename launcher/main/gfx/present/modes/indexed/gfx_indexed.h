@@ -3,7 +3,7 @@
  * as a standalone, ESP-IDF-free module so a host suite can drive it
  * without a framebuffer or a panel.
  *
- * GFX_LAYOUT_INDEXED (gfx_mode.h) keeps an index image in internal RAM
+ * GFX_LAYOUT_INDEXED (gfx.h) keeps an index image in internal RAM
  * instead of an RGB565 band: one byte per grid cell, not per panel pixel.
  * The present task is what turns that back into pixels, once per dirty
  * band, by calling the functions here: a LUT lookup per cell plus a

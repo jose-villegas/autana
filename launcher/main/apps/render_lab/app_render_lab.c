@@ -13,7 +13,6 @@
 #include "draw/draw.h"
 #include "esp_log.h"
 #include "gfx/gfx.h"
-#include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "image/pixel/rgb565.h"
 #include "render_lab.h"

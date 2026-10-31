@@ -7,10 +7,10 @@ A caller includes the header for what it does:
 
 | Header | What it declares |
 | --- | --- |
-| [`gfx/gfx.h`](../../launcher/main/gfx/gfx.h) | the framebuffer: its size, `gfx_init()`, `gfx_framebuffer()`; draw's surface (`gfx_draw_begin()`, `gfx_set_clip()`) and dirty marking |
+| [`gfx/gfx.h`](../../launcher/main/gfx/gfx.h) | the screen as an app sees it: its size and colour, `gfx_framebuffer()`, dirty marking, `gfx_request_full_redraw()`, modes and the indexed image with its LUTs |
 | [`draw/draw.h`](../../launcher/main/draw/draw.h) | primitives, text and clipping |
-| [`gfx/present/gfx_present.h`](../../launcher/main/gfx/present/gfx_present.h) | present and the panel clock |
-| [`gfx/present/gfx_mode.h`](../../launcher/main/gfx/present/gfx_mode.h) | modes, readback, the indexed image and its LUTs |
+| [`gfx/present/gfx_present.h`](../../launcher/main/gfx/present/gfx_present.h) | the frame loop's side: `gfx_init()`, draw's surface (`gfx_draw_begin()`, `gfx_set_clip()`), the band height, present and the panel clock |
+| [`gfx/present/gfx_mode.h`](../../launcher/main/gfx/present/gfx_mode.h) | the half picture, frame expansion and readback |
 | [`gfx/present/gfx_debug.h`](../../launcher/main/gfx/present/gfx_debug.h) | development-build overlays and send counts |
 | [`draw/draw_image.h`](../../launcher/main/draw/draw_image.h) | a picture read in place from its pack entry |
 
@@ -21,7 +21,7 @@ A caller includes the header for what it does:
 | `gfx/present/` | the framebuffer and presentation: layout values under `modes/`, send policy under `send/`, emulated panel backends under `panel/`; `gfx_internal.h` holds state only presentation shares |
 | `board/board_panel.c` | the panel link itself: QSPI and each revision's init sequence |
 
-Draw reaches presentation only through `gfx.h`: `gfx_draw_begin()` hands it the
+Draw reaches presentation only through `gfx_present.h`: `gfx_draw_begin()` hands it the
 target, clip and whether to mark, and the `gfx_mark_*` calls record what it wrote.
 
 For what an app owes the shell, see [`Building-an-App.md`](../firmware/Building-an-App.md);
