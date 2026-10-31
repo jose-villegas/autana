@@ -4,7 +4,9 @@ How the runtime draws a baked lit-mesh: the frame view, culling, the rasterizer
 and the two-core frame. Which pixels a triangle fills is in
 [Coverage.md](frame/Coverage.md), depth and attachments in
 [Attachments.md](frame/Attachments.md), the debug views in
-[View-Modes.md](frame/View-Modes.md). The mesh's format is [Baked-Mesh.md](offline/Baked-Mesh.md); how it is made is
+[View-Modes.md](frame/View-Modes.md).
+
+The mesh's format is [Baked-Mesh.md](offline/Baked-Mesh.md); how it is made is
 [Mesh-Import.md](offline/Mesh-Import.md).
 
 `launcher/main/render/` is the engine's 3D layer: the frame view, projection, a
@@ -233,7 +235,7 @@ geometry never hides kept geometry behind it: the holes in its screen door
 show what lies behind. The overlay also draws the camera's frustum.
 
 - Where two triangles fill a pixel at the same depth, it goes to the later
-  one, as with every attachment.
+  one, as with every [attachment](frame/Attachments.md#attachments).
 - A triangle the near plane cuts counts as reaching the fill even when its
   clipped polygon then faces away or vanishes.
 
@@ -338,8 +340,8 @@ non-negative least squares:
 The layer allocates nothing. Raster draw work owns the resolved camera
 settings and per-side spread table, shared read-only by the row workers.
 
-Per-vertex and per-cluster buffers, the census list, picture attachments and
-upscale maps share one block. The census comes first, its depth scale then
+Per-vertex and per-cluster buffers, the census list, picture
+[attachments](frame/Attachments.md#attachments) and upscale maps share one block. The census comes first, its depth scale then
 its list, at an offset independent of render size; storage is padded for
 picture attachments.
 
