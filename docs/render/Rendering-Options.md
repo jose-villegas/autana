@@ -273,8 +273,8 @@ picture exact.
 
 Culling is always on: the draw keeps only the clusters inside the frustum,
 roughly nearest first, and drops a triangle hidden behind what was already
-drawn. The knob is offline: the bake's `geometry.meshlet_triangles` sets the
-cluster size.
+drawn ([every stage](frame/Culling.md)). The knob is offline: the bake's
+`geometry.meshlet_triangles` sets the cluster size.
 
 - **Use** the shipped 32: 16 ties it, and 64 lets more triangles through than
   its fewer culls save.
