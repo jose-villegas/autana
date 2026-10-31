@@ -612,6 +612,13 @@ test_split_state_forgets_every_share(void) {
     TEST_ASSERT_EQUAL_INT(0, split.upscale_offset);
 }
 
+/* The draw split of the first instance's batch, which holds it alone. */
+static int
+first_instance_split(const r3d_lit_mesh_t* mesh, const raster_buffers_t* buffers, int height, int top_permille) {
+    const r3d_pipeline_part_t part = {mesh, buffers->culled + 1, buffers->culled[0], buffers->rows};
+    return r3d_pipeline_draw_split(&part, 1, height, top_permille);
+}
+
 typedef struct {
     int top, even;
 } split_rows_t;
@@ -623,8 +630,7 @@ split_clear(const raster_attachment_t* self, const raster_t* raster, void* pixel
     if (pixels == gfx_target_row(&buffers.picture, GFX_ATTACHMENT_FURTHER, 0)) {
         split_rows_t* rows = self->state;
         rows->top = (int)count / raster->width;
-        rows->even = r3d_pipeline_draw_split(raster->instances[0].mesh, buffers.culled + 1, buffers.rows,
-                                             buffers.culled[0], raster->height, JOB_SHARE_EVEN);
+        rows->even = first_instance_split(raster->instances[0].mesh, &buffers, raster->height, JOB_SHARE_EVEN);
     }
 }
 
@@ -710,11 +716,9 @@ test_draw_retains_only_the_drawn_instance_and_bounds_state(void) {
     }
     draw(r);
     const raster_buffers_t buffers = raster_carve(&r->raster);
-    const int even = r3d_pipeline_draw_split(instances[0].mesh, buffers.culled + 1, buffers.rows, buffers.culled[0], H,
-                                             JOB_SHARE_EVEN);
+    const int even = first_instance_split(instances[0].mesh, &buffers, H, JOB_SHARE_EVEN);
     TEST_ASSERT_EQUAL_INT(even, observed_top[RASTER_SPLIT_INSTANCES]);
-    const int retained = r3d_pipeline_draw_split(instances[0].mesh, buffers.culled + 1, buffers.rows, buffers.culled[0],
-                                                 H, JOB_SHARE_MIN);
+    const int retained = first_instance_split(instances[0].mesh, &buffers, H, JOB_SHARE_MIN);
     TEST_ASSERT_EQUAL_INT(retained, observed_top[RASTER_SPLIT_INSTANCES - 1]);
     TEST_ASSERT_EQUAL_INT(JOB_SHARE_MIN, state.sentinel);
 
