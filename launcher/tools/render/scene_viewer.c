@@ -21,6 +21,10 @@ static small_fill_t small_fill = SMALL_FILL_SMOOTH;
 static int view = RENDER_DEBUG_VIEW_SHADED;
 static const char* counts_path;
 static FILE* counts;
+static const char* poses_path;
+static FILE* poses;
+static const scene_t* shown;
+static scene_entity_t camera;
 
 static bool
 options(int argc, char** argv) {
@@ -67,6 +71,8 @@ options(int argc, char** argv) {
             }
         } else if (strcmp(flag, "--counts") == 0) {
             counts_path = value;
+        } else if (strcmp(flag, "--poses") == 0) {
+            poses_path = value;
         } else if (strcmp(flag, "--view") == 0) {
             view = render_context_debug_view_named(value);
             if (view == RENDER_DEBUG_VIEW_UNKNOWN) {
@@ -126,6 +132,33 @@ select_objects(scene_t* scene) {
     return true;
 }
 
+/* The camera entity scene_activate() chose: the named one, or the first whose lens is the first camera's. */
+static scene_entity_t
+active_camera(const scene_t* scene) {
+    if (camera_name != NULL) {
+        return scene_find(scene, name_hash(camera_name));
+    }
+    const camera_t* first = scene_camera_lens(scene, SCENE_CAMERA_FIRST);
+    for (int i = 0; i < scene_entity_count(scene); i++) {
+        if (scene_camera_lens(scene, name_hash(scene_entity_name(scene, (scene_entity_t)i))) == first) {
+            return (scene_entity_t)i;
+        }
+    }
+    return SCENE_ENTITY_NONE;
+}
+
+/* A per-frame CSV with its header written; NULL, said on stderr, when it cannot be made. */
+static FILE*
+open_rows(const char* path, const char* header) {
+    FILE* rows = fopen(path, "w");
+    if (rows == NULL) {
+        fprintf(stderr, "scene_viewer: cannot write %s\n", path);
+        return NULL;
+    }
+    fprintf(rows, "%s\n", header);
+    return rows;
+}
+
 int
 display_quarter_now(void) {
     return shell_quarter;
@@ -167,23 +200,21 @@ setup(int quarter) {
         (void)scene_camera_set_present(scene, (scene_entity_t)i, present);
         (void)scene_camera_set_small_fill(scene, (scene_entity_t)i, small_fill);
     }
-    if (camera_name != NULL) {
-        /* What a caller sampling the path along its length reads. */
-        fprintf(stderr, "scene_viewer: camera path %u ms\n",
-                (unsigned)scene_animator_clip_duration_ms(scene, scene_find(scene, name_hash(camera_name)), 0));
-    }
+    shown = scene;
+    camera = active_camera(scene);
+    /* What a caller sampling the path along its length reads. */
+    fprintf(stderr, "scene_viewer: camera path %u ms\n", (unsigned)scene_animator_clip_duration_ms(scene, camera, 0));
     render_context_t* context = render_context_main();
     render_context_set_debug_view(context, view);
-    if (counts_path != NULL) {
-        counts = fopen(counts_path, "w");
-        if (counts == NULL) {
-            fprintf(stderr, "scene_viewer: cannot write %s\n", counts_path);
-            scene_unload(scene);
-            return false;
-        }
-        fprintf(counts, "frame,ms,nodes_visited,nodes_cut,clusters_tested,clusters_kept,clusters_not_set_up,"
-                        "clusters_hidden,clusters_drawn,triangles_submitted,triangles_behind,triangles_clipped,"
-                        "triangles_missed,triangles_facing_away,triangles_set_up,triangles_covering\n");
+#define COUNT_NAME(name, member) "," #name
+    if (counts_path != NULL
+        && (counts = open_rows(counts_path, "frame,ms" RASTER_CULL_FRAME_FIELDS(COUNT_NAME))) == NULL) {
+        scene_unload(scene);
+        return false;
+    }
+    if (poses_path != NULL && (poses = open_rows(poses_path, "frame,ms,px,py,pz,qx,qy,qz,qw")) == NULL) {
+        scene_unload(scene);
+        return false;
     }
     if (size_rect.w > 0) {
         const resolution_step_t size = {size_rect.w, size_rect.h};
@@ -193,22 +224,30 @@ setup(int quarter) {
     return true;
 }
 
-/* One row per frame of what the cull view counted from the camera. */
+/* One row per frame of what the cull view counted from the camera, and of where the camera stood. */
 static void
 draw(const render_frame_t* frame) {
-    if (counts == NULL) {
-        return;
+    const bool last = frame->index + 1 == frame->count;
+    if (counts != NULL) {
+        const raster_cull_frame_t f = raster_cull_frame(render_context_debug_view_state(render_context_main()));
+        fprintf(counts, "%d,%u", frame->index, (unsigned)frame->elapsed_ms);
+#define COUNT_VALUE(name, member) fprintf(counts, ",%d", f.member);
+        RASTER_CULL_FRAME_FIELDS(COUNT_VALUE)
+        fputc('\n', counts);
+        if (last) {
+            fclose(counts);
+            counts = NULL;
+        }
     }
-    const raster_cull_frame_t f = raster_cull_frame(render_context_debug_view_state(render_context_main()));
-    const r3d_pipeline_counts_t* n = &f.counts;
-    fprintf(counts, "%d,%u,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n", frame->index, (unsigned)frame->elapsed_ms,
-            n->nodes_visited, n->nodes_cut, n->clusters_tested, n->clusters_kept, f.clusters[RASTER_FATE_NOT_SET_UP],
-            f.clusters[RASTER_FATE_HIDDEN], f.clusters[RASTER_FATE_DRAWN], n->triangles_submitted, n->triangles_behind,
-            n->triangles_clipped, n->triangles_missed, n->triangles_facing_away, n->triangles_set_up,
-            f.triangles_covering);
-    if (frame->index + 1 == frame->count) {
-        fclose(counts);
-        counts = NULL;
+    if (poses != NULL) {
+        const transformf_t world = scene_entity_world(shown, camera);
+        fprintf(poses, "%d,%u,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\n", frame->index, (unsigned)frame->elapsed_ms,
+                (double)world.position.x, (double)world.position.y, (double)world.position.z, (double)world.rotation.x,
+                (double)world.rotation.y, (double)world.rotation.z, (double)world.rotation.w);
+        if (last) {
+            fclose(poses);
+            poses = NULL;
+        }
     }
 }
 

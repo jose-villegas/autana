@@ -37,6 +37,7 @@ typedef struct {
     r3d_span_small_fill_t resolved;
     r3d_pipeline_vertex_t transformed[6];
     r3d_span_vertex_t projected[4], front[3];
+    r3d_span_target_t expected, actual;
 } clipped_fixture_t;
 
 static clipped_fixture_t* clipped;
@@ -66,7 +67,7 @@ test_styles_match_pipeline_colours(void) {
     const r3d_lit_mesh_t mesh = {.positions = positions, .colors = (const uint8_t (*)[3])colours};
     const r3d_lens_t lens = {.m = MAT4F_IDENTITY,
                              .project = {1.0F, -1.0F, 0.0F, 0.0F, 1.0F},
-                             .near_subpixels = 1.0F / R3D_SUBPIXEL,
+                             .depth_subpixels = 1.0F / R3D_SUBPIXEL,
                              .snap_cx = R3D_SNAP_BIAS,
                              .snap_cy = R3D_SNAP_BIAS};
     r3d_pipeline_vertex_t transformed[3];
@@ -114,7 +115,7 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
         .positions = positions, .colors = colors, .triangles = triangles, .clusters = &cluster};
     const r3d_lens_t lens = {.m = MAT4F_IDENTITY,
                              .project = {1.0F, -1.0F, 0.0F, 0.0F, 1.0F},
-                             .near_subpixels = 1.0F / R3D_SUBPIXEL,
+                             .depth_subpixels = 1.0F / R3D_SUBPIXEL,
                              .snap_cx = R3D_SNAP_BIAS,
                              .snap_cy = R3D_SNAP_BIAS};
     clipped = malloc(sizeof(*clipped));
@@ -122,9 +123,10 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
     r3d_pipeline_vertex_t* transformed = clipped->transformed;
     (void)transform_cluster(&mesh, &lens, &cluster, transformed);
     build_guard_planes(&lens, work);
-    r3d_span_target_t expected = r3d_span_target(pixels, pixels + TEST_PIXELS, TEST_SIDE, 0, TEST_SIDE);
-    r3d_span_target_t actual =
-        r3d_span_target(pixels + TEST_PIXELS * 2, pixels + TEST_PIXELS * 3, TEST_SIDE, 0, TEST_SIDE);
+    r3d_span_target_t* expected = &clipped->expected;
+    r3d_span_target_t* actual = &clipped->actual;
+    *expected = r3d_span_target(pixels, pixels + TEST_PIXELS, TEST_SIDE, 0, TEST_SIDE);
+    *actual = r3d_span_target(pixels + TEST_PIXELS * 2, pixels + TEST_PIXELS * 3, TEST_SIDE, 0, TEST_SIDE);
     const clip_vertex_t polygon[4] = {{8.75F, 0.75F, 1, 191.25F, 63.75F, 0},
                                       {32, 0, 4, 0, 255, 0},
                                       {0, 32, 4, 0, 0, 255},
@@ -133,15 +135,15 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
     for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
         r3d_span_small_fill_t* resolved = &clipped->resolved;
         r3d_span_small_fill_resolve(resolved, (small_fill_t){SMALL_FILL_CEILING_FAST, 0, style});
-        expected.small_fill = actual.small_fill = resolved;
+        expected->small_fill = actual->small_fill = resolved;
         for (int mixed = 0; mixed < 2; mixed++) {
             memset(pixels, 0, TEST_PIXELS * 4 * sizeof(*pixels));
             r3d_span_vertex_t* projected = clipped->projected;
             for (int k = 0; k < 4; k++) {
                 projected[k] = project(&lens, &polygon[k]);
             }
-            r3d_span_triangle(&expected, projected, projected + 1, projected + 2);
-            r3d_span_triangle(&expected, projected, projected + 2, projected + 3);
+            r3d_span_triangle(expected, projected, projected + 1, projected + 2);
+            r3d_span_triangle(expected, projected, projected + 2, projected + 3);
             if (mixed) {
                 r3d_span_vertex_t* front = clipped->front;
                 for (int k = 0; k < 3; k++) {
@@ -149,11 +151,10 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
                     front[k] =
                         (r3d_span_vertex_t){v->sx, v->sy, v->iz, colors[k + 3][0], colors[k + 3][1], colors[k + 3][2]};
                 }
-                r3d_span_triangle(&expected, front, front + 1, front + 2);
+                r3d_span_triangle(expected, front, front + 1, front + 2);
             }
-            r3d_lit_cluster_t selected = cluster;
-            selected.triangle_count = mixed ? 2 : 1;
-            draw_cluster(&mesh, &lens, &selected, transformed, &actual, false, work);
+            draw_triangles(&mesh, &lens, &cluster, cluster.triangle_first, cluster.triangle_first + (mixed ? 2 : 1),
+                           transformed, actual, false, work);
             TEST_ASSERT_EQUAL_MEMORY(pixels, pixels + TEST_PIXELS * 2, TEST_PIXELS * 2 * sizeof(*pixels));
             int covered = 0;
             for (int i = 0; i < TEST_PIXELS; i++) {

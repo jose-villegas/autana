@@ -36,9 +36,9 @@ __attribute__((noinline)) bool r3d_span_hidden(const r3d_span_target_t* target, 
 static inline recti_t
 r3d_span_window_box(const r3d_span_target_t* target, recti_t centres) {
     const int left = mathi_max(centres.x, 0);
-    const int top = mathi_max(centres.y, target->rows.row0);
-    const recti_t box = {left, top, mathi_min(recti_right(centres), target->rows.width) - left,
-                         mathi_min(recti_bottom(centres), target->rows.row1) - top};
+    const int top = mathi_max(centres.y, target->rows.first_row);
+    const recti_t box = {left, top, mathi_min(recti_right(centres), target->rows.attachment[0].width) - left,
+                         mathi_min(recti_bottom(centres), gfx_target_end_row(&target->rows)) - top};
     return box;
 }
 

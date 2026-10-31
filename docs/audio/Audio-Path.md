@@ -90,6 +90,7 @@ and both JSON frequency fields are null.
 `thd_db` reports harmonic power relative to the fundamental in dB; null means unavailable.
 
 `peak_dbfs` reports the largest absolute microphone sample in dBFS.
+`noise_dbfs` is the broadband RMS of the silence baseline, before the tone starts.
 
 The detector discards `AUDIO_LOOPBACK_SETTLE_MS` of capture before measuring.
 Heard means tone minus silence is at least `AUDIO_LOOPBACK_HEARD_MARGIN_DB`
@@ -368,3 +369,29 @@ The host exits with status 1 if any note is not heard.
 Check JSON is a list of tone result objects, each with `note` and
 `cents_error` added. Cents error is `1200 * log2(measured_hz / hz)`;
 it is null when the frequency estimate is unavailable.
+
+## Recording the microphone
+
+`autana mic record 1000 --settle 100 -o take.wav --json` records mono PCM16
+and writes codec state to `take.json`. Duration, settling and write limits live
+in `console_mic_parse.h`; the omitted settling interval is `AUDIO_LOOPBACK_SETTLE_MS`.
+`--at <ms> <reg> <value>` writes a codec register that far into the take.
+
+`MIC_BEGIN` announces rate and sample count. `MIC_DATA` carries independent
+base64 chunks of PCM16 little-endian samples. `MIC_STATE` contains the rate,
+sample count, codec registers, scheduled writes and automute runs as
+`[first_block, block_count]`. Block size lives in `audio_codec.h`; `MIC_END`
+completes a successful transfer.
+
+Install `launcher/tools/audio/mic/requirements.txt`, then run:
+
+```sh
+python launcher/tools/audio/mic/mic_metrics.py take.wav --reference reference.wav --json
+```
+
+`noise_dbfs` is the take's broadband RMS level, the floor or hiss when nothing
+plays. Metrics align the reference by correlation without gain normalization.
+Levels are dBFS; speech-band SNR uses reference activity. Active level uses a
+P.56-style envelope estimate, not a P.56 conformance measurement. STOI requires
+matched rates. Synthetic material comes from `generate_noise.py` (`pink` or
+`babble`, `--seconds`, `--seed`).

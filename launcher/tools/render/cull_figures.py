@@ -12,7 +12,7 @@ It writes, into --out:
   STEM-counts.png  the counts along the path, clusters and triangles
 and leaves --work/STEM-chase.avi (the fates from behind, the whole path) for a
 GIF, and --tables/STEM.md, the counts' path means for the page's block.
-The fate colours and names are read from raster_cull_view.c.
+The counts' series come from cull_counts.py.
 """
 
 import argparse
@@ -28,18 +28,16 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
 import check_avi
-from docs.plot_style import INK, MUTED, SLOTS, save, style_axes, subplots
+from cull_counts import CULL_HEADER, plot_counts
+from docs.plot_style import save, subplots
 from render.doc_tables import markdown
+from render_compare import still_sheet
 
 VIEWER = ROOT / "launcher/tools/render/scene_viewer.sh"
-CULL_VIEW = ROOT / "launcher/main/render/view/raster_cull_view.c"
-CULL_HEADER = ROOT / "launcher/main/render/view/raster_cull_view.h"
-COMPARE = ROOT / "launcher/tools/render/render_compare.py"
 GFX_HEADER = ROOT / "launcher/main/gfx/gfx.h"
 FRAMES = 120  # frames along the whole path, for the counts and the videos
 POSES = 3  # sheet rows, evenly inside the path
 FIGURE_SIZE = (10, 5.2)
-LINE_WIDTH = 1.4
 PERCENT = 100
 
 def enum_value(enum, prefix, name, source=CULL_HEADER):
@@ -51,14 +49,6 @@ def enum_value(enum, prefix, name, source=CULL_HEADER):
 
 def cull_from(name):
     return enum_value("raster_cull_from_t", "RASTER_CULL_FROM_", name)
-
-
-def fates(source=CULL_VIEW):
-    """(name, #rrggbb) per fate, in the view's order, read from its colour table."""
-    text = pathlib.Path(source).read_text(encoding="utf-8")
-    table = re.search(r"FATE_RGB\[RASTER_FATE_COUNT\] = \{(.*?)\};", text, re.S)[1]
-    return [(name.lower().replace("_", " "), "#" + rgb.lower())
-            for name, rgb in re.findall(r"\[RASTER_FATE_(\w+)\] = 0x([0-9A-Fa-f]{6})", table)]
 
 
 def viewer(args, *flags, log):
@@ -113,21 +103,9 @@ def frames_at(avi, indices):
 
 def sheet(args, columns, indices, dt):
     """One render_compare still row per pose, stacked."""
-    rows = []
-    for row, index in enumerate(indices):
-        command = [sys.executable, str(COMPARE), "--out", str(args.work / f"{args.stem}-row{row}.png")]
-        for label, pictures in columns:
-            path = args.work / f"{args.stem}-{row}-{len(command)}.png"
-            pictures[row].save(path)
-            command += ["--still-column", f"{label}, {index * dt / 1000:.1f} s", str(path)]
-        subprocess.run(command, check=True, stdout=subprocess.DEVNULL)
-        rows.append(Image.open(args.work / f"{args.stem}-row{row}.png").convert("RGB"))
-    out = Image.new("RGB", (max(r.width for r in rows), sum(r.height for r in rows)), "white")
-    y = 0
-    for picture in rows:
-        out.paste(picture, (0, y))
-        y += picture.height
-    out.save(args.out / f"{args.stem}-sheet.png", optimize=True)
+    rows = [[(f"{label}, {index * dt / 1000:.1f} s", pictures[row].convert("RGB")) for label, pictures in columns]
+            for row, index in enumerate(indices)]
+    still_sheet(rows).save(args.out / f"{args.stem}-sheet.png", optimize=True)
 
 
 def read_counts(path):
@@ -135,25 +113,11 @@ def read_counts(path):
         return [{key: int(value) for key, value in row.items()} for row in csv.DictReader(handle)]
 
 
-def counts_chart(args, rows, colours):
-    seconds = [row["ms"] / 1000 for row in rows]
+def counts_chart(args, rows):
     fig, (clusters, triangles) = subplots(1, 2, FIGURE_SIZE)
-    cluster_series = [("tested", "clusters_tested", MUTED), ("kept", "clusters_kept", INK)] + [
-        (name, f"clusters_{key}", colour) for name, key, colour in colours]
-    for label, key, colour in cluster_series:
-        clusters.plot(seconds, [row[key] for row in rows], label=label, color=colour, linewidth=LINE_WIDTH)
-    triangle_series = [("submitted", "triangles_submitted", INK), ("set up", "triangles_set_up", SLOTS[0]),
-                       ("cover pixels", "triangles_covering", SLOTS[2]),
-                       ("facing away", "triangles_facing_away", SLOTS[1]),
-                       ("miss every pixel centre", "triangles_missed", MUTED)]
-    for label, key, colour in triangle_series:
-        triangles.plot(seconds, [row[key] for row in rows], label=label, color=colour, linewidth=LINE_WIDTH)
-    for axis, title in ((clusters, f"{args.label}: clusters per frame"),
-                        (triangles, f"{args.label}: triangles per frame")):
-        style_axes(axis, title)
+    plot_counts(clusters, triangles, [row["ms"] / 1000 for row in rows], rows, args.label)
+    for axis in (clusters, triangles):
         axis.set_xlabel("seconds along the camera path")
-        axis.set_ylim(bottom=0)
-        axis.legend(frameon=False, fontsize="small")
     save(fig, args.out / f"{args.stem}-counts.png")
 
 
@@ -208,10 +172,7 @@ def main(argv=None):
                (f"level {args.level} from above", frames_at(level, indices))]
     sheet(args, columns, indices, dt)
 
-    named = fates()
-    colours = [(name, key, colour) for (name, colour), key in
-               zip(named[1:], ("not_set_up", "hidden", "drawn"))]
-    counts_chart(args, rows, colours)
+    counts_chart(args, rows)
     means_table(args, rows)
 
 

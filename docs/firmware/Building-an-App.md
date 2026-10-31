@@ -279,7 +279,7 @@ arena_exit(void) {
 <!-- /generated: app-arena-example -->
 
 The scenes an app loads live in it too
-([Scene-Manager.md](../render/Scene-Manager.md#ownership)): mark before
+([Scene-Manager.md](../render/scene/Scene-Manager.md#ownership)): mark before
 `scene_load()` and rewind after `scene_unload()` to reuse their memory within
 one visit.
 

@@ -137,14 +137,15 @@ onset_prepare(const console_sound_args_t* args, onset_peak_t* peak, sound_voice_
         return true;
     }
     if (args->event == CONSOLE_SOUND_STOP_EVENT || args->event == CONSOLE_SOUND_STEAL) {
-        *probe = sound_play_tone(args->hz, args->gain_pct);
+        *probe = sound_play_tone(args->hz, SOUND_TONE_UNTIL_STOPPED, args->gain_pct, SOUND_BUS_SYSTEM);
         if (!probe->id) {
             return false;
         }
     }
     const unsigned holders = args->event == CONSOLE_SOUND_STEAL ? SOUND_VOICE_COUNT - 1 : 1;
     for (unsigned i = 0; i < holders; i++) {
-        if (!sound_play_tone(args->hz, 0).id || !onset_window(peak, ONSET_BLOCK_MS)) {
+        if (!sound_play_tone(args->hz, SOUND_TONE_UNTIL_STOPPED, 0, SOUND_BUS_SYSTEM).id
+            || !onset_window(peak, ONSET_BLOCK_MS)) {
             return false;
         }
     }
@@ -158,14 +159,14 @@ static bool
 onset_trigger(const console_sound_args_t* args, sound_voice_t probe) {
     switch (args->event) {
         case CONSOLE_SOUND_START:
-            if (!sound_play_tone(args->hz, args->gain_pct).id) {
+            if (!sound_play_tone(args->hz, SOUND_TONE_UNTIL_STOPPED, args->gain_pct, SOUND_BUS_SYSTEM).id) {
                 return false;
             }
             break;
         case CONSOLE_SOUND_STOP_EVENT: sound_stop(probe); break;
         case CONSOLE_SOUND_AMP_ON:
         case CONSOLE_SOUND_STEAL:
-            if (!sound_play_tone(args->hz, 0).id) {
+            if (!sound_play_tone(args->hz, SOUND_TONE_UNTIL_STOPPED, 0, SOUND_BUS_SYSTEM).id) {
                 return false;
             }
             break;

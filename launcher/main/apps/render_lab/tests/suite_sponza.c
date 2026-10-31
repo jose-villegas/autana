@@ -105,7 +105,7 @@ check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(const r3d_lit_mesh_t* m
         r3d_lens_init(&lens, &view, mesh->position_scale);
 
         memset(kept, 0, (size_t)mesh->cluster_count);
-        const int count = r3d_pipeline_cull(mesh, &lens, walked, work);
+        const int count = r3d_pipeline_cull(mesh, &lens, walked, work, NULL);
         for (int i = 0; i < count; i++) {
             TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, kept[walked[i]], "a cluster was listed twice");
             kept[walked[i]] = 1;

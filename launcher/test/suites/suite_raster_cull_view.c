@@ -136,7 +136,7 @@ test_counted_cull_returns_the_list_cull_returns(void) {
     uint16_t plain[3] = {0};
     uint16_t counted[3] = {0};
     r3d_pipeline_counts_t counts = {0};
-    const int expected = r3d_pipeline_cull(&mesh, &lens, plain, pipeline_work());
+    const int expected = r3d_pipeline_cull(&mesh, &lens, plain, pipeline_work(), NULL);
     const int actual = r3d_pipeline_cull_counted(&mesh, &lens, counted, count_walk(), &counts);
     TEST_ASSERT_EQUAL_INT(2, expected);
     TEST_ASSERT_EQUAL_INT(expected, actual);
@@ -274,7 +274,7 @@ test_set_up_per_cluster_counts_set_up_and_clipped_triangles(void) {
 static bool* filled;
 
 static void
-mark_filled(const r3d_span_writer_t* writer, const gfx_render_target_t* rows, int y, int x_first, int x_last, int32_t z,
+mark_filled(const r3d_span_writer_t* writer, const gfx_target_t* rows, int y, int x_first, int x_last, int32_t z,
             int32_t dz) {
     (void)rows;
     (void)y;
@@ -435,9 +435,9 @@ static void
 test_per_triangle_writer_tags_the_triangle_that_won_each_pixel(void) {
     int per_triangle = 1;
     const raster_attachment_t tagged = {
-        .bytes_per_pixel = sizeof(uint32_t), .clear = tags_clear, .writer = instance_writer, .state = &per_triangle};
+        .format = IMAGE_U32, .clear = tags_clear, .writer = instance_writer, .state = &per_triangle};
     const raster_attachment_t constant = {
-        .bytes_per_pixel = sizeof(uint32_t), .clear = tags_clear, .writer = instance_writer, .state = NULL};
+        .format = IMAGE_U32, .clear = tags_clear, .writer = instance_writer, .state = NULL};
     const raster_attachment_t* const both[] = {&tagged, &constant};
     raster_rig_t* r = raster_rig_open(raster_rig_wall_and_card, 2, 0, W, H, 0);
     raster_rig_attach(r, both, 2);

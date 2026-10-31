@@ -151,7 +151,7 @@ static const uint8_t icon_l_rows[4] = {
     0xE0, /* 1110: cols 0,1,2 */
 };
 static const image_t icon_l = {
-    .pixels = (void*)icon_l_rows, .format = IMAGE_MONO1, .width = 4, .height = 4, .stride = 8};
+    .pixels = (void*)icon_l_rows, .format = IMAGE_MONO1, .width = 4, .height = 4, .pitch = 8 / CHAR_BIT};
 
 /* box = (10, 20, 4, 4), fixed across every quarter below. Expected physical
  * rects were mapped BY HAND, corner to corner, from
@@ -421,7 +421,7 @@ test_axis_preserving_rejects_a_non_90_degree_rotation(void) {
 static void
 test_quarter_turns_reads_back_the_turn_a_transform_was_built_from(void) {
     for (int turn = -4; turn <= 7; turn++) {
-        const affine2x_t t = ui_transform_quarter_turn(turn, 368, 448);
+        const affine2x_t t = ui_transform_quarter_turn(turn, VIEW_W, VIEW_H);
         TEST_ASSERT_EQUAL_INT(((turn % 4) + 4) % 4, ui_transform_quarter_turns(t));
     }
     TEST_ASSERT_EQUAL_INT(0, ui_transform_quarter_turns(affine2x_identity()));

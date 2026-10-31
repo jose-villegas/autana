@@ -205,20 +205,21 @@ def variant_slug(name, object_name):
     return variant_label(name, object_name).replace(" ", "-")
 
 
-# What each variant of a demo object is, keyed by its label, and the variant its pair sheet sets it beside with
-# what changes between them. Every variant the scene places needs an entry here.
+# What each variant of a demo object is, keyed by its label, and the variants its pair sheets set it beside, each
+# with what changes between them. Every variant the scene places needs an entry here.
 VARIANT_NOTES = {
-    "full": ("Smooth: one colour per vertex, lit and interpolated", None, None),
-    "lite": ("The same bake simplified to a smaller budget", "full",
-             "Fewer triangles: small shapes merge or drop and edges step; surfaces keep their colour"),
-    "flat": ("The full mesh's triangles, one colour per face, no gradients", "full",
-             "One colour per face: a curtain's fold reads as bands"),
+    "full": ("Smooth: one colour per vertex, lit and interpolated", ()),
+    "lite": ("The same bake simplified to a smaller budget",
+             (("full", "Fewer triangles: small shapes merge or drop and edges step; surfaces keep their colour"),)),
+    "flat": ("The full mesh's triangles, one colour per face, no gradients",
+             (("full", "One colour per face: a curtain's fold reads as bands"),)),
     "fitted": ("Lite's budget spent on what the flythrough draws, its vertices and colours fitted to the reference",
-               "lite", "Same budget, moved to what the flythrough draws and fitted: arches, shadow edges and banner "
-               "colours come back"),
-    "fitted full": ("The same recipe at full's budget", "full", "The fitted recipe on full's finer geometry"),
-    "flat fitted": ("Flat's budget, one colour per face, its vertices and face colours fitted together", "flat",
-                    "Face colours and positions fitted: banners, arches and floor take their colours back"),
+               (("lite", "Same budget, moved to what the flythrough draws and fitted: arches, shadow edges and banner "
+                 "colours come back"),
+                ("fitted full", "The same fit recipe on fewer triangles: small shapes merge or drop and edges step"))),
+    "fitted full": ("The same recipe at full's budget", (("full", "The fitted recipe on full's finer geometry"),)),
+    "flat fitted": ("Flat's budget, one colour per face, its vertices and face colours fitted together",
+                    (("flat", "Face colours and positions fitted: banners, arches and floor take their colours back"),)),
 }
 
 
@@ -247,10 +248,9 @@ def variant_note(name, object_name):
 
 
 def variant_pairs(names, object_name):
-    """(base, variant) object names of each pair sheet, in the order of `names`."""
+    """(base, variant, what changes) of each pair sheet, in the order of `names`."""
     by_label = {variant_label(name, object_name): name for name in names}
-    return [(by_label[variant_note(name, object_name)[1]], name) for name in names
-            if variant_note(name, object_name)[1] is not None]
+    return [(by_label[base], name, change) for name in names for base, change in variant_note(name, object_name)[1]]
 
 
 def ranked(found, score):
@@ -288,10 +288,10 @@ def write_tables(work, out, scene_id, object_name, found):
     pairs = variant_pairs([name for name, _ in order], object_name)
     sheets = "".join(f"![{label(base)} against {label(name)}](../images/render/compare-{slug(base)}-{slug(name)}.png)\n"
                      f"![{label(base)} against {label(name)}, the places they differ most]"
-                     f"(../images/render/compare-{slug(base)}-{slug(name)}.crops.png)\n" for base, name in pairs)
+                     f"(../images/render/compare-{slug(base)}-{slug(name)}.crops.png)\n" for base, name, _ in pairs)
     (out / f"{scene_id}-variant-pairs.md").write_text(markdown(
-        ["Pair", "What changes"], [(f"{label(base)} against {label(name)}", variant_note(name, object_name)[2])
-                                   for base, name in pairs]) + "\n" + sheets, encoding="utf-8")
+        ["Pair", "What changes"], [(f"{label(base)} against {label(name)}", change) for base, name, change in pairs])
+        + "\n" + sheets, encoding="utf-8")
     smooth_frames = work / "smooth-reference"
     smooth_frames.mkdir(exist_ok=True)
     _, frames = read_video(work / "committed-smooth.avi")
@@ -339,7 +339,7 @@ if __name__ == "__main__":
     if sys.argv[1:2] == ["--pairs"]:
         # One "base variant base-slug variant-slug" line per pair sheet doc_images_demo.sh draws.
         names = [name for name, _ in variants(pathlib.Path(sys.argv[2]), sys.argv[3])]
-        for base, name in variant_pairs(names, sys.argv[3]):
+        for base, name, _ in variant_pairs(names, sys.argv[3]):
             print(base, name, variant_slug(base, sys.argv[3]), variant_slug(name, sys.argv[3]))
         sys.exit(0)
     parser = argparse.ArgumentParser(description=__doc__)

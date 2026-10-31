@@ -249,7 +249,7 @@ def scan(root, minimum, names=None, revision="HEAD", renames=None):
         raise RuntimeError(problem)
     if names is None:
         names = sorted(git(root, "ls-tree", "-r", "--name-only", revision, "--",
-                           "launcher", "scripts", "editor").decode().splitlines())
+                           "launcher", "scripts").decode().splitlines())
     scratch_parent = ROOT / "launcher/test/build"
     scratch_parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="clones-", dir=scratch_parent) as folder:

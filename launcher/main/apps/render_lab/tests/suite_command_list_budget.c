@@ -131,10 +131,10 @@ test_menu_with_full_clip_list_and_long_names_fits_budget(void) {
 }
 
 void
-run_render_lab_command_list_budget_suite(void) {
+run_render_lab_command_budget_suite(void) {
     RUN_TEST(test_menu_with_full_clip_list_and_long_names_fits_budget);
     RUN_TEST(test_hud_screen_command_list_fits_budget);
     RUN_TEST(test_menu_screen_command_list_fits_budget);
 }
 
-SUITE_REGISTER(run_render_lab_command_list_budget_suite);
+SUITE_REGISTER(run_render_lab_command_budget_suite);

@@ -148,6 +148,31 @@ demo_gif ${ID}-flat --scene "$ID" --object "${FULL}_flat"
 demo_gif ${ID}-fitted --scene "$ID" --object "${FULL}_fitted"
 demo_gif ${ID}-fitted-full --scene "$ID" --object "${FULL}_fitted_full"
 demo_gif ${ID}-flat-fitted --scene "$ID" --object "${FULL}_flat_fitted"
+# One frame of scene_viewer.sh --compare's video over the same seconds, fitted
+# against its source, halfway through: drawn as the video draws it, unencoded.
+run "$PYTHON" launcher/tools/render/scene_path.py video --out "$W/compare.mp4" --work "$W/compare" \
+    --frames "$DEMO_GIF_FRAMES" --dt "$DEMO_GIF_DT" \
+    --side "fitted" "$HOST" "$(dirname "$HOST")/assets" "--scene
+$ID
+--object
+${FULL}_fitted" \
+    --side "source" "$HOST" "$(dirname "$HOST")/assets" "--scene
+$ID
+--object
+$FULL" 2> "$W/compare.log"
+run "$PYTHON" - "$W/compare" "$RENDER/${ID}-compare.png" $((DEMO_GIF_FRAMES / 2)) <<'PY'
+import pathlib
+import sys
+from PIL import Image
+sys.path.insert(0, "launcher/tools/render")
+from render_compare import GAIN, compose_frame, frame_note, measure, read_video
+work, out, index = pathlib.Path(sys.argv[1]), sys.argv[2], int(sys.argv[3])
+fps, a = read_video(work / "a.avi")
+_, b = read_video(work / "b.avi")
+a, b = Image.fromarray(list(a)[index]), Image.fromarray(list(b)[index])
+note = frame_note(index, 1000.0 / fps, measure(a, b, None))
+compose_frame(a, b, None, GAIN, "fitted", "source", note).save(out)
+PY
 demo_gif ${ID}-depth --scene "$ID" --object "$SHOWCASE" --view depth
 demo_gif ${ID}-tiles --scene "$ID" --object "$SHOWCASE" --view tiles
 demo_gif ${ID}-motion-vectors --scene "$ID" --object "$SHOWCASE" --view motion
@@ -158,9 +183,7 @@ demo_gif ${ID}-meshlets --scene "$ID" --object "$SHOWCASE" --view meshlets
 demo_still() {
     run "$HOST" --quarter 1 --frames 30 --dt 100 -o "$W/still-$1.bmp" --scene "$ID" --object "$2" 2> "$W/still-$1.log"
 }
-# The pairs, and what each variant is, come from doc_tables.py's VARIANT_NOTES:
-# compare-full-lite, compare-full-flat, compare-lite-fitted, compare-full-fitted-full
-# and compare-flat-flat-fitted for the demo scene.
+# The pairs, and what each variant is, come from doc_tables.py's VARIANT_NOTES.
 run "$PYTHON" launcher/tools/render/doc_tables.py --pairs "$SCENE" "$FULL" > "$W/pairs.txt"
 while read -r base object base_slug slug <&3; do
     [ -f "$W/still-$base_slug.bmp" ] || demo_still "$base_slug" "$base"
@@ -353,4 +376,11 @@ tables_seconds=$(($(date +%s) - tables_start))
 echo "CPU table measurements added: $tables_seconds seconds"
 echo "$tables_seconds" > "$W/tables-seconds.txt"
 
-"$R3D_PYTHON" "launcher/tools/render/doc_import_examples.py" "$SCENE" "$FULL" "$HOST" "$W" "$RENDER" "$FIDELITY_FRAMES" "$FIDELITY_DT" > "$W/import-examples.log" 2>&1
+# The import examples show the fitted variants: face samples on the flat fit's
+# geometry, where the fit starts, beside the fit's own render.
+"$R3D_PYTHON" launcher/tools/r3d/bake_fidelity.py "$DEMO/$ID.scene.toml" --mesh "${FULL}_flat_fitted" \
+    --host "$HOST" \
+    --render-args "--quarter 0 --scene $ID --object ${FULL}_flat_fitted --frames $FIDELITY_FRAMES --dt $FIDELITY_DT" \
+    --reference "$REFERENCE" --work "$W/face-samples" --variant declared= --variant fixed1=samples=fixed:1 \
+    > "$W/face-samples.log" 2>&1
+"$R3D_PYTHON" "launcher/tools/render/doc_import_examples.py" "$SCENE" "${FULL}_fitted_full" "${FULL}_flat_fitted" "$HOST" "$W" "$RENDER" "$FIDELITY_FRAMES" "$FIDELITY_DT" > "$W/import-examples.log" 2>&1
