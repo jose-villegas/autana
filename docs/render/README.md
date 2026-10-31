@@ -46,7 +46,7 @@ each stage).
 |---|---|
 | [offline/](offline/README.md) | [Mesh-Import](offline/Mesh-Import.md), [Bake-Method](offline/Bake-Method.md), [Appearance-Fit](offline/Appearance-Fit.md), [Bake-Quality](offline/Bake-Quality.md), [Baked-Mesh](offline/Baked-Mesh.md) |
 | [scene/](scene/README.md) | [Scene-Files](scene/Scene-Files.md), [Scene-Manager](scene/Scene-Manager.md), [Camera](scene/Camera.md) |
-| [frame/](frame/README.md) | [Dynamic-Resolution](frame/Dynamic-Resolution.md), [Frame-Generation](frame/Frame-Generation.md) |
+| [frame/](frame/README.md) | [Coverage](frame/Coverage.md), [Attachments](frame/Attachments.md), [View-Modes](frame/View-Modes.md), [Dynamic-Resolution](frame/Dynamic-Resolution.md), [Frame-Generation](frame/Frame-Generation.md) |
 | [animation/](animation/README.md) | [Skinned-Meshes](animation/Skinned-Meshes.md), [Animation-Tracks](animation/Animation-Tracks.md), [Skeleton-and-Skin](animation/Skeleton-and-Skin.md), [Skinned-Lighting](animation/Skinned-Lighting.md) |
 | this folder | [Building-a-Scene](Building-a-Scene.md) (start here), [Mesh-Rendering](Mesh-Rendering.md) (the raster), [Rendering-Options](Rendering-Options.md) (every knob that trades work for speed or look) |
 

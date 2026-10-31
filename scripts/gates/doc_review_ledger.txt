@@ -88,3 +88,6 @@ docs/assets/formats/SCNE.md	2026-10-30	SCNE v5 moved from Scene-Files: reviewed 
 docs/render/offline/Appearance-Fit.md	2026-10-30	moved from Scene-Files: key meanings checked against appearance_simplify.py, accurate
 docs/render/frame/README.md	2026-10-31	new, one frame and its cores from Render-Pipeline: reviewed
 docs/render/offline/README.md	2026-10-31	the offline stages and bake steps from Render-Pipeline: reviewed
+docs/render/frame/Coverage.md	2026-10-31	moved from Mesh-Rendering, opener added: reviewed
+docs/render/frame/Attachments.md	2026-10-31	moved from Mesh-Rendering, intro added: reviewed
+docs/render/frame/View-Modes.md	2026-10-31	moved from Mesh-Rendering: reviewed
