@@ -99,6 +99,23 @@ memory_free(void* block) {
 #endif
 }
 
+/* A block of this kind holding `bytes` at an `align` boundary (a power of two):
+ * `at` is the aligned start, `block` what memory_free() takes; both NULL when
+ * none is that large. Over-allocates, so it works with every heap here. */
+typedef struct {
+    void* block;
+    void* at;
+} memory_aligned_t;
+
+static inline __attribute__((always_inline)) memory_aligned_t
+memory_alloc_aligned(size_t bytes, size_t align, memory_kind_t kind) {
+    void* block = memory_alloc(bytes + align - 1, kind);
+    return (memory_aligned_t){
+        .block = block,
+        .at = block == NULL ? NULL : (void*)(((uintptr_t)block + align - 1) & ~(uintptr_t)(align - 1)),
+    };
+}
+
 /* A lender's take, as app/app_arena.h's app_arena_take(): the next `size`
  * bytes at `align`, or NULL. A taken block is never freed: its owner gives
  * back everything at once. NULL in place of one means the heap. */
