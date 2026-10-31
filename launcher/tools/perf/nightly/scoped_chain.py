@@ -615,7 +615,11 @@ def plan(args, clock=None, request=None):
         print(f"::notice::board {name} on {board.get('name', 'this machine')} {later}: {busy(board)}",
               file=sys.stderr)
     if discovered:
-        args.boards = [short_id(board["board"]) for board in listing]
+        # GPU night work can hold the plan past the cut-off: a plan that late starts no lane.
+        args.boards = [short_id(board["board"]) for board in listing] if cutoff > now else []
+        if cutoff <= now:
+            print(f"::notice::plan: started after the last lane start ({cutoff.isoformat()}); the night runs no lane",
+                  file=sys.stderr)
     args.boards = [board for board in args.boards if short_id(board) not in waiting]
     if not args.boards:
         print(f"::notice::plan: no free board; the night {later}", file=sys.stderr)
