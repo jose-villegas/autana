@@ -2,7 +2,8 @@
 
 A scene's camera can draw each frame at a render size picked to hold a frame
 budget, instead of one fixed scale. The sizes are a ladder of steps, finest
-first.
+first. Below, the two presentation choices first, then how a size is chosen,
+then the measurements.
 
 ## Camera presentation
 
@@ -37,7 +38,7 @@ present_example(scene_t* scene, scene_entity_t cam) {
 | `CAMERA_PRESENT_SCANLINE` | Half that height | Each row twice, the second dimmed to `UPSCALE_SCANLINE_KEEP` |
 | `CAMERA_PRESENT_DOUBLE` | Half that height | Each row twice, unchanged |
 
-The halved draw expands into the half picture, as in `render_context_compose()` below. When its row map is uneven, such as a dynamic-resolution step whose height does not divide the half height, the rows are copied without the dimmed line.
+The halved draw expands into [the half picture](../Rendering-Options.md#render-scale-and-the-half-picture), as in `render_context_compose()` below. When its row map is uneven, such as a dynamic-resolution step whose height does not divide the half height, the rows are copied without the dimmed line.
 
 The saving comes from the halved draw: fewer rows, spans and edge steps. SCANLINE adds a darkened copy of every second row; DOUBLE costs a little less.
 
@@ -115,7 +116,7 @@ Surface lowers p95 dE and raises SSIM at every step of every scored scene; mean 
 and upscales any other with [`render/upscale.h`](../../../launcher/main/render/upscale.h),
 any ratio in either axis ([the rule](../Rendering-Options.md#render-scale-and-the-half-picture)).
 
-The caller's chosen size is the top step; neither policy draws finer. A frame under budget keeps its speed, and only a frame over budget steps down.
+The caller's chosen size is the top step; no policy draws finer. A frame under budget keeps its speed, and only a frame over budget steps down.
 
 The code is `launcher/main/render/resolution/`. Resolution selection is a setting of the render context, not of a scene or a camera.
 
