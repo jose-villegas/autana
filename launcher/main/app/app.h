@@ -53,7 +53,7 @@ typedef struct app {
     /* Opt-in, NULL unless an app keeps a draw cache of its own beyond the
      * framebuffer, such as row-run spans. The
      * shell calls this once, before the next frame() after
-     * gfx_request_full_redraw() (gfx_present.h) was called by the shell or by the
+     * gfx_request_full_redraw() (gfx.h) was called by the shell or by the
      * app itself, so that cache can be reset the same way the framebuffer
      * already was. An app with no such cache needs no implementation. */
     void (*invalidate)(void);
