@@ -235,6 +235,10 @@ static struct {
         imu_queue_t* queue;
         int64_t* times;
         bool fifo_gap;
+        bool parked;
+        unsigned restarts;
+        int pending_lost;
+        uint32_t remainder_us;
         bool enabled;
         bool cadence;
         int64_t next_push_us;
@@ -547,6 +551,12 @@ imu_set_odr(unsigned odr_code) {
         }
     } else {
         device.odr_code = odr_code;
+    }
+    if (device.pulse.parked) {
+        imu_queue_restart(device.pulse.queue, &device.pulse.fifo_gap, &device.pulse.pending_lost,
+                          &device.pulse.remainder_us);
+        device.pulse.parked = false;
+        device.pulse.restarts++;
     }
     return true;
 }
@@ -930,6 +940,28 @@ test_tone_pulse_measures_after_odr_switch(void) {
 }
 
 static void
+test_tone_pulse_measures_from_parked_imu(void) {
+    static const uint16_t pulses[] = {TEST_PULSE_SHORT_MS, TEST_PULSE_MS, CONSOLE_TONE_PULSE_WINDOW_MAX_MS};
+    suite_add_test_cleanup(reset_device);
+    for (size_t duration = 0; duration < sizeof pulses / sizeof pulses[0]; duration++) {
+        const console_tone_args_t args = pulse_fixture(pulses[duration]);
+        device.pulse.queue = calloc(1, sizeof *device.pulse.queue);
+        TEST_ASSERT_NOT_NULL(device.pulse.queue);
+        device.pulse.parked = true;
+        device.pulse.cadence = true;
+        device.pulse.period_us = IMU_BUZZ_DRAIN_MAX_MS * MATH_US_PER_MS;
+        device.pulse.next_push_us = device.pulse.period_us;
+        device.pulse.pending_lost = 1;
+        device.pulse.remainder_us = IMU_SAMPLE_US - 1;
+        char line[CONSOLE_TONE_REPLY_BYTES];
+        TEST_ASSERT_NULL(console_tone_check(&args, line));
+        TEST_ASSERT_EQUAL_UINT(1, device.pulse.restarts);
+        TEST_ASSERT_NULL_MESSAGE(strstr(line, "shake n/a"), line);
+        TEST_ASSERT_NOT_NULL_MESSAGE(strstr(line, "imu_gaps 0"), line);
+    }
+}
+
+static void
 test_tone_pulse_gap_placement(void) {
     enum { last_pulse_burst = (TEST_PULSE_MS * MATH_US_PER_MS / (TEST_PULSE_DRAIN_SAMPLES * IMU_BUZZ_SAMPLE_US)) + 1 };
 
@@ -1102,6 +1134,7 @@ run_console_tone_suite(void) {
     RUN_TEST(test_melody_console_play_and_check);
     RUN_TEST(test_melody_console_failure_and_usage);
     RUN_TEST(test_melody_console_later_failures);
+    RUN_TEST(test_tone_pulse_measures_from_parked_imu);
     RUN_TEST(test_tone_pulse_board_cadence);
     RUN_TEST(test_tone_pulse_delayed_gap_precedes_start);
     RUN_TEST(test_tone_pulse_measures_after_odr_switch);
