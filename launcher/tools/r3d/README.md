@@ -188,7 +188,7 @@ triangle budget and moves its vertices and changes their colours until its
 renders match the reference along a camera path: appearance-driven
 simplification<sup>[[1]](../../../docs/Citations.md#hasselgren-2021)</sup>. The
 triangles stay as the simplifier left them, so the budget holds.
-[Scene-Files.md](../../../docs/render/Scene-Files.md#against-the-paper) lists
+[Appearance-Fit.md](../../../docs/render/Appearance-Fit.md#against-the-paper) lists
 what the fit changes from the paper.
 
 | | |
@@ -307,7 +307,7 @@ reductions and seeded sampling; the lock pins the bytes a fit made.
 
 The surface term anchors fitted triangles to the alpha-masked source, with a
 recipe weight and a margin in each triangle's start edge scale;
-[Scene-Files describes the surface term](../../../docs/render/Scene-Files.md#fitoptimise).
+[Appearance-Fit.md describes the surface term](../../../docs/render/Appearance-Fit.md#surface).
 
 ### Reference on the GPU
 
