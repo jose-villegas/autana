@@ -535,6 +535,16 @@ scene_camera_set_small_fill(scene_t* scene, scene_entity_t camera, small_fill_t 
     return true;
 }
 
+bool
+scene_camera_set_skip_hidden(scene_t* scene, scene_entity_t camera, bool skip) {
+    camera_t* found = camera_by_entity(scene, camera);
+    if (found == NULL) {
+        return false;
+    }
+    found->skip_hidden = skip;
+    return true;
+}
+
 transformf_t
 scene_entity_local(const scene_t* scene, scene_entity_t entity) {
     assert(entity < scene->asset.entity_count);

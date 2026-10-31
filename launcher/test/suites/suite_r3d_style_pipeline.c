@@ -4,6 +4,7 @@
 #define r3d_span_triangle            constant_r3d_span_triangle
 #define r3d_span_triangle_solid      constant_r3d_span_triangle_solid
 #define r3d_span_triangle_write      constant_r3d_span_triangle_write
+#define r3d_span_capped_triangle     constant_r3d_span_capped_triangle
 #define r3d_span_hidden              constant_r3d_span_hidden
 #define r3d_span_plane_bound         constant_r3d_span_plane_bound
 #define r3d_span_plane_in_range      constant_r3d_span_plane_in_range
@@ -101,7 +102,7 @@ test_styles_match_pipeline_colours(void) {
                              .snap_cx = R3D_SNAP_BIAS,
                              .snap_cy = R3D_SNAP_BIAS};
     r3d_pipeline_vertex_t transformed[3];
-    (void)transform_cluster(&mesh, &lens, &cluster, transformed);
+    (void)transform_cluster(&mesh, &lens, &cluster, transformed, false);
     r3d_span_vertex_t reference[3];
     for (int k = 0; k < 3; k++) {
         transformed[k].sx = k == 1 ? TEST_SIDE * R3D_SUBPIXEL : 0;
@@ -119,7 +120,7 @@ test_styles_match_pipeline_colours(void) {
         expected.small_fill = actual.small_fill = &resolved;
         memset(pixels, 0, TEST_PIXELS * 4 * sizeof(*pixels));
         r3d_span_triangle(&expected, reference, reference + 1, reference + 2);
-        draw_in_front(&mesh, vertices, triangle, NULL, true, &actual, false, work);
+        draw_in_front(&mesh, vertices, triangle, NULL, true, &actual, false, false, work);
         TEST_ASSERT_EQUAL_MEMORY(pixels, pixels + TEST_PIXELS * 2, TEST_PIXELS * 2 * sizeof(*pixels));
         int coloured = 0;
         for (int i = 0; i < TEST_PIXELS; i++) {
@@ -151,7 +152,7 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
     clipped = malloc(sizeof(*clipped));
     TEST_ASSERT_NOT_NULL(clipped);
     r3d_pipeline_vertex_t* transformed = clipped->transformed;
-    (void)transform_cluster(&mesh, &lens, &cluster, transformed);
+    (void)transform_cluster(&mesh, &lens, &cluster, transformed, false);
     build_guard_planes(&lens, work);
     r3d_span_target_t* expected = &clipped->expected;
     r3d_span_target_t* actual = &clipped->actual;
@@ -184,7 +185,7 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
                 r3d_span_triangle(expected, front, front + 1, front + 2);
             }
             draw_triangles(&mesh, &lens, &cluster, cluster.triangle_first, cluster.triangle_first + (mixed ? 2 : 1),
-                           transformed, actual, false, work);
+                           transformed, actual, false, false, work);
             TEST_ASSERT_EQUAL_MEMORY(pixels, pixels + TEST_PIXELS * 2, TEST_PIXELS * 2 * sizeof(*pixels));
             int covered = 0;
             for (int i = 0; i < TEST_PIXELS; i++) {
@@ -197,60 +198,6 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
             TEST_ASSERT_NOT_EQUAL(checksums[previous], checksums[style]);
         }
     }
-}
-
-/* One draw on `work` testing R3D_HIDDEN_PAYS_ONE_IN clusters, `hidden` of
- * them hidden: whether it looked for them. */
-static bool
-hidden_draw_of(int hidden) {
-    begin_hidden_draw(work);
-    const bool looked = work->test_hidden;
-    if (looked) {
-        work->payoff += (hidden * R3D_HIDDEN_PAYS_ONE_IN) - R3D_HIDDEN_PAYS_ONE_IN;
-    }
-    end_hidden_draw(work);
-    return looked;
-}
-
-static void
-test_the_hidden_test_pauses_while_it_does_not_pay_and_resumes_when_it_does(void) {
-    work = malloc(r3d_pipeline_work_bytes());
-    suite_set_test_cleanup(cleanup);
-    TEST_ASSERT_NOT_NULL(work);
-    for (int fresh = R3D_HIDDEN_CYCLE_DRAWS; fresh <= UINT8_MAX; fresh++) {
-        work->hidden_draw = (uint8_t)fresh;
-        TEST_ASSERT_TRUE(hidden_draw_of(0));
-        TEST_ASSERT_EQUAL(1, work->hidden_draw);
-    }
-    work->hidden_draw = 0;
-    for (int cycle = 0; cycle < 2; cycle++) {
-        for (int draw = 0; draw < R3D_HIDDEN_WINDOW_DRAWS; draw++) {
-            TEST_ASSERT_TRUE(hidden_draw_of(0));
-        }
-        for (int draw = R3D_HIDDEN_WINDOW_DRAWS; draw < R3D_HIDDEN_CYCLE_DRAWS; draw++) {
-            TEST_ASSERT_FALSE(hidden_draw_of(1));
-        }
-    }
-    TEST_ASSERT_TRUE(hidden_draw_of(0));
-}
-
-/* A window pays as a whole: one draw hiding plenty carries the rest, and
- * hiding too few clusters over the window pauses the test. */
-static void
-test_the_hidden_test_pays_over_its_window(void) {
-    work = malloc(r3d_pipeline_work_bytes());
-    suite_set_test_cleanup(cleanup);
-    TEST_ASSERT_NOT_NULL(work);
-    work->hidden_draw = 0;
-    TEST_ASSERT_TRUE(hidden_draw_of(R3D_HIDDEN_WINDOW_DRAWS));
-    for (int draw = 1; draw < R3D_HIDDEN_WINDOW_DRAWS; draw++) {
-        TEST_ASSERT_TRUE(hidden_draw_of(0));
-    }
-    TEST_ASSERT_TRUE(hidden_draw_of(1));
-    for (int draw = 1; draw < R3D_HIDDEN_WINDOW_DRAWS; draw++) {
-        TEST_ASSERT_TRUE(hidden_draw_of(0));
-    }
-    TEST_ASSERT_FALSE(hidden_draw_of(0));
 }
 
 /* Positions are pixel * R3D_SUBPIXEL * z ticks, so the lens maps them back to the pixel. */
@@ -360,7 +307,6 @@ scene_target(int run, int rows, r3d_span_writer_t* writer) {
 enum { WALL, BEHIND_WALL_NEAR, BEHIND_WALL_FAR, PARTLY_BEHIND, CLEAR };
 
 static const uint16_t NEAREST_FIRST[SCENE_CLUSTERS] = {WALL, CLEAR, BEHIND_WALL_NEAR, BEHIND_WALL_FAR, PARTLY_BEHIND};
-#define HIDDEN_CLUSTERS 2
 
 static void
 build_wall_scene(void) {
@@ -401,19 +347,22 @@ scene_draws_alike_with_the_hidden_test_on_and_off(bool writes) {
     build_wall_scene();
     const r3d_lit_mesh_t mesh = scene_mesh();
     const r3d_lens_t lens = pixel_lens();
-    r3d_pipeline_transform(&mesh, &lens, NEAREST_FIRST, SCENE_CLUSTERS, scene->cs, scene->rows);
+    r3d_pipeline_transform(&mesh, &lens, NEAREST_FIRST, SCENE_CLUSTERS, scene->cs, scene->rows, true);
     r3d_span_writer_t writers[2];
     for (int run = 0; run < 2; run++) {
-        const r3d_span_target_t target = scene_target(run, SCENE_H, writes ? &writers[run] : NULL);
-        work->hidden_draw = run == 0 ? 0 : R3D_HIDDEN_WINDOW_DRAWS;
+        r3d_span_target_t target = scene_target(run, SCENE_H, writes ? &writers[run] : NULL);
+        target.skip_hidden = run == 0;
         r3d_pipeline_draw(&mesh, &lens, NEAREST_FIRST, SCENE_CLUSTERS, scene->cs, scene->rows, &target, work);
-        TEST_ASSERT_EQUAL(run == 0, work->test_hidden);
+        if (run == 0) {
+            TEST_ASSERT_TRUE(cluster_skipped(&scene->rows[BEHIND_WALL_NEAR], &target, true));
+            TEST_ASSERT_TRUE(cluster_skipped(&scene->rows[BEHIND_WALL_FAR], &target, true));
+            TEST_ASSERT_FALSE(cluster_skipped(&scene->rows[PARTLY_BEHIND], &target, true));
+        }
     }
     const size_t bytes = (size_t)SCENE_W * SCENE_H * sizeof(uint16_t);
     for (int kind = PLANE_COLOUR; kind <= (writes ? PLANE_TAG : PLANE_DEPTH); kind++) {
         TEST_ASSERT_EQUAL_MEMORY(plane(0, kind), plane(1, kind), bytes);
     }
-    TEST_ASSERT_EQUAL_INT32((HIDDEN_CLUSTERS * R3D_HIDDEN_PAYS_ONE_IN) - SCENE_CLUSTERS, (int32_t)work->payoff);
     const int open = pixel_index(PARTLY_OPEN_X, PARTLY_OPEN_Y);
     TEST_ASSERT_NOT_EQUAL_UINT16(R3D_DEPTH_EMPTY, plane(0, PLANE_DEPTH)[open]);
     TEST_ASSERT_NOT_EQUAL_UINT16(0, plane(0, PLANE_COLOUR)[open]);
@@ -434,144 +383,12 @@ test_the_hidden_test_changes_no_pixel_of_a_writing_draw(void) {
     scene_draws_alike_with_the_hidden_test_on_and_off(true);
 }
 
-/* Three clusters for a window of the top GATE_WINDOW_ROWS rows: two inside
- * it, one wholly below. A draw lists clusters by index, repeats allowed; the
- * walled one is hidden behind depth laid over its box. */
-#define GATE_WINDOW_ROWS 24
-
-enum { GATE_WALLED, GATE_OPEN, GATE_BELOW, GATE_CLUSTERS };
-
-static void
-build_gate_scene(void) {
-    static const float walled[3][2] = {{4, 4}, {16, 4}, {4, 16}};
-    static const float open[3][2] = {{24, 4}, {36, 4}, {24, 16}};
-    static const float below[3][2] = {{4, 30}, {16, 30}, {4, 44}};
-    static const uint8_t grey[3] = {128, 128, 128};
-    scene_add(walled, 3, 2, grey);
-    scene_add(open, 3, 2, grey);
-    scene_add(below, 3, 2, grey);
-}
-
-/* The walled cluster's box and a margin round it. */
-#define GATE_WALL_FIRST 3
-#define GATE_WALL_END   18
-
-/* A fresh scene with depth nearer than the walled cluster's limit over its box. */
-static void
-gate_open(void) {
-    scene_open();
-    build_gate_scene();
-    const r3d_lit_mesh_t mesh = scene_mesh();
-    const r3d_lens_t lens = pixel_lens();
-    const uint16_t each[GATE_CLUSTERS] = {GATE_WALLED, GATE_OPEN, GATE_BELOW};
-    r3d_pipeline_transform(&mesh, &lens, each, GATE_CLUSTERS, scene->cs, scene->rows);
-    for (int y = GATE_WALL_FIRST; y < GATE_WALL_END; y++) {
-        for (int x = GATE_WALL_FIRST; x < GATE_WALL_END; x++) {
-            plane(0, PLANE_DEPTH)[pixel_index(x, y)] = (uint16_t)(scene->rows[GATE_WALLED].depth + 1);
-        }
-    }
-    work->hidden_draw = 0;
-}
-
-static void
-gate_draw(const uint16_t* list, int count) {
-    const r3d_lit_mesh_t mesh = scene_mesh();
-    const r3d_lens_t lens = pixel_lens();
-    const r3d_span_target_t target = scene_target(0, GATE_WINDOW_ROWS, NULL);
-    r3d_pipeline_draw(&mesh, &lens, list, count, scene->cs, scene->rows, &target, work);
-}
-
-#define GATE_CLUSTERS_PER_DRAW 8
-#define GATE_LIST_MAX          (GATE_CLUSTERS_PER_DRAW + GATE_CLUSTERS_PER_DRAW + GATE_CLUSTERS_PER_DRAW)
-
-/* One window of R3D_HIDDEN_WINDOW_DRAWS draws, each listing
- * GATE_CLUSTERS_PER_DRAW open clusters and `below` more under the window; in
- * the first draw `walled` of the open ones are the walled cluster and `extra`
- * more open ones are added. */
-static void
-gate_window(int walled, int extra, int below) {
-    uint16_t list[GATE_LIST_MAX];
-    for (int draw = 0; draw < R3D_HIDDEN_WINDOW_DRAWS; draw++) {
-        int n = 0;
-        for (int k = 0; k < GATE_CLUSTERS_PER_DRAW; k++) {
-            list[n++] = draw == 0 && k < walled ? GATE_WALLED : GATE_OPEN;
-        }
-        for (int k = 0; k < (draw == 0 ? extra : 0); k++) {
-            list[n++] = GATE_OPEN;
-        }
-        for (int k = 0; k < below; k++) {
-            list[n++] = GATE_BELOW;
-        }
-        gate_draw(list, n);
-    }
-}
-
-/* Whether a one-cluster draw looks for hidden clusters. */
-static bool
-gate_next_draw_tests(void) {
-    const uint16_t list[1] = {GATE_OPEN};
-    gate_draw(list, 1);
-    return work->test_hidden;
-}
-
-/* A window testing R3D_HIDDEN_PAYS_ONE_IN clusters, one of them hidden, has a
- * payoff of exactly 0, which keeps testing. */
-static void
-test_a_window_hiding_one_in_the_payoff_ratio_keeps_the_hidden_test_running(void) {
-    gate_open();
-    TEST_ASSERT_EQUAL_INT(R3D_HIDDEN_PAYS_ONE_IN, R3D_HIDDEN_WINDOW_DRAWS * GATE_CLUSTERS_PER_DRAW);
-    gate_window(1, 0, 0);
-    TEST_ASSERT_EQUAL_INT32(0, (int32_t)work->payoff);
-    TEST_ASSERT_EQUAL_UINT8(0, work->hidden_draw);
-    TEST_ASSERT_TRUE(gate_next_draw_tests());
-}
-
-/* One more cluster tested for the same one hidden: payoff -1 pauses the test. */
-static void
-test_a_window_one_cluster_short_of_the_payoff_ratio_pauses_the_hidden_test(void) {
-    gate_open();
-    gate_window(1, 1, 0);
-    TEST_ASSERT_EQUAL_INT32(-1, (int32_t)work->payoff);
-    TEST_ASSERT_FALSE(gate_next_draw_tests());
-}
-
-/* With nothing hidden the rest of the cycle skips the test, then it starts again. */
-static void
-test_a_window_hiding_nothing_pauses_the_hidden_test_until_the_cycle_ends(void) {
-    gate_open();
-    gate_window(0, 0, 0);
-    TEST_ASSERT_EQUAL_INT32(-R3D_HIDDEN_PAYS_ONE_IN, (int32_t)work->payoff);
-    for (int draw = R3D_HIDDEN_WINDOW_DRAWS; draw < R3D_HIDDEN_CYCLE_DRAWS; draw++) {
-        TEST_ASSERT_FALSE(gate_next_draw_tests());
-    }
-    TEST_ASSERT_TRUE(gate_next_draw_tests());
-}
-
-/* Clusters below the window are skipped before any test and counted in none:
- * the window that pays still pays with them listed. */
-static void
-test_clusters_missing_the_window_are_not_counted_as_tested(void) {
-    gate_open();
-    gate_window(1, 0, GATE_CLUSTERS_PER_DRAW);
-    TEST_ASSERT_EQUAL_INT32(0, (int32_t)work->payoff);
-    TEST_ASSERT_TRUE(gate_next_draw_tests());
-    for (int i = GATE_WINDOW_ROWS * SCENE_W; i < SCENE_W * SCENE_H; i++) {
-        TEST_ASSERT_EQUAL_UINT16(R3D_DEPTH_EMPTY, plane(0, PLANE_DEPTH)[i]);
-    }
-}
-
 void
 run_r3d_style_pipeline_suite(void) {
     RUN_TEST(test_clipped_and_mixed_clusters_keep_the_target_style);
     RUN_TEST(test_styles_match_pipeline_colours);
-    RUN_TEST(test_the_hidden_test_pauses_while_it_does_not_pay_and_resumes_when_it_does);
-    RUN_TEST(test_the_hidden_test_pays_over_its_window);
     RUN_TEST(test_the_hidden_test_changes_no_pixel_of_a_reading_draw);
     RUN_TEST(test_the_hidden_test_changes_no_pixel_of_a_writing_draw);
-    RUN_TEST(test_a_window_hiding_one_in_the_payoff_ratio_keeps_the_hidden_test_running);
-    RUN_TEST(test_a_window_one_cluster_short_of_the_payoff_ratio_pauses_the_hidden_test);
-    RUN_TEST(test_a_window_hiding_nothing_pauses_the_hidden_test_until_the_cycle_ends);
-    RUN_TEST(test_clusters_missing_the_window_are_not_counted_as_tested);
 }
 
 SUITE_REGISTER(run_r3d_style_pipeline_suite);

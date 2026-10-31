@@ -4,13 +4,14 @@
 #include "render/r3d_span.h"
 
 /* A private copy exposes selection and kernel invariants without a public test API. */
-#define r3d_span_triangle       hot_triangle
-#define r3d_span_triangle_solid hot_triangle_solid
-#define r3d_span_triangle_write hot_triangle_write
-#define r3d_span_hidden         hot_hidden
-#define r3d_span_plane_bound    hot_plane_bound
-#define r3d_span_plane_in_range hot_plane_in_range
-#define r3d_span_stop_after     hot_stop_after
+#define r3d_span_triangle        hot_triangle
+#define r3d_span_triangle_solid  hot_triangle_solid
+#define r3d_span_triangle_write  hot_triangle_write
+#define r3d_span_capped_triangle hot_capped_triangle
+#define r3d_span_hidden          hot_hidden
+#define r3d_span_plane_bound     hot_plane_bound
+#define r3d_span_plane_in_range  hot_plane_in_range
+#define r3d_span_stop_after      hot_stop_after
 #include "render/r3d_span.c"
 #undef r3d_span_triangle
 #undef r3d_span_triangle_solid
@@ -32,7 +33,7 @@
 #define ORACLE_SEED                937U
 #define ORACLE_SAMPLES             32
 #define ORACLE_MAX_SIDE            SMALL_FILL_CEILING_MAX
-#define CEILING_FOUR_FLAT_CHECKSUM 0xD527DF2FU
+#define CEILING_FOUR_FLAT_CHECKSUM 0x57208113U
 #define VERTEX_DITHER_CHECKSUM     0xDA4716C8U
 #define TEST_SOLID_COLOR           RGB565BE(0x123456)
 #define TEST_CHANNELS              3

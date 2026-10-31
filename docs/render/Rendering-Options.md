@@ -272,13 +272,20 @@ picture exact.
 ### Culling and clusters
 
 Culling is always on: the draw keeps only the clusters inside the frustum,
-roughly nearest first. It drops a cluster, then a triangle, hidden behind what
-was already drawn ([every stage](frame/Culling.md)). The knob is offline: the bake's
+roughly nearest first, and drops a triangle hidden behind what was already
+drawn ([every stage](frame/Culling.md)). The knob is offline: the bake's
 `geometry.meshlet_triangles` sets the cluster size.
 
 - **Use** the shipped 32: 16 ties it, and 64 lets more triangles through than
   its fewer culls save.
 - **Measured**: [the meshlet-size table](offline/Baked-Mesh.md#meshlets).
+
+A scene can also have its camera drop each cluster wholly behind what was
+already drawn, before any of its triangles is set up:
+`scene_camera_set_skip_hidden()`, off by default. Pixels do not change.
+
+- **Use** it where most clusters hide behind nearer ones. Elsewhere the test
+  and the capped fill it needs cost more than they skip.
 
 The two cores split each stage by measured cost on their own
 ([On both cores](Mesh-Rendering.md#on-both-cores)); a caller that cuts the
