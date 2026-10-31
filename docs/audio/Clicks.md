@@ -2,14 +2,13 @@
 
 When a voice stops, is stolen or reaches its end, the [mixer](Sound-Mixer.md)
 decays its last sample to zero with time constant `sound.declick_us` instead of
-cutting it. The decay plays only while the amplifier is ON; turning it OFF clears it.
+cutting it.
 
 | Rule | Detail |
 |---|---|
 | Control | the playback API has no fade; seamless loops are the asset's job |
 | Rounding | decay moves toward zero by at least one PCM unit per sample |
 | Mid-block ends | tails start at their exact sample offset |
-| Amplifier on and off | de-click does not change those transients; codec mute and the DAC soft ramp do not reduce them either |
 
 | Hot tunable | Effect |
 |---|---|
@@ -17,6 +16,9 @@ cutting it. The decay plays only while the amplifier is ON; turning it OFF clear
 
 A 1 ms time constant (`SOUND_DECLICK_US` in `sound_mixer.h`) removes stop and
 steal clicks; half of that already does, so the default has 2x margin.
+
+The amplifier switches on once at sound start, so its turn-on transient happens
+before any sound; display wake will need the same transition when sleep exists.
 
 ## Measuring an onset
 
@@ -27,18 +29,17 @@ peak's `at_ms`.
 
 | Event | Pre-trigger state | Trigger and capture |
 |---|---|---|
-| `amp-on` | All voices stopped, amplifier OFF | Start a silent holder; capture through amplifier startup plus one margin window |
+| `amp-on` | Silent holder, amplifier held OFF for settling and the pre-window | Release the development hold; capture through amplifier startup plus one margin window |
 | `start` | Silent holder, amplifier ON | Start the probe; short window |
 | `stop` | Steady probe and silent holder, amplifier ON | Stop the probe; short window |
 | `steal` | Oldest probe and silent holders fill the voice table | Add a holder; short window |
-| `amp-off` | All voices stopped, amplifier ON | Wait out `SOUND_AMP_IDLE_MS` plus one margin window |
 
 | Detail | Rule |
 |---|---|
 | Defaults | `CONSOLE_SOUND_ONSET_HZ` and `CONSOLE_SOUND_ONSET_GAIN` in `console_sound_parse.h` |
 | Metric | the second difference suppresses a steady low tone; its peak is normalized to PCM full scale, so a sharp transient can exceed 0 dBFS |
 | Settle | after capture opens, `AUDIO_LOOPBACK_SETTLE_MS` of microphone input is discarded before preparation or the pre-window, even with the amplifier OFF |
-| Windows | derived from amplifier timing and the mixer block period; `at_ms` starts after the pre-window, which counts toward the `amp-off` idle deadline, and includes queue and RX DMA latency |
+| Windows | derived from amplifier timing and the mixer block period; `at_ms` starts after the pre-window and includes queue and RX DMA latency |
 
 [sound_onset_capture.py](../../launcher/tools/audio/sound_onset_capture.py)
 measures the named arms in argument order, then resets the tunable to its
@@ -52,7 +53,7 @@ exhausted retries leave fewer successful runs without stopping capture.
 
 ## Results
 
-<!-- generated: sound-onset sha256=5231b926a95f10a44be89d67c1785d6b59bcf58374af895371147491fcdf6e88 -->
+<!-- generated: sound-onset sha256=2b94893a38ee68c9ceb56b35fa5c2193e45c21cbb975143b0e9acb6a2b3ee5f4 -->
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../images/audio/sound-onset-dark.png">
   <source media="(prefers-color-scheme: light)" srcset="../images/audio/sound-onset.png">
@@ -78,7 +79,6 @@ Capture 1
 | start | 0.8 (1.3) | 0.8 (1.2) | 0.1 (1.2) | -0.1 (1.0) | -0.1 (0.5) |
 | stop | 10.3 (11.9) | 0.0 (0.5) | -1.1 (0.3) | 0.0 (0.6) | 1.4 (2.0) |
 | steal | 10.9 (12.2) | 0.0 (1.3) | -0.3 (0.3) | -0.1 (2.0) | 0.3 (1.6) |
-| amp-off | 2.0 (4.0) | 2.7 (4.3) | 2.8 (4.1) | 3.6 (4.2) | 3.6 (3.9) |
 
 </details>
 
@@ -97,7 +97,6 @@ Capture 2
 | start | 0.2 (1.0) | 0.2 (1.8) | -0.3 (1.0) | 0.1 (1.6) | -0.1 (0.2) |
 | stop | 13.5 (13.8) | 0.3 (1.2) | -0.4 (1.3) | 0.3 (0.7) | 0.0 (0.2) |
 | steal | 13.0 (13.6) | -0.2 (0.5) | 0.5 (1.2) | 0.1 (1.0) | 0.6 (0.9) |
-| amp-off | 6.2 (6.8) | 6.5 (7.4) | 6.8 (7.3) | 6.1 (7.0) | 5.9 (6.6) |
 
 </details>
 
@@ -116,7 +115,6 @@ Capture 3
 | start | -0.2 (0.2) | 0.1 (0.6) | -0.2 (1.1) | 0.3 (1.5) | -0.3 (0.6) |
 | stop | 9.3 (9.8) | 0.1 (0.9) | 0.0 (0.9) | 0.0 (0.8) | 0.7 (1.5) |
 | steal | 1.4 (9.6) | 0.1 (0.6) | 0.0 (0.2) | -1.2 (0.2) | -0.2 (1.0) |
-| amp-off | 3.7 (6.9) | 5.3 (5.4) | 5.3 (6.3) | 6.0 (6.2) | 5.1 (6.2) |
 
 </details>
 <!-- /generated: sound-onset -->

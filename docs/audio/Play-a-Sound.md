@@ -123,6 +123,7 @@ A sound costs no RAM beyond its small `sound_t`: samples are read from the pack 
 | UI feedback: taps, clicks, confirmations | `SOUND_BUS_SYSTEM`, so the shell's UI volume applies |
 | Game effects | `SOUND_BUS_SFX`, the default |
 | Music | `SOUND_BUS_MUSIC` |
+| Tactile case pulses | `SOUND_BUS_HAPTIC`, through [haptic_pulse()](../haptics/README.md) |
 
 Pass the bus in `sound_play_opts_t`. NULL options mean SFX, full gain,
 `SOUND_PRIORITY_NORMAL` and no loop. Gain rules: [Buses and gain](Sound-Mixer.md#buses-and-gain).

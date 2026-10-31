@@ -15,7 +15,7 @@
 #define CONSOLE_SOUND_ONSET_HZ       500u
 #define CONSOLE_SOUND_ONSET_GAIN     (AUDIO_OUT_VOLUME_MAX_PCT / 3u)
 
-static const char* const console_sound_events[] = {"amp-on", "start", "stop", "steal", "amp-off"};
+static const char* const console_sound_events[] = {"amp-on", "start", "stop", "steal"};
 
 static inline bool
 console_sound_number(const char* text, uint32_t max, uint32_t* out) {

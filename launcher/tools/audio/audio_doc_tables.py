@@ -414,6 +414,8 @@ def onset_data(path, arm_settings=None):
     probe = set()
     failures = set()
     for arm, command, reply in records:
+        if command in ("sound onset amp-off", "failure sound onset amp-off"):
+            continue
         if command.startswith("failure sound onset "):
             event = command.removeprefix("failure sound onset ")
             if arm not in settings or event not in ONSET_EVENTS:

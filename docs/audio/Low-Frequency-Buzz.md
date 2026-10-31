@@ -282,6 +282,6 @@ Board flat on a desk, untouched, in a quiet room, on a screen that reads no
 motion (the launcher home's ridge reacts to shaking):
 
 ```sh
-autana --wait 3600 lock run -- python launcher/tools/audio/audio_buzz_sweep.py --board <id>
+autana --wait 3600 lock run -- python launcher/tools/audio/audio_buzz_sweep.py --board <id> --surface "desk, face up"
 python launcher/tools/audio/audio_doc_tables.py --write
 ```

@@ -12,7 +12,6 @@ typedef enum {
     CONSOLE_SOUND_START,
     CONSOLE_SOUND_STOP_EVENT,
     CONSOLE_SOUND_STEAL,
-    CONSOLE_SOUND_AMP_OFF,
     CONSOLE_SOUND_EVENT_COUNT
 } console_sound_event_t;
 

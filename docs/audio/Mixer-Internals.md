@@ -65,26 +65,17 @@ When the queue is full the command is dropped:
 
 ## Amplifier
 
-The amplifier is powered only while sound plays, with a warm-up before the first sample.
-
-```mermaid
-stateDiagram-v2
-    direction LR
-    Off --> Warming: a voice starts
-    Warming --> On: startup elapsed
-    On --> Off: idle deadline
-    Warming --> Off: idle deadline
-```
+The sound task enables the amplifier once at startup. It stays on while the
+screen is on; display sleep is not implemented.
 
 | State | Output |
 |---|---|
-| Off | silence, and the first voice turns the amplifier on without sleeping |
-| Warming | silence for `AUDIO_OUT_AMP_STARTUP_MS` (about 250 ms), with every voice's position held |
-| On | the mix, and off again after `SOUND_AMP_IDLE_MS` (2 s) with no voice |
+| Warming | silence for `AUDIO_OUT_AMP_STARTUP_MS`, with every voice's position held |
+| On | the mix, or silence without voices; idle time does not disable the amplifier |
 
 During silence the task keeps writing blocks, so the DMA never runs dry. The TX
-channel's auto-clear setting zeroes stale data if it ever does. The transients
-these switches make are measured in [Clicks](Clicks.md).
+channel's auto-clear setting zeroes stale data if it ever does. See
+[Clicks](Clicks.md) for transient measurements.
 
 ## App exit
 
@@ -111,7 +102,7 @@ sequenceDiagram
 |---|---|
 | Calls during `exit()` | change nothing, and `sound_play()` returns the null voice |
 | Engine-owned sounds | the ones the shell plays survive every exit, so their storage must too |
-| Gains | the SYSTEM bus keeps the shell's UI volume, and SFX, MUSIC and master reset |
+| Gains | the SYSTEM bus keeps the shell's UI volume, and SFX, MUSIC, HAPTIC and master reset |
 | Stuck mixer | past `SOUND_EXIT_READ_TIMEOUT_MS` the board aborts rather than free memory it might read |
 | Console sound views | live in PSRAM and are released at the next app transition, after the mixer fence ([below](#console-play)); a timeout keeps them mapped for a later one |
 
