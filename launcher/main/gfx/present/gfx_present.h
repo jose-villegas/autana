@@ -10,6 +10,52 @@
 #include "gfx/gfx.h"
 #include "gfx/target/gfx_target.h"
 
+/* The band ring's compile-time band height (gfx_mode.h, gfx_band.h), a
+ * divisor of GFX_HEIGHT (448): 64, 32 or 16. The default is 32; see
+ * docs/gfx/Targets-and-Modes.md. Override with -DGFX_BAND_HEIGHT=N to try
+ * another. */
+#ifndef GFX_BAND_HEIGHT
+#if defined(CONFIG_LAUNCHER_GFX_BAND_HEIGHT_16) && CONFIG_LAUNCHER_GFX_BAND_HEIGHT_16
+#define GFX_BAND_HEIGHT 16
+#elif defined(CONFIG_LAUNCHER_GFX_BAND_HEIGHT_64) && CONFIG_LAUNCHER_GFX_BAND_HEIGHT_64
+#define GFX_BAND_HEIGHT 64
+#else
+#define GFX_BAND_HEIGHT 32
+#endif
+#endif
+_Static_assert(GFX_HEIGHT % GFX_BAND_HEIGHT == 0, "GFX_BAND_HEIGHT must divide GFX_HEIGHT evenly");
+_Static_assert(GFX_BAND_HEIGHT % 2 == 0, "a band's row range must round to even panel window edges");
+
+/* Brings up the panel and allocates the framebuffer.
+ * Returns false if either fails; the reason is logged. */
+bool gfx_init(void);
+
+/* True while the framebuffer is known to hold `colour` and nothing else: a
+ * send filled it (gfx_set_clear_on_send()) and nothing has drawn into it or
+ * asked for it since. */
+bool gfx_framebuffer_holds(gfx_color_t colour);
+
+/* A draw writes into the framebuffer, band or replay strip, with its
+ * current clip and dirty-marking policy. */
+typedef struct {
+    const gfx_target_t* target;
+    recti_t clip;
+    bool marks;
+} gfx_surface_t;
+
+/* Checks present-in-flight, then framebuffer availability. False skips
+ * the draw before reading drawing state. */
+bool gfx_draw_begin(gfx_surface_t* out);
+
+/* The caller intersects the box with the screen before setting it. */
+void gfx_set_clip(recti_t clip);
+
+/* gfx_mark_dirty() for a draw call already inside gfx_draw_begin(), which ran
+ * the present guard: one guard per primitive, not two. Rows claim whole
+ * cells. */
+void gfx_mark_drawn(int x, int y, int w, int h);
+void gfx_mark_rows_dirty(int y0, int y1);
+
 /* QSPI clock for the panel: 16.5 ms of bus a full frame at 40 MHz, 8.2 at
  * 80. 80 needs every strip sent from internal DMA RAM (strip_bounce),
  * exceeds the panel's rated 50 MHz, so every send at it is full-width
@@ -31,13 +77,6 @@ bool gfx_interlace_enabled(void);
 /* Forces every band on the next band frame. Needed when an app opens,
  * closes, or rotates. */
 void gfx_invalidate(void);
-
-/* One call for a transition instead of composing gfx_mark_all_dirty() and
- * gfx_invalidate() separately, plus a pending latch (below) an app's
- * optional invalidate() callback (app.h) answers to. Sets state only and
- * frees nothing, so it is safe from anywhere on core 0, an app callback or
- * a UI build included. */
-void gfx_request_full_redraw(void);
 
 /* True from a gfx_request_full_redraw() call until the shell clears it for
  * the pass that follows. */
@@ -73,7 +112,7 @@ void gfx_present_wait(void);
 
 /* GFX_LAYOUT_DOUBLE_FB only: once a frame is sent, core 1 fills it with
  * `colour`, so the frame after next starts out filled and draw_clear(colour)
- * costs core 0 nothing (gfx_framebuffer_holds(), gfx.h). The shown frame is
+ * costs core 0 nothing (gfx_framebuffer_holds()). The shown frame is
  * then gone from memory, so readback is unavailable until a send that keeps
  * its frame. Off again at mode exit. Returns false when asked to turn it on
  * in another layout, which leaves it off. */

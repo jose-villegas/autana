@@ -18,7 +18,6 @@
 #include "console/console_words.h"
 #include "core/tune.h"
 #include "draw/draw.h"
-#include "gfx/present/gfx_present.h"
 #include "image/pixel/rgb565.h"
 #include "render/context/render_context.h"
 #include "render_lab.h"
