@@ -184,7 +184,8 @@ test_instances_of_one_mesh_share_a_colour(void) {
     raster_rig_t* r = rig_open(1U << CARD);
     r->model[CARD] = (mat4f_t)MAT4F_IDENTITY;
     r->model[CARD].m[0][MAT3F_AXES] = CARD_SHIFT;
-    r->instance[0].mesh = r->instance[1].mesh; /* two cards, no wall */
+    const r3d_lit_mesh_t copy = *r->instance[1].mesh; /* two cards, no wall */
+    r->instance[0].mesh = &copy;
     set_behind(RASTER_BOXES_BEHIND_FULL);
     raster_attachment_t view;
     draw_with_boxes(r, &view);
@@ -199,7 +200,8 @@ test_meshes_drawn_fewer_times_than_boxview_copies_are_left_out(void) {
     raster_attachment_t view;
     draw_with_boxes(r, &view);
     TEST_ASSERT_EQUAL_INT(0, screen_pixels_of(card_color()));
-    r->instance[0].mesh = r->instance[1].mesh; /* two cards, one mesh */
+    const r3d_lit_mesh_t copy = *r->instance[1].mesh; /* two cards, one mesh */
+    r->instance[0].mesh = &copy;
     draw_with_boxes(r, &view);
     TEST_ASSERT_TRUE(screen_pixels_of(raster_meshlets_color(1U)) > 0);
 }

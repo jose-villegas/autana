@@ -27,13 +27,15 @@ raster_boxes_view(void* state) {
     return (raster_attachment_t){.begin = begin, .state = state};
 }
 
-/* The first instance drawing instance `i`'s mesh, and how many instances draw it. */
+/* The first instance drawing instance `i`'s mesh, and how many instances draw
+ * it. Each renderer holds its own view of a mesh, so copies are the instances
+ * whose views map the same positions. */
 static int
 instance_shape(const raster_t* raster, int i, int* copies) {
     int first = -1;
     *copies = 0;
     for (int j = 0; j < raster->instance_count; j++) {
-        if (raster->instances[j].mesh == raster->instances[i].mesh) {
+        if (raster->instances[j].mesh->positions == raster->instances[i].mesh->positions) {
             first = first < 0 ? j : first;
             ++*copies;
         }
