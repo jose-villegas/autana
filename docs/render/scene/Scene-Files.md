@@ -307,7 +307,7 @@ described in [The baked mesh](../offline/Baked-Mesh.md#clusters-and-the-tree).
 Flat shading stores one RGB565 colour per triangle. `fixed` uses that many
 lighting points per face; `auto` chooses a count from face area. One point lights a face
 from one place, so a shadow edge lands on whole faces
-([smooth against flat](../offline/Bake-Quality.md#the-sponza-variants)).
+([smooth against flat](../offline/Bake-Quality.md#the-demo-variants)).
 
 A flat fit starts from these sampled colours, then fits them. Top: one fixed
 sample against adaptive on the fit's start mesh. Bottom: adaptive against the
