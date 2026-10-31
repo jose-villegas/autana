@@ -128,10 +128,12 @@ case "${1:-}" in
     "") ;;
     --check) CHECK=1 ;;
     --orphans)
-        # Cheap enough for a pull request: nothing is rendered. An image is
-        # claimed when its name up to the first dot appears in the script that
-        # makes the launcher images, the scene scripts, or an app's doc_images.sh,
-        # or it is a pair sheet doc_tables.py lists for the demo scene.
+        # Cheap enough for a pull request: nothing is rendered. An image is claimed
+        # when its name up to the first dot appears in the script that makes the
+        # launcher images, the scene scripts, or an app's doc_images.sh; when the
+        # demo script spells it ${ID}-... or ends it with a loop variable, which
+        # claims any name under that prefix (${ID}-view-$view); or when it is a
+        # pair sheet doc_tables.py lists for the demo scene.
         comparing=1
         status=0
         pairs=
@@ -164,7 +166,9 @@ case "${1:-}" in
                     case "$stem" in
                         "$id"-*)
                             template='${ID}'${stem#"$id"}
-                            if grep -qF -- "$template" "$TOOLS_DIR/doc_images_demo.sh"; then
+                            # A name a loop ends with its variable, as ${ID}-view-$view.
+                            if grep -qF -- "$template" "$TOOLS_DIR/doc_images_demo.sh" ||
+                                grep -qF -- "${template%-*}-\$" "$TOOLS_DIR/doc_images_demo.sh"; then
                                 claimed=1
                                 break
                             fi ;;
@@ -292,6 +296,9 @@ run "$PYTHON" launcher/tools/audio/sound_onset_figures.py --out "$OUT/audio" > "
 # buzz-shake.png, buzz-score.png, buzz-shake-dark.png, buzz-score-dark.png
 
 if [ "$AUDIO_ONLY" = 0 ]; then
+
+run "$PYTHON" launcher/tools/power/power_budget_doc.py --figures "$OUT/power" > "$WORK/power_budget_doc.log"
+# --orphans scans this runner: power_budget_states.png, power_budget_states-dark.png
 
 # The skeleton and skin figures: the demo rig over one clip, and a limb through the skinning kernel.
 run mkdir -p "$OUT/render" "$OUT/tables"

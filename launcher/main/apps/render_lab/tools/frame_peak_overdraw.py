@@ -62,6 +62,19 @@ def build():
     return pathlib.Path(path)
 
 
+def scene_keys(renderer, any_scene):
+    """The render lab's scene keys, as its `render scenes` word lists them; a frame profile row that is not one
+    (a take: a scene seen from a set view or with a set blend) is not drawn here."""
+    command = [str(renderer), "--scene", any_scene, "--frames", "1", "--console", "0:scenes"]
+    with tempfile.TemporaryDirectory() as tmp:
+        result = subprocess.run(command + ["-o", str(pathlib.Path(tmp) / "scenes.bmp")], cwd=ROOT,
+                                capture_output=True, text=True)
+    keys = set(re.findall(r"^RENDER scene=(\S+) ", result.stdout, re.M))
+    if result.returncode != 0 or any_scene not in keys:
+        raise ValueError(f"{' '.join(command)}: exit {result.returncode}, no scene list\n{result.stderr}")
+    return keys
+
+
 def render(renderer, pose, out):
     """Draws `pose` through the overdraw view into `out`; its totals."""
     scene, quarter, _, t_ms = pose
@@ -82,9 +95,10 @@ def provenance():
 
 
 def render_views(text, capture_name, scenes, data_dir):
-    """Renders every replayed pose and writes the data file."""
+    """Renders every replayed pose of the rows that are scenes and writes the data file."""
     renderer = build()
-    poses = sorted(wanted(text, scenes))
+    keys = scene_keys(renderer, scenes[0])
+    poses = sorted(wanted(text, [scene for scene in scenes if scene in keys]))
     with tempfile.TemporaryDirectory() as tmp, concurrent.futures.ThreadPoolExecutor(os.cpu_count()) as pool:
         pictures = [pathlib.Path(tmp) / f"{index}.bmp" for index in range(len(poses))]
         totals = list(pool.map(lambda pose, out: render(renderer, pose, out), poses, pictures))
@@ -125,9 +139,10 @@ def percentile(value, values):
 
 
 def tables(text, scenes, data_dir):
-    """The README's per-peak overdraw and findings, from the data file; fails when the data file's poses are not
-    the capture's."""
+    """The README's per-peak overdraw and findings for the rows the data file holds, from it; fails when its poses
+    are not the capture's."""
     measured = read(data_dir)
+    scenes = [scene for scene in scenes if any(pose[0] == scene for pose in measured)]
     missing, extra = wanted(text, scenes) - measured.keys(), measured.keys() - wanted(text, scenes)
     if missing or extra:
         raise ValueError(f"{DATA_FILE}: {len(missing)} poses missing and {len(extra)} not in the capture; "
@@ -135,7 +150,8 @@ def tables(text, scenes, data_dir):
     poses = path_poses(text)
     triangles = TRIANGLES.replace("_", " ")
     lines = ["### Overdraw at the frame peaks", "",
-             "Each replayed pose drawn by the host renderer through the overdraw view. Tested counts every span "
+             "Each replayed pose of every row that is a scene drawn by the host renderer through the overdraw view. "
+             "Tested counts every span "
              "that reached a pixel, written every one that won its depth test, per pixel drawn.",
              "Path percentile places a peak's tested layers among the evenly spaced poses' (100: none had more).", "",
              "| Scene | Quarter | Rank | Path s | Frame ms | Tested / px | Written / px | Most tested | "

@@ -30,6 +30,7 @@ root test_cleanup_finishes_present_without_tripping_guard test
 indirect test_scene_console_dispatch_and_repeated_exit_release_heap : render_lab_console
 indirect render_lab_test_exit : render_lab_exit
 indirect render_lab_clips_reply : console_reply_stdio suite_render_lab_clips.c:capture_reply
+indirect scene_capybara_console : console_reply_stdio suite_render_lab_clips.c:capture_reply
 indirect render_lab_clips.c:reply_line : console_reply_stdio suite_render_lab_clips.c:capture_reply
 
 root test_boot_menu_draws_controls_only_for_animated_scene test
@@ -38,4 +39,4 @@ indirect scene_allocate_kept : app_arena_take
 
 root test_real_time_frame_profile test
 indirect frame_profile_play : suite_render_lab_frame_profile.c:whole_frame
-indirect suite_render_lab_frame_profile.c:enter_scenario : render_lab_console
+indirect suite_render_lab_frame_profile.c:send : render_lab_console
