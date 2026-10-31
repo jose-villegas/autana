@@ -38,7 +38,7 @@ flowchart LR
 | Page | Covers |
 |---|---|
 | [Mesh-Rendering.md](../Mesh-Rendering.md) | The raster: one frame, the render context, both cores, memory |
-| [Culling.md](Culling.md) | Every cull stage in order, from the bake's visibility to the per-triangle tests, what each keeps and costs |
+| [Culling.md](Culling.md) | Every cull stage in order, from the bake's visibility to the per-triangle tests, and what each costs |
 | [Coverage.md](Coverage.md) | Which pixels a triangle fills, and small fill: cheaper draws for triangles a few pixels wide |
 | [Attachments.md](Attachments.md) | The depth buffer, and the extra per-pixel maps a draw can write: motion vectors, meshlet IDs |
 | [View-Modes.md](View-Modes.md) | The development-build views that paint depth, tiles, motion, meshlets or the cull |
