@@ -297,7 +297,7 @@ can_generate(render_context_t* c, const render_view_t* view) {
     return true;
 }
 
-/* The kept frame warped to `view`, written over the raster's own picture. */
+/* The kept frame warped to `view` into the framegen target, which compose shows. */
 static void
 generate(render_context_t* c, const render_view_t* view) {
     const int64_t began_us = timing_now_us();
@@ -305,7 +305,7 @@ generate(render_context_t* c, const render_view_t* view) {
     (void)framegen_fill(&c->raster, &c->framegen);
     c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
     c->frame.generated = true;
-    c->kept = false; /* the generated frame is written over it */
+    c->kept = false; /* FRAMEGEN_SHOWN_PER_DRAWN: the next frame is drawn */
     c->drawn_in_row = 0;
 }
 
@@ -395,11 +395,15 @@ render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* hal
     destination = expanded ? half : destination;
     uint8_t* seams = expanded ? half_seams : NULL;
     if (c->policy == RENDER_FIXED && !c->generating) {
-        raster_upscale_seamed(&c->raster, destination, seams, size.width, size.height);
+        raster_upscale_picture(&c->raster, NULL, destination, seams, size.width, size.height);
         return expanded;
     }
     const int64_t began_us = timing_now_us();
-    raster_upscale_seamed(&c->raster, destination, seams, size.width, size.height);
+    GFX_TARGET_STORAGE(GFX_ATTACHMENT_FURTHER) generated;
+    gfx_target_of_color_depth(&generated.target, c->framegen.colour, c->framegen.depth, c->framegen.width,
+                              c->framegen.height, 0);
+    const gfx_target_t* picture = c->frame.generated ? &generated.target : NULL;
+    raster_upscale_picture(&c->raster, picture, destination, seams, size.width, size.height);
     c->frame.upscale_us = (int32_t)(timing_now_us() - began_us);
     if (c->frame.generated) {
         /* Not priced itself: its cost sets what the next drawn frame may spend. */

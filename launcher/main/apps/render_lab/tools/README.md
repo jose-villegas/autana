@@ -149,7 +149,7 @@ The host renderer picks one by its menu label, as
 Below it, UPSCALE picks how a draw half the panel's width or less fills the panel:
 SHARP repeats pixels (the default), SMOOTH blends within a surface and keeps
 depth edges sharp
-([Dynamic-Resolution.md](../../../../../docs/render/Dynamic-Resolution.md#upscaling-within-a-surface)).
+([Dynamic-Resolution.md](../../../../../docs/render/frame/Dynamic-Resolution.md#upscaling-within-a-surface)).
 It sets `render_lab.upscale`.
 
 The generic scene viewer accepts `--small-fill CEILING,GATE,STYLE`; its defaults
@@ -207,7 +207,7 @@ all three modes on sponza fitted-full, in ms:
 | landscape | 42.4 | 30.3 | 31.1 |
 
 The lines follow the panel's rows and darken the clear background too. The
-engine page shows the [presentation GIFs](../../../../../docs/render/Dynamic-Resolution.md#camera-presentation).
+engine page shows the [presentation GIFs](../../../../../docs/render/frame/Dynamic-Resolution.md#camera-presentation).
 
 ### Debug views
 
@@ -242,14 +242,14 @@ selects a scene camera; omitted, it draws the first camera.
 `clip walk 400`, before frame FRAME draws; repeat it for a sequence.
 `--dump DIR` writes each frame's raster colour and depth, before the
 upscale, to `DIR/NNNN.raw` for the frame generation experiment
-([Frame-Generation.md](../../../../../docs/render/Frame-Generation.md)).
+([Frame-Generation.md](../../../../../docs/render/frame/Frame-Generation.md)).
 
 `dynres_quality.sh [--scene-file F --scene KEY] [--args "ARGS"] WORK OUT.csv CAMERA WxH [WxH ...]`
 scores each size against the reference along that camera's clip, at
 intervals taken from the script and over the clip's full period. Per-path
 results belong in `docs/render/data/dynamic-resolution-quality-CAMERA.csv`.
 `upscale_quality.sh` runs it per scene under each upscale filter, for
-[Dynamic-Resolution.md](../../../../../docs/render/Dynamic-Resolution.md#upscaling-within-a-surface):
+[Dynamic-Resolution.md](../../../../../docs/render/frame/Dynamic-Resolution.md#upscaling-within-a-surface):
 
 ```sh
 sh launcher/main/apps/render_lab/tools/upscale_quality.sh /tmp/upscale docs/render/data/upscale-filter-quality.csv     docs/render/data/upscale-frames camera launcher/demo/bistro/bistro.scene.toml:bistro-fitted-full     launcher/demo/sponza/sponza.scene.toml:sponza-fitted-full launcher/demo/sponza/sponza.scene.toml:sponza-fitted     launcher/demo/sponza/sponza.scene.toml:sponza-flat-fitted launcher/demo/sponza/sponza.scene.toml:sponza     launcher/demo/sponza/sponza.scene.toml:sponza-flat launcher/demo/sponza/sponza.scene.toml:sponza-lite
@@ -344,7 +344,7 @@ nothing in the build reads it.
 Its glTF export, `capybara.glb`, is a cached bake: deform bones only,
 every loop as an animation, four influences per vertex. Host tools that read
 glTF use it, such as the
-[skinned-mesh lighting](../../../../../docs/render/Skinned-Lighting.md)
+[skinned-mesh lighting](../../../../../docs/render/animation/Skinned-Lighting.md)
 measurement; `bake.py path capybara.glb` prints where it is.
 `capybara.import.toml` names the
 `.blend` and the loops to export (the file also holds the rig's own
@@ -369,7 +369,7 @@ Use the [meshlet capture recipe](../../../../tools/render/README.md#meshlet-size
 with `--scene launcher/demo/sponza/sponza.scene.toml` and
 `--suite run_sponza_perf_suite --size-tune sponza_perf.shipped_meshlet`. Its fixed flythrough samples measure the selected
 renderer with both culling settings. The generated table belongs to
-[Render Pipeline](../../../../../docs/render/Render-Pipeline.md#meshlets).
+[Baked-Mesh](../../../../../docs/render/offline/Baked-Mesh.md#meshlets).
 
 ## Skinned frame comparison
 
