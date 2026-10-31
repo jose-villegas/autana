@@ -119,6 +119,10 @@ it while the motion view is selected.
 `raster_meshlets_view()` keeps a 16-bit map, its IDs distinct per draw for
 up to 65535 clusters.
 
+The meshlets view along the same flythrough, one hue per cluster:
+
+![The meshlets view along a flythrough](../../images/render/sponza-meshlets.gif)
+
 | Hook | Meshlets |
 |---|---|
 | `clear` | Zeroes the map |
@@ -126,7 +130,3 @@ up to 65535 clusters.
 | `writer` | Reserves each instance's cluster count and writes the reserved base plus the mesh's cluster index |
 | `resolve` | None: it needs no resolve pass |
 | `show` | Maps IDs to hues through a multiplicative hash; zero takes the clear colour |
-
-The meshlets view along the same flythrough, one hue per cluster:
-
-![The meshlets view along a flythrough](../../images/render/sponza-meshlets.gif)
