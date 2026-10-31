@@ -14,6 +14,10 @@ from github_api import call, pages
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'device'))
 from device_lock import short_id
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'lib'))
+from device_capture import board_steps_completed
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'launcher/tools/perf'))
+from nightly.lnt import night_ran
 
 LABEL = 'board-ci-down'
 QUEUED_LIMIT = timedelta(minutes=30)
@@ -58,6 +62,10 @@ def clear_alarm(run_url, request=call):
         request('PATCH', f'/issues/{number}', {'state': 'closed'})
 
 
+def stamp(text):
+    return datetime.fromisoformat(text.replace('Z', '+00:00'))
+
+
 def nights_enabled(request):
     active = request('GET', f'/actions/workflows/{NIGHTLY_WORKFLOW}')['state'] == 'active'
     if not active:
@@ -65,26 +73,28 @@ def nights_enabled(request):
     return active
 
 
-def last_board_success(request, now):
-    latest = None
+def night_ends(directory):
+    """When each nightly lane on perf-data that ran to the end finished, whatever its tests reported."""
+    for path in (Path(directory) / 'scoped').glob('*/*/night.json'):
+        manifest = json.loads(path.read_text(encoding='utf-8'))
+        if night_ran(manifest):
+            yield datetime.fromisoformat(manifest['ended'])
+
+
+def last_board_success(request, now, nights=()):
+    """The latest board success: a nightly lane's end from `nights`, or a board CI run that cleared the alarm."""
+    successes = list(nights)
     cutoff = (now - SUCCESS_WINDOW).astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
-    for workflow in (NIGHTLY_WORKFLOW, BOARD_WORKFLOW):
-        for run in pages(f'/actions/workflows/{workflow}/runs?status=completed&created=>={cutoff}',
-                         'workflow_runs', request):
-            jobs = list(pages(f"/actions/runs/{run['id']}/jobs", 'jobs', request))
-            cleared = any(job['name'] == 'alarm' and any(
-                step['name'] == CLEAR_STEP and step['conclusion'] == 'success'
-                for step in job.get('steps', [])) for job in jobs)
-            if not cleared:
-                continue
-            completed = [datetime.fromisoformat(job['completed_at'].replace('Z', '+00:00'))
-                         for job in jobs if BOARD_LABEL in job.get('labels', [])
-                         and job.get('conclusion') == 'success']
-            completed = [stamp for stamp in completed if stamp <= now]
-            if completed:
-                stamp = max(completed)
-                latest = max(latest, stamp) if latest else stamp
-    return latest
+    for run in pages(f'/actions/workflows/{BOARD_WORKFLOW}/runs?status=completed&created=>={cutoff}',
+                     'workflow_runs', request):
+        jobs = list(pages(f"/actions/runs/{run['id']}/jobs", 'jobs', request))
+        cleared = any(job['name'] == 'alarm' and any(
+            step['name'] == CLEAR_STEP and step['conclusion'] == 'success'
+            for step in job.get('steps', [])) for job in jobs)
+        if cleared:
+            successes.extend(stamp(job['completed_at']) for job in jobs
+                             if BOARD_LABEL in job.get('labels', []) and job.get('conclusion') == 'success')
+    return max((success for success in successes if success <= now), default=None)
 
 
 def stuck_board_jobs(request, now):
@@ -118,16 +128,20 @@ def night_running(request):
     return running
 
 
-def check(request, now, lanes, plugged):
+def check(request, now, lanes, plugged, unreachable=(), nights=()):
     if night_running(request):
         return []
     problems = []
-    success = last_board_success(request, now)
+    success = last_board_success(request, now, nights)
     if success is None or now - success > SUCCESS_WINDOW:
         problems.append(f'No board success within {SUCCESS_WINDOW}')
     problems.extend(stuck_board_jobs(request, now))
     missing = missing_boards(lanes, plugged)
-    if missing:
+    if missing and unreachable:
+        # A board on a host that did not answer may still be plugged in there.
+        print('::notice::Board hosts not answering: ' + ', '.join(unreachable)
+              + '; not checked: ' + ', '.join(missing))
+    elif missing:
         problems.append('Boards missing from USB: ' + ', '.join(missing))
     return problems
 
@@ -139,8 +153,9 @@ def latest_lanes(directory):
 
 
 def read_plugged(path):
+    """The plugged boards' short ids and the board hosts that did not answer."""
     listing = json.loads(Path(path).read_text(encoding='utf-8-sig'))
-    return [short_id(board['board']) for board in listing['boards'] if board['port']]
+    return [short_id(board['board']) for board in listing['boards'] if board['port']], listing.get('unreachable', [])
 
 
 def run_url():
@@ -197,6 +212,8 @@ def main(argv=None):
     health.add_argument('--lanes-from', required=True, type=Path)
     health.add_argument('--devices', required=True, type=Path)
     health.add_argument('--reason-file', required=True, type=Path)
+    ran = commands.add_parser('ran', help="print boards_ran=true|false for a board-steps.sh log")
+    ran.add_argument('--log', required=True, type=Path)
     probe = commands.add_parser('probe')
     probe.add_argument('--devices', required=True, type=Path)
     probe.add_argument('--reason-file', required=True, type=Path)
@@ -211,12 +228,16 @@ def main(argv=None):
         raise_alarm(reason, run_url())
     elif args.command == 'clear':
         clear_alarm(run_url())
+    elif args.command == 'ran':
+        lines = args.log.read_text(encoding='utf-8', errors='replace').splitlines() if args.log.is_file() else []
+        print(f'boards_ran={str(board_steps_completed(lines)).lower()}')
     elif args.command == 'probe':
         return probe_devices(args.devices, args.reason_file)
     else:
         if not nights_enabled(call):
             return 0
-        problems = check(call, datetime.now(timezone.utc), latest_lanes(args.lanes_from), read_plugged(args.devices))
+        problems = check(call, datetime.now(timezone.utc), latest_lanes(args.lanes_from),
+                         *read_plugged(args.devices), night_ends(args.lanes_from))
         if problems:
             reason = '\n'.join(problems)
             args.reason_file.write_text(reason, encoding='utf-8')

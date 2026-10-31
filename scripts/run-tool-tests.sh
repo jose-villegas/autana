@@ -56,6 +56,9 @@ fi
 
 suite_count=0
 quiet_begin "$QUIET_LOG"
+# Passing tests print fixture text ("test_clip:FAIL:", argparse "error:"); only
+# the runners' own failure headers and assertion lines are failures.
+QUIET_ERROR_PATTERN='^FAIL: |^ERROR: |^AssertionError|^not ok |^# fail [1-9]'
 export QUIET_STATUS
 
 if [ -n "$py_dirs" ]; then

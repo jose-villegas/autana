@@ -35,6 +35,6 @@ misses_every_centre(const r3d_pipeline_vertex_t* a, const r3d_pipeline_vertex_t*
     const int x_end = r3d_span_first_centre(r3d_span_max3(a->sx, b->sx, c->sx));
     const int y_first = r3d_span_first_centre(r3d_span_min3(a->sy, b->sy, c->sy));
     const int y_end = r3d_span_first_centre(r3d_span_max3(a->sy, b->sy, c->sy));
-    return x_first >= x_end || y_first >= y_end || x_end <= 0 || x_first >= target->rows.width
-           || y_end <= target->rows.row0 || y_first >= target->rows.row1;
+    return x_first >= x_end || y_first >= y_end || x_end <= 0 || x_first >= target->rows.attachment[0].width
+           || y_end <= target->rows.first_row || y_first >= gfx_target_end_row(&target->rows);
 }

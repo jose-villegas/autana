@@ -15,7 +15,7 @@
 #define TAP_FRAME 4
 #define FRAME_MS  16
 #define POSE_FRAMES                                                                                                    \
-    ((IMU_PROBE_SETTLE_MS + FRAME_MS - 1) / FRAME_MS + (IMU_PROBE_WINDOW_MS + FRAME_MS - 1) / FRAME_MS + 1)
+    ((IMU_REST_SETTLE_MS + FRAME_MS - 1) / FRAME_MS + (IMU_REST_WINDOW_MS + FRAME_MS - 1) / FRAME_MS + 1)
 #define TAP_X 180
 #define TAP_Y 220
 static int page;
@@ -50,7 +50,7 @@ input_read_motion(input_motion_t* out) {
     if (results && !orientation) {
         const int pose_frame = clock_frame - TAP_FRAME;
         const int pose = mathi_clamp(pose_frame / POSE_FRAMES, 0, IMU_PROBE_POSE_COUNT - 1);
-        const int turn_frame = (IMU_PROBE_POSE_COUNT * POSE_FRAMES) + ((IMU_PROBE_SETTLE_MS + FRAME_MS - 1) / FRAME_MS);
+        const int turn_frame = (IMU_PROBE_POSE_COUNT * POSE_FRAMES) + ((IMU_REST_SETTLE_MS + FRAME_MS - 1) / FRAME_MS);
         if (pose_frame >= turn_frame && (pose_frame - turn_frame) * FRAME_MS <= IMU_PROBE_TURN_WINDOW_MS) {
             out->rotation.x = IMU_PROBE_TURN_THRESHOLD + 1;
         }
@@ -88,6 +88,17 @@ input_read_motion_batch(input_motion_batch_t* out) {
 vec3i_t
 input_accel_offset(void) {
     return (vec3i_t){0};
+}
+
+vec3i_t
+input_gyro_offset(void) {
+    return (vec3i_t){0};
+}
+
+bool
+input_learn_gyro_offset(vec3i_t residual) {
+    (void)residual;
+    return false;
 }
 
 bool

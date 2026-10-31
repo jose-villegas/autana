@@ -279,7 +279,7 @@ measure_mode_enter_indexed(colour_mode_t mode, gfx_dither_mode_t dither_mode, ui
     const gfx_mode_t* granted = gfx_mode_enter(&req);
     TEST_ASSERT_TRUE_MESSAGE(granted->layout == GFX_LAYOUT_INDEXED, "GFX_LAYOUT_INDEXED could not be granted");
     const image_t index = gfx_indexed_image();
-    memset(index.pixels, 0, image_row_bytes(&index) * index.height);
+    memset(index.pixels, 0, index.pitch * index.height);
     gfx_indexed_set_palette(&sand_palette256);
     gfx_indexed_set_dither16(mode == CM_MODE_16);
     if (mode != CM_MODE_16) {

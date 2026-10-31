@@ -41,7 +41,7 @@ test_every_icon_is_one_bit_rows_of_whole_bytes(void) {
     for (int id = 0; id < UI_ICON_COUNT; id++) {
         const image_t* icon = system_icon((ui_icon_id_t)id);
         TEST_ASSERT_EQUAL_INT_MESSAGE(IMAGE_MONO1, icon->format, "a system icon is not one bit a pixel");
-        TEST_ASSERT_EQUAL_INT_MESSAGE(0, icon->stride % DRAW_IMAGE_MONO1_STRIDE_STEP, "a row is not whole bytes");
+        TEST_ASSERT_TRUE(icon->pitch >= (icon->width + CHAR_BIT - 1U) / CHAR_BIT);
     }
 }
 
