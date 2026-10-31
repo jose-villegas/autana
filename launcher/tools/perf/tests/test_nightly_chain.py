@@ -789,6 +789,22 @@ class NightlyTests(unittest.TestCase):
                       said.call_args_list)
         self.assertIn(call("::warning::remote boards not listed from helios", file=sys.stderr), said.call_args_list)
 
+    def test_a_plan_held_past_the_cutoff_starts_no_lane(self):
+        # GPU night work held the plan: it starts when the night's last lane start has passed.
+        marker = self.clock.now()
+        self.clock.value = schedule.night_cutoff(marker) + timedelta(hours=2)
+        args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=[], data=self.args.data,
+                               out=self.root / "plan.json", marker=marker.isoformat(),
+                               from_sha=None, max_steps=None, selftest_board=None)
+        listing = dict(boards=[self.row("2124")], unreachable=[])
+        with patch.object(chain, "board_listing", return_value=listing),                 patch.object(chain, "gpu_on_host", return_value=True), patch.object(chain, "wait_idle"),                 patch("builtins.print") as said:
+            chain.plan(args, self.clock)
+        planned = json.loads(args.out.read_text())
+        self.assertEqual(planned["lanes"], {})
+        self.assertEqual(planned["listed"], ["2124"])
+        self.assertIn("SELFTEST_BOARD=", [c.args[0] for c in said.call_args_list])
+        self.assertTrue(any("the night runs no lane" in str(c.args[0]) for c in said.call_args_list))
+
     def test_image_hash_excludes_metadata_but_includes_code_and_assets(self):
         build = self.root / "image"
         build.mkdir()
@@ -1065,6 +1081,7 @@ class NightlyTests(unittest.TestCase):
         return patch.object(chain.subprocess, "check_output", side_effect=answer)
 
     def test_plan_spans_remote_boards_and_keeps_the_selftest_local(self):
+        self.plan_before_cutoff()
         args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=None, data=self.args.data,
                                out=self.root / "plan.json", marker=self.clock.now().isoformat(),
                                from_sha=None, max_steps=None, selftest_board=None)
@@ -1083,6 +1100,7 @@ class NightlyTests(unittest.TestCase):
         self.assertIn(call("SELFTEST_BOARD=2124"), said.call_args_list)
 
     def test_plan_skips_a_gated_hosts_boards(self):
+        self.plan_before_cutoff()
         args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=None, data=self.args.data,
                                out=self.root / "plan.json", marker=self.clock.now().isoformat(),
                                from_sha=None, max_steps=None, selftest_board=None)
@@ -1098,7 +1116,7 @@ class NightlyTests(unittest.TestCase):
                 patch("builtins.print") as said:
             chain.plan(args, self.clock)
         self.assertEqual(list(json.loads(args.out.read_text())["lanes"]), ["2124"])
-        self.assertTrue(any("A308 on Legion sits this night out: person at the desk" in c.args[0] for c in said.call_args_list))
+        self.assertTrue(any("A308 on Legion waits for the rescan: person at the desk" in c.args[0] for c in said.call_args_list))
 
     def test_unreachable_remote_hosts_leave_this_machines_lanes_and_warn(self):
         failure = subprocess.CalledProcessError(1, ["remote-lane", "boards"])
@@ -1317,7 +1335,12 @@ class NightlyTests(unittest.TestCase):
         planned = json.loads(args.out.read_text())
         self.assertEqual({board: lane["previous"] for board, lane in planned["lanes"].items()}, previous)
 
+    def plan_before_cutoff(self):
+        """A night's marker sits before its last lane start, as the 03:00 board start does."""
+        self.clock.value = schedule.night_cutoff(self.clock.now()) - timedelta(hours=2)
+
     def test_plan_without_boards_takes_every_plugged_board(self):
+        self.plan_before_cutoff()
         self.plugged_patch.stop()
         self.local_patch.stop()
         listing = {"boards": [self.row("44:BD:8D:78:20:E8", port="COM3"),
