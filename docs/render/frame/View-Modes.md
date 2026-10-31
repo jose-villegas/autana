@@ -3,6 +3,11 @@
 Development builds select one row from the `render_debug_view_t` table in
 `render/context/render_context.c`: depth, tiles, motion, meshlets, cull or boxes.
 
+The depth and depth-tile views along a flythrough:
+
+![The depth view along a flythrough](../../images/render/sponza-depth.gif)
+![The depth-tile view along a flythrough](../../images/render/sponza-tiles.gif)
+
 | Call | What it does with the row |
 |---|---|
 | `render_context_set_debug_view()` | Attaches it and owns its zeroed PSRAM state; switching frees the previous state |
@@ -42,8 +47,3 @@ Overlays draw with `render/view/raster_lines.h`: segments and boxes in a lens's 
   empty.
 - The views are at the raster's own size, before upscaling.
 - `r3d_span.h` defines the depth encoding they read.
-
-The depth and depth-tile views along a flythrough:
-
-![The depth view along a flythrough](../../images/render/sponza-depth.gif)
-![The depth-tile view along a flythrough](../../images/render/sponza-tiles.gif)
