@@ -4,7 +4,7 @@ A scene's camera can draw each frame at a render size picked to hold a frame
 budget, instead of one fixed scale. The sizes are a ladder of steps, finest
 first.
 
-`render_context_compose()` expands a step of half width into the half picture
+`render_context_compose()` expands a step that fits into the half picture
 and upscales any other with [`render/upscale.h`](../../../launcher/main/render/upscale.h),
 any ratio in either axis ([the rule](../Rendering-Options.md#render-scale-and-the-half-picture)).
 
