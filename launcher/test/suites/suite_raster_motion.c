@@ -465,16 +465,20 @@ test_many_instances_keep_their_motion(void) {
     free(instances);
 }
 
-/* Growing the room between pictures keeps the previous one. */
+/* Growing the room between pictures keeps the previous one: the camera's
+ * and each placed instance's, so the box still moves by its own model. */
 static void
 test_growing_keeps_the_previous_picture(void) {
-    raster_rig_t* r = rig_open(false, false);
-    const pose_t pose = {camera_at((vec3f_t){0.0F, 0.0F, -300.0F}, 0.0F), NULL};
-    draw(r, &pose, W, H);
+    static const change_t c = {-30.0F, {10.0F, 0.0F, -20.0F}, {4.0F, 2.0F, 10.0F}, 1.0F};
+    raster_rig_t* r = rig_open(true, false);
+    posed_t p;
+    pose_change(&c, true, &p);
+    draw(r, &p.before, W, H);
     TEST_ASSERT_TRUE(raster_motion_reserve(&own_of(r)->motion, MANY_INSTANCES));
     TEST_ASSERT_EQUAL_INT(MANY_INSTANCES, own_of(r)->motion.capacity);
-    draw(r, &pose, W, H);
-    TEST_ASSERT_EQUAL_INT8(0, motion_of(r)[(H / 2 * W) + (W / 2)].dx);
+    draw(r, &p.now, W, H);
+    TEST_ASSERT_TRUE(own_of(r)->motion.moved[1]);
+    TEST_ASSERT_GREATER_THAN_INT(0, assert_motion_is_true(r, &p.now, &p.before, W, H));
 }
 
 /* Past what a tag can name, reserving fails and keeps the room it had. */
