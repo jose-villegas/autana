@@ -43,16 +43,20 @@ check_pixel(int check) {
     return rand() & 1 ? UINT16_MAX : 0;
 }
 
-/* Check `check`'s rows and keep bytes: none kept, all kept, then random. */
+/* A row of check `check`'s pixels. */
 static void
-fill_check(int check, uint16_t* mine, uint16_t* other, uint8_t* keep) {
+fill_row(int check, uint16_t* row) {
     for (int x = 0; x < ROW_PIXELS; x++) {
-        mine[x] = check_pixel(check);
-        other[x] = check_pixel(check);
+        row[x] = check_pixel(check);
     }
+}
+
+/* Keep bytes for `pattern`: none kept, all kept, then random. */
+static void
+fill_keeps(int pattern, uint8_t* keep) {
     static const uint8_t fixed[] = {0, UINT8_MAX};
     for (int step = 0; step < ROW_STEPS; step++) {
-        keep[step] = check % 3 < 2 ? fixed[check % 3] : (uint8_t)rand();
+        keep[step] = pattern % 3 < 2 ? fixed[pattern % 3] : (uint8_t)rand();
     }
 }
 
@@ -66,7 +70,9 @@ test_quarter_select_matches_scalar(void) {
     uint8_t keep[ROW_STEPS];
     srand(1);
     for (int check = 0; check < CHECKS; check++) {
-        fill_check(check, mine, other, keep);
+        fill_row(check, mine);
+        fill_row(check, other);
+        fill_keeps(check, keep);
         gfx_quarter_select_scalar(mine, other, keep, scalar, ROW_STEPS);
         gfx_quarter_select(mine, other, keep, pie, ROW_STEPS);
         TEST_ASSERT_EQUAL_HEX16_ARRAY(scalar, pie, ROW_PIXELS);
@@ -150,8 +156,11 @@ test_quarter_spread_matches_scalar(void) {
     spread_rows_alloc(&rows);
     srand(2);
     for (int check = 0; check < CHECKS; check++) {
-        fill_check(check, rows.mine, rows.left, rows.keeps);
-        fill_check(check / 3, rows.right, rows.right, rows.keeps + ROW_STEPS); /* the right keeps differ */
+        fill_row(check, rows.mine);
+        fill_row(check, rows.left);
+        fill_row(check, rows.right);
+        fill_keeps(check, rows.keeps);
+        fill_keeps(check / 3, rows.keeps + ROW_STEPS); /* the right keeps differ from the left */
         gfx_quarter_spread_scalar(rows.mine, rows.left, rows.right, rows.keeps, rows.scalar, ROW_STEPS);
         gfx_quarter_spread(rows.mine, rows.left, rows.right, rows.keeps, rows.pie, ROW_STEPS);
         TEST_ASSERT_EQUAL_HEX16_ARRAY(rows.scalar, rows.pie, 2 * ROW_PIXELS);
@@ -160,7 +169,7 @@ test_quarter_spread_matches_scalar(void) {
 }
 
 /* One frame of half rows doubled across, all internal: the spread against
- * two selects into internal rows and the interleave that zips them. */
+ * its plain C body. */
 static void
 test_quarter_spread_cost(void) {
     spread_rows_t rows;
@@ -173,27 +182,19 @@ test_quarter_spread_cost(void) {
     for (int step = 0; step < 2 * ROW_STEPS; step++) {
         rows.keeps[step] = rand() % 8 == 0 ? (uint8_t)rand() : 0;
     }
-    uint16_t* even = rows.scalar;
-    uint16_t* odd = rows.scalar + ROW_PIXELS;
     uint32_t start = esp_cpu_get_cycle_count();
     for (int y = 0; y < ROWS; y++) {
-        gfx_quarter_select(rows.mine, rows.left, rows.keeps, even, ROW_STEPS);
-        gfx_quarter_select(rows.mine, rows.right, rows.keeps + ROW_STEPS, odd, ROW_STEPS);
-        for (int x = 0; x < ROW_PIXELS; x++) {
-            rows.pie[2 * x] = even[x];
-            rows.pie[(2 * x) + 1] = odd[x];
-        }
+        gfx_quarter_spread_scalar(rows.mine, rows.left, rows.right, rows.keeps, rows.scalar, ROW_STEPS);
     }
-    const uint32_t select_cycles = esp_cpu_get_cycle_count() - start;
+    const uint32_t scalar_cycles = esp_cpu_get_cycle_count() - start;
     start = esp_cpu_get_cycle_count();
     for (int y = 0; y < ROWS; y++) {
         gfx_quarter_spread(rows.mine, rows.left, rows.right, rows.keeps, rows.pie, ROW_STEPS);
     }
     const uint32_t spread_cycles = esp_cpu_get_cycle_count() - start;
     const double pixels = (double)ROW_PIXELS * ROWS;
-    ESP_LOGI("quarter_select",
-             "doubled across, one half frame: two selects and the zip %.2f cycles/half pixel, spread %.2f",
-             select_cycles / pixels, spread_cycles / pixels);
+    ESP_LOGI("quarter_select", "quarter spread, one half frame: scalar %.2f cycles/half pixel, pie %.2f",
+             scalar_cycles / pixels, spread_cycles / pixels);
     spread_rows_free(&rows);
 }
 
