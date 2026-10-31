@@ -181,6 +181,9 @@ class FrameReports(unittest.TestCase):
             # Every path pose replays in the same ms, so neither correlation is drawn.
             self.assertIn(f"| gallery | landscape | {path_median:.2f} | {PEAK_TESTED / PIXELS:.2f} | 100 | – | – | – |",
                           body)
+            # A row the renderer cannot draw by name (a take) has no data and is left out, not missing.
+            take = "\n".join(traced("gallery-take", q) for q in views.QUARTERS)
+            self.assertNotIn("| gallery-take |", views.tables(text + "\n" + take, ["gallery", "gallery-take"], data))
             overdraw_data(data, "gallery", views.QUARTERS[:1])
             with self.assertRaisesRegex(ValueError, f"{len(PEAKS) + PATH_POSES} poses missing and 0 not in"):
                 views.tables(text, ["gallery"], data)
