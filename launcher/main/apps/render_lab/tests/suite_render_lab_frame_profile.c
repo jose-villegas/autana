@@ -49,6 +49,9 @@ static const capybara_take_t capybara_back = {"capybara-back", CAPYBARA_VIEW_BAC
 static const capybara_take_t capybara_close = {"capybara-close", CAPYBARA_VIEW_CLOSE, CAPYBARA_CLIP_CUT_MS};
 static const capybara_take_t capybara_blend = {"capybara-blend", CAPYBARA_VIEW_HOME, CAPYBARA_CLIP_BLEND_MS};
 
+/* A capybara scenario: its take and budgets. */
+#define CAPYBARA_ROW(take, ...) {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, &(take), __VA_ARGS__}
+
 /* Worst of a 5-seed capture on A308 (before and after its move), 20E8 and
  * 2124, + 1%; per quarter, portrait then landscape. */
 static const profile_scenario_t profile_scenarios[] = {
@@ -58,12 +61,12 @@ static const profile_scenario_t profile_scenarios[] = {
     {.scene = &scene_sponza[SCENE_BAKED_FITTED], .quarters = {{41341, 49565}, {39726, 46664}}},
     {.scene = &scene_sponza[SCENE_BAKED_FITTED_FULL], .quarters = {{49536, 62165}, {47469, 58108}}},
     {.scene = &scene_sponza[SCENE_BAKED_FLAT_FITTED], .quarters = {{40285, 50300}, {39053, 48179}}},
-    {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, &capybara_home, {{20941, 21286}, {21500, 21803}}},
-    {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, &capybara_front, {{20907, 21289}, {21305, 21590}}},
-    {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, &capybara_side, {{20921, 21268}, {21591, 21909}}},
-    {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, &capybara_back, {{20352, 20994}, {20989, 21423}}},
-    {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, &capybara_close, {{23002, 23384}, {23807, 24080}}},
-    {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, &capybara_blend, {{21806, 22738}, {22438, 22866}}},
+    CAPYBARA_ROW(capybara_home, {{20941, 21286}, {21500, 21803}}),
+    CAPYBARA_ROW(capybara_front, {{20907, 21289}, {21305, 21590}}),
+    CAPYBARA_ROW(capybara_side, {{20921, 21268}, {21591, 21909}}),
+    CAPYBARA_ROW(capybara_back, {{20352, 20994}, {20989, 21423}}),
+    CAPYBARA_ROW(capybara_close, {{23002, 23384}, {23807, 24080}}),
+    CAPYBARA_ROW(capybara_blend, {{21806, 22738}, {22438, 22866}}),
     {&scene_bistro[SCENE_BAKED_FITTED_FULL], BISTRO_SCENE, BISTRO_CAMERA, NULL, {{41782, 62092}, {40404, 57696}}},
 };
 
