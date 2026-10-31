@@ -39,6 +39,7 @@
 #include "draw/draw_image_format.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
+#include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_test.h"
 #include "image/pixel/rgb565.h"
 #include "image/pixel/rgb888.h"

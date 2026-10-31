@@ -1,6 +1,5 @@
 #include "palette_screen.h"
 
-#include "gfx/target/gfx_color.h"
 #include "ui/ui.h"
 
 #include "apps/sand/material.h"

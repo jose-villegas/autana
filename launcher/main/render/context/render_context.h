@@ -63,6 +63,11 @@ typedef struct {
     bool (*second_view)(void* state, const raster_t* raster, render_view_t* out, bool* listed);
     /* Optional. Over the composed picture, `width` by `height`, with draw/. */
     void (*overlay)(void* state, int width, int height);
+    /* Optional. Before each draw, room in the state for `instances`; false
+     * detaches the view, logged, and the frame draws shaded. */
+    bool (*reserve)(void* state, int instances);
+    /* Optional. Frees what reserve took, before the state is freed. */
+    void (*release)(void* state);
 } render_debug_view_t;
 
 #define RENDER_DEBUG_VIEW_UNKNOWN -2
@@ -85,6 +90,7 @@ typedef struct {
     int64_t chose_at_us; /* when the predictor last chose; 0 before its first choice */
     int debug_view;      /* zero is shaded; table rows start at one */
     void* debug_view_state;
+    int refused_view; /* a view whose reserve failed, not asked for again until another is */
     raster_attachment_t debug_view_attachment;
     const raster_attachment_t* debug_view_attached[1];
     render_context_frame_t frame;
