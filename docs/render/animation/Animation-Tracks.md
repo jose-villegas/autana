@@ -5,10 +5,10 @@ keys, each a time and a value, and one call gives the value at any moment.
 It knows a target only through the field declarations a caller passes to
 `anim_bind()`; a caller may also sample a track and map the numbers itself.
 Its layer is in
-[firmware/README.md](../firmware/README.md); it sits above `asset/`,
+[firmware/README.md](../../firmware/README.md); it sits above `asset/`,
 `core/` and `math/`, and allocates nothing.
 
-The format is glTF 2.0's own animation model<sup>[[17]](../Citations.md#khronos-gltf-2-0)</sup>, so a track authored in Blender
+The format is glTF 2.0's own animation model<sup>[[17]](../../Citations.md#khronos-gltf-2-0)</sup>, so a track authored in Blender
 or any other exporter plays back as it was made.
 
 ```mermaid
@@ -21,7 +21,7 @@ flowchart LR
 ```
 
 A clip reaches the firmware as an entry of an
-[asset pack](../assets/README.md): `build_pack.py` bakes it through
+[asset pack](../../assets/README.md): `build_pack.py` bakes it through
 `tools/anim/tracks_asset.py`, the entry's one writer, when the packs are
 built.
 
@@ -33,11 +33,11 @@ built.
 | `values` | `width` floats per key; three runs of them per key for `ANIM_CUBIC` |
 | `width` | 1 to 4 components: a scalar, a translation, a quaternion |
 | `interp` | `ANIM_STEP`, `ANIM_LINEAR` or `ANIM_CUBIC` (glTF `CUBICSPLINE`) |
-| `quaternion` | The value is an xyzw rotation, sampled unit: linear keys slerp<sup>[[19]](../Citations.md#shoemake-1985)</sup>, copied and cubic keys are normalised |
+| `quaternion` | The value is an xyzw rotation, sampled unit: linear keys slerp<sup>[[19]](../../Citations.md#shoemake-1985)</sup>, copied and cubic keys are normalised |
 
 A cubic key holds an in-tangent, the value and an out-tangent, in units per
 second, exactly as glTF stores them, and samples as the specification's cubic
-Hermite spline<sup>[[17]](../Citations.md#khronos-gltf-2-0)</sup>. A track has one interpolation.
+Hermite spline<sup>[[17]](../../Citations.md#khronos-gltf-2-0)</sup>. A track has one interpolation.
 
 A binding names an object path, a component and a field. Re-exporting a
 file with reordered nodes preserves these names. The bake maps glTF targets
@@ -48,7 +48,7 @@ onto engine fields:
 | node `translation` | `TRNS` | `position` | `VEC3` |
 | node `rotation` | `TRNS` | `rotation` | `QUAT` |
 | node `scale` | `TRNS` | `scale` | `VEC3` |
-| `/cameras/N/perspective/yfov` pointer (`KHR_animation_pointer`<sup>[[18]](../Citations.md#khronos-khr-animation-pointer)</sup>) | `CAMR` | `half_fov_short_tan` | `FLOAT` |
+| `/cameras/N/perspective/yfov` pointer (`KHR_animation_pointer`<sup>[[18]](../../Citations.md#khronos-khr-animation-pointer)</sup>) | `CAMR` | `half_fov_short_tan` | `FLOAT` |
 
 The camera pointer binds to the one node holding that camera. The bake uses
 `gltf_read.camera_half_fov_short_tan()` for values and
@@ -76,10 +76,10 @@ A `NAME.anim.toml` beside its source names one animation in it: a `.glb`, an
 `.fbx` (converted to glTF once) or a camera `.keys.toml` (built into glTF in
 memory at every bake). `build_pack.py` finds every such file by searching,
 so no list is kept. A
-clip no scene names is a [pack](../assets/Building-Packs.md#packs) of its own, named
+clip no scene names is a [pack](../../assets/Building-Packs.md#packs) of its own, named
 `NAME`, holding the one entry `NAME`; `asset_store_load("NAME")` mounts it.
 A clip a scene's camera flies travels in that scene's pack instead.
-The [asset-pack boundary](Mesh-Import.md#the-offline-tools) mirrors
+The [asset-pack boundary](../offline/Mesh-Import.md#the-offline-tools) mirrors
 translation and rotation tracks, cubic tangents included, into the engine
 frame; other tracks, key times and interpolation stay as authored.
 
@@ -88,7 +88,7 @@ source = "NAME.glb"     # a .glb, .fbx or .keys.toml beside this one
 animation = "walk"      # the animation's name in the glTF
 ```
 
-The entry's layout is [TRCK v3](../assets/formats/TRCK.md).
+The entry's layout is [TRCK v3](../../assets/formats/TRCK.md).
 
 ### Reading a clip
 
@@ -154,7 +154,7 @@ integer milliseconds; `anim_playhead_advance()` moves it by each frame's
 
 Below, a real clip played through the scene's calls:
 
-![Clip time against app time: a loop wraps at the clip's duration and a clamp holds there; speed 0.5 halves the slope, a pause holds it flat and speed 2 doubles it](../images/anim/anim-playhead.png)
+![Clip time against app time: a loop wraps at the clip's duration and a clamp holds there; speed 0.5 halves the slope, a pause holds it flat and speed 2 doubles it](../../images/anim/anim-playhead.png)
 
 | Setting | Clip time |
 |---|---|
@@ -175,7 +175,7 @@ For a camera path without Blender, write a `NAME.keys.toml` and name it as
 the source of a `NAME.anim.toml`; `tools/anim/camera_keys.py` builds it into
 glTF when the clip is baked, so no `.glb` is kept. The keys file sets `node`,
 `animation` and `[[keys]]` with seconds `t`, `eye` and `look_at` vectors.
-Translation is a smooth Catmull-Rom curve<sup>[[20]](../Citations.md#catmull-1974)</sup> and rotation interpolates
+Translation is a smooth Catmull-Rom curve<sup>[[20]](../../Citations.md#catmull-1974)</sup> and rotation interpolates
 short-way quaternions with +Y up; repeat the first key at the end to close
 the loop.
 
@@ -255,10 +255,10 @@ milliseconds, read from the clip's `TRCK` entry by the same
 `NAME.anim.toml`, it bakes the clip into a scratch pack in the source frame;
 given `--pack PACK --clip ID`, it reads the built pack in the engine frame.
 With `--poses NODE W H TAN NEAR`, it prints a camera node as the poses file
-[`report_triangle_sizes.sh`](../../launcher/tools/r3d/README.md#triangle-sizes)
+[`report_triangle_sizes.sh`](../../../launcher/tools/r3d/README.md#triangle-sizes)
 reads. A poses file is in the source frame, so `--poses` takes a `.anim.toml`:
 a built pack's tracks are in the engine frame and give wrong poses
-([Mesh-Import.md](Mesh-Import.md#the-offline-tools)).
+([Mesh-Import.md](../offline/Mesh-Import.md#the-offline-tools)).
 
 ```sh
 python launcher/tools/anim/track_host.py PATH/NAME.anim.toml --every 250
@@ -293,7 +293,7 @@ build it, the compiler or the flags change.
 
 ## Rules
 
-- **Single precision only**, as in [Mesh-Rendering.md](Mesh-Rendering.md#rules-the-layer-keeps).
+- **Single precision only**, as in [Mesh-Rendering.md](../Mesh-Rendering.md#rules-the-layer-keeps).
 - **Portable.** No ESP-IDF and no allocation; a host suite runs all of it.
 - **The caller owns the environment.** Time is passed in; nothing reads a
   clock.
@@ -370,16 +370,16 @@ and pause on an empty or frozen previous slot return false.
 Below, a skinned mesh's clips play first to second, then to a third,
 interrupted half way by a play back to the first:
 
-![The skeleton through the three blends: the shown pose in black between the current clip alone and the previous slot](../images/anim/anim-blend.gif)
+![The skeleton through the three blends: the shown pose in black between the current clip alone and the previous slot](../../images/anim/anim-blend.gif)
 
-![Blend weight against app time, ramping 0 to 1 after each play and restarting from the frozen pose at the interruption; below, one joint's turn as shown, as the current clip alone and in the previous slot](../images/anim/anim-blend.png)
+![Blend weight against app time, ramping 0 to 1 after each play and restarting from the frozen pose at the interruption; below, one joint's turn as shown, as the current clip alone and in the previous slot](../../images/anim/anim-blend.png)
 
 ### Blending rotations
 
 Position and scale blend linearly. Rotation takes the sign-corrected,
-normalized quaternion sum (nlerp)<sup>[[56]](../Citations.md#kavan-2008)</sup> per joint
+normalized quaternion sum (nlerp)<sup>[[56]](../../Citations.md#kavan-2008)</sup> per joint
 between the two poses, without the paper's dual quaternions.
 
 It stays unit and takes the short way, but its angular speed peaks mid-blend:
 
-![A 150 degree turn by blend weight: nlerp lags slerp early and leads it late; its angular speed peaks mid-blend while slerp's is constant](../images/anim/anim-nlerp.png)
+![A 150 degree turn by blend weight: nlerp lags slerp early and leads it late; its angular speed peaks mid-blend while slerp's is constant](../../images/anim/anim-nlerp.png)
