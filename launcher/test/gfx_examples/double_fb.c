@@ -1,5 +1,5 @@
 /* Double framebuffer: request the layout on entry and release it on exit. */
-#include "gfx/present/gfx_mode.h"
+#include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
 #include "image/pixel/rgb565.h"
 
