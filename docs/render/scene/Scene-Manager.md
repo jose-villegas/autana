@@ -56,7 +56,7 @@ App-exit cleanup of async requests leaves that handle held.
 | `scene_camera_lens(scene, name_hash(camera))` | a camera's lens (`SCENE_CAMERA_FIRST`: the first); its pose is its entity's transform |
 | `scene_camera_set_present(scene, camera, present)` | sets the camera's presentation; false for a non-camera entity or invalid mode |
 | `scene_camera_set_shift(scene, camera, shift)` | sets its lens shift, an off-axis view along the camera's right and up in picture short sides ([Camera](Camera.md#lens-shift)); false for a non-camera entity or a shift that is not finite |
-| `scene_camera_set_small_fill(scene, camera, fill)` | sets its `small_fill_t` ceiling, colour gate and style; defaults are `SMALL_FILL_SMOOTH`; pass `SMALL_FILL_FAST` to opt into tuned filling; false for a non-camera entity or invalid ceiling or style ([Small fill](../Mesh-Rendering.md#small-fill)) |
+| `scene_camera_set_small_fill(scene, camera, fill)` | sets its `small_fill_t` ceiling, colour gate and style; defaults are `SMALL_FILL_SMOOTH`; pass `SMALL_FILL_FAST` to opt into tuned filling; false for a non-camera entity or invalid ceiling or style ([Small fill](../frame/Coverage.md#small-fill)) |
 | `scene_entity_local()` / `scene_entity_set_local()` | the transform component's stored `transformf_t`, in the parent's frame; a root's is its world |
 | `scene_entity_set_enabled()` | hide or show the entity with its descendants |
 | `scene_entity_parent()` / `scene_entity_is_within()` | its parent, or `SCENE_ENTITY_NONE` for a root; whether it is an entity or one of its descendants |

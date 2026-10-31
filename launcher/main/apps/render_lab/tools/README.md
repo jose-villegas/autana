@@ -154,7 +154,7 @@ It sets `render_lab.upscale`.
 
 The generic scene viewer accepts `--small-fill CEILING,GATE,STYLE`; its defaults
 come from `SMALL_FILL_SMOOTH`. Styles use the `small_fill_style_t` values.
-The [engine feature](../../../../../docs/render/Mesh-Rendering.md#small-fill)
+The [engine feature](../../../../../docs/render/frame/Coverage.md#small-fill)
 defines the axes and defaults.
 
 ```sh
