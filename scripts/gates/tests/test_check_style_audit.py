@@ -318,13 +318,10 @@ class StyleAuditTest(unittest.TestCase):
             "launcher/main/apps/x/x.h boot/boot_anim.h",
             "launcher/main/apps/x/tests/suite_x.c selftest/post.h",
             "launcher/main/apps/x/x.c <selftest/post.h>",
-            "editor/src/x.cpp shell/shell.h",
-            "editor/src/x.cpp <selftest/post.h>",
         ), allowed=(
             "launcher/main/apps/x/x.c app/app.h",
             "launcher/main/apps/x/x.c ui/ui.h",
             "launcher/main/apps/x/x.c console/console_verbs.h",
-            "editor/src/x.cpp ui/ui.h",
             "launcher/main/shell/apps/x/x.c selftest/post.h",
         ))
 
@@ -352,7 +349,6 @@ class StyleAuditTest(unittest.TestCase):
             "launcher/main/shell/x.c ui/relative.h",
             "launcher/main/shell/x.c ui/ui_internal.h",
             "launcher/main/shell/x.c ui/deeper.h",
-            "editor/src/x.cpp ui/ui_internal.h",
             "launcher/main/apps/x/tests/suite_x.c probe.h",
         ), allowed=(
             "launcher/main/apps/x/x.c ui/ui.h",

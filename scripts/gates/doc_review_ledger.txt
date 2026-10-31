@@ -4,7 +4,6 @@ docs/firmware/Building-an-App.md	2026-09-21	PR #337 round 2: reviewed against th
 docs/tools/Doc-Drift.md	2026-09-22	whole-repo docs review: reviewed against doc_drift.py, accurate
 docs/tools/Mermaid-Diagrams.md	2026-09-22	whole-repo docs review: reviewed against check-mermaid.mjs, check-mermaid-staged.sh and mermaid.yml, accurate
 docs/cli/Live-Tuning.md	2026-09-22	whole-repo docs review: reviewed against services/tune.h, console_verbs.h and console_tune.c, accurate
-editor/README.md	2026-09-22	whole-repo docs review: reviewed against editor/CMakeLists.txt and editor/src/layout_document.cpp, accurate
 docs/gfx/Present.md	2026-10-21	autana-8sv4: reviewed against the 80 MHz full-width send rule, accurate
 docs/testing/README.md	2026-09-22	PR #340 round 4: reviewed against the span send and the strip-buffer alias, accurate
 docs/firmware/Building-an-App.md	2026-09-22	PR #345 round 3: reviewed against app_registry.c and the non-const app_t, accurate
@@ -14,23 +13,23 @@ docs/plans/Settings-App-Plan.md	2026-09-27	PR #442 round 2: reviewed against the
 docs/tools/Build-Variants.md	2026-10-24	matrix/table rewrite, docs-reviewer pass against Kconfig, sdkconfig fragments and idf_variant.sh
 docs/render/Mesh-Rendering.md	2026-09-28	PR #444 round 2: reviewed against launcher/main/render/ and launcher/tools/r3d/
 docs/cli/Docs-Search.md	2026-09-28	PR #445 round 2: reviewed against scripts/docs/docs_search.py
-docs/render/Mesh-Import.md	2026-09-30	split out of Mesh-Rendering.md: moved text, checked against launcher/tools/r3d/
-docs/render/README.md	2026-10-01
+docs/render/offline/Mesh-Import.md	2026-09-30	split out of Mesh-Rendering.md: moved text, checked against launcher/tools/r3d/
+docs/render/README.md	2026-10-31	the pipeline, its owners and the reader paths: reviewed
 docs/tools/Frame-Cost.md	2026-10-01	reviewed against launcher/main/profile/frame_cost.h, frame_cost.c, console_perf_parse.h and scripts/autana/autana.py
 docs/tools/Layout-Noise.md	2026-10-05
 launcher/tools/perf/README.md	2026-10-05
 docs/sand/Testing-Sand.md	2026-10-05
-docs/render/Animation-Tracks.md	2026-10-05	PR 625 round 3: reviewed against anim_tracks.c, tracks_asset.py and bake_tracks.py, accurate
-docs/render/Mesh-Import.md	2026-10-05	PR 625 round 3: BOUNDS/FORMAT reviewed against r3d_lit_mesh.c, accurate
-docs/render/Animation-Tracks.md	2026-10-06	tracks final sweep: reviewed against tracks_asset.py, track_host.py and test_anim_bake.py, accurate
+docs/render/animation/Animation-Tracks.md	2026-10-05	PR 625 round 3: reviewed against anim_tracks.c, tracks_asset.py and bake_tracks.py, accurate
+docs/render/offline/Mesh-Import.md	2026-10-05	PR 625 round 3: BOUNDS/FORMAT reviewed against r3d_lit_mesh.c, accurate
+docs/render/animation/Animation-Tracks.md	2026-10-06	tracks final sweep: reviewed against tracks_asset.py, track_host.py and test_anim_bake.py, accurate
 launcher/tools/anim/README.md	2026-10-06	tracks final sweep: reviewed against tracks_asset.py and track_host.py, accurate
-docs/render/Dynamic-Resolution.md	2026-10-07	PR #684 round 2: hand-written prose reviewed against choose_path() and the capture, accurate
-docs/render/Scene-Manager.md	2026-10-07	PR #684 round 2: frame sequence reviewed against scene_render(), accurate
+docs/render/frame/Dynamic-Resolution.md	2026-10-07	PR #684 round 2: hand-written prose reviewed against choose_path() and the capture, accurate
+docs/render/scene/Scene-Manager.md	2026-10-07	PR #684 round 2: frame sequence reviewed against scene_render(), accurate
 docs/render/Mesh-Rendering.md	2026-10-07	PR #684 round 3: census/draw_culled prose reviewed against raster.c and raster.h, accurate
 docs/tools/Render-Harness.md	2026-10-09	generated-block marker forms reviewed against generated_blocks.py and check_doc_generated.py, accurate
-docs/render/Animation-Tracks.md	2026-10-10	citations: reviewed against anim_track.c and camera_keys.py, accurate
-docs/render/Dynamic-Resolution.md	2026-10-10	citations: reviewed against resolution.c, accurate
-docs/render/Skinned-Lighting.md	2026-10-10	citations: reviewed against vec3f.h, accurate
+docs/render/animation/Animation-Tracks.md	2026-10-10	citations: reviewed against anim_track.c and camera_keys.py, accurate
+docs/render/frame/Dynamic-Resolution.md	2026-10-10	citations: reviewed against resolution.c, accurate
+docs/render/animation/Skinned-Lighting.md	2026-10-10	citations: reviewed against vec3f.h, accurate
 docs/Citations.md	2026-10-10	citations: rows checked against their DOI and publisher pages, cited-by against the gate
 docs/math/README.md	2026-10-10
 docs/tools/Render-Harness.md	2026-10-10	GPU input fingerprint, record lookup and workflow flowchart reviewed against doc_stages.py, inputs_recorded.py and doc-images-gpu.yml, accurate
@@ -54,18 +53,18 @@ docs/math/Motion.md	2026-10-18	new; checked against orbit_motion.h and spring_li
 docs/input/Touch.md	2026-10-20	input split: reviewed against input/ sources, accurate
 docs/input/Buttons.md	2026-10-20	input split: reviewed against input/ sources, accurate
 docs/input/Motion-Axes.md	2026-10-20	input split: reviewed against input/ sources, accurate
-docs/render/Skeleton-and-Skin.md	2026-10-20	pictures-first rework: reviewed against skeleton_asset.py, skin_asset.py and quantize_weights, accurate
+docs/render/animation/Skeleton-and-Skin.md	2026-10-20	pictures-first rework: reviewed against skeleton_asset.py, skin_asset.py and quantize_weights, accurate
 docs/c-style/Function-Attributes.md	2026-10-20	new; checked against the cited sources
 docs/c-style/Concurrency.md	2026-10-20	new; checked against the cited sources
 docs/c-style/Register-Access.md	2026-10-20	new; checked against the cited sources
 docs/memory/Linker-Fragments.md	2026-10-20	new; checked against the cited sources
-docs/render/Camera.md	2026-10-20	new; checked against the cited sources
+docs/render/scene/Camera.md	2026-10-20	new; checked against the cited sources
 docs/testing/Test-State-Reset.md	2026-10-20	new; checked against the cited sources
 docs/tools/Console-Framing.md	2026-10-20	new; checked against the cited sources
 docs/tools/Process-Trees.md	2026-10-20	new; checked against the cited sources
-docs/render/Baked-Mesh.md	2026-10-20	split out of Mesh-Import.md: moved text, LMSH layout unchanged
-docs/render/Bake-Method.md	2026-10-20	split out of Mesh-Import.md: moved text
-docs/render/Animation-Tracks.md	2026-10-20	scene playback pictures first: reviewed against anim_layer.c, anim_playhead.c and scene_animation.c, accurate
+docs/render/offline/Baked-Mesh.md	2026-10-20	split out of Mesh-Import.md: moved text, LMSH layout unchanged
+docs/render/offline/Bake-Method.md	2026-10-20	split out of Mesh-Import.md: moved text
+docs/render/animation/Animation-Tracks.md	2026-10-20	scene playback pictures first: reviewed against anim_layer.c, anim_playhead.c and scene_animation.c, accurate
 docs/notes/Display-and-Rendering.md	2026-10-21	autana-8sv4: reviewed against the 80 MHz full-width send rule, accurate
 docs/math/Conventions.md	2026-10-22
 docs/cli/README.md	2026-10-22	cli split from Autana-CLI.md, docs-reviewer pass
@@ -85,3 +84,7 @@ docs/tools/Pull-Requests.md	2026-10-24	new page, docs-reviewer pass
 docs/kinematics/README.md	2026-10-25	new index for the kinematics package; links checked against every docs/kinematics page
 docs/kinematics/Orbit.md	2026-10-25	moved from docs/math/Motion.md with orbit_motion.h; checked against kinematics/orbit/orbit_motion.h
 docs/kinematics/Follow.md	2026-10-25	new, from the fling decay and reset spring sections of docs/math/Motion.md; checked against kinematics/follow/follow.h
+docs/assets/formats/SCNE.md	2026-10-30	SCNE v5 moved from Scene-Files: reviewed against scene_format.h and scene_internal.h, accurate
+docs/render/offline/Appearance-Fit.md	2026-10-30	moved from Scene-Files: key meanings checked against appearance_simplify.py, accurate
+docs/render/frame/README.md	2026-10-31	new, one frame and its cores from Render-Pipeline: reviewed
+docs/render/offline/README.md	2026-10-31	the offline stages and bake steps from Render-Pipeline: reviewed

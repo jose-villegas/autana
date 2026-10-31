@@ -19,7 +19,7 @@ REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO / "scripts/lib"))
 sys.path.insert(0, str(REPO / "launcher/tools/render"))
 from doc_tables import table_rows  # noqa: E402
-from process_tree import stop_process_tree, launch_process_tree, close_process_tree  # noqa: E402
+from process_tree import stop_process_tree, launch_process_tree, close_process_tree, terminate_unwinds  # noqa: E402
 from device_capture import RESULT_RE, BUILD_ID_RE as BUILD_LINE  # noqa: E402
 
 from frame_profile import PROFILE_RE
@@ -92,8 +92,10 @@ def autana_command(*words, override=None):
     return command + list(words)
 
 
+@terminate_unwinds()
 def run_stamped(command, log, timeout=1800):
-    """Stamp each output line; past the deadline, stop the command's whole process tree."""
+    """Stamp each output line; past the deadline, or on an interrupt or SIGTERM,
+    stop the command's whole process tree."""
     import queue
     import threading
     started = time.monotonic()

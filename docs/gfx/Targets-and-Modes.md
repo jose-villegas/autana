@@ -2,23 +2,29 @@
 
 ## Render targets
 
-`gfx_render_target.h`: a picture drawn off the panel as a set of attachments, each
-a per-pixel map with its own size per pixel. Colour comes first, in the panel's own
-format, then depth, then any further map a renderer attaches.
+[`gfx_target.h`](../../launcher/main/gfx/target/gfx_target.h) describes a picture
+as `image_t` attachments: colour in `GFX_PIXEL_FORMAT`, depth in `IMAGE_U16`,
+then further maps in their own formats.
 
-Every attachment has the target's width and rows, so one row index finds a pixel in
-all of them.
+Every attachment shares width and height. Each image's `pitch` is the byte
+distance between row starts; `first_row` locates its first row in the picture.
+A framebuffer, band or replay strip uses one colour attachment.
+
+`gfx_target_t` has a flexible attachment array. `GFX_TARGET_STORAGE(n)` exposes
+its `target` union member and stays last in an enclosing struct.
+Drawing surfaces borrow a `const gfx_target_t*`.
 
 | Function | What it does |
 |---|---|
-| `gfx_render_target_bytes()` | the bytes every attachment takes, from each one's size per pixel |
-| `gfx_render_target_carve()` | points each attachment at its part of one block |
-| `gfx_render_target_window()` | the same picture's rows `[row0, row1)` |
-| `gfx_render_target_row()`, `_color()`, `_depth()` | an attachment's first pixel of a row |
+| `gfx_target_of_color()` | initialises caller storage for one colour attachment |
+| `gfx_target_bytes()` | sizes the attachments, rounded to word boundaries |
+| `gfx_target_carve()` | assigns each attachment pixels, dimensions and byte pitch |
+| `gfx_target_window()` | copies attachment views for picture rows `[row0, row1)` |
+| `gfx_target_row()`, `gfx_target_color()`, `gfx_target_depth()` | addresses an attachment's picture row |
 
-A target can be carved from a renderer's scratch block, or point its colour at a
-band buffer and its depth at a band of its own. What an attachment means beyond its
-size is its renderer's.
+A target can be carved from a scratch block or borrow existing buffers.
+Windows copy every attachment; copying a `gfx_target_t` value loses its flexible
+array. An attachment's meaning beyond its format belongs to its renderer.
 
 ## Modes
 
@@ -62,11 +68,21 @@ Each picture's frame cost on the board, from one build, in `FULL_FB`,
 each sent frame, so the draw skips its clear; in `_CONTENDED` a send runs
 during the whole draw, so both share PSRAM. Not run: the suite has no such pass.
 
-The r3d scenes draw in `update()`; the boot animation draws a full frame in
-`frame()`.
+A layout costs about the same ms whatever the picture, so each scene's bars below
+are narrow in ms while their percentages spread. The r3d scenes draw in `update()`
+and pay for the second framebuffer; the boot animation draws a full frame in
+`frame()` and saves about as much.
 
-<!-- generated: gfx-layout-costs sha256=5f4317e1e75d4249a07f8a4e057e62dca99bcec8cb5a295406ed27ffb6d0c1be -->
+<!-- generated: gfx-layout-costs sha256=9621101186a45b409f6e414d543eebb09d668fcaf498356f9242fc30a3844211 -->
 ![Frame cost by framebuffer layout](../images/render/gfx-layout-costs.png)
+
+| Scene | Pictures | Draws | Best layout | Gain against `FULL_FB` | Others |
+|---|---|---|---|---|---|
+| sponza | 12 | `update()`, the frame before sent meanwhile | `FULL_FB` | — | `DOUBLE_FB` +4.8 ms (+13%), `DOUBLE_FB_CLEAR_ON_SEND` +8.7 ms (+24%) |
+| capybara | 2 | `update()`, the frame before sent meanwhile | `FULL_FB` | — | `DOUBLE_FB` +4.6 ms (+33%), `DOUBLE_FB_CLEAR_ON_SEND` +8.8 ms (+62%) |
+| boot animation | 7 | a full frame in `frame()` | `DOUBLE_FB_CLEAR_ON_SEND` | -11.4 ms (-33%) | `FULL_FB`, `DOUBLE_FB` -7.6 ms (-23%), `DOUBLE_FB_CONTENDED` -7.8 ms (-24%) |
+
+<details><summary>Every picture</summary>
 
 | Picture | `FULL_FB` | `DOUBLE_FB` | `DOUBLE_FB_CLEAR_ON_SEND` | `DOUBLE_FB_CONTENDED` |
 |---|---|---|---|---|
@@ -92,7 +108,9 @@ The r3d scenes draw in `update()`; the boot animation draws a full frame in
 | boot animation, crossfade_late | 44.0 | 36.4 (-17%) | 31.1 (-29%) | 36.1 (-18%) |
 | boot animation, near_end | 22.2 | 14.5 (-35%) | 15.3 (-31%) | 14.4 (-35%) |
 
-Board ms per frame, mean of each suite's samples. A change is against the first layout its row reports.
+</details>
+
+Board ms per frame, mean of each suite's samples. A change is against the first layout its row reports; a scene row spans its variants and orientations, and its best layout has the lowest mean.
 <!-- /generated: gfx-layout-costs -->
 
 Regenerate with

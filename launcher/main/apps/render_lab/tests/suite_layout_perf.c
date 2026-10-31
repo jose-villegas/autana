@@ -33,7 +33,8 @@
 static const char* TAG = "layout_perf";
 
 static const char* const scene_keys[] = {
-    "sponza-fitted-full", "sponza", "sponza-lite", "sponza-flat", "sponza-fitted", "sponza-flat-fitted", "capybara",
+    "sponza-fitted-full", "sponza",   "sponza-lite",        "sponza-flat", "sponza-fitted",
+    "sponza-flat-fitted", "capybara", "bistro-fitted-full",
 };
 #define SCENE_KEY_COUNT ((int)(sizeof scene_keys / sizeof scene_keys[0]))
 

@@ -1,6 +1,6 @@
 /*
  * anim_skeleton: a validated SKEL v1 mapped view; the pack outlives it.
- * docs/render/Skeleton-and-Skin.md owns the layout. No allocation.
+ * docs/assets/formats/SKEL.md owns the layout. No allocation.
  */
 #pragma once
 #include <stdint.h>

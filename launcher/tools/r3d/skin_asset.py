@@ -1,4 +1,4 @@
-"""SKIN v2 encoding and LMSH position matching; docs/render/Skeleton-and-Skin.md."""
+"""SKIN v2 encoding and LMSH position matching; layout: docs/assets/formats/SKIN.md."""
 
 import math
 import struct

@@ -2,7 +2,7 @@
 
 The engine's maths library: scalar operations, linear algebra, shapes and
 signal processing. It depends on nothing but the C library and libm, so every
-layer of the firmware, the host tests, the tools and the editor build it. The API
+layer of the firmware, the host tests and the tools build it. The API
 covers what its types imply rather than only what today's callers use, so it may
 carry functions nothing calls yet.
 
@@ -36,7 +36,7 @@ reciprocal-square-root seeds by default; the QEMU defaults disable it.
 | Build | How it gets math |
 |---|---|
 | Firmware (ESP-IDF) | `launcher/packages/` is in `EXTRA_COMPONENT_DIRS`; a component says `REQUIRES math` |
-| Plain CMake (the editor) | `add_subdirectory()` of this folder, then link the `math` target |
+| Plain CMake | `add_subdirectory()` of this folder, then link the `math` target |
 | Host scripts (run_tests.sh, render harness, reports) | `launcher/tools/build/packages.sh`: `package_includes`, `package_sources`, `package_suites` |
 | Standalone tests | `cmake -S launcher/packages/math -B build/math && cmake --build build/math && ctest --test-dir build/math --output-on-failure` |
 | Python tools | `launcher/tools/build/packages.py`: `include_roots()` |
@@ -52,8 +52,10 @@ header's opening comment; `--check` verifies it.
 | Header | Purpose |
 |---|---|
 | [include/math/geometry/ball_template.h](include/math/geometry/ball_template.h) | ball_template: closed balls in any dimension for one number type; see docs/math/Conventions.md#templates for macro arguments. |
+| [include/math/geometry/box3_plane_template.h](include/math/geometry/box3_plane_template.h) | box3_plane_template: how far a real box reaches along a plane: its least and greatest signed distance, and its least objective inside a half-space. |
 | [include/math/geometry/box3_template.h](include/math/geometry/box3_template.h) | box3_template: closed axis-aligned boxes for one number type; see docs/math/Conventions.md#templates for macro arguments. |
 | [include/math/geometry/box3f.h](include/math/geometry/box3f.h) | box3f: a closed axis-aligned box of a float. |
+| [include/math/geometry/box3f_plane.h](include/math/geometry/box3f_plane.h) | box3f_plane: a float box against a float plane (box3_plane_template.h). |
 | [include/math/geometry/box3s.h](include/math/geometry/box3s.h) | box3s: a closed axis-aligned box of int16 position ticks. |
 | [include/math/geometry/circle_template.h](include/math/geometry/circle_template.h) | circle_template: closed discs for one number type; see docs/math/Conventions.md#templates for macro arguments. |
 | [include/math/geometry/circlef.h](include/math/geometry/circlef.h) | circlef: a closed disc of a float. |
@@ -95,6 +97,7 @@ header's opening comment; `--check` verifies it.
 | [include/math/linear/vec_convert.h](include/math/linear/vec_convert.h) | vec_convert: explicit vector conversions; narrowing saturates, rounding ties away from zero. |
 | [include/math/linear/vec_ops_template.h](include/math/linear/vec_ops_template.h) | vec_ops_template: component-wise arithmetic and lerp for vectors of every dimension and number type. |
 | [include/math/linear/vec_swizzle_template.h](include/math/linear/vec_swizzle_template.h) | vec_swizzle_template: swizzles, a new vector made of named components of another (vec3f_zyx, vec2f_yx), for every number type. |
+| [include/math/projection/inverse_depth.h](include/math/projection/inverse_depth.h) | inverse_depth: depth stored as code = scale / z * code_max, for z &gt;= scale, which steps linearly across the screen. |
 | [include/math/projection/project_template.h](include/math/projection/project_template.h) | project_template: shared near-plane endpoint selection for pinhole clipping. |
 | [include/math/projection/projectf.h](include/math/projection/projectf.h) | projectf: pinhole projection in pixels with camera +y up and picture y down. |
 | [include/math/projection/projectx.h](include/math/projection/projectx.h) | projectx: Q16.16 pinhole lens and near clipping in any fixed camera-space scale. |

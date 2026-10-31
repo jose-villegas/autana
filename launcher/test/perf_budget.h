@@ -1,9 +1,11 @@
 /* A mean goal only logs its distance from the measurement. A p95 ceiling fails the test on the board
- * and only logs under QEMU. Zero means not yet pegged. */
+ * once the test ends, so every later row is still measured; it only logs under QEMU. Zero means not
+ * yet pegged. */
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
 #include "esp_log.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 #define PERF_BUDGET_TAG     "device_tests"
@@ -35,7 +37,11 @@ perf_guard(const char* name, int64_t measured_us, int64_t ceiling_us) {
     ESP_LOGI(PERF_BUDGET_TAG, "%s: %lld us, board ceiling %lld us not enforced", name, (long long)measured_us,
              (long long)ceiling_us);
 #else
-    TEST_ASSERT_TRUE_MESSAGE(perf_guard_passes(measured_us, ceiling_us), name);
+    if (!perf_guard_passes(measured_us, ceiling_us)) {
+        ESP_LOGE(PERF_BUDGET_TAG, "%s: %lld us, over its ceiling %lld us", name, (long long)measured_us,
+                 (long long)ceiling_us);
+        suite_fail_after_test(name);
+    }
 #endif
 }
 

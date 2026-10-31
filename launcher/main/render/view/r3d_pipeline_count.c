@@ -13,8 +13,7 @@
 int
 r3d_pipeline_cull_counted(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* out,
                           r3d_pipeline_count_walk_t* walk, r3d_pipeline_counts_t* counts) {
-    planef_frustum(&lens->m, &lens->project, rectf_from_edges(0.0F, 0.0F, (float)lens->width, (float)lens->height),
-                   walk->planes);
+    r3d_lens_frustum(lens, walk->planes);
     int top = 0;
     walk->node[top] = 0;
     walk->mask[top++] = (uint8_t)ALL_PLANES;
@@ -54,7 +53,7 @@ r3d_pipeline_cull_counted(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, ui
 }
 
 /* One triangle into its counter by the draw's own sort (r3d_pipeline.c,
- * draw_cluster and draw_in_front): every corner in front, then some corner
+ * draw_triangles and draw_in_front): every corner in front, then some corner
  * in front; one wholly in front is then missed, facing away or set up. True
  * when it reaches r3d_span. The cull-view suite holds the set-up count to
  * the triangles the draw fills. */
@@ -81,7 +80,7 @@ count_triangle(const r3d_pipeline_vertex_t* const v[3], bool double_sided, const
 void
 r3d_pipeline_count_triangles(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
                              const r3d_pipeline_vertex_t* cs, r3d_pipeline_counts_t* counts, uint16_t* set_up) {
-    const r3d_span_target_t screen = {.rows = {.width = lens->width, .row0 = 0, .row1 = lens->height}};
+    const r3d_span_target_t screen = r3d_span_target(NULL, NULL, lens->width, 0, lens->height);
     for (int i = 0; i < count; i++) {
         const r3d_lit_cluster_t* c = &mesh->clusters[clusters[i]];
         int reached = 0;
