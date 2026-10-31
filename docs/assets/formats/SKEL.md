@@ -1,6 +1,6 @@
 # SKEL v1 skeleton
 
-A skinned mesh's joint tree and rest pose ([Skeleton-and-Skin.md](../../render/Skeleton-and-Skin.md)). Layout defines: [`anim/anim_skeleton_format.h`](../../../launcher/main/anim/anim_skeleton_format.h).
+A skinned mesh's joint tree and rest pose ([Skeleton-and-Skin.md](../../render/animation/Skeleton-and-Skin.md)). Layout defines: [`anim/anim_skeleton_format.h`](../../../launcher/main/anim/anim_skeleton_format.h).
 
 ```mermaid
 ---

@@ -2,7 +2,7 @@
 """Each step of a scene's mesh bakes: its wall time, the triangles it took and
 left, and the memory it peaked at. Run on a scene, it times the bakes on this
 machine; the doc-images GPU stage (doc_stages.py) uses the same rows for
-Render-Pipeline.md's `bake-steps` chart and table.
+docs/render/offline/README.md's `bake-steps` chart and table.
 
     python launcher/tools/render/bake_steps.py SCENE.scene.toml [--mesh NAME]
 
@@ -119,7 +119,7 @@ def chart(variants, path):
 
 
 def block(variants, chart_path):
-    """Render-Pipeline.md's `bake-steps` block: the chart at the doc-relative `chart_path`, the memory the bakes
+    """The `bake-steps` block: the chart at the doc-relative `chart_path`, the memory the bakes
     need, then the rows collapsed."""
     return (f"![Bake steps]({chart_path})\n\n{memory_line(variants)}\n\n"
             + collapsed("Bake steps", steps_table(variants)))

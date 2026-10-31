@@ -1,4 +1,4 @@
-"""The tables and figures of docs/render/Frame-Generation.md.
+"""The tables and figures of docs/render/frame/Frame-Generation.md.
 
 From framegen_score.py's CSVs: per scene, render size and look-ahead, the
 holes the warp leaves and the reference scorer's numbers for the warp (each
@@ -117,7 +117,7 @@ def read_board(paths):
 def generated_ms(f):
     """A generated frame's cost: the warp on both cores, the fill and its compose."""
     # The first capture timed the warp on one core too (warp1_us) and called both cores warp2_us.
-    return (f.get("warp2_us", f.get("warp_us")) + f["fill_us"] + f["present_us"]) / US_PER_MS
+    return (f.get("warp2_us", f.get("warp_us")) + f["fill_us"] + f["compose_us"]) / US_PER_MS
 
 
 def cost_table(rows):
@@ -127,7 +127,7 @@ def cost_table(rows):
     for (scene, size), f in rows.items():
         lines.append("| %s | %s | %.1f ms | %.1f ms | %.1f ms | %.1f ms | %.1f ms |" % (
             scene, size, f["frame_us"] / US_PER_MS, f.get("warp2_us", f.get("warp_us")) / US_PER_MS,
-            f["fill_us"] / US_PER_MS, f["present_us"] / US_PER_MS, generated_ms(f)))
+            f["fill_us"] / US_PER_MS, f["compose_us"] / US_PER_MS, generated_ms(f)))
     return "\n".join(lines) + "\n"
 
 

@@ -20,7 +20,7 @@ flowchart LR
 ## From scene to view
 
 `camera_view(camera, pose, viewport)`
-([`camera.c:5`](../../launcher/main/scene/camera/camera.c#L5)) builds the frame's `render_view_t`
+([`camera.c:5`](../../../launcher/main/scene/camera/camera.c#L5)) builds the frame's `render_view_t`
 from the pose, field of view and near distance, then copies the lens's `present` and
 `small_fill` onto it. `scene_camera_lens()` reads a camera by its name's `name_hash()`; `SCENE_CAMERA_FIRST` selects the first.
 
@@ -42,7 +42,7 @@ and up, in picture short sides, so it holds through quarter turns and render siz
 ## Which lens fields animate
 
 Two fields are exposed to animation, listed in `CAMERA_FIELDS`
-([`camera.c:12`](../../launcher/main/scene/camera/camera.c#L17)):
+([`camera.c:12`](../../../launcher/main/scene/camera/camera.c#L17)):
 
 | Field | Type | Meaning |
 |---|---|---|
@@ -56,9 +56,9 @@ Two fields are exposed to animation, listed in `CAMERA_FIELDS`
 The binder gets a table of targets, each with component references. Every entity gets its
 transform as component 0. An entity that carries a camera gets a second reference at
 `components[entity * 2 + 1]`, pointing at `&CAMERA_FIELDS` and that camera's `lens`, and its
-`component_count` becomes 2 ([`scene_animation.c:38`](../../launcher/main/scene/scene_animation.c#L38)).
+`component_count` becomes 2 ([`scene_animation.c:38`](../../../launcher/main/scene/scene_animation.c#L38)).
 A clip then names `ANIM_COMPONENT_CAMERA` (`CAMR`) and a field by name; the track format and
-the glTF pointer it comes from are in [Animation tracks](Animation-Tracks.md).
+the glTF pointer it comes from are in [Animation tracks](../animation/Animation-Tracks.md).
 
 To make another lens field animatable, add an `ANIM_FIELD(camera_t, field, type)` row beside
 the struct; nothing in the binder changes.

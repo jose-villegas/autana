@@ -1,6 +1,7 @@
 /* framegen against the raster itself: a warp to the view a frame was drawn
- * through gives that frame back, and a warp to a moved camera puts the rig's
- * card where a draw through that camera does. */
+ * through gives that frame back, a warp to a moved camera puts the rig's
+ * card where a draw through that camera does, and the render context
+ * composes that generated picture. */
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -84,13 +85,19 @@ on_card(uint16_t depth, uint16_t card_depth) {
     return depth > card_depth;
 }
 
+/* The view STEP to the side of the rig's camera. */
+static render_view_t
+stepped_view(raster_rig_t* r) {
+    fixture_camera_t moved = raster_rig_camera;
+    moved.eye.x += STEP;
+    return render_view_fixture(&moved, &r->raster, 0);
+}
+
 static void
 test_a_warp_to_a_moved_camera_puts_the_card_where_a_draw_does(void) {
     raster_rig_t* r = open_rig();
-    fixture_camera_t moved = raster_rig_camera;
-    moved.eye.x += STEP;
     const render_view_t drawn = render_view_fixture(&raster_rig_camera, &r->raster, 0);
-    const render_view_t now = render_view_fixture(&moved, &r->raster, 0);
+    const render_view_t now = stepped_view(r);
     (void)raster_draw(&r->raster, &now);
     uint16_t* truth = malloc(sizeof(uint16_t) * W * H);
     TEST_ASSERT_NOT_NULL(truth);
@@ -119,6 +126,43 @@ test_a_warp_to_a_moved_camera_puts_the_card_where_a_draw_does(void) {
     TEST_ASSERT_LESS_OR_EQUAL_INT(MOST_HOLES, holes);
     TEST_ASSERT_LESS_OR_EQUAL_INT(MOST_MISPLACED, misplaced);
     TEST_ASSERT_EQUAL_INT(holes, framegen_fill(&r->raster, &target));
+}
+
+/* The fill completes the target where nothing landed from the drawn frame,
+ * which stays in the raster as it was drawn. */
+static void
+test_the_fill_completes_the_target_and_keeps_the_drawn_frame(void) {
+    raster_rig_t* r = open_rig();
+    const render_view_t drawn = render_view_fixture(&raster_rig_camera, &r->raster, 0);
+    const render_view_t now = stepped_view(r);
+    (void)raster_draw(&r->raster, &drawn);
+    framegen_warp(&r->raster, &drawn, &now, &target);
+    const size_t bytes = sizeof(uint16_t) * W * H;
+    uint16_t* colour = malloc(bytes);
+    uint16_t* depth = malloc(bytes);
+    uint16_t* landed = malloc(bytes);
+    TEST_ASSERT_TRUE(colour != NULL && depth != NULL && landed != NULL);
+    memcpy(colour, raster_color(&r->raster), bytes);
+    memcpy(depth, raster_depth(&r->raster), bytes);
+    memcpy(landed, target.depth, bytes);
+    const int holes = framegen_fill(&r->raster, &target);
+    const bool kept =
+        memcmp(colour, raster_color(&r->raster), bytes) == 0 && memcmp(depth, raster_depth(&r->raster), bytes) == 0;
+    int counted = 0;
+    int unfilled = 0;
+    for (int i = 0; i < W * H; i++) {
+        if (landed[i] == R3D_DEPTH_EMPTY) {
+            counted++;
+            unfilled += target.colour[i] != colour[i] || target.depth[i] != depth[i];
+        }
+    }
+    free(colour);
+    free(depth);
+    free(landed);
+    TEST_ASSERT_TRUE_MESSAGE(kept, "the fill changed the drawn frame");
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, holes, "the moved camera opened no holes");
+    TEST_ASSERT_EQUAL_INT(counted, holes);
+    TEST_ASSERT_EQUAL_INT(0, unfilled);
 }
 
 /* A context with frame generation and dynamic resolution on, its ladder one
@@ -161,6 +205,31 @@ play(render_context_t* c, raster_rig_t* r, const render_view_t* view, const show
     for (size_t i = 0; i < count; i++) {
         TEST_ASSERT_EQUAL(steps[i].generated, show(c, r, view, steps[i].cost_us));
     }
+}
+
+/* A generated frame composes from its own picture: the drawn frame the
+ * raster keeps, overwritten here after the warp, does not show. */
+static void
+test_a_generated_frame_composes_from_its_own_picture(void) {
+    raster_rig_t* r = open_rig();
+    render_context_t* c = open_context();
+    const render_view_t drawn = render_view_fixture(&raster_rig_camera, &r->raster, 0);
+    const render_view_t now = stepped_view(r);
+    TEST_ASSERT_FALSE(show(c, r, &drawn, BUDGET_US));
+    const uint16_t overwritten = (uint16_t)~destination[0];
+    TEST_ASSERT_TRUE(render_context_draw(c, r->instance, RASTER_RIG_QUADS, &now, 0));
+    TEST_ASSERT_TRUE(framegen_example_generated(c));
+    uint16_t* kept = raster_color(&c->raster);
+    for (int i = 0; i < c->raster.width * c->raster.height; i++) {
+        kept[i] = overwritten;
+    }
+    (void)render_context_compose(c, destination, NULL, NULL);
+    int shown = 0;
+    for (int i = 0; i < W * H; i++) {
+        shown += destination[i] == overwritten;
+    }
+    TEST_ASSERT_EQUAL_INT(0, shown);
+    release_target();
 }
 
 /* A drawn frame's budget with frame generation on: the shown frames' budgets
@@ -220,6 +289,8 @@ void
 run_framegen_suite(void) {
     RUN_TEST(test_a_warp_to_the_drawn_view_gives_the_frame_back);
     RUN_TEST(test_a_warp_to_a_moved_camera_puts_the_card_where_a_draw_does);
+    RUN_TEST(test_the_fill_completes_the_target_and_keeps_the_drawn_frame);
+    RUN_TEST(test_a_generated_frame_composes_from_its_own_picture);
     RUN_TEST(test_dynamic_resolution_prices_a_drawn_frame_with_the_one_generated_from_it);
     RUN_TEST(test_frames_are_generated_only_while_a_generated_one_costs_less);
 }
