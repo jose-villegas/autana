@@ -29,7 +29,6 @@ crc32_update_nibble(uint32_t crc, const void* data, size_t size) {
     return ~crc;
 }
 
-uint32_t crc32_update_slice4(uint32_t crc, const void* data, size_t size);
 #ifdef ESP_PLATFORM
 uint32_t crc32_update_rom(uint32_t crc, const void* data, size_t size);
 #endif
@@ -40,8 +39,6 @@ static inline uint32_t
 crc32_update(uint32_t crc, const void* data, size_t size) {
 #if defined(ESP_PLATFORM) && defined(CONFIG_HASH_CRC32_ROM) && CONFIG_HASH_CRC32_ROM
     return crc32_update_rom(crc, data, size);
-#elif defined(ESP_PLATFORM) && defined(CONFIG_HASH_CRC32_SLICE4) && CONFIG_HASH_CRC32_SLICE4
-    return crc32_update_slice4(crc, data, size);
 #else
     return crc32_update_nibble(crc, data, size);
 #endif

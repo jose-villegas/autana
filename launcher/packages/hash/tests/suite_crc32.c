@@ -57,7 +57,6 @@ allocate_buffer(void) {
 
 static const crc32_fn_t candidates[] = {
     crc32_update,
-    crc32_update_slice4,
 #ifdef ESP_PLATFORM
     crc32_update_rom,
 #endif

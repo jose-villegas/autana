@@ -3,7 +3,6 @@
 #define _POSIX_C_SOURCE 200809L
 #endif
 #include "testkit/bench.h"
-#include "math/stats/statsi.h"
 #include "unity.h"
 
 #ifdef ESP_PLATFORM
@@ -178,23 +177,4 @@ bench_is_qemu(void) {
 #else
     return false;
 #endif
-}
-
-bench_stats_t
-bench_stats_compute(int32_t* values, int n) {
-    bench_stats_t s = {.min = INT64_MAX, .max = 0, .avg = 0, .med = 0, .p95 = 0};
-    int64_t sum = 0;
-    for (int i = 0; i < n; i++) {
-        if (values[i] < s.min) {
-            s.min = values[i];
-        }
-        if (values[i] > s.max) {
-            s.max = values[i];
-        }
-        sum += values[i];
-    }
-    s.avg = sum / n;
-    s.med = statsi_median(values, (size_t)n);
-    s.p95 = statsi_percentile(values, (size_t)n, 95);
-    return s;
 }

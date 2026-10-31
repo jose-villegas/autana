@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "math/stats/statsi.h"
 #include "unity.h"
 
 #define BENCH_CYCLE_WARM_REPS              31
@@ -40,7 +41,24 @@ typedef struct {
     int64_t min, max, avg, med, p95;
 } bench_stats_t;
 
-bench_stats_t bench_stats_compute(int32_t* values, int n);
+static inline bench_stats_t
+bench_stats_compute(int32_t* values, int n) {
+    bench_stats_t s = {.min = INT64_MAX, .max = 0, .avg = 0, .med = 0, .p95 = 0};
+    int64_t sum = 0;
+    for (int i = 0; i < n; i++) {
+        if (values[i] < s.min) {
+            s.min = values[i];
+        }
+        if (values[i] > s.max) {
+            s.max = values[i];
+        }
+        sum += values[i];
+    }
+    s.avg = sum / n;
+    s.med = statsi_median(values, (size_t)n);
+    s.p95 = statsi_percentile(values, (size_t)n, 95);
+    return s;
+}
 
 #ifdef ESP_PLATFORM
 #include "esp_cpu.h"

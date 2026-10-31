@@ -4,7 +4,7 @@ CRC-32 candidates read the same bytes from internal RAM and flash-mapped
 rodata. Each row times one checksum call, using testkit's warm and cold
 cycle medians and instruction counter. QEMU does not report board timing.
 
-Capture with `autana suite hash_perf --flash`. Keep the capture's `BUILD_ID`,
+Capture with `autana suite run_hash_perf_suite --flash`. Keep the capture's `BUILD_ID`,
 `HASHTARGET` and `HASHBENCH` lines in [the capture](data/hash_bench_capture.txt),
 then run `python launcher/tools/perf/hash_bench_table.py`.
 
