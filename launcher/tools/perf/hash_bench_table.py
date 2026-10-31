@@ -9,7 +9,7 @@ from generated_blocks import replace_block
 
 ROOT = bench.ROOT
 CAPTURE = Path("docs/packages/data/hash_bench_capture.txt")
-PLACEHOLDER = "# Board capture pending: run autana suite hash_perf --flash."
+PLACEHOLDER = "# Board capture pending: run autana suite run_hash_perf_suite --flash."
 COMMAND = "python launcher/tools/perf/hash_bench_table.py --check"
 
 
