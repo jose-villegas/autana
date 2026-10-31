@@ -103,6 +103,7 @@ clear_expanded_frame(bool free_picture) {
 #define SEAM_PITCH GFX_SEAM_PITCH(HALF_WIDTH)
 _Static_assert(HALF_WIDTH % GFX_QUARTER_LANES == 0, "a half row is whole steps");
 _Static_assert(HALF_WIDTH % GFX_SEAM_BITS == 0, "a half row is whole seam bytes");
+_Static_assert(GFX_QUARTER_LANES == GFX_SEAM_BITS, "a step's keep byte is one seam byte");
 
 /* A row's working set, big-endian, at a vector load's alignment: the blend
  * down, its neighbours one pixel left and right, and the two panel pixels
@@ -140,7 +141,6 @@ spread_across(const uint16_t* pixels, const uint8_t* across, gfx_color_t* out) {
 static __attribute__((noinline)) void
 expand_blended_rows(int y0, int y1, gfx_color_t* destination) {
     const uint8_t* seams = (const uint8_t*)(half_image + ((size_t)HALF_WIDTH * HALF_HEIGHT));
-    const size_t seam_pitch = SEAM_PITCH;
     for (int y = y0; y < y1; y++) {
         const int row = y / 2;
         const bool lower_half = y % 2 != 0;
@@ -148,10 +148,10 @@ expand_blended_rows(int y0, int y1, gfx_color_t* destination) {
         const uint16_t* pixels = half_image + ((size_t)row * HALF_WIDTH);
         if (other >= 0 && other < HALF_HEIGHT) {
             gfx_quarter_select(pixels, half_image + ((size_t)other * HALF_WIDTH),
-                               seams + ((size_t)(lower_half ? row : other) * seam_pitch), work.down, STEPS);
+                               seams + ((size_t)(lower_half ? row : other) * SEAM_PITCH), work.down, STEPS);
             pixels = work.down;
         }
-        spread_across(pixels, seams + ((size_t)row * seam_pitch), destination + ((size_t)(y - y0) * GFX_WIDTH));
+        spread_across(pixels, seams + ((size_t)row * SEAM_PITCH), destination + ((size_t)(y - y0) * GFX_WIDTH));
     }
 }
 
