@@ -4,7 +4,7 @@
 #include <string.h>
 
 #include "draw/draw_font_roles.h"
-#include "gfx/target/gfx_color.h"
+#include "gfx/gfx.h"
 #include "ui/ui.h"
 
 #include "apps/sand/material_palette.h"

@@ -367,6 +367,14 @@ scene_animator_clip_count(const scene_t* scene, scene_entity_t entity) {
                : scene->animators[entity].layer.clip_count;
 }
 
+int
+scene_animator_current_clip(const scene_t* scene, scene_entity_t entity) {
+    return scene_animator_clip_count(scene, entity) == 0
+                   || scene->animators[entity].layer.current.clip == ANIM_LAYER_CLIP_NONE
+               ? -1
+               : scene->animators[entity].layer.current.clip;
+}
+
 const char*
 scene_animator_clip_name(const scene_t* scene, scene_entity_t entity, int clip) {
     return clip < 0 || clip >= scene_animator_clip_count(scene, entity) ? NULL
