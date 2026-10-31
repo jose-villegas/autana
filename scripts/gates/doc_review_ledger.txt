@@ -85,3 +85,4 @@ docs/kinematics/README.md	2026-10-25	new index for the kinematics package; links
 docs/kinematics/Orbit.md	2026-10-25	moved from docs/math/Motion.md with orbit_motion.h; checked against kinematics/orbit/orbit_motion.h
 docs/kinematics/Follow.md	2026-10-25	new, from the fling decay and reset spring sections of docs/math/Motion.md; checked against kinematics/follow/follow.h
 docs/assets/formats/SCNE.md	2026-10-30	SCNE v5 moved from Scene-Files: reviewed against scene_format.h and scene_internal.h, accurate
+docs/render/Appearance-Fit.md	2026-10-30	moved from Scene-Files: key meanings checked against appearance_simplify.py, accurate
