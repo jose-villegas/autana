@@ -2187,8 +2187,7 @@ write_header_banner(FILE* f) {
             " *========================================================================"
             "===*/\n"
             "#pragma once\n\n"
-            "#include \"gfx/target/gfx_color.h\"\n"
-            "#include \"gfx/present/gfx_mode.h\"\n"
+            "#include \"gfx/gfx.h\"\n"
             "#include \"image/palette/palette.h\"\n\n"
             "#define SAND_PALETTE_UI_ENTRIES %d\n\n",
             UI_ENTRIES - 1, UI_ENTRIES, UI_ENTRIES);
