@@ -54,7 +54,8 @@ typedef struct {
     int32_t dx[ATTRIBUTES];
     int32_t dy[ATTRIBUTES];
     int x_origin;
-    bool in_range; /* every plane stays inside its range across the whole box */
+    uint16_t depth_cap; /* r3d_span_depth_limit() its depth may not pass; 0 when no vertex passes it */
+    bool in_range;      /* every plane stays inside its range across the whole box, and depth under its cap */
 } gradients_t;
 
 static inline int32_t
@@ -113,10 +114,75 @@ colour_gradients(const plane_t* p, const r3d_span_vertex_t* a, const r3d_span_ve
     gradient(p, a->b * R3D_SPAN_COLOR_SCALE, b->b * R3D_SPAN_COLOR_SCALE, c->b * R3D_SPAN_COLOR_SCALE, 3, out);
 }
 
+static inline __attribute__((always_inline)) void
+plane_limits(int32_t top, int32_t dx, int32_t dy, recti_t box, int64_t* low, int64_t* high) {
+    const int64_t across = (int64_t)dx * (box.w - 1);
+    const int64_t bottom = top + ((int64_t)dy * (box.h - 1));
+    *low = (top < bottom ? top : bottom) + (across < 0 ? across : 0);
+    *high = (top > bottom ? top : bottom) + (across > 0 ? across : 0);
+}
+
+/* The depth plane at a vertex, rounded up; `base` holds it at the box's
+ * first centre. */
+static inline int64_t
+depth_at(const gradients_t* g, recti_t box, const r3d_span_vertex_t* v) {
+    const int64_t x = (int64_t)v->x - ((box.x * R3D_SUBPIXEL) + (R3D_SUBPIXEL / 2));
+    const int64_t y = (int64_t)v->y - ((box.y * R3D_SUBPIXEL) + (R3D_SUBPIXEL / 2));
+    return g->base[0] + ((((int64_t)g->dx[0] * x) + ((int64_t)g->dy[0] * y) + R3D_SUBPIXEL - 1) >> R3D_SUBPIXEL_SHIFT);
+}
+
+/* The last 16.8 depth under a 16-bit cap, so only a depth that would pass
+ * the cap is ever clamped. */
+static inline int32_t
+depth_cap_max(uint16_t cap) {
+    return ((int32_t)cap << R3D_DEPTH_SHIFT) | ((1 << R3D_DEPTH_SHIFT) - 1);
+}
+
+/* Under this sum of a depth plane's two steps, its float set-up stays inside
+ * int32 over a span range of offsets and rounds by under one 16-bit code,
+ * which R3D_SPAN_DEPTH_DRIFT allows, and the truncated steps drift no more
+ * than it allows either: such a plane cannot pass its vertices' limit. */
+#define DEPTH_STEPS_EXACT (INT32_MAX / (R3D_SPAN_RANGE / R3D_SUBPIXEL))
+
+/* Whether the depth plane stays inside [0, DEPTH_MAX] over `box`, and under
+ * r3d_span_depth_limit() of the nearest vertex. Every centre a fill covers
+ * lies inside the triangle, where the plane is highest at a vertex; a
+ * sliver's steep float set-up can tilt it past the limit there, and then its
+ * spans clamp to it. A saturated limit is the range itself. */
+static inline void
+depth_range(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, recti_t box,
+            gradients_t* g) {
+    int64_t low;
+    int64_t high;
+    plane_limits(g->base[0], g->dx[0], g->dy[0], box, &low, &high);
+    g->depth_cap = 0;
+    if (mathi_abs(g->dx[0]) + mathi_abs(g->dy[0]) >= DEPTH_STEPS_EXACT) {
+        const uint16_t limit = r3d_span_depth_limit(mathf_max(a->z, mathf_max(b->z, c->z)));
+        const int32_t max = depth_cap_max(limit);
+        if (limit < R3D_DEPTH_NEAREST && high > max
+            && (depth_at(g, box, a) > max || depth_at(g, box, b) > max || depth_at(g, box, c) > max)) {
+            g->depth_cap = limit;
+        }
+    }
+    g->in_range = g->depth_cap == 0 && low >= 0 && high <= DEPTH_MAX;
+}
+
 /* A pixel centre just outside the triangle extrapolates past the vertex
  * range, and a wrapped channel would be a wrong-coloured pixel. Each span's
  * start is clamped; only a span whose end would still leave the range pays
  * for a step recomputed from both clamped ends. */
+static inline void
+clamp_span_to(int32_t max, int count, int32_t* value, int32_t* step) {
+    const int32_t start = mathi_clamp(*value, 0, max);
+    const int32_t end = start + (*step * count);
+    *value = start;
+    if (count > 0 && (end < 0 || end > max)) {
+        *step = (mathi_clamp(end, 0, max) - start) / count;
+    }
+}
+
+/* Indexing the table, not passing its value, keeps the IRAM walk's frame
+ * at its size. */
 static inline void
 clamp_span(int k, int count, int32_t* value, int32_t* step) {
     const int32_t start = mathi_clamp(*value, 0, value_max[k]);
@@ -128,14 +194,20 @@ clamp_span(int k, int count, int32_t* value, int32_t* step) {
 }
 
 static inline void
-span_start(const gradients_t* g, uint32_t carried, int k, int skip, int count, int32_t* value, int32_t* step) {
+span_start(const gradients_t* g, uint32_t carried, int k, int skip, int count, int32_t* value, int32_t* step,
+           bool capped) {
     *step = g->dx[k];
     *value = (int32_t)carried;
     if (skip > 0) {
         *value = (int32_t)(carried + ((uint32_t)*step * (uint32_t)skip));
     }
     if (!g->in_range) {
-        clamp_span(k, count, value, step);
+        /* `capped` is a constant wherever this is inlined. */
+        if (capped && k == 0) {
+            clamp_span_to(depth_cap_max(g->depth_cap), count, value, step);
+        } else {
+            clamp_span(k, count, value, step);
+        }
     }
 }
 
@@ -287,12 +359,13 @@ fill_gouraud(uint16_t* depth, uint16_t* color, int count, const uint32_t value[A
 }
 
 static inline __attribute__((always_inline)) void
-fill_clipped_gouraud(const gradients_t* g, const uint32_t row[ATTRIBUTES], int column, const row_span_t* span) {
+fill_clipped_gouraud(const gradients_t* g, const uint32_t row[ATTRIBUTES], int column, const row_span_t* span,
+                     bool capped) {
     uint32_t value[ATTRIBUTES];
     int32_t step[ATTRIBUTES];
     for (int k = 0; k < ATTRIBUTES; k++) {
         int32_t start;
-        span_start(g, row[k], k, column < 0 ? -column : 0, span->last - span->first, &start, &step[k]);
+        span_start(g, row[k], k, column < 0 ? -column : 0, span->last - span->first, &start, &step[k], capped);
         value[k] = (uint32_t)start;
     }
     fill_gouraud(span->depth, span->color, span->last - span->first + 1, value, step);
@@ -321,12 +394,12 @@ flat_rows(const r3d_span_target_t* target, const fill_t* f, int y0, int y1, edge
 
 static inline __attribute__((always_inline)) void
 fill_carried_span(const r3d_span_target_t* target, const fill_t* f, const uint32_t row[ATTRIBUTES], int y, int column,
-                  const row_span_t* span, int n, bool writing) {
+                  const row_span_t* span, int n, bool writing, bool capped) {
     const gradients_t* g = f->g;
     if (n == 1) {
         int32_t z;
         int32_t dz;
-        span_start(g, row[0], 0, column < 0 ? -column : 0, span->last - span->first, &z, &dz);
+        span_start(g, row[0], 0, column < 0 ? -column : 0, span->last - span->first, &z, &dz, capped);
         if (writing) {
             write_span(target, y, span->first, span->last, z, dz);
         } else {
@@ -335,13 +408,13 @@ fill_carried_span(const r3d_span_target_t* target, const fill_t* f, const uint32
     } else if (g->in_range && column >= 0) {
         fill_gouraud(span->depth, span->color, span->last - span->first + 1, row, g->dx);
     } else {
-        fill_clipped_gouraud(g, row, column, span);
+        fill_clipped_gouraud(g, row, column, span, capped);
     }
 }
 
 static inline __attribute__((always_inline)) void
 carried_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBUTES], int y0, int y1, edge_t* left,
-             edge_t* right, int n, bool writing) {
+             edge_t* right, int n, bool writing, bool capped) {
     const gradients_t* g = f->g;
     uint32_t increment[ATTRIBUTES];
     uint32_t extra_increment[ATTRIBUTES];
@@ -355,7 +428,7 @@ carried_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTR
         const int y = y1 - remaining;
         row_span_t span;
         if (clip_row(target, f->last_column, offset, left, right, &span)) {
-            fill_carried_span(target, f, row, y, left->q, &span, n, writing);
+            fill_carried_span(target, f, row, y, left->q, &span, n, writing, capped);
         }
         const uint32_t* advance = increment;
         if (step_edge(left)) {
@@ -375,9 +448,9 @@ carried_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTR
 }
 
 /* Unsigned carries preserve extrapolated planes until a visible start. */
-static RENDER_IRAM_ATTR void
-walk_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBUTES], int y0, int y1, edge_t* left_edge,
-          edge_t* right_edge) {
+static inline __attribute__((always_inline)) void
+walk_rows_of(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBUTES], int y0, int y1,
+             edge_t* left_edge, edge_t* right_edge, bool capped) {
     edge_t left = *left_edge;
     edge_t right = *right_edge;
     if (r3d_span_stop_after == 2) {
@@ -388,12 +461,25 @@ walk_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBU
     } else if (f->shading == FILL_FLAT) {
         flat_rows(target, f, y0, y1, &left, &right, false);
     } else if (f->shading == FILL_FACE) {
-        carried_rows(target, f, row, y0, y1, &left, &right, 1, false);
+        carried_rows(target, f, row, y0, y1, &left, &right, 1, false, capped);
     } else {
-        carried_rows(target, f, row, y0, y1, &left, &right, ATTRIBUTES, false);
+        carried_rows(target, f, row, y0, y1, &left, &right, ATTRIBUTES, false, capped);
     }
     *left_edge = left;
     *right_edge = right;
+}
+
+static RENDER_IRAM_ATTR void
+walk_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBUTES], int y0, int y1, edge_t* left_edge,
+          edge_t* right_edge) {
+    walk_rows_of(target, f, row, y0, y1, left_edge, right_edge, false);
+}
+
+/* A triangle with a depth cap is a rare sliver, so its walk stays in flash. */
+static __attribute__((noinline)) void
+walk_capped_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBUTES], int y0, int y1,
+                 edge_t* left_edge, edge_t* right_edge) {
+    walk_rows_of(target, f, row, y0, y1, left_edge, right_edge, true);
 }
 
 /* Every writer of the target over one span. */
@@ -412,7 +498,7 @@ writer_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRI
     if (f->shading == FILL_FLAT) {
         flat_rows(target, f, y0, y1, left, right, true);
     } else {
-        carried_rows(target, f, row, y0, y1, left, right, 1, true);
+        carried_rows(target, f, row, y0, y1, left, right, 1, true, f->g->depth_cap != 0);
     }
 }
 
@@ -431,6 +517,8 @@ rows_between(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTR
     edge_t* right = long_on_left ? short_edge : long_edge;
     if (writing) {
         writer_rows(target, f, row, y0, y1, left, right);
+    } else if (f->g->depth_cap != 0) {
+        walk_capped_rows(target, f, row, y0, y1, left, right);
     } else {
         walk_rows(target, f, row, y0, y1, left, right);
     }
@@ -740,14 +828,6 @@ fill_small_styled(const r3d_span_target_t* target, const r3d_span_vertex_t* a, c
     }
 }
 
-static inline __attribute__((always_inline)) void
-plane_limits(int32_t top, int32_t dx, int32_t dy, recti_t box, int64_t* low, int64_t* high) {
-    const int64_t across = (int64_t)dx * (box.w - 1);
-    const int64_t bottom = top + ((int64_t)dy * (box.h - 1));
-    *low = (top < bottom ? top : bottom) + (across < 0 ? across : 0);
-    *high = (top > bottom ? top : bottom) + (across > 0 ? across : 0);
-}
-
 /* A span runs from its clamped start to its end, both values of the plane
  * at centres in `box`, so the largest corner bounds it; a start clamped up
  * from below zero lifts the span by at most the lowest corner's shortfall.
@@ -787,7 +867,7 @@ r3d_span_hidden(const r3d_span_target_t* target, int32_t bound, recti_t box) {
 static void
 set_up_planes(const fill_t* f, const r3d_span_vertex_t* const v[TRIANGLE_VERTICES], const plane_t* p, recti_t box,
               int y_anchor, gradients_t* g) {
-    g->in_range = r3d_span_plane_in_range(g->base[0], g->dx[0], g->dy[0], value_max[0], box);
+    depth_range(v[0], v[1], v[2], box, g);
     if (f->shading == FILL_FACE) {
         return;
     }
@@ -806,6 +886,7 @@ set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[TR
             int y_anchor, const uint16_t* face, fill_t* f, gradients_t* g) {
     plane_t p;
     g->x_origin = box.x;
+    g->depth_cap = 0;
     if (f->shading == FILL_FLAT) {
         p = (plane_t){0};
         set_flat(f, v[0], v[1], v[2]);
@@ -920,7 +1001,7 @@ r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t
     } else if (plane_of(a, b, c, box.x, y_anchor, &p)) {
         gradient(&p, a->z * DEPTH_SCALE, b->z * DEPTH_SCALE, c->z * DEPTH_SCALE, 0, &g);
         g.base[0] = first_row_value(&g, 0, box.y, y_anchor);
-        g.in_range = r3d_span_plane_in_range(g.base[0], g.dx[0], g.dy[0], value_max[0], box);
+        depth_range(a, b, c, box, &g);
     } else {
         return;
     }

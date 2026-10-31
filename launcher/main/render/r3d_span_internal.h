@@ -42,6 +42,22 @@ r3d_span_window_box(const r3d_span_target_t* target, recti_t centres) {
     return box;
 }
 
+/* How far a fill's 16-bit depth can rise above its nearest vertex's,
+ * z * R3D_DEPTH_NEAREST truncated: one for the float set-up's rounding at its
+ * first centre, and one 16.8 unit for each pixel stepped from it, as a step
+ * is truncated, across the widest box a span takes, both axes. */
+#define R3D_SPAN_DEPTH_DRIFT (1 + ((2 * 2 * R3D_SPAN_RANGE / R3D_SUBPIXEL) >> R3D_DEPTH_SHIFT))
+
+/* The nearest 16-bit depth a fill from vertices no nearer than `iz` writes.
+ * The drift covers a plane set up from a triangle of real area; a sliver's
+ * float set-up can stray past it, so the fill clamps every depth it writes
+ * to this. Saturates, as the fill does. */
+static inline uint16_t
+r3d_span_depth_limit(float iz) {
+    const int32_t depth = (int32_t)(iz * (float)R3D_DEPTH_NEAREST) + R3D_SPAN_DEPTH_DRIFT;
+    return (uint16_t)(depth < R3D_DEPTH_NEAREST ? depth : R3D_DEPTH_NEAREST);
+}
+
 /* Added before truncating, so the sum is positive and truncating floors. */
 #define R3D_SNAP_BIAS ((float)R3D_SPAN_RANGE + 0.5F)
 
@@ -62,6 +78,15 @@ r3d_span_snap(float pixels) {
 static inline int
 r3d_span_first_centre(int32_t v) {
     return (v + (R3D_SUBPIXEL / 2) - 1) >> R3D_SUBPIXEL_SHIFT;
+}
+
+/* The pixel centres inside a subpixel box, over the whole screen; empty when
+ * it holds none. first_centre keeps order, so the edges never cross. */
+static inline recti_t
+r3d_span_centres(int32_t lo_x, int32_t lo_y, int32_t hi_x, int32_t hi_y) {
+    const int left = r3d_span_first_centre(lo_x);
+    const int top = r3d_span_first_centre(lo_y);
+    return (recti_t){left, top, r3d_span_first_centre(hi_x) - left, r3d_span_first_centre(hi_y) - top};
 }
 
 /* Channels as 8.8 fixed point (0..0xFF00), packed to the target's pixel
@@ -107,11 +132,8 @@ r3d_span_extent_limits(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, c
                        int max_width) {
     const int32_t lo_x = r3d_span_min3(a->x, b->x, c->x);
     const int32_t hi_x = r3d_span_max3(a->x, b->x, c->x);
-    /* first_centre keeps order, so the edges never cross and need no clamp. */
-    const int left = r3d_span_first_centre(lo_x);
-    const int top = r3d_span_first_centre(r3d_span_min3(a->y, b->y, c->y));
-    const recti_t centres = {left, top, r3d_span_first_centre(hi_x) - left,
-                             r3d_span_first_centre(r3d_span_max3(a->y, b->y, c->y)) - top};
+    const recti_t centres =
+        r3d_span_centres(lo_x, r3d_span_min3(a->y, b->y, c->y), hi_x, r3d_span_max3(a->y, b->y, c->y));
     return (r3d_span_extent_t){centres, centres.h <= max_rows && hi_x - lo_x <= max_width};
 }
 
