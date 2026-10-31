@@ -298,7 +298,7 @@ test_text_aligns_to_either_edge_or_the_centre(void) {
 static void
 test_a_list_goes_below_its_dropdown_when_it_fits(void) {
     const mu_Rect anchor = {20, 100, 200, 44};
-    const mu_Rect list = ui_dropdown_list_rect(anchor, 5, 44, 448, 16);
+    const mu_Rect list = ui_dropdown_list_rect(anchor, 5, 44, GFX_HEIGHT, 16);
     TEST_ASSERT_GREATER_THAN_INT(anchor.y + anchor.h - 1, list.y);
     TEST_ASSERT_EQUAL_INT(5 * 44, list.h);
     TEST_ASSERT_EQUAL_INT(anchor.x, list.x);
@@ -308,7 +308,7 @@ test_a_list_goes_below_its_dropdown_when_it_fits(void) {
 static void
 test_a_list_grows_upward_from_a_dropdown_near_the_bottom(void) {
     const mu_Rect anchor = {20, 340, 200, 44};
-    const mu_Rect list = ui_dropdown_list_rect(anchor, 5, 44, 448, 16);
+    const mu_Rect list = ui_dropdown_list_rect(anchor, 5, 44, GFX_HEIGHT, 16);
     TEST_ASSERT_LESS_OR_EQUAL_INT(anchor.y, list.y + list.h);
     TEST_ASSERT_GREATER_OR_EQUAL_INT(16, list.y);
 }

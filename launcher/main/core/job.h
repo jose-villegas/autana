@@ -84,3 +84,33 @@ job_share_core1_count(const int16_t* core1_offset, int total) {
  * core 1 with the worker; a fixed split waits on it, a steered one gives
  * that core less. An empty half still runs, so its time can win work back. */
 bool job_run_steered(int16_t* core1_offset, job_fn_t fn, void* first_half, const void* second_half, size_t ctx_size);
+
+/* Work over items [from, to). */
+typedef void (*job_range_fn_t)(void* ctx, int from, int to);
+
+typedef struct {
+    job_range_fn_t fn;
+    void* ctx;
+    int from, to;
+} job_range_t;
+
+static inline void
+job_range_run(void* ctx) {
+    const job_range_t* r = ctx;
+    r->fn(r->ctx, r->from, r->to);
+}
+
+/* `count` items cut at *core1_offset's share and run by job_run_steered():
+ * core 1 the last ones, this core the first. Fewer than two run here. */
+static inline bool
+job_run_range(int16_t* core1_offset, job_range_fn_t fn, void* ctx, int count) {
+    if (count < 2) {
+        fn(ctx, 0, count);
+        return false;
+    }
+    const int cut = count - job_share_core1_count(core1_offset, count);
+    job_range_t first = {fn, ctx, 0, cut};
+    const job_range_t second = {fn, ctx, cut, count};
+    _Static_assert(sizeof second <= JOB_CTX_MAX, "a range fits a job context");
+    return job_run_steered(core1_offset, job_range_run, &first, &second, sizeof second);
+}

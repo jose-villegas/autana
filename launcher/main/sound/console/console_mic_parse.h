@@ -1,11 +1,10 @@
 /* console_mic_parse: bounded capture arguments and wire constants. */
 #pragma once
-#include <errno.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include "audio/audio_loopback.h"
 #include "audio/console/console_codec_parse.h"
+#include "console/console_number.h"
 #define MIC_RECORD_BEGIN_BYTES   sizeof(MIC_RECORD_BEGIN "{\"rate\":4294967295,\"samples\":4294967295}")
 #define MIC_RECORD_MAX_MS        10000u
 #define MIC_RECORD_FIRST_REG     0x14u
@@ -36,29 +35,6 @@ typedef struct {
     console_mic_write_t writes[MIC_RECORD_WRITES_MAX];
 } console_mic_args_t;
 
-static inline void
-console_mic_space(const char** text) {
-    *text += strspn(*text, " \t\r\n");
-}
-
-static inline bool
-console_mic_number(const char** text, unsigned max, uint32_t* out) {
-    console_mic_space(text);
-    if (**text < '0' || **text > '9') {
-        return false;
-    }
-    char* end;
-    errno = 0;
-    const unsigned long value = strtoul(*text, &end, CONSOLE_CODEC_DECIMAL_BASE);
-    if (errno || value > max || (*end && !strchr(" \t\r\n", *end))) {
-        return false;
-    }
-    *out = (uint32_t)value;
-    *text = end;
-    console_mic_space(text);
-    return true;
-}
-
 static inline bool
 console_mic_write_parse(const char** text, console_mic_args_t* out) {
     uint32_t ms;
@@ -67,7 +43,7 @@ console_mic_write_parse(const char** text, console_mic_args_t* out) {
         return false;
     }
     *text += sizeof("at ") - 1;
-    if (!console_mic_number(text, out->ms - 1u, &ms) || !console_codec_byte(text, &reg)
+    if (!console_u32(text, out->ms - 1u, false, &ms) || !console_codec_byte(text, &reg)
         || !console_codec_byte(text, &value)) {
         return false;
     }
@@ -83,10 +59,10 @@ console_mic_parse(const char* args, console_mic_args_t* out) {
     }
     args += sizeof prefix - 1;
     console_mic_args_t parsed = {.settle_ms = AUDIO_LOOPBACK_SETTLE_MS};
-    if (!console_mic_number(&args, MIC_RECORD_MAX_MS, &parsed.ms) || !parsed.ms) {
+    if (!console_u32(&args, MIC_RECORD_MAX_MS, false, &parsed.ms) || !parsed.ms) {
         return false;
     }
-    if (*args && *args != 'a' && !console_mic_number(&args, MIC_RECORD_MAX_MS, &parsed.settle_ms)) {
+    if (*args && *args != 'a' && !console_u32(&args, MIC_RECORD_MAX_MS, false, &parsed.settle_ms)) {
         return false;
     }
     while (*args) {

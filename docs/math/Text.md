@@ -14,6 +14,7 @@ its scalar OPS families through `text_template.h`.
 | float | `mathf_format`, `mathf_parse` | `mathf_text` | `MATHF_TEXT_MAX` | 16 |
 | int32 | `mathi_format`, `mathi_parse` | `mathi_text` | `MATHI_TEXT_MAX` | 12 |
 | int16 | `maths_format`, `maths_parse` | `maths_text` | `MATHS_TEXT_MAX` | 7 |
+| uint32 | `mathu_format`, `mathu_parse` | `mathu_text` | `MATHU_TEXT_MAX` | 11 |
 | Q16.16 | `mathx_format`, `mathx_parse` | `mathx_text` | `MATHX_TEXT_MAX` | 13 |
 | vec2f | `vec2f_format`, `vec2f_parse` | `vec2f_text` | `VEC2F_TEXT_MAX` | 32 |
 | vec2i | `vec2i_format`, `vec2i_parse` | `vec2i_text` | `VEC2I_TEXT_MAX` | 24 |
@@ -32,6 +33,9 @@ its scalar OPS families through `text_template.h`.
 | recti | `recti_format`, `recti_parse` | `recti_text` | `RECTI_TEXT_MAX` | 50 |
 | rects | `rects_format`, `rects_parse` | `rects_text` | `RECTS_TEXT_MAX` | 30 |
 | rectx | `rectx_format`, `rectx_parse` | `rectx_text` | `RECTX_TEXT_MAX` | 54 |
+
+`mathu` is scalar-only and unsigned: no sign, decimal. `mathu_parse_hex` reads the `0x`-prefixed hexadecimal form
+with the same `end` rule.
 
 Each prefix provides the same operations, with its own value type:
 
