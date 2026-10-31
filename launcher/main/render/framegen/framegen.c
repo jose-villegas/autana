@@ -155,8 +155,8 @@ framegen_warp(const raster_t* raster, const render_view_t* drawn, const render_v
 
 /* One core's share of the fill: pixels [first, end). */
 typedef struct {
-    uint16_t* colour;
-    uint16_t* depth;
+    const uint16_t* colour;
+    const uint16_t* depth;
     const framegen_target_t* target;
     size_t first, end;
     int* holes; /* the caller's: core 1 runs on a copy of this context */
@@ -170,10 +170,11 @@ fill_span(void* ctx) {
         const uint16_t d = job->target->depth[i];
         if (d == R3D_DEPTH_EMPTY) {
             holes++;
-            continue;
+            job->target->colour[i] = job->colour[i];
+            job->target->depth[i] = job->depth[i];
+        } else if (d == DEPTH_SKY) {
+            job->target->depth[i] = R3D_DEPTH_EMPTY;
         }
-        job->colour[i] = job->target->colour[i];
-        job->depth[i] = d == DEPTH_SKY ? R3D_DEPTH_EMPTY : d;
     }
     *job->holes = holes;
 }

@@ -4,6 +4,7 @@
  * over each strip.
  */
 #include "core/memory.h"
+#include "gfx/present/expand/gfx_quarter_select.h"
 #include "gfx/present/gfx_fb_guard.h"
 #include "gfx/present/gfx_internal.h"
 #include "gfx/present/gfx_present_guard.h"
@@ -11,13 +12,17 @@
 #include <assert.h>
 #include <string.h>
 
-static gfx_color_t* half_image; /* its seam mask follows the pixels in the same block */
+static memory_aligned_t half; /* the half picture; its seam mask follows the pixels */
+static gfx_color_t* half_image;
 static bool frame_expanded;
 static bool frame_blended; /* expanded through the seam mask */
 static GFX_TARGET_STORAGE(1) half_target = GFX_TARGET_COLOR_INIT(NULL, GFX_WIDTH / 2, GFX_HEIGHT / 2);
 
 #define HALF_WIDTH  (GFX_WIDTH / 2)
 #define HALF_HEIGHT (GFX_HEIGHT / 2)
+/* Every half row starts on a vector load's 16 bytes (gfx_quarter_select.h). */
+#define HALF_ALIGN  16
+_Static_assert((HALF_WIDTH * sizeof(gfx_color_t)) % HALF_ALIGN == 0, "half rows stay aligned");
 static gfx_band_overlay_fn frame_overlay;
 
 gfx_color_t*
@@ -27,8 +32,10 @@ gfx_half_picture(void) {
         return NULL;
     }
     if (half_image == NULL) {
-        half_image = memory_alloc(
-            (sizeof(*half_image) * HALF_WIDTH * HALF_HEIGHT) + GFX_SEAM_BYTES(HALF_WIDTH, HALF_HEIGHT), MEMORY_PSRAM);
+        half = memory_alloc_aligned((sizeof(*half_image) * HALF_WIDTH * HALF_HEIGHT)
+                                        + GFX_SEAM_BYTES(HALF_WIDTH, HALF_HEIGHT),
+                                    HALF_ALIGN, MEMORY_PSRAM);
+        half_image = half.at;
         half_target.attachment[0].pixels = half_image;
     }
     return half_image;
@@ -81,7 +88,8 @@ clear_expanded_frame(bool free_picture) {
     frame_expanded = false;
     gfx_fb_guard_set_available(gfx_mode_has_framebuffer(&current_mode) && fb != NULL);
     if (free_picture) {
-        memory_free(half_image);
+        memory_free(half.block);
+        half = (memory_aligned_t){0};
         half_image = NULL;
         half_target.attachment[0].pixels = half_image;
     }
@@ -89,99 +97,43 @@ clear_expanded_frame(bool free_picture) {
 
 /* At 2x each panel pixel's centre sits a quarter of a half-picture pixel from
  * its own pixel's centre, towards one neighbour: bilinear gives that neighbour
- * a quarter (rgb565_spread_quarter). */
+ * a quarter, both down (between half rows) and across (within one). */
 
-/* Seam bytes cover whole half rows, so each byte's eight pixels share one test. */
+#define STEPS      (HALF_WIDTH / GFX_QUARTER_LANES)
+#define SEAM_PITCH GFX_SEAM_PITCH(HALF_WIDTH)
+_Static_assert(HALF_WIDTH % GFX_QUARTER_LANES == 0, "a half row is whole steps");
 _Static_assert(HALF_WIDTH % GFX_SEAM_BITS == 0, "a half row is whole seam bytes");
-#define SEAM_BYTE_ALL ((1U << GFX_SEAM_BITS) - 1)
+_Static_assert(GFX_QUARTER_LANES == GFX_SEAM_BITS, "a step's keep byte is one seam byte");
 
-/* The half row blended a quarter toward the one beside it, spread, except
- * across a seam, where a pixel keeps its own colour. */
-static void
-blend_column(const uint32_t* mine, const uint32_t* theirs, const uint8_t* between, uint32_t* column) {
-    for (int byte = 0; byte < HALF_WIDTH / GFX_SEAM_BITS; byte++) {
-        const int first = byte * GFX_SEAM_BITS;
-        unsigned bits = between[byte];
-        if (bits == SEAM_BYTE_ALL) {
-            memcpy(column + first, mine + first, GFX_SEAM_BITS * sizeof(*column));
-            continue;
-        }
-        for (int x = first; x < first + GFX_SEAM_BITS; x++, bits >>= 1) {
-            column[x] = bits & 1U ? mine[x] : rgb565_spread_quarter(mine[x], theirs[x]);
-        }
-    }
-}
+/* A row's working set, big-endian, at a vector load's alignment: the blend
+ * down, its neighbours one pixel left and right, and the two panel pixels
+ * each one becomes. Static, beside the present task's small stack. */
+static struct {
+    uint16_t down[HALF_WIDTH], left[HALF_WIDTH], right[HALF_WIDTH], even[HALF_WIDTH], odd[HALF_WIDTH];
+} work __attribute__((aligned(HALF_ALIGN)));
 
-/* One seam byte's eight pixels, each doubled across: a pixel blends a quarter
- * toward its left neighbour unless `left` (bit 0) marks a seam there, and
- * toward its right one unless `bits` does. */
+/* Half row `pixels` doubled across into `out`: each pixel's left panel pixel
+ * blends a quarter toward its left neighbour and its right one toward its
+ * right neighbour, unless a seam or the panel edge is there. */
 static void
-spread_byte(const uint32_t* column, int first, unsigned left, unsigned bits, gfx_color_t* out) {
-    for (int x = first; x < first + GFX_SEAM_BITS; x++, bits >>= 1) {
-        const bool right = (bits & 1U) == 0 && x + 1 < HALF_WIDTH;
-        out[2 * x] = rgb565be_unspread(left == 0 ? rgb565_spread_quarter(column[x], column[x - 1]) : column[x]);
-        out[(2 * x) + 1] = rgb565be_unspread(right ? rgb565_spread_quarter(column[x], column[x + 1]) : column[x]);
-        left = bits & 1U;
-    }
-}
-
-/* A seam byte with no seam inside or at its edges: every pixel blends both ways. */
-static void
-spread_byte_blended(const uint32_t* column, int first, gfx_color_t* out) {
-    for (int x = first; x < first + GFX_SEAM_BITS; x++) {
-        out[2 * x] = rgb565be_unspread(rgb565_spread_quarter(column[x], column[x - 1]));
-        out[(2 * x) + 1] = rgb565be_unspread(rgb565_spread_quarter(column[x], column[x + 1]));
-    }
-}
-
-/* A seam byte with seams all round: every pixel doubled. */
-static void
-spread_byte_doubled(const uint32_t* column, int first, gfx_color_t* out) {
-    for (int x = first; x < first + GFX_SEAM_BITS; x++) {
-        out[2 * x] = out[(2 * x) + 1] = rgb565be_unspread(column[x]);
-    }
-}
-
-/* Each spread pixel doubled across, blending a quarter toward each
- * neighbour it shares a surface with. */
-static void
-spread_across(const uint32_t* column, const uint8_t* across, gfx_color_t* out) {
+spread_across(const uint16_t* pixels, const uint8_t* across, gfx_color_t* out) {
+    memcpy(work.left + 1, pixels, (HALF_WIDTH - 1) * sizeof(*pixels));
+    memcpy(work.right, pixels + 1, (HALF_WIDTH - 1) * sizeof(*pixels));
+    uint8_t keep_left[SEAM_PITCH];
+    uint8_t keep_right[SEAM_PITCH];
     unsigned before = 1; /* the seam left of the first pixel: the panel edge */
-    for (int byte = 0; byte < HALF_WIDTH / GFX_SEAM_BITS; byte++) {
-        const int first = byte * GFX_SEAM_BITS;
-        const unsigned bits = across[byte];
-        if (bits == SEAM_BYTE_ALL && before != 0) {
-            spread_byte_doubled(column, first, out);
-        } else if (bits == 0 && before == 0 && first + GFX_SEAM_BITS < HALF_WIDTH) {
-            spread_byte_blended(column, first, out);
-        } else {
-            spread_byte(column, first, before, bits, out);
-        }
-        before = bits >> (GFX_SEAM_BITS - 1);
+    for (int byte = 0; byte < SEAM_PITCH; byte++) {
+        keep_left[byte] = (uint8_t)((across[byte] << 1) | before);
+        keep_right[byte] = across[byte];
+        before = across[byte] >> (GFX_SEAM_BITS - 1);
     }
-}
-
-/* Half rows spread once a strip: output rows 2r + 1 and 2r + 2 both blend
- * rows r and r + 1. Static, beside the present task's small stack. */
-#define SPREAD_ROWS 2
-static uint32_t spread_rows[SPREAD_ROWS][HALF_WIDTH];
-
-/* Half row `row` spread, from the cache when one of its entries holds it;
- * otherwise into the entry not holding `keep`. */
-static const uint32_t*
-spread_row(int row, int keep, int cached[SPREAD_ROWS]) {
-    for (int entry = 0; entry < SPREAD_ROWS; entry++) {
-        if (cached[entry] == row) {
-            return spread_rows[entry];
-        }
-    }
-    const int entry = cached[0] == keep ? 1 : 0;
-    const gfx_color_t* pixels = half_image + ((size_t)row * HALF_WIDTH);
+    keep_right[SEAM_PITCH - 1] |= 1U << ((HALF_WIDTH - 1) % GFX_SEAM_BITS); /* the right panel edge */
+    gfx_quarter_select(pixels, work.left, keep_left, work.even, STEPS);
+    gfx_quarter_select(pixels, work.right, keep_right, work.odd, STEPS);
     for (int x = 0; x < HALF_WIDTH; x++) {
-        spread_rows[entry][x] = rgb565be_spread(pixels[x]);
+        out[2 * x] = work.even[x];
+        out[(2 * x) + 1] = work.odd[x];
     }
-    cached[entry] = row;
-    return spread_rows[entry];
 }
 
 /* Bilinear at 2x, except across a seam, where each pixel keeps its own colour.
@@ -189,21 +141,17 @@ spread_row(int row, int keep, int cached[SPREAD_ROWS]) {
 static __attribute__((noinline)) void
 expand_blended_rows(int y0, int y1, gfx_color_t* destination) {
     const uint8_t* seams = (const uint8_t*)(half_image + ((size_t)HALF_WIDTH * HALF_HEIGHT));
-    const size_t seam_pitch = GFX_SEAM_PITCH(HALF_WIDTH);
-    uint32_t column[HALF_WIDTH]; /* the row blended down, spread */
-    int cached[SPREAD_ROWS] = {-1, -1};
     for (int y = y0; y < y1; y++) {
         const int row = y / 2;
         const bool lower_half = y % 2 != 0;
         const int other = lower_half ? row + 1 : row - 1;
-        const uint32_t* mine = spread_row(row, other, cached);
-        const uint32_t* blended = mine;
+        const uint16_t* pixels = half_image + ((size_t)row * HALF_WIDTH);
         if (other >= 0 && other < HALF_HEIGHT) {
-            blend_column(mine, spread_row(other, row, cached),
-                         seams + ((size_t)(lower_half ? row : other) * seam_pitch), column);
-            blended = column;
+            gfx_quarter_select(pixels, half_image + ((size_t)other * HALF_WIDTH),
+                               seams + ((size_t)(lower_half ? row : other) * SEAM_PITCH), work.down, STEPS);
+            pixels = work.down;
         }
-        spread_across(blended, seams + ((size_t)row * seam_pitch), destination + ((size_t)(y - y0) * GFX_WIDTH));
+        spread_across(pixels, seams + ((size_t)row * SEAM_PITCH), destination + ((size_t)(y - y0) * GFX_WIDTH));
     }
 }
 

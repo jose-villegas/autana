@@ -1,6 +1,6 @@
 # SKIN v2 skin
 
-Per vertex, which joints move it and by how much ([Skeleton-and-Skin.md](../../render/Skeleton-and-Skin.md)). Layout defines: [`render/r3d_skin_format.h`](../../../launcher/main/render/r3d_skin_format.h).
+Per vertex, which joints move it and by how much ([Skeleton-and-Skin.md](../../render/animation/Skeleton-and-Skin.md)). Layout defines: [`render/r3d_skin_format.h`](../../../launcher/main/render/r3d_skin_format.h).
 
 ```mermaid
 ---

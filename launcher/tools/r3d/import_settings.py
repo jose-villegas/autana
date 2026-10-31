@@ -211,6 +211,8 @@ def load_variant(value, steps, where):
         if "triangles" not in value:
             raise SettingsError(f"{where}.triangles is required when geometry.simplify is present")
         variant.triangles = count(value["triangles"], f"{where}.triangles")
+        if variant.ceiling is not None and variant.triangles > variant.ceiling:
+            raise SettingsError(f"{where}.triangles {variant.triangles} exceeds its ceiling {variant.ceiling}")
     elif "triangles" in value:
         raise SettingsError(f"{where}.triangles needs geometry.simplify")
     return variant
