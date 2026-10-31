@@ -1,4 +1,4 @@
-/* Writes an asset pack into a test's buffer, the layout docs/assets/Pack-Format.md
+/* Writes an asset pack into a test's buffer, the layout docs/assets/formats/APAK.md
  * gives: test_pack_begin() with the entry count, test_pack_add() for each
  * entry, which returns its zeroed bytes to fill, then test_pack_finish().
  * test_pack_put16/put32 write little-endian fields; test_pack_put_floats

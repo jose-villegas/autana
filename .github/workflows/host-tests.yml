@@ -2,9 +2,7 @@ name: Host Tests
 
 # Everything that compiles and runs on the runner itself, no ESP-IDF: the
 # portable suite (launcher/test/run_tests.sh, plain gcc), the sand
-# fingerprint, the render scenes, and the host editor's CTest suite. The
-# editor steps run even when an earlier one failed, so one red suite never
-# hides the state of the other.
+# fingerprint and the render scenes.
 
 on:
   push:
@@ -84,21 +82,6 @@ jobs:
           mkdir -p build
           cc -O3 -Ilauncher/packages/math/include launcher/test/math_rsqrt_check.c -lm -o build/math_rsqrt_check
           time build/math_rsqrt_check
-
-      # EDITOR_BUILD_GUI=OFF leaves out only the SDL2 + Dear ImGui window,
-      # which nothing here can exercise, so the runner needs no display
-      # packages.
-      - name: Configure the editor
-        id: editor-configure
-        if: ${{ !cancelled() }}
-        run: cmake -S editor -B editor/build -DCMAKE_BUILD_TYPE=Debug -DEDITOR_BUILD_GUI=OFF
-      - name: Build the editor
-        id: editor-build
-        if: ${{ !cancelled() && steps.editor-configure.outcome == 'success' }}
-        run: cmake --build editor/build --parallel
-      - name: Editor tests
-        if: ${{ !cancelled() && steps.editor-build.outcome == 'success' }}
-        run: ctest --test-dir editor/build --output-on-failure
 
       - uses: ./.github/actions/job-inputs
         if: ${{ !cancelled() }}

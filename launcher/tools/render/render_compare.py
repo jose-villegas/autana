@@ -10,7 +10,14 @@
 
     render_compare.py --out sheet.png --still-column LABEL FILE [--still-column ...]
 
+    render_compare.py --out sheet.png --reference-stills TITLE REFERENCE A B
+        --label-a TEXT --label-b TEXT [--crops N]
+
     render_compare.py --out angles.png --angle-column LABEL DIR [--angle-column ...]
+
+--reference-stills writes the reference sheet of one frame from three PNGs:
+the reference, A and B, then A's and B's dE heatmaps; with --crops N,
+<out>.crops.png holds the N places A and B differ most, the reference above.
 
 --angle-column writes one sheet of normal-angle heatmaps, a column per DIR of
 NNNN.angle.npy files (appearance_simplify.py --score --angle-dir), a row per
@@ -369,6 +376,23 @@ def _compose(rows, label_a, label_b, tile=1.0):
     return Image.fromarray(np.concatenate(padded, axis=0).astype(np.uint8))
 
 
+def still_row(panels):
+    """One labelled row of still pictures, [(label, picture), ...]: at least two."""
+    (label_a, a), (label_b, b), *after = panels
+    return _compose([(("", a, b), after)], label_a, label_b)
+
+
+def still_sheet(rows):
+    """still_row() per row of panels, stacked top to bottom on white."""
+    pictures = [still_row(panels) for panels in rows]
+    sheet = Image.new("RGB", (max(p.width for p in pictures), sum(p.height for p in pictures)), "white")
+    top = 0
+    for picture in pictures:
+        sheet.paste(picture, (0, top))
+        top += picture.height
+    return sheet
+
+
 def _scaled(picture, tile):
     if tile == 1.0:
         return picture
@@ -634,6 +658,11 @@ def compose_frame(a, b, clear, gain, label_a, label_b, note=""):
     return Image.fromarray(np.concatenate([_pixels(captioned(p, t)) for p, t in zip(panels, texts)], axis=1).astype(np.uint8))
 
 
+def frame_note(index, dt_ms, stats):
+    """A video frame's label: its index and time, so a frame can be named and rendered again, and how much changed."""
+    return "frame %d  %d ms  changed %.1f%%" % (index, round(index * dt_ms), 100.0 * stats.changed / stats.total)
+
+
 def frame_line(index, dt_ms, stats):
     """One CSV row: frame, time, changed share, mean abs diff, holes per side."""
     return "%d,%d,%.4f,%.4f,%d,%d" % (
@@ -726,8 +755,7 @@ def compare_videos(path_a, path_b, out, csv_path, clear, gain, label_a, label_b,
             stats = measure(a, b, clear)
             all_stats.append(stats)
             lines.append(frame_line(index, dt_ms, stats))
-            note = "t %.1f s  changed %.1f%%" % (index * dt_ms / 1000.0, 100.0 * stats.changed / stats.total)
-            picture = compose_frame(a, b, clear, gain, label_a, label_b, note)
+            picture = compose_frame(a, b, clear, gain, label_a, label_b, frame_note(index, dt_ms, stats))
             if process is None:
                 command = _ffmpeg_command(ffmpeg, picture.size, fps or fps_a, out)
                 process = subprocess.Popen(command, stdin=subprocess.PIPE)
@@ -847,26 +875,42 @@ def write_reference_bake_sheet(reference_dir, bakes, scale, frame_indices, out, 
     return lines
 
 
-class ReferenceVideoWriter:
-    """Packs reference_sheet's one-frame sheets into an mp4 through ffmpeg."""
+class VideoWriter:
+    """Packs RGB pictures of one size into an H.264 mp4 through ffmpeg."""
 
-    def __init__(self, out, label, fps=None):
-        self.out, self.label, self.fps, self.process = out, label, fps, None
+    def __init__(self, out, fps):
+        self.out, self.fps, self.process = out, fps, None
 
-    def add(self, fps, index, render, reference):
-        ffmpeg = shutil.which("ffmpeg")
-        if ffmpeg is None:
-            raise RuntimeError("ffmpeg not found; --reference-mp4 needs it to pack the frames")
-        picture = reference_sheet([("frame %d" % index, [render], reference)], [self.label], tile=1.0)
+    def add(self, picture):
         if self.process is None:
-            self.process = subprocess.Popen(_ffmpeg_command(ffmpeg, picture.size, self.fps or fps, self.out), stdin=subprocess.PIPE)
-        self.process.stdin.write(picture.tobytes())
+            ffmpeg = shutil.which("ffmpeg")
+            if ffmpeg is None:
+                raise RuntimeError("ffmpeg not found; writing %s needs it to pack the frames" % self.out)
+            self.process = subprocess.Popen(_ffmpeg_command(ffmpeg, picture.size, self.fps, self.out), stdin=subprocess.PIPE)
+        self.process.stdin.write(picture.convert("RGB").tobytes())
 
     def close(self):
         if self.process is not None:
             self.process.stdin.close()
             if self.process.wait() != 0:
                 raise RuntimeError("ffmpeg failed writing %s" % self.out)
+
+
+class ReferenceVideoWriter:
+    """Packs reference_sheet's one-frame sheets into an mp4 through ffmpeg."""
+
+    def __init__(self, out, label, fps=None):
+        self.out, self.label, self.fps, self.video = out, label, fps, None
+
+    def add(self, fps, index, render, reference):
+        picture = reference_sheet([("frame %d" % index, [render], reference)], [self.label], tile=1.0)
+        if self.video is None:
+            self.video = VideoWriter(self.out, self.fps or fps)
+        self.video.add(picture)
+
+    def close(self):
+        if self.video is not None:
+            self.video.close()
 
 
 def main():
@@ -877,6 +921,7 @@ def main():
     parser.add_argument("--row", nargs=3, action="append", metavar=("LABEL", "A", "B"))
     parser.add_argument("--reference-row", nargs=3, action="append", metavar=("LABEL", "RENDER", "REFERENCE"))
     parser.add_argument("--reference-crops", nargs=3, metavar=("REFERENCE", "A", "B"))
+    parser.add_argument("--reference-stills", nargs=4, metavar=("TITLE", "REFERENCE", "A", "B"))
     parser.add_argument("--reference-video", nargs=2, metavar=("VIDEO", "REFERENCE_DIR"))
     parser.add_argument("--reference-scale", type=int, help="render pixels per reference pixel; default from the first frame")
     parser.add_argument("--reference-first", type=int, default=0, help="video frames to skip before the reference images begin")
@@ -902,7 +947,7 @@ def main():
     parser.add_argument("--crops", type=int, default=0)
     args = parser.parse_args()
 
-    if (args.row or args.video or args.reference_crops) and not (args.label_a and args.label_b):
+    if (args.row or args.video or args.reference_crops or args.reference_stills) and not (args.label_a and args.label_b):
         parser.error("--label-a and --label-b are required: every panel is labelled")
     if args.reference_video and (args.reference_sheet or args.reference_mp4) and not args.label_a:
         parser.error("--label-a, naming the render, is required with --reference-sheet or --reference-mp4")
@@ -913,8 +958,7 @@ def main():
         for label, path in args.still_column:
             with Image.open(path) as picture:
                 panels.append((label, picture.convert("RGB")))
-        (label_a, a), (label_b, b), *after = panels
-        _compose([(("", a, b), after)], label_a, label_b).save(args.out, optimize=True)
+        still_row(panels).save(args.out, optimize=True)
         return
     if args.angle_column:
         angle_sheet(args.angle_column).save(args.out, optimize=True)
@@ -937,6 +981,16 @@ def main():
             with open(args.summary, "a") as handle:
                 handle.write("\n".join(lines) + "\n")
         return
+    if args.reference_stills:
+        title, *paths = args.reference_stills
+        reference, a, b = (Image.open(path).convert("RGB") for path in paths)
+        reference_sheet([(title, [a, b], reference)], [args.label_a, args.label_b]).save(args.out, optimize=True)
+        if args.crops:
+            out = pathlib.Path(args.out)
+            reference_crop_sheet(reference, a, b, args.crops, "reference", args.label_a, args.label_b).save(
+                out.with_suffix(".crops.png"), optimize=True)
+        return
+
     if not args.row and not args.reference_row and not args.reference_video and not args.reference_crops:
         parser.error("--row, --reference-row, --reference-bakes or --video is required")
 

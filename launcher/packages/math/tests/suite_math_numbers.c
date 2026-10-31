@@ -840,6 +840,63 @@ test_the_reciprocal_is_within_an_ulp_of_the_quotient_and_usually_on_it(void) {
     printf("MATHERROR name=mathf_recip type=f max=%lu unit=ulp method=sweep\n", (unsigned long)maximum);
 }
 
+#define FLOAT_FRACTION_BITS   (FLT_MANT_DIG - 1)
+#define FLOAT_SIGNIFICAND_ONE (UINT32_C(1) << FLOAT_FRACTION_BITS)
+#define FLOAT_FRACTION_MASK   (FLOAT_SIGNIFICAND_ONE - 1)
+#define FLOAT_EXPONENT_BIAS   (FLT_MAX_EXP - 1)
+
+#if !defined(ESP_PLATFORM) || (defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP)
+#define RECIP_EXPONENT_FIRST  (FLOAT_EXPONENT_BIAS + FLT_MIN_EXP - 1)
+#define RECIP_EXPONENT_LAST   (FLOAT_EXPONENT_BIAS - FLT_MIN_EXP)
+#define RECIP_MANTISSA_STRIDE 4093
+#ifdef ESP_PLATFORM
+#define RECIP_PERIOD_STRIDE 1
+#else
+#define RECIP_PERIOD_STRIDE RECIP_MANTISSA_STRIDE
+#endif
+
+static inline __attribute__((always_inline)) void
+recip_approx_measure(uint32_t input, double* maximum, double* bins) {
+    for (int sign = -1; sign <= 1; sign += 2) {
+        const float value = (float)sign * float_from_bits(input);
+        const double exact = 1.0 / (double)value;
+        const double relative = fabs((double)mathf_recip_approx(value) - exact) / fabs(exact);
+        *maximum = fmax(*maximum, relative);
+        const unsigned bin = fast_path_period_bin(value, FAST_PATH_RECIP_OCTAVES);
+        bins[bin] = fmax(bins[bin], relative);
+    }
+}
+
+static void
+test_recip_approx_mantissas_and_normal_exponent_edges(void) {
+    double maximum = 0.0;
+    double bins[FAST_PATH_BINS_PER_UNIT] = {0};
+    const uint32_t first = RECIP_EXPONENT_FIRST << FLOAT_FRACTION_BITS;
+    for (int exponent = RECIP_EXPONENT_FIRST; exponent <= RECIP_EXPONENT_LAST; exponent++) {
+        const uint32_t power = (uint32_t)exponent << FLOAT_FRACTION_BITS;
+        const uint32_t stride = exponent == FLOAT_EXPONENT_BIAS ? RECIP_PERIOD_STRIDE : RECIP_MANTISSA_STRIDE;
+        for (uint32_t mantissa = 0; mantissa < FLOAT_SIGNIFICAND_ONE; mantissa += stride) {
+            recip_approx_measure(power | mantissa, &maximum, bins);
+        }
+        recip_approx_measure(power | FLOAT_FRACTION_MASK, &maximum, bins);
+        for (int offset = -1; offset <= 1; offset++) {
+            const uint32_t input = power + offset;
+            if (input >= first) {
+                recip_approx_measure(input, &maximum, bins);
+            }
+        }
+    }
+    const uint32_t upper = (RECIP_EXPONENT_LAST + 1) << FLOAT_FRACTION_BITS;
+    recip_approx_measure(upper, &maximum, bins);
+    for (unsigned bin = 0; bin < FAST_PATH_BINS_PER_UNIT; bin++) {
+        printf("MATHERRORBIN name=mathf_recip_approx type=f x=%g max=%a unit=relative axis=period\n",
+               1.0 + (bin + 0.5) / FAST_PATH_BINS_PER_UNIT, bins[bin]);
+    }
+    printf("MATHERROR name=mathf_recip_approx type=f max=%a unit=relative method=proof\n", maximum);
+    TEST_ASSERT_TRUE(maximum <= (double)MATHF_RECIP_APPROX_RELATIVE_LIMIT);
+}
+#endif
+
 static void
 test_integer_repeat_and_wrap_cover_negative_values_and_int_limits(void) {
     const int length = 7;
@@ -1357,11 +1414,7 @@ test_rsqrt_tiny_inputs_preserve_exact_bits(void) {
     }
 }
 
-#define RSQRT_FRACTION_BITS   23
-#define RSQRT_EXPONENT_BIAS   127
-#define RSQRT_SIGNIFICAND_ONE (UINT32_C(1) << RSQRT_FRACTION_BITS)
-#define RSQRT_FRACTION_MASK   (RSQRT_SIGNIFICAND_ONE - 1)
-#define RSQRT_WORD_BITS       32
+#define RSQRT_WORD_BITS 32
 #if !defined(ESP_PLATFORM) || (defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP)
 #define RSQRT_EXPONENT_MAX    254
 #define RSQRT_MANTISSA_STRIDE 65537
@@ -1375,20 +1428,20 @@ test_rsqrt_tiny_inputs_preserve_exact_bits(void) {
 /* The 24-by-25-by-25-bit product needs three words; no rounded float reference enters the bracket. */
 static int
 rsqrt_product_compare(uint32_t input, uint32_t significand, int exponent) {
-    const uint32_t mantissa = (input & RSQRT_FRACTION_MASK) | RSQRT_SIGNIFICAND_ONE;
+    const uint32_t mantissa = (input & FLOAT_FRACTION_MASK) | FLOAT_SIGNIFICAND_ONE;
     const uint64_t square = (uint64_t)significand * significand;
     const uint64_t low = (uint64_t)(uint32_t)square * mantissa;
     const uint64_t high = (square >> RSQRT_WORD_BITS) * mantissa + (low >> RSQRT_WORD_BITS);
     const int power =
-        3 * (RSQRT_EXPONENT_BIAS + RSQRT_FRACTION_BITS) - (int)(input >> RSQRT_FRACTION_BITS) - 2 * exponent;
+        3 * (FLOAT_EXPONENT_BIAS + FLOAT_FRACTION_BITS) - (int)(input >> FLOAT_FRACTION_BITS) - 2 * exponent;
     const uint64_t target = UINT64_C(1) << (power - RSQRT_WORD_BITS);
     return high < target ? -1 : (high > target || (uint32_t)low != 0 ? 1 : 0);
 }
 
 static int
 rsqrt_candidate_compare(uint32_t input, uint32_t candidate) {
-    return rsqrt_product_compare(input, (candidate & RSQRT_FRACTION_MASK) | RSQRT_SIGNIFICAND_ONE,
-                                 (int)(candidate >> RSQRT_FRACTION_BITS));
+    return rsqrt_product_compare(input, (candidate & FLOAT_FRACTION_MASK) | FLOAT_SIGNIFICAND_ONE,
+                                 (int)(candidate >> FLOAT_FRACTION_BITS));
 }
 
 static uint32_t
@@ -1400,10 +1453,10 @@ rsqrt_reference_bits(uint32_t input, uint32_t candidate) {
         candidate++;
     }
     const uint32_t upper = candidate + 1;
-    const int exponent = (int)(candidate >> RSQRT_FRACTION_BITS);
-    const uint32_t lower_mantissa = (candidate & RSQRT_FRACTION_MASK) | RSQRT_SIGNIFICAND_ONE;
-    const uint32_t upper_mantissa = ((upper & RSQRT_FRACTION_MASK) | RSQRT_SIGNIFICAND_ONE)
-                                    << ((upper >> RSQRT_FRACTION_BITS) - (uint32_t)exponent);
+    const int exponent = (int)(candidate >> FLOAT_FRACTION_BITS);
+    const uint32_t lower_mantissa = (candidate & FLOAT_FRACTION_MASK) | FLOAT_SIGNIFICAND_ONE;
+    const uint32_t upper_mantissa = ((upper & FLOAT_FRACTION_MASK) | FLOAT_SIGNIFICAND_ONE)
+                                    << ((upper >> FLOAT_FRACTION_BITS) - (uint32_t)exponent);
     const int midpoint = rsqrt_product_compare(input, lower_mantissa + upper_mantissa, exponent - 1);
     return midpoint < 0 || (midpoint == 0 && (candidate & 1)) ? upper : candidate;
 }
@@ -1413,11 +1466,11 @@ static void
 assert_rsqrt_integer_bracket_midpoints(void) {
     /* A float midpoint has an odd significand greater than one; its square times a binary input cannot be one. */
     for (int exponent = 1; exponent <= RSQRT_EXPONENT_MAX; exponent++) {
-        const uint32_t stride = exponent == RSQRT_EXPONENT_BIAS || exponent == RSQRT_EXPONENT_BIAS + 1
+        const uint32_t stride = exponent == FLOAT_EXPONENT_BIAS || exponent == FLOAT_EXPONENT_BIAS + 1
                                     ? RSQRT_DENSE_STRIDE
                                     : RSQRT_MANTISSA_STRIDE;
-        for (uint32_t mantissa = 0; mantissa < RSQRT_SIGNIFICAND_ONE; mantissa += stride) {
-            const uint32_t input = ((uint32_t)exponent << RSQRT_FRACTION_BITS) | mantissa;
+        for (uint32_t mantissa = 0; mantissa < FLOAT_SIGNIFICAND_ONE; mantissa += stride) {
+            const uint32_t input = ((uint32_t)exponent << FLOAT_FRACTION_BITS) | mantissa;
             const double reference = 1.0 / sqrt((double)float_from_bits(input));
             const float rounded = (float)reference;
             const float adjacent = nextafterf(rounded, reference < (double)rounded ? 0.0F : INFINITY);
@@ -1581,18 +1634,18 @@ test_rsqrt_device_mantissas_and_normal_exponent_edges(void) {
     float max_relative = 0.0F;
     double* bins = calloc(2 * FAST_PATH_RSQRT_BINS, sizeof(*bins));
     TEST_ASSERT_NOT_NULL(bins);
-    const uint32_t first = RSQRT_EXPONENT_BIAS << RSQRT_FRACTION_BITS;
-    const uint32_t end = (RSQRT_EXPONENT_BIAS + 2) << RSQRT_FRACTION_BITS;
+    const uint32_t first = FLOAT_EXPONENT_BIAS << FLOAT_FRACTION_BITS;
+    const uint32_t end = (FLOAT_EXPONENT_BIAS + 2) << FLOAT_FRACTION_BITS;
     for (int exponent = 1; exponent <= RSQRT_EXPONENT_MAX; exponent++) {
-        const uint32_t power = (uint32_t)exponent << RSQRT_FRACTION_BITS;
+        const uint32_t power = (uint32_t)exponent << FLOAT_FRACTION_BITS;
         const uint32_t stride = power >= first && power < end ? 1 : RSQRT_MANTISSA_STRIDE;
-        for (uint32_t mantissa = 0; mantissa < RSQRT_SIGNIFICAND_ONE; mantissa += stride) {
+        for (uint32_t mantissa = 0; mantissa < FLOAT_SIGNIFICAND_ONE; mantissa += stride) {
             rsqrt_measure(power | mantissa, &max_ulp, &max_relative, bins);
         }
-        rsqrt_measure(power | RSQRT_FRACTION_MASK, &max_ulp, &max_relative, bins);
+        rsqrt_measure(power | FLOAT_FRACTION_MASK, &max_ulp, &max_relative, bins);
         for (int offset = -1; offset <= 1; offset++) {
             const uint32_t input = power + offset;
-            if (input >= RSQRT_SIGNIFICAND_ONE) {
+            if (input >= FLOAT_SIGNIFICAND_ONE) {
                 rsqrt_measure(input, &max_ulp, &max_relative, bins);
             }
         }
@@ -1944,6 +1997,9 @@ suite_math_numbers(void) {
     RUN_TEST(test_integer_half_chords_round);
     RUN_TEST(test_integer_half_chords_int16_radius_edges);
     RUN_TEST(test_scalar_half_and_absolute_value);
+#if !defined(ESP_PLATFORM) || (defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP)
+    RUN_TEST(test_recip_approx_mantissas_and_normal_exponent_edges);
+#endif
     RUN_TEST(test_rsqrt_tiny_inputs_preserve_exact_bits);
     RUN_TEST(test_rsqrt_integer_bracket_rounds_exact_roots_and_midpoints);
 #if defined(ESP_PLATFORM) && defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP

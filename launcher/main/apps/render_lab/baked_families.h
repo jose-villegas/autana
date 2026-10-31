@@ -13,7 +13,8 @@ typedef struct {
 } scene_baked_t;
 
 /* An open street with a far plane, walked and flown over on a loop. */
-#define BISTRO_SCENE "bistro"
+#define BISTRO_SCENE  "bistro"
+#define BISTRO_CAMERA "camera"
 
 extern const scene_baked_t baked_sponza;
 extern const scene_baked_t baked_bistro;

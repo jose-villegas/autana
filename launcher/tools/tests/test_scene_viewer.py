@@ -1,4 +1,5 @@
 """The scene-file viewer through the shared harness, using temporary authored assets."""
+import csv
 import os
 import pathlib
 import re
@@ -7,7 +8,6 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from unittest import mock
 
 from PIL import Image
 import numpy as np
@@ -17,10 +17,13 @@ sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(TOOLS / "tests"))
 from anim_probe import has_compiler, write_camera_clip  # noqa: E402
 from anim import track_host
-from r3d import build_pack, import_settings
+from build.c_header import read_define
+from r3d import build_pack
 from r3d.lit_mesh import write_lit_mesh  # noqa: E402
+from render import render_compare, scene_path  # noqa: E402
 
 SCRIPT = TOOLS / "render/scenes/scene_viewer_render_host.sh"
+REPO = TOOLS.parents[1]
 
 
 @unittest.skipUnless(has_compiler(), "needs sh and a C compiler")
@@ -117,8 +120,7 @@ path = { animation = "fly.anim.toml", node = "camera" }
         run, _ = self.render("--view", "invalid")
         self.assertNotEqual(run.returncode, 0)
         names = run.stderr.split("--view is ", 1)[1].split(", not ", 1)[0].split(", ")
-        header = (TOOLS.parent / "main/render/context/render_context.h").read_text()
-        count = int(re.search(r"#define RENDER_DEBUG_VIEW_COUNT\s+(\d+)", header)[1])
+        count = read_define(TOOLS.parent / "main/render/context/render_context.h", "RENDER_DEBUG_VIEW_COUNT")
         self.assertEqual(len(names), count + 1)
         self.assertEqual(names[0], "shaded")
         for name in names:
@@ -140,7 +142,8 @@ path = { animation = "fly.anim.toml", node = "camera" }
         for name in names[1:]:
             with self.subTest(name=name):
                 picture = self.pixels("--object", "card", "--view", name)
-                self.assertNotEqual(shaded.tobytes(), picture.tobytes())
+                # Not assertNotEqual: its failure message would print both frames' bytes.
+                self.assertFalse(shaded.tobytes() == picture.tobytes())
 
     def test_unknown_object_names_it_and_lists_renderers(self):
         run, out = self.render("--object", "missing")
@@ -163,7 +166,7 @@ path = { animation = "fly.anim.toml", node = "camera" }
         self.assertNotEqual(authored.tobytes(), card.tobytes())
 
     def hierarchy_pixels(self, *args):
-        """Renders `kid` under `rig` beside an unrelated `other`; the scene TOML has no parent key yet."""
+        """Renders `kid` under `rig` beside an unrelated `other`."""
         source = self.root / "family.scene.toml"
         mesh = '[objects.mesh_renderer]\nmesh = "card.import.toml"\n'
         source.write_text(
@@ -172,16 +175,8 @@ path = { animation = "fly.anim.toml", node = "camera" }
             f'[[objects]]\nname = "other"\nposition = [-2.0, 0.0, -1.0]\n{mesh}'
             '[[objects]]\nname = "camera"\n[objects.camera]\nhalf_fov_short_tan = 0.6\nnear_z = 1.0\n'
             'background = 0x204080\npath = { animation = "fly.anim.toml", node = "camera" }\n')
-        load_object = import_settings.load_object
-
-        def with_parent(value, base, where):
-            obj = load_object({key: item for key, item in value.items() if key != "parent"}, base, where)
-            obj.parent = value.get("parent")
-            return obj
-
         assets = self.root / "family-assets"
-        with mock.patch.object(import_settings, "load_object", with_parent):
-            build_pack.write_packs(assets, build_pack.pack_bytes([source]))
+        build_pack.write_packs(assets, build_pack.pack_bytes([source]))
         out = self.root / "family.bmp"
         run = subprocess.run([str(self.binary), "--scene", "family", "--frames", "2", "--dt", "100", *args,
                               "-o", str(out)], capture_output=True, text=True, timeout=120,
@@ -206,8 +201,7 @@ path = { animation = "fly.anim.toml", node = "camera" }
         self.assertNotEqual(first.tobytes(), small.tobytes())
 
     def test_small_fill_ceiling_range(self):
-        header = (TOOLS.parent / "main/render/render_view.h").read_text()
-        maximum = int(re.search(r"#define SMALL_FILL_CEILING_MAX\s+(\d+)", header)[1])
+        maximum = read_define(TOOLS.parent / "main/render/render_view.h", "SMALL_FILL_CEILING_MAX")
         for ceiling in (0, maximum):
             with self.subTest(ceiling=ceiling):
                 run, _ = self.render("--small-fill", f"{ceiling},16,0")
@@ -257,6 +251,81 @@ path = { animation = "fly.anim.toml", node = "camera" }
             self.assertEqual(image.size, (448, 368))
             self.assertGreater(dict((rgb, count) for count, rgb in image.getcolors(448 * 368)).get((255, 40, 16), 0),
                                1000)
+
+    def test_poses_follow_the_camera_one_row_per_frame(self):
+        rows = self.root / "poses.csv"
+        run, _ = self.render("--poses", str(rows), "--frames", "3")
+        self.assertEqual(run.returncode, 0, run.stderr)
+        with open(rows) as handle:
+            poses = list(csv.DictReader(handle))
+        self.assertEqual([pose["ms"] for pose in poses], ["0", "100", "200"])
+        self.assertNotEqual([poses[0][axis] for axis in ("px", "py", "pz")],
+                            [poses[2][axis] for axis in ("px", "py", "pz")])
+        for pose in poses:
+            self.assertAlmostEqual(float(np.linalg.norm([float(pose[q]) for q in ("qx", "qy", "qz", "qw")])), 1.0,
+                                   places=5)
+
+    def sides(self, b_args="--object\ncard"):
+        assets = str(self.out / "assets")
+        return [scene_path.Side("all", self.binary, assets, "--scene\nroom"),
+                scene_path.Side("card", self.binary, assets, "--scene\nroom\n" + b_args)]
+
+    def test_frame_n_is_frame_n_of_the_rendered_path_on_both_sides(self):
+        work = self.root / "path"
+        work.mkdir(exist_ok=True)
+        sides = self.sides()
+        scene_path.render(sides, 4, 100, work)
+        written = scene_path.write_frame(sides, 2, 4, 100, work, self.root / "frame.png")
+        self.assertEqual([path.name for path in written], ["frame.png", "frame-b.png"])
+        pictures = []
+        for name, path in zip(scene_path.SIDES, written):
+            frames = list(render_compare.read_video(work / f"{name}.avi")[1])
+            self.assertEqual(len(frames), 4)
+            with Image.open(path) as image:
+                pictures.append(np.asarray(image.convert("RGB")))
+            np.testing.assert_array_equal(pictures[-1], frames[2])
+        self.assertFalse(np.array_equal(pictures[0], pictures[1]), "the offset card should pop out on side b")
+
+    def test_a_frame_past_the_path_end_is_refused(self):
+        with self.assertRaises(SystemExit) as refusal:
+            scene_path.write_frame(self.sides(), 4, 4, 100, self.root, self.root / "late.png")
+        self.assertIn("frames 0 to 3", str(refusal.exception))
+
+    def test_default_timing_is_the_viewers_frame_time_over_the_whole_path(self):
+        work = self.root / "timing"
+        work.mkdir(exist_ok=True)
+        side = self.sides()[0]
+        run, _ = self.render("--frames", "1")
+        duration_ms = int(re.search(r"camera path (\d+) ms", run.stderr).group(1))
+        dt_default = int(re.search(r"\.dt_ms = (\d+)", (TOOLS / "render/scene_viewer.c").read_text()).group(1))
+        self.assertEqual(scene_path.timing(side, work), (duration_ms // dt_default + 1, dt_default))
+        self.assertEqual(scene_path.timing(side, work, frames=3, dt_ms=7), (3, 7))
+
+    def wrapper(self, *arguments):
+        """scene_viewer.sh on the test scene, run from the repository (--compare needs it)."""
+        return subprocess.run([shutil.which("sh"), str(TOOLS / "render/scene_viewer.sh"), str(self.scene), *arguments],
+                              cwd=REPO, capture_output=True, text=True, timeout=300)
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "needs ffmpeg")
+    def test_wrapper_compares_this_checkout_against_itself_with_other_arguments(self):
+        out = self.root / "compare.mp4"
+        run = self.wrapper("--compare", ".", "--b-args", "--object card", "--frames", "3", "--dt", "100", "-o", str(out))
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertIn("video: 3 frames", run.stderr)
+        self.assertGreater(out.stat().st_size, 0)
+
+    def test_wrapper_frame_writes_both_sides(self):
+        out = self.root / "wrapper frame.png"
+        run = self.wrapper("--compare", ".", "--b-args", "--object card", "--dt", "100", "--frame", "1", "-o", str(out))
+        self.assertEqual(run.returncode, 0, run.stderr)
+        for path in (out, out.with_name("wrapper frame-b.png")):
+            with Image.open(path) as image:
+                self.assertEqual(image.size, (448, 368))
+
+    def test_wrapper_refuses_b_args_without_compare(self):
+        run = self.wrapper("--b-args", "--object card")
+        self.assertEqual(run.returncode, 2)
+        self.assertIn("--b-args needs --compare", run.stderr)
 
     def test_packer_replaces_a_scratch_mesh_for_one_render_only(self):
         scratch = self.root / "scratch mesh"

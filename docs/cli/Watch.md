@@ -10,6 +10,7 @@ watch` lists the same commands.
 | `autana coredump [--elf PATH]` | the last panic's core dump, saved to the records and decoded against the build that crashed; resets the board |
 | `autana coredump --core FILE [--elf PATH]` | decode a saved dump; no board |
 | `autana coredump --erase` | clear the dump so the next crash's is told apart; resets the board |
+| `autana mic record <ms> [--settle ms] [--at ms reg value]... -o take.wav [--json]` | record microphone PCM and codec state; --at writes a codec register during the take |
 | `autana screenshot [--as-shown\|--framebuffer] [-o PATH]` | PATH.png plus a PATH.json state snapshot; landscape by default |
 | `autana screenshot --frames N -o PATH` | N frames as PATH-00 on: the loop is frozen and stepped a frame between captures, then resumed |
 | `autana battery [--json]` | fresh voltage, percentage, USB, charge phase and flow, plus raw PMU status bytes; development builds |

@@ -75,14 +75,14 @@ finish_command(const sound_command_t* command) {
 }
 
 static sound_voice_t
-play_source(const sound_t* sound, const sound_play_opts_t* opts, uint16_t hz) {
+play_source(const sound_t* sound, const sound_play_opts_t* opts, uint16_t hz, uint16_t ms) {
     uint32_t generation;
     if (!begin_command(true, &generation)) {
         return SOUND_VOICE_NULL;
     }
     sound_command_t command;
     portENTER_CRITICAL(&control_lock);
-    const sound_voice_t voice = sound_control_play(&control, sound, opts, hz, &command, generation);
+    const sound_voice_t voice = sound_control_play(&control, sound, opts, hz, ms, &command, generation);
     portEXIT_CRITICAL(&control_lock);
     finish_command(voice.id ? &command : NULL);
     return voice;
@@ -90,17 +90,16 @@ play_source(const sound_t* sound, const sound_play_opts_t* opts, uint16_t hz) {
 
 sound_voice_t
 sound_play(const sound_t* sound, const sound_play_opts_t* opts) {
-    return play_source(sound, opts, 0);
+    return play_source(sound, opts, 0, 0);
 }
 
 sound_voice_t
-sound_play_tone(uint16_t hz, uint8_t gain_pct) {
+sound_play_tone(uint16_t hz, uint16_t ms, uint8_t gain_pct, sound_bus_t bus) {
     if (!audio_out_args_valid(hz, AUDIO_OUT_MAX_MS, gain_pct)) {
         return SOUND_VOICE_NULL;
     }
-    const sound_play_opts_t opts = {
-        .bus = SOUND_BUS_SYSTEM, .gain_pct = gain_pct, .priority = SOUND_PRIORITY_MAX, .loop = true};
-    return play_source(NULL, &opts, hz);
+    const sound_play_opts_t opts = {.bus = bus, .gain_pct = gain_pct, .priority = SOUND_PRIORITY_MAX, .loop = true};
+    return play_source(NULL, &opts, hz, ms);
 }
 
 static void

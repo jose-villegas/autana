@@ -1,4 +1,4 @@
-"""SKEL v1 encoding and validation; layout: docs/render/Skeleton-and-Skin.md."""
+"""SKEL v1 encoding and validation; layout: docs/assets/formats/SKEL.md."""
 
 import math
 import struct

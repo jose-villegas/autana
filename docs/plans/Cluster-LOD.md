@@ -32,5 +32,8 @@ cathedral, never put a cluster far enough away for a coarser level to pay:
 the walls bound the view. LOD is for scenes with a far plane. Revisit it when
 an open scene with distant geometry exists.
 
+Whole instanced copies fare no better there. In the atrium they span 10 px at
+the median, so coarser levels save under 1% of drawn triangles at 4 px.
+
 **Not done.** A runtime that picks per cluster, and normal-cone culling, which
 the branch bakes but nothing reads.

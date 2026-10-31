@@ -334,7 +334,7 @@ static void release_fixture(void);
 typedef void (*run_rect_fn_t)(const draw_font_t*, int, int, int, int, int, int, int, int*, int*, int*, int*);
 
 static void
-sim_walk_runs(gfx_target_t target, const draw_font_t* f, int x, int y, unsigned char ch, int scale, int turn,
+sim_walk_runs(const gfx_target_t* target, const draw_font_t* f, int x, int y, unsigned char ch, int scale, int turn,
               run_rect_fn_t rect_fn, gfx_color_t color) {
     const uint8_t* glyph = f->atlas + (size_t)(ch - f->first) * f->cell_h;
     for (int row = 0; row < f->cell_h; row++) {
@@ -363,7 +363,7 @@ sim_walk_runs(gfx_target_t target, const draw_font_t* f, int x, int y, unsigned 
 /* draw_command()'s own 8-offset loop, at the row-run level: SIM_HALO at
  * each of the 8 unit screen-space offsets, SIM_INK last, unshifted. */
 static void
-sim_draw_old(gfx_target_t target, const draw_font_t* f, int x, int y, unsigned char ch, int scale, int turn) {
+sim_draw_old(const gfx_target_t* target, const draw_font_t* f, int x, int y, unsigned char ch, int scale, int turn) {
     static const int offsets[8][2] = {
         {-1, -1}, {0, -1}, {1, -1}, {-1, 0}, {1, 0}, {-1, 1}, {0, 1}, {1, 1},
     };
@@ -377,15 +377,18 @@ sim_draw_old(gfx_target_t target, const draw_font_t* f, int x, int y, unsigned c
 /* draw_text_font_halo()/draw_text_font() at the row-run level: one dilated
  * SIM_HALO pass, SIM_INK last, unshifted, draw_command()'s fast path. */
 static void
-sim_draw_new(gfx_target_t target, const draw_font_t* f, int x, int y, unsigned char ch, int scale, int turn) {
+sim_draw_new(const gfx_target_t* target, const draw_font_t* f, int x, int y, unsigned char ch, int scale, int turn) {
     sim_walk_runs(target, f, x, y, ch, scale, turn, draw_font_row_run_rect_dilated, SIM_HALO);
     sim_walk_runs(target, f, x, y, ch, scale, turn, draw_font_row_run_rect, SIM_INK);
 }
 
+typedef void (*sim_draw_fn_t)(const gfx_target_t*, const draw_font_t*, int, int, unsigned char, int, int);
+
 /* `band` gives the row range to draw into; its own buf is ignored and
  * replaced with sim_old/sim_new so both forms land in a real buffer. */
 static void
-assert_old_and_new_match(gfx_target_t band, int x, int y, unsigned char ch, int scale, int turn) {
+assert_draws_match(sim_draw_fn_t first, sim_draw_fn_t second, const gfx_target_t* band, int x, int y, unsigned char ch,
+                   int scale, int turn) {
     if (sim_old == NULL) {
         sim_old = malloc(sizeof(*sim_old) * SIM_DIM * SIM_DIM);
     }
@@ -398,24 +401,30 @@ assert_old_and_new_match(gfx_target_t band, int x, int y, unsigned char ch, int 
     memset(sim_old, 0, sizeof(*sim_old) * SIM_DIM * SIM_DIM);
     memset(sim_new, 0, sizeof(*sim_new) * SIM_DIM * SIM_DIM);
 
-    gfx_target_t old_target = band, new_target = band;
-    old_target.buf = sim_old;
-    new_target.buf = sim_new;
+    GFX_TARGET_STORAGE(1) old_target_storage;
+    GFX_TARGET_STORAGE(1) new_target_storage;
+    gfx_target_of_color(&old_target_storage.target, sim_old, band->attachment[0].width, band->attachment[0].height,
+                        band->first_row);
+    gfx_target_of_color(&new_target_storage.target, sim_new, band->attachment[0].width, band->attachment[0].height,
+                        band->first_row);
+    const gfx_target_t* old_target = &old_target_storage.target;
+    const gfx_target_t* new_target = &new_target_storage.target;
 
-    sim_draw_old(old_target, &draw_font_8x8, x, y, ch, scale, turn);
-    sim_draw_new(new_target, &draw_font_8x8, x, y, ch, scale, turn);
+    first(old_target, &draw_font_8x8, x, y, ch, scale, turn);
+    second(new_target, &draw_font_8x8, x, y, ch, scale, turn);
 
     TEST_ASSERT_EQUAL_UINT16_ARRAY_MESSAGE(sim_old, sim_new, SIM_DIM * SIM_DIM,
-                                           "one dilated halo pass must paint exactly what 8 offset copies do");
+                                           "the two glyph renderers must paint the same pixels");
 }
 
 static void
 test_dilated_halo_matches_eight_offset_copies_at_every_turn(void) {
-    const gfx_target_t full = {NULL, 0, SIM_DIM, SIM_DIM};
+    const GFX_TARGET_STORAGE(1) full_storage = GFX_TARGET_COLOR_INIT(NULL, SIM_DIM, SIM_DIM);
+    const gfx_target_t* full = &full_storage.target;
 
     for (int turn = 0; turn < 4; turn++) {
         for (unsigned char ch = 'A'; ch <= 'Z'; ch++) {
-            assert_old_and_new_match(full, 15, 15, ch, 2, turn);
+            assert_draws_match(sim_draw_old, sim_draw_new, full, 15, 15, ch, 2, turn);
         }
     }
 }
@@ -426,10 +435,12 @@ test_dilated_halo_matches_eight_offset_copies_at_every_turn(void) {
  * always does. */
 static void
 test_dilated_halo_matches_eight_offset_copies_at_a_band_edge(void) {
-    const gfx_target_t band = {NULL, 10, 8, SIM_DIM}; /* rows [10, 18) only */
+    GFX_TARGET_STORAGE(1) band_storage;
+    gfx_target_of_color(&band_storage.target, NULL, SIM_DIM, 8, 10);
+    const gfx_target_t* band = &band_storage.target; /* rows [10, 18) only */
 
     for (int turn = 0; turn < 4; turn++) {
-        assert_old_and_new_match(band, 15, 15, 'A', 2, turn);
+        assert_draws_match(sim_draw_old, sim_draw_new, band, 15, 15, 'A', 2, turn);
     }
 }
 
@@ -530,7 +541,7 @@ test_glyph_run_boxes_out_of_range_char_yields_none(void) {
 typedef void (*run_box_fn_t)(const draw_font_t*, int, int, int, int, int, int, int, int, int*, int*, int*, int*);
 
 static void
-sim_walk_boxes(gfx_target_t target, const draw_font_t* f, int x, int y, unsigned char ch, int scale, int turn,
+sim_walk_boxes(const gfx_target_t* target, const draw_font_t* f, int x, int y, unsigned char ch, int scale, int turn,
                run_box_fn_t box_fn, gfx_color_t color) {
     draw_font_run_box_t* boxes = alloc_run_boxes();
     const int n = draw_font_glyph_run_boxes(f, ch, boxes, DRAW_FONT_RUN_BOXES_MAX);
@@ -544,45 +555,19 @@ sim_walk_boxes(gfx_target_t target, const draw_font_t* f, int x, int y, unsigned
 /* glyph_font() in halo mode: one
  * dilated-box halo pass, one plain-box ink pass. */
 static void
-sim_draw_merged(gfx_target_t target, const draw_font_t* f, int x, int y, unsigned char ch, int scale, int turn) {
+sim_draw_merged(const gfx_target_t* target, const draw_font_t* f, int x, int y, unsigned char ch, int scale, int turn) {
     sim_walk_boxes(target, f, x, y, ch, scale, turn, draw_font_run_box_rect_dilated, SIM_HALO);
     sim_walk_boxes(target, f, x, y, ch, scale, turn, draw_font_run_box_rect, SIM_INK);
 }
 
-static gfx_color_t* sim_merged;
-
-static void
-assert_merged_matches_unmerged(gfx_target_t band, int x, int y, unsigned char ch, int scale, int turn) {
-    if (sim_new == NULL) {
-        sim_new = malloc(sizeof(*sim_new) * SIM_DIM * SIM_DIM);
-    }
-    if (sim_merged == NULL) {
-        sim_merged = malloc(sizeof(*sim_merged) * SIM_DIM * SIM_DIM);
-    }
-    TEST_ASSERT_NOT_NULL(sim_new);
-    TEST_ASSERT_NOT_NULL(sim_merged);
-    suite_set_test_cleanup(release_fixture);
-    memset(sim_new, 0, sizeof(*sim_new) * SIM_DIM * SIM_DIM);
-    memset(sim_merged, 0, sizeof(*sim_merged) * SIM_DIM * SIM_DIM);
-
-    gfx_target_t unmerged_target = band, merged_target = band;
-    unmerged_target.buf = sim_new;
-    merged_target.buf = sim_merged;
-
-    sim_draw_new(unmerged_target, &draw_font_8x8, x, y, ch, scale, turn);
-    sim_draw_merged(merged_target, &draw_font_8x8, x, y, ch, scale, turn);
-
-    TEST_ASSERT_EQUAL_UINT16_ARRAY_MESSAGE(sim_new, sim_merged, SIM_DIM * SIM_DIM,
-                                           "merging identical consecutive-row runs must not change any pixel");
-}
-
 static void
 test_merged_boxes_match_unmerged_runs_at_every_turn(void) {
-    const gfx_target_t full = {NULL, 0, SIM_DIM, SIM_DIM};
+    const GFX_TARGET_STORAGE(1) full_storage = GFX_TARGET_COLOR_INIT(NULL, SIM_DIM, SIM_DIM);
+    const gfx_target_t* full = &full_storage.target;
 
     for (int turn = 0; turn < 4; turn++) {
         for (unsigned char ch = 'A'; ch <= 'Z'; ch++) {
-            assert_merged_matches_unmerged(full, 15, 15, ch, 2, turn);
+            assert_draws_match(sim_draw_new, sim_draw_merged, full, 15, 15, ch, 2, turn);
         }
     }
 }
@@ -591,10 +576,12 @@ test_merged_boxes_match_unmerged_runs_at_every_turn(void) {
  * merged rect must still clip correctly against. */
 static void
 test_merged_boxes_match_unmerged_runs_at_a_band_edge(void) {
-    const gfx_target_t band = {NULL, 10, 8, SIM_DIM}; /* rows [10, 18) only */
+    GFX_TARGET_STORAGE(1) band_storage;
+    gfx_target_of_color(&band_storage.target, NULL, SIM_DIM, 8, 10);
+    const gfx_target_t* band = &band_storage.target; /* rows [10, 18) only */
 
     for (int turn = 0; turn < 4; turn++) {
-        assert_merged_matches_unmerged(band, 15, 15, 'A', 2, turn);
+        assert_draws_match(sim_draw_new, sim_draw_merged, band, 15, 15, 'A', 2, turn);
     }
 }
 
@@ -602,8 +589,6 @@ static void
 release_fixture(void) {
     free(sim_boxes);
     sim_boxes = NULL;
-    free(sim_merged);
-    sim_merged = NULL;
     free(sim_new);
     sim_new = NULL;
     free(sim_old);

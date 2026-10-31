@@ -11,6 +11,8 @@ import shutil
 import statistics
 import subprocess
 import sys
+import threading
+from concurrent.futures import Future
 from typing import NamedTuple
 from types import SimpleNamespace
 
@@ -416,19 +418,58 @@ def measure_worker(label, job, mesh, reference_inputs, work, host, weights, scen
     return row, directory / "frames.avi", {"triangles": triangles, "mean_delta_e": metrics[0],
                                          "p95_delta_e": metrics[1], "predicted_ms": predicted}
 
-def recorded_call(function, *args):
+# A kept result's files in its folder: the steps the run that made it recorded, a fit's mesh, a path-culled bake.
+STEPS = "steps.json"
+FITTED_MESH = "fitted.mesh"
+CULLED = "culled"
+# The bake cache's folder of the stage's own results; reference sets live in produce.py's.
+DOC_CACHE = "doc"
+
+
+class Kept(NamedTuple):
+    """A result kept by its key in the bake cache: its folder, and the steps the run that made it recorded."""
+    folder: Path
+    steps: list
+
+
+def read_kept(folder):
+    steps = folder / STEPS
+    return Kept(folder, json.loads(steps.read_text()) if steps.is_file() else [])
+
+
+def make_kept(folder, function, *args):
+    """In a worker: `folder` made by function(partial, *args, recorder=...) through produce.keyed_folder, with the
+    steps it records in STEPS."""
+    from bake.produce import keyed_folder
     from r3d.process_budget import StepRecorder
-    recorder = StepRecorder()
-    result = function(*args, recorder=recorder)
-    return result, recorder.rows
+
+    def make(partial):
+        recorder = StepRecorder()
+        function(partial, *args, recorder=recorder)
+        (partial / STEPS).write_text(json.dumps(recorder.rows, indent=2) + "\n")
+    return read_kept(keyed_folder(folder, make))
 
 
-def bake_worker(scene, job, path_cull, prefix, baked_name, work, recorder=None):
+def kept_references(key, job, scene, cache):
+    """In a worker: the reference set of `job`'s fit, shared with bake.py's fits through produce.reference_set."""
+    from bake.produce import reference_set
+    return read_kept(reference_set(key, job, scene, cache))
+
+
+def write_start(directory, job, scene, recorder=None):
+    from r3d.mesh_import import write_baked
+    write_baked(job, scene, directory, job.renderer.variant.name, recorder=recorder)
+
+
+def fit_into(directory, point, point_dir, scene_path, scene, job, inputs, recorder=None):
+    from r3d.fitted_variant import fit_point
+    fit_point(point, point_dir, scene_path, scene, job, inputs, False, directory / FITTED_MESH, recorder=recorder)
+
+
+def bake_into(directory, scene, baked_name, path_cull, recorder=None):
     from r3d.mesh_import import bake_geometry, camera_path_poses, write_baked
     from r3d.lit_mesh import write_lit_mesh
     baked = copy.deepcopy(next(item for item in scene.renderers if item.object.name == baked_name))
-    directory = work / f"bake-{prefix}"
-    directory.mkdir(exist_ok=True)
     geometry = bake_geometry(baked, scene, recorder)
     write_baked(baked, scene, directory, baked.renderer.variant.name, geometry, recorder)
     if path_cull:
@@ -439,12 +480,111 @@ def bake_worker(scene, job, path_cull, prefix, baked_name, work, recorder=None):
         seen = visible_from_path(geometry.positions, geometry.tris, geometry.tri_double,
             RayQuery(geometry.positions, geometry.tris),
             poses, width, height, lens, near, visibility.samples, visibility.margin)
-        culled_dir = work / "culled-full"
-        culled_dir.mkdir(exist_ok=True)
-        write_lit_mesh(culled_dir, "culled", geometry.positions, geometry.rgb, geometry.tris[seen],
+        write_lit_mesh(directory, CULLED, geometry.positions, geometry.rgb, geometry.tris[seen],
                        geometry.tri_double[seen], **geometry.scale)
-    return (directory / f"{baked.renderer.variant.name}.mesh",
-            culled_dir / "culled.mesh" if path_cull else None)
+
+
+def code_digest(function):
+    """`function`'s code without comments or layout: a kept result's key counts the code here that makes it, as a
+    bake key counts its tool's (bake.code_tokens)."""
+    import inspect
+    import io
+    import tokenize
+    skipped = {tokenize.COMMENT, tokenize.NL, tokenize.INDENT, tokenize.DEDENT}
+    tokens = tokenize.generate_tokens(io.StringIO(inspect.getsource(function)).readline)
+    return hashlib.sha256(repr([token.string for token in tokens if token.type not in skipped]).encode()).hexdigest()
+
+
+def link_inputs(inputs, start, references):
+    """`inputs` as fit_point and measure_worker read it: the reference set's files and the start mesh, linked."""
+    inputs.mkdir(parents=True, exist_ok=True)
+    for source in [*references.iterdir(), *start.glob("*.mesh")]:
+        link = inputs / source.name
+        if link.is_symlink() or link.exists():
+            link.unlink()
+        link.symlink_to(source.resolve(), target_is_directory=source.is_dir())
+
+
+class Keeper:
+    """The stage's starts, reference sets, fits and bakes by their key in the bake cache, which outlives the run: a
+    key whose folder is done is not made again, and a key the run asks for twice is made once. Keys are bake.py's
+    (bake.stage_keys), so reference sets are shared with its fits; the rest also count the code here that makes
+    them. Each method returns a future of the result's Kept."""
+
+    def __init__(self, executor, cache=None):
+        from bake import bake
+        self.executor = executor
+        self.cache = Path(bake.default_cache() if cache is None else cache)
+        self.tools = {stage: bake.tool_digest(stage) for stage in bake.STAGES}
+        self.poses = bake.Poses({})
+        self.made = {}
+        self.lock = threading.Lock()
+
+    def keys(self, job, scene, start=None):
+        """bake.stage_keys of `job`; with `start`, its made start mesh, its fit's key too."""
+        from bake import bake
+        keys = bake.stage_keys(job, scene, self.tools, poses=self.poses)
+        if start is not None:
+            keys = bake.stage_keys(job, scene, self.tools, {keys["start"]: bake.file_sha256(start)}, self.poses)
+        if keys.get("reason"):
+            raise ValueError(keys["reason"])
+        return keys
+
+    def doc(self, *parts):
+        from bake import bake
+        return self.cache / DOC_CACHE / bake.digest(list(parts))
+
+    def keep(self, folder, function, *args, **options):
+        """The future of `folder`'s Kept: done when the folder is, else function(*args) submitted to a worker."""
+        from bake.produce import DONE
+        with self.lock:
+            if folder not in self.made:
+                if (folder / DONE).is_file():
+                    self.made[folder] = Future()
+                    self.made[folder].set_result(read_kept(folder))
+                else:
+                    self.made[folder] = self.executor.submit(function, *args, **options)
+            return self.made[folder]
+
+    def start(self, job, scene):
+        from r3d.process_budget import PREPARE_BYTES
+        folder = self.doc("start", self.keys(job, scene)["start"], code_digest(write_start))
+        return self.keep(folder, make_kept, folder, write_start, job, scene, estimates=PREPARE_BYTES, priority=True)
+
+    def references(self, job, scene):
+        from bake.produce import REFERENCES
+        from r3d.process_budget import PREPARE_BYTES
+        key = self.keys(job, scene)["reference"]
+        return self.keep(self.cache / REFERENCES / key, kept_references, key, job, scene, self.cache,
+                         estimates=PREPARE_BYTES, priority=True)
+
+    def fit(self, point, point_dir, scene_path, scene, job, inputs):
+        """`job` fitted at `point` ({budget, cost_weight}, as fit_point takes it) from the start and references
+        link_inputs put in `inputs`; its log in `point_dir`."""
+        from r3d.process_budget import FIT_BYTES
+        variant = copy.deepcopy(job)
+        if point.get("budget") is not None:
+            variant.renderer.fit.budget = point["budget"]
+        cost = point.get("cost_weight", 0.0)
+        folder = self.doc("fit", self.keys(variant, scene, inputs / f"{job.renderer.variant.name}.mesh")["fit"],
+                          cost, content_checksum(WEIGHTS).decode() if cost else None, code_digest(fit_into))
+        return self.keep(folder, make_kept, folder, fit_into, point, point_dir, scene_path, scene, job, inputs,
+                         estimates=FIT_BYTES)
+
+    def bake(self, scene, baked_name, path_cull):
+        """The bake of the renderer `baked_name`, with its PATH_CULL_SAMPLING cull as CULLED when `path_cull`."""
+        from r3d.process_budget import BAKE_BYTES
+        baked = next(item for item in scene.renderers if item.object.name == baked_name)
+        cull = None
+        if path_cull:
+            poses = self.poses.digest(scene.camera.component, PATH_CULL_SAMPLING.every_ms, PATH_CULL_SAMPLING.size,
+                                      self.tools, set())
+            if poses is None:
+                raise ValueError(self.poses.reason(self.poses.missing))
+            cull = [vars(PATH_CULL_SAMPLING), poses]
+        folder = self.doc("bake", self.keys(baked, scene)["mesh"], cull, code_digest(bake_into))
+        return self.keep(folder, make_kept, folder, bake_into, scene, baked_name, path_cull, estimates=BAKE_BYTES,
+                         priority=True)
 
 def smoke_prepare(scene_path, scene, job, inputs):
     from r3d.mesh_import import camera_path_poses
@@ -459,27 +599,29 @@ def smoke_prepare(scene_path, scene, job, inputs):
         reference_main([str(scene_path), "--object", job.object.name, "--poses", str(inputs / "train.txt"),
                         "--out", str(inputs / name), "--normals"])
 
-def prepare_variants(executor, preparations, on_ready):
-    """Submits a prepare per (scene file, scene, job, inputs folder) of `preparations`; on_ready(index, job) runs as
-    each finishes, so its fit can start. Returns a future per preparation of its (result, steps)."""
-    from functools import partial
-    from concurrent.futures import Future
-    from r3d.fitted_variant import prepare
-    from r3d.process_budget import PREPARE_BYTES
+def prepare_variants(keeper, preparations, on_ready):
+    """The start and reference set from `keeper` per (scene, job, inputs folder) of `preparations`, linked into the
+    inputs folder once both are there; on_ready(index, job) then runs, so its fit can start. Returns a future per
+    preparation of its start's steps."""
     ready = [Future() for _ in preparations]
-    prepares = [executor.submit(partial(recorded_call, prepare), scene_path, scene, job, inputs, estimates=PREPARE_BYTES,
-                                priority=True)
-                for scene_path, scene, job, inputs in preparations]
-    jobs = [job for _scene_path, _scene, job, _inputs in preparations]
-    for index, (job, future) in enumerate(zip(jobs, prepares)):
-        def completed(future, index=index, job=job):
-            try:
-                result = future.result()
-                on_ready(index, job)
-                ready[index].set_result(result)
-            except BaseException as error:
-                ready[index].set_exception(error)
-        future.add_done_callback(completed)
+    lock = threading.Lock()
+    for index, (scene, job, inputs) in enumerate(preparations):
+        parts = (keeper.start(job, scene), keeper.references(job, scene))
+
+        def completed(_future, index=index, job=job, inputs=inputs, parts=parts):
+            with lock:
+                if ready[index].done() or not all(part.done() for part in parts) and not any(
+                        part.done() and part.exception() for part in parts):
+                    return
+                try:
+                    start, references = (part.result() for part in parts)
+                    link_inputs(inputs, start.folder, references.folder)
+                    on_ready(index, job)
+                    ready[index].set_result(start.steps)
+                except BaseException as error:
+                    ready[index].set_exception(error)
+        for part in parts:
+            part.add_done_callback(completed)
     return ready
 
 
@@ -499,13 +641,12 @@ def write_look_scene(scene_path, look, directory):
     return path
 
 
-def submit_light_fits(executor, scene_path, work):
+def submit_light_fits(keeper, scene_path, work):
     """[(look, scene file, scene, job, inputs folder)] for every look LIGHT_SHEETS names, and the futures that finish once
-    each is prepared and {look: future of its fit}, filled as they do: the scene's showcase, its first renderer,
+    each is prepared and {look: future of its fit's Kept}, filled as they do: the scene's showcase, its first renderer,
     prepared and fitted in that look."""
-    from r3d.fitted_variant import fit_point, placed_variant
+    from r3d.fitted_variant import placed_variant
     from r3d.import_settings import load_scene
-    from r3d.process_budget import FIT_BYTES
     from showcase import showcase
     looks = dict.fromkeys([sheet.reference for sheet in LIGHT_SHEETS] +
                           [look for sheet in LIGHT_SHEETS for _label, look in sheet.columns])
@@ -518,9 +659,8 @@ def submit_light_fits(executor, scene_path, work):
 
     def prepared(index, job):
         look, path, scene, _job, inputs = studies[index]
-        fits[look] = executor.submit(fit_point, {}, inputs.parent / "fit", path, scene, job, inputs, False,
-                                     inputs.parent / "fitted.mesh", estimates=FIT_BYTES)
-    ready = prepare_variants(executor, [study[1:] for study in studies], prepared)
+        fits[look] = keeper.fit({}, inputs.parent / "fit", path, scene, job, inputs)
+    ready = prepare_variants(keeper, [study[2:] for study in studies], prepared)
     return studies, ready, fits
 
 
@@ -534,7 +674,7 @@ def light_sheets(light, out, work, measure, comparisons):
     frames, inputs = {}, {}
     for (look, _path, _scene, job, look_inputs), prepared in zip(studies, ready):
         prepared.result()
-        measure(f"light-{look}", job, Path(fits[look].result()["mesh"]), look_inputs)
+        measure(f"light-{look}", job, fits[look].result().folder / FITTED_MESH, look_inputs)
         frames[look], inputs[look] = comparisons[f"light-{look}"], look_inputs
     for sheet in LIGHT_SHEETS:
         image = out / "render/gpu" / f"{sheet.name}.png"
@@ -598,14 +738,30 @@ def gpu(args, out, work):
         return _gpu(args, out, work, executor)
 
 
+def normal_weights(job):
+    """The normal sweep's weights: the recipe's among them."""
+    return list(dict.fromkeys((0.0, 0.1, 0.3, job.renderer.fit.normal_weight)))
+
+
+def sweep_points(job):
+    """The budget sweep's points, at the budgets the variant has the triangles for."""
+    budgets = dict.fromkeys(budget for budget in (4000, 6000, job.renderer.fit.budget)
+                            if budget <= job.renderer.variant.triangles)
+    return [{"budget": budget, "cost_weight": cost} for budget in budgets for cost in (0.0, 0.1)]
+
+
+def recipe_point(job, point):
+    """Whether the sweep `point` is the recipe's own fit."""
+    return point["budget"] == job.renderer.fit.budget and not point["cost_weight"]
+
+
 def _gpu(args, out, work, executor):
-    from r3d.fitted_variant import (placed_variant, plot_pareto, prepare,
+    from r3d.fitted_variant import (placed_variant, plot_pareto, point_name,
                                    run_sweep_points, sweep_rows, write_sweep_csv, fit_point)
     from r3d.import_settings import load_scene
     from r3d.bake_fidelity import build_host
     from r3d.cost_model import load
-    from functools import partial
-    from r3d.process_budget import BAKE_BYTES, MEASURE_BYTES, SMOKE_PREPARE_BYTES, FIT_BYTES
+    from r3d.process_budget import MEASURE_BYTES, SMOKE_PREPARE_BYTES, FIT_BYTES
 
     scene_path = args.scene
     scene = load_scene(scene_path)
@@ -626,6 +782,7 @@ def _gpu(args, out, work, executor):
                         work / "smoke.mesh", estimates=FIT_BYTES).result()
         print(f"GPU smoke: eight steps completed; scratch only: {work}")
         return 0
+    keeper = Keeper(executor)
     host = build_host(HOST_SCRIPT, work / "host", scene_path)
     rows, comparisons, sweep = [], {}, []
     bake_steps = []
@@ -642,49 +799,44 @@ def _gpu(args, out, work, executor):
     def prepared(index, job):
         prefix = FITTED[index].prefix
         reference_inputs = work / f"inputs-{prefix}"
-        fitted_futures[prefix] = executor.submit(partial(recorded_call, fit_point), {}, work / f"fit-{prefix}", scene_path, scene, job,
-                                                  reference_inputs, False, work / f"{prefix}.mesh", estimates=FIT_BYTES)
+        fitted_futures[prefix] = keeper.fit({}, work / f"fit-{prefix}", scene_path, scene, job, reference_inputs)
         if FITTED[index].sweeps:
-            normal_weights = list(dict.fromkeys((0.0, 0.1, 0.3, job.renderer.fit.normal_weight)))
-            for normal in normal_weights:
+            for normal in normal_weights(job):
                 if normal != job.renderer.fit.normal_weight:
                     variant = copy.deepcopy(job)
                     variant.renderer.fit.normal_weight = normal
-                    name = f"normal-{normal:g}"
-                    normal_futures[normal] = executor.submit(fit_point, {}, work / name, scene_path, scene, variant, reference_inputs, estimates=FIT_BYTES)
-            budgets = list(dict.fromkeys(budget for budget in (4000, 6000, job.renderer.fit.budget)
-                                         if budget <= job.renderer.variant.triangles))
-            points = [{"budget": budget, "cost_weight": cost} for budget in budgets for cost in (0.0, 0.1)]
-            unfinished = [point for point in points if point["budget"] != job.renderer.fit.budget or point["cost_weight"]]
-            run_sweep_points(work, unfinished, partial(fit_point, scene_path=scene_path, scene=scene, job=job,
-                             inputs=reference_inputs), executor=executor, deferred=sweep_futures)
+                    normal_futures[normal] = keeper.fit({}, work / f"normal-{normal:g}", scene_path, scene, variant,
+                                                        reference_inputs)
+            for point in sweep_points(job):
+                point_dir = work / point_name(point)
+                if not recipe_point(job, point) and not (point_dir / "result.json").is_file():
+                    sweep_futures[point_dir.name] = keeper.fit(point, point_dir, scene_path, scene, job, reference_inputs)
 
-    ready = prepare_variants(executor, [(scene_path, scene, job, work / f"inputs-{entry.prefix}")
-                                        for entry, job in zip(FITTED, jobs)], prepared)
-    light = submit_light_fits(executor, scene_path, work)
+    ready = prepare_variants(keeper, [(scene, job, work / f"inputs-{entry.prefix}") for entry, job in zip(FITTED, jobs)],
+                             prepared)
+    light = submit_light_fits(keeper, scene_path, work)
+    bakes = [keeper.bake(scene, args.object + entry.baked, entry.path_cull) for entry in FITTED]
 
     for index, job in enumerate(jobs):
-        prepared_result = ready[index].result()
+        start_steps = ready[index].result()
         entry = FITTED[index]
         prefix = entry.prefix
         reference_inputs = work / f"inputs-{prefix}"
-        for label, baked_name in (("GI-bake", args.object + entry.baked),):
-            (baked_mesh, culled_mesh), steps = executor.submit(partial(recorded_call, bake_worker), scene, job, entry.path_cull, prefix, baked_name,
-                                                        work, estimates=BAKE_BYTES, priority=True).result()
-            bake_steps.append((f"{prefix}-{label}", steps))
-            measure(f"{prefix}-{label}", job, baked_mesh, reference_inputs)
-            if entry.path_cull:
-                measure("full-path-culled", job, culled_mesh, reference_inputs)
-                run([sys.executable, ROOT / "launcher/tools/render/render_compare.py", "--out",
-                     out / "render/gpu/appearance-path-culled.png", "--reference-bakes",
-                     reference_inputs / "reference_held_out", "--reference-scale", "2", "--sheet-frames", "0,4",
-                     "--bake", "full bake", comparisons["full-GI-bake"], "--bake", "path culled",
-                     comparisons["full-path-culled"], "--crops", "3"], work / "path-sheet.log")
-        fit_result, fit_steps = fitted_futures[prefix].result()
-        _, start_steps = prepared_result
+        baked = bakes[index].result()
+        bake_steps.append((f"{prefix}-GI-bake", baked.steps))
+        baked_job = next(item for item in scene.renderers if item.object.name == args.object + entry.baked)
+        measure(f"{prefix}-GI-bake", job, baked.folder / f"{baked_job.renderer.variant.name}.mesh", reference_inputs)
+        if entry.path_cull:
+            measure("full-path-culled", job, baked.folder / f"{CULLED}.mesh", reference_inputs)
+            run([sys.executable, ROOT / "launcher/tools/render/render_compare.py", "--out",
+                 out / "render/gpu/appearance-path-culled.png", "--reference-bakes",
+                 reference_inputs / "reference_held_out", "--reference-scale", "2", "--sheet-frames", "0,4",
+                 "--bake", "full bake", comparisons["full-GI-bake"], "--bake", "path culled",
+                 comparisons["full-path-culled"], "--crops", "3"], work / "path-sheet.log")
+        fit = fitted_futures[prefix].result()
         bake_steps.append((f"{prefix}-fit-start", start_steps))
-        bake_steps.append((f"{prefix}-GI-fit", fit_steps))
-        fitted = Path(fit_result["mesh"])
+        bake_steps.append((f"{prefix}-GI-fit", fit.steps))
+        fitted = fit.folder / FITTED_MESH
         fitted_values = measure(f"{prefix}-GI-fit", job, fitted, reference_inputs)
         if entry.budget_point:
             sweep.append({"budget": job.renderer.fit.budget, "cost_weight": 0.0, **fitted_values})
@@ -695,33 +847,23 @@ def _gpu(args, out, work, executor):
              *columns, "--crops", "3"], work / f"sheet-{prefix}.log")
         if entry.sweeps:
             normal_rows = []
-            normal_weights = list(dict.fromkeys((0.0, 0.1, 0.3, job.renderer.fit.normal_weight)))
-            for normal in normal_weights:
-                variant = copy.deepcopy(job)
-                variant.renderer.fit.normal_weight = normal
-                name = f"normal-{normal:g}"
-                mesh = fitted if normal == job.renderer.fit.normal_weight else Path(normal_futures[normal].result()["mesh"])
-                measure(name, job, mesh, reference_inputs)
+            for normal in normal_weights(job):
+                mesh = fitted if normal == job.renderer.fit.normal_weight else normal_futures[normal].result().folder / FITTED_MESH
+                measure(f"normal-{normal:g}", job, mesh, reference_inputs)
                 normal_rows.append(rows[-1])
             (out / f"tables/{id}-normal.md").write_text(markdown(
                 ["Normal weight", "Triangles", "Mean dE76", "p95 dE76", "SSIM", "Normal angle", "Predicted ms"], normal_rows) +
                 "\n![Normal angle heatmaps](../images/render/gpu/appearance-normal-heat.png)\n")
             command = [sys.executable, ROOT / "launcher/tools/render/render_compare.py", "--out",
                        out / "render/gpu/appearance-normal-heat.png"]
-            for normal in normal_weights:
+            for normal in normal_weights(job):
                 command += ["--angle-column", f"normal {normal:g}", work / f"normal-{normal:g}/angles"]
             run(command, work / "normal-sheet.log")
-            budgets = list(dict.fromkeys(budget for budget in (4000, 6000, job.renderer.fit.budget)
-                                         if budget <= job.renderer.variant.triangles))
-            points = [{
-    "budget" : budget, "cost_weight" : cost} for budget in budgets
-                      for cost in (0.0, 0.1)]
+            points = sweep_points(job)
 
             def run_point(point, point_dir):
-                budget, cost = point["budget"], point["cost_weight"]
-                name = point_dir.name
-                mesh = fitted if budget == job.renderer.fit.budget and not cost else Path(sweep_futures[name].result()["mesh"])
-                return measure(name, job, mesh, reference_inputs)
+                mesh = fitted if recipe_point(job, point) else sweep_futures[point_dir.name].result().folder / FITTED_MESH
+                return measure(point_dir.name, job, mesh, reference_inputs)
 
             run_sweep_points(work, points, run_point)
             sweep = sweep_rows(work, points)

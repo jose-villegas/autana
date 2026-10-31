@@ -23,6 +23,7 @@
 
 enum {
     MATH_TEXT_RADIX = 10,
+    MATH_TEXT_HEX_RADIX = 16,
     MATH_TEXT_SIGN = 1,
     MATH_TEXT_NUL = 1,
     MATH_TEXT_POINT = 1,
@@ -31,6 +32,8 @@ enum {
     MATHF_TEXT_PRECISION = 9,
     MATHF_TEXT_EXPONENT = 4,
     MATHX_TEXT_FRACTION = 5,
+    MATHU_TEXT_DIGITS = 10,
+    MATHU_TEXT_MAX = MATHU_TEXT_DIGITS + MATH_TEXT_NUL,
     MATHI_TEXT_MAX = MATH_TEXT_SIGN + MATHI_TEXT_DIGITS + MATH_TEXT_NUL,
     MATHS_TEXT_MAX = MATH_TEXT_SIGN + MATHS_TEXT_DIGITS + MATH_TEXT_NUL,
     MATHF_TEXT_MAX = MATH_TEXT_SIGN + MATHF_TEXT_PRECISION + MATH_TEXT_POINT + MATHF_TEXT_EXPONENT + MATH_TEXT_NUL,
@@ -64,6 +67,11 @@ enum {
  * Parse leaves out and end untouched on failure. NULL end requires the whole
  * string; otherwise *end receives the position just after the value. */
 #include "math/text/text_template.h"
+/* mathu: an unsigned 32-bit count, decimal without a sign. mathu_parse_hex reads
+ * 0x-prefixed hexadecimal; both take the same end contract. */
+MATH_DECLARE_TEXT(mathu, uint32_t)
+MATH_DEFINE_TEXT_VALUE(mathu, MATHU_TEXT_MAX, uint32_t)
+bool mathu_parse_hex(const char* s, const char** end, uint32_t* out);
 MATH_DEFINE_TEXT_FAMILY(float, mathf, MATHF_TEXT_MAX, vec2f, VEC2F_TEXT_MAX, vec3f, VEC3F_TEXT_MAX, rectf,
                         RECTF_TEXT_MAX)
 MATH_DEFINE_TEXT_FAMILY(int32_t, mathi, MATHI_TEXT_MAX, vec2i, VEC2I_TEXT_MAX, vec3i, VEC3I_TEXT_MAX, recti,
