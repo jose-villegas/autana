@@ -30,7 +30,6 @@
 #include "shell/ui/ridge_motion.h"
 #include "shell/ui/ridge_pose.h"
 #include "shell/ui/ridge_theme.h"
-#include "simd/fill.h"
 
 /* One panel pixel of depth2: doubled coordinates times a RIDGE_POSE_ONE pose. */
 #define RIDGE_DEPTH2_SHIFT   (RIDGE_POSE_SHIFT + 1)
@@ -435,6 +434,13 @@ raster_boundaries(void) {
 }
 
 static void
+fill_row(gfx_color_t* dst, int x0, int x1, gfx_color_t color) {
+    for (int x = x0; x < x1; x++) {
+        dst[x] = color;
+    }
+}
+
+static void
 add_row_break(int* points, int* count, int x, int lo, int hi) {
     if (x > lo && x < hi) {
         points[(*count)++] = x;
@@ -572,7 +578,7 @@ paint_row_part(gfx_color_t* row, int y, int x0, int x1) {
         }
         return;
     }
-    simd_fill_u16(row + x0, row_body_color(y, x0), (size_t)(x1 - x0));
+    fill_row(row, x0, x1, row_body_color(y, x0));
 }
 
 static void
