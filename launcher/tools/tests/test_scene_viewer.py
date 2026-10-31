@@ -116,6 +116,12 @@ path = { animation = "fly.anim.toml", node = "camera" }
         self.assertGreater(np.count_nonzero(measured_mask), 1000)
         np.testing.assert_array_equal(measured_mask, runtime_mask)
 
+    def test_provider_path_seek_and_history(self):
+        check = TOOLS / "render/tests/check_scene_provider.sh"
+        run = subprocess.run([shutil.which("sh"), str(check), "-o", str(self.root / "provider"),
+                              "--asset-file", str(self.scene)], capture_output=True, text=True, timeout=120)
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+
     def test_every_declared_view_name_is_accepted(self):
         run, _ = self.render("--view", "invalid")
         self.assertNotEqual(run.returncode, 0)

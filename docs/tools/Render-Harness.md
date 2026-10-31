@@ -385,7 +385,7 @@ Time a change on the device, or under QEMU's `--icount` for counts.
 
 Two files, the same declare-then-source shape a report script uses:
 
-- **`<name>_render_host.c`** defines one `render_scene`; see
+- **`<name>_render_host.c`** defines one named `frame_provider_t`; see
   `launcher/tools/render/render_host.h` for the fields: a setup hook that runs
   once after `gfx_init()`, a draw hook that runs once per frame, and an
   options hook taking whatever arguments the harness did not recognise.
@@ -398,6 +398,19 @@ Two files, the same declare-then-source shape a report script uses:
   roots fails the build. `scene_renderer=1` links the renderer: every `.c`
   below the folders `launcher/main/renderer_folders.txt` names, the list the
   firmware and the host tests build too.
+
+The script selects `<scene_name>_provider` with `RENDER_HOST_PROVIDER`;
+`scene_provider` overrides the symbol. Without the define, `render_host.c`
+builds without `main()`.
+
+`render_host_open(provider, argc, argv, &exit_code)` prepares a run. False
+means no run opened; `exit_code` carries the command's result.
+`render_host_step(dt_ms, input)` composes one frame; callers supply input.
+`render_host_close()` judges warm-up frames, writes outputs and returns success.
+
+Each draw receives a `provider_frame_t`. Optional `path_ms` and `seek` hooks
+expose a provider's path duration and camera cuts. The scene-file provider
+seeks its animators and clears render history at a cut.
 
 An engine scene lives in `launcher/tools/render/scenes/`; an app's scene lives
 in that app's own `tools/`, so nothing in the engine's tooling names an app.
