@@ -8,13 +8,13 @@ time, then compare stored keys during lookup.
 including embedded NULs. Both use FNV-1a 32 (Fowler, Noll, Vo).
 `NAME_HASH_NONE` is reserved for absent names. `name_hash64_n(seed, data, size)`
 starts from `NAME_HASH64_OFFSET_BASIS` or continues a previous fold.
+
 `crc32_update(crc, data, size)` starts from 0 or continues a previous result,
 as zlib's `crc32()` does. `crc32_update_nibble()` is the reference;
-`crc32_update_slice4()` uses flash-resident tables. Firmware also provides
-`crc32_update_rom()` through the chip's ROM linker symbol.
+firmware provides `crc32_update_rom()` through the chip's ROM linker symbol.
 
-The Hash Kconfig choice selects ROM (default), slice-by-4 or nibble.
-Hosts use nibble for `crc32_update()` and test both portable candidates by name.
+The Hash Kconfig choice selects ROM (default) or nibble.
+Hosts select nibble. Tests compare implementations against the reference.
 All candidates preserve arbitrary seeds and chunk boundaries exactly.
 
 The ROM entry complements the seed and result, matching zlib directly.

@@ -7,9 +7,6 @@ menu "Hash"
         config HASH_CRC32_ROM
             bool "ROM"
 
-        config HASH_CRC32_SLICE4
-            bool "Slice-by-4"
-
         config HASH_CRC32_NIBBLE
             bool "Nibble reference"
 

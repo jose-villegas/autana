@@ -46,7 +46,6 @@ test_hash_board_rows(void) {
     }
     static const candidate_t candidates[] = {
         {"crc32_update_nibble", crc32_update_nibble},
-        {"crc32_update_slice4", crc32_update_slice4},
 #ifdef ESP_PLATFORM
         {"crc32_update_rom", crc32_update_rom},
 #endif
