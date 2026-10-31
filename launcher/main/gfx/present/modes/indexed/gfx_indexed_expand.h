@@ -50,29 +50,43 @@ gfx_indexed_expand_row(const uint8_t* grid_row, int grid_w, const gfx_color_t lu
 }
 
 /* Same as gfx_indexed_expand_row(), but every pixel is one lookup into a
- * precomputed (index, phase) table instead of a 256-colour LUT read.
- * `panel_row`/`panel_col0` are the OUTPUT row's absolute panel coordinates:
- * the phase is keyed off them, not a position local to this call, so two
- * dithered bands sent side by side stay in phase (see bayer_covers()'s
- * own comment in bayer.h, whose table this one is baked from). */
+ * precomputed (index, phase) table instead of a 256-colour LUT read, the
+ * phase a `period` x `period` tile (a power of two) of absolute panel
+ * position: `panel_row`/`panel_col0` are the OUTPUT row's panel coordinates,
+ * not a position local to this call, so two dithered bands sent side by
+ * side stay in phase (see bayer_covers()'s own comment in bayer.h, whose
+ * 4 x 4 table is baked the same way). */
 static inline void
-gfx_indexed_expand_row_dither16(const uint8_t* grid_row, int grid_w,
-                                const gfx_color_t dither16_rgb[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES],
-                                int cell_size, int panel_row, int panel_col0, gfx_color_t* out_row, int out_width) {
+gfx_indexed_expand_row_phased(const uint8_t* grid_row, int grid_w, const gfx_color_t* table, int period, int cell_size,
+                              int panel_row, int panel_col0, gfx_color_t* out_row, int out_width) {
+    const int mask = period - 1;
+    const int stride = period * period;
     const int grid_pixels = grid_w * cell_size;
     const int solid_pixels = grid_pixels < out_width ? grid_pixels : out_width;
-    const int py = (panel_row & 3) * 4;
+    const int py = (panel_row & mask) * period;
 
     for (int x = 0; x < solid_pixels; x++) {
         const int gx = x / cell_size;
         const uint8_t idx = grid_row != NULL ? grid_row[gx] : 0u;
-        const int px = (panel_col0 + x) & 3;
-        out_row[x] = dither16_rgb[idx * GFX_INDEXED_DITHER16_PHASES + py + px];
+        const int px = (panel_col0 + x) & mask;
+        out_row[x] = table[idx * stride + py + px];
     }
     for (int x = solid_pixels; x < out_width; x++) {
-        const int px = (panel_col0 + x) & 3;
-        out_row[x] = dither16_rgb[py + px]; /* index 0: reserved background */
+        const int px = (panel_col0 + x) & mask;
+        out_row[x] = table[py + px]; /* index 0: reserved background */
     }
+}
+
+#define GFX_INDEXED_DITHER16_PERIOD 4
+_Static_assert(GFX_INDEXED_DITHER16_PHASES == GFX_INDEXED_DITHER16_PERIOD * GFX_INDEXED_DITHER16_PERIOD,
+               "the 16-colour table is one 4 x 4 tile per index");
+
+static inline void
+gfx_indexed_expand_row_dither16(const uint8_t* grid_row, int grid_w,
+                                const gfx_color_t dither16_rgb[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES],
+                                int cell_size, int panel_row, int panel_col0, gfx_color_t* out_row, int out_width) {
+    gfx_indexed_expand_row_phased(grid_row, grid_w, dither16_rgb, GFX_INDEXED_DITHER16_PERIOD, cell_size, panel_row,
+                                  panel_col0, out_row, out_width);
 }
 
 /* One lookup per CELL, keyed by its own (cx, cy) phase, filled solid
@@ -98,30 +112,18 @@ gfx_indexed_expand_row_dither_cell(const uint8_t* grid_row, int grid_w, const gf
     }
 }
 
-/* Same shape as gfx_indexed_expand_row_dither16(), read at a 2-pixel
- * period instead of 4: `panel_row`/`panel_col0` are absolute panel
- * coordinates, so two dithered bands sent side by side stay in phase. */
+/* gfx_indexed_expand_row_dither16() at a 2-pixel period instead of 4. */
+_Static_assert(GFX_INDEXED_CHECKER2_ROW_PHASES == GFX_INDEXED_CHECKER2_CHUNK_PX,
+               "the checker2 table is one square 2 x 2 tile per index");
+
 static inline void
 gfx_indexed_expand_row_dither_checker2(
     const uint8_t* grid_row, int grid_w,
     const gfx_color_t
         checker2_rgb[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX],
     int cell_size, int panel_row, int panel_col0, gfx_color_t* out_row, int out_width) {
-    const int stride = GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX;
-    const int grid_pixels = grid_w * cell_size;
-    const int solid_pixels = grid_pixels < out_width ? grid_pixels : out_width;
-    const int py = (panel_row & 1) * GFX_INDEXED_CHECKER2_CHUNK_PX;
-
-    for (int x = 0; x < solid_pixels; x++) {
-        const int gx = x / cell_size;
-        const uint8_t idx = grid_row != NULL ? grid_row[gx] : 0u;
-        const int px = (panel_col0 + x) & 1;
-        out_row[x] = checker2_rgb[idx * stride + py + px];
-    }
-    for (int x = solid_pixels; x < out_width; x++) {
-        const int px = (panel_col0 + x) & 1;
-        out_row[x] = checker2_rgb[py + px]; /* index 0: reserved background */
-    }
+    gfx_indexed_expand_row_phased(grid_row, grid_w, checker2_rgb, GFX_INDEXED_CHECKER2_CHUNK_PX, cell_size, panel_row,
+                                  panel_col0, out_row, out_width);
 }
 
 /* Everything that decides how an index image reaches the panel. `table` is
