@@ -137,6 +137,7 @@ static imu_stats_t stats;
 #define FIFO_STATUS_FULL        0x80
 #define FIFO_COUNT_MSB_SHIFT    8
 #define FIFO_WORD_BYTES         2
+#define FIFO_STATUS_BYTES       2
 #define CTRL9_TIMEOUT_US        (100U * MATH_US_PER_MS)
 /* Section 5.10.1 specifies no minimum delay: poll once per I2C status transaction. */
 #define CTRL9_POLL_US           0U
@@ -369,9 +370,8 @@ imu_take_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t lost_before[IMU_FIFO_S
 
 /* Whole samples waiting, before read mode (section 8.8); false on a bus error or a partial sample. */
 static bool
-read_fifo_count(int* count, bool* overflowed) {
-    uint8_t status[2];
-    if (!read_regs(REG_FIFO_SMPL_CNT, status, sizeof status)) {
+read_fifo_count(int* count, bool* overflowed, uint8_t status[FIFO_STATUS_BYTES]) {
+    if (!read_regs(REG_FIFO_SMPL_CNT, status, FIFO_STATUS_BYTES)) {
         return false;
     }
     const int words = ((status[1] & FIFO_STATUS_COUNT_MSB) << FIFO_COUNT_MSB_SHIFT) | status[0];
@@ -380,6 +380,53 @@ read_fifo_count(int* count, bool* overflowed) {
     *overflowed = fifo_gap || (status[1] & (FIFO_STATUS_FULL | FIFO_STATUS_OVERFLOW)) != 0;
     return *count <= IMU_FIFO_SAMPLES && bytes % sizeof(imu_sample_t) == 0;
 }
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+/* autana-m9hqv: FIFO gyro z once sat near -508 dps for a whole boot while register reads were right.
+ * A burst holding a rate within IMU_SUSPECT_MARGIN_DPS of full scale is dumped raw, with the register
+ * sample beside it, the first IMU_SUSPECT_LOGS times a boot. */
+#define IMU_SUSPECT_MARGIN_DPS 8
+#define IMU_SUSPECT_COUNTS     ((int)((IMU_GYRO_RANGE_DPS - IMU_SUSPECT_MARGIN_DPS) * IMU_COUNTS_PER_DPS))
+#define IMU_SUSPECT_LOGS       8
+#define IMU_HEX_LINE_SAMPLES   8
+
+static bool
+suspect_rate(int16_t rate) {
+    return rate > IMU_SUSPECT_COUNTS || rate < -IMU_SUSPECT_COUNTS;
+}
+
+static void
+log_suspect_burst(const imu_sample_t* samples, int count, const uint8_t status[FIFO_STATUS_BYTES]) {
+    static unsigned logged;
+    int first = -1;
+    for (int i = 0; i < count && first < 0; i++) {
+        if (suspect_rate(samples[i].gx) || suspect_rate(samples[i].gy) || suspect_rate(samples[i].gz)) {
+            first = i;
+        }
+    }
+    if (first < 0 || logged >= IMU_SUSPECT_LOGS) {
+        return;
+    }
+    logged++;
+    imu_sample_t reg = {0};
+    const bool reg_ok = read_regs(REG_AX_L, (uint8_t*)&reg, sizeof reg);
+    ESP_LOGW(TAG, "m9hqv suspect burst count %d first %d status %02x %02x reg%s %d %d %d %d %d %d", count, first,
+             status[0], status[1], reg_ok ? "" : "(failed)", reg.ax, reg.ay, reg.az, reg.gx, reg.gy, reg.gz);
+    char line[IMU_HEX_LINE_SAMPLES * sizeof(imu_sample_t) * 2 + 1];
+    for (int start = 0; start < count; start += IMU_HEX_LINE_SAMPLES) {
+        const int end = start + IMU_HEX_LINE_SAMPLES < count ? start + IMU_HEX_LINE_SAMPLES : count;
+        const uint8_t* bytes = (const uint8_t*)&samples[start];
+        const size_t len = (size_t)(end - start) * sizeof(imu_sample_t);
+        for (size_t b = 0; b < len; b++) {
+            static const char HEX[] = "0123456789abcdef";
+            line[2 * b] = HEX[bytes[b] >> 4];
+            line[(2 * b) + 1] = HEX[bytes[b] & 0x0F];
+        }
+        line[2 * len] = '\0';
+        ESP_LOGW(TAG, "m9hqv raw %d: %s", start, line);
+    }
+}
+#endif
 
 static int
 drain_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
@@ -401,7 +448,8 @@ drain_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
         return 0;
     }
     int count = 0;
-    bool ok = read_fifo_count(&count, overflowed);
+    uint8_t status[FIFO_STATUS_BYTES] = {0};
+    bool ok = read_fifo_count(&count, overflowed, status);
     const int64_t lock_start_us = timing_now_us();
     if (ok) {
         ok = write_command(CTRL9_REQ_FIFO);
@@ -411,6 +459,11 @@ drain_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
     }
     const bool resumed = write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG);
     const uint64_t locked_us = (uint64_t)(timing_now_us() - lock_start_us);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    if (ok) {
+        log_suspect_burst(out, count, status);
+    }
+#endif
     fifo_gap = !ok || !resumed;
     if (fifo_gap) {
         /* A failed burst may have consumed part of a sample (reads consume, section 8.8):
