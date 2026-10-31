@@ -114,7 +114,7 @@ FRAME COST identity carries the image build ID, mounted pack CRC-32, renderer,
 maximum cluster triangle count, culling setting and camera sample interval.
 The cull-off row selects the unculled pass from the size-32 capture.
 
-Refresh the [meshlets block](../../../docs/render/Render-Pipeline.md#meshlets):
+Refresh the [meshlets block](../../../docs/render/offline/Baked-Mesh.md#meshlets):
 
 ```sh
 sh launcher/tools/render/render_doc_images.sh --stage meshlets
