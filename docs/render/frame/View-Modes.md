@@ -28,7 +28,7 @@ flowchart LR
 | tiles | the same ramp, each `RASTER_SHOW_TILE` square at its farthest depth |
 | motion | mid-grey for none, red for x and green for y |
 | meshlets | a flat hue for each cluster, with disjoint IDs for each instance |
-| cull | each cluster in the colour of its fate this frame; see [The cull, seen](../Mesh-Rendering.md#the-cull-seen) |
+| cull | each cluster in the colour of its fate this frame; see [The cull, seen](Culling.md#the-cull-seen) |
 | boxes | untouched; its overlay draws each instance's box as the frame placed it, one hue per mesh, for meshes drawn at least `boxview.copies` times; edges behind the drawn depth hidden, dimmed or full by `boxview.behind` |
 
 A row may also carry two optional hooks:
