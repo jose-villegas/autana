@@ -520,6 +520,95 @@ test_surface_rows_blend_within_a_surface_and_mark_seams(void) {
     }
 }
 
+typedef struct {
+    int width, source, destination;
+} seam_case_t;
+
+/* A destination row's seam bit as the filter defines it: the pixel and its
+ * right neighbour, or the pixel below, on different surfaces in the source
+ * rows the two destination rows lean on most. */
+static bool
+reference_seam(const upscale_t* scale, const uint16_t* depth, int x, int y) {
+    const int width = scale->destination_width;
+    const uint16_t blend = scale->blends[y];
+    const int row = (blend / RGB565_SCALE_UNIT) + (blend % RGB565_SCALE_UNIT >= RGB565_SCALE_UNIT / 2 ? 1 : 0);
+    const uint16_t* here = depth + ((size_t)row * width);
+    if (x + 1 < width && !upscale_same_surface(here[x], here[x + 1])) {
+        return true;
+    }
+    if (y + 1 == scale->destination_height) {
+        return false;
+    }
+    const uint16_t next = scale->blends[y + 1];
+    const int below = (next / RGB565_SCALE_UNIT) + (next % RGB565_SCALE_UNIT >= RGB565_SCALE_UNIT / 2 ? 1 : 0);
+    return !upscale_same_surface(here[x], depth[((size_t)below * width) + x]);
+}
+
+/* Random depths from a few levels, some one surface and some not, through
+ * even widths off and on a seam byte, more and as many rows, whole and in
+ * two ranges. */
+static void
+check_seam_case(const seam_case_t* c) {
+    const uint16_t levels[] = {0, 0x1000, 0x1080, 0x8000, 0x8900};
+    const size_t pixels = (size_t)c->width * c->source;
+    const size_t bytes = GFX_SEAM_BYTES(c->width, c->destination);
+    uint16_t* color = calloc(pixels, sizeof(*color));
+    uint16_t* depth = malloc(pixels * sizeof(*depth));
+    uint16_t* columns = malloc((size_t)c->width * sizeof(*columns));
+    uint16_t* rows = malloc((size_t)c->destination * sizeof(*rows));
+    uint16_t* blends = malloc((size_t)c->destination * sizeof(*blends));
+    uint16_t* actual = malloc((size_t)c->width * c->destination * sizeof(*actual));
+    uint8_t* whole = malloc(bytes);
+    uint8_t* split = malloc(bytes);
+    TEST_ASSERT_NOT_NULL(color);
+    TEST_ASSERT_NOT_NULL(depth);
+    TEST_ASSERT_NOT_NULL(columns);
+    TEST_ASSERT_NOT_NULL(rows);
+    TEST_ASSERT_NOT_NULL(blends);
+    TEST_ASSERT_NOT_NULL(actual);
+    TEST_ASSERT_NOT_NULL(whole);
+    TEST_ASSERT_NOT_NULL(split);
+    for (size_t i = 0; i < pixels; i++) {
+        depth[i] = levels[(size_t)rand() % (sizeof levels / sizeof *levels)];
+    }
+    GFX_TARGET_STORAGE(2) storage = GFX_TARGET_COLOR_INIT(color, c->width, c->source);
+    storage.count = 2;
+    storage.attachment[GFX_ATTACHMENT_DEPTH] = storage.attachment[GFX_ATTACHMENT_COLOR];
+    storage.attachment[GFX_ATTACHMENT_DEPTH].pixels = depth;
+    upscale_t scale;
+    TEST_ASSERT_TRUE(upscale_init(&scale, c->width, c->source, c->width, c->destination, columns, rows));
+    upscale_init_blends(&scale, blends);
+    scale.filter = UPSCALE_FILTER_SURFACE;
+    const int half = c->destination / 2;
+    upscale_rows_filtered(&scale, &storage.target, 0, actual, whole, 0, c->destination);
+    upscale_rows_filtered(&scale, &storage.target, 0, actual, split, 0, half);
+    upscale_rows_filtered(&scale, &storage.target, 0, actual, split, half, c->destination - half);
+    for (int y = 0; y < c->destination; y++) {
+        for (int x = 0; x < c->width; x++) {
+            const uint8_t* row = whole + ((size_t)y * GFX_SEAM_PITCH(c->width));
+            TEST_ASSERT_EQUAL_INT(reference_seam(&scale, depth, x, y), gfx_seam_at(row, x));
+        }
+    }
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(whole, split, bytes);
+    free(color);
+    free(depth);
+    free(columns);
+    free(rows);
+    free(blends);
+    free(actual);
+    free(whole);
+    free(split);
+}
+
+static void
+test_surface_seams_match_the_per_pixel_reference(void) {
+    const seam_case_t cases[] = {{14, 6, 15}, {16, 9, 9}, {10, 7, 13}, {24, 4, 11}};
+    srand(11);
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        check_seam_case(&cases[i]);
+    }
+}
+
 void
 run_upscale_suite(void) {
     RUN_TEST(test_scanline_all_colors_match_channel_reference);
@@ -536,6 +625,7 @@ run_upscale_suite(void) {
     RUN_TEST(test_spread_quarter_matches_blend_at_a_quarter);
     RUN_TEST(test_row_blends_sit_on_destination_row_centres);
     RUN_TEST(test_surface_rows_blend_within_a_surface_and_mark_seams);
+    RUN_TEST(test_surface_seams_match_the_per_pixel_reference);
 }
 
 SUITE_REGISTER(run_upscale_suite);
