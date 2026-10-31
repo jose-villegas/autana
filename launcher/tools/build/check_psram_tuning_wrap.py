@@ -39,12 +39,25 @@ def callers(text, callee):
     return {function for function, called in parse_calls(text, CALL).items() if callee in called}
 
 
+def holds_word(image, value):
+    """True if `value` is one of the image's 32-bit words. A taken address
+    sits word-aligned, and an image's segments keep file offsets aligned
+    with load addresses, so bytes that match across two words are not one."""
+    pattern = value.to_bytes(4, "little")
+    at = image.find(pattern)
+    while at != -1:
+        if at % 4 == 0:
+            return True
+        at = image.find(pattern, at + 1)
+    return False
+
+
 def problems(text, sweeps, image=b""):
     """What is wrong with the image's tuning calls, as messages. `image` is
     the loaded image, where a taken function address sits as data."""
     addresses = function_addresses(text)
     taken = {name for name, address in addresses.items()
-             if name in (TUNING, WRAPPER) and address.to_bytes(4, "little") in image}
+             if name in (TUNING, WRAPPER) and holds_word(image, address)}
     if not sweeps:
         return ["%s is linked although the PSRAM clock is not 120 MHz" % WRAPPER] if WRAPPER in addresses else []
     found = []
