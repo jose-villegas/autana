@@ -1,6 +1,6 @@
 # LMSH lit mesh
 
-The baked mesh a renderer draws, its clusters and tree explained in [Baked-Mesh.md](../../render/Baked-Mesh.md). The tag and the `r3d_lit_cluster_t` and `r3d_lit_node_t` records are in [`render/r3d_lit_mesh.h`](../../../launcher/main/render/r3d_lit_mesh.h).
+The baked mesh a renderer draws, its clusters and tree explained in [Baked-Mesh.md](../../render/offline/Baked-Mesh.md). The tag and the `r3d_lit_cluster_t` and `r3d_lit_node_t` records are in [`render/r3d_lit_mesh.h`](../../../launcher/main/render/r3d_lit_mesh.h).
 
 A baked mesh is an entry of type `LMSH` in the [asset pack](../README.md).
 `r3d_lit_mesh_from_asset()` fills an `r3d_lit_mesh_t` with pointers into the

@@ -1,7 +1,7 @@
 # Appearance Fit
 
 A fit remakes a baked mesh so it looks like the full-detail source from the
-camera's path. It is appearance-driven simplification<sup>[[1]](../Citations.md#hasselgren-2021)</sup>:
+camera's path. It is appearance-driven simplification<sup>[[1]](../../Citations.md#hasselgren-2021)</sup>:
 it starts from the renderer's bake at its budget and moves welded positions and
 colours against reference renders, keeping the triangles. The budget and the
 frame cost hold.
@@ -9,16 +9,16 @@ frame cost hold.
 Use it for a mesh seen from known views when the simplifier's colours or
 silhouettes visibly drift from the source. It needs a CUDA GPU and minutes per
 mesh, and costs nothing at run time. A renderer asks for one with a `fit` table
-([Scene-Files.md](Scene-Files.md#fitprune)); [`fitted_variant.py` remakes the mesh](../../launcher/tools/r3d/README.md#appearance-fit)
+([Scene-Files.md](../scene/Scene-Files.md#fitprune)); [`fitted_variant.py` remakes the mesh](../../../launcher/tools/r3d/README.md#appearance-fit)
 in its GPU environment. A `fit` table records the budget, the training,
 held-out and coverage poses, the optimiser settings and the output hashes; the
 reference, fitted-output, crop and heatmap sheets are in the scene tools README.
 Measured results are in
 [Bake-Quality.md](Bake-Quality.md#appearance-fit-of-the-lite-and-full-meshes).
 
-![Simplifier against the reference](../images/render/appearance-lite-reference.png)
-![Fitted mesh against the reference](../images/render/appearance-chosen-heat.png)
-![Simplifier and fitted mesh, largest differences](../images/render/appearance-lite-fitted-reference.crops.png)
+![Simplifier against the reference](../../images/render/appearance-lite-reference.png)
+![Fitted mesh against the reference](../../images/render/appearance-chosen-heat.png)
+![Simplifier and fitted mesh, largest differences](../../images/render/appearance-lite-fitted-reference.crops.png)
 
 | Key | Symbol | What it does |
 |---|---|---|
@@ -37,7 +37,7 @@ Measured results are in
 ## Stages
 
 Source visibility is the renderer's
-[`visibility`](Scene-Files.md#visibility-camera_region) (region by default). A
+[`visibility`](../scene/Scene-Files.md#visibility-camera_region) (region by default). A
 region source keeps the backing surfaces that simplification and fitting would
 otherwise expose.
 
@@ -68,7 +68,7 @@ out of training and used only for scoring.
 ## Cost model
 
 The cost model predicts pose time $`\hat t_v`$ from a non-negative least-squares
-fit<sup>[[6]](../Citations.md#lawson-1974)</sup> to board frame times: a constant; clusters in view $`N_{s,v}`$; drawn
+fit<sup>[[6]](../../Citations.md#lawson-1974)</sup> to board frame times: a constant; clusters in view $`N_{s,v}`$; drawn
 triangles $`D_v`$; their screen rows $`\rho_t`$; pixels covered before the depth
 test $`\alpha_t`$; and clusters in view $`N_{c,v}`$:
 
@@ -84,7 +84,7 @@ tables and findings live in the scene tools README.
 ## The loss
 
 The fit draws welded positions $`P`$ and vertex colours $`C`$ with a
-differentiable rasterizer $`\mathcal{R}`$, nvdiffrast<sup>[[2]](../Citations.md#laine-2020)</sup>, over a random batch $`B`$ of training
+differentiable rasterizer $`\mathcal{R}`$, nvdiffrast<sup>[[2]](../../Citations.md#laine-2020)</sup>, over a random batch $`B`$ of training
 poses. $`\Omega`$ is the frame pixels, $`P^0`$ the start positions, $`N(i)`$
 the positions sharing an edge with $`i`$, $`\bar e`$ the start mean edge
 length, $`e_i`$ each vertex's mean start edge length capped at $`\bar e`$,
@@ -104,8 +104,8 @@ cost weight, set by `fitted_variant.py sweep --cost-weights`.
 
 | Term | Measures |
 |---|---|
-| $`\mathcal{E}_{\Delta E}`$ | mean $`\Delta E_{76}`$, the CIE 1976 $`\Delta E^*_{ab}`$<sup>[[4]](../Citations.md#iso-11664-4)</sup>, between $`\mathcal{R}_v(P, C)_p`$ and reference $`T_{v,p}`$ over $`B`$ and $`\Omega`$ |
-| $`\mathcal{E}_{\mathcal{L}}`$ | mean squared, edge-length-normalised change in the uniform Laplacian<sup>[[5]](../Citations.md#sorkine-2005)</sup> |
+| $`\mathcal{E}_{\Delta E}`$ | mean $`\Delta E_{76}`$, the CIE 1976 $`\Delta E^*_{ab}`$<sup>[[4]](../../Citations.md#iso-11664-4)</sup>, between $`\mathcal{R}_v(P, C)_p`$ and reference $`T_{v,p}`$ over $`B`$ and $`\Omega`$ |
+| $`\mathcal{E}_{\mathcal{L}}`$ | mean squared, edge-length-normalised change in the uniform Laplacian<sup>[[5]](../../Citations.md#sorkine-2005)</sup> |
 | $`\mathcal{E}_n`$ | mean L1 normal difference over jointly covered pixels $`\Omega_v^{\cap}`$ |
 | $`\mathcal{E}_c`$ | mean predicted frame time $`\hat t_v(P)`$ over $`B`$ |
 | $`\mathcal{E}_s`$ | distance from the source surface beyond a margin ([Surface](#surface)) |
@@ -135,7 +135,7 @@ cost weight, set by `fitted_variant.py sweep --cost-weights`.
 \mathcal{E}_c(P) = \frac{1}{|B|}\sum_{v \in B}\hat t_v(P)
 ```
 
-Adam<sup>[[3]](../Citations.md#kingma-2015)</sup> takes the steps, both learning rates decay as
+Adam<sup>[[3]](../../Citations.md#kingma-2015)</sup> takes the steps, both learning rates decay as
 $`\eta_k = \eta_0 \cdot 0.1^{k/K}`$ over $K$ steps, and colours are clamped to
 $[0, 1]$ after each. Where nothing is drawn the renderer shows the scene's
 clear colour, as the device and reference do.
@@ -223,26 +223,26 @@ with its flat fit.
 
 ## Against the paper
 
-The fit keeps the paper's<sup>[[1]](../Citations.md#hasselgren-2021)</sup> method: a decimated start with
-fixed triangles, a differentiable rasterizer<sup>[[2]](../Citations.md#laine-2020)</sup>, Adam<sup>[[3]](../Citations.md#kingma-2015)</sup>,
+The fit keeps the paper's<sup>[[1]](../../Citations.md#hasselgren-2021)</sup> method: a decimated start with
+fixed triangles, a differentiable rasterizer<sup>[[2]](../../Citations.md#laine-2020)</sup>, Adam<sup>[[3]](../../Citations.md#kingma-2015)</sup>,
 a uniform-Laplacian drift term relative to the start,
 and a learning rate decaying geometrically. It changes the rest:
 
-| | Paper<sup>[[1]](../Citations.md#hasselgren-2021)</sup> | This fit |
+| | Paper<sup>[[1]](../../Citations.md#hasselgren-2021)</sup> | This fit |
 |---|---|---|
 | Fitted | positions, textures, normal maps, material parameters | welded positions and vertex or face colours, which are the lighting bake |
 | Forward model | deferred physically based shading | the device's Gouraud or flat colours, no shading |
-| Image term | L1 on log-tonemapped sRGB | mean CIE 1976 $`\Delta E^*_{ab}`$<sup>[[4]](../Citations.md#iso-11664-4)</sup> |
-| Position step | plain Adam on positions<sup>[[3]](../Citations.md#kingma-2015)</sup> | Adam on an offset scaled per vertex by its capped local start scale, so small parts step in proportion to their size |
+| Image term | L1 on log-tonemapped sRGB | mean CIE 1976 $`\Delta E^*_{ab}`$<sup>[[4]](../../Citations.md#iso-11664-4)</sup> |
+| Position step | plain Adam on positions<sup>[[3]](../../Citations.md#kingma-2015)</sup> | Adam on an offset scaled per vertex by its capped local start scale, so small parts step in proportion to their size |
 | Laplacian weight | decays during the fit | constant $`\lambda`$; each vertex's drift uses its own mean start edge length, capped at the start's mean edge length |
-| Further terms | none | a point-to-plane band, of half-width `surface_margin`, from the fit to the source surface and a small tangential pull, both in the mean of that capped scale over each sample's triangle; $`\mathcal{E}_n`$ against reference normals; $`\mathcal{E}_c`$, predicted frame time<sup>[[6]](../Citations.md#lawson-1974)</sup> |
+| Further terms | none | a point-to-plane band, of half-width `surface_margin`, from the fit to the source surface and a small tangential pull, both in the mean of that capped scale over each sample's triangle; $`\mathcal{E}_n`$ against reference normals; $`\mathcal{E}_c`$, predicted frame time<sup>[[6]](../../Citations.md#lawson-1974)</sup> |
 | Triangle budget | set by the start | the fitted mesh's, pruned to `budget` by coverage after fitting; a refined fitted mesh can be the start |
 
 A global unit gives small parts a fraction of the hold, so the image term
-stretches them; local edge scales keep the hold even<sup>[[78]](../Citations.md#desbrun-1999)</sup>.
+stretches them; local edge scales keep the hold even<sup>[[78]](../../Citations.md#desbrun-1999)</sup>.
 Adam's step length does not depend on gradient size, so the position offset is scaled by the same local scale.
 
-Section 5.3 of the paper has no distance-to-reference term<sup>[[1]](../Citations.md#hasselgren-2021)</sup>.
+Section 5.3 of the paper has no distance-to-reference term<sup>[[1]](../../Citations.md#hasselgren-2021)</sup>.
 Here the start is already a decimation of the reference surface, so the fit can
 be held to that surface: the relative Laplacian alone is blind to smooth
 drift, which the band limits.

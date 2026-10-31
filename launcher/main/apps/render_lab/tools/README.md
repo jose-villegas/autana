@@ -344,7 +344,7 @@ nothing in the build reads it.
 Its glTF export, `capybara.glb`, is a cached bake: deform bones only,
 every loop as an animation, four influences per vertex. Host tools that read
 glTF use it, such as the
-[skinned-mesh lighting](../../../../../docs/render/Skinned-Lighting.md)
+[skinned-mesh lighting](../../../../../docs/render/animation/Skinned-Lighting.md)
 measurement; `bake.py path capybara.glb` prints where it is.
 `capybara.import.toml` names the
 `.blend` and the loops to export (the file also holds the rig's own
