@@ -3539,6 +3539,9 @@ test_water_slope_captured_scene_diagonal_flip_logs_a_per_step_table(void) {
  */
 
 #include "app/app.h"
+#if CONFIG_LAUNCHER_DEVELOPMENT
+#include "input/motion/imu.h"
+#endif
 
 extern app_t app_sand;
 extern int sand_app_enter_running_for_test(void);
@@ -3595,12 +3598,17 @@ clock_row_measure(int frames, bool pouring, int* frame_index) {
 static void
 clock_row_run(int brush, clock_row_t row, clock_row_window_t* pour, clock_row_window_t* settled) {
     gfx_set_panel_clock_hz(row == CLOCK_ROW_40 ? GFX_PANEL_CLOCK_SLOW_HZ : GFX_PANEL_CLOCK_FAST_HZ);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    const imu_sample_t upright = {.ax = IMU_COUNTS_PER_G};
+    imu_inject(&upright);
+#endif
     app_sand.enter();
     frame_watch_restart();
     const int previous_mode = sand_app_enter_running_for_test();
     sand_app_select_brush_for_test(brush);
 
     int frame_index = 0;
+    /* Warm frames let input_gravity() consume the injected imu_read() sample before timing. */
     clock_row_measure(CLOCK_ROW_POUR_WARM_FRAMES, true, &frame_index);
     *pour = clock_row_measure(CLOCK_ROW_POUR_FRAMES, true, &frame_index);
     input_t lift = {0};
@@ -3611,6 +3619,9 @@ clock_row_run(int brush, clock_row_t row, clock_row_window_t* pour, clock_row_wi
     *settled = clock_row_measure(CLOCK_ROW_SETTLED_FRAMES, false, &frame_index);
 
     app_sand.exit();
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    imu_inject_release();
+#endif
     frame_watch_restart();
     sand_app_restore_colour_mode_for_test(previous_mode);
 }
