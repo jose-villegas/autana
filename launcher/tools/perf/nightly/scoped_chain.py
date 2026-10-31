@@ -614,14 +614,15 @@ def plan(args, clock=None, request=None):
     for name, board in waiting.items():
         print(f"::notice::board {name} on {board.get('name', 'this machine')} {later}: {busy(board)}",
               file=sys.stderr)
+    # GPU night work can hold a night's plan past its cut-off; an override marked after it is not late.
+    late = discovered and marker < cutoff <= now
     if discovered:
-        # GPU night work can hold the plan past the cut-off: a plan that late starts no lane.
-        args.boards = [short_id(board["board"]) for board in listing] if cutoff > now else []
-        if cutoff <= now:
-            print(f"::notice::plan: started after the last lane start ({cutoff.isoformat()}); the night runs no lane",
-                  file=sys.stderr)
+        args.boards = [] if late else [short_id(board["board"]) for board in listing]
     args.boards = [board for board in args.boards if short_id(board) not in waiting]
-    if not args.boards:
+    if late:
+        print(f"::notice::plan: held past the last lane start ({cutoff.isoformat()}); the night runs no lane",
+              file=sys.stderr)
+    elif not args.boards:
         print(f"::notice::plan: no free board; the night {later}", file=sys.stderr)
     if discovered:
         # The self-test runs on one board of this machine, whichever is plugged in first.
