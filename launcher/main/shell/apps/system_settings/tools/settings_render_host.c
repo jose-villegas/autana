@@ -94,12 +94,12 @@ static const render_input_step_t touch[] = {
 };
 
 static void
-draw(const render_frame_t* frame) {
+draw(const provider_frame_t* frame) {
     input_t in = tap ? frame->input : (input_t){0};
     app_list()->frame(frame->dt_ms, &in);
 }
 
-const render_scene_t render_scene = {
+const frame_provider_t settings_provider = {
     .name = "settings",
     .frames = 6,
     .dt_ms = FRAME_MS,
