@@ -2,7 +2,7 @@
 
 A pillar standing on a floor, two objects that share no vertex, carved as a mesh with each seam policy in turn and
 simplified to the same budgets. Each panel shows the base from above at an angle: the simplified wire, the source
-footprint, and each contact vertex pinned where the source had it or moved by the pass.
+footprint, and each contact vertex pinned where the source had it or not kept by the pass.
 
     python launcher/tools/r3d/bake_figures/contact_figures.py --out DIR
 
@@ -44,12 +44,12 @@ SAME_POINT_DECIMALS = 5
 # The view: from VIEW_ELEVATION degrees up, turned VIEW_AZIMUTH about the pillar's axis.
 VIEW_ELEVATION = 32
 VIEW_AZIMUTH = -58
-PANEL_SIZE = (4.0, 3.9)
+PANEL_SIZE = (4.0, 3.0)
 FLOOR_ALPHA = 0.55
 PILLAR_ALPHA = 0.45
 WIRE_WIDTH = 0.5
 FOOTPRINT_WIDTH = 1.4
-MARKER_SIZE = 26
+MARKER_SIZE = 14
 MOVED_EDGE = 1.3
 PINNED_COLOUR = SLOTS[2]
 MOVED_COLOUR = SLOTS[7]
@@ -154,7 +154,7 @@ def main(argv=None):
               Line2D([], [], color=MUTED, linewidth=FOOTPRINT_WIDTH, linestyle="dashed", label="source footprint"),
               Line2D([], [], marker="o", linestyle="none", color=PINNED_COLOUR, label="contact vertex pinned"),
               Line2D([], [], marker="o", linestyle="none", markerfacecolor="none", markeredgecolor=MOVED_COLOUR,
-                     label="contact vertex moved (its source place)")]
+                     label="contact vertex not kept")]
     fig.legend(handles=legend, loc="lower center", ncol=len(legend), fontsize=LABEL_SIZE, frameon=False)
     args.out.mkdir(parents=True, exist_ok=True)
     save(fig, args.out / FIGURE_NAME)

@@ -180,13 +180,14 @@ The tolerance is the reciprocal of `output.position_scale`.
 | `lock` | Own pass; fix contact vertices on both sides. | Closed |
 | `free` | Own pass; only the rest's side of a contact is fixed. | May open on the mesh's side; the rest stays closed |
 
-A pillar standing on a floor, carved with each policy at the same budgets:
+A pillar standing on a floor, carved with each policy and the same configured
+budgets:
 
 ![A pillar's contact with the floor under weld, lock and free](../../images/render/import-mesh-contact.png)
 
-Weld and lock pin every contact vertex, so the base keeps the source footprint
-and the shaft gets what the budget leaves. Free moves the pillar's side of the
-contact: its base steps in from the footprint, and the shaft keeps more.
+Weld and lock pin every contact vertex; weld shares one budget with the floor,
+so its pillar ends with fewer triangles than under lock. Free keeps only the
+floor's side pinned, and the pass spends what it frees up the shaft.
 
 Rigid copies share local simplification and their union of locks. Each copy
 is lit against the full source.
