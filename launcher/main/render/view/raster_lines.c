@@ -49,6 +49,13 @@ behind(const raster_lines_depth_t* depth, vec3f_t p, vec2f_t at) {
     return p.z > surface * (1.0F + BEHIND_SLACK);
 }
 
+/* How far along a lens-space segment from depth `za` to `zb` the point is
+ * that shows `shown` of the way along its picture: 1/z is linear on screen. */
+static float
+lens_share(float za, float zb, float shown) {
+    return shown * za / (((1.0F - shown) * zb) + (shown * za));
+}
+
 void
 raster_lines_segment(const r3d_lens_t* lens, const raster_lines_depth_t* depth, vec3f_t a, vec3f_t b,
                      gfx_color_t color) {
@@ -69,13 +76,11 @@ raster_lines_segment(const r3d_lens_t* lens, const raster_lines_depth_t* depth, 
     const int steps = 1 + (int)(mathf_min(length, longest) / RASTER_LINES_STEP_PX);
     vec2f_t start = from;
     for (int i = 1; i <= steps; i++) {
-        /* Lens space is linear along the segment; its projection is not, so each stretch projects its own ends. */
-        const float t = (float)i / (float)steps;
-        const vec3f_t end3 = vec3f_lerp(a, b, t);
-        const vec3f_t mid3 = vec3f_lerp(a, b, ((float)i - 0.5F) / (float)steps);
-        const vec2f_t end = projectf_screen(&lens->project, end3);
-        const vec2f_t mid = projectf_screen(&lens->project, mid3);
-        const bool hidden = behind(depth, mid3, mid);
+        /* Even stretches of the picture; each tests the lens-space point its middle shows. */
+        const vec2f_t end = vec2f_lerp(from, to, (float)i / (float)steps);
+        const float shown = ((float)i - 0.5F) / (float)steps;
+        const vec2f_t mid = vec2f_lerp(from, to, shown);
+        const bool hidden = behind(depth, vec3f_lerp(a, b, lens_share(a.z, b.z, shown)), mid);
         if (!hidden || depth->behind_keep != 0) {
             draw_line((int)start.x, (int)start.y, (int)end.x, (int)end.y, hidden ? dimmed : color);
         }

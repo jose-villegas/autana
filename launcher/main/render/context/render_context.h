@@ -174,4 +174,4 @@ bool render_context_has_overlay(const render_context_t* context);
 void render_context_overlay(const render_context_t* context, int width, int height);
 
 /* The debug view's own state, as its row's hooks see it; NULL when shaded. */
-void* render_context_debug_view_state(const render_context_t* context);
+const void* render_context_debug_view_state(const render_context_t* context);
