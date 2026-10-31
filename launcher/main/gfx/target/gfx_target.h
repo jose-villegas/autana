@@ -57,6 +57,14 @@ gfx_target_of_color(gfx_target_t* out, void* pixels, int width, int height, int 
     out->attachment[0] = (image_t){pixels, GFX_PIXEL_FORMAT, width, height, IMAGE_PITCH(GFX_PIXEL_FORMAT, width)};
 }
 
+/* Colour and depth alone, `height` rows from picture row `first_row`. */
+static inline void
+gfx_target_of_color_depth(gfx_target_t* out, void* color, uint16_t* depth, int width, int height, int first_row) {
+    gfx_target_of_color(out, color, width, height, first_row);
+    out->count = GFX_ATTACHMENT_FURTHER;
+    out->attachment[GFX_ATTACHMENT_DEPTH] = (image_t){depth, IMAGE_U16, width, height, IMAGE_PITCH(IMAGE_U16, width)};
+}
+
 static inline int
 gfx_target_end_row(const gfx_target_t* target) {
     return target->first_row + target->attachment[0].height;
