@@ -6,10 +6,11 @@
 | [render_host.h](render_host.h) | Scene interface for host rendering. |
 | [render_scene.sh](render_scene.sh) | Compiles, runs, and checks one host render scene. |
 | [render_all_scenes.sh](render_all_scenes.sh) | Discovers and checks all host render scenes. |
-| [scene_viewer.sh](scene_viewer.sh) | Builds and renders a scene file, selecting renderers with `--object NAME`; `--build-only -o DIR` returns the host path; `--deps` lists what it is compiled from. |
+| [scene_viewer.sh](scene_viewer.sh) | Builds and renders a scene file, selecting renderers with `--object NAME`; `--build-only -o DIR` returns the host path; `--deps` lists what it is compiled from; `--compare REV` or `DIR` writes the camera path as an A-against-B video and `--frame N` renders one frame of it. |
+| [scene_path.py](scene_path.py) | Times and renders the camera path behind `scene_viewer.sh --compare` and `--frame`. |
 | [doc_images_demo.sh](doc_images_demo.sh) | Makes the demo's bake, fidelity, import and small-fill images and measured CPU tables through the scene viewer; `--small-fill-only` selects the small-fill outputs. |
 | [doc_tables.py](doc_tables.py) | Writes CPU tables from comparison logs, tunable listings and sweep captures, with scene and object names supplied as arguments. |
-| [doc_import_examples.py](doc_import_examples.py) | Renders albedo and face-sampling examples from a supplied scene and renderer. |
+| [doc_import_examples.py](doc_import_examples.py) | Renders albedo and face-sampling examples from a supplied scene and its smooth and flat fitted renderers. |
 | [physical_scene.py](physical_scene.py) | Copies a scene without its indirect look and occlusion settings, or in one study look (`--look`), for isolated bake studies. |
 | [showcase.py](showcase.py) | Prints a scene's showcase, its first renderer: the one pictures of the whole scene draw. |
 | [render_diff.py](render_diff.py) | Compares rendered and captured images. |
@@ -113,7 +114,7 @@ FRAME COST identity carries the image build ID, mounted pack CRC-32, renderer,
 maximum cluster triangle count, culling setting and camera sample interval.
 The cull-off row selects the unculled pass from the size-32 capture.
 
-Refresh the [meshlets block](../../../docs/render/Render-Pipeline.md#meshlets):
+Refresh the [meshlets block](../../../docs/render/offline/Baked-Mesh.md#meshlets):
 
 ```sh
 sh launcher/tools/render/render_doc_images.sh --stage meshlets

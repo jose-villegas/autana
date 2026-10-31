@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Each frame stage of the scene as shipped, what is inside transform and
 draw, and what each debug view adds on top, as charts and tables for
-Render-Pipeline.md's `pipeline-frame-stages` block.
+docs/render/frame/README.md's `pipeline-frame-stages` block.
 launcher/tools/render/render_doc_images.sh runs it on the captures kept in
 docs/render/data/.
 
     python launcher/tools/render/frame_stages.py --present LOG --laps LOG --views PATTERN --tables DIR --chart PNG
 
 --present holds the frame-cost report windows of the scene as shipped.
---laps holds a perf-scope image's windows of the same scene: its lap lines
+--laps holds a --frame-laps image's windows of the same scene: its lap lines
 split a bracket into the laps named `<bracket>.<phase>`, each
 with what the laps themselves cost taken out and shown apart. What the frame
 core's laps leave of their parent is untimed; more than UNTIMED_SHARE of it
@@ -319,7 +319,7 @@ def sub_stage_table(stages, windows, chart_name):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--present", required=True, type=pathlib.Path)
-    parser.add_argument("--laps", required=True, type=pathlib.Path, help="a perf-scope capture with lap lines")
+    parser.add_argument("--laps", required=True, type=pathlib.Path, help="a --frame-laps capture with lap lines")
     parser.add_argument("--views", required=True, help="capture path with {view} for the view's name")
     parser.add_argument("--tables", required=True, type=pathlib.Path)
     parser.add_argument("--chart", required=True, type=pathlib.Path)

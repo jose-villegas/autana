@@ -35,7 +35,16 @@ static uint16_t* depth;
 static r3d_pipeline_work_t* work;
 
 static bool cull_changed;
+static bool batched_changed;
+
+/* The panel takes pixels big-endian: the byte swap back to the native 16 bits. */
+static uint16_t
+native_of(gfx_color_t stored) {
+    return (uint16_t)((stored >> 8) | (stored << 8)); /* magic: swaps the two bytes of a 16-bit pixel */
+}
+
 static int32_t saved_cull;
+static int32_t saved_batched;
 
 static void release_fixture(void);
 
@@ -259,7 +268,7 @@ test_colours_stay_within_the_vertex_range_even_at_the_edges(void) {
         if (depth[i] == 0) {
             continue;
         }
-        const uint16_t native = (uint16_t)((color[i] >> 8) | (color[i] << 8));
+        const uint16_t native = native_of(color[i]);
         const int r = native >> 11, g = (native >> 5) & 63, b5 = native & 31;
         /* A wrapped channel would show as a colour whose channels disagree. */
         TEST_ASSERT_INT_WITHIN(1, r, b5);
@@ -330,7 +339,7 @@ test_a_steep_sliver_puts_no_pixel_nearer_than_its_nearest_corner(void) {
 static uint32_t
 next_random(uint32_t* state) {
     *state = (*state * 1664525u) + 1013904223u;
-    return *state >> 8;
+    return *state >> 8; /* magic: the generator's low byte is its weakest, so it is dropped */
 }
 
 /* A subpixel position in [lo, lo + span), landing on a pixel centre or a
@@ -1215,7 +1224,7 @@ quad_mesh(const uint16_t (*triangles)[3], bool double_sided, const uint16_t* fac
 static int
 draw_quad_mesh(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_span_target_t* target) {
     uint16_t visible[1];
-    const int count = r3d_pipeline_cull(mesh, lens, visible, pipeline_work());
+    const int count = r3d_pipeline_cull(mesh, lens, visible, pipeline_work(), NULL);
     r3d_pipeline_vertex_t cs[4];
     r3d_pipeline_transform(mesh, lens, visible, count, cs, NULL);
     r3d_pipeline_draw(mesh, lens, visible, count, cs, NULL, target, pipeline_work());
@@ -1290,7 +1299,7 @@ test_a_cluster_behind_the_camera_is_culled(void) {
         render_view_fixture_at(&(fixture_camera_t){{0, 0, -400}, {0, 0, -1}, 0.5f, 1.0f}, (viewport_t){W, H, 0});
     r3d_lens_init(&lens, &frame_view, 1);
     uint16_t visible[1];
-    TEST_ASSERT_EQUAL_INT(0, r3d_pipeline_cull(&mesh, &lens, visible, pipeline_work()));
+    TEST_ASSERT_EQUAL_INT(0, r3d_pipeline_cull(&mesh, &lens, visible, pipeline_work(), NULL));
 }
 
 /* A floor running from behind the camera to far ahead, seen from above it
@@ -1494,7 +1503,7 @@ draw_parts(const parts_t* p, const r3d_lens_t* lens, const r3d_span_target_t* t,
     TEST_ASSERT_NOT_NULL(visible);
     TEST_ASSERT_NOT_NULL(cs);
     TEST_ASSERT_NOT_NULL(rows);
-    const int count = r3d_pipeline_cull(&p->mesh, lens, visible, pipeline_work());
+    const int count = r3d_pipeline_cull(&p->mesh, lens, visible, pipeline_work(), NULL);
     r3d_pipeline_transform(&p->mesh, lens, visible, count, cs, use_rows ? rows : NULL);
     r3d_pipeline_draw(&p->mesh, lens, visible, count, cs, use_rows ? rows : NULL, t, pipeline_work());
     free(rows);
@@ -1540,7 +1549,7 @@ test_colour_along_the_near_cut_is_interpolated_to_the_cut(void) {
     for (int x = 0; x < W; x++) {
         const int i = first_row * W + x;
         if (depth[i] != 0) {
-            const uint16_t native = (uint16_t)((color[i] >> 8) | (color[i] << 8));
+            const uint16_t native = native_of(color[i]);
             TEST_ASSERT_INT_WITHIN_MESSAGE(2, 51 >> 3, native >> 11, "the cut edge does not carry the cut's colour");
         }
     }
@@ -1699,12 +1708,12 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
     const span_of_bytes_t parts[] = {
         {(const char*)b.cs, sizeof(r3d_pipeline_vertex_t) * (size_t)p->mesh.vertex_count},
         {(const char*)b.rows, sizeof(r3d_pipeline_rows_t) * (size_t)p->mesh.cluster_count},
-        {(const char*)b.culled, raster_culled_bytes(&raster)},
+        {(const char*)b.depth_near, raster_culled_bytes(&raster)},
         {(const char*)b.work[0], r3d_pipeline_work_bytes()},
         {(const char*)b.work[1], r3d_pipeline_work_bytes()},
         {(const char*)b.draw, bytes - (size_t)((const char*)b.draw - scratch)},
-        {(const char*)gfx_render_target_color(&b.picture, 0), sizeof(uint16_t) * W * H},
-        {(const char*)gfx_render_target_depth(&b.picture, 0), sizeof(uint16_t) * W * H},
+        {(const char*)gfx_target_color(&b.picture, 0), sizeof(uint16_t) * W * H},
+        {(const char*)gfx_target_depth(&b.picture, 0), sizeof(uint16_t) * W * H},
     };
     size_t total = 0;
     for (size_t i = 0; i < sizeof parts / sizeof parts[0]; i++) {
@@ -1717,20 +1726,24 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
         }
         total += parts[i].size;
     }
-    const char* const maps = (const char*)gfx_render_target_depth(&b.picture, 0) + sizeof(uint16_t) * W * H;
+    const char* const maps = (const char*)gfx_target_depth(&b.picture, 0) + sizeof(uint16_t) * W * H;
     TEST_ASSERT_TRUE((const char*)b.upscale == maps);
     const size_t padding = (size_t)((const char*)b.work[0] - maps);
     TEST_ASSERT_TRUE(padding < _Alignof(r3d_span_target_t));
     TEST_ASSERT_EQUAL_UINT32((uint32_t)bytes, (uint32_t)(total + padding));
-    TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_render_target_color(&b.picture, 0) % 4);
-    TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_render_target_depth(&b.picture, 0) % 4);
-    /* The census list holds every instance's slot and takes whole cache ways,
-     * so the parts after it keep the cache sets they have without it. */
-    TEST_ASSERT_TRUE(raster_culled_bytes(&raster) >= sizeof(uint16_t) * raster_culled_length(&raster));
-    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)(((const char*)b.cs - (const char*)b.culled) % RASTER_CACHE_WAY));
+    TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_target_color(&b.picture, 0) % 4);
+    TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_target_depth(&b.picture, 0) % 4);
+    /* The census holds its depth scale and every instance's slot and takes
+     * whole cache ways, so the parts after it keep the cache sets they have
+     * without it. */
+    TEST_ASSERT_TRUE(raster_culled_bytes(&raster)
+                     >= sizeof(float) + (sizeof(uint16_t) * raster_culled_length(&raster)));
+    TEST_ASSERT_TRUE((const char*)b.culled == (const char*)b.depth_near + sizeof(float));
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)(((const char*)b.cs - (const char*)b.depth_near) % RASTER_CACHE_WAY));
     raster.width /= 2;
     raster.height /= 2;
-    TEST_ASSERT_TRUE(b.culled == raster_carve(&raster).culled);
+    const raster_buffers_t smaller = raster_carve(&raster);
+    TEST_ASSERT_TRUE(b.culled == smaller.culled && b.depth_near == smaller.depth_near);
     free(scratch);
 }
 
@@ -1743,14 +1756,13 @@ test_the_two_core_frame_matches_one_full_draw(void) {
     build_wall_and_stack(p);
     gfx_color_t* upscaled = malloc(sizeof(gfx_color_t) * 4 * W * H);
     gfx_color_t* want = malloc(sizeof(gfx_color_t) * 4 * W * H);
-    char* scratch = malloc(raster_scratch_bytes(&(raster_t){ONE_MESH(&p->mesh), .width = W, .height = H,
-                                                            .destination_width = 2 * W, .destination_height = 2 * H}));
-    TEST_ASSERT_NOT_NULL(upscaled);
-    TEST_ASSERT_NOT_NULL(want);
-    TEST_ASSERT_NOT_NULL(scratch);
     raster_t raster = {
         ONE_MESH(&p->mesh),         .width = W, .height = H, .clear = SKY, .upscaled = true, .destination_width = 2 * W,
         .destination_height = 2 * H};
+    char* scratch = malloc(raster_scratch_bytes(&raster));
+    TEST_ASSERT_NOT_NULL(upscaled);
+    TEST_ASSERT_NOT_NULL(want);
+    TEST_ASSERT_NOT_NULL(scratch);
     raster.scratch = scratch;
 
     static const float eye_heights[] = {-100.0f, 0.0f, 150.0f, 230.0f, 300.0f};
@@ -1792,6 +1804,7 @@ static struct {
     uint16_t* want;
     uint16_t* destination;
     uint16_t* color; /* copies of what was drawn */
+    mat4f_t* models; /* placed copies' model matrices */
     uint16_t* depth;
 } frame_held;
 
@@ -1935,6 +1948,60 @@ test_a_census_list_steps_by_each_instances_own_mesh(void) {
                              (uint32_t)raster_culled_length(&raster));
     expect_census_draws_match_at_any_size(&raster);
     free(moved);
+}
+
+enum { BATCH_COPIES = 6 };
+
+/* The batches a draw of `raster` runs. */
+static int
+batch_count(const raster_t* raster) {
+    int batches = 0;
+    for (int first = 0; first < raster->instance_count; first = raster_batch_end(raster, first)) {
+        batches++;
+    }
+    return batches;
+}
+
+/* A large mesh and copies of a small one: the copies fit one batch beside
+ * the buffers sized for the large mesh, and draw the same picture and depth
+ * as one fork/join per instance (render.batched off). */
+static void
+test_batched_copies_draw_what_one_instance_at_a_time_draws(void) {
+    parts_t* const wall = parts_buffer(&shared_parts);
+    build_wall_and_stack(wall);
+    parts_t* const card = parts_buffer(&other_parts);
+    parts_begin(card);
+    parts_add_rect(card, 0, 0, 40, 30, -20, 200);
+    TEST_ASSERT_TRUE(BATCH_COPIES * card->mesh.vertex_count <= wall->mesh.vertex_count);
+    mat4f_t* models = frame_held.models = malloc(sizeof(*models) * BATCH_COPIES);
+    TEST_ASSERT_NOT_NULL(models);
+    r3d_instance_t instances[1 + BATCH_COPIES] = {{&wall->mesh, NULL}};
+    for (int i = 0; i < BATCH_COPIES; i++) {
+        transformf_t pose = TRANSFORMF_IDENTITY;
+        transformf_set_position(&pose, (vec3f_t){-300.0F + (90.0F * (float)i), 60.0F * (float)(i % 3), 0.0F});
+        models[i] = transformf_compute_matrix(&pose);
+        instances[1 + i] = (r3d_instance_t){&card->mesh, &models[i]};
+    }
+    raster_t raster = census_raster(instances, 1 + BATCH_COPIES);
+    uint16_t* const want = frame_held.color = malloc(sizeof(*want) * 2 * W * H);
+    TEST_ASSERT_NOT_NULL(want);
+    const fixture_camera_t camera = camera_down_plus_z(150.0f, -400, 1.0f);
+    const render_view_t view = render_view_fixture(&camera, &raster, 0);
+    saved_batched = *tune_find(tune_shared(), TUNE_NAME(render, batched))->value;
+    batched_changed = true;
+    (void)tune_set(tune_shared(), TUNE_NAME(render, batched), 0);
+    TEST_ASSERT_EQUAL_INT(1 + BATCH_COPIES, batch_count(&raster));
+    raster_draw(&raster, &view);
+    memcpy(want, raster_color(&raster), sizeof(*want) * W * H);
+    memcpy(want + (W * H), raster_depth(&raster), sizeof(*want) * W * H);
+    (void)tune_reset(tune_shared(), TUNE_NAME(render, batched));
+    /* The large mesh alone, then as many copies a batch as its clusters hold. */
+    const int per_batch = mathi_min(BATCH_COPIES, wall->mesh.cluster_count / card->mesh.cluster_count);
+    TEST_ASSERT_EQUAL_INT(1 + per_batch, raster_batch_end(&raster, 1));
+    TEST_ASSERT_LESS_THAN_INT(1 + BATCH_COPIES, batch_count(&raster));
+    raster_draw(&raster, &view);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(want, raster_color(&raster), W * H);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(want + (W * H), raster_depth(&raster), W * H);
 }
 
 /* A destination the raster's own size is a copy of it, taking
@@ -2343,6 +2410,10 @@ release_fixture(void) {
         (void)tune_set(tune_shared(), TUNE_NAME(render, cull), saved_cull);
         cull_changed = false;
     }
+    if (batched_changed) {
+        (void)tune_set(tune_shared(), TUNE_NAME(render, batched), saved_batched);
+        batched_changed = false;
+    }
     free(work);
     work = NULL;
     free(shared_parts);
@@ -2353,6 +2424,7 @@ release_fixture(void) {
     free(frame_held.want);
     free(frame_held.destination);
     free(frame_held.color);
+    free(frame_held.models);
     free(frame_held.depth);
     memset(&frame_held, 0, sizeof frame_held);
     free(depth);
@@ -2361,18 +2433,48 @@ release_fixture(void) {
     color = NULL;
 }
 
+/* The splits of one mesh's clusters, as one part. */
+static int
+transform_split_of(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, int count, int first_permille) {
+    const r3d_pipeline_part_t part = {mesh, clusters, count, NULL};
+    return r3d_pipeline_transform_split(&part, 1, first_permille);
+}
+
+static int
+draw_split_of(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, const r3d_pipeline_rows_t* rows, int count,
+              int height, int top_permille) {
+    const r3d_pipeline_part_t part = {mesh, clusters, count, rows};
+    return r3d_pipeline_draw_split(&part, 1, height, top_permille);
+}
+
+static void
+test_parts_split_as_their_clusters_in_order(void) {
+    const r3d_lit_cluster_t clusters[] = {{.vertex_count = 1, .triangle_count = 1},
+                                          {.vertex_count = 10, .triangle_count = 3}};
+    const r3d_lit_mesh_t mesh = {.clusters = clusters};
+    const uint16_t both[] = {0, 1};
+    const r3d_pipeline_rows_t rows[] = {{0, 9, false}, {40, 49, false}};
+    const r3d_pipeline_part_t halves[] = {{&mesh, &both[0], 1, rows}, {&mesh, &both[1], 1, rows}};
+    for (int permille = 0; permille <= JOB_SHARE_PERMILLE; permille += JOB_SHARE_PERMILLE / 8) {
+        TEST_ASSERT_EQUAL_INT(transform_split_of(&mesh, both, 2, permille),
+                              r3d_pipeline_transform_split(halves, 2, permille));
+        TEST_ASSERT_EQUAL_INT(draw_split_of(&mesh, both, rows, 2, 640, permille),
+                              r3d_pipeline_draw_split(halves, 2, 640, permille));
+    }
+}
+
 static void
 test_the_transform_split_is_the_shortest_prefix_holding_its_share_of_the_vertices(void) {
     const r3d_lit_cluster_t clusters[] = {
         {.vertex_count = 1}, {.vertex_count = 1}, {.vertex_count = 10}, {.vertex_count = 10}};
     const r3d_lit_mesh_t mesh = {.clusters = clusters};
     const uint16_t visible[] = {0, 1, 2, 3};
-    TEST_ASSERT_EQUAL_INT(3, r3d_pipeline_transform_split(&mesh, visible, 4, JOB_SHARE_EVEN));
-    TEST_ASSERT_EQUAL_INT(1, r3d_pipeline_transform_split(&mesh, &visible[2], 1, JOB_SHARE_EVEN));
-    TEST_ASSERT_EQUAL_INT(0, r3d_pipeline_transform_split(&mesh, visible, 0, JOB_SHARE_EVEN));
+    TEST_ASSERT_EQUAL_INT(3, transform_split_of(&mesh, visible, 4, JOB_SHARE_EVEN));
+    TEST_ASSERT_EQUAL_INT(1, transform_split_of(&mesh, &visible[2], 1, JOB_SHARE_EVEN));
+    TEST_ASSERT_EQUAL_INT(0, transform_split_of(&mesh, visible, 0, JOB_SHARE_EVEN));
     /* 2 of 22 vertices hold a twentieth; 12 of 22 fall short of nine tenths. */
-    TEST_ASSERT_EQUAL_INT(2, r3d_pipeline_transform_split(&mesh, visible, 4, JOB_SHARE_PERMILLE / 20));
-    TEST_ASSERT_EQUAL_INT(4, r3d_pipeline_transform_split(&mesh, visible, 4, JOB_SHARE_PERMILLE * 9 / 10));
+    TEST_ASSERT_EQUAL_INT(2, transform_split_of(&mesh, visible, 4, JOB_SHARE_PERMILLE / 20));
+    TEST_ASSERT_EQUAL_INT(4, transform_split_of(&mesh, visible, 4, JOB_SHARE_PERMILLE * 9 / 10));
 }
 
 static void
@@ -2381,8 +2483,8 @@ test_the_draw_split_of_no_work_is_the_middle_row(void) {
     const r3d_lit_mesh_t mesh = {.clusters = clusters};
     const uint16_t visible[] = {0};
     const r3d_pipeline_rows_t rows[] = {{0, 99, false}};
-    TEST_ASSERT_EQUAL_INT(50, r3d_pipeline_draw_split(&mesh, visible, rows, 1, 100, JOB_SHARE_EVEN));
-    TEST_ASSERT_EQUAL_INT(50, r3d_pipeline_draw_split(&mesh, visible, rows, 0, 100, JOB_SHARE_EVEN));
+    TEST_ASSERT_EQUAL_INT(50, draw_split_of(&mesh, visible, rows, 1, 100, JOB_SHARE_EVEN));
+    TEST_ASSERT_EQUAL_INT(50, draw_split_of(&mesh, visible, rows, 0, 100, JOB_SHARE_EVEN));
 }
 
 static void
@@ -2391,15 +2493,15 @@ test_the_draw_split_falls_inside_the_rows_the_work_covers(void) {
     const r3d_lit_mesh_t mesh = {.clusters = clusters};
     const uint16_t visible[] = {0};
     const r3d_pipeline_rows_t top[] = {{0, 9, false}};
-    const int split = r3d_pipeline_draw_split(&mesh, visible, top, 1, 100, JOB_SHARE_EVEN);
+    const int split = draw_split_of(&mesh, visible, top, 1, 100, JOB_SHARE_EVEN);
     TEST_ASSERT_TRUE(split >= 1 && split <= 9);
 
     const r3d_pipeline_rows_t beyond[] = {{-50, 500, false}};
-    const int middle = r3d_pipeline_draw_split(&mesh, visible, beyond, 1, 100, JOB_SHARE_EVEN);
+    const int middle = draw_split_of(&mesh, visible, beyond, 1, 100, JOB_SHARE_EVEN);
     TEST_ASSERT_TRUE(middle >= 48 && middle <= 52);
 
     const r3d_pipeline_rows_t unbounded[] = {{0, 0, true}};
-    TEST_ASSERT_EQUAL_INT(middle, r3d_pipeline_draw_split(&mesh, visible, unbounded, 1, 100, JOB_SHARE_EVEN));
+    TEST_ASSERT_EQUAL_INT(middle, draw_split_of(&mesh, visible, unbounded, 1, 100, JOB_SHARE_EVEN));
 }
 
 static void
@@ -2409,9 +2511,9 @@ test_draw_split_accumulates_bounded_uneven_buckets(void) {
     const uint16_t visible[] = {0, 1};
     const r3d_pipeline_rows_t rows[] = {{0, 9, false}, {40, 49, false}};
     const int height = 640;
-    TEST_ASSERT_EQUAL_INT(10, r3d_pipeline_draw_split(&mesh, visible, rows, 2, height, JOB_SHARE_PERMILLE / 4));
-    TEST_ASSERT_EQUAL_INT(43, r3d_pipeline_draw_split(&mesh, visible, rows, 2, height, JOB_SHARE_EVEN));
-    TEST_ASSERT_EQUAL_INT(46, r3d_pipeline_draw_split(&mesh, visible, rows, 2, height, JOB_SHARE_PERMILLE * 3 / 4));
+    TEST_ASSERT_EQUAL_INT(10, draw_split_of(&mesh, visible, rows, 2, height, JOB_SHARE_PERMILLE / 4));
+    TEST_ASSERT_EQUAL_INT(43, draw_split_of(&mesh, visible, rows, 2, height, JOB_SHARE_EVEN));
+    TEST_ASSERT_EQUAL_INT(46, draw_split_of(&mesh, visible, rows, 2, height, JOB_SHARE_PERMILLE * 3 / 4));
 }
 
 static void
@@ -2421,11 +2523,11 @@ test_draw_split_interpolates_the_requested_share_and_clamps_rows(void) {
     const uint16_t visible[] = {0};
     const r3d_pipeline_rows_t rows[] = {{0, 0, true}};
     const int height = 640;
-    TEST_ASSERT_EQUAL_INT(height / 4, r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, JOB_SHARE_PERMILLE / 4));
-    TEST_ASSERT_EQUAL_INT(height / 2, r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, JOB_SHARE_EVEN));
-    TEST_ASSERT_EQUAL_INT(height / 3, r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, JOB_SHARE_PERMILLE / 3));
-    TEST_ASSERT_EQUAL_INT(1, r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, 0));
-    TEST_ASSERT_EQUAL_INT(height - 1, r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, JOB_SHARE_PERMILLE));
+    TEST_ASSERT_EQUAL_INT(height / 4, draw_split_of(&mesh, visible, rows, 1, height, JOB_SHARE_PERMILLE / 4));
+    TEST_ASSERT_EQUAL_INT(height / 2, draw_split_of(&mesh, visible, rows, 1, height, JOB_SHARE_EVEN));
+    TEST_ASSERT_EQUAL_INT(height / 3, draw_split_of(&mesh, visible, rows, 1, height, JOB_SHARE_PERMILLE / 3));
+    TEST_ASSERT_EQUAL_INT(1, draw_split_of(&mesh, visible, rows, 1, height, 0));
+    TEST_ASSERT_EQUAL_INT(height - 1, draw_split_of(&mesh, visible, rows, 1, height, JOB_SHARE_PERMILLE));
 }
 
 #undef RUN_TEST
@@ -2487,6 +2589,7 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_cull_off_keeps_every_cluster);
     RUN_TEST(test_a_census_list_draws_what_raster_draw_draws_at_any_size);
     RUN_TEST(test_a_census_list_steps_by_each_instances_own_mesh);
+    RUN_TEST(test_batched_copies_draw_what_one_instance_at_a_time_draws);
     RUN_TEST(test_a_destination_of_the_same_size_is_a_copy);
     RUN_TEST(test_a_fractional_destination_upscales_a_drawn_frame);
     RUN_TEST(test_a_tile_holds_its_minimum_depth_not_its_maximum);
@@ -2497,6 +2600,7 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_the_range_ignores_empty_pixels_and_survives_none_or_one_drawn);
     RUN_TEST(test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone);
     RUN_TEST(test_the_transform_split_is_the_shortest_prefix_holding_its_share_of_the_vertices);
+    RUN_TEST(test_parts_split_as_their_clusters_in_order);
     RUN_TEST(test_the_draw_split_of_no_work_is_the_middle_row);
     RUN_TEST(test_the_draw_split_falls_inside_the_rows_the_work_covers);
 }

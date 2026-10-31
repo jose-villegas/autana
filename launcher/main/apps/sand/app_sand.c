@@ -309,7 +309,7 @@ apply_gfx_enter_indexed(void) {
     }
 
     const image_t index = gfx_indexed_image();
-    memset(index.pixels, 0, image_row_bytes(&index) * index.height);
+    memset(index.pixels, 0, index.pitch * index.height);
     gfx_indexed_set_palette(&sand_palette256);
     gfx_indexed_set_dither16(color_mode == SAND_COLOR_16);
     if (color_mode == SAND_COLOR_16) {

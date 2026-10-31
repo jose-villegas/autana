@@ -1,12 +1,11 @@
 /* console_mic_parse: bounded capture arguments and wire constants. */
 #pragma once
-#include <errno.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include "audio/audio_loopback.h"
 #include "audio/audio_out.h"
 #include "audio/console/console_codec_parse.h"
+#include "console/console_number.h"
 #define MIC_RECORD_BEGIN_BYTES   sizeof(MIC_RECORD_BEGIN "{\"rate\":4294967295,\"samples\":4294967295}")
 #define MIC_RECORD_MAX_MS        10000u
 #define MIC_RECORD_FIRST_REG     0x14u
@@ -71,34 +70,11 @@ console_mic_apply_entries(console_mic_args_t* args, int32_t pos, int32_t block, 
     return true;
 }
 
-static inline void
-console_mic_space(const char** text) {
-    *text += strspn(*text, " \t\r\n");
-}
-
-static inline bool
-console_mic_number(const char** text, unsigned max, uint32_t* out) {
-    console_mic_space(text);
-    if (**text < '0' || **text > '9') {
-        return false;
-    }
-    char* end;
-    errno = 0;
-    const unsigned long value = strtoul(*text, &end, CONSOLE_CODEC_DECIMAL_BASE);
-    if (errno || value > max || (*end && !strchr(" \t\r\n", *end))) {
-        return false;
-    }
-    *out = (uint32_t)value;
-    *text = end;
-    console_mic_space(text);
-    return true;
-}
-
 static inline bool
 console_mic_tone_parse(const char** text, console_mic_entry_t* entry, uint32_t remaining_ms) {
-    return console_mic_number(text, AUDIO_OUT_NYQUIST_HZ - 1u, &entry->tone.hz)
-           && console_mic_number(text, AUDIO_OUT_MAX_MS, &entry->tone.duration_ms)
-           && console_mic_number(text, AUDIO_OUT_VOLUME_MAX_PCT, &entry->tone.gain)
+    return console_u32(text, AUDIO_OUT_NYQUIST_HZ - 1u, false, &entry->tone.hz)
+           && console_u32(text, AUDIO_OUT_MAX_MS, false, &entry->tone.duration_ms)
+           && console_u32(text, AUDIO_OUT_VOLUME_MAX_PCT, false, &entry->tone.gain)
            && audio_out_args_valid(entry->tone.hz, entry->tone.duration_ms, entry->tone.gain)
            && entry->tone.duration_ms <= remaining_ms;
 }
@@ -110,12 +86,12 @@ console_mic_entry_parse(const char** text, console_mic_args_t* out) {
         return false;
     }
     *text += sizeof("at ") - 1;
-    console_mic_space(text);
+    *text = console_token_skip(*text);
     const bool negative = **text == '-';
     *text += negative;
     uint32_t offset;
     if ((negative && (**text < '0' || **text > '9'))
-        || !console_mic_number(text, negative ? out->settle_ms : out->ms - 1u, &offset)) {
+        || !console_u32(text, negative ? out->settle_ms : out->ms - 1u, false, &offset)) {
         return false;
     }
     entry.ms = negative ? -(int32_t)offset : (int32_t)offset;
@@ -147,10 +123,10 @@ console_mic_parse(const char* args, console_mic_args_t* out) {
     }
     args += sizeof prefix - 1;
     console_mic_args_t parsed = {.settle_ms = AUDIO_LOOPBACK_SETTLE_MS};
-    if (!console_mic_number(&args, MIC_RECORD_MAX_MS, &parsed.ms) || !parsed.ms) {
+    if (!console_u32(&args, MIC_RECORD_MAX_MS, false, &parsed.ms) || !parsed.ms) {
         return false;
     }
-    if (*args && *args != 'a' && !console_mic_number(&args, MIC_RECORD_MAX_MS, &parsed.settle_ms)) {
+    if (*args && *args != 'a' && !console_u32(&args, MIC_RECORD_MAX_MS, false, &parsed.settle_ms)) {
         return false;
     }
     while (*args) {

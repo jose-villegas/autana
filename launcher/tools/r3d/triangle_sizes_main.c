@@ -207,7 +207,7 @@ main(int argc, char** argv) {
         const render_view_t view = render_view_make(&camera_pose, poses->half_fov_short_tan, poses->near_z,
                                                     (viewport_t){size.width, size.height, 0});
         r3d_lens_init(&lens, &view, mesh->position_scale);
-        const int count = r3d_pipeline_cull(mesh, &lens, b.visible, b.work);
+        const int count = r3d_pipeline_cull(mesh, &lens, b.visible, b.work, NULL);
         r3d_sizes_t s = {0};
         r3d_sizes_count(mesh, &lens, b.visible, count, &s);
         print_sizes(pose, &s);

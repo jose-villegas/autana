@@ -48,3 +48,16 @@ iso_surface_scratch_count(int ny, int nz) {
  * a capacity ran out (what fitted is kept, every triangle whole) or the
  * field is smaller than 2 samples on an axis. */
 bool iso_surface_nets(const iso_field_t* field, float level, iso_mesh_t* out);
+
+/* iso_surface_nets() over cell slabs [x_from, x_to) along x only, for
+ * meshing parts at once, each into its own `out` and scratch. Parts that
+ * cover 0 to nx - 1 between them make the whole surface, once appended in x
+ * order. The slab before a part's first has its vertices made by both
+ * parts, so the later part's copies that no quad uses stay unused. False as
+ * iso_surface_nets(), or when the slabs are not within the field. */
+bool iso_surface_nets_slabs(const iso_field_t* field, float level, int x_from, int x_to, iso_mesh_t* out);
+
+/* Moves `part`'s vertices and triangles onto the end of `into`'s, rebasing
+ * the triangles' indices; `part`'s buffers may lie past `into`'s counts in
+ * the same arrays. False, with nothing moved, when they do not fit. */
+bool iso_surface_append(iso_mesh_t* into, const iso_mesh_t* part);

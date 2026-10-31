@@ -4,35 +4,36 @@
 
 #include <stdbool.h>
 
-#include "core/tune.h"
 #include "render/resolution/resolution.h"
 
 /* Rows and span setup follow height, so the ladder reduces height before
- * width. Widths use fast upscale paths; the board fit from
- * suite_raster_scale_perf.c includes one upscale per step. The fit prices
- * the raster from the triangles culling kept, so it carries to any mesh,
- * and the live refit learns what a mesh costs beyond it.
- * The 3x-cost step is recovery-only. */
-#define RENDER_LAB_LADDER_STEPS    7
-#define RENDER_LAB_LADDER_RECOVERY 6
-#define RENDER_LAB_LADDER_HALF     4
+ * width. Below the half size every step composes into the half picture,
+ * and the floor halves its height. The fit, on every mesh scene at every
+ * step (render_lab_dynres_steps_suite), includes each step's compose and
+ * prices the raster from the triangles culling kept, so it carries to any
+ * mesh; the live refit learns the rest. No step is recovery-only. */
+#define RENDER_LAB_LADDER_STEPS 8
+#define RENDER_LAB_LADDER_HALF  4
 extern const resolution_step_t render_lab_ladder[RENDER_LAB_LADDER_STEPS];
 extern const resolution_model_t render_lab_ladder_model;
 
-/* The tighter budget the policies were measured at
- * (suite_raster_scale_perf.c), which the menu's toggle turns on. */
-#define RENDER_LAB_BUDGET_ON_MS 60
+/* The frame time the menu's toggle holds: the chosen size (render_lab.scale)
+ * is the ladder's top, and a frame drops below it only past this floor. */
+#define RENDER_LAB_FRAME_TARGET_MS   33
+/* What a frame pays outside the draw and upscale the context times
+ * (present, scene update, skinning), measured on every mesh scene. */
+#define RENDER_LAB_FRAME_OVERHEAD_MS 10
+/* The budget handed to the context: the scaled part's share of the frame. */
+#define RENDER_LAB_TARGET_MS         (RENDER_LAB_FRAME_TARGET_MS - RENDER_LAB_FRAME_OVERHEAD_MS)
 
 /* The menu's DYNAMIC RES toggle over render_lab.budget: on is any budget,
- * set_on writes RENDER_LAB_BUDGET_ON_MS or 0. Development builds only,
- * where the tunable can move. */
-#if TUNE_ENABLED
+ * set_on writes RENDER_LAB_TARGET_MS or 0. */
 bool render_lab_dynres_on(void);
 bool render_lab_dynres_set_on(bool on);
-#endif
 
-/* Hands render_lab.budget to the main context when it changed since the
- * last call: 0 returns it to the fixed scale. */
+/* Hands render_lab.budget to the main context, topped at the size
+ * render_lab.scale chooses, when either changed since the last call: a
+ * budget of 0 returns it to the fixed scale. */
 void render_lab_dynres_apply(void);
 
 /* Under a budget, the size the last frame drew at as "WxH " for a scene's

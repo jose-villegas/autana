@@ -75,6 +75,7 @@ test_tone_parse_valid(void) {
     TEST_ASSERT_EQUAL_UINT8(10, args.volume_pct);
     TEST_ASSERT_TRUE(console_tone_parse("1000 100", &args));
     TEST_ASSERT_FALSE(args.internal);
+    TEST_ASSERT_TRUE(console_tone_parse_options(" ", &args));
     char limit[64];
     snprintf(limit, sizeof limit, "%u %u %u", AUDIO_OUT_NYQUIST_HZ - 1, AUDIO_OUT_MAX_MS, AUDIO_OUT_VOLUME_MAX_PCT);
     TEST_ASSERT_TRUE(console_tone_parse(limit, &args));

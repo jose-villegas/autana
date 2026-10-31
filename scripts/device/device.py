@@ -32,7 +32,7 @@ import autana_config  # noqa: E402
 import board_serial
 from console_protocol import FRAMED_ENDINGS, replies_to, require_development, reply_prefix
 from device_capture import (BOOTS_FROM_RESET, BOOTS_ON_RUNNING, BUILD_ID_BYTES_RE as BUILD_ID, BUILD_ID_REQUEST,
-                            ERROR_LINE_RE, crash_signs, suite_failure_signs)
+                            CAPTURE_COMPLETE, ERROR_LINE_RE, capture_ended_line, crash_signs, suite_failure_signs)
 
 from process_tree import (stop_process_tree, launch_process_tree, close_process_tree,
                           install_console_interrupt_handler)
@@ -549,9 +549,9 @@ def print_suite_output(data, record_path, command, reason, verbose, boots_allowe
     for sign in signs:
         print(sign)
     print(f"{command} capture: {record_path}")
-    print(f"{command} capture ended: {reason}")
+    print(capture_ended_line(command, reason))
     print_report_summary(report_path)
-    if reason != "complete":
+    if reason != CAPTURE_COMPLETE:
         raise RuntimeError(f"no completion line arrived: the capture ended {reason}")
     return failed + crashed + len(signs)
 
@@ -663,6 +663,7 @@ class HeldLock:
         self.started = time.monotonic()
         self.kind = kind
         self.error = None
+        self.renewed_at = time.monotonic()
 
     def wait_notice(self, ticket):
         wait_notice(self.store, self.board, self.notice_state, ticket)
@@ -670,7 +671,10 @@ class HeldLock:
     def keep_alive(self):
         if self.borrowed:
             while not self.stop.wait(self.HEARTBEAT_SECONDS):
-                if not self.store.check_token(self.board, self.held["token"]):
+                live = self.renews(self.store.check_token)
+                if live is None:
+                    continue
+                if not live:
                     self.lost.set()
                     return
             return
@@ -678,17 +682,39 @@ class HeldLock:
         poll = 1 if self.announce_waiters else self.HEARTBEAT_SECONDS
         next_heartbeat = time.monotonic() + self.HEARTBEAT_SECONDS
         while not self.stop.wait(poll):
-            for ticket in (self.store.tickets(self.board) if self.announce_waiters else ()):
+            try:
+                tickets = self.store.tickets(self.board) if self.announce_waiters else ()
+            except OSError:
+                tickets = ()
+            for ticket in tickets:
                 if ticket["ticket"] not in self.notified:
                     self.notified.add(ticket["ticket"])
                     print(f'{ticket["owner"]} is waiting for the board '
                           f'({ticket.get("purpose", "unknown")}) - Ctrl+C to hand it over', file=sys.stderr)
             if time.monotonic() >= next_heartbeat:
-                if not self.store.heartbeat(self.board, self.held["token"]):
+                renewed = self.renews(self.store.heartbeat)
+                if renewed is None:
+                    continue
+                if not renewed:
                     self.lost.set()
                     print("device lock was lost", file=sys.stderr)
                     return
                 next_heartbeat = time.monotonic() + self.HEARTBEAT_SECONDS
+
+    def renews(self, renew):
+        """renew(board, token): True or False, or None for one that raised and is
+        retried on the next poll. The lock lapses DEFAULT_STALE_SECONDS after
+        its last renewal, so failing until then is a loss."""
+        try:
+            renewed = renew(self.board, self.held["token"])
+        except OSError as error:
+            if time.monotonic() - self.renewed_at < device_lock.DEFAULT_STALE_SECONDS:
+                print(f"device lock renewal failed, retrying: {error}", file=sys.stderr)
+                return None
+            renewed = False
+        if renewed:
+            self.renewed_at = time.monotonic()
+        return renewed
 
     def __enter__(self):
         self.previous_lock = getattr(ACTIVE_LOCK, "held", None)
@@ -812,9 +838,9 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
                     if (b"no suite named '" + suite_name.encode("ascii") + b"'") in text:
                         raise RuntimeError("no suite named " + suite_name + " on this build")
                     if text.startswith(suite_complete):
-                        return bytes(data), "complete"
+                        return bytes(data), CAPTURE_COMPLETE
             if complete is not None and complete(data):
-                return bytes(data), "complete"
+                return bytes(data), CAPTURE_COMPLETE
     return bytes(data), "timeout"
 
 
@@ -933,7 +959,7 @@ def await_console(args, board, build_id, acquired_at, connection):
                               build_id=latest_build_id_from_bytes(data), reason=reason,
                               worktree=str(Path(args.worktree).resolve()),
                               commit=git_commit(args.worktree), acquired_at=acquired_at)
-    if reason == "complete":
+    if reason == CAPTURE_COMPLETE:
         print("booted BUILD_ID=" + build_id + " to its console")
     else:
         print(f"no console from BUILD_ID={build_id} within {BOOT_WAIT_SECONDS}s ({reason}) - "
@@ -1171,6 +1197,8 @@ def layout_flags(args):
     flags = ["--layout-seed", str(seed)] if seed else []
     if getattr(args, "hot_tunables", False):
         flags.append("--hot-tunables")
+    if getattr(args, "frame_laps", False):
+        flags.append("--frame-laps")
     return flags
 
 
@@ -2222,6 +2250,8 @@ def main(argv=None):
                               help="build with live hot-path tunables")
     flash_parser.add_argument("--perf-scope", action="store_true",
                               help="with --variant diag: build the perf-scoped image")
+    flash_parser.add_argument("--frame-laps", action="store_true",
+                              help="with --perf-scope: time the phases inside the frame stages")
     flash_parser.add_argument("--layout-seed", type=int, default=0,
                               help="pad the layout by this seed (0 is the plain build)")
     suite = subparsers.add_parser("run-suite")

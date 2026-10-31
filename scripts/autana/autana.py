@@ -346,8 +346,10 @@ def idf_note(project, emit=True):
 def flash(args):
     project = resolve_project()
     seed, args = pop_layout_seed(args)
-    _, variant, seen = variant_request("flash", args, ("--quiet", "--perf-scope", "--hot-tunables"), project)
+    _, variant, seen = variant_request("flash", args, ("--quiet", "--perf-scope", "--frame-laps", "--hot-tunables"),
+                                       project)
     refuse_release_seed(seed, variant)
+    refuse_unscoped_laps(seen)
     if "--hot-tunables" in seen and variant == "release":
         sys.exit("autana: --hot-tunables needs dev or diag")
     quiet = "--quiet" in seen
@@ -358,11 +360,18 @@ def flash(args):
     )
     if perf_scope:
         command.append("--perf-scope")
+    if "--frame-laps" in seen:
+        command.append("--frame-laps")
     if hot_tunables:
         command.append("--hot-tunables")
     if seed is not None:
         command += ["--layout-seed", seed]
     return call_device(command) if quiet else run_streaming_its_log(command)
+
+
+def refuse_unscoped_laps(seen):
+    if "--frame-laps" in seen and "--perf-scope" not in seen:
+        sys.exit("autana: --frame-laps times the perf scope's frame stages, so it needs --perf-scope")
 
 
 def build_diag_check(project):
@@ -387,8 +396,10 @@ def build(args):
             sys.exit("usage: autana build diag --check")
         return build_diag_check(project)
     seed, args = pop_layout_seed(args)
-    _, variant, seen = variant_request("build", args, ("--perf-scope", "--hot-tunables", "--configure"), project)
+    _, variant, seen = variant_request("build", args, ("--perf-scope", "--frame-laps", "--hot-tunables", "--configure"),
+                                       project)
     refuse_release_seed(seed, variant)
+    refuse_unscoped_laps(seen)
     if "--hot-tunables" in seen and variant == "release":
         sys.exit("autana: --hot-tunables needs dev or diag")
     flags = sorted(seen) + (["--layout-seed", seed] if seed is not None else [])
@@ -1782,11 +1793,11 @@ COMMAND_GROUPS = (
     )),
     ("build", "Build and flash", (
         Command("build", build, (
-            ("build [rel|dev|diag] [--perf-scope] [--layout-seed N] [--hot-tunables] [--configure]",
-             "build without a board lock; dev when omitted; --layout-seed N > 0 pads the layout, 0 is the plain build; --hot-tunables adds live hot-path knobs; --configure only writes sdkconfig and compile_commands.json"),
+            ("build [rel|dev|diag] [--perf-scope [--frame-laps]] [--layout-seed N] [--hot-tunables] [--configure]",
+             "build without a board lock; dev when omitted; --layout-seed N > 0 pads the layout, 0 is the plain build; --frame-laps adds the laps inside the frame stages; --hot-tunables adds live hot-path knobs; --configure only writes sdkconfig and compile_commands.json"),
             ("build diag --check", "the diagnostics build plus the complexity ratchet, no board"))),
-        one("flash", flash, "flash [rel|dev|diag] [--quiet] [--perf-scope] [--layout-seed N] [--hot-tunables]",
-            "build, then flash under the lock; dev when omitted; --quiet logs only; --perf-scope (diag) builds the perf-scoped image"),
+        one("flash", flash, "flash [rel|dev|diag] [--quiet] [--perf-scope [--frame-laps]] [--layout-seed N] [--hot-tunables]",
+            "build, then flash under the lock; dev when omitted; --quiet logs only; --perf-scope (diag) builds the perf-scoped image, --frame-laps adds the laps inside its frame stages"),
         one("buildid", buildid, "buildid [--json]", "the BUILD_ID the board runs, to check against what was flashed"),
     )),
     ("tests", "Tests", (

@@ -77,7 +77,7 @@ def canonical(hit, names):
 
 
 def sources(root):
-    for path in comment_sources(root, tracked=True):
+    for path in comment_sources(root):
         rp = path.relative_to(root).as_posix()
         if below_apps(rp):
             yield rp

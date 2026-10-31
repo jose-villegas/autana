@@ -34,14 +34,21 @@ Meshes must already be baked.
 Repeat `--object NAME` to enable only those mesh renderers; omit it to draw
 all authored renderers. An unknown renderer reports the available names.
 `--camera NAME` selects a camera; omission activates the scene's default.
-With `--camera`, stderr names that camera's path duration in ms.
+Stderr names the camera's path duration in ms, and `--poses FILE` writes one
+CSV row per frame of where it stands: `frame,ms`, its world position and
+rotation quaternion.
 The camera follows its own path at `--frames N` times `--dt MS` (defaults:
-30 frames, 16 ms). `--view shaded|depth|tiles|motion|meshlets|cull` selects the render
-context's view, with shaded as the default. The names match the declared
-`render_debug_view_t` table in `render/context/render_context.c`. A debug view needs an enabled mesh.
+30 frames, 16 ms). `--view NAME` selects the render context's view, with
+shaded as the default; an unknown name lists them. The names are the
+`render_debug_view_t` table's in `render/context/render_context.c`. A debug view needs an enabled mesh.
 With `--view cull`, `--counts FILE` writes one CSV row per frame of what the
 cull kept and drew ([Mesh-Rendering.md](../render/Mesh-Rendering.md#the-cull-seen));
 without it, `--counts` is refused.
+
+`--view boxes` draws what the renderer drew: each instance's root box under its
+model matrix, one hue per mesh. `--set boxview.copies=2` keeps only meshes drawn
+more than once; edges behind the drawn depth are left out, and
+`--set boxview.behind=1` dims them instead (2 draws them in full).
 
 `--set owner.name=value` sets any registered tunable before drawing; repeat it
 for several values. Invalid names, values and ranges fail the render.
@@ -59,11 +66,45 @@ every frame through the shared harness's video writer. `--deps` compiles
 nothing and prints what the viewer is compiled from: a `flags` line, then the
 compiler's `-MM` list.
 
+### A whole camera path, A against B, and one frame of it
+
+```sh
+sh launcher/tools/render/scene_viewer.sh PATH.scene.toml --object NAME --compare main
+sh launcher/tools/render/scene_viewer.sh PATH.scene.toml --object FITTED --compare . --b-args "--object SOURCE"
+sh launcher/tools/render/scene_viewer.sh PATH.scene.toml --object NAME --compare main --frame 812
+```
+
+`--compare REV|DIR` renders the whole camera path once per side, printing
+progress, and writes one video: A, B and their difference side by side, with
+each frame's index and time in its label. Any video player shows it; making it
+needs ffmpeg. The
+renderer arguments are A's and, without `--b-args`, B's too. `-o` names the
+video. The default is `launcher/tools/results/render/scene_viewer/compare/<scene>.mp4`.
+
+| Side B | Given as | What differs |
+|---|---|---|
+| the pack at a git revision | `--compare REV` | the bake: built in a temporary worktree, drawn by this checkout's viewer |
+| the pack of an existing checkout | `--compare DIR` | as `REV`, without the worktree |
+| other renderer arguments | `--compare . --b-args "ARGS"` | the renderer selection or settings |
+
+`--frame N` renders frame N of the same path to a PNG, with or without
+`--compare`. `-o` names A's file, and B's adds `-b` before the extension. The
+default is `scene_viewer/frames/<scene>-f<N>.png`. A frame number read off a
+video is all that is needed to render that frame again.
+
+Both time the path alike. Without `--dt`, frames are the viewer's frame time
+apart, or the shortest whole millisecond that fits the path in one video when
+it does not at that; stderr says which. Without `--frames`, they run from the
+path's start to its end. Pass the video's `--dt` and `--frames`, if it was
+given any, with `--frame`.
+
+![One frame of a compare video: the demo scene's fitted mesh, its source mesh and their difference](../images/render/sponza-compare.png)
+
 ## Images in these docs
 
 The CPU and GPU stages own the files under `docs/images/`, run from the
 repository root. `launcher/tools/render/doc_images_demo.sh` makes the demo's
-bake comparisons, view GIFs, fidelity and import sheets and CPU tables through
+bake comparisons, view GIFs, a compare-video frame, fidelity and import sheets and CPU tables through
 `scene_viewer.sh`, selecting one renderer with `--object NAME`.
 `doc_images_demo.sh OUT WORK SCENE OBJECT --meshlets-only` generates only the
 meshlet still; its normal run also writes that image beside the view GIFs.
@@ -163,6 +204,22 @@ A comment or blank-line edit in the Python leaves the fingerprint unchanged.
 The stage's work folder is named by it, and its saved `source.json` holds it
 and lists every input.
 
+The fingerprint decides whether the stage runs, not what it remakes. Each
+start, reference set, fit and bake is kept in the bake cache under a key of its
+own inputs, so a run remakes only what changed. A key the run asks for twice is
+made once: the three fitted variants read one reference set.
+
+| Result | Key | Folder in the bake cache |
+|---|---|---|
+| Reference set | `bake.py`'s reference key | `reference/<key>/`, shared with `bake.py bake` |
+| Start | `bake.py`'s start key, and the code in `doc_stages.py` that makes it | `doc/<digest>/` |
+| Fit, sweep point or look | `bake.py`'s fit key for the point's recipe and the start's bytes, the cost model when the point weights it, and the code | `doc/<digest>/` |
+| GI bake | `bake.py`'s mesh key, the path cull's sampling and poses, and the code | `doc/<digest>/` |
+
+A `doc/` folder also holds the steps recorded by the run that made it, which
+the bake-steps chart shows. Measures, sheets and the occlusion map run every
+time.
+
 The `doc-images-gpu` workflow fingerprints inputs on every main push.
 Changed images remain pending for the next NIGHT_START; pushes do not render.
 
@@ -202,7 +259,7 @@ The first refresh step, `scripts/ci/gpu_refresh_gate.sh`, is the flowchart's
 GPU half, persisting `GPU_ENV` through `GITHUB_ENV` for later steps.
 
 ```mermaid
-flowchart TD
+flowchart LR
     Fingerprint["Hosted input fingerprint"] --> Flight{"Another run in flight?"}
     Flight -->|yes| Refresh
     Flight -->|no| Latest{"Latest main record rendered<br/>and matches?"}
@@ -215,11 +272,16 @@ flowchart TD
     Head -->|yes| Again{"Latest main record rendered<br/>and matches?"}
     Again -->|yes| Skip
     Again -->|no or force| Render["Render"]
-    Render -->|success| Publish["Sync or close refresh PR"]
-    Publish -->|success| Recorded["Record rendered inputs"]
+    Render -->|success| Push["Push changed images to the refresh branch"]
+    Push -->|success or nothing changed| Recorded["Record rendered inputs"]
+    Recorded --> Publish["Sync or close refresh PR"]
     Render -->|failure| Failed["Record failed inputs and run URL"]
-    Publish -->|failure| Failed
+    Push -->|failure| Failed
 ```
+
+The record comes before the pull request calls, so a failed API call after the push
+leaves the run red but the inputs current. GitHub writes retry a request that never
+reached the server, such as a TLS handshake timeout.
 
 A rendered record means rendered, not merged: closing a refresh PR leaves
 these inputs current until they change or a dispatch uses `force`.
@@ -252,18 +314,21 @@ stall fails after `GPU_QUERY_FAILURE_SECONDS` only when tasks are queued
 and no workers remain active.
 
 ```mermaid
-flowchart TD
-    Start[Stage-start memory guard] --> Queue[Queue both prepares]
-    Queue --> Admission{Live memory and core admission}
+flowchart LR
+    Start[Stage-start memory guard] --> Ask[Ask for every start, reference set and bake]
+    Ask --> Kept{Key done in the bake cache?}
+    Kept -->|yes| Result[Kept result]
+    Kept -->|no| Admission{Live memory and core admission}
     Admission --> Worker[Spawn worker]
     Worker --> Kind{Task kind}
-    Kind -->|Prepare| Poses[Render reference poses in the main process with bounced light, else in a pool within budget and live memory]
-    Poses --> Ready[Variant inputs ready]
-    Ready --> Fits[Queue independent fits]
-    Fits --> Admission
-    Ready --> Bake[Queue bake with priority]
-    Bake --> Admission
-    Kind -->|Fit or bake| Ordered[Consume results in recipe order]
+    Kind -->|Reference set| Poses[Render reference poses in the main process with bounced light, else in a pool within budget and live memory]
+    Kind -->|Start, fit or bake| Made[Make it and its steps into the cache]
+    Poses --> Result
+    Made --> Result
+    Result --> Ready[Variant inputs linked once its start and references are kept]
+    Ready --> Fits[Ask for independent fits]
+    Fits --> Kept
+    Result --> Ordered[Consume results in recipe order]
     Ordered --> Measure[Queue measurement with priority]
     Measure --> Admission
     Kind -->|Measurement| Outputs[Ordered tables and sheets]
@@ -549,7 +614,7 @@ flowchart LR
 | `--label-a`, `--label-b` | What each side shows, such as `Today (main)` or the technique and setting being tried. They name the panels of the sheet, the crops and the video in place of the short hashes. |
 | `--clear` | The colour the scene clears to. A pixel clear on one side and drawn on the other is red and counted as a hole on the side that left it clear. |
 | sheet | `compare.png`, a row per render: A, B, then the absolute difference as a greyscale heatmap, amplified 8 times. `summary.txt` gives the resolved short hashes and per render the changed share, mean difference and holes. |
-| `--video` | Records every render's frames on both sides through the renderer's own `--video` (with `--render`, put `--frames` and `--dt` in the arguments; a scene runs from time zero). Writes `<label>.mp4`, its panels labelled as the sheet's, with the frame time, and `<label>.frames.csv` with per-frame changed share, mean difference, holes and temporal change. ffmpeg packs the frames into H.264 because an uncompressed side-by-side is tens of megabytes; `--fps` sets playback (default `1000/dt`). |
+| `--video` | Records every render's frames on both sides through the renderer's own `--video` (with `--render`, put `--frames` and `--dt` in the arguments; a scene runs from time zero). Writes `<label>.mp4`, its panels labelled as the sheet's, with the frame index and time, and `<label>.frames.csv` with per-frame changed share, mean difference, holes and temporal change. ffmpeg packs the frames into H.264 because an uncompressed side-by-side is tens of megabytes; `--fps` sets playback (default `1000/dt`). |
 | `--crops N` | `compare.crops.png` and `<label>.crops.png`: the `N` places the two differ most, A above B, enlarged 4 times without smoothing. Changed pixels (a channel off by more than 8, or a hole) within 3 px are one place; holes rank first, then total difference; a place over 64 px is cut to its strongest 64 px window. A video uses its two worst frames. Nothing is written where nothing differs. |
 
 The renderer arguments are split on spaces and never expanded as patterns.
