@@ -2536,6 +2536,21 @@ test_expanded_scene_in_separate_picture_matches_upscale(void) {
     expanded_picture();
 }
 
+/* Panel row `panel_row` of a frame whose half rows are all `line`: each side
+ * of a pixel blends unless a seam in `across` or the panel edge is there. */
+static void
+check_scattered_seams(int panel_row, const gfx_color_t* line, const uint8_t* across, gfx_color_t* row) {
+    enum { HALF_WIDTH = GFX_WIDTH / 2, NEIGHBOUR = RGB565_SCALE_UNIT / 4 };
+
+    gfx_read_panel_row(panel_row, row);
+    for (int x = 0; x < HALF_WIDTH; x++) {
+        const bool left = x > 0 && !gfx_seam_at(across, x - 1);
+        const bool right = x + 1 < HALF_WIDTH && !gfx_seam_at(across, x);
+        TEST_ASSERT_EQUAL_HEX16(left ? rgb565be_blend(line[x], line[x - 1], NEIGHBOUR) : line[x], row[2 * x]);
+        TEST_ASSERT_EQUAL_HEX16(right ? rgb565be_blend(line[x], line[x + 1], NEIGHBOUR) : line[x], row[(2 * x) + 1]);
+    }
+}
+
 static void
 test_blended_expand_blends_within_seams_and_doubles_across_them(void) {
     enum { HALF_WIDTH = GFX_WIDTH / 2, HALF_HEIGHT = GFX_HEIGHT / 2, NEIGHBOUR = RGB565_SCALE_UNIT / 4 };
@@ -2544,11 +2559,14 @@ test_blended_expand_blends_within_seams_and_doubles_across_them(void) {
     gfx_color_t* half = gfx_half_picture();
     uint8_t* seams = gfx_half_seams();
     TEST_ASSERT_NOT_NULL(seams);
-    /* Every row alike, so only the horizontal blend shows. */
-    for (int y = 0; y < HALF_HEIGHT; y++) {
-        for (int x = 0; x < HALF_WIDTH; x++) {
-            half[(y * HALF_WIDTH) + x] = (gfx_color_t)RGB565BE((uint32_t)(x * 0x010101));
-        }
+    /* Every row alike, so only the horizontal blend shows; random colours, so
+     * a quarter toward a neighbour never rounds back to the pixel itself. */
+    srand(3);
+    for (int x = 0; x < HALF_WIDTH; x++) {
+        half[x] = (gfx_color_t)rand();
+    }
+    for (int y = 1; y < HALF_HEIGHT; y++) {
+        memcpy(half + ((size_t)y * HALF_WIDTH), half, HALF_WIDTH * sizeof(*half));
     }
     gfx_color_t* row = malloc(sizeof(*row) * GFX_WIDTH);
     TEST_ASSERT_NOT_NULL(row);
@@ -2569,6 +2587,17 @@ test_blended_expand_blends_within_seams_and_doubles_across_them(void) {
     gfx_read_panel_row(2, row);
     for (int x = 0; x < GFX_WIDTH; x++) {
         TEST_ASSERT_EQUAL_HEX16(line[x / 2], row[x]);
+    }
+
+    /* Seams scattered, through a few seeds and both panel rows of half row 1. */
+    for (unsigned seed = 7; seed < 10; seed++) {
+        srand(seed);
+        for (size_t i = 0; i < GFX_SEAM_BYTES(HALF_WIDTH, HALF_HEIGHT); i++) {
+            seams[i] = (uint8_t)rand();
+        }
+        gfx_expand_frame_blended();
+        check_scattered_seams(2, line, seams + GFX_SEAM_PITCH(HALF_WIDTH), row);
+        check_scattered_seams(3, line, seams + GFX_SEAM_PITCH(HALF_WIDTH), row);
     }
     free(row);
 }
