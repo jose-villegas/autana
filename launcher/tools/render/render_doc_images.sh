@@ -320,6 +320,9 @@ run "$PYTHON" launcher/tools/anim/playback/playback_figures.py "$skin_asset" $PL
 R3D_PYTHON=$(run find_r3d_python "$PWD")
 run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/bake_figures.py --out "$OUT/render" > "$WORK/bake_figures.log" 2>&1
 # --orphans scans this runner: bake-ao-rays.png, bake-ao-falloff.png, bake-directions.png, bake-bounce-rays.png, bake-bounce-sweep.png, bake-scores.png
+# The import's seam policies: a pillar on a floor through the importer's contact graph and simplify pass.
+run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/contact_figures.py --out "$OUT/render" > "$WORK/contact_figures.log" 2>&1
+# --orphans scans this runner: import-mesh-contact.png
 
 # The baked mesh's figures: the demo scene's lite mesh, its clusters and tree, and the clusterizer's build.
 tree_mesh=$("$PYTHON" launcher/tools/bake/bake.py path "$(basename "$DEMO_SCENE" .scene.toml).${DEMO_OBJECT}_lite.mesh") || exit 2
