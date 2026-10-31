@@ -4,10 +4,9 @@ A scene's camera can draw each frame at a render size picked to hold a frame
 budget, instead of one fixed scale. The sizes are a ladder of steps, finest
 first.
 
-`render_context_compose()` presents a draw one of two ways:
-
-- **Width exactly half, height at most the half height:** it expands into the half picture. An uneven height spreads through the row map, its row edges on even panel rows.
-- **Anything else:** it upscales to the panel size with [`render/upscale.h`](../../../launcher/main/render/upscale.h), which takes any ratio in either axis.
+`render_context_compose()` expands a step that fits into the half picture
+and upscales any other with [`render/upscale.h`](../../../launcher/main/render/upscale.h),
+any ratio in either axis ([the rule](../Rendering-Options.md#render-scale-and-the-half-picture)).
 
 The caller's chosen size is the top step; neither policy draws finer. A frame under budget keeps its speed, and only a frame over budget steps down.
 

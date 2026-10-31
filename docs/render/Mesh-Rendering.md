@@ -165,7 +165,7 @@ app exits.
 |---|---|
 | `render_context_set_scale()` | the share of the destination each axis draws at; half until set |
 | `render_context_set_dynamic_resolution(config, model, step)` | opt-in: each frame draws at a step of `config` to hold its budget ([Dynamic-Resolution.md](frame/Dynamic-Resolution.md)); NULL returns to the fixed scale |
-| `render_context_set_frame_generation(on)` | each drawn frame is followed by one warped from it to its own view instead of drawn ([Frame-Generation.md](frame/Frame-Generation.md)); a debug view, a cut or a new viewport draws |
+| `render_context_set_frame_generation(on)` | a drawn frame may be followed by one warped from it instead of drawn; when, and what draws instead: [Frame-Generation.md](frame/Frame-Generation.md#for-an-app) |
 | `render_context_set_debug_view()` | a [view mode](#view-modes), development builds only |
 | `render_context_frame()` | the last frame: its step, size, what culling kept, and what its draw and upscale cost |
 

@@ -6,7 +6,7 @@ against the source model lit per pixel. How a bake is made and scored is
 Every image, chart and table here is regenerated from the source
 ([Render-Harness.md](../../tools/Render-Harness.md#images-in-these-docs)).
 
-## The Sponza variants
+## The demo variants
 
 Every row plays the same stretch of the flythrough, so the rows compare. The
 rows are ranked best first: fitted variants, then the rest, each by mean ΔE in
@@ -326,9 +326,5 @@ The places the two fits differ most, the reference above them.
 
 ![Where occlusion changes the picture](../../images/render/gpu/bake-ao-compare.crops.png)
 
-The factor alone beside the reference, white where nothing is near: low at
-column bases, under arches and in the creases between walls and floor. A
-curtain stays open on its visible side, since a double-sided surface takes its
-less occluded side.
-
-![The occlusion factor beside the reference](../../images/render/gpu/bake-ao-map.png)
+The factor alone, beside the reference:
+[Bake-Method.md](Bake-Method.md#local-occlusion-implementation).
