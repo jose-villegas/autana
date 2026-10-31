@@ -12,11 +12,9 @@ import tempfile
 import numpy as np
 
 from r3d import lcol_asset, mesh_bundle
+from r3d.fit.gbuffer import IN_FRONT, distance, reference_buffers
 from r3d.lit_mesh import read_lit_mesh, rgb888
 
-# A fitted pixel stands in front of the source when it is nearer than the source by more than this fraction
-# of the source's depth.
-IN_FRONT = 0.10
 # The copy-coverage gate: over the held-out poses, the fitted rest may hide more of the frame's copy pixels
 # than its start by at most HIDDEN_MEAN_GROWTH on the mean and HIDDEN_WORST_GROWTH on the worst pose. Set
 # just above what the fit with frozen copies hides (at most +0.06 points mean, +0.86 worst pose), so a fit
@@ -75,21 +73,6 @@ def joined(rest, copies):
                          vertex_point=np.concatenate([rest.vertex_point, copies.vertex_point + len(rest.points)]))
 
 
-def depth(render, points, matrix, near):
-    """Per pixel, the drawn surface's distance along the view axis (inf where nothing is drawn) and the
-    triangle it shows (-1 where none)."""
-    import torch
-
-    from r3d.appearance_simplify import FAR
-
-    _clip, rast, keep = render.raster(points, matrix)
-    local = rast[0, ..., 3].long() - 1
-    drawn = local >= 0
-    a, b = (FAR + near) / (FAR - near), -2.0 * FAR * near / (FAR - near)
-    distance = torch.where(drawn, b / torch.where(drawn, rast[0, ..., 2] - a, 1.0), torch.inf)
-    return distance, torch.where(drawn, keep[local.clamp_min(0)], -1)
-
-
 def hidden_copy_pixels(source, carved, meshes, poses_path, device="cuda"):
     """For each mesh of `meshes`, per pose of `poses_path`: the fraction of the frame where the source shows
     a carved triangle (`carved`, one flag per source triangle) and the mesh stands in front of it."""
@@ -100,20 +83,16 @@ def hidden_copy_pixels(source, carved, meshes, poses_path, device="cuda"):
 
     width, height, lens, near, poses = read_poses(poses_path)
     as_points = lambda p: torch.as_tensor(p, dtype=torch.float32, device=device)
-    source_render = Renderer(source.tri_v, np.ones(len(source.tri_v), dtype=np.int64), np.arange(len(source.p)),
-                             (width, height), device)
+    matrices = [as_points(projection(pose[:3], pose[3:], width, height, lens, near)) for pose in poses]
+    buffers = reference_buffers(source, carved, matrices, [(width, height)] * len(poses), device)
     renders = [(Renderer(m.tris, m.double, m.vertex_point, (width, height), device, flat=m.flat), as_points(m.points))
                for m in meshes]
-    carved = torch.as_tensor(carved, device=device)
     hidden = np.zeros((len(meshes), len(poses)))
     with torch.no_grad():
-        for i, pose in enumerate(poses):
-            matrix = as_points(projection(pose[:3], pose[3:], width, height, lens, near))
-            reference, shown = depth(source_render, as_points(source.p), matrix, near)
-            copy = (shown >= 0) & carved[shown.clamp_min(0)]
+        for i, (matrix, reference, copy) in enumerate(zip(matrices, *buffers)):
             for k, (render, points) in enumerate(renders):
-                distance, _shown = depth(render, points, matrix, near)
-                hidden[k, i] = float((copy & (distance < reference * (1 - IN_FRONT))).float().mean())
+                fitted, _shown = distance(render, points, matrix)
+                hidden[k, i] = float((copy & (fitted < reference * (1 - IN_FRONT))).float().mean())
     return hidden
 
 

@@ -38,6 +38,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from r3d import log  # noqa: E402
 from r3d.geometry import closest_point_on_triangles, triangle_areas  # noqa: E402
 from r3d.fit.copies import check_hidden_copies, hidden_copy_pixels, joined, placed_copies  # noqa: E402
+from r3d.fit import gbuffer  # noqa: E402
 from r3d.import_settings import load_scene, match_meshes  # noqa: E402
 from r3d.lit_mesh import finest_triangles, read_lit_mesh  # noqa: E402
 from r3d.cost_model import load as load_cost  # noqa: E402
@@ -719,7 +720,8 @@ def surface_loss(samples, centres, normals, scale, margin):
 @deterministic_fit()
 def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian, seed=1, device="cuda", report=100,
              clear=(0.0, 0.0, 0.0), cost=None, cost_weight=0.0, scale=1, normal_weight=0.0, surface_weight=0.0,
-             surface_margin=0.0, source=None, seam_margin=SEAM_MARGIN, copies=None):
+             surface_margin=0.0, source=None, seam_margin=SEAM_MARGIN, copies=None, carved=None, front_weight=0.0,
+             depth_weight=0.0):
     """Fit fixed triangles; return positions, colours and colour-only error history.
     Position steps use bounding diagonals and each vertex's capped local start scale.
     Laplacian drift and the source envelope use capped local start edge scales,
@@ -728,7 +730,9 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     Both learning rates decay tenfold over the run.
     Seam holds pin border points that start near another part to its moving
     triangles by default; `seam_margin=0` turns them off.
-    `copies` (a FitMesh, fit/copies.py) is drawn after the mesh, unchanged."""
+    `copies` (a FitMesh, fit/copies.py) is drawn after the mesh, unchanged.
+    The front and depth terms (fit/gbuffer.py) need the source and `carved`, one flag per source triangle drawn
+    as a copy."""
     import torch
 
     points0, rgb0, tris, double, _scale, vertex_point, flat = mesh
@@ -773,6 +777,11 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     matrices = [torch.as_tensor(view[0], dtype=torch.float32, device=device) for view in views]
     targets = [torch.as_tensor(view[1], device=device) for view in views]
     normals = [None if len(view) < 3 or view[2] is None else torch.as_tensor(view[2], device=device) for view in views]
+    buffers = None
+    if front_weight or depth_weight:
+        if source is None or carved is None:
+            raise ValueError("front and depth terms need the source and its carved triangles")
+        buffers = gbuffer.reference_buffers(source, carved, matrices, [target.shape[1::-1] for target in targets], device)
     if normal_weight and any(normal is None for normal in normals):
         raise ValueError("a normal term needs the reference's normal buffers: reference_render.py --normals")
     if surface_weight:
@@ -801,7 +810,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         adam.zero_grad()
         points = held_positions()
         draw, draw_colours = with_copies(points, colours)
-        error, predicted, colour_error, surface = 0.0, 0.0, 0.0, 0.0
+        error, predicted, colour_error, surface, front, depth = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
         if normal_weight:
             render = renderer_for(chosen[0])
             vertex = vertex_normals(draw, render.tris.long(), render.vertex_point)
@@ -815,6 +824,12 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
                 raster = render.raster(draw, matrices[i], clip)
                 values = render.interpolate(attributes, *raster)
                 samples = dict(raster=raster, values=values[..., :3])
+            if buffers is not None:
+                samples.setdefault("raster", render.raster(draw, matrices[i], clip))
+                fitted, shown = gbuffer.distance(render, draw, matrices[i], samples["raster"])
+                rest_shown = (shown >= 0) & (shown < len(tris))
+                front = front + gbuffer.front_loss(fitted, rest_shown, buffers.depth[i], buffers.copy[i]) / len(chosen)
+                depth = depth + gbuffer.depth_loss(fitted, rest_shown, buffers.depth[i], buffers.copy[i]) / len(chosen)
             colour = delta_e76(render(draw, draw_colours, matrices[i], clip, **samples), targets[i]).mean() / len(chosen)
             colour_error = colour_error + colour
             error = error + colour
@@ -834,7 +849,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
                 nearest = torch.as_tensor(tree.query(samples.detach().cpu().numpy())[1], device=device)
             surface = surface_weight * surface_loss(samples, reference[nearest], face_normals[nearest],
                                                      sample_scale, surface_margin)
-        loss = error + laplacian * drift + cost_weight * predicted + surface
+        loss = error + laplacian * drift + cost_weight * predicted + surface + front_weight * front + depth_weight * depth
         loss.backward()
         adam.step()
         schedule.step()
@@ -847,7 +862,8 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
                 raise ValueError("fit requires finite loss and parameters")
         if report and (step % report == 0 or step == steps - 1):
             log(f"step {step}: mean dE76 {float(history[step]):.3f}, predicted {float(predicted):.2f} ms, drift {float(drift):.3e}, "
-                f"surface {float(surface):.6f}, {time.time() - started:.1f} s")
+                f"surface {float(surface):.6f}, front {float(front):.3e}, depth {float(depth):.3e}, "
+                f"{time.time() - started:.1f} s")
     points = held_positions()
     return points.detach().cpu().numpy().astype(np.float64), colours.detach().cpu().numpy().astype(np.float64), history.cpu().tolist()
 
@@ -903,6 +919,10 @@ def main(argv=None):
     parser.add_argument("--seam-margin", type=float, default=SEAM_MARGIN, help="seam hold margin in local start edge scales (0 holds nothing)")
     parser.add_argument("--copies", help="a carved start bundle: its copies are drawn with the start, unchanged")
     parser.add_argument("--copy-poses", help="with --copies, the poses the copy-coverage gate checks the fit over")
+    parser.add_argument("--front-weight", type=float, default=0.0,
+                        help="with --copies, weight of the term pushing the rest behind the copies the source shows")
+    parser.add_argument("--depth-weight", type=float, default=0.0,
+                        help="with --copies, weight of the term holding the rest to the source's depth")
     parser.add_argument("--normal-weight", type=float, default=0.0, help="weight of the L1 normal term")
     parser.add_argument("--refine-to", type=int, help="first split the start's worst triangles up to this many")
     parser.add_argument("--score", action="store_true", help="fit nothing: print the start's mean normal error on the poses")
@@ -916,6 +936,10 @@ def main(argv=None):
         parser.error("a surface term needs --object, the scene object whose source anchors the fit")
     if bool(args.copies) != bool(args.copy_poses) or (args.copies and not args.object):
         parser.error("--copies needs --copy-poses and --object, the scene object whose source shows the copies")
+    if any(not np.isfinite(value) or value < 0 for value in (args.front_weight, args.depth_weight)):
+        parser.error("front and depth weights must be finite and nonnegative")
+    if (args.front_weight or args.depth_weight) and not args.copies:
+        parser.error("front and depth terms need --copies, whose source shows where the copies are")
     coverage_views, coverage_size = pose_views(args.coverage_poses, args.scale) if args.coverage_poses else (None, None)
     scene = load_scene(args.scene)
     if scene.camera is None:
@@ -949,13 +973,20 @@ def main(argv=None):
             from r3d.reference_render import source_for
 
             source, job = source_for(scene, args.object, lit=False)
+        carved = None
+        if copies is not None:
+            carved = np.zeros(len(source.object_names), dtype=bool)
+            carved[list(match_meshes(source.tri_o, source.tri_m, source.object_names, source.names,
+                                     job.settings.meshes))] = True
+            carved = carved[source.tri_o]
         fit_start = fitted
         cost = None if args.cost_model is None else load_cost(args.cost_model)[0]
         points, rgb, history = optimise(fitted, views, size, args.steps, args.batch, args.lr_position, args.lr_colour,
                                         args.laplacian, clear=clear, cost=cost, cost_weight=args.cost_weight,
                                         scale=args.scale, normal_weight=args.normal_weight, source=source,
                                         surface_weight=args.surface_weight, surface_margin=args.surface_margin,
-                                        seam_margin=args.seam_margin, copies=copies)
+                                        seam_margin=args.seam_margin, copies=copies, carved=carved,
+                                        front_weight=args.front_weight, depth_weight=args.depth_weight)
         fitted = fitted._replace(points=points, rgb=rgb)
         kept = np.arange(len(fit_start.tris))
         if args.budget is not None:
@@ -965,10 +996,7 @@ def main(argv=None):
             log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: {np.count_nonzero(shown == 0)} never shown")
             fitted = pruned
         if copies is not None:
-            carved = np.zeros(len(source.object_names), dtype=bool)
-            carved[list(match_meshes(source.tri_o, source.tri_m, source.object_names, source.names,
-                                     job.settings.meshes))] = True
-            hidden = hidden_copy_pixels(source, carved[source.tri_o], (fit_start, fitted), args.copy_poses)
+            hidden = hidden_copy_pixels(source, carved, (fit_start, fitted), args.copy_poses)
             log(check_hidden_copies(*hidden))
         count = write_mesh(out, name, fitted)
         report = stretch_report(fit_start, fitted, kept)

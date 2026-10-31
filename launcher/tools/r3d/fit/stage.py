@@ -17,6 +17,10 @@ from r3d.import_settings import SettingsError
 TRAINING = (("train.txt", "reference"), ("train_landscape.txt", "reference_landscape"))
 COVERAGE = "coverage.txt"
 HELD_OUT = "held_out.txt"
+# A carved start's rest is fitted with the reference G-buffer terms (fit/gbuffer.py) at these weights: the front
+# term pushes it behind the copies, the depth term holds it to the source's surface.
+FRONT_WEIGHT = 0.0
+DEPTH_WEIGHT = 0.0
 
 
 def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False, target=None, inputs=None,
@@ -50,7 +54,8 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
                 "--object", job.object.name, "--surface-weight", str(recipe.surface_weight),
                 "--surface-margin", str(recipe.surface_margin)]
     if copies:
-        command += ["--copies", str(bundle), "--copy-poses", str(inputs / HELD_OUT)]
+        command += ["--copies", str(bundle), "--copy-poses", str(inputs / HELD_OUT),
+                    "--front-weight", str(FRONT_WEIGHT), "--depth-weight", str(DEPTH_WEIGHT)]
     if cost_weight:
         command += ["--cost-model", str(pathlib.Path(__file__).parents[1] / "board_cost_weights.txt"),
                     "--cost-weight", str(cost_weight)]
