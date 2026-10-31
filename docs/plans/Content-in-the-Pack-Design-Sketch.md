@@ -3,9 +3,9 @@
 **Status:** built. `[A]` marks a proposal that was approved with the rest
 rather than asked for. Where the build departs from it is in
 [As built](#as-built); the current reference is
-[Animation-Tracks.md](../render/Animation-Tracks.md),
+[Animation-Tracks.md](../render/animation/Animation-Tracks.md),
 [assets/README.md](../assets/README.md) and
-[Scene-Manager.md](../render/Scene-Manager.md).
+[Scene-Manager.md](../render/scene/Scene-Manager.md).
 
 Committed C baked from a `.glb` animation (`*_tracks_generated.{c,h}`) or a
 `.scene.toml` is content with a source file that is already the truth, so a
@@ -116,7 +116,7 @@ entry (bake = `gltf_read` + the current `bake_tracks.py` checks, moved in).
 
 **As built:** SCNE v3 carries directional lights, ambient, tone map, skinned
 renderers and animators. Region and sky are bake inputs. The mapped layout
-and its writer are documented in [Scene files](../render/Scene-Files.md#scne-v5).
+and its writer are documented in [SCNE.md](../assets/formats/SCNE.md).
 
 ```c fragment
 /* scene.h: changes only */
@@ -200,7 +200,7 @@ first loads. First-frame time is measured on the board (`autana status` and
 | render-lab flythrough | `flythrough_tracks_generated.{c,h}`, `sample_tracks.sh`, `sample_tracks_main.c`, its `doc_images.sh` and README lines, `write_ao_scene`'s tracks copy and its test |
 | boot | `boot_anim_tracks_generated.{c,h}`; includes, CMake, `run_tests.sh`, `boot_anim_render_host.sh`, `gen_boot_anim_timeline.py` and its test, README |
 | scenes | `sponza_scene_generated.{c,h}`, `scene_table.py`'s C output, `SCENE_REGISTER`, `scene_def_t`, every `*_SCENE_*` macro (users: the render-lab scene, its suites and flythrough module, `suite_scene.c`) |
-| docs | `Animation-Tracks.md`, `render/Scene-Files.md`, `render/Building-a-Scene.md`, `render/Scene-Manager.md`, `assets/README.md`, `anim/README.md`, the render-lab tools README, `r3d/README.md`, `tools/Render-Harness.md`: rewritten for `.anim.toml` to pack |
+| docs | `render/animation/Animation-Tracks.md`, `render/scene/Scene-Files.md`, `render/Building-a-Scene.md`, `render/scene/Scene-Manager.md`, `assets/README.md`, `anim/README.md`, the render-lab tools README, `r3d/README.md`, `tools/Render-Harness.md`: rewritten for `.anim.toml` to pack |
 
 Final check: `git grep -n "_tracks_generated\|_scene_generated\|sample_tracks\|SCENE_REGISTER\|scene_def_t"` prints nothing.
 The build's pack command gains the `.anim.toml`, `.glb` and boot-directory

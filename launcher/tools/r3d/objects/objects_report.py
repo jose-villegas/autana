@@ -187,7 +187,7 @@ def main(argv=None):
     if scene.camera is None or scene.camera.component.path is None:
         parser.error('scene needs a camera path')
     visibility = job.renderer.visibility
-    size = args.size or (job.renderer.fit.size if job.renderer.fit else None) or (visibility.size if visibility else None)
+    size = args.size or (job.renderer.fit.size if job.renderer.fit else None) or getattr(visibility, 'size', None)
     if size is None:
         parser.error('--size is required when the selected renderer has no fit or visibility size')
     every_ms = args.every_ms or (visibility.every_ms if visibility and visibility.source == 'camera_path' else DEFAULT_EVERY_MS)

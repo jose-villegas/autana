@@ -141,6 +141,19 @@ class ObjectsTests(unittest.TestCase):
         faces[0] = faces[1]
         self.assertEqual(len(pair_shapes(triangles=faces)), 2)
 
+    def test_rigid_fit_of_solid_flat_and_line_copies(self):
+        rng = np.random.default_rng(5)
+        for shape, axes in (("solid", [3.0, 2.0, 1.0]), ("flat", [3.0, 2.0, 0.0]), ("line", [3.0, 0.0, 0.0])):
+            local = rng.normal(size=(40, 3)) * axes
+            for mirrored in (False, True):
+                with self.subTest(shape=shape, mirrored=mirrored):
+                    turn = Rotation.from_euler("xyz", [30, -50, 110], degrees=True).as_matrix()
+                    placement = turn @ np.diag([-1.0, 1.0, 1.0]) if mirrored else turn
+                    target = local @ placement.T + [4.0, -2.0, 7.0]
+                    linear, _, residual = rigid_fit(local, target, reflected=mirrored)
+                    self.assertAlmostEqual(np.linalg.det(linear), -1.0 if mirrored else 1.0, places=5)
+                    self.assertLess(residual, 1e-5 * bounds_diagonal(target))
+
     def test_tolerance_boundary(self):
         points = POINTS.copy()
         points[1, 0] += 0.01

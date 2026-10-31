@@ -49,6 +49,15 @@ raster_culled_bytes(const raster_t* raster) {
     return mathi_size_ceil(sizeof(float) + (sizeof(uint16_t) * raster_culled_length(raster)), RASTER_CACHE_WAY);
 }
 
+/* Consecutive instances drawn with one transform and one draw fork/join:
+ * as many as fit the buffers sized for the largest mesh, up to this many. */
+#define RASTER_BATCH_INSTANCES 16
+
+/* The end of the batch that starts at instance `first`: past each following
+ * instance while their vertices and clusters fit those buffers, at most
+ * RASTER_BATCH_INSTANCES, and one with render.batched off. */
+int raster_batch_end(const raster_t* raster, int first);
+
 /* The lens `raster` draws through: framed on its picture's shape, fitted to
  * the size it renders at, for a mesh of `position_scale`. */
 void raster_lens(const raster_t* raster, const render_view_t* view, int position_scale, r3d_lens_t* lens);
