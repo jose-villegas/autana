@@ -56,8 +56,6 @@
 #include "draw/draw.h"
 #include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
-#include "gfx/present/gfx_mode.h"
-#include "gfx/present/gfx_present.h"
 #include "image/pixel/rgb565.h"
 #include "input/input.h"
 #include "material_palette.h"
@@ -97,7 +95,7 @@ static const quality_t qualities[] = {
 static int quality = QUALITY_DEFAULT;
 
 /* FULL is today's RGB565 framebuffer path, byte-identical to before this
- * option existed. 256 and 16 both run GFX_LAYOUT_INDEXED (gfx_mode.h); 16 also
+ * option existed. 256 and 16 both run GFX_LAYOUT_INDEXED (gfx.h); 16 also
  * turns on its ordered dither against a shared 16-colour table. */
 typedef enum {
     SAND_COLOR_FULL,

@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Regenerate docs/render/Frame-Generation.md's table, plot, stills and clip
+# Regenerate docs/render/frame/Frame-Generation.md's table, plot, stills and clip
 # from the source: builds the host renderer, scores every scene at every
 # half-picture size of the dynamic-resolution ladder, and rewrites the
 # generated block and the images.

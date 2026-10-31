@@ -6,7 +6,7 @@
  */
 #pragma once
 
-#include "gfx/present/gfx_mode.h"
+#include "gfx/gfx.h"
 #include "ui/controls/ui_icons.h"
 
 #define SAND_PACK "sand"
