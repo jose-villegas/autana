@@ -189,7 +189,7 @@ def start_file(bake, cache, lock):
 
 
 def produce_fit(bake, cache, lock):
-    from r3d.fitted_variant import fit
+    from r3d.fit.stage import fit
 
     start = start_file(bake, cache, lock)
     inputs = reference_set(bake.stages["reference"], bake.job, bake.scene, cache)

@@ -124,7 +124,7 @@ STAGES = {
     "poses": ("anim/track_host.py",),
     "mesh": ("r3d/mesh_import.py",),
     "reference": ("r3d/mesh_import.py", "r3d/reference_render.py", "r3d/fitted_variant.py"),
-    "fit": ("r3d/fitted_variant.py", "r3d/appearance_simplify.py"),
+    "fit": ("r3d/fit/stage.py", "r3d/appearance_simplify.py"),
     "blend": ("gltf/blend_skin_to_glb.py",),
     "sound": ("audio/sound_import.py",),
 }
