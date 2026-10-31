@@ -198,7 +198,7 @@ configure(unsigned odr_code) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static bool injected;
 static int64_t injected_drain_us;
-static imu_sample_t injected_sample = {.ax = IMU_COUNTS_PER_G};
+static imu_sample_t injected_sample = IMU_SAMPLE_UPRIGHT;
 
 void
 imu_inject(const imu_sample_t* sample) {
