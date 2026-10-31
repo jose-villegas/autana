@@ -177,6 +177,16 @@ demo_gif ${ID}-depth --scene "$ID" --object "$SHOWCASE" --view depth
 demo_gif ${ID}-tiles --scene "$ID" --object "$SHOWCASE" --view tiles
 demo_gif ${ID}-motion-vectors --scene "$ID" --object "$SHOWCASE" --view motion
 demo_gif ${ID}-meshlets --scene "$ID" --object "$SHOWCASE" --view meshlets
+# One still of each view the renderer declares, at the pose the GIFs end on:
+# View-Modes' gallery. A --view it does not know makes it list them.
+views=$("$HOST" --scene "$ID" --view none 2>&1 >/dev/null | sed -n 's/^scene_viewer: --view is \(.*\), not none$/\1/p' | sed 's/, / /g')
+[ -n "$views" ] || { echo "$0: the renderer listed no views" >&2; exit 1; }
+for view in $views; do
+    run "$HOST" --quarter 1 --frames "$DEMO_GIF_FRAMES" --dt "$DEMO_GIF_DT" --scene "$ID" --object "$SHOWCASE" \
+        --view "$view" -o "$W/view-$view.bmp" 2> "$W/view-$view.log"
+    run "$PYTHON" -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).save(sys.argv[2])' \
+        "$W/view-$view.bmp" "$RENDER/${ID}-view-$view.png"
+done
 
 # The targets' differences at the pose the GIFs end on: each pair side by side
 # with the amplified difference, and the places they differ most, enlarged.
