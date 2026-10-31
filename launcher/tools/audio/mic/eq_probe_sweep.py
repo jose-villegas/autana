@@ -167,7 +167,7 @@ def tones(record, args, frequencies, internal=False):
     return {hz: median(values) for hz, values in levels.items()}
 
 
-def restore(record, saved):
+def restore(record, saved, tunables=None):
     failures = []
     try:
         reset_tunables(record, 'mic', TUNABLES)
@@ -192,6 +192,13 @@ def restore(record, saved):
     if CSM_REG in saved:
         try:
             restart(record, saved)
+            if tunables is not None:
+                codec(record, CSM_REG, saved[CSM_REG])
+        except Exception as error:
+            failures.append(error)
+    for name, value in (tunables or {}).items():
+        try:
+            record('tune', name, value)
         except Exception as error:
             failures.append(error)
     if failures:

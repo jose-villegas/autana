@@ -1117,6 +1117,33 @@ alone and the 100 Hz EQ leave the taps.
 | HPF codes 4–5 | no | cut taps, dull speech |
 | HPF codes 6–10 alone, ADC EQ 100 Hz | no | taps stay |
 
+## EQ for voice
+
+An external speaker plays LibriSpeech sentences in quiet and with seeded pink noise at 10 dB SNR.
+
+All arms keep dynamic HPF code 10: bypass, 150 Hz Butterworth high-pass, voice band-pass, and a +6 dB presence peak at 3 kHz (Q 1).
+The presence coefficients fit the CSD format and remain stable after quantization.
+
+STOI uses the aligned clean sentence. Speech-band SNR compares 300–3400 Hz power in speech and gap frames selected from that reference.
+
+Each material uses the median over runs; the table combines sentence deltas by median.
+Level combines all material deltas; clips is the largest material median count.
+
+An arm helps when noisy STOI improves by at least 0.02 or noisy SNR improves by at least 1 dB, with quiet STOI losing no more than 0.01.
+
+Response matches design when every tone delta from bypass is within 1.5 dB of the ideal filter response.
+
+Capture inside one held lock; scratch playback files are generated before recording:
+
+```sh
+autana --wait 3600 lock run -- python launcher/tools/audio/mic/eq_voice_capture.py --board <id> --runs 3 --host-gain 0 --host-device <output>
+python launcher/tools/audio/audio_doc_tables.py --write
+```
+
+<!-- generated: mic-eq-voice sha256=a93006c90ebb47c04a5a941a4f16d5cd1d65ec2d7326a2c3e4506015b15e8a1c -->
+No capture yet.
+<!-- /generated: mic-eq-voice -->
+
 ## Recording the microphone
 
 `autana mic record 1000 --settle 100 -o take.wav --json` records mono PCM16
