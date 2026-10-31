@@ -462,7 +462,7 @@ def write_start(directory, job, scene, recorder=None):
 
 
 def fit_into(directory, point, point_dir, scene_path, scene, job, inputs, recorder=None):
-    from r3d.fitted_variant import fit_point
+    from r3d.fit.stage import fit_point
     fit_point(point, point_dir, scene_path, scene, job, inputs, False, directory / FITTED_MESH, recorder=recorder)
 
 
@@ -757,7 +757,8 @@ def recipe_point(job, point):
 
 def _gpu(args, out, work, executor):
     from r3d.fitted_variant import (placed_variant, plot_pareto, point_name,
-                                   run_sweep_points, sweep_rows, write_sweep_csv, fit_point)
+                                   run_sweep_points, sweep_rows, write_sweep_csv)
+    from r3d.fit.stage import fit_point
     from r3d.import_settings import load_scene
     from r3d.bake_fidelity import build_host
     from r3d.cost_model import load
