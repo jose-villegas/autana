@@ -144,6 +144,21 @@ depth_cap_max(uint16_t cap) {
  * than it allows either: such a plane cannot pass its vertices' limit. */
 #define DEPTH_STEPS_EXACT (INT32_MAX / (R3D_SPAN_RANGE / R3D_SUBPIXEL))
 
+/* The cap a steep plane's spans clamp to, 0 when no vertex passes
+ * r3d_span_depth_limit() of the nearest one. Few planes are this steep, so
+ * the check stays out of every triangle's set-up. */
+static __attribute__((noinline)) uint16_t
+depth_cap_of(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, recti_t box,
+             const gradients_t* g, int64_t high) {
+    const uint16_t limit = r3d_span_depth_limit(mathf_max(a->z, mathf_max(b->z, c->z)));
+    const int32_t max = depth_cap_max(limit);
+    if (limit < R3D_DEPTH_NEAREST && high > max
+        && (depth_at(g, box, a) > max || depth_at(g, box, b) > max || depth_at(g, box, c) > max)) {
+        return limit;
+    }
+    return 0;
+}
+
 /* Whether the depth plane stays inside [0, DEPTH_MAX] over `box`, and under
  * r3d_span_depth_limit() of the nearest vertex. Every centre a fill covers
  * lies inside the triangle, where the plane is highest at a vertex; a
@@ -157,12 +172,7 @@ depth_range(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_sp
     plane_limits(g->base[0], g->dx[0], g->dy[0], box, &low, &high);
     g->depth_cap = 0;
     if (mathi_abs(g->dx[0]) + mathi_abs(g->dy[0]) >= DEPTH_STEPS_EXACT) {
-        const uint16_t limit = r3d_span_depth_limit(mathf_max(a->z, mathf_max(b->z, c->z)));
-        const int32_t max = depth_cap_max(limit);
-        if (limit < R3D_DEPTH_NEAREST && high > max
-            && (depth_at(g, box, a) > max || depth_at(g, box, b) > max || depth_at(g, box, c) > max)) {
-            g->depth_cap = limit;
-        }
+        g->depth_cap = depth_cap_of(a, b, c, box, g, high);
     }
     g->in_range = g->depth_cap == 0 && low >= 0 && high <= DEPTH_MAX;
 }
