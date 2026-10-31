@@ -42,7 +42,7 @@ The camera follows its own path at `--frames N` times `--dt MS` (defaults:
 shaded as the default; an unknown name lists them. The names are the
 `render_debug_view_t` table's in `render/context/render_context.c`. A debug view needs an enabled mesh.
 With `--view cull`, `--counts FILE` writes one CSV row per frame of what the
-cull kept and drew ([Culling.md](../render/frame/View-Modes.md#the-cull-seen));
+cull kept and drew ([Culling.md](../render/frame/Culling.md#the-cull-seen));
 without it, `--counts` is refused.
 
 `--view boxes` draws what the renderer drew: each instance's root box under its
