@@ -90,9 +90,8 @@ bounce reflectance. The cost is $R$ paths of up to $K+1$ segments per baked poin
 
 The light's resolution is the baked mesh's vertex or face spacing: bounce detail
 smaller than a triangle is lost, and a coloured surface tints only the triangles
-it reaches.
-
-![Where bounce light changes the picture](../../images/render/gpu/bake-indirect-compare.crops.png)
+it reaches. Where bounce light changes the picture is measured in
+[Bake-Quality.md](Bake-Quality.md#indirect-light).
 
 ## Fidelity against a reference
 

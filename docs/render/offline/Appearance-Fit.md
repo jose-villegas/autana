@@ -218,7 +218,7 @@ flowchart LR
     F --> W[write_lit_mesh<br/>face colours]
 ```
 
-[Bake-Quality.md](Bake-Quality.md#the-sponza-variants) compares a flat bake
+[Bake-Quality.md](Bake-Quality.md#the-demo-variants) compares a flat bake
 with its flat fit.
 
 ## Against the paper
