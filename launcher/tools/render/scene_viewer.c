@@ -261,6 +261,9 @@ seek(uint32_t t_ms) {
     for (int i = 0; i < scene_entity_count(shown); i++) {
         (void)scene_animator_seek(shown, (scene_entity_t)i, SCENE_ANIMATOR_CURRENT, t_ms);
     }
+    /* Seeking cuts only when the active camera itself is animated; objects
+     * or a camera parent moving under a still camera need the cut too. */
+    render_context_forget(render_context_main());
 }
 
 const frame_provider_t scene_provider = {
