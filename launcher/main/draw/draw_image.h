@@ -4,7 +4,7 @@
  * every row lies inside the entry; the pixels then point into the entry, so a
  * mapped pack draws with no copy and no RAM. A caller finds the entry with
  * asset_pack_find() and DRAW_IMAGE_ASSET. The layout is in
- * docs/assets/Image-Entries.md.
+ * docs/assets/formats/IMAG.md.
  *
  * No allocation and no ESP-IDF.
  */

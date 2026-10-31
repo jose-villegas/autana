@@ -1,5 +1,6 @@
 /* app_render_lab: mesh scenes behind a shared HUD and scene picker. */
 #include <assert.h>
+#include <ctype.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -66,7 +67,7 @@ current_scene(void) {
     return scenes[current_scene_index];
 }
 
-/* Hides the fps/title overlay draw_fps() builds, on by default. A render
+/* Hides the overlay draw_hud() builds, on by default. A render
  * host pin needs it off: the fps line is a double formatted with "%.1f",
  * which a pin cannot rely on across compilers. Read every frame. */
 bool render_lab_show_hud = true;
@@ -86,8 +87,8 @@ scene_title_alpha(void) {
 }
 
 /* Whether the BOOT-opened menu is showing instead of the current scene -
- * the normal view renders only the scene and the fps counter, everything
- * else lives behind BOOT. */
+ * the normal view renders only the scene and the HUD, everything else
+ * lives behind BOOT. */
 static bool menu_open;
 
 /* A scene the console asked for by key, switched to at the next frame like
@@ -111,12 +112,14 @@ exit_scene(void) {
     app_arena_rewind(scene_mark);
 }
 
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 /* On-screen framerate, since the shell's report_fps() reaches only the
  * serial console. Windowed on the dt_ms render_lab_frame() is handed. */
 #define FPS_WINDOW_MS 500
 static uint32_t fps_frame_count;
 static uint32_t fps_window_elapsed_ms;
 static float fps_value;
+#endif
 
 /* Orientation changes invalidate the HUD layout. */
 static uint32_t last_layout_generation;
@@ -157,9 +160,11 @@ render_lab_enter(void) {
     render_lab_dynres_apply();
     scene_title_remaining_ms = SCENE_TITLE_MS;
 
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     fps_frame_count = 0;
     fps_window_elapsed_ms = 0;
     fps_value = 0.0F;
+#endif
 
     /* Always re-enter on the scene view, menu closed (never left open from a
      * previous visit), and with a fresh orientation baseline so a rotation that
@@ -234,15 +239,23 @@ request_variant(const char* family, int index) {
     return false;
 }
 
+/* A release draws only the scene title, so its HUD is gone once the title has faded. */
+static bool
+hud_showing(void) {
+    return render_lab_show_hud && (BUILD_VARIANT_DEVELOPMENT_OR_HOST || scene_title_remaining_ms > 0);
+}
+
 static void
-draw_fps(const input_t* input) {
+draw_hud(const input_t* input) {
     ui_begin(input);
 
     const render_lab_hud_screen_state_t state = {
-        .fps_value = fps_value,
         .scene_title = current_scene()->name,
         .scene_title_alpha = scene_title_alpha(),
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+        .fps_value = fps_value,
         .status = current_scene()->status != NULL ? current_scene()->status() : NULL,
+#endif
     };
     render_lab_hud_screen_draw(&state);
 
@@ -298,9 +311,9 @@ update_scene_title(uint32_t dt_ms) {
     }
 }
 
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 static void
 update_fps_counter(uint32_t dt_ms) {
-    update_scene_title(dt_ms);
     fps_frame_count++;
     fps_window_elapsed_ms += dt_ms;
     if (fps_window_elapsed_ms >= FPS_WINDOW_MS) {
@@ -309,6 +322,7 @@ update_fps_counter(uint32_t dt_ms) {
         fps_window_elapsed_ms = 0;
     }
 }
+#endif
 
 static void
 render_lab_frame(uint32_t dt_ms, const input_t* input) {
@@ -343,11 +357,17 @@ render_lab_frame(uint32_t dt_ms, const input_t* input) {
         return;
     }
 
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     update_fps_counter(dt_ms);
+#endif
+    const bool hud = hud_showing();
+    update_scene_title(dt_ms);
+    render_context_set_frame_generation(render_context_main(),
+                                        current_scene()->generates_frames && render_lab_framegen_on());
     current_scene()->frame(dt_ms);
     render_lab_dynres_apply();
-    if (render_lab_show_hud) {
-        draw_fps(input);
+    if (hud) {
+        draw_hud(input);
     }
 }
 
@@ -416,7 +436,7 @@ render_lab_seek_path(uint32_t t_ms) {
     return scene_animator_seek(path.scene, path.entity, SCENE_ANIMATOR_CURRENT, t_ms % duration_ms);
 }
 
-/* "render scenes" lists each scene's key and name and which one shows; "render scene <key>" switches to that exact key at the next frame. "render path <ms>" places the showing scene's path there (render_lab_seek_path()). Replies are "RENDER ..." lines then "RENDER_END", or "RENDER_ERR <why>". Other words go to the showing scene's console hook, if it has one. */
+/* "render scenes" lists each scene's key and name and which one shows; "render scene <key>" switches to that exact key at the next frame. "render pose <ms>" holds the showing scene's path there (render_lab_seek_path(), then paused), so a view can be compared at one pose; "render pose play" lets it move again. Replies are "RENDER ..." lines then "RENDER_END", or "RENDER_ERR <why>". Other words go to the showing scene's console hook, if it has one. */
 bool
 render_lab_console(const char* args) {
     if (strcmp(args, "scenes") == 0) {
@@ -441,15 +461,23 @@ render_lab_console(const char* args) {
         (void)fflush(stdout);
         return true;
     }
-    if (strncmp(args, "path ", 5) == 0) {
+    if (strncmp(args, "pose ", 5) == 0) {
+        const char* rest = args + 5;
+        const render_lab_path_t path = shown_path();
+        const bool play = strcmp(rest, "play") == 0;
         char* end;
-        const unsigned long t_ms = strtoul(args + 5, &end, 10);
-        if (end == args + 5 || *end != '\0' || t_ms > UINT32_MAX) {
-            (void)printf("RENDER_ERR path takes milliseconds, not '%s'\n", args + 5);
-        } else if (!render_lab_seek_path((uint32_t)t_ms)) {
+        const unsigned long t_ms = strtoul(rest, &end, 10);
+        if (render_lab_path_duration_ms() == 0) {
             (void)printf("RENDER_ERR scene %s has no path\n", current_scene()->key);
+        } else if (play) {
+            (void)scene_animator_set_paused(path.scene, path.entity, SCENE_ANIMATOR_CURRENT, false);
+            (void)printf("RENDER pose=play\nRENDER_END\n");
+        } else if (!isdigit((unsigned char)rest[0]) || *end != '\0' || t_ms > UINT32_MAX
+                   || !render_lab_seek_path((uint32_t)t_ms)
+                   || !scene_animator_set_paused(path.scene, path.entity, SCENE_ANIMATOR_CURRENT, true)) {
+            (void)printf("RENDER_ERR usage: render pose <ms> | render pose play\n");
         } else {
-            (void)printf("RENDER path=%lu\nRENDER_END\n", t_ms);
+            (void)printf("RENDER pose=%lu\nRENDER_END\n", t_ms);
         }
         (void)fflush(stdout);
         return true;

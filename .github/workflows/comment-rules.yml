@@ -75,7 +75,7 @@ jobs:
       # failed gate too, and a skipped install would fail it for nothing.
       # pyserial among them: the exclusive-open tests drive the real serial library on a pty.
       - name: Workflow gate dependencies
-        run: pip install -r scripts/gates/requirements.txt -r launcher/tools/render/requirements.txt -r launcher/test/device/requirements.txt -r launcher/tools/audio/requirements.txt
+        run: pip install -r scripts/gates/requirements.txt -r launcher/tools/render/requirements.txt -r launcher/test/device/requirements.txt -r launcher/tools/audio/requirements.txt -r launcher/tools/audio/mic/requirements.txt
 
       # test_r3d_bake.py skips itself without numpy and scipy, and builds
       # meshoptimizer's library from its submodule with the runner's compiler;
@@ -133,6 +133,9 @@ jobs:
       - name: Voice frame-time table generator tests
         run: python3 -m unittest discover -s launcher/tools/audio/tests
 
+      - name: Test microphone tools
+        run: python3 -m unittest discover -s launcher/tools/audio/mic/tests
+
       - name: Audio table generator tests
         run: python3 -m unittest discover -s launcher/test -p test_audio_doc_tables.py
 
@@ -143,6 +146,11 @@ jobs:
         env:
           STAGED_TEXT_GATE: "snapshot"
         run: python3 scripts/gates/check_doc_constants.py
+
+      - name: Format diagram fields carry their role's colour marker
+        run: |
+          python3 scripts/gates/check_format_roles.py
+          python3 -m unittest discover -s scripts/gates/tests -p test_check_format_roles.py
 
       - name: Each package's pages name every function its headers define
         env:

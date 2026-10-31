@@ -33,11 +33,13 @@ POSE_RE = re.compile(_log_pattern("FRAME_PROFILE_POSE", (
 TRACE_RE = re.compile(_log_pattern("FRAME_PROFILE_TRACE", (
     ("row", r"\S+"), ("n", r"\d+"), ("frames", r"[ \d:]*?"), ("quarter", r"\w+"))))
 TRACE_FRAME = re.compile(r"(\d+):(\d+)")
-RANKED_RE = re.compile(_log_pattern("FRAME_PROFILE_RANKED", (
-    ("row", r"\S+"), ("rank", r"\d+"), ("t_ms", r"\d+"), ("frame_us", r"\d+"), ("quarter", r"\w+"))))
+PEAK_RE = re.compile(_log_pattern("FRAME_PROFILE_PEAK", (
+    ("row", r"\S+"), ("rank", r"\d+"), ("t_ms", r"\d+"), ("frame_us", r"\d+"), ("prominence_us", r"\d+"),
+    ("quarter", r"\w+"))))
 REPLAY_RE = re.compile(_log_pattern("FRAME_PROFILE_REPLAY", (
     ("row", r"\S+"), ("t_ms", r"\d+"), ("counts", r"[^|\n]*?"), ("report", r"[^\n]*?"), ("quarter", r"\w+"))))
 PATH_POSES = read_define(HEADER, "FRAME_PROFILE_PATH_POSES")
+PEAK_PERCENT = read_define(HEADER, "FRAME_PROFILE_PEAK_PERCENT")
 COUNT = re.compile(r"(\w+)=(-?\d+)")
 
 
@@ -77,20 +79,27 @@ def poses(text):
 
 
 def trace(text):
-    """Every played frame: row, quarter, its path time and its wall time. A line whose frames
-    do not number its count was cut in transfer and gives none."""
-    frames = []
+    """Every played frame: row, quarter, its path time and its wall time. Fails on a line cut in
+    transfer, and on a row whose traced frames differ from its profile's count of them."""
+    frames, traced = [], {}
     for match in TRACE_RE.finditer(text):
         pairs = TRACE_FRAME.findall(match["frames"])
-        if len(pairs) == int(match["n"]):
-            frames.extend({"row": match["row"], "quarter": match["quarter"], "t_ms": int(t), "frame_us": int(us)}
-                          for t, us in pairs)
+        key = (match["row"], match["quarter"])
+        if len(pairs) != int(match["n"]):
+            raise ValueError(f"{' '.join(key)}: a trace line holds {len(pairs)} of its {match['n']} frames")
+        traced[key] = traced.get(key, 0) + len(pairs)
+        frames.extend({"row": match["row"], "quarter": match["quarter"], "t_ms": int(t), "frame_us": int(us)}
+                      for t, us in pairs)
+    played = {(row["row"], row["quarter"]): row["frames"] for row in profiles(text)}
+    for key, count in traced.items():
+        if played.get(key) != count:
+            raise ValueError(f"{' '.join(key)}: {count} frames traced of the {played.get(key)} played")
     return frames
 
 
-def worst(text):
-    """The played frames each row and quarter names as its worst, rank 1 the slowest."""
-    return _records(RANKED_RE, text)
+def peaks(text):
+    """The frame peaks each row and quarter names, rank 1 the highest."""
+    return _records(PEAK_RE, text)
 
 
 def replays(text):

@@ -100,7 +100,7 @@ static sound_voice_t
 fake_play(const sound_t* sound, const sound_play_opts_t* opts) {
     sound_command_t command;
     const sound_voice_t voice =
-        sound_control_play(&rig->control, sound, opts, 0, &command, rig->control.app_generation);
+        sound_control_play(&rig->control, sound, opts, 0, 0, &command, rig->control.app_generation);
     if (voice.id) {
         send(&command);
     }

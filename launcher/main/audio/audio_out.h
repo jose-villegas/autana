@@ -11,7 +11,7 @@
 
 /* Core 0's renderer competes for the flash cache; the mixer and decoder hot
  * path avoid those fetch stalls in IRAM. ADPCM tables occupy 1440 B of DRAM.
- * IRAM budget: 2293 B */
+ * IRAM budget: 2048 B */
 #define AUDIO_IRAM_ATTR IRAM_ATTR
 #define AUDIO_DRAM_ATTR DRAM_ATTR
 #else

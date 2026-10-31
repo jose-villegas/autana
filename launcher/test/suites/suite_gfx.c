@@ -312,7 +312,7 @@ make_blit_src(void) {
                      .format = IMAGE_RGB565BE,
                      .width = BLIT_SRC_STRIDE,
                      .height = BLIT_SRC_ROWS,
-                     .stride = BLIT_SRC_STRIDE};
+                     .pitch = BLIT_SRC_STRIDE * sizeof(gfx_color_t)};
 }
 
 void

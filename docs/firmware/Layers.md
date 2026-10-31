@@ -100,7 +100,7 @@ flowchart TB
 |---|---|---|
 | Includes are layer-qualified | `"gfx/gfx.h"`, not `"gfx.h"`, even inside one folder, so an app reaching past `ui` into `gfx` shows at the line that does it | the style audit |
 | Apps use the engine, the platform and the app contract | an app under `apps/` includes nothing else of the system band; a system app under `shell/apps/` is part of the shell | SYSTEM-BAND |
-| The UI backend stays inside `ui/` | outside it, no firmware or editor source includes microui or a header that reaches it, so a screen sees only `ui/ui.h` and a backend swap touches `ui/` alone | UI-BACKEND |
+| The UI backend stays inside `ui/` | outside it, no firmware source includes microui or a header that reaches it, so a screen sees only `ui/ui.h` and a backend swap touches `ui/` alone | UI-BACKEND |
 | `core/`, `build/` and the packages are the base | see [the base](#the-base) | PACKAGE-INCLUDE, PACKAGE-REQUIRES, PACKAGE-CONFIG |
 | Every drawing path ends in gfx | nothing else allocates pixels; how a draw call becomes panel pixels is [Gfx](../gfx/README.md#the-path), and `render/` sits above `gfx/` because it draws into gfx's [render targets](../gfx/Targets-and-Modes.md#render-targets) | the layer order |
 | Drivers are split from the logic they feed | `power_device.c`, `touch.c`, `buttons.c` and `imu.c` touch hardware; `power_decode`, `power_cache`, `touch_fsm`, `button_fsm`, `gesture` and `tilt` are pure and tested on a laptop; the split runs through every folder and is what the [Testing-Guide.md](../testing/README.md) relies on | review |
@@ -146,7 +146,7 @@ flowchart BT
 <!-- /generated: package-requires-diagram -->
 
 A package includes nothing outside itself but the C library, the build config and the
-packages it declares, so the firmware, the host tests, the tools and the editor all build it.
+packages it declares, so the firmware, the host tests and the tools all build it.
 It declares them on one line of its own `CMakeLists.txt`, which both builds read:
 
 ```cmake

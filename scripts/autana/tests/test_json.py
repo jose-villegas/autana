@@ -119,7 +119,7 @@ class JsonReadTests(unittest.TestCase):
         for heard in (True, False):
             with self.subTest(heard=heard):
                 reply = f"TONE {'heard' if heard else 'not heard'} 440 Hz: -21.5 dB (silence -63.0 dB), path acoustic, measured 440.02 Hz, open 8192 B DMA, thd -40.0 dB, peak -6.0 dBFS"
-                expected = {"hz": 440, "tone_db": -21.5, "silence_db": -63.0,
+                expected = {"hz": 440, "tone_db": -21.5, "silence_db": -63.0, "noise_dbfs": None,
                             "heard": heard, "open_dma_bytes": 8192, "path": "acoustic",
                             "measured_hz": 440.02, "hz_error": 440.02 - 440, "thd_db": -40.0, "peak_dbfs": -6.0,
                             "shake_rms_mg": None, "shake_peak_mg": None, "silence_shake_rms_mg": None}

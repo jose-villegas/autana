@@ -91,3 +91,24 @@ class GeneratedBlocksTests(unittest.TestCase):
             (tables / "unknown.md").write_text("table\n", encoding="utf-8")
             with self.assertRaises(ValueError):
                 apply_tables(root, tables)
+
+    def test_a_table_links_from_its_owning_pages_folder(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            subprocess.run(["git", "init", "-q", directory], check=True)
+            pages = {"docs/area/Shallow.md": "shallow", "docs/area/topic/Deep.md": "deep"}
+            for page, block in pages.items():
+                (root / page).parent.mkdir(parents=True, exist_ok=True)
+                (root / page).write_text(f"<!-- generated: {block} -->\n<!-- /generated: {block} -->\n",
+                                         encoding="utf-8")
+                subprocess.run(["git", "add", page], cwd=root, check=True)
+            tables = root / "out/tables"
+            tables.mkdir(parents=True)
+            for block in pages.values():
+                (tables / f"{block}.md").write_text("![chart](../images/c.png) [web](https://x.org/a) [here](#a)\n",
+                                                   encoding="utf-8")
+            apply_tables(root, tables)
+            self.assertIn("](../images/c.png) [web](https://x.org/a) [here](#a)",
+                          (root / "docs/area/Shallow.md").read_text(encoding="utf-8"))
+            self.assertIn("](../../images/c.png) [web](https://x.org/a) [here](#a)",
+                          (root / "docs/area/topic/Deep.md").read_text(encoding="utf-8"))

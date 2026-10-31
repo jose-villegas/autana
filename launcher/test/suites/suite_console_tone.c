@@ -75,6 +75,7 @@ test_tone_parse_valid(void) {
     TEST_ASSERT_EQUAL_UINT8(10, args.volume_pct);
     TEST_ASSERT_TRUE(console_tone_parse("1000 100", &args));
     TEST_ASSERT_FALSE(args.internal);
+    TEST_ASSERT_TRUE(console_tone_parse_options(" ", &args));
     char limit[64];
     snprintf(limit, sizeof limit, "%u %u %u", AUDIO_OUT_NYQUIST_HZ - 1, AUDIO_OUT_MAX_MS, AUDIO_OUT_VOLUME_MAX_PCT);
     TEST_ASSERT_TRUE(console_tone_parse(limit, &args));
@@ -310,7 +311,9 @@ sound_play(const sound_t* sound, const sound_play_opts_t* opts) {
 }
 
 sound_voice_t
-sound_play_tone(uint16_t hz, uint8_t gain_pct) {
+sound_play_tone(uint16_t hz, uint16_t ms, uint8_t gain_pct, sound_bus_t bus) {
+    TEST_ASSERT_EQUAL_UINT16(SOUND_TONE_UNTIL_STOPPED, ms);
+    TEST_ASSERT_EQUAL_UINT8(SOUND_BUS_SYSTEM.id, bus.id);
     TEST_ASSERT_EQUAL_UINT16(
         device.melody.enabled ? melody_note_hz(melody_notes[device.melody.starts++]) : TEST_TARGET_HZ, hz);
     TEST_ASSERT_EQUAL_UINT8(CONSOLE_TONE_DEFAULT_VOLUME_PCT, gain_pct);
@@ -411,6 +414,7 @@ audio_loopback_measure(uint16_t hz, uint16_t ms, float* db, audio_loopback_resul
         result->measured_hz = hz;
         result->thd_db = -40.0F;
         result->peak_dbfs = -6.0F;
+        result->noise_dbfs = -70.0F;
     }
     return device.measures != device.melody.fail_measure
            && !((device.measures == 1 && device.failure == TEST_TONE_BASELINE_FAIL)

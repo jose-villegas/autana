@@ -1,5 +1,5 @@
 /* app_registry: one app_t.next list, no hardware dependency; firmware, host test
- * runner, editor runtime and every render-host harness share it. Apps self-register:
+ * runner and every render-host harness share it. Apps self-register:
  * adding or deleting main/apps/<name>/ (source, logic, tests) touches no other file, including CMakeLists.txt. */
 #include "app/app.h"
 

@@ -4,7 +4,7 @@
  *
  * On the board and in the host tests each kind maps to heap capabilities:
  * ESP-IDF's heap on the board, test/heap_arena.c's device-sized model
- * (HOST_HEAP_ARENA) on a host. Any other host build, a render or the editor,
+ * (HOST_HEAP_ARENA) on a host. Any other host build, a render,
  * allocates from the C library's malloc(), which has no budget, so it has no
  * size queries either: memory.c is not built there.
  *
@@ -97,6 +97,23 @@ memory_free(void* block) {
 #else
     free(block);
 #endif
+}
+
+/* A block of this kind holding `bytes` at an `align` boundary (a power of two):
+ * `at` is the aligned start, `block` what memory_free() takes; both NULL when
+ * none is that large. Over-allocates, so it works with every heap here. */
+typedef struct {
+    void* block;
+    void* at;
+} memory_aligned_t;
+
+static inline __attribute__((always_inline)) memory_aligned_t
+memory_alloc_aligned(size_t bytes, size_t align, memory_kind_t kind) {
+    void* block = memory_alloc(bytes + align - 1, kind);
+    return (memory_aligned_t){
+        .block = block,
+        .at = block == NULL ? NULL : (void*)(((uintptr_t)block + align - 1) & ~(uintptr_t)(align - 1)),
+    };
 }
 
 /* A lender's take, as app/app_arena.h's app_arena_take(): the next `size`

@@ -23,6 +23,8 @@ from frame_cost import US_PER_MS
 from device_capture import PERF_SEGMENT
 
 sys.path.insert(0, str(REPO / "launcher/tools/r3d"))
+sys.path.insert(0, str(REPO / "launcher/tools"))
+from build.c_header import read_define
 from dynres_report import SPANS, SPAN_FIELDS, STAGE
 
 DEFAULT_RUNS = 5
@@ -37,8 +39,7 @@ class SweepStop(RuntimeError):
 LAYOUT_SEED_MAX = 2**32 - 1
 TUNE_VALUE_MIN = -(2**31)
 TUNE_VALUE_MAX = 2**31 - 1
-TUNE_NAME_MAX = int(re.search(r"^#define TUNE_NAME_MAX\s+(\d+)",
-                            (REPO / "launcher/main/core/tune.h").read_text(), re.MULTILINE)[1])
+TUNE_NAME_MAX = read_define(REPO / "launcher/main/core/tune.h", "TUNE_NAME_MAX")
 
 
 def assignment(text):
