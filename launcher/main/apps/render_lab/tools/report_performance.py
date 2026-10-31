@@ -13,7 +13,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4] / "tools" / "
 from capture import build_id, QUARTERS, capture_quarters, select_quarter
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[5] / "scripts/device"))
 from device_report import BUDGET_TABLE_HEADER, parse_perf_targets
-from frame_profile import PATH_POSES, judged, profiles, replays, summaries, worst
+from frame_profile import PATH_POSES, PEAK_PERCENT, judged, peaks, profiles, replays, summaries
 from frame_cost import MS_PER_SECOND, US_PER_MS
 
 LOG_HEADER = pathlib.Path(__file__).resolve().parents[1] / "tests/skin_perf_log.h"
@@ -230,8 +230,8 @@ def frame_report(text, rows, playback):
     return "\n".join(lines) + "\n"
 
 
-# The counts each worst frame lists, as (column, count names); the "why" weighs them all.
-WORST_COUNTS = (("Clusters tested / kept / hidden / drawn",
+# The counts each frame peak lists, as (column, count names); the "why" weighs them all.
+PEAK_COUNTS = (("Clusters tested / kept / hidden / drawn",
                  ("clusters_tested", "clusters_kept", "clusters_hidden", "clusters_drawn")),
                 ("Triangles submitted / set up / cover / miss / away",
                  ("triangles_submitted", "triangles_set_up", "triangles_covering", "triangles_missed",
@@ -239,20 +239,20 @@ WORST_COUNTS = (("Clusters tested / kept / hidden / drawn",
 
 
 def path_poses(text):
-    """{(row, quarter): (the evenly spaced replays read, the worst frames' replays)} in capture order;
-    fails unless each worst frame has its replay. A path replay lost in transfer leaves its curve a point short."""
+    """{(row, quarter): (the evenly spaced replays read, the frame peaks' replays)} in capture order;
+    fails unless each frame peak has its replay. A path replay lost in transfer leaves its curve a point short."""
     found = {}
     for pose in replays(text):
         found.setdefault((pose["row"], pose["quarter"]), []).append(pose)
     ranked = {}
-    for frame in worst(text):
+    for frame in peaks(text):
         ranked.setdefault((frame["row"], frame["quarter"]), []).append(frame)
     poses = {}
     for key, frames in ranked.items():
         replayed = found.get(key, [])
         path, tail = replayed[:len(replayed) - len(frames)], replayed[len(replayed) - len(frames):]
         if not path or len(path) > PATH_POSES or [p["t_ms"] for p in tail] != [f["t_ms"] for f in frames]:
-            raise ValueError(f"{' '.join(key)}: {len(replayed)} replays do not end with its {len(frames)} worst frames")
+            raise ValueError(f"{' '.join(key)}: {len(replayed)} replays do not end with its {len(frames)} frame peaks")
         poses[key] = (path, list(zip(frames, tail)))
     return poses
 
@@ -263,7 +263,7 @@ def why(pose, path):
               for name, ms in pose["stages"].items()}
     stage = max(stages, key=stages.get)
     ratios = {}
-    for _, names in WORST_COUNTS:
+    for _, names in PEAK_COUNTS:
         for name in names:
             median = statistics.median(p["counts"][name] for p in path)
             if median > 0:
@@ -275,26 +275,28 @@ def why(pose, path):
     return f"{reason}; {count.replace('_', ' ')} ×{ratios[count]:.2f} median"
 
 
-def worst_frames(text):
-    """The worst frames of each traced row and quarter: when along the path, the played frame's
-    time, the paused replay's stage split and counts, and why, against the path's median pose."""
+def frame_peaks(text):
+    """The frame peaks of each traced row and quarter: when along the path, the played frame's
+    time and prominence, the paused replay's stage split and counts, and why, against the path's median pose."""
     poses = path_poses(text)
     if not poses:
         return ""
     stages = list(dict.fromkeys(name for path, _ in poses.values() for pose in path for name in pose["stages"]))
-    lines = ["## Worst frames", "",
-             "Played frames ranked by wall time. Stage ms and counts come from replaying each pose paused;",
+    lines = ["## Frame peaks", "",
+             "One played frame per peak along the looping path, its slowest, ranked by wall time. A peak counts",
+             f"when it stands {PEAK_PERCENT}% of its height above the higher of its two saddles.",
+             "Stage ms and counts come from replaying each pose paused;",
              f"Why compares them with the median of the {PATH_POSES} poses spaced evenly along the path"
              f" ({sum(len(path) for path, _ in poses.values())} of {PATH_POSES * len(poses)} read).", "",
-             "| Scene | Quarter | Rank | Path s | Frame ms | " + " | ".join(f"{name} ms" for name in stages)
-             + " | " + " | ".join(column for column, _ in WORST_COUNTS) + " | Why |",
-             "|---|---|---:|---:|---:|" + "---:|" * len(stages) + "---|" * len(WORST_COUNTS) + "---|"]
+             "| Scene | Quarter | Rank | Path s | Frame ms | Prominence ms | " + " | ".join(f"{name} ms" for name in stages)
+             + " | " + " | ".join(column for column, _ in PEAK_COUNTS) + " | Why |",
+             "|---|---|---:|---:|---:|---:|" + "---:|" * len(stages) + "---|" * len(PEAK_COUNTS) + "---|"]
     for (row, quarter), (path, ranked) in poses.items():
         for frame, pose in ranked:
             cells = [row, quarter, str(frame["rank"]), f"{frame['t_ms'] / MS_PER_SECOND:.2f}",
-                     f"{frame['frame_us'] / US_PER_MS:.1f}"]
+                     f"{frame['frame_us'] / US_PER_MS:.1f}", f"{frame['prominence_us'] / US_PER_MS:.1f}"]
             cells.extend(f"{pose['stages'][name]:.2f}" if name in pose["stages"] else "–" for name in stages)
-            cells.extend(" / ".join(str(pose["counts"][name]) for name in names) for _, names in WORST_COUNTS)
+            cells.extend(" / ".join(str(pose["counts"][name]) for name in names) for _, names in PEAK_COUNTS)
             cells.append(why(pose, path))
             lines.append("| " + " | ".join(cells) + " |")
     return "\n".join(lines) + "\n"
@@ -303,7 +305,7 @@ def worst_frames(text):
 def performance_report(text):
     text = judged(text)
     if rows := profiles(text):
-        return frame_report(text, rows, playback=True) + (f"\n{section}" if (section := worst_frames(text)) else "")
+        return frame_report(text, rows, playback=True) + (f"\n{section}" if (section := frame_peaks(text)) else "")
     if rows := summaries(text):
         return frame_report(text, rows, playback=False)
     if not re.search(r"^RUN=", text, re.MULTILINE):

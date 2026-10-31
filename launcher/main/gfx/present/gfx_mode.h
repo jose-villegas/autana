@@ -93,7 +93,13 @@ gfx_color_t* gfx_half_picture(void);
 /* Presents the half picture doubled in both axes, with every strip dirty.
  * Raw framebuffer drawing is refused until that present completes. */
 void gfx_expand_frame(void);
+/* gfx_expand_frame() blended bilinearly except across the seams (gfx_target.h)
+ * marked in gfx_half_seams(). */
+void gfx_expand_frame_blended(void);
 bool gfx_frame_expanded(void);
+
+/* The half picture's seam mask, GFX_SEAM_BYTES of the half size; NULL with no half picture. */
+uint8_t* gfx_half_seams(void);
 
 /* Replayed over each expanded strip, after its picture is doubled. */
 void gfx_set_frame_overlay(gfx_band_overlay_fn overlay);

@@ -7,7 +7,7 @@
 # the two that opens the serial port. Nothing here needs a board or a lock.
 #
 # Usage:
-#   tools/build/build.sh [--dev|--diag] [--autorun] [--perf-scope]
+#   tools/build/build.sh [--dev|--diag] [--autorun] [--perf-scope [--frame-laps]]
 #                        [--layout-seed N] [--hot-tunables] [--configure] [--verbose]
 #                        [--prepared-build DIR]
 #
@@ -31,6 +31,9 @@
 #               static RAM a capture needs to instrument itself; drops
 #               behaviour coverage, so never a merge gate, and its numbers
 #               compare only with other perf-scoped captures.
+#   --frame-laps  with --perf-scope only: layer sdkconfig.defaults.diag_perf_laps,
+#               timing the phases inside the frame stages (profile/frame_laps.h).
+#               The laps' own cost moves frame times: read only the lap lines.
 #   --layout-seed N  pad every source's code and rodata by sizes seed N picks
 #               (tools/build/layout_pad.py), to sample the cache layouts a
 #               timing could have landed on. 0, the default, is the plain build.
@@ -45,7 +48,8 @@
 #
 # Run from anywhere (it cds to launcher/ itself); double-click from Explorer
 # if .sh is associated with Git Bash, or right-click launcher/tools/build/ ->
-# "Git Bash Here" -> `./build.sh`.
+# "Git Bash Here" -> `./build.sh`. A failure in a double-clicked window waits
+# for Enter before it closes (scripts/lib/terminal.sh).
 #
 # All the logic here is POSIX sh. On Windows the ESP-IDF calls go through
 # tools/build/idf_shim.bat, which exists only to delete MSYSTEM, see tools/build/idf.sh
@@ -73,6 +77,7 @@ set -euo pipefail
 
 VARIANT=release
 PERF_SCOPE=0
+FRAME_LAPS=0
 AUTORUN=0
 VERBOSE=0
 PREPARED_BUILD=""
@@ -86,6 +91,7 @@ while [ $# -gt 0 ]; do
         -d|--diag) VARIANT=diag; shift ;;
         --autorun) AUTORUN=1; shift ;;
         --perf-scope) PERF_SCOPE=1; shift ;;
+        --frame-laps) FRAME_LAPS=1; shift ;;
         --hot-tunables) HOT_TUNABLES=1; shift ;;
         --layout-seed)
             [ $# -ge 2 ] || { echo "--layout-seed needs a number" >&2; exit 2; }
@@ -103,6 +109,11 @@ export VERBOSE
 
 if [ "$PERF_SCOPE" -eq 1 ] && [ "$VARIANT" != diag ]; then
     echo "--perf-scope scopes which SUITES are compiled in, so it needs --diag" >&2
+    exit 2
+fi
+
+if [ "$FRAME_LAPS" -eq 1 ] && [ "$PERF_SCOPE" -ne 1 ]; then
+    echo "--frame-laps times the perf scope's frame stages, so it needs --perf-scope" >&2
     exit 2
 fi
 
@@ -128,28 +139,33 @@ esac
 . "$SCRIPT_DIR/idf.sh"
 # shellcheck source=../../../scripts/quiet.sh
 . "$SCRIPT_DIR/../../../scripts/quiet.sh"
+# shellcheck source=../../../scripts/lib/terminal.sh
+. "$SCRIPT_DIR/../../../scripts/lib/terminal.sh"
+
+# Set by quiet_begin once the build directory exists; a failure before that
+# has nothing to summarize.
+QUIET_LOG=""
+quiet_finish() {
+    status=$?
+    trap - EXIT
+    set +e
+    [ -z "$QUIET_LOG" ] || quiet_end build "$status" || true
+    if [ "$status" -ne 0 ]; then
+        echo
+        echo "=== FAILED (exit $status) ==="
+        pause_if_own_window
+    fi
+    exit "$status"
+}
+trap quiet_finish EXIT
+
 idf_init "$LAUNCHER_DIR" "$SCRIPT_DIR" || exit 2
 . "$SCRIPT_DIR/idf_variant.sh"
 
 idf_variant_prepare "$LAUNCHER_DIR" "$BUILD_DIR" "$PREPARED_BUILD" || exit 2
 
 # A passing build's stream belongs in build.log under the build directory.
-QUIET_LOG="$IDF_VARIANT_BUILD/build.log"
-quiet_begin "$QUIET_LOG"
-
-quiet_finish() {
-    status=$?
-    trap - EXIT
-    set +e
-    quiet_end build "$status" || true
-    if [ "$status" -ne 0 ]; then
-        echo
-        echo "=== FAILED (exit $status) ==="
-        if [ -t 0 ]; then read -r -p "Press Enter to close..." _ || true; fi
-    fi
-    exit "$status"
-}
-trap quiet_finish EXIT
+quiet_begin "$IDF_VARIANT_BUILD/build.log"
 
 VARIANT_OPTIONS=""
 if [ "$AUTORUN" -eq 1 ]; then
@@ -157,6 +173,9 @@ if [ "$AUTORUN" -eq 1 ]; then
 fi
 if [ "$PERF_SCOPE" -eq 1 ]; then
     VARIANT_OPTIONS="$VARIANT_OPTIONS --perf-scope"
+fi
+if [ "$FRAME_LAPS" -eq 1 ]; then
+    VARIANT_OPTIONS="$VARIANT_OPTIONS --frame-laps"
 fi
 VARIANT_OPTIONS="$VARIANT_OPTIONS --layout-seed $LAYOUT_SEED"
 if [ "$HOT_TUNABLES" -eq 1 ]; then

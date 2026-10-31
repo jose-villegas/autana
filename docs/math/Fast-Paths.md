@@ -24,18 +24,20 @@ Measured target: esp32s3 (Xtensa, LX7_ESP32_S3_MP).
 | [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) (nlerp) | blend + isqrt64 normalization | an FPU seed plus one integer Newton correction (table fallback) and exact midpoint bracket |
 | [`mathf_repeat`](#mathf-repeat) | `fmodf(v - lo, hi - lo)` | reciprocal quotient and fused remainder, with range fallback |
 | [`trig_sin`](#trig-sin) | `sinf(phase * (MATH_TAU / TRIG_TURN))` | quarter-wave interpolation |
+| [`mathf_recip_approx`](#mathf-recip-approx) | `1.0F / x` | reciprocal seed with one Newton correction |
 
 ### Cost and error
 
 | Fast path | Warm cycles: fast / plain (×) | Cold cycles: fast / plain | Max error |
 |---|---|---|---|
-| [`mathf_recip`](#mathf-recip) | 26 / 59 (2.3×) | 2600 / 4500 | 1 step |
-| [`mathf_rsqrt`](#mathf-rsqrt) | 38 / 120 (3.1×) | 4100 / 9700 | 1 step |
-| [`mathf_rsqrt_approx`](#mathf-rsqrt-approx) | 24 / 120 (4.9×) | 2400 / 9700 | 5.9e-5 rel |
+| [`mathf_recip`](#mathf-recip) | 26 / 59 (2.3×) | 2500 / 4600 | 1 step |
+| [`mathf_rsqrt`](#mathf-rsqrt) | 38 / 120 (3.1×) | 3900 / 10000 | 1 step |
+| [`mathf_rsqrt_approx`](#mathf-rsqrt-approx) | 24 / 120 (4.9×) | 2400 / 10000 | 5.9e-5 rel |
 | [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) (normalize) | 330 / 1100 (3.3×) | 28000 / 77000 | 4.6e-10 rel (host) |
 | [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) (nlerp) | 650 / 720 (1.1×) | 58000 / 60000 | 4.6e-10 rel (host) |
 | [`mathf_repeat`](#mathf-repeat) | 64 / 140 (2.1×) | 6700 / 13000 | 0 steps |
-| [`trig_sin`](#trig-sin) | 31 / 220 (7.3×) | 4600 / 24000 | 4.6 lsb |
+| [`trig_sin`](#trig-sin) | 31 / 220 (7.3×) | 4400 / 24000 | 4.6 lsb |
+| [`mathf_recip_approx`](#mathf-recip-approx) | 18 / 59 (3.3×) | 1800 / 4600 | 6.1e-5 rel |
 
 ### Size and builds
 
@@ -48,6 +50,7 @@ Measured target: esp32s3 (Xtensa, LX7_ESP32_S3_MP).
 | [`mathx_rsqrt_q30`](#mathx-rsqrt-q30) (nlerp) | 3198 flash | ROM + 2599 flash | - |
 | [`mathf_repeat`](#mathf-repeat) | 595 flash | 443 flash | - |
 | [`trig_sin`](#trig-sin) | 192 flash | 171 flash | 390 |
+| [`mathf_recip_approx`](#mathf-recip-approx) | - | ROM + 39 flash | - |
 
 <a id="mathf-recip"></a>
 
@@ -119,6 +122,8 @@ Bench rows `mathf_rsqrt_approx_f` vs `div_rsqrt_f`; limit `MATHF_RSQRT_APPROX_RE
 
 Plain way: `1.0F / sqrtf(x)`.
 
+Worst bin: mantissa 2.41-2.44 at 5.9e-5; every other bin <= 6e-5.
+
 ![Error across the input range](../images/math/fast-path-mathf_rsqrt_approx.png)
 
 <a id="mathx-rsqrt-q30"></a>
@@ -146,6 +151,8 @@ Plain way: isqrt64 squared length, then 64-bit divide and component scaling.
 Bench rows `nlerp_x` vs `nlerp_div_x`; limit `MATHX_RSQRT_Q30_RELATIVE_LIMIT` (2^-31 rel); proof.
 
 Plain way: linear quaternion blend, isqrt64 length, then 64-bit divide normalization.
+
+Worst bin: mantissa 3.94-4.00 at 4.6e-10; every other bin <= 4.6e-10.
 
 ![Error across the input range](../images/math/fast-path-mathx_rsqrt_q30.png)
 
@@ -196,4 +203,30 @@ Bench rows `trig_sin_i` vs `sinf_f`; limit `TRIG_SIN_LSB_LIMIT` (5 lsb); sweep.
 Plain way: `sinf(phase * (MATH_TAU / TRIG_TURN))`.
 
 ![Error across the input range](../images/math/fast-path-trig_sin.png)
+
+<a id="mathf-recip-approx"></a>
+
+## `mathf_recip_approx` <sup>[[85]](../Citations.md#muller-2018)</sup>
+
+| Original | Fast path |
+|---|---|
+| $`y = 1/a`$ | $`y = y + y(1 - ay)`$ |
+
+Symbols: nonzero input `a`; reciprocal seed `y`.
+
+Proof: all mantissas in `[1,2)`, both signs, normal exponent strides and edges.
+
+Target: Xtensa: `recip0.s`, `madd.s`, `msub.s`.
+
+Builds: `CONFIG_MATH_FPU_RECIP`; QEMU plain; host plain.
+
+Callers: `render`.
+
+Bench rows `mathf_recip_approx_f` vs `div_recip_f`; limit `MATHF_RECIP_APPROX_RELATIVE_LIMIT` (2^-14 rel, 14 bits); proof.
+
+Plain way: `1.0F / x`.
+
+Worst bin: mantissa 1.97-2.00 at 6.1e-5; every other bin <= 3.2e-5.
+
+![Error across the input range](../images/math/fast-path-mathf_recip_approx.png)
 <!-- /generated: math-fast-paths -->

@@ -120,7 +120,7 @@ choose_voice_slot(const sound_control_t* control) {
 
 sound_voice_t
 sound_control_play(sound_control_t* control, const sound_t* sound, const sound_play_opts_t* opts, uint16_t tone_hz,
-                   sound_command_t* command, uint32_t admitted_generation) {
+                   uint16_t tone_ms, sound_command_t* command, uint32_t admitted_generation) {
     if (!sound_control_admit(control, admitted_generation)) {
         return SOUND_VOICE_NULL;
     }
@@ -151,7 +151,8 @@ sound_control_play(sound_control_t* control, const sound_t* sound, const sound_p
                                  .loop = options.loop};
     command->tone_source = tone_hz != 0;
     if (tone_hz) {
-        command->tone_hz = tone_hz;
+        command->tone.hz = tone_hz;
+        command->tone.ms = tone_ms;
     } else {
         command->sound = sound;
     }
@@ -356,7 +357,8 @@ start_voice(sound_mix_voice_t* voice, const sound_command_t* command) {
                                  .playing = true,
                                  .first_render = true};
     if (voice->tone_source) {
-        audio_tone_init(&voice->source.tone, command->tone_hz);
+        audio_tone_init(&voice->source.tone.oscillator, command->tone.hz);
+        voice->source.tone.frames_left = (uint32_t)audio_out_samples(command->tone.ms);
     } else if (sound_seek(&voice->source.cursor, command->sound, 0) != ASSET_OK) {
         voice->playing = false;
     }
@@ -404,11 +406,22 @@ sound_mixer_sync(sound_mixer_t* mixer, const sound_control_t* control) {
     }
 }
 
+/* Tones are rare, so their render stays in flash. */
+static __attribute__((noinline)) size_t
+read_tone(sound_mix_voice_t* voice, int16_t* out, size_t frames) {
+    if (voice->source.tone.frames_left) {
+        frames = frames > voice->source.tone.frames_left ? voice->source.tone.frames_left : frames;
+        voice->source.tone.frames_left -= (uint32_t)frames;
+        voice->playing = voice->source.tone.frames_left != 0;
+    }
+    audio_tone_fill(&voice->source.tone.oscillator, out, frames, AUDIO_OUT_VOLUME_MAX_PCT);
+    return frames;
+}
+
 static inline size_t AUDIO_IRAM_ATTR
 read_voice(sound_mix_voice_t* voice, int16_t* out, size_t frames) {
     if (voice->tone_source) {
-        audio_tone_fill(&voice->source.tone, out, frames, AUDIO_OUT_VOLUME_MAX_PCT);
-        return frames;
+        return read_tone(voice, out, frames);
     }
     size_t total = 0;
     const uint32_t end = sound_end_frame(voice->source.cursor.sound);
@@ -466,11 +479,6 @@ add_tail(sound_mixer_t* mixer, int32_t* accumulator, size_t begin, size_t frames
     mixer->residual += residual;
 }
 
-static bool
-voice_at_cut(const sound_mix_voice_t* voice) {
-    return !voice->tone_source && !voice->playing;
-}
-
 static void AUDIO_IRAM_ATTR
 mix_voice(sound_mixer_t* mixer, sound_mix_voice_t* voice, int32_t* accumulator, int16_t* scratch, size_t frames,
           int32_t factor) {
@@ -491,11 +499,20 @@ mix_voice(sound_mixer_t* mixer, sound_mix_voice_t* voice, int32_t* accumulator, 
             accumulator[j] += (scratch[j] * factor) >> SOUND_GAIN_SHIFT;
         }
     }
-    if (mixer->declick_frames && voice_at_cut(voice)) {
+    if (mixer->declick_frames && !voice->playing) {
         add_tail(mixer, accumulator, count, frames, voice->last_sample);
         voice->last_sample = 0;
         voice->first_render = true;
     }
+}
+
+static bool
+voice_ends_within(const sound_mix_voice_t* voice, size_t frames) {
+    if (voice->tone_source) {
+        return voice->source.tone.frames_left && frames >= voice->source.tone.frames_left;
+    }
+    const uint32_t end = sound_end_frame(voice->source.cursor.sound);
+    return voice->source.cursor.position >= end || (!voice->loop && frames >= end - voice->source.cursor.position);
 }
 
 static sound_mix_voice_t* AUDIO_IRAM_ATTR
@@ -510,11 +527,7 @@ direct_voice(sound_mixer_t* mixer, size_t frames) {
             continue;
         }
         if (single || voice->gain_pct != SOUND_GAIN_MAX_PCT || mixer->bus_gain[voice->bus.id] != SOUND_GAIN_MAX_PCT
-            || (mixer->declick_frames && voice->first_render)
-            || (!voice->tone_source
-                && (voice->source.cursor.position >= sound_end_frame(voice->source.cursor.sound)
-                    || (!voice->loop
-                        && frames >= sound_end_frame(voice->source.cursor.sound) - voice->source.cursor.position)))) {
+            || (mixer->declick_frames && voice->first_render) || voice_ends_within(voice, frames)) {
             return NULL;
         }
         single = voice;

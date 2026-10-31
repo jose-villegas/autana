@@ -8,6 +8,8 @@
 #include "render/raster.h"
 #include "render/view/raster_show.h"
 
+_Static_assert(sizeof(raster_overdraw_px_t) == sizeof(uint16_t), "a pixel is one IMAGE_U16 map entry");
+
 /* The ramp runs from blue, one layer, to red at RASTER_OVERDRAW_RAMP_LAYERS. */
 #define RAMP_FIRST_HUE (RGB888_HUE_TURN * 2 / 3)
 
@@ -19,10 +21,10 @@ clear(const raster_attachment_t* self, const raster_t* raster, void* pixels, siz
 }
 
 static void
-count_span(const r3d_span_writer_t* writer, const gfx_render_target_t* rows, int y, int x_first, int x_last, int32_t z,
+count_span(const r3d_span_writer_t* writer, const gfx_target_t* rows, int y, int x_first, int x_last, int32_t z,
            int32_t dz) {
-    const uint16_t* depth = gfx_render_target_depth(rows, y);
-    raster_overdraw_px_t* layers = gfx_render_target_row(rows, writer->attachment, y);
+    const uint16_t* depth = gfx_target_depth(rows, y);
+    raster_overdraw_px_t* layers = gfx_target_row(rows, writer->attachment, y);
     for (int x = x_first; x <= x_last; x++, z += dz) {
         raster_overdraw_px_t* px = &layers[x];
         px->tested += px->tested < UINT8_MAX;
@@ -49,11 +51,11 @@ pixel_color(const void* pixel, uint16_t clear_color) {
 }
 
 static void
-total(raster_overdraw_t* state, const gfx_render_target_t* picture, int index) {
+total(raster_overdraw_t* state, const gfx_target_t* picture, int index) {
     raster_overdraw_frame_t f = {0};
-    for (int y = picture->row0; y < picture->row1; y++) {
-        const raster_overdraw_px_t* layers = gfx_render_target_row(picture, index, y);
-        for (int x = 0; x < picture->width; x++) {
+    for (int y = picture->first_row; y < gfx_target_end_row(picture); y++) {
+        const raster_overdraw_px_t* layers = gfx_target_row(picture, index, y);
+        for (int x = 0; x < picture->attachment[0].width; x++) {
             const raster_overdraw_px_t px = layers[x];
             if (px.tested == 0) {
                 continue;
@@ -69,14 +71,14 @@ total(raster_overdraw_t* state, const gfx_render_target_t* picture, int index) {
 }
 
 static void
-show(const raster_attachment_t* self, const raster_t* raster, const gfx_render_target_t* picture, int index) {
+show(const raster_attachment_t* self, const raster_t* raster, const gfx_target_t* picture, int index) {
     total(self->state, picture, index);
     raster_show_map(picture, index, raster->clear, pixel_color);
 }
 
 raster_attachment_t
 raster_overdraw_view(void* state) {
-    return (raster_attachment_t){sizeof(raster_overdraw_px_t), clear, NULL, writer, NULL, show, state};
+    return (raster_attachment_t){IMAGE_U16, clear, NULL, writer, NULL, show, state};
 }
 
 raster_overdraw_frame_t

@@ -8,7 +8,6 @@
 | [gen_draw_palette_standard.py](gen_draw_palette_standard.py) | Bakes standard graphics palette data. |
 | [gen_skin_light_directions.c](gen_skin_light_directions.c) | Bakes unit directions with the math package's octahedral decoder. |
 | [gen_skin_light_directions.sh](gen_skin_light_directions.sh) | Compiles and runs the host direction generator. |
-| [bake_ui_layout.py](bake_ui_layout.py) | Runs the C++ authored-layout baker built in `editor/build`. |
 | [package_headers.py](package_headers.py) | Writes each package README's header table from header banners. |
 | [gen_zeta_curve.py](gen_zeta_curve.py) | Bakes the boot animation curve. |
 | [draw_palette_gen.c](draw_palette_gen.c) | Portable palette table calculations shared by host tools and tests. |
