@@ -10,6 +10,7 @@
 #include "core/tune.h"
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+#include "render/view/raster_boxes.h"
 #include "render/view/raster_cull_view.h"
 #include "render/view/raster_meshlets.h"
 #include "render/view/raster_motion.h"
@@ -21,6 +22,7 @@ static const render_debug_view_t views[] = {
     {"motion", sizeof(raster_motion_t), raster_motion_view, NULL, NULL},
     {"meshlets", sizeof(raster_meshlets_t), raster_meshlets_view, NULL, NULL},
     {"cull", sizeof(raster_cull_t), raster_cull_view, raster_cull_second_view, raster_cull_overlay},
+    {"boxes", sizeof(raster_boxes_t), raster_boxes_view, NULL, raster_boxes_overlay},
 };
 _Static_assert(RENDER_DEBUG_VIEW_COUNT == sizeof views / sizeof views[0], "view table length");
 #endif

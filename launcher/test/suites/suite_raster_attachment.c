@@ -394,7 +394,7 @@ test_view_table_and_context_ownership(void) {
     size_t before_blocks, before_bytes, blocks, bytes;
     heap_arena_snapshot(&before_blocks, &before_bytes);
 #endif
-    static const char* const names[] = {"depth", "tiles", "motion", "meshlets", "cull"};
+    static const char* const names[] = {"depth", "tiles", "motion", "meshlets", "cull", "boxes"};
     TEST_ASSERT_EQUAL_INT(sizeof names / sizeof names[0], RENDER_DEBUG_VIEW_COUNT);
     TEST_ASSERT_EQUAL_INT(RENDER_DEBUG_VIEW_SHADED, render_context_debug_view_named("shaded"));
     TEST_ASSERT_EQUAL_INT(RENDER_DEBUG_VIEW_UNKNOWN, render_context_debug_view_named("unknown"));
@@ -457,7 +457,7 @@ test_printed_views_match_the_declared_names(void) {
     char names[128] = {0};
     const size_t bytes = fread(names, 1, sizeof names - 1, out);
     fclose(out);
-    TEST_ASSERT_EQUAL_STRING("shaded, depth, tiles, motion, meshlets, cull", names);
+    TEST_ASSERT_EQUAL_STRING("shaded, depth, tiles, motion, meshlets, cull, boxes", names);
     int count = 1;
     for (size_t i = 0; i < bytes; i++) {
         count += names[i] == ',';

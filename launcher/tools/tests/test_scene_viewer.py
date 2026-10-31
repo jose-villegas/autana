@@ -142,7 +142,8 @@ path = { animation = "fly.anim.toml", node = "camera" }
         for name in names[1:]:
             with self.subTest(name=name):
                 picture = self.pixels("--object", "card", "--view", name)
-                self.assertNotEqual(shaded.tobytes(), picture.tobytes())
+                # Not assertNotEqual: its failure message would print both frames' bytes.
+                self.assertFalse(shaded.tobytes() == picture.tobytes())
 
     def test_unknown_object_names_it_and_lists_renderers(self):
         run, out = self.render("--object", "missing")
