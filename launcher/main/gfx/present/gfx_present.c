@@ -2,6 +2,7 @@
 #include "build/build_variant.h"
 #include "core/memory.h"
 #include "core/timing.h"
+#include "gfx/present/expand/gfx_quarter_select.h"
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_internal.h"
 #include "gfx/present/gfx_present_guard.h"
@@ -318,7 +319,8 @@ present_alloc_send_buffers(void) {
 
     const size_t strip_bytes = (size_t)GFX_WIDTH * STRIP_HEIGHT * sizeof(gfx_color_t);
     for (int i = 0; i < STRIP_BOUNCE_SLOTS; i++) {
-        strip_bounce[i] = memory_alloc(strip_bytes, MEMORY_DMA);
+        /* At the expand's vector alignment, so it writes rows in place; never freed. */
+        strip_bounce[i] = memory_alloc_aligned(strip_bytes, GFX_QUARTER_ALIGN, MEMORY_DMA).at;
         if (strip_bounce[i] == NULL) {
             ESP_LOGE(TAG, "Could not allocate %u byte strip buffer", (unsigned)strip_bytes);
             return false;
