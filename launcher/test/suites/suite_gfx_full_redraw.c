@@ -1,5 +1,5 @@
 /*
- * Portable suite: the two latches behind gfx_request_full_redraw() (gfx_present.h).
+ * Portable suite: the two latches behind gfx_request_full_redraw() (gfx.h).
  *
  * gfx_full_redraw.h carries no ESP-IDF dependency, the same reason
  * gfx_dirty.h and gfx_present_guard.h do not; see suite_gfx_dirty.c.

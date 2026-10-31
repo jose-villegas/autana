@@ -1,6 +1,7 @@
 #include "draw/draw.h"
 #include "core/tune.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_present.h"
 #include "gfx/target/gfx_segment_clip.h"
 #include "math/scalar/mathi.h"
 

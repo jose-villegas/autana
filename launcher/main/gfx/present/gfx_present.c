@@ -362,7 +362,7 @@ mark_all_dirty_now(void) {
 }
 
 /* gfx_dirty.h header-only for inlining mark_band(); thin wrappers for gfx.h
- * API. */
+ * and gfx_present.h API. */
 void
 gfx_mark_all_dirty(void) {
     GFX_PRESENT_GUARD();
