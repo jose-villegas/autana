@@ -269,15 +269,17 @@ test_a_point_further_from_the_camera_projects_smaller(void) {
                              "centre than the same point nearer the camera");
 }
 
+#define NEAR_PLANE_DIVISOR 8 /* the test's near plane is 1/8 m */
+
 /* A point at the near plane must leave the output untouched; the equality
  * exercises the clip boundary independently of any point further back. */
 static void
 test_project_point_rejects_a_point_at_the_near_plane(void) {
     boot_anim_view_t view = identity_view();
-    view.lens.near_z = MATHX_ONE / 8; /* 0.125 m */
+    view.lens.near_z = MATHX_ONE / NEAR_PLANE_DIVISOR; /* 0.125 m */
     int x = -1, y = -1;
 
-    const bool ok = boot_anim_project_point(0, 512, 0, &view, &x, &y);
+    const bool ok = boot_anim_project_point(0, BOOT_ANIM_ONE / NEAR_PLANE_DIVISOR, 0, &view, &x, &y);
 
     TEST_ASSERT_FALSE_MESSAGE(ok, "a point exactly at the near plane must be rejected, not "
                                   "projected to a nonsense screen position");
@@ -779,8 +781,8 @@ pt(int32_t re, int32_t im, int32_t t) {
 static void
 test_a_span_starts_and_ends_halfway_between_its_points(void) {
     const boot_anim_pt_t a = pt(0, 0, 0);
-    const boot_anim_pt_t b = pt(4096, 2048, 512);
-    const boot_anim_pt_t c = pt(8192, -2048, 1024);
+    const boot_anim_pt_t b = pt(BOOT_ANIM_ONE, BOOT_ANIM_ONE / 2, 2 << BOOT_ANIM_TQ);
+    const boot_anim_pt_t c = pt(2 * BOOT_ANIM_ONE, -BOOT_ANIM_ONE / 2, 4 << BOOT_ANIM_TQ);
 
     const boot_anim_pt_t start = boot_anim_spline(a, b, c, 0);
     const boot_anim_pt_t end = boot_anim_spline(a, b, c, BOOT_ANIM_ONE);

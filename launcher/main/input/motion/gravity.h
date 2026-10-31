@@ -8,55 +8,47 @@
 
 #include "input/input.h"
 #include "input/motion/imu.h"
+#include "input/motion/imu_rest.h"
 #include "math/linear/vec3f.h"
 #include "math/scalar/units.h"
 
 /* Minimum in-plane strength (0..1) for a meaningful direction. */
-#define GRAVITY_MIN_DIRECTION_STRENGTH    0.25F
+#define GRAVITY_MIN_DIRECTION_STRENGTH 0.25F
 
 /* Ours, tuned on the board. */
-#define GRAVITY_TAU_S                     0.5F
+#define GRAVITY_TAU_S                  0.5F
 /* Ours: full trust within this departure from one g. */
-#define GRAVITY_TRUST_FULL_G              0.1F
+#define GRAVITY_TRUST_FULL_G           0.1F
 /* Android WindowOrientationListener's acceleration tolerance, 4 m/s^2. */
-#define GRAVITY_TRUST_NONE_G              0.4F
+#define GRAVITY_TRUST_NONE_G           0.4F
 /* Madgwick, x-io Fusion's recommended acceleration rejection. */
-#define GRAVITY_REJECT_DEG                10.0F
+#define GRAVITY_REJECT_DEG             10.0F
 /* cos(GRAVITY_REJECT_DEG), precomputed with the angle in degrees. */
-#define GRAVITY_REJECT_COS                0.984807753F
+#define GRAVITY_REJECT_COS             0.984807753F
 /* x-io Fusion, FusionAhrs.c: recommended rejectionTimeout, in milliseconds. */
-#define GRAVITY_RECOVER_MS                5000U
+#define GRAVITY_RECOVER_MS             5000U
 /* x-io Fusion, FusionAhrs.c: accepted samples drain nine rejected samples. */
-#define GRAVITY_RECOVER_ACCEPT_WEIGHT     9U
+#define GRAVITY_RECOVER_ACCEPT_WEIGHT  9U
 /* x-io Fusion, FusionAhrs.c: restart trust near the configured gyro full scale. */
-#define GRAVITY_GYRO_OVERRANGE_RATIO      0.98F
-#define GRAVITY_GYRO_OVERRANGE_DPS        (GRAVITY_GYRO_OVERRANGE_RATIO * IMU_GYRO_RANGE_DPS)
+#define GRAVITY_GYRO_OVERRANGE_RATIO   0.98F
+#define GRAVITY_GYRO_OVERRANGE_DPS     (GRAVITY_GYRO_OVERRANGE_RATIO * IMU_GYRO_RANGE_DPS)
 /* M0 board capture: rest gyro noise peaks at +/-2 deg/s. */
-#define GRAVITY_STILL_DPS                 3.0F
+#define GRAVITY_STILL_DPS              (IMU_REST_GYRO_DEPARTURE / (float)INPUT_ROTATION_ONE_DPS)
 /* Ours, maintainer choice: clear fast-flip error promptly, outlast a held swing reversal. */
-#define GRAVITY_STILL_RECOVER_MS          500U
-/* QMI8658C datasheet, Table 8: board-level initial gyro offset tolerance. */
-#define GRAVITY_GYRO_OFFSET_TOL_DPS       10.0F
-/* QMI8658C datasheet, Table 8: gyro offset temperature coefficient. */
-#define GRAVITY_GYRO_OFFSET_TCO_DPS_PER_C 0.05F
-/* QMI8658C datasheet, Table 8: from the 25 C reference to the 85 C operating limit. */
-#define GRAVITY_GYRO_TEMP_SPAN_C          60.0F
-/* QMI8658C datasheet, Table 8: initial offset plus temperature drift, in deg/s. */
-#define GRAVITY_BIAS_MAX_DPS                                                                                           \
-    (GRAVITY_GYRO_OFFSET_TOL_DPS + (GRAVITY_GYRO_OFFSET_TCO_DPS_PER_C * GRAVITY_GYRO_TEMP_SPAN_C))
+#define GRAVITY_STILL_RECOVER_MS       500U
 /* Ours: target 2% settling time for a datasheet-sized gyro offset. */
-#define GRAVITY_BIAS_SETTLE_S    20.0F
+#define GRAVITY_BIAS_SETTLE_S          20.0F
 /* Integral gain in 1/s^2; derivation: docs/input/Gravity.md. */
-#define GRAVITY_BIAS_KI          (4.0F / (GRAVITY_TAU_S * GRAVITY_BIAS_SETTLE_S))
+#define GRAVITY_BIAS_KI                (4.0F / (GRAVITY_TAU_S * GRAVITY_BIAS_SETTLE_S))
 /* Acceleration magnitude below which strength is zero, in g. */
-#define GRAVITY_FREE_FALL_G      0.3F
+#define GRAVITY_FREE_FALL_G            0.3F
 /* Maximum prediction and correction interval, in milliseconds. */
-#define GRAVITY_MAX_DT_MS        100U
+#define GRAVITY_MAX_DT_MS              100U
 
 /* Microsecond forms of the limits above. */
-#define GRAVITY_RECOVER_US       (GRAVITY_RECOVER_MS * MATH_US_PER_MS)
-#define GRAVITY_STILL_RECOVER_US (GRAVITY_STILL_RECOVER_MS * MATH_US_PER_MS)
-#define GRAVITY_MAX_DT_US        (GRAVITY_MAX_DT_MS * MATH_US_PER_MS)
+#define GRAVITY_RECOVER_US             (GRAVITY_RECOVER_MS * MATH_US_PER_MS)
+#define GRAVITY_STILL_RECOVER_US       (GRAVITY_STILL_RECOVER_MS * MATH_US_PER_MS)
+#define GRAVITY_MAX_DT_US              (GRAVITY_MAX_DT_MS * MATH_US_PER_MS)
 
 typedef struct {
     /* Unit vector, screen axes: x right, y down, z out. */
@@ -91,7 +83,12 @@ vec3f_t gravity_down(const gravity_t* g);
 vec3f_t gravity_linear(const gravity_t* g);
 /* Learned gyro bias in screen axes, in deg/s. */
 vec3f_t gravity_gyro_bias(const gravity_t* g);
+/* A new rest-window offset absorbs the residual learned by the filter. */
+void gravity_clear_gyro_bias(gravity_t* g);
 /* sin of tilt from flat, 0..1; zero during free fall. */
 float gravity_strength(const gravity_t* g);
 /* True when |linear + down| is below GRAVITY_FREE_FALL_G. */
 bool gravity_in_free_fall(const gravity_t* g);
+
+/* Full magnitude trust, with acceleration magnitude in g. */
+bool gravity_accel_trusted(float magnitude_g);

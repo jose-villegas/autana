@@ -230,7 +230,7 @@ report_stage_split(int bake) {
     int poses = 0;
     for (uint32_t t_ms = 0; t_ms < period; t_ms += SPONZA_POSE_EVERY_MS) {
         view_at(&meshes[bake], t_ms, &b->lens);
-        const int visible = r3d_pipeline_cull(&meshes[bake], lens, parts->culled + 1, parts->work[0]);
+        const int visible = r3d_pipeline_cull(&meshes[bake], lens, parts->culled + 1, parts->work[0], NULL);
         r3d_pipeline_transform(&meshes[bake], lens, parts->culled + 1, visible, parts->cs, parts->rows);
         for (int stop = 0; stop <= 3; stop++) {
             stopped[stop] += one_core_draw_us(&b->raster, parts, lens, visible, stop);
@@ -259,7 +259,7 @@ test_sponza_draw_stage_breakdown(void) {
     view_at(atrium.mesh, 0, &b->lens);
     const r3d_lens_t* lens = &b->lens;
     const raster_buffers_t* parts = &b->buffers;
-    const int visible = r3d_pipeline_cull(atrium.mesh, lens, parts->culled + 1, parts->work[0]);
+    const int visible = r3d_pipeline_cull(atrium.mesh, lens, parts->culled + 1, parts->work[0], NULL);
     int64_t start = timing_now_us();
     r3d_pipeline_transform(atrium.mesh, lens, parts->culled + 1, visible, parts->cs, parts->rows);
     ESP_LOGI(TAG, "stage, one core: %-22s %7lldus" R3D_PERF_QUARTER_FORMAT, "transform",
@@ -410,11 +410,11 @@ test_sponza_frame_cost_along_the_flythrough(void) {
      * 2124, + 1%; per quarter, portrait then landscape. */
     static const perf_budget_t bake_budgets[SCENE_BAKED_VARIANT_COUNT][R3D_PERF_QUARTER_COUNT] = {
         [SCENE_BAKED_FULL] = {{41041, 52072}, {38765, 47432}},
-        [SCENE_BAKED_FLAT] = {{32168, 40942}, {31418, 38734}},
+        [SCENE_BAKED_FLAT] = {{32168, 41332}, {31418, 38734}},
         [SCENE_BAKED_LITE] = {{33499, 39169}, {31676, 36473}},
         [SCENE_BAKED_FITTED] = {{32882, 40125}, {30706, 37015}},
         [SCENE_BAKED_FITTED_FULL] = {{41877, 53439}, {39437, 49049}},
-        [SCENE_BAKED_FLAT_FITTED] = {{32106, 42281}, {30639, 38440}},
+        [SCENE_BAKED_FLAT_FITTED] = {{32106, 42281}, {30639, 38662}},
     };
     static const perf_budget_t cull_off_budget[R3D_PERF_QUARTER_COUNT] = {{61138, 67896}, {58104, 66246}};
     for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {

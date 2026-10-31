@@ -13,6 +13,15 @@
 #include "render/raster.h"
 #include "render/upscale.h"
 
+/* `depth` attached to `picture` as its depth plane, the colour plane's size. */
+static void
+attach_depth(gfx_target_t* picture, uint16_t* depth) {
+    picture->attachment[GFX_ATTACHMENT_DEPTH] = picture->attachment[GFX_ATTACHMENT_COLOR];
+    picture->attachment[GFX_ATTACHMENT_DEPTH].pixels = depth;
+    picture->attachment[GFX_ATTACHMENT_DEPTH].format = IMAGE_U16;
+    picture->count = GFX_ATTACHMENT_DEPTH + 1;
+}
+
 static void
 test_two_times_matches_the_frame_doubling_reference(void) {
     enum { WIDTH = 7, HEIGHT = 5, PIXELS = WIDTH * HEIGHT };
@@ -177,10 +186,7 @@ assert_a_range_writes_only_its_rows(const upscale_t* scale, uint16_t* depth, int
     picture_storage = GFX_TARGET_COLOR_INIT(held.source, scale->source_width, scale->source_height);
     gfx_target_t* picture = &picture_storage.target;
     if (depth != NULL) {
-        picture->attachment[GFX_ATTACHMENT_DEPTH] = picture->attachment[GFX_ATTACHMENT_COLOR];
-        picture->attachment[GFX_ATTACHMENT_DEPTH].pixels = depth;
-        picture->attachment[GFX_ATTACHMENT_DEPTH].format = IMAGE_U16;
-        picture->count = GFX_ATTACHMENT_DEPTH + 1;
+        attach_depth(picture, depth);
     }
     for (size_t i = 0; i < (height + 1) * width; i++) {
         held.actual[i] = UNWRITTEN;
@@ -290,10 +296,7 @@ test_scanline_runs_preserve_bright_rows_and_darken_clear_pixels(void) {
     }
     GFX_TARGET_STORAGE(2) picture_storage = GFX_TARGET_COLOR_INIT(source, WIDTH, HEIGHT);
     gfx_target_t* picture = &picture_storage.target;
-    picture->attachment[GFX_ATTACHMENT_DEPTH] = picture->attachment[GFX_ATTACHMENT_COLOR];
-    picture->attachment[GFX_ATTACHMENT_DEPTH].pixels = depth;
-    picture->attachment[GFX_ATTACHMENT_DEPTH].format = IMAGE_U16;
-    picture->count = GFX_ATTACHMENT_DEPTH + 1;
+    attach_depth(picture, depth);
     static const int sizes[][3] = {
         /* width, height, uniform even run (zero means ineligible) */
         {8, 6, 2}, {4, 6, 2}, {16, 12, 0}, {5, 6, 0}, {8, 9, 0}, {8, 7, 0}, {8, 12, 0}, {8, 3, 0},
@@ -356,9 +359,9 @@ test_half_picture_fit_table_and_compose_size(void) {
         int width, height, destination_width, destination_height;
         bool fits;
     } cases[] = {
-        {0, 2, 8, 12, false}, {4, 0, 8, 12, false}, {3, 2, 8, 12, false}, {4, 2, 0, 12, false},
-        {4, 2, 8, 13, false}, {4, 2, 8, 12, true},  {4, 4, 8, 12, false}, {4, 12, 8, 12, false},
-        {4, 2, 8, 0, false},  {4, 1, 8, 6, true},   {4, 5, 8, 12, false}, {4, 7, 8, 24, false},
+        {0, 2, 8, 12, false}, {4, 0, 8, 12, false}, {3, 2, 8, 12, false},  {4, 2, 0, 12, false}, {4, 2, 8, 13, false},
+        {4, 2, 8, 12, true},  {4, 4, 8, 12, true},  {4, 12, 8, 12, false}, {4, 2, 8, 0, false},  {4, 1, 8, 6, true},
+        {4, 5, 8, 12, true},  {4, 7, 8, 24, true},  {4, 7, 8, 12, false},
     };
 
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
@@ -425,6 +428,188 @@ test_shaded_paired_copy_strip_starts_on_bottom_of_pair(void) {
     }
 }
 
+static void
+test_blend_keeps_ends_and_rounds_the_middle(void) {
+    const rgb565be_t black = RGB565BE(0x000000);
+    const rgb565be_t white = RGB565BE(0xFFFFFF);
+    const rgb565be_t mixed = RGB565BE(0x80C040);
+    TEST_ASSERT_EQUAL_HEX16(mixed, rgb565be_blend(mixed, white, 0));
+    TEST_ASSERT_EQUAL_HEX16(white, rgb565be_blend(mixed, white, RGB565_SCALE_UNIT));
+    const uint16_t half = rgb565_swap(rgb565be_blend(black, white, RGB565_SCALE_UNIT / 2));
+    /* Half of 31 and 63, rounded up. */
+    TEST_ASSERT_EQUAL_UINT(16, rgb565_r5(half));
+    TEST_ASSERT_EQUAL_UINT(32, rgb565_g6(half));
+    TEST_ASSERT_EQUAL_UINT(16, rgb565_b5(half));
+}
+
+static void
+test_spread_quarter_matches_blend_at_a_quarter(void) {
+    /* Every channel value against every other: stepping both colours through
+     * all 65536 values in coprime strides covers each channel pair. */
+    enum { STEP_A = 7, STEP_B = 13, COLOURS = UINT16_MAX + 1 };
+
+    for (uint32_t i = 0; i < COLOURS; i++) {
+        const rgb565be_t a = (rgb565be_t)(i * STEP_A);
+        const rgb565be_t b = (rgb565be_t)(i * STEP_B);
+        TEST_ASSERT_EQUAL_HEX16(rgb565be_blend(a, b, RGB565_SCALE_UNIT / 4),
+                                rgb565be_unspread(rgb565_spread_quarter(rgb565be_spread(a), rgb565be_spread(b))));
+    }
+}
+
+static void
+test_row_blends_sit_on_destination_row_centres(void) {
+    enum { SOURCE = 2, DESTINATION = 2 * SOURCE, QUARTER = RGB565_SCALE_UNIT / 4 };
+
+    uint16_t columns[1], rows[DESTINATION], blends[DESTINATION];
+    upscale_t scale;
+    TEST_ASSERT_TRUE(upscale_init(&scale, 1, SOURCE, 1, DESTINATION, columns, rows));
+    upscale_init_blends(&scale, blends);
+    /* Centres at source -1/4 (clamped), 1/4, 3/4 and 5/4 (clamped). */
+    const uint16_t expected[DESTINATION] = {UPSCALE_BLEND(0, 0), UPSCALE_BLEND(0, QUARTER),
+                                            UPSCALE_BLEND(0, RGB565_SCALE_UNIT - QUARTER), UPSCALE_BLEND(1, 0)};
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(expected, blends, DESTINATION);
+    TEST_ASSERT_TRUE(upscale_init(&scale, 1, SOURCE, 1, SOURCE, columns, rows));
+    upscale_init_blends(&scale, blends);
+    for (int y = 0; y < SOURCE; y++) {
+        TEST_ASSERT_EQUAL_HEX16(UPSCALE_BLEND(y, 0), blends[y]);
+    }
+}
+
+/* Two source rows, three columns: column 0 one surface, column 1 a depth
+ * step between the rows, column 2 drawn above and clear below. */
+static void
+test_surface_rows_blend_within_a_surface_and_mark_seams(void) {
+    enum { WIDTH = 4, SOURCE = 2, DESTINATION = 2 * SOURCE, NEAR = 0x8000, FAR = 0x1000 };
+
+    const rgb565be_t top = RGB565BE(0x000000), bottom = RGB565BE(0xFFFFFF), clear = RGB565BE(0x0000FF);
+    uint16_t color[WIDTH * SOURCE] = {top, top, top, top, bottom, bottom, bottom, bottom};
+    uint16_t depth[WIDTH * SOURCE] = {NEAR, NEAR, NEAR, NEAR, NEAR, FAR, 0, NEAR};
+    GFX_TARGET_STORAGE(2) storage = GFX_TARGET_COLOR_INIT(color, WIDTH, SOURCE);
+    attach_depth(&storage.target, depth);
+    uint16_t columns[WIDTH], rows[DESTINATION], blends[DESTINATION], actual[WIDTH * DESTINATION];
+    uint8_t seams[GFX_SEAM_BYTES(WIDTH, DESTINATION)];
+    upscale_t scale;
+    TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, SOURCE, WIDTH, DESTINATION, columns, rows));
+    upscale_init_blends(&scale, blends);
+    scale.filter = UPSCALE_FILTER_SURFACE;
+    upscale_rows_filtered(&scale, &storage.target, clear, actual, seams, 0, DESTINATION);
+    for (int y = 0; y < DESTINATION; y++) {
+        const uint16_t blend = blends[y];
+        const bool lower_nearer = blend % RGB565_SCALE_UNIT < RGB565_SCALE_UNIT / 2;
+        const rgb565be_t mixed =
+            rgb565be_blend(top, blend % RGB565_SCALE_UNIT == 0 ? top : bottom, blend % RGB565_SCALE_UNIT);
+        const rgb565be_t expected_mixed = blend / RGB565_SCALE_UNIT == 1 ? bottom : mixed;
+        TEST_ASSERT_EQUAL_HEX16(expected_mixed, actual[(y * WIDTH) + 0]);
+        TEST_ASSERT_EQUAL_HEX16(expected_mixed, actual[(y * WIDTH) + 3]);
+        const bool from_top = blend / RGB565_SCALE_UNIT == 0 && lower_nearer;
+        TEST_ASSERT_EQUAL_HEX16(from_top ? top : bottom, actual[(y * WIDTH) + 1]);
+        TEST_ASSERT_EQUAL_HEX16(from_top ? top : clear, actual[(y * WIDTH) + 2]);
+    }
+    /* Row 1 still stands for the top row and row 2 for the bottom one: the
+     * step lies between them. Bottom-row pixels differ from their right
+     * neighbours in columns 0 to 2. */
+    const uint8_t expected[DESTINATION] = {0x0, 0x6, 0x7, 0x7};
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(expected, seams, DESTINATION);
+
+    scale.filter = UPSCALE_FILTER_NEAREST;
+    uint16_t nearest[WIDTH * DESTINATION];
+    upscale_rows_filtered(&scale, &storage.target, clear, actual, seams, 0, DESTINATION);
+    upscale_rows(&scale, &storage.target, clear, nearest, 0, DESTINATION);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(nearest, actual, WIDTH * DESTINATION);
+    for (size_t i = 0; i < sizeof seams; i++) {
+        TEST_ASSERT_EQUAL_HEX8(UINT8_MAX, seams[i]);
+    }
+}
+
+typedef struct {
+    int width, source, destination;
+} seam_case_t;
+
+/* A destination row's seam bit as the filter defines it: the pixel and its
+ * right neighbour, or the pixel below, on different surfaces in the source
+ * rows the two destination rows lean on most. */
+static int
+reference_nearest_row(uint16_t blend) {
+    return (blend / RGB565_SCALE_UNIT) + (blend % RGB565_SCALE_UNIT >= RGB565_SCALE_UNIT / 2 ? 1 : 0);
+}
+
+static bool
+reference_seam(const upscale_t* scale, const uint16_t* depth, int x, int y) {
+    const int width = scale->destination_width;
+    const uint16_t* here = depth + ((size_t)reference_nearest_row(scale->blends[y]) * width);
+    if (x + 1 < width && !upscale_same_surface(here[x], here[x + 1])) {
+        return true;
+    }
+    if (y + 1 == scale->destination_height) {
+        return false;
+    }
+    const uint16_t* below = depth + ((size_t)reference_nearest_row(scale->blends[y + 1]) * width);
+    return !upscale_same_surface(here[x], below[x]);
+}
+
+/* Random depths from a few levels, some one surface and some not, through
+ * even widths off and on a seam byte, more and as many rows, whole and in
+ * two ranges. */
+static void
+check_seam_case(const seam_case_t* c) {
+    const uint16_t levels[] = {0, 0x1000, 0x1080, 0x8000, 0x8900};
+    const size_t pixels = (size_t)c->width * c->source;
+    const size_t bytes = GFX_SEAM_BYTES(c->width, c->destination);
+    uint16_t* color = calloc(pixels, sizeof(*color));
+    uint16_t* depth = malloc(pixels * sizeof(*depth));
+    uint16_t* columns = malloc((size_t)c->width * sizeof(*columns));
+    uint16_t* rows = malloc((size_t)c->destination * sizeof(*rows));
+    uint16_t* blends = malloc((size_t)c->destination * sizeof(*blends));
+    uint16_t* actual = malloc((size_t)c->width * c->destination * sizeof(*actual));
+    uint8_t* whole = malloc(bytes);
+    uint8_t* split = malloc(bytes);
+    TEST_ASSERT_NOT_NULL(color);
+    TEST_ASSERT_NOT_NULL(depth);
+    TEST_ASSERT_NOT_NULL(columns);
+    TEST_ASSERT_NOT_NULL(rows);
+    TEST_ASSERT_NOT_NULL(blends);
+    TEST_ASSERT_NOT_NULL(actual);
+    TEST_ASSERT_NOT_NULL(whole);
+    TEST_ASSERT_NOT_NULL(split);
+    for (size_t i = 0; i < pixels; i++) {
+        depth[i] = levels[(size_t)rand() % (sizeof levels / sizeof *levels)];
+    }
+    GFX_TARGET_STORAGE(2) storage = GFX_TARGET_COLOR_INIT(color, c->width, c->source);
+    attach_depth(&storage.target, depth);
+    upscale_t scale;
+    TEST_ASSERT_TRUE(upscale_init(&scale, c->width, c->source, c->width, c->destination, columns, rows));
+    upscale_init_blends(&scale, blends);
+    scale.filter = UPSCALE_FILTER_SURFACE;
+    const int half = c->destination / 2;
+    upscale_rows_filtered(&scale, &storage.target, 0, actual, whole, 0, c->destination);
+    upscale_rows_filtered(&scale, &storage.target, 0, actual, split, 0, half);
+    upscale_rows_filtered(&scale, &storage.target, 0, actual, split, half, c->destination - half);
+    for (int y = 0; y < c->destination; y++) {
+        for (int x = 0; x < c->width; x++) {
+            const uint8_t* row = whole + ((size_t)y * GFX_SEAM_PITCH(c->width));
+            TEST_ASSERT_EQUAL_INT(reference_seam(&scale, depth, x, y), gfx_seam_at(row, x));
+        }
+    }
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(whole, split, bytes);
+    free(color);
+    free(depth);
+    free(columns);
+    free(rows);
+    free(blends);
+    free(actual);
+    free(whole);
+    free(split);
+}
+
+static void
+test_surface_seams_match_the_per_pixel_reference(void) {
+    const seam_case_t cases[] = {{14, 6, 15}, {16, 9, 9}, {10, 7, 13}, {24, 4, 11}};
+    srand(11);
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        check_seam_case(&cases[i]);
+    }
+}
+
 void
 run_upscale_suite(void) {
     RUN_TEST(test_scanline_all_colors_match_channel_reference);
@@ -437,6 +622,11 @@ run_upscale_suite(void) {
     RUN_TEST(test_fractional_maps_cover_destination_in_order_and_at_source_corners);
     RUN_TEST(test_two_row_ranges_equal_one_whole_upscale);
     RUN_TEST(test_each_width_takes_its_path_and_matches_the_maps);
+    RUN_TEST(test_blend_keeps_ends_and_rounds_the_middle);
+    RUN_TEST(test_spread_quarter_matches_blend_at_a_quarter);
+    RUN_TEST(test_row_blends_sit_on_destination_row_centres);
+    RUN_TEST(test_surface_rows_blend_within_a_surface_and_mark_seams);
+    RUN_TEST(test_surface_seams_match_the_per_pixel_reference);
 }
 
 SUITE_REGISTER(run_upscale_suite);

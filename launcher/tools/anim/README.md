@@ -3,10 +3,10 @@
 The offline half of `main/anim/`: bakes a glTF 2.0 animation<sup>[[17]](../../../docs/Citations.md#khronos-gltf-2-0)</sup> into a pack entry
 and prints what a clip's tracks hold through the device's
 sampler. What a track is, how to author one and how to target a new property
-is in [docs/render/Animation-Tracks.md](../../../docs/render/Animation-Tracks.md).
+is in [docs/render/animation/Animation-Tracks.md](../../../docs/render/animation/Animation-Tracks.md).
 `track_host.py --poses` takes a `.anim.toml`: a poses file is in the source
 frame, and a built pack's tracks are in the engine frame
-([the offline tools](../../../docs/render/Mesh-Import.md#the-offline-tools)).
+([the offline tools](../../../docs/render/offline/Mesh-Import.md#the-offline-tools)).
 Nothing here runs on the board.
 
 A camera path without Blender is a `NAME.keys.toml` that a `.anim.toml` names

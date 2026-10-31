@@ -17,11 +17,14 @@
 #include "gfx/target/gfx_color.h"
 #include "image/image.h"
 
-#define GFX_PIXEL_FORMAT       IMAGE_RGB565BE
-#define GFX_ATTACHMENT_COLOR   0
-#define GFX_ATTACHMENT_DEPTH   1
-#define GFX_ATTACHMENT_FURTHER 2
-#define GFX_ATTACHMENTS_MAX    4
+#define GFX_PIXEL_FORMAT            IMAGE_RGB565BE
+#define GFX_ATTACHMENT_COLOR        0
+#define GFX_ATTACHMENT_DEPTH        1
+#define GFX_ATTACHMENT_FURTHER      2
+#define GFX_ATTACHMENTS_MAX         4
+
+/* The attachments a draw writes beside colour and depth, at most. */
+#define GFX_ATTACHMENTS_FURTHER_MAX (GFX_ATTACHMENTS_MAX - GFX_ATTACHMENT_FURTHER)
 
 typedef struct {
     int first_row; /* the picture row each attachment's row 0 stands for */
@@ -52,6 +55,14 @@ gfx_target_of_color(gfx_target_t* out, void* pixels, int width, int height, int 
     out->first_row = first_row;
     out->count = 1;
     out->attachment[0] = (image_t){pixels, GFX_PIXEL_FORMAT, width, height, IMAGE_PITCH(GFX_PIXEL_FORMAT, width)};
+}
+
+/* Colour and depth alone, `height` rows from picture row `first_row`. */
+static inline void
+gfx_target_of_color_depth(gfx_target_t* out, void* color, uint16_t* depth, int width, int height, int first_row) {
+    gfx_target_of_color(out, color, width, height, first_row);
+    out->count = GFX_ATTACHMENT_FURTHER;
+    out->attachment[GFX_ATTACHMENT_DEPTH] = (image_t){depth, IMAGE_U16, width, height, IMAGE_PITCH(IMAGE_U16, width)};
 }
 
 static inline int
@@ -177,6 +188,18 @@ gfx_target_fill_rect(const gfx_target_t* target, recti_t clip, recti_t shape, gf
         }
     }
     return rect;
+}
+
+/* A seam mask: one bit per pixel, set where a filter must not blend the pixel
+ * with the one right of it or below it. Bit x % GFX_SEAM_BITS of byte
+ * x / GFX_SEAM_BITS of its row. */
+#define GFX_SEAM_BITS                 8
+#define GFX_SEAM_PITCH(width)         (((width) + GFX_SEAM_BITS - 1) / GFX_SEAM_BITS)
+#define GFX_SEAM_BYTES(width, height) ((size_t)GFX_SEAM_PITCH(width) * (size_t)(height))
+
+static inline bool
+gfx_seam_at(const uint8_t* seams, int x) {
+    return (seams[x / GFX_SEAM_BITS] >> (x % GFX_SEAM_BITS)) & 1U;
 }
 
 /* A source pixel as shown: `clear` where nothing was drawn. */

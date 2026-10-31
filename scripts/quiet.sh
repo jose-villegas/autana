@@ -40,9 +40,13 @@ quiet_run() {
     return "$quiet_rc"
 }
 
+QUIET_ERROR_PATTERN='FAILED:|error:|undefined reference to|out of memory|cannot allocate|CMake Error|ninja: error|^  FAIL |:FAIL: |:FAIL$|^check_stack_usage: [0-9]+ function\(s\) exceed|^  NEW |^  GREW |AssertionError|^ *File "|^FAIL:|^ERROR:'
+
+# A caller whose stream carries expected failure text from passing tests
+# (fixtures, error-path assertions) narrows QUIET_ERROR_PATTERN to its own
+# failure headers before quiet_end.
 quiet_error_lines() {
-    grep -E 'FAILED:|error:|undefined reference to|out of memory|cannot allocate|CMake Error|ninja: error|^  FAIL |:FAIL: |:FAIL$|^check_stack_usage: [0-9]+ function\(s\) exceed|^  NEW |^  GREW |AssertionError|^ *File "|^FAIL:|^ERROR:' \
-        "$QUIET_LOG" | head -n "$QUIET_LIMIT" || true
+    grep -E "$QUIET_ERROR_PATTERN" "$QUIET_LOG" | head -n "$QUIET_LIMIT" || true
 }
 
 quiet_failed_sections() {
