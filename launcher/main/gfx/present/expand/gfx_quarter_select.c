@@ -37,7 +37,11 @@ gfx_quarter_select(const uint16_t* mine, const uint16_t* other, const uint8_t* k
  *   both halves of every lane; AND with 1, 2, 4 ... 128 keeps the low copy's
  *   bit, compare equal), then out = a ^ ((a ^ b) & mask).
  *
- * a2 mine, a3 other, a4 keep, a5 out, a6 steps; a7 and a8 constants.
+ * Constants load once, before a zero-overhead loop: blue in q6, green in q7,
+ * the rest broadcast from a7 to a11 as each step needs them. The green sum
+ * runs between the red-blue steps, so neither waits on its own last result.
+ *
+ * a2 mine, a3 other, a4 keep, a5 out, a6 steps; a7 to a11 constants.
  */
 __asm__(".section .rodata.gfx_pie_constants, \"a\"\n"
         ".align 16\n"
@@ -50,61 +54,63 @@ __asm__(".section .rodata.gfx_pie_constants, \"a\"\n"
         ".type gfx_quarter_select, @function\n"
         "gfx_quarter_select:\n"
         "    entry a1, 16\n" /* a leaf: nothing on the stack */
-        "    beqz a6, 2f\n"
-        "1:\n"
+        "    movi a7, gfx_pie_masks\n"
+        "    addi a8, a7, 4\n"   /* red-blue rounding */
+        "    addi a9, a7, 8\n"   /* green rounding */
+        "    addi a10, a7, 10\n" /* red out */
+        "    movi a11, gfx_pie_lane_bits\n"
+        "    addi a12, a7, 2\n"
+        "    ee.vldbc.16 q6, a12\n" /* blue */
+        "    addi a12, a7, 6\n"
+        "    ee.vldbc.16 q7, a12\n" /* green */
+        "    loopnez a6, 2f\n"
         "    ee.vld.128.ip q0, a2, 16\n"
         "    ee.vld.128.ip q1, a3, 16\n"
         "    ee.vunzip.8 q0, q1\n"
         "    ee.vzip.8 q1, q0\n" /* q1 mine, q0 other, native */
-        "    movi a7, gfx_pie_masks\n"
-        "    ee.vldbc.16.ip q7, a7, 2\n" /* red in its lane */
-        "    ee.vldbc.16.ip q6, a7, 2\n" /* blue */
-        "    ssai 3\n"
-        "    ee.vsr.32 q2, q1\n"
-        "    ee.andq q2, q2, q7\n"
-        "    ee.andq q3, q1, q6\n"
-        "    ee.orq q2, q2, q3\n" /* mine red-blue */
-        "    ee.vsr.32 q3, q0\n"
-        "    ee.andq q3, q3, q7\n"
-        "    ee.andq q4, q0, q6\n"
-        "    ee.orq q3, q3, q4\n" /* other red-blue */
-        "    ee.vadds.s16 q4, q2, q2\n"
-        "    ee.vadds.s16 q4, q4, q2\n"
-        "    ee.vadds.s16 q4, q4, q3\n"
-        "    ee.vldbc.16.ip q7, a7, 2\n" /* red-blue rounding */
-        "    ee.vadds.s16 q4, q4, q7\n"  /* 3 mine + other + 2, red-blue */
-        "    ee.vldbc.16.ip q7, a7, 2\n" /* green */
         "    ee.andq q2, q1, q7\n"
         "    ee.andq q3, q0, q7\n"
-        "    ee.vadds.s16 q5, q2, q2\n"
-        "    ee.vadds.s16 q5, q5, q2\n"
-        "    ee.vadds.s16 q5, q5, q3\n"
-        "    ee.vldbc.16.ip q3, a7, 2\n" /* green rounding */
-        "    ee.vadds.s16 q5, q5, q3\n"  /* 3 mine + other + 2, green */
+        "    ee.vldbc.16 q4, a7\n" /* red in its lane */
+        "    ssai 3\n"
+        "    ee.vsr.32 q5, q1\n"
+        "    ee.vadds.s16 q3, q3, q2\n"
+        "    ee.andq q5, q5, q4\n"
+        "    ee.vadds.s16 q3, q3, q2\n"
+        "    ee.vadds.s16 q3, q3, q2\n" /* 3 mine + other, green */
+        "    ee.andq q2, q1, q6\n"
+        "    ee.orq q5, q5, q2\n" /* mine red-blue */
+        "    ee.vsr.32 q2, q0\n"
+        "    ee.andq q2, q2, q4\n"
+        "    ee.andq q4, q0, q6\n"
+        "    ee.orq q2, q2, q4\n" /* other red-blue */
+        "    ee.vldbc.16 q0, a9\n"
+        "    ee.vadds.s16 q2, q2, q5\n"
+        "    ee.vadds.s16 q3, q3, q0\n" /* + 2, green */
+        "    ee.vadds.s16 q2, q2, q5\n"
+        "    ee.vldbc.16 q0, a8\n"
+        "    ee.vadds.s16 q2, q2, q5\n"
         "    ssai 2\n"
-        "    ee.vsr.32 q5, q5\n"
-        "    ee.andq q5, q5, q7\n" /* green out */
-        "    ee.vsr.32 q2, q4\n"
-        "    ee.andq q2, q2, q6\n" /* blue out */
+        "    ee.vsr.32 q3, q3\n"
+        "    ee.vadds.s16 q2, q2, q0\n" /* 3 mine + other + 2, red-blue */
+        "    ee.andq q3, q3, q7\n"      /* green out */
+        "    ee.vsr.32 q5, q2\n"
         "    ssai 1\n"
-        "    ee.vsl.32 q3, q4\n"
-        "    ee.vldbc.16 q7, a7\n" /* red out */
-        "    ee.andq q3, q3, q7\n"
-        "    ee.orq q2, q2, q3\n"
-        "    ee.orq q2, q2, q5\n"       /* the blend, native */
-        "    ee.vldbc.8.ip q3, a4, 1\n" /* the keep byte, in every byte */
-        "    movi a8, gfx_pie_lane_bits\n"
-        "    ee.vld.128.ip q4, a8, 0\n"
-        "    ee.andq q3, q3, q4\n"
-        "    ee.vcmp.eq.s16 q3, q3, q4\n" /* all ones where kept */
-        "    ee.xorq q4, q2, q1\n"
-        "    ee.andq q4, q4, q3\n"
-        "    ee.xorq q2, q2, q4\n"
+        "    ee.vsl.32 q2, q2\n"
+        "    ee.vldbc.16 q0, a10\n"
+        "    ee.andq q5, q5, q6\n"      /* blue out */
+        "    ee.andq q2, q2, q0\n"      /* red out */
+        "    ee.vldbc.8.ip q4, a4, 1\n" /* the keep byte, in every byte */
+        "    ee.vld.128.ip q0, a11, 0\n"
+        "    ee.orq q2, q2, q5\n"
+        "    ee.andq q4, q4, q0\n"
+        "    ee.orq q2, q2, q3\n"         /* the blend, native */
+        "    ee.vcmp.eq.s16 q4, q4, q0\n" /* all ones where kept */
+        "    ee.xorq q0, q2, q1\n"
+        "    ee.andq q0, q0, q4\n"
+        "    ee.xorq q2, q2, q0\n"
         "    ee.vunzip.8 q2, q3\n"
         "    ee.vzip.8 q3, q2\n" /* q3 big-endian */
         "    ee.vst.128.ip q3, a5, 16\n"
-        "    addi a6, a6, -1\n"
-        "    bnez a6, 1b\n"
         "2:\n"
         "    retw.n\n"
         ".size gfx_quarter_select, . - gfx_quarter_select\n");
