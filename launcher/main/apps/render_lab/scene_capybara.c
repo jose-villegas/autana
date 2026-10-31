@@ -21,7 +21,6 @@
 #include "draw/draw.h"
 #include "esp_log.h"
 #include "gfx/gfx.h"
-#include "gfx/present/gfx_present.h"
 #include "input/mapping/orbit_motion_touch.h"
 #include "kinematics/orbit/orbit_motion.h"
 #include "math/scalar/math_const.h"
