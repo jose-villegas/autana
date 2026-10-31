@@ -185,6 +185,10 @@ render_context_set_debug_view(render_context_t* c, int view) {
     if (c->debug_view == view && (view == RENDER_DEBUG_VIEW_SHADED || c->raster.attachment_count != 0)) {
         return;
     }
+    if (view != RENDER_DEBUG_VIEW_SHADED && view == c->refused_view) {
+        return;
+    }
+    c->refused_view = RENDER_DEBUG_VIEW_SHADED;
     free_view_state(c);
     c->debug_view = RENDER_DEBUG_VIEW_SHADED;
     c->raster.attachment_count = 0;
@@ -210,15 +214,23 @@ render_context_set_debug_view(render_context_t* c, int view) {
 #endif
 }
 
-/* Room in the view's state for `count` instances, or the view detached. */
+/* Room in the view's state for `count` instances, or the view detached and
+ * refused until another view is asked for. */
 static void
 reserve_view(render_context_t* c, int count) {
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     const render_debug_view_t* row = render_context_debug_view(c->debug_view);
     if (row == NULL || row->reserve == NULL || row->reserve(c->debug_view_state, count)) {
         return;
     }
     ESP_LOGE("render", "debug view %s: no room for %d instances; drawing shaded", row->name, count);
+    const int refused = c->debug_view;
     render_context_set_debug_view(c, RENDER_DEBUG_VIEW_SHADED);
+    c->refused_view = refused;
+#else
+    (void)c;
+    (void)count;
+#endif
 }
 
 /* The step the policy last chose, or -1 at the fixed scale. */

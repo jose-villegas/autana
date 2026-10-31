@@ -29,8 +29,13 @@ lens_map(const render_view_t* view, const raster_t* raster, const mat4f_t* model
     }
 }
 
+/* Where `key` was seen, trying `slot` first: the order rarely changes
+ * between pictures. */
 static int
-seen_index(const raster_motion_t* m, const mat4f_t* key) {
+seen_index(const raster_motion_t* m, const mat4f_t* key, int slot) {
+    if (slot < m->seen_count && m->seen_key[slot] == key) {
+        return slot;
+    }
     for (int i = 0; i < m->seen_count; i++) {
         if (m->seen_key[i] == key) {
             return i;
@@ -44,7 +49,7 @@ static void
 map_instances(raster_motion_t* m, const raster_t* raster, const render_view_t* view) {
     for (int i = 0; i < raster->instance_count; i++) {
         const mat4f_t* p = raster->instances[i].model;
-        const int seen = p == NULL ? -1 : seen_index(m, p);
+        const int seen = p == NULL ? -1 : seen_index(m, p, i);
         if (seen >= 0 && memcmp(&m->seen[seen], p, sizeof(*p)) != 0) {
             lens_map(&m->previous, raster, &m->seen[seen], &m->before);
             lens_map(view, raster, p, &m->now);
@@ -80,7 +85,7 @@ begin(const raster_attachment_t* self, const raster_t* raster, const render_view
     m->project = m->now.project;
     m->known = m->has_previous;
     m->first_moved = -1;
-    memset(m->moved, 0, (size_t)m->capacity * sizeof(*m->moved));
+    memset(m->moved, 0, (size_t)raster->instance_count * sizeof(*m->moved));
     if (m->known) {
         render_view_refit(&m->previous, view->viewport);
         lens_map(&m->previous, raster, NULL, &m->before);
@@ -162,11 +167,12 @@ resolve_row(const raster_motion_t* m, const uint16_t* depth, float depth_near, r
     row_map_t still;
     row_map_t own;
     tag_t own_tag = 0;
+    const int tags = m->capacity; /* out's stores may alias m: read once */
     row_map(&m->map[0], v, &still);
     float u = 0.5F - m->project.cx;
     for (int x = 0; x < width; x++, u += 1.0F) {
         const tag_t t = tag[x];
-        if (depth[x] == 0 || t > m->capacity) {
+        if (depth[x] == 0 || t > tags) {
             out[x] = unknown;
             continue;
         }
