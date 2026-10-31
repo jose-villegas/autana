@@ -81,16 +81,13 @@ gfx_mode_has_framebuffer(const gfx_mode_t* mode) {
     return mode->layout == GFX_LAYOUT_FULL_FB || mode->layout == GFX_LAYOUT_DOUBLE_FB;
 }
 
-/* Double, band and indexed layouts need their own storage. Interlace grants describe
- * the request; gfx_set_interlace() controls the strip sends. */
-
 /* Grants `request`, allocates whatever the granted layout needs, and
- * returns the grant. Asserts the current mode is already GFX_LAYOUT_FULL_FB:
+ * returns the grant; interlace in a grant only describes the request. Asserts the current mode is already GFX_LAYOUT_FULL_FB:
  * nesting one app's mode inside another's is not supported. */
 const gfx_mode_t* gfx_mode_enter(const gfx_mode_request_t* request);
 
 /* Double mode drains its send and keeps the front: the last presented frame,
- * or its clear colour if gfx_set_clear_on_send() was on.
+ * or its clear colour if clear-on-send was on.
  * Frees whatever the current mode allocated and restores GFX_LAYOUT_FULL_FB
  * at full resolution, no interlace, the mode every app but the one just
  * exiting assumes is already in force. */
@@ -102,7 +99,7 @@ const gfx_mode_t* gfx_mode_current(void);
  * GFX_LAYOUT_INDEXED: a persistent index image gfx owns instead of the
  * PSRAM framebuffer, valid between a matching gfx_mode_enter()/gfx_mode_exit().
  * The app writes indices; the present task expands them through a LUT on the
- * same gfx_present_begin()/gfx_present_wait() path as GFX_LAYOUT_FULL_FB.
+ * same present path as GFX_LAYOUT_FULL_FB.
  */
 
 /* An IMAGE_INDEXED8 image, index_grid_w by index_grid_h. Write only the
@@ -128,7 +125,7 @@ void gfx_indexed_set_lut16(const gfx_color_t dither16_rgb[GFX_INDEXED_PALETTE_SI
  * Both LUTs stay installed either way, so switching is free. */
 void gfx_indexed_set_dither16(bool enabled);
 
-/* Lever 2: installs `table` for `mode` and makes it the active SPATIAL
+/* Installs `table` for `mode` and makes it the active SPATIAL
  * pattern 16-colour mode expands through (gfx_indexed_set_dither16(true));
  * see gfx_dither_mode_t's own comment (gfx_indexed.h) for what each
  * mode's table must hold. Meaningless in 256 mode. Safe only between
