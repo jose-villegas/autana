@@ -16,7 +16,7 @@ Two terms recur:
 
 This page picks options. How each one works is on the reference page it
 links to: [gfx/README.md](../gfx/README.md) for gfx,
-[Render-Pipeline.md](Render-Pipeline.md) and the pages it routes to for r3d.
+[the pipeline](README.md) and the pages it routes to for r3d.
 
 ## Choosing at a glance
 
@@ -69,10 +69,10 @@ draw time; view modes give up frame time to show a diagnostic picture.
 | Option | Trades | RAM | Default | Turn it on | Reference |
 |---|---|---|---|---|---|
 | [Render scale](#render-scale-and-the-half-picture) | pixels drawn for sharpness | scratch at the drawn size | 50% | `render_context_set_scale()` | [Mesh-Rendering.md](Mesh-Rendering.md#the-render-context) |
-| [Dynamic resolution](#dynamic-resolution) | sharpness for a held frame budget | scratch at the finest step | off | `render_context_set_dynamic_resolution()` | [Dynamic-Resolution.md](Dynamic-Resolution.md) |
-| [Camera presentation](#camera-presentation) | half the rows drawn for a scanline or doubled look | none | `CAMERA_PRESENT_NEAREST` | `scene_camera_set_present()` | [Camera presentation](Dynamic-Resolution.md#camera-presentation) |
-| [Small fill](#small-fill) | gradients on tiny triangles for draw time | none | `SMALL_FILL_SMOOTH` | `scene_camera_set_small_fill()` | [Small fill](Mesh-Rendering.md#small-fill) |
-| [View modes](#view-modes) | frame time for a diagnostic picture | PSRAM per view | shaded | `render_context_set_debug_view()` | [View modes](Mesh-Rendering.md#view-modes) |
+| [Dynamic resolution](#dynamic-resolution) | sharpness for a held frame budget | scratch at the finest step | off | `render_context_set_dynamic_resolution()` | [Dynamic-Resolution.md](frame/Dynamic-Resolution.md) |
+| [Camera presentation](#camera-presentation) | half the rows drawn for a scanline or doubled look | none | `CAMERA_PRESENT_NEAREST` | `scene_camera_set_present()` | [Camera presentation](frame/Dynamic-Resolution.md#camera-presentation) |
+| [Small fill](#small-fill) | gradients on tiny triangles for draw time | none | `SMALL_FILL_SMOOTH` | `scene_camera_set_small_fill()` | [Small fill](frame/Coverage.md#small-fill) |
+| [View modes](#view-modes) | frame time for a diagnostic picture | PSRAM per view | shaded | `render_context_set_debug_view()` | [View modes](frame/View-Modes.md) |
 
 ### Bake
 
@@ -81,9 +81,9 @@ settings and take effect when the mesh is baked.
 
 | Option | Trades | RAM | Default | Turn it on | Reference |
 |---|---|---|---|---|---|
-| [Cluster size](#culling-and-clusters) | cull granularity | mesh size in flash | 32 triangles | `geometry.meshlet_triangles` | [Meshlets](Render-Pipeline.md#meshlets) |
-| [Bake variant](#bake-variants) | triangles and smooth colour for draw time | mesh size in flash | per scene | the mesh entry a renderer names | [Bake-Quality.md](Bake-Quality.md) |
-| [Skinned lighting](#skinned-lighting) | per-vertex cycles for shading accuracy | a table per light set | direct | `[skin].lighting` | [Lighting modes](Skinned-Lighting.md#lighting-modes) |
+| [Cluster size](#culling-and-clusters) | cull granularity | mesh size in flash | 32 triangles | `geometry.meshlet_triangles` | [Meshlets](offline/Baked-Mesh.md#meshlets) |
+| [Bake variant](#bake-variants) | triangles and smooth colour for draw time | mesh size in flash | per scene | the mesh entry a renderer names | [Bake-Quality.md](offline/Bake-Quality.md) |
+| [Skinned lighting](#skinned-lighting) | per-vertex cycles for shading accuracy | a table per light set | direct | `[skin].lighting` | [Lighting modes](animation/Skinned-Lighting.md#lighting-modes) |
 
 ## Using the API
 
@@ -212,21 +212,23 @@ interlace.
 
 The render context owns what a frame is drawn at; the scene camera owns how
 it looks. The frame-stages chart in
-[Render-Pipeline.md](Render-Pipeline.md#every-frame-on-the-board) shows where
+[frame/](frame/README.md#where-the-time-goes) shows where
 the time goes: the span fill (`r3d.draw`) is most of it, so the knobs that
 pay cut pixels or triangle setup.
 
 ### Render scale and the half picture
 
 `render_context_set_scale(context, percent)` sets the share of the panel each
-axis draws at; 50% until set. At exactly half width, with a height that
-divides the half height, compose copies into the half picture. Any other size upscales to the full framebuffer.
+axis draws at; 50% until set. A draw of exactly half width and at most half
+height expands into the half picture (`raster_fits_half_picture()`); an uneven
+height spreads through the row map, its row edges on even panel rows. Any
+other size upscales to the full framebuffer.
 
 - **Use** 50% unless the scene is sparse: it is the size the half picture serves.
 - **Hurts** at any size that misses the half picture: compose writes the full
   framebuffer.
 - **Cost by size**: the stage table in
-  [Dynamic-Resolution.md](Dynamic-Resolution.md#where-a-frames-time-goes-at-each-size).
+  [Dynamic-Resolution.md](frame/Dynamic-Resolution.md#where-a-frames-time-goes-at-each-size).
 
 ### Dynamic resolution
 
@@ -241,7 +243,7 @@ returns to the fixed scale.
 
 The scratch block is sized for the finest step. The policies' flights on the
 board are in
-[Dynamic-Resolution.md](Dynamic-Resolution.md#the-policies-on-the-board).
+[Dynamic-Resolution.md](frame/Dynamic-Resolution.md#the-policies-on-the-board).
 
 ### Camera presentation
 
@@ -252,7 +254,7 @@ the present fill the rest. `CAMERA_PRESENT_SCANLINE` dims every second row;
 - **Use** for a retro look or a frame that must get much cheaper at once.
 - **Hurts** fine horizontal detail. A height that does not divide the half
   height draws as `CAMERA_PRESENT_NEAREST`.
-- **Pictures and cost**: [Camera presentation](Dynamic-Resolution.md#camera-presentation).
+- **Pictures and cost**: [Camera presentation](frame/Dynamic-Resolution.md#camera-presentation).
 
 ### Small fill
 
@@ -265,7 +267,7 @@ picture exact.
 - **Hurts** gradients across tiny triangles: they pop slightly frame to frame.
   The GRAIN and DITHER styles hide the flat patches for part of the gain.
 - **Gain and pop, per setting**:
-  [the board sweep and the temporal table](Mesh-Rendering.md#small-fill).
+  [the board sweep and the temporal table](frame/Coverage.md#small-fill).
 
 ### Culling and clusters
 
@@ -276,7 +278,7 @@ cluster size.
 
 - **Use** the shipped 32: 16 ties it, and 64 lets more triangles through than
   its fewer culls save.
-- **Measured**: [the meshlet-size table](Render-Pipeline.md#meshlets).
+- **Measured**: [the meshlet-size table](offline/Baked-Mesh.md#meshlets).
 
 The two cores split each stage by measured cost on their own
 ([On both cores](Mesh-Rendering.md#on-both-cores)); a caller that cuts the
@@ -290,7 +292,7 @@ gradients or triangles; fitted keeps lite's triangle budget, moved onto what
 the camera path draws.
 
 - **Pick** with the fidelity tables and the
-  [board measurements](Bake-Quality.md#board-measurements) in Bake-Quality.md.
+  [board measurements](offline/Bake-Quality.md#board-measurements) in Bake-Quality.md.
 
 ### Skinned lighting
 
@@ -299,7 +301,7 @@ direct, renormalised or table lighting.
 
 - **Use** direct unless joints visibly darken (renormalised) or a scene has
   many lights (table).
-- **Measured**: [Lighting modes](Skinned-Lighting.md#lighting-modes).
+- **Measured**: [Lighting modes](animation/Skinned-Lighting.md#lighting-modes).
 
 ### View modes
 
@@ -309,7 +311,7 @@ adds frame time and holds PSRAM state until switched off.
 
 - **Use** to see why a frame costs what it does: overdraw, cull, motion.
 - **Cost per view**: the view charts in
-  [Render-Pipeline.md](Render-Pipeline.md#every-frame-on-the-board).
+  [frame/](frame/README.md#where-the-time-goes).
 
 ## Measuring a choice
 
@@ -321,6 +323,6 @@ how to refresh it.
 ## Related
 
 - [gfx/README.md](../gfx/README.md): layouts, dirty tracking and the present path
-- [Render-Pipeline.md](Render-Pipeline.md): every r3d stage, its settings and its cost
+- [The pipeline](README.md): every r3d stage, its owner, and per half its cost
 - [Building-an-App.md](../firmware/Building-an-App.md): the frame loop and app memory
 - [Board-and-Memory.md](../notes/Board-and-Memory.md#psram-throughput): PSRAM against internal RAM

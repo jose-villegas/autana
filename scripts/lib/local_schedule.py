@@ -19,6 +19,9 @@ NIGHT_START = "01:00"
 # Boards start after the GPU's night work: two hours of day board time when no GPU work is queued.
 BOARD_START = "03:00"
 STARTS = {"NIGHT_START": NIGHT_START, "BOARD_START": BOARD_START}
+# The board night starts no new lane after this local time on its marker's date; running lanes finish.
+BOARD_LAST_START = "05:00"
+LOCAL_TIMES = dict(STARTS, BOARD_LAST_START=BOARD_LAST_START)
 NIGHT_ZONE = "UTC"
 HOSTED_WAIT_SECONDS = 350 * 60
 GPU_LABEL = "gpu"
@@ -47,22 +50,38 @@ class Clock:
         time.sleep(seconds)
 
 
-def next_marker(trigger, night_start=None, start="NIGHT_START"):
-    night_start = night_start or os.environ.get(start) or STARTS[start]
-    if not re.fullmatch(r"0[0-5]:[0-5][0-9]", night_start):
-        raise ValueError(f"{start} must be HH:MM in 00:00–05:59: {night_start!r}")
-    hour, minute = map(int, night_start.split(":"))
-    night_zone = os.environ.get("NIGHT_ZONE") or NIGHT_ZONE
+def local_time(name, value=None):
+    """The hour and minute of the local time setting `name`: `value`, else its variable, else its constant."""
+    value = value or os.environ.get(name) or LOCAL_TIMES[name]
+    if not re.fullmatch(r"0[0-5]:[0-5][0-9]", value):
+        raise ValueError(f"{name} must be HH:MM in 00:00–05:59: {value!r}")
+    return tuple(map(int, value.split(":")))
+
+
+def night_zone():
+    name = os.environ.get("NIGHT_ZONE") or NIGHT_ZONE
     try:
-        zone = ZoneInfo(night_zone)
+        return ZoneInfo(name)
     except (ZoneInfoNotFoundError, ValueError) as error:
-        raise ValueError(f"NIGHT_ZONE must be an IANA name: {night_zone!r}") from error
+        raise ValueError(f"NIGHT_ZONE must be an IANA name: {name!r}") from error
+
+
+def next_marker(trigger, night_start=None, start="NIGHT_START"):
+    hour, minute = local_time(start, night_start)
+    zone = night_zone()
     date = trigger.astimezone(zone).date()
     candidate = datetime(date.year, date.month, date.day, hour, minute, tzinfo=zone)
     if candidate < trigger:
         date += timedelta(days=1)
         candidate = datetime(date.year, date.month, date.day, hour, minute, tzinfo=zone)
     return candidate
+
+
+def night_cutoff(marker):
+    """When the board night that starts at `marker` stops starting lanes: BOARD_LAST_START on its date.
+    The marker carries NIGHT_ZONE's offset, so the board machine needs no time zone data."""
+    hour, minute = local_time("BOARD_LAST_START")
+    return marker.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
 
 def trigger_time(event, schedule, now):
@@ -126,7 +145,8 @@ def main():
     clock = Clock()
     if args.mode == "marker":
         now = clock.now()
-        marker = now if os.environ.get("OVERRIDE") == "true" else next_marker(
+        # In NIGHT_ZONE either way: the night's cut-off is read in the marker's offset.
+        marker = now.astimezone(night_zone()) if os.environ.get("OVERRIDE") == "true" else next_marker(
             trigger_time(os.environ.get("GITHUB_EVENT_NAME"), os.environ.get("SCHEDULE", ""), now), start=args.start)
         print(marker.isoformat(), flush=True)
         if os.environ.get("GITHUB_OUTPUT"):

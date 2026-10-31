@@ -7,7 +7,7 @@
 # the two that opens the serial port. Nothing here needs a board or a lock.
 #
 # Usage:
-#   tools/build/build.sh [--dev|--diag] [--autorun] [--perf-scope]
+#   tools/build/build.sh [--dev|--diag] [--autorun] [--perf-scope [--frame-laps]]
 #                        [--layout-seed N] [--hot-tunables] [--configure] [--verbose]
 #                        [--prepared-build DIR]
 #
@@ -31,6 +31,9 @@
 #               static RAM a capture needs to instrument itself; drops
 #               behaviour coverage, so never a merge gate, and its numbers
 #               compare only with other perf-scoped captures.
+#   --frame-laps  with --perf-scope only: layer sdkconfig.defaults.diag_perf_laps,
+#               timing the phases inside the frame stages (profile/frame_laps.h).
+#               The laps' own cost moves frame times: read only the lap lines.
 #   --layout-seed N  pad every source's code and rodata by sizes seed N picks
 #               (tools/build/layout_pad.py), to sample the cache layouts a
 #               timing could have landed on. 0, the default, is the plain build.
@@ -74,6 +77,7 @@ set -euo pipefail
 
 VARIANT=release
 PERF_SCOPE=0
+FRAME_LAPS=0
 AUTORUN=0
 VERBOSE=0
 PREPARED_BUILD=""
@@ -87,6 +91,7 @@ while [ $# -gt 0 ]; do
         -d|--diag) VARIANT=diag; shift ;;
         --autorun) AUTORUN=1; shift ;;
         --perf-scope) PERF_SCOPE=1; shift ;;
+        --frame-laps) FRAME_LAPS=1; shift ;;
         --hot-tunables) HOT_TUNABLES=1; shift ;;
         --layout-seed)
             [ $# -ge 2 ] || { echo "--layout-seed needs a number" >&2; exit 2; }
@@ -104,6 +109,11 @@ export VERBOSE
 
 if [ "$PERF_SCOPE" -eq 1 ] && [ "$VARIANT" != diag ]; then
     echo "--perf-scope scopes which SUITES are compiled in, so it needs --diag" >&2
+    exit 2
+fi
+
+if [ "$FRAME_LAPS" -eq 1 ] && [ "$PERF_SCOPE" -ne 1 ]; then
+    echo "--frame-laps times the perf scope's frame stages, so it needs --perf-scope" >&2
     exit 2
 fi
 
@@ -163,6 +173,9 @@ if [ "$AUTORUN" -eq 1 ]; then
 fi
 if [ "$PERF_SCOPE" -eq 1 ]; then
     VARIANT_OPTIONS="$VARIANT_OPTIONS --perf-scope"
+fi
+if [ "$FRAME_LAPS" -eq 1 ]; then
+    VARIANT_OPTIONS="$VARIANT_OPTIONS --frame-laps"
 fi
 VARIANT_OPTIONS="$VARIANT_OPTIONS --layout-seed $LAYOUT_SEED"
 if [ "$HOT_TUNABLES" -eq 1 ]; then

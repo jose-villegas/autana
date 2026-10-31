@@ -150,6 +150,11 @@ jobs:
           STAGED_TEXT_GATE: "snapshot"
         run: python3 scripts/gates/check_doc_constants.py
 
+      - name: Format diagram fields carry their role's colour marker
+        run: |
+          python3 scripts/gates/check_format_roles.py
+          python3 -m unittest discover -s scripts/gates/tests -p test_check_format_roles.py
+
       - name: Each package's pages name every function its headers define
         env:
           STAGED_TEXT_GATE: "snapshot"

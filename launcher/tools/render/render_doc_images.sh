@@ -68,6 +68,8 @@ CULL_LEVEL=2
 CULL_GIF_FPS=8
 # Colours in their palette: the camera moves every frame, so fewer keep them small.
 CULL_GIF_COLORS=64
+# Where Bistro's high view looks down on its street over the ground square: the depth figure's first frame.
+DEPTH_FIT_AT_MS=54300
 
 AUDIO_ONLY=0
 if [ "${1:-}" = --audio ]; then
@@ -128,9 +130,17 @@ case "${1:-}" in
     --orphans)
         # Cheap enough for a pull request: nothing is rendered. An image is
         # claimed when its name up to the first dot appears in the script that
-        # makes the launcher images, the scene scripts, or an app's doc_images.sh.
+        # makes the launcher images, the scene scripts, or an app's doc_images.sh,
+        # or it is a pair sheet doc_tables.py lists for the demo scene.
         comparing=1
         status=0
+        pairs=
+        if [ -f "$DEMO_SCENE" ]; then
+            . "$ROOT/scripts/lib/python.sh"
+            PYTHON=$(find_python) || exit 2
+            pairs=$("$PYTHON" "$TOOLS_DIR/doc_tables.py" --pairs "$DEMO_SCENE" "$DEMO_OBJECT") || exit 2
+            pairs=$(printf '%s\n' "$pairs" | awk '{print "compare-" $3 "-" $4}')
+        fi
         for image in $(cd "$IMAGES" && find . -type f | sed 's|^\./||' | LC_ALL=C sort); do
             case "$image" in render/gpu/*|render/meshlets/*) continue ;; esac
             stem=$(basename "$image")
@@ -143,6 +153,9 @@ case "${1:-}" in
                         continue
                     fi ;;
             esac
+            if printf '%s\n' "$pairs" | grep -qxF -- "$stem"; then
+                continue
+            fi
             if ! grep -qF -- "$stem" "$TOOLS_DIR/render_doc_images.sh" "$TOOLS_DIR"/scenes/*.sh "$TOOLS_DIR/doc_images_demo.sh" "$TOOLS_DIR/doc_import_examples.py" \
                 $app_image_scripts; then
                 claimed=0
@@ -250,13 +263,15 @@ run "$PYTHON" launcher/tools/math/math_figures.py --cc "$cc" --trs "$OUT/math" \
 run "$PYTHON" launcher/tools/math/math_bench_figures.py --out "$OUT/math" > "$WORK/math_bench_figures.log"
 # --orphans scans this runner: benchmark-families.png
 run "$PYTHON" launcher/tools/math/fast_path_figures.py --out "$OUT/math" > "$WORK/fast_path_figures.log"
-# --orphans scans this runner: fast-path-mathf_recip.png, fast-path-mathf_rsqrt.png, fast-path-mathf_rsqrt_approx.png, fast-path-mathf_repeat.png, fast-path-mathx_rsqrt_q30.png, fast-path-trig_sin.png
+# --orphans scans this runner: fast-path-mathf_recip.png, fast-path-mathf_recip_approx.png, fast-path-mathf_rsqrt.png, fast-path-mathf_rsqrt_approx.png, fast-path-mathf_repeat.png, fast-path-mathx_rsqrt_q30.png, fast-path-trig_sin.png
 run "$PYTHON" launcher/tools/math/geometry_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/geometry_figures.log"
 # --orphans scans this runner: rect-queries.png, circle-rect-queries.png, plane-distance.png, plane-from-points.png, plane-from-rows.png, frustum.png, box3-frustum.gif, box3-sphere-overlap.gif, box3-sphere-segments.png
 run "$PYTHON" launcher/tools/math/signal_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/signal_figures.log"
 # --orphans scans this runner: goertzel-response.png, goertzel-sweep.gif, pitch-curve.png
 run "$PYTHON" launcher/tools/math/stats_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/stats_figures.log"
 # --orphans scans this runner: stats-percentile-ranks.png
+run "$PYTHON" launcher/tools/math/inverse_depth_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/inverse_depth_figures.log"
+# --orphans scans this runner: inverse-depth-step.png
 run "$PYTHON" launcher/tools/physics/spring_figures.py --cc "$cc" --out "$OUT/physics" > "$WORK/spring_figures.log"
 # --orphans scans this runner: spring-line-wave.gif, spring-line-spacetime.png
 run "$PYTHON" launcher/tools/kinematics/orbit_figures.py --cc "$cc" --out "$OUT/kinematics" > "$WORK/orbit_figures.log"
@@ -325,8 +340,28 @@ for csv in docs/render/data/dynamic-resolution-quality-*.csv; do
     camera=${camera%.csv}
     set -- "$@" --quality "$camera=$csv"
 done
+[ -f docs/render/data/upscale-filter-quality.csv ] && set -- "$@" --upscale docs/render/data/upscale-filter-quality.csv
 run "$PYTHON" launcher/tools/r3d/dynres_report.py docs/render/data/dynamic-resolution-board.log \
-    "$@" --tables "$OUT/tables" --chart "$OUT/render/dynamic-resolution-flight.png" > "$WORK/dynres.log"
+    "$@" --tables "$OUT/tables" --chart "$OUT/render/dynamic-resolution-flight.png" --figures "$OUT/render" > "$WORK/dynres.log"
+# --orphans scans this runner: dynamic-resolution-stages.png, dynamic-resolution-stages-dark.png, dynamic-resolution-one-core.png, dynamic-resolution-one-core-dark.png, dynamic-resolution-sizes.png, dynamic-resolution-sizes-dark.png, dynamic-resolution-flight-sizes.png, dynamic-resolution-flight-sizes-dark.png
+# Surface upscaling's sheet and edge crops, from the frame the upscale
+# quality script keeps beside the page (<scene>-<size>-<frame>-*.png).
+UPSCALE_CROPS=3
+for reference in docs/render/data/upscale-frames/*-reference.png; do
+    [ -f "$reference" ] || continue
+    stem=${reference%-reference.png}
+    frame=${stem##*-}
+    size=${stem%-*}
+    size=${size##*-}
+    run "$PYTHON" launcher/tools/render/render_compare.py --out "$OUT/render/upscale-surface.png"         --reference-stills "frame $frame" "$reference" "$stem-nearest.png" "$stem-surface.png"         --label-a "nearest $size" --label-b "surface $size" --crops "$UPSCALE_CROPS" > "$WORK/upscale_surface.log"
+done
+# Every mesh scene's frame at each ladder step, and the predictor flown over it.
+run "$PYTHON" launcher/tools/r3d/dynres_replay.py docs/render/data/dynamic-resolution-steps-board.log --cc "$cc" \
+    --lead bistro-fitted-full --tables "$OUT/tables" --figures "$OUT/render" > "$WORK/dynres_replay.log"
+
+# Frame generation: every mesh scene's warped frames scored on the host.
+run sh launcher/tools/r3d/framegen/framegen_docs.sh --out "$OUT/render" "$OUT/tables" > "$WORK/framegen.log" 2>&1
+# --orphans scans this runner: framegen-bistro-holes.png, framegen-bistro-path.png, framegen-bistro-path-dark.png, framegen-bistro.gif, framegen-sponza-holes.png, framegen-pricing.png, framegen-pricing-dark.png, framegen-bistro-sheet.png, framegen-bistro-sheet.crops.png
 
 # The frame stages as shipped, what is inside transform and draw, and what
 # each debug view adds, from the pipeline captures beside the page.
@@ -351,6 +386,12 @@ done
 # cull-sponza-sheet.png, cull-sponza-counts.png, cull-sponza-chase.gif
 run "$PYTHON" launcher/tools/render/cull_cost.py docs/render/data/cull-cost-board.log --tables "$OUT/tables" \
     --chart "$OUT/render/cull-cost.png" > "$WORK/cull_cost.log"
+
+# The same frames with depth scaled by near_z and by the per-frame fit, cut
+# where the fit stops the most surfaces fighting.
+run "$PYTHON" launcher/tools/render/depth_figures.py --scene launcher/demo/bistro/bistro.scene.toml \
+    --object street_fitted_full --object ground --camera camera --at-ms "$DEPTH_FIT_AT_MS" \
+    --out "$OUT/render/depth-fit-bistro.png" --work "$WORK/depth" > "$WORK/depth.log"
 
 # Each picture's frame cost in each framebuffer layout, from the scene and
 # boot animation captures beside the render pages.
