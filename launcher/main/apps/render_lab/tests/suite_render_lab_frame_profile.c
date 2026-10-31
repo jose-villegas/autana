@@ -59,11 +59,11 @@ static const profile_scenario_t profile_scenarios[] = {
     {.scene = &scene_sponza[SCENE_BAKED_FITTED_FULL], .quarters = {{49536, 62165}, {47469, 58108}}},
     {.scene = &scene_sponza[SCENE_BAKED_FLAT_FITTED], .quarters = {{40285, 50300}, {39053, 48179}}},
     {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, &capybara_home, {{20941, 21286}, {21500, 21803}}},
-    {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, &capybara_front, {{0, 0}, {0, 0}}},
-    {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, &capybara_side, {{0, 0}, {0, 0}}},
-    {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, &capybara_back, {{0, 0}, {0, 0}}},
-    {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, &capybara_close, {{0, 0}, {0, 0}}},
-    {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, &capybara_blend, {{0, 0}, {0, 0}}},
+    {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, &capybara_front, {{20907, 21289}, {21305, 21590}}},
+    {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, &capybara_side, {{20921, 21268}, {21591, 21909}}},
+    {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, &capybara_back, {{20352, 20994}, {20989, 21423}}},
+    {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, &capybara_close, {{23002, 23384}, {23807, 24080}}},
+    {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, &capybara_blend, {{21806, 22738}, {22438, 22866}}},
     {&scene_bistro[SCENE_BAKED_FITTED_FULL], BISTRO_SCENE, BISTRO_CAMERA, NULL, {{41782, 62092}, {40404, 57696}}},
 };
 
