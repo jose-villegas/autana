@@ -119,7 +119,12 @@ class MeshPolicyTests(unittest.TestCase):
         self.assertEqual([np.count_nonzero(labels == i) for i in range(3)], [40, 40, 80])
         self.assertEqual(report['scene_total'], 160)
         self.assertTrue(all(row['policy'] == 'free' for row in report['meshes']))
+        # Carved meshes are paid first: under a ceiling the rest shrinks to what is left of it.
         allocation.ceiling = 159
+        *_, labels = simplify(points, np.full_like(points, 100), faces, owners, 80, colour_deviation=1, allocation=allocation)
+        self.assertEqual([np.count_nonzero(labels == i) for i in range(2)], [40, 40])
+        self.assertLessEqual(len(labels), 159)
+        allocation.ceiling = 79
         with self.assertRaisesRegex(SettingsError, 'ceiling'):
             simplify(points, np.full_like(points, 100), faces, owners, 80, colour_deviation=1, allocation=allocation)
         allocation.ceiling = None
