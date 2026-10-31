@@ -83,7 +83,7 @@ imu_queue_push_drain_timed(imu_queue_t* queue, const imu_sample_t* samples, int 
     const int retained = count < 0 ? 0 : count > IMU_FIFO_SAMPLES ? IMU_FIFO_SAMPLES : count;
     for (int i = 0; i < retained; i++) {
         const int index = (queue->head + queue->count - retained + i) % IMU_FIFO_SAMPLES;
-        queue->sample_us[index] = newest_us - (int64_t)(retained - i - 1) * sample_us;
+        queue->sample_us[index] = newest_us - ((int64_t)(retained - i - 1) * sample_us);
     }
 }
 
