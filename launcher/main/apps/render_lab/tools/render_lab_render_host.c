@@ -259,7 +259,7 @@ setup(int quarter) {
 
 /* With --view overdraw, the last frame's totals on stderr, beside its image. */
 static void
-report_overdraw(const render_frame_t* frame) {
+report_overdraw(const provider_frame_t* frame) {
     const render_context_t* context = render_context_main();
     if (frame->index + 1 != frame->count || context->debug_view != render_context_debug_view_named("overdraw")
         || context->debug_view_state == NULL) {
