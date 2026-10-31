@@ -170,7 +170,7 @@ tone_pulse_measure(const console_tone_args_t* args, float* db, audio_loopback_re
     pulse->pulse_ms = args->pulse_ms;
     pulse->start_us = timing_now_us();
     bool ok = audio_loopback_measure_observed(args->hz, args->ms, db, result, tone_pulse_drain, pulse);
-    const int64_t deadline = pulse->start_us + (int64_t)(args->pulse_ms + IMU_BUZZ_WINDOW_MS) * MATH_US_PER_MS;
+    const int64_t deadline = pulse->start_us + ((int64_t)(args->pulse_ms + IMU_BUZZ_WINDOW_MS) * MATH_US_PER_MS);
     while (ok && pulse->last_sample_us < (int64_t)args->pulse_ms * MATH_US_PER_MS && timing_now_us() < deadline) {
         timing_sleep_ms(SOUND_CONTROL_POLL_MS);
         ok = tone_pulse_drain(pulse);
