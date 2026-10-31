@@ -4,6 +4,7 @@ docs/power/data/datasheet_currents.json. Nothing here is measured: every row nam
 
     python launcher/tools/power/power_budget_doc.py --write
     python launcher/tools/power/power_budget_doc.py --check
+    python launcher/tools/power/power_budget_doc.py --figures DIR   # the doc-image runner: only the figure, into DIR
 """
 import argparse
 import json
@@ -103,7 +104,7 @@ def bars(data, state):
     return values
 
 
-def render_figure(data):
+def render_figure(data, directory=IMAGES):
     colours = dict(zip(data["blocks"], SLOTS))
     fig, axes = subplots(1, 2, (FIGURE_SIZE[0], FIGURE_HEIGHT), gridspec_kw={"width_ratios": FIGURE_COLUMNS})
     for axis, kind, scale, unit in ((axes[0], AWAKE, 1, "mA"), (axes[1], SLEEP, MICRO_PER_MILLI, "uA")):
@@ -118,8 +119,7 @@ def render_figure(data):
     for axis in axes:
         handles.update(zip(*reversed(axis.get_legend_handles_labels())))
     fig.legend(handles.values(), handles.keys(), loc="outside lower center", ncol=4, fontsize=LABEL_SIZE, frameon=False)
-    IMAGES.mkdir(parents=True, exist_ok=True)
-    save_themes(fig, IMAGES / f"{FIGURE_STEM}.png")
+    save_themes(fig, Path(directory) / f"{FIGURE_STEM}.png")
 
 
 def summary_block(data):
@@ -153,7 +153,11 @@ def main():
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--write", action="store_true")
     mode.add_argument("--check", action="store_true")
+    mode.add_argument("--figures", type=Path, metavar="DIR")
     args = parser.parse_args()
+    if args.figures:
+        render_figure(load(), args.figures)
+        return
     changed = generate(args.check)
     if args.check and changed:
         sys.exit("docs/power/Power-Budget.md is out of date: run " + REGENERATE)
