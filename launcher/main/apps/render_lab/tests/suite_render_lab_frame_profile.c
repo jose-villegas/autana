@@ -156,6 +156,12 @@ replay_pose(scene_t* scene, scene_entity_t entity, uint32_t duration_ms, int32_t
 static const profile_scenario_t* scenario;
 static size_t quarter_index;
 
+/* The row the scenario reports as. */
+static const char*
+scenario_row(void) {
+    return scenario->take == NULL ? scenario->scene->key : scenario->take->row;
+}
+
 /* The scenario's path as the render lab shows it, in the current quarter, its clip from the start. */
 typedef struct {
     scene_t* scene;
@@ -201,12 +207,6 @@ report_path(const scenario_path_t* path, const frame_profile_t* p) {
                     pose_line);
     }
     release_report();
-}
-
-/* The row the scenario reports as. */
-static const char*
-scenario_row(void) {
-    return scenario->take == NULL ? scenario->scene->key : scenario->take->row;
 }
 
 /* One console line, formatted, for the showing scene. */
