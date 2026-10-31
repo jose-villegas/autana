@@ -16,6 +16,10 @@ from r3d import import_settings
 from r3d.simplify import Allocation, simplify
 from soup import edge_counts, sphere, split_sphere
 
+CARVED_RULE = 40  # triangles a carved mesh asks for
+REST_ASK = 80  # triangles the rest asks for
+ROUNDING = 3  # meshoptimizer lands near a budget, not on it
+
 
 class MeshPolicyTests(unittest.TestCase):
     def test_schema(self):
@@ -107,9 +111,10 @@ class MeshPolicyTests(unittest.TestCase):
 
     def test_mesh_budget_does_not_subtract_from_rest(self):
         p, t = sphere(4)
-        points = np.concatenate([p, p + [6, 0, 0], p + [12, 0, 0]])
-        faces = np.concatenate([t, t + len(p), t + 2 * len(p)])
-        owners = np.repeat(np.arange(3), len(t))
+        rest_p, rest_t = sphere(6)
+        points = np.concatenate([p, p * [-1, 1, 1] + [6, 0, 0], rest_p + [12, 0, 0]])
+        faces = np.concatenate([t, t[:, ::-1] + len(p), rest_t + 2 * len(p)])
+        owners = np.concatenate([np.repeat([0, 1], len(t)), np.full(len(rest_t), 2)])
         report = {}
         allocation = Allocation(tri_o=owners, object_names=('vase_a', 'vase_b', 'rest'),
                                 material_names=('plain',), meshes=({'match': {'object': 'vase*'}, 'triangles': 40},),
@@ -281,6 +286,132 @@ class MeshPolicyTests(unittest.TestCase):
         np.testing.assert_allclose(q[:n] * [-1, 1, 1] + [6, 0, 0], q[n:], atol=1e-6)
         np.testing.assert_array_equal(out[:40][:, ::-1] + n, out[40:])
         self.assertFalse(np.array_equal(c[:n], c[n:]))
+
+    # Carved meshes are charged at what they emit; the rest scales into what is left of the ceiling.
+
+    @staticmethod
+    def _three_spheres():
+        """Two mirrored carved copies (one shared pass) and a rest sphere."""
+        p, t = sphere(4)
+        rest_p, rest_t = sphere(6)
+        points = np.concatenate([p, p * [-1, 1, 1] + [6, 0, 0], rest_p + [12, 0, 0]])
+        faces = np.concatenate([t, t[:, ::-1] + len(p), rest_t + 2 * len(p)])
+        owners = np.concatenate([np.repeat([0, 1], len(t)), np.full(len(rest_t), 2)])
+        allocation = Allocation(tri_o=owners, object_names=('vase_a', 'vase_b', 'rest'), material_names=('plain',),
+                                meshes=({'match': {'object': 'vase*'}, 'triangles': CARVED_RULE},))
+        return points, faces, owners, allocation
+
+    @staticmethod
+    def _lone_triangle_rest():
+        """A carved sphere and a one-triangle rest that touches nothing."""
+        p, t = sphere(5)
+        points = np.concatenate([p, [[20., 0, 0], [21, 0, 0], [20, 1, 0]]])
+        faces = np.concatenate([t, [[len(p), len(p) + 1, len(p) + 2]]])
+        owners = np.concatenate([np.zeros(len(t), dtype=int), [1]])
+        allocation = Allocation(tri_o=owners, object_names=('vase', 'rest'), material_names=('plain',),
+                                meshes=({'match': {'object': 'vase'}, 'triangles': CARVED_RULE},))
+        return points, faces, owners, allocation
+
+    def _run(self, points, faces, labels, rest, allocation, **args):
+        """Simplify; return the output labels and the budget of every simplify_with_update call, in order."""
+        from r3d import simplify as owner
+        with patch.object(owner, 'simplify_with_update', wraps=owner.simplify_with_update) as run:
+            try:
+                *_, out = simplify(points, np.full_like(points, 100), faces, labels, rest, colour_deviation=1,
+                                   allocation=allocation, **args)
+            finally:
+                self.budgets = [call.args[3] for call in run.call_args_list]
+        return out, self.budgets
+
+    def test_ceiling_charges_locked_seam_overshoot_not_the_rule_budget(self):
+        report = {}
+        rest_ask = REST_ASK + CARVED_RULE  # above the floor the locked border leaves the rest
+        p, t, _, allocation = split_sphere(12, CARVED_RULE, 'lock', report)
+        labels = np.zeros(len(t), dtype=int)
+        simplify(p, np.full_like(p, 100), t, labels, rest_ask, colour_deviation=1, allocation=allocation)
+        carved = report['passes'][0]['output_triangles']
+        self.assertGreater(carved, CARVED_RULE)
+        allocation.ceiling = carved + rest_ask - 2
+        out, budgets = self._run(p, t, labels, rest_ask, allocation)
+        self.assertLessEqual(len(out), allocation.ceiling)
+        self.assertEqual(budgets[-1], allocation.ceiling - carved)
+        self.assertLess(budgets[-1], allocation.ceiling - CARVED_RULE)
+
+    def test_ceiling_charges_every_shared_copy(self):
+        points, faces, owners, allocation = self._three_spheres()
+        copies = 2
+        allocation.ceiling = copies * CARVED_RULE + REST_ASK // 2
+        out, budgets = self._run(points, faces, np.zeros(len(faces), dtype=int), REST_ASK, allocation)
+        self.assertEqual(len(budgets), 2)  # one shared pass for both copies, then the rest
+        self.assertEqual(budgets[-1], REST_ASK // 2)
+        self.assertLessEqual(len(out), allocation.ceiling)
+
+    def test_rest_gets_the_leftover_of_the_ceiling(self):
+        points, faces, owners, allocation = self._three_spheres()
+        allocation.ceiling = 2 * CARVED_RULE + REST_ASK - 1
+        out, budgets = self._run(points, faces, np.zeros(len(faces), dtype=int), REST_ASK, allocation)
+        leftover = allocation.ceiling - 2 * CARVED_RULE
+        self.assertEqual(budgets[-1], leftover)
+        self.assertLessEqual(len(out), allocation.ceiling)
+        self.assertAlmostEqual(len(out) - 2 * CARVED_RULE, leftover, delta=ROUNDING)
+
+    def test_rest_parts_scale_proportionally_and_none_drops_to_zero(self):
+        p, t = sphere(7)
+        points = np.concatenate([p, p + [6, 0, 0]])
+        faces = np.concatenate([t, t + len(p)])
+        owners = np.repeat([0, 1], len(t))
+        labels = np.concatenate([np.zeros(len(t), dtype=int), np.arange(len(t)) % 2])
+        share = 0.3
+        asks = [round(REST_ASK * share), REST_ASK - round(REST_ASK * share)]
+
+        def run(ceiling):
+            allocation = Allocation(tri_o=owners, object_names=('vase', 'rest'), material_names=('a', 'b'),
+                                    meshes=({'match': {'object': 'vase'}, 'triangles': CARVED_RULE},), ceiling=ceiling)
+            return self._run(points, faces, labels, REST_ASK, allocation, reserved=[({0}, share)])
+
+        _, budgets = run(None)
+        self.assertEqual(sorted(budgets[1:]), sorted(asks))
+        room = REST_ASK // 2
+        out, budgets = run(CARVED_RULE + room)
+        self.assertEqual(sorted(budgets[1:]), sorted(ask * room // REST_ASK for ask in asks))
+        self.assertLessEqual(len(out), CARVED_RULE + room)
+        tight = len(asks)  # one triangle per rest part is all the ceiling leaves
+        _, budgets = run(CARVED_RULE + tight)
+        self.assertEqual(budgets[1:], [1] * tight)
+
+    def test_ceiling_boundaries_leave_the_rest_within_its_ask(self):
+        total_ask = 2 * CARVED_RULE + REST_ASK
+        for ceiling in (total_ask, total_ask + REST_ASK):
+            points, faces, owners, allocation = self._three_spheres()
+            allocation.ceiling = ceiling
+            out, budgets = self._run(points, faces, np.zeros(len(faces), dtype=int), REST_ASK, allocation)
+            self.assertEqual(budgets[-1], REST_ASK, ceiling)
+            self.assertEqual(len(out) - 2 * CARVED_RULE, REST_ASK, ceiling)
+
+    def test_ceiling_of_carved_plus_one_triangle_per_rest_part_passes(self):
+        points, faces, owners, allocation = self._lone_triangle_rest()
+        allocation.ceiling = CARVED_RULE + 1
+        out, _ = self._run(points, faces, owners, 1, allocation)
+        self.assertEqual(len(out), allocation.ceiling)
+
+    def test_carved_alone_over_ceiling_raises_before_the_rest_is_simplified(self):
+        points, faces, owners, allocation = self._lone_triangle_rest()
+        allocation.ceiling = CARVED_RULE
+        with self.assertRaisesRegex(SettingsError, 'ceiling'):
+            self._run(points, faces, owners, 1, allocation)
+        self.assertEqual(len(self.budgets), 1)  # the carved pass only
+
+    def test_variant_triangles_may_not_exceed_its_ceiling(self):
+        steps = SimpleNamespace(simplify=True)
+        ceiling = 120
+        for triangles, accepted in ((ceiling - 1, True), (ceiling, True), (ceiling + 1, False)):
+            value = {'name': 'v', 'triangles': triangles, 'ceiling': ceiling}
+            with self.subTest(triangles=triangles):
+                if accepted:
+                    self.assertEqual(import_settings.load_variant(value, steps, 'variant').triangles, triangles)
+                else:
+                    with self.assertRaisesRegex(SettingsError, 'ceiling'):
+                        import_settings.load_variant(value, steps, 'variant')
 
 
 if __name__ == '__main__':
