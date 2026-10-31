@@ -16,6 +16,8 @@ typedef enum {
     IMAGE_RGB565BE = IMAGE_FORMAT(1, 16), /* RGB565 high byte first (rgb565be_t) */
     IMAGE_MONO1 = IMAGE_FORMAT(2, 1),     /* most significant bit leftmost, 1 = ink */
     IMAGE_INDEXED8 = IMAGE_FORMAT(3, 8),  /* one byte per pixel: a palette index */
+    IMAGE_U16 = IMAGE_FORMAT(4, 16),      /* raw per-pixel map */
+    IMAGE_U32 = IMAGE_FORMAT(5, 32),      /* raw per-pixel map */
 } image_format_t;
 
 /* A view: its pixels belong to the caller (a pack entry, a buffer) and must outlive it;
@@ -24,25 +26,24 @@ typedef struct {
     void* pixels;
     image_format_t format;
     uint16_t width, height;
-    uint32_t stride; /* pixels from one row's start to the next */
+    uint32_t pitch; /* bytes from one row's start to the next */
 } image_t;
+
+#if UINTPTR_MAX == UINT32_MAX
+_Static_assert(sizeof(image_t) == 16, "image views fit four words");
+#endif
 
 static inline int
 image_format_bits(image_format_t format) {
-    return format & 0xFF;
+    return format & UINT8_MAX;
 }
 
-/* Bytes from one row's start to the next, exact only when stride × bits per
- * pixel is a multiple of CHAR_BIT. A loop over rows takes it once and steps. */
-static inline size_t
-image_row_bytes(const image_t* image) {
-    const int bits = image_format_bits(image->format);
-    return bits >= CHAR_BIT ? (size_t)image->stride * (bits / CHAR_BIT) : image->stride / CHAR_BIT;
-}
+/* Constant expression so image views can be statically initialised. */
+#define IMAGE_PITCH(format, width) ((uint32_t)(((uint64_t)(width) * ((format) & UINT8_MAX) + CHAR_BIT - 1) / CHAR_BIT))
 
 static inline void*
 image_row(const image_t* image, int y) {
-    return (char*)image->pixels + ((size_t)y * image_row_bytes(image));
+    return (char*)image->pixels + ((size_t)y * image->pitch);
 }
 
 /* The rect must be inside the image; MONO1 x must be a multiple of CHAR_BIT. */

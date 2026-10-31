@@ -20,7 +20,6 @@ why does my liquid material look wrong, shading pipeline	docs/sand/Shading-and-C
 how do I capture a frame-budget performance report for sand	docs/sand/Testing-Sand.md	Capturing a frame-budget report
 explosion and thrown chunk mechanics, impulse	docs/sand/Impulse-Mechanics.md	Impulse Mechanics: things in flight
 render_lab wireframe scene generator	launcher/tools/render/scenes/README.md	Render/Scenes
-how do I add a screen to the host editor	editor/README.md	Adding a screen
 running qemu tests without a board	docs/testing/QEMU.md	QEMU: the device image with no board
 pinning pixels for a rendered scene against a reference capture	docs/tools/Render-Harness.md	Diffing against a capture
 what suite naming pattern does SUITE_REGISTER expect	docs/testing/Writing-a-Test.md	Adding a suite
@@ -65,7 +64,7 @@ frame cost	docs/tools/Frame-Cost.md	Frame cost
 which chip handles the pwr button and how is a press read	docs/input/Buttons.md	Buttons
 tearing effect te panel scan	docs/notes/Display-and-Rendering.md	Tearing and the TE line
 port lost chip reset capture through reboot panic backtrace decode	docs/notes/Debugging.md	After a crash
-blender animation rig fbx export gait preview	docs/render/Skinned-Meshes.md	Import
+blender animation rig fbx export gait preview	docs/render/animation/Skinned-Meshes.md	Import
 IRAM placement memory map budget linker fragments	docs/memory/Internal-Memory-Map.md	Placement rules and gate
 how do I build the firmware and run host tests	docs/testing/Host-Tests.md	Host Tests
 dirty tracking all dirty framebuffer mode ownership	docs/gfx/Dirty-Tracking.md	Dirty tracking
@@ -82,7 +81,7 @@ SCREENSHOT_BEGIN SCREENSHOT_END framing on the console	docs/tools/Console-Framin
 how does a verb end a multi-line reply	docs/tools/Console-Framing.md	Other verbs
 why is the panel clock reset between device tests	docs/testing/Test-State-Reset.md	What is reset
 panel_clock_pin and heal defaults in tearDown	docs/testing/Test-State-Reset.md	Pinning a clock for a timing test
-where is the camera lens stored and which fields animate	docs/render/Camera.md	Which lens fields animate
-how does a camera's field of view get animated from a clip	docs/render/Camera.md	How the animation binder finds them
+where is the camera lens stored and which fields animate	docs/render/scene/Camera.md	Which lens fields animate
+how does a camera's field of view get animated from a clip	docs/render/scene/Camera.md	How the animation binder finds them
 launch_process_tree job object kill on close child outlives parent	docs/tools/Process-Trees.md	The problem
 how is a whole process tree stopped on Windows and Linux	docs/tools/Process-Trees.md	The functions

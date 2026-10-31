@@ -14,7 +14,7 @@ endfunction()
 
 # Registers the calling package: its folder's name, include/ as the include root,
 # src/**/*.c as its sources (none makes it header-only) and <name>_requires as
-# what it uses. ESP-IDF registers it as a component; plain CMake (the editor, a
+# what it uses. ESP-IDF registers it as a component; plain CMake (a
 # standalone build) gets a library target of that name, plus the package's tests
 # when it is the top-level project.
 #

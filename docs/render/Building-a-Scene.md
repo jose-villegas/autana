@@ -22,8 +22,8 @@ C compiler for the [render harness](../tools/Render-Harness.md).
 
 ## 1. Import a mesh
 
-An import file describes geometry: its source model and the output directory
-for a plain albedo import.
+An import file describes geometry: its source model and the name its mesh
+takes in the pack.
 
 ```toml
 [source]
@@ -31,11 +31,10 @@ path = "hall/hall.obj"           # relative to this file
 credit = "Hall, by A. Modeller, CC BY 4.0."
 
 [output]
-directory = ".."
 name = "hall"                    # the mesh's asset id in the pack
 ```
 
-See [source](Mesh-Import.md#source) for where source files live and how to pull them with Git LFS.
+See [source](offline/Mesh-Import.md#source) for where source files live and how to pull them with Git LFS.
 
 With only these it imports the mesh as authored: its triangles, with each
 vertex coloured by its material's albedo and no light. Geometry options such as
@@ -60,7 +59,7 @@ visibility = { source = "camera_region", rounds = 160 }
 Add more mesh renderers to place more meshes; give one a `position`, a
 `rotation` in degrees or a positive `scale` to move it. A renderer with
 `bake = true` must sit at the identity transform, because it is baked where it
-stands ([Scene-Files.md](Scene-Files.md)); one without it may go anywhere.
+stands ([Scene-Files.md](scene/Scene-Files.md)); one without it may go anywhere.
 
 ## 3. Light it
 
@@ -100,7 +99,7 @@ intensity = 3.0
 
 The camera object has the lens and, if it flies a glTF animation, the clip:
 its `NAME.anim.toml`, relative to the scene file, and the node that is the
-camera ([Animation-Tracks.md](Animation-Tracks.md)). A `region` (the box
+camera ([Animation-Tracks.md](animation/Animation-Tracks.md)). A `region` (the box
 region `visibility` culls against) belongs here only when a placed mesh has
 that step:
 
@@ -120,11 +119,10 @@ near_z = 6.0
 python launcher/tools/r3d/mesh_import.py path/to/hall.scene.toml
 ```
 
-This writes `<scene>.<variant>.mesh` for each baked renderer. A mesh without
-`bake = true` can also be imported on its own. Baked `.mesh` entries are
-committed as written and never reformatted. The firmware build writes the
+This bakes each renderer's mesh into the [bake cache](../assets/Bakes.md); a
+mesh without `bake = true` can also be imported on its own. The firmware build writes the
 scene's [pack](../assets/Building-Packs.md#packs), named after the scene: its
-[scene entry](Scene-Files.md#scne-v5), baked from the scene file, its
+[scene entry](../assets/formats/SCNE.md), baked from the scene file, its
 every mesh, skin, skeleton and clip it names. It flashes the pack with the app
 ([assets/README.md](../assets/Building-Packs.md#flashing)).
 
@@ -161,7 +159,7 @@ something, `scene_entity_set_local(hall, statue, where)`; to hide
 it, `scene_entity_set_enabled()`. Several scenes may be loaded at once, and
 `scene_activate()` on another's camera changes what is drawn. How a frame is
 ordered against the panel send and the storage behind it are in
-[Scene-Manager.md](Scene-Manager.md); how the raster draws each instance is in
+[Scene-Manager.md](scene/Scene-Manager.md); how the raster draws each instance is in
 [Mesh-Rendering.md](Mesh-Rendering.md). To see the scene without a board, declare
 it for the [render harness](../tools/Render-Harness.md#declaring-a-scene), which
 composes the active scene before the app's `frame()`, as the shell does.

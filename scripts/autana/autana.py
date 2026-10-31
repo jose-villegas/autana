@@ -346,8 +346,10 @@ def idf_note(project, emit=True):
 def flash(args):
     project = resolve_project()
     seed, args = pop_layout_seed(args)
-    _, variant, seen = variant_request("flash", args, ("--quiet", "--perf-scope", "--hot-tunables"), project)
+    _, variant, seen = variant_request("flash", args, ("--quiet", "--perf-scope", "--frame-laps", "--hot-tunables"),
+                                       project)
     refuse_release_seed(seed, variant)
+    refuse_unscoped_laps(seen)
     if "--hot-tunables" in seen and variant == "release":
         sys.exit("autana: --hot-tunables needs dev or diag")
     quiet = "--quiet" in seen
@@ -358,11 +360,18 @@ def flash(args):
     )
     if perf_scope:
         command.append("--perf-scope")
+    if "--frame-laps" in seen:
+        command.append("--frame-laps")
     if hot_tunables:
         command.append("--hot-tunables")
     if seed is not None:
         command += ["--layout-seed", seed]
     return call_device(command) if quiet else run_streaming_its_log(command)
+
+
+def refuse_unscoped_laps(seen):
+    if "--frame-laps" in seen and "--perf-scope" not in seen:
+        sys.exit("autana: --frame-laps times the perf scope's frame stages, so it needs --perf-scope")
 
 
 def build_diag_check(project):
@@ -387,8 +396,10 @@ def build(args):
             sys.exit("usage: autana build diag --check")
         return build_diag_check(project)
     seed, args = pop_layout_seed(args)
-    _, variant, seen = variant_request("build", args, ("--perf-scope", "--hot-tunables", "--configure"), project)
+    _, variant, seen = variant_request("build", args, ("--perf-scope", "--frame-laps", "--hot-tunables", "--configure"),
+                                       project)
     refuse_release_seed(seed, variant)
+    refuse_unscoped_laps(seen)
     if "--hot-tunables" in seen and variant == "release":
         sys.exit("autana: --hot-tunables needs dev or diag")
     flags = sorted(seen) + (["--layout-seed", seed] if seed is not None else [])
@@ -662,17 +673,18 @@ def sound(args):
 def parse_tone(reply):
     match = re.fullmatch(
         r"TONE (heard|not heard) ([0-9]+) Hz: (-?[0-9]+\.[0-9]+) dB "
-        r"\(silence (-?[0-9]+\.[0-9]+) dB\), path (internal|acoustic), "
+        r"\(silence (-?[0-9]+\.[0-9]+) dB\), (?:noise (-?[0-9]+\.[0-9]+) dBFS, )?path (internal|acoustic), "
         r"measured (-?[0-9]+\.[0-9]+ Hz|n/a), open ([0-9]+) B DMA"
         r"(?:, thd (-?[0-9]+\.[0-9]+|n/a) dB, peak (-?[0-9]+\.[0-9]+) dBFS)?"
         r"(?:, shake (?:n/a|([0-9]+\.[0-9]+) mg rms ([0-9]+\.[0-9]+) mg peak \(silence ([0-9]+\.[0-9]+) mg rms\)))?", reply)
     if not match:
         raise ValueError(f"invalid TONE reply: {reply}")
-    heard, hz, tone_db, silence_db, path, measured_hz, dma, thd_db, peak_dbfs, *shake = match.groups()
+    heard, hz, tone_db, silence_db, noise_dbfs, path, measured_hz, dma, thd_db, peak_dbfs, *shake = match.groups()
     shake_rms_mg, shake_peak_mg, silence_shake_rms_mg = (None if value is None else float(value) for value in shake)
     measured_hz = None if measured_hz == "n/a" else float(measured_hz.removesuffix(" Hz"))
     # hz_error is Hz: measured minus requested.
     return {"hz": int(hz), "tone_db": float(tone_db), "silence_db": float(silence_db),
+            "noise_dbfs": None if noise_dbfs is None else float(noise_dbfs),
             "heard": heard == "heard", "open_dma_bytes": int(dma), "path": path,
             "thd_db": None if thd_db in (None, "n/a") else float(thd_db), "peak_dbfs": None if peak_dbfs is None else float(peak_dbfs),
             "measured_hz": measured_hz, "hz_error": None if measured_hz is None else measured_hz - int(hz),
@@ -1221,6 +1233,28 @@ def capture_screenshot(out, view):
     return call_device(command)
 
 
+def mic(args):
+    import argparse
+    parser = argparse.ArgumentParser(prog="autana mic")
+    parser.add_argument("action", choices=("record",))
+    parser.add_argument("ms", type=int)
+    parser.add_argument("--settle", type=int)
+    parser.add_argument("--at", nargs=3, action="append", type=lambda word: int(word, 0), default=[])
+    parser.add_argument("-o", "--out", required=True)
+    parser.add_argument("--json", action="store_true")
+    parsed = parser.parse_args(args)
+    if refused_as_busy():
+        return EXIT_BUSY
+    command = device_command("mic-record") + [str(parsed.ms), "--out", parsed.out]
+    if parsed.settle is not None:
+        command += ["--settle", str(parsed.settle)]
+    for write in parsed.at:
+        command += ["--at", *map(str, write)]
+    if parsed.json:
+        command.append("--json")
+    return call_device(command)
+
+
 def freeze(args):
     reject_unknown("freeze", args)
     if args:
@@ -1738,11 +1772,11 @@ COMMAND_GROUPS = (
     )),
     ("build", "Build and flash", (
         Command("build", build, (
-            ("build [rel|dev|diag] [--perf-scope] [--layout-seed N] [--hot-tunables] [--configure]",
-             "build without a board lock; dev when omitted; --layout-seed N > 0 pads the layout, 0 is the plain build; --hot-tunables adds live hot-path knobs; --configure only writes sdkconfig and compile_commands.json"),
+            ("build [rel|dev|diag] [--perf-scope [--frame-laps]] [--layout-seed N] [--hot-tunables] [--configure]",
+             "build without a board lock; dev when omitted; --layout-seed N > 0 pads the layout, 0 is the plain build; --frame-laps adds the laps inside the frame stages; --hot-tunables adds live hot-path knobs; --configure only writes sdkconfig and compile_commands.json"),
             ("build diag --check", "the diagnostics build plus the complexity ratchet, no board"))),
-        one("flash", flash, "flash [rel|dev|diag] [--quiet] [--perf-scope] [--layout-seed N] [--hot-tunables]",
-            "build, then flash under the lock; dev when omitted; --quiet logs only; --perf-scope (diag) builds the perf-scoped image"),
+        one("flash", flash, "flash [rel|dev|diag] [--quiet] [--perf-scope [--frame-laps]] [--layout-seed N] [--hot-tunables]",
+            "build, then flash under the lock; dev when omitted; --quiet logs only; --perf-scope (diag) builds the perf-scoped image, --frame-laps adds the laps inside its frame stages"),
         one("buildid", buildid, "buildid [--json]", "the BUILD_ID the board runs, to check against what was flashed"),
     )),
     ("tests", "Tests", (
@@ -1771,6 +1805,8 @@ COMMAND_GROUPS = (
             ("coredump [--elf PATH]", "the last panic's core dump, saved to the records and decoded against the build that crashed; resets the board"),
             ("coredump --core FILE [--elf PATH]", "decode a saved dump; no board"),
             ("coredump --erase", "clear the dump so the next crash's is told apart; resets the board"),)),
+        one("mic", mic, "mic record <ms> [--settle ms] [--at ms reg value]... -o take.wav [--json]",
+            "record microphone PCM and codec state; --at writes a codec register during the take"),
         Command("screenshot", screenshot, (
             ("screenshot [--as-shown|--framebuffer] [-o PATH]", "PATH.png plus a PATH.json state snapshot; landscape by default"),
             ("screenshot --frames N -o PATH", "N frames as PATH-00 on: the loop is frozen and stepped a frame between captures, then resumed"),)),

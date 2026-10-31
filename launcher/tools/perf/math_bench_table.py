@@ -22,6 +22,7 @@ DEVICE_ONLY_INSTRUCTION = "device-only instruction"
 # ESP-DSP docs/esp_bm_results.csv at 3c8ac0fdfec8: S3, ANSI, O2, N=256 (ESP-DSP Library Benchmarks).
 ESP_DSP_DOTPROD_F32_N256_ANSI_O2_CYCLES = 1311
 NUMBER = r"[0-9]+(?:\.[0-9]+)?"
+ERROR_NUMBER = rf"(?:{NUMBER}(?:[eE][+-]?[0-9]+)?|0[xX][0-9a-fA-F]+(?:\.[0-9a-fA-F]*)?[pP][+-]?[0-9]+)"
 CAPTURE_ROW = re.compile(
     rf"MATHBENCH name=(.+) type=(\w+) ops=([1-9][0-9]*) warm=({NUMBER}) cold=({NUMBER}) insn=({NUMBER})")
 SYMBOL = re.compile(r"^[0-9a-fA-F]+ <([^>]+)>:$")
@@ -171,10 +172,17 @@ def read_fpu(path):
     return rows, result
 
 
+def error_number(token):
+    try:
+        return float.fromhex(token) if token.lower().startswith("0x") else float(token)
+    except OverflowError as error:
+        raise ValueError(f"nonfinite error measurement: {token}") from error
+
+
 def parse_errors(text):
     result = {}
     pattern = re.compile(
-        rf"MATHERROR name=(.+) type=(\w+) max=({NUMBER}(?:[eE][+-]?[0-9]+)?) "
+        rf"MATHERROR name=(.+) type=(\w+) max=({ERROR_NUMBER}) "
         r"unit=(ulp|relative|lsb) method=(proof|sweep)(?: inputs=[0-9]+)?")
     for line in text.splitlines():
         if not line.startswith("MATHERROR "):
@@ -183,11 +191,13 @@ def parse_errors(text):
         if match is None:
             raise ValueError(f"malformed error measurement: {line}")
         label, kind, maximum, unit, method = match.groups()
-        if not math.isfinite(float(maximum)):
+        parsed = error_number(maximum)
+        if not math.isfinite(parsed):
             raise ValueError(f"nonfinite error measurement: {line}")
         key = (label, kind)
         if key in result:
             raise ValueError(f"duplicate error measurement: {line}")
+        maximum = str(parsed) if maximum.lower().startswith("0x") else maximum
         result[key] = f"{maximum} {unit} ({method})"
     return result
 
@@ -195,7 +205,7 @@ def parse_errors(text):
 def parse_bins(text):
     result = {}
     number = rf"{NUMBER}(?:[eE][+-]?[0-9]+)?"
-    pattern = re.compile(rf"MATHERRORBIN name=(.+) type=(\w+) x=({number}) max=({number}) unit=(ulp|relative|lsb)(?: axis=(?:period|phase|range))?")
+    pattern = re.compile(rf"MATHERRORBIN name=(.+) type=(\w+) x=({number}) max=({ERROR_NUMBER}) unit=(ulp|relative|lsb)(?: axis=(?:period|phase|range))?")
     for line in text.splitlines():
         if not line.startswith("MATHERRORBIN"):
             continue
@@ -203,7 +213,7 @@ def parse_bins(text):
         if match is None:
             raise ValueError(f"malformed error bin: {line}")
         label, kind, x, maximum, unit = match.groups()
-        x, maximum = float(x), float(maximum)
+        x, maximum = float(x), error_number(maximum)
         bins = result.setdefault((label, kind), [])
         if not math.isfinite(x) or not math.isfinite(maximum) or any(row[0] == x for row in bins):
             raise ValueError(f"nonfinite or duplicate error bin: {line}")

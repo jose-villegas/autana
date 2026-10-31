@@ -69,7 +69,7 @@ typedef struct {
 
 static const ladder_t ladders[] = {
     {"width", width_steps, 7, 6, 4},
-    {"height", render_lab_ladder, RENDER_LAB_LADDER_STEPS, RENDER_LAB_LADDER_RECOVERY, RENDER_LAB_LADDER_HALF},
+    {"height", render_lab_ladder, RENDER_LAB_LADDER_STEPS, RENDER_LAB_LADDER_STEPS, RENDER_LAB_LADDER_HALF},
 };
 #define LADDER_COUNT ((int)(sizeof ladders / sizeof ladders[0]))
 
@@ -106,11 +106,11 @@ add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
     r3d_lens_fit(draw_lens, raster->width, raster->height);
     sum->buffers = raster_carve(raster);
     const raster_buffers_t* b = &sum->buffers;
-    const int visible = r3d_pipeline_cull(&mesh, draw_lens, b->culled + 1, b->work[0]);
+    const int visible = r3d_pipeline_cull(&mesh, draw_lens, b->culled + 1, b->work[0], NULL);
     r3d_pipeline_transform(&mesh, draw_lens, b->culled + 1, visible, b->cs, b->rows);
     const size_t pixels = (size_t)raster->width * (size_t)raster->height;
     const int64_t clear_from = timing_now_us();
-    memset(gfx_render_target_depth(&b->picture, 0), 0, pixels * sizeof(uint16_t));
+    memset(gfx_target_depth(&b->picture, 0), 0, pixels * sizeof(uint16_t));
     sum->clear += timing_now_us() - clear_from;
     const int64_t setup = one_core_draw_us(raster, b, draw_lens, visible, R3D_SPAN_STOP_AFTER_SETUP);
     const int64_t edges = one_core_draw_us(raster, b, draw_lens, visible, R3D_SPAN_STOP_AFTER_EDGES);
@@ -120,6 +120,21 @@ add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
     sum->edges += edges - setup;
     sum->carry += carry - edges;
     sum->fill += whole - carry;
+}
+
+/* One frame at the pose just seeked, drawn and upscaled; its triangles. Out
+ * of line, so the view is off the stack while the spans are split. */
+static __attribute__((noinline)) int64_t
+timed_pose(raster_t* raster, gfx_color_t* destination, int32_t* frame_us) {
+    const render_view_t view =
+        sponza_suite_view(lens, scene, camera_entity, (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
+    const int64_t start = timing_now_us();
+    const raster_stats_t stats = raster_draw(raster, &view);
+    raster->present = render_lab_present();
+    const resolution_step_t composed = raster_compose_size(raster);
+    raster_upscale(raster, destination, composed.width, composed.height);
+    *frame_us = (int32_t)(timing_now_us() - start);
+    return stats.triangles;
 }
 
 static int64_t
@@ -133,15 +148,7 @@ measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size,
     int64_t triangles = 0;
     for (uint32_t t_ms = 0; t_ms < period && poses < POSES_MAX; t_ms += POSE_EVERY_MS) {
         (void)scene_animator_seek(scene, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
-        const render_view_t view =
-            sponza_suite_view(lens, scene, camera_entity, (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
-        const int64_t start = timing_now_us();
-        const raster_stats_t stats = raster_draw(raster, &view);
-        raster->present = render_lab_present();
-        const resolution_step_t composed = raster_compose_size(raster);
-        raster_upscale(raster, destination, composed.width, composed.height);
-        frame_us[poses++] = (int32_t)(timing_now_us() - start);
-        triangles += stats.triangles;
+        triangles += timed_pose(raster, destination, &frame_us[poses++]);
     }
     (void)frame_cost_take_report((uint32_t)poses, report, FRAME_COST_REPORT_MAX);
 
@@ -344,7 +351,7 @@ calibrate(const resolution_config_t* config, resolution_model_t* model) {
                 const int64_t start = timing_now_us();
                 const raster_stats_t stats = raster_draw(raster, view);
                 const int64_t drawn = timing_now_us();
-                (void)render_context_compose(context, destination, half);
+                (void)render_context_compose(context, destination, half, NULL);
                 samples[count++] = (resolution_sample_t){step, stats.triangles, (int32_t)(drawn - start),
                                                          (int32_t)(timing_now_us() - drawn)};
             }
@@ -416,7 +423,7 @@ fly(const char* camera, const char* policy, const ladder_t* ladder, const resolu
     TEST_ASSERT_TRUE(frames > 0 && frames <= FRAMES_MAX);
     render_lab_apply_raster_settings();
     render_context_set_dynamic_resolution(render_context_main(), config, model, ladder == NULL ? 0 : ladder->half);
-    scene_target_t target = {picture, GFX_WIDTH, GFX_HEIGHT, NULL};
+    scene_target_t target = {picture, GFX_WIDTH, GFX_HEIGHT, NULL, NULL};
     gfx_color_t* half = memory_alloc(sizeof(*half) * (GFX_WIDTH / 2) * (GFX_HEIGHT / 2), MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(half);
     target.half_pixels = half;
@@ -472,7 +479,7 @@ fit_ladder(const ladder_t* ladder, int32_t budget_us, resolution_config_t* confi
     log_fit(ladder, config, model);
 }
 
-static const int32_t budgets_us[] = {RENDER_LAB_BUDGET_ON_MS * MATH_US_PER_MS, 75000};
+static const int32_t budgets_us[] = {RENDER_LAB_TARGET_MS * MATH_US_PER_MS, 75000};
 
 void
 test_dynamic_resolution_policies_along_the_path(void) {

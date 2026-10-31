@@ -35,6 +35,13 @@ static uint16_t* depth;
 static r3d_pipeline_work_t* work;
 
 static bool cull_changed;
+
+/* The panel takes pixels big-endian: the byte swap back to the native 16 bits. */
+static uint16_t
+native_of(gfx_color_t stored) {
+    return (uint16_t)((stored >> 8) | (stored << 8)); /* magic: swaps the two bytes of a 16-bit pixel */
+}
+
 static int32_t saved_cull;
 
 static void release_fixture(void);
@@ -259,7 +266,7 @@ test_colours_stay_within_the_vertex_range_even_at_the_edges(void) {
         if (depth[i] == 0) {
             continue;
         }
-        const uint16_t native = (uint16_t)((color[i] >> 8) | (color[i] << 8));
+        const uint16_t native = native_of(color[i]);
         const int r = native >> 11, g = (native >> 5) & 63, b5 = native & 31;
         /* A wrapped channel would show as a colour whose channels disagree. */
         TEST_ASSERT_INT_WITHIN(1, r, b5);
@@ -330,7 +337,7 @@ test_a_steep_sliver_puts_no_pixel_nearer_than_its_nearest_corner(void) {
 static uint32_t
 next_random(uint32_t* state) {
     *state = (*state * 1664525u) + 1013904223u;
-    return *state >> 8;
+    return *state >> 8; /* magic: the generator's low byte is its weakest, so it is dropped */
 }
 
 /* A subpixel position in [lo, lo + span), landing on a pixel centre or a
@@ -1215,7 +1222,7 @@ quad_mesh(const uint16_t (*triangles)[3], bool double_sided, const uint16_t* fac
 static int
 draw_quad_mesh(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_span_target_t* target) {
     uint16_t visible[1];
-    const int count = r3d_pipeline_cull(mesh, lens, visible, pipeline_work());
+    const int count = r3d_pipeline_cull(mesh, lens, visible, pipeline_work(), NULL);
     r3d_pipeline_vertex_t cs[4];
     r3d_pipeline_transform(mesh, lens, visible, count, cs, NULL);
     r3d_pipeline_draw(mesh, lens, visible, count, cs, NULL, target, pipeline_work());
@@ -1290,7 +1297,7 @@ test_a_cluster_behind_the_camera_is_culled(void) {
         render_view_fixture_at(&(fixture_camera_t){{0, 0, -400}, {0, 0, -1}, 0.5f, 1.0f}, (viewport_t){W, H, 0});
     r3d_lens_init(&lens, &frame_view, 1);
     uint16_t visible[1];
-    TEST_ASSERT_EQUAL_INT(0, r3d_pipeline_cull(&mesh, &lens, visible, pipeline_work()));
+    TEST_ASSERT_EQUAL_INT(0, r3d_pipeline_cull(&mesh, &lens, visible, pipeline_work(), NULL));
 }
 
 /* A floor running from behind the camera to far ahead, seen from above it
@@ -1494,7 +1501,7 @@ draw_parts(const parts_t* p, const r3d_lens_t* lens, const r3d_span_target_t* t,
     TEST_ASSERT_NOT_NULL(visible);
     TEST_ASSERT_NOT_NULL(cs);
     TEST_ASSERT_NOT_NULL(rows);
-    const int count = r3d_pipeline_cull(&p->mesh, lens, visible, pipeline_work());
+    const int count = r3d_pipeline_cull(&p->mesh, lens, visible, pipeline_work(), NULL);
     r3d_pipeline_transform(&p->mesh, lens, visible, count, cs, use_rows ? rows : NULL);
     r3d_pipeline_draw(&p->mesh, lens, visible, count, cs, use_rows ? rows : NULL, t, pipeline_work());
     free(rows);
@@ -1540,7 +1547,7 @@ test_colour_along_the_near_cut_is_interpolated_to_the_cut(void) {
     for (int x = 0; x < W; x++) {
         const int i = first_row * W + x;
         if (depth[i] != 0) {
-            const uint16_t native = (uint16_t)((color[i] >> 8) | (color[i] << 8));
+            const uint16_t native = native_of(color[i]);
             TEST_ASSERT_INT_WITHIN_MESSAGE(2, 51 >> 3, native >> 11, "the cut edge does not carry the cut's colour");
         }
     }
@@ -1699,12 +1706,12 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
     const span_of_bytes_t parts[] = {
         {(const char*)b.cs, sizeof(r3d_pipeline_vertex_t) * (size_t)p->mesh.vertex_count},
         {(const char*)b.rows, sizeof(r3d_pipeline_rows_t) * (size_t)p->mesh.cluster_count},
-        {(const char*)b.culled, raster_culled_bytes(&raster)},
+        {(const char*)b.depth_near, raster_culled_bytes(&raster)},
         {(const char*)b.work[0], r3d_pipeline_work_bytes()},
         {(const char*)b.work[1], r3d_pipeline_work_bytes()},
         {(const char*)b.draw, bytes - (size_t)((const char*)b.draw - scratch)},
-        {(const char*)gfx_render_target_color(&b.picture, 0), sizeof(uint16_t) * W * H},
-        {(const char*)gfx_render_target_depth(&b.picture, 0), sizeof(uint16_t) * W * H},
+        {(const char*)gfx_target_color(&b.picture, 0), sizeof(uint16_t) * W * H},
+        {(const char*)gfx_target_depth(&b.picture, 0), sizeof(uint16_t) * W * H},
     };
     size_t total = 0;
     for (size_t i = 0; i < sizeof parts / sizeof parts[0]; i++) {
@@ -1717,20 +1724,24 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
         }
         total += parts[i].size;
     }
-    const char* const maps = (const char*)gfx_render_target_depth(&b.picture, 0) + sizeof(uint16_t) * W * H;
+    const char* const maps = (const char*)gfx_target_depth(&b.picture, 0) + sizeof(uint16_t) * W * H;
     TEST_ASSERT_TRUE((const char*)b.upscale == maps);
     const size_t padding = (size_t)((const char*)b.work[0] - maps);
     TEST_ASSERT_TRUE(padding < _Alignof(r3d_span_target_t));
     TEST_ASSERT_EQUAL_UINT32((uint32_t)bytes, (uint32_t)(total + padding));
-    TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_render_target_color(&b.picture, 0) % 4);
-    TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_render_target_depth(&b.picture, 0) % 4);
-    /* The census list holds every instance's slot and takes whole cache ways,
-     * so the parts after it keep the cache sets they have without it. */
-    TEST_ASSERT_TRUE(raster_culled_bytes(&raster) >= sizeof(uint16_t) * raster_culled_length(&raster));
-    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)(((const char*)b.cs - (const char*)b.culled) % RASTER_CACHE_WAY));
+    TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_target_color(&b.picture, 0) % 4);
+    TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_target_depth(&b.picture, 0) % 4);
+    /* The census holds its depth scale and every instance's slot and takes
+     * whole cache ways, so the parts after it keep the cache sets they have
+     * without it. */
+    TEST_ASSERT_TRUE(raster_culled_bytes(&raster)
+                     >= sizeof(float) + (sizeof(uint16_t) * raster_culled_length(&raster)));
+    TEST_ASSERT_TRUE((const char*)b.culled == (const char*)b.depth_near + sizeof(float));
+    TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)(((const char*)b.cs - (const char*)b.depth_near) % RASTER_CACHE_WAY));
     raster.width /= 2;
     raster.height /= 2;
-    TEST_ASSERT_TRUE(b.culled == raster_carve(&raster).culled);
+    const raster_buffers_t smaller = raster_carve(&raster);
+    TEST_ASSERT_TRUE(b.culled == smaller.culled && b.depth_near == smaller.depth_near);
     free(scratch);
 }
 
@@ -1743,14 +1754,13 @@ test_the_two_core_frame_matches_one_full_draw(void) {
     build_wall_and_stack(p);
     gfx_color_t* upscaled = malloc(sizeof(gfx_color_t) * 4 * W * H);
     gfx_color_t* want = malloc(sizeof(gfx_color_t) * 4 * W * H);
-    char* scratch = malloc(raster_scratch_bytes(&(raster_t){ONE_MESH(&p->mesh), .width = W, .height = H,
-                                                            .destination_width = 2 * W, .destination_height = 2 * H}));
-    TEST_ASSERT_NOT_NULL(upscaled);
-    TEST_ASSERT_NOT_NULL(want);
-    TEST_ASSERT_NOT_NULL(scratch);
     raster_t raster = {
         ONE_MESH(&p->mesh),         .width = W, .height = H, .clear = SKY, .upscaled = true, .destination_width = 2 * W,
         .destination_height = 2 * H};
+    char* scratch = malloc(raster_scratch_bytes(&raster));
+    TEST_ASSERT_NOT_NULL(upscaled);
+    TEST_ASSERT_NOT_NULL(want);
+    TEST_ASSERT_NOT_NULL(scratch);
     raster.scratch = scratch;
 
     static const float eye_heights[] = {-100.0f, 0.0f, 150.0f, 230.0f, 300.0f};

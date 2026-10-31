@@ -19,4 +19,5 @@ Host tooling for building, generating, rendering, inspecting, and checking the f
 | [boot_anim/](boot_anim/README.md) | Boot animation performance reports. |
 | [perf/](perf/README.md) | Repeated board report comparisons across revisions. |
 | [sweeps/](sweeps/) | Build and capture sweeps. |
+| [revision_worktree.sh](revision_worktree.sh) | Shared helper: temporary detached checkouts for the revision-comparison tools in [perf/](perf/README.md). |
 | [tests/](tests/) | Python regression tests for these tools. |

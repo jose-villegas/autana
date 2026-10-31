@@ -178,7 +178,7 @@ mark_covered(raster_cull_t* s, const raster_t* raster) {
     const raster_buffers_t b = raster_carve(raster);
     const int index = attachment_index(raster, s);
     for (int y = 0; y < raster->height; y++) {
-        const uint32_t* tag = gfx_render_target_row(&b.picture, index, y);
+        const uint32_t* tag = gfx_target_row(&b.picture, index, y);
         for (int x = 0; x < raster->width; x++) {
             if (tag[x] != 0) {
                 const uint32_t t = tag[x] - 1U;
@@ -291,10 +291,14 @@ spectator_view(const raster_cull_t* s, const raster_t* raster) {
     return view;
 }
 
-/* The census list of each instance: its culled clusters, or its kept ones. */
+/* The census list of each instance: its culled clusters, or its kept ones.
+ * The list was never fitted, so the spectator encodes depth with its own
+ * clip plane. */
 static void
 list_clusters(const raster_cull_t* s, const raster_t* raster, bool culled) {
-    uint16_t* list = raster_carve(raster).culled;
+    const raster_buffers_t buffers = raster_carve(raster);
+    *buffers.depth_near = s->spectator.lens.near_z;
+    uint16_t* list = buffers.culled;
     int offset = 0;
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_lit_mesh_t* mesh = raster->instances[i].mesh;
@@ -310,7 +314,7 @@ list_clusters(const raster_cull_t* s, const raster_t* raster, bool culled) {
     }
 }
 
-static void paint_picture(raster_cull_t* s, const raster_t* raster, const gfx_render_target_t* picture, int index);
+static void paint_picture(raster_cull_t* s, const raster_t* raster, const gfx_target_t* picture, int index);
 
 /* The culled clusters' picture painted and kept with its depth, for the
  * kept clusters' to be layered on. */
@@ -321,8 +325,8 @@ keep_under(raster_cull_t* s, const raster_t* raster) {
     paint_picture(s, raster, &b.picture, index);
     assert(raster->width * raster->height <= RASTER_CULL_PIXELS_MAX);
     for (int y = 0; y < raster->height; y++) {
-        const gfx_color_t* color = gfx_render_target_color(&b.picture, y);
-        const uint16_t* depth = gfx_render_target_depth(&b.picture, y);
+        const gfx_color_t* color = gfx_target_color(&b.picture, y);
+        const uint16_t* depth = gfx_target_depth(&b.picture, y);
         for (int x = 0; x < raster->width; x++) {
             const int p = (y * raster->width) + x;
             s->under_color[p] = color[x];
@@ -425,15 +429,15 @@ shaded_pixel(const raster_cull_t* s, gfx_color_t clear, gfx_color_t drawn, int c
  * door, and every pixel where the cluster changes, right or below, in its
  * fate's colour: the clusters' borders, a culled one's dashed. */
 static void
-show_shaded(raster_cull_t* s, const raster_t* raster, const gfx_render_target_t* picture, int index) {
-    for (int y = picture->row0; y < picture->row1; y++) {
-        const uint32_t* tag = gfx_render_target_row(picture, index, y);
-        const uint32_t* below = y + 1 < picture->row1 ? gfx_render_target_row(picture, index, y + 1) : NULL;
-        gfx_color_t* color = gfx_render_target_color(picture, y);
+show_shaded(raster_cull_t* s, const raster_t* raster, const gfx_target_t* picture, int index) {
+    for (int y = picture->first_row; y < gfx_target_end_row(picture); y++) {
+        const uint32_t* tag = gfx_target_row(picture, index, y);
+        const uint32_t* below = y + 1 < gfx_target_end_row(picture) ? gfx_target_row(picture, index, y + 1) : NULL;
+        gfx_color_t* color = gfx_target_color(picture, y);
         int right = tagged_cluster(s, raster, tag[0]);
-        for (int x = 0; x < picture->width; x++) {
+        for (int x = 0; x < picture->attachment[0].width; x++) {
             const int c = right;
-            right = x + 1 < picture->width ? tagged_cluster(s, raster, tag[x + 1]) : c;
+            right = x + 1 < picture->attachment[0].width ? tagged_cluster(s, raster, tag[x + 1]) : c;
             const int under = below != NULL ? tagged_cluster(s, raster, below[x]) : c;
             color[x] = shaded_pixel(s, raster->clear, color[x], c, c != right || c != under, x, y);
         }
@@ -442,15 +446,15 @@ show_shaded(raster_cull_t* s, const raster_t* raster, const gfx_render_target_t*
 
 /* The picture's colour from its cluster map, in the paint chosen. */
 static void
-paint_picture(raster_cull_t* s, const raster_t* raster, const gfx_render_target_t* picture, int index) {
+paint_picture(raster_cull_t* s, const raster_t* raster, const gfx_target_t* picture, int index) {
     if (paint == RASTER_CULL_PAINT_SHADED) {
         show_shaded(s, raster, picture, index);
         return;
     }
-    for (int y = picture->row0; y < picture->row1; y++) {
-        const uint32_t* tag = gfx_render_target_row(picture, index, y);
-        gfx_color_t* color = gfx_render_target_color(picture, y);
-        for (int x = 0; x < picture->width; x++) {
+    for (int y = picture->first_row; y < gfx_target_end_row(picture); y++) {
+        const uint32_t* tag = gfx_target_row(picture, index, y);
+        gfx_color_t* color = gfx_target_color(picture, y);
+        for (int x = 0; x < picture->attachment[0].width; x++) {
             const int c = tagged_cluster(s, raster, tag[x]);
             color[x] = c < 0 ? raster->clear : cluster_color(s, c);
         }
@@ -461,13 +465,13 @@ paint_picture(raster_cull_t* s, const raster_t* raster, const gfx_render_target_
  * the background, and over kept geometry they are nearer than. Each takes
  * its depth too, which the upscale reads to tell drawn from clear. */
 static void
-layer_under(const raster_cull_t* s, const gfx_render_target_t* picture, int index) {
-    for (int y = picture->row0; y < picture->row1; y++) {
-        gfx_color_t* color = gfx_render_target_color(picture, y);
-        uint16_t* depth = gfx_render_target_depth(picture, y);
-        const uint32_t* tag = gfx_render_target_row(picture, index, y);
-        for (int x = 0; x < picture->width; x++) {
-            const int p = (y * picture->width) + x;
+layer_under(const raster_cull_t* s, const gfx_target_t* picture, int index) {
+    for (int y = picture->first_row; y < gfx_target_end_row(picture); y++) {
+        gfx_color_t* color = gfx_target_color(picture, y);
+        uint16_t* depth = gfx_target_depth(picture, y);
+        const uint32_t* tag = gfx_target_row(picture, index, y);
+        for (int x = 0; x < picture->attachment[0].width; x++) {
+            const int p = (y * picture->attachment[0].width) + x;
             if (s->under_depth[p] != R3D_DEPTH_EMPTY && (tag[x] == 0 || s->under_depth[p] > depth[x])) {
                 color[x] = s->under_color[p];
                 depth[x] = s->under_depth[p];
@@ -477,7 +481,7 @@ layer_under(const raster_cull_t* s, const gfx_render_target_t* picture, int inde
 }
 
 static void
-show(const raster_attachment_t* self, const raster_t* raster, const gfx_render_target_t* picture, int index) {
+show(const raster_attachment_t* self, const raster_t* raster, const gfx_target_t* picture, int index) {
     raster_cull_t* s = self->state;
     paint_picture(s, raster, picture, index);
     if (s->pass == RASTER_CULL_PASS_KEPT) {
@@ -489,12 +493,8 @@ show(const raster_attachment_t* self, const raster_t* raster, const gfx_render_t
 
 raster_attachment_t
 raster_cull_view(void* state) {
-    return (raster_attachment_t){.bytes_per_pixel = sizeof(uint32_t),
-                                 .clear = clear,
-                                 .begin = begin,
-                                 .writer = writer,
-                                 .show = show,
-                                 .state = state};
+    return (raster_attachment_t){
+        .format = IMAGE_U32, .clear = clear, .begin = begin, .writer = writer, .show = show, .state = state};
 }
 
 /* One segment in lens space, cut at the near plane, as a line. */

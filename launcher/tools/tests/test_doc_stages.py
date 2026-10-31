@@ -48,7 +48,6 @@ class DocStagesTests(unittest.TestCase):
         from r3d import mesh_import, lit_mesh, light, ray_query
         baked = NS(object=NS(name="hall"), renderer=NS(variant=NS(name="full")))
         scene = NS(renderers=[baked])
-        job = NS(renderer=NS(visibility=NS(source="camera_region", rounds=2)))
         geometry = NS(positions=np.zeros((3, 3)), tris=np.array([[0, 1, 2]]),
                       tri_double=np.array([False]), rgb=np.zeros((3, 3)), scale={})
         poses = (224, 224, .5, 1, [[0, 0, 0, 0, 0, -1]])
@@ -59,7 +58,7 @@ class DocStagesTests(unittest.TestCase):
                 mock.patch.object(ray_query, "RayQuery"), \
                 mock.patch.object(light, "visible_from_path", return_value=np.array([True])) as visible, \
                 mock.patch.object(lit_mesh, "write_lit_mesh"):
-            stages.bake_worker(scene, job, True, "full", "hall", Path(directory))
+            stages.bake_into(Path(directory), scene, "hall", True)
         settings = sample.call_args.args[1]
         self.assertEqual((settings.every_ms, settings.size, settings.samples, settings.margin),
                          (100, (184, 224), 3, 8))
@@ -374,37 +373,58 @@ class RayTracingPreflightTests(unittest.TestCase):
         self.assertIn("has_backend(dr.JitBackend.LLVM)", stages.RAY_TRACING_CHECK)
 
 
-class PrepareSchedulingTests(unittest.TestCase):
-    def test_both_prepares_submitted_before_any_variant_is_consumed(self):
-        from concurrent.futures import Future
-        from r3d.fitted_variant import prepare
-        jobs = ['lite-job', 'full-job']
-        futures = [Future(), Future()]
-        executor = mock.Mock()
-        executor.submit.side_effect = futures
-        seen = []
-        ready = stages.prepare_variants(executor, [(Path('other.scene.toml'), 'scene', job, Path('work') / job) for job in jobs],
-                                        lambda index, job: seen.append((index, job)))
-        self.assertEqual(executor.submit.call_count, 2)
-        self.assertTrue(all(call.args[0].func is stages.recorded_call and call.args[0].args == (prepare,)
-                            for call in executor.submit.call_args_list))
-        self.assertEqual(seen, [])
-        futures[0].set_result(None)
-        self.assertEqual(seen, [(0, 'lite-job')])
-        self.assertTrue(ready[0].done())
-        self.assertFalse(ready[1].done())
-        futures[1].set_result(None)
-        self.assertEqual(seen, [(0, 'lite-job'), (1, 'full-job')])
+class FakeKeeper:
+    """Stands in for stages.Keeper: records each request, (kind, args, future), and leaves the future to the test."""
 
-    def test_prepare_failure_reaches_ordered_consumer(self):
+    def __init__(self):
+        self.requests = []
+
+    def request(self, kind, *args):
         from concurrent.futures import Future
-        futures = [Future(), Future()]
-        executor = mock.Mock()
-        executor.submit.side_effect = futures
+        self.requests.append((kind, args, Future()))
+        return self.requests[-1][2]
+
+    def start(self, job, scene):
+        return self.request("start", job, scene)
+
+    def references(self, job, scene):
+        return self.request("references", job, scene)
+
+    def fit(self, point, point_dir, scene_path, scene, job, inputs):
+        return self.request("fit", point, point_dir, scene_path, scene, job, inputs)
+
+    def bake(self, scene, baked_name, path_cull):
+        return self.request("bake", scene, baked_name, path_cull)
+
+    def of(self, kind):
+        return [(args, future) for made, args, future in self.requests if made == kind]
+
+
+class PrepareSchedulingTests(unittest.TestCase):
+    def test_a_variant_is_ready_once_its_start_and_references_are(self):
+        keeper = FakeKeeper()
+        seen = []
+        jobs = ['lite-job', 'full-job']
+        with mock.patch.object(stages, 'link_inputs') as link:
+            ready = stages.prepare_variants(keeper, [('scene', job, Path('work') / job) for job in jobs],
+                                            lambda index, job: seen.append((index, job)))
+            self.assertEqual([kind for kind, _, _ in keeper.requests], ['start', 'references'] * 2,
+                             "every start and reference set is asked for before any variant is consumed")
+            (_, start), (_, references) = keeper.of('start')[0], keeper.of('references')[0]
+            start.set_result(stages.Kept(Path('start'), ['start step']))
+            self.assertEqual(seen, [])
+            references.set_result(stages.Kept(Path('references'), []))
+        self.assertEqual(seen, [(0, 'lite-job')])
+        link.assert_called_once_with(Path('work/lite-job'), Path('start'), Path('references'))
+        self.assertEqual(ready[0].result(), ['start step'])
+        self.assertFalse(ready[1].done())
+
+    def test_a_failed_start_reaches_the_consumer_without_waiting_for_its_references(self):
+        keeper = FakeKeeper()
         callback = mock.Mock()
-        ready = stages.prepare_variants(executor, [(Path('other.scene.toml'), None, None, Path('work'))] * 2, callback)
-        futures[0].set_exception(RuntimeError('prepare failure'))
-        with self.assertRaisesRegex(RuntimeError, 'prepare failure'):
+        ready = stages.prepare_variants(keeper, [('scene', 'job', Path('work'))], callback)
+        keeper.of('start')[0][1].set_exception(RuntimeError('start failure'))
+        with self.assertRaisesRegex(RuntimeError, 'start failure'):
             ready[0].result()
         callback.assert_not_called()
 
@@ -433,28 +453,22 @@ class LightStudyTests(unittest.TestCase):
                     self.assertTrue(placed_variant(scene, showcase).renderer.fit)
                     self.assertEqual(scene.bake.ao is not None, look == "ao-occluded")
 
-    def test_a_fit_is_submitted_only_after_its_prepare_and_its_failure_reaches_the_sheet(self):
-        from concurrent.futures import Future
-        from r3d.fitted_variant import fit_point, prepare
-        submitted = []
-
-        def submit(function, *args, **kwargs):
-            submitted.append((getattr(function, "args", (function,))[0], Future()))
-            return submitted[-1][1]
-        executor = mock.Mock()
-        executor.submit.side_effect = submit
-        with tempfile.TemporaryDirectory() as directory:
-            studies, ready, fits = stages.submit_light_fits(executor, self.SCENE, Path(directory))
-        self.assertEqual(len(submitted), len(studies))
-        self.assertTrue(all(function is prepare for function, _ in submitted))
-        self.assertEqual(fits, {})
-        submitted[0][1].set_result((None, []))
-        self.assertIs(submitted[-1][0], fit_point)
-        self.assertEqual(list(fits), [studies[0][0]])
-        submitted[1][1].set_exception(RuntimeError("prepare failure"))
-        with self.assertRaisesRegex(RuntimeError, "prepare failure"):
-            ready[1].result()
-        self.assertNotIn(studies[1][0], fits)
+    def test_a_fit_is_asked_for_only_after_its_prepare_and_its_failure_reaches_the_sheet(self):
+        keeper = FakeKeeper()
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(stages, 'link_inputs'):
+            studies, ready, fits = stages.submit_light_fits(keeper, self.SCENE, Path(directory))
+            self.assertEqual(len(keeper.of('start')), len(studies))
+            self.assertEqual(len(keeper.of('references')), len(studies))
+            self.assertEqual((keeper.of('fit'), fits), ([], {}))
+            keeper.of('start')[0][1].set_result(stages.Kept(Path('start'), []))
+            keeper.of('references')[0][1].set_result(stages.Kept(Path('references'), []))
+            look, path, scene, job, inputs = studies[0]
+            self.assertEqual(list(fits), [look])
+            self.assertEqual(keeper.of('fit')[0][0], ({}, inputs.parent / "fit", path, scene, job, inputs))
+            keeper.of('start')[1][1].set_exception(RuntimeError("start failure"))
+            with self.assertRaisesRegex(RuntimeError, "start failure"):
+                ready[1].result()
+            self.assertNotIn(studies[1][0], fits)
 
 
 class SmokeAdmissionTests(unittest.TestCase):
@@ -477,53 +491,45 @@ class SmokeAdmissionTests(unittest.TestCase):
 class FullGpuSchedulingTests(unittest.TestCase):
     def test_fit_arguments_resume_and_order_with_reverse_completion(self):
         from concurrent.futures import Future
-        from functools import partial
         from types import SimpleNamespace as NS
         from r3d import fitted_variant as fitted, import_settings, bake_fidelity, cost_model
+        from r3d.process_budget import MEASURE_BYTES
         jobs = [NS(renderer=NS(fit=NS(held_out_every_ms=1000, normal_weight=.3, budget=6000),
                                variant=NS(triangles=10000))) for _ in range(3)]
-        calls, consumed, completed, prepare_futures, fit_futures = [], [], [], [], []
+        baked_variants = {"hall_lite": "lite", "hall": "full", "hall_flat": "flat"}
+        scene = NS(renderers=[NS(object=NS(name=name), renderer=NS(variant=NS(name=variant)))
+                              for name, variant in baked_variants.items()])
+        consumed, measured, completed = [], {}, []
+        step = dict(wall_s=1, triangles_in=4, triangles_out=3, peak_ram_bytes=None, peak_vram_bytes=None)
 
-        class PrepareFuture(Future):
-            def add_done_callback(self, callback):
-                super().add_done_callback(callback)
-                if len(prepare_futures) == 3 and all(f._done_callbacks for f in prepare_futures):
-                    for future in reversed(prepare_futures):
-                        future.set_result((None, [dict(step="prepare fixture", wall_s=1, triangles_in=4, triangles_out=3, peak_ram_bytes=None, peak_vram_bytes=None)]))
-                    for future, directory, target in reversed(fit_futures):
-                        completed.append(directory.name)
-                        result = {'mesh': str(target)}
-                        future.set_result((result, [dict(step='fit fixture', wall_s=2, triangles_in=3, triangles_out=2, peak_ram_bytes=1, peak_vram_bytes=2)])
-                                          if directory.name.startswith('fit-') else result)
+        class Keeper(FakeKeeper):
+            """Starts, references and bakes are made at once; the fits finish in reverse, when the first bake is
+            asked for."""
+            def request(self, kind, *args):
+                future = super().request(kind, *args)
+                if kind in ("start", "references"):
+                    future.set_result(stages.Kept(Path(kind), [dict(step="prepare fixture", **step)]))
+                if kind == "bake":
+                    for (point, point_dir, *_), fit in reversed(self.of("fit")):
+                        if not fit.done():
+                            completed.append(point_dir.name)
+                            fit.set_result(stages.Kept(Path("kept") / point_dir.name,
+                                                       [dict(step="fit fixture", **{**step, "triangles_in": 3, "triangles_out": 2})]))
+                    future.set_result(stages.Kept(Path("kept") / args[1], [dict(step="bake fixture", **{**step, "triangles_in": 5, "triangles_out": 4})]))
+                return future
+
+        keeper = Keeper()
 
         class Executor:
             def submit(self, function, *args, **kwargs):
+                if function is not stages.measure_worker or kwargs != {"estimates": MEASURE_BYTES, "priority": True}:
+                    raise AssertionError((function, kwargs))
+                label, _job, mesh = args[:3]
+                consumed.append(label)
+                measured[label] = mesh
                 future = Future()
-                owner = function.func if isinstance(function, partial) else function
-                if owner is stages.recorded_call:
-                    owner = function.args[0]
-                from r3d.process_budget import PREPARE_BYTES, FIT_BYTES, BAKE_BYTES, MEASURE_BYTES
-                estimates = {fitted.prepare: PREPARE_BYTES, fitted.fit_point: FIT_BYTES,
-                             stages.bake_worker: BAKE_BYTES, stages.measure_worker: MEASURE_BYTES}
-                if kwargs.get('estimates') != estimates[owner]:
-                    raise AssertionError(f"wrong estimate for {owner.__name__}: {kwargs}")
-                calls.append((owner, args, kwargs, function))
-                if owner is fitted.prepare:
-                    future = PrepareFuture()
-                    prepare_futures.append(future)
-                elif owner is fitted.fit_point:
-                    directory = args[1]
-                    target = args[7] if len(args) > 7 else directory.parent / f'{directory.name}.mesh'
-                    fit_futures.append((future, directory, target))
-                elif owner is stages.bake_worker:
-                    future.set_result(((Path('baked.mesh'), Path('culled.mesh')), [dict(step='bake fixture', wall_s=3, triangles_in=5, triangles_out=4, peak_ram_bytes=None, peak_vram_bytes=None)]))
-                elif owner is stages.measure_worker:
-                    label = args[0]
-                    consumed.append(label)
-                    future.set_result(((label, 1, '1.5', '2.5', '3.5', '4.5', '99.5'), Path(f'{label}.avi'),
-                                       {'triangles': 1, 'mean_delta_e': 0., 'predicted_ms': 0.}))
-                else:
-                    raise AssertionError(owner)
+                future.set_result(((label, 1, '1.5', '2.5', '3.5', '4.5', '99.5'), Path(f'{label}.avi'),
+                                   {'triangles': 1, 'mean_delta_e': 0., 'predicted_ms': 0.}))
                 return future
 
         with tempfile.TemporaryDirectory() as directory:
@@ -537,23 +543,30 @@ class FullGpuSchedulingTests(unittest.TestCase):
             resume.write_text(json.dumps({'budget': 4000, 'cost_weight': 0., 'triangles': 1,
                                           'mean_delta_e': 0., 'predicted_ms': 0.}))
             before = resume.read_bytes()
-            with mock.patch.object(import_settings, 'load_scene', return_value=object()), \
+            with mock.patch.object(import_settings, 'load_scene', return_value=scene), \
                     mock.patch.object(fitted, 'placed_variant', side_effect=jobs) as placed, \
                     mock.patch.object(bake_fidelity, 'build_host', return_value='host') as build_host, \
                     mock.patch.object(cost_model, 'load', return_value=([],)), \
                     mock.patch.object(stages, 'gpu_inputs', return_value={}), \
+                    mock.patch.object(stages, 'Keeper', return_value=keeper), \
+                    mock.patch.object(stages, 'link_inputs') as link, \
                     mock.patch.object(stages, 'run') as run, mock.patch.object(stages, 'apply_tables'), \
                     mock.patch.object(stages, 'sync_images') as sync, \
-                    mock.patch.object(fitted, 'plot_pareto'), mock.patch.object(stages, 'machine_table', return_value='machine fixture'),                     mock.patch.object(stages, 'submit_light_fits', return_value='light fits') as light,                     mock.patch.object(stages, 'light_sheets') as sheets:
+                    mock.patch.object(fitted, 'plot_pareto'), \
+                    mock.patch.object(stages, 'machine_table', return_value='machine fixture'), \
+                    mock.patch.object(stages, 'submit_light_fits', return_value='light fits') as light, \
+                    mock.patch.object(stages, 'light_sheets') as sheets:
                 stages._gpu(NS(smoke=False, scene=Path("other.scene.toml"), object="hall"), out, root / 'work', Executor())
-            light.assert_called_once_with(mock.ANY, Path('other.scene.toml'), work)
+            light.assert_called_once_with(keeper, Path('other.scene.toml'), work)
             self.assertEqual(sheets.call_args.args[0], 'light fits')
             build_host.assert_called_once_with(stages.HOST_SCRIPT, work / 'host', Path('other.scene.toml'))
             self.assertEqual(placed.call_args_list, [mock.call(mock.ANY, "hall_fitted"),
                                                     mock.call(mock.ANY, "hall_fitted_full"),
                                                     mock.call(mock.ANY, "hall_flat_fitted")])
-            self.assertEqual([args[4] for owner, args, _, _ in calls if owner is stages.bake_worker],
-                             ["hall_lite", "hall", "hall_flat"])
+            self.assertEqual([args[1:] for args, _ in keeper.of('bake')],
+                             [("hall_lite", False), ("hall", True), ("hall_flat", False)])
+            self.assertEqual([call.args for call in link.call_args_list],
+                             [(work / f"inputs-{prefix}", Path("start"), Path("references")) for prefix in ("lite", "full", "flat")])
             self.assertEqual({path.name for path in (out / "tables").iterdir()},
                              {"other-normal.md", "other-budget.md", "other-gpu.md", "other-flat-fit.md", "bake-steps.md"})
             table = (out / 'tables/bake-steps.md').read_text()
@@ -565,37 +578,34 @@ class FullGpuSchedulingTests(unittest.TestCase):
             self.assertIn("![Bake steps](../images/render/gpu/bake-steps.png)", table)
             self.assertTrue((out / 'render/gpu/bake-steps.png').is_file())
             sync.assert_called_once_with(out / 'render/gpu', stages.ROOT / 'docs/images/render/gpu', check=False)
-            measured = [function for owner, args, kwargs, function in calls
-                        if owner is fitted.fit_point and args[1].name.startswith('fit-')]
-            self.assertEqual(len(measured), 3)
-            self.assertTrue(all(isinstance(function, partial) and function.func is stages.recorded_call
-                                and function.args == (fitted.fit_point,) for function in measured))
             expected_rows = ['lite-GI-bake', 'lite-GI-fit', 'normal-0', 'normal-0.1', 'normal-0.3',
                              'budget-4000-cost-0.1', 'budget-6000-cost-0', 'budget-6000-cost-0.1',
                              'full-GI-bake', 'full-path-culled', 'full-GI-fit', 'flat-GI-bake', 'flat-GI-fit']
             self.assertEqual(consumed, expected_rows)
+            self.assertEqual({label: measured[label] for label in ('lite-GI-bake', 'full-path-culled', 'lite-GI-fit',
+                                                                   'normal-0', 'normal-0.3', 'budget-6000-cost-0')},
+                             {'lite-GI-bake': Path('kept/hall_lite/lite.mesh'),
+                              'full-path-culled': Path('kept/hall/culled.mesh'),
+                              'lite-GI-fit': Path('kept/fit-lite/fitted.mesh'),
+                              'normal-0': Path('kept/normal-0/fitted.mesh'),
+                              'normal-0.3': Path('kept/fit-lite/fitted.mesh'),
+                              'budget-6000-cost-0': Path('kept/fit-lite/fitted.mesh')},
+                             "a kept result is measured from its cache folder; the recipe's own point is its fit")
             measurements = json.loads((out / 'measurements.json').read_text())
             self.assertEqual([row[0] for row in measurements['rows']], expected_rows)
             self.assertEqual([(row['budget'], row['cost_weight']) for row in measurements['sweep']],
                              [(4000, 0.), (4000, .1), (6000, 0.), (6000, .1), (6000, 0.)])
             self.assertEqual(resume.read_bytes(), before)
-            fit_calls = [call for call in calls if call[0] is fitted.fit_point]
-            self.assertEqual(completed, [call[1][1].name for call in reversed(fit_calls)])
-            arguments = []
-            for _, args, kwargs, function in fit_calls:
-                point, point_dir = args[:2]
-                job = function.keywords['job'] if isinstance(function, partial) and 'job' in function.keywords else args[4]
-                target = args[7].name if len(args) > 7 else f'{point_dir.name}.mesh'
-                arguments.append((point_dir.name, target, point.get('budget'), point.get('cost_weight', 0.),
-                                  job.renderer.fit.normal_weight))
-            self.assertCountEqual(arguments, [
-                ('fit-lite', 'lite.mesh', None, 0., .3), ('fit-full', 'full.mesh', None, 0., .3),
-                ('fit-flat', 'flat.mesh', None, 0., .3),
-                ('normal-0', 'normal-0.mesh', None, 0., 0.), ('normal-0.1', 'normal-0.1.mesh', None, 0., .1),
-                ('budget-4000-cost-0.1', 'budget-4000-cost-0.1.mesh', 4000, .1, .3),
-                ('budget-6000-cost-0.1', 'budget-6000-cost-0.1.mesh', 6000, .1, .3)])
-            baked_names = {call[1][3]: call[1][4] for call in calls if call[0] is stages.bake_worker}
-            self.assertEqual(baked_names, {'lite': 'hall_lite', 'full': 'hall', 'flat': 'hall_flat'})
+            fits = keeper.of('fit')
+            self.assertEqual(completed, [args[1].name for args, _ in reversed(fits)])
+            self.assertCountEqual([(point_dir.name, point.get('budget'), point.get('cost_weight', 0.),
+                                    job.renderer.fit.normal_weight, inputs.name)
+                                   for (point, point_dir, _path, _scene, job, inputs), _ in fits], [
+                ('fit-lite', None, 0., .3, 'inputs-lite'), ('fit-full', None, 0., .3, 'inputs-full'),
+                ('fit-flat', None, 0., .3, 'inputs-flat'),
+                ('normal-0', None, 0., 0., 'inputs-lite'), ('normal-0.1', None, 0., .1, 'inputs-lite'),
+                ('budget-4000-cost-0.1', 4000, .1, .3, 'inputs-lite'),
+                ('budget-6000-cost-0.1', 6000, .1, .3, 'inputs-lite')])
             flat_sheet = [call.args[0] for call in run.call_args_list if call.args[1].name == 'sheet-flat.log']
             self.assertEqual(len(flat_sheet), 1)
             command = [str(word) for word in flat_sheet[0]]
@@ -610,8 +620,116 @@ class FullGpuSchedulingTests(unittest.TestCase):
             self.assertEqual(len(set(cells)), 1, "a row has more cells than the header")
             self.assertNotIn('99.5', ' '.join(table), "a predicted time reached the flat table")
             self.assertEqual(sum(line.startswith('| ') for line in table), 4, "a header and exactly three rows")
-            self.assertTrue(all(kwargs.get('priority') for owner, _, kwargs, _ in calls
-                                if owner in (stages.bake_worker, stages.measure_worker)))
+
+
+class KeeperTests(unittest.TestCase):
+    """The keeper on the demo scene's real keys, with a scratch cache and an executor that only records."""
+    SCENE = stages.ROOT / "launcher/demo/sponza/sponza.scene.toml"
+
+    def setUp(self):
+        from concurrent.futures import Future
+        from r3d.import_settings import load_scene
+        from r3d.fitted_variant import placed_variant
+        self.directory = tempfile.TemporaryDirectory()
+        self.root = Path(self.directory.name)
+        self.submitted = []
+
+        def submit(function, *args, **options):
+            self.submitted.append((function, args, options))
+            return Future()
+        self.keeper = stages.Keeper(mock.Mock(submit=mock.Mock(side_effect=submit)), self.root / "cache")
+        self.scene = load_scene(self.SCENE)
+        self.jobs = [placed_variant(self.scene, "atrium" + entry.name) for entry in stages.FITTED]
+        self.inputs = self.root / "inputs"
+        self.inputs.mkdir()
+        (self.inputs / f"{self.jobs[0].renderer.variant.name}.mesh").write_bytes(b"start")
+
+    def tearDown(self):
+        self.directory.cleanup()
+
+    def fit_folder(self, point=None, job=None, scene=None):
+        future = self.keeper.fit(point or {}, self.root / "point", self.SCENE, scene or self.scene, job or self.jobs[0],
+                                 self.inputs)
+        return next(folder for folder, made in self.keeper.made.items() if made is future)
+
+    def test_variants_that_share_their_inputs_share_one_reference_set_from_bakes_folder(self):
+        from bake.produce import REFERENCES
+        for job in self.jobs:
+            self.keeper.references(job, self.scene)
+        self.assertEqual(len(self.submitted), 1, "lite, full and flat read one reference set")
+        function, (key, *_rest, cache), _options = self.submitted[0]
+        self.assertIs(function, stages.kept_references)
+        self.assertEqual((key, cache), (self.keeper.keys(self.jobs[0], self.scene)["reference"], self.root / "cache"))
+        self.assertIs(self.keeper.references(self.jobs[1], self.scene),
+                      self.keeper.made[self.root / "cache" / REFERENCES / key])
+
+    def test_a_done_folder_is_not_made_again_and_replays_its_steps(self):
+        from bake.produce import DONE
+        future = self.keeper.start(self.jobs[0], self.scene)
+        folder = self.submitted[0][1][0]
+        folder.mkdir(parents=True)
+        (folder / DONE).write_text("done\n")
+        (folder / stages.STEPS).write_text(json.dumps([{"step": "carve"}]))
+        later = stages.Keeper(self.keeper.executor, self.root / "cache")
+        kept = later.start(self.jobs[0], self.scene).result()
+        self.assertEqual(kept, stages.Kept(folder, [{"step": "carve"}]))
+        self.assertEqual(len(self.submitted), 1, "the next run makes nothing")
+        self.assertFalse(future.done())
+
+    def test_each_sweep_point_and_look_fits_under_its_own_key(self):
+        import copy
+        from r3d.fitted_variant import placed_variant
+        from r3d.import_settings import load_scene
+        folders = {"recipe": self.fit_folder()}
+        normal = copy.deepcopy(self.jobs[0])
+        normal.renderer.fit.normal_weight = 0.1
+        folders["normal"] = self.fit_folder(job=normal)
+        folders["budget"] = self.fit_folder({"budget": 4000, "cost_weight": 0.0})
+        folders["cost"] = self.fit_folder({"budget": 4000, "cost_weight": 0.1})
+        look = load_scene(stages.write_look_scene(self.SCENE, "direct", self.root / "look"))
+        folders["look"] = self.fit_folder(job=placed_variant(look, self.jobs[0].renderer.variant.name), scene=look)
+        self.assertEqual(len(set(folders.values())), len(folders), folders)
+        self.assertEqual(self.fit_folder({"budget": self.jobs[0].renderer.fit.budget, "cost_weight": 0.0}),
+                         folders["recipe"], "the recipe's budget given as a point is the recipe's fit")
+        (self.inputs / f"{self.jobs[0].renderer.variant.name}.mesh").write_bytes(b"other start")
+        self.assertNotEqual(self.fit_folder(), folders["recipe"], "a fit counts its start's bytes")
+
+    def test_a_cost_weighted_fit_counts_the_cost_model(self):
+        weighted = {"budget": 4000, "cost_weight": 0.1}
+        before = self.fit_folder(weighted)
+        unweighted = self.fit_folder({"budget": 4000, "cost_weight": 0.0})
+        weights = self.root / "weights.txt"
+        weights.write_text("feature other\n")
+        with mock.patch.object(stages, "WEIGHTS", weights):
+            self.assertNotEqual(self.fit_folder(weighted), before)
+            self.assertEqual(self.fit_folder({"budget": 4000, "cost_weight": 0.0}), unweighted)
+
+    def test_the_path_cull_bake_is_kept_apart_from_the_plain_bake(self):
+        self.keeper.bake(self.scene, "atrium", False)
+        self.keeper.bake(self.scene, "atrium", True)
+        self.keeper.bake(self.scene, "atrium" + stages.FITTED[0].baked, False)
+        self.assertEqual(len({args[0] for _function, args, _options in self.submitted}), 3)
+
+    def test_the_code_that_makes_a_result_is_in_its_key(self):
+        self.keeper.start(self.jobs[0], self.scene)
+        before = self.submitted[-1][1][0]
+        with mock.patch.object(stages, "code_digest", return_value="changed"):
+            self.keeper.start(self.jobs[0], self.scene)
+        self.assertNotEqual(self.submitted[-1][1][0], before)
+
+    def test_inputs_link_the_reference_set_and_the_start(self):
+        references, start = self.root / "references", self.root / "start"
+        (references / "reference").mkdir(parents=True)
+        (references / "train.txt").write_text("poses")
+        start.mkdir()
+        (start / "lite.mesh").write_bytes(b"mesh")
+        (start / stages.STEPS).write_text("[]")
+        inputs = self.root / "linked"
+        for _ in range(2):
+            stages.link_inputs(inputs, start, references)
+        self.assertEqual(sorted(path.name for path in inputs.iterdir()), ["lite.mesh", "reference", "train.txt"])
+        self.assertEqual((inputs / "lite.mesh").read_bytes(), b"mesh")
+        self.assertTrue((inputs / "reference").is_dir())
 
 
 @unittest.skipUnless(sys.platform == "linux", "the GPU stage and its fingerprint run on Linux")
@@ -639,7 +757,7 @@ print(json.dumps(inputs))
                      "code launcher/tools/r3d/fitted_variant.py", "file launcher/tools/r3d/board_cost_weights.txt",
                      "host launcher/main/render/raster.c", "host launcher/tools/render/scene_viewer.c",
                      "native launcher/main/display/display.h",
-                     "bake sponza.atrium.mesh", "bake sponza.atrium_fitted.mesh"):
+                     "bake sponza.atrium.bundle", "bake sponza.atrium_fitted.bundle"):
             self.assertIn(name, inputs)
         self.assertNotIn("code launcher/tools/bake/bake.py", inputs)
         self.assertEqual([name for name in inputs if "/apps/" in name], [])
