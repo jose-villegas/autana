@@ -8,21 +8,35 @@
 #include "core/memory.h"
 #include "core/timing.h"
 #include "core/tune.h"
+#include "esp_log.h"
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 #include "render/view/raster_boxes.h"
 #include "render/view/raster_cull_view.h"
 #include "render/view/raster_meshlets.h"
 #include "render/view/raster_motion.h"
+#include "render/view/raster_overdraw.h"
 #include "render/view/raster_show.h"
 
 static const render_debug_view_t views[] = {
-    {"depth", 0, raster_depth_view, NULL, NULL},
-    {"tiles", 0, raster_depth_tiles_view, NULL, NULL},
-    {"motion", sizeof(raster_motion_t), raster_motion_view, NULL, NULL},
-    {"meshlets", sizeof(raster_meshlets_t), raster_meshlets_view, NULL, NULL},
-    {"cull", sizeof(raster_cull_t), raster_cull_view, raster_cull_second_view, raster_cull_overlay},
-    {"boxes", sizeof(raster_boxes_t), raster_boxes_view, NULL, raster_boxes_overlay},
+    {.name = "depth", .attachment = raster_depth_view},
+    {.name = "tiles", .attachment = raster_depth_tiles_view},
+    {.name = "motion",
+     .state_bytes = sizeof(raster_motion_t),
+     .attachment = raster_motion_view,
+     .reserve = raster_motion_reserve_view,
+     .release = raster_motion_release_view},
+    {.name = "meshlets", .state_bytes = sizeof(raster_meshlets_t), .attachment = raster_meshlets_view},
+    {.name = "cull",
+     .state_bytes = sizeof(raster_cull_t),
+     .attachment = raster_cull_view,
+     .second_view = raster_cull_second_view,
+     .overlay = raster_cull_overlay},
+    {.name = "boxes",
+     .state_bytes = sizeof(raster_boxes_t),
+     .attachment = raster_boxes_view,
+     .overlay = raster_boxes_overlay},
+    {.name = "overdraw", .state_bytes = sizeof(raster_overdraw_t), .attachment = raster_overdraw_view},
 };
 _Static_assert(RENDER_DEBUG_VIEW_COUNT == sizeof views / sizeof views[0], "view table length");
 #endif
@@ -82,11 +96,22 @@ render_context_drop_scratch(render_context_t* c) {
     c->raster.scratch = NULL;
 }
 
+/* The view's state and what its row reserved in it. */
+static void
+free_view_state(render_context_t* c) {
+    const render_debug_view_t* row = render_context_debug_view(c->debug_view);
+    if (row != NULL && row->release != NULL && c->debug_view_state != NULL) {
+        row->release(c->debug_view_state);
+    }
+    memory_free(c->debug_view_state);
+    c->debug_view_state = NULL;
+}
+
 void
 render_context_release(render_context_t* c) {
     render_context_drop_scratch(c);
     framegen_target_free(&c->framegen);
-    memory_free(c->debug_view_state);
+    free_view_state(c);
     *c = (render_context_t){
         .scale_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT,
         .frame = {.step = -1},
@@ -162,8 +187,11 @@ render_context_set_debug_view(render_context_t* c, int view) {
     if (c->debug_view == view && (view == RENDER_DEBUG_VIEW_SHADED || c->raster.attachment_count != 0)) {
         return;
     }
-    memory_free(c->debug_view_state);
-    c->debug_view_state = NULL;
+    if (view != RENDER_DEBUG_VIEW_SHADED && view == c->refused_view) {
+        return;
+    }
+    c->refused_view = RENDER_DEBUG_VIEW_SHADED;
+    free_view_state(c);
     c->debug_view = RENDER_DEBUG_VIEW_SHADED;
     c->raster.attachment_count = 0;
     c->raster.attachments = NULL;
@@ -185,6 +213,26 @@ render_context_set_debug_view(render_context_t* c, int view) {
 #else
     (void)c;
     (void)view;
+#endif
+}
+
+/* Room in the view's state for `count` instances, or the view detached and
+ * refused until another view is asked for. Not inlined: the draw's own frame
+ * stays as small as before, under the deepest raster chain. */
+static __attribute__((noinline)) void
+reserve_view(render_context_t* c, int count) {
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    const render_debug_view_t* row = render_context_debug_view(c->debug_view);
+    if (row == NULL || row->reserve == NULL || row->reserve(c->debug_view_state, count)) {
+        return;
+    }
+    ESP_LOGE("render", "debug view %s: no room for %d instances; drawing shaded", row->name, count);
+    const int refused = c->debug_view;
+    render_context_set_debug_view(c, RENDER_DEBUG_VIEW_SHADED);
+    c->refused_view = refused;
+#else
+    (void)c;
+    (void)count;
 #endif
 }
 
@@ -327,6 +375,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     r->split = &c->split;
     r->instances = instances;
     r->instance_count = count;
+    reserve_view(c, count);
     r->width = step < 0 ? view->viewport.width * c->scale_percent / 100 : c->ladder.steps[step].width;
     r->height = step < 0 ? view->viewport.height * c->scale_percent / 100 : c->ladder.steps[step].height;
     r->present = view->present;

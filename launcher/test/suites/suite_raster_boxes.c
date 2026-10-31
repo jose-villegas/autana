@@ -16,6 +16,7 @@
 #include "core/tune.h"
 #include "draw/draw.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_test.h"
 #include "image/pixel/rgb565.h"
 #include "math/linear/mat3f.h"
