@@ -10,6 +10,7 @@ flowchart LR
     subgraph C0["core 0: shell and app"]
         direction LR
         Scene[scene and<br/>camera] --> Size[render<br/>size] --> Cull[cull]
+        Cull -. "predicted: census first" .-> Size
     end
     subgraph Both["both cores, shares steered by time"]
         direction LR
@@ -126,38 +127,20 @@ Board ms per frame, mean of 78 to 79 report windows per capture; a view adds the
 
 ## Refreshing
 
-The docs generator, `launcher/tools/render/render_doc_images.sh`, refreshes
-this page's measured block from the committed captures.
+The docs generator, `launcher/tools/render/render_doc_images.sh`, writes the
+`pipeline-frame-stages` chart and table from frame-cost report windows of one
+development build. Two minutes spans several passes of the camera path.
 
-The generator writes the `pipeline-frame-stages` chart and table from
-frame-cost report windows: every bracket of the scene as shipped, and for each
-debug view in the view table of `render/context/render_context.c`, what its
-capture adds to each bracket. Capture them all from one development build
-running the demo scene, the first with the scene as shipped, then one per view.
-Two minutes spans several passes of the camera path, so where along the path a
-capture starts barely moves its means:
+| Capture | Build | Command | Into |
+|---|---|---|---|
+| The scene as shipped | development | `autana monitor 120 --out docs/render/data/pipeline-present-board.log` | every bracket |
+| One per debug view | development, `autana tune view N` | `autana monitor 120 --out docs/render/data/pipeline-view-<name>-board.log` | what the view adds to each bracket |
+| Sub-stages | `autana flash diag --perf-scope --frame-laps` | `autana monitor 120 --out docs/render/data/pipeline-laps-board.log` | the sub-stage table ([laps](../../tools/Frame-Cost.md#laps-inside-a-bracket)) |
 
-```sh
-autana monitor 120 --out docs/render/data/pipeline-present-board.log
-autana monitor 120 --out docs/render/data/pipeline-view-motion-board.log
-```
-
-The sub-stages come from a lapped perf-scope image of the same scene, whose laps
-([Frame-Cost.md](../../tools/Frame-Cost.md#laps-inside-a-bracket)) print a line of
-their own:
-
-```sh
-autana flash diag --perf-scope --frame-laps
-autana monitor 120 --out docs/render/data/pipeline-laps-board.log
-```
-
-The generator fails when the frame core's laps leave more of their parent
-untimed than `UNTIMED_SHARE` in `frame_stages.py`; the dropdown states it.
-
-The debug view is a development-build tunable (`autana tune view` lists it):
-0 (`RENDER_DEBUG_VIEW_SHADED` in `render/context/render_context.h`) is the
-scene as shipped, and each view is its place in the view table,
-counted from 1. Each view's capture is `pipeline-view-<name>-board.log`, and a
-view without one is listed as not captured. Check `autana status` and `autana buildid`
-before and after each capture. A missing capture of the scene as shipped, or a
-capture without report windows, fails the run.
+- View `N` is its place in the view table of `render/context/render_context.c`,
+  counted from 1; 0 (`RENDER_DEBUG_VIEW_SHADED`) is the scene as shipped.
+- A view without a capture is listed as not captured. A missing capture of the
+  scene as shipped, or one without report windows, fails the run.
+- The run fails when the frame core's laps leave more of their parent untimed
+  than `UNTIMED_SHARE` in `frame_stages.py`; the dropdown states it.
+- Check `autana status` and `autana buildid` before and after each capture.
