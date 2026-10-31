@@ -37,32 +37,36 @@ gfx_quarter_select(const uint16_t* mine, const uint16_t* other, const uint8_t* k
  *   both halves of every lane; AND with 1, 2, 4 ... 128 keeps the low copy's
  *   bit, compare equal), then out = a ^ ((a ^ b) & mask).
  *
- * Constants load once, before a zero-overhead loop: blue in q6, green in q7,
- * the rest broadcast from a7 to a11 as each step needs them. The green sum
- * runs between the red-blue steps, so neither waits on its own last result.
+ * Pointers to the constants are set once, before a zero-overhead loop; blue
+ * and green stay in q6 and q7, the rest are broadcast each step. The green
+ * sum runs between the red-blue steps, so neither waits on its own last result.
  *
- * a2 mine, a3 other, a4 keep, a5 out, a6 steps; a7 to a11 constants.
+ * a2 mine, a3 other, a4 keep, a5 out, a6 steps; a7 to a12 constants.
  */
 __asm__(".section .rodata.gfx_pie_constants, \"a\"\n"
         ".align 16\n"
         "gfx_pie_lane_bits: .short 1, 2, 4, 8, 16, 32, 64, 128\n"
-        /* red in its lane, blue, red-blue rounding, green, green rounding, red out */
-        "gfx_pie_masks: .short 0x1F00, 0x001F, 0x0202, 0x07E0, 0x0040, 0xF800\n"
+        "gfx_pie_red_lane: .short 0x1F00\n" /* red, shifted into its lane beside blue */
+        "gfx_pie_blue: .short 0x001F\n"
+        "gfx_pie_rb_round: .short 0x0202\n"
+        "gfx_pie_green: .short 0x07E0\n"
+        "gfx_pie_green_round: .short 0x0040\n"
+        "gfx_pie_red_out: .short 0xF800\n"
         ".text\n"
         ".align 4\n"
         ".global gfx_quarter_select\n"
         ".type gfx_quarter_select, @function\n"
         "gfx_quarter_select:\n"
         "    entry a1, 16\n" /* a leaf: nothing on the stack */
-        "    movi a7, gfx_pie_masks\n"
-        "    addi a8, a7, 4\n"   /* red-blue rounding */
-        "    addi a9, a7, 8\n"   /* green rounding */
-        "    addi a10, a7, 10\n" /* red out */
+        "    movi a7, gfx_pie_red_lane\n"
+        "    movi a8, gfx_pie_rb_round\n"
+        "    movi a9, gfx_pie_green_round\n"
+        "    movi a10, gfx_pie_red_out\n"
         "    movi a11, gfx_pie_lane_bits\n"
-        "    addi a12, a7, 2\n"
-        "    ee.vldbc.16 q6, a12\n" /* blue */
-        "    addi a12, a7, 6\n"
-        "    ee.vldbc.16 q7, a12\n" /* green */
+        "    movi a12, gfx_pie_blue\n"
+        "    ee.vldbc.16 q6, a12\n"
+        "    movi a12, gfx_pie_green\n"
+        "    ee.vldbc.16 q7, a12\n"
         "    loopnez a6, 2f\n"
         "    ee.vld.128.ip q0, a2, 16\n"
         "    ee.vld.128.ip q1, a3, 16\n"
