@@ -436,6 +436,28 @@ render_lab_seek_path(uint32_t t_ms) {
     return scene_animator_seek(path.scene, path.entity, SCENE_ANIMATOR_CURRENT, t_ms % duration_ms);
 }
 
+/* "render pose <ms> | play": the reply to the words after "pose ". */
+static void
+pose_console(const char* rest) {
+    const render_lab_path_t path = shown_path();
+    const bool play = strcmp(rest, "play") == 0;
+    char* end;
+    const unsigned long t_ms = strtoul(rest, &end, 10);
+    if (render_lab_path_duration_ms() == 0) {
+        (void)printf("RENDER_ERR scene %s has no path\n", current_scene()->key);
+    } else if (play) {
+        (void)scene_animator_set_paused(path.scene, path.entity, SCENE_ANIMATOR_CURRENT, false);
+        (void)printf("RENDER pose=play\nRENDER_END\n");
+    } else if (!isdigit((unsigned char)rest[0]) || *end != '\0' || t_ms > UINT32_MAX
+               || !render_lab_seek_path((uint32_t)t_ms)
+               || !scene_animator_set_paused(path.scene, path.entity, SCENE_ANIMATOR_CURRENT, true)) {
+        (void)printf("RENDER_ERR usage: render pose <ms> | render pose play\n");
+    } else {
+        (void)printf("RENDER pose=%lu\nRENDER_END\n", t_ms);
+    }
+    (void)fflush(stdout);
+}
+
 /* "render scenes" lists each scene's key and name and which one shows; "render scene <key>" switches to that exact key at the next frame. "render pose <ms>" holds the showing scene's path there (render_lab_seek_path(), then paused), so a view can be compared at one pose; "render pose play" lets it move again. Replies are "RENDER ..." lines then "RENDER_END", or "RENDER_ERR <why>". Other words go to the showing scene's console hook, if it has one. */
 bool
 render_lab_console(const char* args) {
@@ -462,24 +484,7 @@ render_lab_console(const char* args) {
         return true;
     }
     if (strncmp(args, "pose ", 5) == 0) {
-        const char* rest = args + 5;
-        const render_lab_path_t path = shown_path();
-        const bool play = strcmp(rest, "play") == 0;
-        char* end;
-        const unsigned long t_ms = strtoul(rest, &end, 10);
-        if (render_lab_path_duration_ms() == 0) {
-            (void)printf("RENDER_ERR scene %s has no path\n", current_scene()->key);
-        } else if (play) {
-            (void)scene_animator_set_paused(path.scene, path.entity, SCENE_ANIMATOR_CURRENT, false);
-            (void)printf("RENDER pose=play\nRENDER_END\n");
-        } else if (!isdigit((unsigned char)rest[0]) || *end != '\0' || t_ms > UINT32_MAX
-                   || !render_lab_seek_path((uint32_t)t_ms)
-                   || !scene_animator_set_paused(path.scene, path.entity, SCENE_ANIMATOR_CURRENT, true)) {
-            (void)printf("RENDER_ERR usage: render pose <ms> | render pose play\n");
-        } else {
-            (void)printf("RENDER pose=%lu\nRENDER_END\n", t_ms);
-        }
-        (void)fflush(stdout);
+        pose_console(args + 5);
         return true;
     }
     return current_scene()->console != NULL && current_scene()->console(args, console_reply_stdio);
