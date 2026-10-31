@@ -24,6 +24,14 @@ imu_queue_push(imu_queue_t* queue, const imu_sample_t* samples, int count, int l
 }
 
 void
+imu_queue_restart(imu_queue_t* queue, bool* fifo_gap, int* pending_lost, uint32_t* remainder_us) {
+    *fifo_gap = false;
+    *pending_lost = 0;
+    *remainder_us = 0;
+    imu_queue_push(queue, NULL, 0, 0, true);
+}
+
+void
 imu_queue_set_rate(imu_queue_t* queue, unsigned odr_code) {
     imu_queue_push(queue, NULL, 0, 0, true);
     queue->other_rate = odr_code != IMU_ODR_CODE;

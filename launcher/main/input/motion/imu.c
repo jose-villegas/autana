@@ -534,11 +534,8 @@ restart_fifo(void) {
     if (sensor_present) {
         (void)(write_command(CTRL9_RST_FIFO) && write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG));
     }
-    fifo_gap = true;
-    pending_lost = 0;
-    loss_remainder_us = 0;
     portENTER_CRITICAL(&lock);
-    imu_queue_push(&queue, NULL, 0, 0, true);
+    imu_queue_restart(&queue, &fifo_gap, &pending_lost, &loss_remainder_us);
     portEXIT_CRITICAL(&lock);
 }
 
@@ -664,12 +661,6 @@ count_wake_gap(void) {
  * and keeps the FIFO in read mode, discarding arrivals. */
 static void
 serve_demand(imu_demand_level_t asked, imu_demand_level_t* level, unsigned* read_ticks, TickType_t drain_ticks) {
-    vTaskPrioritySet(NULL, IMU_TASK_BUS_PRIORITY);
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    if (sensor_present) {
-        apply_odr_request();
-    }
-#endif
     if (asked == IMU_DEMAND_FIFO && *level != IMU_DEMAND_FIFO) {
         restart_fifo();
         *read_ticks = 0;
@@ -704,6 +695,12 @@ imu_task(void* arg) {
         }
 #if CONFIG_LAUNCHER_DEVELOPMENT
         count_wake_gap();
+#endif
+        vTaskPrioritySet(NULL, IMU_TASK_BUS_PRIORITY);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        if (sensor_present) {
+            apply_odr_request();
+        }
 #endif
         unsigned read_period_ms = read_ms;
         unsigned drain_period_ms = drain_ms;
