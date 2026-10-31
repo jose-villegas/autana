@@ -3541,6 +3541,7 @@ test_water_slope_captured_scene_diagonal_flip_logs_a_per_step_table(void) {
 #include "app/app.h"
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #include "input/motion/imu.h"
+#include "input/motion/motion_reader.h"
 #endif
 
 extern app_t app_sand;
@@ -3601,6 +3602,8 @@ clock_row_run(int brush, clock_row_t row, clock_row_window_t* pour, clock_row_wi
 #if CONFIG_LAUNCHER_DEVELOPMENT
     const imu_sample_t upright = {.ax = IMU_COUNTS_PER_G};
     imu_inject(&upright);
+    /* The gravity filter holds the board's real tilt for seconds; reset it so the first sample seeds upright. */
+    motion_reader_reset();
 #endif
     app_sand.enter();
     frame_watch_restart();
@@ -3608,7 +3611,6 @@ clock_row_run(int brush, clock_row_t row, clock_row_window_t* pour, clock_row_wi
     sand_app_select_brush_for_test(brush);
 
     int frame_index = 0;
-    /* Warm frames let input_gravity() consume the injected imu_read() sample before timing. */
     clock_row_measure(CLOCK_ROW_POUR_WARM_FRAMES, true, &frame_index);
     *pour = clock_row_measure(CLOCK_ROW_POUR_FRAMES, true, &frame_index);
     input_t lift = {0};
