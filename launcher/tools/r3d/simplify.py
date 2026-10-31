@@ -328,15 +328,16 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
             emitted.append(result)
         return len(result[2])
 
-    # Carved meshes are paid first, out of the ceiling; the rest shares what is left of it.
+    # Carved meshes are paid first, out of the ceiling, at what they emit (locked seams can overshoot their
+    # budget); the rest shares what is left. A weld group mixing carved and rest objects counts as rest.
     waiting = [index for index in range(len(parts)) if index not in consumed]
     carved_first = [index for index in waiting if np.all(np.isin(tri_o[parts[index][0]], list(selected)))]
     rest = [index for index in waiting if index not in carved_first]
     carved_total = sum(entry['output_triangles'] * entry['copies'] for entry in shared)
     carved_total += sum(run_part(*parts[index]) for index in carved_first)
+    check_ceiling(carved_total + len(rest), allocation.ceiling)
     asked = sum(parts[index][1] for index in rest)
-    room = asked if allocation.ceiling is None else max(len(rest), min(asked, allocation.ceiling - carved_total))
-    report['rest_room'] = room
+    room = asked if allocation.ceiling is None else min(asked, allocation.ceiling - carved_total)
     for index in rest:
         run_part(parts[index][0], max(1, parts[index][1] * room // max(asked, 1)))
     out_p, out_c, out_t, out_m = [], [], [], []

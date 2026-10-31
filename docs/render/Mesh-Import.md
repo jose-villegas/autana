@@ -165,8 +165,10 @@ Each `[[objects.meshes]]` rule carves out matching source objects:
 A variant draws each copy with its entry in `variants`, or else
 round(`triangles` x its `objects_scale`), never below `min_triangles`;
 `import_settings.variant_meshes()` owns this rule. The variant's `triangles`
-budgets the rest, retaining `props` shares and the global pass. Its optional `ceiling` caps emitted triangles, including copies;
-`simplify.check_ceiling` owns this check. Overlapping rules are rejected.
+budgets the rest, retaining `props` shares and the global pass. Its optional `ceiling` caps emitted
+triangles, including copies, and is at least `triangles`. Carved meshes are paid first, at what they emit;
+the rest shares what is left. `simplify.check_ceiling` raises when the copies alone leave no room.
+Overlapping rules are rejected.
 
 Objects touch when a vertex lies within `repair.seal_tolerance` of the other's
 surface. `objects/contact.py` owns the graph and both sides' border vertices.
