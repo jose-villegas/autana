@@ -22,8 +22,7 @@
 #include "testkit/cleanup.h"
 #include "unity.h"
 
-#define PERF_SAMPLES  100
-#define CLIP_BLEND_MS 300
+#define PERF_SAMPLES 100
 
 static const char* TAG = "capybara_perf";
 
@@ -90,18 +89,18 @@ test_console_gallop_blends_and_skins(void) {
     fixture_t* f = fixture();
     render_lab_test_frame(false, NULL);
     char command[ASSET_NAME_MAX];
-    TEST_ASSERT_TRUE(snprintf(command, sizeof command, CAPYBARA_CLIP_COMMAND, CLIP_BLEND_MS) >= 0);
+    TEST_ASSERT_TRUE(snprintf(command, sizeof command, CAPYBARA_CLIP_COMMAND, CAPYBARA_CLIP_BLEND_MS) >= 0);
     TEST_ASSERT_TRUE(app_render_lab.console->handle(command));
     const scene_animator_t* a = &f->scene->animators[f->subject];
-    TEST_ASSERT_EQUAL_UINT32(CLIP_BLEND_MS, a->layer.blend_ms);
+    TEST_ASSERT_EQUAL_UINT32(CAPYBARA_CLIP_BLEND_MS, a->layer.blend_ms);
     TEST_ASSERT_EQUAL_STRING("gallop", scene_animator_clip_name(f->scene, f->subject, a->layer.current.clip));
     render_lab_test_frame(false, NULL);
     TEST_ASSERT_EQUAL_UINT32(RENDER_LAB_TEST_FRAME_MS, a->layer.blended_ms);
-    TEST_ASSERT_LESS_THAN_UINT32(CLIP_BLEND_MS, a->layer.blended_ms);
-    for (int i = 0; i <= CLIP_BLEND_MS / RENDER_LAB_TEST_FRAME_MS; i++) {
+    TEST_ASSERT_LESS_THAN_UINT32(CAPYBARA_CLIP_BLEND_MS, a->layer.blended_ms);
+    for (int i = 0; i <= CAPYBARA_CLIP_BLEND_MS / RENDER_LAB_TEST_FRAME_MS; i++) {
         render_lab_test_frame(false, NULL);
     }
-    TEST_ASSERT_EQUAL_UINT32(CLIP_BLEND_MS, a->layer.blended_ms);
+    TEST_ASSERT_EQUAL_UINT32(CAPYBARA_CLIP_BLEND_MS, a->layer.blended_ms);
     TEST_ASSERT_EQUAL_STRING("gallop", scene_animator_clip_name(f->scene, f->subject, a->layer.current.clip));
     assert_skin_changes(f);
 }

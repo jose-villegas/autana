@@ -4,6 +4,7 @@
 
 #include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_present.h"
 #ifndef ESP_PLATFORM
 #include "gfx/present/gfx_test.h"
 #endif
