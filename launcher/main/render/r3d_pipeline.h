@@ -112,16 +112,26 @@ void r3d_pipeline_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const
                        const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows,
                        const r3d_span_target_t* target, r3d_pipeline_work_t* work);
 
-/* The length of the shortest prefix of `clusters` holding at least
- * first_permille / JOB_SHARE_PERMILLE of their vertices; 0 when there are none. */
-int r3d_pipeline_transform_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, int count, int first_permille);
+/* One mesh's visible clusters as the splits weigh them; several parts are
+ * drawn as one, their clusters in part order. `rows` as transformed, or NULL
+ * where only the transform split reads the part. */
+typedef struct {
+    const r3d_lit_mesh_t* mesh;
+    const uint16_t* clusters;
+    int count;
+    const r3d_pipeline_rows_t* rows;
+} r3d_pipeline_part_t;
+
+/* The length of the shortest prefix of the parts' clusters, counted across
+ * them in order, holding at least first_permille / JOB_SHARE_PERMILLE of their
+ * vertices; 0 when there are none. */
+int r3d_pipeline_transform_split(const r3d_pipeline_part_t* parts, int part_count, int first_permille);
 
 /* A row between 1 and height - 1 assigning top_permille / JOB_SHARE_PERMILLE
  * of estimated draw weight to the top slice, interpolated within its bucket.
  * Weight is each visible cluster's triangle count across the buckets it spans.
  * With no weight, returns the middle row. */
-int r3d_pipeline_draw_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, const r3d_pipeline_rows_t* rows,
-                            int count, int height, int top_permille);
+int r3d_pipeline_draw_split(const r3d_pipeline_part_t* parts, int part_count, int height, int top_permille);
 
 /* Pointer-bearing state needs host alignment without widening the board's
  * four-byte carve. */
