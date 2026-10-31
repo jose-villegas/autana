@@ -275,7 +275,7 @@ dump_raster(int index) {
 }
 
 static void
-draw(const render_frame_t* frame) {
+draw(const provider_frame_t* frame) {
     ui_clear_band_overlay();
     input_t in = tap ? frame->input : (input_t){0};
     in.boot.pressed = menu && frame->index == 0;
@@ -293,7 +293,7 @@ draw(const render_frame_t* frame) {
     app_list()->update(frame->dt_ms, &in);
 }
 
-const render_scene_t render_scene = {
+const frame_provider_t render_lab_provider = {
     .name = "render_lab",
     .quarter = 1,
     .frames = 30,
