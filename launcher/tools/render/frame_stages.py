@@ -59,7 +59,8 @@ SUB_STAGE_TITLE_PAD = 20  # points between a title and the bar, room for the leg
 
 def view_names(source=VIEW_TABLE):
     table = re.search(r"\bviews\[\] = \{(.*?)\n\};", pathlib.Path(source).read_text(encoding="utf-8"), re.S)
-    names = re.findall(r'\{"(\w+)",', table[1]) if table else []
+    # A row names its view first: {"depth", ...} or {.name = "depth", ...}.
+    names = re.findall(r'\{(?:\.name = )?"(\w+)"', table[1]) if table else []
     if not names:
         raise ValueError(f"{source}: no debug view table")
     return names
