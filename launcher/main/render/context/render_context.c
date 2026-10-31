@@ -449,7 +449,7 @@ render_context_overlay(const render_context_t* c, int width, int height) {
 #endif
 }
 
-void*
+const void*
 render_context_debug_view_state(const render_context_t* c) {
     return c->debug_view_state;
 }
