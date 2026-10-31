@@ -13,13 +13,26 @@ python=$(find_python)
 autana="$root/tools/autana"
 board=$1
 shift
-run_capture() {
-    local script=$1
-    shift
+script_path() {
     # A board job hands paths inside the shipped tree over as absolute paths.
-    case $script in /* | [A-Za-z]:*) ;; *) script=$root/$script ;; esac
+    case $1 in /* | [A-Za-z]:*) printf '%s\n' "$1" ;; *) printf '%s\n' "$root/$1" ;; esac
+}
+run_capture() {
+    local script
+    script=$(script_path "$1")
+    shift
     "$python" "$script" --board "$board" --autana "$autana" "$@"
 }
+# Every capture imports its tools before the board is flashed, so a host missing them stops here.
+next_is_script=1
+for arg in "$@"; do
+    if [ "$next_is_script" = 1 ] && ! "$python" "$(script_path "$arg")" --help >/dev/null; then
+        echo "board_capture: $arg cannot start on this host; install launcher/tools/audio/mic/requirements.txt" >&2
+        exit 1
+    fi
+    next_is_script=0
+    [ "$arg" = --then ] && next_is_script=1
+done
 "$autana" --board "$board" status
 "$autana" --board "$board" flash dev
 "$autana" --board "$board" buildid
