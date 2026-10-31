@@ -128,11 +128,21 @@ case "${1:-}" in
     "") ;;
     --check) CHECK=1 ;;
     --orphans)
-        # Cheap enough for a pull request: nothing is rendered. An image is
-        # claimed when its name up to the first dot appears in the script that
-        # makes the launcher images, the scene scripts, or an app's doc_images.sh.
+        # Cheap enough for a pull request: nothing is rendered. An image is claimed
+        # when its name up to the first dot appears in the script that makes the
+        # launcher images, the scene scripts, or an app's doc_images.sh; when the
+        # demo script spells it ${ID}-... or ends it with a loop variable, which
+        # claims any name under that prefix (${ID}-view-$view); or when it is a
+        # pair sheet doc_tables.py lists for the demo scene.
         comparing=1
         status=0
+        pairs=
+        if [ -f "$DEMO_SCENE" ]; then
+            . "$ROOT/scripts/lib/python.sh"
+            PYTHON=$(find_python) || exit 2
+            pairs=$("$PYTHON" "$TOOLS_DIR/doc_tables.py" --pairs "$DEMO_SCENE" "$DEMO_OBJECT") || exit 2
+            pairs=$(printf '%s\n' "$pairs" | awk '{print "compare-" $3 "-" $4}')
+        fi
         for image in $(cd "$IMAGES" && find . -type f | sed 's|^\./||' | LC_ALL=C sort); do
             case "$image" in render/gpu/*|render/meshlets/*) continue ;; esac
             stem=$(basename "$image")
@@ -145,6 +155,9 @@ case "${1:-}" in
                         continue
                     fi ;;
             esac
+            if printf '%s\n' "$pairs" | grep -qxF -- "$stem"; then
+                continue
+            fi
             if ! grep -qF -- "$stem" "$TOOLS_DIR/render_doc_images.sh" "$TOOLS_DIR"/scenes/*.sh "$TOOLS_DIR/doc_images_demo.sh" "$TOOLS_DIR/doc_import_examples.py" \
                 $app_image_scripts; then
                 claimed=0
@@ -153,7 +166,9 @@ case "${1:-}" in
                     case "$stem" in
                         "$id"-*)
                             template='${ID}'${stem#"$id"}
-                            if grep -qF -- "$template" "$TOOLS_DIR/doc_images_demo.sh"; then
+                            # A name a loop ends with its variable, as ${ID}-view-$view.
+                            if grep -qF -- "$template" "$TOOLS_DIR/doc_images_demo.sh" ||
+                                grep -qF -- "${template%-*}-\$" "$TOOLS_DIR/doc_images_demo.sh"; then
                                 claimed=1
                                 break
                             fi ;;
@@ -282,6 +297,9 @@ run "$PYTHON" launcher/tools/audio/sound_onset_figures.py --out "$OUT/audio" > "
 
 if [ "$AUDIO_ONLY" = 0 ]; then
 
+run "$PYTHON" launcher/tools/power/power_budget_doc.py --figures "$OUT/power" > "$WORK/power_budget_doc.log"
+# --orphans scans this runner: power_budget_states.png, power_budget_states-dark.png
+
 # The skeleton and skin figures: the demo rig over one clip, and a limb through the skinning kernel.
 run mkdir -p "$OUT/render" "$OUT/tables"
 skin_asset=$("$PYTHON" launcher/tools/bake/bake.py path "$SKIN_BAKE") || exit 2
@@ -321,7 +339,8 @@ for csv in docs/render/data/dynamic-resolution-quality-*.csv; do
 done
 [ -f docs/render/data/upscale-filter-quality.csv ] && set -- "$@" --upscale docs/render/data/upscale-filter-quality.csv
 run "$PYTHON" launcher/tools/r3d/dynres_report.py docs/render/data/dynamic-resolution-board.log \
-    "$@" --tables "$OUT/tables" --chart "$OUT/render/dynamic-resolution-flight.png" > "$WORK/dynres.log"
+    "$@" --tables "$OUT/tables" --chart "$OUT/render/dynamic-resolution-flight.png" --figures "$OUT/render" > "$WORK/dynres.log"
+# --orphans scans this runner: dynamic-resolution-stages.png, dynamic-resolution-stages-dark.png, dynamic-resolution-one-core.png, dynamic-resolution-one-core-dark.png, dynamic-resolution-sizes.png, dynamic-resolution-sizes-dark.png, dynamic-resolution-flight-sizes.png, dynamic-resolution-flight-sizes-dark.png
 # Surface upscaling's sheet and edge crops, from the frame the upscale
 # quality script keeps beside the page (<scene>-<size>-<frame>-*.png).
 UPSCALE_CROPS=3
@@ -335,7 +354,7 @@ for reference in docs/render/data/upscale-frames/*-reference.png; do
 done
 # Every mesh scene's frame at each ladder step, and the predictor flown over it.
 run "$PYTHON" launcher/tools/r3d/dynres_replay.py docs/render/data/dynamic-resolution-steps-board.log --cc "$cc" \
-    --lead bistro-fitted-full --tables "$OUT/tables" > "$WORK/dynres_replay.log"
+    --lead bistro-fitted-full --tables "$OUT/tables" --figures "$OUT/render" > "$WORK/dynres_replay.log"
 
 # Frame generation: every mesh scene's warped frames scored on the host.
 run sh launcher/tools/r3d/framegen/framegen_docs.sh --out "$OUT/render" "$OUT/tables" > "$WORK/framegen.log" 2>&1

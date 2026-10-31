@@ -281,28 +281,35 @@ r3d_pipeline_transform(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const
 }
 
 int
-r3d_pipeline_transform_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, int count, int first_permille) {
+r3d_pipeline_transform_split(const r3d_pipeline_part_t* parts, int part_count, int first_permille) {
     int total = 0;
-    for (int i = 0; i < count; i++) {
-        total += mesh->clusters[clusters[i]].vertex_count;
-    }
-    int prefix = 0;
-    for (int i = 0; i < count; i++) {
-        prefix += mesh->clusters[clusters[i]].vertex_count;
-        if ((int64_t)prefix * JOB_SHARE_PERMILLE >= (int64_t)total * first_permille) {
-            return i + 1;
+    for (int p = 0; p < part_count; p++) {
+        for (int i = 0; i < parts[p].count; i++) {
+            total += parts[p].mesh->clusters[parts[p].clusters[i]].vertex_count;
         }
     }
-    return count;
+    int prefix = 0;
+    int position = 0;
+    for (int p = 0; p < part_count; p++) {
+        for (int i = 0; i < parts[p].count; i++) {
+            prefix += parts[p].mesh->clusters[parts[p].clusters[i]].vertex_count;
+            position++;
+            if ((int64_t)prefix * JOB_SHARE_PERMILLE >= (int64_t)total * first_permille) {
+                return position;
+            }
+        }
+    }
+    return position;
 }
 
 #define DRAW_SPLIT_BUCKETS 64
 
 static void
-draw_split_histogram(int* weight, const r3d_lit_mesh_t* mesh, const uint16_t* clusters, const r3d_pipeline_rows_t* rows,
-                     int count, int height) {
-    for (int i = 0; i < count; i++) {
-        const r3d_pipeline_rows_t* r = &rows[clusters[i]];
+draw_split_histogram(int* weight, const r3d_pipeline_part_t* part, int height) {
+    const r3d_lit_mesh_t* mesh = part->mesh;
+    const uint16_t* clusters = part->clusters;
+    for (int i = 0; i < part->count; i++) {
+        const r3d_pipeline_rows_t* r = &part->rows[clusters[i]];
         const int first = mathi_clamp(r->unbounded ? 0 : r->y0 / R3D_SUBPIXEL, 0, height - 1);
         const int last = mathi_clamp(r->unbounded ? height - 1 : r->y1 / R3D_SUBPIXEL, 0, height - 1);
         const int cost = mesh->clusters[clusters[i]].triangle_count;
@@ -340,11 +347,12 @@ draw_split_row(const int* weight, int height, int top_permille) {
 }
 
 int
-r3d_pipeline_draw_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, const r3d_pipeline_rows_t* rows,
-                        int count, int height, int top_permille) {
+r3d_pipeline_draw_split(const r3d_pipeline_part_t* parts, int part_count, int height, int top_permille) {
     assert(top_permille >= 0 && top_permille <= JOB_SHARE_PERMILLE);
     int weight[DRAW_SPLIT_BUCKETS + 1] = {0};
-    draw_split_histogram(weight, mesh, clusters, rows, count, height);
+    for (int p = 0; p < part_count; p++) {
+        draw_split_histogram(weight, &parts[p], height);
+    }
     return draw_split_row(weight, height, top_permille);
 }
 

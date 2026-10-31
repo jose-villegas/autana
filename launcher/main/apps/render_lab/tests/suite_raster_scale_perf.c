@@ -122,6 +122,21 @@ add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
     sum->fill += whole - carry;
 }
 
+/* One frame at the pose just seeked, drawn and upscaled; its triangles. Out
+ * of line, so the view is off the stack while the spans are split. */
+static __attribute__((noinline)) int64_t
+timed_pose(raster_t* raster, gfx_color_t* destination, int32_t* frame_us) {
+    const render_view_t view =
+        sponza_suite_view(lens, scene, camera_entity, (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
+    const int64_t start = timing_now_us();
+    const raster_stats_t stats = raster_draw(raster, &view);
+    raster->present = render_lab_present();
+    const resolution_step_t composed = raster_compose_size(raster);
+    raster_upscale(raster, destination, composed.width, composed.height);
+    *frame_us = (int32_t)(timing_now_us() - start);
+    return stats.triangles;
+}
+
 static int64_t
 measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size, int32_t* frame_us, char* report) {
     size = raster_present_size(size, render_lab_present());
@@ -133,15 +148,7 @@ measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size,
     int64_t triangles = 0;
     for (uint32_t t_ms = 0; t_ms < period && poses < POSES_MAX; t_ms += POSE_EVERY_MS) {
         (void)scene_animator_seek(scene, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
-        const render_view_t view =
-            sponza_suite_view(lens, scene, camera_entity, (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
-        const int64_t start = timing_now_us();
-        const raster_stats_t stats = raster_draw(raster, &view);
-        raster->present = render_lab_present();
-        const resolution_step_t composed = raster_compose_size(raster);
-        raster_upscale(raster, destination, composed.width, composed.height);
-        frame_us[poses++] = (int32_t)(timing_now_us() - start);
-        triangles += stats.triangles;
+        triangles += timed_pose(raster, destination, &frame_us[poses++]);
     }
     (void)frame_cost_take_report((uint32_t)poses, report, FRAME_COST_REPORT_MAX);
 

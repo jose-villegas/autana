@@ -67,7 +67,7 @@ typedef struct {
 
 #define RENDER_DEBUG_VIEW_UNKNOWN -2
 #define RENDER_DEBUG_VIEW_SHADED  0
-#define RENDER_DEBUG_VIEW_COUNT   5 /* table rows; views run 0 to this */
+#define RENDER_DEBUG_VIEW_COUNT   6 /* table rows; views run 0 to this */
 
 typedef struct {
     raster_split_t split;
@@ -90,8 +90,8 @@ typedef struct {
     render_context_frame_t frame;
     /* Frame generation (render/framegen): one generated frame after each
      * drawn one, while it costs less than a drawn one. The raster holds the
-     * drawn frame, through kept_view, until a generated frame is written
-     * over it. */
+     * drawn frame, through kept_view; a generated one is composed from
+     * `framegen`. */
     bool generating;
     bool kept;
     int32_t generated_us; /* the last generated frame's warp, fill and compose; 0 before one */

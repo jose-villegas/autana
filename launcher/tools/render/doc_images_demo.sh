@@ -177,15 +177,23 @@ demo_gif ${ID}-depth --scene "$ID" --object "$SHOWCASE" --view depth
 demo_gif ${ID}-tiles --scene "$ID" --object "$SHOWCASE" --view tiles
 demo_gif ${ID}-motion-vectors --scene "$ID" --object "$SHOWCASE" --view motion
 demo_gif ${ID}-meshlets --scene "$ID" --object "$SHOWCASE" --view meshlets
+# One still of each view the renderer declares, at the pose the GIFs end on:
+# View-Modes' gallery. A --view it does not know makes it list them.
+views=$("$HOST" --scene "$ID" --view none 2>&1 >/dev/null | sed -n 's/^scene_viewer: --view is \(.*\), not none$/\1/p' | sed 's/, / /g')
+[ -n "$views" ] || { echo "$0: the renderer listed no views" >&2; exit 1; }
+for view in $views; do
+    run "$HOST" --quarter 1 --frames "$DEMO_GIF_FRAMES" --dt "$DEMO_GIF_DT" --scene "$ID" --object "$SHOWCASE" \
+        --view "$view" -o "$W/view-$view.bmp" 2> "$W/view-$view.log"
+    run "$PYTHON" -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).save(sys.argv[2])' \
+        "$W/view-$view.bmp" "$RENDER/${ID}-view-$view.png"
+done
 
 # The targets' differences at the pose the GIFs end on: each pair side by side
 # with the amplified difference, and the places they differ most, enlarged.
 demo_still() {
     run "$HOST" --quarter 1 --frames 30 --dt 100 -o "$W/still-$1.bmp" --scene "$ID" --object "$2" 2> "$W/still-$1.log"
 }
-# The pairs, and what each variant is, come from doc_tables.py's VARIANT_NOTES:
-# compare-full-lite, compare-full-flat, compare-lite-fitted, compare-full-fitted-full
-# and compare-flat-flat-fitted for the demo scene.
+# The pairs, and what each variant is, come from doc_tables.py's VARIANT_NOTES.
 run "$PYTHON" launcher/tools/render/doc_tables.py --pairs "$SCENE" "$FULL" > "$W/pairs.txt"
 while read -r base object base_slug slug <&3; do
     [ -f "$W/still-$base_slug.bmp" ] || demo_still "$base_slug" "$base"
@@ -378,4 +386,11 @@ tables_seconds=$(($(date +%s) - tables_start))
 echo "CPU table measurements added: $tables_seconds seconds"
 echo "$tables_seconds" > "$W/tables-seconds.txt"
 
-"$R3D_PYTHON" "launcher/tools/render/doc_import_examples.py" "$SCENE" "$FULL" "$HOST" "$W" "$RENDER" "$FIDELITY_FRAMES" "$FIDELITY_DT" > "$W/import-examples.log" 2>&1
+# The import examples show the fitted variants: face samples on the flat fit's
+# geometry, where the fit starts, beside the fit's own render.
+"$R3D_PYTHON" launcher/tools/r3d/bake_fidelity.py "$DEMO/$ID.scene.toml" --mesh "${FULL}_flat_fitted" \
+    --host "$HOST" \
+    --render-args "--quarter 0 --scene $ID --object ${FULL}_flat_fitted --frames $FIDELITY_FRAMES --dt $FIDELITY_DT" \
+    --reference "$REFERENCE" --work "$W/face-samples" --variant declared= --variant fixed1=samples=fixed:1 \
+    > "$W/face-samples.log" 2>&1
+"$R3D_PYTHON" "launcher/tools/render/doc_import_examples.py" "$SCENE" "${FULL}_fitted_full" "${FULL}_flat_fitted" "$HOST" "$W" "$RENDER" "$FIDELITY_FRAMES" "$FIDELITY_DT" > "$W/import-examples.log" 2>&1

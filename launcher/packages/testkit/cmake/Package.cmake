@@ -13,10 +13,10 @@ function(package_add_requires name)
 endfunction()
 
 # Registers the calling package: its folder's name, include/ as the include root,
-# src/**/*.c as its sources (none makes it header-only) and <name>_requires as
-# what it uses. ESP-IDF registers it as a component; plain CMake (a
-# standalone build) gets a library target of that name, plus the package's tests
-# when it is the top-level project.
+# src/**/*.c as its sources (none makes it header-only), plus src/**/*.S in the
+# firmware only, and <name>_requires as what it uses. ESP-IDF registers it as a
+# component; plain CMake (a standalone build) gets a library target of that
+# name, plus the package's tests when it is the top-level project.
 #
 # A macro, not a function: ESP-IDF's idf_component_register sets COMPONENT_LIB in
 # its caller's scope, and its script-mode pass, which only reads requirements and
@@ -35,11 +35,17 @@ macro(package_add)
     endif()
 
     if(ESP_PLATFORM)
+        if(CMAKE_SCRIPT_MODE_FILE)
+            file(GLOB_RECURSE package_asm "${CMAKE_CURRENT_LIST_DIR}/src/*.S")
+        else()
+            file(GLOB_RECURSE package_asm CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/src/*.S")
+        endif()
+        list(APPEND package_srcs ${package_asm})
         idf_component_register(SRCS ${package_srcs} INCLUDE_DIRS "include" REQUIRES ${${package_name}_requires})
         if(package_srcs AND NOT CMAKE_SCRIPT_MODE_FILE)
             # The FPU has no double; the same refusals as the main component.
-            target_compile_options(${COMPONENT_LIB} PRIVATE -Werror=vla -Werror=unused-macros
-                                   -Werror=double-promotion -Werror=float-conversion)
+            set(package_c_refusals -Werror=vla -Werror=unused-macros -Werror=double-promotion -Werror=float-conversion)
+            target_compile_options(${COMPONENT_LIB} PRIVATE "$<$<COMPILE_LANGUAGE:C>:${package_c_refusals}>")
         endif()
     else()
         package_add_requires(${package_name})

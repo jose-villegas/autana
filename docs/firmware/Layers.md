@@ -137,6 +137,7 @@ flowchart BT
     p_kinematics["kinematics/"]
     p_math["math/"]
     p_physics["physics/"]
+    p_simd["simd/"]
     p_testkit["testkit/"]
     p_image --> p_math
     p_kinematics --> p_math
