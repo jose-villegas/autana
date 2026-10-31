@@ -219,8 +219,10 @@ pay cut pixels or triangle setup.
 ### Render scale and the half picture
 
 `render_context_set_scale(context, percent)` sets the share of the panel each
-axis draws at; 50% until set. At exactly half width, with a height that
-divides the half height, compose copies into the half picture. Any other size upscales to the full framebuffer.
+axis draws at; 50% until set. A draw of exactly half width and at most half
+height expands into the half picture (`raster_fits_half_picture()`); an uneven
+height spreads through the row map, its row edges on even panel rows. Any
+other size upscales to the full framebuffer.
 
 - **Use** 50% unless the scene is sparse: it is the size the half picture serves.
 - **Hurts** at any size that misses the half picture: compose writes the full

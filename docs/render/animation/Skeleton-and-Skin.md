@@ -166,37 +166,34 @@ and vertex counts. Property animators use no skeleton.
 | Block | Where | Sized by | Holds |
 |---|---|---|---|
 | Skin output | internal RAM, one per mesh, with model matrices and palette | `r3d_skin_output_bytes()`, carved by `r3d_skin_output_init()` | positions, cluster bounds, node bounds |
-| Lit colours and normal palette | internal RAM, only with lights or nonzero ambient | `R3D_SKIN_LIGHT_CHANNELS` bytes per vertex, a `mat3f_t` per joint | see [Skinned lighting](Skinned-Lighting.md#memory); unlit skins keep the bind-colour pointer |
+| Lit colours and normal palette | internal RAM, only with lights or nonzero ambient | [Skinned lighting](Skinned-Lighting.md#memory) | lit colours per vertex, a normal matrix per joint; unlit skins keep the bind-colour pointer |
 | Components | PSRAM | entity count | animators, skinned renderers |
 
 Unloading the scene frees all of them.
 
 ```mermaid
-sequenceDiagram
-    participant S as scene system
-    participant C0 as core 0
-    participant C1 as core 1 job
-    opt skeleton animators attached
-        S->>C1: animate second entity range
-        S->>C0: animate first entity range
-        C1-->>S: job_wait
+flowchart LR
+    subgraph Animate["skeleton animators, if attached"]
+        direction TB
+        A0["core 0: first entity range"] ~~~ A1["core 1: second range"]
     end
-    S->>C0: apply property fields
-    opt posed clusters present
-        S->>S: build world-space normal palettes
-        S->>S: prepare shared world-space lights
-        S->>C1: skin and light second cluster range
-        S->>C0: skin and light first cluster range
-        C1-->>S: job_wait
-        S->>S: refit node bounds
+    subgraph Skin["posed clusters, if present"]
+        direction TB
+        Pal["world-space normal palettes,<br/>shared lights"] --> S0["core 0: skin and light<br/>first cluster range"]
+        Pal --> S1["core 1: second range"]
+        S0 --> Refit["refit node bounds"]
+        S1 --> Refit
     end
-    S->>S: rebuild active renderers with dirty entities
-    S->>S: draw mesh views through camera pose
+    subgraph Draw["the scene system"]
+        direction TB
+        Rebuild["rebuild renderers<br/>with dirty entities"] --> View["draw mesh views<br/>through the camera"]
+    end
+    Animate -- "job_wait, then property fields" --> Skin --> Draw
 ```
 
-`job_run_steered()` (`core/job.h`, shared with the raster) gives core 1 the
-second range, or runs it inline first when core 1 is busy. Each stage's share
-on the scene moves toward equal times for both halves. Animator jobs
+`job_run_range()` (`core/job.h`, built on the raster's `job_run_steered()`)
+gives core 1 the second range, or runs it inline first when core 1 is busy.
+Each stage's share on the scene moves toward equal times for both halves. Animator jobs
 write their own poses and palettes; skin jobs write disjoint cluster vertex
 ranges. Job contexts are checked against `JOB_CTX_MAX` at compile time.
 
