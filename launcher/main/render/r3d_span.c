@@ -138,23 +138,33 @@ depth_cap_max(uint16_t cap) {
     return ((int32_t)cap << R3D_DEPTH_SHIFT) | ((1 << R3D_DEPTH_SHIFT) - 1);
 }
 
+/* Under this sum of a depth plane's two steps, its float set-up stays inside
+ * int32 over a span range of offsets and rounds by under one 16-bit code,
+ * which R3D_SPAN_DEPTH_DRIFT allows, and the truncated steps drift no more
+ * than it allows either: such a plane cannot pass its vertices' limit. */
+#define DEPTH_STEPS_EXACT (INT32_MAX / (R3D_SPAN_RANGE / R3D_SUBPIXEL))
+
 /* Whether the depth plane stays inside [0, DEPTH_MAX] over `box`, and under
  * r3d_span_depth_limit() of the nearest vertex. Every centre a fill covers
  * lies inside the triangle, where the plane is highest at a vertex; a
- * sliver's float set-up can tilt it past the limit there, and then its
+ * sliver's steep float set-up can tilt it past the limit there, and then its
  * spans clamp to it. A saturated limit is the range itself. */
 static inline void
 depth_range(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, recti_t box,
             gradients_t* g) {
-    const uint16_t limit = r3d_span_depth_limit(mathf_max(a->z, mathf_max(b->z, c->z)));
-    const int32_t max = depth_cap_max(limit);
     int64_t low;
     int64_t high;
     plane_limits(g->base[0], g->dx[0], g->dy[0], box, &low, &high);
-    const bool capped = limit < R3D_DEPTH_NEAREST && high > max
-                        && (depth_at(g, box, a) > max || depth_at(g, box, b) > max || depth_at(g, box, c) > max);
-    g->depth_cap = capped ? limit : 0;
-    g->in_range = !capped && low >= 0 && high <= DEPTH_MAX;
+    g->depth_cap = 0;
+    if (mathi_abs(g->dx[0]) + mathi_abs(g->dy[0]) >= DEPTH_STEPS_EXACT) {
+        const uint16_t limit = r3d_span_depth_limit(mathf_max(a->z, mathf_max(b->z, c->z)));
+        const int32_t max = depth_cap_max(limit);
+        if (limit < R3D_DEPTH_NEAREST && high > max
+            && (depth_at(g, box, a) > max || depth_at(g, box, b) > max || depth_at(g, box, c) > max)) {
+            g->depth_cap = limit;
+        }
+    }
+    g->in_range = g->depth_cap == 0 && low >= 0 && high <= DEPTH_MAX;
 }
 
 /* A pixel centre just outside the triangle extrapolates past the vertex
