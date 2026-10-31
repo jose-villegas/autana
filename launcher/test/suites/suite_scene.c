@@ -2570,6 +2570,21 @@ test_blended_expand_blends_within_seams_and_doubles_across_them(void) {
     for (int x = 0; x < GFX_WIDTH; x++) {
         TEST_ASSERT_EQUAL_HEX16(line[x / 2], row[x]);
     }
+
+    /* Seams scattered: each side blends unless a seam or the panel edge is there. */
+    srand(7);
+    for (size_t i = 0; i < GFX_SEAM_BYTES(HALF_WIDTH, HALF_HEIGHT); i++) {
+        seams[i] = (uint8_t)rand();
+    }
+    gfx_expand_frame_blended();
+    gfx_read_panel_row(2, row);
+    const uint8_t* across = seams + GFX_SEAM_PITCH(HALF_WIDTH);
+    for (int x = 0; x < HALF_WIDTH; x++) {
+        const bool left = x > 0 && !gfx_seam_at(across, x - 1);
+        const bool right = x + 1 < HALF_WIDTH && !gfx_seam_at(across, x);
+        TEST_ASSERT_EQUAL_HEX16(left ? rgb565be_blend(line[x], line[x - 1], NEIGHBOUR) : line[x], row[2 * x]);
+        TEST_ASSERT_EQUAL_HEX16(right ? rgb565be_blend(line[x], line[x + 1], NEIGHBOUR) : line[x], row[(2 * x) + 1]);
+    }
     free(row);
 }
 
