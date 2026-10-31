@@ -18,9 +18,10 @@ TRAINING = (("train.txt", "reference"), ("train_landscape.txt", "reference_lands
 COVERAGE = "coverage.txt"
 HELD_OUT = "held_out.txt"
 # A carved start's rest is fitted with the reference G-buffer terms (fit/gbuffer.py) at these weights: the front
-# term pushes it behind the copies, the depth term holds it to the source's surface.
-FRONT_WEIGHT = 0.0
-DEPTH_WEIGHT = 0.0
+# term pushes it behind the copies, the depth term holds it to the source's surface. Picked on street_fitted: front
+# 1e4 cuts the hidden copy pixels about tenfold; depth 30 then lowers held-out dE, heavier depth raised it.
+FRONT_WEIGHT = 1.0e4
+DEPTH_WEIGHT = 30.0
 
 
 def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False, target=None, inputs=None,
