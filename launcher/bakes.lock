@@ -238,36 +238,36 @@ host = "Linux x86_64"
 # and sampler code. bake.py lock writes them; bake.py check samples them again.
 
 [[poses]]
-key = "2012fc8205ebb7686c80ba9f9b3993bc49255154fa621dbe4bb40f0834bc345f"
-poses = "4e6038b04307b2374f3c90ae507e576d2cfd82d7508b742ba134ebfe01ceb18d"
-count = 133
-clip = "launcher/demo/bistro/street.anim.toml"
-host = "Linux x86_64"
-
-[[poses]]
-key = "36cf242407b97dbe593c3468d3547a3d384abc3b3e9902daef756dc99394c1ee"
+key = "05e238ae671478f4e57c9218c13ab71e528c39964a4f7afa31cab6b726cdb2d1"
 poses = "d22bd63bb589a7fcbd9126cc96d9d65ee9bd7f2d66560aec6e9d6b938397755f"
 count = 6605
 clip = "launcher/demo/bistro/street.anim.toml"
 host = "Linux x86_64"
 
 [[poses]]
-key = "8d265e6a6b4f7a34ab3b8ac25f29545af352e1b4b6b3ec716a418dfe62dcc4b1"
+key = "07ea43552d512d0ae4a4dc46aec4c58c5e2248e68b618d50bc889c2538f0def6"
 poses = "7f5a1e528b63cc2ebea4ea3c6795518dc30bb47befc15345be563a2d9a4ddd10"
 count = 1816
 clip = "launcher/demo/sponza/flythrough.anim.toml"
 host = "Linux x86_64"
 
 [[poses]]
-key = "b70973dbd2d2187aa1ca9bb20faad42d89717ced0e4416fd7bd36c5f560f4878"
-poses = "9ead88ddf14f89d2451a12a9e69686f4eeb66075f3ed042f999511be8e6e0998"
-count = 265
+key = "4e71c67a0e5c50926e1b21da1f8045298a0f5f31c952c09edd5548ff94accb12"
+poses = "4e6038b04307b2374f3c90ae507e576d2cfd82d7508b742ba134ebfe01ceb18d"
+count = 133
 clip = "launcher/demo/bistro/street.anim.toml"
 host = "Linux x86_64"
 
 [[poses]]
-key = "cdad2a7d311201de484352f819b131859e31ca692be35725ae9bea5cb7a23c0b"
+key = "4f5a12ac2fa152e3fcc09ed6563a3f3f16be638f611779b8f2da2be71c48909e"
 poses = "bc608ce3264275d892202b270ad05e255c7878431cbea66d907ba0e927ecf8da"
 count = 37
 clip = "launcher/demo/sponza/flythrough.anim.toml"
+host = "Linux x86_64"
+
+[[poses]]
+key = "88c0d231ec67fc655f4d664871f9e06fc243e8fd54de8d600a277a715e466940"
+poses = "9ead88ddf14f89d2451a12a9e69686f4eeb66075f3ed042f999511be8e6e0998"
+count = 265
+clip = "launcher/demo/bistro/street.anim.toml"
 host = "Linux x86_64"
