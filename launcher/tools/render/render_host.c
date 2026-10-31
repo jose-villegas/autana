@@ -194,7 +194,7 @@ crop_box(recti_t box, int margin, int out_w, int out_h) {
     return recti_intersect(grown, frame);
 }
 
-/* The scene manager's compose where a scene did not link it: nothing to
+/* The scene manager's compose where a provider did not link it: nothing to
  * compose. scene/scene_shell.c's own definition replaces this. */
 __attribute__((weak)) void
 scene_shell_compose(uint32_t dt_ms) {
@@ -205,11 +205,11 @@ scene_shell_compose(uint32_t dt_ms) {
  * the step that set it, so edges come out of the change rather than out of
  * a second declaration of the same tap. */
 static void
-apply_input(const render_scene_t* scene, int index, input_t* state) {
+apply_input(const frame_provider_t* provider, int index, input_t* state) {
     const bool was_down = state->down;
 
-    for (int i = 0; i < scene->input_count; i++) {
-        const render_input_step_t* step = &scene->input[i];
+    for (int i = 0; i < provider->input_count; i++) {
+        const render_input_step_t* step = &provider->input[i];
         if (step->frame == index) {
             state->down = step->down;
             state->point = step->point;
@@ -233,79 +233,93 @@ usage(const char* argv0) {
     return 2;
 }
 
-int
-main(int argc, char** argv) {
-    const render_scene_t* scene = &render_scene;
+static bool
+refuse(int* exit_code, const char* argv0) {
+    *exit_code = usage(argv0);
+    return false;
+}
 
-    int quarter = scene->quarter;
-    int frames = scene->frames > 0 ? scene->frames : 1;
-    uint32_t dt_ms = scene->dt_ms > 0 ? scene->dt_ms : DEFAULT_DT_MS;
-    bool panel = false;
-    const char* out_path = NULL;
-    const char* video_path = NULL;
-    bool crop = false;
+/* One open run owns the frame history, readback buffers and output streams. */
+static struct {
+    const frame_provider_t* provider;
+    bool panel, crop, video_ok;
+    const char *out_path, *video_path;
+    int out_w, out_h;
+    affine2x_t t;
+    int32_t stride;
+    uint8_t* frame_buf;
+    render_video_t video;
+    char* console_path;
+    provider_frame_t frame;
+    recti_t drawn;
+    affine2x_t canvas_from_panel;
+} host;
 
+bool
+render_host_open(const frame_provider_t* provider, int argc, char** argv, int* exit_code) {
+    memset(&host, 0, sizeof host);
+    *exit_code = 1;
+    host.provider = provider;
+    host.frame.quarter = host.provider->quarter;
+    host.frame.count = host.provider->frames > 0 ? host.provider->frames : 1;
+    host.frame.dt_ms = host.provider->dt_ms > 0 ? host.provider->dt_ms : DEFAULT_DT_MS;
     char* rest[64];
     int rest_count = 0;
-
     for (int i = 1; i < argc; i++) {
         const char* a = argv[i];
         const bool has_value = i + 1 < argc;
         if (strcmp(a, "--panel") == 0) {
-            panel = true;
+            host.panel = true;
         } else if (strcmp(a, "--quarter") == 0 && has_value) {
-            quarter = (int)strtol(argv[++i], NULL, 10);
+            host.frame.quarter = (int)strtol(argv[++i], NULL, 10);
         } else if (strcmp(a, "--tunables") == 0) {
             (void)console_tune_line(tune_shared(), "TUNE", tune_reply);
-            return 0;
+            *exit_code = 0;
+            return false;
         } else if (strcmp(a, "--set") == 0 && has_value) {
             if (!render_host_set_tunable_text(argv[++i])) {
-                return usage(argv[0]);
+                return refuse(exit_code, argv[0]);
             }
         } else if (strcmp(a, "--frames") == 0 && has_value) {
-            frames = (int)strtol(argv[++i], NULL, 10);
+            host.frame.count = (int)strtol(argv[++i], NULL, 10);
         } else if (strcmp(a, "--dt") == 0 && has_value) {
-            dt_ms = (uint32_t)strtoul(argv[++i], NULL, 10);
+            host.frame.dt_ms = (uint32_t)strtoul(argv[++i], NULL, 10);
         } else if (strcmp(a, "-o") == 0 && has_value) {
-            out_path = argv[++i];
+            host.out_path = argv[++i];
         } else if (strcmp(a, "--video") == 0 && has_value) {
-            video_path = argv[++i];
+            host.video_path = argv[++i];
         } else if (strcmp(a, "--crop") == 0) {
-            crop = true;
+            host.crop = true;
         } else if (rest_count < (int)(sizeof(rest) / sizeof(rest[0]))) {
             rest[rest_count++] = argv[i];
         } else {
-            return usage(argv[0]);
+            return refuse(exit_code, argv[0]);
         }
     }
 
-    if (quarter < 0 || quarter > 3 || frames < 1) {
-        return usage(argv[0]);
+    if (host.frame.quarter < 0 || host.frame.quarter > 3 || host.frame.count < 1) {
+        return refuse(exit_code, argv[0]);
     }
-    if (scene->options != NULL) {
-        if (!scene->options(rest_count, rest)) {
-            return usage(argv[0]);
-        }
-    } else if (rest_count > 0) {
-        return usage(argv[0]);
+    if (host.provider->options != NULL ? !host.provider->options(rest_count, rest) : rest_count > 0) {
+        return refuse(exit_code, argv[0]);
     }
 
-    int out_w, out_h;
-    output_size(quarter, panel, &out_w, &out_h);
+    output_size(host.frame.quarter, host.panel, &host.out_w, &host.out_h);
 
-    if (video_path != NULL) {
-        if (dt_ms == 0) {
-            fprintf(stderr, "%s: --video needs a nonzero --dt\n", scene->name);
-            return 1;
+    if (host.video_path != NULL) {
+        if (host.frame.dt_ms == 0) {
+            fprintf(stderr, "%s: --video needs a nonzero --dt\n", host.provider->name);
+            return false;
         }
-        const int64_t total = render_video_total_bytes(out_w, out_h, frames);
+        const int64_t total = render_video_total_bytes(host.out_w, host.out_h, host.frame.count);
         if (total > VIDEO_MAX_BYTES) {
-            const int64_t fits = render_video_frames_that_fit(out_w, out_h, VIDEO_MAX_BYTES);
+            const int64_t fits = render_video_frames_that_fit(host.out_w, host.out_h, VIDEO_MAX_BYTES);
             fprintf(stderr,
                     "%s: %d frames at %dx%d would write %lld MB, over RIFF AVI 1.0's 1 GB limit; "
                     "at this size and --dt %u, at most %lld frames fit\n",
-                    scene->name, frames, out_w, out_h, (long long)(total / (1024 * 1024)), dt_ms, (long long)fits);
-            return 1;
+                    host.provider->name, host.frame.count, host.out_w, host.out_h, (long long)(total / (1024 * 1024)),
+                    host.frame.dt_ms, (long long)fits);
+            return false;
         }
     }
 
@@ -318,136 +332,159 @@ main(int argc, char** argv) {
 
     if (!gfx_init()) {
         fprintf(stderr, "gfx_init failed\n");
-        return 1;
+        return false;
     }
-    if (scene->setup != NULL && !scene->setup(quarter)) {
-        fprintf(stderr, "%s: setup failed\n", scene->name);
-        return 1;
+    if (host.provider->setup != NULL && !host.provider->setup(host.frame.quarter)) {
+        fprintf(stderr, "%s: setup failed\n", host.provider->name);
+        return false;
     }
 
     if (gfx_readback_begin() != GFX_READBACK_READY) {
         /* Band mode keeps no retained frame to read back, so there is
          * nothing to write; the same refusal a device capture makes. A
-         * scene wanting an image asks for the full-framebuffer layout. */
+         * provider wanting an image asks for the full-framebuffer layout. */
         fprintf(stderr, "no framebuffer to read: the scene left gfx in band mode\n");
-        return 1;
+        return false;
     }
-    const affine2x_t t = ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT);
-    const int32_t stride = screenshot_bmp_row_stride(out_w);
+    host.t = ui_transform_quarter_turn(host.frame.quarter, GFX_WIDTH, GFX_HEIGHT);
+    host.stride = screenshot_bmp_row_stride(host.out_w);
 
-    uint8_t* frame_buf = malloc((size_t)stride * out_h);
-    if (frame_buf == NULL) {
+    host.frame_buf = malloc((size_t)host.stride * host.out_h);
+    if (host.frame_buf == NULL) {
         fprintf(stderr, "out of memory\n");
-        return 1;
+        return false;
     }
 
-    render_video_t video;
-    if (video_path != NULL && !render_video_open(&video, video_path, out_w, out_h, dt_ms)) {
-        fprintf(stderr, "%s: cannot write %s\n", scene->name, video_path);
-        free(frame_buf);
-        return 1;
+    if (host.video_path != NULL
+        && !render_video_open(&host.video, host.video_path, host.out_w, host.out_h, host.frame.dt_ms)) {
+        fprintf(stderr, "%s: cannot write %s\n", host.provider->name, host.video_path);
+        free(host.frame_buf);
+        return false;
     }
 
     /* stdout is free to watch only when the image goes to a file. */
-    char* console_path = NULL;
-    if (out_path != NULL) {
-        console_path = malloc(strlen(out_path) + sizeof ".console");
-        if (console_path != NULL) {
-            sprintf(console_path, "%s.console", out_path);
+    if (host.out_path != NULL) {
+        host.console_path = malloc(strlen(host.out_path) + sizeof ".console");
+        if (host.console_path != NULL) {
+            sprintf(host.console_path, "%s.console", host.out_path);
         }
     }
-    if (!render_watch_start(argv[0], console_path)) {
-        fprintf(stderr, "%s: cannot capture stdout in %s\n", scene->name, console_path);
-        free(console_path);
-        free(frame_buf);
-        return 1;
+    if (!render_watch_start(argv[0], host.console_path)) {
+        fprintf(stderr, "%s: cannot capture stdout in %s\n", host.provider->name, host.console_path);
+        free(host.console_path);
+        free(host.frame_buf);
+        return false;
     }
 
-    render_frame_t frame = {.count = frames, .quarter = quarter, .dt_ms = dt_ms};
     /* The drawn box in output coordinates, and the map that turns a
-     * --panel output's box back into the canvas a scene lays out in. */
-    recti_t drawn = {0, 0, 0, 0};
-    affine2x_t canvas_from_panel = affine2x_identity();
-    (void)affine2x_invert(t, &canvas_from_panel);
-    bool video_ok = true;
-    for (int i = 0; i < frames; i++) {
-        frame.index = i;
-        frame.elapsed_ms = (uint32_t)i * dt_ms;
-        apply_input(scene, i, &frame.input);
-        render_watch_frame_begin();
-        scene_shell_compose(frame.dt_ms); /* what the shell does before an app's frame() */
-        scene->draw(&frame);
-        render_watch_frame_end();
+     * --panel output's box back into the canvas a provider lays out in. */
+    host.canvas_from_panel = affine2x_identity();
+    (void)affine2x_invert(host.t, &host.canvas_from_panel);
+    host.video_ok = true;
+    return true;
+}
 
-        convert_frame(t, panel, out_w, out_h, stride, frame_buf);
-        if (crop) {
-            drawn = drawn_box(frame_buf, stride, out_w, out_h);
-            frame.drawn = panel ? ui_transform_rect(canvas_from_panel, drawn) : drawn;
-        }
-        gfx_present();
-        if (video_path != NULL && video_ok) {
-            video_ok = render_video_write_frame(&video, frame_buf, stride * out_h);
-        }
+void
+render_host_step(uint32_t dt_ms, const input_t* input) {
+    host.frame.dt_ms = dt_ms;
+    host.frame.input = *input;
+    render_watch_frame_begin();
+    scene_shell_compose(host.frame.dt_ms); /* what the shell does before an app's frame() */
+    host.provider->draw(&host.frame);
+    render_watch_frame_end();
+
+    convert_frame(host.t, host.panel, host.out_w, host.out_h, host.stride, host.frame_buf);
+    if (host.crop) {
+        host.drawn = drawn_box(host.frame_buf, host.stride, host.out_w, host.out_h);
+        host.frame.drawn = host.panel ? ui_transform_rect(host.canvas_from_panel, host.drawn) : host.drawn;
     }
+    gfx_present();
+    if (host.video_path != NULL && host.video_ok) {
+        host.video_ok = render_video_write_frame(&host.video, host.frame_buf, host.stride * host.out_h);
+    }
+    host.frame.index++;
+    host.frame.elapsed_ms += dt_ms;
+}
 
-    /* However few frames the image needed, the scene goes on drawing until
+bool
+render_host_close(void) {
+    /* However few frames the image needed, the provider goes on drawing until
      * the watch has judged a whole window of it at rest. Nothing of these
      * reaches the image. */
-    for (int i = frames; i < FRAME_WATCH_WARMUP + FRAME_WATCH_WINDOW; i++) {
-        frame.index = i;
-        frame.elapsed_ms = (uint32_t)i * dt_ms;
-        apply_input(scene, i, &frame.input);
+    for (int i = host.frame.index; i < FRAME_WATCH_WARMUP + FRAME_WATCH_WINDOW; i++) {
+        host.frame.index = i;
+        apply_input(host.provider, i, &host.frame.input);
         render_watch_frame_begin();
-        scene_shell_compose(frame.dt_ms); /* what the shell does before an app's frame() */
-        scene->draw(&frame);
+        scene_shell_compose(host.frame.dt_ms); /* what the shell does before an app's frame() */
+        host.provider->draw(&host.frame);
         gfx_present();
         render_watch_frame_end();
+        host.frame.elapsed_ms += host.frame.dt_ms;
     }
     gfx_readback_end();
 
     const frame_watch_verdict_t verdict = render_watch_finish();
-    free(console_path);
+    free(host.console_path);
 
-    if (video_path != NULL) {
-        video_ok = render_video_close(&video) && video_ok;
-        if (!video_ok) {
-            fprintf(stderr, "%s: writing %s failed\n", scene->name, video_path);
-            free(frame_buf);
-            return 1;
+    if (host.video_path != NULL) {
+        host.video_ok = render_video_close(&host.video) && host.video_ok;
+        if (!host.video_ok) {
+            fprintf(stderr, "%s: writing %s failed\n", host.provider->name, host.video_path);
+            free(host.frame_buf);
+            return false;
         }
     }
 
     FILE* out = stdout;
-    if (out_path != NULL) {
-        out = fopen(out_path, "wb");
+    if (host.out_path != NULL) {
+        out = fopen(host.out_path, "wb");
         if (out == NULL) {
-            fprintf(stderr, "%s: cannot write %s\n", scene->name, out_path);
-            free(frame_buf);
-            return 1;
+            fprintf(stderr, "%s: cannot write %s\n", host.provider->name, host.out_path);
+            free(host.frame_buf);
+            return false;
         }
     }
 
     render_size_t size = {0};
-    recti_t box = {0, 0, out_w, out_h};
-    if (crop) {
-        box = crop_box(drawn, scene->crop_margin, out_w, out_h);
+    recti_t box = {0, 0, host.out_w, host.out_h};
+    if (host.crop) {
+        box = crop_box(host.drawn, host.provider->crop_margin, host.out_w, host.out_h);
     }
-    const bool ok = write_bmp(out, frame_buf, out_w, out_h, box, &size);
-    free(frame_buf);
+    const bool ok = write_bmp(out, host.frame_buf, host.out_w, host.out_h, box, &size);
+    free(host.frame_buf);
     if (out != stdout) {
         fclose(out);
         /* The shape the caller checks its own declaration against. Only for
          * a file: a render to stdout is read by a script that wants the
-         * scene's own first stderr line, not this one. */
-        fprintf(stderr, "RENDER %s %dx%d %ld\n", scene->name, size.width, size.height, size.bytes);
+         * provider's own first stderr line, not this one. */
+        fprintf(stderr, "RENDER %s %dx%d %ld\n", host.provider->name, size.width, size.height, size.bytes);
     }
     if (verdict.repeating > 0) {
-        fprintf(stderr, "%s: %d call sites repeat frame after frame - see the FRAME_WATCH lines above\n", scene->name,
-                verdict.repeating);
+        fprintf(stderr, "%s: %d call sites repeat frame after frame - see the FRAME_WATCH lines above\n",
+                host.provider->name, verdict.repeating);
     }
     if (verdict.dropped > 0) {
-        fprintf(stderr, "%s: the frame watch had no room for %lu events, so it may have missed one\n", scene->name,
-                (unsigned long)verdict.dropped);
+        fprintf(stderr, "%s: the frame watch had no room for %lu events, so it may have missed one\n",
+                host.provider->name, (unsigned long)verdict.dropped);
     }
-    return ok && frame_watch_verdict_clean(verdict) ? 0 : 1;
+    return ok && frame_watch_verdict_clean(verdict);
 }
+
+/* Selecting a provider builds the CLI; without it this file is a library. */
+#ifdef RENDER_HOST_PROVIDER
+extern const frame_provider_t RENDER_HOST_PROVIDER;
+
+int
+main(int argc, char** argv) {
+    int exit_code;
+    if (!render_host_open(&RENDER_HOST_PROVIDER, argc, argv, &exit_code)) {
+        return exit_code;
+    }
+    input_t input = {0};
+    for (int i = 0; i < host.frame.count; i++) {
+        apply_input(host.provider, i, &input);
+        render_host_step(host.frame.dt_ms, &input);
+    }
+    return render_host_close() ? 0 : 1;
+}
+#endif
