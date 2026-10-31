@@ -7,7 +7,7 @@ plays, and internal RAM. Every measured table below is generated from committed 
 |---|---|
 | A sound | its pack bytes in flash (2.5 KB for the engine `tap`); no RAM beyond its `sound_t` |
 | Internal heap, vs the same build without the mixer | −6,300 B free (2.2 % of 282,739); largest free block −4,096 B |
-| Hot path in internal RAM, vs running it from flash | 2,293 B IRAM (mixer, reader, ADPCM decoder, tone) and 1,440 B DRAM (ADPCM tables): −3,744 B free, largest free block −4,096 B. The renderer on the other core shares the flash cache, so from flash these miss on every block |
+| Hot path in internal RAM | The sample mixer, reader and ADPCM decoder use IRAM; the ADPCM tables use DRAM. [audio_out.h](../../launcher/main/audio/audio_out.h) holds the placement budget. Tones render from flash. |
 | Extra RAM during a development capture | about 1.4 KB of microphone buffers (`open_dma_bytes` 1,448): TX is already open, so only RX is new. Closing frees it, within a few dozen bytes. [Audio-Path's RAM capture](Audio-Path.md#ram) predates the mixer and opened both channels |
 | Frame time, one voice looping vs silence | [below](#frame-time-with-a-voice-playing) |
 

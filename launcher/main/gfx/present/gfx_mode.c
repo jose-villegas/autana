@@ -31,9 +31,6 @@ gfx_color_t* fb;
 gfx_color_t* present_fb;
 bool fb_filled;
 gfx_color_t fb_fill_colour;
-static gfx_color_t* half_image;
-static bool frame_expanded;
-static gfx_band_overlay_fn frame_overlay;
 
 /* GFX_LAYOUT_FULL_FB until gfx_init() sets real geometry, or an app's
  * gfx_mode_enter() grants something else.
@@ -48,14 +45,15 @@ static int band_current_slot;
 /* True only during a band or expanded overlay replay; outside it band mode
  * has no valid target, matching gfx_fb_guard.h. */
 static bool band_render_active;
-static gfx_target_t strip_target;
+static GFX_TARGET_STORAGE(1) strip_target;
+static GFX_TARGET_STORAGE(1) frame_target = GFX_TARGET_COLOR_INIT(NULL, GFX_WIDTH, GFX_HEIGHT);
 static recti_t clip;
 
 #ifndef ESP_PLATFORM
 void
 gfx_band_begin_for_test(int row) {
     band_render_active = true;
-    strip_target = (gfx_target_t){fb + row * GFX_WIDTH, row, GFX_BAND_HEIGHT, GFX_WIDTH};
+    gfx_target_of_color(&strip_target.target, fb + row * GFX_WIDTH, GFX_WIDTH, GFX_BAND_HEIGHT, row);
 }
 
 void
@@ -64,9 +62,36 @@ gfx_band_end_for_test(void) {
 }
 #endif
 
-gfx_target_t
+void
+replay_overlay(gfx_band_overlay_fn overlay, const gfx_target_t* target, int y0, int y1) {
+    const recti_t saved_clip = gfx_clip_save();
+    gfx_target_window(&strip_target.target, target, y0, y1);
+    band_render_active = true;
+    gfx_fb_guard_set_available(true);
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
+    gfx_present_guard_replaying = true;
+#endif
+    gfx_clip_restore(GFX_SCREEN_RECT);
+    overlay(y0, y1);
+    gfx_clip_restore(saved_clip);
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
+    gfx_present_guard_replaying = false;
+#endif
+    band_render_active = false;
+    gfx_fb_guard_set_available(false);
+}
+
+void
+gfx_swap_framebuffers(void) {
+    gfx_color_t* drawn = fb;
+    fb = present_fb;
+    frame_target.attachment[0].pixels = fb;
+    present_fb = drawn;
+}
+
+const gfx_target_t*
 gfx_present_target(void) {
-    return band_render_active ? strip_target : (gfx_target_t){fb, 0, GFX_HEIGHT, GFX_WIDTH};
+    return band_render_active ? &strip_target.target : &frame_target.target;
 }
 
 bool
@@ -95,7 +120,7 @@ gfx_draw_begin(gfx_surface_t* out) {
     if (fb_filled) {
         fb_filled = false;
     }
-    out->target = band_render_active ? strip_target : (gfx_target_t){fb, 0, GFX_HEIGHT, GFX_WIDTH};
+    out->target = band_render_active ? &strip_target.target : &frame_target.target;
     out->clip = clip;
     out->marks = !band_render_active;
     return true;
@@ -109,57 +134,6 @@ gfx_set_clip(recti_t box) {
 
 static int band_render_row0;
 static int band_render_height;
-
-/* GFX_LAYOUT_INDEXED's own state: the app writes indices,
- * run_present_strips() (gfx_present.c) expands them through whichever LUT is
- * installed. Not a gfx_target.h render target: no drawing primitive writes
- * through it. */
-static uint8_t* indexed_image;
-static int indexed_grid_w, indexed_grid_h, indexed_cell_size;
-static gfx_color_t indexed_lut256[GFX_INDEXED_PALETTE_SIZE];
-static bool indexed_dither16_on;
-
-/* Lever 2: which of gfx_dither_mode_t's five is installed for 16-colour
- * mode, meaningless while indexed_dither16_on is false (256 mode keeps
- * its own plain LUT above, no dither concept at all). One table per mode,
- * not a shared buffer: gfx_indexed_set_dither() only ever overwrites the
- * one an app's own mode switch actually asks for. */
-static gfx_dither_mode_t indexed_dither_mode = GFX_DITHER_PIXEL_BAYER4;
-static gfx_color_t indexed_dither_none_lut[GFX_INDEXED_PALETTE_SIZE];
-static gfx_color_t indexed_dither_cell_checker[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_CELL_CHECKER_PHASES];
-static gfx_color_t indexed_dither_cell_bayer2[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_CELL_BAYER2_PHASES];
-static gfx_color_t indexed_dither_pixel_checker2[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_CHECKER2_ROW_PHASES
-                                                 * GFX_INDEXED_CHECKER2_CHUNK_PX];
-static gfx_color_t indexed_dither16_rgb[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES];
-
-static const gfx_color_t*
-indexed_active_table(void) {
-    if (!indexed_dither16_on) {
-        return indexed_lut256;
-    }
-    switch (indexed_dither_mode) {
-        case GFX_DITHER_NONE: return indexed_dither_none_lut;
-        case GFX_DITHER_CELL_CHECKER: return indexed_dither_cell_checker;
-        case GFX_DITHER_CELL_BAYER2: return indexed_dither_cell_bayer2;
-        case GFX_DITHER_PIXEL_CHECKER2: return indexed_dither_pixel_checker2;
-        case GFX_DITHER_PIXEL_BAYER4:
-        case GFX_DITHER_MODE_COUNT:
-        default: return indexed_dither16_rgb;
-    }
-}
-
-gfx_indexed_frame_t
-indexed_frame(void) {
-    return (gfx_indexed_frame_t){
-        .image = indexed_image,
-        .grid_w = indexed_grid_w,
-        .grid_h = indexed_grid_h,
-        .cell_size = indexed_cell_size,
-        .dither16_on = indexed_dither16_on,
-        .dither_mode = indexed_dither_mode,
-        .table = indexed_active_table(),
-    };
-}
 
 /* This frame's own capture of gfx_full_redraw.h's force flag, taken once by
  * gfx_band_frame_begin() so a later gfx_invalidate() call mid-frame
@@ -178,6 +152,7 @@ bool
 alloc_full_framebuffer(void) {
     const size_t bytes = GFX_FRAMEBUFFER_BYTES;
     fb = memory_alloc(bytes, MEMORY_PSRAM);
+    frame_target.attachment[0].pixels = fb;
     present_fb = fb;
 #ifdef ESP_PLATFORM
     if (fb == NULL) {
@@ -192,6 +167,7 @@ static void
 free_full_framebuffer(void) {
     memory_free(fb);
     fb = NULL;
+    frame_target.attachment[0].pixels = fb;
     present_fb = NULL;
 }
 
@@ -205,22 +181,6 @@ alloc_band_buffers(int band_height) {
     return true;
 }
 
-static bool
-alloc_indexed_image(int grid_w, int grid_h) {
-    const size_t bytes = (size_t)grid_w * (size_t)grid_h;
-    indexed_image = memory_alloc(bytes, MEMORY_INTERNAL);
-    if (indexed_image == NULL) {
-        ESP_LOGE(TAG, "Could not allocate %u byte index image", (unsigned)bytes);
-        return false;
-    }
-    return true;
-}
-
-static void
-free_indexed_image(void) {
-    memory_free(indexed_image);
-    indexed_image = NULL;
-}
 #else
 static bool
 alloc_band_buffers(int band_height) {
@@ -236,17 +196,6 @@ alloc_band_buffers(int band_height) {
     return true;
 }
 
-static bool
-alloc_indexed_image(int grid_w, int grid_h) {
-    indexed_image = malloc((size_t)grid_w * (size_t)grid_h);
-    return indexed_image != NULL;
-}
-
-static void
-free_indexed_image(void) {
-    free(indexed_image);
-    indexed_image = NULL;
-}
 #endif
 
 static bool
@@ -351,76 +300,6 @@ gfx_framebuffer(void) {
     return GFX_REQUIRE_FRAMEBUFFER() ? fb : NULL;
 }
 
-gfx_color_t*
-gfx_half_picture(void) {
-    GFX_PRESENT_GUARD();
-    if (current_mode.layout != GFX_LAYOUT_FULL_FB) {
-        return NULL;
-    }
-    if (half_image == NULL) {
-        half_image = memory_alloc(sizeof(*half_image) * (GFX_WIDTH / 2) * (GFX_HEIGHT / 2), MEMORY_PSRAM);
-    }
-    return half_image;
-}
-
-void
-gfx_expand_frame(void) {
-    GFX_PRESENT_GUARD();
-    assert(current_mode.layout == GFX_LAYOUT_FULL_FB && half_image != NULL);
-    frame_expanded = true;
-    gfx_fb_guard_set_available(false);
-    gfx_mark_all_dirty();
-}
-
-bool
-gfx_frame_expanded(void) {
-    return frame_expanded;
-}
-
-void
-gfx_set_frame_overlay(gfx_band_overlay_fn overlay) {
-    GFX_PRESENT_GUARD();
-    frame_overlay = overlay;
-}
-
-gfx_band_overlay_fn
-gfx_frame_overlay(void) {
-    return frame_overlay;
-}
-
-void
-clear_expanded_frame(bool free_picture) {
-    frame_expanded = false;
-    gfx_fb_guard_set_available(gfx_mode_has_framebuffer(&current_mode) && fb != NULL);
-    if (free_picture) {
-        memory_free(half_image);
-        half_image = NULL;
-    }
-}
-
-void
-expand_rows(int y0, int y1, gfx_color_t* destination) {
-    const gfx_target_t target = {destination, y0, y1 - y0, GFX_WIDTH};
-    gfx_target_paired_rows(target, half_image, NULL, 0, GFX_WIDTH / 2, NULL, y0, y1 - y0, true);
-    if (frame_overlay != NULL) {
-        const recti_t saved_clip = gfx_clip_save();
-        strip_target = target;
-        band_render_active = true;
-        gfx_fb_guard_set_available(true);
-#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
-        gfx_present_guard_replaying = true;
-#endif
-        gfx_clip_restore(GFX_SCREEN_RECT);
-        frame_overlay(y0, y1);
-        gfx_clip_restore(saved_clip);
-#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
-        gfx_present_guard_replaying = false;
-#endif
-        band_render_active = false;
-        gfx_fb_guard_set_available(false);
-    }
-}
-
 #ifndef ESP_PLATFORM
 unsigned
 gfx_fb_guard_trips_for_test(void) {
@@ -434,12 +313,11 @@ gfx_reset_for_test(void) {
     }
     gfx_present_fill_reset_for_test();
     fb_filled = false;
-    clear_expanded_frame(true);
-    frame_overlay = NULL;
+    expand_reset_for_test();
     band_render_active = false;
-    strip_target = (gfx_target_t){0};
+    memset(&strip_target, 0, sizeof strip_target);
     if (current_mode.layout == GFX_LAYOUT_INDEXED) {
-        free_indexed_image();
+        indexed_end();
     } else if (current_mode.layout == GFX_LAYOUT_BANDS) {
         free_band_buffers();
         free_band_snapshot();
@@ -478,21 +356,16 @@ gfx_mode_enter(const gfx_mode_request_t* request) {
             return &current_mode;
         }
         fb = back;
+        frame_target.attachment[0].pixels = fb;
         fb_filled = false;
         dirty_mark_all();
     } else if (granted.layout == GFX_LAYOUT_INDEXED) {
-        if (granted.index_grid_w <= 0 || granted.index_grid_h <= 0 || granted.cell_size <= 0
-            || !alloc_indexed_image(granted.index_grid_w, granted.index_grid_h)) {
-            free_indexed_image();
+        if (!indexed_begin(&granted)) {
             note_denial();
             return &current_mode; /* stays GFX_LAYOUT_FULL_FB */
         }
         free_full_framebuffer();
         gfx_fb_guard_set_available(false);
-        indexed_grid_w = granted.index_grid_w;
-        indexed_grid_h = granted.index_grid_h;
-        indexed_cell_size = granted.cell_size;
-        indexed_dither16_on = false;
         gfx_mark_all_dirty(); /* nothing sent to the panel yet this visit */
     } else if (granted.layout == GFX_LAYOUT_BANDS) {
         if (!alloc_band_buffers(granted.band_height)) {
@@ -519,6 +392,7 @@ gfx_mode_exit(void) {
         (void)gfx_set_clear_on_send(false, 0);
         memory_free(fb);
         fb = present_fb;
+        frame_target.attachment[0].pixels = fb;
         /* A frame cleared on send stays cleared: readback has nothing to read
          * until the next send, and the next draw_clear() of it is free. */
         fb_filled = gfx_present_sent_frame_filled();
@@ -528,7 +402,7 @@ gfx_mode_exit(void) {
     }
     clear_expanded_frame(true);
     if (current_mode.layout == GFX_LAYOUT_INDEXED) {
-        free_indexed_image();
+        indexed_end();
     } else if (current_mode.layout == GFX_LAYOUT_BANDS) {
 #ifdef ESP_PLATFORM
         /* band_buf[] aliases strip_bounce[]: the full-fb path that
@@ -666,7 +540,8 @@ gfx_band_next(void) {
     band_current_slot = gfx_band_ring_slot(&band_ring);
     band_render_row0 = gfx_band_ring_row0(&band_ring, current_mode.band_height);
     band_render_height = current_mode.band_height;
-    strip_target = (gfx_target_t){band_buf[band_current_slot], band_render_row0, band_render_height, GFX_WIDTH};
+    gfx_target_of_color(&strip_target.target, band_buf[band_current_slot], GFX_WIDTH, band_render_height,
+                        band_render_row0);
     band_render_active = true;
     gfx_fb_guard_set_available(true);
     return true;
@@ -769,16 +644,6 @@ gfx_band_run(gfx_band_draw_fn draw, gfx_band_overlay_fn overlay) {
     }
 }
 
-image_t
-gfx_indexed_image(void) {
-    GFX_PRESENT_GUARD();
-    return (image_t){.pixels = indexed_image,
-                     .format = IMAGE_INDEXED8,
-                     .width = (uint16_t)indexed_grid_w,
-                     .height = (uint16_t)indexed_grid_h,
-                     .stride = (uint32_t)indexed_grid_w};
-}
-
 gfx_readback_t
 gfx_readback_begin(void) {
     gfx_present_drain();
@@ -802,7 +667,7 @@ gfx_readback_begin(void) {
 void
 gfx_read_panel_row(int y, gfx_color_t out_row[GFX_WIDTH]) {
     GFX_PRESENT_GUARD();
-    if (frame_expanded) {
+    if (gfx_frame_expanded()) {
         expand_rows(y, y + 1, out_row);
     } else if (gfx_mode_has_framebuffer(&current_mode)) {
         memcpy(out_row, present_fb + ((size_t)y * GFX_WIDTH), GFX_WIDTH * sizeof(gfx_color_t));
@@ -824,49 +689,4 @@ gfx_readback_end(void) {
     if (!band_is_transient()) {
         free_band_snapshot();
     }
-}
-
-void
-gfx_indexed_set_palette(const palette_t* palette) {
-    GFX_PRESENT_GUARD();
-    assert(palette->count == GFX_INDEXED_PALETTE_SIZE);
-    memcpy(indexed_lut256, palette->entries, sizeof indexed_lut256);
-}
-
-void
-gfx_indexed_set_lut16(const gfx_color_t dither16_rgb[GFX_INDEXED_PALETTE_SIZE * GFX_INDEXED_DITHER16_PHASES]) {
-    GFX_PRESENT_GUARD();
-    memcpy(indexed_dither16_rgb, dither16_rgb, sizeof indexed_dither16_rgb);
-}
-
-void
-gfx_indexed_set_dither16(bool enabled) {
-    GFX_PRESENT_GUARD();
-    indexed_dither16_on = enabled;
-}
-
-/* Installs `table` for `mode` and selects it as the active one:
- * GFX_LAYOUT_INDEXED's own dither pattern while indexed_dither16_on is
- * true (gfx_indexed_set_dither16()); meaningless in 256 mode, which never
- * consults it. `table` must be sized for `mode`; see gfx_dither_mode_t's
- * own comment (gfx_indexed.h) for which. Present-task-only, like every
- * other indexed setter here (GFX_PRESENT_GUARD()). */
-void
-gfx_indexed_set_dither(gfx_dither_mode_t mode, const gfx_color_t* table) {
-    GFX_PRESENT_GUARD();
-    switch (mode) {
-        case GFX_DITHER_NONE: memcpy(indexed_dither_none_lut, table, sizeof indexed_dither_none_lut); break;
-        case GFX_DITHER_CELL_CHECKER:
-            memcpy(indexed_dither_cell_checker, table, sizeof indexed_dither_cell_checker);
-            break;
-        case GFX_DITHER_CELL_BAYER2:
-            memcpy(indexed_dither_cell_bayer2, table, sizeof indexed_dither_cell_bayer2);
-            break;
-        case GFX_DITHER_PIXEL_CHECKER2:
-            memcpy(indexed_dither_pixel_checker2, table, sizeof indexed_dither_pixel_checker2);
-            break;
-        case GFX_DITHER_PIXEL_BAYER4: memcpy(indexed_dither16_rgb, table, sizeof indexed_dither16_rgb); break;
-        case GFX_DITHER_MODE_COUNT: break;
-    }
-    indexed_dither_mode = mode;
 }

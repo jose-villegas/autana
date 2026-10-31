@@ -40,10 +40,25 @@ a run that made a mesh on another vendor, naming both, and the CPU job fails
 before baking when the hosted runner it got is another vendor's. Either way,
 re-run the failed job until it lands on the lock's vendor.
 
+A fit repeats byte for byte only on one GPU model, so a fit's row also names
+its `gpu`. The Bakes GPU run's `runner` input picks the self-hosted runner by
+its label (default `gpu`). One attempt fits on one runner; a rerun attempt may land on
+another, and each fit's row names its own GPU.
+
+A run keeps each bake it finishes: the bake goes to the cache and the upload as
+it is made, and the upload runs even when the job fails, so a failed run locks too.
+
+| A later run on | Makes only what is left, taking the rest from |
+|---|---|
+| the GPU runner | its cache, which persists between runs |
+| a rerun attempt | the earlier attempts' uploads made on a host like its own (`bake --from-run`) |
+
+Each attempt uploads its own artifact; a key two attempts made locks with the later attempt's bytes.
+
 A renderer whose import carves shared meshes has a `.bundle` row; an uncarved
 one has a `.mesh` row. A carved fit's CPU start is `.start.bundle`. The GPU fit
 trains only the rest, copying shapes, LCOL and the
-[MCOP manifest](../render/Baked-Mesh.md#mcop-v1) unchanged; its key names the
+[MCOP manifest](formats/MCOP.md) unchanged; its key names the
 locked start bundle's bytes, and its references use the full source.
 
 The lock's `[[poses]]` rows hold the digest and count of each camera-path sampling.

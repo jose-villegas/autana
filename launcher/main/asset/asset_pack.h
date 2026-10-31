@@ -1,7 +1,7 @@
 /*
  * asset_pack: a content pack used where it lies, in a memory-mapped flash
  * partition or in a buffer read from a file or a card. A pack is a header, a
- * table of named entries and their bytes; the layout is in docs/assets/Pack-Format.md
+ * table of named entries and their bytes; the layout is in docs/assets/formats/APAK.md
  * and is written by launcher/tools/asset/asset_pack.py. An entry is a typed
  * byte range that refers to its own parts by offset from its first byte, so no
  * entry needs a fix-up pass and the pack is never copied.

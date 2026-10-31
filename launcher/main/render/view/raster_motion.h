@@ -12,6 +12,7 @@
 #include "math/linear/mat4f.h"
 #include "math/projection/projectf.h"
 #include "render/r3d_instance.h"
+#include "render/r3d_pipeline.h"
 #include "render/raster_attachment.h"
 #include "render/render_view.h"
 
@@ -43,6 +44,8 @@ typedef struct {
     bool moved[RASTER_MOTION_INSTANCES_MAX];
     mat4f_t map[RASTER_MOTION_INSTANCES_MAX + 1];
     projectf_t project;
+    /* A map's two lenses, here rather than on the drawing task's stack. */
+    r3d_lens_t now, before;
 } raster_motion_t;
 
 /* The attachment, storing its state in `state`. */

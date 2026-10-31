@@ -21,10 +21,6 @@ static const char* TAG = "frame_watch";
 /* The frame loop, the panel's sender and the second core's worker. */
 #define WATCHED_TASKS_MAX   4
 
-/* Events waiting for the frame's end. The hooks run on any watched task on
- * either core; the frame task alone consumes. */
-#define PENDING_MAX         128
-
 /* How far up the stack the caller of an allocation is looked for. The
  * allocator's own frames sit in IRAM, so the first frame outside it is the
  * call site. */
@@ -47,7 +43,7 @@ static volatile bool armed;
 static volatile bool warning;
 static TaskHandle_t watched[WATCHED_TASKS_MAX];
 static volatile int watched_count;
-static pending_event_t pending[PENDING_MAX];
+static pending_event_t pending[FRAME_WATCH_PENDING_MAX];
 static uint32_t pending_head;
 static uint32_t pending_tail;
 static uint32_t pending_dropped;
@@ -83,12 +79,12 @@ static IRAM_ATTR void
 record(frame_watch_kind_t kind, uintptr_t site) {
     uint32_t index = __atomic_load_n(&pending_head, __ATOMIC_RELAXED);
     do {
-        if (index - __atomic_load_n(&pending_tail, __ATOMIC_ACQUIRE) >= PENDING_MAX) {
+        if (index - __atomic_load_n(&pending_tail, __ATOMIC_ACQUIRE) >= FRAME_WATCH_PENDING_MAX) {
             __atomic_fetch_add(&pending_dropped, 1, __ATOMIC_RELAXED);
             return;
         }
     } while (!__atomic_compare_exchange_n(&pending_head, &index, index + 1, true, __ATOMIC_RELAXED, __ATOMIC_RELAXED));
-    pending_event_t* slot = &pending[index % PENDING_MAX];
+    pending_event_t* slot = &pending[index % FRAME_WATCH_PENDING_MAX];
     slot->site = site;
     slot->kind = (uint8_t)kind;
     __atomic_store_n(&slot->sequence, index + 1, __ATOMIC_RELEASE);
@@ -149,10 +145,17 @@ esp_heap_trace_free_hook(void* ptr) {
     }
 }
 
-/* The format string is the site: each ESP_LOG* call passes its own literal. */
+static void drain(void);
+
+/* The format string is the site: each ESP_LOG* call passes its own literal.
+ * The frame task drains before it records, so a burst of its own lines
+ * between two frames (a test's report) never fills the queue. */
 static int
 watched_vprintf(const char* format, va_list args) {
     if (!warning && watching_this_task()) {
+        if (xTaskGetCurrentTaskHandle() == frame_task) {
+            drain();
+        }
         record(FRAME_WATCH_CONSOLE, (uintptr_t)format);
     }
     return forward_vprintf(format, args);
@@ -197,7 +200,7 @@ drain(void) {
     const uint32_t head = __atomic_load_n(&pending_head, __ATOMIC_ACQUIRE);
     uint32_t tail = pending_tail;
     while (tail != head) {
-        const pending_event_t* slot = &pending[tail % PENDING_MAX];
+        const pending_event_t* slot = &pending[tail % FRAME_WATCH_PENDING_MAX];
         if (__atomic_load_n(&slot->sequence, __ATOMIC_ACQUIRE) != tail + 1) {
             break;
         }

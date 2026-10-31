@@ -12,7 +12,7 @@ on:
         description: Maximum new candidates per board
         required: false
       override:
-        description: Start now instead of at the next NIGHT_START
+        description: Start now instead of at the next BOARD_START
         type: boolean
         default: false
 
@@ -29,6 +29,7 @@ env:
     run_capybara_perf_suite|-|python3 launcher/main/apps/render_lab/tools/report_performance.py @CAPTURE@ @TABLE@ --table
   NIGHT_START: ${{ vars.NIGHT_START }}
   NIGHT_ZONE: ${{ vars.NIGHT_ZONE }}
+  BOARD_LAST_START: ${{ vars.BOARD_LAST_START }}
   GH_TOKEN: ${{ github.token }}
   GIT_CONFIG_COUNT: '4'
   GIT_CONFIG_KEY_0: core.hooksPath
@@ -47,7 +48,7 @@ jobs:
     env:
       OVERRIDE: ${{ inputs.override }}
       SCHEDULE: ${{ github.event.schedule }}
-      NIGHT_START: ${{ vars.NIGHT_START }}
+      BOARD_START: ${{ vars.BOARD_START }}
       NIGHT_ZONE: ${{ vars.NIGHT_ZONE }}
     outputs:
       marker: ${{ steps.marker.outputs.marker }}
@@ -58,7 +59,7 @@ jobs:
           persist-credentials: false
           set-safe-directory: false
       - id: marker
-        run: python3 scripts/lib/local_schedule.py marker
+        run: python3 scripts/lib/local_schedule.py --start BOARD_START marker
 
   wait:
     needs: marker
@@ -78,8 +79,11 @@ jobs:
     needs: [marker, wait]
     env:
       MARKER: ${{ needs.marker.outputs.marker }}
+      # A command that reaches other machines' boards (nightly/scoped_chain.py); unset, this machine's only.
+      REMOTE_LANE_COMMAND: ${{ vars.REMOTE_LANE_COMMAND }}
     outputs:
-      held: ${{ steps.lanes.outcome == 'success' || steps.lanes.outcome == 'failure' }}
+      # True when every lane ran its suites to the end, whatever they reported (scoped_chain.py night).
+      boards_ran: ${{ steps.lanes.outputs.boards_ran }}
     runs-on: [self-hosted, windows, board]
     # Hang guard under the 24 h GITHUB_TOKEN life; work gets a fresh token after the hosted wait.
     timeout-minutes: 1380
@@ -95,6 +99,7 @@ jobs:
           set-safe-directory: false
 
       - name: Prepare the data branch and shared plan
+        id: plan
         env:
           FROM_SHA: ${{ inputs.from }}
           MAX_STEPS: ${{ inputs.max_steps }}
@@ -115,7 +120,7 @@ jobs:
           args=()
           [ -z "$FROM_SHA" ] || args+=(--from "$FROM_SHA")
           [ -z "$MAX_STEPS" ] || args+=(--max-steps "$MAX_STEPS")
-          # One lane per board plugged in; the plan sets SCOPED_BOARDS and SELFTEST_BOARD.
+          # One lane per board here or on a remote-lane host; the plan sets SCOPED_BOARDS and SELFTEST_BOARD.
           "$PY" launcher/tools/perf/nightly/scoped_chain.py plan \
             --data "$data" --out "$out/plan.json" --marker "$MARKER" "${args[@]}" >> "$GITHUB_ENV"
 
@@ -125,7 +130,8 @@ jobs:
 
       - name: Run each board lane and wait for all
         id: lanes
-        if: ${{ !cancelled() && env.SCOPED_BOARDS != '' }}
+        # A plan with no free board still runs: the night waits for one until BOARD_LAST_START.
+        if: ${{ !cancelled() && steps.plan.outcome == 'success' }}
         run: |
           export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/tools:$PATH"
           suites=()
@@ -171,16 +177,21 @@ jobs:
         run: |
           data=$(cygpath -u "$PERF_DATA")
           [ -d "$data/.git" ] || exit 0
-          # One parsed line per capture (perf_index.py); the raw logs stay in the artifact.
+          # One parsed line per capture (perf_index.py), under the host that took it; the raw logs stay in the artifact.
+          PY=$(. scripts/lib/python.sh && find_python)
+          sync() {
+            "$PY" launcher/tools/perf/perf_index.py sync --host "$1" --store "$data" --write-only "${@:2}" \
+              || echo "::warning::perf_index.py sync failed; night manifests still publish"
+          }
           records=()
           for folder in .records/device "$(cygpath -u "$PERF_OUT")"/*/device; do
-            [ -f "$folder/index.jsonl" ] && records+=(--records "$folder")
+            [ -f "$folder/index.jsonl" ] || continue
+            board=$(basename "$(dirname "$folder")")
+            host=$("$PY" -c 'import json, sys; print(json.load(open(sys.argv[1]))["lanes"].get(sys.argv[2], {}).get("host_name", ""))' \
+              "$PERF_OUT/plan.json" "$board")
+            if [ -n "$host" ]; then sync "$host" --records "$folder"; else records+=(--records "$folder"); fi
           done
-          if [ ${#records[@]} -gt 0 ]; then
-            PY=$(. scripts/lib/python.sh && find_python)
-            "$PY" launcher/tools/perf/perf_index.py sync --host "${PERF_HOST:-nightly}" --store "$data" \
-              --write-only "${records[@]}" || echo "::warning::perf_index.py sync failed; night manifests still publish"
-          fi
+          [ ${#records[@]} -eq 0 ] || sync "${PERF_HOST:-nightly}" "${records[@]}"
           git -C "$data" config user.name github-actions[bot]
           git -C "$data" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           for part in scoped captures; do
@@ -266,12 +277,13 @@ jobs:
           lfs: false
           persist-credentials: false
 
+      # Failed tests (a scene over its frame-time ceiling) leave the nightly red, not the boards down.
       - name: Raise the board-ci-down alarm
-        if: needs.nightly.result == 'failure' || needs.nightly.result == 'cancelled'
+        if: needs.nightly.result == 'cancelled' || (needs.nightly.result != 'skipped' && needs.nightly.outputs.boards_ran != 'true')
         env:
           BOARD_RESULT: ${{ needs.nightly.result }}
-        run: python3 scripts/ci/board_alarm.py raise --reason "nightly job $BOARD_RESULT"
+        run: python3 scripts/ci/board_alarm.py raise --reason "nightly job $BOARD_RESULT; the boards did not run every suite"
 
       - name: Clear the board-ci-down alarm
-        if: needs.nightly.result == 'success' && needs.nightly.outputs.held == 'true'
+        if: (needs.nightly.result == 'success' || needs.nightly.result == 'failure') && needs.nightly.outputs.boards_ran == 'true'
         run: python3 scripts/ci/board_alarm.py clear
