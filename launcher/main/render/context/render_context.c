@@ -215,8 +215,9 @@ render_context_set_debug_view(render_context_t* c, int view) {
 }
 
 /* Room in the view's state for `count` instances, or the view detached and
- * refused until another view is asked for. */
-static void
+ * refused until another view is asked for. Not inlined: the draw's own frame
+ * stays as small as before, under the deepest raster chain. */
+static __attribute__((noinline)) void
 reserve_view(render_context_t* c, int count) {
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     const render_debug_view_t* row = render_context_debug_view(c->debug_view);

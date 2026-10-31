@@ -274,7 +274,7 @@ class PipelineFrameTableTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             source = pathlib.Path(directory) / "context.c"
             source.write_text('static const render_debug_view_t views[] = {\n'
-                              '    {"tiles", 0, tiles},\n    {"depth", 0, depth},\n};\n'
+                              '    {"tiles", 0, tiles},\n    {.name = "depth", .attachment = depth},\n};\n'
                               'static const other_t later[] = {{"x", 0, x}};\n')
             self.assertEqual(frame_stages.view_names(source), ["tiles", "depth"])
             source.write_text("static int x;\n")
