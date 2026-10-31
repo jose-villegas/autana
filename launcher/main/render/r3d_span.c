@@ -54,8 +54,8 @@ typedef struct {
     int32_t dx[ATTRIBUTES];
     int32_t dy[ATTRIBUTES];
     int x_origin;
-    uint16_t depth_cap; /* r3d_span_depth_limit() its depth may not pass; 0 when no vertex passes it */
-    bool in_range;      /* every plane stays inside its range across the whole box, and depth under its cap */
+    int32_t depth_max; /* a capped fill's: the 16.8 depth no span passes */
+    bool in_range;     /* every plane stays inside its range across the whole box, and depth under its cap */
 } gradients_t;
 
 static inline int32_t
@@ -144,37 +144,31 @@ depth_cap_max(uint16_t cap) {
  * than it allows either: such a plane cannot pass its vertices' limit. */
 #define DEPTH_STEPS_EXACT (INT32_MAX / (R3D_SPAN_RANGE / R3D_SUBPIXEL))
 
-/* The cap a steep plane's spans clamp to, 0 when no vertex passes
- * r3d_span_depth_limit() of the nearest one. Few planes are this steep, so
- * the check stays out of every triangle's set-up. */
-static __attribute__((noinline)) uint16_t
-depth_cap_of(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, recti_t box,
-             const gradients_t* g, int64_t high) {
-    const uint16_t limit = r3d_span_depth_limit(mathf_max(a->z, mathf_max(b->z, c->z)));
-    const int32_t max = depth_cap_max(limit);
-    if (limit < R3D_DEPTH_NEAREST && high > max
-        && (depth_at(g, box, a) > max || depth_at(g, box, b) > max || depth_at(g, box, c) > max)) {
-        return limit;
-    }
-    return 0;
-}
-
-/* Whether the depth plane stays inside [0, DEPTH_MAX] over `box`, and under
- * r3d_span_depth_limit() of the nearest vertex. Every centre a fill covers
- * lies inside the triangle, where the plane is highest at a vertex; a
- * sliver's steep float set-up can tilt it past the limit there, and then its
- * spans clamp to it. A saturated limit is the range itself. */
-static inline void
+/* Whether the depth plane stays inside [0, DEPTH_MAX] over `box`; when
+ * `capped`, also under r3d_span_depth_limit() of the nearest vertex. Every
+ * centre a fill covers lies inside the triangle, where the plane peaks at a
+ * vertex; a steep sliver's set-up can tilt it past the limit there, and then
+ * its spans clamp to it. */
+static inline __attribute__((always_inline)) void
 depth_range(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, recti_t box,
-            gradients_t* g) {
+            gradients_t* g, bool capped) {
+    if (!capped) {
+        g->in_range = r3d_span_plane_in_range(g->base[0], g->dx[0], g->dy[0], DEPTH_MAX, box);
+        return;
+    }
     int64_t low;
     int64_t high;
     plane_limits(g->base[0], g->dx[0], g->dy[0], box, &low, &high);
-    g->depth_cap = 0;
+    g->depth_max = DEPTH_MAX;
     if (mathi_abs(g->dx[0]) + mathi_abs(g->dy[0]) >= DEPTH_STEPS_EXACT) {
-        g->depth_cap = depth_cap_of(a, b, c, box, g, high);
+        const uint16_t limit = r3d_span_depth_limit(mathf_max(a->z, mathf_max(b->z, c->z)));
+        const int32_t max = depth_cap_max(limit);
+        if (limit < R3D_DEPTH_NEAREST && high > max
+            && (depth_at(g, box, a) > max || depth_at(g, box, b) > max || depth_at(g, box, c) > max)) {
+            g->depth_max = max;
+        }
     }
-    g->in_range = g->depth_cap == 0 && low >= 0 && high <= DEPTH_MAX;
+    g->in_range = g->depth_max == DEPTH_MAX && low >= 0 && high <= DEPTH_MAX;
 }
 
 /* A pixel centre just outside the triangle extrapolates past the vertex
@@ -214,7 +208,7 @@ span_start(const gradients_t* g, uint32_t carried, int k, int skip, int count, i
     if (!g->in_range) {
         /* `capped` is a constant wherever this is inlined. */
         if (capped && k == 0) {
-            clamp_span_to(depth_cap_max(g->depth_cap), count, value, step);
+            clamp_span_to(g->depth_max, count, value, step);
         } else {
             clamp_span(k, count, value, step);
         }
@@ -485,8 +479,8 @@ walk_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBU
     walk_rows_of(target, f, row, y0, y1, left_edge, right_edge, false);
 }
 
-/* A triangle with a depth cap is a rare sliver, so its walk stays in flash. */
-static __attribute__((noinline)) void
+/* The walk of a scene that skips hidden clusters, its depth capped. */
+static RENDER_SKIP_ATTR void
 walk_capped_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBUTES], int y0, int y1,
                  edge_t* left_edge, edge_t* right_edge) {
     walk_rows_of(target, f, row, y0, y1, left_edge, right_edge, true);
@@ -502,13 +496,13 @@ write_span(const r3d_span_target_t* target, int y, int x_first, int x_last, int3
 
 /* The target's writers over the spans walk_rows() just filled, from the same
  * edges and depth plane, so they see each pixel's depth as it was tested. */
-static void
+static inline __attribute__((always_inline)) void
 writer_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBUTES], int y0, int y1, edge_t* left,
-            edge_t* right) {
+            edge_t* right, bool capped) {
     if (f->shading == FILL_FLAT) {
         flat_rows(target, f, y0, y1, left, right, true);
     } else {
-        carried_rows(target, f, row, y0, y1, left, right, 1, true, f->g->depth_cap != 0);
+        carried_rows(target, f, row, y0, y1, left, right, 1, true, capped);
     }
 }
 
@@ -522,12 +516,12 @@ typedef struct {
  * target's writers when `writing`. */
 static inline __attribute__((always_inline)) void
 rows_between(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBUTES], int y0, int y1,
-             edge_t* long_edge, edge_t* short_edge, bool writing, bool long_on_left) {
+             edge_t* long_edge, edge_t* short_edge, bool writing, bool long_on_left, bool capped) {
     edge_t* left = long_on_left ? long_edge : short_edge;
     edge_t* right = long_on_left ? short_edge : long_edge;
     if (writing) {
-        writer_rows(target, f, row, y0, y1, left, right);
-    } else if (f->g->depth_cap != 0) {
+        writer_rows(target, f, row, y0, y1, left, right, capped);
+    } else if (capped) {
         walk_capped_rows(target, f, row, y0, y1, left, right);
     } else {
         walk_rows(target, f, row, y0, y1, left, right);
@@ -552,7 +546,7 @@ shift_carry(const fill_t* f, uint32_t carry[ATTRIBUTES], int attributes, int col
 /* The long edge v0-v2 runs the whole height on one side; the short side is
  * v0-v1 above the split and v1-v2 below it. */
 static inline __attribute__((always_inline)) void
-walk(const r3d_span_target_t* target, const fill_t* f, const walk_t* w, bool writing) {
+walk(const r3d_span_target_t* target, const fill_t* f, const walk_t* w, bool writing, bool capped) {
     edge_t long_edge = edge_at(w->v0, w->v2, w->y_first);
     uint32_t* carry = (uint32_t*)f->g->base;
     const int attributes = carried_attributes(f, writing);
@@ -560,7 +554,7 @@ walk(const r3d_span_target_t* target, const fill_t* f, const walk_t* w, bool wri
     int carry_column = w->long_on_left ? long_edge.q : short_edge.q;
     shift_carry(f, carry, attributes, carry_column - f->g->x_origin);
     if (w->y_first < w->split) {
-        rows_between(target, f, carry, w->y_first, w->split, &long_edge, &short_edge, writing, w->long_on_left);
+        rows_between(target, f, carry, w->y_first, w->split, &long_edge, &short_edge, writing, w->long_on_left, capped);
         if (w->split == w->y_end) {
             return;
         }
@@ -569,7 +563,7 @@ walk(const r3d_span_target_t* target, const fill_t* f, const walk_t* w, bool wri
         const int lower_column = w->long_on_left ? long_edge.q : short_edge.q;
         shift_carry(f, carry, attributes, lower_column - carry_column);
     }
-    rows_between(target, f, carry, w->split, w->y_end, &long_edge, &short_edge, writing, w->long_on_left);
+    rows_between(target, f, carry, w->split, w->y_end, &long_edge, &short_edge, writing, w->long_on_left, capped);
 }
 
 /* Returns true when the sort swapped an odd number of times, which turns
@@ -874,10 +868,10 @@ r3d_span_hidden(const r3d_span_target_t* target, int32_t bound, recti_t box) {
 
 /* The colour planes, unless a face colour stands in for them, and whether
  * every plane stays in range across the box so spans need no clamp. */
-static void
+static inline __attribute__((always_inline)) void
 set_up_planes(const fill_t* f, const r3d_span_vertex_t* const v[TRIANGLE_VERTICES], const plane_t* p, recti_t box,
-              int y_anchor, gradients_t* g) {
-    depth_range(v[0], v[1], v[2], box, g);
+              int y_anchor, gradients_t* g, bool capped) {
+    depth_range(v[0], v[1], v[2], box, g, capped);
     if (f->shading == FILL_FACE) {
         return;
     }
@@ -891,12 +885,11 @@ set_up_planes(const fill_t* f, const r3d_span_vertex_t* const v[TRIANGLE_VERTICE
 /* The depth plane first, then the colour planes only for a triangle not
  * already hidden; false when it would write nothing. Setup temporaries
  * must leave the stack before the row walk. */
-static __attribute__((noinline)) bool
-set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[TRIANGLE_VERTICES], recti_t box,
-            int y_anchor, const uint16_t* face, fill_t* f, gradients_t* g) {
+static inline __attribute__((always_inline)) bool
+set_up_fill_of(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[TRIANGLE_VERTICES], recti_t box,
+               int y_anchor, const uint16_t* face, fill_t* f, gradients_t* g, bool capped) {
     plane_t p;
     g->x_origin = box.x;
-    g->depth_cap = 0;
     if (f->shading == FILL_FLAT) {
         p = (plane_t){0};
         set_flat(f, v[0], v[1], v[2]);
@@ -915,14 +908,26 @@ set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[TR
         return false;
     }
     if (f->shading != FILL_FLAT) {
-        set_up_planes(f, v, &p, box, y_anchor, g);
+        set_up_planes(f, v, &p, box, y_anchor, g, capped);
     }
     return true;
 }
 
-static RENDER_IRAM_ATTR void
-r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-                       const r3d_span_vertex_t* c, const uint16_t* face) {
+static __attribute__((noinline)) bool
+set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[TRIANGLE_VERTICES], recti_t box,
+            int y_anchor, const uint16_t* face, fill_t* f, gradients_t* g) {
+    return set_up_fill_of(target, v, box, y_anchor, face, f, g, false);
+}
+
+static __attribute__((noinline)) bool
+set_up_capped_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[TRIANGLE_VERTICES], recti_t box,
+                   int y_anchor, const uint16_t* face, fill_t* f, gradients_t* g) {
+    return set_up_fill_of(target, v, box, y_anchor, face, f, g, true);
+}
+
+static inline __attribute__((always_inline)) void
+triangle_of(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+            const r3d_span_vertex_t* c, const uint16_t* face, bool capped) {
     const r3d_span_extent_t e = r3d_span_extent_limits(a, b, c, flat_max_rows, flat_max_width);
     const recti_t box = r3d_span_window_box(target, e.centres);
     if (recti_is_empty(box)) {
@@ -953,8 +958,8 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
     const int y_anchor = mathi_clamp(e.centres.y, -1, gfx_target_end_row(&target->rows) + 1);
     gradients_t g = {0};
     f.g = &g;
-    if (!set_up_fill(target, (const r3d_span_vertex_t* const[TRIANGLE_VERTICES]){a, b, c}, box, y_anchor, face, &f,
-                     &g)) {
+    const r3d_span_vertex_t* const v[TRIANGLE_VERTICES] = {a, b, c};
+    if (!(capped ? set_up_capped_fill : set_up_fill)(target, v, box, y_anchor, face, &f, &g)) {
         return;
     }
     if (r3d_span_stop_after == 1) {
@@ -973,15 +978,28 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
                       recti_bottom(box),
                       (area2 > 0) != odd};
     FRAME_LAP("r3d.draw.fill");
-    walk(target, &f, &w, false);
+    walk(target, &f, &w, false, capped);
+}
+
+static RENDER_IRAM_ATTR void
+r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                       const r3d_span_vertex_t* c, const uint16_t* face) {
+    triangle_of(target, a, b, c, face, false);
+}
+
+/* The fill of a view that skips hidden clusters, its depth capped. */
+static RENDER_SKIP_ATTR void
+r3d_span_capped_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                              const r3d_span_vertex_t* c, const uint16_t* face) {
+    triangle_of(target, a, b, c, face, true);
 }
 
 /* The fill's own setup, depth plane only: the same path, box, plane and
  * edges, so each writer sees the depth each pixel was tested with. Not
  * skipped when hidden: the fill has already written its depth. */
-void
-r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-                        const r3d_span_vertex_t* c, bool solid) {
+static inline __attribute__((always_inline)) void
+triangle_write_of(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                  const r3d_span_vertex_t* c, bool solid, bool capped) {
     const r3d_span_vertex_t* v0 = a;
     const r3d_span_vertex_t* v1 = b;
     const r3d_span_vertex_t* v2 = c;
@@ -1011,7 +1029,7 @@ r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t
     } else if (plane_of(a, b, c, box.x, y_anchor, &p)) {
         gradient(&p, a->z * DEPTH_SCALE, b->z * DEPTH_SCALE, c->z * DEPTH_SCALE, 0, &g);
         g.base[0] = first_row_value(&g, 0, box.y, y_anchor);
-        depth_range(a, b, c, box, &g);
+        depth_range(a, b, c, box, &g, capped);
     } else {
         return;
     }
@@ -1022,7 +1040,17 @@ r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t
                       mathi_clamp(r3d_span_first_centre(v1->y), box.y, recti_bottom(box)),
                       recti_bottom(box),
                       (area2 > 0) != odd};
-    walk(target, &f, &w, true);
+    walk(target, &f, &w, true, capped);
+}
+
+void
+r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                        const r3d_span_vertex_t* c, bool solid) {
+    if (target->skip_hidden) {
+        triangle_write_of(target, a, b, c, solid, true);
+    } else {
+        triangle_write_of(target, a, b, c, solid, false);
+    }
 }
 
 void
@@ -1035,4 +1063,10 @@ void
 r3d_span_triangle_solid(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                         const r3d_span_vertex_t* c, uint16_t color) {
     r3d_span_triangle_impl(target, a, b, c, &color);
+}
+
+void
+r3d_span_capped_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                         const r3d_span_vertex_t* c, const uint16_t* face) {
+    r3d_span_capped_triangle_impl(target, a, b, c, face);
 }
