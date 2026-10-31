@@ -63,11 +63,16 @@ typedef struct {
     bool (*second_view)(void* state, const raster_t* raster, render_view_t* out, bool* listed);
     /* Optional. Over the composed picture, `width` by `height`, with draw/. */
     void (*overlay)(void* state, int width, int height);
+    /* Optional. Before each draw, room in the state for `instances`; false
+     * detaches the view, logged, and the frame draws shaded. */
+    bool (*reserve)(void* state, int instances);
+    /* Optional. Frees what reserve took, before the state is freed. */
+    void (*release)(void* state);
 } render_debug_view_t;
 
 #define RENDER_DEBUG_VIEW_UNKNOWN -2
 #define RENDER_DEBUG_VIEW_SHADED  0
-#define RENDER_DEBUG_VIEW_COUNT   5 /* table rows; views run 0 to this */
+#define RENDER_DEBUG_VIEW_COUNT   7 /* table rows; views run 0 to this */
 
 typedef struct {
     raster_split_t split;
@@ -85,13 +90,14 @@ typedef struct {
     int64_t chose_at_us; /* when the predictor last chose; 0 before its first choice */
     int debug_view;      /* zero is shaded; table rows start at one */
     void* debug_view_state;
+    int refused_view; /* a view whose reserve failed, not asked for again until another is */
     raster_attachment_t debug_view_attachment;
     const raster_attachment_t* debug_view_attached[1];
     render_context_frame_t frame;
     /* Frame generation (render/framegen): one generated frame after each
      * drawn one, while it costs less than a drawn one. The raster holds the
-     * drawn frame, through kept_view, until a generated frame is written
-     * over it. */
+     * drawn frame, through kept_view; a generated one is composed from
+     * `framegen`. */
     bool generating;
     bool kept;
     int32_t generated_us; /* the last generated frame's warp, fill and compose; 0 before one */

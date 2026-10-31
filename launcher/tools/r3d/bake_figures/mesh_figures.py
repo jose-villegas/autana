@@ -1,4 +1,4 @@
-"""The figures of docs/render/Baked-Mesh.md, from the bake's own functions and a baked mesh.
+"""The figures of docs/render/offline/Baked-Mesh.md, from the bake's own functions and a baked mesh.
 
 Clusters and the tree: a baked mesh's clusters in the meshlets view's hues, then the tree level by level, each
 cluster in the colour of its node at that level, every box faint but one root-to-leaf path's, orbiting. The

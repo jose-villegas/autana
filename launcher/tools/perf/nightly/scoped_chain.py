@@ -25,11 +25,13 @@ import autana_config
 from capture import require_same_board
 from device_lock import normalise_board, short_id, write_json
 from layout_measure import autana_command, run_flash, run_stamped, REPORT_LINE, latest_build
+from device_capture import board_steps_completed
 from process_tree import (launch_process_tree, stop_process_tree, close_process_tree, install_console_interrupt_handler,
                           terminate_unwinds)
 from local_schedule import (Clock, wait_idle, gpu_pending, gpu_on_host, GPU_NOT_ON_HOST,
                             NIGHT_STEP_HANG_SECONDS, MARKER_KEY_FORMAT, heavy_root, night_cutoff)
-from nightly.lnt import lnt_report, night_manifest, read_last_night, VARIANT, BUILD_FLAGS, LAYOUT_SEED
+from nightly.lnt import (lnt_report, night_manifest, night_ran, read_night, read_last_night, VARIANT, BUILD_FLAGS,
+                         LAYOUT_SEED)
 
 IMAGE_HEADER_BYTES = 24
 SEGMENT_HEADER_BYTES = 8
@@ -204,12 +206,13 @@ def run_chain(steps, args, runner=None, clock=None):
         with log_path.open("w", encoding="utf-8") as log:
             try:
                 code, lines, _ = runner(args.selftest, log, SELFTEST_ALLOWANCE_SECONDS)
-                selftest["outcome"] = "failed" if code else "passed"
+                complete = board_steps_completed(line for _, line in lines)
+                selftest["outcome"] = "passed" if not code else "failed" if complete else "incomplete"
                 reports = [match[1] for _, line in lines if (match := REPORT_LINE.match(line))]
                 selftest["report"] = reports[-1] if reports else str(log_path.relative_to(output))
             except (OSError, RuntimeError) as error:
                 log.write(str(error) + "\n")
-                selftest["outcome"] = "failed"
+                selftest["outcome"] = "incomplete"
         selftest["seconds"] = (clock.now() - begin).total_seconds()
         save()
 
@@ -436,7 +439,8 @@ def run_night(args, clock=None, launch=None):
     planned = json.loads(args.plan.read_text(encoding="utf-8"))
     cutoff = datetime.fromisoformat(planned["cutoff"])
     processes, skipped = [], set()
-    failed, interrupted = False, False
+    # Failed: a lane's tests failed or its board could not run; down: only the latter.
+    failed, down, interrupted = False, False, False
     hung = set()
     unreachable, seen = [], bool(planned["listed"])
 
@@ -506,7 +510,7 @@ def run_night(args, clock=None, launch=None):
                 start(board, planned["lanes"][board], args.plan)
             except (OSError, ValueError, subprocess.CalledProcessError) as error:
                 print(f"lane {board}: {error}", file=sys.stderr)
-                failed = True
+                failed = down = True
                 skipped.add(board)
         # Before the cut-off the night watches the fleet even with no lane running; after it, only its lanes.
         while (clock.now() < cutoff
@@ -517,7 +521,7 @@ def run_night(args, clock=None, launch=None):
                     print(f"LANE_HANG_FACTOR expired for board {board}", file=sys.stderr)
                     stop(process, board, REMOTE_STOP_SECONDS)
                     hung.add(id(process))
-                    failed = True
+                    failed = down = True
             if clock.now() >= cutoff:
                 continue
             try:
@@ -543,7 +547,7 @@ def run_night(args, clock=None, launch=None):
                     write_json(args.plan, planned)
                 except (OSError, ValueError, subprocess.CalledProcessError) as error:
                     print(f"lane {board}: {error}", file=sys.stderr)
-                    failed = True
+                    failed = down = True
                     skipped.add(board)
     except KeyboardInterrupt:
         interrupted = True
@@ -575,7 +579,14 @@ def run_night(args, clock=None, launch=None):
         print("::warning::night: no listed board was free before its cut-off", file=sys.stderr)
     elif not planned["lanes"]:
         print("night: no board is plugged in", file=sys.stderr)
-        failed = True
+        failed = down = True
+    if planned["lanes"]:
+        key = datetime.fromisoformat(planned["started"]).strftime(MARKER_KEY_FORMAT)
+        down |= not all(night_ran(read_night(args.data, board, key)) for board in planned["lanes"])
+    # For the board outage alarm: a night whose lanes all ran is no outage, whatever their tests reported.
+    if os.environ.get("GITHUB_OUTPUT"):
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+            output.write(f"boards_ran={str(not down).lower()}\n")
     return int(failed)
 
 
@@ -603,10 +614,15 @@ def plan(args, clock=None, request=None):
     for name, board in waiting.items():
         print(f"::notice::board {name} on {board.get('name', 'this machine')} {later}: {busy(board)}",
               file=sys.stderr)
+    # GPU night work can hold a night's plan past its cut-off; an override marked after it is not late.
+    late = discovered and marker < cutoff <= now
     if discovered:
-        args.boards = [short_id(board["board"]) for board in listing]
+        args.boards = [] if late else [short_id(board["board"]) for board in listing]
     args.boards = [board for board in args.boards if short_id(board) not in waiting]
-    if not args.boards:
+    if late:
+        print(f"::notice::plan: held past the last lane start ({cutoff.isoformat()}); the night runs no lane",
+              file=sys.stderr)
+    elif not args.boards:
         print(f"::notice::plan: no free board; the night {later}", file=sys.stderr)
     if discovered:
         # The self-test runs on one board of this machine, whichever is plugged in first.
@@ -637,11 +653,10 @@ def timeline(args):
                           ended=record["ended"], outcome="failed" if record["exit"] else "passed"))
     lane_key = datetime.fromisoformat(planned["started"]).strftime(MARKER_KEY_FORMAT)
     for board in planned["lanes"]:
-        path = args.data / "scoped" / board / lane_key / "night.json"
-        if not path.is_file():
+        record = read_night(args.data, board, lane_key)
+        if record is None:
             continue
-        record = json.loads(path.read_text(encoding="utf-8"))
-        failed = record["selftest"]["outcome"] == "failed" or any(
+        failed = record["selftest"]["outcome"] in ("failed", "incomplete") or any(
             step["outcome"] in ("build_failed", "capture_failed") for step in record["steps"])
         steps.append(dict(name="board " + board, started=record["started"], ended=record["ended"],
                           outcome="failed" if failed else "passed" if record["ended"] else "running"))
@@ -729,7 +744,7 @@ def main():
         results = run_chain(steps, args)
     manifest = read_last_night(args.data, short_id(args.board))
     return int(any(result.outcome in ("build_failed", "capture_failed") for result in results)
-               or manifest["selftest"]["outcome"] == "failed")
+               or manifest["selftest"]["outcome"] in ("failed", "incomplete"))
 
 
 if __name__ == "__main__":
