@@ -1,5 +1,6 @@
-"""Generate frame timing tables, and each scene's frames along its path beside
-what the cull counted, from committed board captures."""
+"""Generate frame timing tables, each scene's frames along its path beside what
+the cull counted, and the host renderer's overdraw at those poses, from committed
+board captures."""
 import argparse
 import pathlib
 import shlex
@@ -15,6 +16,7 @@ from capture import QUARTERS, build_id
 from cull_counts import plot_counts
 from docs.plot_style import INK, LABEL_SIZE, MUTED, SLOTS, save, style_axes, subplots
 from report_performance import frame_peaks, path_poses
+import frame_peak_overdraw
 
 SCRIPT = pathlib.Path(__file__).resolve().relative_to(ROOT).as_posix()
 DOCUMENT = "launcher/main/apps/render_lab/tools/README.md"
@@ -73,7 +75,7 @@ def path_chart(row, frames, poses, profile, out):
     save(fig, out)
 
 
-def timing_tables(data_dir, scenes, boards, peak_board, images, write_images):
+def timing_tables(data_dir, scenes, boards, peak_board, images, write_images, render_views=False):
     captures = ({board: data_dir / f"{PROFILE_PREFIX}{board}{BOARD_SUFFIX}.log" for board in boards}
                 if boards else {path.stem.removeprefix(PROFILE_PREFIX).removesuffix(BOARD_SUFFIX): path
                                 for path in sorted(data_dir.glob(PROFILE_GLOB))})
@@ -125,8 +127,12 @@ def timing_tables(data_dir, scenes, boards, peak_board, images, write_images):
                        images / f"{scene}.png")
         lines.append(f"![{scene}: frames along the path and the cull's counts]({folder}/{scene}.png)")
     lines.extend(("", frame_peaks(text).replace("## Frame peaks", "#### Frame peaks, ranked", 1)))
+    if render_views:
+        frame_peak_overdraw.render_views(text, captures[peak_board].name, scenes, data_dir)
+    lines.append(frame_peak_overdraw.tables(text, scenes, data_dir))
     lines.extend(("Sources:", ""))
     lines.extend(f"- `{path.name}`" for path in captures.values())
+    lines.append(f"- `{frame_peak_overdraw.DATA_FILE}`")
     return "\n".join(lines)
 
 
@@ -140,13 +146,16 @@ def main():
     parser.add_argument("--peak-board", required=True,
                         help="the capture label whose traced frames and replays draw the frame peaks")
     parser.add_argument("--images", type=pathlib.Path, default=ROOT / IMAGES)
+    parser.add_argument("--render-views", action="store_true",
+                        help="draw every replayed pose on the host again through the overdraw view, rewriting its data")
     parser.add_argument("--check", action="store_true")
     argv = sys.argv[1:]
     args = parser.parse_args(argv)
-    command = shlex.join(["python", SCRIPT, *(arg for arg in argv if arg != "--check"), "--check"])
+    command = shlex.join(["python", SCRIPT, *(arg for arg in argv if arg not in ("--check", "--render-views")), "--check"])
     try:
         body = timing_tables(args.data_dir, args.scenes.split(",") if args.scenes else None,
-                             args.board, args.peak_board, args.images.resolve(), not args.check)
+                             args.board, args.peak_board, args.images.resolve(), not args.check,
+                             args.render_views and not args.check)
         changed = replace_block(args.document, BLOCK, body, check=args.check, command=command)
     except (OSError, ValueError) as error:
         parser.error(str(error))
