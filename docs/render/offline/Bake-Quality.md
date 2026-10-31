@@ -326,6 +326,5 @@ The places the two fits differ most, the reference above them.
 
 ![Where occlusion changes the picture](../../images/render/gpu/bake-ao-compare.crops.png)
 
-The factor alone, beside the reference, is in
-[Bake-Method.md](Bake-Method.md#local-occlusion-implementation): low at column
-bases, under arches and in the creases between walls and floor.
+The factor alone, beside the reference:
+[Bake-Method.md](Bake-Method.md#local-occlusion-implementation).
