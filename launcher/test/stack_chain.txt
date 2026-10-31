@@ -10,16 +10,16 @@ root test_the_two_core_frame_matches_one_full_draw test
 root test_a_triangle_cut_by_the_near_plane_draws_the_whole_quad_left_in_front test
 root test_a_triangle_over_any_side_of_the_screen_is_drawn test
 root test_a_census_list_draws_what_raster_draw_draws_at_any_size test
-indirect writer_rows r3d_span_triangle_write : raster_attachment_tag
+indirect writer_rows r3d_span_triangle_write : raster_attachment_tag raster_overdraw.c:count_span
 indirect shell_systems_update : scene_shell_render
-indirect instance_writers : raster_motion.c:writer raster_meshlets.c:writer raster_cull_view.c:writer
+indirect instance_writers : raster_motion.c:writer raster_meshlets.c:writer raster_cull_view.c:writer raster_overdraw.c:writer
 indirect raster_draw raster_draw_culled : raster_motion.c:begin raster_meshlets.c:begin raster_cull_view.c:begin
 indirect resolve_slice : raster_motion.c:resolve
 indirect job_run_steered : transform_slice draw_slice resolve_slice upscale_slice animate_slice skin_slice
-indirect draw_slice : clear_color clear_depth raster_motion.c:clear raster_meshlets.c:clear raster_cull_view.c:clear
-indirect raster_show : raster_motion.c:show raster_meshlets.c:show depth_show tiles_show raster_cull_view.c:show
-indirect raster_show_map : raster_motion.c:pixel_color raster_meshlets.c:pixel_color
-indirect render_context_set_debug_view : raster_depth_view raster_depth_tiles_view raster_motion_view raster_meshlets_view raster_cull_view
+indirect draw_slice : clear_color clear_depth raster_motion.c:clear raster_meshlets.c:clear raster_cull_view.c:clear raster_overdraw.c:clear
+indirect raster_show : raster_motion.c:show raster_meshlets.c:show depth_show tiles_show raster_cull_view.c:show raster_overdraw.c:show
+indirect raster_show_map : raster_motion.c:pixel_color raster_meshlets.c:pixel_color raster_overdraw.c:pixel_color
+indirect render_context_set_debug_view : raster_depth_view raster_depth_tiles_view raster_motion_view raster_meshlets_view raster_cull_view raster_overdraw_view
 indirect render_context_overlay : raster_cull_overlay
 indirect job_run_core1 : sweep_one_chunk step_one_gas_chunk equalise_gas_one_chunk equalise_one_chunk react_one_chunk
 indirect replay_overlay : shell_frame_overlay
