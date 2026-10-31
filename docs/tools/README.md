@@ -7,6 +7,16 @@ To see real firmware screens without a board, start with the
 
 The rest of this index lists the repository's checks and tools.
 
+## Where a script goes
+
+| Kind of script | Goes in | Example |
+|---|---|---|
+| Gate: a check that fails a commit, push or CI run | `scripts/gates/` | `check-format.sh` |
+| CI plumbing: what a workflow runs to reach a board or runner | `scripts/ci/` | `refresh_pr.py` |
+| Firmware tool: builds, bakes, renders or reads the firmware | the folder under `launcher/tools/` for its job | `bake/bake.py` |
+| App tool: serves one app only | the app's own folder, never the engine's tools | |
+| Shared helper: sourced or imported by other scripts | `scripts/lib/` for gates and CI; `launcher/tools/` root for the firmware tools' shell helpers | `scripts/lib/pinned_tool.py` |
+
 | | |
 |---|---|
 | [Build-Environment.md](Build-Environment.md) | Which ESP-IDF `autana build` picks and where its build folders live. |

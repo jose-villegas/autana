@@ -8,6 +8,8 @@ main/core/job.c
 main/input/motion/motion_reader.c
 main/input/motion/gravity.c
 main/input/motion/shake.c
+main/input/motion/imu_rest.c
+main/input/motion/imu_calib.c
 test/input_fake.c
 test/clock_fake.c
 main/apps/sand/sand.c

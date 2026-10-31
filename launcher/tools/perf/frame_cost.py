@@ -1,5 +1,5 @@
 """Parse the shell frame-cost report windows and their bracket means, and
-the lap windows a perf-scope image reports beside them."""
+the lap windows a --frame-laps image reports beside them."""
 
 import pathlib
 import re

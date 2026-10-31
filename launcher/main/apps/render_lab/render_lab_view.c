@@ -8,12 +8,14 @@ TUNE_OWNER(render_lab);
 TUNE(render_lab, view, RENDER_DEBUG_VIEW_SHADED, RENDER_DEBUG_VIEW_SHADED, RENDER_DEBUG_VIEW_COUNT);
 TUNE(render_lab, scale, RENDER_LAB_SCALE_DEFAULT, RENDER_LAB_SCALE_UNIT, RENDER_LAB_SCALE_MAX);
 TUNE(render_lab, present, CAMERA_PRESENT_NEAREST, CAMERA_PRESENT_NEAREST, CAMERA_PRESENT_DOUBLE);
-TUNE(render_lab, small_fill_ceiling, SMALL_FILL_CEILING_SMOOTH, 0, SMALL_FILL_CEILING_MAX);
-TUNE(render_lab, small_fill_gate, SMALL_FILL_GATE_SMOOTH, 0, UINT8_MAX);
-TUNE(render_lab, small_fill_style, SMALL_FILL_FLAT, SMALL_FILL_FLAT, SMALL_FILL_STYLE_COUNT - 1);
-TUNE(render_lab, budget, 0, 0, RENDER_LAB_BUDGET_MAX_MS);
+TUNE_SETTING(render_lab, small_fill_ceiling, SMALL_FILL_CEILING_SMOOTH, 0, SMALL_FILL_CEILING_MAX);
+TUNE_SETTING(render_lab, small_fill_gate, SMALL_FILL_GATE_SMOOTH, 0, UINT8_MAX);
+TUNE_SETTING(render_lab, small_fill_style, SMALL_FILL_FLAT, SMALL_FILL_FLAT, SMALL_FILL_STYLE_COUNT - 1);
+TUNE_SETTING(render_lab, budget, 0, 0, RENDER_LAB_BUDGET_MAX_MS);
 TUNE(render_lab, layout, RENDER_LAB_LAYOUT_FULL, RENDER_LAB_LAYOUT_FULL, RENDER_LAB_LAYOUT_COUNT - 1);
 TUNE(render_lab, orbit_ms, 0, 0, RENDER_LAB_ORBIT_MAX_MS);
+TUNE_SETTING(render_lab, upscale, UPSCALE_FILTER_NEAREST, UPSCALE_FILTER_NEAREST, UPSCALE_FILTER_SURFACE);
+TUNE_SETTING(render_lab, framegen, 0, 0, 1);
 
 int
 render_lab_debug_view(void) {
@@ -40,7 +42,6 @@ render_lab_small_fill(void) {
     return (small_fill_t){(uint8_t)small_fill_ceiling, (uint8_t)small_fill_gate, (small_fill_style_t)small_fill_style};
 }
 
-#if TUNE_ENABLED
 #define SMALL_FILL_PRESET_ROW(name)   SMALL_FILL_##name,
 #define SMALL_FILL_PRESET_NAME(name)  #name,
 /* A menu label is the preset name with each '_' shown as the separator; its buffer fits a name of only '_'. */
@@ -83,12 +84,28 @@ render_lab_small_fill_select(int index) {
     }
     small_fill_picked = index;
     const small_fill_t fill = small_fill_presets[index];
-    tune_registry_t* registry = tune_shared();
-    return tune_set(registry, small_fill_ceiling_tunable.name, fill.ceiling)
-           && tune_set(registry, small_fill_gate_tunable.name, fill.gate)
-           && tune_set(registry, small_fill_style_tunable.name, fill.style);
+    return TUNE_SETTING_SET(small_fill_ceiling, fill.ceiling) && TUNE_SETTING_SET(small_fill_gate, fill.gate)
+           && TUNE_SETTING_SET(small_fill_style, fill.style);
 }
-#endif
+
+/* In upscale_filter_t order. */
+static const char* const upscale_names[] = {"SHARP", "SMOOTH"};
+
+const char* const*
+render_lab_upscale_names(int* count) {
+    *count = (int)(sizeof upscale_names / sizeof upscale_names[0]);
+    return upscale_names;
+}
+
+int
+render_lab_upscale_selected(void) {
+    return upscale;
+}
+
+bool
+render_lab_upscale_select(int index) {
+    return TUNE_SETTING_SET(upscale, index);
+}
 
 bool
 render_lab_apply_camera_settings(scene_t* scene, scene_entity_t camera) {
@@ -107,6 +124,17 @@ render_lab_render_size(int width, int height) {
 void
 render_lab_apply_raster_settings(void) {
     render_context_set_scale(render_context_main(), RENDER_LAB_SCALE_UNIT * RENDER_LAB_SCALE_UNIT / render_lab_scale());
+    render_context_set_upscale_filter(render_context_main(), (upscale_filter_t)upscale);
+}
+
+bool
+render_lab_framegen_on(void) {
+    return framegen != 0;
+}
+
+bool
+render_lab_framegen_set_on(bool on) {
+    return TUNE_SETTING_SET(framegen, on ? 1 : 0);
 }
 
 int
@@ -114,12 +142,10 @@ render_lab_budget_ms(void) {
     return budget;
 }
 
-#if TUNE_ENABLED
 bool
 render_lab_budget_set_ms(int budget_ms) {
-    return tune_set(tune_shared(), budget_tunable.name, budget_ms);
+    return TUNE_SETTING_SET(budget, budget_ms);
 }
-#endif
 
 int
 render_lab_orbit_ms(void) {

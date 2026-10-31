@@ -208,7 +208,7 @@ def _mesh_passes(tris, labels, tri_o, triangles, reserved, selected, edges):
 
 def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, locks, deviation, options, shade, shapes=None):
     from scipy.spatial import cKDTree
-    from .objects.instances import match_instances, source_objects
+    from .objects.instances import match_instances, place, source_objects
 
     single = {}
     for index, (sel, budget) in enumerate(parts):
@@ -235,7 +235,7 @@ def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, loc
                 obj = int(instance.object_name)
                 sel, budget = parts[single[obj]]
                 used = np.unique(tris[sel])
-                placed = shape.positions @ instance.linear.T + instance.position
+                placed = place(shape.positions, instance.linear, instance.position)
                 _, nearest = cKDTree(pos[used]).query(placed)
                 indices = used[nearest]
                 union |= locks[indices]
@@ -253,7 +253,7 @@ def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, loc
             mat = _label_after(shape.triangles, shape.materials, kept, t)
             copies = []
             for instance, indices in placements:
-                placed = p @ instance.linear.T + instance.position
+                placed = place(p, instance.linear, instance.position)
                 # World-space locked positions must survive local-frame float conversion.
                 placed[union[kept]] = pos[indices[kept[union[kept]]]].astype(np.float32)
                 faces = t[:, ::-1] if instance.mirrored else t
@@ -285,6 +285,10 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
                for obj in (edge.a, edge.b)):
             locks[edge.vertices_a] = True
             locks[edge.vertices_b] = True
+        # A free mesh frees only its own side: the rest it touches keeps its border, so the walls stay closed.
+        for obj, other, vertices in ((edge.a, edge.b, edge.vertices_b), (edge.b, edge.a, edge.vertices_a)):
+            if policies.get(obj) == 'free' and other not in selected:
+                locks[vertices] = True
     report = dict(requested_scene_total=requested, rest_budget=rest_budget, ceiling=allocation.ceiling, passes=[],
                   contacts=[dict(a=allocation.object_names[e.a], b=allocation.object_names[e.b], unshared=e.unshared,
                                  vertices_a=e.vertices_a.tolist(), vertices_b=e.vertices_b.tolist()) for e in edges],
@@ -299,9 +303,8 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
         entry['objects'] = [allocation.object_names[obj] for obj in entry['objects']]
         report['meshes'].append(entry)
         report['passes'].append(entry)
-    for index, (sel, budget) in enumerate(parts):
-        if index in consumed:
-            continue
+
+    def run_part(sel, budget):
         result = _run_pass(pos, rgb, tris[sel], labels[sel], budget, deviation, options,
                            locks if np.any(locks) else None)
         objects = np.unique(tri_o[sel])
@@ -323,6 +326,20 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
                                          rule=selected[objects[0]], copies=[(instance, result)]))
         else:
             emitted.append(result)
+        return len(result[2])
+
+    # Carved meshes are paid first, out of the ceiling, at what they emit (locked seams can overshoot their
+    # budget); the rest shares what is left. A weld group mixing carved and rest objects counts as rest.
+    waiting = [index for index in range(len(parts)) if index not in consumed]
+    carved_first = [index for index in waiting if np.all(np.isin(tri_o[parts[index][0]], list(selected)))]
+    rest = [index for index in waiting if index not in carved_first]
+    carved_total = sum(entry['output_triangles'] * entry['copies'] for entry in shared)
+    carved_total += sum(run_part(*parts[index]) for index in carved_first)
+    check_ceiling(carved_total + len(rest), allocation.ceiling)
+    asked = sum(parts[index][1] for index in rest)
+    room = asked if allocation.ceiling is None else min(asked, allocation.ceiling - carved_total)
+    for index in rest:
+        run_part(parts[index][0], max(1, parts[index][1] * room // max(asked, 1)))
     out_p, out_c, out_t, out_m = [], [], [], []
     base = 0
     for p, c, t, m in emitted:

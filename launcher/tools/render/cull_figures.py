@@ -34,9 +34,9 @@ from build.c_header import read_define
 from cull_counts import CULL_HEADER, plot_counts
 from docs.plot_style import save, subplots
 from render.doc_tables import markdown
+from render_compare import still_sheet
 
 VIEWER = ROOT / "launcher/tools/render/scene_viewer.sh"
-COMPARE = ROOT / "launcher/tools/render/render_compare.py"
 GFX_HEADER = ROOT / "launcher/main/gfx/gfx.h"
 DISPLAY_HEADER = ROOT / "launcher/main/display/display.h"
 FRAMES = 120  # frames along the whole path, for the counts and the videos
@@ -85,9 +85,9 @@ def panel_size(source=GFX_HEADER):
     return f"{width}x{height}"
 
 
-def video(args, name, view_flags, dt, size=("--size", panel_size())):
+def video(args, name, view_flags, dt, size=None):
     avi = args.work / f"{args.stem}-{name}.avi"
-    viewer(args, *view_flags, *size, "--frames", str(FRAMES), "--dt", str(dt), "-o", str(args.work / f"{name}.bmp"),
+    viewer(args, *view_flags, *(size or ("--size", panel_size())), "--frames", str(FRAMES), "--dt", str(dt), "-o", str(args.work / f"{name}.bmp"),
            "--video", str(avi), log=args.work / f"{args.stem}-{name}.log")
     return avi
 
@@ -107,21 +107,9 @@ def frames_at(avi, indices):
 
 def sheet(args, columns, indices, dt, stem):
     """One render_compare still row per pose, stacked."""
-    rows = []
-    for row, index in enumerate(indices):
-        command = [sys.executable, str(COMPARE), "--out", str(args.work / f"{stem}-row{row}.png")]
-        for label, pictures in columns:
-            path = args.work / f"{stem}-{row}-{len(command)}.png"
-            pictures[row].save(path)
-            command += ["--still-column", f"{label}, {index * dt / 1000:.1f} s", str(path)]
-        subprocess.run(command, check=True, stdout=subprocess.DEVNULL)
-        rows.append(Image.open(args.work / f"{stem}-row{row}.png").convert("RGB"))
-    out = Image.new("RGB", (max(r.width for r in rows), sum(r.height for r in rows)), "white")
-    y = 0
-    for picture in rows:
-        out.paste(picture, (0, y))
-        y += picture.height
-    out.save(args.out / f"{stem}-sheet.png", optimize=True)
+    rows = [[(f"{label}, {index * dt / 1000:.1f} s", pictures[row].convert("RGB")) for label, pictures in columns]
+            for row, index in enumerate(indices)]
+    still_sheet(rows).save(args.out / f"{stem}-sheet.png", optimize=True)
 
 
 def read_counts(path):

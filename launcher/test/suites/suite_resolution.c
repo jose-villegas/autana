@@ -9,6 +9,8 @@
 #include "render/resolution/resolution.h"
 
 #define BUDGET_US 66000
+/* The wall time between two choices. */
+#define FRAME_US  40000
 
 /* 1, 1.25, 1.5, 2, the floor 2.5 and the recovery step 3 of a 368x448
  * panel, as the board measured their mean frame cost at one load. */
@@ -176,7 +178,7 @@ test_the_predictor_draws_the_finest_step_its_model_says_fits(void) {
     for (int step = 0; step < STEP_COUNT; step++) {
         const float us = resolution_model_predict_us(&model, &cfg, step, 6000);
         if (us <= (float)BUDGET_US) {
-            TEST_ASSERT_EQUAL_INT(step, resolution_predict_choose(&p, &cfg, 6000));
+            TEST_ASSERT_EQUAL_INT(step, resolution_predict_choose(&p, &cfg, 6000, FRAME_US));
             return;
         }
     }
@@ -190,7 +192,7 @@ test_the_predictor_reports_the_price_of_its_chosen_step(void) {
     resolution_predict_init(&p, &cfg, &model, 0);
     for (int triangles = 3000; triangles <= 30000; triangles += 3000) {
         resolution_predict_measured(&p, &cfg, triangles, 80000);
-        const int step = resolution_predict_choose(&p, &cfg, triangles);
+        const int step = resolution_predict_choose(&p, &cfg, triangles, FRAME_US);
         TEST_ASSERT_FLOAT_WITHIN(
             0.01F, p.scale * resolution_model_predict_us(&model, &cfg, step, triangles) + p.offset_us, p.chosen_us);
     }
@@ -201,8 +203,8 @@ test_the_predictor_steps_down_on_the_frame_the_load_arrives(void) {
     const resolution_config_t cfg = config();
     resolution_predict_t p;
     resolution_predict_init(&p, &cfg, &model, 0);
-    const int light = resolution_predict_choose(&p, &cfg, 3000);
-    const int heavy = resolution_predict_choose(&p, &cfg, 12000);
+    const int light = resolution_predict_choose(&p, &cfg, 3000, FRAME_US);
+    const int heavy = resolution_predict_choose(&p, &cfg, 12000, FRAME_US);
     TEST_ASSERT_GREATER_THAN_INT(light, heavy);
     TEST_ASSERT_LESS_OR_EQUAL_FLOAT((float)BUDGET_US, resolution_model_predict_us(&model, &cfg, heavy, 12000));
 }
@@ -217,8 +219,8 @@ test_the_predictor_holds_the_floor_until_the_panic_share(void) {
     resolution_predict_t p;
     resolution_predict_init(&p, &cfg, &model, 0);
     TEST_ASSERT_GREATER_THAN_FLOAT((float)BUDGET_US, resolution_model_predict_us(&model, &cfg, RECOVERY - 1, 15000));
-    TEST_ASSERT_EQUAL_INT(RECOVERY - 1, resolution_predict_choose(&p, &cfg, 15000));
-    TEST_ASSERT_EQUAL_INT(RECOVERY, resolution_predict_choose(&p, &cfg, 30000));
+    TEST_ASSERT_EQUAL_INT(RECOVERY - 1, resolution_predict_choose(&p, &cfg, 15000, FRAME_US));
+    TEST_ASSERT_EQUAL_INT(RECOVERY, resolution_predict_choose(&p, &cfg, 30000, FRAME_US));
 }
 
 static void
@@ -230,12 +232,84 @@ test_the_predictor_does_not_flip_at_the_edge_of_the_budget(void) {
     while (resolution_model_predict_us(&model, &cfg, 2, triangles) <= (float)BUDGET_US) {
         triangles += 10;
     }
-    TEST_ASSERT_EQUAL_INT(3, resolution_predict_choose(&p, &cfg, triangles));
+    TEST_ASSERT_EQUAL_INT(3, resolution_predict_choose(&p, &cfg, triangles, FRAME_US));
     const int switches = p.switches;
     for (int i = 0; i < 100; i++) {
-        (void)resolution_predict_choose(&p, &cfg, triangles - 30 + (i % 2) * 40);
+        (void)resolution_predict_choose(&p, &cfg, triangles - 30 + (i % 2) * 40, FRAME_US);
     }
     TEST_ASSERT_EQUAL_INT(switches, p.switches);
+}
+
+/* The top is the finest step no larger than the chosen size in either
+ * axis; a size smaller than every ordinary step tops at the floor. */
+static void
+test_the_top_is_the_finest_step_the_chosen_size_holds(void) {
+    resolution_config_t cfg = config();
+    TEST_ASSERT_EQUAL_INT(0, resolution_config_top(&cfg, sizes[0]));
+    TEST_ASSERT_EQUAL_INT(2, resolution_config_top(&cfg, (resolution_step_t){sizes[1].width, sizes[2].height}));
+    TEST_ASSERT_EQUAL_INT(2, cfg.top);
+    TEST_ASSERT_EQUAL_INT(RECOVERY - 1, resolution_config_top(&cfg, sizes[RECOVERY]));
+}
+
+/* A load far under budget at every step keeps both policies at the top:
+ * fast frames keep their speed instead of buying pixels. */
+static void
+test_neither_policy_goes_finer_than_the_top(void) {
+    resolution_config_t cfg = config();
+    const int top = resolution_config_top(&cfg, sizes[3]);
+    resolution_predict_t p;
+    resolution_predict_init(&p, &cfg, &model, top);
+    for (int i = 0; i < 100; i++) {
+        TEST_ASSERT_EQUAL_INT(top, resolution_predict_choose(&p, &cfg, 1000, FRAME_US));
+    }
+    resolution_control_t c;
+    resolution_control_init(&c, &cfg, top);
+    unsigned seed = 1;
+    TEST_ASSERT_EQUAL_INT(top, run(&c, &cfg, 400, 10, &seed));
+}
+
+/* Frames until the predictor has held a finer step's fit for `hold_us`. */
+static int
+frames_to_hold(int32_t hold_us) {
+    return (int)((hold_us + FRAME_US - 1) / FRAME_US);
+}
+
+/* Going back up waits until the next finer step has fitted for the hold;
+ * a frame that does not fit starts the wait again, and it climbs one step
+ * at a time while the drop took several at once. */
+static void
+test_the_predictor_goes_finer_one_step_after_the_hold(void) {
+    const resolution_config_t cfg = config();
+    resolution_predict_t p;
+    resolution_predict_init(&p, &cfg, &model, 0);
+    const int heavy = resolution_predict_choose(&p, &cfg, 12000, FRAME_US);
+    TEST_ASSERT_GREATER_THAN_INT(1, heavy);
+    const int wait = frames_to_hold(cfg.up_hold_us);
+    for (int i = 0; i < wait - 1; i++) {
+        TEST_ASSERT_EQUAL_INT(heavy, resolution_predict_choose(&p, &cfg, 1000, FRAME_US));
+    }
+    TEST_ASSERT_EQUAL_INT(heavy, resolution_predict_choose(&p, &cfg, 12000, FRAME_US));
+    for (int i = 0; i < wait - 1; i++) {
+        TEST_ASSERT_EQUAL_INT(heavy, resolution_predict_choose(&p, &cfg, 1000, FRAME_US));
+    }
+    TEST_ASSERT_EQUAL_INT(heavy - 1, resolution_predict_choose(&p, &cfg, 1000, FRAME_US));
+}
+
+/* A climb that reverses the last drop doubles the hold before the next
+ * climb, so two steps straddling the budget are tried less and less often. */
+static void
+test_a_reversal_doubles_the_predictors_hold(void) {
+    const resolution_config_t cfg = config();
+    resolution_predict_t p;
+    resolution_predict_init(&p, &cfg, &model, 0);
+    const int heavy = resolution_predict_choose(&p, &cfg, 12000, FRAME_US);
+    TEST_ASSERT_EQUAL_INT(cfg.up_hold_us, p.hold_us);
+    int frames = 0;
+    while (resolution_predict_choose(&p, &cfg, 1000, FRAME_US) == heavy) {
+        frames++;
+    }
+    TEST_ASSERT_EQUAL_INT(2 * cfg.up_hold_us, p.hold_us);
+    TEST_ASSERT_EQUAL_INT(frames_to_hold(cfg.up_hold_us) - 1, frames);
 }
 
 /* Draws 20% slower than the prior must still fit the chosen step. */
@@ -245,7 +319,7 @@ test_measured_frames_correct_a_model_that_runs_fast(void) {
     resolution_predict_t p;
     resolution_predict_init(&p, &cfg, &model, 0);
     for (int i = 0; i < 200; i++) {
-        const int step = resolution_predict_choose(&p, &cfg, 6000);
+        const int step = resolution_predict_choose(&p, &cfg, 6000, FRAME_US);
         resolution_predict_measured(&p, &cfg, 6000,
                                     (int32_t)(1.2F * resolution_model_predict_us(&model, &cfg, step, 6000)));
     }
@@ -373,6 +447,10 @@ run_resolution_suite(void) {
     RUN_TEST(test_the_predictor_steps_down_on_the_frame_the_load_arrives);
     RUN_TEST(test_the_predictor_holds_the_floor_until_the_panic_share);
     RUN_TEST(test_the_predictor_does_not_flip_at_the_edge_of_the_budget);
+    RUN_TEST(test_the_top_is_the_finest_step_the_chosen_size_holds);
+    RUN_TEST(test_neither_policy_goes_finer_than_the_top);
+    RUN_TEST(test_the_predictor_goes_finer_one_step_after_the_hold);
+    RUN_TEST(test_a_reversal_doubles_the_predictors_hold);
     RUN_TEST(test_measured_frames_correct_a_model_that_runs_fast);
     RUN_TEST(test_refit_converges_over_mixed_frames);
     RUN_TEST(test_refit_held_step_does_not_drift);

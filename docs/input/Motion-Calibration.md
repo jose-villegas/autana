@@ -2,8 +2,8 @@
 
 A calibration round on the development Motion page measures the accelerometer
 offset and the gyro zero-rate on the board. Axes and fields are in
-[Motion-Axes.md](Motion-Axes.md); the gyro bias learned continuously is in
-[Gravity.md](Gravity.md).
+[Motion-Axes.md](Motion-Axes.md); the gyro offset is learned at rest and stored;
+the residual bias the filter learns is in [Gravity.md](Gravity.md).
 
 | Motion page, idle | Results page |
 |---|---|
@@ -63,14 +63,14 @@ flowchart TB
     Poses -->|"final pose, fit"| Turn
 ```
 
-The round ends when SAVE or CLEAR is stored; a failed save stays on Results.
-BOOT leaves it from any state, and a motion or reading gap while settling
-restarts settling. `imu_probe.h` owns every threshold and duration.
+SAVE or CLEAR ends the round only after storage succeeds. BOOT leaves from
+any state. Motion or a gap restarts settling. `imu_rest.h` owns stillness;
+`imu_probe.h` owns pose and turn gates.
 
 | Gate | Passes when | Resets on |
 |---|---|---|
 | Pose settling | recent per-axis accelerometer and gyro means are still and gravity is aligned; constant gyro bias does not block it | motion, a reading gap |
-| Upright arming | acceleration within the bottom-down cone `IMU_PROBE_UPRIGHT_MIN` and rotation at or below `IMU_PROBE_TURN_THRESHOLD` for `IMU_PROBE_SETTLE_MS`; no pose-grade stillness needed | missing readings, gaps, leaving the cone |
+| Upright arming | acceleration within the bottom-down cone `IMU_PROBE_UPRIGHT_MIN` and rotation at or below `IMU_PROBE_TURN_THRESHOLD` for `IMU_REST_SETTLE_MS`; no pose-grade stillness needed | missing readings, gaps, leaving the cone |
 | Turn trigger | rotation above `IMU_PROBE_TURN_THRESHOLD` after the upright hold | not applicable: fires once |
 
 Align each pose carefully: the gravity gate rejects wrong poses but does not
@@ -82,7 +82,7 @@ establish precision alignment. The upright cone follows the pinned page quarter.
 |---|---|
 | `pose` | rounded Q12 g and Q6 deg/s means, sample counts, `GRAV` down (unit vector) and gyro bias (deg/s); see [Gravity.md](Gravity.md) |
 | `turn` | from the trigger at time zero: estimated unit `down` and the same sample's unit `accel` direction (zero during zero acceleration); their angular separation exposes lag |
-| `calib` | offsets in mg (the absolute sensor offset), sensitivity in ppm (unity is 1000000), gyro offsets in mdps |
+| `calib` | offsets in mg (the absolute sensor offset), sensitivity in ppm (`IMU_CALIB_SCALE_ONE` is unity), gyro residuals in mdps |
 
 Turn timestamps are elapsed milliseconds from the trigger. `imu_probe.h` owns
 the trace's duration and sampling bound; missing readings are not synthesized.
@@ -92,6 +92,10 @@ the trace's duration and sampling bound; missing readings are not synthesized.
 | Output | the kept lines between `LABDUMP_BEGIN` and `LABDUMP_END`; repeated dumps return the same text |
 | Line prefix | every kept line starts with `LABDUMP`, which tells it apart from the console's log lines; the tools accept live lines and replayed dumps |
 | Serial lines | Windows sets DTR and RTS low before opening; POSIX opens with both raised, then lowers RTS before DTR |
+
+The round averages corrected gyro samples. Its residual is meaningful only
+while the live gyro offset is unchanged; automatic learning can apply a new
+offset during a round.
 
 ## The fit
 
@@ -106,13 +110,13 @@ six-position model of STMicroelectronics AN4508
 
 It measures offset and sensitivity, not cross-axis misalignment.
 `input/motion/imu_calib.c` owns the fit. The gyro zero-rate estimate averages
-samples across all pose windows.
+corrected samples across all pose windows, reporting the residual offset.
 
 ## Offset storage
 
-`input_read_motion()` subtracts the stored accelerometer offset before any
-consumer filters or reads acceleration. Scale is reported but never applied;
-gyro readings remain raw.
+Motion reads subtract the stored accelerometer and gyro offsets before
+consumers see acceleration or rotation. Turn speed uses corrected rotation;
+accelerometer scale is reported but never applied.
 
 ```mermaid
 flowchart LR
@@ -135,6 +139,44 @@ The Motion page shows the stored offset. Its raw acceleration display, bubble
 and `motion raw` log add that offset back to reconstruct sensor counts. The
 results HUD labels the residual; `calib` logs the absolute offset.
 
+### Gyro learning
+
+The shared motion reader learns all gyro axes at rest, settling for
+`IMU_REST_SETTLE_MS` and averaging for `IMU_REST_WINDOW_MS`. Stored offsets
+apply from boot; gravity learns only their residual bias.
+
+```mermaid
+flowchart TB
+    subgraph Learn["At rest"]
+        direction LR
+        Window["Settle and average"] --> Guard["Bound and false-rest guard"]
+        Guard --> Live["Apply offset,<br/>zero gravity bias"]
+    end
+    subgraph Save["Flash wear gates"]
+        direction LR
+        Gates["Change and interval"] --> Write["Commit gyro axes"]
+    end
+    Learn --> Save
+```
+
+| Stored or rule | Detail |
+|---|---|
+| Keys | `gyro_x`, `gyro_y`, `gyro_z`: Q6 deg/s screen-axis counts, plus `gyro_valid` |
+| Zero offset on load | missing or uncommitted marker, missing axes, or any axis beyond `IMU_CALIB_GYRO_MAX` |
+| Stillness | departure from recent acceleration and gyro means, so a constant gyro offset does not prevent learning; `imu_rest.h` owns the thresholds |
+| Acceleration gate | magnitude within `GRAVITY_TRUST_FULL_G` of one g |
+| Whole-span drift | recent-mean acceleration stays within `IMU_REST_DRIFT` per axis of its settling-start anchor throughout settling and measurement; the limit derives from the angle swept by `IMU_REST_RATE_RESOLUTION` across that span |
+| Restart | motion or a gap beyond `IMU_REST_MAX_GAP_MS` |
+| Acceptance | current offset plus the mean residual must stay within `IMU_CALIB_GYRO_MAX`; once valid, each residual axis must stay within the temperature-drift allowance `IMU_CALIB_GYRO_RESIDUAL_MAX` |
+| Live update | accepted offset applies to subsequent reads and clears the shared gravity learner's residual bias |
+| Save gates | no valid stored offset, or some axis differs by more than `IMU_CALIB_GYRO_SAVE_DELTA`; attempts are spaced by `IMU_CALIB_GYRO_SAVE_INTERVAL_US` |
+| Failed write | keeps the live offset and invalidates storage; the next accepted window after `IMU_CALIB_GYRO_SAVE_INTERVAL_US` retries regardless of delta; failed attempts also start the interval |
+| Commit | invalidate the marker, write the axes in one batch, then commit the valid marker; interrupted writes cannot load as valid |
+| Log | `imu_calib gyro saved x y z`, in Q6 deg/s counts |
+
+Rotation about the vertical leaves acceleration unchanged, so the drift gate
+cannot distinguish that rotation from gyro bias.
+
 ## The analysis tool
 
 `motion_fit.py` owns the stillness, flat-sample and window thresholds. For
@@ -149,9 +191,9 @@ each capture it reports:
 
 ## Measured captures
 
-Accelerometer error is mostly offset and repeats across a power cycle; gyro
-bias drifts at rest, so it is learned continuously
-([Gravity.md](Gravity.md#bias-learning)), not stored.
+Accelerometer and gyro offsets persist across power cycles. Rest windows
+track gyro drift; the gravity filter learns the remaining residual
+([Gravity.md](Gravity.md#bias-learning)).
 
 <details>
 <summary>Two captures, before and after a power cycle</summary>

@@ -64,8 +64,8 @@ menu-sponza-portrait|--quarter 0 --menu --scene sponza --frames 4|368x448
 menu-capybara-landscape|--quarter 1 --menu --scene capybara --frames 4|448x368
 menu-capybara-portrait|--quarter 0 --menu --scene capybara --frames 4|368x448
 menu-capybara-clips|--quarter 0 --menu --scene capybara --tap 184,172 --frames 6|368x448
-menu-sponza-small-fill|--quarter 0 --menu --scene sponza --tap 184,272 --frames 6|368x448
-menu-sponza-small-fill-landscape|--quarter 1 --menu --scene sponza --tap 96,224 --frames 6|448x368
+menu-sponza-small-fill|--quarter 0 --menu --scene sponza --tap 184,342 --frames 6|368x448
+menu-sponza-small-fill-landscape|--quarter 1 --menu --scene sponza --tap 46,224 --frames 6|448x368
 menu-sponza-scene|--quarter 0 --menu --scene sponza --tap 184,72 --frames 6|368x448
 menu-sponza-mesh|--quarter 0 --menu --scene sponza --tap 184,172 --frames 6|368x448
 water-tour|--quarter 0 --no-hud --scene water --console 0:water tour --frames 880|368x448|nopin

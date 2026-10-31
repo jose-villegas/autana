@@ -32,7 +32,7 @@ console_tone_stop(sound_voice_t* voice) {
 
 bool
 console_tone_start(sound_voice_t* voice, uint16_t hz, uint8_t gain) {
-    *voice = sound_play_tone(hz, gain);
+    *voice = sound_play_tone(hz, SOUND_TONE_UNTIL_STOPPED, gain, SOUND_BUS_SYSTEM);
     const int64_t deadline = timing_now_us() + ((int64_t)SOUND_CAPTURE_TIMEOUT_MS * MATH_US_PER_MS);
     while (sound_is_playing(*voice) && !sound_voice_audible(*voice) && timing_now_us() < deadline) {
         timing_sleep_ms(SOUND_CONTROL_POLL_MS);
@@ -111,6 +111,7 @@ console_tone_check(const console_tone_args_t* args, char result[CONSOLE_TONE_REP
     float silence_db = 0;
     float tone_db = 0;
     audio_loopback_result_t loopback = {0};
+    audio_loopback_result_t silence = {0};
     sound_voice_t voice = SOUND_VOICE_NULL;
     tone_shake_buffer_t* fifo = tone_shake_open();
     imu_vibration_t silence_shake = {0};
@@ -118,7 +119,7 @@ console_tone_check(const console_tone_args_t* args, char result[CONSOLE_TONE_REP
     bool held = false;
     bool ok = opened && audio_codec_dac_feedback(false)
               && (!args->internal || ((held = audio_out_amp_hold(true)) && audio_codec_dac_feedback(true)))
-              && tone_measure(args, &silence_db, NULL, fifo, &silence_shake)
+              && tone_measure(args, &silence_db, &silence, fifo, &silence_shake)
               && console_tone_start(&voice, args->hz, args->volume_pct)
               && tone_measure(args, &tone_db, &loopback, fifo, &tone_shake);
     ok = console_tone_stop(&voice) && ok;
@@ -126,6 +127,7 @@ console_tone_check(const console_tone_args_t* args, char result[CONSOLE_TONE_REP
     if (held) {
         timing_sleep_ms(AUDIO_OUT_DMA_DRAIN_MS);
     }
+    loopback.noise_dbfs = silence.noise_dbfs;
     const bool heard = tone_db - silence_db >= AUDIO_LOOPBACK_HEARD_MARGIN_DB;
     ok = audio_codec_dac_feedback(false) && ok;
     ok = audio_out_amp_hold(false) && ok;

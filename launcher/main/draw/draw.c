@@ -73,7 +73,7 @@ draw_pixel(int x, int y, gfx_color_t color) {
     if (!recti_contains(state.clip, x, y) || !gfx_target_row_range_overlaps(state.target, y, y + 1)) {
         return;
     }
-    gfx_target_row(state.target, y)[x] = color;
+    gfx_target_color(state.target, y)[x] = color;
     if (state.marks) {
         gfx_mark_rows_dirty(y, y + 1);
     }
@@ -103,12 +103,13 @@ line_dash_step(line_dash_t* dash) {
 /* One pixel of a line, already inside the surface's clip: `dst` when the
  * target holds the line's rows, else (x, y) if the target holds that row. */
 static inline __attribute__((always_inline)) void
-put(gfx_target_t target, gfx_color_t* dst, int x, int y, gfx_color_t color, bool add, bool rows_held) {
+put(char* pixels, int first, int height, size_t pitch, gfx_color_t* dst, int x, int y, gfx_color_t color, bool add,
+    bool rows_held) {
     if (!rows_held) {
-        if (!gfx_target_holds_rows(target, y, y + 1)) {
+        if (y < first || y >= first + height) {
             return;
         }
-        dst = &gfx_target_row(target, y)[x];
+        dst = (gfx_color_t*)(pixels + ((size_t)(y - first) * pitch)) + x;
     }
     *dst = add ? rgb565be_add(*dst, color) : color;
 }
@@ -145,24 +146,28 @@ line_advance(line_cursor_t* c, int dx, int dy, int sx, int sy, ptrdiff_t row_ste
  * pointer; otherwise each pixel's row is checked, so a band draws only the
  * rows it holds. */
 static inline __attribute__((always_inline)) void
-walk_steps(gfx_target_t target, int x, int y, int x1, int y1, gfx_color_t color, unsigned flags, line_dash_t dash,
-           bool rows_held) {
+walk_steps(const gfx_target_t* target, int x, int y, int x1, int y1, gfx_color_t color, unsigned flags,
+           line_dash_t dash, bool rows_held) {
     const int dx = mathi_abs(x1 - x);
     const int dy = -mathi_abs(y1 - y);
     const int sx = x < x1 ? 1 : -1;
     const int sy = y < y1 ? 1 : -1;
     const bool add = (flags & DRAW_LINE_ADD) != 0;
-    const ptrdiff_t row_step = (ptrdiff_t)sy * target.stride;
-    line_cursor_t c = {x, y, dx + dy, rows_held ? &gfx_target_row(target, y)[x] : NULL};
+    const int first = target->first_row;
+    const int height = target->attachment[0].height;
+    char* pixels = target->attachment[0].pixels;
+    const size_t pitch = target->attachment[0].pitch;
+    const ptrdiff_t row_step = (ptrdiff_t)sy * (ptrdiff_t)(pitch / sizeof(gfx_color_t));
+    line_cursor_t c = {x, y, dx + dy, rows_held ? (gfx_color_t*)(pixels + ((size_t)(y - first) * pitch)) + x : NULL};
 
     /* The first pixel of an open line keeps its place in the dash. */
     if (line_dash_step(&dash) && !(flags & DRAW_LINE_OPEN)) {
-        put(target, c.dst, c.x, c.y, color, add, rows_held);
+        put(pixels, first, height, pitch, c.dst, c.x, c.y, color, add, rows_held);
     }
     for (int remaining = mathi_max(dx, -dy); remaining > 0; remaining--) {
         line_advance(&c, dx, dy, sx, sy, row_step, rows_held);
         if (line_dash_step(&dash)) {
-            put(target, c.dst, c.x, c.y, color, add, rows_held);
+            put(pixels, first, height, pitch, c.dst, c.x, c.y, color, add, rows_held);
         }
     }
 }
@@ -245,8 +250,11 @@ fill_rect_alpha(const gfx_surface_t* state, int x, int y, int w, int h, gfx_colo
 
     const recti_t rect = gfx_target_clip_rect(state->target, state->clip, (recti_t){x, y, w, h});
 
+    char* pixels = state->target->attachment[0].pixels;
+    const size_t pitch = state->target->attachment[0].pitch;
+    const int first = state->target->first_row;
     for (int row = rect.y; row < recti_bottom(rect); row++) {
-        gfx_color_t* dst = gfx_target_row(state->target, row);
+        gfx_color_t* dst = (gfx_color_t*)(pixels + ((size_t)(row - first) * pitch));
         for (int i = 0; i < rect.w; i++) {
             const int col = rect.x + i;
             if (blend) {
@@ -337,8 +345,11 @@ draw_blit_dither(int x, int y, const image_t* src, uint8_t alpha) {
     }
 
     const int level = bayer_level(alpha);
-    const size_t step = image_row_bytes(src);
+    const size_t step = src->pitch;
 
+    char* pixels = state.target->attachment[0].pixels;
+    const size_t pitch = state.target->attachment[0].pitch;
+    const int first = state.target->first_row;
     for (int row = rect.y; row < recti_bottom(rect); row++) {
         const uint8_t* cells = bayer4x4[row & 3];
         const bool p[4] = {level > cells[0], level > cells[1], level > cells[2], level > cells[3]};
@@ -347,7 +358,7 @@ draw_blit_dither(int x, int y, const image_t* src, uint8_t alpha) {
             continue;
         }
 
-        gfx_color_t* dst = gfx_target_row(state.target, row);
+        gfx_color_t* dst = (gfx_color_t*)(pixels + ((size_t)(row - first) * pitch));
         const gfx_color_t* s =
             (const gfx_color_t*)((const char*)src->pixels + ((size_t)(row - y) * step)) + (rect.x - x);
 

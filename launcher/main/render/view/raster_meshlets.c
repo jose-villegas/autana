@@ -47,12 +47,12 @@ pixel_color(const void* pixel, uint16_t clear_color) {
 }
 
 static void
-show(const raster_attachment_t* self, const raster_t* raster, const gfx_render_target_t* picture, int index) {
+show(const raster_attachment_t* self, const raster_t* raster, const gfx_target_t* picture, int index) {
     (void)self;
     raster_show_map(picture, index, raster->clear, pixel_color);
 }
 
 raster_attachment_t
 raster_meshlets_view(void* state) {
-    return (raster_attachment_t){sizeof(uint16_t), clear, begin, writer, NULL, show, state};
+    return (raster_attachment_t){IMAGE_U16, clear, begin, writer, NULL, show, state};
 }

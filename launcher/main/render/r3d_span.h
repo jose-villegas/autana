@@ -10,7 +10,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "gfx/target/gfx_render_target.h"
+#include "gfx/target/gfx_target.h"
 #include "render/render_view.h"
 
 /* Largest bounding-box side, in pixel centres, always filled flat; the camera gate and style apply only above it. */
@@ -33,20 +33,24 @@ typedef struct r3d_span_writer r3d_span_writer_t;
  * colour as it is, and whose depth is R3D_DEPTH_EMPTY where nothing was
  * drawn; and what a further attachment writes beside them. */
 typedef struct {
-    gfx_render_target_t rows;
     const r3d_span_writer_t* writers; /* writer_count of them; none: colour and depth only */
     int writer_count;
     const r3d_span_small_fill_t* small_fill;
+
+    union {
+        gfx_target_t rows;
+        GFX_TARGET_STORAGE(GFX_ATTACHMENTS_MAX) rows_storage;
+    };
 } r3d_span_target_t;
 
 /* Colour and depth alone, rows [row0, row1) `width` wide, each buffer
  * starting at row0. */
 static inline r3d_span_target_t
 r3d_span_target(gfx_color_t* color, uint16_t* depth, int width, int row0, int row1) {
-    return (r3d_span_target_t){{width, row0, row1, 2, {{color, sizeof(gfx_color_t)}, {depth, sizeof(uint16_t)}}},
-                               NULL,
-                               0,
-                               &r3d_span_small_fill_default};
+    r3d_span_target_t target = {.small_fill = &r3d_span_small_fill_default};
+    gfx_target_of_color_depth(&target.rows, color, depth, width, row1 - row0, row0);
+    assert(target.rows.attachment[GFX_ATTACHMENT_DEPTH].pitch == target.rows.attachment[GFX_ATTACHMENT_COLOR].pitch);
+    return target;
 }
 
 /* A further attachment's part in a fill, chosen once per draw: after each
@@ -63,8 +67,8 @@ typedef enum {
 } r3d_span_step_t;
 
 struct r3d_span_writer {
-    void (*span)(const r3d_span_writer_t* writer, const gfx_render_target_t* rows, int y, int x_first, int x_last,
-                 int32_t z, int32_t dz);
+    void (*span)(const r3d_span_writer_t* writer, const gfx_target_t* rows, int y, int x_first, int x_last, int32_t z,
+                 int32_t dz);
     int attachment;       /* the index it writes, in `rows` */
     r3d_span_step_t step; /* what is added to `value` per draw */
     uint32_t value;       /* what this draw writes, in the attachment's own meaning */
