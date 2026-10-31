@@ -1,7 +1,7 @@
 #!/bin/sh
 #
 # Measure skinned-mesh lighting on the host and regenerate its document: the
-# cost, table-build and quality tables in docs/render/Skinned-Lighting.md and
+# cost, table-build and quality tables in docs/render/animation/Skinned-Lighting.md and
 # the figures beside it.
 #
 # Usage:

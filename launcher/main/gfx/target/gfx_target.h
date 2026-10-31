@@ -16,6 +16,10 @@
 
 #include "gfx/target/gfx_color.h"
 #include "image/image.h"
+#include "simd/copy.h"
+#include "simd/fill.h"
+#include "simd/repeat.h"
+#include "simd/simd.h"
 
 #define GFX_PIXEL_FORMAT            IMAGE_RGB565BE
 #define GFX_ATTACHMENT_COLOR        0
@@ -55,6 +59,14 @@ gfx_target_of_color(gfx_target_t* out, void* pixels, int width, int height, int 
     out->first_row = first_row;
     out->count = 1;
     out->attachment[0] = (image_t){pixels, GFX_PIXEL_FORMAT, width, height, IMAGE_PITCH(GFX_PIXEL_FORMAT, width)};
+}
+
+/* Colour and depth alone, `height` rows from picture row `first_row`. */
+static inline void
+gfx_target_of_color_depth(gfx_target_t* out, void* color, uint16_t* depth, int width, int height, int first_row) {
+    gfx_target_of_color(out, color, width, height, first_row);
+    out->count = GFX_ATTACHMENT_FURTHER;
+    out->attachment[GFX_ATTACHMENT_DEPTH] = (image_t){depth, IMAGE_U16, width, height, IMAGE_PITCH(IMAGE_U16, width)};
 }
 
 static inline int
@@ -139,16 +151,12 @@ gfx_target_clip_rect(const gfx_target_t* target, recti_t clip, recti_t rect) {
                             mathi_min(mathi_min(recti_bottom(rect), recti_bottom(clip)), gfx_target_end_row(target)));
 }
 
-/* Every pixel of the target set to `colour`, two pixels a store: a target's
- * rows are whole and its buffer word-aligned. */
+/* Every pixel of the target set to `colour`: a target's rows are whole, so
+ * the buffer is one run. */
 static inline void
 gfx_target_fill(const gfx_target_t* target, gfx_color_t colour) {
-    const uint32_t pair = ((uint32_t)colour << 16) | colour;
-    uint32_t* words = target->attachment[0].pixels;
-    const size_t count = ((size_t)target->attachment[0].pitch * target->attachment[0].height) / sizeof(uint32_t);
-    for (size_t i = 0; i < count; i++) {
-        words[i] = pair;
-    }
+    simd_fill_u16(target->attachment[0].pixels, colour,
+                  ((size_t)target->attachment[0].pitch * target->attachment[0].height) / sizeof(uint16_t));
 }
 
 /* True if a shape whose own row extent is [y0, y1) has anything at all to
@@ -174,10 +182,7 @@ static inline recti_t
 gfx_target_fill_rect(const gfx_target_t* target, recti_t clip, recti_t shape, gfx_color_t color) {
     const recti_t rect = gfx_target_clip_rect(target, clip, shape);
     for (int row = rect.y; row < recti_bottom(rect); row++) {
-        gfx_color_t* dst = gfx_target_color(target, row) + rect.x;
-        for (int i = 0; i < rect.w; i++) {
-            *dst++ = color;
-        }
+        simd_fill_u16(gfx_target_color(target, row) + rect.x, color, (size_t)rect.w);
     }
     return rect;
 }
@@ -214,6 +219,9 @@ gfx_target_paired_rows_shaded(const gfx_target_t* target, const image_t* source,
     const int row0 = target->first_row;
     const int end = first_row + row_count;
     const int stores = target_pitch / sizeof(uint32_t);
+    /* Nothing per pixel but the doubling: a row is one repeat, and a second
+     * row from the same source row is a copy of the first. */
+    const bool repeat_only = doubled && depth == NULL && dark_run == 0;
     for (int y = first_row; y < end;) {
         const int source_y = rows == NULL ? y / 2 : rows[y];
         const uint16_t* input = (const uint16_t*)((const char*)color + (size_t)source_y * source_pitch);
@@ -225,9 +233,15 @@ gfx_target_paired_rows_shaded(const gfx_target_t* target, const image_t* source,
         const bool top_dark = dark_run != 0 && y % dark_run >= dark_run / 2;
         const bool bottom_dark = dark_run != 0 && (y + 1) % dark_run >= dark_run / 2;
         const bool needs_dark = top_dark || (both && bottom_dark);
-        for (int x = 0; x < stores; x++) {
+        if (repeat_only) {
+            simd_repeat2_u16((uint16_t*)top, input, (size_t)stores);
+            if (both) {
+                simd_copy(bottom, top, target_pitch);
+            }
+        }
+        for (int x = 0; x < stores && !repeat_only; x++) {
             const uint32_t pair =
-                doubled ? 0x10001U * gfx_target_shown_pixel(input, input_depth, x, clear)
+                doubled ? SIMD_U16_PAIR(gfx_target_shown_pixel(input, input_depth, x, clear))
                         : gfx_target_shown_pixel(input, input_depth, 2 * x, clear)
                               | ((uint32_t)gfx_target_shown_pixel(input, input_depth, (2 * x) + 1, clear) << 16);
             const uint32_t dark = needs_dark ? rgb565be_pair_scale(pair, keep) : 0;
