@@ -110,15 +110,8 @@ class MeshPolicyTests(unittest.TestCase):
                 self.assertEqual(a.tobytes(), b.tobytes())
 
     def test_mesh_budget_does_not_subtract_from_rest(self):
-        p, t = sphere(4)
-        rest_p, rest_t = sphere(6)
-        points = np.concatenate([p, p * [-1, 1, 1] + [6, 0, 0], rest_p + [12, 0, 0]])
-        faces = np.concatenate([t, t[:, ::-1] + len(p), rest_t + 2 * len(p)])
-        owners = np.concatenate([np.repeat([0, 1], len(t)), np.full(len(rest_t), 2)])
-        report = {}
-        allocation = Allocation(tri_o=owners, object_names=('vase_a', 'vase_b', 'rest'),
-                                material_names=('plain',), meshes=({'match': {'object': 'vase*'}, 'triangles': 40},),
-                                report=report)
+        points, faces, owners, allocation = self._three_spheres()
+        report = allocation.report = {}
         *_, labels = simplify(points, np.full_like(points, 100), faces, owners, 80,
                               colour_deviation=1, allocation=allocation)
         self.assertEqual([np.count_nonzero(labels == i) for i in range(3)], [40, 40, 80])
