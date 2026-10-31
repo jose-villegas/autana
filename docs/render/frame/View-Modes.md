@@ -3,7 +3,7 @@
 Development builds select one row from the `render_debug_view_t` table in
 `render/context/render_context.c`: depth, tiles, motion, meshlets, cull or boxes.
 
-Every view, drawn at the same pose:
+Every view but motion, drawn at the same pose:
 
 | View | Looks like | The colour buffer becomes |
 |---|---|---|
