@@ -154,6 +154,7 @@ scene_capybara_exit(void) {
     render_lab_clips_destroy(&choice);
     scene_unload(capybara);
     capybara = NULL;
+    subject_entity = SCENE_ENTITY_NONE;
 }
 
 /* The finger turns the camera before the shell draws this frame. */
@@ -240,6 +241,12 @@ scene_capybara_controls(int width) {
     render_lab_clips_draw(width, &choice);
 }
 
+/* The subject, galloping. */
+static render_lab_path_t
+capybara_path(void) {
+    return (render_lab_path_t){capybara, subject_entity, CAPYBARA_GALLOP};
+}
+
 const render_lab_scene_t scene_capybara = {.name = "Capybara",
                                            .key = CAPYBARA_SCENE,
                                            .family = "Capybara",
@@ -249,4 +256,5 @@ const render_lab_scene_t scene_capybara = {.name = "Capybara",
                                            .status = RENDER_LAB_SCENE_DEV(capybara_status),
                                            .steer = scene_capybara_steer,
                                            .controls = scene_capybara_controls,
-                                           .console = RENDER_LAB_SCENE_DEV(scene_capybara_console)};
+                                           .console = RENDER_LAB_SCENE_DEV(scene_capybara_console),
+                                           .path = capybara_path};
