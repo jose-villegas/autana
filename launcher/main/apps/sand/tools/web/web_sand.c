@@ -36,6 +36,11 @@
 #include "apps/sand/sand_palette256.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
+/* The index row expansion lives in gfx_indexed_expand.h from #1340 on;
+ * before that, gfx_indexed.h (through gfx_mode.h) carries it. */
+#if __has_include("gfx/present/modes/indexed/gfx_indexed_expand.h")
+#include "gfx/present/modes/indexed/gfx_indexed_expand.h"
+#endif
 #include "image/pixel/rgb565.h"
 #include "input/motion/gravity.h"
 #include "input/motion/shake.h"
