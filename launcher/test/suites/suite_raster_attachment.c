@@ -351,22 +351,24 @@ test_same_view_survives_frames_and_contexts_own_their_states(void) {
 static void
 test_zero_context_draws_shaded_and_meshlet_context_paints_colour(void) {
     raster_rig_t* r = rig_open(NULL, 0);
-    render_context_t c = {0};
-    TEST_ASSERT_EQUAL_INT(RENDER_DEBUG_VIEW_SHADED, c.debug_view);
-    render_context_set_debug_view(&c, RENDER_DEBUG_VIEW_SHADED);
-    TEST_ASSERT_EQUAL_INT(0, c.debug_view);
-    render_context_set_scale(&c, 100);
+    render_context_t* c = calloc(1, sizeof(*c)); /* too big for the device stack */
+    TEST_ASSERT_NOT_NULL(c);
+    TEST_ASSERT_EQUAL_INT(RENDER_DEBUG_VIEW_SHADED, c->debug_view);
+    render_context_set_debug_view(c, RENDER_DEBUG_VIEW_SHADED);
+    TEST_ASSERT_EQUAL_INT(0, c->debug_view);
+    render_context_set_scale(c, 100);
     const render_view_t frame_view = render_view_fixture_at(&raster_rig_camera, (viewport_t){W, H, 0});
-    TEST_ASSERT_TRUE(render_context_draw(&c, r->instance, 2, &frame_view, 0));
-    TEST_ASSERT_EQUAL_INT(0, c.raster.attachment_count);
+    TEST_ASSERT_TRUE(render_context_draw(c, r->instance, 2, &frame_view, 0));
+    TEST_ASSERT_EQUAL_INT(0, c->raster.attachment_count);
     uint16_t* shaded = malloc(sizeof(uint16_t) * W * H);
     TEST_ASSERT_NOT_NULL(shaded);
-    memcpy(shaded, raster_color(&c.raster), sizeof(uint16_t) * W * H);
-    render_context_set_debug_view(&c, render_context_debug_view_named("meshlets"));
-    TEST_ASSERT_TRUE(render_context_draw(&c, r->instance, 2, &frame_view, 0));
-    TEST_ASSERT_TRUE(memcmp(shaded, raster_color(&c.raster), sizeof(uint16_t) * W * H) != 0);
+    memcpy(shaded, raster_color(&c->raster), sizeof(uint16_t) * W * H);
+    render_context_set_debug_view(c, render_context_debug_view_named("meshlets"));
+    TEST_ASSERT_TRUE(render_context_draw(c, r->instance, 2, &frame_view, 0));
+    TEST_ASSERT_TRUE(memcmp(shaded, raster_color(&c->raster), sizeof(uint16_t) * W * H) != 0);
     free(shaded);
-    render_context_release(&c);
+    render_context_release(c);
+    free(c);
 }
 
 #ifdef HOST_HEAP_ARENA
@@ -404,6 +406,14 @@ test_motion_without_room_detaches_and_draws_shaded(void) {
     TEST_ASSERT_EQUAL_INT(RENDER_DEBUG_VIEW_SHADED, c->debug_view);
     TEST_ASSERT_NULL(c->debug_view_state);
     TEST_ASSERT_EQUAL_INT(0, c->raster.attachment_count);
+    /* Asked for every frame, it stays refused until another view is asked for. */
+    const int motion = render_context_debug_view_named("motion");
+    render_context_set_debug_view(c, motion);
+    TEST_ASSERT_EQUAL_INT(RENDER_DEBUG_VIEW_SHADED, c->debug_view);
+    TEST_ASSERT_NULL(c->debug_view_state);
+    render_context_set_debug_view(c, render_context_debug_view_named("depth"));
+    render_context_set_debug_view(c, motion);
+    TEST_ASSERT_EQUAL_INT(motion, c->debug_view);
     render_context_release(c);
     free(c);
 }
@@ -764,18 +774,21 @@ test_draw_retains_only_the_drawn_instance_and_bounds_state(void) {
 static void
 test_context_owns_and_forgets_split(void) {
     raster_rig_t* r = rig_open(NULL, 0);
-    render_context_t context = {.scale_percent = 100};
+    render_context_t* context = calloc(1, sizeof(*context)); /* too big for the device stack */
+    TEST_ASSERT_NOT_NULL(context);
+    context->scale_percent = 100;
     const render_view_t view = render_view_fixture(&raster_rig_camera, &r->raster, 0);
-    TEST_ASSERT_TRUE(render_context_draw(&context, r->instance, 2, &view, 0));
-    TEST_ASSERT_EQUAL_PTR(&context.split, context.raster.split);
-    context.split.top_offset[0] = JOB_SHARE_MIN - JOB_SHARE_EVEN;
-    render_context_forget(&context);
-    TEST_ASSERT_EQUAL_INT(0, context.split.top_offset[0]);
-    context.split.top_offset[RASTER_SPLIT_INSTANCES - 1] = JOB_SHARE_MAX - JOB_SHARE_EVEN;
-    render_context_release(&context);
+    TEST_ASSERT_TRUE(render_context_draw(context, r->instance, 2, &view, 0));
+    TEST_ASSERT_EQUAL_PTR(&context->split, context->raster.split);
+    context->split.top_offset[0] = JOB_SHARE_MIN - JOB_SHARE_EVEN;
+    render_context_forget(context);
+    TEST_ASSERT_EQUAL_INT(0, context->split.top_offset[0]);
+    context->split.top_offset[RASTER_SPLIT_INSTANCES - 1] = JOB_SHARE_MAX - JOB_SHARE_EVEN;
+    render_context_release(context);
     for (int i = 0; i < RASTER_SPLIT_INSTANCES; i++) {
-        TEST_ASSERT_EQUAL_INT(0, context.split.top_offset[i]);
+        TEST_ASSERT_EQUAL_INT(0, context->split.top_offset[i]);
     }
+    free(context);
 }
 
 void
