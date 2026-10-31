@@ -757,7 +757,7 @@ print(json.dumps(inputs))
                      "code launcher/tools/r3d/fitted_variant.py", "file launcher/tools/r3d/board_cost_weights.txt",
                      "host launcher/main/render/raster.c", "host launcher/tools/render/scene_viewer.c",
                      "native launcher/main/display/display.h",
-                     "bake sponza.atrium.mesh", "bake sponza.atrium_fitted.mesh"):
+                     "bake sponza.atrium.bundle", "bake sponza.atrium_fitted.bundle"):
             self.assertIn(name, inputs)
         self.assertNotIn("code launcher/tools/bake/bake.py", inputs)
         self.assertEqual([name for name in inputs if "/apps/" in name], [])

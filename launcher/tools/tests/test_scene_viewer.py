@@ -8,7 +8,6 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from unittest import mock
 
 from PIL import Image
 import numpy as np
@@ -19,7 +18,7 @@ sys.path.insert(0, str(TOOLS / "tests"))
 from anim_probe import has_compiler, write_camera_clip  # noqa: E402
 from anim import track_host
 from build.c_header import read_define
-from r3d import build_pack, import_settings
+from r3d import build_pack
 from r3d.lit_mesh import write_lit_mesh  # noqa: E402
 from render import render_compare, scene_path  # noqa: E402
 
@@ -143,7 +142,8 @@ path = { animation = "fly.anim.toml", node = "camera" }
         for name in names[1:]:
             with self.subTest(name=name):
                 picture = self.pixels("--object", "card", "--view", name)
-                self.assertNotEqual(shaded.tobytes(), picture.tobytes())
+                # Not assertNotEqual: its failure message would print both frames' bytes.
+                self.assertFalse(shaded.tobytes() == picture.tobytes())
 
     def test_unknown_object_names_it_and_lists_renderers(self):
         run, out = self.render("--object", "missing")
@@ -166,7 +166,7 @@ path = { animation = "fly.anim.toml", node = "camera" }
         self.assertNotEqual(authored.tobytes(), card.tobytes())
 
     def hierarchy_pixels(self, *args):
-        """Renders `kid` under `rig` beside an unrelated `other`; the scene TOML has no parent key yet."""
+        """Renders `kid` under `rig` beside an unrelated `other`."""
         source = self.root / "family.scene.toml"
         mesh = '[objects.mesh_renderer]\nmesh = "card.import.toml"\n'
         source.write_text(
@@ -175,16 +175,8 @@ path = { animation = "fly.anim.toml", node = "camera" }
             f'[[objects]]\nname = "other"\nposition = [-2.0, 0.0, -1.0]\n{mesh}'
             '[[objects]]\nname = "camera"\n[objects.camera]\nhalf_fov_short_tan = 0.6\nnear_z = 1.0\n'
             'background = 0x204080\npath = { animation = "fly.anim.toml", node = "camera" }\n')
-        load_object = import_settings.load_object
-
-        def with_parent(value, base, where):
-            obj = load_object({key: item for key, item in value.items() if key != "parent"}, base, where)
-            obj.parent = value.get("parent")
-            return obj
-
         assets = self.root / "family-assets"
-        with mock.patch.object(import_settings, "load_object", with_parent):
-            build_pack.write_packs(assets, build_pack.pack_bytes([source]))
+        build_pack.write_packs(assets, build_pack.pack_bytes([source]))
         out = self.root / "family.bmp"
         run = subprocess.run([str(self.binary), "--scene", "family", "--frames", "2", "--dt", "100", *args,
                               "-o", str(out)], capture_output=True, text=True, timeout=120,

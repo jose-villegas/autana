@@ -16,8 +16,6 @@ The papers and specifications behind its techniques are in [Citations](docs/Cita
 <tr><td width="33%"><img src="docs/images/overview/render-lab-capybara.gif" width="100%" alt="A skinned capybara on a meadow blending through each of its animation clips in turn, then back to the first"></td><td width="33%"><img src="docs/images/overview/render-lab-sponza.gif" width="100%" alt="A camera moving through the Crytek Sponza atrium with baked lighting on the fitted full mesh"></td><td width="33%"><img src="docs/images/overview/render-lab-water.gif" width="100%" alt="Water in a glass tank, seen from slightly above, sloshing as the board rocks side to side, splashing as it flips over and straight back twice, then settling"></td></tr>
 </table>
 
-These images are host renders of the real firmware drawing code, sized to fit this grid. The boot clip follows the startup animation's timeline, the launcher backdrop responds to scripted rocking and lists the apps a release build carries, the sand clip runs the real simulation with scripted tilt, the capybara blends through each of its animation clips, the Sponza clip follows a camera flythrough with baked light, and the water clip runs the real fluid simulation with scripted tilt.
-
 Image render commands are in each app's tools README ([sand](launcher/main/apps/sand/tools/README.md), [render lab](launcher/main/apps/render_lab/tools/README.md)) and the [render harness](docs/tools/Render-Harness.md#images-in-these-docs).
 
 ## Try it without a board

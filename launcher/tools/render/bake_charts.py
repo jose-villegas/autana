@@ -1,4 +1,4 @@
-"""The charts of docs/render/Bake-Quality.md, read back from the fidelity tables doc_tables.py writes.
+"""The charts of docs/render/offline/Bake-Quality.md, read back from the fidelity tables doc_tables.py writes.
 
     python launcher/tools/render/bake_charts.py TABLES RENDER SCENE_ID
 

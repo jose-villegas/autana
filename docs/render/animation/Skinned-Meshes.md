@@ -8,7 +8,7 @@ and what it costs on the board. [Skeleton and skin entries](Skeleton-and-Skin.md
 is the pack format reference; [Skinned-Mesh Lighting](Skinned-Lighting.md)
 holds the lighting measurements.
 
-![A skinned capybara walking, lit at run time, on the board](images/skinned-board-walk.gif)
+![A skinned capybara walking, lit at run time, on the board](../images/skinned-board-walk.gif)
 
 ```mermaid
 flowchart LR
@@ -49,7 +49,7 @@ are in [Matching and frames](Skeleton-and-Skin.md#matching-and-frames).
 | Option | Where | What it does | Default | Cost |
 |---|---|---|---|---|
 | Influences per vertex | [`build_pack.py --max-influences`](Skeleton-and-Skin.md#two-or-four-influences) | Keeps the heaviest 2 or 4 joint weights per vertex. | 2 | 4 runs the four-influence kernel; not measured on the board. |
-| [`[skin].lighting`](Mesh-Import.md#skin-lighting) | import file | Selects the runtime lighting kernel: `direct`, `renormalised` or `table`. | `direct` | [Lighting modes](Skinned-Lighting.md#lighting-modes) compares cost and quality. |
+| [`[skin].lighting`](../offline/Mesh-Import.md#skin-lighting) | import file | Selects the runtime lighting kernel: `direct`, `renormalised` or `table`. | `direct` | [Lighting modes](Skinned-Lighting.md#lighting-modes) compares cost and quality. |
 
 Pick `direct` unless the darkening where joints blend shows; `renormalised`
 removes it at a small cost; `table` costs the same at any light count: more
@@ -59,7 +59,7 @@ estimated near 10 lights, not yet measured.
 ## 3. In a scene
 
 The scene file gives the object a `skinned_renderer` and an `animator`
-([skinned_renderer and animator](Scene-Files.md#skinned_renderer-and-animator)):
+([skinned_renderer and animator](../scene/Scene-Files.md#skinned_renderer-and-animator)):
 
 ```toml
 [[objects]]
@@ -108,7 +108,7 @@ on_pick(int clip) {
 
 ## 4. Budget
 
-<!-- generated: skinning-budget check: python launcher/main/apps/render_lab/tools/report_performance.py docs/render/data/skinning-board.txt docs/render/Skinned-Meshes.md --check -->
+<!-- generated: skinning-budget check: python launcher/main/apps/render_lab/tools/report_performance.py docs/render/data/skinning-board.txt docs/render/animation/Skinned-Meshes.md --check -->
 The skin stage's budget is 1 µs per vertex. The board capture
 measures the animated subject playing: 800 vertices, 22 joints,
 2 influences, direct lighting, 1 light.
