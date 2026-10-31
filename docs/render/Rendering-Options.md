@@ -82,8 +82,8 @@ settings and take effect when the mesh is baked.
 | Option | Trades | RAM | Default | Turn it on | Reference |
 |---|---|---|---|---|---|
 | [Cluster size](#culling-and-clusters) | cull granularity | mesh size in flash | 32 triangles | `geometry.meshlet_triangles` | [Meshlets](Render-Pipeline.md#meshlets) |
-| [Bake variant](#bake-variants) | triangles and smooth colour for draw time | mesh size in flash | per scene | the mesh entry a renderer names | [Bake-Quality.md](Bake-Quality.md) |
-| [Skinned lighting](#skinned-lighting) | per-vertex cycles for shading accuracy | a table per light set | direct | `[skin].lighting` | [Lighting modes](Skinned-Lighting.md#lighting-modes) |
+| [Bake variant](#bake-variants) | triangles and smooth colour for draw time | mesh size in flash | per scene | the mesh entry a renderer names | [Bake-Quality.md](offline/Bake-Quality.md) |
+| [Skinned lighting](#skinned-lighting) | per-vertex cycles for shading accuracy | a table per light set | direct | `[skin].lighting` | [Lighting modes](animation/Skinned-Lighting.md#lighting-modes) |
 
 ## Using the API
 
@@ -290,7 +290,7 @@ gradients or triangles; fitted keeps lite's triangle budget, moved onto what
 the camera path draws.
 
 - **Pick** with the fidelity tables and the
-  [board measurements](Bake-Quality.md#board-measurements) in Bake-Quality.md.
+  [board measurements](offline/Bake-Quality.md#board-measurements) in Bake-Quality.md.
 
 ### Skinned lighting
 
@@ -299,7 +299,7 @@ direct, renormalised or table lighting.
 
 - **Use** direct unless joints visibly darken (renormalised) or a scene has
   many lights (table).
-- **Measured**: [Lighting modes](Skinned-Lighting.md#lighting-modes).
+- **Measured**: [Lighting modes](animation/Skinned-Lighting.md#lighting-modes).
 
 ### View modes
 

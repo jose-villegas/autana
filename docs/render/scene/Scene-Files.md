@@ -2,8 +2,8 @@
 
 A scene file holds transformed objects, renderer, light and camera components,
 optional animators, and ambient and tone-map settings. The offline importer bakes the lit meshes
-the scene places ([Mesh-Import.md](Mesh-Import.md)); the pack build bakes the
-[scene entry](../assets/formats/SCNE.md) it reads at run time.
+the scene places ([Mesh-Import.md](../offline/Mesh-Import.md)); the pack build bakes the
+[scene entry](../../assets/formats/SCNE.md) it reads at run time.
 
 ```toml
 tonemap_white = 0.35             # larger is darker
@@ -115,7 +115,7 @@ placed renderer reads; `[sky]` is read only by a bake.
 ## Option reference
 
 Keys before `;` are required; after it, optional. The import option reference
-is in [Mesh-Import.md](Mesh-Import.md#import-options).
+is in [Mesh-Import.md](../offline/Mesh-Import.md#import-options).
 
 ### Scene settings
 
@@ -134,7 +134,7 @@ is in [Mesh-Import.md](Mesh-Import.md#import-options).
 albedo with the result of a renderer whose `bake = true` light is then
 [fitted](Appearance-Fit.md).
 
-![Albedo against the fitted bake](../images/render/import-light.png)
+![Albedo against the fitted bake](../../images/render/import-light.png)
 
 #### bake: indirect
 
@@ -158,7 +158,7 @@ spots under overhangs. The sky light is blocked by an occluder at any
 distance; this counts only hits within `D` model units. It scales the
 [ambient](#ambient) light, and with `indirect = true` the bounced
 light. The directional and sky lights are untouched. Every baked renderer gets it. How the factor is computed is in
-[Bake-Method.md](Bake-Method.md#local-occlusion-implementation).
+[Bake-Method.md](../offline/Bake-Method.md#local-occlusion-implementation).
 
 | Field | Meaning |
 |---|---|
@@ -173,7 +173,7 @@ that a baked renderer uses. `reference_render.py`'s `bake` backend reads the sam
 its `mitsuba` backend ignores it. A bake stores one colour per vertex, so a
 `distance` much larger than the triangles darkens whole faces around a crease;
 a smaller `distance` or a lower `strength` keeps it where surfaces are close
-([measured](Bake-Quality.md#local-occlusion)).
+([measured](../offline/Bake-Quality.md#local-occlusion)).
 
 #### indirect
 
@@ -184,7 +184,7 @@ or face colours as direct light. The reference renderer reads the same table,
 so a scene's reference carries its look; `intensity` or `albedo_boost` above 1
 trades fidelity to a physical reference for look.
 
-The look against the reference: [Bake-Quality.md](Bake-Quality.md#indirect-light).
+The look against the reference: [Bake-Quality.md](../offline/Bake-Quality.md#indirect-light).
 
 #### sky
 
@@ -199,7 +199,7 @@ Colour components are finite in 0..1; intensity is finite and nonnegative.
 #### tonemap_white
 
 `tonemap_white` $w$ sets the tone map applied to baked and runtime skinned light: radiance $L$
-becomes $L / (1 + wL)$ before the gamma, Reinhard's global operator<sup>[[7]](../Citations.md#reinhard-2002)</sup>
+becomes $L / (1 + wL)$ before the gamma, Reinhard's global operator<sup>[[7]](../../Citations.md#reinhard-2002)</sup>
 at $w = 1$ and none at $w = 0$.
 
 ### mesh_renderer
@@ -271,7 +271,7 @@ lands.
 The image is the same import with the cull off above and on below, cropped
 where they differ most: without the cull the budget goes to hidden surfaces.
 
-![Visibility cull off against on](images/import-visibility.png)
+![Visibility cull off against on](../images/import-visibility.png)
 
 #### visibility: camera_path
 
@@ -300,20 +300,20 @@ enters between samples.
 #### shading: smooth
 
 Smooth shading bakes one colour per vertex. It is the normal baked mesh form
-described in [The baked mesh](Baked-Mesh.md#clusters-and-the-tree).
+described in [The baked mesh](../offline/Baked-Mesh.md#clusters-and-the-tree).
 
 #### shading: flat
 
 Flat shading stores one RGB565 colour per triangle. `fixed` uses that many
 lighting points per face; `auto` chooses a count from face area. One point lights a face
 from one place, so a shadow edge lands on whole faces
-([smooth against flat](Bake-Quality.md#the-sponza-variants)).
+([smooth against flat](../offline/Bake-Quality.md#the-sponza-variants)).
 
 A flat fit starts from these sampled colours, then fits them. Top: one fixed
 sample against adaptive on the fit's start mesh. Bottom: adaptive against the
 finished fit.
 
-![One fixed face sample against adaptive, then adaptive against the flat fit](../images/render/import-face-samples.png)
+![One fixed face sample against adaptive, then adaptive against the flat fit](../../images/render/import-face-samples.png)
 
 Face samples are the useful control; extra samples converge, and a face's one
 colour leaves edge error that sampling cannot remove. A flat bake's sky rays
@@ -324,13 +324,13 @@ settings, are in the scene tools README.
 
 `budget` is the triangle count the fitted mesh keeps, at most the variant's
 `triangles`; `coverage_every_ms` spaces the camera-path poses pruning counts
-pixels over. How a fit runs: [Appearance-Fit.md](Appearance-Fit.md#stages).
+pixels over. How a fit runs: [Appearance-Fit.md](../offline/Appearance-Fit.md#stages).
 
 #### fit.poses
 
 `size = [width, height]` sets the pose resolution; `train_every_ms` spaces the
 training poses along the camera path, and poses at multiples of
-`held_out_every_ms` are held out and only scored ([Poses](Appearance-Fit.md#poses)).
+`held_out_every_ms` are held out and only scored ([Poses](../offline/Appearance-Fit.md#poses)).
 
 #### fit.optimise
 
@@ -339,8 +339,8 @@ training poses along the camera path, and poses at multiples of
 the start's, so local detail stays put; `normal_weight` makes
 normals agree with the source's, and `surface_weight` keeps the mesh near the source surface, beyond
 `surface_margin` local edge lengths from it. Each weighs a term of
-[the loss](Appearance-Fit.md#the-loss); with `shading = { flat = ... }` the fit
-is [flat](Appearance-Fit.md#a-flat-fit).
+[the loss](../offline/Appearance-Fit.md#the-loss); with `shading = { flat = ... }` the fit
+is [flat](../offline/Appearance-Fit.md#a-flat-fit).
 
 #### indirect: off
 
@@ -409,8 +409,8 @@ any other camera is refused because no bake step reads it.
 | Key | Meaning |
 |---|---|
 | `region = { min, max }` | the box the camera may occupy; region visibility casts from points inside it |
-| `path = { animation, node }` | the clip the camera flies: `animation` is its `NAME.anim.toml` ([Animation-Tracks.md](Animation-Tracks.md)), relative to the scene file, and `node` the glTF node in it that is the camera. The clip's id is `NAME` and it travels in the scene's pack; `<node>/translation` must fit a track name's 31 bytes |
+| `path = { animation, node }` | the clip the camera flies: `animation` is its `NAME.anim.toml` ([Animation-Tracks.md](../animation/Animation-Tracks.md)), relative to the scene file, and `node` the glTF node in it that is the camera. The clip's id is `NAME` and it travels in the scene's pack; `<node>/translation` must fit a track name's 31 bytes |
 | `background` | 0xRRGGBB, default black: the colour a pixel no mesh covers shows, on the panel and in the source reference |
 
 Without a path the camera sits at its transform, looking down its own -z in the
-source frame; the pack carries it in the engine frame ([Mesh-Import.md](Mesh-Import.md#the-offline-tools)).
+source frame; the pack carries it in the engine frame ([Mesh-Import.md](../offline/Mesh-Import.md#the-offline-tools)).

@@ -22,7 +22,7 @@ hold an authored rest pose and the animation still draws. Boot reads the
 picture (`boot_anim_photo.c`) on the second frame, one of the cheapest, so
 checking its 330 KB pack neither delays the first frame nor stalls the
 crossfade; without it the scene
-stays where the photograph would have covered it. `boot_anim.h` samples the tracks with the engine's [animation tracks](../../../docs/render/Animation-Tracks.md) and converts each
+stays where the photograph would have covered it. `boot_anim.h` samples the tracks with the engine's [animation tracks](../../../docs/render/animation/Animation-Tracks.md) and converts each
 frame's values to a `transformf_t` in `anim/anim_transform.h`. The space's
 rotation is a quaternion slerp between its keys. Frames render on a host with
 `tools/render/scenes/boot_anim_render_host.sh`; see [Watching a change](#watching-a-change).
