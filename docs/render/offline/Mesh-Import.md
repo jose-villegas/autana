@@ -388,10 +388,11 @@ With only `[source]` and `[output]`:
 | Source vertex colours | Not read. |
 
 Two variants of one import differ in what `simplify` keeps. Below, one
-pose at the full budget (top) and at about half of it, the lite (bottom).
+pose of the same fit at the full budget (top) and at about half of it
+(bottom).
 
-![Full against lite](../../images/render/compare-full-lite.png)
-![Full against lite, the places they differ most](../../images/render/compare-full-lite.crops.png)
+![Fitted full against fitted](../../images/render/compare-fitted-full-fitted.png)
+![Fitted full against fitted, the places they differ most](../../images/render/compare-fitted-full-fitted.crops.png)
 
 Scene-owned bake, visibility, shading and fit settings are described in
 [Scene-Files.md](../scene/Scene-Files.md#option-reference).

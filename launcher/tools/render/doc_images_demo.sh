@@ -183,9 +183,7 @@ demo_gif ${ID}-meshlets --scene "$ID" --object "$SHOWCASE" --view meshlets
 demo_still() {
     run "$HOST" --quarter 1 --frames 30 --dt 100 -o "$W/still-$1.bmp" --scene "$ID" --object "$2" 2> "$W/still-$1.log"
 }
-# The pairs, and what each variant is, come from doc_tables.py's VARIANT_NOTES:
-# compare-full-lite, compare-full-flat, compare-lite-fitted, compare-full-fitted-full
-# and compare-flat-flat-fitted for the demo scene.
+# The pairs, and what each variant is, come from doc_tables.py's VARIANT_NOTES.
 run "$PYTHON" launcher/tools/render/doc_tables.py --pairs "$SCENE" "$FULL" > "$W/pairs.txt"
 while read -r base object base_slug slug <&3; do
     [ -f "$W/still-$base_slug.bmp" ] || demo_still "$base_slug" "$base"
