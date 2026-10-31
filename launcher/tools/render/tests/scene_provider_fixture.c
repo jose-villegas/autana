@@ -9,6 +9,24 @@
 #define POSE_TOLERANCE  0.00001f
 
 static bool
+pose_near(transformf_t actual, transformf_t expected) {
+    const vec3f_t position = vec3f_sub(actual.position, expected.position);
+    const float differences[] = {position.x,
+                                 position.y,
+                                 position.z,
+                                 actual.rotation.x - expected.rotation.x,
+                                 actual.rotation.y - expected.rotation.y,
+                                 actual.rotation.z - expected.rotation.z,
+                                 actual.rotation.w - expected.rotation.w};
+    for (size_t i = 0; i < sizeof differences / sizeof differences[0]; i++) {
+        if (fabsf(differences[i]) > POSE_TOLERANCE) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool
 check_path(void) {
     if (scene_provider.path_ms == NULL || scene_provider.seek == NULL) {
         return false;
@@ -29,13 +47,7 @@ check_path(void) {
     context->drawn_in_row = FRAMEGEN_RETRY_DRAWN;
     scene_provider.seek(FIXTURE_STEP_MS * FIXTURE_STEPS);
     const transformf_t actual = scene_entity_world(shown, camera);
-    if (fabsf(actual.position.x - expected.position.x) > POSE_TOLERANCE
-        || fabsf(actual.position.y - expected.position.y) > POSE_TOLERANCE
-        || fabsf(actual.position.z - expected.position.z) > POSE_TOLERANCE
-        || fabsf(actual.rotation.x - expected.rotation.x) > POSE_TOLERANCE
-        || fabsf(actual.rotation.y - expected.rotation.y) > POSE_TOLERANCE
-        || fabsf(actual.rotation.z - expected.rotation.z) > POSE_TOLERANCE
-        || fabsf(actual.rotation.w - expected.rotation.w) > POSE_TOLERANCE) {
+    if (!pose_near(actual, expected)) {
         return false;
     }
     return !context->kept && !context->paying && context->drawn_in_row == 0;

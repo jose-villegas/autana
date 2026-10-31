@@ -1,4 +1,8 @@
-/* render_host: callable host frames with BMP and AVI output. */
+/*
+ * render_host: the shared host render procedure. Real scene code draws into
+ * gfx-owned pictures; gfx_read_panel_row() supplies completed output.
+ * BMP and AVI encoding use gfx/capture/screenshot.h. No device access.
+ */
 
 #include "render_host.h"
 
@@ -65,6 +69,9 @@ render_host_set_tunable_text(const char* assignment) {
     return render_host_set_tunable(name, value);
 }
 
+/* The output canvas for `quarter`/`panel`, decided before gfx_init(): both
+ * GFX_WIDTH and GFX_HEIGHT are compile-time, so a --video run can be sized
+ * and refused, if it must be, before anything is drawn. */
 static void
 output_size(int quarter, bool panel, int* out_w, int* out_h) {
     const bool upright = quarter % 2 == 0;
@@ -72,6 +79,10 @@ output_size(int quarter, bool panel, int* out_w, int* out_h) {
     *out_h = (panel || upright) ? GFX_HEIGHT : GFX_WIDTH;
 }
 
+/* Fills `buf` (screenshot_bmp_row_stride(out_w) * out_h bytes) with one
+ * frame's bottom-up 24-bit BGR pixels, the body a BMP and an AVI 'DIB '
+ * chunk both carry unchanged, so the BMP write and every --video frame
+ * share this instead of each walking the framebuffer on its own. */
 static void
 convert_frame(affine2x_t t, bool panel, int out_w, int out_h, int32_t stride, uint8_t* buf) {
     affine2x_t inverse = affine2x_identity();
@@ -95,11 +106,14 @@ convert_frame(affine2x_t t, bool panel, int out_w, int out_h, int32_t stride, ui
     }
 }
 
+/* The pixel at (x, y) of a converted frame, top-down. */
 static const uint8_t*
 frame_pixel(const uint8_t* buf, int32_t stride, int out_h, int x, int y) {
     return buf + (size_t)(out_h - 1 - y) * stride + x * 3;
 }
 
+/* The corner colour most of the frame's border shares: the background a
+ * scene cleared to, even when something is drawn into one corner. */
 static const uint8_t*
 border_colour(const uint8_t* buf, int32_t stride, int out_w, int out_h) {
     const uint8_t* corners[] = {frame_pixel(buf, stride, out_h, 0, 0), frame_pixel(buf, stride, out_h, out_w - 1, 0),
@@ -125,6 +139,8 @@ border_colour(const uint8_t* buf, int32_t stride, int out_w, int out_h) {
     return best;
 }
 
+/* The box round every pixel of a converted frame unlike its border's
+ * colour; empty for a blank frame. */
 static recti_t
 drawn_box(const uint8_t* buf, int32_t stride, int out_w, int out_h) {
     const uint8_t* background = border_colour(buf, stride, out_w, out_h);
@@ -144,6 +160,7 @@ typedef struct {
     long bytes;
 } render_size_t;
 
+/* The part `box` of a converted frame `out_w` x `out_h`, as a BMP. */
 static bool
 write_bmp(FILE* out, const uint8_t* frame_buf, int out_w, int out_h, recti_t box, render_size_t* size) {
     const int32_t stride = screenshot_bmp_row_stride(out_w);
@@ -164,6 +181,8 @@ write_bmp(FILE* out, const uint8_t* frame_buf, int out_w, int out_h, recti_t box
     return true;
 }
 
+/* `box` grown by `margin` on every side, kept inside the frame; the whole
+ * frame for an empty `box`. */
 static recti_t
 crop_box(recti_t box, int margin, int out_w, int out_h) {
     const recti_t frame = {0, 0, out_w, out_h};
@@ -175,12 +194,16 @@ crop_box(recti_t box, int margin, int out_w, int out_h) {
     return recti_intersect(grown, frame);
 }
 
-/* Providers without the scene manager have nothing to compose. */
+/* The scene manager's compose where a provider did not link it: nothing to
+ * compose. scene/scene_shell.c's own definition replaces this. */
 __attribute__((weak)) void
 scene_shell_compose(uint32_t dt_ms) {
     (void)dt_ms;
 }
 
+/* The declared steps turned into one frame's input_t. `down` holds from
+ * the step that set it, so edges come out of the change rather than out of
+ * a second declaration of the same tap. */
 static void
 apply_input(const frame_provider_t* scene, int index, input_t* state) {
     const bool was_down = state->down;
@@ -210,6 +233,7 @@ usage(const char* argv0) {
     return 2;
 }
 
+/* One open run owns the frame history, readback buffers and output streams. */
 static struct {
     const frame_provider_t* scene;
     bool panel, crop, video_ok;
@@ -298,7 +322,9 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
     }
 
 #if defined(_WIN32)
-    /* Windows text mode would rewrite pixel bytes containing newlines. */
+    /* stdout is text mode by default on Windows, which would rewrite every
+     * 0x0A pixel byte into a 0x0D 0x0A pair, silently corrupting the image
+     * rather than failing loudly. */
     _setmode(_fileno(stdout), _O_BINARY);
 #endif
 
@@ -312,7 +338,9 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
     }
 
     if (gfx_readback_begin() != GFX_READBACK_READY) {
-        /* Band mode retains no framebuffer for readback. */
+        /* Band mode keeps no retained frame to read back, so there is
+         * nothing to write; the same refusal a device capture makes. A
+         * provider wanting an image asks for the full-framebuffer layout. */
         fprintf(stderr, "no framebuffer to read: the scene left gfx in band mode\n");
         return false;
     }
@@ -346,6 +374,8 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
         return false;
     }
 
+    /* The drawn box in output coordinates, and the map that turns a
+     * --panel output's box back into the canvas a provider lays out in. */
     host.canvas_from_panel = affine2x_identity();
     (void)affine2x_invert(host.t, &host.canvas_from_panel);
     host.video_ok = true;
@@ -357,7 +387,7 @@ render_host_step(uint32_t dt_ms, const input_t* input) {
     host.frame.dt_ms = dt_ms;
     host.frame.input = *input;
     render_watch_frame_begin();
-    scene_shell_compose(host.frame.dt_ms);
+    scene_shell_compose(host.frame.dt_ms); /* what the shell does before an app's frame() */
     host.scene->draw(&host.frame);
     render_watch_frame_end();
 
@@ -376,12 +406,14 @@ render_host_step(uint32_t dt_ms, const input_t* input) {
 
 bool
 render_host_close(void) {
-    /* Warm-up presents inside the watch window and preserves the saved image. */
+    /* However few frames the image needed, the provider goes on drawing until
+     * the watch has judged a whole window of it at rest. Nothing of these
+     * reaches the image. */
     for (int i = host.frame.index; i < FRAME_WATCH_WARMUP + FRAME_WATCH_WINDOW; i++) {
         host.frame.index = i;
         apply_input(host.scene, i, &host.frame.input);
         render_watch_frame_begin();
-        scene_shell_compose(host.frame.dt_ms);
+        scene_shell_compose(host.frame.dt_ms); /* what the shell does before an app's frame() */
         host.scene->draw(&host.frame);
         gfx_present();
         render_watch_frame_end();
@@ -420,7 +452,9 @@ render_host_close(void) {
     free(host.frame_buf);
     if (out != stdout) {
         fclose(out);
-        /* stdout consumers need the provider's first stderr line unchanged. */
+        /* The shape the caller checks its own declaration against. Only for
+         * a file: a render to stdout is read by a script that wants the
+         * provider's own first stderr line, not this one. */
         fprintf(stderr, "RENDER %s %dx%d %ld\n", host.scene->name, size.width, size.height, size.bytes);
     }
     if (verdict.repeating > 0) {
@@ -434,6 +468,7 @@ render_host_close(void) {
     return ok && frame_watch_verdict_clean(verdict);
 }
 
+/* Selecting a provider builds the CLI; without it this file is a library. */
 #ifdef RENDER_HOST_PROVIDER
 extern const frame_provider_t RENDER_HOST_PROVIDER;
 
