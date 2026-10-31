@@ -432,6 +432,9 @@ static raster_motion_t* motion;
 
 static void
 release_motion(void) {
+    if (motion != NULL) {
+        raster_motion_release(motion);
+    }
     memory_free(motion);
     motion = NULL;
 }
@@ -445,6 +448,7 @@ test_sponza_frame_cost_with_motion(void) {
     motion = memory_alloc(sizeof(*motion), MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(motion);
     *motion = (raster_motion_t){0};
+    TEST_ASSERT_TRUE(raster_motion_reserve(motion, 1));
     const raster_attachment_t attachment = raster_motion_view(motion);
     const raster_attachment_t* const attached[] = {&attachment};
     /* Worst of a 5-seed capture on A308 (before and after its move), 20E8 and
