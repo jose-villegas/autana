@@ -31,12 +31,14 @@ flowchart LR
 | cull | each cluster in the colour of its fate this frame; see [The cull, seen](Culling.md#the-cull-seen) |
 | boxes | untouched; its overlay draws each instance's box as the frame placed it, one hue per mesh, for meshes drawn at least `boxview.copies` times; edges behind the drawn depth hidden, dimmed or full by `boxview.behind` |
 
-A row may also carry two optional hooks:
+A row may also carry optional hooks:
 
 | Row hook | What it does |
 |---|---|
 | `second_view` | After the frame's draw and after each draw it asks for, may name another view and fill the census list with the clusters to draw through it, and its depth scale; the frame's stats stay those of the first draw |
 | `overlay` | Draws lines over the composed picture; the shell then composes at full size, not into a half picture |
+| `reserve` | Before each draw, makes room in the state for that draw's instances; when it cannot, the view is detached with an error log and the frame draws shaded |
+| `release` | Frees what `reserve` took, before the context frees the state |
 
 Overlays draw with `render/view/raster_lines.h`: segments and boxes in a lens's space, cut at the near plane, optionally dimmed or left out where the drawn depth is nearer.
 
