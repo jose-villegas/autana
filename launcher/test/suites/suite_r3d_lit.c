@@ -1066,7 +1066,7 @@ draw_screen_mesh(const r3d_lit_mesh_t* mesh, int split) {
     const uint16_t visible[1] = {0};
     r3d_pipeline_vertex_t cs[9];
     r3d_pipeline_rows_t rows[1];
-    r3d_pipeline_transform(mesh, &lens, visible, 1, cs, rows);
+    r3d_pipeline_transform(mesh, &lens, visible, 1, cs, rows, false);
     (void)fixture();
     const r3d_span_target_t top = fixture_rows(0, split);
     const r3d_span_target_t bottom = fixture_rows(split, H);
@@ -1156,7 +1156,7 @@ test_a_triangle_whose_only_centre_is_at_a_window_edge_is_drawn(void) {
         const uint16_t visible[1] = {0};
         r3d_pipeline_vertex_t cs[3];
         r3d_pipeline_rows_t rows[1];
-        r3d_pipeline_transform(&mesh, &lens, visible, 1, cs, rows);
+        r3d_pipeline_transform(&mesh, &lens, visible, 1, cs, rows, false);
         (void)fixture();
         const r3d_span_target_t window = fixture_rows(row0, row1);
         r3d_pipeline_draw(&mesh, &lens, visible, 1, cs, rows, &window, pipeline_work());
@@ -1182,7 +1182,7 @@ slanted_quad(screen_mesh_t* m, r3d_pipeline_vertex_t cs[4], r3d_pipeline_rows_t*
     const r3d_lit_mesh_t mesh = screen_mesh(m, 4, 2);
     const r3d_lens_t lens = subpixel_view();
     const uint16_t visible[1] = {0};
-    r3d_pipeline_transform(&mesh, &lens, visible, 1, cs, rows);
+    r3d_pipeline_transform(&mesh, &lens, visible, 1, cs, rows, true);
     return mesh;
 }
 
@@ -1242,7 +1242,7 @@ test_an_unbounded_cluster_is_never_hidden(void) {
     m.positions[3][2] = -1; /* behind the near plane */
     const r3d_lens_t lens = subpixel_view();
     const uint16_t visible[1] = {0};
-    r3d_pipeline_transform(&mesh, &lens, visible, 1, cs, &rows);
+    r3d_pipeline_transform(&mesh, &lens, visible, 1, cs, &rows, true);
     TEST_ASSERT_TRUE(rows.unbounded);
     const r3d_span_target_t target = fixture();
     for (int i = 0; i < W * H; i++) {
@@ -1274,7 +1274,7 @@ release_tall(void) {
 #define SLIVER_WITNESS_X  21
 #define SLIVER_WITNESS_Y  299
 
-/* Over depth one above the triangle's limit everywhere, a full draw of a
+/* Over depth one above the triangle's limit everywhere, a capped draw of a
  * sliver changes neither colour nor depth: the same as skipping its cluster. */
 static void
 test_a_sliver_over_depth_above_its_limit_draws_nothing(void) {
@@ -1293,7 +1293,7 @@ test_a_sliver_over_depth_above_its_limit_draws_nothing(void) {
                                     sv(22.0F, (float)SLIVER_BOTTOM_ROW, SLIVER_NEAR_Z, 9, 9, 9),
                                     sv(SLIVER_RIGHT_X, (float)SLIVER_BOTTOM_ROW, SLIVER_FAR_Z, 9, 9, 9)};
     const r3d_span_target_t target = r3d_span_target(tall_color, tall_depth, W, 0, rows);
-    r3d_span_triangle(&target, &v[0], &v[1], &v[2]);
+    r3d_span_capped_triangle(&target, &v[0], &v[1], &v[2], NULL);
     TEST_ASSERT_EQUAL_HEX16_MESSAGE(above, tall_depth[(SLIVER_WITNESS_Y * W) + SLIVER_WITNESS_X],
                                     "the sliver wrote depth past its limit");
     TEST_ASSERT_EACH_EQUAL_HEX16_MESSAGE(above, tall_depth, W * rows, "the sliver changed a depth");
@@ -1379,8 +1379,8 @@ test_a_row_window_narrower_than_the_cluster_tests_the_clipped_box(void) {
     TEST_ASSERT_TRUE(hidden_but_for(&rows, &window, EDGE_END_COL, EDGE_WINDOW_END_ROW - 1));
 }
 
-/* Triangles as large as the span's range allows, every depth they write at
- * or below the limit of their nearest vertex, which saturates at the
+/* Triangles as large as the span's range allows, every depth a capped fill
+ * writes at or below the limit of their nearest vertex, which saturates at the
  * nearest depth for an inverse depth of one. Every other one is a sliver
  * running the range's length across the window, its far end a few subpixels
  * wide: the shape whose plane the float set-up carries furthest. */
@@ -1433,8 +1433,8 @@ test_large_steep_triangles_write_no_depth_past_their_limit(void) {
         const int row0 = random_within(&state, 0, H / 2);
         (void)fixture();
         const r3d_span_target_t window = fixture_rows(row0, row0 + (H / 2));
-        r3d_span_triangle(&window, &v[0], &v[1], &v[2]);
-        r3d_span_triangle(&window, &v[0], &v[2], &v[1]);
+        r3d_span_capped_triangle(&window, &v[0], &v[1], &v[2], NULL);
+        r3d_span_capped_triangle(&window, &v[0], &v[2], &v[1], NULL);
         for (int i = 0; i < W * H; i++) {
             TEST_ASSERT_LESS_OR_EQUAL_UINT16_MESSAGE(limit, depth[i], "a fill wrote depth past its limit");
             written += depth[i] != R3D_DEPTH_EMPTY;
@@ -1502,7 +1502,7 @@ draw_quad_mesh(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_spa
     uint16_t visible[1];
     const int count = r3d_pipeline_cull(mesh, lens, visible, pipeline_work(), NULL);
     r3d_pipeline_vertex_t cs[4];
-    r3d_pipeline_transform(mesh, lens, visible, count, cs, NULL);
+    r3d_pipeline_transform(mesh, lens, visible, count, cs, NULL, false);
     r3d_pipeline_draw(mesh, lens, visible, count, cs, NULL, target, pipeline_work());
     return count;
 }
@@ -1780,7 +1780,7 @@ draw_parts(const parts_t* p, const r3d_lens_t* lens, const r3d_span_target_t* t,
     TEST_ASSERT_NOT_NULL(cs);
     TEST_ASSERT_NOT_NULL(rows);
     const int count = r3d_pipeline_cull(&p->mesh, lens, visible, pipeline_work(), NULL);
-    r3d_pipeline_transform(&p->mesh, lens, visible, count, cs, use_rows ? rows : NULL);
+    r3d_pipeline_transform(&p->mesh, lens, visible, count, cs, use_rows ? rows : NULL, false);
     r3d_pipeline_draw(&p->mesh, lens, visible, count, cs, use_rows ? rows : NULL, t, pipeline_work());
     free(rows);
     free(cs);

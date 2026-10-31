@@ -67,10 +67,7 @@ void r3d_lens_fit(r3d_lens_t* lens, int width, int height);
 void r3d_lens_place(r3d_lens_t* lens, const mat4f_t* model, int position_scale);
 
 /* Caller-owned workspace, reusable between culling and drawing. Concurrent
- * draws each need their own block, aligned as malloc provides. Between its
- * draws a block also keeps where it is in the hidden cluster test's cycle;
- * any bytes are a valid place, so a fresh, reused or overwritten block needs
- * no setup; at worst it waits out one cycle before it tests. */
+ * draws each need their own block, aligned as malloc provides. */
 typedef struct r3d_pipeline_work r3d_pipeline_work_t;
 size_t r3d_pipeline_work_bytes(void);
 
@@ -113,11 +110,13 @@ typedef struct {
 bool r3d_pipeline_cluster_hidden(const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target);
 
 /* `rows`, when not NULL, holds mesh->cluster_count entries and is filled for
- * each cluster transformed. */
+ * each cluster transformed: its rows, and when `boxed` its columns and
+ * depth, which only a target that skips hidden clusters reads. */
 void r3d_pipeline_transform(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
-                            r3d_pipeline_vertex_t* cs, r3d_pipeline_rows_t* rows);
+                            r3d_pipeline_vertex_t* cs, r3d_pipeline_rows_t* rows, bool boxed);
 
-/* `rows` as r3d_pipeline_transform() filled it, or NULL to test every triangle. */
+/* `rows` as r3d_pipeline_transform() filled it, boxed when
+ * target->skip_hidden, or NULL to test every triangle. */
 void r3d_pipeline_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
                        const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows,
                        const r3d_span_target_t* target, r3d_pipeline_work_t* work);
