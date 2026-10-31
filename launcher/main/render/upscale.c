@@ -180,6 +180,16 @@ source_row(const uint16_t* pixels, size_t pitch, int row) {
     return (const uint16_t*)((const char*)pixels + ((size_t)row * pitch));
 }
 
+/* Bit i set where a[i] and b[i], i < count, are not one surface. */
+static unsigned
+surface_steps(const uint16_t* a, const uint16_t* b, int count) {
+    unsigned bits = 0;
+    for (int i = 0; i < count; i++) {
+        bits |= (unsigned)!upscale_same_surface(a[i], b[i]) << i;
+    }
+    return bits;
+}
+
 /* One destination row's seams, a byte at a time: `right`, the seams `here`
  * has against its right neighbours where already known, else found; then
  * `here` against `below`, unless NULL. */
@@ -188,21 +198,32 @@ mark_seams(const uint16_t* here, const uint16_t* below, int width, const uint8_t
     for (int byte = 0; byte < GFX_SEAM_PITCH(width); byte++) {
         const int first = byte * GFX_SEAM_BITS;
         const int count = width - first < GFX_SEAM_BITS ? width - first : GFX_SEAM_BITS;
-        unsigned bits = 0;
-        if (right != NULL) {
-            bits = right[byte];
-        } else {
-            const int across = first + count == width ? count - 1 : count; /* the last pixel has none right */
-            for (int bit = 0; bit < across; bit++) {
-                bits |= (unsigned)!upscale_same_surface(here[first + bit], here[first + bit + 1]) << bit;
-            }
-        }
+        const int across = first + count == width ? count - 1 : count; /* the last pixel has none right */
+        unsigned bits = right != NULL ? right[byte] : surface_steps(here + first, here + first + 1, across);
         if (below != NULL) {
-            for (int bit = 0; bit < count; bit++) {
-                bits |= (unsigned)!upscale_same_surface(here[first + bit], below[first + bit]) << bit;
-            }
+            bits |= surface_steps(here + first, below + first, count);
         }
         seams[byte] = (uint8_t)bits;
+    }
+}
+
+/* The last seam row that holds only its source row's right seams. */
+typedef struct {
+    int row;
+    const uint8_t* seams;
+} known_seams_t;
+
+/* Destination row `y`'s seams. Rows that stand for one source row share its
+ * right seams: the first with nothing below to add keeps them for the rest. */
+static void
+row_seams(const upscale_t* scale, const uint16_t* depth, size_t pitch, int y, uint8_t* seams, known_seams_t* known) {
+    const int here_row = blend_nearest_row(scale->blends[y]);
+    const int below_row = y + 1 < scale->destination_height ? blend_nearest_row(scale->blends[y + 1]) : here_row;
+    const uint8_t* right = here_row == known->row ? known->seams : NULL;
+    mark_seams(source_row(depth, pitch, here_row), below_row != here_row ? source_row(depth, pitch, below_row) : NULL,
+               scale->destination_width, right, seams);
+    if (right == NULL && below_row == here_row) {
+        *known = (known_seams_t){.row = here_row, .seams = seams};
     }
 }
 
@@ -238,24 +259,11 @@ static void
 surface_rows(const upscale_t* scale, const uint16_t* color, const uint16_t* depth, size_t pitch, uint16_t clear,
              uint16_t* destination, uint8_t* seams, int first_row, int row_count) {
     const int width = scale->destination_width;
-    /* Rows that stand for one source row share its right seams; the first
-     * with nothing below to add keeps them for the rest. */
-    int known_row = -1;
-    const uint8_t* known = NULL;
+    known_seams_t known = {.row = -1, .seams = NULL};
     for (int y = first_row; y < first_row + row_count; y++) {
         surface_row(scale, color, depth, pitch, clear, y, destination + ((size_t)y * width));
         if (seams != NULL) {
-            const int here_row = blend_nearest_row(scale->blends[y]);
-            const int below_row =
-                y + 1 < scale->destination_height ? blend_nearest_row(scale->blends[y + 1]) : here_row;
-            const uint8_t* right = here_row == known_row ? known : NULL;
-            uint8_t* row_seams = seams + ((size_t)y * GFX_SEAM_PITCH(width));
-            mark_seams(source_row(depth, pitch, here_row),
-                       below_row != here_row ? source_row(depth, pitch, below_row) : NULL, width, right, row_seams);
-            if (right == NULL && below_row == here_row) {
-                known_row = here_row;
-                known = row_seams;
-            }
+            row_seams(scale, depth, pitch, y, seams + ((size_t)y * GFX_SEAM_PITCH(width)), &known);
         }
     }
 }
