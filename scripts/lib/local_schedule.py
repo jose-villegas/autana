@@ -18,10 +18,17 @@ from process_tree import launch_process_tree, stop_process_tree, close_process_t
 NIGHT_START = "01:00"
 # Boards start after the GPU's night work: two hours of day board time when no GPU work is queued.
 BOARD_START = "03:00"
-STARTS = {"NIGHT_START": NIGHT_START, "BOARD_START": BOARD_START}
+STARTS = ("NIGHT_START", "BOARD_START")
 # The board night starts no new lane after this local time on its marker's date; running lanes finish.
-BOARD_LAST_START = "05:00"
-LOCAL_TIMES = dict(STARTS, BOARD_LAST_START=BOARD_LAST_START)
+BOARD_LAST_START = "08:00"
+# A lane is given only the steps its estimate fits before this local time on its marker's date. It is soft:
+# a started lane still runs to completion under its hang guards.
+BOARD_END = "10:00"
+# Each local time setting's default and the latest hour it takes. A start is the early morning after the
+# evening trigger; the cut-off stays before noon, so a daytime override's cut-off has passed and it starts
+# no lane after its plan. The deadline may reach early afternoon.
+LOCAL_TIMES = dict(NIGHT_START=(NIGHT_START, 5), BOARD_START=(BOARD_START, 5),
+                   BOARD_LAST_START=(BOARD_LAST_START, 11), BOARD_END=(BOARD_END, 13))
 NIGHT_ZONE = "UTC"
 HOSTED_WAIT_SECONDS = 350 * 60
 GPU_LABEL = "gpu"
@@ -52,9 +59,10 @@ class Clock:
 
 def local_time(name, value=None):
     """The hour and minute of the local time setting `name`: `value`, else its variable, else its constant."""
-    value = value or os.environ.get(name) or LOCAL_TIMES[name]
-    if not re.fullmatch(r"0[0-5]:[0-5][0-9]", value):
-        raise ValueError(f"{name} must be HH:MM in 00:00–05:59: {value!r}")
+    default, latest = LOCAL_TIMES[name]
+    value = value or os.environ.get(name) or default
+    if not re.fullmatch(r"[0-9]{2}:[0-5][0-9]", value) or int(value[:2]) > latest:
+        raise ValueError(f"{name} must be HH:MM in 00:00–{latest:02d}:59: {value!r}")
     return tuple(map(int, value.split(":")))
 
 
@@ -77,11 +85,21 @@ def next_marker(trigger, night_start=None, start="NIGHT_START"):
     return candidate
 
 
-def night_cutoff(marker):
-    """When the board night that starts at `marker` stops starting lanes: BOARD_LAST_START on its date.
-    The marker carries NIGHT_ZONE's offset, so the board machine needs no time zone data."""
-    hour, minute = local_time("BOARD_LAST_START")
+def on_marker_date(name, marker):
+    """The local time setting `name` on `marker`'s date. The marker carries NIGHT_ZONE's offset, so the board
+    machine needs no time zone data."""
+    hour, minute = local_time(name)
     return marker.replace(hour=hour, minute=minute, second=0, microsecond=0)
+
+
+def night_cutoff(marker):
+    """When the board night that starts at `marker` stops starting lanes: BOARD_LAST_START on its date."""
+    return on_marker_date("BOARD_LAST_START", marker)
+
+
+def night_end(marker):
+    """The deadline the board night that starts at `marker` sizes its lanes to: BOARD_END on its date."""
+    return on_marker_date("BOARD_END", marker)
 
 
 def trigger_time(event, schedule, now):
@@ -138,7 +156,7 @@ def gpu_ready(clock=None, board_held=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("mode", choices=("marker", "wait", "ready", "start"))
-    parser.add_argument("--start", choices=tuple(STARTS), default="NIGHT_START",
+    parser.add_argument("--start", choices=STARTS, default="NIGHT_START",
                         help="the local start a marker waits for")
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()

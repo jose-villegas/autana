@@ -138,7 +138,7 @@ def main(argv=None):
     try:
         rows, _ = bench.read_fpu(args.fpu)
         _, measured = bench.parse_capture(args.capture.read_text(encoding="utf-8"), rows)
-        fig = render(rows, measured, fast_paths.annotations())
+        fig = render(rows, measured, [item for item in fast_paths.annotations() if item.unit != "bit"])
         save(fig, args.out / "benchmark-families.png")
     except (OSError, ValueError, KeyError) as error:
         parser.exit(1, f"math_bench_figures: {error}\n")

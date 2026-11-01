@@ -47,7 +47,7 @@ PERCENT = 100
 def enum_value(enum, prefix, name, source=CULL_HEADER):
     """A cullview tunable's value: `name`'s place in raster_cull_view.h's `enum`."""
     text = pathlib.Path(source).read_text(encoding="utf-8")
-    body = re.search(r"typedef enum \{(.*?)\} " + enum + ";", text, re.S)[1]
+    body = re.search(r"typedef enum(?: __attribute__\(\(\w+\)\))? \{(.*?)\} " + enum + ";", text, re.S)[1]
     return re.findall(prefix + r"(\w+)", body).index(name)
 
 

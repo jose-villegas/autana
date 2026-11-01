@@ -25,7 +25,7 @@ SCORE = re.compile(r"^(.+): mean DeltaE76 ([\d.]+), p95 DeltaE76 ([\d.]+), luma 
 
 def small_fill_styles():
     return re.findall(r"SMALL_FILL_([A-Z]+)(?=\s*[,}])", re.search(
-        r"typedef enum \{([^}]+)\} small_fill_style_t;", VIEW_HEADER.read_text()).group(1) + "}")
+        r"typedef enum(?: __attribute__\(\(\w+\)\))? \{([^}]+)\} small_fill_style_t;", VIEW_HEADER.read_text()).group(1) + "}")
 
 
 def markdown(headers, rows):

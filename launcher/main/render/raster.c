@@ -75,6 +75,7 @@ typedef struct {
     slice_t mine, other;
     r3d_span_target_t targets[2];
     r3d_span_small_fill_t small_fill;
+    bool skip_hidden; /* the view's */
     raster_buffers_t buffers;
 } draw_work_t;
 
@@ -94,7 +95,7 @@ transform_slice(void* ctx) {
         const int hi = mathi_min(end, start + item->visible_count) - start;
         if (lo < hi) {
             r3d_pipeline_transform(item->mesh, &item->lens, item->visible + lo, hi - lo, b.cs + item->vertex_base,
-                                   b.rows + item->cluster_base);
+                                   b.rows + item->cluster_base, ((const draw_work_t*)b.draw)->skip_hidden);
         }
         start += item->visible_count;
     }
@@ -195,6 +196,7 @@ draw_slice(void* ctx) {
     FRAME_LAP("r3d.draw.clear");
     gfx_target_window(&target->rows, &b->picture, s->first, s->first + s->count);
     target->small_fill = &((const draw_work_t*)b->draw)->small_fill;
+    target->skip_hidden = ((const draw_work_t*)b->draw)->skip_hidden;
 
     if (s->clear) {
         const size_t pixels = (size_t)s->count * (size_t)r->width;
@@ -444,6 +446,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
         resolves = resolves || a->resolve != NULL;
     }
     r3d_span_small_fill_resolve(&work->small_fill, view->small_fill);
+    work->skip_hidden = view->skip_hidden;
     /* A list drawn with no census, or rewritten without its scale, fails here. */
     assert(*work->buffers.depth_near >= view->lens.near_z);
     uint16_t* culled = work->buffers.culled;
