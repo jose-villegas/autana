@@ -39,7 +39,8 @@
 #                   --deps compiles nothing: it prints `flags` and the compile
 #                   flags, then the compiler's -MM list (sources and project
 #                   headers; -MM omits system headers).
-#   scene_renderer  OPTIONAL, 1 links autana::render_host, else render_host_core.
+#   scene_target    OPTIONAL autana target to link: render_host_core (the
+#                   default), render_host or scene_provider (CMakeLists.txt).
 #   scene_ui        OPTIONAL, 1 links the shared host UI sources.
 #   scene_includes  OPTIONAL extra -I directories, relative to launcher/
 #   scene_assets    OPTIONAL folders, relative to launcher/, whose asset roots
@@ -243,7 +244,7 @@ render_scene_build() {
         -DCMAKE_BUILD_TYPE= "-DSCENE_NAME=$scene_name" \
         "-DSCENE_OUT_DIR=$(to_native "$(CDPATH= cd -- "$scene_out_dir" && pwd)")" \
         "-DSCENE_SOURCES=$_rs_cmake_sources" "-DSCENE_INCLUDES=$_rs_cmake_includes" \
-        "-DSCENE_RENDERER=${scene_renderer:-0}" "-DSCENE_DEFINES=$scene_defines" "-DSCENE_PROVIDER=$scene_provider" \
+        "-DSCENE_TARGET=${scene_target:-render_host_core}" "-DSCENE_DEFINES=$scene_defines" "-DSCENE_PROVIDER=$scene_provider" \
         "-DSCENE_ASSET_DIR=${_rs_assets:-}" > "$_rs_configure_log" 2>&1; then
         cat "$_rs_configure_log" >&2
         [ "$_rs_deps" = 0 ] || rm -rf "$_rs_build"
@@ -253,7 +254,7 @@ render_scene_build() {
         . "$_rs_launcher/../scripts/lib/python.sh"
         _rs_python=$(find_python) || { rm -rf "$_rs_build"; return 1; }
         _rs_status=0
-        "$_rs_python" "$(to_native "$_rs_tools/render/scene/dependencies.py")" "$(to_native "$_rs_build")" "$_rs_cmake_sources" || _rs_status=$?
+        "$_rs_python" "$(to_native "$_rs_tools/render/scene/dependencies.py")" "$(to_native "$_rs_build")" || _rs_status=$?
         rm -rf "$_rs_build"
         return "$_rs_status"
     fi
