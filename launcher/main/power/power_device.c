@@ -1,6 +1,5 @@
 /* The PMU device owner: key interrupts and battery snapshots on the shared bus. */
 #include "board/board.h"
-#include "bsp/esp-bsp.h"
 #include "core/timing.h"
 #include "driver/i2c_master.h"
 #include "esp_log.h"
@@ -48,7 +47,7 @@ ensure_device(void) {
     if (pmu != NULL) {
         return true;
     }
-    i2c_master_bus_handle_t bus = bsp_i2c_get_handle();
+    i2c_master_bus_handle_t bus = board_i2c_bus();
     if (bus == NULL) {
         ESP_LOGW(TAG, "No I2C bus - the PWR button will not report");
         return false;

@@ -21,12 +21,13 @@
 #include "esp_attr.h"
 #include "esp_log.h"
 #include "freertos/task.h"
+_Static_assert(GFX_WIDTH == BOARD_PANEL_WIDTH && GFX_HEIGHT == BOARD_PANEL_HEIGHT,
+               "gfx.h's panel size must be the board's");
 #if CONFIG_LAUNCHER_QEMU
 #include "gfx/present/panel/gfx_null_panel.h"
 #include "image/pixel/rgb565.h"
 #endif
 
-_Static_assert(GFX_WIDTH == BSP_LCD_H_RES && GFX_HEIGHT == BSP_LCD_V_RES, "gfx.h's panel size must be the board's");
 #endif
 
 #ifdef ESP_PLATFORM

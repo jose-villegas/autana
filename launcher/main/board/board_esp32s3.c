@@ -7,9 +7,14 @@
  */
 #include "board/board.h"
 
+#include <string.h>
+
+#include "bsp/esp-bsp.h"
+#include "bsp/touch.h"
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "driver/temperature_sensor.h"
+#include "es8311_codec.h"
 #include "esp_check.h"
 #include "esp_io_expander_tca9554.h"
 #include "esp_log.h"
@@ -17,6 +22,13 @@
 #include "freertos/task.h"
 
 static const char* TAG = "board";
+
+/* board.h states these without the vendor headers; the vendor's own values
+ * must agree. */
+_Static_assert(BOARD_IO_EXPANDER_I2C_ADDR == BSP_IO_EXPANDER_I2C_ADDRESS, "IO expander address");
+_Static_assert(BOARD_AUDIO_CODEC_I2C_ADDR == (ES8311_CODEC_DEFAULT_ADDR >> 1), "codec address, 7-bit");
+_Static_assert(BOARD_I2C_SDA_GPIO == BSP_I2C_SDA && BOARD_I2C_SCL_GPIO == BSP_I2C_SCL, "I2C pins");
+_Static_assert(BOARD_SD_NAME_BYTES == sizeof(((sdmmc_cid_t*)0)->name), "SD card name length");
 
 /* Drives the audio power amplifier directly; this board has no IO
  * expander pin for it. */
@@ -53,7 +65,7 @@ board_detect(void) {
         return detected;
     }
 
-    i2c_master_bus_handle_t bus = bsp_i2c_get_handle();
+    i2c_master_bus_handle_t bus = board_i2c_bus();
     if (bus == NULL) {
         ESP_LOGE(TAG, "Could not initialise I2C");
         detected = BOARD_VARIANT_UNKNOWN;
@@ -86,6 +98,43 @@ board_variant_name(board_variant_t variant) {
         case BOARD_VARIANT_CO5300_CST: return "CO5300 + CST820 (V2)";
         default: return "unknown";
     }
+}
+
+i2c_master_bus_handle_t
+board_i2c_bus(void) {
+    return bsp_i2c_get_handle();
+}
+
+esp_err_t
+board_touch_open(esp_lcd_touch_handle_t* out) {
+    return bsp_touch_new(NULL, out);
+}
+
+i2s_port_t
+board_audio_i2s_port(void) {
+    return CONFIG_BSP_I2S_NUM;
+}
+
+i2s_std_gpio_config_t
+board_audio_i2s_gpio(void) {
+    return (i2s_std_gpio_config_t){
+        .mclk = BSP_I2S_MCLK, .bclk = BSP_I2S_SCLK, .ws = BSP_I2S_LCLK, .dout = BSP_I2S_DOUT, .din = BSP_I2S_DSIN};
+}
+
+esp_err_t
+board_sd_probe(board_sd_info_t* out) {
+    const esp_err_t err = bsp_sdcard_mount();
+    if (err != ESP_OK) {
+        return err;
+    }
+    if (bsp_sdcard == NULL) {
+        return ESP_ERR_NOT_FOUND;
+    }
+    (void)memcpy(out->name, bsp_sdcard->cid.name, sizeof out->name);
+    out->name[sizeof out->name - 1] = '\0';
+    out->bytes = (uint64_t)bsp_sdcard->csd.capacity * bsp_sdcard->csd.sector_size;
+    (void)bsp_sdcard_unmount();
+    return ESP_OK;
 }
 
 esp_err_t
