@@ -113,8 +113,10 @@ def level_check(path):
     samples, rate = metrics.read_take(path)
     if metrics.clip_count(samples):
         raise ValueError('bypass level check clips; lower --host-gain and retry')
-    if metrics.active_level_db(samples, rate) < LEVEL_MIN_DBFS:
-        raise ValueError(f'bypass level check below {LEVEL_MIN_DBFS} dBFS; raise --host-gain and retry')
+    level = metrics.active_level_db(samples, rate)
+    if level < LEVEL_MIN_DBFS:
+        raise ValueError(f'bypass level check at {level:.1f} dBFS, below {LEVEL_MIN_DBFS} dBFS; '
+                         'raise --host-gain or the host output volume and retry')
 
 
 def capture_arms(record, args, saved, materials):
