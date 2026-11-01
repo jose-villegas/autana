@@ -50,7 +50,15 @@ add_library(autana::render_host ALIAS render_host)
 target_sources(render_host INTERFACE ${renderer_sources})
 target_link_libraries(render_host INTERFACE autana::render_host_core)
 
+# The scene-file provider, scene_provider (scene_viewer.c), for a consumer
+# drawing a .scene.toml; tunables stay settable while it runs.
+add_library(scene_provider INTERFACE)
+add_library(autana::scene_provider ALIAS scene_provider)
+target_sources(scene_provider INTERFACE "${CMAKE_CURRENT_LIST_DIR}/scene_viewer.c")
+target_compile_definitions(scene_provider INTERFACE TUNE_HOT_LIVE=1)
+target_link_libraries(scene_provider INTERFACE autana::render_host)
+
 if(PROJECT_IS_TOP_LEVEL)
     add_library(render_host_check OBJECT)
-    target_link_libraries(render_host_check PRIVATE autana::render_host)
+    target_link_libraries(render_host_check PRIVATE autana::scene_provider)
 endif()
