@@ -127,23 +127,22 @@ class PackageRequires(FixtureLauncher):
         self.assertEqual(["gamma"], [Path(line).name for line in self.shell("package_reachable", "gamma")])
 
 
-@unittest.skipUnless(shutil.which("cmake"), "no CMake")
 class EngineSources(FixtureLauncher):
     def sources(self):
-        script = self.launcher / "tools/render/engine_sources.cmake"
-        script.parent.mkdir(parents=True)
-        shutil.copy(ROOT / "launcher/tools/render/engine_sources.cmake", script)
-        result = subprocess.run(["cmake", "-P", str(script)], capture_output=True, text=True, timeout=120)
+        for name in ("tools/render/engine_sources.cmake", "main/renderer_sources.cmake"):
+            (self.launcher / name).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(ROOT / "launcher" / name, self.launcher / name)
+        result = subprocess.run(["cmake", "-P", str(self.launcher / "tools/render/engine_sources.cmake")],
+                                capture_output=True, text=True, timeout=120)
         self.assertEqual(0, result.returncode, result.stderr)
-        return [Path(line).relative_to(self.launcher).as_posix() for line in result.stderr.splitlines()]
+        return [Path(line).relative_to(self.launcher).as_posix() for line in result.stdout.splitlines()]
 
-    def test_every_c_file_below_a_named_folder_and_nothing_else(self):
-        for name in ("main/alpha/x.c", "main/alpha/deep/y.c", "main/alpha/x.h", "main/beta/z.c", "main/gamma/w.c",
-                     "main/gfx/a.c", "main/gfx/a_device.c"):
+    def test_every_c_file_below_a_renderer_folder_and_nothing_else(self):
+        for name in ("main/render/x.c", "main/render/deep/y.c", "main/render/x.h", "main/anim/z.c",
+                     "main/gamma/w.c", "main/gfx/a.c", "main/gfx/a_device.c"):
             self.write(name)
-        self.write("main/renderer_folders.txt", "# not a folder\nalpha\nbeta\n")
         listed = self.sources()
-        self.assertEqual(["main/alpha/deep/y.c", "main/alpha/x.c", "main/beta/z.c"], listed[-3:])
+        self.assertEqual(["main/anim/z.c", "main/render/deep/y.c", "main/render/x.c"], listed[-3:])
         self.assertIn("main/gfx/a.c", listed)
         self.assertNotIn("main/gfx/a_device.c", listed)
         self.assertNotIn("main/gamma/w.c", listed)
