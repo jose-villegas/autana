@@ -222,6 +222,68 @@ test_transform_matches_lens_projection_bits(void) {
     }
 }
 
+#define TRANSFORM_PAIR_VERTICES 8
+
+static void
+test_transform_pairs_and_odd_tail(void) {
+    static const int16_t positions[TRANSFORM_PAIR_VERTICES][3] = {{1, -3, 4}, {2, 7, 5},    {-4, 2, 6},  {3, -8, 7},
+                                                                  {5, 9, 8},  {-6, -11, 9}, {7, 13, 10}, {-8, -15, 11}};
+    const r3d_lens_t lens = {.m = MAT4F_IDENTITY,
+                             .project.near_z = 1.0F,
+                             .depth_near = 1.0F,
+                             .snap_cx = R3D_SNAP_BIAS + 0.75F,
+                             .snap_cy = R3D_SNAP_BIAS - 0.25F};
+    for (int count = TRANSFORM_PAIR_VERTICES - 1; count <= TRANSFORM_PAIR_VERTICES; count++) {
+        for (int slot = -1; slot < 2; slot++) {
+            int16_t input[TRANSFORM_PAIR_VERTICES][3];
+            memcpy(input, positions, sizeof input);
+            if (slot >= 0) {
+                input[slot][2] = (int16_t)lens.project.near_z;
+                input[2 + slot][0] = INT16_MAX;
+            }
+            const r3d_lit_cluster_t cluster = {.vertex_count = count};
+            const r3d_lit_mesh_t mesh = {.positions = (const int16_t (*)[3])input, .clusters = &cluster};
+            r3d_pipeline_vertex_t out[TRANSFORM_PAIR_VERTICES];
+            r3d_pipeline_rows_t rows;
+            for (int v = 0; v < TRANSFORM_PAIR_VERTICES; v++) {
+                out[v] = (r3d_pipeline_vertex_t){.sx = INT16_MIN, .sy = INT16_MIN, .iz = -1.0F};
+            }
+            r3d_pipeline_transform(&mesh, &lens, &(uint16_t){0}, 1, out, &rows);
+            int y0 = INT16_MAX;
+            int y1 = INT16_MIN;
+            bool unbounded = false;
+            for (int v = 0; v < count; v++) {
+                const vec3f_t l = mat4f_apply(&lens.m, (vec3f_t){input[v][0], input[v][1], input[v][2]});
+                r3d_pipeline_vertex_t expected = {.sx = INT16_MIN, .sy = INT16_MIN, .iz = 0.0F};
+                if (l.z <= lens.project.near_z) {
+                    unbounded = true;
+                } else {
+                    const float inv = (float)R3D_SUBPIXEL * mathf_recip(l.z);
+                    const float bx = lens.snap_cx + l.x * inv;
+                    const float by = lens.snap_cy + l.y * inv;
+                    if (bx > FAST_LO && bx < FAST_HI && by > FAST_LO && by < FAST_HI) {
+                        const clip_vertex_t vertex = {.x = l.x, .y = l.y, .z = l.z};
+                        const r3d_span_vertex_t projected = project(&lens, &vertex);
+                        expected = (r3d_pipeline_vertex_t){projected.x, projected.y, projected.z};
+                        y0 = expected.sy < y0 ? expected.sy : y0;
+                        y1 = expected.sy > y1 ? expected.sy : y1;
+                    } else {
+                        expected.iz = -1.0F;
+                        unbounded = true;
+                    }
+                }
+                TEST_ASSERT_EQUAL_MEMORY(&expected, &out[v], sizeof expected);
+            }
+            const float to_pixels = 1.0F / (float)R3D_SUBPIXEL;
+            const float expected_y0 = (float)y0 * to_pixels;
+            const float expected_y1 = (float)y1 * to_pixels;
+            TEST_ASSERT_EQUAL_MEMORY(&expected_y0, &rows.y0, sizeof expected_y0);
+            TEST_ASSERT_EQUAL_MEMORY(&expected_y1, &rows.y1, sizeof expected_y1);
+            TEST_ASSERT_EQUAL(unbounded, rows.unbounded);
+        }
+    }
+}
+
 static void
 test_transform_nonfinite_paths(void) {
     static const int16_t positions[1][3] = {{1, 1, 2}};
@@ -280,6 +342,7 @@ test_transform_fast_range_bits(void) {
 void
 run_r3d_style_pipeline_suite(void) {
     RUN_TEST(test_transform_matches_lens_projection_bits);
+    RUN_TEST(test_transform_pairs_and_odd_tail);
     RUN_TEST(test_transform_nonfinite_paths);
     RUN_TEST(test_transform_fast_range_bits);
     RUN_TEST(test_clipped_and_mixed_clusters_keep_the_target_style);
