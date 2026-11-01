@@ -13,7 +13,8 @@ try:
     from tests import soup
 
     from r3d.geometry import corner_normals
-    from r3d.reference_render import device_picture, render_linear, trace
+    from r3d.light import coincident_faces
+    from r3d.reference_render import device_picture, primary_hits, render_linear, trace
     from render_compare import expand_565
 except ImportError:
     np = None
@@ -22,16 +23,28 @@ from tests.r3d_env import needs_mitsuba  # noqa: E402
 from tests.test_r3d_path_bake import needs_llvm  # noqa: E402
 
 
-def plane_source(corners):
-    """A one-material quad of two triangles facing +z, white, unlit by anything but the scene."""
+def plane_source(*quads):
+    """One-material quads of two triangles each, facing +z when wound counter-clockwise seen from above, white, unlit
+    by anything but the scene."""
+    tris = np.array([[0, 1, 2], [0, 2, 3]])
+    tri_v = np.concatenate([tris + 4 * index for index in range(len(quads))])
     source = SimpleNamespace(
-        p=np.array(corners), uv=np.zeros((4, 2)), tri_v=np.array([[0, 1, 2], [0, 2, 3]]), tri_t=np.array([[0, 1, 2], [0, 2, 3]]),
-        tri_m=np.array([0, 0]), names=["plane"], materials={"plane": {"Kd": (1.0, 1.0, 1.0)}}, textures=[None], colors=None,
+        p=np.concatenate([np.array(quad, dtype=float) for quad in quads]), uv=np.zeros((4 * len(quads), 2)), tri_v=tri_v,
+        tri_t=tri_v, tri_m=np.zeros(len(tri_v), dtype=int), names=["plane"], materials={"plane": {"Kd": (1.0, 1.0, 1.0)}},
+        textures=[None], colors=None,
     )
     source.corner_normals = corner_normals(source.p, source.tri_v)
+    source.twin = coincident_faces(source.p, source.tri_v)[0]
     source.bounce = None
     source.intersector = soup.rays(soup.Soup(source.p, source.tri_v))
     return source
+
+
+def square(z=0.0, up=True):
+    """The corners of a 4 x 4 quad at height z, wound for plane_source to face +z, or -z when not `up`; both split
+    along one diagonal, so the two windings are each other's twins."""
+    corners = [[-2.0, -2.0, z], [2.0, -2.0, z], [2.0, 2.0, z], [-2.0, 2.0, z]]
+    return corners if up else corners[:1] + corners[:0:-1]
 
 
 def sun_scene(direction):
@@ -54,7 +67,7 @@ class ReferenceRenderTest(unittest.TestCase):
         from unittest.mock import patch
         from r3d import reference_render
 
-        source = plane_source([[-2., -2., 0.], [2., -2., 0.], [2., 2., 0.], [-2., 2., 0.]])
+        source = plane_source(square())
         job, scene = sun_scene([0., 0., 1.])
         job.bake.ao = SimpleNamespace(distance=1., strength=1., rays=1, indirect=False)
         scene.tonemap_white = 2.
@@ -74,13 +87,13 @@ class ReferenceRenderTest(unittest.TestCase):
 
     @needs_mitsuba
     def test_an_unshadowed_plane_is_exact_lambert(self):
-        source = plane_source([[-2.0, -2.0, 0.0], [2.0, -2.0, 0.0], [2.0, 2.0, 0.0], [-2.0, 2.0, 0.0]])
+        source = plane_source(square())
         picture = render_linear(source, *sun_scene([0.0, 0.0, 1.0]), LOOK_DOWN, 1, 1, 0.1, 1)
         np.testing.assert_allclose(picture, [[[1.0, 1.0, 1.0]]], atol=1e-12, rtol=0)
 
     @needs_mitsuba
     def test_a_tilted_sun_scales_the_value_by_the_cosine_to_the_normal(self):
-        source = plane_source([[-2.0, -2.0, 0.0], [2.0, -2.0, 0.0], [2.0, 2.0, 0.0], [-2.0, 2.0, 0.0]])
+        source = plane_source(square())
         picture = render_linear(source, *sun_scene([0.8, 0.0, 0.6]), LOOK_DOWN, 1, 1, 0.1, 1)
         np.testing.assert_allclose(picture, [[[0.6, 0.6, 0.6]]], atol=1e-12, rtol=0)
 
@@ -94,15 +107,35 @@ class ReferenceRenderTest(unittest.TestCase):
 
     @needs_mitsuba
     def test_the_normal_buffer_faces_the_eye_and_is_zero_where_rays_miss(self):
-        # Wound to face away from the eye at z = 1: the buffer still turns its normal toward the eye.
+        # Double-sided and wound to face away from the eye at z = 1: the buffer still turns its normal toward the eye.
         source = plane_source([[-0.5, 0.5, 0.0], [-0.5, 2.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.5, 0.0]])
-        _linear, _covered, normal = trace(source, *sun_scene([0.0, 0.0, 1.0]), LOOK_DOWN, 2, 2, 1.0, 2)
+        job, scene = sun_scene([0.0, 0.0, 1.0])
+        job.settings.double_sided = {"plane"}
+        _linear, _covered, normal = trace(source, job, scene, LOOK_DOWN, 2, 2, 1.0, 2)
         np.testing.assert_allclose(normal[0, 0], [0.0, 0.0, 1.0], atol=1e-12, rtol=0)
         np.testing.assert_allclose(normal[1], 0.0, atol=1e-12, rtol=0)
 
     @needs_mitsuba
+    def test_a_single_sided_face_seen_from_behind_is_passed_as_the_device_culls_it(self):
+        # Two crossing shells, as a reduced source leaves them: the eye at z = 1 meets the back of a face at z = 0.5
+        # first. The device culls it and draws the floor at z = 0; double-sided, it is drawn itself.
+        source = plane_source(square(0.5, up=False), square())
+        job, _scene = sun_scene([0.0, 0.0, 1.0])
+        for double, height in ((set(), 0.0), ({"plane"}, 0.5)):
+            job.settings.double_sided = double
+            locations = primary_hits(source, job, LOOK_DOWN, 1, 1, 0.1, 1)[2]
+            np.testing.assert_allclose(locations[:, 2], [height], atol=1e-6)
+
+    @needs_mitsuba
+    def test_a_back_face_over_its_twin_draws_the_twin(self):
+        # The two sides of a thin wall share positions: whichever the tracer meets, the eye sees the front one.
+        source = plane_source(square(up=False), square(), square(-1.0))
+        faces = primary_hits(source, sun_scene([0.0, 0.0, 1.0])[0], LOOK_DOWN, 1, 1, 0.1, 1)[4]
+        self.assertIn(faces[0], (2, 3))
+
+    @needs_mitsuba
     def test_a_pose_at_empty_sky_is_the_scene_background_as_the_device_shows_it(self):
-        source = plane_source([[-2.0, -2.0, 0.0], [2.0, -2.0, 0.0], [2.0, 2.0, 0.0], [-2.0, 2.0, 0.0]])
+        source = plane_source(square())
         away = np.array([0.0, 0.0, 1.0, 0.0, 0.0, 1.0])
         linear, covered, _normal = trace(source, *sun_scene([0.0, 0.0, 1.0]), away, 3, 3, 1.0, 2)
         picture = device_picture(linear, covered, 0.35, 0x9CC0E6)
@@ -125,7 +158,7 @@ class PooledReferenceTests(unittest.TestCase):
         from unittest.mock import patch
         if "fork" not in multiprocessing.get_all_start_methods():
             self.skipTest("pose pool needs fork")
-        source = plane_source([[-2., -2., 0.], [2., -2., 0.], [2., 2., 0.], [-2., 2., 0.]])
+        source = plane_source(square())
         wall = soup.box(extents=(.1, 4., 2.))
         wall.apply_translation((1.2, 0., 1.))
         mesh = soup.concatenate([soup.Soup(source.p, source.tri_v), wall])
@@ -133,6 +166,7 @@ class PooledReferenceTests(unittest.TestCase):
         source.tri_t = np.zeros_like(source.tri_v)
         source.tri_m = np.zeros(len(source.tri_v), dtype=int)
         source.corner_normals = corner_normals(source.p, source.tri_v)
+        source.twin = coincident_faces(source.p, source.tri_v)[0]
         source.intersector = soup.rays(mesh)
         job, scene = sun_scene([0., 0., -1.])
         job.bake.ao = SimpleNamespace(distance=3., strength=.8, rays=8, indirect=True)
@@ -190,7 +224,7 @@ class ReferenceSetTests(unittest.TestCase):
         from r3d.fitted_variant import ReferenceInputs, poses_text
 
         size, lens, near = 8, 1., .01
-        source = plane_source([[-2., -2., 0.], [2., -2., 0.], [2., 2., 0.], [-2., 2., 0.]])
+        source = plane_source(square())
         job, scene = sun_scene([0., 0., 1.])
         scene.tonemap_white = 2.
         background = SimpleNamespace(background=0x123456)
@@ -238,7 +272,7 @@ class BounceReferenceTests(unittest.TestCase):
 
     @needs_mitsuba
     def test_the_reference_adds_the_bounce_to_each_hit(self):
-        source = plane_source([[-2., -2., 0.], [2., -2., 0.], [2., 2., 0.], [-2., 2., 0.]])
+        source = plane_source(square())
         without = render_linear(source, *sun_scene([0., 0., 1.]), LOOK_DOWN, 1, 1, 0.1, 1)
         source.bounce = self.Constant()
         job, scene = sun_scene([0., 0., 1.])
@@ -343,7 +377,7 @@ class TraceDeviceTests(unittest.TestCase):
         from unittest.mock import patch
         from r3d import reference_render
 
-        source = plane_source([[-2., -2., 0.], [2., -2., 0.], [2., 2., 0.], [-2., 2., 0.]])
+        source = plane_source(square())
         job = SimpleNamespace(settings=SimpleNamespace(alpha_keep=None))
         for given in (None, "cuda_ad_rgb"):
             with patch.object(reference_render, "load_source", return_value=source),                     patch.object(reference_render, "RayQuery") as query,                     patch.object(reference_render, "path_light_for") as bounce:
@@ -431,7 +465,7 @@ class SkyStreamingTests(unittest.TestCase):
     def test_sky_directions_are_streamed_and_match_list(self):
         from unittest.mock import patch
         from r3d import light as lighting
-        source = plane_source([[-2., -2., 0.], [2., -2., 0.], [2., 2., 0.], [-2., 2., 0.]])
+        source = plane_source(square())
         original = lighting.unshadowed_count
         sky = {"type": "sky", "rays": 7, "color": [.5, .7, .9], "intensity": .8}
         points = np.array([[0., 0., .5], [.2, .3, .1]])
