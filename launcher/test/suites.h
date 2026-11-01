@@ -100,9 +100,17 @@ bool suite_test_matches(const char* pattern, const char* name);
 #define SUITE_TEST_NAME_MAX      95
 #define SUITE_TEST_SEGMENT_CHARS "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"
 #define RUN_TEST_CASE(func, ...)                                                                                       \
-    suite_run_test_case(func, #func, (const char* const[]){__VA_ARGS__},                                               \
-                        sizeof((const char* const[]){__VA_ARGS__}) / sizeof(const char*), __LINE__)
-void suite_run_test_case(void (*func)(void), const char* name, const char* const* segments, size_t count, int line);
+    do {                                                                                                               \
+        const char* case_name_ =                                                                                       \
+            suite_test_case_name(#func, (const char* const[]){__VA_ARGS__},                                            \
+                                 sizeof((const char* const[]){__VA_ARGS__}) / sizeof(const char*));                    \
+        if (case_name_ != NULL) {                                                                                      \
+            suite_run_test_timed(func, case_name_, __LINE__);                                                          \
+        }                                                                                                              \
+    } while (0)
+/* The name RUN_TEST_CASE runs a case under, or NULL after a SUITE OVERFLOW.
+ * It returns before the case runs, so no frame of it sits under the test. */
+const char* suite_test_case_name(const char* name, const char* const* segments, size_t count);
 
 /* Prints how many tests since the last call presented past the frame
  * watch's warm-up (profile/frame_watch.h), so a run shows how much of it was
