@@ -127,9 +127,6 @@ board_sd_probe(board_sd_info_t* out) {
     if (err != ESP_OK) {
         return err;
     }
-    if (bsp_sdcard == NULL) {
-        return ESP_ERR_NOT_FOUND;
-    }
     (void)memcpy(out->name, bsp_sdcard->cid.name, sizeof out->name);
     out->name[sizeof out->name - 1] = '\0';
     out->bytes = (uint64_t)bsp_sdcard->csd.capacity * bsp_sdcard->csd.sector_size;

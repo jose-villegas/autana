@@ -35,7 +35,7 @@ const char* board_variant_name(board_variant_t variant);
 i2c_master_bus_handle_t board_i2c_bus(void);
 
 /* Opens this revision's touch controller, configured with the panel's size
- * and its interrupt pin; callers read both back from (*out)->config. */
+ * and its interrupt pin; callers read the pin back from (*out)->config. */
 esp_err_t board_touch_open(esp_lcd_touch_handle_t* out);
 
 /* The codec's I2S controller and the pins of its link. */
@@ -51,7 +51,7 @@ typedef struct {
 } board_sd_info_t;
 
 /* Mounts the card, fills *out and unmounts it again: a presence test, not a
- * hold. ESP_ERR_NOT_FOUND means no card is inserted. */
+ * hold. Returns the mount's error when there is no card to read. */
 esp_err_t board_sd_probe(board_sd_info_t* out);
 
 /* Powers the audio amplifier rail. Behind an IO expander pin on one board

@@ -95,8 +95,7 @@ post_run_before_display(void) {
         report("sd card", true, POST_OPTIONAL, detail);
     } else {
         /* No card is a normal state, not a fault, hence OPTIONAL. */
-        report("sd card", false, POST_OPTIONAL,
-               err == ESP_ERR_NOT_FOUND ? "no card inserted" : "no card / not mountable");
+        report("sd card", false, POST_OPTIONAL, "no card / not mountable");
     }
 }
 

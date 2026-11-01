@@ -56,7 +56,7 @@ class ProblemsTest(unittest.TestCase):
 
     def test_a_vendor_name_fails(self):
         for name in ("esp_err_to_name", "ESP_ERROR_CHECK", "nvs_flash_init", "NVS_READONLY", "heap_caps_malloc",
-                     "MALLOC_CAP_DMA", "multi_heap_free", "esp_psram_get_size", "bsp_display_start", "vTaskDelay", "xTaskCreate", "xQueueSend",
+                     "MALLOC_CAP_DMA", "multi_heap_free", "esp_psram_get_size", "bsp_display_start", "CONFIG_BSP_I2C_NUM", "vTaskDelay", "xTaskCreate", "xQueueSend",
                      "uxTaskGetStackHighWaterMark", "ulTaskNotifyTake", "pvPortMalloc", "portMAX_DELAY",
                      "configTICK_RATE_HZ", "pdMS_TO_TICKS", "TaskHandle_t", "SemaphoreHandle_t", "TickType_t"):
             with self.subTest(name=name):
