@@ -226,7 +226,7 @@ test_cluster_values_and_constant_writers(void) {
     gfx_target_window(&target.rows, &buffers.picture, 0, H);
     raster_lens(&r->raster, &r->view, 1, &r->lens);
     const uint16_t visible = 1;
-    r3d_pipeline_transform(&r->quad[0].mesh, &r->lens, &visible, 1, buffers.cs, buffers.rows);
+    r3d_pipeline_transform(&r->quad[0].mesh, &r->lens, &visible, 1, buffers.cs, buffers.rows, false);
     r3d_pipeline_draw(&r->quad[0].mesh, &r->lens, &visible, 1, buffers.cs, buffers.rows, &target, buffers.work[0]);
     int drawn = 0;
     for (int p = 0; p < W * H; p++) {

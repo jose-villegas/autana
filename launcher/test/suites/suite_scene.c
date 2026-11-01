@@ -2776,6 +2776,27 @@ test_camera_small_fill_changes_scene_pixels(void) {
     }
 }
 
+/* Off by default; a camera that skips hidden clusters draws the same pixels. */
+static void
+test_camera_skip_hidden_setter_changes_no_pixel(void) {
+    expanded_fixture();
+    scene_t* scene = scene_loaded_at(0);
+    const scene_entity_t camera = scene_find(scene, name_hash("camera"));
+    const camera_t* lens = scene_camera_lens(scene, SCENE_CAMERA_FIRST);
+    TEST_ASSERT_FALSE(lens->skip_hidden);
+    TEST_ASSERT_FALSE(scene_camera_set_skip_hidden(NULL, camera, true));
+    TEST_ASSERT_FALSE(scene_camera_set_skip_hidden(scene, scene_find(scene, name_hash("red")), true));
+    TEST_ASSERT_FALSE(scene_camera_set_skip_hidden(scene, SCENE_ENTITY_NONE, true));
+    TEST_ASSERT_FALSE(lens->skip_hidden);
+    render_context_t* context = render_context_main();
+    scene_render(0, 0, SIZE, SIZE);
+    memcpy(fx.held, raster_color(&context->raster), SIZE * SIZE * sizeof(*fx.held));
+    TEST_ASSERT_TRUE(scene_camera_set_skip_hidden(scene, camera, true));
+    TEST_ASSERT_TRUE(lens->skip_hidden);
+    scene_render(0, 0, SIZE, SIZE);
+    TEST_ASSERT_EQUAL_MEMORY(fx.held, raster_color(&context->raster), SIZE * SIZE * sizeof(*fx.held));
+}
+
 static void
 test_camera_small_fill_default_setter_and_view(void) {
     expanded_fixture();
@@ -4270,6 +4291,7 @@ run_scene_suite(void) {
     RUN_TEST(test_camera_present_scanline_and_double_compose_both_quarters);
     RUN_TEST(test_camera_present_default_setter_and_dynamic_size);
     RUN_TEST(test_camera_small_fill_default_setter_and_view);
+    RUN_TEST(test_camera_skip_hidden_setter_changes_no_pixel);
     RUN_TEST(test_camera_small_fill_changes_scene_pixels);
     RUN_TEST(test_non_half_compose_upscales_to_the_full_destination);
     RUN_TEST(test_failed_half_allocation_keeps_full_upscale_unexpanded);
