@@ -343,6 +343,10 @@ class CloneTests(unittest.TestCase):
         listing = "}\n\nvoid\nsuite_a(void) {\n" + "".join(f"    RUN_TEST(test_{i});\n" for i in range(24)) + "}\n"
         self.assert_ignored_declaration(listing)
 
+    def test_an_asm_body_is_ignored_but_a_copy_beside_it_is_not(self):
+        body = "".join(f'        "    ee.andq q{i % 8}, q1, q2\\n" /* step {i} */\n' for i in range(40))
+        self.assert_ignored_declaration('__asm__(".text\\n"\n' + body + '        "    retw.n\\n");\n')
+
     def test_literal_defines_are_ignored_but_code_and_function_macros_are_not(self):
         listing = "".join(f"#define FIELD_{i} {i}U\n" for i in range(24))
         listing += '#define SCALE 0.5F\n#define MASK 0xFFUL\n#define LABEL "value"\n'
