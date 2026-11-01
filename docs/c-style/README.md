@@ -102,7 +102,7 @@ Clone budgets, from the script's docstring:
 - Each sorted file pair has its own budget; new fragments may spend only tokens of base fragments gone from HEAD.
 - A surviving shrink, or removing another pair, gives no headroom; renames map to base names; line shifts change nothing.
 - Code moved out of a file the change deletes keeps its fragments.
-- Not clones: `#include` or `RUN_TEST` blocks, literal-only `#define`s, split declarations, added groupings, comments, whitespace.
+- Not clones: `#include` or `RUN_TEST` blocks, literal-only or renaming `#define`s, split declarations, added groupings, comments, whitespace.
 - Scope: tracked C, C++ and Python of the repository it runs in, minus vendored, test-framework, generated and fixture-data files.
 - `MIN_TOKENS` sets the threshold; `--min-tokens N` reports another one without checking. Review a reported pair before extracting.
 - A shorter Python function is a clone when its body matches another's once its parameters and locals are renamed. Literals, attributes and globals must match exactly, and the docstring and annotations are ignored. Functions under `MIN_FUNCTION_NODES` AST nodes are skipped, since at that size they are idioms rather than helpers.
