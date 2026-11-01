@@ -281,6 +281,50 @@ class AcquisitionTest(ShellJobTests, unittest.TestCase):
             self.assertEqual(len(payload['plan']), 20)
             self.assertIn('inconclusive', summary)
 
+    def budget_run(self, minutes, clock):
+        with tempfile.TemporaryDirectory() as root:
+            args = arguments(root)
+            args.max_minutes = minutes
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                payload = tool.measure(args, FakeAutana(root, noisy=True), clock=clock)
+            return payload, output.getvalue()
+
+    def test_a_look_past_the_time_budget_is_not_started_and_names_unresolved_rows(self):
+        payload, summary = self.budget_run(1 / 60, lambda: 0)
+        stop = payload['budget_stop']
+        self.assertGreater(stop['look'], 1)
+        self.assertEqual({item['look'] for item in payload['plan']}, {1})
+        self.assertEqual(payload['rows']['suite/quiet']['verdict'], 'no change')
+        self.assertIn('Unresolved: `suite/heavy`.', summary)
+        self.assertIn(f"--max-minutes {stop['budget'] / 60:g}", summary)
+
+    def test_time_already_used_counts_against_the_budget(self):
+        estimate = self.budget_run(1 / 60, lambda: 0)[0]['budget_stop']['estimate']
+        spare = 1
+        minutes = (estimate + spare) / 60
+        payload, summary = self.budget_run(minutes, lambda: 0)
+        self.assertIsNone(payload['budget_stop'])
+        self.assertNotIn('Stopped at the time budget', summary)
+        ticks = iter([0])
+        payload, _ = self.budget_run(minutes, lambda: next(ticks, 2 * spare))
+        self.assertEqual(payload['budget_stop']['elapsed'], 2 * spare)
+        self.assertEqual({item['look'] for item in payload['plan']}, {1})
+
+    def test_look_seconds_scales_runs_by_suite_passes_and_seeds_by_both_sides(self):
+        def record(flash, *suite_runs):
+            return dict(flash_seconds=flash, suites={str(index): dict(run_seconds=runs)
+                                                     for index, runs in enumerate(suite_runs)})
+        records = dict(a=[record(10, [4, 6], [2])], b=[record(30, [1], [2])])
+        flash = (10 + 30) / 2
+        suite_pass = ((4 + 6) / 2 + 2 + 1 + 2) / 2
+        for seeds, runs in ((1, 1), (3, 2)):
+            self.assertEqual(tool.look_seconds(records, seeds, runs), 2 * seeds * (flash + runs * suite_pass))
+
+    def test_a_budget_that_is_not_positive_is_refused(self):
+        for minutes in ("0", "-1"):
+            with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+                tool.main(["--validate-plan", "--suite", "suite", "-", "-", "--max-minutes", minutes])
+
     def test_unmapped_row_falls_back_to_original_suite_filter(self):
         self.assertEqual(tool.selected_suites([('suite', '-', '-')], {'suite/row'}, {}), [('suite', '-', '-')])
 
