@@ -607,11 +607,7 @@ static __attribute__((noinline, cold)) void
 draw_writing(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
              const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
              r3d_pipeline_work_t* work) {
-    if (target->skip_hidden) {
-        draw_writing_of(mesh, lens, clusters, count, cs, rows, target, true, work);
-    } else {
-        draw_writing_of(mesh, lens, clusters, count, cs, rows, target, false, work);
-    }
+    draw_writing_of(mesh, lens, clusters, count, cs, rows, target, target->skip_hidden, work);
 }
 
 /* Keep once-per-draw plane setup in flash to preserve the hot-path IRAM budget. */
