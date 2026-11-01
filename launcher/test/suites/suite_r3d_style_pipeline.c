@@ -233,53 +233,57 @@ test_transform_pairs_and_odd_tail(void) {
                              .depth_near = 1.0F,
                              .snap_cx = R3D_SNAP_BIAS + 0.75F,
                              .snap_cy = R3D_SNAP_BIAS - 0.25F};
+    const int16_t near_depths[] = {-1, 0, (int16_t)lens.project.near_z};
     for (int count = TRANSFORM_PAIR_VERTICES - 1; count <= TRANSFORM_PAIR_VERTICES; count++) {
-        for (int slot = -1; slot < 2; slot++) {
-            int16_t input[TRANSFORM_PAIR_VERTICES][3];
-            memcpy(input, positions, sizeof input);
-            if (slot >= 0) {
-                input[slot][2] = (int16_t)lens.project.near_z;
-                input[2 + slot][0] = INT16_MAX;
-            }
-            const r3d_lit_cluster_t cluster = {.vertex_count = count};
-            const r3d_lit_mesh_t mesh = {.positions = (const int16_t (*)[3])input, .clusters = &cluster};
-            r3d_pipeline_vertex_t out[TRANSFORM_PAIR_VERTICES];
-            r3d_pipeline_rows_t rows;
-            for (int v = 0; v < TRANSFORM_PAIR_VERTICES; v++) {
-                out[v] = (r3d_pipeline_vertex_t){.sx = INT16_MIN, .sy = INT16_MIN, .iz = -1.0F};
-            }
-            r3d_pipeline_transform(&mesh, &lens, &(uint16_t){0}, 1, out, &rows);
-            int y0 = INT16_MAX;
-            int y1 = INT16_MIN;
-            bool unbounded = false;
-            for (int v = 0; v < count; v++) {
-                const vec3f_t l = mat4f_apply(&lens.m, (vec3f_t){input[v][0], input[v][1], input[v][2]});
-                r3d_pipeline_vertex_t expected = {.sx = INT16_MIN, .sy = INT16_MIN, .iz = 0.0F};
-                if (l.z <= lens.project.near_z) {
-                    unbounded = true;
-                } else {
-                    const float inv = (float)R3D_SUBPIXEL * mathf_recip(l.z);
-                    const float bx = lens.snap_cx + l.x * inv;
-                    const float by = lens.snap_cy + l.y * inv;
-                    if (bx > FAST_LO && bx < FAST_HI && by > FAST_LO && by < FAST_HI) {
-                        const clip_vertex_t vertex = {.x = l.x, .y = l.y, .z = l.z};
-                        const r3d_span_vertex_t projected = project(&lens, &vertex);
-                        expected = (r3d_pipeline_vertex_t){projected.x, projected.y, projected.z};
-                        y0 = expected.sy < y0 ? expected.sy : y0;
-                        y1 = expected.sy > y1 ? expected.sy : y1;
-                    } else {
-                        expected.iz = -1.0F;
-                        unbounded = true;
-                    }
+        for (size_t depth = 0; depth < sizeof near_depths / sizeof near_depths[0]; depth++) {
+            for (int slot = -1; slot < 3; slot++) {
+                int16_t input[TRANSFORM_PAIR_VERTICES][3];
+                memcpy(input, positions, sizeof input);
+                if (slot >= 0) {
+                    const int near_vertex = slot < 2 ? slot : count - 1;
+                    input[near_vertex][2] = near_depths[depth];
+                    input[2 + slot][0] = INT16_MAX;
                 }
-                TEST_ASSERT_EQUAL_MEMORY(&expected, &out[v], sizeof expected);
+                const r3d_lit_cluster_t cluster = {.vertex_count = count};
+                const r3d_lit_mesh_t mesh = {.positions = (const int16_t (*)[3])input, .clusters = &cluster};
+                r3d_pipeline_vertex_t out[TRANSFORM_PAIR_VERTICES];
+                r3d_pipeline_rows_t rows;
+                for (int v = 0; v < TRANSFORM_PAIR_VERTICES; v++) {
+                    out[v] = (r3d_pipeline_vertex_t){.sx = INT16_MIN, .sy = INT16_MIN, .iz = -1.0F};
+                }
+                r3d_pipeline_transform(&mesh, &lens, &(uint16_t){0}, 1, out, &rows);
+                int y0 = INT16_MAX;
+                int y1 = INT16_MIN;
+                bool unbounded = false;
+                for (int v = 0; v < count; v++) {
+                    const vec3f_t l = mat4f_apply(&lens.m, (vec3f_t){input[v][0], input[v][1], input[v][2]});
+                    r3d_pipeline_vertex_t expected = {.sx = INT16_MIN, .sy = INT16_MIN, .iz = 0.0F};
+                    if (l.z <= lens.project.near_z) {
+                        unbounded = true;
+                    } else {
+                        const float inv = (float)R3D_SUBPIXEL * mathf_recip(l.z);
+                        const float bx = lens.snap_cx + l.x * inv;
+                        const float by = lens.snap_cy + l.y * inv;
+                        if (bx > FAST_LO && bx < FAST_HI && by > FAST_LO && by < FAST_HI) {
+                            const clip_vertex_t vertex = {.x = l.x, .y = l.y, .z = l.z};
+                            const r3d_span_vertex_t projected = project(&lens, &vertex);
+                            expected = (r3d_pipeline_vertex_t){projected.x, projected.y, projected.z};
+                            y0 = expected.sy < y0 ? expected.sy : y0;
+                            y1 = expected.sy > y1 ? expected.sy : y1;
+                        } else {
+                            expected.iz = -1.0F;
+                            unbounded = true;
+                        }
+                    }
+                    TEST_ASSERT_EQUAL_MEMORY(&expected, &out[v], sizeof expected);
+                }
+                const float to_pixels = 1.0F / (float)R3D_SUBPIXEL;
+                const float expected_y0 = (float)y0 * to_pixels;
+                const float expected_y1 = (float)y1 * to_pixels;
+                TEST_ASSERT_EQUAL_MEMORY(&expected_y0, &rows.y0, sizeof expected_y0);
+                TEST_ASSERT_EQUAL_MEMORY(&expected_y1, &rows.y1, sizeof expected_y1);
+                TEST_ASSERT_EQUAL(unbounded, rows.unbounded);
             }
-            const float to_pixels = 1.0F / (float)R3D_SUBPIXEL;
-            const float expected_y0 = (float)y0 * to_pixels;
-            const float expected_y1 = (float)y1 * to_pixels;
-            TEST_ASSERT_EQUAL_MEMORY(&expected_y0, &rows.y0, sizeof expected_y0);
-            TEST_ASSERT_EQUAL_MEMORY(&expected_y1, &rows.y1, sizeof expected_y1);
-            TEST_ASSERT_EQUAL(unbounded, rows.unbounded);
         }
     }
 }
