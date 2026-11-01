@@ -54,6 +54,8 @@ jobs:
         run: time python3 launcher/tools/bake/bake.py fetch
       - run: bash launcher/test/run_tests.sh
       - run: bash launcher/test/run_tests.sh --sanitize
+        env:
+          PUSH_TEST_GATE: "true"
       - name: Upload host test log
         if: ${{ failure() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
