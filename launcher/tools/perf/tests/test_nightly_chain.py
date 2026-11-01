@@ -320,10 +320,31 @@ class NightlyTests(unittest.TestCase):
                     patch("layout_measure.capture_board", return_value=MACHINE), \
                     patch.object(chain, "Clock", return_value=clock), \
                     patch.object(chain, "run_stamped", replay), \
-                    patch.object(chain.subprocess, "check_output", side_effect=fail_remove):
+                    patch.object(chain.subprocess, "check_output", side_effect=fail_remove), \
+                    patch.object(sys, "stderr", new_callable=io.StringIO) as stderr:
                 self.assertEqual(chain.main(), expected)
                 manifest = lnt.read_last_night(self.args.data, "20E8")
                 self.assertTrue(manifest["cleanup"].startswith("failed:"))
+                # A failing lane says why; a passing one raises no error line.
+                self.assertEqual("::error::lane 20E8: " in stderr.getvalue(), bool(expected), stderr.getvalue())
+
+    def test_a_failed_lane_names_its_failed_steps_and_selftest_tests(self):
+        rows = ["| Test | Result |", "| `test_ok` | PASS |", "| `test_cost` | **FAIL** - cost more than its observed price |",
+                "| `test_bare` | **FAIL** |"]
+        rows += [f"| `test_more_{n}` | **FAIL** - {n} |" for n in range(chain.LISTED_FAILURES)]
+        (self.root / "report.md").write_text("\n".join(rows) + "\n", encoding="utf-8")
+        results = [chain.StepResult(chain.Step("a" * 40, None, "merge", 0), "measured"),
+                   chain.StepResult(chain.Step("b" * 40, 7, "merge", 1), "build_failed")]
+        lines = chain.lane_failures(results, dict(outcome="failed", report="report.md"), self.root)
+        self.assertEqual(lines[:4], ["step 1 bbbbbbbbbbbb: build_failed", "self-test failed: report.md",
+                                     "self-test FAIL test_cost: cost more than its observed price",
+                                     "self-test FAIL test_bare"])
+        self.assertEqual(len(lines), 2 + chain.LISTED_FAILURES + 1)
+        self.assertEqual(lines[-1], "self-test: 2 more failed tests in the report")
+        # An unreadable report still names the self-test; a passing lane has nothing to say.
+        self.assertEqual(chain.lane_failures([], dict(outcome="incomplete", report="gone.log"), self.root),
+                         ["self-test incomplete: gone.log"])
+        self.assertEqual(chain.lane_failures(results[:1], dict(outcome="passed", report=None), self.root), [])
 
     def test_unplugged_before_second_step_keeps_result(self):
         with patch.object(chain, "plugged_boards", side_effect=[["20E8"], []]):
