@@ -242,6 +242,12 @@ class SuiteFailureSignTests(unittest.TestCase):
                          [('test_profile/capybara/front/portrait', 'PASS'), ('test_profile/sponza-fitted', 'FAIL')])
         self.assertEqual(capture.suite_failure_signs(text, 1), [])
 
+    def test_lines_that_only_look_like_results_are_not_results(self):
+        text = ('I (12) app: f.c:3:mode x:PASS\n:4:a//b:PASS\n:5:/a:PASS\n:6:a/:FAIL\n'
+                'f.c:7:test_one:FAIL: expected f.c:8:test_two:PASS\n:9:test_three/x:PASS  \r\n')
+        self.assertEqual([(r['name'], r['status'], r['message']) for r in capture.results(text)],
+                         [('test_one', 'FAIL', 'expected f.c:8:test_two:PASS'), ('test_three/x', 'PASS', None)])
+
     def test_the_host_run_check_fails_on_a_sign_and_passes_without_one(self):
         log = Path(tempfile.mkdtemp()) / 'host_run.log'
         self.addCleanup(shutil.rmtree, log.parent)

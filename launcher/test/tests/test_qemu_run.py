@@ -98,6 +98,21 @@ class VerdictTest(unittest.TestCase):
         self.assertEqual(1, self.verdict(PASSING +
                                         "SELFTEST_COMPLETE failures=2 elapsed_ms=42\n"))
 
+    def test_a_failing_case_is_reported_by_its_full_name_and_message(self):
+        fd, path = tempfile.mkstemp(suffix=".log")
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(":7:test_profile/scene-a/portrait:FAIL: over budget\n:8:test_profile/scene-a/landscape:FAIL\n"
+                     "SELFTEST_COMPLETE failures=2 elapsed_ms=42\n")
+        self.addCleanup(os.remove, path)
+        with unittest.mock.patch("builtins.print") as shown:
+            self.assertEqual((True, 2), qemu_run.summarise(path))
+        lines = [call.args[0] for call in shown.call_args_list]
+        self.assertIn("  FAIL test_profile/scene-a/portrait: over budget", lines)
+        self.assertIn("  FAIL test_profile/scene-a/landscape: ", lines)
+
+    def test_a_name_reported_twice_fails_the_run(self):
+        self.assertEqual(1, self.verdict(PASSING + PASSING + COMPLETE))
+
     def test_suite_overflow_fails_a_driven_run(self):
         self.assertEqual(1, self.verdict(PASSING + "I suites: SUITE OVERFLOW: run_extra_suite\n",
                                         actions=[("suite", "x")]))

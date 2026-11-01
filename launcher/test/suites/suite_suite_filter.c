@@ -81,7 +81,8 @@ case_fixture_suite(void) {
     RUN_TEST_CASE(test_case, "capybara", "", "front", "portrait");
 }
 
-/* A case named exactly SUITE_TEST_NAME_MAX characters, then one past it. */
+/* A case named exactly SUITE_TEST_NAME_MAX characters, one past it, then one
+ * with a character a result line cannot carry. */
 static void
 case_limit_suite(void) {
     char segment[SUITE_TEST_NAME_MAX + 1];
@@ -92,6 +93,7 @@ case_limit_suite(void) {
     segment[at_limit] = 'x';
     segment[at_limit + 1] = '\0';
     RUN_TEST_CASE(test_case, segment);
+    RUN_TEST_CASE(test_case, "front", "a:b");
 }
 
 SUITE_REGISTER_ON_REQUEST(gate_fixture_suite);

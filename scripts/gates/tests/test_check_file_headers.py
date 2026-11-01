@@ -81,6 +81,10 @@ class ProblemsTest(unittest.TestCase):
             ({"launcher/test/suites/suite_examples.c": including + "// RUN_TEST(test_x) is in there\n"},
              ["launcher/test/suites/suite_examples.c"]),
             ({"launcher/test/suites/suite_examples.c": SUITE}, []),
+            ({"launcher/test/suites/suite_examples.c": SUITE.replace("RUN_TEST(test_x)", 'RUN_TEST_CASE(test_x, "a")')},
+             []),
+            ({"launcher/test/suites/suite_examples.c": SUITE.replace("RUN_TEST(test_x)", "RUN_TEST_CASEX(test_x)")},
+             ["launcher/test/suites/suite_examples.c"]),
         )
         for files, expected in cases:
             with self.subTest(files=list(files.values())[0][:30]):
