@@ -85,17 +85,21 @@ def next_marker(trigger, night_start=None, start="NIGHT_START"):
     return candidate
 
 
-def night_cutoff(marker):
-    """When the board night that starts at `marker` stops starting lanes: BOARD_LAST_START on its date.
-    The marker carries NIGHT_ZONE's offset, so the board machine needs no time zone data."""
-    hour, minute = local_time("BOARD_LAST_START")
+def on_marker_date(name, marker):
+    """The local time setting `name` on `marker`'s date. The marker carries NIGHT_ZONE's offset, so the board
+    machine needs no time zone data."""
+    hour, minute = local_time(name)
     return marker.replace(hour=hour, minute=minute, second=0, microsecond=0)
+
+
+def night_cutoff(marker):
+    """When the board night that starts at `marker` stops starting lanes: BOARD_LAST_START on its date."""
+    return on_marker_date("BOARD_LAST_START", marker)
 
 
 def night_end(marker):
     """The deadline the board night that starts at `marker` sizes its lanes to: BOARD_END on its date."""
-    hour, minute = local_time("BOARD_END")
-    return marker.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    return on_marker_date("BOARD_END", marker)
 
 
 def trigger_time(event, schedule, now):
