@@ -421,6 +421,21 @@ log_suspect_burst(const imu_sample_t* samples, int count) {
 }
 #endif
 
+/* Requests read mode and reads count samples in chunks. locked_us spans the interval the sensor
+ * discards arrivals (section 8.7): after the acknowledged request, every chunk and bus wait included. */
+static bool
+read_fifo_burst(imu_sample_t out[IMU_FIFO_SAMPLES], int count, uint64_t* locked_us) {
+    bool ok = write_command(CTRL9_REQ_FIFO);
+    const int64_t lock_start_us = timing_now_us();
+    for (int read = 0; ok && read < count;) {
+        const int chunk = mathi_min(count - read, IMU_FIFO_CHUNK_SAMPLES);
+        ok = read_regs(REG_FIFO_DATA, (uint8_t*)(out + read), (size_t)chunk * sizeof *out);
+        read += chunk;
+    }
+    *locked_us = (uint64_t)(timing_now_us() - lock_start_us);
+    return ok;
+}
+
 static int
 drain_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
     *overflowed = false;
@@ -440,17 +455,8 @@ drain_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
         return 0;
     }
     int count = 0;
-    bool ok = read_fifo_count(&count, overflowed);
-    if (ok) {
-        ok = write_command(CTRL9_REQ_FIFO);
-    }
-    const int64_t lock_start_us = timing_now_us();
-    for (int read = 0; ok && read < count;) {
-        const int chunk = mathi_min(count - read, IMU_FIFO_CHUNK_SAMPLES);
-        ok = read_regs(REG_FIFO_DATA, (uint8_t*)(out + read), (size_t)chunk * sizeof *out);
-        read += chunk;
-    }
-    const uint64_t locked_us = (uint64_t)(timing_now_us() - lock_start_us);
+    uint64_t locked_us = 0;
+    const bool ok = read_fifo_count(&count, overflowed) && read_fifo_burst(out, count, &locked_us);
     const bool resumed = write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG);
 #if CONFIG_LAUNCHER_DEVELOPMENT
     if (ok) {
