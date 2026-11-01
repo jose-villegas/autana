@@ -17,9 +17,12 @@
 
 #include "core/memory.h"
 #include "display/viewport.h"
+#include "math/linear/mat3f.h"
+#include "math/linear/mat4f.h"
 #include "render/context/render_context.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/raster.h"
+#include "render/view/raster_copies.h"
 #include "render/view/raster_meshlets.h"
 #include "render/view/raster_motion.h"
 #include "render/view/raster_overdraw.h"
@@ -280,6 +283,53 @@ test_meshlet_ranges_restart_each_draw_and_show_empty_as_clear(void) {
     TEST_ASSERT_EQUAL_UINT16(r->raster.clear, raster_color(&r->raster)[0]);
 }
 
+/* The card copy's offset from the card, in world units: still in the picture. */
+#define COPY_SHIFT 20.0F
+
+static void
+test_copies_share_a_hue_and_a_shape_drawn_once_is_grey(void) {
+    raster_copies_t state = {0};
+    const raster_attachment_t view = raster_copies_view(&state);
+    const raster_attachment_t* one[] = {&view};
+    raster_rig_t* r = rig_open(one, 1);
+    draw(r);
+    const uint16_t* ids = raster_rig_attachment(r, 0);
+    for (int p = 0; p < W * H; p++) {
+        TEST_ASSERT_EQUAL_UINT16(RASTER_COPIES_UNIQUE, ids[p]);
+    }
+    static const uint8_t red[4][3] = {{255, 0, 0}, {255, 0, 0}, {255, 0, 0}, {255, 0, 0}};
+    r3d_lit_mesh_t copy = *r->instance[1].mesh;
+    copy.colors = red;
+    mat4f_t shifted = MAT4F_IDENTITY;
+    shifted.m[0][MAT3F_AXES] = COPY_SHIFT;
+    const r3d_instance_t three[] = {r->instance[0], r->instance[1], {&copy, &shifted}};
+    r->raster.instances = three;
+    r->raster.instance_count = 3;
+    raster_rig_attach(r, one, 1);
+    draw(r);
+    ids = raster_rig_attachment(r, 0);
+    int seen[2] = {0};
+    for (int p = 0; p < W * H; p++) {
+        TEST_ASSERT_TRUE(ids[p] == 2 || ids[p] == RASTER_COPIES_UNIQUE);
+        seen[ids[p] == 2]++;
+    }
+    TEST_ASSERT_TRUE(seen[0] > 0 && seen[1] > 0);
+    TEST_ASSERT_EQUAL_UINT16(2, ids[(H / 2) * W + W / 2]);
+    TEST_ASSERT_EQUAL_UINT16(RASTER_COPIES_UNIQUE, ids[0]);
+    raster_show(&r->raster);
+    const uint16_t* colors = raster_color(&r->raster);
+    for (int p = 0; p < W * H; p++) {
+        TEST_ASSERT_EQUAL_UINT16(ids[p] == 2 ? raster_meshlets_color(2) : RASTER_COPIES_GREY, colors[p]);
+    }
+    r->raster.instances = &r->instance[1];
+    r->raster.instance_count = 1;
+    raster_rig_attach(r, one, 1);
+    draw(r);
+    TEST_ASSERT_EQUAL_UINT16(0, ((const uint16_t*)raster_rig_attachment(r, 0))[0]);
+    raster_show(&r->raster);
+    TEST_ASSERT_EQUAL_UINT16(r->raster.clear, raster_color(&r->raster)[0]);
+}
+
 /* The wall alone covers the corner; the centre is covered by both quads, and
  * the card in front wins its test in either order, while the wall wins it
  * only when drawn first. */
@@ -467,7 +517,7 @@ test_view_table_and_context_ownership(void) {
     size_t before_blocks, before_bytes, blocks, bytes;
     heap_arena_snapshot(&before_blocks, &before_bytes);
 #endif
-    static const char* const names[] = {"depth", "tiles", "motion", "meshlets", "cull", "boxes", "overdraw"};
+    static const char* const names[] = {"depth", "tiles", "motion", "meshlets", "cull", "boxes", "overdraw", "copies"};
     TEST_ASSERT_EQUAL_INT(sizeof names / sizeof names[0], RENDER_DEBUG_VIEW_COUNT);
     TEST_ASSERT_EQUAL_INT(RENDER_DEBUG_VIEW_SHADED, render_context_debug_view_named("shaded"));
     TEST_ASSERT_EQUAL_INT(RENDER_DEBUG_VIEW_UNKNOWN, render_context_debug_view_named("unknown"));
@@ -533,7 +583,7 @@ test_printed_views_match_the_declared_names(void) {
     char names[128] = {0};
     const size_t bytes = fread(names, 1, sizeof names - 1, out);
     fclose(out);
-    TEST_ASSERT_EQUAL_STRING("shaded, depth, tiles, motion, meshlets, cull, boxes, overdraw", names);
+    TEST_ASSERT_EQUAL_STRING("shaded, depth, tiles, motion, meshlets, cull, boxes, overdraw, copies", names);
     int count = 1;
     for (size_t i = 0; i < bytes; i++) {
         count += names[i] == ',';
@@ -854,6 +904,7 @@ run_raster_attachment_suite(void) {
 #endif
     RUN_TEST(test_cluster_values_and_constant_writers);
     RUN_TEST(test_meshlet_ranges_restart_each_draw_and_show_empty_as_clear);
+    RUN_TEST(test_copies_share_a_hue_and_a_shape_drawn_once_is_grey);
     RUN_TEST(test_depth_and_tiles_rows_use_no_scratch);
     RUN_TEST(test_writer_slot_is_zeroed_before_each_hook);
     RUN_TEST(test_same_view_survives_frames_and_contexts_own_their_states);
