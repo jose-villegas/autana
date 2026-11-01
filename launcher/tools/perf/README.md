@@ -338,11 +338,11 @@ Each lane first repeats its own board's last measured anchor.
 
 | Queue | Rule |
 |---|---|
-| Owed | The commits in the last saved queue (`scoped/queue/` in the data) that no night manifest since has attempted |
-| New | Every commit after the tip that queue was planned at |
-| Before the first saved queue | Every commit after any board's `last_attempted` that no board's last manifest attempted |
+| Owed | The steps the last night record (`scoped/nights/` in the data) dealt or left, that no night manifest since has attempted |
+| New | Every commit after the tip that night planned at |
+| Before the first night record | Every commit after any board's `last_attempted` that no board's last manifest attempted |
 | First night ever | The tip only |
-| `--from` | History from that commit on; the plan saves no queue |
+| `--from` | History from that commit on; the night keeps no record |
 | Attempted | Measured, skipped as the same image, or failed to build; a failed capture is owed again |
 | Unsized override | Each board takes an even run of the queue |
 
