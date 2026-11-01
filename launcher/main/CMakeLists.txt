@@ -103,7 +103,7 @@ if(CONFIG_LAUNCHER_QEMU)
 endif()
 
 # The renderer: every .c below the folders renderer_folders.txt names, the
-# list host builds read too (tools/build/renderer.sh, renderer.py).
+# list host builds read too (tools/render/CMakeLists.txt, tools/build/renderer.sh, renderer.py).
 file(STRINGS "${CMAKE_CURRENT_LIST_DIR}/renderer_folders.txt" renderer_folders REGEX "^[^#]")
 foreach(folder IN LISTS renderer_folders)
     launcher_glob(folder_srcs "${CMAKE_CURRENT_LIST_DIR}/${folder}/*.c")
