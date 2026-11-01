@@ -415,6 +415,8 @@ Scene builds use CMake under their output folder. `--deps` reads a temporary
 build's compile database without compiling or leaving output files.
 The standalone compile check is
 `cmake -S launcher/tools/render -B build/render-host && cmake --build build/render-host`.
+It also compiles the headers `tests/render_host_cxx_check.cpp` includes as C++20,
+as a C++ consumer does.
 
 The script selects `<scene_name>_provider` with `RENDER_HOST_PROVIDER`;
 `scene_provider` overrides the symbol, and an empty value builds
