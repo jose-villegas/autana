@@ -185,7 +185,7 @@ The clock, the pause, the heap and the board support package have one owner each
 | time | `timing_now_us()`, inlined to the hardware timer's own call | `core/timing.h` |
 | pause | `timing_sleep_ms()`, `timing_yield()` | `core/timing.h` |
 | memory by kind | `MEMORY_INTERNAL`, `MEMORY_8BIT`, `MEMORY_DMA`, `MEMORY_PSRAM` | `core/memory.h`, whose header says which heap is beneath it on each platform |
-| the board | `board_i2c_bus()`, `board_touch_open()`, `board_sd_probe()`, ... over `bsp/` | `board/board.h`; drivers included, nothing else names `bsp/`, `bsp_`, `BSP_` or `CONFIG_BSP_` |
+| the board | `board_i2c_bus()`, `board_touch_open()`, `board_sd_probe()`, ... over `bsp/` | `board/board.h`; drivers included, nothing else names `bsp/`, `bsp_*`, `BSP_*` or `CONFIG_BSP_*` |
 
 In the firmware, its suites and its tools the gate fails any `esp_timer_*`,
 `vTaskDelay`, `heap_caps_*`, `MALLOC_CAP_*`, `multi_heap_*`, `esp_psram_*` or
