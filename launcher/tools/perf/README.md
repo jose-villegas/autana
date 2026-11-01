@@ -268,7 +268,7 @@ sequenceDiagram
     GPU->>Heavy: Release heavy
     Wait->>Plan: Start work with a fresh token
     Plan->>Plan: Wait for two GPU idle polls
-    Plan->>Night: Lanes for the free boards, maybe none
+    Plan->>Night: Deal the night queue to the free boards, maybe none, and record it
     Night->>Lanes: Start the planned lanes
     loop Every minute until BOARD_LAST_START
         Night->>Lanes: Start a lane on each newly free board, on any host
