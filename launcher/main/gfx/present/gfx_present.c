@@ -1022,71 +1022,45 @@ gfx_mark_rows_dirty(int y0, int y1) {
 }
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-struct gfx_checkpoint {
-    checkpoint_t state;
-    int panel_clock_hz;
-};
-
-gfx_checkpoint_t*
-gfx_save(void) {
+void
+gfx_checkpoint_capture(checkpoint_t* saved) {
     gfx_present_drain();
-    gfx_checkpoint_t* saved = memory_alloc(sizeof(*saved), MEMORY_PSRAM);
-    if (saved == NULL) {
-        return NULL;
-    }
-    *saved = (gfx_checkpoint_t){.panel_clock_hz = panel_clock_requested_hz};
-    checkpoint_capture(&saved->state, &cell_dirty, sizeof cell_dirty);
-    checkpoint_capture(&saved->state, &all_dirty, sizeof all_dirty);
-    checkpoint_capture(&saved->state, cell_x0, sizeof cell_x0);
-    checkpoint_capture(&saved->state, cell_x1, sizeof cell_x1);
-    checkpoint_capture(&saved->state, cell_y0, sizeof cell_y0);
-    checkpoint_capture(&saved->state, cell_y1, sizeof cell_y1);
-    checkpoint_capture(&saved->state, leaf_dirty, sizeof leaf_dirty);
-    checkpoint_capture(&saved->state, &gfx_band_force_all_dirty, sizeof gfx_band_force_all_dirty);
-    checkpoint_capture(&saved->state, &gfx_full_redraw_latched, sizeof gfx_full_redraw_latched);
-    checkpoint_capture(&saved->state, &present_async_on, sizeof present_async_on);
-    checkpoint_capture(&saved->state, &clear_on_send, sizeof clear_on_send);
-    checkpoint_capture(&saved->state, &clear_on_send_colour, sizeof clear_on_send_colour);
-    checkpoint_capture(&saved->state, &send_clears, sizeof send_clears);
-    checkpoint_capture(&saved->state, &send_clear_colour, sizeof send_clear_colour);
-    checkpoint_capture(&saved->state, &interlace_on, sizeof interlace_on);
+    CHECKPOINT_CAPTURE(saved, panel_clock_requested_hz);
+    const checkpoint_field_t fields[] = {
+        {(void*)&cell_dirty, sizeof cell_dirty},
+        {(void*)&all_dirty, sizeof all_dirty},
+        {(void*)&cell_x0, sizeof cell_x0},
+        {(void*)&cell_x1, sizeof cell_x1},
+        {(void*)&cell_y0, sizeof cell_y0},
+        {(void*)&cell_y1, sizeof cell_y1},
+        {(void*)&leaf_dirty, sizeof leaf_dirty},
+        {(void*)&gfx_band_force_all_dirty, sizeof gfx_band_force_all_dirty},
+        {(void*)&gfx_full_redraw_latched, sizeof gfx_full_redraw_latched},
+        {(void*)&present_async_on, sizeof present_async_on},
+        {(void*)&clear_on_send, sizeof clear_on_send},
+        {(void*)&clear_on_send_colour, sizeof clear_on_send_colour},
+        {(void*)&send_clears, sizeof send_clears},
+        {(void*)&send_clear_colour, sizeof send_clear_colour},
+        {(void*)&interlace_on, sizeof interlace_on},
 #ifdef ESP_PLATFORM
-    checkpoint_capture(&saved->state, &frame_parity, sizeof frame_parity);
+        {(void*)&frame_parity, sizeof frame_parity},
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    checkpoint_capture(&saved->state, &overlay_bordered_rows, sizeof overlay_bordered_rows);
+        {(void*)&overlay_bordered_rows, sizeof overlay_bordered_rows},
 #endif
 #endif
-    checkpoint_capture(&saved->state, &dev_present_send_us, sizeof dev_present_send_us);
-    checkpoint_capture(&saved->state, &dev_present_wait_us, sizeof dev_present_wait_us);
+        {(void*)&dev_present_send_us, sizeof dev_present_send_us},
+        {(void*)&dev_present_wait_us, sizeof dev_present_wait_us},
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    checkpoint_capture(&saved->state, &debug_overlay_on, sizeof debug_overlay_on);
-    checkpoint_capture(&saved->state, &leaf_overlay_on, sizeof leaf_overlay_on);
-    checkpoint_capture(&saved->state, &dev_strips_sent_full, sizeof dev_strips_sent_full);
-    checkpoint_capture(&saved->state, &dev_strips_sent_gathered, sizeof dev_strips_sent_gathered);
-    checkpoint_capture(&saved->state, &dev_strips_sent_partial, sizeof dev_strips_sent_partial);
-    checkpoint_capture(&saved->state, &dev_bytes_sent, sizeof dev_bytes_sent);
+        {(void*)&debug_overlay_on, sizeof debug_overlay_on},
+        {(void*)&leaf_overlay_on, sizeof leaf_overlay_on},
+        {(void*)&dev_strips_sent_full, sizeof dev_strips_sent_full},
+        {(void*)&dev_strips_sent_gathered, sizeof dev_strips_sent_gathered},
+        {(void*)&dev_strips_sent_partial, sizeof dev_strips_sent_partial},
+        {(void*)&dev_bytes_sent, sizeof dev_bytes_sent},
 #endif
-    gfx_mode_checkpoint_capture(&saved->state);
-    gfx_expand_checkpoint_capture(&saved->state);
-    if (saved->state.failed) {
-        gfx_checkpoint_free(saved);
-        return NULL;
-    }
-    return saved;
-}
-
-void
-gfx_restore(const gfx_checkpoint_t* saved) {
-    gfx_present_drain();
-    checkpoint_restore(&saved->state);
-    panel_clock_requested_hz = saved->panel_clock_hz;
-}
-
-void
-gfx_checkpoint_free(gfx_checkpoint_t* saved) {
-    if (saved != NULL) {
-        checkpoint_clear(&saved->state);
-        memory_free(saved);
-    }
+    };
+    checkpoint_capture_fields(saved, fields, sizeof fields / sizeof fields[0]);
+    gfx_mode_checkpoint_capture(saved);
+    gfx_expand_checkpoint_capture(saved);
 }
 #endif

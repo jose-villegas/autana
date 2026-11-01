@@ -289,27 +289,10 @@ raster_motion_release_view(void* state) {
 }
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-bool
-raster_motion_copy_view(void* destination, const void* source, const raster_t* raster) {
-    (void)raster;
-    if (destination == source) {
-        return true;
-    }
-    raster_motion_t* out = destination;
-    const raster_motion_t* in = source;
-    if (!raster_motion_reserve(out, in->capacity)) {
-        return false;
-    }
-    const raster_motion_t storage = *out;
-    *out = *in;
-    out->block = storage.block;
-    out->map = storage.map;
-    out->seen = storage.seen;
-    out->seen_key = storage.seen_key;
-    out->moved = storage.moved;
-    if (in->block != NULL) {
-        memcpy(out->block, in->block, block_bytes(in->capacity));
-    }
-    return true;
+void
+raster_motion_checkpoint(checkpoint_t* saved, void* state) {
+    raster_motion_t* motion = state;
+    checkpoint_capture_at(saved, &motion->block, block_bytes(motion->capacity));
+    checkpoint_capture(saved, motion, sizeof(*motion));
 }
 #endif

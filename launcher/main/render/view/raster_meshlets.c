@@ -56,14 +56,3 @@ raster_attachment_t
 raster_meshlets_view(void* state) {
     return (raster_attachment_t){IMAGE_U16, clear, begin, writer, NULL, show, state};
 }
-
-#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-bool
-raster_meshlets_copy_view(void* destination, const void* source, const raster_t* raster) {
-    raster_meshlets_t* out = destination;
-    const raster_meshlets_t* in = source;
-    *out = *in;
-    out->raster = in->raster == NULL ? NULL : raster;
-    return true;
-}
-#endif
