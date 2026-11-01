@@ -192,12 +192,10 @@ if ! command -v cmake > /dev/null 2>&1; then
     echo "  Debian:  sudo apt install cmake" >&2
     exit 1
 fi
-ENGINE_SOURCES=$(cmake -P "$LAUNCHER_DIR/tools/render/engine_sources.cmake" 2>&1) || {
-    printf '%s\n' "$ENGINE_SOURCES" >&2
-    exit 1
-}
+# cmake, like make below, is a native program and reads native paths.
+. "$TEST_DIR/../../scripts/lib/native_path.sh"
 SOURCES="$SOURCES
-$ENGINE_SOURCES"
+$(cmake -P "$(to_native "$LAUNCHER_DIR/tools/render/engine_sources.cmake")")"
 # shellcheck source=../tools/build/ui_sources.sh
 . "$LAUNCHER_DIR/tools/build/ui_sources.sh"
 for shared_source in $UI_SOURCES; do
@@ -360,7 +358,6 @@ JOBS=$(host_jobs "$JOBS")
 
 # make reads native paths: on Windows it is a native program, so the MSYS
 # path rewriting that shields gcc under sh does not apply to it.
-. "$TEST_DIR/../../scripts/lib/native_path.sh"
 # Collapses "a/../b" so two spellings of one file get one object name.
 squash() { sed -e ':a' -e 's|/[^/][^/]*/\.\./|/|' -e 'ta'; }
 native() { printf '%s\n' "$1" | to_native | squash; }
