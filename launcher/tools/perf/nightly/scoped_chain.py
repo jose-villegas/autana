@@ -33,7 +33,7 @@ from process_tree import (launch_process_tree, stop_process_tree, close_process_
                           terminate_unwinds)
 from local_schedule import (Clock, wait_idle, gpu_pending, gpu_on_host, GPU_NOT_ON_HOST,
                             NIGHT_STEP_HANG_SECONDS, MARKER_KEY_FORMAT, heavy_root, night_cutoff, night_end)
-from nightly.lnt import (lnt_report, night_manifest, night_ran, read_night, read_last_night, last_nights,
+from nightly.lnt import (lnt_report, night_manifest, night_ran, read_night, read_last_night, last_manifests,
                          manifests_since, night_record_path, read_last_night_record, VARIANT, BUILD_FLAGS,
                          LAYOUT_SEED)
 
@@ -175,7 +175,7 @@ def night_queue(repo, tip, data, from_sha=None):
     else:
         # Before the night kept a record, each board resumed after its own cursor; a step its last manifest
         # lists unsettled, a failed capture behind a later one, is owed too. The first night ever takes the tip.
-        nights = last_nights(data).values()
+        nights = last_manifests(data).values()
         cursors = [night.get("last_attempted") or night.get("last_measured") for night in nights]
         cursors = [on_history(history, commit, "last_attempted").position for commit in cursors if commit]
         owed = {step["commit"] for night in nights for step in night["steps"]}
@@ -232,8 +232,6 @@ def deal(repo, tip, previous, queue, count):
 
 def rerange(repo, tip, steps, from_sha=None, max_steps=None):
     """A lane's steps rerun on part of its own: its new steps from `--from` on, then the first `--max-steps`."""
-    if max_steps is not None and max_steps < 0:
-        raise ValueError("--max-steps must be nonnegative")
     anchors = [step for step in steps if step.role == "anchor"]
     new = [step for step in steps if step.role == "new"]
     if from_sha:
@@ -516,8 +514,6 @@ def plan_lane(args, selection, board, start, queue, selftest=False, remote=None,
     if capacity == 0:
         print(f"::notice::board {board} fits no step before the deadline {deadline}; it stays free", file=sys.stderr)
         return None, queue
-    if selection.get("max_steps") is not None and selection["max_steps"] < 0:
-        raise ValueError("--max-steps must be nonnegative")
     limits = [limit for limit in (capacity, selection.get("max_steps"), share) if limit is not None]
     steps, rest = deal(args.repo, selection["tip"], previous, queue, min(limits) if limits else None)
     if joiner and len(rest) == len(queue):
@@ -798,6 +794,14 @@ def timeline(args):
             summary.write("".join(lanes) + line)
 
 
+def steps_count(value):
+    """A --max-steps value: a nonnegative whole number."""
+    count = int(value)
+    if count < 0:
+        raise argparse.ArgumentTypeError("--max-steps must be nonnegative")
+    return count
+
+
 def lane_of(plan, board):
     return plan["lanes"][short_id(board)]
 
@@ -830,7 +834,7 @@ def main():
         command.add_argument("--out", type=Path, required=True)
     for command in (planning, running):
         command.add_argument("--from", dest="from_sha")
-        command.add_argument("--max-steps", type=int)
+        command.add_argument("--max-steps", type=steps_count)
     args = parser.parse_args()
     os.environ[autana_config.BUILD_PRIORITY_ENV] = autana_config.BUILD_PRIORITY_BELOW_NORMAL
     if args.command == "boards":

@@ -57,7 +57,7 @@ def read_last_night(data_dir, board):
     return json.loads(paths[-1].read_text(encoding="utf-8")) if paths else None
 
 
-def last_nights(data_dir):
+def last_manifests(data_dir):
     """Every board's last night manifest, by board: the boards that sit tonight out too."""
     root = Path(data_dir) / "scoped"
     boards = sorted(path.name for path in root.iterdir() if path.is_dir()) if root.is_dir() else []
