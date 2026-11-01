@@ -170,10 +170,10 @@ def plan_steps(repo, tip, last_night, lane, lanes):
 
 
 def step_seconds(previous):
-    """A board's seconds per step: the median build and measure time of the measured steps in its last
-    night manifest, else FIRST_STEP_SECONDS. Heavy queue time is not the board's."""
-    seconds = [step["build_seconds"] + step["measure_seconds"] for step in (previous or {}).get("steps", [])
-               if step["outcome"] == "measured"]
+    """A board's wall-clock seconds per step, as the deadline and the hang guard count them: the median heavy
+    queue wait, build and measure time of the measured steps in its last night manifest, else FIRST_STEP_SECONDS."""
+    seconds = [step["wait_seconds"] + step["build_seconds"] + step["measure_seconds"]
+               for step in (previous or {}).get("steps", []) if step["outcome"] == "measured"]
     return statistics.median(seconds) if seconds else FIRST_STEP_SECONDS
 
 
@@ -475,21 +475,13 @@ def fleet_scan(taken, before=()):
     return free, listing
 
 
-def board_capacity(args, selection, board, start, selftest=False):
-    """`board`'s last night manifest and its lane_capacity for the night's deadline; a board that fits no
-    step gets no lane and stays free."""
+def plan_lane(args, selection, board, lane, lanes, start, selftest=False, remote=None):
+    """The lane for `board` started at `start`, sized to the night's deadline; None when it fits no step."""
     previous = read_last_night(args.data, board)
     deadline = selection.get("deadline")
     capacity = lane_capacity(previous, start, deadline and datetime.fromisoformat(deadline), selftest)
     if capacity == 0:
         print(f"::notice::board {board} fits no step before the deadline {deadline}; it stays free", file=sys.stderr)
-    return previous, capacity
-
-
-def plan_lane(args, selection, board, lane, lanes, start, selftest=False, remote=None):
-    """The lane for `board` started at `start`, sized to the night's deadline; None when it fits no step."""
-    previous, capacity = board_capacity(args, selection, board, start, selftest)
-    if capacity == 0:
         return None
     steps = select_steps(args.repo, selection["tip"], previous, lane, lanes,
                          selection.get("from_sha"), selection.get("max_steps"), capacity)
@@ -698,19 +690,20 @@ def plan(args, clock=None, request=None):
         # The self-test runs on one board of this machine, whichever is plugged in first.
         args.selftest_board = args.selftest_board or next((board for board in args.boards if board not in remote), None)
     # A run marked after the deadline is a daytime override, which no deadline sizes.
-    deadline = night_end(marker) if marker < night_end(marker) else None
+    deadline = night_end(marker) if marker <= night_end(marker) else None
     tip = git(args.repo, "rev-parse", args.tip + "^{commit}")
     planned = dict(tip=tip, night=marker.date().isoformat(), started=now.isoformat(),
                    marker=args.marker, cutoff=cutoff.isoformat(), deadline=deadline and deadline.isoformat(),
                    listed=[short_id(board["board"]) for board in listing],
                    lanes={}, from_sha=args.from_sha, max_steps=args.max_steps)
     lanes = planned["lanes"]
-    selftest = {short_id(board): bool(args.selftest_board) and short_id(board) == short_id(args.selftest_board)
-                for board in args.boards}
-    # Only boards with room split the commits, so none is dealt to a board without a lane.
-    fitting = [board for board in selftest if board_capacity(args, planned, board, now, selftest[board])[1] != 0]
-    for lane, board in enumerate(fitting):
-        lanes[board] = plan_lane(args, planned, board, lane, len(fitting), now, selftest[board], remote.get(board))
+    for lane, board in enumerate(args.boards):
+        board = short_id(board)
+        # A board without room keeps its share of the split: its own cursor carries it to its next night.
+        if planned_lane := plan_lane(args, planned, board, lane, len(args.boards), now,
+                                     bool(args.selftest_board) and board == short_id(args.selftest_board),
+                                     remote.get(board)):
+            lanes[board] = planned_lane
     write_json(Path(args.out), planned)
     # For the workflow's later steps, which run one lane per board.
     print("SCOPED_BOARDS=" + " ".join(lanes))

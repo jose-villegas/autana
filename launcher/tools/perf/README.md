@@ -286,10 +286,10 @@ completion under their hang guards, and day board jobs queue on the lock behind 
 
 | Lane sizing | Rule |
 |---|---|
-| Step time | Median build plus measure seconds of the measured steps in the board's last night manifest; `FIRST_STEP_SECONDS` without any |
+| Step time | Median heavy queue wait, build and measure seconds of the measured steps in the board's last night manifest; `FIRST_STEP_SECONDS` without any |
 | Room | From the lane's start to `BOARD_END`, less the anchor step and, on the self-test board, `SELFTEST_ALLOWANCE_SECONDS` |
 | Steps | The oldest new steps the room fits; `--max-steps` bounds them further |
-| No room | The board gets no lane, stays free and the night notes it |
+| No room | The board gets no lane and stays free; its share of the split waits for its next night |
 | The rest | The next night resumes after `last_attempted` |
 | Override | A run marked after `BOARD_END` is not sized |
 
