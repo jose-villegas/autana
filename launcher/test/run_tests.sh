@@ -164,21 +164,13 @@ $MAIN_DIR/selftest/post_layout.c
 $MAIN_DIR/core/pending.c
 $MAIN_DIR/shell/asset_system.c
 $MAIN_DIR/shell/pending_system.c
-$MAIN_DIR/core/job.c
 $MAIN_DIR/core/memory.c
 $MAIN_DIR/services/settings_policy.c
 $MAIN_DIR/sound/sound.c
 $MAIN_DIR/audio/audio_adpcm.c
-$MAIN_DIR/asset/asset_pack.c
-$MAIN_DIR/asset/asset_table.c
-$MAIN_DIR/asset/asset_file.c
 $MAIN_DIR/asset/asset_directory.c
-$MAIN_DIR/asset/asset_store.c
 $MAIN_DIR/asset/asset_store_async.c
-$MAIN_DIR/asset/asset_store_file.c
 $MAIN_DIR/input/mapping/orbit_motion_touch.c
-$MAIN_DIR/core/tune.c
-$MAIN_DIR/console/console_tune.c
 $MAIN_DIR/console/console_verbs.c
 $MAIN_DIR/sound/console/console_tone.c
 $MAIN_DIR/sound/console/console_melody.c
@@ -192,11 +184,23 @@ $MAIN_DIR/../tools/gen/draw_palette_gen.c
 $MAIN_DIR/../tools/r3d/triangle_sizes.c
 "
 
-# shellcheck source=../tools/build/renderer.sh
-. "$LAUNCHER_DIR/tools/build/renderer.sh"
+# The engine's drawing, assets, tune, jobs and renderer: autana::render_engine's
+# own list (tools/render/engine_sources.cmake), read rather than repeated.
+if ! command -v cmake > /dev/null 2>&1; then
+    echo "No CMake found." >&2
+    echo "  Windows: winget install Kitware.CMake" >&2
+    echo "  Debian:  sudo apt install cmake" >&2
+    exit 1
+fi
+ENGINE_SOURCES=$(cmake -P "$LAUNCHER_DIR/tools/render/engine_sources.cmake" 2>&1) || {
+    printf '%s\n' "$ENGINE_SOURCES" >&2
+    exit 1
+}
+SOURCES="$SOURCES
+$ENGINE_SOURCES"
 # shellcheck source=../tools/build/ui_sources.sh
 . "$LAUNCHER_DIR/tools/build/ui_sources.sh"
-for shared_source in $(renderer_sources "$LAUNCHER_DIR") $UI_SOURCES; do
+for shared_source in $UI_SOURCES; do
     SOURCES="$SOURCES
 $LAUNCHER_DIR/$shared_source"
 done
@@ -207,12 +211,6 @@ done
 SOURCES="$SOURCES
 $(package_sources "$LAUNCHER_DIR")
 $(package_suites "$LAUNCHER_DIR")"
-
-# Drawing and presentation sources, excluding device-only backends.
-for gfx_src in $(find "$MAIN_DIR/gfx" "$MAIN_DIR/draw" -name '*.c' ! -name '*_device.c' | sort); do
-    SOURCES="$SOURCES
-$gfx_src"
-done
 
 for suite_src in "$TEST_DIR"/suites/suite_*.c; do
     [ -e "$suite_src" ] || continue
