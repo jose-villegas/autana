@@ -3,7 +3,7 @@ import pathlib
 import re
 
 from tracked import committable
-from c_comments import SOURCE_EXTENSIONS, blank_comments, is_cpp
+from c_comments import SOURCE_EXTENSIONS, blank_comments, is_cmake, is_cpp
 
 SCRIPT_SUFFIXES = {".py", ".sh", ".mjs"}
 FUNCTION = re.compile(r"\b([a-z_][a-z0-9_]*)\s*\(")
@@ -18,10 +18,6 @@ PY_CONSTANT = re.compile(r"^([A-Z][A-Z0-9_]+)\s*=", re.M)
 SDKCONFIG = re.compile(r"^#?\s*(CONFIG_[A-Z0-9_]+)", re.M)
 SH_FUNCTION = re.compile(r"^\s*([a-z_][a-z0-9_]*)\s*\(\)", re.M)
 CMAKE_FUNCTION = re.compile(r"^\s*(?:function|macro)\s*\(\s*([A-Za-z_]\w*)", re.M | re.I)
-
-
-def is_cmake(path):
-    return path.suffix == ".cmake" or path.name == "CMakeLists.txt"
 
 
 def source_paths(root):

@@ -20,6 +20,12 @@ def is_cpp(path):
     return str(path).endswith(CPP_EXTENSIONS)
 
 
+def is_cmake(path):
+    """A CMake script or list file by its name."""
+    path = pathlib.PurePosixPath(path)
+    return path.name == "CMakeLists.txt" or path.suffix == ".cmake"
+
+
 # Vendored upstream (microui) and every file whose banner says it is
 # generated: neither is ours to rewrite, and the generators' banner comments
 # would dominate the report.

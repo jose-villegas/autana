@@ -28,7 +28,7 @@ import re
 import subprocess
 import sys
 
-from c_comments import SOURCE_EXTENSIONS
+from c_comments import SOURCE_EXTENSIONS, is_cmake
 from check_doc_citations import citations
 
 SOURCE_SUFFIXES = {*SOURCE_EXTENSIONS, ".py", ".sh"}
@@ -42,11 +42,6 @@ CMAKE_WORD = re.compile(r"\b[A-Z][A-Z0-9_]+\b")
 CMAKE = ".cmake"
 # Cited by path for what running them does, so a path citer is always told.
 PATH_CITED_LANGUAGES = {".py", ".sh", CMAKE}
-
-
-def is_cmake(source):
-    path = pathlib.PurePosixPath(source)
-    return path.name == "CMakeLists.txt" or path.suffix == CMAKE
 
 
 def language(source):

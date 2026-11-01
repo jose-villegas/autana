@@ -10,7 +10,8 @@
 
 set(AUTANA_CPP_ROOT "${CMAKE_CURRENT_LIST_DIR}/../..")
 
-# The host tests' C flags (launcher/test/run_tests.sh) and their C++ counterparts.
+# The C++ flags. The first line is the core run_tests.sh's BASE_CFLAGS shares,
+# plus -Wpedantic; the rest are C++ only.
 # -ffp-contract=off keeps float results equal to the engine's.
 set(AUTANA_CPP_FLAGS
     -Wall -Wextra -Wpedantic -Werror -Werror=vla -ffp-contract=off

@@ -13,13 +13,14 @@ import pathlib
 import subprocess
 import sys
 
-from c_comments import SOURCE_EXTENSIONS
+from c_comments import SOURCE_EXTENSIONS, is_cmake
 from tracked import repository
 from workflow_marks import is_workflow, marked_commands
 
 ZERO = "0" * 40
 GITLINK = "160000"
-BUILD_FILES = ("CMakeLists.txt", "CMakePresets.json")
+# Build input that is not a CMake script.
+PRESETS = "CMakePresets.json"
 SKIP = "To skip: git push --no-verify"
 
 
@@ -47,8 +48,8 @@ def changes_source(root, updates):
         for entry in diff.stdout.splitlines():
             metadata, path = entry.split("\t", 1)
             modes = metadata.lstrip(":").split()[:2]
-            changed = (changed or GITLINK in modes or path.endswith((*SOURCE_EXTENSIONS, ".cmake"))
-                       or pathlib.PurePosixPath(path).name in BUILD_FILES)
+            changed = (changed or GITLINK in modes or path.endswith(SOURCE_EXTENSIONS)
+                       or is_cmake(path) or pathlib.PurePosixPath(path).name == PRESETS)
     return changed
 
 
