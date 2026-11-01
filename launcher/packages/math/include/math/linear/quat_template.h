@@ -10,13 +10,15 @@
 
 #include <stdbool.h>
 
+#include "math/linear/constant_template.h"
+
 #define MATH_DEFINE_QUAT(P, V, T, OPS)                                                                                 \
     typedef struct {                                                                                                   \
         T x, y, z, w;                                                                                                  \
     } P##_t;                                                                                                           \
                                                                                                                        \
     /* identity = (0, 0, 0, 1), the rotation that does nothing. */                                                     \
-    static inline P##_t P##_identity(void) { return (P##_t){OPS##_zero(), OPS##_zero(), OPS##_zero(), OPS##_one()}; }  \
+    MATH_DEFINE_CONSTANT(P, identity, OPS##_zero(), OPS##_zero(), OPS##_zero(), OPS##_one())                           \
                                                                                                                        \
     /* q = (axis * sin(angle/2), cos(angle/2)); `axis` must be unit length. */                                         \
     static inline P##_t P##_from_axis_angle(V##_t axis, T angle) {                                                     \

@@ -44,6 +44,8 @@ import pathlib
 import re
 import sys
 
+from c_comments import balanced_end
+
 MATH = pathlib.Path("launcher/packages/math/include/math/linear")
 PAGE = pathlib.Path("docs/math/README.md")
 
@@ -100,6 +102,13 @@ def read(path):
     return path.read_text(encoding="utf-8")
 
 
+def macro_calls(text):
+    text = re.sub(r"\\\r?\n", "", text)
+    for match in re.finditer(r"\b(MATH_\w+)\(", text):
+        end = balanced_end(text, match.end() - 1, "(", ")")
+        yield match[1], text[match.end():end - 1]
+
+
 def split_args(text):
     return [a.strip() for a in text.split(",")]
 
@@ -125,9 +134,10 @@ def instantiations(root):
     calls = []
     for header in sorted((root / MATH.parent).rglob("*.h")):
         if not header.name.endswith("_template.h"):
-            calls += [(name, split_args(args)) for name, args in HEADER_CALL.findall(read(header))]
+            calls += [(name, split_args(args), header.parent.relative_to(root))
+                      for name, args in HEADER_CALL.findall(read(header))]
     family_of = {}
-    for name, args in calls:
+    for name, args, directory in calls:
         family = name[len("MATH_DEFINE_") :].lower()
         if family in FAMILIES:
             family_of[args[0]] = family
@@ -161,12 +171,13 @@ def instantiations(root):
                 continue
             patterns[source_family].add("P_%s(" % "".join("<c%d>" % i for i in range(1, int(length) + 1)))
             names.update(prefix + "_" + "".join(t) for t in itertools.product(letters, repeat=int(length)))
-        for callee, arguments in MACRO_CALL.findall(body):
+        for callee, arguments in macro_calls(body):
             bound = [bind.get(arg, arg) for arg in split_args(arguments)]
             visit(callee, bound, family, active | {name})
 
-    for name, args in calls:
-        visit(name, args, family_of.get(args[0]), set())
+    for name, args, directory in calls:
+        family = family_of.get(args[0])
+        visit(name, args, family if FAMILY_DIRS.get(family) == directory else None, set())
     return family_of, functions, patterns, names, standalone, problems
 
 
