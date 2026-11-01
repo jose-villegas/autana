@@ -140,6 +140,51 @@ parse_patterns(const char* list) {
     return true;
 }
 
+/* The length of the segment starting at `at`, up to the next separator. */
+static size_t
+segment_length(const char* at) {
+    const char* separator = strchr(at, SUITE_TEST_SEPARATOR);
+    return separator != NULL ? (size_t)(separator - at) : strlen(at);
+}
+
+static bool
+span_contains(const char* span, size_t span_length, const char* part, size_t part_length) {
+    for (size_t at = 0; part_length > 0 && at + part_length <= span_length; at++) {
+        if (memcmp(span + at, part, part_length) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Matches the pattern's segments greedily, each at the earliest name segment
+ * it can take, which finds an in-order match whenever there is one. */
+bool
+suite_test_matches(const char* pattern, const char* name) {
+    const size_t function_length = segment_length(name);
+    size_t wanted = segment_length(pattern);
+    if (span_contains(name, function_length, pattern, wanted)) {
+        if (pattern[wanted] == '\0') {
+            return true;
+        }
+        pattern += wanted + 1;
+        wanted = segment_length(pattern);
+    }
+    for (const char* at = name + function_length; *at != '\0';) {
+        at++;
+        const size_t length = segment_length(at);
+        if (wanted > 0 && wanted == length && memcmp(at, pattern, length) == 0) {
+            if (pattern[wanted] == '\0') {
+                return true;
+            }
+            pattern += wanted + 1;
+            wanted = segment_length(pattern);
+        }
+        at += length;
+    }
+    return false;
+}
+
 bool
 suites_test_runs(const char* test_name) {
     if (!filtering) {
@@ -148,7 +193,7 @@ suites_test_runs(const char* test_name) {
     }
     bool matches = false;
     for (int i = 0; i < pattern_count; i++) {
-        if (strstr(test_name, patterns[i]) != NULL) {
+        if (suite_test_matches(patterns[i], test_name)) {
             pattern_hits[i]++;
             matches = true;
         }

@@ -85,7 +85,7 @@ PYTHON_TOKENS = re.compile(
 # A word or one punctuation character: what same_fragment and a short function count.
 CODE_TOKEN = re.compile(r"\w+|[^\w\s]")
 
-# A suite's list of RUN_TEST lines, or the rows of a data table, matches any
+# A suite's list of RUN_TEST or RUN_TEST_CASE lines, or the rows of a data table, matches any
 # other long list once identifiers are ignored, and has no shared owner to
 # extract; a pair counts only if what remains without them is still a
 # clone's length in itself. A table row is a braced initializer holding no
@@ -93,7 +93,8 @@ CODE_TOKEN = re.compile(r"\w+|[^\w\s]")
 # is the same: with literals ignored, its run of string lines matches any other
 # such run, its own shifted by a line included.
 STRING_RUN = r'(?:"(?:\\.|[^"\\])*"\s*(?:/\*.*?\*/\s*|//[^\n]*\s*)*){2,}'
-TEST_REGISTRATION = re.compile(r"\bRUN_TEST\s*\(\s*\w+\s*\)\s*;|\{[^{};]*\}\s*,|" + STRING_RUN, re.DOTALL)
+TEST_REGISTRATION = re.compile(r"\bRUN_TEST\s*\(\s*\w+\s*\)\s*;|\bRUN_TEST_CASE\s*\(\s*\w+\s*,[^;{}]*\)\s*;|"
+                               r"\{[^{};]*\}\s*,|" + STRING_RUN, re.DOTALL)
 INCLUDE_DIRECTIVE = re.compile(r"(?m)^[ \t]*#[ \t]*include\b(?:[^\n]*\\\n)*[^\n]*")
 OBJECT_DEFINE = re.compile(r"(?m)^[ \t]*#[ \t]*define[ \t]+[A-Za-z_]\w*[ \t]+((?:[^\n]*\\\n)*[^\n]*)")
 C_LITERAL = (r'''(?:[+-]?(?:0[xX][0-9a-fA-F]+|\d+(?:\.\d*)?(?:[eE][+-]?\d+)?|'''

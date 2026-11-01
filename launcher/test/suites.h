@@ -61,13 +61,12 @@ void suites_each(suite_each_fn each, void* context);
 void suites_run_all(void);
 
 /* One RUNSUITE request: "<suite>", or "<suite> <pattern>[,<pattern>...]" to
- * run only the tests whose name contains a pattern (case-sensitive substring).
- * A pattern holds at most SUITE_FILTER_LEN - 1 characters and a request at
- * most SUITE_FILTER_MAX of them; one past either is refused, nothing runs.
- * While filtering, suites_test_runs() prints "SUITE_TEST name=... selected=..."
- * for every test reached. The patterns live for the call only. */
+ * run only the tests a pattern picks. A pattern holds at most
+ * SUITE_FILTER_LEN - 1 characters and a request at most SUITE_FILTER_MAX;
+ * one past either is refused. While filtering, suites_test_runs() prints
+ * "SUITE_TEST name=... selected=..." for every test reached. */
 #define SUITE_FILTER_MAX 4
-#define SUITE_FILTER_LEN 24
+#define SUITE_FILTER_LEN 32
 
 typedef struct {
     char name[SUITE_NAME_MAX + 1];
@@ -85,6 +84,23 @@ void suites_print_run(const suite_run_t* run);
 
 /* Asked by suite_run_test_timed() (timing.c) for each test: true to run it. */
 bool suites_test_runs(const char* test_name);
+
+/* Whether `pattern` picks test `name`: each pattern segment equals one of the
+ * name's case segments, in order, but the first may instead be part of its
+ * function name. An empty segment picks nothing. The tools repeat the rule;
+ * both are held to suite_filter_cases.inc. */
+#define SUITE_TEST_SEPARATOR '/'
+bool suite_test_matches(const char* pattern, const char* name);
+
+/* RUN_TEST_CASE(func, "segment", ...) runs func as RUN_TEST does, named
+ * func/segment/..., so each pass of a table loop has a name a pattern can
+ * pick. A NULL or empty segment is left out. A name past SUITE_TEST_NAME_MAX
+ * is a SUITE OVERFLOW, not run. A case never runs another. */
+#define SUITE_TEST_NAME_MAX 95
+#define RUN_TEST_CASE(func, ...)                                                                                       \
+    suite_run_test_case(func, #func, (const char* const[]){__VA_ARGS__},                                               \
+                        sizeof((const char* const[]){__VA_ARGS__}) / sizeof(const char*), __LINE__)
+void suite_run_test_case(void (*func)(void), const char* name, const char* const* segments, size_t count, int line);
 
 /* Prints how many tests since the last call presented past the frame
  * watch's warm-up (profile/frame_watch.h), so a run shows how much of it was

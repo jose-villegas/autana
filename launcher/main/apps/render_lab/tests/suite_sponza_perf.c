@@ -480,9 +480,9 @@ run_sponza_perf_suite(void) {
     (void)render_lab_apply_camera_settings(sponza, camera_entity);
     for (size_t q = 0; q < R3D_PERF_QUARTER_COUNT; q++) {
         perf_quarter = &r3d_perf_quarters[q];
-        RUN_TEST(test_sponza_draw_stage_breakdown);
-        RUN_TEST(test_sponza_frame_cost_along_the_flythrough);
-        RUN_TEST(test_sponza_frame_cost_with_motion);
+        RUN_TEST_CASE(test_sponza_draw_stage_breakdown, perf_quarter->name);
+        RUN_TEST_CASE(test_sponza_frame_cost_along_the_flythrough, perf_quarter->name);
+        RUN_TEST_CASE(test_sponza_frame_cost_with_motion, perf_quarter->name);
     }
     loaded = (sponza_suite_t){sponza, loaded.load, flythrough, loaded.arena_mark};
     sponza_suite_release(&loaded);

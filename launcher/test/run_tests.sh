@@ -543,10 +543,15 @@ if [ "$SANITIZE" = 1 ] && [ "$(uname -s)" = Linux ]; then
     # Control ids are value addresses and must stay stable across frames, as on the device.
     ASAN_OPTIONS="${ASAN_OPTIONS:+$ASAN_OPTIONS:}detect_stack_use_after_return=0"
     export ASAN_OPTIONS
-    host_run "$OUT"
-else
-    host_run "$OUT"
 fi
+# The run's output is also kept, so it fails on the same signs a board capture
+# fails on, a test name reported twice among them (RUN_TEST_CASE in suites.h).
+HOST_LOG="$BUILD_DIR/host_run.log"
+{ if host_run "$OUT"; then echo 0 >"$HOST_LOG.status"; else echo $? >"$HOST_LOG.status"; fi; } 2>&1 | tee "$HOST_LOG"
+HOST_STATUS=$(cat "$HOST_LOG.status")
+rm -f "$HOST_LOG.status"
+"$PYTHON" "$TEST_DIR/../../scripts/lib/device_capture.py" "$HOST_LOG" || HOST_STATUS=1
+[ "$HOST_STATUS" -eq 0 ] || exit "$HOST_STATUS"
 
 "$PYTHON" "$TEST_DIR/../tools/tests/table_invalid_packs.py" -o "$BUILD_DIR"
 

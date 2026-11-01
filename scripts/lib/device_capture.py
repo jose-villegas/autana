@@ -4,7 +4,10 @@ import re
 # A line matching this is a Unity test result. Used both as proof that any
 # test ran at all and, around a panic, to name the last few that did.
 # Device results allow an empty file field and include ignored tests.
-RESULT_RE = re.compile(r"^(?P<file>\S*?):(?P<line>\d+):(?P<name>\w+):(?P<status>PASS|FAIL|IGNORE)(?::\s*(?P<message>.*))?$")
+RESULT_RE = re.compile(r"^(?P<file>\S*?):(?P<line>\d+):(?P<name>[^:\s]+):(?P<status>PASS|FAIL|IGNORE)"
+                       r"(?::\s*(?P<message>.*))?$")
+# What splits a test name into its function and case segments (RUN_TEST_CASE in launcher/test/suites.h).
+TEST_SEPARATOR = "/"
 # The console line that asks a running image for its BUILD_ID= line.
 BUILD_ID_REQUEST = "BUILDID"
 BUILD_ID_RE = re.compile(r"BUILD_ID=([^\s\r\n]+)")
@@ -78,9 +81,36 @@ def crash_signs(text, boots_allowed):
     return signs + [reboot] if reboot else signs
 
 
+def test_matches(pattern, name):
+    """Whether a --test `pattern` picks the test `name`: the rule of
+    suite_test_matches() in launcher/test/suites.c, held to the same cases
+    (launcher/test/suites/suite_filter_cases.inc)."""
+    function, *segments = name.split(TEST_SEPARATOR)
+    wanted = pattern.split(TEST_SEPARATOR)
+    if wanted[0] and wanted[0] in function:
+        wanted.pop(0)
+    for segment in segments:
+        if wanted and wanted[0] and wanted[0] == segment:
+            wanted.pop(0)
+    return not wanted
+
+
+def duplicate_test_names(text):
+    """The test names a capture reports more than once, in first-seen order:
+    one name must mean one test, or a --test pattern cannot pick it alone."""
+    seen, repeated = set(), []
+    for record in results(text, ignored=True):
+        if record["name"] in seen and record["name"] not in repeated:
+            repeated.append(record["name"])
+        seen.add(record["name"])
+    return repeated
+
+
 def suite_failure_signs(text, failed):
-    """Dropped suites and sentinel failures beyond the FAIL result count."""
+    """Dropped suites, repeated test names and sentinel failures beyond the
+    FAIL result count."""
     signs = [line.strip() for line in text.splitlines() if SUITE_OVERFLOW_RE.search(line)]
+    signs += [f"test name reported twice: {name}" for name in duplicate_test_names(text)]
     complete = SELFTEST_COMPLETE_RE.search(text)
     if complete and complete.group(1) is not None and int(complete.group(1)) > failed:
         signs.append(f"SELFTEST_COMPLETE failures={complete.group(1)}, but {failed} FAIL lines")
@@ -108,3 +138,14 @@ def parse_apps(lines):
     if len({row["name"] for row in rows}) != len(rows):
         raise ValueError("duplicate APPS name")
     return rows
+
+
+if __name__ == "__main__":
+    import sys
+
+    # A host test run's log: fail on the signs a board capture fails on.
+    with open(sys.argv[1], encoding="utf-8", errors="replace") as log:
+        signs = suite_failure_signs(log.read(), 0)
+    for sign in signs:
+        print("FAIL: " + sign)
+    sys.exit(1 if signs else 0)
