@@ -32,7 +32,8 @@ import autana_config  # noqa: E402
 import board_serial
 from console_protocol import FRAMED_ENDINGS, replies_to, require_development, reply_prefix
 from device_capture import (BOOTS_FROM_RESET, BOOTS_ON_RUNNING, BUILD_ID_BYTES_RE as BUILD_ID, BUILD_ID_REQUEST,
-                            CAPTURE_COMPLETE, ERROR_LINE_RE, capture_ended_line, crash_signs, suite_failure_signs)
+                            CAPTURE_COMPLETE, ERROR_LINE_RE, TEST_NAME, capture_ended_line, crash_signs,
+                            suite_failure_signs, test_matches)
 
 from process_tree import (stop_process_tree, launch_process_tree, close_process_tree,
                           install_console_interrupt_handler)
@@ -1473,17 +1474,17 @@ def write_image(built, store, board, held_lock):
 
 
 def test_patterns(values):
-    """The patterns of repeated `--test` values, each a comma list. A test's
-    name is a C identifier, so a pattern is one too; the device matches it as
-    a case-sensitive substring of the name, and refuses one past its limits
+    """The patterns of repeated `--test` values, each a comma list. A pattern
+    has a test name's shape (device_capture.TEST_NAME); the device matches it
+    per segment (test_matches) and refuses one past its limits
     (SUITE_FILTER_MAX and SUITE_FILTER_LEN in launcher/test/suites.h)."""
     patterns = []
     for value in values or []:
         for pattern in value.split(","):
             pattern = pattern.strip()
-            if not re.fullmatch(r"\w+", pattern):
-                raise TestFilterError(f"--test {pattern!r}: a pattern is part of a test name - "
-                                      "letters, digits and underscores")
+            if not re.fullmatch(TEST_NAME, pattern):
+                raise TestFilterError(f"--test {pattern!r}: a pattern is segments of letters, digits, "
+                                      "'_' and '-', split by '/'")
             if pattern not in patterns:
                 patterns.append(pattern)
     return patterns
@@ -1528,10 +1529,10 @@ def check_test_filter(data, suite, patterns):
     if complete.group("selected") is None:
         raise TestFilterError("this image predates --test - autana flash diag")
     if int(complete.group("unmatched")):
-        names = re.findall(r"SUITE_TEST name=(\S+)", text)
+        names = list(dict.fromkeys(re.findall(r"SUITE_TEST name=(\S+)", text)))
+        missed = [pattern for pattern in patterns if not any(test_matches(pattern, name) for name in names)]
         raise NoTestMatched(
-            f"a --test pattern matches no test of {suite}. Its tests:\n  "
-            + "\n  ".join(dict.fromkeys(names)))
+            f"--test {','.join(missed or patterns)} matches no test of {suite}. Its tests:\n  " + "\n  ".join(names))
 
 
 def report_recorded_capture(path):

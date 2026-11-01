@@ -96,6 +96,7 @@ links against nothing and tests at any resolution, even one no real panel has.
 | **Warnings are errors.** | A host compiler catches mistakes the target build misses, at no cost. |
 | **Name tests as sentences about behaviour:** `test_brief_dropout_is_not_a_release`, not `test_debounce_2`. | The name says what broke when it goes red. |
 | **One behaviour per test.** Several assertions are fine for one behaviour. | Unrelated behaviours in one test: the second never runs after the first fails. |
+| **Every test in a run has a unique name.** A loop over a table names each pass: `RUN_TEST_CASE(test_profile, scene->key, take, quarter->name)` runs it as `test_profile/<key>/<take>/<quarter>`, leaving out a NULL segment. | `--test` can then pick one case ([patterns](../cli/Tests.md)). The host run and every board capture fail on a name reported twice. |
 | **Python tool tests live in a `tests/` subfolder** beside the code, even for one file. | One convention to find them. |
 
 The device runner also resets the panel clock to the shell's state
@@ -129,7 +130,7 @@ fixture(void) {
 }
 
 static void
-test_a_held_press_is_reported_once(void) {
+test_a_held_button_press_is_reported_once(void) {
     fixture();
     button_fsm_update(&b, false, now);
     button_fsm_update(&b, true, ++now);
@@ -142,7 +143,7 @@ test_a_held_press_is_reported_once(void) {
 
 void
 run_minimal_example_suite(void) {
-    RUN_TEST(test_a_held_press_is_reported_once);
+    RUN_TEST(test_a_held_button_press_is_reported_once);
 }
 
 SUITE_REGISTER(run_minimal_example_suite);
@@ -170,7 +171,7 @@ Use `ESP_PLATFORM` for hardware guards inside packages.
 
    Suites are found by their `suite_` name, not by folder, so a misplaced one
    still runs.
-2. **Write the tests,** then `void run_<name>_suite(void)` calling `RUN_TEST(...)` for each.
+2. **Write the tests,** then `void run_<name>_suite(void)` calling `RUN_TEST(...)` for each, or `RUN_TEST_CASE(...)` for each row of a table.
 3. **Register it from inside itself:** `SUITE_REGISTER(run_<name>_suite);`.
    - Nothing else lists it: no `suites.h` entry, no call in `host_main.c` or `selftest.c`.
    - Both runners discover `suite_*.c`, so it joins the full scope and runs alone with `autana suite run_<name>_suite`.
