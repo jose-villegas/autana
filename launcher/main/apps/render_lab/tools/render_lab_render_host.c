@@ -259,7 +259,7 @@ setup(int quarter) {
 
 /* With --view overdraw, the last frame's totals on stderr, beside its image. */
 static void
-report_overdraw(const render_frame_t* frame) {
+report_overdraw(const provider_frame_t* frame) {
     const render_context_t* context = render_context_main();
     if (frame->index + 1 != frame->count || context->debug_view != render_context_debug_view_named("overdraw")
         || context->debug_view_state == NULL) {
@@ -288,7 +288,7 @@ dump_raster(int index) {
 }
 
 static void
-draw(const render_frame_t* frame) {
+draw(const provider_frame_t* frame) {
     ui_clear_band_overlay();
     input_t in = tap ? frame->input : (input_t){0};
     in.boot.pressed = menu && frame->index == 0;
@@ -307,7 +307,7 @@ draw(const render_frame_t* frame) {
     app_list()->update(frame->dt_ms, &in);
 }
 
-const render_scene_t render_scene = {
+const frame_provider_t render_lab_provider = {
     .name = "render_lab",
     .quarter = 1,
     .frames = 30,
