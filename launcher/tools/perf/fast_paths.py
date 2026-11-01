@@ -569,7 +569,7 @@ def update_links(root, items, check=False):
 
 
 def render_exact(root, items):
-    lines = []
+    lines = [""] if items else []
     for item in items:
         package = item.header.relative_to(HEADERS).parts[0]
         modules = ", ".join(f"`{module}`" for module in sorted(callers(root, item.key))) or "none"
