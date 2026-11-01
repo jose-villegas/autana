@@ -148,6 +148,11 @@ own_of(raster_rig_t* r) {
     return (motion_own_t*)r->own;
 }
 
+static void
+release_motion(void) {
+    raster_motion_release(&own_of(raster_rig_now)->motion);
+}
+
 /* Allocated per test: the wall and, when `with_box`, the box placed by
  * model[1], motion attached unless `detached`, pictures up to W x H. */
 static raster_rig_t*
@@ -156,6 +161,8 @@ rig_open(bool with_box, bool detached) {
     motion_own_t* own = own_of(r);
     own->attachment = raster_motion_view(&own->motion);
     own->attached[0] = &own->attachment;
+    suite_add_test_cleanup(release_motion); /* before the rig's own, which frees the room it is in */
+    TEST_ASSERT_TRUE(raster_motion_reserve(&own->motion, r->raster.instance_count));
     if (!detached) {
         raster_rig_attach(r, own->attached, 1);
     }
@@ -414,6 +421,7 @@ test_motion_leaves_colour_and_depth_as_they_are(void) {
     draw_change(r, &p, W, H);
     memcpy(plain, raster_color(&r->raster), sizeof(uint16_t) * W * H);
     memcpy(plain + (W * H), raster_depth(&r->raster), sizeof(uint16_t) * W * H);
+    release_motion();
     raster_rig_release();
     r = rig_open(true, false);
     draw_change(r, &p, W, H);
@@ -432,51 +440,62 @@ test_forgetting_makes_the_next_picture_first(void) {
     TEST_ASSERT_EQUAL_INT8(RASTER_MOTION_UNKNOWN, motion_of(r)[(H / 2 * W) + (W / 2)].dx);
 }
 
+/* More instances than motion once kept history for, the box among them:
+ * every still and moving pixel still holds its true motion. */
+#define MANY_INSTANCES  40
+#define MOVING_INSTANCE 30
+
 static void
-test_excess_instances_forget_motion_and_preserve_the_picture(void) {
-    raster_rig_t* r = rig_open(false, true);
-    const pose_t pose = {camera_at((vec3f_t){0.0F, 0.0F, -300.0F}, 0.0F), NULL};
-    const int count = RASTER_MOTION_INSTANCES_MAX + 1;
-    r3d_instance_t* instances = calloc((size_t)count, sizeof(*instances));
-    uint16_t* plain = malloc(sizeof(*plain) * 2 * W * H);
+test_many_instances_keep_their_motion(void) {
+    static const change_t c = {-30.0F, {10.0F, 0.0F, -20.0F}, {4.0F, 2.0F, 10.0F}, 1.0F};
+    raster_rig_t* r = rig_open(true, false);
+    r3d_instance_t* instances = calloc(MANY_INSTANCES, sizeof(*instances));
     TEST_ASSERT_NOT_NULL(instances);
-    TEST_ASSERT_NOT_NULL(plain);
-    for (int i = 0; i < count; i++) {
-        instances[i] = r->instance[0];
+    for (int i = 0; i < MANY_INSTANCES; i++) {
+        instances[i] = r->instance[i == MOVING_INSTANCE ? 1 : 0];
     }
     r->raster.instances = instances;
-    r->raster.instance_count = count;
-    draw(r, &pose, W, H);
-    memcpy(plain, raster_color(&r->raster), sizeof(*plain) * W * H);
-    memcpy(plain + (W * H), raster_depth(&r->raster), sizeof(*plain) * W * H);
-    raster_rig_attach(r, own_of(r)->attached, 1);
-    r->raster.instance_count = 1;
-    draw(r, &pose, W, H);
-    TEST_ASSERT_TRUE(own_of(r)->motion.has_previous);
-    r->raster.instance_count = count;
-    for (int frame = 0; frame < 2; frame++) {
-        draw(r, &pose, W, H);
-        TEST_ASSERT_FALSE(own_of(r)->motion.has_previous);
-        TEST_ASSERT_EQUAL_INT(0, own_of(r)->motion.seen_count);
-        for (int i = 0; i < W * H; i++) {
-            TEST_ASSERT_EQUAL_INT8(RASTER_MOTION_UNKNOWN, motion_of(r)[i].dx);
-            TEST_ASSERT_EQUAL_INT8(RASTER_MOTION_UNKNOWN, motion_of(r)[i].dy);
-        }
-        TEST_ASSERT_EQUAL_HEX16_ARRAY(plain, raster_color(&r->raster), W * H);
-        TEST_ASSERT_EQUAL_HEX16_ARRAY(plain + (W * H), raster_depth(&r->raster), W * H);
-    }
-    r->raster.instance_count = 1;
-    draw(r, &pose, W, H);
-    TEST_ASSERT_EQUAL_INT8(RASTER_MOTION_UNKNOWN, motion_of(r)[(H / 2 * W) + (W / 2)].dx);
-    draw(r, &pose, W, H);
-    TEST_ASSERT_EQUAL_INT8(0, motion_of(r)[(H / 2 * W) + (W / 2)].dx);
-    free(plain);
+    r->raster.instance_count = MANY_INSTANCES;
+    TEST_ASSERT_TRUE(raster_motion_reserve(&own_of(r)->motion, MANY_INSTANCES));
+    posed_t p;
+    pose_change(&c, true, &p);
+    draw_change(r, &p, W, H);
+    TEST_ASSERT_TRUE(own_of(r)->motion.moved[MOVING_INSTANCE]);
+    TEST_ASSERT_GREATER_THAN_INT(0, assert_motion_is_true(r, &p.now, &p.before, W, H));
     free(instances);
+}
+
+/* Growing the room between pictures keeps the previous one: the camera's
+ * and each placed instance's, so the box still moves by its own model. */
+static void
+test_growing_keeps_the_previous_picture(void) {
+    static const change_t c = {-30.0F, {10.0F, 0.0F, -20.0F}, {4.0F, 2.0F, 10.0F}, 1.0F};
+    raster_rig_t* r = rig_open(true, false);
+    posed_t p;
+    pose_change(&c, true, &p);
+    draw(r, &p.before, W, H);
+    TEST_ASSERT_TRUE(raster_motion_reserve(&own_of(r)->motion, MANY_INSTANCES));
+    TEST_ASSERT_EQUAL_INT(MANY_INSTANCES, own_of(r)->motion.capacity);
+    draw(r, &p.now, W, H);
+    TEST_ASSERT_TRUE(own_of(r)->motion.moved[1]);
+    TEST_ASSERT_GREATER_THAN_INT(0, assert_motion_is_true(r, &p.now, &p.before, W, H));
+}
+
+/* Past what a tag can name, reserving fails and keeps the room it had. */
+static void
+test_reserving_past_the_tag_fails(void) {
+    raster_rig_t* r = rig_open(false, false);
+    raster_motion_t* m = &own_of(r)->motion;
+    const int capacity = m->capacity;
+    TEST_ASSERT_FALSE(raster_motion_reserve(m, RASTER_MOTION_INSTANCES_MAX + 1));
+    TEST_ASSERT_EQUAL_INT(capacity, m->capacity);
 }
 
 void
 run_raster_motion_suite(void) {
-    RUN_TEST(test_excess_instances_forget_motion_and_preserve_the_picture);
+    RUN_TEST(test_many_instances_keep_their_motion);
+    RUN_TEST(test_growing_keeps_the_previous_picture);
+    RUN_TEST(test_reserving_past_the_tag_fails);
     RUN_TEST(test_the_first_picture_knows_no_motion);
     RUN_TEST(test_a_still_camera_and_scene_have_no_motion);
     RUN_TEST(test_camera_motion_is_the_reprojection_through_the_previous_pose);

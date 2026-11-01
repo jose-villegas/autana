@@ -20,7 +20,7 @@ Image render commands are in each app's tools README ([sand](launcher/main/apps/
 
 ## Try it without a board
 
-Use [Git Bash](https://git-scm.com/download/win) on Windows, or a terminal on Linux. You need a C compiler for your computer, plus a POSIX shell; **ESP-IDF and a board are not needed**. The renderer writes BMP files and also PNGs when Python has Pillow installed.
+Use [Git Bash](https://git-scm.com/download/win) on Windows, or a terminal on Linux. You need a C compiler and CMake for your computer, plus a POSIX shell; **ESP-IDF and a board are not needed**. The renderer writes BMP files and also PNGs when Python has Pillow installed.
 
 ```sh
 ./launcher/tools/render/scenes/scene_viewer_render_host.sh
@@ -32,12 +32,12 @@ Open `launcher/tools/results/render/scene_viewer/landscape.bmp` to see the atriu
 ./launcher/test/run_tests.sh
 ```
 
-The test runner prints a verdict and saves its full log. It compiles and runs the parts of the firmware that do not need ESP32 peripherals. The [Testing Guide](docs/testing/README.md) explains what it covers; the [render harness](docs/tools/Render-Harness.md) lists other screens you can render. If the shell cannot find a C compiler, install one for your computer:
+The test runner prints a verdict and saves its full log. It compiles and runs the parts of the firmware that do not need ESP32 peripherals. The [Testing Guide](docs/testing/README.md) explains what it covers; the [render harness](docs/tools/Render-Harness.md) lists other screens you can render. If the shell cannot find a C compiler or CMake, install them for your computer:
 
-| System | Compiler setup |
+| System | Compiler and CMake setup |
 |---|---|
-| Windows | `winget install BrechtSanders.WinLibs.POSIX.UCRT` |
-| Debian/Ubuntu | `sudo apt install build-essential` |
+| Windows | `winget install BrechtSanders.WinLibs.POSIX.UCRT Kitware.CMake` |
+| Debian/Ubuntu | `sudo apt install build-essential cmake` |
 
 ## What is here
 
@@ -68,10 +68,12 @@ The firmware targets the Waveshare ESP32-S3-Touch-AMOLED-1.8 specifically. For a
 | Understand gravity estimation and input features | [Input docs](docs/input/README.md) |
 | Understand the frame loop and drawing path | [Firmware](docs/firmware/README.md), [Graphics](docs/gfx/README.md) |
 | Follow the sand simulation | [Sand docs](docs/sand/README.md), [Simulation](docs/sand/Sand-Simulation.md) |
+| Use portable packages and check their fast-path contracts | [Packages](docs/packages/README.md) |
 | Run or add tests | [Testing Guide](docs/testing/README.md) |
 | Work with fonts and controls | [Text and Fonts](docs/gfx/Text-and-Fonts.md), [UI Toolkit](docs/ui/README.md) |
 | Build, flash, test or drive the board with `autana` | [CLI guide](docs/cli/README.md), [board notes](docs/notes/README.md) |
 | Render, check or generate with the repository's tools | [Tools index](docs/tools/README.md) |
+| Estimate the board's current draw | [Power docs](docs/power/README.md), [Power budget](docs/power/Power-Budget.md) |
 | Play sounds or add one | [Audio docs](docs/audio/README.md), [Sound assets](docs/audio/Sound-Assets.md) |
 | Check build flags and C style | [Build Variants](docs/tools/Build-Variants.md), [C Style Guide](docs/c-style/README.md) |
 | Explore proposed work | [Rendering Roadmap](docs/plans/Autana-Rendering-Roadmap.md), [plans](docs/plans/README.md) |

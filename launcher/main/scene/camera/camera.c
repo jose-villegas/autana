@@ -7,6 +7,7 @@ camera_view(const camera_t* camera, const transformf_t* pose, viewport_t viewpor
     render_view_t view = render_view_make(pose, camera->half_fov_short_tan, camera->near_z, viewport);
     view.present = camera->present;
     view.small_fill = camera->small_fill;
+    view.skip_hidden = camera->skip_hidden;
     if (camera->shift.x != 0.0F || camera->shift.y != 0.0F) {
         render_view_set_shift(&view, camera->shift);
     }

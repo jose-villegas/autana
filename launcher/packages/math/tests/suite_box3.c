@@ -1,6 +1,6 @@
 #include "math/geometry/box3f.h"
-#include "math/geometry/box3f_plane.h"
 #include "math/geometry/planex.h"
+#include "math/scalar/rng.h"
 #include "testkit/suite.h"
 #include "unity.h"
 
@@ -321,6 +321,89 @@ test_box3_empty_operands_never_overlap(void) {
     }
 }
 
+static float
+inline_radius(vec3f_t e, planef_t plane) {
+    return mathf_add(mathf_add(mathf_mul(mathf_abs(plane.normal.x), e.x), mathf_mul(mathf_abs(plane.normal.y), e.y)),
+                     mathf_mul(mathf_abs(plane.normal.z), e.z));
+}
+
+static bool
+inline_outside(box3f_t b, const planef_t* planes, int count, unsigned* mask) {
+    const vec3f_t c = box3f_centre(b), e = box3f_half_extent(b);
+    for (int p = 0; p < count; p++) {
+        if (!(*mask & (1U << p))) {
+            continue;
+        }
+        const float d = planef_distance(planes[p], c);
+        const float r = inline_radius(e, planes[p]);
+        if (mathf_add(d, r) < mathf_zero()) {
+            return true;
+        }
+        if (mathf_sub(d, r) >= mathf_zero()) {
+            *mask &= ~(1U << p);
+        }
+    }
+    return false;
+}
+
+static float
+random_value(rng_t* rng) {
+    enum { VALUE_BUCKETS = 8193 };
+
+    const float value_offset = 4096.0F, value_divisor = 37.0F;
+    return ((float)rng_below(rng, VALUE_BUCKETS) - value_offset) / value_divisor;
+}
+
+static box3f_t
+random_box(rng_t* rng) {
+    const vec3f_t a = {random_value(rng), random_value(rng), random_value(rng)};
+    const vec3f_t z = {random_value(rng), random_value(rng), random_value(rng)};
+    return (box3f_t){vec3f_min(a, z), vec3f_max(a, z)};
+}
+
+static planef_t
+random_plane(rng_t* rng) {
+    enum { ZERO_NORMAL_PERIOD = 5 };
+
+    planef_t plane = {{random_value(rng), random_value(rng), random_value(rng)}, random_value(rng)};
+    if (rng_below(rng, ZERO_NORMAL_PERIOD) == 0) {
+        plane.normal.x = mathf_zero();
+    }
+    if (rng_below(rng, ZERO_NORMAL_PERIOD) == 0) {
+        plane.normal.y = mathf_zero();
+    }
+    if (rng_below(rng, ZERO_NORMAL_PERIOD) == 0) {
+        plane.normal.z = mathf_zero();
+    }
+    return plane;
+}
+
+static void
+test_box3_planes_match_inline_formula_bitwise(void) {
+    enum { SAMPLE_COUNT = 4096, MAX_PLANES = 6 };
+
+    const uint32_t seed = 0x93A4B17Du;
+    rng_t rng;
+    rng_seed(&rng, seed);
+    for (unsigned sample = 0; sample < SAMPLE_COUNT; sample++) {
+        const box3f_t b = random_box(&rng);
+        const vec3f_t c = box3f_centre(b), e = box3f_half_extent(b);
+        planef_t planes[MAX_PLANES];
+        const int count = rng_below(&rng, MAX_PLANES + 1);
+        for (int p = 0; p < count; p++) {
+            planes[p] = random_plane(&rng);
+            const float d = planef_distance(planes[p], c);
+            const float expected = mathf_sub(d, inline_radius(e, planes[p]));
+            const float actual = box3f_plane_distance_min(b, planes[p]);
+            TEST_ASSERT_EQUAL_MEMORY(&expected, &actual, sizeof expected);
+        }
+        unsigned expected_mask = rng_next(&rng), actual_mask = expected_mask;
+        const bool expected_reject = inline_outside(b, planes, count, &expected_mask);
+        TEST_ASSERT_EQUAL(expected_reject, box3f_outside_planes(b, planes, count, &actual_mask));
+        TEST_ASSERT_EQUAL_UINT(expected_mask, actual_mask);
+    }
+}
+
 void
 suite_box3(void) {
     RUN_TEST(test_box3_empty_operands_never_overlap);
@@ -335,6 +418,7 @@ suite_box3(void) {
     RUN_TEST(test_box3_plane_distance_axis_aligned_is_exact);
     RUN_TEST(test_box3_plane_distance_oblique_matches_the_corners);
     RUN_TEST(test_box3_plane_distance_min_inside_one_half_space);
+    RUN_TEST(test_box3_planes_match_inline_formula_bitwise);
 }
 
 SUITE_REGISTER(suite_box3);

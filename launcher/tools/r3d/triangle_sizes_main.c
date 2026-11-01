@@ -157,7 +157,7 @@ static void
 render_pose(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int count, const buffers_t* b, frame_size_t size) {
     memset(b->color, 0, size.pixels * sizeof(*b->color));
     memset(b->depth, 0, size.pixels * sizeof(*b->depth));
-    r3d_pipeline_transform(mesh, lens, b->visible, count, b->cs, b->rows);
+    r3d_pipeline_transform(mesh, lens, b->visible, count, b->cs, b->rows, false);
     const r3d_span_target_t target = r3d_span_target(b->color, b->depth, size.width, 0, size.height);
     r3d_pipeline_draw(mesh, lens, b->visible, count, b->cs, b->rows, &target, b->work);
 }
