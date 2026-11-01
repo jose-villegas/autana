@@ -114,8 +114,11 @@ class LocalHookTests(ShellGateTestCase):
         (consumer / 'scripts/gates/notes.txt').write_text('the consumer\'s own\n')
         git('add', '.github', 'src', 'scripts')
         hook = consumer / 'third_party/engine/scripts/git-hooks/pre-commit'
+        # As git runs the hook in a worktree: with GIT_DIR exported.
+        git_dir = git('rev-parse', '--absolute-git-dir').strip()
         def commit_hook():
             result = subprocess.run([self.shell, hook.as_posix()], cwd=consumer,
+                                    env={**os.environ, 'GIT_DIR': git_dir},
                                     capture_output=True, text=True, timeout=120)
             return result.stdout + result.stderr
         self.assertIn('src/frames.hpp: no purpose', commit_hook())
