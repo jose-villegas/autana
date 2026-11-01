@@ -11,7 +11,7 @@ import argparse
 import pathlib
 import re
 
-from c_comments import balanced_end, blank_comments
+from c_comments import C_EXTENSIONS, balanced_end, blank_comments
 
 ROOT = pathlib.Path(__file__).resolve().parents[2] / "launcher/main/apps/sand"
 IDENTIFIER = re.compile(r"\b[A-Za-z_]\w*\b")
@@ -52,7 +52,7 @@ def skip_sites(root=ROOT):
 
 def sources(root):
     for path in sorted(pathlib.Path(root).rglob("*")):
-        if path.suffix not in {".c", ".h"} or {"tests", "tools"} & set(path.relative_to(root).parts):
+        if path.suffix not in C_EXTENSIONS or {"tests", "tools"} & set(path.relative_to(root).parts):
             continue
         raw = path.read_text(encoding="utf-8")
         code = blank_comments(raw, mode="code")

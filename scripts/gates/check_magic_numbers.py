@@ -50,7 +50,6 @@ DATA_ROW_MINIMUM = 6
 TOKEN_MINIMUM = 5
 RESTATE = "RESTATE"
 PROTOCOL = "PROTOCOL"
-C_SUFFIXES = set(SOURCE_EXTENSIONS)
 
 # launcher/main/CMakeLists.txt exposes main/ and test/, each launcher/packages/<name>/ its include/
 # (package_roots); --include-root names another repository's.
@@ -81,7 +80,7 @@ class Hit:
 
 
 def eligible_c(path, text):
-    return (Path(path).suffix in C_SUFFIXES
+    return (Path(path).suffix in SOURCE_EXTENSIONS
             and not path.startswith(excluded()) and not is_generated(text)
             and not {"fixture", "fixtures"}.intersection(PurePosixPath(path).parts))
 
@@ -97,7 +96,7 @@ def revision_tree(root, revision):
     names = git(root, "ls-tree", "-r", "--name-only", revision).decode().splitlines()
     return {name: content.decode("utf-8", errors="replace")
             for name, content in revision_contents(root, revision,
-                [name for name in names if Path(name).suffix in C_SUFFIXES | {".py"}])}
+                [name for name in names if Path(name).suffix in {*SOURCE_EXTENSIONS, ".py"}])}
 
 
 def include_closure(path, direct):
@@ -202,7 +201,7 @@ def include_graph(texts, include_roots=INCLUDE_ROOTS):
     roots = tuple(include_roots) + package_roots(texts)
     return {name: tuple(target for include in INCLUDE.findall(blank_comments(text))
                         if (target := resolve_include(name, include, roots, texts.__contains__)))
-            for name, text in texts.items() if Path(name).suffix in C_SUFFIXES}
+            for name, text in texts.items() if Path(name).suffix in SOURCE_EXTENSIONS}
 
 
 def affected_files(texts, changed, direct):

@@ -7,7 +7,7 @@ leaves the remote's default branch (origin/HEAD); one sharing no history with
 it counts every file it holds. A moved submodule counts as changed source:
 its pin is code the tests build. The tests are the workflow steps marked
 PUSH_TEST_GATE: "true" in the repository this runs in, run from its top in
-the order the workflows list them.
+the order the workflows list them; none marked runs nothing.
 """
 import pathlib
 import subprocess
@@ -56,7 +56,7 @@ def test_commands(root):
 
     paths = git(root, "ls-files", "--", ".github/workflows").stdout.splitlines()
     workflows = [yaml.safe_load((root / path).read_text(encoding="utf-8")) for path in paths if is_workflow(path)]
-    return [command for command, _ in marked_commands(workflows, "PUSH_TEST_GATE", ("true",))]
+    return [command for command, _ in marked_commands(workflows, "PUSH_TEST_GATE", ("true",), required=False)]
 
 
 def main():
