@@ -281,7 +281,8 @@ local_from_row(const scene_asset_transform_t* row, transformf_t* out) {
 static scene_failure_t
 open_transforms(scene_t* scene) {
     for (int e = 0; e < scene->asset.entity_count; e++) {
-        /* A parent's even scale keeps every world below it exact. */
+        /* A parent's even scale keeps every world below it exact; a mirror's
+         * negative scale.x is not even, so a mirrored parent is refused too. */
         if (!local_from_row(&scene->asset.transforms[e], &scene->locals[e])
             || (scene->world_slots[e] != SCENE_WORLD_SLOT_NONE && !transformf_scale_is_even(&scene->locals[e]))) {
             return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, scene->asset.names[e].name);

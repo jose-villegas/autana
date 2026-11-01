@@ -33,6 +33,7 @@ typedef struct r3d_lens {
     int width, height;
     float snap_cx, snap_cy; /* the centre in subpixels, plus R3D_SNAP_BIAS */
     float depth_near;       /* inverse-depth encoding scale */
+    int32_t flip;           /* -1 when the placed model mirrors, so front faces wind the other way; else 0 */
 } r3d_lens_t;
 
 /* 8 bytes: the screen position is snapped to r3d_span's subpixels once, so
@@ -62,7 +63,8 @@ r3d_lens_set_depth_near(r3d_lens_t* lens, float depth_near) {
 void r3d_lens_fit(r3d_lens_t* lens, int width, int height);
 
 /* Carries the mesh into the world first: the lens matrix is composed with the
- * model, so culling, transform and clipping see the mesh where it sits.
+ * model, so culling, transform and clipping see the mesh where it sits, and a
+ * model that mirrors (negative determinant) turns the lens's flip.
  * Call it after r3d_lens_init(), with the position scale of the mesh drawn. */
 void r3d_lens_place(r3d_lens_t* lens, const mat4f_t* model, int position_scale);
 

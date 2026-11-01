@@ -81,9 +81,11 @@ parents_pad_zero(asset_view_t entry, const scene_asset_t* scene) {
     return asset_entry_zero(entry, end, padded < entry.size ? padded : entry.size);
 }
 
+/* A root whose transform does not mirror (scene_entity_is_plain_root). */
 static bool
-roots(const scene_asset_t* scene, uint16_t entity) {
-    return scene->parents[entity] == SCENE_ASSET_PARENT_ROOT;
+plain_root(const scene_asset_t* scene, uint16_t entity) {
+    return scene->parents[entity] == SCENE_ASSET_PARENT_ROOT
+           && mat3f_determinant(scene->transforms[entity].linear) > 0.0F;
 }
 
 /* A parent comes before its child, so one forward pass sees every parent first. */
@@ -102,14 +104,15 @@ renderer_fits(const scene_asset_t* scene, const void* row) {
 static bool
 camera_fits(const scene_asset_t* scene, const void* row) {
     const scene_asset_camera_t* c = row;
-    return c->entity < scene->entity_count && roots(scene, c->entity) && c->pad == 0 && isfinite(c->half_fov_short_tan)
-           && c->half_fov_short_tan > 0.0F && isfinite(c->near_z) && c->near_z > 0.0F && c->clear_rgb <= 0xFFFFFFU;
+    return c->entity < scene->entity_count && plain_root(scene, c->entity) && c->pad == 0
+           && isfinite(c->half_fov_short_tan) && c->half_fov_short_tan > 0.0F && isfinite(c->near_z) && c->near_z > 0.0F
+           && c->clear_rgb <= 0xFFFFFFU;
 }
 
 static bool
 light_fits(const scene_asset_t* scene, const void* row) {
     const scene_asset_light_t* light = row;
-    return light->entity < scene->entity_count && roots(scene, light->entity) && light->pad == 0
+    return light->entity < scene->entity_count && plain_root(scene, light->entity) && light->pad == 0
            && light->kind == SCENE_LIGHT_KIND_DIRECTIONAL && scene_light_color_fits(light->color)
            && nonnegative(light->intensity);
 }
@@ -117,8 +120,8 @@ light_fits(const scene_asset_t* scene, const void* row) {
 static bool
 skin_fits(const scene_asset_t* scene, const void* row) {
     const scene_asset_skinned_renderer_t* skin = row;
-    return skin->entity < scene->entity_count && roots(scene, skin->entity) && skin->pad == 0 && text_fits(skin->mesh)
-           && text_fits(skin->skin) && text_fits(skin->skeleton);
+    return skin->entity < scene->entity_count && plain_root(scene, skin->entity) && skin->pad == 0
+           && text_fits(skin->mesh) && text_fits(skin->skin) && text_fits(skin->skeleton);
 }
 
 static bool

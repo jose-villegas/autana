@@ -1,7 +1,8 @@
 /*
  * r3d_instance: one mesh drawn through its affine model matrix, the
- * position in column 3. Its 3x3 part has a positive determinant, so no
- * triangle turns inside out. No model draws the mesh as it is.
+ * position in column 3. A 3x3 part with a negative determinant mirrors the
+ * mesh, and the draw culls by its mirrored front faces (r3d_lens_place). No
+ * model draws the mesh as it is.
  */
 #pragma once
 

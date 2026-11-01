@@ -18,6 +18,7 @@
 #include "unity.h"
 
 #include "anim/anim_tracks.h"
+#include "asset/asset_bytes.h"
 #include "asset/asset_pack.h"
 #include "gfx/target/gfx_color.h"
 #ifndef DEVICE_BUILD
@@ -351,12 +352,18 @@ static const scene_spec_t SCENES[] = {
      .renderer_count = 1,
      .entities = {{"stretched", {{{{2, 0, 0}, {0, 1, 0}, {0, 0, 1}}}, {0, 0, 0}}}, {"quad", AT(1, 0, 0)}},
      .renderers = {{1, "red"}}},
-    /* a red quad turned inside out */
+    /* a red quad mirrored in x */
     {.id = "test_mirror",
      .entity_count = 1,
      .renderer_count = 1,
      .entities = {{"mirror", MIRRORED}},
      .renderers = {{0, "red"}}},
+    /* a mirrored root carrying a quad */
+    {.id = "test_mirror_parent",
+     .entity_count = 2,
+     .renderer_count = 1,
+     .entities = {{"glass", MIRRORED}, {"quad", AT(1, 0, 0)}},
+     .renderers = {{1, "red"}}},
     {"hall",
      2,
      1,
@@ -390,7 +397,8 @@ static const struct {
                {"test_tree", 1, 0},
                {"test_tree", 2, 1},
                {"test_tree", 4, 3},
-               {"test_uneven", 1, 0}};
+               {"test_uneven", 1, 0},
+               {"test_mirror_parent", 1, 0}};
 
 static uint16_t
 parent_index(const scene_spec_t* s, int entity) {
@@ -1381,16 +1389,61 @@ test_a_camera_with_a_parent_is_refused(void) {
     test_free_aligned(raw);
 }
 
-/* Until the raster can draw a reflection the right way out, a mirrored
- * transform is refused and named. */
+/* A mirrored leaf loads as a negative scale.x and draws through its own
+ * matrix; a light or skin does not attach to it. */
 static void
-test_a_mirrored_transform_is_refused_by_name(void) {
+test_a_mirrored_leaf_loads_and_draws_mirrored(void) {
+    fixture();
+    scene_t* scene = load("test_mirror");
+    scene_resolve(scene);
+    const scene_entity_t mirror = scene_find(scene, name_hash("mirror"));
+    TEST_ASSERT_LESS_THAN_FLOAT(0.0F, scene_entity_local(scene, mirror).scale.x);
+    TEST_ASSERT_LESS_THAN_FLOAT(0.0F, mat3f_determinant(mat3f_from_mat4(model_of(scene, "mirror"))));
+    TEST_ASSERT_FALSE(scene_light_set_intensity(scene, mirror, 1.0F));
+    scene_failure_t why;
+    TEST_ASSERT_FALSE(scene_renderer_set_skin(scene, mirror, "rig.quad", &why));
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, why.asset);
+}
+
+/* A mirrored parent would compose inexactly into a turned child, so it is
+ * refused and named. */
+static void
+test_a_mirrored_parent_is_refused_by_name(void) {
     fixture();
     scene_failure_t why;
-    TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_mirror", &why));
+    TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_mirror_parent", &why));
     TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, why.asset);
-    TEST_ASSERT_EQUAL_STRING("mirror", why.what);
+    TEST_ASSERT_EQUAL_STRING("glass", why.what);
+}
+
+/* A camera's view, a light's direction and a skin's normals read the
+ * entity's own rotation, so the reader refuses each on a mirrored entity. */
+static void
+test_a_mirrored_camera_light_or_skin_is_refused(void) {
+    static const struct {
+        const char* scene;
+        int entity;
+    } cases[] = {{"test_pair", 0}, {"test_lit", 2}, {"test_skin", 0}};
+
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        const scene_spec_t* spec = spec_named(cases[i].scene);
+        const uint32_t size = scene_entry_size(spec);
+        void* raw = NULL;
+        uint8_t* entry = test_alloc_aligned(size, 4, &raw);
+        TEST_ASSERT_NOT_NULL(entry);
+        memset(entry, 0, size);
+        make_scene_entry(entry, spec);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, open_entry(entry, size), cases[i].scene);
+        const uint32_t transforms =
+            asset_read_u32(entry + SCENE_ASSET_AT_OFFSETS + SCENE_ASSET_TRANSFORMS * sizeof(uint32_t));
+        const float mirrored = -1.0F;
+        memcpy(entry + transforms + sizeof(scene_asset_transform_t) * (size_t)cases[i].entity
+                   + offsetof(scene_asset_transform_t, linear),
+               &mirrored, sizeof mirrored);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_ERR_FORMAT, open_entry(entry, size), cases[i].scene);
+        test_free_aligned(raw);
+    }
 }
 
 static void
@@ -3185,7 +3238,7 @@ test_attachment_count_mismatches_preserve_previous_components(void) {
 }
 
 static void
-test_scene_open_refuses_shear_and_reflection_naming_the_entity(void) {
+test_scene_open_refuses_shear_naming_the_entity_and_takes_a_reflection(void) {
     fixture();
     asset_view_t entry;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(&fx.pack, "test_pair", SCENE_ASSET, &entry));
@@ -3193,21 +3246,18 @@ test_scene_open_refuses_shear_and_reflection_naming_the_entity(void) {
     TEST_ASSERT_EQUAL_INT(ASSET_OK, scene_asset_open(entry, &asset));
     scene_asset_transform_t* placement = (scene_asset_transform_t*)(uintptr_t)&asset.transforms[1];
     const scene_asset_transform_t saved = *placement;
-    for (int reflected = 0; reflected <= 1; reflected++) {
-        *placement = saved;
-        if (reflected) {
-            placement->linear.m[0][0] = -1;
-        } else {
-            placement->linear.m[0][1] = 0.5F;
-        }
-        scene_failure_t why;
-        TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_pair", &why));
-        TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
-        TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, why.asset);
-        TEST_ASSERT_EQUAL_STRING("red", why.what);
-    }
+    placement->linear.m[0][1] = 0.5F;
+    scene_failure_t why;
+    TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_pair", &why));
+    TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, why.asset);
+    TEST_ASSERT_EQUAL_STRING("red", why.what);
     *placement = saved;
-    TEST_ASSERT_NOT_NULL(scene_load_from(&fx.pack, "test_pair", NULL));
+    placement->linear.m[0][0] = -1;
+    const scene_t* scene = scene_load_from(&fx.pack, "test_pair", NULL);
+    TEST_ASSERT_NOT_NULL(scene);
+    TEST_ASSERT_EQUAL_FLOAT(-1.0F, scene_entity_local(scene, scene_find(scene, name_hash("red"))).scale.x);
+    *placement = saved;
 }
 
 static void
@@ -3987,7 +4037,13 @@ test_light_attachment_defaults_refusals_and_capacity(void) {
     uint8_t flags[ENTITIES] = {0};
     uint16_t roots[ENTITIES];
     memset(roots, 0xFF, sizeof roots);
-    scene_t scene = {.asset = {.entity_count = ENTITIES, .parents = roots}, .lights = lights, .flags = flags};
+    transformf_t* locals = malloc(sizeof(transformf_t) * ENTITIES);
+    TEST_ASSERT_NOT_NULL(locals);
+    for (int e = 0; e < ENTITIES; e++) {
+        locals[e] = (transformf_t)TRANSFORMF_IDENTITY;
+    }
+    scene_t scene = {
+        .asset = {.entity_count = ENTITIES, .parents = roots}, .lights = lights, .flags = flags, .locals = locals};
     TEST_ASSERT_TRUE(scene_light_set_color(&scene, 0, (vec3f_t){0.5F, 0.25F, 0.125F}));
     TEST_ASSERT_EQUAL_FLOAT(SCENE_LIGHT_INTENSITY_DEFAULT, scene_light_intensity(&scene, 0));
     TEST_ASSERT_TRUE(scene_light_set_intensity(&scene, 1, 2.0F));
@@ -4017,6 +4073,7 @@ test_light_attachment_defaults_refusals_and_capacity(void) {
     TEST_ASSERT_TRUE(scene_light_set_intensity(&scene, 0, 1e-38F));
     TEST_ASSERT_TRUE(scene_light_set_intensity(&scene, 0, 3e38F));
     memory_free(scene.light_transfer);
+    free(locals);
 }
 
 static void
@@ -4250,7 +4307,7 @@ run_scene_suite(void) {
     RUN_TEST(test_skinned_scene_draws_clip_output_and_reskins_from_bind);
     RUN_TEST(test_skin_split_inside_an_entity_matches_full_range);
     RUN_TEST(test_attachment_count_mismatches_preserve_previous_components);
-    RUN_TEST(test_scene_open_refuses_shear_and_reflection_naming_the_entity);
+    RUN_TEST(test_scene_open_refuses_shear_naming_the_entity_and_takes_a_reflection);
     RUN_TEST(test_property_animation_moves_a_drawn_entity);
     RUN_TEST(test_paused_camera_seek_wraps_or_clamps_and_invalidates_the_entity_matrix);
     RUN_TEST(test_inactive_property_target_invalidates_its_entity_matrix);
@@ -4347,7 +4404,9 @@ run_scene_suite(void) {
     RUN_TEST(test_a_disabled_parent_hides_its_children_and_keeps_their_own_flags);
     RUN_TEST(test_an_entity_knows_its_parent_its_ancestors_and_its_world);
     RUN_TEST(test_a_camera_with_a_parent_is_refused);
-    RUN_TEST(test_a_mirrored_transform_is_refused_by_name);
+    RUN_TEST(test_a_mirrored_leaf_loads_and_draws_mirrored);
+    RUN_TEST(test_a_mirrored_parent_is_refused_by_name);
+    RUN_TEST(test_a_mirrored_camera_light_or_skin_is_refused);
     RUN_TEST(test_a_world_is_the_parents_world_times_the_entitys_own);
     RUN_TEST(test_a_moved_grandparent_carries_its_grandchild);
     RUN_TEST(test_a_world_set_under_turned_parents_reads_back_exactly);

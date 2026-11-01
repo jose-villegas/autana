@@ -234,6 +234,10 @@ void scene_hierarchy_release(scene_t* scene);
  * since it cannot be a descendant. */
 void scene_hierarchy_update_active(scene_t* scene, scene_entity_t entity);
 
+/* A root whose transform does not mirror: a light's direction, a camera's
+ * view and a skin's normals read the entity's own rotation and assume it. */
+bool scene_entity_is_plain_root(const scene_t* scene, scene_entity_t entity);
+
 /* True when drawing the mesh as it is gives the same picture. */
 bool scene_transform_is_identity(const mat4f_t* transform);
 

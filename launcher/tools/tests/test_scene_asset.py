@@ -429,13 +429,29 @@ class SceneParentTests(unittest.TestCase):
             with self.subTest(message=message), self.assertRaisesRegex(SceneError, message):
                 scene_asset.encode(SimpleNamespace(objects=objects, renderers=renderers))
 
-    def test_the_reader_refuses_an_uneven_parent(self):
+    def test_the_reader_refuses_an_uneven_or_mirrored_parent(self):
         objects = self.objects(("variant", "empty", None), ("copy", "empty", "variant"))
-        entry = bytearray(scene_asset.encode(SimpleNamespace(objects=objects, renderers=[])))
-        transforms = HEADER.unpack_from(entry)[1 + len(scene_asset.PARTS) + scene_asset.PARTS.index("transforms")]
-        struct.pack_into("<f", entry, transforms, 2.0)
-        with self.assertRaisesRegex(SceneError, "scale is not even"):
-            scene_asset.decode(entry)
+        original = scene_asset.encode(SimpleNamespace(objects=objects, renderers=[]))
+        transforms = HEADER.unpack_from(original)[1 + len(scene_asset.PARTS) + scene_asset.PARTS.index("transforms")]
+        for x_scale in (2.0, -1.0):
+            entry = bytearray(original)
+            struct.pack_into("<f", entry, transforms, x_scale)
+            with self.subTest(x_scale=x_scale), self.assertRaisesRegex(SceneError, "scale is not even or mirrors"):
+                scene_asset.decode(entry)
+
+    def test_a_mirrored_child_round_trips_and_a_mirrored_parent_camera_or_light_is_refused(self):
+        mirror = ((-1, 0, 0), (0, 1, 0), (0, 0, 1))
+        objects = [self.placed("variant", "empty", None, ((1, 0, 0), (0, 1, 0), (0, 0, 1))),
+                   self.placed("copy", "mesh_renderer", "variant", mirror)]
+        entities = scene_asset.decode(scene_asset.encode(SimpleNamespace(objects=objects, renderers=[])))["entities"]
+        self.assertEqual(entities[1]["matrix"], [list(row) for row in mirror])
+        for objects, message in (
+                ([self.placed("variant", "empty", None, mirror), self.placed("copy", "empty", "variant", mirror)],
+                 "a parent cannot mirror"),
+                ([self.placed("eye", "camera", None, mirror)], "a camera cannot mirror"),
+                ([self.placed("sun", "light", None, mirror)], "a light cannot mirror")):
+            with self.subTest(message=message), self.assertRaisesRegex(SceneError, message):
+                scene_asset.encode(SimpleNamespace(objects=objects, renderers=[]))
 
     def test_the_padding_after_an_odd_count_of_parents_is_zero(self):
         entry = bytearray(scene_asset.encode(SimpleNamespace(objects=self.objects(("one", "empty", None)), renderers=[])))

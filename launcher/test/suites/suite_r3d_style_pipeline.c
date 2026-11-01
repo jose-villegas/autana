@@ -90,7 +90,7 @@ test_styles_match_pipeline_colours(void) {
         expected.small_fill = actual.small_fill = &resolved;
         memset(pixels, 0, TEST_PIXELS * 4 * sizeof(*pixels));
         r3d_span_triangle(&expected, reference, reference + 1, reference + 2);
-        draw_in_front(&mesh, vertices, triangle, NULL, true, &actual, false, work);
+        draw_in_front(&mesh, vertices, triangle, NULL, 0, true, &actual, false, work);
         TEST_ASSERT_EQUAL_MEMORY(pixels, pixels + TEST_PIXELS * 2, TEST_PIXELS * 2 * sizeof(*pixels));
         int coloured = 0;
         for (int i = 0; i < TEST_PIXELS; i++) {

@@ -2,31 +2,53 @@
 #include "testkit/suite.h"
 #include "unity.h"
 
-static void
-test_trs_matrix_decomposition_and_refusals(void) {
-    const vec3f_t position = {3, 4, 5}, scale = {2, 3, 4};
-    const quatf_t rotation = quatf_from_axis_angle((vec3f_t){0, 1, 0}, 0.7F);
-    const mat4f_t matrix = mat4f_from_trs(position, rotation, scale);
+/* The decomposition of `matrix`, which rebuilds it. */
+static transformf_t
+assert_round_trip(mat4f_t matrix) {
     transformf_t out;
     TEST_ASSERT_TRUE(transformf_from_mat(matrix, &out));
-    TEST_ASSERT_EQUAL_FLOAT(3, out.position.x);
-    TEST_ASSERT_FLOAT_WITHIN(TRANSFORMF_MATRIX_TOLERANCE, 4, out.scale.z);
     const mat4f_t reconstructed = transformf_compute_matrix(&out);
     for (int r = 0; r < 4; r++) {
         for (int c = 0; c < 4; c++) {
             TEST_ASSERT_FLOAT_WITHIN(TRANSFORMF_MATRIX_TOLERANCE, matrix.m[r][c], reconstructed.m[r][c]);
         }
     }
+    return out;
+}
+
+static void
+test_trs_matrix_decomposition_and_refusals(void) {
+    const vec3f_t position = {3, 4, 5}, scale = {2, 3, 4};
+    const quatf_t rotation = quatf_from_axis_angle((vec3f_t){0, 1, 0}, 0.7F);
+    const mat4f_t matrix = mat4f_from_trs(position, rotation, scale);
+    transformf_t out = assert_round_trip(matrix);
+    TEST_ASSERT_EQUAL_FLOAT(3, out.position.x);
+    TEST_ASSERT_FLOAT_WITHIN(TRANSFORMF_MATRIX_TOLERANCE, 4, out.scale.z);
     mat4f_t invalid = matrix;
     invalid.m[0][1] += 0.5F;
-    TEST_ASSERT_FALSE(transformf_from_mat(invalid, &out));
-    invalid = mat4f_from_trs(position, rotation, (vec3f_t){-2, 3, 4});
     TEST_ASSERT_FALSE(transformf_from_mat(invalid, &out));
     invalid = mat4f_from_trs(position, rotation, (vec3f_t){0, 3, 4});
     TEST_ASSERT_FALSE(transformf_from_mat(invalid, &out));
     invalid = matrix;
     invalid.m[3][0] = 1;
     TEST_ASSERT_FALSE(transformf_from_mat(invalid, &out));
+}
+
+/* A mirror on any axis comes back as a negative scale.x that rebuilds the
+ * same matrix; mirroring twice is a turn, with every scale positive. */
+static void
+test_reflection_folds_into_a_negative_x_scale(void) {
+    const vec3f_t position = {3, 4, 5};
+    const quatf_t rotation = quatf_from_axis_angle((vec3f_t){0, 1, 0}, 0.7F);
+    const vec3f_t mirrors[] = {{-2, 3, 4}, {2, -3, 4}, {2, 3, -4}};
+    for (size_t i = 0; i < sizeof mirrors / sizeof mirrors[0]; i++) {
+        const transformf_t out = assert_round_trip(mat4f_from_trs(position, rotation, mirrors[i]));
+        TEST_ASSERT_LESS_THAN_FLOAT(0.0F, out.scale.x);
+        TEST_ASSERT_GREATER_THAN_FLOAT(0.0F, out.scale.y);
+        TEST_ASSERT_GREATER_THAN_FLOAT(0.0F, out.scale.z);
+    }
+    const transformf_t twice = assert_round_trip(mat4f_from_trs(position, rotation, (vec3f_t){-2, -3, 4}));
+    TEST_ASSERT_GREATER_THAN_FLOAT(0.0F, twice.scale.x);
 }
 
 /* A parent turned a quarter about z and 1, 2, 3 out, scaled by `scale`;
@@ -100,6 +122,7 @@ void
 suite_transform_decompose(void) {
     RUN_TEST(test_relative_undoes_compose_under_an_even_parent);
     RUN_TEST(test_trs_matrix_decomposition_and_refusals);
+    RUN_TEST(test_reflection_folds_into_a_negative_x_scale);
     RUN_TEST(test_compose_under_an_evenly_scaled_parent_is_the_matrix_product);
     RUN_TEST(test_compose_under_an_unevenly_scaled_parent_keeps_the_position);
 }

@@ -32,6 +32,7 @@ r3d_lens_init(r3d_lens_t* lens, const render_view_t* view, int position_scale) {
     r3d_lens_set_depth_near(lens, view->lens.near_z);
     lens->snap_cx = (lens->project.cx * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
     lens->snap_cy = (lens->project.cy * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
+    lens->flip = 0;
     lens->width = view->viewport.width;
     lens->height = view->viewport.height;
 }
@@ -51,8 +52,18 @@ r3d_lens_fit(r3d_lens_t* lens, int width, int height) {
     lens->height = height;
 }
 
+/* Out of line, so its matrices take no room in the placing frame, which sits
+ * under every draw's stack chain. */
+static __attribute__((noinline)) bool
+mirrors(const mat4f_t* model) {
+    return mat3f_determinant(mat3f_from_mat4(*model)) < 0.0F;
+}
+
 void
 r3d_lens_place(r3d_lens_t* lens, const mat4f_t* model, int position_scale) {
+    if (mirrors(model)) {
+        lens->flip = ~lens->flip;
+    }
     mat4f_t placed = *model;
     for (int row = 0; row < MAT3F_AXES; row++) {
         placed.m[row][MAT3F_AXES] *= (float)position_scale;
@@ -440,7 +451,7 @@ draw_clipped(const r3d_lens_t* lens, bool double_sided, const uint16_t* face_col
     for (int i = 1; i + 1 < n; i++) {
         area2 += signed_area2(s[0].x, s[0].y, s[i].x, s[i].y, s[i + 1].x, s[i + 1].y);
     }
-    if (!double_sided && area2 >= 0) {
+    if (facing_away((int32_t)((area2 > 0) - (area2 < 0)), lens->flip, double_sided)) {
         return;
     }
     for (int i = 1; i + 1 < n; i++) {
@@ -472,14 +483,14 @@ draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
 
 static inline __attribute__((always_inline)) void
 draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3], const uint16_t* tri,
-              const uint16_t* face_color, bool double_sided, const r3d_span_target_t* target, bool writes,
+              const uint16_t* face_color, int32_t flip, bool double_sided, const r3d_span_target_t* target, bool writes,
               r3d_pipeline_work_t* work) {
     FRAME_LAP("r3d.draw.tests");
     if (misses_every_centre(v[0], v[1], v[2], target)) {
         FRAME_LAP("r3d.draw.cluster");
         return;
     }
-    if (facing_away(signed_area2(v[0]->sx, v[0]->sy, v[1]->sx, v[1]->sy, v[2]->sx, v[2]->sy), double_sided)) {
+    if (facing_away(signed_area2(v[0]->sx, v[0]->sy, v[1]->sx, v[1]->sy, v[2]->sx, v[2]->sy), flip, double_sided)) {
         FRAME_LAP("r3d.draw.cluster");
         return;
     }
@@ -502,7 +513,7 @@ draw_triangles(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit
         const uint16_t* face_color = mesh->face_colors == NULL ? NULL : &mesh->face_colors[t];
         const r3d_pipeline_vertex_t* const v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
         if (v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F) {
-            draw_in_front(mesh, v, tri, face_color, c->double_sided, target, writes, work);
+            draw_in_front(mesh, v, tri, face_color, lens->flip, c->double_sided, target, writes, work);
         } else if (v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F) {
             draw_rebuilt(mesh, lens, tri, face_color, c->double_sided, target, work);
         }

@@ -58,8 +58,8 @@ r3d_pipeline_cull_counted(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, ui
  * when it reaches r3d_span. The cull-view suite holds the set-up count to
  * the triangles the draw fills. */
 static bool
-count_triangle(const r3d_pipeline_vertex_t* const v[3], bool double_sided, const r3d_span_target_t* screen,
-               r3d_pipeline_counts_t* counts) {
+count_triangle(const r3d_pipeline_vertex_t* const v[3], int32_t flip, bool double_sided,
+               const r3d_span_target_t* screen, r3d_pipeline_counts_t* counts) {
     if (!(v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F)) {
         const bool clipped = v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F;
         *(clipped ? &counts->triangles_clipped : &counts->triangles_behind) += 1;
@@ -69,7 +69,7 @@ count_triangle(const r3d_pipeline_vertex_t* const v[3], bool double_sided, const
         counts->triangles_missed++;
         return false;
     }
-    if (facing_away(signed_area2(v[0]->sx, v[0]->sy, v[1]->sx, v[1]->sy, v[2]->sx, v[2]->sy), double_sided)) {
+    if (facing_away(signed_area2(v[0]->sx, v[0]->sy, v[1]->sx, v[1]->sy, v[2]->sx, v[2]->sy), flip, double_sided)) {
         counts->triangles_facing_away++;
         return false;
     }
@@ -87,7 +87,7 @@ r3d_pipeline_count_triangles(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
         for (int t = c->triangle_first; t < c->triangle_first + c->triangle_count; t++) {
             const uint16_t* tri = mesh->triangles[t];
             const r3d_pipeline_vertex_t* const v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
-            reached += count_triangle(v, c->double_sided, &screen, counts) ? 1 : 0;
+            reached += count_triangle(v, lens->flip, c->double_sided, &screen, counts) ? 1 : 0;
         }
         if (set_up != NULL) {
             set_up[clusters[i]] = (uint16_t)reached;

@@ -627,7 +627,7 @@ test_quatf_slerp_matches_double_reference_over_the_whole_arc(void) {
 static void
 assert_cofactor_identity(mat3f_t matrix) {
     const mat3f_t cof = mat3f_cofactor(matrix);
-    const float det = matrix.m[0][0] * cof.m[0][0] + matrix.m[0][1] * cof.m[0][1] + matrix.m[0][2] * cof.m[0][2];
+    const float det = mat3f_determinant(matrix);
     TEST_ASSERT_TRUE(fabsf(det) > 0.01F);
     for (int row = 0; row < MAT3F_AXES; row++) {
         for (int col = 0; col < MAT3F_AXES; col++) {
@@ -700,8 +700,7 @@ test_cofactor_random_matrices_and_reflection(void) {
     }
     mat3f_t reflection = mat3f_from_mat4(mat4f_identity());
     reflection.m[0][0] = -2;
-    const mat3f_t cof = mat3f_cofactor(reflection);
-    TEST_ASSERT_EQUAL_FLOAT(-2, reflection.m[0][0] * cof.m[0][0]);
+    TEST_ASSERT_EQUAL_FLOAT(-2, mat3f_determinant(reflection));
     assert_cofactor_identity(reflection);
 }
 

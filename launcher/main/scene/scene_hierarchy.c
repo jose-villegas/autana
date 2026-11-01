@@ -162,3 +162,8 @@ scene_entity_world_matrix(const scene_t* scene, scene_entity_t entity) {
     }
     return world;
 }
+
+bool
+scene_entity_is_plain_root(const scene_t* scene, scene_entity_t entity) {
+    return parent_of(scene, entity) == SCENE_ENTITY_NONE && !transformf_mirrors(&scene->locals[entity]);
+}

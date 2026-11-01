@@ -15,6 +15,7 @@
 #include "unity.h"
 
 #include "math/linear/transformf.h"
+#include "math/scalar/math_const.h"
 #include "r3d_quad_mesh.h"
 #include "render/r3d_pipeline.h"
 #include "render/raster.h"
@@ -211,6 +212,107 @@ test_a_rotation_turns_an_instance_about_its_position(void) {
     free(scratch);
 }
 
+static int
+covered(const uint16_t* color) {
+    int count = 0;
+    for (int i = 0; i < SIZE * SIZE; i++) {
+        count += color[i] != CLEAR ? 1 : 0;
+    }
+    return count;
+}
+
+/* One-sided, the quad shows its front as built. A mirror in x puts it at
+ * -3, still facing the camera but wound the other way on screen: it draws,
+ * as large as before. A half turn about y shows its back, mirrored or not:
+ * culled. */
+static void
+test_a_mirrored_instance_culls_by_its_own_front(void) {
+    quad_t offset;
+    make_quad(&offset, 0, 0, 255, 3);
+    offset.cluster.double_sided = false;
+    transformf_t pose = TRANSFORMF_IDENTITY;
+    transformf_set_scale(&pose, (vec3f_t){-1, 1, 1});
+    const mat4f_t mirrored_at = transformf_compute_matrix(&pose);
+    transformf_set_rotation(&pose, (quatf_t){0, 1, 0, 0});
+    const mat4f_t turned_mirrored_at = transformf_compute_matrix(&pose);
+    pose = (transformf_t)TRANSFORMF_IDENTITY;
+    transformf_set_rotation(&pose, (quatf_t){0, 1, 0, 0});
+    const mat4f_t turned_at = transformf_compute_matrix(&pose);
+    const r3d_instance_t as_built = {&offset.mesh, NULL}, mirrored = {&offset.mesh, &mirrored_at},
+                         turned = {&offset.mesh, &turned_at}, turned_mirrored = {&offset.mesh, &turned_mirrored_at};
+    void* scratch;
+    const uint16_t* color = draw(&as_built, 1, &scratch);
+    const int front = covered(color);
+    TEST_ASSERT_NOT_EQUAL_HEX16(CLEAR, pixel(color, 3.0F));
+    free(scratch);
+    color = draw(&mirrored, 1, &scratch);
+    TEST_ASSERT_NOT_EQUAL_HEX16(CLEAR, pixel(color, -3.0F));
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(color, 3.0F));
+    TEST_ASSERT_EQUAL_INT(front, covered(color));
+    free(scratch);
+    TEST_ASSERT_EQUAL_INT(0, covered(draw(&turned, 1, &scratch)));
+    free(scratch);
+    TEST_ASSERT_EQUAL_INT(0, covered(draw(&turned_mirrored, 1, &scratch)));
+    free(scratch);
+}
+
+/* `model` mirrored in x about the camera's axis, in the world. */
+static mat4f_t
+mirrored_in_x(mat4f_t model) {
+    mat4f_t mirror = mat4f_identity();
+    mirror.m[0][0] = -1.0F;
+    return mat4f_mul_affine(mirror, model);
+}
+
+/* A one-sided quad stretched and turned until it reaches behind the eye, so
+ * every triangle is clipped at the near plane: one of its two sides draws,
+ * and mirrored, the same side draws and the other culls. */
+static void
+test_a_mirrored_instance_through_the_near_plane_culls_by_its_own_front(void) {
+    quad_t quad;
+    make_quad(&quad, 0, 0, 255, 0);
+    quad.cluster.double_sided = false;
+    const float depth = -7.0F, reach = 4.0F, turn = 1.2F; /* the quad's half-width is 1, so it reaches `reach` */
+    transformf_t pose = TRANSFORMF_IDENTITY;
+    transformf_set_position(&pose, (vec3f_t){0, 0, depth});
+    transformf_set_scale(&pose, (vec3f_t){reach, reach, reach});
+    transformf_set_rotation(&pose, quatf_from_axis_angle((vec3f_t){0, 1, 0}, turn));
+    const mat4f_t one_side = transformf_compute_matrix(&pose);
+    transformf_set_rotation(&pose, quatf_from_axis_angle((vec3f_t){0, 1, 0}, turn + MATH_PI));
+    const mat4f_t other_side = transformf_compute_matrix(&pose);
+    const mat4f_t models[] = {one_side, other_side, mirrored_in_x(one_side), mirrored_in_x(other_side)};
+    TEST_ASSERT_LESS_THAN_FLOAT(CAMERA.eye.z + CAMERA.near_z, depth - (reach * sinf(turn)));
+    int drawn[4];
+    for (int i = 0; i < 4; i++) {
+        const r3d_instance_t instance = {&quad.mesh, &models[i]};
+        void* scratch;
+        drawn[i] = covered(draw(&instance, 1, &scratch));
+        free(scratch);
+    }
+    TEST_ASSERT_TRUE((drawn[0] > 0) != (drawn[1] > 0));
+    TEST_ASSERT_EQUAL(drawn[0] > 0, drawn[2] > 0);
+    TEST_ASSERT_EQUAL(drawn[1] > 0, drawn[3] > 0);
+}
+
+/* Each mirror turns the lens's flip; two cancel. */
+static void
+test_each_mirror_placed_turns_the_lens_flip(void) {
+    transformf_t pose = TRANSFORMF_IDENTITY;
+    const mat4f_t plain = transformf_compute_matrix(&pose);
+    transformf_set_scale(&pose, (vec3f_t){-2, 2, 2});
+    const mat4f_t mirror = transformf_compute_matrix(&pose);
+    const render_view_t frame_view = render_view_fixture_at(&CAMERA, (viewport_t){SIZE, SIZE, 0});
+    r3d_lens_t lens;
+    r3d_lens_init(&lens, &frame_view, 1);
+    TEST_ASSERT_EQUAL_INT32(0, lens.flip);
+    r3d_lens_place(&lens, &plain, 1);
+    TEST_ASSERT_EQUAL_INT32(0, lens.flip);
+    r3d_lens_place(&lens, &mirror, 1);
+    TEST_ASSERT_EQUAL_INT32(-1, lens.flip);
+    r3d_lens_place(&lens, &mirror, 1);
+    TEST_ASSERT_EQUAL_INT32(0, lens.flip);
+}
+
 static void
 test_a_nearer_instance_covers_a_farther_one_whichever_is_drawn_first(void) {
     quad_t red;
@@ -249,6 +351,9 @@ suite_r3d_instance(void) {
     RUN_TEST(test_every_lens_operation_keeps_the_affine_bottom_row);
     RUN_TEST(test_a_scale_widens_an_instance_about_its_position);
     RUN_TEST(test_a_rotation_turns_an_instance_about_its_position);
+    RUN_TEST(test_a_mirrored_instance_culls_by_its_own_front);
+    RUN_TEST(test_a_mirrored_instance_through_the_near_plane_culls_by_its_own_front);
+    RUN_TEST(test_each_mirror_placed_turns_the_lens_flip);
     RUN_TEST(test_a_nearer_instance_covers_a_farther_one_whichever_is_drawn_first);
     RUN_TEST(test_a_mesh_s_bounding_sphere_is_centred_on_its_box_and_reaches_its_furthest_vertex);
 }

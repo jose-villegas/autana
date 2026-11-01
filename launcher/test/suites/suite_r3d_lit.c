@@ -1039,7 +1039,8 @@ subpixel_view(void) {
                         H,
                         R3D_SNAP_BIAS,
                         R3D_SNAP_BIAS,
-                        0.5f / (float)R3D_SUBPIXEL};
+                        0.5f / (float)R3D_SUBPIXEL,
+                        0};
 }
 
 static r3d_lit_mesh_t
