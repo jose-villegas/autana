@@ -1,9 +1,10 @@
-/* capybara_content: scene identity, the gallop playback command and the named views. */
+/* capybara_content: scene identity, the gallop clip, its playback command and the named views. */
 #pragma once
 
 #define CAPYBARA_SCENE         "capybara"
 #define CAPYBARA_SUBJECT       "capybara"
-#define CAPYBARA_CLIP_COMMAND  "clip gallop %d"
+#define CAPYBARA_GALLOP        "gallop"
+#define CAPYBARA_CLIP_COMMAND  "clip " CAPYBARA_GALLOP " %d"
 #define CAPYBARA_CLIP_CUT_MS   0
 #define CAPYBARA_CLIP_BLEND_MS 300
 

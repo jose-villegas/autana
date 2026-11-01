@@ -112,6 +112,12 @@ Nonpositive input gives `INT32_MAX`; positive input uses `mathx_rsqrt_q30`.
 exact integer steps of `mathx_rsqrt_q30`: the product's upper 64 bits, and the
 test $`m(y+\tfrac12)^2 \le 2^{92}`$ for rounding to nearest.
 
+## float_bits.h
+
+| Function | Purpose |
+|---|---|
+| `mathf_bits(value)`, `mathf_from_bits(bits)` | bit-preserving float / uint32 transfers, including NaN payloads |
+
 ## mathf_round.h
 
 | Function | Purpose | Formula |
