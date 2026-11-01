@@ -5,6 +5,7 @@
  */
 
 #include "render_host.h"
+#include "core/checkpoint.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,6 +16,7 @@
 #include "draw/draw.h"
 #include "gfx/capture/screenshot.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_internal.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "gfx/target/gfx_color.h"
@@ -22,6 +24,7 @@
 #include "render_watch.h"
 #include "ui/layout/ui_transform.h"
 
+#include "render/context/render_context.h"
 #include "scene/scene_shell.h"
 
 #if defined(_WIN32)
@@ -254,6 +257,64 @@ static struct {
     recti_t drawn;
     affine2x_t canvas_from_panel;
 } host;
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+/* Replaced by scene/scene_shell.c when linked. */
+__attribute__((weak)) void
+scene_shell_checkpoint_capture(checkpoint_t* saved) {
+    (void)saved;
+}
+
+__attribute__((weak)) bool
+scene_shell_checkpoint_prepare(checkpoint_t* saved) {
+    (void)saved;
+    return true;
+}
+
+struct render_host_checkpoint {
+    checkpoint_t state;
+};
+
+const uint8_t*
+render_host_pixels(size_t* bytes) {
+    *bytes = (size_t)host.stride * host.out_h;
+    return host.frame_buf;
+}
+
+render_host_checkpoint_t*
+render_host_save(void) {
+    render_host_checkpoint_t* saved = calloc(1, sizeof(*saved));
+    if (saved == NULL) {
+        return NULL;
+    }
+    checkpoint_capture(&saved->state, &host.frame, sizeof host.frame);
+    checkpoint_capture(&saved->state, &host.drawn, sizeof host.drawn);
+    checkpoint_capture_at(&saved->state, &host.frame_buf, (size_t)host.stride * host.out_h);
+    scene_shell_checkpoint_capture(&saved->state);
+    gfx_checkpoint_capture(&saved->state);
+    tune_checkpoint_capture(&saved->state, tune_shared());
+    if (saved->state.failed) {
+        render_host_checkpoint_free(saved);
+        return NULL;
+    }
+    return saved;
+}
+
+bool
+render_host_restore(render_host_checkpoint_t* saved) {
+    gfx_present_drain();
+    return checkpoint_validate(&saved->state) && scene_shell_checkpoint_prepare(&saved->state)
+           && checkpoint_restore(&saved->state);
+}
+
+void
+render_host_checkpoint_free(render_host_checkpoint_t* saved) {
+    if (saved != NULL) {
+        checkpoint_clear(&saved->state);
+        free(saved);
+    }
+}
+#endif
 
 bool
 render_host_open(const frame_provider_t* provider, int argc, char** argv, int* exit_code) {
