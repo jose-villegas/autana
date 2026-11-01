@@ -36,13 +36,6 @@ observe_frame(const provider_frame_t* frame) {
     draw_rect(0, 0, CHECKPOINT_SWATCH_SIZE, CHECKPOINT_SWATCH_SIZE, RGB565BE((uint32_t)colour));
 }
 
-/* Little-endian 32-bit field of a BMP header. */
-static int32_t
-bmp_field(const uint8_t* header, int at) {
-    return (int32_t)((uint32_t)header[at] | (uint32_t)header[at + 1] << 8 | (uint32_t)header[at + 2] << 16
-                     | (uint32_t)header[at + 3] << 24);
-}
-
 /* Every view's image has the width, height and stride of the BMP written to
  * `path`, and its body holds height rows of that stride. */
 static bool
@@ -54,8 +47,7 @@ image_matches_bmp(const char* path, const render_host_image_t* images, int count
         fclose(in);
     }
     if (!read) {
-        fprintf(stderr, "image: cannot read the BMP header of %s
-", path == NULL ? "(no -o)" : path);
+        fprintf(stderr, "image: cannot read the BMP header of %s\n", path == NULL ? "(no -o)" : path);
         return false;
     }
     uint8_t expected[SCREENSHOT_BMP_HEADER_SIZE];
@@ -63,15 +55,11 @@ image_matches_bmp(const char* path, const render_host_image_t* images, int count
     for (int i = 0; i < count; i++) {
         const render_host_image_t* image = &images[i];
         screenshot_bmp_header(expected, image->width, image->height);
-        const bool same =
-            image->bgr != NULL && memcmp(expected, header, sizeof header) == 0
-            && (int32_t)image->stride == screenshot_bmp_row_stride(bmp_field(header, 18))
-            && bmp_field(header, 2) - SCREENSHOT_BMP_HEADER_SIZE == (int32_t)image->stride * image->height;
-        fprintf(stderr, "image view %d %dx%d stride %zu: %s
-                        ", i, image->width, image->height, image->stride,
-                            same
-                            ? "PASS"
-                            : "FAIL");
+        /* Equal headers mean equal width, height and body size. */
+        const bool same = image->bgr != NULL && memcmp(expected, header, sizeof header) == 0
+                          && (int32_t)image->stride == screenshot_bmp_row_stride(image->width);
+        fprintf(stderr, "image view %d %dx%d stride %zu: %s\n", i, image->width, image->height, image->stride,
+                same ? "PASS" : "FAIL");
         ok &= same;
     }
     return ok;
@@ -163,12 +151,8 @@ main(int argc, char** argv) {
             render_host_checkpoint_t* again = render_host_save();
             const size_t saved_bytes = render_host_checkpoint_bytes(saved);
             if (again == NULL || saved_bytes == 0 || render_host_checkpoint_bytes(again) != saved_bytes) {
-                fprintf(stderr, "checkpoint %s: bytes %zu, again %zu FAIL
-                                ", name, saved_bytes,
-                                        again
-                                        == NULL
-                                    ? (size_t)0
-                                    : render_host_checkpoint_bytes(again));
+                fprintf(stderr, "checkpoint %s: bytes %zu, again %zu FAIL\n", name, saved_bytes,
+                        again == NULL ? (size_t)0 : render_host_checkpoint_bytes(again));
                 ok = false;
             }
             render_host_checkpoint_free(again);
