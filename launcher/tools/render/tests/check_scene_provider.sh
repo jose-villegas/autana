@@ -4,7 +4,7 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 scene_name=scene_provider_fixture
 scene_provider=
-scene_sources="main/core/job.c tools/render/tests/scene_provider_fixture.c"
+scene_sources="tools/render/tests/scene_provider_fixture.c"
 scene_renderer=1
 scene_renders=""
 . "$SCRIPT_DIR/../render_scene.sh"
