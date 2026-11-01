@@ -73,6 +73,21 @@ that span. `imu_gaps` counts queue gap reports across both capture windows.
 Unavailable shake carries `shake_reason`, the warning text, in the reply and JSON.
 Old replies without these fields parse with null values.
 
+Pulse replies add `silence_pulse` and `tone_pulse` results. JSON groups each
+window's status, take flags and lost samples under those keys.
+
+`take_gaps` counts all take flags; `take_ms` places the first at the batch's
+first retained sample, or the take clock for an empty batch. This is an
+observation boundary, not the producer's gap timestamp.
+
+`pulse_gaps` counts take flags that invalidate the pulse; `pulse_gap_ms`
+places the first at the same boundary. `lost_samples` counts losses whose
+interval overlaps the pulse; `lost_ms` places the first missing sample.
+
+Times are milliseconds from that window's start. JSON times are null when
+their count is zero. Status is `clean`, `gap`, `short`, `read_failed` or
+`unavailable`; clean means the pulse supplied a valid shake reading.
+
 `--internal` routes DAC data to both ADCDAT slots inside the ES8311. It holds
 the speaker amplifier off for the whole check. The verb restores the exact register
 read-back and releases the hold on every exit, before closing capture.

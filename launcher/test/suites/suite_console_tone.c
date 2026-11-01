@@ -34,9 +34,10 @@ test_tone_reply_capacity(void) {
     args.pulse_ms = CONSOLE_TONE_PULSE_WINDOW_MAX_MS;
     const audio_loopback_result_t result = {
         .measured_hz = AUDIO_OUT_NYQUIST_HZ, .thd_db = MATH_DB_FLOOR, .peak_dbfs = MATH_DB_FLOOR};
-    char line[CONSOLE_TONE_REPLY_BYTES];
-    TEST_ASSERT_TRUE(
-        console_tone_reply(line, sizeof line, &args, false, MATH_DB_FLOOR, MATH_DB_FLOOR, &result, SIZE_MAX));
+    char* line = malloc(CONSOLE_TONE_REPLY_BYTES);
+    TEST_ASSERT_NOT_NULL(line);
+    TEST_ASSERT_TRUE(console_tone_reply(line, CONSOLE_TONE_REPLY_BYTES, &args, false, MATH_DB_FLOOR, MATH_DB_FLOOR,
+                                        &result, SIZE_MAX));
     /* The farthest a sample can sit from its burst mean: full scale on all three axes. */
     const float widest_mg = sqrtf(3.0F) * (float)(INT16_MAX - INT16_MIN) * IMU_VIBRATION_MG_PER_G / IMU_COUNTS_PER_G;
     const imu_vibration_t widest = {.rms_mg = widest_mg,
@@ -45,13 +46,26 @@ test_tone_reply_capacity(void) {
                                     .gy_mg = -widest_mg,
                                     .gz_mg = -widest_mg,
                                     .samples = IMU_FIFO_SAMPLES};
-    TEST_ASSERT_TRUE(console_tone_append_shake(line, sizeof line, &widest, &widest, UINT_MAX, NULL));
+    TEST_ASSERT_TRUE(console_tone_append_shake(line, CONSOLE_TONE_REPLY_BYTES, &widest, &widest, UINT_MAX, NULL));
+    const console_tone_pulse_result_t pulse = {.status = "unavailable",
+                                               .take_gaps = UINT_MAX,
+                                               .pulse_gaps = UINT_MAX,
+                                               .lost_samples = UINT_MAX,
+                                               .take_us = INT32_MIN,
+                                               .pulse_gap_us = INT32_MIN,
+                                               .lost_us = INT32_MIN};
+    TEST_ASSERT_TRUE(console_tone_append_pulse(line, CONSOLE_TONE_REPLY_BYTES, "silence", &pulse));
+    TEST_ASSERT_TRUE(console_tone_append_pulse(line, CONSOLE_TONE_REPLY_BYTES, "tone", &pulse));
+    TEST_ASSERT_FALSE(console_tone_append_pulse(line, strlen(line) + 1, "tone", &pulse));
     TEST_ASSERT_LESS_THAN_UINT(CONSOLE_TONE_REPLY_BYTES, strlen(line) + 1);
+    free(line);
 }
 
 static void
 test_tone_reply_shake(void) {
-    char line[CONSOLE_TONE_REPLY_BYTES] = "TONE";
+    char* line = malloc(CONSOLE_TONE_REPLY_BYTES);
+    TEST_ASSERT_NOT_NULL(line);
+    strcpy(line, "TONE");
     const imu_vibration_t none = {0};
     const imu_vibration_t silence = {.rms_mg = 0.25F,
                                      .peak_mg = 1,
@@ -60,12 +74,13 @@ test_tone_reply_shake(void) {
                                      .gz_mg = IMU_VIBRATION_MG_PER_G,
                                      .samples = IMU_FIFO_SAMPLES};
     const imu_vibration_t tone = {.rms_mg = 12.5F, .peak_mg = 30, .samples = IMU_FIFO_SAMPLES};
-    TEST_ASSERT_TRUE(console_tone_append_shake(line, sizeof line, &silence, &tone, 0, NULL));
+    TEST_ASSERT_TRUE(console_tone_append_shake(line, CONSOLE_TONE_REPLY_BYTES, &silence, &tone, 0, NULL));
     TEST_ASSERT_NOT_NULL(strstr(line, ", gx_mg -12.50, gy_mg 25.00, gz_mg 1000.00"));
     strcpy(line, "TONE");
-    TEST_ASSERT_TRUE(console_tone_append_shake(line, sizeof line, &none, &tone, 0, NULL));
+    TEST_ASSERT_TRUE(console_tone_append_shake(line, CONSOLE_TONE_REPLY_BYTES, &none, &tone, 0, NULL));
     TEST_ASSERT_EQUAL_STRING("TONE, shake n/a, imu_gaps 0", line);
     TEST_ASSERT_FALSE(console_tone_append_shake(line, strlen(line) + 1, &silence, &tone, 0, NULL));
+    free(line);
 }
 
 static void
@@ -855,7 +870,8 @@ test_tone_check_measures_shake_per_window(void) {
     input_fake_motion_present(true);
     device.reg = TEST_TONE_REGISTER_OLD;
     const console_tone_args_t args = fixture();
-    char line[CONSOLE_TONE_REPLY_BYTES];
+    char* line = malloc(CONSOLE_TONE_REPLY_BYTES);
+    TEST_ASSERT_NOT_NULL(line);
     TEST_ASSERT_NULL(console_tone_check(&args, line));
     TEST_ASSERT_EQUAL_UINT(IMU_ODR_CODE, device.odr_code);
     char expected[sizeof(", shake  mg rms  mg peak (silence  mg rms)") + (3u * CONSOLE_TONE_DB_BYTES)];
@@ -865,6 +881,7 @@ test_tone_check_measures_shake_per_window(void) {
     TEST_ASSERT_NOT_NULL(strstr(line, "imu_gaps 2"));
     TEST_ASSERT_NOT_NULL(strstr(line, "noise -70.0 dBFS"));
     TEST_ASSERT_NULL(strstr(line, "shake_reason"));
+    free(line);
 }
 
 static void
@@ -875,11 +892,13 @@ test_tone_check_short_shake_window_is_unavailable(void) {
     device.reg = TEST_TONE_REGISTER_OLD;
     device.shake_short = true;
     const console_tone_args_t args = fixture();
-    char line[CONSOLE_TONE_REPLY_BYTES];
+    char* line = malloc(CONSOLE_TONE_REPLY_BYTES);
+    TEST_ASSERT_NOT_NULL(line);
     TEST_ASSERT_NULL(console_tone_check(&args, line));
     TEST_ASSERT_NOT_NULL(strstr(line, ", shake n/a"));
     TEST_ASSERT_NOT_NULL(strstr(line, "shake_reason too few samples; other reader or short window"));
     TEST_ASSERT_EQUAL_UINT(IMU_ODR_CODE, device.odr_code);
+    free(line);
 }
 
 static console_tone_args_t
@@ -942,13 +961,15 @@ test_tone_pulse_board_cadence(void) {
                 device.pulse.producer.period_us = periods_us[period];
                 device.pulse.producer.next_push_us =
                     (int64_t)phase * MATH_US_PER_MS + rng_below(&random, MATH_US_PER_MS) + 1;
-                char line[CONSOLE_TONE_REPLY_BYTES];
+                char* line = malloc(CONSOLE_TONE_REPLY_BYTES);
+                TEST_ASSERT_NOT_NULL(line);
                 TEST_ASSERT_NULL(console_tone_check(&args, line));
                 TEST_ASSERT_NULL_MESSAGE(strstr(line, "shake n/a"), line);
                 float rms = 0;
                 TEST_ASSERT_NOT_NULL(strstr(line, "shake "));
                 TEST_ASSERT_EQUAL_INT(1, sscanf(strstr(line, "shake "), "shake %f", &rms));
                 TEST_ASSERT_FLOAT_WITHIN(10, 2 * IMU_VIBRATION_MG_PER_G, rms);
+                free(line);
             }
         }
     }
@@ -964,10 +985,12 @@ test_tone_pulse_delayed_gap_precedes_start(void) {
     device.pulse.producer.period_us = TEST_PULSE_BOARD_DRAIN_US;
     device.pulse.producer.next_push_us = TEST_PULSE_BOARD_DRAIN_US - TEST_PULSE_PREWINDOW_SAMPLES * IMU_BUZZ_SAMPLE_US;
     device.pulse.producer.gap_burst = TEST_PULSE_WINDOW_MS * MATH_US_PER_MS / TEST_PULSE_BOARD_DRAIN_US + 1;
-    char line[CONSOLE_TONE_REPLY_BYTES];
+    char* line = malloc(CONSOLE_TONE_REPLY_BYTES);
+    TEST_ASSERT_NOT_NULL(line);
     TEST_ASSERT_NULL(console_tone_check(&args, line));
     TEST_ASSERT_NULL_MESSAGE(strstr(line, "shake n/a"), line);
     TEST_ASSERT_NOT_NULL_MESSAGE(strstr(line, "imu_gaps 1"), line);
+    free(line);
 }
 
 static void
@@ -1008,13 +1031,15 @@ test_tone_pulse_measures_from_parked_imu(void) {
                 device.pulse.producer.next_push_us = device.pulse.producer.period_us;
                 device.pulse.task.pending_lost = 1;
                 device.pulse.task.remainder_us = IMU_SAMPLE_US - 1;
-                char line[CONSOLE_TONE_REPLY_BYTES];
+                char* line = malloc(CONSOLE_TONE_REPLY_BYTES);
+                TEST_ASSERT_NOT_NULL(line);
                 TEST_ASSERT_NULL(console_tone_check(&args, line));
                 TEST_ASSERT_NULL_MESSAGE(strstr(line, "shake n/a"), line);
                 TEST_ASSERT_EQUAL_UINT(2, device.pulse.task.midstep_waits);
                 TEST_ASSERT_EQUAL_UINT(1, device.pulse.task.gaps_taken);
                 TEST_ASSERT_EQUAL_UINT(rate == IMU_BUZZ_ODR_CODE, device.pulse.task.restarts);
                 TEST_ASSERT_NOT_NULL_MESSAGE(strstr(line, "imu_gaps 0"), line);
+                free(line);
             }
         }
     }
@@ -1043,6 +1068,12 @@ test_tone_pulse_gap_placement(void) {
                 TEST_ASSERT_NULL(strstr(line, "shake n/a"));
                 TEST_ASSERT_NULL(strstr(line, "shake_reason"));
             }
+            TEST_ASSERT_NOT_NULL(strstr(line, ", tone_pulse clean"));
+            TEST_ASSERT_NOT_NULL(
+                strstr(line, burst <= last_pulse_burst ? ", silence_pulse gap" : ", silence_pulse clean"));
+            TEST_ASSERT_NOT_NULL(strstr(line, lost ? "silence_take_gaps 0" : "silence_take_gaps 1"));
+            TEST_ASSERT_NOT_NULL(
+                strstr(line, lost && burst <= last_pulse_burst ? "silence_lost_samples 1" : "silence_lost_samples 0"));
             puts(line);
             free(line);
         }
@@ -1169,13 +1200,14 @@ test_tone_reply_frequency(void) {
     console_tone_args_t args = fixture();
     args.pulse_ms = TEST_DURATION_MS;
     static const float values[] = {TEST_TARGET_HZ, NAN, INFINITY, -INFINITY};
-    char line[CONSOLE_TONE_REPLY_BYTES];
+    char* line = malloc(CONSOLE_TONE_REPLY_BYTES);
+    TEST_ASSERT_NOT_NULL(line);
     char expected[CONSOLE_TONE_MEASURED_BYTES];
     snprintf(expected, sizeof expected, "measured %.2f Hz", (double)TEST_TARGET_HZ);
     for (size_t i = 0; i < sizeof values / sizeof values[0]; i++) {
         const audio_loopback_result_t result = {
             .measured_hz = values[i], .thd_db = values[i], .peak_dbfs = -6, .noise_dbfs = TEST_NOISE_DBFS};
-        TEST_ASSERT_TRUE(console_tone_reply(line, sizeof line, &args, true, -12, -100, &result, 0));
+        TEST_ASSERT_TRUE(console_tone_reply(line, CONSOLE_TONE_REPLY_BYTES, &args, true, -12, -100, &result, 0));
         TEST_ASSERT_NOT_NULL(strstr(line, i == 0 ? "thd 1000.0 dB" : "thd n/a dB"));
         TEST_ASSERT_NOT_NULL(strstr(line, "peak -6.0 dBFS"));
         TEST_ASSERT_NOT_NULL(strstr(line, "pulse_ms 100"));
@@ -1183,6 +1215,7 @@ test_tone_reply_frequency(void) {
         TEST_ASSERT_FALSE(console_tone_reply(line, strlen(line), &args, true, -12, -100, &result, 0));
         TEST_ASSERT_NOT_NULL(strstr(line, i == 0 ? expected : "measured n/a"));
     }
+    free(line);
 }
 
 void
