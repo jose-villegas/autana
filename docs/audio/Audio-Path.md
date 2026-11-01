@@ -542,7 +542,7 @@ title EQ word, high byte first, diagram starts at bit 31
 
 Firia Labs CodeX publishes Everest's DAC bass words at B0/B1/A1 registers
 0x38/0x3C/0x40 (`FS=16000 FC=0.25 G=0..-26 dB`).
-They cross-check the layout and feedback sign.<sup>[[102]](../Citations.md#firia-codex-codec)</sup>
+They cross-check the layout and feedback sign.<sup>[[109]](../Citations.md#firia-codex-codec)</sup>
 
 Decoded A1 falls monotonically from 0.906 to -0.869 and DC gain steps 1.0 dB
 per row. At G=0, A1 matches `exp(-2*pi*250/16000)`.

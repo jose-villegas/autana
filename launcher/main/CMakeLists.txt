@@ -89,29 +89,13 @@ set(app_srcs
     "core/tune.c"
 )
 
-function(launcher_glob output)
-    if(CMAKE_SCRIPT_MODE_FILE)
-        file(GLOB_RECURSE files ${ARGN})
-    else()
-        file(GLOB_RECURSE files CONFIGURE_DEPENDS ${ARGN})
-    endif()
-    set(${output} ${files} PARENT_SCOPE)
-endfunction()
+include("${CMAKE_CURRENT_LIST_DIR}/renderer_sources.cmake")
 
 if(CONFIG_LAUNCHER_QEMU)
     list(APPEND app_srcs "gfx/present/panel/gfx_null_panel_device.c")
 endif()
 
-# The renderer: every .c below the folders renderer_folders.txt names, the
-# list host builds read too (tools/build/renderer.sh, renderer.py).
-file(STRINGS "${CMAKE_CURRENT_LIST_DIR}/renderer_folders.txt" renderer_folders REGEX "^[^#]")
-foreach(folder IN LISTS renderer_folders)
-    launcher_glob(folder_srcs "${CMAKE_CURRENT_LIST_DIR}/${folder}/*.c")
-    list(APPEND app_srcs ${folder_srcs})
-endforeach()
-if(NOT CMAKE_SCRIPT_MODE_FILE)
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/renderer_folders.txt")
-endif()
+list(APPEND app_srcs ${renderer_sources})
 
 # The frame's view modes, everything in render/view/: a development tool, with
 # nothing calling them in a release build.
@@ -220,7 +204,7 @@ endif()
 # esp_lcd_co5300 brings up the V2 (CO5300 panel) revision; see board/board_panel.c. It is
 # a PRIVATE dependency of the BSP's own idf_component.yml, so main needs its
 # own declaration (main/idf_component.yml) to see its headers.
-set(app_reqs esp_codec_dev esp_driver_i2s math kinematics physics image hash collections microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
+set(app_reqs esp_codec_dev esp_driver_i2s math simd kinematics physics image hash collections microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
              esp_driver_i2c esp_driver_tsens esp_hw_support esp_psram spi_flash esp_partition
              fatfs esp_driver_sdmmc sdmmc
              esp_driver_usb_serial_jtag esp_driver_uart vfs nvs_flash esp_app_format espcoredump

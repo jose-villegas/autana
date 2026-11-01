@@ -527,11 +527,20 @@ scene_camera_set_shift(scene_t* scene, scene_entity_t camera, vec2f_t shift) {
 bool
 scene_camera_set_small_fill(scene_t* scene, scene_entity_t camera, small_fill_t fill) {
     camera_t* found = camera_by_entity(scene, camera);
-    if (found == NULL || fill.ceiling > SMALL_FILL_CEILING_MAX || fill.style < SMALL_FILL_FLAT
-        || fill.style >= SMALL_FILL_STYLE_COUNT) {
+    if (found == NULL || fill.ceiling > SMALL_FILL_CEILING_MAX || fill.style >= SMALL_FILL_STYLE_COUNT) {
         return false;
     }
     found->small_fill = fill;
+    return true;
+}
+
+bool
+scene_camera_set_skip_hidden(scene_t* scene, scene_entity_t camera, bool skip) {
+    camera_t* found = camera_by_entity(scene, camera);
+    if (found == NULL) {
+        return false;
+    }
+    found->skip_hidden = skip;
     return true;
 }
 
@@ -571,3 +580,19 @@ scene_transform_is_identity(const mat4f_t* transform) {
     const mat4f_t identity = mat4f_identity();
     return memcmp(transform, &identity, sizeof identity) == 0;
 }
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+void
+scene_checkpoint_capture(checkpoint_t* saved, scene_t* scene) {
+    for (int i = 0; i < loaded_count; i++) {
+        if (loaded[i] == scene) {
+            checkpoint_capture_at(saved, &loaded[i], 0);
+        }
+    }
+    checkpoint_capture(saved, scene, layout_for(&scene->asset).total);
+    checkpoint_capture_at(saved, &scene->worlds, (size_t)scene->world_count * sizeof(*scene->worlds));
+    checkpoint_capture_at(saved, &scene->light_transfer, sizeof(*scene->light_transfer));
+    checkpoint_capture_at(saved, &scene->light_table, sizeof(*scene->light_table));
+    scene_animation_checkpoint_capture(saved, scene);
+}
+#endif
