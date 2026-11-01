@@ -27,3 +27,8 @@ audio_loopback_sample_budget(uint32_t ms) {
 
 /* Blocking; call from a worker or console task, never the frame loop. */
 bool audio_loopback_measure(uint16_t hz, uint16_t ms, float* db, audio_loopback_result_t* result);
+
+/* Observer runs between input blocks; false aborts capture. No initial samples are trimmed. */
+typedef bool (*audio_loopback_observer_fn)(void* context);
+bool audio_loopback_measure_observed(uint16_t hz, uint16_t ms, float* db, audio_loopback_result_t* result,
+                                     audio_loopback_observer_fn observer, void* context);

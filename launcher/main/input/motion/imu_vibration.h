@@ -13,6 +13,9 @@
 typedef struct {
     float rms_mg;  /* root mean square distance of each sample from the burst mean */
     float peak_mg; /* largest such distance */
+    float gx_mg;
+    float gy_mg;
+    float gz_mg;
     int samples;
 } imu_vibration_t;
 
@@ -45,6 +48,9 @@ imu_vibration_measure(const imu_sample_t* samples, int count, imu_vibration_t* o
     const float mg_per_count = IMU_VIBRATION_MG_PER_G / (float)IMU_COUNTS_PER_G;
     *out = (imu_vibration_t){.rms_mg = sqrtf(sum_squares / (float)count) * mg_per_count,
                              .peak_mg = sqrtf(peak_squared) * mg_per_count,
+                             .gx_mg = mean[0] * mg_per_count,
+                             .gy_mg = mean[1] * mg_per_count,
+                             .gz_mg = mean[2] * mg_per_count,
                              .samples = count};
     return true;
 }

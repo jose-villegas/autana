@@ -35,17 +35,11 @@
 #define IMU_SAMPLE_US                 ((uint32_t)((MATH_US_PER_S / IMU_ODR_HZ) + 0.5))
 #define IMU_FIFO_SAMPLES              128
 
-/* QMI8658A datasheet section 8.7: read mode discards arrivals, so loss is
- * locked time / IMU_SAMPLE_US. Carry fractional time across drains; gaps break continuity. */
+/* QMI8658A Rev A section 8.7: read mode discards arrivals. Only whole periods
+ * inside a confirmed read interval guarantee losses; separate intervals have independent phase. */
 static inline int
-imu_fifo_lost(uint64_t locked_us, uint32_t* remainder_us, bool gap) {
-    if (gap) {
-        *remainder_us = 0;
-        return 0;
-    }
-    const uint64_t total_us = locked_us + *remainder_us;
-    *remainder_us = (uint32_t)(total_us % IMU_SAMPLE_US);
-    return (int)(total_us / IMU_SAMPLE_US);
+imu_fifo_lost(uint64_t locked_us, uint32_t sample_us, bool gap) {
+    return gap ? 0 : (int)(locked_us / sample_us);
 }
 
 /* One consumer copies queued samples oldest first, at IMU_ODR_CODE; loss precedes each sample.
@@ -71,9 +65,13 @@ bool imu_read(imu_sample_t* out, uint32_t* sequence);
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 /* Vibration measurements only: ODR code 3 is IMU_ODR_BASE_HZ / 8, whose
  * default accelerometer bandwidth (half the ODR, Table 11) reaches the speaker's low tones. */
-#define IMU_BUZZ_ODR_CODE 3U
+#define IMU_BUZZ_ODR_CODE  3U
+#define IMU_BUZZ_ODR_HZ    (IMU_ODR_BASE_HZ / (1U << IMU_BUZZ_ODR_CODE))
+#define IMU_BUZZ_SAMPLE_US ((uint32_t)((MATH_US_PER_S / IMU_BUZZ_ODR_HZ) + 0.5))
+#define IMU_BUZZ_WINDOW_MS ((uint16_t)((IMU_FIFO_SAMPLES * MATH_MS_PER_S / IMU_BUZZ_ODR_HZ) + 1))
 /* Asks the IMU task to run the sensor at another ODR code until asked for IMU_ODR_CODE again,
- * and waits until it has. Every switch resets the FIFO and queues a gap, so imu_take_fifo()
+ * and waits until the task delivers a batch at that rate with its gap queued. Every switch resets
+ * the FIFO once and queues a gap, so imu_take_fifo()
  * never mixes rates; between the switches samples are not IMU_SAMPLE_US apart.
  * False without a sensor or task, on a bus error, or when the task does not answer in time.
  * Blocks up to two of the slowest IMU task periods: console task only, never the frame thread. */
@@ -82,6 +80,11 @@ bool imu_set_odr(unsigned odr_code);
  * reader, drops the queue behind a gap, so a reader at the other rate sees it lost them. */
 int imu_take_fifo_at(unsigned odr_code, imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t lost_before[IMU_FIFO_SAMPLES],
                      bool* gap);
+/* As imu_take_fifo_at(), with the IMU task's estimated sample times in the timing clock. */
+int imu_take_fifo_timed_at(unsigned odr_code, imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t lost_before[IMU_FIFO_SAMPLES],
+                           bool* gap, int64_t sample_us[IMU_FIFO_SAMPLES]);
+/* Keep two drains within retained history, including one delayed task wake. */
+#define IMU_BUZZ_DRAIN_MAX_MS (IMU_BUZZ_WINDOW_MS / 2u)
 #endif
 
 #if CONFIG_LAUNCHER_DEVELOPMENT

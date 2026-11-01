@@ -119,10 +119,10 @@ class JsonReadTests(unittest.TestCase):
         for heard in (True, False):
             with self.subTest(heard=heard):
                 reply = f"TONE {'heard' if heard else 'not heard'} 440 Hz: -21.5 dB (silence -63.0 dB), path acoustic, measured 440.02 Hz, open 8192 B DMA, thd -40.0 dB, peak -6.0 dBFS"
-                expected = {"hz": 440, "tone_db": -21.5, "silence_db": -63.0, "noise_dbfs": None,
+                expected = {"imu_gaps": None, "shake_reason": None, "pulse_ms": 0, "noise_dbfs": None, "hz": 440, "tone_db": -21.5, "silence_db": -63.0,
                             "heard": heard, "open_dma_bytes": 8192, "path": "acoustic",
                             "measured_hz": 440.02, "hz_error": 440.02 - 440, "thd_db": -40.0, "peak_dbfs": -6.0,
-                            "shake_rms_mg": None, "shake_peak_mg": None, "silence_shake_rms_mg": None}
+                            "shake_rms_mg": None, "shake_peak_mg": None, "silence_shake_rms_mg": None, "gx_mg": None, "gy_mg": None, "gz_mg": None}
                 self.assertEqual(autana.parse_tone(reply), expected)
                 with mock.patch.object(autana, "send", return_value=(0, [reply])) as send:
                     self.assertEqual(self.output(autana.COMMANDS["tone"], ["440", "200", "--json"]), expected)
@@ -149,10 +149,49 @@ class JsonReadTests(unittest.TestCase):
         result = autana.parse_tone(base + ", shake 12.50 mg rms 30.00 mg peak (silence 0.25 mg rms)")
         self.assertEqual((result["shake_rms_mg"], result["shake_peak_mg"], result["silence_shake_rms_mg"]),
                          (12.5, 30.0, 0.25))
+        gravity = autana.parse_tone(base + ", shake 12.50 mg rms 30.00 mg peak (silence 0.25 mg rms), gx_mg -12.50, gy_mg 25.00, gz_mg 999.00")
+        self.assertEqual((gravity["gx_mg"], gravity["gy_mg"], gravity["gz_mg"]), (-12.5, 25, 999))
         result = autana.parse_tone(base + ", shake n/a")
         self.assertIsNone(result["shake_rms_mg"])
         with self.assertRaises(ValueError):
             autana.parse_tone(base + ", shake 12.50 mg rms")
+
+    def test_tone_gap_reason(self):
+        base = "TONE heard 202 Hz: -40.0 dB (silence -63.0 dB), path acoustic, measured n/a, open 0 B DMA, shake n/a"
+        reply = base + ", imu_gaps 2, shake_reason gap inside pulse"
+        with mock.patch.object(autana, "send", return_value=(0, [reply])):
+            result = self.output(autana.tone, ["202", "400", "--pulse", "30", "--json"])
+        self.assertEqual(result["imu_gaps"], 2)
+        self.assertEqual(result["shake_reason"], "gap inside pulse")
+        self.assertIsNone(autana.parse_tone(base)["imu_gaps"])
+        self.assertIsNone(autana.parse_tone(base)["shake_reason"])
+
+    def test_tone_noise_and_pulse_fields(self):
+        reply = ("TONE heard 202 Hz: -40.0 dB (silence -63.0 dB), noise -70.0 dBFS, "
+                 "path acoustic, measured n/a, open 0 B DMA, thd n/a dB, peak -6.0 dBFS, pulse_ms 60, "
+                 "shake 12.50 mg rms 30.00 mg peak (silence 0.25 mg rms), "
+                 "gx_mg -12.50, gy_mg 25.00, gz_mg 999.00, imu_gaps 2, shake_reason gap inside pulse")
+        result = autana.parse_tone(reply)
+        self.assertEqual(result["noise_dbfs"], -70.0)
+        self.assertEqual(result["pulse_ms"], 60)
+        self.assertEqual(result["peak_dbfs"], -6.0)
+        self.assertEqual(result["shake_peak_mg"], 30.0)
+        self.assertEqual((result["gx_mg"], result["gy_mg"], result["gz_mg"]), (-12.5, 25.0, 999.0))
+        self.assertEqual(result["imu_gaps"], 2)
+        self.assertEqual(result["shake_reason"], "gap inside pulse")
+
+    def test_tone_pulse(self):
+        reply = "TONE heard 202 Hz: -40.0 dB (silence -63.0 dB), path internal, measured n/a, open 0 B DMA, thd n/a dB, peak -6.0 dBFS, pulse_ms 60, shake 12.50 mg rms 30.00 mg peak (silence 0.25 mg rms)"
+        with mock.patch.object(autana, "send", return_value=(0, [reply])) as send:
+            result = self.output(autana.tone, ["202", "200", "30", "--pulse", "60", "--internal", "--json"])
+        self.assertEqual(send.call_args.args, ("TONE 202 200 30 pulse 60 internal",))
+        self.assertEqual(result["pulse_ms"], 60)
+        self.assertEqual(result["shake_peak_mg"], 30)
+        for options in (["--pulse"], ["--pulse", "0"], ["--pulse", "201"],
+                        ["--pulse", "-1"], ["--pulse", "30", "--pulse", "60"]):
+            with mock.patch.object(autana, "send") as send, self.assertRaises(SystemExit):
+                autana.tone(["202", "200", *options])
+            send.assert_not_called()
 
     def test_tone_unavailable_thd(self):
         reply = "TONE heard 8000 Hz: -21.5 dB (silence -63.0 dB), path acoustic, measured n/a, open 8192 B DMA, thd n/a dB, peak -0.1 dBFS"

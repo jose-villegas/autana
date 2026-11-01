@@ -233,8 +233,35 @@ test_queued_rate_decides_who_takes(void) {
     free(f);
 }
 
+static void
+test_restart_gap_is_taken_before_next_drain(void) {
+    fixture_t* f = fixture();
+    const imu_sample_t stale = {.ax = IMU_COUNTS_PER_G};
+    const imu_sample_t fresh = {.ay = IMU_COUNTS_PER_G};
+    for (unsigned before_drain = 0; before_drain <= 1; before_drain++) {
+        bool fifo_gap = true;
+        int pending_lost = 1;
+        imu_queue_push(&f->queue, &stale, 1, pending_lost, false);
+        imu_queue_restart(&f->queue, &fifo_gap, &pending_lost);
+        TEST_ASSERT_EQUAL_INT(0, pending_lost);
+        if (before_drain) {
+            TEST_ASSERT_EQUAL_INT(0, imu_queue_take(&f->queue, f->samples, f->lost, &f->gap));
+            TEST_ASSERT_TRUE(f->gap);
+        }
+        imu_queue_push_drain(&f->queue, &fresh, 1, pending_lost, fifo_gap);
+        TEST_ASSERT_EQUAL_INT(1, imu_queue_take(&f->queue, f->samples, f->lost, &f->gap));
+        TEST_ASSERT_EQUAL_INT(fresh.ay, f->samples[0].ay);
+        TEST_ASSERT_EQUAL_UINT8(0, f->lost[0]);
+        TEST_ASSERT_EQUAL_INT(!before_drain, f->gap);
+        TEST_ASSERT_EQUAL_INT(0, imu_queue_take(&f->queue, f->samples, f->lost, &f->gap));
+        TEST_ASSERT_FALSE(f->gap);
+    }
+    free(f);
+}
+
 void
 run_imu_queue_suite(void) {
+    RUN_TEST(test_restart_gap_is_taken_before_next_drain);
     RUN_TEST(test_loss_stays_at_each_drain_boundary);
     RUN_TEST(test_empty_drain_carries_loss_across_take);
     RUN_TEST(test_loss_saturation_marks_gap_and_clears_carry);

@@ -64,6 +64,10 @@ TUNE(imu, drain_ms, IMU_DRAIN_MS, IMU_PERIOD_MIN_MS, IMU_PERIOD_MAX_MS);
 TUNE(imu, log_ms, 0, 0, IMU_LOG_MAX_MS);
 #endif
 
+#if CONFIG_LAUNCHER_DEVELOPMENT
+/* imu_set_odr() asks, the task applies between drains; both under `lock`. */
+static imu_odr_t odr = {.requested = IMU_ODR_CODE, .applied = IMU_ODR_CODE};
+#endif
 static portMUX_TYPE lock = portMUX_INITIALIZER_UNLOCKED;
 static imu_queue_t queue;
 static imu_sample_t newest;
@@ -161,7 +165,6 @@ static i2c_master_dev_handle_t dev;
 static bool ready;
 static bool sensor_present;
 static bool fifo_gap;
-static uint32_t loss_remainder_us;
 static int pending_lost;
 
 static bool
@@ -418,6 +421,21 @@ log_suspect_burst(const imu_sample_t* samples, int count) {
 }
 #endif
 
+/* Requests read mode and reads count samples in chunks. locked_us spans the interval the sensor
+ * discards arrivals (section 8.7): after the acknowledged request, every chunk and bus wait included. */
+static bool
+read_fifo_burst(imu_sample_t out[IMU_FIFO_SAMPLES], int count, uint64_t* locked_us) {
+    bool ok = write_command(CTRL9_REQ_FIFO);
+    const int64_t lock_start_us = timing_now_us();
+    for (int read = 0; ok && read < count;) {
+        const int chunk = mathi_min(count - read, IMU_FIFO_CHUNK_SAMPLES);
+        ok = read_regs(REG_FIFO_DATA, (uint8_t*)(out + read), (size_t)chunk * sizeof *out);
+        read += chunk;
+    }
+    *locked_us = (uint64_t)(timing_now_us() - lock_start_us);
+    return ok;
+}
+
 static int
 drain_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
     *overflowed = false;
@@ -429,7 +447,6 @@ drain_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
     const int injected_count = read_injected_fifo(out, overflowed);
     if (injected_count >= 0) {
         pending_lost = 0;
-        loss_remainder_us = 0;
         fifo_gap = true;
         return injected_count;
     }
@@ -438,18 +455,9 @@ drain_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
         return 0;
     }
     int count = 0;
-    bool ok = read_fifo_count(&count, overflowed);
-    const int64_t lock_start_us = timing_now_us();
-    if (ok) {
-        ok = write_command(CTRL9_REQ_FIFO);
-    }
-    for (int read = 0; ok && read < count;) {
-        const int chunk = mathi_min(count - read, IMU_FIFO_CHUNK_SAMPLES);
-        ok = read_regs(REG_FIFO_DATA, (uint8_t*)(out + read), (size_t)chunk * sizeof *out);
-        read += chunk;
-    }
+    uint64_t locked_us = 0;
+    const bool ok = read_fifo_count(&count, overflowed) && read_fifo_burst(out, count, &locked_us);
     const bool resumed = write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG);
-    const uint64_t locked_us = (uint64_t)(timing_now_us() - lock_start_us);
 #if CONFIG_LAUNCHER_DEVELOPMENT
     if (ok) {
         log_suspect_burst(out, count);
@@ -463,7 +471,11 @@ drain_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
     }
     *lost = fifo_gap || *overflowed ? 0 : pending_lost;
     /* Read-mode losses follow this burst, so gravity advances them with the next batch. */
-    pending_lost = imu_fifo_lost(locked_us, &loss_remainder_us, fifo_gap || *overflowed);
+    uint32_t sample_us = IMU_SAMPLE_US;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    sample_us = odr.applied == IMU_BUZZ_ODR_CODE ? IMU_BUZZ_SAMPLE_US : IMU_SAMPLE_US;
+#endif
+    pending_lost = imu_fifo_lost(locked_us, sample_us, fifo_gap || *overflowed);
     return fifo_gap ? -1 : count;
 }
 
@@ -525,13 +537,19 @@ imu_read_or_drain(bool drain_due) {
         const int count = drain_fifo(samples, &lost, &gap);
         const int64_t now_us = timing_now_us();
         portENTER_CRITICAL(&lock);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        const uint32_t sample_us = odr.applied == IMU_BUZZ_ODR_CODE ? IMU_BUZZ_SAMPLE_US : IMU_SAMPLE_US;
+        imu_queue_push_drain_timed(&queue, samples, count, lost, gap, now_us, sample_us);
+#else
         imu_queue_push_drain(&queue, samples, count, lost, gap);
+#endif
         if (count > 0) {
             newest = samples[count - 1];
             have_newest = true;
             newest_sequence++;
 #if CONFIG_LAUNCHER_DEVELOPMENT
             newest_us = now_us;
+            odr.flowing = true;
 #endif
         }
         portEXIT_CRITICAL(&lock);
@@ -569,11 +587,11 @@ restart_fifo(void) {
     if (sensor_present) {
         (void)(write_command(CTRL9_RST_FIFO) && write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG));
     }
-    fifo_gap = true;
-    pending_lost = 0;
-    loss_remainder_us = 0;
     portENTER_CRITICAL(&lock);
-    imu_queue_push(&queue, NULL, 0, 0, true);
+    imu_queue_restart(&queue, &fifo_gap, &pending_lost);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    odr.flowing = false;
+#endif
     portEXIT_CRITICAL(&lock);
 }
 
@@ -588,33 +606,35 @@ take_demand(void) {
 }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-/* imu_set_odr() asks, the task applies between drains; both under `lock`. */
-static imu_odr_t odr = {.requested = IMU_ODR_CODE, .applied = IMU_ODR_CODE};
 /* Longest a request waits: two of the slowest task periods the tunables allow. */
 #define IMU_ODR_WAIT_MS (2 * IMU_PERIOD_MAX_MS)
 
 /* The bus work runs outside `lock` on a copy; imu_set_odr() only waits on it meanwhile.
  * Any reconfigure resets the FIFO, so a gap drops queued samples spaced at the old rate. */
-static void
-apply_odr_request(void) {
+static uint32_t
+apply_odr_request(imu_demand_level_t* level, unsigned* read_ticks) {
     portENTER_CRITICAL(&lock);
     imu_odr_t next = odr;
     portEXIT_CRITICAL(&lock);
-    const imu_odr_outcome_t outcome = imu_odr_apply(&next, configure);
+    const imu_odr_outcome_t outcome = imu_odr_apply(&next, configure, &fifo_gap, level);
     if (outcome == IMU_ODR_UNCHANGED) {
-        return;
+        return next.sequence;
     }
     if (outcome == IMU_ODR_LOST) {
         ESP_LOGE(TAG, "ODR switch to %u and restore of %u both failed; the sensor may be off", odr.requested,
                  next.applied);
     }
-    fifo_gap = true;
     pending_lost = 0;
-    loss_remainder_us = 0;
+    *read_ticks = 0;
     portENTER_CRITICAL(&lock);
     imu_queue_set_rate(&queue, next.applied);
-    odr = next;
+    odr.applied = next.applied;
+    odr.flowing = false;
+    if (odr.sequence == next.sequence) {
+        odr.requested = next.requested;
+    }
     portEXIT_CRITICAL(&lock);
+    return next.sequence;
 }
 
 int
@@ -632,6 +652,21 @@ imu_take_fifo_at(unsigned odr_code, imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t 
     return count;
 }
 
+int
+imu_take_fifo_timed_at(unsigned odr_code, imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t lost_before[IMU_FIFO_SAMPLES],
+                       bool* gap, int64_t sample_us[IMU_FIFO_SAMPLES]) {
+    *gap = false;
+    if (!ready) {
+        return -1;
+    }
+    portENTER_CRITICAL(&lock);
+    const bool wake = stamp_demand(&demand.fifo_us);
+    const int count = imu_queue_take_timed_at(&queue, odr_code, out, lost_before, gap, sample_us);
+    portEXIT_CRITICAL(&lock);
+    wake_task(wake);
+    return count;
+}
+
 bool
 imu_set_odr(unsigned odr_code) {
     if (!sensor_present || task_handle == NULL) {
@@ -639,6 +674,7 @@ imu_set_odr(unsigned odr_code) {
     }
     portENTER_CRITICAL(&lock);
     odr.requested = odr_code;
+    const uint32_t sequence = ++odr.sequence;
     const bool wake = stamp_demand(&demand.fifo_us);
     portEXIT_CRITICAL(&lock);
     wake_task(wake);
@@ -646,10 +682,11 @@ imu_set_odr(unsigned odr_code) {
     for (;;) {
         portENTER_CRITICAL(&lock);
         const unsigned applied = odr.applied;
-        const unsigned requested = odr.requested;
+        const bool served = imu_odr_ready(&odr, sequence);
+        const bool superseded = odr.sequence != sequence;
         portEXIT_CRITICAL(&lock);
-        if (applied == odr_code || requested != odr_code || timing_now_us() >= deadline) {
-            return applied == odr_code;
+        if (served || superseded || timing_now_us() >= deadline) {
+            return served && applied == odr_code;
         }
         timing_sleep_ms(IMU_PERIOD_MIN_MS);
     }
@@ -687,12 +724,6 @@ count_wake_gap(void) {
  * and a preempted drain keeps the FIFO in read mode, discarding arrivals. */
 static void
 serve_demand(imu_demand_level_t asked, imu_demand_level_t* level, unsigned* read_ticks, TickType_t drain_ticks) {
-    vTaskPrioritySet(NULL, IMU_TASK_BUS_PRIORITY);
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    if (sensor_present) {
-        apply_odr_request();
-    }
-#endif
     if (asked == IMU_DEMAND_FIFO && *level != IMU_DEMAND_FIFO) {
         restart_fifo();
         *read_ticks = 0;
@@ -728,9 +759,29 @@ imu_task(void* arg) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
         count_wake_gap();
 #endif
-        const TickType_t requested_period = pdMS_TO_TICKS(read_ms);
+        vTaskPrioritySet(NULL, IMU_TASK_BUS_PRIORITY);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        uint32_t served_sequence = 0;
+        if (sensor_present && asked == IMU_DEMAND_FIFO) {
+            served_sequence = apply_odr_request(&level, &read_ticks);
+        }
+#endif
+        unsigned read_period_ms = read_ms;
+        unsigned drain_period_ms = drain_ms;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        read_period_ms = imu_odr_period_ms(odr.applied, read_period_ms);
+        drain_period_ms = imu_odr_period_ms(odr.applied, drain_period_ms);
+#endif
+        const TickType_t requested_period = pdMS_TO_TICKS(read_period_ms);
         const TickType_t period = requested_period > 0 ? requested_period : 1;
-        serve_demand(asked, &level, &read_ticks, pdMS_TO_TICKS(drain_ms) / period);
+        serve_demand(asked, &level, &read_ticks, pdMS_TO_TICKS(drain_period_ms) / period);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        if (sensor_present && asked == IMU_DEMAND_FIFO) {
+            portENTER_CRITICAL(&lock);
+            odr.served_sequence = served_sequence;
+            portEXIT_CRITICAL(&lock);
+        }
+#endif
         if (xTaskDelayUntil(&last_wake, period) == pdFALSE) {
             last_wake = xTaskGetTickCount();
         }

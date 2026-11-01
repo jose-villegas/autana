@@ -105,6 +105,7 @@ gravity_example(gravity_example_t* s, uint32_t dt_ms) {
 ## Update
 
 Periods and task settings live in `input/motion/imu.c`; header-owned settings name their owners below.
+Buzz-rate checks bound both periods by `IMU_BUZZ_DRAIN_MAX_MS` without changing saved tunes.
 
 | Setting | Value | Live tunable / effect |
 |---|---|---|
@@ -264,16 +265,16 @@ b_{\mathrm{err}}(t) \propto e^{-4t/T_s}, \qquad e^{-4T_s/T_s} = e^{-4} \approx 0
 
 ## Limits
 
-FIFO read mode discards arrivals (section 8.7), so loss = duration / `IMU_SAMPLE_US`, carrying fractional microseconds across drains.<sup>[[79]](../Citations.md#qst-qmi8658a)</sup>
+FIFO read mode discards arrivals (section 8.7). Loss is a lower bound: whole active-rate sample periods inside each confirmed read interval.<sup>[[79]](../Citations.md#qst-qmi8658a)</sup>
 
 | Condition | Effect |
 |---|---|
 | Read-mode exit | Count read before `CTRL9_REQ_FIFO`; CTRL9 polled with no minimum delay; every drain attempts to exit read mode, including errors<sup>[[79]](../Citations.md#qst-qmi8658a)</sup> |
-| Read-mode timing | `esp_timer`: before `CTRL9_REQ_FIFO` through `REG_FIFO_CTRL` rewrite, every chunk and any bus wait between them included |
+| Read-mode timing | `esp_timer`: after acknowledged `CTRL9_REQ_FIFO`, before `REG_FIFO_CTRL` rewrite, every chunk and any bus wait between them included |
 | Empty drain | Carry loss to next sample |
 | Loss boundary | Hold previous rotation for at most `GRAVITY_MAX_DT_MS` converted to us |
 | FIFO overflow, failed drain, queue overflow or loss beyond `uint8_t` | Mark gap; drop oldest on queue overflow |
-| Gap | Clear pending loss and remainder; restart correction at full TAU gain, preserving down and bias |
+| Gap | Clear pending loss; restart correction at full TAU gain, preserving down and bias |
 
 Delivered rate = ODR × (1 - read-mode share); a 500 ms drain loses about half as much as every-frame.
 

@@ -47,8 +47,8 @@ startup keeps short tones at the same level as long tones.
 
 ## Development check
 
-Run `autana tone <hz> <ms> [volume] [--internal] [--json]`, or the console verb
-`tone <hz> <ms> [volume] [internal]`.
+Run `autana tone <hz> <ms> [volume] [--pulse MS] [--internal] [--json]`, or the console verb
+`tone <hz> <ms> [volume] [pulse <ms>] [internal]`.
 
 `console_tone_check()` opens capture, measures its DMA-capable heap cost,
 runs the check, and closes capture. `melody check` uses the same function
@@ -57,6 +57,48 @@ runs the check, and closes capture. `melody check` uses the same function
 The console uses `audio_loopback_measure()` for a baseline, starts a SYSTEM-bus
 tone through the mixer, measures again, then stops the voice. It waits for
 amplifier warm-up before measuring. A Goertzel filter measures the requested frequency.<sup>[[72]](../Citations.md#goertzel-1958)</sup>
+
+With `--pulse`, capture selects samples by the IMU task's push clock,
+not the observer's take clock. A pulse window must hold a full IMU queue
+and fit `CONSOLE_TONE_PULSE_WINDOW_MAX_MS`.
+
+Capture collects delayed batches for up to `IMU_BUZZ_WINDOW_MS` after the
+pulse span. Only samples placed inside that span contribute to shake.
+Buzz-rate polling and draining are bounded by `IMU_BUZZ_DRAIN_MAX_MS`; saved tunes stay unchanged.
+
+The rate switch waits, bounded by `imu_set_odr()`, for a nonempty FIFO batch
+before capture opens its silence window. The priming batch is discarded.
+An empty baseline remains unavailable, never a valid silence measurement.
+
+The [QMI8658A datasheet](https://files.waveshare.com/upload/5/5f/QMI8658A_Datasheet_Rev_A.pdf)
+(Rev A, section 7.3 and Table 8) specifies a typical gyro wake-up of 150 ms
+plus filter settling of 3/ODR seconds. Rate configuration disables and re-enables both sensors.
+
+Section 8.7 specifies that FIFO read mode discards arrivals even when space
+remains. Loss accounting uses whole active-rate periods inside each confirmed
+read interval; fractions from separate drains cannot establish a lost sample.
+
+Pulse shake needs `IMU_VIBRATION_MIN_SAMPLES` samples in the pulse span.
+Gaps and lost samples invalidate shake only when their placed interval intersects
+that span. `imu_gaps` counts queue gap reports across both capture windows.
+
+Unavailable shake carries `shake_reason`, the warning text, in the reply and JSON.
+Old replies without these fields parse with null values.
+
+Pulse replies add `silence_pulse` and `tone_pulse` results. JSON groups each
+window's status, take flags and lost samples under those keys.
+
+`take_gaps` counts all take flags; `take_ms` places the first at the batch's
+first retained sample, or the take clock for an empty batch. This is an
+observation boundary, not the producer's gap timestamp.
+
+`pulse_gaps` counts take flags that invalidate the pulse; `pulse_gap_ms`
+places the first at the same boundary. `lost_samples` counts losses whose
+interval overlaps the pulse; `lost_ms` places the first missing sample.
+
+Times are milliseconds from that window's start. JSON times are null when
+their count is zero. Status is `clean`, `gap`, `short`, `read_failed` or
+`unavailable`; clean means the pulse supplied a valid shake reading.
 
 `--internal` routes DAC data to both ADCDAT slots inside the ES8311. It holds
 the speaker amplifier off for the whole check. The verb restores the exact register
