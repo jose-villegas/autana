@@ -202,6 +202,13 @@ class LocalHookTests(ShellGateTestCase):
                            f'refs/heads/feature/test {base} refs/heads/feature/test {base}\n')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn('SANITIZED', result.stdout)
+        # A repository that marks no push tests pushes its source unchecked.
+        (self.root / '.github/workflows/host-tests.yml').unlink()
+        self.git('rm', '-q', '--cached', '.github/workflows/host-tests.yml')
+        result = self.gate('check-host-tests-push.sh', update)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('SANITIZED', result.stdout)
+        self.mark_host_tests()
         # A moved submodule pin is source the tests build.
         self.git('update-index', '--add', '--cacheinfo', f'160000,{base},third_party/engine')
         self.git('-c', 'core.hooksPath=', 'commit', '-qm', 'pin')
