@@ -71,7 +71,8 @@ class LocalScheduleTests(unittest.TestCase):
 
     def test_cutoff_is_board_last_start_on_the_markers_date_and_offset(self):
         marker = datetime(2026, 10, 25, 3, tzinfo=self.zone)
-        for value, hour in (('', 5), ('04:30', 4)):
+        default, latest = schedule.LOCAL_TIMES['BOARD_LAST_START']
+        for value, hour in (('', int(default[:2])), ('04:30', 4), (f'{latest:02d}:59', latest)):
             with patch.dict(os.environ, BOARD_LAST_START=value):
                 cutoff = schedule.night_cutoff(marker)
             self.assertEqual(cutoff.utcoffset(), marker.utcoffset())
@@ -79,8 +80,10 @@ class LocalScheduleTests(unittest.TestCase):
         # A daytime run's cut-off has passed: it starts no lane after its plan.
         afternoon = datetime(2026, 10, 25, 14, tzinfo=self.zone)
         self.assertLess(schedule.night_cutoff(afternoon), afternoon)
-        with patch.dict(os.environ, BOARD_LAST_START='06:00'), self.assertRaisesRegex(ValueError, 'BOARD_LAST_START'):
-            schedule.night_cutoff(marker)
+        for value in (f'{latest + 1:02d}:00', '23:00', '8:00', '08:60'):
+            with self.subTest(value=value), patch.dict(os.environ, BOARD_LAST_START=value), \
+                    self.assertRaisesRegex(ValueError, f'BOARD_LAST_START must be HH:MM in 00:00–{latest:02d}:59'):
+                schedule.night_cutoff(marker)
 
     def test_invalid_night_zone_raises(self):
         trigger = Clock(0, tzinfo=timezone.utc).now()
