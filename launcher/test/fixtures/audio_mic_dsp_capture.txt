@@ -1,0 +1,152 @@
+# autana --json replies on TEST, 2026-10-20, microphone DSP fixture
+buildid	{"build_id":"test-dev"}
+tune mic.alc 0	"ok"
+tune mic.alc_max 0	"ok"
+tune mic.alc_min 0	"ok"
+tune mic.alc_win 0	"ok"
+tune mic.alc_gain 191	"ok"
+tune mic.gate 0	"ok"
+tune mic.gate_ng 0	"ok"
+tune mic.gate_win 0	"ok"
+tune mic.gate_depth 0	"ok"
+tune mic.hpf 1	"ok"
+tune mic.hpf_s1 10	"ok"
+tune mic.hpf_s2 10	"ok"
+tone 1000 500 10	{"hz": 1000, "tone_db": -31, "noise_dbfs": -71, "thd_db": -41, "peak_dbfs": -6}
+tone 1000 500 10	{"hz": 1000, "tone_db": -30, "noise_dbfs": -70, "thd_db": -40, "peak_dbfs": -5}
+tone 1000 500 10	{"hz": 1000, "tone_db": -29, "noise_dbfs": -69, "thd_db": -39, "peak_dbfs": -4}
+tone 1000 500 30	{"hz": 1000, "tone_db": -31, "noise_dbfs": -71, "thd_db": -41, "peak_dbfs": -6}
+tone 1000 500 30	{"hz": 1000, "tone_db": -30, "noise_dbfs": -70, "thd_db": -40, "peak_dbfs": -5}
+tone 1000 500 30	{"hz": 1000, "tone_db": -29, "noise_dbfs": -69, "thd_db": -39, "peak_dbfs": -4}
+tone 1000 500 100	{"hz": 1000, "tone_db": -31, "noise_dbfs": -71, "thd_db": -41, "peak_dbfs": -6}
+tone 1000 500 100	{"hz": 1000, "tone_db": -30, "noise_dbfs": -70, "thd_db": -40, "peak_dbfs": -5}
+tone 1000 500 100	{"hz": 1000, "tone_db": -29, "noise_dbfs": -69, "thd_db": -39, "peak_dbfs": -4}
+tone 50 500 30	{"hz": 50, "tone_db": -31, "noise_dbfs": -71, "thd_db": -41, "peak_dbfs": -6}
+tone 50 500 30	{"hz": 50, "tone_db": -30, "noise_dbfs": -70, "thd_db": -40, "peak_dbfs": -5}
+tone 50 500 30	{"hz": 50, "tone_db": -29, "noise_dbfs": -69, "thd_db": -39, "peak_dbfs": -4}
+tone 100 500 30	{"hz": 100, "tone_db": -31, "noise_dbfs": -71, "thd_db": -41, "peak_dbfs": -6}
+tone 100 500 30	{"hz": 100, "tone_db": -30, "noise_dbfs": -70, "thd_db": -40, "peak_dbfs": -5}
+tone 100 500 30	{"hz": 100, "tone_db": -29, "noise_dbfs": -69, "thd_db": -39, "peak_dbfs": -4}
+tone 200 500 30	{"hz": 200, "tone_db": -31, "noise_dbfs": -71, "thd_db": -41, "peak_dbfs": -6}
+tone 200 500 30	{"hz": 200, "tone_db": -30, "noise_dbfs": -70, "thd_db": -40, "peak_dbfs": -5}
+tone 200 500 30	{"hz": 200, "tone_db": -29, "noise_dbfs": -69, "thd_db": -39, "peak_dbfs": -4}
+tune mic.alc 0	"ok"
+tune mic.alc_max 0	"ok"
+tune mic.alc_min 0	"ok"
+tune mic.alc_win 0	"ok"
+tune mic.alc_gain 191	"ok"
+tune mic.gate 0	"ok"
+tune mic.gate_ng 0	"ok"
+tune mic.gate_win 0	"ok"
+tune mic.gate_depth 0	"ok"
+tune mic.hpf 0	"ok"
+tune mic.hpf_s1 10	"ok"
+tune mic.hpf_s2 10	"ok"
+tone 1000 500 10	{"hz": 1000, "tone_db": -31, "noise_dbfs": -71, "thd_db": -41, "peak_dbfs": -6}
+tone 1000 500 10	{"hz": 1000, "tone_db": -30, "noise_dbfs": -70, "thd_db": -40, "peak_dbfs": -5}
+tone 1000 500 10	{"hz": 1000, "tone_db": -29, "noise_dbfs": -69, "thd_db": -39, "peak_dbfs": -4}
+tone 1000 500 30	{"hz": 1000, "tone_db": -31, "noise_dbfs": -71, "thd_db": -41, "peak_dbfs": -6}
+tone 1000 500 30	{"hz": 1000, "tone_db": -30, "noise_dbfs": -70, "thd_db": -40, "peak_dbfs": -5}
+tone 1000 500 30	{"hz": 1000, "tone_db": -29, "noise_dbfs": -69, "thd_db": -39, "peak_dbfs": -4}
+tone 1000 500 100	{"hz": 1000, "tone_db": -31, "noise_dbfs": -71, "thd_db": -41, "peak_dbfs": -6}
+tone 1000 500 100	{"hz": 1000, "tone_db": -30, "noise_dbfs": -70, "thd_db": -40, "peak_dbfs": -5}
+tone 1000 500 100	{"hz": 1000, "tone_db": -29, "noise_dbfs": -69, "thd_db": -39, "peak_dbfs": -4}
+tone 50 500 30	{"hz": 50, "tone_db": -31, "noise_dbfs": -71, "thd_db": -41, "peak_dbfs": -6}
+tone 50 500 30	{"hz": 50, "tone_db": -30, "noise_dbfs": -70, "thd_db": -40, "peak_dbfs": -5}
+tone 50 500 30	{"hz": 50, "tone_db": -29, "noise_dbfs": -69, "thd_db": -39, "peak_dbfs": -4}
+tone 100 500 30	{"hz": 100, "tone_db": -31, "noise_dbfs": -71, "thd_db": -41, "peak_dbfs": -6}
+tone 100 500 30	{"hz": 100, "tone_db": -30, "noise_dbfs": -70, "thd_db": -40, "peak_dbfs": -5}
+tone 100 500 30	{"hz": 100, "tone_db": -29, "noise_dbfs": -69, "thd_db": -39, "peak_dbfs": -4}
+tone 200 500 30	{"hz": 200, "tone_db": -31, "noise_dbfs": -71, "thd_db": -41, "peak_dbfs": -6}
+tone 200 500 30	{"hz": 200, "tone_db": -30, "noise_dbfs": -70, "thd_db": -40, "peak_dbfs": -5}
+tone 200 500 30	{"hz": 200, "tone_db": -29, "noise_dbfs": -69, "thd_db": -39, "peak_dbfs": -4}
+tune mic.alc 0	"ok"
+tune mic.alc_max 0	"ok"
+tune mic.alc_min 0	"ok"
+tune mic.alc_win 0	"ok"
+tune mic.alc_gain 191	"ok"
+tune mic.gate 0	"ok"
+tune mic.gate_ng 0	"ok"
+tune mic.gate_win 0	"ok"
+tune mic.gate_depth 0	"ok"
+tune mic.hpf 1	"ok"
+tune mic.hpf_s1 4	"ok"
+tune mic.hpf_s2 4	"ok"
+tone 1000 500 10	{"hz": 1000, "tone_db": -31, "noise_dbfs": -71, "thd_db": -41, "peak_dbfs": -6}
+tone 1000 500 10	{"hz": 1000, "tone_db": -30, "noise_dbfs": -70, "thd_db": -40, "peak_dbfs": -5}
+tone 1000 500 10	{"hz": 1000, "tone_db": -29, "noise_dbfs": -69, "thd_db": -39, "peak_dbfs": -4}
+tone 1000 500 30	{"hz": 1000, "tone_db": -31, "noise_dbfs": -71, "thd_db": -41, "peak_dbfs": -6}
+tone 1000 500 30	{"hz": 1000, "tone_db": -30, "noise_dbfs": -70, "thd_db": -40, "peak_dbfs": -5}
+tone 1000 500 30	{"hz": 1000, "tone_db": -29, "noise_dbfs": -69, "thd_db": -39, "peak_dbfs": -4}
+tone 1000 500 100	{"hz": 1000, "tone_db": -31, "noise_dbfs": -71, "thd_db": -41, "peak_dbfs": -6}
+tone 1000 500 100	{"hz": 1000, "tone_db": -30, "noise_dbfs": -70, "thd_db": -40, "peak_dbfs": -5}
+tone 1000 500 100	{"hz": 1000, "tone_db": -29, "noise_dbfs": -69, "thd_db": -39, "peak_dbfs": -4}
+tone 50 500 30	{"hz": 50, "tone_db": -31, "noise_dbfs": -71, "thd_db": -41, "peak_dbfs": -6}
+tone 50 500 30	{"hz": 50, "tone_db": -30, "noise_dbfs": -70, "thd_db": -40, "peak_dbfs": -5}
+tone 50 500 30	{"hz": 50, "tone_db": -29, "noise_dbfs": -69, "thd_db": -39, "peak_dbfs": -4}
+tone 100 500 30	{"hz": 100, "tone_db": -31, "noise_dbfs": -71, "thd_db": -41, "peak_dbfs": -6}
+tone 100 500 30	{"hz": 100, "tone_db": -30, "noise_dbfs": -70, "thd_db": -40, "peak_dbfs": -5}
+tone 100 500 30	{"hz": 100, "tone_db": -29, "noise_dbfs": -69, "thd_db": -39, "peak_dbfs": -4}
+tone 200 500 30	{"hz": 200, "tone_db": -31, "noise_dbfs": -71, "thd_db": -41, "peak_dbfs": -6}
+tone 200 500 30	{"hz": 200, "tone_db": -30, "noise_dbfs": -70, "thd_db": -40, "peak_dbfs": -5}
+tone 200 500 30	{"hz": 200, "tone_db": -29, "noise_dbfs": -69, "thd_db": -39, "peak_dbfs": -4}
+tune mic.alc 0	"ok"
+tune mic.alc_max 0	"ok"
+tune mic.alc_min 0	"ok"
+tune mic.alc_win 0	"ok"
+tune mic.alc_gain 191	"ok"
+tune mic.gate 1	"ok"
+tune mic.gate_ng 2	"ok"
+tune mic.gate_win 0	"ok"
+tune mic.gate_depth 7	"ok"
+tune mic.hpf 1	"ok"
+tune mic.hpf_s1 10	"ok"
+tune mic.hpf_s2 10	"ok"
+tone 1000 500 10	{"hz": 1000, "tone_db": -31, "noise_dbfs": -71, "thd_db": -41, "peak_dbfs": -6}
+tone 1000 500 10	{"hz": 1000, "tone_db": -30, "noise_dbfs": -70, "thd_db": -40, "peak_dbfs": -5}
+tone 1000 500 10	{"hz": 1000, "tone_db": -29, "noise_dbfs": -69, "thd_db": -39, "peak_dbfs": -4}
+tone 1000 500 30	{"hz": 1000, "tone_db": -31, "noise_dbfs": -71, "thd_db": -41, "peak_dbfs": -6}
+tone 1000 500 30	{"hz": 1000, "tone_db": -30, "noise_dbfs": -70, "thd_db": -40, "peak_dbfs": -5}
+tone 1000 500 30	{"hz": 1000, "tone_db": -29, "noise_dbfs": -69, "thd_db": -39, "peak_dbfs": -4}
+tone 1000 500 100	{"hz": 1000, "tone_db": -31, "noise_dbfs": -71, "thd_db": -41, "peak_dbfs": -6}
+tone 1000 500 100	{"hz": 1000, "tone_db": -30, "noise_dbfs": -70, "thd_db": -40, "peak_dbfs": -5}
+tone 1000 500 100	{"hz": 1000, "tone_db": -29, "noise_dbfs": -69, "thd_db": -39, "peak_dbfs": -4}
+tone 50 500 30	{"hz": 50, "tone_db": -31, "noise_dbfs": -71, "thd_db": -41, "peak_dbfs": -6}
+tone 50 500 30	{"hz": 50, "tone_db": -30, "noise_dbfs": -70, "thd_db": -40, "peak_dbfs": -5}
+tone 50 500 30	{"hz": 50, "tone_db": -29, "noise_dbfs": -69, "thd_db": -39, "peak_dbfs": -4}
+tone 100 500 30	{"hz": 100, "tone_db": -31, "noise_dbfs": -71, "thd_db": -41, "peak_dbfs": -6}
+tone 100 500 30	{"hz": 100, "tone_db": -30, "noise_dbfs": -70, "thd_db": -40, "peak_dbfs": -5}
+tone 100 500 30	{"hz": 100, "tone_db": -29, "noise_dbfs": -69, "thd_db": -39, "peak_dbfs": -4}
+tone 200 500 30	{"hz": 200, "tone_db": -31, "noise_dbfs": -71, "thd_db": -41, "peak_dbfs": -6}
+tone 200 500 30	{"hz": 200, "tone_db": -30, "noise_dbfs": -70, "thd_db": -40, "peak_dbfs": -5}
+tone 200 500 30	{"hz": 200, "tone_db": -29, "noise_dbfs": -69, "thd_db": -39, "peak_dbfs": -4}
+tune mic.alc 1	"ok"
+tune mic.alc_max 4	"ok"
+tune mic.alc_min 2	"ok"
+tune mic.alc_win 2	"ok"
+tune mic.alc_gain 191	"ok"
+tune mic.gate 0	"ok"
+tune mic.gate_ng 0	"ok"
+tune mic.gate_win 0	"ok"
+tune mic.gate_depth 0	"ok"
+tune mic.hpf 1	"ok"
+tune mic.hpf_s1 10	"ok"
+tune mic.hpf_s2 10	"ok"
+tone 1000 500 10	{"hz": 1000, "tone_db": -31, "noise_dbfs": -71, "thd_db": -41, "peak_dbfs": -6}
+tone 1000 500 10	{"hz": 1000, "tone_db": -30, "noise_dbfs": -70, "thd_db": -40, "peak_dbfs": -5}
+tone 1000 500 10	{"hz": 1000, "tone_db": -29, "noise_dbfs": -69, "thd_db": -39, "peak_dbfs": -4}
+tone 1000 500 30	{"hz": 1000, "tone_db": -31, "noise_dbfs": -71, "thd_db": -41, "peak_dbfs": -6}
+tone 1000 500 30	{"hz": 1000, "tone_db": -30, "noise_dbfs": -70, "thd_db": -40, "peak_dbfs": -5}
+tone 1000 500 30	{"hz": 1000, "tone_db": -29, "noise_dbfs": -69, "thd_db": -39, "peak_dbfs": -4}
+tone 1000 500 100	{"hz": 1000, "tone_db": -31, "noise_dbfs": -71, "thd_db": -41, "peak_dbfs": -6}
+tone 1000 500 100	{"hz": 1000, "tone_db": -30, "noise_dbfs": -70, "thd_db": -40, "peak_dbfs": -5}
+tone 1000 500 100	{"hz": 1000, "tone_db": -29, "noise_dbfs": -69, "thd_db": -39, "peak_dbfs": -4}
+tone 50 500 30	{"hz": 50, "tone_db": -31, "noise_dbfs": -71, "thd_db": -41, "peak_dbfs": -6}
+tone 50 500 30	{"hz": 50, "tone_db": -30, "noise_dbfs": -70, "thd_db": -40, "peak_dbfs": -5}
+tone 50 500 30	{"hz": 50, "tone_db": -29, "noise_dbfs": -69, "thd_db": -39, "peak_dbfs": -4}
+tone 100 500 30	{"hz": 100, "tone_db": -31, "noise_dbfs": -71, "thd_db": -41, "peak_dbfs": -6}
+tone 100 500 30	{"hz": 100, "tone_db": -30, "noise_dbfs": -70, "thd_db": -40, "peak_dbfs": -5}
+tone 100 500 30	{"hz": 100, "tone_db": -29, "noise_dbfs": -69, "thd_db": -39, "peak_dbfs": -4}
+tone 200 500 30	{"hz": 200, "tone_db": -31, "noise_dbfs": -71, "thd_db": -41, "peak_dbfs": -6}
+tone 200 500 30	{"hz": 200, "tone_db": -30, "noise_dbfs": -70, "thd_db": -40, "peak_dbfs": -5}
+tone 200 500 30	{"hz": 200, "tone_db": -29, "noise_dbfs": -69, "thd_db": -39, "peak_dbfs": -4}
