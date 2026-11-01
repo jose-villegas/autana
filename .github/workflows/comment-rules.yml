@@ -75,7 +75,10 @@ jobs:
       # failed gate too, and a skipped install would fail it for nothing.
       # pyserial among them: the exclusive-open tests drive the real serial library on a pty.
       - name: Workflow gate dependencies
-        run: pip install -r scripts/gates/requirements.txt -r launcher/tools/render/requirements.txt -r launcher/test/device/requirements.txt -r launcher/tools/audio/requirements.txt -r launcher/tools/audio/mic/requirements.txt
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libportaudio2
+          pip install -r scripts/gates/requirements.txt -r launcher/tools/render/requirements.txt -r launcher/test/device/requirements.txt -r launcher/tools/audio/requirements.txt -r launcher/tools/audio/mic/requirements.txt
 
       # test_r3d_bake.py skips itself without numpy and scipy, and builds
       # meshoptimizer's library from its submodule with the runner's compiler;

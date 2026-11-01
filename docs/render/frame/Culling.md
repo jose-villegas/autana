@@ -85,7 +85,7 @@ only drawn clusters show, so it redraws from a spectator.
 |---|---|---|
 | culled | grey | its box, or a box above it, is outside the frustum |
 | not set up | blue | kept, but every triangle is behind the camera, misses every pixel centre or faces away |
-| hidden | red | triangles were set up and filled, but each lost its depth test |
+| hidden | red | each triangle lost its depth test; a camera that skips hidden clusters may have skipped it whole before setup, which this view does not see |
 | drawn | green | owns at least one pixel |
 
 | Tunable | Values |

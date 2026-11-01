@@ -26,6 +26,7 @@
 #include "input/motion/imu_odr.h"
 #include "input/motion/imu_queue.h"
 #include "input/motion/imu_reset.h"
+#include "math/scalar/mathi.h"
 
 static const char* TAG = "imu";
 
@@ -99,8 +100,19 @@ static imu_stats_t stats;
 
 /* The QMI8658A's I2C rating (Rev A, Table 43). Faster was measured on A308 and
  * rejected: docs/input/Gravity.md, Limits. */
-#define QMI8658_I2C_HZ          400000
-#define QMI8658_TIMEOUT_MS      100
+#define QMI8658_I2C_HZ         400000
+#define QMI8658_TIMEOUT_MS     100
+
+/* A drain reads the FIFO in chunks of whole samples, a transaction each: the bus lock is taken
+ * per transaction, so a touch read waits for at most one chunk, a tenth of its 10 ms poll.
+ * The target counts data bytes only; each transaction's addressing adds about 10%. */
+#define IMU_BUS_HOLD_TARGET_US 1000
+#define I2C_BITS_PER_BYTE      9 /* 8 data bits and the ACK */
+#define IMU_FIFO_SAMPLE_DATA_US                                                                                        \
+    ((sizeof(imu_sample_t) * I2C_BITS_PER_BYTE * MATH_US_PER_S + QMI8658_I2C_HZ - 1) / QMI8658_I2C_HZ)
+#define IMU_FIFO_CHUNK_SAMPLES ((int)(IMU_BUS_HOLD_TARGET_US / IMU_FIFO_SAMPLE_DATA_US))
+_Static_assert(IMU_FIFO_CHUNK_SAMPLES >= 1, "a FIFO chunk must hold a sample");
+_Static_assert(IMU_FIFO_CHUNK_SAMPLES <= IMU_FIFO_SAMPLES, "a FIFO chunk must fit the FIFO");
 
 /* Registers; the reset pair and its poll are in imu_reset.h. */
 #define REG_WHO_AM_I            0x00
@@ -189,7 +201,7 @@ configure(unsigned odr_code) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static bool injected;
 static int64_t injected_drain_us;
-static imu_sample_t injected_sample = {.ax = IMU_COUNTS_PER_G};
+static imu_sample_t injected_sample = IMU_SAMPLE_UPRIGHT;
 
 void
 imu_inject(const imu_sample_t* sample) {
@@ -431,8 +443,10 @@ drain_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
     if (ok) {
         ok = write_command(CTRL9_REQ_FIFO);
     }
-    if (ok && count > 0) {
-        ok = read_regs(REG_FIFO_DATA, (uint8_t*)out, (size_t)count * sizeof *out);
+    for (int read = 0; ok && read < count;) {
+        const int chunk = mathi_min(count - read, IMU_FIFO_CHUNK_SAMPLES);
+        ok = read_regs(REG_FIFO_DATA, (uint8_t*)(out + read), (size_t)chunk * sizeof *out);
+        read += chunk;
     }
     const bool resumed = write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG);
     const uint64_t locked_us = (uint64_t)(timing_now_us() - lock_start_us);
@@ -481,7 +495,7 @@ log_stats(int64_t now_us) {
                  (unsigned long long)(stats.bus_us / MATH_US_PER_MS), stats.parks,
                  (unsigned long long)(stats.parked_us / MATH_US_PER_MS), (unsigned)uxTaskGetStackHighWaterMark(NULL));
     }
-    stats = (imu_stats_t){.last_log_us = now_us};
+    stats = (imu_stats_t){.last_log_us = now_us, .last_wake_us = stats.last_wake_us};
 }
 
 static void
@@ -669,8 +683,8 @@ count_wake_gap(void) {
 #endif
 
 /* One period's bus work at `asked`: entering FIFO restarts it, then a register read or a due drain.
- * The bus lock has no priority inheritance: a preempted drain holds the bus
- * and keeps the FIFO in read mode, discarding arrivals. */
+ * The bus lock has no priority inheritance: a preempted transaction holds the bus,
+ * and a preempted drain keeps the FIFO in read mode, discarding arrivals. */
 static void
 serve_demand(imu_demand_level_t asked, imu_demand_level_t* level, unsigned* read_ticks, TickType_t drain_ticks) {
     vTaskPrioritySet(NULL, IMU_TASK_BUS_PRIORITY);

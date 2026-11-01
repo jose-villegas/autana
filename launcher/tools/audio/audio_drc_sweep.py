@@ -5,20 +5,16 @@ The first tone record's Hz is the primary frequency for the generated table.
 Run the entire capture inside one autana lock run:
 autana --wait 3600 lock run -- python launcher/tools/audio/audio_drc_sweep.py --board <id>
 """
-import argparse
-from datetime import date
 import itertools
-import json
 from pathlib import Path
 import math
 import sys
-import subprocess
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 from build.c_header import read_define
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from autana_runner import autana_run, record_line
+from autana_runner import autana_run, capture_parser, capture_records, reset_tunables
 
 AUDIO = ROOT / "launcher/main/audio"
 VOLUME_MAX = read_define(AUDIO / "audio_out.h", "AUDIO_OUT_VOLUME_MAX_PCT")
@@ -38,10 +34,7 @@ def numbers(text):
 
 
 def parser():
-    result = argparse.ArgumentParser(description=__doc__)
-    result.add_argument("--autana", default="autana")
-    result.add_argument("--board", required=True)
-    result.add_argument("--out", type=Path, default=CAPTURE)
+    result = capture_parser(__doc__, CAPTURE)
     for option, default in (("baseline", "30,40,50,60,70,85,100"), ("codec", "70,100"),
                             ("max-levels", "1,2,3,4"), ("winsize", "4"), ("ramp", "2")):
         result.add_argument("--" + option, type=numbers, default=numbers(default))
@@ -76,15 +69,7 @@ def capture(args):
     points = list(tones(args))
     if args.runs <= 0 or not 0 < args.ms <= MAX_MS or not points or any(not 0 < hz < NYQUIST_HZ for hz, _ in points):
         raise ValueError("positive runs, duration and tone frequencies are required")
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    with args.out.open("w", encoding="utf-8", newline="\n") as output:
-        output.write(f"# autana --json replies on {args.board}, {date.today()}, DRC sweep\n")
-        def record(*words):
-            reply = autana_run(args.autana, *words).strip()
-            payload = json.loads(reply) if words[0] in ("tone", "buildid") else reply
-            record_line(output, " ".join(map(str, words)).removesuffix(" --json"),
-                        json.dumps(payload, allow_nan=False))
-        record("buildid", "--json")
+    with capture_records(args, "DRC sweep", autana_run) as record:
         try:
             for config in configs:
                 for name, value in config.items():
@@ -93,14 +78,8 @@ def capture(args):
                     for _ in range(args.runs):
                         record("tone", hz, args.ms, volume, "--json")
         finally:
-            failures = []
-            for name in TUNABLES:
-                try:
-                    record("tune", "reset", "audio." + name)
-                except (OSError, subprocess.CalledProcessError) as error:
-                    failures.append(error)
-            if failures:
-                raise RuntimeError("audio tunable reset failed") from failures[0]
+            reset_tunables(record, "audio", TUNABLES)
+
 
 
 def main():

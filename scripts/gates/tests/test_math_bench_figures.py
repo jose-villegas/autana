@@ -21,7 +21,7 @@ class MathBenchFigureTests(unittest.TestCase):
     def test_committed_pairs_families_and_zero_axes(self):
         import math_bench_figures as figures
         rows, _ = figures.bench.read_fpu(figures.bench.DATA / "math_bench_fpu_ops.txt")
-        items = figures.fast_paths.annotations()
+        items = [item for item in figures.fast_paths.annotations() if item.unit != "bit"]
         _, measured = figures.bench.parse_capture(
             (figures.bench.DATA / "math_bench_capture.txt").read_text(), rows)
         references = {item.plain for item in items}

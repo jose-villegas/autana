@@ -50,3 +50,12 @@ targets and keep them clear of `DISPLAY_PANEL_CORNER_RADIUS` and
 The development touch probe records target and reported coordinates for
 fitting `PANEL_FIT` in `touch.c`. Refit from targeted captures rather than
 treating one tap's miss as a coefficient error.
+
+## Bus wait
+
+The controller shares its I2C bus with the IMU and the PMU, so a read can wait
+behind their transactions. A development build logs the reads on the shell's
+touch line: count, failures, p95 and worst time, each including that wait.
+`autana tune touch.probe 1` reads the controller every poll with no contact,
+so an untouched board measures it. An idle controller NACKs these reads, which
+are counted as failures; they still wait for the bus first.
