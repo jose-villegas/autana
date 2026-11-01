@@ -1,4 +1,5 @@
 #include "scene/scene_shell.h"
+#include "core/checkpoint.h"
 #include "scene/scene_internal.h"
 
 #include "display/display.h"

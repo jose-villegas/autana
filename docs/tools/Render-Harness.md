@@ -435,6 +435,8 @@ One checkpoint captures engine state; provider statics are excluded. Restore
 returns false if captured allocations changed or a lent scratch is too small.
 Keep loaded scenes, component allocations and the presentation mode alive.
 
+Pointer guards cannot detect a free followed by a reallocation at the same address.
+
 Restoring rewinds inputs, retained pictures and measured costs, without
 rewinding output files or the wall clock. Timed choices (frame generation
 and predicted resolution) replay only as exactly as their clock.

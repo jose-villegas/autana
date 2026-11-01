@@ -598,16 +598,16 @@ scene_animation_checkpoint_capture(checkpoint_t* saved, scene_t* scene) {
                               (size_t)a->skeleton.joint_count * sizeof(*a->layer.frozen.local));
         scene_skinned_renderer_t* skin = &scene->skinned_renderers[e];
         const size_t joints = skin->skin.joint_count;
-        checkpoint_capture_at(saved, &skin->internal_storage, 0);
-        checkpoint_capture_at(saved, &skin->light_storage, 0);
-        if (skin->internal_storage != NULL) {
-            const size_t bytes = (size_t)((uint8_t*)(skin->palette + joints) - (uint8_t*)skin->internal_storage);
-            checkpoint_capture_at(saved, &skin->internal_storage, bytes);
-        }
-        if (skin->light_storage != NULL) {
-            const size_t bytes = (size_t)((uint8_t*)(skin->normal_palette + joints) - (uint8_t*)skin->light_storage);
-            checkpoint_capture_at(saved, &skin->light_storage, bytes);
-        }
+        const size_t internal_bytes =
+            skin->internal_storage == NULL
+                ? 0
+                : (size_t)((uint8_t*)(skin->palette + joints) - (uint8_t*)skin->internal_storage);
+        const size_t light_bytes =
+            skin->light_storage == NULL
+                ? 0
+                : (size_t)((uint8_t*)(skin->normal_palette + joints) - (uint8_t*)skin->light_storage);
+        checkpoint_capture_at(saved, &skin->internal_storage, internal_bytes);
+        checkpoint_capture_at(saved, &skin->light_storage, light_bytes);
     }
 }
 #endif

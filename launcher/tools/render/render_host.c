@@ -5,6 +5,7 @@
  */
 
 #include "render_host.h"
+#include "core/checkpoint.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,6 +16,7 @@
 #include "draw/draw.h"
 #include "gfx/capture/screenshot.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_internal.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "gfx/target/gfx_color.h"
@@ -257,6 +259,7 @@ static struct {
 } host;
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+/* Replaced by scene/scene_shell.c when linked. */
 __attribute__((weak)) void
 scene_shell_checkpoint_capture(checkpoint_t* saved) {
     (void)saved;

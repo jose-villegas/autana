@@ -9,4 +9,4 @@ scene_renderer=1
 scene_renders=""
 . "$SCRIPT_DIR/../render_scene.sh"
 render_scene_build "$@"
-"$_rs_bin" --scene room -o "$scene_out_dir/checkpoint.bmp"
+"$_rs_bin" --scene room --present double -o "$scene_out_dir/checkpoint.bmp"

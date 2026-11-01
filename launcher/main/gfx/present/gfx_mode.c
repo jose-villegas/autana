@@ -715,8 +715,7 @@ gfx_mode_checkpoint_capture(checkpoint_t* saved) {
 #endif
     };
     checkpoint_capture_fields(saved, fields, sizeof fields / sizeof fields[0]);
-    checkpoint_capture_at(saved, &fb, GFX_FRAMEBUFFER_BYTES);
-    checkpoint_capture_at(saved, &present_fb, present_fb == fb ? 0 : GFX_FRAMEBUFFER_BYTES);
+    checkpoint_capture_pair(saved, &fb, &present_fb, GFX_FRAMEBUFFER_BYTES);
     checkpoint_capture_at(saved, &band_snapshot, GFX_FRAMEBUFFER_BYTES);
     gfx_indexed_checkpoint_capture(saved);
 }
