@@ -24,7 +24,6 @@ scene_sources="
 main/app/app_arena.c
 main/console/console_words.c
 main/app/app_registry.c
-main/core/job.c
 main/input/touch/gesture.c
 main/input/mapping/orbit_motion_touch.c
 main/input/motion/gravity.c
