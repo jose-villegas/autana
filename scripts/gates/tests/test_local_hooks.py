@@ -64,10 +64,10 @@ class LocalHookTests(ShellGateTestCase):
         target.write_text(text)
         self.git('add', path)
 
-    def gate(self, name, stdin=None):
+    def gate(self, name, stdin=None, env=None):
         result = subprocess.run([self.shell, (self.root / 'scripts/gates' / name).as_posix()],
                               cwd=self.root, input=stdin.encode() if stdin else None,
-                              capture_output=True, timeout=60)
+                              capture_output=True, timeout=60, env=env)
         result.stdout = result.stdout.decode()
         result.stderr = result.stderr.decode()
         return result
@@ -211,6 +211,14 @@ class LocalHookTests(ShellGateTestCase):
         result = self.gate('../git-hooks/pre-push', update + update)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.count('SANITIZED'), 1)
+        # As git runs the hook in a worktree, with GIT_DIR exported: the tests'
+        # own git calls (a submodule's build) must not inherit it.
+        runner.write_bytes(b'#!/bin/sh\n[ "$1" = --sanitize ] || exit 9\necho "SANITIZED GIT_DIR=${GIT_DIR-unset}"\n')
+        git_dir = self.git('rev-parse', '--absolute-git-dir')
+        result = self.gate('check-host-tests-push.sh', update, env={**os.environ, 'GIT_DIR': git_dir})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('GIT_DIR=unset', result.stdout)
+        runner.write_bytes(b'#!/bin/sh\n[ "$1" = --sanitize ] || exit 9\necho SANITIZED\n')
         result = self.gate('check-host-tests-push.sh',
                            f'refs/heads/feature/test {base} refs/heads/feature/test {base}\n')
         self.assertEqual(result.returncode, 0, result.stderr)
