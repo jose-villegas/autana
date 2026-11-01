@@ -231,6 +231,33 @@ biased_screen(const r3d_lens_t* lens, float x, float y, float r) {
     return (biased_t){lens->snap_cx + (x * r), lens->snap_cy + (y * r)};
 }
 
+static inline __attribute__((always_inline)) vec3f_t
+transform_position(const mat4f_t* screen, const int16_t p[3]) {
+    return mat4f_apply(screen, (vec3f_t){(float)p[0], (float)p[1], (float)p[2]});
+}
+
+static inline __attribute__((always_inline)) void
+transform_emit(const r3d_lens_t* lens, r3d_pipeline_vertex_t* out, vec3f_t l, float r, uint32_t lo_bits,
+               uint32_t hi_bits, int* y0, int* y1, bool* unbounded) {
+    if (l.z <= lens->project.near_z) {
+        out->iz = 0.0F;
+        *unbounded = true;
+        return;
+    }
+    const biased_t b = biased_screen(lens, l.x, l.y, r);
+    if (!(biased_inside_fast(mathf_bits(b.x), lo_bits, hi_bits)
+          && biased_inside_fast(mathf_bits(b.y), lo_bits, hi_bits))) {
+        out->iz = -1.0F;
+        *unbounded = true;
+        return;
+    }
+    out->sx = (int16_t)r3d_span_unbias(b.x);
+    out->sy = (int16_t)r3d_span_unbias(b.y);
+    out->iz = lens->depth_near * r;
+    *y0 = out->sy < *y0 ? out->sy : *y0;
+    *y1 = out->sy > *y1 ? out->sy : *y1;
+}
+
 static inline r3d_pipeline_rows_t
 transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const mat4f_t* screen, const r3d_lit_cluster_t* c,
                   r3d_pipeline_vertex_t* cs, uint32_t lo_bits, uint32_t hi_bits) {
@@ -238,30 +265,23 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const mat4
     int y0 = INT16_MAX;
     int y1 = INT16_MIN;
     bool unbounded = false;
-    for (int v = c->vertex_first; v < end; v++) {
+    int v = c->vertex_first;
+    for (; v + 1 < end; v += 2) {
         FRAME_LAP("r3d.transform.apply");
-        const int16_t* p = mesh->positions[v];
-        const vec3f_t l = mat4f_apply(screen, (vec3f_t){(float)p[0], (float)p[1], (float)p[2]});
-        r3d_pipeline_vertex_t* out = &cs[v];
-        if (l.z <= lens->project.near_z) {
-            out->iz = 0.0F;
-            unbounded = true;
-            continue;
-        }
+        const vec3f_t l0 = transform_position(screen, mesh->positions[v]);
+        const vec3f_t l1 = transform_position(screen, mesh->positions[v + 1]);
+        FRAME_LAP("r3d.transform.project");
+        const float r0 = mathf_recip(l0.z);
+        const float r1 = mathf_recip(l1.z);
+        transform_emit(lens, &cs[v], l0, r0, lo_bits, hi_bits, &y0, &y1, &unbounded);
+        transform_emit(lens, &cs[v + 1], l1, r1, lo_bits, hi_bits, &y0, &y1, &unbounded);
+    }
+    for (; v < end; v++) {
+        FRAME_LAP("r3d.transform.apply");
+        const vec3f_t l = transform_position(screen, mesh->positions[v]);
         FRAME_LAP("r3d.transform.project");
         const float r = mathf_recip(l.z);
-        const biased_t b = biased_screen(lens, l.x, l.y, r);
-        if (!(biased_inside_fast(mathf_bits(b.x), lo_bits, hi_bits)
-              && biased_inside_fast(mathf_bits(b.y), lo_bits, hi_bits))) {
-            out->iz = -1.0F;
-            unbounded = true;
-            continue;
-        }
-        out->sx = (int16_t)r3d_span_unbias(b.x);
-        out->sy = (int16_t)r3d_span_unbias(b.y);
-        out->iz = lens->depth_near * r;
-        y0 = out->sy < y0 ? out->sy : y0;
-        y1 = out->sy > y1 ? out->sy : y1;
+        transform_emit(lens, &cs[v], l, r, lo_bits, hi_bits, &y0, &y1, &unbounded);
     }
     FRAME_LAP("r3d.transform.cluster");
     const float to_pixels = 1.0F / (float)R3D_SUBPIXEL;
