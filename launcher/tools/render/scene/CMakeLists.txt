@@ -16,11 +16,7 @@ endif()
 add_subdirectory(.. render_host)
 add_executable(render_scene ${SCENE_SOURCES})
 target_include_directories(render_scene PRIVATE ${SCENE_INCLUDES})
-if(SCENE_RENDERER)
-    target_link_libraries(render_scene PRIVATE autana::render_host)
-else()
-    target_link_libraries(render_scene PRIVATE autana::render_host_core)
-endif()
+target_link_libraries(render_scene PRIVATE autana::${SCENE_TARGET})
 # The generator expression prevents multi-config generators adding a config subfolder.
 set_target_properties(render_scene PROPERTIES
     OUTPUT_NAME "${SCENE_NAME}_render"

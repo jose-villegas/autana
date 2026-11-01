@@ -399,9 +399,10 @@ Two files, the same declare-then-source shape a report script uses:
 
 CMake's `autana::render_host_core` supplies the host frame loop, drawing and assets.
 
-`scene_renderer=1` selects `autana::render_host`, adding the renderer folders in
+`scene_target=render_host` selects `autana::render_host`, adding the renderer folders in
 `launcher/main/renderer_folders.txt`. Its consumer defines `display_quarter_now()`
-from `display/display.h`.
+from `display/display.h`. `scene_target=scene_provider` adds the scene-file
+provider, `scene_viewer.c`, which defines it.
 
 A host consumer adds `launcher/tools/render` with `add_subdirectory()` and links
 the chosen target. Its interface sources compile with the consumer's defines;
