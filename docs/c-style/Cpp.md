@@ -13,7 +13,7 @@ repository holding the engine as a submodule runs them by path, for example
 | Gate | In another repository |
 |---|---|
 | Format | `.clang-format` is a copy whose generated-file banner names its source; `format-file-list.sh` and `check-format.sh` from the submodule. |
-| Comments, headers, citations, constants | The same scripts. They read `.cc .cpp .cxx .hh .hpp .hxx` with `.c .h` (`c_comments.SOURCE_EXTENSIONS`), raw strings and digit separators included. |
+| Comments, headers, citations, constants | The same scripts. They read `.cc .cpp .cxx .hh .hpp .hxx` with `.c .h` (`c_comments.SOURCE_EXTENSIONS`). The name gives the language: raw strings, digit separators and `constexpr` constants are read in C++ files only, so a C++ header is `.hpp` and a `.h` is C. |
 | Magic numbers, clones | The same scripts. Give `check_magic_numbers.py --include-root DIR` for each folder quoted includes resolve from. |
 | Shell, exec bits, branch, ticket | `check-shell-scripts.sh`, `check-exec-bits.sh`, `check-branch-name.sh`, `check-pr-ticket.sh`. |
 | Hooks | Set `core.hooksPath` to the submodule's `scripts/git-hooks`. The repository's own workflows mark what runs: `STAGED_TEXT_GATE` before a commit, `PUSH_TEST_GATE` before a push. |

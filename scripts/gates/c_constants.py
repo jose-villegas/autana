@@ -120,9 +120,9 @@ def fold(expression, values):
 
 
 class ConstantIndex:
-    def __init__(self, texts, kinds=None):
+    def __init__(self, texts, keep=None):
         self.by_file = {path: tuple(record for record in definitions(path, text)
-                                    if kinds is None or record.kind in kinds)
+                                    if keep is None or keep(record))
                         for path, text in texts.items()}
 
     def visible(self, paths):
@@ -152,11 +152,17 @@ class ConstantIndex:
         return resolved
 
 
+def documented(record):
+    return record.kind in ("define", "enum") or (record.kind == "scalar" and is_cpp(record.path))
+
+
 def constants(root, *, decimal_only=False):
     texts = {path.relative_to(root).as_posix(): path.read_text(encoding="utf-8", errors="replace")
              for path in source_files(root)}
-    # Documentation claims match decimal #define and enum values, folded; hex and const scalars are left out.
-    index = ConstantIndex(texts, kinds={"define", "enum"} if decimal_only else None)
+    # Documentation claims match decimal #define and enum values, folded, and
+    # C++'s constexpr scalars, its spelling of a named constant; hex and C's
+    # const scalars are left out.
+    index = ConstantIndex(texts, keep=documented if decimal_only else None)
     counts = {}
     for records in index.by_file.values():
         for record in records:
