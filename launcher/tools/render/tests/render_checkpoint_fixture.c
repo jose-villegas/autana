@@ -56,7 +56,7 @@ image_matches_bmp(const char* path, const render_host_image_t* images, int count
         const render_host_image_t* image = &images[i];
         screenshot_bmp_header(expected, image->width, image->height);
         /* Equal headers mean equal width, height and body size. */
-        const bool same = image->bgr != NULL && memcmp(expected, header, sizeof header) == 0
+        const bool same = memcmp(expected, header, sizeof header) == 0
                           && (int32_t)image->stride == screenshot_bmp_row_stride(image->width);
         fprintf(stderr, "image view %d %dx%d stride %zu: %s\n", i, image->width, image->height, image->stride,
                 same ? "PASS" : "FAIL");
@@ -92,7 +92,8 @@ main(int argc, char** argv) {
     if (!render_host_open(&provider, argc, argv, &code)) {
         return code;
     }
-    const size_t bytes = render_host_image().stride * (size_t)render_host_image().height;
+    const render_host_image_t opened = render_host_image();
+    const size_t bytes = opened.stride * (size_t)opened.height;
     uint8_t* expected = malloc(bytes);
     if (expected == NULL) {
         return 1;
@@ -150,7 +151,8 @@ main(int argc, char** argv) {
             }
             render_host_checkpoint_t* again = render_host_save();
             const size_t saved_bytes = render_host_checkpoint_bytes(saved);
-            if (again == NULL || saved_bytes == 0 || render_host_checkpoint_bytes(again) != saved_bytes) {
+            /* Every checkpoint holds the output frame, so it is a lower bound. */
+            if (again == NULL || saved_bytes < bytes || render_host_checkpoint_bytes(again) != saved_bytes) {
                 fprintf(stderr, "checkpoint %s: bytes %zu, again %zu FAIL\n", name, saved_bytes,
                         again == NULL ? (size_t)0 : render_host_checkpoint_bytes(again));
                 ok = false;
@@ -167,6 +169,7 @@ main(int argc, char** argv) {
             step_frames(end - CHECKPOINT_AT);
             const bool pixels = memcmp(expected, render_host_image().bgr, bytes) == 0;
             images[v] = render_host_image();
+            ok &= images[v].bgr != NULL;
             const bool same = render_context_main()->scale_percent == RENDER_CONTEXT_DEFAULT_SCALE_PERCENT
                               && observed.index == expected_frame.index
                               && observed.elapsed_ms == expected_frame.elapsed_ms;
