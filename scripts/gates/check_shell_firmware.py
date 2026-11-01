@@ -32,10 +32,11 @@ launcher/main/ outside a tests/ folder, where the name means a suite that runs
 on the board. The board support package is one board's, so it belongs to
 board/ alone, drivers included: a bsp/ include or a bsp_, BSP_ or CONFIG_BSP_
 name anywhere else fails. launcher/test/ outside suites/ (the host heap model,
-the stubs, the harness the board also builds) stands in for the vendor code or measures
-from beneath it, so it is not checked; nor is the shell, which the rule above
-holds to more. Standalone packages under launcher/packages/ have their own
-platform shims and do not use the engine's clock and heap owners.
+the stubs, the harness the board also builds) stands in for the vendor code
+or measures from beneath it, so it is not checked; nor is the shell, which
+the rule above holds to more. Standalone packages under launcher/packages/
+have their own platform shims and do not use the engine's clock and heap
+owners.
 """
 import pathlib
 import re

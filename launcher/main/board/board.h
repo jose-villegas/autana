@@ -3,12 +3,12 @@
  *
  * Every other file names a ROLE (the PMU's address, the boot button's GPIO,
  * the panel's column offset) and never a literal number; see board_esp32s3.c
- * for the binding to the Waveshare ESP32-S3-Touch-AMOLED-1.8.
+ * for the binding to the Waveshare ESP32-S3-Touch-AMOLED-1.8. It includes
+ * ESP-IDF headers but never the vendor BSP's: only board/'s sources bind to bsp/.
  */
 #pragma once
 
 #include <stdbool.h>
-
 #include <stdint.h>
 
 #include "driver/gpio.h"
