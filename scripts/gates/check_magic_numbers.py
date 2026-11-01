@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Reject growing per-file counts of restated constants and protocol strings.
 
-RESTATE: a plain integer literal in launcher/ C/C++ equal to a
+RESTATE: a plain integer literal in C/C++ equal to a
 constant reachable through the file's #include "..." chain, when the value
 is rare (RARE_MINIMUM or more and not a multiple of ROUND_MULTIPLE) or is a
 shift count equal to a visible *_SHIFT. Shift expressions such as 1 << 16,
@@ -32,11 +32,11 @@ import sys
 import time
 import tokenize
 
-from c_comments import excluded, balanced_end, blank_comments
+from c_comments import SOURCE_EXTENSIONS, excluded, balanced_end, blank_comments
 from c_lexer import tokens
 from c_constants import ConstantIndex, DEFINE, ENUM, INTEGER, SCALAR, file_scope
-from check_clones import C_TOKENS, INCLUDE_DIRECTIVE, ROOT, changed_paths, comparison_base, git
-from tracked import revision_contents
+from check_clones import C_TOKENS, INCLUDE_DIRECTIVE, changed_paths, comparison_base, git
+from tracked import repository, revision_contents
 from c_includes import resolve_include
 from idf_vocabulary import FLOW, WORD
 from check_generated_files import is_generated
@@ -50,10 +50,10 @@ DATA_ROW_MINIMUM = 6
 TOKEN_MINIMUM = 5
 RESTATE = "RESTATE"
 PROTOCOL = "PROTOCOL"
-C_SUFFIXES = {".c", ".h", ".cpp", ".hpp"}
+C_SUFFIXES = set(SOURCE_EXTENSIONS)
 
 # launcher/main/CMakeLists.txt exposes main/ and test/, each launcher/packages/<name>/ its include/
-# (package_roots).
+# (package_roots); --include-root names another repository's.
 INCLUDE_ROOTS = ("launcher/main", "launcher/test")
 PACKAGE_INCLUDE = re.compile(r"^(launcher/packages/[^/]+/include)/")
 INCLUDE = re.compile(r'^[ \t]*#[ \t]*include\s*"([^"\n]+)"', re.M)
@@ -81,7 +81,7 @@ class Hit:
 
 
 def eligible_c(path, text):
-    return (path.startswith("launcher/") and Path(path).suffix in C_SUFFIXES
+    return (Path(path).suffix in C_SUFFIXES
             and not path.startswith(excluded()) and not is_generated(text)
             and not {"fixture", "fixtures"}.intersection(PurePosixPath(path).parts))
 
@@ -94,8 +94,7 @@ def protocol_source(path, text):
 
 
 def revision_tree(root, revision):
-    names = git(root, "ls-tree", "-r", "--name-only", revision, "--",
-                "launcher", "scripts").decode().splitlines()
+    names = git(root, "ls-tree", "-r", "--name-only", revision).decode().splitlines()
     return {name: content.decode("utf-8", errors="replace")
             for name, content in revision_contents(root, revision,
                 [name for name in names if Path(name).suffix in C_SUFFIXES | {".py"}])}
@@ -199,8 +198,8 @@ def package_roots(names):
     return tuple(sorted({m.group(1) for name in names if (m := PACKAGE_INCLUDE.match(name))}))
 
 
-def include_graph(texts):
-    roots = INCLUDE_ROOTS + package_roots(texts)
+def include_graph(texts, include_roots=INCLUDE_ROOTS):
+    roots = tuple(include_roots) + package_roots(texts)
     return {name: tuple(target for include in INCLUDE.findall(blank_comments(text))
                         if (target := resolve_include(name, include, roots, texts.__contains__)))
             for name, text in texts.items() if Path(name).suffix in C_SUFFIXES}
@@ -276,19 +275,24 @@ def report(hits):
         print(f"{name}: RESTATE={counts[RESTATE]} PROTOCOL={counts[PROTOCOL]}")
 
 
-def main(argv=None, root=ROOT):
+def main(argv=None, root=None):
+    root = root or repository()
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=f"Thresholds: RARE_MINIMUM={RARE_MINIMUM}, ROUND_MULTIPLE={ROUND_MULTIPLE}, "
                f"DATA_ROW_MINIMUM={DATA_ROW_MINIMUM}, TOKEN_MINIMUM={TOKEN_MINIMUM}.")
     parser.add_argument("--base", default="origin/main", help="Compare with this branch's merge-base.")
     parser.add_argument("--report", action="store_true", help="List every HEAD hit and per-module totals.")
+    parser.add_argument("--include-root", action="append", metavar="DIR",
+                        help="A folder quoted includes resolve from, after the including file's own; "
+                             f"repeatable, replacing {', '.join(INCLUDE_ROOTS)}.")
     args = parser.parse_args(argv)
+    include_roots = args.include_root or INCLUDE_ROOTS
     started = time.perf_counter()
     try:
         if args.report:
             texts = revision_tree(root, "HEAD")
-            hits, logged, errors = scan(texts, direct=include_graph(texts))
+            hits, logged, errors = scan(texts, direct=include_graph(texts, include_roots))
             report(hits)
             grown = []
             old = {}
@@ -297,8 +301,8 @@ def main(argv=None, root=ROOT):
             changed, renames, deleted = changed_paths(root, base, "HEAD")
             head_texts = revision_tree(root, "HEAD")
             base_texts = revision_tree(root, base)
-            head_direct = include_graph(head_texts)
-            base_direct = include_graph(base_texts)
+            head_direct = include_graph(head_texts, include_roots)
+            base_direct = include_graph(base_texts, include_roots)
             reverse_renames = {previous: path for path, previous in renames.items()}
             base_changed = {renames.get(path, path) for path in changed} | deleted
             candidates = affected_files(head_texts, changed, head_direct) | {

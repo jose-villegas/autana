@@ -13,6 +13,14 @@ SKIP = {"build", "build.dev", "build.diag", "build.qemu", "build.qemu.perf", "bu
         "managed_components", "node_modules", ".git"}
 
 
+def repository():
+    """The top of the git repository the caller stands in, or the current
+    directory outside git: a gate checks the repository it is run from,
+    wherever the gate's own file lives."""
+    result = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
+    return pathlib.Path(result.stdout.strip() if result.returncode == 0 else ".").resolve()
+
+
 def git_listing(cwd, args):
     """The lines `git ls-files <args>` prints in `cwd`, or None when `cwd` is
     no git repository (a test fixture), for the caller to walk instead. Any

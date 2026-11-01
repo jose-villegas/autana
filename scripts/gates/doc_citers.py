@@ -28,9 +28,10 @@ import re
 import subprocess
 import sys
 
+from c_comments import SOURCE_EXTENSIONS
 from check_doc_citations import citations
 
-SOURCE_SUFFIXES = {".c", ".h", ".py", ".sh"}
+SOURCE_SUFFIXES = {*SOURCE_EXTENSIONS, ".py", ".sh"}
 # Defined in every suite, so a citation of one says nothing about which.
 GENERIC_FUNCTIONS = {"fixture"}
 HUNK = re.compile(r"^@@ [^@]* @@ ?(.*)$")
@@ -61,7 +62,7 @@ def names_on(line, suffix):
     if suffix == ".py":
         found = PY_NAME.match(line)
         return ({found.group(1)} if found else set()), set()
-    if suffix in (".c", ".h"):
+    if suffix in SOURCE_EXTENSIONS:
         function = C_NAME.match(line)
         macro = MACRO.match(line)
         return ({function.group(1)} if function else set()), ({macro.group(1)} if macro else set())

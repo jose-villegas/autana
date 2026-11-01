@@ -21,20 +21,20 @@
 
 set -eu
 
-REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-cd "$REPO_ROOT"
+GATE_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+cd "$(git rev-parse --show-toplevel)"
 
 # ACMR: added, copied, modified, renamed. A deleted file has nothing to
-# format, and format-file-list.sh would drop it anyway.
-staged=$(git diff --cached --name-only --diff-filter=ACMR -- '*.c' '*.h')
+# format, and format-file-list.sh drops every file its rules do not cover.
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
 [ -n "$staged" ] || exit 0
 
-files=$(printf '%s\n' "$staged" | scripts/gates/format-file-list.sh --stdin)
+files=$(printf '%s\n' "$staged" | "$GATE_DIR/format-file-list.sh" --stdin)
 [ -n "$files" ] || exit 0
 
 # Resolved once, so a version problem is reported once rather than per file.
 # check-format.sh owns finding it and refusing a wrong major.
-if ! CLANG_FORMAT=$(scripts/gates/check-format.sh --which); then
+if ! CLANG_FORMAT=$("$GATE_DIR/check-format.sh" --which); then
     echo "" >&2
     echo "Cannot check formatting, so nothing was verified. Fix the above, or" >&2
     echo "commit with --no-verify if you have a reason to skip the check." >&2

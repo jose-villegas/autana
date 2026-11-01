@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Prints the first-party C and header files the formatting rules apply to,
+# Prints the first-party C and C++ files the formatting rules apply to,
 # the single definition of that set, so the pre-commit hook and the CI gate
 # cannot disagree about what is checked. docs/c-style/README.md is the prose;
 # this is the file list.
@@ -32,15 +32,28 @@
 
 set -eu
 
-REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+# The files are the repository this is run in; the extensions are the
+# source gates' own table, c_comments.SOURCE_EXTENSIONS.
+GATE_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+REPO_ROOT=$(git rev-parse --show-toplevel)
+# shellcheck source=../lib/python.sh
+. "$GATE_DIR/../lib/python.sh"
+PYTHON=$(find_python) || exit 1
+EXTENSIONS=$("$PYTHON" -c 'import sys; sys.path.insert(0, sys.argv[1]); from c_comments import SOURCE_EXTENSIONS; print(" ".join(SOURCE_EXTENSIONS))' "$GATE_DIR" | tr -d '\r') || exit 1
+
+has_source_extension() {
+    for extension in $EXTENSIONS; do
+        case "$1" in
+            *"$extension") return 0 ;;
+        esac
+    done
+    return 1
+}
 
 qualifies() {
     path="$1"
 
-    case "$path" in
-        *.c | *.h) ;;
-        *) return 1 ;;
-    esac
+    has_source_extension "$path" || return 1
 
     # Vendored trees, checked in as-is. Patterns are spelled out in the case
     # itself rather than looped over a variable: an unquoted pattern in a
@@ -88,6 +101,10 @@ if [ "$#" -gt 0 ]; then
     exit 0
 fi
 
-git -C "$REPO_ROOT" ls-files '*.c' '*.h' | while IFS= read -r path; do
+set --
+for extension in $EXTENSIONS; do
+    set -- "$@" "*$extension"
+done
+git -C "$REPO_ROOT" ls-files -- "$@" | while IFS= read -r path; do
     emit_if_qualifies "$path"
 done

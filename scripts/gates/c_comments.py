@@ -1,4 +1,4 @@
-"""C comment and literal spans, prose and source selection for repository gates."""
+"""C and C++ comment and literal spans, prose and source selection for repository gates."""
 from functools import cache
 import pathlib
 import re
@@ -6,6 +6,12 @@ import re
 from c_lexer import tokens
 from check_generated_files import generated_files
 from tracked import committable
+
+C_EXTENSIONS = (".c", ".h")
+CPP_EXTENSIONS = (".cc", ".cpp", ".cxx", ".hh", ".hpp", ".hxx")
+# Every file the comment and source gates read.
+SOURCE_EXTENSIONS = C_EXTENSIONS + CPP_EXTENSIONS
+
 
 # Vendored upstream (microui) and every file whose banner says it is
 # generated: neither is ours to rewrite, and the generators' banner comments
@@ -166,8 +172,8 @@ def file_header(path, source):
     return comments[0] if comments else None
 
 
-def sources(root, *, extensions=(".c", ".h"), exclude=True, files=None):
-    """C sources eligible for comment gates: every file git would commit under root."""
+def sources(root, *, extensions=SOURCE_EXTENSIONS, exclude=True, files=None):
+    """C and C++ sources eligible for comment gates: every file git would commit under root."""
     root = pathlib.Path(root)
     for path in committable(root):
         # The excluded prefixes are written from the repository root, which a

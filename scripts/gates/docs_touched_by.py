@@ -10,6 +10,7 @@ import subprocess
 import sys
 
 from check_doc_citations import citations
+from c_comments import SOURCE_EXTENSIONS
 from code_vocabulary import source_paths
 
 FUNCTION = re.compile(r"\b([a-z_][a-z0-9_]*)\s*\([^;]*\)\s*\{")
@@ -52,7 +53,7 @@ def definition_counts(root):
     for path in source_paths(root):
         text = path.read_text(encoding="utf-8", errors="replace")
         for line in text.splitlines():
-            function = FUNCTION.search(line) if path.suffix in {".c", ".h"} else None
+            function = FUNCTION.search(line) if path.suffix in SOURCE_EXTENSIONS else None
             if path.suffix == ".py":
                 function = PYTHON_FUNCTION.search(line)
             macro = MACRO.search(line)

@@ -46,6 +46,11 @@ class LocalHookTests(ShellGateTestCase):
         self.git('add', 'scripts', 'launcher/tools')
         self.git('-c', 'core.hooksPath=', 'commit', '-qm', 'fixture tools')
 
+    def mark_host_tests(self):
+        # CI's push-test step, as the push gate finds it.
+        self.write('.github/workflows/host-tests.yml',
+                   (ROOT / '.github/workflows/host-tests.yml').read_text())
+
     def save_workflow(self):
         (self.root / '.github/workflows/comment-rules.yml').write_text(yaml.safe_dump(self.workflow))
 
@@ -79,6 +84,31 @@ class LocalHookTests(ShellGateTestCase):
         (self.root / path).write_text(bad)
         result = self.gate('check-text-rules-staged.sh')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_a_repository_holding_the_gates_as_a_submodule_runs_its_own_marked_steps(self):
+        consumer = self.root / 'consumer'
+        consumer.mkdir()
+        def git(*args):
+            return subprocess.check_output(['git', '-c', 'protocol.file.allow=always', *args],
+                                           cwd=consumer, text=True)
+        git('init', '-q')
+        git('submodule', '--quiet', 'add', self.root.as_posix(), 'third_party/engine')
+        (consumer / '.github/workflows').mkdir(parents=True)
+        (consumer / '.github/workflows/standards.yml').write_text(yaml.safe_dump({'jobs': {'gates': {'steps': [
+            {'run': 'python3 third_party/engine/scripts/gates/check_file_headers.py',
+             'env': {'STAGED_TEXT_GATE': 'true'}}]}}}))
+        (consumer / 'src').mkdir()
+        (consumer / 'src/frames.hpp').write_text('#pragma once\nclass Frames {};\n')
+        git('add', '.github', 'src')
+        hook = consumer / 'third_party/engine/scripts/git-hooks/pre-commit'
+        def commit_hook():
+            result = subprocess.run([self.shell, hook.as_posix()], cwd=consumer,
+                                    capture_output=True, text=True, timeout=120)
+            return result.stdout + result.stderr
+        self.assertIn('src/frames.hpp: no purpose', commit_hook())
+        (consumer / 'src/frames.hpp').write_text('// The frames a capture holds.\n#pragma once\nclass Frames {};\n')
+        git('add', 'src')
+        self.assertNotIn('no purpose', commit_hook())
 
     def test_header_pair_uses_staged_companion(self):
         self.write('launcher/main/gfx/sample.h', '/* Portable sample. */\n#pragma once\nint sample(void);\n')
@@ -134,6 +164,7 @@ class LocalHookTests(ShellGateTestCase):
         self.write('sample.c', 'int sample;\n')
         self.git('-c', 'core.hooksPath=', 'commit', '-qm', 'source')
         head = self.git('rev-parse', 'HEAD')
+        self.mark_host_tests()
         runner = self.root / 'launcher/test/run_tests.sh'
         runner.parent.mkdir(parents=True)
         runner.write_bytes(b'#!/bin/sh\n[ "$1" = --sanitize ] || exit 9\necho SANITIZED\nexit 7\n')
@@ -164,6 +195,7 @@ class LocalHookTests(ShellGateTestCase):
         self.git('add', 'main.c')
         self.git('-c', 'core.hooksPath=', 'commit', '-qm', 'base')
         self.git('update-ref', 'refs/remotes/origin/main', self.git('rev-parse', 'HEAD'))
+        self.mark_host_tests()
         runner = self.root / 'launcher/test/run_tests.sh'
         runner.parent.mkdir(parents=True)
         runner.write_bytes(b'#!/bin/sh\necho SANITIZED\n')
@@ -189,6 +221,7 @@ class LocalHookTests(ShellGateTestCase):
 
         self.write('sample.c', 'int sample;\n')
         self.git('add', 'sample.c')
+        self.mark_host_tests()
         self.git('-c', 'core.hooksPath=', 'commit', '-qm', 'source')
         source = self.git('rev-parse', 'HEAD')
         result = self.gate('check-host-tests-push.sh', f'refs/heads/images {source} refs/heads/images {zero}\n')

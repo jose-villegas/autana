@@ -40,11 +40,11 @@ import sys
 
 
 from c_lexer import c_code
-from c_comments import excluded, RULE_RUN, file_header, scan, sources
+from c_comments import SOURCE_EXTENSIONS, excluded, RULE_RUN, file_header, scan, sources
 
 
 def tracked_sources():
-    return [p.as_posix() for p in sources(".", extensions=(".c", ".h", ".cpp", ".hpp"), exclude=False)]
+    return [p.as_posix() for p in sources(".", exclude=False)]
 
 def changed_files(ref):
     """Tracked C/C++ files that differ from `ref`, staged or not."""
@@ -182,7 +182,7 @@ def main(argv):
 
     if selected is not None:
         selected = [relative_to_root(p) for p in selected]
-        paths = [p for p in selected if p.endswith((".c", ".h", ".cpp", ".hpp"))
+        paths = [p for p in selected if p.endswith(SOURCE_EXTENSIONS)
                  and not p.startswith(excluded()) and pathlib.Path(p).is_file()]
     elif explicit:
         pass

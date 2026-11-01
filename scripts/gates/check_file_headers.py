@@ -28,14 +28,14 @@ import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from c_comments import blank_comments, file_header, sources  # noqa: E402
+from c_comments import SOURCE_EXTENSIONS, blank_comments, file_header, sources  # noqa: E402
 from check_doc_constants import sentences  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools"))
 from build.packages import FIRST_PARTY, package_part  # noqa: E402
 
 SCOPE = (*FIRST_PARTY, "launcher/test/suites/")
 PRAGMA_ONCE = re.compile(r"^\s*#\s*pragma\s+once\b", re.M)
-HEADERS = (".h", ".hh", ".hpp", ".hxx")
+HEADERS = tuple(suffix for suffix in SOURCE_EXTENSIONS if suffix.startswith(".h"))
 RUN_TEST = re.compile(r"\bRUN_TEST\(\s*\w+")
 
 

@@ -30,12 +30,14 @@ class SnapshotDataTests(unittest.TestCase):
                 if command[1] == "show":
                     return b'jobs:\n  gate:\n    steps:\n      - run: python3 generated.py\n        env: {STAGED_TEXT_GATE: snapshot}\n'
                 if command[1] == "ls-files":
-                    return b"100644 capture-sha 0\tcapture.log.gz\000100644 image-sha 0\timage.png\0"
+                    return (b"100644 capture-sha 0\tcapture.log.gz\000100644 image-sha 0\timage.png\0"
+                            b"100644 flow-sha 0\t.github/workflows/gate.yml\0")
                 if command[1:] == ["rev-parse", "--absolute-git-dir"]:
                     return str(root / ".git")
                 if command[1] == "cat-file":
-                    self.assertEqual(b"capture-sha\n", kwargs["input"])
-                    return b"capture-sha blob " + str(len(capture)).encode() + b"\n" + capture + b"\n"
+                    self.assertEqual(b"capture-sha\nflow-sha\n", kwargs["input"])
+                    return (b"capture-sha blob " + str(len(capture)).encode() + b"\n" + capture + b"\n"
+                            + b"flow-sha blob 0\n\n")
                 self.fail(command)
             def gate(command, **kwargs):
                 snapshot = kwargs["cwd"]
