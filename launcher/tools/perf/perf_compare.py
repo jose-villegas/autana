@@ -21,7 +21,7 @@ DEFAULT_ALPHA = 0.05
 MAX_RUNS = 16
 CALIBRATION_SEEDS = 2
 CALIBRATION_RUNS = 2
-# Wall-time budget of one comparison: a board job's cap.
+# Measurement budget of one comparison, inside a board job's two-hour cap.
 DEFAULT_MAX_MINUTES = 120
 
 
@@ -136,17 +136,19 @@ def recommendations(records, rows, delta, alpha=0.025):
 
 
 def look_seconds(records, seeds, runs):
-    """A look's expected seconds: this job's mean flash plus runs of its mean suite pass, per seed and side."""
-    measured = records["a"] + records["b"]
-    flash = mean(record["flash_seconds"] for record in measured)
-    run = mean(sum(mean(entry["run_seconds"]) for entry in record["suites"].values()) for record in measured)
-    return 2 * seeds * (flash + runs * run)
+    """A look's expected seconds from this job's seeds: each seed's measured wall time with its runs
+    rescaled to RUNS, per seed and side. Wall time below its runs (a coarse clock) adds no overhead."""
+    def expected(record):
+        run = sum(mean(entry["run_seconds"]) for entry in record["suites"].values())
+        done = len(next(iter(record["suites"].values()))["runs"])
+        return max(0, record["wall_seconds"] - done * run) + runs * run
+    return 2 * seeds * mean(map(expected, records["a"] + records["b"]))
 
 
 def measure(args, runner=None, clock=time.monotonic):
     """Acquire seeded observations and save decisions even after capture failure."""
     started = clock()
-    budget = 60 * getattr(args, "max_minutes", DEFAULT_MAX_MINUTES)
+    budget = 60 * args.max_minutes
     budget_stop = None
     sizes = schedule(args.max_seeds, args.alpha)
     limits = {side: filter_limits(getattr(args, "project_" + side)) for side in ("a", "b")}
@@ -182,7 +184,8 @@ def measure(args, runner=None, clock=time.monotonic):
             elapsed, estimate = clock() - started, look_seconds(records, target - previous_target, runs)
             # Stopping before a planned look only drops looks; each look's alpha share stays valid.
             if elapsed + estimate > budget:
-                budget_stop = dict(look=look + 1, elapsed=elapsed, estimate=estimate, budget=budget)
+                budget_stop = dict(look=look + 1, elapsed_seconds=elapsed, estimate_seconds=estimate,
+                                   budget_seconds=budget)
                 break
         for pair in range(previous_target, target):
             sides = ["a", "b"]
@@ -207,7 +210,9 @@ def measure(args, runner=None, clock=time.monotonic):
                     send=console_lines,
                     timeout=args.timeout, wait=args.wait, autana=getattr(args, "autana", None))
                 try:
+                    flash_started = clock()
                     record = run_flash(flash_args, seed, runner)
+                    record["wall_seconds"] = clock() - flash_started
                 except (RuntimeError, OSError, ValueError) as error:
                     failures += 1
                     item["error"] = str(error)
@@ -307,12 +312,12 @@ def write_summary(path, args, records, rows, estimates, sizes, plan, incomplete=
              f"per-family per-look alpha: {args.alpha / len(sizes) / 2:g}. "
              f"First pass: {sizes[0]} seeds per side. Cap: {args.max_seeds} seeds per side.", "",
              f"RNG seed: {args.rng_seed}; R clamp: [1, {MAX_RUNS}].", "",
-             "Incomplete: stopped after capture failures, no rows, or rows not measured; see plan errors and the not-measured rows." if incomplete else "Complete.", "",
-             *([f"Stopped at the time budget before look {budget_stop['look']}: {budget_stop['elapsed'] / 60:.0f} min used, "
-                f"its estimated {budget_stop['estimate'] / 60:.0f} min would pass --max-minutes {budget_stop['budget'] / 60:g}. "
-                "Unresolved: " + (", ".join(f"`{name}`" for name, row in sorted(rows.items())
-                                            if row["verdict"] == "inconclusive") or "none") + ".", ""]
-               if budget_stop else []),
+             "Incomplete: stopped after capture failures, no rows, or rows not measured; see plan errors and the not-measured rows." if incomplete
+             else "Complete." if not budget_stop else
+             f"Complete; stopped at the time budget before look {budget_stop['look']}: "
+             f"{budget_stop['elapsed_seconds'] / 60:.0f} min used, its estimated {budget_stop['estimate_seconds'] / 60:.0f} min "
+             f"would pass --max-minutes {budget_stop['budget_seconds'] / 60:g}. Unresolved: " +
+             (", ".join(f"`{name}`" for name, row in sorted(rows.items()) if row["verdict"] == "inconclusive") or "none") + ".", "",
              "Seed means decide; medians describe the seed means. "
              f"Intervals are {100 * (1 - args.alpha / len(sizes) / 2):g}% two-sided Welch intervals on log seed means. "
              "Holm corrects difference and equivalence tests separately over all rows. "
@@ -386,7 +391,7 @@ def main(argv=None):
     parser.add_argument("--alpha", type=float, default=DEFAULT_ALPHA)
     parser.add_argument("--max-seeds", type=int, default=32)
     parser.add_argument("--max-minutes", type=float, default=DEFAULT_MAX_MINUTES,
-                        help="stop before a look whose estimated time would pass this budget")
+                        help="measurement budget: stop before a look whose estimated time would pass it")
     parser.add_argument("--rng-seed", type=int, help="replay a recorded random plan; default: fresh draw")
     parser.add_argument("--timeout", type=int, default=1800)
     parser.add_argument("--wait", type=int, default=3600)
