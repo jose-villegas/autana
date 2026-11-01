@@ -352,6 +352,10 @@ class CloneTests(unittest.TestCase):
         expressions = "".join(f"#define VALUE_{i} (input + {i})\n" for i in range(24))
         self.assertEqual(len(gate.filter_pairs([self.pair(fragment=expressions)])), 1)
 
+    def test_renaming_defines_are_ignored(self):
+        listing = "".join(f"#define name_{i} other_name_{i}\n" for i in range(24))
+        self.assertEqual(self.scan(dict.fromkeys(("launcher/main/a.c", "launcher/main/b.c"), listing), 80), [])
+
     def test_literal_vector_defines_are_ignored_but_calls_and_identifiers_are_not(self):
         listing = "".join(f"#define ROW_{i} {{{i}, -1, 0xFFU, 1.5F}}\n" for i in range(24))
         listing += '#define CONTINUED {1, \\\n    -2, 3}\n'
