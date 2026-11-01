@@ -42,7 +42,7 @@ trig_sin_quadrant(uint32_t r) {
 /* For 16-bit phase input, quarter-wave samples a and b bracket it; t is the low eight phase bits and s is sine in output LSBs. | s = a + floor((b-a)t/256) | every 16-bit phase against sinf in output LSBs */
 
 /* exact: s = 2^{TRIG\_SIN\_SHIFT}\sin(2\pi\,phase/TRIG\_TURN) */
-/* MATH_FAST_PATH(trig_sin_i, sinf_f, TRIG_SIN_LSB_LIMIT=5 lsb) */
+/* FAST_PATH(trig_sin_i, sinf_f, TRIG_SIN_LSB_LIMIT=5 lsb) */
 
 static inline int32_t
 trig_sin(uint16_t phase) {
