@@ -6,15 +6,6 @@
  */
 #pragma once
 
-#include "build/build_variant.h"
-#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-typedef struct scene_checkpoint scene_checkpoint_t;
-/* Loaded scenes and their component allocations must outlive the checkpoint. */
-scene_checkpoint_t* scene_save(void);
-void scene_restore(const scene_checkpoint_t* checkpoint);
-void scene_checkpoint_free(scene_checkpoint_t* checkpoint);
-#endif
-
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

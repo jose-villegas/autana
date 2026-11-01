@@ -83,10 +83,8 @@ const tune_entry_t* tune_find(const tune_registry_t* registry, const char* name)
 
 #if TUNE_ENABLED
 
-typedef struct tune_checkpoint tune_checkpoint_t;
-tune_checkpoint_t* tune_save(const tune_registry_t* registry);
-void tune_restore(const tune_checkpoint_t* checkpoint);
-void tune_checkpoint_free(tune_checkpoint_t* checkpoint);
+#include "core/checkpoint.h"
+void tune_checkpoint_capture(checkpoint_t* saved, const tune_registry_t* registry);
 
 /* The one TUNE() entries join, and the console answers from. */
 tune_registry_t* tune_shared(void);

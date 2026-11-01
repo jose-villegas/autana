@@ -11,38 +11,11 @@
 #include "core/checkpoint.h"
 #include "core/registry.h"
 
-struct tune_checkpoint {
-    checkpoint_t values;
-};
-
-tune_checkpoint_t*
-tune_save(const tune_registry_t* registry) {
-    tune_checkpoint_t* saved = memory_alloc(sizeof(*saved), MEMORY_PSRAM);
-    if (saved == NULL) {
-        return NULL;
-    }
-    *saved = (tune_checkpoint_t){0};
+void
+tune_checkpoint_capture(checkpoint_t* saved, const tune_registry_t* registry) {
     for (const tune_entry_t* e = registry->first; e != NULL; e = e->next) {
-        checkpoint_capture(&saved->values, e->value, sizeof(*e->value));
-        checkpoint_capture(&saved->values, e->owner, sizeof(*e->owner));
-    }
-    if (saved->values.failed) {
-        tune_checkpoint_free(saved);
-        return NULL;
-    }
-    return saved;
-}
-
-void
-tune_restore(const tune_checkpoint_t* saved) {
-    checkpoint_restore(&saved->values);
-}
-
-void
-tune_checkpoint_free(tune_checkpoint_t* saved) {
-    if (saved != NULL) {
-        checkpoint_clear(&saved->values);
-        memory_free(saved);
+        checkpoint_capture(saved, e->value, sizeof(*e->value));
+        checkpoint_capture(saved, e->owner, sizeof(*e->owner));
     }
 }
 
