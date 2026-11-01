@@ -35,17 +35,11 @@
 #define IMU_SAMPLE_US                 ((uint32_t)((MATH_US_PER_S / IMU_ODR_HZ) + 0.5))
 #define IMU_FIFO_SAMPLES              128
 
-/* QMI8658A datasheet section 8.7: read mode discards arrivals, so loss is
- * locked time / IMU_SAMPLE_US. Carry fractional time across drains; gaps break continuity. */
+/* QMI8658A Rev A section 8.7: read mode discards arrivals. Only whole periods
+ * inside a confirmed read interval guarantee losses; separate intervals have independent phase. */
 static inline int
-imu_fifo_lost(uint64_t locked_us, uint32_t* remainder_us, bool gap) {
-    if (gap) {
-        *remainder_us = 0;
-        return 0;
-    }
-    const uint64_t total_us = locked_us + *remainder_us;
-    *remainder_us = (uint32_t)(total_us % IMU_SAMPLE_US);
-    return (int)(total_us / IMU_SAMPLE_US);
+imu_fifo_lost(uint64_t locked_us, uint32_t sample_us, bool gap) {
+    return gap ? 0 : (int)(locked_us / sample_us);
 }
 
 /* One consumer copies queued samples oldest first, at IMU_ODR_CODE; loss precedes each sample.
@@ -76,7 +70,7 @@ bool imu_read(imu_sample_t* out, uint32_t* sequence);
 #define IMU_BUZZ_SAMPLE_US ((uint32_t)((MATH_US_PER_S / IMU_BUZZ_ODR_HZ) + 0.5))
 #define IMU_BUZZ_WINDOW_MS ((uint16_t)((IMU_FIFO_SAMPLES * MATH_MS_PER_S / IMU_BUZZ_ODR_HZ) + 1))
 /* Asks the IMU task to run the sensor at another ODR code until asked for IMU_ODR_CODE again,
- * and waits until the task serves FIFO demand with its gap queued. Every switch resets
+ * and waits until the task delivers a batch at that rate with its gap queued. Every switch resets
  * the FIFO once and queues a gap, so imu_take_fifo()
  * never mixes rates; between the switches samples are not IMU_SAMPLE_US apart.
  * False without a sensor or task, on a bus error, or when the task does not answer in time.

@@ -66,6 +66,18 @@ Capture collects delayed batches for up to `IMU_BUZZ_WINDOW_MS` after the
 pulse span. Only samples placed inside that span contribute to shake.
 Buzz-rate polling and draining are bounded by `IMU_BUZZ_DRAIN_MAX_MS`; saved tunes stay unchanged.
 
+The rate switch waits, bounded by `imu_set_odr()`, for a nonempty FIFO batch
+before capture opens its silence window. The priming batch is discarded.
+An empty baseline remains unavailable, never a valid silence measurement.
+
+The [QMI8658A datasheet](https://files.waveshare.com/upload/5/5f/QMI8658A_Datasheet_Rev_A.pdf)
+(Rev A, section 7.3 and Table 8) specifies a typical gyro wake-up of 150 ms
+plus filter settling of 3/ODR seconds. Rate configuration disables and re-enables both sensors.
+
+Section 8.7 specifies that FIFO read mode discards arrivals even when space
+remains. Loss accounting uses whole active-rate periods inside each confirmed
+read interval; fractions from separate drains cannot establish a lost sample.
+
 Pulse shake needs `IMU_VIBRATION_MIN_SAMPLES` samples in the pulse span.
 Gaps and lost samples invalidate shake only when their placed interval intersects
 that span. `imu_gaps` counts queue gap reports across both capture windows.

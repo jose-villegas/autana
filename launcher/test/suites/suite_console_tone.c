@@ -258,7 +258,6 @@ static struct {
             unsigned gaps_taken;
             unsigned restarts;
             int pending_lost;
-            uint32_t remainder_us;
         } task;
 
         struct {
@@ -525,12 +524,12 @@ audio_loopback_measure(uint16_t hz, uint16_t ms, float* db, audio_loopback_resul
 static void
 tone_imu_serve(void) {
     if (device.pulse.task.level != IMU_DEMAND_FIFO) {
-        imu_queue_restart(device.pulse.task.queue, &device.pulse.task.fifo_gap, &device.pulse.task.pending_lost,
-                          &device.pulse.task.remainder_us);
+        imu_queue_restart(device.pulse.task.queue, &device.pulse.task.fifo_gap, &device.pulse.task.pending_lost);
         device.pulse.task.restarts++;
     }
     device.pulse.task.level = IMU_DEMAND_FIFO;
     device.pulse.task.odr.served_sequence = device.pulse.task.task_sequence;
+    device.pulse.task.odr.flowing = true;
     device.pulse.task.task_pending = false;
 }
 
@@ -596,7 +595,6 @@ imu_set_odr(unsigned odr_code) {
             != IMU_ODR_UNCHANGED) {
             imu_queue_set_rate(device.pulse.task.queue, odr->applied);
             device.pulse.task.pending_lost = 0;
-            device.pulse.task.remainder_us = 0;
         }
         device.pulse.task.task_sequence = sequence;
         device.pulse.task.task_pending = true;
@@ -1030,7 +1028,6 @@ test_tone_pulse_measures_from_parked_imu(void) {
                 device.pulse.producer.period_us = IMU_BUZZ_DRAIN_MAX_MS * MATH_US_PER_MS;
                 device.pulse.producer.next_push_us = device.pulse.producer.period_us;
                 device.pulse.task.pending_lost = 1;
-                device.pulse.task.remainder_us = IMU_SAMPLE_US - 1;
                 char* line = malloc(CONSOLE_TONE_REPLY_BYTES);
                 TEST_ASSERT_NOT_NULL(line);
                 TEST_ASSERT_NULL(console_tone_check(&args, line));

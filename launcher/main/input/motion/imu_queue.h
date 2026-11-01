@@ -29,7 +29,7 @@ int imu_queue_take(imu_queue_t* queue, imu_sample_t* samples, uint8_t* lost_befo
  * dropped behind a gap, never handed out, so no reader integrates them at the wrong period. */
 int imu_queue_take_at(imu_queue_t* queue, unsigned odr_code, imu_sample_t* samples, uint8_t* lost_before, bool* gap);
 /* Discards pre-restart history and uncounted read-mode loss behind one gap. */
-void imu_queue_restart(imu_queue_t* queue, bool* fifo_gap, int* pending_lost, uint32_t* remainder_us);
+void imu_queue_restart(imu_queue_t* queue, bool* fifo_gap, int* pending_lost);
 /* Drops queued samples behind a gap; later pushes are at `odr_code`. */
 void imu_queue_set_rate(imu_queue_t* queue, unsigned odr_code);
 

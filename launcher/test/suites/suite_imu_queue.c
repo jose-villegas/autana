@@ -241,11 +241,9 @@ test_restart_gap_is_taken_before_next_drain(void) {
     for (unsigned before_drain = 0; before_drain <= 1; before_drain++) {
         bool fifo_gap = true;
         int pending_lost = 1;
-        uint32_t remainder_us = IMU_SAMPLE_US - 1;
         imu_queue_push(&f->queue, &stale, 1, pending_lost, false);
-        imu_queue_restart(&f->queue, &fifo_gap, &pending_lost, &remainder_us);
+        imu_queue_restart(&f->queue, &fifo_gap, &pending_lost);
         TEST_ASSERT_EQUAL_INT(0, pending_lost);
-        TEST_ASSERT_EQUAL_UINT32(0, remainder_us);
         if (before_drain) {
             TEST_ASSERT_EQUAL_INT(0, imu_queue_take(&f->queue, f->samples, f->lost, &f->gap));
             TEST_ASSERT_TRUE(f->gap);

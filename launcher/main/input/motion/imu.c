@@ -152,7 +152,6 @@ static i2c_master_dev_handle_t dev;
 static bool ready;
 static bool sensor_present;
 static bool fifo_gap;
-static uint32_t loss_remainder_us;
 static int pending_lost;
 
 static bool
@@ -396,7 +395,6 @@ drain_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
     const int injected_count = read_injected_fifo(out, overflowed);
     if (injected_count >= 0) {
         pending_lost = 0;
-        loss_remainder_us = 0;
         fifo_gap = true;
         return injected_count;
     }
@@ -406,15 +404,15 @@ drain_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
     }
     int count = 0;
     bool ok = read_fifo_count(&count, overflowed);
-    const int64_t lock_start_us = timing_now_us();
     if (ok) {
         ok = write_command(CTRL9_REQ_FIFO);
     }
+    const int64_t lock_start_us = timing_now_us();
     if (ok && count > 0) {
         ok = read_regs(REG_FIFO_DATA, (uint8_t*)out, (size_t)count * sizeof *out);
     }
-    const bool resumed = write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG);
     const uint64_t locked_us = (uint64_t)(timing_now_us() - lock_start_us);
+    const bool resumed = write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG);
     fifo_gap = !ok || !resumed;
     if (fifo_gap) {
         /* A failed burst may have consumed part of a sample (reads consume, section 8.8):
@@ -423,7 +421,11 @@ drain_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
     }
     *lost = fifo_gap || *overflowed ? 0 : pending_lost;
     /* Read-mode losses follow this burst, so gravity advances them with the next batch. */
-    pending_lost = imu_fifo_lost(locked_us, &loss_remainder_us, fifo_gap || *overflowed);
+    uint32_t sample_us = IMU_SAMPLE_US;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    sample_us = odr.applied == IMU_BUZZ_ODR_CODE ? IMU_BUZZ_SAMPLE_US : IMU_SAMPLE_US;
+#endif
+    pending_lost = imu_fifo_lost(locked_us, sample_us, fifo_gap || *overflowed);
     return fifo_gap ? -1 : count;
 }
 
@@ -497,6 +499,7 @@ imu_read_or_drain(bool drain_due) {
             newest_sequence++;
 #if CONFIG_LAUNCHER_DEVELOPMENT
             newest_us = now_us;
+            odr.flowing = true;
 #endif
         }
         portEXIT_CRITICAL(&lock);
@@ -535,7 +538,10 @@ restart_fifo(void) {
         (void)(write_command(CTRL9_RST_FIFO) && write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG));
     }
     portENTER_CRITICAL(&lock);
-    imu_queue_restart(&queue, &fifo_gap, &pending_lost, &loss_remainder_us);
+    imu_queue_restart(&queue, &fifo_gap, &pending_lost);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    odr.flowing = false;
+#endif
     portEXIT_CRITICAL(&lock);
 }
 
@@ -569,11 +575,11 @@ apply_odr_request(imu_demand_level_t* level, unsigned* read_ticks) {
                  next.applied);
     }
     pending_lost = 0;
-    loss_remainder_us = 0;
     *read_ticks = 0;
     portENTER_CRITICAL(&lock);
     imu_queue_set_rate(&queue, next.applied);
     odr.applied = next.applied;
+    odr.flowing = false;
     if (odr.sequence == next.sequence) {
         odr.requested = next.requested;
     }
