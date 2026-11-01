@@ -4,8 +4,8 @@
 
 Git supplies every ref update on stdin. A new branch counts from where it
 leaves the remote's default branch (origin/HEAD); one sharing no history with
-it counts every file it holds. A moved submodule counts as changed source:
-its pin is code the tests build. The tests are the workflow steps marked
+it counts every file it holds. A moved submodule and a CMake file count as
+changed source: the tests build them. The tests are the workflow steps marked
 PUSH_TEST_GATE: "true" in the repository this runs in, run from its top in
 the order the workflows list them; none marked runs nothing.
 """
@@ -19,6 +19,7 @@ from workflow_marks import is_workflow, marked_commands
 
 ZERO = "0" * 40
 GITLINK = "160000"
+BUILD_FILES = ("CMakeLists.txt", "CMakePresets.json")
 SKIP = "To skip: git push --no-verify"
 
 
@@ -46,7 +47,8 @@ def changes_source(root, updates):
         for entry in diff.stdout.splitlines():
             metadata, path = entry.split("\t", 1)
             modes = metadata.lstrip(":").split()[:2]
-            changed = changed or GITLINK in modes or path.endswith(SOURCE_EXTENSIONS)
+            changed = (changed or GITLINK in modes or path.endswith((*SOURCE_EXTENSIONS, ".cmake"))
+                       or pathlib.PurePosixPath(path).name in BUILD_FILES)
     return changed
 
 
