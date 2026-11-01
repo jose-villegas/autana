@@ -197,8 +197,7 @@ test_lost_samples_advance_at_datasheet_rate(void) {
     TEST_ASSERT_NOT_NULL(batch);
     const uint32_t produced_per_drain = DELIVERED_PER_DRAIN + LOST_PER_DRAIN;
     const uint32_t drain_us = produced_per_drain * IMU_SAMPLE_US;
-    uint32_t remainder_us = 0;
-    const int lost = imu_fifo_lost(LOST_PER_DRAIN * IMU_SAMPLE_US, &remainder_us, false);
+    const int lost = imu_fifo_lost(LOST_PER_DRAIN * IMU_SAMPLE_US, IMU_SAMPLE_US, false);
     *batch = (input_motion_batch_t){.count = DELIVERED_PER_DRAIN, .lost_before = {(uint8_t)lost}};
     const float turn_rate = QUARTER_TURN_DEG * MATH_US_PER_S / (float)(DRAINS * drain_us);
     const input_motion_t initial = sample((vec3f_t){0, 0, -1}, (vec3f_t){0});
@@ -322,31 +321,26 @@ test_multiple_losses_match_sequential_holds_with_acceleration(void) {
 }
 
 static void
-test_fifo_lock_loss_carries_fractional_time(void) {
-    uint32_t remainder_us = 0;
-    uint64_t total_us = 0;
-    uint32_t total_lost = 0;
-    const uint32_t drains = IMU_FIFO_SAMPLES * IMU_FIFO_SAMPLES;
-    for (uint32_t i = 0; i < drains; i++) {
-        const uint32_t locked_us = IMU_SAMPLE_US / 2U + i % IMU_SAMPLE_US;
-        total_us += locked_us;
-        total_lost += (uint32_t)imu_fifo_lost(locked_us, &remainder_us, false);
-        TEST_ASSERT_EQUAL_UINT64(total_us / IMU_SAMPLE_US, total_lost);
-        TEST_ASSERT_EQUAL_UINT32(total_us % IMU_SAMPLE_US, remainder_us);
+test_separate_read_intervals_do_not_invent_loss(void) {
+    for (unsigned drain = 0; drain < IMU_FIFO_SAMPLES; drain++) {
+        TEST_ASSERT_EQUAL_INT(0, imu_fifo_lost(IMU_SAMPLE_US - 1U, IMU_SAMPLE_US, false));
     }
 }
 
 static void
-test_fifo_lock_loss_gap_resets_remainder(void) {
-    uint32_t remainder_us = 0;
-    const uint32_t fractional_us = IMU_SAMPLE_US - 1U;
-    TEST_ASSERT_EQUAL_INT(0, imu_fifo_lost(fractional_us, &remainder_us, false));
-    TEST_ASSERT_EQUAL_UINT32(fractional_us, remainder_us);
-    TEST_ASSERT_EQUAL_INT(0, imu_fifo_lost(IMU_SAMPLE_US, &remainder_us, true));
-    TEST_ASSERT_EQUAL_UINT32(0, remainder_us);
-    TEST_ASSERT_EQUAL_INT(0, imu_fifo_lost(fractional_us, &remainder_us, false));
-    TEST_ASSERT_EQUAL_INT(1, imu_fifo_lost(1, &remainder_us, false));
-    TEST_ASSERT_EQUAL_UINT32(0, remainder_us);
+test_fifo_lock_loss_is_a_lower_bound_at_each_rate(void) {
+    static const uint32_t periods[] = {IMU_SAMPLE_US, IMU_BUZZ_SAMPLE_US};
+    for (size_t rate = 0; rate < sizeof periods / sizeof periods[0]; rate++) {
+        const uint32_t period = periods[rate];
+        for (uint32_t phase = 0; phase < period; phase++) {
+            const uint32_t locked_us = period + phase;
+            const int actual_lost = (int)((phase + locked_us) / period);
+            const int reported_lost = imu_fifo_lost(locked_us, period, false);
+            TEST_ASSERT_LESS_OR_EQUAL_INT(actual_lost, reported_lost);
+            TEST_ASSERT_EQUAL_INT(1, reported_lost);
+        }
+        TEST_ASSERT_EQUAL_INT(0, imu_fifo_lost(period, period, true));
+    }
 }
 
 static void
@@ -845,8 +839,8 @@ run_gravity_suite(void) {
 #endif
     RUN_TEST(test_loss_mid_batch_holds_the_immediately_previous_rotation);
     RUN_TEST(test_multiple_losses_match_sequential_holds_with_acceleration);
-    RUN_TEST(test_fifo_lock_loss_carries_fractional_time);
-    RUN_TEST(test_fifo_lock_loss_gap_resets_remainder);
+    RUN_TEST(test_separate_read_intervals_do_not_invent_loss);
+    RUN_TEST(test_fifo_lock_loss_is_a_lower_bound_at_each_rate);
     RUN_TEST(test_lost_prediction_clamps_without_acceleration_correction);
     RUN_TEST(test_lost_time_uses_previous_rotation_before_delivered_samples);
     RUN_TEST(test_gap_full_batch_changes_hidden_turn_recovery);

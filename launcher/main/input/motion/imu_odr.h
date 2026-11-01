@@ -10,6 +10,7 @@ typedef struct {
     unsigned applied;
     uint32_t sequence;
     uint32_t served_sequence;
+    bool flowing;
 } imu_odr_t;
 
 typedef enum {
@@ -29,6 +30,7 @@ imu_odr_apply(imu_odr_t* odr, bool (*configure)(unsigned odr_code), bool* fifo_g
         return IMU_ODR_UNCHANGED;
     }
     *fifo_gap = false;
+    odr->flowing = false;
     if (configure(odr->requested)) {
         *level = IMU_DEMAND_FIFO;
         odr->applied = odr->requested;
@@ -42,10 +44,10 @@ imu_odr_apply(imu_odr_t* odr, bool (*configure)(unsigned odr_code), bool* fifo_g
     return IMU_ODR_LOST;
 }
 
-/* A rate alone is not an acknowledgement: FIFO entry must finish before a reader resumes. */
+/* A rate alone is not an acknowledgement: a batch must arrive before a reader resumes. */
 static inline bool
 imu_odr_ready(const imu_odr_t* odr, uint32_t sequence) {
-    return odr->sequence == sequence && odr->served_sequence == sequence;
+    return odr->sequence == sequence && odr->served_sequence == sequence && odr->flowing;
 }
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST

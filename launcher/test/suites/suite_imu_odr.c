@@ -113,8 +113,20 @@ test_buzz_period_fits_retained_history(void) {
     }
 }
 
+static void
+test_rate_ack_waits_for_first_batch(void) {
+    imu_odr_t odr = {.requested = IMU_BUZZ_ODR_CODE, .applied = IMU_BUZZ_ODR_CODE, .sequence = 1, .served_sequence = 1};
+    for (unsigned empty_drains = 0; empty_drains < IMU_FIFO_SAMPLES; empty_drains++) {
+        TEST_ASSERT_FALSE(imu_odr_ready(&odr, odr.sequence));
+    }
+    odr.flowing = true;
+    TEST_ASSERT_TRUE(imu_odr_ready(&odr, odr.sequence));
+    TEST_ASSERT_FALSE(imu_odr_ready(&odr, odr.sequence + 1));
+}
+
 void
 run_imu_odr_suite(void) {
+    RUN_TEST(test_rate_ack_waits_for_first_batch);
     RUN_TEST(test_buzz_period_fits_retained_history);
     RUN_TEST(test_switch_gap_is_taken_before_next_drain);
     RUN_TEST(test_nothing_asked_touches_nothing);
