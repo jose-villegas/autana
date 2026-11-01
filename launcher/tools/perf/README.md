@@ -279,9 +279,19 @@ sequenceDiagram
 
 GPU work starts at `vars.NIGHT_START`; the board night starts at `vars.BOARD_START`, later.
 It starts no new lane after `vars.BOARD_LAST_START` on the marker's date.
+A lane is given only the new steps that fit before `vars.BOARD_END` on that date.
 Each accepts HH:MM up to the latest hour `LOCAL_TIMES` in `scripts/lib/local_schedule.py` gives it; an empty value
 uses its default there. Started lanes have no end time: they run to
 completion under their hang guards, and day board jobs queue on the lock behind them.
+
+| Lane sizing | Rule |
+|---|---|
+| Step time | Median build plus measure seconds of the measured steps in the board's last night manifest; `FIRST_STEP_SECONDS` without any |
+| Room | From the lane's start to `BOARD_END`, less the anchor step and, on the self-test board, `SELFTEST_ALLOWANCE_SECONDS` |
+| Steps | The oldest new steps the room fits; `--max-steps` bounds them further |
+| No room | The board gets no lane, stays free and the night notes it |
+| The rest | The next night resumes after `last_attempted` |
+| Override | A run marked after `BOARD_END` is not sized |
 
 The zone is the NIGHT_ZONE repository variable (IANA name; UTC when unset).
 The marker is the first local start at or after the trigger; override starts now.

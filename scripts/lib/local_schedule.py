@@ -21,11 +21,14 @@ BOARD_START = "03:00"
 STARTS = ("NIGHT_START", "BOARD_START")
 # The board night starts no new lane after this local time on its marker's date; running lanes finish.
 BOARD_LAST_START = "08:00"
+# A lane is given only the steps its estimate fits before this local time on its marker's date. It is soft:
+# a started lane still runs to completion under its hang guards.
+BOARD_END = "10:00"
 # Each local time setting's default and the latest hour it takes. A start is the early morning after the
 # evening trigger; the cut-off stays before noon, so a daytime override's cut-off has passed and it starts
-# no lane after its plan.
+# no lane after its plan. The deadline may reach early afternoon.
 LOCAL_TIMES = dict(NIGHT_START=(NIGHT_START, 5), BOARD_START=(BOARD_START, 5),
-                   BOARD_LAST_START=(BOARD_LAST_START, 11))
+                   BOARD_LAST_START=(BOARD_LAST_START, 11), BOARD_END=(BOARD_END, 13))
 NIGHT_ZONE = "UTC"
 HOSTED_WAIT_SECONDS = 350 * 60
 GPU_LABEL = "gpu"
@@ -86,6 +89,12 @@ def night_cutoff(marker):
     """When the board night that starts at `marker` stops starting lanes: BOARD_LAST_START on its date.
     The marker carries NIGHT_ZONE's offset, so the board machine needs no time zone data."""
     hour, minute = local_time("BOARD_LAST_START")
+    return marker.replace(hour=hour, minute=minute, second=0, microsecond=0)
+
+
+def night_end(marker):
+    """The deadline the board night that starts at `marker` sizes its lanes to: BOARD_END on its date."""
+    hour, minute = local_time("BOARD_END")
     return marker.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
 

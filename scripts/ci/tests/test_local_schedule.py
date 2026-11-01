@@ -85,6 +85,19 @@ class LocalScheduleTests(unittest.TestCase):
                     self.assertRaisesRegex(ValueError, f'BOARD_LAST_START must be HH:MM in 00:00–{latest:02d}:59'):
                 schedule.night_cutoff(marker)
 
+    def test_night_end_is_board_end_on_the_markers_date_and_offset(self):
+        marker = datetime(2026, 10, 25, 3, tzinfo=self.zone)
+        default, latest = schedule.LOCAL_TIMES['BOARD_END']
+        for value, hour in (('', int(default[:2])), ('04:30', 4), (f'{latest:02d}:59', latest)):
+            with patch.dict(os.environ, BOARD_END=value):
+                end = schedule.night_end(marker)
+            self.assertEqual(end.utcoffset(), marker.utcoffset())
+            self.assertEqual((end.date(), end.hour), (marker.date(), hour))
+        for value in (f'{latest + 1:02d}:00', '23:00', '8:00', '08:60'):
+            with self.subTest(value=value), patch.dict(os.environ, BOARD_END=value), \
+                    self.assertRaisesRegex(ValueError, f'BOARD_END must be HH:MM in 00:00–{latest:02d}:59'):
+                schedule.night_end(marker)
+
     def test_invalid_night_zone_raises(self):
         trigger = Clock(0, tzinfo=timezone.utc).now()
         for value in ('Invalid/Zone', '/invalid/zone'):
