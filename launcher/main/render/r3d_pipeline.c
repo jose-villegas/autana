@@ -15,6 +15,7 @@
 #include "math/geometry/planef.h"
 #include "math/linear/mat3f.h"
 #include "math/projection/inverse_depth.h"
+#include "math/scalar/float_bits.h"
 #include "math/scalar/mathf.h"
 #include "math/scalar/mathi.h"
 #include "profile/frame_laps.h"
@@ -215,16 +216,16 @@ typedef struct {
     float x, y; /* subpixels plus R3D_SNAP_BIAS */
 } biased_t;
 
-/* The one place a lens position becomes a screen position, so a vertex
- * that both paths project snaps alike. `inv` is R3D_SUBPIXEL / z. */
+/* The one place a position becomes a biased screen position, so both paths
+ * snap alike. x and y are in subpixels; r is 1/z. */
 static inline biased_t
-biased_screen(const r3d_lens_t* lens, float lx, float ly, float inv) {
-    return (biased_t){lens->snap_cx + (lx * inv), lens->snap_cy + (ly * inv)};
+biased_screen(const r3d_lens_t* lens, float x, float y, float r) {
+    return (biased_t){lens->snap_cx + (x * r), lens->snap_cy + (y * r)};
 }
 
 static inline r3d_pipeline_rows_t
-transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_cluster_t* c,
-                  r3d_pipeline_vertex_t* cs) {
+transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const mat4f_t* screen, const r3d_lit_cluster_t* c,
+                  r3d_pipeline_vertex_t* cs, uint32_t lo_bits, uint32_t hi_bits) {
     const int end = c->vertex_first + c->vertex_count;
     int y0 = INT16_MAX;
     int y1 = INT16_MIN;
@@ -232,7 +233,7 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_
     for (int v = c->vertex_first; v < end; v++) {
         FRAME_LAP("r3d.transform.apply");
         const int16_t* p = mesh->positions[v];
-        const vec3f_t l = mat4f_apply(&lens->m, (vec3f_t){(float)p[0], (float)p[1], (float)p[2]});
+        const vec3f_t l = mat4f_apply(screen, (vec3f_t){(float)p[0], (float)p[1], (float)p[2]});
         r3d_pipeline_vertex_t* out = &cs[v];
         if (l.z <= lens->project.near_z) {
             out->iz = 0.0F;
@@ -240,16 +241,18 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_
             continue;
         }
         FRAME_LAP("r3d.transform.project");
-        const float inv = (float)R3D_SUBPIXEL * mathf_recip(l.z);
-        const biased_t b = biased_screen(lens, l.x, l.y, inv);
-        if (!(b.x > FAST_LO && b.x < FAST_HI && b.y > FAST_LO && b.y < FAST_HI)) {
+        const float r = mathf_recip(l.z);
+        const biased_t b = biased_screen(lens, l.x, l.y, r);
+        /* Positive floats order like their bits; negatives and NaNs fall outside the span. */
+        if (!((uint32_t)(mathf_bits(b.x) - lo_bits - 1U) < hi_bits - lo_bits - 1U
+              && (uint32_t)(mathf_bits(b.y) - lo_bits - 1U) < hi_bits - lo_bits - 1U)) {
             out->iz = -1.0F;
             unbounded = true;
             continue;
         }
         out->sx = (int16_t)r3d_span_unbias(b.x);
         out->sy = (int16_t)r3d_span_unbias(b.y);
-        out->iz = lens->depth_subpixels * inv;
+        out->iz = lens->depth_near * r;
         y0 = out->sy < y0 ? out->sy : y0;
         y1 = out->sy > y1 ? out->sy : y1;
     }
@@ -258,11 +261,15 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_
     return (r3d_pipeline_rows_t){(float)y0 * to_pixels, (float)y1 * to_pixels, unbounded};
 }
 
-void
+void RENDER_IRAM_ATTR
 r3d_pipeline_transform(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
                        r3d_pipeline_vertex_t* cs, r3d_pipeline_rows_t* rows) {
+    const mat4f_t screen = mat4f_scale_rows(lens->m, (vec3f_t){R3D_SUBPIXEL, R3D_SUBPIXEL, 1});
+    const uint32_t lo_bits = mathf_bits(FAST_LO);
+    const uint32_t hi_bits = mathf_bits(FAST_HI);
     for (int i = 0; i < count; i++) {
-        const r3d_pipeline_rows_t r = transform_cluster(mesh, lens, &mesh->clusters[clusters[i]], cs);
+        const r3d_pipeline_rows_t r =
+            transform_cluster(mesh, lens, &screen, &mesh->clusters[clusters[i]], cs, lo_bits, hi_bits);
         if (rows != NULL) {
             rows[clusters[i]] = r;
         }
@@ -347,10 +354,11 @@ r3d_pipeline_draw_split(const r3d_pipeline_part_t* parts, int part_count, int he
 
 static r3d_span_vertex_t
 project(const r3d_lens_t* lens, const clip_vertex_t* v) {
-    const float inv = (float)R3D_SUBPIXEL * mathf_recip(v->z);
-    const biased_t b = biased_screen(lens, v->x, v->y, inv);
-    return (r3d_span_vertex_t){
-        r3d_span_unbias(b.x), r3d_span_unbias(b.y), lens->depth_subpixels * inv, v->r, v->g, v->b};
+    /* Scaling by 16 is exact: (16*x)*r == x*(16*r), and (d/16)*(16*r) == d*r,
+     * so lens-space clip vertices and the screen rows snap and encode depth alike. */
+    const float r = mathf_recip(v->z);
+    const biased_t b = biased_screen(lens, v->x * R3D_SUBPIXEL, v->y * R3D_SUBPIXEL, r);
+    return (r3d_span_vertex_t){r3d_span_unbias(b.x), r3d_span_unbias(b.y), lens->depth_near * r, v->r, v->g, v->b};
 }
 
 /* One Sutherland-Hodgman pass (Sutherland and Hodgman 1974): the polygon's part on the plane's inside. */
