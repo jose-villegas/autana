@@ -89,29 +89,13 @@ set(app_srcs
     "core/tune.c"
 )
 
-function(launcher_glob output)
-    if(CMAKE_SCRIPT_MODE_FILE)
-        file(GLOB_RECURSE files ${ARGN})
-    else()
-        file(GLOB_RECURSE files CONFIGURE_DEPENDS ${ARGN})
-    endif()
-    set(${output} ${files} PARENT_SCOPE)
-endfunction()
+include("${CMAKE_CURRENT_LIST_DIR}/renderer_sources.cmake")
 
 if(CONFIG_LAUNCHER_QEMU)
     list(APPEND app_srcs "gfx/present/panel/gfx_null_panel_device.c")
 endif()
 
-# The renderer: every .c below the folders renderer_folders.txt names, the
-# list host builds read too (tools/render/CMakeLists.txt, tools/build/renderer.sh, renderer.py).
-file(STRINGS "${CMAKE_CURRENT_LIST_DIR}/renderer_folders.txt" renderer_folders REGEX "^[^#]")
-foreach(folder IN LISTS renderer_folders)
-    launcher_glob(folder_srcs "${CMAKE_CURRENT_LIST_DIR}/${folder}/*.c")
-    list(APPEND app_srcs ${folder_srcs})
-endforeach()
-if(NOT CMAKE_SCRIPT_MODE_FILE)
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/renderer_folders.txt")
-endif()
+list(APPEND app_srcs ${renderer_sources})
 
 # The frame's view modes, everything in render/view/: a development tool, with
 # nothing calling them in a release build.
