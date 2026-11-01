@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 import io
 from functools import partial
 from itertools import repeat
+import gzip
 import json
 import os
 import re
@@ -211,20 +212,31 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual(writes[-1]['started'], marker)
         self.assertEqual(writes[-1]['ended'], self.clock.now().isoformat())
         plan = self.root / 'plan.json'
-        chain.write_json(plan, dict(marker=marker, started=marker, lanes={'20E8': {}}))
+        chain.write_json(plan, dict(marker=marker, started=marker, lanes={'20E8': {}, '2124': {}, 'A308': {}}))
         gpu_end = (self.clock.now() + timedelta(hours=1)).isoformat()
         key = datetime.fromisoformat(marker).strftime(schedule.MARKER_KEY_FORMAT)
         chain.write_json(schedule.heavy_root() / 'night-steps' / key / 'gpu.json',
                          dict(workflow=schedule.DOC_IMAGES_WORKFLOW, marker=marker,
                               started=marker, ended=gpu_end, exit=0))
+        # A remote lane's manifest, copied back to the runner: the runner's summary says why it failed.
+        failed = lnt.night_manifest('2124', MACHINE, None, '1/2', [chain.StepResult(chain.Step('c' * 40, 9, 'merge', 3),
+                                    'build_failed')], None, None, dict(outcome='skipped', report=None), marker, gpu_end)
+        chain.write_json(self.args.data / 'scoped/2124' / key / 'night.json', failed)
         summary = self.root / 'summary'
         chain.timeline(SimpleNamespace(plan=plan, data=self.args.data, summary=summary))
         record = json.loads((self.args.data / 'scoped/timeline' / (key + '.json')).read_text())
         self.assertEqual(record['free_at'], gpu_end)
         self.assertEqual([step['name'] for step in record['steps']],
-                         ['gpu ' + schedule.DOC_IMAGES_WORKFLOW, 'board 20E8'])
-        self.assertEqual(len(summary.read_text().splitlines()), 1)
-        self.assertIn('host free', summary.read_text())
+                         ['gpu ' + schedule.DOC_IMAGES_WORKFLOW, 'board 20E8', 'board 2124'])
+        self.assertEqual([step['outcome'] for step in record['steps']][1:], ['passed', 'failed'])
+        lines = [line for line in summary.read_text().splitlines() if line]
+        self.assertEqual(lines[:2], [f"20E8: measured={len(writes[-1]['steps'])}",
+                                     f"Self-test 20E8: {writes[-1]['selftest']['outcome']}; report: None"])
+        self.assertEqual(lines[2:7], ['2124: build_failed=1', 'Self-test 2124: skipped; report: None',
+                                      '### Lane 2124 failed', '- step 3 cccccccccccc: build_failed',
+                                      'A308: no night manifest'])
+        self.assertEqual(len(lines), 8)
+        self.assertIn('host free', lines[-1])
         self.assertIn('1h 06min after the marker', summary.read_text())
 
     def test_worktree_git_commands_enable_longpaths(self):
@@ -320,10 +332,41 @@ class NightlyTests(unittest.TestCase):
                     patch("layout_measure.capture_board", return_value=MACHINE), \
                     patch.object(chain, "Clock", return_value=clock), \
                     patch.object(chain, "run_stamped", replay), \
-                    patch.object(chain.subprocess, "check_output", side_effect=fail_remove):
+                    patch.object(chain.subprocess, "check_output", side_effect=fail_remove), \
+                    patch.object(sys, "stderr", new_callable=io.StringIO) as stderr:
                 self.assertEqual(chain.main(), expected)
                 manifest = lnt.read_last_night(self.args.data, "20E8")
                 self.assertTrue(manifest["cleanup"].startswith("failed:"))
+                # A failing lane says why; a passing one raises no error line.
+                self.assertEqual("::error::lane 20E8: " in stderr.getvalue(), bool(expected), stderr.getvalue())
+
+    def test_a_failed_lane_names_its_failed_steps_and_selftest_tests(self):
+        # The device tool's report sits beside its capture, which a large self-test has gzipped.
+        report = self.root / "selftest.md"
+        tests = [":1:test_ok:PASS", ":2:test_cost:FAIL: cost more than its observed price", ":3:test_bare:FAIL"]
+        tests += [f":{4 + n}:test_more_{n}:FAIL: {n}" for n in range(chain.LISTED_FAILURES)]
+        with gzip.open(report.with_suffix(".log.gz"), "wt", encoding="utf-8") as capture:
+            capture.write("\n".join("main/test.c" + line for line in tests) + "\n")
+        results = [chain.StepResult(chain.Step("a" * 40, None, "merge", 0), "measured"),
+                   chain.StepResult(chain.Step("b" * 40, 7, "merge", 1), "build_failed")]
+        selftest = dict(outcome="failed", report=str(report))
+        night = lnt.night_manifest("20E8", MACHINE, None, "0/1", results, None, None, selftest, None, None)
+        steps = night["steps"]
+        lines = chain.lane_failures(night)
+        self.assertEqual(lines[:4], ["step 1 bbbbbbbbbbbb: build_failed", f"self-test failed: {report}",
+                                     "self-test FAIL test_cost: cost more than its observed price",
+                                     "self-test FAIL test_bare"])
+        self.assertEqual(len(lines), 2 + chain.LISTED_FAILURES + 1)
+        self.assertEqual(lines[-1], "self-test: 2 more failed tests in its capture")
+        # Every self-test passed: board-steps.sh failed on the console tests.
+        with gzip.open(report.with_suffix(".log.gz"), "wt", encoding="utf-8") as capture:
+            capture.write("main/test.c" + tests[0] + "\n")
+        self.assertEqual(chain.lane_failures(dict(night, steps=[]))[1:],
+                         ["self-test: every test in its capture passed, so the console tests failed"])
+        # No capture still names the self-test; a passing lane has nothing to say.
+        gone = dict(steps=[], selftest=dict(outcome="incomplete", report=str(self.root / "gone.md")))
+        self.assertEqual(chain.lane_failures(gone), [f"self-test incomplete: {self.root / 'gone.md'}"])
+        self.assertEqual(chain.lane_failures(dict(steps=steps[:1], selftest=dict(outcome="passed", report=None))), [])
 
     def test_unplugged_before_second_step_keeps_result(self):
         with patch.object(chain, "plugged_boards", side_effect=[["20E8"], []]):
@@ -545,13 +588,8 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual([step["commit"] for step in joiner["steps"]], [self.commits[2], self.commits[5]])
         self.assertEqual(planned["lanes"]["20E8"]["lane"], "0/2")
         self.assertEqual(manifests["2124"]["machine"], OTHER_MACHINE)
-        workflow = (PERF.parents[2] / ".github/workflows/nightly-perf.yml").read_text()
-        script = workflow.split("          \"$PY\" - <<'PY'\n", 1)[1].split('          PY', 1)[0]
-        script = "\n".join(line[10:] for line in script.splitlines())
         summary = self.root / "summary"
-        with patch.dict(os.environ, PERF_OUT=str(self.root), PERF_DATA=str(self.args.data),
-                        GITHUB_STEP_SUMMARY=str(summary)):
-            exec(script, {})
+        chain.timeline(SimpleNamespace(plan=self.root / "plan.json", data=self.args.data, summary=summary))
         self.assertIn("2124: measured=2", summary.read_text())
 
     def test_joiner_has_no_time_cutoff(self):
@@ -1344,7 +1382,7 @@ class NightlyTests(unittest.TestCase):
                                (base + suite + ["--lane", "1/2"], "token")):
             with patch.object(sys, "argv", command), patch.dict(os.environ, _AUTANA_DEVICE_LOCK_TOKEN=token), \
                     patch.object(chain, "run_chain", return_value=[]), \
-                    patch.object(chain, "read_last_night", return_value={"selftest": {"outcome": "not_run"}}), \
+                    patch.object(chain, "read_last_night", return_value={"steps": [], "selftest": {"outcome": "not_run"}}), \
                     self.assertRaises(SystemExit) as caught:
                 chain.main()
             self.assertEqual(caught.exception.code, 2)
@@ -1352,7 +1390,7 @@ class NightlyTests(unittest.TestCase):
                 patch.dict(os.environ, _AUTANA_DEVICE_LOCK_TOKEN="token"), \
                 patch.object(chain, "select_steps", return_value=[]) as select, \
                 patch.object(chain, "run_chain", return_value=[]), \
-                patch.object(chain, "read_last_night", return_value={"selftest": {"outcome": "not_run"}}):
+                patch.object(chain, "read_last_night", return_value={"steps": [], "selftest": {"outcome": "not_run"}}):
             self.assertEqual(chain.main(), 0)
             self.assertEqual(select.call_args.args[-1], 0)
     def test_plan_reads_each_boards_manifest(self):
