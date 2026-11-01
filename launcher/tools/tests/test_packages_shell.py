@@ -1,6 +1,6 @@
-"""packages.sh lists a launcher's packages as packages.py does, and renderer.sh the renderer's
-sources as renderer.py does; check_packages_alone.sh fails a package that needs more than its
-own include root and those of the packages it declares."""
+"""packages.sh lists a launcher's packages as packages.py does, and engine_sources.cmake the
+renderer's sources; check_packages_alone.sh fails a package that needs more than its own include
+root and those of the packages it declares."""
 import os
 from pathlib import Path
 import shutil
@@ -18,7 +18,6 @@ import port_guard  # noqa: E402,F401  (before device: no test reaches a real boa
 import device  # noqa: E402
 import package_requires  # noqa: E402
 import packages  # noqa: E402
-import renderer  # noqa: E402
 
 SHELL = device.git_bash() if os.name == "nt" else shutil.which("sh")
 ALONE = ROOT / "launcher/test/check_packages_alone.sh"
@@ -128,29 +127,26 @@ class PackageRequires(FixtureLauncher):
         self.assertEqual(["gamma"], [Path(line).name for line in self.shell("package_reachable", "gamma")])
 
 
-class RendererSources(FixtureLauncher):
-    def shell_sources(self, launcher):
-        script = f'. "{(BUILD / "renderer.sh").as_posix()}"\nrenderer_sources "{Path(launcher).as_posix()}"\n'
-        result = run_shell("-c", script)
+@unittest.skipUnless(shutil.which("cmake"), "no CMake")
+class EngineSources(FixtureLauncher):
+    def sources(self):
+        script = self.launcher / "tools/render/engine_sources.cmake"
+        script.parent.mkdir(parents=True)
+        shutil.copy(ROOT / "launcher/tools/render/engine_sources.cmake", script)
+        result = subprocess.run(["cmake", "-P", str(script)], capture_output=True, text=True, timeout=120)
         self.assertEqual(0, result.returncode, result.stderr)
-        return result.stdout.splitlines()
-
-    def python_sources(self, launcher):
-        return [path.relative_to(launcher).as_posix() for path in renderer.sources(launcher)]
+        return [Path(line).relative_to(self.launcher).as_posix() for line in result.stderr.splitlines()]
 
     def test_every_c_file_below_a_named_folder_and_nothing_else(self):
-        for name in ("main/alpha/x.c", "main/alpha/deep/y.c", "main/alpha/x.h", "main/beta/z.c", "main/gamma/w.c"):
+        for name in ("main/alpha/x.c", "main/alpha/deep/y.c", "main/alpha/x.h", "main/beta/z.c", "main/gamma/w.c",
+                     "main/gfx/a.c", "main/gfx/a_device.c"):
             self.write(name)
         self.write("main/renderer_folders.txt", "# not a folder\nalpha\nbeta\n")
-        expected = ["main/alpha/deep/y.c", "main/alpha/x.c", "main/beta/z.c"]
-        self.assertEqual(expected, self.python_sources(self.launcher))
-        self.assertEqual(expected, self.shell_sources(self.launcher))
-
-    def test_the_twins_agree_on_this_tree(self):
-        launcher = ROOT / "launcher"
-        listed = self.python_sources(launcher)
-        self.assertIn("main/render/raster.c", listed)
-        self.assertEqual(listed, self.shell_sources(launcher))
+        listed = self.sources()
+        self.assertEqual(["main/alpha/deep/y.c", "main/alpha/x.c", "main/beta/z.c"], listed[-3:])
+        self.assertIn("main/gfx/a.c", listed)
+        self.assertNotIn("main/gfx/a_device.c", listed)
+        self.assertNotIn("main/gamma/w.c", listed)
 
 
 @unittest.skipUnless(shutil.which("cc") or shutil.which("gcc") or shutil.which("clang") or os.environ.get("CC"),
