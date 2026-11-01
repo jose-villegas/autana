@@ -25,6 +25,7 @@
 #include "input/motion/imu_demand.h"
 #include "input/motion/imu_odr.h"
 #include "input/motion/imu_queue.h"
+#include "input/motion/imu_reset.h"
 #include "math/scalar/mathi.h"
 
 static const char* TAG = "imu";
@@ -113,7 +114,7 @@ static imu_stats_t stats;
 _Static_assert(IMU_FIFO_CHUNK_SAMPLES >= 1, "a FIFO chunk must hold a sample");
 _Static_assert(IMU_FIFO_CHUNK_SAMPLES <= IMU_FIFO_SAMPLES, "a FIFO chunk must fit the FIFO");
 
-/* Registers */
+/* Registers; the reset pair and its poll are in imu_reset.h. */
 #define REG_WHO_AM_I            0x00
 #define REG_REVISION            0x01
 #define REG_CTRL1               0x02
@@ -176,18 +177,8 @@ read_regs(uint8_t reg, uint8_t* out, size_t len) {
 
 static bool
 wait_command(bool done) {
-    const int64_t deadline = timing_now_us() + CTRL9_TIMEOUT_US;
-    do {
-        uint8_t status;
-        if (!read_regs(REG_STATUSINT, &status, sizeof status)) {
-            return false;
-        }
-        if (((status & STATUSINT_CMD_DONE) != 0) == done) {
-            return true;
-        }
-        esp_rom_delay_us(CTRL9_POLL_US);
-    } while (timing_now_us() < deadline);
-    return false;
+    return imu_poll(read_regs, REG_STATUSINT, STATUSINT_CMD_DONE, done ? STATUSINT_CMD_DONE : 0, timing_now_us,
+                    esp_rom_delay_us, CTRL9_TIMEOUT_US, CTRL9_POLL_US);
 }
 
 /* Lewis He, SensorLib (MIT), SensorQMI8658.hpp writeCommand/configFIFO/readFromFifo:
@@ -288,8 +279,8 @@ imu_init(void) {
         return false;
     }
 
-    if (!configure(IMU_ODR_CODE)) {
-        ESP_LOGE(TAG, "Configuration write failed");
+    if (!imu_reset(write_reg, read_regs, timing_now_us, esp_rom_delay_us) || !configure(IMU_ODR_CODE)) {
+        ESP_LOGE(TAG, "Reset or configuration failed");
         return false;
     }
 
@@ -393,6 +384,40 @@ read_fifo_count(int* count, bool* overflowed) {
     return *count <= IMU_FIFO_SAMPLES && bytes % sizeof(imu_sample_t) == 0;
 }
 
+#if CONFIG_LAUNCHER_DEVELOPMENT
+/* A FIFO burst holding a gyro rate within IMU_SUSPECT_MARGIN_DPS of full scale is logged raw,
+ * with a register sample beside it, IMU_SUSPECT_LOGS times a boot at most: at rest, such a rate
+ * is a bad frame, and the bytes tell a shifted frame from a bad axis. */
+#define IMU_SUSPECT_MARGIN_DPS 8
+#define IMU_SUSPECT_COUNTS     ((int)((IMU_GYRO_RANGE_DPS - IMU_SUSPECT_MARGIN_DPS) * IMU_COUNTS_PER_DPS))
+#define IMU_SUSPECT_LOGS       8
+
+static bool
+suspect_rate(int16_t rate) {
+    return rate > IMU_SUSPECT_COUNTS || rate < -IMU_SUSPECT_COUNTS;
+}
+
+static void
+log_suspect_burst(const imu_sample_t* samples, int count) {
+    static unsigned logged;
+    int first = -1;
+    for (int i = 0; i < count && first < 0; i++) {
+        if (suspect_rate(samples[i].gx) || suspect_rate(samples[i].gy) || suspect_rate(samples[i].gz)) {
+            first = i;
+        }
+    }
+    if (first < 0 || logged >= IMU_SUSPECT_LOGS) {
+        return;
+    }
+    logged++;
+    imu_sample_t reg = {0};
+    const bool reg_ok = read_regs(REG_AX_L, (uint8_t*)&reg, sizeof reg);
+    ESP_LOGW(TAG, "gyro near full scale in a FIFO burst: count %d first %d, register%s %d %d %d %d %d %d", count, first,
+             reg_ok ? "" : " (failed)", reg.ax, reg.ay, reg.az, reg.gx, reg.gy, reg.gz);
+    ESP_LOG_BUFFER_HEX_LEVEL(TAG, samples, (size_t)count * sizeof *samples, ESP_LOG_WARN);
+}
+#endif
+
 static int
 drain_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
     *overflowed = false;
@@ -425,6 +450,11 @@ drain_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
     }
     const bool resumed = write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG);
     const uint64_t locked_us = (uint64_t)(timing_now_us() - lock_start_us);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    if (ok) {
+        log_suspect_burst(out, count);
+    }
+#endif
     fifo_gap = !ok || !resumed;
     if (fifo_gap) {
         /* A failed burst may have consumed part of a sample (reads consume, section 8.8):
