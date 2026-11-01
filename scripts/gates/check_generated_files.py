@@ -42,6 +42,8 @@ import subprocess
 import sys
 import tempfile
 
+from tracked import repository
+
 MARKER = "GENERATED FILE - do not edit."
 REPO = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "launcher/tools/render"))
@@ -60,10 +62,11 @@ def is_generated(text):
     return any(MARKER in line for line in text.splitlines()[:5])
 
 
-def generated_files(root=REPO):
-    """Every tracked file in the git tree at `root` whose opening carries the
-    marker, as posix paths relative to it. A generator that writes the
+def generated_files(root=None):
+    """Every tracked file in the git tree at `root` (the repository this runs
+    in by default) whose opening carries the marker, as posix paths relative to it. A generator that writes the
     marker carries it too, but further down."""
+    root = root or repository()
     result = subprocess.run(["git", "grep", "-lzF", MARKER], cwd=root, capture_output=True, check=False)
     if result.returncode > 1:
         raise RuntimeError(f"git grep in {root} failed: {result.stderr.decode().strip()}")
@@ -222,7 +225,7 @@ def tables(root, names, check=False):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("paths", nargs="*", help="generated files to check (default: every one)")
-    parser.add_argument("--root", type=pathlib.Path, default=REPO)
+    parser.add_argument("--root", type=pathlib.Path, default=repository())
     parser.add_argument("--jobs", type=int, default=8)
     parser.add_argument("--write-table", action="store_true", help=f"rewrite the table in {TABLE_DOC} and exit")
     parser.add_argument("--check-table", action="store_true", help="check only the tables, running no banner")

@@ -71,7 +71,7 @@ class LexerTests(unittest.TestCase):
     def test_raw_string_hides_comment_markers_and_quotes(self):
         text = 'auto s = R"x(a "/* not */" b)x"; /* p */\nauto t = u8R"(// no)"; // q\n'
         self.assertEqual([c.text for c in scan("test.cpp", text)], ["p", "q"])
-        spans = [text[a:b] for kind, a, b in tokens(text) if kind == "literal"]
+        spans = [text[a:b] for kind, a, b in tokens(text, cpp=True) if kind == "literal"]
         self.assertEqual(spans, ['"x(a "/* not */" b)x"', '"(// no)"'])
 
     def test_raw_string_spans_lines(self):
@@ -82,7 +82,20 @@ class LexerTests(unittest.TestCase):
 
     def test_identifier_ending_in_r_is_no_raw_prefix(self):
         text = 'f(BAR"/* x */");\n'
-        self.assertEqual([kind for kind, _, _ in tokens(text)], ["literal"])
+        self.assertEqual([kind for kind, _, _ in tokens(text, cpp=True)], ["literal"])
+
+    def test_raw_delimiter_may_hold_a_quote(self):
+        text = 'auto s = R"a"(/* not */)a""; /* p */\n'
+        self.assertEqual([c.text for c in scan("test.cpp", text)], ["p"])
+
+    def test_c_reads_neither_raw_strings_nor_separators(self):
+        # A C macro R before a string, and a character literal after a digit.
+        raw = '#define R\nconst char *s = R"(a "/* q */" b)"; /* p */\n'
+        self.assertEqual([c.text for c in scan("test.c", raw)], ["q", "p"])
+        self.assertEqual([c.text for c in scan("test.cpp", raw)], ["p"])
+        quoted = "STR(1'/*'); /* p */\n"
+        self.assertEqual([c.text for c in scan("test.c", quoted)], ["p"])
+        self.assertEqual([c.text for c in scan("test.h", quoted)], ["p"])
 
 
 if __name__ == "__main__":

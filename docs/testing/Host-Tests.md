@@ -73,11 +73,11 @@ the compiler's own dependency files.
 
 `scripts/install-git-hooks.sh` installs the local hooks. Pre-push runs the
 workflow step marked `PUSH_TEST_GATE: "true"` (here `run_tests.sh --sanitize`)
-once when a pushed range changes C or C++ source, and refuses the push on failure.
+once when a pushed range changes C or C++ source or moves a submodule, and refuses the push on failure.
 
 - Run the same command by hand to diagnose it; `git push --no-verify` skips the hook.
 - The hook uses the scripts of the current worktree.
-- A new remote branch is compared against its merge base with `origin/main`, or the empty tree when that ref is missing.
+- A new remote branch is compared against its merge base with `origin/HEAD`, the remote's default branch, or the empty tree when that ref is missing.
 
 ## The host enforces the device's memory limits
 

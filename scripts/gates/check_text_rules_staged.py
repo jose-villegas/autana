@@ -17,12 +17,12 @@ import tempfile
 import yaml
 
 from check_style_audit import BINARY_EXTENSIONS, DATA_EXTENSIONS
-from workflow_marks import WORKFLOWS, is_workflow, marked_steps
+from tracked import repository
+from workflow_marks import is_workflow, marked_commands
 
 
 def main():
-    root = Path(subprocess.check_output(['git', 'rev-parse', '--show-toplevel'],
-                                       text=True).strip())
+    root = Path(repository())
     changed = subprocess.check_output(
         ['git', 'diff', '--cached', '--name-only', '--diff-filter=ACMRD', '-z'], cwd=root)
     files = changed.decode('utf-8').strip('\0').split('\0') if changed else []
@@ -38,10 +38,11 @@ def main():
         context.append((metadata.split()[1], path))
     workflows = [yaml.safe_load(subprocess.check_output(['git', 'show', f':{path}'], cwd=root))
                  for _, path in context if is_workflow(path)]
-    commands = [(command, value == 'true') for command, value in marked_steps(workflows, 'STAGED_TEXT_GATE')
-                if value in ('true', 'snapshot')]
-    if not commands:
-        print(f'No staged text gates declared in {WORKFLOWS}', file=sys.stderr)
+    try:
+        commands = [(command, value == 'true') for command, value
+                    in marked_commands(workflows, 'STAGED_TEXT_GATE', ('true', 'snapshot'))]
+    except ValueError as error:
+        print(error, file=sys.stderr)
         return 1
     git_dir = subprocess.check_output(['git', 'rev-parse', '--absolute-git-dir'],
                                       cwd=root, text=True).strip()
@@ -65,7 +66,6 @@ def main():
         # one's output is printed whole once it finishes.
         running = []
         for command, scoped in commands:
-            command[0] = sys.executable
             # The commit's own gate when it holds one; a submodule's, which
             # no snapshot holds, runs from the checked-out pin.
             gate = snapshot / command[1]
