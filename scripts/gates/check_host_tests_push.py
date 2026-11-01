@@ -7,8 +7,11 @@ leaves the remote's default branch (origin/HEAD); one sharing no history with
 it counts every file it holds. A moved submodule and a CMake file count as
 changed source: the tests build them. The tests are the workflow steps marked
 PUSH_TEST_GATE: "true" in the repository this runs in, run from its top in
-the order the workflows list them; none marked runs nothing.
+the order the workflows list them; none marked runs nothing. They run without
+the variables git sets for the hook's repository (GIT_DIR, GIT_INDEX_FILE...),
+so their own git calls, a submodule's included, find their own repository.
 """
+import os
 import pathlib
 import subprocess
 import sys
@@ -62,6 +65,11 @@ def test_commands(root):
     return [command for command, _ in marked_commands(workflows, "PUSH_TEST_GATE", ("true",), required=False)]
 
 
+def test_env(root):
+    local = set(git(root, "rev-parse", "--local-env-vars").stdout.split())
+    return {name: value for name, value in os.environ.items() if name not in local}
+
+
 def main():
     root = pathlib.Path(repository())
     changed = changes_source(root, sys.stdin.read().splitlines())
@@ -75,9 +83,10 @@ def main():
     except ValueError as error:
         print(f"{error}. {SKIP}", file=sys.stderr)
         return 1
+    env = test_env(root)
     for command in commands:
         sys.stdout.flush()
-        if subprocess.run(command, cwd=root).returncode != 0:
+        if subprocess.run(command, cwd=root, env=env).returncode != 0:
             print(f"Host tests failed ({' '.join(command[1:])}); fix them before pushing. {SKIP}", file=sys.stderr)
             return 1
     return 0
