@@ -46,6 +46,13 @@ STEP_INDEX_DIGITS = 2
 FIRST_STEP_SECONDS = 23 * 60
 RESCAN_SECONDS = 60
 CAPTURE_FAILURE_LIMIT = 2
+# A lane fails on these step outcomes and these self-test outcomes.
+FAILED_STEPS = ("build_failed", "capture_failed")
+FAILED_SELFTEST = ("failed", "incomplete")
+# A failed row of a device self-test report: | `test` | **FAIL** - detail |
+REPORT_FAILURE = re.compile(r"^\| `([^`]+)` \| \*\*FAIL\*\*(?: - (.*?))? \|$")
+# How many of a self-test's failed tests the lane's log names; the report holds them all.
+LISTED_FAILURES = 10
 SELFTEST_ALLOWANCE_SECONDS = 120 * 60
 CAPTURE_TIMEOUT_SECONDS = 1800
 BUILD_TIMEOUT_SECONDS = 3600
@@ -82,6 +89,25 @@ class StepResult:
     build_seconds: float = 0
     measure_seconds: float = 0
     report: str | None = None
+
+
+def lane_failures(results, selftest, output):
+    """Why a lane fails, one line per cause: each failed step, then the self-test with the first failed tests of
+    its report (a path under OUTPUT when relative). Empty when the lane passed."""
+    lines = [f"step {result.step.position} {result.step.commit[:REPORT_SHA_DIGITS]}: {result.outcome}"
+             for result in results if result.outcome in FAILED_STEPS]
+    if selftest["outcome"] in FAILED_SELFTEST:
+        lines.append(f"self-test {selftest['outcome']}: {selftest['report']}")
+        try:
+            report = Path(output) / selftest["report"]
+            failed = [match for line in report.read_text(encoding="utf-8").splitlines()
+                      if (match := REPORT_FAILURE.match(line))]
+        except (OSError, TypeError):
+            failed = []
+        lines += [f"self-test FAIL {match[1]}" + (f": {match[2]}" if match[2] else "") for match in failed[:LISTED_FAILURES]]
+        if len(failed) > LISTED_FAILURES:
+            lines.append(f"self-test: {len(failed) - LISTED_FAILURES} more failed tests in the report")
+    return lines
 
 
 def image_hash(build_dir):
@@ -656,8 +682,8 @@ def timeline(args):
         record = read_night(args.data, board, lane_key)
         if record is None:
             continue
-        failed = record["selftest"]["outcome"] in ("failed", "incomplete") or any(
-            step["outcome"] in ("build_failed", "capture_failed") for step in record["steps"])
+        failed = record["selftest"]["outcome"] in FAILED_SELFTEST or any(
+            step["outcome"] in FAILED_STEPS for step in record["steps"])
         steps.append(dict(name="board " + board, started=record["started"], ended=record["ended"],
                           outcome="failed" if failed else "passed" if record["ended"] else "running"))
     ended = [datetime.fromisoformat(step["ended"]) for step in steps if step["ended"]]
@@ -743,8 +769,14 @@ def main():
     with terminate_unwinds():
         results = run_chain(steps, args)
     manifest = read_last_night(args.data, short_id(args.board))
-    return int(any(result.outcome in ("build_failed", "capture_failed") for result in results)
-               or manifest["selftest"]["outcome"] in ("failed", "incomplete"))
+    failures = lane_failures(results, manifest["selftest"], args.out)
+    board = short_id(args.board)
+    for line in failures:
+        print(f"::error::lane {board}: {line}", file=sys.stderr)
+    if failures and os.environ.get("GITHUB_STEP_SUMMARY"):
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+            summary.write(f"### Lane {board} failed\n\n" + "".join(f"- {line}\n" for line in failures) + "\n")
+    return int(bool(failures))
 
 
 if __name__ == "__main__":
