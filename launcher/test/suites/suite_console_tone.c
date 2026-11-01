@@ -235,7 +235,12 @@ static struct {
         imu_queue_t* queue;
         int64_t* times;
         bool fifo_gap;
-        bool parked;
+        bool task_pending;
+        imu_odr_t odr;
+        imu_demand_level_t level;
+        uint32_t task_sequence;
+        unsigned midstep_waits;
+        unsigned gaps_taken;
         unsigned restarts;
         int pending_lost;
         uint32_t remainder_us;
@@ -494,6 +499,18 @@ audio_loopback_measure(uint16_t hz, uint16_t ms, float* db, audio_loopback_resul
 #define TEST_PULSE_MAX_BURSTS        (2 * IMU_FIFO_SAMPLES)
 #define TEST_PULSE_OUTSIDE_COUNTS    (10 * TEST_SHAKE_COUNTS)
 
+static void
+tone_imu_serve(void) {
+    if (device.pulse.level != IMU_DEMAND_FIFO) {
+        imu_queue_restart(device.pulse.queue, &device.pulse.fifo_gap, &device.pulse.pending_lost,
+                          &device.pulse.remainder_us);
+        device.pulse.restarts++;
+    }
+    device.pulse.level = IMU_DEMAND_FIFO;
+    device.pulse.odr.served_sequence = device.pulse.task_sequence;
+    device.pulse.task_pending = false;
+}
+
 bool
 audio_loopback_measure_observed(uint16_t hz, uint16_t ms, float* db, audio_loopback_result_t* result,
                                 audio_loopback_observer_fn observer, void* context) {
@@ -502,6 +519,9 @@ audio_loopback_measure_observed(uint16_t hz, uint16_t ms, float* db, audio_loopb
     device.measures++;
     const int64_t start = device.pulse.now_us;
     device.pulse.onset_us = start;
+    if (result && device.pulse.task_pending) {
+        tone_imu_serve();
+    }
     *db = device.measures % 2 ? -100 : -12;
     if (result) {
         *result = (audio_loopback_result_t){.measured_hz = hz, .noise_dbfs = device.measures % 2 ? TEST_NOISE_DBFS : 0};
@@ -545,18 +565,25 @@ tone_configure_odr(unsigned odr_code) {
 bool
 imu_set_odr(unsigned odr_code) {
     if (device.pulse.queue) {
-        imu_odr_t odr = {.requested = odr_code, .applied = device.odr_code};
-        if (imu_odr_apply(&odr, tone_configure_odr, &device.pulse.fifo_gap) != IMU_ODR_UNCHANGED) {
-            imu_queue_set_rate(device.pulse.queue, odr.applied);
+        imu_odr_t* odr = &device.pulse.odr;
+        odr->requested = odr_code;
+        odr->applied = device.odr_code;
+        const uint32_t sequence = ++odr->sequence;
+        if (imu_odr_apply(odr, tone_configure_odr, &device.pulse.fifo_gap, &device.pulse.level) != IMU_ODR_UNCHANGED) {
+            imu_queue_set_rate(device.pulse.queue, odr->applied);
+            device.pulse.pending_lost = 0;
+            device.pulse.remainder_us = 0;
         }
+        device.pulse.task_sequence = sequence;
+        device.pulse.task_pending = true;
+        if (imu_odr_ready(odr, sequence)) {
+            return odr->applied == odr_code;
+        }
+        device.pulse.midstep_waits++;
+        tone_imu_serve();
+        TEST_ASSERT_TRUE(imu_odr_ready(odr, sequence));
     } else {
         device.odr_code = odr_code;
-    }
-    if (device.pulse.parked) {
-        imu_queue_restart(device.pulse.queue, &device.pulse.fifo_gap, &device.pulse.pending_lost,
-                          &device.pulse.remainder_us);
-        device.pulse.parked = false;
-        device.pulse.restarts++;
     }
     return true;
 }
@@ -606,9 +633,11 @@ imu_take_fifo_at(unsigned odr_code, imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t 
                                        IMU_BUZZ_SAMPLE_US);
             device.pulse.fifo_gap = false;
         }
-        return device.pulse.times
-                   ? imu_queue_take_timed_at(device.pulse.queue, odr_code, out, lost_before, gap, device.pulse.times)
-                   : imu_queue_take_at(device.pulse.queue, odr_code, out, lost_before, gap);
+        const int taken = device.pulse.times ? imu_queue_take_timed_at(device.pulse.queue, odr_code, out, lost_before,
+                                                                       gap, device.pulse.times)
+                                             : imu_queue_take_at(device.pulse.queue, odr_code, out, lost_before, gap);
+        device.pulse.gaps_taken += *gap;
+        return taken;
     }
     return count;
 }
@@ -846,6 +875,7 @@ pulse_fixture(uint16_t pulse_ms) {
     input_fake_motion_present(true);
     clock_fake_set(0);
     device.pulse.enabled = true;
+    device.pulse.level = IMU_DEMAND_FIFO;
     device.pulse.ms = pulse_ms;
     device.pulse.window_ms = pulse_ms > TEST_PULSE_WINDOW_MS ? pulse_ms : TEST_PULSE_WINDOW_MS;
     device.reg = TEST_TONE_REGISTER_OLD;
@@ -943,21 +973,34 @@ static void
 test_tone_pulse_measures_from_parked_imu(void) {
     static const uint16_t pulses[] = {TEST_PULSE_SHORT_MS, TEST_PULSE_MS, CONSOLE_TONE_PULSE_WINDOW_MAX_MS};
     suite_add_test_cleanup(reset_device);
-    for (size_t duration = 0; duration < sizeof pulses / sizeof pulses[0]; duration++) {
-        const console_tone_args_t args = pulse_fixture(pulses[duration]);
-        device.pulse.queue = calloc(1, sizeof *device.pulse.queue);
-        TEST_ASSERT_NOT_NULL(device.pulse.queue);
-        device.pulse.parked = true;
-        device.pulse.cadence = true;
-        device.pulse.period_us = IMU_BUZZ_DRAIN_MAX_MS * MATH_US_PER_MS;
-        device.pulse.next_push_us = device.pulse.period_us;
-        device.pulse.pending_lost = 1;
-        device.pulse.remainder_us = IMU_SAMPLE_US - 1;
-        char line[CONSOLE_TONE_REPLY_BYTES];
-        TEST_ASSERT_NULL(console_tone_check(&args, line));
-        TEST_ASSERT_EQUAL_UINT(1, device.pulse.restarts);
-        TEST_ASSERT_NULL_MESSAGE(strstr(line, "shake n/a"), line);
-        TEST_ASSERT_NOT_NULL_MESSAGE(strstr(line, "imu_gaps 0"), line);
+    static const unsigned rates[] = {IMU_ODR_CODE, IMU_BUZZ_ODR_CODE};
+    for (imu_demand_level_t level = IMU_DEMAND_NONE; level <= IMU_DEMAND_NEWEST; level++) {
+        for (size_t index = 0; index < sizeof rates / sizeof rates[0]; index++) {
+            const unsigned rate = rates[index];
+            for (size_t duration = 0; duration < sizeof pulses / sizeof pulses[0]; duration++) {
+                const console_tone_args_t args = pulse_fixture(pulses[duration]);
+                device.pulse.queue = calloc(1, sizeof *device.pulse.queue);
+                TEST_ASSERT_NOT_NULL(device.pulse.queue);
+                device.odr_code = rate;
+                imu_queue_set_rate(device.pulse.queue, rate);
+                bool initial_gap = false;
+                TEST_ASSERT_EQUAL_INT(0, imu_queue_take_at(device.pulse.queue, rate, NULL, NULL, &initial_gap));
+                TEST_ASSERT_TRUE(initial_gap);
+                device.pulse.level = level;
+                device.pulse.cadence = true;
+                device.pulse.period_us = IMU_BUZZ_DRAIN_MAX_MS * MATH_US_PER_MS;
+                device.pulse.next_push_us = device.pulse.period_us;
+                device.pulse.pending_lost = 1;
+                device.pulse.remainder_us = IMU_SAMPLE_US - 1;
+                char line[CONSOLE_TONE_REPLY_BYTES];
+                TEST_ASSERT_NULL(console_tone_check(&args, line));
+                TEST_ASSERT_NULL_MESSAGE(strstr(line, "shake n/a"), line);
+                TEST_ASSERT_EQUAL_UINT(2, device.pulse.midstep_waits);
+                TEST_ASSERT_EQUAL_UINT(1, device.pulse.gaps_taken);
+                TEST_ASSERT_EQUAL_UINT(rate == IMU_BUZZ_ODR_CODE, device.pulse.restarts);
+                TEST_ASSERT_NOT_NULL_MESSAGE(strstr(line, "imu_gaps 0"), line);
+            }
+        }
     }
 }
 

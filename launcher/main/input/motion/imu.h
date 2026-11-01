@@ -76,7 +76,8 @@ bool imu_read(imu_sample_t* out, uint32_t* sequence);
 #define IMU_BUZZ_SAMPLE_US ((uint32_t)((MATH_US_PER_S / IMU_BUZZ_ODR_HZ) + 0.5))
 #define IMU_BUZZ_WINDOW_MS ((uint16_t)((IMU_FIFO_SAMPLES * MATH_MS_PER_S / IMU_BUZZ_ODR_HZ) + 1))
 /* Asks the IMU task to run the sensor at another ODR code until asked for IMU_ODR_CODE again,
- * and waits until it has. Every switch resets the FIFO and queues a gap, so imu_take_fifo()
+ * and waits until the task serves FIFO demand with its gap queued. Every switch resets
+ * the FIFO once and queues a gap, so imu_take_fifo()
  * never mixes rates; between the switches samples are not IMU_SAMPLE_US apart.
  * False without a sensor or task, on a bus error, or when the task does not answer in time.
  * Blocks up to two of the slowest IMU task periods: console task only, never the frame thread. */
