@@ -44,7 +44,7 @@ __asm__(".section .rodata.gfx_pie_constants, \"a\"\n"
         "gfx_pie_lane_bits: .short 1, 2, 4, 8, 16, 32, 64, 128\n"
         /* red in its lane, blue, red-blue rounding, green, green rounding, red out */
         "gfx_pie_masks: .short 0x1F00, 0x001F, 0x0202, 0x07E0, 0x0040, 0xF800\n"
-        ".text\n"
+        ".section .text.gfx_quarter_select, \"ax\", @progbits\n"
         ".align 4\n"
         ".global gfx_quarter_select\n"
         ".type gfx_quarter_select, @function\n"

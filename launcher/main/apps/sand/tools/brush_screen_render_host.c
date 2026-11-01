@@ -76,7 +76,7 @@ setup(int quarter) {
 }
 
 static void
-draw(const render_frame_t* frame) {
+draw(const provider_frame_t* frame) {
     draw_clear(RGB565BE(0x000000));
     ui_invalidate();
     ui_begin(&frame->input);
@@ -88,7 +88,7 @@ draw(const render_frame_t* frame) {
     ui_end(UI_NO_BACKGROUND);
 }
 
-const render_scene_t render_scene = {
+const frame_provider_t brush_screen_provider = {
     .name = "brush_screen",
     .quarter = 0,
     .frames = 3,
