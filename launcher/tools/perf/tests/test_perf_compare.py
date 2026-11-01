@@ -299,6 +299,18 @@ class AcquisitionTest(ShellJobTests, unittest.TestCase):
         self.assertIn(f"Complete; stopped at the time budget before look {stop['look']}", summary)
         self.assertIn(f"--max-minutes {stop['budget_seconds'] / 60:g}", summary)
 
+    def test_an_incomplete_comparison_still_says_it_stopped_at_the_budget(self):
+        stop = dict(look=2, elapsed_seconds=0, estimate_seconds=60, budget_seconds=1)
+        with tempfile.TemporaryDirectory() as root:
+            args = arguments(root)
+            path = pathlib.Path(root) / 'summary.md'
+            tool.write_summary(path, args, {'a': [], 'b': []}, {}, {}, tool.schedule(16, args.alpha), [],
+                               incomplete=True, budget_stop=stop)
+            text = path.read_text(encoding='utf-8')
+            self.assertIn('Incomplete', text)
+            self.assertIn(f"stopped at the time budget before look {stop['look']}", text)
+            self.assertIn('Unresolved: none.', text)
+
     def test_time_already_used_counts_against_the_budget(self):
         estimate = self.budget_run(1 / 60, lambda: 0)[0]['budget_stop']['estimate_seconds']
         spare = 1
@@ -326,7 +338,7 @@ class AcquisitionTest(ShellJobTests, unittest.TestCase):
         self.assertEqual(tool.look_seconds(coarse, 1, 1), 2 * suite_pass)
 
     def test_a_budget_that_is_not_positive_is_refused(self):
-        for minutes in ("0", "-1"):
+        for minutes in ("0", "-1", "nan"):
             with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
                 tool.main(["--validate-plan", "--suite", "suite", "-", "-", "--max-minutes", minutes])
 
