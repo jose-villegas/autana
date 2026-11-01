@@ -3,7 +3,7 @@ import pathlib
 import re
 
 from tracked import committable
-from c_comments import SOURCE_EXTENSIONS, blank_comments
+from c_comments import SOURCE_EXTENSIONS, blank_comments, is_cpp
 
 SCRIPT_SUFFIXES = {".py", ".sh", ".mjs"}
 FUNCTION = re.compile(r"\b([a-z_][a-z0-9_]*)\s*\(")
@@ -64,9 +64,9 @@ def vocabulary(root):
     for path in source_paths(root):
         text = path.read_text(encoding="utf-8", errors="replace")
         if path.suffix in SOURCE_EXTENSIONS:
-            code = blank_comments(text, mode="code")
+            code = blank_comments(text, mode="code", cpp=is_cpp(path))
             # A literal token is real vocabulary; escapes must not glue letters onto it.
-            spelled = re.sub(r"\\[a-z]", " ", blank_comments(text, mode="spelled"))
+            spelled = re.sub(r"\\[a-z]", " ", blank_comments(text, mode="spelled", cpp=is_cpp(path)))
             functions = set(FUNCTION.findall(code))
             constants = set(CONSTANT.findall(spelled))
             vocab.functions |= functions

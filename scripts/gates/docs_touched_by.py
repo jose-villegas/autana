@@ -33,7 +33,7 @@ def changed_definitions(base):
         if not line or line[0] not in "+-" or line.startswith(("+++", "---")):
             continue
         text = line[1:]
-        function = FUNCTION.search(text) if path and path.endswith((".c", ".h")) else None
+        function = FUNCTION.search(text) if path and path.endswith(SOURCE_EXTENSIONS) else None
         if path and path.endswith(".py"):
             function = PYTHON_FUNCTION.search(text)
         macro = MACRO.search(text)

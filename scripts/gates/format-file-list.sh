@@ -39,7 +39,14 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 # shellcheck source=../lib/python.sh
 . "$GATE_DIR/../lib/python.sh"
 PYTHON=$(find_python) || exit 1
-EXTENSIONS=$("$PYTHON" -c 'import sys; sys.path.insert(0, sys.argv[1]); from c_comments import SOURCE_EXTENSIONS; print(" ".join(SOURCE_EXTENSIONS))' "$GATE_DIR" | tr -d '\r') || exit 1
+# Checked on its own: in a pipeline a failing Python would leave an empty
+# table, and an empty table lists no file at all.
+EXTENSIONS=$("$PYTHON" -c 'import sys; sys.path.insert(0, sys.argv[1]); from c_comments import SOURCE_EXTENSIONS; print(" ".join(SOURCE_EXTENSIONS))' "$GATE_DIR") || exit 1
+EXTENSIONS=$(printf '%s' "$EXTENSIONS" | tr -d '\r')
+if [ -z "$EXTENSIONS" ]; then
+    echo "format-file-list.sh: c_comments.SOURCE_EXTENSIONS is empty" >&2
+    exit 1
+fi
 
 has_source_extension() {
     for extension in $EXTENSIONS; do

@@ -23,8 +23,6 @@ class SnapshotDataTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             def git_output(command, **kwargs):
-                if command[1:] == ["rev-parse", "--show-toplevel"]:
-                    return str(root)
                 if command[1] == "diff":
                     return b"capture.log.gz\0"
                 if command[1] == "show":
@@ -46,7 +44,8 @@ class SnapshotDataTests(unittest.TestCase):
                 process = mock.Mock(returncode=0)
                 process.communicate.return_value = (b"", None)
                 return process
-            with mock.patch.object(staged.subprocess, "check_output", side_effect=git_output), \
+            with mock.patch.object(staged, "repository", return_value=str(root)), \
+                 mock.patch.object(staged.subprocess, "check_output", side_effect=git_output), \
                  mock.patch.object(staged.subprocess, "Popen", side_effect=gate):
                 self.assertEqual(0, staged.main())
 

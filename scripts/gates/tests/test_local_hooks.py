@@ -99,7 +99,10 @@ class LocalHookTests(ShellGateTestCase):
              'env': {'STAGED_TEXT_GATE': 'true'}}]}}}))
         (consumer / 'src').mkdir()
         (consumer / 'src/frames.hpp').write_text('#pragma once\nclass Frames {};\n')
-        git('add', '.github', 'src')
+        # A folder of the consumer's own by that name does not displace the submodule's gates.
+        (consumer / 'scripts/gates').mkdir(parents=True)
+        (consumer / 'scripts/gates/notes.txt').write_text('the consumer\'s own\n')
+        git('add', '.github', 'src', 'scripts')
         hook = consumer / 'third_party/engine/scripts/git-hooks/pre-commit'
         def commit_hook():
             result = subprocess.run([self.shell, hook.as_posix()], cwd=consumer,
@@ -109,6 +112,18 @@ class LocalHookTests(ShellGateTestCase):
         (consumer / 'src/frames.hpp').write_text('// The frames a capture holds.\n#pragma once\nclass Frames {};\n')
         git('add', 'src')
         self.assertNotIn('no purpose', commit_hook())
+
+    def test_a_repository_with_no_gates_commits_and_pushes_unchecked(self):
+        plain = self.root / 'plain'
+        plain.mkdir()
+        subprocess.check_call(['git', 'init', '-q'], cwd=plain)
+        (plain / 'photo.png').write_bytes(b'\x89PNG')
+        subprocess.check_call(['git', 'add', 'photo.png'], cwd=plain)
+        for hook, stdin in (('pre-commit', ''), ('pre-push', 'refs/heads/x 1 refs/heads/x 0\n')):
+            result = subprocess.run([self.shell, (self.root / 'scripts/git-hooks' / hook).as_posix()],
+                                    cwd=plain, input=stdin, capture_output=True, text=True, timeout=60)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn('skipped', result.stderr)
 
     def test_header_pair_uses_staged_companion(self):
         self.write('launcher/main/gfx/sample.h', '/* Portable sample. */\n#pragma once\nint sample(void);\n')
@@ -187,6 +202,13 @@ class LocalHookTests(ShellGateTestCase):
                            f'refs/heads/feature/test {base} refs/heads/feature/test {base}\n')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn('SANITIZED', result.stdout)
+        # A moved submodule pin is source the tests build.
+        self.git('update-index', '--add', '--cacheinfo', f'160000,{base},third_party/engine')
+        self.git('-c', 'core.hooksPath=', 'commit', '-qm', 'pin')
+        pin = self.git('rev-parse', 'HEAD')
+        result = self.gate('check-host-tests-push.sh', f'refs/heads/feature/test {pin} refs/heads/feature/test {head}\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.count('SANITIZED'), 1)
 
 
     def test_a_new_branch_with_no_history_in_common_with_main_is_judged_by_its_own_files(self):
@@ -194,7 +216,9 @@ class LocalHookTests(ShellGateTestCase):
         self.write('main.c', 'int main_unit;\n')
         self.git('add', 'main.c')
         self.git('-c', 'core.hooksPath=', 'commit', '-qm', 'base')
-        self.git('update-ref', 'refs/remotes/origin/main', self.git('rev-parse', 'HEAD'))
+        # The remote's default branch, by whatever name it has.
+        self.git('update-ref', 'refs/remotes/origin/trunk', self.git('rev-parse', 'HEAD'))
+        self.git('symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk')
         self.mark_host_tests()
         runner = self.root / 'launcher/test/run_tests.sh'
         runner.parent.mkdir(parents=True)

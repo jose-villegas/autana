@@ -1,10 +1,13 @@
 #!/bin/sh
-# The gates come from the tree being pushed, or from beside this file in a
-# repository that has none of its own (see pre-commit).
+# The gates come from the tree being pushed (see gates.sh); a tree with
+# none pushes unchecked, as pre-commit commits unchecked.
 
-ROOT=$(git rev-parse --show-toplevel) || exit 1
-GATES="$ROOT/scripts/gates"
-[ -d "$GATES" ] || GATES="$(dirname -- "$0")/../gates"
+# shellcheck source=gates.sh
+. "$(dirname -- "$0")/gates.sh"
+if [ ! -d "$GATES" ]; then
+    echo "pre-push: skipped, no scripts/gates/ found" >&2
+    exit 0
+fi
 updates=$(cat)
 
 printf '%s\n' "$updates" | while read -r _local_ref local_sha remote_ref _remote_sha; do

@@ -6,15 +6,12 @@
 # linting sees it, and this file names none of them; a new one is picked
 # up by the glob alone. core.hooksPath is one path shared by every worktree
 # of a clone, so the gates come from the tree being committed, which may be
-# on another branch than the one holding this file. A repository that uses
-# this one as a submodule has no scripts/gates/ of its own and points
-# core.hooksPath into the submodule, so it gets the gates beside this file.
+# on another branch than the one holding this file; gates.sh picks them.
 # An unmatched glob leaves the literal pattern as $path, which fails the -x
 # test below the same way a missing script does.
 
-ROOT="$(git rev-parse --show-toplevel)"
-GATES="$ROOT/scripts/gates"
-[ -d "$GATES" ] || GATES="$(dirname -- "$0")/../gates"
+# shellcheck source=gates.sh
+. "$(dirname -- "$0")/gates.sh"
 status=0
 
 for path in "$GATES"/check-*-staged.sh; do

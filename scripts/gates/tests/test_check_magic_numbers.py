@@ -57,14 +57,23 @@ class MagicTests(unittest.TestCase):
 
     def test_cpp_constants_and_sources_outside_launcher(self):
         header, source = "src/engine/value.hpp", "tests/view_test.cpp"
+        separated = f"{RARE // 1000}'{RARE % 1000:03}"
         for owner in (f"inline constexpr int VALUE = {RARE};",
-                      f"enum class Size : unsigned {{ Big = {RARE} }};"):
+                      f"enum class Size : unsigned {{ Big = {RARE} }};",
+                      f"constexpr std::uint32_t VALUE = {RARE}u;",
+                      f"constexpr std::uint32_t VALUE{{{RARE}}};",
+                      f"constexpr int VALUE = {separated};"):
             with self.subTest(owner=owner):
                 files = {header: owner, source: f'#include "engine/value.hpp"\nint x = {RARE};'}
                 self.assertEqual(len(gate.scan(files, direct=gate.include_graph(files, ("src",)))[0]
                                      .get((source, gate.RESTATE), [])), 1)
                 # Without its include root the header is out of sight.
                 self.assertFalse(self.scan(files)[0].get((source, gate.RESTATE)))
+        # A restatement spelled with separators is the same value.
+        files = {header: f"constexpr int VALUE = {RARE};",
+                 source: f'#include "engine/value.hpp"\nint x = {separated};'}
+        self.assertEqual(len(gate.scan(files, direct=gate.include_graph(files, ("src",)))[0]
+                             .get((source, gate.RESTATE), [])), 1)
 
     def test_thresholds(self):
         values = (gate.RARE_MINIMUM - 1, gate.RARE_MINIMUM,
