@@ -104,6 +104,7 @@ typedef struct {
     int64_t start_us;
     uint16_t pulse_ms;
     bool gap;
+    console_tone_pulse_result_t result;
     int64_t last_sample_us;
 } tone_pulse_buffer_t;
 
@@ -114,6 +115,10 @@ tone_pulse_collect_sample(tone_pulse_buffer_t* pulse, int index) {
     const int64_t lost_us = (int64_t)pulse->fifo->lost_before[index] * IMU_BUZZ_SAMPLE_US;
     if (lost_us && sample_us - IMU_BUZZ_SAMPLE_US >= 0 && sample_us - lost_us <= pulse_us) {
         pulse->gap = true;
+        if (!pulse->result.lost_samples) {
+            pulse->result.lost_us = sample_us - lost_us;
+        }
+        pulse->result.lost_samples += pulse->fifo->lost_before[index];
     }
     if (sample_us < 0) {
         return true;
@@ -144,8 +149,18 @@ tone_pulse_drain(void* context) {
         count ? pulse->fifo->sample_us[count - 1] - pulse->start_us : timing_now_us() - pulse->start_us;
     const int64_t pulse_us = (int64_t)pulse->pulse_ms * MATH_US_PER_MS;
     const int64_t first_us = count ? pulse->fifo->sample_us[0] - pulse->start_us : end_us;
+    if (gap) {
+        if (!pulse->result.take_gaps) {
+            pulse->result.take_us = first_us;
+        }
+        pulse->result.take_gaps++;
+    }
     if (gap && first_us >= 0 && pulse->last_sample_us < pulse_us) {
         pulse->gap = true;
+        if (!pulse->result.pulse_gaps) {
+            pulse->result.pulse_gap_us = first_us;
+        }
+        pulse->result.pulse_gaps++;
     }
     if (count) {
         pulse->last_sample_us = end_us;
@@ -164,6 +179,7 @@ tone_pulse_measure(const console_tone_args_t* args, float* db, audio_loopback_re
     if (!pulse) {
         return audio_loopback_measure_observed(args->hz, args->ms, db, result, NULL, NULL);
     }
+    pulse->result = (console_tone_pulse_result_t){0};
     pulse->count = 0;
     pulse->gap = false;
     pulse->last_sample_us = 0;
@@ -183,14 +199,19 @@ tone_pulse_measure(const console_tone_args_t* args, float* db, audio_loopback_re
     if (!ok || pulse->gap || !imu_vibration_measure(pulse->samples, (int)pulse->count, shake)) {
         *shake = (imu_vibration_t){0};
     }
+    pulse->result.status = !ok ? "read_failed" : pulse->gap ? "gap" : shake->samples ? "clean" : "short";
     return ok;
 }
 
 static bool
 tone_capture_window(const console_tone_args_t* args, float* db, audio_loopback_result_t* result,
-                    tone_shake_buffer_t* fifo, tone_pulse_buffer_t* pulse, imu_vibration_t* shake) {
+                    tone_shake_buffer_t* fifo, tone_pulse_buffer_t* pulse, imu_vibration_t* shake,
+                    console_tone_pulse_result_t* status) {
     const bool ok = args->pulse_ms ? tone_pulse_measure(args, db, result, pulse, shake)
                                    : tone_measure(args, db, result, fifo, shake);
+    if (pulse) {
+        *status = pulse->result;
+    }
     if (!shake->samples) {
         ESP_LOGW(TAG, "shake n/a: %s", fifo && fifo->reason ? fifo->reason : TONE_SHAKE_UNAVAILABLE);
     }
@@ -262,13 +283,15 @@ console_tone_check(const console_tone_args_t* args, char result[CONSOLE_TONE_REP
     imu_vibration_t silence_shake = {0};
     imu_vibration_t tone_shake = {0};
     tone_pulse_buffer_t* pulse = tone_pulse_open(args, fifo);
+    console_tone_pulse_result_t silence_pulse = {0};
+    console_tone_pulse_result_t tone_pulse = {0};
     bool held = false;
     bool ok = opened && audio_codec_dac_feedback(false)
               && (!args->internal || ((held = audio_out_amp_hold(true)) && audio_codec_dac_feedback(true)))
               && (!args->pulse_ms || !fifo || pulse)
-              && tone_capture_window(args, &silence_db, &silence, fifo, pulse, &silence_shake)
+              && tone_capture_window(args, &silence_db, &silence, fifo, pulse, &silence_shake, &silence_pulse)
               && console_tone_start(&voice, args->hz, args->pulse_ms, args->volume_pct)
-              && tone_capture_window(args, &tone_db, &loopback, fifo, pulse, &tone_shake);
+              && tone_capture_window(args, &tone_db, &loopback, fifo, pulse, &tone_shake, &tone_pulse);
     memory_free(pulse);
     ok = console_tone_stop(&voice) && ok;
     const unsigned imu_gaps = fifo ? fifo->gaps : 0;
@@ -281,7 +304,10 @@ console_tone_check(const console_tone_args_t* args, char result[CONSOLE_TONE_REP
     }
     if (!console_tone_reply(result, CONSOLE_TONE_REPLY_BYTES, args, heard, tone_db, silence_db, &loopback, dma_open)
         || !console_tone_append_shake(result, CONSOLE_TONE_REPLY_BYTES, &silence_shake, &tone_shake, imu_gaps,
-                                      silence_shake.samples && tone_shake.samples ? NULL : shake_reason)) {
+                                      silence_shake.samples && tone_shake.samples ? NULL : shake_reason)
+        || (args->pulse_ms
+            && (!console_tone_append_pulse(result, CONSOLE_TONE_REPLY_BYTES, "silence", &silence_pulse)
+                || !console_tone_append_pulse(result, CONSOLE_TONE_REPLY_BYTES, "tone", &tone_pulse)))) {
         return "frequency formatting failed";
     }
     return NULL;
@@ -294,14 +320,20 @@ console_verb_tone(const char* args, console_reply_fn reply) {
         reply("TONE usage: tone <hz> <ms> [volume] [pulse <ms>] [internal]");
         return;
     }
-    char line[CONSOLE_TONE_REPLY_BYTES];
+    char* line = memory_alloc(CONSOLE_TONE_REPLY_BYTES, MEMORY_PSRAM);
+    if (!line) {
+        reply("TONE error: reply allocation failed");
+        return;
+    }
     const char* error = console_tone_check(&parsed, line);
     if (error) {
-        (void)snprintf(line, sizeof line, "TONE error: %s", error);
+        (void)snprintf(line, CONSOLE_TONE_REPLY_BYTES, "TONE error: %s", error);
         reply(line);
+        memory_free(line);
         return;
     }
     (void)printf("%s\n", line);
     (void)fflush(stdout);
+    memory_free(line);
 }
 CONSOLE_VERB(tone, 0, console_verb_tone)

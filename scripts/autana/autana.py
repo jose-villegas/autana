@@ -681,6 +681,24 @@ def sound(args):
 
 
 def parse_tone(reply):
+    pulse = {}
+    if ", silence_pulse " in reply:
+        reply, suffix = reply.split(", silence_pulse ", 1)
+        match = re.fullmatch(
+            r"(clean|gap|short|read_failed|unavailable), silence_take_gaps ([0-9]+), silence_take_ms (-?[0-9]+\.[0-9]+), "
+            r"silence_pulse_gaps ([0-9]+), silence_pulse_gap_ms (-?[0-9]+\.[0-9]+), silence_lost_samples ([0-9]+), silence_lost_ms (-?[0-9]+\.[0-9]+), "
+            r"tone_pulse (clean|gap|short|read_failed|unavailable), tone_take_gaps ([0-9]+), tone_take_ms (-?[0-9]+\.[0-9]+), "
+            r"tone_pulse_gaps ([0-9]+), tone_pulse_gap_ms (-?[0-9]+\.[0-9]+), tone_lost_samples ([0-9]+), tone_lost_ms (-?[0-9]+\.[0-9]+)", suffix)
+        if not match:
+            raise ValueError(f"invalid TONE pulse reply: {suffix}")
+        values = match.groups()
+        for offset, window in ((0, "silence"), (7, "tone")):
+            status, take, take_ms, inside, inside_ms, lost, lost_ms = values[offset:offset + 7]
+            pulse[f"{window}_pulse"] = {
+                "status": status, "take_gaps": int(take), "pulse_gaps": int(inside),
+                "pulse_gap_ms": float(inside_ms) if int(inside) else None,
+                "take_ms": float(take_ms) if int(take) else None,
+                "lost_samples": int(lost), "lost_ms": float(lost_ms) if int(lost) else None}
     match = re.fullmatch(
         r"TONE (heard|not heard) ([0-9]+) Hz: (-?[0-9]+\.[0-9]+) dB "
         r"\(silence (-?[0-9]+\.[0-9]+) dB\), (?:noise (-?[0-9]+\.[0-9]+) dBFS, )?path (internal|acoustic), "
@@ -698,7 +716,7 @@ def parse_tone(reply):
         None if value is None else float(value) for value in shake)
     measured_hz = None if measured_hz == "n/a" else float(measured_hz.removesuffix(" Hz"))
     # hz_error is Hz: measured minus requested.
-    return {"imu_gaps": None if imu_gaps is None else int(imu_gaps), "shake_reason": shake_reason,
+    return {**pulse, "imu_gaps": None if imu_gaps is None else int(imu_gaps), "shake_reason": shake_reason,
             "pulse_ms": int(pulse_ms or 0), "hz": int(hz), "tone_db": float(tone_db), "silence_db": float(silence_db),
             "noise_dbfs": None if noise_dbfs is None else float(noise_dbfs),
             "heard": heard == "heard", "open_dma_bytes": int(dma), "path": path,

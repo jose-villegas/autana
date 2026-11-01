@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "audio/audio_loopback.h"
+#include "collections/strbuf.h"
 #include "input/motion/imu_vibration.h"
 #include "sound/console/console_tone_parse.h"
 
@@ -14,8 +15,40 @@
     (sizeof("TONE not heard  Hz:  dB (silence  dB), noise  dBFS, path acoustic, measured , open  B DMA, thd  dB, "     \
             "peak  dBFS, pulse_ms , shake  mg rms  mg peak (silence  mg rms), gx_mg , gy_mg , gz_mg , "                \
             "imu_gaps , shake_reason too few samples; other reader or short window")                                   \
-     + (13u * CONSOLE_TONE_DB_BYTES) + (4u * CONSOLE_TONE_INTEGER_BYTES) + CONSOLE_TONE_MEASURED_BYTES)
+     + (2u * CONSOLE_TONE_PULSE_REPLY_BYTES) + (13u * CONSOLE_TONE_DB_BYTES) + (4u * CONSOLE_TONE_INTEGER_BYTES)       \
+     + CONSOLE_TONE_MEASURED_BYTES)
 #define CONSOLE_TONE_MEASURED_BYTES 32u
+
+#define CONSOLE_TONE_PULSE_REPLY_BYTES                                                                                 \
+    (sizeof(", silence_pulse unavailable, silence_take_gaps , silence_take_ms , silence_pulse_gaps , "                 \
+            "silence_pulse_gap_ms , silence_lost_samples , silence_lost_ms ")                                          \
+     + (3u * CONSOLE_TONE_INTEGER_BYTES) + (3u * CONSOLE_TONE_DB_BYTES))
+
+typedef struct {
+    const char* status;
+    unsigned take_gaps;
+    unsigned pulse_gaps;
+    unsigned lost_samples;
+    int64_t take_us;
+    int64_t lost_us;
+    int64_t pulse_gap_us;
+} console_tone_pulse_result_t;
+
+static inline bool
+console_tone_append_pulse(char* line, size_t capacity, const char* window, const console_tone_pulse_result_t* pulse) {
+    const char* end = memchr(line, '\0', capacity);
+    if (!end) {
+        return false;
+    }
+    strbuf_t buffer = strbuf_at(line, capacity, (size_t)(end - line));
+    return strbuf_appendf(&buffer,
+                          ", %s_pulse %s, %s_take_gaps %u, %s_take_ms %.3f, %s_pulse_gaps %u, %s_pulse_gap_ms "
+                          "%.3f, %s_lost_samples %u, %s_lost_ms %.3f",
+                          window, pulse->status ? pulse->status : "unavailable", window, pulse->take_gaps, window,
+                          (double)pulse->take_us / MATH_US_PER_MS, window, pulse->pulse_gaps, window,
+                          (double)pulse->pulse_gap_us / MATH_US_PER_MS, window, pulse->lost_samples, window,
+                          (double)pulse->lost_us / MATH_US_PER_MS);
+}
 
 static inline bool
 console_tone_reply(char* line, size_t capacity, const console_tone_args_t* args, bool heard, float tone_db,

@@ -22,6 +22,25 @@ class ToneReplyTest(unittest.TestCase):
         self.assertEqual([row["imu_gaps"] for row in results], [1, 1, 1, 0, 0, 0])
         self.assertEqual([row["shake_reason"] for row in results],
                          ["gap inside pulse", "gap inside pulse", None] * 2)
+        for index, result in enumerate(results):
+            silence = result["silence_pulse"]
+            tone = result["tone_pulse"]
+            inside = index % 3 != 2
+            self.assertEqual(silence["status"], "gap" if inside else "clean")
+            self.assertEqual(tone["status"], "clean")
+            self.assertEqual(tone["take_gaps"], 0)
+            self.assertIsNone(tone["take_ms"])
+            self.assertIsNone(tone["lost_ms"])
+            self.assertEqual(silence["take_gaps"], 1 if index < 3 else 0)
+            self.assertEqual(silence["pulse_gaps"], int(index < 3 and inside))
+            self.assertEqual(silence["lost_samples"], int(index >= 3 and inside))
+            time = silence["pulse_gap_ms"] if index < 3 else silence["lost_ms"]
+            if inside:
+                self.assertGreaterEqual(time, 0)
+                self.assertLessEqual(time, result["pulse_ms"])
+            else:
+                self.assertIsNone(time)
+
 
     def test_broadband_noise_parses(self):
         reply = ("TONE heard 1000 Hz: -12.0 dB (silence -100.0 dB), noise -70.0 dBFS, "
