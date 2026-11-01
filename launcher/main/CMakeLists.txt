@@ -77,6 +77,7 @@ set(app_srcs
     "core/pending.c"
     "shell/asset_system.c"
     "shell/pending_system.c"
+    "core/cache.c"
     "core/job.c"
     "core/memory.c"
     "core/timing_device.c"

@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <string.h>
 
+#include "core/cache.h"
 #include "core/job.h"
 #include "core/tune.h"
 #include "profile/frame_cost.h"
@@ -393,7 +394,17 @@ draw_batch(const raster_t* raster, int index, draw_work_t* work) {
     other->first = half;
     other->count = count - half;
     FRAME_LAP_END();
+#define R3D_TRANSFORM_AUTOLOAD 1
+#if R3D_TRANSFORM_AUTOLOAD
+    const void* position_addr;
+    size_t position_size;
+    raster_transform_range(batch->parts, batch->count, &position_addr, &position_size);
+    const cache_autoload_state_t autoload = cache_autoload_push(position_addr, position_size);
+#endif
     job_run_steered(transform_share, transform_slice, mine, other, sizeof *mine);
+#if R3D_TRANSFORM_AUTOLOAD
+    cache_autoload_pop(autoload);
+#endif
     FRAME_LAP_SINCE("r3d.transform.wait");
     FRAME_COST_END(transformed_from, "r3d.transform");
 
