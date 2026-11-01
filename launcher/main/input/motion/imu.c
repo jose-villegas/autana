@@ -12,7 +12,6 @@
 #include <string.h>
 
 #include "board/board.h"
-#include "bsp/esp-bsp.h"
 #include "core/job.h"
 #include "core/memory.h"
 #include "core/timing.h"
@@ -258,7 +257,7 @@ imu_init(void) {
         return true;
     }
 
-    i2c_master_bus_handle_t bus = bsp_i2c_get_handle();
+    i2c_master_bus_handle_t bus = board_i2c_bus();
     if (bus == NULL) {
         ESP_LOGE(TAG, "I2C bus is not initialised");
         return false;

@@ -268,6 +268,26 @@ class OwnerProblemsTest(unittest.TestCase):
             '/* esp_timer_get_time() */\n// heap_caps_malloc(8, MALLOC_CAP_DMA)\n'
             'const char* s = "heap_caps_get_free_size";\n')}), [])
 
+    def test_the_bsp_belongs_to_board_alone_drivers_included(self):
+        text = ('#include "bsp/esp-bsp.h"\n'
+                'void f(void) { bsp_i2c_get_handle(); int p = BSP_I2C_SDA + CONFIG_BSP_I2C_NUM; }\n')
+        for rel in ("launcher/main/input/motion/imu.c", "launcher/main/power/power_device.c",
+                    "launcher/test/suites/suite_imu.c", "launcher/tools/render/render_host.c"):
+            with self.subTest(rel=rel):
+                self.assertEqual(self.problems({rel: text}), [
+                    f"{rel}:1: includes bsp/esp-bsp.h; only board/ may",
+                    f"{rel}:2: uses bsp_i2c_get_handle; only board/ may",
+                    f"{rel}:2: uses BSP_I2C_SDA; only board/ may",
+                    f"{rel}:2: uses CONFIG_BSP_I2C_NUM; only board/ may",
+                ])
+        self.assertEqual(self.problems({"launcher/main/board/board_panel.c": text}), [])
+
+    def test_an_angle_bracket_bsp_include_fails_and_a_comment_naming_the_bsp_does_not(self):
+        rel = "launcher/main/input/touch/touch.c"
+        text = '#include <bsp/touch.h>\n/* bsp_touch_new */\nconst char* s = "BSP_X";\n'
+        self.assertEqual(self.problems({rel: text}),
+                         [f"{rel}:1: includes bsp/touch.h; only board/ may"])
+
     def test_main_c_is_left_to_the_shell_rule_so_a_line_is_reported_once(self):
         self.assertEqual(self.problems({"launcher/main/main.c": CLOCK_READ}), [])
 
@@ -301,7 +321,7 @@ class CommandLineTest(unittest.TestCase):
             result = subprocess.run([sys.executable, str(script)], cwd=temp, capture_output=True, text=True)
         self.assertEqual(result.returncode, 1)
         self.assertIn("launcher/main/gfx/gfx.c:1: uses esp_timer_get_time", result.stdout)
-        self.assertIn("1 clock or heap use(s) outside core/timing, core/memory and the drivers", result.stdout)
+        self.assertIn("1 clock, heap or BSP use(s) outside their owners", result.stdout)
 
 
 SYNTHETIC_MAIN = """#include "esp_timer.h"

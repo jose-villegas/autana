@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "bsp/esp-bsp.h"
 #include "driver/i2c_master.h"
 #include "esp_chip_info.h"
 #include "esp_flash.h"
@@ -86,19 +85,14 @@ post_run_before_display(void) {
 
     /* SD is native SDMMC on its own pins, so this is just the natural place
      * to test it first, before gfx_init() takes SPI2 for the display. */
-    const esp_err_t err = bsp_sdcard_mount();
+    board_sd_info_t card;
+    const esp_err_t err = board_sd_probe(&card);
 
-    if (err == ESP_OK && bsp_sdcard != NULL) {
-        const uint64_t bytes = (uint64_t)bsp_sdcard->csd.capacity * bsp_sdcard->csd.sector_size;
-
+    if (err == ESP_OK) {
         char detail[96];
-        (void)snprintf(detail, sizeof(detail), "%s, %llu MB, mounted and released", bsp_sdcard->cid.name,
-                       (unsigned long long)(bytes >> 20));
+        (void)snprintf(detail, sizeof(detail), "%s, %llu MB, mounted and released", card.name,
+                       (unsigned long long)(card.bytes >> 20));
         report("sd card", true, POST_OPTIONAL, detail);
-
-        /* Release it again: this was only a mount test, not a hold the
-         * shell should inherit. */
-        bsp_sdcard_unmount();
     } else {
         /* No card is a normal state, not a fault, hence OPTIONAL. */
         report("sd card", false, POST_OPTIONAL,
@@ -113,12 +107,10 @@ static void
 check_sdcard_live(void) {
     const int64_t t0 = timing_now_us();
 
-    const esp_err_t err = bsp_sdcard_mount();
+    board_sd_info_t info;
     char card[40] = "no card";
-    if (err == ESP_OK && bsp_sdcard != NULL) {
-        const uint64_t bytes = (uint64_t)bsp_sdcard->csd.capacity * bsp_sdcard->csd.sector_size;
-        (void)snprintf(card, sizeof(card), "%s, %llu MB", bsp_sdcard->cid.name, (unsigned long long)(bytes >> 20));
-        bsp_sdcard_unmount();
+    if (board_sd_probe(&info) == ESP_OK) {
+        (void)snprintf(card, sizeof(card), "%s, %llu MB", info.name, (unsigned long long)(info.bytes >> 20));
     }
 
     /* SD has its own bus here, so there is nothing to hand back and forth;
@@ -249,12 +241,14 @@ check_pmu(void) {
  * the POST; it is how "can we talk to the gyro" gets answered. */
 static void
 check_i2c_devices(void) {
-    i2c_master_bus_handle_t bus = bsp_i2c_get_handle();
+    i2c_master_bus_handle_t bus = board_i2c_bus();
     if (bus == NULL) {
         report("i2c bus", false, POST_REQUIRED, "not initialised");
         return;
     }
-    report("i2c bus", true, POST_REQUIRED, BOARD_I2C_PIN_DESC);
+    char pins[32];
+    (void)snprintf(pins, sizeof pins, "SDA %d, SCL %d", BOARD_I2C_SDA_GPIO, BOARD_I2C_SCL_GPIO);
+    report("i2c bus", true, POST_REQUIRED, pins);
 
     static const struct {
         const char* name;

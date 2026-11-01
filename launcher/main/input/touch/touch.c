@@ -8,8 +8,7 @@
 #include "core/timing.h"
 #include "core/tune.h"
 
-#include "bsp/esp-bsp.h"
-#include "bsp/touch.h"
+#include "board/board.h"
 #include "driver/gpio.h"
 #include "esp_attr.h"
 #include "esp_lcd_touch.h"
@@ -20,6 +19,8 @@
 static const char* TAG = "touch";
 
 static esp_lcd_touch_handle_t panel;
+/* The controller's coordinate range, as the board opened it. */
+static vec2i_t panel_size;
 
 /* How this panel reports a tap aimed at a known point, fitted from 217 taps
  * across both orientations: the long axis alone reads 18% stretched about a
@@ -200,7 +201,7 @@ poll_controller(bool* have_point, vec2i_t* point) {
      * timeout; polling blindly at this rate would swamp the system. */
     const bool pending = report_pending;
     report_pending = false;
-    if (panel != NULL && (pending || was_touching || probe != 0 || gpio_get_level(BSP_LCD_TOUCH_INT) == 0)) {
+    if (panel != NULL && (pending || was_touching || probe != 0 || gpio_get_level(panel->config.int_gpio_num) == 0)) {
         const int64_t start_us = timing_now_us();
         const esp_err_t read = esp_lcd_touch_read_data(panel);
         count_read(timing_now_us() - start_us, read == ESP_OK);
@@ -230,9 +231,9 @@ poll_once(void) {
     poll_controller(&have_point, &point);
 #endif
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    touch_calib_prepare_point(injected, have_point, &point, calibrate, &calib, BSP_LCD_H_RES, BSP_LCD_V_RES);
+    touch_calib_prepare_point(injected, have_point, &point, calibrate, &calib, panel_size.x, panel_size.y);
 #else
-    touch_calib_prepare_point(false, have_point, &point, calibrate, &calib, BSP_LCD_H_RES, BSP_LCD_V_RES);
+    touch_calib_prepare_point(false, have_point, &point, calibrate, &calib, panel_size.x, panel_size.y);
 #endif
 
     portENTER_CRITICAL(&lock);
@@ -281,15 +282,18 @@ touch_start(void) {
     touch_fsm_init(&fsm);
     calib = touch_calib_from_fit(PANEL_FIT);
 
-    if (bsp_touch_new(NULL, &panel) != ESP_OK) {
+    if (board_touch_open(&panel) != ESP_OK) {
 #if CONFIG_LAUNCHER_QEMU
         ESP_LOGW(TAG, "No touch controller; input comes from touch_inject()");
 #else
         ESP_LOGW(TAG, "Touch controller unavailable; input will not work");
 #endif
         panel = NULL;
-    } else if (esp_lcd_touch_register_interrupt_callback(panel, on_touch_int) != ESP_OK) {
-        ESP_LOGW(TAG, "No touch interrupt; falling back to sampling INT's level");
+    } else {
+        panel_size = (vec2i_t){panel->config.x_max, panel->config.y_max};
+        if (esp_lcd_touch_register_interrupt_callback(panel, on_touch_int) != ESP_OK) {
+            ESP_LOGW(TAG, "No touch interrupt; falling back to sampling INT's level");
+        }
     }
 
     /* Above the render loop's priority so a long blit cannot delay sampling,
