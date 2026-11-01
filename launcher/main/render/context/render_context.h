@@ -77,7 +77,7 @@ typedef struct {
 
 #define RENDER_DEBUG_VIEW_UNKNOWN -2
 #define RENDER_DEBUG_VIEW_SHADED  0
-#define RENDER_DEBUG_VIEW_COUNT   7 /* table rows; views run 0 to this */
+#define RENDER_DEBUG_VIEW_COUNT   8 /* table rows; views run 0 to this */
 
 typedef struct {
     raster_split_t split;
