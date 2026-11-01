@@ -214,22 +214,10 @@ r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* 
 
 _Static_assert(R3D_SPAN_RANGE > FAST_PIXELS * R3D_SUBPIXEL, "FAST bit range test requires positive FAST_LO");
 
-typedef struct {
-    mat4f_t screen;
-    uint32_t lo_bits, span;
-} transform_setup_t;
-
-static inline transform_setup_t
-transform_setup(const r3d_lens_t* lens) {
-    const uint32_t lo_bits = mathf_bits(FAST_LO);
-    return (transform_setup_t){mat4f_scale_rows(lens->m, (vec3f_t){R3D_SUBPIXEL, R3D_SUBPIXEL, 1}), lo_bits,
-                               mathf_bits(FAST_HI) - lo_bits - 1U};
-}
-
 /* Positive floats order like their bits; negatives and NaNs fall outside the span. */
 static inline bool
-biased_inside_fast(uint32_t bits, const transform_setup_t* setup) {
-    return (uint32_t)(bits - setup->lo_bits - 1U) < setup->span;
+biased_inside_fast(uint32_t bits, uint32_t lo_bits, uint32_t hi_bits) {
+    return (uint32_t)(bits - lo_bits - 1U) < hi_bits - lo_bits - 1U;
 }
 
 typedef struct {
@@ -244,8 +232,8 @@ biased_screen(const r3d_lens_t* lens, float x, float y, float r) {
 }
 
 static inline r3d_pipeline_rows_t
-transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const transform_setup_t* setup,
-                  const r3d_lit_cluster_t* c, r3d_pipeline_vertex_t* cs) {
+transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const mat4f_t* screen, const r3d_lit_cluster_t* c,
+                  r3d_pipeline_vertex_t* cs, uint32_t lo_bits, uint32_t hi_bits) {
     const int end = c->vertex_first + c->vertex_count;
     int y0 = INT16_MAX;
     int y1 = INT16_MIN;
@@ -253,7 +241,7 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const tran
     for (int v = c->vertex_first; v < end; v++) {
         FRAME_LAP("r3d.transform.apply");
         const int16_t* p = mesh->positions[v];
-        const vec3f_t l = mat4f_apply(&setup->screen, (vec3f_t){(float)p[0], (float)p[1], (float)p[2]});
+        const vec3f_t l = mat4f_apply(screen, (vec3f_t){(float)p[0], (float)p[1], (float)p[2]});
         r3d_pipeline_vertex_t* out = &cs[v];
         if (l.z <= lens->project.near_z) {
             out->iz = 0.0F;
@@ -263,7 +251,8 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const tran
         FRAME_LAP("r3d.transform.project");
         const float r = mathf_recip(l.z);
         const biased_t b = biased_screen(lens, l.x, l.y, r);
-        if (!(biased_inside_fast(mathf_bits(b.x), setup) && biased_inside_fast(mathf_bits(b.y), setup))) {
+        if (!(biased_inside_fast(mathf_bits(b.x), lo_bits, hi_bits)
+              && biased_inside_fast(mathf_bits(b.y), lo_bits, hi_bits))) {
             out->iz = -1.0F;
             unbounded = true;
             continue;
@@ -282,9 +271,12 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const tran
 void RENDER_IRAM_ATTR
 r3d_pipeline_transform(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
                        r3d_pipeline_vertex_t* cs, r3d_pipeline_rows_t* rows) {
-    const transform_setup_t setup = transform_setup(lens);
+    const mat4f_t screen = mat4f_scale_rows(lens->m, (vec3f_t){R3D_SUBPIXEL, R3D_SUBPIXEL, 1});
+    const uint32_t lo_bits = mathf_bits(FAST_LO);
+    const uint32_t hi_bits = mathf_bits(FAST_HI);
     for (int i = 0; i < count; i++) {
-        const r3d_pipeline_rows_t r = transform_cluster(mesh, lens, &setup, &mesh->clusters[clusters[i]], cs);
+        const r3d_pipeline_rows_t r =
+            transform_cluster(mesh, lens, &screen, &mesh->clusters[clusters[i]], cs, lo_bits, hi_bits);
         if (rows != NULL) {
             rows[clusters[i]] = r;
         }
