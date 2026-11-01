@@ -30,6 +30,7 @@ env:
   NIGHT_START: ${{ vars.NIGHT_START }}
   NIGHT_ZONE: ${{ vars.NIGHT_ZONE }}
   BOARD_LAST_START: ${{ vars.BOARD_LAST_START }}
+  BOARD_END: ${{ vars.BOARD_END }}
   GH_TOKEN: ${{ github.token }}
   GIT_CONFIG_COUNT: '4'
   GIT_CONFIG_KEY_0: core.hooksPath
