@@ -15,14 +15,15 @@ def is_workflow(path):
     return path.startswith(WORKFLOWS) and path.endswith(('.yml', '.yaml'))
 
 
-def marked_commands(workflows, marker, allowed):
+def marked_commands(workflows, marker, allowed, required=True):
     """(argv, marker value) for each step of the parsed `workflows` whose env
     sets `marker`, in the order the workflows list them.
 
     A Python step runs on this interpreter; any other program is found on
     PATH, since Windows looks in System32 first and finds WSL's bash before
-    Git's. A value outside `allowed`, or no step at all, raises ValueError:
-    a hook that silently ran nothing would pass every commit.
+    Git's. A value outside `allowed` raises ValueError, and so does no step
+    at all when `required`: a hook that silently ran nothing would pass
+    every commit.
     """
     commands = []
     for workflow in workflows:
@@ -36,6 +37,6 @@ def marked_commands(workflows, marker, allowed):
                 argv = shlex.split(step['run'])
                 argv[0] = sys.executable if argv[0] in PYTHONS else shutil.which(argv[0]) or argv[0]
                 commands.append((argv, value))
-    if not commands:
+    if required and not commands:
         raise ValueError(f'No step in {WORKFLOWS} is marked {marker}')
     return commands
