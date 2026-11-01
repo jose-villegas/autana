@@ -645,7 +645,7 @@ class NightlyTests(unittest.TestCase):
 
     @staticmethod
     def fak1_lane():
-        return {"FAK1": dict(lane="0/1", estimate=chain.FIRST_STEP_SECONDS)}
+        return {"FAK1": dict(lane="0", estimate=chain.FIRST_STEP_SECONDS, steps=[])}
 
     def running_until(self, finish, launched):
         """A launch whose lanes run until `finish`, recording each board it starts in `launched`."""
@@ -955,7 +955,7 @@ class NightlyTests(unittest.TestCase):
             self.assertLessEqual(lane["steps"][-1]["position"], 6)
         self.assertEqual(plan["marker"], args.marker)
         # A person's range is not the night's: the next night owes nothing for it.
-        self.assertIsNone(lnt.read_last_queue(self.args.data))
+        self.assertIsNone(lnt.read_last_night_record(self.args.data))
         dealt = [step["commit"] for lane in plan["lanes"].values() for step in lane["steps"]]
         self.assertEqual(sorted(dealt), sorted(set(dealt)))
 
@@ -1171,12 +1171,14 @@ class NightlyTests(unittest.TestCase):
 
     def queue_night(self, boards, max_steps, run=lambda board, steps: steps, day=0, **replay):
         """One night: plan() for the named `boards` with each lane dealt `max_steps`, then each lane runs the
-        steps `run` picks of its own, replayed with `replay`. Returns the plan."""
+        steps `run` picks of its own (None: the lane never starts), replayed with `replay`. Returns the plan."""
         self.clock.value = Clock(22, 30).now() + timedelta(days=day)
         planned, _ = self.capped_plan(self.clock.now(), list(boards), boards=list(boards), max_steps=max_steps)
         for board, lane in planned["lanes"].items():
             self.args.board, self.args.previous, self.args.started = board, lane["previous"], planned["started"]
             steps = run(board, [chain.Step(**step) for step in lane["steps"]])
+            if steps is None:
+                continue
             self.run_chain(steps, MACHINE if board == "20E8" else OTHER_MACHINE, **replay)
         return planned
 
@@ -1189,7 +1191,7 @@ class NightlyTests(unittest.TestCase):
         chain.write_json(self.args.data / f"scoped/{board}/2026-10-17-0300/night.json",
                          dict(self.paced(chain.FIRST_STEP_SECONDS, measured), last_attempted=attempted or measured))
 
-    def test_a_capped_night_carries_its_rest_to_the_next(self):
+    def test_a_capped_night_carries_its_undealt_rest_to_the_next(self):
         fits = 2
         self.legacy_night("20E8", self.commits[0])
         tonight = self.queue_night(["20E8"], fits)
@@ -1209,6 +1211,69 @@ class NightlyTests(unittest.TestCase):
             self.assertEqual(len(self.new_commits(planned)), len(set(self.new_commits(planned))))
             dealt += self.new_commits(planned)
         self.assertEqual(sorted(dealt, key=self.commits.index), self.commits[1:])
+
+    def test_a_lane_that_never_wrote_a_manifest_has_its_steps_owed_again(self):
+        boards = ("20E8", "2124")
+        for board in boards:
+            self.legacy_night(board, self.commits[0])
+        # 2124's lane never starts: its launch failed, or its remote folder never came back.
+        tonight = self.queue_night(boards, 1, run=lambda board, steps: None if board == "2124" else steps)
+        tomorrow = self.queue_night(boards, 1, day=1)
+        self.assertEqual([lane["steps"][-1]["commit"] for lane in tonight["lanes"].values()], self.commits[1:3])
+        self.assertEqual(self.new_commits(tomorrow), [self.commits[2], self.commits[3]])
+
+    def test_joiners_take_what_the_plan_left_and_never_each_others(self):
+        fits = 1
+        for board in ("2124", "20E8", "A308"):
+            self.legacy_night(board, self.commits[0])
+        marker = datetime(2026, 10, 18, *schedule.local_time("BOARD_START"), tzinfo=timezone.utc)
+        self.clock.value = schedule.night_cutoff(marker) - timedelta(seconds=2 * chain.RESCAN_SECONDS)
+        # Each board fits its anchor and one step, measured from when the joiners start.
+        joined = self.clock.now() + timedelta(seconds=chain.RESCAN_SECONDS)
+        with patch.dict(os.environ, BOARD_END=(joined + timedelta(seconds=(fits + 1.5) * chain.FIRST_STEP_SECONDS))
+                        .strftime("%H:%M")):
+            planned, _ = self.capped_plan(marker, ["2124"], boards=["2124"])
+            plan = self.root / "plan.json"
+            planned["cutoff"] = schedule.night_cutoff(marker).isoformat()
+            chain.write_json(plan, planned)
+            args = SimpleNamespace(plan=plan, repo=self.repo, data=self.args.data, out=self.args.out,
+                                   suite=self.args.suite)
+            with self.fleet(([self.row("2124"), self.row("20E8"), self.row("A308")], [])), patch("builtins.print"):
+                chain.run_night(args, clock=self.clock, launch=self.running_until(joined, []))
+        night = json.loads(plan.read_text())
+        dealt = {board: [step["commit"] for step in lane["steps"] if step["role"] == "new"]
+                 for board, lane in night["lanes"].items()}
+        self.assertEqual(dealt, {"2124": self.commits[1:2], "20E8": self.commits[2:3], "A308": self.commits[3:4]})
+        self.assertEqual([step["commit"] for step in night["queue"]], self.commits[4:])
+        # The night record holds the same: what each lane was dealt and what is left.
+        _, record = lnt.read_last_night_record(self.args.data)
+        self.assertEqual((record["dealt"], record["rest"]), (dealt, self.commits[4:]))
+
+    def test_a_range_night_leaves_the_night_record_alone(self):
+        self.legacy_night("20E8", self.commits[0])
+        tonight = self.queue_night(["20E8"], 1)
+        key, record = lnt.read_last_night_record(self.args.data)
+        # A person reruns an old range: it is measured, but the night keeps its own record.
+        self.clock.value += timedelta(hours=1)
+        self.capped_plan(self.clock.now(), ["20E8"], boards=["20E8"], from_sha=self.commits[0])
+        self.assertEqual(lnt.read_last_night_record(self.args.data), (key, record))
+        tomorrow = self.queue_night(["20E8"], 1, day=1)
+        self.assertEqual(self.new_commits(tonight) + self.new_commits(tomorrow), self.commits[1:3])
+        # The record folder is not a board.
+        self.assertEqual(list(lnt.last_nights(self.args.data)), ["20E8"])
+
+    def test_an_unsized_night_deals_each_board_an_even_run(self):
+        boards = ("20E8", "2124", "A308")
+        self.legacy_night("20E8", self.commits[0])
+        planned, _ = self.capped_plan(self.clock.now(), list(boards), boards=list(boards))
+        self.assertIsNone(planned["deadline"])
+        runs = [[step["commit"] for step in planned["lanes"][board]["steps"] if step["role"] == "new"]
+                for board in boards]
+        queue = self.commits[1:]
+        sizes = [math.ceil(len(queue) / len(boards))] * (len(queue) % len(boards))
+        sizes += [len(queue) // len(boards)] * (len(boards) - len(sizes))
+        starts = [sum(sizes[:index]) for index in range(len(boards))]
+        self.assertEqual(runs, [queue[start:start + size] for start, size in zip(starts, sizes)])
 
     def test_steps_a_lane_never_reached_lead_the_next_night(self):
         self.legacy_night("20E8", self.commits[0])

@@ -34,7 +34,8 @@ from process_tree import (launch_process_tree, stop_process_tree, close_process_
 from local_schedule import (Clock, wait_idle, gpu_pending, gpu_on_host, GPU_NOT_ON_HOST,
                             NIGHT_STEP_HANG_SECONDS, MARKER_KEY_FORMAT, heavy_root, night_cutoff, night_end)
 from nightly.lnt import (lnt_report, night_manifest, night_ran, read_night, read_last_night, last_nights,
-                         manifests_since, queue_path, read_last_queue, VARIANT, BUILD_FLAGS, LAYOUT_SEED)
+                         manifests_since, night_record_path, read_last_night_record, VARIANT, BUILD_FLAGS,
+                         LAYOUT_SEED)
 
 IMAGE_HEADER_BYTES = 24
 SEGMENT_HEADER_BYTES = 8
@@ -158,20 +159,21 @@ def on_history(history, commit, name):
 
 
 def night_queue(repo, tip, data, from_sha=None):
-    """The night's new steps, oldest first: what the last saved queue still owes, then every commit after it;
+    """The night's new steps, oldest first: what the last night record still owes, then every commit after its tip;
     `--from` replaces it with history from that commit on. No commit is dropped, a commit may be measured twice."""
     history = history_steps(repo, tip)
     if from_sha:
         first = git(repo, "rev-parse", from_sha + "^{commit}")
         return history[on_history(history, first, "--from").position - 1:]
-    saved = read_last_queue(data)
+    saved = read_last_night_record(data)
     if saved:
-        key, queue = saved
-        through = on_history(history, queue["through"], "the saved queue's tip").position
-        owed = {*queue["owed"], *(step.commit for step in history[through:])}
+        key, record = saved
+        through = on_history(history, record["through"], "the night record's tip").position
+        owed = {*(commit for dealt in record["dealt"].values() for commit in dealt), *record["rest"],
+                *(step.commit for step in history[through:])}
         settled = attempted(manifests_since(data, key))
     else:
-        # Before the night had a queue, each board resumed after its own cursor.
+        # Before the night kept a record, each board resumed after its own cursor.
         nights = last_nights(data).values()
         cursors = [night.get("last_attempted") or night.get("last_measured") for night in nights]
         cursors = [on_history(history, commit, "last_attempted").position for commit in cursors if commit]
@@ -204,6 +206,17 @@ def lane_capacity(previous, start, deadline, selftest=False):
     left = ((deadline - start).total_seconds() - (SELFTEST_ALLOWANCE_SECONDS if selftest else 0)
             - (pace if (previous or {}).get("last_measured") else 0))
     return max(0, math.floor(left / pace))
+
+
+def record_night(data, planned):
+    """Save the night's record for the next night: the tip it planned at, each lane's dealt steps and the rest.
+    A `--from` range is a person's, not the night's: it saves none."""
+    if planned.get("from_sha"):
+        return
+    write_json(night_record_path(data, datetime.fromisoformat(planned["started"]).strftime(MARKER_KEY_FORMAT)),
+               dict(through=planned["tip"], rest=[step["commit"] for step in planned["queue"]],
+                    dealt={board: [step["commit"] for step in lane["steps"] if step["role"] == "new"]
+                           for board, lane in planned["lanes"].items()}))
 
 
 def deal(repo, tip, previous, queue, count):
@@ -635,6 +648,7 @@ def run_night(args, clock=None, launch=None):
                     planned["lanes"][board] = lane
                     planned["queue"] = [asdict(step) for step in rest]
                     write_json(args.plan, planned)
+                    record_night(args.data, planned)
                 except (OSError, ValueError, subprocess.CalledProcessError) as error:
                     print(f"lane {board}: {error}", file=sys.stderr)
                     failed = down = True
@@ -726,10 +740,6 @@ def plan(args, clock=None, request=None):
                    lanes={}, from_sha=args.from_sha, max_steps=args.max_steps)
     lanes = planned["lanes"]
     queue = night_queue(args.repo, tip, args.data, args.from_sha)
-    if not args.from_sha:
-        # The next night owes what this one does not settle.
-        write_json(queue_path(args.data, now.strftime(MARKER_KEY_FORMAT)),
-                   dict(through=tip, owed=[step.commit for step in queue]))
     for index, board in enumerate(args.boards):
         board = short_id(board)
         # Unsized, the queue splits into even runs; sized, each board takes what it fits.
@@ -740,6 +750,8 @@ def plan(args, clock=None, request=None):
         if lane:
             lanes[board] = lane
     planned["queue"] = [asdict(step) for step in queue]
+    # The next night owes what this one does not settle.
+    record_night(args.data, planned)
     write_json(Path(args.out), planned)
     # For the workflow's later steps, which run one lane per board.
     print("SCOPED_BOARDS=" + " ".join(lanes))
