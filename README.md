@@ -68,6 +68,7 @@ The firmware targets the Waveshare ESP32-S3-Touch-AMOLED-1.8 specifically. For a
 | Understand gravity estimation and input features | [Input docs](docs/input/README.md) |
 | Understand the frame loop and drawing path | [Firmware](docs/firmware/README.md), [Graphics](docs/gfx/README.md) |
 | Follow the sand simulation | [Sand docs](docs/sand/README.md), [Simulation](docs/sand/Sand-Simulation.md) |
+| Use portable packages and check their fast-path contracts | [Packages](docs/packages/README.md) |
 | Run or add tests | [Testing Guide](docs/testing/README.md) |
 | Work with fonts and controls | [Text and Fonts](docs/gfx/Text-and-Fonts.md), [UI Toolkit](docs/ui/README.md) |
 | Build, flash, test or drive the board with `autana` | [CLI guide](docs/cli/README.md), [board notes](docs/notes/README.md) |
