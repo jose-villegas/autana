@@ -27,7 +27,7 @@ set_target_properties(render_scene PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "$<1:${SCENE_OUT_DIR}>")
 
 set(dependency_sources "$<JOIN:$<TARGET_PROPERTY:render_scene,SOURCES>,\n>\n")
-get_target_property(host_libraries render_host_core INTERFACE_LINK_LIBRARIES)
+get_target_property(host_libraries render_engine INTERFACE_LINK_LIBRARIES)
 foreach(library IN LISTS host_libraries)
     if(TARGET ${library})
         get_target_property(sources ${library} SOURCES)
