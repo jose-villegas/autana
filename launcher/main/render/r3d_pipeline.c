@@ -212,6 +212,14 @@ r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* 
 #define FAST_LO      (R3D_SNAP_BIAS - (float)(FAST_PIXELS * R3D_SUBPIXEL))
 #define FAST_HI      (R3D_SNAP_BIAS + (float)(FAST_PIXELS * R3D_SUBPIXEL))
 
+_Static_assert(R3D_SPAN_RANGE > FAST_PIXELS * R3D_SUBPIXEL, "FAST bit range test requires positive FAST_LO");
+
+/* Positive floats order like their bits; negatives and NaNs fall outside the span. */
+static inline bool
+biased_inside_fast(uint32_t bits, uint32_t lo_bits, uint32_t hi_bits) {
+    return (uint32_t)(bits - lo_bits - 1U) < hi_bits - lo_bits - 1U;
+}
+
 typedef struct {
     float x, y; /* subpixels plus R3D_SNAP_BIAS */
 } biased_t;
@@ -243,9 +251,8 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const mat4
         FRAME_LAP("r3d.transform.project");
         const float r = mathf_recip(l.z);
         const biased_t b = biased_screen(lens, l.x, l.y, r);
-        /* Positive floats order like their bits; negatives and NaNs fall outside the span. */
-        if (!((uint32_t)(mathf_bits(b.x) - lo_bits - 1U) < hi_bits - lo_bits - 1U
-              && (uint32_t)(mathf_bits(b.y) - lo_bits - 1U) < hi_bits - lo_bits - 1U)) {
+        if (!(biased_inside_fast(mathf_bits(b.x), lo_bits, hi_bits)
+              && biased_inside_fast(mathf_bits(b.y), lo_bits, hi_bits))) {
             out->iz = -1.0F;
             unbounded = true;
             continue;
