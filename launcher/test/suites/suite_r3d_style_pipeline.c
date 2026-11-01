@@ -20,6 +20,7 @@
 #define r3d_pipeline_draw            constant_r3d_pipeline_draw
 #define r3d_pipeline_cluster_hidden  constant_r3d_pipeline_cluster_hidden
 
+#include <float.h>
 #include <stdlib.h>
 #include <string.h>
 #include "asset/asset_pack.h"
@@ -95,14 +96,14 @@ test_styles_match_pipeline_colours(void) {
     uint8_t colours[3][3] = {{255, 0, 0}, {0, 255, 0}, {0, 0, 255}};
     const uint16_t triangle[3] = {0, 1, 2};
     const r3d_lit_cluster_t cluster = {.vertex_count = 3};
-    const r3d_lit_mesh_t mesh = {.positions = positions, .colors = (const uint8_t (*)[3])colours};
+    const r3d_lit_mesh_t mesh = {.positions = positions, .colors = (const uint8_t (*)[3])colours, .clusters = &cluster};
     const r3d_lens_t lens = {.m = MAT4F_IDENTITY,
                              .project = {1.0F, -1.0F, 0.0F, 0.0F, 1.0F},
-                             .depth_subpixels = 1.0F / R3D_SUBPIXEL,
+                             .depth_near = 1.0F,
                              .snap_cx = R3D_SNAP_BIAS,
                              .snap_cy = R3D_SNAP_BIAS};
     r3d_pipeline_vertex_t transformed[3];
-    (void)transform_cluster(&mesh, &lens, &cluster, transformed, false);
+    r3d_pipeline_transform(&mesh, &lens, &(uint16_t){0}, 1, transformed, NULL, false);
     r3d_span_vertex_t reference[3];
     for (int k = 0; k < 3; k++) {
         transformed[k].sx = k == 1 ? TEST_SIDE * R3D_SUBPIXEL : 0;
@@ -146,13 +147,13 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
         .positions = positions, .colors = colors, .triangles = triangles, .clusters = &cluster};
     const r3d_lens_t lens = {.m = MAT4F_IDENTITY,
                              .project = {1.0F, -1.0F, 0.0F, 0.0F, 1.0F},
-                             .depth_subpixels = 1.0F / R3D_SUBPIXEL,
+                             .depth_near = 1.0F,
                              .snap_cx = R3D_SNAP_BIAS,
                              .snap_cy = R3D_SNAP_BIAS};
     clipped = malloc(sizeof(*clipped));
     TEST_ASSERT_NOT_NULL(clipped);
     r3d_pipeline_vertex_t* transformed = clipped->transformed;
-    (void)transform_cluster(&mesh, &lens, &cluster, transformed, false);
+    r3d_pipeline_transform(&mesh, &lens, &(uint16_t){0}, 1, transformed, NULL, false);
     build_guard_planes(&lens, work);
     r3d_span_target_t* expected = &clipped->expected;
     r3d_span_target_t* actual = &clipped->actual;
@@ -282,6 +283,58 @@ tag_where_won(const r3d_span_writer_t* writer, const gfx_target_t* rows, int y, 
     }
 }
 
+#define TRANSFORM_REFERENCE_STEPS 257
+
+static void
+test_transform_matches_lens_projection_bits(void) {
+    static const float scales[] = {0.03125F, 0.7F, 19.3F};
+    const r3d_lit_cluster_t cluster = {.vertex_count = 1};
+    const uint16_t index = 0;
+    for (size_t scale = 0; scale < sizeof scales / sizeof scales[0]; scale++) {
+        r3d_lens_t lens = {.m = MAT4F_IDENTITY,
+                           .project.near_z = 1.0F,
+                           .snap_cx = R3D_SNAP_BIAS + 0.75F,
+                           .snap_cy = R3D_SNAP_BIAS - 0.25F};
+        lens.m = mat4f_scale_rows(lens.m, (vec3f_t){scales[scale], -scales[scale], 1.0F});
+        lens.m.m[0][1] = scales[scale];
+        lens.m.m[1][0] = -scales[scale];
+        r3d_lens_set_depth_near(&lens, scales[scale]);
+        for (int i = 0; i < TRANSFORM_REFERENCE_STEPS; i++) {
+            const int16_t positions[1][3] = {
+                {(int16_t)(i - TRANSFORM_REFERENCE_STEPS / 2),
+                 (int16_t)(TRANSFORM_REFERENCE_STEPS / 2 - i * i % TRANSFORM_REFERENCE_STEPS), (int16_t)i}};
+            const r3d_lit_mesh_t mesh = {.positions = positions, .clusters = &cluster};
+            r3d_pipeline_vertex_t out = {.sx = INT16_MIN, .sy = INT16_MIN};
+            r3d_pipeline_rows_t rows;
+            r3d_pipeline_transform(&mesh, &lens, &index, 1, &out, &rows, false);
+            const vec3f_t l = mat4f_apply(&lens.m, (vec3f_t){positions[0][0], positions[0][1], positions[0][2]});
+            if (l.z <= lens.project.near_z) {
+                TEST_ASSERT_EQUAL_FLOAT(0.0F, out.iz);
+                TEST_ASSERT_TRUE(rows.unbounded);
+                continue;
+            }
+            const float inv = (float)R3D_SUBPIXEL * mathf_recip(l.z);
+            const float bx = lens.snap_cx + l.x * inv;
+            const float by = lens.snap_cy + l.y * inv;
+            const bool fast = bx > FAST_LO && bx < FAST_HI && by > FAST_LO && by < FAST_HI;
+            TEST_ASSERT_EQUAL(!fast, rows.unbounded);
+            if (fast) {
+                const float iz = (lens.depth_near / (float)R3D_SUBPIXEL) * inv;
+                TEST_ASSERT_EQUAL_MEMORY(&iz, &out.iz, sizeof iz);
+                TEST_ASSERT_EQUAL_INT16(r3d_span_unbias(bx), out.sx);
+                TEST_ASSERT_EQUAL_INT16(r3d_span_unbias(by), out.sy);
+                const clip_vertex_t v = {.x = l.x, .y = l.y, .z = l.z};
+                const r3d_span_vertex_t clipped = project(&lens, &v);
+                TEST_ASSERT_EQUAL_INT16(out.sx, clipped.x);
+                TEST_ASSERT_EQUAL_INT16(out.sy, clipped.y);
+                TEST_ASSERT_EQUAL_MEMORY(&out.iz, &clipped.z, sizeof out.iz);
+            } else {
+                TEST_ASSERT_EQUAL_FLOAT(-1.0F, out.iz);
+            }
+        }
+    }
+}
+
 #define TAG_BASE 1000
 
 /* Rows [0, rows) of draw `run`'s planes, with a tag attachment when `writer` is given. */
@@ -383,8 +436,66 @@ test_the_hidden_test_changes_no_pixel_of_a_writing_draw(void) {
     scene_draws_alike_with_the_hidden_test_on_and_off(true);
 }
 
+static void
+test_transform_nonfinite_paths(void) {
+    static const int16_t positions[1][3] = {{1, 1, 2}};
+    static const float nonfinite[] = {INFINITY, -INFINITY, NAN};
+    const r3d_lit_cluster_t cluster = {.vertex_count = 1};
+    const r3d_lit_mesh_t mesh = {.positions = positions, .clusters = &cluster};
+    const uint16_t index = 0;
+    for (int axis = 0; axis < MAT3F_AXES; axis++) {
+        for (size_t i = 0; i < sizeof nonfinite / sizeof nonfinite[0]; i++) {
+            r3d_lens_t lens = {
+                .m = MAT4F_IDENTITY, .project.near_z = 1.0F, .snap_cx = R3D_SNAP_BIAS, .snap_cy = R3D_SNAP_BIAS};
+            r3d_lens_set_depth_near(&lens, lens.project.near_z);
+            lens.m.m[axis][MAT3F_AXES] = nonfinite[i];
+            r3d_pipeline_vertex_t out = {.sx = INT16_MIN, .sy = INT16_MIN};
+            r3d_pipeline_rows_t rows;
+            r3d_pipeline_transform(&mesh, &lens, &index, 1, &out, &rows, false);
+            const bool infinite_depth = axis == 2 && nonfinite[i] == INFINITY;
+            const bool behind = axis == 2 && nonfinite[i] == -INFINITY;
+            TEST_ASSERT_EQUAL_FLOAT(behind || infinite_depth ? 0.0F : -1.0F, out.iz);
+            TEST_ASSERT_EQUAL(!infinite_depth, rows.unbounded);
+            /* Finite x/y at +inf depth project to the centre with zero inverse depth. */
+            TEST_ASSERT_EQUAL_INT16(infinite_depth ? 0 : INT16_MIN, out.sx);
+            TEST_ASSERT_EQUAL_INT16(infinite_depth ? 0 : INT16_MIN, out.sy);
+        }
+    }
+}
+
+#define TEST_FAST_ULP_RADIUS   4096U
+#define TEST_FLOAT_BITS_STRIDE UINT32_C(65537)
+
+static void
+check_fast_bits(uint32_t bits) {
+    const float biased = mathf_from_bits(bits);
+    TEST_ASSERT_EQUAL(biased > FAST_LO && biased < FAST_HI,
+                      biased_inside_fast(bits, mathf_bits(FAST_LO), mathf_bits(FAST_HI)));
+}
+
+static void
+test_transform_fast_range_bits(void) {
+    const uint32_t edges[] = {mathf_bits(FAST_LO), mathf_bits(FAST_HI)};
+    for (size_t edge = 0; edge < sizeof edges / sizeof edges[0]; edge++) {
+        for (uint32_t bits = edges[edge] - TEST_FAST_ULP_RADIUS; bits <= edges[edge] + TEST_FAST_ULP_RADIUS; bits++) {
+            check_fast_bits(bits);
+        }
+    }
+    static const float special[] = {0.0F,    -0.0F,    INFINITY,     -INFINITY,     NAN,     -NAN,
+                                    FLT_MAX, -FLT_MAX, FLT_TRUE_MIN, -FLT_TRUE_MIN, -FAST_LO};
+    for (size_t i = 0; i < sizeof special / sizeof special[0]; i++) {
+        check_fast_bits(mathf_bits(special[i]));
+    }
+    for (uint64_t bits = 0; bits <= UINT32_MAX; bits += TEST_FLOAT_BITS_STRIDE) {
+        check_fast_bits((uint32_t)bits);
+    }
+}
+
 void
 run_r3d_style_pipeline_suite(void) {
+    RUN_TEST(test_transform_matches_lens_projection_bits);
+    RUN_TEST(test_transform_nonfinite_paths);
+    RUN_TEST(test_transform_fast_range_bits);
     RUN_TEST(test_clipped_and_mixed_clusters_keep_the_target_style);
     RUN_TEST(test_styles_match_pipeline_colours);
     RUN_TEST(test_the_hidden_test_changes_no_pixel_of_a_reading_draw);

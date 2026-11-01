@@ -320,6 +320,9 @@ run "$PYTHON" launcher/tools/anim/playback/playback_figures.py "$skin_asset" $PL
 R3D_PYTHON=$(run find_r3d_python "$PWD")
 run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/bake_figures.py --out "$OUT/render" > "$WORK/bake_figures.log" 2>&1
 # --orphans scans this runner: bake-ao-rays.png, bake-ao-falloff.png, bake-directions.png, bake-bounce-rays.png, bake-bounce-sweep.png, bake-scores.png
+# The import's seam policies: a pillar on a floor through the importer's contact graph and simplify pass.
+run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/contact_figures.py --out "$OUT/render" > "$WORK/contact_figures.log" 2>&1
+# --orphans scans this runner: import-mesh-contact.png
 
 # The baked mesh's figures: the demo scene's lite mesh, its clusters and tree, and the clusterizer's build.
 tree_mesh=$("$PYTHON" launcher/tools/bake/bake.py path "$(basename "$DEMO_SCENE" .scene.toml).${DEMO_OBJECT}_lite.mesh") || exit 2
@@ -369,18 +372,19 @@ run "$PYTHON" launcher/tools/render/frame_stages.py --present docs/render/data/p
 
 # What the cull keeps along each scene's camera path, from the cull view, and
 # what a cluster and a triangle cost, from the board capture beside the page.
-for cull in "launcher/demo/bistro/bistro.scene.toml street_fitted_full cull-bistro Bistro" \
+# A fifth word also draws that scene's overdraw sheet under that stem.
+for cull in "launcher/demo/bistro/bistro.scene.toml street_fitted_full cull-bistro Bistro overdraw-bistro" \
     "$DEMO_SCENE atrium_fitted_full cull-sponza Sponza"; do
-    # shellcheck disable=SC2086 # four words: scene, object, stem, label
+    # shellcheck disable=SC2086 # four or five words: scene, object, stem, label, overdraw stem
     set -- $cull
     run "$PYTHON" launcher/tools/render/cull_figures.py --scene "$1" --object "$2" --camera camera --stem "$3" \
         --label "$4" --level "$CULL_LEVEL" --out "$OUT/render" --tables "$OUT/tables" --work "$WORK/cull" \
-        > "$WORK/$3.log"
+        ${5:+--overdraw "$5"} > "$WORK/$3.log"
     gif_from_avi "$WORK/cull/$3-chase.avi" "$OUT/render/$3-chase.gif" "setpts=N/$CULL_GIF_FPS/TB,fps=$CULL_GIF_FPS" \
         "stats_mode=diff:max_colors=$CULL_GIF_COLORS"
 done
 # --orphans scans this runner: cull-bistro-sheet.png, cull-bistro-counts.png, cull-bistro-chase.gif,
-# cull-sponza-sheet.png, cull-sponza-counts.png, cull-sponza-chase.gif
+# overdraw-bistro-sheet.png, cull-sponza-sheet.png, cull-sponza-counts.png, cull-sponza-chase.gif
 run "$PYTHON" launcher/tools/render/cull_cost.py docs/render/data/cull-cost-board.log --tables "$OUT/tables" \
     --chart "$OUT/render/cull-cost.png" > "$WORK/cull_cost.log"
 

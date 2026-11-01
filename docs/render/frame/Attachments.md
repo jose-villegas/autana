@@ -101,8 +101,9 @@ An instance is known by its placement's address. One whose placement
 changed since the previous picture gets its own map, carrying the point to
 where the mesh was.
 
-A raster with motion attached draws at most `RASTER_MOTION_INSTANCES_MAX`
-instances.
+Its state holds a previous placement and a map per instance, room the owner
+gives it with `raster_motion_reserve()` before a picture with more instances
+than it holds; a tag names at most `RASTER_MOTION_INSTANCES_MAX`.
 
 | Hook | Motion |
 |---|---|

@@ -7,7 +7,9 @@
 
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
+#include "gfx/present/gfx_present.h"
 #include "gfx/present/modes/band/gfx_band.h"
+#include "gfx/present/modes/indexed/gfx_indexed_expand.h"
 #include "gfx/present/send/gfx_dirty.h"
 #include "gfx/target/gfx_target.h"
 
