@@ -22,9 +22,9 @@ except ImportError:
     parse_poses = None
 
 try:
-    from r3d import mesh_import, reference_render
+    from r3d import mesh_import, mesh_source, reference_render
 except ImportError:
-    mesh_import = reference_render = None
+    mesh_import = mesh_source = reference_render = None
 
 try:
     from PIL import Image
@@ -296,7 +296,7 @@ class SweepTests(unittest.TestCase):
             work = pathlib.Path(directory)
             with unittest.mock.patch.object(fitted_variant, "reference_digest", return_value="same"), \
                  unittest.mock.patch.object(mesh_import, "write_baked", return_value=start), \
-                 unittest.mock.patch.object(mesh_import, "camera_path_poses", return_value=poses), \
+                 unittest.mock.patch.object(mesh_source, "camera_path_poses", return_value=poses), \
                  unittest.mock.patch.object(fitted_variant, "prepare_references", wraps=fitted_variant.prepare_references) as prepare, \
                  unittest.mock.patch.object(reference_render, "render_sets", return_value="traced_here") as render:
                 fitted_variant.sweep_references("scene", scene, job, work)
