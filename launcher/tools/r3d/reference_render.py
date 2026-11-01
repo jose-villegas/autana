@@ -26,11 +26,11 @@ from PIL import Image
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from r3d import mesh_import, mitsuba_reference, ray_query
+from r3d import mesh_source, mitsuba_reference, ray_query
 from r3d.geometry import corner_normals
 from r3d.import_settings import load_scene
 from r3d.light import albedo_from_uv, coincident_faces, drop_masked, light, open_side_occlusion, to_srgb8
-from r3d.mesh_import import load_source, path_light_for
+from r3d.mesh_source import load_source, path_light_for
 from r3d.poses import camera_rays, read_poses
 from r3d.ray_query import RayQuery
 
@@ -191,7 +191,7 @@ def lit_source(job, scene, lit=True, variant=None):
 
 def render_sets(inputs, sets, samples=4):
     """Renders each (poses file, folder) of `sets` with normals from `inputs` alone (a
-    fitted_variant.ReferenceInputs), the source loaded and its bounced light built once for all of them, on the GPU
+    reference_set.ReferenceInputs), the source loaded and its bounced light built once for all of them, on the GPU
     where Mitsuba's CUDA variant traces (`ray_query.trace_variant`). Returns the variant it traced on. The poses render
     in this process, since the probe may have opened CUDA, and on the GPU its arrays are freed before it returns, for
     the fit that shares the device."""
@@ -211,7 +211,7 @@ def render_sets(inputs, sets, samples=4):
     finally:
         if gpu:
             del source
-            mesh_import.PATH_LIGHTS.clear()
+            mesh_source.PATH_LIGHTS.clear()
             ray_query.release_gpu()
     return variant
 
