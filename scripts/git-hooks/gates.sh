@@ -12,7 +12,7 @@ ROOT=$(git rev-parse --show-toplevel) || exit 1
 HOOK_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 # Asked of the hook's own tree: git exports GIT_DIR to a hook run in a
 # worktree, which would answer for the repository being judged instead.
-SUPERPROJECT=$(unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
+SUPERPROJECT=$(unset $(git rev-parse --local-env-vars)
                git -C "$HOOK_DIR" rev-parse --show-superproject-working-tree 2>/dev/null)
 if [ "$SUPERPROJECT" = "$ROOT" ]; then
     GATES="$HOOK_DIR/../gates"
