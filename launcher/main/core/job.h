@@ -96,7 +96,7 @@ typedef struct {
 
 static inline void
 job_range_run(void* ctx) {
-    const job_range_t* r = ctx;
+    const job_range_t* r = (const job_range_t*)ctx;
     r->fn(r->ctx, r->from, r->to);
 }
 

@@ -103,8 +103,7 @@ main(int argc, char** argv) {
     bool ok = true;
     for (int end = CHECKPOINT_END; end <= CHECKPOINT_END_ODD; end++) {
         for (int v = RENDER_DEBUG_VIEW_SHADED; v <= RENDER_DEBUG_VIEW_COUNT; v++) {
-            const render_debug_view_t* row = render_context_debug_view(v);
-            const char* name = row == NULL ? "shaded" : row->name;
+            const char* name = render_context_debug_view_name(v);
             render_context_set_debug_view(render_context_main(), v);
             render_context_set_scale(render_context_main(), RENDER_CONTEXT_DEFAULT_SCALE_PERCENT);
             (void)tune_set(tune_shared(), TUNE_NAME(checkpoint, colour), CHECKPOINT_COLOUR_DEFAULT);
