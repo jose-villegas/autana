@@ -1,0 +1,57 @@
+# autana --json replies on SYNTHETIC, 2000-01-01, synthetic playback fixture
+buildid	{"build_id": "synthetic"}
+runs	1
+arm	{"block": "drc", "volume": 50, "drc": 0, "index": 0}
+mic record 3000 --settle 500 -o mic_playback_take.wav	{"rate": 22050, "samples": 66150, "writes": []}
+arm	{"block": "drc", "volume": 50, "drc": 1, "index": 1}
+mic record 3000 --settle 500 -o mic_playback_take.wav	{"rate": 22050, "samples": 66150, "writes": []}
+arm	{"block": "drc", "volume": 70, "drc": 0, "index": 2}
+mic record 3000 --settle 500 -o mic_playback_take.wav	{"rate": 22050, "samples": 66150, "writes": []}
+arm	{"block": "drc", "volume": 70, "drc": 1, "index": 3}
+mic record 3000 --settle 500 -o mic_playback_take.wav	{"rate": 22050, "samples": 66150, "writes": []}
+arm	{"block": "drc", "volume": 100, "drc": 0, "index": 4}
+mic record 3000 --settle 500 -o mic_playback_take.wav	{"rate": 22050, "samples": 66150, "writes": []}
+tone 1000 1000 100	{"hz": 1000, "thd_db": -34, "peak_dbfs": -10}
+arm	{"block": "drc", "volume": 100, "drc": 1, "index": 5}
+mic record 3000 --settle 500 -o mic_playback_take.wav	{"rate": 22050, "samples": 66150, "writes": []}
+tone 1000 1000 100	{"hz": 1000, "thd_db": -35, "peak_dbfs": -11}
+arm	{"block": "eq", "volume": 70, "drc": 1, "cutoff": 0, "index": 6}
+mic record 3000 --settle 500 -o mic_playback_take.wav	{"rate": 22050, "samples": 66150, "writes": []}
+tone 1000 1000 100	{"hz": 1000, "thd_db": -36, "peak_dbfs": -12}
+tone 200 1000 100	{"hz": 200, "thd_db": -36, "peak_dbfs": -12}
+arm	{"block": "eq", "volume": 70, "drc": 1, "cutoff": 200, "index": 7}
+mic record 3000 --settle 500 -o mic_playback_take.wav	{"rate": 22050, "samples": 66150, "writes": []}
+tone 1000 1000 100	{"hz": 1000, "thd_db": -37, "peak_dbfs": -13}
+tone 200 1000 100	{"hz": 200, "thd_db": -37, "peak_dbfs": -13}
+arm	{"block": "eq", "volume": 70, "drc": 1, "cutoff": 400, "index": 8}
+mic record 3000 --settle 500 -o mic_playback_take.wav	{"rate": 22050, "samples": 66150, "writes": []}
+tone 1000 1000 100	{"hz": 1000, "thd_db": -38, "peak_dbfs": -14}
+tone 200 1000 100	{"hz": 200, "thd_db": -38, "peak_dbfs": -14}
+arm	{"block": "eq", "volume": 100, "drc": 1, "cutoff": 0, "index": 9}
+mic record 3000 --settle 500 -o mic_playback_take.wav	{"rate": 22050, "samples": 66150, "writes": []}
+tone 1000 1000 100	{"hz": 1000, "thd_db": -39, "peak_dbfs": -15}
+tone 200 1000 100	{"hz": 200, "thd_db": -39, "peak_dbfs": -15}
+arm	{"block": "eq", "volume": 100, "drc": 1, "cutoff": 200, "index": 10}
+mic record 3000 --settle 500 -o mic_playback_take.wav	{"rate": 22050, "samples": 66150, "writes": []}
+tone 1000 1000 100	{"hz": 1000, "thd_db": -40, "peak_dbfs": -16}
+tone 200 1000 100	{"hz": 200, "thd_db": -40, "peak_dbfs": -16}
+arm	{"block": "eq", "volume": 100, "drc": 1, "cutoff": 400, "index": 11}
+mic record 3000 --settle 500 -o mic_playback_take.wav	{"rate": 22050, "samples": 66150, "writes": []}
+tone 1000 1000 100	{"hz": 1000, "thd_db": -41, "peak_dbfs": -17}
+tone 200 1000 100	{"hz": 200, "thd_db": -41, "peak_dbfs": -17}
+arm	{"block": "dac-ramp", "volume": 70, "drc": 1, "ramp": 0, "index": 12}
+mic record 3000 --settle 500 -o mic_playback_take.wav	{"rate": 22050, "samples": 66150, "writes": [[173, 50, 40], [345, 50, 0]]}
+arm	{"block": "dac-ramp", "volume": 70, "drc": 1, "ramp": 2, "index": 13}
+mic record 3000 --settle 500 -o mic_playback_take.wav	{"rate": 22050, "samples": 66150, "writes": [[173, 50, 40], [345, 50, 0]]}
+arm	{"block": "dac-ramp", "volume": 70, "drc": 1, "ramp": 6, "index": 14}
+mic record 3000 --settle 500 -o mic_playback_take.wav	{"rate": 22050, "samples": 66150, "writes": [[173, 50, 40], [345, 50, 0]]}
+arm	{"block": "dac-ramp", "volume": 70, "drc": 1, "ramp": 10, "index": 15}
+mic record 3000 --settle 500 -o mic_playback_take.wav	{"rate": 22050, "samples": 66150, "writes": [[173, 50, 40], [345, 50, 0]]}
+arm	{"block": "adc-ramp", "volume": 70, "drc": 1, "ramp": 0, "index": 16}
+mic record 3000 --settle 500 -o mic_playback_take.wav	{"rate": 22050, "samples": 66150, "writes": [[173, 50, 40], [345, 50, 0]]}
+arm	{"block": "adc-ramp", "volume": 70, "drc": 1, "ramp": 2, "index": 17}
+mic record 3000 --settle 500 -o mic_playback_take.wav	{"rate": 22050, "samples": 66150, "writes": [[173, 50, 40], [345, 50, 0]]}
+arm	{"block": "adc-ramp", "volume": 70, "drc": 1, "ramp": 6, "index": 18}
+mic record 3000 --settle 500 -o mic_playback_take.wav	{"rate": 22050, "samples": 66150, "writes": [[173, 50, 40], [345, 50, 0]]}
+arm	{"block": "adc-ramp", "volume": 70, "drc": 1, "ramp": 10, "index": 19}
+mic record 3000 --settle 500 -o mic_playback_take.wav	{"rate": 22050, "samples": 66150, "writes": [[173, 50, 40], [345, 50, 0]]}

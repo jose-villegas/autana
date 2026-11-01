@@ -563,13 +563,13 @@ test_tone_capture_restores_every_exit(void) {
                          == CONSOLE_LINE_HANDLED);
         TEST_ASSERT_EQUAL_UINT(1, device.closes);
         if (failure == TEST_TONE_RESTORE_FAIL) {
-            TEST_ASSERT_TRUE(device.feedback.restore_pending);
+            TEST_ASSERT_TRUE(device.feedback.saved.restore_pending);
             TEST_ASSERT_TRUE(device.replied);
             TEST_ASSERT_TRUE(device.tone_error);
             continue;
         }
         TEST_ASSERT_EQUAL_HEX(TEST_TONE_REGISTER_OLD, device.reg);
-        TEST_ASSERT_FALSE(device.feedback.restore_pending);
+        TEST_ASSERT_FALSE(device.feedback.saved.restore_pending);
         TEST_ASSERT_FALSE(device.amp.held);
         TEST_ASSERT_TRUE(device.amp.requested);
         TEST_ASSERT_EQUAL(failure == TEST_TONE_STOP_STUCK, device.playing);
@@ -595,7 +595,7 @@ test_tone_pending_restore_blocks_both_modes(void) {
                      == CONSOLE_LINE_HANDLED);
     TEST_ASSERT_TRUE(device.replied);
     TEST_ASSERT_TRUE(device.tone_error);
-    TEST_ASSERT_TRUE(device.feedback.restore_pending);
+    TEST_ASSERT_TRUE(device.feedback.saved.restore_pending);
     const unsigned measures = device.measures;
     static const char* const commands[] = {"tone 1000 100", "tone 1000 100 internal"};
     device.internal = false;
@@ -605,13 +605,13 @@ test_tone_pending_restore_blocks_both_modes(void) {
         TEST_ASSERT_TRUE(device.replied);
         TEST_ASSERT_TRUE(device.tone_error);
         TEST_ASSERT_EQUAL_UINT(measures, device.measures);
-        TEST_ASSERT_TRUE(device.feedback.restore_pending);
+        TEST_ASSERT_TRUE(device.feedback.saved.restore_pending);
     }
     device.failure = TEST_TONE_OK;
     device.replied = false;
     TEST_ASSERT_TRUE(console_registry_dispatch(&registry, commands[0], tone_collect) == CONSOLE_LINE_HANDLED);
     TEST_ASSERT_FALSE(device.replied);
-    TEST_ASSERT_FALSE(device.feedback.restore_pending);
+    TEST_ASSERT_FALSE(device.feedback.saved.restore_pending);
     TEST_ASSERT_EQUAL_UINT(measures + 2, device.measures);
 }
 
@@ -653,7 +653,7 @@ test_tone_acoustic_has_no_feedback(void) {
     TEST_ASSERT_EQUAL_UINT(2, device.measures);
     TEST_ASSERT_EQUAL_UINT(1, device.closes);
     TEST_ASSERT_EQUAL_HEX(TEST_TONE_REGISTER_OLD, device.reg);
-    TEST_ASSERT_FALSE(device.feedback.restore_pending);
+    TEST_ASSERT_FALSE(device.feedback.saved.restore_pending);
     TEST_ASSERT_FALSE(device.replied);
 }
 

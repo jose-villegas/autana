@@ -415,6 +415,8 @@ Scene builds use CMake under their output folder. `--deps` reads a temporary
 build's compile database without compiling or leaving output files.
 The standalone compile check is
 `cmake -S launcher/tools/render -B build/render-host && cmake --build build/render-host`.
+It also compiles the headers `tests/render_host_cxx_check.cpp` includes as C++20,
+as a C++ consumer does.
 
 The script selects `<scene_name>_provider` with `RENDER_HOST_PROVIDER`;
 `scene_provider` overrides the symbol, and an empty value builds
@@ -437,8 +439,11 @@ If `render_host_open()` returns false, no run opened and `exit_code` carries the
 
 `render_host_save()`, `render_host_restore()` and `render_host_checkpoint_free()`
 retain frame history in host and development builds. Saving can return NULL
-on allocation failure. Checkpoints remain reusable within the open run.
-`render_host_pixels()` exposes the converted output bytes for comparisons.
+on allocation failure. Checkpoints remain reusable within the open run, and
+`render_host_checkpoint_bytes()` gives the memory each holds.
+`render_host_image()` exposes the whole converted frame (bottom-up BGR rows,
+width, height and row stride, in the BMP's row layout; `--crop` writes only a
+part of it) for comparisons and viewers.
 
 | Owner | Carried state |
 |---|---|
@@ -461,7 +466,9 @@ Byte comparisons use frame generation off and a fixed or declared size.
 
 Each draw receives a `provider_frame_t`. Optional `path_ms` and `seek` hooks
 expose a provider's path duration and camera cuts. The scene-file provider
-seeks its animators and clears render history at a cut.
+seeks its animators and clears render history at a cut. An optional
+`render_context` hook returns the context a provider draws through, so a
+caller can switch debug views; providers without one leave it NULL.
 
 An engine scene lives in `launcher/tools/render/scenes/`; an app's scene lives
 in that app's own `tools/`, so nothing in the engine's tooling names an app.
