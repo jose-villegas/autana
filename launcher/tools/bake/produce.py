@@ -172,7 +172,7 @@ def keyed_folder(folder, make):
 
 def reference_set(key, job, scene, cache):
     """The reference set of `job`'s fit under its reference `key` in this cache, prepared there when it has none."""
-    from r3d.fitted_variant import prepare_references, reference_inputs
+    from r3d.reference_set import prepare_references, reference_inputs
 
     return keyed_folder(pathlib.Path(cache) / REFERENCES / key,
                         lambda partial: prepare_references(reference_inputs(job, scene), partial))

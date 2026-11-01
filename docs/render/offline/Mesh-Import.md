@@ -213,6 +213,43 @@ vertices. Lock cost is emitted triangles above the pass target; locks can keep
 more than the target. Each affected contact gets a `free`/`lock` comparison
 and crops where pixels differ.
 
+#### Stand-ins
+
+Each carved shape tries regular edge simplification and a plane proxy at its
+own budget. The proxy joins nearby, parallel thin parts into double-sided
+rectangles and simplifies the remaining parts into the unused budget.
+
+Each candidate is drawn unlit from the cube's face, edge and corner directions.
+The mean CIE76 error against the source averages black and white backgrounds.
+Equal errors within `ERROR_TIE` favour regular simplification.
+
+Any locked vertex excludes the plane proxy. Without joinable plates, regular
+simplification runs alone and skips scoring. Copies share the chosen local
+geometry and retain their own placements.
+
+`r3d/objects/stand_ins.py` owns the thresholds:
+
+| Constant | Value | Why |
+|---|---|---|
+| `VIEW_DIRECTIONS` | Normalized nonzero cube directions | Cover every side without a scene camera. |
+| `VIEW_PIXELS` | 96 | Approximate a copy's p95 on-screen diameter. |
+| `PLATE_RATIO` | 0.1 | Limit thickness relative to the middle PCA extent. |
+| `PARALLEL_COS` | 0.97 | Allow small differences in plate normals. |
+| `PLANE_SHARE` | 0.02 | Bound plane separation by the shape's diagonal. |
+| `TOUCH_SHARE` | 0.03 | Join plates separated by small gaps relative to that diagonal. |
+| `ERROR_TIE` | 1e-9 | Keep candidate order for numerically equal errors. |
+
+Allocation mesh and pass rows include the choice:
+
+| Field | Meaning |
+|---|---|
+| `stand_in` | Chosen kind: `regular` or `plane`. |
+| `stand_ins` | Candidate rows in preference order. |
+| `stand_ins[].kind` | Candidate kind. |
+| `stand_ins[].triangles` | Emitted triangles per copy. |
+| `stand_ins[].error` | Mean view error; null when scoring is skipped. |
+| `stand_ins[].chosen` | Whether the candidate supplies the shape. |
+
 #### seal_seams
 
 `seal_seams = true` joins touching pieces before simplification, reducing gaps
