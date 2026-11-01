@@ -3,7 +3,7 @@ project(autana_render_scene LANGUAGES C)
 
 set(CMAKE_C_FLAGS "")
 separate_arguments(scene_defines NATIVE_COMMAND "${SCENE_DEFINES}")
-add_compile_options(-std=c11 -Wall -Wextra -ffp-contract=off
+add_compile_options(-std=c11 -Wall -Wextra
                     -Wno-unused-parameter -Wno-unused-function -Wno-unused-variable -O1 -g
                     ${scene_defines})
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -21,6 +21,7 @@ if(SCENE_RENDERER)
 else()
     target_link_libraries(render_scene PRIVATE autana::render_host_core)
 endif()
+# The generator expression prevents multi-config generators adding a config subfolder.
 set_target_properties(render_scene PROPERTIES
     OUTPUT_NAME "${SCENE_NAME}_render"
     RUNTIME_OUTPUT_DIRECTORY "$<1:${SCENE_OUT_DIR}>")
@@ -40,10 +41,3 @@ foreach(library IN LISTS host_libraries)
     endif()
 endforeach()
 file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/dependency_sources.txt" CONTENT "${dependency_sources}")
-set(dependency_links "$<JOIN:$<TARGET_PROPERTY:render_scene,LINK_OPTIONS>, >")
-foreach(library IN LISTS host_libraries)
-    if(NOT TARGET ${library})
-        string(APPEND dependency_links " -l${library}")
-    endif()
-endforeach()
-file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/dependency_links.txt" CONTENT "${dependency_links}\n")
