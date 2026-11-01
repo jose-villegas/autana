@@ -20,8 +20,8 @@ VIEW_DIRECTIONS = np.array([v for v in product((-1., 0., 1.), repeat=3) if any(v
 VIEW_DIRECTIONS /= np.linalg.norm(VIEW_DIRECTIONS, axis=1, keepdims=True)
 # About the on-screen diameter of a copy at its p95.
 VIEW_PIXELS = 96
-# A plate's thickness must be small relative to both in-plane dimensions.
-PLATE_RATIO = 0.1
+# A board: thickness at most a quarter of its width, so planks and slats join while legs and posts do not.
+PLATE_RATIO = 0.25
 # Slightly misaligned plates may still describe one surface.
 PARALLEL_COS = 0.97
 # Plane displacement is relative to the whole shape, independent of source units.
