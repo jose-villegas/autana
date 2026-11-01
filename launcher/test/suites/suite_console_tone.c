@@ -232,35 +232,43 @@ static struct {
     bool shake_short;
 
     struct {
-        imu_queue_t* queue;
-        int64_t* times;
-        bool fifo_gap;
-        bool task_pending;
-        imu_odr_t odr;
-        imu_demand_level_t level;
-        uint32_t task_sequence;
-        unsigned midstep_waits;
-        unsigned gaps_taken;
-        unsigned restarts;
-        int pending_lost;
-        uint32_t remainder_us;
-        bool enabled;
-        bool cadence;
-        int64_t next_push_us;
-        int64_t pushed_us;
-        unsigned period_us;
-        bool draining;
-        bool oversupply;
-        bool observer_failed;
-        bool empty_reads;
-        unsigned gap_burst;
-        unsigned lost_burst;
-        unsigned burst;
-        uint16_t ms;
-        uint16_t window_ms;
-        int64_t now_us;
-        int64_t onset_us;
-        int64_t last_selected_us;
+        struct {
+            imu_queue_t* queue;
+            bool fifo_gap;
+            bool task_pending;
+            imu_odr_t odr;
+            imu_demand_level_t level;
+            uint32_t task_sequence;
+            unsigned midstep_waits;
+            unsigned gaps_taken;
+            unsigned restarts;
+            int pending_lost;
+            uint32_t remainder_us;
+        } task;
+
+        struct {
+            bool enabled;
+            bool cadence;
+            int64_t next_push_us;
+            int64_t pushed_us;
+            unsigned period_us;
+            bool draining;
+            unsigned gap_burst;
+            unsigned lost_burst;
+            unsigned burst;
+        } producer;
+
+        struct {
+            int64_t* times;
+            uint16_t ms;
+            uint16_t window_ms;
+            int64_t now_us;
+            int64_t onset_us;
+            int64_t last_selected_us;
+            bool oversupply;
+            bool observer_failed;
+            bool empty_reads;
+        } capture;
     } pulse;
 
     struct {
@@ -305,7 +313,7 @@ TEST_CLOCK_WRAP(struct timespec* ts, int base) {
 
 static void
 reset_device(void) {
-    free(device.pulse.queue);
+    free(device.pulse.task.queue);
     memset(&device, 0, sizeof device);
 }
 
@@ -377,7 +385,7 @@ sound_play(const sound_t* sound, const sound_play_opts_t* opts) {
 
 sound_voice_t
 sound_play_tone(uint16_t hz, uint16_t ms, uint8_t gain_pct, sound_bus_t bus) {
-    TEST_ASSERT_EQUAL_UINT16(device.pulse.enabled ? device.pulse.ms : SOUND_TONE_UNTIL_STOPPED, ms);
+    TEST_ASSERT_EQUAL_UINT16(device.pulse.producer.enabled ? device.pulse.capture.ms : SOUND_TONE_UNTIL_STOPPED, ms);
     TEST_ASSERT_EQUAL_UINT8(SOUND_BUS_SYSTEM.id, bus.id);
     TEST_ASSERT_EQUAL_UINT16(
         device.melody.enabled ? melody_note_hz(melody_notes[device.melody.starts++]) : TEST_TARGET_HZ, hz);
@@ -417,9 +425,9 @@ sound_voice_audible(sound_voice_t voice) {
 
 void
 timing_sleep_ms(uint32_t ms) {
-    if (device.pulse.enabled && device.pulse.cadence) {
-        device.pulse.now_us += (int64_t)ms * MATH_US_PER_MS;
-        clock_fake_set(device.pulse.now_us);
+    if (device.pulse.producer.enabled && device.pulse.producer.cadence) {
+        device.pulse.capture.now_us += (int64_t)ms * MATH_US_PER_MS;
+        clock_fake_set(device.pulse.capture.now_us);
     }
     if (device.melody.play) {
         device.melody.clock_us += (int64_t)ms * MATH_US_PER_MS;
@@ -501,25 +509,25 @@ audio_loopback_measure(uint16_t hz, uint16_t ms, float* db, audio_loopback_resul
 
 static void
 tone_imu_serve(void) {
-    if (device.pulse.level != IMU_DEMAND_FIFO) {
-        imu_queue_restart(device.pulse.queue, &device.pulse.fifo_gap, &device.pulse.pending_lost,
-                          &device.pulse.remainder_us);
-        device.pulse.restarts++;
+    if (device.pulse.task.level != IMU_DEMAND_FIFO) {
+        imu_queue_restart(device.pulse.task.queue, &device.pulse.task.fifo_gap, &device.pulse.task.pending_lost,
+                          &device.pulse.task.remainder_us);
+        device.pulse.task.restarts++;
     }
-    device.pulse.level = IMU_DEMAND_FIFO;
-    device.pulse.odr.served_sequence = device.pulse.task_sequence;
-    device.pulse.task_pending = false;
+    device.pulse.task.level = IMU_DEMAND_FIFO;
+    device.pulse.task.odr.served_sequence = device.pulse.task.task_sequence;
+    device.pulse.task.task_pending = false;
 }
 
 bool
 audio_loopback_measure_observed(uint16_t hz, uint16_t ms, float* db, audio_loopback_result_t* result,
                                 audio_loopback_observer_fn observer, void* context) {
     TEST_ASSERT_EQUAL_UINT16(TEST_TARGET_HZ, hz);
-    TEST_ASSERT_EQUAL_UINT16(device.pulse.window_ms, ms);
+    TEST_ASSERT_EQUAL_UINT16(device.pulse.capture.window_ms, ms);
     device.measures++;
-    const int64_t start = device.pulse.now_us;
-    device.pulse.onset_us = start;
-    if (result && device.pulse.task_pending) {
+    const int64_t start = device.pulse.capture.now_us;
+    device.pulse.capture.onset_us = start;
+    if (result && device.pulse.task.task_pending) {
         tone_imu_serve();
     }
     *db = device.measures % 2 ? -100 : -12;
@@ -527,26 +535,26 @@ audio_loopback_measure_observed(uint16_t hz, uint16_t ms, float* db, audio_loopb
         *result = (audio_loopback_result_t){.measured_hz = hz, .noise_dbfs = device.measures % 2 ? TEST_NOISE_DBFS : 0};
     }
     unsigned bursts = 0;
-    while (device.pulse.now_us - start < (int64_t)ms * MATH_US_PER_MS && bursts++ < TEST_PULSE_MAX_BURSTS) {
-        device.pulse.now_us += device.pulse.cadence
-                                   ? AUDIO_CODEC_BLOCK_SAMPLES * MATH_US_PER_S / AUDIO_OUT_SAMPLE_RATE_HZ
-                                   : TEST_PULSE_DRAIN_SAMPLES * IMU_BUZZ_SAMPLE_US;
-        if (device.pulse.oversupply) {
-            device.pulse.now_us = start + (int64_t)device.pulse.ms * MATH_US_PER_MS;
+    while (device.pulse.capture.now_us - start < (int64_t)ms * MATH_US_PER_MS && bursts++ < TEST_PULSE_MAX_BURSTS) {
+        device.pulse.capture.now_us += device.pulse.producer.cadence
+                                           ? AUDIO_CODEC_BLOCK_SAMPLES * MATH_US_PER_S / AUDIO_OUT_SAMPLE_RATE_HZ
+                                           : TEST_PULSE_DRAIN_SAMPLES * IMU_BUZZ_SAMPLE_US;
+        if (device.pulse.capture.oversupply) {
+            device.pulse.capture.now_us = start + (int64_t)device.pulse.capture.ms * MATH_US_PER_MS;
         }
-        if (device.pulse.empty_reads) {
-            clock_fake_set(device.pulse.now_us - IMU_BUZZ_SAMPLE_US);
+        if (device.pulse.capture.empty_reads) {
+            clock_fake_set(device.pulse.capture.now_us - IMU_BUZZ_SAMPLE_US);
             if (!observer(context)) {
-                device.pulse.observer_failed = true;
+                device.pulse.capture.observer_failed = true;
                 return false;
             }
         }
-        clock_fake_set(device.pulse.now_us);
-        device.pulse.draining = true;
+        clock_fake_set(device.pulse.capture.now_us);
+        device.pulse.producer.draining = true;
         const bool ok = observer(context);
-        device.pulse.draining = false;
+        device.pulse.producer.draining = false;
         if (!ok) {
-            device.pulse.observer_failed = true;
+            device.pulse.capture.observer_failed = true;
             return false;
         }
     }
@@ -564,22 +572,23 @@ tone_configure_odr(unsigned odr_code) {
 
 bool
 imu_set_odr(unsigned odr_code) {
-    if (device.pulse.queue) {
-        imu_odr_t* odr = &device.pulse.odr;
+    if (device.pulse.task.queue) {
+        imu_odr_t* odr = &device.pulse.task.odr;
         odr->requested = odr_code;
         odr->applied = device.odr_code;
         const uint32_t sequence = ++odr->sequence;
-        if (imu_odr_apply(odr, tone_configure_odr, &device.pulse.fifo_gap, &device.pulse.level) != IMU_ODR_UNCHANGED) {
-            imu_queue_set_rate(device.pulse.queue, odr->applied);
-            device.pulse.pending_lost = 0;
-            device.pulse.remainder_us = 0;
+        if (imu_odr_apply(odr, tone_configure_odr, &device.pulse.task.fifo_gap, &device.pulse.task.level)
+            != IMU_ODR_UNCHANGED) {
+            imu_queue_set_rate(device.pulse.task.queue, odr->applied);
+            device.pulse.task.pending_lost = 0;
+            device.pulse.task.remainder_us = 0;
         }
-        device.pulse.task_sequence = sequence;
-        device.pulse.task_pending = true;
+        device.pulse.task.task_sequence = sequence;
+        device.pulse.task.task_pending = true;
         if (imu_odr_ready(odr, sequence)) {
             return odr->applied == odr_code;
         }
-        device.pulse.midstep_waits++;
+        device.pulse.task.midstep_waits++;
         tone_imu_serve();
         TEST_ASSERT_TRUE(imu_odr_ready(odr, sequence));
     } else {
@@ -595,48 +604,53 @@ imu_take_fifo_at(unsigned odr_code, imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t 
                  bool* gap) {
     TEST_ASSERT_EQUAL_UINT(IMU_BUZZ_ODR_CODE, odr_code);
     TEST_ASSERT_EQUAL_UINT(IMU_BUZZ_ODR_CODE, device.odr_code);
-    *gap = !device.pulse.enabled;
-    if (device.pulse.cadence && device.pulse.draining) {
-        device.pulse.draining = device.pulse.next_push_us <= device.pulse.now_us;
-        if (device.pulse.draining) {
-            device.pulse.pushed_us = device.pulse.next_push_us;
-            device.pulse.next_push_us += device.pulse.period_us;
+    *gap = !device.pulse.producer.enabled;
+    if (device.pulse.producer.cadence && device.pulse.producer.draining) {
+        device.pulse.producer.draining = device.pulse.producer.next_push_us <= device.pulse.capture.now_us;
+        if (device.pulse.producer.draining) {
+            device.pulse.producer.pushed_us = device.pulse.producer.next_push_us;
+            device.pulse.producer.next_push_us += device.pulse.producer.period_us;
         }
     }
-    if (device.pulse.draining) {
-        device.pulse.burst++;
-        *gap = device.pulse.burst == device.pulse.gap_burst;
+    if (device.pulse.producer.draining) {
+        device.pulse.producer.burst++;
+        *gap = device.pulse.producer.burst == device.pulse.producer.gap_burst;
     }
     int16_t counts = (int16_t)(device.measures * TEST_SHAKE_COUNTS);
-    const int batch = device.pulse.cadence ? device.pulse.period_us / IMU_BUZZ_SAMPLE_US : TEST_PULSE_DRAIN_SAMPLES;
-    const int count = device.pulse.enabled ? (device.pulse.draining ? batch : 0)
-                      : device.shake_short ? IMU_FIFO_SAMPLES - 1
-                                           : IMU_FIFO_SAMPLES;
+    const int batch =
+        device.pulse.producer.cadence ? device.pulse.producer.period_us / IMU_BUZZ_SAMPLE_US : TEST_PULSE_DRAIN_SAMPLES;
+    const int count = device.pulse.producer.enabled ? (device.pulse.producer.draining ? batch : 0)
+                      : device.shake_short          ? IMU_FIFO_SAMPLES - 1
+                                                    : IMU_FIFO_SAMPLES;
     for (int i = 0; i < count; i++) {
         counts = (int16_t)(device.measures * TEST_SHAKE_COUNTS);
-        if (device.pulse.enabled) {
-            const int64_t sample_us = (device.pulse.cadence ? device.pulse.pushed_us : device.pulse.now_us)
-                                      - device.pulse.onset_us - (int64_t)(count - i - 1) * IMU_BUZZ_SAMPLE_US;
-            if (sample_us < 0 || sample_us > (int64_t)device.pulse.ms * MATH_US_PER_MS) {
+        if (device.pulse.producer.enabled) {
+            const int64_t sample_us =
+                (device.pulse.producer.cadence ? device.pulse.producer.pushed_us : device.pulse.capture.now_us)
+                - device.pulse.capture.onset_us - (int64_t)(count - i - 1) * IMU_BUZZ_SAMPLE_US;
+            if (sample_us < 0 || sample_us > (int64_t)device.pulse.capture.ms * MATH_US_PER_MS) {
                 counts = TEST_PULSE_OUTSIDE_COUNTS;
             } else {
-                device.pulse.last_selected_us = sample_us;
+                device.pulse.capture.last_selected_us = sample_us;
             }
         }
         out[i] = (imu_sample_t){.ax = i % 2 ? (int16_t)-counts : counts};
-        lost_before[i] = device.pulse.draining && i == 0 && device.pulse.burst == device.pulse.lost_burst;
+        lost_before[i] =
+            device.pulse.producer.draining && i == 0 && device.pulse.producer.burst == device.pulse.producer.lost_burst;
     }
-    if (device.pulse.queue) {
-        if (device.pulse.draining) {
-            const int64_t pushed_us = device.pulse.cadence ? device.pulse.pushed_us : device.pulse.now_us;
-            imu_queue_push_drain_timed(device.pulse.queue, out, count, 0, *gap || device.pulse.fifo_gap, pushed_us,
-                                       IMU_BUZZ_SAMPLE_US);
-            device.pulse.fifo_gap = false;
+    if (device.pulse.task.queue) {
+        if (device.pulse.producer.draining) {
+            const int64_t pushed_us =
+                device.pulse.producer.cadence ? device.pulse.producer.pushed_us : device.pulse.capture.now_us;
+            imu_queue_push_drain_timed(device.pulse.task.queue, out, count, 0, *gap || device.pulse.task.fifo_gap,
+                                       pushed_us, IMU_BUZZ_SAMPLE_US);
+            device.pulse.task.fifo_gap = false;
         }
-        const int taken = device.pulse.times ? imu_queue_take_timed_at(device.pulse.queue, odr_code, out, lost_before,
-                                                                       gap, device.pulse.times)
-                                             : imu_queue_take_at(device.pulse.queue, odr_code, out, lost_before, gap);
-        device.pulse.gaps_taken += *gap;
+        const int taken = device.pulse.capture.times
+                              ? imu_queue_take_timed_at(device.pulse.task.queue, odr_code, out, lost_before, gap,
+                                                        device.pulse.capture.times)
+                              : imu_queue_take_at(device.pulse.task.queue, odr_code, out, lost_before, gap);
+        device.pulse.task.gaps_taken += *gap;
         return taken;
     }
     return count;
@@ -645,17 +659,18 @@ imu_take_fifo_at(unsigned odr_code, imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t 
 int
 imu_take_fifo_timed_at(unsigned odr_code, imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t lost_before[IMU_FIFO_SAMPLES],
                        bool* gap, int64_t sample_us[IMU_FIFO_SAMPLES]) {
-    if (device.pulse.cadence) {
-        device.pulse.draining = true;
+    if (device.pulse.producer.cadence) {
+        device.pulse.producer.draining = true;
     }
-    device.pulse.times = sample_us;
+    device.pulse.capture.times = sample_us;
     const int count = imu_take_fifo_at(odr_code, out, lost_before, gap);
-    device.pulse.times = NULL;
-    device.pulse.draining = false;
-    if (device.pulse.queue) {
+    device.pulse.capture.times = NULL;
+    device.pulse.producer.draining = false;
+    if (device.pulse.task.queue) {
         return count;
     }
-    const int64_t end_us = device.pulse.cadence ? device.pulse.pushed_us : device.pulse.now_us;
+    const int64_t end_us =
+        device.pulse.producer.cadence ? device.pulse.producer.pushed_us : device.pulse.capture.now_us;
     for (int i = 0; i < count; i++) {
         sample_us[i] = end_us - (int64_t)(count - i - 1) * IMU_BUZZ_SAMPLE_US;
     }
@@ -874,13 +889,13 @@ pulse_fixture(uint16_t pulse_ms) {
     reset_device();
     input_fake_motion_present(true);
     clock_fake_set(0);
-    device.pulse.enabled = true;
-    device.pulse.level = IMU_DEMAND_FIFO;
-    device.pulse.ms = pulse_ms;
-    device.pulse.window_ms = pulse_ms > TEST_PULSE_WINDOW_MS ? pulse_ms : TEST_PULSE_WINDOW_MS;
+    device.pulse.producer.enabled = true;
+    device.pulse.task.level = IMU_DEMAND_FIFO;
+    device.pulse.capture.ms = pulse_ms;
+    device.pulse.capture.window_ms = pulse_ms > TEST_PULSE_WINDOW_MS ? pulse_ms : TEST_PULSE_WINDOW_MS;
     device.reg = TEST_TONE_REGISTER_OLD;
     console_tone_args_t args = fixture();
-    args.ms = device.pulse.window_ms;
+    args.ms = device.pulse.capture.window_ms;
     args.pulse_ms = pulse_ms;
     return args;
 }
@@ -904,7 +919,7 @@ test_tone_pulse_selects_onset_to_end_and_accepts_ended_voice(void) {
     TEST_ASSERT_NOT_NULL(strstr(line, expected));
     free(expected);
     TEST_ASSERT_INT64_WITHIN(IMU_BUZZ_SAMPLE_US, (int64_t)TEST_PULSE_MS * MATH_US_PER_MS,
-                             device.pulse.last_selected_us);
+                             device.pulse.capture.last_selected_us);
     TEST_ASSERT_EQUAL_UINT(0, device.stops);
     free(line);
 }
@@ -921,11 +936,12 @@ test_tone_pulse_board_cadence(void) {
         for (size_t duration = 0; duration < sizeof pulses / sizeof pulses[0]; duration++) {
             for (unsigned phase = 0; phase < periods_us[period] / MATH_US_PER_MS; phase++) {
                 const console_tone_args_t args = pulse_fixture(pulses[duration]);
-                device.pulse.queue = calloc(1, sizeof *device.pulse.queue);
-                TEST_ASSERT_NOT_NULL(device.pulse.queue);
-                device.pulse.cadence = true;
-                device.pulse.period_us = periods_us[period];
-                device.pulse.next_push_us = (int64_t)phase * MATH_US_PER_MS + rng_below(&random, MATH_US_PER_MS) + 1;
+                device.pulse.task.queue = calloc(1, sizeof *device.pulse.task.queue);
+                TEST_ASSERT_NOT_NULL(device.pulse.task.queue);
+                device.pulse.producer.cadence = true;
+                device.pulse.producer.period_us = periods_us[period];
+                device.pulse.producer.next_push_us =
+                    (int64_t)phase * MATH_US_PER_MS + rng_below(&random, MATH_US_PER_MS) + 1;
                 char line[CONSOLE_TONE_REPLY_BYTES];
                 TEST_ASSERT_NULL(console_tone_check(&args, line));
                 TEST_ASSERT_NULL_MESSAGE(strstr(line, "shake n/a"), line);
@@ -942,12 +958,12 @@ static void
 test_tone_pulse_delayed_gap_precedes_start(void) {
     const console_tone_args_t args = pulse_fixture(TEST_PULSE_SHORT_MS);
     suite_add_test_cleanup(reset_device);
-    device.pulse.queue = calloc(1, sizeof *device.pulse.queue);
-    TEST_ASSERT_NOT_NULL(device.pulse.queue);
-    device.pulse.cadence = true;
-    device.pulse.period_us = TEST_PULSE_BOARD_DRAIN_US;
-    device.pulse.next_push_us = TEST_PULSE_BOARD_DRAIN_US - TEST_PULSE_PREWINDOW_SAMPLES * IMU_BUZZ_SAMPLE_US;
-    device.pulse.gap_burst = TEST_PULSE_WINDOW_MS * MATH_US_PER_MS / TEST_PULSE_BOARD_DRAIN_US + 1;
+    device.pulse.task.queue = calloc(1, sizeof *device.pulse.task.queue);
+    TEST_ASSERT_NOT_NULL(device.pulse.task.queue);
+    device.pulse.producer.cadence = true;
+    device.pulse.producer.period_us = TEST_PULSE_BOARD_DRAIN_US;
+    device.pulse.producer.next_push_us = TEST_PULSE_BOARD_DRAIN_US - TEST_PULSE_PREWINDOW_SAMPLES * IMU_BUZZ_SAMPLE_US;
+    device.pulse.producer.gap_burst = TEST_PULSE_WINDOW_MS * MATH_US_PER_MS / TEST_PULSE_BOARD_DRAIN_US + 1;
     char line[CONSOLE_TONE_REPLY_BYTES];
     TEST_ASSERT_NULL(console_tone_check(&args, line));
     TEST_ASSERT_NULL_MESSAGE(strstr(line, "shake n/a"), line);
@@ -959,8 +975,8 @@ test_tone_pulse_measures_after_odr_switch(void) {
     const console_tone_args_t args = pulse_fixture(TEST_PULSE_MS);
     suite_add_test_cleanup(reset_device);
     device.odr_code = IMU_ODR_CODE;
-    device.pulse.queue = calloc(1, sizeof *device.pulse.queue);
-    TEST_ASSERT_NOT_NULL(device.pulse.queue);
+    device.pulse.task.queue = calloc(1, sizeof *device.pulse.task.queue);
+    TEST_ASSERT_NOT_NULL(device.pulse.task.queue);
     char* line = malloc(CONSOLE_TONE_REPLY_BYTES);
     TEST_ASSERT_NOT_NULL(line);
     TEST_ASSERT_NULL(console_tone_check(&args, line));
@@ -979,25 +995,25 @@ test_tone_pulse_measures_from_parked_imu(void) {
             const unsigned rate = rates[index];
             for (size_t duration = 0; duration < sizeof pulses / sizeof pulses[0]; duration++) {
                 const console_tone_args_t args = pulse_fixture(pulses[duration]);
-                device.pulse.queue = calloc(1, sizeof *device.pulse.queue);
-                TEST_ASSERT_NOT_NULL(device.pulse.queue);
+                device.pulse.task.queue = calloc(1, sizeof *device.pulse.task.queue);
+                TEST_ASSERT_NOT_NULL(device.pulse.task.queue);
                 device.odr_code = rate;
-                imu_queue_set_rate(device.pulse.queue, rate);
+                imu_queue_set_rate(device.pulse.task.queue, rate);
                 bool initial_gap = false;
-                TEST_ASSERT_EQUAL_INT(0, imu_queue_take_at(device.pulse.queue, rate, NULL, NULL, &initial_gap));
+                TEST_ASSERT_EQUAL_INT(0, imu_queue_take_at(device.pulse.task.queue, rate, NULL, NULL, &initial_gap));
                 TEST_ASSERT_TRUE(initial_gap);
-                device.pulse.level = level;
-                device.pulse.cadence = true;
-                device.pulse.period_us = IMU_BUZZ_DRAIN_MAX_MS * MATH_US_PER_MS;
-                device.pulse.next_push_us = device.pulse.period_us;
-                device.pulse.pending_lost = 1;
-                device.pulse.remainder_us = IMU_SAMPLE_US - 1;
+                device.pulse.task.level = level;
+                device.pulse.producer.cadence = true;
+                device.pulse.producer.period_us = IMU_BUZZ_DRAIN_MAX_MS * MATH_US_PER_MS;
+                device.pulse.producer.next_push_us = device.pulse.producer.period_us;
+                device.pulse.task.pending_lost = 1;
+                device.pulse.task.remainder_us = IMU_SAMPLE_US - 1;
                 char line[CONSOLE_TONE_REPLY_BYTES];
                 TEST_ASSERT_NULL(console_tone_check(&args, line));
                 TEST_ASSERT_NULL_MESSAGE(strstr(line, "shake n/a"), line);
-                TEST_ASSERT_EQUAL_UINT(2, device.pulse.midstep_waits);
-                TEST_ASSERT_EQUAL_UINT(1, device.pulse.gaps_taken);
-                TEST_ASSERT_EQUAL_UINT(rate == IMU_BUZZ_ODR_CODE, device.pulse.restarts);
+                TEST_ASSERT_EQUAL_UINT(2, device.pulse.task.midstep_waits);
+                TEST_ASSERT_EQUAL_UINT(1, device.pulse.task.gaps_taken);
+                TEST_ASSERT_EQUAL_UINT(rate == IMU_BUZZ_ODR_CODE, device.pulse.task.restarts);
                 TEST_ASSERT_NOT_NULL_MESSAGE(strstr(line, "imu_gaps 0"), line);
             }
         }
@@ -1013,9 +1029,9 @@ test_tone_pulse_gap_placement(void) {
         for (size_t index = 0; index < sizeof bursts / sizeof bursts[0]; index++) {
             const console_tone_args_t args = pulse_fixture(TEST_PULSE_MS);
             const unsigned burst = bursts[index];
-            device.pulse.empty_reads = true;
-            device.pulse.gap_burst = lost ? 0 : burst;
-            device.pulse.lost_burst = lost ? burst : 0;
+            device.pulse.capture.empty_reads = true;
+            device.pulse.producer.gap_burst = lost ? 0 : burst;
+            device.pulse.producer.lost_burst = lost ? burst : 0;
             char* line = malloc(CONSOLE_TONE_REPLY_BYTES);
             TEST_ASSERT_NOT_NULL(line);
             TEST_ASSERT_NULL(console_tone_check(&args, line));
@@ -1047,11 +1063,11 @@ test_tone_pulse_too_few_samples(void) {
 static void
 test_tone_pulse_accumulation_is_bounded(void) {
     const console_tone_args_t args = pulse_fixture(TEST_PULSE_MS);
-    device.pulse.oversupply = true;
+    device.pulse.capture.oversupply = true;
     char* line = malloc(CONSOLE_TONE_REPLY_BYTES);
     TEST_ASSERT_NOT_NULL(line);
     TEST_ASSERT_NOT_NULL(console_tone_check(&args, line));
-    TEST_ASSERT_TRUE(device.pulse.observer_failed);
+    TEST_ASSERT_TRUE(device.pulse.capture.observer_failed);
     free(line);
 }
 
