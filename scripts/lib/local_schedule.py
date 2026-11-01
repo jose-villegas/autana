@@ -20,8 +20,11 @@ NIGHT_START = "01:00"
 BOARD_START = "03:00"
 STARTS = {"NIGHT_START": NIGHT_START, "BOARD_START": BOARD_START}
 # The board night starts no new lane after this local time on its marker's date; running lanes finish.
-BOARD_LAST_START = "05:00"
+BOARD_LAST_START = "08:00"
 LOCAL_TIMES = dict(STARTS, BOARD_LAST_START=BOARD_LAST_START)
+# The latest hour each setting takes: a start is the early morning after the evening trigger; the cut-off
+# only has to stay on its marker's date, before noon.
+LATEST_HOUR = dict(NIGHT_START=5, BOARD_START=5, BOARD_LAST_START=11)
 NIGHT_ZONE = "UTC"
 HOSTED_WAIT_SECONDS = 350 * 60
 GPU_LABEL = "gpu"
@@ -53,8 +56,9 @@ class Clock:
 def local_time(name, value=None):
     """The hour and minute of the local time setting `name`: `value`, else its variable, else its constant."""
     value = value or os.environ.get(name) or LOCAL_TIMES[name]
-    if not re.fullmatch(r"0[0-5]:[0-5][0-9]", value):
-        raise ValueError(f"{name} must be HH:MM in 00:00–05:59: {value!r}")
+    latest = LATEST_HOUR[name]
+    if not re.fullmatch(r"[0-9]{2}:[0-5][0-9]", value) or int(value[:2]) > latest:
+        raise ValueError(f"{name} must be HH:MM in 00:00–{latest:02d}:59: {value!r}")
     return tuple(map(int, value.split(":")))
 
 
