@@ -44,4 +44,8 @@ void touch_read(input_t* out);
  * moved from the previous one, the controller's real report rate, which a
  * resting finger or a slow controller holds below TOUCH_POLL_HZ. */
 void touch_take_sample_counts(uint32_t* points, uint32_t* moved);
+
+/* Controller reads since the last call, how many failed, and their p95 and worst
+ * time in us, each including the wait for the I2C bus shared with the IMU and PMU. */
+void touch_take_read_times(unsigned* reads, unsigned* failed, int64_t* p95_us, int64_t* max_us);
 #endif
