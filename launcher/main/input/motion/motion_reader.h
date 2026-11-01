@@ -9,10 +9,11 @@
 
 /* Copies calibrated motion and its sequence from the same newest sample. */
 bool input_read_motion_sequence(input_motion_t* out, uint32_t* sequence);
-/* Driver start, injection transitions and isolated fixtures; app switches retain state. */
+/* Driver start and isolated fixtures; app switches retain state. */
 void motion_reader_reset(void);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
+/* Injection transitions defer the reader reset to the next gravity or shake read. */
 void input_motion_pin(const imu_sample_t* s);
 void input_motion_unpin(void);
 #endif
