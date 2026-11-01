@@ -12,10 +12,12 @@ typedef struct checkpoint_block {
     void* destination;
     size_t bytes;
     const void* owner;
+    const void* partner_owner;
+    void* partner_destination;
     unsigned char data[];
 } checkpoint_block_t;
 
-typedef struct {
+typedef struct checkpoint {
     checkpoint_block_t* first;
     checkpoint_block_t* last;
     bool failed;
@@ -74,13 +76,43 @@ checkpoint_capture_at(checkpoint_t* state, const void* owner, size_t bytes) {
     checkpoint_capture(state, destination, bytes);
 }
 
+static inline void
+checkpoint_capture_pair(checkpoint_t* state, const void* owner, const void* partner, size_t bytes) {
+    checkpoint_capture_at(state, owner, bytes);
+    if (state->failed) {
+        return;
+    }
+    for (checkpoint_block_t* b = state->first; b != NULL; b = b->next) {
+        if (b->owner == owner) {
+            b->partner_owner = partner;
+            b->partner_destination = checkpoint_pointer(partner);
+        }
+    }
+    void* other = checkpoint_pointer(partner);
+    if (other != checkpoint_pointer(owner)) {
+        checkpoint_capture(state, other, bytes);
+    }
+}
+
 static inline bool
 checkpoint_validate(const checkpoint_t* state) {
     if (state->failed) {
         return false;
     }
     for (const checkpoint_block_t* b = state->first; b != NULL; b = b->next) {
-        if (b->owner != NULL && checkpoint_pointer(b->owner) != b->destination) {
+        if (b->owner == NULL) {
+            continue;
+        }
+        const void* current = checkpoint_pointer(b->owner);
+        if (b->partner_owner != NULL) {
+            const void* partner = checkpoint_pointer(b->partner_owner);
+            if ((current == b->destination && partner == b->partner_destination)
+                || (current == b->partner_destination && partner == b->destination)) {
+                continue;
+            }
+            return false;
+        }
+        if (current != b->destination) {
             return false;
         }
     }
@@ -100,15 +132,24 @@ checkpoint_restore(const checkpoint_t* state) {
     return true;
 }
 
-static inline void*
-checkpoint_retarget(checkpoint_t* state, const void* source, void* destination) {
+static inline checkpoint_block_t*
+checkpoint_find(checkpoint_t* state, const void* destination) {
     for (checkpoint_block_t* b = state->first; b != NULL; b = b->next) {
-        if (b->owner == NULL && b->destination == source) {
-            b->destination = destination;
-            return b->data;
+        if (b->owner == NULL && b->destination == destination) {
+            return b;
         }
     }
     return NULL;
+}
+
+static inline void*
+checkpoint_retarget(checkpoint_t* state, const void* source, void* destination) {
+    checkpoint_block_t* block = checkpoint_find(state, source);
+    if (block == NULL) {
+        return NULL;
+    }
+    block->destination = destination;
+    return block->data;
 }
 
 static inline void

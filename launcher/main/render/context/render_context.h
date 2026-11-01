@@ -19,7 +19,7 @@
 #include <stdio.h>
 
 #include "build/build_variant.h"
-#include "core/checkpoint.h"
+typedef struct checkpoint checkpoint_t;
 #include "core/memory.h"
 #include "render/framegen/framegen.h"
 #include "render/r3d_instance.h"

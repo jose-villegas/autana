@@ -1,4 +1,5 @@
 #include "render/view/raster_motion.h"
+#include "core/checkpoint.h"
 
 #include <assert.h>
 #include <stddef.h>

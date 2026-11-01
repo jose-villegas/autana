@@ -1,4 +1,5 @@
 #include "render/context/render_context.h"
+#include "core/checkpoint.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -530,7 +531,8 @@ checkpoint_map(const render_context_t* source, const render_context_t* destinati
 
 bool
 render_context_checkpoint_prepare(checkpoint_t* saved, render_context_t* context) {
-    void* data = checkpoint_retarget(saved, context, context);
+    checkpoint_block_t* block = checkpoint_find(saved, context);
+    void* data = block == NULL ? NULL : block->data;
     if (data == NULL) {
         return false;
     }
@@ -544,12 +546,15 @@ render_context_checkpoint_prepare(checkpoint_t* saved, render_context_t* context
             return false;
         }
         void* scratch = memory_alloc(source.scratch_bytes, MEMORY_PSRAM);
-        if (scratch == NULL && source.scratch_bytes != 0) {
+        if (scratch == NULL) {
             return false;
         }
         memory_free(context->scratch);
         context->scratch = scratch;
         context->scratch_bytes = source.scratch_bytes;
+    }
+    if (source.debug_view == RENDER_DEBUG_VIEW_SHADED) {
+        free_view_state(context);
     }
     render_context_t restored = source;
     restored.scratch = context->scratch;
