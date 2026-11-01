@@ -312,12 +312,13 @@ def write_summary(path, args, records, rows, estimates, sizes, plan, incomplete=
              f"per-family per-look alpha: {args.alpha / len(sizes) / 2:g}. "
              f"First pass: {sizes[0]} seeds per side. Cap: {args.max_seeds} seeds per side.", "",
              f"RNG seed: {args.rng_seed}; R clamp: [1, {MAX_RUNS}].", "",
-             "Incomplete: stopped after capture failures, no rows, or rows not measured; see plan errors and the not-measured rows." if incomplete
-             else "Complete." if not budget_stop else
-             f"Complete; stopped at the time budget before look {budget_stop['look']}: "
-             f"{budget_stop['elapsed_seconds'] / 60:.0f} min used, its estimated {budget_stop['estimate_seconds'] / 60:.0f} min "
-             f"would pass --max-minutes {budget_stop['budget_seconds'] / 60:g}. Unresolved: " +
-             (", ".join(f"`{name}`" for name, row in sorted(rows.items()) if row["verdict"] == "inconclusive") or "none") + ".", "",
+             ("Incomplete: stopped after capture failures, no rows, or rows not measured; see plan errors and the not-measured rows"
+              if incomplete else "Complete") +
+             ("." if not budget_stop else
+              f"; stopped at the time budget before look {budget_stop['look']}: "
+              f"{budget_stop['elapsed_seconds'] / 60:.0f} min used, its estimated {budget_stop['estimate_seconds'] / 60:.0f} min "
+              f"would pass --max-minutes {budget_stop['budget_seconds'] / 60:g}. Unresolved: " +
+              (", ".join(f"`{name}`" for name, row in sorted(rows.items()) if row["verdict"] == "inconclusive") or "none") + "."), "",
              "Seed means decide; medians describe the seed means. "
              f"Intervals are {100 * (1 - args.alpha / len(sizes) / 2):g}% two-sided Welch intervals on log seed means. "
              "Holm corrects difference and equivalence tests separately over all rows. "
@@ -402,7 +403,7 @@ def main(argv=None):
     if args.restore_project:
         return subprocess.call(autana_command("--wait", str(args.wait), "flash", "rel",
                                              "--project", str(args.restore_project), override=args.autana))
-    if not 0 < args.threshold < 100 or not 0 < args.alpha < 1 or min(args.timeout, args.wait, args.max_minutes) <= 0:
+    if not 0 < args.threshold < 100 or not 0 < args.alpha < 1 or min(args.timeout, args.wait) <= 0 or not args.max_minutes > 0:
         parser.error("threshold, alpha and time limits must be positive and in range")
     if args.validate_plan or args.estimate_plan:
         if not args.suite:
