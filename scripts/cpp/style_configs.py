@@ -7,7 +7,6 @@ Run from the project's top. Each file carries the generated-file banner with
 the command as typed there, so check_generated_files.py fails a copy that
 drifts from this checkout.
 """
-import ast
 import os
 import pathlib
 import sys
@@ -15,6 +14,8 @@ import sys
 HERE = pathlib.Path(__file__).resolve()
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT / "scripts/gates"))
+sys.path.insert(0, str(ROOT / "scripts/lib"))
+from py_constant import module_constant  # noqa: E402
 from tracked import repository  # noqa: E402
 
 COMPLEXITY_GATE = ROOT / "launcher/tools/quality/complexity_gate.py"
@@ -37,14 +38,6 @@ CHECKS = (
     "readability-use-std-min-max",
     "readability-function-cognitive-complexity",
 )
-
-
-def module_constant(path, name):
-    """The literal a module assigns to `name` at top level."""
-    for node in ast.parse(path.read_text(encoding="utf-8")).body:
-        if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == name for t in node.targets):
-            return ast.literal_eval(node.value)
-    raise SystemExit(f"{path} assigns no {name}")
 
 
 def banner(tool):
