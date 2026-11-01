@@ -493,7 +493,7 @@ class CloneTests(unittest.TestCase):
                 mock.patch.object(gate, "scan", return_value=[pair]) as scan, \
                 contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(gate.main([]), 0)
-        scan.assert_called_once_with(gate.ROOT, 80, revision="head")
+        scan.assert_called_once_with(gate.repository(), 80, revision="head")
 
     def test_missing_node_message(self):
         with mock.patch.object(gate.shutil, "which", return_value=None):

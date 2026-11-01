@@ -18,7 +18,8 @@ import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from c_comments import scan, sources  # noqa: E402
+from c_comments import SOURCE_EXTENSIONS, scan, sources  # noqa: E402
+from tracked import repository_from_here  # noqa: E402
 
 SIGNS = re.compile(
     r"(a first attempt|an earlier version|was considered|used to |reverted|"
@@ -31,10 +32,11 @@ SIGNS = re.compile(
 # A comment recording where code went ("moved to sand_priv.h", "now lives in
 # x.c") describes a layout the reader never saw. Narrow enough to fail on:
 # naming a destination file is what makes it a tombstone.
+SOURCE_NAME = r"`?[\w/{},]+(?:" + "|".join(map(re.escape, SOURCE_EXTENSIONS)) + r")\b"
 TOMBSTONE = re.compile(
-    r"\b(?:moved|split|lifted)\s+(?:out\s+)?(?:to|into|from)\s+`?[\w/{},]+\.(?:c|h)\b"
+    r"\b(?:moved|split|lifted)\s+(?:out\s+)?(?:to|into|from)\s+" + SOURCE_NAME +
     r"|\bnow\s+lives\s+in\b"
-    r"|\blives\s+in\s+`?[\w/{},]+\.(?:c|h)`?\s+now\b",
+    r"|\blives\s+in\s+" + SOURCE_NAME + r"`?\s+now\b",
     re.I)
 
 # Vendored code; a build's output and anything git ignores never reach the walk.
@@ -65,12 +67,13 @@ def tombstones(root, files=None):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("root", nargs="?", default="launcher")
+    ap.add_argument("root", nargs="?", default=None)
     ap.add_argument("--min-chars", type=int, default=300)
     ap.add_argument("--json")
     ap.add_argument("--tombstones", action="store_true")
     ap.add_argument("--paths", nargs="+")
     args = ap.parse_args()
+    args.root = args.root or repository_from_here()
 
     if args.tombstones:
         found = list(tombstones(args.root, args.paths))

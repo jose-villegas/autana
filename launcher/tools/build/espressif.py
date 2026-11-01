@@ -22,6 +22,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(PROJECT_ROOT / "scripts/lib"))
 import autana_config
+from git_env import env_without_repository
 
 VERSION = re.compile(r"idf(\d+)\.(\d+)_py(\d+)\.(\d+)_env")
 ESP_CLANG = re.compile(r"esp-(\d+\.\d+\.\d+)")
@@ -77,11 +78,8 @@ def idf_commit(idf):
     if not (Path(idf) / ".git").exists():
         return None
     try:
-        # A git hook runs with GIT_DIR and friends set for its own repository,
-        # which would answer for that repository instead of `idf`.
-        local = subprocess.run(["git", "rev-parse", "--local-env-vars"], capture_output=True, text=True).stdout.split()
-        env = {k: v for k, v in os.environ.items() if k not in local}
-        result = subprocess.run(["git", "-C", str(idf), "rev-parse", "HEAD"], capture_output=True, text=True, env=env)
+        result = subprocess.run(["git", "-C", str(idf), "rev-parse", "HEAD"], capture_output=True, text=True,
+                                env=env_without_repository())
     except OSError:
         return None
     return result.stdout.strip() if result.returncode == 0 else None
