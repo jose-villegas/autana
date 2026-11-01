@@ -273,12 +273,12 @@ suite_run_test_timed(void (*func)(void), const char* name, int line) {
     );
 }
 
-/* Static, not on the stack: the test runs inside this call, on the main
- * task's stack, and Unity keeps a pointer to the name until it returns. */
+/* Static, not on the stack: the name outlives this call, and Unity keeps a
+ * pointer to it until the test it names returns. */
 static char case_name[SUITE_TEST_NAME_MAX + 1];
 
-void
-suite_run_test_case(void (*func)(void), const char* name, const char* const* segments, size_t count, int line) {
+const char*
+suite_test_case_name(const char* name, const char* const* segments, size_t count) {
     size_t length = strlen(name);
     bool named = length <= SUITE_TEST_NAME_MAX;
     if (named) {
@@ -300,10 +300,10 @@ suite_run_test_case(void (*func)(void), const char* name, const char* const* seg
         suites_record_drop();
         printf("SUITE OVERFLOW: a case of %s is past SUITE_TEST_NAME_MAX %d or not of SUITE_TEST_SEGMENT_CHARS\n", name,
                SUITE_TEST_NAME_MAX);
-        return;
+        return NULL;
     }
     case_name[length] = '\0';
-    suite_run_test_timed(func, case_name, line);
+    return case_name;
 }
 
 void
