@@ -2329,7 +2329,10 @@ def main(argv=None):
     mic_parser = subparsers.add_parser("mic-record", help="record microphone PCM and state")
     mic_parser.add_argument("ms", type=int)
     mic_parser.add_argument("--settle", type=int)
-    mic_parser.add_argument("--at", nargs=3, action="append", type=lambda word: int(word, 0), default=[])
+    mic_parser.add_argument("--at", nargs="+", action="append",
+                             help="offset ms from take start; negative offsets fall in settling; "
+                                  "followed by reg value or tone hz duration_ms gain",
+                             type=lambda word: word if word == "tone" else int(word, 0), default=[])
     mic_parser.add_argument("--out", required=True)
     mic_parser.add_argument("--json", action="store_true")
     batch_parser = subparsers.add_parser(
