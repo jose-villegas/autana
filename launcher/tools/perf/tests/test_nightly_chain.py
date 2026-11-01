@@ -1329,6 +1329,14 @@ class NightlyTests(unittest.TestCase):
                 # Both boards past it, or neither with a cursor at all: the failed capture still comes first,
                 # then the tip, which 20E8's cursor is behind and no manifest settled.
                 self.assertEqual(queue, [failed, self.commits[-1]])
+        # Only an older manifest lists the failure; the board's last one measured past it.
+        chain.write_json(self.args.data / "scoped/20E8/2026-10-18-0300/night.json",
+                         dict(last_measured=self.commits[4], last_attempted=self.commits[4],
+                              steps=[dict(commit=self.commits[4], outcome="measured")]))
+        chain.write_json(self.args.data / "scoped/2124/2026-10-17-0300/night.json",
+                         dict(last_measured=self.commits[5], last_attempted=self.commits[5],
+                              steps=[dict(commit=self.commits[5], outcome="measured")]))
+        self.assertEqual([step.commit for step in chain.night_queue(self.repo, "HEAD", self.args.data)], [failed])
 
     def test_equal_image_skips_but_anchor_measures(self):
         steps = self.steps(indices=(1, 1, 1), anchor=True)
