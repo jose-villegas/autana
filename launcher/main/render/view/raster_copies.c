@@ -1,7 +1,6 @@
 #include "render/view/raster_copies.h"
 
 #include <assert.h>
-#include <string.h>
 
 #include "render/r3d_span.h"
 #include "render/view/raster_meshlets.h"
@@ -21,13 +20,6 @@ raster_copies_shape(const raster_t* raster, int i, int* copies) {
 }
 
 static void
-clear(const raster_attachment_t* self, const raster_t* raster, void* pixels, size_t count) {
-    (void)self;
-    (void)raster;
-    memset(pixels, 0, count * sizeof(uint16_t));
-}
-
-static void
 begin(const raster_attachment_t* self, const raster_t* raster, const render_view_t* view) {
     (void)view;
     raster_copies_t* state = self->state;
@@ -35,7 +27,8 @@ begin(const raster_attachment_t* self, const raster_t* raster, const render_view
     state->raster = raster;
 }
 
-/* The shape's first instance plus one for a copy, so 0 stays empty. */
+/* A copied shape takes its first instance's index plus one, the id the boxes
+ * view hues by; 0 stays empty. */
 static bool
 writer(const raster_attachment_t* self, int instance, r3d_span_writer_t* out) {
     const raster_copies_t* state = self->state;
@@ -61,5 +54,5 @@ show(const raster_attachment_t* self, const raster_t* raster, const gfx_target_t
 
 raster_attachment_t
 raster_copies_view(void* state) {
-    return (raster_attachment_t){IMAGE_U16, clear, begin, writer, NULL, show, state};
+    return (raster_attachment_t){IMAGE_U16, raster_attachment_clear_u16, begin, writer, NULL, show, state};
 }
