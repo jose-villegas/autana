@@ -1,35 +1,8 @@
 /* Transfer tables avoid powers and divisions in the vertex loop. */
 #pragma once
-#include <string.h>
+#include "math/scalar/float_bits.h"
 #include "math/scalar/mathf.h"
 #include "render/skin/r3d_skin_light.h"
-
-/* Xtensa bit transfers avoid spilling each channel through the stack. */
-static inline __attribute__((always_inline)) uint32_t
-light_float_bits(float value) {
-#ifdef __XTENSA__
-    uint32_t bits;
-    __asm__("rfr %0, %1" : "=a"(bits) : "f"(value));
-    return bits;
-#else
-    uint32_t bits;
-    memcpy(&bits, &value, sizeof bits);
-    return bits;
-#endif
-}
-
-static inline __attribute__((always_inline)) float
-light_bits_float(uint32_t bits) {
-#ifdef __XTENSA__
-    float value;
-    __asm__("wfr %0, %1" : "=f"(value) : "a"(bits));
-    return value;
-#else
-    float value;
-    memcpy(&value, &bits, sizeof value);
-    return value;
-#endif
-}
 
 static inline __attribute__((always_inline)) vec3f_t
 light_renormalise(vec3f_t normal) {
@@ -42,7 +15,7 @@ light_encode(float radiance, const r3d_skin_light_transfer_t* transfer) {
     if (!(radiance > 0.0F)) {
         return 0;
     }
-    const uint32_t bits = light_float_bits(radiance);
+    const uint32_t bits = mathf_bits(radiance);
     const int index = bits < R3D_SKIN_LIGHT_RADIANCE_SPLIT
                           ? (int)(bits >> R3D_SKIN_LIGHT_RADIANCE_LOW_SHIFT) - R3D_SKIN_LIGHT_RADIANCE_LOW_FIRST
                           : (int)(bits >> R3D_SKIN_LIGHT_RADIANCE_SHIFT) - R3D_SKIN_LIGHT_RADIANCE_FIRST
@@ -56,7 +29,7 @@ light_encode(float radiance, const r3d_skin_light_transfer_t* transfer) {
 static inline __attribute__((always_inline)) float
 light_decode(uint8_t albedo, const r3d_skin_light_transfer_t* transfer) {
     const uint32_t bits = (uint32_t)transfer->decode[albedo] << R3D_SKIN_LIGHT_DECODE_SHIFT;
-    return light_bits_float(bits);
+    return mathf_from_bits(bits);
 }
 
 static inline __attribute__((always_inline)) vec3f_t

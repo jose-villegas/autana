@@ -1,5 +1,5 @@
 /*
- * Device suite: gfx_request_full_redraw() (gfx_present.h) reaching a real running
+ * Device suite: gfx_request_full_redraw() (gfx.h) reaching a real running
  * app end to end - RUNSUITE-only, since it needs the real panel, the real
  * framebuffer, and app_sand.c, none of which link on a host.
  *

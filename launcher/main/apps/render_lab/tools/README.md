@@ -211,7 +211,7 @@ engine page shows the [presentation GIFs](../../../../../docs/render/frame/Dynam
 
 ### Debug views
 
-`--view shaded|depth|tiles|motion|meshlets` selects the declared context view.
+`--view shaded|depth|tiles|motion|meshlets|cull|overdraw` selects the declared context view.
 Depth and tiles show a lit-mesh scene's depth buffer, or that depth
 reduced to `RASTER_SHOW_TILE` squares. The depth is `raster_draw()`'s
 own buffer, unchanged; `raster_show()` only colours it and takes each
@@ -220,6 +220,12 @@ moment it upscales the frame. Near is bright and far dark, stretched over the
 range that frame drew, so grey compares pixels within a frame, not across
 frames; a pixel nothing reached takes the scene's clear colour, as the
 shaded frame does, and a tile with one such pixel is empty.
+
+Overdraw colours each pixel by how many triangle spans tested it, blue for
+one to red for `RASTER_OVERDRAW_RAMP_LAYERS` or more, on the same scale every
+frame. The last frame's totals go to stderr as one `overdraw:` line
+(`RASTER_OVERDRAW_LINE`): pixels tested, layers tested and written summed
+over them, and the most at one pixel.
 
 They are ordinary renders: `sponza-depth-*.bmp` and `sponza-tiles-*.bmp`
 beside `sponza-*.bmp`, each with a `.png` when Pillow is installed, turned to
@@ -277,7 +283,7 @@ its scene by name rather than through the menu:
 | `autana render scenes` | every scene's key and name, and which one is showing |
 | `autana render scene <key>` | switches to the scene with exactly that key, such as `sponza`, `sponza-lite` or `sponza-flat-fitted` |
 | `sh launcher/main/apps/render_lab/tools/floor_shots.sh [--flash] --out <dir>/shots.txt <scene>@<ms>...` | screenshots each pose at the chosen size and at the dynamic-resolution floor, into `<dir>` |
-| `autana render pose <ms>` | holds a Sponza or Bistro scene's camera at that time along its path; `autana render pose play` lets it move again |
+| `autana render pose <ms>` | holds the scene's path at that time: a baked scene's camera, or the capybara's gallop; `autana render pose play` lets it move again |
 | `autana tune render_lab.scale <n>` | the fixed render scale in hundredths of the panel: 200 is half size |
 | `autana tune render_lab.budget <ms>` | dynamic resolution on the scene showing; 0 turns it off, as does the menu's DYNAMIC RES |
 | `autana tune render_lab.framegen 1` | every other frame is generated from the one before instead of drawn; 0 draws them all, as does the menu's FRAME GEN |
@@ -561,8 +567,81 @@ Why compares them with the median of the 64 poses spaced evenly along the path (
 | bistro-fitted-full | landscape | 7 | 98.95 | 45.1 | 12.8 | 0.93 | 4.45 | 25.68 | 2.48 | 329 / 293 / 30 / 249 | 6037 / 3620 / 2053 / 1417 / 712 | r3d.upscale -0.1 ms; clusters drawn ×1.30 median |
 | bistro-fitted-full | landscape | 8 | 119.35 | 36.2 | 7.2 | 0.78 | 2.63 | 19.22 | 2.59 | 148 / 119 / 6 / 102 | 2421 / 1545 / 1303 / 717 / 15 | r3d.upscale +0.0 ms; triangles covering ×0.79 median |
 
+### Overdraw at the frame peaks
+
+Each replayed pose of every row that is a scene drawn by the host renderer through the overdraw view. Tested counts every span that reached a pixel, written every one that won its depth test, per pixel drawn.
+Path percentile places a peak's tested layers among the evenly spaced poses' (100: none had more).
+
+| Scene | Quarter | Rank | Path s | Frame ms | Tested / px | Written / px | Most tested | Most written | Path percentile |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| sponza-fitted-full | portrait | 1 | 0.07 | 68.9 | 2.54 | 1.30 | 19 | 10 | 94 |
+| sponza-fitted-full | portrait | 2 | 17.56 | 61.7 | 2.42 | 1.37 | 16 | 8 | 77 |
+| sponza-fitted-full | landscape | 1 | 0.07 | 65.4 | 2.68 | 1.38 | 22 | 10 | 97 |
+| sponza-fitted-full | landscape | 2 | 18.26 | 58.2 | 2.35 | 1.37 | 16 | 9 | 36 |
+| sponza-fitted | portrait | 1 | 0.06 | 53.9 | 2.56 | 1.46 | 16 | 8 | 95 |
+| sponza-fitted | portrait | 2 | 17.58 | 50.5 | 2.56 | 1.37 | 13 | 7 | 92 |
+| sponza-fitted | landscape | 1 | 0.06 | 51.1 | 2.65 | 1.54 | 16 | 8 | 88 |
+| sponza-fitted | landscape | 2 | 17.89 | 47.4 | 2.53 | 1.36 | 14 | 6 | 41 |
+| sponza | portrait | 1 | 0.07 | 67.8 | 3.61 | 1.61 | 13 | 7 | 72 |
+| sponza | portrait | 2 | 17.68 | 62.5 | 3.98 | 1.58 | 14 | 7 | 89 |
+| sponza | landscape | 1 | 0.07 | 65.0 | 3.75 | 1.66 | 14 | 7 | 78 |
+| sponza | landscape | 2 | 17.90 | 60.3 | 3.86 | 1.58 | 12 | 7 | 88 |
+| sponza-lite | portrait | 1 | 2.33 | 53.9 | 3.38 | 1.50 | 12 | 6 | 42 |
+| sponza-lite | portrait | 2 | 17.56 | 51.9 | 3.87 | 1.73 | 12 | 6 | 91 |
+| sponza-lite | landscape | 1 | 0.06 | 52.3 | 3.56 | 1.51 | 14 | 7 | 72 |
+| sponza-lite | landscape | 2 | 18.00 | 49.8 | 3.73 | 1.60 | 11 | 7 | 88 |
+| sponza-flat | portrait | 1 | 2.40 | 55.5 | 3.56 | 1.66 | 14 | 9 | 58 |
+| sponza-flat | portrait | 2 | 18.15 | 51.4 | 3.86 | 1.47 | 12 | 6 | 88 |
+| sponza-flat | landscape | 1 | 0.06 | 54.4 | 3.75 | 1.80 | 14 | 7 | 78 |
+| sponza-flat | landscape | 2 | 17.88 | 50.7 | 3.87 | 1.44 | 12 | 6 | 87 |
+| sponza-flat-fitted | portrait | 1 | 0.06 | 56.4 | 2.61 | 1.28 | 17 | 8 | 94 |
+| sponza-flat-fitted | portrait | 2 | 17.82 | 51.7 | 2.44 | 1.32 | 16 | 6 | 72 |
+| sponza-flat-fitted | landscape | 1 | 0.11 | 54.8 | 2.71 | 1.35 | 18 | 8 | 89 |
+| sponza-flat-fitted | landscape | 2 | 17.93 | 49.3 | 2.42 | 1.31 | 20 | 7 | 41 |
+| capybara | portrait | 1 | 0.02 | 21.9 | 1.28 | 1.23 | 7 | 4 | 61 |
+| capybara | landscape | 1 | 0.17 | 21.8 | 1.26 | 1.23 | 7 | 3 | 11 |
+| bistro-fitted-full | portrait | 1 | 59.16 | 67.0 | 3.94 | 1.41 | 15 | 7 | 100 |
+| bistro-fitted-full | portrait | 2 | 46.94 | 63.5 | 3.23 | 1.28 | 24 | 6 | 81 |
+| bistro-fitted-full | portrait | 3 | 4.68 | 61.9 | 2.59 | 1.25 | 23 | 5 | 48 |
+| bistro-fitted-full | portrait | 4 | 80.46 | 51.2 | 3.42 | 1.39 | 19 | 7 | 89 |
+| bistro-fitted-full | portrait | 5 | 92.28 | 50.0 | 3.45 | 1.54 | 20 | 6 | 89 |
+| bistro-fitted-full | portrait | 6 | 99.17 | 44.3 | 2.55 | 1.30 | 12 | 6 | 45 |
+| bistro-fitted-full | portrait | 7 | 121.19 | 35.6 | 2.07 | 1.27 | 7 | 5 | 14 |
+| bistro-fitted-full | landscape | 1 | 46.79 | 63.8 | 3.25 | 1.31 | 21 | 6 | 77 |
+| bistro-fitted-full | landscape | 2 | 61.18 | 63.2 | 3.95 | 1.49 | 17 | 8 | 98 |
+| bistro-fitted-full | landscape | 3 | 4.23 | 61.7 | 2.62 | 1.27 | 22 | 5 | 45 |
+| bistro-fitted-full | landscape | 4 | 54.17 | 60.6 | 3.52 | 1.32 | 16 | 5 | 92 |
+| bistro-fitted-full | landscape | 5 | 92.37 | 54.5 | 3.42 | 1.51 | 17 | 6 | 86 |
+| bistro-fitted-full | landscape | 6 | 79.91 | 53.8 | 3.60 | 1.46 | 16 | 6 | 94 |
+| bistro-fitted-full | landscape | 7 | 98.95 | 45.1 | 2.76 | 1.35 | 12 | 5 | 53 |
+| bistro-fitted-full | landscape | 8 | 119.35 | 36.2 | 2.08 | 1.26 | 7 | 5 | 12 |
+
+#### Is a frame peak overdraw-heavy?
+
+Over the evenly spaced poses, ρ ranks each pose's replayed ms against its tested layers and its triangles set up: whichever is higher follows the frame time more closely.
+
+| Scene | Quarter | Path tested / px, median | Peak tested / px, median | Peak path percentile, median | ρ ms ~ layers | ρ ms ~ triangles set up | Follows |
+|---|---|---:|---:|---:|---:|---:|---|
+| sponza-fitted-full | portrait | 2.32 | 2.48 | 85 | +0.86 | +0.99 | triangles set up |
+| sponza-fitted-full | landscape | 2.45 | 2.51 | 66 | +0.83 | +0.99 | triangles set up |
+| sponza-fitted | portrait | 2.46 | 2.56 | 94 | +0.56 | +0.99 | triangles set up |
+| sponza-fitted | landscape | 2.57 | 2.59 | 64 | +0.53 | +0.99 | triangles set up |
+| sponza | portrait | 3.53 | 3.79 | 80 | +0.55 | +0.99 | triangles set up |
+| sponza | landscape | 3.61 | 3.81 | 83 | +0.67 | +0.98 | triangles set up |
+| sponza-lite | portrait | 3.40 | 3.63 | 66 | +0.44 | +0.96 | triangles set up |
+| sponza-lite | landscape | 3.48 | 3.64 | 80 | +0.55 | +0.97 | triangles set up |
+| sponza-flat | portrait | 3.53 | 3.71 | 73 | +0.56 | +0.98 | triangles set up |
+| sponza-flat | landscape | 3.61 | 3.81 | 83 | +0.67 | +0.98 | triangles set up |
+| sponza-flat-fitted | portrait | 2.38 | 2.53 | 83 | +0.83 | +1.00 | triangles set up |
+| sponza-flat-fitted | landscape | 2.52 | 2.57 | 65 | +0.81 | +1.00 | triangles set up |
+| capybara | portrait | 1.28 | 1.28 | 61 | +0.23 | +0.34 | triangles set up |
+| capybara | landscape | 1.26 | 1.26 | 11 | +0.54 | -0.19 | layers |
+| bistro-fitted-full | portrait | 2.60 | 3.23 | 81 | +0.81 | +0.97 | triangles set up |
+| bistro-fitted-full | landscape | 2.71 | 3.34 | 81 | +0.81 | +0.95 | triangles set up |
+
 Sources:
 
 - `frame-profile-1-board.log`
 - `frame-profile-2-board.log`
+- `frame-peak-overdraw.tsv`
 <!-- /generated: frame-timing-profiles -->
