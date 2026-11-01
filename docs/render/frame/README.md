@@ -41,7 +41,8 @@ flowchart LR
 | [Culling.md](Culling.md) | Every cull stage in order, from the bake's visibility to the per-triangle tests, what each keeps and costs |
 | [Coverage.md](Coverage.md) | Which pixels a triangle fills, and small fill: cheaper draws for triangles a few pixels wide |
 | [Attachments.md](Attachments.md) | The depth buffer, and the extra per-pixel maps a draw can write: motion vectors, meshlet IDs |
-| [View-Modes.md](View-Modes.md) | The development-build views that paint depth, tiles, motion, meshlets or the cull |
+| [Overdraw.md](Overdraw.md) | The overdraw view: how many triangles reach each pixel, how to read it and what a layer costs |
+| [View-Modes.md](View-Modes.md) | Every development-build view at one pose, and the hooks a view row may carry |
 | [Dynamic-Resolution.md](Dynamic-Resolution.md) | The render size picked per frame to hold a budget: the stepped controller and the predictor |
 | [Frame-Generation.md](Frame-Generation.md) | Frames warped from the last render to the next camera pose, shown between renders |
 

@@ -54,6 +54,8 @@ jobs:
         run: time python3 launcher/tools/bake/bake.py fetch
       - run: bash launcher/test/run_tests.sh
       - run: bash launcher/test/run_tests.sh --sanitize
+        env:
+          PUSH_TEST_GATE: "true"
       - name: Upload host test log
         if: ${{ failure() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -75,6 +77,12 @@ jobs:
             cmake --build "build/packages/$name" --parallel
             ctest --test-dir "build/packages/$name" --output-on-failure --no-tests=error
           done
+
+      - name: Standalone render host
+        if: ${{ !cancelled() }}
+        run: |
+          cmake -S launcher/tools/render -B build/render-host -DCMAKE_C_COMPILER=gcc
+          cmake --build build/render-host --parallel
 
       - name: Exhaustive reciprocal-root proof
         if: ${{ !cancelled() }}

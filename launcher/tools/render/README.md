@@ -2,8 +2,8 @@
 
 | File | Purpose |
 |---|---|
-| [render_host.c](render_host.c) | Runs a firmware drawing scene on the host and writes BMP frames. |
-| [render_host.h](render_host.h) | Scene interface for host rendering. |
+| [render_host.c](render_host.c) | Opens, steps and closes a frame-provider run with BMP output. |
+| [render_host.h](render_host.h) | `frame_provider_t`, `provider_frame_t` and the open/step/close API. |
 | [render_scene.sh](render_scene.sh) | Compiles, runs, and checks one host render scene. |
 | [render_all_scenes.sh](render_all_scenes.sh) | Discovers and checks all host render scenes. |
 | [scene_viewer.sh](scene_viewer.sh) | Builds and renders a scene file, selecting renderers with `--object NAME`; `--build-only -o DIR` returns the host path; `--deps` lists what it is compiled from; `--compare REV` or `DIR` writes the camera path as an A-against-B video and `--frame N` renders one frame of it. |

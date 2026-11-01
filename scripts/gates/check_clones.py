@@ -11,7 +11,7 @@ checking new pairs. MIN_TOKENS is 80: longer copied helpers and test setup
 are detected, including renamed identifiers and changed literal values.
 A shorter Python function pairs with another whose body is the same up to
 the names it binds (see function_shape). Literal-only fragments and exact self-matches
-are excluded. Literal-only object-like #defines are blanked on both sides
+are excluded. Literal-only and renaming object-like #defines are blanked on both sides
 before matching, preserving line numbers; a declaration statement is written
 one declarator per statement and parentheses after no name, `)` or `]` are
 blanked, so neither a split nor an added grouping counts as copying. The pinned
@@ -30,15 +30,18 @@ import tempfile
 import time
 
 from check_generated_files import is_generated
-from tracked import revision_contents
+from c_comments import SOURCE_EXTENSIONS
+from tracked import repository, revision_contents
 
-ROOT = Path(__file__).resolve().parents[2]
-ENGINE = ROOT / "scripts/gates/node_modules/jscpd/run-jscpd.js"
+# The tree this gate ships in, which holds its clone engine and scratch space;
+# the tree it checks is the repository it is run from.
+GATE_TREE = Path(__file__).resolve().parents[2]
+ENGINE = GATE_TREE / "scripts/gates/node_modules/jscpd/run-jscpd.js"
 MIN_TOKENS = 80
 # Below this many AST nodes a same-shape function is an idiom (`return self`,
 # `self.directory.cleanup()`), not a helper worth an owner.
 MIN_FUNCTION_NODES = 20
-SUFFIXES = {".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".py"}
+SUFFIXES = {*SOURCE_EXTENSIONS, ".py"}
 
 
 def eligible_name(name):
@@ -86,17 +89,21 @@ CODE_TOKEN = re.compile(r"\w+|[^\w\s]")
 # other long list once identifiers are ignored, and has no shared owner to
 # extract; a pair counts only if what remains without them is still a
 # clone's length in itself. A table row is a braced initializer holding no
-# statement, so a block of code never passes for one.
-TEST_REGISTRATION = re.compile(r"\bRUN_TEST\s*\(\s*\w+\s*\)\s*;|\{[^{};]*\}\s*,")
+# statement, so a block of code never passes for one. An inline assembly body
+# is the same: with literals ignored, its run of string lines matches any other
+# such run, its own shifted by a line included.
+STRING_RUN = r'(?:"(?:\\.|[^"\\])*"\s*(?:/\*.*?\*/\s*|//[^\n]*\s*)*){2,}'
+TEST_REGISTRATION = re.compile(r"\bRUN_TEST\s*\(\s*\w+\s*\)\s*;|\{[^{};]*\}\s*,|" + STRING_RUN, re.DOTALL)
 INCLUDE_DIRECTIVE = re.compile(r"(?m)^[ \t]*#[ \t]*include\b(?:[^\n]*\\\n)*[^\n]*")
 OBJECT_DEFINE = re.compile(r"(?m)^[ \t]*#[ \t]*define[ \t]+[A-Za-z_]\w*[ \t]+((?:[^\n]*\\\n)*[^\n]*)")
 C_LITERAL = (r'''(?:[+-]?(?:0[xX][0-9a-fA-F]+|\d+(?:\.\d*)?(?:[eE][+-]?\d+)?|'''
              r'''\.\d+(?:[eE][+-]?\d+)?)[uUlLfF]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')''')
-LITERAL_BODY = re.compile(rf"\s*(?:{C_LITERAL}|\{{\s*(?:{C_LITERAL}(?:\s*,\s*{C_LITERAL})*\s*,?)?\s*\}})\s*")
+# A define naming one identifier only renames it, as a test renames the code it includes.
+LITERAL_BODY = re.compile(rf"\s*(?:{C_LITERAL}|[A-Za-z_]\w*|\{{\s*(?:{C_LITERAL}(?:\s*,\s*{C_LITERAL})*\s*,?)?\s*\}})\s*")
 
 
 def literal_declaration(match):
-    """Blank a literal-only object define, keeping its newline count."""
+    """Blank a literal-only or renaming object define, keeping its newline count."""
     body = match[1].replace("\\\n", " ")
     body = re.sub(r"//[^\n]*|/\*.*?\*/", " ", body, flags=re.DOTALL)
     return "\n" * match[0].count("\n") if LITERAL_BODY.fullmatch(body) else match[0]
@@ -248,9 +255,8 @@ def scan(root, minimum, names=None, revision="HEAD", renames=None):
     if problem:
         raise RuntimeError(problem)
     if names is None:
-        names = sorted(git(root, "ls-tree", "-r", "--name-only", revision, "--",
-                           "launcher", "scripts").decode().splitlines())
-    scratch_parent = ROOT / "launcher/test/build"
+        names = sorted(git(root, "ls-tree", "-r", "--name-only", revision).decode().splitlines())
+    scratch_parent = GATE_TREE / "launcher/test/build"
     scratch_parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="clones-", dir=scratch_parent) as folder:
         scratch = Path(folder)
@@ -373,7 +379,8 @@ def check_pairs(pairs, base_pairs, moved=()):
     return 0
 
 
-def main(argv=None, root=ROOT):
+def main(argv=None, root=None):
+    root = root or repository()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--report", action="store_true")
     parser.add_argument("--min-tokens", type=int, default=MIN_TOKENS)

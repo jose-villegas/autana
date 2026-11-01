@@ -171,3 +171,23 @@ gfx_indexed_set_dither(gfx_dither_mode_t mode, const gfx_color_t* table) {
     }
     indexed_dither_mode = mode;
 }
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+void
+gfx_indexed_checkpoint_capture(checkpoint_t* saved) {
+    {
+        const checkpoint_field_t fields[] = {
+            {(void*)&indexed_lut256, sizeof indexed_lut256},
+            {(void*)&indexed_dither16_on, sizeof indexed_dither16_on},
+            {(void*)&indexed_dither_mode, sizeof indexed_dither_mode},
+            {(void*)&indexed_dither_none_lut, sizeof indexed_dither_none_lut},
+            {(void*)&indexed_dither_cell_checker, sizeof indexed_dither_cell_checker},
+            {(void*)&indexed_dither_cell_bayer2, sizeof indexed_dither_cell_bayer2},
+            {(void*)&indexed_dither_pixel_checker2, sizeof indexed_dither_pixel_checker2},
+            {(void*)&indexed_dither16_rgb, sizeof indexed_dither16_rgb},
+        };
+        checkpoint_capture_fields(saved, fields, sizeof fields / sizeof fields[0]);
+    }
+    checkpoint_capture_at(saved, &indexed_image, (size_t)indexed_grid_w * indexed_grid_h);
+}
+#endif
