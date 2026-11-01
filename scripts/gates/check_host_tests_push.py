@@ -7,12 +7,16 @@ leaves the remote's default branch (origin/HEAD); one sharing no history with
 it counts every file it holds. A moved submodule and a CMake file count as
 changed source: the tests build them. The tests are the workflow steps marked
 PUSH_TEST_GATE: "true" in the repository this runs in, run from its top in
-the order the workflows list them; none marked runs nothing.
+the order the workflows list them; none marked runs nothing. They run without
+the variables git sets for the hook's repository (GIT_DIR, GIT_INDEX_FILE...),
+so their own git calls, a submodule's included, find their own repository.
 """
 import pathlib
 import subprocess
 import sys
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "lib"))
+from git_env import env_without_repository
 from c_comments import SOURCE_EXTENSIONS, is_cmake
 from tracked import repository
 from workflow_marks import is_workflow, marked_commands
@@ -75,9 +79,10 @@ def main():
     except ValueError as error:
         print(f"{error}. {SKIP}", file=sys.stderr)
         return 1
+    env = env_without_repository()
     for command in commands:
         sys.stdout.flush()
-        if subprocess.run(command, cwd=root).returncode != 0:
+        if subprocess.run(command, cwd=root, env=env).returncode != 0:
             print(f"Host tests failed ({' '.join(command[1:])}); fix them before pushing. {SKIP}", file=sys.stderr)
             return 1
     return 0
