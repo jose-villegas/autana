@@ -3,7 +3,8 @@
 
 #include "input/motion/imu.h"
 
-/* QMI8658A Rev A, Table 43: maximum I2C clock. */
+/* The QMI8658A's I2C rating (Rev A, Table 43). Faster was measured on A308 and
+ * rejected: docs/input/Gravity.md, Limits. */
 #define QMI8658_I2C_HZ         400000
 #define IMU_BUS_HOLD_TARGET_US 1000
 /* Each byte takes 8 data bits plus ACK. */
