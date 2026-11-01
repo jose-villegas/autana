@@ -279,8 +279,8 @@ sequenceDiagram
 
 GPU work starts at `vars.NIGHT_START`; the board night starts at `vars.BOARD_START`, later.
 It starts no new lane after `vars.BOARD_LAST_START` on the marker's date.
-The two starts accept HH:MM in 00:00–05:59 and the cut-off 00:00–11:59; an empty value uses the constant of the same name
-in `scripts/lib/local_schedule.py`. Started lanes have no end time: they run to
+Each accepts HH:MM up to the latest hour `LOCAL_TIMES` in `scripts/lib/local_schedule.py` gives it; an empty value
+uses its default there. Started lanes have no end time: they run to
 completion under their hang guards, and day board jobs queue on the lock behind them.
 
 The zone is the NIGHT_ZONE repository variable (IANA name; UTC when unset).
