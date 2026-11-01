@@ -211,11 +211,11 @@ mathx_rsqrt_q30_table(uint32_t m) {
 
 /* source: Muller et al. 2018; Markstein 1990 */
 /* exact: y = 2^{46}/\sqrt{m} */
-/* MATH_FAST_PATH(normalize_x, normalize_div_x, MATHX_RSQRT_Q30_RELATIVE_LIMIT) */
+/* FAST_PATH(normalize_x, normalize_div_x, MATHX_RSQRT_Q30_RELATIVE_LIMIT) */
 
 /* source: Muller et al. 2018; Markstein 1990 */
 /* exact: y = 2^{46}/\sqrt{m} */
-/* MATH_FAST_PATH(nlerp_x, nlerp_div_x, MATHX_RSQRT_Q30_RELATIVE_LIMIT) */
+/* FAST_PATH(nlerp_x, nlerp_div_x, MATHX_RSQRT_Q30_RELATIVE_LIMIT) */
 
 static inline uint32_t
 mathx_rsqrt_q30(uint32_t m) {

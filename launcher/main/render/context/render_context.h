@@ -18,6 +18,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "build/build_variant.h"
+typedef struct checkpoint checkpoint_t;
 #include "core/memory.h"
 #include "render/framegen/framegen.h"
 #include "render/r3d_instance.h"
@@ -68,6 +70,9 @@ typedef struct {
     bool (*reserve)(void* state, int instances);
     /* Optional. Frees what reserve took, before the state is freed. */
     void (*release)(void* state);
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    void (*checkpoint)(checkpoint_t* saved, void* state);
+#endif
 } render_debug_view_t;
 
 #define RENDER_DEBUG_VIEW_UNKNOWN -2
@@ -108,6 +113,11 @@ typedef struct {
     render_view_t kept_view;
     framegen_target_t framegen;
 } render_context_t;
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+void render_context_checkpoint_capture(checkpoint_t* saved, render_context_t* context);
+bool render_context_checkpoint_prepare(checkpoint_t* saved, render_context_t* context);
+#endif
 
 /* The engine's own context, the one the scene manager draws through. */
 render_context_t* render_context_main(void);

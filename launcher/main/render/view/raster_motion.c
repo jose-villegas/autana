@@ -1,4 +1,5 @@
 #include "render/view/raster_motion.h"
+#include "core/checkpoint.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -287,3 +288,12 @@ void
 raster_motion_release_view(void* state) {
     raster_motion_release(state);
 }
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+void
+raster_motion_checkpoint(checkpoint_t* saved, void* state) {
+    raster_motion_t* motion = state;
+    checkpoint_capture_at(saved, &motion->block, block_bytes(motion->capacity));
+    checkpoint_capture(saved, motion, sizeof(*motion));
+}
+#endif

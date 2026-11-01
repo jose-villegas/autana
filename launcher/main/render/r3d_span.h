@@ -35,6 +35,7 @@ typedef struct r3d_span_writer r3d_span_writer_t;
 typedef struct {
     const r3d_span_writer_t* writers; /* writer_count of them; none: colour and depth only */
     int writer_count;
+    bool skip_hidden; /* render_view_t.skip_hidden: fills cap their depth, and writers follow */
     const r3d_span_small_fill_t* small_fill;
 
     union {
@@ -99,10 +100,16 @@ void r3d_span_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t*
 void r3d_span_triangle_solid(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                              const r3d_span_vertex_t* c, uint16_t color);
 
+/* Either fill, `face` NULL or its colour, writing no depth nearer than
+ * r3d_span_depth_limit() of the nearest vertex: what a skip of whole clusters
+ * behind drawn depth relies on. */
+void r3d_span_capped_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                              const r3d_span_vertex_t* c, const uint16_t* face);
+
 /* Right after either fill of the same triangle into the same target: its
  * writers over the pixels it covers. `solid` must say whether that fill used a
  * face colour: the small-triangle choice depends on it, and the writers must
- * take the same path as the fill.
+ * take the same path as the fill, capped when target->skip_hidden.
  * A caller with no writers never calls it, so the fill itself carries none
  * of their cost. */
 void r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
