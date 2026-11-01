@@ -367,6 +367,14 @@ scene_animator_clip_count(const scene_t* scene, scene_entity_t entity) {
                : scene->animators[entity].layer.clip_count;
 }
 
+int
+scene_animator_current_clip(const scene_t* scene, scene_entity_t entity) {
+    return scene_animator_clip_count(scene, entity) == 0
+                   || scene->animators[entity].layer.current.clip == ANIM_LAYER_CLIP_NONE
+               ? -1
+               : scene->animators[entity].layer.current.clip;
+}
+
 const char*
 scene_animator_clip_name(const scene_t* scene, scene_entity_t entity, int clip) {
     return clip < 0 || clip >= scene_animator_clip_count(scene, entity) ? NULL
@@ -577,3 +585,29 @@ scene_animator_seek(scene_t* scene, scene_entity_t entity, scene_animator_slot_t
     scene_animation_step(scene, 0);
     return true;
 }
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+void
+scene_animation_checkpoint_capture(checkpoint_t* saved, scene_t* scene) {
+    const size_t entities = scene->asset.entity_count;
+    for (size_t e = 0; e < entities; e++) {
+        scene_animator_t* a = &scene->animators[e];
+        checkpoint_capture_at(saved, &a->layer.shown.local,
+                              (size_t)a->skeleton.joint_count * sizeof(*a->layer.shown.local));
+        checkpoint_capture_at(saved, &a->layer.frozen.local,
+                              (size_t)a->skeleton.joint_count * sizeof(*a->layer.frozen.local));
+        scene_skinned_renderer_t* skin = &scene->skinned_renderers[e];
+        const size_t joints = skin->skin.joint_count;
+        const size_t internal_bytes =
+            skin->internal_storage == NULL
+                ? 0
+                : (size_t)((uint8_t*)(skin->palette + joints) - (uint8_t*)skin->internal_storage);
+        const size_t light_bytes =
+            skin->light_storage == NULL
+                ? 0
+                : (size_t)((uint8_t*)(skin->normal_palette + joints) - (uint8_t*)skin->light_storage);
+        checkpoint_capture_at(saved, &skin->internal_storage, internal_bytes);
+        checkpoint_capture_at(saved, &skin->light_storage, light_bytes);
+    }
+}
+#endif

@@ -4,6 +4,7 @@
 #ifndef DEVICE_BUILD
 #include "draw/draw.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_test.h"
 #include "testkit/cleanup.h"
 

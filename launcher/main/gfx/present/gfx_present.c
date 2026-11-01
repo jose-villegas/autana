@@ -362,7 +362,7 @@ mark_all_dirty_now(void) {
 }
 
 /* gfx_dirty.h header-only for inlining mark_band(); thin wrappers for gfx.h
- * API. */
+ * and gfx_present.h API. */
 void
 gfx_mark_all_dirty(void) {
     GFX_PRESENT_GUARD();
@@ -1020,3 +1020,47 @@ gfx_mark_rows_dirty(int y0, int y1) {
     /* mark_band() trusts clipped rows; a public caller's need not be. */
     mark_band(mathi_max(y0, 0), mathi_min(y1, GFX_HEIGHT));
 }
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+void
+gfx_checkpoint_capture(checkpoint_t* saved) {
+    gfx_present_drain();
+    CHECKPOINT_CAPTURE(saved, panel_clock_requested_hz);
+    const checkpoint_field_t fields[] = {
+        {(void*)&cell_dirty, sizeof cell_dirty},
+        {(void*)&all_dirty, sizeof all_dirty},
+        {(void*)&cell_x0, sizeof cell_x0},
+        {(void*)&cell_x1, sizeof cell_x1},
+        {(void*)&cell_y0, sizeof cell_y0},
+        {(void*)&cell_y1, sizeof cell_y1},
+        {(void*)&leaf_dirty, sizeof leaf_dirty},
+        {(void*)&gfx_band_force_all_dirty, sizeof gfx_band_force_all_dirty},
+        {(void*)&gfx_full_redraw_latched, sizeof gfx_full_redraw_latched},
+        {(void*)&present_async_on, sizeof present_async_on},
+        {(void*)&clear_on_send, sizeof clear_on_send},
+        {(void*)&clear_on_send_colour, sizeof clear_on_send_colour},
+        {(void*)&send_clears, sizeof send_clears},
+        {(void*)&send_clear_colour, sizeof send_clear_colour},
+        {(void*)&interlace_on, sizeof interlace_on},
+#ifdef ESP_PLATFORM
+        {(void*)&frame_parity, sizeof frame_parity},
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        {(void*)&overlay_bordered_rows, sizeof overlay_bordered_rows},
+#endif
+#endif
+        {(void*)&dev_present_send_us, sizeof dev_present_send_us},
+        {(void*)&dev_present_wait_us, sizeof dev_present_wait_us},
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        {(void*)&debug_overlay_on, sizeof debug_overlay_on},
+        {(void*)&leaf_overlay_on, sizeof leaf_overlay_on},
+        {(void*)&dev_strips_sent_full, sizeof dev_strips_sent_full},
+        {(void*)&dev_strips_sent_gathered, sizeof dev_strips_sent_gathered},
+        {(void*)&dev_strips_sent_partial, sizeof dev_strips_sent_partial},
+        {(void*)&dev_bytes_sent, sizeof dev_bytes_sent},
+#endif
+    };
+    checkpoint_capture_fields(saved, fields, sizeof fields / sizeof fields[0]);
+    gfx_mode_checkpoint_capture(saved);
+    gfx_expand_checkpoint_capture(saved);
+}
+#endif

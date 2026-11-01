@@ -18,17 +18,52 @@ TUNE(render, cull, 1, 0, 1);
 /* 0 encodes depth with the clip plane's near_z: the depth-precision figures
  * render both. */
 TUNE(render, depth_fit, 1, 0, 1);
+/* Off draws one instance a batch, the per-instance draw batching replaced. */
+TUNE(render, batched, 1, 0, 1);
+
+/* One instance of a batch: its lens, the clusters culling kept, where its
+ * vertices and cluster rows start in the shared buffers, and its writers. */
+typedef struct {
+    const r3d_lit_mesh_t* mesh;
+    r3d_lens_t lens;
+    const uint16_t* visible;
+    int visible_count;
+    int vertex_base, cluster_base;
+    int writer_count;
+    r3d_span_writer_t writers[GFX_ATTACHMENTS_FURTHER_MAX];
+} batch_item_t;
+
+int
+raster_batch_end(const raster_t* raster, int first) {
+    const int most = batched ? RASTER_BATCH_INSTANCES : 1;
+    const int vertex_capacity = raster_vertex_capacity(raster);
+    const int cluster_capacity = raster_cluster_capacity(raster);
+    int vertices = 0;
+    int clusters = 0;
+    int end = first;
+    while (end < raster->instance_count && end - first < most) {
+        const r3d_lit_mesh_t* mesh = raster->instances[end].mesh;
+        if (vertices + mesh->vertex_count > vertex_capacity || clusters + mesh->cluster_count > cluster_capacity) {
+            break;
+        }
+        vertices += mesh->vertex_count;
+        clusters += mesh->cluster_count;
+        end++;
+    }
+    return end;
+}
+
+typedef struct {
+    batch_item_t items[RASTER_BATCH_INSTANCES];
+    r3d_pipeline_part_t parts[RASTER_BATCH_INSTANCES];
+    int count;
+} batch_t;
 
 typedef struct {
     const raster_t* raster;
-    const r3d_lit_mesh_t* mesh;
-    const r3d_lens_t* lens;
-    const uint16_t* visible; /* the clusters culling kept */
-    int visible_count;
-    int first, count; /* clusters of visible[], or rows */
-    bool clear;       /* the first mesh of a picture clears it; later ones draw over it */
-    const r3d_span_writer_t* writers;
-    int writer_count;
+    const batch_t* batch;
+    int first, count; /* clusters across the batch's items, or rows */
+    bool clear;       /* the first batch of a picture clears it; later ones draw over it */
     uint16_t* destination;
     int work_index;
     const raster_buffers_t* buffers;
@@ -36,8 +71,7 @@ typedef struct {
 } slice_t;
 
 typedef struct {
-    r3d_lens_t lens;
-    r3d_span_writer_t writers[GFX_ATTACHMENTS_FURTHER_MAX];
+    batch_t batch;
     slice_t mine, other;
     r3d_span_target_t targets[2];
     r3d_span_small_fill_t small_fill;
@@ -52,7 +86,18 @@ transform_slice(void* ctx) {
     const slice_t* s = ctx;
     FRAME_LAP("r3d.transform.cluster");
     const raster_buffers_t b = raster_carve(s->raster);
-    r3d_pipeline_transform(s->mesh, s->lens, s->visible + s->first, s->count, b.cs, b.rows);
+    const int end = s->first + s->count;
+    int start = 0;
+    for (int k = 0; k < s->batch->count && start < end; k++) {
+        const batch_item_t* item = &s->batch->items[k];
+        const int lo = mathi_max(s->first, start) - start;
+        const int hi = mathi_min(end, start + item->visible_count) - start;
+        if (lo < hi) {
+            r3d_pipeline_transform(item->mesh, &item->lens, item->visible + lo, hi - lo, b.cs + item->vertex_base,
+                                   b.rows + item->cluster_base);
+        }
+        start += item->visible_count;
+    }
     FRAME_LAP_END();
 }
 
@@ -149,8 +194,6 @@ draw_slice(void* ctx) {
     r3d_span_target_t* target = s->target;
     FRAME_LAP("r3d.draw.clear");
     gfx_target_window(&target->rows, &b->picture, s->first, s->first + s->count);
-    target->writers = s->writers;
-    target->writer_count = s->writer_count;
     target->small_fill = &((const draw_work_t*)b->draw)->small_fill;
 
     if (s->clear) {
@@ -163,7 +206,13 @@ draw_slice(void* ctx) {
         }
     }
     FRAME_LAP("r3d.draw.cluster");
-    r3d_pipeline_draw(s->mesh, s->lens, s->visible, s->visible_count, b->cs, b->rows, target, b->work[s->work_index]);
+    for (int k = 0; k < s->batch->count; k++) {
+        const batch_item_t* item = &s->batch->items[k];
+        target->writers = item->writers;
+        target->writer_count = item->writer_count;
+        r3d_pipeline_draw(item->mesh, &item->lens, item->visible, item->visible_count, b->cs + item->vertex_base,
+                          b->rows + item->cluster_base, target, b->work[s->work_index]);
+    }
     FRAME_LAP_END();
 }
 
@@ -317,31 +366,29 @@ scratch_draw(const raster_t* raster) {
     return work;
 }
 
+/* Draws batch `index`: one transform fork/join over every item's clusters,
+ * then one draw fork/join in which each core draws every item in its rows. */
 static inline __attribute__((always_inline)) void
-draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const uint16_t* visible, int count,
-             draw_work_t* work) {
-    const r3d_instance_t* instance = &raster->instances[index];
-    const r3d_lit_mesh_t* mesh = instance->mesh;
-    const bool clear = index == 0;
-    const int writer_count = instance_writers(raster, index, work->writers);
-    /* Instances past the retained state split evenly and forget it. */
+draw_batch(const raster_t* raster, int index, draw_work_t* work) {
+    batch_t* batch = &work->batch;
+    int count = 0;
+    for (int k = 0; k < batch->count; k++) {
+        const batch_item_t* item = &batch->items[k];
+        batch->parts[k] = (r3d_pipeline_part_t){item->mesh, item->visible, item->visible_count,
+                                                work->buffers.rows + item->cluster_base};
+        count += item->visible_count;
+    }
+    /* Batches past the retained state split evenly and forget it. */
     const bool retained = raster->split != NULL && index < RASTER_SPLIT_INSTANCES;
     int16_t* transform_share = retained ? &raster->split->transform_offset[index] : NULL;
     int16_t* draw_share = retained ? &raster->split->top_offset[index] : NULL;
     FRAME_COST_BEGIN(transformed_from);
     FRAME_LAP("r3d.transform.split");
-    const int half =
-        r3d_pipeline_transform_split(mesh, visible, count, JOB_SHARE_PERMILLE - job_share_permille(transform_share));
+    const int half = r3d_pipeline_transform_split(batch->parts, batch->count,
+                                                  JOB_SHARE_PERMILLE - job_share_permille(transform_share));
     slice_t* mine = &work->mine;
     slice_t* other = &work->other;
-    *mine = (slice_t){.raster = raster,
-                      .mesh = mesh,
-                      .lens = lens,
-                      .visible = visible,
-                      .visible_count = count,
-                      .count = half,
-                      .clear = clear,
-                      .buffers = &work->buffers};
+    *mine = (slice_t){.raster = raster, .batch = batch, .count = half, .clear = index == 0, .buffers = &work->buffers};
     *other = *mine;
     other->first = half;
     other->count = count - half;
@@ -352,10 +399,7 @@ draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const ui
 
     FRAME_COST_BEGIN(drawn_from);
     FRAME_LAP("r3d.draw.split");
-    const int mid = r3d_pipeline_draw_split(mesh, visible, work->buffers.rows, count, raster->height,
-                                            job_share_permille(draw_share));
-    mine->writers = other->writers = work->writers;
-    mine->writer_count = other->writer_count = writer_count;
+    const int mid = r3d_pipeline_draw_split(batch->parts, batch->count, raster->height, job_share_permille(draw_share));
     mine->work_index = 1;
     other->work_index = 0;
     mine->target = &work->targets[1];
@@ -403,13 +447,28 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     /* A list drawn with no census, or rewritten without its scale, fails here. */
     assert(*work->buffers.depth_near >= view->lens.near_z);
     uint16_t* culled = work->buffers.culled;
-    for (int i = 0; i < raster->instance_count; i++) {
-        const r3d_instance_t* instance = &raster->instances[i];
-        r3d_lens_t* lens = &work->lens;
-        instance_lens(raster, instance, view, true, lens);
-        r3d_lens_set_depth_near(lens, *work->buffers.depth_near);
-        draw_visible(raster, i, lens, culled + 1, culled[0], work);
-        culled += 1 + (size_t)instance->mesh->cluster_count;
+    batch_t* batch = &work->batch;
+    for (int first = 0, index = 0; first < raster->instance_count; index++) {
+        const int end = raster_batch_end(raster, first);
+        int vertices = 0;
+        int clusters = 0;
+        for (batch->count = 0; first < end; first++) {
+            const r3d_instance_t* instance = &raster->instances[first];
+            const r3d_lit_mesh_t* mesh = instance->mesh;
+            batch_item_t* item = &batch->items[batch->count++];
+            item->mesh = mesh;
+            instance_lens(raster, instance, view, true, &item->lens);
+            r3d_lens_set_depth_near(&item->lens, *work->buffers.depth_near);
+            item->visible = culled + 1;
+            item->visible_count = culled[0];
+            item->vertex_base = vertices;
+            item->cluster_base = clusters;
+            item->writer_count = instance_writers(raster, first, item->writers);
+            vertices += mesh->vertex_count;
+            clusters += mesh->cluster_count;
+            culled += 1 + (size_t)mesh->cluster_count;
+        }
+        draw_batch(raster, index, work);
     }
     if (resolves) {
         FRAME_COST_BEGIN(resolved_from);
