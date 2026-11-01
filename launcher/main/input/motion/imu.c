@@ -555,14 +555,14 @@ take_demand(void) {
 
 /* The bus work runs outside `lock` on a copy; imu_set_odr() only waits on it meanwhile.
  * Any reconfigure resets the FIFO, so a gap drops queued samples spaced at the old rate. */
-static void
-apply_odr_request(void) {
+static uint32_t
+apply_odr_request(imu_demand_level_t* level, unsigned* read_ticks) {
     portENTER_CRITICAL(&lock);
     imu_odr_t next = odr;
     portEXIT_CRITICAL(&lock);
-    const imu_odr_outcome_t outcome = imu_odr_apply(&next, configure, &fifo_gap);
+    const imu_odr_outcome_t outcome = imu_odr_apply(&next, configure, &fifo_gap, level);
     if (outcome == IMU_ODR_UNCHANGED) {
-        return;
+        return next.sequence;
     }
     if (outcome == IMU_ODR_LOST) {
         ESP_LOGE(TAG, "ODR switch to %u and restore of %u both failed; the sensor may be off", odr.requested,
@@ -570,10 +570,15 @@ apply_odr_request(void) {
     }
     pending_lost = 0;
     loss_remainder_us = 0;
+    *read_ticks = 0;
     portENTER_CRITICAL(&lock);
     imu_queue_set_rate(&queue, next.applied);
-    odr = next;
+    odr.applied = next.applied;
+    if (odr.sequence == next.sequence) {
+        odr.requested = next.requested;
+    }
     portEXIT_CRITICAL(&lock);
+    return next.sequence;
 }
 
 int
@@ -613,6 +618,7 @@ imu_set_odr(unsigned odr_code) {
     }
     portENTER_CRITICAL(&lock);
     odr.requested = odr_code;
+    const uint32_t sequence = ++odr.sequence;
     const bool wake = stamp_demand(&demand.fifo_us);
     portEXIT_CRITICAL(&lock);
     wake_task(wake);
@@ -620,10 +626,11 @@ imu_set_odr(unsigned odr_code) {
     for (;;) {
         portENTER_CRITICAL(&lock);
         const unsigned applied = odr.applied;
-        const unsigned requested = odr.requested;
+        const bool served = imu_odr_ready(&odr, sequence);
+        const bool superseded = odr.sequence != sequence;
         portEXIT_CRITICAL(&lock);
-        if (applied == odr_code || requested != odr_code || timing_now_us() >= deadline) {
-            return applied == odr_code;
+        if (served || superseded || timing_now_us() >= deadline) {
+            return served && applied == odr_code;
         }
         timing_sleep_ms(IMU_PERIOD_MIN_MS);
     }
@@ -698,8 +705,9 @@ imu_task(void* arg) {
 #endif
         vTaskPrioritySet(NULL, IMU_TASK_BUS_PRIORITY);
 #if CONFIG_LAUNCHER_DEVELOPMENT
-        if (sensor_present) {
-            apply_odr_request();
+        uint32_t served_sequence = 0;
+        if (sensor_present && asked == IMU_DEMAND_FIFO) {
+            served_sequence = apply_odr_request(&level, &read_ticks);
         }
 #endif
         unsigned read_period_ms = read_ms;
@@ -711,6 +719,13 @@ imu_task(void* arg) {
         const TickType_t requested_period = pdMS_TO_TICKS(read_period_ms);
         const TickType_t period = requested_period > 0 ? requested_period : 1;
         serve_demand(asked, &level, &read_ticks, pdMS_TO_TICKS(drain_period_ms) / period);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        if (sensor_present && asked == IMU_DEMAND_FIFO) {
+            portENTER_CRITICAL(&lock);
+            odr.served_sequence = served_sequence;
+            portEXIT_CRITICAL(&lock);
+        }
+#endif
         if (xTaskDelayUntil(&last_wake, period) == pdFALSE) {
             last_wake = xTaskGetTickCount();
         }
