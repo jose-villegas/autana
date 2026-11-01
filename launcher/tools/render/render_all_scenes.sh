@@ -14,7 +14,7 @@
 # Self-checking without Python: each scene script compares what the binary
 # says it wrote against the size that scene declared AND against the content
 # hash pinned beside that scene, and this fails on the first scene that
-# fails. A missing compiler is the one thing that is not a failure here, the
+# fails. A missing compiler or CMake skips the scenes here, the
 # same way test/check_app_sources.sh treats it.
 #
 # Every render also runs the frame watch (render_watch.h): a scene whose
@@ -57,6 +57,13 @@ if ! find_cc > /dev/null; then
     echo "No C compiler found - skipping the host render scenes." >&2
     echo "  Windows: winget install BrechtSanders.WinLibs.POSIX.UCRT" >&2
     echo "  Debian:  sudo apt install build-essential" >&2
+    exit 0
+fi
+
+if ! command -v cmake > /dev/null 2>&1; then
+    echo "No CMake found - skipping the host render scenes." >&2
+    echo "  Windows: winget install Kitware.CMake" >&2
+    echo "  Debian:  sudo apt install cmake" >&2
     exit 0
 fi
 
