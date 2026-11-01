@@ -19,6 +19,7 @@
 #include <stdio.h>
 
 #include "build/build_variant.h"
+#include "core/checkpoint.h"
 #include "core/memory.h"
 #include "render/framegen/framegen.h"
 #include "render/r3d_instance.h"
@@ -70,9 +71,7 @@ typedef struct {
     /* Optional. Frees what reserve took, before the state is freed. */
     void (*release)(void* state);
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    /* Deep copy into zeroed storage, rebinding borrowed pointers to raster.
-     * Self-copy only rebinds. release accepts a failed partial copy. */
-    bool (*copy)(void* destination, const void* source, const raster_t* raster);
+    void (*checkpoint)(checkpoint_t* saved, void* state);
 #endif
 } render_debug_view_t;
 
@@ -116,10 +115,8 @@ typedef struct {
 } render_context_t;
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-typedef struct render_context_checkpoint render_context_checkpoint_t;
-render_context_checkpoint_t* render_context_save(const render_context_t* context);
-void render_context_restore(render_context_t* context, const render_context_checkpoint_t* checkpoint);
-void render_context_checkpoint_free(render_context_checkpoint_t* checkpoint);
+void render_context_checkpoint_capture(checkpoint_t* saved, render_context_t* context);
+bool render_context_checkpoint_prepare(checkpoint_t* saved, render_context_t* context);
 #endif
 
 /* The engine's own context, the one the scene manager draws through. */

@@ -243,6 +243,7 @@ size_t scene_storage_carve(size_t* end, size_t bytes, size_t align);
     ((layout).member = scene_storage_carve(&(end), sizeof(type) * (size_t)(count), _Alignof(type)))
 int scene_renderer_index(const scene_t* scene, scene_entity_t entity);
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+void scene_draw_checkpoint_capture(checkpoint_t* saved);
 void scene_checkpoint_capture(checkpoint_t* saved, scene_t* scene);
 void scene_animation_checkpoint_capture(checkpoint_t* saved, scene_t* scene);
 #endif

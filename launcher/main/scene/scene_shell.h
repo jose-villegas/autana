@@ -49,3 +49,9 @@ void scene_unload_all(void);
  * take it back. Internal-RAM pieces stay on the heap either way. Returns the
 take it replaces. */
 memory_take_fn scene_set_take(memory_take_fn take);
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+#include "core/checkpoint.h"
+void scene_shell_checkpoint_capture(checkpoint_t* saved);
+bool scene_shell_checkpoint_prepare(checkpoint_t* saved);
+#endif

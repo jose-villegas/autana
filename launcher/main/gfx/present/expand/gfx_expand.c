@@ -182,10 +182,10 @@ expand_reset_for_test(void) {
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 void
 gfx_expand_checkpoint_capture(checkpoint_t* saved) {
-    checkpoint_capture(saved, &frame_expanded, sizeof frame_expanded);
-    checkpoint_capture(saved, &frame_blended, sizeof frame_blended);
-    checkpoint_capture(saved, &frame_overlay, sizeof frame_overlay);
-    checkpoint_capture(saved, half_image,
-                       sizeof(*half_image) * HALF_WIDTH * HALF_HEIGHT + GFX_SEAM_BYTES(HALF_WIDTH, HALF_HEIGHT));
+    CHECKPOINT_CAPTURE(saved, frame_expanded);
+    CHECKPOINT_CAPTURE(saved, frame_blended);
+    CHECKPOINT_CAPTURE(saved, frame_overlay);
+    checkpoint_capture_at(saved, &half_image,
+                          sizeof(*half_image) * HALF_WIDTH * HALF_HEIGHT + GFX_SEAM_BYTES(HALF_WIDTH, HALF_HEIGHT));
 }
 #endif

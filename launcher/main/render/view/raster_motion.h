@@ -74,5 +74,6 @@ bool raster_motion_reserve_view(void* state, int instances);
 void raster_motion_release_view(void* state);
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-bool raster_motion_copy_view(void* destination, const void* source, const raster_t* raster);
+#include "core/checkpoint.h"
+void raster_motion_checkpoint(checkpoint_t* saved, void* state);
 #endif

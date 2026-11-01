@@ -11,13 +11,22 @@ typedef struct checkpoint_block {
     struct checkpoint_block* next;
     void* destination;
     size_t bytes;
+    const void* owner;
     unsigned char data[];
 } checkpoint_block_t;
 
 typedef struct {
     checkpoint_block_t* first;
+    checkpoint_block_t* last;
     bool failed;
 } checkpoint_t;
+
+typedef struct {
+    void* destination;
+    size_t bytes;
+} checkpoint_field_t;
+
+#define CHECKPOINT_CAPTURE(state, value) checkpoint_capture((state), (void*)&(value), sizeof(value))
 
 static inline void
 checkpoint_capture(checkpoint_t* state, void* destination, size_t bytes) {
@@ -29,16 +38,77 @@ checkpoint_capture(checkpoint_t* state, void* destination, size_t bytes) {
         state->failed = true;
         return;
     }
-    *block = (checkpoint_block_t){state->first, destination, bytes};
+    *block = (checkpoint_block_t){.destination = destination, .bytes = bytes};
     memcpy(block->data, destination, bytes);
-    state->first = block;
+    if (state->last == NULL) {
+        state->first = block;
+    } else {
+        state->last->next = block;
+    }
+    state->last = block;
 }
 
 static inline void
-checkpoint_restore(const checkpoint_t* state) {
-    for (const checkpoint_block_t* b = state->first; b != NULL; b = b->next) {
-        memcpy(b->destination, b->data, b->bytes);
+checkpoint_capture_fields(checkpoint_t* state, const checkpoint_field_t* fields, size_t count) {
+    for (size_t i = 0; i < count; i++) {
+        checkpoint_capture(state, fields[i].destination, fields[i].bytes);
     }
+}
+
+static inline void*
+checkpoint_pointer(const void* owner) {
+    void* value;
+    memcpy(&value, owner, sizeof value);
+    return value;
+}
+
+static inline void
+checkpoint_capture_at(checkpoint_t* state, const void* owner, size_t bytes) {
+    void* destination = checkpoint_pointer(owner);
+    checkpoint_capture(state, (void*)owner, sizeof(void*));
+    if (!state->failed) {
+        checkpoint_block_t* guard = state->last;
+        guard->owner = owner;
+        guard->destination = destination;
+    }
+    checkpoint_capture(state, destination, bytes);
+}
+
+static inline bool
+checkpoint_validate(const checkpoint_t* state) {
+    if (state->failed) {
+        return false;
+    }
+    for (const checkpoint_block_t* b = state->first; b != NULL; b = b->next) {
+        if (b->owner != NULL && checkpoint_pointer(b->owner) != b->destination) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static inline bool
+checkpoint_restore(const checkpoint_t* state) {
+    if (!checkpoint_validate(state)) {
+        return false;
+    }
+    for (const checkpoint_block_t* b = state->first; b != NULL; b = b->next) {
+        if (b->owner == NULL) {
+            memcpy(b->destination, b->data, b->bytes);
+        }
+    }
+    return true;
+}
+
+static inline void*
+checkpoint_retarget(checkpoint_t* state, const void* source, void* destination) {
+    for (checkpoint_block_t* b = state->first; b != NULL; b = b->next) {
+        if (b->owner == NULL && b->destination == source) {
+            b->destination = destination;
+            return b->data;
+        }
+    }
+    return NULL;
 }
 
 static inline void

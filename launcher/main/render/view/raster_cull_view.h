@@ -15,8 +15,6 @@
  */
 #pragma once
 
-#include "build/build_variant.h"
-
 #include <stdint.h>
 
 #include "gfx/gfx.h"
@@ -116,7 +114,3 @@ void raster_cull_overlay(void* state, int width, int height);
 
 /* The last frame's counts. */
 raster_cull_frame_t raster_cull_frame(const raster_cull_t* state);
-
-#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-bool raster_cull_copy_view(void* destination, const void* source, const raster_t* raster);
-#endif
