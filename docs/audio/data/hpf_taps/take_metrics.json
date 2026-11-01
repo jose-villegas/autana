@@ -1,0 +1,191 @@
+{
+  "hpf-00-00.wav": {
+    "metrics": {
+      "haptic": -38.063039959,
+      "low": -63.370915285
+    },
+    "sha256": "371a3320a19409368216f99ad3225aeff65323d511e890de5d009376128d0563"
+  },
+  "hpf-00-01.wav": {
+    "metrics": {
+      "haptic": -37.996461389,
+      "low": -63.293339334
+    },
+    "sha256": "1c40903fbe9af689b713dcb8bc7bf840db833bee16c9a287446ae8f52f95c473"
+  },
+  "hpf-00-02.wav": {
+    "metrics": {
+      "haptic": -37.966187973,
+      "low": -63.201944715
+    },
+    "sha256": "abb50a660cb8826def8018073f4fc48fbbb82f5bd3385484f8913e8b3840ec52"
+  },
+  "hpf-01-00.wav": {
+    "metrics": {
+      "haptic": -45.425019175,
+      "low": -81.040482543
+    },
+    "sha256": "08116bfc47147d8bd8d4dbf59a94fe105b58cc8e454ed7654f38bb90ef558a76"
+  },
+  "hpf-01-01.wav": {
+    "metrics": {
+      "haptic": -45.409373291,
+      "low": -79.835123412
+    },
+    "sha256": "d0d59afcf27fe2d72dc1cd2fc1ecfdf5290fbbf45ce4d9eec36ebb7b76647a91"
+  },
+  "hpf-01-02.wav": {
+    "metrics": {
+      "haptic": -45.388996359,
+      "low": -80.987265234
+    },
+    "sha256": "761c6f598f62475e02161b3c6033650a98bd34247cd056d4a384e9aca34cff77"
+  },
+  "hpf-02-00.wav": {
+    "metrics": {
+      "haptic": -41.187992455,
+      "low": -75.338921258
+    },
+    "sha256": "0025cfb01118e756e7186cb2e7c887f4f787509fae341f75dd8cf8fe43fa59a1"
+  },
+  "hpf-02-01.wav": {
+    "metrics": {
+      "haptic": -41.187929503,
+      "low": -75.243612072
+    },
+    "sha256": "9ee1e8139e12cc1625c57d2b416ab2a1162132468165dd12a53cc943663c065d"
+  },
+  "hpf-02-02.wav": {
+    "metrics": {
+      "haptic": -41.166156964,
+      "low": -75.27531202
+    },
+    "sha256": "7e856fc17a20ffbbb60be9ebd1754791a3506bd5b33b009d9dbec6a88deb974e"
+  },
+  "hpf-03-00.wav": {
+    "metrics": {
+      "haptic": -38.953909459,
+      "low": -70.28582575
+    },
+    "sha256": "cf9de47c3b1b092fbcd8fe6405e1ee9e13417754f2648b47ad2442e8116df1c9"
+  },
+  "hpf-03-01.wav": {
+    "metrics": {
+      "haptic": -38.927283443,
+      "low": -70.234873033
+    },
+    "sha256": "e12de085e5804576672272bb344d0f212eb80cea982320192c00291959943667"
+  },
+  "hpf-03-02.wav": {
+    "metrics": {
+      "haptic": -38.922422573,
+      "low": -70.242931563
+    },
+    "sha256": "ef350083236975f0b505e539e8ba0c1992535ad4b1398c25ef83c277be2e8b64"
+  },
+  "hpf-04-00.wav": {
+    "metrics": {
+      "haptic": -38.173555615,
+      "low": -66.555781478
+    },
+    "sha256": "089d6af00fc8c34b8479da5e2592463f1e0637a40569f058fea65d26cd99b7e6"
+  },
+  "hpf-04-01.wav": {
+    "metrics": {
+      "haptic": -38.145885311,
+      "low": -66.585375696
+    },
+    "sha256": "89a1487bc0b90abcbf6110f1639bb638d37eda4983cfc0181bc22cdaa4c43010"
+  },
+  "hpf-04-02.wav": {
+    "metrics": {
+      "haptic": -38.134354994,
+      "low": -66.482573689
+    },
+    "sha256": "51c48a3cbae6855ca5ea8330725e75189766ff6367b5fd0dab511c605d49c6dc"
+  },
+  "hpf-05-00.wav": {
+    "metrics": {
+      "haptic": -37.946879648,
+      "low": -64.374996816
+    },
+    "sha256": "26bed7f9534c84b851a87c037fb2a8a424064e8e53c799a3f3742e8eea736c78"
+  },
+  "hpf-05-01.wav": {
+    "metrics": {
+      "haptic": -37.938863666,
+      "low": -64.406042433
+    },
+    "sha256": "16a3b576461330f71c51a860b0ba9f2c6dbcf05e61eae08a2ba24fa57105b4aa"
+  },
+  "hpf-05-02.wav": {
+    "metrics": {
+      "haptic": -37.928376221,
+      "low": -64.388444417
+    },
+    "sha256": "2370481699404e66992915c34cf6f60bd2b5949d14fbd71deb42181f2a8a143c"
+  },
+  "hpf-06-00.wav": {
+    "metrics": {
+      "haptic": -37.889817688,
+      "low": -63.26272935
+    },
+    "sha256": "0346be7f97b2b7733a763fe233cf92177743d741ed9c179b810e47ab1ea7da79"
+  },
+  "hpf-06-01.wav": {
+    "metrics": {
+      "haptic": -37.876972716,
+      "low": -63.233906352
+    },
+    "sha256": "95b6db1c83197560d743549d0c2ccb545b7958f754fde0ae923d78fc004f1f36"
+  },
+  "hpf-06-02.wav": {
+    "metrics": {
+      "haptic": -37.882872243,
+      "low": -63.209123062
+    },
+    "sha256": "4a5a37a5e6c40ce2cf5b84cc818ec22cc01c73fb4c4775ad3f437e1a0b23cd33"
+  },
+  "hpf-07-00.wav": {
+    "metrics": {
+      "haptic": -38.992203656,
+      "low": -78.017279992
+    },
+    "sha256": "57e5e20e9195999c1ab447186a2661f58bc9d3e94954af6e807214bf9b2f2100"
+  },
+  "hpf-07-01.wav": {
+    "metrics": {
+      "haptic": -38.982309736,
+      "low": -77.890135978
+    },
+    "sha256": "6ec917ee05420e3d5ca0e288a507be8743a621bcee3ebcabb8f9ff05cceae6a7"
+  },
+  "hpf-07-02.wav": {
+    "metrics": {
+      "haptic": -38.948941887,
+      "low": -77.948178865
+    },
+    "sha256": "0908d1a5a86945ecc347c55c138f8dac11cf86aa2e69e513a3ad9459cff60103"
+  },
+  "hpf-08-00.wav": {
+    "metrics": {
+      "haptic": -38.174489015,
+      "low": -72.878524642
+    },
+    "sha256": "cf143cdb0db1ff6f9986b0a200e20c2ef3b7acf2553a1529897d0ec9e738f39e"
+  },
+  "hpf-08-01.wav": {
+    "metrics": {
+      "haptic": -38.144118933,
+      "low": -72.739783345
+    },
+    "sha256": "f29fe6d71701ccabeea9fe17bbc8a33ece41bbd5cdf87334d932dfc71ee41dda"
+  },
+  "hpf-08-02.wav": {
+    "metrics": {
+      "haptic": -38.158472892,
+      "low": -72.792812542
+    },
+    "sha256": "ca872cc3a8a91b1b7700ebbfdff416718371b6eb4c40e120e82bb1daa78f2304"
+  }
+}

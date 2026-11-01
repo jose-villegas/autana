@@ -1,5 +1,8 @@
 """Run CI's marked gates against an index snapshot.
 
+The gates are the steps of the staged .github/workflows/ files that carry
+STAGED_TEXT_GATE, in whichever repository this runs in.
+
 A step marked STAGED_TEXT_GATE: "true" is file-scoped: it gets --paths and
 the staged files. One marked "snapshot" checks the whole tree (a generated
 catalogue against its sources, say) and runs on the snapshot as it is.
@@ -7,7 +10,6 @@ catalogue against its sources, say) and runs on the snapshot as it is.
 import os
 import io
 from pathlib import Path
-import shlex
 import subprocess
 import sys
 import tempfile
@@ -15,24 +17,17 @@ import tempfile
 import yaml
 
 from check_style_audit import BINARY_EXTENSIONS, DATA_EXTENSIONS
+from tracked import repository
+from workflow_marks import is_workflow, marked_commands
 
 
 def main():
-    root = Path(subprocess.check_output(['git', 'rev-parse', '--show-toplevel'],
-                                       text=True).strip())
+    root = Path(repository())
     changed = subprocess.check_output(
         ['git', 'diff', '--cached', '--name-only', '--diff-filter=ACMRD', '-z'], cwd=root)
     files = changed.decode('utf-8').strip('\0').split('\0') if changed else []
     if not files:
         return 0
-    workflow = yaml.safe_load(subprocess.check_output(
-        ['git', 'show', ':.github/workflows/comment-rules.yml'], cwd=root))
-    commands = [(shlex.split(step['run']), step['env']['STAGED_TEXT_GATE'] == 'true')
-                for job in workflow['jobs'].values() for step in job['steps']
-                if step.get('env', {}).get('STAGED_TEXT_GATE') in ('true', 'snapshot')]
-    if not commands:
-        print('No staged text gates declared in comment-rules.yml', file=sys.stderr)
-        return 1
     listing = subprocess.check_output(['git', 'ls-files', '--stage', '-z'], cwd=root)
     context = []
     for entry in listing.decode('utf-8').strip('\0').split('\0'):
@@ -41,8 +36,19 @@ def main():
         if metadata.startswith('160000 ') or (suffix in BINARY_EXTENSIONS - DATA_EXTENSIONS):
             continue
         context.append((metadata.split()[1], path))
-    git_dir = subprocess.check_output(['git', 'rev-parse', '--absolute-git-dir'],
-                                      cwd=root, text=True).strip()
+    workflows = [yaml.safe_load(subprocess.check_output(['git', 'show', f':{path}'], cwd=root))
+                 for _, path in context if is_workflow(path)]
+    try:
+        commands = [(command, value == 'true') for command, value
+                    in marked_commands(workflows, 'STAGED_TEXT_GATE', ('true', 'snapshot'))]
+    except ValueError as error:
+        print(error, file=sys.stderr)
+        return 1
+    # Absolute both: git gives a commit hook GIT_INDEX_FILE=.git/index, which
+    # the gates, run in the snapshot, would read as an index that is not there.
+    git_dir, index = subprocess.check_output(
+        ['git', 'rev-parse', '--absolute-git-dir', '--path-format=absolute', '--git-path', 'index'],
+        cwd=root, text=True).split()
     status = 0
     with tempfile.TemporaryDirectory(prefix='autana-staged-') as folder:
         snapshot = Path(folder)
@@ -57,14 +63,16 @@ def main():
             target.write_bytes(blobs.read(size))
             blobs.read(1)
         (snapshot / 'launcher/main/apps').mkdir(parents=True, exist_ok=True)
-        env = dict(os.environ, GIT_DIR=git_dir, GIT_WORK_TREE=str(snapshot))
+        env = dict(os.environ, GIT_DIR=git_dir, GIT_INDEX_FILE=index, GIT_WORK_TREE=str(snapshot))
         # The gates read the snapshot and write nothing, so they run side by
         # side: the hook takes as long as the slowest, not their sum. Each
         # one's output is printed whole once it finishes.
         running = []
         for command, scoped in commands:
-            command[0] = sys.executable
-            command[1] = str(snapshot / command[1])
+            # The commit's own gate when it holds one; a submodule's, which
+            # no snapshot holds, runs from the checked-out pin.
+            gate = snapshot / command[1]
+            command[1] = str(gate if gate.exists() else root / command[1])
             # CI requires the SDK; local machines without it still check the
             # project vocabulary and print the citation gate's skipped notice.
             command = [arg for arg in command if arg != '--require-idf']
