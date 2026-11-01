@@ -4,10 +4,12 @@ import argparse
 from pathlib import Path
 import sys
 
-import math_bench_table as bench
+import bench_capture as bench
+
+ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "launcher/tools/render"))
 from generated_blocks import replace_block
 
-ROOT = bench.ROOT
 CAPTURE = Path("docs/packages/data/hash_bench_capture.txt")
 PLACEHOLDER = "# Board capture pending: run autana suite run_hash_perf_suite --flash."
 COMMAND = "python launcher/tools/perf/hash_bench_table.py --check"

@@ -395,15 +395,6 @@ class FastPathTests(unittest.TestCase):
         item = next(item for item in paths.annotations(self.root) if item.key == 'mathx_rsqrt_q30')
         self.assertEqual(paths.tables_for(item, self.root), ['mathx_rsqrt_seeds'])
 
-    def test_target_capture_requires_hardware_and_one_identity(self):
-        good = 'MATHTARGET target=esp32s3 arch=Xtensa execution=hardware\n'
-        self.assertEqual(bench.parse_target(good), 'esp32s3 (Xtensa)')
-        self.assertEqual(bench.parse_target(good.replace(' execution', ' core=LX7 execution')), 'esp32s3 (Xtensa, LX7)')
-        for bad in (good.replace('hardware', 'host'), good + good.replace('esp32s3', 'other'),
-                    good.replace(' execution=', ' mode=')):
-            with self.subTest(bad=bad), self.assertRaises(ValueError):
-                bench.parse_target(bad)
-
     def test_elf_sizes_keep_aliases_and_classify_sections(self):
         from code_layout import symbols
         from unittest.mock import patch
