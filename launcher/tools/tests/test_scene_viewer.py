@@ -122,6 +122,12 @@ path = { animation = "fly.anim.toml", node = "camera" }
                               "--asset-file", str(self.scene)], capture_output=True, text=True, timeout=120)
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
 
+    def test_checkpoint_replay_every_view(self):
+        check = TOOLS / "render/tests/check_render_checkpoint.sh"
+        run = subprocess.run([shutil.which("sh"), str(check), "-o", str(self.root / "checkpoint"),
+                              "--asset-file", str(self.scene)], capture_output=True, text=True, timeout=120)
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+
     def test_every_declared_view_name_is_accepted(self):
         run, _ = self.render("--view", "invalid")
         self.assertNotEqual(run.returncode, 0)

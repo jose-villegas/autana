@@ -576,3 +576,14 @@ raster_cull_frame_t
 raster_cull_frame(const raster_cull_t* state) {
     return state->frame;
 }
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+bool
+raster_cull_copy_view(void* destination, const void* source, const raster_t* raster) {
+    raster_cull_t* out = destination;
+    const raster_cull_t* in = source;
+    *out = *in;
+    out->raster = in->raster == NULL ? NULL : raster;
+    return true;
+}
+#endif
