@@ -14,6 +14,8 @@ indirect render_lab_frame : scene_baked_status
 indirect render_lab_frame : scene_capybara_frame capybara_status
 indirect render_lab_update : scene_capybara_steer
 indirect render_lab_console : scene_capybara_console
+indirect render_lab_path_duration_ms : scene_baked_path capybara_path
+indirect render_lab_seek_path : scene_baked_path capybara_path
 indirect render_lab_menu_screen_draw : scene_capybara_controls
 indirect ui_toggle_id : measure_text_height
 indirect render_lab_test_enter : render_lab_enter

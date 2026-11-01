@@ -13,7 +13,8 @@ try:
     from tests import soup
 
     from r3d.geometry import corner_normals
-    from r3d.reference_render import device_picture, render_linear, trace
+    from r3d.light import coincident_faces
+    from r3d.reference_render import device_picture, primary_hits, render_linear, trace
     from render_compare import expand_565
 except ImportError:
     np = None
@@ -22,13 +23,18 @@ from tests.r3d_env import needs_mitsuba  # noqa: E402
 from tests.test_r3d_path_bake import needs_llvm  # noqa: E402
 
 
-def plane_source(corners):
-    """A one-material quad of two triangles facing +z, white, unlit by anything but the scene."""
+def plane_source(*quads):
+    """One-material quads of two triangles each, facing +z when wound counter-clockwise seen from above, white, unlit
+    by anything but the scene."""
+    tris = np.array([[0, 1, 2], [0, 2, 3]])
+    tri_v = np.concatenate([tris + 4 * index for index in range(len(quads))])
     source = SimpleNamespace(
-        p=np.array(corners), uv=np.zeros((4, 2)), tri_v=np.array([[0, 1, 2], [0, 2, 3]]), tri_t=np.array([[0, 1, 2], [0, 2, 3]]),
-        tri_m=np.array([0, 0]), names=["plane"], materials={"plane": {"Kd": (1.0, 1.0, 1.0)}}, textures=[None], colors=None,
+        p=np.concatenate([np.array(quad, dtype=float) for quad in quads]), uv=np.zeros((4 * len(quads), 2)), tri_v=tri_v,
+        tri_t=tri_v, tri_m=np.zeros(len(tri_v), dtype=int), names=["plane"], materials={"plane": {"Kd": (1.0, 1.0, 1.0)}},
+        textures=[None], colors=None,
     )
     source.corner_normals = corner_normals(source.p, source.tri_v)
+    source.twin = coincident_faces(source.p, source.tri_v)[0]
     source.bounce = None
     source.intersector = soup.rays(soup.Soup(source.p, source.tri_v))
     return source
@@ -94,11 +100,38 @@ class ReferenceRenderTest(unittest.TestCase):
 
     @needs_mitsuba
     def test_the_normal_buffer_faces_the_eye_and_is_zero_where_rays_miss(self):
-        # Wound to face away from the eye at z = 1: the buffer still turns its normal toward the eye.
+        # Double-sided and wound to face away from the eye at z = 1: the buffer still turns its normal toward the eye.
         source = plane_source([[-0.5, 0.5, 0.0], [-0.5, 2.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.5, 0.0]])
-        _linear, _covered, normal = trace(source, *sun_scene([0.0, 0.0, 1.0]), LOOK_DOWN, 2, 2, 1.0, 2)
+        job, scene = sun_scene([0.0, 0.0, 1.0])
+        job.settings.double_sided = {"plane"}
+        _linear, _covered, normal = trace(source, job, scene, LOOK_DOWN, 2, 2, 1.0, 2)
         np.testing.assert_allclose(normal[0, 0], [0.0, 0.0, 1.0], atol=1e-12, rtol=0)
         np.testing.assert_allclose(normal[1], 0.0, atol=1e-12, rtol=0)
+
+    @needs_mitsuba
+    def test_a_single_sided_face_seen_from_behind_is_passed_as_the_device_culls_it(self):
+        # Two crossing shells, as a reduced source leaves them: the eye at z = 1 meets the back of a face at z = 0.5
+        # first. The device culls it and draws the floor at z = 0; double-sided, it is drawn itself.
+        behind = [[-2.0, -2.0, 0.5], [-2.0, 2.0, 0.5], [2.0, 2.0, 0.5], [2.0, -2.0, 0.5]]
+        floor = [[-2.0, -2.0, 0.0], [2.0, -2.0, 0.0], [2.0, 2.0, 0.0], [-2.0, 2.0, 0.0]]
+        source = plane_source(behind, floor)
+        job, _scene = sun_scene([0.0, 0.0, 1.0])
+        _origin, _direction, locations, rays, faces, _normal, _bary, _double = primary_hits(source, job, LOOK_DOWN, 1, 1,
+                                                                                            0.1, 1)
+        np.testing.assert_array_equal(rays, [0])
+        np.testing.assert_allclose(locations[:, 2], [0.0], atol=1e-6)
+        job.settings.double_sided = {"plane"}
+        locations = primary_hits(source, job, LOOK_DOWN, 1, 1, 0.1, 1)[2]
+        np.testing.assert_allclose(locations[:, 2], [0.5], atol=1e-6)
+
+    @needs_mitsuba
+    def test_a_back_face_over_its_twin_draws_the_twin(self):
+        # The two sides of a thin wall share positions: whichever the tracer meets, the eye sees the front one.
+        back = [[-2.0, -2.0, 0.0], [-2.0, 2.0, 0.0], [2.0, 2.0, 0.0], [2.0, -2.0, 0.0]]
+        front = [[-2.0, -2.0, 0.0], [2.0, -2.0, 0.0], [2.0, 2.0, 0.0], [-2.0, 2.0, 0.0]]
+        source = plane_source(back, front, [[x, y, -1.0] for x, y, _z in front])
+        faces = primary_hits(source, *sun_scene([0.0, 0.0, 1.0])[:1], LOOK_DOWN, 1, 1, 0.1, 1)[4]
+        self.assertIn(faces[0], (2, 3))
 
     @needs_mitsuba
     def test_a_pose_at_empty_sky_is_the_scene_background_as_the_device_shows_it(self):
@@ -133,6 +166,7 @@ class PooledReferenceTests(unittest.TestCase):
         source.tri_t = np.zeros_like(source.tri_v)
         source.tri_m = np.zeros(len(source.tri_v), dtype=int)
         source.corner_normals = corner_normals(source.p, source.tri_v)
+        source.twin = coincident_faces(source.p, source.tri_v)[0]
         source.intersector = soup.rays(mesh)
         job, scene = sun_scene([0., 0., -1.])
         job.bake.ao = SimpleNamespace(distance=3., strength=.8, rays=8, indirect=True)
