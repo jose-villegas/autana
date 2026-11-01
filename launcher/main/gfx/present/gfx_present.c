@@ -35,7 +35,7 @@ _Static_assert(GFX_WIDTH == BSP_LCD_H_RES && GFX_HEIGHT == BSP_LCD_V_RES, "gfx.h
  * places it: the compiler's clones of a function inherit the attribute, and
  * a mapping entry names only the original. Development overlays and send
  * auditing make dev and diag larger.
- * IRAM budget: release 2422 B, dev 3243 B, diag 3243 B */
+ * IRAM budget: release 2422 B, dev 3242 B, diag 3242 B */
 #define GFX_PRESENT_IRAM_ATTR IRAM_ATTR
 static const char* TAG = "gfx";
 #else

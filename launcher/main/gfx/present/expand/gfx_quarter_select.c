@@ -85,8 +85,9 @@ __asm__(".section .rodata.gfx_pie_constants, \"a\"\n"
         "    ee.orq \\other, \\other, \\spare\n"
         "    ee.andq \\rb, \\rb, q4\n"
         "    ee.orq \\rb, \\rb, \\other\n"
-        ".endm\n"
-        ".section .text.gfx_quarter_select, \"ax\", @progbits\n"
+        ".endm\n");
+
+__asm__(".section .text.gfx_quarter_select, \"ax\", @progbits\n"
         ".align 4\n"
         ".global gfx_quarter_select\n"
         ".type gfx_quarter_select, @function\n"
