@@ -27,7 +27,8 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from c_includes import resolve_include as resolve_quoted_include  # noqa: E402
-from c_comments import excluded, blank_comments, scan  # noqa: E402
+from c_comments import excluded, blank_comments, scan
+from c_constants import DEFINE, definitions, fold  # noqa: E402
 from check_doc_citations import documentation  # noqa: E402
 from check_doc_constants import ESCAPE as DOC_CONSTANTS_ESCAPE  # noqa: E402
 from check_doc_index import blank_fences  # noqa: E402
@@ -145,6 +146,169 @@ def _text_walk(root, files=None):
         except (UnicodeDecodeError, OSError):
             continue
         yield full, text
+
+
+
+# RULE: named math constants express axes and identities in the scalar type's
+# units. Mutable static-storage initializers are starting states C11 cannot
+# call to build. Array rows, nested fields without a spelled type, and #define
+# bodies are not judged. Const static literals are reported for manual removal.
+# Addressed literals require a local whose address can be passed.
+
+MATH_HEADERS = "launcher/packages/math/include/math"
+
+
+def math_constant_table(root):
+    headers = pathlib.Path(root) / MATH_HEADERS
+    signature = tuple((str(path), path.stat().st_mtime_ns, path.stat().st_size)
+                      for path in sorted(headers.rglob("*.h")))
+    return _math_constant_table(signature)
+
+
+@functools.lru_cache(maxsize=8)
+def _math_constant_table(signature):
+    sources = {path: blank_comments(pathlib.Path(path).read_text(encoding="utf-8"), "code")
+               for path, _, _ in signature}
+    values = {}
+    pending = [d for path, code in sources.items() for d in definitions(str(path), code)
+               if d.kind == "define"]
+    for _ in range(len(pending)):
+        before = len(values)
+        for definition in pending:
+            value = fold(definition.expression, values)
+            if value is not None:
+                values[definition.name] = value
+        if len(values) == before:
+            break
+    templates, macros = {}, {}
+    for path, code in sources.items():
+        for macro in DEFINE.finditer(code):
+            body = re.sub(r"\\\r?\n", "", macro[2]).strip()
+            if body.startswith("{"):
+                macros[macro[1]] = macro[1].lower() + "()"
+        code = re.sub(r"\\\r?\n", "", code)
+        for definition in re.finditer(r"#define\s+(MATH_DEFINE_\w+)\(([^)]*)\)(.*?)(?=#define|\Z)", code, re.S):
+            constants = {}
+            fields = re.search(r"typedef\s+struct\s*\{\s*T\s+([\w,\s]+);\s*\}", definition[3])
+            if not fields:
+                continue
+            components = tuple(re.findall(r"\w+", fields[1]))
+            for function in re.finditer(r"static\s+inline\s+P##_t\s+P##_(\w+)\(void\)\s*\{\s*return\s+(.*?);\s*\}", definition[3], re.S):
+                expression = re.sub(r"\s+", "", function[2])
+                brace = re.fullmatch(r"\(P##_t\)\{([^{}]+)\}", expression)
+                if brace:
+                    scalar = {"OPS##_zero()": 0, "OPS##_one()": 1, "OPS##_neg(OPS##_one())": -1}
+                    entries = brace[1].rstrip(",").split(",")
+                    if len(entries) == len(components) and all(entry in scalar for entry in entries):
+                        constants[function[1]] = tuple(scalar[entry] for entry in entries)
+                else:
+                    alias = re.fullmatch(r"P##_(\w+)\(\)", expression)
+                    if alias and alias[1] in constants:
+                        constants[function[1]] = constants[alias[1]]
+            templates[definition[1]] = (components, constants)
+    table = {}
+    for code in sources.values():
+        for instance in re.finditer(r"\b(MATH_DEFINE_\w+)\(([^()]*)\)", code):
+            if instance[1] not in templates:
+                continue
+            arguments = [arg.strip() for arg in instance[2].split(",")]
+            prefix = arguments[0]
+            if prefix == "P":
+                continue
+            components, constants = templates[instance[1]]
+            unit = values["MATHX_ONE"] if "mathx" in arguments else 1
+            entries = {}
+            for name, value in constants.items():
+                entries.setdefault(tuple(v * unit for v in value), prefix + "_" + name + "()")
+            table[prefix + "_t"] = (components, entries)
+    return table, macros, values
+
+
+def _math_storage(code, offset):
+    stack, function_start = [], None
+    for match in re.finditer(r"[{}]", code[:offset]):
+        if match[0] == "{":
+            is_function = not stack and bool(re.search(
+                r"\b\w+\s*\([^;{}]*\)\s*$", code[:match.start()]))
+            stack.append(is_function)
+            if is_function:
+                function_start = match.end()
+        elif stack:
+            if stack.pop():
+                function_start = None
+    start = max(code.rfind(";", 0, offset) + 1, function_start or 0)
+    declaration = code[start:offset]
+    static = function_start is None or bool(re.search(r"\bstatic\b", declaration))
+    return static, bool(re.search(r"\bconst\b", declaration))
+
+
+def _math_literal(body, fields, values):
+    result = [0] * len(fields)
+    next_field = 0
+    for entry in body.strip().rstrip(",").split(","):
+        designated = re.fullmatch(r"\s*\.(\w+)\s*=\s*(.*?)\s*", entry, re.S)
+        if designated:
+            if designated[1] not in fields:
+                return None
+            next_field = fields.index(designated[1])
+            entry = designated[2]
+        entry = entry.strip()
+        if not re.fullmatch(r"-?(?:[01](?:\.0)?[Ff]?|MATHX_ONE)", entry):
+            return None
+        if re.fullmatch(r"-0(?:\.0)?[Ff]?", entry):
+            return None
+        value = (-1 if entry.startswith("-") else 1) * (
+            values.get("MATHX_ONE", 0) if "MATHX_ONE" in entry else float(entry.lstrip("-").rstrip("Ff")))
+        if next_field >= len(fields):
+            return None
+        result[next_field] = value
+        next_field += 1
+    return tuple(result)
+
+
+def math_constant_sites(root, path, text):
+    rel = relpath(root, path)
+    if (not rel.startswith("launcher/") or rel.startswith(MATH_HEADERS + "/")
+            or path.suffix.lower() not in {".c", ".h", ".cc", ".cpp", ".cxx", ".hpp"}):
+        return
+    table, macros, values = math_constant_table(root)
+    code = blank_comments(text, "code")
+    code = DEFINE.sub(lambda m: "".join("\n" if c == "\n" else " " for c in m[0]), code)
+    if table:
+        types = "|".join(map(re.escape, table))
+        pattern = re.compile(r"\(\s*(?P<cast>" + types + r")\s*\)\s*(?P<brace>\{[^{}]*\})|"
+                             r"\b(?P<type>" + types + r")\s+(?:const\s+)?\w+\s*=\s*(?P<init>\{[^{}]*\})")
+        for match in pattern.finditer(code):
+            static, const = _math_storage(code, match.start())
+            if static and not const:
+                continue
+            typename = match["cast"] or match["type"]
+            fields, entries = table[typename]
+            body = match["brace"] or match["init"]
+            function = entries.get(_math_literal(body[1:-1], fields, values))
+            if function:
+                start, end = match.span() if match["cast"] else match.span("init")
+                yield start, end, function, not static and not code[:start].rstrip().endswith("&")
+    if macros:
+        for match in re.finditer(r"\b(?:" + "|".join(map(re.escape, macros)) + r")\b", code):
+            static, _ = _math_storage(code, match.start())
+            if static:
+                continue
+            cast = re.search(r"\(\s*\w+_t\s*\)\s*$", code[:match.start()])
+            yield cast.start() if cast else match.start(), match.end(), macros[match[0]], True
+
+
+def fix_math_constant(root, path, text):
+    for start, end, function, fixable in sorted(math_constant_sites(root, path, text), reverse=True):
+        if fixable:
+            text = text[:start] + function + text[end:]
+    return text
+
+
+@text_rule("MATH-CONSTANT", fixer=fix_math_constant)
+def rule_math_constant(root, path, text):
+    for start, _, function, _ in math_constant_sites(root, path, text):
+        yield text.count("\n", 0, start) + 1, "use " + function
 
 
 # RULE: a tracker issue id or a git commit hash names a system this repo
@@ -1098,7 +1262,7 @@ def run_fix(root, findings):
     for rel in files:
         path = pathlib.Path(root) / rel
         before = path.read_bytes()
-        text = path.read_text(encoding="utf-8", errors="replace")
+        text = before.decode("utf-8", errors="replace")
         original = text
         rule_ids = sorted({f.rule_id for f in findings if f.path == rel and f.fixable})
         for rule_id in rule_ids:
