@@ -6,7 +6,7 @@
 #include "testkit/suite.h"
 #include "unity.h"
 
-#define HASH_BENCH_CAPACITY      (64 * 1024)
+#define HASH_BENCH_CAPACITY      (16 * 1024)
 #define HASH_BENCH_TYPE_CAPACITY 32
 
 static const uint8_t flash_data[HASH_BENCH_CAPACITY] = {0};
