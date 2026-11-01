@@ -66,6 +66,17 @@ scripts/gates/check-format.sh path/to/file.c path/to/file.h
 - `CLANG_FORMAT_ANY_VERSION=1` forces another major, and reformats files you did not touch.
 - An ESP-IDF bump that changes the esp-clang major reformats the tree in its own commit, listed in `.git-blame-ignore-revs`.
 
+Math vectors, rectangles and identities use their named constant functions.
+MATH-CONSTANT in `scripts/gates/check_style_audit.py` discovers them from the
+math headers; `--rule MATH-CONSTANT --fix` rewrites literal copies.
+
+Brace initializer macros such as `MAT4F_IDENTITY` are only for static storage,
+where C11 cannot call a function. Mutable static initializers, array rows,
+untyped nested fields and macro definitions are outside the rule.
+
+Const static copies require removal and calls at their use sites. An addressed
+compound literal requires a local initialized by the constant function.
+
 ### Where the rules are checked
 
 `scripts/gates/format-file-list.sh` is the one file list for hook and CI: vendored trees
