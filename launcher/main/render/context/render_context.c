@@ -1,7 +1,9 @@
 #include "render/context/render_context.h"
+#include "core/checkpoint.h"
 
 #include <assert.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "build/build_variant.h"
@@ -25,7 +27,8 @@ static const render_debug_view_t views[] = {
      .state_bytes = sizeof(raster_motion_t),
      .attachment = raster_motion_view,
      .reserve = raster_motion_reserve_view,
-     .release = raster_motion_release_view},
+     .release = raster_motion_release_view,
+     .checkpoint = raster_motion_checkpoint},
     {.name = "meshlets", .state_bytes = sizeof(raster_meshlets_t), .attachment = raster_meshlets_view},
     {.name = "cull",
      .state_bytes = sizeof(raster_cull_t),
@@ -502,3 +505,66 @@ const void*
 render_context_debug_view_state(const render_context_t* c) {
     return c->debug_view_state;
 }
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+void
+render_context_checkpoint_capture(checkpoint_t* saved, render_context_t* context) {
+    checkpoint_capture(saved, context, sizeof(*context));
+    checkpoint_capture(saved, context->scratch, context->scratch_bytes);
+    const render_debug_view_t* row = render_context_debug_view(context->debug_view);
+    if (row != NULL) {
+        checkpoint_capture_at(saved, &context->debug_view_state, row->checkpoint == NULL ? row->state_bytes : 0);
+        if (row->checkpoint != NULL) {
+            row->checkpoint(saved, context->debug_view_state);
+        }
+    }
+    const size_t bytes = (size_t)context->framegen.width * context->framegen.height * sizeof(uint16_t);
+    checkpoint_capture_at(saved, &context->framegen.colour, bytes);
+    checkpoint_capture_at(saved, &context->framegen.depth, bytes);
+}
+
+static uint16_t*
+checkpoint_map(const render_context_t* source, const render_context_t* destination, const uint16_t* map) {
+    return map == NULL ? NULL
+                       : (uint16_t*)((uint8_t*)destination->scratch + ((uintptr_t)map - (uintptr_t)source->scratch));
+}
+
+bool
+render_context_checkpoint_prepare(checkpoint_t* saved, render_context_t* context) {
+    checkpoint_block_t* block = checkpoint_find(saved, context);
+    void* data = block == NULL ? NULL : block->data;
+    if (data == NULL) {
+        return false;
+    }
+    render_context_t source;
+    memcpy(&source, data, sizeof source);
+    if (source.take != context->take) {
+        return false;
+    }
+    if (source.scratch_bytes != 0 && (context->scratch == NULL || context->scratch_bytes < source.scratch_bytes)) {
+        if (context->take != NULL) {
+            return false;
+        }
+        void* scratch = memory_alloc(source.scratch_bytes, MEMORY_PSRAM);
+        if (scratch == NULL) {
+            return false;
+        }
+        memory_free(context->scratch);
+        context->scratch = scratch;
+        context->scratch_bytes = source.scratch_bytes;
+    }
+    if (source.debug_view == RENDER_DEBUG_VIEW_SHADED) {
+        free_view_state(context);
+    }
+    render_context_t restored = source;
+    restored.scratch = context->scratch;
+    restored.scratch_bytes = context->scratch_bytes;
+    restored.raster.scratch = context->scratch;
+    restored.raster.upscale.columns = checkpoint_map(&source, context, source.raster.upscale.columns);
+    restored.raster.upscale.rows = checkpoint_map(&source, context, source.raster.upscale.rows);
+    restored.raster.upscale.blends = checkpoint_map(&source, context, source.raster.upscale.blends);
+    (void)checkpoint_retarget(saved, source.scratch, context->scratch);
+    memcpy(data, &restored, sizeof restored);
+    return true;
+}
+#endif

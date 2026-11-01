@@ -1,8 +1,13 @@
-# Math fast paths
+# Package fast paths
 
 The tables compare plain C with the package implementation: algorithm,
 measured cost and error, linked size, build conditions, and calling modules.
-The [capture commands](Benchmark.md#capture) produce the evidence.
+[Math captures](../math/Benchmark.md#capture) and
+[hash captures](Hash-Benchmark.md) produce the timing evidence.
+
+Owners annotate headers with `FAST_PATH(fast, reference, NAMED_LIMIT[=value unit])`.
+The generator scans every `launcher/packages/*/include` tree.
+Units are `ulp`, `relative`, `lsb` or `bit`; the named constant owns the limit.
 
 Key: warm cycles measure cached batches; cold cycles include instruction-cache refill.
 Plain/fast is the warm cycle ratio (greater than one wins).
@@ -10,7 +15,7 @@ Errors: steps count ulp steps from the rounded result; figures show ulp from the
 Code totals wrappers and callees by ELF region; table bytes total linked copies.
 A dash means no measurement or table. Callers are engine modules; app names are grouped.
 
-<!-- generated: math-fast-paths check: python launcher/tools/perf/fast_paths.py --check -->
+<!-- generated: package-fast-paths check: python launcher/tools/perf/fast_paths.py --check -->
 Measured target: esp32s3 (Xtensa, LX7_ESP32_S3_MP).
 
 ### What it replaces
@@ -229,4 +234,18 @@ Plain way: `1.0F / x`.
 Worst bin: mantissa 1.97-2.00 at 6.1e-5; every other bin <= 3.2e-5.
 
 ![Error across the input range](../images/math/fast-path-mathf_recip_approx.png)
-<!-- /generated: math-fast-paths -->
+
+<a id="crc32-update"></a>
+
+## `crc32_update`
+
+| Fast path | Reference | Limit |
+|---|---|---|
+| `crc32_update` | `crc32_update_nibble` | `HASH_CRC32_BIT_LIMIT` = 0 bit |
+
+Contract and build choices: [hash package](../../launcher/packages/hash/README.md).
+
+Callers: `asset`.
+
+Correctness: [hash tests](../../launcher/packages/hash/tests); sweep.
+<!-- /generated: package-fast-paths -->

@@ -397,11 +397,15 @@ Two files, the same declare-then-source shape a report script uses:
   `build_pack.py` writes as packs beside the renderer; a folder with no asset
   roots fails the build.
 
-CMake's `autana::render_host_core` supplies the host frame loop, drawing and assets.
+CMake's `autana::render_host_core` supplies the host frame loop on top of
+`autana::render_engine`: drawing, assets, tune, jobs and packages, with no `main()` and no
+allocation hooks. `launcher/tools/render/engine_sources.cmake` owns that list, and
+`run_tests.sh` reads it with `cmake -P`.
 
-`scene_renderer=1` selects `autana::render_host`, adding the renderer folders in
-`launcher/main/renderer_folders.txt`. Its consumer defines `display_quarter_now()`
-from `display/display.h`.
+`scene_target=render_host` selects `autana::render_host`, adding the renderer that
+`launcher/main/renderer_sources.cmake` lists. Its consumer defines `display_quarter_now()`
+from `display/display.h`. `scene_target=scene_provider` adds the scene-file
+provider, `scene_viewer.c`, which defines it.
 
 A host consumer adds `launcher/tools/render` with `add_subdirectory()` and links
 the chosen target. Its interface sources compile with the consumer's defines;
@@ -430,6 +434,30 @@ stateDiagram-v2
 ```
 
 If `render_host_open()` returns false, no run opened and `exit_code` carries the command's result.
+
+`render_host_save()`, `render_host_restore()` and `render_host_checkpoint_free()`
+retain frame history in host and development builds. Saving can return NULL
+on allocation failure. Checkpoints remain reusable within the open run.
+`render_host_pixels()` exposes the converted output bytes for comparisons.
+
+| Owner | Carried state |
+|---|---|
+| Host loop | Frame index, elapsed time, input, drawn box and output pixels |
+| Scene | Animation playheads and poses, transforms, world caches, cameras, skin output and lights |
+| Render context | Raster scratch and upscale maps, split feedback, frame-generation pictures and costs, resolution controller and debug views |
+| Graphics | Presentation flags, dirty regions, framebuffers, half picture and seams, indexed image and palettes |
+| Tunables | Values and owner generations |
+
+One checkpoint captures engine state; provider statics are excluded. Restore
+returns false if captured allocations changed or a lent scratch is too small.
+Keep loaded scenes, component allocations and the presentation mode alive.
+
+Pointer guards cannot detect a free followed by a reallocation at the same address.
+
+Restoring rewinds inputs, retained pictures and measured costs, without
+rewinding output files or the wall clock. Timed choices (frame generation
+and predicted resolution) replay only as exactly as their clock.
+Byte comparisons use frame generation off and a fixed or declared size.
 
 Each draw receives a `provider_frame_t`. Optional `path_ms` and `seek` hooks
 expose a provider's path duration and camera cuts. The scene-file provider
