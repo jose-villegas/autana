@@ -110,7 +110,7 @@ board_touch_open(esp_lcd_touch_handle_t* out) {
     return bsp_touch_new(NULL, out);
 }
 
-i2s_port_t
+int
 board_audio_i2s_port(void) {
     return CONFIG_BSP_I2S_NUM;
 }
