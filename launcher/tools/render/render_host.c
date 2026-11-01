@@ -445,6 +445,11 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
     return true;
 }
 
+const provider_frame_t*
+render_host_frame(void) {
+    return &host.frame;
+}
+
 void
 render_host_step(uint32_t dt_ms, const input_t* input) {
     host.frame.dt_ms = dt_ms;
