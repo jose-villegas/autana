@@ -68,8 +68,9 @@ static vec2i_t last_point = {-1, -1};
  * touches still measures how long a touch read waits for the shared bus. */
 TUNE(touch, probe, 0, 0, 1);
 
-/* Controller read times since the last touch_take_read_times(): a histogram for
- * the p95, the exact worst. The read includes its wait for the shared I2C bus. */
+/* Controller reads since the last touch_take_read_times(): a histogram for the
+ * p95, the exact worst, and the failures (an idle controller NACKs, which still
+ * waits for the bus first). Each time includes the wait for the shared I2C bus. */
 #define TOUCH_READ_BUCKET_US 250
 #define TOUCH_READ_BUCKETS   128
 
@@ -77,18 +78,28 @@ typedef struct {
     uint32_t buckets[TOUCH_READ_BUCKETS];
     int64_t max_us;
     unsigned count;
+    unsigned failed;
 } touch_read_times_t;
 
 static touch_read_times_t read_times;
 
 static void
-count_read_time(int64_t read_us) {
+count_read(int64_t read_us, bool ok) {
     const int64_t bucket = read_us / TOUCH_READ_BUCKET_US;
     portENTER_CRITICAL(&lock);
     read_times.buckets[bucket < TOUCH_READ_BUCKETS ? bucket : TOUCH_READ_BUCKETS - 1]++;
     read_times.max_us = read_us > read_times.max_us ? read_us : read_times.max_us;
     read_times.count++;
+    read_times.failed += ok ? 0U : 1U;
     portEXIT_CRITICAL(&lock);
+}
+#else
+#define probe 0
+
+static inline void
+count_read(int64_t read_us, bool ok) {
+    (void)read_us;
+    (void)ok;
 }
 #endif
 
@@ -189,19 +200,10 @@ poll_controller(bool* have_point, vec2i_t* point) {
      * timeout; polling blindly at this rate would swamp the system. */
     const bool pending = report_pending;
     report_pending = false;
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    const bool probing = probe != 0;
-#else
-    const bool probing = false;
-#endif
-    if (panel != NULL && (pending || was_touching || probing || gpio_get_level(BSP_LCD_TOUCH_INT) == 0)) {
-#if CONFIG_LAUNCHER_DEVELOPMENT
+    if (panel != NULL && (pending || was_touching || probe != 0 || gpio_get_level(BSP_LCD_TOUCH_INT) == 0)) {
         const int64_t start_us = timing_now_us();
         const esp_err_t read = esp_lcd_touch_read_data(panel);
-        count_read_time(timing_now_us() - start_us);
-#else
-        const esp_err_t read = esp_lcd_touch_read_data(panel);
-#endif
+        count_read(timing_now_us() - start_us, read == ESP_OK);
         if (read == ESP_OK) {
             esp_lcd_touch_point_data_t raw = {0};
             uint8_t count = 0;
@@ -322,7 +324,7 @@ touch_take_sample_counts(uint32_t* points, uint32_t* moved) {
 }
 
 void
-touch_take_read_times(unsigned* reads, int64_t* p95_us, int64_t* max_us) {
+touch_take_read_times(unsigned* reads, unsigned* failed, int64_t* p95_us, int64_t* max_us) {
     portENTER_CRITICAL(&lock);
     const touch_read_times_t taken = read_times;
     read_times = (touch_read_times_t){0};
@@ -336,6 +338,7 @@ touch_take_read_times(unsigned* reads, int64_t* p95_us, int64_t* max_us) {
         bucket++;
     }
     *reads = taken.count;
+    *failed = taken.failed;
     *p95_us = taken.count > 0 ? (int64_t)(bucket + 1) * TOUCH_READ_BUCKET_US : 0;
     *max_us = taken.max_us;
 }
