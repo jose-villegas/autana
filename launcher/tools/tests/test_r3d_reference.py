@@ -349,14 +349,14 @@ class TraceDeviceTests(unittest.TestCase):
         import io
         import tempfile
         from unittest.mock import patch
-        from r3d import mesh_import, ray_query, reference_render
+        from r3d import mesh_source, ray_query, reference_render
         from r3d.fitted_variant import poses_text
 
-        self.addCleanup(mesh_import.PATH_LIGHTS.clear)
+        self.addCleanup(mesh_source.PATH_LIGHTS.clear)
         inputs = SimpleNamespace(job=lambda: None, scene=lambda: None)
         seen = []
         for failure in (None, RuntimeError("pose failed")):
-            mesh_import.PATH_LIGHTS["cached"] = object()
+            mesh_source.PATH_LIGHTS["cached"] = object()
             with tempfile.TemporaryDirectory() as directory, contextlib.ExitStack() as stack:
                 poses = pathlib.Path(directory) / "poses.txt"
                 poses.write_text(poses_text(2, 2, 1.0, 0.01, [LOOK_DOWN.tolist()]))
@@ -366,7 +366,7 @@ class TraceDeviceTests(unittest.TestCase):
                 stack.enter_context(patch.object(reference_render, "render_poses", side_effect=failure,
                                                  return_value=(0, 1)))
                 stack.enter_context(patch.object(ray_query, "release_gpu",
-                                                 side_effect=lambda: seen.append(dict(mesh_import.PATH_LIGHTS))))
+                                                 side_effect=lambda: seen.append(dict(mesh_source.PATH_LIGHTS))))
                 sets = [(poses, pathlib.Path(directory) / "out")]
                 if failure is None:
                     reference_render.render_sets(inputs, sets)
@@ -431,8 +431,8 @@ class CudaParityTests(unittest.TestCase):
             self.skipTest("Mitsuba's CUDA variant does not trace here (no CUDA device, or no OptiX)")
 
     def tearDown(self):
-        from r3d import mesh_import, mitsuba_reference
-        mesh_import.PATH_LIGHTS.clear()
+        from r3d import mesh_source, mitsuba_reference
+        mesh_source.PATH_LIGHTS.clear()
         mitsuba_reference.import_mitsuba().set_variant("scalar_rgb")
 
     def render(self, variant):
