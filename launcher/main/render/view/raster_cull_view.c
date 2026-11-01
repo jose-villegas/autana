@@ -6,7 +6,6 @@
 #include <string.h>
 
 #include "core/tune.h"
-#include "draw/draw.h"
 #include "image/pixel/rgb565.h"
 #include "math/geometry/box3f.h"
 #include "math/linear/transformf.h"
@@ -14,6 +13,7 @@
 #include "render/r3d_span.h"
 #include "render/raster_internal.h"
 #include "render/view/r3d_pipeline_count.h"
+#include "render/view/raster_lines.h"
 #include "render/view/raster_meshlets.h"
 
 TUNE_OWNER(cullview);
@@ -497,32 +497,6 @@ raster_cull_view(void* state) {
         .format = IMAGE_U32, .clear = clear, .begin = begin, .writer = writer, .show = show, .state = state};
 }
 
-/* One segment in lens space, cut at the near plane, as a line. */
-static void
-segment(const r3d_lens_t* lens, vec3f_t a, vec3f_t b, gfx_color_t color) {
-    if (projectf_clip_near(lens->project.near_z, &a, &b)) {
-        const vec2f_t from = projectf_screen(&lens->project, a);
-        const vec2f_t to = projectf_screen(&lens->project, b);
-        draw_line((int)from.x, (int)from.y, (int)to.x, (int)to.y, color);
-    }
-}
-
-/* The twelve edges of `box`, in `lens`'s units. */
-static void
-box_lines(const r3d_lens_t* lens, box3f_t box, gfx_color_t color) {
-    vec3f_t corner[BOX_CORNERS];
-    for (int k = 0; k < BOX_CORNERS; k++) {
-        corner[k] = mat4f_apply(&lens->m, box3f_corner(box, k));
-    }
-    for (int a = 0; a < BOX_CORNERS; a++) {
-        for (int bit = 1; bit < BOX_CORNERS; bit <<= 1) {
-            if ((a & bit) == 0) {
-                segment(lens, corner[a], corner[a | bit], color);
-            }
-        }
-    }
-}
-
 /* The camera's frustum to `depth` world units, its apex at the camera. */
 static void
 frustum_lines(const r3d_lens_t* lens, const render_view_t* camera, float depth, gfx_color_t color) {
@@ -538,8 +512,8 @@ frustum_lines(const r3d_lens_t* lens, const render_view_t* camera, float depth, 
     const vec3f_t apex = mat4f_apply(&lens->m, camera->position);
     static const int ring[4] = {0, 1, 3, 2};
     for (int k = 0; k < 4; k++) {
-        segment(lens, apex, corner[k], color);
-        segment(lens, corner[ring[k]], corner[ring[(k + 1) % 4]], color);
+        raster_lines_segment(lens, NULL, apex, corner[k], color);
+        raster_lines_segment(lens, NULL, corner[ring[k]], corner[ring[(k + 1) % 4]], color);
     }
 }
 
@@ -558,7 +532,7 @@ level_boxes(raster_cull_t* s, const r3d_lens_t* lens, const r3d_lit_mesh_t* mesh
         if (depth[top] == level || node->leaf) {
             const gfx_color_t color =
                 paint != RASTER_CULL_PAINT_NODES ? RGB565BE(FRUSTUM_RGB) : raster_meshlets_color(1U + n);
-            box_lines(lens, box3f_from_box3s(node->bounds, 1.0F), color);
+            raster_lines_box(lens, NULL, box3f_from_box3s(node->bounds, 1.0F), color);
             continue;
         }
         const uint8_t below = (uint8_t)(depth[top] + 1);

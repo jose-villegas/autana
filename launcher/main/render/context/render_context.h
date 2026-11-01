@@ -18,6 +18,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "build/build_variant.h"
+typedef struct checkpoint checkpoint_t;
 #include "core/memory.h"
 #include "render/framegen/framegen.h"
 #include "render/r3d_instance.h"
@@ -63,11 +65,19 @@ typedef struct {
     bool (*second_view)(void* state, const raster_t* raster, render_view_t* out, bool* listed);
     /* Optional. Over the composed picture, `width` by `height`, with draw/. */
     void (*overlay)(void* state, int width, int height);
+    /* Optional. Before each draw, room in the state for `instances`; false
+     * detaches the view, logged, and the frame draws shaded. */
+    bool (*reserve)(void* state, int instances);
+    /* Optional. Frees what reserve took, before the state is freed. */
+    void (*release)(void* state);
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    void (*checkpoint)(checkpoint_t* saved, void* state);
+#endif
 } render_debug_view_t;
 
 #define RENDER_DEBUG_VIEW_UNKNOWN -2
 #define RENDER_DEBUG_VIEW_SHADED  0
-#define RENDER_DEBUG_VIEW_COUNT   5 /* table rows; views run 0 to this */
+#define RENDER_DEBUG_VIEW_COUNT   7 /* table rows; views run 0 to this */
 
 typedef struct {
     raster_split_t split;
@@ -85,6 +95,7 @@ typedef struct {
     int64_t chose_at_us; /* when the predictor last chose; 0 before its first choice */
     int debug_view;      /* zero is shaded; table rows start at one */
     void* debug_view_state;
+    int refused_view; /* a view whose reserve failed, not asked for again until another is */
     raster_attachment_t debug_view_attachment;
     const raster_attachment_t* debug_view_attached[1];
     render_context_frame_t frame;
@@ -102,6 +113,11 @@ typedef struct {
     render_view_t kept_view;
     framegen_target_t framegen;
 } render_context_t;
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+void render_context_checkpoint_capture(checkpoint_t* saved, render_context_t* context);
+bool render_context_checkpoint_prepare(checkpoint_t* saved, render_context_t* context);
+#endif
 
 /* The engine's own context, the one the scene manager draws through. */
 render_context_t* render_context_main(void);
