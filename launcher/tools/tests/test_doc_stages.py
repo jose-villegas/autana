@@ -475,6 +475,7 @@ class SmokeAdmissionTests(unittest.TestCase):
     def test_smoke_submits_measured_fit_reservation(self):
         from types import SimpleNamespace
         from r3d import fitted_variant, import_settings
+        from r3d.fit import stage
         from r3d.process_budget import FIT_BYTES
         job = SimpleNamespace(renderer=SimpleNamespace(fit=SimpleNamespace(held_out_every_ms=1)))
         executor = mock.Mock()
@@ -484,7 +485,7 @@ class SmokeAdmissionTests(unittest.TestCase):
                 mock.patch.object(stages, 'gpu_inputs', return_value={}):
             stages._gpu(SimpleNamespace(smoke=True, scene=Path("other.scene.toml"), object="hall"), Path(directory), Path(directory), executor)
         fit_call = executor.submit.call_args_list[1]
-        self.assertIs(fit_call.args[0], fitted_variant.fit_point)
+        self.assertIs(fit_call.args[0], stage.fit_point)
         self.assertEqual(fit_call.kwargs['estimates'], FIT_BYTES)
 
 

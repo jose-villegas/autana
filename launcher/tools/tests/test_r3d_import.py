@@ -22,7 +22,7 @@ try:
     import numpy as np
     from tests import soup  # noqa: F401  (traces the bake's rays on the scalar variant)
 
-    from r3d import mesh_import, ray_query
+    from r3d import mesh_import, mesh_source, ray_query
     from r3d.light import LIGHTS, encode_srgb8, light, to_srgb8
     from r3d.lit_mesh import read_lit_mesh
 except ImportError:
@@ -841,7 +841,7 @@ class ReferenceObjectTests(unittest.TestCase):
             built = []
             with mock.patch.object(reference_render, "load_source", return_value=source), \
                     mock.patch.object(reference_render, "RayQuery"), \
-                    mock.patch.object(mesh_import, "PathLight", side_effect=lambda *args: built.append(args) or "cache"):
+                    mock.patch.object(mesh_source, "PathLight", side_effect=lambda *args: built.append(args) or "cache"):
                 _, dark = reference_render.source_for(scene, "dark")
                 lit, bounced_job = reference_render.source_for(scene, "bounced")
                 with self.assertRaisesRegex(ValueError, "no mesh renderer named"):
@@ -854,32 +854,32 @@ class ReferenceObjectTests(unittest.TestCase):
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class PathLightForTests(unittest.TestCase):
     def setUp(self):
-        mesh_import.PATH_LIGHTS.clear()
-        self.addCleanup(mesh_import.PATH_LIGHTS.clear)
+        mesh_source.PATH_LIGHTS.clear()
+        self.addCleanup(mesh_source.PATH_LIGHTS.clear)
 
     def job(self, indirect):
         return SimpleNamespace(bake=SimpleNamespace(indirect=indirect), settings=SimpleNamespace(path="a.import.toml", double_sided=set()))
 
     def test_a_renderer_with_no_indirect_builds_no_scene(self):
-        with mock.patch.object(mesh_import, "PathLight") as built:
+        with mock.patch.object(mesh_source, "PathLight") as built:
             self.assertIsNone(mesh_import.path_light_for(None, self.job(None), SimpleNamespace()))
         built.assert_not_called()
 
     def test_one_scene_is_shared_by_equal_settings_and_only_the_latest_is_kept(self):
         indirect = SimpleNamespace(bounces=1, rays=8)
         scene = lambda boost, lights: SimpleNamespace(lights=lights, indirect=SimpleNamespace(albedo_boost=boost, intensity=1.0))
-        with mock.patch.object(mesh_import, "PathLight", side_effect=lambda *args: object()) as built:
+        with mock.patch.object(mesh_source, "PathLight", side_effect=lambda *args: object()) as built:
             first = mesh_import.path_light_for(None, self.job(indirect), scene(1.0, []))
             self.assertIs(mesh_import.path_light_for(None, self.job(indirect), scene(1.0, [])), first)
             self.assertEqual(built.call_count, 1)
             mesh_import.path_light_for(None, self.job(indirect), scene(2.0, []))
         self.assertEqual(built.call_count, 2)
-        self.assertEqual(len(mesh_import.PATH_LIGHTS), 1)
+        self.assertEqual(len(mesh_source.PATH_LIGHTS), 1)
 
     def test_the_intensity_does_not_rebuild_the_scene(self):
         indirect = SimpleNamespace(bounces=1, rays=8)
         scene = lambda intensity: SimpleNamespace(lights=[], indirect=SimpleNamespace(albedo_boost=1.0, intensity=intensity))
-        with mock.patch.object(mesh_import, "PathLight", side_effect=lambda *args: object()) as built:
+        with mock.patch.object(mesh_source, "PathLight", side_effect=lambda *args: object()) as built:
             mesh_import.path_light_for(None, self.job(indirect), scene(1.0))
             mesh_import.path_light_for(None, self.job(indirect), scene(3.0))
         self.assertEqual(built.call_count, 1)
@@ -887,7 +887,7 @@ class PathLightForTests(unittest.TestCase):
     def test_a_scene_is_kept_per_variant_and_the_default_is_the_bake_variant(self):
         indirect = SimpleNamespace(bounces=1, rays=8)
         scene = SimpleNamespace(lights=[], indirect=SimpleNamespace(albedo_boost=1.0, intensity=1.0))
-        with mock.patch.object(mesh_import, "PathLight", side_effect=lambda *args: object()) as built:
+        with mock.patch.object(mesh_source, "PathLight", side_effect=lambda *args: object()) as built:
             bake = mesh_import.path_light_for(None, self.job(indirect), scene)
             self.assertIs(mesh_import.path_light_for(None, self.job(indirect), scene, ray_query.VARIANT), bake,
                           "no variant is the bake's variant")
@@ -955,8 +955,8 @@ class LocalSourceTests(unittest.TestCase):
                 for texture in ("colour.png", "alpha.png"):
                     (root / texture).write_bytes(b"hydrated texture")
                 (root / name).write_bytes(pointer)
-                with mock.patch.object(mesh_import, "load_obj") as load_obj, \
-                        mock.patch.object(mesh_import, "load_textures") as load_textures:
+                with mock.patch.object(mesh_source, "load_obj") as load_obj, \
+                        mock.patch.object(mesh_source, "load_textures") as load_textures:
                     with self.assertRaises(SettingsError) as error:
                         mesh_import.load_source(settings)
                     self.assertIn(str(root / name), str(error.exception))
