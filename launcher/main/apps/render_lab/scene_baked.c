@@ -102,6 +102,7 @@ scene_baked_enter(const render_lab_scene_t* self) {
     }
     (void)scene_activate(loaded,
                          render_lab_start_camera == NULL ? SCENE_CAMERA_FIRST : name_hash(render_lab_start_camera));
+    (void)scene_camera_set_skip_hidden(loaded, camera_entity(), family->skip_hidden);
     apply_settings();
 }
 

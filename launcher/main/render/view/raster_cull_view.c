@@ -146,7 +146,7 @@ count_frame(raster_cull_t* s, const raster_t* raster) {
             s->frame.counts.clusters_tested += count;
             s->frame.counts.clusters_kept += count;
         }
-        r3d_pipeline_transform(mesh, &lens, kept, count, b.cs, NULL);
+        r3d_pipeline_transform(mesh, &lens, kept, count, b.cs, NULL, false);
         r3d_pipeline_count_triangles(mesh, &lens, kept, count, b.cs, &s->frame.counts, &s->set_up[offset]);
         for (int k = 0; k < count; k++) {
             const int c = offset + kept[k];

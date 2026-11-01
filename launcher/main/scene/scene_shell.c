@@ -1,4 +1,6 @@
 #include "scene/scene_shell.h"
+#include "core/checkpoint.h"
+#include "scene/scene_internal.h"
 
 #include "display/display.h"
 #include "gfx/gfx.h"
@@ -32,3 +34,16 @@ scene_shell_compose(uint32_t dt_ms) {
         render_context_overlay(render_context_main(), GFX_WIDTH, GFX_HEIGHT);
     }
 }
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+void
+scene_shell_checkpoint_capture(checkpoint_t* saved) {
+    scene_draw_checkpoint_capture(saved);
+    render_context_checkpoint_capture(saved, render_context_main());
+}
+
+bool
+scene_shell_checkpoint_prepare(checkpoint_t* saved) {
+    return render_context_checkpoint_prepare(saved, render_context_main());
+}
+#endif

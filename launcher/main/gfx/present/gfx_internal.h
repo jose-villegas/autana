@@ -5,6 +5,7 @@
 
 #include <stdbool.h>
 
+#include "core/checkpoint.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
@@ -27,6 +28,12 @@ bool gfx_present_in_band(void);
  * clamp; callers must supply a saved clip or a screen-intersected box. */
 recti_t gfx_clip_save(void);
 void gfx_clip_restore(recti_t clip);
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+void gfx_indexed_checkpoint_capture(checkpoint_t* saved);
+void gfx_mode_checkpoint_capture(checkpoint_t* saved);
+void gfx_expand_checkpoint_capture(checkpoint_t* saved);
+#endif
 
 /* gfx_mode.c: the framebuffer and the mode it is held in. */
 extern gfx_color_t* fb;

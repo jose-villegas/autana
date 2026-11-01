@@ -5,6 +5,12 @@
  */
 #pragma once
 
+#include "build/build_variant.h"
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+typedef struct checkpoint checkpoint_t;
+void gfx_checkpoint_capture(checkpoint_t* saved);
+#endif
+
 #include <stdbool.h>
 
 #include "gfx/gfx.h"

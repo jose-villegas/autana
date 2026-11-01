@@ -14,7 +14,7 @@ Every view, drawn at the same pose:
 | meshlets | ![The meshlets view](../../images/render/sponza-view-meshlets.png) | a flat hue for each cluster, with disjoint IDs for each instance |
 | cull | ![The cull view](../../images/render/sponza-view-cull.png) | each cluster in the colour of its fate this frame; see [The cull, seen](Culling.md#the-cull-seen) |
 | boxes | ![The boxes view](../../images/render/sponza-view-boxes.png) | untouched; its overlay draws each instance's box as the frame placed it, one hue per mesh, for meshes drawn at least `boxview.copies` times; edges behind the drawn depth hidden, dimmed or full by `boxview.behind` |
-| overdraw | ![The overdraw view](../../images/render/sponza-view-overdraw.png) | each pixel by how many triangle spans tested it, on a fixed ramp; see [Overdraw, seen](#overdraw-seen) |
+| overdraw | ![The overdraw view](../../images/render/sponza-view-overdraw.png) | each pixel by how many triangle spans tested it, on a fixed ramp; how to read it: [Overdraw.md](Overdraw.md) |
 
 The depth and depth-tile views along a flythrough:
 
@@ -52,27 +52,3 @@ Overlays draw with `render/view/raster_lines.h`: segments and boxes in a lens's 
   empty.
 - The views are at the raster's own size, before upscaling.
 - `r3d_span.h` defines the depth encoding they read.
-
-## Overdraw, seen
-
-The overdraw view ([raster_overdraw.h](../../../launcher/main/render/view/raster_overdraw.h))
-counts, per pixel, the triangle spans that reached it and those that won their
-depth test. It paints the tested count on a hue ramp, the same every frame:
-blue for one layer, through cyan, green and yellow, to red at
-`RASTER_OVERDRAW_RAMP_LAYERS` or more.
-
-- A cluster the cull drops never reaches a pixel, so it adds nothing here.
-- A hidden cluster (red in the cull view) adds tested layers but no written ones.
-- The view's frame totals (pixels, layers tested and written, the most at one
-  pixel) are kept for a caller to print; `RASTER_OVERDRAW_LINE` is their line.
-
-Bistro in landscape at the scene's own render size, at the same poses as its
-[cull sheet](Culling.md#the-cull-seen):
-
-![Bistro's overdraw along its path](../../images/render/overdraw-bistro-sheet.png)
-
-Most extra layers lose their depth test at once, because the cull walk visits
-clusters roughly near to far. Each costs a depth compare, not a shaded pixel,
-so a frame's time follows the triangles set up
-([What a cluster and a triangle cost](Culling.md#what-a-cluster-and-a-triangle-cost))
-more than its layers.

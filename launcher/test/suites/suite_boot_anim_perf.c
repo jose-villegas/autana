@@ -100,7 +100,7 @@ sample_values(sample_field_t field, int n) {
 typedef struct {
     const char* label;
     uint32_t now_ms;
-} checkpoint_t;
+} perf_checkpoint_t;
 
 static uint32_t
 clamp_below(uint32_t ms, uint32_t exclusive_max) {
@@ -120,22 +120,22 @@ clamp_below(uint32_t ms, uint32_t exclusive_max) {
  * not at the edge, so tween rounding cannot drop the frame into the cheap
  * memcpy branch. */
 static void
-build_checkpoints(checkpoint_t out[7]) {
+build_checkpoints(perf_checkpoint_t out[7]) {
     const uint32_t grid_settled =
         BOOT_ANIM_GRID_START_MS + (uint32_t)BOOT_ANIM_GRID_BANDS * BOOT_ANIM_GRID_BAND_MS + BOOT_ANIM_GRID_FADE_MS;
     const uint32_t image_start = (uint32_t)BOOT_ANIM_IMAGE_START_MS;
     const uint32_t image_end = image_start + (uint32_t)BOOT_ANIM_IMAGE_FADE_MS;
 
-    out[0] = (checkpoint_t){"curve_climbing_early",
-                            clamp_below(BOOT_ANIM_PEN_START_MS + BOOT_ANIM_PEN_MS / 2, BOOT_ANIM_MS)};
-    out[1] = (checkpoint_t){"title_flying_in", clamp_below(BOOT_ANIM_TITLE_START_MS + 200, BOOT_ANIM_MS)};
-    out[2] = (checkpoint_t){"grid_settled_pre_image",
-                            clamp_below(grid_settled, image_start < BOOT_ANIM_MS ? image_start : BOOT_ANIM_MS)};
-    out[3] = (checkpoint_t){"crossfade_start", clamp_below(image_start + 50, BOOT_ANIM_MS)};
-    out[4] = (checkpoint_t){"crossfade_mid", clamp_below(image_start + BOOT_ANIM_IMAGE_FADE_MS / 2, BOOT_ANIM_MS)};
-    out[5] = (checkpoint_t){"crossfade_late", clamp_below(image_start + (BOOT_ANIM_IMAGE_FADE_MS * 9) / 10,
-                                                          image_end < BOOT_ANIM_MS ? image_end : BOOT_ANIM_MS)};
-    out[6] = (checkpoint_t){"near_end", clamp_below(BOOT_ANIM_MS > 100 ? BOOT_ANIM_MS - 100 : 0, BOOT_ANIM_MS)};
+    out[0] = (perf_checkpoint_t){"curve_climbing_early",
+                                 clamp_below(BOOT_ANIM_PEN_START_MS + BOOT_ANIM_PEN_MS / 2, BOOT_ANIM_MS)};
+    out[1] = (perf_checkpoint_t){"title_flying_in", clamp_below(BOOT_ANIM_TITLE_START_MS + 200, BOOT_ANIM_MS)};
+    out[2] = (perf_checkpoint_t){"grid_settled_pre_image",
+                                 clamp_below(grid_settled, image_start < BOOT_ANIM_MS ? image_start : BOOT_ANIM_MS)};
+    out[3] = (perf_checkpoint_t){"crossfade_start", clamp_below(image_start + 50, BOOT_ANIM_MS)};
+    out[4] = (perf_checkpoint_t){"crossfade_mid", clamp_below(image_start + BOOT_ANIM_IMAGE_FADE_MS / 2, BOOT_ANIM_MS)};
+    out[5] = (perf_checkpoint_t){"crossfade_late", clamp_below(image_start + (BOOT_ANIM_IMAGE_FADE_MS * 9) / 10,
+                                                               image_end < BOOT_ANIM_MS ? image_end : BOOT_ANIM_MS)};
+    out[6] = (perf_checkpoint_t){"near_end", clamp_below(BOOT_ANIM_MS > 100 ? BOOT_ANIM_MS - 100 : 0, BOOT_ANIM_MS)};
 }
 
 /* What one frozen moment draws with. Sampled, drawn and reported in three
@@ -290,7 +290,7 @@ log_phase(const phase_row_t* row, int64_t total_avg) {
 }
 
 static __attribute__((noinline)) void
-report_checkpoint(const checkpoint_t* cp, const char* mode) {
+report_checkpoint(const perf_checkpoint_t* cp, const char* mode) {
     const bench_stats_t total =
         bench_stats_compute(sample_values(FIELD_TOTAL, SAMPLES_PER_CHECKPOINT), SAMPLES_PER_CHECKPOINT);
 
@@ -305,7 +305,7 @@ report_checkpoint(const checkpoint_t* cp, const char* mode) {
 }
 
 static void
-run_checkpoint(const boot_anim_motion_t* motion, const image_t* photo, const checkpoint_t* cp, const char* mode,
+run_checkpoint(const boot_anim_motion_t* motion, const image_t* photo, const perf_checkpoint_t* cp, const char* mode,
                bool contend, bool clear_on_send) {
     samples = malloc(sizeof(frame_sample_t) * SAMPLES_PER_CHECKPOINT);
     stat_scratch = malloc(sizeof(int32_t) * SAMPLES_PER_CHECKPOINT);
@@ -342,7 +342,7 @@ test_boot_anim_performance_by_checkpoint(void) {
     draw_clear_clip();
     gfx_invalidate();
 
-    checkpoint_t checkpoints[7];
+    perf_checkpoint_t checkpoints[7];
     build_checkpoints(checkpoints);
 
     /* What boot draws through, loaded as boot loads it. */

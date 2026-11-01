@@ -4,12 +4,8 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 scene_name=scene_viewer
 scene_provider=scene_provider
-scene_defines="-DTUNE_HOT_LIVE=1"
-scene_renderer=1
-scene_sources="
-main/core/job.c
-tools/render/scene_viewer.c
-"
+scene_target=scene_provider
+scene_sources=
 scene_assets=demo/sponza
 # The render draws the scene's showcase.
 . "$SCRIPT_DIR/../../../../scripts/lib/python.sh"

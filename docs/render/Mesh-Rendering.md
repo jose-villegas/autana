@@ -145,7 +145,9 @@ The stages are split so two cores can share them:
 - Transforming disjoint cluster lists writes disjoint vertex ranges.
 - Drawing touches only the rows of its own target.
   `r3d_pipeline_transform()` records the screen rows each cluster spans, so a
-  core drawing half the rows skips a cluster wholly outside them.
+  core drawing half the rows skips a cluster wholly outside them. For a view
+  that skips hidden clusters it also records the cluster's box and nearest
+  depth, and the core skips one whose box already holds nearer depth.
 
 The raster draws at the caller's width and height and can upscale into a
 destination picture: rendering at half the panel's size quarters the pixels

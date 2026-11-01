@@ -129,7 +129,7 @@ def named_files(path, tracked):
 
 
 def host_inputs(scene_path):
-    """Compile flags and the compiler's -MM list (sources and project headers), repo-relative.
+    """Host CMake inputs, compile flags and the compiler's -MM list, repo-relative.
     System headers and compiler identity/version are not counted."""
     def relative(token):
         if not Path(token).is_absolute():
@@ -145,6 +145,7 @@ def host_inputs(scene_path):
     if not flags.startswith("flags "):
         raise ValueError(f"{HOST_SCRIPT.name} --deps printed no flags line")
     files = {relative(token) for token in compile_db.parse_dependencies(deps, directory=ROOT)}
+    files.update(("launcher/tools/render/CMakeLists.txt", "launcher/tools/render/scene/CMakeLists.txt"))
     return {"host flags": " ".join(relative(token) for token in flags.split()[1:]),
             **{f"host {name}": content_checksum(ROOT / name).decode() for name in sorted(files)}}
 
