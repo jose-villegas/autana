@@ -113,7 +113,8 @@ Buzz-rate checks bound both periods by `IMU_BUZZ_DRAIN_MAX_MS` without changing 
 | FIFO drain period | 10 Hz (`IMU_FIFO_DRAIN_HZ`) | `imu.drain_ms` |
 | `IMU_TASK_CORE` | `JOB_CORE1` | Core 1 |
 | `IMU_TASK_PRIORITY` | `JOB_CORE1_PRIORITY - 1` | Below job worker |
-| `IMU_TASK_BUS_PRIORITY` | `JOB_CORE1_PRIORITY + 1` | Bus lock has no priority inheritance; a preempted drain holds the bus and FIFO read mode |
+| `IMU_TASK_BUS_PRIORITY` | `JOB_CORE1_PRIORITY + 1` | Bus lock has no priority inheritance; a preempted transaction holds the bus, a preempted drain holds FIFO read mode |
+| `IMU_BUS_HOLD_TARGET_US` | 1000 us of data | The FIFO burst is read in `IMU_FIFO_CHUNK_SAMPLES` whole samples per transaction; the bus lock is taken per transaction, so a touch read waits for at most one chunk |
 | `IMU_FIFO_SAMPLES` | 128 samples | `input/motion/imu.h` |
 | `IMU_SAMPLE_US` / `INPUT_MOTION_SAMPLE_US` | `1 / ODR` | `input/motion/imu.h` / `input/input.h` |
 
@@ -269,7 +270,7 @@ FIFO read mode discards arrivals (section 8.7). Loss is a lower bound: whole act
 | Condition | Effect |
 |---|---|
 | Read-mode exit | Count read before `CTRL9_REQ_FIFO`; CTRL9 polled with no minimum delay; every drain attempts to exit read mode, including errors<sup>[[79]](../Citations.md#qst-qmi8658a)</sup> |
-| Read-mode timing | `esp_timer`: after acknowledged `CTRL9_REQ_FIFO`, before `REG_FIFO_CTRL` rewrite |
+| Read-mode timing | `esp_timer`: after acknowledged `CTRL9_REQ_FIFO`, before `REG_FIFO_CTRL` rewrite, every chunk and any bus wait between them included |
 | Empty drain | Carry loss to next sample |
 | Loss boundary | Hold previous rotation for at most `GRAVITY_MAX_DT_MS` converted to us |
 | FIFO overflow, failed drain, queue overflow or loss beyond `uint8_t` | Mark gap; drop oldest on queue overflow |

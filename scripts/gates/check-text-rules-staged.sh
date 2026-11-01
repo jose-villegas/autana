@@ -2,9 +2,9 @@
 # Checks staged text with the file-scoped commands declared by CI.
 set -eu
 
-ROOT=$(git rev-parse --show-toplevel)
-cd "$ROOT"
+GATE_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+cd "$(git rev-parse --show-toplevel)"
 # shellcheck source=../lib/python.sh
-. "$ROOT/scripts/lib/python.sh"
+. "$GATE_DIR/../lib/python.sh"
 PYTHON=$(find_python yaml) || exit 1
-"$PYTHON" "$ROOT/scripts/gates/check_text_rules_staged.py"
+"$PYTHON" "$GATE_DIR/check_text_rules_staged.py"

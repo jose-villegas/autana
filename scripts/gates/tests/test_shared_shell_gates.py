@@ -40,6 +40,30 @@ class ShellGateTests(ShellGateTestCase):
         binary.chmod(0o755)
         return binary.as_posix()
 
+    @unittest.skipUnless(shutil.which('dash') and shutil.which('shellcheck'), 'needs dash and shellcheck')
+    def test_shell_scripts_of_the_repository_it_runs_in_are_parsed_by_their_shebang(self):
+        def git(*args):
+            subprocess.run(['git', *args], cwd=self.root, check=True, capture_output=True)
+        git('init', '-q')
+        # No .sh: a script is what its first line says.
+        (self.root / 'tool').write_text('#!/bin/sh\necho ok\n', newline='\n')
+        (self.root / 'notes.txt').write_text('if [ x\n', newline='\n')
+        git('add', '.')
+        gate = (ROOT / 'scripts/gates/check-shell-scripts.sh').as_posix()
+        def run():
+            return subprocess.run([self.shell, '-c', f'cd "{self.root.as_posix()}" && bash "{gate}"'],
+                                  capture_output=True, text=True, timeout=120)
+        result = run()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('dash -n tool ... ok', result.stdout)
+        self.assertNotIn('notes.txt', result.stdout)
+        # bash syntax a POSIX shell refuses.
+        (self.root / 'tool').write_text('#!/bin/sh\nwords=(a b)\n', newline='\n')
+        git('add', 'tool')
+        result = run()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('dash -n tool ... FAILED', result.stdout)
+
     def test_crlf_resolution_broken_clean_and_format(self):
         binary = self.formatter()
         gate = self.format_gate('import sys\nsys.stdout.buffer.write(' +

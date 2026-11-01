@@ -25,6 +25,8 @@
 #include "input/motion/imu_demand.h"
 #include "input/motion/imu_odr.h"
 #include "input/motion/imu_queue.h"
+#include "input/motion/imu_reset.h"
+#include "math/scalar/mathi.h"
 
 static const char* TAG = "imu";
 
@@ -102,10 +104,21 @@ static imu_stats_t stats;
 
 /* The QMI8658A's I2C rating (Rev A, Table 43). Faster was measured on A308 and
  * rejected: docs/input/Gravity.md, Limits. */
-#define QMI8658_I2C_HZ          400000
-#define QMI8658_TIMEOUT_MS      100
+#define QMI8658_I2C_HZ         400000
+#define QMI8658_TIMEOUT_MS     100
 
-/* Registers */
+/* A drain reads the FIFO in chunks of whole samples, a transaction each: the bus lock is taken
+ * per transaction, so a touch read waits for at most one chunk, a tenth of its 10 ms poll.
+ * The target counts data bytes only; each transaction's addressing adds about 10%. */
+#define IMU_BUS_HOLD_TARGET_US 1000
+#define I2C_BITS_PER_BYTE      9 /* 8 data bits and the ACK */
+#define IMU_FIFO_SAMPLE_DATA_US                                                                                        \
+    ((sizeof(imu_sample_t) * I2C_BITS_PER_BYTE * MATH_US_PER_S + QMI8658_I2C_HZ - 1) / QMI8658_I2C_HZ)
+#define IMU_FIFO_CHUNK_SAMPLES ((int)(IMU_BUS_HOLD_TARGET_US / IMU_FIFO_SAMPLE_DATA_US))
+_Static_assert(IMU_FIFO_CHUNK_SAMPLES >= 1, "a FIFO chunk must hold a sample");
+_Static_assert(IMU_FIFO_CHUNK_SAMPLES <= IMU_FIFO_SAMPLES, "a FIFO chunk must fit the FIFO");
+
+/* Registers; the reset pair and its poll are in imu_reset.h. */
 #define REG_WHO_AM_I            0x00
 #define REG_REVISION            0x01
 #define REG_CTRL1               0x02
@@ -167,18 +180,8 @@ read_regs(uint8_t reg, uint8_t* out, size_t len) {
 
 static bool
 wait_command(bool done) {
-    const int64_t deadline = timing_now_us() + CTRL9_TIMEOUT_US;
-    do {
-        uint8_t status;
-        if (!read_regs(REG_STATUSINT, &status, sizeof status)) {
-            return false;
-        }
-        if (((status & STATUSINT_CMD_DONE) != 0) == done) {
-            return true;
-        }
-        esp_rom_delay_us(CTRL9_POLL_US);
-    } while (timing_now_us() < deadline);
-    return false;
+    return imu_poll(read_regs, REG_STATUSINT, STATUSINT_CMD_DONE, done ? STATUSINT_CMD_DONE : 0, timing_now_us,
+                    esp_rom_delay_us, CTRL9_TIMEOUT_US, CTRL9_POLL_US);
 }
 
 /* Lewis He, SensorLib (MIT), SensorQMI8658.hpp writeCommand/configFIFO/readFromFifo:
@@ -201,7 +204,7 @@ configure(unsigned odr_code) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static bool injected;
 static int64_t injected_drain_us;
-static imu_sample_t injected_sample = {.ax = IMU_COUNTS_PER_G};
+static imu_sample_t injected_sample = IMU_SAMPLE_UPRIGHT;
 
 void
 imu_inject(const imu_sample_t* sample) {
@@ -279,8 +282,8 @@ imu_init(void) {
         return false;
     }
 
-    if (!configure(IMU_ODR_CODE)) {
-        ESP_LOGE(TAG, "Configuration write failed");
+    if (!imu_reset(write_reg, read_regs, timing_now_us, esp_rom_delay_us) || !configure(IMU_ODR_CODE)) {
+        ESP_LOGE(TAG, "Reset or configuration failed");
         return false;
     }
 
@@ -384,6 +387,40 @@ read_fifo_count(int* count, bool* overflowed) {
     return *count <= IMU_FIFO_SAMPLES && bytes % sizeof(imu_sample_t) == 0;
 }
 
+#if CONFIG_LAUNCHER_DEVELOPMENT
+/* A FIFO burst holding a gyro rate within IMU_SUSPECT_MARGIN_DPS of full scale is logged raw,
+ * with a register sample beside it, IMU_SUSPECT_LOGS times a boot at most: at rest, such a rate
+ * is a bad frame, and the bytes tell a shifted frame from a bad axis. */
+#define IMU_SUSPECT_MARGIN_DPS 8
+#define IMU_SUSPECT_COUNTS     ((int)((IMU_GYRO_RANGE_DPS - IMU_SUSPECT_MARGIN_DPS) * IMU_COUNTS_PER_DPS))
+#define IMU_SUSPECT_LOGS       8
+
+static bool
+suspect_rate(int16_t rate) {
+    return rate > IMU_SUSPECT_COUNTS || rate < -IMU_SUSPECT_COUNTS;
+}
+
+static void
+log_suspect_burst(const imu_sample_t* samples, int count) {
+    static unsigned logged;
+    int first = -1;
+    for (int i = 0; i < count && first < 0; i++) {
+        if (suspect_rate(samples[i].gx) || suspect_rate(samples[i].gy) || suspect_rate(samples[i].gz)) {
+            first = i;
+        }
+    }
+    if (first < 0 || logged >= IMU_SUSPECT_LOGS) {
+        return;
+    }
+    logged++;
+    imu_sample_t reg = {0};
+    const bool reg_ok = read_regs(REG_AX_L, (uint8_t*)&reg, sizeof reg);
+    ESP_LOGW(TAG, "gyro near full scale in a FIFO burst: count %d first %d, register%s %d %d %d %d %d %d", count, first,
+             reg_ok ? "" : " (failed)", reg.ax, reg.ay, reg.az, reg.gx, reg.gy, reg.gz);
+    ESP_LOG_BUFFER_HEX_LEVEL(TAG, samples, (size_t)count * sizeof *samples, ESP_LOG_WARN);
+}
+#endif
+
 static int
 drain_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
     *overflowed = false;
@@ -408,11 +445,18 @@ drain_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
         ok = write_command(CTRL9_REQ_FIFO);
     }
     const int64_t lock_start_us = timing_now_us();
-    if (ok && count > 0) {
-        ok = read_regs(REG_FIFO_DATA, (uint8_t*)out, (size_t)count * sizeof *out);
+    for (int read = 0; ok && read < count;) {
+        const int chunk = mathi_min(count - read, IMU_FIFO_CHUNK_SAMPLES);
+        ok = read_regs(REG_FIFO_DATA, (uint8_t*)(out + read), (size_t)chunk * sizeof *out);
+        read += chunk;
     }
     const uint64_t locked_us = (uint64_t)(timing_now_us() - lock_start_us);
     const bool resumed = write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    if (ok) {
+        log_suspect_burst(out, count);
+    }
+#endif
     fifo_gap = !ok || !resumed;
     if (fifo_gap) {
         /* A failed burst may have consumed part of a sample (reads consume, section 8.8):
@@ -457,7 +501,7 @@ log_stats(int64_t now_us) {
                  (unsigned long long)(stats.bus_us / MATH_US_PER_MS), stats.parks,
                  (unsigned long long)(stats.parked_us / MATH_US_PER_MS), (unsigned)uxTaskGetStackHighWaterMark(NULL));
     }
-    stats = (imu_stats_t){.last_log_us = now_us};
+    stats = (imu_stats_t){.last_log_us = now_us, .last_wake_us = stats.last_wake_us};
 }
 
 static void
@@ -670,8 +714,8 @@ count_wake_gap(void) {
 #endif
 
 /* One period's bus work at `asked`: entering FIFO restarts it, then a register read or a due drain.
- * The bus lock has no priority inheritance: a preempted drain holds the bus
- * and keeps the FIFO in read mode, discarding arrivals. */
+ * The bus lock has no priority inheritance: a preempted transaction holds the bus,
+ * and a preempted drain keeps the FIFO in read mode, discarding arrivals. */
 static void
 serve_demand(imu_demand_level_t asked, imu_demand_level_t* level, unsigned* read_ticks, TickType_t drain_ticks) {
     if (asked == IMU_DEMAND_FIFO && *level != IMU_DEMAND_FIFO) {
