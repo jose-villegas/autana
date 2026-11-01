@@ -65,15 +65,14 @@ test_styles_match_pipeline_colours(void) {
     uint8_t colours[3][3] = {{255, 0, 0}, {0, 255, 0}, {0, 0, 255}};
     const uint16_t triangle[3] = {0, 1, 2};
     const r3d_lit_cluster_t cluster = {.vertex_count = 3};
-    const r3d_lit_mesh_t mesh = {.positions = positions, .colors = (const uint8_t (*)[3])colours};
+    const r3d_lit_mesh_t mesh = {.positions = positions, .colors = (const uint8_t (*)[3])colours, .clusters = &cluster};
     const r3d_lens_t lens = {.m = MAT4F_IDENTITY,
                              .project = {1.0F, -1.0F, 0.0F, 0.0F, 1.0F},
                              .depth_near = 1.0F,
                              .snap_cx = R3D_SNAP_BIAS,
                              .snap_cy = R3D_SNAP_BIAS};
     r3d_pipeline_vertex_t transformed[3];
-    const transform_setup_t setup = transform_setup(&lens);
-    (void)transform_cluster(&mesh, &lens, &setup, &cluster, transformed);
+    r3d_pipeline_transform(&mesh, &lens, &(uint16_t){0}, 1, transformed, NULL);
     r3d_span_vertex_t reference[3];
     for (int k = 0; k < 3; k++) {
         transformed[k].sx = k == 1 ? TEST_SIDE * R3D_SUBPIXEL : 0;
@@ -123,8 +122,7 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
     clipped = malloc(sizeof(*clipped));
     TEST_ASSERT_NOT_NULL(clipped);
     r3d_pipeline_vertex_t* transformed = clipped->transformed;
-    const transform_setup_t setup = transform_setup(&lens);
-    (void)transform_cluster(&mesh, &lens, &setup, &cluster, transformed);
+    r3d_pipeline_transform(&mesh, &lens, &(uint16_t){0}, 1, transformed, NULL);
     build_guard_planes(&lens, work);
     r3d_span_target_t* expected = &clipped->expected;
     r3d_span_target_t* actual = &clipped->actual;
@@ -255,28 +253,27 @@ test_transform_nonfinite_paths(void) {
 #define TEST_FLOAT_BITS_STRIDE UINT32_C(65537)
 
 static void
-check_fast_bits(uint32_t bits, const transform_setup_t* setup) {
+check_fast_bits(uint32_t bits) {
     const float biased = mathf_from_bits(bits);
-    TEST_ASSERT_EQUAL(biased > FAST_LO && biased < FAST_HI, biased_inside_fast(bits, setup));
+    TEST_ASSERT_EQUAL(biased > FAST_LO && biased < FAST_HI,
+                      biased_inside_fast(bits, mathf_bits(FAST_LO), mathf_bits(FAST_HI)));
 }
 
 static void
 test_transform_fast_range_bits(void) {
-    const r3d_lens_t lens = {.m = MAT4F_IDENTITY};
-    const transform_setup_t setup = transform_setup(&lens);
     const uint32_t edges[] = {mathf_bits(FAST_LO), mathf_bits(FAST_HI)};
     for (size_t edge = 0; edge < sizeof edges / sizeof edges[0]; edge++) {
         for (uint32_t bits = edges[edge] - TEST_FAST_ULP_RADIUS; bits <= edges[edge] + TEST_FAST_ULP_RADIUS; bits++) {
-            check_fast_bits(bits, &setup);
+            check_fast_bits(bits);
         }
     }
     static const float special[] = {0.0F,    -0.0F,    INFINITY,     -INFINITY,     NAN,     -NAN,
                                     FLT_MAX, -FLT_MAX, FLT_TRUE_MIN, -FLT_TRUE_MIN, -FAST_LO};
     for (size_t i = 0; i < sizeof special / sizeof special[0]; i++) {
-        check_fast_bits(mathf_bits(special[i]), &setup);
+        check_fast_bits(mathf_bits(special[i]));
     }
     for (uint64_t bits = 0; bits <= UINT32_MAX; bits += TEST_FLOAT_BITS_STRIDE) {
-        check_fast_bits((uint32_t)bits, &setup);
+        check_fast_bits((uint32_t)bits);
     }
 }
 
