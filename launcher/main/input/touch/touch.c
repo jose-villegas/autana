@@ -218,7 +218,7 @@ poll_controller(bool* have_point, vec2i_t* point) {
 static void
 poll_once(void) {
     bool have_point = false;
-    vec2i_t point = {0};
+    vec2i_t point = vec2i_zero();
     const int64_t now_us = timing_now_us();
 
 #if CONFIG_LAUNCHER_DEVELOPMENT

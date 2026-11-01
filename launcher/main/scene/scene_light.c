@@ -146,7 +146,7 @@ scene_light_set_intensity(scene_t* scene, scene_entity_t entity, float intensity
 vec3f_t
 scene_light_color(const scene_t* scene, scene_entity_t entity) {
     return scene == NULL || entity >= scene->asset.entity_count || scene->lights[entity].kind == SCENE_LIGHT_NONE
-               ? (vec3f_t){0}
+               ? vec3f_zero()
                : scene->lights[entity].color;
 }
 

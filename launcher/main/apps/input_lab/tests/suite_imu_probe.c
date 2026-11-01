@@ -397,7 +397,7 @@ test_synthetic_fit(void) {
             }
         }
         const imu_probe_fit_t repeated = imu_probe_fit(round->poses, q);
-        TEST_ASSERT_TRUE(vec3i_equal((vec3i_t){0}, repeated.calib.offset));
+        TEST_ASSERT_TRUE(vec3i_equal(vec3i_zero(), repeated.calib.offset));
         TEST_ASSERT_TRUE(vec3i_equal(saved, imu_probe_saved_offset(saved, &repeated)));
         free(round);
     }
@@ -490,7 +490,7 @@ test_zero_acceleration_cannot_arm_upright(void) {
     round->pose = IMU_PROBE_POSE_COUNT;
     const input_motion_t zero = {0};
     for (int ms = 0; ms <= IMU_REST_SETTLE_MS; ms += TEST_DT_MS) {
-        TEST_ASSERT_FALSE(imu_probe_turn_update(round, &zero, (vec3f_t){0}, TEST_DT_MS));
+        TEST_ASSERT_FALSE(imu_probe_turn_update(round, &zero, vec3f_zero(), TEST_DT_MS));
         TEST_ASSERT_EQUAL_INT(IMU_PROBE_UPRIGHT, round->step);
         TEST_ASSERT_EQUAL_UINT32(0, (round->rest.settle_us / MATH_US_PER_MS));
     }

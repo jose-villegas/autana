@@ -48,7 +48,7 @@ test_a_quarter_turn_about_y_takes_z_to_x_through_the_matrix(void) {
     transformf_t t = anim_transform_sample(&(anim_node_tracks_t){m, r, s}, 0.0F);
 
     const mat4f_t matrix = transformf_matrix(&t);
-    const vec3f_t got = mat4f_apply(&matrix, (vec3f_t){0.0F, 0.0F, 1.0F});
+    const vec3f_t got = mat4f_apply(&matrix, vec3f_unit_z());
     TEST_ASSERT_FLOAT_WITHIN(SLACK, 1.0F, got.x);
     TEST_ASSERT_FLOAT_WITHIN(SLACK, 0.0F, got.z);
 }
@@ -76,7 +76,7 @@ test_a_rotation_between_two_keys_is_the_halfway_turn(void) {
     const anim_track_t s = constant(unit, 3, 0);
 
     const transformf_t t = anim_transform_sample(&(anim_node_tracks_t){m, r, s}, 0.5F);
-    const vec3f_t z = quatf_rotate(t.rotation, (vec3f_t){0.0F, 0.0F, 1.0F});
+    const vec3f_t z = quatf_rotate(t.rotation, vec3f_unit_z());
     TEST_ASSERT_FLOAT_WITHIN(1e-4F, 0.70710678F, z.x);
     TEST_ASSERT_FLOAT_WITHIN(1e-4F, 0.70710678F, z.z);
 }

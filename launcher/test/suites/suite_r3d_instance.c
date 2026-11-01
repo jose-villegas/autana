@@ -74,7 +74,7 @@ draw(const r3d_instance_t* instances, int count, void** scratch) {
 /* A model that scales every axis by `scale` and moves by (x, 0, z). */
 static mat4f_t
 placed(float x, float z, float scale) {
-    transformf_t pose = TRANSFORMF_IDENTITY;
+    transformf_t pose = transformf_identity();
     transformf_set_position(&pose, (vec3f_t){x, 0, z});
     transformf_set_scale(&pose, (vec3f_t){scale, scale, scale});
     return transformf_compute_matrix(&pose);
@@ -195,7 +195,7 @@ test_a_rotation_turns_an_instance_about_its_position(void) {
     quad_t offset; /* centred 3 units to the right in its own space */
     make_quad(&offset, 0, 0, 255, 3);
     /* A half turn about y, baked: x and z negated. */
-    transformf_t pose = TRANSFORMF_IDENTITY;
+    transformf_t pose = transformf_identity();
     transformf_set_rotation(&pose, (quatf_t){0, 1, 0, 0});
     const mat4f_t half_turn = transformf_compute_matrix(&pose);
     const r3d_instance_t as_built = {&offset.mesh, NULL};

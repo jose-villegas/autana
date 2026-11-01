@@ -279,7 +279,7 @@ test_sponza_draw_stage_breakdown(void) {
 
     /* A view of nothing but sky: what a frame costs before any geometry. */
     const transformf_t sky_pose =
-        transformf_looking((vec3f_t){0.0F, 20000.0F, 0.0F}, (vec3f_t){0.0F, 1.0F, 0.01F}, (vec3f_t){0.0F, 1.0F, 0.0F});
+        transformf_looking((vec3f_t){0.0F, 20000.0F, 0.0F}, (vec3f_t){0.0F, 1.0F, 0.01F}, vec3f_unit_y());
     start = timing_now_us();
     const render_view_t frame_view =
         render_view_make(&sky_pose, 1.0F, 1.0F, (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
@@ -461,7 +461,7 @@ test_sponza_frame_cost_with_motion(void) {
     const r3d_instance_t still = {&meshes[0], NULL};
     report_frame_cost("motion", sponza_bakes[0], &still, attached, NULL, NULL, motion_budget);
     raster_motion_forget(motion);
-    transformf_t pose = TRANSFORMF_IDENTITY;
+    transformf_t pose = transformf_identity();
     mat4f_t model = transformf_compute_matrix(&pose);
     const r3d_instance_t moving = {&meshes[0], &model};
     report_frame_cost("motion_moving", sponza_bakes[0], &moving, attached, &pose, &model, moving_budget);

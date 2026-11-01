@@ -306,7 +306,7 @@ test_the_flythrough_moves_smoothly_and_closes_its_loop(void) {
     for (int camera = 0; camera < SPONZA_CAMERA_COUNT; camera++) {
         select_camera(sponza_cameras[camera]);
         const uint32_t period = scene_animator_clip_duration_ms(sponza, camera_entity, 0);
-        const vec3f_t forward_axis = {0.0F, 0.0F, 1.0F};
+        const vec3f_t forward_axis = vec3f_unit_z();
         (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, 0);
         vec3f_t previous = scene_entity_local(sponza, camera_entity).position;
         for (uint32_t t = 10; t <= period + 100; t += 10) {

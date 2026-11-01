@@ -87,12 +87,12 @@ input_read_motion_batch(input_motion_batch_t* out) {
 
 vec3i_t
 input_accel_offset(void) {
-    return (vec3i_t){0};
+    return vec3i_zero();
 }
 
 vec3i_t
 input_gyro_offset(void) {
-    return (vec3i_t){0};
+    return vec3i_zero();
 }
 
 bool

@@ -34,8 +34,8 @@ static const int16_t (*const wall_and_box[])[3] = {raster_rig_wall, box_position
 /* The box turned `degrees` about y and standing at `at`. */
 static mat4f_t
 turned(float degrees, vec3f_t at) {
-    const quatf_t rotation = quatf_from_axis_angle((vec3f_t){0, 1, 0}, degrees * MATH_RADIANS_PER_DEGREE);
-    transformf_t pose = TRANSFORMF_IDENTITY;
+    const quatf_t rotation = quatf_from_axis_angle(vec3f_unit_y(), degrees * MATH_RADIANS_PER_DEGREE);
+    transformf_t pose = transformf_identity();
     transformf_set_position(&pose, at);
     transformf_set_rotation(&pose, rotation);
     return transformf_compute_matrix(&pose);
@@ -67,7 +67,7 @@ typedef struct {
 static basis_t
 basis(const fixture_camera_t* c) {
     const vec3f_t f = vec3f_normalize(c->forward);
-    const vec3f_t right = vec3f_normalize(vec3f_cross((vec3f_t){0.0F, 1.0F, 0.0F}, f));
+    const vec3f_t right = vec3f_normalize(vec3f_cross(vec3f_unit_y(), f));
     return (basis_t){right, vec3f_cross(right, f), f};
 }
 
@@ -117,7 +117,7 @@ truth(const pose_t* now, const pose_t* before, int w, int h, int px, int py, flo
     const float ray_y = ((float)py + 0.5F - ((float)h * 0.5F)) / k;
     const vec3f_t dir =
         vec3f_normalize(vec3f_add(b.forward, vec3f_add(vec3f_scale(b.right, ray_x), vec3f_scale(b.down, ray_y))));
-    const mat4f_t still = turned(0.0F, (vec3f_t){0.0F, 0.0F, 0.0F});
+    const mat4f_t still = turned(0.0F, vec3f_zero());
     const float t_wall = hit_quad(&still, 400.0F, now->camera.eye, dir);
     const float t_box = now->box == NULL ? -1.0F : hit_quad(now->box, 40.0F, now->camera.eye, dir);
     const int what = t_box > 0.0F && (t_wall < 0.0F || t_box < t_wall) ? BOX : t_wall > 0.0F ? WALL : NONE;
