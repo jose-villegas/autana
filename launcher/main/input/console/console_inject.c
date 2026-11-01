@@ -5,8 +5,7 @@
  *
  * None sets a flag for the frame loop the way SCREENSHOT/RUNSUITE do. A
  * touch or IMU sample is a LEVEL the polling task reads at its own rate
- * until something releases it (the contract touch_inject()/imu_inject()
- * are built for); a gesture is that level played out against the poller's
+ * until something releases it; a gesture is that level played out against the poller's
  * clock until its duration runs out, and a button edge is consumed by the
  * next read. Whatever is injected outranks the hardware while it lasts.
  */
@@ -15,7 +14,7 @@
 
 #include "display/display_shell.h"
 #include "input/buttons/buttons.h"
-#include "input/motion/imu.h"
+#include "input/motion/motion_reader.h"
 #include "input/touch/touch.h"
 
 #include "esp_log.h"
@@ -44,9 +43,9 @@ console_verb_imu(const char* args, console_reply_fn reply) {
     int az = 0;
     int quarter;
     if (strcmp(args, "release") == 0) {
-        imu_inject_release();
+        input_motion_unpin();
     } else if (console_imu_quarter_parse(args, &sample, &quarter)) {
-        imu_inject(&sample);
+        input_motion_pin(&sample);
         char line[CONSOLE_IMU_REPLY_SIZE];
         if (!console_imu_reply(line, sizeof line, quarter)) {
             reply("IMU_ERR reply formatting failed");
@@ -54,7 +53,7 @@ console_verb_imu(const char* args, console_reply_fn reply) {
         }
         reply(line);
     } else if (console_imu_parse(args, &ax, &ay, &az)) {
-        imu_inject(&(imu_sample_t){.ax = (int16_t)ax, .ay = (int16_t)ay, .az = (int16_t)az});
+        input_motion_pin(&(imu_sample_t){.ax = (int16_t)ax, .ay = (int16_t)ay, .az = (int16_t)az});
     } else {
         ESP_LOGW(TAG, "IMU wants <ax> <ay> <az>, quarter <q> or release: '%s'", args);
         reply("IMU_ERR invalid sample");
