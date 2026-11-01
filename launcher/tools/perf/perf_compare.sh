@@ -10,6 +10,7 @@
 #   --threshold PCT         equivalence margin
 #   --alpha P               nominal family error rate
 #   --max-seeds N           seed cap per side
+#   --max-minutes N         stop before a look that would pass this budget
 #   --rng-seed N            replay the recorded random plan
 #   --timeout SECONDS       capture deadline per run
 #   --wait SECONDS          board lock queue time
@@ -51,7 +52,7 @@ while [ "$remaining" -gt 0 ]; do
             name=$1; tests=$2; table=$3
             shift 3; remaining=$((remaining - 3))
             set -- "$@" --suite "$name" "$tests" "$table" ;;
-        --threshold|--alpha|--max-seeds|--rng-seed|--timeout|--wait|--autana|--send-a|--send-b)
+        --threshold|--alpha|--max-seeds|--max-minutes|--rng-seed|--timeout|--wait|--autana|--send-a|--send-b)
             value=${1:?option value required}; shift; remaining=$((remaining - 1))
             case "$arg" in
                 --autana) autana=$value ;;

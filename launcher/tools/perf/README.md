@@ -106,7 +106,7 @@ flowchart TD
     Fail -->|No| Decide[Decide rows]
     Decide --> Active{Inconclusive rows with data on both sides?}
     Active -->|No| Summary[Write summary]
-    Active -->|Yes| Cap{At seed cap?}
+    Active -->|Yes| Cap{At seed cap, or next look past --max-minutes?}
     Cap -->|Yes| Summary
     Cap -->|No| Estimate[Estimate K and bounded R from variance and costs]
     Estimate --> Next[First planned look at or above K and past this one, else the cap]
@@ -115,7 +115,10 @@ flowchart TD
     Fail -->|Yes| Incomplete[Write incomplete summary]
 ```
 
-Planned looks double towards `--max-seeds` and end at the cap. Nominal alpha
+Planned looks double towards `--max-seeds` and end at the cap. Before each
+look after the first, the job's own mean flash and suite times estimate it;
+if it would pass `--max-minutes`, the comparison stops and names the
+unresolved rows. Nominal alpha
 is divided across planned looks, then split equally between Welch difference<sup>[[37]](../../../docs/Citations.md#welch-1947)</sup>
 and TOST equivalence<sup>[[38]](../../../docs/Citations.md#schuirmann-1987)</sup> families. Each family uses Holm adjustment<sup>[[39]](../../../docs/Citations.md#holm-1979)</sup> across rows,
 including rows decided earlier. Permutation is an AND cross-check at nominal

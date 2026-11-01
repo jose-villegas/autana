@@ -7,6 +7,7 @@ import random
 import shlex
 import sys
 import subprocess
+import time
 from pathlib import Path
 from statistics import mean
 from types import SimpleNamespace
@@ -20,6 +21,8 @@ DEFAULT_ALPHA = 0.05
 MAX_RUNS = 16
 CALIBRATION_SEEDS = 2
 CALIBRATION_RUNS = 2
+# Wall-time budget of one comparison: a board job's cap.
+DEFAULT_MAX_MINUTES = 120
 
 
 def schedule(cap, alpha):
@@ -132,8 +135,19 @@ def recommendations(records, rows, delta, alpha=0.025):
     return result
 
 
-def measure(args, runner=None):
+def look_seconds(records, seeds, runs):
+    """A look's expected seconds: this job's mean flash plus runs of its mean suite pass, per seed and side."""
+    measured = records["a"] + records["b"]
+    flash = mean(record["flash_seconds"] for record in measured)
+    run = mean(sum(mean(entry["run_seconds"]) for entry in record["suites"].values()) for record in measured)
+    return 2 * seeds * (flash + runs * run)
+
+
+def measure(args, runner=None, clock=time.monotonic):
     """Acquire seeded observations and save decisions even after capture failure."""
+    started = clock()
+    budget = 60 * getattr(args, "max_minutes", DEFAULT_MAX_MINUTES)
+    budget_stop = None
     sizes = schedule(args.max_seeds, args.alpha)
     limits = {side: filter_limits(getattr(args, "project_" + side)) for side in ("a", "b")}
     for side in limits:
@@ -164,6 +178,12 @@ def measure(args, runner=None):
                                        decision_alpha) for side in records}
         runs = max([1] + [hint["recommended_runs"] for side in hints
                           for name, hint in hints[side].items() if name in (active or set())])
+        if look:
+            elapsed, estimate = clock() - started, look_seconds(records, target - previous_target, runs)
+            # Stopping before a planned look only drops looks; each look's alpha share stays valid.
+            if elapsed + estimate > budget:
+                budget_stop = dict(look=look + 1, elapsed=elapsed, estimate=estimate, budget=budget)
+                break
         for pair in range(previous_target, target):
             sides = ["a", "b"]
             rng.shuffle(sides)
@@ -250,12 +270,12 @@ def measure(args, runner=None):
                                       args.threshold / 100, look_alpha / max(1, len(decisions)))
                  for side in records}
     write_summary(destination / "summary.md", args, records, decisions, estimates, sizes, plan,
-                  incomplete=incomplete)
+                  incomplete=incomplete, budget_stop=budget_stop)
     payload = dict(command=getattr(args, "command", None),
                    label_a=args.label_a, label_b=args.label_b, threshold=args.threshold,
                    alpha=args.alpha, look_alpha=look_alpha,
                    rng_seed=args.rng_seed, max_seeds=args.max_seeds, first_pass=sizes[0],
-                   max_runs=MAX_RUNS, incomplete=incomplete,
+                   max_runs=MAX_RUNS, incomplete=incomplete, budget_stop=budget_stop,
                    rows=decisions, estimates=estimates, plan=plan)
     (destination / "comparison.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
     print((destination / "summary.md").read_text(encoding="utf-8"))
@@ -279,7 +299,7 @@ def pr_table(payload):
     return lines
 
 
-def write_summary(path, args, records, rows, estimates, sizes, plan, incomplete=False):
+def write_summary(path, args, records, rows, estimates, sizes, plan, incomplete=False, budget_stop=None):
     """Write observed costs, seed identities, decisions, and acquisition completeness."""
     lines = ["# Performance comparison", "",
              f"A: `{args.label_a}`; B: `{args.label_b}`.", "",
@@ -288,6 +308,11 @@ def write_summary(path, args, records, rows, estimates, sizes, plan, incomplete=
              f"First pass: {sizes[0]} seeds per side. Cap: {args.max_seeds} seeds per side.", "",
              f"RNG seed: {args.rng_seed}; R clamp: [1, {MAX_RUNS}].", "",
              "Incomplete: stopped after capture failures, no rows, or rows not measured; see plan errors and the not-measured rows." if incomplete else "Complete.", "",
+             *([f"Stopped at the time budget before look {budget_stop['look']}: {budget_stop['elapsed'] / 60:.0f} min used, "
+                f"its estimated {budget_stop['estimate'] / 60:.0f} min would pass --max-minutes {budget_stop['budget'] / 60:g}. "
+                "Unresolved: " + (", ".join(f"`{name}`" for name, row in sorted(rows.items())
+                                            if row["verdict"] == "inconclusive") or "none") + ".", ""]
+               if budget_stop else []),
              "Seed means decide; medians describe the seed means. "
              f"Intervals are {100 * (1 - args.alpha / len(sizes) / 2):g}% two-sided Welch intervals on log seed means. "
              "Holm corrects difference and equivalence tests separately over all rows. "
@@ -360,6 +385,8 @@ def main(argv=None):
     parser.add_argument("--threshold", type=float, default=DEFAULT_THRESHOLD)
     parser.add_argument("--alpha", type=float, default=DEFAULT_ALPHA)
     parser.add_argument("--max-seeds", type=int, default=32)
+    parser.add_argument("--max-minutes", type=float, default=DEFAULT_MAX_MINUTES,
+                        help="stop before a look whose estimated time would pass this budget")
     parser.add_argument("--rng-seed", type=int, help="replay a recorded random plan; default: fresh draw")
     parser.add_argument("--timeout", type=int, default=1800)
     parser.add_argument("--wait", type=int, default=3600)
@@ -370,7 +397,7 @@ def main(argv=None):
     if args.restore_project:
         return subprocess.call(autana_command("--wait", str(args.wait), "flash", "rel",
                                              "--project", str(args.restore_project), override=args.autana))
-    if not 0 < args.threshold < 100 or not 0 < args.alpha < 1 or min(args.timeout, args.wait) <= 0:
+    if not 0 < args.threshold < 100 or not 0 < args.alpha < 1 or min(args.timeout, args.wait, args.max_minutes) <= 0:
         parser.error("threshold, alpha and time limits must be positive and in range")
     if args.validate_plan or args.estimate_plan:
         if not args.suite:
