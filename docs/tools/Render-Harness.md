@@ -439,8 +439,9 @@ If `render_host_open()` returns false, no run opened and `exit_code` carries the
 retain frame history in host and development builds. Saving can return NULL
 on allocation failure. Checkpoints remain reusable within the open run, and
 `render_host_checkpoint_bytes()` gives the memory each holds.
-`render_host_image()` exposes the converted frame (bottom-up BGR rows, width,
-height and row stride, as its BMP) for comparisons and viewers.
+`render_host_image()` exposes the whole converted frame (bottom-up BGR rows,
+width, height and row stride, in the BMP's row layout; `--crop` writes only a
+part of it) for comparisons and viewers.
 
 | Owner | Carried state |
 |---|---|
