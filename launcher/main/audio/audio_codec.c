@@ -12,6 +12,7 @@
 
 #include "audio/audio_codec_drc.h"
 #include "audio/audio_codec_feedback.h"
+#include "audio/audio_codec_mic.h"
 #include "audio/audio_out.h"
 #include "board/board.h"
 #include "build/build_variant.h"
@@ -33,8 +34,7 @@ static const audio_codec_if_t* codec;
 static esp_codec_dev_handle_t input_device;
 static unsigned references;
 static const char* failed_step;
-#if CONFIG_LAUNCHER_DEVELOPMENT
-static audio_codec_feedback_t feedback;
+static audio_codec_saved_t mic_saved;
 
 static int
 feedback_get(void* context, int reg, int* value) {
@@ -47,6 +47,26 @@ feedback_set(void* context, int reg, int value) {
     (void)context;
     return codec->set_reg(codec, reg, value);
 }
+
+bool
+audio_codec_mic_set(const audio_codec_mic_t* config) {
+    return codec && config
+           && audio_codec_check("microphone DSP",
+                                audio_codec_mic_apply(&mic_saved, NULL, feedback_get, feedback_set, config)
+                                    ? ESP_CODEC_DEV_OK
+                                    : ESP_CODEC_DEV_DRV_ERR);
+}
+
+bool
+audio_codec_mic_restore(void) {
+    return codec ? audio_codec_check("restore microphone DSP", audio_codec_saved_restore(&mic_saved, NULL, feedback_set)
+                                                                   ? ESP_CODEC_DEV_OK
+                                                                   : ESP_CODEC_DEV_DRV_ERR)
+                 : !mic_saved.restore_pending;
+}
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+static audio_codec_feedback_t feedback;
 
 bool
 audio_codec_dac_feedback(bool on) {

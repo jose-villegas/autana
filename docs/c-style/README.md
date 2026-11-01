@@ -21,6 +21,7 @@ formatting or naming rules; commands are in
 | Tasks, cores, spinlocks, atomics, queues | [Concurrency](Concurrency.md) |
 | Driver, HAL and register access, wrapping a driver function | [Register access](Register-Access.md) |
 | Placing code or data with a linker fragment | [Linker fragments](../memory/Linker-Fragments.md) |
+| C++ in a repository built on the engine | [C++](Cpp.md) |
 
 ## Mechanical rules
 
@@ -79,8 +80,8 @@ scripts/gates/format-file-list.sh | xargs scripts/gates/check-format.sh --check 
 
 | Check | What it runs |
 |---|---|
-| Pre-commit | Format of the *staged* C and headers, executable bits, and the `STAGED_TEXT_GATE` steps of `comment-rules.yml` on an index snapshot. Run the text part alone with `scripts/gates/check-text-rules-staged.sh`; install its dependencies with `python -m pip install -r scripts/gates/requirements.txt`. Without ESP-IDF the citation check lists names it cannot verify. |
-| Pre-push | Branch names, and sanitized host tests when the range changes `.c` or `.h`; see [Host tests: git hooks](../testing/Host-Tests.md#git-hooks). |
+| Pre-commit | Format of the *staged* C and C++ files, executable bits, and the workflow steps marked `STAGED_TEXT_GATE` on an index snapshot. Run the text part alone with `scripts/gates/check-text-rules-staged.sh`; install its dependencies with `python -m pip install -r scripts/gates/requirements.txt`. Without ESP-IDF the citation check lists names it cannot verify. |
+| Pre-push | Branch names, and the step marked `PUSH_TEST_GATE` (sanitized host tests) when the range changes C or C++ source; see [Host tests: git hooks](../testing/Host-Tests.md#git-hooks). |
 | CI | Every listed file on every pull request and push to `main`. Hooks are feedback (`--no-verify` skips them, and they never see merges or CI commits); CI is the gate. |
 
 ### Duplication gates
@@ -102,7 +103,7 @@ Clone budgets, from the script's docstring:
 - A surviving shrink, or removing another pair, gives no headroom; renames map to base names; line shifts change nothing.
 - Code moved out of a file the change deletes keeps its fragments.
 - Not clones: `#include` or `RUN_TEST` blocks, literal-only or renaming `#define`s, split declarations, added groupings, comments, whitespace.
-- Scope: tracked C, C++ and Python under `launcher/` and `scripts/`, minus vendored, test-framework, generated and fixture-data files.
+- Scope: tracked C, C++ and Python of the repository it runs in, minus vendored, test-framework, generated and fixture-data files.
 - `MIN_TOKENS` sets the threshold; `--min-tokens N` reports another one without checking. Review a reported pair before extracting.
 - A shorter Python function is a clone when its body matches another's once its parameters and locals are renamed. Literals, attributes and globals must match exactly, and the docstring and annotations are ignored. Functions under `MIN_FUNCTION_NODES` AST nodes are skipped, since at that size they are idioms rather than helpers.
 

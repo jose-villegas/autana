@@ -11,6 +11,7 @@
 #include "app/app.h"
 #include "build/build_variant.h"
 #include "math/geometry/recti.h"
+#include "render/context/render_context.h"
 
 /* What one frame of a provider is handed. `input` is synthesised from the
  * provider's declared touch steps, edges included. */
@@ -64,7 +65,21 @@ typedef struct {
     uint32_t (*path_ms)(void);
     /* Optional path cut: frame history starts over; NULL without a path. */
     void (*seek)(uint32_t t_ms);
+    /* Optional: the render context the provider draws through, for a caller
+     * that switches debug views; NULL for a provider that draws without one. */
+    render_context_t* (*render_context)(void);
 } frame_provider_t;
+
+/* The open run's whole converted frame: bottom-up 24-bit BGR rows in the
+ * BMP's row layout (--crop writes only a part of it). Valid until
+ * render_host_close(). */
+typedef struct {
+    const uint8_t* bgr;
+    int width, height;
+    size_t stride; /* bytes from one row to the next, padding included */
+} render_host_image_t;
+
+render_host_image_t render_host_image(void);
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 typedef struct render_host_checkpoint render_host_checkpoint_t;
@@ -72,9 +87,10 @@ typedef struct render_host_checkpoint render_host_checkpoint_t;
  * Provider statics are excluded. Valid within the open run while captured allocations remain.
  * Timed choices (frame generation and predicted resolution) replay only as exactly as their clock. */
 render_host_checkpoint_t* render_host_save(void);
-const uint8_t* render_host_pixels(size_t* bytes);
 bool render_host_restore(render_host_checkpoint_t* checkpoint);
 void render_host_checkpoint_free(render_host_checkpoint_t* checkpoint);
+/* The memory one checkpoint holds, in bytes. */
+size_t render_host_checkpoint_bytes(const render_host_checkpoint_t* checkpoint);
 #endif
 
 /* Fully qualified tunable names use the same validation as the console. */

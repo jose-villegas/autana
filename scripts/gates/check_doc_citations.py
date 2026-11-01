@@ -38,7 +38,7 @@ import posixpath
 import re
 import sys
 
-from c_comments import excluded, scan
+from c_comments import SOURCE_GLOBS, excluded, scan
 from check_doc_index import blank_fences, doc_headings
 from code_vocabulary import vocabulary
 from idf_vocabulary import not_verified_notice, outside_vocabulary, required_missing
@@ -61,8 +61,7 @@ SHOWN = re.compile(r"\[\[(\d+)\]\]\(([^)\s#]*Citations\.md)#([\w-]+)\)")
 FIX_HINT = " (python scripts/gates/check_doc_citations.py --fix)"
 CELL_LINK = re.compile(r"\]\(([^)\s#]+)\)")
 CITING_DOCUMENTS = ["*.md"]
-CODE_SOURCES = ["*.c", "*.h", "*.cpp", "*.cc", "*.cxx", "*.hpp", "*.py", "*.sh", "*.mjs", "*.js",
-                "*.cmake", "*CMakeLists.txt"]
+CODE_SOURCES = [*SOURCE_GLOBS, "*.py", "*.sh", "*.mjs", "*.js", "*.cmake", "*CMakeLists.txt"]
 GATE_TESTS = "scripts/gates/tests/"
 
 # A citation of one or more sections of a doc: `X.md`'s "Section", or "One"
@@ -218,7 +217,7 @@ def section_citations(root):
         for start, text in _paragraphs(body):
             scan_text(rel, start, text)
 
-    for rel in tracked_files(root, ["launcher/*.c", "launcher/*.h"]):
+    for rel in tracked_files(root, SOURCE_GLOBS):
         path = root / rel
         if not path.exists():
             continue
