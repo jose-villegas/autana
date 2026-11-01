@@ -3,10 +3,9 @@ import pathlib
 import re
 
 from tracked import committable
-from c_comments import blank_comments
+from c_comments import SOURCE_EXTENSIONS, blank_comments
 
-SOURCE_SUFFIXES = {".c", ".h", ".py", ".sh", ".mjs"}
-C_SUFFIXES = {".c", ".h"}
+SCRIPT_SUFFIXES = {".py", ".sh", ".mjs"}
 FUNCTION = re.compile(r"\b([a-z_][a-z0-9_]*)\s*\(")
 MACRO = re.compile(r"^\s*#\s*define\s+([A-Z][A-Z0-9_]+)\b", re.M)
 KCONFIG = re.compile(r"^\s*config\s+([A-Z][A-Z0-9_]+)\b", re.M)
@@ -20,23 +19,18 @@ SDKCONFIG = re.compile(r"^#?\s*(CONFIG_[A-Z0-9_]+)", re.M)
 
 
 def source_paths(root):
-    root = pathlib.Path(root)
-    bases = (root / "launcher", root / "scripts")
-    if root.name == "launcher":
-        bases = (root,)
-    for base in bases:
-        if not base.is_dir():
-            continue
-        for path in committable(base):
-            if path.suffix in SOURCE_SUFFIXES or path.name in ("Kconfig", "Kconfig.projbuild"):
-                yield path
+    """Every source and script git would commit under `root`."""
+    for path in committable(root):
+        if (path.suffix in SOURCE_EXTENSIONS or path.suffix in SCRIPT_SUFFIXES
+                or path.name in ("Kconfig", "Kconfig.projbuild")):
+            yield path
 
 
 
 class Vocabulary:
     """What a comment can cite, split by where the name is real.
 
-    `functions`: declared or called in C code.
+    `functions`: declared or called in C or C++ code.
 
     `script_functions`: defined or called only by a Python script, so a C
     comment citing one must name the script.
@@ -69,7 +63,7 @@ def vocabulary(root):
     kconfig = []
     for path in source_paths(root):
         text = path.read_text(encoding="utf-8", errors="replace")
-        if path.suffix in C_SUFFIXES:
+        if path.suffix in SOURCE_EXTENSIONS:
             code = blank_comments(text, mode="code")
             # A literal token is real vocabulary; escapes must not glue letters onto it.
             spelled = re.sub(r"\\[a-z]", " ", blank_comments(text, mode="spelled"))

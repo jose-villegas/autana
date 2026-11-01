@@ -1,5 +1,8 @@
 """Run CI's marked gates against an index snapshot.
 
+The gates are the steps of the staged .github/workflows/ files that carry
+STAGED_TEXT_GATE, in whichever repository this runs in.
+
 A step marked STAGED_TEXT_GATE: "true" is file-scoped: it gets --paths and
 the staged files. One marked "snapshot" checks the whole tree (a generated
 catalogue against its sources, say) and runs on the snapshot as it is.
@@ -7,7 +10,6 @@ catalogue against its sources, say) and runs on the snapshot as it is.
 import os
 import io
 from pathlib import Path
-import shlex
 import subprocess
 import sys
 import tempfile
@@ -15,6 +17,7 @@ import tempfile
 import yaml
 
 from check_style_audit import BINARY_EXTENSIONS, DATA_EXTENSIONS
+from workflow_marks import WORKFLOWS, is_workflow, marked_steps
 
 
 def main():
@@ -25,14 +28,6 @@ def main():
     files = changed.decode('utf-8').strip('\0').split('\0') if changed else []
     if not files:
         return 0
-    workflow = yaml.safe_load(subprocess.check_output(
-        ['git', 'show', ':.github/workflows/comment-rules.yml'], cwd=root))
-    commands = [(shlex.split(step['run']), step['env']['STAGED_TEXT_GATE'] == 'true')
-                for job in workflow['jobs'].values() for step in job['steps']
-                if step.get('env', {}).get('STAGED_TEXT_GATE') in ('true', 'snapshot')]
-    if not commands:
-        print('No staged text gates declared in comment-rules.yml', file=sys.stderr)
-        return 1
     listing = subprocess.check_output(['git', 'ls-files', '--stage', '-z'], cwd=root)
     context = []
     for entry in listing.decode('utf-8').strip('\0').split('\0'):
@@ -41,6 +36,13 @@ def main():
         if metadata.startswith('160000 ') or (suffix in BINARY_EXTENSIONS - DATA_EXTENSIONS):
             continue
         context.append((metadata.split()[1], path))
+    workflows = [yaml.safe_load(subprocess.check_output(['git', 'show', f':{path}'], cwd=root))
+                 for _, path in context if is_workflow(path)]
+    commands = [(command, value == 'true') for command, value in marked_steps(workflows, 'STAGED_TEXT_GATE')
+                if value in ('true', 'snapshot')]
+    if not commands:
+        print(f'No staged text gates declared in {WORKFLOWS}', file=sys.stderr)
+        return 1
     git_dir = subprocess.check_output(['git', 'rev-parse', '--absolute-git-dir'],
                                       cwd=root, text=True).strip()
     status = 0
@@ -64,7 +66,10 @@ def main():
         running = []
         for command, scoped in commands:
             command[0] = sys.executable
-            command[1] = str(snapshot / command[1])
+            # The commit's own gate when it holds one; a submodule's, which
+            # no snapshot holds, runs from the checked-out pin.
+            gate = snapshot / command[1]
+            command[1] = str(gate if gate.exists() else root / command[1])
             # CI requires the SDK; local machines without it still check the
             # project vocabulary and print the citation gate's skipped notice.
             command = [arg for arg in command if arg != '--require-idf']

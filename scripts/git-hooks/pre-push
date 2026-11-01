@@ -1,6 +1,10 @@
 #!/bin/sh
+# The gates come from the tree being pushed, or from beside this file in a
+# repository that has none of its own (see pre-commit).
 
 ROOT=$(git rev-parse --show-toplevel) || exit 1
+GATES="$ROOT/scripts/gates"
+[ -d "$GATES" ] || GATES="$(dirname -- "$0")/../gates"
 updates=$(cat)
 
 printf '%s\n' "$updates" | while read -r _local_ref local_sha remote_ref _remote_sha; do
@@ -9,11 +13,11 @@ printf '%s\n' "$updates" | while read -r _local_ref local_sha remote_ref _remote
             case "$local_sha" in
                 0000000000000000000000000000000000000000) continue ;;
             esac
-            "$ROOT/scripts/gates/check-branch-name.sh" "${remote_ref#refs/heads/}" || exit 1
+            "$GATES/check-branch-name.sh" "${remote_ref#refs/heads/}" || exit 1
             ;;
     esac
 done || exit 1
 
-if [ -x "$ROOT/scripts/gates/check-host-tests-push.sh" ]; then
-    printf '%s\n' "$updates" | "$ROOT/scripts/gates/check-host-tests-push.sh" || exit 1
+if [ -x "$GATES/check-host-tests-push.sh" ]; then
+    printf '%s\n' "$updates" | "$GATES/check-host-tests-push.sh" || exit 1
 fi
