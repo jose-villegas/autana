@@ -3,7 +3,7 @@
 Vectors, rotations, affine maps and cached transforms. [Math index](README.md).
 
 <!-- generated: math-fast-links-linear check: python launcher/tools/perf/fast_paths.py --check -->
-Fast-path evidence: [mathx_rsqrt_q30](Fast-Paths.md#mathx-rsqrt-q30).
+Fast-path evidence: [mathx_rsqrt_q30](../packages/Fast-Paths.md#mathx-rsqrt-q30).
 <!-- /generated: math-fast-links-linear -->
 
 `P` stands for the type's prefix (`vec3f`, `vec3x`, ...). The families pass small

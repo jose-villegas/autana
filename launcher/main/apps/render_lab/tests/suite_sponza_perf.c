@@ -231,7 +231,7 @@ report_stage_split(int bake) {
     for (uint32_t t_ms = 0; t_ms < period; t_ms += SPONZA_POSE_EVERY_MS) {
         view_at(&meshes[bake], t_ms, &b->lens);
         const int visible = r3d_pipeline_cull(&meshes[bake], lens, parts->culled + 1, parts->work[0], NULL);
-        r3d_pipeline_transform(&meshes[bake], lens, parts->culled + 1, visible, parts->cs, parts->rows);
+        r3d_pipeline_transform(&meshes[bake], lens, parts->culled + 1, visible, parts->cs, parts->rows, false);
         for (int stop = 0; stop <= 3; stop++) {
             stopped[stop] += one_core_draw_us(&b->raster, parts, lens, visible, stop);
         }
@@ -261,7 +261,7 @@ test_sponza_draw_stage_breakdown(void) {
     const raster_buffers_t* parts = &b->buffers;
     const int visible = r3d_pipeline_cull(atrium.mesh, lens, parts->culled + 1, parts->work[0], NULL);
     int64_t start = timing_now_us();
-    r3d_pipeline_transform(atrium.mesh, lens, parts->culled + 1, visible, parts->cs, parts->rows);
+    r3d_pipeline_transform(atrium.mesh, lens, parts->culled + 1, visible, parts->cs, parts->rows, false);
     ESP_LOGI(TAG, "stage, one core: %-22s %7lldus" R3D_PERF_QUARTER_FORMAT, "transform",
              (long long)(timing_now_us() - start), perf_quarter->name);
 
@@ -429,9 +429,14 @@ test_sponza_frame_cost_along_the_flythrough(void) {
 }
 
 static raster_motion_t* motion;
+/* Each motion draw below draws one instance. */
+#define SPONZA_MOTION_INSTANCES 1
 
 static void
 release_motion(void) {
+    if (motion != NULL) {
+        raster_motion_release(motion);
+    }
     memory_free(motion);
     motion = NULL;
 }
@@ -445,6 +450,7 @@ test_sponza_frame_cost_with_motion(void) {
     motion = memory_alloc(sizeof(*motion), MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(motion);
     *motion = (raster_motion_t){0};
+    TEST_ASSERT_TRUE(raster_motion_reserve(motion, SPONZA_MOTION_INSTANCES));
     const raster_attachment_t attachment = raster_motion_view(motion);
     const raster_attachment_t* const attached[] = {&attachment};
     /* Worst of a 5-seed capture on A308 (before and after its move), 20E8 and

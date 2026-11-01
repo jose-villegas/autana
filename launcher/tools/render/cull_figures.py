@@ -4,12 +4,14 @@ engine's own `cull` view (render/view/raster_cull_view.c) on the host viewer.
 launcher/tools/render/render_doc_images.sh runs it once per scene.
 
     python launcher/tools/render/cull_figures.py --scene SCENE.scene.toml --object NAME --camera NAME
-        --stem STEM --label TEXT --level N --out DIR --tables DIR --work DIR
+        --stem STEM --label TEXT --level N --out DIR --tables DIR --work DIR [--overdraw STEM]
 
 It writes, into --out:
   STEM-sheet.png   a row per pose, at the panel's size: the camera's picture, the fates from above
                    and from behind, and the tree's level-N node boxes from above
   STEM-counts.png  the counts along the path, clusters and triangles
+  OVERDRAW-sheet.png, with --overdraw OVERDRAW: the same poses in landscape at the scene's own render
+                   size, the camera's picture beside the `overdraw` view (render/view/raster_overdraw.c)
 and leaves --work/STEM-chase.avi (the fates from behind, the whole path) for a
 GIF, and --tables/STEM.md, the counts' path means for the page's block.
 The counts' series come from cull_counts.py.
@@ -28,6 +30,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
 import check_avi
+from build.c_header import read_define
 from cull_counts import CULL_HEADER, plot_counts
 from docs.plot_style import save, subplots
 from render.doc_tables import markdown
@@ -35,6 +38,7 @@ from render_compare import still_sheet
 
 VIEWER = ROOT / "launcher/tools/render/scene_viewer.sh"
 GFX_HEADER = ROOT / "launcher/main/gfx/gfx.h"
+DISPLAY_HEADER = ROOT / "launcher/main/display/display.h"
 FRAMES = 120  # frames along the whole path, for the counts and the videos
 POSES = 3  # sheet rows, evenly inside the path
 FIGURE_SIZE = (10, 5.2)
@@ -43,7 +47,7 @@ PERCENT = 100
 def enum_value(enum, prefix, name, source=CULL_HEADER):
     """A cullview tunable's value: `name`'s place in raster_cull_view.h's `enum`."""
     text = pathlib.Path(source).read_text(encoding="utf-8")
-    body = re.search(r"typedef enum \{(.*?)\} " + enum + ";", text, re.S)[1]
+    body = re.search(r"typedef enum(?: __attribute__\(\(\w+\)\))? \{(.*?)\} " + enum + ";", text, re.S)[1]
     return re.findall(prefix + r"(\w+)", body).index(name)
 
 
@@ -81,9 +85,9 @@ def panel_size(source=GFX_HEADER):
     return f"{width}x{height}"
 
 
-def video(args, name, view_flags, dt):
+def video(args, name, view_flags, dt, size=None):
     avi = args.work / f"{args.stem}-{name}.avi"
-    viewer(args, *view_flags, "--size", panel_size(), "--frames", str(FRAMES), "--dt", str(dt), "-o", str(args.work / f"{name}.bmp"),
+    viewer(args, *view_flags, *(size or ("--size", panel_size())), "--frames", str(FRAMES), "--dt", str(dt), "-o", str(args.work / f"{name}.bmp"),
            "--video", str(avi), log=args.work / f"{args.stem}-{name}.log")
     return avi
 
@@ -101,11 +105,11 @@ def frames_at(avi, indices):
     return [found[i] for i in indices]
 
 
-def sheet(args, columns, indices, dt):
+def sheet(args, columns, indices, dt, stem):
     """One render_compare still row per pose, stacked."""
     rows = [[(f"{label}, {index * dt / 1000:.1f} s", pictures[row].convert("RGB")) for label, pictures in columns]
             for row, index in enumerate(indices)]
-    still_sheet(rows).save(args.out / f"{args.stem}-sheet.png", optimize=True)
+    still_sheet(rows).save(args.out / f"{stem}-sheet.png", optimize=True)
 
 
 def read_counts(path):
@@ -152,6 +156,8 @@ def main(argv=None):
     parser.add_argument("--out", required=True, type=pathlib.Path)
     parser.add_argument("--tables", required=True, type=pathlib.Path)
     parser.add_argument("--work", required=True, type=pathlib.Path)
+    parser.add_argument("--overdraw", metavar="STEM", help="also write STEM-sheet.png: the poses in landscape, "
+                        "the camera's picture beside the overdraw view")
     args = parser.parse_args(argv)
     for folder in (args.out, args.tables, args.work):
         folder.mkdir(parents=True, exist_ok=True)
@@ -170,7 +176,12 @@ def main(argv=None):
     columns = [("camera", frames_at(shaded, indices)), ("fates from above", frames_at(top, indices)),
                ("fates from behind", frames_at(chase, indices)),
                (f"level {args.level} from above", frames_at(level, indices))]
-    sheet(args, columns, indices, dt)
+    sheet(args, columns, indices, dt, args.stem)
+    if args.overdraw:
+        turned = ("--quarter", str(read_define(DISPLAY_HEADER, "DISPLAY_LANDSCAPE")))
+        sheet(args, [("camera", frames_at(video(args, "landscape", ["--view", "shaded"], dt, turned), indices)),
+                     ("overdraw", frames_at(video(args, "overdraw", ["--view", "overdraw"], dt, turned), indices))],
+              indices, dt, args.overdraw)
 
     counts_chart(args, rows)
     means_table(args, rows)
