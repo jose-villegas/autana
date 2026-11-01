@@ -20,7 +20,8 @@ WEIGHT = 0.01
 
 
 def table():
-    boxes = [(np.array([i * 0.121, 0., 1.]), np.array([0.12, 0.8, 0.011])) for i in range(12)]
+    # Planks as thick as a real table's: thickness 0.17 of the width, legs square.
+    boxes = [(np.array([i * 0.121, 0., 1.]), np.array([0.12, 0.8, 0.02])) for i in range(12)]
     boxes += [(np.array([x, y, 0.]), np.array([0.05, 0.05, 1.]))
               for x in (0.025, 1.376) for y in (0.025, 0.725)]
     parts = []

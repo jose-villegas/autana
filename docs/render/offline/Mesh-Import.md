@@ -233,7 +233,7 @@ geometry and retain their own placements.
 |---|---|---|
 | `VIEW_DIRECTIONS` | Normalized nonzero cube directions | Cover every side without a scene camera. |
 | `VIEW_PIXELS` | 96 | Approximate a copy's p95 on-screen diameter. |
-| `PLATE_RATIO` | 0.1 | Limit thickness relative to the middle PCA extent. |
+| `PLATE_RATIO` | 0.25 | A part is a plate when its thickness is at most a quarter of its width (its middle extent): boards and slats, not legs or posts. |
 | `PARALLEL_COS` | 0.97 | Allow small differences in plate normals. |
 | `PLANE_SHARE` | 0.02 | Bound plane separation by the shape's diagonal. |
 | `TOUCH_SHARE` | 0.03 | Join plates separated by small gaps relative to that diagonal. |
