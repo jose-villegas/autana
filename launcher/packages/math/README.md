@@ -52,10 +52,8 @@ header's opening comment; `--check` verifies it.
 | Header | Purpose |
 |---|---|
 | [include/math/geometry/ball_template.h](include/math/geometry/ball_template.h) | ball_template: closed balls in any dimension for one number type; see docs/math/Conventions.md#templates for macro arguments. |
-| [include/math/geometry/box3_plane_template.h](include/math/geometry/box3_plane_template.h) | box3_plane_template: how far a real box reaches along a plane: its least and greatest signed distance, and its least objective inside a half-space. |
 | [include/math/geometry/box3_template.h](include/math/geometry/box3_template.h) | box3_template: closed axis-aligned boxes for one number type; see docs/math/Conventions.md#templates for macro arguments. |
 | [include/math/geometry/box3f.h](include/math/geometry/box3f.h) | box3f: a closed axis-aligned box of a float. |
-| [include/math/geometry/box3f_plane.h](include/math/geometry/box3f_plane.h) | box3f_plane: a float box against a float plane (box3_plane_template.h). |
 | [include/math/geometry/box3s.h](include/math/geometry/box3s.h) | box3s: a closed axis-aligned box of int16 position ticks. |
 | [include/math/geometry/circle_template.h](include/math/geometry/circle_template.h) | circle_template: closed discs for one number type; see docs/math/Conventions.md#templates for macro arguments. |
 | [include/math/geometry/circlef.h](include/math/geometry/circlef.h) | circlef: a closed disc of a float. |
