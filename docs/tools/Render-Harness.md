@@ -385,7 +385,7 @@ Time a change on the device, or under QEMU's `--icount` for counts.
 
 Two files, the same declare-then-source shape a report script uses:
 
-- **`<name>_render_host.c`** defines one `render_scene`; see
+- **`<name>_render_host.c`** defines one named `frame_provider_t`; see
   `launcher/tools/render/render_host.h` for the fields: a setup hook that runs
   once after `gfx_init()`, a draw hook that runs once per frame, and an
   options hook taking whatever arguments the harness did not recognise.
@@ -395,9 +395,45 @@ Two files, the same declare-then-source shape a report script uses:
   checking each image, converting to PNG) is that one procedure. A scene that
   reads asset packs also declares `scene_assets`, the folders whose roots
   `build_pack.py` writes as packs beside the renderer; a folder with no asset
-  roots fails the build. `scene_renderer=1` links the renderer: every `.c`
-  below the folders `launcher/main/renderer_folders.txt` names, the list the
-  firmware and the host tests build too.
+  roots fails the build.
+
+CMake's `autana::render_host_core` supplies the host frame loop, drawing and assets.
+
+`scene_renderer=1` selects `autana::render_host`, adding the renderer folders in
+`launcher/main/renderer_folders.txt`. Its consumer defines `display_quarter_now()`
+from `display/display.h`.
+
+A host consumer adds `launcher/tools/render` with `add_subdirectory()` and links
+the chosen target. Its interface sources compile with the consumer's defines;
+package libraries supply their own targets.
+
+Scene builds use CMake under their output folder. `--deps` reads a temporary
+build's compile database without compiling or leaving output files.
+The standalone compile check is
+`cmake -S launcher/tools/render -B build/render-host && cmake --build build/render-host`.
+
+The script selects `<scene_name>_provider` with `RENDER_HOST_PROVIDER`;
+`scene_provider` overrides the symbol, and an empty value builds
+`render_host.c` without `main()` as a library.
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    state "render_host_open" as Open
+    state "render_host_step" as Step
+    state "render_host_close" as Close
+    [*] --> Open
+    Open --> Step: run opened
+    Step --> Step: elapsed time and input
+    Step --> Close: judge warm-up frames, write outputs
+    Close --> [*]: success or failure
+```
+
+If `render_host_open()` returns false, no run opened and `exit_code` carries the command's result.
+
+Each draw receives a `provider_frame_t`. Optional `path_ms` and `seek` hooks
+expose a provider's path duration and camera cuts. The scene-file provider
+seeks its animators and clears render history at a cut.
 
 An engine scene lives in `launcher/tools/render/scenes/`; an app's scene lives
 in that app's own `tools/`, so nothing in the engine's tooling names an app.

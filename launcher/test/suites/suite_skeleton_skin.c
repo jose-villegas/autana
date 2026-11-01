@@ -6,6 +6,7 @@
 #include <string.h>
 #include "anim/anim_skeleton.h"
 #include "asset/asset_bytes.h"
+#include "math/scalar/float_bits.h"
 #include "render/r3d_skin.h"
 #include "suites.h"
 #include "test_pack.h"
@@ -109,8 +110,7 @@ test_skeleton_open_refusals(void) {
     const uint32_t rest = asset_read_u32(f.skeleton.data + ANIM_SKELETON_AT_REST);
     const uint32_t strings = asset_read_u32(f.skeleton.data + ANIM_SKELETON_AT_STRINGS);
     const float nonfinite = INFINITY;
-    uint32_t bits;
-    memcpy(&bits, &nonfinite, sizeof bits);
+    const uint32_t bits = mathf_bits(nonfinite);
     check_mutation(&f, f.skeleton, "armature", (mutation_t){rest, bits, sizeof bits, ASSET_ERR_FORMAT}, 0);
     check_mutation(&f, f.skeleton, "armature", (mutation_t){strings, 0, 1, ASSET_ERR_FORMAT}, 0);
     check_mutation(&f, f.skeleton, "armature", (mutation_t){f.skeleton.size - 1, 'x', 1, ASSET_ERR_FORMAT}, 0);
@@ -206,8 +206,7 @@ test_skin_open_refusals(void) {
     const uint32_t stride = 2 * R3D_SKIN_INFLUENCES_MAX + R3D_SKIN_RECORD_TAIL;
     check_mutation(&f, f.skin, "probe.skin", (mutation_t){records + stride - 1, 1, 1, ASSET_ERR_FORMAT}, 1);
     const float nonfinite = NAN;
-    uint32_t bits;
-    memcpy(&bits, &nonfinite, sizeof bits);
+    const uint32_t bits = mathf_bits(nonfinite);
     const uint32_t inverse = asset_read_u32(f.skin.data + R3D_SKIN_AT_INVERSE);
     check_mutation(&f, f.skin, "probe.skin", (mutation_t){inverse, bits, sizeof bits, ASSET_ERR_FORMAT}, 1);
     asset_file_release(f.buffer);
