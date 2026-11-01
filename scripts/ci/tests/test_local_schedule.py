@@ -69,21 +69,22 @@ class LocalScheduleTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, '00:00–05:59'):
                     schedule.next_marker(trigger)
 
-    def test_cutoff_is_board_last_start_on_the_markers_date_and_offset(self):
+    def test_cutoff_and_end_are_their_setting_on_the_markers_date_and_offset(self):
         marker = datetime(2026, 10, 25, 3, tzinfo=self.zone)
-        default, latest = schedule.LOCAL_TIMES['BOARD_LAST_START']
-        for value, hour in (('', int(default[:2])), ('04:30', 4), (f'{latest:02d}:59', latest)):
-            with patch.dict(os.environ, BOARD_LAST_START=value):
-                cutoff = schedule.night_cutoff(marker)
-            self.assertEqual(cutoff.utcoffset(), marker.utcoffset())
-            self.assertEqual((cutoff.date(), cutoff.hour), (marker.date(), hour))
+        for name, at in (('BOARD_LAST_START', schedule.night_cutoff), ('BOARD_END', schedule.night_end)):
+            default, latest = schedule.LOCAL_TIMES[name]
+            for value, hour in (('', int(default[:2])), ('04:30', 4), (f'{latest:02d}:59', latest)):
+                with self.subTest(name=name, value=value), patch.dict(os.environ, {name: value}):
+                    time = at(marker)
+                    self.assertEqual(time.utcoffset(), marker.utcoffset())
+                    self.assertEqual((time.date(), time.hour), (marker.date(), hour))
+            for value in (f'{latest + 1:02d}:00', '23:00', '8:00', '08:60'):
+                with self.subTest(name=name, value=value), patch.dict(os.environ, {name: value}), \
+                        self.assertRaisesRegex(ValueError, f'{name} must be HH:MM in 00:00–{latest:02d}:59'):
+                    at(marker)
         # A daytime run's cut-off has passed: it starts no lane after its plan.
         afternoon = datetime(2026, 10, 25, 14, tzinfo=self.zone)
         self.assertLess(schedule.night_cutoff(afternoon), afternoon)
-        for value in (f'{latest + 1:02d}:00', '23:00', '8:00', '08:60'):
-            with self.subTest(value=value), patch.dict(os.environ, BOARD_LAST_START=value), \
-                    self.assertRaisesRegex(ValueError, f'BOARD_LAST_START must be HH:MM in 00:00–{latest:02d}:59'):
-                schedule.night_cutoff(marker)
 
     def test_invalid_night_zone_raises(self):
         trigger = Clock(0, tzinfo=timezone.utc).now()
