@@ -86,8 +86,11 @@ CODE_TOKEN = re.compile(r"\w+|[^\w\s]")
 # other long list once identifiers are ignored, and has no shared owner to
 # extract; a pair counts only if what remains without them is still a
 # clone's length in itself. A table row is a braced initializer holding no
-# statement, so a block of code never passes for one.
-TEST_REGISTRATION = re.compile(r"\bRUN_TEST\s*\(\s*\w+\s*\)\s*;|\{[^{};]*\}\s*,")
+# statement, so a block of code never passes for one. An inline assembly body
+# is the same: with literals ignored, its run of string lines matches any other
+# such run, its own shifted by a line included.
+STRING_RUN = r'(?:"(?:\\.|[^"\\])*"\s*(?:/\*.*?\*/\s*|//[^\n]*\s*)*){2,}'
+TEST_REGISTRATION = re.compile(r"\bRUN_TEST\s*\(\s*\w+\s*\)\s*;|\{[^{};]*\}\s*,|" + STRING_RUN, re.DOTALL)
 INCLUDE_DIRECTIVE = re.compile(r"(?m)^[ \t]*#[ \t]*include\b(?:[^\n]*\\\n)*[^\n]*")
 OBJECT_DEFINE = re.compile(r"(?m)^[ \t]*#[ \t]*define[ \t]+[A-Za-z_]\w*[ \t]+((?:[^\n]*\\\n)*[^\n]*)")
 C_LITERAL = (r'''(?:[+-]?(?:0[xX][0-9a-fA-F]+|\d+(?:\.\d*)?(?:[eE][+-]?\d+)?|'''
