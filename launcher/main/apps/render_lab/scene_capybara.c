@@ -15,12 +15,12 @@
 
 #include "app/app.h"
 #include "apps/render_lab/render_lab_clips.h"
+#include "console/console_words.h"
 #include "core/tune.h"
 #include "display/display.h"
 #include "draw/draw.h"
 #include "esp_log.h"
 #include "gfx/gfx.h"
-#include "gfx/present/gfx_present.h"
 #include "input/mapping/orbit_motion_touch.h"
 #include "kinematics/orbit/orbit_motion.h"
 #include "math/scalar/math_const.h"
@@ -47,6 +47,9 @@ static const char* TAG = "capybara";
 #define CAPYBARA_HOME_YAW       (135.0F * MATH_RADIANS_PER_DEGREE)
 #define CAPYBARA_HOME_PITCH     (15.0F * MATH_RADIANS_PER_DEGREE)
 
+/* The yaw that looks the capybara in the face: the model faces -z. */
+#define CAPYBARA_FRONT_YAW      (180.0F * MATH_RADIANS_PER_DEGREE)
+
 /* The lowest the eye goes: a little above level, so the meadow stays below it. */
 #define CAPYBARA_PITCH_MIN      (5.0F * MATH_RADIANS_PER_DEGREE)
 
@@ -57,6 +60,22 @@ static const char* TAG = "capybara";
 #define CAPYBARA_ZOOM_IN        0.5F
 #define CAPYBARA_ZOOM_OUT       3.0F
 #define CAPYBARA_NEAR_CLEARANCE 2.0F
+
+/* The console's named views: side and back are quarter turns on from the
+ * front; the side is the flank the home view does not show. */
+typedef struct {
+    const char* name;
+    float yaw;
+    bool closest; /* at the zoom-in limit rather than the home distance */
+} capybara_view_t;
+
+static const capybara_view_t views[] = {
+    {CAPYBARA_VIEW_HOME, CAPYBARA_HOME_YAW, false},
+    {CAPYBARA_VIEW_FRONT, CAPYBARA_FRONT_YAW, false},
+    {CAPYBARA_VIEW_SIDE, CAPYBARA_FRONT_YAW + (MATH_TAU / 4.0F), false},
+    {CAPYBARA_VIEW_BACK, CAPYBARA_FRONT_YAW + (MATH_TAU / 2.0F), false},
+    {CAPYBARA_VIEW_CLOSE, CAPYBARA_HOME_YAW, true},
+};
 
 static scene_t* capybara;
 static scene_entity_t camera_entity;
@@ -134,6 +153,7 @@ scene_capybara_exit(void) {
     render_lab_clips_destroy(&choice);
     scene_unload(capybara);
     capybara = NULL;
+    subject_entity = SCENE_ENTITY_NONE;
 }
 
 /* The finger turns the camera before the shell draws this frame. */
@@ -183,14 +203,47 @@ capybara_status(void) {
     return buf;
 }
 
+/* "view <name>" holds the orbit still on a named view. */
+static inline bool
+view_reply(const char* args, console_reply_fn reply) {
+    const char* name;
+    if (!console_word_match(args, "view", &name)) {
+        return false;
+    }
+    if (capybara == NULL || failure[0] != '\0') {
+        reply("RENDER_ERR no capybara");
+        return true;
+    }
+    for (size_t i = 0; i < sizeof views / sizeof views[0]; i++) {
+        if (console_name_cmp(name, views[i].name) == 0) {
+            orbit.at = (orbit_motion_state_t){views[i].yaw, orbit.home.pitch,
+                                              views[i].closest ? orbit.limits.log_dist_min : orbit.home.log_dist};
+            orbit.velocity = (orbit_motion_state_t){0};
+            orbit.resetting = false;
+            place_camera();
+            reply("RENDER view ok");
+            reply("RENDER_END");
+            return true;
+        }
+    }
+    reply("RENDER_ERR unknown view");
+    return true;
+}
+
 static inline bool
 scene_capybara_console(const char* args, console_reply_fn reply) {
-    return render_lab_clips_reply(&choice, args, reply);
+    return view_reply(args, reply) || render_lab_clips_reply(&choice, args, reply);
 }
 
 static void
 scene_capybara_controls(int width) {
     render_lab_clips_draw(width, &choice);
+}
+
+/* The subject, galloping. */
+static render_lab_path_t
+capybara_path(void) {
+    return (render_lab_path_t){capybara, subject_entity, CAPYBARA_GALLOP};
 }
 
 const render_lab_scene_t scene_capybara = {.name = "Capybara",
@@ -202,4 +255,5 @@ const render_lab_scene_t scene_capybara = {.name = "Capybara",
                                            .status = RENDER_LAB_SCENE_DEV(capybara_status),
                                            .steer = scene_capybara_steer,
                                            .controls = scene_capybara_controls,
-                                           .console = RENDER_LAB_SCENE_DEV(scene_capybara_console)};
+                                           .console = RENDER_LAB_SCENE_DEV(scene_capybara_console),
+                                           .path = capybara_path};

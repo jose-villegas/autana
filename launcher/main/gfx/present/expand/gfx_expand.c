@@ -18,10 +18,11 @@ static bool frame_expanded;
 static bool frame_blended; /* expanded through the seam mask */
 static GFX_TARGET_STORAGE(1) half_target = GFX_TARGET_COLOR_INIT(NULL, GFX_WIDTH / 2, GFX_HEIGHT / 2);
 
-#define HALF_WIDTH  (GFX_WIDTH / 2)
-#define HALF_HEIGHT (GFX_HEIGHT / 2)
+#define HALF_WIDTH       (GFX_WIDTH / 2)
+#define HALF_HEIGHT      (GFX_HEIGHT / 2)
+#define HALF_IMAGE_BYTES ((sizeof(*half_image) * HALF_WIDTH * HALF_HEIGHT) + GFX_SEAM_BYTES(HALF_WIDTH, HALF_HEIGHT))
 /* Every half row starts on a vector load's 16 bytes (gfx_quarter_select.h). */
-#define HALF_ALIGN  16
+#define HALF_ALIGN       16
 _Static_assert((HALF_WIDTH * sizeof(gfx_color_t)) % HALF_ALIGN == 0, "half rows stay aligned");
 static gfx_band_overlay_fn frame_overlay;
 
@@ -32,9 +33,7 @@ gfx_half_picture(void) {
         return NULL;
     }
     if (half_image == NULL) {
-        half = memory_alloc_aligned((sizeof(*half_image) * HALF_WIDTH * HALF_HEIGHT)
-                                        + GFX_SEAM_BYTES(HALF_WIDTH, HALF_HEIGHT),
-                                    HALF_ALIGN, MEMORY_PSRAM);
+        half = memory_alloc_aligned(HALF_IMAGE_BYTES, HALF_ALIGN, MEMORY_PSRAM);
         half_image = half.at;
         half_target.attachment[0].pixels = half_image;
     }
@@ -176,5 +175,15 @@ void
 expand_reset_for_test(void) {
     clear_expanded_frame(true);
     frame_overlay = NULL;
+}
+#endif
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+void
+gfx_expand_checkpoint_capture(checkpoint_t* saved) {
+    CHECKPOINT_CAPTURE(saved, frame_expanded);
+    CHECKPOINT_CAPTURE(saved, frame_blended);
+    CHECKPOINT_CAPTURE(saved, frame_overlay);
+    checkpoint_capture_at(saved, &half_image, HALF_IMAGE_BYTES);
 }
 #endif
