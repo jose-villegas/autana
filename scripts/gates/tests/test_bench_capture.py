@@ -95,4 +95,3 @@ class HashCaptureTests(unittest.TestCase):
                     good.replace(' execution=', ' mode=')):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 bench.parse_target(bad, prefix="MATHTARGET")
-
