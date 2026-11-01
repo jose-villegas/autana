@@ -101,7 +101,6 @@ render_scene_run() {
 render_scene_packs() {
     # shellcheck source=../../../scripts/lib/python.sh
     . "$_rs_launcher/../scripts/lib/python.sh"
-    . "$_rs_launcher/../scripts/lib/native_path.sh"
     _rs_python=$(find_python) || return 1
     _rs_assets="$scene_out_dir/assets"
     set --
@@ -197,6 +196,13 @@ render_scene_build() {
         return 1
     fi
 
+    if ! command -v cmake > /dev/null 2>&1; then
+        echo "No CMake found." >&2
+        echo "  Windows: winget install Kitware.CMake" >&2
+        echo "  Debian:  sudo apt install cmake" >&2
+        return 1
+    fi
+
     mkdir -p "$scene_out_dir"
     _rs_bin="$scene_out_dir/${scene_name}_render"
     if [ "${OS:-}" = "Windows_NT" ]; then
@@ -204,8 +210,6 @@ render_scene_build() {
     fi
 
     . "$_rs_launcher/../scripts/lib/native_path.sh"
-    . "$_rs_launcher/../scripts/lib/python.sh"
-    _rs_python=$(find_python) || return 1
     _rs_assets=
     if [ "$_rs_deps" = 0 ] && { [ -n "$scene_assets" ] || [ -n "$scene_asset_file" ]; }; then
         render_scene_packs || return 1
@@ -228,10 +232,14 @@ render_scene_build() {
     if [ "$_rs_deps" = 1 ]; then
         _rs_build=$(mktemp -d) || return 1
     fi
+    set --
+    if [ ! -f "$_rs_build/CMakeCache.txt" ]; then
+        set -- -G "$_rs_generator"
+    fi
     _rs_configure_log="$_rs_build/cmake.log"
     mkdir -p "$_rs_build"
     if ! cmake -S "$(to_native "$_rs_tools/render/scene")" -B "$(to_native "$_rs_build")" \
-        -G "$_rs_generator" "-DCMAKE_C_COMPILER=$(to_native "$(command -v "$_rs_cc")")" \
+        "$@" "-DCMAKE_C_COMPILER=$(to_native "$(command -v "$_rs_cc")")" \
         -DCMAKE_BUILD_TYPE= "-DSCENE_NAME=$scene_name" \
         "-DSCENE_OUT_DIR=$(to_native "$(CDPATH= cd -- "$scene_out_dir" && pwd)")" \
         "-DSCENE_SOURCES=$_rs_cmake_sources" "-DSCENE_INCLUDES=$_rs_cmake_includes" \
@@ -242,15 +250,18 @@ render_scene_build() {
         return 1
     fi
     if [ "$_rs_deps" = 1 ]; then
+        . "$_rs_launcher/../scripts/lib/python.sh"
+        _rs_python=$(find_python) || { rm -rf "$_rs_build"; return 1; }
         _rs_status=0
-        "$_rs_python" "$(to_native "$_rs_tools/render/scene/dependencies.py")" "$(to_native "$_rs_build")" || _rs_status=$?
+        "$_rs_python" "$(to_native "$_rs_tools/render/scene/dependencies.py")" "$(to_native "$_rs_build")" "$_rs_cmake_sources" || _rs_status=$?
         rm -rf "$_rs_build"
         return "$_rs_status"
     fi
-    if ! cmake --build "$(to_native "$_rs_build")" --target render_scene --parallel > "$_rs_configure_log" 2>&1; then
-        cat "$_rs_configure_log" >&2
-        return 1
-    fi
+    _rs_build_log="$_rs_build/build.log"
+    _rs_status=0
+    cmake --build "$(to_native "$_rs_build")" --target render_scene --parallel > "$_rs_build_log" 2>&1 || _rs_status=$?
+    awk '!/^\[[[:space:][:digit:]%/]+\]/ && !/^-- / && !/^Consolidate compiler generated dependencies of target / && !/^ninja: / && !/^[[:alnum:]_-]*make(\[[0-9]+\])?:/' "$_rs_build_log" >&2
+    return "$_rs_status"
 }
 
 render_scene_render() {
