@@ -161,7 +161,8 @@ def check(root, name):
         made = regenerate(root, name)
     except ValueError as error:
         return str(error)
-    tracked = (root / name).read_bytes()
+    # A Windows checkout without eol=lf holds CRLF; git stores LF either way.
+    tracked = (root / name).read_bytes().replace(b"\r\n", b"\n")
     if made == tracked:
         return None
     diff = difflib.unified_diff(tracked.decode("utf-8", "replace").splitlines(),

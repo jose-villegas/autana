@@ -16,12 +16,18 @@ IDENTIFIER = re.compile(r"\b([A-Za-z_]\w*)\b")
 PY_COMMENT = re.compile(r"^\s*#.*$", re.M)
 PY_CONSTANT = re.compile(r"^([A-Z][A-Z0-9_]+)\s*=", re.M)
 SDKCONFIG = re.compile(r"^#?\s*(CONFIG_[A-Z0-9_]+)", re.M)
+SH_FUNCTION = re.compile(r"^\s*([a-z_][a-z0-9_]*)\s*\(\)", re.M)
+CMAKE_FUNCTION = re.compile(r"^\s*(?:function|macro)\s*\(\s*([A-Za-z_]\w*)", re.M | re.I)
+
+
+def is_cmake(path):
+    return path.suffix == ".cmake" or path.name == "CMakeLists.txt"
 
 
 def source_paths(root):
     """Every source and script git would commit under `root`."""
     for path in committable(root):
-        if (path.suffix in SOURCE_EXTENSIONS or path.suffix in SCRIPT_SUFFIXES
+        if (path.suffix in SOURCE_EXTENSIONS or path.suffix in SCRIPT_SUFFIXES or is_cmake(path)
                 or path.name in ("Kconfig", "Kconfig.projbuild")):
             yield path
 
@@ -79,10 +85,12 @@ def vocabulary(root):
             # string; an environment variable it reads, a line it matches.
             vocab.constants |= set(PY_CONSTANT.findall(text))
             vocab.constants |= set(CONSTANT.findall(PY_COMMENT.sub("", text)))
-        elif path.suffix == ".sh":
-            # A variable a shell script sets or reads: a device profile's
-            # value, an override the environment passes in.
-            vocab.constants |= set(CONSTANT.findall(PY_COMMENT.sub("", text)))
+        elif path.suffix == ".sh" or is_cmake(path):
+            # A function a shell script or CMake file defines, and a variable
+            # it sets or reads: a device profile's value, a build option.
+            code = PY_COMMENT.sub("", text)
+            vocab.script_functions |= set((SH_FUNCTION if path.suffix == ".sh" else CMAKE_FUNCTION).findall(code))
+            vocab.constants |= set(CONSTANT.findall(code))
         elif path.suffix == ".mjs":
             # An environment variable a Node gate reads; its functions are
             # camelCase and never cited as a C or Python name would be.

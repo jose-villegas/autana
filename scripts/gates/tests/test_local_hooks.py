@@ -229,6 +229,15 @@ class LocalHookTests(ShellGateTestCase):
         result = self.gate('check-host-tests-push.sh', f'refs/heads/feature/test {pin} refs/heads/feature/test {head}\n')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.count('SANITIZED'), 1)
+        # So is a build file.
+        for build_file in ('CMakeLists.txt', 'cmake/flags.cmake', 'CMakePresets.json'):
+            with self.subTest(build_file=build_file):
+                self.write(build_file, f'# {build_file}\n')
+                self.git('-c', 'core.hooksPath=', 'commit', '-qm', build_file)
+                result = self.gate('check-host-tests-push.sh',
+                                   f'refs/heads/feature/test {self.git("rev-parse", "HEAD")} refs/heads/feature/test {pin}\n')
+                self.assertEqual(result.stdout.count('SANITIZED'), 1, result.stderr)
+                pin = self.git('rev-parse', 'HEAD')
 
 
     def test_a_new_branch_with_no_history_in_common_with_main_is_judged_by_its_own_files(self):
