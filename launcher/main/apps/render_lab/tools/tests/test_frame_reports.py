@@ -1,4 +1,5 @@
 """Frame reports accept board captures without skinning metadata."""
+import gzip
 import pathlib
 import subprocess
 import sys
@@ -96,14 +97,17 @@ class FrameReports(unittest.TestCase):
         self.assertEqual(count_budget_rows(report), 1)
 
     def test_device_budget_section(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            capture = pathlib.Path(tmp) / "capture.log"
-            text = profile() + "\n" + TARGET
-            capture.write_text(text, encoding="utf-8")
-            section = "\n".join(build_budget_section(ROOT, "run_render_lab_frame_profile_suite", capture, text))
-            self.assertNotIn("unavailable", section)
-            self.assertNotIn("zero rows", section)
-            self.assertIn("Frame rate", section)
+        text = profile() + "\n" + TARGET
+        writers = {"capture.log": lambda path: path.write_text(text, encoding="utf-8"),
+                   "capture.log.gz": lambda path: path.write_bytes(gzip.compress(text.encode("utf-8")))}
+        for name, write in writers.items():
+            with self.subTest(name), tempfile.TemporaryDirectory() as tmp:
+                capture = pathlib.Path(tmp) / name
+                write(capture)
+                section = "\n".join(build_budget_section(ROOT, "run_render_lab_frame_profile_suite", capture, text))
+                self.assertNotIn("unavailable", section)
+                self.assertNotIn("zero rows", section)
+                self.assertIn("Frame rate", section)
 
     def test_shared_parser_fields(self):
         from frame_profile import profiles, summaries, poses
