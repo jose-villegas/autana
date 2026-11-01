@@ -41,9 +41,10 @@ def plane_source(*quads):
 
 
 def square(z=0.0, up=True):
-    """The corners of a 4 x 4 quad at height z, wound for plane_source to face +z, or -z when not `up`."""
+    """The corners of a 4 x 4 quad at height z, wound for plane_source to face +z, or -z when not `up`; both split
+    along one diagonal, so the two windings are each other's twins."""
     corners = [[-2.0, -2.0, z], [2.0, -2.0, z], [2.0, 2.0, z], [-2.0, 2.0, z]]
-    return corners if up else corners[::-1]
+    return corners if up else corners[:1] + corners[:0:-1]
 
 
 def sun_scene(direction):
