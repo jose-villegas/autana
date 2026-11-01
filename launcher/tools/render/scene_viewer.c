@@ -7,8 +7,8 @@
 #include "math/text/math_text.h"
 #include "render/context/render_context.h"
 #include "render/view/raster_cull_view.h"
-#include "render_host.h"
 #include "scene/scene.h"
+#include "scene_viewer.h"
 
 static const char* scene_id;
 static const char* camera_name;

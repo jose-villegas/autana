@@ -280,6 +280,13 @@ drawn ([every stage](frame/Culling.md)). The knob is offline: the bake's
   its fewer culls save.
 - **Measured**: [the meshlet-size table](offline/Baked-Mesh.md#meshlets).
 
+A scene can also have its camera drop each cluster wholly behind what was
+already drawn, before any of its triangles is set up:
+`scene_camera_set_skip_hidden()`, off by default. Pixels do not change.
+
+- **Use** it where most clusters hide behind nearer ones. Elsewhere the test
+  and the capped fill it needs cost more than they skip.
+
 The two cores split each stage by measured cost on their own
 ([On both cores](Mesh-Rendering.md#on-both-cores)); a caller that cuts the
 camera calls `raster_split_forget()` on its `raster_split_t`.

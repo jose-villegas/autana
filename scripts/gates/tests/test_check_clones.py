@@ -343,6 +343,10 @@ class CloneTests(unittest.TestCase):
         listing = "}\n\nvoid\nsuite_a(void) {\n" + "".join(f"    RUN_TEST(test_{i});\n" for i in range(24)) + "}\n"
         self.assert_ignored_declaration(listing)
 
+    def test_an_asm_body_is_ignored_but_a_copy_beside_it_is_not(self):
+        body = "".join(f'        "    ee.andq q{i % 8}, q1, q2\\n" /* step {i} */\n' for i in range(40))
+        self.assert_ignored_declaration('__asm__(".text\\n"\n' + body + '        "    retw.n\\n");\n')
+
     def test_literal_defines_are_ignored_but_code_and_function_macros_are_not(self):
         listing = "".join(f"#define FIELD_{i} {i}U\n" for i in range(24))
         listing += '#define SCALE 0.5F\n#define MASK 0xFFUL\n#define LABEL "value"\n'
@@ -351,6 +355,10 @@ class CloneTests(unittest.TestCase):
         self.assertEqual(len(gate.filter_pairs([self.pair(fragment=functions)])), 1)
         expressions = "".join(f"#define VALUE_{i} (input + {i})\n" for i in range(24))
         self.assertEqual(len(gate.filter_pairs([self.pair(fragment=expressions)])), 1)
+
+    def test_renaming_defines_are_ignored(self):
+        listing = "".join(f"#define name_{i} other_name_{i}\n" for i in range(24))
+        self.assertEqual(self.scan(dict.fromkeys(("launcher/main/a.c", "launcher/main/b.c"), listing), 80), [])
 
     def test_literal_vector_defines_are_ignored_but_calls_and_identifiers_are_not(self):
         listing = "".join(f"#define ROW_{i} {{{i}, -1, 0xFFU, 1.5F}}\n" for i in range(24))

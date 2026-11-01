@@ -1,0 +1,15 @@
+menu "Hash"
+
+    choice HASH_CRC32_IMPLEMENTATION
+        prompt "CRC-32 implementation"
+        default HASH_CRC32_ROM
+
+        config HASH_CRC32_ROM
+            bool "ROM"
+
+        config HASH_CRC32_NIBBLE
+            bool "Nibble reference"
+
+    endchoice
+
+endmenu
