@@ -1,0 +1,15 @@
+# Capture: autana suite run_hash_perf_suite --flash
+BUILD_ID=b3e85da249aa-diag
+HASHTARGET target=esp32s3 arch=Xtensa core=LX7_ESP32_S3_MP execution=hardware
+HASHBENCH name=crc32_update_nibble type=64_ram ops=1 warm=1105.0 cold=2552.0 insn=999.0
+HASHBENCH name=crc32_update_nibble type=64_flash ops=1 warm=1105.0 cold=2639.0 insn=999.0
+HASHBENCH name=crc32_update_nibble type=4096_ram ops=1 warm=69674.0 cold=71337.0 insn=61479.0
+HASHBENCH name=crc32_update_nibble type=4096_flash ops=1 warm=69674.0 cold=77546.0 insn=61479.0
+HASHBENCH name=crc32_update_nibble type=16384_ram ops=1 warm=280036.0 cold=283037.0 insn=247679.0
+HASHBENCH name=crc32_update_nibble type=16384_flash ops=1 warm=281365.0 cold=309319.0 insn=246552.0
+HASHBENCH name=crc32_update_rom type=64_ram ops=1 warm=677.0 cold=1048.0 insn=646.0
+HASHBENCH name=crc32_update_rom type=64_flash ops=1 warm=677.0 cold=1492.0 insn=646.0
+HASHBENCH name=crc32_update_rom type=4096_ram ops=1 warm=40491.0 cold=40864.0 insn=37942.0
+HASHBENCH name=crc32_update_rom type=4096_flash ops=1 warm=40491.0 cold=47074.0 insn=37942.0
+HASHBENCH name=crc32_update_rom type=16384_ram ops=1 warm=163323.0 cold=163691.0 insn=151606.0
+HASHBENCH name=crc32_update_rom type=16384_flash ops=1 warm=163324.0 cold=187704.0 insn=152379.0

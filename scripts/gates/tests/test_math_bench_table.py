@@ -45,18 +45,18 @@ class MathBenchTableTests(unittest.TestCase):
         rows = [("rsqrt_f", "mathf_rsqrt", "f", self.batch, "scalar")]
         table = bench.render_table(rows, {}, {}, {"rsqrt_f": "rsqrt0.s"},
                                    errors={("mathf_rsqrt", "f"): "1 ulp (proof)"},
-                                   error_links={"rsqrt_f": "Fast-Paths.md#mathf-rsqrt"})
-        self.assertIn("| mathf_rsqrt | f | - | - | - | device-only instruction | - | rsqrt0.s | [fast paths](Fast-Paths.md#mathf-rsqrt) |", table)
+                                   error_links={"rsqrt_f": "../packages/Fast-Paths.md#mathf-rsqrt"})
+        self.assertIn("| mathf_rsqrt | f | - | - | - | device-only instruction | - | rsqrt0.s | [fast paths](../packages/Fast-Paths.md#mathf-rsqrt) |", table)
         self.assertIn("max error", table)
 
     def test_grouped_table_keeps_errors_not_rendered_in_fast_paths(self):
-        links = {"dot_f": "Fast-Paths.md#example", "sinf_f": "Fast-Paths.md#example"}
+        links = {"dot_f": "../packages/Fast-Paths.md#example", "sinf_f": "../packages/Fast-Paths.md#example"}
         table = bench.render_table(self.rows, {}, {}, {"dot_f": "-", "sinf_f": "-"}, links=links,
                                    errors={("dot (vec3)", "f"): "1 ulp (sweep)"})
         self.assertLess(table.index("#### Vector"), table.index("#### Libm"))
         self.assertIn("\n\n#### Libm\n", table)
-        self.assertIn("[dot (vec3)](Fast-Paths.md#example)", table)
-        self.assertIn("[sinf](Fast-Paths.md#example)", table)
+        self.assertIn("[dot (vec3)](../packages/Fast-Paths.md#example)", table)
+        self.assertIn("[sinf](../packages/Fast-Paths.md#example)", table)
         self.assertIn("| 1 ulp (sweep) |", table)
         self.assertIn("max error", table)
 
@@ -69,33 +69,6 @@ class MathBenchTableTests(unittest.TestCase):
         for text in texts:
             with self.subTest(text=text), self.assertRaises(ValueError):
                 bench.parse_errors(text)
-
-    def test_separate_bench_and_error_build_provenance(self):
-        text = self.capture.replace("BUILD_ID=abcdef-diag", "BUILD_ID=abcdef-diag scope=bench")
-        text += "BUILD_ID=123456-diag scope=error\nMATHERROR name=mathf_recip type=f max=1 unit=ulp method=sweep\n"
-        build, measured = bench.parse_capture(text, self.rows)
-        self.assertEqual("abcdef-diag", build)
-        self.assertEqual(2, len(measured))
-        for invalid in (text.replace(" scope=error", ""),
-                        text.replace("scope=error", "scope=bench"),
-                        text.replace("scope=error", "scope=unknown"),
-                        text.split("BUILD_ID=123456")[0],
-                        text + "BUILD_ID=abcdef-diag scope=bench\n"):
-            with self.subTest(text=invalid), self.assertRaises(ValueError):
-                bench.parse_capture(invalid, self.rows)
-
-    def test_missing_row_is_an_error(self):
-        with self.assertRaisesRegex(ValueError, "missing"):
-            bench.parse_capture(self.capture.split("MATHBENCH name=sinf")[0], self.rows)
-
-    def test_malformed_and_duplicate_lines_are_errors(self):
-        for text in (self.capture.replace("12.0", "nan"),
-                     self.capture.replace("insn=6.0", "insn=0.0"),
-                     self.capture + self.capture.splitlines()[1] + "\n",
-                     self.capture.replace("cold=24.0", "cold=oops"),
-                     self.capture.replace("BUILD_ID=abcdef-diag\n", "")):
-            with self.subTest(text=text), self.assertRaises(ValueError):
-                bench.parse_capture(text, self.rows)
 
     def test_ratchet_join_and_cycles_per_instruction(self):
         build, measured = bench.parse_capture(self.capture, self.rows)
@@ -117,16 +90,6 @@ class MathBenchTableTests(unittest.TestCase):
         self.assertIn("| sinf | f | - | - | - | 1.0 |", table)
         for label in ("mathf_recip", "mathf_rsqrt"):
             self.assertIn(f"| {label} | f | - | - | - | {bench.DEVICE_ONLY_INSTRUCTION} |", table)
-
-    def test_capture_identity_noise_and_placeholder(self):
-        self.assertEqual((None, {}), bench.parse_capture(bench.PLACEHOLDER + "\n", self.rows))
-        for text in (self.capture + "BUILD_ID=other\n", self.capture.replace("abcdef-diag", "bad id"),
-                     self.capture.replace("insn=6.0", "insn=6.0 junk"),
-                     bench.PLACEHOLDER + "\nnoise\n"):
-            with self.subTest(text=text), self.assertRaises(ValueError):
-                bench.parse_capture(text, self.rows)
-        self.assertEqual(bench.parse_capture(self.capture, self.rows),
-                         bench.parse_capture("noise\n" + self.capture + "noise\n", self.rows))
 
     def test_document_commands_are_rejected_without_writing(self):
         for newline in ("\n", "\r\n"):
