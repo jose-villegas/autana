@@ -21,9 +21,8 @@ static GFX_TARGET_STORAGE(1) half_target = GFX_TARGET_COLOR_INIT(NULL, GFX_WIDTH
 #define HALF_WIDTH       (GFX_WIDTH / 2)
 #define HALF_HEIGHT      (GFX_HEIGHT / 2)
 #define HALF_IMAGE_BYTES ((sizeof(*half_image) * HALF_WIDTH * HALF_HEIGHT) + GFX_SEAM_BYTES(HALF_WIDTH, HALF_HEIGHT))
-/* Every half row starts on a vector load's 16 bytes (gfx_quarter_select.h). */
-#define HALF_ALIGN       16
-_Static_assert((HALF_WIDTH * sizeof(gfx_color_t)) % HALF_ALIGN == 0, "half rows stay aligned");
+_Static_assert((HALF_WIDTH * sizeof(gfx_color_t)) % GFX_QUARTER_ALIGN == 0, "half rows stay aligned");
+_Static_assert((GFX_WIDTH * sizeof(gfx_color_t)) % GFX_QUARTER_ALIGN == 0, "panel rows stay aligned");
 static gfx_band_overlay_fn frame_overlay;
 
 gfx_color_t*
@@ -33,7 +32,7 @@ gfx_half_picture(void) {
         return NULL;
     }
     if (half_image == NULL) {
-        half = memory_alloc_aligned(HALF_IMAGE_BYTES, HALF_ALIGN, MEMORY_PSRAM);
+        half = memory_alloc_aligned(HALF_IMAGE_BYTES, GFX_QUARTER_ALIGN, MEMORY_PSRAM);
         half_image = half.at;
         half_target.attachment[0].pixels = half_image;
     }
@@ -105,11 +104,12 @@ _Static_assert(HALF_WIDTH % GFX_SEAM_BITS == 0, "a half row is whole seam bytes"
 _Static_assert(GFX_QUARTER_LANES == GFX_SEAM_BITS, "a step's keep byte is one seam byte");
 
 /* A row's working set, big-endian, at a vector load's alignment: the blend
- * down, its neighbours one pixel left and right, and the two panel pixels
- * each one becomes. Static, beside the present task's small stack. */
+ * down, its neighbours one pixel left and right, and the panel row for a
+ * destination off that alignment. Static, beside the present task's small
+ * stack. */
 static struct {
-    uint16_t down[HALF_WIDTH], left[HALF_WIDTH], right[HALF_WIDTH], even[HALF_WIDTH], odd[HALF_WIDTH];
-} work __attribute__((aligned(HALF_ALIGN)));
+    uint16_t down[HALF_WIDTH], left[HALF_WIDTH], right[HALF_WIDTH], panel[GFX_WIDTH];
+} work __attribute__((aligned(GFX_QUARTER_ALIGN)));
 
 /* Half row `pixels` doubled across into `out`: each pixel's left panel pixel
  * blends a quarter toward its left neighbour and its right one toward its
@@ -118,20 +118,18 @@ static void
 spread_across(const uint16_t* pixels, const uint8_t* across, gfx_color_t* out) {
     memcpy(work.left + 1, pixels, (HALF_WIDTH - 1) * sizeof(*pixels));
     memcpy(work.right, pixels + 1, (HALF_WIDTH - 1) * sizeof(*pixels));
-    uint8_t keep_left[SEAM_PITCH];
-    uint8_t keep_right[SEAM_PITCH];
-    unsigned before = 1; /* the seam left of the first pixel: the panel edge */
+    uint8_t keeps[2 * SEAM_PITCH]; /* the left keeps, then the right */
+    unsigned before = 1;           /* the seam left of the first pixel: the panel edge */
     for (int byte = 0; byte < SEAM_PITCH; byte++) {
-        keep_left[byte] = (uint8_t)((across[byte] << 1) | before);
-        keep_right[byte] = across[byte];
+        keeps[byte] = (uint8_t)((across[byte] << 1) | before);
+        keeps[SEAM_PITCH + byte] = across[byte];
         before = across[byte] >> (GFX_SEAM_BITS - 1);
     }
-    keep_right[SEAM_PITCH - 1] |= 1U << ((HALF_WIDTH - 1) % GFX_SEAM_BITS); /* the right panel edge */
-    gfx_quarter_select(pixels, work.left, keep_left, work.even, STEPS);
-    gfx_quarter_select(pixels, work.right, keep_right, work.odd, STEPS);
-    for (int x = 0; x < HALF_WIDTH; x++) {
-        out[2 * x] = work.even[x];
-        out[(2 * x) + 1] = work.odd[x];
+    keeps[(2 * SEAM_PITCH) - 1] |= 1U << ((HALF_WIDTH - 1) % GFX_SEAM_BITS); /* the right panel edge */
+    const bool aligned = (uintptr_t)out % GFX_QUARTER_ALIGN == 0;
+    gfx_quarter_spread(pixels, work.left, work.right, keeps, aligned ? out : work.panel, STEPS);
+    if (!aligned) {
+        memcpy(out, work.panel, sizeof(work.panel));
     }
 }
 

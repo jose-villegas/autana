@@ -2,6 +2,7 @@
 #include "build/build_variant.h"
 #include "core/memory.h"
 #include "core/timing.h"
+#include "gfx/present/expand/gfx_quarter_select.h"
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_internal.h"
 #include "gfx/present/gfx_present_guard.h"
@@ -34,7 +35,7 @@ _Static_assert(GFX_WIDTH == BSP_LCD_H_RES && GFX_HEIGHT == BSP_LCD_V_RES, "gfx.h
  * places it: the compiler's clones of a function inherit the attribute, and
  * a mapping entry names only the original. Development overlays and send
  * auditing make dev and diag larger.
- * IRAM budget: release 2422 B, dev 3243 B, diag 3243 B */
+ * IRAM budget: release 2426 B, dev 3242 B, diag 3242 B */
 #define GFX_PRESENT_IRAM_ATTR IRAM_ATTR
 static const char* TAG = "gfx";
 #else
@@ -318,7 +319,8 @@ present_alloc_send_buffers(void) {
 
     const size_t strip_bytes = (size_t)GFX_WIDTH * STRIP_HEIGHT * sizeof(gfx_color_t);
     for (int i = 0; i < STRIP_BOUNCE_SLOTS; i++) {
-        strip_bounce[i] = memory_alloc(strip_bytes, MEMORY_DMA);
+        /* At the expand's vector alignment, so it writes rows in place; never freed. */
+        strip_bounce[i] = memory_alloc_aligned(strip_bytes, GFX_QUARTER_ALIGN, MEMORY_DMA).at;
         if (strip_bounce[i] == NULL) {
             ESP_LOGE(TAG, "Could not allocate %u byte strip buffer", (unsigned)strip_bytes);
             return false;
