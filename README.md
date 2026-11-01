@@ -20,7 +20,7 @@ Image render commands are in each app's tools README ([sand](launcher/main/apps/
 
 ## Try it without a board
 
-Use [Git Bash](https://git-scm.com/download/win) on Windows, or a terminal on Linux. You need a C compiler for your computer, plus a POSIX shell; **ESP-IDF and a board are not needed**. The renderer writes BMP files and also PNGs when Python has Pillow installed.
+Use [Git Bash](https://git-scm.com/download/win) on Windows, or a terminal on Linux. You need a C compiler and CMake for your computer, plus a POSIX shell; **ESP-IDF and a board are not needed**. The renderer writes BMP files and also PNGs when Python has Pillow installed.
 
 ```sh
 ./launcher/tools/render/scenes/scene_viewer_render_host.sh
@@ -32,12 +32,12 @@ Open `launcher/tools/results/render/scene_viewer/landscape.bmp` to see the atriu
 ./launcher/test/run_tests.sh
 ```
 
-The test runner prints a verdict and saves its full log. It compiles and runs the parts of the firmware that do not need ESP32 peripherals. The [Testing Guide](docs/testing/README.md) explains what it covers; the [render harness](docs/tools/Render-Harness.md) lists other screens you can render. If the shell cannot find a C compiler, install one for your computer:
+The test runner prints a verdict and saves its full log. It compiles and runs the parts of the firmware that do not need ESP32 peripherals. The [Testing Guide](docs/testing/README.md) explains what it covers; the [render harness](docs/tools/Render-Harness.md) lists other screens you can render. If the shell cannot find a C compiler or CMake, install them for your computer:
 
-| System | Compiler setup |
+| System | Compiler and CMake setup |
 |---|---|
-| Windows | `winget install BrechtSanders.WinLibs.POSIX.UCRT` |
-| Debian/Ubuntu | `sudo apt install build-essential` |
+| Windows | `winget install BrechtSanders.WinLibs.POSIX.UCRT Kitware.CMake` |
+| Debian/Ubuntu | `sudo apt install build-essential cmake` |
 
 ## What is here
 

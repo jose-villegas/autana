@@ -6,13 +6,13 @@ Back to the [Testing Guide](README.md).
 
 ## Install what you need
 
-You need a **host** C compiler (not the ESP32 toolchain), GNU make and
-Python 3. ESP-IDF and a board are not needed.
+You need a **host** C compiler (not the ESP32 toolchain), GNU make, CMake
+(it lists the engine sources) and Python 3. ESP-IDF and a board are not needed.
 
 | Platform | Install |
 |---|---|
-| Windows | [Git for Windows](https://git-scm.com/download/win) for Git Bash, then `winget install BrechtSanders.WinLibs.POSIX.UCRT` (compiler and `mingw32-make`) and `winget install Python.Python.3.12` |
-| Debian/Ubuntu | `sudo apt install build-essential python3` |
+| Windows | [Git for Windows](https://git-scm.com/download/win) for Git Bash, then `winget install BrechtSanders.WinLibs.POSIX.UCRT` (compiler and `mingw32-make`) and `winget install Kitware.CMake Python.Python.3.12` |
+| Debian/Ubuntu | `sudo apt install build-essential cmake python3` |
 
 Open **Git Bash** (not PowerShell) for the commands in these docs; reopen it
 after installing so it sees the new `PATH`.
