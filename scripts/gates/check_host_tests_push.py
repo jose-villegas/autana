@@ -11,11 +11,12 @@ the order the workflows list them; none marked runs nothing. They run without
 the variables git sets for the hook's repository (GIT_DIR, GIT_INDEX_FILE...),
 so their own git calls, a submodule's included, find their own repository.
 """
-import os
 import pathlib
 import subprocess
 import sys
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "lib"))
+from git_env import env_without_repository
 from c_comments import SOURCE_EXTENSIONS, is_cmake
 from tracked import repository
 from workflow_marks import is_workflow, marked_commands
@@ -65,11 +66,6 @@ def test_commands(root):
     return [command for command, _ in marked_commands(workflows, "PUSH_TEST_GATE", ("true",), required=False)]
 
 
-def test_env(root):
-    local = set(git(root, "rev-parse", "--local-env-vars").stdout.split())
-    return {name: value for name, value in os.environ.items() if name not in local}
-
-
 def main():
     root = pathlib.Path(repository())
     changed = changes_source(root, sys.stdin.read().splitlines())
@@ -83,7 +79,7 @@ def main():
     except ValueError as error:
         print(f"{error}. {SKIP}", file=sys.stderr)
         return 1
-    env = test_env(root)
+    env = env_without_repository()
     for command in commands:
         sys.stdout.flush()
         if subprocess.run(command, cwd=root, env=env).returncode != 0:
