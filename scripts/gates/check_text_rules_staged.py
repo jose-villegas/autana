@@ -44,8 +44,11 @@ def main():
     except ValueError as error:
         print(error, file=sys.stderr)
         return 1
-    git_dir = subprocess.check_output(['git', 'rev-parse', '--absolute-git-dir'],
-                                      cwd=root, text=True).strip()
+    # Absolute both: git gives a commit hook GIT_INDEX_FILE=.git/index, which
+    # the gates, run in the snapshot, would read as an index that is not there.
+    git_dir, index = subprocess.check_output(
+        ['git', 'rev-parse', '--absolute-git-dir', '--path-format=absolute', '--git-path', 'index'],
+        cwd=root, text=True).split()
     status = 0
     with tempfile.TemporaryDirectory(prefix='autana-staged-') as folder:
         snapshot = Path(folder)
@@ -60,7 +63,7 @@ def main():
             target.write_bytes(blobs.read(size))
             blobs.read(1)
         (snapshot / 'launcher/main/apps').mkdir(parents=True, exist_ok=True)
-        env = dict(os.environ, GIT_DIR=git_dir, GIT_WORK_TREE=str(snapshot))
+        env = dict(os.environ, GIT_DIR=git_dir, GIT_INDEX_FILE=index, GIT_WORK_TREE=str(snapshot))
         # The gates read the snapshot and write nothing, so they run side by
         # side: the hook takes as long as the slowest, not their sum. Each
         # one's output is printed whole once it finishes.

@@ -30,8 +30,8 @@ class SnapshotDataTests(unittest.TestCase):
                 if command[1] == "ls-files":
                     return (b"100644 capture-sha 0\tcapture.log.gz\000100644 image-sha 0\timage.png\0"
                             b"100644 flow-sha 0\t.github/workflows/gate.yml\0")
-                if command[1:] == ["rev-parse", "--absolute-git-dir"]:
-                    return str(root / ".git")
+                if command[1] == "rev-parse":
+                    return f"{root / '.git'}\n{root / '.git/index'}\n"
                 if command[1] == "cat-file":
                     self.assertEqual(b"capture-sha\nflow-sha\n", kwargs["input"])
                     return (b"capture-sha blob " + str(len(capture)).encode() + b"\n" + capture + b"\n"

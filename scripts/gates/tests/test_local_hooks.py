@@ -1,4 +1,5 @@
 """Local hooks judge index content and the refs supplied by git."""
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -70,6 +71,15 @@ class LocalHookTests(ShellGateTestCase):
         result.stdout = result.stdout.decode()
         result.stderr = result.stderr.decode()
         return result
+
+    def test_a_commit_hook_index_path_reaches_gates_that_list_the_tree(self):
+        # git gives a commit hook GIT_INDEX_FILE=.git/index, relative to the top.
+        self.write('launcher/main/apps/sand/code_layout.txt', '/Users/' + 'someone/scratch\n')
+        result = subprocess.run([self.shell, (self.root / 'scripts/gates/check-text-rules-staged.sh').as_posix()],
+                                cwd=self.root, env={**os.environ, 'GIT_INDEX_FILE': '.git/index'},
+                                capture_output=True, text=True, timeout=120)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('PERSONAL-PATH', result.stdout + result.stderr)
 
     def test_personal_path_is_read_from_index(self):
         path = 'launcher/main/apps/sand/code_layout.txt'
