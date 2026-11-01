@@ -83,7 +83,7 @@ const tune_entry_t* tune_find(const tune_registry_t* registry, const char* name)
 
 #if TUNE_ENABLED
 
-#include "core/checkpoint.h"
+typedef struct checkpoint checkpoint_t;
 void tune_checkpoint_capture(checkpoint_t* saved, const tune_registry_t* registry);
 
 /* The one TUNE() entries join, and the console answers from. */

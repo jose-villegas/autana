@@ -51,7 +51,7 @@ take it replaces. */
 memory_take_fn scene_set_take(memory_take_fn take);
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-#include "core/checkpoint.h"
+typedef struct checkpoint checkpoint_t;
 void scene_shell_checkpoint_capture(checkpoint_t* saved);
 bool scene_shell_checkpoint_prepare(checkpoint_t* saved);
 #endif
