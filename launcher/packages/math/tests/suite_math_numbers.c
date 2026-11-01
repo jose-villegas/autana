@@ -10,6 +10,7 @@
 #include <limits.h>
 #include <math.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -41,51 +42,42 @@
  * less, so rotation results are compared at this. */
 #define FIXED_SLACK           2e-3F
 
-#define ASSERT_COMPONENTS(P, OPS, NAME, ...)                                                                           \
+enum { CONSTANT_AXES = 3 };
+
+static const int CONSTANT_COMPONENTS[][CONSTANT_AXES] = {{0, 0, 0},  {1, 1, 1},  {1, 0, 0}, {0, 1, 0},
+                                                         {1, 0, 0},  {-1, 0, 0}, {0, 0, 1}, {0, 1, 0},
+                                                         {0, -1, 0}, {0, 0, 1},  {0, 0, -1}};
+
+#define ASSERT_VECTOR_CONSTANTS(P, T, OPS, N, ...)                                                                     \
     do {                                                                                                               \
-        const P##_t got = P##_##NAME();                                                                                \
-        const P##_t want = {__VA_ARGS__};                                                                              \
-        TEST_ASSERT_EQUAL_MEMORY(&want, &got, sizeof(got));                                                            \
+        const P##_t actual[] = {P##_zero(),  P##_one(),  P##_unit_x(), P##_unit_y(),                                   \
+                                P##_right(), P##_left(), __VA_ARGS__};                                                 \
+        for (size_t row = 0; row < sizeof actual / sizeof *actual; row++) {                                            \
+            T expected[N];                                                                                             \
+            for (int axis = 0; axis < N; axis++) {                                                                     \
+                const int sign = CONSTANT_COMPONENTS[row][axis];                                                       \
+                expected[axis] = sign == 0 ? OPS##_zero() : sign < 0 ? OPS##_neg(OPS##_one()) : OPS##_one();           \
+            }                                                                                                          \
+            TEST_ASSERT_EQUAL_MEMORY(expected, &actual[row], sizeof actual[row]);                                      \
+        }                                                                                                              \
     } while (0)
 
-#define ASSERT_VEC2_CONSTANTS(P, OPS)                                                                                  \
+#define ASSERT_NUMBER_CONSTANTS(SUFFIX, T, OPS)                                                                        \
     do {                                                                                                               \
-        ASSERT_COMPONENTS(P, OPS, zero, OPS##_zero(), OPS##_zero());                                                   \
-        ASSERT_COMPONENTS(P, OPS, one, OPS##_one(), OPS##_one());                                                      \
-        ASSERT_COMPONENTS(P, OPS, unit_x, OPS##_one(), OPS##_zero());                                                  \
-        ASSERT_COMPONENTS(P, OPS, unit_y, OPS##_zero(), OPS##_one());                                                  \
-        ASSERT_COMPONENTS(P, OPS, right, OPS##_one(), OPS##_zero());                                                   \
-        ASSERT_COMPONENTS(P, OPS, left, OPS##_neg(OPS##_one()), OPS##_zero());                                         \
-    } while (0)
-
-#define ASSERT_VEC3_CONSTANTS(P, OPS)                                                                                  \
-    do {                                                                                                               \
-        ASSERT_COMPONENTS(P, OPS, zero, OPS##_zero(), OPS##_zero(), OPS##_zero());                                     \
-        ASSERT_COMPONENTS(P, OPS, one, OPS##_one(), OPS##_one(), OPS##_one());                                         \
-        ASSERT_COMPONENTS(P, OPS, unit_x, OPS##_one(), OPS##_zero(), OPS##_zero());                                    \
-        ASSERT_COMPONENTS(P, OPS, unit_y, OPS##_zero(), OPS##_one(), OPS##_zero());                                    \
-        ASSERT_COMPONENTS(P, OPS, unit_z, OPS##_zero(), OPS##_zero(), OPS##_one());                                    \
-        ASSERT_COMPONENTS(P, OPS, right, OPS##_one(), OPS##_zero(), OPS##_zero());                                     \
-        ASSERT_COMPONENTS(P, OPS, left, OPS##_neg(OPS##_one()), OPS##_zero(), OPS##_zero());                           \
-        ASSERT_COMPONENTS(P, OPS, up, OPS##_zero(), OPS##_one(), OPS##_zero());                                        \
-        ASSERT_COMPONENTS(P, OPS, down, OPS##_zero(), OPS##_neg(OPS##_one()), OPS##_zero());                           \
-        ASSERT_COMPONENTS(P, OPS, forward, OPS##_zero(), OPS##_zero(), OPS##_one());                                   \
-        ASSERT_COMPONENTS(P, OPS, back, OPS##_zero(), OPS##_zero(), OPS##_neg(OPS##_one()));                           \
-    } while (0)
-
-#define ASSERT_NUMBER_CONSTANTS(SUFFIX, OPS)                                                                           \
-    do {                                                                                                               \
-        ASSERT_VEC2_CONSTANTS(vec2##SUFFIX, OPS);                                                                      \
-        ASSERT_VEC3_CONSTANTS(vec3##SUFFIX, OPS);                                                                      \
-        ASSERT_COMPONENTS(rect##SUFFIX, OPS, empty, OPS##_zero(), OPS##_zero(), OPS##_zero(), OPS##_zero());           \
+        ASSERT_VECTOR_CONSTANTS(vec2##SUFFIX, T, OPS, 2);                                                              \
+        ASSERT_VECTOR_CONSTANTS(vec3##SUFFIX, T, OPS, 3, vec3##SUFFIX##_unit_z(), vec3##SUFFIX##_up(),                 \
+                                vec3##SUFFIX##_down(), vec3##SUFFIX##_forward(), vec3##SUFFIX##_back());               \
+        const rect##SUFFIX##_t empty = rect##SUFFIX##_empty();                                                         \
+        const rect##SUFFIX##_t expected = {OPS##_zero(), OPS##_zero(), OPS##_zero(), OPS##_zero()};                    \
+        TEST_ASSERT_EQUAL_MEMORY(&expected, &empty, sizeof empty);                                                     \
     } while (0)
 
 static void
 test_type_constants_match_scalar_units(void) {
-    ASSERT_NUMBER_CONSTANTS(f, mathf);
-    ASSERT_NUMBER_CONSTANTS(i, mathi);
-    ASSERT_NUMBER_CONSTANTS(s, maths);
-    ASSERT_NUMBER_CONSTANTS(x, mathx);
+    ASSERT_NUMBER_CONSTANTS(f, float, mathf);
+    ASSERT_NUMBER_CONSTANTS(i, int32_t, mathi);
+    ASSERT_NUMBER_CONSTANTS(s, int16_t, maths);
+    ASSERT_NUMBER_CONSTANTS(x, int32_t, mathx);
     const mat3f_t identity = mat3f_identity();
     for (int r = 0; r < MAT3F_AXES; r++) {
         for (int c = 0; c < MAT3F_AXES; c++) {
@@ -107,17 +99,14 @@ test_identity_initializers_match_functions(void) {
     static const mat4x_t mx = MAT4X_IDENTITY;
     ASSERT_STATIC_IDENTITY(mat4f, mf);
     ASSERT_STATIC_IDENTITY(mat4x, mx);
-    /* Transform padding is unspecified, so compare each stored component. */
+    /* Transform tail padding is unspecified; compare the stored prefix and cached flag. */
     static const transformf_t f = TRANSFORMF_IDENTITY;
     static const transformx_t x = TRANSFORMX_IDENTITY;
     const transformf_t fi = transformf_identity();
     const transformx_t xi = transformx_identity();
 #define ASSERT_TRANSFORM(P, A, B)                                                                                      \
     do {                                                                                                               \
-        TEST_ASSERT_EQUAL_MEMORY(&(A).position, &(B).position, sizeof((A).position));                                  \
-        TEST_ASSERT_EQUAL_MEMORY(&(A).rotation, &(B).rotation, sizeof((A).rotation));                                  \
-        TEST_ASSERT_EQUAL_MEMORY(&(A).scale, &(B).scale, sizeof((A).scale));                                           \
-        TEST_ASSERT_EQUAL_MEMORY(&(A).matrix, &(B).matrix, sizeof((A).matrix));                                        \
+        TEST_ASSERT_EQUAL_MEMORY(&(A), &(B), offsetof(P##_t, cached));                                                 \
         TEST_ASSERT_EQUAL((A).cached, (B).cached);                                                                     \
     } while (0)
     ASSERT_TRANSFORM(transformf, f, fi);

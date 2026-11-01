@@ -7,6 +7,8 @@
 
 #include <stdbool.h>
 
+#include "math/linear/constant_template.h"
+
 /* The rect from the per-axis picks of a and b: LO for left and top, HI for right and bottom. */
 #define MATH_RECT_FOLD(P, OPS, LO, HI, a, b)                                                                           \
     P##_from_edges(OPS##_##LO((a).x, (b).x), OPS##_##LO((a).y, (b).y), OPS##_##HI(P##_right(a), P##_right(b)),         \
@@ -18,7 +20,7 @@
     } P##_t;                                                                                                           \
                                                                                                                        \
     /* empty = (0, 0, 0, 0): the empty rect at the origin, the identity for union. */                                  \
-    static inline P##_t P##_empty(void) { return (P##_t){OPS##_zero(), OPS##_zero(), OPS##_zero(), OPS##_zero()}; }    \
+    MATH_DEFINE_CONSTANT(P, empty, OPS##_zero(), OPS##_zero(), OPS##_zero(), OPS##_zero())                             \
                                                                                                                        \
     /* right = x + w, the exclusive right edge. */                                                                     \
     static inline T P##_right(P##_t r) { return r.x + r.w; }                                                           \

@@ -8,6 +8,8 @@
 
 #include <stdbool.h>
 
+#include "math/linear/constant_template.h"
+
 #include "math/linear/vec_ops_template.h"
 #include "math/linear/vec_swizzle_template.h"
 
@@ -18,37 +20,37 @@
     } P##_t;                                                                                                           \
                                                                                                                        \
     /* zero = (0, 0, 0). */                                                                                            \
-    static inline P##_t P##_zero(void) { return (P##_t){OPS##_zero(), OPS##_zero(), OPS##_zero()}; }                   \
+    MATH_DEFINE_CONSTANT(P, zero, OPS##_zero(), OPS##_zero(), OPS##_zero())                                            \
                                                                                                                        \
     /* one = (1, 1, 1). */                                                                                             \
-    static inline P##_t P##_one(void) { return (P##_t){OPS##_one(), OPS##_one(), OPS##_one()}; }                       \
+    MATH_DEFINE_CONSTANT(P, one, OPS##_one(), OPS##_one(), OPS##_one())                                                \
                                                                                                                        \
     /* unit_x = (1, 0, 0). */                                                                                          \
-    static inline P##_t P##_unit_x(void) { return (P##_t){OPS##_one(), OPS##_zero(), OPS##_zero()}; }                  \
-                                                                                                                       \
-    /* unit_y = (0, 1, 0). */                                                                                          \
-    static inline P##_t P##_unit_y(void) { return (P##_t){OPS##_zero(), OPS##_one(), OPS##_zero()}; }                  \
-                                                                                                                       \
-    /* unit_z = (0, 0, 1). */                                                                                          \
-    static inline P##_t P##_unit_z(void) { return (P##_t){OPS##_zero(), OPS##_zero(), OPS##_one()}; }                  \
+    MATH_DEFINE_CONSTANT(P, unit_x, OPS##_one(), OPS##_zero(), OPS##_zero())                                           \
                                                                                                                        \
     /* right = (1, 0, 0). */                                                                                           \
-    static inline P##_t P##_right(void) { return P##_unit_x(); }                                                       \
+    MATH_DEFINE_CONSTANT_ALIAS(P, right, unit_x)                                                                       \
                                                                                                                        \
     /* left = (-1, 0, 0). */                                                                                           \
-    static inline P##_t P##_left(void) { return (P##_t){OPS##_neg(OPS##_one()), OPS##_zero(), OPS##_zero()}; }         \
+    MATH_DEFINE_CONSTANT(P, left, OPS##_neg(OPS##_one()), OPS##_zero(), OPS##_zero())                                  \
+                                                                                                                       \
+    /* unit_y = (0, 1, 0). */                                                                                          \
+    MATH_DEFINE_CONSTANT(P, unit_y, OPS##_zero(), OPS##_one(), OPS##_zero())                                           \
                                                                                                                        \
     /* up = (0, 1, 0). */                                                                                              \
-    static inline P##_t P##_up(void) { return P##_unit_y(); }                                                          \
+    MATH_DEFINE_CONSTANT_ALIAS(P, up, unit_y)                                                                          \
                                                                                                                        \
     /* down = (0, -1, 0). */                                                                                           \
-    static inline P##_t P##_down(void) { return (P##_t){OPS##_zero(), OPS##_neg(OPS##_one()), OPS##_zero()}; }         \
+    MATH_DEFINE_CONSTANT(P, down, OPS##_zero(), OPS##_neg(OPS##_one()), OPS##_zero())                                  \
+                                                                                                                       \
+    /* unit_z = (0, 0, 1). */                                                                                          \
+    MATH_DEFINE_CONSTANT(P, unit_z, OPS##_zero(), OPS##_zero(), OPS##_one())                                           \
                                                                                                                        \
     /* forward = (0, 0, 1). */                                                                                         \
-    static inline P##_t P##_forward(void) { return P##_unit_z(); }                                                     \
+    MATH_DEFINE_CONSTANT_ALIAS(P, forward, unit_z)                                                                     \
                                                                                                                        \
     /* back = (0, 0, -1). */                                                                                           \
-    static inline P##_t P##_back(void) { return (P##_t){OPS##_zero(), OPS##_zero(), OPS##_neg(OPS##_one())}; }         \
+    MATH_DEFINE_CONSTANT(P, back, OPS##_zero(), OPS##_zero(), OPS##_neg(OPS##_one()))                                  \
                                                                                                                        \
     MATH_DEFINE_VEC_OPS(P, OPS, 3)                                                                                     \
                                                                                                                        \

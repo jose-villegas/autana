@@ -7,6 +7,8 @@
 
 #include <stdbool.h>
 
+#include "math/linear/constant_template.h"
+
 #include "math/linear/vec_ops_template.h"
 #include "math/linear/vec_swizzle_template.h"
 
@@ -17,22 +19,22 @@
     } P##_t;                                                                                                           \
                                                                                                                        \
     /* zero = (0, 0). */                                                                                               \
-    static inline P##_t P##_zero(void) { return (P##_t){OPS##_zero(), OPS##_zero()}; }                                 \
+    MATH_DEFINE_CONSTANT(P, zero, OPS##_zero(), OPS##_zero())                                                          \
                                                                                                                        \
     /* one = (1, 1). */                                                                                                \
-    static inline P##_t P##_one(void) { return (P##_t){OPS##_one(), OPS##_one()}; }                                    \
+    MATH_DEFINE_CONSTANT(P, one, OPS##_one(), OPS##_one())                                                             \
                                                                                                                        \
     /* unit_x = (1, 0). */                                                                                             \
-    static inline P##_t P##_unit_x(void) { return (P##_t){OPS##_one(), OPS##_zero()}; }                                \
-                                                                                                                       \
-    /* unit_y = (0, 1). */                                                                                             \
-    static inline P##_t P##_unit_y(void) { return (P##_t){OPS##_zero(), OPS##_one()}; }                                \
+    MATH_DEFINE_CONSTANT(P, unit_x, OPS##_one(), OPS##_zero())                                                         \
                                                                                                                        \
     /* right = (1, 0). */                                                                                              \
-    static inline P##_t P##_right(void) { return P##_unit_x(); }                                                       \
+    MATH_DEFINE_CONSTANT_ALIAS(P, right, unit_x)                                                                       \
                                                                                                                        \
     /* left = (-1, 0). */                                                                                              \
-    static inline P##_t P##_left(void) { return (P##_t){OPS##_neg(OPS##_one()), OPS##_zero()}; }                       \
+    MATH_DEFINE_CONSTANT(P, left, OPS##_neg(OPS##_one()), OPS##_zero())                                                \
+                                                                                                                       \
+    /* unit_y = (0, 1). */                                                                                             \
+    MATH_DEFINE_CONSTANT(P, unit_y, OPS##_zero(), OPS##_one())                                                         \
                                                                                                                        \
     MATH_DEFINE_VEC_OPS(P, OPS, 2)                                                                                     \
                                                                                                                        \

@@ -29,6 +29,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from c_includes import resolve_include as resolve_quoted_include  # noqa: E402
 from c_comments import excluded, blank_comments, scan
 from c_constants import DEFINE, definitions, fold  # noqa: E402
+from check_package_docs import macro_calls, split_args
 from check_doc_citations import documentation  # noqa: E402
 from check_doc_constants import ESCAPE as DOC_CONSTANTS_ESCAPE  # noqa: E402
 from check_doc_index import blank_fences  # noqa: E402
@@ -193,18 +194,22 @@ def _math_constant_table(signature):
             if not fields:
                 continue
             components = tuple(re.findall(r"\w+", fields[1]))
-            for function in re.finditer(r"static\s+inline\s+P##_t\s+P##_(\w+)\(void\)\s*\{\s*return\s+(.*?);\s*\}", definition[3], re.S):
-                expression = re.sub(r"\s+", "", function[2])
-                brace = re.fullmatch(r"\(P##_t\)\{([^{}]+)\}", expression)
-                if brace:
-                    scalar = {"OPS##_zero()": 0, "OPS##_one()": 1, "OPS##_neg(OPS##_one())": -1}
-                    entries = brace[1].rstrip(",").split(",")
-                    if len(entries) == len(components) and all(entry in scalar for entry in entries):
-                        constants[function[1]] = tuple(scalar[entry] for entry in entries)
-                else:
-                    alias = re.fullmatch(r"P##_(\w+)\(\)", expression)
-                    if alias and alias[1] in constants:
-                        constants[function[1]] = constants[alias[1]]
+            scalar = {"OPS##_zero()": 0, "OPS##_one()": 1, "OPS##_neg(OPS##_one())": -1}
+            aliases = []
+            for callee, arguments in macro_calls(definition[3]):
+                arguments = split_args(re.sub(r"\s+", "", arguments))
+                if callee == "MATH_DEFINE_CONSTANT_ALIAS" and len(arguments) == 3 and arguments[0] == "P":
+                    aliases.append((arguments[1], arguments[2]))
+                if callee != "MATH_DEFINE_CONSTANT":
+                    continue
+                if len(arguments) != len(components) + 2 or arguments[0] != "P":
+                    continue
+                if all(entry in scalar for entry in arguments[2:]):
+                    constants[arguments[1]] = tuple(scalar[entry] for entry in arguments[2:])
+            for _ in aliases:
+                for name, target in aliases:
+                    if target in constants:
+                        constants[name] = constants[target]
             templates[definition[1]] = (components, constants)
     table = {}
     for code in sources.values():

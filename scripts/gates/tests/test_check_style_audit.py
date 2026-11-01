@@ -33,9 +33,9 @@ class StyleAuditTest(unittest.TestCase):
             base + "linear/vec3_template.h": """
 #define MATH_DEFINE_VEC3(P, T, W, OPS) \\
 typedef struct { T x, y, z; } P##_t; \\
-static inline P##_t P##_zero(void) { return (P##_t){OPS##_zero(), OPS##_zero(), OPS##_zero()}; } \\
-static inline P##_t P##_unit_y(void) { return (P##_t){OPS##_zero(), OPS##_one(), OPS##_zero()}; } \\
-static inline P##_t P##_up(void) { return P##_unit_y(); }
+MATH_DEFINE_CONSTANT(P, zero, OPS##_zero(), OPS##_zero(), OPS##_zero()) \\
+MATH_DEFINE_CONSTANT(P, unit_y, OPS##_zero(), OPS##_one(), OPS##_zero()) \\
+MATH_DEFINE_CONSTANT_ALIAS(P, up, unit_y)
 """ + extra,
             base + "linear/vec3f.h": "MATH_DEFINE_VEC3(vec3f, float, float, mathf)\n",
             base + "linear/vec3x.h": "MATH_DEFINE_VEC3(vec3x, int32_t, int32_t, mathx)\n",
@@ -57,7 +57,7 @@ static const vec3f_t up = {0, 1, 0};
                                                         "use vec3x_unit_y()", "use vec3f_unit_y()"])
 
     def test_math_constant_negative_units_and_signed_zero(self):
-        extra = "static inline P##_t P##_left(void) { return (P##_t){OPS##_neg(OPS##_one()), OPS##_zero(), OPS##_zero()}; }"
+        extra = "MATH_DEFINE_CONSTANT(P, left, OPS##_neg(OPS##_one()), OPS##_zero(), OPS##_zero())"
         hits = self.audit("MATH-CONSTANT", self.math_fixture("""
 void f(void) {
     use((vec3f_t){-1.0F, 0, 0});
@@ -114,7 +114,7 @@ void f(void) {
         self.assertTrue(all(hit.message == "use mat4f_identity()" for hit in hits))
 
     def test_math_constant_fixer_and_dynamic_table(self):
-        extra = "static inline P##_t P##_back(void) { return (P##_t){OPS##_zero(), OPS##_zero(), OPS##_neg(OPS##_one())}; }"
+        extra = "MATH_DEFINE_CONSTANT(P, back, OPS##_zero(), OPS##_zero(), OPS##_neg(OPS##_one()))"
         source = """static const vec3f_t held = {0};
 void f(void) {
     vec3f_t a = {0};
