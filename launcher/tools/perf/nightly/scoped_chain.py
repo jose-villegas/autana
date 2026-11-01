@@ -33,7 +33,8 @@ from process_tree import (launch_process_tree, stop_process_tree, close_process_
                           terminate_unwinds)
 from local_schedule import (Clock, wait_idle, gpu_pending, gpu_on_host, GPU_NOT_ON_HOST,
                             NIGHT_STEP_HANG_SECONDS, MARKER_KEY_FORMAT, heavy_root, night_cutoff, night_end)
-from nightly.lnt import (lnt_report, night_manifest, night_ran, read_night, read_last_night, VARIANT, BUILD_FLAGS,
+from nightly.lnt import (lnt_report, night_manifest, night_ran, read_night, read_last_night, last_manifests,
+                         manifests_since, night_record_path, read_last_night_record, VARIANT, BUILD_FLAGS,
                          LAYOUT_SEED)
 
 IMAGE_HEADER_BYTES = 24
@@ -49,6 +50,8 @@ STEP_INDEX_DIGITS = 2
 FIRST_STEP_SECONDS = 23 * 60
 RESCAN_SECONDS = 60
 CAPTURE_FAILURE_LIMIT = 2
+# The step outcomes that settle a commit: the next night moves past them.
+ATTEMPTED = ("measured", "skipped_same_image", "build_failed")
 # A lane fails on these step outcomes and these self-test outcomes.
 FAILED_STEPS = ("build_failed", "capture_failed")
 FAILED_SELFTEST = ("failed", "incomplete")
@@ -147,26 +150,43 @@ def history_steps(repo, tip):
     return steps
 
 
-def plan_steps(repo, tip, last_night, lane, lanes):
-    if lanes <= 0 or not 0 <= lane < lanes:
-        raise ValueError("lane must be in [0, lanes)")
+def on_history(history, commit, name):
+    """The step of `commit` on the tip's first-parent history; `name` says which cursor it is."""
+    found = next((step for step in history if step.commit == commit), None)
+    if found is None:
+        raise ValueError(f"{name} is not on the tip's first-parent history")
+    return found
+
+
+def night_queue(repo, tip, data, from_sha=None):
+    """The night's new steps, oldest first: what the last night record still owes, then every commit after its tip;
+    `--from` replaces it with history from that commit on. No commit is dropped, a commit may be measured twice."""
     history = history_steps(repo, tip)
-    commits = [step.commit for step in history]
-    anchor = (last_night or {}).get("last_measured")
-    if anchor and anchor not in commits:
-        raise ValueError("last_measured is not on the tip's first-parent history")
-    attempted = (last_night or {}).get("last_attempted") or anchor
-    if attempted and attempted not in commits:
-        raise ValueError("last_attempted is not on the tip first-parent history")
-    attempted_position = commits.index(attempted) + 1 if attempted else 0
-    selected = []
-    for step in history:
-        if step.commit == anchor:
-            step.role = "anchor"
-            selected.append(step)
-        elif step.position > attempted_position and step.position % lanes == lane:
-            selected.append(step)
-    return selected if anchor else selected[-1:]
+    if from_sha:
+        first = git(repo, "rev-parse", from_sha + "^{commit}")
+        return history[on_history(history, first, "--from").position - 1:]
+    saved = read_last_night_record(data)
+    if saved:
+        key, record = saved
+        through = on_history(history, record["through"], "the night record's tip").position
+        owed = {*(commit for dealt in record["dealt"].values() for commit in dealt), *record["rest"],
+                *(step.commit for step in history[through:])}
+        settled = attempted(manifests_since(data, key))
+    else:
+        # Before the night kept a record, each board resumed after its own cursor; a step any manifest lists
+        # unsettled, a failed capture behind a later one, is owed too. The first night ever takes the tip.
+        cursors = [night.get("last_attempted") or night.get("last_measured") for night in last_manifests(data).values()]
+        cursors = [on_history(history, commit, "last_attempted").position for commit in cursors if commit]
+        nights = manifests_since(data, "")
+        owed = {step["commit"] for night in nights for step in night["steps"]}
+        owed |= {step.commit for step in (history[min(cursors):] if cursors else history[-1:])}
+        settled = attempted(nights)
+    return [step for step in history if step.commit in owed and step.commit not in settled]
+
+
+def attempted(nights):
+    """The commits these night manifests settled: the steps the next night moves past."""
+    return {step["commit"] for night in nights for step in night["steps"] if step["outcome"] in ATTEMPTED}
 
 
 def step_seconds(previous):
@@ -188,26 +208,36 @@ def lane_capacity(previous, start, deadline, selftest=False):
     return max(0, math.floor(left / pace))
 
 
-def select_steps(repo, tip, previous, lane, lanes, from_sha=None, max_steps=None, capacity=None):
-    steps = plan_steps(repo, tip, previous, lane, lanes)
+def record_night(data, planned):
+    """Save the night's record for the next night: the tip it planned at, each lane's dealt steps and the rest.
+    A `--from` range is a person's, not the night's: it saves none."""
+    if planned.get("from_sha"):
+        return
+    write_json(night_record_path(data, datetime.fromisoformat(planned["started"]).strftime(MARKER_KEY_FORMAT)),
+               dict(through=planned["tip"], rest=[step["commit"] for step in planned["queue"]],
+                    dealt={board: [step["commit"] for step in lane["steps"] if step["role"] == "new"]
+                           for board, lane in planned["lanes"].items()}))
+
+
+def deal(repo, tip, previous, queue, count):
+    """A lane's steps and the queue left after it: the board's own anchor, then the queue's next `count` steps
+    (all with None)."""
+    history = history_steps(repo, tip)
+    anchor = previous and previous.get("last_measured")
+    anchors = [Step(**dict(asdict(on_history(history, anchor, "last_measured")), role="anchor"))] if anchor else []
+    new = [step for step in queue if step.commit != anchor]
+    dealt = new[:count] if count is not None else new
+    return anchors + dealt, [step for step in queue if step not in dealt]
+
+
+def rerange(repo, tip, steps, from_sha=None, max_steps=None):
+    """A lane's steps rerun on part of its own: its new steps from `--from` on, then the first `--max-steps`."""
+    anchors = [step for step in steps if step.role == "anchor"]
+    new = [step for step in steps if step.role == "new"]
     if from_sha:
-        first = git(repo, "rev-parse", from_sha + "^{commit}")
-        history = history_steps(repo, tip)
-        commits = [step.commit for step in history]
-        if first not in commits:
-            raise ValueError("--from is not on the tip's first-parent history")
-        # --from replaces the planned new steps; the anchor stays.
-        steps = [step for step in steps if step.role == "anchor"]
-        steps.extend(step for step in history[commits.index(first):]
-                     if step.position % lanes == lane and step.commit != (previous or {}).get("last_measured"))
-    if max_steps is not None and max_steps < 0:
-        raise ValueError("--max-steps must be nonnegative")
-    # The oldest new steps the lane has room for; --max-steps is a bound under the cap.
-    limits = [limit for limit in (max_steps, capacity) if limit is not None]
-    if limits:
-        anchors = [step for step in steps if step.role == "anchor"]
-        steps = anchors + [step for step in steps if step.role == "new"][:min(limits)]
-    return steps
+        first = on_history(history_steps(repo, tip), git(repo, "rev-parse", from_sha + "^{commit}"), "--from")
+        new = [step for step in new if step.position >= first.position]
+    return anchors + new[:max_steps]
 
 
 def run_chain(steps, args, runner=None, clock=None):
@@ -356,7 +386,7 @@ def run_chain(steps, args, runner=None, clock=None):
                             if failures >= CAPTURE_FAILURE_LIMIT:
                                 stop_reason = "capture_failures"
                     result.measure_seconds = (clock.now() - measure).total_seconds()
-            if result.outcome in ("measured", "skipped_same_image", "build_failed"):
+            if result.outcome in ATTEMPTED:
                 if step.position >= positions.get(last_attempted, 0):
                     last_attempted = step.commit
             save()
@@ -475,20 +505,24 @@ def fleet_scan(taken, before=()):
     return free, listing
 
 
-def plan_lane(args, selection, board, lane, lanes, start, selftest=False, remote=None):
-    """The lane for `board` started at `start`, sized to the night's deadline; None when it fits no step."""
+def plan_lane(args, selection, board, start, queue, selftest=False, remote=None, share=None, joiner=False):
+    """The lane for `board` started at `start`, dealt off the head of `queue`, and the queue it leaves; no lane
+    when the board fits no step before the deadline, or joins with nothing left to deal."""
     previous = read_last_night(args.data, board)
     deadline = selection.get("deadline")
     capacity = lane_capacity(previous, start, deadline and datetime.fromisoformat(deadline), selftest)
     if capacity == 0:
         print(f"::notice::board {board} fits no step before the deadline {deadline}; it stays free", file=sys.stderr)
-        return None
-    steps = select_steps(args.repo, selection["tip"], previous, lane, lanes,
-                         selection.get("from_sha"), selection.get("max_steps"), capacity)
+        return None, queue
+    limits = [limit for limit in (capacity, selection.get("max_steps"), share) if limit is not None]
+    steps, rest = deal(args.repo, selection["tip"], previous, queue, min(limits) if limits else None)
+    if joiner and len(rest) == len(queue):
+        print(f"::notice::board {board} joins with the night's queue dealt; it stays free", file=sys.stderr)
+        return None, queue
     estimate = math.ceil(len(steps) * step_seconds(previous) + (SELFTEST_ALLOWANCE_SECONDS if selftest else 0))
-    planned = dict(lane=f"{lane}/{lanes}", previous=previous, capacity=capacity, steps=[asdict(step) for step in steps],
-                   estimate=estimate)
-    return dict(planned, host=remote["host"], host_name=remote["name"]) if remote else planned
+    planned = dict(lane=str(len(selection["lanes"])), previous=previous, capacity=capacity,
+                   steps=[asdict(step) for step in steps], estimate=estimate)
+    return (dict(planned, host=remote["host"], host_name=remote["name"]) if remote else planned), rest
 
 
 def run_night(args, clock=None, launch=None):
@@ -591,10 +625,12 @@ def run_night(args, clock=None, launch=None):
             for row in free:
                 board = row["board"]
                 try:
-                    lane = plan_lane(args, planned, board, 0, 1, clock.now(), board == os.environ.get("SELFTEST_BOARD"),
-                                     remote=row if row.get("host") else None)
+                    queue = [Step(**step) for step in planned.get("queue", [])]
+                    lane, rest = plan_lane(args, planned, board, clock.now(), queue,
+                                           board == os.environ.get("SELFTEST_BOARD"),
+                                           row if row.get("host") else None, joiner=True)
                     if lane is None:
-                        # Its room only shrinks as the night goes on.
+                        # Its room only shrinks as the night goes on, and the queue only empties.
                         skipped.add(board)
                         continue
                     # A slow scan or plan can reach the cut-off; a board taken after the scan is queued on
@@ -606,7 +642,9 @@ def run_night(args, clock=None, launch=None):
                     write_json(lane_plan, dict(planned, lanes={board: lane}))
                     start(board, lane, lane_plan, math.ceil(left))
                     planned["lanes"][board] = lane
+                    planned["queue"] = [asdict(step) for step in rest]
                     write_json(args.plan, planned)
+                    record_night(args.data, planned)
                 except (OSError, ValueError, subprocess.CalledProcessError) as error:
                     print(f"lane {board}: {error}", file=sys.stderr)
                     failed = down = True
@@ -697,13 +735,19 @@ def plan(args, clock=None, request=None):
                    listed=[short_id(board["board"]) for board in listing],
                    lanes={}, from_sha=args.from_sha, max_steps=args.max_steps)
     lanes = planned["lanes"]
-    for lane, board in enumerate(args.boards):
+    queue = night_queue(args.repo, tip, args.data, args.from_sha)
+    for index, board in enumerate(args.boards):
         board = short_id(board)
-        # A board without room keeps its share of the split: its own cursor carries it to its next night.
-        if planned_lane := plan_lane(args, planned, board, lane, len(args.boards), now,
-                                     bool(args.selftest_board) and board == short_id(args.selftest_board),
-                                     remote.get(board)):
-            lanes[board] = planned_lane
+        # Unsized, the queue splits into even runs; sized, each board takes what it fits.
+        share = None if deadline else math.ceil(len(queue) / (len(args.boards) - index))
+        lane, queue = plan_lane(args, planned, board, now, queue,
+                                bool(args.selftest_board) and board == short_id(args.selftest_board),
+                                remote.get(board), share)
+        if lane:
+            lanes[board] = lane
+    planned["queue"] = [asdict(step) for step in queue]
+    # The next night owes what this one does not settle.
+    record_night(args.data, planned)
     write_json(Path(args.out), planned)
     # For the workflow's later steps, which run one lane per board.
     print("SCOPED_BOARDS=" + " ".join(lanes))
@@ -750,6 +794,14 @@ def timeline(args):
             summary.write("".join(lanes) + line)
 
 
+def steps_count(value):
+    """A --max-steps value: a nonnegative whole number."""
+    count = int(value)
+    if count < 0:
+        raise argparse.ArgumentTypeError("--max-steps must be nonnegative")
+    return count
+
+
 def lane_of(plan, board):
     return plan["lanes"][short_id(board)]
 
@@ -782,7 +834,7 @@ def main():
         command.add_argument("--out", type=Path, required=True)
     for command in (planning, running):
         command.add_argument("--from", dest="from_sha")
-        command.add_argument("--max-steps", type=int)
+        command.add_argument("--max-steps", type=steps_count)
     args = parser.parse_args()
     os.environ[autana_config.BUILD_PRIORITY_ENV] = autana_config.BUILD_PRIORITY_BELOW_NORMAL
     if args.command == "boards":
@@ -810,9 +862,7 @@ def main():
     args.night, args.started = (planned[key] for key in ("night", "started"))
     steps = [Step(**step) for step in lane["steps"]]
     if args.from_sha is not None or args.max_steps is not None:
-        index, count = map(int, args.lane.split("/"))
-        steps = select_steps(args.repo, planned["tip"], args.previous, index, count, args.from_sha, args.max_steps,
-                             lane.get("capacity"))
+        steps = rerange(args.repo, planned["tip"], steps, args.from_sha, args.max_steps)
     # A stop (Ctrl-Break on Windows, TERM elsewhere) unwinds, so the manifest and cleanup still save.
     install_console_interrupt_handler()
     with terminate_unwinds():
