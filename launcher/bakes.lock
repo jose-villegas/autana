@@ -22,6 +22,16 @@ run = 41307973503
 host = "Linux x86_64"
 
 [[bake]]
+output = "bistro.street_fitted.bundle"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "78f749021e959bd95fd88d9a2d0d066e52f08a8aafb12c2f9d0ec63bf11c7884"
+sha256 = "d60e816c8831085f9b665db900726829a7a8944222d1d7ed05c8aea181e79da9"
+size = 211858
+run = 41314420480
+host = "Linux x86_64"
+gpu = "NVIDIA GeForce RTX 2060"
+
+[[bake]]
 output = "bistro.street_fitted.start.bundle"
 source = "launcher/demo/bistro/bistro.scene.toml"
 key = "4f4366cb6a489758a2821b585011c01b426d1d80e8d618b38c0274cf0bc051c9"
@@ -29,6 +39,16 @@ sha256 = "1306b5d486ccff6636f89805bdec59a3215ce05384b4c0e0891cf3b4b05261e7"
 size = 305026
 run = 41307973503
 host = "Linux x86_64"
+
+[[bake]]
+output = "bistro.street_fitted_full.bundle"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "3c6282a4d366719149fcdbc790deef3b0235c3aed2c766f4c50beb1b31549bfd"
+sha256 = "88de643c5f3dda1daa9aa4c17e31ba887d52a10d77ad73f4c6468c76f5683667"
+size = 415639
+run = 41314420480
+host = "Linux x86_64"
+gpu = "NVIDIA GeForce RTX 2060"
 
 [[bake]]
 output = "bistro.street_fitted_full.start.bundle"
@@ -47,6 +67,16 @@ sha256 = "f6cfa41b2b342954180f9151ef4c994ddd92c436950b1d302e3581a9d1486981"
 size = 300784
 run = 41307973503
 host = "Linux x86_64"
+
+[[bake]]
+output = "bistro.street_flat_fitted.bundle"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "4dc42510f104b8c42586a0a276fe722591ddc701db06ec54dda98ccf245ba5ee"
+sha256 = "cb793410ab4daf43829a4510eed32b81e3dd2284ac3df0dc86ea05c6c6f3bef8"
+size = 323511
+run = 41314420480
+host = "Linux x86_64"
+gpu = "NVIDIA GeForce RTX 2060"
 
 [[bake]]
 output = "bistro.street_flat_fitted.start.bundle"
@@ -112,6 +142,16 @@ run = 41307973503
 host = "Linux x86_64"
 
 [[bake]]
+output = "sponza.atrium_fitted.bundle"
+source = "launcher/demo/sponza/sponza.scene.toml"
+key = "b73efe30fffbf17b3613d654de1a598bae55f4ca2e20687f1afbef8587f65ce8"
+sha256 = "729fbf708aa73858776580b0cc3304f6d4a39e9ddc1205ecb510ade5be410f41"
+size = 141401
+run = 41314420480
+host = "Linux x86_64"
+gpu = "NVIDIA GeForce RTX 2060"
+
+[[bake]]
 output = "sponza.atrium_fitted.start.bundle"
 source = "launcher/demo/sponza/sponza.scene.toml"
 key = "a59a95ba02e5bb2806be4339985b88edbf78706582f2d139b3a736bae47fe9f2"
@@ -119,6 +159,16 @@ sha256 = "dce759d6cdd785de666fb243c51d5595ef1212e44c4c499cbcf9ab24c01a604a"
 size = 209545
 run = 41307973503
 host = "Linux x86_64"
+
+[[bake]]
+output = "sponza.atrium_fitted_full.bundle"
+source = "launcher/demo/sponza/sponza.scene.toml"
+key = "a1686a92b6ddb5087b5f093d1b70725db5706d19dcdcb0e0c4407b1fd112ce63"
+sha256 = "c9636d55ce602b5c35ecdd376efcba153a663fc7fe38e0486eac9884b7721a5d"
+size = 269575
+run = 41314420480
+host = "Linux x86_64"
+gpu = "NVIDIA GeForce RTX 2060"
 
 [[bake]]
 output = "sponza.atrium_fitted_full.start.bundle"
@@ -137,6 +187,16 @@ sha256 = "810b6efbdef4f42de5fa11d5041474fa20a01252ff7d1d624d7847a624d8a417"
 size = 226436
 run = 41307973503
 host = "Linux x86_64"
+
+[[bake]]
+output = "sponza.atrium_flat_fitted.bundle"
+source = "launcher/demo/sponza/sponza.scene.toml"
+key = "e998cc259b631a9dd7bfb5472ec028711768dd494be00a4803791482e55eed63"
+sha256 = "7248d6f7e328541164a59cca22c08150394af01fb08ff99041b1aebcb0d1ff7b"
+size = 224398
+run = 41314420480
+host = "Linux x86_64"
+gpu = "NVIDIA GeForce RTX 2060"
 
 [[bake]]
 output = "sponza.atrium_flat_fitted.start.bundle"
@@ -182,32 +242,32 @@ key = "05e238ae671478f4e57c9218c13ab71e528c39964a4f7afa31cab6b726cdb2d1"
 poses = "d22bd63bb589a7fcbd9126cc96d9d65ee9bd7f2d66560aec6e9d6b938397755f"
 count = 6605
 clip = "launcher/demo/bistro/street.anim.toml"
-host = "Linux x86_64"
+host = "Windows AMD64"
 
 [[poses]]
 key = "07ea43552d512d0ae4a4dc46aec4c58c5e2248e68b618d50bc889c2538f0def6"
 poses = "7f5a1e528b63cc2ebea4ea3c6795518dc30bb47befc15345be563a2d9a4ddd10"
 count = 1816
 clip = "launcher/demo/sponza/flythrough.anim.toml"
-host = "Linux x86_64"
+host = "Windows AMD64"
 
 [[poses]]
 key = "4e71c67a0e5c50926e1b21da1f8045298a0f5f31c952c09edd5548ff94accb12"
 poses = "4e6038b04307b2374f3c90ae507e576d2cfd82d7508b742ba134ebfe01ceb18d"
 count = 133
 clip = "launcher/demo/bistro/street.anim.toml"
-host = "Linux x86_64"
+host = "Windows AMD64"
 
 [[poses]]
 key = "4f5a12ac2fa152e3fcc09ed6563a3f3f16be638f611779b8f2da2be71c48909e"
 poses = "bc608ce3264275d892202b270ad05e255c7878431cbea66d907ba0e927ecf8da"
 count = 37
 clip = "launcher/demo/sponza/flythrough.anim.toml"
-host = "Linux x86_64"
+host = "Windows AMD64"
 
 [[poses]]
 key = "88c0d231ec67fc655f4d664871f9e06fc243e8fd54de8d600a277a715e466940"
 poses = "9ead88ddf14f89d2451a12a9e69686f4eeb66075f3ed042f999511be8e6e0998"
 count = 265
 clip = "launcher/demo/bistro/street.anim.toml"
-host = "Linux x86_64"
+host = "Windows AMD64"
