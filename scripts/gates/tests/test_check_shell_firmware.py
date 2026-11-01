@@ -282,6 +282,15 @@ class OwnerProblemsTest(unittest.TestCase):
                 ])
         self.assertEqual(self.problems({"launcher/main/board/board_panel.c": text}), [])
 
+    def test_a_folder_only_named_like_board_does_not_own_the_bsp(self):
+        rel = "launcher/main/board_extras/x.c"
+        self.assertEqual(self.problems({rel: "int p = BSP_I2C_SDA;\n"}), [f"{rel}:1: uses BSP_I2C_SDA; only board/ may"])
+
+    def test_a_bsp_include_line_is_reported_once_as_an_include(self):
+        rel = "launcher/main/input/touch/touch.c"
+        self.assertEqual(self.problems({rel: "#include <bsp/bsp_touch.h>\n"}),
+                         [f"{rel}:1: includes bsp/bsp_touch.h; only board/ may"])
+
     def test_an_angle_bracket_bsp_include_fails_and_a_comment_naming_the_bsp_does_not(self):
         rel = "launcher/main/input/touch/touch.c"
         text = '#include <bsp/touch.h>\n/* bsp_touch_new */\nconst char* s = "BSP_X";\n'
