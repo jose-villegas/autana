@@ -1806,7 +1806,8 @@ COMMAND_GROUPS = (
              "run suites under one lock, N times each (1 when omitted); seconds caps each capture "
              "(1800 when omitted); --flash builds and flashes the diagnostics image first, so nobody flashes between captures"),
             ("suite <name> --test PATTERN[,PATTERN]",
-             "only the tests whose name contains a pattern (case-sensitive); --test repeats"),
+             "only the tests a pattern picks: part of a function name or a whole case segment, "
+             "a/b for segments in order (case-sensitive); --test repeats"),
             ("suite <name> --send LINE",
              "send a console line after tunables, before every capture; --send repeats in order; the sequence should be idempotent, and an error or incomplete reply stops the batch"),
             ("suite <name> --set NAME=VALUE",

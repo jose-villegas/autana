@@ -1,9 +1,8 @@
 /*
- * Portable suite: narrowing a suite's run to the tests whose name contains a
- * pattern (suites.h). Host only, so the fixture suites are not on the board.
- * gate_fixture_suite asks the gate directly, since a real RUN_TEST would
- * nest one Unity run in another; filter_fixture_suite uses real ones for
- * `host_tests --run` (launcher/test/tests/test_suite_filter_output.py).
+ * Portable suite: narrowing a suite's run to the tests a pattern picks
+ * (suites.h). Host only. gate_fixture_suite asks the gate directly, since a
+ * real RUN_TEST would nest one Unity run in another; the other fixtures run
+ * real ones for launcher/test/tests/test_suite_filter_output.py.
  */
 #ifndef DEVICE_BUILD
 
@@ -62,9 +61,44 @@ filter_fixture_suite(void) {
     RUN_TEST(test_water_fits);
 }
 
+static const char* const case_scenes[] = {"sponza-fitted", "sponza-fitted-full"};
+static const char* const case_quarters[] = {"portrait", "landscape"};
+
+static void
+test_case(void) {
+    printf("PROBE_RAN %s\n", Unity.CurrentTestName);
+}
+
+/* A table-driven loop as the perf suites run one, with a level some rows
+ * leave out. */
+static void
+case_fixture_suite(void) {
+    for (size_t scene = 0; scene < sizeof case_scenes / sizeof case_scenes[0]; scene++) {
+        for (size_t quarter = 0; quarter < sizeof case_quarters / sizeof case_quarters[0]; quarter++) {
+            RUN_TEST_CASE(test_case, case_scenes[scene], NULL, case_quarters[quarter]);
+        }
+    }
+    RUN_TEST_CASE(test_case, "capybara", "", "front", "portrait");
+}
+
+/* A case named exactly SUITE_TEST_NAME_MAX characters, then one past it. */
+static void
+case_limit_suite(void) {
+    char segment[SUITE_TEST_NAME_MAX + 1];
+    const size_t at_limit = SUITE_TEST_NAME_MAX - sizeof "test_case";
+    memset(segment, 'x', at_limit + 1);
+    segment[at_limit] = '\0';
+    RUN_TEST_CASE(test_case, segment);
+    segment[at_limit] = 'x';
+    segment[at_limit + 1] = '\0';
+    RUN_TEST_CASE(test_case, segment);
+}
+
 SUITE_REGISTER_ON_REQUEST(gate_fixture_suite);
 SUITE_REGISTER_ON_REQUEST(timed_probe_suite);
 SUITE_REGISTER_ON_REQUEST(filter_fixture_suite);
+SUITE_REGISTER_ON_REQUEST(case_fixture_suite);
+SUITE_REGISTER_ON_REQUEST(case_limit_suite);
 
 static void
 fixture(void) {
@@ -211,6 +245,29 @@ test_an_unknown_or_overlong_suite_is_not_found(void) {
 }
 
 typedef struct {
+    const char* pattern;
+    const char* name;
+    bool picks;
+} filter_case_t;
+
+static const filter_case_t filter_cases[] = {
+#define SUITE_FILTER_CASE(pattern, name, picks) {pattern, name, picks},
+#include "suite_filter_cases.inc"
+#undef SUITE_FILTER_CASE
+};
+
+static void
+test_each_pattern_picks_exactly_the_names_its_case_says(void) {
+    for (size_t i = 0; i < sizeof filter_cases / sizeof filter_cases[0]; i++) {
+        const filter_case_t* c = &filter_cases[i];
+        char message[SUITE_FILTER_LEN + SUITE_TEST_NAME_MAX + sizeof " on "];
+        strbuf_t text = strbuf_make(message, sizeof message);
+        strbuf_appendf(&text, "%s on %s", c->pattern, c->name);
+        TEST_ASSERT_TRUE_MESSAGE(c->picks == suite_test_matches(c->pattern, c->name), message);
+    }
+}
+
+typedef struct {
     int seen;
     int fixtures_on_request;
     bool in_order;
@@ -232,7 +289,7 @@ test_the_listing_names_every_suite_in_order_with_its_on_request_mark(void) {
     suites_each(list_one, &listing);
     TEST_ASSERT_TRUE(listing.in_order);
     TEST_ASSERT_GREATER_THAN_INT(2, listing.seen);
-    TEST_ASSERT_EQUAL_INT(2, listing.fixtures_on_request);
+    TEST_ASSERT_EQUAL_INT(3, listing.fixtures_on_request);
 }
 
 void
@@ -248,6 +305,7 @@ run_suite_filter_suite(void) {
     RUN_TEST(test_the_pattern_count_at_the_limit_is_accepted_and_one_more_is_refused);
     RUN_TEST(test_an_empty_pattern_is_refused);
     RUN_TEST(test_an_unknown_or_overlong_suite_is_not_found);
+    RUN_TEST(test_each_pattern_picks_exactly_the_names_its_case_says);
     RUN_TEST(test_the_listing_names_every_suite_in_order_with_its_on_request_mark);
 }
 

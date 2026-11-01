@@ -14,7 +14,7 @@ fixture(void) {
 }
 
 static void
-test_a_held_press_is_reported_once(void) {
+test_a_held_button_press_is_reported_once(void) {
     fixture();
     button_fsm_update(&b, false, now);
     button_fsm_update(&b, true, ++now);
@@ -27,7 +27,7 @@ test_a_held_press_is_reported_once(void) {
 
 void
 run_minimal_example_suite(void) {
-    RUN_TEST(test_a_held_press_is_reported_once);
+    RUN_TEST(test_a_held_button_press_is_reported_once);
 }
 
 SUITE_REGISTER(run_minimal_example_suite);
