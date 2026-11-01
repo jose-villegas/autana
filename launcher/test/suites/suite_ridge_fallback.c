@@ -9,6 +9,7 @@
 #include "core/memory.h"
 #include "draw/draw_dither.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_test.h"
 #include "shell/ui/ui_ridge.h"
 
