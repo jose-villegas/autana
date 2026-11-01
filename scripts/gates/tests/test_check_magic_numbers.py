@@ -55,6 +55,17 @@ class MagicTests(unittest.TestCase):
         self.assertIn("SECOND", hits[0].message)
         self.assertEqual(len(self.restates(f"#define VALUE {RARE}\nswitch(x) {{ case {RARE}: break; }}")), 1)
 
+    def test_cpp_constants_and_sources_outside_launcher(self):
+        header, source = "src/engine/value.hpp", "tests/view_test.cpp"
+        for owner in (f"inline constexpr int VALUE = {RARE};",
+                      f"enum class Size : unsigned {{ Big = {RARE} }};"):
+            with self.subTest(owner=owner):
+                files = {header: owner, source: f'#include "engine/value.hpp"\nint x = {RARE};'}
+                self.assertEqual(len(gate.scan(files, direct=gate.include_graph(files, ("src",)))[0]
+                                     .get((source, gate.RESTATE), [])), 1)
+                # Without its include root the header is out of sight.
+                self.assertFalse(self.scan(files)[0].get((source, gate.RESTATE)))
+
     def test_thresholds(self):
         values = (gate.RARE_MINIMUM - 1, gate.RARE_MINIMUM,
                   gate.RARE_MINIMUM + gate.ROUND_MULTIPLE, RARE, RARE - 1)

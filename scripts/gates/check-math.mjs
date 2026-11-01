@@ -585,7 +585,7 @@ async function main() {
     try {
       files = await trackedMarkdownFiles(targets, process.cwd());
     } catch (error) {
-      console.error('git ls-files failed - run this from inside the autana repo.');
+      console.error('git ls-files failed - run this from inside a git repository.');
       console.error((error.stderr || error.message || '').trim());
       process.exitCode = 1;
       return;

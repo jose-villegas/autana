@@ -30,15 +30,18 @@ import tempfile
 import time
 
 from check_generated_files import is_generated
-from tracked import revision_contents
+from c_comments import SOURCE_EXTENSIONS
+from tracked import repository, revision_contents
 
-ROOT = Path(__file__).resolve().parents[2]
-ENGINE = ROOT / "scripts/gates/node_modules/jscpd/run-jscpd.js"
+# The tree this gate ships in, which holds its clone engine and scratch space;
+# the tree it checks is the repository it is run from.
+GATE_TREE = Path(__file__).resolve().parents[2]
+ENGINE = GATE_TREE / "scripts/gates/node_modules/jscpd/run-jscpd.js"
 MIN_TOKENS = 80
 # Below this many AST nodes a same-shape function is an idiom (`return self`,
 # `self.directory.cleanup()`), not a helper worth an owner.
 MIN_FUNCTION_NODES = 20
-SUFFIXES = {".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".py"}
+SUFFIXES = {*SOURCE_EXTENSIONS, ".py"}
 
 
 def eligible_name(name):
@@ -248,9 +251,8 @@ def scan(root, minimum, names=None, revision="HEAD", renames=None):
     if problem:
         raise RuntimeError(problem)
     if names is None:
-        names = sorted(git(root, "ls-tree", "-r", "--name-only", revision, "--",
-                           "launcher", "scripts").decode().splitlines())
-    scratch_parent = ROOT / "launcher/test/build"
+        names = sorted(git(root, "ls-tree", "-r", "--name-only", revision).decode().splitlines())
+    scratch_parent = GATE_TREE / "launcher/test/build"
     scratch_parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="clones-", dir=scratch_parent) as folder:
         scratch = Path(folder)
@@ -373,7 +375,8 @@ def check_pairs(pairs, base_pairs, moved=()):
     return 0
 
 
-def main(argv=None, root=ROOT):
+def main(argv=None, root=None):
+    root = root or repository()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--report", action="store_true")
     parser.add_argument("--min-tokens", type=int, default=MIN_TOKENS)

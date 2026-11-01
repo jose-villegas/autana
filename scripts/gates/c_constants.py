@@ -1,4 +1,4 @@
-"""Integer constants defined in tracked C sources, and which of them each file can see."""
+"""Integer constants defined in tracked C and C++ sources, and which of them each file can see."""
 import ast
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -6,30 +6,31 @@ import operator
 import pathlib
 import re
 
-from c_comments import balanced_end, blank_comments
+from c_comments import SOURCE_EXTENSIONS, balanced_end, blank_comments
 from tracked import tracked_files
 
 DEFINE = re.compile(r"^[ \t]*#[ \t]*define[ \t]+([A-Za-z_]\w*)\b((?:[^\n]*\\\r?\n)*[^\n]*)", re.M)
-ENUM = re.compile(r"\benum\s*(?:[A-Za-z_]\w*\s*)?\{([^{}]*)\}", re.S)
+# C's enum, and C++'s scoped `enum class Name : type`.
+ENUM = re.compile(r"\benum\s*(?:(?:class|struct)\s+)?(?:[A-Za-z_]\w*\s*)?(?::\s*[\w:\s]+?)?\{([^{}]*)\}", re.S)
 MEMBER = re.compile(r"^\s*([A-Za-z_]\w*)\s*=\s*(.+?)\s*$", re.S)
 INTEGER = re.compile(r"(?<![\w.])(?:0[xX][0-9a-fA-F]+|0|[1-9]\d*)[uUlL]*(?![\w.])")
 FUNCTION_BODY = re.compile(
     r"\)(?:\s*(?!(?:enum|typedef|struct|class|union|namespace)\b)[A-Za-z_]\w*\b)*\s*$"
 )
-SCALAR = re.compile(r"\b(?:static\s+)?const\s+(?:[A-Za-z_]\w*\s+)+([A-Za-z_]\w*)\s*=\s*([^;{},]+);", re.S)
+SCALAR = re.compile(r"\b(?:(?:static|inline)\s+)*(?:const|constexpr|constinit)\s+(?:[A-Za-z_]\w*\s+)+([A-Za-z_]\w*)\s*=\s*([^;{},]+);", re.S)
 OPERATORS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul,
              ast.LShift: operator.lshift, ast.RShift: operator.rshift,
              ast.BitOr: operator.or_, ast.BitAnd: operator.and_, ast.BitXor: operator.xor}
 
 
 def source_files(root):
-    """Tracked C under launcher/. Build and component-manager output is not
-    this project's definition of a constant; reading it would make the verdict
+    """Tracked C and C++. Build and component-manager output is not this
+    project's definition of a constant; reading it would make the verdict
     depend on whether the checkout had been built."""
     root = pathlib.Path(root)
-    for name in sorted(tracked_files(root, ("launcher",))):
+    for name in sorted(tracked_files(root, [f"*{suffix}" for suffix in SOURCE_EXTENSIONS])):
         path = root / name
-        if (path.suffix in {".c", ".h"} and path.is_file()
+        if (path.is_file()
                 and "managed_components" not in path.parts
                 and not any(part.startswith("build") for part in path.relative_to(root).parts)):
             yield path

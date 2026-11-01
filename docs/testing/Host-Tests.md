@@ -71,9 +71,9 @@ the compiler's own dependency files.
 
 ### Git hooks
 
-`scripts/install-git-hooks.sh` installs the local hooks. Pre-push runs
-`run_tests.sh --sanitize` once when a pushed range changes `.c` or `.h`, and
-refuses the push on failure.
+`scripts/install-git-hooks.sh` installs the local hooks. Pre-push runs the
+workflow step marked `PUSH_TEST_GATE: "true"` (here `run_tests.sh --sanitize`)
+once when a pushed range changes C or C++ source, and refuses the push on failure.
 
 - Run the same command by hand to diagnose it; `git push --no-verify` skips the hook.
 - The hook uses the scripts of the current worktree.
