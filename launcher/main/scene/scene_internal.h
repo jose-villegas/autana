@@ -8,6 +8,7 @@
 
 #include "anim/anim_tracks.h"
 #include "anim/playback/anim_layer.h"
+#include "core/checkpoint.h"
 #include "core/handle.h"
 #include "core/memory.h"
 #include "math/linear/mat3f.h"
@@ -241,6 +242,10 @@ size_t scene_storage_carve(size_t* end, size_t bytes, size_t align);
 #define SCENE_STORAGE_RESERVE(layout, end, member, type, count)                                                        \
     ((layout).member = scene_storage_carve(&(end), sizeof(type) * (size_t)(count), _Alignof(type)))
 int scene_renderer_index(const scene_t* scene, scene_entity_t entity);
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+void scene_checkpoint_capture(checkpoint_t* saved, scene_t* scene);
+void scene_animation_checkpoint_capture(checkpoint_t* saved, scene_t* scene);
+#endif
 void scene_animation_release(scene_t* scene);
 void scene_animation_step(scene_t* scene, uint32_t dt_ms);
 void scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms);

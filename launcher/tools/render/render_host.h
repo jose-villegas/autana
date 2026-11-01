@@ -9,6 +9,7 @@
 #include <stdint.h>
 
 #include "app/app.h"
+#include "build/build_variant.h"
 #include "math/geometry/recti.h"
 
 /* What one frame of a provider is handed. `input` is synthesised from the
@@ -64,6 +65,14 @@ typedef struct {
     /* Optional path cut: frame history starts over; NULL without a path. */
     void (*seek)(uint32_t t_ms);
 } frame_provider_t;
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+typedef struct render_host_checkpoint render_host_checkpoint_t;
+/* Everything the next frame reads that earlier frames wrote. Valid within the open run. */
+render_host_checkpoint_t* render_host_save(void);
+void render_host_restore(const render_host_checkpoint_t* checkpoint);
+void render_host_checkpoint_free(render_host_checkpoint_t* checkpoint);
+#endif
 
 /* Fully qualified tunable names use the same validation as the console. */
 bool render_host_set_tunable(const char* name, int32_t value);

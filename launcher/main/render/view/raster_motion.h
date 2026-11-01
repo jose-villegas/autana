@@ -8,6 +8,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "build/build_variant.h"
 
 #include "math/linear/mat4f.h"
 #include "math/projection/projectf.h"
@@ -71,3 +72,7 @@ void raster_motion_release(raster_motion_t* state);
 /* The view row's hooks over raster_motion_reserve() and raster_motion_release(). */
 bool raster_motion_reserve_view(void* state, int instances);
 void raster_motion_release_view(void* state);
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+bool raster_motion_copy_view(void* destination, const void* source, const raster_t* raster);
+#endif

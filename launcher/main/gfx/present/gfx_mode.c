@@ -690,3 +690,33 @@ gfx_readback_end(void) {
         free_band_snapshot();
     }
 }
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+void
+gfx_mode_checkpoint_capture(checkpoint_t* saved) {
+    checkpoint_capture(saved, &current_mode, sizeof current_mode);
+    checkpoint_capture(saved, &fb, sizeof fb);
+    checkpoint_capture(saved, &present_fb, sizeof present_fb);
+    checkpoint_capture(saved, &frame_target, sizeof frame_target);
+    checkpoint_capture(saved, &clip, sizeof clip);
+    checkpoint_capture(saved, &fb_filled, sizeof fb_filled);
+    checkpoint_capture(saved, &fb_fill_colour, sizeof fb_fill_colour);
+    checkpoint_capture(saved, &gfx_fb_guard_available, sizeof gfx_fb_guard_available);
+    checkpoint_capture(saved, fb, GFX_FRAMEBUFFER_BYTES);
+    if (present_fb != fb) {
+        checkpoint_capture(saved, present_fb, GFX_FRAMEBUFFER_BYTES);
+    }
+    checkpoint_capture(saved, band_snapshot, GFX_FRAMEBUFFER_BYTES);
+    checkpoint_capture(saved, &band_snapshot_bands, sizeof band_snapshot_bands);
+    checkpoint_capture(saved, &band_snapshot_filling, sizeof band_snapshot_filling);
+    checkpoint_capture(saved, &band_snapshot_complete, sizeof band_snapshot_complete);
+    checkpoint_capture(saved, &band_frame_force_all, sizeof band_frame_force_all);
+    checkpoint_capture(saved, &band_current_slot, sizeof band_current_slot);
+    checkpoint_capture(saved, &band_ring, sizeof band_ring);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    checkpoint_capture(saved, &band_overlay_bordered, sizeof band_overlay_bordered);
+    checkpoint_capture(saved, &band_overlay_cleanup_only, sizeof band_overlay_cleanup_only);
+#endif
+    gfx_indexed_checkpoint_capture(saved);
+}
+#endif

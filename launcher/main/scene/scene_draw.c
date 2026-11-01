@@ -150,3 +150,45 @@ scene_compose(uint32_t dt_ms, int quarter, const scene_target_t* target) {
     stepped = false;
     return expanded;
 }
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+struct scene_checkpoint {
+    checkpoint_t state;
+};
+
+scene_checkpoint_t*
+scene_save(void) {
+    scene_checkpoint_t* saved = memory_alloc(sizeof(*saved), MEMORY_PSRAM);
+    if (saved == NULL) {
+        return NULL;
+    }
+    *saved = (scene_checkpoint_t){0};
+    checkpoint_capture(&saved->state, &active, sizeof active);
+    checkpoint_capture(&saved->state, &paused, sizeof paused);
+    checkpoint_capture(&saved->state, &expanded, sizeof expanded);
+    checkpoint_capture(&saved->state, &stepped, sizeof stepped);
+    checkpoint_capture(&saved->state, &rendered, sizeof rendered);
+    checkpoint_capture(&saved->state, &refused, sizeof refused);
+    for (int i = 0; i < scene_loaded_count(); i++) {
+        scene_checkpoint_capture(&saved->state, scene_loaded_at(i));
+    }
+    if (saved->state.failed) {
+        scene_checkpoint_free(saved);
+        return NULL;
+    }
+    return saved;
+}
+
+void
+scene_restore(const scene_checkpoint_t* saved) {
+    checkpoint_restore(&saved->state);
+}
+
+void
+scene_checkpoint_free(scene_checkpoint_t* saved) {
+    if (saved != NULL) {
+        checkpoint_clear(&saved->state);
+        memory_free(saved);
+    }
+}
+#endif
