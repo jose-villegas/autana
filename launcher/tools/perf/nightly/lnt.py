@@ -9,6 +9,9 @@ VARIANT = "diag"
 LAYOUT_SEED = 0
 BUILD_FLAGS = ("--perf-scope", "--layout-seed", str(LAYOUT_SEED))
 IMAGE = " ".join((VARIANT, *BUILD_FLAGS))
+# A night's key, as MARKER_KEY_FORMAT writes it, and the folder of saved night queues beside the boards'.
+NIGHT_KEY_GLOB = "????-??-??-????"
+QUEUES = "queue"
 
 
 def lnt_report(machine, board, commit, pr, role, night, build_id, image_hash, start, end, rows):
@@ -50,5 +53,30 @@ def read_night(data_dir, board, key):
 
 
 def read_last_night(data_dir, board):
-    paths = sorted((Path(data_dir) / "scoped" / board).glob("????-??-??-????/night.json"))
+    paths = sorted((Path(data_dir) / "scoped" / board).glob(NIGHT_KEY_GLOB + "/night.json"))
     return json.loads(paths[-1].read_text(encoding="utf-8")) if paths else None
+
+
+def last_nights(data_dir):
+    """Every board's last night manifest, by board: the boards that sit tonight out too."""
+    root = Path(data_dir) / "scoped"
+    boards = sorted(path.name for path in root.iterdir() if path.is_dir()) if root.is_dir() else []
+    return {board: night for board in boards if (night := read_last_night(data_dir, board))}
+
+
+def manifests_since(data_dir, key):
+    """Every board's night manifests from the night keyed `key` on."""
+    return [json.loads(path.read_text(encoding="utf-8"))
+            for path in sorted((Path(data_dir) / "scoped").glob(f"*/{NIGHT_KEY_GLOB}/night.json"))
+            if path.parent.name >= key]
+
+
+def queue_path(data_dir, key):
+    """Where the night keyed `key` saves its queue: the commit it planned through and the steps it owed."""
+    return Path(data_dir) / "scoped" / QUEUES / (key + ".json")
+
+
+def read_last_queue(data_dir):
+    """The latest saved night queue as (key, queue), or None before the first."""
+    paths = sorted((Path(data_dir) / "scoped" / QUEUES).glob(NIGHT_KEY_GLOB + ".json"))
+    return (paths[-1].stem, json.loads(paths[-1].read_text(encoding="utf-8"))) if paths else None
