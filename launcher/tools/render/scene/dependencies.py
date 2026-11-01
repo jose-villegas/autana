@@ -13,7 +13,7 @@ def main():
     names = [Path(name).resolve() for name in (build / "dependency_sources.txt").read_text().splitlines()]
     entries = [entry for entry in json.loads((build / "compile_commands.json").read_text())
                if Path(entry["file"]).resolve() in set(names)]
-    # The scene's own target lists its sources first; they share its flags.
+    # render_scene's sources come first (scene/CMakeLists.txt), all compiled with the scene's one flag set.
     scene = next(entry for entry in entries if Path(entry["file"]).resolve() == names[0])
     flags = compile_flags(scene)[1:]
     # Keep include paths as separate tokens for doc_stages' repo-relative stamp.

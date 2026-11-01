@@ -86,6 +86,9 @@ bool render_host_set_tunable_text(const char* assignment);
  * False means no run opened; exit_code is 0 for a successful query, nonzero
  * for an error. */
 bool render_host_open(const frame_provider_t* provider, int argc, char** argv, int* exit_code);
+/* The open run's frame: its count and dt as the options and the provider's
+ * defaults set them, and its index so far. */
+const provider_frame_t* render_host_frame(void);
 /* Draw one composed frame; advance its index by one and elapsed time by dt_ms. */
 void render_host_step(uint32_t dt_ms, const input_t* input);
 /* Draw warm-up frames for the frame watch, write the saved image and close
