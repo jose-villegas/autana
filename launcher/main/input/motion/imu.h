@@ -53,7 +53,7 @@ imu_fifo_lost(uint64_t locked_us, uint32_t* remainder_us, bool gap) {
  * Returns -1 only without a sensor. */
 int imu_take_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t lost_before[IMU_FIFO_SAMPLES], bool* gap);
 
-/* Configures and starts the sensor. Safe to call more than once.
+/* Soft-resets, configures and starts the sensor. Safe to call more than once.
  * Returns false if the chip does not answer or identifies as something else. */
 bool imu_init(void);
 
