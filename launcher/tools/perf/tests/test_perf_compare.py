@@ -71,7 +71,7 @@ def arguments(root, cap=16):
             header.write_bytes((PERF.parents[2]/"launcher/test/suites.h").read_bytes())
     return SimpleNamespace(out=root/'out', project_a=root/'a', project_b=root/'b',
                            suite=[('suite', '-', '-')], max_seeds=cap, alpha=.05,
-                           threshold=1., rng_seed=9, timeout=1800, wait=3600,
+                           threshold=1., rng_seed=9, timeout=1800, wait=3600, max_minutes=tool.DEFAULT_MAX_MINUTES,
                            label_a='A', label_b='B')
 
 
@@ -280,6 +280,67 @@ class AcquisitionTest(ShellJobTests, unittest.TestCase):
             self.assertTrue(all(item['suites'][0][1] == 'h' for item in extra))
             self.assertEqual(len(payload['plan']), 20)
             self.assertIn('inconclusive', summary)
+
+    def budget_run(self, minutes, clock):
+        with tempfile.TemporaryDirectory() as root:
+            args = arguments(root)
+            args.max_minutes = minutes
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                payload = tool.measure(args, FakeAutana(root, noisy=True), clock=clock)
+            return payload, output.getvalue()
+
+    def test_a_look_past_the_time_budget_is_not_started_and_names_unresolved_rows(self):
+        payload, summary = self.budget_run(1 / 60, lambda: 0)
+        stop = payload['budget_stop']
+        self.assertGreater(stop['look'], 1)
+        self.assertEqual({item['look'] for item in payload['plan']}, {1})
+        self.assertEqual(payload['rows']['suite/quiet']['verdict'], 'no change')
+        self.assertIn('Unresolved: `suite/heavy`.', summary)
+        self.assertIn(f"Complete; stopped at the time budget before look {stop['look']}", summary)
+        self.assertIn(f"--max-minutes {stop['budget_seconds'] / 60:g}", summary)
+
+    def test_an_incomplete_comparison_still_says_it_stopped_at_the_budget(self):
+        stop = dict(look=2, elapsed_seconds=0, estimate_seconds=60, budget_seconds=1)
+        with tempfile.TemporaryDirectory() as root:
+            args = arguments(root)
+            path = pathlib.Path(root) / 'summary.md'
+            tool.write_summary(path, args, {'a': [], 'b': []}, {}, {}, tool.schedule(16, args.alpha), [],
+                               incomplete=True, budget_stop=stop)
+            text = path.read_text(encoding='utf-8')
+            self.assertIn('Incomplete', text)
+            self.assertIn(f"stopped at the time budget before look {stop['look']}", text)
+            self.assertIn('Unresolved: none.', text)
+
+    def test_time_already_used_counts_against_the_budget(self):
+        estimate = self.budget_run(1 / 60, lambda: 0)[0]['budget_stop']['estimate_seconds']
+        spare = 1
+        minutes = (estimate + spare) / 60
+        payload, summary = self.budget_run(minutes, lambda: 0)
+        self.assertIsNone(payload['budget_stop'])
+        self.assertNotIn('Stopped at the time budget', summary)
+        ticks = iter([0, 0, 0, 0, 0])
+        payload, _ = self.budget_run(minutes, lambda: next(ticks, 2 * spare))
+        self.assertEqual(payload['budget_stop']['elapsed_seconds'], 2 * spare)
+        self.assertEqual({item['look'] for item in payload['plan']}, {1})
+
+    def test_look_seconds_scales_runs_by_suite_passes_and_seeds_by_both_sides(self):
+        def record(wall, *suite_runs):
+            return dict(wall_seconds=wall, suites={str(index): dict(run_seconds=runs, runs=[{}] * len(runs))
+                                                   for index, runs in enumerate(suite_runs)})
+        a_pass, b_pass = (4 + 6) / 2 + (2 + 2) / 2, 1 + 2
+        a_wall, b_wall = 30 + 2 * a_pass, 50 + b_pass
+        records = dict(a=[record(a_wall, [4, 6], [2, 2])], b=[record(b_wall, [1], [2])])
+        overhead = ((a_wall - 2 * a_pass) + (b_wall - b_pass)) / 2
+        suite_pass = (a_pass + b_pass) / 2
+        for seeds, runs in ((1, 1), (3, 2)):
+            self.assertEqual(tool.look_seconds(records, seeds, runs), 2 * seeds * (overhead + runs * suite_pass))
+        coarse = dict(a=[record(0, [4, 6], [2, 2])], b=[record(0, [1], [2])])
+        self.assertEqual(tool.look_seconds(coarse, 1, 1), 2 * suite_pass)
+
+    def test_a_budget_that_is_not_positive_is_refused(self):
+        for minutes in ("0", "-1", "nan"):
+            with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+                tool.main(["--validate-plan", "--suite", "suite", "-", "-", "--max-minutes", minutes])
 
     def test_unmapped_row_falls_back_to_original_suite_filter(self):
         self.assertEqual(tool.selected_suites([('suite', '-', '-')], {'suite/row'}, {}), [('suite', '-', '-')])
