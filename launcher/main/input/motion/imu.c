@@ -23,15 +23,16 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "input/motion/imu_demand.h"
+#include "input/motion/imu_fifo_chunk.h"
 #include "input/motion/imu_odr.h"
 #include "input/motion/imu_queue.h"
 #include "input/touch/touch.h"
 
 static const char* TAG = "imu";
 
-/* 50 Hz register reads and 10 Hz FIFO drains: the newest sample averages ~11 ms old,
- * with ~7% read-mode loss. Each I2C transaction costs the simulation cores ~40 us,
- * so the FIFO is drained only at 10 Hz. */
+/* 50 Hz register reads and 10 Hz FIFO drains keep the newest sample ~11 ms old.
+ * Each I2C transaction costs simulation cores ~40 us, so drains stay at 10 Hz.
+ * The burst uses bounded transactions so touch waits at most about one chunk. */
 #define IMU_READ_HZ          50
 #define IMU_FIFO_DRAIN_HZ    10
 #define IMU_FIFO_DRAIN_TICKS (IMU_READ_HZ / IMU_FIFO_DRAIN_HZ)
@@ -97,9 +98,6 @@ typedef struct {
 static imu_stats_t stats;
 #endif
 
-/* The QMI8658A's I2C rating (Rev A, Table 43). Faster was measured on A308 and
- * rejected: docs/input/Gravity.md, Limits. */
-#define QMI8658_I2C_HZ          400000
 #define QMI8658_TIMEOUT_MS      100
 
 /* Registers */
@@ -407,8 +405,10 @@ drain_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
     if (ok) {
         ok = write_command(CTRL9_REQ_FIFO);
     }
-    if (ok && count > 0) {
-        ok = read_regs(REG_FIFO_DATA, (uint8_t*)out, (size_t)count * sizeof *out);
+    for (int read = 0; ok && read < count;) {
+        const int chunk = imu_fifo_chunk_samples(count - read);
+        ok = read_regs(REG_FIFO_DATA, (uint8_t*)(out + read), (size_t)chunk * sizeof *out);
+        read += chunk;
     }
     const bool resumed = write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG);
     const uint64_t locked_us = (uint64_t)(timing_now_us() - lock_start_us);
@@ -645,9 +645,9 @@ count_wake_gap(void) {
 }
 #endif
 
-/* One period's bus work at `asked`: entering FIFO restarts it, then a register read or a due drain.
- * The bus lock has no priority inheritance: a preempted drain holds the bus
- * and keeps the FIFO in read mode, discarding arrivals. */
+/* One period's bus work at `asked`; entering FIFO restarts it.
+ * With no bus-lock priority inheritance, a preempted transaction holds the bus and
+ * prolongs read-mode loss. The drain's bounded transactions limit touch waits to about one chunk. */
 static void
 serve_demand(imu_demand_level_t asked, imu_demand_level_t* level, unsigned* read_ticks, TickType_t drain_ticks) {
     vTaskPrioritySet(NULL, IMU_TASK_BUS_PRIORITY);
