@@ -19,7 +19,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 scene_name=render_lab
 
 scene_ui=1
-scene_renderer=1
+scene_target=render_host
 scene_sources="
 main/app/app_arena.c
 main/console/console_words.c

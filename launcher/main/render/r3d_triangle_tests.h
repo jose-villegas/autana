@@ -31,10 +31,8 @@ signed_area2(int32_t ax, int32_t ay, int32_t bx, int32_t by, int32_t cx, int32_t
 static inline bool
 misses_every_centre(const r3d_pipeline_vertex_t* a, const r3d_pipeline_vertex_t* b, const r3d_pipeline_vertex_t* c,
                     const r3d_span_target_t* target) {
-    const int x_first = r3d_span_first_centre(r3d_span_min3(a->sx, b->sx, c->sx));
-    const int x_end = r3d_span_first_centre(r3d_span_max3(a->sx, b->sx, c->sx));
-    const int y_first = r3d_span_first_centre(r3d_span_min3(a->sy, b->sy, c->sy));
-    const int y_end = r3d_span_first_centre(r3d_span_max3(a->sy, b->sy, c->sy));
-    return x_first >= x_end || y_first >= y_end || x_end <= 0 || x_first >= target->rows.attachment[0].width
-           || y_end <= target->rows.first_row || y_first >= gfx_target_end_row(&target->rows);
+    const recti_t box = r3d_span_centres(r3d_span_min3(a->sx, b->sx, c->sx), r3d_span_min3(a->sy, b->sy, c->sy),
+                                         r3d_span_max3(a->sx, b->sx, c->sx), r3d_span_max3(a->sy, b->sy, c->sy));
+    return box.w <= 0 || box.h <= 0 || recti_right(box) <= 0 || box.x >= target->rows.attachment[0].width
+           || recti_bottom(box) <= target->rows.first_row || box.y >= gfx_target_end_row(&target->rows);
 }

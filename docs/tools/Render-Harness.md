@@ -402,9 +402,10 @@ CMake's `autana::render_host_core` supplies the host frame loop on top of
 allocation hooks. `launcher/tools/render/engine_sources.cmake` owns that list, and
 `run_tests.sh` reads it with `cmake -P`.
 
-`scene_renderer=1` selects `autana::render_host`, adding the renderer that
+`scene_target=render_host` selects `autana::render_host`, adding the renderer that
 `launcher/main/renderer_sources.cmake` lists. Its consumer defines `display_quarter_now()`
-from `display/display.h`.
+from `display/display.h`. `scene_target=scene_provider` adds the scene-file
+provider, `scene_viewer.c`, which defines it.
 
 A host consumer adds `launcher/tools/render` with `add_subdirectory()` and links
 the chosen target. Its interface sources compile with the consumer's defines;
