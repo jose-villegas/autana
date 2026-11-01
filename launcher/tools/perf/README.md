@@ -340,7 +340,7 @@ Each lane first repeats its own board's last measured anchor.
 |---|---|
 | Owed | The steps the last night record (`scoped/nights/` in the data) dealt or left, that no night manifest since has attempted |
 | New | Every commit after the tip that night planned at |
-| Before the first night record | Every commit after any board's `last_attempted` that no board's last manifest attempted |
+| Before the first night record | Every commit after any board's `last_attempted`, and every step a board's last manifest lists, that no board's last manifest attempted |
 | First night ever | The tip only |
 | `--from` | History from that commit on; the night keeps no record |
 | Attempted | Measured, skipped as the same image, or failed to build; a failed capture is owed again |

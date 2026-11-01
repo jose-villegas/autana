@@ -173,13 +173,13 @@ def night_queue(repo, tip, data, from_sha=None):
                 *(step.commit for step in history[through:])}
         settled = attempted(manifests_since(data, key))
     else:
-        # Before the night kept a record, each board resumed after its own cursor.
+        # Before the night kept a record, each board resumed after its own cursor; a step its last manifest
+        # lists unsettled, a failed capture behind a later one, is owed too. The first night ever takes the tip.
         nights = last_nights(data).values()
         cursors = [night.get("last_attempted") or night.get("last_measured") for night in nights]
         cursors = [on_history(history, commit, "last_attempted").position for commit in cursors if commit]
-        if not cursors:
-            return history[-1:]
-        owed = {step.commit for step in history[min(cursors):]}
+        owed = {step["commit"] for night in nights for step in night["steps"]}
+        owed |= {step.commit for step in (history[min(cursors):] if cursors else history[-1:])}
         settled = attempted(nights)
     return [step for step in history if step.commit in owed and step.commit not in settled]
 
