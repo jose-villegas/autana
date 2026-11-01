@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "unity.h"
 
@@ -78,7 +79,7 @@ test_quarter_select_matches_scalar(void) {
  * present reads the half picture, into one internal row as a strip. */
 static void
 test_quarter_select_cost(void) {
-    void* blocks[3];
+    void* blocks[4];
     uint16_t* frame = aligned((size_t)ROW_PIXELS * (ROWS + 1) * sizeof(uint16_t), MEMORY_PSRAM, &blocks[0]);
     uint16_t* out = aligned(ROW_PIXELS * sizeof(uint16_t), MEMORY_INTERNAL, &blocks[1]);
     uint8_t* keep = aligned((size_t)ROW_STEPS * ROWS, MEMORY_INTERNAL, &blocks[2]);
@@ -100,10 +101,20 @@ test_quarter_select_cost(void) {
                            keep + (y * ROW_STEPS), out, ROW_STEPS);
     }
     const uint32_t pie_cycles = esp_cpu_get_cycle_count() - start;
+    /* The same work on two internal rows: the kernel's own cost, no PSRAM. */
+    uint16_t* rows = aligned(2 * ROW_PIXELS * sizeof(uint16_t), MEMORY_INTERNAL, &blocks[3]);
+    memcpy(rows, frame, 2 * ROW_PIXELS * sizeof(uint16_t));
+    start = esp_cpu_get_cycle_count();
+    for (int y = 0; y < ROWS; y++) {
+        gfx_quarter_select(rows, rows + ROW_PIXELS, keep + (y * ROW_STEPS), out, ROW_STEPS);
+    }
+    const uint32_t internal_cycles = esp_cpu_get_cycle_count() - start;
     const double pixels = (double)ROW_PIXELS * ROWS;
-    ESP_LOGI("quarter_select", "quarter select, one half frame: scalar %.2f cycles/pixel, pie %.2f cycles/pixel",
-             scalar_cycles / pixels, pie_cycles / pixels);
-    for (int i = 0; i < 3; i++) {
+    ESP_LOGI("quarter_select",
+             "quarter select, one half frame: scalar %.2f cycles/pixel, pie %.2f cycles/pixel from PSRAM, %.2f from "
+             "internal rows",
+             scalar_cycles / pixels, pie_cycles / pixels, internal_cycles / pixels);
+    for (int i = 0; i < 4; i++) {
         memory_free(blocks[i]);
     }
 }
