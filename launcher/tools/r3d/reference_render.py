@@ -29,7 +29,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from r3d import mesh_import, mitsuba_reference, ray_query
 from r3d.geometry import corner_normals
 from r3d.import_settings import load_scene
-from r3d.light import albedo_from_uv, drop_masked, light, open_side_occlusion, to_srgb8
+from r3d.light import albedo_from_uv, coincident_faces, drop_masked, light, open_side_occlusion, to_srgb8
 from r3d.mesh_import import load_source, path_light_for
 from r3d.poses import camera_rays, read_poses
 from r3d.ray_query import RayQuery
@@ -75,14 +75,37 @@ def render_linear(source, job, scene, pose, width, height, lens, samples=4):
     return trace(source, job, scene, pose, width, height, lens, samples)[0]
 
 
+def drawn_hits(source, double_materials, origin, direction):
+    """(locations, ray index, triangle) of each ray's first hit the device draws, as visible_from_path finds it: a
+    single-sided triangle seen from behind is culled (facing_away in r3d_triangle_tests.h) and the ray passes it,
+    unless its twin wound the other way lies on it. Where a reduced source's two shells cross, the inner shell's back
+    would otherwise show through the outer one."""
+    active = np.ones(len(origin), bool)
+    # The first round yields even when every ray misses, so each list holds at least one array.
+    found_at, found_ray, found_tri = [], [], []
+    for tri, alive, where in source.intersector.hit_rounds(origin, direction, active):
+        a, b, c = (source.p[source.tri_v[tri, corner]] for corner in range(3))
+        front = (np.cross(b - a, c - a) * direction[alive]).sum(axis=1) < 0
+        shown = np.where(front | np.isin(source.tri_m[tri], double_materials), tri, source.twin[tri])
+        drawn = shown >= 0
+        found_at.append(where[drawn])
+        found_ray.append(alive[drawn])
+        found_tri.append(shown[drawn])
+        active[alive[drawn]] = False
+    order = np.argsort(np.concatenate(found_ray))
+    return tuple(np.concatenate(found)[order] for found in (found_at, found_ray, found_tri))
+
+
 def primary_hits(source, job, pose, width, height, lens, samples):
-    """The camera rays of a pose and what they hit: (ray origins, directions, hit locations, the ray each hit belongs to,
-    the source triangle hit, its bary-interpolated normal, its barycentrics, whether its material is double-sided)."""
+    """The camera rays of a pose and what they hit, as drawn_hits finds it: (ray origins, directions, hit locations,
+    the ray each hit belongs to, the source triangle hit, its bary-interpolated normal, its barycentrics, whether its
+    material is double-sided)."""
     origin, direction = camera_rays(width, height, lens, pose[:3], pose[3:], samples)
-    locations, rays, faces = source.intersector.first_hit(origin, direction)
+    double_materials = [source.names.index(name) for name in job.settings.double_sided]
+    locations, rays, faces = drawn_hits(source, double_materials, origin, direction)
     bary = hit_barycentrics(source, faces, locations) if len(rays) else np.zeros((0, 3))
     normal = hit_normals(source, faces, bary) if len(rays) else np.zeros((0, 3))
-    double = np.isin(source.tri_m[faces], [source.names.index(name) for name in job.settings.double_sided])
+    double = np.isin(source.tri_m[faces], double_materials)
     return origin, direction, locations, rays, faces, normal, bary, double
 
 
@@ -158,6 +181,7 @@ def lit_source(job, scene, lit=True, variant=None):
                                                                  source.tri_m, source.textures, settings.alpha_keep)
         source.tri_o = source.tri_o[keep]
     source.corner_normals = corner_normals(source.p, source.tri_v)
+    source.twin = coincident_faces(source.p, source.tri_v)[0]
     if not lit:
         return source
     source.intersector = RayQuery(source.p, source.tri_v, variant)
