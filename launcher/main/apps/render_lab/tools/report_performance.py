@@ -12,7 +12,7 @@ from generated_blocks import replace_block
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4] / "tools" / "perf"))
 from capture import build_id, QUARTERS, capture_quarters, select_quarter
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[5] / "scripts/device"))
-from device_report import BUDGET_TABLE_HEADER, parse_perf_targets
+from device_report import BUDGET_TABLE_HEADER, parse_perf_targets, read_capture_text
 from frame_profile import PATH_POSES, PEAK_PERCENT, judged, peaks, profiles, replays, summaries
 from frame_cost import MS_PER_SECOND, US_PER_MS
 
@@ -331,7 +331,7 @@ def main():
     parser.add_argument("--repeat", default="autana suite run_capybara_perf_suite --flash --perf-scope")
     args = parser.parse_args()
     try:
-        text = args.capture.read_text(encoding="utf-8")
+        text = read_capture_text(args.capture)
         if args.table:
             from layout_measure import parse_timings
             rows = parse_timings("\n".join(line for line in text.splitlines() if PREFIX in line))
