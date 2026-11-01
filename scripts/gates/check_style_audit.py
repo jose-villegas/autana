@@ -27,9 +27,8 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from c_includes import resolve_include as resolve_quoted_include  # noqa: E402
-from c_comments import excluded, blank_comments, scan
-from c_constants import DEFINE, definitions, fold  # noqa: E402
-from check_package_docs import macro_calls, split_args
+from c_comments import excluded, blank_comments, scan  # noqa: E402
+from c_constants import DEFINE  # noqa: E402
 from check_doc_citations import documentation  # noqa: E402
 from check_doc_constants import ESCAPE as DOC_CONSTANTS_ESCAPE  # noqa: E402
 from check_doc_index import blank_fences  # noqa: E402
@@ -38,6 +37,7 @@ from generated_blocks import MARKER as GENERATED_BLOCK  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools"))
 from build import package_requires, packages  # noqa: E402
 from build.apps import app_part  # noqa: E402
+from build.math_constants import MATH_HEADERS, math_constant_table  # noqa: E402
 import strip_comment_rules  # noqa: E402
 from tracked import tracked_files  # noqa: E402
 
@@ -149,84 +149,12 @@ def _text_walk(root, files=None):
         yield full, text
 
 
-
-# RULE: named math constants express axes and identities in the scalar type's
-# units. Mutable static-storage initializers are starting states C11 cannot
-# call to build. Array rows, nested fields without a spelled type, and #define
-# bodies are not judged. Const static literals are reported for manual removal.
-# Addressed literals require a local whose address can be passed.
-
-MATH_HEADERS = "launcher/packages/math/include/math"
-
-
-def math_constant_table(root):
-    headers = pathlib.Path(root) / MATH_HEADERS
-    signature = tuple((str(path), path.stat().st_mtime_ns, path.stat().st_size)
-                      for path in sorted(headers.rglob("*.h")))
-    return _math_constant_table(signature)
-
-
-@functools.lru_cache(maxsize=8)
-def _math_constant_table(signature):
-    sources = {path: blank_comments(pathlib.Path(path).read_text(encoding="utf-8"), "code")
-               for path, _, _ in signature}
-    values = {}
-    pending = [d for path, code in sources.items() for d in definitions(str(path), code)
-               if d.kind == "define"]
-    for _ in range(len(pending)):
-        before = len(values)
-        for definition in pending:
-            value = fold(definition.expression, values)
-            if value is not None:
-                values[definition.name] = value
-        if len(values) == before:
-            break
-    templates, macros = {}, {}
-    for path, code in sources.items():
-        for macro in DEFINE.finditer(code):
-            body = re.sub(r"\\\r?\n", "", macro[2]).strip()
-            if body.startswith("{"):
-                macros[macro[1]] = macro[1].lower() + "()"
-        code = re.sub(r"\\\r?\n", "", code)
-        for definition in re.finditer(r"#define\s+(MATH_DEFINE_\w+)\(([^)]*)\)(.*?)(?=#define|\Z)", code, re.S):
-            constants = {}
-            fields = re.search(r"typedef\s+struct\s*\{\s*T\s+([\w,\s]+);\s*\}", definition[3])
-            if not fields:
-                continue
-            components = tuple(re.findall(r"\w+", fields[1]))
-            scalar = {"OPS##_zero()": 0, "OPS##_one()": 1, "OPS##_neg(OPS##_one())": -1}
-            aliases = []
-            for callee, arguments in macro_calls(definition[3]):
-                arguments = split_args(re.sub(r"\s+", "", arguments))
-                if callee == "MATH_DEFINE_CONSTANT_ALIAS" and len(arguments) == 3 and arguments[0] == "P":
-                    aliases.append((arguments[1], arguments[2]))
-                if callee != "MATH_DEFINE_CONSTANT":
-                    continue
-                if len(arguments) != len(components) + 2 or arguments[0] != "P":
-                    continue
-                if all(entry in scalar for entry in arguments[2:]):
-                    constants[arguments[1]] = tuple(scalar[entry] for entry in arguments[2:])
-            for _ in aliases:
-                for name, target in aliases:
-                    if target in constants:
-                        constants[name] = constants[target]
-            templates[definition[1]] = (components, constants)
-    table = {}
-    for code in sources.values():
-        for instance in re.finditer(r"\b(MATH_DEFINE_\w+)\(([^()]*)\)", code):
-            if instance[1] not in templates:
-                continue
-            arguments = [arg.strip() for arg in instance[2].split(",")]
-            prefix = arguments[0]
-            if prefix == "P":
-                continue
-            components, constants = templates[instance[1]]
-            unit = values["MATHX_ONE"] if "mathx" in arguments else 1
-            entries = {}
-            for name, value in constants.items():
-                entries.setdefault(tuple(v * unit for v in value), prefix + "_" + name + "()")
-            table[prefix + "_t"] = (components, entries)
-    return table, macros, values
+# RULE: a brace list or compound literal of a math type equal to a named
+# constant fails; use the call. Exempt: mutable static-storage initializers
+# (C11 cannot call there), array rows, fields of another struct (no type at
+# the site), untyped #define bodies. A const static is reported but not fixed:
+# delete it and call at the uses. A literal whose address is taken (&(T){...})
+# is reported but not fixed.
 
 
 def _math_storage(code, offset):
@@ -276,15 +204,20 @@ def math_constant_sites(root, path, text):
     if (not rel.startswith("launcher/") or rel.startswith(MATH_HEADERS + "/")
             or path.suffix.lower() not in {".c", ".h", ".cc", ".cpp", ".cxx", ".hpp"}):
         return
-    table, macros, values = math_constant_table(root)
+    table, macros, values, _ = math_constant_table(root)
     code = blank_comments(text, "code")
+    defines = tuple(DEFINE.finditer(code))
+    literals = code
     code = DEFINE.sub(lambda m: "".join("\n" if c == "\n" else " " for c in m[0]), code)
     if table:
         types = "|".join(map(re.escape, table))
         pattern = re.compile(r"\(\s*(?P<cast>" + types + r")\s*\)\s*(?P<brace>\{[^{}]*\})|"
                              r"\b(?P<type>" + types + r")\s+(?:const\s+)?\w+\s*=\s*(?P<init>\{[^{}]*\})")
-        for match in pattern.finditer(code):
-            static, const = _math_storage(code, match.start())
+        for match in pattern.finditer(literals):
+            macro = any(d.start() <= match.start() < d.end() for d in defines)
+            if macro and not match["cast"]:
+                continue
+            static, const = (False, False) if macro else _math_storage(code, match.start())
             if static and not const:
                 continue
             typename = match["cast"] or match["type"]
@@ -293,7 +226,7 @@ def math_constant_sites(root, path, text):
             function = entries.get(_math_literal(body[1:-1], fields, values))
             if function:
                 start, end = match.span() if match["cast"] else match.span("init")
-                yield start, end, function, not static and not code[:start].rstrip().endswith("&")
+                yield start, end, function, not static and not literals[:start].rstrip().endswith("&")
     if macros:
         for match in re.finditer(r"\b(?:" + "|".join(map(re.escape, macros)) + r")\b", code):
             static, _ = _math_storage(code, match.start())

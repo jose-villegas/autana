@@ -72,7 +72,7 @@ math headers; `--rule MATH-CONSTANT --fix` rewrites literal copies.
 
 Brace initializer macros such as `MAT4F_IDENTITY` are only for static storage,
 where C11 cannot call a function. Mutable static initializers, array rows,
-untyped nested fields and macro definitions are outside the rule.
+untyped nested fields and untyped macro bodies are outside the rule.
 
 Const static copies require removal and calls at their use sites. An addressed
 compound literal requires a local initialized by the constant function.

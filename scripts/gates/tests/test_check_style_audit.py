@@ -95,10 +95,19 @@ void f(void) {
     // use((vec3f_t){0, 1, 0});
     puts("(vec3f_t){0, 1, 0}");
 }
-#define UP ((vec3f_t){0, 1, 0})
+#define UP {0, 1, 0}
 """)
         files["launcher/packages/math/include/math/linear/use.h"] = "vec3f_t a = {0};\n"
         self.assertEqual(self.audit("MATH-CONSTANT", files), [])
+
+    def test_math_constant_typed_define(self):
+        source = "#define UP ((vec3f_t){0, 1, 0})\n#define RAW {0, 1, 0}\n"
+        with gate_tree.temporary_tree(self.math_fixture(source).items()) as root:
+            path = root / "launcher/main/example.c"
+            hits = list(check_style_audit.rule_math_constant(root, path, source))
+            self.assertEqual(hits, [(1, "use vec3f_unit_y()")])
+            self.assertEqual(check_style_audit.fix_math_constant(root, path, source),
+                             "#define UP (vec3f_unit_y())\n#define RAW {0, 1, 0}\n")
 
     def test_math_constant_macros_storage(self):
         hits = self.audit("MATH-CONSTANT", self.math_fixture("""
