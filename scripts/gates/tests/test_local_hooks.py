@@ -213,11 +213,13 @@ class LocalHookTests(ShellGateTestCase):
         self.assertEqual(result.stdout.count('SANITIZED'), 1)
         # As git runs the hook in a worktree, with GIT_DIR exported: the tests'
         # own git calls (a submodule's build) must not inherit it.
-        runner.write_bytes(b'#!/bin/sh\n[ "$1" = --sanitize ] || exit 9\necho "SANITIZED GIT_DIR=${GIT_DIR-unset}"\n')
+        runner.write_bytes(b'#!/bin/sh\n[ "$1" = --sanitize ] || exit 9\n'
+                           b'echo "SANITIZED GIT_DIR=${GIT_DIR-unset} GIT_INDEX_FILE=${GIT_INDEX_FILE-unset}"\n')
         git_dir = self.git('rev-parse', '--absolute-git-dir')
-        result = self.gate('check-host-tests-push.sh', update, env={**os.environ, 'GIT_DIR': git_dir})
+        result = self.gate('check-host-tests-push.sh', update,
+                           env={**os.environ, 'GIT_DIR': git_dir, 'GIT_INDEX_FILE': f'{git_dir}/index'})
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('GIT_DIR=unset', result.stdout)
+        self.assertIn('GIT_DIR=unset GIT_INDEX_FILE=unset', result.stdout)
         runner.write_bytes(b'#!/bin/sh\n[ "$1" = --sanitize ] || exit 9\necho SANITIZED\n')
         result = self.gate('check-host-tests-push.sh',
                            f'refs/heads/feature/test {base} refs/heads/feature/test {base}\n')
