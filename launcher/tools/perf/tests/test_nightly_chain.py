@@ -949,17 +949,17 @@ class NightlyTests(unittest.TestCase):
 
     @staticmethod
     def paced(seconds, last_measured=None, outcomes=("measured",)):
-        """A last night manifest whose steps of each outcome took `seconds` to build and measure."""
-        build = seconds / 3
-        return dict(last_measured=last_measured, steps=[dict(outcome=outcome, build_seconds=build,
-                                                             measure_seconds=seconds - build, wait_seconds=seconds)
+        """A last night manifest whose steps of each outcome took `seconds` to queue, build and measure."""
+        part = seconds / 3
+        return dict(last_measured=last_measured, steps=[dict(outcome=outcome, wait_seconds=part, build_seconds=part,
+                                                             measure_seconds=seconds - 2 * part)
                                                         for outcome in outcomes])
 
     def test_step_seconds_is_the_median_measured_build_and_capture_time(self):
         pace = chain.FIRST_STEP_SECONDS / 2
         steps = [*self.paced(pace, outcomes=("measured",) * 2)["steps"], *self.paced(3 * pace)["steps"],
                  *self.paced(9 * pace, outcomes=("build_failed", "capture_failed", "skipped_same_image"))["steps"]]
-        # Heavy queue time and steps that measured nothing are not the board's pace.
+        # Steps that measured nothing are not the board's pace; its queue wait is, like any wall-clock second.
         self.assertEqual(chain.step_seconds(dict(steps=steps)), pace)
         for previous in (None, dict(steps=[]), self.paced(pace, outcomes=("build_failed",))):
             with self.subTest(previous=previous):
@@ -1002,10 +1002,12 @@ class NightlyTests(unittest.TestCase):
         self.assertIn(call(f"::notice::board 2124 fits no step before the deadline {deadline.isoformat()}; "
                            "it stays free", file=sys.stderr), said.call_args_list)
         self.assertIn(call("SCOPED_BOARDS=20E8"), said.call_args_list)
-        # The board with room takes the whole split, and only its oldest new steps.
+        # The board with room keeps its own share of the split, and only its oldest new steps; the other
+        # board's share waits on that board's cursor.
         lane = planned["lanes"]["20E8"]
-        self.assertEqual((lane["lane"], lane["capacity"]), ("0/1", fits))
-        self.assertEqual([step["commit"] for step in lane["steps"]], self.commits[:fits + 1])
+        self.assertEqual((lane["lane"], lane["capacity"]), ("1/2", fits))
+        share = [commit for position, commit in enumerate(self.commits[1:], start=2) if position % 2 == 1]
+        self.assertEqual([step["commit"] for step in lane["steps"]], [self.commits[0], *share[:fits]])
         self.assertEqual(lane["estimate"], math.ceil((fits + 1) * pace))
         # --max-steps bounds a lane under the cap, never above it.
         for max_steps, count in ((fits - 1, fits - 1), (fits + 1, fits)):
@@ -1041,17 +1043,115 @@ class NightlyTests(unittest.TestCase):
                                         "it stays free", file=sys.stderr)])
 
     def test_a_lane_at_its_median_pace_never_trips_the_hang_guard(self):
-        pace = chain.FIRST_STEP_SECONDS / 2
+        # Slower than the guard's FIRST_STEP_SECONDS floor allows: only an estimate at the board's pace holds.
+        pace = (chain.LANE_HANG_FACTOR + 1) * chain.FIRST_STEP_SECONDS
         previous = self.paced(pace, self.commits[0])
         chain.write_json(self.args.data / "scoped/2124/2026-10-17-0300/night.json", previous)
         lane = chain.plan_lane(SimpleNamespace(repo=self.repo, data=self.args.data), dict(tip=self.commits[-1]),
                                "2124", 0, 1, self.clock.now())
-        args = self.night(lanes={"2124": lane})
-        finish = self.clock.now() + timedelta(seconds=len(lane["steps"]) * chain.step_seconds(previous))
-        with patch.object(chain, "fleet_scan", return_value=([], dict(boards=[], unreachable=[]))):
-            self.assertEqual(chain.run_night(args, clock=self.clock, launch=self.running_until(finish, [])), 0)
-        self.assertGreaterEqual(self.clock.now(), finish)
-        self.stop_tree.assert_not_called()
+        # Every step at the median, then one at three times it: a slow rebuild is not a hang.
+        slow = (chain.LANE_HANG_FACTOR + 1) * pace
+        for seconds in (len(lane["steps"]) * pace, (len(lane["steps"]) - 1) * pace + slow):
+            with self.subTest(seconds=seconds):
+                finish = self.clock.now() + timedelta(seconds=seconds)
+                with patch.object(chain, "fleet_scan", return_value=([], dict(boards=[], unreachable=[]))):
+                    self.assertEqual(chain.run_night(self.night(lanes={"2124": lane}), clock=self.clock,
+                                                     launch=self.running_until(finish, [])), 0)
+                self.assertGreaterEqual(self.clock.now(), finish)
+                self.stop_tree.assert_not_called()
+
+    def capped_plan(self, marker, boards, **options):
+        """plan() for `boards`, all free here and alike in pace, at the test clock; returns the plan and what it
+        printed."""
+        args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=[], data=self.args.data,
+                               out=self.root / "plan.json", marker=marker.isoformat(),
+                               from_sha=None, max_steps=None, selftest_board=None, **options)
+        self.local_patch.stop()
+        local = patch.object(chain, "local_boards", return_value=[self.row(board) for board in boards])
+        with local, patch.object(chain, "board_listing", return_value=dict(boards=[self.row(board) for board in boards],
+                                                                           unreachable=[])), \
+                patch.object(chain, "gpu_on_host", return_value=True), patch.object(chain, "wait_idle"), \
+                patch("builtins.print") as said:
+            chain.plan(args, self.clock)
+        self.local_patch.start()
+        return json.loads(args.out.read_text()), said.call_args_list
+
+    def test_a_run_marked_after_the_deadline_is_not_sized(self):
+        day = datetime(2026, 10, 18, tzinfo=timezone.utc)
+        deadline = schedule.night_end(day)
+        for marker, expected in ((deadline - timedelta(minutes=1), deadline.isoformat()),
+                                 (deadline, deadline.isoformat()), (deadline + timedelta(minutes=1), None)):
+            with self.subTest(marker=marker):
+                self.clock.value = marker
+                planned, _ = self.capped_plan(marker, ["2124"])
+                self.assertEqual(planned["deadline"], expected)
+                lane = planned["lanes"].get("2124")
+                if expected:
+                    self.assertIsNone(lane)
+                else:
+                    self.assertIsNone(lane["capacity"])
+                    self.assertEqual(len(lane["steps"]), 1)
+
+    def test_the_selftest_board_is_sized_with_its_allowance_at_plan_time_and_when_it_joins(self):
+        pace = chain.FIRST_STEP_SECONDS
+        fits = 2
+        for board in ("2124", "20E8"):
+            chain.write_json(self.args.data / f"scoped/{board}/2026-10-17-0300/night.json",
+                             dict(self.paced(pace, self.commits[0]), last_attempted=self.commits[0]))
+        marker = datetime(2026, 10, 18, *schedule.local_time("BOARD_START"), tzinfo=timezone.utc)
+        deadline = schedule.night_end(marker)
+        # The self-test board's room after its allowance and anchor; the other board has the allowance more.
+        self.clock.value = deadline - timedelta(seconds=chain.SELFTEST_ALLOWANCE_SECONDS + (fits + 1) * pace)
+        planned, _ = self.capped_plan(marker, ["2124", "20E8"])
+        lanes = planned["lanes"]
+        extra = math.floor(chain.SELFTEST_ALLOWANCE_SECONDS / pace)
+        self.assertEqual((lanes["2124"]["capacity"], lanes["20E8"]["capacity"]), (fits, fits + extra))
+        self.assertEqual(lanes["2124"]["estimate"],
+                         math.ceil(len(lanes["2124"]["steps"]) * pace + chain.SELFTEST_ALLOWANCE_SECONDS))
+        # Joining with the same room left, the self-test board is sized the same way.
+        self.before_cutoff(2)
+        joined = self.clock.now() + timedelta(seconds=chain.RESCAN_SECONDS)
+        deadline = joined + timedelta(seconds=chain.SELFTEST_ALLOWANCE_SECONDS + (fits + 1) * pace)
+        args = self.night(window=dict(self.window(), deadline=deadline.isoformat()))
+        with self.fleet(([self.row("2124"), self.row("20E8")], [])), patch("builtins.print"), \
+                patch.dict(os.environ, SELFTEST_BOARD="2124"), \
+                patch.object(chain.shutil, "which", side_effect=lambda name: name if name == "bash" else None):
+            chain.run_night(args, clock=self.clock, launch=self.running_until(joined, []))
+        joiners = json.loads(args.plan.read_text())["lanes"]
+        self.assertEqual((joiners["2124"]["capacity"], joiners["20E8"]["capacity"]), (fits, fits + extra))
+
+    def test_a_joiner_is_sized_at_its_own_start(self):
+        self.before_cutoff(2)
+        planned_at = self.clock.now()
+        chain.write_json(self.args.data / "scoped/2124/2026-10-17-0300/night.json",
+                         dict(last_measured=self.commits[0], steps=[]))
+        # One step fits from the plan's start; from the first scan, a minute later, none does.
+        deadline = planned_at + timedelta(seconds=2 * chain.FIRST_STEP_SECONDS)
+        args = self.night(window=dict(self.window(), deadline=deadline.isoformat()))
+        launched = []
+        with self.fleet(([self.row("2124")], [])), patch("builtins.print"):
+            chain.run_night(args, clock=self.clock, launch=self.running_until(planned_at, launched))
+        self.assertEqual(launched, [])
+
+    def test_a_lane_rerun_with_a_range_keeps_its_cap(self):
+        fits = 1
+        planned = dict(tip=self.commits[-1], night="2026-10-18", started=self.clock.now().isoformat(),
+                       marker=self.clock.now().isoformat(),
+                       lanes={"20E8": dict(lane="0/1", previous=dict(last_measured=self.commits[0]),
+                                           capacity=fits, steps=[])})
+        path = self.root / "plan.json"
+        path.write_text(json.dumps(planned))
+        command = ["chain", "run", "--plan", str(path), "--board", "20E8", "--lane", "0/1",
+                   "--repo", str(self.repo), "--data", str(self.args.data), "--out", str(self.args.out),
+                   "--suite", "suite", "-", "-"]
+        for extra in (["--from", self.commits[1]], ["--max-steps", str(fits + 1)]):
+            with self.subTest(extra=extra), patch.object(sys, "argv", command + extra), \
+                    patch.dict(os.environ, _AUTANA_DEVICE_LOCK_TOKEN="token"), \
+                    patch.object(chain, "run_chain", return_value=[]) as run, \
+                    patch.object(chain, "read_last_night", return_value={"steps": [], "selftest": {"outcome": "not_run"}}):
+                self.assertEqual(chain.main(), 0)
+                steps = run.call_args.args[0]
+                self.assertEqual([step.role for step in steps], ["anchor"] + ["new"] * fits)
 
     def test_a_capped_night_carries_its_rest_to_the_next(self):
         fits = 2
