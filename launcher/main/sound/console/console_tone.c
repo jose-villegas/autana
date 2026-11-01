@@ -269,6 +269,15 @@ tone_capture_close(tone_shake_buffer_t* fifo, bool held) {
     return sound_capture_close() && ok;
 }
 
+/* Each window's pulse evidence, appended only when the check asked for a pulse. */
+static bool
+tone_pulse_reply(char result[CONSOLE_TONE_REPLY_BYTES], const console_tone_args_t* args,
+                 const console_tone_pulse_result_t* silence, const console_tone_pulse_result_t* tone) {
+    return !args->pulse_ms
+           || (console_tone_append_pulse(result, CONSOLE_TONE_REPLY_BYTES, "silence", silence)
+               && console_tone_append_pulse(result, CONSOLE_TONE_REPLY_BYTES, "tone", tone));
+}
+
 const char*
 console_tone_check(const console_tone_args_t* args, char result[CONSOLE_TONE_REPLY_BYTES]) {
     const size_t dma_before = memory_free_bytes(MEMORY_DMA);
@@ -305,9 +314,7 @@ console_tone_check(const console_tone_args_t* args, char result[CONSOLE_TONE_REP
     if (!console_tone_reply(result, CONSOLE_TONE_REPLY_BYTES, args, heard, tone_db, silence_db, &loopback, dma_open)
         || !console_tone_append_shake(result, CONSOLE_TONE_REPLY_BYTES, &silence_shake, &tone_shake, imu_gaps,
                                       silence_shake.samples && tone_shake.samples ? NULL : shake_reason)
-        || (args->pulse_ms
-            && (!console_tone_append_pulse(result, CONSOLE_TONE_REPLY_BYTES, "silence", &silence_pulse)
-                || !console_tone_append_pulse(result, CONSOLE_TONE_REPLY_BYTES, "tone", &tone_pulse)))) {
+        || !tone_pulse_reply(result, args, &silence_pulse, &tone_pulse)) {
         return "frequency formatting failed";
     }
     return NULL;
