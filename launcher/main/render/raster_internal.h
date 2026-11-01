@@ -15,6 +15,28 @@
 #include "sdkconfig.h"
 #endif
 
+static inline void
+raster_transform_range(const r3d_pipeline_part_t* parts, int count, const void** addr, size_t* size) {
+    uintptr_t first = UINTPTR_MAX;
+    uintptr_t end = 0;
+    for (int i = 0; i < count; i++) {
+        const r3d_lit_mesh_t* mesh = parts[i].mesh;
+        if (mesh->vertex_count == 0) {
+            continue;
+        }
+        const uintptr_t begin = (uintptr_t)mesh->positions;
+        const uintptr_t limit = begin + (size_t)mesh->vertex_count * sizeof *mesh->positions;
+        if (begin < first) {
+            first = begin;
+        }
+        if (limit > end) {
+            end = limit;
+        }
+    }
+    *addr = end ? (const void*)first : NULL;
+    *size = end ? (size_t)(end - first) : 0;
+}
+
 /* One way of the data cache: addresses this far apart share a cache set. */
 #if defined(ESP_PLATFORM)
 #define RASTER_CACHE_WAY (CONFIG_ESP32S3_DATA_CACHE_SIZE / CONFIG_ESP32S3_DCACHE_ASSOCIATED_WAYS)
