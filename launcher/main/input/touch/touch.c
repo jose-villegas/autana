@@ -329,7 +329,8 @@ touch_take_read_times(unsigned* reads, unsigned* failed, int64_t* p95_us, int64_
     const touch_read_times_t taken = read_times;
     read_times = (touch_read_times_t){0};
     portEXIT_CRITICAL(&lock);
-    /* The p95 is the upper edge of the bucket holding the 95th-percentile read. */
+    /* The p95 is the upper edge of the bucket holding the 95th-percentile read;
+     * the last bucket has no upper edge, so a p95 there is the worst read. */
     const unsigned rank = (taken.count * 95U + 99U) / 100U;
     unsigned seen = 0;
     int bucket = 0;
@@ -339,7 +340,9 @@ touch_take_read_times(unsigned* reads, unsigned* failed, int64_t* p95_us, int64_
     }
     *reads = taken.count;
     *failed = taken.failed;
-    *p95_us = taken.count > 0 ? (int64_t)(bucket + 1) * TOUCH_READ_BUCKET_US : 0;
+    const int64_t edge_us =
+        bucket < TOUCH_READ_BUCKETS - 1 ? (int64_t)(bucket + 1) * TOUCH_READ_BUCKET_US : taken.max_us;
+    *p95_us = taken.count > 0 ? edge_us : 0;
     *max_us = taken.max_us;
 }
 #endif
