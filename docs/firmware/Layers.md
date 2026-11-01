@@ -105,7 +105,7 @@ flowchart TB
 | Every drawing path ends in gfx | nothing else allocates pixels; how a draw call becomes panel pixels is [Gfx](../gfx/README.md#the-path), and `render/` sits above `gfx/` because it draws into gfx's [render targets](../gfx/Targets-and-Modes.md#render-targets) | the layer order |
 | Drivers are split from the logic they feed | `power_device.c`, `touch.c`, `buttons.c` and `imu.c` touch hardware; `power_decode`, `power_cache`, `touch_fsm`, `button_fsm`, `gesture` and `tilt` are pure and tested on a laptop; the split runs through every folder and is what the [Testing-Guide.md](../testing/README.md) relies on | review |
 | The shell names no vendor firmware | `main.c` and `shell/` reach vendor code only through [the modules that own it](#vendor-owners); a module's device half lives in a `*_device.c` beside it, compiled for the board only, so host builds stay pure | `check_shell_firmware.py`: an ESP-IDF, FreeRTOS, NVS or BSP include or call fails, logging (`esp_log.h`, `ESP_LOG[A-Z]`) excepted |
-| The vendor clock, pause and heap have one owner each | see [vendor owners](#vendor-owners) | the same gate |
+| The vendor clock, pause and heap have one owner each, and the board support package is `board/`'s | see [vendor owners](#vendor-owners) | the same gate |
 | Generated sources are checked in | beside the code that uses them, each with a banner naming its regenerate command, which [a gate](../tools/Generated-Files.md) reruns to prove the file current; the rules are in [tools/gen/README.md](../../launcher/tools/gen/README.md) | the generated-files gate |
 
 ## The base
@@ -190,6 +190,12 @@ In the firmware, its suites and its tools the gate fails any `esp_timer_*`,
 `vTaskDelay`, `heap_caps_*`, `MALLOC_CAP_*`, `multi_heap_*`, `esp_psram_*` or
 `esp_get_*heap_size` name outside those two modules, `board/` and a driver's
 `*_device.c`.
+
+The board support package describes one board, so `board/` alone uses it,
+drivers included. Drivers reach the board through `board/board.h`, for
+example `board_i2c_bus()`, `board_touch_open()` and `board_sd_probe()`. The
+gate fails a `bsp/` include or a `bsp_`, `BSP_` or `CONFIG_BSP_` name
+anywhere else.
 
 `launcher/test/` outside `suites/` (the host heap model, the stubs and the harness
 both platforms build) is not checked.

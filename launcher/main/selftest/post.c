@@ -109,7 +109,8 @@ check_sdcard_live(void) {
 
     board_sd_info_t info;
     char card[40] = "no card";
-    if (board_sd_probe(&info) == ESP_OK) {
+    const esp_err_t err = board_sd_probe(&info);
+    if (err == ESP_OK) {
         (void)snprintf(card, sizeof(card), "%s, %llu MB", info.name, (unsigned long long)(info.bytes >> 20));
     }
 

@@ -39,7 +39,7 @@ i2c_master_bus_handle_t board_i2c_bus(void);
 esp_err_t board_touch_open(esp_lcd_touch_handle_t* out);
 
 /* The codec's I2S controller and the pins of its link. */
-i2s_port_t board_audio_i2s_port(void);
+int board_audio_i2s_port(void);
 i2s_std_gpio_config_t board_audio_i2s_gpio(void);
 
 /* What a mounted SD card reports about itself. */
