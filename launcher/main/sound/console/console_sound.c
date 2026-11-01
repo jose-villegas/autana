@@ -277,7 +277,8 @@ static void
 console_verb_sound(const char* args, console_reply_fn reply) {
     console_sound_args_t parsed;
     if (!console_sound_parse(args, &parsed)) {
-        reply("SOUND_ERR usage: sound play <pack>/<name> [loop] [gain] | stop [voice|all] | stats | onset <event> [hz] "
+        reply("SOUND_ERR usage: sound play <pack>/<name> [loop] [gain] | stop [voice|all] | stats | "
+              "onset <event> [hz] "
               "[gain]");
         return;
     }

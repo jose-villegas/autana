@@ -473,10 +473,13 @@ test_view_table_and_context_ownership(void) {
     TEST_ASSERT_EQUAL_INT(RENDER_DEBUG_VIEW_UNKNOWN, render_context_debug_view_named("unknown"));
     TEST_ASSERT_NULL(render_context_debug_view(RENDER_DEBUG_VIEW_SHADED));
     TEST_ASSERT_NULL(render_context_debug_view(RENDER_DEBUG_VIEW_COUNT + 1));
+    TEST_ASSERT_EQUAL_STRING("shaded", render_context_debug_view_name(RENDER_DEBUG_VIEW_SHADED));
+    TEST_ASSERT_NULL(render_context_debug_view_name(RENDER_DEBUG_VIEW_COUNT + 1));
     for (int i = 1; i <= RENDER_DEBUG_VIEW_COUNT; i++) {
         const render_debug_view_t* row = render_context_debug_view(i);
         TEST_ASSERT_NOT_NULL(row);
         TEST_ASSERT_EQUAL_STRING(names[i - 1], row->name);
+        TEST_ASSERT_EQUAL_STRING(row->name, render_context_debug_view_name(i));
         TEST_ASSERT_EQUAL_INT(i, render_context_debug_view_named(row->name));
         for (int j = 1; j < i; j++) {
             TEST_ASSERT_TRUE(strcmp(row->name, render_context_debug_view(j)->name) != 0);
