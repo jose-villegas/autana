@@ -17,6 +17,9 @@
         T x, y, w, h;                                                                                                  \
     } P##_t;                                                                                                           \
                                                                                                                        \
+    /* empty = (0, 0, 0, 0): the empty rect at the origin, the identity for union. */                                  \
+    static inline P##_t P##_empty(void) { return (P##_t){OPS##_zero(), OPS##_zero(), OPS##_zero(), OPS##_zero()}; }    \
+                                                                                                                       \
     /* right = x + w, the exclusive right edge. */                                                                     \
     static inline T P##_right(P##_t r) { return r.x + r.w; }                                                           \
                                                                                                                        \

@@ -45,9 +45,9 @@
     /* q = qy * qx * qz, each from_axis_angle about its axis: Z, then X, then Y */                                     \
     /* about the fixed axes. */                                                                                        \
     static inline P##_t P##_from_euler(V##_t angles) {                                                                 \
-        const P##_t about_x = P##_from_axis_angle((V##_t){OPS##_one(), OPS##_zero(), OPS##_zero()}, angles.x);         \
-        const P##_t about_y = P##_from_axis_angle((V##_t){OPS##_zero(), OPS##_one(), OPS##_zero()}, angles.y);         \
-        const P##_t about_z = P##_from_axis_angle((V##_t){OPS##_zero(), OPS##_zero(), OPS##_one()}, angles.z);         \
+        const P##_t about_x = P##_from_axis_angle(V##_unit_x(), angles.x);                                             \
+        const P##_t about_y = P##_from_axis_angle(V##_unit_y(), angles.y);                                             \
+        const P##_t about_z = P##_from_axis_angle(V##_unit_z(), angles.z);                                             \
         return P##_mul(about_y, P##_mul(about_x, about_z));                                                            \
     }                                                                                                                  \
                                                                                                                        \

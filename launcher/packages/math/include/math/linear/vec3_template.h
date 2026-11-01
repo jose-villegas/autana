@@ -17,6 +17,39 @@
         T x, y, z;                                                                                                     \
     } P##_t;                                                                                                           \
                                                                                                                        \
+    /* zero = (0, 0, 0). */                                                                                            \
+    static inline P##_t P##_zero(void) { return (P##_t){OPS##_zero(), OPS##_zero(), OPS##_zero()}; }                   \
+                                                                                                                       \
+    /* one = (1, 1, 1). */                                                                                             \
+    static inline P##_t P##_one(void) { return (P##_t){OPS##_one(), OPS##_one(), OPS##_one()}; }                       \
+                                                                                                                       \
+    /* unit_x = (1, 0, 0). */                                                                                          \
+    static inline P##_t P##_unit_x(void) { return (P##_t){OPS##_one(), OPS##_zero(), OPS##_zero()}; }                  \
+                                                                                                                       \
+    /* unit_y = (0, 1, 0). */                                                                                          \
+    static inline P##_t P##_unit_y(void) { return (P##_t){OPS##_zero(), OPS##_one(), OPS##_zero()}; }                  \
+                                                                                                                       \
+    /* unit_z = (0, 0, 1). */                                                                                          \
+    static inline P##_t P##_unit_z(void) { return (P##_t){OPS##_zero(), OPS##_zero(), OPS##_one()}; }                  \
+                                                                                                                       \
+    /* right = (1, 0, 0). */                                                                                           \
+    static inline P##_t P##_right(void) { return P##_unit_x(); }                                                       \
+                                                                                                                       \
+    /* left = (-1, 0, 0). */                                                                                           \
+    static inline P##_t P##_left(void) { return (P##_t){OPS##_neg(OPS##_one()), OPS##_zero(), OPS##_zero()}; }         \
+                                                                                                                       \
+    /* up = (0, 1, 0). */                                                                                              \
+    static inline P##_t P##_up(void) { return P##_unit_y(); }                                                          \
+                                                                                                                       \
+    /* down = (0, -1, 0). */                                                                                           \
+    static inline P##_t P##_down(void) { return (P##_t){OPS##_zero(), OPS##_neg(OPS##_one()), OPS##_zero()}; }         \
+                                                                                                                       \
+    /* forward = (0, 0, 1). */                                                                                         \
+    static inline P##_t P##_forward(void) { return P##_unit_z(); }                                                     \
+                                                                                                                       \
+    /* back = (0, 0, -1). */                                                                                           \
+    static inline P##_t P##_back(void) { return (P##_t){OPS##_zero(), OPS##_zero(), OPS##_neg(OPS##_one())}; }         \
+                                                                                                                       \
     MATH_DEFINE_VEC_OPS(P, OPS, 3)                                                                                     \
                                                                                                                        \
     /* a * s = (ax*s, ay*s, az*s), in the number type's own units (Q16.16 for fixed). */                               \
