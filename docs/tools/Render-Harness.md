@@ -397,7 +397,10 @@ Two files, the same declare-then-source shape a report script uses:
   `build_pack.py` writes as packs beside the renderer; a folder with no asset
   roots fails the build.
 
-CMake's `autana::render_host_core` supplies the host frame loop, drawing and assets.
+CMake's `autana::render_host_core` supplies the host frame loop on top of
+`autana::render_engine`: drawing, assets, tune, jobs and packages, with no `main()` and no
+allocation hooks. `launcher/tools/render/engine_sources.cmake` owns that list, and
+`run_tests.sh` reads it with `cmake -P`.
 
 `scene_renderer=1` selects `autana::render_host`, adding the renderer folders in
 `launcher/main/renderer_folders.txt`. Its consumer defines `display_quarter_now()`
