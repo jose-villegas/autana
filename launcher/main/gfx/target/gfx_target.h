@@ -93,7 +93,7 @@ gfx_target_bytes(const gfx_target_t* target) {
 
 static inline char*
 gfx_target_carve(gfx_target_t* target, void* block) {
-    char* p = block;
+    char* p = (char*)block;
     const int width = target->attachment[0].width;
     const int height = target->attachment[0].height;
     for (int i = 0; i < target->count; i++) {
@@ -135,12 +135,12 @@ gfx_target_row(const gfx_target_t* target, int index, int y) {
  * uses to know that. */
 static inline gfx_color_t*
 gfx_target_color(const gfx_target_t* target, int y) {
-    return gfx_target_row(target, GFX_ATTACHMENT_COLOR, y);
+    return (gfx_color_t*)gfx_target_row(target, GFX_ATTACHMENT_COLOR, y);
 }
 
 static inline uint16_t*
 gfx_target_depth(const gfx_target_t* target, int y) {
-    return gfx_target_row(target, GFX_ATTACHMENT_DEPTH, y);
+    return (uint16_t*)gfx_target_row(target, GFX_ATTACHMENT_DEPTH, y);
 }
 
 static inline recti_t
@@ -155,7 +155,7 @@ gfx_target_clip_rect(const gfx_target_t* target, recti_t clip, recti_t rect) {
  * the buffer is one run. */
 static inline void
 gfx_target_fill(const gfx_target_t* target, gfx_color_t colour) {
-    simd_fill_u16(target->attachment[0].pixels, colour,
+    simd_fill_u16((uint16_t*)target->attachment[0].pixels, colour,
                   ((size_t)target->attachment[0].pitch * target->attachment[0].height) / sizeof(uint16_t));
 }
 
@@ -212,10 +212,10 @@ static inline __attribute__((always_inline)) void
 gfx_target_paired_rows_shaded(const gfx_target_t* target, const image_t* source, const uint16_t* depth, uint16_t clear,
                               const uint16_t* rows, int first_row, int row_count, bool doubled, int dark_run,
                               unsigned keep) {
-    const uint16_t* color = source->pixels;
+    const uint16_t* color = (const uint16_t*)source->pixels;
     const size_t source_pitch = source->pitch;
     const size_t target_pitch = target->attachment[GFX_ATTACHMENT_COLOR].pitch;
-    char* output = target->attachment[GFX_ATTACHMENT_COLOR].pixels;
+    char* output = (char*)target->attachment[GFX_ATTACHMENT_COLOR].pixels;
     const int row0 = target->first_row;
     const int end = first_row + row_count;
     const int stores = target_pitch / sizeof(uint32_t);
@@ -258,7 +258,7 @@ static inline __attribute__((always_inline)) void
 gfx_target_paired_rows(const gfx_target_t* target, const gfx_target_t* source, uint16_t clear, const uint16_t* rows,
                        int first_row, int row_count, bool doubled) {
     const uint16_t* depth =
-        source->count > GFX_ATTACHMENT_DEPTH ? source->attachment[GFX_ATTACHMENT_DEPTH].pixels : NULL;
+        source->count > GFX_ATTACHMENT_DEPTH ? (const uint16_t*)source->attachment[GFX_ATTACHMENT_DEPTH].pixels : NULL;
     gfx_target_paired_rows_shaded(target, &source->attachment[GFX_ATTACHMENT_COLOR], depth, clear, rows, first_row,
                                   row_count, doubled, 0, RGB565_SCALE_UNIT);
 }

@@ -40,19 +40,19 @@ import sys
 
 
 from c_lexer import c_code
-from c_comments import excluded, RULE_RUN, file_header, scan, sources
+from c_comments import SOURCE_EXTENSIONS, excluded, RULE_RUN, file_header, scan, sources
+from tracked import repository
 
 
 def tracked_sources():
-    return [p.as_posix() for p in sources(".", extensions=(".c", ".h", ".cpp", ".hpp"), exclude=False)]
+    return [p.as_posix() for p in sources(".", exclude=False)]
 
 def changed_files(ref):
     """Tracked C/C++ files that differ from `ref`, staged or not."""
     args = ["git", "diff", "--name-only", "--diff-filter=ACMR"]
     out = subprocess.run(args + [ref] if ref else args + ["--cached"],
                          capture_output=True, text=True).stdout
-    exts = (".c", ".h", ".cpp", ".hpp")
-    seen = [p for p in dict.fromkeys(out.split("\n")) if p.endswith(exts)]
+    seen = [p for p in dict.fromkeys(out.split("\n")) if p.endswith(SOURCE_EXTENSIONS)]
     return [p for p in seen if os.path.exists(p)]
 
 
@@ -81,10 +81,9 @@ def comments_at_ref(ref):
     files = subprocess.run(
         ["git", "diff", "--name-only", "--no-renames", "--diff-filter=DM", ref],
         capture_output=True, text=True, check=True).stdout.splitlines()
-    exts = (".c", ".h", ".cpp", ".hpp")
     texts = set()
     for path in files:
-        if path.endswith(exts):
+        if path.endswith(SOURCE_EXTENSIONS):
             source = file_at_ref(ref, path)
             if source is not None:
                 texts.update(comment.text for comment in scan(path, source))
@@ -182,7 +181,7 @@ def main(argv):
 
     if selected is not None:
         selected = [relative_to_root(p) for p in selected]
-        paths = [p for p in selected if p.endswith((".c", ".h", ".cpp", ".hpp"))
+        paths = [p for p in selected if p.endswith(SOURCE_EXTENSIONS)
                  and not p.startswith(excluded()) and pathlib.Path(p).is_file()]
     elif explicit:
         pass
@@ -281,12 +280,5 @@ if __name__ == "__main__":
     # caller's own arguments were written relative to wherever they stood.
     args = [os.path.abspath(a) if os.path.exists(a) else a
             for a in sys.argv[1:]]
-    os.chdir(
-        subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.strip()
-    )
+    os.chdir(repository())
     sys.exit(main(args))

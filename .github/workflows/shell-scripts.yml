@@ -47,19 +47,6 @@ jobs:
       - uses: ./.github/actions/job-inputs
         with: {step: arm}
 
-      # A shell script is what its first line says, not its name: tools/autana
-      # and the pre-commit hook have no .sh, and a glob by name never saw them.
-      - name: List every tracked sh or bash script
-        run: |
-          git ls-files -z | while IFS= read -r -d '' f; do
-            first=""
-            IFS= read -r first < "$f" 2>/dev/null || true
-            if [[ $first =~ ^#!.*[/[:space:]](ba)?sh([[:space:]]|$) ]]; then
-              printf '%s\n' "$f"
-            fi
-          done > "$RUNNER_TEMP/shell-scripts.txt"
-          cat "$RUNNER_TEMP/shell-scripts.txt"
-
       - uses: ./.github/actions/host-tools
 
       - name: Host lock and night scheduling tests
@@ -75,39 +62,9 @@ jobs:
       - name: Every script with a shebang is stored executable
         run: sh scripts/gates/check-exec-bits.sh
 
-      # Ubuntu's /bin/sh IS dash, so this is a genuine POSIX parse; unlike
-      # the same command run from Git Bash, which cannot fail this way.
-      - name: POSIX syntax check every #!/bin/sh script
-        run: |
-          set -eu
-          status=0
-          for f in $(cat "$RUNNER_TEMP/shell-scripts.txt"); do
-            if head -1 "$f" | grep -q '/bin/sh'; then
-              printf 'dash -n %s ... ' "$f"
-              if dash -n "$f"; then echo ok; else echo FAILED; status=1; fi
-            fi
-          done
-          exit $status
-
-      - name: bash syntax check every #!/usr/bin/env bash script
-        run: |
-          set -eu
-          status=0
-          for f in $(cat "$RUNNER_TEMP/shell-scripts.txt"); do
-            if head -1 "$f" | grep -q 'bash'; then
-              printf 'bash -n %s ... ' "$f"
-              if bash -n "$f"; then echo ok; else echo FAILED; status=1; fi
-            fi
-          done
-          exit $status
-
-      # -S error to begin with: a floor, not a ceiling. shellcheck's style
-      # and info findings on scripts written before it was wired up are worth
-      # fixing, but not worth failing the build over on the day it lands;
-      # raise this to warning once they are cleared rather than leaving the
-      # gate permanently soft.
-      - name: shellcheck (errors)
-        run: shellcheck -S error $(cat "$RUNNER_TEMP/shell-scripts.txt")
+      # Ubuntu's /bin/sh is dash, so the POSIX parse is a real one here.
+      - name: Every sh and bash script parses, and shellcheck finds no error
+        run: bash scripts/gates/check-shell-scripts.sh
 
       - uses: ./.github/actions/job-inputs
         if: ${{ !cancelled() }}

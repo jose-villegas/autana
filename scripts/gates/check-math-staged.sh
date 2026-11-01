@@ -16,8 +16,8 @@
 set -eu
 
 # shellcheck disable=SC1007
-REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-cd "$REPO_ROOT"
+GATE_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+cd "$(git rev-parse --show-toplevel)"
 
 staged=$(git diff --cached --name-only --diff-filter=ACMR -- '*.md')
 [ -n "$staged" ] || exit 0
@@ -40,7 +40,7 @@ if ! node --version >/dev/null 2>&1; then
     exit 0
 fi
 
-if ! node -e "import('./scripts/gates/check-math.mjs').then((m) => process.exit(m.dependencyProblem() ? 1 : 0))" >/dev/null 2>&1; then
+if ! node -e "import(require('url').pathToFileURL(process.argv[1])).then((m) => process.exit(m.dependencyProblem() ? 1 : 0))" "$GATE_DIR/check-math.mjs" >/dev/null 2>&1; then
     echo "pre-commit: math validation skipped, run npm ci --prefix scripts/gates" >&2
     exit 0
 fi
@@ -50,7 +50,7 @@ IFS='
 '
 for file in $files; do
     [ -n "$file" ] || continue
-    if ! git show ":$file" | node scripts/gates/check-math.mjs --stdin "$file"; then
+    if ! git show ":$file" | node "$GATE_DIR/check-math.mjs" --stdin "$file"; then
         status=1
     fi
 done

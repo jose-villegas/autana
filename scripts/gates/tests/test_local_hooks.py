@@ -1,4 +1,5 @@
 """Local hooks judge index content and the refs supplied by git."""
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -46,6 +47,11 @@ class LocalHookTests(ShellGateTestCase):
         self.git('add', 'scripts', 'launcher/tools')
         self.git('-c', 'core.hooksPath=', 'commit', '-qm', 'fixture tools')
 
+    def mark_host_tests(self):
+        # CI's push-test step, as the push gate finds it.
+        self.write('.github/workflows/host-tests.yml',
+                   (ROOT / '.github/workflows/host-tests.yml').read_text())
+
     def save_workflow(self):
         (self.root / '.github/workflows/comment-rules.yml').write_text(yaml.safe_dump(self.workflow))
 
@@ -58,13 +64,22 @@ class LocalHookTests(ShellGateTestCase):
         target.write_text(text)
         self.git('add', path)
 
-    def gate(self, name, stdin=None):
+    def gate(self, name, stdin=None, env=None):
         result = subprocess.run([self.shell, (self.root / 'scripts/gates' / name).as_posix()],
                               cwd=self.root, input=stdin.encode() if stdin else None,
-                              capture_output=True, timeout=60)
+                              capture_output=True, timeout=60, env=env)
         result.stdout = result.stdout.decode()
         result.stderr = result.stderr.decode()
         return result
+
+    def test_a_commit_hook_index_path_reaches_gates_that_list_the_tree(self):
+        # git gives a commit hook GIT_INDEX_FILE=.git/index, relative to the top.
+        self.write('launcher/main/apps/sand/code_layout.txt', '/Users/' + 'someone/scratch\n')
+        result = subprocess.run([self.shell, (self.root / 'scripts/gates/check-text-rules-staged.sh').as_posix()],
+                                cwd=self.root, env={**os.environ, 'GIT_INDEX_FILE': '.git/index'},
+                                capture_output=True, text=True, timeout=120)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('PERSONAL-PATH', result.stdout + result.stderr)
 
     def test_personal_path_is_read_from_index(self):
         path = 'launcher/main/apps/sand/code_layout.txt'
@@ -79,6 +94,49 @@ class LocalHookTests(ShellGateTestCase):
         (self.root / path).write_text(bad)
         result = self.gate('check-text-rules-staged.sh')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_a_repository_holding_the_gates_as_a_submodule_runs_its_own_marked_steps(self):
+        consumer = self.root / 'consumer'
+        consumer.mkdir()
+        def git(*args):
+            return subprocess.check_output(['git', '-c', 'protocol.file.allow=always', *args],
+                                           cwd=consumer, text=True)
+        git('init', '-q')
+        git('submodule', '--quiet', 'add', self.root.as_posix(), 'third_party/engine')
+        (consumer / '.github/workflows').mkdir(parents=True)
+        (consumer / '.github/workflows/standards.yml').write_text(yaml.safe_dump({'jobs': {'gates': {'steps': [
+            {'run': 'python3 third_party/engine/scripts/gates/check_file_headers.py',
+             'env': {'STAGED_TEXT_GATE': 'true'}}]}}}))
+        (consumer / 'src').mkdir()
+        (consumer / 'src/frames.hpp').write_text('#pragma once\nclass Frames {};\n')
+        # A folder of the consumer's own by that name does not displace the submodule's gates.
+        (consumer / 'scripts/gates').mkdir(parents=True)
+        (consumer / 'scripts/gates/notes.txt').write_text('the consumer\'s own\n')
+        git('add', '.github', 'src', 'scripts')
+        hook = consumer / 'third_party/engine/scripts/git-hooks/pre-commit'
+        # As git runs the hook in a worktree: with GIT_DIR exported.
+        git_dir = git('rev-parse', '--absolute-git-dir').strip()
+        def commit_hook():
+            result = subprocess.run([self.shell, hook.as_posix()], cwd=consumer,
+                                    env={**os.environ, 'GIT_DIR': git_dir},
+                                    capture_output=True, text=True, timeout=120)
+            return result.stdout + result.stderr
+        self.assertIn('src/frames.hpp: no purpose', commit_hook())
+        (consumer / 'src/frames.hpp').write_text('// The frames a capture holds.\n#pragma once\nclass Frames {};\n')
+        git('add', 'src')
+        self.assertNotIn('no purpose', commit_hook())
+
+    def test_a_repository_with_no_gates_commits_and_pushes_unchecked(self):
+        plain = self.root / 'plain'
+        plain.mkdir()
+        subprocess.check_call(['git', 'init', '-q'], cwd=plain)
+        (plain / 'photo.png').write_bytes(b'\x89PNG')
+        subprocess.check_call(['git', 'add', 'photo.png'], cwd=plain)
+        for hook, stdin in (('pre-commit', ''), ('pre-push', 'refs/heads/x 1 refs/heads/x 0\n')):
+            result = subprocess.run([self.shell, (self.root / 'scripts/git-hooks' / hook).as_posix()],
+                                    cwd=plain, input=stdin, capture_output=True, text=True, timeout=60)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn('skipped', result.stderr)
 
     def test_header_pair_uses_staged_companion(self):
         self.write('launcher/main/gfx/sample.h', '/* Portable sample. */\n#pragma once\nint sample(void);\n')
@@ -134,6 +192,7 @@ class LocalHookTests(ShellGateTestCase):
         self.write('sample.c', 'int sample;\n')
         self.git('-c', 'core.hooksPath=', 'commit', '-qm', 'source')
         head = self.git('rev-parse', 'HEAD')
+        self.mark_host_tests()
         runner = self.root / 'launcher/test/run_tests.sh'
         runner.parent.mkdir(parents=True)
         runner.write_bytes(b'#!/bin/sh\n[ "$1" = --sanitize ] || exit 9\necho SANITIZED\nexit 7\n')
@@ -152,10 +211,43 @@ class LocalHookTests(ShellGateTestCase):
         result = self.gate('../git-hooks/pre-push', update + update)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.count('SANITIZED'), 1)
+        # As git runs the hook in a worktree, with GIT_DIR exported: the tests'
+        # own git calls (a submodule's build) must not inherit it.
+        runner.write_bytes(b'#!/bin/sh\n[ "$1" = --sanitize ] || exit 9\n'
+                           b'echo "SANITIZED GIT_DIR=${GIT_DIR-unset} GIT_INDEX_FILE=${GIT_INDEX_FILE-unset}"\n')
+        git_dir = self.git('rev-parse', '--absolute-git-dir')
+        result = self.gate('check-host-tests-push.sh', update,
+                           env={**os.environ, 'GIT_DIR': git_dir, 'GIT_INDEX_FILE': f'{git_dir}/index'})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('GIT_DIR=unset GIT_INDEX_FILE=unset', result.stdout)
+        runner.write_bytes(b'#!/bin/sh\n[ "$1" = --sanitize ] || exit 9\necho SANITIZED\n')
         result = self.gate('check-host-tests-push.sh',
                            f'refs/heads/feature/test {base} refs/heads/feature/test {base}\n')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn('SANITIZED', result.stdout)
+        # A repository that marks no push tests pushes its source unchecked.
+        (self.root / '.github/workflows/host-tests.yml').unlink()
+        self.git('rm', '-q', '--cached', '.github/workflows/host-tests.yml')
+        result = self.gate('check-host-tests-push.sh', update)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('SANITIZED', result.stdout)
+        self.mark_host_tests()
+        # A moved submodule pin is source the tests build.
+        self.git('update-index', '--add', '--cacheinfo', f'160000,{base},third_party/engine')
+        self.git('-c', 'core.hooksPath=', 'commit', '-qm', 'pin')
+        pin = self.git('rev-parse', 'HEAD')
+        result = self.gate('check-host-tests-push.sh', f'refs/heads/feature/test {pin} refs/heads/feature/test {head}\n')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.count('SANITIZED'), 1)
+        # So is a build file.
+        for build_file in ('CMakeLists.txt', 'cmake/flags.cmake', 'CMakePresets.json'):
+            with self.subTest(build_file=build_file):
+                self.write(build_file, f'# {build_file}\n')
+                self.git('-c', 'core.hooksPath=', 'commit', '-qm', build_file)
+                result = self.gate('check-host-tests-push.sh',
+                                   f'refs/heads/feature/test {self.git("rev-parse", "HEAD")} refs/heads/feature/test {pin}\n')
+                self.assertEqual(result.stdout.count('SANITIZED'), 1, result.stderr)
+                pin = self.git('rev-parse', 'HEAD')
 
 
     def test_a_new_branch_with_no_history_in_common_with_main_is_judged_by_its_own_files(self):
@@ -163,7 +255,10 @@ class LocalHookTests(ShellGateTestCase):
         self.write('main.c', 'int main_unit;\n')
         self.git('add', 'main.c')
         self.git('-c', 'core.hooksPath=', 'commit', '-qm', 'base')
-        self.git('update-ref', 'refs/remotes/origin/main', self.git('rev-parse', 'HEAD'))
+        # The remote's default branch, by whatever name it has.
+        self.git('update-ref', 'refs/remotes/origin/trunk', self.git('rev-parse', 'HEAD'))
+        self.git('symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/trunk')
+        self.mark_host_tests()
         runner = self.root / 'launcher/test/run_tests.sh'
         runner.parent.mkdir(parents=True)
         runner.write_bytes(b'#!/bin/sh\necho SANITIZED\n')
@@ -189,6 +284,7 @@ class LocalHookTests(ShellGateTestCase):
 
         self.write('sample.c', 'int sample;\n')
         self.git('add', 'sample.c')
+        self.mark_host_tests()
         self.git('-c', 'core.hooksPath=', 'commit', '-qm', 'source')
         source = self.git('rev-parse', 'HEAD')
         result = self.gate('check-host-tests-push.sh', f'refs/heads/images {source} refs/heads/images {zero}\n')

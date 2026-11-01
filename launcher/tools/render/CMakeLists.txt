@@ -61,4 +61,10 @@ target_link_libraries(scene_provider INTERFACE autana::render_host)
 if(PROJECT_IS_TOP_LEVEL)
     add_library(render_host_check OBJECT)
     target_link_libraries(render_host_check PRIVATE autana::scene_provider)
+    # A C++ consumer includes these headers inside extern "C".
+    enable_language(CXX)
+    add_library(render_host_cxx_check OBJECT "${CMAKE_CURRENT_LIST_DIR}/tests/render_host_cxx_check.cpp")
+    target_include_directories(render_host_cxx_check SYSTEM PRIVATE
+        $<TARGET_PROPERTY:autana::scene_provider,INTERFACE_INCLUDE_DIRECTORIES>)
+    set_target_properties(render_host_cxx_check PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 endif()

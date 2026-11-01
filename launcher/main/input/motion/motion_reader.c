@@ -12,6 +12,7 @@
 #include "input/motion/shake.h"
 #include "math/linear/vec_convert.h"
 #if CONFIG_LAUNCHER_DEVELOPMENT
+#include <stdatomic.h>
 #include "core/tune.h"
 #include "esp_log.h"
 #define MOTION_LOG_MAX_MS (60 * MATH_MS_PER_S)
@@ -19,7 +20,7 @@
 TUNE_OWNER(motion);
 TUNE(motion, log_ms, 0, 0, MOTION_LOG_MAX_MS);
 static int64_t last_log_us;
-static bool pinned;
+static _Atomic bool pinned, reset_pending;
 #endif
 
 /* The first sample after a park arrives at least the idle window after the last one, so a rest
@@ -47,15 +48,15 @@ motion_reader_reset(void) {
 void
 input_motion_pin(const imu_sample_t* s) {
     imu_inject(s);
-    motion_reader_reset();
     pinned = true;
+    reset_pending = true;
 }
 
 void
 input_motion_unpin(void) {
     imu_inject_release();
-    motion_reader_reset();
     pinned = false;
+    reset_pending = true;
 }
 #endif
 
@@ -93,6 +94,11 @@ update_rest_learning(const input_motion_t* sample, int64_t elapsed) {
 
 static void
 update(void) {
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    if (atomic_exchange(&reset_pending, false)) {
+        motion_reader_reset();
+    }
+#endif
     input_motion_t sample;
     uint32_t sequence;
     if (!input_read_motion_sequence(&sample, &sequence)) {
