@@ -1,0 +1,495 @@
+# autana --json replies on 20E8, 2026-10-25, EQ format and HPF code probe
+buildid	{"build_id": "01a8e99575b4-dev"}
+status	"20E8 44:BD:8D:78:20:E8 COM3\n  held by ville@JV:board-job:11128 for autana lock run since 2026-10-25 13:19:38 (elapsed 306s; estimated free 2026-10-25 13:36:59; autana 0.1.0, lock protocol 5)\nheavy: unlocked"
+codec 0x1b	"CODEC reg=0x1B value=0x0A"
+codec 0x1c	"CODEC reg=0x1C value=0x6A"
+codec 0x1d	"CODEC reg=0x1D value=0x00"
+codec 0x1e	"CODEC reg=0x1E value=0x00"
+codec 0x1f	"CODEC reg=0x1F value=0x00"
+codec 0x20	"CODEC reg=0x20 value=0x00"
+codec 0x21	"CODEC reg=0x21 value=0x00"
+codec 0x22	"CODEC reg=0x22 value=0x00"
+codec 0x23	"CODEC reg=0x23 value=0x00"
+codec 0x24	"CODEC reg=0x24 value=0x00"
+codec 0x25	"CODEC reg=0x25 value=0x00"
+codec 0x26	"CODEC reg=0x26 value=0x00"
+codec 0x27	"CODEC reg=0x27 value=0x00"
+codec 0x28	"CODEC reg=0x28 value=0x00"
+codec 0x29	"CODEC reg=0x29 value=0x00"
+codec 0x2a	"CODEC reg=0x2A value=0x00"
+codec 0x2b	"CODEC reg=0x2B value=0x00"
+codec 0x2c	"CODEC reg=0x2C value=0x00"
+codec 0x2d	"CODEC reg=0x2D value=0x00"
+codec 0x2e	"CODEC reg=0x2E value=0x00"
+codec 0x2f	"CODEC reg=0x2F value=0x00"
+codec 0x30	"CODEC reg=0x30 value=0x00"
+codec 0x37	"CODEC reg=0x37 value=0x28"
+codec 0x38	"CODEC reg=0x38 value=0x00"
+codec 0x39	"CODEC reg=0x39 value=0x00"
+codec 0x3a	"CODEC reg=0x3A value=0x00"
+codec 0x3b	"CODEC reg=0x3B value=0x00"
+codec 0x3c	"CODEC reg=0x3C value=0x00"
+codec 0x3d	"CODEC reg=0x3D value=0x00"
+codec 0x3e	"CODEC reg=0x3E value=0x00"
+codec 0x3f	"CODEC reg=0x3F value=0x00"
+codec 0x40	"CODEC reg=0x40 value=0x00"
+codec 0x41	"CODEC reg=0x41 value=0x00"
+codec 0x42	"CODEC reg=0x42 value=0x00"
+codec 0x43	"CODEC reg=0x43 value=0x00"
+tune mic.eq 0	"mic.eq=0"
+tune mic.alc 0	"mic.alc=0"
+tune mic.alc_max 0	"mic.alc_max=0"
+tune mic.alc_min 0	"mic.alc_min=0"
+tune mic.alc_win 0	"mic.alc_win=0"
+tune mic.alc_gain 191	"mic.alc_gain=191"
+tune mic.gate 0	"mic.gate=0"
+tune mic.gate_ng 0	"mic.gate_ng=0"
+tune mic.gate_win 0	"mic.gate_win=0"
+tune mic.gate_depth 0	"mic.gate_depth=0"
+tune mic.hpf 1	"mic.hpf=1"
+tune mic.hpf_s1 10	"mic.hpf_s1=10"
+tune mic.hpf_s2 10	"mic.hpf_s2=10"
+codec 0x37 0x28	"CODEC reg=0x37 value=0x28"
+probe adc bypass	{}
+codec 0x1c 0x6a	"CODEC reg=0x1C value=0x6A"
+tune mic.eq 0	"mic.eq=0"
+tone 50 500 30	{"hz": 50, "tone_db": -66.2, "silence_db": -104.1, "noise_dbfs": -77.0, "heard": true, "open_dma_bytes": 1448, "path": "acoustic", "thd_db": -26.2, "peak_dbfs": -57.2, "measured_hz": null, "hz_error": null}
+tone 50 500 30	{"hz": 50, "tone_db": -66.1, "silence_db": -113.9, "noise_dbfs": -76.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -28.4, "peak_dbfs": -56.5, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -51.4, "silence_db": -107.9, "noise_dbfs": -76.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -30.5, "peak_dbfs": -48.8, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -51.4, "silence_db": -107.2, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -30.6, "peak_dbfs": -48.9, "measured_hz": null, "hz_error": null}
+tone 150 500 30	{"hz": 150, "tone_db": -44.1, "silence_db": -111.4, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -30.7, "peak_dbfs": -42.8, "measured_hz": null, "hz_error": null}
+tone 150 500 30	{"hz": 150, "tone_db": -44.1, "silence_db": -120.0, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -30.9, "peak_dbfs": -42.8, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -39.0, "silence_db": -113.0, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -29.6, "peak_dbfs": -38.1, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -39.1, "silence_db": -120.0, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -29.7, "peak_dbfs": -38.3, "measured_hz": null, "hz_error": null}
+tone 400 500 30	{"hz": 400, "tone_db": -25.4, "silence_db": -116.6, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -28.1, "peak_dbfs": -25.1, "measured_hz": 399.99, "hz_error": -0.009999999999990905}
+tone 400 500 30	{"hz": 400, "tone_db": -25.4, "silence_db": -114.3, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -28.1, "peak_dbfs": -25.1, "measured_hz": 399.99, "hz_error": -0.009999999999990905}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.8, "silence_db": -108.8, "noise_dbfs": -76.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -17.0, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.8, "silence_db": -100.2, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -17.0, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 2000 500 30	{"hz": 2000, "tone_db": -21.8, "silence_db": -115.3, "noise_dbfs": -76.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -39.9, "peak_dbfs": -21.7, "measured_hz": 2000.0, "hz_error": 0.0}
+tone 2000 500 30	{"hz": 2000, "tone_db": -21.8, "silence_db": -111.6, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -39.9, "peak_dbfs": -21.7, "measured_hz": 2000.0, "hz_error": 0.0}
+tone 4000 500 30	{"hz": 4000, "tone_db": -21.2, "silence_db": -115.5, "noise_dbfs": -76.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -55.7, "peak_dbfs": -21.1, "measured_hz": 4000.0, "hz_error": 0.0}
+tone 4000 500 30	{"hz": 4000, "tone_db": -21.2, "silence_db": -114.4, "noise_dbfs": -76.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -55.8, "peak_dbfs": -21.0, "measured_hz": 4000.0, "hz_error": 0.0}
+probe adc half	{}
+codec 0x1c 0x6a	"CODEC reg=0x1C value=0x6A"
+tune mic.eq 0	"mic.eq=0"
+codec 0x1d 0x8	"CODEC reg=0x1D value=0x08"
+codec 0x1e 0x0	"CODEC reg=0x1E value=0x00"
+codec 0x1f 0x0	"CODEC reg=0x1F value=0x00"
+codec 0x20 0x0	"CODEC reg=0x20 value=0x00"
+codec 0x29 0x0	"CODEC reg=0x29 value=0x00"
+codec 0x2a 0x0	"CODEC reg=0x2A value=0x00"
+codec 0x2b 0x0	"CODEC reg=0x2B value=0x00"
+codec 0x2c 0x0	"CODEC reg=0x2C value=0x00"
+codec 0x2d 0x0	"CODEC reg=0x2D value=0x00"
+codec 0x2e 0x0	"CODEC reg=0x2E value=0x00"
+codec 0x2f 0x0	"CODEC reg=0x2F value=0x00"
+codec 0x30 0x0	"CODEC reg=0x30 value=0x00"
+codec 0x21 0x0	"CODEC reg=0x21 value=0x00"
+codec 0x22 0x0	"CODEC reg=0x22 value=0x00"
+codec 0x23 0x0	"CODEC reg=0x23 value=0x00"
+codec 0x24 0x0	"CODEC reg=0x24 value=0x00"
+codec 0x25 0x0	"CODEC reg=0x25 value=0x00"
+codec 0x26 0x0	"CODEC reg=0x26 value=0x00"
+codec 0x27 0x0	"CODEC reg=0x27 value=0x00"
+codec 0x28 0x0	"CODEC reg=0x28 value=0x00"
+codec 0x1c 0x2a	"CODEC reg=0x1C value=0x2A"
+tune mic.eq 1	"mic.eq=1"
+tone 50 500 30	{"hz": 50, "tone_db": -80.1, "silence_db": -80.1, "noise_dbfs": 0.0, "heard": false, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -13.0, "peak_dbfs": 0.0, "measured_hz": null, "hz_error": null}
+tone 50 500 30	{"hz": 50, "tone_db": -80.1, "silence_db": -80.1, "noise_dbfs": 0.0, "heard": false, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -13.0, "peak_dbfs": 0.0, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -94.7, "silence_db": -94.7, "noise_dbfs": 0.0, "heard": false, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -8.5, "peak_dbfs": 0.0, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -94.7, "silence_db": -94.7, "noise_dbfs": 0.0, "heard": false, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -8.5, "peak_dbfs": 0.0, "measured_hz": null, "hz_error": null}
+tone 150 500 30	{"hz": 150, "tone_db": -98.3, "silence_db": -98.3, "noise_dbfs": 0.0, "heard": false, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -6.9, "peak_dbfs": 0.0, "measured_hz": null, "hz_error": null}
+tone 150 500 30	{"hz": 150, "tone_db": -98.3, "silence_db": -98.3, "noise_dbfs": 0.0, "heard": false, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -6.9, "peak_dbfs": 0.0, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -120.0, "silence_db": -120.0, "noise_dbfs": 0.0, "heard": false, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": 14.1, "peak_dbfs": 0.0, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -120.0, "silence_db": -120.0, "noise_dbfs": 0.0, "heard": false, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": 14.1, "peak_dbfs": 0.0, "measured_hz": null, "hz_error": null}
+tone 400 500 30	{"hz": 400, "tone_db": -107.1, "silence_db": -107.1, "noise_dbfs": 0.0, "heard": false, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -20.1, "peak_dbfs": 0.0, "measured_hz": 430.66, "hz_error": 30.660000000000025}
+tone 400 500 30	{"hz": 400, "tone_db": -107.1, "silence_db": -107.1, "noise_dbfs": 0.0, "heard": false, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -20.1, "peak_dbfs": 0.0, "measured_hz": 430.66, "hz_error": 30.660000000000025}
+tone 1000 500 30	{"hz": 1000, "tone_db": -120.0, "silence_db": -120.0, "noise_dbfs": 0.0, "heard": false, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -10.3, "peak_dbfs": 0.0, "measured_hz": 1033.59, "hz_error": 33.58999999999992}
+tone 1000 500 30	{"hz": 1000, "tone_db": -120.0, "silence_db": -120.0, "noise_dbfs": 0.0, "heard": false, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -10.3, "peak_dbfs": 0.0, "measured_hz": 1033.59, "hz_error": 33.58999999999992}
+tone 2000 500 30	{"hz": 2000, "tone_db": -120.0, "silence_db": -120.0, "noise_dbfs": 0.0, "heard": false, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": 10.5, "peak_dbfs": 0.0, "measured_hz": 1981.05, "hz_error": -18.950000000000045}
+tone 2000 500 30	{"hz": 2000, "tone_db": -120.0, "silence_db": -120.0, "noise_dbfs": 0.0, "heard": false, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": 10.5, "peak_dbfs": 0.0, "measured_hz": 1981.05, "hz_error": -18.950000000000045}
+tone 4000 500 30	{"hz": 4000, "tone_db": -120.0, "silence_db": -120.0, "noise_dbfs": 0.0, "heard": false, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -6.6, "peak_dbfs": 0.0, "measured_hz": 3962.11, "hz_error": -37.88999999999987}
+tone 4000 500 30	{"hz": 4000, "tone_db": -120.0, "silence_db": -120.0, "noise_dbfs": 0.0, "heard": false, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -6.6, "peak_dbfs": 0.0, "measured_hz": 3962.11, "hz_error": -37.88999999999987}
+probe adc highpass	{}
+codec 0x1c 0x6a	"CODEC reg=0x1C value=0x6A"
+tune mic.eq 0	"mic.eq=0"
+codec 0x1d 0xf	"CODEC reg=0x1D value=0x0F"
+codec 0x1e 0x86	"CODEC reg=0x1E value=0x86"
+codec 0x1f 0xe	"CODEC reg=0x1F value=0x0E"
+codec 0x20 0x31	"CODEC reg=0x20 value=0x31"
+codec 0x29 0x20	"CODEC reg=0x29 value=0x20"
+codec 0x2a 0xf3	"CODEC reg=0x2A value=0xF3"
+codec 0x2b 0xe3	"CODEC reg=0x2B value=0xE3"
+codec 0x2c 0x9f	"CODEC reg=0x2C value=0x9F"
+codec 0x2d 0xf	"CODEC reg=0x2D value=0x0F"
+codec 0x2e 0x86	"CODEC reg=0x2E value=0x86"
+codec 0x2f 0xe	"CODEC reg=0x2F value=0x0E"
+codec 0x30 0x31	"CODEC reg=0x30 value=0x31"
+codec 0x21 0x20	"CODEC reg=0x21 value=0x20"
+codec 0x22 0xf7	"CODEC reg=0x22 value=0xF7"
+codec 0x23 0x85	"CODEC reg=0x23 value=0x85"
+codec 0x24 0x3b	"CODEC reg=0x24 value=0x3B"
+codec 0x25 0xf	"CODEC reg=0x25 value=0x0F"
+codec 0x26 0xf	"CODEC reg=0x26 value=0x0F"
+codec 0x27 0xbd	"CODEC reg=0x27 value=0xBD"
+codec 0x28 0xfe	"CODEC reg=0x28 value=0xFE"
+codec 0x1c 0x2a	"CODEC reg=0x1C value=0x2A"
+tune mic.eq 1	"mic.eq=1"
+tone 50 500 30	{"hz": 50, "tone_db": -65.2, "silence_db": -104.5, "noise_dbfs": -67.5, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -31.1, "peak_dbfs": -48.7, "measured_hz": null, "hz_error": null}
+tone 50 500 30	{"hz": 50, "tone_db": -65.1, "silence_db": -106.8, "noise_dbfs": -66.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -28.6, "peak_dbfs": -51.4, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -50.5, "silence_db": -110.3, "noise_dbfs": -64.4, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -31.1, "peak_dbfs": -45.5, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -50.5, "silence_db": -120.0, "noise_dbfs": -65.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -30.7, "peak_dbfs": -45.8, "measured_hz": null, "hz_error": null}
+tone 150 500 30	{"hz": 150, "tone_db": -43.2, "silence_db": -117.7, "noise_dbfs": -64.5, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -30.8, "peak_dbfs": -40.9, "measured_hz": null, "hz_error": null}
+tone 150 500 30	{"hz": 150, "tone_db": -43.2, "silence_db": -111.2, "noise_dbfs": -66.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -30.9, "peak_dbfs": -40.5, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -38.2, "silence_db": -109.2, "noise_dbfs": -64.9, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -29.7, "peak_dbfs": -36.6, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -38.2, "silence_db": -111.5, "noise_dbfs": -65.8, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -29.6, "peak_dbfs": -36.6, "measured_hz": null, "hz_error": null}
+tone 400 500 30	{"hz": 400, "tone_db": -24.6, "silence_db": -120.0, "noise_dbfs": -66.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -28.2, "peak_dbfs": -24.0, "measured_hz": 400.0, "hz_error": 0.0}
+tone 400 500 30	{"hz": 400, "tone_db": -24.5, "silence_db": -120.0, "noise_dbfs": -66.8, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -28.1, "peak_dbfs": -24.1, "measured_hz": 399.99, "hz_error": -0.009999999999990905}
+tone 1000 500 30	{"hz": 1000, "tone_db": -13.9, "silence_db": -114.5, "noise_dbfs": -66.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -16.4, "peak_dbfs": -14.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -13.9, "silence_db": -101.6, "noise_dbfs": -64.5, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -16.4, "peak_dbfs": -14.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 2000 500 30	{"hz": 2000, "tone_db": -20.7, "silence_db": -111.6, "noise_dbfs": -64.8, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -30.6, "peak_dbfs": -20.3, "measured_hz": 2000.0, "hz_error": 0.0}
+tone 2000 500 30	{"hz": 2000, "tone_db": -20.7, "silence_db": -116.3, "noise_dbfs": -65.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -30.6, "peak_dbfs": -20.3, "measured_hz": 2000.0, "hz_error": 0.0}
+tone 4000 500 30	{"hz": 4000, "tone_db": -18.9, "silence_db": -115.4, "noise_dbfs": -65.4, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -73.4, "peak_dbfs": -18.8, "measured_hz": 4000.0, "hz_error": 0.0}
+tone 4000 500 30	{"hz": 4000, "tone_db": -18.9, "silence_db": -112.3, "noise_dbfs": -64.8, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -73.4, "peak_dbfs": -18.7, "measured_hz": 4000.0, "hz_error": 0.0}
+probe adc lowpass	{}
+codec 0x1c 0x6a	"CODEC reg=0x1C value=0x6A"
+tune mic.eq 0	"mic.eq=0"
+codec 0x1d 0x0	"CODEC reg=0x1D value=0x00"
+codec 0x1e 0xea	"CODEC reg=0x1E value=0xEA"
+codec 0x1f 0x4a	"CODEC reg=0x1F value=0x4A"
+codec 0x20 0xf0	"CODEC reg=0x20 value=0xF0"
+codec 0x29 0x1	"CODEC reg=0x29 value=0x01"
+codec 0x2a 0xd4	"CODEC reg=0x2A value=0xD4"
+codec 0x2b 0x95	"CODEC reg=0x2B value=0x95"
+codec 0x2c 0xe0	"CODEC reg=0x2C value=0xE0"
+codec 0x2d 0x0	"CODEC reg=0x2D value=0x00"
+codec 0x2e 0xea	"CODEC reg=0x2E value=0xEA"
+codec 0x2f 0x4a	"CODEC reg=0x2F value=0x4A"
+codec 0x30 0xf0	"CODEC reg=0x30 value=0xF0"
+codec 0x21 0x2c	"CODEC reg=0x21 value=0x2C"
+codec 0x22 0x7f	"CODEC reg=0x22 value=0x7F"
+codec 0x23 0x78	"CODEC reg=0x23 value=0x78"
+codec 0x24 0x62	"CODEC reg=0x24 value=0x62"
+codec 0x25 0x7	"CODEC reg=0x25 value=0x07"
+codec 0x26 0x29	"CODEC reg=0x26 value=0x29"
+codec 0x27 0xb3	"CODEC reg=0x27 value=0xB3"
+codec 0x28 0x5f	"CODEC reg=0x28 value=0x5F"
+codec 0x1c 0x2a	"CODEC reg=0x1C value=0x2A"
+tune mic.eq 1	"mic.eq=1"
+tone 50 500 30	{"hz": 50, "tone_db": -62.1, "silence_db": -114.3, "noise_dbfs": -71.4, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -25.4, "peak_dbfs": -51.8, "measured_hz": null, "hz_error": null}
+tone 50 500 30	{"hz": 50, "tone_db": -62.1, "silence_db": -99.3, "noise_dbfs": -70.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -28.3, "peak_dbfs": -52.1, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -47.4, "silence_db": -106.1, "noise_dbfs": -70.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -31.4, "peak_dbfs": -44.6, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -47.4, "silence_db": -103.5, "noise_dbfs": -70.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -31.3, "peak_dbfs": -44.3, "measured_hz": null, "hz_error": null}
+tone 150 500 30	{"hz": 150, "tone_db": -40.1, "silence_db": -102.3, "noise_dbfs": -70.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -30.8, "peak_dbfs": -38.7, "measured_hz": null, "hz_error": null}
+tone 150 500 30	{"hz": 150, "tone_db": -40.1, "silence_db": -104.6, "noise_dbfs": -70.5, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -30.9, "peak_dbfs": -38.6, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -35.1, "silence_db": -120.0, "noise_dbfs": -70.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -29.6, "peak_dbfs": -34.1, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -35.0, "silence_db": -108.1, "noise_dbfs": -70.7, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -29.6, "peak_dbfs": -34.1, "measured_hz": null, "hz_error": null}
+tone 400 500 30	{"hz": 400, "tone_db": -21.4, "silence_db": -106.5, "noise_dbfs": -70.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -28.0, "peak_dbfs": -21.0, "measured_hz": 400.0, "hz_error": 0.0}
+tone 400 500 30	{"hz": 400, "tone_db": -21.4, "silence_db": -108.1, "noise_dbfs": -70.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -28.0, "peak_dbfs": -21.0, "measured_hz": 399.99, "hz_error": -0.009999999999990905}
+tone 1000 500 30	{"hz": 1000, "tone_db": -10.5, "silence_db": -100.8, "noise_dbfs": -70.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -14.4, "peak_dbfs": -10.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -10.5, "silence_db": -100.8, "noise_dbfs": -70.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -14.4, "peak_dbfs": -10.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 2000 500 30	{"hz": 2000, "tone_db": -16.3, "silence_db": -107.7, "noise_dbfs": -70.5, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -38.1, "peak_dbfs": -16.2, "measured_hz": 2000.0, "hz_error": 0.0}
+tone 2000 500 30	{"hz": 2000, "tone_db": -16.3, "silence_db": -113.7, "noise_dbfs": -70.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -38.2, "peak_dbfs": -16.1, "measured_hz": 2000.0, "hz_error": 0.0}
+tone 4000 500 30	{"hz": 4000, "tone_db": -13.1, "silence_db": -98.5, "noise_dbfs": -70.7, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -58.8, "peak_dbfs": -13.0, "measured_hz": 4000.0, "hz_error": 0.0}
+tone 4000 500 30	{"hz": 4000, "tone_db": -13.1, "silence_db": -114.1, "noise_dbfs": -70.7, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -58.6, "peak_dbfs": -13.1, "measured_hz": 4000.0, "hz_error": 0.0}
+codec 0x1c 0x6a	"CODEC reg=0x1C value=0x6A"
+tune mic.eq 0	"mic.eq=0"
+tune mic.hpf_s1 4	"mic.hpf_s1=4"
+tune mic.hpf_s2 4	"mic.hpf_s2=4"
+probe hpf 4	{}
+tone 50 500 30	{"hz": 50, "tone_db": -84.9, "silence_db": -120.0, "noise_dbfs": -76.7, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -22.6, "peak_dbfs": -59.2, "measured_hz": null, "hz_error": null}
+tone 50 500 30	{"hz": 50, "tone_db": -84.7, "silence_db": -120.0, "noise_dbfs": -76.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -20.0, "peak_dbfs": -58.7, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -64.4, "silence_db": -120.0, "noise_dbfs": -76.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -25.3, "peak_dbfs": -56.2, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -64.4, "silence_db": -120.0, "noise_dbfs": -75.8, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -25.2, "peak_dbfs": -56.0, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -46.5, "silence_db": -120.0, "noise_dbfs": -75.8, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -25.3, "peak_dbfs": -45.0, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -46.5, "silence_db": -115.7, "noise_dbfs": -75.9, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -25.2, "peak_dbfs": -45.1, "measured_hz": null, "hz_error": null}
+tone 500 500 30	{"hz": 500, "tone_db": -22.0, "silence_db": -120.0, "noise_dbfs": -76.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -29.6, "peak_dbfs": -21.8, "measured_hz": 499.99, "hz_error": -0.009999999999990905}
+tone 500 500 30	{"hz": 500, "tone_db": -22.0, "silence_db": -115.9, "noise_dbfs": -75.9, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -29.6, "peak_dbfs": -21.8, "measured_hz": 500.01, "hz_error": 0.009999999999990905}
+tone 1000 500 30	{"hz": 1000, "tone_db": -15.1, "silence_db": -107.1, "noise_dbfs": -75.9, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -16.3, "peak_dbfs": -14.4, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -15.1, "silence_db": -104.3, "noise_dbfs": -75.9, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -16.3, "peak_dbfs": -14.4, "measured_hz": 1000.0, "hz_error": 0.0}
+tune mic.hpf_s1 5	"mic.hpf_s1=5"
+tune mic.hpf_s2 5	"mic.hpf_s2=5"
+probe hpf 5	{}
+tone 50 500 30	{"hz": 50, "tone_db": -79.0, "silence_db": -117.8, "noise_dbfs": -76.9, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -23.0, "peak_dbfs": -58.7, "measured_hz": null, "hz_error": null}
+tone 50 500 30	{"hz": 50, "tone_db": -79.1, "silence_db": -120.0, "noise_dbfs": -76.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -22.7, "peak_dbfs": -58.9, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -58.9, "silence_db": -119.0, "noise_dbfs": -76.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -26.7, "peak_dbfs": -53.2, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -58.9, "silence_db": -109.6, "noise_dbfs": -76.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -26.6, "peak_dbfs": -53.8, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -42.3, "silence_db": -115.5, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -27.2, "peak_dbfs": -41.3, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -42.3, "silence_db": -120.0, "noise_dbfs": -76.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -27.3, "peak_dbfs": -41.2, "measured_hz": null, "hz_error": null}
+tone 500 500 30	{"hz": 500, "tone_db": -20.4, "silence_db": -110.2, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -30.9, "peak_dbfs": -20.1, "measured_hz": 500.0, "hz_error": 0.0}
+tone 500 500 30	{"hz": 500, "tone_db": -20.4, "silence_db": -112.4, "noise_dbfs": -76.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -30.9, "peak_dbfs": -20.1, "measured_hz": 500.01, "hz_error": 0.009999999999990905}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.8, "silence_db": -101.6, "noise_dbfs": -76.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -16.9, "peak_dbfs": -14.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.8, "silence_db": -107.8, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -16.9, "peak_dbfs": -14.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tune mic.hpf_s1 6	"mic.hpf_s1=6"
+tune mic.hpf_s2 6	"mic.hpf_s2=6"
+probe hpf 6	{}
+tone 50 500 30	{"hz": 50, "tone_db": -73.5, "silence_db": -120.0, "noise_dbfs": -76.9, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -22.7, "peak_dbfs": -59.2, "measured_hz": null, "hz_error": null}
+tone 50 500 30	{"hz": 50, "tone_db": -73.5, "silence_db": -120.0, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -23.5, "peak_dbfs": -59.2, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -54.6, "silence_db": -110.4, "noise_dbfs": -76.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -28.7, "peak_dbfs": -51.0, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -54.6, "silence_db": -112.2, "noise_dbfs": -76.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -28.3, "peak_dbfs": -51.0, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -40.0, "silence_db": -115.8, "noise_dbfs": -76.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -28.8, "peak_dbfs": -39.3, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -40.0, "silence_db": -114.9, "noise_dbfs": -76.5, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -28.8, "peak_dbfs": -39.3, "measured_hz": null, "hz_error": null}
+tone 500 500 30	{"hz": 500, "tone_db": -19.9, "silence_db": -108.9, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -31.4, "peak_dbfs": -19.7, "measured_hz": 499.99, "hz_error": -0.009999999999990905}
+tone 500 500 30	{"hz": 500, "tone_db": -19.9, "silence_db": -120.0, "noise_dbfs": -76.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -31.3, "peak_dbfs": -19.7, "measured_hz": 500.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.8, "silence_db": -109.3, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -17.1, "peak_dbfs": -15.1, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.7, "silence_db": -104.1, "noise_dbfs": -76.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -17.1, "peak_dbfs": -15.1, "measured_hz": 1000.0, "hz_error": 0.0}
+tune mic.hpf_s1 7	"mic.hpf_s1=7"
+tune mic.hpf_s2 7	"mic.hpf_s2=7"
+probe hpf 7	{}
+tone 50 500 30	{"hz": 50, "tone_db": -69.3, "silence_db": -120.0, "noise_dbfs": -76.9, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -26.7, "peak_dbfs": -58.1, "measured_hz": null, "hz_error": null}
+tone 50 500 30	{"hz": 50, "tone_db": -69.3, "silence_db": -110.6, "noise_dbfs": -76.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -23.5, "peak_dbfs": -57.6, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -52.4, "silence_db": -106.6, "noise_dbfs": -76.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -30.2, "peak_dbfs": -49.2, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -52.4, "silence_db": -108.2, "noise_dbfs": -76.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -30.3, "peak_dbfs": -49.7, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -39.2, "silence_db": -118.6, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -29.4, "peak_dbfs": -38.4, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -39.2, "silence_db": -110.2, "noise_dbfs": -76.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -29.4, "peak_dbfs": -38.3, "measured_hz": null, "hz_error": null}
+tone 500 500 30	{"hz": 500, "tone_db": -19.8, "silence_db": -117.7, "noise_dbfs": -76.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -31.5, "peak_dbfs": -19.6, "measured_hz": 500.01, "hz_error": 0.009999999999990905}
+tone 500 500 30	{"hz": 500, "tone_db": -19.8, "silence_db": -110.9, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -31.4, "peak_dbfs": -19.6, "measured_hz": 500.01, "hz_error": 0.009999999999990905}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.8, "silence_db": -102.9, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -17.1, "peak_dbfs": -15.4, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.8, "silence_db": -112.4, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -17.1, "peak_dbfs": -15.4, "measured_hz": 1000.0, "hz_error": 0.0}
+tune mic.hpf_s1 8	"mic.hpf_s1=8"
+tune mic.hpf_s2 8	"mic.hpf_s2=8"
+probe hpf 8	{}
+tone 50 500 30	{"hz": 50, "tone_db": -67.0, "silence_db": -112.8, "noise_dbfs": -77.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -28.4, "peak_dbfs": -57.1, "measured_hz": null, "hz_error": null}
+tone 50 500 30	{"hz": 50, "tone_db": -67.0, "silence_db": -120.0, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -27.1, "peak_dbfs": -57.1, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -51.5, "silence_db": -102.9, "noise_dbfs": -76.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -30.9, "peak_dbfs": -48.9, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -51.6, "silence_db": -104.4, "noise_dbfs": -76.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -30.7, "peak_dbfs": -49.2, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -39.0, "silence_db": -116.3, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -29.7, "peak_dbfs": -38.1, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -39.0, "silence_db": -119.1, "noise_dbfs": -76.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -29.6, "peak_dbfs": -38.2, "measured_hz": null, "hz_error": null}
+tone 500 500 30	{"hz": 500, "tone_db": -19.8, "silence_db": -115.7, "noise_dbfs": -76.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -31.5, "peak_dbfs": -19.6, "measured_hz": 500.01, "hz_error": 0.009999999999990905}
+tone 500 500 30	{"hz": 500, "tone_db": -19.8, "silence_db": -115.0, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -31.5, "peak_dbfs": -19.6, "measured_hz": 499.99, "hz_error": -0.009999999999990905}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.8, "silence_db": -105.6, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -17.1, "peak_dbfs": -15.6, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.8, "silence_db": -103.3, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -17.1, "peak_dbfs": -15.6, "measured_hz": 1000.0, "hz_error": 0.0}
+tune mic.hpf_s1 9	"mic.hpf_s1=9"
+tune mic.hpf_s2 9	"mic.hpf_s2=9"
+probe hpf 9	{}
+tone 50 500 30	{"hz": 50, "tone_db": -66.2, "silence_db": -112.2, "noise_dbfs": -77.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -27.7, "peak_dbfs": -56.9, "measured_hz": null, "hz_error": null}
+tone 50 500 30	{"hz": 50, "tone_db": -66.2, "silence_db": -111.9, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -27.5, "peak_dbfs": -56.9, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -51.3, "silence_db": -114.8, "noise_dbfs": -76.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -31.2, "peak_dbfs": -49.0, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -51.3, "silence_db": -107.1, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -30.9, "peak_dbfs": -48.7, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -39.0, "silence_db": -120.0, "noise_dbfs": -76.4, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -29.7, "peak_dbfs": -38.1, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -39.0, "silence_db": -110.9, "noise_dbfs": -76.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -29.6, "peak_dbfs": -38.1, "measured_hz": null, "hz_error": null}
+tone 500 500 30	{"hz": 500, "tone_db": -19.8, "silence_db": -112.7, "noise_dbfs": -76.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -31.5, "peak_dbfs": -19.6, "measured_hz": 500.0, "hz_error": 0.0}
+tone 500 500 30	{"hz": 500, "tone_db": -19.8, "silence_db": -107.5, "noise_dbfs": -76.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -31.5, "peak_dbfs": -19.6, "measured_hz": 500.01, "hz_error": 0.009999999999990905}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.8, "silence_db": -108.4, "noise_dbfs": -76.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -17.1, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.8, "silence_db": -106.4, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -17.1, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tune mic.hpf_s1 10	"mic.hpf_s1=10"
+tune mic.hpf_s2 10	"mic.hpf_s2=10"
+probe hpf 10	{}
+tone 50 500 30	{"hz": 50, "tone_db": -66.0, "silence_db": -109.6, "noise_dbfs": -77.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -28.0, "peak_dbfs": -56.7, "measured_hz": null, "hz_error": null}
+tone 50 500 30	{"hz": 50, "tone_db": -66.0, "silence_db": -104.6, "noise_dbfs": -76.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -29.0, "peak_dbfs": -57.1, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -51.3, "silence_db": -114.3, "noise_dbfs": -76.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -31.1, "peak_dbfs": -48.9, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -51.3, "silence_db": -111.4, "noise_dbfs": -76.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -30.8, "peak_dbfs": -48.7, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -39.0, "silence_db": -115.1, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -29.7, "peak_dbfs": -38.1, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -39.0, "silence_db": -118.7, "noise_dbfs": -76.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -29.7, "peak_dbfs": -38.0, "measured_hz": null, "hz_error": null}
+tone 500 500 30	{"hz": 500, "tone_db": -19.8, "silence_db": -115.0, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -31.5, "peak_dbfs": -19.6, "measured_hz": 499.99, "hz_error": -0.009999999999990905}
+tone 500 500 30	{"hz": 500, "tone_db": -19.8, "silence_db": -119.0, "noise_dbfs": -76.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -31.5, "peak_dbfs": -19.6, "measured_hz": 499.98, "hz_error": -0.01999999999998181}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.8, "silence_db": -102.5, "noise_dbfs": -76.7, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -17.1, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.8, "silence_db": -106.6, "noise_dbfs": -76.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -17.1, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tune mic.hpf_s1 11	"mic.hpf_s1=11"
+tune mic.hpf_s2 11	"mic.hpf_s2=11"
+probe hpf 11	{}
+tone 50 500 30	{"hz": 50, "tone_db": -65.9, "silence_db": -108.3, "noise_dbfs": -77.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -28.4, "peak_dbfs": -57.1, "measured_hz": null, "hz_error": null}
+tone 50 500 30	{"hz": 50, "tone_db": -65.9, "silence_db": -111.8, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -28.1, "peak_dbfs": -56.5, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -51.3, "silence_db": -109.4, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -31.0, "peak_dbfs": -48.5, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -51.3, "silence_db": -115.6, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -30.7, "peak_dbfs": -48.7, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -39.0, "silence_db": -120.0, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -29.7, "peak_dbfs": -38.2, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -39.0, "silence_db": -110.5, "noise_dbfs": -76.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -29.6, "peak_dbfs": -38.1, "measured_hz": null, "hz_error": null}
+tone 500 500 30	{"hz": 500, "tone_db": -19.9, "silence_db": -119.2, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -31.5, "peak_dbfs": -19.6, "measured_hz": 499.98, "hz_error": -0.01999999999998181}
+tone 500 500 30	{"hz": 500, "tone_db": -19.8, "silence_db": -111.6, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -31.5, "peak_dbfs": -19.6, "measured_hz": 499.98, "hz_error": -0.01999999999998181}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.8, "silence_db": -107.9, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -17.2, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.8, "silence_db": -110.5, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -17.1, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tune mic.hpf_s1 12	"mic.hpf_s1=12"
+tune mic.hpf_s2 12	"mic.hpf_s2=12"
+probe hpf 12	{}
+tone 50 500 30	{"hz": 50, "tone_db": -65.8, "silence_db": -104.8, "noise_dbfs": -77.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -27.7, "peak_dbfs": -57.4, "measured_hz": null, "hz_error": null}
+tone 50 500 30	{"hz": 50, "tone_db": -65.9, "silence_db": -100.6, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -28.0, "peak_dbfs": -56.5, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -51.3, "silence_db": -109.4, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -31.1, "peak_dbfs": -48.7, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -51.3, "silence_db": -116.1, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -31.1, "peak_dbfs": -48.6, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -38.9, "silence_db": -108.4, "noise_dbfs": -76.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -29.7, "peak_dbfs": -38.2, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -38.9, "silence_db": -115.0, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -29.7, "peak_dbfs": -38.2, "measured_hz": null, "hz_error": null}
+tone 500 500 30	{"hz": 500, "tone_db": -19.8, "silence_db": -114.2, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -31.6, "peak_dbfs": -19.6, "measured_hz": 500.0, "hz_error": 0.0}
+tone 500 500 30	{"hz": 500, "tone_db": -19.8, "silence_db": -111.7, "noise_dbfs": -76.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -31.5, "peak_dbfs": -19.6, "measured_hz": 500.01, "hz_error": 0.009999999999990905}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.8, "silence_db": -107.9, "noise_dbfs": -76.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -17.2, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.8, "silence_db": -105.2, "noise_dbfs": -75.7, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -17.1, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tune mic.hpf_s1 10	"mic.hpf_s1=10"
+tune mic.hpf_s2 10	"mic.hpf_s2=10"
+probe dac bypass	{}
+codec 0x37 0x28	"CODEC reg=0x37 value=0x28"
+tone 50 500 30	{"hz": 50, "tone_db": -65.9, "silence_db": -108.5, "noise_dbfs": -77.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -28.3, "peak_dbfs": -56.5, "measured_hz": null, "hz_error": null}
+tone 50 500 30	{"hz": 50, "tone_db": -65.8, "silence_db": -103.1, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -28.8, "peak_dbfs": -56.9, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -51.3, "silence_db": -108.1, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -30.9, "peak_dbfs": -48.5, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -51.3, "silence_db": -116.9, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -31.0, "peak_dbfs": -48.7, "measured_hz": null, "hz_error": null}
+tone 150 500 30	{"hz": 150, "tone_db": -44.0, "silence_db": -109.3, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -30.8, "peak_dbfs": -42.8, "measured_hz": null, "hz_error": null}
+tone 150 500 30	{"hz": 150, "tone_db": -44.0, "silence_db": -110.3, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -30.9, "peak_dbfs": -42.8, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -39.0, "silence_db": -120.0, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -29.7, "peak_dbfs": -38.2, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -39.0, "silence_db": -113.6, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -29.7, "peak_dbfs": -38.0, "measured_hz": null, "hz_error": null}
+tone 400 500 30	{"hz": 400, "tone_db": -25.3, "silence_db": -118.9, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -28.4, "peak_dbfs": -25.0, "measured_hz": 399.99, "hz_error": -0.009999999999990905}
+tone 400 500 30	{"hz": 400, "tone_db": -25.3, "silence_db": -112.5, "noise_dbfs": -76.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -28.4, "peak_dbfs": -25.0, "measured_hz": 399.99, "hz_error": -0.009999999999990905}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.8, "silence_db": -107.0, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -17.2, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.8, "silence_db": -109.5, "noise_dbfs": -76.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -17.1, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 2000 500 30	{"hz": 2000, "tone_db": -21.8, "silence_db": -112.9, "noise_dbfs": -76.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -40.0, "peak_dbfs": -21.7, "measured_hz": 2000.0, "hz_error": 0.0}
+tone 2000 500 30	{"hz": 2000, "tone_db": -21.8, "silence_db": -120.0, "noise_dbfs": -76.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -40.0, "peak_dbfs": -21.7, "measured_hz": 2000.0, "hz_error": 0.0}
+tone 4000 500 30	{"hz": 4000, "tone_db": -21.2, "silence_db": -112.1, "noise_dbfs": -76.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -55.8, "peak_dbfs": -21.1, "measured_hz": 4000.0, "hz_error": 0.0}
+tone 4000 500 30	{"hz": 4000, "tone_db": -21.2, "silence_db": -111.7, "noise_dbfs": -76.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -56.0, "peak_dbfs": -21.0, "measured_hz": 4000.0, "hz_error": 0.0}
+tone 50 500 30 --internal	{"hz": 50, "tone_db": -10.5, "silence_db": -120.0, "noise_dbfs": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "internal", "thd_db": -93.7, "peak_dbfs": -10.5, "measured_hz": null, "hz_error": null}
+tone 100 500 30 --internal	{"hz": 100, "tone_db": -10.5, "silence_db": -120.0, "noise_dbfs": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "internal", "thd_db": -103.0, "peak_dbfs": -10.5, "measured_hz": null, "hz_error": null}
+tone 150 500 30 --internal	{"hz": 150, "tone_db": -10.5, "silence_db": -120.0, "noise_dbfs": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "internal", "thd_db": -97.1, "peak_dbfs": -10.5, "measured_hz": null, "hz_error": null}
+tone 200 500 30 --internal	{"hz": 200, "tone_db": -10.5, "silence_db": -120.0, "noise_dbfs": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "internal", "thd_db": -98.9, "peak_dbfs": -10.5, "measured_hz": null, "hz_error": null}
+tone 400 500 30 --internal	{"hz": 400, "tone_db": -10.5, "silence_db": -120.0, "noise_dbfs": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "internal", "thd_db": -100.7, "peak_dbfs": -10.5, "measured_hz": 400.0, "hz_error": 0.0}
+tone 1000 500 30 --internal	{"hz": 1000, "tone_db": -10.5, "silence_db": -120.0, "noise_dbfs": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "internal", "thd_db": -100.4, "peak_dbfs": -10.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 2000 500 30 --internal	{"hz": 2000, "tone_db": -10.5, "silence_db": -120.0, "noise_dbfs": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "internal", "thd_db": -100.8, "peak_dbfs": -10.5, "measured_hz": 2000.0, "hz_error": 0.0}
+tone 4000 500 30 --internal	{"hz": 4000, "tone_db": -10.5, "silence_db": -120.0, "noise_dbfs": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "internal", "thd_db": -108.4, "peak_dbfs": -10.5, "measured_hz": 4000.0, "hz_error": 0.0}
+probe dac half	{}
+codec 0x37 0x28	"CODEC reg=0x37 value=0x28"
+codec 0x38 0x8	"CODEC reg=0x38 value=0x08"
+codec 0x39 0x0	"CODEC reg=0x39 value=0x00"
+codec 0x3a 0x0	"CODEC reg=0x3A value=0x00"
+codec 0x3b 0x0	"CODEC reg=0x3B value=0x00"
+codec 0x3c 0x0	"CODEC reg=0x3C value=0x00"
+codec 0x3d 0x0	"CODEC reg=0x3D value=0x00"
+codec 0x3e 0x0	"CODEC reg=0x3E value=0x00"
+codec 0x3f 0x0	"CODEC reg=0x3F value=0x00"
+codec 0x40 0x0	"CODEC reg=0x40 value=0x00"
+codec 0x41 0x0	"CODEC reg=0x41 value=0x00"
+codec 0x42 0x0	"CODEC reg=0x42 value=0x00"
+codec 0x43 0x0	"CODEC reg=0x43 value=0x00"
+codec 0x37 0x20	"CODEC reg=0x37 value=0x20"
+tone 50 500 30	{"hz": 50, "tone_db": -89.2, "silence_db": -110.7, "noise_dbfs": -77.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": 19.7, "peak_dbfs": -19.6, "measured_hz": null, "hz_error": null}
+tone 50 500 30	{"hz": 50, "tone_db": -89.5, "silence_db": -102.9, "noise_dbfs": -33.7, "heard": false, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": 18.8, "peak_dbfs": -19.5, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -74.9, "silence_db": -105.7, "noise_dbfs": -33.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": 18.3, "peak_dbfs": -19.4, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -74.8, "silence_db": -114.0, "noise_dbfs": -33.7, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": 18.3, "peak_dbfs": -19.9, "measured_hz": null, "hz_error": null}
+tone 150 500 30	{"hz": 150, "tone_db": -67.9, "silence_db": -104.7, "noise_dbfs": -33.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": 19.0, "peak_dbfs": -18.3, "measured_hz": null, "hz_error": null}
+tone 150 500 30	{"hz": 150, "tone_db": -68.2, "silence_db": -90.0, "noise_dbfs": -33.5, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": 19.8, "peak_dbfs": -19.5, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -63.3, "silence_db": -101.2, "noise_dbfs": -32.4, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": 20.6, "peak_dbfs": -19.2, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -62.8, "silence_db": -96.5, "noise_dbfs": -33.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": 20.1, "peak_dbfs": -18.5, "measured_hz": null, "hz_error": null}
+tone 400 500 30	{"hz": 400, "tone_db": -49.6, "silence_db": -90.4, "noise_dbfs": -33.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": 13.1, "peak_dbfs": -17.6, "measured_hz": 400.0, "hz_error": 0.0}
+tone 400 500 30	{"hz": 400, "tone_db": -49.3, "silence_db": -77.6, "noise_dbfs": -33.5, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": 12.5, "peak_dbfs": -18.9, "measured_hz": 400.06, "hz_error": 0.060000000000002274}
+tone 1000 500 30	{"hz": 1000, "tone_db": -36.5, "silence_db": -69.9, "noise_dbfs": -33.7, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -7.9, "peak_dbfs": -19.0, "measured_hz": 1000.01, "hz_error": 0.009999999999990905}
+tone 1000 500 30	{"hz": 1000, "tone_db": -37.4, "silence_db": -59.0, "noise_dbfs": -29.8, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -7.5, "peak_dbfs": -18.6, "measured_hz": 999.98, "hz_error": -0.01999999999998181}
+tone 2000 500 30	{"hz": 2000, "tone_db": -48.5, "silence_db": -67.9, "noise_dbfs": -29.8, "heard": false, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": 6.0, "peak_dbfs": -19.6, "measured_hz": 1999.77, "hz_error": -0.2300000000000182}
+tone 2000 500 30	{"hz": 2000, "tone_db": -48.3, "silence_db": -76.8, "noise_dbfs": -33.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": 6.0, "peak_dbfs": -20.7, "measured_hz": 1999.82, "hz_error": -0.18000000000006366}
+tone 4000 500 30	{"hz": 4000, "tone_db": -55.1, "silence_db": -91.7, "noise_dbfs": -33.9, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -11.9, "peak_dbfs": -20.1, "measured_hz": 4000.06, "hz_error": 0.05999999999994543}
+tone 4000 500 30	{"hz": 4000, "tone_db": -56.8, "silence_db": -78.6, "noise_dbfs": -33.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -10.6, "peak_dbfs": -21.7, "measured_hz": 4000.18, "hz_error": 0.1799999999998363}
+tone 50 500 30 --internal	{"hz": 50, "tone_db": -10.5, "silence_db": -120.0, "noise_dbfs": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "internal", "thd_db": -95.9, "peak_dbfs": -10.5, "measured_hz": null, "hz_error": null}
+tone 100 500 30 --internal	{"hz": 100, "tone_db": -10.5, "silence_db": -120.0, "noise_dbfs": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "internal", "thd_db": -103.1, "peak_dbfs": -10.5, "measured_hz": null, "hz_error": null}
+tone 150 500 30 --internal	{"hz": 150, "tone_db": -10.5, "silence_db": -120.0, "noise_dbfs": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "internal", "thd_db": -97.0, "peak_dbfs": -10.5, "measured_hz": null, "hz_error": null}
+tone 200 500 30 --internal	{"hz": 200, "tone_db": -10.5, "silence_db": -120.0, "noise_dbfs": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "internal", "thd_db": -98.9, "peak_dbfs": -10.5, "measured_hz": null, "hz_error": null}
+tone 400 500 30 --internal	{"hz": 400, "tone_db": -10.5, "silence_db": -120.0, "noise_dbfs": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "internal", "thd_db": -100.6, "peak_dbfs": -10.5, "measured_hz": 400.0, "hz_error": 0.0}
+tone 1000 500 30 --internal	{"hz": 1000, "tone_db": -10.5, "silence_db": -120.0, "noise_dbfs": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "internal", "thd_db": -100.4, "peak_dbfs": -10.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 2000 500 30 --internal	{"hz": 2000, "tone_db": -10.5, "silence_db": -120.0, "noise_dbfs": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "internal", "thd_db": -100.7, "peak_dbfs": -10.5, "measured_hz": 2000.0, "hz_error": 0.0}
+tone 4000 500 30 --internal	{"hz": 4000, "tone_db": -10.5, "silence_db": -120.0, "noise_dbfs": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "internal", "thd_db": -108.4, "peak_dbfs": -10.5, "measured_hz": 4000.0, "hz_error": 0.0}
+probe dac highpass	{}
+codec 0x37 0x28	"CODEC reg=0x37 value=0x28"
+codec 0x38 0xf	"CODEC reg=0x38 value=0x0F"
+codec 0x39 0x58	"CODEC reg=0x39 value=0x58"
+codec 0x3a 0x1	"CODEC reg=0x3A value=0x01"
+codec 0x3b 0x4	"CODEC reg=0x3B value=0x04"
+codec 0x3c 0x30	"CODEC reg=0x3C value=0x30"
+codec 0x3d 0xa7	"CODEC reg=0x3D value=0xA7"
+codec 0x3e 0xfe	"CODEC reg=0x3E value=0xFE"
+codec 0x3f 0xfc	"CODEC reg=0x3F value=0xFC"
+codec 0x40 0x31	"CODEC reg=0x40 value=0x31"
+codec 0x41 0x4f	"CODEC reg=0x41 value=0x4F"
+codec 0x42 0xfd	"CODEC reg=0x42 value=0xFD"
+codec 0x43 0xf9	"CODEC reg=0x43 value=0xF9"
+codec 0x37 0x20	"CODEC reg=0x37 value=0x20"
+tone 50 500 30	{"hz": 50, "tone_db": -95.1, "silence_db": -114.6, "noise_dbfs": -77.1, "heard": false, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -9.3, "peak_dbfs": -59.9, "measured_hz": null, "hz_error": null}
+tone 50 500 30	{"hz": 50, "tone_db": -96.8, "silence_db": -108.1, "noise_dbfs": -76.2, "heard": false, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -7.9, "peak_dbfs": -59.2, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -82.1, "silence_db": -111.6, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -27.0, "peak_dbfs": -59.7, "measured_hz": null, "hz_error": null}
+tone 100 500 30	{"hz": 100, "tone_db": -82.4, "silence_db": -113.2, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -23.4, "peak_dbfs": -59.4, "measured_hz": null, "hz_error": null}
+tone 150 500 30	{"hz": 150, "tone_db": -74.7, "silence_db": -107.5, "noise_dbfs": -76.1, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -29.7, "peak_dbfs": -59.2, "measured_hz": null, "hz_error": null}
+tone 150 500 30	{"hz": 150, "tone_db": -74.8, "silence_db": -102.1, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -27.6, "peak_dbfs": -58.7, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -69.8, "silence_db": -116.5, "noise_dbfs": -76.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -33.8, "peak_dbfs": -57.4, "measured_hz": null, "hz_error": null}
+tone 200 500 30	{"hz": 200, "tone_db": -69.8, "silence_db": -119.0, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -27.9, "peak_dbfs": -57.8, "measured_hz": null, "hz_error": null}
+tone 400 500 30	{"hz": 400, "tone_db": -56.3, "silence_db": -114.6, "noise_dbfs": -76.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -44.1, "peak_dbfs": -51.7, "measured_hz": 400.0, "hz_error": 0.0}
+tone 400 500 30	{"hz": 400, "tone_db": -56.3, "silence_db": -111.5, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -41.7, "peak_dbfs": -52.0, "measured_hz": 399.99, "hz_error": -0.009999999999990905}
+tone 1000 500 30	{"hz": 1000, "tone_db": -43.1, "silence_db": -105.2, "noise_dbfs": -76.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -62.9, "peak_dbfs": -42.0, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -43.1, "silence_db": -102.0, "noise_dbfs": -76.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -67.3, "peak_dbfs": -42.2, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 2000 500 30	{"hz": 2000, "tone_db": -51.6, "silence_db": -114.3, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -50.2, "peak_dbfs": -49.1, "measured_hz": 2000.0, "hz_error": 0.0}
+tone 2000 500 30	{"hz": 2000, "tone_db": -51.6, "silence_db": -116.9, "noise_dbfs": -76.4, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -53.9, "peak_dbfs": -49.1, "measured_hz": 2000.0, "hz_error": 0.0}
+tone 4000 500 30	{"hz": 4000, "tone_db": -49.4, "silence_db": -112.1, "noise_dbfs": -76.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -66.3, "peak_dbfs": -47.3, "measured_hz": 4000.0, "hz_error": 0.0}
+tone 4000 500 30	{"hz": 4000, "tone_db": -49.4, "silence_db": -116.5, "noise_dbfs": -76.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "thd_db": -67.5, "peak_dbfs": -47.4, "measured_hz": 4000.0, "hz_error": 0.0}
+tone 50 500 30 --internal	{"hz": 50, "tone_db": -10.5, "silence_db": -120.0, "noise_dbfs": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "internal", "thd_db": -94.0, "peak_dbfs": -10.5, "measured_hz": null, "hz_error": null}
+tone 100 500 30 --internal	{"hz": 100, "tone_db": -10.5, "silence_db": -120.0, "noise_dbfs": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "internal", "thd_db": -99.7, "peak_dbfs": -10.5, "measured_hz": null, "hz_error": null}
+tone 150 500 30 --internal	{"hz": 150, "tone_db": -10.5, "silence_db": -120.0, "noise_dbfs": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "internal", "thd_db": -96.0, "peak_dbfs": -10.5, "measured_hz": null, "hz_error": null}
+tone 200 500 30 --internal	{"hz": 200, "tone_db": -10.5, "silence_db": -120.0, "noise_dbfs": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "internal", "thd_db": -100.0, "peak_dbfs": -10.5, "measured_hz": null, "hz_error": null}
+tone 400 500 30 --internal	{"hz": 400, "tone_db": -10.5, "silence_db": -120.0, "noise_dbfs": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "internal", "thd_db": -100.8, "peak_dbfs": -10.5, "measured_hz": 399.99, "hz_error": -0.009999999999990905}
+tone 1000 500 30 --internal	{"hz": 1000, "tone_db": -10.5, "silence_db": -120.0, "noise_dbfs": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "internal", "thd_db": -100.3, "peak_dbfs": -10.5, "measured_hz": 1000.0, "hz_error": 0.0}
+tone 2000 500 30 --internal	{"hz": 2000, "tone_db": -10.5, "silence_db": -120.0, "noise_dbfs": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "internal", "thd_db": -100.6, "peak_dbfs": -10.5, "measured_hz": 2000.0, "hz_error": 0.0}
+tone 4000 500 30 --internal	{"hz": 4000, "tone_db": -10.5, "silence_db": -120.0, "noise_dbfs": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "internal", "thd_db": -108.4, "peak_dbfs": -10.5, "measured_hz": 4000.0, "hz_error": 0.0}
+codec 0x37 0x28	"CODEC reg=0x37 value=0x28"
+codec 0x1c 0x6a	"CODEC reg=0x1C value=0x6A"
+tune mic.eq 0	"mic.eq=0"
+codec 0x1d 0xf	"CODEC reg=0x1D value=0x0F"
+codec 0x1e 0x86	"CODEC reg=0x1E value=0x86"
+codec 0x1f 0xe	"CODEC reg=0x1F value=0x0E"
+codec 0x20 0x31	"CODEC reg=0x20 value=0x31"
+codec 0x29 0x20	"CODEC reg=0x29 value=0x20"
+codec 0x2a 0xf3	"CODEC reg=0x2A value=0xF3"
+codec 0x2b 0xe3	"CODEC reg=0x2B value=0xE3"
+codec 0x2c 0x9f	"CODEC reg=0x2C value=0x9F"
+codec 0x2d 0xf	"CODEC reg=0x2D value=0x0F"
+codec 0x2e 0x86	"CODEC reg=0x2E value=0x86"
+codec 0x2f 0xe	"CODEC reg=0x2F value=0x0E"
+codec 0x30 0x31	"CODEC reg=0x30 value=0x31"
+codec 0x21 0x20	"CODEC reg=0x21 value=0x20"
+codec 0x22 0xf7	"CODEC reg=0x22 value=0xF7"
+codec 0x23 0x85	"CODEC reg=0x23 value=0x85"
+codec 0x24 0x3b	"CODEC reg=0x24 value=0x3B"
+codec 0x25 0xf	"CODEC reg=0x25 value=0x0F"
+codec 0x26 0xf	"CODEC reg=0x26 value=0x0F"
+codec 0x27 0xbd	"CODEC reg=0x27 value=0xBD"
+codec 0x28 0xfe	"CODEC reg=0x28 value=0xFE"
+codec 0x1c 0x2a	"CODEC reg=0x1C value=0x2A"
+tune mic.eq 1	"mic.eq=1"
+mic record 2000 -o mic_eq_probe_take.wav	"{\"rate\": 22050, \"samples\": 44100, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 15, \"0x1E\": 134, \"0x1F\": 14, \"0x20\": 49, \"0x21\": 32, \"0x22\": 247, \"0x23\": 133, \"0x24\": 59, \"0x25\": 15, \"0x26\": 15, \"0x27\": 189, \"0x28\": 254, \"0x29\": 32, \"0x2A\": 243, \"0x2B\": 227, \"0x2C\": 159, \"0x2D\": 15, \"0x2E\": 134, \"0x2F\": 14, \"0x30\": 49, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 132, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}}"
+tune reset mic.eq	"mic.eq=0"
+tune reset mic.alc	"mic.alc=0"
+tune reset mic.alc_max	"mic.alc_max=0"
+tune reset mic.alc_min	"mic.alc_min=0"
+tune reset mic.alc_win	"mic.alc_win=0"
+tune reset mic.alc_gain	"mic.alc_gain=191"
+tune reset mic.gate	"mic.gate=0"
+tune reset mic.gate_ng	"mic.gate_ng=0"
+tune reset mic.gate_win	"mic.gate_win=0"
+tune reset mic.gate_depth	"mic.gate_depth=0"
+tune reset mic.hpf	"mic.hpf=1"
+tune reset mic.hpf_s1	"mic.hpf_s1=10"
+tune reset mic.hpf_s2	"mic.hpf_s2=10"
+codec 0x1c 0x6a	"CODEC reg=0x1C value=0x6A"
+codec 0x37 0x28	"CODEC reg=0x37 value=0x28"
+codec 0x1b 0xa	"CODEC reg=0x1B value=0x0A"
+codec 0x1d 0x0	"CODEC reg=0x1D value=0x00"
+codec 0x1e 0x0	"CODEC reg=0x1E value=0x00"
+codec 0x1f 0x0	"CODEC reg=0x1F value=0x00"
+codec 0x20 0x0	"CODEC reg=0x20 value=0x00"
+codec 0x21 0x0	"CODEC reg=0x21 value=0x00"
+codec 0x22 0x0	"CODEC reg=0x22 value=0x00"
+codec 0x23 0x0	"CODEC reg=0x23 value=0x00"
+codec 0x24 0x0	"CODEC reg=0x24 value=0x00"
+codec 0x25 0x0	"CODEC reg=0x25 value=0x00"
+codec 0x26 0x0	"CODEC reg=0x26 value=0x00"
+codec 0x27 0x0	"CODEC reg=0x27 value=0x00"
+codec 0x28 0x0	"CODEC reg=0x28 value=0x00"
+codec 0x29 0x0	"CODEC reg=0x29 value=0x00"
+codec 0x2a 0x0	"CODEC reg=0x2A value=0x00"
+codec 0x2b 0x0	"CODEC reg=0x2B value=0x00"
+codec 0x2c 0x0	"CODEC reg=0x2C value=0x00"
+codec 0x2d 0x0	"CODEC reg=0x2D value=0x00"
+codec 0x2e 0x0	"CODEC reg=0x2E value=0x00"
+codec 0x2f 0x0	"CODEC reg=0x2F value=0x00"
+codec 0x30 0x0	"CODEC reg=0x30 value=0x00"
+codec 0x38 0x0	"CODEC reg=0x38 value=0x00"
+codec 0x39 0x0	"CODEC reg=0x39 value=0x00"
+codec 0x3a 0x0	"CODEC reg=0x3A value=0x00"
+codec 0x3b 0x0	"CODEC reg=0x3B value=0x00"
+codec 0x3c 0x0	"CODEC reg=0x3C value=0x00"
+codec 0x3d 0x0	"CODEC reg=0x3D value=0x00"
+codec 0x3e 0x0	"CODEC reg=0x3E value=0x00"
+codec 0x3f 0x0	"CODEC reg=0x3F value=0x00"
+codec 0x40 0x0	"CODEC reg=0x40 value=0x00"
+codec 0x41 0x0	"CODEC reg=0x41 value=0x00"
+codec 0x42 0x0	"CODEC reg=0x42 value=0x00"
+codec 0x43 0x0	"CODEC reg=0x43 value=0x00"
+codec 0x1c 0x6a	"CODEC reg=0x1C value=0x6A"
+codec 0x37 0x28	"CODEC reg=0x37 value=0x28"

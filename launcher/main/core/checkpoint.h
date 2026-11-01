@@ -152,6 +152,16 @@ checkpoint_retarget(checkpoint_t* state, const void* source, void* destination) 
     return block->data;
 }
 
+/* The memory the checkpoint's blocks hold, headers included. */
+static inline size_t
+checkpoint_bytes(const checkpoint_t* state) {
+    size_t bytes = 0;
+    for (const checkpoint_block_t* b = state->first; b != NULL; b = b->next) {
+        bytes += sizeof(*b) + b->bytes;
+    }
+    return bytes;
+}
+
 static inline void
 checkpoint_clear(checkpoint_t* state) {
     while (state->first != NULL) {

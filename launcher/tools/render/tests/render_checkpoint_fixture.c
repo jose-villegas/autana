@@ -1,8 +1,10 @@
-/* Checkpoint replay of the animated scene through every declared debug view. */
+/* Checkpoint replay of the animated scene through every declared debug view,
+ * and the image each view reports against the BMP the run writes. */
 #include <stdlib.h>
 #include "../scene_viewer.c"
 #include "core/tune.h"
 #include "draw/draw.h"
+#include "gfx/capture/screenshot.h"
 #include "gfx/present/gfx_present.h"
 
 #define CHECKPOINT_STEP_MS               37
@@ -34,6 +36,45 @@ observe_frame(const provider_frame_t* frame) {
     draw_rect(0, 0, CHECKPOINT_SWATCH_SIZE, CHECKPOINT_SWATCH_SIZE, RGB565BE((uint32_t)colour));
 }
 
+/* Every view's image has the width, height and stride of the BMP written to
+ * `path`, and its body holds height rows of that stride. */
+static bool
+image_matches_bmp(const char* path, const render_host_image_t* images, int count) {
+    uint8_t header[SCREENSHOT_BMP_HEADER_SIZE];
+    FILE* in = path == NULL ? NULL : fopen(path, "rb");
+    const bool read = in != NULL && fread(header, 1, sizeof header, in) == sizeof header;
+    if (in != NULL) {
+        fclose(in);
+    }
+    if (!read) {
+        fprintf(stderr, "image: cannot read the BMP header of %s\n", path == NULL ? "(no -o)" : path);
+        return false;
+    }
+    uint8_t expected[SCREENSHOT_BMP_HEADER_SIZE];
+    bool ok = true;
+    for (int i = 0; i < count; i++) {
+        const render_host_image_t* image = &images[i];
+        screenshot_bmp_header(expected, image->width, image->height);
+        /* Equal headers mean equal width, height and body size. */
+        const bool same = memcmp(expected, header, sizeof header) == 0
+                          && (int32_t)image->stride == screenshot_bmp_row_stride(image->width);
+        fprintf(stderr, "image view %d %dx%d stride %zu: %s\n", i, image->width, image->height, image->stride,
+                same ? "PASS" : "FAIL");
+        ok &= same;
+    }
+    return ok;
+}
+
+static const char*
+output_path(int argc, char** argv) {
+    for (int i = 1; i + 1 < argc; i++) {
+        if (strcmp(argv[i], "-o") == 0) {
+            return argv[i + 1];
+        }
+    }
+    return NULL;
+}
+
 static void
 step_frames(int count) {
     const input_t input = {0};
@@ -51,18 +92,18 @@ main(int argc, char** argv) {
     if (!render_host_open(&provider, argc, argv, &code)) {
         return code;
     }
-    size_t bytes;
-    (void)render_host_pixels(&bytes);
+    const render_host_image_t opened = render_host_image();
+    const size_t bytes = opened.stride * (size_t)opened.height;
     uint8_t* expected = malloc(bytes);
     if (expected == NULL) {
         return 1;
     }
+    render_host_image_t images[RENDER_DEBUG_VIEW_COUNT + 1];
 
     bool ok = true;
     for (int end = CHECKPOINT_END; end <= CHECKPOINT_END_ODD; end++) {
         for (int v = RENDER_DEBUG_VIEW_SHADED; v <= RENDER_DEBUG_VIEW_COUNT; v++) {
-            const render_debug_view_t* row = render_context_debug_view(v);
-            const char* name = row == NULL ? "shaded" : row->name;
+            const char* name = render_context_debug_view_name(v);
             render_context_set_debug_view(render_context_main(), v);
             render_context_set_scale(render_context_main(), RENDER_CONTEXT_DEFAULT_SCALE_PERCENT);
             (void)tune_set(tune_shared(), TUNE_NAME(checkpoint, colour), CHECKPOINT_COLOUR_DEFAULT);
@@ -76,7 +117,7 @@ main(int argc, char** argv) {
                 return 1;
             }
             step_frames(end);
-            memcpy(expected, render_host_pixels(&bytes), bytes);
+            memcpy(expected, render_host_image().bgr, bytes);
             const provider_frame_t expected_frame = observed;
             if (!render_host_restore(reset)) {
                 fprintf(stderr, "checkpoint %s: reset refused\n", name);
@@ -95,7 +136,7 @@ main(int argc, char** argv) {
             gfx_set_interlace(true);
             (void)gfx_set_clear_on_send(true, RGB565BE(0));
             step_frames(end - CHECKPOINT_AT);
-            if (memcmp(expected, render_host_pixels(&bytes), bytes) == 0) {
+            if (memcmp(expected, render_host_image().bgr, bytes) == 0) {
                 fprintf(stderr, "checkpoint %s: divergence FAIL\n", name);
                 ok = false;
             }
@@ -107,6 +148,15 @@ main(int argc, char** argv) {
                 fprintf(stderr, "checkpoint %s: restore refused\n", name);
                 return 1;
             }
+            render_host_checkpoint_t* again = render_host_save();
+            const size_t saved_bytes = render_host_checkpoint_bytes(saved);
+            /* Every checkpoint holds the output frame, so it is a lower bound. */
+            if (again == NULL || saved_bytes < bytes || render_host_checkpoint_bytes(again) != saved_bytes) {
+                fprintf(stderr, "checkpoint %s: bytes %zu, again %zu FAIL\n", name, saved_bytes,
+                        again == NULL ? (size_t)0 : render_host_checkpoint_bytes(again));
+                ok = false;
+            }
+            render_host_checkpoint_free(again);
             if (gfx_interlace_enabled()) {
                 fprintf(stderr, "checkpoint %s: gfx state FAIL\n", name);
                 ok = false;
@@ -116,7 +166,9 @@ main(int argc, char** argv) {
                 ok = false;
             }
             step_frames(end - CHECKPOINT_AT);
-            const bool pixels = memcmp(expected, render_host_pixels(&bytes), bytes) == 0;
+            const bool pixels = memcmp(expected, render_host_image().bgr, bytes) == 0;
+            images[v] = render_host_image();
+            ok &= images[v].bgr != NULL;
             const bool same = render_context_main()->scale_percent == RENDER_CONTEXT_DEFAULT_SCALE_PERCENT
                               && observed.index == expected_frame.index
                               && observed.elapsed_ms == expected_frame.elapsed_ms;
@@ -128,5 +180,6 @@ main(int argc, char** argv) {
         }
     }
     free(expected);
-    return render_host_close() && ok ? 0 : 1;
+    const bool closed = render_host_close();
+    return closed && image_matches_bmp(output_path(argc, argv), images, RENDER_DEBUG_VIEW_COUNT + 1) && ok ? 0 : 1;
 }

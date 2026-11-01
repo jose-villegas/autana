@@ -3,10 +3,9 @@ import pathlib
 import re
 
 from tracked import committable
-from c_comments import blank_comments
+from c_comments import SOURCE_EXTENSIONS, blank_comments, is_cmake, is_cpp
 
-SOURCE_SUFFIXES = {".c", ".h", ".py", ".sh", ".mjs"}
-C_SUFFIXES = {".c", ".h"}
+SCRIPT_SUFFIXES = {".py", ".sh", ".mjs"}
 FUNCTION = re.compile(r"\b([a-z_][a-z0-9_]*)\s*\(")
 MACRO = re.compile(r"^\s*#\s*define\s+([A-Z][A-Z0-9_]+)\b", re.M)
 KCONFIG = re.compile(r"^\s*config\s+([A-Z][A-Z0-9_]+)\b", re.M)
@@ -17,26 +16,23 @@ IDENTIFIER = re.compile(r"\b([A-Za-z_]\w*)\b")
 PY_COMMENT = re.compile(r"^\s*#.*$", re.M)
 PY_CONSTANT = re.compile(r"^([A-Z][A-Z0-9_]+)\s*=", re.M)
 SDKCONFIG = re.compile(r"^#?\s*(CONFIG_[A-Z0-9_]+)", re.M)
+SH_FUNCTION = re.compile(r"^\s*([a-z_][a-z0-9_]*)\s*\(\)", re.M)
+CMAKE_FUNCTION = re.compile(r"^\s*(?:function|macro)\s*\(\s*([A-Za-z_]\w*)", re.M | re.I)
 
 
 def source_paths(root):
-    root = pathlib.Path(root)
-    bases = (root / "launcher", root / "scripts")
-    if root.name == "launcher":
-        bases = (root,)
-    for base in bases:
-        if not base.is_dir():
-            continue
-        for path in committable(base):
-            if path.suffix in SOURCE_SUFFIXES or path.name in ("Kconfig", "Kconfig.projbuild"):
-                yield path
+    """Every source and script git would commit under `root`."""
+    for path in committable(root):
+        if (path.suffix in SOURCE_EXTENSIONS or path.suffix in SCRIPT_SUFFIXES or is_cmake(path)
+                or path.name in ("Kconfig", "Kconfig.projbuild")):
+            yield path
 
 
 
 class Vocabulary:
     """What a comment can cite, split by where the name is real.
 
-    `functions`: declared or called in C code.
+    `functions`: declared or called in C or C++ code.
 
     `script_functions`: defined or called only by a Python script, so a C
     comment citing one must name the script.
@@ -69,10 +65,10 @@ def vocabulary(root):
     kconfig = []
     for path in source_paths(root):
         text = path.read_text(encoding="utf-8", errors="replace")
-        if path.suffix in C_SUFFIXES:
-            code = blank_comments(text, mode="code")
+        if path.suffix in SOURCE_EXTENSIONS:
+            code = blank_comments(text, mode="code", cpp=is_cpp(path))
             # A literal token is real vocabulary; escapes must not glue letters onto it.
-            spelled = re.sub(r"\\[a-z]", " ", blank_comments(text, mode="spelled"))
+            spelled = re.sub(r"\\[a-z]", " ", blank_comments(text, mode="spelled", cpp=is_cpp(path)))
             functions = set(FUNCTION.findall(code))
             constants = set(CONSTANT.findall(spelled))
             vocab.functions |= functions
@@ -85,10 +81,12 @@ def vocabulary(root):
             # string; an environment variable it reads, a line it matches.
             vocab.constants |= set(PY_CONSTANT.findall(text))
             vocab.constants |= set(CONSTANT.findall(PY_COMMENT.sub("", text)))
-        elif path.suffix == ".sh":
-            # A variable a shell script sets or reads: a device profile's
-            # value, an override the environment passes in.
-            vocab.constants |= set(CONSTANT.findall(PY_COMMENT.sub("", text)))
+        elif path.suffix == ".sh" or is_cmake(path):
+            # A function a shell script or CMake file defines, and a variable
+            # it sets or reads: a device profile's value, a build option.
+            code = PY_COMMENT.sub("", text)
+            vocab.script_functions |= set((SH_FUNCTION if path.suffix == ".sh" else CMAKE_FUNCTION).findall(code))
+            vocab.constants |= set(CONSTANT.findall(code))
         elif path.suffix == ".mjs":
             # An environment variable a Node gate reads; its functions are
             # camelCase and never cited as a C or Python name would be.
