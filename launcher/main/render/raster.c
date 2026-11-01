@@ -77,6 +77,7 @@ typedef struct {
     r3d_span_target_t targets[2];
     r3d_span_small_fill_t small_fill;
     raster_buffers_t buffers;
+    cache_autoload_state_t autoload;
 } draw_work_t;
 
 _Static_assert(sizeof(slice_t) <= JOB_CTX_MAX, "slice_t must fit JOB_CTX_MAX");
@@ -367,6 +368,17 @@ scratch_draw(const raster_t* raster) {
     return work;
 }
 
+#define R3D_TRANSFORM_AUTOLOAD 1
+#if R3D_TRANSFORM_AUTOLOAD
+static __attribute__((noinline)) void
+push_transform_autoload(draw_work_t* work, const batch_t* batch) {
+    const void* position_addr;
+    size_t position_size;
+    raster_transform_range(batch->parts, batch->count, &position_addr, &position_size);
+    work->autoload = cache_autoload_push(position_addr, position_size);
+}
+#endif
+
 /* Draws batch `index`: one transform fork/join over every item's clusters,
  * then one draw fork/join in which each core draws every item in its rows. */
 static inline __attribute__((always_inline)) void
@@ -394,16 +406,12 @@ draw_batch(const raster_t* raster, int index, draw_work_t* work) {
     other->first = half;
     other->count = count - half;
     FRAME_LAP_END();
-#define R3D_TRANSFORM_AUTOLOAD 1
 #if R3D_TRANSFORM_AUTOLOAD
-    const void* position_addr;
-    size_t position_size;
-    raster_transform_range(batch->parts, batch->count, &position_addr, &position_size);
-    const cache_autoload_state_t autoload = cache_autoload_push(position_addr, position_size);
+    push_transform_autoload(work, batch);
 #endif
     job_run_steered(transform_share, transform_slice, mine, other, sizeof *mine);
 #if R3D_TRANSFORM_AUTOLOAD
-    cache_autoload_pop(autoload);
+    cache_autoload_pop(work->autoload);
 #endif
     FRAME_LAP_SINCE("r3d.transform.wait");
     FRAME_COST_END(transformed_from, "r3d.transform");
