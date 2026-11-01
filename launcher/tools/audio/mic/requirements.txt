@@ -1,3 +1,4 @@
 -r ../requirements.txt
 -c ../../r3d/requirements.txt
 pystoi==0.4.1
+sounddevice==0.5.3
