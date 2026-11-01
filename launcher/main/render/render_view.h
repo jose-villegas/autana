@@ -11,7 +11,13 @@
 
 typedef enum { CAMERA_PRESENT_NEAREST, CAMERA_PRESENT_SCANLINE, CAMERA_PRESENT_DOUBLE } camera_present_t;
 
-typedef enum { SMALL_FILL_FLAT, SMALL_FILL_GRAIN, SMALL_FILL_DITHER, SMALL_FILL_STYLE_COUNT } small_fill_style_t;
+/* One byte, so small_fill_t packs beside a view's flags. */
+typedef enum __attribute__((packed)) {
+    SMALL_FILL_FLAT,
+    SMALL_FILL_GRAIN,
+    SMALL_FILL_DITHER,
+    SMALL_FILL_STYLE_COUNT
+} small_fill_style_t;
 
 #define SMALL_FILL_CEILING_MAX    16
 #define SMALL_FILL_CEILING_SMOOTH 4
