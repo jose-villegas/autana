@@ -288,9 +288,9 @@ completion under their hang guards, and day board jobs queue on the lock behind 
 |---|---|
 | Step time | Median heavy queue wait, build and measure seconds of the measured steps in the board's last night manifest; `FIRST_STEP_SECONDS` without any |
 | Room | From the lane's start to `BOARD_END`, less the anchor step and, on the self-test board, `SELFTEST_ALLOWANCE_SECONDS` |
-| Steps | The oldest new steps the room fits; `--max-steps` bounds them further |
-| No room | The board gets no lane and stays free; its share of the split waits for its next night |
-| The rest | The next night resumes after `last_attempted` |
+| Steps | The night queue's next steps the room fits; `--max-steps` bounds them further |
+| No room | The board gets no lane and stays free |
+| The rest | Stays in the queue for joiners, then the next night |
 | Override | A run marked after `BOARD_END` is not sized |
 
 The zone is the NIGHT_ZONE repository variable (IANA name; UTC when unset).
@@ -332,10 +332,22 @@ a host that does not answer is asked again next minute. After the cut-off nothin
 
 A plan with named `--boards` is the whole night: it starts no lane after its plan.
 
-Initial boards split first-parent commits on main by position modulo their count.
-Joiners use independent `0/1` series.
-Boards repeat their last measured anchor and resume after `last_attempted`;
-fresh boards start at their newest commit.
+One queue of first-parent commits on main, oldest first, feeds the night's lanes.
+Planned lanes, then joiners, each take the next steps off its head, so no commit is dealt twice in a night.
+Each lane first repeats its own board's last measured anchor.
+
+| Queue | Rule |
+|---|---|
+| Owed | The commits in the last saved queue (`scoped/queue/` in the data) that no night manifest since has attempted |
+| New | Every commit after the tip that queue was planned at |
+| Before the first saved queue | Every commit after any board's `last_attempted` that no board's last manifest attempted |
+| First night ever | The tip only |
+| `--from` | History from that commit on; the plan saves no queue |
+| Attempted | Measured, skipped as the same image, or failed to build; a failed capture is owed again |
+| Unsized override | Each board takes an even run of the queue |
+
+A commit may be measured twice; none is dropped.
+`run --from/--max-steps` reruns part of a lane's own steps.
 
 Builds take the heavy lock at below-normal priority. Step `wait_seconds`
 records heavy queue time separately from `build_seconds`.
