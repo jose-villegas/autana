@@ -70,8 +70,9 @@ typedef struct {
     render_context_t* (*render_context)(void);
 } frame_provider_t;
 
-/* The open run's converted frame: bottom-up 24-bit BGR rows, the body its
- * BMP carries. Valid until render_host_close(). */
+/* The open run's whole converted frame: bottom-up 24-bit BGR rows in the
+ * BMP's row layout (--crop writes only a part of it). Valid until
+ * render_host_close(). */
 typedef struct {
     const uint8_t* bgr;
     int width, height;
