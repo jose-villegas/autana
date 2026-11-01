@@ -1,13 +1,17 @@
 """Unity result lines and crash signs shared by device capture tools."""
 import re
 
+# A test name is a function name, then any case segments (RUN_TEST_CASE in
+# launcher/test/suites.h), each of SUITE_TEST_SEGMENT_CHARS; a --test pattern
+# has the same shape.
+TEST_SEPARATOR = "/"
+TEST_SEGMENT = r"[A-Za-z0-9_-]+"
+TEST_NAME = TEST_SEGMENT + "(?:" + TEST_SEPARATOR + TEST_SEGMENT + ")*"
 # A line matching this is a Unity test result. Used both as proof that any
 # test ran at all and, around a panic, to name the last few that did.
 # Device results allow an empty file field and include ignored tests.
-RESULT_RE = re.compile(r"^(?P<file>\S*?):(?P<line>\d+):(?P<name>[^:\s]+):(?P<status>PASS|FAIL|IGNORE)"
+RESULT_RE = re.compile(r"^(?P<file>\S*?):(?P<line>\d+):(?P<name>" + TEST_NAME + r"):(?P<status>PASS|FAIL|IGNORE)"
                        r"(?::\s*(?P<message>.*))?$")
-# What splits a test name into its function and case segments (RUN_TEST_CASE in launcher/test/suites.h).
-TEST_SEPARATOR = "/"
 # The console line that asks a running image for its BUILD_ID= line.
 BUILD_ID_REQUEST = "BUILDID"
 BUILD_ID_RE = re.compile(r"BUILD_ID=([^\s\r\n]+)")

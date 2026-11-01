@@ -280,25 +280,26 @@ static char case_name[SUITE_TEST_NAME_MAX + 1];
 void
 suite_run_test_case(void (*func)(void), const char* name, const char* const* segments, size_t count, int line) {
     size_t length = strlen(name);
-    bool fits = length <= SUITE_TEST_NAME_MAX;
-    if (fits) {
+    bool named = length <= SUITE_TEST_NAME_MAX;
+    if (named) {
         memcpy(case_name, name, length);
     }
-    for (size_t i = 0; fits && i < count; i++) {
+    for (size_t i = 0; named && i < count; i++) {
         const size_t segment = segments[i] != NULL ? strlen(segments[i]) : 0;
         if (segment == 0) {
             continue;
         }
-        fits = length + 1 + segment <= SUITE_TEST_NAME_MAX;
-        if (fits) {
+        named = length + 1 + segment <= SUITE_TEST_NAME_MAX && strspn(segments[i], SUITE_TEST_SEGMENT_CHARS) == segment;
+        if (named) {
             case_name[length] = SUITE_TEST_SEPARATOR;
             memcpy(case_name + length + 1, segments[i], segment);
             length += 1 + segment;
         }
     }
-    if (!fits) {
+    if (!named) {
         suites_record_drop();
-        printf("SUITE OVERFLOW: a case of %s is named past SUITE_TEST_NAME_MAX %d\n", name, SUITE_TEST_NAME_MAX);
+        printf("SUITE OVERFLOW: a case of %s is past SUITE_TEST_NAME_MAX %d or not of SUITE_TEST_SEGMENT_CHARS\n", name,
+               SUITE_TEST_NAME_MAX);
         return;
     }
     case_name[length] = '\0';

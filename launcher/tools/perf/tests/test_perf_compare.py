@@ -17,6 +17,7 @@ sys.path.insert(0, str(PERF))
 import perf_compare as tool
 import seed_statistics as stats
 from layout_measure import capture_metadata, parse_report, run_flash, run_stamped
+from device_capture import test_matches
 
 
 class FakeAutana:
@@ -42,10 +43,10 @@ class FakeAutana:
         for run in range(runs):
             base = self.root/f'capture_{len(self.calls)}_{run}'
             lines.append((10+run*10, f'batch: {suite} run {run+1}/{runs}'))
-            text = ''.join(f'SUITE_TEST name={name} selected={int(any(p in name for p in tests))}\n'
+            text = ''.join(f'SUITE_TEST name={name} selected={int(any(test_matches(p, name) for p in tests))}\n'
                            for name in ['test_quiet', 'test_heavy']) if '--test' in command else ''
             for name in ['test_quiet', 'test_heavy']:
-                if not any(pattern in name for pattern in tests):
+                if not any(test_matches(pattern, name) for pattern in tests):
                     continue
                 row = name.removeprefix('test_')
                 value = 10000
@@ -81,7 +82,7 @@ def record_for_rows(args, seed, values):
     inventory = ['test_' + row for row in values]
     for suite, tests, _ in args.suite:
         rows = {row: value for row, value in values.items()
-                if tests == '-' or any(pattern in 'test_' + row for pattern in tests.split(','))}
+                if tests == '-' or any(test_matches(pattern, 'test_' + row) for pattern in tests.split(','))}
         run = dict(rows=rows, owners={row: 'test_' + row for row in rows},
                    instructions={row: value * 2 for row, value in rows.items()},
                    listed_tests=['test_' + row for row in rows], inventory=inventory)

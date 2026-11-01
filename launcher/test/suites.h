@@ -94,9 +94,11 @@ bool suite_test_matches(const char* pattern, const char* name);
 
 /* RUN_TEST_CASE(func, "segment", ...) runs func as RUN_TEST does, named
  * func/segment/..., so each pass of a table loop has a name a pattern can
- * pick. A NULL or empty segment is left out. A name past SUITE_TEST_NAME_MAX
- * is a SUITE OVERFLOW, not run. A case never runs another. */
-#define SUITE_TEST_NAME_MAX 95
+ * pick. A NULL or empty segment is left out. A name past SUITE_TEST_NAME_MAX,
+ * or a segment of other than SUITE_TEST_SEGMENT_CHARS, which the tools'
+ * result lines read, is a SUITE OVERFLOW, not run. A case never runs another. */
+#define SUITE_TEST_NAME_MAX      95
+#define SUITE_TEST_SEGMENT_CHARS "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"
 #define RUN_TEST_CASE(func, ...)                                                                                       \
     suite_run_test_case(func, #func, (const char* const[]){__VA_ARGS__},                                               \
                         sizeof((const char* const[]){__VA_ARGS__}) / sizeof(const char*), __LINE__)

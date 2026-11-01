@@ -161,28 +161,23 @@ span_contains(const char* span, size_t span_length, const char* part, size_t par
  * it can take, which finds an in-order match whenever there is one. */
 bool
 suite_test_matches(const char* pattern, const char* name) {
-    const size_t function_length = segment_length(name);
     size_t wanted = segment_length(pattern);
-    if (span_contains(name, function_length, pattern, wanted)) {
-        if (pattern[wanted] == '\0') {
+    for (const char* at = name;; at++) {
+        const size_t length = segment_length(at);
+        const bool hit = at == name ? span_contains(at, length, pattern, wanted)
+                                    : wanted > 0 && wanted == length && memcmp(at, pattern, length) == 0;
+        if (hit && pattern[wanted] == '\0') {
             return true;
         }
-        pattern += wanted + 1;
-        wanted = segment_length(pattern);
-    }
-    for (const char* at = name + function_length; *at != '\0';) {
-        at++;
-        const size_t length = segment_length(at);
-        if (wanted > 0 && wanted == length && memcmp(at, pattern, length) == 0) {
-            if (pattern[wanted] == '\0') {
-                return true;
-            }
+        if (hit) {
             pattern += wanted + 1;
             wanted = segment_length(pattern);
         }
         at += length;
+        if (*at == '\0') {
+            return false;
+        }
     }
-    return false;
 }
 
 bool
