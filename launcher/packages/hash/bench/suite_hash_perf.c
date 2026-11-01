@@ -63,7 +63,7 @@ test_hash_board_rows(void) {
                                            .data = memory == 0 ? active_buffer : flash_data,
                                            .size = sizes[size]};
                 char type[HASH_BENCH_TYPE_CAPACITY];
-                snprintf(type, sizeof type, "%zu_%s", sizes[size], memories[memory]);
+                (void)snprintf(type, sizeof type, "%zu_%s", sizes[size], memories[memory]);
                 bench_report_cycles("HASHBENCH", candidates[candidate].name, type, 1, run_cycles, &context);
                 TEST_ASSERT_EQUAL_HEX32(crc32_update_nibble(0, context.data, context.size), context.result);
             }
