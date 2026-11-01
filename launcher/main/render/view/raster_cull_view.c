@@ -277,13 +277,12 @@ spectator_view(const raster_cull_t* s, const raster_t* raster) {
     transformf_t pose;
     if (s->from == RASTER_CULL_FROM_TOP) {
         const float height = (TOP_MARGIN * mathf_max(half.x, half.z) / tan_half) + half.y;
-        pose = transformf_looking((vec3f_t){centre.x, centre.y + height, centre.z}, (vec3f_t){0.0F, -1.0F, 0.0F},
-                                  (vec3f_t){0.0F, 0.0F, 1.0F});
+        pose = transformf_looking((vec3f_t){centre.x, centre.y + height, centre.z}, vec3f_down(), vec3f_unit_z());
     } else {
         const vec3f_t ahead = vec3f_add(camera->position, vec3f_scale(camera->forward, CHASE_BACK * radius));
         const vec3f_t eye = vec3f_add(vec3f_sub(camera->position, vec3f_scale(camera->forward, CHASE_BACK * radius)),
                                       (vec3f_t){0.0F, CHASE_UP * radius, 0.0F});
-        pose = transformf_looking(eye, vec3f_sub(ahead, eye), (vec3f_t){0.0F, 1.0F, 0.0F});
+        pose = transformf_looking(eye, vec3f_sub(ahead, eye), vec3f_unit_y());
     }
     render_view_t view = render_view_make(&pose, tan_half, near_z, camera->viewport);
     view.present = camera->present;

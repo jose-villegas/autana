@@ -2185,7 +2185,7 @@ expect_census_draws_match_at_any_size(raster_t* raster) {
  * carry it on the stack. */
 static mat4f_t*
 census_moved(void) {
-    transformf_t pose = TRANSFORMF_IDENTITY;
+    transformf_t pose = transformf_identity();
     transformf_set_position(&pose, (vec3f_t){-120.0F, 40.0F, 0.0F});
     mat4f_t* model = malloc(sizeof(*model));
     TEST_ASSERT_NOT_NULL(model);
@@ -2253,7 +2253,7 @@ test_batched_copies_draw_what_one_instance_at_a_time_draws(void) {
     TEST_ASSERT_NOT_NULL(models);
     r3d_instance_t instances[1 + BATCH_COPIES] = {{&wall->mesh, NULL}};
     for (int i = 0; i < BATCH_COPIES; i++) {
-        transformf_t pose = TRANSFORMF_IDENTITY;
+        transformf_t pose = transformf_identity();
         transformf_set_position(&pose, (vec3f_t){-300.0F + (90.0F * (float)i), 60.0F * (float)(i % 3), 0.0F});
         models[i] = transformf_compute_matrix(&pose);
         instances[1 + i] = (r3d_instance_t){&card->mesh, &models[i]};

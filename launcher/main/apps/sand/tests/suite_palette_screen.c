@@ -72,8 +72,8 @@ palette_frame(sand_ui_t* ui, bool landscape, bool down, bool pressed, bool relea
 
 static void
 settle(sand_ui_t* ui, bool landscape) {
-    palette_frame(ui, landscape, false, false, false, (vec2i_t){0, 0});
-    palette_frame(ui, landscape, false, false, false, (vec2i_t){0, 0});
+    palette_frame(ui, landscape, false, false, false, vec2i_zero());
+    palette_frame(ui, landscape, false, false, false, vec2i_zero());
 }
 
 static recti_t
@@ -220,13 +220,13 @@ test_a_tap_in_the_grout_between_tiles_selects_the_nearest_tile(void) {
 static void
 visual_fixture(sand_ui_t* ui) {
     ui_probe_widgets_start();
-    palette_frame(ui, false, false, false, false, (vec2i_t){0, 0});
-    palette_frame(ui, false, false, false, false, (vec2i_t){0, 0});
+    palette_frame(ui, false, false, false, false, vec2i_zero());
+    palette_frame(ui, false, false, false, false, vec2i_zero());
 }
 
 static recti_t
 tile_of(int index) {
-    recti_t r = {0};
+    recti_t r = recti_empty();
     TEST_ASSERT_TRUE_MESSAGE(ui_probe_widget(material_name(sand_brushes[index].cell), &r), "tile was not drawn");
     return r;
 }

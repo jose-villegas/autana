@@ -11,7 +11,7 @@ typedef struct {
 
 static inline render_view_t
 render_view_fixture_at(const fixture_camera_t* camera, viewport_t viewport) {
-    const transformf_t pose = transformf_looking(camera->eye, camera->forward, (vec3f_t){0.0F, 1.0F, 0.0F});
+    const transformf_t pose = transformf_looking(camera->eye, camera->forward, vec3f_unit_y());
     return render_view_make(&pose, camera->half_fov_short_tan, camera->near_z, viewport);
 }
 

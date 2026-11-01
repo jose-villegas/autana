@@ -147,7 +147,7 @@ border_colour(const uint8_t* buf, int32_t stride, int out_w, int out_h) {
 static recti_t
 drawn_box(const uint8_t* buf, int32_t stride, int out_w, int out_h) {
     const uint8_t* background = border_colour(buf, stride, out_w, out_h);
-    recti_t box = {0, 0, 0, 0};
+    recti_t box = recti_empty();
     for (int y = 0; y < out_h; y++) {
         for (int x = 0; x < out_w; x++) {
             if (memcmp(frame_pixel(buf, stride, out_h, x, y), background, 3) != 0) {
