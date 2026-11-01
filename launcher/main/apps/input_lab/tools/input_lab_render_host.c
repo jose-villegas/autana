@@ -153,7 +153,7 @@ static const render_input_step_t touch[] = {
 };
 
 static void
-draw(const render_frame_t* frame) {
+draw(const provider_frame_t* frame) {
     clock_frame = frame->index;
     input_t in = tapped || results ? frame->input : (input_t){0};
     if (orientation) {
@@ -164,7 +164,7 @@ draw(const render_frame_t* frame) {
     app_list()->frame(frame->dt_ms, &in);
 }
 
-const render_scene_t render_scene = {
+const frame_provider_t input_lab_provider = {
     .name = "input_lab",
     .frames = 8,
     .dt_ms = FRAME_MS,

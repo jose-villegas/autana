@@ -2,13 +2,121 @@
 
 A scene's camera can draw each frame at a render size picked to hold a frame
 budget, instead of one fixed scale. The sizes are a ladder of steps, finest
-first.
+first. Below, the two presentation choices first, then how a size is chosen,
+then the measurements.
+
+## Camera presentation
+
+A camera can draw half the rows and let the present fill the rest.
+`CAMERA_PRESENT_SCANLINE` darkens every second row, `CAMERA_PRESENT_DOUBLE`
+repeats it, and `CAMERA_PRESENT_NEAREST` (the default) draws the full height.
+
+The GIFs show the same flythrough in each mode. The dark lines run along the
+panel's rows, which is vertical in this orientation.
+
+| NEAREST | SCANLINE | DOUBLE |
+|---|---|---|
+| ![Nearest presentation](../../images/render/sponza-present-nearest.gif) | ![Scanline presentation](../../images/render/sponza-present-scanline.gif) | ![Doubled presentation](../../images/render/sponza-present-double.gif) |
+
+One call turns it on; there are no other settings:
+
+<!-- generated: scene-present-example check: python launcher/tools/gen/examples_doc.py --check -->
+```c
+/* Presentation: choose how the camera's rendered rows reach the panel. */
+#include "scene/scene.h"
+
+static bool
+present_example(scene_t* scene, scene_entity_t cam) {
+    return scene_camera_set_present(scene, cam, CAMERA_PRESENT_SCANLINE);
+}
+```
+<!-- /generated: scene-present-example -->
+
+| Mode | Rows drawn | Look |
+|---|---|---|
+| `CAMERA_PRESENT_NEAREST` | The chosen render height | The default picture |
+| `CAMERA_PRESENT_SCANLINE` | Half that height | Each row twice, the second dimmed to `UPSCALE_SCANLINE_KEEP` |
+| `CAMERA_PRESENT_DOUBLE` | Half that height | Each row twice, unchanged |
+
+The halved draw expands into [the half picture](../Rendering-Options.md#render-scale-and-the-half-picture), as in `render_context_compose()` below. When its row map is uneven, such as a dynamic-resolution step whose height does not divide the half height, the rows are copied without the dimmed line.
+
+The saving comes from the halved draw: fewer rows, spans and edge steps. SCANLINE adds a darkened copy of every second row; DOUBLE costs a little less.
+
+On a dense benchmark scene SCANLINE cut the frame by about a quarter; the measured tables are in the test app's tools README.
+
+## Upscaling within a surface
+
+Off by default: `UPSCALE_FILTER_SURFACE` in [`render/upscale.h`](../../../launcher/main/render/upscale.h), set with `render_context_set_upscale_filter()`.
+
+It applies to the steps that compose into the half picture, and is joint bilateral upsampling<sup>[[101]](../../Citations.md#kopf-2007)</sup> with a yes-or-no range weight.
+
+![Nearest and surface against the reference, with each one's dE](../../images/render/upscale-surface.png)
+
+![Edge crops: reference, nearest, surface](../../images/render/upscale-surface.crops.png)
+
+| Stage | Nearest | Surface |
+|---|---|---|
+| Compose, rows to the half height | each row its nearest source row | blends the two source rows around it when their depths are one surface, else takes the nearer |
+| Compose, same loop | - | writes a seam bit per half-picture pixel: another surface right of it or below it |
+| Present, 2x expand | each pixel to a 2x2 block | centre-aligned 2x bilinear, a quarter of each neighbour, except across a seam |
+
+Two depths are one surface when they differ by at most the nearer's
+1/2^`UPSCALE_SURFACE_STEP_SHIFT`. Clear against drawn is always a seam.
+
+<!-- generated: dynres-upscale sha256=150a7f4bd1f2048b45217fd6f378c6fa09df78058bf960eefa3fc0c21c6193c6 -->
+| Scene | mean dE | p95 dE | SSIM |
+|---|---|---|---|
+| bistro-fitted-full | 7.40 → 7.37 (-0.03) | 23.2 → 22.6 (-0.6) | 0.551 → 0.556 (+0.005) |
+| sponza-fitted-full | 5.96 → 5.93 (-0.03) | 16.4 → 15.9 (-0.5) | 0.703 → 0.710 (+0.007) |
+| sponza-fitted | 6.61 → 6.57 (-0.04) | 18.9 → 18.4 (-0.5) | 0.657 → 0.664 (+0.007) |
+| sponza-flat-fitted | 5.82 → 5.75 (-0.07) | 16.8 → 16.0 (-0.8) | 0.694 → 0.708 (+0.015) |
+| sponza | 9.76 → 9.66 (-0.09) | 28.7 → 28.0 (-0.7) | 0.550 → 0.559 (+0.009) |
+| sponza-flat | 12.96 → 12.73 (-0.23) | 44.3 → 43.1 (-1.2) | 0.408 → 0.430 (+0.022) |
+| sponza-lite | 11.51 → 11.44 (-0.07) | 34.1 → 33.6 (-0.5) | 0.491 → 0.497 (+0.006) |
+
+At 184x224, each cell is nearest → surface (change), the mean over the path's frames against the reference at full size; lower dE and higher SSIM are closer.
+
+<details>
+<summary>Every size, with edge and interior dE</summary>
+
+| Scene | Size | mean dE | p95 dE | SSIM | edge dE | interior dE |
+|---|---|---|---|---|---|---|
+| bistro-fitted-full | 184x224 | 7.40 → 7.37 | 23.2 → 22.6 | 0.551 → 0.556 | 11.24 → 11.18 | 4.96 → 4.95 |
+| bistro-fitted-full | 184x149 | 7.54 → 7.48 | 23.8 → 22.9 | 0.538 → 0.546 | 11.57 → 11.44 | 5.00 → 4.99 |
+| bistro-fitted-full | 184x112 | 7.58 → 7.56 | 24.0 → 23.2 | 0.534 → 0.539 | 11.67 → 11.60 | 5.00 → 5.02 |
+| sponza-fitted-full | 184x224 | 5.96 → 5.93 | 16.4 → 15.9 | 0.703 → 0.710 | 10.27 → 10.18 | 4.60 → 4.60 |
+| sponza-fitted-full | 184x149 | 6.13 → 6.06 | 17.2 → 16.4 | 0.688 → 0.700 | 10.79 → 10.57 | 4.65 → 4.64 |
+| sponza-fitted-full | 184x112 | 6.17 → 6.16 | 17.5 → 16.7 | 0.683 → 0.692 | 10.94 → 10.82 | 4.67 → 4.68 |
+| sponza-fitted | 184x224 | 6.61 → 6.57 | 18.9 → 18.4 | 0.657 → 0.664 | 11.55 → 11.43 | 5.06 → 5.05 |
+| sponza-fitted | 184x149 | 6.74 → 6.67 | 19.5 → 18.7 | 0.646 → 0.657 | 11.95 → 11.73 | 5.10 → 5.08 |
+| sponza-fitted | 184x112 | 6.77 → 6.73 | 19.6 → 18.8 | 0.643 → 0.652 | 12.03 → 11.89 | 5.11 → 5.11 |
+| sponza-flat-fitted | 184x224 | 5.82 → 5.75 | 16.8 → 16.0 | 0.694 → 0.708 | 10.31 → 10.08 | 4.41 → 4.38 |
+| sponza-flat-fitted | 184x149 | 6.00 → 5.89 | 17.7 → 16.5 | 0.678 → 0.700 | 10.86 → 10.50 | 4.46 → 4.43 |
+| sponza-flat-fitted | 184x112 | 6.04 → 5.99 | 17.9 → 16.9 | 0.675 → 0.692 | 10.98 → 10.78 | 4.48 → 4.48 |
+| sponza | 184x224 | 9.76 → 9.66 | 28.7 → 28.0 | 0.550 → 0.559 | 15.85 → 15.59 | 7.84 → 7.80 |
+| sponza | 184x149 | 9.82 → 9.70 | 28.9 → 28.0 | 0.544 → 0.556 | 16.03 → 15.70 | 7.87 → 7.81 |
+| sponza | 184x112 | 9.84 → 9.70 | 28.9 → 28.0 | 0.541 → 0.554 | 16.09 → 15.73 | 7.87 → 7.81 |
+| sponza-flat | 184x224 | 12.96 → 12.73 | 44.3 → 43.1 | 0.408 → 0.430 | 20.67 → 20.06 | 10.53 → 10.42 |
+| sponza-flat | 184x149 | 13.03 → 12.72 | 44.6 → 42.9 | 0.404 → 0.433 | 20.90 → 20.06 | 10.55 → 10.41 |
+| sponza-flat | 184x112 | 13.02 → 12.71 | 44.5 → 42.8 | 0.405 → 0.434 | 20.85 → 20.05 | 10.55 → 10.39 |
+| sponza-lite | 184x224 | 11.51 → 11.44 | 34.1 → 33.6 | 0.491 → 0.497 | 18.51 → 18.33 | 9.33 → 9.30 |
+| sponza-lite | 184x149 | 11.55 → 11.45 | 34.2 → 33.5 | 0.488 → 0.496 | 18.64 → 18.37 | 9.35 → 9.30 |
+| sponza-lite | 184x112 | 11.56 → 11.46 | 34.2 → 33.5 | 0.486 → 0.496 | 18.64 → 18.39 | 9.35 → 9.29 |
+
+Each cell is nearest → surface.
+
+</details>
+<!-- /generated: dynres-upscale -->
+
+Surface lowers p95 dE and raises SSIM at every step of every scored scene; mean dE moves less. Interiors blend, while depth edges keep their stairs, which is most of the edge error left.
+
+## How a size is chosen
 
 `render_context_compose()` expands a step that fits into the half picture
 and upscales any other with [`render/upscale.h`](../../../launcher/main/render/upscale.h),
 any ratio in either axis ([the rule](../Rendering-Options.md#render-scale-and-the-half-picture)).
 
-The caller's chosen size is the top step; neither policy draws finer. A frame under budget keeps its speed, and only a frame over budget steps down.
+The caller's chosen size is the top step; no policy draws finer. A frame under budget keeps its speed, and only a frame over budget steps down.
 
 The code is `launcher/main/render/resolution/`. Resolution selection is a setting of the render context, not of a scene or a camera.
 
@@ -203,111 +311,6 @@ What the table shows:
 - **Ladder.** At the same budget, cutting the height first keeps the full width longer and scores closer to the reference than cutting the width first.
 
 ![Frame cost along the path, per policy and budget](../../images/render/dynamic-resolution-flight.png)
-
-## Upscaling within a surface
-
-Off by default: `UPSCALE_FILTER_SURFACE` in [`render/upscale.h`](../../../launcher/main/render/upscale.h), set with `render_context_set_upscale_filter()`.
-
-It applies to the steps that compose into the half picture, and is joint bilateral upsampling<sup>[[101]](../../Citations.md#kopf-2007)</sup> with a yes-or-no range weight.
-
-| Stage | Nearest | Surface |
-|---|---|---|
-| Compose, rows to the half height | each row its nearest source row | blends the two source rows around it when their depths are one surface, else takes the nearer |
-| Compose, same loop | - | writes a seam bit per half-picture pixel: another surface right of it or below it |
-| Present, 2x expand | each pixel to a 2x2 block | centre-aligned 2x bilinear, a quarter of each neighbour, except across a seam |
-
-Two depths are one surface when they differ by at most the nearer's
-1/2^`UPSCALE_SURFACE_STEP_SHIFT`. Clear against drawn is always a seam.
-
-<!-- generated: dynres-upscale sha256=150a7f4bd1f2048b45217fd6f378c6fa09df78058bf960eefa3fc0c21c6193c6 -->
-| Scene | mean dE | p95 dE | SSIM |
-|---|---|---|---|
-| bistro-fitted-full | 7.40 → 7.37 (-0.03) | 23.2 → 22.6 (-0.6) | 0.551 → 0.556 (+0.005) |
-| sponza-fitted-full | 5.96 → 5.93 (-0.03) | 16.4 → 15.9 (-0.5) | 0.703 → 0.710 (+0.007) |
-| sponza-fitted | 6.61 → 6.57 (-0.04) | 18.9 → 18.4 (-0.5) | 0.657 → 0.664 (+0.007) |
-| sponza-flat-fitted | 5.82 → 5.75 (-0.07) | 16.8 → 16.0 (-0.8) | 0.694 → 0.708 (+0.015) |
-| sponza | 9.76 → 9.66 (-0.09) | 28.7 → 28.0 (-0.7) | 0.550 → 0.559 (+0.009) |
-| sponza-flat | 12.96 → 12.73 (-0.23) | 44.3 → 43.1 (-1.2) | 0.408 → 0.430 (+0.022) |
-| sponza-lite | 11.51 → 11.44 (-0.07) | 34.1 → 33.6 (-0.5) | 0.491 → 0.497 (+0.006) |
-
-At 184x224, each cell is nearest → surface (change), the mean over the path's frames against the reference at full size; lower dE and higher SSIM are closer.
-
-<details>
-<summary>Every size, with edge and interior dE</summary>
-
-| Scene | Size | mean dE | p95 dE | SSIM | edge dE | interior dE |
-|---|---|---|---|---|---|---|
-| bistro-fitted-full | 184x224 | 7.40 → 7.37 | 23.2 → 22.6 | 0.551 → 0.556 | 11.24 → 11.18 | 4.96 → 4.95 |
-| bistro-fitted-full | 184x149 | 7.54 → 7.48 | 23.8 → 22.9 | 0.538 → 0.546 | 11.57 → 11.44 | 5.00 → 4.99 |
-| bistro-fitted-full | 184x112 | 7.58 → 7.56 | 24.0 → 23.2 | 0.534 → 0.539 | 11.67 → 11.60 | 5.00 → 5.02 |
-| sponza-fitted-full | 184x224 | 5.96 → 5.93 | 16.4 → 15.9 | 0.703 → 0.710 | 10.27 → 10.18 | 4.60 → 4.60 |
-| sponza-fitted-full | 184x149 | 6.13 → 6.06 | 17.2 → 16.4 | 0.688 → 0.700 | 10.79 → 10.57 | 4.65 → 4.64 |
-| sponza-fitted-full | 184x112 | 6.17 → 6.16 | 17.5 → 16.7 | 0.683 → 0.692 | 10.94 → 10.82 | 4.67 → 4.68 |
-| sponza-fitted | 184x224 | 6.61 → 6.57 | 18.9 → 18.4 | 0.657 → 0.664 | 11.55 → 11.43 | 5.06 → 5.05 |
-| sponza-fitted | 184x149 | 6.74 → 6.67 | 19.5 → 18.7 | 0.646 → 0.657 | 11.95 → 11.73 | 5.10 → 5.08 |
-| sponza-fitted | 184x112 | 6.77 → 6.73 | 19.6 → 18.8 | 0.643 → 0.652 | 12.03 → 11.89 | 5.11 → 5.11 |
-| sponza-flat-fitted | 184x224 | 5.82 → 5.75 | 16.8 → 16.0 | 0.694 → 0.708 | 10.31 → 10.08 | 4.41 → 4.38 |
-| sponza-flat-fitted | 184x149 | 6.00 → 5.89 | 17.7 → 16.5 | 0.678 → 0.700 | 10.86 → 10.50 | 4.46 → 4.43 |
-| sponza-flat-fitted | 184x112 | 6.04 → 5.99 | 17.9 → 16.9 | 0.675 → 0.692 | 10.98 → 10.78 | 4.48 → 4.48 |
-| sponza | 184x224 | 9.76 → 9.66 | 28.7 → 28.0 | 0.550 → 0.559 | 15.85 → 15.59 | 7.84 → 7.80 |
-| sponza | 184x149 | 9.82 → 9.70 | 28.9 → 28.0 | 0.544 → 0.556 | 16.03 → 15.70 | 7.87 → 7.81 |
-| sponza | 184x112 | 9.84 → 9.70 | 28.9 → 28.0 | 0.541 → 0.554 | 16.09 → 15.73 | 7.87 → 7.81 |
-| sponza-flat | 184x224 | 12.96 → 12.73 | 44.3 → 43.1 | 0.408 → 0.430 | 20.67 → 20.06 | 10.53 → 10.42 |
-| sponza-flat | 184x149 | 13.03 → 12.72 | 44.6 → 42.9 | 0.404 → 0.433 | 20.90 → 20.06 | 10.55 → 10.41 |
-| sponza-flat | 184x112 | 13.02 → 12.71 | 44.5 → 42.8 | 0.405 → 0.434 | 20.85 → 20.05 | 10.55 → 10.39 |
-| sponza-lite | 184x224 | 11.51 → 11.44 | 34.1 → 33.6 | 0.491 → 0.497 | 18.51 → 18.33 | 9.33 → 9.30 |
-| sponza-lite | 184x149 | 11.55 → 11.45 | 34.2 → 33.5 | 0.488 → 0.496 | 18.64 → 18.37 | 9.35 → 9.30 |
-| sponza-lite | 184x112 | 11.56 → 11.46 | 34.2 → 33.5 | 0.486 → 0.496 | 18.64 → 18.39 | 9.35 → 9.29 |
-
-Each cell is nearest → surface.
-
-</details>
-<!-- /generated: dynres-upscale -->
-
-Surface lowers p95 dE and raises SSIM at every step of every scored scene; mean dE moves less. Interiors blend, while depth edges keep their stairs, which is most of the edge error left.
-
-![Nearest and surface against the reference, with each one's dE](../../images/render/upscale-surface.png)
-
-![Edge crops: reference, nearest, surface](../../images/render/upscale-surface.crops.png)
-
-## Camera presentation
-
-A camera can draw half the rows and let the present fill the rest.
-`CAMERA_PRESENT_SCANLINE` darkens every second row, `CAMERA_PRESENT_DOUBLE`
-repeats it, and `CAMERA_PRESENT_NEAREST` (the default) draws the full height.
-
-One call turns it on; there are no other settings:
-
-<!-- generated: scene-present-example check: python launcher/tools/gen/examples_doc.py --check -->
-```c
-/* Presentation: choose how the camera's rendered rows reach the panel. */
-#include "scene/scene.h"
-
-static bool
-present_example(scene_t* scene, scene_entity_t cam) {
-    return scene_camera_set_present(scene, cam, CAMERA_PRESENT_SCANLINE);
-}
-```
-<!-- /generated: scene-present-example -->
-
-| Mode | Rows drawn | Look |
-|---|---|---|
-| `CAMERA_PRESENT_NEAREST` | The chosen render height | The default picture |
-| `CAMERA_PRESENT_SCANLINE` | Half that height | Each row twice, the second dimmed to `UPSCALE_SCANLINE_KEEP` |
-| `CAMERA_PRESENT_DOUBLE` | Half that height | Each row twice, unchanged |
-
-The halved draw expands into the half picture, as in `render_context_compose()` above. When its row map is uneven, such as a dynamic-resolution step whose height does not divide the half height, the rows are copied without the dimmed line.
-
-The saving comes from the halved draw: fewer rows, spans and edge steps. SCANLINE adds a darkened copy of every second row; DOUBLE costs a little less.
-
-On a dense benchmark scene SCANLINE cut the frame by about a quarter; the measured tables are in the test app's tools README.
-
-The GIFs show the same flythrough in each mode. The dark lines run along the
-panel's rows, which is vertical in this orientation.
-
-| NEAREST | SCANLINE | DOUBLE |
-|---|---|---|
-| ![Nearest presentation](../../images/render/sponza-present-nearest.gif) | ![Scanline presentation](../../images/render/sponza-present-scanline.gif) | ![Doubled presentation](../../images/render/sponza-present-double.gif) |
 
 ## Refreshing
 
