@@ -1,5 +1,5 @@
 /*
- * gfx_indexed (state): GFX_LAYOUT_INDEXED's index image and LUTs, gfx_mode.h's
+ * gfx_indexed (state): GFX_LAYOUT_INDEXED's index image and LUTs, gfx.h's
  * indexed calls, and the begin/end gfx_mode.c grants the layout through. The
  * expansion kernels they feed are gfx_indexed.h's.
  */
