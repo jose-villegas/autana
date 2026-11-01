@@ -11,7 +11,7 @@
 #include "collections/sort.h"
 #include "core/job.h"
 #include "display/viewport.h"
-#include "math/geometry/box3f_plane.h"
+#include "math/geometry/box3f.h"
 #include "math/geometry/planef.h"
 #include "math/linear/mat3f.h"
 #include "math/projection/inverse_depth.h"
