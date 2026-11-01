@@ -28,14 +28,13 @@ import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from c_comments import SOURCE_EXTENSIONS, blank_comments, file_header, sources  # noqa: E402
+from c_comments import HEADER_EXTENSIONS, blank_comments, file_header, is_cpp, sources  # noqa: E402
 from check_doc_constants import sentences  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools"))
 from build.packages import FIRST_PARTY, package_part  # noqa: E402
 
 SCOPE = (*FIRST_PARTY, "launcher/test/suites/")
 PRAGMA_ONCE = re.compile(r"^\s*#\s*pragma\s+once\b", re.M)
-HEADERS = tuple(suffix for suffix in SOURCE_EXTENSIONS if suffix.startswith(".h"))
 RUN_TEST = re.compile(r"\bRUN_TEST\(\s*\w+")
 
 
@@ -57,7 +56,7 @@ def in_scope(rp, root="."):
     if not rp.rsplit("/", 1)[-1].startswith("suite_"):
         return True
     text = (pathlib.Path(root) / rp).read_text(encoding="utf-8", errors="replace")
-    return RUN_TEST.search(blank_comments(text)) is None
+    return RUN_TEST.search(blank_comments(text, cpp=is_cpp(rp))) is None
 
 
 def module_of(rp):
@@ -88,14 +87,14 @@ def module_problems(root, files):
         if not any(file_header(rp, text) for rp, text in texts.items()):
             found.append(f"{sorted(files)[-1]}: no header comment - open it with one saying what the module is")
         for rp, text in sorted(texts.items()):
-            if rp.endswith(".h") and not PRAGMA_ONCE.sub("", blank_comments(text)).strip():
+            if rp.endswith(".h") and not PRAGMA_ONCE.sub("", blank_comments(text, cpp=is_cpp(rp))).strip():
                 found.append(f"{rp}: declares nothing - describe its folder in a README.md instead")
     return found
 
 
 def purpose_problems(root, files):
     found = []
-    for path in sources(root, extensions=(*HEADERS, ".py")):
+    for path in sources(root, extensions=(*HEADER_EXTENSIONS, ".py")):
         rp = path.relative_to(root).as_posix()
         if files is not None and rp not in files:
             continue

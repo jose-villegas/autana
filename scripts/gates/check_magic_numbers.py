@@ -32,9 +32,9 @@ import sys
 import time
 import tokenize
 
-from c_comments import SOURCE_EXTENSIONS, excluded, balanced_end, blank_comments
+from c_comments import C_EXTENSIONS, SOURCE_EXTENSIONS, excluded, balanced_end, blank_comments, is_cpp
 from c_lexer import tokens
-from c_constants import ConstantIndex, DEFINE, ENUM, INTEGER, SCALAR, file_scope
+from c_constants import ConstantIndex, DEFINE, ENUM, INTEGER, SCALAR, file_scope, spelling
 from check_clones import C_TOKENS, INCLUDE_DIRECTIVE, changed_paths, comparison_base, git
 from tracked import repository, revision_contents
 from c_includes import resolve_include
@@ -88,7 +88,7 @@ def eligible_c(path, text):
 
 def protocol_source(path, text):
     package = package_part(path)
-    return (path.startswith(FIRST_PARTY) and Path(path).suffix in {".c", ".h"}
+    return (path.startswith(FIRST_PARTY) and Path(path).suffix in C_EXTENSIONS
             and (package is None or package[1] not in {"tests", "bench"})
             and eligible_c(path, text))
 
@@ -133,8 +133,8 @@ def escapes(path, text, python=False):
     return lines, found, errors
 
 
-def executable_numbers(text):
-    code = blank_comments(text, "code")
+def executable_numbers(text, cpp=False):
+    code = blank_comments(text, "code", cpp=cpp)
     spans = [(match.start(), match.end()) for pattern in (DEFINE, ENUM)
              for match in pattern.finditer(code)]
     spans.extend((match.start(), match.end()) for match in SCALAR.finditer(file_scope(code)))
@@ -160,11 +160,11 @@ def restatements(path, text, visible, skipped):
     by_value = defaultdict(list)
     for record, value in visible:
         by_value[value].append(record)
-    for line, literal, shift in executable_numbers(text):
+    for line, literal, shift in executable_numbers(text, is_cpp(path)):
         if line in skipped:
             continue
-        spelling = re.sub(r"[uUlL]+$", "", literal)
-        value = int(spelling, 16 if spelling.lower().startswith("0x") else 10)
+        digits = spelling(literal)
+        value = int(digits, 16 if digits.lower().startswith("0x") else 10)
         rare = value >= RARE_MINIMUM and value % ROUND_MULTIPLE != 0
         owners = [record for record in by_value[value]
                   if rare or shift and record.name.endswith("_SHIFT")]

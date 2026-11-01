@@ -9,8 +9,15 @@ from tracked import committable
 
 C_EXTENSIONS = (".c", ".h")
 CPP_EXTENSIONS = (".cc", ".cpp", ".cxx", ".hh", ".hpp", ".hxx")
-# Every file the comment and source gates read.
+HEADER_EXTENSIONS = (".h", ".hh", ".hpp", ".hxx")
+# Every file the comment and source gates read, and as `git ls-files` pathspecs.
 SOURCE_EXTENSIONS = C_EXTENSIONS + CPP_EXTENSIONS
+SOURCE_GLOBS = tuple(f"*{suffix}" for suffix in SOURCE_EXTENSIONS)
+
+
+def is_cpp(path):
+    """A C++ source by its name; a .h is C, so C++'s lexing is not applied to it."""
+    return str(path).endswith(CPP_EXTENSIONS)
 
 
 # Vendored upstream (microui) and every file whose banner says it is
@@ -107,7 +114,7 @@ def scan(path, source):
     """Yield every comment in `source`, skipping string and char literals."""
     comments = []
     at, line = 0, 1
-    for kind, i, end in tokens(source):
+    for kind, i, end in tokens(source, cpp=is_cpp(path)):
         line += source.count("\n", at, i)
         at = end
         if kind == "literal":
@@ -185,10 +192,10 @@ def sources(root, *, extensions=SOURCE_EXTENSIONS, exclude=True, files=None):
             yield path
 
 
-def blank_comments(text, mode="comments"):
-    """Blank C comments and optionally literals, retaining offsets and newlines."""
+def blank_comments(text, mode="comments", cpp=False):
+    """Blank C or C++ comments and optionally literals, retaining offsets and newlines."""
     out, at = [], 0
-    for kind, start, end in tokens(text, literals=mode != "spelled"):
+    for kind, start, end in tokens(text, literals=mode != "spelled", cpp=cpp):
         if kind == "literal" and mode != "code":
             continue
         out.append(text[at:start])
