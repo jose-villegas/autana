@@ -16,11 +16,11 @@ COMMAND = "python launcher/tools/perf/hash_bench_table.py --check"
 
 
 def render(capture):
-    build, measured = bench.parse_capture(capture, prefix="HASHBENCH", placeholder=PLACEHOLDER)
+    _, measured = bench.parse_capture(capture, prefix="HASHBENCH", placeholder=PLACEHOLDER)
     target = bench.parse_target(capture, prefix="HASHTARGET")
     if measured and not target:
         raise ValueError("hash measurements require a hardware HASHTARGET record")
-    lines = [f"Build: `{build or '-'}`; target: {target or '-' }.", ""]
+    lines = [f"Target: {target or '-'}.", ""]
     if not measured:
         lines.extend(["Capture pending.", ""])
     lines.extend(["| Candidate | Bytes | Source | Warm cycles | Cold cycles | Instructions |",
