@@ -34,13 +34,6 @@
 #define W 64
 #define H 48
 
-static void
-id_clear(const raster_attachment_t* self, const raster_t* raster, void* pixels, size_t count) {
-    (void)self;
-    (void)raster;
-    memset(pixels, 0, count * sizeof(uint16_t));
-}
-
 /* Tags each pixel with the instance that won it, plus one, times its own
  * `state` factor, so two of them write different values. */
 static bool
@@ -96,8 +89,10 @@ static void
 test_two_writing_attachments_each_record_the_instance_that_won(void) {
     static uint32_t ones = 1;
     static uint32_t tens = 10;
-    const raster_attachment_t a = {.format = IMAGE_U16, .clear = id_clear, .writer = id_writer, .state = &ones};
-    const raster_attachment_t b = {.format = IMAGE_U16, .clear = id_clear, .writer = id_writer, .state = &tens};
+    const raster_attachment_t a = {
+        .format = IMAGE_U16, .clear = raster_attachment_clear_u16, .writer = id_writer, .state = &ones};
+    const raster_attachment_t b = {
+        .format = IMAGE_U16, .clear = raster_attachment_clear_u16, .writer = id_writer, .state = &tens};
     const raster_attachment_t* const both[] = {&a, &b};
     raster_rig_t* r = rig_open(both, 2);
     draw(r);
@@ -121,7 +116,8 @@ test_attachments_leave_colour_and_depth_as_they_are(void) {
     memcpy(plain + (W * H), raster_depth(&r->raster), sizeof(uint16_t) * W * H);
     raster_rig_release();
     static uint32_t ones = 1;
-    const raster_attachment_t a = {.format = IMAGE_U16, .clear = id_clear, .writer = id_writer, .state = &ones};
+    const raster_attachment_t a = {
+        .format = IMAGE_U16, .clear = raster_attachment_clear_u16, .writer = id_writer, .state = &ones};
     const raster_attachment_t* const one[] = {&a};
     r = rig_open(one, 1);
     draw(r);
@@ -134,7 +130,7 @@ test_attachments_leave_colour_and_depth_as_they_are(void) {
  * to 4, and a new size carves every one anew. */
 static void
 test_every_attachment_is_carved_at_the_drawn_size(void) {
-    const raster_attachment_t wide = {.format = IMAGE_U32, .clear = id_clear};
+    const raster_attachment_t wide = {.format = IMAGE_U32, .clear = raster_attachment_clear_u16};
     const raster_attachment_t* const one[] = {&wide};
     raster_rig_t* r = raster_rig_open(raster_rig_wall_and_card, 2, 0, 2 * W, 2 * H, 0);
     raster_rig_attach(r, one, 1);
@@ -159,8 +155,11 @@ static void
 test_begin_runs_once_and_resolve_covers_every_row_once(void) {
     hooks_t* hooks = calloc(1, sizeof(*hooks));
     TEST_ASSERT_NOT_NULL(hooks);
-    const raster_attachment_t a = {
-        .format = IMAGE_U16, .clear = id_clear, .begin = hooks_begin, .resolve = hooks_resolve, .state = hooks};
+    const raster_attachment_t a = {.format = IMAGE_U16,
+                                   .clear = raster_attachment_clear_u16,
+                                   .begin = hooks_begin,
+                                   .resolve = hooks_resolve,
+                                   .state = hooks};
     const raster_attachment_t* const one[] = {&a};
     raster_rig_t* r = rig_open(one, 1);
     draw(r);
@@ -194,8 +193,10 @@ split_quad(raster_rig_t* rig, r3d_lit_cluster_t clusters[2]) {
 static void
 test_cluster_values_and_constant_writers(void) {
     uint32_t base = 17;
-    const raster_attachment_t per = {.format = IMAGE_U16, .clear = id_clear, .writer = cluster_writer, .state = &base};
-    const raster_attachment_t constant = {.format = IMAGE_U16, .clear = id_clear, .writer = id_writer, .state = &base};
+    const raster_attachment_t per = {
+        .format = IMAGE_U16, .clear = raster_attachment_clear_u16, .writer = cluster_writer, .state = &base};
+    const raster_attachment_t constant = {
+        .format = IMAGE_U16, .clear = raster_attachment_clear_u16, .writer = id_writer, .state = &base};
     const raster_attachment_t* both[] = {&per, &constant};
     raster_rig_t* r = rig_open(both, 2);
     r->raster.instance_count = 1;
@@ -218,7 +219,8 @@ test_cluster_values_and_constant_writers(void) {
     const raster_buffers_t buffers = raster_carve(&r->raster);
     memset(raster_depth(&r->raster), 0, sizeof(uint16_t) * W * H);
     for (int k = 0; k < 2; k++) {
-        id_clear(both[k], &r->raster, buffers.picture.attachment[GFX_ATTACHMENT_FURTHER + k].pixels, W * H);
+        raster_attachment_clear_u16(both[k], &r->raster, buffers.picture.attachment[GFX_ATTACHMENT_FURTHER + k].pixels,
+                                    W * H);
     }
     r3d_span_writer_t writers[2] = {0};
     for (int k = 0; k < 2; k++) {
@@ -330,6 +332,34 @@ test_copies_share_a_hue_and_a_shape_drawn_once_is_grey(void) {
     TEST_ASSERT_EQUAL_UINT16(r->raster.clear, raster_color(&r->raster)[0]);
 }
 
+/* Each mesh its own view, as each renderer holds: a shape drawn once, a shape
+ * drawn twice and one drawn three times, interleaved. */
+static void
+test_copies_take_their_first_instance_and_each_shape_its_own_id(void) {
+    static const int16_t one[1][3], two[1][3], three[1][3];
+    const r3d_lit_mesh_t meshes[] = {{.positions = one}, {.positions = two},   {.positions = three},
+                                     {.positions = two}, {.positions = three}, {.positions = three}};
+
+    enum { MESHES = sizeof meshes / sizeof meshes[0] };
+
+    r3d_instance_t instances[MESHES];
+    for (int i = 0; i < MESHES; i++) {
+        instances[i] = (r3d_instance_t){.mesh = &meshes[i]};
+    }
+    const raster_t raster = {.instances = instances, .instance_count = MESHES};
+    raster_copies_t state = {0};
+    const raster_attachment_t view = raster_copies_view(&state);
+    const render_view_t frame_view = render_view_fixture_at(&raster_rig_camera, (viewport_t){W, H, 0});
+    view.begin(&view, &raster, &frame_view);
+    const uint32_t expected[MESHES] = {RASTER_COPIES_UNIQUE, 2, 3, 2, 3, 3};
+    for (int i = 0; i < MESHES; i++) {
+        r3d_span_writer_t out = {0};
+        TEST_ASSERT_TRUE(view.writer(&view, i, &out));
+        TEST_ASSERT_EQUAL_UINT32(expected[i], out.value);
+    }
+    TEST_ASSERT_TRUE(raster_meshlets_color(2) != raster_meshlets_color(3));
+}
+
 /* The wall alone covers the corner; the centre is covered by both quads, and
  * the card in front wins its test in either order, while the wall wins it
  * only when drawn first. */
@@ -395,7 +425,8 @@ partial_writer(const raster_attachment_t* self, int instance, r3d_span_writer_t*
 static void
 test_writer_slot_is_zeroed_before_each_hook(void) {
     uint32_t base = 1;
-    const raster_attachment_t view = {.format = IMAGE_U16, .clear = id_clear, .writer = partial_writer, .state = &base};
+    const raster_attachment_t view = {
+        .format = IMAGE_U16, .clear = raster_attachment_clear_u16, .writer = partial_writer, .state = &base};
     const raster_attachment_t* one[] = {&view};
     draw(rig_open(one, 1));
 }
@@ -765,7 +796,7 @@ test_split_feedback_preserves_pixels_and_null_uses_even_rows(void) {
     split_rows_t rows = {0};
     const uint32_t factor = 1;
     const raster_attachment_t tags = {
-        .format = IMAGE_U16, .clear = id_clear, .writer = id_writer, .state = (void*)&factor};
+        .format = IMAGE_U16, .clear = raster_attachment_clear_u16, .writer = id_writer, .state = (void*)&factor};
     const raster_attachment_t attachment = {.format = IMAGE_U16, .clear = split_clear, .state = &rows};
     const raster_attachment_t* attached[] = {&attachment, &tags};
     raster_rig_t* r = rig_open(attached, 2);
@@ -905,6 +936,7 @@ run_raster_attachment_suite(void) {
     RUN_TEST(test_cluster_values_and_constant_writers);
     RUN_TEST(test_meshlet_ranges_restart_each_draw_and_show_empty_as_clear);
     RUN_TEST(test_copies_share_a_hue_and_a_shape_drawn_once_is_grey);
+    RUN_TEST(test_copies_take_their_first_instance_and_each_shape_its_own_id);
     RUN_TEST(test_depth_and_tiles_rows_use_no_scratch);
     RUN_TEST(test_writer_slot_is_zeroed_before_each_hook);
     RUN_TEST(test_same_view_survives_frames_and_contexts_own_their_states);
