@@ -26,18 +26,23 @@ flowchart LR
 |---|---|---|---|---|
 | Scene and camera | 0 | the scene's pack → this frame's instances and view | part of `frame.rest` | [Scene-Manager.md](../scene/Scene-Manager.md#each-frame), [Camera.md](../scene/Camera.md) |
 | Render size | 0 | recent frames' cost, or the census → render width and height | part of `frame.rest` | [Dynamic-Resolution.md](Dynamic-Resolution.md) |
-| Cull | 0 | node and cluster bounds, the camera → kept clusters | `r3d.cull`, or `r3d.census` when the size is predicted | [Mesh-Rendering.md](../Mesh-Rendering.md#the-cull-seen) |
+| Cull | 0 | node and cluster bounds, the camera → kept clusters | `r3d.cull`, or `r3d.census` when the size is predicted | [Culling.md](Culling.md) |
 | Transform | both, by cluster share | kept clusters, the lens → screen vertices, each cluster's rows | `r3d.transform` | [Mesh-Rendering.md](../Mesh-Rendering.md#on-both-cores) |
-| Clip and span fill | both, by row share | triangles → colour, depth, each attachment's pixels | `r3d.draw` | [Mesh-Rendering.md](../Mesh-Rendering.md#coverage-and-small-triangles) |
-| Resolve | both, disjoint rows | depth, an attachment's pixels → its map; only when a view's attachment resolves | `r3d.resolve` | [Mesh-Rendering.md](../Mesh-Rendering.md#attachments) |
-| View modes | both | depth, an attachment → colour; development builds | `r3d.show` | [Mesh-Rendering.md](../Mesh-Rendering.md#view-modes) |
+| Clip and span fill | both, by row share | triangles → colour, depth, each attachment's pixels | `r3d.draw` | [Coverage.md](Coverage.md), [Culling.md](Culling.md#per-triangle) |
+| Resolve | both, disjoint rows | depth, an attachment's pixels → its map; only when a view's attachment resolves | `r3d.resolve` | [Attachments.md](Attachments.md#attachments) |
+| View modes | both | depth, an attachment → colour; development builds | `r3d.show` | [View-Modes.md](View-Modes.md) |
 | Compose and upscale | both, by row share | the picture → the framebuffer, or a half picture | `r3d.upscale` | [gfx/Targets-and-Modes.md](../../gfx/Targets-and-Modes.md#expanded-frames) |
 | Frame generation | both | the last picture and depth → a warped frame between renders | its own rows | [Frame-Generation.md](Frame-Generation.md) |
 | Present | 1 | the framebuffer's dirty rows, or a half picture doubled → the panel | `present.wait` | [gfx/Present.md](../../gfx/Present.md#present-what-gets-sent) |
 
 | Page | Covers |
 |---|---|
-| [Mesh-Rendering.md](../Mesh-Rendering.md) | The raster: one frame, the render context, both cores, depth, attachments, the cull, coverage and small fill, memory |
+| [Mesh-Rendering.md](../Mesh-Rendering.md) | The raster: one frame, the render context, both cores, memory |
+| [Culling.md](Culling.md) | Every cull stage in order, from the bake's visibility to the per-triangle tests, what each keeps and costs |
+| [Coverage.md](Coverage.md) | Which pixels a triangle fills, and small fill: cheaper draws for triangles a few pixels wide |
+| [Attachments.md](Attachments.md) | The depth buffer, and the extra per-pixel maps a draw can write: motion vectors, meshlet IDs |
+| [Overdraw.md](Overdraw.md) | The overdraw view: how many triangles reach each pixel, how to read it and what a layer costs |
+| [View-Modes.md](View-Modes.md) | Every development-build view at one pose, and the hooks a view row may carry |
 | [Dynamic-Resolution.md](Dynamic-Resolution.md) | The render size picked per frame to hold a budget: the stepped controller and the predictor |
 | [Frame-Generation.md](Frame-Generation.md) | Frames warped from the last render to the next camera pose, shown between renders |
 

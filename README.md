@@ -68,10 +68,12 @@ The firmware targets the Waveshare ESP32-S3-Touch-AMOLED-1.8 specifically. For a
 | Understand gravity estimation and input features | [Input docs](docs/input/README.md) |
 | Understand the frame loop and drawing path | [Firmware](docs/firmware/README.md), [Graphics](docs/gfx/README.md) |
 | Follow the sand simulation | [Sand docs](docs/sand/README.md), [Simulation](docs/sand/Sand-Simulation.md) |
+| Use portable packages and check their fast-path contracts | [Packages](docs/packages/README.md) |
 | Run or add tests | [Testing Guide](docs/testing/README.md) |
 | Work with fonts and controls | [Text and Fonts](docs/gfx/Text-and-Fonts.md), [UI Toolkit](docs/ui/README.md) |
 | Build, flash, test or drive the board with `autana` | [CLI guide](docs/cli/README.md), [board notes](docs/notes/README.md) |
 | Render, check or generate with the repository's tools | [Tools index](docs/tools/README.md) |
+| Estimate the board's current draw | [Power docs](docs/power/README.md), [Power budget](docs/power/Power-Budget.md) |
 | Play sounds or add one | [Audio docs](docs/audio/README.md), [Sound assets](docs/audio/Sound-Assets.md) |
 | Check build flags and C style | [Build Variants](docs/tools/Build-Variants.md), [C Style Guide](docs/c-style/README.md) |
 | Explore proposed work | [Rendering Roadmap](docs/plans/Autana-Rendering-Roadmap.md), [plans](docs/plans/README.md) |

@@ -52,7 +52,6 @@ __asm__(".section .rodata.gfx_pie_constants, \"a\"\n"
         "gfx_pie_green: .short 0x07E0\n"
         "gfx_pie_green_round: .short 0x0040\n"
         "gfx_pie_red_out: .short 0xF800\n"
-        ".text\n"
         /* Byte order, both ways: b gets a swapped and a gets b swapped (Lanes, below). */
         ".macro pie_swap a, b\n"
         "    ee.vunzip.8 \\a, \\b\n"
@@ -87,6 +86,7 @@ __asm__(".section .rodata.gfx_pie_constants, \"a\"\n"
         "    ee.andq \\rb, \\rb, q4\n"
         "    ee.orq \\rb, \\rb, \\other\n"
         ".endm\n"
+        ".section .text.gfx_quarter_select, \"ax\", @progbits\n"
         ".align 4\n"
         ".global gfx_quarter_select\n"
         ".type gfx_quarter_select, @function\n"
@@ -166,12 +166,14 @@ __asm__(".section .rodata.gfx_pie_constants, \"a\"\n"
         "    ee.vst.128.ip q3, a5, 16\n"
         "2:\n"
         "    retw.n\n"
-        ".size gfx_quarter_select, . - gfx_quarter_select\n"
-        /* gfx_quarter_spread works out 3 mine + rounding once for both sides, blends
-         * the left, then the right, swaps the pair back to big-endian at once, selects
-         * each against mine, and EE.VZIP.16 lays the two out as the panel row: a2
-         * mine, a3 left, a4 right, a5 keeps, a6 out, a7 steps; a8 to a14 constants
-         * and the right keeps. */
+        ".size gfx_quarter_select, . - gfx_quarter_select\n");
+
+/* gfx_quarter_spread works out 3 mine + rounding once for both sides, blends
+ * the left, then the right, swaps the pair back to big-endian at once, selects
+ * each against mine, and EE.VZIP.16 lays the two out as the panel row: a2
+ * mine, a3 left, a4 right, a5 keeps, a6 out, a7 steps; a8 to a14 constants
+ * and the right keeps. */
+__asm__(".section .text.gfx_quarter_spread, \"ax\", @progbits\n"
         ".global gfx_quarter_spread\n"
         ".type gfx_quarter_spread, @function\n"
         "gfx_quarter_spread:\n"

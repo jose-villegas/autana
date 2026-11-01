@@ -1,5 +1,6 @@
 """Plan and acquire board-local first-parent performance chains."""
 import argparse
+from collections import Counter
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 import hashlib
@@ -24,7 +25,8 @@ from build_paths import remove_output
 import autana_config
 from capture import require_same_board
 from device_lock import normalise_board, short_id, write_json
-from layout_measure import autana_command, run_flash, run_stamped, REPORT_LINE, latest_build
+from layout_measure import autana_command, capture_for, run_flash, run_stamped, REPORT_LINE, latest_build
+from device_report import parse_suite_results, read_capture_text
 from device_capture import board_steps_completed
 from process_tree import (launch_process_tree, stop_process_tree, close_process_tree, install_console_interrupt_handler,
                           terminate_unwinds)
@@ -46,6 +48,11 @@ STEP_INDEX_DIGITS = 2
 FIRST_STEP_SECONDS = 23 * 60
 RESCAN_SECONDS = 60
 CAPTURE_FAILURE_LIMIT = 2
+# A lane fails on these step outcomes and these self-test outcomes.
+FAILED_STEPS = ("build_failed", "capture_failed")
+FAILED_SELFTEST = ("failed", "incomplete")
+# How many of a self-test's failed tests a lane's failure names; its capture holds them all.
+LISTED_FAILURES = 10
 SELFTEST_ALLOWANCE_SECONDS = 120 * 60
 CAPTURE_TIMEOUT_SECONDS = 1800
 BUILD_TIMEOUT_SECONDS = 3600
@@ -82,6 +89,27 @@ class StepResult:
     build_seconds: float = 0
     measure_seconds: float = 0
     report: str | None = None
+
+
+def lane_failures(manifest):
+    """Why a lane's night manifest failed, one line per cause: each failed step, then the self-test with the
+    first failed tests of the capture beside its report. Empty when the lane passed."""
+    lines = [f"step {step['position']} {step['commit'][:REPORT_SHA_DIGITS]}: {step['outcome']}"
+             for step in manifest["steps"] if step["outcome"] in FAILED_STEPS]
+    selftest = manifest["selftest"]
+    if selftest["outcome"] not in FAILED_SELFTEST:
+        return lines
+    lines.append(f"self-test {selftest['outcome']}: {selftest['report']}")
+    capture = capture_for(Path(selftest["report"]))
+    failures = parse_suite_results(read_capture_text(capture))[2] if capture.is_file() else []
+    lines += [f"self-test FAIL {name}" + (f": {message}" if message else "")
+              for name, message in failures[:LISTED_FAILURES]]
+    if len(failures) > LISTED_FAILURES:
+        lines.append(f"self-test: {len(failures) - LISTED_FAILURES} more failed tests in its capture")
+    elif capture.is_file() and not failures and selftest["outcome"] == "failed":
+        # board-steps.sh exits with the console tests' status when every self-test passed.
+        lines.append("self-test: every test in its capture passed, so the console tests failed")
+    return lines
 
 
 def image_hash(build_dir):
@@ -614,10 +642,15 @@ def plan(args, clock=None, request=None):
     for name, board in waiting.items():
         print(f"::notice::board {name} on {board.get('name', 'this machine')} {later}: {busy(board)}",
               file=sys.stderr)
+    # GPU night work can hold a night's plan past its cut-off; an override marked after it is not late.
+    late = discovered and marker < cutoff <= now
     if discovered:
-        args.boards = [short_id(board["board"]) for board in listing]
+        args.boards = [] if late else [short_id(board["board"]) for board in listing]
     args.boards = [board for board in args.boards if short_id(board) not in waiting]
-    if not args.boards:
+    if late:
+        print(f"::notice::plan: held past the last lane start ({cutoff.isoformat()}); the night runs no lane",
+              file=sys.stderr)
+    elif not args.boards:
         print(f"::notice::plan: no free board; the night {later}", file=sys.stderr)
     if discovered:
         # The self-test runs on one board of this machine, whichever is plugged in first.
@@ -647,14 +680,20 @@ def timeline(args):
         steps.append(dict(name="gpu " + record["workflow"], started=record["started"],
                           ended=record["ended"], outcome="failed" if record["exit"] else "passed"))
     lane_key = datetime.fromisoformat(planned["started"]).strftime(MARKER_KEY_FORMAT)
+    lanes = []
     for board in planned["lanes"]:
         record = read_night(args.data, board, lane_key)
         if record is None:
+            lanes.append(f"{board}: no night manifest\n\n")
             continue
-        failed = record["selftest"]["outcome"] in ("failed", "incomplete") or any(
-            step["outcome"] in ("build_failed", "capture_failed") for step in record["steps"])
+        failures = lane_failures(record)
         steps.append(dict(name="board " + board, started=record["started"], ended=record["ended"],
-                          outcome="failed" if failed else "passed" if record["ended"] else "running"))
+                          outcome="failed" if failures else "passed" if record["ended"] else "running"))
+        counts = Counter(step["outcome"] for step in record["steps"])
+        lanes.append(f"{board}: " + ", ".join(f"{key}={value}" for key, value in sorted(counts.items()))
+                     + f"\n\nSelf-test {board}: {record['selftest']['outcome']}; report: {record['selftest']['report']}\n\n"
+                     + (f"### Lane {board} failed\n\n" + "".join(f"- {line}\n" for line in failures) + "\n"
+                        if failures else ""))
     ended = [datetime.fromisoformat(step["ended"]) for step in steps if step["ended"]]
     free_at = max(ended, default=marker)
     write_json(args.data / "scoped" / "timeline" / (key + ".json"),
@@ -668,7 +707,7 @@ def timeline(args):
         line = (f"Night {marker:%Y-%m-%d}: marker {marker:%H:%M}, " + ", ".join(spans)
                 + f", host free {free_at.astimezone():%H:%M} ({hours}h {minutes:02d}min after the marker)\n")
         with args.summary.open("a", encoding="utf-8") as summary:
-            summary.write(line)
+            summary.write("".join(lanes) + line)
 
 
 def lane_of(plan, board):
@@ -738,8 +777,10 @@ def main():
     with terminate_unwinds():
         results = run_chain(steps, args)
     manifest = read_last_night(args.data, short_id(args.board))
-    return int(any(result.outcome in ("build_failed", "capture_failed") for result in results)
-               or manifest["selftest"]["outcome"] in ("failed", "incomplete"))
+    failures = lane_failures(manifest)
+    for line in failures:
+        print(f"::error::lane {short_id(args.board)}: {line}", file=sys.stderr)
+    return int(bool(failures))
 
 
 if __name__ == "__main__":

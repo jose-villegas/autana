@@ -22,6 +22,7 @@
 #include "math/linear/transformf.h"
 #include "math/linear/transformx.h"
 #include "math/linear/vec_convert.h"
+#include "math/scalar/float_bits.h"
 #include "math/scalar/math_const.h"
 #include "math/scalar/mathf.h"
 #include "math/scalar/mathi.h"
@@ -709,18 +710,36 @@ test_a_vec3_from_a_vec2_and_z_keeps_every_component_for_every_number_type(void) 
     }
 }
 
-static uint32_t
-float_bits(float value) {
-    uint32_t bits;
-    memcpy(&bits, &value, sizeof bits);
-    return bits;
-}
+static void
+test_float_bits_preserve_special_values(void) {
+    static const struct {
+        uint32_t bits;
+        float value;
+    } cases[] = {
+        {UINT32_C(0x00000000), 0.0F},         {UINT32_C(0x80000000), -0.0F},
+        {UINT32_C(0x3f800000), 1.0F},         {UINT32_C(0xbf800000), -1.0F},
+        {UINT32_C(0x7f800000), INFINITY},     {UINT32_C(0xff800000), -INFINITY},
+        {UINT32_C(0x00000001), FLT_TRUE_MIN}, {UINT32_C(0x007fffff), FLT_MIN - FLT_TRUE_MIN},
+        {UINT32_C(0x00800000), FLT_MIN},      {UINT32_C(0x7f7fffff), FLT_MAX},
+    };
 
-static float
-float_from_bits(uint32_t bits) {
-    float value;
-    memcpy(&value, &bits, sizeof value);
-    return value;
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        TEST_ASSERT_EQUAL_HEX32(cases[i].bits, mathf_bits(cases[i].value));
+        const float round_trip = mathf_from_bits(mathf_bits(cases[i].value));
+        TEST_ASSERT_EQUAL_MEMORY(&cases[i].value, &round_trip, sizeof round_trip);
+        const float decoded = mathf_from_bits(cases[i].bits);
+        TEST_ASSERT_EQUAL_MEMORY(&cases[i].value, &decoded, sizeof decoded);
+    }
+    static const uint32_t nan_payloads[] = {UINT32_C(0x7fc12345), UINT32_C(0xffc54321)};
+    for (size_t i = 0; i < sizeof nan_payloads / sizeof nan_payloads[0]; i++) {
+        float value;
+        /* memcpy is the independent reference for the bit-transfer helpers. */
+        memcpy(&value, &nan_payloads[i], sizeof value);
+        TEST_ASSERT_TRUE(isnan(value));
+        TEST_ASSERT_EQUAL_HEX32(nan_payloads[i], mathf_bits(value));
+        const float round_trip = mathf_from_bits(mathf_bits(value));
+        TEST_ASSERT_EQUAL_MEMORY(&value, &round_trip, sizeof value);
+    }
 }
 
 #define RECIP_OCTAVES           20
@@ -795,8 +814,8 @@ reciprocal_is_exact(float x, uint32_t* maximum, double* bins) {
     const float got = mathf_recip(x);
     const float ulp = fabsf(nextafterf(want, got) - want);
     TEST_ASSERT_FLOAT_WITHIN(MATHF_RECIP_ULP_LIMIT * ulp, want, got);
-    const uint32_t a = float_bits(want);
-    const uint32_t b = float_bits(got);
+    const uint32_t a = mathf_bits(want);
+    const uint32_t b = mathf_bits(got);
     const uint32_t error = a > b ? a - b : b - a;
     if (error > *maximum) {
         *maximum = error;
@@ -858,7 +877,7 @@ test_the_reciprocal_is_within_an_ulp_of_the_quotient_and_usually_on_it(void) {
 static inline __attribute__((always_inline)) void
 recip_approx_measure(uint32_t input, double* maximum, double* bins) {
     for (int sign = -1; sign <= 1; sign += 2) {
-        const float value = (float)sign * float_from_bits(input);
+        const float value = (float)sign * mathf_from_bits(input);
         const double exact = 1.0 / (double)value;
         const double relative = fabs((double)mathf_recip_approx(value) - exact) / fabs(exact);
         *maximum = fmax(*maximum, relative);
@@ -1193,7 +1212,7 @@ assert_repeat_and_wrap_bits(float v, float len) {
     if (isnan(expected)) {
         TEST_ASSERT_TRUE(isnan(actual));
     } else {
-        TEST_ASSERT_UINT32_WITHIN(MATHF_WRAP_ULP_LIMIT, float_bits(expected), float_bits(actual));
+        TEST_ASSERT_UINT32_WITHIN(MATHF_WRAP_ULP_LIMIT, mathf_bits(expected), mathf_bits(actual));
     }
     const float lo = -len;
     const float hi = len;
@@ -1203,7 +1222,7 @@ assert_repeat_and_wrap_bits(float v, float len) {
     if (isnan(expected_wrap)) {
         TEST_ASSERT_TRUE(isnan(actual_wrap));
     } else {
-        TEST_ASSERT_UINT32_WITHIN(MATHF_WRAP_ULP_LIMIT, float_bits(expected_wrap), float_bits(actual_wrap));
+        TEST_ASSERT_UINT32_WITHIN(MATHF_WRAP_ULP_LIMIT, mathf_bits(expected_wrap), mathf_bits(actual_wrap));
     }
 }
 
@@ -1278,9 +1297,9 @@ test_mathf_repeat_and_wrap_reference_sweep(void) {
         uint32_t state = seeds[seed];
         for (int sample = 0; sample < REPEAT_SWEEP_SAMPLES; sample++) {
             state = state * NUMBER_LCG_MULTIPLIER + NUMBER_LCG_INCREMENT;
-            const float v = float_from_bits(state);
+            const float v = mathf_from_bits(state);
             state = state * NUMBER_LCG_MULTIPLIER + NUMBER_LCG_INCREMENT;
-            const float len = float_from_bits(state & REPEAT_MAGNITUDE_MASK);
+            const float len = mathf_from_bits(state & REPEAT_MAGNITUDE_MASK);
             count += assert_repeat_sample(v, len);
         }
     }
@@ -1369,11 +1388,11 @@ test_rsqrt_tiny_inputs_preserve_exact_bits(void) {
     const float inputs[] = {
         0.0F, FLT_TRUE_MIN, FLT_MIN / 2.0F, nextafterf(FLT_MIN, 0.0F), FLT_MIN, nextafterf(FLT_MIN, 1.0F)};
     for (size_t i = 0; i < sizeof inputs / sizeof inputs[0]; i++) {
-        const float x = float_from_bits(float_bits(inputs[i]));
-        const uint32_t expected_bits = float_bits(1.0F / sqrtf(x));
-        const uint32_t actual_bits = float_bits(mathf_rsqrt(x));
+        const float x = mathf_from_bits(mathf_bits(inputs[i]));
+        const uint32_t expected_bits = mathf_bits(1.0F / sqrtf(x));
+        const uint32_t actual_bits = mathf_bits(mathf_rsqrt(x));
         if (x == 0.0F) {
-            TEST_ASSERT_EQUAL_HEX32(float_bits(INFINITY), actual_bits);
+            TEST_ASSERT_EQUAL_HEX32(mathf_bits(INFINITY), actual_bits);
         }
         const uint32_t scalar_error =
             actual_bits > expected_bits ? actual_bits - expected_bits : expected_bits - actual_bits;
@@ -1386,7 +1405,7 @@ test_rsqrt_tiny_inputs_preserve_exact_bits(void) {
             v.y = sqrtf(FLT_TRUE_MIN);
         }
         const float d = vec3f_dot(v, v);
-        TEST_ASSERT_EQUAL_HEX32(float_bits(x), float_bits(d));
+        TEST_ASSERT_EQUAL_HEX32(mathf_bits(x), mathf_bits(d));
         const float k = 1.0F / sqrtf(d);
         const vec3f_t expected = vec3f_scale(v, k);
         const vec3f_t actual = vec3f_normalize(v);
@@ -1398,7 +1417,7 @@ test_rsqrt_tiny_inputs_preserve_exact_bits(void) {
         if (d < FLT_MIN) {
             TEST_ASSERT_EQUAL_MEMORY(&expected, &actual, sizeof actual);
             TEST_ASSERT_EQUAL_MEMORY(&expected, &divided, sizeof divided);
-            TEST_ASSERT_EQUAL_HEX32(float_bits(k), float_bits(quotient));
+            TEST_ASSERT_EQUAL_HEX32(mathf_bits(k), mathf_bits(quotient));
             TEST_ASSERT_EQUAL_MEMORY(&want, &got, sizeof got);
         } else {
             const float expected_components[] = {expected.x, expected.y, expected.z, expected.x, expected.y, expected.z,
@@ -1406,8 +1425,8 @@ test_rsqrt_tiny_inputs_preserve_exact_bits(void) {
             const float actual_components[] = {actual.x, actual.y, actual.z, divided.x, divided.y, divided.z,
                                                quotient, got.x,    got.y,    got.z,     got.w};
             for (size_t c = 0; c < sizeof expected_components / sizeof expected_components[0]; c++) {
-                const uint32_t a = float_bits(expected_components[c]);
-                const uint32_t b = float_bits(actual_components[c]);
+                const uint32_t a = mathf_bits(expected_components[c]);
+                const uint32_t b = mathf_bits(actual_components[c]);
                 TEST_ASSERT_LESS_OR_EQUAL_UINT32(MATHF_NORMALIZE_ULP_LIMIT, a > b ? a - b : b - a);
             }
         }
@@ -1471,14 +1490,14 @@ assert_rsqrt_integer_bracket_midpoints(void) {
                                     : RSQRT_MANTISSA_STRIDE;
         for (uint32_t mantissa = 0; mantissa < FLOAT_SIGNIFICAND_ONE; mantissa += stride) {
             const uint32_t input = ((uint32_t)exponent << FLOAT_FRACTION_BITS) | mantissa;
-            const double reference = 1.0 / sqrt((double)float_from_bits(input));
+            const double reference = 1.0 / sqrt((double)mathf_from_bits(input));
             const float rounded = (float)reference;
             const float adjacent = nextafterf(rounded, reference < (double)rounded ? 0.0F : INFINITY);
             const double midpoint = ((double)rounded + (double)adjacent) * 0.5;
             if (fabs(reference - midpoint) <= RSQRT_DOUBLE_TIE_MARGIN * DBL_EPSILON * reference) {
                 continue;
             }
-            const uint32_t expected = float_bits(rounded);
+            const uint32_t expected = mathf_bits(rounded);
             for (int offset = -RSQRT_SEED_RADIUS; offset <= RSQRT_SEED_RADIUS; offset++) {
                 TEST_ASSERT_EQUAL_HEX32(expected, rsqrt_reference_bits(input, expected + offset));
             }
@@ -1491,14 +1510,14 @@ static void
 test_rsqrt_integer_bracket_rounds_exact_roots_and_midpoints(void) {
     static const float inputs[] = {1.0F, 2.0F, 4.0F, FLT_MIN, FLT_MAX};
     for (size_t i = 0; i < sizeof inputs / sizeof inputs[0]; i++) {
-        const uint32_t guess = float_bits(1.0F / sqrtf(inputs[i]));
-        const uint32_t result = rsqrt_reference_bits(float_bits(inputs[i]), guess);
+        const uint32_t guess = mathf_bits(1.0F / sqrtf(inputs[i]));
+        const uint32_t result = rsqrt_reference_bits(mathf_bits(inputs[i]), guess);
 #ifndef ESP_PLATFORM
         const float exact = (float)(1.0 / sqrt((double)inputs[i]));
-        TEST_ASSERT_EQUAL_HEX32(float_bits(exact), result);
+        TEST_ASSERT_EQUAL_HEX32(mathf_bits(exact), result);
 #endif
-        TEST_ASSERT_EQUAL_HEX32(result, rsqrt_reference_bits(float_bits(inputs[i]), guess - 1));
-        TEST_ASSERT_EQUAL_HEX32(result, rsqrt_reference_bits(float_bits(inputs[i]), guess + 1));
+        TEST_ASSERT_EQUAL_HEX32(result, rsqrt_reference_bits(mathf_bits(inputs[i]), guess - 1));
+        TEST_ASSERT_EQUAL_HEX32(result, rsqrt_reference_bits(mathf_bits(inputs[i]), guess + 1));
     }
 #ifndef ESP_PLATFORM
     assert_rsqrt_integer_bracket_midpoints();
@@ -1514,8 +1533,8 @@ test_rsqrt_integer_bracket_rounds_exact_roots_and_midpoints(void) {
 
 static uint32_t
 rsqrt_component_error(float expected, float actual) {
-    const uint32_t a = float_bits(expected);
-    const uint32_t b = float_bits(actual);
+    const uint32_t a = mathf_bits(expected);
+    const uint32_t b = mathf_bits(actual);
     if (expected == actual) {
         return 0;
     }
@@ -1598,16 +1617,16 @@ test_rsqrt_normalize_and_nlerp_component_sweeps(void) {
 
 static inline __attribute__((always_inline)) void
 rsqrt_measure(uint32_t input, uint32_t* max_ulp, float* max_relative, double* bins) {
-    const float value = float_from_bits(input);
-    const uint32_t got = float_bits(mathf_rsqrt(value));
+    const float value = mathf_from_bits(input);
+    const uint32_t got = mathf_bits(mathf_rsqrt(value));
     const uint32_t reference = rsqrt_reference_bits(input, got);
     const uint32_t error = got > reference ? got - reference : reference - got;
     if (error > *max_ulp) {
         *max_ulp = error;
     }
     const float approximate = mathf_rsqrt_approx(value);
-    const float lower = float_from_bits(reference - 1);
-    const float upper = float_from_bits(reference + 1);
+    const float lower = mathf_from_bits(reference - 1);
+    const float upper = mathf_from_bits(reference + 1);
     const float relative =
         nextafterf(fmaxf(fabsf(approximate / lower - 1.0F), fabsf(approximate / upper - 1.0F)) + FLT_EPSILON, INFINITY);
     if (relative > *max_relative) {
@@ -1619,7 +1638,7 @@ rsqrt_measure(uint32_t input, uint32_t* max_ulp, float* max_relative, double* bi
     if (refine_ulp || refine_relative) {
         const double exact = 1.0 / sqrt((double)value);
         if (refine_ulp) {
-            bins[bin] = fmax(bins[bin], fast_path_fractional_ulp(float_from_bits(got), exact));
+            bins[bin] = fmax(bins[bin], fast_path_fractional_ulp(mathf_from_bits(got), exact));
         }
         if (refine_relative) {
             bins[FAST_PATH_RSQRT_BINS + bin] =
@@ -2013,6 +2032,7 @@ suite_math_numbers(void) {
     RUN_TEST(test_mathx_lerp);
     RUN_TEST(test_float_ranges_with_decimal_lengths);
     RUN_TEST(test_mathf_repeat);
+    RUN_TEST(test_float_bits_preserve_special_values);
     RUN_TEST(test_mathf_repeat_and_wrap_reference_edges);
     RUN_TEST(test_mathf_repeat_and_wrap_reference_sweep);
     RUN_TEST(test_mathf_repeat_and_wrap_near_quotient_guard);

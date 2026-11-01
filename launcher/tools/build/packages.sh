@@ -32,7 +32,10 @@ package_includes() {
 }
 
 testkit_includes() {
-    printf -- '-I %s/packages/testkit/include -I %s/packages/testkit/unity ' "$1" "$1"
+    for testkit_dir in $(package_reachable "$1/packages/testkit"); do
+        [ -d "$testkit_dir/include" ] && printf -- '-I %s ' "$testkit_dir/include"
+    done
+    printf -- '-I %s/packages/testkit/unity ' "$1"
 }
 
 package_sources() {

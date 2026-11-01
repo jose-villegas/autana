@@ -107,9 +107,9 @@ and union; any crossed axis is empty.
 | `P_half_extent(b)` | half size (`f`) | $`e = 0.5(hi-lo)`$ |
 | `P_segment_hit(b, a, c, &t)` | slab entry in `[0,1]` (`f`); inside starts at zero | $`v=c-a`$; intersect $`[0,1]`$ with each axis's $`[(lo_k-a_k)/v_k,(hi_k-a_k)/v_k]`$, sorted |
 | `P_outside_planes(b, planes, count, &mask)` | reject outside; clear wholly inside bits (`f`) | See [frustum](#frustum) |
-| `P_plane_distance_min(b, plane)` | the least signed distance of any point of `b` (`f`, `box3f_plane.h`) | $`n \cdot c + d - r`$ |
-| `P_plane_distance_max(b, plane)` | the greatest (`f`, `box3f_plane.h`) | $`n \cdot c + d + r`$ |
-| `P_plane_distance_min_inside(b, objective, constraint)` | the least `objective` where `constraint` $`\ge 0`$ (`f`, `box3f_plane.h`) | See [a box against a plane](#a-box-against-a-plane-box3f_planeh) |
+| `P_plane_distance_min(b, plane)` | the least signed distance of any point of `b` (`f`, `box3f.h`) | $`n \cdot c + d - r`$ |
+| `P_plane_distance_max(b, plane)` | the greatest (`f`, `box3f.h`) | $`n \cdot c + d + r`$ |
+| `P_plane_distance_min_inside(b, objective, constraint)` | the least `objective` where `constraint` $`\ge 0`$ (`f`, `box3f.h`) | See [a box against a plane](#a-box-against-a-plane) |
 | `box3f_from_box3s(b, scale)` | convert position ticks to float units | $`(lo\,scale,hi\,scale)`$ |
 
 Real queries use finite, nonempty bounds, except that `P_segment_hit`
@@ -119,9 +119,7 @@ Plane bits index the input array; `count` must fit an unsigned mask.
 The plane rows share a private `P_plane_radius(e, plane)`: how far a box of
 half extent $`e`$ spans along the normal, $`r = \sum_k \lvert n_k\rvert e_k`$.
 
-### A box against a plane (`box3f_plane.h`)
-
-`box3_plane_template.h` adds the plane rows of the table above.
+### A box against a plane
 
 `P_plane_distance_min_inside` solves a small linear programme: the least of
 a plane $`o`$ over the box's points where a plane $`g`$ is not negative.

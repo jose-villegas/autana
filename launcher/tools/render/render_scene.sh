@@ -13,7 +13,7 @@
 # Declare before sourcing:
 #
 #   scene_name      output stem, and what the binary reports as its own
-#   scene_sources   the firmware translation units to build besides gfx,
+#   scene_sources   the firmware translation units to build besides the host core,
 #                   which every scene gets, space or newline separated,
 #                   relative to launcher/
 #   scene_renders   one render per line: <label>|<arguments>|<width>x<height>
@@ -39,17 +39,18 @@
 #                   --deps compiles nothing: it prints `flags` and the compile
 #                   flags, then the compiler's -MM list (sources and project
 #                   headers; -MM omits system headers).
-#   scene_renderer  OPTIONAL, 1 links the renderer (tools/build/renderer.sh).
+#   scene_renderer  OPTIONAL, 1 links autana::render_host, else render_host_core.
 #   scene_ui        OPTIONAL, 1 links the shared host UI sources.
 #   scene_includes  OPTIONAL extra -I directories, relative to launcher/
 #   scene_assets    OPTIONAL folders, relative to launcher/, whose asset roots
 #                   the scene reads as packs: build_pack.py writes them to
-#                   assets/ in the output folder, the store's sources join the
-#                   build, and that folder is built in as the default, so a
+#                   assets/ in the output folder, built in as the default, so a
 #                   revision comparison running each build alone finds its
 #                   own; AUTANA_ASSET_DIR still overrides it per run.
 #   scene_asset_file OPTIONAL runtime root file, overriding scene_assets;
 #                   --asset-file PATH sets it when building a viewer.
+#   scene_provider  OPTIONAL provider symbol; defaults to ${scene_name}_provider.
+#                   Empty builds render_host.c without main, as a library.
 #   scene_defines   OPTIONAL extra compiler flags
 #   scene_out_dir   OPTIONAL; the default is results/render/<name> under the
 #                   nearest tools/ folder above the scene script
@@ -100,7 +101,6 @@ render_scene_run() {
 render_scene_packs() {
     # shellcheck source=../../../scripts/lib/python.sh
     . "$_rs_launcher/../scripts/lib/python.sh"
-    . "$_rs_launcher/../scripts/lib/native_path.sh"
     _rs_python=$(find_python) || return 1
     _rs_assets="$scene_out_dir/assets"
     set --
@@ -118,7 +118,6 @@ render_scene_packs() {
         return 1
     fi
     _rs_assets=$(printf '%s\n' "$_rs_assets" | to_native)
-    _rs_asset_flags="-DASSET_DIR_DEFAULT_PATH=\"$_rs_assets\""
 }
 
 # Everything before the first render: the declarations checked, the options
@@ -137,6 +136,7 @@ render_scene_build() {
     : "${scene_asset_file:=}"
     : "${scene_defines:=}"
     : "${scene_pin:=1}"
+    scene_provider=${scene_provider-${scene_name}_provider}
 
     # launcher/, wherever this scene lives: beside tools/render/render_scene.sh, or
     # further down in an app's own tools/. Found by walking up to the folder
@@ -152,10 +152,6 @@ render_scene_build() {
         return 1
     fi
     _rs_tools="$_rs_launcher/tools"
-    if [ "${scene_renderer:-0}" = 1 ]; then
-        . "$_rs_tools/build/renderer.sh"
-        scene_sources="$scene_sources $(renderer_sources "$_rs_launcher")"
-    fi
     if [ "${scene_ui:-0}" = 1 ]; then
         . "$_rs_tools/build/ui_sources.sh"
         scene_sources="$scene_sources $UI_SOURCES"
@@ -193,12 +189,17 @@ render_scene_build() {
 
     # shellcheck source=../build/find_cc.sh
     . "$_rs_tools/build/find_cc.sh"
-    # shellcheck source=../build/packages.sh
-    . "$_rs_tools/build/packages.sh"
     if ! _rs_cc=$(find_cc); then
         echo "No C compiler found." >&2
         echo "  Windows: winget install BrechtSanders.WinLibs.POSIX.UCRT" >&2
         echo "  Debian:  sudo apt install build-essential" >&2
+        return 1
+    fi
+
+    if ! command -v cmake > /dev/null 2>&1; then
+        echo "No CMake found." >&2
+        echo "  Windows: winget install Kitware.CMake" >&2
+        echo "  Debian:  sudo apt install cmake" >&2
         return 1
     fi
 
@@ -208,62 +209,59 @@ render_scene_build() {
         _rs_bin="$_rs_bin.exe"
     fi
 
-    # test/stubs is the tree's one home for a host stand-in of an IDF
-    # header, shared with check_app_sources.sh: each declares exactly what
-    # the real header is used for, so a scene reaching a call nothing has
-    # stubbed fails at the link rather than compiling into something else.
-    # 64-bit pointers and 8-byte alignment make every command bigger on the host.
-    _rs_flags="-I $_rs_launcher/main $(package_includes "$_rs_launcher")"
-    _rs_flags="$_rs_flags -I $_rs_launcher/components/microui/include"
-    _rs_flags="$_rs_flags -I $_rs_tools/render -I $_rs_launcher/test -I $_rs_launcher/test/stubs"
-    for _rs_inc in $scene_includes; do
-        _rs_flags="$_rs_flags -I $_rs_launcher/$_rs_inc"
-    done
-
-    _rs_files="$_rs_tools/render/render_host.c $_rs_tools/render/render_video.c $_rs_tools/render/render_watch.c"
-    # The host takes --set and --tunables: the registry and its console lines.
-    _rs_files="$_rs_files $_rs_launcher/main/core/tune.c $_rs_launcher/main/console/console_tune.c"
-    # Every scene uses drawing and presentation, excluding device-only backends.
-    _rs_files="$_rs_files $(find "$_rs_launcher/main/gfx" "$_rs_launcher/main/draw" -name '*.c' ! -name '*_device.c' | sort | tr '
-' ' ')"
-    # And through the packages (tools/build/packages.sh), all of each.
-    _rs_files="$_rs_files $(package_sources "$_rs_launcher" | tr '
-' ' ')"
+    . "$_rs_launcher/../scripts/lib/native_path.sh"
+    _rs_assets=
+    if [ "$_rs_deps" = 0 ] && { [ -n "$scene_assets" ] || [ -n "$scene_asset_file" ]; }; then
+        render_scene_packs || return 1
+    fi
+    _rs_cmake_sources=
     for _rs_src in $scene_sources; do
-        _rs_files="$_rs_files $_rs_launcher/$_rs_src"
+        _rs_cmake_sources="$_rs_cmake_sources$(to_native "$_rs_launcher/$_rs_src");"
     done
-    _rs_asset_flags=
-    if [ -n "$scene_assets" ] || [ -n "$scene_asset_file" ]; then
-        for _rs_src in asset/asset_pack.c asset/asset_table.c asset/asset_file.c asset/asset_store.c asset/asset_store_file.c; do
-            _rs_files="$_rs_files $_rs_launcher/main/$_rs_src"
-        done
-        if [ "$_rs_deps" = 0 ]; then
-            render_scene_packs || return 1
-        fi
+    _rs_cmake_includes=
+    for _rs_inc in $scene_includes; do
+        _rs_cmake_includes="$_rs_cmake_includes$(to_native "$_rs_launcher/$_rs_inc");"
+    done
+    _rs_generator="Unix Makefiles"
+    if command -v ninja > /dev/null 2>&1; then
+        _rs_generator=Ninja
+    elif [ "${OS:-}" = "Windows_NT" ]; then
+        _rs_generator="MinGW Makefiles"
     fi
-    _rs_cflags="-std=c11 -Wall -Wextra -ffp-contract=off -Wno-unused-parameter -Wno-unused-function -Wno-unused-variable -O1 -g"
-    _rs_ldflags="-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -lm"
+    _rs_build="$scene_out_dir/build"
     if [ "$_rs_deps" = 1 ]; then
-        echo "flags $_rs_cflags $_rs_flags $scene_defines $_rs_ldflags"
-        # shellcheck disable=SC2086
-        "$_rs_cc" -MM $_rs_cflags $_rs_flags $scene_defines $_rs_files
-        return $?
+        _rs_build=$(mktemp -d) || return 1
     fi
-
-    # -lm LAST, after the sources, because GNU ld resolves left to right and
-    # would otherwise discard libm before seeing who needed it. A scene
-    # that reaches expf() or lroundf() links clean on the Windows toolchains
-    # this repo also builds on, which fold those into libc, and fails only on
-    # Linux without it. Harmless
-    # where libm is already part of libc; run_tests.sh ends its own link
-    # line the same way. The --wrap pairs hand every scene allocation to
-    # render_watch.c.
     set --
-    if [ -n "$_rs_asset_flags" ]; then
-        set -- "$_rs_asset_flags"
+    if [ ! -f "$_rs_build/CMakeCache.txt" ]; then
+        set -- -G "$_rs_generator"
     fi
-    # shellcheck disable=SC2086
-    "$_rs_cc" $_rs_cflags $_rs_flags $scene_defines "$@" $_rs_files -o "$_rs_bin" $_rs_ldflags || return 1
+    _rs_configure_log="$_rs_build/cmake.log"
+    mkdir -p "$_rs_build"
+    if ! cmake -S "$(to_native "$_rs_tools/render/scene")" -B "$(to_native "$_rs_build")" \
+        "$@" "-DCMAKE_C_COMPILER=$(to_native "$(command -v "$_rs_cc")")" \
+        -DCMAKE_BUILD_TYPE= "-DSCENE_NAME=$scene_name" \
+        "-DSCENE_OUT_DIR=$(to_native "$(CDPATH= cd -- "$scene_out_dir" && pwd)")" \
+        "-DSCENE_SOURCES=$_rs_cmake_sources" "-DSCENE_INCLUDES=$_rs_cmake_includes" \
+        "-DSCENE_RENDERER=${scene_renderer:-0}" "-DSCENE_DEFINES=$scene_defines" "-DSCENE_PROVIDER=$scene_provider" \
+        "-DSCENE_ASSET_DIR=${_rs_assets:-}" > "$_rs_configure_log" 2>&1; then
+        cat "$_rs_configure_log" >&2
+        [ "$_rs_deps" = 0 ] || rm -rf "$_rs_build"
+        return 1
+    fi
+    if [ "$_rs_deps" = 1 ]; then
+        . "$_rs_launcher/../scripts/lib/python.sh"
+        _rs_python=$(find_python) || { rm -rf "$_rs_build"; return 1; }
+        _rs_status=0
+        "$_rs_python" "$(to_native "$_rs_tools/render/scene/dependencies.py")" "$(to_native "$_rs_build")" "$_rs_cmake_sources" || _rs_status=$?
+        rm -rf "$_rs_build"
+        return "$_rs_status"
+    fi
+    _rs_build_log="$_rs_build/build.log"
+    _rs_status=0
+    cmake --build "$(to_native "$_rs_build")" --target render_scene --parallel > "$_rs_build_log" 2>&1 || _rs_status=$?
+    awk '!/^\[[[:space:][:digit:]%/]+\]/ && !/^-- / && !/^Consolidate compiler generated dependencies of target / && !/^ninja: / && !/^[[:alnum:]_-]*make(\[[0-9]+\])?:/' "$_rs_build_log" >&2
+    return "$_rs_status"
 }
 
 render_scene_render() {
