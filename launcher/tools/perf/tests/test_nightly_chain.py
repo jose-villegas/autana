@@ -1260,7 +1260,7 @@ class NightlyTests(unittest.TestCase):
         tomorrow = self.queue_night(["20E8"], 1, day=1)
         self.assertEqual(self.new_commits(tonight) + self.new_commits(tomorrow), self.commits[1:3])
         # The record folder is not a board.
-        self.assertEqual(list(lnt.last_nights(self.args.data)), ["20E8"])
+        self.assertEqual(list(lnt.last_manifests(self.args.data)), ["20E8"])
 
     def test_an_unsized_night_deals_each_board_an_even_run(self):
         boards = ("20E8", "2124", "A308")
@@ -1720,8 +1720,6 @@ class NightlyTests(unittest.TestCase):
                          dict(last_attempted="missing", steps=[]))
         with self.assertRaisesRegex(ValueError, "last_attempted"):
             chain.night_queue(self.repo, "HEAD", self.args.data)
-        with self.assertRaises(ValueError):
-            chain.rerange(self.repo, "HEAD", [], max_steps=-1)
         chain.git(self.repo, "checkout", "-qb", "off", self.commits[0])
         chain.git(self.repo, "commit", "--allow-empty", "-qm", "off history")
         off = chain.git(self.repo, "rev-parse", "HEAD")
@@ -1767,7 +1765,8 @@ class NightlyTests(unittest.TestCase):
         suite = ["--suite", "suite", "-", "-"]
         for command, token in ((base + suite, ""), (base, "token"),
                                (base + suite + ["--selftest-at", "01:00"], "token"),
-                               (base + suite + ["--lane", "1/2"], "token")):
+                               (base + suite + ["--lane", "1/2"], "token"),
+                               (base + suite + ["--max-steps", "-1"], "token")):
             with patch.object(sys, "argv", command), patch.dict(os.environ, _AUTANA_DEVICE_LOCK_TOKEN=token), \
                     patch.object(chain, "run_chain", return_value=[]), \
                     patch.object(chain, "read_last_night", return_value={"steps": [], "selftest": {"outcome": "not_run"}}), \
