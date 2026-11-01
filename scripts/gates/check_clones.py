@@ -11,7 +11,7 @@ checking new pairs. MIN_TOKENS is 80: longer copied helpers and test setup
 are detected, including renamed identifiers and changed literal values.
 A shorter Python function pairs with another whose body is the same up to
 the names it binds (see function_shape). Literal-only fragments and exact self-matches
-are excluded. Literal-only object-like #defines are blanked on both sides
+are excluded. Literal-only and renaming object-like #defines are blanked on both sides
 before matching, preserving line numbers; a declaration statement is written
 one declarator per statement and parentheses after no name, `)` or `]` are
 blanked, so neither a split nor an added grouping counts as copying. The pinned
@@ -92,11 +92,12 @@ INCLUDE_DIRECTIVE = re.compile(r"(?m)^[ \t]*#[ \t]*include\b(?:[^\n]*\\\n)*[^\n]
 OBJECT_DEFINE = re.compile(r"(?m)^[ \t]*#[ \t]*define[ \t]+[A-Za-z_]\w*[ \t]+((?:[^\n]*\\\n)*[^\n]*)")
 C_LITERAL = (r'''(?:[+-]?(?:0[xX][0-9a-fA-F]+|\d+(?:\.\d*)?(?:[eE][+-]?\d+)?|'''
              r'''\.\d+(?:[eE][+-]?\d+)?)[uUlLfF]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')''')
-LITERAL_BODY = re.compile(rf"\s*(?:{C_LITERAL}|\{{\s*(?:{C_LITERAL}(?:\s*,\s*{C_LITERAL})*\s*,?)?\s*\}})\s*")
+# A define naming one identifier only renames it, as a test renames the code it includes.
+LITERAL_BODY = re.compile(rf"\s*(?:{C_LITERAL}|[A-Za-z_]\w*|\{{\s*(?:{C_LITERAL}(?:\s*,\s*{C_LITERAL})*\s*,?)?\s*\}})\s*")
 
 
 def literal_declaration(match):
-    """Blank a literal-only object define, keeping its newline count."""
+    """Blank a literal-only or renaming object define, keeping its newline count."""
     body = match[1].replace("\\\n", " ")
     body = re.sub(r"//[^\n]*|/\*.*?\*/", " ", body, flags=re.DOTALL)
     return "\n" * match[0].count("\n") if LITERAL_BODY.fullmatch(body) else match[0]
