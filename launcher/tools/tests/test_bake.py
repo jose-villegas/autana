@@ -2010,3 +2010,12 @@ class SkipUnlockedTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_reference_closure_traces_source_only():
+    files = {path.relative_to(bake.TOOLS).as_posix() for path in bake.stage_files("reference")}
+    assert "r3d/reference_render.py" in files
+    assert "r3d/mesh_source.py" in files
+    assert "r3d/simplify.py" not in files
+    assert "r3d/meshopt.py" not in files
+    assert not any(path.startswith("r3d/objects/") for path in files)
