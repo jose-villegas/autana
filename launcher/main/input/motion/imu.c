@@ -22,10 +22,10 @@
 #include "esp_rom_sys.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "input/motion/imu_bringup.h"
 #include "input/motion/imu_demand.h"
 #include "input/motion/imu_odr.h"
 #include "input/motion/imu_queue.h"
+#include "input/motion/imu_reset.h"
 
 static const char* TAG = "imu";
 
@@ -102,7 +102,7 @@ static imu_stats_t stats;
 #define QMI8658_I2C_HZ          400000
 #define QMI8658_TIMEOUT_MS      100
 
-/* Registers */
+/* Registers; the reset pair and its poll are in imu_reset.h. */
 #define REG_WHO_AM_I            0x00
 #define REG_REVISION            0x01
 #define REG_CTRL1               0x02
@@ -138,7 +138,6 @@ static imu_stats_t stats;
 #define FIFO_STATUS_FULL        0x80
 #define FIFO_COUNT_MSB_SHIFT    8
 #define FIFO_WORD_BYTES         2
-#define FIFO_STATUS_BYTES       2
 #define CTRL9_TIMEOUT_US        (100U * MATH_US_PER_MS)
 /* Section 5.10.1 specifies no minimum delay: poll once per I2C status transaction. */
 #define CTRL9_POLL_US           0U
@@ -166,18 +165,8 @@ read_regs(uint8_t reg, uint8_t* out, size_t len) {
 
 static bool
 wait_command(bool done) {
-    const int64_t deadline = timing_now_us() + CTRL9_TIMEOUT_US;
-    do {
-        uint8_t status;
-        if (!read_regs(REG_STATUSINT, &status, sizeof status)) {
-            return false;
-        }
-        if (((status & STATUSINT_CMD_DONE) != 0) == done) {
-            return true;
-        }
-        esp_rom_delay_us(CTRL9_POLL_US);
-    } while (timing_now_us() < deadline);
-    return false;
+    return imu_poll(read_regs, REG_STATUSINT, STATUSINT_CMD_DONE, done ? STATUSINT_CMD_DONE : 0, timing_now_us,
+                    esp_rom_delay_us, CTRL9_TIMEOUT_US, CTRL9_POLL_US);
 }
 
 /* Lewis He, SensorLib (MIT), SensorQMI8658.hpp writeCommand/configFIFO/readFromFifo:
@@ -278,7 +267,7 @@ imu_init(void) {
         return false;
     }
 
-    if (!imu_bringup(IMU_ODR_CODE, write_reg, read_regs, timing_now_us, esp_rom_delay_us, configure)) {
+    if (!imu_reset(write_reg, read_regs, timing_now_us, esp_rom_delay_us) || !configure(IMU_ODR_CODE)) {
         ESP_LOGE(TAG, "Reset or configuration failed");
         return false;
     }
@@ -371,8 +360,9 @@ imu_take_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t lost_before[IMU_FIFO_S
 
 /* Whole samples waiting, before read mode (section 8.8); false on a bus error or a partial sample. */
 static bool
-read_fifo_count(int* count, bool* overflowed, uint8_t status[FIFO_STATUS_BYTES]) {
-    if (!read_regs(REG_FIFO_SMPL_CNT, status, FIFO_STATUS_BYTES)) {
+read_fifo_count(int* count, bool* overflowed) {
+    uint8_t status[2];
+    if (!read_regs(REG_FIFO_SMPL_CNT, status, sizeof status)) {
         return false;
     }
     const int words = ((status[1] & FIFO_STATUS_COUNT_MSB) << FIFO_COUNT_MSB_SHIFT) | status[0];
@@ -383,13 +373,12 @@ read_fifo_count(int* count, bool* overflowed, uint8_t status[FIFO_STATUS_BYTES])
 }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
-/* autana-m9hqv: FIFO gyro z once sat near -508 dps for a whole boot while register reads were right.
- * A burst holding a rate within IMU_SUSPECT_MARGIN_DPS of full scale is dumped raw, with the register
- * sample beside it, the first IMU_SUSPECT_LOGS times a boot. */
+/* A FIFO burst holding a gyro rate within IMU_SUSPECT_MARGIN_DPS of full scale is logged raw,
+ * with a register sample beside it, IMU_SUSPECT_LOGS times a boot at most: at rest, such a rate
+ * is a bad frame, and the bytes tell a shifted frame from a bad axis. */
 #define IMU_SUSPECT_MARGIN_DPS 8
 #define IMU_SUSPECT_COUNTS     ((int)((IMU_GYRO_RANGE_DPS - IMU_SUSPECT_MARGIN_DPS) * IMU_COUNTS_PER_DPS))
 #define IMU_SUSPECT_LOGS       8
-#define IMU_HEX_LINE_SAMPLES   8
 
 static bool
 suspect_rate(int16_t rate) {
@@ -397,7 +386,7 @@ suspect_rate(int16_t rate) {
 }
 
 static void
-log_suspect_burst(const imu_sample_t* samples, int count, const uint8_t status[FIFO_STATUS_BYTES]) {
+log_suspect_burst(const imu_sample_t* samples, int count) {
     static unsigned logged;
     int first = -1;
     for (int i = 0; i < count && first < 0; i++) {
@@ -411,21 +400,9 @@ log_suspect_burst(const imu_sample_t* samples, int count, const uint8_t status[F
     logged++;
     imu_sample_t reg = {0};
     const bool reg_ok = read_regs(REG_AX_L, (uint8_t*)&reg, sizeof reg);
-    ESP_LOGW(TAG, "m9hqv suspect burst count %d first %d status %02x %02x reg%s %d %d %d %d %d %d", count, first,
-             status[0], status[1], reg_ok ? "" : "(failed)", reg.ax, reg.ay, reg.az, reg.gx, reg.gy, reg.gz);
-    char line[(IMU_HEX_LINE_SAMPLES * sizeof(imu_sample_t) * 2) + 1];
-    for (int start = 0; start < count; start += IMU_HEX_LINE_SAMPLES) {
-        const int end = start + IMU_HEX_LINE_SAMPLES < count ? start + IMU_HEX_LINE_SAMPLES : count;
-        const uint8_t* bytes = (const uint8_t*)&samples[start];
-        const size_t len = (size_t)(end - start) * sizeof(imu_sample_t);
-        for (size_t b = 0; b < len; b++) {
-            static const char HEX[] = "0123456789abcdef";
-            line[2 * b] = HEX[bytes[b] >> 4];
-            line[(2 * b) + 1] = HEX[bytes[b] & 0x0F];
-        }
-        line[2 * len] = '\0';
-        ESP_LOGW(TAG, "m9hqv raw %d: %s", start, line);
-    }
+    ESP_LOGW(TAG, "gyro near full scale in a FIFO burst: count %d first %d, register%s %d %d %d %d %d %d", count, first,
+             reg_ok ? "" : " (failed)", reg.ax, reg.ay, reg.az, reg.gx, reg.gy, reg.gz);
+    ESP_LOG_BUFFER_HEX_LEVEL(TAG, samples, (size_t)count * sizeof *samples, ESP_LOG_WARN);
 }
 #endif
 
@@ -449,8 +426,7 @@ drain_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
         return 0;
     }
     int count = 0;
-    uint8_t status[FIFO_STATUS_BYTES] = {0};
-    bool ok = read_fifo_count(&count, overflowed, status);
+    bool ok = read_fifo_count(&count, overflowed);
     const int64_t lock_start_us = timing_now_us();
     if (ok) {
         ok = write_command(CTRL9_REQ_FIFO);
@@ -462,7 +438,7 @@ drain_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
     const uint64_t locked_us = (uint64_t)(timing_now_us() - lock_start_us);
 #if CONFIG_LAUNCHER_DEVELOPMENT
     if (ok) {
-        log_suspect_burst(out, count, status);
+        log_suspect_burst(out, count);
     }
 #endif
     fifo_gap = !ok || !resumed;
