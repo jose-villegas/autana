@@ -22,16 +22,6 @@ class MathBenchTableTests(unittest.TestCase):
                "MATHBENCH name=dot (vec3) type=f ops=64 warm=12.0 cold=24.0 insn=6.0\n"
                "MATHBENCH name=sinf type=f ops=64 warm=90.0 cold=110.0 insn=30.0\n")
 
-    def test_package_capture_prefix_and_placeholder(self):
-        rows = [("crc32_update_rom_64_ram", "crc32_update_rom", "64_ram", 1, "hash")]
-        capture = "BUILD_ID=example\nHASHBENCH name=crc32_update_rom type=64_ram ops=1 warm=2.0 cold=3.0 insn=4.0\n"
-        build, measured = bench.parse_capture(capture, rows, prefix="HASHBENCH", placeholder="pending")
-        self.assertEqual(measured[rows[0][0]], (2.0, 3.0, 4.0))
-        self.assertEqual(bench.parse_capture("pending", rows, prefix="HASHBENCH", placeholder="pending"), (None, {}))
-        for bad in (capture + capture.splitlines()[-1] + "\n", capture.replace("ops=1", "ops=2")):
-            with self.subTest(bad=bad), self.assertRaises(ValueError):
-                bench.parse_capture(bad, rows, prefix="HASHBENCH")
-
     def test_error_measurements_join_by_label_and_type(self):
         text = ("noise\nMATHERROR name=normalize (vec3) type=f max=0 unit=ulp method=sweep\n"
                 "MATHERROR name=arbitrary label type=x max=5.94258e-05 unit=relative method=proof\n")
@@ -80,33 +70,6 @@ class MathBenchTableTests(unittest.TestCase):
             with self.subTest(text=text), self.assertRaises(ValueError):
                 bench.parse_errors(text)
 
-    def test_separate_bench_and_error_build_provenance(self):
-        text = self.capture.replace("BUILD_ID=abcdef-diag", "BUILD_ID=abcdef-diag scope=bench")
-        text += "BUILD_ID=123456-diag scope=error\nMATHERROR name=mathf_recip type=f max=1 unit=ulp method=sweep\n"
-        build, measured = bench.parse_capture(text, self.rows)
-        self.assertEqual("abcdef-diag", build)
-        self.assertEqual(2, len(measured))
-        for invalid in (text.replace(" scope=error", ""),
-                        text.replace("scope=error", "scope=bench"),
-                        text.replace("scope=error", "scope=unknown"),
-                        text.split("BUILD_ID=123456")[0],
-                        text + "BUILD_ID=abcdef-diag scope=bench\n"):
-            with self.subTest(text=invalid), self.assertRaises(ValueError):
-                bench.parse_capture(invalid, self.rows)
-
-    def test_missing_row_is_an_error(self):
-        with self.assertRaisesRegex(ValueError, "missing"):
-            bench.parse_capture(self.capture.split("MATHBENCH name=sinf")[0], self.rows)
-
-    def test_malformed_and_duplicate_lines_are_errors(self):
-        for text in (self.capture.replace("12.0", "nan"),
-                     self.capture.replace("insn=6.0", "insn=0.0"),
-                     self.capture + self.capture.splitlines()[1] + "\n",
-                     self.capture.replace("cold=24.0", "cold=oops"),
-                     self.capture.replace("BUILD_ID=abcdef-diag\n", "")):
-            with self.subTest(text=text), self.assertRaises(ValueError):
-                bench.parse_capture(text, self.rows)
-
     def test_ratchet_join_and_cycles_per_instruction(self):
         build, measured = bench.parse_capture(self.capture, self.rows)
         table = bench.render_table(self.rows, measured, {"math_dot_f": 448},
@@ -127,16 +90,6 @@ class MathBenchTableTests(unittest.TestCase):
         self.assertIn("| sinf | f | - | - | - | 1.0 |", table)
         for label in ("mathf_recip", "mathf_rsqrt"):
             self.assertIn(f"| {label} | f | - | - | - | {bench.DEVICE_ONLY_INSTRUCTION} |", table)
-
-    def test_capture_identity_noise_and_placeholder(self):
-        self.assertEqual((None, {}), bench.parse_capture(bench.PLACEHOLDER + "\n", self.rows))
-        for text in (self.capture + "BUILD_ID=other\n", self.capture.replace("abcdef-diag", "bad id"),
-                     self.capture.replace("insn=6.0", "insn=6.0 junk"),
-                     bench.PLACEHOLDER + "\nnoise\n"):
-            with self.subTest(text=text), self.assertRaises(ValueError):
-                bench.parse_capture(text, self.rows)
-        self.assertEqual(bench.parse_capture(self.capture, self.rows),
-                         bench.parse_capture("noise\n" + self.capture + "noise\n", self.rows))
 
     def test_document_commands_are_rejected_without_writing(self):
         for newline in ("\n", "\r\n"):

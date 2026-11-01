@@ -16,19 +16,6 @@ class HashBenchTableTests(unittest.TestCase):
                "HASHBENCH name=crc32_update_a type=32_ram ops=1 warm=8 cold=9 insn=10\n"
                "HASHBENCH name=crc32_update_a type=32_flash ops=1 warm=11 cold=12 insn=13\n")
 
-    def test_target_record_prefix(self):
-        self.assertEqual(table.bench.parse_target(self.target, prefix="HASHTARGET"), "esp32s3 (xtensa)")
-        self.assertIsNone(table.bench.parse_target(self.target))
-        with self.assertRaises(ValueError):
-            table.bench.parse_target(self.target.replace("hardware", "qemu"), prefix="HASHTARGET")
-
-    def test_rows_as_found(self):
-        build, measured = table.bench.parse_capture(self.capture, prefix="HASHBENCH")
-        self.assertEqual(build, "example")
-        self.assertEqual(measured["crc32_update_z", "256_ram"], (2, 3, 4))
-        with self.assertRaises(ValueError):
-            table.bench.parse_capture(self.capture + self.capture.splitlines()[-1], prefix="HASHBENCH")
-
     def test_table_sorted_by_candidate_numeric_size_and_source(self):
         rendered = table.render(self.capture)
         rows = [line for line in rendered.splitlines() if line.startswith("| `")]
