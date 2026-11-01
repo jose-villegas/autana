@@ -67,7 +67,7 @@ time_stages(const raster_t* raster, const r3d_lit_mesh_t* mesh, const r3d_lens_t
         *visible = r3d_pipeline_cull(mesh, lens, b.culled + 1, b.work[0], NULL);
         us.cull = best(us.cull, timing_now_us() - start);
         start = timing_now_us();
-        r3d_pipeline_transform(mesh, lens, b.culled + 1, *visible, b.cs, b.rows);
+        r3d_pipeline_transform(mesh, lens, b.culled + 1, *visible, b.cs, b.rows, false);
         us.transform = best(us.transform, timing_now_us() - start);
         us.setup = best(us.setup, one_core_draw_us(&drawn, &b, lens, *visible, R3D_SPAN_STOP_AFTER_SETUP));
         us.draw = best(us.draw, one_core_draw_us(&drawn, &b, lens, *visible, R3D_SPAN_STOP_NONE));
@@ -86,7 +86,7 @@ report_pose(const char* scene, const char* bake, uint32_t t_ms, variant_t varian
     TEST_ASSERT_NOT_NULL(walk);
     TEST_ASSERT_EQUAL_INT(visible, r3d_pipeline_cull_counted(mesh, lens, b.culled + 1, walk, &n));
     memory_free(walk);
-    r3d_pipeline_transform(mesh, lens, b.culled + 1, visible, b.cs, b.rows);
+    r3d_pipeline_transform(mesh, lens, b.culled + 1, visible, b.cs, b.rows, false);
     r3d_pipeline_count_triangles(mesh, lens, b.culled + 1, visible, b.cs, &n, NULL);
     int vertices = 0;
     for (int i = 0; i < visible; i++) {
