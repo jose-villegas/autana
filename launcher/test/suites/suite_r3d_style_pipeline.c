@@ -18,6 +18,7 @@
 #define r3d_pipeline_draw_split      constant_r3d_pipeline_draw_split
 #define r3d_pipeline_draw            constant_r3d_pipeline_draw
 
+#include <float.h>
 #include <stdlib.h>
 #include <string.h>
 #include "asset/asset_pack.h"
@@ -71,8 +72,8 @@ test_styles_match_pipeline_colours(void) {
                              .snap_cx = R3D_SNAP_BIAS,
                              .snap_cy = R3D_SNAP_BIAS};
     r3d_pipeline_vertex_t transformed[3];
-    const mat4f_t screen = mat4f_scale_rows(lens.m, (vec3f_t){R3D_SUBPIXEL, R3D_SUBPIXEL, 1});
-    (void)transform_cluster(&mesh, &lens, &screen, &cluster, transformed, mathf_bits(FAST_LO), mathf_bits(FAST_HI));
+    const transform_setup_t setup = transform_setup(&lens);
+    (void)transform_cluster(&mesh, &lens, &setup, &cluster, transformed);
     r3d_span_vertex_t reference[3];
     for (int k = 0; k < 3; k++) {
         transformed[k].sx = k == 1 ? TEST_SIDE * R3D_SUBPIXEL : 0;
@@ -122,8 +123,8 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
     clipped = malloc(sizeof(*clipped));
     TEST_ASSERT_NOT_NULL(clipped);
     r3d_pipeline_vertex_t* transformed = clipped->transformed;
-    const mat4f_t screen = mat4f_scale_rows(lens.m, (vec3f_t){R3D_SUBPIXEL, R3D_SUBPIXEL, 1});
-    (void)transform_cluster(&mesh, &lens, &screen, &cluster, transformed, mathf_bits(FAST_LO), mathf_bits(FAST_HI));
+    const transform_setup_t setup = transform_setup(&lens);
+    (void)transform_cluster(&mesh, &lens, &setup, &cluster, transformed);
     build_guard_planes(&lens, work);
     r3d_span_target_t* expected = &clipped->expected;
     r3d_span_target_t* actual = &clipped->actual;
@@ -250,46 +251,32 @@ test_transform_nonfinite_paths(void) {
     }
 }
 
+#define TEST_FAST_ULP_RADIUS   4096U
+#define TEST_FLOAT_BITS_STRIDE UINT32_C(65537)
+
 static void
-test_transform_fast_range_neighbors(void) {
-    static const int16_t positions[1][3] = {{0, 0, 2}};
-    const r3d_lit_cluster_t cluster = {.vertex_count = 1};
-    const r3d_lit_mesh_t mesh = {.positions = positions, .clusters = &cluster};
-    const uint16_t index = 0;
+check_fast_bits(uint32_t bits, const transform_setup_t* setup) {
+    const float biased = mathf_from_bits(bits);
+    TEST_ASSERT_EQUAL(biased > FAST_LO && biased < FAST_HI, biased_inside_fast(bits, setup));
+}
 
-    const struct {
-        float biased;
-        bool fast;
-    } cases[] = {{nextafterf(FAST_LO, -INFINITY), false},
-                 {FAST_LO, false},
-                 {nextafterf(FAST_LO, INFINITY), true},
-                 {nextafterf(FAST_HI, -INFINITY), true},
-                 {FAST_HI, false},
-                 {nextafterf(FAST_HI, INFINITY), false},
-                 {0.0F, false},
-                 {-0.0F, false},
-                 {-FAST_LO, false}};
-
-    for (int axis = 0; axis < 2; axis++) {
-        for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
-            r3d_lens_t lens = {.m = MAT4F_IDENTITY,
-                               .project.near_z = 1.0F,
-                               .snap_cx = axis == 0 ? cases[i].biased : R3D_SNAP_BIAS,
-                               .snap_cy = axis == 1 ? cases[i].biased : R3D_SNAP_BIAS};
-            r3d_lens_set_depth_near(&lens, lens.project.near_z);
-            r3d_pipeline_vertex_t out = {.sx = INT16_MIN, .sy = INT16_MIN};
-            r3d_pipeline_rows_t rows;
-            r3d_pipeline_transform(&mesh, &lens, &index, 1, &out, &rows);
-            TEST_ASSERT_EQUAL(!cases[i].fast, rows.unbounded);
-            TEST_ASSERT_EQUAL_FLOAT(cases[i].fast ? 0.5F : -1.0F, out.iz);
-            if (cases[i].fast) {
-                TEST_ASSERT_EQUAL_INT16(r3d_span_unbias(lens.snap_cx), out.sx);
-                TEST_ASSERT_EQUAL_INT16(r3d_span_unbias(lens.snap_cy), out.sy);
-            } else {
-                TEST_ASSERT_EQUAL_INT16(INT16_MIN, out.sx);
-                TEST_ASSERT_EQUAL_INT16(INT16_MIN, out.sy);
-            }
+static void
+test_transform_fast_range_bits(void) {
+    const r3d_lens_t lens = {.m = MAT4F_IDENTITY};
+    const transform_setup_t setup = transform_setup(&lens);
+    const uint32_t edges[] = {mathf_bits(FAST_LO), mathf_bits(FAST_HI)};
+    for (size_t edge = 0; edge < sizeof edges / sizeof edges[0]; edge++) {
+        for (uint32_t bits = edges[edge] - TEST_FAST_ULP_RADIUS; bits <= edges[edge] + TEST_FAST_ULP_RADIUS; bits++) {
+            check_fast_bits(bits, &setup);
         }
+    }
+    static const float special[] = {0.0F,    -0.0F,    INFINITY,     -INFINITY,     NAN,     -NAN,
+                                    FLT_MAX, -FLT_MAX, FLT_TRUE_MIN, -FLT_TRUE_MIN, -FAST_LO};
+    for (size_t i = 0; i < sizeof special / sizeof special[0]; i++) {
+        check_fast_bits(mathf_bits(special[i]), &setup);
+    }
+    for (uint64_t bits = 0; bits <= UINT32_MAX; bits += TEST_FLOAT_BITS_STRIDE) {
+        check_fast_bits((uint32_t)bits, &setup);
     }
 }
 
@@ -297,7 +284,7 @@ void
 run_r3d_style_pipeline_suite(void) {
     RUN_TEST(test_transform_matches_lens_projection_bits);
     RUN_TEST(test_transform_nonfinite_paths);
-    RUN_TEST(test_transform_fast_range_neighbors);
+    RUN_TEST(test_transform_fast_range_bits);
     RUN_TEST(test_clipped_and_mixed_clusters_keep_the_target_style);
     RUN_TEST(test_styles_match_pipeline_colours);
 }

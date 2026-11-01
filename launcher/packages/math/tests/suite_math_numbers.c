@@ -733,6 +733,7 @@ test_float_bits_preserve_special_values(void) {
     static const uint32_t nan_payloads[] = {UINT32_C(0x7fc12345), UINT32_C(0xffc54321)};
     for (size_t i = 0; i < sizeof nan_payloads / sizeof nan_payloads[0]; i++) {
         float value;
+        /* memcpy is the independent reference for the bit-transfer helpers. */
         memcpy(&value, &nan_payloads[i], sizeof value);
         TEST_ASSERT_TRUE(isnan(value));
         TEST_ASSERT_EQUAL_HEX32(nan_payloads[i], mathf_bits(value));
