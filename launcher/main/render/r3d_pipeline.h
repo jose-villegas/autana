@@ -32,7 +32,7 @@ typedef struct r3d_lens {
     projectf_t project; /* m already applies the focal lengths and turn, so lens space's pinhole is {1, -1}. */
     int width, height;
     float snap_cx, snap_cy; /* the centre in subpixels, plus R3D_SNAP_BIAS */
-    float depth_subpixels;  /* depth_near / R3D_SUBPIXEL */
+    float depth_near;       /* inverse-depth encoding scale */
 } r3d_lens_t;
 
 /* 8 bytes: the screen position is snapped to r3d_span's subpixels once, so
@@ -53,7 +53,7 @@ void r3d_lens_init(r3d_lens_t* lens, const render_view_t* view, int position_sca
  * Every instance of one picture must share it; the clip plane stays near_z. */
 static inline void
 r3d_lens_set_depth_near(r3d_lens_t* lens, float depth_near) {
-    lens->depth_subpixels = depth_near / (float)R3D_SUBPIXEL;
+    lens->depth_near = depth_near;
 }
 
 /* Refits a lens made for one picture size to a render `width` by `height`
