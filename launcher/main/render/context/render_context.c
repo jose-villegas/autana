@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "build/build_variant.h"
@@ -25,17 +26,23 @@ static const render_debug_view_t views[] = {
      .state_bytes = sizeof(raster_motion_t),
      .attachment = raster_motion_view,
      .reserve = raster_motion_reserve_view,
-     .release = raster_motion_release_view},
-    {.name = "meshlets", .state_bytes = sizeof(raster_meshlets_t), .attachment = raster_meshlets_view},
+     .release = raster_motion_release_view,
+     .copy = raster_motion_copy_view},
+    {.name = "meshlets",
+     .state_bytes = sizeof(raster_meshlets_t),
+     .attachment = raster_meshlets_view,
+     .copy = raster_meshlets_copy_view},
     {.name = "cull",
      .state_bytes = sizeof(raster_cull_t),
      .attachment = raster_cull_view,
      .second_view = raster_cull_second_view,
-     .overlay = raster_cull_overlay},
+     .overlay = raster_cull_overlay,
+     .copy = raster_cull_copy_view},
     {.name = "boxes",
      .state_bytes = sizeof(raster_boxes_t),
      .attachment = raster_boxes_view,
-     .overlay = raster_boxes_overlay},
+     .overlay = raster_boxes_overlay,
+     .copy = raster_boxes_copy_view},
     {.name = "overdraw", .state_bytes = sizeof(raster_overdraw_t), .attachment = raster_overdraw_view},
 };
 _Static_assert(RENDER_DEBUG_VIEW_COUNT == sizeof views / sizeof views[0], "view table length");
@@ -502,3 +509,124 @@ const void*
 render_context_debug_view_state(const render_context_t* c) {
     return c->debug_view_state;
 }
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+struct render_context_checkpoint {
+    render_context_t state;
+};
+
+static uint16_t*
+checkpoint_map(const render_context_t* source, const render_context_t* destination, const uint16_t* map) {
+    return map == NULL
+               ? NULL
+               : (uint16_t*)((uint8_t*)destination->scratch + ((const uint8_t*)map - (const uint8_t*)source->scratch));
+}
+
+static bool
+copy_context(render_context_t* out, const render_context_t* in) {
+    *out = *in;
+    out->scratch = NULL;
+    out->take = NULL;
+    out->debug_view_state = NULL;
+    out->framegen = (framegen_target_t){0};
+    if (in->scratch_bytes != 0) {
+        out->scratch = memory_alloc(in->scratch_bytes, MEMORY_PSRAM);
+        if (out->scratch == NULL) {
+            return false;
+        }
+        memcpy(out->scratch, in->scratch, in->scratch_bytes);
+    }
+    out->raster.scratch = out->scratch;
+    out->raster.split = in->raster.split == NULL ? NULL : &out->split;
+    out->raster.upscale.columns = checkpoint_map(in, out, in->raster.upscale.columns);
+    out->raster.upscale.rows = checkpoint_map(in, out, in->raster.upscale.rows);
+    out->raster.upscale.blends = checkpoint_map(in, out, in->raster.upscale.blends);
+    const render_debug_view_t* row = render_context_debug_view(in->debug_view);
+    if (row != NULL && in->debug_view_state != NULL) {
+        out->debug_view_state = memory_alloc(row->state_bytes, MEMORY_PSRAM);
+        if (out->debug_view_state == NULL) {
+            return false;
+        }
+        memset(out->debug_view_state, 0, row->state_bytes);
+        if (row->copy != NULL) {
+            if (!row->copy(out->debug_view_state, in->debug_view_state, &out->raster)) {
+                return false;
+            }
+        } else {
+            memcpy(out->debug_view_state, in->debug_view_state, row->state_bytes);
+        }
+    }
+    if (row != NULL) {
+        out->debug_view_attachment = row->attachment(out->debug_view_state);
+        out->debug_view_attached[0] = &out->debug_view_attachment;
+        out->raster.attachments = out->debug_view_attached;
+    }
+    if (in->framegen.colour != NULL) {
+        if (!framegen_target_alloc(&out->framegen, in->framegen.width, in->framegen.height)) {
+            return false;
+        }
+        const size_t bytes = (size_t)in->framegen.width * (size_t)in->framegen.height * sizeof(uint16_t);
+        memcpy(out->framegen.colour, in->framegen.colour, bytes);
+        memcpy(out->framegen.depth, in->framegen.depth, bytes);
+    }
+    return true;
+}
+
+render_context_checkpoint_t*
+render_context_save(const render_context_t* context) {
+    render_context_checkpoint_t* saved = memory_alloc(sizeof(*saved), MEMORY_PSRAM);
+    if (saved == NULL) {
+        return NULL;
+    }
+    if (!copy_context(&saved->state, context)) {
+        render_context_checkpoint_free(saved);
+        return NULL;
+    }
+    return saved;
+}
+
+void
+render_context_restore(render_context_t* context, const render_context_checkpoint_t* saved) {
+    render_context_checkpoint_t* copy = render_context_save(&saved->state);
+    if (copy == NULL) {
+        abort(); /* The void restore API cannot continue with partial history. */
+    }
+    memory_take_fn take = context->take;
+    void* lent = take != NULL && context->scratch_bytes >= copy->state.scratch_bytes ? context->scratch : NULL;
+    render_context_release(context);
+    *context = copy->state;
+    context->take = take;
+    if (take != NULL && context->scratch_bytes != 0) {
+        void* scratch = lent != NULL ? lent : take(context->scratch_bytes, _Alignof(max_align_t));
+        if (scratch == NULL) {
+            abort();
+        }
+        memcpy(scratch, context->scratch, context->scratch_bytes);
+        render_context_t source = *context;
+        context->scratch = scratch;
+        context->raster.scratch = scratch;
+        context->raster.upscale.columns = checkpoint_map(&source, context, source.raster.upscale.columns);
+        context->raster.upscale.rows = checkpoint_map(&source, context, source.raster.upscale.rows);
+        context->raster.upscale.blends = checkpoint_map(&source, context, source.raster.upscale.blends);
+        memory_free(source.scratch);
+    }
+    context->raster.split = copy->state.raster.split == NULL ? NULL : &context->split;
+    if (context->raster.attachment_count != 0) {
+        context->debug_view_attached[0] = &context->debug_view_attachment;
+        context->raster.attachments = context->debug_view_attached;
+    }
+    const render_debug_view_t* row = render_context_debug_view(context->debug_view);
+    if (row != NULL && row->copy != NULL && context->debug_view_state != NULL) {
+        (void)row->copy(context->debug_view_state, context->debug_view_state, &context->raster);
+    }
+    memory_free(copy);
+}
+
+void
+render_context_checkpoint_free(render_context_checkpoint_t* saved) {
+    if (saved != NULL) {
+        render_context_release(&saved->state);
+        memory_free(saved);
+    }
+}
+#endif

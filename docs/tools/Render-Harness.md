@@ -418,6 +418,26 @@ stateDiagram-v2
 
 If `render_host_open()` returns false, no run opened and `exit_code` carries the command's result.
 
+`render_host_save()`, `render_host_restore()` and `render_host_checkpoint_free()`
+retain frame history in host and development builds. Saving can return NULL
+on allocation failure. Checkpoints remain reusable within the open run.
+
+| Owner | Carried state |
+|---|---|
+| Host loop | Frame index, elapsed time, input, drawn box and output pixels |
+| Scene | Animation playheads and poses, transforms, world caches, cameras, skin output and lights |
+| Render context | Raster scratch and upscale maps, split feedback, frame-generation pictures and costs, resolution controller and debug views |
+| Graphics | Presentation flags, dirty regions, framebuffers, half picture and seams, indexed image and palettes |
+| Tunables | Values and owner generations |
+
+Each owner copies its own state; a debug view with allocated history copies
+that history through its table hook. Loaded scenes, component allocations
+and the presentation mode must outlive their checkpoints.
+
+Restoring rewinds frame inputs and retained pictures, including measured
+costs that feed rendering choices. It does not rewind output files or the
+wall clock; subsequent measurements still come from the running machine.
+
 Each draw receives a `provider_frame_t`. Optional `path_ms` and `seek` hooks
 expose a provider's path duration and camera cuts. The scene-file provider
 seeks its animators and clears render history at a cut.

@@ -585,3 +585,27 @@ scene_animator_seek(scene_t* scene, scene_entity_t entity, scene_animator_slot_t
     scene_animation_step(scene, 0);
     return true;
 }
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+void
+scene_animation_checkpoint_capture(checkpoint_t* saved, scene_t* scene) {
+    const size_t entities = scene->asset.entity_count;
+    for (size_t e = 0; e < entities; e++) {
+        scene_animator_t* a = &scene->animators[e];
+        checkpoint_capture(saved, a->layer.shown.local,
+                           (size_t)a->skeleton.joint_count * sizeof(*a->layer.shown.local));
+        checkpoint_capture(saved, a->layer.frozen.local,
+                           (size_t)a->skeleton.joint_count * sizeof(*a->layer.frozen.local));
+        scene_skinned_renderer_t* skin = &scene->skinned_renderers[e];
+        const size_t joints = skin->skin.joint_count;
+        if (skin->internal_storage != NULL) {
+            const size_t bytes = (size_t)((uint8_t*)(skin->palette + joints) - (uint8_t*)skin->internal_storage);
+            checkpoint_capture(saved, skin->internal_storage, bytes);
+        }
+        if (skin->light_storage != NULL) {
+            const size_t bytes = (size_t)((uint8_t*)(skin->normal_palette + joints) - (uint8_t*)skin->light_storage);
+            checkpoint_capture(saved, skin->light_storage, bytes);
+        }
+    }
+}
+#endif

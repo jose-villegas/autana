@@ -9,6 +9,8 @@
  */
 #pragma once
 
+#include "build/build_variant.h"
+
 #include "render/raster.h"
 #include "render/render_view.h"
 
@@ -32,3 +34,7 @@ raster_attachment_t raster_boxes_view(void* state);
 
 /* Box edges over the composed picture, `width` by `height` from (0, 0). */
 void raster_boxes_overlay(void* state, int width, int height);
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+bool raster_boxes_copy_view(void* destination, const void* source, const raster_t* raster);
+#endif

@@ -1020,3 +1020,73 @@ gfx_mark_rows_dirty(int y0, int y1) {
     /* mark_band() trusts clipped rows; a public caller's need not be. */
     mark_band(mathi_max(y0, 0), mathi_min(y1, GFX_HEIGHT));
 }
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+struct gfx_checkpoint {
+    checkpoint_t state;
+    int panel_clock_hz;
+};
+
+gfx_checkpoint_t*
+gfx_save(void) {
+    gfx_present_drain();
+    gfx_checkpoint_t* saved = memory_alloc(sizeof(*saved), MEMORY_PSRAM);
+    if (saved == NULL) {
+        return NULL;
+    }
+    *saved = (gfx_checkpoint_t){.panel_clock_hz = panel_clock_requested_hz};
+    checkpoint_capture(&saved->state, &cell_dirty, sizeof cell_dirty);
+    checkpoint_capture(&saved->state, &all_dirty, sizeof all_dirty);
+    checkpoint_capture(&saved->state, cell_x0, sizeof cell_x0);
+    checkpoint_capture(&saved->state, cell_x1, sizeof cell_x1);
+    checkpoint_capture(&saved->state, cell_y0, sizeof cell_y0);
+    checkpoint_capture(&saved->state, cell_y1, sizeof cell_y1);
+    checkpoint_capture(&saved->state, leaf_dirty, sizeof leaf_dirty);
+    checkpoint_capture(&saved->state, &gfx_band_force_all_dirty, sizeof gfx_band_force_all_dirty);
+    checkpoint_capture(&saved->state, &gfx_full_redraw_latched, sizeof gfx_full_redraw_latched);
+    checkpoint_capture(&saved->state, &present_async_on, sizeof present_async_on);
+    checkpoint_capture(&saved->state, &clear_on_send, sizeof clear_on_send);
+    checkpoint_capture(&saved->state, &clear_on_send_colour, sizeof clear_on_send_colour);
+    checkpoint_capture(&saved->state, &send_clears, sizeof send_clears);
+    checkpoint_capture(&saved->state, &send_clear_colour, sizeof send_clear_colour);
+    checkpoint_capture(&saved->state, &interlace_on, sizeof interlace_on);
+#ifdef ESP_PLATFORM
+    checkpoint_capture(&saved->state, &frame_parity, sizeof frame_parity);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    checkpoint_capture(&saved->state, &overlay_bordered_rows, sizeof overlay_bordered_rows);
+#endif
+#endif
+    checkpoint_capture(&saved->state, &dev_present_send_us, sizeof dev_present_send_us);
+    checkpoint_capture(&saved->state, &dev_present_wait_us, sizeof dev_present_wait_us);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    checkpoint_capture(&saved->state, &debug_overlay_on, sizeof debug_overlay_on);
+    checkpoint_capture(&saved->state, &leaf_overlay_on, sizeof leaf_overlay_on);
+    checkpoint_capture(&saved->state, &dev_strips_sent_full, sizeof dev_strips_sent_full);
+    checkpoint_capture(&saved->state, &dev_strips_sent_gathered, sizeof dev_strips_sent_gathered);
+    checkpoint_capture(&saved->state, &dev_strips_sent_partial, sizeof dev_strips_sent_partial);
+    checkpoint_capture(&saved->state, &dev_bytes_sent, sizeof dev_bytes_sent);
+#endif
+    gfx_mode_checkpoint_capture(&saved->state);
+    gfx_expand_checkpoint_capture(&saved->state);
+    if (saved->state.failed) {
+        gfx_checkpoint_free(saved);
+        return NULL;
+    }
+    return saved;
+}
+
+void
+gfx_restore(const gfx_checkpoint_t* saved) {
+    gfx_present_drain();
+    checkpoint_restore(&saved->state);
+    panel_clock_requested_hz = saved->panel_clock_hz;
+}
+
+void
+gfx_checkpoint_free(gfx_checkpoint_t* saved) {
+    if (saved != NULL) {
+        checkpoint_clear(&saved->state);
+        memory_free(saved);
+    }
+}
+#endif

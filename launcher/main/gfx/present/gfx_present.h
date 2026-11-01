@@ -5,6 +5,15 @@
  */
 #pragma once
 
+#include "build/build_variant.h"
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+typedef struct gfx_checkpoint gfx_checkpoint_t;
+/* Save between frames; the presentation mode and its allocations must outlive the checkpoint. */
+gfx_checkpoint_t* gfx_save(void);
+void gfx_restore(const gfx_checkpoint_t* checkpoint);
+void gfx_checkpoint_free(gfx_checkpoint_t* checkpoint);
+#endif
+
 #include <stdbool.h>
 
 #include "gfx/gfx.h"

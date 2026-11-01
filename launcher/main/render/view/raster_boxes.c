@@ -72,3 +72,14 @@ raster_boxes_overlay(void* state, int width, int height) {
         raster_lines_box(&lens, tested, box3f_from_box3s(instance->mesh->nodes[0].bounds, 1.0F), color);
     }
 }
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+bool
+raster_boxes_copy_view(void* destination, const void* source, const raster_t* raster) {
+    raster_boxes_t* out = destination;
+    const raster_boxes_t* in = source;
+    *out = *in;
+    out->raster = in->raster == NULL ? NULL : raster;
+    return true;
+}
+#endif

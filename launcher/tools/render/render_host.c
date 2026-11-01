@@ -22,6 +22,7 @@
 #include "render_watch.h"
 #include "ui/layout/ui_transform.h"
 
+#include "render/context/render_context.h"
 #include "scene/scene_shell.h"
 
 #if defined(_WIN32)
@@ -254,6 +255,86 @@ static struct {
     recti_t drawn;
     affine2x_t canvas_from_panel;
 } host;
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+#pragma weak scene_save
+#pragma weak scene_restore
+#pragma weak scene_checkpoint_free
+#pragma weak render_context_main
+#pragma weak render_context_save
+#pragma weak render_context_restore
+#pragma weak render_context_checkpoint_free
+
+struct render_host_checkpoint {
+    provider_frame_t frame;
+    recti_t drawn;
+    uint8_t* pixels;
+    scene_checkpoint_t* scene;
+    render_context_checkpoint_t* context;
+    gfx_checkpoint_t* gfx;
+    tune_checkpoint_t* tune;
+};
+
+render_host_checkpoint_t*
+render_host_save(void) {
+    render_host_checkpoint_t* saved = calloc(1, sizeof(*saved));
+    if (saved == NULL) {
+        return NULL;
+    }
+    saved->frame = host.frame;
+    saved->drawn = host.drawn;
+    const size_t bytes = (size_t)host.stride * host.out_h;
+    saved->pixels = malloc(bytes);
+    if (saved->pixels != NULL) {
+        memcpy(saved->pixels, host.frame_buf, bytes);
+    }
+    if (scene_save != NULL) {
+        saved->scene = scene_save();
+    }
+    if (render_context_save != NULL) {
+        saved->context = render_context_save(render_context_main());
+    }
+    saved->gfx = gfx_save();
+    saved->tune = tune_save(tune_shared());
+    if (saved->pixels == NULL || saved->gfx == NULL || saved->tune == NULL
+        || (scene_save != NULL && saved->scene == NULL) || (render_context_save != NULL && saved->context == NULL)) {
+        render_host_checkpoint_free(saved);
+        return NULL;
+    }
+    return saved;
+}
+
+void
+render_host_restore(const render_host_checkpoint_t* saved) {
+    tune_restore(saved->tune);
+    if (saved->scene != NULL) {
+        scene_restore(saved->scene);
+    }
+    if (saved->context != NULL) {
+        render_context_restore(render_context_main(), saved->context);
+    }
+    gfx_restore(saved->gfx);
+    host.frame = saved->frame;
+    host.drawn = saved->drawn;
+    memcpy(host.frame_buf, saved->pixels, (size_t)host.stride * host.out_h);
+}
+
+void
+render_host_checkpoint_free(render_host_checkpoint_t* saved) {
+    if (saved != NULL) {
+        if (saved->scene != NULL) {
+            scene_checkpoint_free(saved->scene);
+        }
+        if (saved->context != NULL) {
+            render_context_checkpoint_free(saved->context);
+        }
+        gfx_checkpoint_free(saved->gfx);
+        tune_checkpoint_free(saved->tune);
+        free(saved->pixels);
+        free(saved);
+    }
+}
+#endif
 
 bool
 render_host_open(const frame_provider_t* provider, int argc, char** argv, int* exit_code) {
