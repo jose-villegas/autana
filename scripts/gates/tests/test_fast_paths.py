@@ -36,6 +36,12 @@ class FastPathTests(unittest.TestCase):
         self.capture = ('MATHERROR name=example type=f max=1 unit=ulp method=sweep\n'
                         'MATHERRORBIN name=example type=f x=2 max=1 unit=ulp\n')
 
+    def test_exact_rows_start_after_a_blank_line(self):
+        items = [item for item in paths.annotations() if item.unit == "bit"]
+        self.assertTrue(items)
+        rendered = paths.render_exact(ROOT, items)
+        self.assertTrue(rendered.startswith('\n\n<a id="'))
+
     def test_package_headers_are_discovered_and_bit_limit_is_named(self):
         header = self.root / 'launcher/packages/other/include/other/check.h'
         header.parent.mkdir(parents=True)

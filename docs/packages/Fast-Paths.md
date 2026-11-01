@@ -234,6 +234,7 @@ Plain way: `1.0F / x`.
 Worst bin: mantissa 1.97-2.00 at 6.1e-5; every other bin <= 3.2e-5.
 
 ![Error across the input range](../images/math/fast-path-mathf_recip_approx.png)
+
 <a id="crc32-update"></a>
 
 ## `crc32_update`
