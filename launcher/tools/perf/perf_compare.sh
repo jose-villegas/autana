@@ -10,7 +10,7 @@
 #   --threshold PCT         equivalence margin
 #   --alpha P               nominal family error rate
 #   --max-seeds N           seed cap per side
-#   --max-minutes N         stop before a look that would pass this budget
+#   --max-minutes N         measurement budget: stop before a look past it
 #   --rng-seed N            replay the recorded random plan
 #   --timeout SECONDS       capture deadline per run
 #   --wait SECONDS          board lock queue time

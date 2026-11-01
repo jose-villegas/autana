@@ -116,9 +116,9 @@ flowchart TD
 ```
 
 Planned looks double towards `--max-seeds` and end at the cap. Before each
-look after the first, the job's own mean flash and suite times estimate it;
-if it would pass `--max-minutes`, the comparison stops and names the
-unresolved rows. Nominal alpha
+look after the first, the job's own seed wall times estimate it; if it
+would pass the `--max-minutes` measurement budget, the comparison stops and
+names the unresolved rows. The restore flash runs after the budget. Nominal alpha
 is divided across planned looks, then split equally between Welch difference<sup>[[37]](../../../docs/Citations.md#welch-1947)</sup>
 and TOST equivalence<sup>[[38]](../../../docs/Citations.md#schuirmann-1987)</sup> families. Each family uses Holm adjustment<sup>[[39]](../../../docs/Citations.md#holm-1979)</sup> across rows,
 including rows decided earlier. Permutation is an AND cross-check at nominal
