@@ -14,8 +14,10 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "math/geometry/box3f.h"
 #include "math/linear/transformf.h"
 #include "r3d_quad_mesh.h"
+#include "render/r3d_lit_mesh.h"
 #include "render/r3d_pipeline.h"
 #include "render/raster.h"
 
@@ -92,7 +94,7 @@ test_a_mesh_with_no_model_draws_where_it_is(void) {
     quad_t red;
     make_quad(&red, 255, 0, 0, 0);
     void* scratch;
-    const r3d_instance_t one = {&red.mesh, NULL};
+    const r3d_instance_t one = {&red.mesh, NULL, NULL};
     const uint16_t* color = draw(&one, 1, &scratch);
     TEST_ASSERT_NOT_EQUAL_HEX16(CLEAR, pixel(color, 0.0F));
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(color, 3.0F));
@@ -106,8 +108,8 @@ test_two_instances_appear_at_their_own_models(void) {
     make_quad(&red, 255, 0, 0, 0);
     make_quad(&green, 0, 255, 0, 0);
     void* alone;
-    const r3d_instance_t red_alone = {&red.mesh, NULL};
-    const r3d_instance_t green_alone = {&green.mesh, NULL};
+    const r3d_instance_t red_alone = {&red.mesh, NULL, NULL};
+    const r3d_instance_t green_alone = {&green.mesh, NULL, NULL};
     const uint16_t red_pixel = pixel(draw(&red_alone, 1, &alone), 0.0F);
     free(alone);
     const uint16_t green_pixel = pixel(draw(&green_alone, 1, &alone), 0.0F);
@@ -116,7 +118,7 @@ test_two_instances_appear_at_their_own_models(void) {
 
     const mat4f_t left = placed(-3.0F, 0.0F, 1.0F);
     const mat4f_t right = placed(3.0F, 0.0F, 1.0F);
-    const r3d_instance_t both[] = {{&red.mesh, &left}, {&green.mesh, &right}};
+    const r3d_instance_t both[] = {{&red.mesh, &left, NULL}, {&green.mesh, &right, NULL}};
     void* scratch;
     const uint16_t* color = draw(both, 2, &scratch);
     TEST_ASSERT_EQUAL_HEX16(red_pixel, pixel(color, -3.0F));
@@ -142,7 +144,7 @@ test_position_ticks_keep_a_placed_instance_in_model_units(void) {
     ticks.node.bounds = ticks.cluster.bounds;
     ticks.mesh.position_scale = POSITION_SCALE;
     const mat4f_t model = placed(3.0F, 0.0F, 1.0F);
-    const r3d_instance_t reference = {&unit.mesh, &model}, scaled = {&ticks.mesh, &model};
+    const r3d_instance_t reference = {&unit.mesh, &model, NULL}, scaled = {&ticks.mesh, &model, NULL};
     void* reference_scratch;
     void* scaled_scratch;
     const uint16_t* expected = draw(&reference, 1, &reference_scratch);
@@ -181,8 +183,8 @@ test_a_scale_widens_an_instance_about_its_position(void) {
     make_quad(&red, 255, 0, 0, 0);
     /* 1.5 units from the centre is outside the unit quad and inside a scale of 2. */
     const mat4f_t doubled_at = placed(0.0F, 0.0F, 2.0F);
-    const r3d_instance_t plain = {&red.mesh, NULL};
-    const r3d_instance_t doubled = {&red.mesh, &doubled_at};
+    const r3d_instance_t plain = {&red.mesh, NULL, NULL};
+    const r3d_instance_t doubled = {&red.mesh, &doubled_at, NULL};
     void* scratch;
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(draw(&plain, 1, &scratch), 1.5F));
     free(scratch);
@@ -198,8 +200,8 @@ test_a_rotation_turns_an_instance_about_its_position(void) {
     transformf_t pose = TRANSFORMF_IDENTITY;
     transformf_set_rotation(&pose, (quatf_t){0, 1, 0, 0});
     const mat4f_t half_turn = transformf_compute_matrix(&pose);
-    const r3d_instance_t as_built = {&offset.mesh, NULL};
-    const r3d_instance_t turned = {&offset.mesh, &half_turn};
+    const r3d_instance_t as_built = {&offset.mesh, NULL, NULL};
+    const r3d_instance_t turned = {&offset.mesh, &half_turn, NULL};
     void* scratch;
     const uint16_t* color = draw(&as_built, 1, &scratch);
     TEST_ASSERT_NOT_EQUAL_HEX16(CLEAR, pixel(color, 3.0F));
@@ -218,8 +220,8 @@ test_a_nearer_instance_covers_a_farther_one_whichever_is_drawn_first(void) {
     make_quad(&red, 255, 0, 0, 0);
     make_quad(&green, 0, 255, 0, 0);
     const mat4f_t nearer = placed(0.0F, -2.0F, 1.0F);
-    const r3d_instance_t near_first[] = {{&green.mesh, &nearer}, {&red.mesh, NULL}};
-    const r3d_instance_t far_first[] = {{&red.mesh, NULL}, {&green.mesh, &nearer}};
+    const r3d_instance_t near_first[] = {{&green.mesh, &nearer, NULL}, {&red.mesh, NULL, NULL}};
+    const r3d_instance_t far_first[] = {{&red.mesh, NULL, NULL}, {&green.mesh, &nearer, NULL}};
     void* scratch;
     const uint16_t first = pixel(draw(near_first, 2, &scratch), 0.0F);
     free(scratch);
@@ -227,6 +229,103 @@ test_a_nearer_instance_covers_a_farther_one_whichever_is_drawn_first(void) {
     free(scratch);
     TEST_ASSERT_EQUAL_HEX16(first, second);
     TEST_ASSERT_NOT_EQUAL_HEX16(CLEAR, first);
+}
+
+/* Copies at many poses: off screen, behind the camera, crossing each edge,
+ * turned and scaled, in units and in ticks. */
+enum { COPIES_PER_ROW = 9, COPY_ROWS = 6, COPIES = COPIES_PER_ROW * COPY_ROWS, TICKS = 8 };
+
+static void
+pose_copies(mat4f_t models[COPIES]) {
+    for (int i = 0; i < COPIES; i++) {
+        const int column = i % COPIES_PER_ROW, row = i / COPIES_PER_ROW;
+        transformf_t pose = TRANSFORMF_IDENTITY;
+        transformf_set_position(&pose, (vec3f_t){(float)(column - (COPIES_PER_ROW / 2)) * 2.7F, (float)(row % 3) - 1.0F,
+                                                 (float)row * 5.5F - 13.0F});
+        const float half_angle = (float)i * 0.37F;
+        transformf_set_rotation(&pose, (quatf_t){0.0F, sinf(half_angle), 0.0F, cosf(half_angle)});
+        const float scale = 0.5F + (float)(i % 4) * 0.5F;
+        transformf_set_scale(&pose, (vec3f_t){scale, scale, scale});
+        models[i] = transformf_compute_matrix(&pose);
+    }
+}
+
+typedef struct {
+    uint16_t* color;
+    uint16_t* depth;
+    raster_stats_t stats;
+    void* scratch;
+} drawn_t;
+
+static drawn_t
+draw_drawn(const r3d_instance_t* instances, int count) {
+    raster_t raster = {.instances = instances, .instance_count = count, .width = SIZE, .height = SIZE, .clear = CLEAR};
+    drawn_t out = {.scratch = malloc(raster_scratch_bytes(&raster))};
+    TEST_ASSERT_NOT_NULL(out.scratch);
+    raster.scratch = out.scratch;
+    const render_view_t frame_view = render_view_fixture(&CAMERA, &raster, 0);
+    out.stats = raster_draw(&raster, &frame_view);
+    out.color = raster_color(&raster);
+    out.depth = raster_depth(&raster);
+    return out;
+}
+
+static void
+test_world_boxes_keep_every_copy_s_pixels_depth_and_clusters(void) {
+    quad_t* unit = malloc(sizeof *unit);
+    quad_t* ticks = malloc(sizeof *ticks);
+    mat4f_t* models = malloc(COPIES * sizeof *models);
+    box3f_t* boxes = malloc(COPIES * sizeof *boxes);
+    r3d_instance_t* tested = malloc(COPIES * sizeof *tested);
+    r3d_instance_t* boxed = malloc(COPIES * sizeof *boxed);
+    TEST_ASSERT_TRUE(unit != NULL && ticks != NULL && models != NULL && boxes != NULL && tested != NULL
+                     && boxed != NULL);
+    make_quad(unit, 255, 0, 0, 0);
+    make_quad(ticks, 0, 0, 255, 1);
+    for (int i = 0; i < 4; i++) {
+        for (int axis = 0; axis < 3; axis++) {
+            ticks->positions[i][axis] *= TICKS;
+        }
+    }
+    ticks->cluster.bounds.lo = vec3s_scale(ticks->cluster.bounds.lo, TICKS);
+    ticks->cluster.bounds.hi = vec3s_scale(ticks->cluster.bounds.hi, TICKS);
+    ticks->node.bounds = ticks->cluster.bounds;
+    ticks->mesh.position_scale = TICKS;
+    pose_copies(models);
+    for (int i = 0; i < COPIES; i++) {
+        const r3d_lit_mesh_t* mesh = i % 2 == 0 ? &unit->mesh : &ticks->mesh;
+        boxes[i] = r3d_lit_mesh_world_bounds(mesh, &models[i]);
+        tested[i] = (r3d_instance_t){mesh, &models[i], NULL};
+        boxed[i] = (r3d_instance_t){mesh, &models[i], &boxes[i]};
+    }
+    const drawn_t expected = draw_drawn(tested, COPIES);
+    const drawn_t actual = draw_drawn(boxed, COPIES);
+    TEST_ASSERT_GREATER_THAN_INT(0, expected.stats.clusters);
+    TEST_ASSERT_LESS_THAN_INT(COPIES, expected.stats.clusters); /* some copies are off screen */
+    TEST_ASSERT_EQUAL_INT(expected.stats.clusters, actual.stats.clusters);
+    TEST_ASSERT_EQUAL_INT(expected.stats.triangles, actual.stats.triangles);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(expected.color, actual.color, SIZE * SIZE);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(expected.depth, actual.depth, SIZE * SIZE);
+    free(expected.scratch);
+    free(actual.scratch);
+    free(boxed);
+    free(tested);
+    free(boxes);
+    free(models);
+    free(ticks);
+    free(unit);
+}
+
+static void
+test_an_instance_whose_world_box_is_off_screen_is_skipped(void) {
+    quad_t red;
+    make_quad(&red, 255, 0, 0, 0);
+    const box3f_t behind = {{-1.0F, -1.0F, -30.0F}, {1.0F, 1.0F, -20.0F}};
+    const r3d_instance_t boxed = {&red.mesh, NULL, &behind};
+    const drawn_t drawn = draw_drawn(&boxed, 1);
+    TEST_ASSERT_EQUAL_INT(0, drawn.stats.clusters);
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(drawn.color, 0.0F));
+    free(drawn.scratch);
 }
 
 static void
@@ -250,6 +349,8 @@ suite_r3d_instance(void) {
     RUN_TEST(test_a_scale_widens_an_instance_about_its_position);
     RUN_TEST(test_a_rotation_turns_an_instance_about_its_position);
     RUN_TEST(test_a_nearer_instance_covers_a_farther_one_whichever_is_drawn_first);
+    RUN_TEST(test_world_boxes_keep_every_copy_s_pixels_depth_and_clusters);
+    RUN_TEST(test_an_instance_whose_world_box_is_off_screen_is_skipped);
     RUN_TEST(test_a_mesh_s_bounding_sphere_is_centred_on_its_box_and_reaches_its_furthest_vertex);
 }
 

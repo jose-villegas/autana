@@ -51,8 +51,6 @@ static const unsigned FATE_KEEP[RASTER_FATE_COUNT] = {
 #define CHASE_UP       0.15F
 /* A spectator's near plane: this share of the bounds' radius, or the camera's. */
 #define SPECTATOR_NEAR 0.001F
-/* A box's corners, box3f_corner()'s k, each bit an axis. */
-#define BOX_CORNERS    8
 
 #define BITS           (sizeof(uint32_t) * CHAR_BIT)
 
@@ -252,15 +250,7 @@ world_bounds(const raster_t* raster) {
     box3f_t bounds = box3f_empty();
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];
-        const box3f_t local =
-            box3f_from_box3s(instance->mesh->nodes[0].bounds, 1.0F / (float)instance->mesh->position_scale);
-        for (int k = 0; k < BOX_CORNERS; k++) {
-            vec3f_t p = box3f_corner(local, k);
-            if (instance->model != NULL) {
-                p = mat4f_apply(instance->model, p);
-            }
-            bounds = box3f_extend(bounds, p);
-        }
+        bounds = box3f_union(bounds, r3d_lit_mesh_world_bounds(instance->mesh, instance->model));
     }
     return bounds;
 }
