@@ -17,8 +17,9 @@ build and check select every producer, those of one area, those whose needs
 are all among --needs (host,bakes: what one machine without a GPU or board
 can run), or the named scripts. A producer with an `each` runs once per item.
 With --changed, a run whose inputs are those recorded at its last good run
-is skipped: its code (the import closure, as the GPU doc stage counts it),
-the C its probes compiled, its `reads` files and its bake's lock row.
+is skipped: its arguments and item, its code (import closure, the C and
+requirements it counts, and the tracked files that code names), the C its
+probes compiled, its `reads` files and its bake's lock row.
 
 Before running any, they check what the runs need: Pillow, numpy and
 matplotlib, a C compiler when a `run` uses {cc}, a file for each `reads`
@@ -113,7 +114,8 @@ def all_bakes():
 
 
 def expand(chosen):
-    """Every run of the chosen producers, and a problem for each `each` that names nothing."""
+    """Every run of the chosen producers, and a problem for each `each` that names nothing or one item twice
+    (two files of one stem)."""
     runs, problems, baked = [], [], None
     for found in chosen:
         kind, _, pattern = found.producer.each.partition(":")
@@ -127,6 +129,9 @@ def expand(chosen):
             matched = [Run(found)]
         if not matched:
             problems.append(f"{found.name}: each {found.producer.each} names nothing")
+        items = [run.item for run in matched]
+        problems += [f"{found.name}: each {found.producer.each} names item {item} twice"
+                     for item in sorted({item for item in items if items.count(item) > 1})]
         runs += matched
     return runs, problems
 

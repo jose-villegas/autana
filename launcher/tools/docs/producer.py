@@ -27,7 +27,7 @@ EXCLUSIVE = ("gpu", "board")
 FIELDS = ("cc", "out", "item")
 # Where an `each` producer's items come from: "bakes:<glob>" every bake whose
 # output matches (the item is that output less its suffix), "glob:<pattern>"
-# every tracked file that matches (the item is its stem).
+# every file that matches (the item is its stem).
 EACH = ("bakes", "glob")
 # The environment variable the runner sets for a run: the folder a probe build (figures.py) writes a compiler
 # dependency list (.d) per source into, which tells the runner what C the images were made from.
@@ -40,9 +40,9 @@ class Producer(NamedTuple):
     area: str  # also the folder under docs/images/ its images go in
     needs: tuple[str, ...]
     outputs: tuple[str, ...]  # names in the area's folder; a glob (fast-path-*.png) where the code names them
-    run: tuple[str, ...] = ()  # the script's arguments; {cc} and {out} are filled in
+    run: tuple[str, ...] = ()  # the script's arguments; {cc}, {out} and, with an each, {item} are filled in
     reads: tuple[str, ...] = ()  # data files the script reads (globs), checked before any run
-    each: str = ""  # one run per item, "bakes:<glob>" or "glob:<pattern>"; {item} fills outputs and run
+    each: str = ""  # one run per item: "bakes:<glob>" or "glob:<pattern>"; outputs name {item}
 
 
 class Found(NamedTuple):
