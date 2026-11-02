@@ -148,21 +148,6 @@ demo_gif ${ID}-flat --scene "$ID" --object "${FULL}_flat"
 demo_gif ${ID}-fitted --scene "$ID" --object "${FULL}_fitted"
 demo_gif ${ID}-fitted-full --scene "$ID" --object "${FULL}_fitted_full"
 demo_gif ${ID}-flat-fitted --scene "$ID" --object "${FULL}_flat_fitted"
-# One frame of the fitted and full flythroughs above side by side, halfway
-# through: drawn as render_compare.py's video draws it, unencoded.
-run "$PYTHON" - "$W" "$RENDER/${ID}-compare.png" $((DEMO_GIF_FRAMES / 2)) "$ID" <<'PY'
-import pathlib
-import sys
-from PIL import Image
-sys.path.insert(0, "launcher/tools/render")
-from render_compare import GAIN, compose_frame, frame_note, measure, read_video
-work, out, index, id = pathlib.Path(sys.argv[1]), sys.argv[2], int(sys.argv[3]), sys.argv[4]
-fps, a = read_video(work / f"{id}-fitted.avi")
-_, b = read_video(work / f"{id}-full.avi")
-a, b = Image.fromarray(list(a)[index]), Image.fromarray(list(b)[index])
-note = frame_note(index, 1000.0 / fps, measure(a, b, None))
-compose_frame(a, b, None, GAIN, "fitted", "source", note).save(out)
-PY
 demo_gif ${ID}-depth --scene "$ID" --object "$SHOWCASE" --view depth
 demo_gif ${ID}-tiles --scene "$ID" --object "$SHOWCASE" --view tiles
 demo_gif ${ID}-motion-vectors --scene "$ID" --object "$SHOWCASE" --view motion
