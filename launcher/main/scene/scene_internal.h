@@ -113,9 +113,14 @@ asset_status_t scene_asset_open(asset_view_t entry, scene_asset_t* out);
 typedef struct {
     r3d_lit_mesh_t mesh;
     mat4f_t model;
+    box3f_t world_bounds; /* the mesh's root box through `model`, kept with it */
     scene_entity_t entity;
     bool placed; /* false while the transform is the identity: drawn as it is */
 } scene_renderer_t;
+
+/* Sets `r`'s world box from its mesh and model; call after either changes,
+ * a skinned mesh's refit included. */
+void scene_renderer_bound(scene_renderer_t* r);
 
 typedef struct {
     camera_t lens;

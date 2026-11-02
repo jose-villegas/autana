@@ -1,6 +1,5 @@
 """Synthetic source objects, rigid placements and offline scene reporting."""
 
-import csv
 from dataclasses import replace
 from itertools import product
 import hashlib
@@ -22,7 +21,9 @@ from r3d.gltf_mesh import load_gltf_mesh
 from r3d.obj import Texture, load_obj
 from r3d.import_settings import SettingsError, load_import_settings, load_scene
 from r3d.objects.instances import MATCH_TOLERANCE, SourceObject, bounds_diagonal, match_instances, rigid_fit, source_objects
-from r3d.objects.objects_report import LOD_LEVELS, LOD_TRIANGLE_RATIO, main, masked_objects, pose_rows
+from r3d.objects.object_error import (SKY, Parts, cell, common_prefix, object_rows, part_labels, part_names,
+                                      read, report_body, rows_for, shape_rows, write)
+from r3d.objects.objects_report import main, masked_objects
 from r3d.mesh_import import load_source
 from test_r3d_import import camera, renderer, write_import, write_scene
 
@@ -190,35 +191,6 @@ class ObjectsTests(unittest.TestCase):
         shapes = match_instances(source_objects(p, tv, tm, to, names))
         self.assertEqual([len(shape.instances) for shape in shapes], [2])
 
-    def test_density_lod_only_trims_repeated_shapes(self):
-        points = np.concatenate([POINTS + [0, 0, -100], POINTS + [1, 0, -100],
-                                 POINTS * [1.1, 1, 1] + [-1, 0, -100]])
-        triangles = np.concatenate([TRIANGLES + i * len(POINTS) for i in range(3)])
-        shapes = match_instances(source_objects(points, triangles, np.tile(MATERIALS, 3),
-                                                np.repeat(np.arange(3), len(TRIANGLES)),
-                                                ['first', 'copy', 'single']))
-        job = SimpleNamespace(renderer=SimpleNamespace(variant=SimpleNamespace(triangles=None)),
-                              object=SimpleNamespace(matrix=np.eye(3), position=np.zeros(3)))
-        poses = np.array([[0., 0., 0., 0., 0., -1.], [0., 0., -95., 0., 0., -1.],
-                          [0., 0., -99., 0., 0., -1.]])
-        width, height = 184, 224
-        with patch('r3d.objects.objects_report.sample_camera_path',
-                   return_value=(width, height, 1., 0.1, poses)):
-            component = SimpleNamespace(path=SimpleNamespace(animation=None, node=None),
-                                        half_fov_short_tan=1., near_z=0.1)
-            scene = SimpleNamespace(camera=SimpleNamespace(component=component))
-            result = pose_rows(shapes, scene, job, 1000, (width, height))
-        budget, rows = result[:2]
-        self.assertEqual(budget, len(triangles))
-        self.assertEqual(rows[0]['budget_triangles_in_view'], budget)
-        self.assertAlmostEqual(rows[0]['triangles_with_lod'], len(TRIANGLES) * (1 + 2 / LOD_TRIANGLE_RATIO ** (LOD_LEVELS - 1)))
-        self.assertEqual(rows[1]['triangles_with_lod'], len(TRIANGLES) * (1 + 2 / LOD_TRIANGLE_RATIO))
-        self.assertEqual(rows[2]['triangles_with_lod'], budget)
-        self.assertAlmostEqual(result[2], width * height / budget)
-        for row in rows:
-            self.assertEqual(row['budget_triangles'], budget)
-            self.assertAlmostEqual(row['saved'], row['budget_triangles_in_view'] - row['triangles_with_lod'])
-
     def test_obj_groups_and_default(self):
         with tempfile.TemporaryDirectory() as directory:
             path = pathlib.Path(directory) / 'plain.obj'
@@ -313,51 +285,14 @@ class ObjectsTests(unittest.TestCase):
         np.testing.assert_array_equal(src.tri_o, np.repeat([0, 1], 4))
         np.testing.assert_array_equal(src.p[src.tri_v[src.tri_o == 1]], (POINTS + [10, 0, 0])[TRIANGLES])
 
-    def run_pose(self, objects, budget=None, matrix=None, position=None):
-        job = SimpleNamespace(renderer=SimpleNamespace(variant=SimpleNamespace(triangles=budget)),
-                              object=SimpleNamespace(matrix=np.eye(3) if matrix is None else matrix,
-                                                     position=np.zeros(3) if position is None else position))
-        with patch('r3d.objects.objects_report.sample_camera_path',
-                   return_value=(184, 224, 1., 0.1, np.array([[0., 0., 0., 0., 0., -1.]]))):
-            component = SimpleNamespace(path=SimpleNamespace(animation=None, node=None),
-                                        half_fov_short_tan=1., near_z=0.1)
-            scene = SimpleNamespace(camera=SimpleNamespace(component=component))
-            return pose_rows(match_instances(objects), scene, job, 1000, (184, 224))
-
-    def test_pose_explicit_budget_proportional_shares(self):
-        objects = [SourceObject('inside', POINTS + [0, 0, -10], TRIANGLES[:1], MATERIALS[:1]),
-                   SourceObject('outside', POINTS + [1000, 0, -10], TRIANGLES, MATERIALS)]
-        budget, rows, _ = self.run_pose(objects, budget=100)
-        self.assertEqual(budget, 100)
-        self.assertEqual(rows[0]['budget_triangles_in_view'], 20)
-        self.assertEqual(rows[0]['triangles_with_lod'], 20)
-
-    def test_pose_renderer_matrix_and_position(self):
-        obj = SourceObject('placed', POINTS + [100, 0, 0], TRIANGLES, MATERIALS)
-        matrix = Rotation.from_euler('y', 90, degrees=True).as_matrix()
-        _, rows, _ = self.run_pose([obj], matrix=matrix, position=[0, 0, 90])
-        self.assertEqual(rows[0]['instances_in_view'], 1)
-        _, rows, _ = self.run_pose([obj])
-        self.assertEqual(rows[0]['instances_in_view'], 0)
-
-    def test_pose_behind_camera_and_zero_mean(self):
-        obj = SourceObject('behind', POINTS + [0, 0, 10], TRIANGLES, MATERIALS)
-        _, rows, density = self.run_pose([obj])
-        self.assertEqual(rows[0]['instances_in_view'], 0)
-        self.assertEqual(rows[0]['triangles_with_lod'], 0)
-        self.assertEqual(density, float('inf'))
-
     def test_zero_diagonal_report(self):
         from r3d.objects.objects_report import write_report
 
         obj = SourceObject('point', np.zeros_like(POINTS), TRIANGLES, MATERIALS)
-        shapes = match_instances([obj, obj])
-        budget, rows, density = self.run_pose([obj, obj], position=[0, 0, -10])
         with tempfile.TemporaryDirectory() as directory:
             out = pathlib.Path(directory)
-            write_report(out, [obj, obj], shapes, budget, rows, density, MATCH_TOLERANCE)
+            write_report(out, [obj, obj], match_instances([obj, obj]), MATCH_TOLERANCE)
             self.assertTrue((out / 'residuals.png').is_file())
-            self.assertTrue(np.isfinite(rows[0]['triangles_with_lod']))
 
     def test_cli_tolerance_reaches_matching(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -365,32 +300,8 @@ class ObjectsTests(unittest.TestCase):
             write_import(root)
             scene = write_scene(root, renderer() + camera(path=True, region=False))
             with patch('r3d.objects.objects_report.match_instances', wraps=match_instances) as matching:
-                main([str(scene), '--object', 'mesh', '--out', str(root / 'out'), '--size', '184', '224',
-                      '--tolerance', '0.0123'])
+                main([str(scene), '--object', 'mesh', '--out', str(root / 'out'), '--tolerance', '0.0123'])
             self.assertEqual(matching.call_args.args[1], 0.0123)
-
-    def test_cli_selected_renderer_size(self):
-        for fit_size, visibility_size, expected in (((92, 112), (8, 6), (92, 112)),
-                                                    (None, (8, 6), (8, 6)), (None, None, None)):
-            with self.subTest(expected=expected), tempfile.TemporaryDirectory() as directory:
-                root = pathlib.Path(directory)
-                write_import(root)
-                path = write_scene(root, renderer(name='other') + renderer() + camera(path=True, region=False))
-                scene = load_scene(path)
-                scene.renderers[0].renderer.fit = SimpleNamespace(size=(184, 224))
-                scene.renderers[1].renderer.fit = SimpleNamespace(size=fit_size) if fit_size else None
-                scene.renderers[1].renderer.visibility = (SimpleNamespace(size=visibility_size, source='camera_path',
-                                                                          every_ms=1000) if visibility_size else None)
-                with patch('r3d.objects.objects_report.load_scene', return_value=scene), \
-                        patch('r3d.objects.objects_report.pose_rows', wraps=pose_rows) as report:
-                    args = [str(path), '--object', 'mesh', '--out', str(root / 'out')]
-                    if expected is None:
-                        with self.assertRaises(SystemExit):
-                            main(args)
-                        report.assert_not_called()
-                    else:
-                        main(args)
-                        self.assertEqual(tuple(report.call_args.args[-1]), expected)
 
     def test_report(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -400,8 +311,8 @@ class ObjectsTests(unittest.TestCase):
                                                  ('outside', POINTS + [10000, 0, -10], TRIANGLES)]))
             scene = write_scene(root, renderer() + camera(path=True, region=False))
             out = root / 'report'
-            main([str(scene), '--object', 'mesh', '--out', str(out), '--every-ms', '1000', '--size', '184', '224'])
-            for name in ('objects.json', 'objects.md', 'residuals.png', 'poses.csv', 'lod.png'):
+            main([str(scene), '--object', 'mesh', '--out', str(out)])
+            for name in ('objects.json', 'objects.md', 'residuals.png'):
                 self.assertTrue((out / name).is_file(), name)
             data = json.loads((out / 'objects.json').read_text())
             self.assertEqual(data['totals']['objects'], 2)
@@ -409,17 +320,6 @@ class ObjectsTests(unittest.TestCase):
             self.assertEqual(data['totals']['source_triangles'], 8)
             self.assertEqual(data['totals']['unique_triangles'], 4)
             self.assertEqual(data['totals']['repeated_shapes'], 1)
-            with (out / 'poses.csv').open() as stream:
-                rows = list(csv.DictReader(stream))
-            self.assertTrue(rows)
-            self.assertEqual(int(rows[0]['instances_in_view']), 1)
-            self.assertEqual(float(rows[0]['budget_triangles_in_view']), 4)
-            self.assertEqual(float(rows[0]['triangles_with_lod']), 4 / LOD_TRIANGLE_RATIO ** 2)
-            self.assertEqual(float(rows[0]['budget_triangles']), 8)
-            self.assertEqual(float(rows[0]['saved']), 4 - float(rows[0]['triangles_with_lod']))
-            summary = (out / 'objects.md').read_text()
-            self.assertIn('Calibrated pixels per triangle:', summary)
-            self.assertIn('| Triangles LOD frees |', summary)
 
 
 class InstancesFigureTests(unittest.TestCase):
@@ -613,6 +513,86 @@ class InstancesFigureTests(unittest.TestCase):
                 self.assertGreater(image.width, DOC_SIZE[0])
                 self.assertGreater(len(image.getcolors(image.width * image.height)), 1)
         self.assertEqual(calls[0][1:], ('test', 'mesh', 'near', 1000))
+
+
+class ObjectErrorTests(unittest.TestCase):
+    """Parts, repeats and the per-part split of a held-out frame's error."""
+
+    def scene(self):
+        # Object a: one tetrahedron, and its copy moved apart (two parts of one repeated shape). Object b: a larger
+        # tetrahedron (its own shape) welded to a's first part at a corner: one part sharing a position with a.
+        moved = POINTS + [10., 0., 0.]
+        welded = 2 * POINTS + POINTS[1]
+        p = np.concatenate([POINTS, moved, welded])
+        tri_v = np.concatenate([TRIANGLES, TRIANGLES + 4, TRIANGLES + 8])
+        tri_o = np.repeat([0, 0, 1], len(TRIANGLES))
+        return p, tri_v, tri_o, np.tile(MATERIALS, 3)
+
+    def test_parts_split_by_welded_position_within_an_object(self):
+        p, tri_v, tri_o, _ = self.scene()
+        labels, shared = part_labels(p, tri_v, tri_o)
+        np.testing.assert_array_equal(labels, np.repeat([0, 1, 2], len(TRIANGLES)))
+        np.testing.assert_array_equal(shared, [True, False, True])
+        names, _, parts_of_object = part_names(labels, tri_o, ['a', 'b'])
+        self.assertEqual(names, ['a#0', 'a#1', 'b'])
+        np.testing.assert_array_equal(parts_of_object, [2, 2, 1])
+
+    def test_rows_split_the_frame_error_and_rank_it(self):
+        p, tri_v, tri_o, tri_m = self.scene()
+        labels, shared = part_labels(p, tri_v, tri_o)
+        names, owner, parts_of_object = part_names(labels, tri_o, ['a', 'b'])
+        shapes = match_instances(source_objects(p, tri_v, tri_m, labels, names))
+        parts = Parts(names, [['a', 'b'][o] for o in owner], parts_of_object, shared, ['m0', 'm0', 'm1'],
+                      np.bincount(labels), np.array([4, 2, 2]))
+        # Six pixels: two show a#0, three b, one the sky; no pixel shows a#1, so its drawn triangles are unseen.
+        ids = np.array([0, 0, 2, 2, 2, -1])
+        error = np.array([1., 1., 6., 6., 6., 4.])
+        # A perfect match has no error to share: every share is 0, not NaN.
+        perfect, perfect_score, _ = rows_for(parts, shapes, {0: (ids, np.zeros(len(ids)))})
+        self.assertEqual(perfect_score, 0.0)
+        self.assertEqual([row['error_share'] for row in perfect], [0.0] * len(perfect))
+        rows, score, unseen = rows_for(parts, shapes, {0: (ids, error)})
+        self.assertAlmostEqual(score, error.mean())
+        self.assertAlmostEqual(unseen, 2 / 8)
+        self.assertEqual([row['object'] for row in rows], ['b', SKY, 'a#0'])
+        by_name = {row['object']: row for row in rows}
+        self.assertAlmostEqual(sum(row['error_share'] for row in rows), 1.0)
+        self.assertAlmostEqual(sum(row['pixel_share'] for row in rows), 1.0)
+        self.assertAlmostEqual(by_name['b']['error_share'], 18 / 24)
+        self.assertAlmostEqual(by_name['a#0']['mean_delta_e'], 1.0)
+        self.assertEqual(by_name['a#0']['copies'], 2)
+        self.assertAlmostEqual(by_name['a#0']['drawn_share'], 0.5)
+        self.assertEqual(by_name['b']['material'], 'm1')
+        # b is one part welded to another object, so only sub-mesh segmentation can split it; a#0 is welded but
+        # already split by connectivity.
+        self.assertTrue(by_name['b']['segment'])
+        self.assertFalse(by_name['a#0']['segment'])
+        self.assertTrue(by_name['a#0']['welded'])
+        [shape] = shape_rows(rows)
+        self.assertEqual((shape['name'], shape['seen'], shape['placed']), ('a#0', 1, 2))
+        self.assertAlmostEqual(shape['error_share'], 2 / 24)
+        objects = object_rows(rows)
+        self.assertEqual([(group['name'], group['seen'], group['placed']) for group in objects],
+                         [('b', 1, 1), ('a', 1, 2)])
+        # The page's tables are remade from the kept rows: the same tables, every field its own type again.
+        with tempfile.TemporaryDirectory() as folder:
+            out = pathlib.Path(folder)
+            write(out, rows, score, unseen, 'title', dict(fit='f', reference='r'))
+            kept, totals = read(out / 'error')
+        for row, again in zip(rows, kept, strict=True):
+            for key, value in row.items():
+                self.assertIsInstance(again[key], float if isinstance(value, float) else type(value))
+                if isinstance(value, float):
+                    self.assertAlmostEqual(again[key], value, delta=1e-5 * abs(value))
+                else:
+                    self.assertEqual(again[key], value)
+        self.assertEqual((totals['title'], totals['fit'], totals['reference']), ('title', 'f', 'r'))
+        self.assertEqual(report_body(kept, totals['mean_delta_e'], totals['drawn_unseen_share']),
+                         report_body(rows, score, unseen))
+
+    def test_report_names_leave_out_the_shared_prefix(self):
+        self.assertEqual(common_prefix([SKY, 'Scene_Street_1#0', 'Scene_Stone_2']), 'Scene_')
+        self.assertEqual(cell('Scene_Street_1#0', 'Scene_'), 'Street_1#0')
 
 
 if __name__ == '__main__':

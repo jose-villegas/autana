@@ -28,8 +28,8 @@ fi
 . "$LAUNCHER_DIR/../scripts/lib/python.sh"
 PYTHON=$(find_python) || { echo "check_tool_probes: no python found" >&2; exit 1; }
 
-# The probes' own standard (tools/math/probe_standard.py), not the tests'.
-PROBE_STANDARD=$("$PYTHON" "$LAUNCHER_DIR/tools/math/probe_standard.py")
+# The probes' own standard (tools/docs/probe_standard.py), not the tests'.
+PROBE_STANDARD=$("$PYTHON" "$LAUNCHER_DIR/tools/docs/probe_standard.py")
 CFLAGS="-std=$PROBE_STANDARD -Wall -Wextra -Werror -fsyntax-only"
 
 status=0

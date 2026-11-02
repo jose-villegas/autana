@@ -44,6 +44,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "build"))
 from compile_db import compile_flags
 from espressif import espressif_tools_root  # noqa: E402  (path must be set up first)
+from find_cc import host_cc  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/lib"))
 from pinned_tool import PINNED_MAJOR, resolve
 from native_path import to_native as to_native_path
@@ -162,15 +163,9 @@ def find_host_toolchain():
     target and install root from itself, portable to whatever compiler
     a given machine's find_cc() resolves to, MinGW or a Linux system gcc
     alike."""
-    find_cc_sh = TOOLS_DIR.parent / "build" / "find_cc.sh"
-    result = subprocess.run(
-        ["sh", "-c", f'. "{find_cc_sh.as_posix()}"; find_cc'],
-        capture_output=True, text=True)
-    if result.returncode != 0 or not result.stdout.strip():
+    resolved_cc = host_cc()
+    if resolved_cc is None:
         return None, None, None
-    cc = result.stdout.strip()
-    from shutil import which
-    resolved_cc = which(cc) or cc
     try:
         target = subprocess.run([resolved_cc, "-dumpmachine"],
                                  capture_output=True, text=True,

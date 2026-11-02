@@ -21,6 +21,26 @@ checked, and compared with device captures.
 
 ## Viewing a scene file
 
+To look at a scene, use [Loupe](https://github.com/jose-villegas/loupe), the frame
+debugger. Build it once, with autana as its submodule:
+
+```sh
+git clone --recurse-submodules https://github.com/jose-villegas/loupe
+cd loupe
+pip install -r tools/ci/requirements.txt
+cmake --workflow --preset default
+```
+
+```sh
+build/default/loupe PATH.scene.toml
+build/default/loupe PATH.scene.toml --view meshlets --frames 60 -o out.bmp
+build/default/loupe PATH.scene.toml --video out.avi
+```
+
+With `-o` or `--video`, Loupe writes the frames and exits without a window. The
+rest of this section covers the headless `scene_viewer.sh`, which bakes, doc
+figures and tests call:
+
 ```sh
 sh launcher/tools/render/scene_viewer.sh PATH.scene.toml --object NAME --frames 2 -o out.bmp
 ```
@@ -112,8 +132,8 @@ Run alone, it needs `PYTHON` set to an interpreter with Pillow and NumPy.
 `render_doc_images.sh` passes it the demo scene file and `OBJECT`, the object
 name of the scene's full renderer; the scene must also place `OBJECT_lite`,
 `OBJECT_flat`, `OBJECT_fitted`, `OBJECT_fitted_full` and `OBJECT_flat_fitted`.
-The CPU stage makes the launcher's and the UI toolkit's images and runs each app's
-`tools/doc_images.sh` for the app's own:
+The CPU stage makes the launcher's and the UI toolkit's images, runs each app's
+`tools/doc_images.sh` for the app's own, and runs the [declared producers](Doc-Figures.md):
 
 ```sh
 ./launcher/tools/render/render_doc_images.sh           # rewrite images and tables
@@ -432,7 +452,7 @@ stateDiagram-v2
     Open --> Step: run opened
     Step --> Step: elapsed time and input
     Step --> Close: judge warm-up frames, write outputs
-    Close --> [*]: success or failure
+    Close --> [*]: give back the scene, pack and framebuffer
 ```
 
 If `render_host_open()` returns false, no run opened and `exit_code` carries the command's result.
@@ -469,6 +489,9 @@ expose a provider's path duration and camera cuts. The scene-file provider
 seeks its animators and clears render history at a cut. An optional
 `render_context` hook returns the context a provider draws through, so a
 caller can switch debug views; providers without one leave it NULL.
+An optional `teardown` hook gives back what `setup` took; `render_host_close`
+calls it, then frees the framebuffer, so one process can open a run again,
+even of the same scene id from another pack folder.
 
 An engine scene lives in `launcher/tools/render/scenes/`; an app's scene lives
 in that app's own `tools/`, so nothing in the engine's tooling names an app.
@@ -578,7 +601,9 @@ python launcher/tools/render/check_avi.py out.avi ...      # re-reads the header
 Players stop reading a RIFF AVI 1.0 file well short of its 32-bit size
 field's 4 GB, so a run whose video would pass 1 GB is refused before
 anything is drawn, with the frame count
-that does fit stated in the refusal. `--video` never changes what a scene's
+that does fit stated in the refusal; `render_host_video_frames_fit()` gives
+an open run that count, and a run stepped past its `--frames` stops its
+video there with an error. `--video` never changes what a scene's
 BMP pins: the same bytes are written whether or not it is given, so it adds
 no baseline of its own.
 
