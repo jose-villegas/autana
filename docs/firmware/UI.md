@@ -66,8 +66,8 @@ so a scrim in it would walk the frozen backdrop toward black.
 
 The Waveshare BSP lives in `components/esp32_s3_touch_amoled_1_8/` with its
 LVGL interface removed; LVGL is not built. `board/board_panel.c` brings the
-panel up, `gfx/present/gfx_present.c` sends to it, and the BSP supplies board
-services and touch setup.
+panel up, `gfx/present/gfx_present.c` sends to it, and `board/` wraps the BSP for
+board services and touch setup.
 
 | Constraint | Why it points to microui |
 |---|---|
