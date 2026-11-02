@@ -272,11 +272,12 @@ def imported_names(tree):
             yield from (((node.module + "." if node.module else "") + alias.name, node.level) for alias in node.names)
 
 
-def closure(entries, stop=(), consumers=False):
-    """The entries' import closure, including packages, under TOOLS or sys.path roots the code adds.
-    A file in `stop`, any file under bake/, and, unless `consumers`, a file that imports this tool
-    (it consumes bakes, so it makes none) are neither counted nor followed. Unplaced tracked imports fail."""
-    roots = [TOOLS]
+def closure(entries, stop=(), consumers=False, roots=()):
+    """The entries' import closure, including packages, under TOOLS, `roots` (the folders of entries run as
+    scripts) or sys.path roots the code adds. A file in `stop`, any file under bake/, and, unless `consumers`,
+    a file that imports this tool (it consumes bakes, so it makes none) are neither counted nor followed.
+    Unplaced tracked imports fail."""
+    roots = [TOOLS, *roots]
     while True:
         known = len(roots)
         found, pending, unplaced = set(), [(TOOLS / entry).resolve() for entry in entries], []
