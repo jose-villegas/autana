@@ -204,6 +204,11 @@ scene_shell_compose(uint32_t dt_ms) {
     (void)dt_ms;
 }
 
+/* The shell's app exit where a provider did not link the scene manager: no scene to unload. scene/scene.c's own
+ * definition replaces this, and takes the render context with it. */
+__attribute__((weak)) void
+scene_unload_all(void) {}
+
 /* The declared steps turned into one frame's input_t. `down` holds from
  * the step that set it, so edges come out of the change rather than out of
  * a second declaration of the same tap. */
@@ -321,6 +326,18 @@ render_host_image(void) {
         .bgr = host.frame_buf, .width = host.out_w, .height = host.out_h, .stride = (size_t)host.stride};
 }
 
+/* Gives back what a run took, as the shell does when an app exits: the provider's own first, then every scene
+ * and the render context, then the framebuffer. Otherwise the next open in this process meets a mounted pack,
+ * the last run's resolution and a second framebuffer. */
+static void
+release(void) {
+    if (host.provider->teardown != NULL) {
+        host.provider->teardown();
+    }
+    scene_unload_all();
+    gfx_deinit();
+}
+
 bool
 render_host_open(const frame_provider_t* provider, int argc, char** argv, int* exit_code) {
     memset(&host, 0, sizeof host);
@@ -402,6 +419,7 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
     }
     if (host.provider->setup != NULL && !host.provider->setup(host.frame.quarter)) {
         fprintf(stderr, "%s: setup failed\n", host.provider->name);
+        release();
         return false;
     }
 
@@ -410,6 +428,7 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
          * nothing to write; the same refusal a device capture makes. A
          * provider wanting an image asks for the full-framebuffer layout. */
         fprintf(stderr, "no framebuffer to read: the scene left gfx in band mode\n");
+        release();
         return false;
     }
     host.t = ui_transform_quarter_turn(host.frame.quarter, GFX_WIDTH, GFX_HEIGHT);
@@ -418,6 +437,7 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
     host.frame_buf = malloc((size_t)host.stride * host.out_h);
     if (host.frame_buf == NULL) {
         fprintf(stderr, "out of memory\n");
+        release();
         return false;
     }
 
@@ -425,6 +445,7 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
         && !render_video_open(&host.video, host.video_path, host.out_w, host.out_h, host.frame.dt_ms)) {
         fprintf(stderr, "%s: cannot write %s\n", host.provider->name, host.video_path);
         free(host.frame_buf);
+        release();
         return false;
     }
 
@@ -439,6 +460,7 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
         fprintf(stderr, "%s: cannot capture stdout in %s\n", host.provider->name, host.console_path);
         free(host.console_path);
         free(host.frame_buf);
+        release();
         return false;
     }
 
@@ -493,6 +515,7 @@ render_host_close(void) {
         host.frame.elapsed_ms += host.frame.dt_ms;
     }
     gfx_readback_end();
+    release();
 
     const frame_watch_verdict_t verdict = render_watch_finish();
     free(host.console_path);
