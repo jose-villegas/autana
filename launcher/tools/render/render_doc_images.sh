@@ -133,18 +133,23 @@ case "${1:-}" in
         # launcher images, the scene scripts, or an app's doc_images.sh; when the
         # demo script spells it ${ID}-... or ends it with a loop variable, which
         # claims any name under that prefix (${ID}-view-$view); or when it is a
-        # pair sheet doc_tables.py lists for the demo scene.
+        # pair sheet doc_tables.py lists for the demo scene; or when a producer
+        # declares it (figures_runner.py list --outputs).
         comparing=1
         status=0
         pairs=
+        . "$ROOT/scripts/lib/python.sh"
+        PYTHON=$(find_python) || exit 2
+        declared=$("$PYTHON" launcher/tools/docs/figures_runner.py list --outputs) || exit 2
         if [ -f "$DEMO_SCENE" ]; then
-            . "$ROOT/scripts/lib/python.sh"
-            PYTHON=$(find_python) || exit 2
             pairs=$("$PYTHON" "$TOOLS_DIR/doc_tables.py" --pairs "$DEMO_SCENE" "$DEMO_OBJECT") || exit 2
             pairs=$(printf '%s\n' "$pairs" | awk '{print "compare-" $3 "-" $4}')
         fi
         for image in $(cd "$IMAGES" && find . -type f | sed 's|^\./||' | LC_ALL=C sort); do
             case "$image" in render/gpu/*|render/meshlets/*) continue ;; esac
+            if printf '%s\n' "$declared" | grep -qxF -- "$image"; then
+                continue
+            fi
             stem=$(basename "$image")
             stem=${stem%%.*}
             # A face example's renders are named after its file.
@@ -273,22 +278,8 @@ run "$PYTHON" launcher/tools/input/gravity_figures.py --cc "$cc" --out "$OUT/inp
 run "$PYTHON" launcher/tools/input/motion_axes_figures.py --cc "$cc" --out "$OUT/input" \
     > "$WORK/motion_axes_figures.log"
 # --orphans scans this runner: motion-axes.png, motion-rotation.gif
-run mkdir -p "$OUT/math"
-run "$PYTHON" launcher/tools/math/math_figures.py --cc "$cc" --trs "$OUT/math" \
-    --pixel "$OUT/math/camera-to-pixel.png" > "$WORK/math_figures.log"
-# --orphans scans this runner: trs-scale.gif, trs-rotate.gif, trs-translate.gif
-run "$PYTHON" launcher/tools/math/math_bench_figures.py --out "$OUT/math" > "$WORK/math_bench_figures.log"
-# --orphans scans this runner: benchmark-families.png
-run "$PYTHON" launcher/tools/math/fast_path_figures.py --out "$OUT/math" > "$WORK/fast_path_figures.log"
-# --orphans scans this runner: fast-path-mathf_recip.png, fast-path-mathf_recip_approx.png, fast-path-mathf_rsqrt.png, fast-path-mathf_rsqrt_approx.png, fast-path-mathf_repeat.png, fast-path-mathx_rsqrt_q30.png, fast-path-trig_sin.png
-run "$PYTHON" launcher/tools/math/geometry_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/geometry_figures.log"
-# --orphans scans this runner: rect-queries.png, circle-rect-queries.png, plane-distance.png, plane-from-points.png, plane-from-rows.png, frustum.png, box3-frustum.gif, box3-sphere-overlap.gif, box3-sphere-segments.png
-run "$PYTHON" launcher/tools/math/signal_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/signal_figures.log"
-# --orphans scans this runner: goertzel-response.png, goertzel-sweep.gif, pitch-curve.png
-run "$PYTHON" launcher/tools/math/stats_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/stats_figures.log"
-# --orphans scans this runner: stats-percentile-ranks.png
-run "$PYTHON" launcher/tools/math/inverse_depth_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/inverse_depth_figures.log"
-# --orphans scans this runner: inverse-depth-step.png
+# The producers that declare their images (launcher/tools/docs/producer.py), in parallel.
+run "$PYTHON" launcher/tools/docs/figures_runner.py build --into "$OUT" > "$WORK/figures.log"
 run "$PYTHON" launcher/tools/physics/spring_figures.py --cc "$cc" --out "$OUT/physics" > "$WORK/spring_figures.log"
 # --orphans scans this runner: spring-line-wave.gif, spring-line-spacetime.png
 run "$PYTHON" launcher/tools/kinematics/orbit_figures.py --cc "$cc" --out "$OUT/kinematics" > "$WORK/orbit_figures.log"
