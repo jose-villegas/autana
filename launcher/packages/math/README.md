@@ -67,6 +67,7 @@ header's opening comment; `--check` verifies it.
 | [include/math/geometry/recti.h](include/math/geometry/recti.h) | recti: a half-open rectangle of an int. |
 | [include/math/geometry/rects.h](include/math/geometry/rects.h) | rects: a half-open rectangle of an int16. |
 | [include/math/geometry/rectx.h](include/math/geometry/rectx.h) | rectx: a half-open rectangle of a Q16.16. |
+| [include/math/geometry/sphere3s.h](include/math/geometry/sphere3s.h) | sphere3s: a closed sphere of int16 position ticks. |
 | [include/math/geometry/sphere_template.h](include/math/geometry/sphere_template.h) | sphere_template: closed spheres for a real number type; see docs/math/Conventions.md#templates for macro arguments. |
 | [include/math/geometry/spheref.h](include/math/geometry/spheref.h) | spheref: a closed sphere of a float. |
 | [include/math/linear/affine2_template.h](include/math/linear/affine2_template.h) | affine2_template: a 2D affine map for one number type; see docs/math/Conventions.md#templates for the macro arguments. |
