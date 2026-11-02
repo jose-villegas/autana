@@ -23,7 +23,7 @@ from r3d.obj import Texture, load_obj
 from r3d.import_settings import SettingsError, load_import_settings, load_scene
 from r3d.objects.instances import MATCH_TOLERANCE, SourceObject, bounds_diagonal, match_instances, rigid_fit, source_objects
 from r3d.objects.object_error import (SKY, Parts, cell, common_prefix, object_rows, part_labels, part_names,
-                                      rows_for, shape_rows)
+                                      read, report_body, rows_for, shape_rows, write)
 from r3d.objects.objects_report import LOD_LEVELS, LOD_TRIANGLE_RATIO, main, masked_objects, pose_rows
 from r3d.mesh_import import load_source
 from test_r3d_import import camera, renderer, write_import, write_scene
@@ -672,6 +672,21 @@ class ObjectErrorTests(unittest.TestCase):
         objects = object_rows(rows)
         self.assertEqual([(group['name'], group['seen'], group['placed']) for group in objects],
                          [('b', 1, 1), ('a', 1, 2)])
+        # The page's tables are remade from the kept rows: the same tables, every field its own type again.
+        with tempfile.TemporaryDirectory() as folder:
+            out = pathlib.Path(folder)
+            write(out, rows, score, unseen, score, 'title')
+            kept, totals = read(out / 'error')
+        for row, again in zip(rows, kept, strict=True):
+            for key, value in row.items():
+                self.assertIsInstance(again[key], float if isinstance(value, float) else type(value))
+                if isinstance(value, float):
+                    self.assertAlmostEqual(again[key], value, delta=1e-5 * abs(value))
+                else:
+                    self.assertEqual(again[key], value)
+        self.assertEqual(totals['title'], 'title')
+        self.assertEqual(report_body(kept, totals['mean_delta_e'], totals['drawn_unseen_share']),
+                         report_body(rows, score, unseen))
 
     def test_report_names_leave_out_the_shared_prefix(self):
         self.assertEqual(common_prefix([SKY, 'Scene_Street_1#0', 'Scene_Stone_2']), 'Scene_')

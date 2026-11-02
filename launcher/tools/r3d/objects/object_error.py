@@ -6,8 +6,14 @@ held-out frames counts toward the part the reference shows there, traced with
 the reference's own primary rays at the render's size; the sky counts as its
 own row. The error is the held-out score's CIE76 dE (render_compare), so the
 rows sum to the score.
+
+    object_error.py DATA --figure PNG --table MD
+
+remakes a page's figure and tables from the rows objects_report.py --docs
+keeps: DATA.csv, every part, and DATA.json, the totals.
 """
 
+import argparse
 import csv
 import json
 import os
@@ -20,6 +26,7 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "render"))
 
 from docs import plot_style  # noqa: E402
@@ -34,6 +41,10 @@ FIGURE_ROWS = 30
 # The bar figure grows by this many inches per part, past a fixed frame for its title and axis.
 ROW_INCHES = 0.24
 FRAME_INCHES = 1.2
+# Shares and dE76 keep this many significant digits in error.csv.
+CSV_DIGITS = 6
+INT_FIELDS = ("source_triangles", "drawn_triangles", "shape", "copies", "parts_of_object")
+BOOL_FIELDS = ("welded", "segment")
 
 
 class Parts(NamedTuple):
@@ -261,19 +272,29 @@ def figure(rows, path, title, top=FIGURE_ROWS):
 
 
 def write(out, rows, score, unseen, held_out_mean, title):
-    """error.csv (every part), error.json (totals), error.md (the ranked tables), error.png (the bar figure);
-    returns the tables' Markdown."""
+    """error.csv (every part), error.json (totals), error.md (the ranked tables), error.png (the bar figure)."""
     with (out / "error.csv").open("w", newline="") as stream:
-        writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
+        writer = csv.DictWriter(stream, fieldnames=list(rows[0]), lineterminator="\n")
         writer.writeheader()
-        writer.writerows(rows)
-    (out / "error.json").write_text(json.dumps(dict(mean_delta_e=score, held_out_mean_delta_e=held_out_mean,
+        writer.writerows({key: f"{value:.{CSV_DIGITS}g}" if isinstance(value, float) else value
+                          for key, value in row.items()} for row in rows)
+    (out / "error.json").write_text(json.dumps(dict(title=title, mean_delta_e=score, held_out_mean_delta_e=held_out_mean,
                                                     parts_seen=len(rows) - 1, drawn_unseen_share=unseen),
                                                indent=2) + "\n")
-    body = report_body(rows, score, unseen)
-    (out / "error.md").write_text(f"# {title}\n\n{body}\n\n![Error and pixel share](error.png)\n")
+    (out / "error.md").write_text(f"# {title}\n\n{report_body(rows, score, unseen)}\n\n![Error and pixel share](error.png)\n")
     figure(rows, out / "error.png", title)
-    return body
+
+
+def read(data):
+    """The rows and totals write kept as DATA.csv and DATA.json."""
+    def typed(row):
+        return {key: int(value) if key in INT_FIELDS else value == "True" if key in BOOL_FIELDS
+                else value if key in ("object", "source_object", "material") else float(value)
+                for key, value in row.items()}
+
+    with data.with_suffix(".csv").open(newline="") as stream:
+        rows = [typed(row) for row in csv.DictReader(stream)]
+    return rows, json.loads(data.with_suffix(".json").read_text())
 
 
 def held_out_error(scene_path, scene, job, bundle, inputs, work):
@@ -319,3 +340,20 @@ def held_out_error(scene_path, scene, job, bundle, inputs, work):
     held_out_mean, _p95 = fv.held_out_score(job, bundle, work, host, scene_path, inputs=inputs)
     totals = accumulate(work / "score" / "frames.avi", inputs / "reference_held_out", fv.BOARD_SCALE, ids_for)
     return (*rows_for(parts, shapes, totals), held_out_mean)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("data", type=pathlib.Path)
+    parser.add_argument("--figure", type=pathlib.Path, required=True)
+    parser.add_argument("--table", type=pathlib.Path, required=True)
+    args = parser.parse_args(argv)
+    rows, totals = read(args.data)
+    figure(rows, args.figure, totals["title"])
+    args.table.write_text(report_body(rows, totals["mean_delta_e"], totals["drawn_unseen_share"]) + "\n",
+                          encoding="utf-8")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
