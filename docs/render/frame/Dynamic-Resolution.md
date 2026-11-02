@@ -81,52 +81,82 @@ Inside one surface no corner changes, so interiors are nearest exactly. Compose 
 
 The seam and the corners share one buffer, the half picture's expand hints (`GFX_HINT_PLANES` one-bit masks after its pixels); SURFACE reads the first mask, EDGES all four.
 
-<!-- generated: dynres-upscale sha256=150a7f4bd1f2048b45217fd6f378c6fa09df78058bf960eefa3fc0c21c6193c6 -->
-| Scene | mean dE | p95 dE | SSIM |
-|---|---|---|---|
-| bistro-fitted-full | 7.40 → 7.37 (-0.03) | 23.2 → 22.6 (-0.6) | 0.551 → 0.556 (+0.005) |
-| sponza-fitted-full | 5.96 → 5.93 (-0.03) | 16.4 → 15.9 (-0.5) | 0.703 → 0.710 (+0.007) |
-| sponza-fitted | 6.61 → 6.57 (-0.04) | 18.9 → 18.4 (-0.5) | 0.657 → 0.664 (+0.007) |
-| sponza-flat-fitted | 5.82 → 5.75 (-0.07) | 16.8 → 16.0 (-0.8) | 0.694 → 0.708 (+0.015) |
-| sponza | 9.76 → 9.66 (-0.09) | 28.7 → 28.0 (-0.7) | 0.550 → 0.559 (+0.009) |
-| sponza-flat | 12.96 → 12.73 (-0.23) | 44.3 → 43.1 (-1.2) | 0.408 → 0.430 (+0.022) |
-| sponza-lite | 11.51 → 11.44 (-0.07) | 34.1 → 33.6 (-0.5) | 0.491 → 0.497 (+0.006) |
+<!-- generated: dynres-upscale sha256=fd120993bf10ea00f9397975ade8e524f2f3c7e58d9df00ab9749308998dd8f7 -->
+| Scene | Filter | mean dE | p95 dE | SSIM |
+|---|---|---|---|---|
+| bistro-fitted-full | surface | 7.08 → 7.05 (-0.03) | 22.0 → 21.4 (-0.6) | 0.564 → 0.569 (+0.005) |
+| bistro-fitted-full | edges | 7.08 → 7.07 (-0.01) | 22.0 → 21.9 (-0.0) | 0.564 → 0.564 (+0.001) |
+| sponza-fitted-full | surface | 5.94 → 5.91 (-0.03) | 16.4 → 15.9 (-0.5) | 0.704 → 0.712 (+0.007) |
+| sponza-fitted-full | edges | 5.94 → 5.92 (-0.02) | 16.4 → 16.4 (-0.1) | 0.704 → 0.705 (+0.001) |
+| sponza-fitted | surface | 6.60 → 6.56 (-0.04) | 18.8 → 18.2 (-0.6) | 0.655 → 0.663 (+0.008) |
+| sponza-fitted | edges | 6.60 → 6.59 (-0.02) | 18.8 → 18.7 (-0.1) | 0.655 → 0.657 (+0.001) |
+| sponza-flat-fitted | surface | 5.78 → 5.71 (-0.07) | 16.7 → 15.9 (-0.8) | 0.690 → 0.707 (+0.017) |
+| sponza-flat-fitted | edges | 5.78 → 5.76 (-0.02) | 16.7 → 16.6 (-0.1) | 0.690 → 0.691 (+0.002) |
+| sponza | surface | 9.59 → 9.50 (-0.09) | 28.1 → 27.5 (-0.6) | 0.548 → 0.557 (+0.009) |
+| sponza | edges | 9.59 → 9.57 (-0.02) | 28.1 → 28.0 (-0.1) | 0.548 → 0.549 (+0.001) |
+| sponza-flat | surface | 13.42 → 13.16 (-0.26) | 46.2 → 44.8 (-1.4) | 0.390 → 0.412 (+0.022) |
+| sponza-flat | edges | 13.42 → 13.41 (-0.01) | 46.2 → 46.1 (-0.1) | 0.390 → 0.391 (+0.001) |
+| sponza-lite | surface | 11.44 → 11.36 (-0.08) | 33.2 → 32.8 (-0.4) | 0.494 → 0.501 (+0.007) |
+| sponza-lite | edges | 11.44 → 11.42 (-0.01) | 33.2 → 33.1 (-0.1) | 0.494 → 0.494 (+0.001) |
 
-At 184x224, each cell is nearest → surface (change), the mean over the path's frames against the reference at full size; lower dE and higher SSIM are closer.
+At 184x224, each cell is nearest → the row's filter (change), the mean over the path's frames against the reference at full size; lower dE and higher SSIM are closer.
 
 <details>
 <summary>Every size, with edge and interior dE</summary>
 
-| Scene | Size | mean dE | p95 dE | SSIM | edge dE | interior dE |
-|---|---|---|---|---|---|---|
-| bistro-fitted-full | 184x224 | 7.40 → 7.37 | 23.2 → 22.6 | 0.551 → 0.556 | 11.24 → 11.18 | 4.96 → 4.95 |
-| bistro-fitted-full | 184x149 | 7.54 → 7.48 | 23.8 → 22.9 | 0.538 → 0.546 | 11.57 → 11.44 | 5.00 → 4.99 |
-| bistro-fitted-full | 184x112 | 7.58 → 7.56 | 24.0 → 23.2 | 0.534 → 0.539 | 11.67 → 11.60 | 5.00 → 5.02 |
-| sponza-fitted-full | 184x224 | 5.96 → 5.93 | 16.4 → 15.9 | 0.703 → 0.710 | 10.27 → 10.18 | 4.60 → 4.60 |
-| sponza-fitted-full | 184x149 | 6.13 → 6.06 | 17.2 → 16.4 | 0.688 → 0.700 | 10.79 → 10.57 | 4.65 → 4.64 |
-| sponza-fitted-full | 184x112 | 6.17 → 6.16 | 17.5 → 16.7 | 0.683 → 0.692 | 10.94 → 10.82 | 4.67 → 4.68 |
-| sponza-fitted | 184x224 | 6.61 → 6.57 | 18.9 → 18.4 | 0.657 → 0.664 | 11.55 → 11.43 | 5.06 → 5.05 |
-| sponza-fitted | 184x149 | 6.74 → 6.67 | 19.5 → 18.7 | 0.646 → 0.657 | 11.95 → 11.73 | 5.10 → 5.08 |
-| sponza-fitted | 184x112 | 6.77 → 6.73 | 19.6 → 18.8 | 0.643 → 0.652 | 12.03 → 11.89 | 5.11 → 5.11 |
-| sponza-flat-fitted | 184x224 | 5.82 → 5.75 | 16.8 → 16.0 | 0.694 → 0.708 | 10.31 → 10.08 | 4.41 → 4.38 |
-| sponza-flat-fitted | 184x149 | 6.00 → 5.89 | 17.7 → 16.5 | 0.678 → 0.700 | 10.86 → 10.50 | 4.46 → 4.43 |
-| sponza-flat-fitted | 184x112 | 6.04 → 5.99 | 17.9 → 16.9 | 0.675 → 0.692 | 10.98 → 10.78 | 4.48 → 4.48 |
-| sponza | 184x224 | 9.76 → 9.66 | 28.7 → 28.0 | 0.550 → 0.559 | 15.85 → 15.59 | 7.84 → 7.80 |
-| sponza | 184x149 | 9.82 → 9.70 | 28.9 → 28.0 | 0.544 → 0.556 | 16.03 → 15.70 | 7.87 → 7.81 |
-| sponza | 184x112 | 9.84 → 9.70 | 28.9 → 28.0 | 0.541 → 0.554 | 16.09 → 15.73 | 7.87 → 7.81 |
-| sponza-flat | 184x224 | 12.96 → 12.73 | 44.3 → 43.1 | 0.408 → 0.430 | 20.67 → 20.06 | 10.53 → 10.42 |
-| sponza-flat | 184x149 | 13.03 → 12.72 | 44.6 → 42.9 | 0.404 → 0.433 | 20.90 → 20.06 | 10.55 → 10.41 |
-| sponza-flat | 184x112 | 13.02 → 12.71 | 44.5 → 42.8 | 0.405 → 0.434 | 20.85 → 20.05 | 10.55 → 10.39 |
-| sponza-lite | 184x224 | 11.51 → 11.44 | 34.1 → 33.6 | 0.491 → 0.497 | 18.51 → 18.33 | 9.33 → 9.30 |
-| sponza-lite | 184x149 | 11.55 → 11.45 | 34.2 → 33.5 | 0.488 → 0.496 | 18.64 → 18.37 | 9.35 → 9.30 |
-| sponza-lite | 184x112 | 11.56 → 11.46 | 34.2 → 33.5 | 0.486 → 0.496 | 18.64 → 18.39 | 9.35 → 9.29 |
+| Scene | Size | Filter | mean dE | p95 dE | SSIM | edge dE | interior dE |
+|---|---|---|---|---|---|---|---|
+| bistro-fitted-full | 184x224 | surface | 7.08 → 7.05 | 22.0 → 21.4 | 0.564 → 0.569 | 10.84 → 10.78 | 4.77 → 4.76 |
+| bistro-fitted-full | 184x224 | edges | 7.08 → 7.07 | 22.0 → 21.9 | 0.564 → 0.564 | 10.84 → 10.82 | 4.77 → 4.76 |
+| bistro-fitted-full | 184x149 | surface | 7.22 → 7.17 | 22.6 → 21.7 | 0.550 → 0.559 | 11.18 → 11.05 | 4.80 → 4.80 |
+| bistro-fitted-full | 184x149 | edges | 7.22 → 7.21 | 22.6 → 22.5 | 0.550 → 0.551 | 11.18 → 11.15 | 4.80 → 4.80 |
+| bistro-fitted-full | 184x112 | surface | 7.27 → 7.26 | 22.8 → 21.9 | 0.545 → 0.551 | 11.29 → 11.22 | 4.82 → 4.84 |
+| bistro-fitted-full | 184x112 | edges | 7.27 → 7.26 | 22.8 → 22.7 | 0.545 → 0.546 | 11.29 → 11.26 | 4.82 → 4.81 |
+| sponza-fitted-full | 184x224 | surface | 5.94 → 5.91 | 16.4 → 15.9 | 0.704 → 0.712 | 10.28 → 10.19 | 4.58 → 4.58 |
+| sponza-fitted-full | 184x224 | edges | 5.94 → 5.92 | 16.4 → 16.4 | 0.704 → 0.705 | 10.28 → 10.22 | 4.58 → 4.58 |
+| sponza-fitted-full | 184x149 | surface | 6.10 → 6.04 | 17.2 → 16.3 | 0.690 → 0.703 | 10.78 → 10.56 | 4.64 → 4.63 |
+| sponza-fitted-full | 184x149 | edges | 6.10 → 6.08 | 17.2 → 17.1 | 0.690 → 0.691 | 10.78 → 10.72 | 4.64 → 4.63 |
+| sponza-fitted-full | 184x112 | surface | 6.14 → 6.12 | 17.5 → 16.7 | 0.685 → 0.696 | 10.91 → 10.79 | 4.66 → 4.67 |
+| sponza-fitted-full | 184x112 | edges | 6.14 → 6.12 | 17.5 → 17.4 | 0.685 → 0.687 | 10.91 → 10.84 | 4.66 → 4.65 |
+| sponza-fitted | 184x224 | surface | 6.60 → 6.56 | 18.8 → 18.2 | 0.655 → 0.663 | 11.57 → 11.45 | 5.06 → 5.05 |
+| sponza-fitted | 184x224 | edges | 6.60 → 6.59 | 18.8 → 18.7 | 0.655 → 0.657 | 11.57 → 11.51 | 5.06 → 5.06 |
+| sponza-fitted | 184x149 | surface | 6.71 → 6.64 | 19.3 → 18.4 | 0.646 → 0.658 | 11.89 → 11.67 | 5.10 → 5.08 |
+| sponza-fitted | 184x149 | edges | 6.71 → 6.69 | 19.3 → 19.2 | 0.646 → 0.648 | 11.89 → 11.83 | 5.10 → 5.10 |
+| sponza-fitted | 184x112 | surface | 6.73 → 6.69 | 19.3 → 18.6 | 0.644 → 0.654 | 11.96 → 11.82 | 5.11 → 5.10 |
+| sponza-fitted | 184x112 | edges | 6.73 → 6.71 | 19.3 → 19.2 | 0.644 → 0.645 | 11.96 → 11.88 | 5.11 → 5.10 |
+| sponza-flat-fitted | 184x224 | surface | 5.78 → 5.71 | 16.7 → 15.9 | 0.690 → 0.707 | 10.25 → 10.04 | 4.38 → 4.36 |
+| sponza-flat-fitted | 184x224 | edges | 5.78 → 5.76 | 16.7 → 16.6 | 0.690 → 0.691 | 10.25 → 10.18 | 4.38 → 4.38 |
+| sponza-flat-fitted | 184x149 | surface | 5.94 → 5.84 | 17.5 → 16.3 | 0.677 → 0.701 | 10.74 → 10.39 | 4.44 → 4.41 |
+| sponza-flat-fitted | 184x149 | edges | 5.94 → 5.92 | 17.5 → 17.4 | 0.677 → 0.678 | 10.74 → 10.67 | 4.44 → 4.44 |
+| sponza-flat-fitted | 184x112 | surface | 5.98 → 5.93 | 17.6 → 16.6 | 0.674 → 0.694 | 10.84 → 10.65 | 4.45 → 4.45 |
+| sponza-flat-fitted | 184x112 | edges | 5.98 → 5.95 | 17.6 → 17.5 | 0.674 → 0.676 | 10.84 → 10.76 | 4.45 → 4.44 |
+| sponza | 184x224 | surface | 9.59 → 9.50 | 28.1 → 27.5 | 0.548 → 0.557 | 15.66 → 15.41 | 7.70 → 7.66 |
+| sponza | 184x224 | edges | 9.59 → 9.57 | 28.1 → 28.0 | 0.548 → 0.549 | 15.66 → 15.59 | 7.70 → 7.70 |
+| sponza | 184x149 | surface | 9.65 → 9.52 | 28.2 → 27.4 | 0.543 → 0.556 | 15.80 → 15.46 | 7.73 → 7.67 |
+| sponza | 184x149 | edges | 9.65 → 9.63 | 28.2 → 28.1 | 0.543 → 0.544 | 15.80 → 15.74 | 7.73 → 7.72 |
+| sponza | 184x112 | surface | 9.66 → 9.52 | 28.3 → 27.4 | 0.541 → 0.555 | 15.86 → 15.48 | 7.73 → 7.67 |
+| sponza | 184x112 | edges | 9.66 → 9.64 | 28.3 → 28.2 | 0.541 → 0.542 | 15.86 → 15.80 | 7.73 → 7.72 |
+| sponza-flat | 184x224 | surface | 13.42 → 13.16 | 46.2 → 44.8 | 0.390 → 0.412 | 21.18 → 20.52 | 11.00 → 10.87 |
+| sponza-flat | 184x224 | edges | 13.42 → 13.41 | 46.2 → 46.1 | 0.390 → 0.391 | 21.18 → 21.14 | 11.00 → 11.00 |
+| sponza-flat | 184x149 | surface | 13.47 → 13.13 | 46.3 → 44.5 | 0.386 → 0.415 | 21.37 → 20.45 | 11.02 → 10.85 |
+| sponza-flat | 184x149 | edges | 13.47 → 13.46 | 46.3 → 46.3 | 0.386 → 0.387 | 21.37 → 21.33 | 11.02 → 11.02 |
+| sponza-flat | 184x112 | surface | 13.46 → 13.11 | 46.3 → 44.3 | 0.387 → 0.418 | 21.29 → 20.42 | 11.02 → 10.84 |
+| sponza-flat | 184x112 | edges | 13.46 → 13.44 | 46.3 → 46.2 | 0.387 → 0.388 | 21.29 → 21.25 | 11.02 → 11.02 |
+| sponza-lite | 184x224 | surface | 11.44 → 11.36 | 33.2 → 32.8 | 0.494 → 0.501 | 18.34 → 18.14 | 9.31 → 9.27 |
+| sponza-lite | 184x224 | edges | 11.44 → 11.42 | 33.2 → 33.1 | 0.494 → 0.494 | 18.34 → 18.30 | 9.31 → 9.30 |
+| sponza-lite | 184x149 | surface | 11.48 → 11.36 | 33.3 → 32.7 | 0.491 → 0.501 | 18.46 → 18.16 | 9.33 → 9.27 |
+| sponza-lite | 184x149 | edges | 11.48 → 11.47 | 33.3 → 33.3 | 0.491 → 0.491 | 18.46 → 18.42 | 9.33 → 9.32 |
+| sponza-lite | 184x112 | surface | 11.47 → 11.36 | 33.3 → 32.7 | 0.490 → 0.501 | 18.43 → 18.15 | 9.32 → 9.26 |
+| sponza-lite | 184x112 | edges | 11.47 → 11.46 | 33.3 → 33.2 | 0.490 → 0.491 | 18.43 → 18.40 | 9.32 → 9.32 |
 
-Each cell is nearest → surface.
+Each cell is nearest → the row's filter.
 
 </details>
 <!-- /generated: dynres-upscale -->
 
 Surface lowers p95 dE and raises SSIM at every step of every scored scene; mean dE moves less. Interiors blend, while depth edges keep their stairs, which is most of the edge error left.
+
+Edges improves every metric at every step too, by less: it changes about one panel pixel in a hundred, all on silhouettes. What it changes is the stairs themselves, which the crops show and the means barely weigh.
 
 ## How a size is chosen
 
