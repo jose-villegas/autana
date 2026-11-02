@@ -281,6 +281,15 @@ gfx_init(void) {
     return true;
 }
 
+#ifndef ESP_PLATFORM
+void
+gfx_deinit(void) {
+    gfx_mode_exit();
+    free_full_framebuffer();
+    gfx_fb_guard_set_available(false);
+}
+#endif
+
 bool
 gfx_framebuffer_holds(gfx_color_t colour) {
     return fb_filled && fb_fill_colour == colour;
