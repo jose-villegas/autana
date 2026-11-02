@@ -1104,7 +1104,10 @@ test_clipped_vertex_past_max_keeps_the_corner_range_decision(void) {
     gradients_t g = {0};
     TEST_ASSERT_TRUE(plane_of(&v[0], &v[1], &v[2], window.x, window.y, &p));
     gradient(&p, v[0].z * DEPTH_SCALE, v[1].z * DEPTH_SCALE, v[2].z * DEPTH_SCALE, 0, &g);
-    TEST_ASSERT_TRUE(plane_at(&g, 0, window, &v[0], true) > DEPTH_MAX);
+    int64_t low;
+    int64_t high;
+    plane_vertex_limits(&g, 0, window, &v[0], &v[0], &v[0], &low, &high);
+    TEST_ASSERT_TRUE(high > DEPTH_MAX);
     depth_range(&v[0], &v[1], &v[2], window, &g, false);
     TEST_ASSERT_EQUAL(r3d_span_plane_in_range(g.base[0], g.dx[0], g.dy[0], DEPTH_MAX, window), g.in_range);
     TEST_ASSERT_TRUE(compare_range_walk(v, window, false));

@@ -122,17 +122,6 @@ plane_limits(int32_t top, int32_t dx, int32_t dy, recti_t box, int64_t* low, int
     *high = (top > bottom ? top : bottom) + (across > 0 ? across : 0);
 }
 
-/* The stored integer plane at a subpixel vertex, in the box's first-centre
- * frame. Floor and ceil enclose its exact value without a drift margin. */
-static inline int64_t
-plane_at(const gradients_t* g, int k, recti_t box, const r3d_span_vertex_t* v, bool ceil) {
-    const int64_t x = (int64_t)v->x - ((box.x * R3D_SUBPIXEL) + (R3D_SUBPIXEL / 2));
-    const int64_t y = (int64_t)v->y - ((box.y * R3D_SUBPIXEL) + (R3D_SUBPIXEL / 2));
-    return g->base[k]
-           + ((((int64_t)g->dx[k] * x) + ((int64_t)g->dy[k] * y) + (ceil ? R3D_SUBPIXEL - 1 : 0))
-              >> R3D_SUBPIXEL_SHIFT);
-}
-
 static inline void
 plane_vertex_limits(const gradients_t* g, int k, recti_t box, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                     const r3d_span_vertex_t* c, int64_t* low, int64_t* high) {
@@ -140,8 +129,11 @@ plane_vertex_limits(const gradients_t* g, int k, recti_t box, const r3d_span_ver
     *low = INT64_MAX;
     *high = INT64_MIN;
     for (int i = 0; i < TRIANGLE_VERTICES; i++) {
-        const int64_t floor = plane_at(g, k, box, v[i], false);
-        const int64_t ceil = plane_at(g, k, box, v[i], true);
+        const int64_t x = (int64_t)v[i]->x - ((box.x * R3D_SUBPIXEL) + (R3D_SUBPIXEL / 2));
+        const int64_t y = (int64_t)v[i]->y - ((box.y * R3D_SUBPIXEL) + (R3D_SUBPIXEL / 2));
+        const int64_t n = ((int64_t)g->dx[k] * x) + ((int64_t)g->dy[k] * y);
+        const int64_t floor = g->base[k] + (n >> R3D_SUBPIXEL_SHIFT);
+        const int64_t ceil = g->base[k] + ((n + R3D_SUBPIXEL - 1) >> R3D_SUBPIXEL_SHIFT);
         *low = floor < *low ? floor : *low;
         *high = ceil > *high ? ceil : *high;
     }
@@ -189,26 +181,18 @@ depth_range(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_sp
     int64_t high;
     plane_limits(g->base[0], g->dx[0], g->dy[0], box, &low, &high);
     const bool corners_in_range = low >= 0 && high <= DEPTH_MAX;
+    uint16_t limit = R3D_DEPTH_NEAREST;
+    if (mathi_abs(g->dx[0]) + mathi_abs(g->dy[0]) >= DEPTH_STEPS_EXACT) {
+        limit = r3d_span_depth_limit(mathf_max(a->z, mathf_max(b->z, c->z)));
+    }
+    const int32_t max = depth_cap_max(limit);
+    const bool cap_candidate = limit < R3D_DEPTH_NEAREST && high > max;
     int64_t vertex_low = 0;
     int64_t vertex_high = 0;
-    bool vertices_read = false;
-    if (!corners_in_range) {
+    if (!corners_in_range || cap_candidate) {
         plane_vertex_limits(g, 0, box, a, b, c, &vertex_low, &vertex_high);
-        vertices_read = true;
     }
-    g->depth_cap = R3D_DEPTH_NEAREST;
-    if (mathi_abs(g->dx[0]) + mathi_abs(g->dy[0]) >= DEPTH_STEPS_EXACT) {
-        const uint16_t limit = r3d_span_depth_limit(mathf_max(a->z, mathf_max(b->z, c->z)));
-        const int32_t max = depth_cap_max(limit);
-        if (limit < R3D_DEPTH_NEAREST && high > max) {
-            if (!vertices_read) {
-                plane_vertex_limits(g, 0, box, a, b, c, &vertex_low, &vertex_high);
-            }
-            if (vertex_high > max) {
-                g->depth_cap = limit;
-            }
-        }
-    }
+    g->depth_cap = cap_candidate && vertex_high > max ? limit : R3D_DEPTH_NEAREST;
     g->in_range =
         g->depth_cap == R3D_DEPTH_NEAREST && (corners_in_range || (vertex_low >= 0 && vertex_high <= DEPTH_MAX));
 }
