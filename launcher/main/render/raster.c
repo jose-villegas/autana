@@ -326,11 +326,6 @@ cull_instance(const r3d_instance_t* instance, const r3d_lens_t* lens, uint16_t* 
     return visible;
 }
 
-/* Culls every instance into the census list and returns the depth scale
- * the picture is drawn with: the fit of the nearest bound of what was kept,
- * and near_z when nothing was. The fit's power of two keeps the scale still
- * while the bound drifts, so ties do not flip from frame to frame, and the
- * same at every size. */
 void
 raster_pick_levels(const raster_t* raster, const render_view_t* view) {
     for (int i = 0; i < raster->instance_count; i++) {
@@ -343,6 +338,11 @@ raster_pick_levels(const raster_t* raster, const render_view_t* view) {
     }
 }
 
+/* Culls every instance into the census list and returns the depth scale
+ * the picture is drawn with: the fit of the nearest bound of what was kept,
+ * and near_z when nothing was. The fit's power of two keeps the scale still
+ * while the bound drifts, so ties do not flip from frame to frame, and the
+ * same at every size. */
 static float
 cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, raster_stats_t* stats,
                draw_work_t* work) {
