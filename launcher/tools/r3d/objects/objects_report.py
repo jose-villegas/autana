@@ -83,9 +83,7 @@ def write_report(out, objects, shapes, tolerance):
             bins=np.geomspace(RESIDUAL_DISPLAY_FLOOR, upper, RESIDUAL_BINS), color=plot_style.SLOTS[0])
     ax.axvline(max(tolerance, RESIDUAL_DISPLAY_FLOOR), color=plot_style.SLOTS[1], label=f'Tolerance {tolerance:g}')
     ax.set(xscale='log', xlabel='Residual / bounds diagonal (zero at display floor)', ylabel='Accepted copies')
-    ax.legend()
-    plot_style.style_axes(ax, 'Rigid matching residuals')
-    plot_style.save(fig, out / 'residuals.png')
+    plot_style.save_plot(fig, ax, out / 'residuals.png', 'Rigid matching residuals')
 
 
 def main(argv=None):

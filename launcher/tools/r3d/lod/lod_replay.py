@@ -154,9 +154,7 @@ def write(out, rows, budgets, segment, title):
     if segment:
         ax.axvspan(*segment, color="0.9")
     ax.set(xlabel="Path time (s)", ylabel="Triangles in view", ylim=(0, None))
-    ax.legend()
-    plot_style.style_axes(ax, title)
-    plot_style.save(fig, out / "lod.png")
+    plot_style.save_plot(fig, ax, out / "lod.png", title)
 
 
 def main(argv=None):
