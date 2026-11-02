@@ -17,6 +17,7 @@
         const V##_t d = V##_sub(p, c.centre);                                                                          \
         return V##_dot(d, d) <= OPS##_wmul(c.radius, c.radius);                                                        \
     }                                                                                                                  \
+    /* contains_ball = q=r_o-r_i-margin >= 0 && |co-ci|^2 <= q^2, in the wide type; touching counts. */                \
     static inline bool P##_contains_ball(P##_t outer, P##_t inner, T margin) {                                         \
         const WV##_t d = WV##_sub(WIDEN(outer.centre), WIDEN(inner.centre));                                           \
         const __typeof__(WV##_dot(d, d)) outer_radius = outer.radius;                                                  \
