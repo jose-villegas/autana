@@ -25,10 +25,11 @@ PRODUCER = Producer(area="math", needs=("host",), run=("--cc", "{cc}", "--out", 
 | Field | Meaning |
 |---|---|
 | `area` | The docs area it serves, the unit of `--area`, and its folder: `docs/images/<area>/`. |
-| `needs` | What must exist before it runs, one or more. `host`: the developer's machine, with the Python modules Pillow, numpy and matplotlib; a C compiler too when `run` uses `{cc}`. |
+| `needs` | What must exist before it runs, one or more. `host`: the developer's machine, with the Python modules Pillow, numpy and matplotlib; a C compiler too when `run` uses `{cc}`. `bakes`: the baked assets it draws, fetched first. `gpu`, `board`: a GPU or a board; such producers run one at a time. |
 | `outputs` | Names in the area's folder. A glob (`fast-path-*.png`) where the code itself decides the names. |
-| `run` | The script's arguments. `{cc}` becomes the host C compiler, `{out}` the folder the area's images go into. |
+| `run` | The script's arguments. `{cc}` becomes the host C compiler, `{out}` the folder the area's images go into, `{item}` the item of an `each` run. |
 | `reads` | Data files the script reads, as globs. Each must match a file before anything runs. |
+| `each` | One run per item. `bakes:<glob>`: each bake whose output name matches (`bake.py list`), the item being that name less its suffix. `glob:<pattern>`: each matching file, the item being its stem. Every output then names `{item}`. |
 
 The value must be a literal: no names, calls or computed strings. Two
 producers declaring the same output string is an error.
@@ -51,10 +52,20 @@ From the repository root, with a Python that has Pillow, numpy and matplotlib:
 | `check --area math` | make them and compare with the committed images |
 
 `build` and `check` also take script paths in place of `--area`, or nothing for
-every producer. A run goes in three steps:
+every producer. `--needs host,bakes` keeps the producers whose needs are all
+listed: what one machine without a GPU or a board can run.
+
+With `--changed`, a run is skipped when its inputs match those recorded at its
+last good run: its Python import closure, the C its probes compiled, its
+`reads` files and its bake's lock row. Both commands record into
+`launcher/tools/results/doc_images/fingerprints.json`, which is not tracked
+(`--fingerprints FILE` names another): `build` every run, `check` the runs
+whose images were all the same.
+
+A command goes in three steps:
 
 | Step | What happens | On failure |
 |---|---|---|
-| Check | The C compiler, the Python modules and each `reads` file, for all chosen producers | every problem printed, nothing runs, exit 2 |
-| Run | The producers in parallel (`--jobs N`, the core count by default), each into its own folder and log under `launcher/tools/results/doc_images/work/figures/` | a producer failed, left out a declared image or wrote an undeclared one: its log end, exit 2 |
-| Compare | Each image against `docs/images/` by decoded pixels | `changed IMAGE: how`, `changed IMAGE: new image`, or `orphan IMAGE` for a committed image a glob claims but no run made; exit 1 |
+| Check | The C compiler, the Python modules, each `reads` file, an item for each `each`, and every bake drawn (fetched into the bake cache), for all chosen producers | every problem printed, nothing runs, exit 2 |
+| Run | The runs in parallel (`--jobs N`, the core count by default), those needing a GPU or a board one at a time, each into its own folder and log under `launcher/tools/results/doc_images/work/figures/` | a run failed, left out a declared image or wrote an undeclared one: its log end, exit 2 |
+| Compare | Each image against `docs/images/` by decoded pixels | `changed IMAGE: how`, `changed IMAGE: new image`, or `orphan IMAGE` for a committed image a glob claims but no run made or skipped; exit 1 |

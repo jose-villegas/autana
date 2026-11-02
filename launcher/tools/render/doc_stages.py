@@ -1,6 +1,5 @@
 """Regenerate measured render documentation from GPU runs or board captures."""
 import argparse
-import ast
 import copy
 import hashlib
 import json
@@ -112,22 +111,6 @@ def current_stamp():
     return source_stamp(ROOT, paths)
 
 
-def named_files(path, tracked):
-    """The tracked files a module names by a string, resolved as its code would: from the repository, the
-    tools folder or its own folder."""
-    from bake import bake
-    for node in ast.walk(bake.module_facts(path)[0]):
-        if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value.strip():
-            for base in (ROOT, TOOLS, path.parent):
-                try:
-                    candidate = (base / node.value).resolve()
-                except (OSError, ValueError):
-                    continue
-                if candidate in tracked:
-                    yield candidate
-                    break
-
-
 def host_inputs(scene_path):
     """Host CMake inputs, compile flags and the compiler's -MM list, repo-relative.
     System headers and compiler identity/version are not counted."""
@@ -151,40 +134,19 @@ def host_inputs(scene_path):
 
 
 def gpu_inputs(scene_path, object_name):
-    """{input: digest} of everything the GPU stage's output is made from: the Python it runs (the import
-    closure of this file and of each script its closure names, until none is new, with the C and
-    requirements bake.py counts for them), the other tracked files that code names, the host renderer's
-    compile, the scene file, its non-bake pack entries, and the key and locked bytes of every bake the
-    scene holds. Its digest (fingerprint) names the stage's run."""
+    """{input: digest} of everything the GPU stage's output is made from: the code this file runs
+    (docs/inputs.py), the host renderer's compile, the scene file, its non-bake pack entries, and the key
+    and locked bytes of every bake the scene holds. Its digest (fingerprint) names the stage's run."""
     from bake import bake
+    from docs.inputs import code_inputs
     tracked = {(ROOT / name).resolve() for name in tracked_files(ROOT, ("launcher", "scripts"))}
-    entries = {Path(__file__).resolve()}
-    while True:
-        code = bake.closure(sorted(entries), consumers=True)
-        named = {file for path in code for file in named_files(path, tracked)}
-        scripts = {file for file in named if file.suffix == ".py"} - entries
-        if not scripts:
-            break
-        entries |= scripts
-
-    def name(path):
-        return path.resolve().relative_to(ROOT).as_posix()
-
     from r3d.build_pack import pack_jobs
     packs, jobs = pack_jobs([scene_path])
     lock = bake.read_lock()
-    inputs = {"scene": f"{name(scene_path)} {content_checksum(scene_path).decode()}", "object": object_name,
-              **{f"code {name(path)}": bake.digest(bake.code_tokens(path)) for path in code},
-              **{f"imports {name(path)}": bake.digest([
-                  (node.module if isinstance(node, ast.ImportFrom) else None,
-                   node.level if isinstance(node, ast.ImportFrom) else 0, alias.name, alias.asname)
-                  for node in ast.walk(bake.module_facts(path)[0])
-                  if isinstance(node, (ast.Import, ast.ImportFrom)) for alias in node.names]) for path in code},
+    inputs = {"scene": f"{scene_path.resolve().relative_to(ROOT).as_posix()} {content_checksum(scene_path).decode()}",
+              "object": object_name, **code_inputs([__file__], ROOT, tracked, (ROOT, TOOLS)),
               **{f"pack {entry}": content_checksum(source).decode()
                  for pack in packs.values() for entry, source in pack.items() if source.resolve() not in jobs},
-              **{f"native {path}": value for path, value in bake.native_inputs(code).items()},
-              **{f"requirement {file} {line}": line for file, line in bake.pinned_requirements(code)},
-              **{f"file {name(path)}": content_checksum(path).decode() for path in sorted(named - set(code))},
               **host_inputs(scene_path)}
     for found in bake.bakes([scene_path]):
         row = lock.get(found.key)

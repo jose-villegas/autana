@@ -1,6 +1,7 @@
 """What the doc-figure producers share: building and running a C probe against the engine's libraries."""
 import argparse
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -10,6 +11,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 from build.packages import include_roots  # noqa: E402
 from docs.probe_standard import PROBE_STANDARD  # noqa: E402
+from docs.producer import DEPENDS_FOLDER  # noqa: E402
 
 # Every probe prints its numbers through the library's own text formatting.
 PROBE_SUPPORT = (ROOT / "launcher/packages/math/src/text/math_text.c",)
@@ -18,9 +20,13 @@ PROBE_SUPPORT = (ROOT / "launcher/packages/math/src/text/math_text.c",)
 def build_probe(cc, sources, directory):
     """Build a probe against the library into directory; returns the program."""
     binary = pathlib.Path(directory) / "probe"
-    includes = [flag for root in include_roots() for flag in ("-I", str(root))]
-    subprocess.run([cc, f"-std={PROBE_STANDARD}", "-O1", *includes, *map(str, (*sources, *PROBE_SUPPORT)),
-                    "-lm", "-o", str(binary)], check=True)
+    flags = [f"-std={PROBE_STANDARD}", *(flag for root in include_roots() for flag in ("-I", str(root)))]
+    sources = [str(source) for source in (*sources, *PROBE_SUPPORT)]
+    if os.environ.get(DEPENDS_FOLDER):
+        for source in sources:
+            listing = tempfile.NamedTemporaryFile(suffix=".d", dir=os.environ[DEPENDS_FOLDER], delete=False).name
+            subprocess.run([cc, *flags, "-MM", "-MF", listing, source], check=True)
+    subprocess.run([cc, *flags, "-O1", *sources, "-lm", "-o", str(binary)], check=True)
     return binary
 
 
