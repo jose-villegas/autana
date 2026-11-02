@@ -374,8 +374,9 @@ world_bounds_outside(box3f_t box, const planef_t planes[PLANE_FRUSTUM_COUNT], fl
  * the picture is drawn with: the fit of the nearest bound of what was kept,
  * and near_z when nothing was. The fit's power of two keeps the scale still
  * while the bound drifts, so ties do not flip from frame to frame, and the
- * same at every size. */
-static float
+ * same at every size. Not inlined, so the world planes stay off the
+ * draw's stack. */
+static __attribute__((noinline)) float
 cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, raster_stats_t* stats,
                draw_work_t* work) {
     uint16_t* culled = work->buffers.culled;
