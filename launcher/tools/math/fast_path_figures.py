@@ -14,7 +14,7 @@ from docs.producer import Producer
 
 
 # One figure per annotated fast path (fast_paths.annotations()), named fast-path-<key>.png.
-PRODUCER = Producer(area="math", needs="host", run=("--out", "{out}/math"), outputs=("math/fast-path-*.png",),
+PRODUCER = Producer(area="math", needs=("host",), run=("--out", "{out}"), outputs=("fast-path-*.png",),
                     reads=("docs/math/data/math_bench_capture.txt",))
 
 ERROR_ZOOM_FRACTION = 0.75

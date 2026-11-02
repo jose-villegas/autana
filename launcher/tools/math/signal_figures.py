@@ -12,8 +12,8 @@ import numpy as np
 
 PROBE = pathlib.Path(__file__).with_name("signal_figures_probe.c")
 SOURCES = (PROBE, *(ROOT / "launcher/packages/math/src/signal" / name for name in ("goertzel.c", "pitch.c")))
-PRODUCER = Producer(area="math", needs="host", run=("--cc", "{cc}", "--out", "{out}/math"),
-                    outputs=("math/goertzel-response.png", "math/goertzel-sweep.gif", "math/pitch-curve.png"))
+PRODUCER = Producer(area="math", needs=("host",), run=("--cc", "{cc}", "--out", "{out}"),
+                    outputs=("goertzel-response.png", "goertzel-sweep.gif", "pitch-curve.png"))
 PANELS = 2
 AMPLITUDE_MAX = 1.1
 REFERENCE_ALPHA = 0.6

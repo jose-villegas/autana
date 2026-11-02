@@ -19,7 +19,7 @@ SCRIPT = '''
 import pathlib, sys
 from PIL import Image
 Producer = dict
-PRODUCER = Producer(area="{area}", needs="host", outputs={outputs!r}, run={run!r})
+PRODUCER = Producer(area="{area}", needs=("host",), outputs={outputs!r}, run={run!r})
 out = pathlib.Path(sys.argv[2])
 out.mkdir(parents=True, exist_ok=True)
 for name in sys.argv[3:]:
@@ -35,10 +35,13 @@ class Tree:
         self.images = self.root / "docs/images"
         self.images.mkdir(parents=True)
 
-    def producer(self, name, outputs, names, area="fig", colour="red"):
+    def producer(self, name, images, names, colour="red"):
+        """A producer of `images` (paths under docs/images/, all in one area's folder) that writes `names`."""
+        area = images[0].split("/")[0]
+        outputs = [image.removeprefix(area + "/") for image in images]
         path = self.root / "launcher" / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(SCRIPT.format(area=area, outputs=tuple(outputs), run=("--out", "{out}/fig", *names),
+        path.write_text(SCRIPT.format(area=area, outputs=tuple(outputs), run=("--out", "{out}", *names),
                                      colour=colour))
 
     def commit(self, name, colour):
@@ -63,18 +66,19 @@ class DeclarationTests(unittest.TestCase):
     def test_a_literal_declaration_is_read_without_running_the_script(self):
         found = self.parse('''
             raise SystemExit("never imported")
-            PRODUCER = Producer(area="math", needs="host", outputs=("math/a.png",), run=("--out", "{out}"))
+            PRODUCER = Producer(area="math", needs=("host",), outputs=("a.png",), run=("--out", "{out}"))
         ''')
-        self.assertEqual(found, producer.Producer("math", "host", ("math/a.png",), ("--out", "{out}")))
+        self.assertEqual(found, producer.Producer("math", ("host",), ("a.png",), ("--out", "{out}")))
 
     def test_a_script_without_one_is_no_producer(self):
         self.assertIsNone(self.parse("print('hello')\n"))
 
     def test_rejected_declarations_name_the_script(self):
-        for text in ('PRODUCER = Producer(area=AREA, needs="host", outputs=("a.png",))',
-                     'PRODUCER = Producer(area="a", needs="gpu", outputs=("a.png",))',
-                     'PRODUCER = Producer(area="a", needs="host", outputs=())',
-                     'PRODUCER = Producer(area="a", needs="host", outputs=("a.png",), run=("{scene}",))',
+        for text in ('PRODUCER = Producer(area=AREA, needs=("host",), outputs=("a.png",))',
+                     'PRODUCER = Producer(area="a", needs=("gpu",), outputs=("a.png",))',
+                     'PRODUCER = Producer(area="a", needs=(), outputs=("a.png",))',
+                     'PRODUCER = Producer(area="a", needs=("host",), outputs=())',
+                     'PRODUCER = Producer(area="a", needs=("host",), outputs=("a.png",), run=("{scene}",))',
                      'PRODUCER = make_producer()'):
             with self.subTest(text=text), self.assertRaisesRegex(ValueError, "^x.py: "):
                 self.parse(text)
@@ -85,6 +89,14 @@ class DeclarationTests(unittest.TestCase):
             tree.producer("a/one.py", ["fig/x.png"], ["x.png"])
             tree.producer("b/two.py", ["fig/x.png"], ["x.png"])
             with self.assertRaisesRegex(ValueError, "fig/x.png: made by both"):
+                producer.find(tree.root)
+
+    def test_an_image_one_producer_names_and_another_globs_is_an_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tree = Tree(directory)
+            tree.producer("a/one.py", ["fig/*.png"], ["x.png"])
+            tree.producer("b/two.py", ["fig/x.png"], ["x.png"])
+            with self.assertRaisesRegex(ValueError, r"made by both launcher/a/one.py \(fig/\*.png\)"):
                 producer.find(tree.root)
 
 
@@ -136,12 +148,29 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("reads data/*.csv, which matches no file", err)
         self.assertFalse((self.tree.root / "work").exists())
 
+    def test_two_globs_that_make_one_image_fail_the_run(self):
+        self.tree.producer("a/one.py", ["fig/x*.png"], ["xy.png"], colour="red")
+        self.tree.producer("b/two.py", ["fig/*y.png"], ["xy.png"], colour="blue")
+        code, _, err = self.tree.run("build")
+        self.assertEqual(code, 2)
+        self.assertIn("fig/xy.png: made by both launcher/a/one.py and launcher/b/two.py", err)
+        self.assertFalse((self.tree.images / "fig").exists())
+
+    def test_a_script_named_twice_runs_once(self):
+        self.tree.producer("a/one.py", ["fig/one.png"], ["one.png"])
+        script = str(self.tree.root / "launcher/a/one.py")
+        code, out, err = self.tree.run("build", script, script, "--jobs", "2")
+        self.assertEqual(code, 0, err)
+        self.assertIn("wrote 1 images", out)
+
     def test_area_selects_its_producers_only(self):
-        self.tree.producer("a/one.py", ["fig/one.png"], ["one.png"], area="math")
-        self.tree.producer("b/two.py", ["fig/two.png"], ["two.png"], area="audio")
+        self.tree.producer("a/one.py", ["math/one.png"], ["one.png"])
+        self.tree.producer("b/two.py", ["audio/two.png"], ["two.png"])
         code, out, _ = self.tree.run("build", "--area", "math")
         self.assertEqual(code, 0, out)
-        self.assertEqual([path.name for path in (self.tree.images / "fig").iterdir()], ["one.png"])
+        self.assertEqual(sorted(producer.find(self.tree.root)), ["launcher/a/one.py", "launcher/b/two.py"])
+        self.assertEqual([path.name for path in self.tree.images.iterdir()], ["math"])
+        self.assertEqual([path.name for path in (self.tree.images / "math").iterdir()], ["one.png"])
 
     def test_which_names_the_producer_of_a_globbed_image(self):
         self.tree.producer("a/one.py", ["fig/two-*.png"], ["two-x.png"])

@@ -1,37 +1,33 @@
 """A doc-figure producer's declaration, and finding every one in the tree.
 
 A producer is a script beside its area's code that makes images under
-docs/images/. It says what it makes in one module-level literal:
-
-    PRODUCER = Producer(area="math", needs="host", outputs=("math/stats-percentile-ranks.png",),
-                        run=("--cc", "{cc}", "--out", "{out}/math"))
-
-figures_runner.py reads that literal from the source without importing the
-script, so listing every producer loads none of their modules.
+docs/images/. It states them in one module-level `PRODUCER = Producer(...)`
+literal (fields and an example: docs/tools/Doc-Figures.md), which
+figures_runner.py reads from the source without importing the script.
 """
 import ast
+import fnmatch
 import pathlib
 import sys
 from typing import NamedTuple
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT / "scripts/gates"))
-from tracked import tracked_files  # noqa: E402
 
 # What a producer needs before it can run, and so which machine runs it.
-# host: a C compiler and Python with Pillow, numpy and matplotlib.
+# host: the developer's machine, with the Python modules Pillow, numpy and
+# matplotlib; a C compiler too when `run` uses {cc}.
 NEEDS = ("host",)
 # The arguments the runner fills in a `run` entry: the host C compiler and
-# the folder, laid out like docs/images/, the outputs go into.
+# the folder the area's images go into, docs/images/<area>/ or its stand-in.
 FIELDS = ("cc", "out")
 DECLARATION = "PRODUCER"
 SEARCHED = ("launcher/*.py",)
 
 
 class Producer(NamedTuple):
-    area: str
-    needs: str
-    outputs: tuple[str, ...]  # paths under docs/images/; a glob (fast-path-*.png) where the code names them
+    area: str  # also the folder under docs/images/ its images go in
+    needs: tuple[str, ...]
+    outputs: tuple[str, ...]  # names in the area's folder; a glob (fast-path-*.png) where the code names them
     run: tuple[str, ...] = ()  # the script's arguments; {cc} and {out} are filled in
     reads: tuple[str, ...] = ()  # data files the script reads (globs), checked before any run
 
@@ -40,6 +36,11 @@ class Found(NamedTuple):
     name: str  # the script's path from the repository root
     script: pathlib.Path
     producer: Producer
+
+    @property
+    def images(self):
+        """Its outputs as paths under docs/images/."""
+        return tuple(f"{self.producer.area}/{output}" for output in self.producer.outputs)
 
 
 def declaration(source, name):
@@ -62,8 +63,9 @@ def declaration(source, name):
 
 
 def validate(producer, name):
-    if producer.needs not in NEEDS:
-        raise ValueError(f"{name}: needs {producer.needs!r}, not one of {NEEDS}")
+    unknown = set(producer.needs) - set(NEEDS)
+    if not producer.needs or unknown:
+        raise ValueError(f"{name}: needs {producer.needs!r}, each one of {NEEDS}")
     if not producer.outputs:
         raise ValueError(f"{name}: declares no outputs")
     for argument in producer.run:
@@ -75,16 +77,22 @@ def validate(producer, name):
 
 
 def find(root=ROOT):
-    """Every declared producer under launcher/, by name; an output two of them claim is an error."""
+    """Every declared producer under launcher/, by name. Two producers whose outputs
+    can name one image (equal, or one a glob matching the other) are an error; two
+    globs that only overlap are caught when a run makes that image twice."""
+    sys.path.insert(0, str(ROOT / "scripts/gates"))
+    from tracked import tracked_files
     found = {}
-    owners = {}
+    owners = []
     for name in tracked_files(root, SEARCHED):
         producer = declaration((root / name).read_text(encoding="utf-8"), name)
         if producer is None:
             continue
-        for output in producer.outputs:
-            if output in owners:
-                raise ValueError(f"{output}: made by both {owners[output]} and {name}")
-            owners[output] = name
-        found[name] = Found(name, root / name, producer)
+        item = Found(name, root / name, producer)
+        for image in item.images:
+            for other, owner in owners:
+                if fnmatch.fnmatchcase(image, other) or fnmatch.fnmatchcase(other, image):
+                    raise ValueError(f"{image}: made by both {owner} ({other}) and {name}")
+        owners += [(image, name) for image in item.images]
+        found[name] = item
     return found

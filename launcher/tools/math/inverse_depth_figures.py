@@ -11,8 +11,8 @@ from docs.plot_style import FAINT, LABEL_SIZE, SLOTS, save, subplots
 from matplotlib.ticker import FixedLocator, NullFormatter, ScalarFormatter
 
 PROBE = pathlib.Path(__file__).with_name("inverse_depth_figures_probe.c")
-PRODUCER = Producer(area="math", needs="host", run=("--cc", "{cc}", "--out", "{out}/math"),
-                    outputs=("math/inverse-depth-step.png",))
+PRODUCER = Producer(area="math", needs=("host",), run=("--cc", "{cc}", "--out", "{out}"),
+                    outputs=("inverse-depth-step.png",))
 PANELS = 2
 CM_PER_M = 100
 MM_PER_CM = 10

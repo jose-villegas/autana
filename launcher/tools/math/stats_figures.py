@@ -11,8 +11,8 @@ from docs.plot_style import FAINT, LABEL_SIZE, SLOTS, save, subplots
 from matplotlib.patches import Patch
 
 PROBE = pathlib.Path(__file__).with_name("stats_figures_probe.c")
-PRODUCER = Producer(area="math", needs="host", run=("--cc", "{cc}", "--out", "{out}/math"),
-                    outputs=("math/stats-percentile-ranks.png",))
+PRODUCER = Producer(area="math", needs=("host",), run=("--cc", "{cc}", "--out", "{out}"),
+                    outputs=("stats-percentile-ranks.png",))
 MEDIAN, PERCENTILE = SLOTS[:2]
 PANELS = 2
 MEDIAN_PERCENT = 50

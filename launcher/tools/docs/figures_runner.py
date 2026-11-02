@@ -6,15 +6,15 @@
     figures_runner.py build [--area AREA] [SCRIPT ...] [--into DIR] [--jobs N]
     figures_runner.py check [--area AREA] [SCRIPT ...] [--jobs N]
 
-list prints each producer: its script, area, what it needs and how many images
-it makes; --outputs prints every declared image instead, a glob as the
-committed images it matches. which names the
-producer of an image (a path under docs/images/, with or without that prefix)
-and the command that makes it.
+list prints each producer's script, area, needs and image count; --outputs
+prints every declared image instead (a glob as the committed images it
+matches). which names the producer of an image (a path under docs/images/,
+with or without that prefix) and the command that makes it.
 
 build and check select every producer, those of one area, or the named
-scripts. Before running any, they check what the selection needs: a C
-compiler, Pillow, numpy and matplotlib, and a file for each `reads` pattern;
+scripts. Before running any, they check what the selection needs: Pillow,
+numpy and matplotlib, a C compiler when a `run` uses {cc}, and a file for
+each `reads` pattern;
 every problem is printed at once and nothing runs. The producers then run in
 parallel, each into its own folder with its own log under
 launcher/tools/results/doc_images/work/figures/. A producer that fails, leaves
@@ -22,9 +22,12 @@ out a declared image or writes one it does not declare stops the run.
 
 build copies the images into docs/images/, or into DIR with --into. check
 compares each with the committed image by decoded pixels (compare_images.py)
-and prints "same IMAGE", "changed IMAGE: how" or "changed IMAGE: new image".
+and prints "same IMAGE", "changed IMAGE: how" or "changed IMAGE: new image",
+or "orphan IMAGE: SCRIPT no longer makes it" for a committed image one of a
+producer's globs claims but its run did not make.
 
-Exit status: 0 done (check: nothing changed), 1 check found a change, 2 the
+Exit status: 0 done (check: nothing changed), 1 check found a change or an
+orphan, 2 the
 images could not be made or compared.
 """
 import argparse
@@ -41,12 +44,14 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from producer import ROOT, find  # noqa: E402
 
+sys.path.insert(0, str(ROOT / "launcher/tools"))
+from build.find_cc import host_cc  # noqa: E402
+
+# compare_images needs Pillow, which preflight reports on rather than crash importing.
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
-from compare_images import compare, load_frames  # noqa: E402
 
 IMAGES = ROOT / "docs/images"
 WORK = ROOT / "launcher/tools/results/doc_images/work/figures"
-FIND_CC = "launcher/tools/build/find_cc.sh"
 # The modules a host producer imports beyond the standard library.
 HOST_MODULES = ("PIL", "numpy", "matplotlib")
 LOG_TAIL_LINES = 40
@@ -57,7 +62,7 @@ class Failed(Exception):
 
 
 def select(found, area, scripts):
-    names = [pathlib.Path(script).resolve().relative_to(ROOT).as_posix() for script in scripts]
+    names = list(dict.fromkeys(pathlib.Path(script).resolve().relative_to(ROOT).as_posix() for script in scripts))
     unknown = [name for name in names if name not in found]
     if unknown:
         raise Failed("no producer is declared in " + ", ".join(unknown))
@@ -68,18 +73,13 @@ def select(found, area, scripts):
     return chosen
 
 
-def find_cc():
-    result = subprocess.run(["sh", "-c", f'. "{FIND_CC}" && find_cc'], cwd=ROOT, capture_output=True, text=True)
-    return result.stdout.strip() if result.returncode == 0 else None
-
-
 def preflight(chosen):
     """The values a run fills in; every missing need is reported together before anything runs."""
     problems = [f"Python module {module} is missing ({sys.executable})"
                 for module in HOST_MODULES if importlib.util.find_spec(module) is None]
     cc = None
     if any("{cc}" in argument for item in chosen for argument in item.producer.run):
-        cc = find_cc()
+        cc = host_cc()
         if cc is None:
             problems.append("no host C compiler: set CC, or put cc, gcc or clang on PATH")
     for item in chosen:
@@ -92,7 +92,7 @@ def preflight(chosen):
 
 def claims(item, name):
     """Whether `name`, a path under docs/images/, is one of the producer's outputs."""
-    return any(fnmatch.fnmatchcase(name, output) for output in item.producer.outputs)
+    return any(fnmatch.fnmatchcase(name, image) for image in item.images)
 
 
 def made_files(folder):
@@ -108,14 +108,15 @@ def run_one(item, values):
     out.mkdir(parents=True)
     log = work / "run.log"
     command = [sys.executable, str(item.script),
-               *(argument.format(**values, out=out.as_posix()) for argument in item.producer.run)]
+               *(argument.format(**values, out=(out / item.producer.area).as_posix()) for argument in item.producer.run)]
     with log.open("w", encoding="utf-8") as stream:
-        code = subprocess.run(command, cwd=ROOT, stdout=stream, stderr=subprocess.STDOUT).returncode
+        code = subprocess.run(command, cwd=ROOT, stdin=subprocess.DEVNULL, stdout=stream,
+                              stderr=subprocess.STDOUT).returncode
     if code != 0:
         tail = log.read_text(encoding="utf-8", errors="replace").splitlines()[-LOG_TAIL_LINES:]
         raise Failed("\n".join([f"{item.name} failed (exit {code}); {log.as_posix()}:", *tail]))
     made = made_files(out)
-    missing = [output for output in item.producer.outputs if not fnmatch.filter(made, output)]
+    missing = [image for image in item.images if not fnmatch.filter(made, image)]
     undeclared = sorted(name for name in made if not claims(item, name))
     if missing or undeclared:
         raise Failed("\n".join([f"{item.name} did not make what it declares:",
@@ -134,6 +135,12 @@ def run_all(chosen, values, jobs):
                 folders[running[future].name] = future.result()
             except Failed as error:
                 failures.append(str(error))
+    makers = {}
+    for name, (_, made) in sorted(folders.items()):
+        for image in made:
+            if image in makers:
+                failures.append(f"{image}: made by both {makers[image]} and {name}")
+            makers[image] = name
     if failures:
         raise Failed("\n".join(failures))
     return folders
@@ -149,6 +156,7 @@ def deliver(folders, target):
 
 def check(chosen, folders):
     """Print same or changed for each made image, and orphan for each kept one a producer claims but no longer makes."""
+    from compare_images import compare, load_frames
     changed = False
     kept = made_files(IMAGES)
     for item in chosen:
@@ -180,9 +188,8 @@ def which(found, images):
             print(f"{name}: no producer declares it")
             status = 1
             continue
-        arguments = " ".join(item.producer.run)
-        print(f"{name}: {item.name} (area {item.producer.area}, needs {item.producer.needs})\n"
-              f"  python {item.name} {arguments}".rstrip())
+        print(f"{name}: {item.name} (area {item.producer.area}, needs {', '.join(item.producer.needs)})\n"
+              f"  autana figures build {item.name}")
         for pattern in item.producer.reads:
             print(f"  reads {pattern}")
     return status
@@ -212,9 +219,9 @@ def main(argv=None):
             for item in select(found, args.area, []):
                 if args.outputs:
                     print("\n".join(sorted({name for name in kept if claims(item, name)} |
-                                           {output for output in item.producer.outputs if not glob.has_magic(output)})))
+                                           {image for image in item.images if not glob.has_magic(image)})))
                 else:
-                    print(f"{item.name}\t{item.producer.area}\t{item.producer.needs}\t{len(item.producer.outputs)}")
+                    print(f"{item.name}\t{item.producer.area}\t{','.join(item.producer.needs)}\t{len(item.images)}")
             return 0
         chosen = select(found, args.area, args.scripts)
         folders = run_all(chosen, preflight(chosen), args.jobs)
