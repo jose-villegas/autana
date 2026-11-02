@@ -38,8 +38,8 @@ FRAME_INCHES = 1.2
 CSV_DIGITS = 6
 # The held-out score prints four decimals; the mean over the parts' pixels must round to it.
 SCORE_TOLERANCE = 1e-4
-# A part is planar when this share of its source area faces within PLANAR_DEGREES of its mean normal: a cambered
-# street is, a kerb's few edge triangles do not undo it.
+# A part is planar when this share of its source area faces within PLANAR_DEGREES of its mean normal: a gently
+# curved surface counts; a few steep edge triangles do not undo it.
 PLANAR_DEGREES = 5.0
 PLANAR_AREA_SHARE = 0.99
 # A drawn triangle is a sheet when its area exceeds this many times the median drawn triangle of its part and its
@@ -119,41 +119,42 @@ def main_materials(labels, tri_m, material_names, count):
     return [material_names[m] for m in best]
 
 
-def nearest_source(source_p, tri_v, drawn):
+def nearest_source(source_p, tri_v, drawn_p, drawn_tris):
     """Per drawn triangle, the source triangle nearest it by centre: the part the fitted mesh spent it on."""
     from scipy.spatial import cKDTree
 
-    return cKDTree(source_p[tri_v].mean(axis=1)).query(drawn.mean(axis=1))[1]
+    return cKDTree(source_p[tri_v].mean(axis=1)).query(drawn_p[drawn_tris].mean(axis=1))[1]
 
 
-def unit_normals(corners):
-    normal = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
-    return normal / np.maximum(np.linalg.norm(normal, axis=1, keepdims=True), 1e-30)
+def face_normals(p, tris):
+    """Each triangle's unit normal and its area."""
+    normal = np.cross(p[tris[:, 1]] - p[tris[:, 0]], p[tris[:, 2]] - p[tris[:, 0]])
+    length = np.linalg.norm(normal, axis=1)
+    return normal / np.maximum(length, 1e-30)[:, None], 0.5 * length
 
 
 def planar_parts(source_p, tri_v, labels, count):
     """Per part, whether PLANAR_AREA_SHARE of its source area faces within PLANAR_DEGREES of its area-weighted
     mean normal."""
-    corners = source_p[tri_v]
-    weighted = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
-    area = np.linalg.norm(weighted, axis=1)
-    mean = np.stack([np.bincount(labels, weighted[:, axis], minlength=count) for axis in range(3)], axis=1)
+    unit, area = face_normals(source_p, tri_v)
+    mean = np.stack([np.bincount(labels, unit[:, axis] * area, minlength=count) for axis in range(3)], axis=1)
     mean /= np.maximum(np.linalg.norm(mean, axis=1, keepdims=True), 1e-30)
-    facing = (unit_normals(corners) * mean[labels]).sum(axis=1) >= np.cos(np.radians(PLANAR_DEGREES))
+    facing = (unit * mean[labels]).sum(axis=1) >= np.cos(np.radians(PLANAR_DEGREES))
     return np.bincount(labels, area * facing, minlength=count) >= PLANAR_AREA_SHARE * np.bincount(
         labels, area, minlength=count)
 
 
-def sheet_triangles(source_p, tri_v, drawn, near, labels):
-    """Per drawn triangle, whether it is a sheet: larger than SHEET_GROWTH times the median drawn triangle of its
-    part (`labels` of its `near`est source triangle) and turned more than SHEET_DEGREES from that source
-    triangle, either side."""
-    area = np.linalg.norm(np.cross(drawn[:, 1] - drawn[:, 0], drawn[:, 2] - drawn[:, 0]), axis=1)
+def sheet_triangles(source_p, tri_v, drawn_p, drawn_tris, near, labels):
+    """Per drawn triangle, whether its area exceeds SHEET_GROWTH times the median drawn triangle of its part (the
+    part of its nearest source triangle, `labels[near]`) and its normal is turned more than SHEET_DEGREES from that
+    source triangle's, either side."""
+    unit, area = face_normals(drawn_p, drawn_tris)
+    source_unit, _ = face_normals(source_p, tri_v[near])
     part = labels[near]
     median = np.zeros(part.max() + 1 if len(part) else 0)
     for label in np.unique(part):
         median[label] = np.median(area[part == label])
-    turned = np.abs((unit_normals(drawn) * unit_normals(source_p[tri_v[near]])).sum(axis=1))         < np.cos(np.radians(SHEET_DEGREES))
+    turned = np.abs((unit * source_unit).sum(axis=1)) < np.cos(np.radians(SHEET_DEGREES))
     return (area > SHEET_GROWTH * median[part]) & turned
 
 
@@ -388,9 +389,9 @@ def held_out_error(scene_path, scene, job, bundle, inputs, work):
     path.write_bytes(next(data for name, _kind, data in entries if name == job.asset_name))
     rest = start_mesh(path)
     fitted = joined(rest, placed_copies(bundle, rest.flat))
-    drawn = fitted.points[fitted.vertex_point][fitted.tris]
-    near = nearest_source(p, tri_v, drawn)
-    sheets = sheet_triangles(p, tri_v, drawn, near, labels)
+    drawn = fitted.points[fitted.vertex_point], fitted.tris
+    near = nearest_source(p, tri_v, *drawn)
+    sheets = sheet_triangles(p, tri_v, *drawn, near, labels)
     parts = Parts(names, [source.object_names[o] for o in owner], parts_of_object, shared,
                   main_materials(labels, tri_m, source.names, count), np.bincount(labels, minlength=count),
                   np.bincount(labels[near], minlength=count), planar_parts(p, tri_v, labels, count),
