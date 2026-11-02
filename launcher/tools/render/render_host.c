@@ -33,11 +33,7 @@
 #include "image/pixel/rgb565.h"
 #endif
 
-#define DEFAULT_DT_MS   16
-
-/* RIFF AVI 1.0 keeps its whole size in a 32-bit field; players choke well
- * before that wraps, so a run past this is refused instead of written. */
-#define VIDEO_MAX_BYTES ((int64_t)1024 * 1024 * 1024)
+#define DEFAULT_DT_MS 16
 
 static void
 tune_reply(const char* line) {
@@ -326,6 +322,11 @@ render_host_image(void) {
         .bgr = host.frame_buf, .width = host.out_w, .height = host.out_h, .stride = (size_t)host.stride};
 }
 
+int64_t
+render_host_video_frames_fit(void) {
+    return render_video_frames_that_fit(host.out_w, host.out_h);
+}
+
 /* Gives back what a run took, as the shell does when an app exits: the provider's own first, then every scene
  * and the render context, then the framebuffer. Otherwise the next open in this process meets a mounted pack,
  * the last run's resolution and a second framebuffer. */
@@ -394,9 +395,9 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
             fprintf(stderr, "%s: --video needs a nonzero --dt\n", host.provider->name);
             return false;
         }
-        const int64_t total = render_video_total_bytes(host.out_w, host.out_h, host.frame.count);
-        if (total > VIDEO_MAX_BYTES) {
-            const int64_t fits = render_video_frames_that_fit(host.out_w, host.out_h, VIDEO_MAX_BYTES);
+        const int64_t fits = render_host_video_frames_fit();
+        if (host.frame.count > fits) {
+            const int64_t total = render_video_total_bytes(host.out_w, host.out_h, host.frame.count);
             fprintf(stderr,
                     "%s: %d frames at %dx%d would write %lld MB, over RIFF AVI 1.0's 1 GB limit; "
                     "at this size and --dt %u, at most %lld frames fit\n",
@@ -493,7 +494,15 @@ render_host_step(uint32_t dt_ms, const input_t* input) {
     }
     gfx_present();
     if (host.video_path != NULL && host.video_ok) {
-        host.video_ok = render_video_write_frame(&host.video, host.frame_buf, host.stride * host.out_h);
+        /* Open checked --frames against the limit; a frame past them would
+         * not have been. */
+        if (host.frame.index >= host.frame.count) {
+            fprintf(stderr, "%s: stepped past --frames %d; %s stops there\n", host.provider->name, host.frame.count,
+                    host.video_path);
+            host.video_ok = false;
+        } else {
+            host.video_ok = render_video_write_frame(&host.video, host.frame_buf, host.stride * host.out_h);
+        }
     }
     host.frame.index++;
     host.frame.elapsed_ms += dt_ms;

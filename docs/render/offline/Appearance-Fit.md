@@ -229,7 +229,7 @@ unfiltered held-out references, every arm below loses.
 
 | Arm | What changes |
 |---|---|
-| a-trous | the traced training pictures filtered by edge-avoiding à-trous passes<sup>[[110]](../../Citations.md#dammertz-2010)</sup>, stopped at part borders, creases and off-plane taps |
+| a-trous | the traced training pictures filtered by edge-avoiding à-trous passes<sup>[[112]](../../Citations.md#dammertz-2010)</sup>, stopped at part borders, creases and off-plane taps |
 | budget mip | the training pictures re-traced with each texture read at the mip whose texel spans the budget's triangle |
 | texture mean | re-traced with each texture flattened to its mean |
 | start | the start remade with its vertex albedo read at the budget's mip or the material mean; locked references |
@@ -264,13 +264,8 @@ defined in [Mesh Import](Mesh-Import.md#held-out-error-by-object).
 Sponza's atrium fit scores 5.390 locked, 5.374 refitted and 6.920 with a-trous. Its budget-mip fit grew over the
 copies, and the copy check refused it.
 
-Each sheet shows two held-out frames: the reference, then each arm, with its ΔE76 heatmap below. In Sponza the
-a-trous fit softens shadows inside a surface; in Bistro it grows sheets across the awning and the frame-18 wall.
-
-![Bistro frames 17 and 18: reference, locked bake, refit, a-trous, budget mip, texture mean](../../images/render/friendly-reference-bistro.png)
-![Sponza frames 2 and 4: reference, locked bake, refit, a-trous](../../images/render/friendly-reference-sponza.png)
-
-The arms' code is in commit `ee94701d6`.
+On the held-out frames, the a-trous fit softens shadows inside a surface in Sponza. In Bistro it grows sheets
+across the awning and the frame-18 wall. The arms' code is in commit `ee94701d6`, which makes these sheets again.
 
 ## Against the paper
 
