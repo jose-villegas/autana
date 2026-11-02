@@ -365,17 +365,23 @@ done
 run "$PYTHON" launcher/tools/r3d/dynres_report.py docs/render/data/dynamic-resolution-board.log \
     "$@" --tables "$OUT/tables" --chart "$OUT/render/dynamic-resolution-flight.png" --figures "$OUT/render" > "$WORK/dynres.log"
 # --orphans scans this runner: dynamic-resolution-stages.png, dynamic-resolution-stages-dark.png, dynamic-resolution-one-core.png, dynamic-resolution-one-core-dark.png, dynamic-resolution-sizes.png, dynamic-resolution-sizes-dark.png, dynamic-resolution-flight-sizes.png, dynamic-resolution-flight-sizes-dark.png
-# Surface upscaling's sheet and edge crops, from the frame the upscale
-# quality script keeps beside the page (<scene>-<size>-<frame>-*.png).
+# Each upscale filter's sheet and edge crops against nearest, from the frame
+# the upscale quality script keeps beside the page
+# (<filter>/<scene>-<size>-<frame>-*.png).
 UPSCALE_CROPS=3
-for reference in docs/render/data/upscale-frames/*-reference.png; do
+for reference in docs/render/data/upscale-frames/*/*-reference.png; do
     [ -f "$reference" ] || continue
+    filter=${reference%/*}
+    filter=${filter##*/}
     stem=${reference%-reference.png}
     frame=${stem##*-}
     size=${stem%-*}
     size=${size##*-}
-    run "$PYTHON" launcher/tools/render/render_compare.py --out "$OUT/render/upscale-surface.png"         --reference-stills "frame $frame" "$reference" "$stem-nearest.png" "$stem-surface.png"         --label-a "nearest $size" --label-b "surface $size" --crops "$UPSCALE_CROPS" > "$WORK/upscale_surface.log"
+    run "$PYTHON" launcher/tools/render/render_compare.py --out "$OUT/render/upscale-$filter.png" \
+        --reference-stills "frame $frame" "$reference" "$stem-nearest.png" "$stem-$filter.png" \
+        --label-a "nearest $size" --label-b "$filter $size" --crops "$UPSCALE_CROPS" > "$WORK/upscale_$filter.log"
 done
+# --orphans scans this runner: upscale-surface.png, upscale-surface.crops.png, upscale-edges.png, upscale-edges.crops.png
 # Every mesh scene's frame at each ladder step, and the predictor flown over it.
 run "$PYTHON" launcher/tools/r3d/dynres_replay.py docs/render/data/dynamic-resolution-steps-board.log --cc "$cc" \
     --lead bistro-fitted-full --tables "$OUT/tables" --figures "$OUT/render" > "$WORK/dynres_replay.log"

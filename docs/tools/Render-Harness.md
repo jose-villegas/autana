@@ -450,7 +450,7 @@ part of it) for comparisons and viewers.
 | Host loop | Frame index, elapsed time, input, drawn box and output pixels |
 | Scene | Animation playheads and poses, transforms, world caches, cameras, skin output and lights |
 | Render context | Raster scratch and upscale maps, split feedback, frame-generation pictures and costs, resolution controller and debug views |
-| Graphics | Presentation flags, dirty regions, framebuffers, half picture and seams, indexed image and palettes |
+| Graphics | Presentation flags, dirty regions, framebuffers, half picture and its expand hints, indexed image and palettes |
 | Tunables | Values and owner generations |
 
 One checkpoint captures engine state; provider statics are excluded. Restore
