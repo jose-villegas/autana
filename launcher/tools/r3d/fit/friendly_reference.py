@@ -4,7 +4,7 @@ smaller than the triangle its budget affords (fit/footprint.py).
 
     friendly_reference.py SCENE.scene.toml --object NAME --mode MODE --out DIR [--cache DIR] [--no-fit]
 
-MODE makes the training references (train and landscape poses) of the locked reference set anew:
+The reference modes make the training references (train and landscape poses) of the locked reference set anew:
 
 - atrous filters the traced pictures, no re-trace: edge-avoiding a-trous wavelet passes, stopped at source part
   borders, normal creases and off-plane taps, each pixel taking as many passes as the affordable triangle is
@@ -12,6 +12,14 @@ MODE makes the training references (train and landscape poses) of the locked ref
 - budget re-traces them with each textured material read at the mip level of the affordable triangle;
 - average re-traces them with each texture flattened to its mean;
 - locked fits the locked set unchanged: the control, whose spread from the bake is the fit's own noise.
+
+The start modes fit the locked set from a start made anew, whose simplifier sees each vertex's albedo as the
+budget mode reads it (start-budget) or as its material's mean (start-average); light is as the bake's:
+
+- start-budget reads each texture at the affordable triangle's edge where the vertex spacing is finer;
+- start-average reads it at its coarsest level.
+
+DIR/start/ holds that start; with --no-fit it is the only output.
 
 The shader modes change only the albedo the camera rays see: the bounced light is built before, from the full
 textures, as the locked set's is. The held-out references are the locked set's, unchanged, so
@@ -38,7 +46,7 @@ from r3d import log  # noqa: E402
 from r3d.fit.footprint import affordable_area, mip_levels  # noqa: E402
 from r3d.fit.stage import TRAINING  # noqa: E402
 
-MODES = ("atrous", "budget", "average", "locked")
+MODES = ("atrous", "budget", "average", "locked", "start-budget", "start-average")
 # A-trous: the B3-spline taps of one pass, and how many passes at most (taps up to 2^(LEVELS-1) pixels apart).
 B3 = np.array([1.0, 4.0, 6.0, 4.0, 1.0]) / 16.0
 ATROUS_LEVELS = 5
@@ -198,6 +206,28 @@ def friendly_set(scene, job, mode, locked, out):
         trace_references(reference_inputs(job, scene), mode, area, sets)
 
 
+def start_spacing(mode, area):
+    """The finest vertex spacing a start mode lets the texture be read at: past the last mip for start-average."""
+    return np.inf if mode == "start-average" else float(np.sqrt(area))
+
+
+def make_start(start, mode, area, out):
+    """`start` (a fit's start bake) written in `out` by mesh_import, each vertex's albedo read no finer than
+    start_spacing; returns its path."""
+    from r3d import mesh_import
+
+    read, floor = mesh_import.albedo_at, start_spacing(mode, area)
+    mesh_import.albedo_at = lambda src, points, spacing, material: read(src, points, np.maximum(spacing, floor),
+                                                                         material)
+    try:
+        out.mkdir(parents=True)
+        name = start.job.asset_name if start.job.settings.meshes else start.output.removesuffix(start.suffix)
+        mesh_import.write_baked(start.job, start.scene, out, name)
+    finally:
+        mesh_import.albedo_at = read
+    return out / (name + start.suffix)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("scene", type=pathlib.Path)
@@ -210,6 +240,7 @@ def main(argv=None):
     from bake import bake, produce
     from r3d.fit.stage import fit
     from r3d.import_settings import load_scene
+    from r3d.reference_render import lit_source
 
     scene = load_scene(args.scene)
     job = next((j for j in scene.renderers if j.object.name == args.object), None)
@@ -220,13 +251,22 @@ def main(argv=None):
     found = bake.bakes([args.scene], bake.locked_starts(tables["bake"]), bake.Poses(tables["poses"]))
     item = next(entry for entry in found if entry.kind == "fit" and entry.job.object.name == args.object)
     locked = produce.reference_set(item.stages["reference"], job, scene, cache)
-    inputs = locked if args.mode == "locked" else args.out / "inputs"
-    if not inputs.exists():
-        friendly_set(scene, job, args.mode, locked, inputs)
-    print(f"friendly references: {inputs}")
+    if args.mode.startswith("start-"):
+        inputs, made = locked, args.out / "start"
+        start = next(made.glob("*" + item.start.suffix), None) if made.exists() else None
+        if start is None:
+            source = lit_source(job, scene, lit=False)
+            start = make_start(item.start, args.mode, affordable_area(source.p, source.tri_v, job.renderer.fit.budget),
+                               made)
+        print(f"start: {start}")
+    else:
+        inputs = locked if args.mode == "locked" else args.out / "inputs"
+        if not inputs.exists():
+            friendly_set(scene, job, args.mode, locked, inputs)
+        print(f"friendly references: {inputs}")
+        start = produce.start_file(item, cache, tables["bake"])
     if args.no_fit:
         return 0
-    start = produce.start_file(item, cache, tables["bake"])
     work = args.out / "work"
     work.mkdir(exist_ok=True)
     target = args.out / item.output
