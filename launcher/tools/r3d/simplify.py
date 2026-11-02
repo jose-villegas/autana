@@ -209,6 +209,7 @@ def _mesh_passes(tris, labels, tri_o, triangles, reserved, selected, edges):
 def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, locks, deviation, options, shade, shapes=None):
     from scipy.spatial import cKDTree
     from .objects.instances import match_instances, place, source_objects
+    from .objects.stand_ins import best_stand_in
 
     single = {}
     for index, (sel, budget) in enumerate(parts):
@@ -243,19 +244,22 @@ def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, loc
                     first_indices = indices
                 placements.append((instance, indices))
                 consumed.add(single[obj])
-            p, c, t, kept = simplify_with_update(shape.positions, rgb[first_indices], shape.triangles, budget,
-                                                colour_weight(shape.positions, shape.triangles, budget, deviation),
-                                                options, vertex_lock=union if np.any(union) else None)
+            stand_in, candidates = best_stand_in(shape.positions, rgb[first_indices], shape.triangles,
+                shape.materials, budget, colour_weight(shape.positions, shape.triangles, budget, deviation),
+                options, union if np.any(union) else None)
+            p, c, t, kept = stand_in.positions, stand_in.rgb, stand_in.tris, stand_in.kept
             shared.append(dict(objects=[int(i.object_name) for i in shape.instances], copies=len(shape.instances),
                                budget=budget, policy=('lock' if np.any(union) else policies[int(shape.instances[0].object_name)]),
                                locked_vertices=int(union.sum()), output_triangles=len(t),
+                               stand_in=stand_in.kind, stand_ins=candidates,
                                locked_border_excess=max(0, len(t) - budget) if np.any(union) else 0))
-            mat = _label_after(shape.triangles, shape.materials, kept, t)
+            mat = stand_in.materials
             copies = []
             for instance, indices in placements:
                 placed = place(p, instance.linear, instance.position)
                 # World-space locked positions must survive local-frame float conversion.
-                placed[union[kept]] = pos[indices[kept[union[kept]]]].astype(np.float32)
+                if kept is not None:
+                    placed[union[kept]] = pos[indices[kept[union[kept]]]].astype(np.float32)
                 faces = t[:, ::-1] if instance.mirrored else t
                 result = placed, c.copy(), faces, mat.copy()
                 lit = shade(*result) if shade is not None else result
@@ -305,21 +309,35 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
         report['passes'].append(entry)
 
     def run_part(sel, budget):
-        result = _run_pass(pos, rgb, tris[sel], labels[sel], budget, deviation, options,
-                           locks if np.any(locks) else None)
+        from .objects.stand_ins import best_stand_in
+
         objects = np.unique(tri_o[sel])
         carved = allocation.shapes is not None and len(objects) == 1 and objects[0] in selected
+        candidates = None
+        if carved:
+            used, local = np.unique(tris[sel], return_inverse=True)
+            local = local.reshape(-1, 3)
+            stand_in, candidates = best_stand_in(pos[used], rgb[used], local, labels[sel], budget,
+                colour_weight(pos[used], local, budget, deviation), options, locks[used] if np.any(locks[used]) else None)
+            result = stand_in.positions, stand_in.rgb, stand_in.tris, stand_in.materials
+        else:
+            result = _run_pass(pos, rgb, tris[sel], labels[sel], budget, deviation, options,
+                               locks if np.any(locks) else None)
         shade = (allocation.shade_shared or allocation.shade) if carved else allocation.shade
         if shade is not None and np.any(np.isin(tri_o[sel], list(selected))):
             result = shade(*result)
         entry = dict(objects=[allocation.object_names[obj] for obj in objects], copies=1, budget=budget,
                      output_triangles=len(result[2]), locked_vertices=int(locks[np.unique(tris[sel])].sum()),
                      locked_border_excess=max(0, len(result[2]) - budget) if np.any(locks[tris[sel]]) else 0)
+        if candidates is not None:
+            entry.update(stand_in=stand_in.kind, stand_ins=candidates)
         report['passes'].append(entry)
         for row in report['meshes']:
             if row.get('object') in entry['objects']:
                 row.update(output_triangles=entry['output_triangles'], pass_objects=entry['objects'],
                            pass_budget=budget, locked_border_excess=entry['locked_border_excess'])
+                if candidates is not None:
+                    row.update(stand_in=stand_in.kind, stand_ins=candidates)
         if carved:
             instance = Instance(str(objects[0]), np.eye(3), np.zeros(3), False, 0.0)
             allocation.shapes.append(dict(positions=result[0], tris=result[2], materials=result[3],

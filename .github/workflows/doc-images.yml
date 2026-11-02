@@ -94,9 +94,10 @@ jobs:
       - uses: ./.github/actions/host-tools
 
       # The bakes and the fidelity sheet trace rays on Mitsuba's LLVM variant, which needs libLLVM.
-      - name: Install Pillow, the r3d requirements and ffmpeg
+      # The doc generators span every tool folder, so every tool's requirements are installed.
+      - name: Install the tool requirements and ffmpeg
         run: |
-          pip install -r launcher/tools/r3d/requirements.txt
+          pip install $(find launcher/tools -name requirements.txt -printf '-r %p ')
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ffmpeg llvm
           ffmpeg -version | head -1

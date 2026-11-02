@@ -14,6 +14,7 @@
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 #include "render/view/raster_boxes.h"
+#include "render/view/raster_copies.h"
 #include "render/view/raster_cull_view.h"
 #include "render/view/raster_meshlets.h"
 #include "render/view/raster_motion.h"
@@ -40,6 +41,7 @@ static const render_debug_view_t views[] = {
      .attachment = raster_boxes_view,
      .overlay = raster_boxes_overlay},
     {.name = "overdraw", .state_bytes = sizeof(raster_overdraw_t), .attachment = raster_overdraw_view},
+    {.name = "copies", .state_bytes = sizeof(raster_copies_t), .attachment = raster_copies_view},
 };
 _Static_assert(RENDER_DEBUG_VIEW_COUNT == sizeof views / sizeof views[0], "view table length");
 #endif

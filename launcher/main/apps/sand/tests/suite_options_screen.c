@@ -154,12 +154,12 @@ assert_strings_fit(bool landscape) {
 }
 
 static void
-test_every_string_fits_its_rect_portrait(void) {
+test_every_options_string_fits_its_rect_portrait(void) {
     assert_strings_fit(false);
 }
 
 static void
-test_every_string_fits_its_rect_landscape(void) {
+test_every_options_string_fits_its_rect_landscape(void) {
     assert_strings_fit(true);
 }
 
@@ -513,8 +513,8 @@ run_options_screen_suite(void) {
     RUN_TEST(test_the_whole_screen_fits_landscape);
     RUN_TEST(test_the_dither_list_overlays_the_canvas_portrait);
     RUN_TEST(test_the_dither_list_overlays_the_canvas_landscape);
-    RUN_TEST(test_every_string_fits_its_rect_portrait);
-    RUN_TEST(test_every_string_fits_its_rect_landscape);
+    RUN_TEST(test_every_options_string_fits_its_rect_portrait);
+    RUN_TEST(test_every_options_string_fits_its_rect_landscape);
     RUN_TEST(test_dragging_the_slider_right_means_finer_quality);
     RUN_TEST(test_apply_counts_what_is_pending);
     RUN_TEST(test_tiles_run_sixteen_then_256_then_full);

@@ -29,7 +29,8 @@ mesh. Nothing here runs on the board.
 | [triangle_sizes_main.c](triangle_sizes_main.c), [report_triangle_sizes.sh](report_triangle_sizes.sh) | The tool over a mesh and a poses file; see [Triangle sizes](#triangle-sizes). |
 | [bake_fidelity.py](bake_fidelity.py) | Re-lights a flat mesh's geometry with chosen sample count, placement and sky rays into a scratch directory, renders it on the host and scores it against the reference; see [shading: flat](../../../docs/render/scene/Scene-Files.md#shading-flat). |
 | [appearance_simplify.py](appearance_simplify.py) | Fits a smooth or flat mesh's vertex positions and colours to reference renders along a camera path with a differentiable rasterizer, its triangles unchanged; see [Appearance fit](#appearance-fit). |
-| [objects/](objects/objects_report.py) | Rigid instances, triangles saved, residuals and camera-path density LOD estimates: `objects_report.py SCENE.scene.toml --object NAME --out DIR`. |
+| [objects/](objects/objects_report.py) | Rigid instances, triangles saved and residuals: `objects_report.py SCENE.scene.toml --object NAME --out DIR`. |
+| [lod/](lod/lod_replay.py) | Cluster levels of a fitted mesh, picked along its camera path at fixed tolerances and budgets: `lod_replay.py SCENE.scene.toml --object NAME --out DIR`; see [Cluster level of detail](../../../docs/plans/Cluster-LOD.md). |
 | [poses.py](poses.py) | Reads the camera poses file `tools/anim/track_host.py` writes, samples a scene camera's path through it from the clip's `.anim.toml`, and casts a pose's pinhole rays. |
 | [fitted_variant.py](fitted_variant.py) | Remakes a scene renderer's fitted mesh from the `fit` recipe it records; see [A fitted variant](#a-fitted-variant). |
 | [cost_model.py](cost_model.py), [board_cost_weights.txt](board_cost_weights.txt) | A linear model of a mesh's frame time from a pose (submitted and drawn triangles, rows, pixels with overdraw, clusters in view), and its weights with the board frames they were fitted to; see [Cost-aware fit](#cost-aware-fit). |
@@ -91,6 +92,8 @@ what ships.
 `reference_render.py` takes a scene and the pose file its camera path emits.
 It uses the source mesh after alpha masking, before simplification, and the
 same lights, albedo sampling, tone map and RGB565 quantisation as the bake.
+A camera ray passes a single-sided face seen from behind, as the device culls
+it, so where a reduced source's two shells cross the outer one shows.
 The .npy output retains the linear, box-filtered image; the PNG is the form a
 host render compares with `render_compare.py`. What the scores mean is in
 [Bake-Method.md](../../../docs/render/offline/Bake-Method.md#fidelity-against-a-reference).
@@ -148,7 +151,7 @@ backends differ in these recorded ways, besides transport:
 | Case | Bake backend | Path-traced backend |
 |---|---|---|
 | `ambient` | Added to every point | Rejected unless black, it has no transport meaning |
-| One-sided card seen from behind | Shades the hit with the front normal, so a sun on the front lights it | Black: the side the ray reached is unlit |
+| One-sided card seen from behind | Culled, as the device culls it: the ray goes on to what lies beyond | Black: the side the ray reached is unlit |
 | Double-sided card | Lit on both sides, keeps the brighter | Shades the side the ray reached |
 | Near plane | Ignored | Clips at the pose file's near value |
 | `[bake].ao` | Scales the ambient and, if asked, the bounced light | Ignored |

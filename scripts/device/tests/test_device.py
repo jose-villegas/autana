@@ -1713,8 +1713,12 @@ class TestFilterRunTests(unittest.TestCase):
                          ["fire", "gas", "water"])
         self.assertEqual(device.test_patterns(None), [])
 
+    def test_case_patterns_are_accepted(self):
+        self.assertEqual(device.test_patterns(["capybara/front,sponza-fitted", "profile/scene-b/368x448"]),
+                         ["capybara/front", "sponza-fitted", "profile/scene-b/368x448"])
+
     def test_a_pattern_that_would_break_the_request_line_is_refused(self):
-        for bad in ("has space", "", "a;b"):
+        for bad in ("has space", "", "a;b", "a:b", "a//b", "/a", "a/"):
             with self.assertRaises(device.TestFilterError, msg=bad):
                 device.test_patterns([bad])
 

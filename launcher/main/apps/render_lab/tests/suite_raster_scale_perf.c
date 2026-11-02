@@ -199,7 +199,7 @@ test_raster_stage_split_by_size(void) {
     TEST_IGNORE_MESSAGE("frame_cost is a development build's");
 #endif
     TEST_ASSERT_NOT_NULL_MESSAGE(scene, "the scene did not load: see the log above");
-    const r3d_instance_t instance = {&mesh, NULL};
+    const r3d_instance_t instance = {&mesh, NULL, NULL};
     raster_t raster = {
         .instances = &instance,
         .instance_count = 1,
@@ -266,7 +266,7 @@ test_raster_counters(void) {
     TEST_IGNORE_MESSAGE("frame_cost is a development build's");
 #else
     TEST_ASSERT_NOT_NULL_MESSAGE(scene, "the scene did not load: see the log above");
-    const r3d_instance_t instance = {&mesh, NULL};
+    const r3d_instance_t instance = {&mesh, NULL, NULL};
     const resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
     raster_t raster = {.instances = &instance,
                        .instance_count = 1,
@@ -315,7 +315,7 @@ typedef struct {
 /* Every step at every pose, drawn as the scene draws it, for the fit. */
 static bool
 calibrate(const resolution_config_t* config, resolution_model_t* model) {
-    const r3d_instance_t instance = {&mesh, NULL};
+    const r3d_instance_t instance = {&mesh, NULL, NULL};
     render_context_t* context = memory_alloc(sizeof(*context), MEMORY_INTERNAL);
     if (context == NULL) {
         return false;
@@ -566,9 +566,9 @@ run_raster_scale_perf_suite(void) {
     RUN_TEST(test_dynamic_resolution_refit_cost);
     for (size_t q = 0; q < R3D_PERF_QUARTER_COUNT; q++) {
         perf_quarter = &r3d_perf_quarters[q];
-        RUN_TEST(test_raster_stage_split_by_size);
-        RUN_TEST(test_raster_counters);
-        RUN_TEST(test_dynamic_resolution_policies_along_the_path);
+        RUN_TEST_CASE(test_raster_stage_split_by_size, perf_quarter->name);
+        RUN_TEST_CASE(test_raster_counters, perf_quarter->name);
+        RUN_TEST_CASE(test_dynamic_resolution_policies_along_the_path, perf_quarter->name);
     }
     loaded = (sponza_suite_t){scene, loaded.load, lens, loaded.arena_mark};
     sponza_suite_release(&loaded);

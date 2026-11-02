@@ -14,7 +14,7 @@ Two rules, one per kind of file:
   src/<path>.c), opens one of them with that comment. The scope is every
   tracked .c and .h under launcher/main/, launcher/packages/ and
   launcher/test/suites/; a suite (suite_*.c) that runs tests of its own
-  (RUN_TEST) is exempt, its test names say what it proves, but one that only
+  (RUN_TEST, RUN_TEST_CASE) is exempt, its test names say what it proves, but one that only
   includes another file's tests names nothing and needs the comment. A header
   there that declares nothing, only a comment,
   fails too: a folder is described by its README.md, not by an empty header.
@@ -35,7 +35,7 @@ from build.packages import FIRST_PARTY, package_part  # noqa: E402
 
 SCOPE = (*FIRST_PARTY, "launcher/test/suites/")
 PRAGMA_ONCE = re.compile(r"^\s*#\s*pragma\s+once\b", re.M)
-RUN_TEST = re.compile(r"\bRUN_TEST\(\s*\w+")
+RUN_TEST = re.compile(r"\bRUN_TEST(?:_CASE)?\(\s*\w+")
 
 
 def file_purpose(path, text):

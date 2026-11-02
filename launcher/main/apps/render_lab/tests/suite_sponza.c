@@ -345,7 +345,7 @@ share_covered_at(const raster_t* raster, uint32_t t_ms) {
  * only the building's far sides, about 0.6. */
 static void
 check_the_flythrough_sees_mostly_building(const r3d_lit_mesh_t* mesh) {
-    const r3d_instance_t instance = {mesh, NULL};
+    const r3d_instance_t instance = {mesh, NULL, NULL};
     raster_t raster = {
         .instances = &instance, .instance_count = 1, .width = SPONZA_RENDER_WIDTH, .height = SPONZA_RENDER_HEIGHT};
     void* scratch = memory_alloc(raster_scratch_bytes(&raster), MEMORY_PSRAM);

@@ -6,7 +6,8 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "math"))
 from math_figures import (DISPLAY, PANEL_SIZE, PANEL_TITLE_ROOM, ROOT,
-                          VIEW_AZIMUTH, VIEW_ELEVATION, read_define, probe_into_folder)
+                          VIEW_AZIMUTH, VIEW_ELEVATION, read_define)
+from docs.figures import probe_into_folder
 from docs.plot_style import (FAINT, INK, LABEL_SIZE, MUTED, SLOTS, TITLE_SIZE,
                              figure, save, save_gif, subplots, wire_sphere, GIF_FPS,
                              ORBIT_GIF_COLORS, WIRE_WIDTH, WIRE_SAMPLES)

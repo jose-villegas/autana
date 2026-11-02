@@ -19,7 +19,8 @@ struct raster_attachment {
     /* Optional. Once per raster_draw(), before the first instance. */
     void (*begin)(const raster_attachment_t* self, const raster_t* raster, const render_view_t* view);
     /* Optional. Chooses `out->span`, `out->value` and `out->step` for
-     * this instance, or returns false to leave this attachment unwritten. */
+     * this instance, or returns false to leave this attachment unwritten.
+     * Called once per instance in order, drawn or not, so it may count. */
     bool (*writer)(const raster_attachment_t* self, int instance, r3d_span_writer_t* out);
     /* Optional. Once every instance is drawn, `rows` of the picture, both
      * cores at once on disjoint rows; `index` is this attachment's in it. */
@@ -29,6 +30,9 @@ struct raster_attachment {
     void (*show)(const raster_attachment_t* self, const raster_t* raster, const gfx_target_t* picture, int index);
     void* state; /* the attachment's own */
 };
+
+/* A clear hook zeroing a 16-bit attachment, as depth starts empty. */
+void raster_attachment_clear_u16(const raster_attachment_t* self, const raster_t* raster, void* pixels, size_t count);
 
 /* A span writer for a 16- or 32-bit attachment: the pixels this triangle
  * won, those whose depth is the one it filled with, take `writer->value`. */

@@ -9,6 +9,9 @@
 #include <limits.h>
 #include <stdbool.h>
 
+/* A box's corners: P_corner()'s k, each bit an axis. */
+#define BOX3_CORNERS 8
+
 #define MATH_DEFINE_BOX3(P, V, T, OPS, LOWEST, HIGHEST)                                                                \
     typedef struct {                                                                                                   \
         V##_t lo, hi;                                                                                                  \
@@ -49,7 +52,7 @@
     /* closest_point = clamp(p, lo, hi); requires a nonempty box. */                                                   \
     static inline V##_t P##_closest_point(P##_t b, V##_t p) { return V##_clamp(p, b.lo, b.hi); }                       \
                                                                                                                        \
-    /* Corner k of eight: bit 0 picks hi.x over lo.x, bit 1 hi.y, bit 2 hi.z. */                                       \
+    /* Corner k of BOX3_CORNERS: bit 0 picks hi.x over lo.x, bit 1 hi.y, bit 2 hi.z. */                                \
     static inline V##_t P##_corner(P##_t b, int k) {                                                                   \
         return (V##_t){(k & 1) ? b.hi.x : b.lo.x, (k & 2) ? b.hi.y : b.lo.y, (k & 4) ? b.hi.z : b.lo.z};               \
     }

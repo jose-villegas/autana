@@ -25,11 +25,12 @@
 #include "testkit/cleanup.h"
 #include "unity.h"
 
-/* A capybara row: the view it is seen from and how the gallop comes in. A
- * cut times one gallop cycle; a blend times only the blend, so every timed
- * frame samples and mixes two clips. */
+/* A capybara row: its take's name under the scene's, the view it is seen
+ * from and how the gallop comes in. A cut times one gallop cycle; a blend
+ * times only the blend, so every timed frame samples and mixes two clips. */
 typedef struct {
     const char* row;
+    const char* name;
     const char* view;
     int blend_ms;
 } capybara_take_t;
@@ -42,32 +43,38 @@ typedef struct {
     perf_budget_t quarters[R3D_PERF_QUARTER_COUNT];
 } profile_scenario_t;
 
-static const capybara_take_t capybara_home = {CAPYBARA_SCENE, CAPYBARA_VIEW_HOME, CAPYBARA_CLIP_CUT_MS};
-static const capybara_take_t capybara_front = {"capybara-front", CAPYBARA_VIEW_FRONT, CAPYBARA_CLIP_CUT_MS};
-static const capybara_take_t capybara_side = {"capybara-side", CAPYBARA_VIEW_SIDE, CAPYBARA_CLIP_CUT_MS};
-static const capybara_take_t capybara_back = {"capybara-back", CAPYBARA_VIEW_BACK, CAPYBARA_CLIP_CUT_MS};
-static const capybara_take_t capybara_close = {"capybara-close", CAPYBARA_VIEW_CLOSE, CAPYBARA_CLIP_CUT_MS};
-static const capybara_take_t capybara_blend = {"capybara-blend", CAPYBARA_VIEW_HOME, CAPYBARA_CLIP_BLEND_MS};
+static const capybara_take_t capybara_home = {CAPYBARA_SCENE, CAPYBARA_VIEW_HOME, CAPYBARA_VIEW_HOME,
+                                              CAPYBARA_CLIP_CUT_MS};
+static const capybara_take_t capybara_front = {"capybara-front", CAPYBARA_VIEW_FRONT, CAPYBARA_VIEW_FRONT,
+                                               CAPYBARA_CLIP_CUT_MS};
+static const capybara_take_t capybara_side = {"capybara-side", CAPYBARA_VIEW_SIDE, CAPYBARA_VIEW_SIDE,
+                                              CAPYBARA_CLIP_CUT_MS};
+static const capybara_take_t capybara_back = {"capybara-back", CAPYBARA_VIEW_BACK, CAPYBARA_VIEW_BACK,
+                                              CAPYBARA_CLIP_CUT_MS};
+static const capybara_take_t capybara_close = {"capybara-close", CAPYBARA_VIEW_CLOSE, CAPYBARA_VIEW_CLOSE,
+                                               CAPYBARA_CLIP_CUT_MS};
+static const capybara_take_t capybara_blend = {"capybara-blend", "blend", CAPYBARA_VIEW_HOME, CAPYBARA_CLIP_BLEND_MS};
 
 /* A capybara scenario: its take and budgets. */
 #define CAPYBARA_ROW(take, ...) {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, &(take), __VA_ARGS__}
 
 /* Worst of a 5-seed capture on A308 (before and after its move), 20E8 and
- * 2124, + 1%; per quarter, portrait then landscape. */
+ * 2124, + 1%; per quarter, portrait then landscape. The Sponza and Bistro
+ * rows are then scaled by the A308 gain of the per-frame instance cull. */
 static const profile_scenario_t profile_scenarios[] = {
-    {.scene = &scene_sponza[SCENE_BAKED_FULL], .quarters = {{48953, 59273}, {47229, 56329}}},
-    {.scene = &scene_sponza[SCENE_BAKED_LITE], .quarters = {{41957, 47931}, {40738, 46118}}},
-    {.scene = &scene_sponza[SCENE_BAKED_FLAT], .quarters = {{40902, 49780}, {40227, 48295}}},
-    {.scene = &scene_sponza[SCENE_BAKED_FITTED], .quarters = {{41341, 49565}, {39726, 46664}}},
-    {.scene = &scene_sponza[SCENE_BAKED_FITTED_FULL], .quarters = {{49536, 62165}, {47469, 58108}}},
-    {.scene = &scene_sponza[SCENE_BAKED_FLAT_FITTED], .quarters = {{40285, 50300}, {39053, 48179}}},
+    {.scene = &scene_sponza[SCENE_BAKED_FULL], .quarters = {{48135, 58790}, {46392, 55835}}},
+    {.scene = &scene_sponza[SCENE_BAKED_LITE], .quarters = {{41016, 47265}, {39777, 45453}}},
+    {.scene = &scene_sponza[SCENE_BAKED_FLAT], .quarters = {{39923, 49110}, {39269, 47716}}},
+    {.scene = &scene_sponza[SCENE_BAKED_FITTED], .quarters = {{40514, 49046}, {38906, 46226}}},
+    {.scene = &scene_sponza[SCENE_BAKED_FITTED_FULL], .quarters = {{48724, 61767}, {46644, 57701}}},
+    {.scene = &scene_sponza[SCENE_BAKED_FLAT_FITTED], .quarters = {{39625, 49999}, {38343, 47804}}},
     CAPYBARA_ROW(capybara_home, {{20941, 21286}, {21500, 21803}}),
     CAPYBARA_ROW(capybara_front, {{20907, 21289}, {21305, 21590}}),
     CAPYBARA_ROW(capybara_side, {{20921, 21268}, {21591, 21909}}),
     CAPYBARA_ROW(capybara_back, {{20352, 20994}, {20989, 21423}}),
     CAPYBARA_ROW(capybara_close, {{23002, 23384}, {23807, 24080}}),
     CAPYBARA_ROW(capybara_blend, {{21806, 22738}, {22438, 22866}}),
-    {&scene_bistro[SCENE_BAKED_FITTED_FULL], BISTRO_SCENE, BISTRO_CAMERA, NULL, {{41782, 62092}, {40404, 57696}}},
+    {&scene_bistro[SCENE_BAKED_FITTED_FULL], BISTRO_SCENE, BISTRO_CAMERA, NULL, {{40869, 61667}, {39563, 57212}}},
 };
 
 static const char* TAG = "render_lab_profile";
@@ -163,6 +170,11 @@ static size_t quarter_index;
 static const char*
 scenario_row(void) {
     return scenario->take == NULL ? scenario->scene->key : scenario->take->row;
+}
+
+static const char*
+scenario_take(void) {
+    return scenario->take == NULL ? NULL : scenario->take->name;
 }
 
 /* The scenario's path as the render lab shows it, in the current quarter, its clip from the start. */
@@ -337,7 +349,8 @@ run_render_lab_frame_profile_suite(void) {
     for (size_t i = 0; i < sizeof profile_scenarios / sizeof profile_scenarios[0]; i++) {
         for (quarter_index = 0; quarter_index < R3D_PERF_QUARTER_COUNT; quarter_index++) {
             scenario = &profile_scenarios[i];
-            RUN_TEST(test_real_time_frame_profile);
+            RUN_TEST_CASE(test_real_time_frame_profile, scenario->scene->key, scenario_take(),
+                          r3d_perf_quarters[quarter_index].name);
         }
     }
 #endif
@@ -353,7 +366,8 @@ run_render_lab_dynres_steps_suite(void) {
     for (size_t i = 0; i < sizeof profile_scenarios / sizeof profile_scenarios[0]; i++) {
         scenario = &profile_scenarios[i];
         for (ladder_step = 0; ladder_step < RENDER_LAB_LADDER_STEPS; ladder_step++) {
-            RUN_TEST(test_dynres_steps);
+            RUN_TEST_CASE(test_dynres_steps, scenario->scene->key, scenario_take(),
+                          render_lab_test_step_name(ladder_step));
         }
     }
 #endif

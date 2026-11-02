@@ -51,6 +51,8 @@ DEFINE_RE = re.compile(r"#define\s+(\w+)\s+(\d+)")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[5] / "scripts/lib"))
 from device_capture import RESULT_RE, SELFTEST_COMPLETE_RE  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[5] / "scripts/device"))
+from device_report import read_capture_text  # noqa: E402
 
 # A separate line - not part of the result line above - emitted by
 # test/timing.c for every test, on both host and device. Kept separate on
@@ -116,8 +118,7 @@ SUITE_TEST_RE = re.compile(r"^SUITE_TEST name=(?P<name>\w+) selected=(?P<selecte
 
 
 def parse_unselected(capture_path: str) -> set:
-    with open(capture_path, "r", errors="replace") as f:
-        text = f.read()
+    text = read_capture_text(capture_path)
     return {m.group("name") for m in SUITE_TEST_RE.finditer(text) if m.group("selected") == "0"}
 
 
@@ -196,8 +197,7 @@ def make_slow_tests_section(capture: dict, total_ms, top_n: int = 15) -> list:
 
 
 def parse_capture(capture_path: str):
-    with open(capture_path, "r", errors="replace") as f:
-        text = f.read()
+    text = read_capture_text(capture_path)
 
     entries = {}  # test name -> {"status", "message", "measured", "elapsed_ms"}
     test_times = {}  # test name -> elapsed_ms, from TEST_TIME lines

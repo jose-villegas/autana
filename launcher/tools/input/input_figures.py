@@ -4,9 +4,9 @@ from pathlib import Path
 import sys
 
 TOOLS = Path(__file__).resolve().parents[1]
+ROOT = TOOLS.parents[1]
 sys.path.insert(0, str(TOOLS))
-sys.path.insert(0, str(TOOLS / "math"))
-from math_figures import ROOT, run_probe
+from docs.figures import run_probe
 
 
 def probe_data(script, motion_source, description):
