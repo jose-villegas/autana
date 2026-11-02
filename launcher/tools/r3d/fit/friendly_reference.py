@@ -10,7 +10,8 @@ MODE makes the training references (train and landscape poses) of the locked ref
   borders, normal creases and off-plane taps, each pixel taking as many passes as the affordable triangle is
   wide there (Dammertz et al. 2010, with a part stop and a plane distance in place of their colour stop);
 - budget re-traces them with each textured material read at the mip level of the affordable triangle;
-- average re-traces them with each texture flattened to its mean.
+- average re-traces them with each texture flattened to its mean;
+- locked fits the locked set unchanged: the control, whose spread from the bake is the fit's own noise.
 
 The shader modes change only the albedo the camera rays see: the bounced light is built before, from the full
 textures, as the locked set's is. The held-out references are the locked set's, unchanged, so
@@ -37,7 +38,7 @@ from r3d import log  # noqa: E402
 from r3d.fit.footprint import affordable_area, mip_levels  # noqa: E402
 from r3d.fit.stage import TRAINING  # noqa: E402
 
-MODES = ("atrous", "budget", "average")
+MODES = ("atrous", "budget", "average", "locked")
 # A-trous: the B3-spline taps of one pass, and how many passes at most (taps up to 2^(LEVELS-1) pixels apart).
 B3 = np.array([1.0, 4.0, 6.0, 4.0, 1.0]) / 16.0
 ATROUS_LEVELS = 5
@@ -219,7 +220,7 @@ def main(argv=None):
     found = bake.bakes([args.scene], bake.locked_starts(tables["bake"]), bake.Poses(tables["poses"]))
     item = next(entry for entry in found if entry.kind == "fit" and entry.job.object.name == args.object)
     locked = produce.reference_set(item.stages["reference"], job, scene, cache)
-    inputs = args.out / "inputs"
+    inputs = locked if args.mode == "locked" else args.out / "inputs"
     if not inputs.exists():
         friendly_set(scene, job, args.mode, locked, inputs)
     print(f"friendly references: {inputs}")
