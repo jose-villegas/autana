@@ -1416,6 +1416,26 @@ test_toggled_parents_and_a_late_animator_draw_as_a_fresh_scene(void) {
     TEST_ASSERT_EQUAL_INT(1, scene->staged_count);
 }
 
+/* Attached out of entity order, and twice, lights and animators stage each
+ * entity once, in entity order: the light and skin loops walk that order. */
+static void
+test_staged_entities_stay_in_entity_order_once_each(void) {
+    fixture();
+    scene_t* scene = load("test_lit");
+    const scene_entity_t camera = scene_find(scene, name_hash("camera"));
+    const scene_entity_t red = scene_find(scene, name_hash("red"));
+    const scene_entity_t sun = scene_find(scene, name_hash("sun"));
+    TEST_ASSERT_TRUE(camera < red && red < sun);
+    static const char* const flight[] = {"flight"};
+    TEST_ASSERT_TRUE(scene_animator_set_clips(scene, camera, NULL, flight, 1, NULL));
+    TEST_ASSERT_TRUE(scene_animator_set_clips(scene, camera, NULL, flight, 1, NULL));
+    TEST_ASSERT_TRUE(scene_light_set_intensity(scene, red, 1));
+    TEST_ASSERT_TRUE(scene_light_set_intensity(scene, sun, 1));
+    const scene_entity_t want[] = {camera, red, sun};
+    TEST_ASSERT_EQUAL_INT(sizeof want / sizeof want[0], scene->staged_count);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(want, scene->staged, sizeof want / sizeof want[0]);
+}
+
 /* A light's direction and a skin's lit normals are in its own frame, so
  * neither attaches under a parent. */
 static void
@@ -4556,6 +4576,7 @@ run_scene_suite(void) {
     RUN_TEST(test_an_uneven_scale_on_an_entity_with_children_is_refused);
     RUN_TEST(test_enabling_carries_down_every_level_and_stops_at_a_disabled_middle);
     RUN_TEST(test_toggled_parents_and_a_late_animator_draw_as_a_fresh_scene);
+    RUN_TEST(test_staged_entities_stay_in_entity_order_once_each);
     RUN_TEST(test_a_light_or_skin_does_not_attach_under_a_parent);
     RUN_TEST(test_a_scene_with_parents_releases_everything_when_a_load_fails);
     scene_unload_all();

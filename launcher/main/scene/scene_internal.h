@@ -261,7 +261,8 @@ void scene_checkpoint_capture(checkpoint_t* saved, scene_t* scene);
 void scene_animation_checkpoint_capture(checkpoint_t* saved, scene_t* scene);
 #endif
 void scene_animation_release(scene_t* scene);
-/* An animator, skin or light now exists on `entity`: adds it to `staged` once. */
+/* An animator or light now exists on `entity`: adds it to `staged` once. A
+ * skin needs its entity's skeleton animator, so its entity is staged already. */
 void scene_stage_add(scene_t* scene, scene_entity_t entity);
 void scene_animation_step(scene_t* scene, uint32_t dt_ms);
 /* Animates staged[first, first + count). */
