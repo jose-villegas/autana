@@ -95,6 +95,7 @@ light_attach(scene_t* scene, scene_entity_t entity) {
     }
     *light = (scene_light_t){SCENE_LIGHT_DIRECTIONAL, SCENE_LIGHT_COLOR_DEFAULT, SCENE_LIGHT_INTENSITY_DEFAULT};
     scene->light_count++;
+    scene_stage_add(scene, entity);
     for (int r = 0; r < scene->renderer_count; r++) {
         scene_skinned_renderer_t* skin = &scene->skinned_renderers[scene->renderers[r].entity];
         if (skin->internal_storage != NULL) {
@@ -178,7 +179,8 @@ scene_lights_prepare(scene_t* scene) {
     }
     r3d_skin_lights_t world = {.ambient = vec3f_scale(scene->ambient_color, scene->ambient_intensity),
                                .transfer = scene->light_transfer};
-    for (int l = 0; l < scene->asset.entity_count; l++) {
+    for (int i = 0; i < scene->staged_count; i++) {
+        const scene_entity_t l = scene->staged[i];
         const scene_light_t* light = &scene->lights[l];
         if (light->kind == SCENE_LIGHT_NONE || !(scene->flags[l] & SCENE_FLAG_ACTIVE)) {
             continue;

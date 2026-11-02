@@ -138,7 +138,8 @@ enum {
     FLIGHT_TIMES = TEST_TRACKS_HEADER_SIZE + (2 * (TEST_TRACK_ROW_SIZE + TEST_TRACK_STRING_SLOT)),
     FLIGHT_POSITIONS = FLIGHT_TIMES + (2 * sizeof(float)),
     FLIGHT_TURNS = FLIGHT_POSITIONS + (6 * sizeof(float)),
-    FLIGHT_BYTES = FLIGHT_TURNS + (8 * sizeof(float))
+    FLIGHT_BYTES = FLIGHT_TURNS + (8 * sizeof(float)),
+    FLIGHT_DURATION_MS = 1000
 };
 
 /* A camera translation must be three-wide; unkeyed rotation retains its value. */
@@ -155,7 +156,7 @@ make_clip_entry(uint8_t* entry, anim_value_t position_type, int track_count) {
     const float times[] = {0.0F, 1.0F};
     const float positions[] = {0, 0, -10, 5, 0, -10};
     const float turns[] = {0, 0, 0, 1, 0, 0, 0, 1};
-    test_tracks_header(entry, track_count, 1000);
+    test_tracks_header(entry, track_count, FLIGHT_DURATION_MS);
     test_track_row(entry, 0,
                    &(test_track_t){.path = ANIM_TARGET_SELF,
                                    .field = "position",
@@ -1342,6 +1343,77 @@ test_enabling_carries_down_every_level_and_stops_at_a_disabled_middle(void) {
     TEST_ASSERT_TRUE(scene_entity_active(scene, hand));
     TEST_ASSERT_TRUE(scene_entity_is_within(scene, hand, root));
     TEST_ASSERT_FALSE(scene_entity_is_within(scene, cup, root));
+}
+
+/* The instances `scene` drew last, as renderer indices, so two scenes compare. */
+static int
+drawn_renderer(const scene_t* scene, int instance) {
+    const scene_renderer_t* r = (const scene_renderer_t*)(const void*)((const uint8_t*)scene->instances[instance].mesh
+                                                                       - offsetof(scene_renderer_t, mesh));
+    return (int)(r - scene->renderers);
+}
+
+/* `scene`'s last frame and instances equal a fresh load put in the same state:
+ * every renderer CHANGED, so the reference walks them all. */
+static void
+assert_draws_as_fresh(scene_t* scene, int drawn) {
+    memcpy(fx.held, fx.pixels, sizeof(*fx.pixels) * SIZE * SIZE);
+    scene_t* fresh = show("test_family", SCENE_CAMERA_FIRST);
+    for (int e = 0; e < scene->asset.entity_count; e++) {
+        scene_entity_set_local(fresh, (scene_entity_t)e, scene_entity_local(scene, (scene_entity_t)e));
+        scene_entity_set_enabled(fresh, (scene_entity_t)e, scene_entity_enabled(scene, (scene_entity_t)e));
+    }
+    frame(0);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(fx.pixels, fx.held, SIZE * SIZE);
+    int count = 0;
+    for (int i = 0; i < fresh->renderer_count; i++) {
+        count += scene_entity_active(fresh, fresh->renderers[i].entity);
+    }
+    TEST_ASSERT_EQUAL_INT(drawn, count);
+    for (int i = 0; i < count; i++) {
+        const int r = drawn_renderer(scene, i);
+        TEST_ASSERT_EQUAL_INT(drawn_renderer(fresh, i), r);
+        TEST_ASSERT_EQUAL_MEMORY(&fresh->renderers[r].model, &scene->renderers[r].model, sizeof(mat4f_t));
+        TEST_ASSERT_EQUAL_MEMORY(&fresh->renderers[r].world_bounds, &scene->renderers[r].world_bounds, sizeof(box3f_t));
+    }
+    scene_unload(fresh);
+    TEST_ASSERT_TRUE(scene_activate(scene, SCENE_CAMERA_FIRST));
+}
+
+/* Disabling, moving and re-enabling a parent with a drawn child, and an
+ * animator bound mid-run, draw exactly what a fresh scene in that state draws. */
+static void
+test_toggled_parents_and_a_late_animator_draw_as_a_fresh_scene(void) {
+    fixture();
+    scene_t* scene = show("test_family", SCENE_CAMERA_FIRST);
+    const scene_entity_t camera = scene_find(scene, name_hash("camera"));
+    const scene_entity_t red = scene_find(scene, name_hash("red"));
+    const scene_entity_t green = scene_find(scene, name_hash("green"));
+    static const char* const flight[] = {"flight"};
+    frame(0);
+    assert_draws_as_fresh(scene, 2);
+    scene_entity_set_enabled(scene, red, false);
+    frame(0);
+    assert_draws_as_fresh(scene, 0);
+    transformf_t moved = scene_entity_local(scene, red);
+    transformf_set_position(&moved, (vec3f_t){-3, 1, 0});
+    scene_entity_set_local(scene, red, moved);
+    TEST_ASSERT_TRUE(scene_animator_set_clips(scene, camera, NULL, flight, 1, NULL));
+    TEST_ASSERT_TRUE(scene_animator_play(scene, camera, 0, 0));
+    frame(FLIGHT_DURATION_MS / 4);
+    assert_draws_as_fresh(scene, 0);
+    scene_entity_set_enabled(scene, red, true);
+    frame(FLIGHT_DURATION_MS / 4);
+    assert_draws_as_fresh(scene, 2);
+    scene_entity_set_enabled(scene, green, false);
+    frame(FLIGHT_DURATION_MS / 4);
+    assert_draws_as_fresh(scene, 1);
+    scene_entity_set_enabled(scene, green, true);
+    scene_entity_set_enabled(scene, red, false);
+    scene_entity_set_enabled(scene, red, true);
+    frame(FLIGHT_DURATION_MS / 4);
+    assert_draws_as_fresh(scene, 2);
+    TEST_ASSERT_EQUAL_INT(1, scene->staged_count);
 }
 
 /* A light's direction and a skin's lit normals are in its own frame, so
@@ -3260,7 +3332,7 @@ static void
 test_skin_split_inside_an_entity_matches_full_range(void) {
     scene_t* scene = rig_fixture("rig.skin4", "rig.quad");
     const scene_entity_t red = scene_find(scene, name_hash("red")), green = scene_find(scene, name_hash("green"));
-    scene_animate_range(scene, 0, scene->asset.entity_count, RIG_DURATION_MS / 2);
+    scene_animate_range(scene, 0, scene->staged_count, RIG_DURATION_MS / 2);
     scene_skin_range(scene, 0, 3);
     const scene_entity_t entities[] = {red, green};
     for (size_t e = 0; e < sizeof entities / sizeof entities[0]; e++) {
@@ -3794,18 +3866,20 @@ test_static_scene_and_unposed_skin_do_not_dispatch_jobs(void) {
         scene_animator_set_paused(scene, scene_find(scene, name_hash("red")), SCENE_ANIMATOR_CURRENT, true));
     const int paused = job_calls_count();
     scene_animation_step(scene, RIG_DURATION_MS / 2);
-    TEST_ASSERT_EQUAL_INT(paused + 1, job_calls_count());
+    TEST_ASSERT_EQUAL_INT(1, scene->staged_count); /* one animated entity: its slice runs inline */
+    TEST_ASSERT_EQUAL_INT(paused, job_calls_count());
     scene_skinned_renderer_t* skin = &scene->skinned_renderers[scene_find(scene, name_hash("red"))];
     const scene_entity_t entity = scene_find(scene, name_hash("red"));
+    scene_entity_t* staged = malloc(sizeof *staged * (size_t)scene->asset.entity_count);
+    TEST_ASSERT_NOT_NULL(staged);
     for (int entities = 1; entities <= scene->asset.entity_count; entities++) {
+        for (int e = 0; e < entities; e++) {
+            staged[e] = entities == 1 ? entity : (scene_entity_t)e;
+        }
         for (int clusters = 1; clusters <= skin->bind.cluster_count; clusters++) {
             scene_t limited = *scene;
-            limited.asset.entity_count = entities;
-            if (entities == 1) {
-                limited.animators += entity;
-                limited.skinned_renderers += entity;
-                limited.flags += entity;
-            }
+            limited.staged = staged;
+            limited.staged_count = entities;
             const int saved = skin->bind.cluster_count;
             skin->bind.cluster_count = clusters;
             TEST_ASSERT_TRUE(scene_animator_set_paused(scene, entity, SCENE_ANIMATOR_CURRENT, false));
@@ -3818,6 +3892,7 @@ test_static_scene_and_unposed_skin_do_not_dispatch_jobs(void) {
             skin->bind.cluster_count = saved;
         }
     }
+    free(staged);
 }
 #endif
 
@@ -4106,8 +4181,10 @@ test_light_attachment_defaults_refusals_and_capacity(void) {
     scene_light_t lights[ENTITIES] = {0};
     uint8_t flags[ENTITIES] = {0};
     uint16_t roots[ENTITIES];
+    scene_entity_t staged[ENTITIES];
     memset(roots, 0xFF, sizeof roots);
-    scene_t scene = {.asset = {.entity_count = ENTITIES, .parents = roots}, .lights = lights, .flags = flags};
+    scene_t scene = {
+        .asset = {.entity_count = ENTITIES, .parents = roots}, .lights = lights, .flags = flags, .staged = staged};
     TEST_ASSERT_TRUE(scene_light_set_color(&scene, 0, (vec3f_t){0.5F, 0.25F, 0.125F}));
     TEST_ASSERT_EQUAL_FLOAT(SCENE_LIGHT_INTENSITY_DEFAULT, scene_light_intensity(&scene, 0));
     TEST_ASSERT_TRUE(scene_light_set_intensity(&scene, 1, 2.0F));
@@ -4478,6 +4555,7 @@ run_scene_suite(void) {
     RUN_TEST(test_a_world_set_under_turned_parents_reads_back_exactly);
     RUN_TEST(test_an_uneven_scale_on_an_entity_with_children_is_refused);
     RUN_TEST(test_enabling_carries_down_every_level_and_stops_at_a_disabled_middle);
+    RUN_TEST(test_toggled_parents_and_a_late_animator_draw_as_a_fresh_scene);
     RUN_TEST(test_a_light_or_skin_does_not_attach_under_a_parent);
     RUN_TEST(test_a_scene_with_parents_releases_everything_when_a_load_fails);
     scene_unload_all();
