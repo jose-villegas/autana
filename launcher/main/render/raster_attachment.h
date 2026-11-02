@@ -30,6 +30,9 @@ struct raster_attachment {
     void* state; /* the attachment's own */
 };
 
+/* A clear hook zeroing a 16-bit attachment, as depth starts empty. */
+void raster_attachment_clear_u16(const raster_attachment_t* self, const raster_t* raster, void* pixels, size_t count);
+
 /* A span writer for a 16- or 32-bit attachment: the pixels this triangle
  * won, those whose depth is the one it filled with, take `writer->value`. */
 void raster_attachment_tag(const r3d_span_writer_t* writer, const gfx_target_t* rows, int y, int x_first, int x_last,
