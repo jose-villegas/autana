@@ -82,6 +82,8 @@ typedef struct {
 } render_host_image_t;
 
 render_host_image_t render_host_image(void);
+/* The most frames of the open run's size one --video holds. */
+int64_t render_host_video_frames_fit(void);
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 typedef struct render_host_checkpoint render_host_checkpoint_t;

@@ -326,6 +326,11 @@ render_host_image(void) {
         .bgr = host.frame_buf, .width = host.out_w, .height = host.out_h, .stride = (size_t)host.stride};
 }
 
+int64_t
+render_host_video_frames_fit(void) {
+    return render_video_frames_that_fit(host.out_w, host.out_h, VIDEO_MAX_BYTES);
+}
+
 /* Gives back what a run took, as the shell does when an app exits: the provider's own first, then every scene
  * and the render context, then the framebuffer. Otherwise the next open in this process meets a mounted pack,
  * the last run's resolution and a second framebuffer. */
@@ -396,7 +401,7 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
         }
         const int64_t total = render_video_total_bytes(host.out_w, host.out_h, host.frame.count);
         if (total > VIDEO_MAX_BYTES) {
-            const int64_t fits = render_video_frames_that_fit(host.out_w, host.out_h, VIDEO_MAX_BYTES);
+            const int64_t fits = render_host_video_frames_fit();
             fprintf(stderr,
                     "%s: %d frames at %dx%d would write %lld MB, over RIFF AVI 1.0's 1 GB limit; "
                     "at this size and --dt %u, at most %lld frames fit\n",
