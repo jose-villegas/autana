@@ -312,31 +312,21 @@ def report_body(rows, score, unseen):
 
 def figure(rows, path, title, top=FIGURE_ROWS):
     """The parts with the largest error share, each beside its share of path pixels, named without the prefix all
-    their names share; beside them, each part's drawn triangles, its sheets apart, a planar part's name starred."""
+    their names share."""
     shown = rows[:top]
     prefix = common_prefix([row["object"] for row in shown])
-    fig, (ax, drawn) = plot_style.subplots(1, 2, (2 * plot_style.FIGURE_SIZE[0],
-                                                  ROW_INCHES * len(shown) + FRAME_INCHES))
+    fig, ax = plot_style.subplots(1, 1, (plot_style.FIGURE_SIZE[0], ROW_INCHES * len(shown) + FRAME_INCHES))
     index = np.arange(len(shown))
     half = plot_style.BAR_HEIGHT / 2
     ax.barh(index - half / 2, [100 * row["error_share"] for row in shown], half, color=plot_style.SLOTS[1],
             label="Share of path error")
     ax.barh(index + half / 2, [100 * row["pixel_share"] for row in shown], half, color=plot_style.SLOTS[0],
             label="Share of path pixels")
-    ax.set_yticks(index, [row["object"].removeprefix(prefix) + (" *" if row["planar"] else "") for row in shown])
+    ax.set_yticks(index, [row["object"].removeprefix(prefix) for row in shown])
     ax.invert_yaxis()
     ax.set(xlabel="% of the held-out path", xlim=(0, None))
     ax.legend(loc="lower right", fontsize=plot_style.LABEL_SIZE)
     plot_style.style_axes(ax, title)
-    sheets = np.array([row["sheet_triangles"] for row in shown])
-    rest = np.array([row["drawn_triangles"] for row in shown]) - sheets
-    drawn.barh(index, rest, plot_style.BAR_HEIGHT, color=plot_style.SLOTS[2], label="Other drawn triangles")
-    drawn.barh(index, sheets, plot_style.BAR_HEIGHT, left=rest, color=plot_style.SLOTS[6], label="Sheet triangles")
-    drawn.set_yticks(index, [""] * len(shown))
-    drawn.invert_yaxis()
-    drawn.set(xlabel="Triangles drawn on the part (* planar part)", xlim=(0, None))
-    drawn.legend(loc="lower right", fontsize=plot_style.LABEL_SIZE)
-    plot_style.style_axes(drawn, "Where the budget goes")
     plot_style.save(fig, path)
 
 

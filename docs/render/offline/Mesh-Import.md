@@ -361,7 +361,7 @@ object and shape tables sum every part, so all of them are kept.
 | welded | Shares a position with another object |
 | segment | One welded part: only sub-mesh segmentation can split it |
 
-![Error and pixel share of the costliest Bistro parts, with their drawn and sheet triangles](../../images/render/bistro-street-fitted-full-object-error.png)
+![Error and pixel share of the costliest Bistro parts](../../images/render/bistro-street-fitted-full-object-error.png)
 
 <!-- generated: bistro-street-fitted-full-object-error sha256=53e1a21364248c118e2586da619c4c624961e332488f136e1c8196546db175af -->
 Mean dE76 over the held-out path 6.364, over 10014 object parts in view. 9.1% of the drawn triangles sit on parts no held-out pixel shows. 1397 drawn triangles sit on planar parts in view; 384 are sheets (over 4 times their part's median triangle, turned over 30° from the source).
@@ -442,7 +442,7 @@ Repeated shapes, every copy summed.
 | Bistro_Research_Exterior_Paris_Table_01___10__6493#0 | Paris_Table_Terrace | 87 / 121 | 0.15% | 10.2 | 0.23% | 1044 | 35 |
 <!-- /generated: bistro-street-fitted-full-object-error -->
 
-![Error and pixel share of the costliest Sponza parts, with their drawn and sheet triangles](../../images/render/sponza-atrium-fitted-full-object-error.png)
+![Error and pixel share of the costliest Sponza parts](../../images/render/sponza-atrium-fitted-full-object-error.png)
 
 <!-- generated: sponza-atrium-fitted-full-object-error sha256=a8f59d94496285c1f8161c15992668297f8fb4e26657a8eab44cd2462bef816b -->
 Mean dE76 over the held-out path 5.390, over 1026 object parts in view. 8.1% of the drawn triangles sit on parts no held-out pixel shows. 61 drawn triangles sit on planar parts in view; 514 are sheets (over 4 times their part's median triangle, turned over 30° from the source).

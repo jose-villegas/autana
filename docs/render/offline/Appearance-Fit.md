@@ -221,57 +221,6 @@ flowchart LR
 [Bake-Quality.md](Bake-Quality.md#the-demo-variants) compares a flat bake
 with its flat fit.
 
-## Flattened references do not free triangles
-
-Without textures, texture detail must be carried by vertex colour. Fitting against references whose texture is
-flattened to what the budget's triangle can hold does not move triangles off planar faces; scored against the
-unfiltered held-out references, every arm below loses.
-
-| Arm | What changes |
-|---|---|
-| a-trous | the traced training pictures filtered by edge-avoiding à-trous passes<sup>[[112]](../../Citations.md#dammertz-2010)</sup>, stopped at part borders, creases and off-plane taps |
-| budget mip | the training pictures re-traced with each texture read at the mip whose texel spans the budget's triangle |
-| texture mean | re-traced with each texture flattened to its mean |
-| start | the start remade with its vertex albedo read at the budget's mip or the material mean; locked references |
-
-Placement never reads the reference: the fit keeps its start's triangles and prunes them by pixel coverage. The
-start's simplifier reads lit vertex colour, but flattening it there moves the budget-mip start's counts by about
-1%, and the mean-albedo start gains cobble triangles (+11%).
-
-```mermaid
-flowchart LR
-    S["simplify.py<br/>geometry + lit vertex colour"] --> T["start"]
-    T --> F["fit: positions<br/>and colours"]
-    R["references"] --> F
-    F --> P["prune by<br/>pixel coverage"]
-```
-
-Bistro's street fit. The start rows score the unfitted start, so they compare with the locked start row only.
-Planar-part and sheet counts are the `planar` and `sheet_triangles` fields of the held-out report's error.csv,
-defined in [Mesh Import](Mesh-Import.md#held-out-error-by-object).
-
-| Arm | Held-out ΔE76 mean / p95 | Cobble triangles | Planar-part triangles | Sheets |
-|---|---:|---:|---:|---:|
-| locked bake | 6.364 / 19.01 | 652 | 1397 | 384 |
-| refit of the locked references (fit noise) | 6.373 / 19.02 | | | |
-| a-trous | 7.074 / 20.71 | 667 | 1400 | 416 |
-| budget mip | 6.652 / 20.13 | 657 | 1360 | 408 |
-| texture mean | 6.630 / 19.79 | 658 | 1355 | 419 |
-| locked start, unfitted | 14.20 | 1125 | 2149 | 939 |
-| start, budget mip albedo, unfitted | 14.22 | 1110 (−1%) | 2136 (−1%) | 932 |
-| start, mean albedo, unfitted | 14.75 | 1244 (+11%) | 2216 (+3%) | 924 |
-
-Sponza's atrium fit scores 5.390 locked, 5.374 refitted and 6.920 with a-trous. Its budget-mip fit grew over the
-copies, and the copy check refused it.
-
-On the held-out frames, the a-trous fit softens shadows inside a surface in Sponza. In Bistro it grows sheets
-across the awning and the frame-18 wall. The arms' code is in commit `ee94701d6`, which makes those sheets again.
-
-The locked fit's counters show where the budget goes. The flat cobbled street parts (starred: planar) take 278
-and 146 drawn triangles, the most and tied second of any part. The costliest parts carry almost no sheets.
-
-![Bistro held-out error by part, with each part's drawn and sheet triangles](../../images/render/bistro-street-fitted-full-object-error.png)
-
 ## Against the paper
 
 The fit keeps the paper's<sup>[[1]](../../Citations.md#hasselgren-2021)</sup> method: a decimated start with
