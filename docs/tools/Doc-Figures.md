@@ -56,8 +56,9 @@ every producer. `--needs host,bakes` keeps the producers whose needs are all
 listed: what one machine without a GPU or a board can run.
 
 With `--changed`, a run is skipped when its inputs match those recorded at its
-last good run: its Python import closure, the C its probes compiled, its
-`reads` files and its bake's lock row. Both commands record into
+last good run: its arguments and item, its code (import closure, the C and
+requirements it counts, the tracked files that code names), the C its probes
+compiled, its `reads` files and its bake's lock row. Both commands record into
 `launcher/tools/results/doc_images/fingerprints.json`, which is not tracked
 (`--fingerprints FILE` names another): `build` every run, `check` the runs
 whose images were all the same.
