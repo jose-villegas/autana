@@ -2,9 +2,10 @@
  * board: the one place a board fact gets bound to a concrete value.
  *
  * Every other file names a ROLE (the PMU's address, the boot button's GPIO,
- * the panel's column offset) and never a literal number; see board_esp32s3.c
- * for the binding to the Waveshare ESP32-S3-Touch-AMOLED-1.8. It includes
- * ESP-IDF headers but never the vendor BSP's: only board/'s sources bind to bsp/.
+ * the panel's column offset) and never a literal number. The board Kconfig
+ * chooses names a folder under board/ whose board_config.h states the values
+ * and whose sources bind these functions. It includes ESP-IDF headers but
+ * never the vendor BSP's: only board/'s sources bind to bsp/.
  */
 #pragma once
 
@@ -16,6 +17,8 @@
 #include "driver/i2s_std.h"
 #include "esp_err.h"
 #include "esp_lcd_touch.h"
+
+#include "board_config.h"
 
 typedef enum {
     BOARD_VARIANT_UNKNOWN = 0,
@@ -72,19 +75,3 @@ typedef enum {
  * fine for an occasional read, not for every frame. Leaves *out_celsius
  * untouched except on BOARD_TEMP_SENSOR_OK. */
 board_temp_sensor_status_t board_temp_sensor_read_celsius(float* out_celsius);
-
-/* BOARD_BOOT_GPIO: pulled up, grounded when pressed, so LOW means down. */
-
-#define BOARD_BOOT_GPIO            GPIO_NUM_0
-#define BOARD_PMU_I2C_ADDR         0x34
-#define BOARD_IMU_I2C_ADDR         0x6B
-#define BOARD_RTC_I2C_ADDR         0x51
-#define BOARD_IO_EXPANDER_I2C_ADDR 0x20
-/* The ES8311 datasheet address is 8-bit 0x30; I2C requires the 7-bit address. */
-#define BOARD_AUDIO_CODEC_I2C_ADDR 0x18
-#define BOARD_TOUCH_FT_I2C_ADDR    0x38
-#define BOARD_TOUCH_CST_I2C_ADDR   0x15
-#define BOARD_TOUCH_FT_NAME        "FT3168"
-#define BOARD_PANEL_X_GAP          0x10
-#define BOARD_I2C_SDA_GPIO         GPIO_NUM_15
-#define BOARD_I2C_SCL_GPIO         GPIO_NUM_14

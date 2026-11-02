@@ -165,6 +165,19 @@ class StyleAuditTest(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertIn("board/board.h", findings[0].message)
 
+    def test_the_boards_folder_is_its_own_include_root(self):
+        # The chosen board's folder is on the include path, so its headers are
+        # written bare; reaching one through main/ is the unqualified spelling.
+        findings = self.audit("INCLUDE-LAYER", {
+            "launcher/main/Kconfig.projbuild": ('choice BOARD\n    default BOARD_ONE\nendchoice\n'
+                                                'config BOARD_DIR\n    default "one" if BOARD_ONE\n'),
+            "launcher/main/board/one/board_config.h": "#pragma once\n",
+            "launcher/main/board/board.h": '#include "board_config.h"\n',
+            "launcher/main/input/touch.c": '#include "board/one/board_config.h"\n',
+        })
+        self.assertEqual([(hit.path, hit.line) for hit in findings], [("launcher/main/input/touch.c", 1)])
+        self.assertIn('use "board_config.h"', findings[0].message)
+
     def test_an_apps_internal_relative_include_is_not_flagged(self):
         findings = self.audit("INCLUDE-LAYER", {
             "launcher/main/apps/sand/material.h": "#pragma once\n",

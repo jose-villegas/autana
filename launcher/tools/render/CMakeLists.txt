@@ -9,7 +9,7 @@ add_library(render_engine INTERFACE)
 add_library(autana::render_engine ALIAS render_engine)
 target_sources(render_engine INTERFACE ${render_engine_sources})
 target_include_directories(render_engine INTERFACE
-    "${launcher}/main" "${launcher}/components/microui/include"
+    "${launcher}/main" "${launcher}/main/board/${board_dir}" "${launcher}/components/microui/include"
     "${launcher}/test" "${launcher}/test/stubs")
 target_compile_options(render_engine INTERFACE -ffp-contract=off)
 if(NOT WIN32)

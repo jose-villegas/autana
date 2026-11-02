@@ -261,7 +261,7 @@ case "${1:-}" in
         ;;
     --print-flags)
         printf '%s\n' -std=c11 -Wall -Wextra -Wno-unused-parameter -g -O1 \
-            -I "$MAIN_DIR" $(package_includes "$LAUNCHER_DIR") \
+            -I "$MAIN_DIR" $(board_includes "$LAUNCHER_DIR") $(package_includes "$LAUNCHER_DIR") \
             -I "$TEST_DIR" $(testkit_includes "$TEST_DIR/..") -I "$TEST_DIR/stubs" \
             -I "$TEST_DIR/../components/microui/include" \
             -I "$TEST_DIR/../tools/gen" -I "$TEST_DIR/../tools/r3d" $HEAP_ARENA_DEFINES \
@@ -385,7 +385,8 @@ PACKAGE_INC=""
 for include_dir in $(package_include_dirs "$LAUNCHER_DIR"); do
     PACKAGE_INC="$PACKAGE_INC -I $(native "$include_dir")"
 done
-COMMON_INC="-I $MAIN_N$PACKAGE_INC -I $TEST_N $(testkit_includes "$LAUNCHER_N") -I $TEST_N/stubs"
+BOARD_N=$(native "$(board_include_dir "$LAUNCHER_DIR")")
+COMMON_INC="-I $MAIN_N -I $BOARD_N$PACKAGE_INC -I $TEST_N $(testkit_includes "$LAUNCHER_N") -I $TEST_N/stubs"
 TEST_INC="$COMMON_INC -I $LAUNCHER_N/components/microui/include -I $LAUNCHER_N/tools/gen -I $LAUNCHER_N/tools/r3d"
 LDFLAGS="-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -Wl,--wrap=asset_store_load -Wl,--wrap=asset_store_backend_report -Wl,--wrap=job_try_core1 -Wl,--wrap=job_run_steered -Wl,--wrap=draw_line_ex -pthread -lm"
 

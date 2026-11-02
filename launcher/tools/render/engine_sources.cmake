@@ -1,13 +1,14 @@
 # The engine sources every host build compiles, the one list. Sets launcher
 # (the launcher/ folder), render_engine_sources (drawing without device
-# backends, the asset store, tune and jobs) and renderer_sources
-# (main/renderer_sources.cmake). CMakeLists.txt includes it; a build without
+# backends, the asset store, tune and jobs), renderer_sources
+# (main/renderer_sources.cmake) and board_dir (main/board/board_dir.cmake). CMakeLists.txt includes it; a build without
 # CMake reads both lists as absolute paths on stdout, one per line:
 #
 #   cmake -P launcher/tools/render/engine_sources.cmake
 
 get_filename_component(launcher "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
 include("${launcher}/main/renderer_sources.cmake")
+include("${launcher}/main/board/board_dir.cmake")
 
 launcher_glob(render_engine_sources "${launcher}/main/gfx/*.c" "${launcher}/main/draw/*.c")
 list(FILTER render_engine_sources EXCLUDE REGEX "_device\\.c$")

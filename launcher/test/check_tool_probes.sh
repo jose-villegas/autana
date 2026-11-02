@@ -37,7 +37,7 @@ found=0
 for f in $(find "$LAUNCHER_DIR/tools" -name "*_figures_probe.c" | LC_ALL=C sort); do
     found=$((found + 1))
     # shellcheck disable=SC2046
-    if "$CC_BIN" $CFLAGS -I "$LAUNCHER_DIR/main" $(package_includes "$LAUNCHER_DIR") "$f"; then
+    if "$CC_BIN" $CFLAGS -I "$LAUNCHER_DIR/main" $(board_includes "$LAUNCHER_DIR") $(package_includes "$LAUNCHER_DIR") "$f"; then
         echo "  ok   $(basename "$f")"
     else
         echo "  FAIL $(basename "$f")"
