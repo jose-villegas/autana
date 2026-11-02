@@ -240,7 +240,8 @@ scene_asset_open(asset_view_t entry, scene_asset_t* out) {
             memcpy((uint8_t*)&scene + layout->count, &rows_count, sizeof rows_count);
         }
     }
-    if (!parents_pad_zero(entry, &scene)) {
+    /* The scene numbers its renderers, plain then skinned, in a uint16_t. */
+    if (!parents_pad_zero(entry, &scene) || scene.renderer_count + scene.skinned_renderer_count > UINT16_MAX) {
         return ASSET_ERR_FORMAT;
     }
     const asset_status_t checked = check_rows(&scene);
