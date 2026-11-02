@@ -21,11 +21,11 @@ from mpl_toolkits.mplot3d import proj3d
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 PROBE = pathlib.Path(__file__).with_name("geometry_figures_probe.c")
-PRODUCER = Producer(area="math", needs="host", run=("--cc", "{cc}", "--out", "{out}/math"),
-                    outputs=("math/rect-queries.png", "math/circle-rect-queries.png", "math/plane-distance.png",
-                             "math/plane-from-points.png", "math/plane-from-rows.png", "math/frustum.png",
-                             "math/box3-frustum.gif", "math/box3-sphere-overlap.gif",
-                             "math/box3-sphere-segments.png"))
+PRODUCER = Producer(area="math", needs=("host",), run=("--cc", "{cc}", "--out", "{out}"),
+                    outputs=("rect-queries.png", "circle-rect-queries.png", "plane-distance.png",
+                             "plane-from-points.png", "plane-from-rows.png", "frustum.png",
+                             "box3-frustum.gif", "box3-sphere-overlap.gif",
+                             "box3-sphere-segments.png"))
 PLANE_NAMES = ("near", "left", "right", "top", "bottom")
 PLANE_COLORS = (INK, SHAPE_FILL, POINT, SLOTS[6], PIXEL_FILL)
 PANELS = 2

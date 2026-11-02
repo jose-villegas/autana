@@ -19,8 +19,7 @@ autana docs --ask can an app call vTaskDelay inside frame     # a written answer
 
 ## Commands
 
-`autana help docs` lists the same commands. `autana figures` builds and checks the
-docs' generated images; [Doc-Figures.md](../tools/Doc-Figures.md) explains it.
+`autana help docs` lists the same commands.
 
 <!-- generated: cli-docs check: python scripts/autana/cli_reference.py --check -->
 | Command | What it does |

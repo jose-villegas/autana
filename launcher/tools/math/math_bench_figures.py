@@ -13,7 +13,7 @@ from docs.plot_style import SLOTS, MUTED, LABEL_SIZE, TITLE_SIZE, subplots, styl
 from docs.producer import Producer
 from matplotlib.patches import Patch
 
-PRODUCER = Producer(area="math", needs="host", run=("--out", "{out}/math"), outputs=("math/benchmark-families.png",),
+PRODUCER = Producer(area="math", needs=("host",), run=("--out", "{out}"), outputs=("benchmark-families.png",),
                     reads=("docs/math/data/math_bench_capture.txt", "docs/math/data/math_bench_fpu_ops.txt"))
 
 REFERENCE_HATCH = "///"

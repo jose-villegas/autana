@@ -1,9 +1,4 @@
-"""What the doc-figure producers share: building and running a C probe against the engine's libraries.
-
-A probe is a small C program that calls the library a figure explains and
-prints every number the figure shows as JSON, so the figure plots the
-library's own results rather than a Python copy of its maths.
-"""
+"""What the doc-figure producers share: building and running a C probe against the engine's libraries."""
 import argparse
 import json
 import pathlib

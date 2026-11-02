@@ -28,9 +28,9 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 PROBE = ROOT / "launcher/tools/math/math_figures_probe.c"
 PROBE_SOURCES = (PROBE, ROOT / "launcher/main/render/render_view.c")
 DISPLAY = ROOT / "launcher/components/esp32_s3_touch_amoled_1_8/include/bsp/display.h"
-PRODUCER = Producer(area="math", needs="host", run=("--cc", "{cc}", "--out", "{out}/math"),
-                    outputs=("math/trs-scale.gif", "math/trs-rotate.gif", "math/trs-translate.gif",
-                             "math/camera-to-pixel.png"))
+PRODUCER = Producer(area="math", needs=("host",), run=("--cc", "{cc}", "--out", "{out}"),
+                    outputs=("trs-scale.gif", "trs-rotate.gif", "trs-translate.gif",
+                             "camera-to-pixel.png"))
 
 SHAPE_FILL, POINT, PIXEL_FILL = SLOTS[:3]
 TRS_MARGIN = 0  # units of room beyond the farthest corner
