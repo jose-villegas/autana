@@ -199,7 +199,7 @@ test_raster_stage_split_by_size(void) {
     TEST_IGNORE_MESSAGE("frame_cost is a development build's");
 #endif
     TEST_ASSERT_NOT_NULL_MESSAGE(scene, "the scene did not load: see the log above");
-    const r3d_instance_t instance = {&mesh, NULL};
+    const r3d_instance_t instance = {&mesh, NULL, NULL};
     raster_t raster = {
         .instances = &instance,
         .instance_count = 1,
@@ -266,7 +266,7 @@ test_raster_counters(void) {
     TEST_IGNORE_MESSAGE("frame_cost is a development build's");
 #else
     TEST_ASSERT_NOT_NULL_MESSAGE(scene, "the scene did not load: see the log above");
-    const r3d_instance_t instance = {&mesh, NULL};
+    const r3d_instance_t instance = {&mesh, NULL, NULL};
     const resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
     raster_t raster = {.instances = &instance,
                        .instance_count = 1,
@@ -315,7 +315,7 @@ typedef struct {
 /* Every step at every pose, drawn as the scene draws it, for the fit. */
 static bool
 calibrate(const resolution_config_t* config, resolution_model_t* model) {
-    const r3d_instance_t instance = {&mesh, NULL};
+    const r3d_instance_t instance = {&mesh, NULL, NULL};
     render_context_t* context = memory_alloc(sizeof(*context), MEMORY_INTERNAL);
     if (context == NULL) {
         return false;
