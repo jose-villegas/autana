@@ -31,6 +31,7 @@ sys.path.insert(0, str(TOOLS))
 
 from anim import tracks_asset  # noqa: E402
 from asset.asset_pack import build_pack  # noqa: E402
+from build.find_cc import host_cc  # noqa: E402
 from build import compile_db, packages  # noqa: E402
 
 HERE = TOOLS / "anim"
@@ -48,14 +49,10 @@ class TrackHostError(RuntimeError):
 
 def compiler():
     """The C compiler tools/build/find_cc.sh picks."""
-    find_cc = TOOLS / "build" / "find_cc.sh"
-    try:
-        found = subprocess.run(["sh", "-c", f'. "{find_cc.as_posix()}"; find_cc'], capture_output=True, text=True)
-    except OSError as error:
-        raise TrackHostError(f"no sh to run {find_cc.name}: {error}") from error
-    if found.returncode != 0 or not found.stdout.strip():
+    cc = host_cc()
+    if cc is None:
         raise TrackHostError("no C compiler found; set CC")
-    return found.stdout.strip()
+    return cc
 
 
 def compile_args(cc):

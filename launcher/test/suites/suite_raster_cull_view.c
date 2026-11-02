@@ -500,7 +500,7 @@ scene_open(void) {
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(cullview, paint), RASTER_CULL_PAINT_FATES));
     for (int i = 0; i < SCENE_QUADS; i++) {
         r3d_quad_init(&s->quad[i], scene_corners[i]);
-        s->instance[i] = (r3d_instance_t){&s->quad[i].mesh, NULL, NULL};
+        s->instance[i] = (r3d_instance_t){&s->quad[i].mesh, NULL, NULL, NULL};
     }
     s->quad[SCENE_AWAY].cluster.double_sided = false;
     render_context_set_scale(&s->context, 100);

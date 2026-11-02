@@ -17,6 +17,7 @@
 
 #include "core/memory.h"
 #include "display/viewport.h"
+#include "math/geometry/box3f.h"
 #include "math/linear/mat3f.h"
 #include "math/linear/mat4f.h"
 #include "render/context/render_context.h"
@@ -170,6 +171,140 @@ test_begin_runs_once_and_resolve_covers_every_row_once(void) {
     free(hooks);
 }
 
+/* Notes every instance its writer is asked about, and tags the pixels it
+ * wins with the instance plus one. */
+typedef struct {
+    unsigned asked;
+} asked_t;
+
+static bool
+asking_writer(const raster_attachment_t* self, int instance, r3d_span_writer_t* out) {
+    ((asked_t*)self->state)->asked |= 1U << instance;
+    out->span = raster_attachment_tag;
+    out->value = (uint32_t)instance + 1U;
+    return true;
+}
+
+enum { TRIO = 3, TRIO_CLEAR = 0x1234, TRIO_SPACING = 120, TRIO_HALF = 40, TRIO_FAR = 1000 };
+
+/* The trio, then a fourth instance that only sets how many share a batch. */
+typedef struct {
+    int16_t positions[TRIO + 1][4][3];
+    r3d_quad_t quad[TRIO + 1];
+    box3f_t box[TRIO + 1];
+    r3d_instance_t instance[TRIO + 1];
+} trio_t;
+
+/* Puts three card-sized quads A, B and C side by side in view, every one of
+ * `culled` (a bit each) taken out of the picture: by a world box off to the
+ * right while its quad stays in view, or, with `by_box` false, by its quad
+ * standing there and no box. The kept have their own box. */
+static void
+place_trio(trio_t* t, unsigned culled, bool by_box) {
+    for (int k = 0; k < TRIO; k++) {
+        const bool out = (culled >> k & 1U) != 0;
+        const int16_t centre = (int16_t)((k - 1) * TRIO_SPACING + (out && !by_box ? TRIO_FAR : 0));
+        const int16_t corners[4][2] = {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}};
+        for (int c = 0; c < 4; c++) {
+            t->positions[k][c][0] = (int16_t)(centre + corners[c][0] * TRIO_HALF);
+            t->positions[k][c][1] = (int16_t)(corners[c][1] * TRIO_HALF);
+            t->positions[k][c][2] = 0;
+        }
+        r3d_quad_init(&t->quad[k], t->positions[k]);
+        t->box[k] = r3d_lit_mesh_world_bounds(&t->quad[k].mesh, NULL);
+        if (out && by_box) {
+            t->box[k] = (box3f_t){{TRIO_FAR, -TRIO_HALF, -TRIO_HALF}, {TRIO_FAR + 2 * TRIO_HALF, TRIO_HALF, TRIO_HALF}};
+        }
+        t->instance[k] = (r3d_instance_t){&t->quad[k].mesh, NULL, out && !by_box ? NULL : &t->box[k], NULL};
+    }
+    /* A batch holds instances up to the largest mesh's vertices and clusters,
+     * so this one, always off to the right and so never walked, is declared
+     * big enough for the trio to share a batch. */
+    memset(t->positions[TRIO], 0, sizeof t->positions[TRIO]);
+    r3d_quad_init(&t->quad[TRIO], t->positions[TRIO]);
+    t->quad[TRIO].mesh.vertex_count = TRIO * 4;
+    t->quad[TRIO].mesh.cluster_count = TRIO;
+    t->box[TRIO] = (box3f_t){{TRIO_FAR, -TRIO_HALF, -TRIO_HALF}, {TRIO_FAR + 2 * TRIO_HALF, TRIO_HALF, TRIO_HALF}};
+    t->instance[TRIO] = (r3d_instance_t){&t->quad[TRIO].mesh, NULL, &t->box[TRIO], NULL};
+}
+
+/* Draws the trio with `culled` out of it right after a frame that kept all
+ * three, on the same scratch, so a slot left over from that frame is there to
+ * be mistaken. Whichever are kept must write their own value, every instance
+ * must be asked about, and nothing of a culled one may reach colour or
+ * attachment. */
+static void
+check_trio(unsigned culled, bool by_box) {
+    trio_t* t = malloc(sizeof *t);
+    TEST_ASSERT_NOT_NULL(t);
+    place_trio(t, 0, true);
+    asked_t asked = {0};
+    const raster_attachment_t a = {
+        .format = IMAGE_U16, .clear = raster_attachment_clear_u16, .writer = asking_writer, .state = &asked};
+    const raster_attachment_t* const one[] = {&a};
+    raster_t raster = {.instances = t->instance,
+                       .instance_count = TRIO + 1,
+                       .attachments = one,
+                       .attachment_count = 1,
+                       .width = W,
+                       .height = H,
+                       .clear = TRIO_CLEAR};
+    raster.scratch = malloc(raster_scratch_bytes(&raster));
+    TEST_ASSERT_NOT_NULL(raster.scratch);
+    const render_view_t view = render_view_fixture(&raster_rig_camera, &raster, 0);
+    TEST_ASSERT_EQUAL_INT(TRIO, raster_draw(&raster, &view).clusters);
+    place_trio(t, culled, by_box);
+    asked.asked = 0;
+    const raster_stats_t stats = raster_draw(&raster, &view);
+    const uint16_t* color = raster_color(&raster);
+    const uint16_t* tagged = raster_carve(&raster).picture.attachment[GFX_ATTACHMENT_FURTHER].pixels;
+    int seen[TRIO + 1] = {0};
+    int stray = 0, coloured = 0, tagged_count = 0;
+    for (int i = 0; i < W * H; i++) {
+        coloured += color[i] != TRIO_CLEAR;
+        tagged_count += tagged[i] != 0;
+        if (tagged[i] <= TRIO) {
+            seen[tagged[i]]++;
+        } else {
+            stray++;
+        }
+    }
+    int kept = 0;
+    for (int k = 0; k < TRIO; k++) {
+        const bool drawn = (culled >> k & 1U) == 0;
+        kept += drawn;
+        TEST_ASSERT_EQUAL_INT_MESSAGE(drawn, seen[k + 1] > 0, "an instance's value is its own, or absent");
+    }
+    TEST_ASSERT_EQUAL_UINT_MESSAGE((1U << (TRIO + 1)) - 1U, asked.asked,
+                                   "the writer is asked about every instance, culled or not");
+    TEST_ASSERT_EQUAL_INT(0, stray);
+    TEST_ASSERT_EQUAL_INT(kept, stats.clusters);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(coloured, tagged_count, "colour and attachment agree on what was drawn");
+    free(raster.scratch);
+    free(t);
+}
+
+static void
+test_a_culled_instance_in_the_middle_leaves_the_next_one_its_own_value(void) {
+    check_trio(1U << 1, true);
+    check_trio(1U << 1, false);
+}
+
+static void
+test_a_culled_first_or_last_instance_leaves_the_others_their_own_values(void) {
+    check_trio(1U << 0, true);
+    check_trio(1U << 0, false);
+    check_trio(1U << 2, true);
+    check_trio(1U << 2, false);
+}
+
+static void
+test_every_instance_culled_draws_and_tags_nothing_yet_is_still_asked(void) {
+    check_trio(7U, true);
+    check_trio(7U, false);
+    check_trio(0U, true);
+}
+
 static void
 split_quad(raster_rig_t* rig, r3d_lit_cluster_t clusters[2]) {
     static const uint16_t white[] = {UINT16_MAX, UINT16_MAX};
@@ -304,7 +439,7 @@ test_copies_share_a_hue_and_a_shape_drawn_once_is_grey(void) {
     copy.colors = red;
     mat4f_t shifted = MAT4F_IDENTITY;
     shifted.m[0][MAT3F_AXES] = COPY_SHIFT;
-    const r3d_instance_t three[] = {r->instance[0], r->instance[1], {&copy, &shifted, NULL}};
+    const r3d_instance_t three[] = {r->instance[0], r->instance[1], {&copy, &shifted, NULL, NULL}};
     r->raster.instances = three;
     r->raster.instance_count = 3;
     raster_rig_attach(r, one, 1);
@@ -850,7 +985,8 @@ test_draw_retains_only_the_drawn_instance_and_bounds_state(void) {
     const raster_attachment_t observer = {.format = IMAGE_U16, .writer = observe_split_writer};
     const raster_attachment_t* attached[] = {&observer};
     raster_rig_t* r = rig_open(attached, 1);
-    r3d_instance_t instances[RASTER_SPLIT_INSTANCES + 1];
+    r3d_instance_t* instances = malloc(sizeof(r3d_instance_t) * (RASTER_SPLIT_INSTANCES + 1));
+    TEST_ASSERT_NOT_NULL(instances);
     for (int i = 0; i <= RASTER_SPLIT_INSTANCES; i++) {
         instances[i] = r->instance[0];
     }
@@ -892,6 +1028,7 @@ test_draw_retains_only_the_drawn_instance_and_bounds_state(void) {
         TEST_ASSERT_EQUAL_INT(before.top_offset[i], state.split.top_offset[i]);
     }
     TEST_ASSERT_EQUAL_INT(JOB_SHARE_MIN, state.sentinel);
+    free(instances);
 }
 #endif
 
@@ -934,6 +1071,9 @@ run_raster_attachment_suite(void) {
     RUN_TEST(test_motion_without_room_detaches_and_draws_shaded);
 #endif
     RUN_TEST(test_cluster_values_and_constant_writers);
+    RUN_TEST(test_a_culled_instance_in_the_middle_leaves_the_next_one_its_own_value);
+    RUN_TEST(test_a_culled_first_or_last_instance_leaves_the_others_their_own_values);
+    RUN_TEST(test_every_instance_culled_draws_and_tags_nothing_yet_is_still_asked);
     RUN_TEST(test_meshlet_ranges_restart_each_draw_and_show_empty_as_clear);
     RUN_TEST(test_copies_share_a_hue_and_a_shape_drawn_once_is_grey);
     RUN_TEST(test_copies_take_their_first_instance_and_each_shape_its_own_id);

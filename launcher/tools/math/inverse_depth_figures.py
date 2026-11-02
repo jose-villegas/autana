@@ -4,11 +4,15 @@ import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from math_figures import PANEL_SIZE, PANEL_TITLE_ROOM, probe_into_folder
+from math_figures import PANEL_SIZE, PANEL_TITLE_ROOM
+from docs.figures import probe_into_folder
+from docs.producer import Producer
 from docs.plot_style import FAINT, LABEL_SIZE, SLOTS, save, subplots
 from matplotlib.ticker import FixedLocator, NullFormatter, ScalarFormatter
 
 PROBE = pathlib.Path(__file__).with_name("inverse_depth_figures_probe.c")
+PRODUCER = Producer(area="math", needs=("host",), run=("--cc", "{cc}", "--out", "{out}"),
+                    outputs=("inverse-depth-step.png",))
 PANELS = 2
 CM_PER_M = 100
 MM_PER_CM = 10

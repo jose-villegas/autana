@@ -16,9 +16,11 @@
 #include <stdint.h>
 
 #include "asset/asset_pack.h"
+#include "math/geometry/box3f.h"
 #include "math/geometry/box3s.h"
 #include "math/geometry/spheref.h"
 #include "math/geometry/spheres.h"
+#include "math/linear/mat4f.h"
 
 typedef struct {
     uint16_t vertex_first, vertex_count;
@@ -112,3 +114,7 @@ r3d_lit_mesh_refit_nodes(r3d_lit_node_t* nodes, int node_count, const r3d_lit_cl
 /* A sphere holding every vertex, in model units: centred on the box of them
  * (the root node's bounds), its radius the furthest vertex from that centre. */
 spheref_t r3d_lit_mesh_bounding_sphere(const r3d_lit_mesh_t* mesh);
+
+/* The box of the root node's bounds carried through `model` (NULL: as it is),
+ * in world units: it holds every vertex where the instance sits. */
+box3f_t r3d_lit_mesh_world_bounds(const r3d_lit_mesh_t* mesh, const mat4f_t* model);

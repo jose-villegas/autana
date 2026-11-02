@@ -281,3 +281,16 @@ r3d_lit_mesh_bounding_sphere(const r3d_lit_mesh_t* mesh) {
     }
     return (spheref_t){mid, sqrtf(furthest)};
 }
+
+box3f_t
+r3d_lit_mesh_world_bounds(const r3d_lit_mesh_t* mesh, const mat4f_t* model) {
+    const box3f_t box = box3f_from_box3s(mesh->nodes[0].bounds, 1.0F / (float)mesh->position_scale);
+    if (model == NULL) {
+        return box;
+    }
+    box3f_t world = box3f_empty();
+    for (int k = 0; k < BOX3_CORNERS; k++) {
+        world = box3f_extend(world, mat4f_apply(model, box3f_corner(box, k)));
+    }
+    return world;
+}

@@ -292,12 +292,13 @@ class DocImageFailureTest(unittest.TestCase):
             tools.mkdir(parents=True)
             for name in ("render_doc_images.sh", "doc_images_demo.sh", "doc_import_examples.py", "gif_from_avi.sh"):
                 shutil.copyfile(ROOT / "launcher/tools/render" / name, tools / name)
-            helper = root / "scripts/lib/run.sh"
-            helper.parent.mkdir(parents=True)
-            shutil.copyfile(ROOT / "scripts/lib/run.sh", helper)
-            packages = root / "launcher/tools/build/packages.sh"
-            packages.parent.mkdir(parents=True)
-            shutil.copyfile(ROOT / "launcher/tools/build/packages.sh", packages)
+            # The helpers --orphans sources, and the figures runner it asks for declared images.
+            for name in ("scripts/lib/run.sh", "scripts/lib/python.sh", "scripts/lib/python-min-version",
+                         "launcher/tools/build/packages.sh", "launcher/tools/build/find_cc.py",
+                         "launcher/tools/docs/producer.py", "launcher/tools/docs/figures_runner.py",
+                         "launcher/tools/render/compare_images.py", "scripts/gates/tracked.py"):
+                (root / name).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(ROOT / name, root / name)
             demo = root / "launcher/demo/gallery/gallery.scene.toml"
             demo.parent.mkdir(parents=True)
             demo.touch()

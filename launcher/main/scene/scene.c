@@ -508,6 +508,7 @@ scene_renderer_set_mesh(scene_t* scene, scene_entity_t entity, const r3d_lit_mes
         return false;
     }
     r->mesh = *mesh;
+    scene_renderer_bound(r);
     /* Another mesh's groups are not these bits': start it at its finest. */
     if (r->lod_coarse != NULL) {
         memset(r->lod_coarse, 0, sizeof(uint32_t) * r->lod_words);
