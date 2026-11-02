@@ -54,7 +54,7 @@ DEFS="-DCONFIG_LAUNCHER_DEVELOPMENT=1"
 # run_tests.sh uses for finding app sources.
 # shellcheck source=../tools/build/packages.sh
 . "$HERE/../tools/build/packages.sh"
-INCS="-I $STUBS -I $MAIN_DIR"
+INCS="-I $STUBS -I $MAIN_DIR $(board_includes "$HERE/..")"
 for inc in $(package_include_dirs "$HERE/..") "$HERE"/../components/*/include; do
     [ -d "$inc" ] || continue
     INCS="$INCS -I $inc"

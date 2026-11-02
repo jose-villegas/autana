@@ -1,4 +1,4 @@
-"""The case as a 3D figure: translucent walls, screen, IMU and both axis sets, from board/board_geometry.h.
+"""The case as a 3D figure: translucent walls, screen, IMU and both axis sets, from board/waveshare_amoled_1_8/board_geometry.h.
 
 Device axes: x right, y up the screen, z out of the glass; millimetres; origin at the glass centre.
 A pose is a 3x3 matrix whose columns are the device axes in the figure's world axes; world z is up.

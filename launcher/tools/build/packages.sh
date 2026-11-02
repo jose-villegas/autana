@@ -31,6 +31,27 @@ package_includes() {
     done
 }
 
+# board_include_dir prints main/board/<folder> of the board a host build
+# compiles, the BOARD_DIR of the Kconfig choice BOARD's default
+# (packages.py's board_include_dir()); board_includes the same as an -I flag.
+board_include_dir() {
+    board_choice=$(sed -n '/^ *choice BOARD$/,/^ *endchoice/s/^ *default \([A-Z0-9_]*\)$/\1/p' \
+        "$1/main/Kconfig.projbuild" | head -n 1)
+    board_folder=""
+    [ -n "$board_choice" ] && board_folder=$(sed -n "s/^ *default \"\([a-z0-9_]*\)\" if $board_choice\$/\1/p" \
+        "$1/main/Kconfig.projbuild" | head -n 1)
+    if [ -z "$board_folder" ]; then
+        echo "no board folder: main/Kconfig.projbuild's choice BOARD names none" >&2
+        return 1
+    fi
+    printf '%s\n' "$1/main/board/$board_folder"
+}
+
+board_includes() {
+    board_includes_dir=$(board_include_dir "$1") || return 1
+    printf -- '-I %s ' "$board_includes_dir"
+}
+
 testkit_includes() {
     for testkit_dir in $(package_reachable "$1/packages/testkit"); do
         [ -d "$testkit_dir/include" ] && printf -- '-I %s ' "$testkit_dir/include"

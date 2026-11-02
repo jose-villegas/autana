@@ -9,7 +9,7 @@ last pixels, including after firmware crashes.
 
 ## Bring-up
 
-`launcher/main/board/board_panel.c` owns SPI2, panel IO and panel initialization.
+`launcher/main/board/waveshare_amoled_1_8/board_panel.c` owns SPI2, panel IO and panel initialization.
 `board_detect()` selects SH8601 with FT3168 touch or CO5300 with CST820 touch.
 Keep revision detection and panel offsets in the board layer rather than
 hardcoding a driver or applying the gap in drawing code.

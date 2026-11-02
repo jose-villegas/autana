@@ -288,7 +288,8 @@ def _include_layer_violations(root, path, text):
         resolved = resolve_include(root, path, inc)
         if resolved is None:
             continue
-        include_root = next((r for r in roots if resolved.is_relative_to(r)), None)
+        # The deepest root holding the file: the board's folder sits inside main/.
+        include_root = max((r for r in roots if resolved.is_relative_to(r)), key=lambda r: len(r.parts), default=None)
         if include_root is None:
             continue
         target_rel = resolved.relative_to(include_root)

@@ -6,6 +6,16 @@ and `launcher/sdkconfig.defaults`.
 
 ## The board
 
+| File | Holds |
+|---|---|
+| `board/board.h`, `board/board_panel.h` | the functions and roles every other file calls |
+| `board/<folder>/board_config.h` | one board's values for those roles: pins, I2C addresses, panel size |
+| `board/<folder>/*.c` | one board's bindings, the only code that names its vendor BSP |
+
+The Kconfig choice `BOARD` (`main/Kconfig.projbuild`) picks the folder; the
+build compiles that folder alone and puts it on the include path. A host build
+takes the choice's default.
+
 ESP32-S3R8, dual-core Xtensa LX7 @ 240 MHz, single-precision FPU. Flash and
 PSRAM clocks are set in `launcher/sdkconfig.defaults`.
 
@@ -77,7 +87,7 @@ levels are in the [audio docs](../audio/README.md).
 
 | Constraint | Owner |
 |---|---|
-| The amplifier on GPIO 46 has one owner, `board_audio_amp_enable()`. The codec PA pin is unused. | `launcher/main/board/board_esp32s3.c`, `launcher/main/audio/audio_codec.c` |
+| The amplifier on GPIO 46 has one owner, `board_audio_amp_enable()`. The codec PA pin is unused. | `launcher/main/board/waveshare_amoled_1_8/board.c`, `launcher/main/audio/audio_codec.c` |
 | `audio_out_amp_enable()` returns immediately. The mixer holds voice positions and writes silence during `AUDIO_OUT_AMP_STARTUP_MS`. | `launcher/main/audio/audio_out_device.h`, `launcher/main/sound/sound_mixer.c` |
 | The microphone gain rationale is in the comment at `AUDIO_IN_GAIN_DB`. | `launcher/main/audio/audio_in.c` |
 
@@ -100,7 +110,7 @@ Check these before writing a driver or guessing a register sequence.
 | [Examples repository](https://github.com/waveshareteam/ESP32-S3-Touch-AMOLED-1.8) | Waveshare's ESP-IDF and Arduino examples for every chip on the board: display, touch, IMU, RTC, power, codec, SD |
 | [Wiki](https://www.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-1.8) | Pinout, dimension drawing, datasheet links |
 | [Schematic](https://files.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-1.8/ESP32-S3-Touch-AMOLED-1.8.pdf) | Nets, pull-ups and part numbers<sup>[[81]](../Citations.md#waveshare-amoled-schematic)</sup> |
-| [3D model](https://files.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-1.8/ESP32-S3-Touch-AMOLED-1.8-3D.zip) | Module outline and part placement, the source of `launcher/main/board/board_geometry.h`<sup>[[89]](../Citations.md#waveshare-amoled-3d-model)</sup> |
+| [3D model](https://files.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-1.8/ESP32-S3-Touch-AMOLED-1.8-3D.zip) | Module outline and part placement, the source of `launcher/main/board/waveshare_amoled_1_8/board_geometry.h`<sup>[[89]](../Citations.md#waveshare-amoled-3d-model)</sup> |
 
 ## Memory: the constraint that shapes everything
 

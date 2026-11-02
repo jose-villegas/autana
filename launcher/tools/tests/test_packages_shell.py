@@ -127,9 +127,67 @@ class PackageRequires(FixtureLauncher):
         self.assertEqual(["gamma"], [Path(line).name for line in self.shell("package_reachable", "gamma")])
 
 
+BOARD_KCONFIG = """menu "Board"
+    choice BOARD
+        prompt "Board"
+        default BOARD_SECOND
+        config BOARD_FIRST
+            bool "First"
+        config BOARD_SECOND
+            bool "Second"
+    endchoice
+    config BOARD_DIR
+        string
+        default "first_board" if BOARD_FIRST
+        default "second_board" if BOARD_SECOND
+endmenu
+menu "Other"
+    choice OTHER
+        default OTHER_ONE
+    endchoice
+endmenu
+"""
+
+
+class BoardFolder(FixtureLauncher):
+    def cmake_folder(self):
+        """board_dir.cmake's board_dir, or None when it fails."""
+        (self.launcher / "main/board").mkdir(parents=True, exist_ok=True)
+        shutil.copy(ROOT / "launcher/main/board/board_dir.cmake", self.launcher / "main/board/board_dir.cmake")
+        self.write("print.cmake", f'include("{(self.launcher / "main/board/board_dir.cmake").as_posix()}")\n'
+                   'message(STATUS "board_dir=${board_dir}")\n')
+        result = subprocess.run(["cmake", "-P", str(self.launcher / "print.cmake")],
+                                capture_output=True, text=True, timeout=120)
+        return result.stdout.split("board_dir=")[1].strip() if result.returncode == 0 else None
+
+    def shell_folder(self):
+        script = f'. "{(BUILD / "packages.sh").as_posix()}"\nboard_include_dir "{self.launcher.as_posix()}"\n'
+        result = run_shell("-c", script)
+        return Path(result.stdout.strip()).name if result.returncode == 0 else None
+
+    def python_folder(self):
+        try:
+            return packages.board_include_dir(self.launcher).name
+        except ValueError:
+            return None
+
+    def test_the_choices_default_names_the_folder_in_all_three_readers(self):
+        self.write("main/Kconfig.projbuild", BOARD_KCONFIG)
+        self.assertEqual(["second_board"] * 3, [self.python_folder(), self.shell_folder(), self.cmake_folder()])
+
+    def test_another_choices_default_is_not_the_boards(self):
+        self.write("main/Kconfig.projbuild", BOARD_KCONFIG.replace("default BOARD_SECOND\n", ""))
+        self.assertEqual([None] * 3, [self.python_folder(), self.shell_folder(), self.cmake_folder()])
+
+    def test_the_repository_names_a_folder_that_exists(self):
+        folder = packages.board_include_dir()
+        self.assertTrue((folder / "board_config.h").is_file(), folder)
+
+
 class EngineSources(FixtureLauncher):
     def sources(self):
-        for name in ("tools/render/engine_sources.cmake", "main/renderer_sources.cmake"):
+        for name in ("tools/render/engine_sources.cmake", "main/renderer_sources.cmake",
+                     "main/board/board_dir.cmake", "main/Kconfig.projbuild"):
             (self.launcher / name).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(ROOT / "launcher" / name, self.launcher / name)
         result = subprocess.run(["cmake", "-P", str(self.launcher / "tools/render/engine_sources.cmake")],
