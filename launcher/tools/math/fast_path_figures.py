@@ -10,7 +10,12 @@ sys.path[:0] = [str(ROOT / "launcher/tools"), str(ROOT / "launcher/tools/perf")]
 import fast_paths
 import math_bench_table as bench
 from docs.plot_style import FAINT, SLOTS, style_axes, subplots, save
+from docs.producer import Producer
 
+
+# One figure per annotated fast path (fast_paths.annotations()), named fast-path-<key>.png.
+PRODUCER = Producer(area="math", needs="host", run=("--out", "{out}/math"), outputs=("math/fast-path-*.png",),
+                    reads=("docs/math/data/math_bench_capture.txt",))
 
 ERROR_ZOOM_FRACTION = 0.75
 ERROR_HEADROOM = 1.15

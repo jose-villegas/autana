@@ -1,29 +1,24 @@
 #!/usr/bin/env python3
 """The figures of docs/math/Conventions.md and Projection.md: one shape animated
 through scale, rotate and translate, and one camera point on its way to a pixel.
-launcher/tools/render/render_doc_images.sh runs it; the numbers come from
-math_figures_probe.c, which calls the library.
+The numbers come from math_figures_probe.c, which calls the library.
 
-    python launcher/tools/math/math_figures.py --cc CC --trs DIR --pixel PNG
+    python launcher/tools/math/math_figures.py --cc CC --out DIR
 
---trs is a directory that gets trs-scale.gif, trs-rotate.gif and trs-translate.gif,
-one looping GIF per step; --pixel shows the camera point's way to a pixel.
-The viewport is the panel's, read from the board's display header.
+DIR gets trs-scale.gif, trs-rotate.gif and trs-translate.gif, one looping GIF
+per step, and camera-to-pixel.png, the camera point's way to a pixel. The
+viewport is the panel's, read from the board's display header.
 """
 
-import argparse
-import json
 import math
 import pathlib
-import subprocess
 import sys
-import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 from build.c_header import read_define
-from build.packages import include_roots
-from probe_standard import PROBE_STANDARD
+from docs.figures import probe_into_folder
+from docs.producer import Producer
 
 from docs.plot_style import (DPI, FAINT, GIF_FPS, INK, LABEL_SIZE, MUTED, ORBIT_GIF_COLORS, SLOTS, TITLE_SIZE,
                              style_axes, figure as new_figure, save, save_gif, subplots)
@@ -33,6 +28,9 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 PROBE = ROOT / "launcher/tools/math/math_figures_probe.c"
 PROBE_SOURCES = (PROBE, ROOT / "launcher/main/render/render_view.c")
 DISPLAY = ROOT / "launcher/components/esp32_s3_touch_amoled_1_8/include/bsp/display.h"
+PRODUCER = Producer(area="math", needs="host", run=("--cc", "{cc}", "--out", "{out}/math"),
+                    outputs=("math/trs-scale.gif", "math/trs-rotate.gif", "math/trs-translate.gif",
+                             "math/camera-to-pixel.png"))
 
 SHAPE_FILL, POINT, PIXEL_FILL = SLOTS[:3]
 TRS_MARGIN = 0  # units of room beyond the farthest corner
@@ -46,37 +44,6 @@ GHOST_WIDTH = 1.0  # the previous stage's dashed outline
 POINT_SIZE = 40
 PIXEL_PANELS = 4  # camera, offset, picture, whole pixel
 PIXEL_WINDOW = 3  # whole pixels shown on each side of the chosen one
-
-
-def build_probe(cc, sources, directory):
-    """Build a probe against the library into directory; returns the program."""
-    sources = (*sources, ROOT / "launcher/packages/math/src/text/math_text.c")
-    binary = pathlib.Path(directory) / "probe"
-    includes = [flag for root in include_roots() for flag in ("-I", str(root))]
-    subprocess.run([cc, f"-std={PROBE_STANDARD}", "-O1", *includes, *map(str, sources), "-lm", "-o", str(binary)], check=True)
-    return binary
-
-
-def probe_json(binary, *arguments):
-    """Run a built probe; its JSON is every number a figure shows."""
-    out = subprocess.run([str(binary), *map(str, arguments)], check=True, capture_output=True, text=True)
-    return json.loads(out.stdout)
-
-
-def run_probe(cc, sources, *arguments):
-    """Build and run a probe once."""
-    with tempfile.TemporaryDirectory() as work:
-        return probe_json(build_probe(cc, sources, work), *arguments)
-
-
-def probe_into_folder(description, sources, *arguments):
-    """A figure tool's --cc CC --out DIR: makes DIR and runs the probe; returns (its JSON, DIR)."""
-    parser = argparse.ArgumentParser(description=description)
-    parser.add_argument("--cc", required=True)
-    parser.add_argument("--out", type=pathlib.Path, required=True)
-    args = parser.parse_args()
-    args.out.mkdir(parents=True, exist_ok=True)
-    return run_probe(args.cc, sources, *arguments), args.out
 
 
 def trs_figure(trs, output):
@@ -207,16 +174,11 @@ def pixel_figure(px, output):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--cc", required=True, help="host C compiler")
-    parser.add_argument("--trs", required=True, type=pathlib.Path, help="output directory for the TRS step GIFs")
-    parser.add_argument("--pixel", required=True, type=pathlib.Path, help="PNG for the camera-to-pixel panels")
-    args = parser.parse_args()
     width = read_define(DISPLAY, "BSP_LCD_H_RES")
     height = read_define(DISPLAY, "BSP_LCD_V_RES")
-    numbers = run_probe(args.cc, PROBE_SOURCES, width, height)
-    trs_figure(numbers["trs"], args.trs)
-    pixel_figure(numbers["pixel"], args.pixel)
+    numbers, out = probe_into_folder(__doc__, PROBE_SOURCES, width, height)
+    trs_figure(numbers["trs"], out)
+    pixel_figure(numbers["pixel"], out / "camera-to-pixel.png")
     return 0
 
 

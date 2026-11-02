@@ -8,7 +8,9 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from math_figures import (PANEL_SIZE, PANEL_TITLE_ROOM, PIXEL_FILL, POINT, POINT_SIZE, SHAPE_ALPHA, SHAPE_FILL,
-                          probe_into_folder, VIEW_ELEVATION, prism_faces)
+                          VIEW_ELEVATION, prism_faces)
+from docs.figures import probe_into_folder
+from docs.producer import Producer
 from docs.plot_style import (FAINT, INK, LABEL_SIZE, MUTED, TITLE_SIZE, SLOTS,
                              GIF_FRAMES, GIF_FPS, ORBIT_GIF_COLORS, wire_sphere,
                              figure as new_figure, save, save_gif, style_axes)
@@ -19,6 +21,11 @@ from mpl_toolkits.mplot3d import proj3d
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 PROBE = pathlib.Path(__file__).with_name("geometry_figures_probe.c")
+PRODUCER = Producer(area="math", needs="host", run=("--cc", "{cc}", "--out", "{out}/math"),
+                    outputs=("math/rect-queries.png", "math/circle-rect-queries.png", "math/plane-distance.png",
+                             "math/plane-from-points.png", "math/plane-from-rows.png", "math/frustum.png",
+                             "math/box3-frustum.gif", "math/box3-sphere-overlap.gif",
+                             "math/box3-sphere-segments.png"))
 PLANE_NAMES = ("near", "left", "right", "top", "bottom")
 PLANE_COLORS = (INK, SHAPE_FILL, POINT, SLOTS[6], PIXEL_FILL)
 PANELS = 2
