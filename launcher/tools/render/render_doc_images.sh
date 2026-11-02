@@ -404,6 +404,16 @@ run "$PYTHON" launcher/tools/render/depth_figures.py --scene launcher/demo/bistr
     --object street_fitted_full --object ground --camera camera --at-ms "$DEPTH_FIT_AT_MS" \
     --out "$OUT/render/depth-fit-bistro.png" --work "$WORK/depth" > "$WORK/depth.log"
 
+# Each fitted scene's held-out error by source object part, from the rows
+# objects_report.py --held-out --docs keeps beside the page.
+for data in docs/render/data/*-object-error.csv; do
+    [ -f "$data" ] || continue
+    stem=$(basename "$data" .csv)
+    run "$PYTHON" launcher/tools/r3d/objects/object_error.py "${data%.csv}" --figure "$OUT/render/$stem.png" \
+        --table "$OUT/tables/$stem.md" > "$WORK/$stem.log"
+done
+# --orphans scans this runner: bistro-object-error.png, sponza-object-error.png
+
 # Each picture's frame cost in each framebuffer layout, from the scene and
 # boot animation captures beside the render pages.
 run "$PYTHON" launcher/tools/render/layout_costs.py --mesh docs/render/data/layout-mesh-board.log \

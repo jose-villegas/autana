@@ -3,16 +3,25 @@
 
     objects_report.py SCENE.scene.toml --object NAME --out DIR
         [--every-ms N] [--size W H] [--tolerance X]
+        [--held-out [--fitted BUNDLE] [--cache DIR] [--docs]]
 
 Reads source geometry after alpha masking. Writes only to --out, which must
 be outside the repository. The selected variant's budget is shared in
 proportion to source triangles; culling uses world bounds, not occlusion.
+
+--held-out, for a fitted renderer, also scores its locked fit (or --fitted)
+against its held-out references, made into the bake cache when missing, and
+splits the error by source object part (objects/object_error.py): error.csv,
+error.md and error.png. --docs keeps error.csv and error.json as
+docs/render/data/SCENE-object-error.*, which render_doc_images.sh makes the
+page's figure and generated block from.
 """
 
 import argparse
 import csv
 import json
 import pathlib
+import shutil
 import sys
 
 import numpy as np
@@ -174,7 +183,13 @@ def main(argv=None):
     parser.add_argument('--every-ms', type=int)
     parser.add_argument('--size', type=int, nargs=2)
     parser.add_argument('--tolerance', type=float, default=MATCH_TOLERANCE)
+    parser.add_argument('--held-out', action='store_true')
+    parser.add_argument('--fitted', type=pathlib.Path)
+    parser.add_argument('--cache', type=pathlib.Path)
+    parser.add_argument('--docs', action='store_true')
     args = parser.parse_args(argv)
+    if (args.fitted or args.cache or args.docs) and not args.held_out:
+        parser.error('--fitted, --cache and --docs need --held-out')
     out = args.out.resolve()
     if out.is_relative_to(REPO):
         parser.error('--out must be outside the repository')
@@ -184,6 +199,8 @@ def main(argv=None):
     job = next((j for j in scene.renderers if j.object.name == args.object), None)
     if job is None or job.object.kind != 'mesh_renderer':
         parser.error('--object must name a mesh renderer')
+    if args.held_out and job.renderer.fit is None:
+        parser.error('--held-out needs a fitted renderer')
     if scene.camera is None or scene.camera.component.path is None:
         parser.error('scene needs a camera path')
     visibility = job.renderer.visibility
@@ -197,7 +214,33 @@ def main(argv=None):
     budget, rows, pixels_per_triangle = pose_rows(shapes, scene, job, every_ms, size)
     out.mkdir(parents=True, exist_ok=True)
     write_report(out, objects, shapes, budget, rows, pixels_per_triangle, args.tolerance)
+    if args.held_out:
+        write_error_report(args, scene, job, out)
     return 0
+
+
+def write_error_report(args, scene, job, out):
+    """The --held-out report; see the module docstring."""
+    from bake import bake, produce
+    from r3d.objects import object_error
+    from r3d.scene_name import scene_id
+
+    cache = args.cache or bake.default_cache()
+    tables = bake.read_lock_tables()
+    found = bake.bakes([args.scene], bake.locked_starts(tables['bake']), bake.Poses(tables['poses']))
+    fit = next(item for item in found if item.kind == 'fit' and item.job.object.name == job.object.name)
+    bundle = args.fitted or bake.fetch_all([fit], tables['bake'], cache)[fit]
+    inputs = produce.reference_set(fit.stages['reference'], job, scene, cache)
+    work = out / 'held_out'
+    work.mkdir(exist_ok=True)
+    rows, score, unseen, held_out_mean = object_error.held_out_error(args.scene.resolve(), scene, job,
+                                                                     pathlib.Path(bundle), inputs, work)
+    name = scene_id(args.scene)
+    object_error.write(out, rows, score, unseen, held_out_mean, f'{name} {job.object.name}: held-out error by part')
+    print(f'mean dE76 {score:.3f} by parts, {held_out_mean:.3f} by the held-out score')
+    if args.docs:
+        for suffix in ('.csv', '.json'):
+            shutil.copyfile(out / f'error{suffix}', REPO / 'docs/render/data' / f'{name}-object-error{suffix}')
 
 
 if __name__ == '__main__':

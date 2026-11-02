@@ -22,6 +22,8 @@ from r3d.gltf_mesh import load_gltf_mesh
 from r3d.obj import Texture, load_obj
 from r3d.import_settings import SettingsError, load_import_settings, load_scene
 from r3d.objects.instances import MATCH_TOLERANCE, SourceObject, bounds_diagonal, match_instances, rigid_fit, source_objects
+from r3d.objects.object_error import (SKY, Parts, cell, common_prefix, object_rows, part_labels, part_names,
+                                      read, report_body, rows_for, shape_rows, write)
 from r3d.objects.objects_report import LOD_LEVELS, LOD_TRIANGLE_RATIO, main, masked_objects, pose_rows
 from r3d.mesh_import import load_source
 from test_r3d_import import camera, renderer, write_import, write_scene
@@ -613,6 +615,82 @@ class InstancesFigureTests(unittest.TestCase):
                 self.assertGreater(image.width, DOC_SIZE[0])
                 self.assertGreater(len(image.getcolors(image.width * image.height)), 1)
         self.assertEqual(calls[0][1:], ('test', 'mesh', 'near', 1000))
+
+
+class ObjectErrorTests(unittest.TestCase):
+    """Parts, repeats and the per-part split of a held-out frame's error."""
+
+    def scene(self):
+        # Object a: one tetrahedron, and its copy moved apart (two parts of one repeated shape). Object b: a larger
+        # tetrahedron (its own shape) welded to a's first part at a corner: one part sharing a position with a.
+        moved = POINTS + [10., 0., 0.]
+        welded = 2 * POINTS + POINTS[1]
+        p = np.concatenate([POINTS, moved, welded])
+        tri_v = np.concatenate([TRIANGLES, TRIANGLES + 4, TRIANGLES + 8])
+        tri_o = np.repeat([0, 0, 1], len(TRIANGLES))
+        return p, tri_v, tri_o, np.tile(MATERIALS, 3)
+
+    def test_parts_split_by_welded_position_within_an_object(self):
+        p, tri_v, tri_o, _ = self.scene()
+        labels, shared = part_labels(p, tri_v, tri_o)
+        np.testing.assert_array_equal(labels, np.repeat([0, 1, 2], len(TRIANGLES)))
+        np.testing.assert_array_equal(shared, [True, False, True])
+        names, _, parts_of_object = part_names(labels, tri_o, ['a', 'b'])
+        self.assertEqual(names, ['a#0', 'a#1', 'b'])
+        np.testing.assert_array_equal(parts_of_object, [2, 2, 1])
+
+    def test_rows_split_the_frame_error_and_rank_it(self):
+        p, tri_v, tri_o, tri_m = self.scene()
+        labels, shared = part_labels(p, tri_v, tri_o)
+        names, owner, parts_of_object = part_names(labels, tri_o, ['a', 'b'])
+        shapes = match_instances(source_objects(p, tri_v, tri_m, labels, names))
+        parts = Parts(names, [['a', 'b'][o] for o in owner], parts_of_object, shared, ['m0', 'm0', 'm1'],
+                      np.bincount(labels), np.array([4, 2, 2]))
+        # Six pixels: two show a#0, three b, one the sky; no pixel shows a#1, so its drawn triangles are unseen.
+        ids = np.array([0, 0, 2, 2, 2, -1])
+        error = np.array([1., 1., 6., 6., 6., 4.])
+        rows, score, unseen = rows_for(parts, shapes, {0: (ids, error)})
+        self.assertAlmostEqual(score, error.mean())
+        self.assertAlmostEqual(unseen, 2 / 8)
+        self.assertEqual([row['object'] for row in rows], ['b', SKY, 'a#0'])
+        by_name = {row['object']: row for row in rows}
+        self.assertAlmostEqual(sum(row['error_share'] for row in rows), 1.0)
+        self.assertAlmostEqual(sum(row['pixel_share'] for row in rows), 1.0)
+        self.assertAlmostEqual(by_name['b']['error_share'], 18 / 24)
+        self.assertAlmostEqual(by_name['a#0']['mean_delta_e'], 1.0)
+        self.assertEqual(by_name['a#0']['copies'], 2)
+        self.assertAlmostEqual(by_name['a#0']['drawn_share'], 0.5)
+        self.assertEqual(by_name['b']['material'], 'm1')
+        # b is one part welded to another object, so only sub-mesh segmentation can split it; a#0 is welded but
+        # already split by connectivity.
+        self.assertTrue(by_name['b']['segment'])
+        self.assertFalse(by_name['a#0']['segment'])
+        self.assertTrue(by_name['a#0']['welded'])
+        [shape] = shape_rows(rows)
+        self.assertEqual((shape['name'], shape['seen'], shape['placed']), ('a#0', 1, 2))
+        self.assertAlmostEqual(shape['error_share'], 2 / 24)
+        objects = object_rows(rows)
+        self.assertEqual([(group['name'], group['seen'], group['placed']) for group in objects],
+                         [('b', 1, 1), ('a', 1, 2)])
+        # The page's tables are remade from the kept rows: the same tables, every field its own type again.
+        with tempfile.TemporaryDirectory() as folder:
+            out = pathlib.Path(folder)
+            write(out, rows, score, unseen, score, 'title')
+            kept, totals = read(out / 'error')
+        for row, again in zip(rows, kept, strict=True):
+            for key, value in row.items():
+                self.assertIsInstance(again[key], float if isinstance(value, float) else type(value))
+                if isinstance(value, float):
+                    self.assertAlmostEqual(again[key], value, delta=1e-5 * abs(value))
+                else:
+                    self.assertEqual(again[key], value)
+        self.assertEqual(totals['title'], 'title')
+        self.assertEqual(report_body(kept, totals['mean_delta_e'], totals['drawn_unseen_share']),
+                         report_body(rows, score, unseen))
+
+    def test_report_names_leave_out_the_shared_prefix(self):
+        self.assertEqual(common_prefix([SKY, 'Scene_Street_1#0', 'Scene_Stone_2']), 'Scene_')
+        self.assertEqual(cell('Scene_Street_1#0', 'Scene_'), 'Street_1#0')
 
 
 if __name__ == '__main__':
