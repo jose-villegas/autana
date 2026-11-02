@@ -118,7 +118,8 @@ typedef struct {
     bool placed; /* false while the transform is the identity: drawn as it is */
 } scene_renderer_t;
 
-/* Sets `r`'s world box from its mesh and model; call after either changes. */
+/* Sets `r`'s world box from its mesh and model; call after either changes,
+ * a skinned mesh's refit included. */
 void scene_renderer_bound(scene_renderer_t* r);
 
 typedef struct {

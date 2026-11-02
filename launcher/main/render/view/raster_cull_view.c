@@ -118,7 +118,9 @@ culling(void) {
 
 /* After the camera's draw, its scratch lists and vertices are free: each
  * instance is culled, counted and transformed again into them, through the
- * lens the draw used, and its kept clusters are not set up or hidden. */
+ * lens the draw used, and its kept clusters are not set up or hidden. The
+ * walk starts at each root, so its node counts include instances the frame's
+ * world-box test dropped; the fates are the same. */
 static void
 count_frame(raster_cull_t* s, const raster_t* raster) {
     const raster_buffers_t b = raster_carve(raster);
