@@ -125,6 +125,38 @@ path = { animation = "fly.anim.toml", node = "camera" }
     def test_provider_path_seek_and_history(self):
         self.check_fixture("check_scene_provider.sh", "provider")
 
+    def test_close_gives_back_the_pack_so_the_same_id_reopens_from_another_folder(self):
+        other = self.root / "other"
+        other.mkdir(exist_ok=True)
+        positions = np.array([[-2, -2, -6], [2, -2, -6], [0, 2, -6]], dtype=float)
+        write_lit_mesh(other, "card", positions, np.array([[20, 220, 40]] * 3), np.array([[0, 1, 2]]),
+                       np.array([True]))
+        (other / "card.import.toml").write_text((self.root / "card.import.toml").read_text())
+        (other / "card.obj").write_text((self.root / "card.obj").read_text())
+        write_camera_clip(other, reach=2.0)
+        (other / "room.scene.toml").write_text(self.scene.read_text())
+        packs_b = other / "assets"
+        build_pack.write_packs(packs_b, build_pack.pack_bytes([other / "room.scene.toml"]))
+        refused = self.root / "refused"
+        refused.mkdir(exist_ok=True)
+        pack = bytearray((self.out / "assets" / "room.apak").read_bytes())
+        pack[4:8] = (int.from_bytes(pack[4:8], "little") + 1).to_bytes(4, "little")
+        (refused / "room.apak").write_bytes(pack)
+        env = dict(os.environ, REOPEN_PACKS_B=str(packs_b), REOPEN_OUT_B=str(self.root / "reopen-b.bmp"),
+                   REOPEN_PACKS_BAD=str(refused))
+        check = TOOLS / "render/tests/check_scene_reopen.sh"
+        run = subprocess.run([shutil.which("sh"), str(check), "-o", str(self.root / "reopen"),
+                              "--asset-file", str(self.scene)], capture_output=True, text=True, timeout=120,
+                             env=env)
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        fresh = self.root / "fresh-b.bmp"
+        straight = subprocess.run([str(self.binary), "--scene", "room", "--frames", "2", "--dt", "100", "-o",
+                                   str(fresh)], capture_output=True, text=True, timeout=120,
+                                  env=dict(os.environ, AUTANA_ASSET_DIR=str(packs_b)))
+        self.assertEqual(straight.returncode, 0, straight.stderr)
+        self.assertEqual((self.root / "reopen-b.bmp").read_bytes(), fresh.read_bytes())
+        self.assertNotEqual((self.root / "reopen/reopen-a.bmp").read_bytes(), fresh.read_bytes())
+
     def test_checkpoint_replay_every_view(self):
         self.check_fixture("check_render_checkpoint.sh", "checkpoint")
 
