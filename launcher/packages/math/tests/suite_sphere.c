@@ -121,22 +121,22 @@ test_sphere_long_segment_entry(void) {
 }
 
 static void
-test_sphere3s_ticks(void) {
-    static const sphere3s_t ticks = {{8, -16, 24}, 4};
+test_spheres_ticks(void) {
+    static const spheres_t ticks = {{8, -16, 24}, 4};
     static const float units_per_tick = 0.125F;
     static const spheref_t units = {{1, -2, 3}, 0.5F};
-    TEST_ASSERT_TRUE(sphere3s_contains_point(ticks, (vec3s_t){12, -16, 24}));
-    TEST_ASSERT_FALSE(sphere3s_contains_point(ticks, (vec3s_t){13, -16, 24}));
-    TEST_ASSERT_TRUE(sphere3s_overlaps(ticks, (sphere3s_t){{16, -16, 24}, 4}));
-    TEST_ASSERT_FALSE(sphere3s_overlaps(ticks, (sphere3s_t){{17, -16, 24}, 4}));
-    const spheref_t converted = spheref_from_sphere3s(ticks, units_per_tick);
+    TEST_ASSERT_TRUE(spheres_contains_point(ticks, (vec3s_t){12, -16, 24}));
+    TEST_ASSERT_FALSE(spheres_contains_point(ticks, (vec3s_t){13, -16, 24}));
+    TEST_ASSERT_TRUE(spheres_overlaps(ticks, (spheres_t){{16, -16, 24}, 4}));
+    TEST_ASSERT_FALSE(spheres_overlaps(ticks, (spheres_t){{17, -16, 24}, 4}));
+    const spheref_t converted = spheref_from_spheres(ticks, units_per_tick);
     TEST_ASSERT_TRUE(vec3f_equal(units.centre, converted.centre));
     TEST_ASSERT_EQUAL_FLOAT(units.radius, converted.radius);
 }
 
 void
 suite_sphere(void) {
-    RUN_TEST(test_sphere3s_ticks);
+    RUN_TEST(test_spheres_ticks);
     RUN_TEST(test_sphere_closest_point);
     RUN_TEST(test_sphere_long_segment_misses);
     RUN_TEST(test_sphere_long_segment_entry);

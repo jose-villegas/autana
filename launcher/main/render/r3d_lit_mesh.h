@@ -17,8 +17,8 @@
 
 #include "asset/asset_pack.h"
 #include "math/geometry/box3s.h"
-#include "math/geometry/sphere3s.h"
 #include "math/geometry/spheref.h"
+#include "math/geometry/spheres.h"
 
 typedef struct {
     uint16_t vertex_first, vertex_count;
@@ -61,8 +61,8 @@ typedef struct {
 } r3d_lit_cluster_lod_t;
 
 typedef struct {
-    sphere3s_t bounds; /* position ticks; holds the bounds of every group simplified into it */
-    uint16_t error;    /* position ticks; at least that of every group simplified into it */
+    spheres_t bounds; /* position ticks; holds the bounds of every group simplified into it */
+    uint16_t error;   /* position ticks; at least that of every group simplified into it */
 } r3d_lit_lod_group_t;
 
 typedef struct {

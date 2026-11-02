@@ -1,14 +1,24 @@
 # Cluster level of detail
 
-**Status:** approved; the host replay is built, the runtime is not.
+**Status:** approved; the host replay, the baked levels and the pick at a fixed tolerance are built; the budget is not.
 
 The fitted mesh's welded positions are split into clusters, which are
 grouped, simplified with each group's border locked, and split again until a
 group no longer simplifies<sup>[[54]](../Citations.md#karis-2021)</sup>
 (meshoptimizer's<sup>[[11]](../Citations.md#meshoptimizer)</sup> `clusterlod`). The finest
-level holds the fitted mesh's triangles, but in `clusterlod`'s own clusters, not
-the baked ones. Positions only, so a strip of one colour is not simplified on
-its own; each level will get its own colour set.
+level holds the fitted mesh's triangles in `clusterlod`'s own clusters, and the
+bake draws those as its level 0. Positions only, so a strip of one colour is not
+simplified on its own; each coarser cluster samples its colours from the
+nearest level-0 surface facing its way.
+
+**The bake.** [`lod/bake_levels.py`](../../launcher/tools/r3d/lod/bake_levels.py)
+builds one hierarchy per sidedness, with the positions the two share locked. It
+pushes each coarse vertex inside a group's border outward, up to the group's
+error, so a coarse level never sits inside the finer surface it replaces.
+Group spheres and errors are rounded outward into position ticks; the LMSH
+format ([LMSH.md](../assets/formats/LMSH.md)) states their ordering rules. The
+`[geometry] lod` import setting turns levels off; level 0 is then the baked
+meshlets, as before.
 
 **The pick.** A cluster is drawn when its own error, projected at its sphere,
 is at most the tolerance in pixels and its group's error is above it. Every
@@ -35,7 +45,9 @@ Hoppe's<sup>[[111]](../Citations.md#hoppe-1997)</sup>; the floor of half a pixel
 | Levels of a mesh | [`lod/levels.py`](../../launcher/tools/r3d/lod/levels.py), [`lod/clusterlod.cpp`](../../launcher/tools/r3d/lod/clusterlod.cpp) | host |
 | Pick, histogram, exact tolerance | [`lod/pick.py`](../../launcher/tools/r3d/lod/pick.py) | host |
 | Replay over a camera path | [`lod/lod_replay.py`](../../launcher/tools/r3d/lod/lod_replay.py) | host |
-| Levels in the baked mesh, pick in the cluster walk | planned `r3d_lod_pick()`, in `r3d_pipeline.c`; it then owns the pick and its constants, and `pick.py` calls it | not built |
+| Levels in the baked mesh | [`lod/bake_levels.py`](../../launcher/tools/r3d/lod/bake_levels.py), [`r3d_lit_mesh.h`](../../launcher/main/render/r3d_lit_mesh.h) | built |
+| Pick at a tolerance, with hysteresis, in the cluster walk | [`r3d_lod_pick()`](../../launcher/main/render/lod/r3d_lod.h); its coarse bits live per scene renderer | built |
+| Histogram from the last frame, steering the tolerance to a budget | `r3d_lod.c` | not built |
 | Tolerance per pose baked for the path; the fit trained on it | bake stage | not built |
 
 ```sh
@@ -50,12 +62,15 @@ what fixed tolerances draw, and for each budget:
 - the terminal share: drawn triangles whose group cannot be simplified
   further, which no budget removes.
 
-**Open for the runtime:**
+**Decided for the runtime:** level 0 is `clusterlod`'s clusters, so every
+mesh is rebaked; the histogram is built from the last frame's clusters in view,
+a frame late.
 
-- Which clusters level 0 is: `clusterlod`'s, so the baked clusters change and
-  every mesh is rebaked; or the baked ones, with the levels built over them.
-- Whether the histogram is built in the frame it steers, one more pass over the
-  clusters in view of every level, or from the last frame's, a frame late.
+**The pick's hysteresis.** A group turns coarse once its projected error falls
+`R3D_LOD_HYSTERESIS_PX` below the tolerance and turns fine again once it
+rises that far above, so a still camera never flickers between levels. A
+coarse group's parent bounds hold its own, so its finer groups are always
+coarse too and the cut stays crack-free.
 
 **Gate before the runtime ships:** with the levels a pose picks, no more of
 the rest's hidden surface may show than at the finest level, and

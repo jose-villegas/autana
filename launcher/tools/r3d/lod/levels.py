@@ -5,7 +5,7 @@ simplifies. Input is welded and position-only, so the simplifier sees one
 surface rather than a strip per colour.
 
 The library is meshoptimizer's sources and lod/clusterlod.cpp, built into
-.cache/ beside meshopt.py's own, which mesh bakes key on and this does not.
+.cache/ beside meshopt.py's own; a mesh baked with levels keys on both.
 
 pick.py picks among the levels.
 """
@@ -25,6 +25,7 @@ CLUSTER_TRIANGLES_MIN = 4
 CLUSTER_TRIANGLES_MAX = 256
 # meshoptimizer.h's meshopt_SimplifyVertex_Lock.
 SIMPLIFY_VERTEX_LOCK = 1
+CLUSTERLOD = pathlib.Path(__file__).with_name("clusterlod.cpp")
 
 
 _lib = None
@@ -36,7 +37,7 @@ def _library():
         demo = SOURCE.parent / "demo"
         if not (demo / "clusterlod.h").exists():
             raise SystemExit(f"{demo} is missing: run `git submodule update --init third_party/upstream/meshoptimizer`")
-        _lib = build_shared("clusterlod", CACHE, [*sorted(SOURCE.glob("*.cpp")), pathlib.Path(__file__).with_name("clusterlod.cpp")],
+        _lib = build_shared("clusterlod", CACHE, [*sorted(SOURCE.glob("*.cpp")), CLUSTERLOD],
                             find_compiler("CXX", ("c++", "g++", "clang++"), "C++"), flags=(f"-I{SOURCE}", f"-I{demo}"),
                             depends=(demo / "clusterlod.h",), log=log)
     return _lib

@@ -108,7 +108,7 @@ def bake_lit_mesh(positions, rgb, tris, double, position_scale=POSITION_SCALE, l
     the colours; otherwise face_colors is None. With neither input colour
     array, the mesh is colourless. With lod, the mesh carries its levels of
     detail: lod, one (own, parent) group pair per cluster, and groups, one
-    (centre, radius, error) row per group; both are None without."""
+    (centre, radius, error) row per group; both are None without, or when nothing simplifies."""
     q = np.round(np.asarray(positions) * position_scale).astype(np.int64)
     flat = face_rgb is not None
     col = None if flat or rgb is None else np.clip(np.rint(rgb), 0, 255).astype(np.int64)
@@ -119,8 +119,10 @@ def bake_lit_mesh(positions, rgb, tris, double, position_scale=POSITION_SCALE, l
     if lod:
         from r3d.lod.bake_levels import bake_levels
         levels = bake_levels(q, col, tris, double, face, meshlet_triangles)
-        return assemble(levels.q, levels.col, levels.entries, position_scale, leaf_triangles, max_depth,
-                        levels.groups)
+        # A mesh too small to simplify has no coarser level: it bakes as without.
+        if len(levels.groups):
+            return assemble(levels.q, levels.col, levels.entries, position_scale, leaf_triangles, max_depth,
+                            levels.groups)
     return assemble(q, col, meshlet_entries(q, tris, double, face, meshlet_triangles), position_scale,
                     leaf_triangles, max_depth)
 

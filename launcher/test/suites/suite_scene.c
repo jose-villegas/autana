@@ -7,6 +7,7 @@
 
 #include <limits.h>
 #include <math.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -3097,6 +3098,83 @@ test_mesh_reader_accepts_only_positive_int_scales(void) {
     TEST_ASSERT_NULL(mesh.positions);
 }
 
+/* rig.mesh's two quads with levels: the first finest in group 0, the second
+ * simplified from group 0 into group 1, which holds it. */
+enum {
+    LEVEL_GROUPS = 2,
+    LEVELS_AT = RIG_MESH_BYTES,
+    LEVEL_GROUPS_AT = LEVELS_AT + 2 * sizeof(r3d_lit_cluster_lod_t),
+    LEVELLED_BYTES = LEVEL_GROUPS_AT + LEVEL_GROUPS * sizeof(r3d_lit_lod_group_t),
+    LOD_COUNT_WORD = 11,
+    INNER_GROUP = LEVEL_GROUPS_AT,
+    OUTER_GROUP = LEVEL_GROUPS_AT + sizeof(r3d_lit_lod_group_t),
+    SECOND_OWN = LEVELS_AT + sizeof(r3d_lit_cluster_lod_t),
+};
+
+static uint8_t* levelled_entry;
+
+static void
+release_levelled(void) {
+    free(levelled_entry);
+    levelled_entry = NULL;
+}
+
+static asset_view_t
+levelled_quads(void) {
+    levelled_entry = calloc(1, LEVELLED_BYTES);
+    suite_set_test_cleanup(release_levelled);
+    TEST_ASSERT_NOT_NULL(levelled_entry);
+    make_quad_entry(levelled_entry, 255, 0, 0, 2);
+    const uint32_t words[] = {LEVEL_GROUPS, LEVELS_AT, LEVEL_GROUPS_AT};
+    for (size_t i = 0; i < sizeof words / sizeof words[0]; i++) {
+        test_pack_put32(levelled_entry + sizeof(uint32_t) * (LOD_COUNT_WORD + i), words[i]);
+    }
+    const r3d_lit_cluster_lod_t lod[] = {{R3D_LOD_NONE, 0}, {0, 1}};
+    memcpy(levelled_entry + LEVELS_AT, lod, sizeof lod);
+    const r3d_lit_lod_group_t inner = {{{0, 0, 0}, 1}, 1};
+    const r3d_lit_lod_group_t outer = {{{0, 0, 0}, 1 + 1 + R3D_LOD_ENCLOSE_MARGIN}, 2};
+    memcpy(levelled_entry + INNER_GROUP, &inner, sizeof inner);
+    memcpy(levelled_entry + OUTER_GROUP, &outer, sizeof outer);
+    return (asset_view_t){levelled_entry, LEVELLED_BYTES};
+}
+
+/* Each break of the levels' rules, made to a copy of the good entry. */
+static void
+test_mesh_reader_refuses_levels_out_of_order(void) {
+    const asset_view_t entry = levelled_quads();
+    uint8_t good[LEVELLED_BYTES];
+    memcpy(good, levelled_entry, sizeof good);
+    r3d_lit_mesh_t mesh;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_from_asset(&entry, &mesh));
+    TEST_ASSERT_EQUAL_INT(LEVEL_GROUPS, mesh.lod_group_count);
+
+    static const struct {
+        size_t at;
+        int value;
+        bool word;
+        asset_status_t status;
+    } breaks[] = {
+        {INNER_GROUP + offsetof(r3d_lit_lod_group_t, error), 3, false, ASSET_ERR_FORMAT},
+        {OUTER_GROUP + offsetof(r3d_lit_lod_group_t, bounds.radius), 1, false, ASSET_ERR_FORMAT},
+        {INNER_GROUP + offsetof(r3d_lit_lod_group_t, bounds.centre.x), 2, false, ASSET_ERR_FORMAT},
+        {INNER_GROUP + offsetof(r3d_lit_lod_group_t, bounds.radius), -1, false, ASSET_ERR_FORMAT},
+        {SECOND_OWN, LEVEL_GROUPS, false, ASSET_ERR_FORMAT},
+        {sizeof(uint32_t) * (LOD_COUNT_WORD + 1), 0, true, ASSET_ERR_FORMAT},
+        {sizeof(uint32_t) * LOD_COUNT_WORD, R3D_LOD_NONE, true, ASSET_ERR_BOUNDS},
+    };
+
+    for (size_t i = 0; i < sizeof breaks / sizeof breaks[0]; i++) {
+        memcpy(levelled_entry, good, sizeof good);
+        if (breaks[i].word) {
+            test_pack_put32(levelled_entry + breaks[i].at, (uint32_t)breaks[i].value);
+        } else {
+            test_pack_put16(levelled_entry + breaks[i].at, breaks[i].value);
+        }
+        TEST_ASSERT_EQUAL_INT(breaks[i].status, r3d_lit_mesh_from_asset(&entry, &mesh));
+        TEST_ASSERT_NULL(mesh.positions);
+    }
+}
+
 static void
 test_clip_bind_failure_names_the_first_rejected_clip(void) {
     fixture();
@@ -4267,6 +4345,7 @@ run_scene_suite(void) {
     RUN_TEST(test_mesh_reader_refuses_overlapping_cluster_vertices);
     RUN_TEST(test_mesh_reader_requires_complete_cluster_coverage);
     RUN_TEST(test_mesh_reader_accepts_only_positive_int_scales);
+    RUN_TEST(test_mesh_reader_refuses_levels_out_of_order);
     RUN_TEST(test_clip_bind_failure_names_the_first_rejected_clip);
     RUN_TEST(test_skinned_scene_draws_clip_output_and_reskins_from_bind);
     RUN_TEST(test_skin_split_inside_an_entity_matches_full_range);
