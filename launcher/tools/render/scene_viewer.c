@@ -26,8 +26,24 @@ static FILE* poses;
 static scene_t* shown;
 static scene_entity_t camera;
 
+/* Every option back to what a fresh process starts with, for an open after a closed run. */
+static void
+reset_options(void) {
+    scene_id = NULL;
+    camera_name = NULL;
+    object_names = NULL;
+    object_count = 0;
+    size_rect = (recti_t){0};
+    present = CAMERA_PRESENT_NEAREST;
+    small_fill = SMALL_FILL_SMOOTH;
+    view = RENDER_DEBUG_VIEW_SHADED;
+    counts_path = NULL;
+    poses_path = NULL;
+}
+
 static bool
 options(int argc, char** argv) {
+    reset_options();
     object_names = argv;
     for (int i = 0; i < argc; i += 2) {
         const char* flag = argv[i];
@@ -213,6 +229,10 @@ setup(int quarter) {
         return false;
     }
     if (poses_path != NULL && (poses = open_rows(poses_path, "frame,ms,px,py,pz,qx,qy,qz,qw")) == NULL) {
+        if (counts != NULL) {
+            fclose(counts);
+            counts = NULL;
+        }
         scene_unload(scene);
         return false;
     }
@@ -251,6 +271,21 @@ draw(const provider_frame_t* frame) {
     }
 }
 
+/* The rows a run that stopped early left open closed; render_host_close unloads the scene. */
+static void
+teardown(void) {
+    if (counts != NULL) {
+        fclose(counts);
+        counts = NULL;
+    }
+    if (poses != NULL) {
+        fclose(poses);
+        poses = NULL;
+    }
+    shown = NULL;
+    camera = SCENE_ENTITY_NONE;
+}
+
 static uint32_t
 path_ms(void) {
     return scene_animator_clip_duration_ms(shown, camera, 0);
@@ -274,6 +309,7 @@ const frame_provider_t scene_provider = {
     .options = options,
     .setup = setup,
     .draw = draw,
+    .teardown = teardown,
     .path_ms = path_ms,
     .seek = seek,
     .render_context = render_context_main,
