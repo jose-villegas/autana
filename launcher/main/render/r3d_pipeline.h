@@ -16,9 +16,11 @@
 #include <stdint.h>
 
 #include "display/viewport.h"
+#include "math/geometry/box3f.h"
 #include "math/geometry/planef.h"
 #include "math/linear/mat4f.h"
 #include "math/projection/projectf.h"
+#include "math/scalar/mathf.h"
 #include "math/scalar/mathi.h"
 #include "render/r3d_instance.h"
 #include "render/r3d_lit_mesh.h"
@@ -76,6 +78,28 @@ static inline void
 r3d_lens_frustum(const r3d_lens_t* lens, planef_t out[PLANE_FRUSTUM_COUNT]) {
     planef_frustum(&lens->m, &lens->project, rectf_from_edges(0.0F, 0.0F, (float)lens->width, (float)lens->height),
                    out);
+}
+
+/* Rounding moves a plane test by about 2^-23 of the coordinates it adds up, so
+ * a world box grown by this share of its farthest coordinate and the eye's is
+ * never rejected where the instance's own root box, tested in mesh ticks
+ * through its placed lens, is kept. */
+#define R3D_WORLD_SLACK (1.0F / 1024.0F)
+
+/* Whether `box`, in world units, is wholly outside one of `planes`, the
+ * picture's lens at a position scale of 1 through r3d_lens_frustum(), once
+ * grown by R3D_WORLD_SLACK; `eye` is the view's position. */
+static inline bool
+r3d_world_bounds_outside(box3f_t box, const planef_t planes[PLANE_FRUSTUM_COUNT], vec3f_t eye) {
+    const float coords[] = {eye.x, eye.y, eye.z, box.lo.x, box.lo.y, box.lo.z, box.hi.x, box.hi.y, box.hi.z};
+    float reach = 0.0F;
+    for (size_t i = 0; i < sizeof coords / sizeof coords[0]; i++) {
+        reach = mathf_max(reach, mathf_abs(coords[i]));
+    }
+    const float s = reach * R3D_WORLD_SLACK;
+    const box3f_t grown = {vec3f_sub(box.lo, (vec3f_t){s, s, s}), vec3f_add(box.hi, (vec3f_t){s, s, s})};
+    unsigned mask = (1U << PLANE_FRUSTUM_COUNT) - 1U;
+    return box3f_outside_planes(grown, planes, PLANE_FRUSTUM_COUNT, &mask);
 }
 
 /* The depth scale a picture's kept clusters allow, folded over its meshes:

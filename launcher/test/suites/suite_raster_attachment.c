@@ -304,7 +304,7 @@ test_copies_share_a_hue_and_a_shape_drawn_once_is_grey(void) {
     copy.colors = red;
     mat4f_t shifted = MAT4F_IDENTITY;
     shifted.m[0][MAT3F_AXES] = COPY_SHIFT;
-    const r3d_instance_t three[] = {r->instance[0], r->instance[1], {&copy, &shifted}};
+    const r3d_instance_t three[] = {r->instance[0], r->instance[1], {&copy, &shifted, NULL}};
     r->raster.instances = three;
     r->raster.instance_count = 3;
     raster_rig_attach(r, one, 1);
@@ -337,8 +337,8 @@ test_copies_share_a_hue_and_a_shape_drawn_once_is_grey(void) {
 static void
 test_copies_take_their_first_instance_and_each_shape_its_own_id(void) {
     static const int16_t one[1][3], two[1][3], three[1][3];
-    const r3d_lit_mesh_t meshes[] = {{.positions = one}, {.positions = two},   {.positions = three},
-                                     {.positions = two}, {.positions = three}, {.positions = three}};
+    static const r3d_lit_mesh_t meshes[] = {{.positions = one}, {.positions = two},   {.positions = three},
+                                            {.positions = two}, {.positions = three}, {.positions = three}};
 
     enum { MESHES = sizeof meshes / sizeof meshes[0] };
 

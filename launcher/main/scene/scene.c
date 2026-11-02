@@ -473,6 +473,7 @@ scene_renderer_set_mesh(scene_t* scene, scene_entity_t entity, const r3d_lit_mes
         return false;
     }
     scene->renderers[i].mesh = *mesh;
+    scene_renderer_bound(&scene->renderers[i]);
     return true;
 }
 
