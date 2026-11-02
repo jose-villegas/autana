@@ -172,7 +172,7 @@ title Levels: LOD group, 10 bytes a group from lod_groups_off
 | Rule | Detail |
 |---|---|
 | Owners | the header's word order is the `enum` in `r3d_lit_mesh.c`; `VERTEX_LIMIT` (65535) there caps the four counts (`ASSET_ERR_BOUNDS`); `r3d_lit_cluster_t` and `r3d_lit_node_t` are `_Static_assert`ed to 22 and 16 bytes, `r3d_lit_cluster_lod_t` and `r3d_lit_lod_group_t` to 4 and 10, with the field offsets above, and `mesh_asset.py`'s `CLUSTER`, `NODE`, `CLUSTER_LOD` and `LOD_GROUP` write the same bytes |
-| Arrays | each offset a multiple of 4 and at least 44, the array inside the entry; the writer pads each array to 4 bytes and sets the offset of an empty one to 0 (`ASSET_ERR_BOUNDS`, also for a header shorter than 56 bytes); only colours, face colours and the two level arrays may be 0 |
+| Arrays | each offset a multiple of 4 and at least 56, the array inside the entry; the writer pads each array to 4 bytes and sets the offset of an empty one to 0 (`ASSET_ERR_BOUNDS`, also for a header shorter than 56 bytes); only colours, face colours and the two level arrays may be 0 |
 | Colour source | At most one of colours and face colours (`ASSET_ERR_FORMAT` for both) |
 | Scale | `position_scale` is ticks per model unit, in 1..`INT_MAX` (`ASSET_ERR_FORMAT`); positions are int16 ticks |
 | Counts | at least one cluster and one node (`ASSET_ERR_FORMAT`) |
