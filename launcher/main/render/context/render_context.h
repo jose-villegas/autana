@@ -176,10 +176,10 @@ void render_context_set_upscale_filter(render_context_t* context, upscale_filter
 upscale_filter_t render_context_upscale_filter(const render_context_t* context);
 
 /* With `half`, expands a compatible draw into the half picture and
- * returns true, marking `half_seams` (when not NULL) through the upscale
+ * returns true, marking `half_hints` (when not NULL) through the upscale
  * filter; otherwise upscales into `destination` at the view's destination
  * size. Either path feeds its cost to dynamic resolution. */
-bool render_context_compose(render_context_t* context, uint16_t* destination, uint16_t* half, uint8_t* half_seams);
+bool render_context_compose(render_context_t* context, uint16_t* destination, uint16_t* half, uint8_t* half_hints);
 
 render_context_frame_t render_context_frame(const render_context_t* context);
 

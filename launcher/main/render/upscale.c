@@ -268,23 +268,112 @@ surface_rows(const upscale_t* scale, const uint16_t* color, const uint16_t* dept
     }
 }
 
-void
-upscale_rows_filtered(const upscale_t* scale, const gfx_target_t* picture, uint16_t clear, uint16_t* destination,
-                      uint8_t* seams, int first_row, int row_count) {
-    check_rows(scale, picture, destination, first_row, row_count);
-    const uint16_t* depth =
-        picture->count > GFX_ATTACHMENT_DEPTH ? picture->attachment[GFX_ATTACHMENT_DEPTH].pixels : NULL;
-    if (scale->filter != UPSCALE_FILTER_SURFACE || scale->path != UPSCALE_KEPT || depth == NULL) {
-        upscale_rows(scale, picture, clear, destination, first_row, row_count);
-        if (seams != NULL) {
-            /* Nothing known about surfaces: every pixel is its own. */
-            memset(seams + ((size_t)first_row * GFX_SEAM_PITCH(scale->destination_width)), UINT8_MAX,
-                   GFX_SEAM_BYTES(scale->destination_width, row_count));
+/* Bit i set where Scale2x fills a corner of pixel `first` + i, i < count,
+ * from its neighbour: up A, right B, left C and down D, an edge pixel being
+ * its own neighbour there. A pair is equal when its depths are one surface. */
+typedef struct {
+    unsigned top_left, top_right, bottom_left, bottom_right;
+} corner_bits_t;
+
+static corner_bits_t
+corner_bits(const uint16_t* up, const uint16_t* here, const uint16_t* down, int width, int first, int count) {
+    unsigned ca = 0, ab = 0, cd = 0, bd = 0;
+    for (int i = 0; i < count; i++) {
+        const int x = first + i;
+        const uint16_t a = up[x];
+        const uint16_t b = here[x + 1 < width ? x + 1 : x];
+        const uint16_t c = here[x > 0 ? x - 1 : x];
+        const uint16_t d = down[x];
+        ca |= (unsigned)upscale_same_surface(c, a) << i;
+        ab |= (unsigned)upscale_same_surface(a, b) << i;
+        cd |= (unsigned)upscale_same_surface(c, d) << i;
+        bd |= (unsigned)upscale_same_surface(b, d) << i;
+    }
+    return (corner_bits_t){.top_left = ca & ~cd & ~ab,
+                           .top_right = ab & ~ca & ~bd,
+                           .bottom_left = cd & ~bd & ~ca,
+                           .bottom_right = bd & ~ab & ~cd};
+}
+
+/* Destination row `y`'s corners, from the depths of the rows around it as
+ * the nearest copy lays them out. A row inside one source row's run has its
+ * own surfaces above and below: no corner. */
+static void
+row_corners(const upscale_t* scale, const uint16_t* depth, size_t pitch, int y, uint8_t* hints) {
+    const int width = scale->destination_width;
+    const int height = scale->destination_height;
+    const int pitch_bytes = GFX_SEAM_PITCH(width);
+    uint8_t* planes[GFX_HINT_PLANES];
+    for (int corner = 0; corner < GFX_HINT_PLANES; corner++) {
+        planes[corner] = GFX_HINT_PLANE(hints, width, height, corner) + ((size_t)y * pitch_bytes);
+    }
+    const int here_row = scale->rows[y];
+    const int up_row = y > 0 ? scale->rows[y - 1] : here_row;
+    const int down_row = y + 1 < height ? scale->rows[y + 1] : here_row;
+    if (up_row == here_row && down_row == here_row) {
+        for (int corner = 0; corner < GFX_HINT_PLANES; corner++) {
+            memset(planes[corner], 0, pitch_bytes);
         }
         return;
     }
-    surface_rows(scale, picture->attachment[0].pixels, depth, picture->attachment[0].pitch, clear, destination, seams,
-                 first_row, row_count);
+    const uint16_t* up = source_row(depth, pitch, up_row);
+    const uint16_t* here = source_row(depth, pitch, here_row);
+    const uint16_t* down = source_row(depth, pitch, down_row);
+    for (int byte = 0; byte < pitch_bytes; byte++) {
+        const int first = byte * GFX_SEAM_BITS;
+        const int count = width - first < GFX_SEAM_BITS ? width - first : GFX_SEAM_BITS;
+        const corner_bits_t bits = corner_bits(up, here, down, width, first, count);
+        planes[GFX_HINT_CORNER(0, 0)][byte] = (uint8_t)bits.top_left;
+        planes[GFX_HINT_CORNER(0, 1)][byte] = (uint8_t)bits.top_right;
+        planes[GFX_HINT_CORNER(1, 0)][byte] = (uint8_t)bits.bottom_left;
+        planes[GFX_HINT_CORNER(1, 1)][byte] = (uint8_t)bits.bottom_right;
+    }
+    /* Off the picture's sides the neighbour is the pixel itself: nothing to take. */
+    const uint8_t last = (uint8_t)~(1U << ((width - 1) % GFX_SEAM_BITS));
+    for (int row = 0; row < 2; row++) {
+        planes[GFX_HINT_CORNER(row, 0)][0] &= (uint8_t)~1U;
+        planes[GFX_HINT_CORNER(row, 1)][pitch_bytes - 1] &= last;
+    }
+}
+
+/* Rows [first_row, first_row + row_count) with nothing known about surfaces:
+ * every pixel its own, so a seam everywhere and no corner. */
+static void
+mark_unknown(const upscale_t* scale, uint8_t* hints, int first_row, int row_count) {
+    const int width = scale->destination_width;
+    const size_t at = (size_t)first_row * GFX_SEAM_PITCH(width);
+    if (scale->filter != UPSCALE_FILTER_EDGES) {
+        memset(hints + at, UINT8_MAX, GFX_SEAM_BYTES(width, row_count));
+        return;
+    }
+    for (int corner = 0; corner < GFX_HINT_PLANES; corner++) {
+        memset(GFX_HINT_PLANE(hints, width, scale->destination_height, corner) + at, 0,
+               GFX_SEAM_BYTES(width, row_count));
+    }
+}
+
+void
+upscale_rows_filtered(const upscale_t* scale, const gfx_target_t* picture, uint16_t clear, uint16_t* destination,
+                      uint8_t* hints, int first_row, int row_count) {
+    check_rows(scale, picture, destination, first_row, row_count);
+    const uint16_t* depth =
+        picture->count > GFX_ATTACHMENT_DEPTH ? picture->attachment[GFX_ATTACHMENT_DEPTH].pixels : NULL;
+    if (scale->filter == UPSCALE_FILTER_NEAREST || scale->path != UPSCALE_KEPT || depth == NULL) {
+        upscale_rows(scale, picture, clear, destination, first_row, row_count);
+        if (hints != NULL) {
+            mark_unknown(scale, hints, first_row, row_count);
+        }
+        return;
+    }
+    const size_t pitch = picture->attachment[0].pitch;
+    if (scale->filter == UPSCALE_FILTER_EDGES) {
+        upscale_rows(scale, picture, clear, destination, first_row, row_count);
+        for (int y = first_row; hints != NULL && y < first_row + row_count; y++) {
+            row_corners(scale, depth, pitch, y, hints);
+        }
+        return;
+    }
+    surface_rows(scale, picture->attachment[0].pixels, depth, pitch, clear, destination, hints, first_row, row_count);
 }
 
 /* Scanline dispatch stays in flash to preserve the default copy's IRAM budget. */

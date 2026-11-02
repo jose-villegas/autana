@@ -1,7 +1,8 @@
 /*
  * upscale: nearest-neighbour row and column maps from a render size to a
  * destination size, and the copy through them; optionally blended within a
- * surface, with the seams between surfaces marked for the present to keep.
+ * surface, with the seams between surfaces marked for the present to keep,
+ * or with the Scale2x corners marked for the present's doubling.
  */
 #pragma once
 
@@ -22,10 +23,12 @@ typedef enum {
 
 /* How a kept width fills its rows. Other paths are always nearest. SURFACE is
  * Kopf et al. 2007's joint bilateral upsampling with the range weight reduced
- * to a yes or no from the low-resolution depth. */
+ * to a yes or no from the low-resolution depth; EDGES is Scale2x with colour
+ * equality replaced by the same surface. */
 typedef enum {
     UPSCALE_FILTER_NEAREST, /* each row is its nearest source row */
     UPSCALE_FILTER_SURFACE, /* blends the two source rows around it unless depth steps between them */
+    UPSCALE_FILTER_EDGES,   /* nearest, with Scale2x corners where depth steps diagonally */
 } upscale_filter_t;
 
 /* Two inverse depths are one surface when they differ by at most the nearer's
@@ -71,13 +74,12 @@ void upscale_rows(const upscale_t* scale, const gfx_target_t* source, uint16_t c
 /* Builds `blends` into storage of destination_height entries the caller retains. */
 void upscale_init_blends(upscale_t* scale, uint16_t* blends);
 
-/* upscale_rows() through scale->filter: with UPSCALE_FILTER_SURFACE, a kept
- * width blends rows within a surface and, when `seams` is not NULL, marks
- * the seams (gfx_target.h) of rows [first_row, first_row + row_count) where
- * a pixel is another surface than the one right of it or below it.
- * Otherwise every pixel is marked. */
+/* upscale_rows() through scale->filter, marking the expand hints
+ * (gfx_target.h) of rows [first_row, first_row + row_count) unless NULL:
+ * SURFACE's seams against the pixel right or below, EDGES's Scale2x corners.
+ * Without depth or a kept width every pixel is its own surface. */
 void upscale_rows_filtered(const upscale_t* scale, const gfx_target_t* source, uint16_t clear, uint16_t* destination,
-                           uint8_t* seams, int first_row, int row_count);
+                           uint8_t* hints, int first_row, int row_count);
 
 /* Paired copies with uniform even runs only; other runs copy unchanged. */
 void upscale_rows_scanlined(const upscale_t* scale, const gfx_target_t* source, uint16_t clear, uint16_t* destination,

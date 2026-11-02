@@ -2557,7 +2557,7 @@ test_blended_expand_blends_within_seams_and_doubles_across_them(void) {
 
     expanded_fixture();
     gfx_color_t* half = gfx_half_picture();
-    uint8_t* seams = gfx_half_seams();
+    uint8_t* seams = gfx_half_hints();
     TEST_ASSERT_NOT_NULL(seams);
     /* Every row alike, so only the horizontal blend shows; random colours, so
      * a quarter toward a neighbour never rounds back to the pixel itself. */
@@ -2573,7 +2573,7 @@ test_blended_expand_blends_within_seams_and_doubles_across_them(void) {
     const gfx_color_t* line = half + HALF_WIDTH;
 
     memset(seams, 0, GFX_SEAM_BYTES(HALF_WIDTH, HALF_HEIGHT));
-    gfx_expand_frame_blended();
+    gfx_expand_frame_filtered(GFX_EXPAND_BLENDED);
     gfx_read_panel_row(2, row);
     TEST_ASSERT_EQUAL_HEX16(line[0], row[0]);
     TEST_ASSERT_EQUAL_HEX16(line[HALF_WIDTH - 1], row[GFX_WIDTH - 1]);
@@ -2583,7 +2583,7 @@ test_blended_expand_blends_within_seams_and_doubles_across_them(void) {
     }
 
     memset(seams, UINT8_MAX, GFX_SEAM_BYTES(HALF_WIDTH, HALF_HEIGHT));
-    gfx_expand_frame_blended();
+    gfx_expand_frame_filtered(GFX_EXPAND_BLENDED);
     gfx_read_panel_row(2, row);
     for (int x = 0; x < GFX_WIDTH; x++) {
         TEST_ASSERT_EQUAL_HEX16(line[x / 2], row[x]);
@@ -2595,11 +2595,53 @@ test_blended_expand_blends_within_seams_and_doubles_across_them(void) {
         for (size_t i = 0; i < GFX_SEAM_BYTES(HALF_WIDTH, HALF_HEIGHT); i++) {
             seams[i] = (uint8_t)rand();
         }
-        gfx_expand_frame_blended();
+        gfx_expand_frame_filtered(GFX_EXPAND_BLENDED);
         check_scattered_seams(2, line, seams + GFX_SEAM_PITCH(HALF_WIDTH), row);
         check_scattered_seams(3, line, seams + GFX_SEAM_PITCH(HALF_WIDTH), row);
     }
     free(row);
+}
+
+/* Random corners on random half rows: each panel pixel is its half pixel,
+ * or that pixel's neighbour on its side where its corner is marked. */
+static void
+test_corner_expand_takes_marked_corners_from_the_side_neighbour(void) {
+    enum { HALF_WIDTH = GFX_WIDTH / 2, HALF_HEIGHT = GFX_HEIGHT / 2, PITCH = GFX_SEAM_PITCH(HALF_WIDTH) };
+
+    expanded_fixture();
+    gfx_color_t* half = gfx_half_picture();
+    uint8_t* hints = gfx_half_hints();
+    TEST_ASSERT_NOT_NULL(hints);
+    srand(5);
+    for (size_t i = 0; i < (size_t)HALF_WIDTH * HALF_HEIGHT; i++) {
+        half[i] = (gfx_color_t)rand();
+    }
+    for (size_t i = 0; i < GFX_HINT_BYTES(HALF_WIDTH, HALF_HEIGHT); i++) {
+        hints[i] = (uint8_t)rand();
+    }
+    for (int row = 0; row < HALF_HEIGHT; row++) { /* compose never marks off the sides */
+        for (int r = 0; r < 2; r++) {
+            GFX_HINT_PLANE(hints, HALF_WIDTH, HALF_HEIGHT, GFX_HINT_CORNER(r, 0))[(size_t)row * PITCH] &= (uint8_t)~1U;
+            GFX_HINT_PLANE(hints, HALF_WIDTH, HALF_HEIGHT, GFX_HINT_CORNER(r, 1))
+            [((size_t)row * PITCH) + PITCH - 1] &= (uint8_t)~(1U << ((HALF_WIDTH - 1) % GFX_SEAM_BITS));
+        }
+    }
+    gfx_color_t* panel = malloc(sizeof(*panel) * GFX_WIDTH);
+    TEST_ASSERT_NOT_NULL(panel);
+    gfx_expand_frame_filtered(GFX_EXPAND_CORNERS);
+    for (int y = 2; y < 6; y++) {
+        const gfx_color_t* line = half + ((size_t)(y / 2) * HALF_WIDTH);
+        const uint8_t* left =
+            GFX_HINT_PLANE(hints, HALF_WIDTH, HALF_HEIGHT, GFX_HINT_CORNER(y % 2, 0)) + ((size_t)(y / 2) * PITCH);
+        const uint8_t* right =
+            GFX_HINT_PLANE(hints, HALF_WIDTH, HALF_HEIGHT, GFX_HINT_CORNER(y % 2, 1)) + ((size_t)(y / 2) * PITCH);
+        gfx_read_panel_row(y, panel);
+        for (int x = 0; x < HALF_WIDTH; x++) {
+            TEST_ASSERT_EQUAL_HEX16(gfx_seam_at(left, x) ? line[x - 1] : line[x], panel[2 * x]);
+            TEST_ASSERT_EQUAL_HEX16(gfx_seam_at(right, x) ? line[x + 1] : line[x], panel[(2 * x) + 1]);
+        }
+    }
+    free(panel);
 }
 
 static void
@@ -4285,6 +4327,7 @@ run_scene_suite(void) {
     RUN_TEST(test_expanded_scene_in_separate_picture_matches_upscale);
     RUN_TEST(test_expanded_frame_lifecycle_and_raw_draw_guard);
     RUN_TEST(test_blended_expand_blends_within_seams_and_doubles_across_them);
+    RUN_TEST(test_corner_expand_takes_marked_corners_from_the_side_neighbour);
     RUN_TEST(test_expanded_overlay_resets_and_restores_clip);
     RUN_TEST(test_ui_replay_over_expanded_scene_matches_full_frame);
     RUN_TEST(test_camera_present_composes_half_picture_at_any_height);

@@ -447,15 +447,15 @@ render_context_upscale_filter(const render_context_t* c) {
 }
 
 bool
-render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* half, uint8_t* half_seams) {
+render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* half, uint8_t* half_hints) {
     const raster_t* r = &c->raster;
     const resolution_step_t size =
         half != NULL ? raster_compose_size(r) : (resolution_step_t){r->destination_width, r->destination_height};
     const bool expanded = half != NULL && size.width != r->destination_width;
     destination = expanded ? half : destination;
-    uint8_t* seams = expanded ? half_seams : NULL;
+    uint8_t* hints = expanded ? half_hints : NULL;
     if (c->policy == RENDER_FIXED && !c->generating) {
-        raster_upscale_picture(&c->raster, NULL, destination, seams, size.width, size.height);
+        raster_upscale_picture(&c->raster, NULL, destination, hints, size.width, size.height);
         return expanded;
     }
     const int64_t began_us = timing_now_us();
@@ -463,7 +463,7 @@ render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* hal
     gfx_target_of_color_depth(&generated.target, c->framegen.colour, c->framegen.depth, c->framegen.width,
                               c->framegen.height, 0);
     const gfx_target_t* picture = c->frame.generated ? &generated.target : NULL;
-    raster_upscale_picture(&c->raster, picture, destination, seams, size.width, size.height);
+    raster_upscale_picture(&c->raster, picture, destination, hints, size.width, size.height);
     c->frame.upscale_us = (int32_t)(timing_now_us() - began_us);
     if (c->frame.generated) {
         /* Not priced itself: its cost sets what the next drawn frame may spend. */

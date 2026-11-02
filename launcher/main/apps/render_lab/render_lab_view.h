@@ -29,7 +29,8 @@ int render_lab_small_fill_selected(void);
 bool render_lab_small_fill_select(int index);
 
 /* The menu's upscale choice, render_lab.upscale: SHARP keeps nearest, SMOOTH
- * blends within a surface (UPSCALE_FILTER_SURFACE). */
+ * blends within a surface (UPSCALE_FILTER_SURFACE), EDGES rounds depth stairs
+ * (UPSCALE_FILTER_EDGES). */
 const char* const* render_lab_upscale_names(int* count);
 int render_lab_upscale_selected(void);
 bool render_lab_upscale_select(int index);

@@ -199,6 +199,15 @@ gfx_seam_at(const uint8_t* seams, int x) {
     return (seams[x / GFX_SEAM_BITS] >> (x % GFX_SEAM_BITS)) & 1U;
 }
 
+/* Expand hints: GFX_HINT_PLANES masks laid out as seam masks, one after the
+ * other, each GFX_SEAM_BYTES of the picture. A filter reads the planes it
+ * names: a seam is plane 0; the Scale2x corners are GFX_HINT_CORNER(row, side),
+ * row 0 top or 1 bottom of a pixel's 2x2 block, side 0 left or 1 right. */
+#define GFX_HINT_PLANES                          4
+#define GFX_HINT_BYTES(width, height)            (GFX_HINT_PLANES * GFX_SEAM_BYTES(width, height))
+#define GFX_HINT_CORNER(row, side)               ((2 * (row)) + (side))
+#define GFX_HINT_PLANE(hints, width, height, at) ((hints) + ((size_t)(at) * GFX_SEAM_BYTES(width, height)))
+
 /* A source pixel as shown: `clear` where nothing was drawn. */
 static inline uint16_t
 gfx_target_shown_pixel(const uint16_t* input, const uint16_t* input_depth, int x, uint16_t clear) {

@@ -610,6 +610,150 @@ test_surface_seams_match_the_per_pixel_reference(void) {
     }
 }
 
+/* The depth the nearest copy shows at (x, y), a point off it read at its edge. */
+static uint16_t
+clamped_depth(const upscale_t* scale, const uint16_t* depth, int x, int y) {
+    x = x < 0 ? 0 : x >= scale->destination_width ? scale->destination_width - 1 : x;
+    y = y < 0 ? 0 : y >= scale->destination_height ? scale->destination_height - 1 : y;
+    return depth[((size_t)scale->rows[y] * scale->destination_width) + x];
+}
+
+/* Scale2x's corner at (x, y) of the nearest copy, written out per pixel:
+ * E0 = D == B && B != F && D != H, and its turns, with "==" one surface. */
+static bool
+reference_corner(const upscale_t* scale, const uint16_t* depth, int x, int y, int row, int side) {
+    const int width = scale->destination_width;
+    if ((side == 0 && x == 0) || (side == 1 && x + 1 == width)) {
+        return false;
+    }
+    const uint16_t a = clamped_depth(scale, depth, x, y - 1), b = clamped_depth(scale, depth, x + 1, y);
+    const uint16_t c = clamped_depth(scale, depth, x - 1, y), d = clamped_depth(scale, depth, x, y + 1);
+    const uint16_t vertical = row == 0 ? a : d, across = side == 0 ? c : b;
+    const uint16_t other_vertical = row == 0 ? d : a, other_across = side == 0 ? b : c;
+    return upscale_same_surface(across, vertical) && !upscale_same_surface(across, other_vertical)
+           && !upscale_same_surface(vertical, other_across);
+}
+
+/* Random depths as in check_seam_case(), through the EDGES filter: the copy
+ * is the nearest one, every corner bit is the reference's, and two ranges
+ * mark what one whole call does. */
+static void
+check_corner_case(const seam_case_t* c) {
+    const uint16_t levels[] = {0, 0x1000, 0x1080, 0x8000, 0x8900};
+    const size_t pixels = (size_t)c->width * c->source;
+    const size_t bytes = GFX_HINT_BYTES(c->width, c->destination);
+    const size_t out = (size_t)c->width * c->destination;
+    uint16_t* color = malloc(pixels * sizeof(*color));
+    uint16_t* depth = malloc(pixels * sizeof(*depth));
+    uint16_t* columns = malloc((size_t)c->width * sizeof(*columns));
+    uint16_t* rows = malloc((size_t)c->destination * sizeof(*rows));
+    uint16_t* actual = malloc(out * sizeof(*actual));
+    uint16_t* nearest = malloc(out * sizeof(*nearest));
+    uint8_t* whole = malloc(bytes);
+    uint8_t* split = malloc(bytes);
+    TEST_ASSERT_NOT_NULL(color);
+    TEST_ASSERT_NOT_NULL(depth);
+    TEST_ASSERT_NOT_NULL(columns);
+    TEST_ASSERT_NOT_NULL(rows);
+    TEST_ASSERT_NOT_NULL(actual);
+    TEST_ASSERT_NOT_NULL(nearest);
+    TEST_ASSERT_NOT_NULL(whole);
+    TEST_ASSERT_NOT_NULL(split);
+    for (size_t i = 0; i < pixels; i++) {
+        color[i] = (uint16_t)rand();
+        depth[i] = levels[(size_t)rand() % (sizeof levels / sizeof *levels)];
+    }
+    GFX_TARGET_STORAGE(2) storage = GFX_TARGET_COLOR_INIT(color, c->width, c->source);
+    attach_depth(&storage.target, depth);
+    upscale_t scale;
+    TEST_ASSERT_TRUE(upscale_init(&scale, c->width, c->source, c->width, c->destination, columns, rows));
+    scale.filter = UPSCALE_FILTER_EDGES;
+    const int half = c->destination / 2;
+    upscale_rows_filtered(&scale, &storage.target, 0, actual, whole, 0, c->destination);
+    upscale_rows(&scale, &storage.target, 0, nearest, 0, c->destination);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(nearest, actual, out);
+    upscale_rows_filtered(&scale, &storage.target, 0, actual, split, 0, half);
+    upscale_rows_filtered(&scale, &storage.target, 0, actual, split, half, c->destination - half);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(whole, split, bytes);
+    for (int corner = 0; corner < GFX_HINT_PLANES; corner++) {
+        const uint8_t* plane = GFX_HINT_PLANE(whole, c->width, c->destination, corner);
+        for (int y = 0; y < c->destination; y++) {
+            for (int x = 0; x < c->width; x++) {
+                const bool expected = reference_corner(&scale, depth, x, y, corner / 2, corner % 2);
+                TEST_ASSERT_EQUAL_INT(expected, gfx_seam_at(plane + ((size_t)y * GFX_SEAM_PITCH(c->width)), x));
+            }
+        }
+    }
+    free(color);
+    free(depth);
+    free(columns);
+    free(rows);
+    free(actual);
+    free(nearest);
+    free(whole);
+    free(split);
+}
+
+static void
+test_edge_corners_match_the_per_pixel_scale2x_reference(void) {
+    const seam_case_t cases[] = {{14, 6, 15}, {16, 9, 9}, {10, 7, 13}, {24, 4, 11}, {16, 8, 16}};
+    srand(13);
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        check_corner_case(&cases[i]);
+    }
+}
+
+/* A near square on a far floor at one row per source row: its outer corner
+ * pixels are stairs Scale2x rounds off, from both sides of the step. */
+static void
+test_edge_corners_round_a_square_and_keep_its_inside(void) {
+    enum { SIZE = 8, NEAR = 0x8000, FAR = 0x1000 };
+
+    uint16_t color[SIZE * SIZE] = {0}, depth[SIZE * SIZE], columns[SIZE], rows[SIZE], actual[SIZE * SIZE];
+    uint8_t hints[GFX_HINT_BYTES(SIZE, SIZE)];
+    for (int y = 0; y < SIZE; y++) {
+        for (int x = 0; x < SIZE; x++) {
+            depth[(y * SIZE) + x] = x >= 2 && x < 6 && y >= 2 && y < 6 ? NEAR : FAR;
+        }
+    }
+    GFX_TARGET_STORAGE(2) storage = GFX_TARGET_COLOR_INIT(color, SIZE, SIZE);
+    attach_depth(&storage.target, depth);
+    upscale_t scale;
+    TEST_ASSERT_TRUE(upscale_init(&scale, SIZE, SIZE, SIZE, SIZE, columns, rows));
+    scale.filter = UPSCALE_FILTER_EDGES;
+    upscale_rows_filtered(&scale, &storage.target, 0, actual, hints, 0, SIZE);
+    const uint8_t* top_left = GFX_HINT_PLANE(hints, SIZE, SIZE, GFX_HINT_CORNER(0, 0));
+    const uint8_t* bottom_right = GFX_HINT_PLANE(hints, SIZE, SIZE, GFX_HINT_CORNER(1, 1));
+    /* The square's corner pixels give their outer corner to the floor; the
+     * floor pixel diagonal to one, at (1, 1), keeps its own. */
+    TEST_ASSERT_TRUE(gfx_seam_at(top_left + (2 * GFX_SEAM_PITCH(SIZE)), 2));
+    TEST_ASSERT_FALSE(gfx_seam_at(bottom_right + (1 * GFX_SEAM_PITCH(SIZE)), 1));
+    TEST_ASSERT_TRUE(gfx_seam_at(bottom_right + (5 * GFX_SEAM_PITCH(SIZE)), 5));
+    for (int corner = 0; corner < GFX_HINT_PLANES; corner++) {
+        const uint8_t* plane = GFX_HINT_PLANE(hints, SIZE, SIZE, corner);
+        TEST_ASSERT_FALSE(gfx_seam_at(plane + (3 * GFX_SEAM_PITCH(SIZE)), 3)); /* inside */
+        TEST_ASSERT_FALSE(gfx_seam_at(plane + (4 * GFX_SEAM_PITCH(SIZE)), 4));
+    }
+}
+
+/* With no depth, EDGES knows nothing: the nearest copy and no corner. */
+static void
+test_edge_corners_without_depth_mark_none(void) {
+    enum { WIDTH = 8, HEIGHT = 4 };
+
+    uint16_t color[WIDTH * HEIGHT] = {0}, columns[WIDTH], rows[HEIGHT], actual[WIDTH * HEIGHT];
+    uint8_t hints[GFX_HINT_BYTES(WIDTH, HEIGHT)];
+    memset(hints, UINT8_MAX, sizeof hints);
+    GFX_TARGET_STORAGE(1) storage = GFX_TARGET_COLOR_INIT(color, WIDTH, HEIGHT);
+    upscale_t scale;
+    TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, WIDTH, HEIGHT, columns, rows));
+    scale.filter = UPSCALE_FILTER_EDGES;
+    upscale_rows_filtered(&scale, &storage.target, 0, actual, hints, 0, HEIGHT);
+    for (size_t i = 0; i < sizeof hints; i++) {
+        TEST_ASSERT_EQUAL_HEX8(0, hints[i]);
+    }
+}
+
 void
 run_upscale_suite(void) {
     RUN_TEST(test_scanline_all_colors_match_channel_reference);
@@ -627,6 +771,9 @@ run_upscale_suite(void) {
     RUN_TEST(test_row_blends_sit_on_destination_row_centres);
     RUN_TEST(test_surface_rows_blend_within_a_surface_and_mark_seams);
     RUN_TEST(test_surface_seams_match_the_per_pixel_reference);
+    RUN_TEST(test_edge_corners_match_the_per_pixel_scale2x_reference);
+    RUN_TEST(test_edge_corners_round_a_square_and_keep_its_inside);
+    RUN_TEST(test_edge_corners_without_depth_mark_none);
 }
 
 SUITE_REGISTER(run_upscale_suite);
