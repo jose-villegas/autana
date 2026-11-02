@@ -26,7 +26,7 @@ whose meshes were made on another, as `bake --out` does on such a host.
 A fit's start is a mesh bake of its own (`<entry>.start.mesh`, locked and published, held by no pack).
 The fit's key names the start's locked bytes, so it is unknown until the start is locked: `list` says the
 fit waits for its start, and the Bakes GPU run fits only once the start's row is committed. A fit's
-references are keyed on what they read (fitted_variant.ReferenceInputs), not on the start.
+references are keyed on what they read (reference_set.ReferenceInputs), not on the start.
 
 `list` prints every bake with its key, or with `--missing` those LOCK lacks. `bake` makes each bake LOCK has no
 row for into the cache (produce.py), and with `--out` also copies each one there as it is made, the folder a CI
@@ -123,8 +123,8 @@ GPU_QUERY_TIMEOUT_S = 10
 STAGES = {
     "poses": ("anim/track_host.py",),
     "mesh": ("r3d/mesh_import.py",),
-    "reference": ("r3d/mesh_import.py", "r3d/reference_render.py", "r3d/fitted_variant.py"),
-    "fit": ("r3d/fitted_variant.py", "r3d/appearance_simplify.py"),
+    "reference": ("r3d/reference_render.py", "r3d/reference_set.py"),
+    "fit": ("r3d/fit/stage.py", "r3d/appearance_simplify.py"),
     "blend": ("gltf/blend_skin_to_glb.py",),
     "sound": ("audio/sound_import.py",),
 }
@@ -491,7 +491,7 @@ def tool_digest(stage):
 
 
 def canonical(value):
-    from r3d.fitted_variant import canonical as parsed
+    from r3d.reference_set import canonical as parsed
 
     return parsed(value)
 
@@ -587,7 +587,7 @@ def fit_recipe(fit):
 
 
 def reference_recipe(inputs, tools, poses=None, unavailable=None):
-    """A fit's reference set by every field of its fitted_variant.ReferenceInputs: the import as a mesh counts
+    """A fit's reference set by every field of its reference_set.ReferenceInputs: the import as a mesh counts
     it, the camera by its lens and sampled poses, the rest as parsed."""
     recipe = {}
     for field in dataclasses.fields(inputs):
@@ -617,7 +617,7 @@ def stage_keys(job, scene, tools, starts=None, poses=None):
     start = None if unavailable else digest(["mesh", recipe, tools["mesh"]])
     keys = {"mesh": start}
     if job.renderer.fit is not None:
-        from r3d.fitted_variant import reference_inputs
+        from r3d.reference_set import reference_inputs
 
         recipe = reference_recipe(reference_inputs(job, scene), tools, poses, unavailable)
         reference = None if unavailable else digest(["reference", recipe, tools["reference"]])

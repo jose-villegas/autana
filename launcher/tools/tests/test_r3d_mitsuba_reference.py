@@ -17,8 +17,9 @@ try:
 
     from r3d import mitsuba_reference
     from r3d.geometry import corner_normals
+    from r3d.light import coincident_faces
     from r3d.obj import Texture
-    from r3d.reference_render import render_linear
+    from r3d.reference_render import trace
 except ImportError:
     np = None
 
@@ -52,6 +53,7 @@ def make_source(quads, kd=(1.0, 1.0, 1.0), texture=None, materials=None, uv_scal
                              tri_m=np.array(tri_m), names=names, materials={n: {"Kd": c} for n, c in zip(names, colours)},
                              textures=[texture] + [None] * (len(colours) - 1))
     source.corner_normals = corner_normals(source.p, source.tri_v)
+    source.twin = coincident_faces(source.p, source.tri_v)[0]
     source.bounce = None
     source.intersector = soup.rays(soup.Soup(source.p, source.tri_v))
     return source
@@ -65,10 +67,15 @@ def sky(intensity=1.0):
     return {"type": "sky", "color": [1.0, 1.0, 1.0], "intensity": intensity, "rays": 16}
 
 
-def bake_render(source, lights, pose=LOOK_DOWN, width=16, height=16, lens=0.5, double=()):
+def bake_trace(source, lights, pose=LOOK_DOWN, width=16, height=16, lens=0.5, double=()):
+    """The bake reference's linear image and coverage of a fixture."""
     settings = SimpleNamespace(double_sided=set(double), seed=1)
     job = SimpleNamespace(settings=settings, bake=SimpleNamespace(ray_offset=0.001, ao=None))
-    return render_linear(source, job, SimpleNamespace(lights=lights), pose, width, height, lens, 4)
+    return trace(source, job, SimpleNamespace(lights=lights), pose, width, height, lens, 4)[:2]
+
+
+def bake_render(source, lights, **view):
+    return bake_trace(source, lights, **view)[0]
 
 
 def mitsuba(source, lights, pose=LOOK_DOWN, width=16, height=16, lens=0.5, spp=64, depth=2, seed=1, double=(),
@@ -204,15 +211,17 @@ class MitsubaMaterialTest(unittest.TestCase):
             self.assertEqual(a.max() > 0.5, lit, double)
             np.testing.assert_allclose(b, a, atol=0.02)
 
-    def test_a_card_seen_from_behind_under_a_sun_on_its_front_is_lit_in_bake_only(self):
-        # The recorded difference: the bake reference shades a back-face hit with the front normal, and a double-sided
-        # card turns toward the sun. Mitsuba shades the side the ray reached.
+    def test_a_card_seen_from_behind_under_a_sun_on_its_front_differs_by_backend(self):
+        # The recorded differences: the bake reference culls a one-sided card seen from behind, as the device does,
+        # and turns a double-sided one toward the sun. Mitsuba shades the side the ray reached.
         lights = [sun([0.0, 0.0, 1.0])]
-        for double in ((), ("material0",)):
-            a = bake_render(make_source([quad(0.0, 2.0)]), lights, pose=LOOK_UP, width=4, height=4, double=double)
-            b = mitsuba(make_source([quad(0.0, 2.0)]), lights, pose=LOOK_UP, width=4, height=4, double=double)[0]
-            self.assertGreater(a.max(), 0.5)
+        for double, lit in (((), False), (("material0",), True)):
+            a, a_covered = bake_trace(make_source([quad(0.0, 2.0)]), lights, pose=LOOK_UP, width=4, height=4, double=double)
+            b, b_covered = mitsuba(make_source([quad(0.0, 2.0)]), lights, pose=LOOK_UP, width=4, height=4, double=double)
+            self.assertEqual(a_covered.min() > 0.0, lit, double)
+            self.assertEqual(a.max() > 0.5, lit, double)
             self.assertEqual(b.max(), 0.0)
+            self.assertGreater(b_covered.min(), 0.0)
 
 
 @needs_mitsuba

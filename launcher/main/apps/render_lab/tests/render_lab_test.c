@@ -1,7 +1,9 @@
 #include "apps/render_lab/tests/render_lab_test.h"
 #ifdef DEVICE_BUILD
+#include <stdio.h>
 #include <string.h>
 #include "apps/render_lab/render_lab.h"
+#include "apps/render_lab/render_lab_dynres.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "core/timing.h"
 #include "display/display_shell.h"
@@ -14,6 +16,14 @@
 #include "scene/scene_shell.h"
 #include "ui/ui.h"
 #include "unity.h"
+
+const char*
+render_lab_test_step_name(int step) {
+    static char name[sizeof "-2147483648x-2147483648"];
+    const resolution_step_t size = render_lab_ladder[step];
+    (void)snprintf(name, sizeof name, "%dx%d", size.width, size.height);
+    return name;
+}
 
 scene_t*
 render_lab_test_loaded_scene(const char* key) {

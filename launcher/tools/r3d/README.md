@@ -91,6 +91,8 @@ what ships.
 `reference_render.py` takes a scene and the pose file its camera path emits.
 It uses the source mesh after alpha masking, before simplification, and the
 same lights, albedo sampling, tone map and RGB565 quantisation as the bake.
+A camera ray passes a single-sided face seen from behind, as the device culls
+it, so where a reduced source's two shells cross the outer one shows.
 The .npy output retains the linear, box-filtered image; the PNG is the form a
 host render compares with `render_compare.py`. What the scores mean is in
 [Bake-Method.md](../../../docs/render/offline/Bake-Method.md#fidelity-against-a-reference).
@@ -148,7 +150,7 @@ backends differ in these recorded ways, besides transport:
 | Case | Bake backend | Path-traced backend |
 |---|---|---|
 | `ambient` | Added to every point | Rejected unless black, it has no transport meaning |
-| One-sided card seen from behind | Shades the hit with the front normal, so a sun on the front lights it | Black: the side the ray reached is unlit |
+| One-sided card seen from behind | Culled, as the device culls it: the ray goes on to what lies beyond | Black: the side the ray reached is unlit |
 | Double-sided card | Lit on both sides, keeps the brighter | Shades the side the ray reached |
 | Near plane | Ignored | Clips at the pose file's near value |
 | `[bake].ao` | Scales the ambient and, if asked, the bounced light | Ignored |

@@ -566,9 +566,9 @@ run_raster_scale_perf_suite(void) {
     RUN_TEST(test_dynamic_resolution_refit_cost);
     for (size_t q = 0; q < R3D_PERF_QUARTER_COUNT; q++) {
         perf_quarter = &r3d_perf_quarters[q];
-        RUN_TEST(test_raster_stage_split_by_size);
-        RUN_TEST(test_raster_counters);
-        RUN_TEST(test_dynamic_resolution_policies_along_the_path);
+        RUN_TEST_CASE(test_raster_stage_split_by_size, perf_quarter->name);
+        RUN_TEST_CASE(test_raster_counters, perf_quarter->name);
+        RUN_TEST_CASE(test_dynamic_resolution_policies_along_the_path, perf_quarter->name);
     }
     loaded = (sponza_suite_t){scene, loaded.load, lens, loaded.arena_mark};
     sponza_suite_release(&loaded);

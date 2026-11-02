@@ -53,10 +53,11 @@ RUNSUITE_COMPLETE name=<suite> found=<0|1> selected=<n> unmatched=<n>
 so a harness never has to guess from a quiet console.
 
 **Narrowing a suite.** `runsuite <suite> <pattern>[,<pattern>...]` runs only
-tests whose name contains a pattern; `autana suite <name> --test <pattern>`
+tests a pattern picks; `autana suite <name> --test <pattern>`
 sends it ([syntax](../cli/Tests.md)).
 
 - The `RUN_TEST` override in `launcher/test/timing.c` does the filtering, so no suite changes. Each test it reaches prints `SUITE_TEST name=<test> selected=<0|1>`.
+- `suite_test_matches()` in `launcher/test/suites.c` holds the pattern rule, and `test_matches()` in `scripts/lib/device_capture.py` repeats it for the tools; both are tested against `launcher/test/suites/suite_filter_cases.inc`.
 - Patterns live for that one request; the next `runsuite` runs everything.
 - In the completion line, `selected=` is how many tests ran and `unmatched=` how many patterns matched nothing. A refused pattern prints `SUITE_FILTER_REFUSED` and runs nothing.
 - Only `runsuite` reads a line long enough for the most patterns `launcher/test/suites.h` allows; other verbs keep `CONSOLE_LINE_MAX`.

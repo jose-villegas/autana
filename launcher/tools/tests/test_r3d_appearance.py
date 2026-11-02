@@ -676,7 +676,7 @@ class PruneAndCostTests(unittest.TestCase):
                     self.assertIs(written[2], pruned)
                     pruned_mesh, shown, budget = calls.prune.call_args.args
                     self.assertIs(pruned_mesh, covered)
-                    self.assertIs(shown, calls.coverage.return_value)
+                    np.testing.assert_array_equal(shown, calls.coverage.return_value)
                     self.assertEqual(budget, len(pruned.tris))
                     report = json.loads((pathlib.Path(directory) / "stretch.json").read_text())
                     self.assertEqual(sum(row["triangles"] for row in report["parts"]), len(pruned.tris))
@@ -1105,6 +1105,96 @@ class AppearanceFitTests(unittest.TestCase):
         self.assertEqual(len(pruned[2]), len(front_tris))
         self.assertTrue(np.all(np.abs(z) < 1e-6), "a hidden triangle outlived a visible one")
 
+
+    def card(self, z, half=1.0, rgb=0.5):
+        """A two-by-two grid card at depth `z` facing the camera, as a FitMesh."""
+        positions, tris = grid_mesh(2, half)
+        positions[:, 2] = z
+        return FitMesh(positions, np.full((len(positions), 3), rgb), tris, np.zeros(len(tris), dtype=int), 1,
+                       np.arange(len(positions)))
+
+    def test_copies_drawn_in_front_hide_the_rest_from_the_fit(self):
+        from r3d.appearance_simplify import Renderer, optimise
+
+        rest, copy = self.card(0.0), self.card(1.0, half=2.0)
+        size = (48, 40)
+        matrix = projection([0.0, 0.0, 3.0], [0.0, 0.0, -1.0], 24, 20, 0.62, 0.5)
+        target = draw(Renderer(rest.tris, rest.double, rest.vertex_point, size, "cuda"), rest.points,
+                      np.zeros_like(rest.rgb), matrix)
+        fits = {copies is None: optimise(rest, [(matrix, target)], size, steps=20, batch=1, lr_position=0.0,
+                                         lr_colour=0.05, laplacian=0.0, report=0, seam_margin=0, copies=copies)[1]
+                for copies in (None, copy)}
+        self.assertLess(fits[True].max(), 0.4, "without copies the rest is fitted to the target")
+        np.testing.assert_array_equal(fits[False], rest.rgb, "a rest behind a copy is not fitted")
+
+    def test_hidden_copy_pixels_count_where_a_mesh_stands_in_front_of_a_copy(self):
+        from r3d.fit.copies import hidden_copy_pixels
+        from r3d.fitted_variant import poses_text
+
+        copy, other = self.card(0.0, half=0.5), self.card(0.0, half=1.0)
+        other.points[:, 0] += 3.0
+        source = SimpleNamespace(p=np.concatenate([copy.points, other.points]),
+                                 tri_v=np.concatenate([copy.tris, other.tris + len(copy.points)]))
+        carved = np.arange(len(source.tri_v)) < len(copy.tris)
+        meshes = (self.card(-1.0, half=0.5), self.card(1.0, half=0.5), self.card(1.0, half=0.5))
+        meshes[2].points[:, 0] += 3.0
+        with tempfile.TemporaryDirectory() as directory:
+            poses = pathlib.Path(directory) / "poses.txt"
+            poses.write_text(poses_text(64, 48, 0.62, 0.5, [[1.5, 0.0, 8.0, 0.0, 0.0, -1.0]]))
+            behind, in_front, over_the_rest = hidden_copy_pixels(source, carved, meshes, poses)[:, 0]
+        self.assertEqual(behind, 0.0)
+        self.assertGreater(in_front, 0.0)
+        self.assertEqual(over_the_rest, 0.0, "only pixels where the source shows a copy count")
+
+    def test_distance_is_the_view_axis_distance_where_drawn(self):
+        import torch
+
+        from r3d.appearance_simplify import Renderer
+        from r3d.fit.gbuffer import distance
+
+        card = self.card(0.0, half=0.5)
+        matrix = torch.as_tensor(projection([0.0, 0.0, 3.0], [0.0, 0.0, -1.0], 24, 20, 0.62, 0.5),
+                                 dtype=torch.float32, device="cuda")
+        render = Renderer(card.tris, card.double, card.vertex_point, (48, 40), "cuda")
+        fitted, shown = distance(render, torch.as_tensor(card.points, dtype=torch.float32, device="cuda"), matrix)
+        drawn = shown >= 0
+        self.assertTrue(drawn.any() and not drawn.all())
+        np.testing.assert_allclose(fitted[drawn].cpu().numpy(), 3.0, rtol=1e-5)
+        self.assertTrue(torch.isinf(fitted[~drawn]).all())
+
+    def gbuffer_fit(self, rest, shown, source, carved, copies=None, **weights):
+        """The rest fitted on positions alone to one view of `shown`, the mesh the reference shows: its points."""
+        from r3d.appearance_simplify import Renderer, optimise
+
+        size = (48, 40)
+        matrix = projection([0.0, 0.0, 3.0], [0.0, 0.0, -1.0], 24, 20, 0.62, 0.5)
+        target = draw(Renderer(shown.tris, shown.double, shown.vertex_point, size, "cuda"), shown.points, shown.rgb,
+                      matrix)
+        return optimise(rest, [(matrix, target)], size, steps=200, batch=1, lr_position=0.01, lr_colour=0.0,
+                        laplacian=0.0, report=0, seam_margin=0, copies=copies, source=source, carved=carved,
+                        **weights)[0]
+
+    def test_the_front_term_pushes_the_rest_behind_the_copy(self):
+        copy = self.card(0.0, half=1.0, rgb=0.2)
+        source = SimpleNamespace(p=copy.points, tri_v=copy.tris)
+        carved = np.ones(len(copy.tris), dtype=bool)
+        # The rest takes the copy's colour, so the colour term alone has no reason to move it.
+        points = {weight: self.gbuffer_fit(self.card(0.5, half=0.5, rgb=0.2), copy, source, carved, copies=copy,
+                                           front_weight=weight)
+                  for weight in (0.0, 10.0)}
+        # In front means nearer than the copy's distance 3 by more than IN_FRONT of it, z above 0.3.
+        self.assertGreater(points[0.0][:, 2].min(), 0.3, "the colour term alone leaves the rest in front")
+        self.assertLess(points[10.0][:, 2].max(), 0.3)
+
+    def test_the_depth_term_holds_the_rest_to_the_source_surface(self):
+        surface = self.card(0.0, half=1.0)
+        source = SimpleNamespace(p=surface.points, tri_v=surface.tris)
+        carved = np.zeros(len(surface.tris), dtype=bool)
+        # A rest the clear colour shows nowhere, so the colour term alone has no reason to move it.
+        rest = self.card(0.5, half=0.5, rgb=0.0)
+        points = {weight: self.gbuffer_fit(rest, rest, source, carved, depth_weight=weight) for weight in (0.0, 10.0)}
+        np.testing.assert_allclose(points[0.0][:, 2], 0.5, err_msg="the colour term alone leaves the rest off the surface")
+        self.assertLess(np.abs(points[10.0][:, 2]).max(), 0.05)
 
 if __name__ == "__main__":
     unittest.main()
