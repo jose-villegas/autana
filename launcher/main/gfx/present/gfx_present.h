@@ -35,6 +35,10 @@ _Static_assert(GFX_BAND_HEIGHT % 2 == 0, "a band's row range must round to even 
 /* Brings up the panel and allocates the framebuffer.
  * Returns false if either fails; the reason is logged. */
 bool gfx_init(void);
+#ifndef ESP_PLATFORM
+/* Gives back what gfx_init() allocated, so a host run can open again in one process. */
+void gfx_deinit(void);
+#endif
 
 /* True while the framebuffer is known to hold `colour` and nothing else: a
  * send filled it (gfx_set_clear_on_send()) and nothing has drawn into it or

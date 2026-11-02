@@ -452,7 +452,7 @@ stateDiagram-v2
     Open --> Step: run opened
     Step --> Step: elapsed time and input
     Step --> Close: judge warm-up frames, write outputs
-    Close --> [*]: success or failure
+    Close --> [*]: give back the scene, pack and framebuffer
 ```
 
 If `render_host_open()` returns false, no run opened and `exit_code` carries the command's result.
@@ -489,6 +489,9 @@ expose a provider's path duration and camera cuts. The scene-file provider
 seeks its animators and clears render history at a cut. An optional
 `render_context` hook returns the context a provider draws through, so a
 caller can switch debug views; providers without one leave it NULL.
+An optional `teardown` hook gives back what `setup` took; `render_host_close`
+calls it, then frees the framebuffer, so one process can open a run again,
+even of the same scene id from another pack folder.
 
 An engine scene lives in `launcher/tools/render/scenes/`; an app's scene lives
 in that app's own `tools/`, so nothing in the engine's tooling names an app.
