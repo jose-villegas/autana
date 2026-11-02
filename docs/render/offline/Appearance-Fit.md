@@ -221,11 +221,11 @@ flowchart LR
 [Bake-Quality.md](Bake-Quality.md#the-demo-variants) compares a flat bake
 with its flat fit.
 
-## Fitting-friendly references: tried and dropped
+## Flattened references do not free triangles
 
-Without textures, texture detail must be carried by vertex colour, which raised a question: does that detail spend
-triangles on planar faces? The test fitted against references whose texture was flattened to what the budget's
-triangle can hold, and scored the result against the unfiltered held-out references.
+Without textures, texture detail must be carried by vertex colour. Fitting against references whose texture is
+flattened to what the budget's triangle can hold does not move triangles off planar faces; scored against the
+unfiltered held-out references, every arm below loses.
 
 | Arm | What changes |
 |---|---|
@@ -234,10 +234,8 @@ triangle can hold, and scored the result against the unfiltered held-out referen
 | texture mean | re-traced with each texture flattened to its mean |
 | start | the start remade with its vertex albedo read at the budget's mip or the material mean; locked references |
 
-Every arm lost. Triangle counts barely moved, because placement never reads the reference: the fit keeps its
-start's triangles and prunes by pixel coverage. The start's simplifier does read vertex colour, but flattening the
-texture there moves its counts by about 1%. So planar triangles come from geometry and lighting in that pass and
-from the coverage prune.
+Placement never reads the reference: the fit keeps its start's triangles and prunes them by pixel coverage. The
+start's simplifier reads lit vertex colour, but flattening the texture there moves its counts little.
 
 ```mermaid
 flowchart LR
@@ -247,23 +245,30 @@ flowchart LR
     F --> P["prune by<br/>pixel coverage"]
 ```
 
-| Bistro street fit | Held-out ΔE76 mean / p95 | Cobble triangles | Planar-part triangles | Sheets |
+Bistro's street fit. The start rows score the unfitted start, so they compare with the locked start row only.
+Planar-part and sheet counts are the `planar` and `sheet_triangles` fields of the held-out report's error.csv,
+defined in [Mesh Import](Mesh-Import.md#held-out-error-by-object).
+
+| Arm | Held-out ΔE76 mean / p95 | Cobble triangles | Planar-part triangles | Sheets |
 |---|---:|---:|---:|---:|
 | locked bake | 6.364 / 19.01 | 652 | 1397 | 384 |
 | refit of the locked references (fit noise) | 6.373 / 19.02 | | | |
 | a-trous | 7.074 / 20.71 | 667 | 1400 | 416 |
 | budget mip | 6.652 / 20.13 | 657 | 1360 | 408 |
 | texture mean | 6.630 / 19.79 | 658 | 1355 | 419 |
-| start, budget mip albedo (unfitted, vs 14.20) | 14.22 | 1110 vs 1125 | 2136 vs 2149 | 932 vs 939 |
-| start, mean albedo (unfitted, vs 14.20) | 14.75 | 1244 vs 1125 | 2216 vs 2149 | 924 vs 939 |
+| locked start, unfitted | 14.20 | 1125 | 2149 | 939 |
+| start, budget mip albedo, unfitted | 14.22 | 1110 (−1%) | 2136 (−1%) | 932 |
+| start, mean albedo, unfitted | 14.75 | 1244 (+11%) | 2216 (+3%) | 924 |
 
-The Sponza atrium fit scored 5.390, 5.374 on refit and 6.920 with a-trous. Its budget-mip fit grew over the
-copies, and the copy check refused it. Triangle counts are `objects_report.py --held-out`'s planar and sheet columns.
+Sponza's atrium fit scores 5.390 locked, 5.374 refitted and 6.920 with a-trous. Its budget-mip fit grew over the
+copies, and the copy check refused it.
 
-![Bistro held-out frames 17 and 18, each arm against the reference](../../images/render/friendly-reference-bistro.png)
-![Sponza held-out frames, each arm against the reference](../../images/render/friendly-reference-sponza.png)
+Each sheet shows two held-out frames: the reference, then each arm, with its ΔE76 heatmap below.
 
-The arms' code, a tool beside the fit stage, is at commit `925f40338`.
+![Bistro frames 17 and 18: reference, locked bake, refit, a-trous, budget mip, texture mean](../../images/render/friendly-reference-bistro.png)
+![Sponza frames 2 and 4: reference, locked bake, refit, a-trous](../../images/render/friendly-reference-sponza.png)
+
+The arms' code is in commit `ee94701d6`.
 
 ## Against the paper
 
