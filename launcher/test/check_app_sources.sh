@@ -29,7 +29,6 @@
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-MAIN_DIR="$HERE/../main"
 STUBS="$HERE/stubs"
 
 CC_BIN=""
@@ -54,8 +53,8 @@ DEFS="-DCONFIG_LAUNCHER_DEVELOPMENT=1"
 # run_tests.sh uses for finding app sources.
 # shellcheck source=../tools/build/packages.sh
 . "$HERE/../tools/build/packages.sh"
-INCS="-I $STUBS -I $MAIN_DIR $(board_includes "$HERE/..")"
-for inc in $(package_include_dirs "$HERE/..") "$HERE"/../components/*/include; do
+INCS="-I $STUBS"
+for inc in $(firmware_include_dirs "$HERE/..") "$HERE"/../components/*/include; do
     [ -d "$inc" ] || continue
     INCS="$INCS -I $inc"
 done

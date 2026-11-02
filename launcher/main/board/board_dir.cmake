@@ -1,7 +1,8 @@
-# Sets board_dir, the folder under main/board/ of the board being built:
-# CONFIG_BOARD_DIR on the device, and on a host, which has no sdkconfig, the
-# BOARD_DIR of the Kconfig choice BOARD's default (main/Kconfig.projbuild).
-# tools/build/packages.py and packages.sh read the same default.
+# Sets board_dir, the folder under main/board/ of the board being built, and
+# board_include_dir, that folder's absolute path: CONFIG_BOARD_DIR on the
+# device, and on a host, which has no sdkconfig, the BOARD_DIR of the Kconfig
+# choice BOARD's default (main/Kconfig.projbuild). tools/build/packages.py and
+# packages.sh read the same default.
 
 if(DEFINED CONFIG_BOARD_DIR)
     set(board_dir "${CONFIG_BOARD_DIR}")
@@ -22,6 +23,7 @@ else()
         endif()
     endforeach()
 endif()
-if(NOT board_dir)
-    message(FATAL_ERROR "no board folder: main/Kconfig.projbuild's choice BOARD names none")
+set(board_include_dir "${CMAKE_CURRENT_LIST_DIR}/${board_dir}")
+if(NOT board_dir OR NOT IS_DIRECTORY "${board_include_dir}")
+    message(FATAL_ERROR "no board folder: main/Kconfig.projbuild's choice BOARD names none that exists")
 endif()

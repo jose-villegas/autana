@@ -1,8 +1,10 @@
 # The engine sources every host build compiles, the one list. Sets launcher
 # (the launcher/ folder), render_engine_sources (drawing without device
 # backends, the asset store, tune and jobs), renderer_sources
-# (main/renderer_sources.cmake) and board_dir (main/board/board_dir.cmake). CMakeLists.txt includes it; a build without
-# CMake reads both lists as absolute paths on stdout, one per line:
+# (main/renderer_sources.cmake) and, for CMakeLists.txt, which includes it,
+# board_include_dir (main/board/board_dir.cmake).
+#
+# A build without CMake reads both lists as absolute paths on stdout, one per line:
 #
 #   cmake -P launcher/tools/render/engine_sources.cmake
 
