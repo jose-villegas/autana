@@ -11,7 +11,7 @@ import numpy as np
 from matplotlib.lines import Line2D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
-from math_figures import run_probe
+from docs.figures import run_probe
 from docs.plot_style import FAINT, GIF_FPS, INK, LABEL_SIZE, MUTED, SLOTS, TITLE_SIZE, figure, save_gif
 
 PROBE = Path(__file__).with_name("device_model_probe.c")

@@ -154,6 +154,13 @@ LEGEND_ANCHOR = (0.5, -0.18)
 LEGEND_COLUMNS = 2
 
 
+def save_plot(fig, axis, path, title):
+    """A one-theme plot with its legend, styled and saved."""
+    axis.legend()
+    style_axes(axis, title)
+    save(fig, path)
+
+
 def save_themed_plot(fig, axis, path, title, *, legend_columns=LEGEND_COLUMNS):
     style_axes(axis, title)
     axis.grid(color=FAINT)

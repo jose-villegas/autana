@@ -126,18 +126,29 @@ class ReportPerformanceTest(unittest.TestCase):
 class SuiteTestLinesTest(unittest.TestCase):
     """The reporter reads the runner's own SUITE_TEST lines, not a copy of them."""
 
-    def test_the_lines_a_filtered_run_prints_are_what_the_reporter_excuses(self):
+    def unselected(self, request):
         sys.path.insert(0, str(TOOLS.parents[3] / "test" / "tests"))
         import host_runner
         import importlib.util
         spec = importlib.util.spec_from_file_location("report_performance", REPORTER)
-        reporter = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(reporter)
+        self.reporter = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.reporter)
         handle, capture = tempfile.mkstemp(suffix=".txt")
         os.close(handle)
         self.addCleanup(os.unlink, capture)
-        pathlib.Path(capture).write_text(host_runner.run("filter_fixture_suite fire"), encoding="utf-8")
-        self.assertEqual(reporter.parse_unselected(capture), {"test_gas_fits", "test_water_fits"})
+        pathlib.Path(capture).write_text(host_runner.run(request), encoding="utf-8")
+        return self.reporter.parse_unselected(capture)
+
+    def test_the_lines_a_filtered_run_prints_are_what_the_reporter_excuses(self):
+        self.assertEqual(self.unselected("filter_fixture_suite fire"), {"test_gas_fits", "test_water_fits"})
+
+    def test_case_names_are_read_whole(self):
+        self.assertEqual(self.unselected("case_fixture_suite sponza-fitted"), {
+            "test_case/sponza-fitted-full/portrait", "test_case/sponza-fitted-full/landscape",
+            "test_case/capybara/front/portrait"})
+        times = [m.group("name") for m in self.reporter.TEST_TIME_RE.finditer(
+            "TEST_TIME name=test_case/sponza-fitted/portrait elapsed_ms=3\n")]
+        self.assertEqual(times, ["test_case/sponza-fitted/portrait"])
 
 
 if __name__ == "__main__":

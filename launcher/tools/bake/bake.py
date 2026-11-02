@@ -837,6 +837,18 @@ def download(row, suffix, cache):
     return place(data, cached(row, suffix, cache), row["sha256"])
 
 
+def locked_fit(scene_path, object_name):
+    """The fit bake of the renderer `object_name` in the scene at `scene_path`, keyed by the lock."""
+    tables = read_lock_tables()
+    found = bakes([scene_path], locked_starts(tables["bake"]), Poses(tables["poses"]))
+    return next(item for item in found if item.kind == "fit" and item.job.object.name == object_name)
+
+
+def fetch(bake, cache=None):
+    """One bake's file in `cache` (the default cache when None), fetched as fetch_all does."""
+    return fetch_all([bake], read_lock_tables()["bake"], cache or default_cache())[bake]
+
+
 def fetch_all(found, lock, cache, offline=False):
     """{bake: its file in the cache}; raises BakeMissing naming every bake that is not available,
     BakeUnlocked when each of them only lacks its LOCK row."""
