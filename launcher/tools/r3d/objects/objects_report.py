@@ -6,7 +6,7 @@
 
 Reads source geometry after alpha masking. Writes only to --out, which must
 be outside the repository. What levels of detail save along the camera path
-is lod/lod_replay.py's, measured on the fitted mesh.
+is measured on the fitted mesh by lod/lod_replay.py.
 
 --held-out, for a fitted renderer, also scores its locked fit (or --fitted)
 against its held-out references, made into the bake cache when missing, and
@@ -129,10 +129,8 @@ def write_error_report(args, scene, job, out):
     from r3d.scene_name import scene_id
 
     cache = args.cache or bake.default_cache()
-    tables = bake.read_lock_tables()
-    found = bake.bakes([args.scene], bake.locked_starts(tables['bake']), bake.Poses(tables['poses']))
-    fit = next(item for item in found if item.kind == 'fit' and item.job.object.name == job.object.name)
-    bundle = args.fitted or bake.fetch_all([fit], tables['bake'], cache)[fit]
+    fit = bake.locked_fit(args.scene, job.object.name)
+    bundle = args.fitted or bake.fetch(fit, cache)
     inputs = produce.reference_set(fit.stages['reference'], job, scene, cache)
     work = out / 'held_out'
     work.mkdir(exist_ok=True)

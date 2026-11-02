@@ -25,7 +25,6 @@ struct Levels {
     std::vector<int> cluster_group;          // group it belongs to
     std::vector<float> group_sphere;         // 4 per group
     std::vector<float> group_error;          // FLT_MAX on a terminal group
-    std::vector<int> group_depth;
 };
 
 } // namespace
@@ -50,7 +49,6 @@ lod_build(const float* positions, size_t vertex_count, const unsigned int* indic
         out->group_sphere.insert(out->group_sphere.end(), group.simplified.center, group.simplified.center + 3);
         out->group_sphere.push_back(group.simplified.radius);
         out->group_error.push_back(group.simplified.error);
-        out->group_depth.push_back(group.depth);
         for (size_t i = 0; i < count; i++) {
             const clodCluster& c = clusters[i];
             out->cluster_first.push_back(static_cast<unsigned int>(out->indices.size()));
@@ -81,7 +79,7 @@ copy_out(const std::vector<T>& from, T* to) {
 
 LOD_API void
 lod_read(const void* handle, unsigned int* indices, unsigned int* cluster_first, float* cluster_sphere,
-         int* cluster_refined, int* cluster_group, float* group_sphere, float* group_error, int* group_depth) {
+         int* cluster_refined, int* cluster_group, float* group_sphere, float* group_error) {
     const Levels* levels = static_cast<const Levels*>(handle);
     copy_out(levels->indices, indices);
     copy_out(levels->cluster_first, cluster_first);
@@ -90,7 +88,6 @@ lod_read(const void* handle, unsigned int* indices, unsigned int* cluster_first,
     copy_out(levels->cluster_group, cluster_group);
     copy_out(levels->group_sphere, group_sphere);
     copy_out(levels->group_error, group_error);
-    copy_out(levels->group_depth, group_depth);
 }
 
 LOD_API void

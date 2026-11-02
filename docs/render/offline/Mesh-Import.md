@@ -333,7 +333,7 @@ view is the camera-path pose where those boxes show the most visible edge;
 | objects.md / objects.json | Shapes, copies, triangles saved, match residuals |
 | error.csv / error.json / error.md, error.png | With `--held-out`: every object part's path pixels and held-out error, ranked |
 
-What levels of detail save along the camera path is measured on the fitted mesh: [plans/Cluster-LOD.md](../../plans/Cluster-LOD.md).
+What levels of detail save along the camera path is measured on the fitted mesh by [`lod/lod_replay.py`](../../../launcher/tools/r3d/lod/lod_replay.py); see [plans/Cluster-LOD.md](../../plans/Cluster-LOD.md).
 
 ### Held-out error by object
 
