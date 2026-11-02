@@ -357,7 +357,7 @@ object and shape tables sum every part, so all of them are kept.
 | Object part | Triangles of one source object joined by welded positions; `name#k` when the object has several |
 | Path pixels, error share | The part's share of all held-out pixels and of their summed dE76; the sky is its own row |
 | Source, drawn triangles | Shares of the source, and of the fit's triangles charged to the nearest source triangle centre |
-| Planar | The part's source area faces its mean normal within `PLANAR_DEGREES`, all but `1 - PLANAR_AREA_SHARE` of it |
+| Planar | At least `PLANAR_AREA_SHARE` of the part's source area faces its mean normal within `PLANAR_DEGREES` |
 | Sheet triangles | The part's drawn triangles larger than `SHEET_GROWTH` times its median drawn triangle and turned over `SHEET_DEGREES` from their nearest source triangle |
 | repeat ×N | A rigid copy of a shape placed N times, matched over parts |
 | welded | Shares a position with another object |

@@ -235,7 +235,8 @@ unfiltered held-out references, every arm below loses.
 | start | the start remade with its vertex albedo read at the budget's mip or the material mean; locked references |
 
 Placement never reads the reference: the fit keeps its start's triangles and prunes them by pixel coverage. The
-start's simplifier reads lit vertex colour, but flattening the texture there moves its counts little.
+start's simplifier reads lit vertex colour, but flattening it there moves the budget-mip start's counts by about
+1%, and the mean-albedo start gains cobble triangles (+11%).
 
 ```mermaid
 flowchart LR
