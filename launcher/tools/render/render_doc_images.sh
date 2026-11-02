@@ -203,7 +203,8 @@ if [ "$AUDIO_ONLY" = 0 ]; then
 skin_asset=$("$PYTHON" launcher/tools/bake/bake.py path "$SKIN_BAKE") || exit 2
 # The demo object's lite mesh: a .mesh or a carved .bundle, whichever the scene bakes.
 lite_stem="$(basename "$DEMO_SCENE" .scene.toml).${DEMO_OBJECT}_lite"
-lite_output=$("$PYTHON" launcher/tools/bake/bake.py list "$DEMO_SCENE" --kind mesh |
+scene_bakes=$("$PYTHON" launcher/tools/bake/bake.py list "$DEMO_SCENE" --kind mesh) || exit 2
+lite_output=$(echo "$scene_bakes" |
     awk -F '\t' -v stem="$lite_stem" '{ name = $1; sub(/\.[^.]*$/, "", name) } name == stem { print $1 }')
 if [ -z "$lite_output" ] || [ "$(echo "$lite_output" | wc -l)" -ne 1 ]; then
     echo "$DEMO_SCENE bakes no single $lite_stem output: '$lite_output'" >&2
@@ -346,7 +347,7 @@ run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/contact_figures.py --out "$OUT
 # --orphans scans this runner: import-mesh-contact.png
 
 # The baked mesh's figures: the demo scene's lite mesh, its clusters and tree, and the clusterizer's build.
-run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/mesh_figures.py --mesh "$tree_mesh" --out "$OUT/render" \
+run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/mesh_figures.py --mesh "$tree_mesh" --rest "$lite_stem" --out "$OUT/render" \
     > "$WORK/mesh_figures.log" 2>&1
 # --orphans scans this runner: baked-mesh-tree.gif, baked-mesh-ranges.png, meshlet-build.gif
 
