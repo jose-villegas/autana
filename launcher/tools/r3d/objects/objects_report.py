@@ -190,6 +190,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if (args.fitted or args.cache or args.docs) and not args.held_out:
         parser.error('--fitted, --cache and --docs need --held-out')
+    if args.fitted and args.docs:
+        parser.error('--docs keeps the locked fit\'s rows and keys, so it does not take --fitted')
     out = args.out.resolve()
     if out.is_relative_to(REPO):
         parser.error('--out must be outside the repository')
