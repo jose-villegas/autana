@@ -1529,7 +1529,7 @@ def check_test_filter(data, suite, patterns):
     if complete.group("selected") is None:
         raise TestFilterError("this image predates --test - autana flash diag")
     if int(complete.group("unmatched")):
-        names = list(dict.fromkeys(re.findall(r"SUITE_TEST name=(\S+)", text)))
+        names = list(dict.fromkeys(re.findall(rf"SUITE_TEST name=({TEST_NAME})", text)))
         missed = [pattern for pattern in patterns if not any(test_matches(pattern, name) for name in names)]
         raise NoTestMatched(
             f"--test {','.join(missed or patterns)} matches no test of {suite}. Its tests:\n  " + "\n  ".join(names))
