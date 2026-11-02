@@ -57,6 +57,20 @@ class Tree:
         path.write_text(SCRIPT.format(area=area, needs=needs, outputs=tuple(outputs), run=("--out", "{out}", *names),
                                       colour=colour, extra=extra, prologue=prologue))
 
+    def each_csv(self, *stems, image="{item}.png"):
+        """data/<stem>.csv per stem, and launcher/a/one.py making fig/`image` once per csv."""
+        for number, stem in enumerate(stems, 1):
+            self.write(f"data/{stem}.csv", str(number))
+        self.producer("a/one.py", ["fig/" + image], [image], extra=', each="glob:data/*.csv"')
+
+    def each_bake(self, extra=""):
+        """launcher/a/one.py making fig/<item>.png once per *.fit.bundle bake."""
+        self.producer("a/one.py", ["fig/{item}.png"], ["{item}.png"], needs=("host", "bakes"),
+                      extra=', each="bakes:*.fit.bundle"' + extra)
+
+    def figures(self):
+        return sorted(path.name for path in (self.images / "fig").iterdir())
+
     def write(self, name, text):
         (self.root / name).parent.mkdir(parents=True, exist_ok=True)
         (self.root / name).write_text(text)
@@ -75,6 +89,23 @@ class Tree:
                 contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             code = figures_runner.main(list(argv))
         return code, out.getvalue(), err.getvalue()
+
+
+def drawn(*outputs):
+    """Bakes as bake.bakes() finds them, keyed k1, k2, ..."""
+    return [mock.Mock(output=output, suffix=pathlib.Path(output).suffix, key=f"k{number}")
+            for number, output in enumerate(outputs, 1)]
+
+
+@contextlib.contextmanager
+def baking(found, lock=None, **fetch):
+    """bake.bakes() finds `found`, the lock reads `lock` as it is now, and fetch_all is the yielded mock
+    (returning {} unless `fetch` sets it up)."""
+    from bake import bake
+    with mock.patch.object(bake, "bakes", return_value=found), \
+            mock.patch.object(bake, "read_lock", side_effect=lambda: {} if lock is None else lock), \
+            mock.patch.object(bake, "fetch_all", **(fetch or {"return_value": {}})) as fetched:
+        yield fetched
 
 
 class DeclarationTests(unittest.TestCase):
@@ -134,19 +165,20 @@ class DeclarationTests(unittest.TestCase):
                 producer.find(tree.root)
 
 
-class RunnerTests(unittest.TestCase):
+class TreeTest(unittest.TestCase):
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         self.tree = Tree(directory.name)
 
+
+class RunnerTests(TreeTest):
     def test_build_copies_what_each_producer_declares(self):
         self.tree.producer("a/one.py", ["fig/one.png"], ["one.png"])
         self.tree.producer("b/two.py", ["fig/two-*.png"], ["two-x.png", "two-y.png"])
         code, out, _ = self.tree.run("build")
         self.assertEqual(code, 0, out)
-        self.assertEqual(sorted(path.name for path in (self.tree.images / "fig").iterdir()),
-                         ["one.png", "two-x.png", "two-y.png"])
+        self.assertEqual(self.tree.figures(), ["one.png", "two-x.png", "two-y.png"])
 
     def test_check_reports_same_changed_new_and_orphan(self):
         self.tree.producer("a/one.py", ["fig/*.png"], ["same.png", "changed.png", "new.png"])
@@ -228,21 +260,18 @@ class RunnerTests(unittest.TestCase):
         self.tree.producer("b/two.py", ["fig/two.png"], ["two.png"], needs=("host", "gpu"))
         code, out, err = self.tree.run("build", "--needs", "host,bakes")
         self.assertEqual(code, 0, err)
-        self.assertEqual([path.name for path in (self.tree.images / "fig").iterdir()], ["one.png"])
+        self.assertEqual(self.tree.figures(), ["one.png"])
         self.assertEqual(self.tree.run("build", "--needs", "laser")[0], 2)
 
     def test_each_glob_runs_once_per_matching_file(self):
-        self.tree.write("data/x.csv", "1")
-        self.tree.write("data/y.csv", "2")
-        self.tree.producer("a/one.py", ["fig/{item}-error.png"], ["{item}-error.png"], extra=', each="glob:data/*.csv"')
+        self.tree.each_csv("x", "y", image="{item}-error.png")
         code, out, err = self.tree.run("build")
         self.assertEqual(code, 0, err)
-        self.assertEqual(sorted(path.name for path in (self.tree.images / "fig").iterdir()),
-                         ["x-error.png", "y-error.png"])
+        self.assertEqual(self.tree.figures(), ["x-error.png", "y-error.png"])
         self.assertIn("fig/x-error.png: launcher/a/one.py", self.tree.run("which", "fig/x-error.png")[1])
 
     def test_an_each_that_names_nothing_stops_everything_before_any_run(self):
-        self.tree.producer("a/one.py", ["fig/{item}.png"], ["{item}.png"], extra=', each="glob:data/*.csv"')
+        self.tree.each_csv()
         code, _, err = self.tree.run("build")
         self.assertEqual(code, 2)
         self.assertIn("launcher/a/one.py: each glob:data/*.csv names nothing", err)
@@ -250,21 +279,15 @@ class RunnerTests(unittest.TestCase):
 
     def test_each_bakes_runs_once_per_bake_and_a_missing_bake_stops_everything(self):
         from bake import bake
-        found = [mock.Mock(output="hall.fit.bundle", suffix=".bundle", key="k1"),
-                 mock.Mock(output="yard.fit.bundle", suffix=".bundle", key="k2"),
-                 mock.Mock(output="hall.mesh", suffix=".mesh", key="k3")]
-        self.tree.producer("a/one.py", ["fig/{item}.png"], ["{item}.png"], needs=("host", "bakes"),
-                           extra=', each="bakes:*.fit.bundle"')
-        with mock.patch.object(bake, "bakes", return_value=found), \
-                mock.patch.object(bake, "read_lock", return_value={}), \
-                mock.patch.object(bake, "fetch_all", return_value={}) as fetched:
+        found = drawn("hall.fit.bundle", "yard.fit.bundle", "hall.mesh")
+        self.tree.each_bake()
+        with baking(found) as fetched:
             code, _, err = self.tree.run("build")
             self.assertEqual(code, 0, err)
             self.assertEqual(fetched.call_args[0][0], found[:2])
             fetched.side_effect = bake.BakeMissing("yard.fit.bundle: not on the release")
             code, _, err = self.tree.run("build")
-        self.assertEqual(sorted(path.name for path in (self.tree.images / "fig").iterdir()),
-                         ["hall.fit.png", "yard.fit.png"])
+        self.assertEqual(self.tree.figures(), ["hall.fit.png", "yard.fit.png"])
         self.assertEqual(code, 2)
         self.assertIn("yard.fit.bundle: not on the release", err)
 
@@ -343,16 +366,14 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(self.changed()[:2], ["unchanged launcher/a/one.py", "unchanged launcher/b/two.py"])
 
     def test_a_new_item_of_an_each_glob_runs_while_its_siblings_are_skipped(self):
-        self.tree.write("data/x.csv", "1")
-        self.tree.write("data/y.csv", "2")
-        self.tree.producer("a/one.py", ["fig/{item}.png"], ["{item}.png"], extra=', each="glob:data/*.csv"')
+        self.tree.each_csv("x", "y")
         self.assertEqual(self.tree.run("build")[0], 0)
         (self.tree.images / "fig/y.png").unlink()
         self.tree.write("data/z.csv", "3")
         lines = self.changed()
         self.assertEqual(lines[:2], ["unchanged launcher/a/one.py[x]", "unchanged launcher/a/one.py[y]"])
         self.assertEqual(len(lines), 3, lines)
-        self.assertEqual(sorted(path.name for path in (self.tree.images / "fig").iterdir()), ["x.png", "z.png"])
+        self.assertEqual(self.tree.figures(), ["x.png", "z.png"])
 
     def test_check_records_only_runs_whose_images_were_same(self):
         self.tree.producer("a/one.py", ["fig/one.png"], ["one.png"])
@@ -364,9 +385,7 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("unchanged launcher/a/one.py", self.tree.run("check", "--changed")[1])
 
     def test_an_image_whose_item_is_gone_is_an_orphan_while_the_rest_are_unchanged(self):
-        self.tree.write("data/x.csv", "1")
-        self.tree.write("data/y.csv", "2")
-        self.tree.producer("a/one.py", ["fig/{item}.png"], ["{item}.png"], extra=', each="glob:data/*.csv"')
+        self.tree.each_csv("x", "y")
         self.assertEqual(self.tree.run("build")[0], 0)
         (self.tree.root / "data/y.csv").unlink()
         code, out, _ = self.tree.run("check", "--changed")
@@ -384,9 +403,7 @@ class RunnerTests(unittest.TestCase):
         self.assertNotIn("unchanged launcher/a/one.py", out.splitlines())
 
     def test_check_records_the_same_item_of_an_each_and_not_the_changed_one(self):
-        self.tree.write("data/x.csv", "1")
-        self.tree.write("data/y.csv", "2")
-        self.tree.producer("a/one.py", ["fig/{item}.png"], ["{item}.png"], extra=', each="glob:data/*.csv"')
+        self.tree.each_csv("x", "y")
         self.tree.commit("fig/x.png", "red")
         self.tree.commit("fig/y.png", "blue")
         self.assertEqual(self.tree.run("check", "--changed")[0], 1)
@@ -395,9 +412,7 @@ class RunnerTests(unittest.TestCase):
         self.assertNotIn("unchanged launcher/a/one.py[y]", lines)
 
     def test_an_image_of_a_removed_item_is_an_orphan_when_every_run_is_skipped(self):
-        self.tree.write("data/x.csv", "1")
-        self.tree.write("data/y.csv", "2")
-        self.tree.producer("a/one.py", ["fig/{item}.png"], ["{item}.png"], extra=', each="glob:data/*.csv"')
+        self.tree.each_csv("x", "y")
         self.assertEqual(self.tree.run("build")[0], 0)
         (self.tree.root / "data/y.csv").unlink()
         self.assertEqual(self.tree.run("check", "--changed")[0], 1)
@@ -405,25 +420,15 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("orphan fig/y.png: launcher/a/one.py no longer makes it", self.tree.run("check", "--changed")[1])
 
     def test_a_skipped_items_declared_image_is_no_orphan(self):
-        self.tree.write("data/x.csv", "1")
-        self.tree.write("data/y.csv", "2")
-        self.tree.producer("a/one.py", ["fig/{item}.png"], ["{item}.png"], extra=', each="glob:data/*.csv"')
+        self.tree.each_csv("x", "y")
         self.assertEqual(self.tree.run("build")[0], 0)
         code, out, _ = self.tree.run("check", "--changed")
         self.assertEqual((code, out.splitlines()), (0, ["unchanged launcher/a/one.py[x]", "unchanged launcher/a/one.py[y]"]))
 
     def baked(self, lock):
         """Two bakes drawn by an each="bakes:" producer, built once under `lock` ({key: row}, changed by the test)."""
-        from bake import bake
-        found = [mock.Mock(output="hall.fit.bundle", suffix=".bundle", key="k1"),
-                 mock.Mock(output="yard.fit.bundle", suffix=".bundle", key="k2")]
-        self.tree.producer("a/one.py", ["fig/{item}.png"], ["{item}.png"], needs=("host", "bakes"),
-                           extra=', each="bakes:*.fit.bundle"')
-        for patched in (mock.patch.object(bake, "bakes", return_value=found),
-                        mock.patch.object(bake, "read_lock", side_effect=lambda: lock),
-                        mock.patch.object(bake, "fetch_all", return_value={})):
-            patched.start()
-            self.addCleanup(patched.stop)
+        self.tree.each_bake()
+        self.enterContext(baking(drawn("hall.fit.bundle", "yard.fit.bundle"), lock))
         self.assertEqual(self.tree.run("build")[0], 0)
 
     def test_changing_one_bakes_lock_row_reruns_only_that_item(self):
@@ -444,12 +449,8 @@ class RunnerTests(unittest.TestCase):
 
     def test_a_failed_bake_fetch_and_a_missing_reads_file_are_both_reported_and_nothing_runs(self):
         from bake import bake
-        found = [mock.Mock(output="hall.fit.bundle", suffix=".bundle", key="k1")]
-        self.tree.producer("a/one.py", ["fig/{item}.png"], ["{item}.png"], needs=("host", "bakes"),
-                           extra=', each="bakes:*.fit.bundle", reads=("data/*.csv",)')
-        with mock.patch.object(bake, "bakes", return_value=found), \
-                mock.patch.object(bake, "read_lock", return_value={}), \
-                mock.patch.object(bake, "fetch_all", side_effect=bake.BakeMissing("hall.fit.bundle: not on the release")):
+        self.tree.each_bake(', reads=("data/*.csv",)')
+        with baking(drawn("hall.fit.bundle"), side_effect=bake.BakeMissing("hall.fit.bundle: not on the release")):
             code, _, err = self.tree.run("build")
         self.assertEqual(code, 2)
         self.assertIn("hall.fit.bundle: not on the release", err)
@@ -467,9 +468,9 @@ class RunnerTests(unittest.TestCase):
         self.tree.producer("a/one.py", ["fig/one.png"], ["one.png"], needs=("host", "bakes"))
         self.tree.producer("b/two.py", ["fig/two.png"], ["two.png"])
         self.assertEqual(self.tree.run("build", "--needs", "host")[0], 0)
-        self.assertEqual([path.name for path in (self.tree.images / "fig").iterdir()], ["two.png"])
+        self.assertEqual(self.tree.figures(), ["two.png"])
         self.assertEqual(self.tree.run("build", "--needs", "host,bakes")[0], 0)
-        self.assertEqual(sorted(path.name for path in (self.tree.images / "fig").iterdir()), ["one.png", "two.png"])
+        self.assertEqual(self.tree.figures(), ["one.png", "two.png"])
 
     def test_two_glob_files_of_one_stem_stop_everything(self):
         self.tree.write("data/a/x.csv", "1")
@@ -518,13 +519,8 @@ if (marks / {other!r}).exists():
         self.assertEqual(self.met(), ["gpu-met", "host-met"])
 
 
-class RecordTests(unittest.TestCase):
+class RecordTests(TreeTest):
     """What a record vouches for: docs/images/ holds what the run's inputs make, orphans included."""
-
-    def setUp(self):
-        directory = tempfile.TemporaryDirectory()
-        self.addCleanup(directory.cleanup)
-        self.tree = Tree(directory.name)
 
     def test_an_orphan_keeps_the_run_that_claims_it_unrecorded(self):
         self.tree.producer("a/one.py", ["fig/*.png"], ["a.png"])
@@ -544,12 +540,10 @@ class RecordTests(unittest.TestCase):
         self.assertNotIn("unchanged launcher/a/one.py", out.splitlines())
 
     def test_items_that_read_alike_once_cleaned_run_in_their_own_folders(self):
-        self.tree.write("data/a+b.csv", "1")
-        self.tree.write("data/a b.csv", "2")
-        self.tree.producer("a/one.py", ["fig/{item}.png"], ["{item}.png"], extra=', each="glob:data/*.csv"')
+        self.tree.each_csv("a+b", "a b")
         code, _, err = self.tree.run("build", "--jobs", "2")
         self.assertEqual(code, 0, err)
-        self.assertEqual(sorted(path.name for path in (self.tree.images / "fig").iterdir()), ["a b.png", "a+b.png"])
+        self.assertEqual(self.tree.figures(), ["a b.png", "a+b.png"])
 
     def test_a_run_given_cc_that_lists_no_compiled_c_fails(self):
         # The fixture writes each argument after --out as an image, so the compiler {cc} names is the image.
