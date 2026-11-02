@@ -674,7 +674,8 @@ class ObjectErrorTests(unittest.TestCase):
 
     def test_a_drawn_triangle_goes_to_the_source_nearest_its_centre(self):
         # The drawn triangle's first corner sits on source triangle 0, its centre on source triangle 1.
-        source = np.array([[0., 0., 0.], [1., 0., 0.], [0., 0., 1.], [10., 0., 0.], [11., 0., 0.], [10., 0., 1.]])
+        unit = np.array([[0., 0., 0.], [1., 0., 0.], [0., 0., 1.]])
+        source = np.concatenate([unit, unit + [10., 0., 0.]])
         drawn = np.array([[0., 0., 0.], [16., 0., 0.], [16., 0., 1.]])
         np.testing.assert_array_equal(nearest_source(source, np.array([[0, 1, 2], [3, 4, 5]]), drawn,
                                                      np.array([[0, 1, 2]])), [1])
