@@ -330,8 +330,8 @@ def figure(rows, path, title, top=FIGURE_ROWS):
     plot_style.style_axes(ax, title)
     sheets = np.array([row["sheet_triangles"] for row in shown])
     rest = np.array([row["drawn_triangles"] for row in shown]) - sheets
-    drawn.barh(index, rest, plot_style.BAR_HEIGHT, color=plot_style.SLOTS[0], label="Drawn triangles")
-    drawn.barh(index, sheets, plot_style.BAR_HEIGHT, left=rest, color=plot_style.SLOTS[1], label="Sheet triangles")
+    drawn.barh(index, rest, plot_style.BAR_HEIGHT, color=plot_style.SLOTS[2], label="Other drawn triangles")
+    drawn.barh(index, sheets, plot_style.BAR_HEIGHT, left=rest, color=plot_style.SLOTS[6], label="Sheet triangles")
     drawn.set_yticks(index, [""] * len(shown))
     drawn.invert_yaxis()
     drawn.set(xlabel="Triangles drawn on the part (* planar part)", xlim=(0, None))
