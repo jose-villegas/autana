@@ -14,11 +14,10 @@ with or without that prefix) and the command that makes it.
 build and check select every producer, those of one area, or the named
 scripts. Before running any, they check what the selection needs: Pillow,
 numpy and matplotlib, a C compiler when a `run` uses {cc}, and a file for
-each `reads` pattern;
-every problem is printed at once and nothing runs. The producers then run in
-parallel, each into its own folder with its own log under
-launcher/tools/results/doc_images/work/figures/. A producer that fails, leaves
-out a declared image or writes one it does not declare stops the run.
+each `reads` pattern; every problem is printed at once and nothing runs. The
+producers then run in parallel, each into its own folder with its own log
+under launcher/tools/results/doc_images/work/figures/. A producer that fails,
+leaves out a declared image or writes one it does not declare stops the run.
 
 build copies the images into docs/images/, or into DIR with --into. check
 compares each with the committed image by decoded pixels (compare_images.py)
@@ -27,8 +26,7 @@ or "orphan IMAGE: SCRIPT no longer makes it" for a committed image one of a
 producer's globs claims but its run did not make.
 
 Exit status: 0 done (check: nothing changed), 1 check found a change or an
-orphan, 2 the
-images could not be made or compared.
+orphan, 2 the images could not be made or compared.
 """
 import argparse
 import concurrent.futures
