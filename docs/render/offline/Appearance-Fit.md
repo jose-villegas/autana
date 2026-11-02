@@ -221,6 +221,50 @@ flowchart LR
 [Bake-Quality.md](Bake-Quality.md#the-demo-variants) compares a flat bake
 with its flat fit.
 
+## Fitting-friendly references: tried and dropped
+
+Without textures, texture detail must be carried by vertex colour, which raised a question: does that detail spend
+triangles on planar faces? The test fitted against references whose texture was flattened to what the budget's
+triangle can hold, and scored the result against the unfiltered held-out references.
+
+| Arm | What changes |
+|---|---|
+| a-trous | the traced training pictures filtered by edge-avoiding à-trous passes<sup>[[110]](../../Citations.md#dammertz-2010)</sup>, stopped at part borders, creases and off-plane taps |
+| budget mip | the training pictures re-traced with each texture read at the mip whose texel spans the budget's triangle |
+| texture mean | re-traced with each texture flattened to its mean |
+| start | the start remade with its vertex albedo read at the budget's mip or the material mean; locked references |
+
+Every arm lost. Triangle counts barely moved, because placement never reads the reference: the fit keeps its
+start's triangles and prunes by pixel coverage. The start's simplifier does read vertex colour, but flattening the
+texture there moves its counts by about 1%. So planar triangles come from geometry and lighting in that pass and
+from the coverage prune.
+
+```mermaid
+flowchart LR
+    S["simplify.py<br/>geometry + lit vertex colour"] --> T["start"]
+    T --> F["fit: positions<br/>and colours"]
+    R["references"] --> F
+    F --> P["prune by<br/>pixel coverage"]
+```
+
+| Bistro street fit | Held-out ΔE76 mean / p95 | Cobble triangles | Planar-part triangles | Sheets |
+|---|---:|---:|---:|---:|
+| locked bake | 6.364 / 19.01 | 652 | 1397 | 384 |
+| refit of the locked references (fit noise) | 6.373 / 19.02 | | | |
+| a-trous | 7.074 / 20.71 | 667 | 1400 | 416 |
+| budget mip | 6.652 / 20.13 | 657 | 1360 | 408 |
+| texture mean | 6.630 / 19.79 | 658 | 1355 | 419 |
+| start, budget mip albedo (unfitted, vs 14.20) | 14.22 | 1110 vs 1125 | 2136 vs 2149 | 932 vs 939 |
+| start, mean albedo (unfitted, vs 14.20) | 14.75 | 1244 vs 1125 | 2216 vs 2149 | 924 vs 939 |
+
+The Sponza atrium fit scored 5.390, 5.374 on refit and 6.920 with a-trous. Its budget-mip fit grew over the
+copies, and the copy check refused it. Triangle counts are `objects_report.py --held-out`'s planar and sheet columns.
+
+![Bistro held-out frames 17 and 18, each arm against the reference](../../images/render/friendly-reference-bistro.png)
+![Sponza held-out frames, each arm against the reference](../../images/render/friendly-reference-sponza.png)
+
+The arms' code, a tool beside the fit stage, is at commit `925f40338`.
+
 ## Against the paper
 
 The fit keeps the paper's<sup>[[1]](../../Citations.md#hasselgren-2021)</sup> method: a decimated start with
