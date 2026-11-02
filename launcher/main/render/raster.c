@@ -70,8 +70,20 @@ typedef struct {
     r3d_span_target_t* target;
 } slice_t;
 
+/* The picture's lens at one position scale, so instances that share it pay
+ * only their placement: raster_lens(), or the picture's unfitted when `fitted`
+ * is false. */
+typedef struct {
+    const raster_t* raster;
+    const render_view_t* view;
+    bool fitted;
+    int position_scale; /* that of `lens`; 0 before the first */
+    r3d_lens_t lens;
+} picture_lens_t;
+
 typedef struct {
     batch_t batch;
+    picture_lens_t picture; /* the draw's, kept here so it is off the stack the slices run on */
     slice_t mine, other;
     r3d_span_target_t targets[2];
     r3d_span_small_fill_t small_fill;
@@ -288,20 +300,13 @@ raster_lens(const raster_t* raster, const render_view_t* view, int position_scal
     r3d_lens_fit(lens, raster->width, raster->height);
 }
 
-/* The picture's lens at one position scale, so instances that share it pay
- * only their placement: raster_lens(), or the picture's unfitted when `fitted`
- * is false. */
-typedef struct {
-    const raster_t* raster;
-    const render_view_t* view;
-    bool fitted;
-    int position_scale; /* that of `lens`; 0 before the first */
-    r3d_lens_t lens;
-} picture_lens_t;
-
-static picture_lens_t
-picture_lens(const raster_t* raster, const render_view_t* view, bool fitted) {
-    return (picture_lens_t){.raster = raster, .view = view, .fitted = fitted};
+/* Set in place: a returned copy would be a temporary on the draw's stack. */
+static void
+picture_lens_init(picture_lens_t* picture, const raster_t* raster, const render_view_t* view, bool fitted) {
+    picture->raster = raster;
+    picture->view = view;
+    picture->fitted = fitted;
+    picture->position_scale = 0;
 }
 
 static const r3d_lens_t*
@@ -381,7 +386,8 @@ cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, r
                draw_work_t* work) {
     uint16_t* culled = work->buffers.culled;
     r3d_depth_fit_t fit = {view->lens.near_z, INFINITY};
-    picture_lens_t picture = picture_lens(raster, view, fitted);
+    picture_lens_t picture;
+    picture_lens_init(&picture, raster, view, fitted);
     planef_t world[PLANE_FRUSTUM_COUNT];
     r3d_lens_frustum(picture_lens_at(&picture, 1), world);
     const vec3f_t eye = view->position;
@@ -507,7 +513,8 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     assert(*work->buffers.depth_near >= view->lens.near_z);
     uint16_t* culled = work->buffers.culled;
     batch_t* batch = &work->batch;
-    picture_lens_t picture = picture_lens(raster, view, true);
+    picture_lens_t* picture = &work->picture;
+    picture_lens_init(picture, raster, view, true);
     for (int first = 0, index = 0; first < raster->instance_count; index++) {
         const int end = raster_batch_end(raster, first);
         int vertices = 0;
@@ -522,7 +529,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
             if (culled[0] > 0) {
                 batch->count++;
                 item->mesh = mesh;
-                instance_lens(&picture, instance, &item->lens);
+                instance_lens(picture, instance, &item->lens);
                 r3d_lens_set_depth_near(&item->lens, *work->buffers.depth_near);
                 item->visible = culled + 1;
                 item->visible_count = culled[0];
