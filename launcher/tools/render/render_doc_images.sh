@@ -199,6 +199,18 @@ run rm -rf "$WORK" "$OUT"
 run mkdir -p "$WORK" "$OUT/overview" "$OUT/ui"
 
 if [ "$AUDIO_ONLY" = 0 ]; then
+# The cached bakes the figures draw, fetched first so a renamed output fails here, not after the renders.
+skin_asset=$("$PYTHON" launcher/tools/bake/bake.py path "$SKIN_BAKE") || exit 2
+# The demo object's lite mesh: a .mesh or a carved .bundle, whichever the scene bakes.
+lite_stem="$(basename "$DEMO_SCENE" .scene.toml).${DEMO_OBJECT}_lite"
+lite_output=$("$PYTHON" launcher/tools/bake/bake.py list "$DEMO_SCENE" --kind mesh |
+    awk -F '\t' -v stem="$lite_stem" '{ name = $1; sub(/\.[^.]*$/, "", name) } name == stem { print $1 }')
+if [ -z "$lite_output" ] || [ "$(echo "$lite_output" | wc -l)" -ne 1 ]; then
+    echo "$DEMO_SCENE bakes no single $lite_stem output: '$lite_output'" >&2
+    exit 2
+fi
+tree_mesh=$("$PYTHON" launcher/tools/bake/bake.py path "$lite_output") || exit 2
+
 # The launcher lists the release build's apps, read from the tree.
 L=$WORK/launcher_home
 run sh launcher/tools/render/scenes/launcher_home_render_host.sh -o "$L" > "$WORK/launcher_home.log"
@@ -312,7 +324,6 @@ run "$PYTHON" launcher/tools/power/power_budget_doc.py --figures "$OUT/power" > 
 
 # The skeleton and skin figures: the demo rig over one clip, and a limb through the skinning kernel.
 run mkdir -p "$OUT/render" "$OUT/tables"
-skin_asset=$("$PYTHON" launcher/tools/bake/bake.py path "$SKIN_BAKE") || exit 2
 run "$PYTHON" launcher/tools/r3d/skin/skin_sheet.py "$skin_asset" "$OUT/render" "$OUT/tables" \
     --sheet "$SKIN_CLIP" > "$WORK/skin_sheet.log"
 run "$PYTHON" launcher/tools/r3d/skin/skin_figures.py --cc "$cc" --out "$OUT/render/skin-limb.png" \
@@ -335,7 +346,6 @@ run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/contact_figures.py --out "$OUT
 # --orphans scans this runner: import-mesh-contact.png
 
 # The baked mesh's figures: the demo scene's lite mesh, its clusters and tree, and the clusterizer's build.
-tree_mesh=$("$PYTHON" launcher/tools/bake/bake.py path "$(basename "$DEMO_SCENE" .scene.toml).${DEMO_OBJECT}_lite.mesh") || exit 2
 run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/mesh_figures.py --mesh "$tree_mesh" --out "$OUT/render" \
     > "$WORK/mesh_figures.log" 2>&1
 # --orphans scans this runner: baked-mesh-tree.gif, baked-mesh-ranges.png, meshlet-build.gif
