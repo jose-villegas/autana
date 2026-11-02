@@ -146,16 +146,18 @@ def rows_for(parts, shapes, totals):
             copies[instance.object_name] = len(shape.instances)
     total_pixels, total_error = pixels.sum(), error.sum()
     total_source, total_drawn = parts.source_triangles.sum(), parts.drawn_triangles.sum()
+    # A perfect match has no error to share: every share is then 0.
+    error_scale = total_error or 1.0
     seen = np.flatnonzero(pixels[:count])
     rows = [dict(object=SKY, source_object=SKY, material="", pixel_share=pixels[count] / total_pixels,
-                 error_share=error[count] / total_error, mean_delta_e=error[count] / max(pixels[count], 1),
+                 error_share=error[count] / error_scale, mean_delta_e=error[count] / max(pixels[count], 1),
                  source_triangles=0, source_share=0.0, drawn_triangles=0, drawn_share=0.0, shape=-1, copies=0,
                  parts_of_object=0, welded=False, segment=False)]
     for part in seen:
         name = parts.names[part]
         rows.append(dict(
             object=name, source_object=parts.objects[part], material=parts.materials[part],
-            pixel_share=pixels[part] / total_pixels, error_share=error[part] / total_error,
+            pixel_share=pixels[part] / total_pixels, error_share=error[part] / error_scale,
             mean_delta_e=error[part] / pixels[part], source_triangles=int(parts.source_triangles[part]),
             source_share=parts.source_triangles[part] / total_source,
             drawn_triangles=int(parts.drawn_triangles[part]),

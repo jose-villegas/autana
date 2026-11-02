@@ -649,6 +649,10 @@ class ObjectErrorTests(unittest.TestCase):
         # Six pixels: two show a#0, three b, one the sky; no pixel shows a#1, so its drawn triangles are unseen.
         ids = np.array([0, 0, 2, 2, 2, -1])
         error = np.array([1., 1., 6., 6., 6., 4.])
+        # A perfect match has no error to share: every share is 0, not NaN.
+        perfect, perfect_score, _ = rows_for(parts, shapes, {0: (ids, np.zeros(len(ids)))})
+        self.assertEqual(perfect_score, 0.0)
+        self.assertEqual([row['error_share'] for row in perfect], [0.0] * len(perfect))
         rows, score, unseen = rows_for(parts, shapes, {0: (ids, error)})
         self.assertAlmostEqual(score, error.mean())
         self.assertAlmostEqual(unseen, 2 / 8)
