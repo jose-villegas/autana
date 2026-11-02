@@ -247,7 +247,7 @@ static void
 pose_copies(mat4f_t models[COPIES]) {
     for (int i = 0; i < COPIES; i++) {
         const int column = i % COPIES_PER_ROW, row = i / COPIES_PER_ROW;
-        transformf_t pose = TRANSFORMF_IDENTITY;
+        transformf_t pose = transformf_identity();
         transformf_set_position(&pose, (vec3f_t){(float)(column - (COPIES_PER_ROW / 2)) * 2.7F, (float)(row % 3) - 1.0F,
                                                  (float)row * 5.5F - 13.0F});
         const float half_angle = (float)i * 0.37F;
@@ -362,7 +362,7 @@ test_a_world_box_straddling_a_plane_keeps_the_instance_and_its_pixels(void) {
     } EDGES[] = {{"right", 10.0F, 0.0F}, {"left", -10.0F, 0.0F}, {"top", 0.0F, 10.0F}, {"bottom", 0.0F, -10.0F}};
 
     for (size_t i = 0; i < sizeof EDGES / sizeof EDGES[0]; i++) {
-        transformf_t pose = TRANSFORMF_IDENTITY;
+        transformf_t pose = transformf_identity();
         transformf_set_position(&pose, (vec3f_t){EDGES[i].x, EDGES[i].y, 0.0F});
         const mat4f_t model = transformf_compute_matrix(&pose);
         const box3f_t box = r3d_lit_mesh_world_bounds(&red.mesh, &model);
@@ -432,7 +432,7 @@ static void
 test_a_world_box_through_a_model_holds_every_transformed_corner(void) {
     quad_t q;
     make_quad(&q, 255, 0, 0, 3);
-    transformf_t pose = TRANSFORMF_IDENTITY;
+    transformf_t pose = transformf_identity();
     const float half_angle = 0.39269908F /* an eighth of pi */;
     transformf_set_rotation(&pose, (quatf_t){0.0F, 0.0F, sinf(half_angle), cosf(half_angle)});
     transformf_set_scale(&pose, (vec3f_t){2.0F, 2.0F, 2.0F});

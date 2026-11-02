@@ -2143,7 +2143,7 @@ assert_box(box3f_t box, vec3f_t lo, vec3f_t hi) {
 
 static void
 move_to(scene_t* scene, const char* name, float x, float y) {
-    transformf_t pose = TRANSFORMF_IDENTITY;
+    transformf_t pose = transformf_identity();
     transformf_set_position(&pose, (vec3f_t){x, y, 0});
     scene_entity_set_local(scene, scene_find(scene, name_hash(name)), pose);
 }
