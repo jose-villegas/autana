@@ -5,7 +5,8 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "math"))
-from math_figures import PANEL_SIZE, PANEL_TITLE_ROOM, SHAPE_ALPHA, probe_into_folder
+from math_figures import PANEL_SIZE, PANEL_TITLE_ROOM, SHAPE_ALPHA
+from docs.figures import probe_into_folder
 from docs.plot_style import INK, LABEL_SIZE, SLOTS, TITLE_SIZE, save, save_gif, subplots, GIF_FRAMES, GIF_FPS
 import numpy as np
 

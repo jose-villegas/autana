@@ -4,12 +4,16 @@ import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from math_figures import PANEL_SIZE, PANEL_TITLE_ROOM, ROOT, probe_into_folder
+from math_figures import PANEL_SIZE, PANEL_TITLE_ROOM, ROOT
+from docs.figures import probe_into_folder
+from docs.producer import Producer
 from docs.plot_style import GIF_FRAMES, GIF_FPS, FAINT, LABEL_SIZE, SLOTS, save, save_gif, subplots
 import numpy as np
 
 PROBE = pathlib.Path(__file__).with_name("signal_figures_probe.c")
 SOURCES = (PROBE, *(ROOT / "launcher/packages/math/src/signal" / name for name in ("goertzel.c", "pitch.c")))
+PRODUCER = Producer(area="math", needs="host", run=("--cc", "{cc}", "--out", "{out}/math"),
+                    outputs=("math/goertzel-response.png", "math/goertzel-sweep.gif", "math/pitch-curve.png"))
 PANELS = 2
 AMPLITUDE_MAX = 1.1
 REFERENCE_ALPHA = 0.6

@@ -19,7 +19,8 @@ autana docs --ask can an app call vTaskDelay inside frame     # a written answer
 
 ## Commands
 
-`autana help docs` lists the same commands.
+`autana help docs` lists the same commands. `autana figures` builds and checks the
+docs' generated images; [Doc-Figures.md](../tools/Doc-Figures.md) explains it.
 
 <!-- generated: cli-docs check: python scripts/autana/cli_reference.py --check -->
 | Command | What it does |
@@ -28,6 +29,10 @@ autana docs --ask can an app call vTaskDelay inside frame     # a written answer
 | `autana docs --section <path:line>` | one section whole, or path#heading words; --deep adds subsections |
 | `autana docs --outline <path>` | a document's headings, with lines and sizes |
 | `autana docs --ask <question...>` | a short answer from the local chat model |
+| `autana figures list [--area AREA] [--outputs]` | the doc-image producers, or every image they declare |
+| `autana figures which <image...>` | the producer that makes an image, and its command |
+| `autana figures build [--area AREA] [script...] [--into DIR]` | make the images into docs/images/, producers in parallel |
+| `autana figures check [--area AREA] [script...]` | make them and compare with the committed images by pixels |
 <!-- /generated: cli-docs -->
 
 ## What it reads

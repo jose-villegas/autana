@@ -27,6 +27,7 @@ The rest of this index lists the repository's checks and tools.
 | [Frame-Cost.md](Frame-Cost.md) | Measuring named stages of the frame loop and reading their console report. |
 | [Console-Framing.md](Console-Framing.md) | How the device frames a block of data between begin and end lines on the console, and how a host script decodes it. |
 | [Process-Trees.md](Process-Trees.md) | Starting and stopping a command as one process tree on Windows and POSIX, so no child outlives its parent. |
+| [Doc-Figures.md](Doc-Figures.md) | Doc-image producers: declaring what a script makes, and `autana figures` to list, find, build and check them. |
 | [Render-Harness.md](Render-Harness.md) | Rendering real firmware screens on a host: declaring a scene, what its pixels are pinned to, video output, the QEMU backend, and diffing against a device capture. |
 | [Pull-Requests.md](Pull-Requests.md) | The pull request description layout, the scaffold that fills its table from the branch, and its check. |
 | [Citing-Sources.md](Citing-Sources.md) | Citing a paper or specification from a document or code: entry keys, shown numbers, "cited by" lists, and the check that rewrites them. |
