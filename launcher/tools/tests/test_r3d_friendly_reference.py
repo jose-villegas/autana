@@ -4,6 +4,7 @@ the affordable triangle's mip level or its mean. Needs NumPy."""
 
 import pathlib
 import sys
+import tempfile
 import unittest
 from types import SimpleNamespace
 
@@ -12,7 +13,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 try:
     import numpy as np
     from r3d.fit.footprint import affordable_area, mip_levels
-    from r3d.fit.friendly_reference import ATROUS_LEVELS, PLANE_SIGMA, Guide, atrous, passes_for, shade
+    from r3d.fit.friendly_reference import ATROUS_LEVELS, PLANE_SIGMA, Guide, atrous, make_start, passes_for, shade
 except ImportError:
     np = None
 
@@ -128,6 +129,43 @@ class ShaderTests(unittest.TestCase):
         shade(source, "average", 1.0)
         [level] = source.textures[0].levels
         np.testing.assert_allclose(level.reshape(-1), mean)
+
+
+@unittest.skipIf(np is None, "needs NumPy")
+class StartTests(unittest.TestCase):
+    AREA = 16.0
+    START = SimpleNamespace(job=SimpleNamespace(asset_name="rest", settings=SimpleNamespace(meshes=[])), scene=None,
+                            output="street.start.mesh", suffix=".mesh")
+
+    def setUp(self):
+        from r3d import mesh_import
+
+        self.module, self.seen = mesh_import, []
+        saved = mesh_import.albedo_at, mesh_import.write_baked
+        self.addCleanup(lambda: setattr(mesh_import, "albedo_at", saved[0]))
+        self.addCleanup(lambda: setattr(mesh_import, "write_baked", saved[1]))
+        self.reader = lambda src, points, spacing, material: self.seen.append(spacing)
+        mesh_import.albedo_at = self.reader
+        mesh_import.write_baked = lambda job, scene, out, name: mesh_import.albedo_at(None, None, self.spacing, 0)
+
+    def make(self, mode, spacing):
+        """The spacing the start's albedo read took, given the vertices' own `spacing`, and the start's path."""
+        self.spacing, self.seen = spacing, []
+        with tempfile.TemporaryDirectory() as work:
+            path = make_start(self.START, mode, self.AREA, pathlib.Path(work) / "start")
+        return self.seen[0], path
+
+    def test_the_start_reads_albedo_no_finer_than_its_mode(self):
+        edge = np.sqrt(self.AREA)
+        seen, path = self.make("start-budget", np.array([edge / 2, edge * 2]))
+        np.testing.assert_array_equal(seen, [edge, edge * 2])
+        self.assertEqual(path.name, self.START.output)
+        seen, _ = self.make("start-average", np.array([edge / 2, edge * 2]))
+        self.assertTrue(np.all(np.isinf(seen)))
+
+    def test_the_mesh_import_reads_as_before_afterwards(self):
+        self.make("start-budget", np.ones(2))
+        self.assertIs(self.module.albedo_at, self.reader)
 
 
 if __name__ == "__main__":
