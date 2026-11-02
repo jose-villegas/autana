@@ -20,15 +20,14 @@ scene_shell_compose(uint32_t dt_ms) {
     }
     gfx_color_t* full = gfx_mode_has_framebuffer(gfx_mode_current()) ? gfx_framebuffer() : NULL;
     const bool overlay = render_context_has_overlay(render_context_main());
-    const bool blended = render_context_upscale_filter(render_context_main()) == UPSCALE_FILTER_SURFACE;
+    const upscale_filter_t filter = render_context_upscale_filter(render_context_main());
+    const gfx_expand_t expand = filter == UPSCALE_FILTER_SURFACE ? GFX_EXPAND_BLENDED
+                                : filter == UPSCALE_FILTER_EDGES ? GFX_EXPAND_CORNERS
+                                                                 : GFX_EXPAND_NEAREST;
     const scene_target_t target = {full, GFX_WIDTH, GFX_HEIGHT, overlay ? NULL : gfx_half_picture(),
-                                   overlay || !blended ? NULL : gfx_half_seams()};
+                                   overlay || expand == GFX_EXPAND_NEAREST ? NULL : gfx_half_hints()};
     if (scene_compose(dt_ms, display_quarter_now(), &target)) {
-        if (blended) {
-            gfx_expand_frame_blended();
-        } else {
-            gfx_expand_frame();
-        }
+        gfx_expand_frame_filtered(expand);
     } else if (target.pixels != NULL) {
         gfx_mark_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT);
         render_context_overlay(render_context_main(), GFX_WIDTH, GFX_HEIGHT);

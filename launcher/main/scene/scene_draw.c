@@ -144,7 +144,7 @@ scene_compose(uint32_t dt_ms, int quarter, const scene_target_t* target) {
     }
     if (rendered && target->pixels != NULL) {
         expanded =
-            render_context_compose(render_context_main(), target->pixels, target->half_pixels, target->half_seams);
+            render_context_compose(render_context_main(), target->pixels, target->half_pixels, target->half_hints);
     }
     rendered = false;
     stepped = false;

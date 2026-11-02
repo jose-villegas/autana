@@ -142,9 +142,10 @@ test_upscale_menu_choice_sets_the_context_filter(void) {
     fixture();
     int count = 0;
     const char* const* names = render_lab_upscale_names(&count);
-    TEST_ASSERT_EQUAL_INT(UPSCALE_FILTER_SURFACE + 1, count);
+    TEST_ASSERT_EQUAL_INT(UPSCALE_FILTER_EDGES + 1, count);
     TEST_ASSERT_EQUAL_STRING("SHARP", names[UPSCALE_FILTER_NEAREST]);
     TEST_ASSERT_EQUAL_STRING("SMOOTH", names[UPSCALE_FILTER_SURFACE]);
+    TEST_ASSERT_EQUAL_STRING("EDGES", names[UPSCALE_FILTER_EDGES]);
     TEST_ASSERT_EQUAL_INT(UPSCALE_FILTER_NEAREST, render_lab_upscale_selected());
 
     TEST_ASSERT_TRUE(render_lab_upscale_select(UPSCALE_FILTER_SURFACE));
@@ -152,6 +153,9 @@ test_upscale_menu_choice_sets_the_context_filter(void) {
     TEST_ASSERT_EQUAL_INT(UPSCALE_FILTER_SURFACE, render_context_upscale_filter(render_context_main()));
     TEST_ASSERT_FALSE(render_lab_upscale_select(count));
     TEST_ASSERT_EQUAL_INT(UPSCALE_FILTER_SURFACE, render_lab_upscale_selected());
+    TEST_ASSERT_TRUE(render_lab_upscale_select(UPSCALE_FILTER_EDGES));
+    render_lab_apply_raster_settings();
+    TEST_ASSERT_EQUAL_INT(UPSCALE_FILTER_EDGES, render_context_upscale_filter(render_context_main()));
 
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render_lab, upscale), UPSCALE_FILTER_NEAREST));
     TEST_ASSERT_EQUAL_INT(UPSCALE_FILTER_NEAREST, render_lab_upscale_selected());

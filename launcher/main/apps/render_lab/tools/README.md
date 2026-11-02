@@ -148,7 +148,7 @@ The host renderer picks one by its menu label, as
 
 Below it, UPSCALE picks how a draw half the panel's width or less fills the panel:
 SHARP repeats pixels (the default), SMOOTH blends within a surface and keeps
-depth edges sharp
+depth edges sharp, EDGES rounds the stairs of depth edges and leaves the rest sharp
 ([Dynamic-Resolution.md](../../../../../docs/render/frame/Dynamic-Resolution.md#upscaling-within-a-surface)).
 It sets `render_lab.upscale`.
 

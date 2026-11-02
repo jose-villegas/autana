@@ -36,16 +36,23 @@ gfx_mode_resolve(const gfx_mode_request_t* request, int full_width, int full_hei
  * Returns NULL outside GFX_LAYOUT_FULL_FB or when allocation fails. */
 gfx_color_t* gfx_half_picture(void);
 
+/* How the half picture is doubled, reading the expand hints (gfx_target.h)
+ * in gfx_half_hints() as named. */
+typedef enum {
+    GFX_EXPAND_NEAREST, /* each pixel a 2x2 block */
+    GFX_EXPAND_BLENDED, /* bilinear, except across a seam (plane 0) */
+    GFX_EXPAND_CORNERS, /* each block's corners marked in GFX_HINT_CORNER take that side's neighbour */
+} gfx_expand_t;
+
 /* Presents the half picture doubled in both axes, with every strip dirty.
  * Raw framebuffer drawing is refused until that present completes. */
 void gfx_expand_frame(void);
-/* gfx_expand_frame() blended bilinearly except across the seams (gfx_target.h)
- * marked in gfx_half_seams(). */
-void gfx_expand_frame_blended(void);
+/* gfx_expand_frame() through `expand`. */
+void gfx_expand_frame_filtered(gfx_expand_t expand);
 bool gfx_frame_expanded(void);
 
-/* The half picture's seam mask, GFX_SEAM_BYTES of the half size; NULL with no half picture. */
-uint8_t* gfx_half_seams(void);
+/* The half picture's expand hints, GFX_HINT_BYTES of the half size; NULL with no half picture. */
+uint8_t* gfx_half_hints(void);
 
 /* Replayed over each expanded strip, after its picture is doubled. */
 void gfx_set_frame_overlay(gfx_band_overlay_fn overlay);

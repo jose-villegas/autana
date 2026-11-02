@@ -239,7 +239,7 @@ typedef struct {
     const raster_t* raster;
     int first, count;
     uint16_t* destination;
-    uint8_t* seams;              /* the upscale's, or NULL */
+    uint8_t* hints;              /* the upscale's, or NULL */
     const gfx_target_t* picture; /* the one composed, or NULL for the raster's */
 } upscale_slice_t;
 
@@ -249,7 +249,7 @@ upscale_slice(void* ctx) {
     const raster_buffers_t b = raster_carve(s->raster);
     const gfx_target_t* picture = s->picture != NULL ? s->picture : &b.picture;
     if (s->raster->present != CAMERA_PRESENT_SCANLINE) {
-        upscale_rows_filtered(&s->raster->upscale, picture, s->raster->clear, s->destination, s->seams, s->first,
+        upscale_rows_filtered(&s->raster->upscale, picture, s->raster->clear, s->destination, s->hints, s->first,
                               s->count);
     } else {
         upscale_rows_scanlined(&s->raster->upscale, picture, s->raster->clear, s->destination, s->first, s->count);
@@ -544,7 +544,7 @@ raster_upscale(raster_t* raster, uint16_t* destination, int width, int height) {
 }
 
 void
-raster_upscale_picture(raster_t* raster, const gfx_target_t* picture, uint16_t* destination, uint8_t* seams, int width,
+raster_upscale_picture(raster_t* raster, const gfx_target_t* picture, uint16_t* destination, uint8_t* hints, int width,
                        int height) {
     assert(raster->upscaled && destination != NULL);
     assert(picture == NULL
@@ -568,10 +568,10 @@ raster_upscale_picture(raster_t* raster, const gfx_target_t* picture, uint16_t* 
                             .first = mid,
                             .count = height - mid,
                             .destination = destination,
-                            .seams = seams,
+                            .hints = hints,
                             .picture = picture};
     const upscale_slice_t other = {
-        .raster = raster, .count = mid, .destination = destination, .seams = seams, .picture = picture};
+        .raster = raster, .count = mid, .destination = destination, .hints = hints, .picture = picture};
     job_run_steered(share, upscale_slice, &mine, &other, sizeof mine);
     FRAME_COST_END(upscaled_from, "r3d.upscale");
 }

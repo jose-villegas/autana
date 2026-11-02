@@ -14,7 +14,7 @@ TUNE_SETTING(render_lab, small_fill_style, SMALL_FILL_FLAT, SMALL_FILL_FLAT, SMA
 TUNE_SETTING(render_lab, budget, 0, 0, RENDER_LAB_BUDGET_MAX_MS);
 TUNE(render_lab, layout, RENDER_LAB_LAYOUT_FULL, RENDER_LAB_LAYOUT_FULL, RENDER_LAB_LAYOUT_COUNT - 1);
 TUNE(render_lab, orbit_ms, 0, 0, RENDER_LAB_ORBIT_MAX_MS);
-TUNE_SETTING(render_lab, upscale, UPSCALE_FILTER_NEAREST, UPSCALE_FILTER_NEAREST, UPSCALE_FILTER_SURFACE);
+TUNE_SETTING(render_lab, upscale, UPSCALE_FILTER_NEAREST, UPSCALE_FILTER_NEAREST, UPSCALE_FILTER_EDGES);
 TUNE_SETTING(render_lab, framegen, 0, 0, 1);
 
 int
@@ -89,7 +89,7 @@ render_lab_small_fill_select(int index) {
 }
 
 /* In upscale_filter_t order. */
-static const char* const upscale_names[] = {"SHARP", "SMOOTH"};
+static const char* const upscale_names[] = {"SHARP", "SMOOTH", "EDGES"};
 
 const char* const*
 render_lab_upscale_names(int* count) {

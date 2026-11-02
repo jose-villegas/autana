@@ -1,7 +1,7 @@
 /*
- * gfx_expand: the half picture doubled to the panel, nearest or blended
- * within a surface (through the seam mask), with the frame overlay replayed
- * over each strip.
+ * gfx_expand: the half picture doubled to the panel, nearest, blended within
+ * a surface (through the seam mask) or with Scale2x corners (through the
+ * corner masks), with the frame overlay replayed over each strip.
  */
 #include "core/memory.h"
 #include "gfx/present/expand/gfx_quarter_select.h"
@@ -12,15 +12,15 @@
 #include <assert.h>
 #include <string.h>
 
-static memory_aligned_t half; /* the half picture; its seam mask follows the pixels */
+static memory_aligned_t half; /* the half picture; its expand hints follow the pixels */
 static gfx_color_t* half_image;
 static bool frame_expanded;
-static bool frame_blended; /* expanded through the seam mask */
+static gfx_expand_t frame_expand;
 static GFX_TARGET_STORAGE(1) half_target = GFX_TARGET_COLOR_INIT(NULL, GFX_WIDTH / 2, GFX_HEIGHT / 2);
 
 #define HALF_WIDTH       (GFX_WIDTH / 2)
 #define HALF_HEIGHT      (GFX_HEIGHT / 2)
-#define HALF_IMAGE_BYTES ((sizeof(*half_image) * HALF_WIDTH * HALF_HEIGHT) + GFX_SEAM_BYTES(HALF_WIDTH, HALF_HEIGHT))
+#define HALF_IMAGE_BYTES ((sizeof(*half_image) * HALF_WIDTH * HALF_HEIGHT) + GFX_HINT_BYTES(HALF_WIDTH, HALF_HEIGHT))
 _Static_assert((HALF_WIDTH * sizeof(gfx_color_t)) % GFX_QUARTER_ALIGN == 0, "half rows stay aligned");
 _Static_assert((GFX_WIDTH * sizeof(gfx_color_t)) % GFX_QUARTER_ALIGN == 0, "panel rows stay aligned");
 static gfx_band_overlay_fn frame_overlay;
@@ -39,30 +39,29 @@ gfx_half_picture(void) {
     return half_image;
 }
 
-uint8_t*
-gfx_half_seams(void) {
-    gfx_color_t* pixels = gfx_half_picture();
-    return pixels == NULL ? NULL : (uint8_t*)(pixels + ((size_t)HALF_WIDTH * HALF_HEIGHT));
+static uint8_t*
+half_hints(void) {
+    return (uint8_t*)(half_image + ((size_t)HALF_WIDTH * HALF_HEIGHT));
 }
 
-static void
-expand_frame(bool blended) {
+uint8_t*
+gfx_half_hints(void) {
+    return gfx_half_picture() == NULL ? NULL : half_hints();
+}
+
+void
+gfx_expand_frame_filtered(gfx_expand_t expand) {
     GFX_PRESENT_GUARD();
     assert(current_mode.layout == GFX_LAYOUT_FULL_FB && half_image != NULL);
     frame_expanded = true;
-    frame_blended = blended;
+    frame_expand = expand;
     gfx_fb_guard_set_available(false);
     gfx_mark_all_dirty();
 }
 
 void
 gfx_expand_frame(void) {
-    expand_frame(false);
-}
-
-void
-gfx_expand_frame_blended(void) {
-    expand_frame(true);
+    gfx_expand_frame_filtered(GFX_EXPAND_NEAREST);
 }
 
 bool
@@ -137,7 +136,7 @@ spread_across(const uint16_t* pixels, const uint8_t* across, gfx_color_t* out) {
  * Out of line, so the nearest expand's caller stays as small as it was. */
 static __attribute__((noinline)) void
 expand_blended_rows(int y0, int y1, gfx_color_t* destination) {
-    const uint8_t* seams = (const uint8_t*)(half_image + ((size_t)HALF_WIDTH * HALF_HEIGHT));
+    const uint8_t* seams = half_hints();
     for (int y = y0; y < y1; y++) {
         const int row = y / 2;
         const bool lower_half = y % 2 != 0;
@@ -152,16 +151,49 @@ expand_blended_rows(int y0, int y1, gfx_color_t* destination) {
     }
 }
 
+/* Over the doubled rows, each pixel's corners marked for its panel row take
+ * the colour of its neighbour on that side, as Scale2x does. A byte of eight
+ * pixels with no corner set is left as doubled. */
+static __attribute__((noinline)) void
+expand_corners(int y0, int y1, gfx_color_t* destination) {
+    const uint8_t* hints = half_hints();
+    for (int y = y0; y < y1; y++) {
+        const int row = y / 2;
+        const uint16_t* pixels = half_image + ((size_t)row * HALF_WIDTH);
+        const size_t at = (size_t)row * SEAM_PITCH;
+        const uint8_t* left = GFX_HINT_PLANE(hints, HALF_WIDTH, HALF_HEIGHT, GFX_HINT_CORNER(y % 2, 0)) + at;
+        const uint8_t* right = GFX_HINT_PLANE(hints, HALF_WIDTH, HALF_HEIGHT, GFX_HINT_CORNER(y % 2, 1)) + at;
+        gfx_color_t* out = destination + ((size_t)(y - y0) * GFX_WIDTH);
+        for (int byte = 0; byte < SEAM_PITCH; byte++) {
+            if ((left[byte] | right[byte]) == 0) {
+                continue;
+            }
+            for (int bit = 0; bit < GFX_SEAM_BITS; bit++) {
+                const int x = (byte * GFX_SEAM_BITS) + bit;
+                if ((left[byte] >> bit) & 1U) {
+                    out[2 * x] = pixels[x - 1];
+                }
+                if ((right[byte] >> bit) & 1U) {
+                    out[(2 * x) + 1] = pixels[x + 1];
+                }
+            }
+        }
+    }
+}
+
 void
 expand_rows(int y0, int y1, gfx_color_t* destination) {
     GFX_TARGET_STORAGE(1) target_storage;
     gfx_target_of_color(&target_storage.target, destination, GFX_WIDTH, y1 - y0, y0);
     const gfx_target_t* target = &target_storage.target;
-    if (frame_blended) {
+    if (frame_expand == GFX_EXPAND_BLENDED) {
         expand_blended_rows(y0, y1, destination);
     } else {
         gfx_target_paired_rows_shaded(target, &half_target.attachment[0], NULL, 0, NULL, y0, y1 - y0, true, 0,
                                       RGB565_SCALE_UNIT);
+        if (frame_expand == GFX_EXPAND_CORNERS) {
+            expand_corners(y0, y1, destination);
+        }
     }
     if (frame_overlay != NULL) {
         replay_overlay(frame_overlay, target, y0, y1);
@@ -180,7 +212,7 @@ expand_reset_for_test(void) {
 void
 gfx_expand_checkpoint_capture(checkpoint_t* saved) {
     CHECKPOINT_CAPTURE(saved, frame_expanded);
-    CHECKPOINT_CAPTURE(saved, frame_blended);
+    CHECKPOINT_CAPTURE(saved, frame_expand);
     CHECKPOINT_CAPTURE(saved, frame_overlay);
     checkpoint_capture_at(saved, &half_image, HALF_IMAGE_BYTES);
 }
