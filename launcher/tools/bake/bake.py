@@ -631,11 +631,12 @@ def stage_keys(job, scene, tools, starts=None, poses=None):
     return keys
 
 
-def bakes(paths, starts=None, poses=None):
-    """Every bake the packs under `paths` hold, in pack and entry order."""
-    from r3d.build_pack import pack_jobs
+def bakes(paths=None, starts=None, poses=None):
+    """Every bake the packs under `paths` (build_pack.py's default search when None) hold, in pack and entry
+    order."""
+    from r3d.build_pack import DEFAULT_SEARCH, pack_jobs
 
-    return bakes_in(*pack_jobs(paths), starts, poses)
+    return bakes_in(*pack_jobs(paths or [DEFAULT_SEARCH]), starts, poses)
 
 
 def blend_export(settings, tools):

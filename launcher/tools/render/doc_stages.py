@@ -138,20 +138,14 @@ def gpu_inputs(scene_path, object_name):
     (docs/inputs.py), the host renderer's compile, the scene file, its non-bake pack entries, and the key
     and locked bytes of every bake the scene holds. Its digest (fingerprint) names the stage's run."""
     from bake import bake
-    from docs.inputs import code_inputs
-    tracked = {(ROOT / name).resolve() for name in tracked_files(ROOT, ("launcher", "scripts"))}
+    from docs.inputs import bake_inputs, code_inputs
     from r3d.build_pack import pack_jobs
     packs, jobs = pack_jobs([scene_path])
-    lock = bake.read_lock()
-    inputs = {"scene": f"{scene_path.resolve().relative_to(ROOT).as_posix()} {content_checksum(scene_path).decode()}",
-              "object": object_name, **code_inputs([__file__], ROOT, tracked, (ROOT, TOOLS)),
-              **{f"pack {entry}": content_checksum(source).decode()
-                 for pack in packs.values() for entry, source in pack.items() if source.resolve() not in jobs},
-              **host_inputs(scene_path)}
-    for found in bake.bakes([scene_path]):
-        row = lock.get(found.key)
-        inputs[f"bake {found.output}"] = f"{found.key} {row['sha256']}" if row else f"unlocked {found.key}"
-    return inputs
+    return {"scene": f"{scene_path.resolve().relative_to(ROOT).as_posix()} {content_checksum(scene_path).decode()}",
+            "object": object_name, **code_inputs([__file__], ROOT),
+            **{f"pack {entry}": content_checksum(source).decode()
+               for pack in packs.values() for entry, source in pack.items() if source.resolve() not in jobs},
+            **host_inputs(scene_path), **bake_inputs(bake.bakes([scene_path]), bake.read_lock())}
 
 
 def validate_mode(smoke, check):

@@ -255,7 +255,7 @@ class RunnerTests(unittest.TestCase):
                  mock.Mock(output="hall.mesh", suffix=".mesh", key="k3")]
         self.tree.producer("a/one.py", ["fig/{item}.png"], ["{item}.png"], needs=("host", "bakes"),
                            extra=', each="bakes:*.fit.bundle"')
-        with mock.patch.object(figures_runner, "all_bakes", return_value=found), \
+        with mock.patch.object(bake, "bakes", return_value=found), \
                 mock.patch.object(bake, "read_lock", return_value={}), \
                 mock.patch.object(bake, "fetch_all", return_value={}) as fetched:
             code, _, err = self.tree.run("build")
@@ -419,7 +419,7 @@ class RunnerTests(unittest.TestCase):
                  mock.Mock(output="yard.fit.bundle", suffix=".bundle", key="k2")]
         self.tree.producer("a/one.py", ["fig/{item}.png"], ["{item}.png"], needs=("host", "bakes"),
                            extra=', each="bakes:*.fit.bundle"')
-        for patched in (mock.patch.object(figures_runner, "all_bakes", return_value=found),
+        for patched in (mock.patch.object(bake, "bakes", return_value=found),
                         mock.patch.object(bake, "read_lock", side_effect=lambda: lock),
                         mock.patch.object(bake, "fetch_all", return_value={})):
             patched.start()
@@ -447,7 +447,7 @@ class RunnerTests(unittest.TestCase):
         found = [mock.Mock(output="hall.fit.bundle", suffix=".bundle", key="k1")]
         self.tree.producer("a/one.py", ["fig/{item}.png"], ["{item}.png"], needs=("host", "bakes"),
                            extra=', each="bakes:*.fit.bundle", reads=("data/*.csv",)')
-        with mock.patch.object(figures_runner, "all_bakes", return_value=found), \
+        with mock.patch.object(bake, "bakes", return_value=found), \
                 mock.patch.object(bake, "read_lock", return_value={}), \
                 mock.patch.object(bake, "fetch_all", side_effect=bake.BakeMissing("hall.fit.bundle: not on the release")):
             code, _, err = self.tree.run("build")
@@ -516,6 +516,56 @@ if (marks / {other!r}).exists():
         code, _, err = self.tree.run("build", "--jobs", "2")
         self.assertEqual(code, 0, err)
         self.assertEqual(self.met(), ["gpu-met", "host-met"])
+
+
+class RecordTests(unittest.TestCase):
+    """What a record vouches for: docs/images/ holds what the run's inputs make, orphans included."""
+
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.tree = Tree(directory.name)
+
+    def test_an_orphan_keeps_the_run_that_claims_it_unrecorded(self):
+        self.tree.producer("a/one.py", ["fig/*.png"], ["a.png"])
+        self.tree.commit("fig/a.png", "red")
+        self.tree.commit("fig/gone.png", "red")
+        for _ in range(2):
+            code, out, _ = self.tree.run("check", "--changed")
+            self.assertEqual(code, 1, out)
+            self.assertIn("orphan fig/gone.png: launcher/a/one.py no longer makes it", out.splitlines())
+
+    def test_a_build_into_another_folder_records_nothing(self):
+        self.tree.producer("a/one.py", ["fig/one.png"], ["one.png"])
+        self.tree.commit("fig/one.png", "blue")
+        self.assertEqual(self.tree.run("build", "--into", str(self.tree.root / "elsewhere"))[0], 0)
+        code, out, _ = self.tree.run("check", "--changed")
+        self.assertEqual(code, 1, out)
+        self.assertNotIn("unchanged launcher/a/one.py", out.splitlines())
+
+    def test_items_that_read_alike_once_cleaned_run_in_their_own_folders(self):
+        self.tree.write("data/a+b.csv", "1")
+        self.tree.write("data/a b.csv", "2")
+        self.tree.producer("a/one.py", ["fig/{item}.png"], ["{item}.png"], extra=', each="glob:data/*.csv"')
+        code, _, err = self.tree.run("build", "--jobs", "2")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(sorted(path.name for path in (self.tree.images / "fig").iterdir()), ["a b.png", "a+b.png"])
+
+    def test_a_run_given_cc_that_lists_no_compiled_c_fails(self):
+        # The fixture writes each argument after --out as an image, so the compiler {cc} names is the image.
+        self.tree.producer("a/one.py", ["fig/one.png"], ["{cc}"])
+        with mock.patch.object(figures_runner, "host_cc", return_value="one.png"):
+            code, _, err = self.tree.run("build")
+        self.assertEqual(code, 2)
+        self.assertIn("launcher/a/one.py compiled C the runner could not see", err)
+
+    def test_a_docs_file_the_code_names_is_an_input(self):
+        self.tree.write("docs/math/order.txt", "a b")
+        self.tree.producer("a/one.py", ["fig/one.png"], ["one.png"], prologue='ORDER = "docs/math/order.txt"')
+        self.assertEqual(self.tree.run("build")[0], 0)
+        self.tree.write("docs/math/order.txt", "b a")
+        out = self.tree.run("build", "--changed")[1]
+        self.assertNotIn("unchanged launcher/a/one.py", out.splitlines())
 
 
 if __name__ == "__main__":
