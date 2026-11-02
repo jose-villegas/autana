@@ -347,6 +347,29 @@ cull_instance(const r3d_instance_t* instance, const r3d_lens_t* lens, uint16_t* 
     return visible;
 }
 
+/* Rounding moves a plane test by about 2^-23 of the coordinates it adds up, so
+ * a world box grown by this share of its farthest coordinate and the eye's is
+ * never rejected where the instance's own root box, tested in mesh ticks
+ * through its placed lens, is kept. */
+#define WORLD_SLACK (1.0F / 1024.0F)
+
+/* Whether `box`, in world units, is wholly outside one of `planes`, the
+ * picture's lens at a position scale of 1 through r3d_lens_frustum(), once
+ * grown by WORLD_SLACK; `eye_reach` is the view position's largest
+ * coordinate, in magnitude. */
+static bool
+world_bounds_outside(box3f_t box, const planef_t planes[PLANE_FRUSTUM_COUNT], float eye_reach) {
+    const float coords[] = {box.lo.x, box.lo.y, box.lo.z, box.hi.x, box.hi.y, box.hi.z};
+    float reach = eye_reach;
+    for (size_t i = 0; i < sizeof coords / sizeof coords[0]; i++) {
+        reach = mathf_max(reach, mathf_abs(coords[i]));
+    }
+    const float s = reach * WORLD_SLACK;
+    const box3f_t grown = {vec3f_sub(box.lo, (vec3f_t){s, s, s}), vec3f_add(box.hi, (vec3f_t){s, s, s})};
+    unsigned mask = (1U << PLANE_FRUSTUM_COUNT) - 1U;
+    return box3f_outside_planes(grown, planes, PLANE_FRUSTUM_COUNT, &mask);
+}
+
 /* Culls every instance into the census list and returns the depth scale
  * the picture is drawn with: the fit of the nearest bound of what was kept,
  * and near_z when nothing was. The fit's power of two keeps the scale still
@@ -360,10 +383,11 @@ cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, r
     picture_lens_t picture = picture_lens(raster, view, fitted);
     planef_t world[PLANE_FRUSTUM_COUNT];
     r3d_lens_frustum(picture_lens_at(&picture, 1), world);
+    const vec3f_t eye = view->position;
+    const float eye_reach = mathf_max(mathf_abs(eye.x), mathf_max(mathf_abs(eye.y), mathf_abs(eye.z)));
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];
-        if (cull && instance->world_bounds != NULL
-            && r3d_world_bounds_outside(*instance->world_bounds, world, view->position)) {
+        if (cull && instance->world_bounds != NULL && world_bounds_outside(*instance->world_bounds, world, eye_reach)) {
             culled[0] = 0;
         } else {
             r3d_lens_t lens;
@@ -490,8 +514,8 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
         for (batch->count = 0; first < end; first++) {
             const r3d_instance_t* instance = &raster->instances[first];
             const r3d_lit_mesh_t* mesh = instance->mesh;
-            /* Writers count every instance; one that kept no cluster then
-             * draws nothing, so its slot is reused. */
+            /* A writer may number clusters across every instance, so it sees
+             * this one even when it kept nothing; that one's slot is reused. */
             batch_item_t* item = &batch->items[batch->count];
             item->writer_count = instance_writers(raster, first, item->writers);
             if (culled[0] > 0) {
