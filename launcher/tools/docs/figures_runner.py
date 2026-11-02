@@ -214,7 +214,7 @@ def main(argv=None):
             return which(found, args.images)
         if args.command == "list":
             kept = made_files(IMAGES) if args.outputs else set()
-            for item in select(found, args.area, []):
+            for item in (item for item in found.values() if args.area in (None, item.producer.area)):
                 if args.outputs:
                     print("\n".join(sorted({name for name in kept if claims(item, name)} |
                                            {image for image in item.images if not glob.has_magic(image)})))
