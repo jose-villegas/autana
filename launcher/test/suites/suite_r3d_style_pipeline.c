@@ -341,7 +341,7 @@ static void
 test_transform_pairs_and_odd_tail(void) {
     static const int16_t positions[TRANSFORM_PAIR_VERTICES][3] = {{1, -3, 4}, {2, 7, 5},    {-4, 2, 6},  {3, -8, 7},
                                                                   {5, 9, 8},  {-6, -11, 9}, {7, 13, 10}, {-8, -15, 11}};
-    const r3d_lens_t lens = {.m = MAT4F_IDENTITY,
+    const r3d_lens_t lens = {.m = mat4f_identity(),
                              .project.near_z = 1.0F,
                              .depth_near = 1.0F,
                              .snap_cx = R3D_SNAP_BIAS + 0.75F,
