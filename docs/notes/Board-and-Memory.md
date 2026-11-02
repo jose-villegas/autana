@@ -255,9 +255,9 @@ through the cache, so sequential access is fast and random access thrashes.
 
 ### SD card
 
-`bsp_sdcard_mount()` and `bsp_sdcard_unmount()` work at any time, display up
-or not. POST mounts and releases the card before `gfx_init()` and can remount
-it live.
+`board_sd_probe()` mounts the card, reads its name and size, and releases it,
+at any time, display up or not. POST probes it before `gfx_init()` and again
+live.
 
 | Filesystem | Mounts |
 |---|---|

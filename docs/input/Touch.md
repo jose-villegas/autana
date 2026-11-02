@@ -1,6 +1,6 @@
 # Touch
 
-`input/touch/touch.c` reads the touch controller through the BSP and delivers
+`input/touch/touch.c` reads the touch controller through `board_touch_open()` and delivers
 press and release edges to the frame loop. Both board revisions are handled.
 Controller quirks and the interrupt pin are in
 [Input-and-Sensors.md](../notes/Input-and-Sensors.md#touch-controller).

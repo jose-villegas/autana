@@ -25,11 +25,12 @@
 #include "testkit/cleanup.h"
 #include "unity.h"
 
-/* A capybara row: the view it is seen from and how the gallop comes in. A
- * cut times one gallop cycle; a blend times only the blend, so every timed
- * frame samples and mixes two clips. */
+/* A capybara row: its take's name under the scene's, the view it is seen
+ * from and how the gallop comes in. A cut times one gallop cycle; a blend
+ * times only the blend, so every timed frame samples and mixes two clips. */
 typedef struct {
     const char* row;
+    const char* name;
     const char* view;
     int blend_ms;
 } capybara_take_t;
@@ -42,12 +43,17 @@ typedef struct {
     perf_budget_t quarters[R3D_PERF_QUARTER_COUNT];
 } profile_scenario_t;
 
-static const capybara_take_t capybara_home = {CAPYBARA_SCENE, CAPYBARA_VIEW_HOME, CAPYBARA_CLIP_CUT_MS};
-static const capybara_take_t capybara_front = {"capybara-front", CAPYBARA_VIEW_FRONT, CAPYBARA_CLIP_CUT_MS};
-static const capybara_take_t capybara_side = {"capybara-side", CAPYBARA_VIEW_SIDE, CAPYBARA_CLIP_CUT_MS};
-static const capybara_take_t capybara_back = {"capybara-back", CAPYBARA_VIEW_BACK, CAPYBARA_CLIP_CUT_MS};
-static const capybara_take_t capybara_close = {"capybara-close", CAPYBARA_VIEW_CLOSE, CAPYBARA_CLIP_CUT_MS};
-static const capybara_take_t capybara_blend = {"capybara-blend", CAPYBARA_VIEW_HOME, CAPYBARA_CLIP_BLEND_MS};
+static const capybara_take_t capybara_home = {CAPYBARA_SCENE, CAPYBARA_VIEW_HOME, CAPYBARA_VIEW_HOME,
+                                              CAPYBARA_CLIP_CUT_MS};
+static const capybara_take_t capybara_front = {"capybara-front", CAPYBARA_VIEW_FRONT, CAPYBARA_VIEW_FRONT,
+                                               CAPYBARA_CLIP_CUT_MS};
+static const capybara_take_t capybara_side = {"capybara-side", CAPYBARA_VIEW_SIDE, CAPYBARA_VIEW_SIDE,
+                                              CAPYBARA_CLIP_CUT_MS};
+static const capybara_take_t capybara_back = {"capybara-back", CAPYBARA_VIEW_BACK, CAPYBARA_VIEW_BACK,
+                                              CAPYBARA_CLIP_CUT_MS};
+static const capybara_take_t capybara_close = {"capybara-close", CAPYBARA_VIEW_CLOSE, CAPYBARA_VIEW_CLOSE,
+                                               CAPYBARA_CLIP_CUT_MS};
+static const capybara_take_t capybara_blend = {"capybara-blend", "blend", CAPYBARA_VIEW_HOME, CAPYBARA_CLIP_BLEND_MS};
 
 /* A capybara scenario: its take and budgets. */
 #define CAPYBARA_ROW(take, ...) {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, &(take), __VA_ARGS__}
@@ -163,6 +169,11 @@ static size_t quarter_index;
 static const char*
 scenario_row(void) {
     return scenario->take == NULL ? scenario->scene->key : scenario->take->row;
+}
+
+static const char*
+scenario_take(void) {
+    return scenario->take == NULL ? NULL : scenario->take->name;
 }
 
 /* The scenario's path as the render lab shows it, in the current quarter, its clip from the start. */
@@ -337,7 +348,8 @@ run_render_lab_frame_profile_suite(void) {
     for (size_t i = 0; i < sizeof profile_scenarios / sizeof profile_scenarios[0]; i++) {
         for (quarter_index = 0; quarter_index < R3D_PERF_QUARTER_COUNT; quarter_index++) {
             scenario = &profile_scenarios[i];
-            RUN_TEST(test_real_time_frame_profile);
+            RUN_TEST_CASE(test_real_time_frame_profile, scenario->scene->key, scenario_take(),
+                          r3d_perf_quarters[quarter_index].name);
         }
     }
 #endif
@@ -353,7 +365,8 @@ run_render_lab_dynres_steps_suite(void) {
     for (size_t i = 0; i < sizeof profile_scenarios / sizeof profile_scenarios[0]; i++) {
         scenario = &profile_scenarios[i];
         for (ladder_step = 0; ladder_step < RENDER_LAB_LADDER_STEPS; ladder_step++) {
-            RUN_TEST(test_dynres_steps);
+            RUN_TEST_CASE(test_dynres_steps, scenario->scene->key, scenario_take(),
+                          render_lab_test_step_name(ladder_step));
         }
     }
 #endif

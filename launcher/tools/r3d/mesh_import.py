@@ -24,12 +24,10 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from gltf.gltf_read import ASSET_SUFFIXES  # noqa: E402
 from r3d import lcol_asset, mesh_bundle, mesh_asset, log  # noqa: E402
-from r3d.gltf_mesh import load_gltf_mesh  # noqa: E402
 from r3d.geometry import compact, corner_normals, weld_keeping  # noqa: E402
 from r3d.import_settings import (  # noqa: E402
-    BLEND_SUFFIX, SettingsError, albedo_jobs, match_meshes, variant_meshes, lfs_pointer_oid, load_import_settings, load_scene, source_files,
+    SettingsError, albedo_jobs, match_meshes, variant_meshes, load_import_settings, load_scene,
 )
 from r3d.light import (  # noqa: E402
     drop_masked,
@@ -43,11 +41,8 @@ from r3d.light import (  # noqa: E402
     visible_from_region,
 )
 from r3d.lit_mesh import POSITION_SCALE, WELD_PER_TICK, panel_colour, write_lit_mesh  # noqa: E402
+from r3d.mesh_source import load_source, load_glb_source, path_light_for, camera_path_poses
 from r3d.process_budget import NULL_RECORDER
-from r3d.path_bake import PathLight  # noqa: E402
-from r3d.obj import load_mtl, load_obj, load_textures  # noqa: E402
-from r3d.poses import either_way, sample_camera_path  # noqa: E402
-from r3d import ray_query  # noqa: E402
 from r3d.ray_query import RayQuery  # noqa: E402
 from r3d.scene_name import SUFFIX  # noqa: E402
 from r3d.simplify import Allocation, check_ceiling, densify, simplify  # noqa: E402
@@ -64,59 +59,10 @@ def vertex_spacing(vpos, vtris):
     return spacing / np.maximum(count, 1)
 
 
-def load_source(settings, texture_dtype=np.float64):
-    if settings.source["path"].suffix.lower() == BLEND_SUFFIX:
-        raise SettingsError(f"{settings.source['path'].name}: a .blend is exported by launcher/tools/bake/bake.py "
-                            "bake, which hands this import the export")
-    for path in source_files(settings):
-        if lfs_pointer_oid(path) is not None:
-            raise SettingsError(f'{path}: Git LFS source is not pulled; run git lfs pull --exclude=""')
-    if settings.source["path"].suffix.lower() in ASSET_SUFFIXES:
-        return load_glb_source(settings)
-    obj_path = settings.source["path"]
-    materials = load_mtl(obj_path.with_suffix(".mtl"))
-    p, uv, tri_v, tri_t, tri_m, names, tri_o, object_names = load_obj(obj_path)
-    log(f"loaded {len(p)} vertices, {len(tri_v)} triangles, {len(names)} materials")
-    textures = load_textures(obj_path.parent, materials, names, texture_dtype)
-    return SimpleNamespace(p=p, uv=uv, tri_v=tri_v, tri_t=tri_t, tri_m=tri_m, names=names, materials=materials,
-                           textures=textures, colors=None, tri_o=tri_o, object_names=object_names)
-
-
-def load_glb_source(settings):
-    """A glTF binary, or an FBX, as the OBJ path's source: untextured, its colour per vertex."""
-    mesh = load_gltf_mesh(settings.source["path"])
-    tri_v = np.array(mesh.tri_v, dtype=np.int64)
-    log(f"loaded {len(mesh.positions)} vertices, {len(tri_v)} triangles, {len(mesh.names)} materials")
-    return SimpleNamespace(p=np.array(mesh.positions, dtype=np.float64), uv=np.zeros((0, 2)), tri_v=tri_v,
-                           tri_t=tri_v.copy(), tri_m=np.array(mesh.tri_m, dtype=np.int64), names=mesh.names,
-                           materials={}, textures=[None] * len(mesh.names),
-                           tri_o=np.asarray(mesh.tri_o, dtype=np.int64), object_names=mesh.object_names,
-                           colors=np.array(mesh.colors, dtype=np.float64))
-
-
 def albedo_at(src, points, spacing, material):
     kd = src.materials.get(src.names[material], {}).get("Kd", (1.0, 1.0, 1.0))
     return sample_albedo(points, spacing, material, src.p, src.uv, src.tri_v, src.tri_t, src.tri_m, src.textures, kd,
                          src.colors)
-
-
-PATH_LIGHTS = {}
-
-
-def path_light_for(src, job, scene, variant=None):
-    """The bounced-light tracer of a renderer's source on `variant` (`ray_query.VARIANT` when None), built once per
-    run: renderers of one import with the same lights, settings and variant share it. None when the renderer takes no
-    bounced light. Only the latest is kept: each holds the source's textures a second time."""
-    if job.bake is None or job.bake.indirect is None:
-        return None
-    settings = job.settings
-    boost = scene.indirect.albedo_boost
-    variant = variant or ray_query.VARIANT
-    key = (str(settings.path), repr(vars(job.bake.indirect)), repr(scene.lights), boost, variant)
-    if key not in PATH_LIGHTS:
-        PATH_LIGHTS.clear()
-        PATH_LIGHTS[key] = PathLight(src, scene.lights, settings.double_sided, job.bake.indirect, boost, variant)
-    return PATH_LIGHTS[key]
 
 
 def shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce, *, labels, preserve_corners=False):
@@ -140,17 +86,6 @@ def shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce, *,
 def shade_unlit(src, material, mp, mt):
     """The material's albedo, with no light: the colour the source authored."""
     return mp, encode_srgb8(albedo_at(src, mp, vertex_spacing(mp, mt), material)), mt
-
-
-def camera_path_poses(scene, visibility, every_ms=None, either_way_up=True):
-    """The scene camera's path sampled every `every_ms` (the visibility
-    step's own when None) at the step's size, through a square view that
-    covers the panel held either way up unless `either_way_up` is False."""
-    camera = scene.camera.component
-    width, height = visibility.size
-    poses = sample_camera_path(camera.path.animation, camera.path.node,
-                               every_ms or visibility.every_ms, width, height, camera.half_fov_short_tan, camera.near_z)
-    return either_way(*poses) if either_way_up else poses
 
 
 def fidelity_poses(scene, object_name, frames, dt):

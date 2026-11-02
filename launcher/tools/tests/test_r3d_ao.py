@@ -12,6 +12,7 @@ try:
     from tests import soup
 
     from r3d.geometry import corner_normals
+    from r3d.light import coincident_faces
     from r3d.light import light, local_occlusion, sky_directions
     from r3d.reference_render import occlusion_map
 except ImportError:
@@ -137,6 +138,7 @@ class OcclusionMapTest(unittest.TestCase):
         source = SimpleNamespace(colors=None, p=p, tri_v=tris, tri_m=np.zeros(4, dtype=int), names=["m"], intersector=corner(),
                                  uv=np.zeros((8, 2)), tri_t=tris, materials={}, textures=[None])
         source.corner_normals = corner_normals(p, tris)
+        source.twin = coincident_faces(p, tris)[0]
         job = SimpleNamespace(settings=SimpleNamespace(double_sided=set()), bake=SimpleNamespace(ray_offset=0.01, ao=ao))
         return source, job
 

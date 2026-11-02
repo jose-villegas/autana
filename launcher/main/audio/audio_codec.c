@@ -4,7 +4,6 @@
 
 #include <assert.h>
 
-#include "bsp/esp32_s3_touch_amoled_1_8.h"
 #include "driver/i2s_std.h"
 #include "esp_codec_dev_defaults.h"
 #include "esp_log.h"
@@ -176,7 +175,7 @@ audio_codec_destroy(void) {
 
 static bool
 init_channel(bool capture) {
-    i2s_chan_config_t channels = I2S_CHANNEL_DEFAULT_CONFIG(CONFIG_BSP_I2S_NUM, I2S_ROLE_MASTER);
+    i2s_chan_config_t channels = I2S_CHANNEL_DEFAULT_CONFIG(board_audio_i2s_port(), I2S_ROLE_MASTER);
     channels.auto_clear = true;
     channels.dma_desc_num = AUDIO_CODEC_DMA_BLOCKS;
     channels.dma_frame_num = AUDIO_CODEC_BLOCK_SAMPLES;
@@ -187,8 +186,7 @@ init_channel(bool capture) {
     const i2s_std_config_t format = {
         .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(AUDIO_OUT_SAMPLE_RATE_HZ),
         .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO),
-        .gpio_cfg =
-            {.mclk = BSP_I2S_MCLK, .bclk = BSP_I2S_SCLK, .ws = BSP_I2S_LCLK, .dout = BSP_I2S_DOUT, .din = BSP_I2S_DSIN},
+        .gpio_cfg = board_audio_i2s_gpio(),
     };
     const i2s_chan_handle_t channel = capture ? rx : tx;
     /* The IDF allocates DMA in init_std_mode, so an absent RX channel costs no DMA at boot. */
@@ -204,7 +202,7 @@ audio_codec_init_data(bool capture) {
         return false;
     }
     audio_codec_i2s_cfg_t config = {
-        .port = CONFIG_BSP_I2S_NUM, .tx_handle = capture ? NULL : tx, .rx_handle = capture ? rx : NULL};
+        .port = board_audio_i2s_port(), .tx_handle = capture ? NULL : tx, .rx_handle = capture ? rx : NULL};
     const audio_codec_data_if_t* data = audio_codec_new_i2s_data(&config);
     if (capture) {
         input_data = data;
@@ -221,14 +219,14 @@ audio_codec_acquire(void) {
         references++;
         return true;
     }
-    const i2c_master_bus_handle_t bus = bsp_i2c_get_handle();
+    const i2c_master_bus_handle_t bus = board_i2c_bus();
     if (!audio_codec_check("I2C bus", bus ? ESP_OK : ESP_ERR_INVALID_STATE)
         || !audio_codec_check("codec probe",
                               i2c_master_probe(bus, BOARD_AUDIO_CODEC_I2C_ADDR, AUDIO_CODEC_PROBE_TIMEOUT_MS))
         || !audio_codec_init_data(false)) {
         goto fail;
     }
-    audio_codec_i2c_cfg_t ctrl_config = {.port = BSP_I2C_NUM, .addr = ES8311_CODEC_DEFAULT_ADDR, .bus_handle = bus};
+    audio_codec_i2c_cfg_t ctrl_config = {.addr = ES8311_CODEC_DEFAULT_ADDR, .bus_handle = bus};
     ctrl = audio_codec_new_i2c_ctrl(&ctrl_config);
     if (!audio_codec_check("new control", ctrl ? ESP_CODEC_DEV_OK : ESP_CODEC_DEV_NO_MEM)) {
         goto fail;

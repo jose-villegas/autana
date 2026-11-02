@@ -61,13 +61,12 @@ void suites_each(suite_each_fn each, void* context);
 void suites_run_all(void);
 
 /* One RUNSUITE request: "<suite>", or "<suite> <pattern>[,<pattern>...]" to
- * run only the tests whose name contains a pattern (case-sensitive substring).
- * A pattern holds at most SUITE_FILTER_LEN - 1 characters and a request at
- * most SUITE_FILTER_MAX of them; one past either is refused, nothing runs.
- * While filtering, suites_test_runs() prints "SUITE_TEST name=... selected=..."
- * for every test reached. The patterns live for the call only. */
+ * run only the tests a pattern picks. A pattern holds at most
+ * SUITE_FILTER_LEN - 1 characters and a request at most SUITE_FILTER_MAX;
+ * one past either is refused. While filtering, suites_test_runs() prints
+ * "SUITE_TEST name=... selected=..." for every test reached. */
 #define SUITE_FILTER_MAX 4
-#define SUITE_FILTER_LEN 24
+#define SUITE_FILTER_LEN 32
 
 typedef struct {
     char name[SUITE_NAME_MAX + 1];
@@ -85,6 +84,33 @@ void suites_print_run(const suite_run_t* run);
 
 /* Asked by suite_run_test_timed() (timing.c) for each test: true to run it. */
 bool suites_test_runs(const char* test_name);
+
+/* Whether `pattern` picks test `name`: each pattern segment equals one of the
+ * name's case segments, in order, but the first may instead be part of its
+ * function name. An empty segment picks nothing. The tools repeat the rule;
+ * both are held to suite_filter_cases.inc. */
+#define SUITE_TEST_SEPARATOR '/'
+bool suite_test_matches(const char* pattern, const char* name);
+
+/* RUN_TEST_CASE(func, "segment", ...) runs func as RUN_TEST does, named
+ * func/segment/..., so each pass of a table loop has a name a pattern can
+ * pick. A NULL or empty segment is left out. A name past SUITE_TEST_NAME_MAX,
+ * or a segment of other than SUITE_TEST_SEGMENT_CHARS, which the tools'
+ * result lines read, is a SUITE OVERFLOW, not run. A case never runs another. */
+#define SUITE_TEST_NAME_MAX      95
+#define SUITE_TEST_SEGMENT_CHARS "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"
+#define RUN_TEST_CASE(func, ...)                                                                                       \
+    do {                                                                                                               \
+        const char* case_name_ =                                                                                       \
+            suite_test_case_name(#func, (const char* const[]){__VA_ARGS__},                                            \
+                                 sizeof((const char* const[]){__VA_ARGS__}) / sizeof(const char*));                    \
+        if (case_name_ != NULL) {                                                                                      \
+            suite_run_test_timed(func, case_name_, __LINE__);                                                          \
+        }                                                                                                              \
+    } while (0)
+/* The name RUN_TEST_CASE runs a case under, or NULL after a SUITE OVERFLOW.
+ * It returns before the case runs, so no frame of it sits under the test. */
+const char* suite_test_case_name(const char* name, const char* const* segments, size_t count);
 
 /* Prints how many tests since the last call presented past the frame
  * watch's warm-up (profile/frame_watch.h), so a run shows how much of it was
