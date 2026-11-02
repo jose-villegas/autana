@@ -105,6 +105,18 @@ class DeclarationTests(unittest.TestCase):
             with self.subTest(text=text), self.assertRaisesRegex(ValueError, "^x.py: "):
                 self.parse(text)
 
+    def test_an_each_with_an_empty_query_is_rejected(self):
+        for each in ("glob:", "bakes:"):
+            with self.subTest(each=each), self.assertRaisesRegex(ValueError, "^x.py: each "):
+                self.parse(f'PRODUCER = Producer(area="a", needs=("host",), outputs=("{{item}}.png",), each="{each}")')
+
+    def test_item_in_run_is_accepted_with_an_each_and_every_need_is_known(self):
+        found = self.parse('''
+            PRODUCER = Producer(area="a", needs=("bakes", "gpu", "board"), outputs=("{item}.png",),
+                                run=("{item}",), each="bakes:*.bundle")
+        ''')
+        self.assertEqual((found.needs, found.run), (("bakes", "gpu", "board"), ("{item}",)))
+
     def test_an_image_two_producers_declare_is_an_error(self):
         with tempfile.TemporaryDirectory() as directory:
             tree = Tree(directory)
@@ -263,21 +275,84 @@ class RunnerTests(unittest.TestCase):
         code, _, err = self.tree.run("build", "--jobs", "4")
         self.assertEqual(code, 0, err)
 
-    def test_changed_skips_a_run_until_its_code_reads_or_probe_c_change(self):
+    def probed(self):
+        """A built run of one producer that reads a csv and whose probe compiled data/probe.c."""
         self.tree.write("data/table.csv", "1")
         self.tree.write("data/probe.c", "int a;")
         self.tree.producer("a/one.py", ["fig/one.png"], ["one.png"], extra=', reads=("data/*.csv",)', prologue=PROBE)
         self.assertEqual(self.tree.run("build")[0], 0)
-        for change in (None, ("data/table.csv", "2"), ("data/probe.c", "int b;"), ("launcher/a/one.py", None)):
-            if change and change[1] is None:
-                script = self.tree.root / change[0]
-                script.write_text(script.read_text() + "\nVALUE = 1\n")
-            elif change:
-                self.tree.write(*change)
-            with self.subTest(change=change):
-                code, out, err = self.tree.run("build", "--changed")
-                self.assertEqual(code, 0, err)
-                self.assertEqual("unchanged launcher/a/one.py" in out, change is None, out)
+
+    def edit_script(self, name):
+        script = self.tree.root / name
+        script.write_text(script.read_text() + chr(10) + "VALUE = 1" + chr(10))
+
+    def changed(self):
+        """The lines `build --changed` prints."""
+        code, out, err = self.tree.run("build", "--changed")
+        self.assertEqual(code, 0, err)
+        return out.splitlines()
+
+    def test_changed_skips_a_run_whose_inputs_are_unchanged_after_a_first_build_with_a_probe(self):
+        self.probed()
+        self.assertIn("unchanged launcher/a/one.py", self.changed())
+
+    def test_changed_reruns_when_a_file_the_probe_compiled_changes(self):
+        self.probed()
+        self.tree.write("data/probe.c", "int b;")
+        self.assertNotIn("unchanged launcher/a/one.py", self.changed())
+
+    def test_changed_reruns_when_a_reads_file_changes(self):
+        self.probed()
+        self.tree.write("data/table.csv", "2")
+        self.assertNotIn("unchanged launcher/a/one.py", self.changed())
+
+    def test_changed_reruns_when_the_producer_code_changes(self):
+        self.probed()
+        self.edit_script("launcher/a/one.py")
+        self.assertNotIn("unchanged launcher/a/one.py", self.changed())
+
+    def test_changed_reruns_when_a_file_a_reads_glob_matches_is_added_or_removed(self):
+        self.probed()
+        self.tree.write("data/z-more.csv", "1")
+        self.assertNotIn("unchanged launcher/a/one.py", self.changed())
+        self.assertIn("unchanged launcher/a/one.py", self.changed())
+        (self.tree.root / "data/z-more.csv").unlink()
+        self.assertNotIn("unchanged launcher/a/one.py", self.changed())
+
+    def test_changed_reruns_when_the_run_arguments_change(self):
+        self.probed()
+        real = producer.find
+
+        def more_arguments(root):
+            return {name: item._replace(producer=item.producer._replace(run=(*item.producer.run, "one.png")))
+                    for name, item in real(root).items()}
+        with mock.patch.object(producer, "find", more_arguments):
+            self.assertNotIn("unchanged launcher/a/one.py", self.changed())
+
+    def test_a_skipped_run_keeps_its_record(self):
+        self.probed()
+        self.assertIn("unchanged launcher/a/one.py", self.changed())
+        self.assertIn("unchanged launcher/a/one.py", self.changed())
+
+    def test_after_a_partial_run_the_untouched_runs_are_still_skipped(self):
+        self.tree.producer("a/one.py", ["fig/one.png"], ["one.png"])
+        self.tree.producer("b/two.py", ["fig/two.png"], ["two.png"])
+        self.assertEqual(self.tree.run("build")[0], 0)
+        self.edit_script("launcher/a/one.py")
+        self.assertEqual(self.changed(), ["unchanged launcher/b/two.py", "wrote 1 images to " + str(self.tree.images)])
+        self.assertEqual(self.changed()[:2], ["unchanged launcher/a/one.py", "unchanged launcher/b/two.py"])
+
+    def test_a_new_item_of_an_each_glob_runs_while_its_siblings_are_skipped(self):
+        self.tree.write("data/x.csv", "1")
+        self.tree.write("data/y.csv", "2")
+        self.tree.producer("a/one.py", ["fig/{item}.png"], ["{item}.png"], extra=', each="glob:data/*.csv"')
+        self.assertEqual(self.tree.run("build")[0], 0)
+        (self.tree.images / "fig/y.png").unlink()
+        self.tree.write("data/z.csv", "3")
+        lines = self.changed()
+        self.assertEqual(lines[:2], ["unchanged launcher/a/one.py[x]", "unchanged launcher/a/one.py[y]"])
+        self.assertEqual(len(lines), 3, lines)
+        self.assertEqual(sorted(path.name for path in (self.tree.images / "fig").iterdir()), ["x.png", "z.png"])
 
     def test_check_records_only_runs_whose_images_were_same(self):
         self.tree.producer("a/one.py", ["fig/one.png"], ["one.png"])
@@ -298,6 +373,149 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(out.splitlines(), ["unchanged launcher/a/one.py[x]",
                                             "orphan fig/y.png: launcher/a/one.py no longer makes it"])
+
+    def test_check_with_one_same_and_one_changed_image_of_a_run_records_nothing(self):
+        self.tree.producer("a/one.py", ["fig/*.png"], ["same.png", "changed.png"])
+        self.tree.commit("fig/same.png", "red")
+        self.tree.commit("fig/changed.png", "blue")
+        self.assertEqual(self.tree.run("check", "--changed")[0], 1)
+        code, out, _ = self.tree.run("check", "--changed")
+        self.assertEqual(code, 1)
+        self.assertNotIn("unchanged launcher/a/one.py", out.splitlines())
+
+    def test_check_records_the_same_item_of_an_each_and_not_the_changed_one(self):
+        self.tree.write("data/x.csv", "1")
+        self.tree.write("data/y.csv", "2")
+        self.tree.producer("a/one.py", ["fig/{item}.png"], ["{item}.png"], extra=', each="glob:data/*.csv"')
+        self.tree.commit("fig/x.png", "red")
+        self.tree.commit("fig/y.png", "blue")
+        self.assertEqual(self.tree.run("check", "--changed")[0], 1)
+        lines = self.tree.run("check", "--changed")[1].splitlines()
+        self.assertIn("unchanged launcher/a/one.py[x]", lines)
+        self.assertNotIn("unchanged launcher/a/one.py[y]", lines)
+
+    def test_an_image_of_a_removed_item_is_an_orphan_when_every_run_is_skipped(self):
+        self.tree.write("data/x.csv", "1")
+        self.tree.write("data/y.csv", "2")
+        self.tree.producer("a/one.py", ["fig/{item}.png"], ["{item}.png"], extra=', each="glob:data/*.csv"')
+        self.assertEqual(self.tree.run("build")[0], 0)
+        (self.tree.root / "data/y.csv").unlink()
+        self.assertEqual(self.tree.run("check", "--changed")[0], 1)
+        # Only x is left and it is skipped: no run is made, and y's image is still reported.
+        self.assertIn("orphan fig/y.png: launcher/a/one.py no longer makes it", self.tree.run("check", "--changed")[1])
+
+    def test_a_skipped_items_declared_image_is_no_orphan(self):
+        self.tree.write("data/x.csv", "1")
+        self.tree.write("data/y.csv", "2")
+        self.tree.producer("a/one.py", ["fig/{item}.png"], ["{item}.png"], extra=', each="glob:data/*.csv"')
+        self.assertEqual(self.tree.run("build")[0], 0)
+        code, out, _ = self.tree.run("check", "--changed")
+        self.assertEqual((code, out.splitlines()), (0, ["unchanged launcher/a/one.py[x]", "unchanged launcher/a/one.py[y]"]))
+
+    def baked(self, lock):
+        """Two bakes drawn by an each="bakes:" producer, built once under `lock` ({key: row}, changed by the test)."""
+        from bake import bake
+        found = [mock.Mock(output="hall.fit.bundle", suffix=".bundle", key="k1"),
+                 mock.Mock(output="yard.fit.bundle", suffix=".bundle", key="k2")]
+        self.tree.producer("a/one.py", ["fig/{item}.png"], ["{item}.png"], needs=("host", "bakes"),
+                           extra=', each="bakes:*.fit.bundle"')
+        for patched in (mock.patch.object(figures_runner, "all_bakes", return_value=found),
+                        mock.patch.object(bake, "read_lock", side_effect=lambda: lock),
+                        mock.patch.object(bake, "fetch_all", return_value={})):
+            patched.start()
+            self.addCleanup(patched.stop)
+        self.assertEqual(self.tree.run("build")[0], 0)
+
+    def test_changing_one_bakes_lock_row_reruns_only_that_item(self):
+        lock = {"k1": {"sha256": "a"}, "k2": {"sha256": "b"}}
+        self.baked(lock)
+        lock["k1"] = {"sha256": "c"}
+        lines = self.tree.run("build", "--changed")[1].splitlines()
+        self.assertIn("unchanged launcher/a/one.py[yard.fit]", lines)
+        self.assertNotIn("unchanged launcher/a/one.py[hall.fit]", lines)
+
+    def test_a_bake_that_becomes_locked_reruns(self):
+        lock = {"k2": {"sha256": "b"}}
+        self.baked(lock)
+        lock["k1"] = {"sha256": "a"}
+        lines = self.tree.run("build", "--changed")[1].splitlines()
+        self.assertIn("unchanged launcher/a/one.py[yard.fit]", lines)
+        self.assertNotIn("unchanged launcher/a/one.py[hall.fit]", lines)
+
+    def test_a_failed_bake_fetch_and_a_missing_reads_file_are_both_reported_and_nothing_runs(self):
+        from bake import bake
+        found = [mock.Mock(output="hall.fit.bundle", suffix=".bundle", key="k1")]
+        self.tree.producer("a/one.py", ["fig/{item}.png"], ["{item}.png"], needs=("host", "bakes"),
+                           extra=', each="bakes:*.fit.bundle", reads=("data/*.csv",)')
+        with mock.patch.object(figures_runner, "all_bakes", return_value=found), \
+                mock.patch.object(bake, "read_lock", return_value={}), \
+                mock.patch.object(bake, "fetch_all", side_effect=bake.BakeMissing("hall.fit.bundle: not on the release")):
+            code, _, err = self.tree.run("build")
+        self.assertEqual(code, 2)
+        self.assertIn("hall.fit.bundle: not on the release", err)
+        self.assertIn("reads data/*.csv, which matches no file", err)
+        self.assertFalse((self.tree.root / "work").exists())
+
+    def test_no_bake_is_fetched_when_no_run_draws_one(self):
+        from bake import bake
+        self.tree.producer("a/one.py", ["fig/one.png"], ["one.png"])
+        with mock.patch.object(bake, "fetch_all") as fetched:
+            self.assertEqual(self.tree.run("build")[0], 0)
+        fetched.assert_not_called()
+
+    def test_needs_includes_a_producer_only_when_all_its_needs_are_given(self):
+        self.tree.producer("a/one.py", ["fig/one.png"], ["one.png"], needs=("host", "bakes"))
+        self.tree.producer("b/two.py", ["fig/two.png"], ["two.png"])
+        self.assertEqual(self.tree.run("build", "--needs", "host")[0], 0)
+        self.assertEqual([path.name for path in (self.tree.images / "fig").iterdir()], ["two.png"])
+        self.assertEqual(self.tree.run("build", "--needs", "host,bakes")[0], 0)
+        self.assertEqual(sorted(path.name for path in (self.tree.images / "fig").iterdir()), ["one.png", "two.png"])
+
+    def test_two_glob_files_of_one_stem_stop_everything(self):
+        self.tree.write("data/a/x.csv", "1")
+        self.tree.write("data/b/x.csv", "2")
+        self.tree.producer("a/one.py", ["fig/{item}.png"], ["{item}.png"], extra=', each="glob:data/*/x.csv"')
+        code, _, err = self.tree.run("build")
+        self.assertEqual(code, 2)
+        self.assertIn("launcher/a/one.py: each glob:data/*/x.csv names item x twice", err)
+        self.assertFalse((self.tree.root / "work").exists())
+
+    def rendezvous(self, other, seconds):
+        """A prologue that marks itself, waits up to `seconds` for `other`'s mark, and when it sees it says so
+        and keeps its mark until the other has seen it too. A run that never sees another met nobody."""
+        return f"""
+me = pathlib.Path(__file__).stem
+marks = pathlib.Path(__file__).parents[2] / "marks"
+marks.mkdir(exist_ok=True)
+(marks / me).touch()
+deadline = time.monotonic() + {seconds}
+while not (marks / {other!r}).exists() and time.monotonic() < deadline:
+    time.sleep(0.01)
+if (marks / {other!r}).exists():
+    (marks / (me + "-met")).touch()
+    while not (marks / ({other!r} + "-met")).exists() and time.monotonic() < deadline:
+        time.sleep(0.01)
+(marks / me).unlink()
+"""
+
+    def met(self):
+        marks = self.tree.root / "marks"
+        return sorted(path.name for path in marks.glob("*-met")) if marks.exists() else []
+
+    def test_gpu_and_board_runs_never_overlap(self):
+        self.tree.producer("a/gpu.py", ["fig/gpu.png"], ["gpu.png"], needs=("gpu",), prologue=self.rendezvous("board", 0.5))
+        self.tree.producer("b/board.py", ["fig/board.png"], ["board.png"], needs=("board",),
+                           prologue=self.rendezvous("gpu", 0.5))
+        code, _, err = self.tree.run("build", "--jobs", "4")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.met(), [])
+
+    def test_a_host_run_overlaps_a_gpu_run(self):
+        self.tree.producer("a/gpu.py", ["fig/gpu.png"], ["gpu.png"], needs=("gpu",), prologue=self.rendezvous("host", 5))
+        self.tree.producer("b/host.py", ["fig/host.png"], ["host.png"], prologue=self.rendezvous("gpu", 5))
+        code, _, err = self.tree.run("build", "--jobs", "2")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.met(), ["gpu-met", "host-met"])
 
 
 if __name__ == "__main__":
