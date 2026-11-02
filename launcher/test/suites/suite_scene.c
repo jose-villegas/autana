@@ -2129,6 +2129,88 @@ test_a_moved_entity_is_drawn_where_it_now_stands(void) {
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
 }
 
+/* A renderer's world box, by entity name. */
+static box3f_t
+world_box_of(const scene_t* scene, const char* name) {
+    return scene->renderers[scene_renderer_index(scene, scene_find(scene, name_hash(name)))].world_bounds;
+}
+
+static void
+assert_box(box3f_t box, vec3f_t lo, vec3f_t hi) {
+    TEST_ASSERT_FLOAT_WITHIN(1e-5F, lo.x, box.lo.x);
+    TEST_ASSERT_FLOAT_WITHIN(1e-5F, lo.y, box.lo.y);
+    TEST_ASSERT_FLOAT_WITHIN(1e-5F, lo.z, box.lo.z);
+    TEST_ASSERT_FLOAT_WITHIN(1e-5F, hi.x, box.hi.x);
+    TEST_ASSERT_FLOAT_WITHIN(1e-5F, hi.y, box.hi.y);
+    TEST_ASSERT_FLOAT_WITHIN(1e-5F, hi.z, box.hi.z);
+}
+
+static void
+move_to(scene_t* scene, const char* name, float x, float y) {
+    transformf_t pose = TRANSFORMF_IDENTITY;
+    transformf_set_position(&pose, (vec3f_t){x, y, 0});
+    scene_entity_set_local(scene, scene_find(scene, name_hash(name)), pose);
+}
+
+/* The box is the quad's two-unit square carried to where the entity now
+ * stands, and an entity moved from far outside the view back into it is
+ * drawn: a box left where it was would skip it. */
+static void
+test_a_renderer_s_world_box_follows_its_entity_s_pose(void) {
+    fixture();
+    scene_t* scene = show("test_pair", SCENE_CAMERA_FIRST);
+    frame(16);
+    assert_box(world_box_of(scene, "green"), (vec3f_t){3, -1, 0}, (vec3f_t){5, 1, 0});
+    move_to(scene, "green", 50, 2);
+    frame(16);
+    assert_box(world_box_of(scene, "green"), (vec3f_t){49, 1, 0}, (vec3f_t){51, 3, 0});
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(4.0F));
+    move_to(scene, "green", -4, 0);
+    frame(16);
+    assert_box(world_box_of(scene, "green"), (vec3f_t){-5, -1, 0}, (vec3f_t){-3, 1, 0});
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x00FF00), pixel(-4.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
+}
+
+/* A mesh of another extent boxes at once, with no move and no frame. */
+static void
+test_a_runtime_mesh_of_another_extent_boxes_without_a_move(void) {
+    fixture();
+    scene_t* scene = show("test_pair", SCENE_CAMERA_FIRST);
+    frame(16);
+    const scene_entity_t green = scene_find(scene, name_hash("green"));
+    r3d_lit_mesh_t other = *scene_entity_mesh(scene, green);
+    other.position_scale = 2; /* ticks of half a unit: the quad shrinks to one unit */
+    TEST_ASSERT_TRUE(scene_renderer_set_mesh(scene, green, &other));
+    assert_box(world_box_of(scene, "green"), (vec3f_t){3.5F, -0.5F, 0}, (vec3f_t){4.5F, 0.5F, 0});
+    r3d_lit_node_t wide = other.nodes[0];
+    wide.bounds = (box3s_t){{-3, -1, 0}, {3, 1, 0}};
+    other.nodes = &wide;
+    other.position_scale = 1;
+    TEST_ASSERT_TRUE(scene_renderer_set_mesh(scene, green, &other));
+    assert_box(world_box_of(scene, "green"), (vec3f_t){1, -1, 0}, (vec3f_t){7, 1, 0});
+}
+
+/* The green quad is red's child 4 units along: its box moves with red. */
+static void
+test_a_parent_move_updates_its_child_s_world_box(void) {
+    fixture();
+    scene_t* scene = show("test_family", SCENE_CAMERA_FIRST);
+    frame(16);
+    assert_box(world_box_of(scene, "green"), (vec3f_t){1, -1, 0}, (vec3f_t){3, 1, 0});
+    move_to(scene, "red", -12, 0);
+    frame(16);
+    assert_box(world_box_of(scene, "green"), (vec3f_t){-9, -1, 0}, (vec3f_t){-7, 1, 0});
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x00FF00), pixel(-8.0F));
+    move_to(scene, "red", 40, 0);
+    frame(16);
+    assert_box(world_box_of(scene, "green"), (vec3f_t){43, -1, 0}, (vec3f_t){45, 1, 0});
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(2.0F));
+    move_to(scene, "red", -2, 0);
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x00FF00), pixel(2.0F));
+}
+
 /* The green quad stands off the view axis, so a roll of the camera about it
  * moves the quad round the picture: a quarter turn takes it from beside the
  * centre to above or below it. */
@@ -3154,6 +3236,23 @@ test_skinned_scene_draws_clip_output_and_reskins_from_bind(void) {
         TEST_ASSERT_TRUE(scene_renderer_set_skin(scene, entity, skins[k], NULL));
         TEST_ASSERT_EQUAL_INT16(2, scene_entity_mesh(scene, entity)->positions[0][0]);
         release_fixture();
+    }
+}
+
+/* A skinned renderer is boxed too: each pose's refit moves its box with its
+ * bounds, and the raster is handed that box. */
+static void
+test_a_skinned_renderer_s_world_box_follows_its_refit(void) {
+    scene_t* scene = rig_fixture("rig.skin4", NULL);
+    const scene_entity_t entity = scene_find(scene, name_hash("red"));
+    const scene_renderer_t* row = &scene->renderers[scene_renderer_index(scene, entity)];
+    frame(0);
+    for (int step = 1; step <= 3; step++) {
+        scene_animation_step(scene, RIG_DURATION_MS / RIG_TRAVEL);
+        TEST_ASSERT_FLOAT_WITHIN(1e-5F, (float)(step - 1), row->world_bounds.lo.x);
+        TEST_ASSERT_FLOAT_WITHIN(1e-5F, (float)(step + 1), row->world_bounds.hi.x);
+        frame(0);
+        TEST_ASSERT_EQUAL_PTR(&row->world_bounds, scene->instances[0].world_bounds);
     }
 }
 
@@ -4269,6 +4368,7 @@ run_scene_suite(void) {
     RUN_TEST(test_mesh_reader_accepts_only_positive_int_scales);
     RUN_TEST(test_clip_bind_failure_names_the_first_rejected_clip);
     RUN_TEST(test_skinned_scene_draws_clip_output_and_reskins_from_bind);
+    RUN_TEST(test_a_skinned_renderer_s_world_box_follows_its_refit);
     RUN_TEST(test_skin_split_inside_an_entity_matches_full_range);
     RUN_TEST(test_attachment_count_mismatches_preserve_previous_components);
     RUN_TEST(test_scene_open_refuses_shear_and_reflection_naming_the_entity);
@@ -4338,6 +4438,9 @@ run_scene_suite(void) {
     RUN_TEST(test_a_runtime_mesh_is_drawn_in_place_of_the_loaded_one);
     RUN_TEST(test_a_camera_takes_a_lens_shift_and_nothing_else_does);
     RUN_TEST(test_a_moved_entity_is_drawn_where_it_now_stands);
+    RUN_TEST(test_a_renderer_s_world_box_follows_its_entity_s_pose);
+    RUN_TEST(test_a_runtime_mesh_of_another_extent_boxes_without_a_move);
+    RUN_TEST(test_a_parent_move_updates_its_child_s_world_box);
     RUN_TEST(test_a_camera_rolled_about_its_view_axis_draws_the_picture_turned);
     RUN_TEST(test_with_nothing_enabled_the_picture_is_left_alone);
     RUN_TEST(test_two_scenes_are_held_at_once_and_the_active_camera_decides_which_is_seen);
