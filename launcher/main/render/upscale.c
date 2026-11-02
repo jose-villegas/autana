@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "gfx/gfx.h"
 #include "gfx/target/gfx_target.h"
 #include "render/code_layout.h"
 
@@ -295,57 +296,88 @@ corner_bits(const uint16_t* up, const uint16_t* here, const uint16_t* down, int 
                            .bottom_right = bd & ~ab & ~cd};
 }
 
-/* True when every depth of the three rows in columns [from, to] is one
- * surface with every other: their spread is within the farthest's step, so no
- * pair can differ and Scale2x fills no corner there. Most of a picture is. */
-static bool
-one_surface_window(const uint16_t* up, const uint16_t* here, const uint16_t* down, int from, int to) {
-    unsigned low = UINT16_MAX, high = 0;
-    for (int x = from; x <= to; x++) {
-        const unsigned a = up[x], b = here[x], c = down[x];
-        const unsigned column_low = a < b ? (a < c ? a : c) : (b < c ? b : c);
-        const unsigned column_high = a > b ? (a > c ? a : c) : (b > c ? b : c);
-        low = column_low < low ? column_low : low;
-        high = column_high > high ? column_high : high;
+/* Corners are marked only on the half picture, so a row of them is at most
+ * this many hint bytes: what the step bits below are sized for. */
+#define CORNER_PITCH GFX_SEAM_PITCH(GFX_WIDTH / 2)
+
+/* One source row's steps, a bit per pixel as in a seam mask: `right` where
+ * the pixel is another surface than the one right of it, `down` than the one
+ * below it in the next source row. */
+typedef struct {
+    int row; /* the source row, or -1 */
+    uint8_t right[CORNER_PITCH], down[CORNER_PITCH];
+} row_steps_t;
+
+/* The last three source rows' steps, slot row % 3: a destination row reads
+ * the rows above, at and below its own, and they advance one at a time. */
+typedef struct {
+    row_steps_t rows[3];
+} corner_rows_t;
+
+static const row_steps_t*
+steps_of(corner_rows_t* cache, const upscale_t* scale, const uint16_t* depth, size_t pitch, int row) {
+    row_steps_t* steps = &cache->rows[row % 3];
+    if (steps->row == row) {
+        return steps;
     }
-    return high - low <= (low >> UPSCALE_SURFACE_STEP_SHIFT);
+    const int width = scale->destination_width;
+    const uint16_t* here = source_row(depth, pitch, row);
+    const uint16_t* below = row + 1 < scale->source_height ? source_row(depth, pitch, row + 1) : here;
+    for (int byte = 0; byte < GFX_SEAM_PITCH(width); byte++) {
+        const int first = byte * GFX_SEAM_BITS;
+        const int count = width - first < GFX_SEAM_BITS ? width - first : GFX_SEAM_BITS;
+        const int across = first + count == width ? count - 1 : count; /* the last pixel has none right */
+        steps->right[byte] = (uint8_t)surface_steps(here + first, here + first + 1, across);
+        steps->down[byte] = (uint8_t)surface_steps(here + first, below + first, count);
+    }
+    steps->row = row;
+    return steps;
 }
 
 /* Destination row `y`'s corners, from the depths of the rows around it as
- * the nearest copy lays them out. A row inside one source row's run has its
- * own surfaces above and below: no corner. */
+ * the nearest copy lays them out. Only a pixel that steps to one of its four
+ * neighbours is tested: elsewhere the rule can fire only on a slope steep
+ * enough for a diagonal pair to differ, which is no silhouette. A row inside
+ * one source row's run has its own surfaces above and below: no corner. */
 static void
-row_corners(const upscale_t* scale, const uint16_t* depth, size_t pitch, int y, uint8_t* hints) {
+row_corners(const upscale_t* scale, const uint16_t* depth, size_t pitch, int y, uint8_t* hints, corner_rows_t* cache) {
     const int width = scale->destination_width;
     const int height = scale->destination_height;
     const int pitch_bytes = GFX_SEAM_PITCH(width);
     uint8_t* planes[GFX_HINT_PLANES];
     for (int corner = 0; corner < GFX_HINT_PLANES; corner++) {
         planes[corner] = GFX_HINT_PLANE(hints, width, height, corner) + ((size_t)y * pitch_bytes);
+        memset(planes[corner], 0, pitch_bytes);
     }
     const int here_row = scale->rows[y];
     const int up_row = y > 0 ? scale->rows[y - 1] : here_row;
     const int down_row = y + 1 < height ? scale->rows[y + 1] : here_row;
     if (up_row == here_row && down_row == here_row) {
-        for (int corner = 0; corner < GFX_HINT_PLANES; corner++) {
-            memset(planes[corner], 0, pitch_bytes);
-        }
         return;
     }
+    const row_steps_t* here_steps = steps_of(cache, scale, depth, pitch, here_row);
+    const uint8_t* up_steps = up_row != here_row ? steps_of(cache, scale, depth, pitch, up_row)->down : NULL;
+    const uint8_t* down_steps = down_row != here_row ? here_steps->down : NULL;
     const uint16_t* up = source_row(depth, pitch, up_row);
     const uint16_t* here = source_row(depth, pitch, here_row);
     const uint16_t* down = source_row(depth, pitch, down_row);
+    unsigned left_carry = 0; /* the step left of this byte's first pixel */
     for (int byte = 0; byte < pitch_bytes; byte++) {
+        const unsigned right = here_steps->right[byte];
+        const unsigned stepped = right | ((right << 1) & UINT8_MAX) | left_carry
+                                 | (up_steps != NULL ? up_steps[byte] : 0U)
+                                 | (down_steps != NULL ? down_steps[byte] : 0U);
+        left_carry = right >> (GFX_SEAM_BITS - 1);
+        if (stepped == 0) {
+            continue;
+        }
         const int first = byte * GFX_SEAM_BITS;
         const int count = width - first < GFX_SEAM_BITS ? width - first : GFX_SEAM_BITS;
-        const int to = first + count < width ? first + count : width - 1;
-        const corner_bits_t bits = one_surface_window(up, here, down, first > 0 ? first - 1 : 0, to)
-                                       ? (corner_bits_t){0}
-                                       : corner_bits(up, here, down, width, first, count);
-        planes[GFX_HINT_CORNER(0, 0)][byte] = (uint8_t)bits.top_left;
-        planes[GFX_HINT_CORNER(0, 1)][byte] = (uint8_t)bits.top_right;
-        planes[GFX_HINT_CORNER(1, 0)][byte] = (uint8_t)bits.bottom_left;
-        planes[GFX_HINT_CORNER(1, 1)][byte] = (uint8_t)bits.bottom_right;
+        const corner_bits_t bits = corner_bits(up, here, down, width, first, count);
+        planes[GFX_HINT_CORNER(0, 0)][byte] = (uint8_t)(bits.top_left & stepped);
+        planes[GFX_HINT_CORNER(0, 1)][byte] = (uint8_t)(bits.top_right & stepped);
+        planes[GFX_HINT_CORNER(1, 0)][byte] = (uint8_t)(bits.bottom_left & stepped);
+        planes[GFX_HINT_CORNER(1, 1)][byte] = (uint8_t)(bits.bottom_right & stepped);
     }
     /* Off the picture's sides the neighbour is the pixel itself: nothing to take. */
     const uint8_t last = (uint8_t)~(1U << ((width - 1) % GFX_SEAM_BITS));
@@ -387,8 +419,12 @@ upscale_rows_filtered(const upscale_t* scale, const gfx_target_t* picture, uint1
     const size_t pitch = picture->attachment[0].pitch;
     if (scale->filter == UPSCALE_FILTER_EDGES) {
         upscale_rows(scale, picture, clear, destination, first_row, row_count);
-        for (int y = first_row; hints != NULL && y < first_row + row_count; y++) {
-            row_corners(scale, depth, pitch, y, hints);
+        if (hints != NULL) {
+            assert(GFX_SEAM_PITCH(scale->destination_width) <= CORNER_PITCH);
+            corner_rows_t cache = {.rows = {{.row = -1}, {.row = -1}, {.row = -1}}};
+            for (int y = first_row; y < first_row + row_count; y++) {
+                row_corners(scale, depth, pitch, y, hints, &cache);
+            }
         }
         return;
     }

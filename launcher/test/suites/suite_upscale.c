@@ -619,7 +619,8 @@ clamped_depth(const upscale_t* scale, const uint16_t* depth, int x, int y) {
 }
 
 /* Scale2x's corner at (x, y) of the nearest copy, written out per pixel:
- * E0 = D == B && B != F && D != H, and its turns, with "==" one surface. */
+ * E0 = D == B && B != F && D != H, and its turns, with "==" one surface,
+ * on a pixel that is another surface than one of its four neighbours. */
 static bool
 reference_corner(const upscale_t* scale, const uint16_t* depth, int x, int y, int row, int side) {
     const int width = scale->destination_width;
@@ -630,7 +631,10 @@ reference_corner(const upscale_t* scale, const uint16_t* depth, int x, int y, in
     const uint16_t c = clamped_depth(scale, depth, x - 1, y), d = clamped_depth(scale, depth, x, y + 1);
     const uint16_t vertical = row == 0 ? a : d, across = side == 0 ? c : b;
     const uint16_t other_vertical = row == 0 ? d : a, other_across = side == 0 ? b : c;
-    return upscale_same_surface(across, vertical) && !upscale_same_surface(across, other_vertical)
+    const uint16_t p = clamped_depth(scale, depth, x, y);
+    const bool stepped = !upscale_same_surface(p, a) || !upscale_same_surface(p, b) || !upscale_same_surface(p, c)
+                         || !upscale_same_surface(p, d);
+    return stepped && upscale_same_surface(across, vertical) && !upscale_same_surface(across, other_vertical)
            && !upscale_same_surface(vertical, other_across);
 }
 
@@ -639,7 +643,9 @@ reference_corner(const upscale_t* scale, const uint16_t* depth, int x, int y, in
  * mark what one whole call does. */
 static void
 check_corner_case(const seam_case_t* c) {
-    const uint16_t levels[] = {0, 0x1000, 0x1080, 0x8000, 0x8900};
+    /* 0x1000, 0x10F0 and 0x11E0 chain: each one surface with the next, the
+     * ends not, as on a slope. */
+    const uint16_t levels[] = {0, 0x1000, 0x10F0, 0x11E0, 0x8000, 0x8900};
     const size_t pixels = (size_t)c->width * c->source;
     const size_t bytes = GFX_HINT_BYTES(c->width, c->destination);
     const size_t out = (size_t)c->width * c->destination;
@@ -736,6 +742,34 @@ test_edge_corners_round_a_square_and_keep_its_inside(void) {
     }
 }
 
+/* A slope: the pixel at (3, 1) is one surface with each neighbour, while the
+ * neighbours above and left are another than those right and below. Scale2x
+ * by depth alone would fill its top-left and bottom-right corners. */
+static void
+test_edge_corners_leave_a_smooth_slope_alone(void) {
+    enum { WIDTH = 8, HEIGHT = 3, LOW = 0x1000, MIDDLE = 0x10F0, HIGH = 0x11E0, AT_X = 3, AT_Y = 1 };
+
+    TEST_ASSERT_TRUE(upscale_same_surface(LOW, MIDDLE) && upscale_same_surface(MIDDLE, HIGH));
+    TEST_ASSERT_FALSE(upscale_same_surface(LOW, HIGH));
+    uint16_t color[WIDTH * HEIGHT] = {0}, depth[WIDTH * HEIGHT], columns[WIDTH], rows[HEIGHT], actual[WIDTH * HEIGHT];
+    uint8_t hints[GFX_HINT_BYTES(WIDTH, HEIGHT)];
+    for (int x = 0; x < WIDTH; x++) {
+        depth[x] = LOW;
+        depth[WIDTH + x] = x < AT_X ? LOW : x == AT_X ? MIDDLE : HIGH;
+        depth[(2 * WIDTH) + x] = HIGH;
+    }
+    GFX_TARGET_STORAGE(2) storage = GFX_TARGET_COLOR_INIT(color, WIDTH, HEIGHT);
+    attach_depth(&storage.target, depth);
+    upscale_t scale;
+    TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, WIDTH, HEIGHT, columns, rows));
+    scale.filter = UPSCALE_FILTER_EDGES;
+    upscale_rows_filtered(&scale, &storage.target, 0, actual, hints, 0, HEIGHT);
+    for (int corner = 0; corner < GFX_HINT_PLANES; corner++) {
+        const uint8_t* plane = GFX_HINT_PLANE(hints, WIDTH, HEIGHT, corner);
+        TEST_ASSERT_FALSE(gfx_seam_at(plane + (AT_Y * GFX_SEAM_PITCH(WIDTH)), AT_X));
+    }
+}
+
 /* With no depth, EDGES knows nothing: the nearest copy and no corner. */
 static void
 test_edge_corners_without_depth_mark_none(void) {
@@ -773,6 +807,7 @@ run_upscale_suite(void) {
     RUN_TEST(test_surface_seams_match_the_per_pixel_reference);
     RUN_TEST(test_edge_corners_match_the_per_pixel_scale2x_reference);
     RUN_TEST(test_edge_corners_round_a_square_and_keep_its_inside);
+    RUN_TEST(test_edge_corners_leave_a_smooth_slope_alone);
     RUN_TEST(test_edge_corners_without_depth_mark_none);
 }
 

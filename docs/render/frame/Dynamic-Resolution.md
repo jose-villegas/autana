@@ -77,7 +77,7 @@ For pixel P with up A, right B, left C and down D, a corner takes its neighbour 
 | bottom-left | C | C, D one surface; C, A not; D, B not |
 | bottom-right | B | B, D one surface; B, A not; D, C not |
 
-Inside one surface no corner changes, so interiors are nearest exactly. Compose skips eight pixels at a time when the depths around them all fall within one step of the farthest.
+Inside one surface no corner changes, so interiors are nearest exactly. Compose tests only pixels that are another surface than one of their four neighbours, from step bits taken once per source row. A slope steep enough for a diagonal pair to differ, with no step between neighbours, keeps its pixels.
 
 The seam and the corners share one buffer, the half picture's expand hints (`GFX_HINT_PLANES` one-bit masks after its pixels); SURFACE reads the first mask, EDGES all four.
 
