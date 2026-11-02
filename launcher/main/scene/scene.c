@@ -26,7 +26,7 @@ static memory_take_fn kept_take;
 
 /* The block's layout: the header, then each array on its own alignment. */
 typedef struct {
-    size_t renderers, cameras, instances, flags, locals, world_slots, animators, skins, lights, total;
+    size_t renderers, cameras, instances, flags, locals, world_slots, animators, skins, lights, staged, active, total;
 } layout_t;
 
 size_t
@@ -51,6 +51,8 @@ layout_for(const scene_asset_t* asset) {
     SCENE_STORAGE_RESERVE(l, end, animators, scene_animator_t, entities);
     SCENE_STORAGE_RESERVE(l, end, skins, scene_skinned_renderer_t, entities);
     SCENE_STORAGE_RESERVE(l, end, lights, scene_light_t, entities);
+    SCENE_STORAGE_RESERVE(l, end, staged, scene_entity_t, entities);
+    SCENE_STORAGE_RESERVE(l, end, active, uint16_t, renderers);
     l.total = end;
     return l;
 }
@@ -118,6 +120,9 @@ instantiate(const scene_asset_t* asset) {
     scene->world_slots = (uint16_t*)(void*)(block + l.world_slots);
     scene->animators = (scene_animator_t*)(void*)(block + l.animators);
     scene->lights = (scene_light_t*)(void*)(block + l.lights);
+    scene->staged = (scene_entity_t*)(void*)(block + l.staged);
+    scene->active_renderers = (uint16_t*)(void*)(block + l.active);
+    scene->active_renderers_stale = true;
     scene->ambient_color = asset->settings->ambient_color;
     scene->ambient_intensity = asset->settings->ambient_intensity;
     scene->tonemap_white = asset->settings->tonemap_white;
