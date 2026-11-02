@@ -36,12 +36,14 @@ from r3d.appearance_simplify import projection  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402
 from r3d.lit_mesh import read_lit_mesh  # noqa: E402
 from r3d.lod import pick  # noqa: E402
-from r3d.lod.levels import build_levels, welded  # noqa: E402
+from r3d.geometry import weld_keeping  # noqa: E402
+from r3d.lod.levels import build_levels  # noqa: E402
 from r3d.poses import focal_px, sample_camera_path  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[4]
 # Tolerances the summary reports without a budget, in pixels.
 FIXED_TAUS_PX = (1.0, 2.0, 4.0)
+DEFAULT_EVERY_MS = 100
 # Default budgets: these shares of the path's most finest-level triangles in view.
 DEFAULT_BUDGET_SHARES = (0.5, 0.75)
 
@@ -52,21 +54,26 @@ def mesh_levels(blob):
         path = pathlib.Path(folder) / "mesh"
         path.write_bytes(blob)
         mesh = read_lit_mesh(path)
-    positions, triangles = welded(mesh.pos / float(mesh.position_scale), mesh.tris)
-    return build_levels(positions, triangles, int(np.median([c[3] for c in mesh.clusters])))
+    ticks, triangles = weld_keeping(mesh.pos, mesh.tris, tolerance=1)
+    return build_levels(ticks / float(mesh.position_scale), triangles, int(np.median([c[3] for c in mesh.clusters])))
 
 
 def placements(bundle, rest_name, matrix, position):
-    """Every placed mesh of a fit bundle: its rest, then each copy under its row's transform; all under the
-    renderer's own transform."""
+    """Every placed mesh of a fit bundle; each copy shape's levels are built once."""
     entries, rows = mesh_bundle.decode(pathlib.Path(bundle).read_bytes())
     data = {name: blob for name, _kind, blob in entries}
     shapes = {name: mesh_levels(data[name]) for name in [rest_name, *dict.fromkeys(row["mesh"] for row in rows)]}
+    return placed_meshes(shapes, rows, rest_name, matrix, position)
+
+
+def placed_meshes(shapes, rows, rest_name, matrix, position):
+    """The rest, then each copy row's shape under the row's transform; all under the renderer's
+    (`matrix`, `position`), applied after the row's."""
     placed = [pick.Placed(shapes[rest_name], matrix, position)]
     for row in rows:
         local = np.asarray(row["matrix"], dtype=np.float64)
         placed.append(pick.Placed(shapes[row["mesh"]], matrix @ local, matrix @ np.asarray(row["position"]) + position))
-    return placed, shapes
+    return placed
 
 
 def terminal_triangles(v, tau):
@@ -118,6 +125,11 @@ def summary_rows(rows, budgets):
     return out
 
 
+def in_segment(rows, segment):
+    """The rows from segment[0] to segment[1] seconds, both included."""
+    return [r for r in rows if segment[0] * 1000 <= r["time_ms"] <= segment[1] * 1000]
+
+
 def write(out, rows, budgets, segment, title):
     with (out / "poses.csv").open("w", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
@@ -125,8 +137,7 @@ def write(out, rows, budgets, segment, title):
         writer.writerows(rows)
     groups = [("path", rows)]
     if segment:
-        groups.append((f"{segment[0]:g}-{segment[1]:g} s",
-                       [r for r in rows if segment[0] * 1000 <= r["time_ms"] <= segment[1] * 1000]))
+        groups.append((f"{segment[0]:g}-{segment[1]:g} s", in_segment(rows, segment)))
     table = [summary_rows(g, budgets) for _, g in groups]
     lines = [f"# {title}", "", "| Measure | " + " | ".join(name for name, _ in groups) + " |",
              "|---|" + "---:|" * len(groups)]
@@ -148,16 +159,6 @@ def write(out, rows, budgets, segment, title):
     plot_style.save(fig, out / "lod.png")
 
 
-def locked_bundle(scene_path, scene, job):
-    """The locked fit of `job`, fetched into the bake cache."""
-    from bake import bake
-
-    tables = bake.read_lock_tables()
-    found = bake.bakes([scene_path], bake.locked_starts(tables["bake"]), bake.Poses(tables["poses"]))
-    fit = next(item for item in found if item.kind == "fit" and item.job.object.name == job.object.name)
-    return bake.fetch_all([fit], tables["bake"], bake.default_cache())[fit]
-
-
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("scene", type=pathlib.Path)
@@ -165,10 +166,12 @@ def main(argv=None):
     parser.add_argument("--out", type=pathlib.Path, required=True)
     parser.add_argument("--bundle", type=pathlib.Path)
     parser.add_argument("--budgets", type=lambda text: [int(n) for n in text.split(",")])
-    parser.add_argument("--every-ms", type=int, default=100)
+    parser.add_argument("--every-ms", type=int, default=DEFAULT_EVERY_MS)
     parser.add_argument("--size", type=int, nargs=2)
     parser.add_argument("--segment", type=float, nargs=2)
     args = parser.parse_args(argv)
+    if args.every_ms <= 0:
+        parser.error("--every-ms must be positive")
     out = args.out.resolve()
     if out.is_relative_to(REPO):
         parser.error("--out must be outside the repository")
@@ -182,8 +185,13 @@ def main(argv=None):
     width, height, lens, near, poses = sample_camera_path(camera.path.animation, camera.path.node, args.every_ms,
                                                           *(args.size or job.renderer.fit.size),
                                                           camera.half_fov_short_tan, camera.near_z)
-    bundle = args.bundle or locked_bundle(args.scene, scene, job)
-    placed, _ = placements(bundle, job.asset_name, np.asarray(job.object.matrix, dtype=np.float64),
+    if args.bundle is None:
+        from bake import bake
+
+        bundle = bake.fetch(bake.locked_fit(args.scene, args.object))
+    else:
+        bundle = args.bundle
+    placed = placements(bundle, job.asset_name, np.asarray(job.object.matrix, dtype=np.float64),
                            np.asarray(job.object.position, dtype=np.float64))
     focal = focal_px(width, height, lens)
     views = [pick.view(placed, pose[:3], projection(pose[:3], pose[3:], width, height, lens, near), focal, near)
@@ -191,6 +199,8 @@ def main(argv=None):
     budgets = args.budgets or sorted({int(share * max(int(v.triangles[v.finest].sum()) for v in views))
                                       for share in DEFAULT_BUDGET_SHARES})
     rows = [pose_row(v, i * args.every_ms, budgets) for i, v in enumerate(views)]
+    if args.segment and not in_segment(rows, args.segment):
+        parser.error("--segment holds no pose of the path")
     out.mkdir(parents=True, exist_ok=True)
     write(out, rows, budgets, args.segment, f"{args.scene.name.split('.')[0]} {args.object}: runtime LOD replay")
     print((out / "summary.md").read_text())
