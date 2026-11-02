@@ -179,6 +179,9 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("fig/two-x.png: launcher/a/one.py (area fig, needs host)", out)
         self.assertIn("fig/none.png: no producer declares it", out)
 
+    def test_list_of_a_tree_without_producers_is_empty(self):
+        self.assertEqual(self.tree.run("list", "--outputs"), (0, "", ""))
+
     def test_list_outputs_expands_globs_against_the_committed_images(self):
         self.tree.producer("a/one.py", ["fig/one.png", "fig/two-*.png"], ["one.png"])
         self.tree.commit("fig/two-x.png", "red")
