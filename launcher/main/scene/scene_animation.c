@@ -560,6 +560,7 @@ scene_animation_step(scene_t* scene, uint32_t dt_ms) {
     for (int e = 0; e < entities; e++) {
         if (scene->skinned_renderers[e].internal_storage != NULL && scene->animators[e].posed) {
             r3d_skin_refit_nodes(&scene->skinned_renderers[e].output);
+            scene_renderer_bound(&scene->renderers[scene_renderer_index(scene, (scene_entity_t)e)]);
         }
     }
 }
