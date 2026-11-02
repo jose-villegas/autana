@@ -187,7 +187,7 @@ def which(found, images):
             status = 1
             continue
         print(f"{name}: {item.name} (area {item.producer.area}, needs {', '.join(item.producer.needs)})\n"
-              f"  autana figures build {item.name}")
+              f"  python launcher/tools/docs/figures_runner.py build {item.name}")
         for pattern in item.producer.reads:
             print(f"  reads {pattern}")
     return status

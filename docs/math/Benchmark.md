@@ -127,7 +127,7 @@ ESP-DSP calibration: measured warm 1299.0 cycles/call; ANSI O2 reference 1311 cy
 | Host error sweep | `bash launcher/test/run_tests.sh --sanitize` |
 | Host records | Save `MATHERROR`/`MATHERRORBIN` in `data/math_error_host_capture.txt` with a `MATHTARGET target=host arch=<architecture> execution=host` record. |
 | Regenerate blocks | `python launcher/tools/perf/fast_paths.py`; add `--check` to verify. |
-| Figures | `autana figures build --area math`; see [Doc-Figures.md](../tools/Doc-Figures.md). |
+| Figures | `python launcher/tools/docs/figures_runner.py build --area math`; see [Doc-Figures.md](../tools/Doc-Figures.md). |
 
 Initialize the pinned IDF as shown in the [test app commands](../../launcher/packages/math/test_apps/README.md).
 The board app ELF is `launcher/packages/math/test_apps/build.board/math_test_app.elf`.
