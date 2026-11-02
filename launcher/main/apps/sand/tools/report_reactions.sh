@@ -49,7 +49,6 @@ set -eu
 # performance.sh (this file's sibling) already resolves the same way.
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 SAND_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
-MAIN_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../../.." && pwd)
 LAUNCHER_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../../../.." && pwd)
 REPO_ROOT=$(CDPATH= cd -- "$LAUNCHER_DIR/.." && pwd)
 
@@ -88,7 +87,7 @@ mkdir -p "$BUILD_DIR"
 OUT_BIN="$BUILD_DIR/dump_reactions"
 
 # shellcheck disable=SC2086
-"$CC_BIN" $CFLAGS -I "$MAIN_DIR" $(package_includes "$LAUNCHER_DIR") -I "$SAND_DIR" \
+"$CC_BIN" $CFLAGS $(firmware_includes "$LAUNCHER_DIR") -I "$SAND_DIR" \
     "$SCRIPT_DIR/dump_reactions.c" "$SAND_DIR/material.c" \
     "$SAND_DIR/material_palette.c" -o "$OUT_BIN"
 

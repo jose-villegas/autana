@@ -24,19 +24,19 @@ def include_dirs(launcher=LAUNCHER):
 
 def board_include_dir(launcher=LAUNCHER):
     """main/board/<folder> of the board a host build compiles: the BOARD_DIR of the Kconfig choice
-    BOARD's default, as main/board/board_dir.cmake reads it. Raises when the choice names none."""
+    BOARD's default, as main/board/board_dir.cmake reads it. Raises when the choice names none
+    that exists."""
     kconfig = (pathlib.Path(launcher) / "main" / "Kconfig.projbuild").read_text(encoding="utf-8")
     choice = re.search(r"^ *choice BOARD\n(.*?)^ *endchoice", kconfig, re.S | re.M)
     default = choice and re.search(r"^ *default ([A-Z0-9_]+)$", choice.group(1), re.M)
     folder = default and re.search(rf'^ *default "([a-z0-9_]+)" if {default.group(1)}$', kconfig, re.M)
-    if not folder:
-        raise ValueError("no board folder: main/Kconfig.projbuild's choice BOARD names none")
-    return pathlib.Path(launcher) / "main" / "board" / folder.group(1)
+    path = folder and pathlib.Path(launcher) / "main" / "board" / folder.group(1)
+    if not path or not path.is_dir():
+        raise ValueError("no board folder: main/Kconfig.projbuild's choice BOARD names none that exists")
+    return path
 
 
 def include_roots(launcher=LAUNCHER):
     """launcher/main, the board's folder and every package's include root: the firmware's
-    quoted-include search path. A tree with no main/Kconfig.projbuild has no board to add."""
-    main = pathlib.Path(launcher) / "main"
-    board = (board_include_dir(launcher),) if (main / "Kconfig.projbuild").is_file() else ()
-    return (main, *board, *include_dirs(launcher))
+    quoted-include search path."""
+    return (pathlib.Path(launcher) / "main", board_include_dir(launcher), *include_dirs(launcher))

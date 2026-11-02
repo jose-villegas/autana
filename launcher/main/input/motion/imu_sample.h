@@ -29,7 +29,7 @@ _Static_assert(sizeof(imu_sample_t) == 12, "FIFO order is six little-endian int1
 #define IMU_SAMPLE_UPRIGHT {.ax = IMU_COUNTS_PER_G}
 
 /* Sensor axes to the screen labels x right, y down, z out. The chip sits with X
- * up the screen, Y right and Z out of the back (board/waveshare_amoled_1_8/board_geometry.h). It reads
+ * up the screen, Y right and Z out of the back (board_geometry.h). It reads
  * specific force, which points up at rest, and callers treat the vector as down,
  * so each label is a chip axis negated: held upright the chip reads +1 g on X,
  * which lands on +y, down. The labels are left-handed; the numbers are true down. */

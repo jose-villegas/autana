@@ -31,7 +31,6 @@
 set -eu
 
 TEST_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-MAIN_DIR=$(CDPATH= cd -- "$TEST_DIR/../main" && pwd)
 BUILD_DIR="$TEST_DIR/build/su-device"
 
 # shellcheck source=../tools/device/device_profile.sh
@@ -77,7 +76,7 @@ compile_suite() {
     "$CC_BIN" $STD_FLAG $ARCH_FLAGS $CODEGEN_FLAGS -ffreestanding \
         -Wall -Wextra -Wno-unused-parameter -g \
         $1 -DCONFIG_LAUNCHER_DEVELOPMENT=1 \
-        -I "$MAIN_DIR" $(board_includes "$TEST_DIR/..") $(package_includes "$TEST_DIR/..") -I "$TEST_DIR" $(testkit_includes "$TEST_DIR/..") \
+        $(firmware_includes "$TEST_DIR/..") -I "$TEST_DIR" $(testkit_includes "$TEST_DIR/..") \
         -I "$TEST_DIR/stubs" \
         -I "$TEST_DIR/../components/microui/include" \
         -include "$TEST_DIR/timing.h" \

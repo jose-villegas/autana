@@ -242,7 +242,13 @@ ANY_INCLUDE = re.compile(r'^\s*#\s*include\s+[<"]([^>"]+)[>"]')
 
 
 def include_roots(root):
-    return tuple(path.resolve() for path in packages.include_roots(pathlib.Path(root) / "launcher"))
+    launcher = pathlib.Path(root) / "launcher"
+    try:
+        roots = packages.include_roots(launcher)
+    except (OSError, ValueError):
+        # A hook's staged copy holds only the staged files, so it may carry no board.
+        roots = (launcher / "main", *packages.include_dirs(launcher))
+    return tuple(path.resolve() for path in roots)
 
 
 def resolve_include(root, path, inc):

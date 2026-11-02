@@ -2,10 +2,10 @@
  * board: the one place a board fact gets bound to a concrete value.
  *
  * Every other file names a ROLE (the PMU's address, the boot button's GPIO,
- * the panel's column offset) and never a literal number. The board Kconfig
- * chooses names a folder under board/ whose board_config.h states the values
- * and whose sources bind these functions. It includes ESP-IDF headers but
- * never the vendor BSP's: only board/'s sources bind to bsp/.
+ * the panel's column offset) and never a literal number. The Kconfig choice
+ * BOARD picks a folder under board/; its board_config.h states the values and
+ * its sources bind these functions. This header includes ESP-IDF headers but
+ * never the vendor BSP's: only that folder's sources bind to bsp/.
  */
 #pragma once
 

@@ -268,34 +268,39 @@ class OwnerProblemsTest(unittest.TestCase):
             '/* esp_timer_get_time() */\n// heap_caps_malloc(8, MALLOC_CAP_DMA)\n'
             'const char* s = "heap_caps_get_free_size";\n')}), [])
 
-    def test_the_bsp_belongs_to_board_alone_drivers_included(self):
+    def test_the_bsp_belongs_to_a_board_folder_alone_drivers_included(self):
         text = ('#include "bsp/esp-bsp.h"\n'
                 'void f(void) { bsp_i2c_get_handle(); int p = BSP_I2C_SDA + CONFIG_BSP_I2C_NUM; }\n')
         for rel in ("launcher/main/input/motion/imu.c", "launcher/main/power/power_device.c",
                     "launcher/test/suites/suite_imu.c", "launcher/tools/render/render_host.c"):
             with self.subTest(rel=rel):
                 self.assertEqual(self.problems({rel: text}), [
-                    f"{rel}:1: includes bsp/esp-bsp.h; only board/ may",
-                    f"{rel}:2: uses bsp_i2c_get_handle; only board/ may",
-                    f"{rel}:2: uses BSP_I2C_SDA; only board/ may",
-                    f"{rel}:2: uses CONFIG_BSP_I2C_NUM; only board/ may",
+                    f"{rel}:1: includes bsp/esp-bsp.h; only a board's folder under board/ may",
+                    f"{rel}:2: uses bsp_i2c_get_handle; only a board's folder under board/ may",
+                    f"{rel}:2: uses BSP_I2C_SDA; only a board's folder under board/ may",
+                    f"{rel}:2: uses CONFIG_BSP_I2C_NUM; only a board's folder under board/ may",
                 ])
-        self.assertEqual(self.problems({"launcher/main/board/board_panel.c": text}), [])
+        self.assertEqual(self.problems({"launcher/main/board/one/board_panel.c": text}), [])
+
+    def test_boards_own_api_files_do_not_own_the_bsp_but_may_use_the_clock(self):
+        rel = "launcher/main/board/board_usb.c"
+        self.assertEqual(self.problems({rel: "int p = BSP_I2C_SDA;\n" + CLOCK_READ}),
+                         [f"{rel}:1: uses BSP_I2C_SDA; only a board's folder under board/ may"])
 
     def test_a_folder_only_named_like_board_does_not_own_the_bsp(self):
         rel = "launcher/main/board_extras/x.c"
-        self.assertEqual(self.problems({rel: "int p = BSP_I2C_SDA;\n"}), [f"{rel}:1: uses BSP_I2C_SDA; only board/ may"])
+        self.assertEqual(self.problems({rel: "int p = BSP_I2C_SDA;\n"}), [f"{rel}:1: uses BSP_I2C_SDA; only a board's folder under board/ may"])
 
     def test_a_bsp_include_line_is_reported_once_as_an_include(self):
         rel = "launcher/main/input/touch/touch.c"
         self.assertEqual(self.problems({rel: "#include <bsp/bsp_touch.h>\n"}),
-                         [f"{rel}:1: includes bsp/bsp_touch.h; only board/ may"])
+                         [f"{rel}:1: includes bsp/bsp_touch.h; only a board's folder under board/ may"])
 
     def test_an_angle_bracket_bsp_include_fails_and_a_comment_naming_the_bsp_does_not(self):
         rel = "launcher/main/input/touch/touch.c"
         text = '#include <bsp/touch.h>\n/* bsp_touch_new */\nconst char* s = "BSP_X";\n'
         self.assertEqual(self.problems({rel: text}),
-                         [f"{rel}:1: includes bsp/touch.h; only board/ may"])
+                         [f"{rel}:1: includes bsp/touch.h; only a board's folder under board/ may"])
 
     def test_main_c_is_left_to_the_shell_rule_so_a_line_is_reported_once(self):
         self.assertEqual(self.problems({"launcher/main/main.c": CLOCK_READ}), [])

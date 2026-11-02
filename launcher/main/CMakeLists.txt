@@ -126,7 +126,7 @@ endif()
 
 # board/board.h's functions and values come from the chosen board's folder.
 include("${CMAKE_CURRENT_LIST_DIR}/board/board_dir.cmake")
-launcher_glob(board_srcs "${CMAKE_CURRENT_LIST_DIR}/board/${board_dir}/*.c")
+launcher_glob(board_srcs "${board_include_dir}/*.c")
 list(APPEND app_srcs ${board_srcs})
 # At 120 MHz, PSRAM tuning runs with the USB port off the bus; the wrap that
 # routes it through board_usb.c is added after idf_component_register below.
@@ -332,7 +332,7 @@ endif()
 
 idf_component_register(
     SRCS ${app_srcs}
-    INCLUDE_DIRS "." "board/${board_dir}"
+    INCLUDE_DIRS "." "${board_include_dir}"
     PRIV_INCLUDE_DIRS ${app_private_include_dirs}
     LDFRAGMENTS "linker.lf"
     REQUIRES ${app_reqs}

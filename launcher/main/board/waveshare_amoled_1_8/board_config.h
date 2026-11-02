@@ -1,6 +1,6 @@
 /*
  * board_config: the Waveshare ESP32-S3-Touch-AMOLED-1.8's values for the
- * roles board.h names; board.c asserts them against the vendor BSP's.
+ * roles board.h names; board.c asserts the ones the vendor BSP also states.
  */
 #pragma once
 
@@ -11,7 +11,6 @@
 #define BOARD_PANEL_HEIGHT         448
 
 /* BOARD_BOOT_GPIO: pulled up, grounded when pressed, so LOW means down. */
-
 #define BOARD_BOOT_GPIO            GPIO_NUM_0
 #define BOARD_PMU_I2C_ADDR         0x34
 #define BOARD_IMU_I2C_ADDR         0x6B

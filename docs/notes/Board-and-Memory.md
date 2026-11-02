@@ -6,16 +6,6 @@ and `launcher/sdkconfig.defaults`.
 
 ## The board
 
-| File | Holds |
-|---|---|
-| `board/board.h`, `board/board_panel.h` | the functions and roles every other file calls |
-| `board/<folder>/board_config.h` | one board's values for those roles: pins, I2C addresses, panel size |
-| `board/<folder>/*.c` | one board's bindings, the only code that names its vendor BSP |
-
-The Kconfig choice `BOARD` (`main/Kconfig.projbuild`) picks the folder; the
-build compiles that folder alone and puts it on the include path. A host build
-takes the choice's default.
-
 ESP32-S3R8, dual-core Xtensa LX7 @ 240 MHz, single-precision FPU. Flash and
 PSRAM clocks are set in `launcher/sdkconfig.defaults`.
 
@@ -53,6 +43,16 @@ flowchart TB
     SOC ---|"I2C0 + GPIO"| SOUND
     SOC ---|"I2C0"| SYS
 ```
+
+| File | Holds |
+|---|---|
+| [`board/board.h`](../../launcher/main/board/board.h), [`board/board_panel.h`](../../launcher/main/board/board_panel.h) | the functions and roles every other file calls |
+| `board/<folder>/board_config.h`, as [this board's](../../launcher/main/board/waveshare_amoled_1_8/board_config.h) | one board's values for those roles: pins, I2C addresses, panel size |
+| `board/<folder>/*.c` | one board's bindings, the only code that names its vendor BSP |
+
+The Kconfig choice `BOARD` ([`main/Kconfig.projbuild`](../../launcher/main/Kconfig.projbuild)) picks the
+folder; the build compiles that folder alone and puts it on the include path. A
+host build takes the choice's default.
 
 The display, SD card and external memory use separate buses. CPU work and
 internal-memory traffic can still contend; separate buses do not guarantee
