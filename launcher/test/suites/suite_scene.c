@@ -12,6 +12,7 @@
 #include <string.h>
 
 #include "anim/anim_tracks_format.h"
+#include "box3f_expect.h"
 #include "hash/crc32.h"
 #include "math/scalar/math_const.h"
 #include "suites.h"
@@ -2229,12 +2230,7 @@ world_box_of(const scene_t* scene, const char* name) {
 
 static void
 assert_box(box3f_t box, vec3f_t lo, vec3f_t hi) {
-    TEST_ASSERT_FLOAT_WITHIN(1e-5F, lo.x, box.lo.x);
-    TEST_ASSERT_FLOAT_WITHIN(1e-5F, lo.y, box.lo.y);
-    TEST_ASSERT_FLOAT_WITHIN(1e-5F, lo.z, box.lo.z);
-    TEST_ASSERT_FLOAT_WITHIN(1e-5F, hi.x, box.hi.x);
-    TEST_ASSERT_FLOAT_WITHIN(1e-5F, hi.y, box.hi.y);
-    TEST_ASSERT_FLOAT_WITHIN(1e-5F, hi.z, box.hi.z);
+    box3f_expect_within(1e-5F, (box3f_t){lo, hi}, box);
 }
 
 static void
