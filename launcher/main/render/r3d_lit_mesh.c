@@ -132,7 +132,8 @@ lod_is_ordered(const r3d_lit_mesh_t* mesh) {
         const r3d_lit_lod_group_t* inner = &mesh->lod_groups[lod.own];
         const r3d_lit_lod_group_t* outer = &mesh->lod_groups[lod.parent];
         const int64_t room = (int64_t)outer->bounds.radius - inner->bounds.radius - R3D_LOD_ENCLOSE_MARGIN;
-        /* Widened: two int16 ticks can differ by more than an int16 holds. */
+        /* Widened: two int16 ticks can differ by more than an int16 holds. A
+         * widened spheres contains_ball replaces this (autana-4zwhv). */
         const int64_t dx = (int64_t)outer->bounds.centre.x - inner->bounds.centre.x;
         const int64_t dy = (int64_t)outer->bounds.centre.y - inner->bounds.centre.y;
         const int64_t dz = (int64_t)outer->bounds.centre.z - inner->bounds.centre.z;
