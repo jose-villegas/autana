@@ -1,8 +1,9 @@
-# Doc figures: producers and `autana figures`
+# Doc figures: producers and their runner
 
 The plots, GIFs and renders under `docs/images/` are made by producers:
 scripts kept beside the code they explain. A producer states in its own
-source which images it makes and how it is run. `autana figures` reads
+source which images it makes and how it is run.
+[`figures_runner.py`](../../launcher/tools/docs/figures_runner.py) reads
 those statements, so it can tell you who makes an image and rebuild just that
 image, without a list kept anywhere else.
 
@@ -39,12 +40,15 @@ small program that calls the library and prints JSON.
 
 ## Running them
 
+From the repository root, with a Python that has Pillow, numpy and matplotlib:
+`python launcher/tools/docs/figures_runner.py COMMAND`.
+
 | Command | What it does |
 |---|---|
-| `autana figures list [--area AREA]` | each producer: script, area, needs, image count |
-| `autana figures which docs/images/math/frustum.png` | the producer that makes it, the data it reads, and the command that rebuilds it |
-| `autana figures build --area math` | make that area's images and copy them into `docs/images/` |
-| `autana figures check --area math` | make them and compare with the committed images |
+| `list [--area AREA]` | each producer: script, area, needs, image count |
+| `which docs/images/math/frustum.png` | the producer that makes it, the data it reads, and the command that rebuilds it |
+| `build --area math` | make that area's images and copy them into `docs/images/` |
+| `check --area math` | make them and compare with the committed images |
 
 `build` and `check` also take script paths in place of `--area`, or nothing for
 every producer. A run goes in three steps:

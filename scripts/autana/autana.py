@@ -1395,16 +1395,6 @@ def docs(args):
     return docs_search.main(args, root=resolve_project())
 
 
-# launcher/tools/docs/figures_runner.py under the first Python with the
-# producers' modules; Git Bash on Windows, where the producers' sh helpers run.
-FIGURES = ('. scripts/lib/python.sh && python=$(find_python PIL numpy matplotlib) && '
-           'exec "$python" launcher/tools/docs/figures_runner.py "$@"')
-
-
-def figures(args):
-    return subprocess.call([device_module().git_bash(), "-c", FIGURES, "figures", *args], cwd=resolve_project())
-
-
 def apps(args):
     reject_unknown("apps", args, ("--json",))
     json_output = read_json_flag(args, "usage: autana apps [--json]")
@@ -1898,11 +1888,6 @@ COMMAND_GROUPS = (
             ("docs --section <path:line>", "one section whole, or path#heading words; --deep adds subsections"),
             ("docs --outline <path>", "a document's headings, with lines and sizes"),
             ("docs --ask <question...>", "a short answer from the local chat model"))),
-        Command("figures", figures, (
-            ("figures list [--area AREA] [--outputs]", "the doc-image producers, or every image they declare"),
-            ("figures which <image...>", "the producer that makes an image, and its command"),
-            ("figures build [--area AREA] [script...] [--into DIR]", "make the images into docs/images/, producers in parallel"),
-            ("figures check [--area AREA] [script...]", "make them and compare with the committed images by pixels"))),
     )),
 )
 
