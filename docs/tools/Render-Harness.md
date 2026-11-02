@@ -132,8 +132,8 @@ Run alone, it needs `PYTHON` set to an interpreter with Pillow and NumPy.
 `render_doc_images.sh` passes it the demo scene file and `OBJECT`, the object
 name of the scene's full renderer; the scene must also place `OBJECT_lite`,
 `OBJECT_flat`, `OBJECT_fitted`, `OBJECT_fitted_full` and `OBJECT_flat_fitted`.
-The CPU stage makes the launcher's and the UI toolkit's images and runs each app's
-`tools/doc_images.sh` for the app's own:
+The CPU stage makes the launcher's and the UI toolkit's images, runs each app's
+`tools/doc_images.sh` for the app's own, and runs the [declared producers](Doc-Figures.md):
 
 ```sh
 ./launcher/tools/render/render_doc_images.sh           # rewrite images and tables
