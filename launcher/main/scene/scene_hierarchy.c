@@ -74,6 +74,13 @@ world_from_parent(const scene_t* scene, scene_entity_t entity) {
 }
 
 void
+scene_renderer_bound(scene_renderer_t* r) {
+    if (r->mesh.node_count > 0) {
+        r->world_bounds = r3d_lit_mesh_world_bounds(&r->mesh, r->placed ? &r->model : NULL);
+    }
+}
+
+void
 scene_resolve(scene_t* scene) {
     for (int i = 0; i < scene->world_count; i++) {
         const scene_entity_t e = scene->world_entities[i];
@@ -88,6 +95,7 @@ scene_resolve(scene_t* scene) {
             const uint16_t slot = scene->world_slots[r->entity];
             r->model = slot != SCENE_WORLD_SLOT_NONE ? scene->worlds[slot] : world_from_parent(scene, r->entity);
             r->placed = !scene_transform_is_identity(&r->model);
+            scene_renderer_bound(r);
         }
     }
     for (int i = 0; i < scene->asset.entity_count; i++) {
