@@ -12,7 +12,7 @@ flowchart LR
     end
     subgraph Census["the cull, core 0"]
         direction TB
-        Inst["instance<br/><i>its root box,<br/>under its model</i>"] --> Node["node<br/><i>box against the planes<br/>its parent crossed</i>"]
+        Inst["instance<br/><i>its world box, then<br/>its root box under its model</i>"] --> Node["node<br/><i>box against the planes<br/>its parent crossed</i>"]
         Node --> Cluster["cluster<br/><i>box against<br/>the leaf's planes</i>"]
     end
     subgraph Draw["the draw, both cores"]
@@ -26,7 +26,7 @@ flowchart LR
 | Stage | Test | Unit | Where | Saves |
 |---|---|---|---|---|
 | Visibility | no ray from the camera region or path reaches it | triangle | the importer, offline ([visibility](../scene/Scene-Files.md#visibility-camera_region)) | flash and every stage below |
-| Instance | its root node's box is outside a frustum plane | instance, each copy under its own model | `r3d_pipeline_cull()`, from the root | the whole mesh |
+| Instance | its world box, then its root node's box, is outside a frustum plane | instance, each copy under its own model | `cull_instances()` in [raster.c](../../../launcher/main/render/raster.c), then `r3d_pipeline_cull()` from the root | the whole mesh; with the world box, its lens and its walk too |
 | Node | its box is outside a plane its parent's box crossed | node of the cluster tree | `r3d_pipeline_cull()` | its subtree |
 | Cluster | its box is outside a plane its leaf's box crossed | cluster | `r3d_pipeline_cull()` | its vertices' transform and its triangles |
 | Rows | its transformed vertices span no row of this core's half | cluster, per core | `r3d_pipeline_draw()` | its triangles on that core |
@@ -54,8 +54,19 @@ There is no far plane. The boxes and the tree are the bake's
   [depth scale](Attachments.md#depth).
 
 An instance is culled through its own lens, the picture's composed with its
-model, so copies of one mesh each walk the tree where they sit. `render.cull`
-(a development tunable, default 1) set to 0 keeps every cluster; the
+model, so copies of one mesh each walk the tree where they sit. The picture's
+lens is built once per position scale and each copy only adds its placement.
+
+An instance may carry a world box: its root box through its model, in RAM
+(`r3d_lit_mesh_world_bounds()`), kept current by the caller as its meshes
+move or refit. It is tested first against the picture's planes, grown by a
+slack past float rounding, so it only drops instances the root test would
+drop. Those then build no lens and read no tree. Kept clusters and pixels are
+the same either way.
+
+An instance that kept no cluster gets no slot in the draw's batch; its
+attachment writers still see it. `render.cull` (a development tunable,
+default 1) set to 0 keeps every cluster and skips the world box; the
 meshlet-size table in [Baked-Mesh.md](../offline/Baked-Mesh.md#meshlets)
 measures both.
 
