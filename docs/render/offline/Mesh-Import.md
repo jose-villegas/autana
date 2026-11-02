@@ -332,7 +332,7 @@ view is the camera-path pose where those boxes show the most visible edge;
 |---|---|
 | objects.md / objects.json | Shapes, copies, triangles saved, match residuals |
 | poses.csv, lod.png | Per camera-path pose: whole and in-view budgets, repeated-shape LOD budget, and triangles LOD frees |
-| error.csv / error.md, error.png | With `--held-out`: every object part's path pixels and held-out error, ranked |
+| error.csv / error.json / error.md, error.png | With `--held-out`: every object part's path pixels and held-out error, ranked |
 
 - Repeated shapes step down while their triangle share exceeds what projected area allows; `LOD_TRIANGLE_RATIO` and `LOD_LEVELS` in `objects_report.py` set the quarter-triangle levels and cap.
 - This is an estimate: pixels per triangle is calibrated from the path; enclosing-sphere footprints overstate tall, thin props.
@@ -342,10 +342,15 @@ view is the camera-path pose where those boxes show the most visible edge;
 `--held-out` scores a fitted renderer's locked fit against its held-out
 references ([`objects/object_error.py`](../../../launcher/tools/r3d/objects/object_error.py)).
 Each pixel's dE76 is charged to the object part the reference shows there,
-so the rows sum to the held-out score.
+so the error shares add up to the held-out score's mean dE76.
 
-`--docs` keeps every part's row under `docs/render/data/<scene>-object-error.*`;
-`render_doc_images.sh` makes the figures and tables below from those rows.
+```sh
+python launcher/tools/r3d/objects/objects_report.py SCENE.scene.toml --object NAME --out DIR --held-out [--docs]
+```
+
+`--docs` keeps every part's row under `docs/render/data/<scene>-<object>-object-error.*`;
+`render_doc_images.sh` makes the figures and tables below from those rows; the
+object and shape tables sum every part, so all of them are kept.
 
 | Term | Meaning |
 |---|---|
@@ -356,9 +361,9 @@ so the rows sum to the held-out score.
 | welded | Shares a position with another object |
 | segment | One welded part: only sub-mesh segmentation can split it |
 
-![Error and pixel share of the costliest Bistro parts](../../images/render/bistro-object-error.png)
+![Error and pixel share of the costliest Bistro parts](../../images/render/bistro-street-fitted-full-object-error.png)
 
-<!-- generated: bistro-object-error sha256=3a348f67e16e68c50da8b39fefa51ab54a69d3a953ef28fb721b30f32fa4eb04 -->
+<!-- generated: bistro-street-fitted-full-object-error sha256=3a348f67e16e68c50da8b39fefa51ab54a69d3a953ef28fb721b30f32fa4eb04 -->
 Mean dE76 over the held-out path 6.364, over 10014 object parts in view. 9.1% of the drawn triangles sit on parts no held-out pixel shows.
 
 Object parts, ranked by error share. Names leave out `Bistro_Research_Exterior_`.
@@ -435,11 +440,11 @@ Repeated shapes, every copy summed.
 | Bistro_Research_Exterior_paris_building_04_4987#52 | MASTER_Building_Details | 52 / 64 | 0.23% | 6.9 | 0.25% | 208 | 15 |
 | Bistro_Research_Exterior_Paris_SidewalkBarrier_01A3_6175#2 | Sidewalkbarrier | 5 / 5 | 0.20% | 7.7 | 0.24% | 460 | 2 |
 | Bistro_Research_Exterior_Paris_Table_01___10__6493#0 | Paris_Table_Terrace | 87 / 121 | 0.15% | 10.2 | 0.23% | 1044 | 35 |
-<!-- /generated: bistro-object-error -->
+<!-- /generated: bistro-street-fitted-full-object-error -->
 
-![Error and pixel share of the costliest Sponza parts](../../images/render/sponza-object-error.png)
+![Error and pixel share of the costliest Sponza parts](../../images/render/sponza-atrium-fitted-full-object-error.png)
 
-<!-- generated: sponza-object-error sha256=c7815393105e49bfee20b5ad952ae43309dfe0e162953281c2aa46da4ceed7ff -->
+<!-- generated: sponza-atrium-fitted-full-object-error sha256=c7815393105e49bfee20b5ad952ae43309dfe0e162953281c2aa46da4ceed7ff -->
 Mean dE76 over the held-out path 5.390, over 1026 object parts in view. 8.1% of the drawn triangles sit on parts no held-out pixel shows.
 
 Object parts, ranked by error share. Names leave out `sponza_`.
@@ -516,7 +521,7 @@ Repeated shapes, every copy summed. Names leave out `sponza_`.
 | 61 | arch | 11 / 11 | 0.43% | 6.8 | 0.54% | 440 | 382 |
 | 297 | flagpole | 10 / 10 | 0.26% | 10.9 | 0.52% | 1920 | 14 |
 | 369#50 | vase_round | 8 / 8 | 0.38% | 7.2 | 0.50% | 17592 | 1055 |
-<!-- /generated: sponza-object-error -->
+<!-- /generated: sponza-atrium-fitted-full-object-error -->
 
 ## The offline tools
 

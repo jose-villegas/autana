@@ -1,7 +1,8 @@
 {
   "title": "bistro street_fitted_full: held-out error by part",
+  "fit": "3c6282a4d366719149fcdbc790deef3b0235c3aed2c766f4c50beb1b31549bfd",
+  "reference": "1746a905990fb61153411b1cf1fc2764734f5f766ae9bc285c56d12a2f2a6bb0",
   "mean_delta_e": 6.364069036621951,
-  "held_out_mean_delta_e": 6.3641,
   "parts_seen": 10014,
   "drawn_unseen_share": 0.09083144938457677
 }

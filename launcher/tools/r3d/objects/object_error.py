@@ -1,11 +1,11 @@
 """Held-out error per source object part of a fitted scene renderer, ranked by its share of the path's error.
 
-objects_report.py --held-out drives it. Objects are the source objects split
-into connected parts (welded positions within one object). Each pixel of the
+objects_report.py --held-out drives it. Parts are the source objects' connected
+pieces (welded positions within one object). Each pixel of the
 held-out frames counts toward the part the reference shows there, traced with
 the reference's own primary rays at the render's size; the sky counts as its
 own row. The error is the held-out score's CIE76 dE (render_compare), so the
-rows sum to the score.
+mean over every part's pixels is the score; held_out_error fails when not.
 
     object_error.py DATA --figure PNG --table MD
 
@@ -22,18 +22,11 @@ import sys
 from typing import NamedTuple
 
 import numpy as np
-from scipy.sparse import coo_matrix
-from scipy.sparse.csgraph import connected_components
-from scipy.spatial import cKDTree
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "render"))
 
 from docs import plot_style  # noqa: E402
-from r3d.geometry import weld_keeping  # noqa: E402
-from r3d.objects.instances import match_instances, source_objects  # noqa: E402
-from r3d.poses import read_poses  # noqa: E402
-from render.render_compare import delta_e76, reference_video  # noqa: E402
 
 SKY = "(sky)"
 TOP_ROWS = 20
@@ -43,8 +36,13 @@ ROW_INCHES = 0.24
 FRAME_INCHES = 1.2
 # Shares and dE76 keep this many significant digits in error.csv.
 CSV_DIGITS = 6
-INT_FIELDS = ("source_triangles", "drawn_triangles", "shape", "copies", "parts_of_object")
-BOOL_FIELDS = ("welded", "segment")
+# The held-out score prints four decimals; the mean over the parts' pixels must round to it.
+SCORE_TOLERANCE = 1e-4
+# A row's fields in error.csv's column order, each with the type read turns its text back into.
+FIELDS = dict(object=str, source_object=str, material=str, pixel_share=float, error_share=float,
+              mean_delta_e=float, source_triangles=int, source_share=float, drawn_triangles=int, drawn_share=float,
+              shape=int, copies=int, parts_of_object=int, welded=lambda text: text == "True",
+              segment=lambda text: text == "True")
 
 
 class Parts(NamedTuple):
@@ -62,6 +60,10 @@ class Parts(NamedTuple):
 def part_labels(p, tri_v, tri_o):
     """Per triangle, its connected part: triangles of one object that share a welded position. Parts are numbered
     by object, then by first triangle. Also per part, whether it shares a welded position with another object."""
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    from r3d.geometry import weld_keeping
+
     _, welded = weld_keeping(p, tri_v)
     nodes, node = np.unique(np.column_stack([np.repeat(tri_o, 3), welded.ravel()]), axis=0, return_inverse=True)
     node = node.reshape(-1, 3)
@@ -108,6 +110,8 @@ def main_materials(labels, tri_m, material_names, count):
 
 def drawn_parts(source_p, tri_v, labels, drawn, count):
     """Per part, the drawn triangles nearest its source triangles by centre: where the fitted mesh spent them."""
+    from scipy.spatial import cKDTree
+
     _, near = cKDTree(source_p[tri_v].mean(axis=1)).query(drawn.mean(axis=1))
     return np.bincount(labels[near], minlength=count)
 
@@ -115,6 +119,8 @@ def drawn_parts(source_p, tri_v, labels, drawn, count):
 def accumulate(frames, reference_dir, scale, ids_for):
     """Per held-out frame, (part id of each render pixel, its dE76); `ids_for(index, width, height)` is the part
     each render pixel's reference shows, -1 for the sky."""
+    from render.render_compare import delta_e76, reference_video
+
     totals = {}
 
     def sink(_fps, index, render, reference):
@@ -271,14 +277,15 @@ def figure(rows, path, title, top=FIGURE_ROWS):
     plot_style.save(fig, path)
 
 
-def write(out, rows, score, unseen, held_out_mean, title):
-    """error.csv (every part), error.json (totals), error.md (the ranked tables), error.png (the bar figure)."""
+def write(out, rows, score, unseen, title, keys):
+    """error.csv (every part), error.json (totals, and the bake `keys` the rows were measured from), error.md (the
+    ranked tables), error.png (the bar figure)."""
     with (out / "error.csv").open("w", newline="") as stream:
-        writer = csv.DictWriter(stream, fieldnames=list(rows[0]), lineterminator="\n")
+        writer = csv.DictWriter(stream, fieldnames=list(FIELDS), lineterminator="\n")
         writer.writeheader()
         writer.writerows({key: f"{value:.{CSV_DIGITS}g}" if isinstance(value, float) else value
                           for key, value in row.items()} for row in rows)
-    (out / "error.json").write_text(json.dumps(dict(title=title, mean_delta_e=score, held_out_mean_delta_e=held_out_mean,
+    (out / "error.json").write_text(json.dumps(dict(title=title, **keys, mean_delta_e=score,
                                                     parts_seen=len(rows) - 1, drawn_unseen_share=unseen),
                                                indent=2) + "\n")
     (out / "error.md").write_text(f"# {title}\n\n{report_body(rows, score, unseen)}\n\n![Error and pixel share](error.png)\n")
@@ -287,24 +294,21 @@ def write(out, rows, score, unseen, held_out_mean, title):
 
 def read(data):
     """The rows and totals write kept as DATA.csv and DATA.json."""
-    def typed(row):
-        return {key: int(value) if key in INT_FIELDS else value == "True" if key in BOOL_FIELDS
-                else value if key in ("object", "source_object", "material") else float(value)
-                for key, value in row.items()}
-
     with data.with_suffix(".csv").open(newline="") as stream:
-        rows = [typed(row) for row in csv.DictReader(stream)]
+        rows = [{key: FIELDS[key](value) for key, value in row.items()} for row in csv.DictReader(stream)]
     return rows, json.loads(data.with_suffix(".json").read_text())
 
 
 def held_out_error(scene_path, scene, job, bundle, inputs, work):
     """Score `bundle` as `job` over `inputs`' held-out poses and split its error by source object part: rows_for's
-    rows, mean dE76 and unseen drawn share, and the held-out score's own mean."""
+    rows, mean dE76 and unseen drawn share. Fails when the parts' mean does not round to the held-out score's."""
     from r3d import fitted_variant as fv
     from r3d import mesh_bundle
+    from r3d.appearance_simplify import start_mesh
     from r3d.bake_fidelity import build_host
-    from r3d.fit.copies import placed_copies
-    from r3d.lit_mesh import finest_triangles, read_lit_mesh
+    from r3d.fit.copies import joined, placed_copies
+    from r3d.objects.instances import match_instances, source_objects
+    from r3d.poses import read_poses
     from r3d.ray_query import RayQuery
     from r3d.reference_render import lit_source, primary_hits
 
@@ -325,21 +329,21 @@ def held_out_error(scene_path, scene, job, bundle, inputs, work):
         return ids
 
     entries, _rows = mesh_bundle.decode(bundle.read_bytes())
-    rest = work / f"{job.asset_name}.mesh"
-    rest.write_bytes(next(data for name, _kind, data in entries if name == job.asset_name))
-    mesh = read_lit_mesh(rest)
-    q, rgb, tris, *_ = finest_triangles(mesh)
-    drawn = (q / float(mesh.position_scale))[tris]
-    copies = placed_copies(bundle, rgb is None)
-    if copies is not None:
-        drawn = np.concatenate([drawn, copies.points[copies.vertex_point][copies.tris]])
+    path = work / f"{job.asset_name}.mesh"
+    path.write_bytes(next(data for name, _kind, data in entries if name == job.asset_name))
+    rest = start_mesh(path)
+    fitted = joined(rest, placed_copies(bundle, rest.flat))
+    drawn = fitted.points[fitted.vertex_point][fitted.tris]
     parts = Parts(names, [source.object_names[o] for o in owner], parts_of_object, shared,
                   main_materials(labels, tri_m, source.names, count), np.bincount(labels, minlength=count),
                   drawn_parts(p, tri_v, labels, drawn, count))
     host = build_host(fv.VIEWER, work / "host", scene_path)
     held_out_mean, _p95 = fv.held_out_score(job, bundle, work, host, scene_path, inputs=inputs)
     totals = accumulate(work / "score" / "frames.avi", inputs / "reference_held_out", fv.BOARD_SCALE, ids_for)
-    return (*rows_for(parts, shapes, totals), held_out_mean)
+    rows, score, unseen = rows_for(parts, shapes, totals)
+    if abs(score - held_out_mean) > SCORE_TOLERANCE:
+        raise ValueError(f"the parts' mean dE76 {score:.4f} is not the held-out score's {held_out_mean:.4f}")
+    return rows, score, unseen
 
 
 def main(argv=None):

@@ -13,7 +13,7 @@ proportion to source triangles; culling uses world bounds, not occlusion.
 against its held-out references, made into the bake cache when missing, and
 splits the error by source object part (objects/object_error.py): error.csv,
 error.md and error.png. --docs keeps error.csv and error.json as
-docs/render/data/SCENE-object-error.*, which render_doc_images.sh makes the
+docs/render/data/SCENE-OBJECT-object-error.*, which render_doc_images.sh makes the
 page's figure and generated block from.
 """
 
@@ -233,11 +233,12 @@ def write_error_report(args, scene, job, out):
     inputs = produce.reference_set(fit.stages['reference'], job, scene, cache)
     work = out / 'held_out'
     work.mkdir(exist_ok=True)
-    rows, score, unseen, held_out_mean = object_error.held_out_error(args.scene.resolve(), scene, job,
+    rows, score, unseen = object_error.held_out_error(args.scene.resolve(), scene, job,
                                                                      pathlib.Path(bundle), inputs, work)
-    name = scene_id(args.scene)
-    object_error.write(out, rows, score, unseen, held_out_mean, f'{name} {job.object.name}: held-out error by part')
-    print(f'mean dE76 {score:.3f} by parts, {held_out_mean:.3f} by the held-out score')
+    name = f'{scene_id(args.scene)}-{job.object.name}'.replace('_', '-')
+    object_error.write(out, rows, score, unseen, f'{scene_id(args.scene)} {job.object.name}: held-out error by part',
+                       dict(fit=fit.key, reference=fit.stages['reference']))
+    print(f'mean dE76 {score:.3f} over the parts, as the held-out score')
     if args.docs:
         for suffix in ('.csv', '.json'):
             shutil.copyfile(out / f'error{suffix}', REPO / 'docs/render/data' / f'{name}-object-error{suffix}')
