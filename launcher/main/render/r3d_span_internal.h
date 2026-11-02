@@ -22,7 +22,8 @@
 int32_t r3d_span_plane_bound(int32_t top, int32_t dx, int32_t dy, recti_t box);
 
 /* True when a plane in the same form stays inside [0, max] at every pixel
- * centre of `box`, so a span there needs no clamp. */
+ * centre of `box`. Triangle setup also accepts planes bounded by their
+ * subpixel vertices; an off-window vertex can make this box test tighter. */
 bool r3d_span_plane_in_range(int32_t top, int32_t dx, int32_t dy, int32_t max, recti_t box);
 
 /* True when every pixel of `box` already holds depth at or nearer than

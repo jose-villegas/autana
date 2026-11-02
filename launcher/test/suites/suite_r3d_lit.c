@@ -27,6 +27,31 @@
 #include "render/raster_internal.h"
 #include "render/view/raster_show.h"
 
+#ifndef DEVICE_BUILD
+#define r3d_span_small_fill_resolve range_resolve
+#define r3d_span_small_fill_default range_default
+#define r3d_span_triangle           range_triangle
+#define r3d_span_triangle_solid     range_triangle_solid
+#define r3d_span_triangle_write     range_triangle_write
+#define r3d_span_capped_triangle    range_capped_triangle
+#define r3d_span_hidden             range_hidden
+#define r3d_span_plane_bound        range_plane_bound
+#define r3d_span_plane_in_range     range_plane_in_range
+#define r3d_span_stop_after         range_stop_after
+bool range_plane_in_range(int32_t top, int32_t dx, int32_t dy, int32_t max, recti_t box);
+#include "render/r3d_span.c"
+#undef r3d_span_small_fill_resolve
+#undef r3d_span_small_fill_default
+#undef r3d_span_triangle
+#undef r3d_span_triangle_solid
+#undef r3d_span_triangle_write
+#undef r3d_span_capped_triangle
+#undef r3d_span_hidden
+#undef r3d_span_plane_bound
+#undef r3d_span_plane_in_range
+#undef r3d_span_stop_after
+#endif
+
 #define W 64
 #define H 48
 
@@ -939,7 +964,154 @@ test_a_plane_below_zero_at_a_corner_is_bounded_by_its_lift(void) {
     TEST_ASSERT_EQUAL_INT32(R3D_DEPTH_NEAREST, r3d_span_plane_bound(INT32_MAX, INT32_MAX, INT32_MAX, box));
 }
 
-/* A span skips its clamps only when the plane is inside the range at every
+#ifndef DEVICE_BUILD
+/* Keep the real setup and edge carry, forcing only the clamp decision. */
+static bool
+compare_range_walk(r3d_span_vertex_t v[TRIANGLE_VERTICES], recti_t window, bool capped) {
+    const r3d_span_target_t target = fixture();
+    const r3d_span_extent_t extent = r3d_span_extent(&v[0], &v[1], &v[2]);
+    const recti_t box = recti_intersect(extent.centres, window);
+    if (recti_is_empty(box) || r3d_span_area2(&v[0], &v[1], &v[2]) == 0) {
+        return false;
+    }
+    gradients_t g = {.x_origin = box.x};
+    plane_t p;
+    if (!plane_of(&v[0], &v[1], &v[2], box.x, box.y, &p)) {
+        return false;
+    }
+    gradient(&p, v[0].z * DEPTH_SCALE, v[1].z * DEPTH_SCALE, v[2].z * DEPTH_SCALE, 0, &g);
+    fill_t f = {FILL_GOURAUD, 0, 0, &g, W - 1};
+    const r3d_span_vertex_t* vertices[TRIANGLE_VERTICES] = {&v[0], &v[1], &v[2]};
+    set_up_planes(&f, vertices, &p, box, box.y, &g, capped);
+    bool expected = !capped || g.depth_cap == R3D_DEPTH_NEAREST;
+    for (int k = 0; k < ATTRIBUTES; k++) {
+        bool vertices_inside = true;
+        for (int j = 0; j < TRIANGLE_VERTICES; j++) {
+            const int64_t x = v[j].x - (box.x * R3D_SUBPIXEL + R3D_SUBPIXEL / 2);
+            const int64_t y = v[j].y - (box.y * R3D_SUBPIXEL + R3D_SUBPIXEL / 2);
+            const int64_t numerator = (int64_t)g.base[k] * R3D_SUBPIXEL + g.dx[k] * x + g.dy[k] * y;
+            vertices_inside = vertices_inside && numerator >= 0 && numerator <= (int64_t)value_max[k] * R3D_SUBPIXEL;
+        }
+        expected =
+            expected && (vertices_inside || r3d_span_plane_in_range(g.base[k], g.dx[k], g.dy[k], value_max[k], box));
+    }
+    TEST_ASSERT_EQUAL(expected, g.in_range);
+    const bool in_range = g.in_range;
+    const gradients_t saved = g;
+    const r3d_span_vertex_t* a = &v[0];
+    const r3d_span_vertex_t* b = &v[1];
+    const r3d_span_vertex_t* c = &v[2];
+    const bool odd = sort_by_y(&a, &b, &c);
+    const walk_t w = {a,
+                      b,
+                      c,
+                      box.y,
+                      mathi_clamp(r3d_span_first_centre(b->y), box.y, recti_bottom(box)),
+                      recti_bottom(box),
+                      (r3d_span_area2(&v[0], &v[1], &v[2]) > 0) != odd};
+    walk(&target, &f, &w, false, capped);
+    uint16_t* reference = malloc(2 * W * H * sizeof(*reference));
+    TEST_ASSERT_NOT_NULL(reference);
+    memcpy(reference, color, W * H * sizeof(*reference));
+    memcpy(reference + W * H, depth, W * H * sizeof(*reference));
+    if (in_range) {
+        const bool positive = r3d_span_area2(&v[0], &v[1], &v[2]) > 0;
+        const r3d_span_vertex_t* second = positive ? &v[1] : &v[2];
+        const r3d_span_vertex_t* third = positive ? &v[2] : &v[1];
+        const small_edge_t edges[TRIANGLE_VERTICES] = {small_edge(&v[0], second), small_edge(second, third),
+                                                       small_edge(third, &v[0])};
+        for (int y = box.y; y < recti_bottom(box); y++) {
+            for (int x = box.x; x < recti_right(box); x++) {
+                const int32_t cx = x * R3D_SUBPIXEL + HALF_PIXEL;
+                const int32_t cy = y * R3D_SUBPIXEL + HALF_PIXEL;
+                if ((small_side(&edges[0], cx, cy) | small_side(&edges[1], cx, cy) | small_side(&edges[2], cx, cy))
+                    < 0) {
+                    continue;
+                }
+                for (int k = 0; k < ATTRIBUTES; k++) {
+                    const int64_t value =
+                        saved.base[k] + (int64_t)saved.dx[k] * (x - box.x) + (int64_t)saved.dy[k] * (y - box.y);
+                    TEST_ASSERT_TRUE(value >= 0 && value <= value_max[k]);
+                }
+            }
+        }
+    }
+    (void)fixture();
+    g = saved;
+    g.in_range = false;
+    walk(&target, &f, &w, false, capped);
+    const bool identical = memcmp(reference, color, W * H * sizeof(*reference)) == 0
+                           && memcmp(reference + W * H, depth, W * H * sizeof(*reference)) == 0;
+    free(reference);
+    TEST_ASSERT_TRUE(identical);
+    return in_range;
+}
+
+static void
+test_vertex_range_setup_keeps_random_walks_identical_to_clamps(void) {
+    enum { SEEDS = 4, SAMPLES = 3000, EDGE_VALUES = 4 };
+
+    int inside = 0;
+    int outside = 0;
+    for (uint32_t seed = 1; seed <= SEEDS; seed++) {
+        uint32_t state = seed;
+        for (int sample = 0; sample < SAMPLES; sample++) {
+            r3d_span_vertex_t v[TRIANGLE_VERTICES];
+            for (int j = 0; j < TRIANGLE_VERTICES; j++) {
+                float channels[ATTRIBUTES];
+                for (int k = 0; k < ATTRIBUTES; k++) {
+                    const float edge = (float)(next_random(&state) % EDGE_VALUES) / R3D_SPAN_COLOR_SCALE;
+                    channels[k] = next_random(&state) % 2 ? edge : (float)UINT8_MAX - edge;
+                }
+                v[j] = sv(0, 0, channels[0] / UINT8_MAX, channels[1], channels[2], channels[3]);
+                v[j].x = random_subpixel(&state, -W / 2, 2 * W);
+                v[j].y = random_subpixel(&state, -H / 2, 2 * H);
+            }
+            const int row = (int)(next_random(&state) % (H / 2));
+            const recti_t window = {0, row, W, 1 + (int)(next_random(&state) % (H - row))};
+            const r3d_span_extent_t extent = r3d_span_extent(&v[0], &v[1], &v[2]);
+            if (r3d_span_area2(&v[0], &v[1], &v[2]) == 0 || recti_is_empty(recti_intersect(extent.centres, window))) {
+                continue;
+            }
+            const bool accepted = compare_range_walk(v, window, sample % 2 != 0);
+            inside += accepted;
+            outside += !accepted;
+        }
+    }
+    TEST_ASSERT_GREATER_THAN_INT(1000, inside);
+    TEST_ASSERT_GREATER_THAN_INT(1000, outside);
+}
+
+static void
+test_diagonal_vertex_range_accepts_a_plane_its_box_rejects(void) {
+    r3d_span_vertex_t v[TRIANGLE_VERTICES] = {sv(2, 2, 0.5f, 1, 1, 1), sv(60, 44, 0.5f, 254, 254, 254),
+                                              sv(59, 44, 0.5f, 1, 1, 1)};
+    const recti_t box = r3d_span_extent(&v[0], &v[1], &v[2]).centres;
+    plane_t p;
+    gradients_t g = {0};
+    TEST_ASSERT_TRUE(plane_of(&v[0], &v[1], &v[2], box.x, box.y, &p));
+    colour_gradients(&p, &v[0], &v[1], &v[2], &g);
+    TEST_ASSERT_FALSE(r3d_span_plane_in_range(g.base[1], g.dx[1], g.dy[1], value_max[1], box));
+    TEST_ASSERT_TRUE(compare_range_walk(v, (recti_t){0, 0, W, H}, false));
+}
+
+static void
+test_clipped_vertex_past_max_keeps_the_corner_range_decision(void) {
+    r3d_span_vertex_t v[TRIANGLE_VERTICES] = {sv(-4 * W, 0, 2, 9, 9, 9), sv(W, 0, 0.25f, 9, 9, 9),
+                                              sv(0, H, 0.5f, 9, 9, 9)};
+    const recti_t window = {0, 0, W, H};
+    plane_t p;
+    gradients_t g = {0};
+    TEST_ASSERT_TRUE(plane_of(&v[0], &v[1], &v[2], window.x, window.y, &p));
+    gradient(&p, v[0].z * DEPTH_SCALE, v[1].z * DEPTH_SCALE, v[2].z * DEPTH_SCALE, 0, &g);
+    TEST_ASSERT_TRUE(plane_at(&g, 0, window, &v[0], true) > DEPTH_MAX);
+    depth_range(&v[0], &v[1], &v[2], window, &g, false);
+    TEST_ASSERT_EQUAL(r3d_span_plane_in_range(g.base[0], g.dx[0], g.dy[0], DEPTH_MAX, window), g.in_range);
+    TEST_ASSERT_TRUE(compare_range_walk(v, window, false));
+}
+#endif
+
+/* The corner test accepts exactly the planes inside the range at every
  * centre of the box: checked against each centre, with planes small enough
  * that a corner often lands on 0, on the range's top, or one past either. */
 static void
@@ -2848,6 +3020,11 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_a_plane_behind_a_wall_is_hidden_and_one_reaching_past_it_is_not);
     RUN_TEST(test_a_plane_below_zero_at_a_corner_is_bounded_by_its_lift);
     RUN_TEST(test_a_plane_is_in_range_exactly_when_every_centre_of_its_box_is);
+#ifndef DEVICE_BUILD
+    RUN_TEST(test_vertex_range_setup_keeps_random_walks_identical_to_clamps);
+    RUN_TEST(test_diagonal_vertex_range_accepts_a_plane_its_box_rejects);
+    RUN_TEST(test_clipped_vertex_past_max_keeps_the_corner_range_decision);
+#endif
     RUN_TEST(test_triangles_behind_a_nearer_wall_leave_colour_and_depth_untouched);
     RUN_TEST(test_a_window_holding_a_few_rows_of_a_tall_sliver_draws_them_as_the_whole_does);
     RUN_TEST(test_a_triangle_with_corners_past_the_snap_range_fills_its_centres);

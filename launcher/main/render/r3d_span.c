@@ -54,7 +54,7 @@ typedef struct {
     int32_t dx[ATTRIBUTES];
     int32_t dy[ATTRIBUTES];
     int x_origin;
-    bool in_range;      /* every plane stays inside its range across the whole box, and depth under its cap */
+    bool in_range;      /* every plane stays in range on the box or triangle, and depth under its cap */
     uint16_t depth_cap; /* a capped fill's depth no span passes; R3D_DEPTH_NEAREST when uncapped */
 } gradients_t;
 
@@ -122,13 +122,44 @@ plane_limits(int32_t top, int32_t dx, int32_t dy, recti_t box, int64_t* low, int
     *high = (top > bottom ? top : bottom) + (across > 0 ? across : 0);
 }
 
-/* The depth plane at a vertex, rounded up; `base` holds it at the box's
- * first centre. */
+/* The stored integer plane at a subpixel vertex, in the box's first-centre
+ * frame. Floor and ceil enclose its exact value without a drift margin. */
 static inline int64_t
-depth_at(const gradients_t* g, recti_t box, const r3d_span_vertex_t* v) {
+plane_at(const gradients_t* g, int k, recti_t box, const r3d_span_vertex_t* v, bool ceil) {
     const int64_t x = (int64_t)v->x - ((box.x * R3D_SUBPIXEL) + (R3D_SUBPIXEL / 2));
     const int64_t y = (int64_t)v->y - ((box.y * R3D_SUBPIXEL) + (R3D_SUBPIXEL / 2));
-    return g->base[0] + ((((int64_t)g->dx[0] * x) + ((int64_t)g->dy[0] * y) + R3D_SUBPIXEL - 1) >> R3D_SUBPIXEL_SHIFT);
+    return g->base[k]
+           + ((((int64_t)g->dx[k] * x) + ((int64_t)g->dy[k] * y) + (ceil ? R3D_SUBPIXEL - 1 : 0))
+              >> R3D_SUBPIXEL_SHIFT);
+}
+
+static inline void
+plane_vertex_limits(const gradients_t* g, int k, recti_t box, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                    const r3d_span_vertex_t* c, int64_t* low, int64_t* high) {
+    const r3d_span_vertex_t* v[TRIANGLE_VERTICES] = {a, b, c};
+    *low = INT64_MAX;
+    *high = INT64_MIN;
+    for (int i = 0; i < TRIANGLE_VERTICES; i++) {
+        const int64_t floor = plane_at(g, k, box, v[i], false);
+        const int64_t ceil = plane_at(g, k, box, v[i], true);
+        *low = floor < *low ? floor : *low;
+        *high = ceil > *high ? ceil : *high;
+    }
+}
+
+/* Pineda 1988 [32] bounds coverage by the triangle. Its integer affine
+ * planes attain their extrema at vertices (Olano and Greer 1997 [70]).
+ * Window corners are cheaper and can be tighter than off-window vertices. */
+static inline bool
+plane_in_triangle_range(const gradients_t* g, int k, recti_t box, const r3d_span_vertex_t* a,
+                        const r3d_span_vertex_t* b, const r3d_span_vertex_t* c) {
+    if (r3d_span_plane_in_range(g->base[k], g->dx[k], g->dy[k], value_max[k], box)) {
+        return true;
+    }
+    int64_t low;
+    int64_t high;
+    plane_vertex_limits(g, k, box, a, b, c, &low, &high);
+    return low >= 0 && high <= value_max[k];
 }
 
 /* The last 16.8 depth under a 16-bit cap, so only a depth that would pass
@@ -144,31 +175,42 @@ depth_cap_max(uint16_t cap) {
  * than it allows either: such a plane cannot pass its vertices' limit. */
 #define DEPTH_STEPS_EXACT (INT32_MAX / (R3D_SPAN_RANGE / R3D_SUBPIXEL))
 
-/* Whether the depth plane stays inside [0, DEPTH_MAX] over `box`; when
- * `capped`, also under r3d_span_depth_limit() of the nearest vertex. Every
- * centre a fill covers lies inside the triangle, where the plane peaks at a
- * vertex; a steep sliver's set-up can tilt it past the limit there, and then
- * its spans clamp to it. */
+/* A box or vertex bound proves depth in range. Capped fills also require
+ * an unrestricted cap; steep slivers can exceed their nearest vertex's
+ * depth limit even when the window corners fit the stored depth range. */
 static inline __attribute__((always_inline)) void
 depth_range(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, recti_t box,
             gradients_t* g, bool capped) {
     if (!capped) {
-        g->in_range = r3d_span_plane_in_range(g->base[0], g->dx[0], g->dy[0], DEPTH_MAX, box);
+        g->in_range = plane_in_triangle_range(g, 0, box, a, b, c);
         return;
     }
     int64_t low;
     int64_t high;
     plane_limits(g->base[0], g->dx[0], g->dy[0], box, &low, &high);
+    const bool corners_in_range = low >= 0 && high <= DEPTH_MAX;
+    int64_t vertex_low = 0;
+    int64_t vertex_high = 0;
+    bool vertices_read = false;
+    if (!corners_in_range) {
+        plane_vertex_limits(g, 0, box, a, b, c, &vertex_low, &vertex_high);
+        vertices_read = true;
+    }
     g->depth_cap = R3D_DEPTH_NEAREST;
     if (mathi_abs(g->dx[0]) + mathi_abs(g->dy[0]) >= DEPTH_STEPS_EXACT) {
         const uint16_t limit = r3d_span_depth_limit(mathf_max(a->z, mathf_max(b->z, c->z)));
         const int32_t max = depth_cap_max(limit);
-        if (limit < R3D_DEPTH_NEAREST && high > max
-            && (depth_at(g, box, a) > max || depth_at(g, box, b) > max || depth_at(g, box, c) > max)) {
-            g->depth_cap = limit;
+        if (limit < R3D_DEPTH_NEAREST && high > max) {
+            if (!vertices_read) {
+                plane_vertex_limits(g, 0, box, a, b, c, &vertex_low, &vertex_high);
+            }
+            if (vertex_high > max) {
+                g->depth_cap = limit;
+            }
         }
     }
-    g->in_range = g->depth_cap == R3D_DEPTH_NEAREST && low >= 0 && high <= DEPTH_MAX;
+    g->in_range =
+        g->depth_cap == R3D_DEPTH_NEAREST && (corners_in_range || (vertex_low >= 0 && vertex_high <= DEPTH_MAX));
 }
 
 /* A pixel centre just outside the triangle extrapolates past the vertex
@@ -868,7 +910,7 @@ r3d_span_hidden(const r3d_span_target_t* target, int32_t bound, recti_t box) {
 }
 
 /* The colour planes, unless a face colour stands in for them, and whether
- * every plane stays in range across the box so spans need no clamp. */
+ * every plane stays in range on the box or triangle so spans need no clamp. */
 static inline __attribute__((always_inline)) void
 set_up_planes(const fill_t* f, const r3d_span_vertex_t* const v[TRIANGLE_VERTICES], const plane_t* p, recti_t box,
               int y_anchor, gradients_t* g, bool capped) {
@@ -879,7 +921,7 @@ set_up_planes(const fill_t* f, const r3d_span_vertex_t* const v[TRIANGLE_VERTICE
     colour_gradients(p, v[0], v[1], v[2], g);
     for (int k = 1; k < ATTRIBUTES; k++) {
         g->base[k] = first_row_value(g, k, box.y, y_anchor);
-        g->in_range = g->in_range && r3d_span_plane_in_range(g->base[k], g->dx[k], g->dy[k], value_max[k], box);
+        g->in_range = g->in_range && plane_in_triangle_range(g, k, box, v[0], v[1], v[2]);
     }
 }
 
