@@ -331,11 +331,9 @@ view is the camera-path pose where those boxes show the most visible edge;
 | Report output (`--out` directory) | What it shows |
 |---|---|
 | objects.md / objects.json | Shapes, copies, triangles saved, match residuals |
-| poses.csv, lod.png | Per camera-path pose: whole and in-view budgets, repeated-shape LOD budget, and triangles LOD frees |
 | error.csv / error.json / error.md, error.png | With `--held-out`: every object part's path pixels and held-out error, ranked |
 
-- Repeated shapes step down while their triangle share exceeds what projected area allows; `LOD_TRIANGLE_RATIO` and `LOD_LEVELS` in `objects_report.py` set the quarter-triangle levels and cap.
-- This is an estimate: pixels per triangle is calibrated from the path; enclosing-sphere footprints overstate tall, thin props.
+What levels of detail save along the camera path is measured on the fitted mesh: [plans/Cluster-LOD.md](../../plans/Cluster-LOD.md).
 
 ### Held-out error by object
 
