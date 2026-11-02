@@ -601,7 +601,9 @@ python launcher/tools/render/check_avi.py out.avi ...      # re-reads the header
 Players stop reading a RIFF AVI 1.0 file well short of its 32-bit size
 field's 4 GB, so a run whose video would pass 1 GB is refused before
 anything is drawn, with the frame count
-that does fit stated in the refusal. `--video` never changes what a scene's
+that does fit stated in the refusal; `render_host_video_frames_fit()` gives
+an open run that count, and a run stepped past its `--frames` stops its
+video there with an error. `--video` never changes what a scene's
 BMP pins: the same bytes are written whether or not it is given, so it adds
 no baseline of its own.
 
