@@ -7,9 +7,9 @@ importer calls (r3d.meshopt.build_meshlets) on a small flat patch, one meshlet p
 them. meshoptimizer has no per-triangle hook and the call reorders each meshlet's triangles, so a step is a
 whole meshlet.
 
-    python launcher/tools/r3d/bake_figures/mesh_figures.py --mesh MESH --out DIR
+    python launcher/tools/r3d/bake_figures/mesh_figures.py --mesh MESH [--rest NAME] --out DIR
 
-MESH is a baked .mesh, or a carved .bundle whose rest mesh is drawn (bake.py path OUTPUT). Needs launcher/tools/r3d/requirements.txt.
+MESH is a baked .mesh, or a carved .bundle with --rest naming its rest mesh (bake.py path OUTPUT). Needs launcher/tools/r3d/requirements.txt.
 launcher/tools/render/render_doc_images.sh runs it.
 """
 
@@ -254,28 +254,30 @@ def build(path):
         save_gif(figure, frame, frames, path, GIF_FPS, colors=HUE_GIF_COLORS)
 
 
-def read_baked_mesh(path):
-    """A .mesh, or a carved .bundle's rest mesh: its one LMSH entry that no copy draws."""
+def read_baked_mesh(path, rest):
+    """A .mesh, or a carved .bundle's rest mesh: its entry named `rest`, the bundle's own asset name."""
     if path.suffix != mesh_bundle.SUFFIX:
         return read_lit_mesh(path)
-    entries, copies = mesh_bundle.decode(path.read_bytes())
-    drawn = {row["mesh"] for row in copies}
-    rests = [blob for name, kind, blob in entries if kind == mesh_asset.TYPE and name not in drawn]
-    if len(rests) != 1:
-        raise SystemExit(f"{path}: {len(rests)} rest meshes, not one")
+    entries, _ = mesh_bundle.decode(path.read_bytes())
+    blob = next((data for name, kind, data in entries if name == rest and kind == mesh_asset.TYPE), None)
+    if blob is None:
+        raise SystemExit(f"{path}: no {rest} mesh in the bundle")
     with tempfile.TemporaryDirectory() as work:
-        rest = pathlib.Path(work) / "rest.mesh"
-        rest.write_bytes(rests[0])
-        return read_lit_mesh(rest)
+        mesh = pathlib.Path(work) / f"{rest}.mesh"
+        mesh.write_bytes(blob)
+        return read_lit_mesh(mesh)
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--mesh", type=pathlib.Path, required=True)
     parser.add_argument("--out", type=pathlib.Path, required=True)
+    parser.add_argument("--rest", help="a .bundle's rest mesh: the bake's output name without its suffix")
     parser.add_argument("--still", action="store_true", help="PNG stills in place of the GIFs")
     args = parser.parse_args(argv)
-    mesh = read_baked_mesh(args.mesh)
+    if args.mesh.suffix == mesh_bundle.SUFFIX and not args.rest:
+        parser.error("--rest names a .bundle's rest mesh")
+    mesh = read_baked_mesh(args.mesh, args.rest)
     moving = ".png" if args.still else ".gif"
     tree(mesh, args.out / f"baked-mesh-tree{moving}")
     ranges(mesh, args.out / "baked-mesh-ranges.png")
