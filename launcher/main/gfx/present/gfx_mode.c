@@ -284,8 +284,10 @@ gfx_init(void) {
 #ifndef ESP_PLATFORM
 void
 gfx_deinit(void) {
+    (void)gfx_set_clear_on_send(false, 0);
     gfx_mode_exit();
     free_full_framebuffer();
+    fb_filled = false;
     gfx_fb_guard_set_available(false);
 }
 #endif

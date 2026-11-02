@@ -66,7 +66,9 @@ test_deinit_frees_the_framebuffer_and_init_takes_it_again(void) {
     heap_arena_snapshot(&blocks_closed, &bytes_closed);
     TEST_ASSERT_EQUAL_UINT(GFX_FRAMEBUFFER_BYTES, bytes_open - bytes_closed);
 #endif
+    gfx_deinit(); /* closing a closed run is harmless */
     TEST_ASSERT_TRUE(gfx_init());
+    TEST_ASSERT_FALSE(gfx_framebuffer_holds(0));
 #ifdef HOST_HEAP_ARENA
     heap_arena_snapshot(&blocks_again, &bytes_again);
     TEST_ASSERT_EQUAL_UINT(blocks_open, blocks_again);

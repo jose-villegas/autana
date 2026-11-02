@@ -229,6 +229,10 @@ setup(int quarter) {
         return false;
     }
     if (poses_path != NULL && (poses = open_rows(poses_path, "frame,ms,px,py,pz,qx,qy,qz,qw")) == NULL) {
+        if (counts != NULL) {
+            fclose(counts);
+            counts = NULL;
+        }
         scene_unload(scene);
         return false;
     }
@@ -267,7 +271,7 @@ draw(const provider_frame_t* frame) {
     }
 }
 
-/* The scene unloaded, which unmounts its pack, and the rows a run that stopped early left open closed. */
+/* The rows a run that stopped early left open closed; render_host_close unloads the scene. */
 static void
 teardown(void) {
     if (counts != NULL) {
@@ -278,7 +282,6 @@ teardown(void) {
         fclose(poses);
         poses = NULL;
     }
-    scene_unload(shown);
     shown = NULL;
     camera = SCENE_ENTITY_NONE;
 }

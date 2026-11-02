@@ -142,7 +142,7 @@ path = { animation = "fly.anim.toml", node = "camera" }
         pack = bytearray((self.out / "assets" / "room.apak").read_bytes())
         pack[4:8] = (int.from_bytes(pack[4:8], "little") + 1).to_bytes(4, "little")
         (refused / "room.apak").write_bytes(pack)
-        env = dict(os.environ, REOPEN_PACKS_B=str(packs_b), REOPEN_OUT_B=str(self.root / "reopen-b.bmp"),
+        env = dict(os.environ, REOPEN_PACKS_A=str(self.out / "assets"), REOPEN_PACKS_B=str(packs_b), REOPEN_OUT_B=str(self.root / "reopen-b.bmp"),
                    REOPEN_PACKS_BAD=str(refused))
         check = TOOLS / "render/tests/check_scene_reopen.sh"
         run = subprocess.run([shutil.which("sh"), str(check), "-o", str(self.root / "reopen"),

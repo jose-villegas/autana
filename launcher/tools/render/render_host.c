@@ -204,6 +204,11 @@ scene_shell_compose(uint32_t dt_ms) {
     (void)dt_ms;
 }
 
+/* The shell's app exit where a provider did not link the scene manager: no scene to unload. scene/scene.c's own
+ * definition replaces this, and takes the render context with it. */
+__attribute__((weak)) void
+scene_unload_all(void) {}
+
 /* The declared steps turned into one frame's input_t. `down` holds from
  * the step that set it, so edges come out of the change rather than out of
  * a second declaration of the same tap. */
@@ -321,13 +326,15 @@ render_host_image(void) {
         .bgr = host.frame_buf, .width = host.out_w, .height = host.out_h, .stride = (size_t)host.stride};
 }
 
-/* Gives back what a run took, the provider's own first: the scene's pack stays mounted and the
- * framebuffer allocated otherwise, so the next open in this process would meet both. */
+/* Gives back what a run took, as the shell does when an app exits: the provider's own first, then every scene
+ * and the render context, then the framebuffer. Otherwise the next open in this process meets a mounted pack,
+ * the last run's resolution and a second framebuffer. */
 static void
 release(void) {
     if (host.provider->teardown != NULL) {
         host.provider->teardown();
     }
+    scene_unload_all();
     gfx_deinit();
 }
 
@@ -412,7 +419,7 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
     }
     if (host.provider->setup != NULL && !host.provider->setup(host.frame.quarter)) {
         fprintf(stderr, "%s: setup failed\n", host.provider->name);
-        gfx_deinit();
+        release();
         return false;
     }
 
