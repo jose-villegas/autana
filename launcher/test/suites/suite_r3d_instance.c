@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "box3f_expect.h"
 #include "render_view_fixture.h"
 #include "suites.h"
 #include "unity.h"
@@ -421,13 +422,8 @@ test_a_world_box_with_no_model_is_the_root_box_in_model_units(void) {
     quad_t q;
     make_quad(&q, 255, 0, 0, 3); /* x from 2 to 4, y from -1 to 1 */
     q.mesh.position_scale = 2;
-    const box3f_t box = r3d_lit_mesh_world_bounds(&q.mesh, NULL);
-    TEST_ASSERT_EQUAL_FLOAT(1.0F, box.lo.x);
-    TEST_ASSERT_EQUAL_FLOAT(-0.5F, box.lo.y);
-    TEST_ASSERT_EQUAL_FLOAT(0.0F, box.lo.z);
-    TEST_ASSERT_EQUAL_FLOAT(2.0F, box.hi.x);
-    TEST_ASSERT_EQUAL_FLOAT(0.5F, box.hi.y);
-    TEST_ASSERT_EQUAL_FLOAT(0.0F, box.hi.z);
+    const box3f_t want = {{1.0F, -0.5F, 0.0F}, {2.0F, 0.5F, 0.0F}};
+    box3f_expect_within(0.0F, want, r3d_lit_mesh_world_bounds(&q.mesh, NULL));
 }
 
 /* An eighth of a turn about z, doubled and moved: the quad's corners land on
@@ -442,14 +438,10 @@ test_a_world_box_through_a_model_holds_every_transformed_corner(void) {
     transformf_set_scale(&pose, (vec3f_t){2.0F, 2.0F, 2.0F});
     transformf_set_position(&pose, (vec3f_t){5.0F, 6.0F, 7.0F});
     const mat4f_t model = transformf_compute_matrix(&pose);
-    const box3f_t box = r3d_lit_mesh_world_bounds(&q.mesh, &model);
     const float root_half = sqrtf(0.5F); /* x - y and x + y over both, from 1 to 5 */
-    TEST_ASSERT_FLOAT_WITHIN(1e-4F, 2.0F * root_half + 5.0F, box.lo.x);
-    TEST_ASSERT_FLOAT_WITHIN(1e-4F, 10.0F * root_half + 5.0F, box.hi.x);
-    TEST_ASSERT_FLOAT_WITHIN(1e-4F, 2.0F * root_half + 6.0F, box.lo.y);
-    TEST_ASSERT_FLOAT_WITHIN(1e-4F, 10.0F * root_half + 6.0F, box.hi.y);
-    TEST_ASSERT_FLOAT_WITHIN(1e-4F, 7.0F, box.lo.z);
-    TEST_ASSERT_FLOAT_WITHIN(1e-4F, 7.0F, box.hi.z);
+    const box3f_t want = {{2.0F * root_half + 5.0F, 2.0F * root_half + 6.0F, 7.0F},
+                          {10.0F * root_half + 5.0F, 10.0F * root_half + 6.0F, 7.0F}};
+    box3f_expect_within(1e-4F, want, r3d_lit_mesh_world_bounds(&q.mesh, &model));
 }
 
 static void
