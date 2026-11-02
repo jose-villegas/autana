@@ -22,8 +22,9 @@ from r3d.gltf_mesh import load_gltf_mesh
 from r3d.obj import Texture, load_obj
 from r3d.import_settings import SettingsError, load_import_settings, load_scene
 from r3d.objects.instances import MATCH_TOLERANCE, SourceObject, bounds_diagonal, match_instances, rigid_fit, source_objects
-from r3d.objects.object_error import (SKY, Parts, cell, common_prefix, object_rows, part_labels, part_names,
-                                      read, report_body, rows_for, shape_rows, write)
+from r3d.objects.object_error import (PLANAR_DEGREES, SHEET_DEGREES, SHEET_GROWTH, SKY, Parts, cell, common_prefix,
+                                      object_rows, part_labels, part_names, planar_parts, read, report_body, rows_for,
+                                      shape_rows, sheet_triangles, write)
 from r3d.objects.objects_report import LOD_LEVELS, LOD_TRIANGLE_RATIO, main, masked_objects, pose_rows
 from r3d.mesh_import import load_source
 from test_r3d_import import camera, renderer, write_import, write_scene
@@ -645,7 +646,7 @@ class ObjectErrorTests(unittest.TestCase):
         names, owner, parts_of_object = part_names(labels, tri_o, ['a', 'b'])
         shapes = match_instances(source_objects(p, tri_v, tri_m, labels, names))
         parts = Parts(names, [['a', 'b'][o] for o in owner], parts_of_object, shared, ['m0', 'm0', 'm1'],
-                      np.bincount(labels), np.array([4, 2, 2]))
+                      np.bincount(labels), np.array([4, 2, 2]), np.array([True, False, False]), np.array([1, 0, 2]))
         # Six pixels: two show a#0, three b, one the sky; no pixel shows a#1, so its drawn triangles are unseen.
         ids = np.array([0, 0, 2, 2, 2, -1])
         error = np.array([1., 1., 6., 6., 6., 4.])
@@ -670,6 +671,9 @@ class ObjectErrorTests(unittest.TestCase):
         self.assertTrue(by_name['b']['segment'])
         self.assertFalse(by_name['a#0']['segment'])
         self.assertTrue(by_name['a#0']['welded'])
+        # Planar parts and sheets count over the parts in view only: a#1's are unseen.
+        self.assertTrue(by_name['a#0']['planar'])
+        self.assertIn(' 4 drawn triangles sit on planar parts in view; 3 are sheets', report_body(rows, score, unseen))
         [shape] = shape_rows(rows)
         self.assertEqual((shape['name'], shape['seen'], shape['placed']), ('a#0', 1, 2))
         self.assertAlmostEqual(shape['error_share'], 2 / 24)
@@ -691,6 +695,35 @@ class ObjectErrorTests(unittest.TestCase):
         self.assertEqual((totals['title'], totals['fit'], totals['reference']), ('title', 'f', 'r'))
         self.assertEqual(report_body(kept, totals['mean_delta_e'], totals['drawn_unseen_share']),
                          report_body(rows, score, unseen))
+
+    @staticmethod
+    def hinge(degrees):
+        """Two unit right triangles sharing the edge along x, the second turned `degrees` up about it."""
+        turn = np.radians(degrees)
+        p = np.array([[0., 0., 0.], [1., 0., 0.], [0., 0., 1.], [0., np.sin(turn), -np.cos(turn)]])
+        return p, np.array([[0, 2, 1], [0, 1, 3]])
+
+    def test_a_part_is_planar_while_its_normals_stay_within_the_angle(self):
+        # Each half of a hinge stands half its angle off the part's mean normal.
+        for degrees, planar in ((2 * PLANAR_DEGREES * 0.9, True), (2 * PLANAR_DEGREES * 1.1, False)):
+            p, tri_v = self.hinge(degrees)
+            np.testing.assert_array_equal(planar_parts(p, tri_v, np.zeros(2, dtype=np.int64), 1), [planar])
+
+    def test_a_sheet_is_a_large_triangle_turned_off_the_source(self):
+        # The source is one unit right triangle in the floor plane; the drawn ones stand over it, each turned
+        # about x by its angle and scaled to its area in affordable triangles.
+        source = np.array([[0., 0., 0.], [1., 0., 0.], [0., 0., 1.]])
+        area = 0.5
+
+        def drawn(degrees, areas):
+            turn, scale = np.radians(degrees), np.sqrt(areas)
+            return scale * np.array([[0., 0., 0.], [1., 0., 0.], [0., np.sin(turn), np.cos(turn)]])
+
+        cases = [((SHEET_DEGREES * 1.1, SHEET_GROWTH * 1.1), True), ((SHEET_DEGREES * 0.9, SHEET_GROWTH * 1.1), False),
+                 ((SHEET_DEGREES * 1.1, SHEET_GROWTH * 0.9), False), ((180 - SHEET_DEGREES * 0.9, SHEET_GROWTH * 1.1), False)]
+        triangles = np.stack([drawn(*case) for case, _ in cases])
+        sheets = sheet_triangles(source, np.array([[0, 1, 2]]), triangles, np.zeros(len(cases), dtype=np.int64), area)
+        np.testing.assert_array_equal(sheets, [sheet for _, sheet in cases])
 
     def test_report_names_leave_out_the_shared_prefix(self):
         self.assertEqual(common_prefix([SKY, 'Scene_Street_1#0', 'Scene_Stone_2']), 'Scene_')
