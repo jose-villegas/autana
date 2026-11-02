@@ -267,8 +267,8 @@ copies, and the copy check refused it.
 On the held-out frames, the a-trous fit softens shadows inside a surface in Sponza. In Bistro it grows sheets
 across the awning and the frame-18 wall. The arms' code is in commit `ee94701d6`, which makes those sheets again.
 
-The locked fit's counters show where the budget goes instead. The flat cobbled street parts (starred: planar)
-take 278 and 146 drawn triangles, the two most of any part, and none of them is a sheet.
+The locked fit's counters show where the budget goes. The flat cobbled street parts (starred: planar) take 278
+and 146 drawn triangles, the most and tied second of any part. The costliest parts carry almost no sheets.
 
 ![Bistro held-out error by part, with each part's drawn and sheet triangles](../../images/render/bistro-street-fitted-full-object-error.png)
 
