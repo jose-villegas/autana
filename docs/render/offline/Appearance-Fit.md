@@ -264,7 +264,8 @@ defined in [Mesh Import](Mesh-Import.md#held-out-error-by-object).
 Sponza's atrium fit scores 5.390 locked, 5.374 refitted and 6.920 with a-trous. Its budget-mip fit grew over the
 copies, and the copy check refused it.
 
-Each sheet shows two held-out frames: the reference, then each arm, with its ΔE76 heatmap below.
+Each sheet shows two held-out frames: the reference, then each arm, with its ΔE76 heatmap below. In Sponza the
+a-trous fit softens shadows inside a surface; in Bistro it grows sheets across the awning and the frame-18 wall.
 
 ![Bistro frames 17 and 18: reference, locked bake, refit, a-trous, budget mip, texture mean](../../images/render/friendly-reference-bistro.png)
 ![Sponza frames 2 and 4: reference, locked bake, refit, a-trous](../../images/render/friendly-reference-sponza.png)
