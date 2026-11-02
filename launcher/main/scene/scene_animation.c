@@ -257,7 +257,6 @@ attach_renderer_skin(scene_t* scene, scene_entity_t entity, int renderer, const 
         scene->renderers[renderer].mesh.colors = next->colors;
     }
     scene->flags[entity] |= SCENE_FLAG_SKIN_DIRTY;
-    scene_stage_add(scene, entity);
 }
 
 bool
