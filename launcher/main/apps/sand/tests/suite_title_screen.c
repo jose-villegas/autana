@@ -99,12 +99,12 @@ assert_strings_fit(bool landscape) {
 }
 
 static void
-test_every_string_fits_its_rect_portrait(void) {
+test_every_title_string_fits_its_rect_portrait(void) {
     assert_strings_fit(false);
 }
 
 static void
-test_every_string_fits_its_rect_landscape(void) {
+test_every_title_string_fits_its_rect_landscape(void) {
     assert_strings_fit(true);
 }
 
@@ -237,8 +237,8 @@ void
 run_title_screen_suite(void) {
     RUN_TEST(test_the_layout_fits_portrait);
     RUN_TEST(test_the_layout_fits_landscape);
-    RUN_TEST(test_every_string_fits_its_rect_portrait);
-    RUN_TEST(test_every_string_fits_its_rect_landscape);
+    RUN_TEST(test_every_title_string_fits_its_rect_portrait);
+    RUN_TEST(test_every_title_string_fits_its_rect_landscape);
     RUN_TEST(test_the_title_grows_where_the_canvas_is_wide_enough);
     RUN_TEST(test_a_tap_reports_the_button_under_it);
     RUN_TEST(test_a_title_button_fires_on_release_only);

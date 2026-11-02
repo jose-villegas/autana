@@ -234,7 +234,7 @@ def runner_edges(jobs, spec):
         with open(source, encoding="utf-8", errors="replace") as fh:
             text = fh.read()
         suites = re.findall(r"SUITE_REGISTER(?:_ON_REQUEST)?\(\s*(\w+)\s*\)", text)
-        if any(re.search(r"RUN_TEST\(\s*" + re.escape(root) + r"\s*\)", text)
+        if any(re.search(r"RUN_TEST(?:_CASE)?\(\s*" + re.escape(root) + r"\s*[,)]", text)
                for root in root_names):
             edges.extend(("suites_run_request", suite) for suite in suites)
         edges.extend(("UnityDefaultTestRun", target) for target in

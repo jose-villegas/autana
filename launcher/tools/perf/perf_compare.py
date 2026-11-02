@@ -13,6 +13,7 @@ from statistics import mean
 from types import SimpleNamespace
 
 from layout_measure import analyse, autana_command, required_seeds, run_flash, filter_limits, validate_filters, split_filters, FilterOverlap
+from device_capture import test_matches
 from capture import require_same_board
 from seed_statistics import compare, minimum_seeds, permutation_samples
 
@@ -80,7 +81,7 @@ def selected_suites(suites, active, owners, limits=None, listed=None):
             selected.append((suite, tests, template))
             continue
         if tests != "-":
-            patterns = [pattern for pattern in tests.split(",") if any(pattern in name for name in names)]
+            patterns = [pattern for pattern in tests.split(",") if any(test_matches(pattern, name) for name in names)]
             selected.append((suite, ",".join(patterns) if patterns else tests, template))
             continue
         if not known:
@@ -92,7 +93,8 @@ def selected_suites(suites, active, owners, limits=None, listed=None):
             pattern = next((name[start:start+length]
                             for length in range(1, min(width, len(name)) + 1)
                             for start in range(len(name)-length+1)
-                            if name in known and sum(name[start:start+length] in test for test in known) == 1), None)
+                            if name in known and sum(test_matches(name[start:start+length], test) for test in known) == 1
+                            and test_matches(name[start:start+length], name)), None)
             if pattern is None:
                 patterns = []
                 break
@@ -340,7 +342,7 @@ def write_summary(path, args, records, rows, estimates, sizes, plan, incomplete=
             missing = [record["seed"] for record in records[side] if suite in record["suites"]
                        and any(row_name not in run["rows"] for run in record["suites"][suite]["runs"])
                        and (record["suites"][suite].get("tests", "-") == "-"
-                            or (owner and any(pattern in owner for pattern in
+                            or (owner and any(test_matches(pattern, owner) for pattern in
                                 record["suites"][suite]["tests"].split(","))))]
             if missing:
                 lines += [f"{side.upper()} incomplete timing seeds for `{name}`: " +
