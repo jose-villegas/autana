@@ -504,6 +504,9 @@ scene_renderer_set_mesh(scene_t* scene, scene_entity_t entity, const r3d_lit_mes
         return false;
     }
     scene_renderer_t* r = &scene->renderers[i];
+    if (R3D_LOD_WORDS(mesh->lod_group_count) > r->lod_words) {
+        return false;
+    }
     r->mesh = *mesh;
     /* Another mesh's groups are not these bits': start it at its finest. */
     if (r->lod_coarse != NULL) {

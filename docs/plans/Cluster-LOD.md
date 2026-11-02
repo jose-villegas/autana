@@ -46,7 +46,7 @@ Hoppe's<sup>[[111]](../Citations.md#hoppe-1997)</sup>; the floor of half a pixel
 | Pick, histogram, exact tolerance | [`lod/pick.py`](../../launcher/tools/r3d/lod/pick.py) | host |
 | Replay over a camera path | [`lod/lod_replay.py`](../../launcher/tools/r3d/lod/lod_replay.py) | host |
 | Levels in the baked mesh | [`lod/bake_levels.py`](../../launcher/tools/r3d/lod/bake_levels.py), [`r3d_lit_mesh.h`](../../launcher/main/render/r3d_lit_mesh.h) | built |
-| Pick at a tolerance, with hysteresis, in the cluster walk | [`r3d_lod_pick()`](../../launcher/main/render/lod/r3d_lod.h); its coarse bits live per scene renderer | built |
+| Pick at a tolerance, with hysteresis, once a frame in output pixels | [`r3d_lod_pick()`](../../launcher/main/render/lod/r3d_lod.h), run by `raster_pick_levels()`; its coarse bits live per scene renderer, and the cluster walk only reads them | built |
 | Histogram from the last frame, steering the tolerance to a budget | `r3d_lod.c` | not built |
 | Tolerance per pose baked for the path; the fit trained on it | bake stage | not built |
 
@@ -70,7 +70,8 @@ a frame late.
 `R3D_LOD_HYSTERESIS_PX` below the tolerance and turns fine again once it
 rises that far above, so a still camera never flickers between levels. A
 coarse group's parent bounds hold its own, so its finer groups are always
-coarse too and the cut stays crack-free.
+coarse too; a closing pass sets coarse any source float rounding left fine
+far off, so the cut stays crack-free whatever the floats do.
 
 **Gate before the runtime ships:** with the levels a pose picks, no more of
 the rest's hidden surface may show than at the finest level, and

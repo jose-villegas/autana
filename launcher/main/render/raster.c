@@ -309,9 +309,6 @@ static int
 cull_instance(const r3d_instance_t* instance, const r3d_lens_t* lens, uint16_t* out, raster_stats_t* stats,
               r3d_pipeline_work_t* work, r3d_depth_fit_t* fit) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
-    if (instance->lod_coarse != NULL && mesh->lod_group_count > 0) {
-        r3d_lod_pick(mesh, lens, R3D_LOD_TOLERANCE_PX, instance->lod_coarse);
-    }
     int visible = 0;
     if (cull) {
         visible = r3d_pipeline_cull(mesh, lens, instance->lod_coarse, out, work, fit);
@@ -334,6 +331,18 @@ cull_instance(const r3d_instance_t* instance, const r3d_lens_t* lens, uint16_t* 
  * and near_z when nothing was. The fit's power of two keeps the scale still
  * while the bound drifts, so ties do not flip from frame to frame, and the
  * same at every size. */
+void
+raster_pick_levels(const raster_t* raster, const render_view_t* view) {
+    for (int i = 0; i < raster->instance_count; i++) {
+        const r3d_instance_t* instance = &raster->instances[i];
+        if (instance->lod_coarse != NULL && instance->mesh->lod_group_count > 0) {
+            r3d_lens_t lens;
+            instance_lens(raster, instance, view, false, &lens);
+            r3d_lod_pick(instance->mesh, &lens, R3D_LOD_TOLERANCE_PX, instance->lod_coarse);
+        }
+    }
+}
+
 static float
 cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, raster_stats_t* stats,
                draw_work_t* work) {

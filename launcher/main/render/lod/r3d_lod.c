@@ -50,6 +50,26 @@ r3d_lod_group_pixels(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int gro
     return group_pixels(&v, &mesh->lod_groups[group], lens->project.near_z);
 }
 
+/* Sets coarse every group simplified into a coarse one, until none is left
+ * fine under a coarse parent. The ordering r3d_lit_mesh.h checks makes this
+ * a pass that changes nothing, short of float rounding far off; then the cut
+ * still never draws a group both coarse and fine. */
+static void
+close_coarse(const r3d_lit_mesh_t* mesh, uint32_t* coarse) {
+    bool changed = true;
+    for (int pass = 0; changed && pass < mesh->lod_group_count; pass++) {
+        changed = false;
+        for (int c = 0; c < mesh->cluster_count; c++) {
+            const r3d_lit_cluster_lod_t lod = mesh->cluster_lod[c];
+            if (lod.own != R3D_LOD_NONE && lod.parent != R3D_LOD_NONE && r3d_lod_coarse(coarse, lod.parent)
+                && !r3d_lod_coarse(coarse, lod.own)) {
+                coarse[lod.own / R3D_LOD_WORD_BITS] |= 1U << (lod.own % R3D_LOD_WORD_BITS);
+                changed = true;
+            }
+        }
+    }
+}
+
 void
 r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, float tolerance_px, uint32_t* coarse) {
     const lod_view_t v = lod_view(lens);
@@ -66,4 +86,5 @@ r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, float tolerance
             *word &= ~bit;
         }
     }
+    close_coarse(mesh, coarse);
 }

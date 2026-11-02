@@ -14,6 +14,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from asset import engine_frame
 from r3d import lit_mesh, mesh_asset
+from r3d.geometry import closest_point_on_triangles
 from r3d.lod import pick
 from r3d.lod.bake_levels import INT16_MAX, push_outward, quantised_groups
 from r3d.mesh_asset import LOD_ENCLOSE_MARGIN, LOD_NONE
@@ -32,7 +33,10 @@ EYES = np.geomspace(0.5, 500.0, 48)
 # Projected errors this near the threshold may round either way between float32 and float64.
 BOUNDARY_PX = 1e-3
 SIDE = 4  # the push patch: SIDE x SIDE vertices
-BUMP = 3  # how far the patch's one raised vertex stands off its plane
+SPACING = 10  # ticks between the patch's vertices, so a miss shows past rounding
+BUMP = 3 * SPACING  # how far the patch's one raised vertex stands off its plane
+# How far rounding the pushed corners to ticks can leave a fine vertex outside.
+ROUNDING_TICKS = 1.0
 
 
 def wavy_grid(n=GRID):
@@ -182,7 +186,7 @@ class PushOutwardTest(unittest.TestCase):
     """A SIDE x SIDE patch in z = 0 with one vertex raised BUMP, simplified to a fan around an inner vertex."""
 
     def setUp(self):
-        x, y = np.meshgrid(np.arange(SIDE), np.arange(SIDE))
+        x, y = np.meshgrid(np.arange(SIDE) * SPACING, np.arange(SIDE) * SPACING)
         self.pos = np.stack([x.ravel(), y.ravel(), np.zeros(SIDE * SIDE)], axis=1).astype(np.int64)
         self.raised = 1 * SIDE + 2
         self.pos[self.raised, 2] = BUMP
@@ -200,12 +204,22 @@ class PushOutwardTest(unittest.TestCase):
         moved = push_outward(self.fine, self.pos[self.fine], self.coarse, cap)
         return {int(v): tuple(p) for t, corners in zip(self.coarse, moved) for v, p in zip(t, corners)}
 
-    def test_the_inner_vertex_rises_towards_the_bump_and_the_border_stays(self):
+    def test_the_coarse_fan_covers_every_fine_vertex_and_the_border_stays(self):
         moved = self.pushed(cap=10 * BUMP)
         for v, p in moved.items():
             if v in self.border:
                 self.assertEqual(tuple(self.pos[v]), p)
-        self.assertEqual((*self.pos[self.hub, :2], BUMP), moved[self.hub])
+        self.assertGreaterEqual(moved[self.hub][2], BUMP)
+        corners = np.array([[moved[int(v)] for v in t] for t in self.coarse], dtype=np.float64)
+        a, b, c = corners[:, 0], corners[:, 1], corners[:, 2]
+        normal = np.cross(b - a, c - a)
+        unit = normal / np.linalg.norm(normal, axis=1, keepdims=True)
+        for point in self.pos.astype(np.float64):
+            rows = np.repeat(point[None], len(corners), axis=0)
+            bary, distance = closest_point_on_triangles(rows, a, b, c)
+            k = int(np.argmin(distance))
+            closest = bary[k, 0] * a[k] + bary[k, 1] * b[k] + bary[k, 2] * c[k]
+            self.assertLessEqual(float((point - closest) @ unit[k]), ROUNDING_TICKS)
 
     def test_the_push_stops_at_the_cap(self):
         self.assertEqual((*self.pos[self.hub, :2], 1), self.pushed(cap=1)[self.hub])

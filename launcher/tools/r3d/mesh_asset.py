@@ -5,9 +5,13 @@ mesh has none of), then the cluster and node rows. Standard library only, so
 the pack builder runs without the numeric environment."""
 
 import struct
+from pathlib import Path
 from typing import NamedTuple
 
 from asset.asset_pack import PackError
+from build.c_header import read_define
+
+MESH_HEADER = Path(__file__).resolve().parents[2] / "main" / "render" / "r3d_lit_mesh.h"
 
 TYPE = b"LMSH"
 BLOB_HEADER = struct.Struct("<14I")
@@ -16,9 +20,8 @@ NODE = struct.Struct("<6hHBB")
 # A cluster's own and parent group; a group's bounds (centre and radius, ticks) and error (ticks).
 CLUSTER_LOD = struct.Struct("<2H")
 LOD_GROUP = struct.Struct("<4hH")
-LOD_NONE = 0xFFFF
-# Ticks a parent group's bounds keep beyond each group simplified into it (r3d_lit_mesh.h).
-LOD_ENCLOSE_MARGIN = 1
+LOD_NONE = read_define(MESH_HEADER, "R3D_LOD_NONE")
+LOD_ENCLOSE_MARGIN = read_define(MESH_HEADER, "R3D_LOD_ENCLOSE_MARGIN")
 
 
 class MeshHeader(NamedTuple):

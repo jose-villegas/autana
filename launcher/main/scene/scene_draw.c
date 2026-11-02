@@ -92,10 +92,7 @@ fill_instances(scene_t* scene) {
     for (int i = 0; i < scene->renderer_count; i++) {
         const scene_renderer_t* r = &scene->renderers[i];
         if ((scene->flags[r->entity] & SCENE_FLAG_ACTIVE) != 0 && r->mesh.node_count > 0) {
-            /* A mesh swapped in with more groups than the bits hold draws its finest. */
-            const bool fits = R3D_LOD_WORDS(r->mesh.lod_group_count) <= r->lod_words;
-            scene->instances[count++] =
-                (r3d_instance_t){&r->mesh, r->placed ? &r->model : NULL, fits ? r->lod_coarse : NULL};
+            scene->instances[count++] = (r3d_instance_t){&r->mesh, r->placed ? &r->model : NULL, r->lod_coarse};
         }
     }
     return count;

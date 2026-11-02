@@ -371,6 +371,23 @@ test_a_group_s_error_projects_at_the_model_s_largest_scale(void) {
     }
 }
 
+/* A finest group out of order, projecting larger than its parent as float
+ * rounding far off could make it: the parent turns coarse and takes it along. */
+static void
+test_a_parent_turning_coarse_takes_an_out_of_order_source_with_it(void) {
+    const r3d_lit_mesh_t* mesh = levelled_mesh();
+    levelled->groups[0].error = UINT16_MAX;
+    uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
+    const r3d_lens_t lens = lens_at(FAR_EYE, NULL);
+    TEST_ASSERT_TRUE(r3d_lod_group_pixels(mesh, &lens, 0) > TOLERANCE + HYSTERESIS);
+    r3d_lod_pick(mesh, &lens, TOLERANCE, coarse);
+    TEST_ASSERT_TRUE(r3d_lod_coarse(coarse, TOP_GROUP));
+    TEST_ASSERT_TRUE(r3d_lod_coarse(coarse, 0));
+    for (int f = 0; f < FINEST_CLUSTERS; f++) {
+        TEST_ASSERT_EQUAL_INT(1, levels_drawn(mesh, f, coarse));
+    }
+}
+
 static void
 test_without_bits_a_levelled_mesh_walks_only_its_finest_clusters(void) {
     const r3d_lit_mesh_t* mesh = levelled_mesh();
@@ -409,6 +426,7 @@ suite_r3d_lod(void) {
     RUN_TEST(test_a_camera_backing_off_a_switch_by_less_than_the_band_does_not_switch_back);
     RUN_TEST(test_a_group_never_projects_larger_than_its_parent_under_a_stretched_turned_model);
     RUN_TEST(test_a_group_s_error_projects_at_the_model_s_largest_scale);
+    RUN_TEST(test_a_parent_turning_coarse_takes_an_out_of_order_source_with_it);
     RUN_TEST(test_without_bits_a_levelled_mesh_walks_only_its_finest_clusters);
     RUN_TEST(test_a_mesh_without_levels_walks_every_cluster_whatever_its_bits);
 }

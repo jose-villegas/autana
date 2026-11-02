@@ -57,6 +57,7 @@ float r3d_lod_group_pixels(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, i
 
 /* Updates `coarse`, R3D_LOD_WORDS(mesh->lod_group_count) words, for one
  * frame seen through `lens`. A parent group never projects smaller than a
- * group simplified into it (r3d_lit_mesh.h checks the bounds and errors), so
- * a coarse group's sources stay coarse and the cut never cracks. */
+ * group simplified into it (r3d_lit_mesh.h checks the bounds and errors), and
+ * a closing pass sets coarse any source rounding left fine, so a coarse
+ * group's sources are always coarse and the cut never cracks. */
 void r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, float tolerance_px, uint32_t* coarse);

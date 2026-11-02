@@ -2100,6 +2100,20 @@ test_a_runtime_mesh_is_drawn_in_place_of_the_loaded_one(void) {
     free(colors);
 }
 
+/* The loaded quad has no levels, so the scene holds no coarse bits for it: a
+ * mesh with levels would draw its finest forever, and is refused instead. */
+static void
+test_a_runtime_mesh_with_more_levels_than_the_bits_hold_is_refused(void) {
+    fixture();
+    scene_t* scene = show("test_pair", SCENE_CAMERA_FIRST);
+    const scene_entity_t green = scene_find(scene, name_hash("green"));
+    r3d_lit_mesh_t levelled = *scene_entity_mesh(scene, green);
+    TEST_ASSERT_EQUAL_INT(0, levelled.lod_group_count);
+    levelled.lod_group_count = 1;
+    TEST_ASSERT_FALSE(scene_renderer_set_mesh(scene, green, &levelled));
+    TEST_ASSERT_EQUAL_INT(0, scene_entity_mesh(scene, green)->lod_group_count);
+}
+
 /* A camera takes a lens shift; anything else, or a shift that is not a
  * number, is refused. */
 static void
@@ -4415,6 +4429,7 @@ run_scene_suite(void) {
     RUN_TEST(test_the_active_camera_draws_its_scenes_renderers);
     RUN_TEST(test_a_disabled_entity_is_not_drawn_and_enabling_it_draws_it_again);
     RUN_TEST(test_a_runtime_mesh_is_drawn_in_place_of_the_loaded_one);
+    RUN_TEST(test_a_runtime_mesh_with_more_levels_than_the_bits_hold_is_refused);
     RUN_TEST(test_a_camera_takes_a_lens_shift_and_nothing_else_does);
     RUN_TEST(test_a_moved_entity_is_drawn_where_it_now_stands);
     RUN_TEST(test_a_camera_rolled_about_its_view_axis_draws_the_picture_turned);

@@ -7,7 +7,8 @@ with the positions both share locked so the two never part. clusterlod's
 finest clusters are level 0 and keep the bake's own triangles and colours. A
 coarser cluster's vertices are a subset of the finer ones; its group's inner
 vertices are pushed outward until no finer vertex lies outside it, at most by
-the group's error, so a coarser level covers what the finer one covered. Its
+the group's error, so a coarser level covers what the finer one covered, short
+of rounding to ticks and of a point next to the locked border. Its
 border stays where the finer level put it, and neighbours never crack. A
 coarse vertex takes its colour from the nearest level-0 point facing its way,
 one colour per cluster, and a flat triangle from the nearest to its middle.
@@ -35,6 +36,11 @@ ERROR_MAX = LOD_NONE - 1  # an error fits uint16
 SAMPLE_CANDIDATES = 16
 # Fine vertices measured against the coarse triangles at once.
 PUSH_CHUNK = 256
+# The push's rounds, and the ticks of push left that end them early.
+PUSH_ROUNDS = 4
+PUSH_DONE = 0.25
+# A movable weight below this cannot lift its point: the sample sits on the border.
+PUSH_WEIGHT_MIN = 1e-3
 
 
 class Baked(NamedTuple):
@@ -64,21 +70,44 @@ def push_outward(fine_ids, fine_pos, coarse_ids, cap):
     """Integer corner positions (Nc x 3 x 3) of the coarse triangles
     `coarse_ids` (welded ids) simplified from the fine ones (ids and drawn
     positions, Nf x 3 and Nf x 3 x 3). Every vertex starts where the fine
-    level draws it; one off the fine patch's border moves along its
-    area-weighted normal by the furthest a fine vertex lies outside the coarse
-    triangle nearest it among those it touches, at most `cap`."""
+    level draws it; those off the fine patch's border move along their
+    area-weighted normal until no fine vertex lies outside the coarse triangle
+    nearest it, or until each has moved `cap`. A fine vertex outside by d over
+    a triangle whose movable corners weigh w in it asks each of them for d / w;
+    PUSH_ROUNDS rounds follow the triangles as they turn."""
     ids, pos = fine_ids.reshape(-1), fine_pos.reshape(-1, 3).astype(np.float64)
     vertices, first = np.unique(ids, return_index=True)
-    at = pos[first]
+    fine = pos[first]
     corner = np.searchsorted(vertices, coarse_ids)
     assert np.all(vertices[corner] == coarse_ids), "a coarse vertex is not a fine one"
+    movable = ~np.isin(vertices, border_vertices(fine_ids))
+    at, moved = fine.copy(), np.zeros(len(vertices))
+    for _ in range(PUSH_ROUNDS):
+        need = np.minimum(outside_need(fine, at, corner, movable), cap - moved)
+        if need.max(initial=0.0) <= PUSH_DONE:
+            break
+        a, b, c = at[corner[:, 0]], at[corner[:, 1]], at[corner[:, 2]]
+        direction = np.zeros_like(at)
+        for k in range(3):
+            np.add.at(direction, corner[:, k], np.cross(b - a, c - a))
+        direction /= np.maximum(np.linalg.norm(direction, axis=1, keepdims=True), 1e-12)
+        at += need[:, None] * direction
+        moved += need
+    return np.rint(at).astype(np.int64)[corner]
+
+
+def outside_need(fine, at, corner, movable):
+    """How far each coarse vertex must move for the fine vertices `fine` to
+    lie on or inside the coarse triangles `corner` drawn at `at`: per fine
+    vertex outside its nearest triangle by d, d over the weight that
+    triangle's movable corners have at its nearest point, the most asked."""
     a, b, c = at[corner[:, 0]], at[corner[:, 1]], at[corner[:, 2]]
     normal = np.cross(b - a, c - a)
     unit = normal / np.maximum(np.linalg.norm(normal, axis=1, keepdims=True), 1e-12)
-    push = np.zeros(len(vertices))
+    need = np.zeros(len(at))
     tris = len(corner)
-    for start in range(0, len(vertices), PUSH_CHUNK):
-        q = at[start:start + PUSH_CHUNK]
+    for start in range(0, len(fine), PUSH_CHUNK):
+        q = fine[start:start + PUSH_CHUNK]
         rows = np.repeat(q, tris, axis=0)
         ta, tb, tc = (np.tile(v, (len(q), 1)) for v in (a, b, c))
         bary, distance = closest_point_on_triangles(rows, ta, tb, tc)
@@ -86,16 +115,11 @@ def push_outward(fine_ids, fine_pos, coarse_ids, cap):
         picked = np.arange(len(q)) * tris + nearest
         closest = bary[picked, :1] * ta[picked] + bary[picked, 1:2] * tb[picked] + bary[picked, 2:] * tc[picked]
         outside = np.maximum(((rows[picked] - closest) * unit[nearest]).sum(axis=1), 0.0)
+        weight = (bary[picked] * movable[corner[nearest]]).sum(axis=1)
+        share = np.where(weight > PUSH_WEIGHT_MIN, outside / np.maximum(weight, PUSH_WEIGHT_MIN), 0.0)
         for k in range(3):
-            np.maximum.at(push, corner[nearest, k], outside)
-    push = np.minimum(push, cap)
-    push[np.isin(vertices, border_vertices(fine_ids))] = 0.0
-    direction = np.zeros_like(at)
-    for k in range(3):
-        np.add.at(direction, corner[:, k], normal)
-    direction /= np.maximum(np.linalg.norm(direction, axis=1, keepdims=True), 1e-12)
-    moved = np.rint(at + push[:, None] * direction).astype(np.int64)
-    return moved[corner]
+            np.maximum.at(need, corner[nearest, k], np.where(movable[corner[nearest, k]], share, 0.0))
+    return need
 
 
 class Level0:

@@ -50,7 +50,7 @@ typedef struct {
  * error, projected, is small enough (render/r3d_lod.h); then its clusters
  * give way to the ones simplified from it. Both sides of a switch read the
  * one group record, so neighbours never crack. */
-#define R3D_LOD_NONE           UINT16_MAX /* own: a finest cluster; parent: a group never drawn coarse */
+#define R3D_LOD_NONE           0xFFFFU /* own: a finest cluster; parent: a group never drawn coarse */
 /* Position ticks a parent group's bounds keep beyond those of each group
  * simplified into it, so float rounding in the pick cannot reorder them. */
 #define R3D_LOD_ENCLOSE_MARGIN 1
