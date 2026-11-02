@@ -76,8 +76,8 @@ draw_street(void) {
     TEST_ASSERT_NOT_NULL(s);
     make_slab(&s->ground, GROUND_REACH, 0, GROUND_COLOR);
     make_slab(&s->street, STREET_REACH, STREET_GAP, STREET_COLOR);
-    s->instances[0] = (r3d_instance_t){&s->ground.mesh, NULL};
-    s->instances[1] = (r3d_instance_t){&s->street.mesh, NULL};
+    s->instances[0] = (r3d_instance_t){&s->ground.mesh, NULL, NULL};
+    s->instances[1] = (r3d_instance_t){&s->street.mesh, NULL, NULL};
     s->raster =
         (raster_t){.instances = s->instances, .instance_count = 2, .width = SIZE, .height = SIZE, .clear = CLEAR};
     s->raster.scratch = malloc(raster_scratch_bytes(&s->raster));
