@@ -38,10 +38,12 @@ FRAME_INCHES = 1.2
 CSV_DIGITS = 6
 # The held-out score prints four decimals; the mean over the parts' pixels must round to it.
 SCORE_TOLERANCE = 1e-4
-# A part is planar when every source triangle's normal stays within this angle of the part's mean normal.
+# A part is planar when this share of its source area faces within PLANAR_DEGREES of its mean normal: a cambered
+# street is, a kerb's few edge triangles do not undo it.
 PLANAR_DEGREES = 5.0
-# A drawn triangle is a sheet when its area exceeds this many of the triangles the budget affords
-# (fit/footprint.py) and its normal stands more than SHEET_DEGREES off the nearest source triangle's.
+PLANAR_AREA_SHARE = 0.99
+# A drawn triangle is a sheet when its area exceeds this many times the median drawn triangle of its part and its
+# normal stands more than SHEET_DEGREES off the nearest source triangle's.
 SHEET_GROWTH = 4.0
 SHEET_DEGREES = 30.0
 # A row's fields in error.csv's column order, each with the type read turns its text back into.
@@ -130,26 +132,29 @@ def unit_normals(corners):
 
 
 def planar_parts(source_p, tri_v, labels, count):
-    """Per part, whether every source triangle's normal stays within PLANAR_DEGREES of the part's area-weighted
+    """Per part, whether PLANAR_AREA_SHARE of its source area faces within PLANAR_DEGREES of its area-weighted
     mean normal."""
     corners = source_p[tri_v]
     weighted = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
+    area = np.linalg.norm(weighted, axis=1)
     mean = np.stack([np.bincount(labels, weighted[:, axis], minlength=count) for axis in range(3)], axis=1)
     mean /= np.maximum(np.linalg.norm(mean, axis=1, keepdims=True), 1e-30)
-    cosine = (unit_normals(corners) * mean[labels]).sum(axis=1)
-    off = np.bincount(labels, cosine < np.cos(np.radians(PLANAR_DEGREES)), minlength=count)
-    return off == 0
+    facing = (unit_normals(corners) * mean[labels]).sum(axis=1) >= np.cos(np.radians(PLANAR_DEGREES))
+    return np.bincount(labels, area * facing, minlength=count) >= PLANAR_AREA_SHARE * np.bincount(
+        labels, area, minlength=count)
 
 
-def sheet_triangles(source_p, tri_v, drawn, near, area):
-    """Per drawn triangle, whether it is a sheet: larger than SHEET_GROWTH affordable triangles of `area` and
-    turned more than SHEET_DEGREES from its nearest source triangle, either side."""
-    from r3d.fit.footprint import triangle_areas
-
-    flat = drawn.reshape(-1, 3)
-    large = triangle_areas(flat, np.arange(len(flat)).reshape(-1, 3)) > SHEET_GROWTH * area
+def sheet_triangles(source_p, tri_v, drawn, near, labels):
+    """Per drawn triangle, whether it is a sheet: larger than SHEET_GROWTH times the median drawn triangle of its
+    part (`labels` of its `near`est source triangle) and turned more than SHEET_DEGREES from that source
+    triangle, either side."""
+    area = np.linalg.norm(np.cross(drawn[:, 1] - drawn[:, 0], drawn[:, 2] - drawn[:, 0]), axis=1)
+    part = labels[near]
+    median = np.zeros(part.max() + 1 if len(part) else 0)
+    for label in np.unique(part):
+        median[label] = np.median(area[part == label])
     turned = np.abs((unit_normals(drawn) * unit_normals(source_p[tri_v[near]])).sum(axis=1))         < np.cos(np.radians(SHEET_DEGREES))
-    return large & turned
+    return (area > SHEET_GROWTH * median[part]) & turned
 
 
 def accumulate(frames, reference_dir, scale, ids_for):
@@ -292,7 +297,7 @@ def surface_text(rows):
     planar = sum(row["drawn_triangles"] for row in rows if row["planar"])
     sheets = sum(row["sheet_triangles"] for row in rows)
     return (f" {planar} drawn triangles sit on planar parts in view; {sheets} are sheets (over {SHEET_GROWTH:g} "
-            f"affordable triangles, turned over {SHEET_DEGREES:g}° from the source).")
+            f"times their part's median triangle, turned over {SHEET_DEGREES:g}° from the source).")
 
 
 def report_body(rows, score, unseen):
@@ -356,7 +361,6 @@ def held_out_error(scene_path, scene, job, bundle, inputs, work):
     from r3d import mesh_bundle
     from r3d.appearance_simplify import start_mesh
     from r3d.bake_fidelity import build_host
-    from r3d.fit.footprint import affordable_area
     from r3d.fit.copies import joined, placed_copies
     from r3d.objects.instances import match_instances, source_objects
     from r3d.poses import read_poses
@@ -386,7 +390,7 @@ def held_out_error(scene_path, scene, job, bundle, inputs, work):
     fitted = joined(rest, placed_copies(bundle, rest.flat))
     drawn = fitted.points[fitted.vertex_point][fitted.tris]
     near = nearest_source(p, tri_v, drawn)
-    sheets = sheet_triangles(p, tri_v, drawn, near, affordable_area(p, tri_v, job.renderer.fit.budget))
+    sheets = sheet_triangles(p, tri_v, drawn, near, labels)
     parts = Parts(names, [source.object_names[o] for o in owner], parts_of_object, shared,
                   main_materials(labels, tri_m, source.names, count), np.bincount(labels, minlength=count),
                   np.bincount(labels[near], minlength=count), planar_parts(p, tri_v, labels, count),

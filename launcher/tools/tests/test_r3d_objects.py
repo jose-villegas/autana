@@ -22,7 +22,7 @@ from r3d.gltf_mesh import load_gltf_mesh
 from r3d.obj import Texture, load_obj
 from r3d.import_settings import SettingsError, load_import_settings, load_scene
 from r3d.objects.instances import MATCH_TOLERANCE, SourceObject, bounds_diagonal, match_instances, rigid_fit, source_objects
-from r3d.objects.object_error import (PLANAR_DEGREES, SHEET_DEGREES, SHEET_GROWTH, SKY, Parts, cell, common_prefix,
+from r3d.objects.object_error import (PLANAR_AREA_SHARE, PLANAR_DEGREES, SHEET_DEGREES, SHEET_GROWTH, SKY, Parts, cell, common_prefix,
                                       object_rows, part_labels, part_names, planar_parts, read, report_body, rows_for,
                                       shape_rows, sheet_triangles, write)
 from r3d.objects.objects_report import LOD_LEVELS, LOD_TRIANGLE_RATIO, main, masked_objects, pose_rows
@@ -708,22 +708,30 @@ class ObjectErrorTests(unittest.TestCase):
         for degrees, planar in ((2 * PLANAR_DEGREES * 0.9, True), (2 * PLANAR_DEGREES * 1.1, False)):
             p, tri_v = self.hinge(degrees)
             np.testing.assert_array_equal(planar_parts(p, tri_v, np.zeros(2, dtype=np.int64), 1), [planar])
+        # A kerb's edge: a floor with a small square turned straight up stays planar while the square's share of
+        # the area is under 1 - PLANAR_AREA_SHARE.
+        for share, planar in (((1 - PLANAR_AREA_SHARE) * 0.9, True), ((1 - PLANAR_AREA_SHARE) * 1.1, False)):
+            side = np.sqrt(share / (1 - share))
+            p = np.array([[0., 0., 0.], [1., 0., 0.], [0., 0., 1.], [0., 0., 0.], [side, 0., 0.], [0., side, 0.]])
+            np.testing.assert_array_equal(planar_parts(p, np.array([[0, 2, 1], [3, 4, 5]]), np.zeros(2, dtype=np.int64), 1),
+                                          [planar])
 
     def test_a_sheet_is_a_large_triangle_turned_off_the_source(self):
-        # The source is one unit right triangle in the floor plane; the drawn ones stand over it, each turned
-        # about x by its angle and scaled to its area in affordable triangles.
+        # The source is one floor triangle, one part; most drawn triangles lie on it at unit size, setting the
+        # part's median, and each case stands over it turned about x by its angle and scaled by its area.
         source = np.array([[0., 0., 0.], [1., 0., 0.], [0., 0., 1.]])
-        area = 0.5
 
-        def drawn(degrees, areas):
-            turn, scale = np.radians(degrees), np.sqrt(areas)
+        def drawn(degrees, area):
+            turn, scale = np.radians(degrees), np.sqrt(area)
             return scale * np.array([[0., 0., 0.], [1., 0., 0.], [0., np.sin(turn), np.cos(turn)]])
 
         cases = [((SHEET_DEGREES * 1.1, SHEET_GROWTH * 1.1), True), ((SHEET_DEGREES * 0.9, SHEET_GROWTH * 1.1), False),
                  ((SHEET_DEGREES * 1.1, SHEET_GROWTH * 0.9), False), ((180 - SHEET_DEGREES * 0.9, SHEET_GROWTH * 1.1), False)]
-        triangles = np.stack([drawn(*case) for case, _ in cases])
-        sheets = sheet_triangles(source, np.array([[0, 1, 2]]), triangles, np.zeros(len(cases), dtype=np.int64), area)
-        np.testing.assert_array_equal(sheets, [sheet for _, sheet in cases])
+        floor = [drawn(0, 1)] * (2 * len(cases) + 1)
+        triangles = np.stack(floor + [drawn(*case) for case, _ in cases])
+        near = np.zeros(len(triangles), dtype=np.int64)
+        sheets = sheet_triangles(source, np.array([[0, 1, 2]]), triangles, near, np.zeros(1, dtype=np.int64))
+        np.testing.assert_array_equal(sheets, [False] * len(floor) + [sheet for _, sheet in cases])
 
     def test_report_names_leave_out_the_shared_prefix(self):
         self.assertEqual(common_prefix([SKY, 'Scene_Street_1#0', 'Scene_Stone_2']), 'Scene_')
