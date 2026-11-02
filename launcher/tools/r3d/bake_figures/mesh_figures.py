@@ -9,7 +9,7 @@ whole meshlet.
 
     python launcher/tools/r3d/bake_figures/mesh_figures.py --mesh MESH --out DIR
 
-MESH is a baked .mesh (bake.py path OUTPUT). Needs launcher/tools/r3d/requirements.txt.
+MESH is a baked .mesh, or a carved .bundle whose rest mesh is drawn (bake.py path OUTPUT). Needs launcher/tools/r3d/requirements.txt.
 launcher/tools/render/render_doc_images.sh runs it.
 """
 
@@ -18,6 +18,7 @@ import colorsys
 import pathlib
 import re
 import sys
+import tempfile
 
 import numpy as np
 from matplotlib.collections import PolyCollection
@@ -27,6 +28,7 @@ from scipy.spatial import Delaunay
 TOOLS = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(TOOLS))
 from docs.plot_style import FAINT, GIF_FPS, INK, LABEL_SIZE, MUTED, TITLE_SIZE, save, save_gif, subplots  # noqa: E402
+from r3d import mesh_asset, mesh_bundle  # noqa: E402
 from r3d.lit_mesh import read_lit_mesh  # noqa: E402
 from r3d.meshopt import build_meshlets  # noqa: E402
 
@@ -252,13 +254,28 @@ def build(path):
         save_gif(figure, frame, frames, path, GIF_FPS, colors=HUE_GIF_COLORS)
 
 
+def read_baked_mesh(path):
+    """A .mesh, or a carved .bundle's rest mesh: its one LMSH entry that no copy draws."""
+    if path.suffix != mesh_bundle.SUFFIX:
+        return read_lit_mesh(path)
+    entries, copies = mesh_bundle.decode(path.read_bytes())
+    drawn = {row["mesh"] for row in copies}
+    rests = [blob for name, kind, blob in entries if kind == mesh_asset.TYPE and name not in drawn]
+    if len(rests) != 1:
+        raise SystemExit(f"{path}: {len(rests)} rest meshes, not one")
+    with tempfile.TemporaryDirectory() as work:
+        rest = pathlib.Path(work) / "rest.mesh"
+        rest.write_bytes(rests[0])
+        return read_lit_mesh(rest)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--mesh", type=pathlib.Path, required=True)
     parser.add_argument("--out", type=pathlib.Path, required=True)
     parser.add_argument("--still", action="store_true", help="PNG stills in place of the GIFs")
     args = parser.parse_args(argv)
-    mesh = read_lit_mesh(args.mesh)
+    mesh = read_baked_mesh(args.mesh)
     moving = ".png" if args.still else ".gif"
     tree(mesh, args.out / f"baked-mesh-tree{moving}")
     ranges(mesh, args.out / "baked-mesh-ranges.png")
