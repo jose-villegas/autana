@@ -675,7 +675,7 @@ class ObjectErrorTests(unittest.TestCase):
         # The page's tables are remade from the kept rows: the same tables, every field its own type again.
         with tempfile.TemporaryDirectory() as folder:
             out = pathlib.Path(folder)
-            write(out, rows, score, unseen, score, 'title')
+            write(out, rows, score, unseen, 'title', dict(fit='f', reference='r'))
             kept, totals = read(out / 'error')
         for row, again in zip(rows, kept, strict=True):
             for key, value in row.items():
@@ -684,7 +684,7 @@ class ObjectErrorTests(unittest.TestCase):
                     self.assertAlmostEqual(again[key], value, delta=1e-5 * abs(value))
                 else:
                     self.assertEqual(again[key], value)
-        self.assertEqual(totals['title'], 'title')
+        self.assertEqual((totals['title'], totals['fit'], totals['reference']), ('title', 'f', 'r'))
         self.assertEqual(report_body(kept, totals['mean_delta_e'], totals['drawn_unseen_share']),
                          report_body(rows, score, unseen))
 

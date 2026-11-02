@@ -412,7 +412,7 @@ for data in docs/render/data/*-object-error.csv; do
     run "$PYTHON" launcher/tools/r3d/objects/object_error.py "${data%.csv}" --figure "$OUT/render/$stem.png" \
         --table "$OUT/tables/$stem.md" > "$WORK/$stem.log"
 done
-# --orphans scans this runner: bistro-object-error.png, sponza-object-error.png
+# --orphans scans this runner: bistro-street-fitted-full-object-error.png, sponza-atrium-fitted-full-object-error.png
 
 # Each picture's frame cost in each framebuffer layout, from the scene and
 # boot animation captures beside the render pages.
