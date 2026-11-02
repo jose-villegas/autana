@@ -44,24 +44,42 @@ The saving comes from the halved draw: fewer rows, spans and edge steps. SCANLIN
 
 On a dense benchmark scene SCANLINE cut the frame by about a quarter; the measured tables are in the test app's tools README.
 
-## Upscaling within a surface
+## Upscaling by surface
 
-Off by default: `UPSCALE_FILTER_SURFACE` in [`render/upscale.h`](../../../launcher/main/render/upscale.h), set with `render_context_set_upscale_filter()`.
+Off by default: `UPSCALE_FILTER_SURFACE` or `UPSCALE_FILTER_EDGES` in [`render/upscale.h`](../../../launcher/main/render/upscale.h), set with `render_context_set_upscale_filter()`.
 
-It applies to the steps that compose into the half picture, and is joint bilateral upsampling<sup>[[101]](../../Citations.md#kopf-2007)</sup> with a yes-or-no range weight.
+Both apply to the steps that compose into the half picture, and both judge "same surface" from the low-resolution depth alone.
+SURFACE is joint bilateral upsampling<sup>[[101]](../../Citations.md#kopf-2007)</sup> with a yes-or-no range weight; EDGES is Scale2x<sup>[[110]](../../Citations.md#mazzoleni-scale2x)</sup> with that test in place of equal colours.
 
 ![Nearest and surface against the reference, with each one's dE](../../images/render/upscale-surface.png)
 
 ![Edge crops: reference, nearest, surface](../../images/render/upscale-surface.crops.png)
 
-| Stage | Nearest | Surface |
-|---|---|---|
-| Compose, rows to the half height | each row its nearest source row | blends the two source rows around it when their depths are one surface, else takes the nearer |
-| Compose, same loop | - | writes a seam bit per half-picture pixel: another surface right of it or below it |
-| Present, 2x expand | each pixel to a 2x2 block | centre-aligned 2x bilinear, a quarter of each neighbour, except across a seam |
+![Nearest and edges against the reference, with each one's dE](../../images/render/upscale-edges.png)
+
+![Edge crops: reference, nearest, edges](../../images/render/upscale-edges.crops.png)
+
+| Stage | Nearest | Surface | Edges |
+|---|---|---|---|
+| Compose, rows to the half height | each row its nearest source row | blends the two source rows around it when their depths are one surface, else takes the nearer | as nearest |
+| Compose, same loop | - | a seam bit per half-picture pixel: another surface right of it or below it | four corner bits per half-picture pixel, from the depths of its four neighbours |
+| Present, 2x expand | each pixel to a 2x2 block | centre-aligned 2x bilinear, a quarter of each neighbour, except across a seam | as nearest, then each marked corner takes the colour of the neighbour beside it in the row |
 
 Two depths are one surface when they differ by at most the nearer's
 1/2^`UPSCALE_SURFACE_STEP_SHIFT`. Clear against drawn is always a seam.
+
+For pixel P with up A, right B, left C and down D, a corner takes its neighbour when the two neighbours on that corner are one surface and neither is one surface with the neighbour opposite the other:
+
+| Corner | Takes | When |
+|---|---|---|
+| top-left | C | C, A one surface; C, D not; A, B not |
+| top-right | B | A, B one surface; A, C not; B, D not |
+| bottom-left | C | C, D one surface; C, A not; D, B not |
+| bottom-right | B | B, D one surface; B, A not; D, C not |
+
+Inside one surface no corner changes, so interiors are nearest exactly. Compose skips eight pixels at a time when the depths around them all fall within one step of the farthest.
+
+The seam and the corners share one buffer, the half picture's expand hints (`GFX_HINT_PLANES` one-bit masks after its pixels); SURFACE reads the first mask, EDGES all four.
 
 <!-- generated: dynres-upscale sha256=150a7f4bd1f2048b45217fd6f378c6fa09df78058bf960eefa3fc0c21c6193c6 -->
 | Scene | mean dE | p95 dE | SSIM |

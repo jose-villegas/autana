@@ -295,6 +295,22 @@ corner_bits(const uint16_t* up, const uint16_t* here, const uint16_t* down, int 
                            .bottom_right = bd & ~ab & ~cd};
 }
 
+/* True when every depth of the three rows in columns [from, to] is one
+ * surface with every other: their spread is within the farthest's step, so no
+ * pair can differ and Scale2x fills no corner there. Most of a picture is. */
+static bool
+one_surface_window(const uint16_t* up, const uint16_t* here, const uint16_t* down, int from, int to) {
+    unsigned low = UINT16_MAX, high = 0;
+    for (int x = from; x <= to; x++) {
+        const unsigned a = up[x], b = here[x], c = down[x];
+        const unsigned column_low = a < b ? (a < c ? a : c) : (b < c ? b : c);
+        const unsigned column_high = a > b ? (a > c ? a : c) : (b > c ? b : c);
+        low = column_low < low ? column_low : low;
+        high = column_high > high ? column_high : high;
+    }
+    return high - low <= (low >> UPSCALE_SURFACE_STEP_SHIFT);
+}
+
 /* Destination row `y`'s corners, from the depths of the rows around it as
  * the nearest copy lays them out. A row inside one source row's run has its
  * own surfaces above and below: no corner. */
@@ -322,7 +338,10 @@ row_corners(const upscale_t* scale, const uint16_t* depth, size_t pitch, int y, 
     for (int byte = 0; byte < pitch_bytes; byte++) {
         const int first = byte * GFX_SEAM_BITS;
         const int count = width - first < GFX_SEAM_BITS ? width - first : GFX_SEAM_BITS;
-        const corner_bits_t bits = corner_bits(up, here, down, width, first, count);
+        const int to = first + count < width ? first + count : width - 1;
+        const corner_bits_t bits = one_surface_window(up, here, down, first > 0 ? first - 1 : 0, to)
+                                       ? (corner_bits_t){0}
+                                       : corner_bits(up, here, down, width, first, count);
         planes[GFX_HINT_CORNER(0, 0)][byte] = (uint8_t)bits.top_left;
         planes[GFX_HINT_CORNER(0, 1)][byte] = (uint8_t)bits.top_right;
         planes[GFX_HINT_CORNER(1, 0)][byte] = (uint8_t)bits.bottom_left;

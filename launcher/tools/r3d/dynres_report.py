@@ -323,43 +323,45 @@ MAIN_SIZE = (DESTINATION[0] // 2, DESTINATION[1] // 2)
 
 
 def upscale_table(path):
-    """The main size inline, one row per scene, each metric as first filter in the file → second
-    (change); every size and column in a details block."""
+    """The main size inline, a row per scene and filter after the first in the file, each metric as
+    first filter → that filter (change); every size and column in a details block."""
     groups = {}
     with open(path, newline="") as handle:
         for row in csv.DictReader(handle):
             key = (row["scene"], (int(row["width"]), int(row["height"])))
             groups.setdefault(key, {}).setdefault(row["filter"], []).append(row)
     filters = list(next(iter(groups.values())))
-    if len(filters) != 2:
-        raise SystemExit(f"{path}: needs two filters, has {filters}")
+    if len(filters) < 2:
+        raise SystemExit(f"{path}: needs a filter to compare with the first, has {filters}")
+    base, others = filters[0], filters[1:]
 
-    def means(by_filter, field):
-        return [statistics.mean(float(row[field]) for row in by_filter[name]) for name in filters]
+    def mean(by_filter, name, field):
+        return statistics.mean(float(row[field]) for row in by_filter[name])
 
     columns = {field: (label, form) for field, label, form in UPSCALE_COLUMNS}
-    lines = ["| Scene | " + " | ".join(columns[f][0] for f in UPSCALE_MAIN) + " |", "|---|" + "---|" * len(UPSCALE_MAIN)]
+    lines = ["| Scene | Filter | " + " | ".join(columns[f][0] for f in UPSCALE_MAIN) + " |",
+             "|---|---|" + "---|" * len(UPSCALE_MAIN)]
     for (scene, size), by_filter in groups.items():
         if size != MAIN_SIZE:
             continue
-        row = []
-        for field in UPSCALE_MAIN:
-            a, b = means(by_filter, field)
-            form = columns[field][1]
-            row.append(f"{form % a} → {form % b} ({form.replace('%', '%+') % (b - a)})")
-        lines.append(f"| {scene} | " + " | ".join(row) + " |")
-    lines += ["", f"At {MAIN_SIZE[0]}x{MAIN_SIZE[1]}, each cell is {filters[0]} → {filters[1]} (change), the mean over the "
-                  "path's frames against the reference at full size; lower dE and higher SSIM are closer.", "",
+        for name in others:
+            row = []
+            for field in UPSCALE_MAIN:
+                a, b = mean(by_filter, base, field), mean(by_filter, name, field)
+                form = columns[field][1]
+                row.append(f"{form % a} → {form % b} ({form.replace('%', '%+') % (b - a)})")
+            lines.append(f"| {scene} | {name} | " + " | ".join(row) + " |")
+    lines += ["", f"At {MAIN_SIZE[0]}x{MAIN_SIZE[1]}, each cell is {base} → the row's filter (change), the mean over "
+                  "the path's frames against the reference at full size; lower dE and higher SSIM are closer.", "",
               "<details>", "<summary>Every size, with edge and interior dE</summary>", "",
-              "| Scene | Size | " + " | ".join(label for _f, label, _m in UPSCALE_COLUMNS) + " |",
-              "|---|---|" + "---|" * len(UPSCALE_COLUMNS)]
+              "| Scene | Size | Filter | " + " | ".join(label for _f, label, _m in UPSCALE_COLUMNS) + " |",
+              "|---|---|---|" + "---|" * len(UPSCALE_COLUMNS)]
     for (scene, (width, height)), by_filter in groups.items():
-        cells = []
-        for field, _label, form in UPSCALE_COLUMNS:
-            a, b = means(by_filter, field)
-            cells.append(f"{form % a} → {form % b}")
-        lines.append(f"| {scene} | {width}x{height} | " + " | ".join(cells) + " |")
-    lines += ["", f"Each cell is {filters[0]} → {filters[1]}.", "", "</details>"]
+        for name in others:
+            cells = [f"{form % mean(by_filter, base, field)} → {form % mean(by_filter, name, field)}"
+                     for field, _label, form in UPSCALE_COLUMNS]
+            lines.append(f"| {scene} | {width}x{height} | {name} | " + " | ".join(cells) + " |")
+    lines += ["", f"Each cell is {base} → the row's filter.", "", "</details>"]
     return "\n".join(lines)
 
 

@@ -149,7 +149,7 @@ The host renderer picks one by its menu label, as
 Below it, UPSCALE picks how a draw half the panel's width or less fills the panel:
 SHARP repeats pixels (the default), SMOOTH blends within a surface and keeps
 depth edges sharp, EDGES rounds the stairs of depth edges and leaves the rest sharp
-([Dynamic-Resolution.md](../../../../../docs/render/frame/Dynamic-Resolution.md#upscaling-within-a-surface)).
+([Dynamic-Resolution.md](../../../../../docs/render/frame/Dynamic-Resolution.md#upscaling-by-surface)).
 It sets `render_lab.upscale`.
 
 The generic scene viewer accepts `--small-fill CEILING,GATE,STYLE`; its defaults
@@ -255,7 +255,7 @@ scores each size against the reference along that camera's clip, at
 intervals taken from the script and over the clip's full period. Per-path
 results belong in `docs/render/data/dynamic-resolution-quality-CAMERA.csv`.
 `upscale_quality.sh` runs it per scene under each upscale filter, for
-[Dynamic-Resolution.md](../../../../../docs/render/frame/Dynamic-Resolution.md#upscaling-within-a-surface):
+[Dynamic-Resolution.md](../../../../../docs/render/frame/Dynamic-Resolution.md#upscaling-by-surface):
 
 ```sh
 sh launcher/main/apps/render_lab/tools/upscale_quality.sh /tmp/upscale docs/render/data/upscale-filter-quality.csv     docs/render/data/upscale-frames camera launcher/demo/bistro/bistro.scene.toml:bistro-fitted-full     launcher/demo/sponza/sponza.scene.toml:sponza-fitted-full launcher/demo/sponza/sponza.scene.toml:sponza-fitted     launcher/demo/sponza/sponza.scene.toml:sponza-flat-fitted launcher/demo/sponza/sponza.scene.toml:sponza     launcher/demo/sponza/sponza.scene.toml:sponza-flat launcher/demo/sponza/sponza.scene.toml:sponza-lite
