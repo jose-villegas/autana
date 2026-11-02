@@ -35,7 +35,8 @@ tools = root / 'launcher/tools'
 stages.ROOT = bake.REPO = root
 stages.TOOLS = bake.TOOLS = tools
 stages.__file__ = str(tools / 'entry.py')
-stages.tracked_files = lambda *args: json.loads((root / 'tracked.json').read_text())
+from docs import inputs
+inputs.tracked_files = lambda *args: json.loads((root / 'tracked.json').read_text())
 stages.host_inputs = lambda scene: {'host flags': (root / 'flags').read_text(),
     'host host.c': stages.content_checksum(root / 'host.c').decode()}
 bake.read_lock = lambda: ({(root / 'key').read_text(): {'sha256': (root / 'lock').read_text()}}

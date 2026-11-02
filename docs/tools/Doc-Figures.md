@@ -58,12 +58,20 @@ listed: what one machine without a GPU or a board can run.
 With `--changed`, a run is skipped when its inputs match those recorded at its
 last good run: its arguments and item, its code (import closure, the C and
 requirements it counts, the tracked files that code names), the C its probes
-compiled, its `reads` files and its bake's lock row. Both commands record into
+compiled, its `reads` files and its bake's lock row. Records go to
 `launcher/tools/results/doc_images/fingerprints.json`, which is not tracked
-(`--fingerprints FILE` names another): `build` every run, `check` the runs
-whose images were all the same.
+(`--fingerprints FILE` names another). A command that fails records nothing.
 
-A command goes in three steps:
+```mermaid
+flowchart LR
+  S["select<br/>--area, --needs, scripts"] --> E["expand each<br/>one run per item"]
+  E --> F{"--changed:<br/>inputs = record?"}
+  F -- yes --> K["skip"]
+  F -- no --> P["check needs<br/>all, first"]
+  P --> R["run<br/>parallel; gpu, board<br/>one at a time"]
+  R --> D["build: copy<br/>check: compare"]
+  D --> W["record: build into docs/images,<br/>every run; check, runs all same"]
+```
 
 | Step | What happens | On failure |
 |---|---|---|

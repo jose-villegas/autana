@@ -36,7 +36,9 @@ and prints "same IMAGE", "changed IMAGE: how" or "changed IMAGE: new image",
 or "orphan IMAGE: SCRIPT no longer makes it" for a committed image one of a
 producer's globs claims but no run made or skipped. Both record each run's
 inputs in launcher/tools/results/doc_images/fingerprints.json (--fingerprints
-names another file): build every run's, check those whose images were same.
+names another file): build every run's when it writes docs/images/, check
+those whose images were all same and that claim no orphan. A command that
+fails records nothing. The order is drawn in docs/tools/Doc-Figures.md.
 
 Exit status: 0 done (check: nothing changed), 1 check found a change or an
 orphan, 2 the images could not be made or compared.
@@ -45,6 +47,7 @@ import argparse
 import concurrent.futures
 import fnmatch
 import glob
+import hashlib
 import importlib.util
 import json
 import os
@@ -107,12 +110,6 @@ def select(found, area, needs, scripts):
     return chosen
 
 
-def all_bakes():
-    from bake import bake
-    from r3d.build_pack import DEFAULT_SEARCH
-    return bake.bakes([DEFAULT_SEARCH])
-
-
 def expand(chosen):
     """Every run of the chosen producers, and a problem for each `each` that names nothing or one item twice
     (two files of one stem)."""
@@ -120,9 +117,11 @@ def expand(chosen):
     for found in chosen:
         kind, _, pattern = found.producer.each.partition(":")
         if kind == "bakes":
-            baked = all_bakes() if baked is None else baked
-            matched = [Run(found, bake.output.removesuffix(bake.suffix), bake) for bake in baked
-                       if fnmatch.fnmatchcase(bake.output, pattern)]
+            if baked is None:
+                from bake import bake
+                baked = bake.bakes()
+            matched = [Run(found, item.output.removesuffix(item.suffix), item) for item in baked
+                       if fnmatch.fnmatchcase(item.output, pattern)]
         elif kind == "glob":
             matched = [Run(found, path.stem) for path in sorted(ROOT.glob(pattern))]
         else:
@@ -161,35 +160,23 @@ def preflight(runs, problems=()):
     return {"cc": cc}
 
 
-class Fingerprints:
-    """Each run's inputs as {input: digest}, the code part shared by a producer's runs."""
+def fingerprint(run, probe, code):
+    """The digest of a run's inputs. `probe`: the C files its probes compiled, by repository path; `code`: the
+    code inputs by script, shared by a producer's runs and filled as needed."""
+    from bake import bake
+    from docs.inputs import bake_inputs, code_inputs
+    from r3d.import_settings import content_checksum
 
-    def __init__(self):
-        sys.path.insert(0, str(ROOT / "scripts/gates"))
-        from tracked import tracked_files
-        self.tracked = {(ROOT / name).resolve() for name in tracked_files(ROOT, ("launcher", "scripts"))}
-        self.code = {}
+    def checksum(name):
+        return content_checksum(ROOT / name).decode() if (ROOT / name).is_file() else "missing"
 
-    def inputs(self, run, probe):
-        """`probe`: the C files the run's probes compiled, by repository path."""
-        from bake import bake
-        from docs.inputs import code_inputs
-        from r3d.import_settings import content_checksum
-
-        def checksum(name):
-            return content_checksum(ROOT / name).decode() if (ROOT / name).is_file() else "missing"
-
-        if run.found.name not in self.code:
-            self.code[run.found.name] = code_inputs([run.found.script], ROOT, self.tracked,
-                                                    (ROOT, ROOT / "launcher/tools"))
-        inputs = {"run": [run.item, *run.found.producer.run], **self.code[run.found.name],
-                  **{f"probe {name}": checksum(name) for name in probe},
-                  **{f"reads {path.relative_to(ROOT).as_posix()}": checksum(path.relative_to(ROOT))
-                     for pattern in run.found.producer.reads for path in sorted(ROOT.glob(pattern))}}
-        if run.bake is not None:
-            row = bake.read_lock().get(run.bake.key)
-            inputs[f"bake {run.bake.output}"] = f"{run.bake.key} {row['sha256']}" if row else f"unlocked {run.bake.key}"
-        return bake.digest(inputs)
+    if run.found.name not in code:
+        code[run.found.name] = code_inputs([run.found.script], ROOT)
+    return bake.digest({"run": [run.item, *run.found.producer.run], **code[run.found.name],
+                        **{f"probe {name}": checksum(name) for name in probe},
+                        **{f"reads {path.relative_to(ROOT).as_posix()}": checksum(path.relative_to(ROOT))
+                           for pattern in run.found.producer.reads for path in sorted(ROOT.glob(pattern))},
+                        **(bake_inputs([run.bake], bake.read_lock()) if run.bake is not None else {})})
 
 
 def read_records(path):
@@ -228,7 +215,8 @@ def made_files(folder):
 def run_one(run, values):
     """Make one run into a fresh folder; returns the folder, the images in it and the C its probes compiled,
     or raises Failed with its log's end."""
-    work = WORK / re.sub(r"[^\w.-]", "-", run.name)
+    # Readable, and unique though two names read alike once cleaned.
+    work = WORK / f"{re.sub(r'[^\w.-]', '-', run.name)}-{hashlib.sha256(run.name.encode()).hexdigest()[:12]}"
     out, depends = work / "out", work / "depends"
     shutil.rmtree(work, ignore_errors=True)
     out.mkdir(parents=True)
@@ -249,6 +237,9 @@ def run_one(run, values):
         raise Failed("\n".join([f"{run.name} did not make what it declares:",
                                 *(f"  missing {name}" for name in missing),
                                 *(f"  undeclared {name}" for name in undeclared)]))
+    if any("{cc}" in argument for argument in run.found.producer.run) and not any(depends.iterdir()):
+        raise Failed(f"{run.name} compiled C the runner could not see: build it with docs.figures.build_probe, "
+                     "which lists what it compiled")
     return out, sorted(made), probe_sources(depends)
 
 
@@ -314,6 +305,8 @@ def check(chosen, runs, skipped, results):
             if claims(found.images, name) and not claims(left, name):
                 print(f"orphan {name}: {found.name} no longer makes it")
                 changed = True
+                # A run that claims it stays unrecorded, or --changed would skip it and its glob would hide this.
+                same -= {run.name for run in runs if run.found is found and claims(run.images, name)}
     return same, changed
 
 
@@ -339,10 +332,9 @@ def make(args, found):
     """build or check; returns the exit status."""
     chosen = select(found, args.area, args.needs, args.scripts)
     runs, problems = expand(chosen)
-    records = read_records(args.fingerprints)
-    fingerprints = Fingerprints()
+    records, code = read_records(args.fingerprints), {}
     # Before any run, so code the fingerprint cannot follow fails in seconds.
-    before = {run.name: fingerprints.inputs(run, records.get(run.name, {}).get("probe", ())) for run in runs}
+    before = {run.name: fingerprint(run, records.get(run.name, {}).get("probe", ()), code) for run in runs}
     skipped = []
     if args.changed:
         skipped = [run for run in runs if records.get(run.name, {}).get("fingerprint") == before[run.name]]
@@ -352,14 +344,16 @@ def make(args, found):
     results = run_all(runs, preflight(runs, problems), args.jobs)
     if args.command == "build":
         deliver(results, args.into)
-        recorded, status = {run.name for run in runs}, 0
+        # A record says docs/images/ holds what the inputs make; images put elsewhere do not.
+        recorded = {run.name for run in runs} if args.into.resolve() == IMAGES.resolve() else set()
+        status = 0
     else:
         recorded, changed = check(chosen, runs, skipped, results)
         status = int(changed)
     for run in runs:
         if run.name in recorded:
             probe = results[run.name][2]
-            records[run.name] = {"fingerprint": fingerprints.inputs(run, probe), "probe": probe}
+            records[run.name] = {"fingerprint": fingerprint(run, probe, code), "probe": probe}
     write_records(args.fingerprints, records)
     return status
 
