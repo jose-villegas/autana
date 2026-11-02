@@ -26,6 +26,16 @@ SCRIPT = TOOLS / "render/scenes/scene_viewer_render_host.sh"
 REPO = TOOLS.parents[1]
 
 
+def write_card(directory, colour):
+    """The test scene's one coloured triangle, its import settings and camera clip in `directory`."""
+    positions = np.array([[-2, -2, -6], [2, -2, -6], [0, 2, -6]], dtype=float)
+    write_lit_mesh(directory, "card", positions, np.array([colour] * 3), np.array([[0, 1, 2]]), np.array([True]))
+    (directory / "card.import.toml").write_text(
+        '[source]\npath = "card.obj"\ncredit = "fixture"\n[output]\nname = "card"\n')
+    (directory / "card.obj").write_text("v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n")
+    write_camera_clip(directory, reach=2.0)
+
+
 @unittest.skipUnless(has_compiler(), "needs sh and a C compiler")
 class SceneViewer(unittest.TestCase):
     @classmethod
@@ -33,13 +43,7 @@ class SceneViewer(unittest.TestCase):
         cls.temp = tempfile.TemporaryDirectory(prefix="scene viewer ")
         cls.root = pathlib.Path(cls.temp.name)
         cls.scene = cls.root / "room.scene.toml"
-        positions = np.array([[-2, -2, -6], [2, -2, -6], [0, 2, -6]], dtype=float)
-        write_lit_mesh(cls.root, "card", positions, np.array([[255, 40, 20]] * 3),
-                       np.array([[0, 1, 2]]), np.array([True]))
-        (cls.root / "card.import.toml").write_text(
-            '[source]\npath = "card.obj"\ncredit = "fixture"\n[output]\nname = "card"\n')
-        (cls.root / "card.obj").write_text("v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n")
-        write_camera_clip(cls.root, reach=2.0)
+        write_card(cls.root, [255, 40, 20])
         cls.scene.write_text('''[[objects]]
 name = "card"
 [objects.mesh_renderer]
@@ -128,12 +132,7 @@ path = { animation = "fly.anim.toml", node = "camera" }
     def test_close_gives_back_the_pack_so_the_same_id_reopens_from_another_folder(self):
         other = self.root / "other"
         other.mkdir(exist_ok=True)
-        positions = np.array([[-2, -2, -6], [2, -2, -6], [0, 2, -6]], dtype=float)
-        write_lit_mesh(other, "card", positions, np.array([[20, 220, 40]] * 3), np.array([[0, 1, 2]]),
-                       np.array([True]))
-        (other / "card.import.toml").write_text((self.root / "card.import.toml").read_text())
-        (other / "card.obj").write_text((self.root / "card.obj").read_text())
-        write_camera_clip(other, reach=2.0)
+        write_card(other, [20, 220, 40])
         (other / "room.scene.toml").write_text(self.scene.read_text())
         packs_b = other / "assets"
         build_pack.write_packs(packs_b, build_pack.pack_bytes([other / "room.scene.toml"]))
