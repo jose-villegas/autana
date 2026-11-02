@@ -291,10 +291,7 @@ def group_table(groups, score, text, label, count, top=TOP_ROWS):
 
 
 def surface_text(rows):
-    """How many drawn triangles of the parts in view sit on planar parts, and how many are sheets; empty for rows
-    kept before error.csv counted them."""
-    if "planar" not in rows[0]:
-        return ""
+    """How many drawn triangles of the parts in view sit on planar parts, and how many are sheets."""
     planar = sum(row["drawn_triangles"] for row in rows if row["planar"])
     sheets = sum(row["sheet_triangles"] for row in rows)
     return (f" {planar} drawn triangles sit on planar parts in view; {sheets} are sheets (over {SHEET_GROWTH:g} "

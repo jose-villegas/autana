@@ -357,14 +357,16 @@ object and shape tables sum every part, so all of them are kept.
 | Object part | Triangles of one source object joined by welded positions; `name#k` when the object has several |
 | Path pixels, error share | The part's share of all held-out pixels and of their summed dE76; the sky is its own row |
 | Source, drawn triangles | Shares of the source, and of the fit's triangles charged to the nearest source triangle centre |
+| Planar | The part's source area faces its mean normal within `PLANAR_DEGREES`, all but `1 - PLANAR_AREA_SHARE` of it |
+| Sheet triangles | The part's drawn triangles larger than `SHEET_GROWTH` times its median drawn triangle and turned over `SHEET_DEGREES` from their nearest source triangle |
 | repeat ×N | A rigid copy of a shape placed N times, matched over parts |
 | welded | Shares a position with another object |
 | segment | One welded part: only sub-mesh segmentation can split it |
 
 ![Error and pixel share of the costliest Bistro parts](../../images/render/bistro-street-fitted-full-object-error.png)
 
-<!-- generated: bistro-street-fitted-full-object-error sha256=3a348f67e16e68c50da8b39fefa51ab54a69d3a953ef28fb721b30f32fa4eb04 -->
-Mean dE76 over the held-out path 6.364, over 10014 object parts in view. 9.1% of the drawn triangles sit on parts no held-out pixel shows.
+<!-- generated: bistro-street-fitted-full-object-error sha256=53e1a21364248c118e2586da619c4c624961e332488f136e1c8196546db175af -->
+Mean dE76 over the held-out path 6.364, over 10014 object parts in view. 9.1% of the drawn triangles sit on parts no held-out pixel shows. 1397 drawn triangles sit on planar parts in view; 384 are sheets (over 4 times their part's median triangle, turned over 30° from the source).
 
 Object parts, ranked by error share. Names leave out `Bistro_Research_Exterior_`.
 
@@ -444,8 +446,8 @@ Repeated shapes, every copy summed.
 
 ![Error and pixel share of the costliest Sponza parts](../../images/render/sponza-atrium-fitted-full-object-error.png)
 
-<!-- generated: sponza-atrium-fitted-full-object-error sha256=c7815393105e49bfee20b5ad952ae43309dfe0e162953281c2aa46da4ceed7ff -->
-Mean dE76 over the held-out path 5.390, over 1026 object parts in view. 8.1% of the drawn triangles sit on parts no held-out pixel shows.
+<!-- generated: sponza-atrium-fitted-full-object-error sha256=a8f59d94496285c1f8161c15992668297f8fb4e26657a8eab44cd2462bef816b -->
+Mean dE76 over the held-out path 5.390, over 1026 object parts in view. 8.1% of the drawn triangles sit on parts no held-out pixel shows. 61 drawn triangles sit on planar parts in view; 514 are sheets (over 4 times their part's median triangle, turned over 30° from the source).
 
 Object parts, ranked by error share. Names leave out `sponza_`.
 
