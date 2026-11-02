@@ -10,9 +10,15 @@ from typing import NamedTuple
 from asset.asset_pack import PackError
 
 TYPE = b"LMSH"
-BLOB_HEADER = struct.Struct("<11I")
+BLOB_HEADER = struct.Struct("<14I")
 CLUSTER = struct.Struct("<4H6hBx")
 NODE = struct.Struct("<6hHBB")
+# A cluster's own and parent group; a group's bounds (centre and radius, ticks) and error (ticks).
+CLUSTER_LOD = struct.Struct("<2H")
+LOD_GROUP = struct.Struct("<4hH")
+LOD_NONE = 0xFFFF
+# Ticks a parent group's bounds keep beyond each group simplified into it (r3d_lit_mesh.h).
+LOD_ENCLOSE_MARGIN = 1
 
 
 class MeshHeader(NamedTuple):
@@ -26,5 +32,5 @@ def read_mesh_header(mesh):
     """Counts and colour-array offsets from an LMSH header."""
     if len(mesh) < BLOB_HEADER.size:
         raise PackError("LMSH header is truncated")
-    vertices, triangles, _, _, _, _, colors_at, _, _, _, face_at = BLOB_HEADER.unpack_from(mesh)
+    vertices, triangles, _, _, _, _, colors_at, _, _, _, face_at, *_ = BLOB_HEADER.unpack_from(mesh)
     return MeshHeader(vertices, triangles, colors_at, face_at)

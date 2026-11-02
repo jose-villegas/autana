@@ -69,7 +69,7 @@
 #define CAMERA_DISTANCE    10
 #define PIXELS_PER_UNIT    ((float)CENTER / CAMERA_DISTANCE)
 #define CLEAR_RGB          0x336699
-#define QUAD_BYTES         132
+#define QUAD_BYTES         (R3D_LIT_MESH_HEADER_BYTES + 88)
 #define PACK_MAX           16384
 #define SENTINEL           0x5A5A
 
@@ -77,15 +77,15 @@
 #define INSTANCES_MAX      64
 
 /* A unit quad in the plane z = 0, two-sided, in one colour. The arrays sit
- * one after another after the 44-byte header. */
+ * one after another after the header. */
 enum {
     QUAD_VERTICES = 4,
     QUAD_TRIANGLES = 2,
-    MESH_HEADER = 44,
+    MESH_HEADER = R3D_LIT_MESH_HEADER_BYTES,
     MESH_SCALE_AT = 4 * sizeof(uint32_t),
     RIG_JOINTS = 4,
     RIG_ENTRIES = 10,
-    RIG_MESH_BYTES = 200,
+    RIG_MESH_BYTES = R3D_LIT_MESH_HEADER_BYTES + 156,
     RIG_VERTICES = 2 * QUAD_VERTICES,
     RIG_DURATION_MS = 1000,
     RIG_TRAVEL = 4
@@ -2441,7 +2441,7 @@ test_the_scratch_is_the_finest_steps_raster_block(void) {
     scene_t* scene = show("test_pair", SCENE_CAMERA_FIRST);
     r3d_instance_t* instances = fx.instances;
     for (int i = 0; i < INSTANCES_MAX; i++) {
-        instances[i] = (r3d_instance_t){&scene->renderers[0].mesh, NULL};
+        instances[i] = (r3d_instance_t){&scene->renderers[0].mesh, NULL, NULL};
     }
     const resolution_config_t config = resolution_config(LADDER, 3, 3, 2000);
     render_context_t* c = render_context_main();

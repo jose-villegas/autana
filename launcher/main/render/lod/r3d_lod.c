@@ -1,0 +1,69 @@
+#include "render/lod/r3d_lod.h"
+
+#include "math/scalar/mathf.h"
+
+/* The lens's linear part with its focal lengths divided out: position ticks
+ * to view units. */
+typedef struct {
+    mat4f_t view;
+    float units_per_tick; /* at least the model's largest scale */
+    float focal;          /* pixels a view unit spans at unit depth, the larger axis */
+} lod_view_t;
+
+static lod_view_t
+lod_view(const r3d_lens_t* lens) {
+    lod_view_t out = {.view = lens->m, .focal = mathf_max(lens->focal_x, lens->focal_y)};
+    const float unfocus[2] = {mathf_recip(lens->focal_x), mathf_recip(lens->focal_y)};
+    for (int row = 0; row < 2; row++) {
+        for (int col = 0; col < 4; col++) {
+            out.view.m[row][col] *= unfocus[row];
+        }
+    }
+    /* The largest scale bounds every length the view stretches, so a parent
+     * group never projects smaller than one inside it: the square root of a
+     * bound on the largest eigenvalue of view^T view, its largest absolute
+     * row sum, which is exact for a rotation and one scale. */
+    float longest = 0.0F;
+    for (int i = 0; i < 3; i++) {
+        float row = 0.0F;
+        for (int j = 0; j < 3; j++) {
+            const vec3f_t a = {out.view.m[0][i], out.view.m[1][i], out.view.m[2][i]};
+            const vec3f_t b = {out.view.m[0][j], out.view.m[1][j], out.view.m[2][j]};
+            row += mathf_abs(vec3f_dot(a, b));
+        }
+        longest = mathf_max(longest, row);
+    }
+    out.units_per_tick = mathf_sqrt(longest);
+    return out;
+}
+
+static float
+group_pixels(const lod_view_t* v, const r3d_lit_lod_group_t* g, float near_z) {
+    const vec3f_t centre = mat4f_apply(&v->view, vec3f_from_vec3s(g->bounds.centre, 1.0F));
+    const float distance = mathf_sqrt(vec3f_dot(centre, centre)) - ((float)g->bounds.radius * v->units_per_tick);
+    return (float)g->error * v->units_per_tick * v->focal / mathf_max(distance, near_z);
+}
+
+float
+r3d_lod_group_pixels(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int group) {
+    const lod_view_t v = lod_view(lens);
+    return group_pixels(&v, &mesh->lod_groups[group], lens->project.near_z);
+}
+
+void
+r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, float tolerance_px, uint32_t* coarse) {
+    const lod_view_t v = lod_view(lens);
+    const float enter = tolerance_px - R3D_LOD_HYSTERESIS_PX;
+    const float leave = tolerance_px + R3D_LOD_HYSTERESIS_PX;
+    for (int g = 0; g < mesh->lod_group_count; g++) {
+        const float px = group_pixels(&v, &mesh->lod_groups[g], lens->project.near_z);
+        const uint32_t bit = 1U << (g % R3D_LOD_WORD_BITS);
+        uint32_t* word = &coarse[g / R3D_LOD_WORD_BITS];
+        const bool was = (*word & bit) != 0;
+        if (px <= enter || (was && px <= leave)) {
+            *word |= bit;
+        } else {
+            *word &= ~bit;
+        }
+    }
+}

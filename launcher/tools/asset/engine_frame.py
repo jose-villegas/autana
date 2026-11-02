@@ -48,8 +48,8 @@ def to_engine(kind, entry):
         return entry
     out = bytearray(entry)
     if kind == mesh_asset.TYPE:
-        vertices, triangles, clusters, nodes, scale, pos_at, col_at, tri_at, cl_at, node_at, face_at = (
-            mesh_asset.BLOB_HEADER.unpack_from(entry))
+        (vertices, triangles, clusters, nodes, scale, pos_at, col_at, tri_at, cl_at, node_at, face_at, groups, _,
+         groups_at) = mesh_asset.BLOB_HEADER.unpack_from(entry)
         for index in range(vertices):
             at = pos_at + index * POSITION.size
             POSITION.pack_into(out, at, *_mirror_position(POSITION.unpack_from(entry, at)))
@@ -61,6 +61,10 @@ def to_engine(kind, entry):
             at = node_at + index * mesh_asset.NODE.size
             *box, first, count, leaf = mesh_asset.NODE.unpack_from(entry, at)
             mesh_asset.NODE.pack_into(out, at, *_mirror_box(box), first, count, leaf)
+        for index in range(groups):
+            at = groups_at + index * mesh_asset.LOD_GROUP.size
+            *centre, radius, error = mesh_asset.LOD_GROUP.unpack_from(entry, at)
+            mesh_asset.LOD_GROUP.pack_into(out, at, *_mirror_position(centre), radius, error)
     elif kind == scene_asset.TYPE:
         header = scene_asset.HEADER.unpack_from(entry)
         entities = header[1]

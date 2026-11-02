@@ -1036,7 +1036,9 @@ subpixel_view(void) {
                         H,
                         R3D_SNAP_BIAS,
                         R3D_SNAP_BIAS,
-                        0.5f / (float)R3D_SUBPIXEL};
+                        0.5f / (float)R3D_SUBPIXEL,
+                        1.0F,
+                        1.0F};
 }
 
 static r3d_lit_mesh_t
@@ -1500,7 +1502,7 @@ quad_mesh(const uint16_t (*triangles)[3], bool double_sided, const uint16_t* fac
 static int
 draw_quad_mesh(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_span_target_t* target) {
     uint16_t visible[1];
-    const int count = r3d_pipeline_cull(mesh, lens, visible, pipeline_work(), NULL);
+    const int count = r3d_pipeline_cull(mesh, lens, NULL, visible, pipeline_work(), NULL);
     r3d_pipeline_vertex_t cs[4];
     r3d_pipeline_transform(mesh, lens, visible, count, cs, NULL, false);
     r3d_pipeline_draw(mesh, lens, visible, count, cs, NULL, target, pipeline_work());
@@ -1575,7 +1577,7 @@ test_a_cluster_behind_the_camera_is_culled(void) {
         render_view_fixture_at(&(fixture_camera_t){{0, 0, -400}, {0, 0, -1}, 0.5f, 1.0f}, (viewport_t){W, H, 0});
     r3d_lens_init(&lens, &frame_view, 1);
     uint16_t visible[1];
-    TEST_ASSERT_EQUAL_INT(0, r3d_pipeline_cull(&mesh, &lens, visible, pipeline_work(), NULL));
+    TEST_ASSERT_EQUAL_INT(0, r3d_pipeline_cull(&mesh, &lens, NULL, visible, pipeline_work(), NULL));
 }
 
 /* A floor running from behind the camera to far ahead, seen from above it
@@ -1779,7 +1781,7 @@ draw_parts(const parts_t* p, const r3d_lens_t* lens, const r3d_span_target_t* t,
     TEST_ASSERT_NOT_NULL(visible);
     TEST_ASSERT_NOT_NULL(cs);
     TEST_ASSERT_NOT_NULL(rows);
-    const int count = r3d_pipeline_cull(&p->mesh, lens, visible, pipeline_work(), NULL);
+    const int count = r3d_pipeline_cull(&p->mesh, lens, NULL, visible, pipeline_work(), NULL);
     r3d_pipeline_transform(&p->mesh, lens, visible, count, cs, use_rows ? rows : NULL, false);
     r3d_pipeline_draw(&p->mesh, lens, visible, count, cs, use_rows ? rows : NULL, t, pipeline_work());
     free(rows);
@@ -1942,7 +1944,7 @@ reference_frame(const parts_t* p, const r3d_lens_t* lens, gfx_color_t* upscaled)
 }
 
 /* A raster's one mesh, as the instance it is. */
-#define ONE_MESH(m) .instances = &(const r3d_instance_t){(m), NULL}, .instance_count = 1
+#define ONE_MESH(m) .instances = &(const r3d_instance_t){(m), NULL, NULL}, .instance_count = 1
 
 typedef struct {
     const char* at;
@@ -1974,7 +1976,7 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
     parts_t* const p = parts_buffer(&shared_parts);
     build_wall_and_stack(p);
     const r3d_lit_mesh_t empty = {0};
-    const r3d_instance_t instances[] = {{&p->mesh, NULL}, {&empty, NULL}};
+    const r3d_instance_t instances[] = {{&p->mesh, NULL, NULL}, {&empty, NULL, NULL}};
     raster_t raster = {.instances = instances, .instance_count = 2, .width = W, .height = H};
     const size_t bytes = raster_scratch_bytes(&raster);
     char* scratch = malloc(bytes);
@@ -2201,7 +2203,7 @@ test_a_census_list_draws_what_raster_draw_draws_at_any_size(void) {
     parts_t* const p = parts_buffer(&shared_parts);
     build_wall_and_stack(p);
     mat4f_t* const moved = census_moved();
-    const r3d_instance_t instances[] = {{&p->mesh, NULL}, {&p->mesh, moved}};
+    const r3d_instance_t instances[] = {{&p->mesh, NULL, NULL}, {&p->mesh, moved, NULL}};
     raster_t raster = census_raster(instances, 2);
     expect_census_draws_match_at_any_size(&raster);
     free(moved);
@@ -2218,7 +2220,8 @@ test_a_census_list_steps_by_each_instances_own_mesh(void) {
     build_floor_and_rects(floor);
     TEST_ASSERT_TRUE(wall->mesh.cluster_count != floor->mesh.cluster_count);
     mat4f_t* const moved = census_moved();
-    const r3d_instance_t instances[] = {{&floor->mesh, NULL}, {&wall->mesh, NULL}, {&wall->mesh, moved}};
+    const r3d_instance_t instances[] = {
+        {&floor->mesh, NULL, NULL}, {&wall->mesh, NULL, NULL}, {&wall->mesh, moved, NULL}};
     raster_t raster = census_raster(instances, 3);
     TEST_ASSERT_EQUAL_UINT32(3 + floor->mesh.cluster_count + (2 * wall->mesh.cluster_count),
                              (uint32_t)raster_culled_length(&raster));
@@ -2251,12 +2254,12 @@ test_batched_copies_draw_what_one_instance_at_a_time_draws(void) {
     TEST_ASSERT_TRUE(BATCH_COPIES * card->mesh.vertex_count <= wall->mesh.vertex_count);
     mat4f_t* models = frame_held.models = malloc(sizeof(*models) * BATCH_COPIES);
     TEST_ASSERT_NOT_NULL(models);
-    r3d_instance_t instances[1 + BATCH_COPIES] = {{&wall->mesh, NULL}};
+    r3d_instance_t instances[1 + BATCH_COPIES] = {{&wall->mesh, NULL, NULL}};
     for (int i = 0; i < BATCH_COPIES; i++) {
         transformf_t pose = TRANSFORMF_IDENTITY;
         transformf_set_position(&pose, (vec3f_t){-300.0F + (90.0F * (float)i), 60.0F * (float)(i % 3), 0.0F});
         models[i] = transformf_compute_matrix(&pose);
-        instances[1 + i] = (r3d_instance_t){&card->mesh, &models[i]};
+        instances[1 + i] = (r3d_instance_t){&card->mesh, &models[i], NULL};
     }
     raster_t raster = census_raster(instances, 1 + BATCH_COPIES);
     uint16_t* const want = frame_held.color = malloc(sizeof(*want) * 2 * W * H);
@@ -2386,7 +2389,7 @@ shown_frame(int width, int height) {
     shown->raster.width = width;
     shown->raster.height = height;
     shown->raster.clear = SKY;
-    shown->instance = (r3d_instance_t){&shown->mesh, NULL};
+    shown->instance = (r3d_instance_t){&shown->mesh, NULL, NULL};
     shown->raster.instances = &shown->instance;
     shown->raster.instance_count = 1;
     shown->raster.scratch = calloc(1, raster_scratch_bytes(&shown->raster));

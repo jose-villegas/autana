@@ -15,9 +15,12 @@ _Static_assert(sizeof(r3d_lit_cluster_t) == 22 && offsetof(r3d_lit_cluster_t, bo
 _Static_assert(sizeof(r3d_lit_node_t) == 16 && offsetof(r3d_lit_node_t, first) == 12
                    && offsetof(r3d_lit_node_t, leaf) == 15,
                "r3d_lit_node_t is not the layout lit_mesh.py writes");
+_Static_assert(sizeof(r3d_lit_cluster_lod_t) == 4 && sizeof(r3d_lit_lod_group_t) == 10
+                   && offsetof(r3d_lit_lod_group_t, error) == 8,
+               "the LOD records are not the layout lit_mesh.py writes");
 
 enum {
-    HEADER_WORDS = 11,
+    HEADER_WORDS = 14,
     ENTRY_ALIGNMENT = 4,
     COUNT_VERTEX = 0,
     COUNT_TRIANGLE,
@@ -30,7 +33,12 @@ enum {
     AT_CLUSTERS,
     AT_NODES,
     AT_FACE_COLORS,
+    COUNT_LOD_GROUP,
+    AT_CLUSTER_LOD,
+    AT_LOD_GROUPS,
 };
+
+_Static_assert(HEADER_WORDS * sizeof(uint32_t) == R3D_LIT_MESH_HEADER_BYTES, "the header is its words");
 
 #define VERTEX_LIMIT 65535U /* triangles index vertices with 16 bits */
 
@@ -102,6 +110,44 @@ nodes_are_inside(const r3d_lit_mesh_t* mesh) {
     return true;
 }
 
+/* A group's id names a group, or none. */
+static bool
+lod_id_fits(uint16_t id, int group_count) {
+    return id == R3D_LOD_NONE || id < group_count;
+}
+
+/* The pick's ordering (render/r3d_lod.h): a cluster's own group, the one
+ * simplified into it, sits inside its parent with R3D_LOD_ENCLOSE_MARGIN to
+ * spare and has no larger error, so a parent never projects smaller. */
+static bool
+lod_is_ordered(const r3d_lit_mesh_t* mesh) {
+    for (int c = 0; c < mesh->cluster_count; c++) {
+        const r3d_lit_cluster_lod_t lod = mesh->cluster_lod[c];
+        if (!lod_id_fits(lod.own, mesh->lod_group_count) || !lod_id_fits(lod.parent, mesh->lod_group_count)) {
+            return false;
+        }
+        if (lod.own == R3D_LOD_NONE || lod.parent == R3D_LOD_NONE) {
+            continue;
+        }
+        const r3d_lit_lod_group_t* inner = &mesh->lod_groups[lod.own];
+        const r3d_lit_lod_group_t* outer = &mesh->lod_groups[lod.parent];
+        const int64_t room = (int64_t)outer->bounds.radius - inner->bounds.radius - R3D_LOD_ENCLOSE_MARGIN;
+        /* Widened: two int16 ticks can differ by more than an int16 holds. */
+        const int64_t dx = (int64_t)outer->bounds.centre.x - inner->bounds.centre.x;
+        const int64_t dy = (int64_t)outer->bounds.centre.y - inner->bounds.centre.y;
+        const int64_t dz = (int64_t)outer->bounds.centre.z - inner->bounds.centre.z;
+        if (inner->error > outer->error || room < 0 || (dx * dx) + (dy * dy) + (dz * dz) > room * room) {
+            return false;
+        }
+    }
+    for (int g = 0; g < mesh->lod_group_count; g++) {
+        if (mesh->lod_groups[g].bounds.radius < 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
 asset_status_t
 r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
     *mesh = (r3d_lit_mesh_t){0};
@@ -116,8 +162,16 @@ r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
     const uint32_t nodes = word(asset->data, COUNT_NODE);
     const uint32_t colors_at = word(asset->data, AT_COLORS);
     const uint32_t face_at = word(asset->data, AT_FACE_COLORS);
-    if (vertices > VERTEX_LIMIT || triangles > VERTEX_LIMIT || clusters > VERTEX_LIMIT || nodes > VERTEX_LIMIT) {
+    const uint32_t groups = word(asset->data, COUNT_LOD_GROUP);
+    const uint32_t cluster_lod_at = word(asset->data, AT_CLUSTER_LOD);
+    const uint32_t groups_at = word(asset->data, AT_LOD_GROUPS);
+    if (vertices > VERTEX_LIMIT || triangles > VERTEX_LIMIT || clusters > VERTEX_LIMIT || nodes > VERTEX_LIMIT
+        || groups >= R3D_LOD_NONE) {
         return ASSET_ERR_BOUNDS;
+    }
+    /* Levels come whole: the groups and every cluster's record, or neither. */
+    if ((groups == 0) != (cluster_lod_at == 0) || (groups == 0) != (groups_at == 0)) {
+        return ASSET_ERR_FORMAT;
     }
     const uint32_t scale = word(asset->data, POSITION_SCALE);
     /* Colourless prototypes receive their lighting at scene open. */
@@ -136,13 +190,17 @@ r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
         .node_count = (int)nodes,
         .position_scale = (int)scale,
         .face_colors = face_at == 0 ? NULL : array_at(asset, face_at, triangles, 2),
+        .cluster_lod = groups == 0 ? NULL : array_at(asset, cluster_lod_at, clusters, sizeof(r3d_lit_cluster_lod_t)),
+        .lod_groups = groups == 0 ? NULL : array_at(asset, groups_at, groups, sizeof(r3d_lit_lod_group_t)),
+        .lod_group_count = (int)groups,
     };
     const bool colours_fit = (colors_at == 0 || built.colors != NULL) && (face_at == 0 || built.face_colors != NULL);
+    const bool levels_fit = groups == 0 || (built.cluster_lod != NULL && built.lod_groups != NULL);
     if (built.positions == NULL || built.triangles == NULL || built.clusters == NULL || built.nodes == NULL
-        || !colours_fit || !clusters_are_inside(&built) || !nodes_are_inside(&built)) {
+        || !colours_fit || !levels_fit || !clusters_are_inside(&built) || !nodes_are_inside(&built)) {
         return ASSET_ERR_BOUNDS;
     }
-    if (!clusters_cover_vertices(&built)) {
+    if (!clusters_cover_vertices(&built) || (groups != 0 && !lod_is_ordered(&built))) {
         return ASSET_ERR_FORMAT;
     }
     *mesh = built;

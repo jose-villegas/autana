@@ -183,6 +183,32 @@ open_meshes(scene_t* scene, const asset_pack_t* pack) {
     return scene_failure_make(SCENE_OK, ASSET_OK, scene->id);
 }
 
+/* One block of coarse bits for the meshes with levels, each renderer's
+ * words its own, all clear: every mesh starts at its finest. */
+static scene_failure_t
+open_lod_bits(scene_t* scene) {
+    size_t words = 0;
+    for (int i = 0; i < scene->renderer_count; i++) {
+        words += (size_t)R3D_LOD_WORDS(scene->renderers[i].mesh.lod_group_count);
+    }
+    if (words == 0) {
+        return scene_failure_make(SCENE_OK, ASSET_OK, scene->id);
+    }
+    scene->lod_bits = scene_allocate(words * sizeof(uint32_t), MEMORY_INTERNAL);
+    if (scene->lod_bits == NULL) {
+        return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, scene->id);
+    }
+    memset(scene->lod_bits, 0, words * sizeof(uint32_t));
+    uint32_t* next = scene->lod_bits;
+    for (int i = 0; i < scene->renderer_count; i++) {
+        scene_renderer_t* r = &scene->renderers[i];
+        r->lod_words = (uint16_t)R3D_LOD_WORDS(r->mesh.lod_group_count);
+        r->lod_coarse = r->lod_words > 0 ? next : NULL;
+        next += r->lod_words;
+    }
+    return scene_failure_make(SCENE_OK, ASSET_OK, scene->id);
+}
+
 static const char*
 skeleton_for(const scene_t* scene, scene_entity_t entity) {
     for (int i = 0; i < scene->asset.skinned_renderer_count; i++) {
@@ -334,6 +360,9 @@ scene_load_from(const asset_pack_t* pack, const char* id, scene_failure_t* why) 
     scene_failure_t done =
         scene_hierarchy_open(scene) ? open_meshes(scene, pack) : scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id);
     if (done.status == SCENE_OK) {
+        done = open_lod_bits(scene);
+    }
+    if (done.status == SCENE_OK) {
         done = open_transforms(scene);
     }
     if (done.status == SCENE_OK) {
@@ -351,6 +380,7 @@ scene_load_from(const asset_pack_t* pack, const char* id, scene_failure_t* why) 
     if (done.status != SCENE_OK) {
         scene_animation_release(scene);
         memory_free(scene->light_transfer);
+        memory_free(scene->lod_bits);
         scene_hierarchy_release(scene);
         scene_free_kept(scene);
         return NULL;
@@ -388,6 +418,7 @@ scene_unload(scene_t* scene) {
         loaded[loaded_count] = NULL;
         scene_animation_release(scene);
         memory_free(scene->light_transfer);
+        memory_free(scene->lod_bits);
         scene_hierarchy_release(scene);
         scene_free_kept(scene);
         if (loaded_count == 0) {
@@ -472,7 +503,12 @@ scene_renderer_set_mesh(scene_t* scene, scene_entity_t entity, const r3d_lit_mes
     if (i < 0 || i >= scene->asset.renderer_count) {
         return false;
     }
-    scene->renderers[i].mesh = *mesh;
+    scene_renderer_t* r = &scene->renderers[i];
+    r->mesh = *mesh;
+    /* Another mesh's groups are not these bits': start it at its finest. */
+    if (r->lod_coarse != NULL) {
+        memset(r->lod_coarse, 0, sizeof(uint32_t) * r->lod_words);
+    }
     return true;
 }
 

@@ -31,9 +31,11 @@ struct Levels {
 
 // Regular (border-locked) simplify with the sloppy fallback for stuck groups,
 // position error only. max_triangles is clusterlod's cluster size, 4..256.
+// locks, one per vertex or null, holds meshopt_SimplifyVertex_Lock where a
+// vertex must stay put at every level.
 LOD_API void*
 lod_build(const float* positions, size_t vertex_count, const unsigned int* indices, size_t index_count,
-          size_t max_triangles) {
+          size_t max_triangles, const unsigned char* locks) {
     clodConfig config = clodDefaultConfig(max_triangles);
     config.simplify_permissive = false;
     config.simplify_fallback_sloppy = true;
@@ -43,6 +45,7 @@ lod_build(const float* positions, size_t vertex_count, const unsigned int* indic
     mesh.vertex_count = vertex_count;
     mesh.vertex_positions = positions;
     mesh.vertex_positions_stride = sizeof(float) * 3;
+    mesh.vertex_lock = locks;
     Levels* out = new Levels();
     clodBuild(config, mesh, [out](clodGroup group, const clodCluster* clusters, size_t count) -> int {
         const int id = static_cast<int>(out->group_error.size());

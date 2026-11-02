@@ -136,8 +136,8 @@ test_counted_cull_returns_the_list_cull_returns(void) {
     uint16_t plain[3] = {0};
     uint16_t counted[3] = {0};
     r3d_pipeline_counts_t counts = {0};
-    const int expected = r3d_pipeline_cull(&mesh, &lens, plain, pipeline_work(), NULL);
-    const int actual = r3d_pipeline_cull_counted(&mesh, &lens, counted, count_walk(), &counts);
+    const int expected = r3d_pipeline_cull(&mesh, &lens, NULL, plain, pipeline_work(), NULL);
+    const int actual = r3d_pipeline_cull_counted(&mesh, &lens, NULL, counted, count_walk(), &counts);
     TEST_ASSERT_EQUAL_INT(2, expected);
     TEST_ASSERT_EQUAL_INT(expected, actual);
     assert_same_list(plain, counted, expected);
@@ -149,7 +149,7 @@ test_counted_cull_counts_agree_with_the_list(void) {
     const r3d_lens_t lens = lens_for(&looking_at_origin);
     uint16_t out[3];
     r3d_pipeline_counts_t counts = {0};
-    const int kept = r3d_pipeline_cull_counted(&mesh, &lens, out, count_walk(), &counts);
+    const int kept = r3d_pipeline_cull_counted(&mesh, &lens, NULL, out, count_walk(), &counts);
     int submitted = 0;
     for (int i = 0; i < kept; i++) {
         submitted += mesh.clusters[out[i]].triangle_count;
@@ -162,7 +162,7 @@ test_counted_cull_counts_agree_with_the_list(void) {
     TEST_ASSERT_EQUAL_INT(2, counts.clusters_tested);
 
     r3d_pipeline_counts_t twice = counts;
-    (void)r3d_pipeline_cull_counted(&mesh, &lens, out, count_walk(), &twice);
+    (void)r3d_pipeline_cull_counted(&mesh, &lens, NULL, out, count_walk(), &twice);
     TEST_ASSERT_EQUAL_INT(2 * counts.nodes_visited, twice.nodes_visited);
     TEST_ASSERT_EQUAL_INT(2 * counts.nodes_cut, twice.nodes_cut);
     TEST_ASSERT_EQUAL_INT(2 * counts.clusters_tested, twice.clusters_tested);
@@ -176,7 +176,7 @@ test_counted_cull_cuts_a_mesh_wholly_outside_the_frustum(void) {
     const r3d_lens_t lens = lens_for(&looking_away);
     uint16_t out[3];
     r3d_pipeline_counts_t counts = {0};
-    TEST_ASSERT_EQUAL_INT(0, r3d_pipeline_cull_counted(&mesh, &lens, out, count_walk(), &counts));
+    TEST_ASSERT_EQUAL_INT(0, r3d_pipeline_cull_counted(&mesh, &lens, NULL, out, count_walk(), &counts));
     TEST_ASSERT_TRUE(counts.nodes_cut >= 1);
     TEST_ASSERT_EQUAL_INT(1, counts.nodes_visited);
     TEST_ASSERT_EQUAL_INT(0, counts.clusters_tested);
@@ -500,7 +500,7 @@ scene_open(void) {
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(cullview, paint), RASTER_CULL_PAINT_FATES));
     for (int i = 0; i < SCENE_QUADS; i++) {
         r3d_quad_init(&s->quad[i], scene_corners[i]);
-        s->instance[i] = (r3d_instance_t){&s->quad[i].mesh, NULL};
+        s->instance[i] = (r3d_instance_t){&s->quad[i].mesh, NULL, NULL};
     }
     s->quad[SCENE_AWAY].cluster.double_sided = false;
     render_context_set_scale(&s->context, 100);

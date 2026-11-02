@@ -44,7 +44,7 @@ def mesh_entry():
                          for p in POSITIONS)
     # Skin matching reads positions only; the probe pack contains no LMSH entry.
     header = mesh_asset.BLOB_HEADER.pack(len(POSITIONS), 0, 0, 0, POSITION_SCALE,
-                                         mesh_asset.BLOB_HEADER.size, 0, 0, 0, 0, 0)
+                                         mesh_asset.BLOB_HEADER.size, 0, 0, 0, 0, 0, 0, 0, 0)
     return header + positions
 
 

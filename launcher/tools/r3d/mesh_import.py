@@ -289,7 +289,8 @@ def write_baked(job, scene, out_dir, name, geometry=None, recorder=None):
     if len(geometry.tris):
         mesh = write_lit_mesh(out_dir, name, geometry.positions, None if renderer.face_samples else geometry.rgb,
                               geometry.tris, geometry.tri_double, face_rgb=face_rgb, recorder=recorder,
-                              meshlet_triangles=job.settings.meshlet_triangles, **geometry.scale)
+                              meshlet_triangles=job.settings.meshlet_triangles, lod=job.settings.lod,
+                              **geometry.scale)
     if getattr(geometry, "shapes", None) is not None:
         entries = [(name, mesh_asset.TYPE, (out_dir / f"{name}.mesh").read_bytes())] if len(mesh.tris) else []
         copies = []
@@ -331,7 +332,8 @@ def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
         mesh = write_lit_mesh(out_dir, mesh_id, local, None if job.renderer.face_samples else keys,
                               tris, double, face_rgb=keys if job.renderer.face_samples else None,
                               colourless=True, recorder=recorder,
-                              meshlet_triangles=job.settings.meshlet_triangles, **geometry.scale)
+                              meshlet_triangles=job.settings.meshlet_triangles, lod=job.settings.lod,
+                              **geometry.scale)
         encoding = lcol_asset.RGB565 if job.renderer.face_samples else lcol_asset.RGB888
         keys = mesh.face_keys if job.renderer.face_samples else mesh.colour_keys
         channels = lcol_asset.STRIDES[lcol_asset.RGB888]

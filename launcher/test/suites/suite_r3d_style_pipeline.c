@@ -211,7 +211,9 @@ pixel_lens(void) {
                         SCENE_H,
                         R3D_SNAP_BIAS,
                         R3D_SNAP_BIAS,
-                        0.5F / (float)R3D_SUBPIXEL};
+                        0.5F / (float)R3D_SUBPIXEL,
+                        1.0F,
+                        1.0F};
 }
 
 /* One cluster: a fan over `count` pixel corners at `z` ticks, all one colour. */

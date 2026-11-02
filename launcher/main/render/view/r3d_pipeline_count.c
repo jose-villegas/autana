@@ -4,6 +4,7 @@
 
 #include "math/geometry/box3f.h"
 #include "math/geometry/planef.h"
+#include "render/lod/r3d_lod.h"
 #include "render/r3d_triangle_tests.h"
 
 #define ALL_PLANES ((1u << PLANE_FRUSTUM_COUNT) - 1u)
@@ -11,7 +12,7 @@
 /* r3d_pipeline_cull()'s tests without its nearest-first order, which no count
  * depends on; the cull-view suite holds the two to the same clusters. */
 int
-r3d_pipeline_cull_counted(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* out,
+r3d_pipeline_cull_counted(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint32_t* lod_coarse, uint16_t* out,
                           r3d_pipeline_count_walk_t* walk, r3d_pipeline_counts_t* counts) {
     r3d_lens_frustum(lens, walk->planes);
     int top = 0;
@@ -39,6 +40,9 @@ r3d_pipeline_cull_counted(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, ui
         for (int i = 0; i < node->count; i++) {
             const int c = node->first + i;
             unsigned cluster_mask = mask;
+            if (!r3d_lod_drawn(mesh, c, lod_coarse)) {
+                continue;
+            }
             if (cluster_mask == 0
                 || !box3f_outside_planes(box3f_from_box3s(mesh->clusters[c].bounds, 1.0F), walk->planes,
                                          PLANE_FRUSTUM_COUNT, &cluster_mask)) {

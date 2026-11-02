@@ -221,7 +221,7 @@ open_the_meshes(void) {
  * flythrough's poses: each stage is the difference of two stopped draws. */
 static void
 report_stage_split(int bake) {
-    const r3d_instance_t instance = {&meshes[bake], NULL};
+    const r3d_instance_t instance = {&meshes[bake], NULL, NULL};
     bench_t* b = bench_open(&instance, NULL);
     const raster_buffers_t* parts = &b->buffers;
     const r3d_lens_t* lens = &b->lens;
@@ -230,7 +230,7 @@ report_stage_split(int bake) {
     int poses = 0;
     for (uint32_t t_ms = 0; t_ms < period; t_ms += SPONZA_POSE_EVERY_MS) {
         view_at(&meshes[bake], t_ms, &b->lens);
-        const int visible = r3d_pipeline_cull(&meshes[bake], lens, parts->culled + 1, parts->work[0], NULL);
+        const int visible = r3d_pipeline_cull(&meshes[bake], lens, NULL, parts->culled + 1, parts->work[0], NULL);
         r3d_pipeline_transform(&meshes[bake], lens, parts->culled + 1, visible, parts->cs, parts->rows, false);
         for (int stop = 0; stop <= 3; stop++) {
             stopped[stop] += one_core_draw_us(&b->raster, parts, lens, visible, stop);
@@ -254,12 +254,12 @@ test_sponza_draw_stage_breakdown(void) {
     for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
         report_stage_split(i);
     }
-    const r3d_instance_t atrium = {&meshes[SCENE_BAKED_FULL], NULL};
+    const r3d_instance_t atrium = {&meshes[SCENE_BAKED_FULL], NULL, NULL};
     bench_t* b = bench_open(&atrium, NULL);
     view_at(atrium.mesh, 0, &b->lens);
     const r3d_lens_t* lens = &b->lens;
     const raster_buffers_t* parts = &b->buffers;
-    const int visible = r3d_pipeline_cull(atrium.mesh, lens, parts->culled + 1, parts->work[0], NULL);
+    const int visible = r3d_pipeline_cull(atrium.mesh, lens, NULL, parts->culled + 1, parts->work[0], NULL);
     int64_t start = timing_now_us();
     r3d_pipeline_transform(atrium.mesh, lens, parts->culled + 1, visible, parts->cs, parts->rows, false);
     ESP_LOGI(TAG, "stage, one core: %-22s %7lldus" R3D_PERF_QUARTER_FORMAT, "transform",
@@ -418,12 +418,12 @@ test_sponza_frame_cost_along_the_flythrough(void) {
     };
     static const perf_budget_t cull_off_budget[R3D_PERF_QUARTER_COUNT] = {{61138, 67896}, {58104, 66246}};
     for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
-        const r3d_instance_t instance = {&meshes[i], NULL};
+        const r3d_instance_t instance = {&meshes[i], NULL, NULL};
         report_frame_cost(sponza_bakes[i], sponza_bakes[i], &instance, NULL, NULL, NULL, bake_budgets[i]);
     }
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, cull), 0));
     const scene_baked_variant_t showcase = showcase_bake();
-    const r3d_instance_t shown = {&meshes[showcase], NULL};
+    const r3d_instance_t shown = {&meshes[showcase], NULL, NULL};
     report_frame_cost("cull_off", sponza_bakes[showcase], &shown, NULL, NULL, NULL, cull_off_budget);
     TEST_PASS();
 }
@@ -458,12 +458,12 @@ test_sponza_frame_cost_with_motion(void) {
     static const perf_budget_t motion_budget[R3D_PERF_QUARTER_COUNT] = {{56316, 67715}, {53984, 62771}};
     static const perf_budget_t moving_budget[R3D_PERF_QUARTER_COUNT] = {{77597, 95705}, {73747, 87554}};
     static const perf_budget_t placed_budget[R3D_PERF_QUARTER_COUNT] = {{41115, 52181}, {38830, 47638}};
-    const r3d_instance_t still = {&meshes[0], NULL};
+    const r3d_instance_t still = {&meshes[0], NULL, NULL};
     report_frame_cost("motion", sponza_bakes[0], &still, attached, NULL, NULL, motion_budget);
     raster_motion_forget(motion);
     transformf_t pose = TRANSFORMF_IDENTITY;
     mat4f_t model = transformf_compute_matrix(&pose);
-    const r3d_instance_t moving = {&meshes[0], &model};
+    const r3d_instance_t moving = {&meshes[0], &model, NULL};
     report_frame_cost("motion_moving", sponza_bakes[0], &moving, attached, &pose, &model, moving_budget);
     report_frame_cost("placed", sponza_bakes[0], &moving, NULL, &pose, &model, placed_budget);
     release_motion();

@@ -5,7 +5,9 @@ The triangles are cut into meshlets, compact clusters of a few dozen
 triangles, under an octree over the meshlets' centres. Positions are
 quantized to int16 ticks and the result is checked against the format's
 invariants before a byte is written. A mesh's triangles are put in a canonical
-order first, so the same triangles always bake to the same bytes."""
+order first, so the same triangles always bake to the same bytes. With levels
+of detail (lod/bake_levels.py) the meshlets are clusterlod's finest clusters,
+and the coarser levels' clusters and group records come with them."""
 
 import pathlib
 import sys
@@ -15,7 +17,8 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "device"))
 import gfx_color  # noqa: E402  (path must be set up first)
-from r3d.mesh_asset import BLOB_HEADER, CLUSTER, NODE, TYPE  # noqa: E402,F401
+from r3d.mesh_asset import (BLOB_HEADER, CLUSTER, CLUSTER_LOD, LOD_ENCLOSE_MARGIN, LOD_GROUP, LOD_NONE,  # noqa: E402,F401
+                            NODE, TYPE)
 from r3d.geometry import distinct_corners
 from r3d.process_budget import NULL_RECORDER
 from r3d.meshopt import build_meshlets  # noqa: E402
@@ -94,7 +97,7 @@ def local_vertices(tris):
 
 
 def bake_lit_mesh(positions, rgb, tris, double, position_scale=POSITION_SCALE, leaf_triangles=LEAF_TRIANGLES,
-                  max_depth=MAX_DEPTH, meshlet_triangles=MESHLET_TRIANGLES, face_rgb=None):
+                  max_depth=MAX_DEPTH, meshlet_triangles=MESHLET_TRIANGLES, face_rgb=None, lod=False):
     """Bakes positions (model units), rgb (0..255 per vertex) and tris
     (counter-clockwise seen from the front, `double` one flag per triangle)
     into a SimpleNamespace holding pos, rgb, tris, clusters, nodes, the
@@ -103,7 +106,9 @@ def bake_lit_mesh(positions, rgb, tris, double, position_scale=POSITION_SCALE, l
     triangles. Given face_rgb, one 0..255 colour per triangle, the mesh is
     flat: rgb is None, vertices weld by position alone and face_colors holds
     the colours; otherwise face_colors is None. With neither input colour
-    array, the mesh is colourless."""
+    array, the mesh is colourless. With lod, the mesh carries its levels of
+    detail: lod, one (own, parent) group pair per cluster, and groups, one
+    (centre, radius, error) row per group; both are None without."""
     q = np.round(np.asarray(positions) * position_scale).astype(np.int64)
     flat = face_rgb is not None
     col = None if flat or rgb is None else np.clip(np.rint(rgb), 0, 255).astype(np.int64)
@@ -111,6 +116,11 @@ def bake_lit_mesh(positions, rgb, tris, double, position_scale=POSITION_SCALE, l
     assert not flat or len(face) == len(tris), "a flat bake needs one face colour per triangle"
     q, col, tris, double, face = weld_quantised(q, col, np.asarray(tris, dtype=np.int64), double, face)
     tris, double, face = canonical_order(tris, double, face)
+    if lod:
+        from r3d.lod.bake_levels import bake_levels
+        levels = bake_levels(q, col, tris, double, face, meshlet_triangles)
+        return assemble(levels.q, levels.col, levels.entries, position_scale, leaf_triangles, max_depth,
+                        levels.groups)
     return assemble(q, col, meshlet_entries(q, tris, double, face, meshlet_triangles), position_scale,
                     leaf_triangles, max_depth)
 
@@ -132,9 +142,11 @@ def meshlet_entries(q, tris, double, face, meshlet_triangles):
     return entries
 
 
-def assemble(q, col, entries, position_scale, leaf_triangles, max_depth):
+def assemble(q, col, entries, position_scale, leaf_triangles, max_depth, groups=None):
     """The baked mesh of clusters cut by any means: an octree over their
-    centres, each cluster owning its vertices, checked against the format."""
+    centres, each cluster owning its vertices, checked against the format.
+    With `groups`, each entry's "own" and "parent" become the cluster's
+    group pair."""
     for e in entries:
         e["box"] = box_of(q, e["tris"])
     centres = np.array([(lo + hi) / 2.0 for lo, hi in (e["box"] for e in entries)])
@@ -142,10 +154,14 @@ def assemble(q, col, entries, position_scale, leaf_triangles, max_depth):
     order, nodes = flatten_octree(root)
 
     out = SimpleNamespace(position_scale=position_scale)
-    out.pos, out.rgb, out.tris, out.clusters, out.face_colors = lay_out(q, col, [entries[i] for i in order])
+    ordered = [entries[i] for i in order]
+    out.pos, out.rgb, out.tris, out.clusters, out.face_colors = lay_out(q, col, ordered)
     node_bounds(nodes, out.clusters)
     out.nodes = nodes
+    out.lod = None if groups is None else [(e["own"], e["parent"]) for e in ordered]
+    out.groups = None if groups is None else np.asarray(groups, dtype=np.int64).reshape(-1, 5)
     validate(out.pos, out.rgb, out.tris, out.clusters, out.nodes, out.face_colors)
+    validate_levels(out.lod, out.groups, len(out.clusters))
     return out
 
 
@@ -210,6 +226,25 @@ def validate(pos, rgb, tris, clusters, nodes, face_colors=None):
     assert len(nodes) <= MAX_NODES
 
 
+def validate_levels(lod, groups, clusters):
+    """The format's rules for levels (r3d_lit_mesh.c): one pair a cluster,
+    ids naming a group or none, and each cluster's own group inside its
+    parent's bounds with LOD_ENCLOSE_MARGIN to spare and no larger error."""
+    if lod is None:
+        assert groups is None
+        return
+    assert len(lod) == clusters and 0 < len(groups) < LOD_NONE
+    assert np.all(groups[:, 3] >= 0) and np.abs(groups[:, :4]).max() <= INT16_MAX and groups[:, 4].max() < LOD_NONE
+    for own, parent in lod:
+        assert own == LOD_NONE or own < len(groups)
+        assert parent == LOD_NONE or parent < len(groups)
+        if LOD_NONE not in (own, parent):
+            inner, outer = groups[own], groups[parent]
+            room = int(outer[3]) - int(inner[3]) - LOD_ENCLOSE_MARGIN
+            held = room >= 0 and int(((outer[:3] - inner[:3]) ** 2).sum()) <= room * room
+            assert inner[4] <= outer[4] and held, "a group does not hold one simplified into it"
+
+
 def write_lit_mesh(out_dir, name, positions, rgb, tris, double, recorder=None, colourless=False, **options):
     """Writes <name>.mesh into out_dir, the pack entry main/render/
     r3d_lit_mesh.h reads. positions are model units, rgb 0..255 per vertex
@@ -254,13 +289,19 @@ def mesh_blob(mesh):
         ("nodes", b"".join(NODE.pack(*n["lo"], *n["hi"], n["first"], n["count"], int(n["leaf"])) for n in mesh.nodes)),
         ("face_colors", b"" if mesh.face_colors is None else panel_colour(mesh.face_colors).tobytes()),
     ]
+    lod, groups = getattr(mesh, "lod", None), getattr(mesh, "groups", None)
+    levels = [
+        ("cluster_lod", b"" if lod is None else b"".join(CLUSTER_LOD.pack(*pair) for pair in lod)),
+        ("lod_groups", b"" if groups is None else b"".join(LOD_GROUP.pack(*(int(v) for v in row)) for row in groups)),
+    ]
     offsets, body, at = {}, b"", BLOB_HEADER.size
-    for key, data in arrays:
+    for key, data in arrays + levels:
         offsets[key] = at if data else 0
         body += data + bytes(-len(data) % 4)
         at += len(data) + (-len(data) % 4)
     head = BLOB_HEADER.pack(len(mesh.pos), len(mesh.tris), len(mesh.clusters), len(mesh.nodes), mesh.position_scale,
-                            *(offsets[key] for key, _ in arrays))
+                            *(offsets[key] for key, _ in arrays), 0 if groups is None else len(groups),
+                            *(offsets[key] for key, _ in levels))
     return head + body
 
 
@@ -268,7 +309,7 @@ def read_lit_mesh(path):
     """Reads a <name>.mesh back into what bake_lit_mesh returns."""
     blob = pathlib.Path(path).read_bytes()
     vertices, triangles, clusters, nodes, scale, *at = BLOB_HEADER.unpack_from(blob)
-    pos_at, col_at, tri_at, cl_at, node_at, face_at = at
+    pos_at, col_at, tri_at, cl_at, node_at, face_at, groups, lod_at, groups_at = at
 
     def array(offset, dtype, count):
         return np.frombuffer(blob, dtype=dtype, count=count, offset=offset).astype(np.int64)
@@ -286,14 +327,27 @@ def read_lit_mesh(path):
     for i in range(nodes):
         *box, first, count, leaf = NODE.unpack_from(blob, node_at + i * NODE.size)
         mesh.nodes.append({"lo": np.array(box[:3]), "hi": np.array(box[3:]), "first": first, "count": count, "leaf": bool(leaf)})
+    mesh.lod = [CLUSTER_LOD.unpack_from(blob, lod_at + i * CLUSTER_LOD.size) for i in range(clusters)] if groups else None
+    mesh.groups = (np.array([LOD_GROUP.unpack_from(blob, groups_at + i * LOD_GROUP.size) for i in range(groups)],
+                            dtype=np.int64) if groups else None)
     return mesh
 
 
+def finest(mesh):
+    """Whether each cluster of a read mesh is on its finest level."""
+    if mesh.lod is None:
+        return np.ones(len(mesh.clusters), dtype=bool)
+    return np.array([own == LOD_NONE for own, _ in mesh.lod], dtype=bool)
+
+
 def finest_triangles(mesh):
-    """(pos, rgb, tris, double, face) of a read mesh with the per-cluster
-    vertex copies welded back together: one vertex per position and colour, or
-    per position alone for a flat mesh, whose rgb is None."""
+    """(pos, rgb, tris, double, face) of a read mesh's finest level with the
+    per-cluster vertex copies welded back together: one vertex per position
+    and colour, or per position alone for a flat mesh, whose rgb is None."""
     double = np.zeros(len(mesh.tris), dtype=np.int64)
-    for _, _, tbase, tcount, _, _, is_double in mesh.clusters:
+    shown = np.zeros(len(mesh.tris), dtype=bool)
+    for (_, _, tbase, tcount, _, _, is_double), level0 in zip(mesh.clusters, finest(mesh)):
         double[tbase : tbase + tcount] = int(is_double)
-    return weld_quantised(mesh.pos, mesh.rgb, mesh.tris, double, mesh.face_colors)
+        shown[tbase : tbase + tcount] = level0
+    face = None if mesh.face_colors is None else mesh.face_colors[shown]
+    return weld_quantised(mesh.pos, mesh.rgb, mesh.tris[shown], double[shown], face)

@@ -17,6 +17,7 @@
 
 #include "asset/asset_pack.h"
 #include "math/geometry/box3s.h"
+#include "math/geometry/sphere3s.h"
 #include "math/geometry/spheref.h"
 
 typedef struct {
@@ -43,6 +44,27 @@ typedef struct {
     bool leaf;
 } r3d_lit_node_t;
 
+/* Levels of detail (docs/plans/Cluster-LOD.md): a mesh may carry coarser
+ * clusters beside its finest ones, each simplified from a group of finer
+ * clusters with the group's border kept. A group is drawn coarse when its
+ * error, projected, is small enough (render/r3d_lod.h); then its clusters
+ * give way to the ones simplified from it. Both sides of a switch read the
+ * one group record, so neighbours never crack. */
+#define R3D_LOD_NONE           UINT16_MAX /* own: a finest cluster; parent: a group never drawn coarse */
+/* Position ticks a parent group's bounds keep beyond those of each group
+ * simplified into it, so float rounding in the pick cannot reorder them. */
+#define R3D_LOD_ENCLOSE_MARGIN 1
+
+typedef struct {
+    uint16_t own;    /* the group simplified into this cluster */
+    uint16_t parent; /* the group this cluster belongs to */
+} r3d_lit_cluster_lod_t;
+
+typedef struct {
+    sphere3s_t bounds; /* position ticks; holds the bounds of every group simplified into it */
+    uint16_t error;    /* position ticks; at least that of every group simplified into it */
+} r3d_lit_lod_group_t;
+
 typedef struct {
     const int16_t (*positions)[3];  /* ticks; position_scale ticks per model unit */
     const uint8_t (*colors)[3];     /* NULL for face colours or a colourless prototype */
@@ -51,11 +73,15 @@ typedef struct {
     const r3d_lit_node_t* nodes; /* children of a node sit together */
     int vertex_count, triangle_count, cluster_count, node_count;
     int position_scale;
-    const uint16_t* face_colors; /* target-format RGB565, one per triangle, or NULL */
+    const uint16_t* face_colors;              /* target-format RGB565, one per triangle, or NULL */
+    const r3d_lit_cluster_lod_t* cluster_lod; /* one per cluster, or NULL: every cluster is finest */
+    const r3d_lit_lod_group_t* lod_groups;
+    int lod_group_count;
 } r3d_lit_mesh_t;
 
-/* The asset type of a lit mesh entry. */
-#define R3D_LIT_MESH_ASSET ASSET_TYPE('L', 'M', 'S', 'H')
+/* The asset type of a lit mesh entry, and the bytes of its header. */
+#define R3D_LIT_MESH_ASSET        ASSET_TYPE('L', 'M', 'S', 'H')
+#define R3D_LIT_MESH_HEADER_BYTES 56
 
 /* Fills `mesh` with pointers into `asset`, which must outlive it, after
  * checking every array and every cluster and node range against the entry.

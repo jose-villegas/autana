@@ -23,6 +23,8 @@ from r3d.meshopt import CACHE, SOURCE
 # clusterlod takes 4..256 triangles a cluster.
 CLUSTER_TRIANGLES_MIN = 4
 CLUSTER_TRIANGLES_MAX = 256
+# meshoptimizer.h's meshopt_SimplifyVertex_Lock.
+SIMPLIFY_VERTEX_LOCK = 1
 
 
 _lib = None
@@ -57,17 +59,19 @@ class Levels(NamedTuple):
     cluster_group: np.ndarray   # C: the group it belongs to
 
 
-def build_levels(positions, triangles, cluster_triangles):
+def build_levels(positions, triangles, cluster_triangles, locked=None):
     """The levels of a welded mesh (V x 3 positions, T x 3 triangles) with
-    clusters of at most `cluster_triangles`."""
+    clusters of at most `cluster_triangles`; `locked`, one flag per vertex,
+    keeps those vertices at every level."""
     lib = _library()
     size = int(np.clip(cluster_triangles, CLUSTER_TRIANGLES_MIN, CLUSTER_TRIANGLES_MAX))
     p = np.ascontiguousarray(positions, dtype=np.float32)
     i = np.ascontiguousarray(triangles, dtype=np.uint32).reshape(-1)
     c = ctypes.c_void_p
+    locks = None if locked is None else np.ascontiguousarray(np.where(locked, SIMPLIFY_VERTEX_LOCK, 0), dtype=np.uint8)
     lib.lod_build.restype = c
     handle = lib.lod_build(p.ctypes.data_as(c), ctypes.c_size_t(len(p)), i.ctypes.data_as(c), ctypes.c_size_t(len(i)),
-                           ctypes.c_size_t(size))
+                           ctypes.c_size_t(size), None if locks is None else locks.ctypes.data_as(c))
     try:
         counts = [ctypes.c_size_t() for _ in range(3)]
         lib.lod_sizes(c(handle), *(ctypes.byref(n) for n in counts))

@@ -10,6 +10,7 @@
 #include "math/geometry/box3f.h"
 #include "math/linear/transformf.h"
 #include "math/projection/projectf.h"
+#include "render/lod/r3d_lod.h"
 #include "render/r3d_span.h"
 #include "render/raster_internal.h"
 #include "render/view/r3d_pipeline_count.h"
@@ -135,13 +136,15 @@ count_frame(raster_cull_t* s, const raster_t* raster) {
             r3d_lens_place(&lens, instance->model, mesh->position_scale);
         }
         uint16_t* kept = b.culled;
-        int count = mesh->cluster_count;
+        int count = 0;
         if (culls) {
-            count = r3d_pipeline_cull_counted(mesh, &lens, kept, &s->walk, &s->frame.counts);
+            count = r3d_pipeline_cull_counted(mesh, &lens, instance->lod_coarse, kept, &s->walk, &s->frame.counts);
         } else {
-            for (int c = 0; c < count; c++) {
-                kept[c] = (uint16_t)c;
-                s->frame.counts.triangles_submitted += mesh->clusters[c].triangle_count;
+            for (int c = 0; c < mesh->cluster_count; c++) {
+                if (r3d_lod_drawn(mesh, c, instance->lod_coarse)) {
+                    kept[count++] = (uint16_t)c;
+                    s->frame.counts.triangles_submitted += mesh->clusters[c].triangle_count;
+                }
             }
             s->frame.counts.clusters_tested += count;
             s->frame.counts.clusters_kept += count;

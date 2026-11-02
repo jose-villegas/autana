@@ -54,7 +54,8 @@ make_quad(quad_t* q, uint8_t red, uint8_t green, uint8_t blue, int16_t cx) {
     q->triangles[1][2] = 3;
     q->cluster = (r3d_lit_cluster_t){0, 4, 0, 2, {{(int16_t)(cx - 1), -1, 0}, {(int16_t)(cx + 1), 1, 0}}, true};
     q->node = (r3d_lit_node_t){{{(int16_t)(cx - 1), -1, 0}, {(int16_t)(cx + 1), 1, 0}}, 0, 1, true};
-    q->mesh = (r3d_lit_mesh_t){q->positions, q->colors, q->triangles, &q->cluster, &q->node, 4, 2, 1, 1, 1, NULL};
+    q->mesh = (r3d_lit_mesh_t){q->positions, q->colors, q->triangles, &q->cluster, &q->node, 4, 2, 1, 1, 1, NULL, NULL,
+                               NULL,         0};
 }
 
 static const fixture_camera_t CAMERA = {{0.0F, 0.0F, -10.0F}, {0.0F, 0.0F, 1.0F}, 1.0F, 1.0F};
@@ -92,7 +93,7 @@ test_a_mesh_with_no_model_draws_where_it_is(void) {
     quad_t red;
     make_quad(&red, 255, 0, 0, 0);
     void* scratch;
-    const r3d_instance_t one = {&red.mesh, NULL};
+    const r3d_instance_t one = {&red.mesh, NULL, NULL};
     const uint16_t* color = draw(&one, 1, &scratch);
     TEST_ASSERT_NOT_EQUAL_HEX16(CLEAR, pixel(color, 0.0F));
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(color, 3.0F));
@@ -106,8 +107,8 @@ test_two_instances_appear_at_their_own_models(void) {
     make_quad(&red, 255, 0, 0, 0);
     make_quad(&green, 0, 255, 0, 0);
     void* alone;
-    const r3d_instance_t red_alone = {&red.mesh, NULL};
-    const r3d_instance_t green_alone = {&green.mesh, NULL};
+    const r3d_instance_t red_alone = {&red.mesh, NULL, NULL};
+    const r3d_instance_t green_alone = {&green.mesh, NULL, NULL};
     const uint16_t red_pixel = pixel(draw(&red_alone, 1, &alone), 0.0F);
     free(alone);
     const uint16_t green_pixel = pixel(draw(&green_alone, 1, &alone), 0.0F);
@@ -116,7 +117,7 @@ test_two_instances_appear_at_their_own_models(void) {
 
     const mat4f_t left = placed(-3.0F, 0.0F, 1.0F);
     const mat4f_t right = placed(3.0F, 0.0F, 1.0F);
-    const r3d_instance_t both[] = {{&red.mesh, &left}, {&green.mesh, &right}};
+    const r3d_instance_t both[] = {{&red.mesh, &left, NULL}, {&green.mesh, &right, NULL}};
     void* scratch;
     const uint16_t* color = draw(both, 2, &scratch);
     TEST_ASSERT_EQUAL_HEX16(red_pixel, pixel(color, -3.0F));
@@ -142,7 +143,7 @@ test_position_ticks_keep_a_placed_instance_in_model_units(void) {
     ticks.node.bounds = ticks.cluster.bounds;
     ticks.mesh.position_scale = POSITION_SCALE;
     const mat4f_t model = placed(3.0F, 0.0F, 1.0F);
-    const r3d_instance_t reference = {&unit.mesh, &model}, scaled = {&ticks.mesh, &model};
+    const r3d_instance_t reference = {&unit.mesh, &model, NULL}, scaled = {&ticks.mesh, &model, NULL};
     void* reference_scratch;
     void* scaled_scratch;
     const uint16_t* expected = draw(&reference, 1, &reference_scratch);
@@ -181,8 +182,8 @@ test_a_scale_widens_an_instance_about_its_position(void) {
     make_quad(&red, 255, 0, 0, 0);
     /* 1.5 units from the centre is outside the unit quad and inside a scale of 2. */
     const mat4f_t doubled_at = placed(0.0F, 0.0F, 2.0F);
-    const r3d_instance_t plain = {&red.mesh, NULL};
-    const r3d_instance_t doubled = {&red.mesh, &doubled_at};
+    const r3d_instance_t plain = {&red.mesh, NULL, NULL};
+    const r3d_instance_t doubled = {&red.mesh, &doubled_at, NULL};
     void* scratch;
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(draw(&plain, 1, &scratch), 1.5F));
     free(scratch);
@@ -198,8 +199,8 @@ test_a_rotation_turns_an_instance_about_its_position(void) {
     transformf_t pose = TRANSFORMF_IDENTITY;
     transformf_set_rotation(&pose, (quatf_t){0, 1, 0, 0});
     const mat4f_t half_turn = transformf_compute_matrix(&pose);
-    const r3d_instance_t as_built = {&offset.mesh, NULL};
-    const r3d_instance_t turned = {&offset.mesh, &half_turn};
+    const r3d_instance_t as_built = {&offset.mesh, NULL, NULL};
+    const r3d_instance_t turned = {&offset.mesh, &half_turn, NULL};
     void* scratch;
     const uint16_t* color = draw(&as_built, 1, &scratch);
     TEST_ASSERT_NOT_EQUAL_HEX16(CLEAR, pixel(color, 3.0F));
@@ -218,8 +219,8 @@ test_a_nearer_instance_covers_a_farther_one_whichever_is_drawn_first(void) {
     make_quad(&red, 255, 0, 0, 0);
     make_quad(&green, 0, 255, 0, 0);
     const mat4f_t nearer = placed(0.0F, -2.0F, 1.0F);
-    const r3d_instance_t near_first[] = {{&green.mesh, &nearer}, {&red.mesh, NULL}};
-    const r3d_instance_t far_first[] = {{&red.mesh, NULL}, {&green.mesh, &nearer}};
+    const r3d_instance_t near_first[] = {{&green.mesh, &nearer, NULL}, {&red.mesh, NULL, NULL}};
+    const r3d_instance_t far_first[] = {{&red.mesh, NULL, NULL}, {&green.mesh, &nearer, NULL}};
     void* scratch;
     const uint16_t first = pixel(draw(near_first, 2, &scratch), 0.0F);
     free(scratch);

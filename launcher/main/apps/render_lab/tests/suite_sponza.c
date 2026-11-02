@@ -105,7 +105,7 @@ check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(const r3d_lit_mesh_t* m
         r3d_lens_init(&lens, &view, mesh->position_scale);
 
         memset(kept, 0, (size_t)mesh->cluster_count);
-        const int count = r3d_pipeline_cull(mesh, &lens, walked, work, NULL);
+        const int count = r3d_pipeline_cull(mesh, &lens, NULL, walked, work, NULL);
         for (int i = 0; i < count; i++) {
             TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, kept[walked[i]], "a cluster was listed twice");
             kept[walked[i]] = 1;
@@ -345,7 +345,7 @@ share_covered_at(const raster_t* raster, uint32_t t_ms) {
  * only the building's far sides, about 0.6. */
 static void
 check_the_flythrough_sees_mostly_building(const r3d_lit_mesh_t* mesh) {
-    const r3d_instance_t instance = {mesh, NULL};
+    const r3d_instance_t instance = {mesh, NULL, NULL};
     raster_t raster = {
         .instances = &instance, .instance_count = 1, .width = SPONZA_RENDER_WIDTH, .height = SPONZA_RENDER_HEIGHT};
     void* scratch = memory_alloc(raster_scratch_bytes(&raster), MEMORY_PSRAM);

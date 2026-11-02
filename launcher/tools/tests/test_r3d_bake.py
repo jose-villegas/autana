@@ -397,7 +397,7 @@ class LitMeshTests(unittest.TestCase):
         for array in arrays:
             offsets.append(at)
             at += len(array) + (-len(array) % struct.calcsize('<I'))
-        expected = BLOB_HEADER.pack(3, 1, 1, 1, scale, offsets[0], 0, *offsets[1:], 0)
+        expected = BLOB_HEADER.pack(3, 1, 1, 1, scale, offsets[0], 0, *offsets[1:], 0, 0, 0, 0)
         expected += b''.join(array + bytes(-len(array) % struct.calcsize('<I')) for array in arrays)
         with tempfile.TemporaryDirectory() as directory:
             write_lit_mesh(directory, 'triangle', p, None, np.array([[0, 1, 2]]), np.zeros(1, dtype=int))

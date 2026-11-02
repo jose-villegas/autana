@@ -36,12 +36,15 @@ def main(argv=None):
     options = {key: getattr(args, key) for key in OPTIONS if getattr(args, key) is not None}
 
     if args.settings:
-        options.setdefault("meshlet_triangles", load_import_settings(args.settings).meshlet_triangles)
+        settings = load_import_settings(args.settings)
+        options.setdefault("meshlet_triangles", settings.meshlet_triangles)
+        options.setdefault("lod", settings.lod)
 
     path = pathlib.Path(args.mesh)
     out_dir = pathlib.Path(args.out_dir) if args.out_dir else path.parent
     mesh = read_lit_mesh(path)
     pos, rgb, tris, double, face = finest_triangles(mesh)
+    options.setdefault("lod", mesh.lod is not None)
     baked = write_lit_mesh(out_dir, path.stem, pos / mesh.position_scale, rgb, tris, double,
                            position_scale=mesh.position_scale, face_rgb=face, **options)
     log(f"{path.stem}: {len(baked.pos)} vertices, {len(baked.tris)} triangles, {len(baked.clusters)} clusters, "

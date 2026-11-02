@@ -29,11 +29,11 @@ typedef struct {
     uint8_t mask[R3D_LIT_WALK_STACK_MAX];
 } r3d_pipeline_count_walk_t;
 
-/* The clusters r3d_pipeline_cull() keeps, in tree order rather than nearest
- * first, adding what the walk did to `counts`. `out` holds
- * mesh->cluster_count entries. */
-int r3d_pipeline_cull_counted(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* out,
-                              r3d_pipeline_count_walk_t* walk, r3d_pipeline_counts_t* counts);
+/* The clusters r3d_pipeline_cull() keeps under `lod_coarse`, in tree order
+ * rather than nearest first, adding what the walk did to `counts`. `out`
+ * holds mesh->cluster_count entries. */
+int r3d_pipeline_cull_counted(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint32_t* lod_coarse,
+                              uint16_t* out, r3d_pipeline_count_walk_t* walk, r3d_pipeline_counts_t* counts);
 
 /* Sorts each triangle of `clusters` as r3d_pipeline_draw() would over the
  * whole screen, from `cs` as r3d_pipeline_transform() left it, adding to

@@ -12,6 +12,7 @@
 #include "core/handle.h"
 #include "core/memory.h"
 #include "math/linear/mat3f.h"
+#include "render/lod/r3d_lod.h"
 #include "render/skin/r3d_skin_light.h"
 #include "scene/scene.h"
 #include "scene/scene_conventions.h"
@@ -114,7 +115,9 @@ typedef struct {
     r3d_lit_mesh_t mesh;
     mat4f_t model;
     scene_entity_t entity;
-    bool placed; /* false while the transform is the identity: drawn as it is */
+    bool placed;          /* false while the transform is the identity: drawn as it is */
+    uint16_t lod_words;   /* the coarse bits held for the mesh opened: R3D_LOD_WORDS of its groups */
+    uint32_t* lod_coarse; /* into the scene's lod_bits, or NULL without levels */
 } scene_renderer_t;
 
 typedef struct {
@@ -190,6 +193,7 @@ struct scene {
     int world_count;
     mat4f_t* worlds;                /* one per entity with children, in entity order */
     scene_entity_t* world_entities; /* the entity each of `worlds` belongs to */
+    uint32_t* lod_bits;             /* every renderer's coarse bits, kept from frame to frame */
 };
 
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT

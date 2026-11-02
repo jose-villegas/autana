@@ -125,6 +125,7 @@ class FitMesh(NamedTuple):
     scale: int
     vertex_point: np.ndarray
     flat: bool = False
+    lod: bool = False  # the start carries levels of detail, so the fitted mesh does too
 
 
 def start_mesh(path):
@@ -135,7 +136,7 @@ def start_mesh(path):
     flat = rgb is None
     points, vertex_point = np.unique(q, axis=0, return_inverse=True)
     return FitMesh(points / float(mesh.position_scale), (face if flat else rgb) / 255.0, tris, double, mesh.position_scale,
-                   vertex_point.reshape(-1), flat)
+                   vertex_point.reshape(-1), flat, mesh.lod is not None)
 
 
 def point_edges(tris, vertex_point):
@@ -679,7 +680,7 @@ def refine(mesh, error, budget):
     mesh's halves keep their triangle's colour."""
     from r3d.tessellate import split_marked_edges
 
-    points, rgb, tris, double, _scale, vertex_point, flat = mesh
+    points, rgb, tris, double, _scale, vertex_point, flat, _lod = mesh
     positions = points[vertex_point]
     while len(tris) < budget:
         corners = vertex_point[tris]
@@ -735,7 +736,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     as a copy."""
     import torch
 
-    points0, rgb0, tris, double, _scale, vertex_point, flat = mesh
+    points0, rgb0, tris, double, _scale, vertex_point, flat, _lod = mesh
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
     diagonal = float(np.linalg.norm(points0.max(axis=0) - points0.min(axis=0)))
@@ -882,10 +883,11 @@ def write_mesh(out_dir, name, mesh):
     tris = mesh.tris
     if mesh.flat:
         baked = write_lit_mesh(out_dir, name, positions, None, tris, mesh.double, position_scale=mesh.scale,
-                               face_rgb=colours)
+                               face_rgb=colours, lod=mesh.lod)
         positions, rgb, tris = positions[tris].reshape(-1, 3), rgb.repeat(3, axis=0), np.arange(3 * len(tris)).reshape(-1, 3)
     else:
-        baked = write_lit_mesh(out_dir, name, positions, colours, tris, mesh.double, position_scale=mesh.scale)
+        baked = write_lit_mesh(out_dir, name, positions, colours, tris, mesh.double, position_scale=mesh.scale,
+                               lod=mesh.lod)
     with open(out_dir / f"{name}.obj", "w", newline="\n") as obj:
         for p, c in zip(positions, rgb):
             obj.write("v %.4f %.4f %.4f %.4f %.4f %.4f\n" % (*p, *c))

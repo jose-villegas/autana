@@ -20,6 +20,7 @@
 #include "math/scalar/mathi.h"
 #include "profile/frame_laps.h"
 #include "render/code_layout.h"
+#include "render/lod/r3d_lod.h"
 #include "render/r3d_triangle_tests.h"
 
 void
@@ -28,6 +29,8 @@ r3d_lens_init(r3d_lens_t* lens, const render_view_t* view, int position_scale) {
     const mat4f_t camera = mat4f_view_from_axes(view->screen_x, view->screen_y, view->forward, view->position);
     const mat4f_t pixels = mat4f_scale_rows(camera, (vec3f_t){view->lens.fx, view->lens.fy, 1.0F});
     lens->m = mat4f_scale_columns(pixels, (vec3f_t){ticks_to_units, ticks_to_units, ticks_to_units});
+    lens->focal_x = view->lens.fx;
+    lens->focal_y = view->lens.fy;
     lens->project = (projectf_t){1.0F, -1.0F, view->lens.cx, view->lens.cy, view->lens.near_z};
     r3d_lens_set_depth_near(lens, view->lens.near_z);
     lens->snap_cx = (lens->project.cx * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
@@ -41,6 +44,8 @@ r3d_lens_fit(r3d_lens_t* lens, int width, int height) {
     const float scale_x = (float)width / (float)lens->width;
     const float scale_y = (float)height / (float)lens->height;
     lens->m = mat4f_scale_rows(lens->m, (vec3f_t){scale_x, scale_y, 1.0F});
+    lens->focal_x *= scale_x;
+    lens->focal_y *= scale_y;
     /* The same picture at another size: the optical centre scales with it,
      * so a shifted lens stays shifted. */
     lens->project.cx *= scale_x;
@@ -161,10 +166,13 @@ fit_inside(box3f_t box, const planef_t* planes, unsigned crossing, planef_t dept
 /* Writes the clusters of a leaf the planes in `mask` keep to `out` from
  * `count`, lowering `fit`, and returns the new count. */
 static int
-cull_leaf(const r3d_lit_mesh_t* mesh, const r3d_lit_node_t* leaf, unsigned mask, const planef_t* planes, planef_t depth,
-          uint16_t* out, int count, r3d_depth_fit_t* fit) {
+cull_leaf(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, const r3d_lit_node_t* leaf, unsigned mask,
+          const planef_t* planes, planef_t depth, uint16_t* out, int count, r3d_depth_fit_t* fit) {
     for (int i = 0; i < leaf->count; i++) {
         const int c = leaf->first + i;
+        if (!r3d_lod_drawn(mesh, c, lod_coarse)) {
+            continue;
+        }
         unsigned cluster_mask = mask;
         const box3f_t box = box3f_from_box3s(mesh->clusters[c].bounds, 1.0F);
         if (cluster_mask == 0 || !box3f_outside_planes(box, planes, PLANE_FRUSTUM_COUNT, &cluster_mask)) {
@@ -176,8 +184,8 @@ cull_leaf(const r3d_lit_mesh_t* mesh, const r3d_lit_node_t* leaf, unsigned mask,
 }
 
 int
-r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* out, r3d_pipeline_work_t* work,
-                  r3d_depth_fit_t* fit) {
+r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint32_t* lod_coarse, uint16_t* out,
+                  r3d_pipeline_work_t* work, r3d_depth_fit_t* fit) {
     planef_t* planes = work->cull.planes;
     r3d_lens_frustum(lens, planes);
     const planef_t depth = lens_depth_plane(lens);
@@ -198,7 +206,7 @@ r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* 
             top = push_children(mesh, lens, node, mask, stack, top);
             continue;
         }
-        count = cull_leaf(mesh, node, mask, planes, depth, out, count, fit);
+        count = cull_leaf(mesh, lod_coarse, node, mask, planes, depth, out, count, fit);
     }
     return count;
 }

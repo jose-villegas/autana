@@ -9,6 +9,7 @@
 #include "core/tune.h"
 #include "profile/frame_cost.h"
 #include "profile/frame_laps.h"
+#include "render/lod/r3d_lod.h"
 #include "render/raster_internal.h"
 #include "render/upscale.h"
 
@@ -308,13 +309,17 @@ static int
 cull_instance(const r3d_instance_t* instance, const r3d_lens_t* lens, uint16_t* out, raster_stats_t* stats,
               r3d_pipeline_work_t* work, r3d_depth_fit_t* fit) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
-    int visible;
+    if (instance->lod_coarse != NULL && mesh->lod_group_count > 0) {
+        r3d_lod_pick(mesh, lens, R3D_LOD_TOLERANCE_PX, instance->lod_coarse);
+    }
+    int visible = 0;
     if (cull) {
-        visible = r3d_pipeline_cull(mesh, lens, out, work, fit);
+        visible = r3d_pipeline_cull(mesh, lens, instance->lod_coarse, out, work, fit);
     } else {
-        visible = mesh->cluster_count;
-        for (int i = 0; i < visible; i++) {
-            out[i] = (uint16_t)i;
+        for (int i = 0; i < mesh->cluster_count; i++) {
+            if (r3d_lod_drawn(mesh, i, instance->lod_coarse)) {
+                out[visible++] = (uint16_t)i;
+            }
         }
     }
     stats->clusters += visible;

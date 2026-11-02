@@ -14,7 +14,7 @@ from test_scene_asset import authored_entry
 
 class LcolTests(unittest.TestCase):
     def test_mesh_header(self):
-        words = tuple(range(1, 12))
+        words = tuple(range(1, mesh_asset.BLOB_HEADER.size // 4 + 1))
         mesh = mesh_asset.BLOB_HEADER.pack(*words)
         header = lcol_asset.read_mesh_header(mesh + b"payload")
         self.assertEqual(header.vertices, words[0])
@@ -66,7 +66,7 @@ class LcolTests(unittest.TestCase):
             triangles = positions + 4 * struct.calcsize("<3h")
             clusters = triangles + 2 * struct.calcsize("<3H")
             nodes = padded(clusters + mesh_asset.CLUSTER.size, struct.calcsize("<I"))
-            mesh = mesh_asset.BLOB_HEADER.pack(4, 2, 1, 1, 1, positions, 0, triangles, clusters, nodes, 0)
+            mesh = mesh_asset.BLOB_HEADER.pack(4, 2, 1, 1, 1, positions, 0, triangles, clusters, nodes, 0, 0, 0, 0)
             colors = owner.encode(encoding, count, [bytes(count * stride)] * 2)
             scene = authored_entry()
             struct.pack_into("<H", scene, struct.calcsize("<H") * (1 + scene_asset.PARTS.index("skinned_renderers")), 0)
@@ -95,7 +95,7 @@ class LcolTests(unittest.TestCase):
                     struct.pack_into("<H", changed[0][2], at + 2, scene_asset.COLOUR_SET_OWN)
                     if failure == "own":
                         changed[1][2][:mesh_asset.BLOB_HEADER.size] = mesh_asset.BLOB_HEADER.pack(
-                            4, 2, 1, 1, 1, positions, positions, triangles, clusters, nodes, 0)
+                            4, 2, 1, 1, 1, positions, positions, triangles, clusters, nodes, 0, 0, 0, 0)
                     if failure == "colourless":
                         changed.pop()
                 messages = {"range": "LCOL set, count", "missing": "requires an LCOL",
@@ -111,7 +111,7 @@ class LcolTests(unittest.TestCase):
     def test_coloured_prototype_refused(self):
         owner = lcol_asset
         for index in (6, 10):
-            words = [4, 2, 1, 1, 1, mesh_asset.BLOB_HEADER.size, 0, 0, 0, 0, 0]
+            words = [4, 2, 1, 1, 1, mesh_asset.BLOB_HEADER.size, 0, 0, 0, 0, 0, 0, 0, 0]
             words[index] = mesh_asset.BLOB_HEADER.size
             mesh = mesh_asset.BLOB_HEADER.pack(*words)
             entry = owner.encode(owner.RGB888, 4, [bytes(4 * owner.STRIDES[owner.RGB888])])
