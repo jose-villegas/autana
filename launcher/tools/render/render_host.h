@@ -61,6 +61,8 @@ typedef struct {
     bool (*setup)(int quarter);
 
     void (*draw)(const provider_frame_t* frame);
+    /* Optional: called once by render_host_close() after the last frame, to give back what setup() took. */
+    void (*teardown)(void);
     /* Optional path duration in milliseconds; NULL for a provider without a path. */
     uint32_t (*path_ms)(void);
     /* Optional path cut: frame history starts over; NULL without a path. */
