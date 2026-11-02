@@ -59,21 +59,22 @@ static const capybara_take_t capybara_blend = {"capybara-blend", "blend", CAPYBA
 #define CAPYBARA_ROW(take, ...) {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, &(take), __VA_ARGS__}
 
 /* Worst of a 5-seed capture on A308 (before and after its move), 20E8 and
- * 2124, + 1%; per quarter, portrait then landscape. */
+ * 2124, + 1%; per quarter, portrait then landscape. The Sponza and Bistro
+ * rows are then scaled by the A308 gain of the per-frame instance cull. */
 static const profile_scenario_t profile_scenarios[] = {
-    {.scene = &scene_sponza[SCENE_BAKED_FULL], .quarters = {{48953, 59273}, {47229, 56329}}},
-    {.scene = &scene_sponza[SCENE_BAKED_LITE], .quarters = {{41957, 47931}, {40738, 46118}}},
-    {.scene = &scene_sponza[SCENE_BAKED_FLAT], .quarters = {{40902, 49780}, {40227, 48295}}},
-    {.scene = &scene_sponza[SCENE_BAKED_FITTED], .quarters = {{41341, 49565}, {39726, 46664}}},
-    {.scene = &scene_sponza[SCENE_BAKED_FITTED_FULL], .quarters = {{49536, 62165}, {47469, 58108}}},
-    {.scene = &scene_sponza[SCENE_BAKED_FLAT_FITTED], .quarters = {{40285, 50300}, {39053, 48179}}},
+    {.scene = &scene_sponza[SCENE_BAKED_FULL], .quarters = {{48135, 58790}, {46392, 55835}}},
+    {.scene = &scene_sponza[SCENE_BAKED_LITE], .quarters = {{41016, 47265}, {39777, 45453}}},
+    {.scene = &scene_sponza[SCENE_BAKED_FLAT], .quarters = {{39923, 49110}, {39269, 47716}}},
+    {.scene = &scene_sponza[SCENE_BAKED_FITTED], .quarters = {{40514, 49046}, {38906, 46226}}},
+    {.scene = &scene_sponza[SCENE_BAKED_FITTED_FULL], .quarters = {{48724, 61767}, {46644, 57701}}},
+    {.scene = &scene_sponza[SCENE_BAKED_FLAT_FITTED], .quarters = {{39625, 49999}, {38343, 47804}}},
     CAPYBARA_ROW(capybara_home, {{20941, 21286}, {21500, 21803}}),
     CAPYBARA_ROW(capybara_front, {{20907, 21289}, {21305, 21590}}),
     CAPYBARA_ROW(capybara_side, {{20921, 21268}, {21591, 21909}}),
     CAPYBARA_ROW(capybara_back, {{20352, 20994}, {20989, 21423}}),
     CAPYBARA_ROW(capybara_close, {{23002, 23384}, {23807, 24080}}),
     CAPYBARA_ROW(capybara_blend, {{21806, 22738}, {22438, 22866}}),
-    {&scene_bistro[SCENE_BAKED_FITTED_FULL], BISTRO_SCENE, BISTRO_CAMERA, NULL, {{41782, 62092}, {40404, 57696}}},
+    {&scene_bistro[SCENE_BAKED_FITTED_FULL], BISTRO_SCENE, BISTRO_CAMERA, NULL, {{40869, 61667}, {39563, 57212}}},
 };
 
 static const char* TAG = "render_lab_profile";
