@@ -296,10 +296,17 @@ expect_thin_water_shows(vec3f_t down) {
 }
 
 /* Flat on its back: a film thinner than the field's smoothing, which once
- * averaged it all below the level, so none of it was drawn. */
+ * averaged it all below the level, so none of it was drawn. It is drawn as
+ * a film: the front glass, samples away from it, stays dry. */
 static void
 test_a_thin_film_flat_on_the_glass_shows(void) {
     expect_thin_water_shows(vec3f_back());
+    take_field();
+    for (int x = 1; x < fx - 1; x++) {
+        for (int y = 1; y < fy - 1; y++) {
+            TEST_ASSERT_TRUE(sample(x, y, fz - 2) < LEVEL);
+        }
+    }
 }
 
 /* Leaned back halfway: thin where it runs up the back glass. */
@@ -417,6 +424,28 @@ test_a_split_anywhere_gives_the_same_water(void) {
     TEST_ASSERT_TRUE(same);
 }
 
+/* The particles' pass splits like the rest: thin water, where it raises
+ * the samples that are drawn, gives the same field however it is cut. */
+static void
+test_thin_water_split_anywhere_gives_the_same_field(void) {
+    fixture_with(&ODD);
+    flip3_fill(&water, THIN_FILL, vec3f_back());
+    run(SETTLE_STEPS, vec3f_scale(vec3f_back(), GRAVITY));
+    take_field();
+    const size_t bytes = sizeof(float) * (size_t)(fx * fy * fz);
+    float* whole = malloc(bytes);
+    TEST_ASSERT_NOT_NULL(whole);
+    memcpy(whole, field, bytes);
+    splits_run = 0;
+    flip3_split_with(&water, split_unevenly);
+    take_field();
+    flip3_split_with(&water, NULL);
+    const bool same = splits_run > 0 && memcmp(whole, field, bytes) == 0;
+    free(whole);
+    TEST_ASSERT_TRUE(same);
+    TEST_ASSERT_TRUE(wet_share() > 0.0F);
+}
+
 /* Red-black order relaxes the same equations in another order: the pool
  * still settles level and keeps its volume. */
 static void
@@ -463,6 +492,7 @@ suite_flip3(void) {
     RUN_TEST(test_the_same_inputs_give_the_same_water);
     RUN_TEST(test_a_box_of_no_whole_cells_settles_level_and_keeps_its_volume);
     RUN_TEST(test_a_split_anywhere_gives_the_same_water);
+    RUN_TEST(test_thin_water_split_anywhere_gives_the_same_field);
     RUN_TEST(test_red_black_water_settles_level_and_keeps_its_volume);
 }
 
