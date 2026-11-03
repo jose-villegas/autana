@@ -4,5 +4,5 @@ path = "slot.obj"
 credit = "A triangle written for this scene."
 
 [output]
-name = "slot"
+name = "stress_copy"
 position_scale = 16384   # ticks per unit: the triangle reaches 0.01, inside int16

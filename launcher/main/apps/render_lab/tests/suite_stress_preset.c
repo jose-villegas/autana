@@ -160,7 +160,8 @@ test_only_a_per_frame_preset_moves(void) {
     for (int i = 0; i < STRESS_PRESET_COUNT; i++) {
         const stress_params_t* p = &stress_presets[i];
         fixture_begin(p);
-        r3d_dynamic_source_t first, later;
+        r3d_dynamic_source_t first;
+        r3d_dynamic_source_t later;
         TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &first));
         TEST_ASSERT_TRUE(stress_source(p, WAVE_LATER_MS, &f.at[1], &later));
         TEST_ASSERT_EQUAL(!stress_per_frame(p), same_source(&first, &later));
