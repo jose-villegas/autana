@@ -527,6 +527,28 @@ test_dragging_up_scrolls_the_list_without_pressing_a_row(void) {
                                          "a drag up must move the content up");
 }
 
+/* The press lands on the frame of contact, so that frame must not also carry
+ * the move from where the last finger lifted: a press on the scrollbar's thumb
+ * would read that move as a drag and jump the list. */
+static void
+test_a_press_on_the_scrollbar_does_not_jump_the_list(void) {
+    fixture();
+    list_idle_frames(2);
+    const int bar_x = CANVAS_W - ctx->style->scrollbar_size / 2;
+    const int lift_y = 2;
+    const int thumb_y = 40;
+    list_tap(CANVAS_W / 2, lift_y);
+    list_idle_frames(1);
+    const mu_Container* cnt = mu_get_container(ctx, "list");
+    TEST_ASSERT_EQUAL_INT(0, cnt->scroll.y);
+
+    list_frame(true, true, false, bar_x, thumb_y);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, cnt->scroll.y, "pressing the thumb moves nothing");
+    list_frame(true, false, false, bar_x, thumb_y + 10);
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, cnt->scroll.y, "dragging the thumb from the press point scrolls");
+    list_frame(false, false, true, bar_x, thumb_y + 10);
+}
+
 static void
 test_a_tap_on_a_scrollable_list_presses_the_row_under_it_once(void) {
     fixture();
@@ -671,6 +693,7 @@ run_ui_pointer_microui_suite(void) {
     RUN_TEST(test_a_tap_outside_the_button_submits_nothing);
     RUN_TEST(test_a_drag_moves_a_slider_microui_would_not_track_on_a_tap);
     RUN_TEST(test_dragging_up_scrolls_the_list_without_pressing_a_row);
+    RUN_TEST(test_a_press_on_the_scrollbar_does_not_jump_the_list);
     RUN_TEST(test_a_tap_on_a_scrollable_list_presses_the_row_under_it_once);
     RUN_TEST(test_scrolling_stops_at_the_end_and_the_last_row_is_reachable);
     RUN_TEST(test_a_press_on_a_window_over_scrolling_content_goes_down_at_once);

@@ -149,8 +149,12 @@ void mu_begin(mu_Context *ctx) {
   ctx->hover_root = ctx->next_hover_root;
   ctx->next_hover_root = NULL;
   /* LOCAL MODIFICATION: a press goes to the first control under it, so
-  ** overlapping controls never all take one press. */
-  if (ctx->mouse_pressed) { ctx->hover = 0; }
+  ** overlapping controls never all take one press, and it moves nothing: the
+  ** pointer arrives with it, so a drag starts from the press point. */
+  if (ctx->mouse_pressed) {
+    ctx->hover = 0;
+    ctx->last_mouse_pos = ctx->mouse_pos;
+  }
   ctx->mouse_delta.x = ctx->mouse_pos.x - ctx->last_mouse_pos.x;
   ctx->mouse_delta.y = ctx->mouse_pos.y - ctx->last_mouse_pos.y;
   ctx->frame++;
