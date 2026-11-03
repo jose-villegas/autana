@@ -21,8 +21,9 @@ from r3d.gltf_mesh import load_gltf_mesh
 from r3d.obj import Texture, load_obj
 from r3d.import_settings import SettingsError, load_import_settings, load_scene
 from r3d.objects.instances import MATCH_TOLERANCE, SourceObject, bounds_diagonal, match_instances, rigid_fit, source_objects
-from r3d.objects.object_error import (SKY, Parts, cell, common_prefix, object_rows, part_labels, part_names,
-                                      read, report_body, rows_for, shape_rows, write)
+from r3d.objects.object_error import (PLANAR_AREA_SHARE, PLANAR_DEGREES, SHEET_DEGREES, SHEET_GROWTH, SKY, Parts,
+                                      cell, common_prefix, object_rows, part_labels, part_names, planar_parts, read,
+                                      nearest_source, report_body, rows_for, shape_rows, sheet_triangles, write)
 from r3d.objects.objects_report import main, masked_objects
 from r3d.mesh_import import load_source
 from test_r3d_import import camera, renderer, write_import, write_scene
@@ -543,7 +544,7 @@ class ObjectErrorTests(unittest.TestCase):
         names, owner, parts_of_object = part_names(labels, tri_o, ['a', 'b'])
         shapes = match_instances(source_objects(p, tri_v, tri_m, labels, names))
         parts = Parts(names, [['a', 'b'][o] for o in owner], parts_of_object, shared, ['m0', 'm0', 'm1'],
-                      np.bincount(labels), np.array([4, 2, 2]))
+                      np.bincount(labels), np.array([4, 2, 2]), np.array([True, False, False]), np.array([1, 0, 2]))
         # Six pixels: two show a#0, three b, one the sky; no pixel shows a#1, so its drawn triangles are unseen.
         ids = np.array([0, 0, 2, 2, 2, -1])
         error = np.array([1., 1., 6., 6., 6., 4.])
@@ -568,6 +569,9 @@ class ObjectErrorTests(unittest.TestCase):
         self.assertTrue(by_name['b']['segment'])
         self.assertFalse(by_name['a#0']['segment'])
         self.assertTrue(by_name['a#0']['welded'])
+        # Planar parts and sheets count over the parts in view only: a#1's are unseen.
+        self.assertTrue(by_name['a#0']['planar'])
+        self.assertIn(' 4 drawn triangles sit on planar parts in view; 3 are sheets', report_body(rows, score, unseen))
         [shape] = shape_rows(rows)
         self.assertEqual((shape['name'], shape['seen'], shape['placed']), ('a#0', 1, 2))
         self.assertAlmostEqual(shape['error_share'], 2 / 24)
@@ -589,6 +593,98 @@ class ObjectErrorTests(unittest.TestCase):
         self.assertEqual((totals['title'], totals['fit'], totals['reference']), ('title', 'f', 'r'))
         self.assertEqual(report_body(kept, totals['mean_delta_e'], totals['drawn_unseen_share']),
                          report_body(rows, score, unseen))
+
+    @staticmethod
+    def hinge(degrees):
+        """Two unit right triangles sharing the edge along x, the second turned `degrees` up about it."""
+        turn = np.radians(degrees)
+        p = np.array([[0., 0., 0.], [1., 0., 0.], [0., 0., 1.], [0., np.sin(turn), -np.cos(turn)]])
+        return p, np.array([[0, 2, 1], [0, 1, 3]])
+
+    def test_a_part_is_planar_while_its_normals_stay_within_the_angle(self):
+        # Each half of a hinge stands half its angle off the part's mean normal.
+        for degrees, planar in ((2 * PLANAR_DEGREES * 0.9, True), (2 * PLANAR_DEGREES * 1.1, False)):
+            p, tri_v = self.hinge(degrees)
+            np.testing.assert_array_equal(planar_parts(p, tri_v, np.zeros(2, dtype=np.int64), 1), [planar])
+        # A kerb's edge: a floor triangle with a small one turned straight up stays planar while the small one's
+        # share of the area is under 1 - PLANAR_AREA_SHARE.
+        for share, planar in (((1 - PLANAR_AREA_SHARE) * 0.9, True), ((1 - PLANAR_AREA_SHARE) * 1.1, False)):
+            side = np.sqrt(share / (1 - share))
+            p = np.array([[0., 0., 0.], [1., 0., 0.], [0., 0., 1.], [0., 0., 0.], [side, 0., 0.], [0., side, 0.]])
+            tri_v = np.array([[0, 2, 1], [3, 4, 5]])
+            np.testing.assert_array_equal(planar_parts(p, tri_v, np.zeros(2, dtype=np.int64), 1), [planar])
+
+    def test_a_sheet_is_a_large_triangle_turned_off_the_source(self):
+        # The source is one floor triangle, one part; most drawn triangles lie on it at unit size, setting the
+        # part's median, and each case stands over it turned about x by its angle and scaled by its area.
+        source = np.array([[0., 0., 0.], [1., 0., 0.], [0., 0., 1.]])
+
+        def drawn(degrees, area):
+            turn, scale = np.radians(degrees), np.sqrt(area)
+            return scale * np.array([[0., 0., 0.], [1., 0., 0.], [0., np.sin(turn), np.cos(turn)]])
+
+        cases = [((SHEET_DEGREES * 1.1, SHEET_GROWTH * 1.1), True), ((SHEET_DEGREES * 0.9, SHEET_GROWTH * 1.1), False),
+                 ((SHEET_DEGREES * 1.1, SHEET_GROWTH * 0.9), False), ((180 - SHEET_DEGREES * 0.9, SHEET_GROWTH * 1.1), False)]
+        floor = [drawn(0, 1)] * (2 * len(cases) + 1)
+        triangles = np.stack(floor + [drawn(*case) for case, _ in cases])
+        drawn_p, drawn_tris = triangles.reshape(-1, 3), np.arange(3 * len(triangles)).reshape(-1, 3)
+        near = np.zeros(len(triangles), dtype=np.int64)
+        sheets = sheet_triangles(source, np.array([[0, 1, 2]]), drawn_p, drawn_tris, near, np.zeros(1, dtype=np.int64))
+        np.testing.assert_array_equal(sheets, [False] * len(floor) + [sheet for _, sheet in cases])
+
+    def test_planar_weighs_area_not_triangle_count(self):
+        # Many tiny floor triangles and one large wall: planar by count, not by area; and the reverse.
+        def part(floor_side, floor_count, wall_side):
+            p, tris = [], []
+            for i in range(floor_count):
+                p += [[i * 2.0, 0., 0.], [i * 2.0 + floor_side, 0., 0.], [i * 2.0, 0., floor_side]]
+                tris.append([3 * i, 3 * i + 2, 3 * i + 1])
+            p += [[0., 0., 0.], [wall_side, 0., 0.], [0., wall_side, 0.]]
+            tris.append([len(p) - 3, len(p) - 2, len(p) - 1])
+            return np.array(p), np.array(tris), np.zeros(len(tris), dtype=np.int64)
+
+        # 200 floor triangles of area 0.005 against one wall of area 50.
+        np.testing.assert_array_equal(planar_parts(*part(0.1, 200, 10.0), 1), [False])
+        # The reverse: one large floor beside one tiny wall, half the triangles but under 1% of the area.
+        np.testing.assert_array_equal(planar_parts(*part(10.0, 1, 0.1), 1), [True])
+
+    def test_a_folded_part_is_not_planar(self):
+        # Back-to-back halves cancel in the signed mean normal: neither faces it.
+        p = np.array([[0., 0., 0.], [1., 0., 0.], [0., 0., 1.]])
+        np.testing.assert_array_equal(planar_parts(p, np.array([[0, 2, 1], [0, 1, 2]]), np.zeros(2, dtype=np.int64),
+                                                   1), [False])
+
+    def test_sheets_compare_against_their_own_parts_median(self):
+        # Two floor parts far apart: part 0 drawn with unit triangles, part 1 with triangles 10 times larger. A tilted
+        # triangle of area 5 is a sheet over part 0 and not over part 1.
+        source = np.array([[0., 0., 0.], [1., 0., 0.], [0., 0., 1.], [100., 0., 0.], [101., 0., 0.], [100., 0., 1.]])
+        tri_v, labels = np.array([[0, 2, 1], [3, 5, 4]]), np.array([0, 1])
+
+        def triangle(origin, area, degrees):
+            turn, scale = np.radians(degrees), np.sqrt(2 * area)
+            return np.array(origin) + scale * np.array([[0., 0., 0.], [1., 0., 0.], [0., np.sin(turn), np.cos(turn)]])
+
+        floors = [triangle([0., 0., 0.], 0.5, 0)] * 5 + [triangle([100., 0., 0.], 5.0, 0)] * 5
+        tilted = [triangle([0., 0., 0.], 2.5, 90), triangle([100., 0., 0.], 2.5, 90)]
+        triangles = np.stack(floors + tilted)
+        drawn = triangles.reshape(-1, 3), np.arange(3 * len(triangles)).reshape(-1, 3)
+        near = np.array([0] * 5 + [1] * 5 + [0, 1])
+        np.testing.assert_array_equal(sheet_triangles(source, tri_v, *drawn, near, labels),
+                                      [False] * 10 + [True, False])
+
+    def test_a_drawn_triangle_goes_to_the_source_nearest_its_centre(self):
+        # The drawn triangle's first corner sits on source triangle 0, its centre on source triangle 1.
+        unit = np.array([[0., 0., 0.], [1., 0., 0.], [0., 0., 1.]])
+        source = np.concatenate([unit, unit + [10., 0., 0.]])
+        drawn = np.array([[0., 0., 0.], [16., 0., 0.], [16., 0., 1.]])
+        np.testing.assert_array_equal(nearest_source(source, np.array([[0, 1, 2], [3, 4, 5]]), drawn,
+                                                     np.array([[0, 1, 2]])), [1])
+
+    def test_no_drawn_triangles_count_no_sheets(self):
+        source = np.array([[0., 0., 0.], [1., 0., 0.], [0., 0., 1.]])
+        sheets = sheet_triangles(source, np.array([[0, 1, 2]]), np.zeros((0, 3)), np.zeros((0, 3), dtype=np.int64),
+                                 np.zeros(0, dtype=np.int64), np.zeros(1, dtype=np.int64))
+        self.assertEqual(sheets.shape, (0,))
 
     def test_report_names_leave_out_the_shared_prefix(self):
         self.assertEqual(common_prefix([SKY, 'Scene_Street_1#0', 'Scene_Stone_2']), 'Scene_')
