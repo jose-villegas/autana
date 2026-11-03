@@ -114,6 +114,20 @@ step_pressed(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
     return press(p, input, out);
 }
 
+/* A DOWN that went under a stale hover root and took nothing: the frame just
+ * built the right root, so the press is made again, or on content that
+ * scrolls taken back to wait like any press there. */
+static int
+step_missed(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
+    if (!p->over_scrollable || input->released) {
+        return press(p, input, out);
+    }
+    p->down = false;
+    p->press_deferred = true;
+    const int n = emit(out, 0, UI_POINTER_UP, UI_POINTER_NOWHERE);
+    return emit(out, n, UI_POINTER_MOVE, p->aim);
+}
+
 static int
 step_input(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
     int n = 0;
@@ -130,19 +144,10 @@ step_input(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
         return step_deferred(p, input, out);
     }
 
-    /* A DOWN that went under a stale hover root and took nothing: the frame
-     * just built the right root, so the press is made again, or on content
-     * that scrolls taken back and left to wait like any press there. */
     const bool missed = p->press_unconfirmed && p->press_missed && p->down;
     p->press_unconfirmed = false;
-    if (missed && p->over_scrollable && !input->released) {
-        p->down = false;
-        p->press_deferred = true;
-        const int n = emit(out, 0, UI_POINTER_UP, UI_POINTER_NOWHERE);
-        return emit(out, n, UI_POINTER_MOVE, p->aim);
-    }
     if (missed) {
-        return press(p, input, out);
+        return step_missed(p, input, out);
     }
 
     if (input->released) {
