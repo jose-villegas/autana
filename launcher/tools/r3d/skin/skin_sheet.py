@@ -24,6 +24,7 @@ from PIL import ImageDraw
 
 TOOLS = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(TOOLS))
+from docs.figures import save_png  # noqa: E402
 from r3d import gltf_preview, skin_asset  # noqa: E402
 from r3d.skin.skin_frame import DEFAULT_POSITION_SCALE, INFLUENCES, EngineSkin  # noqa: E402
 from r3d.skin_light.skin_light_sheet import TILE, VIEW, grid, heat, label, parse_clip  # noqa: E402
@@ -190,7 +191,7 @@ def main():
         directory.mkdir(parents=True, exist_ok=True)
     clip.save(args.images / "skin-skeleton.gif", skeleton)
     clip.save(args.images / "skin-weights.gif", weight_frames)
-    influences.save(args.images / "skin-influences.png", optimize=True)
+    save_png(influences, args.images / "skin-influences.png")
     (args.tables / "skin-influence-counts.md").write_text(influence_counts(asset, worst) + "\n", encoding="utf-8")
     (args.tables / "skin-weight-example.md").write_text(weight_example(asset) + "\n", encoding="utf-8")
 

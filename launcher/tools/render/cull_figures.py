@@ -30,10 +30,11 @@ sys.path.insert(0, str(ROOT / "launcher/tools"))
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
 from build.c_header import read_define
 from cull_counts import CULL_HEADER, plot_counts
-from docs.figures import render_scene
+from check_avi import read_video
+from docs.figures import render_scene, save_png
 from docs.plot_style import save, subplots
 from render.doc_tables import markdown
-from render_compare import read_video, still_sheet
+from render_compare import still_sheet
 
 GFX_HEADER = ROOT / "launcher/main/gfx/gfx.h"
 DISPLAY_HEADER = ROOT / "launcher/main/display/display.h"
@@ -97,7 +98,7 @@ def sheet(args, columns, indices, dt, stem):
     """One render_compare still row per pose, stacked."""
     rows = [[(f"{label}, {index * dt / 1000:.1f} s", pictures[row].convert("RGB")) for label, pictures in columns]
             for row, index in enumerate(indices)]
-    still_sheet(rows).save(args.out / f"{stem}-sheet.png", optimize=True)
+    save_png(still_sheet(rows), args.out / f"{stem}-sheet.png")
 
 
 def read_counts(path):
