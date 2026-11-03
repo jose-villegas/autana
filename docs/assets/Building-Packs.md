@@ -70,7 +70,8 @@ to keep in step.
 
 The firmware build writes the packs to `assets/` in its build directory and
 the partition image to `assets.bin`, listed with the partition's offset in
-`flash_args`, so every `autana flash` writes the packs with the app.
+`flash_args`, so every `autana flash` writes the packs with the app. The
+build fails when the image outgrows the partition.
 `idf.py assets-flash` writes just that region, in seconds, after a change to
 the meshes alone. The QEMU image carries it because it merges every file in
 `flash_args`.
