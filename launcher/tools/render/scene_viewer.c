@@ -33,7 +33,7 @@ reset_options(void) {
     camera_name = NULL;
     object_names = NULL;
     object_count = 0;
-    size_rect = (recti_t){0};
+    size_rect = recti_empty();
     present = CAMERA_PRESENT_NEAREST;
     small_fill = SMALL_FILL_SMOOTH;
     view = RENDER_DEBUG_VIEW_SHADED;

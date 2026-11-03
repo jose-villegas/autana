@@ -143,7 +143,7 @@ static void
 start_arm(arm_t arm) {
     ui_ridge_set_ambient(arm >= ARM_AMBIENT);
     if (arm == ARM_AMBIENT_PORTRAIT) {
-        ui_ridge_set_gravity((vec3f_t){0, 1, 0}, 0);
+        ui_ridge_set_gravity(vec3f_unit_y(), 0);
     }
     if (arm == ARM_AMBIENT_BOOT) {
         ui_ridge_restart_boot_for_test();
@@ -295,7 +295,7 @@ clear_dirty_boxes(void) {
 static recti_t
 changed_box(const gfx_color_t* before, recti_t area) {
     const gfx_color_t* const now = gfx_framebuffer();
-    recti_t box = {0};
+    recti_t box = recti_empty();
     for (int y = area.y; y < recti_bottom(area); y++) {
         for (int x = area.x; x < recti_right(area); x++) {
             if (now[(y * GFX_WIDTH) + x] != before[(y * GFX_WIDTH) + x]) {
@@ -316,7 +316,7 @@ cell_rect(int row, int col) {
  * pixel to its last (the gradient's marks, which cross unchanged groups). */
 static recti_t
 marks_bounds_in_cell(const gfx_color_t* before, int row, int col) {
-    recti_t bounds = {0};
+    recti_t bounds = recti_empty();
     for (int y = row * STRIP_HEIGHT; y < (row + 1) * STRIP_HEIGHT; y++) {
         const recti_t span = changed_box(before, (recti_t){0, y, GFX_WIDTH, 1});
         bounds = recti_union(bounds, recti_intersect(span, cell_rect(row, col)));
@@ -359,7 +359,7 @@ test_a_column_groups_dirty_box_covers_what_changed_and_no_more(void) {
                 const recti_t cell = cell_rect(row, col);
                 const recti_t marked = (cell_dirty & (1u << idx)) != 0
                                            ? recti_from_edges(cell_x0[idx], cell_y0[idx], cell_x1[idx], cell_y1[idx])
-                                           : (recti_t){0};
+                                           : recti_empty();
                 const recti_t changed = changed_box(rig.before, cell);
                 const recti_t most = marks_bounds_in_cell(rig.before, row, col);
                 checked += !recti_is_empty(marked);
