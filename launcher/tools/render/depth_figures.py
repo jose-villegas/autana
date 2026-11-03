@@ -15,14 +15,16 @@ smoothing.
 
 import argparse
 import pathlib
-import subprocess
+import sys
 
 import numpy as np
 from PIL import Image
 from render_compare import still_sheet
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
-VIEWER = ROOT / "launcher/tools/render/scene_viewer.sh"
+sys.path.insert(0, str(ROOT / "launcher/tools"))
+from docs.figures import render_scene  # noqa: E402
+
 FRAME_MS = 16  # one host frame, as the viewer steps by default
 FRAMES = 6  # consecutive frames per row: enough to see a fight come and go
 WINDOW = (160, 96)  # the cut, in rendered pixels: wide enough to read the place
@@ -35,10 +37,8 @@ def render(args, frame, fit):
     """The picture after `frame` frames, as RGB."""
     out = args.work / f"fit{fit}-{frame}.bmp"
     objects = [flag for name in args.object for flag in ("--object", name)]
-    command = ["sh", str(VIEWER), str(args.scene), *objects, "--camera", args.camera,
-               "--frames", str(frame), "--dt", str(FRAME_MS), "--set", f"render.depth_fit={fit}", "-o", str(out)]
-    with open(args.work / f"fit{fit}-{frame}.log", "w") as log:
-        subprocess.run(command, check=True, stdout=log, stderr=subprocess.STDOUT)
+    render_scene(args.scene, *objects, "--camera", args.camera, "--frames", frame, "--dt", FRAME_MS,
+                 "--set", f"render.depth_fit={fit}", "-o", out, log=args.work / f"fit{fit}-{frame}.log")
     return np.asarray(Image.open(out).convert("RGB")).astype(np.int16)
 
 
