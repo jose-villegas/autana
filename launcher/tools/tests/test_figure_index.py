@@ -51,7 +51,9 @@ class OpenedTests(unittest.TestCase):
                 self.assertEqual((image.size, image.convert("RGB").getpixel((0, 0))), ((3, 2), (255, 0, 0)))
 
 
-class IndexTests(unittest.TestCase):
+class Tree(unittest.TestCase):
+    """A checkout outside git: docs/images/math/wide.png and narrow.png, a GIF, and pages that show them."""
+
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
@@ -62,6 +64,15 @@ class IndexTests(unittest.TestCase):
         Image.new("RGB", (40, 10), "black").save(self.root / "docs/images/math/narrow.png")
         frames = [Image.new("RGB", (320, 80), colour) for colour in ("red", "green", "blue", "white")]
         save_gif(frames, self.root / "docs/images/anim/spin.gif", 100)
+
+    def snapshot(self):
+        return {path.relative_to(self.root).as_posix(): path.read_bytes()
+                for path in sorted(self.root.rglob("*")) if path.is_file()}
+
+
+class IndexTests(Tree):
+    def setUp(self):
+        super().setUp()
         write(self.root / "docs/math/One.md", "![](../images/math/wide.png)\n![Spinning](../images/anim/spin.gif)\n")
         write(self.root / "docs/math/Two.md", "![Wide | white](../images/math/wide.png)\n![x](../images/math/gone.png)\n")
 

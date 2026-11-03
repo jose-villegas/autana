@@ -11,6 +11,7 @@ from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import refresh_branch  # noqa: E402
+from test_refresh_branch import git, write  # noqa: E402
 
 THUMBNAIL = f"{refresh_branch.THUMBNAILS}/anim/spin.gif"
 ORPHAN = f"{refresh_branch.THUMBNAILS}/old/orphan.gif"
@@ -23,17 +24,6 @@ root = pathlib.Path.cwd()
 (root / "{THUMBNAIL}").write_text("new thumbnail", encoding="utf-8")
 (root / "{ORPHAN}").unlink()
 '''
-
-
-def git(*args, cwd):
-    return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=cwd, check=True,
-                          capture_output=True, text=True).stdout
-
-
-def write(path, text):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8", newline="\n")
-    return path
 
 
 class FigureIndexHookTests(unittest.TestCase):
