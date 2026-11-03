@@ -1,7 +1,8 @@
 # power
 
-The AXP2101 owner uses the board I2C bus. Key interrupts are
-polled by input; battery snapshots refresh at `POWER_BATTERY_PERIOD_US`.
+`power_device.c` owns the board's PMU on the board I2C bus, through the chip
+table `BOARD_PMU_CHIP` names (`power_chip.h`; the AXP2101 driver is in
+`axp2101/`). Key interrupts are polled by input; battery snapshots refresh at `POWER_BATTERY_PERIOD_US`.
 Battery reads never change gauge, ADC, charging or power-off settings.
 
 | Function | Caller | I2C | Lock |
@@ -40,13 +41,13 @@ The first valid snapshot records boot unless a shutdown warning fires.
 USB presence, battery presence or charge changes record a transition.
 Without USB, `POWER_LOG_PERIOD_US` (120 seconds) triggers periodic sampling.
 
-REG1A is read once in `power_start()`: bits 7:4 encode the warning
-percentage (5–20%), and bits 3:0 the shutdown percentage (0–15%). Without
-USB, each level records `shutdown-warning` once at or below its threshold.
+`power_start()` reads the chip's warning and shutdown percentages once; on
+the AXP2101, REG1A bits 7:4 give the warning (5–20%) and bits 3:0 the
+shutdown (0–15%). Without USB, each level records `shutdown-warning` once at or below its threshold.
 
 Each level re-arms above its threshold or when USB returns. Invalid
-snapshots leave the latches unchanged. If REG1A cannot be read, threshold
-records are disabled; other history remains available.
+snapshots leave the latches unchanged. If the percentages cannot be read,
+threshold records are disabled; other history remains available.
 
 Any record restarts the periodic interval. Unchanged USB-powered readings
 write nothing. Invalid reads write nothing. A failed write warns once and

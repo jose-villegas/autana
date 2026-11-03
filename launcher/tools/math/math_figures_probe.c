@@ -72,8 +72,8 @@ main(int argc, char** argv) {
     }
     const viewport_t viewport = {atoi(argv[1]), atoi(argv[2]), 0};
 
-    const vec3f_t origin = {0.0F, 0.0F, 0.0F};
-    const vec3f_t unit = {1.0F, 1.0F, 1.0F};
+    const vec3f_t origin = vec3f_zero();
+    const vec3f_t unit = vec3f_one();
     const quatf_t none = quatf_identity();
     const vec3f_t axis = vec3f_normalize(TRS_AXIS);
     const quatf_t turn = quatf_from_axis_angle(axis, TRS_ANGLE_DEGREES * MATH_RADIANS_PER_DEGREE);
@@ -82,7 +82,7 @@ main(int argc, char** argv) {
     const mat4f_t rotated = mat4f_from_trs(origin, turn, TRS_SCALE);
     const mat4f_t placed = mat4f_from_trs(TRS_POSITION, turn, TRS_SCALE);
 
-    const transformf_t pose = TRANSFORMF_IDENTITY;
+    const transformf_t pose = transformf_identity();
     const render_view_t view = render_view_make(&pose, VIEW_HALF_FOV_SHORT_TAN, VIEW_NEAR_Z, viewport);
     const vec2f_t offset = projectf_offset(&view.lens, VIEW_POINT);
     const vec2f_t screen = projectf_screen(&view.lens, VIEW_POINT);

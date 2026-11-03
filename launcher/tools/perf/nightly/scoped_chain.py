@@ -33,7 +33,7 @@ from process_tree import (launch_process_tree, stop_process_tree, close_process_
                           terminate_unwinds)
 from local_schedule import (Clock, wait_idle, gpu_pending, gpu_on_host, GPU_NOT_ON_HOST,
                             NIGHT_STEP_HANG_SECONDS, MARKER_KEY_FORMAT, heavy_root, night_cutoff, night_end)
-from nightly.lnt import (lnt_report, night_manifest, night_ran, read_night, read_last_night, last_manifests,
+from nightly.lnt import (lnt_report, night_manifest, night_ran, read_night, read_last_night,
                          manifests_since, night_record_path, read_last_night_record, VARIANT, BUILD_FLAGS,
                          LAYOUT_SEED)
 
@@ -173,14 +173,7 @@ def night_queue(repo, tip, data, from_sha=None):
                 *(step.commit for step in history[through:])}
         settled = attempted(manifests_since(data, key))
     else:
-        # Before the night kept a record, each board resumed after its own cursor; a step any manifest lists
-        # unsettled, a failed capture behind a later one, is owed too. The first night ever takes the tip.
-        cursors = [night.get("last_attempted") or night.get("last_measured") for night in last_manifests(data).values()]
-        cursors = [on_history(history, commit, "last_attempted").position for commit in cursors if commit]
-        nights = manifests_since(data, "")
-        owed = {step["commit"] for night in nights for step in night["steps"]}
-        owed |= {step.commit for step in (history[min(cursors):] if cursors else history[-1:])}
-        settled = attempted(nights)
+        owed, settled = {history[-1].commit}, set()  # the first night ever takes the tip
     return [step for step in history if step.commit in owed and step.commit not in settled]
 
 

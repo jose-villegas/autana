@@ -37,7 +37,7 @@ import render_compare  # noqa: E402
 import warp  # noqa: E402
 from build.c_header import read_define  # noqa: E402
 from docs.figures import save_gif  # noqa: E402
-from panel_size import PANEL_HEIGHT, PANEL_WIDTH  # noqa: E402
+from board import PANEL_HEIGHT, PANEL_WIDTH  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402
 from r3d.poses import sample_camera_rows  # noqa: E402
 

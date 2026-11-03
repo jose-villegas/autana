@@ -183,7 +183,7 @@ def main():
     if args.trace:
         trace_figure(data, args.step, args.trace)
     if args.animation:
-        animation_figure(data, DeviceModel(args.cc), args.samples, args.step, args.animation)
+        animation_figure(data, DeviceModel(), args.samples, args.step, args.animation)
 
 
 if __name__ == "__main__":

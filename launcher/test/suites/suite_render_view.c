@@ -24,7 +24,7 @@
 
 static transformf_t
 fixture(void) {
-    transformf_t pose = TRANSFORMF_IDENTITY;
+    transformf_t pose = transformf_identity();
     pose.position = (vec3f_t){3.0F, 4.0F, 5.0F};
     pose.rotation = quatf_from_euler((vec3f_t){0.3F, 0.7F, 0.2F});
     pose.scale = (vec3f_t){2.0F, 3.0F, 4.0F};
@@ -50,14 +50,14 @@ test_basis_is_orthonormal_and_picture_right_is_pose_plus_x(void) {
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.ceiling, view.small_fill.ceiling);
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.gate, view.small_fill.gate);
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.style, view.small_fill.style);
-    expect_vector((vec3f_t){1.0F, 1.0F, 1.0F},
+    expect_vector(vec3f_one(),
                   (vec3f_t){vec3f_dot(view.screen_x, view.screen_x), vec3f_dot(view.screen_y, view.screen_y),
                             vec3f_dot(view.forward, view.forward)});
-    expect_vector((vec3f_t){0.0F, 0.0F, 0.0F},
+    expect_vector(vec3f_zero(),
                   (vec3f_t){vec3f_dot(view.screen_x, view.screen_y), vec3f_dot(view.screen_x, view.forward),
                             vec3f_dot(view.screen_y, view.forward)});
     expect_vector(view.forward, vec3f_cross(view.screen_y, view.screen_x));
-    expect_vector(quatf_rotate(pose.rotation, (vec3f_t){1.0F, 0.0F, 0.0F}), view.screen_x);
+    expect_vector(quatf_rotate(pose.rotation, vec3f_unit_x()), view.screen_x);
     expect_vector(pose.position, view.position);
 }
 
@@ -99,8 +99,8 @@ test_lens_fits_the_shorter_side(void) {
  * against the shift as the shift moves the optical centre. */
 static vec3f_t
 framed_point(const transformf_t* pose, const render_view_t* view) {
-    const vec3f_t right = quatf_rotate(pose->rotation, (vec3f_t){1.0F, 0.0F, 0.0F});
-    const vec3f_t up = quatf_rotate(pose->rotation, (vec3f_t){0.0F, 1.0F, 0.0F});
+    const vec3f_t right = quatf_rotate(pose->rotation, vec3f_unit_x());
+    const vec3f_t up = quatf_rotate(pose->rotation, vec3f_unit_y());
     const float shorter = (float)(WIDTH < HEIGHT ? WIDTH : HEIGHT);
     const float per_short_side = shorter * AHEAD_Z / view->lens.fx;
     vec3f_t p = vec3f_add(view->position, vec3f_scale(view->forward, AHEAD_Z));
@@ -150,7 +150,7 @@ static void
 test_off_axis_lens_projection_and_anisotropic_fit(void) {
     static const float offsets[4][2] = {
         {OFFSET_X, -OFFSET_Y}, {OFFSET_Y, OFFSET_X}, {-OFFSET_X, OFFSET_Y}, {-OFFSET_Y, -OFFSET_X}};
-    transformf_t pose = TRANSFORMF_IDENTITY;
+    transformf_t pose = transformf_identity();
     pose.position = (vec3f_t){3.0F, 4.0F, 5.0F};
     const vec3f_t ticks = vec3f_scale(vec3f_add(pose.position, (vec3f_t){OFFSET_X, OFFSET_Y, AHEAD_Z}), POSITION_SCALE);
     for (int swapped = 0; swapped < 2; swapped++) {
@@ -179,7 +179,7 @@ test_off_axis_lens_projection_and_anisotropic_fit(void) {
 
 static void
 test_pose_roll_rotates_the_picture(void) {
-    transformf_t pose = TRANSFORMF_IDENTITY;
+    transformf_t pose = transformf_identity();
     const render_view_t upright = view_of(&pose, 0);
     pose.rotation = quatf_from_axis_angle(upright.forward, MATH_TAU * 0.25F);
     const render_view_t rolled = view_of(&pose, 0);

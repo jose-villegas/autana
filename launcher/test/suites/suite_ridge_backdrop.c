@@ -140,7 +140,7 @@ test_launcher_backdrop_motion_and_rest(void) {
 
     /* Held upright in portrait from the first frame: down is the panel's +y,
      * a quarter turn from the landscape pose boot hands over in. */
-    ui_ridge_set_gravity((vec3f_t){0, 1, 0}, 0);
+    ui_ridge_set_gravity(vec3f_unit_y(), 0);
     frame(false, false);
     frame(false, false);
     as_boot_left_it = snapshot();
@@ -345,7 +345,7 @@ test_weak_shake_scales_spring_offset(void) {
         ui_ridge_set_ambient(true);
         const spring_line_t* line = ui_ridge_spring_for_test();
         for (int i = 0; i < VIBRATION_FRAMES; i++) {
-            ui_ridge_set_gravity((vec3f_t){-1, 0, 0}, levels[run]);
+            ui_ridge_set_gravity(vec3f_left(), levels[run]);
             frame(false, false);
             for (int col = 0; col < line->count; col++) {
                 const int32_t offset = abs(line->offset[col]);

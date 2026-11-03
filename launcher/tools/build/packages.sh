@@ -31,14 +31,14 @@ package_includes() {
     done
 }
 
-# board_include_dir prints main/board/<folder> of the board a host build
+# board_include_dir prints main/board/<vendor>/<board> of the board a host build
 # compiles, the BOARD_DIR of the Kconfig choice BOARD's default
 # (packages.py's board_include_dir()), and fails when that folder is missing.
 board_include_dir() {
     board_choice=$(sed -n '/^ *choice BOARD$/,/^ *endchoice/s/^ *default \([A-Z0-9_]*\)$/\1/p' \
         "$1/main/Kconfig.projbuild" | head -n 1)
     board_folder=""
-    [ -n "$board_choice" ] && board_folder=$(sed -n "s/^ *default \"\([a-z0-9_]*\)\" if $board_choice\$/\1/p" \
+    [ -n "$board_choice" ] && board_folder=$(sed -n "s#^ *default \"\([a-z0-9_/]*\)\" if $board_choice\$#\1#p" \
         "$1/main/Kconfig.projbuild" | head -n 1)
     if [ -z "$board_folder" ] || [ ! -d "$1/main/board/$board_folder" ]; then
         echo "no board folder: main/Kconfig.projbuild's choice BOARD names none that exists" >&2
