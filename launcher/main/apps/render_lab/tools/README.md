@@ -36,7 +36,7 @@ and host scene keys are unchanged.
 ### Water
 
 The Water scene is a tank the size of the screen and as deep as the device
-(`board/waveshare_amoled_1_8/board_geometry.h`), filled by `flip3` and tipped by the device's gravity
+(`board/waveshare/esp32_s3_touch_amoled_1_8/board.toml`), filled by `flip3` and tipped by the device's gravity
 and shake. The menu's WATER FILL sets the share of the tank's volume, 10 to
 90 % in steps of 10.
 

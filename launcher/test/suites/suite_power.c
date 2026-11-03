@@ -1,9 +1,9 @@
 #include <limits.h>
 #include <string.h>
-#include "power/axp2101_regs.h"
+#include "power/axp2101/axp2101_decode.h"
+#include "power/axp2101/axp2101_regs.h"
 #include "power/console/console_battery_reply.h"
 #include "power/power_cache.h"
-#include "power/power_decode.h"
 #include "suites.h"
 #include "unity.h"
 
@@ -49,11 +49,11 @@ test_decode(void) {
                  {0x40, POWER_FLOW_DISCHARGING},
                  {0x60, POWER_FLOW_UNKNOWN}};
 
-    power_registers_t regs = {.status = 0x28, .vbat_high = 0xcf, .vbat_low = 0x93, .percent = 82};
+    axp2101_registers_t regs = {.status = 0x28, .vbat_high = 0xcf, .vbat_low = 0x93, .percent = 82};
     for (int phase = 0; phase < 8; phase++) {
         for (int flow = 0; flow < 4; flow++) {
             regs.charge = (uint8_t)(charges[phase].code | flows[flow].code);
-            power_battery_t b = power_decode(&regs, 123);
+            power_battery_t b = axp2101_decode(&regs);
             TEST_ASSERT_TRUE(b.valid);
             TEST_ASSERT_TRUE(b.usb_present);
             TEST_ASSERT_TRUE(b.battery_present);
@@ -61,12 +61,11 @@ test_decode(void) {
             TEST_ASSERT_EQUAL_INT(flows[flow].state, b.flow);
             TEST_ASSERT_EQUAL_UINT16(3987, b.battery_mv);
             TEST_ASSERT_EQUAL_UINT8(82, b.percent);
-            TEST_ASSERT_EQUAL_INT64(123, b.read_us);
         }
     }
     regs.status = 0;
     regs.charge = 0x22;
-    power_battery_t b = power_decode(&regs, 124);
+    power_battery_t b = axp2101_decode(&regs);
     TEST_ASSERT_TRUE(b.valid);
     TEST_ASSERT_FALSE(b.battery_present);
     TEST_ASSERT_FALSE(b.usb_present);
@@ -75,7 +74,7 @@ test_decode(void) {
     TEST_ASSERT_EQUAL_INT(POWER_CHARGE_UNKNOWN, b.charge);
     TEST_ASSERT_EQUAL_INT(POWER_FLOW_UNKNOWN, b.flow);
     regs.status = 0x20;
-    b = power_decode(&regs, 125);
+    b = axp2101_decode(&regs);
     TEST_ASSERT_TRUE(b.usb_present);
     TEST_ASSERT_FALSE(b.battery_present);
 }
@@ -124,13 +123,13 @@ test_reply(void) {
                          .percent = 82,
                          .charge = POWER_CHARGE_CC,
                          .flow = POWER_FLOW_CHARGING};
-    power_registers_t regs = {.status = 0x2a, .charge = 0x22};
-    console_battery_reply(line, sizeof line, &b, &regs);
+    power_raw_t raw = {.status = 0x2a, .charge = 0x22};
+    console_battery_reply(line, sizeof line, &b, &raw);
     TEST_ASSERT_EQUAL_STRING(
         "BATTERY valid=1 usb=1 battery=1 mv=3987 percent=82 charge=cc flow=charging reg00=0x2a reg01=0x22", line);
     b = (power_battery_t){0};
-    regs = (power_registers_t){0};
-    console_battery_reply(line, sizeof line, &b, &regs);
+    raw = (power_raw_t){0};
+    console_battery_reply(line, sizeof line, &b, &raw);
     TEST_ASSERT_EQUAL_STRING(
         "BATTERY valid=0 usb=0 battery=0 mv=0 percent=0 charge=unknown flow=unknown reg00=0x00 reg01=0x00", line);
 }
@@ -140,8 +139,8 @@ test_percent_clamp(void) {
     const uint8_t inputs[] = {AXP2101_PERCENT_MAX, AXP2101_PERCENT_MAX + 1, UINT8_MAX, 0};
     const uint8_t expected[] = {AXP2101_PERCENT_MAX, AXP2101_PERCENT_MAX, AXP2101_PERCENT_MAX, 0};
     for (size_t i = 0; i < sizeof inputs; i++) {
-        power_registers_t regs = {.status = AXP2101_BATTERY_PRESENT, .percent = inputs[i]};
-        TEST_ASSERT_EQUAL_UINT8(expected[i], power_decode(&regs, 0).percent);
+        axp2101_registers_t regs = {.status = AXP2101_BATTERY_PRESENT, .percent = inputs[i]};
+        TEST_ASSERT_EQUAL_UINT8(expected[i], axp2101_decode(&regs).percent);
     }
 }
 
@@ -151,22 +150,22 @@ test_vbat_bits(void) {
     const uint16_t max_mv = (AXP2101_VBAT_HIGH_MASK << AXP2101_VBAT_HIGH_SHIFT) | UINT8_MAX;
     const uint16_t expected[] = {max_mv, max_mv, max_mv, max_mv, UINT8_MAX, UINT8_MAX, UINT8_MAX};
     for (size_t i = 0; i < sizeof high; i++) {
-        power_registers_t regs = {.status = AXP2101_BATTERY_PRESENT, .vbat_high = high[i], .vbat_low = UINT8_MAX};
-        TEST_ASSERT_EQUAL_UINT16(expected[i], power_decode(&regs, 0).battery_mv);
+        axp2101_registers_t regs = {.status = AXP2101_BATTERY_PRESENT, .vbat_high = high[i], .vbat_low = UINT8_MAX};
+        TEST_ASSERT_EQUAL_UINT16(expected[i], axp2101_decode(&regs).battery_mv);
     }
 }
 
 static void
 test_status_bits(void) {
-    power_registers_t regs = {
+    axp2101_registers_t regs = {
         .status = AXP2101_BATTERY_PRESENT, .vbat_high = UINT8_MAX, .vbat_low = UINT8_MAX, .percent = UINT8_MAX};
-    power_battery_t b = power_decode(&regs, 0);
+    power_battery_t b = axp2101_decode(&regs);
     TEST_ASSERT_TRUE(b.battery_present);
     TEST_ASSERT_FALSE(b.usb_present);
     regs.status = (uint8_t)~(AXP2101_BATTERY_PRESENT | AXP2101_USB_GOOD);
     for (uint8_t code = 0; code <= AXP2101_CHARGE_MASK; code++) {
         regs.charge = code;
-        b = power_decode(&regs, 0);
+        b = axp2101_decode(&regs);
         TEST_ASSERT_FALSE(b.battery_present);
         TEST_ASSERT_FALSE(b.usb_present);
         TEST_ASSERT_EQUAL_UINT16(0, b.battery_mv);
@@ -208,8 +207,8 @@ test_reply_capacity_and_names(void) {
                          .percent = UINT8_MAX,
                          .charge = POWER_CHARGE_UNKNOWN,
                          .flow = POWER_FLOW_DISCHARGING};
-    power_registers_t regs = {.status = UINT8_MAX, .charge = UINT8_MAX};
-    console_battery_reply(line, sizeof line, &b, &regs);
+    power_raw_t raw = {.status = UINT8_MAX, .charge = UINT8_MAX};
+    console_battery_reply(line, sizeof line, &b, &raw);
     TEST_ASSERT_EQUAL_STRING(
         "BATTERY valid=1 usb=1 battery=1 mv=65535 percent=255 charge=unknown flow=discharging reg00=0xff reg01=0xff",
         line);
