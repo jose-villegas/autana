@@ -44,7 +44,10 @@ PACKAGE_FLAGS=""
 for package_include in "$MAIN_DIR"/../packages/*/include; do
     [ -d "$package_include" ] && PACKAGE_FLAGS="$PACKAGE_FLAGS -I $package_include"
 done
-FLAGS="-std=c11 -DNDEBUG -I $MAIN_DIR$PACKAGE_FLAGS -I $SAND_DIR"
+# The board's folder (board_config.h), as launcher/tools/build/packages.py reads it from Kconfig.
+BOARD_DIR=$(cd "$MAIN_DIR/../tools" &&
+    python3 -c 'from build.packages import board_include_dir; print(board_include_dir().as_posix())')
+FLAGS="-std=c11 -DNDEBUG -I $MAIN_DIR -I $BOARD_DIR$PACKAGE_FLAGS -I $SAND_DIR"
 
 if [ "${1:-}" = --inputs ]; then
     ROOT=$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)
