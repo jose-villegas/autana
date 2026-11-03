@@ -71,12 +71,21 @@ class StressCorners(unittest.TestCase):
     def test_every_preset_is_held_here(self):
         self.assertEqual({"open", "stack", "tiny-copies", "big-tris", "per-frame"}, set(preset_copies()))
 
+    def assert_all_in_view(self, c):
+        """Nothing culled: every cluster tested is kept, and no node is cut."""
+        self.assertEqual(0, c["nodes_cut"])
+        self.assertEqual(c["clusters_tested"], c["clusters_kept"])
+
+    def assert_draws_every_triangle(self, key):
+        c = self.counts(key)
+        self.assertGreater(c["triangles_submitted"], 0)
+        self.assertEqual(c["triangles_submitted"], c["triangles_covering"])
+
     def test_open_hides_and_culls_nothing(self):
         c = self.counts("open")
         self.assertGreater(c["clusters_drawn"], 0)
         self.assertEqual(0, c["clusters_hidden"])
-        self.assertEqual(0, c["nodes_cut"])
-        self.assertEqual(c["clusters_tested"], c["clusters_kept"])
+        self.assert_all_in_view(c)
 
     def test_stack_hides_most_of_what_it_keeps(self):
         c = self.counts("stack")
@@ -86,18 +95,13 @@ class StressCorners(unittest.TestCase):
     def test_tiny_copies_are_all_in_view(self):
         c = self.counts("tiny-copies")
         self.assertGreaterEqual(c["clusters_drawn"], preset_copies()["tiny-copies"])
-        self.assertEqual(0, c["nodes_cut"])
-        self.assertEqual(c["clusters_tested"], c["clusters_kept"])
+        self.assert_all_in_view(c)
 
     def test_big_tris_draws_every_triangle_it_submits(self):
-        c = self.counts("big-tris")
-        self.assertGreater(c["triangles_submitted"], 0)
-        self.assertEqual(c["triangles_submitted"], c["triangles_covering"])
+        self.assert_draws_every_triangle("big-tris")
 
     def test_per_frame_draws_the_whole_wave(self):
-        c = self.counts("per-frame")
-        self.assertGreater(c["triangles_submitted"], 0)
-        self.assertEqual(c["triangles_submitted"], c["triangles_covering"])
+        self.assert_draws_every_triangle("per-frame")
 
     def test_only_per_frame_moves_before_a_still_camera(self):
         before, after = self.frames("per-frame")
