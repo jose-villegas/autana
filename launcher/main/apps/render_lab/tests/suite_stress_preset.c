@@ -18,6 +18,7 @@
 #include "apps/render_lab/stress/stress_preset.h"
 #include "gfx/gfx.h"
 #include "image/pixel/rgb565.h"
+#include "math/scalar/math_const.h"
 #include "render/dynamic/r3d_dynamic_mesh.h"
 #include "render/r3d_span.h"
 
@@ -100,6 +101,11 @@ test_every_preset_mesh_is_whole_and_repeats(void) {
         TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[1], &b));
         TEST_ASSERT_EQUAL_INT(stress_vertex_count(p), a.vertex_count);
         TEST_ASSERT_EQUAL_INT(stress_triangle_count(p), a.triangle_count);
+        for (int t = 0; t < a.triangle_count; t++) {
+            for (int k = 0; k < 3; k++) {
+                TEST_ASSERT_LESS_THAN_INT(a.vertex_count, a.triangles[t][k]);
+            }
+        }
         TEST_ASSERT_TRUE(same_source(&a, &b));
         release();
     }
@@ -271,7 +277,8 @@ test_two_sided_is_a_closed_shape_drawn_from_both_sides(void) {
     TEST_ASSERT_EQUAL_INT(STRESS_SHAPE_CUBE, stress_presets[STRESS_TWO_SIDED].shape);
 }
 
-/* The widest per-channel spread of a triangle's corners, in RGB565 units, as the small-fill gate measures it. */
+/* The widest per-channel spread of a triangle's corners, in RGB565 units, as the small-fill gate measures it: its
+ * packing keeps each 8-bit channel's top bits, as RGB565() does. */
 static int
 corner_spread(const r3d_dynamic_source_t* s, int t) {
     unsigned low[3] = {UINT32_MAX, UINT32_MAX, UINT32_MAX};
@@ -292,19 +299,28 @@ corner_spread(const r3d_dynamic_source_t* s, int t) {
     return widest;
 }
 
-/* Noisy tiny: slivers big enough for the small-fill gate to test, each
- * spread past the loosest gate, so the test is paid for and always fails. */
+/* Noisy tiny: slivers the small-fill gate tests, each spread past the
+ * gate at every side a sliver can take, so the test is paid for and always
+ * fails. A fan's slivers run from its centre to two rim points
+ * 2pi/segments apart, so the narrowest, at 45 degrees, is still
+ * cos(pi/4 - pi/segments) of the radius across. */
 static void
 test_noisy_tiny_slivers_are_gated_and_fail_the_gate(void) {
     const stress_params_t* p = &stress_presets[STRESS_NOISY_TINY];
-    const float cut = stress_cut_px(p, DEFAULT_SHORT_PX);
-    TEST_ASSERT_GREATER_THAN_FLOAT((float)R3D_SPAN_SMALL_MAX_SIDE, cut);
-    TEST_ASSERT_LESS_OR_EQUAL_FLOAT((float)SMALL_FILL_CEILING_FAST, cut);
+    const float radius = stress_cut_px(p, DEFAULT_SHORT_PX);
+    const int widest = (int)ceilf(radius);
+    const int narrowest = (int)floorf(radius * cosf((MATH_PI / 4.0F) - (MATH_PI / (float)p->cuts)));
+    r3d_span_small_fill_t gate;
+    r3d_span_small_fill_resolve(&gate, SMALL_FILL_FAST);
+    TEST_ASSERT_GREATER_THAN_INT(R3D_SPAN_SMALL_MAX_SIDE, narrowest);
+    TEST_ASSERT_LESS_OR_EQUAL_INT(gate.ceiling, widest);
     fixture_begin(p);
     r3d_dynamic_source_t source;
     TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &source));
     for (int t = 0; t < source.triangle_count; t++) {
-        TEST_ASSERT_GREATER_THAN_INT(SMALL_FILL_GATE_FAST, corner_spread(&source, t));
+        for (int side = narrowest; side <= widest; side++) {
+            TEST_ASSERT_GREATER_THAN_INT(gate.spread[side], corner_spread(&source, t));
+        }
     }
     release();
 }

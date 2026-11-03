@@ -34,6 +34,10 @@ const stress_params_t stress_presets[STRESS_PRESET_COUNT] = {
  * top, so a triangle's corners differ as a lit surface's would. */
 static const uint8_t stress_colour_low[3] = {0x2A, 0x4F, 0x8C};
 static const uint8_t stress_colour_high[3] = {0xE8, 0xB0, 0x5A};
+/* A noisy copy's two colours, every channel as far apart as it goes: no
+ * small-fill gate passes corners this far apart. */
+static const uint8_t stress_noise_low[3] = {0, 0, 0};
+static const uint8_t stress_noise_high[3] = {UINT8_MAX, UINT8_MAX, UINT8_MAX};
 #define STRESS_BANDS          3
 /* A per-frame copy's wave: the bands run up it once a period, and push its
  * surface out along the normal by up to this much of a unit. */
@@ -70,9 +74,9 @@ shapes_of(const stress_params_t* p) {
         .plane = {.subdivisions = p->cuts},
         .sphere = {.segments = sphere_segments(p->cuts), .rings = p->cuts},
         .cube = {.subdivisions = p->cuts},
-        .cylinder = {.top_radius = 0.5F,
-                     .bottom_radius = 0.5F,
-                     .height = 1.0F,
+        .cylinder = {.top_radius = shape_span(STRESS_SHAPE_CYLINDER) / 2.0F,
+                     .bottom_radius = shape_span(STRESS_SHAPE_CYLINDER) / 2.0F,
+                     .height = shape_span(STRESS_SHAPE_CYLINDER),
                      .segments = p->cuts,
                      .stacks = STRESS_CYLINDER_STACKS},
     };
@@ -120,7 +124,7 @@ band(float up, float turns) {
     return 0.5F + (0.5F * cosf(MATH_TAU * ((up * (float)STRESS_BANDS) - turns)));
 }
 
-/* Banded by height, or for a noisy surface the low colour and the high by
+/* Banded by height, or for a noisy surface its low colour and its high by
  * turns: every triangle has two vertices in a row, so its corners differ by
  * the whole range. */
 static float
@@ -135,13 +139,16 @@ static void
 colour_and_wave(const stress_params_t* p, uint32_t t_ms, int vertex_count, const stress_buffers_t* b) {
     const bool per_frame = stress_per_frame(p);
     const float turns = per_frame ? (float)(t_ms % STRESS_WAVE_PERIOD_MS) / (float)STRESS_WAVE_PERIOD_MS : 0.0F;
+    const bool noisy = p->surface == STRESS_SURFACE_NOISY;
+    const uint8_t* low = noisy ? stress_noise_low : stress_colour_low;
+    const uint8_t* high = noisy ? stress_noise_high : stress_colour_high;
     for (int v = 0; v < vertex_count; v++) {
         const float s = shade(p, v, b->positions[v], turns);
         for (int c = 0; c < 3; c++) {
-            b->colors[v][c] =
-                (uint8_t)lroundf(stress_colour_low[c] + ((float)(stress_colour_high[c] - stress_colour_low[c]) * s));
+            b->colors[v][c] = (uint8_t)lroundf(low[c] + ((float)(high[c] - low[c]) * s));
         }
         if (per_frame) {
+            /* The position is the normal only on the unit sphere. */
             const vec3f_t normal = p->shape == STRESS_SHAPE_PLANE ? vec3f_unit_z() : b->positions[v];
             b->positions[v] = vec3f_add(b->positions[v], vec3f_scale(normal, STRESS_WAVE_HEIGHT * ((2.0F * s) - 1.0F)));
         }
