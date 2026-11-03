@@ -1,5 +1,5 @@
-"""board_alarm raises one outage issue once, clears it, and reads recovery evidence from night manifests and
-board CI runs, and stuck-job evidence from runs."""
+"""board_alarm keeps one issue per alarm kind, raised once and cleared, and reads recovery evidence from night
+manifests and board CI runs, stuck-job evidence from runs, and Pages evidence from its builds and deploys."""
 import io
 import json
 import os
@@ -10,6 +10,7 @@ import unittest
 import zipfile
 from datetime import datetime, timedelta, timezone
 from unittest import mock
+from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlsplit
 
 import yaml
@@ -25,8 +26,11 @@ class Repository:
     def __init__(self):
         self.calls = []
         self.issues = []
+        self.comments = []
         self.runs = {}
         self.jobs = {}
+        self.annotations = {}
+        self.deployments = []
         self.active = True
 
     def __call__(self, method, path, body=None, **kwargs):
@@ -35,8 +39,22 @@ class Repository:
         if route == '/issues':
             if method == 'GET':
                 return self.issues
-            self.issues = [{'number': 7}]
+            self.issues = [{'number': 7, 'body': body['body']}]
             return self.issues[0]
+        if route == '/issues/7/comments':
+            if method == 'GET':
+                return self.comments
+            self.comments.append(body)
+            return body
+        if route.startswith('/labels/'):
+            raise HTTPError(path, 404, 'Not Found', None, None)
+        if route.startswith('/check-runs/'):
+            return self.annotations.get(route, [])
+        if route == '/deployments':
+            return [dict(id=number, created_at=created.isoformat()) for number, created, _ in self.deployments]
+        if route.startswith('/deployments/'):
+            return [dict(state=state) for number, _, states in self.deployments
+                    if route == f'/deployments/{number}/statuses' for state in states]
         if route == '/actions/workflows/' + alarm.NIGHTLY_WORKFLOW:
             return {'state': 'active' if self.active else 'disabled_manually'}
         if route.endswith('/runs'):
@@ -63,25 +81,39 @@ def board_job(status='completed', age=timedelta(), conclusion='success'):
 
 class BoardAlarmTests(unittest.TestCase):
     def test_raise_creates_once_then_comments(self):
+        for kind, (label, title) in alarm.KINDS.items():
+            request = Repository()
+            with mock.patch.dict(os.environ, GITHUB_WORKFLOW='Board CI', GITHUB_JOB='board'):
+                alarm.raise_alarm(kind, 'broken', 'https://run', request)
+                alarm.raise_alarm(kind, 'still broken', 'https://run2', request)
+            writes = [item for item in request.calls if item[0] == 'POST']
+            issues = [item for item in writes if item[1] == '/issues']
+            self.assertEqual(len(issues), 1)
+            self.assertEqual(issues[0][2]['title'], title)
+            self.assertEqual(issues[0][2]['labels'], [label, alarm.ALARM_LABEL])
+            self.assertIn('Board CI / board', issues[0][2]['body'])
+            self.assertEqual([item[2]['name'] for item in writes if item[1] == '/labels'], [label, alarm.ALARM_LABEL])
+            self.assertEqual(writes[-1][1], '/issues/7/comments')
+            self.assertIn('still broken', writes[-1][2]['body'])
+            self.assertIn('https://run2', writes[-1][2]['body'])
+            self.assertIn(f'labels={label}', request.calls[0][1])
+
+    def test_raise_says_the_same_thing_once(self):
+        # A check every few hours finds the same outage each time: the issue already says it.
         request = Repository()
-        with mock.patch.dict(os.environ, GITHUB_WORKFLOW='Board CI', GITHUB_JOB='board'):
-            alarm.raise_alarm('broken', 'https://run', request)
-            alarm.raise_alarm('still broken', 'https://run2', request)
-        writes = [item for item in request.calls if item[0] == 'POST']
-        issues = [item for item in writes if item[1] == '/issues']
-        self.assertEqual(len(issues), 1)
-        self.assertEqual(issues[0][2]['title'], 'Board CI is down')
-        self.assertEqual(issues[0][2]['labels'], [alarm.LABEL])
-        self.assertIn('Board CI / board', issues[0][2]['body'])
-        self.assertEqual(writes[-1][1], '/issues/7/comments')
-        self.assertIn('still broken', writes[-1][2]['body'])
-        self.assertIn('https://run2', writes[-1][2]['body'])
+        for url in ('https://run1', 'https://run2'):
+            alarm.raise_alarm('down', 'offline', url, request)
+        alarm.raise_alarm('down', 'missing', 'https://run3', request)
+        alarm.raise_alarm('down', 'missing', 'https://run4', request)
+        alarm.raise_alarm('down', 'offline', 'https://run5', request)
+        self.assertEqual([comment['body'].split('\n')[0] for comment in request.comments], ['missing', 'offline'])
+        self.assertTrue(request.comments[-1]['body'].endswith('https://run5'))
 
     def test_clear_comments_and_closes_or_noops(self):
         for opened in (False, True):
             request = Repository()
             request.issues = [{'number': 7}] if opened else []
-            alarm.clear_alarm('https://run', request)
+            alarm.clear_alarm('red', 'https://run', request)
             self.assertEqual(request.calls[1:], [
                 ('POST', '/issues/7/comments', {'body': 'Recovered: https://run'}),
                 ('PATCH', '/issues/7', {'state': 'closed'})] if opened else [])
@@ -202,14 +234,17 @@ class BoardAlarmTests(unittest.TestCase):
     def test_missing_boards(self):
         self.assertEqual(alarm.missing_boards(['2124', 'abcd'], ['abcd', 'eeee']), ['2124'])
 
-    def test_unreachable_host_leaves_its_boards_unchecked(self):
+    def test_missing_boards_raise_and_name_the_hosts_not_answering(self):
         with mock.patch.object(alarm, 'last_board_success', return_value=NOW), \
                 mock.patch.object(alarm, 'stuck_board_jobs', return_value=[]), \
                 mock.patch('sys.stdout', new_callable=io.StringIO) as output:
-            self.assertEqual(alarm.check(Repository(), NOW, ['20E8', '2124'], ['2124'], ['book2']), [])
+            self.assertEqual(alarm.check(Repository(), NOW, ['20E8', '2124'], ['2124'], ['book2']),
+                             ['Boards missing from USB: 20E8; board hosts not answering: book2'])
             self.assertEqual(alarm.check(Repository(), NOW, ['20E8', '2124'], ['2124']),
                              ['Boards missing from USB: 20E8'])
-        self.assertIn('not checked: 20E8', output.getvalue())
+            # A silent host with no board of the recent nights is only noted.
+            self.assertEqual(alarm.check(Repository(), NOW, ['2124'], ['2124'], ['book2']), [])
+        self.assertIn('not answering, with no board of the recent nights: book2', output.getvalue())
 
     def test_check_success_window(self):
         for age, expected in [(alarm.SUCCESS_WINDOW, False),
@@ -218,15 +253,18 @@ class BoardAlarmTests(unittest.TestCase):
                     mock.patch.object(alarm, 'stuck_board_jobs', return_value=[]):
                 self.assertEqual(bool(alarm.check(Repository(), NOW, [], [])), expected)
 
-    def test_latest_lanes_and_usb_use_shared_short_id(self):
+    def test_fleet_is_the_recent_nights_lanes_and_usb_uses_shared_short_id(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for board, night in [('2124', '2026-10-23-1900'), ('abcd', '2026-10-23-1900'),
-                                 ('eeee', '2026-10-22-1900')]:
+            # A board that sat out last night is still expected; one gone FLEET_NIGHTS nights no longer is.
+            nights = [f'2026-10-{day}-1900' for day in range(20, 24)]
+            for board, night in [('2124', nights[-1]), ('abcd', nights[-1]), ('2124', nights[-2]),
+                                 ('eeee', nights[-alarm.FLEET_NIGHTS]),
+                                 ('ffff', nights[-alarm.FLEET_NIGHTS - 1])]:
                 manifest = root / 'scoped' / board / night / 'night.json'
                 manifest.parent.mkdir(parents=True)
                 manifest.write_text('{}')
-            self.assertEqual(alarm.latest_lanes(root), ['2124', 'abcd'])
+            self.assertEqual(alarm.fleet(root), ['2124', 'abcd', 'eeee'])
             devices = root / 'devices.json'
             devices.write_text(json.dumps({'boards': [
                 {'board': 'AA:BB:CC:DD:21:24', 'port': 'COM3'},
@@ -326,10 +364,10 @@ class BoardAlarmTests(unittest.TestCase):
                         self.assertFalse(reason.exists())
             with mock.patch.object(alarm, 'raise_alarm') as raised, \
                     mock.patch.object(alarm, 'clear_alarm') as cleared:
-                self.assertEqual(alarm.main(['raise', '--reason', 'failed']), 0)
-                self.assertEqual(alarm.main(['clear']), 0)
-                raised.assert_called_once()
-                cleared.assert_called_once()
+                self.assertEqual(alarm.main(['raise', '--kind', 'red', '--reason', 'failed']), 0)
+                self.assertEqual(alarm.main(['clear', '--kind', 'red']), 0)
+                raised.assert_called_once_with('red', 'failed', 'https://github.com/owner/repo/actions/runs/42')
+                cleared.assert_called_once_with('red', 'https://github.com/owner/repo/actions/runs/42')
 
     def test_cli_enabled_guard_is_called_once(self):
         request = Repository()
@@ -349,24 +387,86 @@ class BoardAlarmTests(unittest.TestCase):
                 if text is not None:
                     reason.write_text(text)
                 with mock.patch.object(alarm, 'raise_alarm') as raised:
-                    self.assertEqual(alarm.main(['raise', '--reason-file', str(reason)]), 0)
-                    raised.assert_called_once_with(text or alarm.FAILURE_REASON, 'logs')
-            with mock.patch('sys.stderr', new_callable=io.StringIO), self.assertRaises(SystemExit) as error:
-                alarm.main(['raise', '--reason', 'failed', '--reason-file', str(reason)])
-            self.assertEqual(error.exception.code, 2)
+                    self.assertEqual(alarm.main(['raise', '--kind', 'down', '--reason-file', str(reason)]), 0)
+                    raised.assert_called_once_with('down', text or alarm.FAILURE_REASON, 'logs')
+            for wrong in (['--kind', 'down', '--reason', 'failed', '--reason-file', str(reason)],
+                          ['--reason', 'failed'], ['--kind', 'other', '--reason', 'failed']):
+                with mock.patch('sys.stderr', new_callable=io.StringIO), self.assertRaises(SystemExit) as error:
+                    alarm.main(['raise', *wrong])
+                self.assertEqual(error.exception.code, 2)
+
+    def test_raise_with_errors_quotes_the_failed_jobs_error_annotations(self):
+        request = Repository()
+        request.jobs['/actions/runs/42/jobs'] = [dict(id=1, name='nightly', conclusion='failure'),
+                                                 dict(id=2, name='docs-eval', conclusion='success')]
+        request.annotations['/check-runs/1/annotations'] = [
+            dict(annotation_level='failure', message=f'lane 2124: self-test FAIL test_{n}') for n in range(30)] + [
+            dict(annotation_level='warning', message='slow')]
+        self.assertEqual(alarm.run_errors(42, request),
+                         [f'nightly: lane 2124: self-test FAIL test_{n}' for n in range(alarm.ERROR_LINES)])
+        self.assertFalse(any('/check-runs/2/' in path for _, path, _ in request.calls))
+        with mock.patch.object(alarm, 'call', request), mock.patch.object(alarm, 'run_url', return_value='logs'), \
+                mock.patch.dict(os.environ, GITHUB_RUN_ID='42'), mock.patch.object(alarm, 'raise_alarm') as raised:
+            self.assertEqual(alarm.main(['raise', '--kind', 'red', '--errors', '--reason', 'nightly failed']), 0)
+        reason = raised.call_args.args[1].split('\n')
+        self.assertEqual(reason[:2], ['nightly failed', '- nightly: lane 2124: self-test FAIL test_0'])
+        self.assertEqual(len(reason), 1 + alarm.ERROR_LINES)
+
+    def test_pages_is_down_on_a_failed_main_build_or_no_recent_deploy(self):
+        runs = f'/actions/workflows/{alarm.PAGES_WORKFLOW}/runs'
+        build = lambda event, conclusion: dict(event=event, conclusion=conclusion, html_url=f'https://{conclusion}')
+        fresh, stale = NOW - alarm.PAGES_STALE, NOW - alarm.PAGES_STALE - timedelta(seconds=1)
+        for builds, deployments, expected in [
+                # Pull requests and cancelled pushes say nothing about the site.
+                ([build('pull_request', 'failure'), build('push', 'cancelled'), build('push', 'success')],
+                 [(1, fresh, ['inactive'])], []),
+                ([build('push', 'failure'), build('schedule', 'success')], [(1, fresh, ['success'])],
+                 ['Pages build failure: https://failure']),
+                # A deploy that never went live does not count.
+                ([build('schedule', 'success')], [(2, NOW, ['failure']), (1, stale, ['inactive'])],
+                 [f'No Pages deploy within {alarm.PAGES_STALE}; the last went live '
+                  f'{stale:%Y-%m-%d %H:%M} UTC']),
+                ([], [], [f'No Pages deploy within {alarm.PAGES_STALE}'])]:
+            with self.subTest(builds=builds, deployments=deployments):
+                request = Repository()
+                request.runs[runs] = builds
+                request.deployments = deployments
+                self.assertEqual(alarm.pages_problems(request, NOW), expected)
+                query = parse_qs(urlsplit(next(path for _, path, _ in request.calls if path.startswith(runs))).query)
+                self.assertEqual((query['branch'], query['status']), (['main'], ['completed']))
+
+    def test_cli_pages_raises_or_clears_the_pages_alarm(self):
+        for problems in ([], ['Pages build failure: https://failure', 'No Pages deploy within 30:00:00']):
+            with mock.patch.object(alarm, 'pages_problems', return_value=problems), \
+                    mock.patch.object(alarm, 'run_url', return_value='logs'), \
+                    mock.patch.object(alarm, 'raise_alarm') as raised, \
+                    mock.patch.object(alarm, 'clear_alarm') as cleared:
+                self.assertEqual(alarm.main(['pages']), 0)
+            if problems:
+                raised.assert_called_once_with('pages', '\n'.join(problems), 'logs')
+                cleared.assert_not_called()
+            else:
+                cleared.assert_called_once_with('pages', 'logs')
+                raised.assert_not_called()
 
     def test_workflow_has_one_reporting_path_without_shared_check_concurrency(self):
         root = Path(__file__).resolve().parents[3] / '.github/workflows'
         workflow = yaml.safe_load((root / 'board-health.yml').read_text())
         check = workflow['jobs']['check']
         self.assertNotIn('concurrency', check)
-        commands = [step for step in check['steps'] if 'board_alarm.py' in step.get('run', '')]
+        commands = [step for step in check['steps'] if 'board_alarm.py' in step.get('run', '')
+                    and 'board_alarm.py pages' not in step['run']]
         self.assertEqual(len(commands), 3)
         for step in commands:
             self.assertIn('--reason-file "$RUNNER_TEMP/board-alarm-reason"', step['run'])
         reports = [step for step in commands if 'board_alarm.py raise ' in step['run']]
         self.assertEqual(len(reports), 1)
         self.assertEqual(reports[0]['if'], 'failure()')
+        self.assertIn('--kind down', reports[0]['run'])
+        # Pages is checked whether or not the boards are.
+        pages = [step for step in check['steps'] if 'board_alarm.py pages' in step.get('run', '')]
+        self.assertEqual([step.get('if') for step in pages], [None])
+        self.assertIn('deployments', check['permissions'])
         for name in ('nightly-perf.yml', 'board-ci.yml'):
             job = yaml.safe_load((root / name).read_text())['jobs']['alarm']
             self.assertEqual(job['concurrency']['group'], 'board-ci-alarm')
@@ -396,6 +496,28 @@ class BoardAlarmTests(unittest.TestCase):
                          "needs.board.outputs.boards_ran != 'true')")
         self.assertEqual(conditions[alarm.CLEAR_STEP], "(needs.board.result == 'success' || "
                          "needs.board.result == 'failure') && needs.board.outputs.boards_ran == 'true'")
+
+    def test_red_alarm_follows_main_runs_whose_boards_ran(self):
+        root = Path(__file__).resolve().parents[3] / '.github/workflows'
+        for name, job in (('nightly-perf.yml', 'nightly'), ('board-ci.yml', 'board')):
+            steps = yaml.safe_load((root / name).read_text())['jobs']['alarm']['steps']
+            conditions = {step['name']: step['if'] for step in steps if 'if' in step}
+            ran = f"needs.{job}.outputs.boards_ran == 'true'"
+            self.assertEqual(conditions['Raise the board-ci-red alarm'],
+                             f"github.ref == 'refs/heads/main' && needs.{job}.result == 'failure' && {ran}")
+            self.assertEqual(conditions['Clear the board-ci-red alarm'],
+                             f"github.ref == 'refs/heads/main' && needs.{job}.result == 'success' && {ran}")
+            kinds = [step['run'].split('--kind ')[1].split()[0] for step in steps if 'board_alarm.py' in step.get('run', '')]
+            self.assertEqual(kinds, ['down', 'down', 'red', 'red'])
+
+    def test_pages_trigger_raises_on_a_failed_build_and_clears_on_a_built_one(self):
+        workflow = Path(__file__).resolve().parents[3] / '.github/workflows/pages-trigger.yml'
+        job = yaml.safe_load(workflow.read_text())['jobs']['alarm']
+        self.assertEqual(job['needs'], 'pages')
+        self.assertIn("github.event_name != 'pull_request'", job['if'])
+        runs = {step['if']: step['run'] for step in job['steps'] if 'if' in step}
+        self.assertIn('raise --kind pages', runs["needs.pages.result == 'failure'"])
+        self.assertIn('clear --kind pages', runs["needs.pages.result == 'success'"])
 
     def test_cli_ran_needs_both_board_steps_stages_whatever_their_tests_reported(self):
         selftest = capture_ended_line('selftest', CAPTURE_COMPLETE)

@@ -2,7 +2,8 @@ name: Board health
 
 on:
   schedule:
-    - cron: '0 8 * * *'
+    # Every 3 h, so an outage is raised the day it starts; an alarm that still says the same is not repeated.
+    - cron: '0 */3 * * *'
   workflow_dispatch:
 
 concurrency:
@@ -59,6 +60,7 @@ jobs:
       issues: write
       actions: read
       contents: read
+      deployments: read
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -66,6 +68,9 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
+
+      - name: Check Pages builds and deploys
+        run: python3 scripts/ci/board_alarm.py pages
 
       - name: Wait for the USB probe unless the night is running
         id: probe
@@ -99,4 +104,4 @@ jobs:
 
       - name: Report health check failures
         if: failure()
-        run: python3 scripts/ci/board_alarm.py raise --reason-file "$RUNNER_TEMP/board-alarm-reason"
+        run: python3 scripts/ci/board_alarm.py raise --kind down --reason-file "$RUNNER_TEMP/board-alarm-reason"

@@ -41,3 +41,34 @@ jobs:
     uses: jose-villegas/autana/.github/workflows/web-check.yml@feature/web-pages
     with:
       ref: ${{ github.sha }}
+
+  # A failed main build of the site raises the pages-down alarm; a built one clears it. Board health also raises
+  # it when the site has not deployed for a while.
+  alarm:
+    needs: pages
+    if: always() && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    concurrency:
+      group: pages-alarm
+      cancel-in-progress: false
+    permissions:
+      issues: write
+      actions: read
+      checks: read
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          lfs: false
+          persist-credentials: false
+
+      - name: Raise the pages-down alarm
+        if: needs.pages.result == 'failure'
+        run: python3 scripts/ci/board_alarm.py raise --kind pages --errors --reason "Pages build failed on main"
+
+      - name: Clear the pages-down alarm
+        if: needs.pages.result == 'success'
+        run: python3 scripts/ci/board_alarm.py clear --kind pages

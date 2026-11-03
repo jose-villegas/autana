@@ -1,7 +1,8 @@
-"""Keep one board CI outage issue and check runner, USB and recovery evidence."""
+"""Keep one GitHub issue per CI alarm kind open while it holds, and check runner, USB, recovery and Pages evidence."""
 import argparse
 from datetime import datetime, timedelta, timezone
 import io
+import itertools
 import json
 import os
 from pathlib import Path
@@ -19,7 +20,11 @@ from device_capture import board_steps_completed
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'launcher/tools/perf'))
 from nightly.lnt import night_ran
 
-LABEL = 'board-ci-down'
+# Every alarm issue carries ALARM_LABEL beside its kind's own label, so one query lists them all.
+ALARM_LABEL = 'ci-alarm'
+KINDS = {'down': ('board-ci-down', 'Board CI is down'),
+         'red': ('board-ci-red', 'Board tests are red on main'),
+         'pages': ('pages-down', 'Pages is down')}
 QUEUED_LIMIT = timedelta(minutes=30)
 SUCCESS_WINDOW = timedelta(hours=24)
 NIGHTLY_WORKFLOW = 'nightly-perf.yml'
@@ -31,33 +36,47 @@ DEVICES_FILE = 'devices.json'
 ARTIFACT_PREFIX = 'board-health-devices'
 POLL_SECONDS = 30
 FAILURE_REASON = 'Board health check failed; see the job logs'
+# The boards expected on USB: those that ran a lane in any of the last FLEET_NIGHTS nights.
+FLEET_NIGHTS = 3
+# The run's error annotations an alarm quotes at most; the logs hold the rest.
+ERROR_LINES = 20
+PAGES_WORKFLOW = 'pages-trigger.yml'
+PAGES_ENVIRONMENT = 'github-pages'
+# The daily Pages run plus the lateness GitHub's scheduler has shown (6 h on 10-31).
+PAGES_STALE = timedelta(hours=30)
 
 
-def open_alarm(request=call):
-    return next((issue['number'] for issue in pages(
-        f'/issues?state=open&labels={LABEL}', None, request) if 'pull_request' not in issue), None)
+def open_alarm(kind, request=call):
+    return next((issue for issue in pages(f'/issues?state=open&labels={KINDS[kind][0]}', None, request)
+                 if 'pull_request' not in issue), None)
 
 
-def raise_alarm(reason, run_url, request=call):
+def raise_alarm(kind, reason, run_url, request=call):
+    """Open the kind's issue, or comment on the open one unless its last word already says the same."""
+    label, title = KINDS[kind]
     workflow = os.environ.get('GITHUB_WORKFLOW', 'Board health')
     job = os.environ.get('GITHUB_JOB', 'check')
-    body = f'{reason}\n\nWorkflow/job: {workflow} / {job}\n\nLogs: {run_url}'
-    number = open_alarm(request)
-    if number is not None:
-        request('POST', f'/issues/{number}/comments', {'body': body})
+    said = f'{reason}\n\nWorkflow/job: {workflow} / {job}\n\nLogs: '
+    issue = open_alarm(kind, request)
+    if issue is not None:
+        comments = list(pages(f"/issues/{issue['number']}/comments", None, request))
+        if not (comments[-1]['body'] if comments else issue['body'] or '').startswith(said):
+            request('POST', f"/issues/{issue['number']}/comments", {'body': said + run_url})
         return
-    try:
-        request('GET', f'/labels/{LABEL}')
-    except HTTPError as error:
-        if error.code != 404:
-            raise
-        request('POST', '/labels', {'name': LABEL})
-    request('POST', '/issues', {'title': 'Board CI is down', 'labels': [LABEL], 'body': body})
+    for name in (label, ALARM_LABEL):
+        try:
+            request('GET', f'/labels/{name}')
+        except HTTPError as error:
+            if error.code != 404:
+                raise
+            request('POST', '/labels', {'name': name})
+    request('POST', '/issues', {'title': title, 'labels': [label, ALARM_LABEL], 'body': said + run_url})
 
 
-def clear_alarm(run_url, request=call):
-    number = open_alarm(request)
-    if number is not None:
+def clear_alarm(kind, run_url, request=call):
+    issue = open_alarm(kind, request)
+    if issue is not None:
+        number = issue['number']
         request('POST', f'/issues/{number}/comments', {'body': f'Recovered: {run_url}'})
         request('PATCH', f'/issues/{number}', {'state': 'closed'})
 
@@ -137,19 +156,49 @@ def check(request, now, lanes, plugged, unreachable=(), nights=()):
         problems.append(f'No board success within {SUCCESS_WINDOW}')
     problems.extend(stuck_board_jobs(request, now))
     missing = missing_boards(lanes, plugged)
-    if missing and unreachable:
-        # A board on a host that did not answer may still be plugged in there.
-        print('::notice::Board hosts not answering: ' + ', '.join(unreachable)
-              + '; not checked: ' + ', '.join(missing))
-    elif missing:
-        problems.append('Boards missing from USB: ' + ', '.join(missing))
+    if missing:
+        silent = f"; board hosts not answering: {', '.join(unreachable)}" if unreachable else ''
+        problems.append('Boards missing from USB: ' + ', '.join(missing) + silent)
+    elif unreachable:
+        print('::notice::Board hosts not answering, with no board of the recent nights: ' + ', '.join(unreachable))
     return problems
 
 
-def latest_lanes(directory):
+def run_errors(run, request=call):
+    """The error annotations of the run's failed jobs, at most ERROR_LINES of them."""
+    lines = (f"{job['name']}: {note['message']}"
+             for job in pages(f'/actions/runs/{run}/jobs', 'jobs', request) if job.get('conclusion') == 'failure'
+             for note in pages(f"/check-runs/{job['id']}/annotations", None, request)
+             if note.get('annotation_level') == 'failure')
+    return list(itertools.islice(lines, ERROR_LINES))
+
+
+def last_deploy(request):
+    """When Pages last deployed: the newest github-pages deployment that went live, or None."""
+    return next((stamp(deployment['created_at'])
+                 for deployment in pages(f'/deployments?environment={PAGES_ENVIRONMENT}', None, request)
+                 if any(status['state'] in ('success', 'inactive') for status in
+                        pages(f"/deployments/{deployment['id']}/statuses", None, request))), None)
+
+
+def pages_problems(request, now):
+    """Why Pages is down: the latest finished main build of the site failed, or nothing deployed for PAGES_STALE."""
+    run = next((run for run in pages(f'/actions/workflows/{PAGES_WORKFLOW}/runs?branch=main&status=completed',
+                                     'workflow_runs', request)
+                if run['event'] != 'pull_request' and run['conclusion'] != 'cancelled'), None)
+    problems = [f"Pages build {run['conclusion']}: {run['html_url']}"] if run and run['conclusion'] != 'success' else []
+    deployed = last_deploy(request)
+    if deployed is None or now - deployed > PAGES_STALE:
+        problems.append(f'No Pages deploy within {PAGES_STALE}'
+                        + (f'; the last went live {deployed:%Y-%m-%d %H:%M} UTC' if deployed else ''))
+    return problems
+
+
+def fleet(directory):
+    """The boards that ran a lane in any of the last FLEET_NIGHTS nights on perf-data."""
     manifests = list((Path(directory) / 'scoped').glob('*/*/night.json'))
-    latest = max((path.parent.name for path in manifests), default=None)
-    return sorted(path.parent.parent.name for path in manifests if path.parent.name == latest)
+    recent = sorted({path.parent.name for path in manifests})[-FLEET_NIGHTS:]
+    return sorted({path.parent.parent.name for path in manifests if path.parent.name in recent})
 
 
 def read_plugged(path):
@@ -204,10 +253,14 @@ def probe_devices(destination, reason_file, request=call, clock=time.monotonic, 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='command', required=True)
-    reason = commands.add_parser('raise').add_mutually_exclusive_group(required=True)
+    raising = commands.add_parser('raise')
+    raising.add_argument('--kind', required=True, choices=KINDS)
+    raising.add_argument('--errors', action='store_true', help="quote this run's error annotations")
+    reason = raising.add_mutually_exclusive_group(required=True)
     reason.add_argument('--reason')
     reason.add_argument('--reason-file', type=Path)
-    commands.add_parser('clear')
+    commands.add_parser('clear').add_argument('--kind', required=True, choices=KINDS)
+    commands.add_parser('pages', help='raise or clear the pages alarm from the site\'s builds and deploys')
     health = commands.add_parser('check')
     health.add_argument('--lanes-from', required=True, type=Path)
     health.add_argument('--devices', required=True, type=Path)
@@ -225,9 +278,16 @@ def main(argv=None):
                 reason = args.reason_file.read_text(encoding='utf-8')
             except FileNotFoundError:
                 reason = FAILURE_REASON
-        raise_alarm(reason, run_url())
+        errors = run_errors(os.environ['GITHUB_RUN_ID'], call) if args.errors else []
+        raise_alarm(args.kind, reason + ''.join(f'\n- {line}' for line in errors), run_url())
     elif args.command == 'clear':
-        clear_alarm(run_url())
+        clear_alarm(args.kind, run_url())
+    elif args.command == 'pages':
+        problems = pages_problems(call, datetime.now(timezone.utc))
+        if problems:
+            raise_alarm('pages', '\n'.join(problems), run_url())
+        else:
+            clear_alarm('pages', run_url())
     elif args.command == 'ran':
         lines = args.log.read_text(encoding='utf-8', errors='replace').splitlines() if args.log.is_file() else []
         print(f'boards_ran={str(board_steps_completed(lines)).lower()}')
@@ -236,7 +296,7 @@ def main(argv=None):
     else:
         if not nights_enabled(call):
             return 0
-        problems = check(call, datetime.now(timezone.utc), latest_lanes(args.lanes_from),
+        problems = check(call, datetime.now(timezone.utc), fleet(args.lanes_from),
                          *read_plugged(args.devices), night_ends(args.lanes_from))
         if problems:
             reason = '\n'.join(problems)

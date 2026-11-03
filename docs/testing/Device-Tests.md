@@ -112,9 +112,17 @@ captures, failed runs included.
 - It is not a required check. If no board frees up within the wait, the job succeeds with a neutral skipped notice.
 - The [nightly scoped performance](../../launcher/tools/perf/README.md#nightly-scoped-chain) workflow's designated board also runs Board CI's steps (`scripts/ci/board-steps.sh`: self-test, then console tests) in the same overnight hold.
 
-The `board-ci-down` issue means the boards could not run: a lane that did not start, hung or stopped early, a self-test capture or console tests that never completed, a board missing from USB, a board job stuck in the queue, or a crashed or cancelled job.
-A night whose lanes all ran to the end, or a Board CI run whose board did, clears it even when tests failed; those, such as a scene over its frame-time ceiling, leave that run red.
-Disabling the nightly workflow pauses health checks.
+CI alarms are GitHub issues labelled `ci-alarm`, one open issue per kind; each closes on the next run that shows recovery.
+
+| Label | Raised when | Cleared by |
+|---|---|---|
+| `board-ci-down` | the boards could not run: a lane that did not start, hung or stopped early, a self-test capture or console tests that never completed, a board of the last three nights missing from USB or on a host that does not answer, a board job stuck in the queue, or a crashed or cancelled job | a night whose lanes all ran to the end, or a Board CI run whose board did, whatever their tests reported |
+| `board-ci-red` | a nightly or Board CI run on main failed with its boards up: a failed test, such as a scene over its frame-time ceiling, a failed build, or a lane that ended past its deadline | the next such run on main that passes |
+| `pages-down` | a main build of the Pages site failed, or nothing deployed for 30 hours | the next main build that deploys |
+
+The issue quotes the run's errors.
+[Board health](../../.github/workflows/board-health.yml) checks the boards, the runner queue and Pages every three hours, and comments only when what it finds has changed.
+Disabling the nightly workflow pauses the board checks.
 
 ## Console recipes and lifecycle coverage
 
