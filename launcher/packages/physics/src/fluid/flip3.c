@@ -821,6 +821,59 @@ sample_lines(const field_work_t* w, int from, int to) {
 #define FIELD_NEAREST_LEAST (1.0F - (0.5F * FIELD_NEAREST_REACH))
 _Static_assert(FIELD_NEAREST_LEAST > FLIP3_SURFACE_LEVEL, "a particle's nearest sample is inside the surface");
 
+/* A particle in the field: the lower corner of the field cell it sits in,
+ * and each axis's distance in samples to its lower and upper sample. */
+typedef struct {
+    int lo[3];
+    float off[3][2];
+} field_spot_t;
+
+static field_spot_t
+particle_spot(const field_work_t* w, const float inv_step[3], vec3f_t p) {
+    const float at[3] = {p.x - w->f->h.x, p.y - w->f->h.y, p.z - w->f->h.z};
+    field_spot_t s;
+    for (int a = 0; a < 3; a++) {
+        /* Sample s sits at h + (s - 0.5) steps in grid coordinates. */
+        const float u = (at[a] * inv_step[a]) + 0.5F;
+        s.lo[a] = (int)u;
+        s.off[a][0] = u - (float)s.lo[a];
+        s.off[a][1] = 1.0F - s.off[a][0];
+    }
+    return s;
+}
+
+static int
+field_index(const field_work_t* w, const int at[3]) {
+    return (((at[0] * w->d[1]) + at[1]) * w->d[2]) + at[2];
+}
+
+/* Inside already, as nearly every particle in bulk water is: its nearest
+ * sample reads above the surface. */
+static bool
+particle_inside(const field_work_t* w, const float inv_step[3], vec3f_t p) {
+    const float at[3] = {p.x - w->f->h.x, p.y - w->f->h.y, p.z - w->f->h.z};
+    int near[3];
+    for (int a = 0; a < 3; a++) {
+        /* Sample s sits at h + (s - 0.5) steps, so the nearest rounds. */
+        near[a] = (int)((at[a] * inv_step[a]) + 1.0F);
+    }
+    return w->out[field_index(w, near)] > FLIP3_SURFACE_LEVEL;
+}
+
+/* Raises an inside sample `far` samples (Chebyshev) from the particle. */
+static void
+show_sample(const field_work_t* w, const int at[3], float far) {
+    for (int a = 0; a < 3; a++) {
+        if (at[a] < 1 || at[a] > w->d[a] - 2) {
+            return;
+        }
+    }
+    const float least = far <= FIELD_NEAREST_REACH ? FIELD_NEAREST_LEAST : 0.0F;
+    const float shown = 1.0F - far > least ? 1.0F - far : least;
+    float* const v = &w->out[field_index(w, at)];
+    *v = *v > shown ? *v : shown;
+}
+
 /* Every particle shows as a sample of water, after the smoothing: the
  * samples of the field cell it sits in read at least 1 less their
  * Chebyshev distance from it in samples, and the nearest at least
@@ -832,55 +885,21 @@ _Static_assert(FIELD_NEAREST_LEAST > FLIP3_SURFACE_LEVEL, "a particle's nearest 
  * them all. */
 static void
 show_particles(const field_work_t* w) {
-    const flip3_t* f = w->f;
-    const int sx = w->d[0];
-    const int sy = w->d[1];
-    const int sz = w->d[2];
     const float inv_step[3] = {1.0F / w->step[0], 1.0F / w->step[1], 1.0F / w->step[2]};
-    const float h[3] = {f->h.x, f->h.y, f->h.z};
-    float* const out = w->out;
-    for (int i = 0; i < f->count; i++) {
-        const float p[3] = {f->pos[i].x, f->pos[i].y, f->pos[i].z};
-        int lo[3];
-        float off[3][2]; /* each axis's distance in samples to its lower and upper sample */
-        for (int a = 0; a < 3; a++) {
-            /* Sample s sits at h + (s - 0.5) steps in grid coordinates. */
-            const float u = ((p[a] - h[a]) * inv_step[a]) + 0.5F;
-            lo[a] = (int)u;
-            off[a][0] = u - (float)lo[a];
-            off[a][1] = 1.0F - off[a][0];
-        }
-        /* Inside already, as nearly every particle in bulk water is: its
-         * nearest sample reads above the surface, so one read and on. */
-        const int nx = lo[0] + (off[0][0] > FIELD_NEAREST_REACH ? 1 : 0);
-        const int ny = lo[1] + (off[1][0] > FIELD_NEAREST_REACH ? 1 : 0);
-        const int nz = lo[2] + (off[2][0] > FIELD_NEAREST_REACH ? 1 : 0);
-        if (out[(((nx * sy) + ny) * sz) + nz] > FLIP3_SURFACE_LEVEL) {
+    for (int i = 0; i < w->f->count; i++) {
+        if (particle_inside(w, inv_step, w->f->pos[i])) {
             continue;
         }
-        for (int bx = 0; bx < 2; bx++) {
-            const int x = lo[0] + bx;
-            if (x < 1 || x > sx - 2) {
-                continue;
+        const field_spot_t s = particle_spot(w, inv_step, w->f->pos[i]);
+        for (int corner = 0; corner < 8; corner++) {
+            int at[3];
+            float far = 0.0F;
+            for (int a = 0; a < 3; a++) {
+                const int up = (corner >> a) & 1;
+                at[a] = s.lo[a] + up;
+                far = s.off[a][up] > far ? s.off[a][up] : far;
             }
-            for (int by = 0; by < 2; by++) {
-                const int y = lo[1] + by;
-                if (y < 1 || y > sy - 2) {
-                    continue;
-                }
-                const float far_xy = off[0][bx] > off[1][by] ? off[0][bx] : off[1][by];
-                for (int bz = 0; bz < 2; bz++) {
-                    const int z = lo[2] + bz;
-                    if (z < 1 || z > sz - 2) {
-                        continue;
-                    }
-                    const float far = far_xy > off[2][bz] ? far_xy : off[2][bz];
-                    const float least = far <= FIELD_NEAREST_REACH ? FIELD_NEAREST_LEAST : 0.0F;
-                    const float shown = 1.0F - far > least ? 1.0F - far : least;
-                    float* const v = &out[(((x * sy) + y) * sz) + z];
-                    *v = *v > shown ? *v : shown;
-                }
-            }
+            show_sample(w, at, far);
         }
     }
 }
