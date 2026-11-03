@@ -30,8 +30,9 @@ are code only in their owner's files (core/timing.* and core/timing_*.*, the
 same for memory) or in a driver: anything under board/, or a *_device.c in
 launcher/main/ outside a tests/ folder, where the name means a suite that runs
 on the board. The board support package is one board's, so it belongs to
-board/ alone, drivers included: a bsp/ include or a bsp_, BSP_ or CONFIG_BSP_
-name anywhere else fails. launcher/test/ outside suites/ (the host heap model,
+that board's folder under board/ alone, drivers and board/'s own API files
+included: a bsp/ include or a bsp_, BSP_ or CONFIG_BSP_ name anywhere else
+fails. launcher/test/ outside suites/ (the host heap model,
 the stubs, the harness the board also builds) stands in for the vendor code
 or measures from beneath it, so it is not checked; nor is the shell, which
 the rule above holds to more. Standalone packages under launcher/packages/
@@ -112,9 +113,9 @@ BOARD = "launcher/main/board/"
 def may_use(rel, module):
     """True when `rel` is one of core/`module`'s files, or is a driver. A
     suite's *_device.c is a test that runs on the board, not a driver. The
-    BSP is board/'s alone."""
+    BSP is a board folder's alone: board/<folder>/, not board/'s own files."""
     if rel.startswith(BOARD):
-        return True
+        return module != "board" or "/" in rel[len(BOARD):]
     if module == "board":
         return False
     if rel.startswith("launcher/main/") and rel.endswith("_device.c") and "/tests/" not in rel:
@@ -126,7 +127,7 @@ def may_use(rel, module):
 
 
 def owner_reason(module):
-    return "only board/ may" if module == "board" else f"only core/{module} and a driver may"
+    return "only a board's folder under board/ may" if module == "board" else f"only core/{module} and a driver may"
 
 
 def owner_problems(root="."):

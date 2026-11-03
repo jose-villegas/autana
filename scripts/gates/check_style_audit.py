@@ -242,7 +242,13 @@ ANY_INCLUDE = re.compile(r'^\s*#\s*include\s+[<"]([^>"]+)[>"]')
 
 
 def include_roots(root):
-    return tuple(path.resolve() for path in packages.include_roots(pathlib.Path(root) / "launcher"))
+    launcher = pathlib.Path(root) / "launcher"
+    try:
+        roots = packages.include_roots(launcher)
+    except (OSError, ValueError):
+        # A hook's staged copy holds only the staged files, so it may carry no board.
+        roots = (launcher / "main", *packages.include_dirs(launcher))
+    return tuple(path.resolve() for path in roots)
 
 
 def resolve_include(root, path, inc):
@@ -288,7 +294,8 @@ def _include_layer_violations(root, path, text):
         resolved = resolve_include(root, path, inc)
         if resolved is None:
             continue
-        include_root = next((r for r in roots if resolved.is_relative_to(r)), None)
+        # The deepest root holding the file: the board's folder sits inside main/.
+        include_root = max((r for r in roots if resolved.is_relative_to(r)), key=lambda r: len(r.parts), default=None)
         if include_root is None:
             continue
         target_rel = resolved.relative_to(include_root)
