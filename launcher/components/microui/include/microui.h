@@ -167,7 +167,7 @@ typedef struct {
   int indent;
 } mu_Layout;
 
-typedef struct {
+typedef struct mu_Container_ {
   mu_Command *head, *tail;
   mu_Rect rect;
   mu_Rect body;
@@ -175,6 +175,8 @@ typedef struct {
   mu_Vec2 scroll;
   int zindex;
   int open;
+  /* LOCAL MODIFICATION: the root container this one was last built in. */
+  struct mu_Container_ *root;
 } mu_Container;
 
 typedef struct {

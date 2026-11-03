@@ -37,6 +37,6 @@ ui_bridge_feed(mu_Context* ctx, ui_pointer_t* p, const input_t* input) {
 
 void
 ui_bridge_end(mu_Context* ctx, ui_pointer_t* p) {
-    p->over_scrollable = ctx->scroll_target != NULL;
+    p->over_scrollable = mu_scrollable_at(ctx);
     p->press_missed = ctx->hover_root != ctx->next_hover_root && ctx->focus == 0;
 }

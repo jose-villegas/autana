@@ -568,6 +568,92 @@ test_scrolling_stops_at_the_end_and_the_last_row_is_reachable(void) {
                                   "the bottom of the glass must now hold the last row");
 }
 
+/* The list with a short window over its top: a press on the window's button
+ * is in a root that does not scroll, so it goes down at once. Returns 1 if
+ * the button submitted. */
+static int
+covered_list_frame(bool down, bool pressed, bool released, int x, int y) {
+    input_t in = {.down = down, .pressed = pressed, .released = released, .point = {x, y}};
+    ui_bridge_feed(ctx, &pointer, &in);
+    int submitted = 0;
+    const int opt = MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME;
+    mu_begin(ctx);
+    if (mu_begin_window_ex(ctx, "list", mu_rect(0, 0, CANVAS_W, CANVAS_H), opt)) {
+        for (int row = 0; row < LIST_ROWS; row++) {
+            mu_layout_row(ctx, 1, (int[]){-1}, LIST_ROW_H);
+            mu_push_id(ctx, &row, sizeof row);
+            (void)mu_button(ctx, "ROW");
+            mu_pop_id(ctx);
+        }
+        mu_end_window(ctx);
+    }
+    if (mu_begin_window_ex(ctx, "sheet", mu_rect(BTN_X, BTN_Y, BTN_W, BTN_H), opt)) {
+        mu_layout_set_next(ctx, mu_rect(BTN_X, BTN_Y, BTN_W, BTN_H), 0);
+        submitted = mu_button(ctx, "GO") ? 1 : 0;
+        mu_end_window(ctx);
+    }
+    mu_end(ctx);
+    ui_bridge_end(ctx, &pointer);
+    return submitted;
+}
+
+static void
+test_a_press_on_a_window_over_scrolling_content_goes_down_at_once(void) {
+    fixture();
+    covered_list_frame(false, false, false, 0, 0);
+    covered_list_frame(false, false, false, 0, 0);
+
+    const int x = BTN_X + BTN_W / 2;
+    const int y = BTN_Y + BTN_H / 2;
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, covered_list_frame(true, true, false, x, y),
+                                  "content scrolling under another window must not delay its press");
+    int again = 0;
+    for (int i = 0; i < 3; i++) {
+        again += covered_list_frame(true, false, false, x, y);
+    }
+    again += covered_list_frame(false, false, true, x, y);
+    TEST_ASSERT_EQUAL_INT(0, again);
+}
+
+/* Two buttons over the same point in one window: one press is one click, for
+ * a held press and for one lifted within its own frame. */
+static int
+overlap_frame(bool down, bool pressed, bool released) {
+    input_t in = {.down = down, .pressed = pressed, .released = released};
+    in.point.x = BTN_X + BTN_W / 2;
+    in.point.y = BTN_Y + BTN_H / 2;
+    ui_bridge_feed(ctx, &pointer, &in);
+    int submits = 0;
+    mu_begin(ctx);
+    if (mu_begin_window_ex(ctx, "screen", mu_rect(0, 0, CANVAS_W, CANVAS_H),
+                           MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
+        mu_layout_set_next(ctx, mu_rect(BTN_X, BTN_Y, BTN_W, BTN_H), 0);
+        submits += mu_button(ctx, "ONE") ? 1 : 0;
+        mu_layout_set_next(ctx, mu_rect(BTN_X, BTN_Y, BTN_W, BTN_H), 0);
+        submits += mu_button(ctx, "TWO") ? 1 : 0;
+        mu_end_window(ctx);
+    }
+    mu_end(ctx);
+    ui_bridge_end(ctx, &pointer);
+    return submits;
+}
+
+static void
+test_overlapping_controls_take_one_press_once(void) {
+    fixture();
+    overlap_frame(false, false, false);
+    overlap_frame(false, false, false);
+    int held = overlap_frame(true, true, false);
+    for (int i = 0; i < 3; i++) {
+        held += overlap_frame(true, false, false);
+    }
+    held += overlap_frame(false, false, true);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, held, "a held press over two controls clicks once");
+
+    overlap_frame(false, false, false);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, overlap_frame(true, true, true), "a one-frame tap over two controls clicks once");
+}
+
 void
 run_ui_pointer_microui_suite(void) {
     ctx = malloc(sizeof *ctx);
@@ -587,6 +673,8 @@ run_ui_pointer_microui_suite(void) {
     RUN_TEST(test_dragging_up_scrolls_the_list_without_pressing_a_row);
     RUN_TEST(test_a_tap_on_a_scrollable_list_presses_the_row_under_it_once);
     RUN_TEST(test_scrolling_stops_at_the_end_and_the_last_row_is_reachable);
+    RUN_TEST(test_a_press_on_a_window_over_scrolling_content_goes_down_at_once);
+    RUN_TEST(test_overlapping_controls_take_one_press_once);
     free(ctx);
     ctx = NULL;
 }

@@ -93,17 +93,18 @@ layout, and two translation units disagreeing would corrupt it silently.
 
 ### A press lands on the frame of contact
 
-microui hovers a control only on a frame where the button is *not* held,
-unless it went down this frame (a local change), and submits only once it is
-focused. Hover also needs `hover_root`, which `mu_begin()` copies from the
+microui hovers a control only on a frame where the button is *not* held, and
+submits only once it is focused. A local change lets the first control under a
+press take hover on the frame the button goes down, so overlapping controls
+never share one press. Hover also needs `hover_root`, which `mu_begin()` copies from the
 *previous* frame, before the finger existed.
 
 | Step | Owner | Does |
 |---|---|---|
-| look up | `ui/input/ui_bridge.c` | on the press frame, before the pointer steps: `mu_seed_hover_root()` picks the root from the last frame's `root_list`, `mu_scrollable_at()` asks whether the point is on content that scrolls |
+| look up | `ui/input/ui_bridge.c` | on the press frame, before the pointer steps: `mu_seed_hover_root()` picks the root from the last frame's `root_list`, `mu_scrollable_at()` asks whether the point is on content in that root that scrolls |
 | press | `ui/input/ui_pointer.c` | sends MOVE and DOWN at once; on scrollable content only the MOVE, the press waiting for the lift or a sideways move |
-| confirm | `ui_bridge.c` | after the frame, records `press_missed`: the seed was not the root the frame found and nothing took focus |
-| again | `ui_pointer.c` | a missed press is made again on the next frame, until it lands |
+| confirm | `ui_bridge.c` | after the frame, records `press_missed` (the seed was not the root the frame found, and nothing took focus) and asks `mu_scrollable_at()` again |
+| again | `ui_pointer.c` | a missed press is made again on the next frame until it lands; on content that scrolls it is taken back and waits |
 
 ```mermaid
 sequenceDiagram
@@ -125,8 +126,6 @@ sequenceDiagram
   except a press and release inside that one frame.
 - A stale seed whose root was still built presses what was on screen there; it
   counts as landed, so a tap never clicks twice.
-- `mu_scrollable_at()` may answer yes for a covered window; that only delays
-  the press to the lift, it never presses a scroll.
 - A repaint-only frame (`ui_begin(NULL)`, the boot backdrop) feeds no input and
   does not step the pointer. It runs before `input_start()`, with no touch.
 - `ui_pointer.c` also holds the `DOWN` a slider needs to track a drag, and the
