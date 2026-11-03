@@ -60,7 +60,6 @@ jobs:
       issues: write
       actions: read
       contents: read
-      deployments: read
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -69,10 +68,7 @@ jobs:
           lfs: false
           persist-credentials: false
 
-      - name: Check Pages builds and deploys
-        run: python3 scripts/ci/board_alarm.py pages
-
-      - name: Wait for the USB probe unless the night is running
+      - name: Wait for the USB probe unless a board job is running
         id: probe
         run: python3 scripts/ci/board_alarm.py probe --devices "$RUNNER_TEMP/devices.json" --reason-file "$RUNNER_TEMP/board-alarm-reason"
 
@@ -105,3 +101,23 @@ jobs:
       - name: Report health check failures
         if: failure()
         run: python3 scripts/ci/board_alarm.py raise --kind down --reason-file "$RUNNER_TEMP/board-alarm-reason"
+
+  # Pages has its own alarm and job, so a Pages or API failure never reads as the boards being down.
+  pages:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+      actions: read
+      contents: read
+      deployments: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          lfs: false
+          persist-credentials: false
+
+      - name: Check Pages builds and deploys
+        run: python3 scripts/ci/board_alarm.py pages
