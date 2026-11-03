@@ -179,7 +179,8 @@ def frame_delays(count, frame_ms):
 
 
 def save_gif(frames, out, frame_ms):
-    """Write a looping GIF of `frames` (Pillow images or (h, w, 3) arrays of one size), each shown `frame_ms`.
+    """Write a looping GIF of `frames` (Pillow images or (h, w, 3) arrays of one size), each shown `frame_ms`,
+    or each its own delay when `frame_ms` is a list of whole centiseconds in ms (a GIF's own delays).
     Every pixel takes the gif_palette colour nearest it in OKLab, without dithering."""
     pixels = np.stack([np.asarray(frame.convert("RGB") if isinstance(frame, Image.Image) else frame)
                        for frame in frames])
@@ -194,8 +195,8 @@ def save_gif(frames, out, frame_ms):
         images.append(image)
     out = pathlib.Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    images[0].save(out, save_all=True, append_images=images[1:], loop=0, duration=frame_delays(len(images), frame_ms),
-                   optimize=False)
+    delays = frame_ms if isinstance(frame_ms, list) else frame_delays(len(images), frame_ms)
+    images[0].save(out, save_all=True, append_images=images[1:], loop=0, duration=delays, optimize=False)
 
 
 def clip(frames, rate, fps, *, first=0, end=None, seconds=None):
