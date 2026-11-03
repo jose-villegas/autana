@@ -27,9 +27,8 @@
 #define SETTLE_STEPS  300  /* five simulated seconds */
 #define LONG_STEPS    1800 /* thirty */
 #define SAMPLES       2    /* density field samples per cell */
-#define LEVEL         0.5F /* the surface: half the rest density, as a scene draws it */
-#define THIN_FILL     0.1F /* the scene's lowest fill: flat, a film under half a cell thick */
-#define SCENE_SAMPLES 1.5F /* the water scene's default rate */
+#define THIN_FILL     0.1F /* a tenth full: lying flat, a film under half a cell thick */
+#define ODD_SAMPLES   1.5F /* a rate each axis rounds its own way */
 
 static flip3_t water;
 static void* grid;
@@ -97,7 +96,7 @@ wet_share(void) {
     for (int x = 1; x < fx - 1; x++) {
         for (int y = 1; y < fy - 1; y++) {
             for (int z = 1; z < fz - 1; z++) {
-                wet += sample(x, y, z) > LEVEL ? 1 : 0;
+                wet += sample(x, y, z) > FLIP3_SURFACE_LEVEL ? 1 : 0;
             }
         }
     }
@@ -176,7 +175,7 @@ test_a_fractional_rate_finds_the_same_level(void) {
     for (int x = 1; x < coarse.nx - 1; x++) {
         for (int y = 1; y < coarse.ny - 1; y++) {
             for (int z = 1; z < coarse.nz - 1; z++) {
-                wet += field[(((x * coarse.ny) + y) * coarse.nz) + z] > LEVEL ? 1 : 0;
+                wet += field[(((x * coarse.ny) + y) * coarse.nz) + z] > FLIP3_SURFACE_LEVEL ? 1 : 0;
             }
         }
     }
@@ -236,7 +235,7 @@ test_upright_water_settles_level(void) {
     for (int x = 1; x < fx - 1; x++) {
         int top = fy - 1;
         for (int y = 1; y < fy - 1 && top == fy - 1; y++) {
-            if (sample(x, y, fz / 2) > LEVEL) {
+            if (sample(x, y, fz / 2) > FLIP3_SURFACE_LEVEL) {
                 top = y;
             }
         }
@@ -257,8 +256,8 @@ test_flat_water_lies_as_a_layer_on_the_glass_below(void) {
     take_field();
     for (int x = 1; x < fx - 1; x++) {
         for (int y = 1; y < fy - 1; y++) {
-            TEST_ASSERT_TRUE(sample(x, y, 1) > LEVEL);
-            TEST_ASSERT_TRUE(sample(x, y, fz - 2) < LEVEL);
+            TEST_ASSERT_TRUE(sample(x, y, 1) > FLIP3_SURFACE_LEVEL);
+            TEST_ASSERT_TRUE(sample(x, y, fz - 2) < FLIP3_SURFACE_LEVEL);
         }
     }
 }
@@ -274,15 +273,40 @@ test_tipped_toward_the_viewer_water_gathers_at_the_front(void) {
     }
 }
 
-/* No water is too thin to draw: settled at the lowest fill along `down`,
- * every particle wets the field sample nearest it, at the water scene's
- * sample rate and this suite's, on a box as odd as the device's. */
+/* The field meshed at the surface's level: the triangles that fit as many
+ * as it has samples, enough to tell a surface from none. */
+static int
+mesh_triangles(const iso_field_t* f) {
+    const int samples = f->nx * f->ny * f->nz;
+    iso_mesh_t m = {malloc(sizeof(vec3f_t) * (size_t)samples),
+                    malloc(sizeof(vec3f_t) * (size_t)samples),
+                    samples,
+                    malloc(sizeof(uint16_t[3]) * (size_t)samples),
+                    samples,
+                    malloc(sizeof(int32_t) * iso_surface_scratch_count(f->ny, f->nz)),
+                    0,
+                    0};
+    const bool allocated = m.positions != NULL && m.normals != NULL && m.triangles != NULL && m.scratch != NULL;
+    if (allocated) {
+        (void)iso_surface_nets(f, FLIP3_SURFACE_LEVEL, &m); /* false when they did not all fit */
+    }
+    free(m.positions);
+    free(m.normals);
+    free(m.triangles);
+    free(m.scratch);
+    TEST_ASSERT_TRUE(allocated);
+    return m.triangle_count;
+}
+
+/* No water is too thin to draw: settled at a tenth full along `down`,
+ * every particle's nearest field sample is inside the surface and the
+ * field meshes, at a fractional rate and this suite's, on the odd box. */
 static void
 expect_thin_water_shows(vec3f_t down) {
     fixture_with(&ODD);
     flip3_fill(&water, THIN_FILL, down);
     run(SETTLE_STEPS, vec3f_scale(down, GRAVITY));
-    const float rates[] = {SCENE_SAMPLES, SAMPLES};
+    const float rates[] = {ODD_SAMPLES, SAMPLES};
     for (size_t r = 0; r < sizeof rates / sizeof rates[0]; r++) {
         const iso_field_t f = flip3_field(&water, rates[r], field);
         for (int i = 0; i < water.count; i++) {
@@ -290,8 +314,11 @@ expect_thin_water_shows(vec3f_t down) {
             const int x = (int)lroundf(p.x / f.step.x);
             const int y = (int)lroundf(p.y / f.step.y);
             const int z = (int)lroundf(p.z / f.step.z);
-            TEST_ASSERT_TRUE_MESSAGE(f.values[(((x * f.ny) + y) * f.nz) + z] >= LEVEL, "a particle is not drawn");
+            TEST_ASSERT_TRUE(x > 0 && x < f.nx - 1 && y > 0 && y < f.ny - 1 && z > 0 && z < f.nz - 1);
+            TEST_ASSERT_TRUE_MESSAGE(f.values[(((x * f.ny) + y) * f.nz) + z] > FLIP3_SURFACE_LEVEL,
+                                     "a particle is outside the surface");
         }
+        TEST_ASSERT_GREATER_THAN_INT(0, mesh_triangles(&f));
     }
 }
 
@@ -304,7 +331,7 @@ test_a_thin_film_flat_on_the_glass_shows(void) {
     take_field();
     for (int x = 1; x < fx - 1; x++) {
         for (int y = 1; y < fy - 1; y++) {
-            TEST_ASSERT_TRUE(sample(x, y, fz - 2) < LEVEL);
+            TEST_ASSERT_TRUE(sample(x, y, fz - 2) < FLIP3_SURFACE_LEVEL);
         }
     }
 }
@@ -319,6 +346,21 @@ test_thin_water_leaned_back_shows(void) {
 static void
 test_a_shallow_upright_pool_shows(void) {
     expect_thin_water_shows(vec3f_unit_y());
+}
+
+/* A lone drop midway between samples on every axis, where each sample of
+ * its cell is half a sample away, is still a drop the field meshes. */
+static void
+test_a_drop_midway_between_samples_shows(void) {
+    fixture_begin();
+    TEST_ASSERT_EQUAL_INT(1, flip3_fill(&water, 1.0F / (float)water.seed_count, vec3f_unit_y()));
+    /* Sample s sits (s - 0.5) steps into the box: midway to the next, s steps. */
+    const int s = 2;
+    const vec3f_t step = flip3_field(&water, SAMPLES, field).step;
+    water.pos[0] = vec3f_add(water.h, vec3f_scale(step, (float)s));
+    const iso_field_t f = flip3_field(&water, SAMPLES, field);
+    TEST_ASSERT_TRUE(f.values[(((s * f.ny) + s) * f.nz) + s] > FLIP3_SURFACE_LEVEL);
+    TEST_ASSERT_GREATER_THAN_INT(0, mesh_triangles(&f));
 }
 
 /* Particles never leave the box, however it is thrown. */
@@ -424,28 +466,6 @@ test_a_split_anywhere_gives_the_same_water(void) {
     TEST_ASSERT_TRUE(same);
 }
 
-/* The particles' pass splits like the rest: thin water, where it raises
- * the samples that are drawn, gives the same field however it is cut. */
-static void
-test_thin_water_split_anywhere_gives_the_same_field(void) {
-    fixture_with(&ODD);
-    flip3_fill(&water, THIN_FILL, vec3f_back());
-    run(SETTLE_STEPS, vec3f_scale(vec3f_back(), GRAVITY));
-    take_field();
-    const size_t bytes = sizeof(float) * (size_t)(fx * fy * fz);
-    float* whole = malloc(bytes);
-    TEST_ASSERT_NOT_NULL(whole);
-    memcpy(whole, field, bytes);
-    splits_run = 0;
-    flip3_split_with(&water, split_unevenly);
-    take_field();
-    flip3_split_with(&water, NULL);
-    const bool same = splits_run > 0 && memcmp(whole, field, bytes) == 0;
-    free(whole);
-    TEST_ASSERT_TRUE(same);
-    TEST_ASSERT_TRUE(wet_share() > 0.0F);
-}
-
 /* Red-black order relaxes the same equations in another order: the pool
  * still settles level and keeps its volume. */
 static void
@@ -487,12 +507,12 @@ suite_flip3(void) {
     RUN_TEST(test_a_thin_film_flat_on_the_glass_shows);
     RUN_TEST(test_thin_water_leaned_back_shows);
     RUN_TEST(test_a_shallow_upright_pool_shows);
+    RUN_TEST(test_a_drop_midway_between_samples_shows);
     RUN_TEST(test_a_shaken_tank_keeps_every_particle_inside);
     RUN_TEST(test_a_resting_pool_keeps_its_volume);
     RUN_TEST(test_the_same_inputs_give_the_same_water);
     RUN_TEST(test_a_box_of_no_whole_cells_settles_level_and_keeps_its_volume);
     RUN_TEST(test_a_split_anywhere_gives_the_same_water);
-    RUN_TEST(test_thin_water_split_anywhere_gives_the_same_field);
     RUN_TEST(test_red_black_water_settles_level_and_keeps_its_volume);
 }
 

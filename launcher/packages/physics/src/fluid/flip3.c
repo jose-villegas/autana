@@ -768,8 +768,8 @@ smooth_axis(float* field, int stride, int count, int step_a, int a_from, int a_t
     }
 }
 
-/* flip3_field()'s work, split by lines: the samples, three smoothing passes
- * along x, y and z, then the particles shown. */
+/* flip3_field()'s work, split by lines: the samples, then three smoothing
+ * passes along x, y and z. */
 typedef struct {
     const flip3_t* f;
     float* out;
@@ -815,15 +815,25 @@ sample_lines(const field_work_t* w, int from, int to) {
     }
 }
 
-/* Every particle shows as a sample of water: the samples of the field cell
- * it sits in read at least 1 less their distance from it in samples, along
- * the farthest axis, so at half the rest density the surface keeps half a
- * sample around it. Without it, water thinner than that, a film on the
- * glass below or a lone drop, averages below the level and is not drawn.
- * Raises only inside samples on x lines [from, to), so lines may run at once. */
+/* A point's nearest sample is within half a sample on every axis; a
+ * particle reads at that sample as if it sat halfway to it, at most. */
+#define FIELD_NEAREST_REACH 0.5F
+#define FIELD_NEAREST_LEAST (1.0F - (0.5F * FIELD_NEAREST_REACH))
+_Static_assert(FIELD_NEAREST_LEAST > FLIP3_SURFACE_LEVEL, "a particle's nearest sample is inside the surface");
+
+/* Every particle shows as a sample of water, after the smoothing: the
+ * samples of the field cell it sits in read at least 1 less their
+ * Chebyshev distance from it in samples, and the nearest at least
+ * FIELD_NEAREST_LEAST, so even from a midpoint it is a drop inside the
+ * surface.
+ * Without it, water thinner than the smoothing, a film on the glass below
+ * or a lone drop, averages below the level and is not drawn. One pass
+ * over the particles on this core: split by lines, each core would read
+ * them all. */
 static void
-show_particles(const field_work_t* w, int from, int to) {
+show_particles(const field_work_t* w) {
     const flip3_t* f = w->f;
+    const int sx = w->d[0];
     const int sy = w->d[1];
     const int sz = w->d[2];
     const float inv_step[3] = {1.0F / w->step[0], 1.0F / w->step[1], 1.0F / w->step[2]};
@@ -842,7 +852,7 @@ show_particles(const field_work_t* w, int from, int to) {
         }
         for (int bx = 0; bx < 2; bx++) {
             const int x = lo[0] + bx;
-            if (x < from || x >= to) {
+            if (x < 1 || x > sx - 2) {
                 continue;
             }
             for (int by = 0; by < 2; by++) {
@@ -856,7 +866,9 @@ show_particles(const field_work_t* w, int from, int to) {
                     if (z < 1 || z > sz - 2) {
                         continue;
                     }
-                    const float shown = 1.0F - (far_xy > off[2][bz] ? far_xy : off[2][bz]);
+                    const float far = far_xy > off[2][bz] ? far_xy : off[2][bz];
+                    const float least = far <= FIELD_NEAREST_REACH ? FIELD_NEAREST_LEAST : 0.0F;
+                    const float shown = 1.0F - far > least ? 1.0F - far : least;
                     float* const v = &out[(((x * sy) + y) * sz) + z];
                     *v = *v > shown ? *v : shown;
                 }
@@ -876,8 +888,7 @@ field_range(void* ctx, int from, int to) {
         case FLIP3_SPLIT_FIELD_SAMPLE: sample_lines(w, 1 + from, 1 + to); break;
         case FLIP3_SPLIT_FIELD_SMOOTH_X: smooth_axis(w->out, sy * sz, sx, sz, 1 + from, 1 + to, 1, sz); break;
         case FLIP3_SPLIT_FIELD_SMOOTH_Y: smooth_axis(w->out, sz, sy, sy * sz, 1 + from, 1 + to, 1, sz); break;
-        case FLIP3_SPLIT_FIELD_SMOOTH_Z: smooth_axis(w->out, 1, sz, sy * sz, 1 + from, 1 + to, sz, sy); break;
-        default: show_particles(w, 1 + from, 1 + to); break;
+        default: smooth_axis(w->out, 1, sz, sy * sz, 1 + from, 1 + to, sz, sy); break;
     }
 }
 
@@ -889,10 +900,11 @@ flip3_field(const flip3_t* f, float samples, float* out) {
         w.step[a] = (float)(cells_on(f, a) - 2) * axis_of(f->h, a) / (float)(w.d[a] - 2);
     }
     memset(out, 0, (size_t)w.d[0] * (size_t)w.d[1] * (size_t)w.d[2] * sizeof(float));
-    for (w.pass = FLIP3_SPLIT_FIELD_SAMPLE; w.pass <= FLIP3_SPLIT_FIELD_PARTICLES; w.pass++) {
+    for (w.pass = FLIP3_SPLIT_FIELD_SAMPLE; w.pass <= FLIP3_SPLIT_FIELD_SMOOTH_Z; w.pass++) {
         const int lines = w.pass == FLIP3_SPLIT_FIELD_SMOOTH_X ? w.d[1] : w.d[0];
         run_split(f, w.pass, field_range, &w, lines - 2);
     }
+    show_particles(&w);
     /* Sample (1, 1, 1) sits half a sample in from the box's origin. */
     const vec3f_t step = {w.step[0], w.step[1], w.step[2]};
     return (iso_field_t){out, w.d[0], w.d[1], w.d[2], vec3f_scale(step, -0.5F), step};

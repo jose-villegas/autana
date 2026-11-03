@@ -77,8 +77,6 @@ static const char* TAG = "water";
  * 0.6 times the triangles 2 make; the field is sized for the most. */
 #define WATER_SAMPLES_PCT     150
 #define WATER_SAMPLES_PCT_MAX 200
-/* The surface sits where the density is half the rest density. */
-#define WATER_SURFACE_LEVEL   0.5F
 
 /* The most simulated time one frame advances: a longer frame slows the
  * water rather than costing a burst. */
@@ -536,7 +534,7 @@ nets_range(void* ctx, int from, int to) {
         return;
     }
     const int which = from == 0 ? 0 : 1;
-    w->fitted[which] = iso_surface_nets_slabs(&surface_field, WATER_SURFACE_LEVEL, from, to, &w->part[which]);
+    w->fitted[which] = iso_surface_nets_slabs(&surface_field, FLIP3_SURFACE_LEVEL, from, to, &w->part[which]);
 }
 
 /* The surface on both cores, joined into one mesh at the buffers' start;
@@ -558,7 +556,7 @@ mesh_split(iso_mesh_t* m) {
         return true;
     }
     stats.remeshed++;
-    return iso_surface_nets(&surface_field, WATER_SURFACE_LEVEL, m);
+    return iso_surface_nets(&surface_field, FLIP3_SURFACE_LEVEL, m);
 }
 
 /* The surface field meshed, shaded, moved into model axes and handed to the
@@ -577,7 +575,7 @@ rebuild_surface(void) {
     FRAME_COST_END(through_from, "water.through");
     FRAME_COST_BEGIN(nets_from);
     iso_mesh_t m = {positions, normals, WATER_MAX_VERTICES, triangles, WATER_MAX_TRIANGLES, scratch[0], 0, 0};
-    bool fitted = two_core != 0 ? mesh_split(&m) : iso_surface_nets(&surface_field, WATER_SURFACE_LEVEL, &m);
+    bool fitted = two_core != 0 ? mesh_split(&m) : iso_surface_nets(&surface_field, FLIP3_SURFACE_LEVEL, &m);
     FRAME_COST_END(nets_from, "water.nets");
     FRAME_COST_BEGIN(shade_from);
     water_split(WATER_SPLIT_SHADE, shade_range, NULL, m.vertex_count);
