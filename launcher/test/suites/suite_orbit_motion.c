@@ -51,8 +51,7 @@ orbit_at(float yaw, float pitch) {
 static fixture_camera_t
 camera_of(const orbit_motion_t* orbit) {
     const transformf_t pose = orbit_motion_pose(orbit);
-    return (fixture_camera_t){pose.position, quatf_rotate(pose.rotation, (vec3f_t){0.0F, 0.0F, 1.0F}), LENS_TAN,
-                              NEAR_Z};
+    return (fixture_camera_t){pose.position, quatf_rotate(pose.rotation, vec3f_unit_z()), LENS_TAN, NEAR_Z};
 }
 
 /* The i-th of n points spread evenly over the unit sphere (a Fibonacci spiral, Gonzalez 2010). */
@@ -122,9 +121,9 @@ test_orbit_motion_pose_stands_at_the_distance_looking_at_the_target_and_level(vo
     const vec3f_t to_target = vec3f_sub(TARGET, pose.position);
     const float d = sqrtf(vec3f_dot(to_target, to_target));
     TEST_ASSERT_FLOAT_WITHIN(STATE_EPSILON, expf(orbit.at.log_dist), d);
-    const vec3f_t forward = quatf_rotate(pose.rotation, (vec3f_t){0.0F, 0.0F, 1.0F});
+    const vec3f_t forward = quatf_rotate(pose.rotation, vec3f_unit_z());
     TEST_ASSERT_FLOAT_WITHIN(STATE_EPSILON, 1.0F, vec3f_dot(forward, vec3f_scale(to_target, 1.0F / d)));
-    TEST_ASSERT_FLOAT_WITHIN(STATE_EPSILON, 0.0F, quatf_rotate(pose.rotation, (vec3f_t){1.0F, 0.0F, 0.0F}).y);
+    TEST_ASSERT_FLOAT_WITHIN(STATE_EPSILON, 0.0F, quatf_rotate(pose.rotation, vec3f_unit_x()).y);
     TEST_ASSERT_TRUE_MESSAGE(pose.position.y > TARGET.y, "a positive pitch puts the transform above the target");
 }
 

@@ -327,7 +327,7 @@ static void
 place_camera(int quarter, vec3f_t eye) {
     const camera_t* lens = scene_camera_lens(tank_scene, name_hash(WATER_CAMERA));
     const float distance = 0.5F * box.x / lens->half_fov_short_tan;
-    const quatf_t roll = quatf_from_axis_angle((vec3f_t){0.0F, 0.0F, 1.0F}, -(float)quarter * WATER_QUARTER_TURN);
+    const quatf_t roll = quatf_from_axis_angle(vec3f_unit_z(), -(float)quarter * WATER_QUARTER_TURN);
     transformf_t t = scene_entity_local(tank_scene, camera_entity);
     transformf_set_rotation(&t, roll);
     transformf_set_position(&t, (vec3f_t){eye.x, eye.y, -distance});
@@ -335,8 +335,8 @@ place_camera(int quarter, vec3f_t eye) {
     /* The glass's centre lands a fraction eye / width of the short side off
      * the picture's middle, against the eye; the optical centre follows the
      * eye by as much, in the camera's own axes. */
-    const vec3f_t right = quatf_rotate(roll, (vec3f_t){1.0F, 0.0F, 0.0F});
-    const vec3f_t up = quatf_rotate(roll, (vec3f_t){0.0F, 1.0F, 0.0F});
+    const vec3f_t right = quatf_rotate(roll, vec3f_unit_x());
+    const vec3f_t up = quatf_rotate(roll, vec3f_unit_y());
     const vec3f_t follow = vec3f_scale(eye, 1.0F / box.x);
     (void)scene_camera_set_shift(tank_scene, camera_entity, (vec2f_t){vec3f_dot(follow, right), vec3f_dot(follow, up)});
 }
@@ -435,7 +435,7 @@ read_accel(uint32_t dt_ms, vec3f_t* down) {
         motion_seen = true;
     }
     if (!motion_seen) {
-        *down = (vec3f_t){0.0F, 1.0F, 0.0F};
+        *down = vec3f_unit_y();
         return *down;
     }
     *down = gravity_down(&gravity);
@@ -503,7 +503,7 @@ static void
 shade_range(void* ctx, int from, int to) {
     (void)ctx;
     const vec3f_t light = vec3f_normalize(WATER_LIGHT);
-    const vec3f_t eye = {0.0F, 0.0F, 1.0F};
+    const vec3f_t eye = vec3f_unit_z();
     const vec3f_t half = vec3f_normalize(vec3f_add(light, eye));
     for (int i = from; i < to; i++) {
         const vec3f_t n = normals[i];
@@ -645,12 +645,12 @@ scene_water_enter(const render_lab_scene_t* self) {
 #endif
     flip3_split_with(&water, water_split);
     memset(split_share, 0, sizeof split_share);
-    refill((vec3f_t){0.0F, 1.0F, 0.0F});
+    refill(vec3f_unit_y());
     water_plane_reset(&plane_water, box);
     rebuild_surface();
     (void)scene_water_take_stats();
-    reference_down = (vec3f_t){0}; /* set by the first reading */
-    place_camera(display_quarter_now(), (vec3f_t){0});
+    reference_down = vec3f_zero(); /* set by the first reading */
+    place_camera(display_quarter_now(), vec3f_zero());
     (void)scene_activate(tank_scene, name_hash(WATER_CAMERA));
     render_lab_apply_raster_settings();
     (void)render_lab_apply_camera_settings(tank_scene, camera_entity);

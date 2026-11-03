@@ -28,6 +28,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from c_includes import resolve_include as resolve_quoted_include  # noqa: E402
 from c_comments import SOURCE_EXTENSIONS, SOURCE_GLOBS, excluded, blank_comments, is_cpp, scan  # noqa: E402
+from c_constants import DEFINE  # noqa: E402
 from check_doc_citations import documentation  # noqa: E402
 from check_doc_constants import ESCAPE as DOC_CONSTANTS_ESCAPE  # noqa: E402
 from check_doc_index import blank_fences  # noqa: E402
@@ -36,6 +37,7 @@ from generated_blocks import MARKER as GENERATED_BLOCK  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools"))
 from build import package_requires, packages  # noqa: E402
 from build.apps import app_part  # noqa: E402
+from build.math_constants import MATH_HEADERS, math_constant_table  # noqa: E402
 import strip_comment_rules  # noqa: E402
 from tracked import tracked_files  # noqa: E402
 
@@ -145,6 +147,106 @@ def _text_walk(root, files=None):
         except (UnicodeDecodeError, OSError):
             continue
         yield full, text
+
+
+# RULE: a brace list or compound literal of a math type equal to a named
+# constant fails; use the call. Exempt: mutable static-storage initializers
+# (C11 cannot call there), array rows, fields of another struct (no type at
+# the site), untyped #define bodies. A const static is reported but not fixed:
+# delete it and call at the uses. A literal whose address is taken (&(T){...})
+# is reported but not fixed.
+
+
+def _math_storage(code, offset):
+    stack, function_start = [], None
+    for match in re.finditer(r"[{}]", code[:offset]):
+        if match[0] == "{":
+            is_function = not stack and bool(re.search(
+                r"\b\w+\s*\([^;{}]*\)\s*$", code[:match.start()]))
+            stack.append(is_function)
+            if is_function:
+                function_start = match.end()
+        elif stack:
+            if stack.pop():
+                function_start = None
+    start = max(code.rfind(";", 0, offset) + 1, function_start or 0)
+    declaration = code[start:offset]
+    static = function_start is None or bool(re.search(r"\bstatic\b", declaration))
+    return static, bool(re.search(r"\bconst\b", declaration))
+
+
+def _math_literal(body, fields, values):
+    result = [0] * len(fields)
+    next_field = 0
+    for entry in body.strip().rstrip(",").split(","):
+        designated = re.fullmatch(r"\s*\.(\w+)\s*=\s*(.*?)\s*", entry, re.S)
+        if designated:
+            if designated[1] not in fields:
+                return None
+            next_field = fields.index(designated[1])
+            entry = designated[2]
+        entry = entry.strip()
+        if not re.fullmatch(r"-?(?:[01](?:\.0)?[Ff]?|MATHX_ONE)", entry):
+            return None
+        if re.fullmatch(r"-0(?:\.0)?[Ff]?", entry):
+            return None
+        value = (-1 if entry.startswith("-") else 1) * (
+            values.get("MATHX_ONE", 0) if "MATHX_ONE" in entry else float(entry.lstrip("-").rstrip("Ff")))
+        if next_field >= len(fields):
+            return None
+        result[next_field] = value
+        next_field += 1
+    return tuple(result)
+
+
+def math_constant_sites(root, path, text):
+    rel = relpath(root, path)
+    if (not rel.startswith("launcher/") or rel.startswith(MATH_HEADERS + "/")
+            or path.suffix.lower() not in SOURCE_EXTENSIONS):
+        return
+    table, macros, values, _ = math_constant_table(root)
+    code = blank_comments(text, "code")
+    defines = tuple(DEFINE.finditer(code))
+    literals = code
+    code = DEFINE.sub(lambda m: "".join("\n" if c == "\n" else " " for c in m[0]), code)
+    if table:
+        types = "|".join(map(re.escape, table))
+        pattern = re.compile(r"\(\s*(?P<cast>" + types + r")\s*\)\s*(?P<brace>\{[^{}]*\})|"
+                             r"\b(?P<type>" + types + r")\s+(?:const\s+)?\w+\s*=\s*(?P<init>\{[^{}]*\})")
+        for match in pattern.finditer(literals):
+            macro = any(d.start() <= match.start() < d.end() for d in defines)
+            if macro and not match["cast"]:
+                continue
+            static, const = (False, False) if macro else _math_storage(code, match.start())
+            if static and not const:
+                continue
+            typename = match["cast"] or match["type"]
+            fields, entries = table[typename]
+            body = match["brace"] or match["init"]
+            function = entries.get(_math_literal(body[1:-1], fields, values))
+            if function:
+                start, end = match.span() if match["cast"] else match.span("init")
+                yield start, end, function, not static and not literals[:start].rstrip().endswith("&")
+    if macros:
+        for match in re.finditer(r"\b(?:" + "|".join(map(re.escape, macros)) + r")\b", code):
+            static, _ = _math_storage(code, match.start())
+            if static:
+                continue
+            cast = re.search(r"\(\s*\w+_t\s*\)\s*$", code[:match.start()])
+            yield cast.start() if cast else match.start(), match.end(), macros[match[0]], True
+
+
+def fix_math_constant(root, path, text):
+    for start, end, function, fixable in sorted(math_constant_sites(root, path, text), reverse=True):
+        if fixable:
+            text = text[:start] + function + text[end:]
+    return text
+
+
+@text_rule("MATH-CONSTANT", fixer=fix_math_constant)
+def rule_math_constant(root, path, text):
+    for start, _, function, _ in math_constant_sites(root, path, text):
+        yield text.count("\n", 0, start) + 1, "use " + function
 
 
 # RULE: a tracker issue id or a git commit hash names a system this repo
@@ -1105,7 +1207,7 @@ def run_fix(root, findings):
     for rel in files:
         path = pathlib.Path(root) / rel
         before = path.read_bytes()
-        text = path.read_text(encoding="utf-8", errors="replace")
+        text = before.decode("utf-8", errors="replace")
         original = text
         rule_ids = sorted({f.rule_id for f in findings if f.path == rel and f.fixable})
         for rule_id in rule_ids:

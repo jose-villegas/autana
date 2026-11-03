@@ -4,4 +4,4 @@
 
 #include "math/linear/vec3f.h"
 
-#define SCENE_LIGHT_AXIS ((vec3f_t){0.0F, 1.0F, 0.0F})
+#define SCENE_LIGHT_AXIS vec3f_up()

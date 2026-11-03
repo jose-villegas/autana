@@ -15,7 +15,7 @@
 
 static render_view_t
 fixture(void) {
-    const transformf_t pose = TRANSFORMF_IDENTITY;
+    const transformf_t pose = transformf_identity();
     return render_view_make(&pose, 1.0F, R3D_LINE_NEAR_Z, (viewport_t){368, 448, 0});
 }
 
@@ -52,18 +52,18 @@ check_view_matrix_matches_hand_built(transformf_t camera_pose, transformf_t mode
 
 static void
 test_view_matrix_matches_the_hand_built_one_for_two_unrelated_poses(void) {
-    transformf_t camera_a = TRANSFORMF_IDENTITY;
+    transformf_t camera_a = transformf_identity();
     transformf_set_position(&camera_a, (vec3f_t){5.0F, 0.0F, 0.0F});
     transformf_set_rotation(&camera_a, quatf_from_euler((vec3f_t){0.0F, MATH_TAU / 8.0F, 0.0F}));
-    transformf_t model_a = TRANSFORMF_IDENTITY;
+    transformf_t model_a = transformf_identity();
     transformf_set_position(&model_a, (vec3f_t){0.0F, 0.0F, 3.0F});
     check_view_matrix_matches_hand_built(camera_a, model_a);
 
-    transformf_t camera_b = TRANSFORMF_IDENTITY;
+    transformf_t camera_b = transformf_identity();
     transformf_set_position(&camera_b, (vec3f_t){0.0F, -2.0F, 0.0F});
     transformf_set_rotation(&camera_b, quatf_from_euler((vec3f_t){MATH_TAU / 6.0F, 0.0F, MATH_TAU / 3.0F}));
     transformf_set_scale(&camera_b, (vec3f_t){3.0F, 4.0F, 5.0F});
-    transformf_t model_b = TRANSFORMF_IDENTITY;
+    transformf_t model_b = transformf_identity();
     transformf_set_rotation(&model_b, quatf_from_euler((vec3f_t){0.0F, MATH_TAU / 5.0F, 0.0F}));
     transformf_set_scale(&model_b, (vec3f_t){2.0F, 3.0F, 4.0F});
     transformf_set_position(&model_b, (vec3f_t){1.0F, -3.0F, 2.0F});
@@ -127,7 +127,7 @@ test_a_nan_offset_and_a_point_at_the_axis_on_the_camera_plane_clamp(void) {
     TEST_ASSERT_EQUAL_INT((int)R3D_PIXEL_LIMIT, r3d_pixel_offset(NAN));
     render_view_t view = fixture();
     int x = 0, y = 0;
-    r3d_project_screen((vec3f_t){0.0F, 0.0F, 0.0F}, &view.lens, &x, &y); /* 0 * inf is NaN */
+    r3d_project_screen(vec3f_zero(), &view.lens, &x, &y); /* 0 * inf is NaN */
     TEST_ASSERT_EQUAL_INT(view.lens.cx + (int)R3D_PIXEL_LIMIT, x);
     TEST_ASSERT_EQUAL_INT(view.lens.cy - (int)R3D_PIXEL_LIMIT, y);
 }
@@ -151,7 +151,7 @@ q9(vec3f_t p) {
 static void
 test_the_fixed_projection_lands_within_two_pixels_of_the_float_one(void) {
     const render_view_t view = fixture();
-    const transformf_t model = TRANSFORMF_IDENTITY;
+    const transformf_t model = transformf_identity();
     const float meters_per_unit[] = {1.0F, 1.0F, 1.0F};
     const r3d_line_projector_t view_x = r3d_line_projector_make(&view, &model, meters_per_unit);
     for (int zi = 1; zi <= 8; zi++) {
@@ -172,7 +172,7 @@ test_the_fixed_projection_lands_within_two_pixels_of_the_float_one(void) {
 static void
 test_the_line_near_plane_rounds_to_the_camera_unit(void) {
     render_view_t float_view = fixture();
-    const transformf_t model = TRANSFORMF_IDENTITY;
+    const transformf_t model = transformf_identity();
     const float meters_per_unit[] = {1.0F, 1.0F, 1.0F};
     const int whole_units = 51;
     float_view.lens.near_z = ((float)whole_units + 0.75F) / (float)R3D_X_UNIT_ONE;
@@ -187,18 +187,18 @@ test_the_fixed_segment_clip_and_point_test_follow_the_near_plane(void) {
     float_view.lens.cx = 100;
     float_view.lens.cy = 100;
     float_view.lens.fx = float_view.lens.fy = 50.0F;
-    const transformf_t model = TRANSFORMF_IDENTITY;
+    const transformf_t model = transformf_identity();
     const float meters_per_unit[] = {1.0F, 1.0F, 1.0F};
     const r3d_line_projector_t view = r3d_line_projector_make(&float_view, &model, meters_per_unit);
     int ax, ay, bx, by;
-    TEST_ASSERT_FALSE(r3d_project_point_cs_x(q9((vec3f_t){0.0F, 0.0F, 1.0F}), &view, &ax, &ay));
+    TEST_ASSERT_FALSE(r3d_project_point_cs_x(q9(vec3f_unit_z()), &view, &ax, &ay));
     TEST_ASSERT_TRUE(r3d_project_point_cs_x(q9((vec3f_t){0.0F, 0.0F, 2.0F}), &view, &ax, &ay));
     TEST_ASSERT_EQUAL_INT(100, ax);
-    TEST_ASSERT_FALSE(r3d_project_segment_cs_x(q9((vec3f_t){0.0F, 0.0F, 0.5F}), q9((vec3f_t){0.0F, 0.0F, 1.0F}), &view,
-                                               &ax, &ay, &bx, &by));
+    TEST_ASSERT_FALSE(
+        r3d_project_segment_cs_x(q9((vec3f_t){0.0F, 0.0F, 0.5F}), q9(vec3f_unit_z()), &view, &ax, &ay, &bx, &by));
     /* One end behind: it is replaced by the crossing at z = 1, where x = 4 / 3. */
-    TEST_ASSERT_TRUE(r3d_project_segment_cs_x(q9((vec3f_t){4.0F, 0.0F, 3.0F}), q9((vec3f_t){0.0F, 0.0F, 0.0F}), &view,
-                                              &ax, &ay, &bx, &by));
+    TEST_ASSERT_TRUE(
+        r3d_project_segment_cs_x(q9((vec3f_t){4.0F, 0.0F, 3.0F}), q9(vec3f_zero()), &view, &ax, &ay, &bx, &by));
     TEST_ASSERT_INT_WITHIN(1, 100 + (int)(4.0F / 3.0F * 50.0F), ax);
     TEST_ASSERT_INT_WITHIN(2, 100 + (int)(4.0F / 3.0F * 50.0F), bx);
 }
@@ -239,11 +239,11 @@ test_line_points_follow_the_view_and_raster_lens_in_every_quarter(void) {
     const float half_fov_short_tan = 0.7F;
     const float depth = 8.0F;
     const int edge_steps = 8;
-    const transformf_t model = TRANSFORMF_IDENTITY;
+    const transformf_t model = transformf_identity();
     const float meters_per_unit[] = {1.0F, 1.0F, 1.0F};
     for (int pose_index = 0; pose_index < 2; pose_index++) {
         for (int quarter = 0; quarter < 4; quarter++) {
-            transformf_t pose = TRANSFORMF_IDENTITY;
+            transformf_t pose = transformf_identity();
             transformf_set_position(&pose, (vec3f_t){1.0F, -2.0F, 3.0F});
             if (pose_index != 0) {
                 transformf_set_rotation(&pose, quatf_from_euler((vec3f_t){MATH_TAU / 8.0F, MATH_TAU / 8.0F, 0.0F}));
@@ -281,7 +281,7 @@ test_narrow_matrix_rejects_entries_at_the_limits(void) {
             for (int side = -1; side <= 1; side++) {
                 float meters_per_unit[] = {0.0F, 0.0F, 0.0F};
                 meters_per_unit[axis] = (float)(sign * (limit + side)) / narrow_scale;
-                const transformf_t model = TRANSFORMF_IDENTITY;
+                const transformf_t model = transformf_identity();
                 const r3d_line_projector_t fixed = r3d_line_projector_make(&view, &model, meters_per_unit);
                 TEST_ASSERT_EQUAL(side < 0, fixed.units_ok);
             }
@@ -296,7 +296,7 @@ test_narrow_matrix_rejects_translation_at_the_limits(void) {
     const float meters_per_unit[] = {0.0F, 0.0F, 0.0F};
     for (int sign = -1; sign <= 1; sign += 2) {
         for (int side = -1; side <= 1; side++) {
-            transformf_t model = TRANSFORMF_IDENTITY;
+            transformf_t model = transformf_identity();
             transformf_set_position(
                 &model, (vec3f_t){(float)sign
                                       * (side == 0 ? (float)R3D_X_TRANSLATION_LIMIT / narrow_scale
