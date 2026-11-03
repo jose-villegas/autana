@@ -37,9 +37,20 @@ import os
 import re
 import struct
 import time
+import sys
 import zlib
+from pathlib import Path
 
-from board import PANEL_HEIGHT, PANEL_WIDTH
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from build.c_header import read_define  # noqa: E402
+
+# autana runs this and asks the device, never launcher/main, so the size comes from the vendor
+# BSP's header; board_panel.c asserts board.toml's [panel] equals it.
+DISPLAY_HEADER = (Path(__file__).resolve().parents[2] / "components" / "esp32_s3_touch_amoled_1_8"
+                  / "include" / "bsp" / "display.h")
+PANEL_WIDTH = read_define(DISPLAY_HEADER, "BSP_LCD_H_RES")
+PANEL_HEIGHT = read_define(DISPLAY_HEADER, "BSP_LCD_V_RES")
 
 BEGIN_RE = re.compile(r"^SCREENSHOT_BEGIN size=(\d+)$")
 DATA_PREFIX = "SCREENSHOT_DATA:"
