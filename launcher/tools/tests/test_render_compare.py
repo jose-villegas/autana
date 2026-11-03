@@ -563,7 +563,7 @@ class VideoTest(unittest.TestCase):
     def test_read_video_gives_top_down_rgb_frames_and_the_rate(self):
         frame = with_pixels(blank(5, 4), [(1, 0)], DRAWN)
         with tempfile.TemporaryDirectory() as tmp:
-            fps, frames = render_compare.read_video(self.write_avi(tmp, "a.avi", [frame, blank(5, 4)]))
+            fps, frames = check_avi.read_video(self.write_avi(tmp, "a.avi", [frame, blank(5, 4)]))
             frames = list(frames)
         self.assertEqual(fps, 4.0)
         self.assertEqual(len(frames), 2)
