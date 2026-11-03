@@ -93,7 +93,9 @@ class DeviceModel:
         # The code's screen axes x right, y down, z out: minus where imu_axes_screen() sends the chip axes,
         # because the chip reads specific force (up) and the code calls that vector down.
         self.screen_axes = -np.array(screen_label_axes(board), dtype=float)
-        outline = rounded_outline(self.width, self.height, case["corner_radius_mm"])
+        # The case wall follows the module outline.
+        case_corner = device["corner_radius_mm"] + (self.width - device["width_mm"]) / 2
+        outline = rounded_outline(self.width, self.height, case_corner)
         front = np.c_[outline, np.zeros(len(outline))]
         back = np.c_[outline, np.full(len(outline), -self.depth)]
         screen_corner = read_define(DISPLAY_HEADER, "DISPLAY_PANEL_CORNER_RADIUS") * screen["width_mm"] / PANEL_WIDTH
@@ -118,8 +120,9 @@ class DeviceModel:
         self.holes = []
         for feature in board["feature"]:
             x = self.width / 2 * (1 if feature["side"] == "right" else -1)
-            y, z = feature["y"], feature["z"]
             size_y, size_z = feature["size_y"], feature["size_z"]
+            y = feature["y"]
+            z = -(device["depth_mm"] + size_z / 2) if feature.get("behind_pcb") else feature["z"]
             if feature["shape"] == "box":
                 proud = feature["proud"]
                 faces = box_faces((x + proud / 2, y, z), (proud, size_y, size_z))

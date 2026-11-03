@@ -38,7 +38,6 @@
 #define BOARD_CASE_WIDTH_MM           37.6F
 #define BOARD_CASE_HEIGHT_MM          45.2F
 #define BOARD_CASE_DEPTH_MM           15.0F
-#define BOARD_CASE_CORNER_RADIUS_MM   8.4F
 #define BOARD_CASE_BACK_SIDE_MM       27.6F
 #define BOARD_CASE_SCREW_RADIUS_MM    1.8F
 #define BOARD_SCREEN_WIDTH_MM         28.7F

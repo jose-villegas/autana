@@ -1,5 +1,6 @@
 # The Waveshare ESP32-S3-Touch-AMOLED-1.8, described once. gen_board_config.py writes board_config.h
-# from it; the figure tools read it directly. board.c asserts the values the vendor BSP also states.
+# from it; the figure tools read it directly. board.c static-asserts the I2C pins and addresses the
+# vendor BSP also states.
 #
 # Device axes: x right, y up the screen, z out of the glass toward the viewer; origin at the centre
 # of the glass. Lengths in millimetres. The case and screen come from the dimension drawing, the
@@ -8,7 +9,6 @@
 name = "Waveshare ESP32-S3-Touch-AMOLED-1.8"
 
 [panel]
-# The panel's size in pixels.
 width = 368
 height = 448
 x_gap = 0x10
@@ -70,12 +70,11 @@ depth_mm = 7.4
 
 [case]
 # Width and height from the dimension drawing; the glass flush with the front, spanning
-# z = 0 to -depth, is an estimate.
+# z = 0 to -depth, is an estimate. The wall follows the module outline, so its corner is the
+# module's plus half the width difference.
 width_mm = 37.6
 height_mm = 45.2
 depth_mm = 15.0
-# The case wall follows the module outline: its corner plus half the width difference (estimate).
-corner_radius_mm = 8.4
 # The back face, square, with a screw in each corner (dimension drawing).
 back_side_mm = 27.6
 screw_radius_mm = 1.8
@@ -87,14 +86,14 @@ height_mm = 34.94
 
 # Side features for the device figures. y and size_y from the vendor dimension drawing's side
 # views (about 7.3 px/mm), oriented against the PCB with Waveshare's open-back photo; z, size_z and
-# proud are estimates unless noted. Buttons and USB-C sit behind the PCB: z = -(device depth + size_z / 2).
+# proud are estimates unless noted. behind_pcb places a feature against the PCB's back face, in place of z.
 
 [[feature]]
 # BOOT, above USB-C.
 side = "right"
 shape = "box"
 y = 10.8
-z = -8.65
+behind_pcb = true
 size_y = 3.9
 size_z = 2.5
 proud = 0.4
@@ -104,7 +103,7 @@ proud = 0.4
 side = "right"
 shape = "box"
 y = -10.7
-z = -8.65
+behind_pcb = true
 size_y = 3.9
 size_z = 2.5
 proud = 0.4
@@ -114,7 +113,7 @@ proud = 0.4
 side = "right"
 shape = "hole"
 y = 0.0
-z = -9.03
+behind_pcb = true
 size_y = 8.94
 size_z = 3.26
 

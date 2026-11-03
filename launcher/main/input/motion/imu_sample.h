@@ -34,8 +34,8 @@ _Static_assert(sizeof(imu_sample_t) == 12, "FIFO order is six little-endian int1
 
 /* Sensor axes to the screen labels x right, y down, z out, as the board's
  * board.toml mounts the chip. It reads specific force, which points up at rest,
- * and callers treat the vector as down, so each label is a device axis negated.
- * The labels are left-handed; the numbers are true down. */
+ * and callers treat the vector as down; the screen's y already runs down, so only
+ * x and z change sign. The labels are left-handed; the numbers are true down. */
 static inline vec3i_t
 imu_axes_screen(int x, int y, int z) {
     return (vec3i_t)BOARD_IMU_TO_SCREEN(x, y, z);

@@ -121,6 +121,11 @@ class BoardConfigTests(unittest.TestCase):
             "BOARD_IMU_AXIS_Z": "{0, 0, (-1)}",
         })
 
+    def test_two_keys_that_write_one_name_are_refused(self):
+        clash = {"name": "x", "panel_width": 1, "panel": {"width": 2}, "imu": UPRIGHT_MOUNT}
+        with self.assertRaisesRegex(SystemExit, "BOARD_PANEL_WIDTH"):
+            gen_board_config.render(clash, "board.toml", "board_config.h")
+
     def test_a_chip_that_is_not_a_c_symbol_is_refused(self):
         with self.assertRaisesRegex(SystemExit, "pmu.chip"):
             gen_board_config.defines({"pmu": {"chip": "power chip"}})

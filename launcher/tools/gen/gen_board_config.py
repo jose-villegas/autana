@@ -67,6 +67,10 @@ def up(board):
 def render(board, source, output):
     rows = defines(board) + up(board)
     rows.append(("BOARD_IMU_TO_SCREEN(x, y, z)", to_screen(board)))
+    names = [name.split("(")[0] for name, _ in rows]
+    clashes = sorted({name for name in names if names.count(name) > 1})
+    if clashes:
+        raise SystemExit(f"{source}: more than one key writes {', '.join(clashes)}")
     width = max(len(name) for name, _ in rows)
     body = "".join(f"#define {name:<{width}} {value}\n" for name, value in rows)
     return ("/* GENERATED FILE - do not edit.\n"
