@@ -8,14 +8,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
+# The generator puts tools/device on the path, and board.py puts tools/ there.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "gen"))
 
+import gen_board_config  # noqa: E402
+import board  # noqa: E402
 from build.c_header import read_define  # noqa: E402
 from build.packages import board_include_dir  # noqa: E402
-import board  # noqa: E402
-import gen_board_config  # noqa: E402
 
 # The built board's mount: chip X up the screen, Y right, Z out of the back.
 UPRIGHT_MOUNT = {"axis_x": [0, 1, 0], "axis_y": [1, 0, 0], "axis_z": [0, 0, -1]}
