@@ -38,7 +38,11 @@ typedef struct {
     bool long_press;
 } power_key_events_t;
 
-typedef struct power_registers power_registers_t;
+/* The PMU's status and charge bytes, raw, as the console's BATTERY reply prints them. */
+typedef struct {
+    uint8_t status;
+    uint8_t charge;
+} power_raw_t;
 
 void power_start(void);
 /* Input task only: clears PWR-key events (0x49) each tick, refreshing the battery
@@ -49,5 +53,7 @@ power_key_events_t power_poll(void);
 /* Any task: a cached copy, with no I2C. */
 power_battery_t power_read_battery(void);
 /* POST, startup, input polling and the console task: blocking I2C, then a cache store.
- * regs may be NULL when raw bytes are not needed. */
-bool power_read_battery_now(power_battery_t* out, power_registers_t* regs);
+ * raw may be NULL when raw bytes are not needed. */
+bool power_read_battery_now(power_battery_t* out, power_raw_t* raw);
+const char* power_charge_name(power_charge_t charge);
+const char* power_flow_name(power_flow_t flow);

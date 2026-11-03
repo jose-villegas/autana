@@ -1,7 +1,8 @@
 # power
 
-The AXP2101 owner uses the board I2C bus. Key interrupts are
-polled by input; battery snapshots refresh at `POWER_BATTERY_PERIOD_US`.
+`power_device.c` owns the board's PMU on the board I2C bus, through the chip
+table `BOARD_PMU_CHIP` names (`power_chip.h`; the AXP2101 driver is in
+`axp2101/`). Key interrupts are polled by input; battery snapshots refresh at `POWER_BATTERY_PERIOD_US`.
 Battery reads never change gauge, ADC, charging or power-off settings.
 
 | Function | Caller | I2C | Lock |
