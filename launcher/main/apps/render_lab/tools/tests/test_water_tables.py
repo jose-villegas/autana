@@ -1,12 +1,15 @@
 """The water stage tables read lines written by the suite's own formats."""
 import pathlib
+import subprocess
 import sys
+import tempfile
 import unittest
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
 import water_tables
 from build.c_header import read_define
+from layout_measure import parse_report
 
 HEADER = water_tables.LOG_HEADER
 PHASES = ("rest", "shake")
@@ -33,6 +36,32 @@ def capture(configs, update_us, scale=1):
 
 
 class WaterTables(unittest.TestCase):
+    def test_perf_table_reads_base_means_across_runs(self):
+        first = capture((("base", 0),), 100001) + capture((("other", 0),), 900001)
+        second = capture((("base", 0),), 100001, scale=3) + capture((("other", 0),), 900001)
+        text = "\n".join(["RUN=1", *first, "RUN=2", *second])
+        with tempfile.TemporaryDirectory() as directory:
+            source = pathlib.Path(directory) / "capture.log"
+            table = pathlib.Path(directory) / "table.md"
+            source.write_text(text)
+            result = subprocess.run([sys.executable, water_tables.__file__, "--perf-table", str(source), str(table)],
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(parse_report(table), {
+                f"water {phase} {part}": value for phase in PHASES
+                for part, value in (("frame", 400000), ("update", 200002), ("draw", 9000))})
+
+    def test_perf_table_without_base_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = pathlib.Path(directory) / "capture.log"
+            table = pathlib.Path(directory) / "table.md"
+            source.write_text("\n".join(capture((("other", 0),), 1000)))
+            result = subprocess.run([sys.executable, water_tables.__file__, "--perf-table", str(source), str(table)],
+                                    capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("no base", result.stderr)
+            self.assertFalse(table.exists())
+
     def test_tables_from_suite_lines(self):
         text = "\n".join(capture((("base", 0), ("rest", 40)), 180000))
         body = water_tables.tables(text)
