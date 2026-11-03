@@ -23,6 +23,8 @@
 #define BOARD_CASE_WIDTH_MM            37.60F
 #define BOARD_CASE_HEIGHT_MM           45.20F
 #define BOARD_CASE_DEPTH_MM            15.00F
+/* The room the case leaves behind the PCB; as rough as the two depths it comes from. */
+#define BOARD_CAVITY_DEPTH_MM          (BOARD_CASE_DEPTH_MM - BOARD_DEVICE_DEPTH_MM)
 /* The case wall follows the module outline (estimate; the drawing gives no radius). */
 #define BOARD_CASE_CORNER_RADIUS_MM    (BOARD_DEVICE_CORNER_RADIUS_MM + (BOARD_CASE_WIDTH_MM - BOARD_DEVICE_WIDTH_MM) / 2)
 /* The case's back face, square, with a screw in each corner (dimension drawing). */

@@ -15,11 +15,11 @@
 /* Measured on the panel's cover glass. */
 #define DISPLAY_PANEL_CORNER_RADIUS        42
 
-/* The visible screen in millimetres, and how deep the case runs behind the
- * glass less the display module and PCB stacked there. */
+/* The visible screen in millimetres, and the case's room behind the PCB
+ * (an estimate; board_geometry.h). */
 #define DISPLAY_SCREEN_WIDTH_MM            BOARD_SCREEN_WIDTH_MM
 #define DISPLAY_SCREEN_HEIGHT_MM           BOARD_SCREEN_HEIGHT_MM
-#define DISPLAY_DEPTH_BEHIND_MM            (BOARD_CASE_DEPTH_MM - BOARD_DEVICE_DEPTH_MM)
+#define DISPLAY_CAVITY_DEPTH_MM            BOARD_CAVITY_DEPTH_MM
 
 /* Quarter names are board-wiring facts, measured with the orientation
  * overlay rather than derived from source.

@@ -39,8 +39,8 @@ void display_orientation_release(display_orientation_t* o);
 /* The panel clock. Every app starts at the system value, the user's choice
  * kept across reboots. An app wanting another rate sets it with
  * gfx_set_panel_clock_hz(); the shell puts the system value back whenever
- * an app starts or exits, so no app restores it. The setter keeps the choice across a reboot; unchanged and
- * unsupported rates are ignored. */
+ * an app starts or exits, so no app restores it. The setter keeps the
+ * choice across a reboot; unchanged and unsupported rates are ignored. */
 int display_system_panel_clock_hz(void);
 void display_set_system_panel_clock_hz(int hz);
 
