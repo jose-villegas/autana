@@ -37,6 +37,7 @@ set(app_srcs
     "input/buttons/buttons.c"
     "input/touch/gesture.c"
     "input/motion/imu.c"
+    "input/motion/qmi8658/qmi8658.c"
     "input/motion/imu_queue.c"
     "power/power_decode.c"
     "power/power_cache.c"

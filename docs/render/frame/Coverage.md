@@ -107,10 +107,10 @@ direction; if neither fits it uses flat. Channels never clamp independently.
 
 <table>
 <tr><th>Look</th><th>Picture</th><th>Amplified difference from SMOOTH</th></tr>
-<tr><td>SMOOTH (4/0 FLAT)</td><td><img src="../images/render/sponza-small-fill-smooth.gif" width="100%" alt="SMOOTH"></td><td></td></tr>
-<tr><td>FAST (12/16 FLAT)</td><td><img src="../images/render/sponza-small-fill-fast.gif" width="100%" alt="FAST (12/16 FLAT)"></td><td><img src="../images/render/sponza-small-fill-fast-diff.gif" width="100%" alt="FAST (12/16 FLAT) difference"></td></tr>
-<tr><td>12/16 GRAIN</td><td><img src="../images/render/sponza-small-fill-grain.gif" width="100%" alt="Hue-safe grain"></td><td><img src="../images/render/sponza-small-fill-grain-diff.gif" width="100%" alt="Grain difference"></td></tr>
-<tr><td>12/16 DITHER</td><td><img src="../images/render/sponza-small-fill-dither.gif" width="100%" alt="Ordered vertex colours"></td><td><img src="../images/render/sponza-small-fill-dither-diff.gif" width="100%" alt="Dither difference"></td></tr>
+<tr><td>SMOOTH (4/0 FLAT)</td><td><img src="../../images/render/sponza-small-fill-smooth.gif" width="100%" alt="SMOOTH"></td><td></td></tr>
+<tr><td>FAST (12/16 FLAT)</td><td><img src="../../images/render/sponza-small-fill-fast.gif" width="100%" alt="FAST (12/16 FLAT)"></td><td><img src="../../images/render/sponza-small-fill-fast-diff.gif" width="100%" alt="FAST (12/16 FLAT) difference"></td></tr>
+<tr><td>12/16 GRAIN</td><td><img src="../../images/render/sponza-small-fill-grain.gif" width="100%" alt="Hue-safe grain"></td><td><img src="../../images/render/sponza-small-fill-grain-diff.gif" width="100%" alt="Grain difference"></td></tr>
+<tr><td>12/16 DITHER</td><td><img src="../../images/render/sponza-small-fill-dither.gif" width="100%" alt="Ordered vertex colours"></td><td><img src="../../images/render/sponza-small-fill-dither-diff.gif" width="100%" alt="Dither difference"></td></tr>
 </table>
 
 Clips show the same full renderer frames and camera window, one look per GIF.
