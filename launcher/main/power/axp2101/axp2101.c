@@ -98,16 +98,18 @@ axp2101_read_battery(power_battery_t* out, power_raw_t* raw) {
                     && pmu_read(AXP2101_REG_VBAT_HIGH, &regs.vbat_high)
                     && pmu_read(AXP2101_REG_VBAT_LOW, &regs.vbat_low) && pmu_read(AXP2101_REG_PERCENT, &regs.percent);
     *raw = (power_raw_t){.status = regs.status, .charge = regs.charge};
-    *out = ok ? axp2101_decode(&regs) : (power_battery_t){0};
+    if (ok) {
+        *out = axp2101_decode(&regs);
+    }
     return ok;
 }
 
-static bool
+static void
 axp2101_take_keys(power_key_events_t* out) {
     *out = (power_key_events_t){0};
     uint8_t status = 0;
     if (!pmu_read(AXP2101_REG_INTSTS2, &status)) {
-        return false;
+        return;
     }
     const uint8_t fired = status & (AXP2101_PKEY_SHORT | AXP2101_PKEY_LONG);
     if (fired != 0) {
@@ -116,7 +118,6 @@ axp2101_take_keys(power_key_events_t* out) {
         out->short_press = (fired & AXP2101_PKEY_SHORT) != 0;
         out->long_press = (fired & AXP2101_PKEY_LONG) != 0;
     }
-    return true;
 }
 
 const power_chip_t power_chip_axp2101 = {

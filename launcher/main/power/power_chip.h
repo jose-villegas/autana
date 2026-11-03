@@ -14,13 +14,14 @@
 
 /* open adds the chip to the bus. start turns the key interrupts on, clears a press latched
  * before boot, logs the chip's settings and fills *warning from its thresholds. read_battery
- * leaves out->read_us to the caller. take_keys reads and clears only the key events. */
+ * leaves out->read_us to the caller and fails with out untouched. take_keys reads and clears only
+ * the key events, and reports none when the bus fails. */
 typedef struct {
     const char* name;
     bool (*open)(i2c_master_bus_handle_t bus, uint8_t address);
     bool (*start)(power_log_warning_t* warning);
     bool (*read_battery)(power_battery_t* out, power_raw_t* raw);
-    bool (*take_keys)(power_key_events_t* out);
+    void (*take_keys)(power_key_events_t* out);
 } power_chip_t;
 
 /* The chip this board carries. */

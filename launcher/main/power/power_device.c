@@ -49,7 +49,7 @@ ensure_device(void) {
 
 void
 power_start(void) {
-    power_log_warning_t warning;
+    power_log_warning_t warning = {0};
     if (pmu_ready || !ensure_device() || !BOARD_PMU_CHIP.start(&warning)) {
         return;
     }
@@ -70,12 +70,13 @@ power_read_battery_now(power_battery_t* out, power_raw_t* raw) {
         raw = &local;
     }
     *raw = (power_raw_t){0};
-    if (!ensure_device() || !BOARD_PMU_CHIP.read_battery(out, raw)) {
+    const bool ok = ensure_device() && BOARD_PMU_CHIP.read_battery(out, raw);
+    if (!ok) {
         *out = (power_battery_t){0};
     }
     out->read_us = read_us;
     power_cache_store(&cache, out);
-    return out->valid;
+    return ok;
 }
 
 power_battery_t
@@ -87,7 +88,7 @@ power_key_events_t
 power_poll(void) {
     power_key_events_t events = {0};
     if (pmu_ready) {
-        (void)BOARD_PMU_CHIP.take_keys(&events);
+        BOARD_PMU_CHIP.take_keys(&events);
     }
     const int64_t now_us = timing_now_us();
     if (pmu_open && ((now_us - last_battery_us) >= POWER_BATTERY_PERIOD_US)) {
