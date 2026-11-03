@@ -162,7 +162,16 @@ case "${1:-}" in
             if ! grep -qF -- "$stem" "$TOOLS_DIR/render_doc_images.sh" "$TOOLS_DIR"/scenes/*.sh "$TOOLS_DIR/doc_images_demo.sh" "$TOOLS_DIR/doc_import_examples.py" \
                 $app_image_scripts; then
                 claimed=0
+                # A name an app's loop ends with its variable, as render-lab-stress-$key.
+                prefix=$stem
+                while [ "$claimed" = 0 ] && [ "${prefix%-*}" != "$prefix" ]; do
+                    prefix=${prefix%-*}
+                    if [ -n "$app_image_scripts" ] && grep -qF -- "$prefix-\$" $app_image_scripts; then
+                        claimed=1
+                    fi
+                done
                 for scene in launcher/demo/*/*.scene.toml; do
+                    [ "$claimed" = 1 ] && break
                     id=$(basename "$scene" .scene.toml)
                     case "$stem" in
                         "$id"-*)

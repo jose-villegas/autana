@@ -125,7 +125,7 @@ and compares decoded pixels with `compare_images.py`, never bytes: another
 Pillow can write different bytes for the same pixels. It prints
 `same` or `changed` per image, and `orphan` for a file nothing makes.
 `--orphans` renders nothing and reports an image whose name no script
-mentions; the Comment Rules workflow runs it on every pull request. The
+mentions, whole or as a loop's name ending in its variable (`name-$key`); the Comment Rules workflow runs it on every pull request. The
 `doc-images` workflow runs it on pushes to main that touch `launcher/` or
 `docs/`, and opens one pull request when an image or table changed. It needs the
 repository setting Actions > "Allow GitHub Actions to create and approve pull
