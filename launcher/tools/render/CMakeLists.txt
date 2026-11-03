@@ -19,6 +19,7 @@ endif()
 add_library(render_host_core INTERFACE)
 add_library(autana::render_host_core ALIAS render_host_core)
 target_sources(render_host_core INTERFACE
+    "${CMAKE_CURRENT_LIST_DIR}/render_counts.c"
     "${CMAKE_CURRENT_LIST_DIR}/render_host.c"
     "${CMAKE_CURRENT_LIST_DIR}/render_video.c"
     "${CMAKE_CURRENT_LIST_DIR}/render_watch.c")

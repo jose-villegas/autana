@@ -23,6 +23,7 @@
 #include "render_lab_view.h"
 #include "scene/scene.h"
 #include "scene_baked.h"
+#include "stress/scene_stress.h"
 #include "ui/ui.h"
 
 /* Index 0 is the scene a start with no key shows; a family's scenes keep this order in its dropdown. */
@@ -41,6 +42,11 @@ static const render_lab_scene_t* const scenes[] = {
     &scene_bistro[SCENE_BAKED_LITE],
     &scene_bistro[SCENE_BAKED_FLAT],
     &scene_bistro[SCENE_BAKED_FLAT_FITTED],
+    &scene_stress[STRESS_OPEN],
+    &scene_stress[STRESS_STACK],
+    &scene_stress[STRESS_TINY_COPIES],
+    &scene_stress[STRESS_BIG_TRIS],
+    &scene_stress[STRESS_PER_FRAME],
 };
 #define SCENE_COUNT ((int)(sizeof(scenes) / sizeof(scenes[0])))
 static int current_scene_index;
