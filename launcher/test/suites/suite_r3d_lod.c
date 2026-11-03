@@ -333,7 +333,7 @@ test_a_group_never_projects_larger_than_its_parent_under_a_stretched_turned_mode
     const int steps = steps_in();
     for (size_t s = 0; s < sizeof scales / sizeof scales[0]; s++) {
         for (size_t t = 0; t < sizeof turns / sizeof turns[0]; t++) {
-            transformf_t pose = TRANSFORMF_IDENTITY;
+            transformf_t pose = transformf_identity();
             transformf_set_rotation(&pose,
                                     quatf_from_axis_angle(vec3f_normalize((vec3f_t){0.3F, 1.0F, 0.2F}), turns[t]));
             transformf_set_scale(&pose, scales[s]);
@@ -360,7 +360,7 @@ test_a_group_s_error_projects_at_the_model_s_largest_scale(void) {
     const r3d_lit_mesh_t* mesh = levelled_mesh();
     const vec3f_t stretches[] = {{STRETCH, STRETCH, STRETCH}, {STRETCH, 1.0F / STRETCH, 1.0F}};
     for (size_t s = 0; s < sizeof stretches / sizeof stretches[0]; s++) {
-        transformf_t pose = TRANSFORMF_IDENTITY;
+        transformf_t pose = transformf_identity();
         transformf_set_scale(&pose, stretches[s]);
         const mat4f_t model = transformf_compute_matrix(&pose);
         const r3d_lens_t plain = lens_at(FAR_EYE, NULL);
