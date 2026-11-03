@@ -26,6 +26,9 @@
 #include "stress/scene_stress.h"
 #include "ui/ui.h"
 
+/* Each stress preset, in the order its table lists them. */
+#define STRESS_SCENE_ENTRY(id_, ...) &scene_stress[STRESS_##id_],
+
 /* Index 0 is the scene a start with no key shows; a family's scenes keep this order in its dropdown. */
 static const render_lab_scene_t* const scenes[] = {&scene_sponza[SCENE_BAKED_FITTED_FULL],
                                                    &scene_sponza[SCENE_BAKED_FITTED],
@@ -41,7 +44,6 @@ static const render_lab_scene_t* const scenes[] = {&scene_sponza[SCENE_BAKED_FIT
                                                    &scene_bistro[SCENE_BAKED_LITE],
                                                    &scene_bistro[SCENE_BAKED_FLAT],
                                                    &scene_bistro[SCENE_BAKED_FLAT_FITTED],
-#define STRESS_SCENE_ENTRY(id_, ...) &scene_stress[STRESS_##id_],
                                                    STRESS_PRESETS(STRESS_SCENE_ENTRY)};
 #define SCENE_COUNT ((int)(sizeof(scenes) / sizeof(scenes[0])))
 static int current_scene_index;
