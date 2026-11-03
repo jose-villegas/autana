@@ -9,10 +9,11 @@
  * The mechanism, so nobody re-derives it from scratch: mu_mouse_over() needs
  * in_hover_root(), and mu_begin() copies hover_root from the PREVIOUS frame's
  * next_hover_root. mu_update_control() then marks a control hovered only when
- * the mouse is over it AND mouse_down is clear, and focus is only taken from
- * a control that is already hovered. So a DOWN fed before hover has settled
- * lands with nothing hovered, nothing takes focus, and mu_button() renders a
- * pressed frame while returning 0 forever.
+ * the mouse is over it AND either mouse_down is clear or the button went down
+ * this frame (a local change), and focus is only taken from a control that is
+ * already hovered. So a DOWN fed under a stale hover root lands with nothing
+ * hovered, nothing takes focus, and mu_button() renders a pressed frame while
+ * returning 0 forever, unless the press is made again.
  *
  * microui.c is plain C over stdio/stdlib/string, so it links here unchanged;
  * this is the only suite that links it.
@@ -145,21 +146,72 @@ test_a_tap_submits_the_button_underneath_it(void) {
                                   "stayed green, leaving no app reachable from the launcher");
 }
 
-/* Latency: the press is answered on the second frame of contact, not the
- * third. The DOWN is fed one frame after the first position, so microui must
- * already have granted hover on that first frame. */
+/* Latency: the press is answered on the frame the finger lands. The DOWN is
+ * fed with the first position, so microui must grant hover on the frame its
+ * button goes down. */
 static void
-test_a_tap_submits_on_the_second_frame_of_contact(void) {
+test_a_tap_submits_on_the_frame_of_contact(void) {
     fixture();
     idle_frames(2);
 
     const int cx = BTN_X + BTN_W / 2;
     const int cy = BTN_Y + BTN_H / 2;
-    TEST_ASSERT_FALSE(frame(true, true, false, cx, cy));
-    TEST_ASSERT_TRUE_MESSAGE(frame(true, false, false, cx, cy),
-                             "the DOWN follows the first frame of contact, and it must click");
+    TEST_ASSERT_TRUE_MESSAGE(frame(true, true, false, cx, cy), "the frame of contact must click");
     TEST_ASSERT_FALSE_MESSAGE(frame(true, false, false, cx, cy), "holding must not click again");
+    TEST_ASSERT_FALSE(frame(true, false, false, cx, cy));
     TEST_ASSERT_FALSE(frame(false, false, true, cx, cy));
+}
+
+/* One frame of a full-screen window named `name` holding the one button. */
+static bool
+named_frame(const char* name, bool down, bool pressed, bool released) {
+    input_t in = {.down = down, .pressed = pressed, .released = released};
+    in.point.x = BTN_X + BTN_W / 2;
+    in.point.y = BTN_Y + BTN_H / 2;
+    ui_bridge_feed(ctx, &pointer, &in);
+    bool submitted = false;
+    mu_begin(ctx);
+    if (mu_begin_window_ex(ctx, name, mu_rect(0, 0, CANVAS_W, CANVAS_H),
+                           MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
+        mu_layout_set_next(ctx, mu_rect(BTN_X, BTN_Y, BTN_W, BTN_H), 0);
+        submitted = mu_button(ctx, "GO") != 0;
+        mu_end_window(ctx);
+    }
+    mu_end(ctx);
+    ui_bridge_end(ctx, &pointer);
+    return submitted;
+}
+
+/* The frame of contact builds a window the last frame did not, so the seeded
+ * hover root is stale and the DOWN takes nothing: it is made again on the
+ * next frame, and the tap clicks exactly once. */
+static void
+test_a_press_under_a_stale_hover_root_is_made_again_and_clicks_once(void) {
+    fixture();
+    named_frame("before", false, false, false);
+    named_frame("before", false, false, false);
+
+    TEST_ASSERT_FALSE_MESSAGE(named_frame("after", true, true, false), "the stale root takes nothing");
+    TEST_ASSERT_TRUE_MESSAGE(named_frame("after", true, false, false), "the press made again clicks");
+    int again = 0;
+    for (int i = 0; i < 4; i++) {
+        again += named_frame("after", true, false, false);
+    }
+    again += named_frame("after", false, false, true);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, again, "and only once");
+}
+
+/* The same stale root with the lift on the next frame: the press is made
+ * again with its release, so the tap still clicks. */
+static void
+test_a_quick_tap_under_a_stale_hover_root_still_clicks(void) {
+    fixture();
+    named_frame("before", false, false, false);
+    named_frame("before", false, false, false);
+
+    TEST_ASSERT_FALSE(named_frame("after", true, true, false));
+    TEST_ASSERT_TRUE(named_frame("after", false, false, true));
+    TEST_ASSERT_FALSE(named_frame("after", false, false, false));
 }
 
 /* Hover is resolved on the frame the finger lands, and on the control under
@@ -317,8 +369,8 @@ test_a_tap_outside_the_button_submits_nothing(void) {
 
 /* A slider needs mouse_down to persist ACROSS frames: microui only tracks
  * its value while (mouse_down | mouse_pressed) is set. This is what the
- * whole hold policy was introduced for, and it must keep working alongside
- * the hover frames the fix added. */
+ * whole hold policy was introduced for, and it must keep working now the
+ * press goes down on the frame of contact. */
 static void
 test_a_drag_moves_a_slider_microui_would_not_track_on_a_tap(void) {
     fixture();
@@ -452,7 +504,8 @@ test_a_tap_on_a_scrollable_list_presses_the_row_under_it_once(void) {
     int submits = 0;
     const int cx = CANVAS_W / 2;
     const int cy = 5 + LIST_ROW_H / 2;
-    submits += list_frame(true, true, false, cx, cy) >= 0;
+    TEST_ASSERT_EQUAL_INT_MESSAGE(-1, list_frame(true, true, false, cx, cy),
+                                  "on content that scrolls the press waits: the finger may be starting a drag");
     for (int i = 0; i < 4; i++) {
         submits += list_frame(true, false, false, cx, cy) >= 0;
     }
@@ -488,7 +541,9 @@ void
 run_ui_pointer_microui_suite(void) {
     ctx = malloc(sizeof *ctx);
     RUN_TEST(test_a_tap_submits_the_button_underneath_it);
-    RUN_TEST(test_a_tap_submits_on_the_second_frame_of_contact);
+    RUN_TEST(test_a_tap_submits_on_the_frame_of_contact);
+    RUN_TEST(test_a_press_under_a_stale_hover_root_is_made_again_and_clicks_once);
+    RUN_TEST(test_a_quick_tap_under_a_stale_hover_root_still_clicks);
     RUN_TEST(test_hover_is_granted_on_the_frame_a_press_lands);
     RUN_TEST(test_a_press_over_stacked_windows_reaches_only_the_top_one);
     RUN_TEST(test_a_press_on_a_shared_vertical_edge_reaches_only_the_window_it_is_in);
