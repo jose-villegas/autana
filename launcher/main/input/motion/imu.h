@@ -1,5 +1,5 @@
 /*
- * imu: QMI8658 stream FIFO drained by a polling task.
+ * imu: the IMU chip's stream FIFO, drained by a polling task (chip drivers: imu_chip.h).
  * imu_read() returns the newest sample read by the task. Register values follow the
  * QST QMI8658A datasheet Rev A (2022).
  * The task works only for recent readers (imu_demand.h): FIFO takes keep the drains,

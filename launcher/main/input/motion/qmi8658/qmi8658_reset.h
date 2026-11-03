@@ -1,4 +1,4 @@
-/* imu_reset: the QMI8658 soft reset, and the register poll it shares with imu.c's commands.
+/* qmi8658_reset: the QMI8658 soft reset, and the register poll it shares with qmi8658.c's commands.
  *
  * An ESP32 reset or flash does not power-cycle the sensor, so without a soft reset
  * whatever the previous firmware left in it survives into the next boot. */
@@ -11,7 +11,7 @@
 #include "math/scalar/units.h"
 
 /* Lewis He, SensorLib (MIT), SensorQMI8658.hpp reset(): write the reset command,
- * then poll dQY_L until it reads the done value. The rest of the register map is in imu.c. */
+ * then poll dQY_L until it reads the done value. The rest of the register map is in qmi8658.c. */
 #define REG_RESET            0x60
 #define REG_RESET_RESULT     0x4D
 #define RESET_COMMAND        0xB0

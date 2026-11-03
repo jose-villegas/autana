@@ -9,7 +9,7 @@
 
 #include "input/motion/imu.h"
 #include "input/motion/imu_odr.h"
-#include "input/motion/imu_reset.h"
+#include "input/motion/qmi8658/qmi8658_reset.h"
 
 #define TEST_CALLS_MAX 4
 
