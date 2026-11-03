@@ -40,6 +40,8 @@ step(bool down, bool pressed, bool released, int x, int y) {
     return ui_pointer_step(&p, &in, ev, UI_POINTER_MAX_EVENTS);
 }
 
+static int count_kind(int n, ui_pointer_kind_t kind);
+
 /*
  * The DOWN goes out on the frame of contact: microui takes hover on the frame
  * its button goes down, under the hover root ui_bridge seeded. Lost, a tap
@@ -75,6 +77,24 @@ test_a_missed_press_is_pressed_again_until_it_lands(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, step(true, false, false, 10, 20), "landed: a move only");
     p.press_missed = true;
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, step(true, false, false, 10, 20), "a landed press is never repeated");
+}
+
+/* Missed on content that scrolls: the DOWN is taken back and the press waits
+ * for the lift, like any press there, so a drag can still scroll. */
+static void
+test_a_missed_press_on_scrollable_content_is_taken_back_to_wait(void) {
+    fixture();
+    step(true, true, false, 10, 20);
+    p.press_missed = true;
+    p.over_scrollable = true;
+    TEST_ASSERT_EQUAL_INT(2, step(true, false, false, 10, 20));
+    TEST_ASSERT_EQUAL_INT(UI_POINTER_UP, ev[0].kind);
+    TEST_ASSERT_EQUAL_INT(UI_POINTER_MOVE, ev[1].kind);
+    TEST_ASSERT_FALSE(p.down);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, count_kind(step(true, false, false, 10, 21), UI_POINTER_DOWN), "it waits");
+    const int n = step(false, false, true, 10, 21);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, count_kind(n, UI_POINTER_DOWN), "the lift makes the tap");
+    TEST_ASSERT_EQUAL_INT(1, count_kind(n, UI_POINTER_UP));
 }
 
 static void
@@ -371,6 +391,7 @@ run_ui_pointer_suite(void) {
     RUN_TEST(test_a_press_goes_down_on_the_frame_of_contact);
     RUN_TEST(test_a_missed_press_is_pressed_again_until_it_lands);
     RUN_TEST(test_a_press_that_landed_is_not_pressed_again);
+    RUN_TEST(test_a_missed_press_on_scrollable_content_is_taken_back_to_wait);
     RUN_TEST(test_a_missed_press_lifted_at_once_is_pressed_with_its_release);
     RUN_TEST(test_a_lift_that_never_reached_the_ui_is_released_on_the_next_idle_frame);
     RUN_TEST(test_a_new_press_pays_the_owed_up_first);
