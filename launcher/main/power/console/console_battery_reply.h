@@ -3,17 +3,17 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <string.h>
-#include "power/power_decode.h"
+#include "power/power.h"
 #include "power/power_log.h"
 #define CONSOLE_BATTERY_REPLY_MAX 192
 
 static inline void
-console_battery_reply(char* line, size_t size, const power_battery_t* battery, const power_registers_t* regs) {
+console_battery_reply(char* line, size_t size, const power_battery_t* battery, const power_raw_t* raw) {
     (void)snprintf(line, size,
                    "BATTERY valid=%d usb=%d battery=%d mv=%u percent=%u charge=%s flow=%s reg00=0x%02x reg01=0x%02x",
                    battery->valid, battery->usb_present, battery->battery_present, (unsigned)battery->battery_mv,
                    (unsigned)battery->percent, power_charge_name(battery->charge), power_flow_name(battery->flow),
-                   regs->status, regs->charge);
+                   raw->status, raw->charge);
 }
 
 typedef enum {
