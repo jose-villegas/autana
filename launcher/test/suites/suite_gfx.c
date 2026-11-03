@@ -602,7 +602,7 @@ test_an_open_line_leaves_its_first_pixel_alone(void) {
 void
 test_chained_open_segments_do_not_double_their_joints(void) {
     const gfx_color_t bg = RGB565BE(0x000000);
-    const gfx_color_t step = RGB565BE(0x002000);
+    const gfx_color_t step = RGB565BE(0x002000); /* magic: one green step of the additive blend, a colour */
     clear_fixture(bg);
     draw_line_ex(10, 60, 20, 60, step, DRAW_LINE_ADD);
     draw_line_ex(20, 60, 30, 60, step, DRAW_LINE_ADD | DRAW_LINE_OPEN);
