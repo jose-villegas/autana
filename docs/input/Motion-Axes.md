@@ -1,6 +1,6 @@
 # Motion axes
 
-`input/motion/imu.c` configures the QMI8658 (+/-8 g, +/-512 dps) and reads all
+`input/motion/qmi8658/qmi8658.c` configures the QMI8658 (+/-8 g, +/-512 dps) and reads all
 six axes in one burst. Keep the burst intact: separate reads can straddle
 sample updates. A stream FIFO holds up to `IMU_FIFO_SAMPLES` at the rate
 `IMU_ODR_HZ`; see [Gravity.md](Gravity.md#update) for the drain.

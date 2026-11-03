@@ -14,6 +14,8 @@
 #define BOARD_BOOT_GPIO            GPIO_NUM_0
 #define BOARD_PMU_I2C_ADDR         0x34
 #define BOARD_IMU_I2C_ADDR         0x6B
+/* The input/motion/ chip driver this board carries, by its imu_chip_t symbol. */
+#define BOARD_IMU_CHIP             imu_chip_qmi8658
 #define BOARD_RTC_I2C_ADDR         0x51
 #define BOARD_IO_EXPANDER_I2C_ADDR 0x20
 /* The ES8311 datasheet address is 8-bit 0x30; I2C requires the 7-bit address. */
