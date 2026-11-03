@@ -153,7 +153,8 @@ options, each by where it stops paying.
 
 | Part | Owner |
 |---|---|
-| Presets, the one table | `stress/stress_preset.h` `STRESS_PRESETS` |
+| Presets: each ID, key and surface | `stress/stress_preset.h` `STRESS_PRESETS` |
+| Each preset's shape, copies and layout | `stress/stress_preset.c` `stress_presets` |
 | Each copy's shape | `math/geometry/primitive_mesh.h` |
 | One mesh every copy draws | `render/dynamic/r3d_dynamic_mesh.h` |
 | The camera's swing, a still camera at its start, and a pool of copies | `launcher/demo/stress/` |
