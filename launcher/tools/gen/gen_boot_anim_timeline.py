@@ -38,7 +38,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from gltf import gltf_read  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "device"))
-from panel_size import PANEL_WIDTH, PANEL_HEIGHT
+from board import PANEL_WIDTH, PANEL_HEIGHT
 
 MOTION_ANIMATION = "boot_motion"
 MOTION_NODES = ("camera", "space")

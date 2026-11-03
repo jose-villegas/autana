@@ -85,7 +85,7 @@ def rotation_figure(data, model, output):
 
 def main():
     data, output, cc = probe_data(__file__, None, __doc__)
-    model = DeviceModel(cc)
+    model = DeviceModel()
     axes_figure(model, np.array(data["frames"][0]["pose"]), output / "motion-axes.png")
     rotation_figure(data, model, output / "motion-rotation.gif")
 

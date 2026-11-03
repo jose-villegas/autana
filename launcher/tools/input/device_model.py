@@ -1,20 +1,25 @@
-"""The case as a 3D figure: translucent walls, screen, IMU and both axis sets, from board/waveshare_amoled_1_8/board_geometry.h.
+"""The case as a 3D figure: translucent walls, screen, IMU and both axis sets, from the built board's board.toml.
 
 Device axes: x right, y up the screen, z out of the glass; millimetres; origin at the glass centre.
 A pose is a 3x3 matrix whose columns are the device axes in the figure's world axes; world z is up.
 DeviceAnimation is the input figures' one animation: the posed device with its direction vectors on the left,
 scalar signals over time on the right, a time cursor in sync.
 """
+import sys
 from pathlib import Path
 
 import numpy as np
 from matplotlib.lines import Line2D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
-from docs.figures import run_probe
+from build.c_header import read_define
 from docs.plot_style import FAINT, GIF_FPS, INK, LABEL_SIZE, MUTED, SLOTS, TITLE_SIZE, figure, save_gif
 
-PROBE = Path(__file__).with_name("device_model_probe.c")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
+
+from board import PANEL_WIDTH, chip_axes, load_board, screen_label_axes  # noqa: E402
+
+DISPLAY_HEADER = Path(__file__).resolve().parents[2] / "main" / "display" / "display.h"
 CORNER_SEGMENTS = 8
 BODY_ALPHA = 0.22
 # The PCB is a faint reference behind the IMU, inside the translucent case.
@@ -74,42 +79,50 @@ def box_faces(centre, size):
 class DeviceModel:
     """The device's faces and axes in device axes, built once from the board geometry."""
 
-    def __init__(self, cc):
-        geometry = run_probe(cc, (PROBE,))
-        self.height = geometry["case_height"]
-        self.depth = geometry["case_depth"]
-        self.width = geometry["case_width"]
+    def __init__(self):
+        board = load_board()
+        device, case, screen, imu = board["device"], board["case"], board["screen"], board["imu"]
+        self.height = case["height_mm"]
+        self.depth = case["depth_mm"]
+        self.width = case["width_mm"]
         self.radius = np.linalg.norm((self.width, self.height, self.depth)) / 2
-        self.imu_centre = np.array(geometry["imu_centre"])
-        self.chip_axes = np.array(geometry["chip_axes"], dtype=float)
+        # The package sits on the PCB's back face.
+        self.imu_centre = np.array((imu["centre_x_mm"], imu["centre_y_mm"],
+                                    -(device["depth_mm"] + imu["size_z_mm"] / 2)))
+        self.chip_axes = np.array(chip_axes(board), dtype=float)
         # The code's screen axes x right, y down, z out: minus where imu_axes_screen() sends the chip axes,
         # because the chip reads specific force (up) and the code calls that vector down.
-        self.screen_axes = -np.array(geometry["mapped_axes"], dtype=float)
-        outline = rounded_outline(self.width, self.height, geometry["case_corner"])
+        self.screen_axes = -np.array(screen_label_axes(board), dtype=float)
+        # The case wall follows the module outline.
+        case_corner = device["corner_radius_mm"] + (self.width - device["width_mm"]) / 2
+        outline = rounded_outline(self.width, self.height, case_corner)
         front = np.c_[outline, np.zeros(len(outline))]
         back = np.c_[outline, np.full(len(outline), -self.depth)]
-        screen = rounded_outline(geometry["screen_width"], geometry["screen_height"], geometry["screen_corner"])
+        screen_corner = read_define(DISPLAY_HEADER, "DISPLAY_PANEL_CORNER_RADIUS") * screen["width_mm"] / PANEL_WIDTH
+        screen = rounded_outline(screen["width_mm"], screen["height_mm"], screen_corner)
         self.glass = np.c_[screen, np.zeros(len(screen))]
         self.case_outlines = (front, back)
         # rounded_outline keeps the same point count for every radius, pairing bezel ring vertices.
         self.body = [np.array([front[i], front[i + 1], other[i + 1], other[i]])
                      for other in (back, self.glass) for i in range(len(outline) - 1)] + [back]
-        corners = np.array([(1, 1), (-1, 1), (-1, -1), (1, -1)]) * geometry["back_side"] / 2
+        corners = np.array([(1, 1), (-1, 1), (-1, -1), (1, -1)]) * case["back_side_mm"] / 2
         square = np.vstack((corners, corners[:1]))
-        radius = geometry["screw_radius"]
+        radius = case["screw_radius_mm"]
         circle = rounded_outline(2 * radius, 2 * radius, radius)
         self.back_details = [np.c_[line, np.full(len(line), -self.depth)]
                              for line in [square] + [circle + corner for corner in corners]]
-        pcb = rounded_outline(geometry["width"], geometry["height"], geometry["corner"])
-        self.pcb = np.c_[pcb, np.full(len(pcb), -geometry["depth"])]
-        self.imu = box_faces(self.imu_centre, self.chip_axes.T @ np.array(geometry["imu_size"]))
+        pcb = rounded_outline(device["width_mm"], device["height_mm"], device["corner_radius_mm"])
+        self.pcb = np.c_[pcb, np.full(len(pcb), -device["depth_mm"])]
+        imu_size = np.array((imu["size_x_mm"], imu["size_y_mm"], imu["size_z_mm"]))
+        self.imu = box_faces(self.imu_centre, self.chip_axes.T @ imu_size)
 
         self.buttons = []
         self.holes = []
-        for feature in geometry["side_features"]:
+        for feature in board["feature"]:
             x = self.width / 2 * (1 if feature["side"] == "right" else -1)
-            y, z = feature["y"], feature["z"]
             size_y, size_z = feature["size_y"], feature["size_z"]
+            y = feature["y"]
+            z = -(device["depth_mm"] + size_z / 2) if feature.get("behind_pcb") else feature["z"]
             if feature["shape"] == "box":
                 proud = feature["proud"]
                 faces = box_faces((x + proud / 2, y, z), (proud, size_y, size_z))
