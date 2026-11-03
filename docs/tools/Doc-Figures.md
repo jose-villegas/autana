@@ -40,17 +40,17 @@ small program that calls the library and prints JSON.
 (`probe_into_folder` covers the usual `--cc CC --out DIR` producer). It also
 holds the one way to write each kind of file:
 
-| Helper | Writes |
+| Helper | Does |
 |---|---|
-| `save_png(picture, out)` | a PNG without metadata, so one picture always gives one file |
-| `save_gif(frames, out, frame_ms)` | a looping GIF on `GIF_PALETTE`: each pixel takes the entry nearest it in OKLab, without dithering |
-| `gif_from_avi(avi, out, fps, ...)` | a host render's AVI as such a GIF, resampled, cut and turned; `figures.py gif` from a shell script |
+| `save_png(picture, out)` | writes a PNG without metadata, so one picture always gives one file; `figures.py png` from a shell script |
+| `save_gif(frames, out, frame_ms)` | writes a looping GIF on `GIF_PALETTE`: each pixel takes the entry nearest it in OKLab, without dithering |
+| `gif_from_avi(avi, out, fps, ...)` | writes a host render's AVI as such a GIF, resampled, cut and turned; `figures.py gif` from a shell script |
 | `render_scene(scene, *flags, log=...)` | runs the scene viewer and returns its output |
 
-Every doc GIF shares the one 256-colour `GIF_PALETTE`, so a colour has the
-same index everywhere: white, black and the
+Every doc GIF shares one `GIF_PALETTE`, so a colour has the same index
+everywhere: white, black and the
 [`plot_style`](../../launcher/tools/docs/plot_style.py) theme first, the rest
-fitted once to the doc GIFs. [`gif_palette.py`](../../launcher/tools/docs/gif_palette.py)
+fitted to the doc GIFs. [`gif_palette.py`](../../launcher/tools/docs/gif_palette.py)
 prints the table again from the GIFs it is given; a new table changes every GIF.
 
 ## Running them

@@ -16,7 +16,7 @@
 #
 # Run from the repository root with $PYTHON set to a Python that has Pillow and numpy
 # (the fidelity sheet also needs launcher/tools/r3d/requirements.txt, found by find_r3d_python);
-# ffmpeg must be on PATH. Renderer output goes to logs under <work-dir>.
+# ffmpeg must be on PATH for the comparison videos. Renderer output goes to logs under <work-dir>.
 
 set -eu
 

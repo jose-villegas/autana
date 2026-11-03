@@ -34,7 +34,7 @@ def subplots(rows, columns, size, **options):
 
 
 def save(fig, path, dpi=DPI):
-    """Write the PNG (or GIF frame) without the version stamp, so a regeneration diffs clean, then free it."""
+    """Write the PNG without the version stamp, so a regeneration diffs clean, then free the figure."""
     path = pathlib.Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=dpi, metadata={"Software": None})
