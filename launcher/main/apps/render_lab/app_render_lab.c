@@ -372,7 +372,6 @@ void
 render_lab_exit(void) {
     render_lab_dynres_stop();
     exit_scene();
-    gfx_request_full_redraw();
     gfx_mode_exit();
 }
 
