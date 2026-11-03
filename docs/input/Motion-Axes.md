@@ -9,7 +9,7 @@ sample updates. A stream FIFO holds up to `IMU_FIFO_SAMPLES` at the rate
 
 The IMU sits on the PCB's back (the faint outline inside the case) near the centre:
 chip X runs up the screen, Y right, Z out of the back
-([`board/waveshare_amoled_1_8/board.toml`](../../launcher/main/board/waveshare_amoled_1_8/board.toml)).<sup>[[89]](../Citations.md#waveshare-amoled-3d-model)</sup>
+([`board/waveshare/esp32_s3_touch_amoled_1_8/board.toml`](../../launcher/main/board/waveshare/esp32_s3_touch_amoled_1_8/board.toml)).<sup>[[89]](../Citations.md#waveshare-amoled-3d-model)</sup>
 
 It reads specific force, which points up at rest; the code treats that vector as down,
 so each screen label is a chip axis negated:

@@ -1,4 +1,4 @@
-"""The board a build compiles, read from its board.toml: main/board/<folder>/board.toml describes
+"""The board a build compiles, read from its board.toml: main/board/<vendor>/<board>/board.toml describes
 the board's panel, chips, pins and shape once. gen_board_config.py writes board_config.h from it;
 tools import PANEL_WIDTH and PANEL_HEIGHT, or load_board() for the rest."""
 

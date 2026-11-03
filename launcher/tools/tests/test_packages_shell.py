@@ -152,7 +152,7 @@ endmenu
 class BoardFolder(FixtureLauncher):
     def setUp(self):
         super().setUp()
-        for folder in ("first_board", "second_board", "second_board_v2"):
+        for folder in ("first_board", "second_board", "second_board_v2", "vendor/second_board"):
             (self.launcher / "main/board" / folder).mkdir(parents=True)
         shutil.copy(ROOT / "launcher/main/board/board_dir.cmake", self.launcher / "main/board/board_dir.cmake")
         self.write("packages/alpha/include/alpha/alpha.h")
@@ -173,13 +173,17 @@ class BoardFolder(FixtureLauncher):
     def shell_folder(self):
         script = f'. "{(BUILD / "packages.sh").as_posix()}"\nboard_include_dir "{self.launcher.as_posix()}"\n'
         result = run_shell("-c", script)
-        return Path(result.stdout.strip()).name if result.returncode == 0 else None
+        return self.board_folder(Path(result.stdout.strip())) if result.returncode == 0 else None
 
     def python_folder(self):
         try:
-            return packages.board_include_dir(self.launcher).name
+            return self.board_folder(packages.board_include_dir(self.launcher))
         except ValueError:
             return None
+
+    def board_folder(self, path):
+        """`path` as the folder under main/board/ that names it, as BOARD_DIR does."""
+        return path.resolve().relative_to((self.launcher / "main/board").resolve()).as_posix()
 
     def folders(self, kconfig):
         self.write("main/Kconfig.projbuild", kconfig)
@@ -198,6 +202,8 @@ class BoardFolder(FixtureLauncher):
             "a longer name that starts the same": (BOARD_KCONFIG.replace(
                 '        default "first_board" if BOARD_FIRST\n',
                 '        default "second_board_v2" if BOARD_SECOND_V2\n'), "second_board"),
+            "a vendor/product folder": (BOARD_KCONFIG.replace('"second_board"', '"vendor/second_board"'),
+                                         "vendor/second_board"),
             "another choice's default": (BOARD_KCONFIG.replace("        default BOARD_SECOND\n", ""), None),
             "text after the default": (BOARD_KCONFIG.replace("default BOARD_SECOND", "default BOARD_SECOND # why"), None),
             "a folder name no reader takes": (BOARD_KCONFIG.replace('"second_board"', '"Second-board"'), None),
