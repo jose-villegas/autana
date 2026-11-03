@@ -1,6 +1,6 @@
 /* GENERATED FILE - do not edit.
  *
- *     python tools/gen/gen_board_config.py main/board/waveshare_amoled_1_8/board.toml main/board/waveshare_amoled_1_8/board_config.h
+ *     python tools/gen/gen_board_config.py main/board/waveshare/esp32_s3_touch_amoled_1_8/board.toml main/board/waveshare/esp32_s3_touch_amoled_1_8/board_config.h
  *
  * board_config: Waveshare ESP32-S3-Touch-AMOLED-1.8, from board.toml.
  */

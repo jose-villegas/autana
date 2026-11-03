@@ -191,7 +191,7 @@ flowchart LR
 ![The cased device rocks about flat while the estimate of down converges on true down and the gyro bias error decays](../images/input/gravity-bias.gif)
 
 The device rocks about flat with a known gyro offset. Its readings pass through `imu_axes_screen()` into `gravity_update_batch()`.
-Device and IMU placement come from [`board/waveshare_amoled_1_8/board.toml`](../../launcher/main/board/waveshare_amoled_1_8/board.toml).<sup>[[89]](../Citations.md#waveshare-amoled-3d-model)</sup>
+Device and IMU placement come from [`board/waveshare/esp32_s3_touch_amoled_1_8/board.toml`](../../launcher/main/board/waveshare/esp32_s3_touch_amoled_1_8/board.toml).<sup>[[89]](../Citations.md#waveshare-amoled-3d-model)</sup>
 
 | Condition | Effect |
 |---|---|

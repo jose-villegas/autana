@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Write a board's board_config.h from its board.toml. Run from launcher/:
-    python tools/gen/gen_board_config.py main/board/<folder>/board.toml main/board/<folder>/board_config.h
+    python tools/gen/gen_board_config.py main/board/<vendor>/<board>/board.toml main/board/<vendor>/<board>/board_config.h
 
 Each table's key becomes BOARD_<TABLE>_<KEY> (a top-level key, BOARD_<KEY>): an integer as written
 in decimal, a float with an F suffix, a string as a C string, a number list as a brace list. A
