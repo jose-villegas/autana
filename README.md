@@ -12,17 +12,15 @@ The papers and specifications behind its techniques are in [Citations](docs/Cita
 <table>
 <tr><th width="33%">Boot animation</th><th width="33%">Launcher, board rocking</th><th width="33%">Falling Sand, board turning</th></tr>
 <tr><td width="33%"><img src="docs/images/overview/boot-anim.gif" width="100%" alt="The boot animation growing a grid and moving the camera through it before fading to black"></td><td width="33%"><img src="docs/images/overview/launcher-home.gif" width="100%" alt="The launcher listing Falling Sand and Render Lab, its backdrop ridge levelling as the board rocks"></td><td width="33%"><img src="docs/images/overview/sand-simulation.gif" width="100%" alt="A volcano spilling toward a lake beside growing and burning trees as the board turns"></td></tr>
-<tr><th width="33%">Capybara, every clip</th><th width="33%">Sponza, baked light</th><th width="33%">Sponza, flat shading</th></tr>
-<tr><td width="33%"><img src="docs/images/overview/render-lab-capybara.gif" width="100%" alt="A skinned capybara on a meadow blending through each of its animation clips in turn, then back to the first"></td><td width="33%"><img src="docs/images/overview/render-lab-sponza.gif" width="100%" alt="A camera moving through the Crytek Sponza atrium with baked lighting on the fitted full mesh"></td><td width="33%"><img src="docs/images/overview/render-lab-sponza-flat.gif" width="100%" alt="A camera moving through the Crytek Sponza atrium with flat shading on the fitted mesh"></td></tr>
+<tr><th width="33%">Capybara, every clip</th><th width="33%">Sponza, baked light</th><th width="33%">Water, board tilting</th></tr>
+<tr><td width="33%"><img src="docs/images/overview/render-lab-capybara.gif" width="100%" alt="A skinned capybara on a meadow blending through each of its animation clips in turn, then back to the first"></td><td width="33%"><img src="docs/images/overview/render-lab-sponza.gif" width="100%" alt="A camera moving through the Crytek Sponza atrium with baked lighting on the fitted full mesh"></td><td width="33%"><img src="docs/images/overview/render-lab-water.gif" width="100%" alt="Water in a glass tank, seen from slightly above, sloshing as the board rocks side to side, splashing as it flips over and straight back twice, then settling"></td></tr>
 </table>
-
-These images are host renders of the real firmware drawing code, sized to fit this grid. The boot clip follows the startup animation's timeline, the launcher backdrop responds to scripted rocking and lists the apps a release build carries, the sand clip runs the real simulation with scripted tilt, the capybara blends through each of its animation clips, and the Sponza clips follow a camera flythrough with baked light or flat shading.
 
 Image render commands are in each app's tools README ([sand](launcher/main/apps/sand/tools/README.md), [render lab](launcher/main/apps/render_lab/tools/README.md)) and the [render harness](docs/tools/Render-Harness.md#images-in-these-docs).
 
 ## Try it without a board
 
-Use [Git Bash](https://git-scm.com/download/win) on Windows, or a terminal on Linux. You need a C compiler for your computer, plus a POSIX shell; **ESP-IDF and a board are not needed**. The renderer writes BMP files and also PNGs when Python has Pillow installed.
+Use [Git Bash](https://git-scm.com/download/win) on Windows, or a terminal on Linux. You need a C compiler and CMake for your computer, plus a POSIX shell; **ESP-IDF and a board are not needed**. The renderer writes BMP files and also PNGs when Python has Pillow installed.
 
 ```sh
 ./launcher/tools/render/scenes/scene_viewer_render_host.sh
@@ -34,17 +32,17 @@ Open `launcher/tools/results/render/scene_viewer/landscape.bmp` to see the atriu
 ./launcher/test/run_tests.sh
 ```
 
-The test runner prints a verdict and saves its full log. It compiles and runs the parts of the firmware that do not need ESP32 peripherals. The [Testing Guide](docs/testing/README.md) explains what it covers; the [render harness](docs/tools/Render-Harness.md) lists other screens you can render. If the shell cannot find a C compiler, install one for your computer:
+The test runner prints a verdict and saves its full log. It compiles and runs the parts of the firmware that do not need ESP32 peripherals. The [Testing Guide](docs/testing/README.md) explains what it covers; the [render harness](docs/tools/Render-Harness.md) lists other screens you can render. If the shell cannot find a C compiler or CMake, install them for your computer:
 
-| System | Compiler setup |
+| System | Compiler and CMake setup |
 |---|---|
-| Windows | `winget install BrechtSanders.WinLibs.POSIX.UCRT` |
-| Debian/Ubuntu | `sudo apt install build-essential` |
+| Windows | `winget install BrechtSanders.WinLibs.POSIX.UCRT Kitware.CMake` |
+| Debian/Ubuntu | `sudo apt install build-essential cmake` |
 
 ## What is here
 
 - **Falling Sand:** pour powders and liquids with touch; the board's motion sensor steers gravity. Gas, fire, heat, and material reactions make the sandbox interactive. Start with the [sand overview](docs/sand/README.md), then the [simulation details](docs/sand/Sand-Simulation.md).
-- **Render Lab:** flythroughs of Crytek Sponza with baked light, rendered in software. The [host renderer](launcher/main/apps/render_lab/tools/README.md) can produce still frames of these scenes without the board.
+- **Render Lab:** flythroughs of Crytek Sponza with baked light, an animated capybara and a tank of simulated water that sloshes as the board tilts, all rendered in software. The [host renderer](launcher/main/apps/render_lab/tools/README.md) can produce still frames of these scenes without the board.
 - **Input Lab:** tap small targets and see how far the touch panel's reading lands from where you aimed; the numbers behind the touch correction, explained in the [touch notes](docs/input/Touch.md).
 - **Diagnostics:** a hardware self-test report and developer controls in development builds. The power-on check runs in every build. [Build variants](docs/tools/Build-Variants.md) explains which tools ship in each image.
 
@@ -70,10 +68,12 @@ The firmware targets the Waveshare ESP32-S3-Touch-AMOLED-1.8 specifically. For a
 | Understand gravity estimation and input features | [Input docs](docs/input/README.md) |
 | Understand the frame loop and drawing path | [Firmware](docs/firmware/README.md), [Graphics](docs/gfx/README.md) |
 | Follow the sand simulation | [Sand docs](docs/sand/README.md), [Simulation](docs/sand/Sand-Simulation.md) |
+| Use portable packages and check their fast-path contracts | [Packages](docs/packages/README.md) |
 | Run or add tests | [Testing Guide](docs/testing/README.md) |
 | Work with fonts and controls | [Text and Fonts](docs/gfx/Text-and-Fonts.md), [UI Toolkit](docs/ui/README.md) |
 | Build, flash, test or drive the board with `autana` | [CLI guide](docs/cli/README.md), [board notes](docs/notes/README.md) |
 | Render, check or generate with the repository's tools | [Tools index](docs/tools/README.md) |
+| Estimate the board's current draw | [Power docs](docs/power/README.md), [Power budget](docs/power/Power-Budget.md) |
 | Play sounds or add one | [Audio docs](docs/audio/README.md), [Sound assets](docs/audio/Sound-Assets.md) |
 | Check build flags and C style | [Build Variants](docs/tools/Build-Variants.md), [C Style Guide](docs/c-style/README.md) |
 | Explore proposed work | [Rendering Roadmap](docs/plans/Autana-Rendering-Roadmap.md), [plans](docs/plans/README.md) |

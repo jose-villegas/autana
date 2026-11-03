@@ -3,6 +3,7 @@ checkout nested inside this one has left beside them; and the contents of named
 files at a git revision."""
 import io
 import fnmatch
+import os
 import pathlib
 import subprocess
 
@@ -11,6 +12,20 @@ _LISTINGS = {}
 # What a walk outside git skips: the output of a build or a package manager.
 SKIP = {"build", "build.dev", "build.diag", "build.qemu", "build.qemu.perf", "build.qemu.shell",
         "managed_components", "node_modules", ".git"}
+
+
+def repository():
+    """The top of the git repository the caller stands in, or the current
+    directory outside git: a gate checks the repository it is run from,
+    wherever the gate's own file lives."""
+    result = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
+    return pathlib.Path(result.stdout.strip() if result.returncode == 0 else ".").resolve()
+
+
+def repository_from_here():
+    """repository() relative to the current directory ("." at its top), the
+    spelling repository-relative --paths arguments match."""
+    return os.path.relpath(repository())
 
 
 def git_listing(cwd, args):

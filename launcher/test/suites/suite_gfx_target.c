@@ -1,11 +1,4 @@
-/*
- * Portable suite: gfx_target.h, the clip-and-translate arithmetic every
- * pixel-writing draw_* primitive goes through, driven directly since the
- * header carries no ESP-IDF dependency. gfx_target_fill_rect() is
- * draw_rect()'s own body; text ultimately reduces to the same
- * primitive, so a rect straddling a band edge is the
- * faithful stand-in for a glyph straddling one.
- */
+
 
 #include "suites.h"
 #include "unity.h"
@@ -19,9 +12,10 @@
 
 static gfx_color_t full_buf[WIDTH * HEIGHT];
 
-static gfx_target_t
+static const gfx_target_t*
 full_target(void) {
-    return (gfx_target_t){full_buf, 0, HEIGHT, WIDTH};
+    static const GFX_TARGET_STORAGE(1) storage = GFX_TARGET_COLOR_INIT(full_buf, WIDTH, HEIGHT);
+    return &storage.target;
 }
 
 static void
@@ -51,11 +45,11 @@ test_a_rect_entirely_inside_the_target_is_untouched_by_clipping(void) {
     TEST_ASSERT_EQUAL_HEX16_MESSAGE(0, full_buf[5 * WIDTH + 2], "the rect must not touch its neighbours");
 }
 
-/* A target shorter than the app's own clip rect (the band case) must win:
- * a caller's clip never widens what the target itself can hold. */
 static void
 test_the_targets_own_row_range_narrows_a_wider_clip(void) {
-    const gfx_target_t band = {full_buf, 2, 3, WIDTH}; /* rows [2, 5) only */
+    GFX_TARGET_STORAGE(1) band_storage;
+    gfx_target_of_color(&band_storage.target, full_buf, WIDTH, 3, 2);
+    const gfx_target_t* band = &band_storage.target; /* rows [2, 5) only */
 
     const recti_t rect = gfx_target_clip_rect(band, (recti_t){0, 0, WIDTH, HEIGHT}, (recti_t){0, 0, WIDTH, 8});
 
@@ -66,7 +60,7 @@ test_the_targets_own_row_range_narrows_a_wider_clip(void) {
 /* The app's own clip rect must win when it is narrower than the target. */
 static void
 test_the_apps_clip_narrows_a_wider_target(void) {
-    const gfx_target_t full = full_target();
+    const gfx_target_t* full = full_target();
 
     const recti_t rect = gfx_target_clip_rect(full, (recti_t){0, 3, WIDTH, 3}, (recti_t){0, 0, WIDTH, 8});
 
@@ -74,15 +68,14 @@ test_the_apps_clip_narrows_a_wider_target(void) {
     TEST_ASSERT_EQUAL_INT(6, recti_bottom(rect));
 }
 
-/* gfx_target_row() must translate an absolute row into the target's own
- * local storage: a band target's row 0 is NOT the buffer's own row 0
- * unless the band happens to start at the top of the screen. */
 static void
 test_row_translation_lands_in_the_bands_own_local_row(void) {
     gfx_color_t band_buf[WIDTH * 3] = {0};
-    const gfx_target_t band = {band_buf, 4, 3, WIDTH}; /* absolute rows [4, 7) */
+    GFX_TARGET_STORAGE(1) band_storage;
+    gfx_target_of_color(&band_storage.target, band_buf, WIDTH, 3, 4);
+    const gfx_target_t* band = &band_storage.target; /* absolute rows [4, 7) */
 
-    gfx_target_row(band, 5)[0] = (gfx_color_t)0xABCD;
+    gfx_target_color(band, 5)[0] = (gfx_color_t)0xABCD;
 
     TEST_ASSERT_EQUAL_HEX16_MESSAGE(0xABCD, band_buf[1 * WIDTH + 0],
                                     "absolute row 5 must land in the band's own local row 1 (5 - row0 4)");
@@ -90,15 +83,15 @@ test_row_translation_lands_in_the_bands_own_local_row(void) {
 
 /* straddling a band edge */
 
-/* A rect (the same shape a glyph pixel column is) that crosses a band
- * boundary must be split correctly across the two bands' own buffers, with
- * neither band drawing the other's rows. */
 static void
 test_a_rect_straddling_a_band_edge_splits_correctly(void) {
     gfx_color_t band_a[WIDTH * 4] = {0}; /* absolute rows [0, 4) */
     gfx_color_t band_b[WIDTH * 4] = {0}; /* absolute rows [4, 8) */
-    const gfx_target_t a = {band_a, 0, 4, WIDTH};
-    const gfx_target_t b = {band_b, 4, 4, WIDTH};
+    const GFX_TARGET_STORAGE(1) a_storage = GFX_TARGET_COLOR_INIT(band_a, WIDTH, 4);
+    const gfx_target_t* a = &a_storage.target;
+    GFX_TARGET_STORAGE(1) b_storage;
+    gfx_target_of_color(&b_storage.target, band_b, WIDTH, 4, 4);
+    const gfx_target_t* b = &b_storage.target;
 
     /* A column at x=3, rows [2, 6), straddles the row-4 band edge. */
 
@@ -120,11 +113,6 @@ test_a_rect_straddling_a_band_edge_splits_correctly(void) {
 
 /* the union of every band equals one full-target render */
 
-/* Several rects, standing in for a frame's worth of UI commands (a
- * background box, a text glyph's pixels, a border), rendered once into one
- * full-height target versus once per band into N separate band targets:
- * the union of the bands must equal the full render pixel for pixel, with
- * no row lost or drawn twice. */
 static void
 test_the_union_of_all_bands_equals_the_full_target_render(void) {
     fixture();
@@ -148,7 +136,9 @@ test_the_union_of_all_bands_equals_the_full_target_render(void) {
 
     gfx_color_t band_buf[4][WIDTH * 2] = {0}; /* 4 bands of 2 rows each = 8 rows */
     for (int band = 0; band < 4; band++) {
-        const gfx_target_t target = {band_buf[band], band * 2, 2, WIDTH};
+        GFX_TARGET_STORAGE(1) target_storage;
+        gfx_target_of_color(&target_storage.target, band_buf[band], WIDTH, 2, band * 2);
+        const gfx_target_t* target = &target_storage.target;
         for (int i = 0; i < shape_count; i++) {
             if (!gfx_target_row_range_overlaps(target, shapes[i].y, shapes[i].y + shapes[i].h)) {
                 continue; /* the per-band skip every replay path relies on */
@@ -169,12 +159,11 @@ test_the_union_of_all_bands_equals_the_full_target_render(void) {
     }
 }
 
-/* A shape that never reaches a given band must be skipped, not merely
- * clipped to nothing: gfx_target_row_range_overlaps() is what a replay
- * loop checks before it bothers calling the fill at all. */
 static void
 test_row_range_overlap_rejects_a_shape_the_band_never_reaches(void) {
-    const gfx_target_t band = {full_buf, 6, 2, WIDTH}; /* rows [6, 8) */
+    GFX_TARGET_STORAGE(1) band_storage;
+    gfx_target_of_color(&band_storage.target, full_buf, WIDTH, 2, 6);
+    const gfx_target_t* band = &band_storage.target; /* rows [6, 8) */
 
     TEST_ASSERT_FALSE(gfx_target_row_range_overlaps(band, 0, 4));
     TEST_ASSERT_TRUE(gfx_target_row_range_overlaps(band, 5, 7));

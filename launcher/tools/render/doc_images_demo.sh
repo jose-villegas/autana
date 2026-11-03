@@ -16,12 +16,11 @@
 #
 # Run from the repository root with $PYTHON set to a Python that has Pillow and numpy
 # (the fidelity sheet also needs launcher/tools/r3d/requirements.txt, found by find_r3d_python);
-# ffmpeg must be on PATH. Renderer output goes to logs under <work-dir>.
+# ffmpeg must be on PATH for the comparison videos. Renderer output goes to logs under <work-dir>.
 
 set -eu
 
 . scripts/lib/run.sh
-. launcher/tools/render/gif_from_avi.sh
 
 [ "$#" = 4 ] || { [ "$#" = 5 ] && { [ "$5" = --meshlets-only ] || [ "$5" = --small-fill-only ] || [ "$5" = --present-only ]; }; } || {
     echo "$0: needs OUT WORK SCENE OBJECT [--meshlets-only|--small-fill-only|--present-only]" >&2
@@ -51,16 +50,14 @@ EOF
     small_fill_frames=60
     small_fill_dt=100
     small_fill_fps=6
-    small_fill_window="trim=start_frame=$small_fill_first:end_frame=$small_fill_end,setpts=PTS-STARTPTS,fps=$small_fill_fps"
-    small_fill_palette="max_colors=256:reserve_transparent=0:stats_mode=full"
-    # The table comes in on fd 3: the renderer and ffmpeg inherit stdin and may read it.
+    # The table comes in on fd 3: the renderer and Python inherit stdin and may read it.
     while IFS='|' read -r look label object settings gif diff <&3; do
         # Settings are whitespace-separated command arguments from the table above.
         set -- $settings
         run "$HOST" --scene "$ID" --quarter 1 --frames "$small_fill_frames" --dt "$small_fill_dt" --object "$object" "$@" \
             -o "$W/small-fill-$look.bmp" --video "$W/small-fill-$look.avi" 2> "$W/small-fill-$look.log"
-        gif_from_avi "$W/small-fill-$look.avi" "$RENDER/$gif.gif" \
-            "$small_fill_window" "$small_fill_palette"
+        run "$PYTHON" launcher/tools/docs/figures.py gif "$W/small-fill-$look.avi" "$RENDER/$gif.gif" \
+            --first "$small_fill_first" --end "$small_fill_end" --fps "$small_fill_fps"
     done 3< "$W/small-fill-looks.tsv"
     if cmp -s "$W/small-fill-smooth.bmp" "$W/small-fill-fast.bmp"; then
         echo "small-fill: --small-fill did not change the render" >&2
@@ -75,33 +72,26 @@ EOF
             --video "$W/small-fill-smooth.avi" "$W/small-fill-$look.avi" \
             --csv "$W/small-fill-$look.frames.csv" >> "$W/small-fill-$look-compare.log"
     done 3< "$W/small-fill-looks.tsv"
-    run "$PYTHON" - "$W" <<'PY'
+    run "$PYTHON" - "$W" "$RENDER" "$small_fill_first" "$small_fill_end" "$small_fill_fps" <<'PY'
 import pathlib
-import subprocess
 import sys
 from PIL import Image
-sys.path.insert(0, "launcher/tools/render")
-from render_compare import GAIN, heatmap, read_video
-work = pathlib.Path(sys.argv[1])
-fps, baseline = read_video(work / "small-fill-smooth.avi")
+sys.path[:0] = ["launcher/tools", "launcher/tools/render"]
+from docs.figures import clip, save_gif
+from check_avi import read_video
+from render_compare import GAIN, heatmap
+work, render = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+first, end, fps = map(int, sys.argv[3:6])
+rate, baseline = read_video(work / "small-fill-smooth.avi")
 baseline = list(baseline)
 for row in (work / "small-fill-looks.tsv").read_text().splitlines():
-    look, label, _, _, _, _ = row.split("|")
+    look, _, _, _, _, diff = row.split("|")
     if look == "smooth":
         continue
     _, variant = read_video(work / f"small-fill-{look}.avi")
-    frames = [heatmap(Image.fromarray(a), Image.fromarray(b), None, GAIN)
-              for a, b in zip(baseline, variant)]
-    subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "rawvideo",
-                    "-pix_fmt", "rgb24", "-s", "%dx%d" % frames[0].size, "-r", str(fps), "-i", "-",
-                    "-c:v", "rawvideo", "-pix_fmt", "bgr24", str(work / f"small-fill-{look}-diff.avi")],
-                   input=b"".join(frame.tobytes() for frame in frames), check=True)
+    frames = [heatmap(Image.fromarray(a), Image.fromarray(b), None, GAIN) for a, b in zip(baseline, variant)]
+    save_gif(clip(frames, rate, fps, first=first, end=end), render / f"{diff}.gif", 1000 / fps)
 PY
-    while IFS='|' read -r look label object settings gif diff <&3; do
-        [ "$look" != smooth ] || continue
-        gif_from_avi "$W/small-fill-$look-diff.avi" "$RENDER/$diff.gif" \
-            "$small_fill_window" "$small_fill_palette"
-    done 3< "$W/small-fill-looks.tsv"
     run "$PYTHON" launcher/tools/render/doc_tables.py "$W" "$TABLES" "$ID" "$FULL" \
         --small-fill-data docs/render/data/small-fill
 }
@@ -126,7 +116,7 @@ fi
 
 # One looping flythrough per demo target and view, the same three seconds of
 # it so the GIFs compare. Each keeps every rendered frame at the
-# render size, on 128 colours so smooth shading does not band.
+# render size.
 DEMO_GIF_FRAMES=30
 DEMO_GIF_DT=100
 demo_gif() {
@@ -134,8 +124,7 @@ demo_gif() {
     shift
     run "$HOST" --quarter 1 --frames "$DEMO_GIF_FRAMES" --dt "$DEMO_GIF_DT" \
         -o "$W/$name.bmp" --video "$W/$name.avi" "$@" 2> "$W/$name.log"
-    gif_from_avi "$W/$name.avi" "$RENDER/$name.gif" "fps=$((1000 / DEMO_GIF_DT))" \
-        "max_colors=128:stats_mode=diff"
+    run "$PYTHON" launcher/tools/docs/figures.py gif "$W/$name.avi" "$RENDER/$name.gif" --fps "$((1000 / DEMO_GIF_DT))"
 }
 demo_gif ${ID}-present-nearest --scene "$ID" --object "$SHOWCASE" --present nearest
 demo_gif ${ID}-present-scanline --scene "$ID" --object "$SHOWCASE" --present scanline
@@ -152,15 +141,22 @@ demo_gif ${ID}-depth --scene "$ID" --object "$SHOWCASE" --view depth
 demo_gif ${ID}-tiles --scene "$ID" --object "$SHOWCASE" --view tiles
 demo_gif ${ID}-motion-vectors --scene "$ID" --object "$SHOWCASE" --view motion
 demo_gif ${ID}-meshlets --scene "$ID" --object "$SHOWCASE" --view meshlets
+# One still of each view the renderer declares, at the pose the GIFs end on:
+# View-Modes' gallery. A --view it does not know makes it list them.
+views=$("$HOST" --scene "$ID" --view none 2>&1 >/dev/null | sed -n 's/^scene_viewer: --view is \(.*\), not none$/\1/p' | sed 's/, / /g')
+[ -n "$views" ] || { echo "$0: the renderer listed no views" >&2; exit 1; }
+for view in $views; do
+    run "$HOST" --quarter 1 --frames "$DEMO_GIF_FRAMES" --dt "$DEMO_GIF_DT" --scene "$ID" --object "$SHOWCASE" \
+        --view "$view" -o "$W/view-$view.bmp" 2> "$W/view-$view.log"
+    run "$PYTHON" launcher/tools/docs/figures.py png "$W/view-$view.bmp" "$RENDER/${ID}-view-$view.png"
+done
 
 # The targets' differences at the pose the GIFs end on: each pair side by side
 # with the amplified difference, and the places they differ most, enlarged.
 demo_still() {
     run "$HOST" --quarter 1 --frames 30 --dt 100 -o "$W/still-$1.bmp" --scene "$ID" --object "$2" 2> "$W/still-$1.log"
 }
-# The pairs, and what each variant is, come from doc_tables.py's VARIANT_NOTES:
-# compare-full-lite, compare-full-flat, compare-lite-fitted, compare-full-fitted-full
-# and compare-flat-flat-fitted for the demo scene.
+# The pairs, and what each variant is, come from doc_tables.py's VARIANT_NOTES.
 run "$PYTHON" launcher/tools/render/doc_tables.py --pairs "$SCENE" "$FULL" > "$W/pairs.txt"
 while read -r base object base_slug slug <&3; do
     [ -f "$W/still-$base_slug.bmp" ] || demo_still "$base_slug" "$base"
@@ -178,8 +174,7 @@ done 3< "$W/pairs.txt"
 R3D_PYTHON=$(run find_r3d_python "$PWD")
 run "$R3D_PYTHON" launcher/tools/r3d/objects/instances_figure.py "$SCENE" \
     --object "$SHOWCASE" --host "$HOST" --out "$RENDER/${ID}-instances.png"
-# The fidelity sheet: two poses of the committed flat bake against the source
-# model lit per pixel. The reference skips the initial pose.
+# The fidelity poses: the source model lit per pixel, skipping the initial pose.
 # The source model lives in the demo folder and uses Git LFS.
 FIDELITY_FRAMES=5
 FIDELITY_DT=5000
@@ -190,11 +185,6 @@ MESH=$(run "$PYTHON" -c 'import sys; from pathlib import Path; sys.path.insert(0
 # their inputs, so only a change to the scene, tracer or poses traces again.
 REFERENCE=$(run sh launcher/tools/render/render_compare.sh --reference-frames \
     --reference "$DEMO/$ID.scene.toml" --poses "$W/fidelity-poses.txt" 2> "$W/fidelity-reference.log")
-run "$HOST" --quarter 0 --scene "$ID" --object "${FULL}_flat" --frames "$FIDELITY_FRAMES" --dt "$FIDELITY_DT" \
-    -o "$W/fidelity-flat.bmp" --video "$W/fidelity-flat.avi" 2> "$W/fidelity-flat.log"
-run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/fidelity-unused.png" \
-    --reference-video "$W/fidelity-flat.avi" "$REFERENCE" --reference-scale 2 \
-    --reference-sheet "$RENDER/bake-fidelity-sheet.png" --sheet-frames 2,4 --label-a "flat bake" > "$W/fidelity-compare.log"
 
 # The committed smooth bake at the fidelity poses, scored against the committed
 # reference, for the fidelity table and the import-light image.
@@ -209,6 +199,20 @@ for object in $(run "$PYTHON" launcher/tools/render/doc_tables.py --variants "$S
         -o "$W/variant-$object.bmp" --video "$W/variant-$object.avi" 2> "$W/variant-$object.log"
     run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/variant-$object-unused.png" \
         --reference-video "$W/variant-$object.avi" "$REFERENCE" --reference-scale 2 > "$W/variant-$object-compare.log"
+done
+# The fidelity sheets: two poses of each pair of variants doc_tables.FIDELITY_SHEETS
+# names, each beside the reference with its heatmap on the one colour scale.
+# --orphans scans this runner: bake-fidelity-sheet.png, bake-fidelity-full-sheet.png
+for image in $(run "$PYTHON" launcher/tools/render/doc_tables.py --fidelity-sheets); do
+    set --
+    while read -r object label; do
+        set -- "$@" --bake "$label" "$W/variant-$object.avi"
+    done <<EOF
+$(run "$PYTHON" launcher/tools/render/doc_tables.py --fidelity-sheet "$SCENE" "$FULL" "$image")
+EOF
+    run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/$image-unused.png" \
+        --reference-bakes "$REFERENCE" --reference-scale 2 --sheet-frames 2,4 "$@" \
+        --reference-sheet "$RENDER/$image.png" > "$W/$image.log"
 done
 # bake_and_render DIR MESH OBJECT: bake the scene file in DIR, which keeps its
 # import beside a link to the mesh source, pack MESH in place of the committed
@@ -345,4 +349,11 @@ tables_seconds=$(($(date +%s) - tables_start))
 echo "CPU table measurements added: $tables_seconds seconds"
 echo "$tables_seconds" > "$W/tables-seconds.txt"
 
-"$R3D_PYTHON" "launcher/tools/render/doc_import_examples.py" "$SCENE" "$FULL" "$HOST" "$W" "$RENDER" "$FIDELITY_FRAMES" "$FIDELITY_DT" > "$W/import-examples.log" 2>&1
+# The import examples show the fitted variants: face samples on the flat fit's
+# geometry, where the fit starts, beside the fit's own render.
+"$R3D_PYTHON" launcher/tools/r3d/bake_fidelity.py "$DEMO/$ID.scene.toml" --mesh "${FULL}_flat_fitted" \
+    --host "$HOST" \
+    --render-args "--quarter 0 --scene $ID --object ${FULL}_flat_fitted --frames $FIDELITY_FRAMES --dt $FIDELITY_DT" \
+    --reference "$REFERENCE" --work "$W/face-samples" --variant declared= --variant fixed1=samples=fixed:1 \
+    > "$W/face-samples.log" 2>&1
+"$R3D_PYTHON" "launcher/tools/render/doc_import_examples.py" "$SCENE" "${FULL}_fitted_full" "${FULL}_flat_fitted" "$HOST" "$W" "$RENDER" "$FIDELITY_FRAMES" "$FIDELITY_DT" > "$W/import-examples.log" 2>&1

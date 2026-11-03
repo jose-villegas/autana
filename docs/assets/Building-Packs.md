@@ -9,7 +9,7 @@ searching, so no list is kept:
 
 | Root | Pack | Holds |
 |---|---|---|
-| `NAME.scene.toml` | `NAME` | its [scene entry](../render/Scene-Files.md#scne-v5) `NAME`, every mesh, skin, skeleton and clip it names |
+| `NAME.scene.toml` | `NAME` | its [scene entry](formats/SCNE.md) `NAME`, every mesh, skin, skeleton and clip it names |
 | `NAME.import.toml` that no scene places | `NAME` | its variants' meshes |
 | `NAME.anim.toml` that no scene names | `NAME` | its one clip, baked from its source |
 | `NAME.sound.toml` | `NAME` | its one [sound](../audio/Sound-Assets.md), fetched as a locked `sound` bake of its WAV, FLAC, OGG or MP3 source |
@@ -70,7 +70,8 @@ to keep in step.
 
 The firmware build writes the packs to `assets/` in its build directory and
 the partition image to `assets.bin`, listed with the partition's offset in
-`flash_args`, so every `autana flash` writes the packs with the app.
+`flash_args`, so every `autana flash` writes the packs with the app. The
+build fails when the image outgrows the partition.
 `idf.py assets-flash` writes just that region, in seconds, after a change to
 the meshes alone. The QEMU image carries it because it merges every file in
 `flash_args`.

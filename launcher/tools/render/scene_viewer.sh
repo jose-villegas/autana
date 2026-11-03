@@ -1,11 +1,11 @@
 #!/bin/sh
 # Builds one scene file's pack through the shared harness, then runs its viewer;
 # --build-only -o DIR prints the built host instead; --deps prints what
-# the host is compiled from (render_scene.sh).
+# the host is compiled from (render_scene.sh). To look at a scene, use Loupe.
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 if [ $# -eq 0 ]; then
-    echo "usage: $0 SCENE.scene.toml [--build-only -o DIR | --deps] [--object NAME ...] [--camera NAME] [--frames N --dt MS] [--view shaded|depth|tiles|motion|meshlets|cull] [--counts out.csv] [--size WxH] [--present nearest|scanline|double] [--small-fill CEILING,GATE,STYLE] [--set owner.name=value ...] [--tunables] [--quarter 0|1] [--panel] [-o out.bmp] [--video out.avi]" >&2
+    echo "usage: $0 SCENE.scene.toml [--build-only -o DIR | --deps] [--object NAME ...] [--camera NAME] [--frames N --dt MS] [--view NAME (an unknown NAME lists them)] [--counts out.csv] [--poses out.csv] [--size WxH] [--present nearest|scanline|double] [--small-fill CEILING,GATE,STYLE] [--set owner.name=value ...] [--tunables] [--quarter 0|1] [--panel] [-o out.bmp] [--video out.avi]" >&2
     exit 2
 fi
 scene_file=$1
@@ -28,7 +28,7 @@ while [ $# -gt 0 ]; do
         --build-only) build_only=1; shift ;;
         --deps) deps=1; shift ;;
         -o)
-            [ $# -ge 2 ] || { echo "-o needs a path" >&2; exit 2; }
+            [ $# -ge 2 ] || { echo "$1 needs a value" >&2; exit 2; }
             output=$2; shift 2 ;;
         *) render_args="${render_args}${render_args:+
 }$1"; shift ;;
@@ -46,10 +46,10 @@ fi
 if [ "$deps" = 1 ]; then
     exec sh "$SCRIPT_DIR/scenes/scene_viewer_render_host.sh" --deps --asset-file "$scene_file"
 fi
-set -- --build-only --asset-file "$scene_file" -o "$build_dir"
 IFS='
 '
-build=$(sh "$SCRIPT_DIR/scenes/scene_viewer_render_host.sh" "$@")
+build=$(sh "$SCRIPT_DIR/scenes/scene_viewer_render_host.sh" --build-only --asset-file "$scene_file" -o "$build_dir")
+unset IFS
 if [ "$build_only" = 1 ]; then
     printf '%s\n' "$build"
     exit 0
@@ -59,8 +59,12 @@ binary=${build#built }
 AUTANA_ASSET_DIR=$(to_native "$(dirname "$binary")/assets")
 export AUTANA_ASSET_DIR
 id=$(basename "$scene_file" .scene.toml)
+
 set --
+IFS='
+'
 for argument in $render_args; do
     set -- "$@" "$argument"
 done
+unset IFS
 exec "$binary" --scene "$id" "$@"

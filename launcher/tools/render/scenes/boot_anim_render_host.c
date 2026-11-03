@@ -37,7 +37,7 @@
 
 static uint32_t now_ms;
 static boot_anim_motion_t motion;
-static draw_image_t photo;
+static image_t photo;
 
 static bool
 options(int argc, char** argv) {
@@ -81,12 +81,12 @@ setup(int quarter) {
 }
 
 static void
-draw(const render_frame_t* frame) {
+draw(const provider_frame_t* frame) {
     const uint32_t t_ms = now_ms + frame->elapsed_ms;
     boot_anim_draw_frame(&motion, &photo, t_ms);
 }
 
-const render_scene_t render_scene = {
+const frame_provider_t boot_anim_provider = {
     .name = "boot_anim",
     .quarter = 0,
     .frames = 1,

@@ -17,8 +17,10 @@ from anim import clip_name
 from build.c_header import read_define
 from asset.asset_pack import NAME_BYTES
 from r3d.scene_name import scene_id
+from r3d.mesh_bundle import SUFFIX as BUNDLE_SUFFIX
 from gltf.gltf_read import ASSET_SUFFIXES
 
+U16_MAX = (1 << 16) - 1
 MESHLET_TRIANGLES = 32
 SCENE_OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_conventions.h"
 LIGHT_AXIS = read_define(SCENE_OWNER, "SCENE_LIGHT_AXIS")
@@ -199,12 +201,18 @@ def load_variant(value, steps, where):
         for name, home in homes.items():
             if name in value:
                 raise SettingsError(f"{where}.{name} moved to {home}")
-    check_keys(value, ("name",), where, optional=("triangles",))
-    variant = SimpleNamespace(name=text(value["name"], f"{where}.name"), triangles=None)
+    check_keys(value, ("name",), where, optional=("triangles", "ceiling", "objects_scale"))
+    variant = SimpleNamespace(name=text(value["name"], f"{where}.name"), triangles=None,
+                              ceiling=count(value["ceiling"], f"{where}.ceiling") if "ceiling" in value else None,
+                              objects_scale=number(value.get("objects_scale", 1.0), f"{where}.objects_scale"))
+    if variant.objects_scale <= 0:
+        raise SettingsError(f"{where}.objects_scale must be positive")
     if steps.simplify:
         if "triangles" not in value:
             raise SettingsError(f"{where}.triangles is required when geometry.simplify is present")
         variant.triangles = count(value["triangles"], f"{where}.triangles")
+        if variant.ceiling is not None and variant.triangles > variant.ceiling:
+            raise SettingsError(f"{where}.triangles {variant.triangles} exceeds its ceiling {variant.ceiling}")
     elif "triangles" in value:
         raise SettingsError(f"{where}.triangles needs geometry.simplify")
     return variant
@@ -284,41 +292,67 @@ def load_geometry(table, steps):
             raise SettingsError("geometry.simplify.colour_deviation must be above 0")
 
 
-def pass_overrides(objects, materials_by_object, overrides):
-    """Apply rules once per pass; fixed selectors must cover every welded object."""
-    fixed = None
-    for rule in overrides:
-        material_rule = "material" in rule
-        pattern = rule.get("material", rule.get("object"))
-        if material_rule:
-            matched = [name for name in objects
-                       if any(fnmatchcase(material, pattern) for material in materials_by_object[name])]
-        else:
-            matched = [name for name in objects if fnmatchcase(name, pattern)]
-        if not matched:
-            continue
-        others = [name for name in objects if name not in matched]
-        if others:
-            raise SettingsError(f"fixed override {pattern!r} also caps welded objects: {', '.join(others)}")
-        fixed = (fixed or 0) + rule["triangles"]
-    return fixed
+SEAM_POLICIES = ("weld", "lock", "free")
 
 
-def load_object_overrides(table):
-    """Closed glob rules for connected simplifier passes."""
-    check_keys(table, (), "objects", optional=("overrides",))
-    rules = table.get("overrides", [])
+def load_object_meshes(table):
+    """Closed mesh selectors and their per-copy budgets."""
+    if "overrides" in table:
+        raise SettingsError("[objects] overrides is unsupported; use [[objects.meshes]]")
+    check_keys(table, (), "objects", optional=("meshes",))
+    rules = table.get("meshes", [])
     if not isinstance(rules, list):
-        raise SettingsError("objects.overrides must be an array of tables")
+        raise SettingsError("objects.meshes must be an array of tables")
     for index, rule in enumerate(rules):
-        where = f"objects.overrides[{index}]"
-        check_keys(rule, ("triangles",), where, optional=("material", "object"))
-        if ("material" in rule) == ("object" in rule):
-            raise SettingsError(f"{where} needs exactly one of material/object and triangles")
-        selector = "material" if "material" in rule else "object"
-        text(rule[selector], f"{where}.{selector}")
+        where = f"objects.meshes[{index}]"
+        check_keys(rule, ("match", "triangles"), where, optional=("seam", "variants", "min_triangles"))
+        match = rule["match"]
+        check_keys(match, (), f"{where}.match", optional=("material", "object"))
+        if len(match) != 1:
+            raise SettingsError(f"{where}.match needs exactly one of material/object")
+        for selector, pattern in match.items():
+            text(pattern, f"{where}.match.{selector}")
         count(rule["triangles"], f"{where}.triangles")
+        if not isinstance(rule.get("variants", {}), dict):
+            raise SettingsError(f"{where}.variants must be a table of variant budgets")
+        for name, triangles in rule.get("variants", {}).items():
+            count(triangles, f"{where}.variants.{name}")
+        if "min_triangles" in rule and count(rule["min_triangles"], f"{where}.min_triangles") > rule["triangles"]:
+            raise SettingsError(f"{where}.min_triangles cannot exceed its triangles")
+        if "seam" in rule and rule["seam"] not in SEAM_POLICIES:
+            raise SettingsError(f"{where}.seam must be one of {', '.join(SEAM_POLICIES)}")
     return rules
+
+
+def variant_meshes(rules, variant):
+    """The rules with `triangles` as `variant` draws each copy: its own override, else
+    round(triangles x objects_scale), never below `min_triangles`."""
+    resolved = []
+    for rule in rules:
+        triangles = rule.get("variants", {}).get(variant.name)
+        if triangles is None:
+            triangles = max(rule.get("min_triangles", 1), round(rule["triangles"] * variant.objects_scale))
+        resolved.append(rule | {"triangles": triangles})
+    return resolved
+
+
+def match_meshes(tri_o, labels, object_names, material_names, rules):
+    """Resolve mesh rules once per source object; overlapping budgets are ambiguous."""
+    selected = {}
+    for rule in rules:
+        hits = []
+        for obj in sorted(set(tri_o)):
+            match = rule["match"]
+            names = ([object_names[obj]] if "object" in match else
+                     [material_names[m] for m in set(labels[tri_o == obj])])
+            if any(fnmatchcase(name, next(iter(match.values()))) for name in names):
+                if obj in selected:
+                    raise SettingsError(f"mesh rules overlap on {object_names[obj]!r}")
+                hits.append(obj)
+                selected[obj] = rule
+        if not hits:
+            raise SettingsError(f"mesh rule {rule['match']!r} matches no object or material")
+    return selected
 
 
 def load_import_settings(path):
@@ -378,12 +412,19 @@ def load_import_settings(path):
         if steps.simplify:
             raise SettingsError("geometry.simplify needs variants, each with its triangles budget")
         variants = [SimpleNamespace(name=text(output.get("name"), "output.name"), triangles=None)]
+    meshes = load_object_meshes(values.get("objects", {}))
+    if meshes and not steps.simplify:
+        raise SettingsError("objects.meshes needs geometry.simplify")
+    for index, rule in enumerate(meshes):
+        for name in rule.get("variants", {}):
+            if name not in names:
+                raise SettingsError(f"objects.meshes[{index}].variants.{name} names no variant")
     return SimpleNamespace(
         path=path, source=source, mesh_dir=path.parent,
         position_scale=count(output["position_scale"], "output.position_scale") if "position_scale" in output else None,
         double_sided=set(strings(materials.get("double_sided", []), "materials.double_sided")), seed=steps.seed,
         alpha_keep=steps.alpha_keep, thin=steps.thin, simplify=steps.simplify, named=("variants" in values),
-        overrides=load_object_overrides(values.get("objects", {})),
+        meshes=meshes,
         meshlet_triangles=steps.meshlet_triangles,
         variants=variants, skin_lighting=lighting)
 
@@ -529,7 +570,7 @@ def load_camera_path(path, base, where):
 
 
 def load_renderer(component, base, where):
-    check_keys(component, ("mesh",), where, optional=("variant", "bake", "shading", "visibility", "fit", "indirect"))
+    check_keys(component, ("mesh",), where, optional=("variant", "bake", "shading", "visibility", "fit", "indirect", "colour_set"))
     path = (base / text(component["mesh"], f"{where}.mesh")).resolve()
     if not path.is_file():
         raise SettingsError(f"{where}.mesh {component['mesh']!r} is not a file")
@@ -566,13 +607,18 @@ def load_renderer(component, base, where):
         indirect = False
     if not bake and (face_samples or visibility or fit or not indirect):
         raise SettingsError(f"{where} bake = true is required for shading, visibility, fit or indirect")
+    colour_set = component.get("colour_set")
+    if "colour_set" in component and (type(colour_set) is not int or not 0 <= colour_set <= U16_MAX):
+        raise SettingsError(f"{where}.colour_set must fit the renderer colour-set field")
     return SimpleNamespace(settings=settings, variant=variant, bake=bake, face_samples=face_samples, visibility=visibility,
-                           fit=fit, indirect=indirect)
+                           fit=fit, indirect=indirect, colour_set=colour_set)
 
 
 def make_job(settings, renderer, obj, asset_name, asset_path, bake):
     """One mesh to write: its import, the renderer that decides its look, the scene object it belongs to
     (None for a bare import), where it is written and the scene bake settings it is traced with (None for albedo)."""
+    if settings.meshes:
+        asset_path = asset_path.with_suffix(BUNDLE_SUFFIX)
     return SimpleNamespace(settings=settings, renderer=renderer, object=obj, asset_name=asset_name, asset_path=asset_path,
                            bake=bake)
 
@@ -591,13 +637,14 @@ COMPONENTS = ("mesh_renderer", "skinned_renderer", "light", "camera")
 
 
 def load_object(value, base, where):
-    check_keys(value, ("name",), where, optional=("position", "rotation", "scale", "animator", *COMPONENTS))
+    check_keys(value, ("name",), where, optional=("parent", "position", "rotation", "scale", "animator", *COMPONENTS))
     present = [name for name in COMPONENTS if name in value]
     if len(present) != 1:
         raise SettingsError(f"{where} must have exactly one component: {', '.join(COMPONENTS)}")
     kind = present[0]
     obj = SimpleNamespace(
         name=text(value["name"], f"{where}.name"), kind=kind,
+        parent=text(value["parent"], f"{where}.parent") if "parent" in value else None,
         position=vector(value["position"], f"{where}.position") if "position" in value else [0.0, 0.0, 0.0],
         rotation=vector(value["rotation"], f"{where}.rotation") if "rotation" in value else [0.0, 0.0, 0.0],
         scale=vector(value["scale"], f"{where}.scale") if "scale" in value else [1.0, 1.0, 1.0])

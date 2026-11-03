@@ -10,6 +10,8 @@ name: Bakes
 # the CUDA GPU, so the Bakes GPU workflow (bakes-gpu.yml) makes it, started by
 # hand on the branch; no pull request reaches that runner. On main, publish uploads each locked file the `bakes` release lacks,
 # taking it from the run that made it. No branch writes the release.
+# Each bake is uploaded whatever fails after it; a rerun's attempt uploads under
+# its own name and first takes what its run's earlier attempts made on this CPU vendor.
 
 on:
   pull_request:
@@ -50,6 +52,10 @@ jobs:
     if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.cpu == 'true') }}
     name: Bake missing exports and meshes
     runs-on: ubuntu-24.04
+    # actions: read lets a rerun take what its earlier attempts uploaded.
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -103,16 +109,23 @@ jobs:
 
       - name: Bake
         if: steps.missing.outputs.count != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
-          python launcher/tools/bake/bake.py bake --kind blend --out "$RUNNER_TEMP/bakes"
+          # The first command takes the earlier attempts' bakes of every kind into the cache.
+          earlier=()
+          if [ "$GITHUB_RUN_ATTEMPT" -gt 1 ]; then earlier=(--from-run "$GITHUB_RUN_ID"); fi
+          python launcher/tools/bake/bake.py bake --kind blend --out "$RUNNER_TEMP/bakes" "${earlier[@]}"
           python launcher/tools/bake/bake.py bake --kind mesh --out "$RUNNER_TEMP/bakes"
           python launcher/tools/bake/bake.py bake --kind sound --out "$RUNNER_TEMP/bakes"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        if: steps.missing.outputs.count != '0'
+        if: ${{ always() && steps.missing.outputs.count != '0' }}
         with:
-          name: bakes-cpu
+          name: bakes-cpu-${{ github.run_attempt }}
           path: ${{ runner.temp }}/bakes
+          if-no-files-found: ignore
 
       - uses: ./.github/actions/job-inputs
         if: ${{ !cancelled() }}

@@ -17,7 +17,10 @@ intensity = 0.005
 intensity = 2.0
 
 [bake]
-ray_offset = 0.5
+# The source's reduction error (source/copyright.txt): its thin two-shell
+# awnings cross by up to that much, and a smaller offset lets one shell shadow
+# the other.
+ray_offset = 5.0
 colour_merge_step = 6
 indirect = { bounces = 2, rays = 64 }
 ao = { distance = 40.0, rays = 32, indirect = true }
@@ -50,7 +53,7 @@ bake = true
 visibility = { source = "camera_path", every_ms = 500, size = [184, 224] }
 
 [objects.mesh_renderer.fit.prune]
-budget = 20000
+budget = 18678
 coverage_every_ms = 20
 
 [objects.mesh_renderer.fit.poses]
@@ -76,7 +79,7 @@ bake = true
 visibility = { source = "camera_path", every_ms = 500, size = [184, 224] }
 
 [objects.mesh_renderer.fit.prune]
-budget = 10000
+budget = 9350
 coverage_every_ms = 20
 
 [objects.mesh_renderer.fit.poses]
@@ -103,7 +106,7 @@ shading = { flat = { auto = { min = 1, max = 16, area = "median" } } }
 visibility = { source = "camera_path", every_ms = 500, size = [184, 224] }
 
 [objects.mesh_renderer.fit.prune]
-budget = 20000
+budget = 18678
 coverage_every_ms = 20
 
 [objects.mesh_renderer.fit.poses]

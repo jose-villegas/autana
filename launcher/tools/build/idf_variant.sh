@@ -38,7 +38,7 @@ idf_variant_disagreement() {
 }
 
 # idf_variant_build <launcher-dir> <release|dev|diag> <build-dir> [options]
-# Options: --autorun, --perf-scope, --qemu, --layout-seed <n>, --defaults <fragment> <symbol>,
+# Options: --autorun, --perf-scope, --frame-laps (after --perf-scope), --qemu, --layout-seed <n>, --defaults <fragment> <symbol>,
 # --hot-tunables, --configure (reconfigure only: sdkconfig and compile_commands.json,
 # no compile).
 idf_variant_build() {
@@ -49,8 +49,9 @@ idf_variant_build() {
 
     IDF_VARIANT_DEFAULTS=sdkconfig.defaults
     IDF_VARIANT_REQUIRED=""
-    IDF_VARIANT_FORBIDDEN="CONFIG_LAUNCHER_DEVELOPMENT CONFIG_LAUNCHER_SELFTEST CONFIG_LAUNCHER_SELFTEST_AUTORUN CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF CONFIG_LAUNCHER_QEMU"
+    IDF_VARIANT_FORBIDDEN="CONFIG_LAUNCHER_DEVELOPMENT CONFIG_LAUNCHER_SELFTEST CONFIG_LAUNCHER_SELFTEST_AUTORUN CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF_LAPS CONFIG_LAUNCHER_QEMU"
     perf_scope=0
+    scope_note="perf scope"
     layout_seed=0
     hot_tunables=0
     idf_verb=build
@@ -60,12 +61,12 @@ idf_variant_build() {
         dev)
             IDF_VARIANT_DEFAULTS="$IDF_VARIANT_DEFAULTS;sdkconfig.defaults.dev"
             IDF_VARIANT_REQUIRED=CONFIG_LAUNCHER_DEVELOPMENT
-            IDF_VARIANT_FORBIDDEN="CONFIG_LAUNCHER_SELFTEST CONFIG_LAUNCHER_SELFTEST_AUTORUN CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF CONFIG_LAUNCHER_QEMU"
+            IDF_VARIANT_FORBIDDEN="CONFIG_LAUNCHER_SELFTEST CONFIG_LAUNCHER_SELFTEST_AUTORUN CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF_LAPS CONFIG_LAUNCHER_QEMU"
             ;;
         diag)
             IDF_VARIANT_DEFAULTS="$IDF_VARIANT_DEFAULTS;sdkconfig.defaults.diag"
             IDF_VARIANT_REQUIRED="CONFIG_LAUNCHER_DEVELOPMENT CONFIG_LAUNCHER_SELFTEST"
-            IDF_VARIANT_FORBIDDEN="CONFIG_LAUNCHER_SELFTEST_AUTORUN CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF CONFIG_LAUNCHER_QEMU"
+            IDF_VARIANT_FORBIDDEN="CONFIG_LAUNCHER_SELFTEST_AUTORUN CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF_LAPS CONFIG_LAUNCHER_QEMU"
             ;;
         *)
             echo "unknown build variant: $variant" >&2
@@ -85,8 +86,15 @@ idf_variant_build() {
                 [ "$variant" = diag ] || { echo "--perf-scope needs diag" >&2; return 2; }
                 IDF_VARIANT_DEFAULTS="$IDF_VARIANT_DEFAULTS;sdkconfig.defaults.diag_perf"
                 IDF_VARIANT_REQUIRED="$IDF_VARIANT_REQUIRED CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF"
-                IDF_VARIANT_FORBIDDEN=$(printf '%s\n' "$IDF_VARIANT_FORBIDDEN" | sed 's/CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF//')
+                IDF_VARIANT_FORBIDDEN=$(printf '%s\n' "$IDF_VARIANT_FORBIDDEN" | sed 's/CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF //')
                 perf_scope=1
+                ;;
+            --frame-laps)
+                [ "$perf_scope" -eq 1 ] || { echo "--frame-laps needs --perf-scope before it" >&2; return 2; }
+                IDF_VARIANT_DEFAULTS="$IDF_VARIANT_DEFAULTS;sdkconfig.defaults.diag_perf_laps"
+                IDF_VARIANT_REQUIRED="$IDF_VARIANT_REQUIRED CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF_LAPS"
+                IDF_VARIANT_FORBIDDEN=$(printf '%s\n' "$IDF_VARIANT_FORBIDDEN" | sed 's/CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF_LAPS //')
+                scope_note="perf scope, frame laps"
                 ;;
             --qemu)
                 [ "$variant" = diag ] || { echo "--qemu needs diag" >&2; return 2; }
@@ -142,7 +150,7 @@ idf_variant_build() {
     banner=Building
     [ "$idf_verb" = build ] || banner=Configuring
     if [ "$perf_scope" -eq 1 ]; then
-        echo "=== $banner $build_dir (perf scope) ==="
+        echo "=== $banner $build_dir ($scope_note) ==="
     else
         echo "=== $banner $build_dir ==="
     fi

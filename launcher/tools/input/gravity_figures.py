@@ -76,7 +76,7 @@ def main():
              ylim=(0, 1.1), xlim=(0, None))
     style_axes(axis, "Acceleration trust weight against magnitude deviation")
     save(fig, output / "gravity-trust.png")
-    bias_figure(data, DeviceModel(cc), output / "gravity-bias.gif")
+    bias_figure(data, DeviceModel(), output / "gravity-bias.gif")
 
 
 if __name__ == "__main__":

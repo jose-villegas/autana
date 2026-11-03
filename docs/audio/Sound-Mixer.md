@@ -25,6 +25,15 @@ playing, start with [Play a sound](Play-a-Sound.md).
 | `sound_bus_create(name)` / `sound_bus_destroy(bus)` | custom buses |
 | `sound_set_bus_gain(bus, pct)` | scale a bus |
 
+The engine API in `sound_engine.h` provides
+`sound_play_tone(uint16_t hz, uint16_t ms, uint8_t gain_pct, sound_bus_t bus)`.
+
+A tone plays on the given bus for `audio_out_samples(ms)` frames, then ends
+through the one-shot de-click tail. `sound_is_playing()` becomes false at that end.
+
+`SOUND_TONE_UNTIL_STOPPED` keeps the tone playing until stopped. The console
+`tone` and `sound` commands use it on `SOUND_BUS_SYSTEM` and stop their own voices.
+
 ## Voices and buses
 
 A voice is one playing sound, and a bus is a volume group that voices play

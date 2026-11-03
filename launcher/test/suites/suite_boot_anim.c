@@ -39,6 +39,7 @@
 #include "draw/draw_image_format.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
+#include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_test.h"
 #include "image/pixel/rgb565.h"
 #include "image/pixel/rgb888.h"
@@ -269,15 +270,17 @@ test_a_point_further_from_the_camera_projects_smaller(void) {
                              "centre than the same point nearer the camera");
 }
 
+#define NEAR_PLANE_DIVISOR 8 /* the test's near plane is 1/8 m */
+
 /* A point at the near plane must leave the output untouched; the equality
  * exercises the clip boundary independently of any point further back. */
 static void
 test_project_point_rejects_a_point_at_the_near_plane(void) {
     boot_anim_view_t view = identity_view();
-    view.lens.near_z = MATHX_ONE / 8; /* 0.125 m */
+    view.lens.near_z = MATHX_ONE / NEAR_PLANE_DIVISOR; /* 0.125 m */
     int x = -1, y = -1;
 
-    const bool ok = boot_anim_project_point(0, 512, 0, &view, &x, &y);
+    const bool ok = boot_anim_project_point(0, BOOT_ANIM_ONE / NEAR_PLANE_DIVISOR, 0, &view, &x, &y);
 
     TEST_ASSERT_FALSE_MESSAGE(ok, "a point exactly at the near plane must be rejected, not "
                                   "projected to a nonsense screen position");
@@ -779,8 +782,8 @@ pt(int32_t re, int32_t im, int32_t t) {
 static void
 test_a_span_starts_and_ends_halfway_between_its_points(void) {
     const boot_anim_pt_t a = pt(0, 0, 0);
-    const boot_anim_pt_t b = pt(4096, 2048, 512);
-    const boot_anim_pt_t c = pt(8192, -2048, 1024);
+    const boot_anim_pt_t b = pt(BOOT_ANIM_ONE, BOOT_ANIM_ONE / 2, 2 << BOOT_ANIM_TQ);
+    const boot_anim_pt_t c = pt(2 * BOOT_ANIM_ONE, -BOOT_ANIM_ONE / 2, 4 << BOOT_ANIM_TQ);
 
     const boot_anim_pt_t start = boot_anim_spline(a, b, c, 0);
     const boot_anim_pt_t end = boot_anim_spline(a, b, c, BOOT_ANIM_ONE);
@@ -1580,7 +1583,7 @@ expect_the_rest_pose(const char* dir) {
     const bool from_pack = motion.from_pack;
     const bool is_rest = !from_pack && motion.clip.duration_ms == rest.clip.duration_ms
                          && same_node(&motion.camera, &rest.camera) && same_node(&motion.space, &rest.space);
-    const draw_image_t no_photo = {0};
+    const image_t no_photo = {0};
     boot_anim_draw_frame(&motion, &no_photo, now_ms);
     boot_anim_motion_release(&motion);
     TEST_ASSERT_FALSE_MESSAGE(from_pack, "the motion came from the pack");
@@ -1696,7 +1699,7 @@ write_picture(int version, int width, int height) {
     test_pack_t pack = test_pack_begin(bytes, capacity, 1);
     uint8_t* entry = test_pack_add(&pack, BOOT_PHOTO, DRAW_IMAGE_ASSET, entry_size);
     test_pack_put16(entry, version);
-    test_pack_put16(entry + 2, DRAW_IMAGE_RGB565);
+    test_pack_put16(entry + 2, DRAW_IMAGE_FORMAT_RGB565);
     test_pack_put16(entry + 4, width);
     test_pack_put16(entry + 6, height);
     test_pack_put32(entry + 8, (uint32_t)width);
@@ -1708,7 +1711,7 @@ write_picture(int version, int width, int height) {
 }
 
 static void
-load_photo_from(const char* dir, draw_image_t* out) {
+load_photo_from(const char* dir, image_t* out) {
     test_asset_dir_use(dir);
     boot_anim_photo_load(out);
     test_asset_dir_restore();
@@ -1716,7 +1719,7 @@ load_photo_from(const char* dir, draw_image_t* out) {
 
 /* The lit pixels of the shipped motion's frame at `now_ms` drawn over `photo`. */
 static int
-lit_over(const draw_image_t* photo, uint32_t now_ms) {
+lit_over(const image_t* photo, uint32_t now_ms) {
     boot_anim_motion_t motion;
     boot_anim_motion_load(&motion);
     boot_anim_draw_frame(&motion, photo, now_ms);
@@ -1736,7 +1739,7 @@ expect_no_photograph(const char* dir) {
     const uint32_t now_ms = BOOT_ANIM_IMAGE_START_MS + BOOT_ANIM_IMAGE_FADE_MS;
     TEST_ASSERT_EQUAL_UINT8(255, boot_anim_ink(now_ms));
 
-    draw_image_t photo;
+    image_t photo;
     load_photo_from(dir, &photo);
     const bool no_pixels = photo.pixels == NULL;
     const int without = lit_over(&photo, now_ms);
@@ -1745,8 +1748,11 @@ expect_no_photograph(const char* dir) {
     /* One black row repeated down the panel: a stride of 0. */
     gfx_color_t* black = calloc(GFX_WIDTH, sizeof(gfx_color_t));
     TEST_ASSERT_NOT_NULL(black);
-    const draw_image_t covered = {
-        .pixels = black, .format = DRAW_IMAGE_RGB565, .width = GFX_WIDTH, .height = GFX_HEIGHT, .stride = 0};
+    const image_t covered = {.pixels = black,
+                             .format = IMAGE_RGB565BE,
+                             .width = GFX_WIDTH,
+                             .height = GFX_HEIGHT,
+                             .pitch = 0 * sizeof(gfx_color_t)};
     const int title_only = lit_over(&covered, now_ms);
     free(black);
 
@@ -1759,7 +1765,7 @@ expect_no_photograph(const char* dir) {
  * pack, not the one that failed. */
 static void
 expect_a_good_picture_loads_next(void) {
-    draw_image_t photo;
+    image_t photo;
     boot_anim_photo_load(&photo);
     const bool from_pack = photo.pixels != NULL;
     boot_anim_photo_release(&photo);
@@ -1795,7 +1801,7 @@ test_the_crossfade_ends_on_the_shipped_photograph(void) {
         TEST_ASSERT_TRUE(gfx_init());
     }
     suite_set_test_cleanup(gfx_reset_for_test);
-    draw_image_t photo;
+    image_t photo;
     boot_anim_photo_load(&photo);
     if (photo.pixels == NULL) {
         TEST_FAIL_MESSAGE("the boot picture did not load from its pack: see the log above");
@@ -1804,8 +1810,9 @@ test_the_crossfade_ends_on_the_shipped_photograph(void) {
     const gfx_color_t* fb = gfx_framebuffer();
     int same = 0;
     for (int y = 0; y < GFX_HEIGHT; y++) {
+        const gfx_color_t* row = image_row(&photo, y);
         for (int x = 0; x < GFX_WIDTH; x++) {
-            same += fb[(y * GFX_WIDTH) + x] == photo.pixels[(y * (int)photo.stride) + x];
+            same += fb[(y * GFX_WIDTH) + x] == row[x];
         }
     }
     boot_anim_photo_release(&photo);

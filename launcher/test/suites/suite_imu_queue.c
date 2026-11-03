@@ -193,6 +193,46 @@ test_drain_result_maps_failure_and_clamps_count(void) {
     free(f);
 }
 
+/* One sample pushed, then a take at `odr_code`: its count, with the gap flag in f->gap. */
+static int
+push_then_take(fixture_t* f, bool push, unsigned odr_code) {
+    const imu_sample_t sample = {.ax = 1};
+    if (push) {
+        imu_queue_push(&f->queue, &sample, 1, 0, false);
+    }
+    return imu_queue_take_at(&f->queue, odr_code, f->samples, f->lost, &f->gap);
+}
+
+/* Samples at another rate never reach a default-rate reader: gravity would integrate them
+ * at IMU_SAMPLE_US. The rate's own reader takes them, or finds them gone behind a gap. */
+static void
+test_queued_rate_decides_who_takes(void) {
+    fixture_t* f = fixture();
+
+    static const struct {
+        bool switch_rate, push;
+        unsigned odr_code;
+        int taken;
+    } steps[] = {
+        {true, true, IMU_BUZZ_ODR_CODE, 1},   /* the switch dropped what came before */
+        {false, true, IMU_ODR_CODE, 0},       /* a default reader gets nothing */
+        {false, false, IMU_BUZZ_ODR_CODE, 0}, /* and the buzz reader sees its sample gone */
+        {true, true, IMU_ODR_CODE, 1},        /* back at the default rate */
+    };
+
+    (void)push_then_take(f, true, IMU_ODR_CODE);
+    unsigned rate = IMU_ODR_CODE;
+    for (size_t i = 0; i < sizeof steps / sizeof steps[0]; i++) {
+        if (steps[i].switch_rate) {
+            rate = rate == IMU_ODR_CODE ? IMU_BUZZ_ODR_CODE : IMU_ODR_CODE;
+            imu_queue_set_rate(&f->queue, rate);
+        }
+        TEST_ASSERT_EQUAL_INT(steps[i].taken, push_then_take(f, steps[i].push, steps[i].odr_code));
+        TEST_ASSERT_TRUE(f->gap);
+    }
+    free(f);
+}
+
 void
 run_imu_queue_suite(void) {
     RUN_TEST(test_loss_stays_at_each_drain_boundary);
@@ -206,6 +246,7 @@ run_imu_queue_suite(void) {
     RUN_TEST(test_empty_gap_is_taken_once);
     RUN_TEST(test_gap_discards_preceding_samples);
     RUN_TEST(test_drain_result_maps_failure_and_clamps_count);
+    RUN_TEST(test_queued_rate_decides_who_takes);
 }
 
 SUITE_REGISTER(run_imu_queue_suite);

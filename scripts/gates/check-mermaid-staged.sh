@@ -18,8 +18,8 @@
 
 set -eu
 
-REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-cd "$REPO_ROOT"
+GATE_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+cd "$(git rev-parse --show-toplevel)"
 
 staged=$(git diff --cached --name-only --diff-filter=ACMR -- '*.md')
 [ -n "$staged" ] || exit 0
@@ -41,14 +41,14 @@ if ! node --version >/dev/null 2>&1; then
     exit 0
 fi
 
-if ! node scripts/gates/check-mermaid.mjs --probe >/dev/null 2>&1; then
+if ! node "$GATE_DIR/check-mermaid.mjs" --probe >/dev/null 2>&1; then
     echo "pre-commit: mermaid validation skipped, no mmdc (npm ci --prefix scripts/gates/mermaid)" >&2
     exit 0
 fi
 
 status=0
 for file in $files; do
-    if ! git show ":$file" | node scripts/gates/check-mermaid.mjs --stdin "$file"; then
+    if ! git show ":$file" | node "$GATE_DIR/check-mermaid.mjs" --stdin "$file"; then
         status=1
     fi
 done

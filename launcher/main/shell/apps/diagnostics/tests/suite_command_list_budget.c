@@ -44,8 +44,8 @@ test_diagnostics_tools_screen_command_list_fits_budget(void) {
 }
 
 void
-run_diagnostics_command_list_budget_suite(void) {
+run_diagnostics_command_budget_suite(void) {
     RUN_TEST(test_diagnostics_tools_screen_command_list_fits_budget);
 }
 
-SUITE_REGISTER(run_diagnostics_command_list_budget_suite);
+SUITE_REGISTER(run_diagnostics_command_budget_suite);

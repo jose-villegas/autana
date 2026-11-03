@@ -13,8 +13,9 @@
  * frame_cost's.
  *
  * Pure here, on a frame_laps_core_t a test can own; the shared laps exist
- * only in a perf-scope build on the chip (`autana flash diag --perf-scope`),
- * elsewhere every FRAME_LAP*() is nothing.
+ * only in a lapped perf-scope build on the chip
+ * (`autana flash diag --perf-scope --frame-laps`), elsewhere every
+ * FRAME_LAP*() is nothing: their cost would move the perf scope's budgets.
  */
 #pragma once
 
@@ -101,7 +102,7 @@ frame_laps_report(frame_laps_core_t cores[], int core_count, const char* const n
     return (int)line.length;
 }
 
-#if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF
+#if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF_LAPS
 #define FRAME_LAPS_ENABLED 1
 #else
 #define FRAME_LAPS_ENABLED 0

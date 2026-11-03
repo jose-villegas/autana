@@ -1,3 +1,23 @@
+menu "Board"
+
+    choice BOARD
+        prompt "Board"
+        default BOARD_WAVESHARE_ESP32_S3_TOUCH_AMOLED_1_8
+        help
+            The board this firmware runs on. Each entry names a folder
+            main/board/<vendor>/<board>/, whose board.toml describes the board and
+            whose sources bind board.h; the build compiles that folder only.
+
+        config BOARD_WAVESHARE_ESP32_S3_TOUCH_AMOLED_1_8
+            bool "Waveshare ESP32-S3-Touch-AMOLED-1.8"
+    endchoice
+
+    config BOARD_DIR
+        string
+        default "waveshare/esp32_s3_touch_amoled_1_8" if BOARD_WAVESHARE_ESP32_S3_TOUCH_AMOLED_1_8
+
+endmenu
+
 menu "Launcher"
 
     choice LAUNCHER_BUILD_TYPE
@@ -91,7 +111,7 @@ menu "Launcher"
             and everything drawn through them run as they do on the board.
             In a development build an injected touch sample outranks the
             controller until released. A missing IMU returns what
-            imu_inject() sets.
+            input_motion_pin() sets.
 
             Set only by sdkconfig.defaults.qemu, which also carries the
             flash and console settings QEMU needs. On a board that
@@ -135,6 +155,18 @@ menu "Launcher"
 
     endchoice
 
+    config LAUNCHER_SELFTEST_SCOPE_PERF_LAPS
+        bool "Perf - laps inside the frame stages"
+        depends on LAUNCHER_SELFTEST_SCOPE_PERF
+        help
+            Times the phases inside a frame stage with frame_laps
+            (profile/frame_laps.h), down to each vertex's and each
+            triangle's. A lap costs a few cycles, which adds up to a share
+            of the frame, so this image's frame times are not the perf
+            scope's: read its lap lines, not its budgets.
+
+            Set only by sdkconfig.defaults.diag_perf_laps (--frame-laps).
+
     config LAUNCHER_GFX_QSPI_80MHZ
         bool "Drive the panel's QSPI bus at 80 MHz until a saved choice says otherwise"
         default y
@@ -172,7 +204,7 @@ menu "Launcher"
         default LAUNCHER_GFX_BAND_HEIGHT_32
         help
             Rows per band buffer for a full-redraw renderer's internal-SRAM
-            band ring (gfx.h) - a divisor of 448.
+            band ring (gfx_present.h) - a divisor of 448.
 
         config LAUNCHER_GFX_BAND_HEIGHT_16
             bool "16 rows"

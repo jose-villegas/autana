@@ -21,7 +21,6 @@ class EngineDocImageFailureTest(unittest.TestCase):
             helper = root / "scripts/lib/run.sh"
             helper.parent.mkdir(parents=True)
             shutil.copyfile(ROOT / "scripts/lib/run.sh", helper)
-            shutil.copyfile(ROOT / "launcher/tools/render/gif_from_avi.sh", script.parent / "gif_from_avi.sh")
             packages = root / "launcher/tools/build/packages.sh"
             packages.parent.mkdir(parents=True)
             shutil.copyfile(ROOT / "launcher/tools/build/packages.sh", packages)

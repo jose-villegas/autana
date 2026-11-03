@@ -19,12 +19,11 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 scene_name=render_lab
 
 scene_ui=1
-scene_renderer=1
+scene_target=render_host
 scene_sources="
 main/app/app_arena.c
-main/app/app_console.c
+main/console/console_words.c
 main/app/app_registry.c
-main/core/job.c
 main/input/touch/gesture.c
 main/input/mapping/orbit_motion_touch.c
 main/input/motion/gravity.c
@@ -35,7 +34,7 @@ $(CDPATH= cd -- "$SCRIPT_DIR/../../../../" &&
 "
 scene_defines="-DCONFIG_LAUNCHER_DEVELOPMENT=0"
 
-# The lit-mesh scene's views (--view shaded|depth|tiles|motion|meshlets) are raster_show()
+# The lit-mesh scene's views (--view shaded|depth|tiles|motion|meshlets|cull|overdraw) are raster_show()
 # over the same frame, so each is unpinned for the reason the shaded one is: its
 # camera path is float, so which pixels a triangle reaches is not identical on
 # every compiler. The tests in tools/tests compare the views with each other.
@@ -64,8 +63,8 @@ menu-sponza-portrait|--quarter 0 --menu --scene sponza --frames 4|368x448
 menu-capybara-landscape|--quarter 1 --menu --scene capybara --frames 4|448x368
 menu-capybara-portrait|--quarter 0 --menu --scene capybara --frames 4|368x448
 menu-capybara-clips|--quarter 0 --menu --scene capybara --tap 184,172 --frames 6|368x448
-menu-sponza-small-fill|--quarter 0 --menu --scene sponza --tap 184,272 --frames 6|368x448
-menu-sponza-small-fill-landscape|--quarter 1 --menu --scene sponza --tap 96,224 --frames 6|448x368
+menu-sponza-small-fill|--quarter 0 --menu --scene sponza --tap 184,342 --frames 6|368x448
+menu-sponza-small-fill-landscape|--quarter 1 --menu --scene sponza --tap 46,224 --frames 6|448x368
 menu-sponza-scene|--quarter 0 --menu --scene sponza --tap 184,72 --frames 6|368x448
 menu-sponza-mesh|--quarter 0 --menu --scene sponza --tap 184,172 --frames 6|368x448
 water-tour|--quarter 0 --no-hud --scene water --console 0:water tour --frames 880|368x448|nopin

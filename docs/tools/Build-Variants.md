@@ -17,10 +17,13 @@ layered on a development build.
 | [`LAUNCHER_SELFTEST`][kconfig]: test code | no | no | yes | yes |
 | [`LAUNCHER_SELFTEST_AUTORUN`][kconfig]: suites run at boot | no | no | `--autorun` | yes¹ |
 | [`LAUNCHER_SELFTEST_SCOPE_PERF`][kconfig]: perf scope | no | no | `--perf-scope` | `--perf-scope` |
+| [`LAUNCHER_SELFTEST_SCOPE_PERF_LAPS`][kconfig]: laps inside the frame stages | no | no | `--frame-laps`² | no |
 | [`LAUNCHER_QEMU`][kconfig]: null panel | no | no | no | yes |
 | [`MATH_FPU_*`][math-kconfig]: FPU seeds, fused multiply-add | yes | yes | yes | no |
 
 ¹ Except `build.qemu.shell/`, which boots into the shell.
+² With `--perf-scope`. A lap's own cost moves frame times, so a lapped image is
+read for its lap lines, never against the perf scope's budgets.
 
 | Variant | Built by | Directory |
 |---|---|---|
@@ -42,7 +45,8 @@ flowchart LR
     Base --> Diag["diag: + .diag"]
     Diag --> Auto["+ .diag_autorun<br/>if --autorun"]
     Auto --> Perf["+ .diag_perf<br/>if --perf-scope"]
-    Perf --> Qemu["+ .qemu, last<br/>if built for QEMU"]
+    Perf --> Laps["+ .diag_perf_laps<br/>if --frame-laps"]
+    Laps --> Qemu["+ .qemu, last<br/>if built for QEMU"]
     Rel --> Check{"every required symbol set,<br/>no forbidden one?"}
     Dev --> Check
     Qemu --> Check

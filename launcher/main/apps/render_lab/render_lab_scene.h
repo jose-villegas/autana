@@ -6,7 +6,16 @@
 
 #include "app/app_console.h"
 #include "apps/render_lab/ui/render_lab_menu_screen.h"
+#include "build/build_variant.h"
 #include "input/input.h"
+#include "scene/scene.h"
+
+/* What the scene plays along a clip: the entity animated, in its loaded scene. */
+typedef struct {
+    scene_t* scene; /* NULL when the scene has not loaded */
+    scene_entity_t entity;
+    const char* clip; /* the clip a frame profile plays; NULL keeps the entity's current one */
+} render_lab_path_t;
 
 typedef struct render_lab_scene {
     const char* name; /* the HUD title */
@@ -21,6 +30,7 @@ typedef struct render_lab_scene {
     void (*enter)(const struct render_lab_scene* self);
     void (*frame)(uint32_t dt_ms);
     void (*exit)(void);
+    /* Optional. The HUD's line under the fps reading; development and host builds only. */
     const char* (*status)(void);
     /* Optional. What `enter` reads from its scene. */
     const void* data;
@@ -37,9 +47,15 @@ typedef struct render_lab_scene {
     /* Optional. Drawn in the BOOT menu below the Scene row while the scene is
      * paused; may call public scene_* calls only. */
     render_lab_controls_fn controls;
+    /* Whether frame generation suits the scene: true where nothing moves on
+     * its own, so the camera's pose alone warps a frame. Render Lab turns it
+     * on for such a scene only, when render_lab.framegen asks. */
+    bool generates_frames;
     /* Optional. Handles `render <args>` that Render Lab's scene commands did not;
      * false means the command is not this scene's. */
     bool (*console)(const char* args, console_reply_fn reply);
+    /* Optional. The clip a frame profile plays: its camera's flight, or the subject's motion. */
+    render_lab_path_t (*path)(void);
 } render_lab_scene_t;
 
 /* A scene that could not load: logs `what` under `tag` and keeps it in
@@ -49,12 +65,13 @@ void render_lab_scene_fail(const char* tag, char* failure, size_t size, const ch
 extern const render_lab_scene_t scene_capybara;
 extern const render_lab_scene_t scene_water;
 
-/* A scene's `.console`: the hook in a development or host build, NULL otherwise,
- * as APP_CONSOLE_PTR() does, so a release links none of the console; a host
- * render drives it through render_lab_console(). Declare the hook static
- * inline so a release draws no unused-function warning. */
-#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
-#define RENDER_LAB_SCENE_CONSOLE(hook) (hook)
+/* A scene's `.console` or `.status`: the hook in a development or host build,
+ * NULL otherwise, as APP_CONSOLE_PTR() does, so a release links neither the
+ * console nor the HUD's status line; a host render drives them as a device
+ * does. Declare the hook static inline so a release draws no unused-function
+ * warning. */
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+#define RENDER_LAB_SCENE_DEV(hook) (hook)
 #else
-#define RENDER_LAB_SCENE_CONSOLE(hook) NULL
+#define RENDER_LAB_SCENE_DEV(hook) NULL
 #endif

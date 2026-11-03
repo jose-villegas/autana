@@ -1,7 +1,7 @@
 /*
  * render_video, see render_video.h. Every multi-byte field is written
  * byte-by-byte in little-endian order, the same discipline
- * console/capture/screenshot.h's BMP header uses, for the same reason: a compiler may
+ * gfx/capture/screenshot.h's BMP header uses, for the same reason: a compiler may
  * pad a struct, and RIFF's layout has none.
  *
  * idx1's dwOffset is relative to the 'movi' FourCC itself, not the LIST
@@ -13,11 +13,15 @@
 
 #include <string.h>
 
-#include "console/capture/screenshot.h"
+#include "gfx/capture/screenshot.h"
 
 /* RIFF+AVI, LIST hdrl (avih, LIST strl (strh, strf)), LIST movi, idx1
  * header, every byte an AVI carries besides frame data and index entries. */
 #define RENDER_VIDEO_FIXED_BYTES (12 + 12 + (8 + 56) + 12 + (8 + 56) + (8 + 40) + 12 + 8)
+
+/* RIFF AVI 1.0 keeps its whole size in a 32-bit field; players choke well
+ * before that wraps, so no video is let past this. */
+#define RENDER_VIDEO_MAX_BYTES   ((int64_t)1024 * 1024 * 1024)
 
 static void
 put_u32(FILE* f, uint32_t v) {
@@ -70,8 +74,8 @@ render_video_total_bytes(int32_t width, int32_t height, int64_t frames) {
 }
 
 int64_t
-render_video_frames_that_fit(int32_t width, int32_t height, int64_t budget_bytes) {
-    const int64_t usable = budget_bytes - RENDER_VIDEO_FIXED_BYTES;
+render_video_frames_that_fit(int32_t width, int32_t height) {
+    const int64_t usable = RENDER_VIDEO_MAX_BYTES - RENDER_VIDEO_FIXED_BYTES;
     if (usable <= 0) {
         return 0;
     }

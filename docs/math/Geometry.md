@@ -10,6 +10,7 @@ width or height is empty. Queries clamp result sizes to zero.
 
 | Function | Purpose | Formula |
 |---|---|---|
+| `P_empty()` | empty rect at the origin; identity for union | $`(0, 0, 0, 0)`$ |
 | `P_right(r)` | exclusive right edge | $`r_x + r_w`$ |
 | `P_bottom(r)` | exclusive bottom edge | $`r_y + r_h`$ |
 | `P_from_edges(left, top, right, bottom)` | rectangle from half-open edges; crossed edges are empty | $`(left, top, \max(right-left,0), \max(bottom-top,0))`$ |
@@ -48,7 +49,7 @@ Normalization changes the ruler spacing while keeping the same zero plane.
 
 ## frustum
 
-`P_frustum` reads rows as in Gribb and Hartmann<sup>[[77]](../Citations.md#77)</sup>,
+`P_frustum` reads rows as in Gribb and Hartmann<sup>[[77]](../Citations.md#gribb-2001)</sup>,
 with picture coordinates $`c_x + f_x x/z`$, $`c_y - f_y y/z`$ and $`z`$ supplying $`w`$.
 Each output is `P_from_rows` of a lens-space plane, in this order:
 
@@ -107,11 +108,40 @@ and union; any crossed axis is empty.
 | `P_half_extent(b)` | half size (`f`) | $`e = 0.5(hi-lo)`$ |
 | `P_segment_hit(b, a, c, &t)` | slab entry in `[0,1]` (`f`); inside starts at zero | $`v=c-a`$; intersect $`[0,1]`$ with each axis's $`[(lo_k-a_k)/v_k,(hi_k-a_k)/v_k]`$, sorted |
 | `P_outside_planes(b, planes, count, &mask)` | reject outside; clear wholly inside bits (`f`) | See [frustum](#frustum) |
+| `P_plane_distance_min(b, plane)` | the least signed distance of any point of `b` (`f`, `box3f.h`) | $`n \cdot c + d - r`$ |
+| `P_plane_distance_max(b, plane)` | the greatest (`f`, `box3f.h`) | $`n \cdot c + d + r`$ |
+| `P_plane_distance_min_inside(b, objective, constraint)` | the least `objective` where `constraint` $`\ge 0`$ (`f`, `box3f.h`) | See [a box against a plane](#a-box-against-a-plane) |
 | `box3f_from_box3s(b, scale)` | convert position ticks to float units | $`(lo\,scale,hi\,scale)`$ |
 
 Real queries use finite, nonempty bounds, except that `P_segment_hit`
 rejects empty boxes. Segment endpoints and box values must be finite.
 Plane bits index the input array; `count` must fit an unsigned mask.
+
+The plane rows share a private `P_plane_radius(e, plane)`: how far a box of
+half extent $`e`$ spans along the normal, $`r = \sum_k \lvert n_k\rvert e_k`$.
+
+### A box against a plane
+
+`P_plane_distance_min_inside` solves a small linear programme: the least of
+a plane $`o`$ over the box's points where a plane $`g`$ is not negative.
+Lagrangian duality gives it without a search. For every $`\lambda \ge 0`$,
+
+```math
+\phi(\lambda) = \min_{p \in b}\,\bigl(o(p) - \lambda\,g(p)\bigr)
+```
+
+is at most the answer, since $`g(p) \ge 0`$ there. $`\phi`$ is concave and
+piecewise linear, with kinks where a term $`\lvert o_k - \lambda g_k\rvert`$
+turns, at $`\lambda = o_k / g_k`$. Its peak is at $`\lambda = 0`$ or one of
+those three kinks, and by linear-programming duality that peak is the
+answer whenever the box meets the half-space. So the function takes the best
+of at most four distance minima. A box wholly outside has no answer and
+gets a lower bound.
+
+The renderer uses it with view depth as the objective and each frustum
+plane as a constraint. The best over the planes bounds the nearest depth of
+a cluster's box where the picture can see it, even when the box reaches
+behind the eye.
 
 ## ball: shared circle and sphere queries (`f`, `i`)
 
@@ -122,17 +152,20 @@ Circles and spheres store `centre` and nonnegative `radius`, including the bound
 | Function | Purpose | Formula |
 |---|---|---|
 | `P_contains_point(s, p)` | point inside or on the ball | $`\lVert p-c\rVert^2 \le r^2`$ |
+| `P_contains_ball(outer, inner, margin)` | inner ball fits with signed margin; touching counts | $`q=r_o-r_i-m`$<br>$`q \ge 0,\ \lVert c_o-c_i\rVert^2 \le q^2`$ |
 | `P_overlaps(a, b)` | balls share points, including tangency | $`\lVert c_a-c_b\rVert^2 \le (r_a+r_b)^2`$ |
 | `P_closest_point(c, p)` | p itself if inside, else the nearest boundary point (real only) | $`p`$ if inside, else $`c_c+(p-c_c)r/\lVert p-c_c\rVert`$ |
 | `P_segment_hit(s, a, c, &t)` | first real segment entry in `[0,1]`; inside starts at zero | $`m=a-s_c,\ v=c-a`$<br>$`A=v\cdot v,\ B=m\cdot v,\ f=m-(B/A)v`$<br>$`D=r^2-f\cdot f,\ t=(-B-\sqrt{AD})/A`$ |
 
 | Prefix | Generated ball functions |
 |---|---|
-| `circlef` | `circlef_contains_point`, `circlef_overlaps`, `circlef_closest_point`, `circlef_segment_hit` |
-| `circlei` | `circlei_contains_point`, `circlei_overlaps` |
-| `spheref` | `spheref_contains_point`, `spheref_overlaps`, `spheref_closest_point`, `spheref_segment_hit` |
+| `circlef` | `circlef_contains_point`, `circlef_contains_ball`, `circlef_overlaps`, `circlef_closest_point`, `circlef_segment_hit` |
+| `circlei` | `circlei_contains_point`, `circlei_contains_ball`, `circlei_overlaps` |
+| `spheref` | `spheref_contains_point`, `spheref_contains_ball`, `spheref_overlaps`, `spheref_closest_point`, `spheref_segment_hit` |
 
-`P_segment_hit` uses Haines, Günther and Akenine-Möller's perpendicular-distance discriminant<sup>[[84]](../Citations.md#84)</sup> to avoid cancellation in the hit decision. It writes `t` only on a hit.
+Positive margins reserve clearance; negative margins allow protrusion. For `circlei_contains_ball`, centre components must be in `[INT_MIN/2, INT_MAX/2]`, and nonnegative room squared must fit `int64_t`.
+
+`P_segment_hit` uses Haines, Günther and Akenine-Möller's perpendicular-distance discriminant<sup>[[84]](../Citations.md#haines-2019)</sup> to avoid cancellation in the hit decision. It writes `t` only on a hit.
 
 Zero-length segments hit when the point is inside; tangency counts as a hit.
 
@@ -140,7 +173,7 @@ Zero-length segments hit when the point is inside; tangency counts as a hit.
 
 `spheref` has a vec3 centre and the shared [ball queries](#ball-shared-circle-and-sphere-queries-f-i); box bounds must be finite and nonempty.
 `spheref_overlaps_box` compares the closest box point's squared distance
-with the squared radius (Arvo 1990<sup>[[83]](../Citations.md#83)</sup>).
+with the squared radius (Arvo 1990<sup>[[83]](../Citations.md#arvo-1990)</sup>).
 
 | Function | Purpose | Formula |
 |---|---|---|
@@ -158,7 +191,7 @@ Marked segment entries include a start inside the sphere at $`t = 0`$.
 ## circle (`f`, `i`)
 
 `circlef` and `circlei` have a vec2 centre and shared [ball queries](#ball-shared-circle-and-sphere-queries-f-i). The circle has no fixed-point variant yet.
-Rectangle overlaps use Arvo 1990<sup>[[83]](../Citations.md#83)</sup> in two dimensions; rectangles must be nonempty.
+Rectangle overlaps use Arvo 1990<sup>[[83]](../Citations.md#arvo-1990)</sup> in two dimensions; rectangles must be nonempty.
 Integer edges end at `right-1` and `bottom-1`; real queries include the closure at `right` and `bottom`.
 
 | Function | Meaning | Formula |
@@ -175,7 +208,7 @@ The integer touch reaches `right−1`; segment markers show the first hit, inclu
 ## iso_surface
 
 The surface where a sampled field crosses a level, as triangles, by naive
-surface nets<sup>[[95]](../Citations.md#95)</sup>: one vertex per cell the surface
+surface nets<sup>[[95]](../Citations.md#gibson-1998)</sup>: one vertex per cell the surface
 passes through, at the mean of its edge crossings, and a quad across every
 crossing sample edge.
 
@@ -185,6 +218,8 @@ crossing sample edge.
 | `iso_mesh_t` | Caller-owned positions, normals, triangles and scratch, with capacities and counts |
 | `iso_surface_scratch_count` | Two slabs of cell indices for a field's y and z counts |
 | `iso_surface_nets` | Meshes the field at a level; false when a capacity ran out, keeping whole triangles |
+| `iso_surface_nets_slabs` | Meshes a range of cell slabs along x, so parts can run at once |
+| `iso_surface_append` | Moves a part's vertices and triangles onto the end of a mesh, indices rebased |
 
 | Rule | Detail |
 |---|---|
@@ -193,3 +228,4 @@ crossing sample edge.
 | Normals | Unit, down the field's gradient over the cell's corners |
 | Closed | A field below the level all round its border gives a closed surface |
 | Memory | Scratch is two slabs along x, so it does not grow with the field's length |
+| Parts | Parts over slabs `[0, a)`, `[a, b)`, … appended in x order make the whole surface's triangles; each needs its own scratch |

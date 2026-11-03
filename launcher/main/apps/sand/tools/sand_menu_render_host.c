@@ -106,7 +106,7 @@ dither_tap(int index) {
 }
 
 static void
-draw(const render_frame_t* frame) {
+draw(const provider_frame_t* frame) {
     const input_t input = open_dither ? dither_tap(frame->index) : frame->input;
     ui_begin(&input);
     if (menu.screen == SAND_MENU_OPTIONS) {
@@ -117,7 +117,7 @@ draw(const render_frame_t* frame) {
     ui_end(UI_BACKGROUND);
 }
 
-const render_scene_t render_scene = {
+const frame_provider_t sand_menu_provider = {
     .name = "sand_menu",
     .quarter = 0,
     .frames = 3,

@@ -14,8 +14,9 @@
 static inline int64_t
 one_core_draw_us(const raster_t* raster, const raster_buffers_t* b, const r3d_lens_t* lens, int visible, int stop) {
     const size_t pixels = (size_t)raster->width * (size_t)raster->height;
-    memset(gfx_render_target_depth(&b->picture, 0), 0, pixels * sizeof(uint16_t));
-    const r3d_span_target_t target = {b->picture, NULL, 0, &r3d_span_small_fill_default};
+    memset(gfx_target_depth(&b->picture, 0), 0, pixels * sizeof(uint16_t));
+    r3d_span_target_t target = {.small_fill = &r3d_span_small_fill_default};
+    gfx_target_window(&target.rows, &b->picture, b->picture.first_row, gfx_target_end_row(&b->picture));
     r3d_span_stop_after = stop;
     const int64_t start = timing_now_us();
     r3d_pipeline_draw(raster->instances[0].mesh, lens, b->culled + 1, visible, b->cs, b->rows, &target, b->work[0]);

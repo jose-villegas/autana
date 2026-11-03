@@ -1,7 +1,7 @@
 """Encode, validate and read NAME.sound.toml and SOND entries.
 
 The TOML owns format and loop frames at the stored rate. Layout:
-docs/audio/Sound-Assets.md. Standard library only; sound_import.py decodes sources.
+docs/assets/formats/SOND.md. Standard library only; sound_import.py decodes sources.
 """
 
 import pathlib

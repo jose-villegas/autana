@@ -6,7 +6,7 @@
  * own vertices. The clusters are the leaves of a tree rooted at nodes[0], so
  * a whole subtree is culled with one box test.
  *
- * A mesh is an asset-pack entry (docs/render/Baked-Mesh.md): its arrays sit at
+ * A mesh is an asset-pack entry (docs/assets/formats/LMSH.md): its arrays sit at
  * offsets inside the entry, and r3d_lit_mesh_t is a view built once from
  * them, so the renderer reads pointers as it always did and nothing is copied.
  */
@@ -16,8 +16,10 @@
 #include <stdint.h>
 
 #include "asset/asset_pack.h"
+#include "math/geometry/box3f.h"
 #include "math/geometry/box3s.h"
 #include "math/geometry/spheref.h"
+#include "math/linear/mat4f.h"
 
 typedef struct {
     uint16_t vertex_first, vertex_count;
@@ -65,7 +67,7 @@ asset_status_t r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t
 /* The same for the lit mesh entry named `id` in `pack`. */
 asset_status_t r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh);
 
-/* Colour ownership: docs/render/Baked-Mesh.md#lcol-v1. */
+/* Colour ownership: docs/assets/formats/LCOL.md. */
 asset_status_t r3d_lit_mesh_open_colours(const asset_pack_t* pack, const char* mesh_id, uint16_t set,
                                          r3d_lit_mesh_t* mesh);
 
@@ -86,3 +88,7 @@ r3d_lit_mesh_refit_nodes(r3d_lit_node_t* nodes, int node_count, const r3d_lit_cl
 /* A sphere holding every vertex, in model units: centred on the box of them
  * (the root node's bounds), its radius the furthest vertex from that centre. */
 spheref_t r3d_lit_mesh_bounding_sphere(const r3d_lit_mesh_t* mesh);
+
+/* The box of the root node's bounds carried through `model` (NULL: as it is),
+ * in world units: it holds every vertex where the instance sits. */
+box3f_t r3d_lit_mesh_world_bounds(const r3d_lit_mesh_t* mesh, const mat4f_t* model);

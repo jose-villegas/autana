@@ -658,6 +658,17 @@ class FlashCommandTests(unittest.TestCase):
     def test_hot_tunables_are_forwarded(self):
         self.assertIn("--hot-tunables", forwarded_command(autana.flash, ["diag", "--quiet", "--hot-tunables"]))
 
+    def test_frame_laps_are_forwarded_with_the_perf_scope(self):
+        command = forwarded_command(autana.flash, ["diag", "--quiet", "--perf-scope", "--frame-laps"])
+        self.assertIn("--frame-laps", command)
+        self.assertNotIn("--frame-laps", forwarded_command(autana.flash, ["diag", "--quiet", "--perf-scope"]))
+
+    def test_frame_laps_without_the_perf_scope_are_refused(self):
+        with project_call(git_output="") as called, self.assertRaises(SystemExit) as refused:
+            autana.flash(["diag", "--quiet", "--frame-laps"])
+        self.assertIn("needs --perf-scope", str(refused.exception))
+        called.assert_not_called()
+
     def test_layout_seed_is_forwarded(self):
         with project_call(git_output="") as called:
             autana.flash(["diag", "--quiet", "--layout-seed", "4"])
@@ -719,6 +730,10 @@ class BuildCommandTests(unittest.TestCase):
     def test_perf_scope_is_forwarded(self):
         _, built = self.build("diag", "--perf-scope")
         built.assert_called_once_with("C:/wt", "diag", ["--perf-scope"])
+
+    def test_frame_laps_are_forwarded_with_the_perf_scope(self):
+        _, built = self.build("diag", "--perf-scope", "--frame-laps")
+        built.assert_called_once_with("C:/wt", "diag", ["--frame-laps", "--perf-scope"])
 
     def test_configure_is_forwarded_to_the_build(self):
         _, built = self.build("rel", "--configure")

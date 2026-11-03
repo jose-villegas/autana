@@ -1,0 +1,506 @@
+{
+  "playback-00-00.wav": {
+    "metrics": {
+      "active": -38.888223021,
+      "clips": 0,
+      "low": -80.263050962
+    },
+    "sha256": "a8e91bc8500010c16fef2af2b22cb4f766fdcd9686c732b45016a6e8303e9f11"
+  },
+  "playback-00-01.wav": {
+    "metrics": {
+      "active": -38.58065473,
+      "clips": 0,
+      "low": -79.007152748
+    },
+    "sha256": "fe18237eb2d1cc7fe6c11024cf64b0b0318d8962877c2bfd49eede869d8e556c"
+  },
+  "playback-00-02.wav": {
+    "metrics": {
+      "active": -38.559134413,
+      "clips": 0,
+      "low": -78.794714846
+    },
+    "sha256": "62ee3250ba6f97d5484cf4aefea0ce4d69192fd4a77cfc594b50771516a677e4"
+  },
+  "playback-01-00.wav": {
+    "metrics": {
+      "active": -38.851883434,
+      "clips": 0,
+      "low": -81.522525608
+    },
+    "sha256": "c08cf4ba0a8dd5b6014e3f28da92a01aaf45794601a17756bd3542241ababe33"
+  },
+  "playback-01-01.wav": {
+    "metrics": {
+      "active": -38.62911948,
+      "clips": 0,
+      "low": -81.132597763
+    },
+    "sha256": "c37e958ff6ce8eb62a624228933aaffb16c7d292a0031d1060ab2f9b04833fb4"
+  },
+  "playback-01-02.wav": {
+    "metrics": {
+      "active": -38.480608738,
+      "clips": 0,
+      "low": -75.909777696
+    },
+    "sha256": "2e587fcd8f953f506d5ab439269ec1442f1e604d4a7739576cb7b3688c45a3f3"
+  },
+  "playback-02-00.wav": {
+    "metrics": {
+      "active": -29.024225105,
+      "clips": 0,
+      "low": -73.917868909
+    },
+    "sha256": "5e6fb5f77e67ebd034a9cd16940da72628a5c949940b8cb0063c0625c2d38b07"
+  },
+  "playback-02-01.wav": {
+    "metrics": {
+      "active": -28.469143605,
+      "clips": 0,
+      "low": -74.121913312
+    },
+    "sha256": "a4815f6cdc67a85ca5dc6717c46926df588b5276194f190208dde7e70307a818"
+  },
+  "playback-02-02.wav": {
+    "metrics": {
+      "active": -28.450066002,
+      "clips": 0,
+      "low": -72.139826136
+    },
+    "sha256": "bbbdd7c4610b2dd61e694c276d9784809a0d7fe36e6e5628e46eb8e6c68b3607"
+  },
+  "playback-03-00.wav": {
+    "metrics": {
+      "active": -29.062736196,
+      "clips": 0,
+      "low": -74.331417879
+    },
+    "sha256": "95783cbd6466cb0a2311563bd4aeb99cc01c09821507835768218d9fd378dafd"
+  },
+  "playback-03-01.wav": {
+    "metrics": {
+      "active": -28.644210598,
+      "clips": 0,
+      "low": -72.248317577
+    },
+    "sha256": "1db448e58a7762b8558b209e3d0b185f751c30c444c39489d7eeaf35debbe860"
+  },
+  "playback-03-02.wav": {
+    "metrics": {
+      "active": -28.81616032,
+      "clips": 0,
+      "low": -71.895632948
+    },
+    "sha256": "ac1471e9640d38d9620d64d314998db7bb44dddf3aa2b2a7e3fd57d224846a20"
+  },
+  "playback-04-00.wav": {
+    "metrics": {
+      "active": -19.273890966,
+      "clips": 0,
+      "low": -45.3364003
+    },
+    "sha256": "0f0d60eec48e6cad8b3c4dd8a667bf564f36b9541882e1b7dc2c595a23592ced"
+  },
+  "playback-04-01.wav": {
+    "metrics": {
+      "active": -19.126960836,
+      "clips": 0,
+      "low": -44.918871624
+    },
+    "sha256": "1ff475325af410c8332f59c6d0a76d1eb0a51980c8939c02cc3c0dd7320d6833"
+  },
+  "playback-04-02.wav": {
+    "metrics": {
+      "active": -19.137756626,
+      "clips": 0,
+      "low": -44.94426778
+    },
+    "sha256": "28fff58c27d90f4ec56ce896f02ea2b0b9a89279c432924e70947637b7442f23"
+  },
+  "playback-05-00.wav": {
+    "metrics": {
+      "active": -20.870050716,
+      "clips": 0,
+      "low": -51.128406626
+    },
+    "sha256": "cba149a974c47d275e9ede8d1528dab949b7d9fe90c0b395813508742e5e56af"
+  },
+  "playback-05-01.wav": {
+    "metrics": {
+      "active": -20.681505331,
+      "clips": 0,
+      "low": -50.791667574
+    },
+    "sha256": "c5f1eaf9e6de6eee3bb5e92c47747888b9adceb368ba126c555e4713ae08950c"
+  },
+  "playback-05-02.wav": {
+    "metrics": {
+      "active": -20.645450844,
+      "clips": 0,
+      "low": -50.437890105
+    },
+    "sha256": "1c8a700f56b9053877c6aac0083e16304233e07d3ac8ea2f8b8a18eafe7b06e6"
+  },
+  "playback-06-00.wav": {
+    "metrics": {
+      "active": -29.189641269,
+      "clips": 0,
+      "low": -73.757695494
+    },
+    "sha256": "ad7b3512065fc6f353b6ced3d03524b0eaa9fc2b81dbe48888a92b389d4a7bbc"
+  },
+  "playback-06-01.wav": {
+    "metrics": {
+      "active": -28.88436729,
+      "clips": 0,
+      "low": -71.039008914
+    },
+    "sha256": "083b6a2354949381ac784a855f971ba14a495ceaf36831171ad4d099a3e04edb"
+  },
+  "playback-06-02.wav": {
+    "metrics": {
+      "active": -28.661559127,
+      "clips": 0,
+      "low": -74.782406613
+    },
+    "sha256": "a89f8530280cdfd7ac0e506739ceaac052c51efff5d327fc69b7d3e0e121947d"
+  },
+  "playback-07-00.wav": {
+    "metrics": {
+      "active": -29.383096934,
+      "clips": 0,
+      "low": -74.338692275
+    },
+    "sha256": "13c30c3aacc9c02e4ec0f374673524da77c725b1aac29fddba98a32bf57334a2"
+  },
+  "playback-07-01.wav": {
+    "metrics": {
+      "active": -28.913386686,
+      "clips": 0,
+      "low": -75.773382755
+    },
+    "sha256": "6b8a98ef7edd41067ce1bb9b504abb719099822121c9125bae54d43c14559424"
+  },
+  "playback-07-02.wav": {
+    "metrics": {
+      "active": -28.965621308,
+      "clips": 0,
+      "low": -74.900274223
+    },
+    "sha256": "ea77969e54a73b400dd0c6ea2eaad3d45aeabdfb6e2bcf0e65fcf74b0d2424fa"
+  },
+  "playback-08-00.wav": {
+    "metrics": {
+      "active": -30.031085772,
+      "clips": 0,
+      "low": -80.895760026
+    },
+    "sha256": "8c6c2e3606f2b3c17c64527e50fdf4a480ddbeb172adc8df14010e4099368dc4"
+  },
+  "playback-08-01.wav": {
+    "metrics": {
+      "active": -29.751693315,
+      "clips": 0,
+      "low": -71.222121855
+    },
+    "sha256": "d0d2eb8df898489bc1124988dc9cdfc2ae88110ce1de1d9046ccbc4ecc675a11"
+  },
+  "playback-08-02.wav": {
+    "metrics": {
+      "active": -29.774193949,
+      "clips": 0,
+      "low": -71.684464303
+    },
+    "sha256": "f3b78d8e467c5935d63ae6c63bc7745a0200cb5f5ea03f6fe5efe6d92b144421"
+  },
+  "playback-09-00.wav": {
+    "metrics": {
+      "active": -20.817843114,
+      "clips": 0,
+      "low": -50.923887213
+    },
+    "sha256": "206e0210b1ae3ca258fc34617d6d79fcd04d27482077348717479a5053c70e88"
+  },
+  "playback-09-01.wav": {
+    "metrics": {
+      "active": -20.64120945,
+      "clips": 0,
+      "low": -50.828958526
+    },
+    "sha256": "010988809497112b5a4d36aaaaf5c954bbde43c12b486b04c1bbbb29793f3727"
+  },
+  "playback-09-02.wav": {
+    "metrics": {
+      "active": -20.639208744,
+      "clips": 0,
+      "low": -50.587014853
+    },
+    "sha256": "cd211f9f0c0b87f3330db50948e61425eedb3db641fab3263373f4f2692fd850"
+  },
+  "playback-10-00.wav": {
+    "metrics": {
+      "active": -20.927020003,
+      "clips": 0,
+      "low": -51.714453936
+    },
+    "sha256": "a4461f49e037edcb346ba0a1e94688f21ae633fd4c170778d34e6137ce5f2168"
+  },
+  "playback-10-01.wav": {
+    "metrics": {
+      "active": -20.809815888,
+      "clips": 0,
+      "low": -51.329536999
+    },
+    "sha256": "c0efe1095df390d6874e52d0ae9a572ddd82509c76792c1b2f96689006e439de"
+  },
+  "playback-10-02.wav": {
+    "metrics": {
+      "active": -20.777496304,
+      "clips": 0,
+      "low": -51.477964902
+    },
+    "sha256": "1e232d599a8a3606345ca3004b4368c7a23c3336036c639595b43e7f79633d0f"
+  },
+  "playback-11-00.wav": {
+    "metrics": {
+      "active": -21.36163011,
+      "clips": 0,
+      "low": -52.769312523
+    },
+    "sha256": "bd4de520924d721fa3cc40881fa2b1fd1c0c0e6309e8eefc90176a47ea51cb29"
+  },
+  "playback-11-01.wav": {
+    "metrics": {
+      "active": -21.223531631,
+      "clips": 0,
+      "low": -52.315439901
+    },
+    "sha256": "71115a64ec9628768d0c0905eb6d3b4314657d4e939fdf6159d8620973fe2a20"
+  },
+  "playback-11-02.wav": {
+    "metrics": {
+      "active": -21.246488193,
+      "clips": 0,
+      "low": -53.001024783
+    },
+    "sha256": "ff90464509667b4d125fbdd6b091a22df9ed18e45868b05eb3327546d3d9fe69"
+  },
+  "playback-12-00.wav": {
+    "metrics": {
+      "click0": -0.014626817,
+      "click1": 0.129320845,
+      "settle0": 14.965986395,
+      "settle1": 44.897959184
+    },
+    "sha256": "5061575f5a980e6df58c2b266e9fb5918cb1439c46e139375408316c7c7755b3"
+  },
+  "playback-12-01.wav": {
+    "metrics": {
+      "click0": 0.133822345,
+      "click1": 0.280861548,
+      "settle0": 14.965986395,
+      "settle1": 44.897959184
+    },
+    "sha256": "bd26bd898044a1261cbc95bf70d47417f9f13e3f8a43f8440b216960b2861d35"
+  },
+  "playback-12-02.wav": {
+    "metrics": {
+      "click0": 0.67756573,
+      "click1": -0.520268647,
+      "settle0": 9.977324263,
+      "settle1": 44.897959184
+    },
+    "sha256": "2005248fddeae02aeb28bc0eb0cc7803a75bcb0325e9ff15360b32e069eeba80"
+  },
+  "playback-13-00.wav": {
+    "metrics": {
+      "click0": -0.374127153,
+      "click1": 0.903713484,
+      "settle0": 24.943310658,
+      "settle1": 44.897959184
+    },
+    "sha256": "d4a1bf4530a76cb55b240b1c4026e8db889d4289a78864008983a1f59c73eb9b"
+  },
+  "playback-13-01.wav": {
+    "metrics": {
+      "click0": 0.805347583,
+      "click1": 1.583624921,
+      "settle0": 24.943310658,
+      "settle1": 44.897959184
+    },
+    "sha256": "b104caf9eae24ece31837d1187616707b9b7a55c4c4d374bed98d7db6749a8c3"
+  },
+  "playback-13-02.wav": {
+    "metrics": {
+      "click0": 0.789704005,
+      "click1": 0.547323684,
+      "settle0": 24.943310658,
+      "settle1": 44.897959184
+    },
+    "sha256": "79070ddf54171027e7b6351d39487369cdbd78f1f36e78f530a0dc979c6e5b6b"
+  },
+  "playback-14-00.wav": {
+    "metrics": {
+      "click0": 2.957608063,
+      "click1": 7.570706187,
+      "settle0": 29.931972789,
+      "settle1": 199.546485261
+    },
+    "sha256": "1be8520633c98858c3195eb8caff0dd628a33cecb049a50a1a5e8b56fd595d62"
+  },
+  "playback-14-01.wav": {
+    "metrics": {
+      "click0": 0.680381746,
+      "click1": 0.447440875,
+      "settle0": 239.455782313,
+      "settle1": 194.557823129
+    },
+    "sha256": "e54f9fa3756f66662034e43484e5e6b5666a6c23cae7abdd91cf366aa12e2d7f"
+  },
+  "playback-14-02.wav": {
+    "metrics": {
+      "click0": 0.549407977,
+      "click1": 2.770061294,
+      "settle0": 249.433106576,
+      "settle1": 194.557823129
+    },
+    "sha256": "94a99eb7b3cfcd6c9c2515a30bfe7a4943c5d95846290ce0e9b51335630a4880"
+  },
+  "playback-15-00.wav": {
+    "metrics": {
+      "click0": 0.22635521,
+      "click1": 0.022254405,
+      "settle0": 0.0,
+      "settle1": 0.0
+    },
+    "sha256": "a3152536f3c7c62024aa8e237b9b8edd575d9fae7ce57925fbc9dff5a40c0f68"
+  },
+  "playback-15-01.wav": {
+    "metrics": {
+      "click0": 0.324137971,
+      "click1": 0.018699447,
+      "settle0": 0.0,
+      "settle1": 0.0
+    },
+    "sha256": "1e24b626743d642af40c5a840675146075523cada2b55c67640d2f72b8c86eae"
+  },
+  "playback-15-02.wav": {
+    "metrics": {
+      "click0": -0.074091063,
+      "click1": 0.568240264,
+      "settle0": 0.0,
+      "settle1": 0.0
+    },
+    "sha256": "c14f02004e90343621c1ee528b2b8820996fa4dc1fdf9e360ebc99ba2b376b4c"
+  },
+  "playback-16-00.wav": {
+    "metrics": {
+      "click0": 6.533538626,
+      "click1": 30.298494177,
+      "settle0": 9.977324263,
+      "settle1": 4.988662132
+    },
+    "sha256": "1191b5dcb45487cc5f05934d361ac2918b08cb413df291e57cdee356eac0e17f"
+  },
+  "playback-16-01.wav": {
+    "metrics": {
+      "click0": 9.08131816,
+      "click1": 30.131713277,
+      "settle0": 9.977324263,
+      "settle1": 4.988662132
+    },
+    "sha256": "3e3d507274485e1e5d6588edc4905c6ef86f4bd1b02c429cdcc06495e086a417"
+  },
+  "playback-16-02.wav": {
+    "metrics": {
+      "click0": -0.103199903,
+      "click1": 27.219523653,
+      "settle0": 14.965986395,
+      "settle1": 4.988662132
+    },
+    "sha256": "fe90bb7c2a0cebd98accf32e9c35fe42dd1a0aa863f0d44df9ee69e3f9763763"
+  },
+  "playback-17-00.wav": {
+    "metrics": {
+      "click0": 0.069250056,
+      "click1": 1.738515842,
+      "settle0": 34.920634921,
+      "settle1": 34.920634921
+    },
+    "sha256": "736706b4cc0c007f2c693979f6876697bbd649f0f6b4bd4809c5e56fd35610dc"
+  },
+  "playback-17-01.wav": {
+    "metrics": {
+      "click0": 0.024529498,
+      "click1": 2.484662804,
+      "settle0": 34.920634921,
+      "settle1": 34.920634921
+    },
+    "sha256": "a04d93262ec723b9f90444e47d42b9048e1324598f18749b1eada784b94531d6"
+  },
+  "playback-17-02.wav": {
+    "metrics": {
+      "click0": 0.592217092,
+      "click1": 0.550874985,
+      "settle0": 34.920634921,
+      "settle1": 34.920634921
+    },
+    "sha256": "788ca03937cb3c93ff3a5bb709fce3ef4d23b6125052d1a885878ac3a1c36963"
+  },
+  "playback-18-00.wav": {
+    "metrics": {
+      "click0": 0.073134501,
+      "click1": 0.097595292,
+      "settle0": 443.990929705,
+      "settle1": 443.990929705
+    },
+    "sha256": "ff0c9fdebcce4953c224bf792e1023379a03b3ca0d7dfa14162b9de69f3d01de"
+  },
+  "playback-18-01.wav": {
+    "metrics": {
+      "click0": 0.033357415,
+      "click1": 0.0375201,
+      "settle0": 448.979591837,
+      "settle1": 448.979591837
+    },
+    "sha256": "6f1e2a2d06303d154f34952a716dfc3248bdaf2f4a83fee77270c2f0aff082f6"
+  },
+  "playback-18-02.wav": {
+    "metrics": {
+      "click0": 0.034438577,
+      "click1": -0.049492383,
+      "settle0": 448.979591837,
+      "settle1": 448.979591837
+    },
+    "sha256": "db535dec7b642af5459dbe10fda7d08e2805404bee33bd16a77f3acb98ec32c9"
+  },
+  "playback-19-00.wav": {
+    "metrics": {
+      "click0": -0.175085451,
+      "click1": -0.083922292,
+      "settle0": 553.741496599,
+      "settle1": 578.684807256
+    },
+    "sha256": "035bd8872cf92edd64644b932f0b44c469bc2b14ce7f273781e23259f65615df"
+  },
+  "playback-19-01.wav": {
+    "metrics": {
+      "click0": -0.132987582,
+      "click1": 0.053410712,
+      "settle0": 578.684807256,
+      "settle1": 513.832199546
+    },
+    "sha256": "a687915f8efda2b655ab6555dcc5dae9eabc91f3e8422b7848e7e0b7f14b5be0"
+  },
+  "playback-19-02.wav": {
+    "metrics": {
+      "click0": -0.043855917,
+      "click1": -0.132207874,
+      "settle0": 523.80952381,
+      "settle1": 538.775510204
+    },
+    "sha256": "392618c6c98e5dd7298cd0f62742d089c3060fc966bfce9126b641eaaf2f9e4e"
+  }
+}

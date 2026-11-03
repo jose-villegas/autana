@@ -12,6 +12,8 @@ from build.c_header import read_define
 from build.name_hash import NONE as HASH_NONE, name_hash
 from r3d.import_settings import ANIM_WRAPS, SettingsError, color_fits, load_scene
 from r3d import skin_pack
+from r3d.scene_rows import (CLIP, COLOUR_SET_OWN, NAME, RENDERER, TRANSFORM, TRANSFORM_AXES, U16_MAX,
+                            SceneError, decode_transform, field, text_at)
 
 OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_format.h"
 INTERNAL = OWNER.with_name("scene_internal.h")
@@ -23,7 +25,6 @@ LIGHT_KINDS = {"directional": DIRECTIONAL}
 DEFAULT_COLOR = read_define(INTERNAL, "SCENE_LIGHT_COLOR_DEFAULT")
 AMBIENT_NONE = read_define(INTERNAL, "SCENE_AMBIENT_INTENSITY_NONE")
 TONEMAP_NONE = read_define(INTERNAL, "SCENE_TONEMAP_WHITE_NONE")
-COLOUR_SET_OWN = read_define(OWNER, "SCENE_ASSET_COLOUR_SET_OWN")
 DEFAULT_CLIP_NONE = read_define(OWNER, "SCENE_ASSET_DEFAULT_CLIP_NONE")
 PARENT_ROOT = read_define(OWNER, "SCENE_ASSET_PARENT_ROOT")
 SCALE_TOLERANCE = read_define(OWNER.parents[2] / "packages/math/include/math/linear/transformf.h",
@@ -33,13 +34,6 @@ PARTS = ("names", "transforms", "renderers", "cameras", "lights", "skinned_rende
          "parents")
 ALIGN = 4
 HEADER = struct.Struct(f"<{1 + len(PARTS)}H{-2 * (1 + len(PARTS)) % ALIGN}x{len(PARTS)}I")
-U16_MAX = (1 << 16) - 1
-NAME = struct.Struct(f"<I{NAME_BYTES}s")
-CLIP = struct.Struct(f"<{NAME_BYTES}s")
-assert (NAME.size == read_define(OWNER, "SCENE_ASSET_NAME_SIZE") and read_define(OWNER, "SCENE_ASSET_NAME_AT_HASH") == 0
-        and read_define(OWNER, "SCENE_ASSET_NAME_AT_TEXT") == struct.calcsize("<I"))
-TRANSFORM = struct.Struct("<12f")
-RENDERER = struct.Struct(f"<HH{NAME_BYTES}s")
 CAMERA = struct.Struct("<HHffI")
 LIGHT = struct.Struct("<HBB4f")
 SKINNED_RENDERER = struct.Struct(f"<HH{NAME_BYTES}s{NAME_BYTES}s{NAME_BYTES}s")
@@ -47,10 +41,6 @@ ANIMATOR = struct.Struct("<HHIHBB")
 SETTINGS = struct.Struct("<5f")
 PARENT = struct.Struct("<H")
 ROWS = (NAME, TRANSFORM, RENDERER, CAMERA, LIGHT, SKINNED_RENDERER, ANIMATOR, CLIP, SETTINGS, PARENT)
-
-
-class SceneError(ValueError):
-    """An authored scene or mapped row violates the scene format."""
 
 
 def check_header(owner_size):
@@ -63,13 +53,6 @@ check_header(read_define(OWNER, "SCENE_ASSET_HEADER_SIZE"))
 
 def mesh_ids(scene):
     return [item.asset_name for item in scene.renderers]
-
-
-def field(value, what):
-    raw = value.encode("ascii")
-    if len(raw) >= NAME_BYTES:
-        raise SceneError(f"{what} {value!r} does not fit the entry's {NAME_BYTES - 1}-byte field")
-    return raw
 
 
 def encode(scene, cache=None, offline=False):
@@ -90,7 +73,8 @@ def encode(scene, cache=None, offline=False):
             rows["skinned_renderers"].append((entity, 0, field(mesh, "mesh id"),
                 field(skin, "skin id"), field(skeleton, "skeleton id")))
         else:
-            rows["renderers"].append((entity, COLOUR_SET_OWN, field(mesh, "mesh id")))
+            colour_set = getattr(item.renderer, "colour_set", None)
+            rows["renderers"].append((entity, COLOUR_SET_OWN if colour_set is None else colour_set, field(mesh, "mesh id")))
     for obj in objects:
         entity = index[obj.name]
         animator = getattr(obj, "animator", None)
@@ -199,13 +183,6 @@ def bake(path, cache=None, offline=False):
         raise SceneError(f"{path}: {error}") from error
 
 
-def text_at(raw, what):
-    value, nul, rest = raw.partition(b"\0")
-    if not value or not nul or any(rest):
-        raise SceneError(f"{what} is not NUL terminated and padded")
-    return value.decode("ascii")
-
-
 def section(entry, offset, count, row, table_end, what):
     if offset % 4 or offset < table_end or offset + count * row.size > len(entry):
         raise SceneError(f"the {what} leave the entry or are misaligned")
@@ -234,8 +211,7 @@ def decode(entry):
     if any(entry[parents_end:parents_end + (-parents_end % ALIGN)]):
         raise SceneError("the padding after the parents is not zero")
     out = {part: [] for part in PARTS if part not in ("names", "transforms")}
-    out["entities"] = [{"name": text_at(raw, "entity name"), "name_hash": hashed,
-                        "matrix": [list(values[i:i + 3]) for i in range(0, 9, 3)], "position": list(values[9:]),
+    out["entities"] = [{"name": text_at(raw, "entity name"), "name_hash": hashed, **decode_transform(values),
                         "parent": None if parent == PARENT_ROOT else parent}
                        for (hashed, raw), values, (parent,) in zip(rows["names"], rows["transforms"], rows["parents"])]
     for entity, row in enumerate(out["entities"]):

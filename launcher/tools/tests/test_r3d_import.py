@@ -22,7 +22,7 @@ try:
     import numpy as np
     from tests import soup  # noqa: F401  (traces the bake's rays on the scalar variant)
 
-    from r3d import mesh_import, ray_query
+    from r3d import mesh_import, mesh_source, ray_query
     from r3d.light import LIGHTS, encode_srgb8, light, to_srgb8
     from r3d.lit_mesh import read_lit_mesh
 except ImportError:
@@ -139,13 +139,18 @@ class ImportTests(unittest.TestCase):
             with self.subTest(body=body):
                 self.rejects(message, body)
 
+    def test_a_copy_budget_names_a_variant(self):
+        rule = '[[objects.meshes]]\nmatch = { material = "m" }\ntriangles = 4\nvariants = { other = 2 }\n'
+        self.rejects(r"objects\.meshes\[0\]\.variants\.other names no variant", SIMPLIFY + rule + VARIANT)
+
     def test_a_seed_requires_the_geometry_step_that_draws_it(self):
         self.rejects("process.seed needs geometry.thin", '[process]\nseed = 3\n')
 
-    def test_variants_hold_only_their_name_and_triangle_budget(self):
+    def test_variant_budget_and_optional_ceiling(self):
         with tempfile.TemporaryDirectory() as directory:
             settings = load_import_settings(write_import(directory, output='[output]\n', body=SIMPLIFY + VARIANT))
-        self.assertEqual(vars(settings.variants[0]), {"name": "mesh", "triangles": 10})
+        self.assertEqual(vars(settings.variants[0]), {"name": "mesh", "triangles": 10, "ceiling": None,
+                                                       "objects_scale": 1.0})
 
 
     def test_basic_settings_turn_no_step_on(self):
@@ -281,6 +286,14 @@ class SceneTests(unittest.TestCase):
         self.rejects("objects", self.two_imports, "", TONEMAP)
         self.rejects("mesh_renderer", self.two_imports, camera(region=False))
         self.rejects("typo", self.two_imports, renderer("a.import.toml"), "typo = 1\n")
+
+    def test_an_object_names_its_parent(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.two_imports(directory)
+            scene = load_scene(write_scene(directory, renderer("a.import.toml")
+                                           + renderer("b.import.toml", transform='parent = "a"\n')))
+        self.assertEqual([obj.parent for obj in scene.objects], [None, "a"])
+        self.rejects("parent", self.two_imports, renderer("a.import.toml", transform="parent = 3\n"))
 
     def test_object_names_are_unique(self):
         self.rejects("names must be unique", self.two_imports, renderer("a.import.toml") + renderer("b.import.toml", name="a"))
@@ -782,7 +795,7 @@ def triangle_source(p):
 class BakeStepTests(unittest.TestCase):
     def test_the_bake_culls_with_the_renderers_visibility_only(self):
         own = SimpleNamespace(source="camera_path")
-        settings = SimpleNamespace(seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=None, double_sided=set())
+        settings = SimpleNamespace(seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=None, double_sided=set(), meshes=[])
         source = triangle_source(np.zeros((3, 3)))
         seen = []
         with mock.patch.object(mesh_import, "load_source", return_value=source), \
@@ -797,7 +810,7 @@ class BakeStepTests(unittest.TestCase):
 
     def test_the_simplifier_gets_the_imports_colour_deviation(self):
         steps = SimpleNamespace(dense_edge=10.0, props=set(), props_share=0.3, seal_seams=True, colour_deviation=2.5)
-        settings = SimpleNamespace(seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=steps, double_sided=set(), overrides=[])
+        settings = SimpleNamespace(seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=steps, double_sided=set(), meshes=[])
         p = np.array([[0.0, 0, 0], [1, 0, 0], [0, 1, 0]])
         source = triangle_source(p)
         given = {}
@@ -828,7 +841,7 @@ class ReferenceObjectTests(unittest.TestCase):
             built = []
             with mock.patch.object(reference_render, "load_source", return_value=source), \
                     mock.patch.object(reference_render, "RayQuery"), \
-                    mock.patch.object(mesh_import, "PathLight", side_effect=lambda *args: built.append(args) or "cache"):
+                    mock.patch.object(mesh_source, "PathLight", side_effect=lambda *args: built.append(args) or "cache"):
                 _, dark = reference_render.source_for(scene, "dark")
                 lit, bounced_job = reference_render.source_for(scene, "bounced")
                 with self.assertRaisesRegex(ValueError, "no mesh renderer named"):
@@ -841,32 +854,32 @@ class ReferenceObjectTests(unittest.TestCase):
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class PathLightForTests(unittest.TestCase):
     def setUp(self):
-        mesh_import.PATH_LIGHTS.clear()
-        self.addCleanup(mesh_import.PATH_LIGHTS.clear)
+        mesh_source.PATH_LIGHTS.clear()
+        self.addCleanup(mesh_source.PATH_LIGHTS.clear)
 
     def job(self, indirect):
         return SimpleNamespace(bake=SimpleNamespace(indirect=indirect), settings=SimpleNamespace(path="a.import.toml", double_sided=set()))
 
     def test_a_renderer_with_no_indirect_builds_no_scene(self):
-        with mock.patch.object(mesh_import, "PathLight") as built:
+        with mock.patch.object(mesh_source, "PathLight") as built:
             self.assertIsNone(mesh_import.path_light_for(None, self.job(None), SimpleNamespace()))
         built.assert_not_called()
 
     def test_one_scene_is_shared_by_equal_settings_and_only_the_latest_is_kept(self):
         indirect = SimpleNamespace(bounces=1, rays=8)
         scene = lambda boost, lights: SimpleNamespace(lights=lights, indirect=SimpleNamespace(albedo_boost=boost, intensity=1.0))
-        with mock.patch.object(mesh_import, "PathLight", side_effect=lambda *args: object()) as built:
+        with mock.patch.object(mesh_source, "PathLight", side_effect=lambda *args: object()) as built:
             first = mesh_import.path_light_for(None, self.job(indirect), scene(1.0, []))
             self.assertIs(mesh_import.path_light_for(None, self.job(indirect), scene(1.0, [])), first)
             self.assertEqual(built.call_count, 1)
             mesh_import.path_light_for(None, self.job(indirect), scene(2.0, []))
         self.assertEqual(built.call_count, 2)
-        self.assertEqual(len(mesh_import.PATH_LIGHTS), 1)
+        self.assertEqual(len(mesh_source.PATH_LIGHTS), 1)
 
     def test_the_intensity_does_not_rebuild_the_scene(self):
         indirect = SimpleNamespace(bounces=1, rays=8)
         scene = lambda intensity: SimpleNamespace(lights=[], indirect=SimpleNamespace(albedo_boost=1.0, intensity=intensity))
-        with mock.patch.object(mesh_import, "PathLight", side_effect=lambda *args: object()) as built:
+        with mock.patch.object(mesh_source, "PathLight", side_effect=lambda *args: object()) as built:
             mesh_import.path_light_for(None, self.job(indirect), scene(1.0))
             mesh_import.path_light_for(None, self.job(indirect), scene(3.0))
         self.assertEqual(built.call_count, 1)
@@ -874,7 +887,7 @@ class PathLightForTests(unittest.TestCase):
     def test_a_scene_is_kept_per_variant_and_the_default_is_the_bake_variant(self):
         indirect = SimpleNamespace(bounces=1, rays=8)
         scene = SimpleNamespace(lights=[], indirect=SimpleNamespace(albedo_boost=1.0, intensity=1.0))
-        with mock.patch.object(mesh_import, "PathLight", side_effect=lambda *args: object()) as built:
+        with mock.patch.object(mesh_source, "PathLight", side_effect=lambda *args: object()) as built:
             bake = mesh_import.path_light_for(None, self.job(indirect), scene)
             self.assertIs(mesh_import.path_light_for(None, self.job(indirect), scene, ray_query.VARIANT), bake,
                           "no variant is the bake's variant")
@@ -942,8 +955,8 @@ class LocalSourceTests(unittest.TestCase):
                 for texture in ("colour.png", "alpha.png"):
                     (root / texture).write_bytes(b"hydrated texture")
                 (root / name).write_bytes(pointer)
-                with mock.patch.object(mesh_import, "load_obj") as load_obj, \
-                        mock.patch.object(mesh_import, "load_textures") as load_textures:
+                with mock.patch.object(mesh_source, "load_obj") as load_obj, \
+                        mock.patch.object(mesh_source, "load_textures") as load_textures:
                     with self.assertRaises(SettingsError) as error:
                         mesh_import.load_source(settings)
                     self.assertIn(str(root / name), str(error.exception))

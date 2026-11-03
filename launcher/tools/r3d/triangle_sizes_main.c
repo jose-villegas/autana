@@ -157,7 +157,7 @@ static void
 render_pose(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int count, const buffers_t* b, frame_size_t size) {
     memset(b->color, 0, size.pixels * sizeof(*b->color));
     memset(b->depth, 0, size.pixels * sizeof(*b->depth));
-    r3d_pipeline_transform(mesh, lens, b->visible, count, b->cs, b->rows);
+    r3d_pipeline_transform(mesh, lens, b->visible, count, b->cs, b->rows, false);
     const r3d_span_target_t target = r3d_span_target(b->color, b->depth, size.width, 0, size.height);
     r3d_pipeline_draw(mesh, lens, b->visible, count, b->cs, b->rows, &target, b->work);
 }
@@ -202,12 +202,11 @@ main(int argc, char** argv) {
     r3d_sizes_t total = {0};
     for (int pose = 0; pose < poses->count; pose++) {
         r3d_lens_t lens;
-        const transformf_t camera_pose =
-            transformf_looking(poses->eye[pose], poses->forward[pose], (vec3f_t){0.0F, 1.0F, 0.0F});
+        const transformf_t camera_pose = transformf_looking(poses->eye[pose], poses->forward[pose], vec3f_unit_y());
         const render_view_t view = render_view_make(&camera_pose, poses->half_fov_short_tan, poses->near_z,
                                                     (viewport_t){size.width, size.height, 0});
         r3d_lens_init(&lens, &view, mesh->position_scale);
-        const int count = r3d_pipeline_cull(mesh, &lens, b.visible, b.work);
+        const int count = r3d_pipeline_cull(mesh, &lens, b.visible, b.work, NULL);
         r3d_sizes_t s = {0};
         r3d_sizes_count(mesh, &lens, b.visible, count, &s);
         print_sizes(pose, &s);

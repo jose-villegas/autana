@@ -167,7 +167,7 @@ typedef struct {
   int indent;
 } mu_Layout;
 
-typedef struct {
+typedef struct mu_Container_ {
   mu_Command *head, *tail;
   mu_Rect rect;
   mu_Rect body;
@@ -175,6 +175,8 @@ typedef struct {
   mu_Vec2 scroll;
   int zindex;
   int open;
+  /* LOCAL MODIFICATION: the root container this one was last built in. */
+  struct mu_Container_ *root;
 } mu_Container;
 
 typedef struct {
@@ -253,6 +255,7 @@ mu_Container* mu_get_current_container(mu_Context *ctx);
 mu_Container* mu_get_container(mu_Context *ctx, const char *name);
 void mu_bring_to_front(mu_Context *ctx, mu_Container *cnt);
 void mu_seed_hover_root(mu_Context *ctx);
+int mu_scrollable_at(mu_Context *ctx);
 
 int mu_pool_init(mu_Context *ctx, mu_PoolItem *items, int len, mu_Id id);
 int mu_pool_get(mu_Context *ctx, mu_PoolItem *items, int len, mu_Id id);

@@ -10,7 +10,7 @@ Designs written before or during the work they describe. Each plan's own
 | [Settings-App-Plan.md](Settings-App-Plan.md) | The Settings app's remaining milestones, and unifying SELFTEST/diagnostics naming. |
 | [Networking-Plan.md](Networking-Plan.md) | What the board's radios allow, their RAM cost, and updating the firmware over the air. |
 | [Log-Level-Plan.md](Log-Level-Plan.md) | A compile-time log-level ceiling per build variant. |
-| [Cluster-LOD.md](Cluster-LOD.md) | Levels of detail over the baked meshlets: the pick rule, what it saved, and the branch that holds the tooling. |
+| [Cluster-LOD.md](Cluster-LOD.md) | Levels of detail over the baked clusters: the pick rule, one tolerance per frame for a triangle budget, and the host replay that measures it. |
 | [Qemu-Target-Plan.md](Qemu-Target-Plan.md) | Driving an emulated image from autana, and what it cannot answer. |
 | [Motion-Design-Plan.md](Motion-Design-Plan.md) | Motion for the launcher: springs and easing, a cached blurred backdrop, app open and close, orientation morphs. |
 | [Reaction-Doc-Generator-Plan.md](Reaction-Doc-Generator-Plan.md) | A generated short description for every sand brush. |
@@ -21,4 +21,5 @@ Designs written before or during the work they describe. Each plan's own
 | [Image-Kernels-Plan.md](Image-Kernels-Plan.md) | Real-time blur and edge detection over the framebuffer: packed-RGB565 tricks, box blurs, SIMD, and ranked first experiments, every cost an estimate. |
 | [Animation-System-Design-Sketch.md](Animation-System-Design-Sketch.md) | Property and character animation: the whole shape, and milestone 1, a skinned model playing, blending and picking its clips. |
 | [Engine-Layer-Design-Sketch.md](Engine-Layer-Design-Sketch.md) | The firmware as platform, engine and system bands: the shell UI as a client of the public UI toolkit, the ECS face per engine system, the folder moves and their order. |
+| [Haptics-Design-Sketch.md](Haptics-Design-Sketch.md) | Tactile feedback with the speaker as the actuator: the `haptics/` owner, `haptic_pulse()`, the timed tone it needs, the per-board resonance check and the milestones. |
 | [Internal-Memory-Opportunities.md](Internal-Memory-Opportunities.md) | IRAM and DRAM opportunities, isolated scratch measurements, risks and board validation. |

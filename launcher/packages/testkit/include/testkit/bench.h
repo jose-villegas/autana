@@ -98,3 +98,24 @@ bench_cycle_median(void (*run)(void* ctx), void* ctx, bool cold) {
     }
     return (float)bench_stats_compute(samples, reps).med;
 }
+
+static inline void
+bench_report_cycles(const char* prefix, const char* name, const char* type, int ops, void (*run)(void* ctx),
+                    void* ctx) {
+    const float warm = bench_cycle_median(run, ctx, false) / (float)ops;
+    const bool cold = bench_cache_cold();
+    printf("%s name=%s type=%s ops=%d warm=%.1f", prefix, name, type, ops, (double)warm);
+    if (cold) {
+        printf(" cold=%.1f", (double)bench_cycle_median(run, ctx, true));
+    }
+    run(ctx);
+    const bool counting = bench_insn_begin();
+    run(ctx);
+    if (counting) {
+        uint32_t value;
+        TEST_ASSERT_TRUE(bench_insn_end(&value));
+        printf(" insn=%.1f", (double)((float)value / (float)ops));
+    }
+    printf("\n");
+    bench_yield();
+}

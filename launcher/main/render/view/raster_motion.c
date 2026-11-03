@@ -1,19 +1,21 @@
 #include "render/view/raster_motion.h"
+#include "core/checkpoint.h"
 
 #include <assert.h>
 #include <stddef.h>
 #include <string.h>
 
+#include "core/memory.h"
 #include "math/scalar/mathf.h"
 #include "render/r3d_span_internal.h"
 #include "render/raster_internal.h"
 #include "render/view/raster_show.h"
 
-/* While drawing, the attachment holds each pixel's tag: 0 for anything
- * that did not move, i + 1 for instance i that did. Resolving turns the tag
- * and the depth into the motion in place. */
-typedef uint16_t tag_t;
+/* While drawing, the attachment holds each pixel's tag; resolving turns the
+ * tag and the depth into the motion in place. */
+typedef raster_motion_tag_t tag_t;
 _Static_assert(sizeof(tag_t) == sizeof(raster_motion_px_t), "a tag resolves in place");
+_Static_assert(RASTER_MOTION_INSTANCES_MAX == (tag_t)-1, "instance i tags i + 1");
 
 #define DEPTH_SCALE (1.0F / (float)R3D_DEPTH_NEAREST)
 
@@ -28,8 +30,13 @@ lens_map(const render_view_t* view, const raster_t* raster, const mat4f_t* model
     }
 }
 
+/* Where `key` was seen, trying `slot` first: the order rarely changes
+ * between pictures. */
 static int
-seen_index(const raster_motion_t* m, const mat4f_t* key) {
+seen_index(const raster_motion_t* m, const mat4f_t* key, int slot) {
+    if (slot < m->seen_count && m->seen_key[slot] == key) {
+        return slot;
+    }
     for (int i = 0; i < m->seen_count; i++) {
         if (m->seen_key[i] == key) {
             return i;
@@ -43,13 +50,11 @@ static void
 map_instances(raster_motion_t* m, const raster_t* raster, const render_view_t* view) {
     for (int i = 0; i < raster->instance_count; i++) {
         const mat4f_t* p = raster->instances[i].model;
-        const int seen = p == NULL ? -1 : seen_index(m, p);
+        const int seen = p == NULL ? -1 : seen_index(m, p, i);
         if (seen >= 0 && memcmp(&m->seen[seen], p, sizeof(*p)) != 0) {
-            r3d_lens_t before;
-            r3d_lens_t now;
-            lens_map(&m->previous, raster, &m->seen[seen], &before);
-            lens_map(view, raster, p, &now);
-            m->map[i + 1] = mat4f_mul_affine(before.m, mat4f_invert_affine(now.m));
+            lens_map(&m->previous, raster, &m->seen[seen], &m->before);
+            lens_map(view, raster, p, &m->now);
+            m->map[i + 1] = mat4f_mul_affine(m->before.m, mat4f_invert_affine(m->now.m));
             m->moved[i] = true;
             m->first_moved = m->first_moved < 0 ? i : m->first_moved;
         }
@@ -76,18 +81,16 @@ remember(raster_motion_t* m, const raster_t* raster, const render_view_t* view) 
 static void
 begin(const raster_attachment_t* self, const raster_t* raster, const render_view_t* view) {
     raster_motion_t* m = self->state;
-    assert(raster->instance_count <= RASTER_MOTION_INSTANCES_MAX);
-    r3d_lens_t now;
-    lens_map(view, raster, NULL, &now);
-    m->project = now.project;
+    assert(raster->instance_count <= m->capacity); /* raster_motion_reserve() first */
+    lens_map(view, raster, NULL, &m->now);
+    m->project = m->now.project;
     m->known = m->has_previous;
     m->first_moved = -1;
-    memset(m->moved, 0, sizeof(m->moved));
+    memset(m->moved, 0, (size_t)raster->instance_count * sizeof(*m->moved));
     if (m->known) {
         render_view_refit(&m->previous, view->viewport);
-        r3d_lens_t before;
-        lens_map(&m->previous, raster, NULL, &before);
-        m->map[0] = mat4f_mul_affine(before.m, mat4f_invert_affine(now.m));
+        lens_map(&m->previous, raster, NULL, &m->before);
+        m->map[0] = mat4f_mul_affine(m->before.m, mat4f_invert_affine(m->now.m));
         map_instances(m, raster, view);
     }
     remember(m, raster, view);
@@ -141,9 +144,10 @@ row_map(const mat4f_t* a, float v, row_map_t* r) {
 }
 
 /* Lens space is pixels at unit depth: a pixel at (u, v) from the centre
- * with inverse depth iz is the point (u, v, 1) near_z / iz. Through a map
- * (A, t) it lands at (A (u, v, 1) + t iz / near_z) near_z / iz, whose
- * screen position is the first two over the third; w is iz / near_z. */
+ * with inverse depth iz is the point (u, v, 1) depth_near / iz. Through a map
+ * (A, t) it lands at (A (u, v, 1) + t iz / depth_near) depth_near / iz, whose
+ * screen position is the first two over the third; w is iz / depth_near,
+ * with depth_near the picture's own (raster_depth_near()). */
 static inline raster_motion_px_t
 moved(const row_map_t* r, float u, float v, float w) {
     const float pz = (r->u[2] * u) + r->at[2] + (r->w[2] * w);
@@ -157,17 +161,19 @@ moved(const row_map_t* r, float u, float v, float w) {
 }
 
 static void
-resolve_row(const raster_motion_t* m, const uint16_t* depth, raster_motion_px_t* out, int width, float v) {
+resolve_row(const raster_motion_t* m, const uint16_t* depth, float depth_near, raster_motion_px_t* out, int width,
+            float v) {
     const tag_t* tag = (const tag_t*)out;
-    const float to_w = DEPTH_SCALE / m->project.near_z;
+    const float to_w = DEPTH_SCALE / depth_near;
     row_map_t still;
     row_map_t own;
     tag_t own_tag = 0;
+    const int tags = m->capacity; /* out's stores may alias m: read once */
     row_map(&m->map[0], v, &still);
     float u = 0.5F - m->project.cx;
     for (int x = 0; x < width; x++, u += 1.0F) {
         const tag_t t = tag[x];
-        if (depth[x] == 0 || t > RASTER_MOTION_INSTANCES_MAX) {
+        if (depth[x] == 0 || t > tags) {
             out[x] = unknown;
             continue;
         }
@@ -180,18 +186,19 @@ resolve_row(const raster_motion_t* m, const uint16_t* depth, raster_motion_px_t*
 }
 
 static void
-resolve(const raster_attachment_t* self, const raster_t* raster, const gfx_render_target_t* rows, int index) {
-    (void)raster;
+resolve(const raster_attachment_t* self, const raster_t* raster, const gfx_target_t* rows, int index) {
     const raster_motion_t* m = self->state;
-    for (int y = rows->row0; y < rows->row1; y++) {
-        raster_motion_px_t* out = gfx_render_target_row(rows, index, y);
+    const float depth_near = raster_depth_near(raster);
+    for (int y = rows->first_row; y < gfx_target_end_row(rows); y++) {
+        raster_motion_px_t* out = gfx_target_row(rows, index, y);
         if (!m->known) {
-            for (int x = 0; x < rows->width; x++) {
+            for (int x = 0; x < rows->attachment[0].width; x++) {
                 out[x] = unknown;
             }
             continue;
         }
-        resolve_row(m, gfx_render_target_depth(rows, y), out, rows->width, (float)y + 0.5F - m->project.cy);
+        resolve_row(m, gfx_target_depth(rows, y), depth_near, out, rows->attachment[0].width,
+                    (float)y + 0.5F - m->project.cy);
     }
 }
 
@@ -212,14 +219,14 @@ pixel_color(const void* pixel, uint16_t clear_color) {
 }
 
 static void
-show(const raster_attachment_t* self, const raster_t* raster, const gfx_render_target_t* picture, int index) {
+show(const raster_attachment_t* self, const raster_t* raster, const gfx_target_t* picture, int index) {
     (void)self;
     raster_show_map(picture, index, raster->clear, pixel_color);
 }
 
 raster_attachment_t
 raster_motion_view(void* state) {
-    return (raster_attachment_t){sizeof(raster_motion_px_t), clear, begin, writer, resolve, show, state};
+    return (raster_attachment_t){IMAGE_U16, clear, begin, writer, resolve, show, state};
 }
 
 void
@@ -227,3 +234,66 @@ raster_motion_forget(raster_motion_t* state) {
     state->has_previous = false;
     state->seen_count = 0;
 }
+
+/* The arrays in one block, the widest first. */
+static size_t
+block_bytes(int capacity) {
+    const size_t n = (size_t)capacity;
+    return ((n + 1) * sizeof(mat4f_t)) + (n * sizeof(mat4f_t)) + (n * sizeof(const mat4f_t*)) + (n * sizeof(bool));
+}
+
+bool
+raster_motion_reserve(raster_motion_t* m, int instances) {
+    if (instances <= m->capacity) {
+        return true;
+    }
+    if (instances > RASTER_MOTION_INSTANCES_MAX) {
+        return false;
+    }
+    uint8_t* block = memory_alloc(block_bytes(instances), MEMORY_PSRAM);
+    if (block == NULL) {
+        return false;
+    }
+    const size_t n = (size_t)instances;
+    mat4f_t* map = (mat4f_t*)block;
+    mat4f_t* seen = map + n + 1;
+    const mat4f_t** seen_key = (const mat4f_t**)(seen + n);
+    bool* moved = (bool*)(seen_key + n);
+    if (m->seen_count > 0) {
+        memcpy(seen, m->seen, (size_t)m->seen_count * sizeof(*seen));
+        memcpy(seen_key, m->seen_key, (size_t)m->seen_count * sizeof(*seen_key));
+    }
+    memory_free(m->block); /* outgrown: its history is copied */
+    m->block = block;
+    m->capacity = instances;
+    m->map = map;
+    m->seen = seen;
+    m->seen_key = seen_key;
+    m->moved = moved;
+    return true;
+}
+
+void
+raster_motion_release(raster_motion_t* m) {
+    memory_free(m->block);
+    *m = (raster_motion_t){0};
+}
+
+bool
+raster_motion_reserve_view(void* state, int instances) {
+    return raster_motion_reserve(state, instances);
+}
+
+void
+raster_motion_release_view(void* state) {
+    raster_motion_release(state);
+}
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+void
+raster_motion_checkpoint(checkpoint_t* saved, void* state) {
+    raster_motion_t* motion = state;
+    checkpoint_capture_at(saved, &motion->block, block_bytes(motion->capacity));
+    checkpoint_capture(saved, motion, sizeof(*motion));
+}
+#endif

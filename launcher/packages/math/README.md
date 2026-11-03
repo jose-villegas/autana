@@ -2,7 +2,7 @@
 
 The engine's maths library: scalar operations, linear algebra, shapes and
 signal processing. It depends on nothing but the C library and libm, so every
-layer of the firmware, the host tests, the tools and the editor build it. The API
+layer of the firmware, the host tests and the tools build it. The API
 covers what its types imply rather than only what today's callers use, so it may
 carry functions nothing calls yet.
 
@@ -13,6 +13,7 @@ carry functions nothing calls yet.
 | `include/math/geometry/` | Shapes and their queries: half-open rectangles (`rectf`, `recti`, `rects`, `rectx`) and oriented planes (`planef`, `planex`), instantiated from geometry templates |
 | `include/math/stats/` | Order statistics of sample arrays: percentile and median; [stats reference](../../../docs/math/Stats.md) |
 | `include/math/signal/` | Signal processing on sample blocks: Goertzel single-bin detection; [signal reference](../../../docs/math/Signal.md) |
+| `include/math/text/` | Canonical format and parse pairs; [text reference](../../../docs/math/Text.md) |
 | `src/` | The few functions that are not inline |
 | `bench/` | Shared host smoke, ESP-IDF hardware timing and QEMU instruction workloads |
 | `test_apps/` | [Minimal ESP-IDF test and benchmark app](test_apps/README.md) |
@@ -35,7 +36,7 @@ reciprocal-square-root seeds by default; the QEMU defaults disable it.
 | Build | How it gets math |
 |---|---|
 | Firmware (ESP-IDF) | `launcher/packages/` is in `EXTRA_COMPONENT_DIRS`; a component says `REQUIRES math` |
-| Plain CMake (the editor) | `add_subdirectory()` of this folder, then link the `math` target |
+| Plain CMake | `add_subdirectory()` of this folder, then link the `math` target |
 | Host scripts (run_tests.sh, render harness, reports) | `launcher/tools/build/packages.sh`: `package_includes`, `package_sources`, `package_suites` |
 | Standalone tests | `cmake -S launcher/packages/math -B build/math && cmake --build build/math && ctest --test-dir build/math --output-on-failure` |
 | Python tools | `launcher/tools/build/packages.py`: `include_roots()` |
@@ -71,6 +72,7 @@ header's opening comment; `--check` verifies it.
 | [include/math/linear/affine2_template.h](include/math/linear/affine2_template.h) | affine2_template: a 2D affine map for one number type; see docs/math/Conventions.md#templates for the macro arguments. |
 | [include/math/linear/affine2f.h](include/math/linear/affine2f.h) | affine2f: a 2D affine map of a float, with integer-pixel maps. |
 | [include/math/linear/affine2x.h](include/math/linear/affine2x.h) | affine2x: a 2D affine map of a Q16.16, with integer-pixel maps. |
+| [include/math/linear/constant_template.h](include/math/linear/constant_template.h) | constant_template: named aggregate constants shared by math families. |
 | [include/math/linear/mat3f.h](include/math/linear/mat3f.h) | Row-major linear matrices and their normal transforms. |
 | [include/math/linear/mat4_template.h](include/math/linear/mat4_template.h) | mat4_template: a 4x4 matrix indexed m[row][col], acting on column vectors, for one number type; see docs/math/Conventions.md#templates for the macro arguments. |
 | [include/math/linear/mat4f.h](include/math/linear/mat4f.h) | mat4f: a 4x4 matrix of a float. |
@@ -94,11 +96,13 @@ header's opening comment; `--check` verifies it.
 | [include/math/linear/vec_convert.h](include/math/linear/vec_convert.h) | vec_convert: explicit vector conversions; narrowing saturates, rounding ties away from zero. |
 | [include/math/linear/vec_ops_template.h](include/math/linear/vec_ops_template.h) | vec_ops_template: component-wise arithmetic and lerp for vectors of every dimension and number type. |
 | [include/math/linear/vec_swizzle_template.h](include/math/linear/vec_swizzle_template.h) | vec_swizzle_template: swizzles, a new vector made of named components of another (vec3f_zyx, vec2f_yx), for every number type. |
+| [include/math/projection/inverse_depth.h](include/math/projection/inverse_depth.h) | inverse_depth: depth stored as code = scale / z * code_max, for z &gt;= scale, which steps linearly across the screen. |
 | [include/math/projection/project_template.h](include/math/projection/project_template.h) | project_template: shared near-plane endpoint selection for pinhole clipping. |
 | [include/math/projection/projectf.h](include/math/projection/projectf.h) | projectf: pinhole projection in pixels with camera +y up and picture y down. |
 | [include/math/projection/projectx.h](include/math/projection/projectx.h) | projectx: Q16.16 pinhole lens and near clipping in any fixed camera-space scale. |
 | [include/math/scalar/ease.h](include/math/scalar/ease.h) | ease: timeline ramps and easing curves. |
 | [include/math/scalar/fixed.h](include/math/scalar/fixed.h) | fixed: shift-based fixed-point arithmetic at caller-selected scales. |
+| [include/math/scalar/float_bits.h](include/math/scalar/float_bits.h) | float_bits: bit-preserving transfers between float and uint32_t. |
 | [include/math/scalar/math_const.h](include/math/scalar/math_const.h) | math_const: float circle constants, degree/radian conversion factors, and the natural log of 2, which turns a half-life into a rate. |
 | [include/math/scalar/math_db.h](include/math/scalar/math_db.h) | Floored decibel conversions for nonnegative ratios. |
 | [include/math/scalar/mathf.h](include/math/scalar/mathf.h) | mathf: single-precision float's scalar operations for the math templates (docs/math/Scalar.md). |
@@ -114,4 +118,6 @@ header's opening comment; `--check` verifies it.
 | [include/math/stats/stats_template.h](include/math/stats/stats_template.h) | stats_template: order statistics of a sample array for one number type; see docs/math/Conventions.md#templates for macro arguments. |
 | [include/math/stats/statsf.h](include/math/stats/statsf.h) | statsf: order statistics of float samples. |
 | [include/math/stats/statsi.h](include/math/stats/statsi.h) | statsi: order statistics of int32 samples, such as timings in microseconds or cycles. |
+| [include/math/text/math_text.h](include/math/text/math_text.h) | math_text: canonical, allocation-free text for math values. |
+| [include/math/text/text_template.h](include/math/text/text_template.h) | text_template: canonical component and geometry text over scalar OPS. |
 <!-- /generated: package-math-headers -->

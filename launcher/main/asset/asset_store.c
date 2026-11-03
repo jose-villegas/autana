@@ -151,6 +151,9 @@ complete_mount(asset_store_mount_t* mount) {
 
 void
 asset_store_request_bind(asset_store_request_t* request, bool blocking) {
+#if !CONFIG_LAUNCHER_DEVELOPMENT
+    (void)blocking;
+#endif
     asset_store_mount_t* mount = find(request->name);
     if (mount == NULL) {
         for (int i = 0; i < ASSET_STORE_MOUNTS_MAX; i++) {

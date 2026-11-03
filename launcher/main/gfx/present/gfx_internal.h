@@ -5,9 +5,12 @@
 
 #include <stdbool.h>
 
+#include "core/checkpoint.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
+#include "gfx/present/gfx_present.h"
 #include "gfx/present/modes/band/gfx_band.h"
+#include "gfx/present/modes/indexed/gfx_indexed_expand.h"
 #include "gfx/present/send/gfx_dirty.h"
 #include "gfx/target/gfx_target.h"
 
@@ -18,7 +21,7 @@
 #endif
 
 /* gfx_draw_begin()'s sources. What draw writes into: the framebuffer, or the band or replay strip being drawn. */
-gfx_target_t gfx_present_target(void);
+const gfx_target_t* gfx_present_target(void);
 /* True while a band or an overlay replay is drawn; draw marks nothing dirty then. */
 bool gfx_present_in_band(void);
 /* Save and restore the clip verbatim, including empty boxes. Restore does not
@@ -26,9 +29,16 @@ bool gfx_present_in_band(void);
 recti_t gfx_clip_save(void);
 void gfx_clip_restore(recti_t clip);
 
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+void gfx_indexed_checkpoint_capture(checkpoint_t* saved);
+void gfx_mode_checkpoint_capture(checkpoint_t* saved);
+void gfx_expand_checkpoint_capture(checkpoint_t* saved);
+#endif
+
 /* gfx_mode.c: the framebuffer and the mode it is held in. */
 extern gfx_color_t* fb;
 extern gfx_color_t* present_fb;
+void gfx_swap_framebuffers(void);
 /* Whether fb holds only fb_fill_colour, as a send that cleared it left it.
  * Core 0's fact: gfx_draw_begin() clears it only when set, so a core-1
  * overlay replay (single layout, never set) does not write it. */
@@ -46,12 +56,26 @@ void gfx_present_fill_reset_for_test(void);
 extern gfx_mode_t current_mode;
 
 bool alloc_full_framebuffer(void);
+/* A frame overlay drawn over rows [y0, y1) of `target`, through the band
+ * strip, as band mode draws one. */
+void replay_overlay(gfx_band_overlay_fn overlay, const gfx_target_t* target, int y0, int y1);
+
+/* modes/indexed/gfx_indexed.c: the index image and its tables. Begin takes
+ * the granted grid: false, holding nothing, when the grid is empty or its
+ * image cannot be allocated. End frees it. */
+bool indexed_begin(const gfx_mode_t* granted);
+void indexed_end(void);
 gfx_indexed_frame_t indexed_frame(void);
 
-/* An expanded frame: the half picture doubled into rows [y0, y1), with the
- * frame overlay replayed over them; and its end, after the present. */
+/* expand/gfx_expand.c: an expanded frame, the half picture doubled into rows
+ * [y0, y1), with the frame overlay replayed over them; and its end, after
+ * the present. */
 void expand_rows(int y0, int y1, gfx_color_t* destination);
 void clear_expanded_frame(bool free_picture);
+#ifndef ESP_PLATFORM
+/* gfx_reset_for_test(): no expanded frame, picture or overlay. */
+void expand_reset_for_test(void);
+#endif
 
 /* True for the whole GFX_LAYOUT_BANDS mode. */
 static inline bool

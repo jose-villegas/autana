@@ -1,6 +1,6 @@
 /*
  * r3d_skin: a validated SKIN v2 mapped view; the pack outlives it.
- * docs/render/Skeleton-and-Skin.md owns the layout. No allocation.
+ * docs/assets/formats/SKIN.md owns the layout. No allocation.
  */
 #pragma once
 #include <stdint.h>

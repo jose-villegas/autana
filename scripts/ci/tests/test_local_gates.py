@@ -221,7 +221,7 @@ jobs:
             self.assertTrue(any(row['job'] == job['key'] and row['kind'] in {'gate', 'skip'}
                                 for row in rows), job['key'])
         commands = '\n'.join(row['command'] + str(row.get('env', {})) for row in rows if row['kind'] == 'gate')
-        for command in ('check_no_soft_double.py', 'misra_tidy_gate.py',
+        for command in ('build_diag_check.sh --gates-only',
                         'check_comment_length.py', 'run_tests.sh --sanitize'):
             self.assertIn(command, commands)
 

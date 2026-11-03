@@ -4,7 +4,7 @@
  * ESP-IDF-free module, the same reason gfx_present_guard.h is one.
  *
  * Unlike the present-in-flight guard, this one must run in every build,
- * release included: band mode (gfx_mode.h) frees the PSRAM framebuffer,
+ * release included: band mode (gfx.h) frees the PSRAM framebuffer,
  * and a caller that still writes into it is a NULL-pointer write, not
  * merely a race worth catching during development. Only the LOUDNESS
  * differs by build: a development device build and a host build assert

@@ -40,7 +40,7 @@ def read_string_array(header, name):
         raise RuntimeError(f"{header}: {name} is not a literal string array") from error
 
 
-EVENTS = read_string_array(ROOT / "launcher/main/console/verbs/console_sound_parse.h", "console_sound_events")
+EVENTS = read_string_array(ROOT / "launcher/main/sound/console/console_sound_parse.h", "console_sound_events")
 DECLICK_TUNABLE = 'sound.declick_us'
 ONSET_ATTEMPTS = 2
 

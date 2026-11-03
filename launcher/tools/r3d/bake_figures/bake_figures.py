@@ -1,4 +1,4 @@
-"""The figures of docs/render/Bake-Method.md, from the bake's and the scoring's own functions on small scenes.
+"""The figures of docs/render/offline/Bake-Method.md, from the bake's and the scoring's own functions on small scenes.
 
 Local occlusion: the rays of one floor point at the foot of a wall (r3d.light's directions, Mitsuba's hits) and
 the factor `local_occlusion` gives along the floor. Bounced light: the per-ray light `PathLight` gathers for that

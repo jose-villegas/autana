@@ -14,7 +14,7 @@ Two rules, one per kind of file:
   src/<path>.c), opens one of them with that comment. The scope is every
   tracked .c and .h under launcher/main/, launcher/packages/ and
   launcher/test/suites/; a suite (suite_*.c) that runs tests of its own
-  (RUN_TEST) is exempt, its test names say what it proves, but one that only
+  (RUN_TEST, RUN_TEST_CASE) is exempt, its test names say what it proves, but one that only
   includes another file's tests names nothing and needs the comment. A header
   there that declares nothing, only a comment,
   fails too: a folder is described by its README.md, not by an empty header.
@@ -28,15 +28,14 @@ import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from c_comments import blank_comments, file_header, sources  # noqa: E402
+from c_comments import HEADER_EXTENSIONS, blank_comments, file_header, is_cpp, sources  # noqa: E402
 from check_doc_constants import sentences  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools"))
 from build.packages import FIRST_PARTY, package_part  # noqa: E402
 
 SCOPE = (*FIRST_PARTY, "launcher/test/suites/")
 PRAGMA_ONCE = re.compile(r"^\s*#\s*pragma\s+once\b", re.M)
-HEADERS = (".h", ".hh", ".hpp", ".hxx")
-RUN_TEST = re.compile(r"\bRUN_TEST\(\s*\w+")
+RUN_TEST = re.compile(r"\bRUN_TEST(?:_CASE)?\(\s*\w+")
 
 
 def file_purpose(path, text):
@@ -57,7 +56,7 @@ def in_scope(rp, root="."):
     if not rp.rsplit("/", 1)[-1].startswith("suite_"):
         return True
     text = (pathlib.Path(root) / rp).read_text(encoding="utf-8", errors="replace")
-    return RUN_TEST.search(blank_comments(text)) is None
+    return RUN_TEST.search(blank_comments(text, cpp=is_cpp(rp))) is None
 
 
 def module_of(rp):
@@ -76,7 +75,7 @@ def module_of(rp):
 def module_problems(root, files):
     selected = {module_of(rp) for rp in files} if files is not None else None
     modules = {}
-    for path in sources(root, tracked=True):
+    for path in sources(root):
         rp = path.relative_to(root).as_posix()
         if in_scope(rp, root):
             modules.setdefault(module_of(rp), []).append(rp)
@@ -88,14 +87,14 @@ def module_problems(root, files):
         if not any(file_header(rp, text) for rp, text in texts.items()):
             found.append(f"{sorted(files)[-1]}: no header comment - open it with one saying what the module is")
         for rp, text in sorted(texts.items()):
-            if rp.endswith(".h") and not PRAGMA_ONCE.sub("", blank_comments(text)).strip():
+            if rp.endswith(".h") and not PRAGMA_ONCE.sub("", blank_comments(text, cpp=is_cpp(rp))).strip():
                 found.append(f"{rp}: declares nothing - describe its folder in a README.md instead")
     return found
 
 
 def purpose_problems(root, files):
     found = []
-    for path in sources(root, tracked=True, extensions=(*HEADERS, ".py")):
+    for path in sources(root, extensions=(*HEADER_EXTENSIONS, ".py")):
         rp = path.relative_to(root).as_posix()
         if files is not None and rp not in files:
             continue

@@ -8,7 +8,9 @@ which reads its options), then meshoptimizer's simplifier removes every
 vertex whose removal moves the surface less than E source units, and every
 separate piece smaller than that, nothing that moves it more. Each object is
 simplified on its own and written as its own `o` group, so the source keeps
-its objects. Within one, where a texture coordinate or a material changes,
+its objects. Rigid copies (objects/instances.py) are simplified once: each
+later copy is its first object's result moved by the copy's transform, so the
+import finds them as copies again. Within one, where a texture coordinate or a material changes,
 the vertices on either side stay a seam that both sides keep, so no crack
 opens. --error-for gives the materials whose names match a glob their own
 error, in a pass of their own, for a material such as alpha-tested cards that
@@ -34,6 +36,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from r3d.meshopt import _library  # noqa: E402
 from r3d.obj import load_obj  # noqa: E402
+from r3d.objects.instances import match_instances, place, source_objects  # noqa: E402
 
 HERE = pathlib.Path(__file__).resolve().parent
 # meshoptimizer.h's meshopt_SimplifyErrorAbsolute (the error is in model units)
@@ -105,6 +108,26 @@ def material_errors(names, error, error_for):
     return errors
 
 
+def place_copies(shapes, index, positions, uvs, kept, materials, objects):
+    """Each later rigid copy of a shape as its first object's kept triangles, moved by the
+    copy's transform (and rewound when it mirrors), so the copies stay exact and the import
+    finds them again."""
+    parts = [(positions, uvs, kept, materials, objects)]
+    base = len(positions)
+    for shape in shapes:
+        first = shape.instances[0]
+        mine = objects == index[first.object_name]
+        corners, faces = np.unique(kept[mine], return_inverse=True)
+        faces = faces.reshape(-1, 3)
+        local = positions[corners] - first.position
+        for copy in shape.instances[1:]:
+            placed = faces[:, ::-1] if copy.mirrored else faces
+            parts.append((place(local, copy.linear, copy.position), uvs[corners], placed + base, materials[mine],
+                          np.full(len(faces), index[copy.object_name])))
+            base += len(corners)
+    return tuple(np.concatenate(column) for column in zip(*parts))
+
+
 def reduce(exported, name, out, error, error_for=()):
     """Simplifies the exported NAME.obj in `exported` object by object into
     `out`, beside its .mtl and textures; returns the triangle counts before
@@ -120,15 +143,20 @@ def reduce(exported, name, out, error, error_for=()):
     unique, inverse = np.unique(corners, axis=0, return_inverse=True)
     triangles = inverse.reshape(-1, 3)
     errors = material_errors(names, error, error_for)[tri_m]
-    kept = np.concatenate([simplify(p[unique[:, 0]], triangles[(tri_o == obj) & (errors == e)], e)
-                           for obj, e in np.unique(np.stack([tri_o, errors], axis=1), axis=0)])
+    positions, uvs = p[unique[:, 0]], uv[unique[:, 1]]
+    shapes = match_instances(source_objects(p, tri_v, tri_m, tri_o, object_names))
+    index = {name: i for i, name in enumerate(object_names)}
+    firsts = {index[shape.instances[0].object_name] for shape in shapes}
+    kept = np.concatenate([simplify(positions, triangles[(tri_o == obj) & (errors == e)], e)
+                           for obj, e in np.unique(np.stack([tri_o, errors], axis=1), axis=0) if obj in firsts])
     # Each kept triangle's material and object are its corners' own.
     materials, objects = unique[kept[:, 0], 2], unique[kept[:, 0], 3]
+    positions, uvs, kept, materials, objects = place_copies(shapes, index, positions, uvs, kept, materials, objects)
     out.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(exported / f"{name}.mtl", out / f"{name}.mtl")
     if (exported / "textures").is_dir():
         shutil.copytree(exported / "textures", out / "textures", dirs_exist_ok=True)
-    write_obj(out / f"{name}.obj", f"{name}.mtl", p[unique[:, 0]], uv[unique[:, 1]], kept, objects, object_names,
+    write_obj(out / f"{name}.obj", f"{name}.mtl", positions, uvs, kept, objects, object_names,
               materials, names)
     return len(tri_v), len(kept)
 

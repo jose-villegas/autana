@@ -6,7 +6,6 @@
 #include <string.h>
 
 #include "core/tune.h"
-#include "draw/draw.h"
 #include "image/pixel/rgb565.h"
 #include "math/geometry/box3f.h"
 #include "math/linear/transformf.h"
@@ -14,6 +13,7 @@
 #include "render/r3d_span.h"
 #include "render/raster_internal.h"
 #include "render/view/r3d_pipeline_count.h"
+#include "render/view/raster_lines.h"
 #include "render/view/raster_meshlets.h"
 
 TUNE_OWNER(cullview);
@@ -51,8 +51,6 @@ static const unsigned FATE_KEEP[RASTER_FATE_COUNT] = {
 #define CHASE_UP       0.15F
 /* A spectator's near plane: this share of the bounds' radius, or the camera's. */
 #define SPECTATOR_NEAR 0.001F
-/* A box's corners, box3f_corner()'s k, each bit an axis. */
-#define BOX_CORNERS    8
 
 #define BITS           (sizeof(uint32_t) * CHAR_BIT)
 
@@ -120,7 +118,9 @@ culling(void) {
 
 /* After the camera's draw, its scratch lists and vertices are free: each
  * instance is culled, counted and transformed again into them, through the
- * lens the draw used, and its kept clusters are not set up or hidden. */
+ * lens the draw used, and its kept clusters are not set up or hidden. The
+ * walk starts at each root, so its node counts include instances the frame's
+ * world-box test dropped; the fates are the same. */
 static void
 count_frame(raster_cull_t* s, const raster_t* raster) {
     const raster_buffers_t b = raster_carve(raster);
@@ -146,7 +146,7 @@ count_frame(raster_cull_t* s, const raster_t* raster) {
             s->frame.counts.clusters_tested += count;
             s->frame.counts.clusters_kept += count;
         }
-        r3d_pipeline_transform(mesh, &lens, kept, count, b.cs, NULL);
+        r3d_pipeline_transform(mesh, &lens, kept, count, b.cs, NULL, false);
         r3d_pipeline_count_triangles(mesh, &lens, kept, count, b.cs, &s->frame.counts, &s->set_up[offset]);
         for (int k = 0; k < count; k++) {
             const int c = offset + kept[k];
@@ -178,7 +178,7 @@ mark_covered(raster_cull_t* s, const raster_t* raster) {
     const raster_buffers_t b = raster_carve(raster);
     const int index = attachment_index(raster, s);
     for (int y = 0; y < raster->height; y++) {
-        const uint32_t* tag = gfx_render_target_row(&b.picture, index, y);
+        const uint32_t* tag = gfx_target_row(&b.picture, index, y);
         for (int x = 0; x < raster->width; x++) {
             if (tag[x] != 0) {
                 const uint32_t t = tag[x] - 1U;
@@ -252,15 +252,7 @@ world_bounds(const raster_t* raster) {
     box3f_t bounds = box3f_empty();
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];
-        const box3f_t local =
-            box3f_from_box3s(instance->mesh->nodes[0].bounds, 1.0F / (float)instance->mesh->position_scale);
-        for (int k = 0; k < BOX_CORNERS; k++) {
-            vec3f_t p = box3f_corner(local, k);
-            if (instance->model != NULL) {
-                p = mat4f_apply(instance->model, p);
-            }
-            bounds = box3f_extend(bounds, p);
-        }
+        bounds = box3f_union(bounds, r3d_lit_mesh_world_bounds(instance->mesh, instance->model));
     }
     return bounds;
 }
@@ -277,13 +269,12 @@ spectator_view(const raster_cull_t* s, const raster_t* raster) {
     transformf_t pose;
     if (s->from == RASTER_CULL_FROM_TOP) {
         const float height = (TOP_MARGIN * mathf_max(half.x, half.z) / tan_half) + half.y;
-        pose = transformf_looking((vec3f_t){centre.x, centre.y + height, centre.z}, (vec3f_t){0.0F, -1.0F, 0.0F},
-                                  (vec3f_t){0.0F, 0.0F, 1.0F});
+        pose = transformf_looking((vec3f_t){centre.x, centre.y + height, centre.z}, vec3f_down(), vec3f_unit_z());
     } else {
         const vec3f_t ahead = vec3f_add(camera->position, vec3f_scale(camera->forward, CHASE_BACK * radius));
         const vec3f_t eye = vec3f_add(vec3f_sub(camera->position, vec3f_scale(camera->forward, CHASE_BACK * radius)),
                                       (vec3f_t){0.0F, CHASE_UP * radius, 0.0F});
-        pose = transformf_looking(eye, vec3f_sub(ahead, eye), (vec3f_t){0.0F, 1.0F, 0.0F});
+        pose = transformf_looking(eye, vec3f_sub(ahead, eye), vec3f_unit_y());
     }
     render_view_t view = render_view_make(&pose, tan_half, near_z, camera->viewport);
     view.present = camera->present;
@@ -291,10 +282,14 @@ spectator_view(const raster_cull_t* s, const raster_t* raster) {
     return view;
 }
 
-/* The census list of each instance: its culled clusters, or its kept ones. */
+/* The census list of each instance: its culled clusters, or its kept ones.
+ * The list was never fitted, so the spectator encodes depth with its own
+ * clip plane. */
 static void
 list_clusters(const raster_cull_t* s, const raster_t* raster, bool culled) {
-    uint16_t* list = raster_carve(raster).culled;
+    const raster_buffers_t buffers = raster_carve(raster);
+    *buffers.depth_near = s->spectator.lens.near_z;
+    uint16_t* list = buffers.culled;
     int offset = 0;
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_lit_mesh_t* mesh = raster->instances[i].mesh;
@@ -310,7 +305,7 @@ list_clusters(const raster_cull_t* s, const raster_t* raster, bool culled) {
     }
 }
 
-static void paint_picture(raster_cull_t* s, const raster_t* raster, const gfx_render_target_t* picture, int index);
+static void paint_picture(raster_cull_t* s, const raster_t* raster, const gfx_target_t* picture, int index);
 
 /* The culled clusters' picture painted and kept with its depth, for the
  * kept clusters' to be layered on. */
@@ -321,8 +316,8 @@ keep_under(raster_cull_t* s, const raster_t* raster) {
     paint_picture(s, raster, &b.picture, index);
     assert(raster->width * raster->height <= RASTER_CULL_PIXELS_MAX);
     for (int y = 0; y < raster->height; y++) {
-        const gfx_color_t* color = gfx_render_target_color(&b.picture, y);
-        const uint16_t* depth = gfx_render_target_depth(&b.picture, y);
+        const gfx_color_t* color = gfx_target_color(&b.picture, y);
+        const uint16_t* depth = gfx_target_depth(&b.picture, y);
         for (int x = 0; x < raster->width; x++) {
             const int p = (y * raster->width) + x;
             s->under_color[p] = color[x];
@@ -425,15 +420,15 @@ shaded_pixel(const raster_cull_t* s, gfx_color_t clear, gfx_color_t drawn, int c
  * door, and every pixel where the cluster changes, right or below, in its
  * fate's colour: the clusters' borders, a culled one's dashed. */
 static void
-show_shaded(raster_cull_t* s, const raster_t* raster, const gfx_render_target_t* picture, int index) {
-    for (int y = picture->row0; y < picture->row1; y++) {
-        const uint32_t* tag = gfx_render_target_row(picture, index, y);
-        const uint32_t* below = y + 1 < picture->row1 ? gfx_render_target_row(picture, index, y + 1) : NULL;
-        gfx_color_t* color = gfx_render_target_color(picture, y);
+show_shaded(raster_cull_t* s, const raster_t* raster, const gfx_target_t* picture, int index) {
+    for (int y = picture->first_row; y < gfx_target_end_row(picture); y++) {
+        const uint32_t* tag = gfx_target_row(picture, index, y);
+        const uint32_t* below = y + 1 < gfx_target_end_row(picture) ? gfx_target_row(picture, index, y + 1) : NULL;
+        gfx_color_t* color = gfx_target_color(picture, y);
         int right = tagged_cluster(s, raster, tag[0]);
-        for (int x = 0; x < picture->width; x++) {
+        for (int x = 0; x < picture->attachment[0].width; x++) {
             const int c = right;
-            right = x + 1 < picture->width ? tagged_cluster(s, raster, tag[x + 1]) : c;
+            right = x + 1 < picture->attachment[0].width ? tagged_cluster(s, raster, tag[x + 1]) : c;
             const int under = below != NULL ? tagged_cluster(s, raster, below[x]) : c;
             color[x] = shaded_pixel(s, raster->clear, color[x], c, c != right || c != under, x, y);
         }
@@ -442,15 +437,15 @@ show_shaded(raster_cull_t* s, const raster_t* raster, const gfx_render_target_t*
 
 /* The picture's colour from its cluster map, in the paint chosen. */
 static void
-paint_picture(raster_cull_t* s, const raster_t* raster, const gfx_render_target_t* picture, int index) {
+paint_picture(raster_cull_t* s, const raster_t* raster, const gfx_target_t* picture, int index) {
     if (paint == RASTER_CULL_PAINT_SHADED) {
         show_shaded(s, raster, picture, index);
         return;
     }
-    for (int y = picture->row0; y < picture->row1; y++) {
-        const uint32_t* tag = gfx_render_target_row(picture, index, y);
-        gfx_color_t* color = gfx_render_target_color(picture, y);
-        for (int x = 0; x < picture->width; x++) {
+    for (int y = picture->first_row; y < gfx_target_end_row(picture); y++) {
+        const uint32_t* tag = gfx_target_row(picture, index, y);
+        gfx_color_t* color = gfx_target_color(picture, y);
+        for (int x = 0; x < picture->attachment[0].width; x++) {
             const int c = tagged_cluster(s, raster, tag[x]);
             color[x] = c < 0 ? raster->clear : cluster_color(s, c);
         }
@@ -461,13 +456,13 @@ paint_picture(raster_cull_t* s, const raster_t* raster, const gfx_render_target_
  * the background, and over kept geometry they are nearer than. Each takes
  * its depth too, which the upscale reads to tell drawn from clear. */
 static void
-layer_under(const raster_cull_t* s, const gfx_render_target_t* picture, int index) {
-    for (int y = picture->row0; y < picture->row1; y++) {
-        gfx_color_t* color = gfx_render_target_color(picture, y);
-        uint16_t* depth = gfx_render_target_depth(picture, y);
-        const uint32_t* tag = gfx_render_target_row(picture, index, y);
-        for (int x = 0; x < picture->width; x++) {
-            const int p = (y * picture->width) + x;
+layer_under(const raster_cull_t* s, const gfx_target_t* picture, int index) {
+    for (int y = picture->first_row; y < gfx_target_end_row(picture); y++) {
+        gfx_color_t* color = gfx_target_color(picture, y);
+        uint16_t* depth = gfx_target_depth(picture, y);
+        const uint32_t* tag = gfx_target_row(picture, index, y);
+        for (int x = 0; x < picture->attachment[0].width; x++) {
+            const int p = (y * picture->attachment[0].width) + x;
             if (s->under_depth[p] != R3D_DEPTH_EMPTY && (tag[x] == 0 || s->under_depth[p] > depth[x])) {
                 color[x] = s->under_color[p];
                 depth[x] = s->under_depth[p];
@@ -477,7 +472,7 @@ layer_under(const raster_cull_t* s, const gfx_render_target_t* picture, int inde
 }
 
 static void
-show(const raster_attachment_t* self, const raster_t* raster, const gfx_render_target_t* picture, int index) {
+show(const raster_attachment_t* self, const raster_t* raster, const gfx_target_t* picture, int index) {
     raster_cull_t* s = self->state;
     paint_picture(s, raster, picture, index);
     if (s->pass == RASTER_CULL_PASS_KEPT) {
@@ -489,38 +484,8 @@ show(const raster_attachment_t* self, const raster_t* raster, const gfx_render_t
 
 raster_attachment_t
 raster_cull_view(void* state) {
-    return (raster_attachment_t){.bytes_per_pixel = sizeof(uint32_t),
-                                 .clear = clear,
-                                 .begin = begin,
-                                 .writer = writer,
-                                 .show = show,
-                                 .state = state};
-}
-
-/* One segment in lens space, cut at the near plane, as a line. */
-static void
-segment(const r3d_lens_t* lens, vec3f_t a, vec3f_t b, gfx_color_t color) {
-    if (projectf_clip_near(lens->project.near_z, &a, &b)) {
-        const vec2f_t from = projectf_screen(&lens->project, a);
-        const vec2f_t to = projectf_screen(&lens->project, b);
-        draw_line((int)from.x, (int)from.y, (int)to.x, (int)to.y, color);
-    }
-}
-
-/* The twelve edges of `box`, in `lens`'s units. */
-static void
-box_lines(const r3d_lens_t* lens, box3f_t box, gfx_color_t color) {
-    vec3f_t corner[BOX_CORNERS];
-    for (int k = 0; k < BOX_CORNERS; k++) {
-        corner[k] = mat4f_apply(&lens->m, box3f_corner(box, k));
-    }
-    for (int a = 0; a < BOX_CORNERS; a++) {
-        for (int bit = 1; bit < BOX_CORNERS; bit <<= 1) {
-            if ((a & bit) == 0) {
-                segment(lens, corner[a], corner[a | bit], color);
-            }
-        }
-    }
+    return (raster_attachment_t){
+        .format = IMAGE_U32, .clear = clear, .begin = begin, .writer = writer, .show = show, .state = state};
 }
 
 /* The camera's frustum to `depth` world units, its apex at the camera. */
@@ -538,8 +503,8 @@ frustum_lines(const r3d_lens_t* lens, const render_view_t* camera, float depth, 
     const vec3f_t apex = mat4f_apply(&lens->m, camera->position);
     static const int ring[4] = {0, 1, 3, 2};
     for (int k = 0; k < 4; k++) {
-        segment(lens, apex, corner[k], color);
-        segment(lens, corner[ring[k]], corner[ring[(k + 1) % 4]], color);
+        raster_lines_segment(lens, NULL, apex, corner[k], color);
+        raster_lines_segment(lens, NULL, corner[ring[k]], corner[ring[(k + 1) % 4]], color);
     }
 }
 
@@ -558,7 +523,7 @@ level_boxes(raster_cull_t* s, const r3d_lens_t* lens, const r3d_lit_mesh_t* mesh
         if (depth[top] == level || node->leaf) {
             const gfx_color_t color =
                 paint != RASTER_CULL_PAINT_NODES ? RGB565BE(FRUSTUM_RGB) : raster_meshlets_color(1U + n);
-            box_lines(lens, box3f_from_box3s(node->bounds, 1.0F), color);
+            raster_lines_box(lens, NULL, box3f_from_box3s(node->bounds, 1.0F), color);
             continue;
         }
         const uint8_t below = (uint8_t)(depth[top] + 1);

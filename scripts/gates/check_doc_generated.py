@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 from check_generated_files import INTERPRETERS
-from tracked import tracked_files
+from tracked import repository, tracked_files
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools/render"))
 from generated_blocks import blocks, check_commands, verify
@@ -54,7 +54,7 @@ def check(root):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=pathlib.Path, default=pathlib.Path(__file__).resolve().parents[2])
+    parser.add_argument("--root", type=pathlib.Path, default=repository())
     args = parser.parse_args()
     errors = check(args.root)
     for error in errors:

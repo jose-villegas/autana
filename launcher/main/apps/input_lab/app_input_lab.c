@@ -468,8 +468,8 @@ motion_log_vector(vec3f_t value, int scale) {
 static void
 integrate_turn_gyro(const input_motion_batch_t* batch) {
     if (imu_round.step != IMU_PROBE_TURN && imu_round.step != IMU_PROBE_TRACE) {
-        turn_gyro_deg = (vec3f_t){0};
-        turn_gyro_rate = (vec3f_t){0};
+        turn_gyro_deg = vec3f_zero();
+        turn_gyro_rate = vec3f_zero();
         return;
     }
     const float dt = (float)INPUT_MOTION_SAMPLE_US / (float)MATH_US_PER_S;
@@ -659,8 +659,8 @@ log_imu_gravity(int pose) {
 static void
 log_imu_pose(void) {
     const int pose = imu_round.pose - 1;
-    const imu_probe_average_t* average = &imu_round.poses[pose];
-    const input_motion_t mean = imu_probe_average_read(average);
+    const imu_rest_t* average = &imu_round.poses[pose];
+    const input_motion_t mean = imu_rest_mean(average);
     LOG_IMU_LINE("pose %s %d %d %d %d %d %d %d", imu_probe_pose_name(pose), mean.acceleration.x, mean.acceleration.y,
                  mean.acceleration.z, mean.rotation.x, mean.rotation.y, mean.rotation.z, average->n);
     log_imu_gravity(pose);
@@ -700,7 +700,7 @@ update_imu_round(uint32_t dt_ms, const input_t* input) {
         const vec3f_t down = imu_round.trace_down;
         const vec3f_t acceleration = vec3f_from_vec3i(motion.acceleration);
         const vec3f_t direction =
-            vec3f_dot(acceleration, acceleration) > 0.0F ? vec3f_normalize(acceleration) : (vec3f_t){0};
+            vec3f_dot(acceleration, acceleration) > 0.0F ? vec3f_normalize(acceleration) : vec3f_zero();
         LOG_IMU_LINE("turn ms %u down %.*f %.*f %.*f accel %.*f %.*f %.*f gyro_deg %.1f", (unsigned)imu_round.trace_ms,
                      IMU_GRAVITY_DIGITS, (double)down.x, IMU_GRAVITY_DIGITS, (double)down.y, IMU_GRAVITY_DIGITS,
                      (double)down.z, IMU_GRAVITY_DIGITS, (double)direction.x, IMU_GRAVITY_DIGITS, (double)direction.y,
@@ -889,11 +889,12 @@ draw_imu_round(void) {
         imu_probe_pose_label(imu_round.pose, label, sizeof label);
         (void)snprintf(line, sizeof line, "%s  POSE %d/%d", label, imu_round.pose + 1, IMU_PROBE_POSE_COUNT);
         hud_line(0, line);
-        if (imu_round.settle_ms < IMU_PROBE_SETTLE_MS) {
+        if ((imu_round.rest.settle_us / MATH_US_PER_MS) < IMU_REST_SETTLE_MS) {
             hud_line(1, "HOLD STILL");
         } else {
-            (void)snprintf(line, sizeof line, "MEASURING %u%%",
-                           (unsigned)(imu_round.window_ms * IMU_PROBE_PERCENT / IMU_PROBE_WINDOW_MS));
+            (void)snprintf(
+                line, sizeof line, "MEASURING %u%%",
+                (unsigned)((imu_round.rest.window_us / MATH_US_PER_MS) * IMU_PROBE_PERCENT / IMU_REST_WINDOW_MS));
             hud_line(1, line);
         }
         hud_line(3, "BOOT TO LEAVE ROUND");
@@ -924,7 +925,7 @@ store_imu_result(imu_action_t action) {
         return;
     }
     const bool clear = action == IMU_ACTION_CLEAR;
-    const vec3i_t offset = clear ? (vec3i_t){0} : imu_probe_saved_offset(input_accel_offset(), &imu_round.fit);
+    const vec3i_t offset = clear ? vec3i_zero() : imu_probe_saved_offset(input_accel_offset(), &imu_round.fit);
     if (!input_set_accel_offset(offset)) {
         ESP_LOGW(TAG, "imu_calib could not save offset");
         return;
@@ -1027,10 +1028,13 @@ draw_motion(void) {
     const vec3i_t offset = input_accel_offset();
     (void)snprintf(line, sizeof line, "OFFSET %d %d %d Q12", (int)offset.x, (int)offset.y, (int)offset.z);
     hud_line(MOTION_HUD_ROWS, line);
-    const int top = HUD_TOP + ((MOTION_HUD_ROWS + 1) * HUD_LINE_H) + MOTION_MARGIN;
+    const vec3i_t gyro = input_gyro_offset();
+    (void)snprintf(line, sizeof line, "GYRO %d %d %d Q6", (int)gyro.x, (int)gyro.y, (int)gyro.z);
+    hud_line(MOTION_HUD_ROWS + 1, line);
+    const int top = HUD_TOP + ((MOTION_HUD_ROWS + 2) * HUD_LINE_H) + MOTION_MARGIN;
     const int bottom = screen_h - (2 * MOTION_MARGIN) - (2 * HUD_LINE_H);
     const int cx = screen_w / 2;
-    const int cy = screen_h / 2;
+    const int cy = (top + bottom) / 2;
     const int vertical_radius = mathi_min(cy - top, bottom - cy);
     const int radius = mathi_min(MOTION_RING_RADIUS, mathi_min(vertical_radius, cx - MOTION_MARGIN));
     const motion_ring_t ring = {cx, cy, radius,

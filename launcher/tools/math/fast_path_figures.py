@@ -6,11 +6,17 @@ from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parents[3]
-sys.path[:0] = [str(ROOT / "launcher/tools"), str(ROOT / "launcher/tools/perf")]
+sys.path.insert(0, str(ROOT / "launcher/tools"))
+sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 import fast_paths
 import math_bench_table as bench
 from docs.plot_style import FAINT, SLOTS, style_axes, subplots, save
+from docs.producer import Producer
 
+
+# One figure per annotated fast path (fast_paths.annotations()), named fast-path-<key>.png.
+PRODUCER = Producer(area="math", needs=("host",), run=("--out", "{out}"), outputs=("fast-path-*.png",),
+                    reads=("docs/math/data/math_bench_capture.txt",))
 
 ERROR_ZOOM_FRACTION = 0.75
 ERROR_HEADROOM = 1.15
@@ -36,7 +42,7 @@ def main(argv=None):
     parser.add_argument("--out", type=Path, default=ROOT / "docs/images/math")
     args = parser.parse_args(argv)
     try:
-        items = fast_paths.annotations()
+        items = [item for item in fast_paths.annotations() if item.unit != "bit"]
         text = args.capture.read_text(encoding="utf-8")
         bins = bench.parse_bins(text)
         if not bins:

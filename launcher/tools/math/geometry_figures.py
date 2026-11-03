@@ -8,9 +8,11 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from math_figures import (PANEL_SIZE, PANEL_TITLE_ROOM, PIXEL_FILL, POINT, POINT_SIZE, SHAPE_ALPHA, SHAPE_FILL,
-                          probe_into_folder, VIEW_ELEVATION, prism_faces)
+                          VIEW_ELEVATION, prism_faces)
+from docs.figures import probe_into_folder
+from docs.producer import Producer
 from docs.plot_style import (FAINT, INK, LABEL_SIZE, MUTED, TITLE_SIZE, SLOTS,
-                             GIF_FRAMES, GIF_FPS, ORBIT_GIF_COLORS, wire_sphere,
+                             GIF_FRAMES, GIF_FPS, wire_sphere,
                              figure as new_figure, save, save_gif, style_axes)
 import numpy as np
 from matplotlib.patches import Circle, Patch, Rectangle
@@ -19,6 +21,11 @@ from mpl_toolkits.mplot3d import proj3d
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 PROBE = pathlib.Path(__file__).with_name("geometry_figures_probe.c")
+PRODUCER = Producer(area="math", needs=("host",), run=("--cc", "{cc}", "--out", "{out}"),
+                    outputs=("rect-queries.png", "circle-rect-queries.png", "plane-distance.png",
+                             "plane-from-points.png", "plane-from-rows.png", "frustum.png",
+                             "box3-frustum.gif", "box3-sphere-overlap.gif",
+                             "box3-sphere-segments.png"))
 PLANE_NAMES = ("near", "left", "right", "top", "bottom")
 PLANE_COLORS = (INK, SHAPE_FILL, POINT, SLOTS[6], PIXEL_FILL)
 PANELS = 2
@@ -302,7 +309,7 @@ def orbit(fig, axes, output, labels=(), azimuth=None, elevation=VIEW_ELEVATION, 
         save(fig, output, dpi=ANIMATION_DPI)
         return
 
-    save_gif(fig, draw, GIF_FRAMES, output, GIF_FPS, colors=ORBIT_GIF_COLORS)
+    save_gif(fig, draw, GIF_FRAMES, output, GIF_FPS)
 
 
 def distance_figure(data, output):
@@ -359,7 +366,7 @@ def points_figure(data, output):
         tip = arrow(axis, data["centroid"], normal, color)
         fit_space(axis, [*points, tip])
         labels.append((axis, points, list("abc")))
-    legend(fig, [(f"normal {tuple(normal)}", color, "", "-")
+    legend(fig, [("normal (" + ", ".join(f"{component:.3g}" for component in normal) + ")", color, "", "-")
                  for normal, color in zip(data["normals"], NORMAL_COLORS)])
     orbit(fig, axes, output, labels)
 
@@ -449,7 +456,7 @@ def box_frustum_figure(data, output):
         for box, outside, mask in frames[frame]["boxes"]:
             draw_box(axis, box, BOX_COLORS[2 if outside else (1 if mask else 0)], alpha=SHAPE_ALPHA)
 
-    save_gif(fig, draw, len(frames), output, GIF_FPS, colors=ORBIT_GIF_COLORS)
+    save_gif(fig, draw, len(frames), output, GIF_FPS)
 
 
 def sphere_overlap_figure(data, output):
@@ -476,7 +483,7 @@ def sphere_overlap_figure(data, output):
         axis.scatter(*closest, color=INK, s=POINT_SIZE, depthshade=False)
         axis.scatter(*centre, color=color, s=POINT_SIZE, depthshade=False)
 
-    save_gif(fig, draw, len(frames), output, GIF_FPS, colors=ORBIT_GIF_COLORS)
+    save_gif(fig, draw, len(frames), output, GIF_FPS)
 
 
 def sphere_segments_figure(data, output):

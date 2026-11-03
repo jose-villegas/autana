@@ -5,16 +5,18 @@
 # lives in its own check-*-staged.sh under scripts/gates/ so CI's shell
 # linting sees it, and this file names none of them; a new one is picked
 # up by the glob alone. core.hooksPath is one path shared by every worktree
-# of a clone, so this same file also runs in trees that have no
-# scripts/gates/: an unmatched glob leaves the literal pattern as $path,
-# which fails the -x test below the same way a missing script does.
+# of a clone, so the gates come from the tree being committed, which may be
+# on another branch than the one holding this file; gates.sh picks them.
+# An unmatched glob leaves the literal pattern as $path, which fails the -x
+# test below the same way a missing script does.
 
-ROOT="$(git rev-parse --show-toplevel)"
+# shellcheck source=gates.sh
+. "$(dirname -- "$0")/gates.sh"
 status=0
 
-for path in "$ROOT"/scripts/gates/check-*-staged.sh; do
+for path in "$GATES"/check-*-staged.sh; do
 	if [ ! -x "$path" ]; then
-		echo "pre-commit: $(basename "$path") skipped, this tree has no scripts/gates/" >&2
+		echo "pre-commit: $(basename "$path") skipped, no scripts/gates/ found" >&2
 		continue
 	fi
 	"$path" || status=$?
