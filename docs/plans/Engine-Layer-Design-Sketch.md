@@ -250,11 +250,13 @@ rule names only what is refused, derived from the source `[M]`:
 
 | Never, from the engine or an app |
 |---|
-| `board/` |
 | any `*_internal.h` outside its own folder |
+| a header that includes `driver/…`, `bsp/…` or `esp_…`, itself or through its includes (today every `board/` header but `board_geometry.h`) |
 | a header whose module's non-device `.c` includes `driver/…`, `bsp/…` or `esp_lcd…` (today `input/touch/touch.h`, `input/motion/imu.h`, `input/buttons/buttons.h`) |
 
-Everything else in the platform is its face.
+Everything else in the platform is its face: a header of constants alone,
+such as the device's own geometry, is a read-only description anyone may
+include.
 
 ---
 

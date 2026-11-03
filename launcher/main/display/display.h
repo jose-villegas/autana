@@ -4,8 +4,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "board_geometry.h"
-
 /* How far anything meant to be read sits from every panel edge: a reading
  * margin, not hidden pixels. The cover glass hides nothing along the straight
  * edges (an edge ruler read on the board) and only the rounded
@@ -14,12 +12,6 @@
 
 /* Measured on the panel's cover glass. */
 #define DISPLAY_PANEL_CORNER_RADIUS        42
-
-/* The visible screen in millimetres, and the case's room behind the PCB
- * (an estimate; board_geometry.h). */
-#define DISPLAY_SCREEN_WIDTH_MM            BOARD_SCREEN_WIDTH_MM
-#define DISPLAY_SCREEN_HEIGHT_MM           BOARD_SCREEN_HEIGHT_MM
-#define DISPLAY_CAVITY_DEPTH_MM            BOARD_CAVITY_DEPTH_MM
 
 /* Quarter names are board-wiring facts, measured with the orientation
  * overlay rather than derived from source.
