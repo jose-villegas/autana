@@ -57,7 +57,7 @@
 655	math_wrap_x	info
 1595941	sand_falling_step
 2494629	sand_water_step
-43534	span_gouraud
+37965	span_gouraud
 15884	span_solid
 2106	ui_face_alpha
 3824	ui_face_button
@@ -106,4 +106,4 @@
 2578	ui_mu_text_right
 3543	ui_mu_tile
 3304	ui_mu_toggle
-1236	ui_mu_window
+1242	ui_mu_window
