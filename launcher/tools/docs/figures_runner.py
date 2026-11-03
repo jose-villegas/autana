@@ -5,6 +5,7 @@
     figures_runner.py which IMAGE ...
     figures_runner.py build [SELECTION] [--into DIR] [--changed] [--jobs N]
     figures_runner.py check [SELECTION] [--changed] [--jobs N]
+    figures_runner.py index [--check]
 
     SELECTION: [--area AREA] [--needs NEED,...] [SCRIPT ...]
 
@@ -40,8 +41,13 @@ names another file): build every run's when it writes docs/images/, check
 those whose images were all same and that claim no orphan. A command that
 fails records nothing. The order is drawn in docs/tools/Doc-Figures.md.
 
-Exit status: 0 done (check: nothing changed), 1 check found a change or an
-orphan, 2 the images could not be made or compared.
+index writes docs/tools/Figures.md, every image under docs/images/ with its
+picture, the pages that show it and its producer, and the small GIF copies
+it shows (figure_index.py); --check says what differs instead. An image no
+page shows, and an image a page shows that does not exist, are warnings.
+
+Exit status: 0 done (check: nothing changed), 1 check or index --check found a
+change or an orphan, 2 the images could not be made or compared.
 """
 import argparse
 import concurrent.futures
@@ -310,11 +316,20 @@ def check(chosen, runs, skipped, results):
     return same, changed
 
 
+def image_name(image):
+    """`image`, a path under docs/images/ with or without that prefix, as producers name it."""
+    return pathlib.Path(image).as_posix().removeprefix(f"{IMAGES.relative_to(ROOT).as_posix()}/")
+
+
+def producer_of(found, image):
+    """The Found that declares `image`, or None."""
+    return next((item for item in found.values() if claims(item.images, image_name(image))), None)
+
+
 def which(found, images):
     status = 0
     for image in images:
-        name = pathlib.Path(image).as_posix().removeprefix("docs/images/")
-        item = next((item for item in found.values() if claims(item.images, name)), None)
+        item, name = producer_of(found, image), image_name(image)
         if item is None:
             print(f"{name}: no producer declares it")
             status = 1
@@ -365,6 +380,7 @@ def main(argv=None):
     listing.add_argument("--area")
     listing.add_argument("--outputs", action="store_true")
     commands.add_parser("which").add_argument("images", nargs="+")
+    commands.add_parser("index").add_argument("--check", action="store_true")
     for name in ("build", "check"):
         command = commands.add_parser(name)
         command.add_argument("scripts", nargs="*")
@@ -380,6 +396,12 @@ def main(argv=None):
         found = find()
         if args.command == "which":
             return which(found, args.images)
+        if args.command == "index":
+            from figure_index import index
+            differences = index(lambda image: (item := producer_of(found, image)) and item.name, args.check)
+            if differences:
+                print("\n".join(differences))
+            return int(bool(differences) and args.check)
         if args.command == "list":
             kept = made_files(IMAGES) if args.outputs else set()
             for item in (item for item in found.values() if args.area in (None, item.producer.area)):

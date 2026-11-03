@@ -16,7 +16,7 @@ import sys
 import tempfile
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageSequence
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
@@ -178,9 +178,12 @@ def frame_delays(count, frame_ms):
     return [after - before for before, after in zip(starts, starts[1:])]
 
 
-def save_gif(frames, out, frame_ms):
-    """Write a looping GIF of `frames` (Pillow images or (h, w, 3) arrays of one size), each shown `frame_ms`.
+def save_gif(frames, out, frame_ms=None, *, delays=None):
+    """Write a looping GIF of `frames` (Pillow images or (h, w, 3) arrays of one size), each shown `frame_ms`,
+    or each its own of `delays` (ms in whole centiseconds, as a GIF stores them); give exactly one.
     Every pixel takes the gif_palette colour nearest it in OKLab, without dithering."""
+    if (frame_ms is None) == (delays is None):
+        raise ValueError("save_gif takes frame_ms or delays, not both or neither")
     pixels = np.stack([np.asarray(frame.convert("RGB") if isinstance(frame, Image.Image) else frame)
                        for frame in frames])
     colours, lab = gif_palette()
@@ -194,8 +197,39 @@ def save_gif(frames, out, frame_ms):
         images.append(image)
     out = pathlib.Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    images[0].save(out, save_all=True, append_images=images[1:], loop=0, duration=frame_delays(len(images), frame_ms),
-                   optimize=False)
+    delays = frame_delays(len(images), frame_ms) if delays is None else list(delays)
+    if len(delays) != len(images):
+        raise ValueError(f"{len(delays)} delays for {len(images)} frames")
+    images[0].save(out, save_all=True, append_images=images[1:], loop=0, duration=delays, optimize=False)
+
+
+def gif_delays(source):
+    """The per-frame delays in ms of the GIF `source` (a path or a file); 0 where a frame has none."""
+    with Image.open(source) as gif:
+        return [frame.info.get("duration", 0) for frame in ImageSequence.Iterator(gif)]
+
+
+def shrink_gif(source, out, width, min_frame_ms):
+    """A copy of the GIF `source` (a path or a file) at most `width` wide and as long as it: while a kept
+    frame is shown less than `min_frame_ms`, the next is dropped and its delay added to it, and a last
+    frame shorter than that is folded into the one before."""
+    frames, delays = [], []
+    with Image.open(source) as gif:
+        for frame in ImageSequence.Iterator(gif):
+            if delays and delays[-1] < min_frame_ms:
+                delays[-1] += frame.info.get("duration", 0)
+                continue
+            picture = frame.convert("RGB")
+            if picture.width > width:
+                height = max(1, round(picture.height * width / picture.width))
+                picture = picture.resize((width, height), Image.Resampling.LANCZOS)
+            frames.append(picture)
+            delays.append(frame.info.get("duration", 0))
+    if len(frames) > 1 and delays[-1] < min_frame_ms:
+        frames.pop()
+        delays[-2] += delays[-1]
+        delays.pop()
+    save_gif(frames, out, delays=delays)
 
 
 def clip(frames, rate, fps, *, first=0, end=None, seconds=None):
