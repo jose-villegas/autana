@@ -24,7 +24,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "tools" / "device"))
-from panel_size import PANEL_HEIGHT as PANEL_H, PANEL_WIDTH as PANEL_W  # noqa: E402  (path must be set up first)
+from board import PANEL_HEIGHT as PANEL_H, PANEL_WIDTH as PANEL_W  # noqa: E402  (path must be set up first)
 
 CORNER = 40
 BUTTON_HALF = 28
