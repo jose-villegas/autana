@@ -850,6 +850,14 @@ show_particles(const field_work_t* w) {
             off[a][0] = u - (float)lo[a];
             off[a][1] = 1.0F - off[a][0];
         }
+        /* Inside already, as nearly every particle in bulk water is: its
+         * nearest sample reads above the surface, so one read and on. */
+        const int nx = lo[0] + (off[0][0] > FIELD_NEAREST_REACH ? 1 : 0);
+        const int ny = lo[1] + (off[1][0] > FIELD_NEAREST_REACH ? 1 : 0);
+        const int nz = lo[2] + (off[2][0] > FIELD_NEAREST_REACH ? 1 : 0);
+        if (out[(((nx * sy) + ny) * sz) + nz] > FLIP3_SURFACE_LEVEL) {
+            continue;
+        }
         for (int bx = 0; bx < 2; bx++) {
             const int x = lo[0] + bx;
             if (x < 1 || x > sx - 2) {
