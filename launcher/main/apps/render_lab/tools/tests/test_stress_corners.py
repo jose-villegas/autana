@@ -6,9 +6,11 @@ Builds the host renderer once and draws every preset stress_preset.h names
 with --view cull --counts, then holds each to what it is the loss case of:
 open hides and culls nothing, stack hides most of what it keeps, tiny copies
 are all in view and all drawn, big tris draws every triangle it submits,
-two-sided cubes skip nothing facing away, noisy tiny cylinders are all drawn, and
+two-sided cubes skip nothing facing away, noisy tiny cylinders are all in
+view with every copy drawn, and
 before a still camera only the per-frame preset's frames differ. The sizes the
-triangles are drawn at are suite_stress_preset.c's to hold.
+triangles are drawn at, and the small-fill gate failing noisy-tiny's slivers,
+are suite_stress_preset.c's to hold.
 """
 import csv
 import pathlib

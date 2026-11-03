@@ -62,10 +62,13 @@ typedef enum { STRESS_PRESETS(STRESS_PRESET_ID) STRESS_PRESET_COUNT } stress_pre
 
 extern const stress_params_t stress_presets[STRESS_PRESET_COUNT];
 
-/* Whether a preset's mesh is made again every frame. */
+/* Whether a surface's mesh is made again every frame: a constant
+ * expression, so a static table can read it. */
+#define STRESS_SURFACE_IS_PER_FRAME(surface_) ((surface_) == STRESS_SURFACE_WAVE)
+
 static inline bool
 stress_per_frame(const stress_params_t* p) {
-    return p->surface == STRESS_SURFACE_WAVE;
+    return STRESS_SURFACE_IS_PER_FRAME(p->surface);
 }
 
 /* A copy's mesh: the shape's vertex and triangle counts. */
