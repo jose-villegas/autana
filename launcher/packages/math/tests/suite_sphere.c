@@ -1,6 +1,11 @@
+#include "ball_cases.h"
 #include "math/geometry/spheref.h"
 #include "testkit/suite.h"
 #include "unity.h"
+
+#include <stddef.h>
+
+DEFINE_BALL_CONTAINMENT_TEST(spheref, vec3f, float)
 
 static const float SPHERE_TOLERANCE = 0.00001F;
 static const spheref_t SPHERE_UNIT = {{0, 0, 0}, 1};
@@ -120,8 +125,20 @@ test_sphere_long_segment_entry(void) {
     TEST_ASSERT_FLOAT_WITHIN(entry_tolerance, entry, t);
 }
 
+static void
+test_sphere_contains_ball_depth(void) {
+    const spheref_t outer = {{2, -3, 4}, 10};
+    const spheref_t touching = {{2, -3, 9}, 5};
+    const spheref_t outside = {{2, -3, 10}, 5};
+    TEST_ASSERT_TRUE(spheref_contains_ball(outer, touching, 0));
+    TEST_ASSERT_FALSE(spheref_contains_ball(outer, outside, 0));
+    TEST_ASSERT_TRUE(spheref_contains_ball(outer, outside, -1));
+}
+
 void
 suite_sphere(void) {
+    RUN_TEST(test_spheref_contains_ball);
+    RUN_TEST(test_sphere_contains_ball_depth);
     RUN_TEST(test_sphere_closest_point);
     RUN_TEST(test_sphere_long_segment_misses);
     RUN_TEST(test_sphere_long_segment_entry);

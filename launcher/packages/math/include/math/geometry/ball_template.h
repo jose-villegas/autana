@@ -1,12 +1,13 @@
 /*
  * ball_template: closed balls in any dimension for one number type; see
  * docs/math/Conventions.md#templates for macro arguments.
+ * WV holds centre differences without overflow or saturation; WIDEN converts V to WV.
  * Radii are nonnegative; arithmetic must fit, and real values must be finite.
  */
 #pragma once
 #include <stdbool.h>
 
-#define MATH_DEFINE_BALL(P, V, T, OPS)                                                                                 \
+#define MATH_DEFINE_BALL(P, V, WV, WIDEN, T, OPS)                                                                      \
     typedef struct {                                                                                                   \
         V##_t centre;                                                                                                  \
         T radius;                                                                                                      \
@@ -15,6 +16,13 @@
     static inline bool P##_contains_point(P##_t c, V##_t p) {                                                          \
         const V##_t d = V##_sub(p, c.centre);                                                                          \
         return V##_dot(d, d) <= OPS##_wmul(c.radius, c.radius);                                                        \
+    }                                                                                                                  \
+    /* contains_ball = q=r_o-r_i-margin >= 0 && |co-ci|^2 <= q^2, in the wide type; touching counts. */                \
+    static inline bool P##_contains_ball(P##_t outer, P##_t inner, T margin) {                                         \
+        const WV##_t d = WV##_sub(WIDEN(outer.centre), WIDEN(inner.centre));                                           \
+        const __typeof__(WV##_dot(d, d)) outer_radius = outer.radius;                                                  \
+        const __typeof__(WV##_dot(d, d)) room = outer_radius - inner.radius - margin;                                  \
+        return room >= OPS##_zero() && WV##_dot(d, d) <= room * room;                                                  \
     }                                                                                                                  \
     /* overlaps = |ca-cb|^2 <= (ra+rb)^2. */                                                                           \
     static inline bool P##_overlaps(P##_t a, P##_t b) {                                                                \
