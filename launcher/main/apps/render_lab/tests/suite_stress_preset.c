@@ -80,6 +80,16 @@ same_source(const r3d_dynamic_source_t* a, const r3d_dynamic_source_t* b) {
            && memcmp(a->triangles, b->triangles, sizeof(uint16_t[3]) * (size_t)a->triangle_count) == 0;
 }
 
+/* stress_presets fills each ID STRESS_PRESETS names: a missed row would be all zeros. */
+static void
+test_every_preset_has_its_row(void) {
+    for (int i = 0; i < STRESS_PRESET_COUNT; i++) {
+        TEST_ASSERT_GREATER_THAN_INT(0, stress_presets[i].cuts);
+        TEST_ASSERT_GREATER_THAN_INT(0, stress_presets[i].copies);
+        TEST_ASSERT_GREATER_THAN_INT(0, stress_presets[i].coverage_percent);
+    }
+}
+
 static void
 test_every_preset_mesh_is_whole_and_repeats(void) {
     for (int i = 0; i < STRESS_PRESET_COUNT; i++) {
@@ -301,6 +311,7 @@ test_noisy_tiny_slivers_are_gated_and_fail_the_gate(void) {
 
 void
 run_stress_preset_suite(void) {
+    RUN_TEST(test_every_preset_has_its_row);
     RUN_TEST(test_every_preset_mesh_is_whole_and_repeats);
     RUN_TEST(test_every_preset_mesh_fits_a_dynamic_mesh);
     RUN_TEST(test_a_per_frame_mesh_fits_all_through_its_wave);

@@ -5,10 +5,21 @@
 #include "math/geometry/primitive_mesh.h"
 #include "math/scalar/math_const.h"
 
-#define STRESS_PRESET_PARAMS(id_, key_, surface_, shape_, cuts_, copies_, layout_, coverage_)                          \
-    [STRESS_##id_] = {shape_, cuts_, copies_, layout_, coverage_, STRESS_SURFACE_##surface_},
+/* Each preset's surface, as STRESS_PRESETS names it. */
+#define STRESS_PRESET_SURFACE(id_, key_, surface_) STRESS_##id_##_SURFACE = STRESS_SURFACE_##surface_,
 
-const stress_params_t stress_presets[STRESS_PRESET_COUNT] = {STRESS_PRESETS(STRESS_PRESET_PARAMS)};
+enum { STRESS_PRESETS(STRESS_PRESET_SURFACE) };
+
+/* Shape, cuts, copies, layout, coverage percent, surface. */
+const stress_params_t stress_presets[STRESS_PRESET_COUNT] = {
+    [STRESS_OPEN] = {STRESS_SHAPE_PLANE, 8, 16, STRESS_LAYOUT_WALL, 60, STRESS_OPEN_SURFACE},
+    [STRESS_STACK] = {STRESS_SHAPE_PLANE, 8, 8, STRESS_LAYOUT_STACK, 90, STRESS_STACK_SURFACE},
+    [STRESS_TINY_COPIES] = {STRESS_SHAPE_SPHERE, 4, 64, STRESS_LAYOUT_WALL, 40, STRESS_TINY_COPIES_SURFACE},
+    [STRESS_BIG_TRIS] = {STRESS_SHAPE_PLANE, 2, 1, STRESS_LAYOUT_WALL, 100, STRESS_BIG_TRIS_SURFACE},
+    [STRESS_PER_FRAME] = {STRESS_SHAPE_PLANE, 24, 1, STRESS_LAYOUT_WALL, 80, STRESS_PER_FRAME_SURFACE},
+    [STRESS_TWO_SIDED] = {STRESS_SHAPE_CUBE, 4, 16, STRESS_LAYOUT_WALL, 60, STRESS_TWO_SIDED_SURFACE},
+    [STRESS_NOISY_TINY] = {STRESS_SHAPE_CYLINDER, 16, 36, STRESS_LAYOUT_WALL, 75, STRESS_NOISY_TINY_SURFACE},
+};
 
 /* The share of its cell a wall copy fills: the rest is the gap that keeps
  * copies apart, so nothing on a wall covers anything. */

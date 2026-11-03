@@ -24,13 +24,15 @@ sys.path.insert(0, str(HERE))
 import host_render  # noqa: E402
 
 PRESETS = HERE.parents[1] / "stress" / "stress_preset.h"
+TABLE = HERE.parents[1] / "stress" / "stress_preset.c"
 FRAMES = 2
 
 
 def preset_copies():
     """Each preset's copy count by its key, in the order STRESS_PRESETS lists them."""
-    rows = re.findall(r'^\s*X\(\w+, "([^"]+)", \w+, \w+, \d+, (\d+),', PRESETS.read_text(), re.MULTILINE)
-    return {key: int(copies) for key, copies in rows}
+    keys = re.findall(r'^\s*X\((\w+), "([^"]+)"', PRESETS.read_text(), re.MULTILINE)
+    rows = dict(re.findall(r'^\s*\[STRESS_(\w+)\] = \{\w+, \d+, (\d+),', TABLE.read_text(), re.MULTILINE))
+    return {key: int(rows[name]) for name, key in keys}
 
 
 class StressCorners(unittest.TestCase):
