@@ -60,7 +60,8 @@ static const capybara_take_t capybara_blend = {"capybara-blend", "blend", CAPYBA
 
 /* Worst of a 5-seed capture on A308 (before and after its move), 20E8 and
  * 2124, + 1%; per quarter, portrait then landscape. The Sponza and Bistro
- * rows are then scaled by the A308 gain of the per-frame instance cull. */
+ * rows are then scaled by the A308 gain of the per-frame instance cull, and
+ * the Bistro row by that of walking only active renderers. */
 static const profile_scenario_t profile_scenarios[] = {
     {.scene = &scene_sponza[SCENE_BAKED_FULL], .quarters = {{48135, 58790}, {46392, 55835}}},
     {.scene = &scene_sponza[SCENE_BAKED_LITE], .quarters = {{41016, 47265}, {39777, 45453}}},
@@ -74,7 +75,7 @@ static const profile_scenario_t profile_scenarios[] = {
     CAPYBARA_ROW(capybara_back, {{20352, 20994}, {20989, 21423}}),
     CAPYBARA_ROW(capybara_close, {{23002, 23384}, {23807, 24080}}),
     CAPYBARA_ROW(capybara_blend, {{21806, 22738}, {22438, 22866}}),
-    {&scene_bistro[SCENE_BAKED_FITTED_FULL], BISTRO_SCENE, BISTRO_CAMERA, NULL, {{40869, 61667}, {39563, 57212}}},
+    {&scene_bistro[SCENE_BAKED_FITTED_FULL], BISTRO_SCENE, BISTRO_CAMERA, NULL, {{40595, 61253}, {39333, 56879}}},
 };
 
 static const char* TAG = "render_lab_profile";

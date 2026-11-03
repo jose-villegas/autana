@@ -249,8 +249,8 @@ test_animation_and_frame_cost(void) {
     TEST_ASSERT_GREATER_THAN_INT(0, clusters);
     report_stage(f, SKIN_PERF_STAGE_SKIN, skin_slice, clusters, false, SKIN_PERF_CORES_ONE);
     report_stage(f, SKIN_PERF_STAGE_SKIN, skin_slice, clusters, true, SKIN_PERF_CORES_TWO);
-    report_stage(f, SKIN_PERF_STAGE_ANIMATE, animate_slice, f->scene->asset.entity_count, false, SKIN_PERF_CORES_ONE);
-    report_stage(f, SKIN_PERF_STAGE_ANIMATE, animate_slice, f->scene->asset.entity_count, true, SKIN_PERF_CORES_TWO);
+    report_stage(f, SKIN_PERF_STAGE_ANIMATE, animate_slice, f->scene->staged_count, false, SKIN_PERF_CORES_ONE);
+    report_stage(f, SKIN_PERF_STAGE_ANIMATE, animate_slice, f->scene->staged_count, true, SKIN_PERF_CORES_TWO);
     report_stage(f, SKIN_PERF_STAGE_ANIMATION_STEP, step, 1, false, SKIN_PERF_CORES_UNKNOWN);
     for (size_t q = 0; q < R3D_PERF_QUARTER_COUNT; q++) {
         const r3d_perf_quarter_t* quarter = &r3d_perf_quarters[q];
