@@ -20,7 +20,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "board_geometry.h"
+#include "board_config.h"
 #include "core/job.h"
 #include "core/timing.h"
 #include "core/tune.h"

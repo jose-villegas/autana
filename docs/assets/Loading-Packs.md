@@ -119,9 +119,9 @@ mounted packs; `ASSET_STORE_MOUNTS_MAX` bounds their table.
 |---|---|---|
 | `nvs` | `0x9000` | `0x6000` |
 | `phy_init` | `0xF000` | `0x1000` |
-| `factory` (the app) | `0x10000` | `0x7F0000` |
-| `coredump` | `0x800000` | `0x10000` |
-| `assets` | `0x810000` | `0x7F0000` |
+| `factory` (the app) | `0x10000` | `0x400000` |
+| `coredump` | `0x410000` | `0x10000` |
+| `assets` | `0x420000` | `0xBE0000` |
 
 On the first mount the store finds the partition and reads its directory into
 RAM, kept for good. Each pack is then mapped alone from its slot. The
