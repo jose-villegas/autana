@@ -489,8 +489,8 @@ draw_far_grid(const mesh_pass_t* pass) {
 static vec3x_t
 mesh_plane(const mesh_pass_t* pass, vec3x_t* row) {
     if (!pass->stepping) {
-        *row = (vec3x_t){0};
-        return (vec3x_t){0};
+        *row = vec3x_zero();
+        return vec3x_zero();
     }
     const int32_t start = -MESH_HALF * BOOT_ANIM_MESH_STEP_Q12;
     const int32_t step = pass->stride * BOOT_ANIM_MESH_STEP_Q12;

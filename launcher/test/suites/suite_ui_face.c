@@ -679,7 +679,7 @@ label_clip(verb_t verb) {
         }
     }
     end_face();
-    recti_t clip = {0};
+    recti_t clip = recti_empty();
     TEST_ASSERT_TRUE(ui_probe_text_clip(OVERFLOW_LABEL, &clip));
     return clip;
 }
@@ -1304,7 +1304,7 @@ test_window_order_contract(void) {
     ui_begin(NULL);
     ui_row(BOX.h);
     const recti_t next = ui_next();
-    const recti_t empty = {0};
+    const recti_t empty = recti_empty();
     TEST_ASSERT_EQUAL_MEMORY(&empty, &next, sizeof empty);
     end_face();
     TEST_ASSERT_EQUAL_INT(0, ui_context()->container_stack.idx);
@@ -1436,7 +1436,8 @@ test_balanced_nested_scopes(void) {
     ui_disabled_end();
     (void)ui_end(UI_NO_BACKGROUND);
     TEST_ASSERT_EQUAL_INT(0, reports);
-    TEST_ASSERT_TRUE(ui_probe_text("Balanced", &(recti_t){0}));
+    recti_t bounds = recti_empty();
+    TEST_ASSERT_TRUE(ui_probe_text("Balanced", &bounds));
 }
 
 static void
@@ -1559,7 +1560,7 @@ test_the_shell_look_insets_a_button_icon(void) {
     const ui_theme_t any = {0};
     const int pad = (BOX.w - ui_probe_button_label_width(BOX.w, false, &any)) / 2;
     const mu_Color ink = ui_rgb(UI_SHELL_TEXT);
-    recti_t icon = {0, 0, 0, 0};
+    recti_t icon = recti_empty();
     mu_Command* cmd = NULL;
     while (mu_next_command(ui_context(), &cmd)) {
         if (cmd->type == UI_COMMAND_IMAGE) {
@@ -1604,8 +1605,9 @@ test_ui_screen_twice_closes_first(void) {
     end_face();
     TEST_ASSERT_EQUAL_INT(2, ui_context()->root_list.idx);
     TEST_ASSERT_EQUAL_INT(0, ui_context()->container_stack.idx);
-    TEST_ASSERT_TRUE(ui_probe_text("First", &(recti_t){0}));
-    TEST_ASSERT_TRUE(ui_probe_text("Second", &(recti_t){0}));
+    recti_t bounds = recti_empty();
+    TEST_ASSERT_TRUE(ui_probe_text("First", &bounds));
+    TEST_ASSERT_TRUE(ui_probe_text("Second", &bounds));
 }
 
 void
