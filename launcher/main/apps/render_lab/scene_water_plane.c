@@ -14,8 +14,8 @@
 
 void
 water_plane_reset(water_plane_t* p, vec3f_t box) {
-    p->up = (vec3f_t){0.0F, -1.0F, 0.0F};
-    p->rate = (vec3f_t){0};
+    p->up = vec3f_down();
+    p->rate = vec3f_zero();
     p->level = vec3f_dot(p->up, vec3f_scale(box, 0.5F));
 }
 
