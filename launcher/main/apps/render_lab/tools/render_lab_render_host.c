@@ -22,6 +22,7 @@
 #include "render/context/render_context.h"
 #include "render/resolution/resolution.h"
 #include "render/view/raster_overdraw.h"
+#include "render_counts.h"
 #include "render_host.h"
 #include "scene/scene_shell.h"
 #include "ui/layout/ui_transform.h"
@@ -71,6 +72,10 @@ static recti_t size_rect;
  * generation experiment (launcher/tools/r3d/framegen/); host only. */
 #define DUMP_PATH_MAX 512
 static const char* dump_dir;
+
+/* --counts PATH, with --view cull: a row per frame of what the cull view counted (render_counts.h). */
+static const char* counts_path;
+static FILE* counts;
 
 /* The value after `name` in `out`, NULL when the option is absent; false,
  * with a message, when it is the last argument and has none. */
@@ -190,9 +195,9 @@ options(int argc, char** argv) {
         const char* name;
         const char** out;
     } values[] = {
-        {"--scene", &scene},   {"--view", &view}, {"--camera", &render_lab_start_camera},
-        {"--scale", &scale},   {"--size", &size}, {"--small-fill", &small_fill},
-        {"--dump", &dump_dir},
+        {"--scene", &scene},   {"--view", &view},          {"--camera", &render_lab_start_camera},
+        {"--scale", &scale},   {"--size", &size},          {"--small-fill", &small_fill},
+        {"--dump", &dump_dir}, {"--counts", &counts_path},
     };
 
     for (size_t i = 0; i < sizeof values / sizeof values[0]; i++) {
@@ -209,6 +214,10 @@ options(int argc, char** argv) {
     }
     if (scene == NULL) {
         (void)fprintf(stderr, "render_lab_render_host needs --scene <key>\n");
+        return false;
+    }
+    if (counts_path != NULL && (view == NULL || strcmp(view, "cull") != 0)) {
+        (void)fprintf(stderr, "render_lab_render_host: --counts needs --view cull\n");
         return false;
     }
     option_count = argc;
@@ -253,6 +262,9 @@ setup(int quarter) {
         const resolution_step_t size = {size_rect.w, size_rect.h};
         const resolution_config_t one = resolution_config(&size, 1, 1, INT32_MAX);
         render_context_set_dynamic_resolution(render_context_main(), &one, NULL, 0);
+    }
+    if (counts_path != NULL && (counts = render_counts_open(counts_path, "render_lab_render_host")) == NULL) {
+        return false;
     }
     return tune_options(option_count, option_args, "--live-tune");
 }
@@ -299,6 +311,13 @@ draw(const provider_frame_t* frame) {
     }
     app_list()->frame(frame->dt_ms, &in);
     report_overdraw(frame);
+    if (counts != NULL) {
+        render_counts_row(counts, frame);
+        if (frame->index + 1 == frame->count) {
+            (void)fclose(counts);
+            counts = NULL;
+        }
+    }
     if (dump_dir != NULL) {
         dump_raster(frame->index);
     }

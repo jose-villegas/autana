@@ -6,7 +6,7 @@
 #include "gfx/gfx.h"
 #include "math/text/math_text.h"
 #include "render/context/render_context.h"
-#include "render/view/raster_cull_view.h"
+#include "render_counts.h"
 #include "scene/scene.h"
 #include "scene_viewer.h"
 
@@ -222,9 +222,7 @@ setup(int quarter) {
     fprintf(stderr, "scene_viewer: camera path %u ms\n", (unsigned)scene_animator_clip_duration_ms(scene, camera, 0));
     render_context_t* context = render_context_main();
     render_context_set_debug_view(context, view);
-#define COUNT_NAME(name, member) "," #name
-    if (counts_path != NULL
-        && (counts = open_rows(counts_path, "frame,ms" RASTER_CULL_FRAME_FIELDS(COUNT_NAME))) == NULL) {
+    if (counts_path != NULL && (counts = render_counts_open(counts_path, "scene_viewer")) == NULL) {
         scene_unload(scene);
         return false;
     }
@@ -249,11 +247,7 @@ static void
 draw(const provider_frame_t* frame) {
     const bool last = frame->index + 1 == frame->count;
     if (counts != NULL) {
-        const raster_cull_frame_t f = raster_cull_frame(render_context_debug_view_state(render_context_main()));
-        fprintf(counts, "%d,%u", frame->index, (unsigned)frame->elapsed_ms);
-#define COUNT_VALUE(name, member) fprintf(counts, ",%d", f.member);
-        RASTER_CULL_FRAME_FIELDS(COUNT_VALUE)
-        fputc('\n', counts);
+        render_counts_row(counts, frame);
         if (last) {
             fclose(counts);
             counts = NULL;

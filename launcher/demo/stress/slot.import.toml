@@ -1,0 +1,8 @@
+# The stress scene's stand-in copy: the scene replaces it with generated geometry.
+[source]
+path = "slot.obj"
+credit = "A triangle written for this scene."
+
+[output]
+name = "slot"
+position_scale = 16384   # ticks per unit: the triangle reaches 0.01, inside int16

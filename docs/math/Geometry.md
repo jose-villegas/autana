@@ -229,3 +229,24 @@ crossing sample edge.
 | Closed | A field below the level all round its border gives a closed surface |
 | Memory | Scratch is two slabs along x, so it does not grow with the field's length |
 | Parts | Parts over slabs `[0, a)`, `[a, b)`, … appended in x order make the whole surface's triangles; each needs its own scratch |
+
+## primitive_mesh
+
+Standard shapes as indexed triangles, for geometry made at run time: a
+square grid and a latitude-longitude sphere, each one unit in size and
+tessellated by one count.
+
+| Function | Purpose |
+|---|---|
+| `primitive_mesh_t` | Caller-owned positions and triangles, with capacities and counts |
+| `primitive_grid` | The unit square about the origin at z = 0, facing +z, in `cells` × `cells` squares cut in two |
+| `primitive_sphere` | The unit sphere about the origin in `rings` bands from +y to −y, each cut into `2 × rings` segments |
+| `primitive_grid_vertex_count`, `primitive_grid_triangle_count` | $`(c+1)^2`$ vertices, $`2c^2`$ triangles |
+| `primitive_sphere_segments` | $`2r`$ segments round the axis |
+| `primitive_sphere_vertex_count`, `primitive_sphere_triangle_count` | $`(r+1)(2r+1)`$ vertices, $`4r(r-1)`$ triangles |
+
+| Rule | Detail |
+|---|---|
+| Winding | As iso_surface: counter-clockwise about the outward normal, right-handed |
+| Sphere caps | A band round a pole has one triangle per segment; the seam's and poles' vertices repeat, one per segment |
+| Refusal | Too few cuts, short buffers or more vertices than a uint16 index reaches: false, nothing written |

@@ -15,7 +15,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [input](#input) | 9 | 0 | 0 |
 | [kinematics](#kinematics) | 4 | 0 | 0 |
 | [math](#math) | 25 | 25 | 0 |
-| [overview](#overview) | 8 | 0 | 0 |
+| [overview](#overview) | 13 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
 | [render](#render) | 129 | 0 | 11 |
@@ -129,6 +129,11 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/overview/launcher-home.png"><img src="../images/overview/launcher-home.png" width="160" alt=""></a> | The launcher, rendered on a host with the release build's apps | [firmware/README](../firmware/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-capybara.gif"><img src="figure-thumbnails/overview/render-lab-capybara.gif" width="160" alt=""></a> | A skinned capybara on a meadow blending through each of its animation clips in turn, then back to the first | [README](../../README.md) | not declared yet |
 | <a href="../images/overview/render-lab-sponza.gif"><img src="figure-thumbnails/overview/render-lab-sponza.gif" width="160" alt=""></a> | A camera moving through the Crytek Sponza atrium with baked lighting on the fitted full mesh | [README](../../README.md) | not declared yet |
+| <a href="../images/overview/render-lab-stress-big-tris.png"><img src="../images/overview/render-lab-stress-big-tris.png" width="160" alt=""></a> | Big tris | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
+| <a href="../images/overview/render-lab-stress-open.png"><img src="../images/overview/render-lab-stress-open.png" width="160" alt=""></a> | Open | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
+| <a href="../images/overview/render-lab-stress-per-frame.png"><img src="../images/overview/render-lab-stress-per-frame.png" width="160" alt=""></a> | Per frame | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
+| <a href="../images/overview/render-lab-stress-stack.png"><img src="../images/overview/render-lab-stress-stack.png" width="160" alt=""></a> | Stack | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
+| <a href="../images/overview/render-lab-stress-tiny-copies.png"><img src="../images/overview/render-lab-stress-tiny-copies.png" width="160" alt=""></a> | Tiny copies | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-water.gif"><img src="figure-thumbnails/overview/render-lab-water.gif" width="160" alt=""></a> | Water in a glass tank, seen from slightly above, sloshing as the board rocks side to side, splashing as it flips over and straight back twice, then settling | [README](../../README.md), [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/sand-menu.png"><img src="../images/overview/sand-menu.png" width="160" alt=""></a> | Falling Sand title screen | [sand/README](../sand/README.md) | not declared yet |
 | <a href="../images/overview/sand-simulation.gif"><img src="figure-thumbnails/overview/sand-simulation.gif" width="160" alt=""></a> | A volcano spilling toward a lake beside growing and burning trees as the board turns | [README](../../README.md) | not declared yet |
