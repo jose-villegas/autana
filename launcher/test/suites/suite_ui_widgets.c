@@ -126,14 +126,21 @@ slider_frame(const input_t* in, int* value) {
     return *value;
 }
 
+/* A pointer frame at the button's centre. */
+static input_t
+on_button(bool down, bool pressed, bool released) {
+    return (input_t){.down = down,
+                     .pressed = pressed,
+                     .released = released,
+                     .point = {BUTTON.x + BUTTON.w / 2, BUTTON.y + BUTTON.h / 2}};
+}
+
 static bool
 tap(const widget_t* w) {
-    const int x = BUTTON.x + BUTTON.w / 2;
-    const int y = BUTTON.y + BUTTON.h / 2;
     const input_t idle = {0};
-    const input_t press = {.down = true, .pressed = true, .point = {x, y}};
-    const input_t hold = {.down = true, .point = {x, y}};
-    const input_t release = {.released = true, .point = {x, y}};
+    const input_t press = on_button(true, true, false);
+    const input_t hold = on_button(true, false, false);
+    const input_t release = on_button(false, false, true);
 
     widget_frame(w, &idle);
     widget_frame(w, &idle);
@@ -1260,11 +1267,9 @@ test_only_a_real_press_draws_a_button_pressed(void) {
     widget_frame(&w, &idle);
     const uint64_t at_rest = canvas_hash("Widgets");
 
-    const int x = BUTTON.x + BUTTON.w / 2;
-    const int y = BUTTON.y + BUTTON.h / 2;
-    const input_t press = {.down = true, .pressed = true, .point = {x, y}};
-    const input_t hold = {.down = true, .point = {x, y}};
-    const input_t release = {.released = true, .point = {x, y}};
+    const input_t press = on_button(true, true, false);
+    const input_t hold = on_button(true, false, false);
+    const input_t release = on_button(false, false, true);
     widget_frame(&w, &hold);
     TEST_ASSERT_EQUAL_MESSAGE(at_rest, canvas_hash("Widgets"), "hovered but not pressed must look at rest");
     widget_frame(&w, &release);

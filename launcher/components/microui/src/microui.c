@@ -336,6 +336,7 @@ static mu_Container* get_container(mu_Context *ctx, mu_Id id, int opt) {
   cnt = &ctx->containers[idx];
   memset(cnt, 0, sizeof(*cnt));
   cnt->open = 1;
+  cnt->root = cnt; /* LOCAL MODIFICATION: a panel sets its own each frame */
   mu_bring_to_front(ctx, cnt);
   return cnt;
 }
@@ -1056,7 +1057,7 @@ void mu_end_treenode(mu_Context *ctx) {
 
 /* LOCAL MODIFICATION: the extent scrollbars() compares with the body, shared
 ** with mu_scrollable_at() so the two can never disagree on what scrolls. */
-static mu_Vec2 padded_content(mu_Context *ctx, mu_Container *cnt) {
+static inline mu_Vec2 padded_content(mu_Context *ctx, mu_Container *cnt) {
   mu_Vec2 cs = cnt->content_size;
   cs.x += ctx->style->padding * 2;
   cs.y += ctx->style->padding * 2;
@@ -1098,7 +1099,6 @@ static int hover_beats(mu_Context *ctx, mu_Container *cnt, mu_Container *best) {
 
 static void begin_root_container(mu_Context *ctx, mu_Container *cnt) {
   push(ctx->container_stack, cnt);
-  cnt->root = cnt;
   /* push container to roots list and push head command */
   push(ctx->root_list, cnt);
   cnt->head = push_jump(ctx, NULL);
