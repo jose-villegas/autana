@@ -1,11 +1,13 @@
 /*
  * vec2_template: the two-component vector for one number type; see
  * docs/math/Conventions.md#templates for the macro arguments. Its swizzles are
- * vec_swizzle_template.h's.
+ * vec_swizzle_template.h's. No up/down: integer screen pixels have y down.
  */
 #pragma once
 
 #include <stdbool.h>
+
+#include "math/linear/constant_template.h"
 
 #include "math/linear/vec_ops_template.h"
 #include "math/linear/vec_swizzle_template.h"
@@ -15,6 +17,24 @@
     typedef struct {                                                                                                   \
         T x, y;                                                                                                        \
     } P##_t;                                                                                                           \
+                                                                                                                       \
+    /* zero = (0, 0). */                                                                                               \
+    MATH_DEFINE_CONSTANT(P, zero, OPS##_zero(), OPS##_zero())                                                          \
+                                                                                                                       \
+    /* one = (1, 1). */                                                                                                \
+    MATH_DEFINE_CONSTANT(P, one, OPS##_one(), OPS##_one())                                                             \
+                                                                                                                       \
+    /* unit_x = (1, 0). */                                                                                             \
+    MATH_DEFINE_CONSTANT(P, unit_x, OPS##_one(), OPS##_zero())                                                         \
+                                                                                                                       \
+    /* right = (1, 0). */                                                                                              \
+    MATH_DEFINE_CONSTANT_ALIAS(P, right, unit_x)                                                                       \
+                                                                                                                       \
+    /* left = (-1, 0). */                                                                                              \
+    MATH_DEFINE_CONSTANT(P, left, OPS##_neg(OPS##_one()), OPS##_zero())                                                \
+                                                                                                                       \
+    /* unit_y = (0, 1). */                                                                                             \
+    MATH_DEFINE_CONSTANT(P, unit_y, OPS##_zero(), OPS##_one())                                                         \
                                                                                                                        \
     MATH_DEFINE_VEC_OPS(P, OPS, 2)                                                                                     \
                                                                                                                        \

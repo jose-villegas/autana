@@ -17,10 +17,8 @@ static const recti_t RECT_B = {3, 2, 5, 4};
 static const int RECT_CROSSED_EDGES[] = {8, 7, 6, 6};
 static const vec2i_t RECT_SAMPLES[] = {{1, 3}, {3, 1}, {6, 3}, {3, 5}};
 static const vec3f_t DISTANCE_NORMAL = {2.0F, 1.0F, 2.0F};
-static const vec3f_t DISTANCE_POINT = {0.0F, 0.0F, 1.0F};
 static const vec3f_t TRIANGLE[] = {{-1.0F, 0.0F, 0.0F}, {1.0F, 0.3F, 0.0F}, {0.0F, 0.7F, 2.0F}};
 static const unsigned WINDING_ORDERS[][3] = {{0, 1, 2}, {0, 2, 1}};
-static const vec3f_t WORLD_UP = {0.0F, 1.0F, 0.0F};
 static const float SHOWN_DEPTH = 4.5F;
 static const vec3f_t LENS_SAMPLE = {0.0F, 0.0F, 3.0F};
 static const float LEVEL_VALUES[] = {-1.0F, 1.0F};
@@ -166,7 +164,7 @@ print_frustum(const mat4f_t* view, planef_t planes[PLANE_FRUSTUM_COUNT]) {
     const mat4f_t inverse = mat4f_invert_affine(lens);
     planef_frustum(view, &FRUSTUM_LENS, FRUSTUM_SCREEN, planes);
     printf("\"plane_count\":%d,\"camera\":", PLANE_FRUSTUM_COUNT);
-    print_vec(mat4f_apply(&inverse, (vec3f_t){0}));
+    print_vec(mat4f_apply(&inverse, vec3f_zero()));
     printf(",\"near\":%.7g,\"shown_depth\":%.7g,\"corners\":[", (double)FRUSTUM_LENS.near_z, (double)SHOWN_DEPTH);
     const vec2f_t picture[] = {{FRUSTUM_SCREEN.x, FRUSTUM_SCREEN.y},
                                {rectf_right(FRUSTUM_SCREEN), FRUSTUM_SCREEN.y},
@@ -200,7 +198,7 @@ print_box_frustum(int frames) {
         const float yaw = PATH_YAW + PATH_TURN * sinf(phase);
         const vec3f_t camera = vec3f_add(
             PATH_ORIGIN, (vec3f_t){PATH_TRAVEL.x * sinf(phase), 0, PATH_TRAVEL.z * sinf(PATH_DEPTH_FREQUENCY * phase)});
-        const mat4f_t view = mat4f_view_from_axes((vec3f_t){cosf(yaw), 0, -sinf(yaw)}, WORLD_UP,
+        const mat4f_t view = mat4f_view_from_axes((vec3f_t){cosf(yaw), 0, -sinf(yaw)}, vec3f_up(),
                                                   (vec3f_t){sinf(yaw), 0, cosf(yaw)}, camera);
         planef_t planes[PLANE_FRUSTUM_COUNT];
         printf("%s{\"frustum\":{", frame ? "," : "");
@@ -295,7 +293,7 @@ main(int argc, char** argv) {
         printf("%s[%s,%s]", i ? "," : "", vec2i_text(RECT_SAMPLES[i]).chars,
                recti_contains(RECT_A, RECT_SAMPLES[i].x, RECT_SAMPLES[i].y) ? "true" : "false");
     }
-    const planef_t raw = planef_from_normal_point(DISTANCE_NORMAL, DISTANCE_POINT);
+    const planef_t raw = planef_from_normal_point(DISTANCE_NORMAL, vec3f_unit_z());
     const planef_t unit = planef_normalize(raw);
     printf("]},\"distance\":{\"planes\":[");
     print_plane(raw);
@@ -309,7 +307,7 @@ main(int argc, char** argv) {
         printf("%s[", column ? "," : "");
         for (size_t level = 0; level < sizeof LEVEL_VALUES / sizeof LEVEL_VALUES[0]; level++) {
             const vec3f_t point =
-                vec3f_add(DISTANCE_POINT, vec3f_scale(unit.normal, LEVEL_VALUES[level] / normal_length));
+                vec3f_add(vec3f_unit_z(), vec3f_scale(unit.normal, LEVEL_VALUES[level] / normal_length));
             printf("%s[%.7g,%.7g]", level ? "," : "", (double)(LEVEL_VALUES[level] / normal_length),
                    (double)planef_distance(plane, point));
         }
@@ -317,13 +315,13 @@ main(int argc, char** argv) {
     }
     printf("],\"samples\":[");
     const vec3f_t side_up =
-        vec3f_normalize(vec3f_sub(WORLD_UP, vec3f_scale(unit.normal, vec3f_dot(WORLD_UP, unit.normal))));
+        vec3f_normalize(vec3f_sub(vec3f_up(), vec3f_scale(unit.normal, vec3f_dot(vec3f_up(), unit.normal))));
     for (size_t i = 0; i < sizeof DISTANCE_SAMPLES / sizeof DISTANCE_SAMPLES[0]; i++) {
         const vec3f_t point = DISTANCE_SAMPLES[i];
         printf("%s[", i ? "," : "");
         print_vec(point);
         printf(",%.7g,%.7g,%.7g]", (double)planef_distance(raw, point), (double)planef_distance(unit, point),
-               (double)vec3f_dot(vec3f_sub(point, DISTANCE_POINT), side_up));
+               (double)vec3f_dot(vec3f_sub(point, vec3f_unit_z()), side_up));
     }
     printf("]},\"triangle\":{\"points\":[");
     for (size_t i = 0; i < sizeof TRIANGLE / sizeof TRIANGLE[0]; i++) {
@@ -376,7 +374,7 @@ main(int argc, char** argv) {
     const vec3f_t sheet_centre = {-lens_plane.normal.z * LENS_SAMPLE.z, 0, LENS_SAMPLE.z};
     for (size_t space = 0; space < sizeof sheet_spaces / sizeof sheet_spaces[0]; space++) {
         printf("%s[", space ? "," : "");
-        print_sheet(sheet_centre, (vec3f_t){-lens_plane.normal.z, 0, 1}, (vec3f_t){0, 1, 0}, sheet_spaces[space]);
+        print_sheet(sheet_centre, (vec3f_t){-lens_plane.normal.z, 0, 1}, vec3f_unit_y(), sheet_spaces[space]);
         printf("]");
     }
     printf("]");

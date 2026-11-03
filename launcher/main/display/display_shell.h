@@ -36,6 +36,18 @@ void display_orientation_release(display_orientation_t* o);
 #define DISPLAY_PANEL_CLOCK_SETTINGS_SPACE "shell"
 #define DISPLAY_PANEL_CLOCK_SETTINGS_KEY   "panel_hz"
 
+/* The panel clock. Every app starts at the system value, the user's choice
+ * kept across reboots. An app wanting another rate sets it with
+ * gfx_set_panel_clock_hz(); the shell puts the system value back whenever
+ * an app starts or exits, so no app restores it. The setter keeps the
+ * choice across a reboot; unchanged and unsupported rates are ignored. */
+int display_system_panel_clock_hz(void);
+void display_set_system_panel_clock_hz(int hz);
+
+/* Whatever the app that just started or exited did to the panel clock, the
+ * next context begins from the system value. */
+void display_restore_system_state(void);
+
 /* Brings the panel up. False when the graphics cannot start; a development
  * build prints the DMA heap to say why. */
 bool display_start(void);

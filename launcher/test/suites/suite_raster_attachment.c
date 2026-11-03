@@ -437,7 +437,7 @@ test_copies_share_a_hue_and_a_shape_drawn_once_is_grey(void) {
     static const uint8_t red[4][3] = {{255, 0, 0}, {255, 0, 0}, {255, 0, 0}, {255, 0, 0}};
     r3d_lit_mesh_t copy = *r->instance[1].mesh;
     copy.colors = red;
-    mat4f_t shifted = MAT4F_IDENTITY;
+    mat4f_t shifted = mat4f_identity();
     shifted.m[0][MAT3F_AXES] = COPY_SHIFT;
     const r3d_instance_t three[] = {r->instance[0], r->instance[1], {&copy, &shifted, NULL}};
     r->raster.instances = three;
