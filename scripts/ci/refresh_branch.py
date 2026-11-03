@@ -25,6 +25,8 @@ import tempfile
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
 from generated_blocks import apply_tables  # noqa: E402
+sys.path.insert(0, str(ROOT / "launcher/tools"))
+from docs.figure_index import IMAGES, PAGE, THUMBNAILS, WRITE  # noqa: E402
 
 UNCHANGED = 3
 
@@ -74,9 +76,9 @@ def refresh(root, branch, message, tables, images, remote="origin", derive=None)
 
 def figure_index(root, files):
     """Regenerate the figure index when a doc image changed, so its page and thumbnails match."""
-    if any(name.startswith("docs/images/") for name in files):
-        subprocess.run([sys.executable, "launcher/tools/docs/figures_runner.py", "index"], cwd=root, check=True)
-        git("add", "-A", "--", "docs", cwd=root)
+    if any(name.startswith(IMAGES + "/") for name in files):
+        subprocess.run([sys.executable, *WRITE.split()[1:]], cwd=root, check=True)
+        git("add", "-A", "--", PAGE, THUMBNAILS, cwd=root)
 
 
 def main(argv=None):

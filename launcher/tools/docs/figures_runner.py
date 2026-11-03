@@ -316,11 +316,20 @@ def check(chosen, runs, skipped, results):
     return same, changed
 
 
+def image_name(image):
+    """`image`, a path under docs/images/ with or without that prefix, as producers name it."""
+    return pathlib.Path(image).as_posix().removeprefix(f"{IMAGES.relative_to(ROOT).as_posix()}/")
+
+
+def producer_of(found, image):
+    """The Found that declares `image`, or None."""
+    return next((item for item in found.values() if claims(item.images, image_name(image))), None)
+
+
 def which(found, images):
     status = 0
     for image in images:
-        name = pathlib.Path(image).as_posix().removeprefix("docs/images/")
-        item = next((item for item in found.values() if claims(item.images, name)), None)
+        item, name = producer_of(found, image), image_name(image)
         if item is None:
             print(f"{name}: no producer declares it")
             status = 1
@@ -389,9 +398,7 @@ def main(argv=None):
             return which(found, args.images)
         if args.command == "index":
             from figure_index import index
-            differences = index(lambda image: next((item.name for item in found.values()
-                                                    if claims(item.images, image.removeprefix("docs/images/"))), None),
-                                args.check)
+            differences = index(lambda image: (item := producer_of(found, image)) and item.name, args.check)
             if differences:
                 print("\n".join(differences))
             return int(bool(differences) and args.check)

@@ -70,7 +70,7 @@ class ProblemsTest(unittest.TestCase):
                                  "docs/Citations.md:2: document names sand"])
 
     def test_the_figure_index_block_may_name_an_app_and_its_prose_may_not(self):
-        index, block = check_comment_layers.FIGURE_INDEX, check_comment_layers.FIGURE_BLOCK
+        index, block = "docs/tools/Figures.md", check_comment_layers.FIGURE_BLOCK
         found = self.problems({index: f"# Figures\n\nSand prose.\n<!-- generated: {block} sha256={'0' * 64} -->\n"
                                       f"| ![](../images/sand-menu.png) | [sand/README](../sand/README.md) |\n"
                                       f"<!-- /generated: {block} -->\n"})

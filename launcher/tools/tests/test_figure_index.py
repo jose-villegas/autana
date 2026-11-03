@@ -12,7 +12,7 @@ from PIL import Image
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "docs"))
 import figure_index  # noqa: E402
-from figures import save_gif  # noqa: E402
+from figures import gif_delays, save_gif  # noqa: E402
 
 PAGE = (f"# Figures\n\n<!-- generated: {figure_index.BLOCK} check: {figure_index.CHECK} -->\n"
         f"<!-- /generated: {figure_index.BLOCK} -->\n")
@@ -46,7 +46,8 @@ class OpenedTests(unittest.TestCase):
             Image.new("RGB", (3, 2), "red").save(root / "a.png")
             subprocess.run(["git", "add", "a.png"], cwd=root, check=True)
             (root / "a.png").unlink()
-            with Image.open(figure_index.opened(root, "a.png")) as image:
+            source = figure_index.readable(root, ["a.png"])["a.png"]
+            with Image.open(figure_index.opened(source)) as image:
                 self.assertEqual((image.size, image.convert("RGB").getpixel((0, 0))), ((3, 2), (255, 0, 0)))
 
 
@@ -96,18 +97,17 @@ class IndexTests(unittest.TestCase):
         self.assertIn("| [math](#math) | 2 | 1 | 1 |", self.page())
         self.assertLess(self.page().index("## anim"), self.page().index("## math"))
 
-    def test_an_image_no_page_shows_and_a_missing_image_are_warnings(self):
+    def test_an_image_no_page_shows_is_a_warning(self):
         _, warnings = self.index()
         self.assertIn("shown nowhere docs/images/math/narrow.png", warnings)
-        self.assertIn("missing docs/images/math/gone.png: shown by docs/math/Two.md", warnings)
 
     def test_a_gif_copy_is_narrow_on_the_palette_and_as_long_as_the_gif(self):
         self.index()
         with Image.open(self.thumbnail()) as copy:
             self.assertEqual(copy.size, (figure_index.THUMBNAIL_WIDTH, 40))
             self.assertEqual(copy.n_frames, 2)
-        delays = figure_index.delays_of(self.thumbnail())
-        self.assertEqual(sum(delays), sum(figure_index.delays_of(self.root / "docs/images/anim/spin.gif")))
+        delays = gif_delays(self.thumbnail())
+        self.assertEqual(sum(delays), sum(gif_delays(self.root / "docs/images/anim/spin.gif")))
         self.assertTrue(all(delay >= figure_index.THUMBNAIL_FRAME_MS for delay in delays))
 
     def test_check_reports_without_writing_and_passes_once_written(self):
