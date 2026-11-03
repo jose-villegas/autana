@@ -145,11 +145,9 @@ host = "Linux x86_64"
 output = "sponza.atrium_fitted.bundle"
 source = "launcher/demo/sponza/sponza.scene.toml"
 key = "fa1ba1d48157a7108b45e92f5d1b5dee13eac8df44d5c9faa443232d1805c093"
-sha256 = "f872f07c04521202a6734eaae3f18b2c1a731ce0a2d0edfd63dd5e26b2ccbff3"
-size = 141321
-run = 41612821365
-host = "Linux x86_64"
-gpu = "NVIDIA GeForce RTX 2060"
+sha256 = "729fbf708aa73858776580b0cc3304f6d4a39e9ddc1205ecb510ade5be410f41"
+size = 141401
+seeded = true
 
 [[bake]]
 output = "sponza.atrium_fitted.start.bundle"
@@ -164,11 +162,9 @@ host = "Linux x86_64"
 output = "sponza.atrium_fitted_full.bundle"
 source = "launcher/demo/sponza/sponza.scene.toml"
 key = "56303f4a3a89a94e1274831b428ae47bc69a64fa716e7372b797d1504a537a08"
-sha256 = "04c983aadc0f10324fbbb8e1ac2c7fae25fd66b9c3e20cf37a3762f8a4771d39"
-size = 268103
-run = 41612821365
-host = "Linux x86_64"
-gpu = "NVIDIA GeForce RTX 2060"
+sha256 = "c9636d55ce602b5c35ecdd376efcba153a663fc7fe38e0486eac9884b7721a5d"
+size = 269575
+seeded = true
 
 [[bake]]
 output = "sponza.atrium_fitted_full.start.bundle"
@@ -192,11 +188,9 @@ host = "Linux x86_64"
 output = "sponza.atrium_flat_fitted.bundle"
 source = "launcher/demo/sponza/sponza.scene.toml"
 key = "45174ced5535331778987b6a2e309368f1b57d4d1ea54bba5f1a24a67aa404ad"
-sha256 = "08979c320c4253ee2029413b4d1bd91fff52cf64a4787304dfe3d99cea2055ee"
-size = 223950
-run = 41612821365
-host = "Linux x86_64"
-gpu = "NVIDIA GeForce RTX 2060"
+sha256 = "7248d6f7e328541164a59cca22c08150394af01fb08ff99041b1aebcb0d1ff7b"
+size = 224398
+seeded = true
 
 [[bake]]
 output = "sponza.atrium_flat_fitted.start.bundle"
