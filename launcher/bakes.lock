@@ -238,36 +238,36 @@ host = "Linux x86_64"
 # and sampler code. bake.py lock writes them; bake.py check samples them again.
 
 [[poses]]
-key = "19d9d784b5b2d27ca6ab3e86a736432d98fb89c10853cca98317fae21fb1ce5b"
-poses = "4e6038b04307b2374f3c90ae507e576d2cfd82d7508b742ba134ebfe01ceb18d"
-count = 133
+key = "175bcbe82f1a2bb56fdf4a5a5bf356821041136725c9241e8fba13b35bddd5f4"
+poses = "9ead88ddf14f89d2451a12a9e69686f4eeb66075f3ed042f999511be8e6e0998"
+count = 265
 clip = "launcher/demo/bistro/street.anim.toml"
 host = "Windows AMD64"
 
 [[poses]]
-key = "30fe5bccaaad4a433fd9f12cdc3d2ec5dd51ff0abef77afebe2d5cceb451d034"
-poses = "bc608ce3264275d892202b270ad05e255c7878431cbea66d907ba0e927ecf8da"
-count = 37
-clip = "launcher/demo/sponza/flythrough.anim.toml"
-host = "Windows AMD64"
-
-[[poses]]
-key = "3375b435132084c4462cef1133550d6c3d7d1a854b77b12dc2bfa8e5296a3dc1"
-poses = "7f5a1e528b63cc2ebea4ea3c6795518dc30bb47befc15345be563a2d9a4ddd10"
-count = 1816
-clip = "launcher/demo/sponza/flythrough.anim.toml"
-host = "Windows AMD64"
-
-[[poses]]
-key = "61df73f9a860c88b96330ce504a64d09efbbe9418f00b14d156038aaf6a5982f"
+key = "8b5f08bc36866045a84ac6716caca37fde31886f09623495640bb84b36ef1ff4"
 poses = "d22bd63bb589a7fcbd9126cc96d9d65ee9bd7f2d66560aec6e9d6b938397755f"
 count = 6605
 clip = "launcher/demo/bistro/street.anim.toml"
 host = "Windows AMD64"
 
 [[poses]]
-key = "92fbe4b67614fa8e3f20e2d01c900d77ed38b8509138247e51d5e0c305ac7104"
-poses = "9ead88ddf14f89d2451a12a9e69686f4eeb66075f3ed042f999511be8e6e0998"
-count = 265
+key = "923ffff7e27159d16def00cea20f55a2565ce9db11ec61eb9879bc588ad8efcc"
+poses = "4e6038b04307b2374f3c90ae507e576d2cfd82d7508b742ba134ebfe01ceb18d"
+count = 133
 clip = "launcher/demo/bistro/street.anim.toml"
+host = "Windows AMD64"
+
+[[poses]]
+key = "934d2128542ae022f960a16478f7f8f0143636845f0d5380f64c202f0fc17849"
+poses = "7f5a1e528b63cc2ebea4ea3c6795518dc30bb47befc15345be563a2d9a4ddd10"
+count = 1816
+clip = "launcher/demo/sponza/flythrough.anim.toml"
+host = "Windows AMD64"
+
+[[poses]]
+key = "a9b3afe27863dae8973b9ac1f7b1ece1971542b871101dca619cbb7d66bed8a3"
+poses = "bc608ce3264275d892202b270ad05e255c7878431cbea66d907ba0e927ecf8da"
+count = 37
+clip = "launcher/demo/sponza/flythrough.anim.toml"
 host = "Windows AMD64"

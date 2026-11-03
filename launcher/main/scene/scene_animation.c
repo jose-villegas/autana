@@ -207,6 +207,7 @@ scene_animator_set_clips(scene_t* scene, scene_entity_t entity, const char* skel
     scene_free_kept(old->storage);
     a.dirty = true;
     scene->animators[entity] = a;
+    scene_stage_add(scene, entity);
     return finish(why, SCENE_OK, ASSET_OK, scene->id);
 }
 
@@ -395,6 +396,19 @@ scene_animation_release(scene_t* scene) {
     scene->skeleton_animator_count = 0;
 }
 
+void
+scene_stage_add(scene_t* scene, scene_entity_t entity) {
+    int at = scene->staged_count;
+    while (at > 0 && scene->staged[at - 1] >= entity) {
+        if (scene->staged[--at] == entity) {
+            return;
+        }
+    }
+    memmove(&scene->staged[at + 1], &scene->staged[at], sizeof *scene->staged * (size_t)(scene->staged_count - at));
+    scene->staged[at] = entity;
+    scene->staged_count++;
+}
+
 static bool
 advance_animator(scene_animator_t* a, uint32_t dt_ms) {
     const uint32_t current = a->layer.current.playhead.t_ms;
@@ -409,7 +423,8 @@ advance_animator(scene_animator_t* a, uint32_t dt_ms) {
 
 void
 scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms) {
-    for (int e = first; e < first + count; e++) {
+    for (int i = first; i < first + count; i++) {
+        const scene_entity_t e = scene->staged[i];
         scene_animator_t* a = &scene->animators[e];
         a->posed = false;
         if (a->storage == NULL || a->root != ANIM_ROOT_SKELETON || a->layer.current.clip == ANIM_LAYER_CLIP_NONE
@@ -453,7 +468,8 @@ _Static_assert(sizeof LIGHT_KERNELS / sizeof LIGHT_KERNELS[0] == SCENE_SKIN_LIGH
 void
 scene_skin_range(scene_t* scene, int first, int count) {
     int offset = 0;
-    for (int e = 0; e < scene->asset.entity_count; e++) {
+    for (int i = 0; i < scene->staged_count; i++) {
+        const scene_entity_t e = scene->staged[i];
         scene_skinned_renderer_t* skin = &scene->skinned_renderers[e];
         if (skin->internal_storage == NULL || !scene->animators[e].posed) {
             continue;
@@ -493,17 +509,17 @@ animate_entities(scene_t* scene, uint32_t dt_ms) {
         return;
     }
     animate_work_t w = {scene, dt_ms};
-    (void)job_run_range(&scene->animate_share, animate_slice, &w, scene->asset.entity_count);
+    (void)job_run_range(&scene->animate_share, animate_slice, &w, scene->staged_count);
 }
 
 static bool
 skin_lights_changed(const scene_t* scene) {
-    const int entities = scene->asset.entity_count;
     if (scene->light_count == 0) {
         return false;
     }
     bool lights_dirty = false;
-    for (int e = 0; e < entities; e++) {
+    for (int i = 0; i < scene->staged_count; i++) {
+        const scene_entity_t e = scene->staged[i];
         lights_dirty |= scene->lights[e].kind != SCENE_LIGHT_NONE && (scene->flags[e] & SCENE_FLAG_SKIN_DIRTY);
     }
     return lights_dirty;
@@ -513,7 +529,8 @@ static int
 skin_stage_prepare(scene_t* scene, uint32_t dt_ms) {
     const int entities = scene->asset.entity_count;
     int clusters = 0;
-    for (int e = 0; e < entities; e++) {
+    for (int i = 0; i < scene->staged_count; i++) {
+        const scene_entity_t e = scene->staged[i];
         scene_animator_t* animator = &scene->animators[e];
         if (animator->storage != NULL && animator->root == ANIM_ROOT_SCENE
             && animator->layer.current.clip != ANIM_LAYER_CLIP_NONE && (scene->flags[e] & SCENE_FLAG_ACTIVE)) {
@@ -522,7 +539,8 @@ skin_stage_prepare(scene_t* scene, uint32_t dt_ms) {
     }
     const bool lights_dirty = skin_lights_changed(scene);
     scene->light_table_dirty |= lights_dirty;
-    for (int e = 0; e < entities; e++) {
+    for (int i = 0; i < scene->staged_count; i++) {
+        const scene_entity_t e = scene->staged[i];
         scene_animator_t* animator = &scene->animators[e];
         scene_skinned_renderer_t* skin = &scene->skinned_renderers[e];
         if (!(scene->flags[e] & SCENE_FLAG_ACTIVE)) {
@@ -532,7 +550,7 @@ skin_stage_prepare(scene_t* scene, uint32_t dt_ms) {
             animator->posed |= lights_dirty || (scene->flags[e] & SCENE_FLAG_SKIN_DIRTY);
         }
         if (skin->internal_storage != NULL && animator->posed) {
-            scene_skin_light_prepare(scene, (scene_entity_t)e);
+            scene_skin_light_prepare(scene, e);
             clusters += skin->bind.cluster_count;
         }
     }
@@ -549,7 +567,6 @@ scene_animation_step(scene_t* scene, uint32_t dt_ms) {
     }
     animate_entities(scene, dt_ms);
     const int clusters = skin_stage_prepare(scene, dt_ms);
-    const int entities = scene->asset.entity_count;
     if (clusters == 0) {
         return;
     }
@@ -557,10 +574,11 @@ scene_animation_step(scene_t* scene, uint32_t dt_ms) {
         scene_lights_prepare(scene);
     }
     (void)job_run_range(&scene->skin_share, skin_slice, scene, clusters);
-    for (int e = 0; e < entities; e++) {
+    for (int i = 0; i < scene->staged_count; i++) {
+        const scene_entity_t e = scene->staged[i];
         if (scene->skinned_renderers[e].internal_storage != NULL && scene->animators[e].posed) {
             r3d_skin_refit_nodes(&scene->skinned_renderers[e].output);
-            scene_renderer_bound(&scene->renderers[scene_renderer_index(scene, (scene_entity_t)e)]);
+            scene_renderer_bound(&scene->renderers[scene_renderer_index(scene, e)]);
         }
     }
 }

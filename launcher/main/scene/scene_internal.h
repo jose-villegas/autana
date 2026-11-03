@@ -195,6 +195,13 @@ struct scene {
     int world_count;
     mat4f_t* worlds;                /* one per entity with children, in entity order */
     scene_entity_t* world_entities; /* the entity each of `worlds` belongs to */
+    /* The per-frame loops walk these, not every entity or renderer: a scene
+     * with many disabled copies has few of either. */
+    scene_entity_t* staged; /* entities with an animator, a skin or a light, in entity order */
+    int staged_count;
+    uint16_t* active_renderers; /* renderers whose entity is ACTIVE, in renderer order */
+    int active_renderer_count;
+    bool active_renderers_stale; /* an ACTIVE bit flipped since the list was built */
 };
 
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
@@ -225,8 +232,9 @@ int scene_camera_index(const scene_t* scene, name_hash_t camera);
 void scene_draw_forget(const scene_t* scene);
 void scene_draw_release(void);
 
-/* Rebuilds the world of every parent and renderer whose own transform or an
- * ancestor's changed, then clears DIRTY and MOVED. */
+/* Rebuilds the world of every parent and active renderer whose own transform
+ * or an ancestor's changed, then clears DIRTY and MOVED. An inactive
+ * renderer's world waits: turning ACTIVE marks it CHANGED. */
 void scene_resolve(scene_t* scene);
 
 /* Numbers the entities with children and allocates their worlds; false when it could not. */
@@ -253,7 +261,11 @@ void scene_checkpoint_capture(checkpoint_t* saved, scene_t* scene);
 void scene_animation_checkpoint_capture(checkpoint_t* saved, scene_t* scene);
 #endif
 void scene_animation_release(scene_t* scene);
+/* An animator or light now exists on `entity`: adds it to `staged` once. A
+ * skin needs its entity's skeleton animator, so its entity is staged already. */
+void scene_stage_add(scene_t* scene, scene_entity_t entity);
 void scene_animation_step(scene_t* scene, uint32_t dt_ms);
+/* Animates staged[first, first + count). */
 void scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms);
 bool scene_skin_light_set_mode(scene_t* scene, scene_entity_t entity, scene_skin_light_mode_t mode);
 bool scene_skin_light_apply_mode(scene_t* scene, scene_entity_t entity, scene_skinned_renderer_t* skin,
