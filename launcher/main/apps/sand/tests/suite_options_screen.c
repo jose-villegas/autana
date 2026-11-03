@@ -154,12 +154,12 @@ assert_strings_fit(bool landscape) {
 }
 
 static void
-test_every_string_fits_its_rect_portrait(void) {
+test_every_options_string_fits_its_rect_portrait(void) {
     assert_strings_fit(false);
 }
 
 static void
-test_every_string_fits_its_rect_landscape(void) {
+test_every_options_string_fits_its_rect_landscape(void) {
     assert_strings_fit(true);
 }
 
@@ -240,8 +240,8 @@ tap_fixture(sand_colour_mode_t colour, bool landscape) {
     committed = (sand_options_t){.quality = 2, .color = colour, .dither = 2};
     sand_menu_init(&menu);
     sand_menu_title_clicked(&menu, SAND_TITLE_OPTIONS, committed);
-    options_frame(false, false, false, (vec2i_t){0, 0});
-    options_frame(false, false, false, (vec2i_t){0, 0});
+    options_frame(false, false, false, vec2i_zero());
+    options_frame(false, false, false, vec2i_zero());
 }
 
 static void
@@ -395,7 +395,7 @@ static void
 test_the_draft_colour_tile_is_selected_even_when_uncommitted(void) {
     tap_fixture(SAND_COLOUR_256, false);
     menu.draft.color = SAND_COLOUR_FULL;
-    options_frame(false, false, false, (vec2i_t){0, 0});
+    options_frame(false, false, false, vec2i_zero());
 
     const options_screen_layout_t lay = layout_for(false);
     for (int i = 0; i < OPTIONS_SCREEN_TILE_COUNT; i++) {
@@ -513,8 +513,8 @@ run_options_screen_suite(void) {
     RUN_TEST(test_the_whole_screen_fits_landscape);
     RUN_TEST(test_the_dither_list_overlays_the_canvas_portrait);
     RUN_TEST(test_the_dither_list_overlays_the_canvas_landscape);
-    RUN_TEST(test_every_string_fits_its_rect_portrait);
-    RUN_TEST(test_every_string_fits_its_rect_landscape);
+    RUN_TEST(test_every_options_string_fits_its_rect_portrait);
+    RUN_TEST(test_every_options_string_fits_its_rect_landscape);
     RUN_TEST(test_dragging_the_slider_right_means_finer_quality);
     RUN_TEST(test_apply_counts_what_is_pending);
     RUN_TEST(test_tiles_run_sixteen_then_256_then_full);

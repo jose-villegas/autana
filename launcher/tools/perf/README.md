@@ -106,7 +106,7 @@ flowchart TD
     Fail -->|No| Decide[Decide rows]
     Decide --> Active{Inconclusive rows with data on both sides?}
     Active -->|No| Summary[Write summary]
-    Active -->|Yes| Cap{At seed cap?}
+    Active -->|Yes| Cap{At seed cap, or next look past --max-minutes?}
     Cap -->|Yes| Summary
     Cap -->|No| Estimate[Estimate K and bounded R from variance and costs]
     Estimate --> Next[First planned look at or above K and past this one, else the cap]
@@ -115,16 +115,19 @@ flowchart TD
     Fail -->|Yes| Incomplete[Write incomplete summary]
 ```
 
-Planned looks double towards `--max-seeds` and end at the cap. Nominal alpha
-is divided across planned looks, then split equally between Welch difference<sup>[[37]](../../../docs/Citations.md#37)</sup>
-and TOST equivalence<sup>[[38]](../../../docs/Citations.md#38)</sup> families. Each family uses Holm adjustment<sup>[[39]](../../../docs/Citations.md#39)</sup> across rows,
+Planned looks double towards `--max-seeds` and end at the cap. Before each
+look after the first, the job's own seed wall times estimate it; if it
+would pass the `--max-minutes` measurement budget, the comparison stops and
+names the unresolved rows. The restore flash runs after the budget. Nominal alpha
+is divided across planned looks, then split equally between Welch difference<sup>[[37]](../../../docs/Citations.md#welch-1947)</sup>
+and TOST equivalence<sup>[[38]](../../../docs/Citations.md#schuirmann-1987)</sup> families. Each family uses Holm adjustment<sup>[[39]](../../../docs/Citations.md#holm-1979)</sup> across rows,
 including rows decided earlier. Permutation is an AND cross-check at nominal
-alpha. Its Monte Carlo resample count keeps the add-one floor<sup>[[40]](../../../docs/Citations.md#40)</sup> well below that
+alpha. Its Monte Carlo resample count keeps the add-one floor<sup>[[40]](../../../docs/Citations.md#phipson-2010)</sup> well below that
 alpha; settings exceeding the supported resample budget are refused before
 measurement.
 
 Measured build/flash/boot and run costs, sigma_run and sigma_flash feed
-Kalibera-Jones<sup>[[41]](../../../docs/Citations.md#41)</sup> R and required K. K uses the per-look Holm share and one-sided
+Kalibera-Jones<sup>[[41]](../../../docs/Citations.md#kalibera-2013)</sup> R and required K. K uses the per-look Holm share and one-sided
 TOST alpha. R is clamped between 1 and `MAX_RUNS` (`perf_compare.py`), also
 when the estimated layout variance is zero; the summary states the clamp.
 A later flash uses the largest R recommendation among active rows.
@@ -257,6 +260,7 @@ sequenceDiagram
     participant GPU as GPU stage
     participant Heavy as Heavy lock
     participant Plan as Board plan
+    participant Night as Board night
     participant Lanes as Board lanes
     Marker->>Wait: Compute the marker in NIGHT_ZONE
     Wait->>Wait: Sleep until marker within each leg budget
@@ -267,13 +271,30 @@ sequenceDiagram
     GPU->>Heavy: Release heavy
     Wait->>Plan: Start work with a fresh token
     Plan->>Plan: Wait for two GPU idle polls
-    Plan->>Lanes: Run lanes to completion
-    Lanes-->>Plan: Lane outcomes and timestamps
-    Plan->>Plan: Record timeline and host free time
+    Plan->>Night: Deal the night queue to the free boards, maybe none, and record it
+    Night->>Lanes: Start the planned lanes
+    loop Every minute until BOARD_LAST_START
+        Night->>Lanes: Start a lane on each newly free board, on any host
+    end
+    Lanes-->>Night: Lane outcomes and timestamps
+    Night->>Night: Record timeline and host free time
 ```
 
-`vars.NIGHT_START` accepts HH:MM in 00:00–05:59.
-An empty value uses `NIGHT_START` in `scripts/lib/local_schedule.py`.
+GPU work starts at `vars.NIGHT_START`; the board night starts at `vars.BOARD_START`, later.
+It starts no new lane after `vars.BOARD_LAST_START` on the marker's date.
+A lane is given only the new steps that fit before `vars.BOARD_END` on that date.
+Each accepts HH:MM up to the latest hour `LOCAL_TIMES` in `scripts/lib/local_schedule.py` gives it; an empty value
+uses its default there. Started lanes have no end time: they run to
+completion under their hang guards, and day board jobs queue on the lock behind them.
+
+| Lane sizing | Rule |
+|---|---|
+| Step time | Median heavy queue wait, build and measure seconds of the measured steps in the board's last night manifest; `FIRST_STEP_SECONDS` without any |
+| Room | From the lane's start to `BOARD_END`, less the anchor step and, on the self-test board, `SELFTEST_ALLOWANCE_SECONDS` |
+| Steps | The night queue's next steps the room fits; `--max-steps` bounds them further |
+| No room | The board gets no lane and stays free |
+| The rest | Stays in the queue for joiners, then the next night |
+| Override | A run marked after `BOARD_END` is not sized |
 
 The zone is the NIGHT_ZONE repository variable (IANA name; UTC when unset).
 The marker is the first local start at or after the trigger; override starts now.
@@ -295,10 +316,40 @@ The plan waits for two polls without queued, waiting or running jobs carrying
 This check requires a host GPU runner marker fresh within `GPU_HOST_MARKER_DAYS`.
 Otherwise it reports “GPU runner not on this host” and continues.
 
-Initial boards split first-parent commits on main by position modulo their count.
-Joiners use independent `0/1` series while any lane runs.
-Boards repeat their last measured anchor and resume after `last_attempted`;
-fresh boards start at their newest commit.
+The repository variable `REMOTE_LANE_COMMAND` names a command on the nightly's machine
+that reaches other machines' boards; `REMOTE_LANE_ENV` in `nightly/scoped_chain.py` states its contract.
+Unset, the night uses this machine's boards only.
+
+A remote board's lane builds and runs on its own host. Its folder under `--out` goes there
+and comes back with the lane's data and captures; the captures sync under that host's name.
+`scoped_chain.py boards` lists every board the night reaches, which board health checks;
+a board on a host that does not answer is reported unchecked, not missing.
+A hung or cancelled remote lane is asked to stop first, so its host frees the board.
+
+The plan takes the boards whose lock is free; a held, queued or gated board never gets a
+lane that queues behind a day job.
+
+Until `BOARD_LAST_START` the night asks every host for its boards each minute and starts a
+lane on any free board without one. A board freed, plugged in or ungated mid-night still runs;
+a host that does not answer is asked again next minute. After the cut-off nothing new starts.
+
+A plan with named `--boards` is the whole night: it starts no lane after its plan.
+
+One queue of first-parent commits on main, oldest first, feeds the night's lanes.
+Planned lanes, then joiners, each take the next steps off its head, so no commit is dealt twice in a night.
+Each lane first repeats its own board's last measured anchor.
+
+| Queue | Rule |
+|---|---|
+| Owed | The steps the last night record (`scoped/nights/` in the data) dealt or left, that no night manifest since has attempted |
+| New | Every commit after the tip that night planned at |
+| First night ever | The tip only |
+| `--from` | History from that commit on; the night keeps no record |
+| Attempted | Measured, skipped as the same image, or failed to build; a failed capture is owed again |
+| Unsized override | Each board takes an even run of the queue |
+
+A commit may be measured twice; none is dropped.
+`run --from/--max-steps` reruns part of a lane's own steps.
 
 Builds take the heavy lock at below-normal priority. Step `wait_seconds`
 records heavy queue time separately from `build_seconds`.
@@ -319,8 +370,9 @@ A busy heavy lock stops the lane with `not_run_busy` and preserves its cursors.
 Build failures advance `last_attempted`; measured steps advance both cursors
 and `last_image_hash`. Capture failures keep the cursors.
 
-The first plugged board runs `scripts/ci/board-steps.sh` before its chain
-inside the same board hold. A night with no board at plan time fails.
+The first board plugged into this machine runs `scripts/ci/board-steps.sh` before its chain
+inside the same board hold. A night that never lists a board fails; one whose boards all
+stay busy until the cut-off warns.
 Partial manifests are saved after every step and after cleanup.
 Raw captures upload even when a lane fails.
 
@@ -405,6 +457,14 @@ worst FPS is 1/worst frame time. `quarter=` identifies orientation.
 The warm-up runs at dt 0 and is excluded from statistics. Its wall time
 supplies the first clip advance. Each later frame advances by the previous
 frame's wall time.
+
+A traced playback (`frame_profile_play` given a trace) also keeps each
+frame's path time. `frame_trace:` lines list every frame and `frame_peak:`
+lines rank the frame peaks, each with its prominence. The capture parser fails
+a row whose traced frames differ from its `frames=` count. On the board, these
+lines go through the console's waiting writer, because a burst through stdio
+loses whole lines. `frame_replay:` lines hold the cull view's counts
+and a frame-cost report at one replayed pose.
 
 The capture parser compares mean microseconds for each scenario and quarter.
 The fields are defined in `launcher/test/frame_profile.h`.

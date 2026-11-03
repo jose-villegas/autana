@@ -2,6 +2,7 @@
 #include "build/build_variant.h"
 #include "core/memory.h"
 #include "core/timing.h"
+#include "gfx/present/expand/gfx_quarter_select.h"
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_internal.h"
 #include "gfx/present/gfx_present_guard.h"
@@ -25,7 +26,8 @@
 #include "image/pixel/rgb565.h"
 #endif
 
-_Static_assert(GFX_WIDTH == BSP_LCD_H_RES && GFX_HEIGHT == BSP_LCD_V_RES, "gfx.h's panel size must be the board's");
+_Static_assert(GFX_WIDTH == BOARD_PANEL_WIDTH && GFX_HEIGHT == BOARD_PANEL_HEIGHT,
+               "gfx.h's panel size must be the board's");
 #endif
 
 #ifdef ESP_PLATFORM
@@ -34,7 +36,7 @@ _Static_assert(GFX_WIDTH == BSP_LCD_H_RES && GFX_HEIGHT == BSP_LCD_V_RES, "gfx.h
  * places it: the compiler's clones of a function inherit the attribute, and
  * a mapping entry names only the original. Development overlays and send
  * auditing make dev and diag larger.
- * IRAM budget: release 2422 B, dev 3243 B, diag 3243 B */
+ * IRAM budget: release 2426 B, dev 3242 B, diag 3242 B */
 #define GFX_PRESENT_IRAM_ATTR IRAM_ATTR
 static const char* TAG = "gfx";
 #else
@@ -71,7 +73,8 @@ static gfx_color_t send_clear_colour;
 /* The sent frame, filled for its next turn as the back buffer. */
 static void
 fill_sent_frame(void) {
-    gfx_target_fill((gfx_target_t){present_fb, 0, GFX_HEIGHT, GFX_WIDTH}, send_clear_colour);
+    const GFX_TARGET_STORAGE(1) frame = GFX_TARGET_COLOR_INIT(present_fb, GFX_WIDTH, GFX_HEIGHT);
+    gfx_target_fill(&frame.target, send_clear_colour);
 }
 #ifdef ESP_PLATFORM
 static bool present_pending;
@@ -317,7 +320,8 @@ present_alloc_send_buffers(void) {
 
     const size_t strip_bytes = (size_t)GFX_WIDTH * STRIP_HEIGHT * sizeof(gfx_color_t);
     for (int i = 0; i < STRIP_BOUNCE_SLOTS; i++) {
-        strip_bounce[i] = memory_alloc(strip_bytes, MEMORY_DMA);
+        /* At the expand's vector alignment, so it writes rows in place; never freed. */
+        strip_bounce[i] = memory_alloc_aligned(strip_bytes, GFX_QUARTER_ALIGN, MEMORY_DMA).at;
         if (strip_bounce[i] == NULL) {
             ESP_LOGE(TAG, "Could not allocate %u byte strip buffer", (unsigned)strip_bytes);
             return false;
@@ -361,7 +365,7 @@ mark_all_dirty_now(void) {
 }
 
 /* gfx_dirty.h header-only for inlining mark_band(); thin wrappers for gfx.h
- * API. */
+ * and gfx_present.h API. */
 void
 gfx_mark_all_dirty(void) {
     GFX_PRESENT_GUARD();
@@ -891,9 +895,7 @@ drain_present(void) {
 static __attribute__((noinline)) void
 begin_double_frame(void) {
     drain_present();
-    gfx_color_t* drawn = fb;
-    fb = present_fb;
-    present_fb = drawn;
+    gfx_swap_framebuffers();
     /* The buffer coming back was filled by its own send, if that one cleared. */
     fb_filled = send_clears;
     fb_fill_colour = send_clear_colour;
@@ -1021,3 +1023,47 @@ gfx_mark_rows_dirty(int y0, int y1) {
     /* mark_band() trusts clipped rows; a public caller's need not be. */
     mark_band(mathi_max(y0, 0), mathi_min(y1, GFX_HEIGHT));
 }
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+void
+gfx_checkpoint_capture(checkpoint_t* saved) {
+    gfx_present_drain();
+    CHECKPOINT_CAPTURE(saved, panel_clock_requested_hz);
+    const checkpoint_field_t fields[] = {
+        {(void*)&cell_dirty, sizeof cell_dirty},
+        {(void*)&all_dirty, sizeof all_dirty},
+        {(void*)&cell_x0, sizeof cell_x0},
+        {(void*)&cell_x1, sizeof cell_x1},
+        {(void*)&cell_y0, sizeof cell_y0},
+        {(void*)&cell_y1, sizeof cell_y1},
+        {(void*)&leaf_dirty, sizeof leaf_dirty},
+        {(void*)&gfx_band_force_all_dirty, sizeof gfx_band_force_all_dirty},
+        {(void*)&gfx_full_redraw_latched, sizeof gfx_full_redraw_latched},
+        {(void*)&present_async_on, sizeof present_async_on},
+        {(void*)&clear_on_send, sizeof clear_on_send},
+        {(void*)&clear_on_send_colour, sizeof clear_on_send_colour},
+        {(void*)&send_clears, sizeof send_clears},
+        {(void*)&send_clear_colour, sizeof send_clear_colour},
+        {(void*)&interlace_on, sizeof interlace_on},
+#ifdef ESP_PLATFORM
+        {(void*)&frame_parity, sizeof frame_parity},
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        {(void*)&overlay_bordered_rows, sizeof overlay_bordered_rows},
+#endif
+#endif
+        {(void*)&dev_present_send_us, sizeof dev_present_send_us},
+        {(void*)&dev_present_wait_us, sizeof dev_present_wait_us},
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        {(void*)&debug_overlay_on, sizeof debug_overlay_on},
+        {(void*)&leaf_overlay_on, sizeof leaf_overlay_on},
+        {(void*)&dev_strips_sent_full, sizeof dev_strips_sent_full},
+        {(void*)&dev_strips_sent_gathered, sizeof dev_strips_sent_gathered},
+        {(void*)&dev_strips_sent_partial, sizeof dev_strips_sent_partial},
+        {(void*)&dev_bytes_sent, sizeof dev_bytes_sent},
+#endif
+    };
+    checkpoint_capture_fields(saved, fields, sizeof fields / sizeof fields[0]);
+    gfx_mode_checkpoint_capture(saved);
+    gfx_expand_checkpoint_capture(saved);
+}
+#endif

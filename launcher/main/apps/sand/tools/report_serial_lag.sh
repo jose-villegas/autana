@@ -54,7 +54,7 @@ OUT_BIN="$BUILD_DIR/serial_lag"
 # palette.c and row_runs.c
 # are draw-path concerns the grid state does not depend on.
 # shellcheck disable=SC2086
-"$CC_BIN" $CFLAGS -I "$MAIN_DIR" $(package_includes "$LAUNCHER_DIR") -I "$SAND_DIR" \
+"$CC_BIN" $CFLAGS $(firmware_includes "$LAUNCHER_DIR") -I "$SAND_DIR" \
     "$SCRIPT_DIR/serial_lag.c" \
     "$MAIN_DIR/core/job.c" \
     "$SAND_DIR/sand.c" \

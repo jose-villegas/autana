@@ -6,6 +6,19 @@
 
 #include "math/scalar/units.h"
 
+#ifdef ESP_PLATFORM
+#include "esp_attr.h"
+
+/* Core 0's renderer competes for the flash cache; the mixer and decoder hot
+ * path avoid those fetch stalls in IRAM. ADPCM tables occupy 1440 B of DRAM.
+ * IRAM budget: 2048 B */
+#define AUDIO_IRAM_ATTR IRAM_ATTR
+#define AUDIO_DRAM_ATTR DRAM_ATTR
+#else
+#define AUDIO_IRAM_ATTR
+#define AUDIO_DRAM_ATTR
+#endif
+
 #define AUDIO_OUT_SAMPLE_RATE_HZ 22050
 #define AUDIO_OUT_NYQUIST_HZ     (AUDIO_OUT_SAMPLE_RATE_HZ / 2)
 #define AUDIO_OUT_MAX_MS         60000u

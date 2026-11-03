@@ -85,14 +85,15 @@ active_camera(void) {
     return &active.scene->cameras[active.camera];
 }
 
-/* The enabled renderers with something to draw, as the raster draws them. */
+/* The active renderers with something to draw, as the raster draws them;
+ * scene_resolve() has listed them. */
 static int
 fill_instances(scene_t* scene) {
     int count = 0;
-    for (int i = 0; i < scene->renderer_count; i++) {
-        const scene_renderer_t* r = &scene->renderers[i];
-        if ((scene->flags[r->entity] & SCENE_FLAG_ACTIVE) != 0 && r->mesh.node_count > 0) {
-            scene->instances[count++] = (r3d_instance_t){&r->mesh, r->placed ? &r->model : NULL};
+    for (int i = 0; i < scene->active_renderer_count; i++) {
+        const scene_renderer_t* r = &scene->renderers[scene->active_renderers[i]];
+        if (r->mesh.node_count > 0) {
+            scene->instances[count++] = (r3d_instance_t){&r->mesh, r->placed ? &r->model : NULL, &r->world_bounds};
         }
     }
     return count;
@@ -143,9 +144,25 @@ scene_compose(uint32_t dt_ms, int quarter, const scene_target_t* target) {
         scene_render(dt_ms, quarter, target->width, target->height);
     }
     if (rendered && target->pixels != NULL) {
-        expanded = render_context_compose(render_context_main(), target->pixels, target->half_pixels);
+        expanded =
+            render_context_compose(render_context_main(), target->pixels, target->half_pixels, target->half_seams);
     }
     rendered = false;
     stepped = false;
     return expanded;
 }
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+void
+scene_draw_checkpoint_capture(checkpoint_t* saved) {
+    CHECKPOINT_CAPTURE(saved, active);
+    CHECKPOINT_CAPTURE(saved, paused);
+    CHECKPOINT_CAPTURE(saved, expanded);
+    CHECKPOINT_CAPTURE(saved, stepped);
+    CHECKPOINT_CAPTURE(saved, rendered);
+    CHECKPOINT_CAPTURE(saved, refused);
+    for (int i = 0; i < scene_loaded_count(); i++) {
+        scene_checkpoint_capture(saved, scene_loaded_at(i));
+    }
+}
+#endif

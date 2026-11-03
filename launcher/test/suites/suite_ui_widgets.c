@@ -126,14 +126,21 @@ slider_frame(const input_t* in, int* value) {
     return *value;
 }
 
+/* A pointer frame at the button's centre. */
+static input_t
+on_button(bool down, bool pressed, bool released) {
+    return (input_t){.down = down,
+                     .pressed = pressed,
+                     .released = released,
+                     .point = {BUTTON.x + BUTTON.w / 2, BUTTON.y + BUTTON.h / 2}};
+}
+
 static bool
 tap(const widget_t* w) {
-    const int x = BUTTON.x + BUTTON.w / 2;
-    const int y = BUTTON.y + BUTTON.h / 2;
     const input_t idle = {0};
-    const input_t press = {.down = true, .pressed = true, .point = {x, y}};
-    const input_t hold = {.down = true, .point = {x, y}};
-    const input_t release = {.released = true, .point = {x, y}};
+    const input_t press = on_button(true, true, false);
+    const input_t hold = on_button(true, false, false);
+    const input_t release = on_button(false, false, true);
 
     widget_frame(w, &idle);
     widget_frame(w, &idle);
@@ -298,7 +305,7 @@ test_text_aligns_to_either_edge_or_the_centre(void) {
 static void
 test_a_list_goes_below_its_dropdown_when_it_fits(void) {
     const mu_Rect anchor = {20, 100, 200, 44};
-    const mu_Rect list = ui_dropdown_list_rect(anchor, 5, 44, 448, 16);
+    const mu_Rect list = ui_dropdown_list_rect(anchor, 5, 44, GFX_HEIGHT, 16);
     TEST_ASSERT_GREATER_THAN_INT(anchor.y + anchor.h - 1, list.y);
     TEST_ASSERT_EQUAL_INT(5 * 44, list.h);
     TEST_ASSERT_EQUAL_INT(anchor.x, list.x);
@@ -308,7 +315,7 @@ test_a_list_goes_below_its_dropdown_when_it_fits(void) {
 static void
 test_a_list_grows_upward_from_a_dropdown_near_the_bottom(void) {
     const mu_Rect anchor = {20, 340, 200, 44};
-    const mu_Rect list = ui_dropdown_list_rect(anchor, 5, 44, 448, 16);
+    const mu_Rect list = ui_dropdown_list_rect(anchor, 5, 44, GFX_HEIGHT, 16);
     TEST_ASSERT_LESS_OR_EQUAL_INT(anchor.y, list.y + list.h);
     TEST_ASSERT_GREATER_OR_EQUAL_INT(16, list.y);
 }
@@ -539,23 +546,22 @@ test_opening_the_list_changes_the_screen_under_it(void) {
     TEST_ASSERT_NOT_EQUAL(closed, canvas_hash("Widgets"));
 }
 
-/* Only the rects inside the chevron's own icon box, not a whole-canvas
- * hash, which the dropdown BUTTON's own press bezel also changes on the
- * very frame a held press lands, for a reason unrelated to the chevron. */
+/* The chevron hash excludes the button's independently changing bezel. */
 static uint64_t
 chevron_hash(void) {
     const mu_Rect box = {DROPDOWN.x + DROPDOWN.w - 40, DROPDOWN.y + 8, 32, 28};
     mu_Command* cmd = NULL;
     uint64_t h = NAME_HASH64_OFFSET_BASIS;
     while (mu_next_command(ui_context(), &cmd)) {
-        if (cmd->type != MU_COMMAND_RECT) {
+        if (cmd->type != UI_COMMAND_IMAGE) {
             continue;
         }
-        const mu_Rect r = cmd->rect.rect;
+        const ui_image_command_t* image = (const ui_image_command_t*)cmd;
+        const mu_Rect r = image->rect;
         if (r.x < box.x || r.y < box.y || r.x + r.w > box.x + box.w || r.y + r.h > box.y + box.h) {
             continue;
         }
-        h = name_hash64_n(h, &cmd->rect, sizeof cmd->rect);
+        h = name_hash64_n(h, cmd, (size_t)cmd->base.size);
     }
     return h;
 }
@@ -577,10 +583,9 @@ test_the_chevron_lags_the_lists_own_open_flag_by_one_frame(void) {
     const input_t press = {.down = true, .pressed = true, .point = {x, y}};
     const input_t hold = {.down = true, .point = {x, y}};
 
-    dropdown_frame(&press, 0);
     bool checked = false;
     for (int i = 0; i < 8 && !checked; i++) {
-        dropdown_frame(&hold, 0);
+        dropdown_frame(i == 0 ? &press : &hold, 0);
         if (list_open()) {
             checked = true;
             TEST_ASSERT_EQUAL_MESSAGE(closed, chevron_hash(),
@@ -1085,10 +1090,10 @@ named_screen_frame(const char* name, const input_t* in) {
     return hit;
 }
 
-/* The latency the shell exists to keep: the control answers on the second
- * frame of contact, through the real ui_begin(). */
+/* The latency the shell exists to keep: the control answers on the frame of
+ * contact, through the real ui_begin(). */
 static void
-test_a_tap_submits_on_the_second_frame_of_contact_through_ui_begin(void) {
+test_a_tap_submits_on_the_frame_of_contact_through_ui_begin(void) {
     fixture();
     const input_t idle = {0};
     plain_button_frame(&idle);
@@ -1096,14 +1101,14 @@ test_a_tap_submits_on_the_second_frame_of_contact_through_ui_begin(void) {
 
     const int x = BUTTON.x + BUTTON.w / 2;
     const int y = BUTTON.y + BUTTON.h / 2;
-    TEST_ASSERT_FALSE(plain_button_frame(&(input_t){.down = true, .pressed = true, .point = {x, y}}));
-    TEST_ASSERT_TRUE_MESSAGE(plain_button_frame(&(input_t){.down = true, .point = {x, y}}),
-                             "the second frame of contact must carry the click");
+    TEST_ASSERT_TRUE_MESSAGE(plain_button_frame(&(input_t){.down = true, .pressed = true, .point = {x, y}}),
+                             "the frame of contact must carry the click");
+    TEST_ASSERT_FALSE(plain_button_frame(&(input_t){.down = true, .point = {x, y}}));
 }
 
 /* A press frame that builds a window microui had not seen the frame before:
- * the seeded root is stale, and the tap must take the extra hover frame
- * rather than vanish. */
+ * the seeded root is stale, and the press must be made again rather than
+ * vanish. */
 static void
 test_a_tap_on_the_first_build_of_another_screen_still_submits_once(void) {
     fixture();
@@ -1250,9 +1255,9 @@ test_a_press_after_an_unseen_lift_still_submits(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, submits, "the second press must land although the first lift was never seen");
 }
 
-/* A finger resting on a button before ui_pointer lands its press (which
- * is all a drag across a list ever is) must not draw it pressed; the
- * press itself must. */
+/* A finger resting on a button with no press of its own (one already on the
+ * glass when the UI opened, which is all a drag across a list ever is) must
+ * not draw it pressed; a press must, from its frame of contact. */
 static void
 test_only_a_real_press_draws_a_button_pressed(void) {
     fixture();
@@ -1262,21 +1267,19 @@ test_only_a_real_press_draws_a_button_pressed(void) {
     widget_frame(&w, &idle);
     const uint64_t at_rest = canvas_hash("Widgets");
 
-    const int x = BUTTON.x + BUTTON.w / 2;
-    const int y = BUTTON.y + BUTTON.h / 2;
-    const input_t press = {.down = true, .pressed = true, .point = {x, y}};
-    const input_t hold = {.down = true, .point = {x, y}};
-    widget_frame(&w, &press);
-    TEST_ASSERT_EQUAL_MESSAGE(at_rest, canvas_hash("Widgets"), "hovered but not yet pressed must look at rest");
-
+    const input_t press = on_button(true, true, false);
+    const input_t hold = on_button(true, false, false);
+    const input_t release = on_button(false, false, true);
     widget_frame(&w, &hold);
-    widget_frame(&w, &hold);
-    const uint64_t pressed = canvas_hash("Widgets");
-
-    const input_t release = {.released = true, .point = {x, y}};
+    TEST_ASSERT_EQUAL_MESSAGE(at_rest, canvas_hash("Widgets"), "hovered but not pressed must look at rest");
     widget_frame(&w, &release);
     widget_frame(&w, &idle);
-    TEST_ASSERT_NOT_EQUAL_MESSAGE(at_rest, pressed, "a landed press must look pressed");
+
+    widget_frame(&w, &press);
+    const uint64_t pressed = canvas_hash("Widgets");
+    widget_frame(&w, &release);
+    widget_frame(&w, &idle);
+    TEST_ASSERT_NOT_EQUAL_MESSAGE(at_rest, pressed, "a press must look pressed on its frame of contact");
 }
 
 /* A press that lands off the button and only slides onto it afterward is
@@ -1349,12 +1352,8 @@ swatch_frame(mu_Rect r, const uint32_t* colors, int cols, int rows) {
     end_frame();
 }
 
-/* Every cell of a swatch grid must tile its rect exactly: no gap and no
- * overlap between neighbours, and the grid's own edges must reach the
- * rect's, including a size that does not divide evenly by its column or
- * row count. */
 static void
-test_ui_swatch_grid_tiles_the_rect_exactly(void) {
+test_ui_swatch_grid_is_one_command_with_owned_colors(void) {
     fixture();
     const mu_Rect r = {10, 20, 100, 33};
     const int cols = 3;
@@ -1365,39 +1364,152 @@ test_ui_swatch_grid_tiles_the_rect_exactly(void) {
     }
     swatch_frame(r, colors, cols, rows);
 
-    mu_Rect cells[6];
     int n = 0;
     mu_Command* cmd = NULL;
     while (mu_next_command(ui_context(), &cmd)) {
-        if (cmd->type == MU_COMMAND_RECT) {
-            TEST_ASSERT_LESS_THAN_INT_MESSAGE(6, n, "the grid must draw exactly one rect per cell");
-            cells[n++] = cmd->rect.rect;
+        if (cmd->type == UI_COMMAND_SWATCHES) {
+            const ui_swatch_command_t* grid = (const ui_swatch_command_t*)cmd;
+            TEST_ASSERT_EQUAL_INT(cols, grid->cols);
+            TEST_ASSERT_EQUAL_INT(rows, grid->rows);
+            TEST_ASSERT_EQUAL_MEMORY(colors, grid->rgb, sizeof colors);
+            colors[0]++;
+            TEST_ASSERT_NOT_EQUAL(colors[0], grid->rgb[0]);
+            n++;
         }
     }
-    TEST_ASSERT_EQUAL_INT(6, n);
+    TEST_ASSERT_EQUAL_INT(1, n);
+}
 
-    for (int row = 0; row < rows; row++) {
-        TEST_ASSERT_EQUAL_INT_MESSAGE(r.x, cells[row * cols].x, "a row must reach the rect's left edge");
-        TEST_ASSERT_EQUAL_INT_MESSAGE(r.x + r.w, cells[row * cols + cols - 1].x + cells[row * cols + cols - 1].w,
-                                      "a row must reach the rect's right edge");
-        for (int col = 0; col + 1 < cols; col++) {
-            const mu_Rect a = cells[row * cols + col];
-            const mu_Rect b = cells[row * cols + col + 1];
-            TEST_ASSERT_EQUAL_INT_MESSAGE(a.x + a.w, b.x, "neighbouring cells must meet with no gap or overlap");
+static void
+test_icon_is_one_command_and_obeys_clip(void) {
+    fixture();
+    static const uint8_t bits[] = {0xA0, 0x40};
+    const image_t image = {
+        .pixels = (void*)bits, .format = IMAGE_MONO1, .width = 3, .height = 2, .pitch = 8 / CHAR_BIT};
+    mu_Context* ctx = ui_context();
+    const mu_Rect box = {10, 20, 30, 20};
+    ctx->clip_stack.items[ctx->clip_stack.idx++] = box;
+    ctx->command_list.idx = 0;
+    ui_draw_icon(ctx, box, &image, NULL, THEME.text);
+    mu_Command* cmd = NULL;
+    TEST_ASSERT_TRUE(mu_next_command(ctx, &cmd));
+    TEST_ASSERT_EQUAL_INT(UI_COMMAND_IMAGE, cmd->type);
+    TEST_ASSERT_FALSE(mu_next_command(ctx, &cmd));
+    ctx->command_list.idx = 0;
+    ui_draw_icon(ctx, (mu_Rect){0, 20, 30, 20}, &image, NULL, THEME.text);
+    cmd = NULL;
+    TEST_ASSERT_TRUE(mu_next_command(ctx, &cmd));
+    TEST_ASSERT_EQUAL_INT(MU_COMMAND_CLIP, cmd->type);
+    TEST_ASSERT_TRUE(mu_next_command(ctx, &cmd));
+    TEST_ASSERT_EQUAL_INT(UI_COMMAND_IMAGE, cmd->type);
+    TEST_ASSERT_TRUE(mu_next_command(ctx, &cmd));
+    TEST_ASSERT_EQUAL_INT(MU_COMMAND_CLIP, cmd->type);
+    TEST_ASSERT_FALSE(mu_next_command(ctx, &cmd));
+    ctx->command_list.idx = 0;
+    ui_draw_icon(ctx, (mu_Rect){100, 100, 30, 20}, &image, NULL, THEME.text);
+    TEST_ASSERT_EQUAL_INT(0, ctx->command_list.idx);
+    mu_pop_clip_rect(ctx);
+}
+
+static const uint8_t COMMAND_ICON_BITS[] = {0xA0, 0x40};
+static const image_t COMMAND_ICON = {
+    .pixels = (void*)COMMAND_ICON_BITS, .format = IMAGE_MONO1, .width = 3, .height = 2, .pitch = 8 / CHAR_BIT};
+static const mu_Rect COMMAND_BOX = {10, 20, 31, 23};
+#define COMMAND_COLS 3
+#define COMMAND_ROWS 2
+static const uint32_t COMMAND_COLORS[COMMAND_COLS * COMMAND_ROWS] = {0x123456, 0xABCDEF, 0x102030,
+                                                                     0xFFEEDD, 0x010203, 0xFEDCBA};
+
+static void
+reference_icon_rect(void* context, recti_t r) {
+    mu_draw_rect(context, (mu_Rect){COMMAND_BOX.x + r.x, COMMAND_BOX.y + r.y, r.w, r.h}, THEME.text);
+}
+
+/* What the builders under test draw: one command each. */
+static void
+draw_command_subject(mu_Context* ctx, bool swatches) {
+    if (swatches) {
+        uint32_t colors[COMMAND_COLS * COMMAND_ROWS];
+        memcpy(colors, COMMAND_COLORS, sizeof colors);
+        ui_swatch_grid(ctx, COMMAND_BOX, colors, COMMAND_COLS, COMMAND_ROWS);
+        memset(colors, 0, sizeof colors);
+    } else {
+        ui_draw_icon(ctx, COMMAND_BOX, &COMMAND_ICON, NULL, THEME.text);
+    }
+}
+
+/* The same picture as one rect per cell or run, as the builders drew it before. */
+static void
+draw_command_reference(mu_Context* ctx, bool swatches) {
+    if (!swatches) {
+        icon_walk_blocks(&COMMAND_ICON, COMMAND_BOX.w, COMMAND_BOX.h, reference_icon_rect, ctx);
+        return;
+    }
+    for (int row = 0; row < COMMAND_ROWS; row++) {
+        for (int col = 0; col < COMMAND_COLS; col++) {
+            const int x = COMMAND_BOX.x + col * COMMAND_BOX.w / COMMAND_COLS;
+            const int y = COMMAND_BOX.y + row * COMMAND_BOX.h / COMMAND_ROWS;
+            const int right = COMMAND_BOX.x + (col + 1) * COMMAND_BOX.w / COMMAND_COLS;
+            const int bottom = COMMAND_BOX.y + (row + 1) * COMMAND_BOX.h / COMMAND_ROWS;
+            mu_draw_rect(ctx, (mu_Rect){x, y, right - x, bottom - y}, ui_rgb(COMMAND_COLORS[row * COMMAND_COLS + col]));
         }
     }
-    for (int col = 0; col < cols; col++) {
-        TEST_ASSERT_EQUAL_INT_MESSAGE(r.y, cells[col].y, "a column must reach the rect's top edge");
-        TEST_ASSERT_EQUAL_INT_MESSAGE(r.y + r.h, cells[(rows - 1) * cols + col].y + cells[(rows - 1) * cols + col].h,
-                                      "a column must reach the rect's bottom edge");
+}
+
+static void
+paint_command_reference(bool reference, bool swatches, bool clipped) {
+    ui_invalidate();
+    ui_begin(NULL);
+    mu_Context* ctx = ui_context();
+    if (ui_begin_screen(ctx, "Command pixels", MU_OPT_NOTITLE | MU_OPT_NOFRAME)) {
+        if (clipped) {
+            mu_push_clip_rect(ctx, (mu_Rect){COMMAND_BOX.x + 7, COMMAND_BOX.y + 5, 17, 13});
+        }
+        if (reference) {
+            draw_command_reference(ctx, swatches);
+        } else {
+            draw_command_subject(ctx, swatches);
+        }
+        if (clipped) {
+            mu_pop_clip_rect(ctx);
+        }
+        mu_end_window(ctx);
     }
-    for (int row = 0; row + 1 < rows; row++) {
-        for (int col = 0; col < cols; col++) {
-            const mu_Rect a = cells[row * cols + col];
-            const mu_Rect b = cells[(row + 1) * cols + col];
-            TEST_ASSERT_EQUAL_INT_MESSAGE(a.y + a.h, b.y, "neighbouring rows must meet with no gap or overlap");
+    ui_end(UI_BACKGROUND);
+}
+
+static void
+test_image_and_swatch_commands_match_rect_pixels(void) {
+#ifndef DEVICE_BUILD
+    TEST_ASSERT_TRUE(gfx_init());
+#endif
+    fixture();
+    const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
+    gfx_color_t* expected = memory_alloc(bytes, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(expected);
+    for (int turn = 0; turn < 4; turn++) {
+        ui_set_transform(ui_transform_quarter_turn(turn, GFX_WIDTH, GFX_HEIGHT));
+        for (int swatches = 0; swatches < 2; swatches++) {
+            for (int clipped = 0; clipped < 2; clipped++) {
+                paint_command_reference(true, swatches, clipped);
+                memcpy(expected, gfx_framebuffer(), bytes);
+                paint_command_reference(false, swatches, clipped);
+                const bool equal = memcmp(expected, gfx_framebuffer(), bytes) == 0;
+                if (!equal) {
+                    memory_free(expected);
+#ifndef DEVICE_BUILD
+                    gfx_reset_for_test();
+#endif
+                    TEST_FAIL_MESSAGE("custom command pixels differ from rectangle reference");
+                }
+            }
         }
     }
+    memory_free(expected);
+    fixture();
+#ifndef DEVICE_BUILD
+    gfx_reset_for_test();
+#endif
 }
 
 static void test_menu_band_frame_cost(void);
@@ -1436,7 +1548,7 @@ run_ui_widgets_suite(void) {
     RUN_TEST(test_a_list_that_fits_does_not_scroll);
     RUN_TEST(test_only_a_real_press_draws_a_button_pressed);
     RUN_TEST(test_a_press_that_slides_onto_a_button_from_off_it_is_not_a_click);
-    RUN_TEST(test_a_tap_submits_on_the_second_frame_of_contact_through_ui_begin);
+    RUN_TEST(test_a_tap_submits_on_the_frame_of_contact_through_ui_begin);
     RUN_TEST(test_a_tap_on_the_first_build_of_another_screen_still_submits_once);
     RUN_TEST(test_a_press_after_an_unseen_lift_still_submits);
     RUN_TEST(test_a_tap_on_a_closing_list_reaches_exactly_one_thing);
@@ -1448,7 +1560,9 @@ run_ui_widgets_suite(void) {
     RUN_TEST(test_a_list_opens_scrolled_so_the_row_sits_centred);
     RUN_TEST(test_the_last_row_of_a_list_taller_than_the_screen_can_be_picked);
     RUN_TEST(test_a_drag_scroll_sticks_through_later_frames);
-    RUN_TEST(test_ui_swatch_grid_tiles_the_rect_exactly);
+    RUN_TEST(test_ui_swatch_grid_is_one_command_with_owned_colors);
+    RUN_TEST(test_icon_is_one_command_and_obeys_clip);
+    RUN_TEST(test_image_and_swatch_commands_match_rect_pixels);
     RUN_TEST(test_theme_from_style_maps_widget_colors);
 }
 

@@ -4,13 +4,14 @@
 #include "render/r3d_span.h"
 
 /* A private copy exposes selection and kernel invariants without a public test API. */
-#define r3d_span_triangle       hot_triangle
-#define r3d_span_triangle_solid hot_triangle_solid
-#define r3d_span_triangle_write hot_triangle_write
-#define r3d_span_hidden         hot_hidden
-#define r3d_span_plane_bound    hot_plane_bound
-#define r3d_span_plane_in_range hot_plane_in_range
-#define r3d_span_stop_after     hot_stop_after
+#define r3d_span_triangle        hot_triangle
+#define r3d_span_triangle_solid  hot_triangle_solid
+#define r3d_span_triangle_write  hot_triangle_write
+#define r3d_span_capped_triangle hot_capped_triangle
+#define r3d_span_hidden          hot_hidden
+#define r3d_span_plane_bound     hot_plane_bound
+#define r3d_span_plane_in_range  hot_plane_in_range
+#define r3d_span_stop_after      hot_stop_after
 #include "render/r3d_span.c"
 #undef r3d_span_triangle
 #undef r3d_span_triangle_solid
@@ -293,7 +294,7 @@ reference_small(const r3d_span_target_t* target, const r3d_span_vertex_t v[TRIAN
             for (int k = 0; k < TRIANGLE_VERTICES; k++) {
                 edge[k] = small_side(edges + k, x * R3D_SUBPIXEL + HALF_PIXEL, y * R3D_SUBPIXEL + HALF_PIXEL);
             }
-            uint16_t* depth = gfx_render_target_depth(&target->rows, y) + x;
+            uint16_t* depth = gfx_target_depth(&target->rows, y) + x;
             if ((edge[0] | edge[1] | edge[2]) < 0 || z <= *depth) {
                 continue;
             }
@@ -311,7 +312,7 @@ reference_small(const r3d_span_target_t* target, const r3d_span_vertex_t v[TRIAN
                                                                                                           : 2];
             }
             *depth = z;
-            gfx_render_target_color(&target->rows, y)[x] = color;
+            gfx_target_color(&target->rows, y)[x] = color;
         }
     }
 }
@@ -358,7 +359,10 @@ test_style_kernels_randomized_reference(void) {
 static void
 test_grain_screen_phase_with_odd_window_and_known_shades(void) {
     r3d_span_target_t actual = fixture();
-    actual.rows.row0 = 1;
+    actual.rows.first_row = 1;
+    for (int i = 0; i < actual.rows.count; i++) {
+        actual.rows.attachment[i].height--;
+    }
     actual.rows.attachment[GFX_ATTACHMENT_COLOR].pixels = pixels + TEST_SIDE;
     actual.rows.attachment[GFX_ATTACHMENT_DEPTH].pixels = pixels + TEST_PIXELS + TEST_SIDE;
     resolve_fill((small_fill_t){ORACLE_MAX_SIDE, 0, SMALL_FILL_GRAIN});
@@ -415,7 +419,9 @@ test_writer_and_draw_select_the_same_depth_under_every_style(void) {
         .span = raster_attachment_tag, .attachment = GFX_ATTACHMENT_FURTHER, .value = ORACLE_SEED};
     target.writers = &writer;
     target.writer_count = 1;
-    target.rows.attachment[GFX_ATTACHMENT_FURTHER] = (gfx_attachment_t){pixels + TEST_PIXELS * 2, sizeof(*pixels)};
+    target.rows.attachment[GFX_ATTACHMENT_FURTHER] = target.rows.attachment[GFX_ATTACHMENT_COLOR];
+    target.rows.attachment[GFX_ATTACHMENT_FURTHER].pixels = pixels + TEST_PIXELS * 2;
+    target.rows.attachment[GFX_ATTACHMENT_FURTHER].format = IMAGE_U16;
     target.rows.count = GFX_ATTACHMENT_FURTHER + 1;
     static const uint8_t gates[] = {0, SMALL_FILL_GATE_FAST, UINT8_MAX};
     for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {

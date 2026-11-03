@@ -9,6 +9,7 @@ Host tooling for building, generating, rendering, inspecting, and checking the f
 | [r3d/](r3d/README.md) | Offline mesh baking for the r3d renderer: simplification, baked light, cluster trees. |
 | [gltf/](gltf/) | Shared glTF 2.0 reader, sampler and writer. |
 | [anim/](anim/README.md) | Bakes a glTF animation into a pack entry and samples baked tracks on a host. |
+| [power/](power/) | Generates the datasheet power-budget tables and figure of docs/power. |
 | [audio/](audio/) | Bakes WAV sounds into SOND entries and synthesizes deterministic source WAVs. |
 | [gfx/](gfx/README.md) | Bakes pictures and icons into pack entries. |
 | [render/](render/README.md) | Host render harness, image comparison, and [scenes](render/scenes/README.md). |
@@ -19,4 +20,5 @@ Host tooling for building, generating, rendering, inspecting, and checking the f
 | [boot_anim/](boot_anim/README.md) | Boot animation performance reports. |
 | [perf/](perf/README.md) | Repeated board report comparisons across revisions. |
 | [sweeps/](sweeps/) | Build and capture sweeps. |
+| [revision_worktree.sh](revision_worktree.sh) | Shared helper: temporary detached checkouts for the revision-comparison tools in [perf/](perf/README.md) and `render/render_compare.sh`. |
 | [tests/](tests/) | Python regression tests for these tools. |

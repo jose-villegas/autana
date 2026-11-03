@@ -5,10 +5,11 @@
 #include "microui.h"
 #include "ui/input/ui_pointer.h"
 
-/* Before mu_begin(): step `p` with the logical `input`, replay its events
- * into `ctx`, and on a press frame seed the hover root. */
+/* Before mu_begin(): on a press frame seed the hover root and look for
+ * scrollable content under the press, then step `p` with the logical `input`
+ * and replay its events into `ctx`. */
 void ui_bridge_feed(mu_Context* ctx, ui_pointer_t* p, const input_t* input);
 
 /* After mu_end(): tell `p` whether the pointer rests on scrollable content,
- * and whether the hover root it ran under was the one the frame found. */
+ * and whether a press went under a stale hover root and took nothing. */
 void ui_bridge_end(mu_Context* ctx, ui_pointer_t* p);

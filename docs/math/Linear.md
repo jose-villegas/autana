@@ -3,7 +3,7 @@
 Vectors, rotations, affine maps and cached transforms. [Math index](README.md).
 
 <!-- generated: math-fast-links-linear check: python launcher/tools/perf/fast_paths.py --check -->
-Fast-path evidence: [mathx_rsqrt_q30](Fast-Paths.md#mathx-rsqrt-q30).
+Fast-path evidence: [mathx_rsqrt_q30](../packages/Fast-Paths.md#mathx-rsqrt-q30).
 <!-- /generated: math-fast-links-linear -->
 
 `P` stands for the type's prefix (`vec3f`, `vec3x`, ...). The families pass small
@@ -12,8 +12,17 @@ transform state, affine2 inverses and normalization quotients.
 
 ## vec2 (`f i s x`)
 
+Constants use the scalar type's units. vec2 has no up/down: screen-pixel
+integer coordinates have y down.
+
 | Function | Purpose | Formula |
 |---|---|---|
+| `P_zero()` | zero constant | $`(0, 0)`$ |
+| `P_one()` | one constant | $`(1, 1)`$ |
+| `P_unit_x()` | unit x constant | $`(1, 0)`$ |
+| `P_unit_y()` | unit y constant | $`(0, 1)`$ |
+| `P_right()` | right constant | $`(1, 0)`$ |
+| `P_left()` | left constant | $`(-1, 0)`$ |
 | `P_min(a, b)` | component-wise min | $`\min(a_k,b_k)`$ |
 | `P_max(a, b)` | component-wise max | $`\max(a_k,b_k)`$ |
 | `P_clamp(v, lo, hi)` | component-wise clamp | $`\min(\max(v_k,lo_k),hi_k)`$ |
@@ -30,8 +39,21 @@ transform state, affine2 inverses and normalization quotients.
 
 ## vec3 (`f i s x`)
 
+The left-handed frame has x right, y up and z forward; right cross up is forward.
+
 | Function | Purpose | Formula |
 |---|---|---|
+| `P_zero()` | zero constant | $`(0, 0, 0)`$ |
+| `P_one()` | one constant | $`(1, 1, 1)`$ |
+| `P_unit_x()` | unit x constant | $`(1, 0, 0)`$ |
+| `P_unit_y()` | unit y constant | $`(0, 1, 0)`$ |
+| `P_unit_z()` | unit z constant | $`(0, 0, 1)`$ |
+| `P_right()` | right constant | $`(1, 0, 0)`$ |
+| `P_left()` | left constant | $`(-1, 0, 0)`$ |
+| `P_up()` | up constant | $`(0, 1, 0)`$ |
+| `P_down()` | down constant | $`(0, -1, 0)`$ |
+| `P_forward()` | forward constant | $`(0, 0, 1)`$ |
+| `P_back()` | back constant | $`(0, 0, -1)`$ |
 | `P_min(a, b)` | component-wise min | $`\min(a_k,b_k)`$ |
 | `P_max(a, b)` | component-wise max | $`\max(a_k,b_k)`$ |
 | `P_clamp(v, lo, hi)` | component-wise clamp | $`\min(\max(v_k,lo_k),hi_k)`$ |
@@ -49,7 +71,7 @@ transform state, affine2 inverses and normalization quotients.
 | `P_<c1><c2><c3>(v)` | swizzle, each `c` one of `x y z`: `vec3f_zyx(v)` reverses | $`(v_{c_1},\ v_{c_2},\ v_{c_3})`$ |
 | `P_<c1><c2>(v)` | swizzle to the vec2 of the same number type, each `c` one of `x y z` | $`(v_{c_1},\ v_{c_2})`$ |
 | `P_from_xy(xy, z)` | the vec3 of a vec2 and a `z` | $`(\mathit{xy}_x,\ \mathit{xy}_y,\ z)`$ |
-| `vec3f_octahedral(n)` | the point of the square $`[-1, 1]^2`$ a direction maps to<sup>[[21]](../Citations.md#21)</sup>, the $`z < 0`$ half folded over the diagonals; any length but zero; `f` only | $`(u, v) = \frac{(n_x,\ n_y)}{\lvert n_x\rvert + \lvert n_y\rvert + \lvert n_z\rvert}`$<br> folded to $`(\mathrm{sign}(u)\,(1 - \lvert v\rvert),\ \mathrm{sign}(v)\,(1 - \lvert u\rvert))`$ when $`n_z < 0`$ |
+| `vec3f_octahedral(n)` | the point of the square $`[-1, 1]^2`$ a direction maps to<sup>[[21]](../Citations.md#cigolle-2014)</sup>, the $`z < 0`$ half folded over the diagonals; any length but zero; `f` only | $`(u, v) = \frac{(n_x,\ n_y)}{\lvert n_x\rvert + \lvert n_y\rvert + \lvert n_z\rvert}`$<br> folded to $`(\mathrm{sign}(u)\,(1 - \lvert v\rvert),\ \mathrm{sign}(v)\,(1 - \lvert u\rvert))`$ when $`n_z < 0`$ |
 | `vec3f_from_octahedral(p)` | the unit direction of a point of the square, the inverse of `vec3f_octahedral`; `f` only | $`z = 1 - \lvert p_x\rvert - \lvert p_y\rvert`$<br> the point unfolded when $`z < 0`$<br> then normalized |
 
 Float normalization uses `mathf_rsqrt` for the reciprocal length.
@@ -94,9 +116,9 @@ Always an explicit call named for destination and source, both `vec2` and `vec3`
 | `P_from_euler(angles)` | Z, then X, then Y; `angles` is a vec3 of radians (`f`) or turns (`x`) | $`q_y\,q_x\,q_z`$<br> with $`q_k`$ the rotation by $`\mathit{angles}_k`$ about axis $`k`$ |
 | `P_rotate(q, v)` | rotates the vec3 `v` by unit `q` | $`v + 2 q_w\,(u \times v) + 2\,u \times (u \times v)`$<br> with $`u = (q_x, q_y, q_z)`$ |
 | `P_normalize(q)` | unit length; `q` must not be zero | $`\frac{q}{\sqrt{q_x^2 + q_y^2 + q_z^2 + q_w^2}}`$ |
-| `P_from_basis(r, u, f)` | the rotation whose right, up and forward axes are `r`, `u`, `f`; when the trace is not positive, `s` comes from the largest diagonal entry instead<sup>[[53]](../Citations.md#53)</sup> | $`s = 2\sqrt{1 + r_x + u_y + f_z}`$<br> $`\left(\frac{u_z - f_y}{s},\ \frac{f_x - r_z}{s},\ \frac{r_y - u_x}{s},\ \frac{s}{4}\right)`$ |
+| `P_from_basis(r, u, f)` | the rotation whose right, up and forward axes are `r`, `u`, `f`; when the trace is not positive, `s` comes from the largest diagonal entry instead<sup>[[53]](../Citations.md#shepperd-1978)</sup> | $`s = 2\sqrt{1 + r_x + u_y + f_z}`$<br> $`\left(\frac{u_z - f_y}{s},\ \frac{f_x - r_z}{s},\ \frac{r_y - u_x}{s},\ \frac{s}{4}\right)`$ |
 | `P_nlerp(a, b, t)` | unit-length shortest arc; negate `b` when the 4D dot is negative | $`\mathrm{normalize}(a(1-t)+bt)`$ |
-| `quatf_slerp(a, b, t)` | shortest-arc interpolation<sup>[[19]](../Citations.md#19)</sup>, `t` in 0..1; `f` only; `b` is negated first when $`a \cdot b < 0`$ | $`\frac{\sin((1 - t)\,\Omega)}{\sin\Omega}\,a + \frac{\sin(t\,\Omega)}{\sin\Omega}\,b`$<br> with $`\cos\Omega = a \cdot b`$: nearly parallel inputs take `P_nlerp`, the rest evaluated by Eberly's series in cos - 1, halving the arc past a 120-degree rotation ($`a \cdot b < \frac{1}{2}`$) and summing until its terms fall below float precision, with no last-term correction<sup>[[71]](../Citations.md#71)</sup> |
+| `quatf_slerp(a, b, t)` | shortest-arc interpolation<sup>[[19]](../Citations.md#shoemake-1985)</sup>, `t` in 0..1; `f` only; `b` is negated first when $`a \cdot b < 0`$ | $`\frac{\sin((1 - t)\,\Omega)}{\sin\Omega}\,a + \frac{\sin(t\,\Omega)}{\sin\Omega}\,b`$<br> with $`\cos\Omega = a \cdot b`$: nearly parallel inputs take `P_nlerp`, the rest evaluated by Eberly's series in cos - 1, halving the arc past a 120-degree rotation ($`a \cdot b < \frac{1}{2}`$) and summing until its terms fall below float precision, with no last-term correction<sup>[[71]](../Citations.md#eberly-2011)</sup> |
 
 `quatf_normalize` and `quatf_nlerp` use `mathf_rsqrt` for the reciprocal length.
 A device sweep measures nlerp component error over quaternion pairs and
@@ -142,6 +164,7 @@ the columns of `L = [a c; b d]` and its translation.
 
 `mat3f_t` is a row-major linear matrix.
 
+| `mat3f_identity()` | identity linear matrix | $`m_{rc} = [r=c]`$ |
 - `mat3f_from_mat4()` takes a mat4's linear part, without translation; `mat3f_mul()` multiplies two.
 - `mat3f_cofactor()` is the determinant times the inverse-transpose, with no division.
 - It satisfies `cofactor(M) * transpose(M) = det(M) * I`, a reflection's determinant negative.
@@ -166,6 +189,7 @@ the columns of `L = [a c; b d]` and its translation.
 
 | Function | Purpose | Formula |
 |---|---|---|
+| `P_identity()` | zero position, identity rotation, unit scale, cached identity matrix | $`M = I`$ |
 | `P_set_position(&t, p)` | sets position, clears the cache | $`\mathit{position} \leftarrow p`$ |
 | `P_set_rotation(&t, q)` | sets rotation (unit), clears the cache | $`\mathit{rotation} \leftarrow q`$ |
 | `P_set_scale(&t, s)` | sets scale, clears the cache | $`\mathit{scale} \leftarrow s`$ |
@@ -178,7 +202,7 @@ the columns of `L = [a c; b d]` and its translation.
 | `transformf_compose(&parent, &child)` | float only: the child placed in the parent's frame; exact unless an unevenly scaled parent holds a turned child, where the sheared result has no TRS form and the scale is per axis | $`\mathit{position} = p_t + p_q\,(p_s \odot c_t)`$<br>$`\mathit{rotation} = \mathrm{normalize}(p_q\,c_q)`$<br>$`\mathit{scale} = p_s \odot c_s`$ |
 | `transformf_relative(&parent, &world)` | float only: the inverse of `transformf_compose`, the child that placed in `parent` stands at `world`; the parent's scale must be even and nonzero | $`q = \overline{p_q}`$<br>$`\mathit{position} = q\,(w_t - p_t) / p_s`$<br>$`\mathit{rotation} = \mathrm{normalize}(q\,w_q)`$<br>$`\mathit{scale} = w_s / p_s`$ |
 | `transformf_scale_is_even(&t)` | float only: the three scales agree within `TRANSFORMF_MATRIX_TOLERANCE` of the largest | $`\max_i s_i - \min_i s_i \le \epsilon \max_i \lvert s_i \rvert`$ |
-| `transformf_from_mat(m, &t)` | float only: affine TRS decomposition, refuses singular, nonfinite, sheared or reflected matrices; orthogonality uses `TRANSFORMF_MATRIX_TOLERANCE` | $`s_i = \lVert M_{:i}\rVert`$<br>$`R_{:i} = M_{:i}/s_i`$<br>$`t = M_{:3}`$<br>Require orthogonal columns and $`\det R > 0`$, quaternion from basis<sup>[[53]](../Citations.md#53)</sup> |
+| `transformf_from_mat(m, &t)` | float only: affine TRS decomposition, refuses singular, nonfinite, sheared or reflected matrices; orthogonality uses `TRANSFORMF_MATRIX_TOLERANCE` | $`s_i = \lVert M_{:i}\rVert`$<br>$`R_{:i} = M_{:i}/s_i`$<br>$`t = M_{:3}`$<br>Require orthogonal columns and $`\det R > 0`$, quaternion from basis<sup>[[53]](../Citations.md#shepperd-1978)</sup> |
 | `P_looking(position, forward, up)` | unit-scale pose looking along `forward` from `position` | $`\mathit{look\_along}(\mathit{forward}, \mathit{up})`$ |
 | `P_look_along(&t, direction, up)` | faces a nonzero `direction`; `up` must not be parallel to it | $`f = \frac{\mathit{direction}}{\lVert \mathit{direction} \rVert}`$<br> $`r = \frac{\mathit{up} \times f}{\lVert \mathit{up} \times f \rVert}`$<br> $`u = f \times r`$<br> then $`\mathit{rotation} = \mathrm{from\_basis}(r, u, f)`$ |
 | `P_look_at(&t, target, up)` | faces `target` with `up` as the sky; `up` must not be parallel to the line to `target`, and `target` must not be the position | $`f = \frac{\mathit{target} - \mathit{position}}{\lVert \mathit{target} - \mathit{position} \rVert}`$<br> $`r = \frac{\mathit{up} \times f}{\lVert \mathit{up} \times f \rVert}`$<br> $`u = f \times r`$<br> then $`\mathit{rotation} = \mathrm{from\_basis}(r, u, f)`$ |
@@ -195,11 +219,12 @@ model matrix with a `cached` flag.
 | `P_compute_matrix(t)` | a fresh matrix from a const transform; never touches the cache; use in read-only code |
 | `P_view(t)` | the inverse of position and rotation (scale ignored), computed every call |
 
-`TRANSFORMF_IDENTITY` / `TRANSFORMX_IDENTITY` are initializers with the cache
-valid. A zero-initialized transform has `cached` false, so it builds on first use,
-and its zero scale sends every point to the origin. Code never edits `matrix`.
+`TRANSFORMF_IDENTITY` / `TRANSFORMX_IDENTITY` and `MAT4F_IDENTITY` /
+`MAT4X_IDENTITY` are only for static-storage initializers, where C11 cannot
+call `P_identity()`. Transform identities have a valid cache.
 
-`MAT4F_IDENTITY` / `MAT4X_IDENTITY` initialize a constant matrix, where `P_identity()` cannot.
+A zero-initialized transform has `cached` false and zero scale, so its
+matrix sends every point to the origin. Code never edits `matrix`.
 
 ## Examples
 
@@ -215,15 +240,15 @@ typedef struct {
 
 void
 transform_example(transform_example_t* s) {
-    transformf_t body = TRANSFORMF_IDENTITY;
+    transformf_t body = transformf_identity();
     transformf_set_position(&body, (vec3f_t){1.0F, 0.0F, 4.0F});
     transformf_set_rotation(&body, quatf_from_euler((vec3f_t){0.0F, MATH_PI / 2.0F, 0.0F}));
 
     const mat4f_t model = transformf_matrix(&body); /* built now, kept */
-    const vec3f_t world = mat4f_apply(&model, (vec3f_t){0.0F, 0.0F, 1.0F});
+    const vec3f_t world = mat4f_apply(&model, vec3f_unit_z());
 
-    transformf_t camera = TRANSFORMF_IDENTITY;
-    transformf_look_at(&camera, world, (vec3f_t){0.0F, 1.0F, 0.0F});
+    transformf_t camera = transformf_identity();
+    transformf_look_at(&camera, world, vec3f_unit_y());
     const mat4f_t view = transformf_view(&camera);
     const vec3f_t in_camera = mat4f_apply(&view, world); /* straight ahead: x = y = 0 */
 

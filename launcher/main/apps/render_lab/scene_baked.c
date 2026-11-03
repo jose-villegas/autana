@@ -10,12 +10,13 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "esp_log.h"
 
 #include "core/tune.h"
 #include "draw/draw.h"
-#include "gfx/present/gfx_present.h"
 #include "image/pixel/rgb565.h"
 #include "render/context/render_context.h"
 #include "render_lab.h"
@@ -59,6 +60,11 @@ camera_entity(void) {
                       name_hash(render_lab_start_camera == NULL ? shown_family->camera : render_lab_start_camera));
 }
 
+render_lab_path_t
+scene_baked_path(void) {
+    return (render_lab_path_t){loaded, loaded == NULL ? SCENE_ENTITY_NONE : camera_entity(), NULL};
+}
+
 static void
 apply_settings(void) {
     render_lab_apply_raster_settings();
@@ -96,6 +102,7 @@ scene_baked_enter(const render_lab_scene_t* self) {
     }
     (void)scene_activate(loaded,
                          render_lab_start_camera == NULL ? SCENE_CAMERA_FIRST : name_hash(render_lab_start_camera));
+    (void)scene_camera_set_skip_hidden(loaded, camera_entity(), family->skip_hidden);
     apply_settings();
 }
 
@@ -112,7 +119,8 @@ scene_baked_frame(uint32_t dt_ms) {
     apply_settings();
 }
 
-const char*
+/* The size drawn at and the triangle count, or why the scene did not load. */
+static inline const char*
 scene_baked_status(void) {
     static char buf[RENDER_LAB_STATUS_LEN];
     if (failure[0] != '\0') {

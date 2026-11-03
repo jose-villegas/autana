@@ -22,10 +22,9 @@ flowchart TB
         subgraph R2["the runtime"]
             Shell["shell/<br/><i>frame loop, app switching, system screens in shell/ui/</i>"]
         end
-        subgraph R3["boot, self test, console"]
+        subgraph R3["boot and self test"]
             Boot["boot/<br/><i>the startup animation</i>"]
             Selftest["selftest/<br/><i>power-on self test, the on-board suite runner</i>"]:::hw
-            Console["console/<br/><i>serial verbs, dev builds</i>"]:::hw
         end
         subgraph R4["the app contract"]
             App["app/<br/><i>callbacks, the app list, the app arena</i>"]
@@ -68,6 +67,9 @@ flowchart TB
         subgraph R13["frame measurement"]
             Profile["profile/<br/><i>frame cost, frame watch</i>"]:::hw
         end
+        subgraph ConsoleRow["the serial console"]
+            Console["console/<br/><i>transport, verb registry, frame slots; dev builds</i>"]:::hw
+        end
         subgraph R14["the platform core"]
             Core["core/<br/><i>two-core jobs, memory placement, time, tunables</i>"]:::hw
         end
@@ -82,12 +84,14 @@ flowchart TB
         Packages["launcher/packages/<br/><i>first-party libraries, the graph below</i>"]
     end
 
-    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9 --> PowerRow --> R10 --> R11 --> R12 --> R13 --> R14 --> R15 --> R16 --> R17
+    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9 --> PowerRow --> R10 --> R11 --> R12 --> R13 --> ConsoleRow --> R14 --> R15 --> R16 --> R17
     Shell -.->|"calls through app/app.h"| Apps
 ```
 
 - Power: [the PMU owner](../../launcher/main/power/README.md); `power/` sits below
   `input/` and `audio/`.
+- Console: [the serial console](../../launcher/main/console/README.md) sits just
+  above `core/`; a module's verbs live in a `console/` folder beside it.
 - Audio: [audio docs](../audio/README.md). The engine sound layer owns [the mixer,
   voices and buses](../audio/Sound-Mixer.md) as well as stored sounds and sample
   cursors.
@@ -96,12 +100,12 @@ flowchart TB
 |---|---|---|
 | Includes are layer-qualified | `"gfx/gfx.h"`, not `"gfx.h"`, even inside one folder, so an app reaching past `ui` into `gfx` shows at the line that does it | the style audit |
 | Apps use the engine, the platform and the app contract | an app under `apps/` includes nothing else of the system band; a system app under `shell/apps/` is part of the shell | SYSTEM-BAND |
-| The UI backend stays inside `ui/` | outside it, no firmware or editor source includes microui or a header that reaches it, so a screen sees only `ui/ui.h` and a backend swap touches `ui/` alone | UI-BACKEND |
+| The UI backend stays inside `ui/` | outside it, no firmware source includes microui or a header that reaches it, so a screen sees only `ui/ui.h` and a backend swap touches `ui/` alone | UI-BACKEND |
 | `core/`, `build/` and the packages are the base | see [the base](#the-base) | PACKAGE-INCLUDE, PACKAGE-REQUIRES, PACKAGE-CONFIG |
 | Every drawing path ends in gfx | nothing else allocates pixels; how a draw call becomes panel pixels is [Gfx](../gfx/README.md#the-path), and `render/` sits above `gfx/` because it draws into gfx's [render targets](../gfx/Targets-and-Modes.md#render-targets) | the layer order |
-| Drivers are split from the logic they feed | `power_device.c`, `touch.c`, `buttons.c` and `imu.c` touch hardware; `power_decode`, `power_cache`, `touch_fsm`, `button_fsm`, `gesture` and `tilt` are pure and tested on a laptop; the split runs through every folder and is what the [Testing-Guide.md](../testing/README.md) relies on | review |
+| Drivers are split from the logic they feed | `axp2101.c`, `touch.c`, `buttons.c` and `qmi8658.c` touch hardware; `axp2101_decode`, `power_cache`, `touch_fsm`, `button_fsm`, `gesture` and `tilt` are pure and tested on a laptop; the split runs through every folder and is what the [Testing-Guide.md](../testing/README.md) relies on | review |
 | The shell names no vendor firmware | `main.c` and `shell/` reach vendor code only through [the modules that own it](#vendor-owners); a module's device half lives in a `*_device.c` beside it, compiled for the board only, so host builds stay pure | `check_shell_firmware.py`: an ESP-IDF, FreeRTOS, NVS or BSP include or call fails, logging (`esp_log.h`, `ESP_LOG[A-Z]`) excepted |
-| The vendor clock, pause and heap have one owner each | see [vendor owners](#vendor-owners) | the same gate |
+| The vendor clock, pause, heap and board support package have one owner each | see [vendor owners](#vendor-owners) | the same gate |
 | Generated sources are checked in | beside the code that uses them, each with a banner naming its regenerate command, which [a gate](../tools/Generated-Files.md) reruns to prove the file current; the rules are in [tools/gen/README.md](../../launcher/tools/gen/README.md) | the generated-files gate |
 
 ## The base
@@ -133,7 +137,9 @@ flowchart BT
     p_kinematics["kinematics/"]
     p_math["math/"]
     p_physics["physics/"]
+    p_simd["simd/"]
     p_testkit["testkit/"]
+    p_image --> p_math
     p_kinematics --> p_math
     p_physics --> p_math
     p_testkit --> p_math
@@ -141,7 +147,7 @@ flowchart BT
 <!-- /generated: package-requires-diagram -->
 
 A package includes nothing outside itself but the C library, the build config and the
-packages it declares, so the firmware, the host tests, the tools and the editor all build it.
+packages it declares, so the firmware, the host tests and the tools all build it.
 It declares them on one line of its own `CMakeLists.txt`, which both builds read:
 
 ```cmake
@@ -166,19 +172,20 @@ The shell's modules for vendor code:
 | Need | Module |
 |---|---|
 | input | `input/input_shell.h`: `input_start`, `input_poll`, `input_read_acceleration` |
-| display | `display/display_shell.h`: `display_start`, `display_sample_orientation`; `display/display.h`: the system panel clock |
+| display | `display/display_shell.h`: `display_start`, `display_sample_orientation`, the system panel clock |
 | time, memory | `core/timing.h`, `core/memory.h` |
 | settings | `services/settings.h` |
 
 The shell calls this firmware's own drivers (`imu_read`, `touch_read`) directly.
 
-The clock, the pause and the heap have one owner each:
+The clock, the pause, the heap and the board support package have one owner each:
 
 | What | Call | Owner |
 |---|---|---|
 | time | `timing_now_us()`, inlined to the hardware timer's own call | `core/timing.h` |
 | pause | `timing_sleep_ms()`, `timing_yield()` | `core/timing.h` |
 | memory by kind | `MEMORY_INTERNAL`, `MEMORY_8BIT`, `MEMORY_DMA`, `MEMORY_PSRAM` | `core/memory.h`, whose header says which heap is beneath it on each platform |
+| the board | `board_i2c_bus()`, `board_touch_open()`, `board_sd_probe()`, ... over `bsp/` | `board/board.h`, bound by the chosen board's folder under `board/`; nothing else, drivers included, names `bsp/`, `bsp_*`, `BSP_*` or `CONFIG_BSP_*` |
 
 In the firmware, its suites and its tools the gate fails any `esp_timer_*`,
 `vTaskDelay`, `heap_caps_*`, `MALLOC_CAP_*`, `multi_heap_*`, `esp_psram_*` or

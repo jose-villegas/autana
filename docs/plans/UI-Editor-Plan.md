@@ -1,5 +1,7 @@
 # UI editor: authoring a project's screens
 
+> The editor code is parked on the `feature/archive-editor` branch; it is not built or maintained on main.
+
 The editor authors screens as data, previews through the project's draw code,
 and bakes tables for the project's build. It opens a project folder rather
 than naming firmware screens. The project supplies `<screen>_layout.json`

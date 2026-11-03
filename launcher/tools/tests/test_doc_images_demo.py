@@ -19,7 +19,8 @@ DEMO_SCENE = ROOT / "launcher/demo/sponza/sponza.scene.toml"
 DEMO_IMPORT = ROOT / "launcher/demo/sponza/sponza.import.toml"
 APP_SCRIPT = ROOT / "launcher/tools/render/doc_images_demo.sh"
 # The variants a scene places for "painting", as doc_tables.variants lists them.
-VARIANTS = [("painting", False), ("painting_lite", False), ("painting_flat", False), ("painting_fitted", True)]
+VARIANTS = [("painting", False), ("painting_lite", False), ("painting_flat", False), ("painting_fitted", True),
+            ("painting_fitted_full", True)]
 
 
 @unittest.skipUnless(shutil.which("sh"), "needs sh")
@@ -67,7 +68,7 @@ class DocImageFailureTest(unittest.TestCase):
                     mock.patch("r3d.bake_fidelity.pack_bytes", return_value={}) as pack, \
                     mock.patch("r3d.bake_fidelity.write_packs"), \
                     mock.patch.object(examples.subprocess, "run") as run:
-                examples.main(scene_path, "painting", pathlib.Path("viewer"), work, work, 3, 17)
+                examples.main(scene_path, "painting", "painting_flat_fitted", pathlib.Path("viewer"), work, work, 3, 17)
             pack.assert_called_once_with([scene_path], [f"gallery.paint={work / 'albedo/paint.mesh'}"])
             args = run.call_args_list[0].args[0]
             for flag, value in (("--scene", "gallery"), ("--object", "painting"), ("--frames", "3"), ("--dt", "17")):
@@ -83,11 +84,12 @@ class DocImageFailureTest(unittest.TestCase):
             done = subprocess.run(["sh", "-c", script], cwd=work, capture_output=True, text=True)
             self.assertEqual(done.returncode, 0, done.stderr)
             self.assertEqual((work / "argv").read_text().splitlines(),
-                             ["gallery.scene.toml", "painting", "viewer", ".", "out", "3", "17"])
+                             ["gallery.scene.toml", "painting_fitted_full", "painting_flat_fitted", "viewer", ".", "out", "3", "17"])
 
     def test_tables_use_the_callers_scene_and_object(self):
         sys.path.insert(0, str(ROOT / "launcher/tools/render"))
         import doc_tables
+        import check_avi
         import render_compare
         import numpy as np
         values = (1, 2, 3, 4, 5)
@@ -106,7 +108,7 @@ class DocImageFailureTest(unittest.TestCase):
             pair = SimpleNamespace(mean_delta_e=1, p95_delta_e=2, ssim_luma=3,
                                    edge_delta_e=4, interior_delta_e=5)
             with mock.patch.object(doc_tables, "scores", side_effect=scores) as read, \
-                    mock.patch.object(render_compare, "read_video", return_value=(None, [np.zeros((2, 2, 3), dtype=np.uint8)])), \
+                    mock.patch.object(check_avi, "read_video", return_value=(None, [np.zeros((2, 2, 3), dtype=np.uint8)])), \
                     mock.patch.object(render_compare, "reference_video", return_value=(None, pair)):
                 doc_tables.write_tables(work, work / "tables", "gallery", "painting", VARIANTS)
             self.assertIn(mock.call(work / "variant-painting_lite-compare.log"), read.call_args_list)
@@ -141,11 +143,24 @@ class DocImageFailureTest(unittest.TestCase):
         full = min((item["name"] for item in objects if "mesh_renderer" in item), key=len)
         names = [name for name, _ in doc_tables.variants(DEMO_SCENE, full)]
         pairs = doc_tables.variant_pairs(list(reversed(names)), full)
-        self.assertEqual([name for _, name in pairs],
-                         [name for name in reversed(names) if doc_tables.variant_note(name, full)[1]])
-        self.assertTrue(all(base in names for base, _ in pairs))
+        self.assertEqual([name for _, name, _ in pairs],
+                         [name for name in reversed(names) for _ in doc_tables.variant_note(name, full)[1]])
+        self.assertTrue(all(base in names for base, _, _ in pairs))
         with self.assertRaisesRegex(ValueError, "VARIANT_NOTES"):
             doc_tables.variant_note(full + "_unknown", full)
+
+    def test_each_fidelity_sheet_names_its_variants_by_label_and_refuses_a_missing_one(self):
+        sys.path.insert(0, str(ROOT / "launcher/tools/render"))
+        import doc_tables
+        objects = tomllib.loads(DEMO_SCENE.read_text())["objects"]
+        full = min((item["name"] for item in objects if "mesh_renderer" in item), key=len)
+        for image, labels in doc_tables.FIDELITY_SHEETS.items():
+            sheet = doc_tables.fidelity_sheet(DEMO_SCENE, full, image)
+            self.assertEqual([label for _, label in sheet], list(labels))
+            self.assertEqual([doc_tables.variant_label(name, full) for name, _ in sheet], list(labels))
+        with mock.patch.dict(doc_tables.FIDELITY_SHEETS, {"x": ("flat", "unknown")}), \
+                self.assertRaisesRegex(ValueError, "no unknown variant"):
+            doc_tables.fidelity_sheet(DEMO_SCENE, full, "x")
 
     def test_score_columns_are_the_sampling_tables(self):
         sys.path.insert(0, str(ROOT / "launcher/tools/render"))
@@ -157,6 +172,7 @@ class DocImageFailureTest(unittest.TestCase):
         sys.path.insert(0, str(ROOT / "launcher/tools/render"))
         import bake_charts
         import doc_tables
+        import check_avi
         import render_compare
         import numpy as np
         from r3d import bake_fidelity
@@ -169,7 +185,7 @@ class DocImageFailureTest(unittest.TestCase):
             pair = SimpleNamespace(mean_delta_e=1, p95_delta_e=2, ssim_luma=0.5, edge_delta_e=3, interior_delta_e=4)
             # Every comparison log scores the same, whatever row write_tables asks it for.
             with mock.patch.object(doc_tables, "scores", return_value=collections.defaultdict(lambda: values)), \
-                    mock.patch.object(render_compare, "read_video", return_value=(None, [np.zeros((2, 2, 3), dtype=np.uint8)])), \
+                    mock.patch.object(check_avi, "read_video", return_value=(None, [np.zeros((2, 2, 3), dtype=np.uint8)])), \
                     mock.patch.object(render_compare, "reference_video", return_value=(None, pair)):
                 doc_tables.write_tables(work, work / "tables", "gallery", "painting", VARIANTS)
             bake_charts.write_charts(work / "tables", work / "render", "gallery")
@@ -276,14 +292,15 @@ class DocImageFailureTest(unittest.TestCase):
             root = pathlib.Path(directory)
             tools = root / "launcher/tools/render"
             tools.mkdir(parents=True)
-            for name in ("render_doc_images.sh", "doc_images_demo.sh", "doc_import_examples.py", "gif_from_avi.sh"):
+            for name in ("render_doc_images.sh", "doc_images_demo.sh", "doc_import_examples.py"):
                 shutil.copyfile(ROOT / "launcher/tools/render" / name, tools / name)
-            helper = root / "scripts/lib/run.sh"
-            helper.parent.mkdir(parents=True)
-            shutil.copyfile(ROOT / "scripts/lib/run.sh", helper)
-            packages = root / "launcher/tools/build/packages.sh"
-            packages.parent.mkdir(parents=True)
-            shutil.copyfile(ROOT / "launcher/tools/build/packages.sh", packages)
+            # The helpers --orphans sources, and the figures runner it asks for declared images.
+            for name in ("scripts/lib/run.sh", "scripts/lib/python.sh", "scripts/lib/python-min-version",
+                         "launcher/tools/build/packages.sh", "launcher/tools/build/find_cc.py",
+                         "launcher/tools/docs/producer.py", "launcher/tools/docs/figures_runner.py",
+                         "launcher/tools/render/compare_images.py", "scripts/gates/tracked.py"):
+                (root / name).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(ROOT / name, root / name)
             demo = root / "launcher/demo/gallery/gallery.scene.toml"
             demo.parent.mkdir(parents=True)
             demo.touch()

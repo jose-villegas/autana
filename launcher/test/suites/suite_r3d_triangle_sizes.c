@@ -109,7 +109,7 @@ sizes_at(const grid_mesh_t* g, float distance) {
     r3d_pipeline_work_t* work = malloc(r3d_pipeline_work_bytes());
     TEST_ASSERT_NOT_NULL(work);
     uint16_t visible[1];
-    const int count = r3d_pipeline_cull(&g->mesh, &lens, visible, work);
+    const int count = r3d_pipeline_cull(&g->mesh, &lens, visible, work, NULL);
     r3d_sizes_t s = {0};
     r3d_sizes_count(&g->mesh, &lens, visible, count, &s);
     free(work);
@@ -252,15 +252,14 @@ test_a_poses_file_gives_its_size_lens_and_poses(void) {
 
 static void
 test_a_poses_line_and_its_rotated_pose_make_the_same_asymmetric_view(void) {
-    const transformf_t camera_pose = {.position = {3.0F, 2.0F, -400.0F},
-                                      .rotation = {0.0F, -0.31622777F, 0.0F, 0.9486833F},
-                                      .scale = {1.0F, 1.0F, 1.0F}};
+    const transformf_t camera_pose = {
+        .position = {3.0F, 2.0F, -400.0F}, .rotation = {0.0F, -0.31622777F, 0.0F, 0.9486833F}, .scale = vec3f_one()};
     r3d_sizes_poses_t* poses = malloc(sizeof(*poses));
     TEST_ASSERT_NOT_NULL(poses);
     TEST_ASSERT_NULL(read_poses_text("size 64 48\nlens 0.5 1\npose 3 2 400 -0.6 0 -0.8\n", poses));
     const viewport_t viewport = {poses->width, poses->height, 0};
     const render_view_t runtime = render_view_make(&camera_pose, poses->half_fov_short_tan, poses->near_z, viewport);
-    const transformf_t pose = transformf_looking(poses->eye[0], poses->forward[0], (vec3f_t){0, 1, 0});
+    const transformf_t pose = transformf_looking(poses->eye[0], poses->forward[0], vec3f_unit_y());
     const render_view_t measured = render_view_make(&pose, poses->half_fov_short_tan, poses->near_z, viewport);
     const vec3f_t runtime_axes[] = {runtime.position, runtime.screen_x, runtime.screen_y, runtime.forward};
     const vec3f_t measured_axes[] = {measured.position, measured.screen_x, measured.screen_y, measured.forward};

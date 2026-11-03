@@ -1,20 +1,12 @@
 #include "render/view/raster_meshlets.h"
 
 #include <assert.h>
-#include <string.h>
 
 #include "image/pixel/rgb565.h"
 #include "image/pixel/rgb888.h"
 #include "render/r3d_span.h"
 #include "render/raster.h"
 #include "render/view/raster_show.h"
-
-static void
-clear(const raster_attachment_t* self, const raster_t* raster, void* pixels, size_t count) {
-    (void)self;
-    (void)raster;
-    memset(pixels, 0, count * sizeof(uint16_t));
-}
 
 static void
 begin(const raster_attachment_t* self, const raster_t* raster, const render_view_t* view) {
@@ -47,12 +39,12 @@ pixel_color(const void* pixel, uint16_t clear_color) {
 }
 
 static void
-show(const raster_attachment_t* self, const raster_t* raster, const gfx_render_target_t* picture, int index) {
+show(const raster_attachment_t* self, const raster_t* raster, const gfx_target_t* picture, int index) {
     (void)self;
     raster_show_map(picture, index, raster->clear, pixel_color);
 }
 
 raster_attachment_t
 raster_meshlets_view(void* state) {
-    return (raster_attachment_t){sizeof(uint16_t), clear, begin, writer, NULL, show, state};
+    return (raster_attachment_t){IMAGE_U16, raster_attachment_clear_u16, begin, writer, NULL, show, state};
 }

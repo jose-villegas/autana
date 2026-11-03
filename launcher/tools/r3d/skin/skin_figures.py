@@ -1,4 +1,4 @@
-"""The skinning maths figure of docs/render/Skeleton-and-Skin.md: a two-joint limb's weights along its length,
+"""The skinning maths figure of docs/render/animation/Skeleton-and-Skin.md: a two-joint limb's weights along its length,
 the limb bent by linear blend skinning beside a single joint per vertex, and how thick each keeps the hinge as
 the bend grows. The numbers come from skin_figures_probe.c, which runs r3d_skin_palette() and
 r3d_skin_clusters(); the weights and positions are quantized by skin_asset.py.
@@ -16,8 +16,7 @@ import tempfile
 
 TOOLS = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(TOOLS))
-sys.path.insert(0, str(TOOLS / "math"))
-from math_figures import run_probe  # noqa: E402
+from docs.figures import run_probe  # noqa: E402
 from docs.plot_style import FAINT, INK, LABEL_SIZE, MUTED, SLOTS, style_axes, subplots, save  # noqa: E402
 from r3d import skin_asset  # noqa: E402
 

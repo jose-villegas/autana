@@ -21,6 +21,26 @@ checked, and compared with device captures.
 
 ## Viewing a scene file
 
+To look at a scene, use [Loupe](https://github.com/jose-villegas/loupe), the frame
+debugger. Build it once, with autana as its submodule:
+
+```sh
+git clone --recurse-submodules https://github.com/jose-villegas/loupe
+cd loupe
+pip install -r tools/ci/requirements.txt
+cmake --workflow --preset default
+```
+
+```sh
+build/default/loupe PATH.scene.toml
+build/default/loupe PATH.scene.toml --view meshlets --frames 60 -o out.bmp
+build/default/loupe PATH.scene.toml --video out.avi
+```
+
+With `-o` or `--video`, Loupe writes the frames and exits without a window. The
+rest of this section covers the headless `scene_viewer.sh`, which bakes, doc
+figures and tests call:
+
 ```sh
 sh launcher/tools/render/scene_viewer.sh PATH.scene.toml --object NAME --frames 2 -o out.bmp
 ```
@@ -34,14 +54,21 @@ Meshes must already be baked.
 Repeat `--object NAME` to enable only those mesh renderers; omit it to draw
 all authored renderers. An unknown renderer reports the available names.
 `--camera NAME` selects a camera; omission activates the scene's default.
-With `--camera`, stderr names that camera's path duration in ms.
+Stderr names the camera's path duration in ms, and `--poses FILE` writes one
+CSV row per frame of where it stands: `frame,ms`, its world position and
+rotation quaternion.
 The camera follows its own path at `--frames N` times `--dt MS` (defaults:
-30 frames, 16 ms). `--view shaded|depth|tiles|motion|meshlets|cull` selects the render
-context's view, with shaded as the default. The names match the declared
-`render_debug_view_t` table in `render/context/render_context.c`. A debug view needs an enabled mesh.
+30 frames, 16 ms). `--view NAME` selects the render context's view, with
+shaded as the default; an unknown name lists them. The names are the
+`render_debug_view_t` table's in `render/context/render_context.c`. A debug view needs an enabled mesh.
 With `--view cull`, `--counts FILE` writes one CSV row per frame of what the
-cull kept and drew ([Mesh-Rendering.md](../render/Mesh-Rendering.md#the-cull-seen));
+cull kept and drew ([Culling.md](../render/frame/Culling.md#the-cull-seen));
 without it, `--counts` is refused.
+
+`--view boxes` draws what the renderer drew: each instance's root box under its
+model matrix, one hue per mesh. `--set boxview.copies=2` keeps only meshes drawn
+more than once; edges behind the drawn depth are left out, and
+`--set boxview.behind=1` dims them instead (2 draws them in full).
 
 `--set owner.name=value` sets any registered tunable before drawing; repeat it
 for several values. Invalid names, values and ranges fail the render.
@@ -71,8 +98,8 @@ Run alone, it needs `PYTHON` set to an interpreter with Pillow and NumPy.
 `render_doc_images.sh` passes it the demo scene file and `OBJECT`, the object
 name of the scene's full renderer; the scene must also place `OBJECT_lite`,
 `OBJECT_flat`, `OBJECT_fitted`, `OBJECT_fitted_full` and `OBJECT_flat_fitted`.
-The CPU stage makes the launcher's and the UI toolkit's images and runs each app's
-`tools/doc_images.sh` for the app's own:
+The CPU stage makes the launcher's and the UI toolkit's images, runs each app's
+`tools/doc_images.sh` for the app's own, and runs the [declared producers](Doc-Figures.md):
 
 ```sh
 ./launcher/tools/render/render_doc_images.sh           # rewrite images and tables
@@ -80,7 +107,7 @@ The CPU stage makes the launcher's and the UI toolkit's images and runs each app
 ```
 
 It needs host C and C++ compilers, Python with Pillow and numpy, and ffmpeg
-5.1 or newer. Scratch bakes need the pinned meshoptimizer submodule:
+for the comparison videos. Scratch bakes need the pinned meshoptimizer submodule:
 
 ```sh
 git submodule update --init --depth 1 third_party/upstream/meshoptimizer
@@ -95,7 +122,7 @@ A render failure prints the failed command and the tails of its work logs,
 including logs inside bake directories.
 CPU `--check` renders into `launcher/tools/results/doc_images/out/cpu/`
 and compares decoded pixels with `compare_images.py`, never bytes: another
-ffmpeg or Pillow writes different GIF bytes for the same frames. It prints
+Pillow can write different bytes for the same pixels. It prints
 `same` or `changed` per image, and `orphan` for a file nothing makes.
 `--orphans` renders nothing and reports an image whose name no script
 mentions; the Comment Rules workflow runs it on every pull request. The
@@ -163,6 +190,22 @@ A comment or blank-line edit in the Python leaves the fingerprint unchanged.
 The stage's work folder is named by it, and its saved `source.json` holds it
 and lists every input.
 
+The fingerprint decides whether the stage runs, not what it remakes. Each
+start, reference set, fit and bake is kept in the bake cache under a key of its
+own inputs, so a run remakes only what changed. A key the run asks for twice is
+made once: the three fitted variants read one reference set.
+
+| Result | Key | Folder in the bake cache |
+|---|---|---|
+| Reference set | `bake.py`'s reference key | `reference/<key>/`, shared with `bake.py bake` |
+| Start | `bake.py`'s start key, and the code in `doc_stages.py` that makes it | `doc/<digest>/` |
+| Fit, sweep point or look | `bake.py`'s fit key for the point's recipe and the start's bytes, the cost model when the point weights it, and the code | `doc/<digest>/` |
+| GI bake | `bake.py`'s mesh key, the path cull's sampling and poses, and the code | `doc/<digest>/` |
+
+A `doc/` folder also holds the steps recorded by the run that made it, which
+the bake-steps chart shows. Measures, sheets and the occlusion map run every
+time.
+
 The `doc-images-gpu` workflow fingerprints inputs on every main push.
 Changed images remain pending for the next NIGHT_START; pushes do not render.
 
@@ -202,7 +245,7 @@ The first refresh step, `scripts/ci/gpu_refresh_gate.sh`, is the flowchart's
 GPU half, persisting `GPU_ENV` through `GITHUB_ENV` for later steps.
 
 ```mermaid
-flowchart TD
+flowchart LR
     Fingerprint["Hosted input fingerprint"] --> Flight{"Another run in flight?"}
     Flight -->|yes| Refresh
     Flight -->|no| Latest{"Latest main record rendered<br/>and matches?"}
@@ -215,11 +258,16 @@ flowchart TD
     Head -->|yes| Again{"Latest main record rendered<br/>and matches?"}
     Again -->|yes| Skip
     Again -->|no or force| Render["Render"]
-    Render -->|success| Publish["Sync or close refresh PR"]
-    Publish -->|success| Recorded["Record rendered inputs"]
+    Render -->|success| Push["Push changed images to the refresh branch"]
+    Push -->|success or nothing changed| Recorded["Record rendered inputs"]
+    Recorded --> Publish["Sync or close refresh PR"]
     Render -->|failure| Failed["Record failed inputs and run URL"]
-    Publish -->|failure| Failed
+    Push -->|failure| Failed
 ```
+
+The record comes before the pull request calls, so a failed API call after the push
+leaves the run red but the inputs current. GitHub writes retry a request that never
+reached the server, such as a TLS handshake timeout.
 
 A rendered record means rendered, not merged: closing a refresh PR leaves
 these inputs current until they change or a dispatch uses `force`.
@@ -252,18 +300,21 @@ stall fails after `GPU_QUERY_FAILURE_SECONDS` only when tasks are queued
 and no workers remain active.
 
 ```mermaid
-flowchart TD
-    Start[Stage-start memory guard] --> Queue[Queue both prepares]
-    Queue --> Admission{Live memory and core admission}
+flowchart LR
+    Start[Stage-start memory guard] --> Ask[Ask for every start, reference set and bake]
+    Ask --> Kept{Key done in the bake cache?}
+    Kept -->|yes| Result[Kept result]
+    Kept -->|no| Admission{Live memory and core admission}
     Admission --> Worker[Spawn worker]
     Worker --> Kind{Task kind}
-    Kind -->|Prepare| Poses[Render reference poses in the main process with bounced light, else in a pool within budget and live memory]
-    Poses --> Ready[Variant inputs ready]
-    Ready --> Fits[Queue independent fits]
-    Fits --> Admission
-    Ready --> Bake[Queue bake with priority]
-    Bake --> Admission
-    Kind -->|Fit or bake| Ordered[Consume results in recipe order]
+    Kind -->|Reference set| Poses[Render reference poses in the main process with bounced light, else in a pool within budget and live memory]
+    Kind -->|Start, fit or bake| Made[Make it and its steps into the cache]
+    Poses --> Result
+    Made --> Result
+    Result --> Ready[Variant inputs linked once its start and references are kept]
+    Ready --> Fits[Ask for independent fits]
+    Fits --> Kept
+    Result --> Ordered[Consume results in recipe order]
     Ordered --> Measure[Queue measurement with priority]
     Measure --> Admission
     Kind -->|Measurement| Outputs[Ordered tables and sheets]
@@ -320,7 +371,7 @@ Time a change on the device, or under QEMU's `--icount` for counts.
 
 Two files, the same declare-then-source shape a report script uses:
 
-- **`<name>_render_host.c`** defines one `render_scene`; see
+- **`<name>_render_host.c`** defines one named `frame_provider_t`; see
   `launcher/tools/render/render_host.h` for the fields: a setup hook that runs
   once after `gfx_init()`, a draw hook that runs once per frame, and an
   options hook taking whatever arguments the harness did not recognise.
@@ -330,9 +381,83 @@ Two files, the same declare-then-source shape a report script uses:
   checking each image, converting to PNG) is that one procedure. A scene that
   reads asset packs also declares `scene_assets`, the folders whose roots
   `build_pack.py` writes as packs beside the renderer; a folder with no asset
-  roots fails the build. `scene_renderer=1` links the renderer: every `.c`
-  below the folders `launcher/main/renderer_folders.txt` names, the list the
-  firmware and the host tests build too.
+  roots fails the build.
+
+CMake's `autana::render_host_core` supplies the host frame loop on top of
+`autana::render_engine`: drawing, assets, tune, jobs and packages, with no `main()` and no
+allocation hooks. `launcher/tools/render/engine_sources.cmake` owns that list, and
+`run_tests.sh` reads it with `cmake -P`.
+
+`scene_target=render_host` selects `autana::render_host`, adding the renderer that
+`launcher/main/renderer_sources.cmake` lists. Its consumer defines `display_quarter_now()`
+from `display/display.h`. `scene_target=scene_provider` adds the scene-file
+provider, `scene_viewer.c`, which defines it.
+
+A host consumer adds `launcher/tools/render` with `add_subdirectory()` and links
+the chosen target. Its interface sources compile with the consumer's defines;
+package libraries supply their own targets.
+
+Scene builds use CMake under their output folder. `--deps` reads a temporary
+build's compile database without compiling or leaving output files.
+The standalone compile check is
+`cmake -S launcher/tools/render -B build/render-host && cmake --build build/render-host`.
+It also compiles the headers `tests/render_host_cxx_check.cpp` includes as C++20,
+as a C++ consumer does.
+
+The script selects `<scene_name>_provider` with `RENDER_HOST_PROVIDER`;
+`scene_provider` overrides the symbol, and an empty value builds
+`render_host.c` without `main()` as a library.
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    state "render_host_open" as Open
+    state "render_host_step" as Step
+    state "render_host_close" as Close
+    [*] --> Open
+    Open --> Step: run opened
+    Step --> Step: elapsed time and input
+    Step --> Close: judge warm-up frames, write outputs
+    Close --> [*]: give back the scene, pack and framebuffer
+```
+
+If `render_host_open()` returns false, no run opened and `exit_code` carries the command's result.
+
+`render_host_save()`, `render_host_restore()` and `render_host_checkpoint_free()`
+retain frame history in host and development builds. Saving can return NULL
+on allocation failure. Checkpoints remain reusable within the open run, and
+`render_host_checkpoint_bytes()` gives the memory each holds.
+`render_host_image()` exposes the whole converted frame (bottom-up BGR rows,
+width, height and row stride, in the BMP's row layout; `--crop` writes only a
+part of it) for comparisons and viewers.
+
+| Owner | Carried state |
+|---|---|
+| Host loop | Frame index, elapsed time, input, drawn box and output pixels |
+| Scene | Animation playheads and poses, transforms, world caches, cameras, skin output and lights |
+| Render context | Raster scratch and upscale maps, split feedback, frame-generation pictures and costs, resolution controller and debug views |
+| Graphics | Presentation flags, dirty regions, framebuffers, half picture and seams, indexed image and palettes |
+| Tunables | Values and owner generations |
+
+One checkpoint captures engine state; provider statics are excluded. Restore
+returns false if captured allocations changed or a lent scratch is too small.
+Keep loaded scenes, component allocations and the presentation mode alive.
+
+Pointer guards cannot detect a free followed by a reallocation at the same address.
+
+Restoring rewinds inputs, retained pictures and measured costs, without
+rewinding output files or the wall clock. Timed choices (frame generation
+and predicted resolution) replay only as exactly as their clock.
+Byte comparisons use frame generation off and a fixed or declared size.
+
+Each draw receives a `provider_frame_t`. Optional `path_ms` and `seek` hooks
+expose a provider's path duration and camera cuts. The scene-file provider
+seeks its animators and clears render history at a cut. An optional
+`render_context` hook returns the context a provider draws through, so a
+caller can switch debug views; providers without one leave it NULL.
+An optional `teardown` hook gives back what `setup` took; `render_host_close`
+calls it, then frees the framebuffer, so one process can open a run again,
+even of the same scene id from another pack folder.
 
 An engine scene lives in `launcher/tools/render/scenes/`; an app's scene lives
 in that app's own `tools/`, so nothing in the engine's tooling names an app.
@@ -442,7 +567,9 @@ python launcher/tools/render/check_avi.py out.avi ...      # re-reads the header
 Players stop reading a RIFF AVI 1.0 file well short of its 32-bit size
 field's 4 GB, so a run whose video would pass 1 GB is refused before
 anything is drawn, with the frame count
-that does fit stated in the refusal. `--video` never changes what a scene's
+that does fit stated in the refusal; `render_host_video_frames_fit()` gives
+an open run that count, and a run stepped past its `--frames` stops its
+video there with an error. `--video` never changes what a scene's
 BMP pins: the same bytes are written whether or not it is given, so it adds
 no baseline of its own.
 
@@ -549,7 +676,7 @@ flowchart LR
 | `--label-a`, `--label-b` | What each side shows, such as `Today (main)` or the technique and setting being tried. They name the panels of the sheet, the crops and the video in place of the short hashes. |
 | `--clear` | The colour the scene clears to. A pixel clear on one side and drawn on the other is red and counted as a hole on the side that left it clear. |
 | sheet | `compare.png`, a row per render: A, B, then the absolute difference as a greyscale heatmap, amplified 8 times. `summary.txt` gives the resolved short hashes and per render the changed share, mean difference and holes. |
-| `--video` | Records every render's frames on both sides through the renderer's own `--video` (with `--render`, put `--frames` and `--dt` in the arguments; a scene runs from time zero). Writes `<label>.mp4`, its panels labelled as the sheet's, with the frame time, and `<label>.frames.csv` with per-frame changed share, mean difference, holes and temporal change. ffmpeg packs the frames into H.264 because an uncompressed side-by-side is tens of megabytes; `--fps` sets playback (default `1000/dt`). |
+| `--video` | Records every render's frames on both sides through the renderer's own `--video` (with `--render`, put `--frames` and `--dt` in the arguments; a scene runs from time zero). Writes `<label>.mp4`, its panels labelled as the sheet's, with the frame index and time, and `<label>.frames.csv` with per-frame changed share, mean difference, holes and temporal change. ffmpeg packs the frames into H.264 because an uncompressed side-by-side is tens of megabytes; `--fps` sets playback (default `1000/dt`). |
 | `--crops N` | `compare.crops.png` and `<label>.crops.png`: the `N` places the two differ most, A above B, enlarged 4 times without smoothing. Changed pixels (a channel off by more than 8, or a hole) within 3 px are one place; holes rank first, then total difference; a place over 64 px is cut to its strongest 64 px window. A video uses its two worst frames. Nothing is written where nothing differs. |
 
 The renderer arguments are split on spaces and never expanded as patterns.
@@ -559,7 +686,7 @@ a whole camera path against the scene's source model instead of a second
 revision: `reference_render.py` draws the poses, `FILE` sampled at the renderer's
 `--dt` by `tools/anim/track_host.py --every`, once per scene, poses and
 `--samples`, and the render's frames are scored against them. It writes
-`<label>.mp4` (reference, render, error heatmap, edge pixels) at `--fps`
+`<label>.mp4` (reference, render, error heatmap) at `--fps`
 30, 40, 60 or 80, and one reference line per frame in `summary.txt`. The
 header of `render_compare.sh` has the details.
 The tool needs Pillow and numpy (`launcher/tools/render/requirements.txt`).

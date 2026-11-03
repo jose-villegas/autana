@@ -17,6 +17,54 @@ audio = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(audio)
 
 
+class MicDspTablesTest(unittest.TestCase):
+    def test_mic_schedule_and_ranges(self):
+        sweep = load_tool("audio_mic_dsp_sweep")
+        args = sweep.parser().parse_args(["--board", "TEST"])
+        configs = list(sweep.configurations(args))
+        self.assertEqual(configs[0], (sweep.DEFAULTS, False))
+        self.assertEqual(args.volumes, (2, 5, 10, 20, 30, 50, 70, 100))
+        self.assertEqual(sum(config["alc"] for config, _ in configs),
+                         len(args.alc_targets) * len(args.alc_windows) * len(args.alc_gains))
+        source = (ROOT / "launcher/main/audio/audio_in.c").read_text()
+        self.assertEqual(set(sweep.DEFAULTS), (set(re.findall(r"TUNE\(mic,\s*(\w+),", source)) - {"name"}
+                          | set(re.findall(r"^MIC_TUNE_NIBBLE\((\w+)\)", source, re.MULTILINE))))
+        for config, _ in configs:
+            sweep.validate_config(config)
+        for name, limit in sweep.LIMITS.items():
+            with self.assertRaises(ValueError):
+                sweep.validate_config(dict(sweep.DEFAULTS, **{name: limit + 1}))
+
+    def test_mic_capture_resets_every_field_on_failure(self):
+        sweep = load_tool("audio_mic_dsp_sweep")
+        with tempfile.TemporaryDirectory() as directory:
+            args = sweep.parser().parse_args(["--board", "TEST", "--out", str(Path(directory) / "capture.txt")])
+            calls = []
+            def run(command, *words):
+                calls.append(words)
+                if words[0] == "tone":
+                    raise OSError("capture failed")
+                return '{"build_id":"fixture-dev"}' if words[0] == "buildid" else "ok"
+            with mock.patch.object(sweep, "autana_run", side_effect=run), self.assertRaises(OSError):
+                sweep.capture(args)
+            self.assertEqual(calls[-len(sweep.DEFAULTS):],
+                             [("tune", "reset", "mic." + name) for name in sweep.DEFAULTS])
+
+    def test_mic_dsp_fixture(self):
+        path = ROOT / "launcher/test/fixtures/audio_mic_dsp_capture.txt"
+        body = audio.render_mic(path)
+        for feature in ("Baseline", "HPF", "Gate", "ALC"):
+            self.assertIn(feature, body)
+        self.assertIn("Noise floor", body)
+        self.assertIn("SNR", body)
+        self.assertIn("-70.0", body)
+        self.assertIn("<picture>", body)
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            load_tool("audio_mic_dsp_figures").render(path, output)
+            self.assertEqual(len(list(output.glob("*.png"))), 6)
+
+
 class AudioTablesTest(unittest.TestCase):
     def test_capture_tables(self):
         tables = audio.render(ROOT / audio.CAPTURE)
@@ -345,8 +393,10 @@ class SoundMixToolsTest(unittest.TestCase):
             (tree / source).write_bytes(b'source = "chime.wav"\r\nformat = "adpcm"\r\nloop = true\r\n')
             original = b"#define OTHER 9\r\n#define SOUND_VOICE_COUNT 8\r\n"
             header.write_bytes(original)
-            with mock.patch.object(image.subprocess, "run", return_value=argparse.Namespace(stdout="")):
+            with mock.patch.object(image.subprocess, "run", return_value=argparse.Namespace(stdout="")), \
+                    mock.patch.object(image, "lock_variant") as lock:
                 image.prepare(tree, "chime", "pcm16", 32)
+                lock.assert_called_with(tree.resolve(), "chime_pcm16.sond")
                 self.assertEqual(header.read_bytes(), original.replace(b"COUNT 8", b"COUNT 32"))
                 self.assertEqual((tree / asset).read_bytes(), b'source = "chime.wav"\r\nformat = "pcm16"\r\nloop = true\r\n')
                 self.assertEqual({p.relative_to(tree) for p in tree.rglob("*") if p.is_file()},
@@ -469,6 +519,14 @@ class SoundMixToolsTest(unittest.TestCase):
 
 sweep = load_tool("audio_drc_sweep")
 import autana_runner as runner
+
+
+class RecordKeyTest(unittest.TestCase):
+    def test_output_paths_record_only_their_file_name(self):
+        for path in (r"C:\jobs\out\0\take.wav", "out/0/take.wav", "take.wav"):
+            self.assertEqual(runner.record_key(["mic", "record", 2000, "-o", path, "--json"]),
+                             ["mic", "record", "2000", "-o", "take.wav", "--json"])
+        self.assertEqual(runner.record_key(["tone", 1000, 500]), ["tone", "1000", "500"])
 
 
 class DrcSweepTest(unittest.TestCase):
@@ -666,14 +724,14 @@ class DrcSweepTest(unittest.TestCase):
                 reply = json.loads(payload)
                 hz, _, volume = map(int, command.split()[1:])
                 reply["thd_db"] = -42.0 if hz == 1000 and volume == 100 else -12.0
-                reply["peak_dbfs"] = audio.DRC_CLIPPED_DBFS - 1
+                reply["peak_dbfs"] = audio.CLIPPED_DBFS - 1
                 records.append(command + "\t" + json.dumps(reply))
             capture.write_text("\n".join(records))
             body = audio.render_drc(capture)
             self.assertIn("-42.0 | -1.5 | no", body)
             command, payload = next(line.split("\t") for line in records if line.startswith("tone 1000 "))
             reply = json.loads(payload)
-            reply.update(hz=500, thd_db=-12.0, peak_dbfs=audio.DRC_CLIPPED_DBFS)
+            reply.update(hz=500, thd_db=-12.0, peak_dbfs=audio.CLIPPED_DBFS)
             records.append("tone 500 500 100\t" + json.dumps(reply))
             capture.write_text("\n".join(records))
             self.assertIn("-42.0 | -0.5 | yes", audio.render_drc(capture))

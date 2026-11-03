@@ -30,7 +30,7 @@ from any shell including Git Bash.
 ## runsuite: the everyday device loop
 
 A diag build (`CONFIG_LAUNCHER_SELFTEST` on, `AUTORUN` off) answers
-`runsuite <suite>` on the console (`console/verbs/console_runsuite.c`);
+`runsuite <suite>` on the console (`selftest/console_runsuite.c`);
 `autana suite <name>` sends it. It runs exactly that one registered suite
 with **no rebuild and no reflash**:
 
@@ -53,10 +53,11 @@ RUNSUITE_COMPLETE name=<suite> found=<0|1> selected=<n> unmatched=<n>
 so a harness never has to guess from a quiet console.
 
 **Narrowing a suite.** `runsuite <suite> <pattern>[,<pattern>...]` runs only
-tests whose name contains a pattern; `autana suite <name> --test <pattern>`
+tests a pattern picks; `autana suite <name> --test <pattern>`
 sends it ([syntax](../cli/Tests.md)).
 
 - The `RUN_TEST` override in `launcher/test/timing.c` does the filtering, so no suite changes. Each test it reaches prints `SUITE_TEST name=<test> selected=<0|1>`.
+- `suite_test_matches()` in `launcher/test/suites.c` holds the pattern rule, and `test_matches()` in `scripts/lib/device_capture.py` repeats it for the tools; both are tested against `launcher/test/suites/suite_filter_cases.inc`.
 - Patterns live for that one request; the next `runsuite` runs everything.
 - In the completion line, `selected=` is how many tests ran and `unmatched=` how many patterns matched nothing. A refused pattern prints `SUITE_FILTER_REFUSED` and runs nothing.
 - Only `runsuite` reads a line long enough for the most patterns `launcher/test/suites.h` allows; other verbs keep `CONSOLE_LINE_MAX`.
@@ -111,7 +112,9 @@ captures, failed runs included.
 - It is not a required check. If no board frees up within the wait, the job succeeds with a neutral skipped notice.
 - The [nightly scoped performance](../../launcher/tools/perf/README.md#nightly-scoped-chain) workflow's designated board also runs Board CI's steps (`scripts/ci/board-steps.sh`: self-test, then console tests) in the same overnight hold.
 
-The `board-ci-down` issue flags board CI failures or daily health-check problems (stale successes, queued jobs or missing USB boards) and closes after a successful run that held boards; disabling the nightly workflow pauses health checks.
+The `board-ci-down` issue means the boards could not run: a lane that did not start, hung or stopped early, a self-test capture or console tests that never completed, a board missing from USB, a board job stuck in the queue, or a crashed or cancelled job.
+A night whose lanes all ran to the end, or a Board CI run whose board did, clears it even when tests failed; those, such as a scene over its frame-time ceiling, leave that run red.
+Disabling the nightly workflow pauses health checks.
 
 ## Console recipes and lifecycle coverage
 

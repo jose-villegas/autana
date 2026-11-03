@@ -40,7 +40,7 @@ ui_mu_theme_t ui_theme_from_style(const mu_Style* style);
 typedef enum { UI_ALIGN_LEFT, UI_ALIGN_CENTRE, UI_ALIGN_RIGHT } ui_align_t;
 
 typedef struct {
-    const draw_image_t* icon; /* NULL for a label alone */
+    const image_t* icon; /* NULL for a label alone */
     const char* label;
     bool enabled;  /* a disabled button is drawn muted and takes no tap */
     bool selected; /* drawn on accent_face; a press only sinks the bezel */
@@ -95,8 +95,8 @@ int ui_dropdown_label_width(int w, bool has_icons, const ui_mu_theme_t* theme);
  * frame, or -1; the list closes UI_DROPDOWN_CLOSE_FRAMES frames later.
  * `names` holds at least one entry, and `id` must be unique per dropdown;
  * its list's window is named after it. */
-int ui_mu_dropdown(mu_Context* ctx, const char* id, mu_Rect r, const char* const* names,
-                   const draw_image_t* const* icons, int count, int selected, const ui_mu_theme_t* theme);
+int ui_mu_dropdown(mu_Context* ctx, const char* id, mu_Rect r, const char* const* names, const image_t* const* icons,
+                   int count, int selected, const ui_mu_theme_t* theme);
 
 /* Whether dropdown `id`'s list is open. Asked from inside the same window
  * as the ui_mu_dropdown() call, since microui scopes a name to its window. */
@@ -109,7 +109,7 @@ bool ui_tile_button_id(mu_Context* ctx, mu_Id id, mu_Rect r, const ui_widget_but
 bool ui_theme_slider_int_id(mu_Context* ctx, mu_Id id, mu_Rect r, int* value, int lo, int hi, int step, bool enabled,
                             const ui_mu_theme_t* theme);
 int ui_dropdown_id(mu_Context* ctx, mu_Id mid, const char* id, mu_Rect r, const char* const* names,
-                   const draw_image_t* const* icons, int count, int selected, bool enabled, const ui_mu_theme_t* theme);
+                   const image_t* const* icons, int count, int selected, bool enabled, const ui_mu_theme_t* theme);
 
 /* The dropdown list open this frame, or NULL: at most one is. */
 const mu_Container* ui_dropdown_open_list(void);

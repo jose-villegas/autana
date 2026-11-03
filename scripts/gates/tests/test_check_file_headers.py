@@ -70,7 +70,6 @@ class ProblemsTest(unittest.TestCase):
             "launcher/main/apps/sand/tests/suite_sand.c": SUITE,
             "launcher/components/microui/src/microui.c": "int x;\n",
             "launcher/main/draw/draw_palette_standard_generated.h": "int x;\n",
-            "editor/src/main.cpp": "int x;\n",
             "launcher/test/stubs/esp_log.c": "int x;\n",
         }), [])
 
@@ -82,6 +81,10 @@ class ProblemsTest(unittest.TestCase):
             ({"launcher/test/suites/suite_examples.c": including + "// RUN_TEST(test_x) is in there\n"},
              ["launcher/test/suites/suite_examples.c"]),
             ({"launcher/test/suites/suite_examples.c": SUITE}, []),
+            ({"launcher/test/suites/suite_examples.c": SUITE.replace("RUN_TEST(test_x)", 'RUN_TEST_CASE(test_x, "a")')},
+             []),
+            ({"launcher/test/suites/suite_examples.c": SUITE.replace("RUN_TEST(test_x)", "RUN_TEST_CASEX(test_x)")},
+             ["launcher/test/suites/suite_examples.c"]),
         )
         for files, expected in cases:
             with self.subTest(files=list(files.values())[0][:30]):
@@ -114,11 +117,10 @@ class ProblemsTest(unittest.TestCase):
             ({"tools/x.py": "import os\n"}, ["tools/x.py"]),
             ({"tools/x.py": '"""Lists what x does."""\nimport os\n'}, []),
             ({"tools/__init__.py": ""}, ["tools/__init__.py"]),
-            ({"editor/src/view.hpp": "class View {};\n"}, ["editor/src/view.hpp"]),
-            ({"editor/src/view.hpp": "// view: what the editor shows.\nclass View {};\n"}, []),
+            ({"tools/view.hpp": "class View {};\n"}, ["tools/view.hpp"]),
+            ({"tools/view.hpp": "// view: what the editor shows.\nclass View {};\n"}, []),
             ({"launcher/test/stubs/esp_log.h": "int x;\n"}, ["launcher/test/stubs/esp_log.h"]),
             ({"launcher/components/microui/src/microui.h": "int x;\n"}, []),
-            ({"editor/src/main.cpp": "int x;\n"}, []),
         )
         for files, expected in cases:
             with self.subTest(files=sorted(files)):

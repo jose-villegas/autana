@@ -34,7 +34,7 @@ static void clear(const raster_attachment_t* a, const raster_t* r, void* pixels,
     memset(pixels, 0, count * 2);
 }
 static void resolve(const raster_attachment_t* a, const raster_t* r,
-                    const gfx_render_target_t* rows, int index) {}
+                    const gfx_target_t* rows, int index) {}
 int main(void) {
     const int16_t positions[4][3] = {{-4, -4, 0}, {4, -4, 0}, {4, 4, 0}, {-4, 4, 0}};
     r3d_quad_t quad;
@@ -43,7 +43,7 @@ int main(void) {
     raster_t r = {.width = 8, .height = 8, .instances = &instance, .instance_count = 1};
     const transformf_t pose = transformf_looking((vec3f_t){0, 0, 100}, (vec3f_t){0, 0, -100}, (vec3f_t){0, 1, 0});
     const render_view_t view = render_view_make(&pose, .5f, 1, (viewport_t){r.width, r.height, 0});
-    raster_attachment_t a = {.bytes_per_pixel = 2, .clear = clear, .resolve = resolve};
+    raster_attachment_t a = {.format = 2, .clear = clear, .resolve = resolve};
     const raster_attachment_t* attachments[] = {&a};
     r.attachments = attachments;
     r.attachment_count = 1;

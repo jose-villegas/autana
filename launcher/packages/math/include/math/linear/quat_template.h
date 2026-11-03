@@ -10,13 +10,15 @@
 
 #include <stdbool.h>
 
+#include "math/linear/constant_template.h"
+
 #define MATH_DEFINE_QUAT(P, V, T, OPS)                                                                                 \
     typedef struct {                                                                                                   \
         T x, y, z, w;                                                                                                  \
     } P##_t;                                                                                                           \
                                                                                                                        \
     /* identity = (0, 0, 0, 1), the rotation that does nothing. */                                                     \
-    static inline P##_t P##_identity(void) { return (P##_t){OPS##_zero(), OPS##_zero(), OPS##_zero(), OPS##_one()}; }  \
+    MATH_DEFINE_CONSTANT(P, identity, OPS##_zero(), OPS##_zero(), OPS##_zero(), OPS##_one())                           \
                                                                                                                        \
     /* q = (axis * sin(angle/2), cos(angle/2)); `axis` must be unit length. */                                         \
     static inline P##_t P##_from_axis_angle(V##_t axis, T angle) {                                                     \
@@ -45,9 +47,9 @@
     /* q = qy * qx * qz, each from_axis_angle about its axis: Z, then X, then Y */                                     \
     /* about the fixed axes. */                                                                                        \
     static inline P##_t P##_from_euler(V##_t angles) {                                                                 \
-        const P##_t about_x = P##_from_axis_angle((V##_t){OPS##_one(), OPS##_zero(), OPS##_zero()}, angles.x);         \
-        const P##_t about_y = P##_from_axis_angle((V##_t){OPS##_zero(), OPS##_one(), OPS##_zero()}, angles.y);         \
-        const P##_t about_z = P##_from_axis_angle((V##_t){OPS##_zero(), OPS##_zero(), OPS##_one()}, angles.z);         \
+        const P##_t about_x = P##_from_axis_angle(V##_unit_x(), angles.x);                                             \
+        const P##_t about_y = P##_from_axis_angle(V##_unit_y(), angles.y);                                             \
+        const P##_t about_z = P##_from_axis_angle(V##_unit_z(), angles.z);                                             \
         return P##_mul(about_y, P##_mul(about_x, about_z));                                                            \
     }                                                                                                                  \
                                                                                                                        \

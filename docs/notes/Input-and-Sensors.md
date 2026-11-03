@@ -5,7 +5,7 @@ each input feature behaves is in [input/](../input/README.md).
 
 ## Touch controller
 
-Both board revisions go through the BSP. An idle controller can NACK register
+Both board revisions open through `board_touch_open()`. An idle controller can NACK register
 reads, logging `i2c transaction failed` and `FT5x06 ... I2C read error!`; use
 these as console search terms and do not poll blindly.
 
@@ -18,7 +18,7 @@ held contact keeps being read without another pulse. Delivery and calibration:
 
 | Fact | Value |
 |---|---|
-| Ranges | set in `input/motion/imu.c` |
+| Ranges | set by the chip driver, `input/motion/qmi8658/qmi8658.c` |
 | Rate and buffer | `IMU_ODR_HZ` with a stream FIFO of `IMU_FIFO_SAMPLES`, in `input/motion/imu.h` |
 | Axes | not the screen's; [Motion-Axes.md](../input/Motion-Axes.md) |
 | Calibration | offsets and gyro zero-rate: [Motion-Calibration.md](../input/Motion-Calibration.md) |

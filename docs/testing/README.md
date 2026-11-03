@@ -8,8 +8,8 @@ run `launcher/test/run_tests.sh`.
 
 - It needs a host C compiler, not ESP-IDF or a board.
 - A good run ends with `0 Failures` and `OK`; most of the wait is compiling.
- On Windows you need three installs first: [Git for Windows](https://git-scm.com/download/win)
-(provides Git Bash), a compiler (WinLibs, which includes `make`) and
+ On Windows you need four installs first: [Git for Windows](https://git-scm.com/download/win)
+(provides Git Bash), a compiler (WinLibs, which includes `make`), CMake and
 Python 3; [Host tests](Host-Tests.md#install-what-you-need) has the
 commands.
 
@@ -102,13 +102,13 @@ resets tracked files' and directories' access times after checkout. Its last
 step records reads, the workflow and its local actions in a 90-day artifact.
 
 The pull request gate compares changed paths with the newest unexpired
-manifest on its base branch. Additions, removals and renames also match their
-nearest directory present on the base if it was read. The log and step summary
-show decisions and matches.
+manifest on its base branch. The log and step summary show decisions and matches.
 
 An addition or rename destination matches a tracked read with the same
-extension under its nearest ancestor present on the base. Extensionless
-files match other extensionless files.
+extension under its nearest ancestor present on the base. Read directories
+from that ancestor upward form a recursive listing and widen the search to
+the top one. A removal or rename source matches this way only if its
+directory was read. Extensionless files match other extensionless files.
 
 The index and changed paths identify base directories, with the root as fallback.
 The untracked `.git/job-inputs-canary` checks access times and stays outside

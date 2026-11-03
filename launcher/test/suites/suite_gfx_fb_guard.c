@@ -6,7 +6,7 @@
  *
  * This is the layer draw.c's real primitives (draw_clear(), draw_rect(),
  * draw_pixel(), the line and text functions, gfx_framebuffer() itself) all
- * delegate to once band mode (gfx_mode.h) has freed the PSRAM framebuffer,
+ * delegate to once band mode (gfx.h) has freed the PSRAM framebuffer,
  * proving IT never lets a caller through is what proves none of them can
  * write into a buffer that no longer exists, without needing gfx_mode.c's own
  * device-only allocation and panel plumbing.

@@ -4,7 +4,7 @@ Axes, composition, templates and float build rules. [Math index](README.md).
 
 | | |
 |---|---|
-| Axes | left-handed, local +x right, +y up, +z forward; a camera looks down +z; source assets are right-handed and mirrored at the pack ([Mesh-Import.md](../render/Mesh-Import.md#the-offline-tools)) |
+| Axes | left-handed, local +x right, +y up, +z forward; a camera looks down +z; source assets are right-handed and mirrored at the pack ([Mesh-Import.md](../render/offline/Mesh-Import.md#the-offline-tools)) |
 | Rotation sense | left-handed, +y up: a positive angle about +y turns +z toward +x |
 | Quaternion | `x, y, z, w` with `w` the scalar, unit length, Hamilton product; `mul(a, b)` applies `b` first |
 | Euler | `from_euler` applies Z, then X, then Y about the fixed axes |
@@ -56,6 +56,7 @@ The macro arguments:
 | `P` | The type being made, e.g. `vec3f` (its functions are `vec3f_add`, ...) |
 | `V`, `R`, `Q`, `M`, `B` | The vector, rectangle, quaternion, matrix and box types a family builds on |
 | `L` | The projection lens prefix for `MATH_DEFINE_PLANE`, e.g. `projectf`; the plane prefix for `MATH_DEFINE_BOX3_REAL`, e.g. `planef` |
+| `WV`, `WIDEN` | Ball queries use a vector prefix that holds centre differences without overflow or saturation, and a conversion from `V`; `MATH_WIDEN_NONE` keeps a vector unchanged |
 | `EDGE` | `MATH_DEFINE_CIRCLE` takes this extra argument: one cell for integers, zero for real rect closures and bounds |
 | `LOWEST`, `HIGHEST` | The box scalar bounds, e.g. `INT16_MIN`, `INT16_MAX` or `-INFINITY`, `INFINITY` |
 | `T` | The scalar (`float`, `int`, `int32_t`, `int16_t`); `recti` keeps plain `int` |

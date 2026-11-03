@@ -79,7 +79,7 @@ heap (current and low-water mark), CPU clock, on-die temperature,
 orientation, the IMU, and that frame's touch/button state. Good for anything
 where you need to see the actual pixels, or correlate a visual glitch
 against memory/sensor conditions at that instant; see
-`main/console/verbs/console_screenshot.c` and `main/console/capture/device_state.h` for the
+`main/shell/console/console_screenshot.c` and `main/shell/console/device_state.h` for the
 mechanism and the full field list.
 
 - The device streams a 24bpp BMP over the wire, decoded to PNG in memory
@@ -88,7 +88,7 @@ mechanism and the full field list.
 
 - **Development-only** (`--dev` or `--diag` build): a release build carries
   none of it.
-- **Serial transfer**: a full frame is streamed as base64<sup>[[27]](../Citations.md#27)</sup> over the console.
+- **Serial transfer**: a full frame is streamed as base64<sup>[[27]](../Citations.md#rfc4648)</sup> over the console.
   [Flash-and-Captures.md](../cli/Flash-and-Captures.md#screenshots) records
   the baud and capture workflow. `autana screenshot`
   prints progress every few seconds so this does not read as a hang.

@@ -99,12 +99,12 @@ assert_strings_fit(bool landscape) {
 }
 
 static void
-test_every_string_fits_its_rect_portrait(void) {
+test_every_title_string_fits_its_rect_portrait(void) {
     assert_strings_fit(false);
 }
 
 static void
-test_every_string_fits_its_rect_landscape(void) {
+test_every_title_string_fits_its_rect_landscape(void) {
     assert_strings_fit(true);
 }
 
@@ -154,8 +154,8 @@ static void
 tap_fixture(bool landscape) {
     ui_init();
     ui_set_transform(ui_transform_quarter_turn(landscape ? 1 : 0, GFX_WIDTH, GFX_HEIGHT));
-    title_frame(false, false, false, (vec2i_t){0, 0});
-    title_frame(false, false, false, (vec2i_t){0, 0});
+    title_frame(false, false, false, vec2i_zero());
+    title_frame(false, false, false, vec2i_zero());
 }
 
 static void
@@ -209,7 +209,7 @@ test_a_landscape_tap_reports_the_button_under_it(void) {
 static void
 test_disabled_buttons_are_inked_muted(void) {
     tap_fixture(false);
-    title_frame(false, false, false, (vec2i_t){0, 0});
+    title_frame(false, false, false, vec2i_zero());
 
     for (int i = 0; i < SAND_TITLE_BUTTON_COUNT; i++) {
         const char* label = title_screen_label((sand_title_button_t)i);
@@ -237,8 +237,8 @@ void
 run_title_screen_suite(void) {
     RUN_TEST(test_the_layout_fits_portrait);
     RUN_TEST(test_the_layout_fits_landscape);
-    RUN_TEST(test_every_string_fits_its_rect_portrait);
-    RUN_TEST(test_every_string_fits_its_rect_landscape);
+    RUN_TEST(test_every_title_string_fits_its_rect_portrait);
+    RUN_TEST(test_every_title_string_fits_its_rect_landscape);
     RUN_TEST(test_the_title_grows_where_the_canvas_is_wide_enough);
     RUN_TEST(test_a_tap_reports_the_button_under_it);
     RUN_TEST(test_a_title_button_fires_on_release_only);

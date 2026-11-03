@@ -20,6 +20,7 @@
 #include "asset/asset_file.h"
 #include "math/linear/quatf.h"
 #include "math/scalar/math_const.h"
+#include "math/text/math_text.h"
 #include "scene/scene_internal.h"
 
 #define STRINGIFY(x) #x
@@ -27,8 +28,6 @@
 #define NAME_CHARS   31 /* ASSET_NAME_MAX less the NUL, as a scanf width */
 #define CALL_CHARS   7
 _Static_assert(NAME_CHARS + 1 == ASSET_NAME_MAX, "scanf width follows ASSET_NAME_MAX");
-
-static const vec3f_t TURN_AXIS = {0.0F, 0.0F, 1.0F};
 
 static int
 fail(const char* why) {
@@ -40,8 +39,7 @@ static void
 print_rotations(const anim_pose_t* pose) {
     printf("[");
     for (int j = 0; j < pose->joint_count; j++) {
-        const quatf_t q = pose->local[j].rotation;
-        printf("%s[%.7g,%.7g,%.7g,%.7g]", j ? "," : "", (double)q.x, (double)q.y, (double)q.z, (double)q.w);
+        printf("%s[%s]", j ? "," : "", quatf_text(pose->local[j].rotation).chars);
     }
     printf("]");
 }
@@ -52,16 +50,15 @@ print_joints(const anim_skeleton_t* skeleton, const anim_pose_t* pose, mat4f_t* 
     anim_pose_model(skeleton, pose, model);
     printf("[");
     for (int j = 0; j < pose->joint_count; j++) {
-        const vec3f_t p = mat4f_apply(&model[j], (vec3f_t){0});
-        printf("%s[%.7g,%.7g,%.7g]", j ? "," : "", (double)p.x, (double)p.y, (double)p.z);
+        printf("%s[%s]", j ? "," : "", vec3f_text(mat4f_apply(&model[j], vec3f_zero())).chars);
     }
     printf("]");
 }
 
 static int
 nlerp(float degrees, int steps) {
-    const quatf_t from = quatf_from_axis_angle(TURN_AXIS, 0.0F);
-    const quatf_t to = quatf_from_axis_angle(TURN_AXIS, degrees * MATH_RADIANS_PER_DEGREE);
+    const quatf_t from = quatf_from_axis_angle(vec3f_unit_z(), 0.0F);
+    const quatf_t to = quatf_from_axis_angle(vec3f_unit_z(), degrees * MATH_RADIANS_PER_DEGREE);
     printf("{\"degrees\":%.7g,\"steps\":[", (double)degrees);
     for (int s = 0; s <= steps; s++) {
         const float t = (float)s / (float)steps;

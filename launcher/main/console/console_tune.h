@@ -8,7 +8,7 @@
 
 #include <stdbool.h>
 
-#include "app/app_console.h"
+#include "console/console_words.h"
 #include "core/tune.h"
 
 /* True if `line` was one of these, whatever came of it. Replies, one call

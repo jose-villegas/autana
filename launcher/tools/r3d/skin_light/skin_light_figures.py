@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The light-against-angle figure of docs/render/Skinned-Lighting.md: one white
+"""The light-against-angle figure of docs/render/animation/Skinned-Lighting.md: one white
 light on a normal swept from facing it to facing away, lit by the runtime's
 direct sum at unit and blended length and by its irradiance table. The numbers
 come from skin_light_figures_probe.c, which calls the runtime's kernels.
@@ -16,9 +16,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 from docs.plot_style import FAINT, INK, LABEL_SIZE, MUTED, SLOTS, TITLE_SIZE, save, subplots  # noqa: E402
-# The math figures' folder: its name would shadow the standard math module as a package.
-sys.path.insert(0, str(ROOT / "launcher/tools/math"))
-from math_figures import run_probe  # noqa: E402
+from docs.figures import run_probe  # noqa: E402
 
 PROBE_SOURCES = (ROOT / "launcher/tools/r3d/skin_light/skin_light_figures_probe.c",
                  ROOT / "launcher/main/render/skin/r3d_skin_light.c")

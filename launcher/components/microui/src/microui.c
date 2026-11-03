@@ -21,7 +21,9 @@
 */
 
 /* LOCAL MODIFICATION: command alignment, zero padding and control capture keep shell state stable.
-** LOCAL MODIFICATION: mu_seed_hover_root() and hover_beats() give a new pointer its hover root a frame early. */
+** LOCAL MODIFICATION: mu_seed_hover_root() and hover_beats() give a new pointer its hover root a frame early.
+** LOCAL MODIFICATION: the first control under a press takes hover on the frame the button goes down, and
+** mu_scrollable_at() answers whether a point in the hover root lies on content that scrolls. */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -146,6 +148,13 @@ void mu_begin(mu_Context *ctx) {
   ctx->scroll_target = NULL;
   ctx->hover_root = ctx->next_hover_root;
   ctx->next_hover_root = NULL;
+  /* LOCAL MODIFICATION: a press goes to the first control under it, so
+  ** overlapping controls never all take one press, and it moves nothing: the
+  ** pointer arrives with it, so a drag starts from the press point. */
+  if (ctx->mouse_pressed) {
+    ctx->hover = 0;
+    ctx->last_mouse_pos = ctx->mouse_pos;
+  }
   ctx->mouse_delta.x = ctx->mouse_pos.x - ctx->last_mouse_pos.x;
   ctx->mouse_delta.y = ctx->mouse_pos.y - ctx->last_mouse_pos.y;
   ctx->frame++;
@@ -327,6 +336,7 @@ static mu_Container* get_container(mu_Context *ctx, mu_Id id, int opt) {
   cnt = &ctx->containers[idx];
   memset(cnt, 0, sizeof(*cnt));
   cnt->open = 1;
+  cnt->root = cnt; /* LOCAL MODIFICATION: a panel sets its own each frame */
   mu_bring_to_front(ctx, cnt);
   return cnt;
 }
@@ -689,13 +699,21 @@ static void report_control(mu_Context *ctx, mu_Rect rect, int opt) {
 }
 
 
+/* LOCAL MODIFICATION: on the frame the button goes down, the first control
+** under it takes hover, so a press needs no hover frame before it and
+** overlapping controls never share one; a held button never moves hover. */
+static int may_take_hover(mu_Context *ctx) {
+  return ctx->mouse_pressed ? !ctx->hover : !ctx->mouse_down;
+}
+
+
 void mu_update_control(mu_Context *ctx, mu_Id id, mu_Rect rect, int opt) {
   int mouseover = mu_mouse_over(ctx, rect);
 
   if (ctx->focus == id) { ctx->updated_focus = 1; }
   report_control(ctx, rect, opt);
   if (opt & MU_OPT_NOINTERACT) { return; }
-  if (mouseover && !ctx->mouse_down) { ctx->hover = id; }
+  if (mouseover && may_take_hover(ctx)) { ctx->hover = id; }
 
   if (ctx->focus == id) {
     if (ctx->mouse_pressed && !mouseover) { mu_set_focus(ctx, 0); }
@@ -1037,11 +1055,19 @@ void mu_end_treenode(mu_Context *ctx) {
   } while (0)
 
 
-static void scrollbars(mu_Context *ctx, mu_Container *cnt, mu_Rect *body) {
-  int sz = ctx->style->scrollbar_size;
+/* LOCAL MODIFICATION: the extent scrollbars() compares with the body, shared
+** with mu_scrollable_at() so the two can never disagree on what scrolls. */
+static inline mu_Vec2 padded_content(mu_Context *ctx, mu_Container *cnt) {
   mu_Vec2 cs = cnt->content_size;
   cs.x += ctx->style->padding * 2;
   cs.y += ctx->style->padding * 2;
+  return cs;
+}
+
+
+static void scrollbars(mu_Context *ctx, mu_Container *cnt, mu_Rect *body) {
+  int sz = ctx->style->scrollbar_size;
+  mu_Vec2 cs = padded_content(ctx, cnt);
   mu_push_clip_rect(ctx, *body);
   /* resize body to make room for scrollbars */
   if (cs.y > cnt->body.h) { body->w -= sz; }
@@ -1190,11 +1216,33 @@ void mu_seed_hover_root(mu_Context *ctx) {
   int i;
   for (i = 0; i < ctx->root_list.idx; i++) {
     mu_Container *cnt = ctx->root_list.items[i];
-    if (hover_beats(ctx, cnt, top)) {
+    if (cnt->open && hover_beats(ctx, cnt, top)) {
       top = cnt;
     }
   }
   ctx->next_hover_root = top;
+}
+
+
+/* LOCAL MODIFICATION. Whether mouse_pos lies in the body of a container in
+** next_hover_root, built on the last mu_begin()'s frame, whose content
+** overflows it, by the rule scrollbars() reserves room by. Call after
+** mu_seed_hover_root() for the frame about to be built, or after mu_end() for
+** the one just built. */
+int mu_scrollable_at(mu_Context *ctx) {
+  int i;
+  for (i = 0; i < MU_CONTAINERPOOL_SIZE; i++) {
+    mu_Container *cnt = &ctx->containers[i];
+    mu_Vec2 cs;
+    if (ctx->container_pool[i].last_update != ctx->frame || !cnt->open ||
+        !ctx->next_hover_root || cnt->root != ctx->next_hover_root ||
+        !rect_overlaps_vec2(cnt->body, ctx->mouse_pos)) {
+      continue;
+    }
+    cs = padded_content(ctx, cnt);
+    if (cs.y > cnt->body.h || cs.x > cnt->body.w) { return 1; }
+  }
+  return 0;
 }
 
 
@@ -1232,6 +1280,7 @@ void mu_begin_panel_ex(mu_Context *ctx, const char *name, int opt) {
   mu_push_id(ctx, name, strlen(name));
   cnt = get_container(ctx, ctx->last_id, opt);
   cnt->rect = mu_layout_next(ctx);
+  cnt->root = mu_get_current_container(ctx)->root;
   if (~opt & MU_OPT_NOFRAME) {
     ctx->draw_frame(ctx, cnt->rect, MU_COLOR_PANELBG);
   }

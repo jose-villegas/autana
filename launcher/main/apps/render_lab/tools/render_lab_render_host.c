@@ -18,8 +18,10 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "input/input.h"
+#include "math/text/math_text.h"
 #include "render/context/render_context.h"
 #include "render/resolution/resolution.h"
+#include "render/view/raster_overdraw.h"
 #include "render_host.h"
 #include "scene/scene_shell.h"
 #include "ui/layout/ui_transform.h"
@@ -61,7 +63,14 @@ static int console_step_count;
 
 /* --size WxH: the scene drawn at that render size, either axis on its own,
  * as one dynamic-resolution step; 0 keeps the scene's own scale. */
-static int size_width, size_height;
+static recti_t size_rect;
+
+/* --dump DIR: each frame's raster colour then depth, before the upscale, as
+ * DIR/NNNN.raw: width and height as int32, then width x height RGB565, then
+ * width x height inverse depth (r3d_span.h), all little-endian. For the frame
+ * generation experiment (launcher/tools/r3d/framegen/); host only. */
+#define DUMP_PATH_MAX 512
+static const char* dump_dir;
 
 /* The value after `name` in `out`, NULL when the option is absent; false,
  * with a message, when it is the last argument and has none. */
@@ -89,6 +98,24 @@ view_from_name(const char* name) {
     }
     (void)fprintf(stderr, "render_lab_render_host: --view is ");
     render_context_print_debug_views(stderr);
+    (void)fprintf(stderr, ", not %s\n", name);
+    return false;
+}
+
+/* --small-fill NAME: the SMALL FILL menu's preset of that label. */
+static bool
+small_fill_from_name(const char* name) {
+    int count;
+    const char* const* names = render_lab_small_fill_names(&count);
+    for (int i = 0; i < count; i++) {
+        if (strcmp(names[i], name) == 0) {
+            return render_lab_small_fill_select(i);
+        }
+    }
+    (void)fprintf(stderr, "render_lab_render_host: --small-fill is one of");
+    for (int i = 0; i < count; i++) {
+        (void)fprintf(stderr, "%s \"%s\"", i == 0 ? "" : ",", names[i]);
+    }
     (void)fprintf(stderr, ", not %s\n", name);
     return false;
 }
@@ -145,28 +172,37 @@ options(int argc, char** argv) {
     const char* view;
     const char* scale;
     const char* size;
+    const char* small_fill;
     const char* at;
     if (!option_value(argc, argv, "--tap", &at)) {
         return false;
     }
     if (at != NULL) {
-        int x;
-        int y;
-        if (sscanf(at, "%d,%d", &x, &y) != 2) {
+        if (!vec2i_parse(at, NULL, &touch[0].point)) {
             (void)fprintf(stderr, "render_lab_render_host: --tap is X,Y in panel pixels, not %s\n", at);
             return false;
         }
-        touch[1].point = touch[0].point = (vec2i_t){x, y};
+        touch[1].point = touch[0].point;
         tap = true;
     }
-    if (!option_value(argc, argv, "--scene", &scene) || !option_value(argc, argv, "--view", &view)
-        || !option_value(argc, argv, "--camera", &render_lab_start_camera)
-        || !option_value(argc, argv, "--scale", &scale) || !option_value(argc, argv, "--size", &size)) {
-        return false;
+
+    const struct {
+        const char* name;
+        const char** out;
+    } values[] = {
+        {"--scene", &scene},   {"--view", &view}, {"--camera", &render_lab_start_camera},
+        {"--scale", &scale},   {"--size", &size}, {"--small-fill", &small_fill},
+        {"--dump", &dump_dir},
+    };
+
+    for (size_t i = 0; i < sizeof values / sizeof values[0]; i++) {
+        if (!option_value(argc, argv, values[i].name, values[i].out)) {
+            return false;
+        }
     }
     if (size != NULL
-        && (sscanf(size, "%dx%d", &size_width, &size_height) != 2 || size_width <= 0 || size_height <= 0
-            || size_width > GFX_WIDTH || size_height > GFX_HEIGHT)) {
+        && (!recti_parse(size, NULL, &size_rect) || size_rect.x != 0 || size_rect.y != 0 || size_rect.w <= 0
+            || size_rect.h <= 0 || size_rect.w > GFX_WIDTH || size_rect.h > GFX_HEIGHT)) {
         (void)fprintf(stderr, "render_lab_render_host: --size is WxH within %dx%d, not %s\n", GFX_WIDTH, GFX_HEIGHT,
                       size);
         return false;
@@ -180,6 +216,7 @@ options(int argc, char** argv) {
     apply_flags(argc, argv);
     render_lab_start_scene_key = scene;
     return console_options(argc, argv) && (view == NULL || view_from_name(view))
+           && (small_fill == NULL || small_fill_from_name(small_fill))
            && (scale == NULL || render_host_set_tunable("render_lab.scale", atoi(scale)))
            && tune_options(argc, argv, "--tune");
 }
@@ -212,16 +249,46 @@ setup(int quarter) {
         (void)fprintf(stderr, "--camera: no camera %s in this scene\n", render_lab_start_camera);
         return false;
     }
-    if (size_width > 0) {
-        const resolution_step_t size = {size_width, size_height};
+    if (size_rect.w > 0) {
+        const resolution_step_t size = {size_rect.w, size_rect.h};
         const resolution_config_t one = resolution_config(&size, 1, 1, INT32_MAX);
         render_context_set_dynamic_resolution(render_context_main(), &one, NULL, 0);
     }
     return tune_options(option_count, option_args, "--live-tune");
 }
 
+/* With --view overdraw, the last frame's totals on stderr, beside its image. */
 static void
-draw(const render_frame_t* frame) {
+report_overdraw(const provider_frame_t* frame) {
+    const render_context_t* context = render_context_main();
+    if (frame->index + 1 != frame->count || context->debug_view != render_context_debug_view_named("overdraw")
+        || context->debug_view_state == NULL) {
+        return;
+    }
+    const raster_overdraw_frame_t f = raster_overdraw_frame(context->debug_view_state);
+    (void)fprintf(stderr, RASTER_OVERDRAW_LINE "\n", f.pixels, f.tested, f.written, f.tested_max, f.written_max);
+}
+
+static void
+dump_raster(int index) {
+    const raster_t* raster = &render_context_main()->raster;
+    char path[DUMP_PATH_MAX];
+    (void)snprintf(path, sizeof path, "%s/%04d.raw", dump_dir, index);
+    /* The raster's own size: the one its colour and depth rows are laid out at. */
+    const int32_t size[2] = {raster->width, raster->height};
+    const size_t pixels = (size_t)raster->width * (size_t)raster->height;
+    FILE* out = fopen(path, "wb");
+    const bool written = out != NULL && fwrite(size, sizeof size[0], 2, out) == 2
+                         && fwrite(raster_color(raster), sizeof(gfx_color_t), pixels, out) == pixels
+                         && fwrite(raster_depth(raster), sizeof(uint16_t), pixels, out) == pixels;
+    if (out == NULL || fclose(out) != 0 || !written) {
+        (void)fprintf(stderr, "render_lab_render_host: cannot write %s\n", path);
+        exit(EXIT_FAILURE);
+    }
+}
+
+static void
+draw(const provider_frame_t* frame) {
     ui_clear_band_overlay();
     input_t in = tap ? frame->input : (input_t){0};
     in.boot.pressed = menu && frame->index == 0;
@@ -231,12 +298,16 @@ draw(const render_frame_t* frame) {
         }
     }
     app_list()->frame(frame->dt_ms, &in);
+    report_overdraw(frame);
+    if (dump_dir != NULL) {
+        dump_raster(frame->index);
+    }
     /* The shell's update() runs before it composes a frame; this harness has
      * already composed, so it steers the next one. */
     app_list()->update(frame->dt_ms, &in);
 }
 
-const render_scene_t render_scene = {
+const frame_provider_t render_lab_provider = {
     .name = "render_lab",
     .quarter = 1,
     .frames = 30,

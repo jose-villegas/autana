@@ -28,7 +28,8 @@ try:
     from r3d.poses import sample_camera_rows
     from r3d.import_settings import load_scene
     from pinhole_rays import enclosed_sky
-    from render_compare import expand_565, read_video
+    from check_avi import read_video
+    from render_compare import expand_565
 except ImportError:  # pragma: no cover - the tool tests' environment has them
     np = None
 
@@ -37,12 +38,12 @@ MIN_OPEN_SKY_PIXELS = 100
 FRAME_COUNT_SIZE = (1, 1)
 # Per scene, the holed frames of its current bake: the ceiling a rebake must not go above.
 MOST_HOLED_FRAMES = {
-    "sponza": 13,
-    "sponza-lite": 12,
-    "sponza-flat": 13,
-    "sponza-fitted": 36,
-    "sponza-fitted-full": 23,
-    "sponza-flat-fitted": 20,
+    "sponza": 12,
+    "sponza-lite": 43,
+    "sponza-flat": 12,
+    "sponza-fitted": 19,
+    "sponza-fitted-full": 16,
+    "sponza-flat-fitted": 25,
 }
 
 

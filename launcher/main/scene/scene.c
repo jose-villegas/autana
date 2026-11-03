@@ -24,11 +24,6 @@ static scene_t* loaded[LOADED_MAX];
 static int loaded_count;
 static memory_take_fn kept_take;
 
-/* The block's layout: the header, then each array on its own alignment. */
-typedef struct {
-    size_t renderers, cameras, instances, flags, locals, world_slots, animators, skins, lights, total;
-} layout_t;
-
 size_t
 scene_storage_carve(size_t* end, size_t bytes, size_t align) {
     const size_t at = mathi_size_ceil(*end, align);
@@ -36,23 +31,38 @@ scene_storage_carve(size_t* end, size_t bytes, size_t align) {
     return at;
 }
 
-static layout_t
-layout_for(const scene_asset_t* asset) {
-    layout_t l;
+/* What one of the scene's arrays is counted in. */
+enum { PER_RENDERER, PER_CAMERA, PER_ENTITY, PER_COUNT };
+
+#define PART(member, per)                                                                                              \
+    {offsetof(scene_t, member), sizeof *((scene_t*)0)->member, _Alignof(__typeof__(*((scene_t*)0)->member)), per}
+
+/* The scene's arrays, in block order after its header. */
+static const struct {
+    size_t member, size, align;
+    int per;
+} PARTS[] = {PART(renderers, PER_RENDERER), PART(cameras, PER_CAMERA),           PART(flags, PER_ENTITY),
+             PART(locals, PER_ENTITY),      PART(world_slots, PER_ENTITY),       PART(instances, PER_RENDERER),
+             PART(animators, PER_ENTITY),   PART(skinned_renderers, PER_ENTITY), PART(lights, PER_ENTITY),
+             PART(staged, PER_ENTITY),      PART(active_renderers, PER_RENDERER)};
+
+/* Carves the scene's arrays after its header, each on its own alignment, and
+ * points them into `scene`'s block; a NULL scene only measures. Returns the
+ * block's size. */
+static size_t
+place(const scene_asset_t* asset, scene_t* scene) {
+    const size_t counts[PER_COUNT] = {[PER_RENDERER] = (size_t)asset->renderer_count + asset->skinned_renderer_count,
+                                      [PER_CAMERA] = asset->camera_count,
+                                      [PER_ENTITY] = asset->entity_count};
     size_t end = sizeof(scene_t);
-    SCENE_STORAGE_RESERVE(l, end, renderers, scene_renderer_t, asset->renderer_count + asset->skinned_renderer_count);
-    SCENE_STORAGE_RESERVE(l, end, cameras, scene_camera_t, asset->camera_count);
-    const int entities = asset->entity_count;
-    SCENE_STORAGE_RESERVE(l, end, flags, uint8_t, entities);
-    SCENE_STORAGE_RESERVE(l, end, locals, transformf_t, entities);
-    SCENE_STORAGE_RESERVE(l, end, world_slots, uint16_t, entities);
-    const int renderers = asset->renderer_count + asset->skinned_renderer_count;
-    SCENE_STORAGE_RESERVE(l, end, instances, r3d_instance_t, renderers);
-    SCENE_STORAGE_RESERVE(l, end, animators, scene_animator_t, entities);
-    SCENE_STORAGE_RESERVE(l, end, skins, scene_skinned_renderer_t, entities);
-    SCENE_STORAGE_RESERVE(l, end, lights, scene_light_t, entities);
-    l.total = end;
-    return l;
+    for (size_t i = 0; i < sizeof PARTS / sizeof *PARTS; i++) {
+        const size_t at = scene_storage_carve(&end, PARTS[i].size * counts[PARTS[i].per], PARTS[i].align);
+        if (scene != NULL) {
+            void* array = (uint8_t*)scene + at;
+            memcpy((uint8_t*)scene + PARTS[i].member, &array, sizeof array);
+        }
+    }
+    return end;
 }
 
 /* True when fault injection fails this allocation. */
@@ -101,27 +111,20 @@ scene_set_take(memory_take_fn take) {
 
 static scene_t*
 instantiate(const scene_asset_t* asset) {
-    const layout_t l = layout_for(asset);
-    uint8_t* block = scene_allocate_kept(l.total);
+    const size_t total = place(asset, NULL);
+    uint8_t* block = scene_allocate_kept(total);
     if (block == NULL) {
         return NULL;
     }
-    memset(block, 0, l.total);
+    memset(block, 0, total);
     scene_t* scene = (scene_t*)(void*)block;
     scene->asset = *asset;
     scene->renderer_count = asset->renderer_count + asset->skinned_renderer_count;
-    scene->renderers = (scene_renderer_t*)(void*)(block + l.renderers);
-    scene->cameras = (scene_camera_t*)(void*)(block + l.cameras);
-    scene->instances = (r3d_instance_t*)(void*)(block + l.instances);
-    scene->flags = block + l.flags;
-    scene->locals = (transformf_t*)(void*)(block + l.locals);
-    scene->world_slots = (uint16_t*)(void*)(block + l.world_slots);
-    scene->animators = (scene_animator_t*)(void*)(block + l.animators);
-    scene->lights = (scene_light_t*)(void*)(block + l.lights);
+    (void)place(asset, scene);
+    scene->active_renderers_stale = true;
     scene->ambient_color = asset->settings->ambient_color;
     scene->ambient_intensity = asset->settings->ambient_intensity;
     scene->tonemap_white = asset->settings->tonemap_white;
-    scene->skinned_renderers = (scene_skinned_renderer_t*)(void*)(block + l.skins);
     memset(scene->flags, SCENE_FLAG_ENABLED | SCENE_FLAG_ACTIVE | SCENE_FLAG_CHANGED, asset->entity_count);
     for (int i = 0; i < asset->camera_count; i++) {
         const scene_asset_camera_t* c = &asset->cameras[i];
@@ -473,6 +476,7 @@ scene_renderer_set_mesh(scene_t* scene, scene_entity_t entity, const r3d_lit_mes
         return false;
     }
     scene->renderers[i].mesh = *mesh;
+    scene_renderer_bound(&scene->renderers[i]);
     return true;
 }
 
@@ -527,11 +531,20 @@ scene_camera_set_shift(scene_t* scene, scene_entity_t camera, vec2f_t shift) {
 bool
 scene_camera_set_small_fill(scene_t* scene, scene_entity_t camera, small_fill_t fill) {
     camera_t* found = camera_by_entity(scene, camera);
-    if (found == NULL || fill.ceiling > SMALL_FILL_CEILING_MAX || fill.style < SMALL_FILL_FLAT
-        || fill.style >= SMALL_FILL_STYLE_COUNT) {
+    if (found == NULL || fill.ceiling > SMALL_FILL_CEILING_MAX || fill.style >= SMALL_FILL_STYLE_COUNT) {
         return false;
     }
     found->small_fill = fill;
+    return true;
+}
+
+bool
+scene_camera_set_skip_hidden(scene_t* scene, scene_entity_t camera, bool skip) {
+    camera_t* found = camera_by_entity(scene, camera);
+    if (found == NULL) {
+        return false;
+    }
+    found->skip_hidden = skip;
     return true;
 }
 
@@ -571,3 +584,19 @@ scene_transform_is_identity(const mat4f_t* transform) {
     const mat4f_t identity = mat4f_identity();
     return memcmp(transform, &identity, sizeof identity) == 0;
 }
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+void
+scene_checkpoint_capture(checkpoint_t* saved, scene_t* scene) {
+    for (int i = 0; i < loaded_count; i++) {
+        if (loaded[i] == scene) {
+            checkpoint_capture_at(saved, &loaded[i], 0);
+        }
+    }
+    checkpoint_capture(saved, scene, place(&scene->asset, NULL));
+    checkpoint_capture_at(saved, &scene->worlds, (size_t)scene->world_count * sizeof(*scene->worlds));
+    checkpoint_capture_at(saved, &scene->light_transfer, sizeof(*scene->light_transfer));
+    checkpoint_capture_at(saved, &scene->light_table, sizeof(*scene->light_table));
+    scene_animation_checkpoint_capture(saved, scene);
+}
+#endif

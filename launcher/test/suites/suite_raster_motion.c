@@ -34,8 +34,8 @@ static const int16_t (*const wall_and_box[])[3] = {raster_rig_wall, box_position
 /* The box turned `degrees` about y and standing at `at`. */
 static mat4f_t
 turned(float degrees, vec3f_t at) {
-    const quatf_t rotation = quatf_from_axis_angle((vec3f_t){0, 1, 0}, degrees * MATH_RADIANS_PER_DEGREE);
-    transformf_t pose = TRANSFORMF_IDENTITY;
+    const quatf_t rotation = quatf_from_axis_angle(vec3f_unit_y(), degrees * MATH_RADIANS_PER_DEGREE);
+    transformf_t pose = transformf_identity();
     transformf_set_position(&pose, at);
     transformf_set_rotation(&pose, rotation);
     return transformf_compute_matrix(&pose);
@@ -67,7 +67,7 @@ typedef struct {
 static basis_t
 basis(const fixture_camera_t* c) {
     const vec3f_t f = vec3f_normalize(c->forward);
-    const vec3f_t right = vec3f_normalize(vec3f_cross((vec3f_t){0.0F, 1.0F, 0.0F}, f));
+    const vec3f_t right = vec3f_normalize(vec3f_cross(vec3f_unit_y(), f));
     return (basis_t){right, vec3f_cross(right, f), f};
 }
 
@@ -117,7 +117,7 @@ truth(const pose_t* now, const pose_t* before, int w, int h, int px, int py, flo
     const float ray_y = ((float)py + 0.5F - ((float)h * 0.5F)) / k;
     const vec3f_t dir =
         vec3f_normalize(vec3f_add(b.forward, vec3f_add(vec3f_scale(b.right, ray_x), vec3f_scale(b.down, ray_y))));
-    const mat4f_t still = turned(0.0F, (vec3f_t){0.0F, 0.0F, 0.0F});
+    const mat4f_t still = turned(0.0F, vec3f_zero());
     const float t_wall = hit_quad(&still, 400.0F, now->camera.eye, dir);
     const float t_box = now->box == NULL ? -1.0F : hit_quad(now->box, 40.0F, now->camera.eye, dir);
     const int what = t_box > 0.0F && (t_wall < 0.0F || t_box < t_wall) ? BOX : t_wall > 0.0F ? WALL : NONE;
@@ -148,6 +148,11 @@ own_of(raster_rig_t* r) {
     return (motion_own_t*)r->own;
 }
 
+static void
+release_motion(void) {
+    raster_motion_release(&own_of(raster_rig_now)->motion);
+}
+
 /* Allocated per test: the wall and, when `with_box`, the box placed by
  * model[1], motion attached unless `detached`, pictures up to W x H. */
 static raster_rig_t*
@@ -156,6 +161,8 @@ rig_open(bool with_box, bool detached) {
     motion_own_t* own = own_of(r);
     own->attachment = raster_motion_view(&own->motion);
     own->attached[0] = &own->attachment;
+    suite_add_test_cleanup(release_motion); /* before the rig's own, which frees the room it is in */
+    TEST_ASSERT_TRUE(raster_motion_reserve(&own->motion, r->raster.instance_count));
     if (!detached) {
         raster_rig_attach(r, own->attached, 1);
     }
@@ -414,6 +421,7 @@ test_motion_leaves_colour_and_depth_as_they_are(void) {
     draw_change(r, &p, W, H);
     memcpy(plain, raster_color(&r->raster), sizeof(uint16_t) * W * H);
     memcpy(plain + (W * H), raster_depth(&r->raster), sizeof(uint16_t) * W * H);
+    release_motion();
     raster_rig_release();
     r = rig_open(true, false);
     draw_change(r, &p, W, H);
@@ -432,8 +440,62 @@ test_forgetting_makes_the_next_picture_first(void) {
     TEST_ASSERT_EQUAL_INT8(RASTER_MOTION_UNKNOWN, motion_of(r)[(H / 2 * W) + (W / 2)].dx);
 }
 
+/* More instances than motion once kept history for, the box among them:
+ * every still and moving pixel still holds its true motion. */
+#define MANY_INSTANCES  40
+#define MOVING_INSTANCE 30
+
+static void
+test_many_instances_keep_their_motion(void) {
+    static const change_t c = {-30.0F, {10.0F, 0.0F, -20.0F}, {4.0F, 2.0F, 10.0F}, 1.0F};
+    raster_rig_t* r = rig_open(true, false);
+    r3d_instance_t* instances = calloc(MANY_INSTANCES, sizeof(*instances));
+    TEST_ASSERT_NOT_NULL(instances);
+    for (int i = 0; i < MANY_INSTANCES; i++) {
+        instances[i] = r->instance[i == MOVING_INSTANCE ? 1 : 0];
+    }
+    r->raster.instances = instances;
+    r->raster.instance_count = MANY_INSTANCES;
+    TEST_ASSERT_TRUE(raster_motion_reserve(&own_of(r)->motion, MANY_INSTANCES));
+    posed_t p;
+    pose_change(&c, true, &p);
+    draw_change(r, &p, W, H);
+    TEST_ASSERT_TRUE(own_of(r)->motion.moved[MOVING_INSTANCE]);
+    TEST_ASSERT_GREATER_THAN_INT(0, assert_motion_is_true(r, &p.now, &p.before, W, H));
+    free(instances);
+}
+
+/* Growing the room between pictures keeps the previous one: the camera's
+ * and each placed instance's, so the box still moves by its own model. */
+static void
+test_growing_keeps_the_previous_picture(void) {
+    static const change_t c = {-30.0F, {10.0F, 0.0F, -20.0F}, {4.0F, 2.0F, 10.0F}, 1.0F};
+    raster_rig_t* r = rig_open(true, false);
+    posed_t p;
+    pose_change(&c, true, &p);
+    draw(r, &p.before, W, H);
+    TEST_ASSERT_TRUE(raster_motion_reserve(&own_of(r)->motion, MANY_INSTANCES));
+    TEST_ASSERT_EQUAL_INT(MANY_INSTANCES, own_of(r)->motion.capacity);
+    draw(r, &p.now, W, H);
+    TEST_ASSERT_TRUE(own_of(r)->motion.moved[1]);
+    TEST_ASSERT_GREATER_THAN_INT(0, assert_motion_is_true(r, &p.now, &p.before, W, H));
+}
+
+/* Past what a tag can name, reserving fails and keeps the room it had. */
+static void
+test_reserving_past_the_tag_fails(void) {
+    raster_rig_t* r = rig_open(false, false);
+    raster_motion_t* m = &own_of(r)->motion;
+    const int capacity = m->capacity;
+    TEST_ASSERT_FALSE(raster_motion_reserve(m, RASTER_MOTION_INSTANCES_MAX + 1));
+    TEST_ASSERT_EQUAL_INT(capacity, m->capacity);
+}
+
 void
 run_raster_motion_suite(void) {
+    RUN_TEST(test_many_instances_keep_their_motion);
+    RUN_TEST(test_growing_keeps_the_previous_picture);
+    RUN_TEST(test_reserving_past_the_tag_fails);
     RUN_TEST(test_the_first_picture_knows_no_motion);
     RUN_TEST(test_a_still_camera_and_scene_have_no_motion);
     RUN_TEST(test_camera_motion_is_the_reprojection_through_the_previous_pose);

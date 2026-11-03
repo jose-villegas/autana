@@ -6,7 +6,7 @@
  */
 #include "app/app.h"
 #include "build/build_variant.h"
-#include "display/display.h"
+#include "display/display_shell.h"
 #include "gfx/present/gfx_present.h"
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 #include "gfx/present/gfx_debug.h"

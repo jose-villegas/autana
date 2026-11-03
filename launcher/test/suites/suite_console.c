@@ -20,10 +20,10 @@
 
 #include "console/console_frame_request.h"
 #include "console/console_verbs.h"
-#include "console/verbs/console_inject_parse.h"
-#include "console/verbs/console_navigation_parse.h"
-#include "console/verbs/console_perf_parse.h"
-#include "console/verbs/console_sound_parse.h"
+#include "input/console/console_inject_parse.h"
+#include "profile/console/console_perf_parse.h"
+#include "shell/console/console_navigation_parse.h"
+#include "sound/console/console_sound_parse.h"
 
 #define REPLIES_MAX 8
 
@@ -682,7 +682,7 @@ test_append_char_the_tail_after_an_overflow_is_not_a_line_of_its_own(void) {
 static void
 test_touch_line_carries_its_sample(void) {
     bool down = false;
-    vec2i_t point = {0};
+    vec2i_t point = vec2i_zero();
 
     TEST_ASSERT_TRUE(console_touch_parse("down 184 224", &down, &point));
     TEST_ASSERT_TRUE(down);
@@ -705,6 +705,8 @@ test_a_malformed_touch_line_changes_nothing(void) {
     TEST_ASSERT_FALSE(console_touch_parse("left 1 2", &down, &point));
     TEST_ASSERT_FALSE(console_touch_parse("down 1", &down, &point));
     TEST_ASSERT_FALSE(console_touch_parse(" ", &down, &point));
+    TEST_ASSERT_FALSE(console_touch_parse("down 1 2 junk", &down, &point));
+    TEST_ASSERT_FALSE(console_touch_parse("down 1 2junk", &down, &point));
     TEST_ASSERT_TRUE(down);
     TEST_ASSERT_EQUAL_INT(11, point.x);
     TEST_ASSERT_EQUAL_INT(22, point.y);
@@ -969,7 +971,7 @@ test_quarter_injection_matches_forward_mapping(void) {
             &display, (vec3f_t){(float)gravity.x / IMU_COUNTS_PER_G, (float)gravity.y / IMU_COUNTS_PER_G, 0.0F}, 0));
         TEST_ASSERT_EQUAL_INT(quarter, display_quarter(&display));
     }
-    imu_sample_t sample = {.ax = IMU_COUNTS_PER_G};
+    imu_sample_t sample = IMU_SAMPLE_UPRIGHT;
     char past_end[CONSOLE_LINE_MAX];
     snprintf(past_end, sizeof past_end, "quarter %d", DISPLAY_QUARTER_COUNT);
     const char* invalid[] = {"quarter -1", "quarter", "quarter 0 extra", past_end};

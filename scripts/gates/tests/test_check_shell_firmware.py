@@ -56,7 +56,7 @@ class ProblemsTest(unittest.TestCase):
 
     def test_a_vendor_name_fails(self):
         for name in ("esp_err_to_name", "ESP_ERROR_CHECK", "nvs_flash_init", "NVS_READONLY", "heap_caps_malloc",
-                     "MALLOC_CAP_DMA", "multi_heap_free", "esp_psram_get_size", "bsp_display_start", "vTaskDelay", "xTaskCreate", "xQueueSend",
+                     "MALLOC_CAP_DMA", "multi_heap_free", "esp_psram_get_size", "bsp_display_start", "CONFIG_BSP_I2C_NUM", "vTaskDelay", "xTaskCreate", "xQueueSend",
                      "uxTaskGetStackHighWaterMark", "ulTaskNotifyTake", "pvPortMalloc", "portMAX_DELAY",
                      "configTICK_RATE_HZ", "pdMS_TO_TICKS", "TaskHandle_t", "SemaphoreHandle_t", "TickType_t"):
             with self.subTest(name=name):
@@ -258,7 +258,7 @@ class OwnerProblemsTest(unittest.TestCase):
 
     def test_the_host_platform_beneath_the_suites_and_vendored_code_are_not_checked(self):
         for rel in ("launcher/test/heap_arena.c", "launcher/test/timing.c", "launcher/test/stubs/esp_heap_caps.h",
-                    "launcher/components/microui/src/microui.c", "editor/runtime/runtime.c",
+                    "launcher/components/microui/src/microui.c",
                     "launcher/main/core/notes.md"):
             with self.subTest(rel=rel):
                 self.assertEqual(self.problems({rel: CLOCK_READ + HEAP_CALL}), [])
@@ -267,6 +267,40 @@ class OwnerProblemsTest(unittest.TestCase):
         self.assertEqual(self.problems({"launcher/main/gfx/gfx.c": (
             '/* esp_timer_get_time() */\n// heap_caps_malloc(8, MALLOC_CAP_DMA)\n'
             'const char* s = "heap_caps_get_free_size";\n')}), [])
+
+    def test_the_bsp_belongs_to_a_board_folder_alone_drivers_included(self):
+        text = ('#include "bsp/esp-bsp.h"\n'
+                'void f(void) { bsp_i2c_get_handle(); int p = BSP_I2C_SDA + CONFIG_BSP_I2C_NUM; }\n')
+        for rel in ("launcher/main/input/motion/imu.c", "launcher/main/power/power_device.c",
+                    "launcher/test/suites/suite_imu.c", "launcher/tools/render/render_host.c"):
+            with self.subTest(rel=rel):
+                self.assertEqual(self.problems({rel: text}), [
+                    f"{rel}:1: includes bsp/esp-bsp.h; only a board's folder under board/ may",
+                    f"{rel}:2: uses bsp_i2c_get_handle; only a board's folder under board/ may",
+                    f"{rel}:2: uses BSP_I2C_SDA; only a board's folder under board/ may",
+                    f"{rel}:2: uses CONFIG_BSP_I2C_NUM; only a board's folder under board/ may",
+                ])
+        self.assertEqual(self.problems({"launcher/main/board/one/board_panel.c": text}), [])
+
+    def test_boards_own_api_files_do_not_own_the_bsp_but_may_use_the_clock(self):
+        rel = "launcher/main/board/board_usb.c"
+        self.assertEqual(self.problems({rel: "int p = BSP_I2C_SDA;\n" + CLOCK_READ}),
+                         [f"{rel}:1: uses BSP_I2C_SDA; only a board's folder under board/ may"])
+
+    def test_a_folder_only_named_like_board_does_not_own_the_bsp(self):
+        rel = "launcher/main/board_extras/x.c"
+        self.assertEqual(self.problems({rel: "int p = BSP_I2C_SDA;\n"}), [f"{rel}:1: uses BSP_I2C_SDA; only a board's folder under board/ may"])
+
+    def test_a_bsp_include_line_is_reported_once_as_an_include(self):
+        rel = "launcher/main/input/touch/touch.c"
+        self.assertEqual(self.problems({rel: "#include <bsp/bsp_touch.h>\n"}),
+                         [f"{rel}:1: includes bsp/bsp_touch.h; only a board's folder under board/ may"])
+
+    def test_an_angle_bracket_bsp_include_fails_and_a_comment_naming_the_bsp_does_not(self):
+        rel = "launcher/main/input/touch/touch.c"
+        text = '#include <bsp/touch.h>\n/* bsp_touch_new */\nconst char* s = "BSP_X";\n'
+        self.assertEqual(self.problems({rel: text}),
+                         [f"{rel}:1: includes bsp/touch.h; only a board's folder under board/ may"])
 
     def test_main_c_is_left_to_the_shell_rule_so_a_line_is_reported_once(self):
         self.assertEqual(self.problems({"launcher/main/main.c": CLOCK_READ}), [])
@@ -301,7 +335,7 @@ class CommandLineTest(unittest.TestCase):
             result = subprocess.run([sys.executable, str(script)], cwd=temp, capture_output=True, text=True)
         self.assertEqual(result.returncode, 1)
         self.assertIn("launcher/main/gfx/gfx.c:1: uses esp_timer_get_time", result.stdout)
-        self.assertIn("1 clock or heap use(s) outside core/timing, core/memory and the drivers", result.stdout)
+        self.assertIn("1 clock, heap or BSP use(s) outside their owners", result.stdout)
 
 
 SYNTHETIC_MAIN = """#include "esp_timer.h"

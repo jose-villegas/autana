@@ -4,22 +4,23 @@ engine's own `cull` view (render/view/raster_cull_view.c) on the host viewer.
 launcher/tools/render/render_doc_images.sh runs it once per scene.
 
     python launcher/tools/render/cull_figures.py --scene SCENE.scene.toml --object NAME --camera NAME
-        --stem STEM --label TEXT --level N --out DIR --tables DIR --work DIR
+        --stem STEM --label TEXT --level N --out DIR --tables DIR --work DIR [--overdraw STEM]
 
 It writes, into --out:
   STEM-sheet.png   a row per pose, at the panel's size: the camera's picture, the fates from above
                    and from behind, and the tree's level-N node boxes from above
   STEM-counts.png  the counts along the path, clusters and triangles
+  OVERDRAW-sheet.png, with --overdraw OVERDRAW: the same poses in landscape at the scene's own render
+                   size, the camera's picture beside the `overdraw` view (render/view/raster_overdraw.c)
 and leaves --work/STEM-chase.avi (the fates from behind, the whole path) for a
 GIF, and --tables/STEM.md, the counts' path means for the page's block.
-The fate colours and names are read from raster_cull_view.c.
+The counts' series come from cull_counts.py.
 """
 
 import argparse
 import csv
 import pathlib
 import re
-import subprocess
 import sys
 
 from PIL import Image
@@ -27,25 +28,25 @@ from PIL import Image
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
-import check_avi
-from docs.plot_style import INK, MUTED, SLOTS, save, style_axes, subplots
+from build.c_header import read_define
+from cull_counts import CULL_HEADER, plot_counts
+from check_avi import read_video
+from docs.figures import render_scene, save_png
+from docs.plot_style import save, subplots
 from render.doc_tables import markdown
+from render_compare import still_sheet
 
-VIEWER = ROOT / "launcher/tools/render/scene_viewer.sh"
-CULL_VIEW = ROOT / "launcher/main/render/view/raster_cull_view.c"
-CULL_HEADER = ROOT / "launcher/main/render/view/raster_cull_view.h"
-COMPARE = ROOT / "launcher/tools/render/render_compare.py"
 GFX_HEADER = ROOT / "launcher/main/gfx/gfx.h"
+DISPLAY_HEADER = ROOT / "launcher/main/display/display.h"
 FRAMES = 120  # frames along the whole path, for the counts and the videos
 POSES = 3  # sheet rows, evenly inside the path
 FIGURE_SIZE = (10, 5.2)
-LINE_WIDTH = 1.4
 PERCENT = 100
 
 def enum_value(enum, prefix, name, source=CULL_HEADER):
     """A cullview tunable's value: `name`'s place in raster_cull_view.h's `enum`."""
     text = pathlib.Path(source).read_text(encoding="utf-8")
-    body = re.search(r"typedef enum \{(.*?)\} " + enum + ";", text, re.S)[1]
+    body = re.search(r"typedef enum(?: __attribute__\(\(\w+\)\))? \{(.*?)\} " + enum + ";", text, re.S)[1]
     return re.findall(prefix + r"(\w+)", body).index(name)
 
 
@@ -53,20 +54,9 @@ def cull_from(name):
     return enum_value("raster_cull_from_t", "RASTER_CULL_FROM_", name)
 
 
-def fates(source=CULL_VIEW):
-    """(name, #rrggbb) per fate, in the view's order, read from its colour table."""
-    text = pathlib.Path(source).read_text(encoding="utf-8")
-    table = re.search(r"FATE_RGB\[RASTER_FATE_COUNT\] = \{(.*?)\};", text, re.S)[1]
-    return [(name.lower().replace("_", " "), "#" + rgb.lower())
-            for name, rgb in re.findall(r"\[RASTER_FATE_(\w+)\] = 0x([0-9A-Fa-f]{6})", table)]
-
-
 def viewer(args, *flags, log):
-    """Runs the scene viewer on the scene; its stderr goes to `log`."""
-    command = ["sh", str(VIEWER), str(args.scene), "--object", args.object, "--camera", args.camera, *flags]
-    with open(log, "w") as handle:
-        subprocess.run(command, check=True, stdout=handle, stderr=subprocess.STDOUT)
-    return pathlib.Path(log).read_text(encoding="utf-8", errors="replace")
+    """Runs the scene viewer on the scene's object and camera; returns its output, also in `log`."""
+    return render_scene(args.scene, "--object", args.object, "--camera", args.camera, *flags, log=log)
 
 
 def path_ms(args):
@@ -91,43 +81,24 @@ def panel_size(source=GFX_HEADER):
     return f"{width}x{height}"
 
 
-def video(args, name, view_flags, dt):
+def video(args, name, view_flags, dt, size=None):
     avi = args.work / f"{args.stem}-{name}.avi"
-    viewer(args, *view_flags, "--size", panel_size(), "--frames", str(FRAMES), "--dt", str(dt), "-o", str(args.work / f"{name}.bmp"),
+    viewer(args, *view_flags, *(size or ("--size", panel_size())), "--frames", str(FRAMES), "--dt", str(dt), "-o", str(args.work / f"{name}.bmp"),
            "--video", str(avi), log=args.work / f"{args.stem}-{name}.log")
     return avi
 
 
 def frames_at(avi, indices):
-    """The frames at `indices` as RGB images (AVI frames are bottom-up BGR)."""
-    movie = check_avi.read_avi(avi)
-    wanted = set(indices)
-    found = {}
-    for index, frame in enumerate(movie.frames):
-        if index in wanted:
-            stride = (movie.width * 3 + 3) // 4 * 4
-            picture = Image.frombuffer("RGB", (movie.width, movie.height), bytes(frame), "raw", "BGR", stride, -1)
-            found[index] = picture.copy()
-    return [found[i] for i in indices]
+    """The frames at `indices` as RGB images."""
+    frames = list(read_video(avi)[1])
+    return [Image.fromarray(frames[index]) for index in indices]
 
 
-def sheet(args, columns, indices, dt):
+def sheet(args, columns, indices, dt, stem):
     """One render_compare still row per pose, stacked."""
-    rows = []
-    for row, index in enumerate(indices):
-        command = [sys.executable, str(COMPARE), "--out", str(args.work / f"{args.stem}-row{row}.png")]
-        for label, pictures in columns:
-            path = args.work / f"{args.stem}-{row}-{len(command)}.png"
-            pictures[row].save(path)
-            command += ["--still-column", f"{label}, {index * dt / 1000:.1f} s", str(path)]
-        subprocess.run(command, check=True, stdout=subprocess.DEVNULL)
-        rows.append(Image.open(args.work / f"{args.stem}-row{row}.png").convert("RGB"))
-    out = Image.new("RGB", (max(r.width for r in rows), sum(r.height for r in rows)), "white")
-    y = 0
-    for picture in rows:
-        out.paste(picture, (0, y))
-        y += picture.height
-    out.save(args.out / f"{args.stem}-sheet.png", optimize=True)
+    rows = [[(f"{label}, {index * dt / 1000:.1f} s", pictures[row].convert("RGB")) for label, pictures in columns]
+            for row, index in enumerate(indices)]
+    save_png(still_sheet(rows), args.out / f"{stem}-sheet.png")
 
 
 def read_counts(path):
@@ -135,25 +106,11 @@ def read_counts(path):
         return [{key: int(value) for key, value in row.items()} for row in csv.DictReader(handle)]
 
 
-def counts_chart(args, rows, colours):
-    seconds = [row["ms"] / 1000 for row in rows]
+def counts_chart(args, rows):
     fig, (clusters, triangles) = subplots(1, 2, FIGURE_SIZE)
-    cluster_series = [("tested", "clusters_tested", MUTED), ("kept", "clusters_kept", INK)] + [
-        (name, f"clusters_{key}", colour) for name, key, colour in colours]
-    for label, key, colour in cluster_series:
-        clusters.plot(seconds, [row[key] for row in rows], label=label, color=colour, linewidth=LINE_WIDTH)
-    triangle_series = [("submitted", "triangles_submitted", INK), ("set up", "triangles_set_up", SLOTS[0]),
-                       ("cover pixels", "triangles_covering", SLOTS[2]),
-                       ("facing away", "triangles_facing_away", SLOTS[1]),
-                       ("miss every pixel centre", "triangles_missed", MUTED)]
-    for label, key, colour in triangle_series:
-        triangles.plot(seconds, [row[key] for row in rows], label=label, color=colour, linewidth=LINE_WIDTH)
-    for axis, title in ((clusters, f"{args.label}: clusters per frame"),
-                        (triangles, f"{args.label}: triangles per frame")):
-        style_axes(axis, title)
+    plot_counts(clusters, triangles, [row["ms"] / 1000 for row in rows], rows, args.label)
+    for axis in (clusters, triangles):
         axis.set_xlabel("seconds along the camera path")
-        axis.set_ylim(bottom=0)
-        axis.legend(frameon=False, fontsize="small")
     save(fig, args.out / f"{args.stem}-counts.png")
 
 
@@ -188,6 +145,8 @@ def main(argv=None):
     parser.add_argument("--out", required=True, type=pathlib.Path)
     parser.add_argument("--tables", required=True, type=pathlib.Path)
     parser.add_argument("--work", required=True, type=pathlib.Path)
+    parser.add_argument("--overdraw", metavar="STEM", help="also write STEM-sheet.png: the poses in landscape, "
+                        "the camera's picture beside the overdraw view")
     args = parser.parse_args(argv)
     for folder in (args.out, args.tables, args.work):
         folder.mkdir(parents=True, exist_ok=True)
@@ -206,12 +165,14 @@ def main(argv=None):
     columns = [("camera", frames_at(shaded, indices)), ("fates from above", frames_at(top, indices)),
                ("fates from behind", frames_at(chase, indices)),
                (f"level {args.level} from above", frames_at(level, indices))]
-    sheet(args, columns, indices, dt)
+    sheet(args, columns, indices, dt, args.stem)
+    if args.overdraw:
+        turned = ("--quarter", str(read_define(DISPLAY_HEADER, "DISPLAY_LANDSCAPE")))
+        sheet(args, [("camera", frames_at(video(args, "landscape", ["--view", "shaded"], dt, turned), indices)),
+                     ("overdraw", frames_at(video(args, "overdraw", ["--view", "overdraw"], dt, turned), indices))],
+              indices, dt, args.overdraw)
 
-    named = fates()
-    colours = [(name, key, colour) for (name, colour), key in
-               zip(named[1:], ("not_set_up", "hidden", "drawn"))]
-    counts_chart(args, rows, colours)
+    counts_chart(args, rows)
     means_table(args, rows)
 
 

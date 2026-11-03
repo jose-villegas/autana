@@ -23,8 +23,26 @@ imu_queue_push(imu_queue_t* queue, const imu_sample_t* samples, int count, int l
     }
 }
 
+void
+imu_queue_set_rate(imu_queue_t* queue, unsigned odr_code) {
+    imu_queue_push(queue, NULL, 0, 0, true);
+    queue->other_rate = odr_code != IMU_ODR_CODE;
+    queue->odr_code = odr_code;
+}
+
 int
 imu_queue_take(imu_queue_t* queue, imu_sample_t* samples, uint8_t* lost_before, bool* gap) {
+    return imu_queue_take_at(queue, IMU_ODR_CODE, samples, lost_before, gap);
+}
+
+int
+imu_queue_take_at(imu_queue_t* queue, unsigned odr_code, imu_sample_t* samples, uint8_t* lost_before, bool* gap) {
+    const bool rate_matches = queue->other_rate ? queue->odr_code == odr_code : odr_code == IMU_ODR_CODE;
+    if (!rate_matches) {
+        imu_queue_push(queue, NULL, 0, 0, true);
+        *gap = true;
+        return 0;
+    }
     const int count = queue->count;
     for (int i = 0; i < count; i++) {
         const int index = (queue->head + i) % IMU_FIFO_SAMPLES;

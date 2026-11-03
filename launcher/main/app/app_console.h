@@ -1,28 +1,12 @@
 /*
- * app_console: an app's console command, and the words of a console line,
- * shared by the console's own verbs, the shell's app dispatch and an app's
- * handler, so an app parses its own subcommands without reaching into
- * console/.
- *
- * Words match ignoring ASCII case: the lowercase word a person types and the
- * uppercase one a harness sends are the same word.
+ * app_console: an app's console command. An app parses its own subcommands
+ * with the words in console/console_words.h.
  */
 #pragma once
 
 #include <stdbool.h>
 
-typedef void (*console_reply_fn)(const char* line);
-
-/* printf()+fflush() for a one-line reply. */
-void console_reply_stdio(const char* line);
-
-/* strcmp() with ASCII case folded. */
-int console_name_cmp(const char* a, const char* b);
-
-/* True if `line` is `name`, or `name` plus one space and more (never a
- * longer word starting the same way). `*args` gets what follows: "" for a
- * bare match. */
-bool console_word_match(const char* line, const char* name, const char** args);
+#include "console/console_words.h"
 
 /* An app's own console command: docs/cli/App-Commands.md. The shell matches `prefix` as a whole word
  * (console_word_match()) and passes `handle` only what follows it. */

@@ -25,6 +25,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 from r3d import gltf_preview, gltf_skin  # noqa: E402
 from r3d.skin_light import skin_light_data  # noqa: E402
 from device.gfx_color import expand  # noqa: E402
+from docs.figures import save_gif, save_png  # noqa: E402
 
 COLUMNS = 3
 TILE = (200, 160)
@@ -103,8 +104,7 @@ class Clip:
         return range(0, len(self.positions), STEP)
 
     def save(self, path, frames):
-        frames[0].save(path, save_all=True, append_images=frames[1:],
-                       duration=int(round(1000.0 * STEP / skin_light_data.FPS)), loop=0, optimize=True)
+        save_gif(frames, path, 1000.0 * STEP / skin_light_data.FPS)
 
 
 def grid(tiles, columns, legend_text=None, legend_end=""):
@@ -233,7 +233,7 @@ def main():
               normals(clip, read_normals(args.bench, count, frames), runs[labels.index(DIRECT)],
                       runs[labels.index(RENORMALISED)]))
     clip.save(args.out / "skin-light-terms.gif", terms(clip, *read_runs(args.bench, "terms", count, frames)))
-    tables(read_tables(args.bench)).save(args.out / "skin-light-table.png", optimize=True)
+    save_png(tables(read_tables(args.bench)), args.out / "skin-light-table.png")
 
 
 if __name__ == "__main__":

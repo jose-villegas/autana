@@ -1,6 +1,7 @@
 #include "math/geometry/iso_surface.h"
 
 #include <math.h>
+#include <string.h>
 
 #pragma GCC diagnostic error "-Wdouble-promotion"
 
@@ -74,7 +75,7 @@ cell_vertex(nets_t* n, int x, int y, int z) {
         n->full = true;
         return NO_VERTEX;
     }
-    vec3f_t sum = {0};
+    vec3f_t sum = vec3f_zero();
     int crossings = 0;
     for (int e = 0; e < EDGES; e++) {
         const int a = EDGE_CORNERS[e][0];
@@ -93,7 +94,7 @@ cell_vertex(nets_t* n, int x, int y, int z) {
         (vec3f_t){f->origin.x + (((float)x + local.x) * f->step.x), f->origin.y + (((float)y + local.y) * f->step.y),
                   f->origin.z + (((float)z + local.z) * f->step.z)};
     const float length = sqrtf(vec3f_dot(grad, grad));
-    out->normals[index] = length > 0.0F ? vec3f_scale(grad, -1.0F / length) : (vec3f_t){0};
+    out->normals[index] = length > 0.0F ? vec3f_scale(grad, -1.0F / length) : vec3f_zero();
     return index;
 }
 
@@ -180,21 +181,50 @@ emit_slab(nets_t* n, int x) {
     }
 }
 
+/* A part after the first also makes the vertices of the slab before its
+ * own, for the quads that reach back into it, but emits no quads there. */
 bool
-iso_surface_nets(const iso_field_t* field, float level, iso_mesh_t* out) {
+iso_surface_nets_slabs(const iso_field_t* field, float level, int x_from, int x_to, iso_mesh_t* out) {
     out->vertex_count = 0;
     out->triangle_count = 0;
-    if (field->nx < 2 || field->ny < 2 || field->nz < 2) {
+    if (field->ny < 2 || field->nz < 2 || x_from < 0 || x_from >= x_to || x_to > field->nx - 1) {
         return false;
     }
     nets_t n = {.field = field, .level = level, .out = out, .cy = field->ny - 1, .cz = field->nz - 1};
-    for (int x = 0; x < field->nx - 1; x++) {
+    for (int x = x_from > 0 ? x_from - 1 : 0; x < x_to; x++) {
         for (int y = 0; y < n.cy; y++) {
             for (int z = 0; z < n.cz; z++) {
                 *slot(&n, x, y, z) = cell_vertex(&n, x, y, z);
             }
         }
-        emit_slab(&n, x);
+        if (x >= x_from) {
+            emit_slab(&n, x);
+        }
     }
     return !n.full;
+}
+
+bool
+iso_surface_nets(const iso_field_t* field, float level, iso_mesh_t* out) {
+    return iso_surface_nets_slabs(field, level, 0, field->nx - 1, out);
+}
+
+bool
+iso_surface_append(iso_mesh_t* into, const iso_mesh_t* part) {
+    if (into->vertex_count + part->vertex_count > into->vertex_capacity
+        || into->vertex_count + part->vertex_count > VERTEX_INDEX_MAX
+        || into->triangle_count + part->triangle_count > into->triangle_capacity) {
+        return false;
+    }
+    const int base = into->vertex_count;
+    memmove(&into->positions[base], part->positions, sizeof(vec3f_t) * (size_t)part->vertex_count);
+    memmove(&into->normals[base], part->normals, sizeof(vec3f_t) * (size_t)part->vertex_count);
+    for (int t = 0; t < part->triangle_count; t++) {
+        for (int k = 0; k < 3; k++) {
+            into->triangles[into->triangle_count + t][k] = (uint16_t)(part->triangles[t][k] + base);
+        }
+    }
+    into->vertex_count += part->vertex_count;
+    into->triangle_count += part->triangle_count;
+    return true;
 }

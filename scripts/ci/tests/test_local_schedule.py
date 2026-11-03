@@ -69,6 +69,23 @@ class LocalScheduleTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, '00:00–05:59'):
                     schedule.next_marker(trigger)
 
+    def test_cutoff_and_end_are_their_setting_on_the_markers_date_and_offset(self):
+        marker = datetime(2026, 10, 25, 3, tzinfo=self.zone)
+        for name, at in (('BOARD_LAST_START', schedule.night_cutoff), ('BOARD_END', schedule.night_end)):
+            default, latest = schedule.LOCAL_TIMES[name]
+            for value, hour in (('', int(default[:2])), ('04:30', 4), (f'{latest:02d}:59', latest)):
+                with self.subTest(name=name, value=value), patch.dict(os.environ, {name: value}):
+                    time = at(marker)
+                    self.assertEqual(time.utcoffset(), marker.utcoffset())
+                    self.assertEqual((time.date(), time.hour), (marker.date(), hour))
+            for value in (f'{latest + 1:02d}:00', '23:00', '8:00', '08:60'):
+                with self.subTest(name=name, value=value), patch.dict(os.environ, {name: value}), \
+                        self.assertRaisesRegex(ValueError, f'{name} must be HH:MM in 00:00–{latest:02d}:59'):
+                    at(marker)
+        # A daytime run's cut-off has passed: it starts no lane after its plan.
+        afternoon = datetime(2026, 10, 25, 14, tzinfo=self.zone)
+        self.assertLess(schedule.night_cutoff(afternoon), afternoon)
+
     def test_invalid_night_zone_raises(self):
         trigger = Clock(0, tzinfo=timezone.utc).now()
         for value in ('Invalid/Zone', '/invalid/zone'):
@@ -113,6 +130,18 @@ class LocalScheduleTests(unittest.TestCase):
                 self.assertEqual(clock.sleeps, [])
                 marker = clock.now() if override == 'true' else schedule.next_marker(clock.now())
                 self.assertEqual(output.read_text(), 'marker=' + marker.isoformat() + '\n')
+
+    def test_override_marker_is_in_night_zone(self):
+        zone = self.zone
+        clock = Clock(1, tzinfo=timezone.utc)
+        with patch.dict(os.environ, OVERRIDE='true', GITHUB_OUTPUT=''), \
+                patch.object(schedule, 'Clock', return_value=clock), \
+                patch.object(sys, 'argv', ['schedule', 'marker']), \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(schedule.main(), 0)
+        marker = datetime.fromisoformat(output.getvalue().strip())
+        self.assertEqual(marker, clock.now())
+        self.assertEqual(marker.utcoffset(), clock.now().astimezone(zone).utcoffset())
 
     def test_late_cron_after_marker_starts_without_sleep(self):
         now = datetime(2026, 10, 25, 9, tzinfo=self.zone)

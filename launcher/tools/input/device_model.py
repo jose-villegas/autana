@@ -1,30 +1,39 @@
-"""The device as a 3D figure: rounded box, IMU and both axis sets, from board/board_geometry.h.
+"""The case as a 3D figure: translucent walls, screen, IMU and both axis sets, from the built board's board.toml.
 
 Device axes: x right, y up the screen, z out of the glass; millimetres; origin at the glass centre.
 A pose is a 3x3 matrix whose columns are the device axes in the figure's world axes; world z is up.
 DeviceAnimation is the input figures' one animation: the posed device with its direction vectors on the left,
 scalar signals over time on the right, a time cursor in sync.
 """
+import sys
 from pathlib import Path
 
 import numpy as np
 from matplotlib.lines import Line2D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
-from math_figures import run_probe
+from build.c_header import read_define
 from docs.plot_style import FAINT, GIF_FPS, INK, LABEL_SIZE, MUTED, SLOTS, TITLE_SIZE, figure, save_gif
 
-PROBE = Path(__file__).with_name("device_model_probe.c")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
+
+from board import PANEL_WIDTH, chip_axes, load_board, screen_label_axes  # noqa: E402
+
+DISPLAY_HEADER = Path(__file__).resolve().parents[2] / "main" / "display" / "display.h"
 CORNER_SEGMENTS = 8
 BODY_ALPHA = 0.22
+# The PCB is a faint reference behind the IMU, inside the translucent case.
+PCB_ALPHA = 0.4
 GLASS_ALPHA = 0.5
+# Buttons and openings: the body's grey, a little denser than the walls, so they read without going dark.
+FEATURE_ALPHA = 0.5
 GLASS = MUTED
 BODY = FAINT
 IMU = INK
 CHIP_AXES = SLOTS[0]
 SCREEN_AXES = SLOTS[2]
 EDGE_WIDTH = 0.2
-# Axis arrow length as a share of the device height.
+# Axis arrow length as a share of the case height.
 AXIS_SHARE = 0.32
 ARROW_RATIO = 0.15
 LABEL_PAST = 1.12
@@ -32,14 +41,13 @@ WORLD_DOWN = np.array([0.0, 0.0, -1.0])
 VIEW_ELEVATION = 22
 VIEW_AZIMUTH = -60
 ANIMATION_DPI = 80
-# Palette size: the shaded device takes many entries, and every line and arrow colour must keep its own.
-ANIMATION_COLORS = 128
 ANIMATION_SIZE = (10, 5.4)
-# The scene's half extent, and the length of a vector at its scale's unit, as shares of the device height.
-EXTENT_SHARE = 0.7
+# Vector unit length and scene margin as shares of the case height.
 VECTOR_SHARE = 0.5
-# Vectors start to the camera's right and left of the device, this share of the height past its half diagonal,
-# so they stay clear of it in any pose.
+MARGIN_SHARE = 0.05
+# The cube projection leaves room around its inscribed sphere without this zoom.
+SCENE_ZOOM = 1.6
+# A sphere clears every case pose; vectors start this share of the case height beyond it.
 BESIDE_SHARE = 0.1
 # Figure shares: the scene on the left, the signal plots stacked on the right, the legend under both.
 SCENE = (0, 0.08, 0.62, 0.84)
@@ -71,22 +79,57 @@ def box_faces(centre, size):
 class DeviceModel:
     """The device's faces and axes in device axes, built once from the board geometry."""
 
-    def __init__(self, cc):
-        geometry = run_probe(cc, (PROBE,))
-        self.height = geometry["height"]
-        self.depth = geometry["depth"]
-        self.width = geometry["width"]
-        self.imu_centre = np.array(geometry["imu_centre"])
-        self.chip_axes = np.array(geometry["chip_axes"], dtype=float)
+    def __init__(self):
+        board = load_board()
+        device, case, screen, imu = board["device"], board["case"], board["screen"], board["imu"]
+        self.height = case["height_mm"]
+        self.depth = case["depth_mm"]
+        self.width = case["width_mm"]
+        self.radius = np.linalg.norm((self.width, self.height, self.depth)) / 2
+        # The package sits on the PCB's back face.
+        self.imu_centre = np.array((imu["centre_x_mm"], imu["centre_y_mm"],
+                                    -(device["depth_mm"] + imu["size_z_mm"] / 2)))
+        self.chip_axes = np.array(chip_axes(board), dtype=float)
         # The code's screen axes x right, y down, z out: minus where imu_axes_screen() sends the chip axes,
         # because the chip reads specific force (up) and the code calls that vector down.
-        self.screen_axes = -np.array(geometry["mapped_axes"], dtype=float)
-        outline = rounded_outline(self.width, self.height, geometry["corner"])
-        self.glass = np.c_[outline, np.zeros(len(outline))]
+        self.screen_axes = -np.array(screen_label_axes(board), dtype=float)
+        # The case wall follows the module outline.
+        case_corner = device["corner_radius_mm"] + (self.width - device["width_mm"]) / 2
+        outline = rounded_outline(self.width, self.height, case_corner)
+        front = np.c_[outline, np.zeros(len(outline))]
         back = np.c_[outline, np.full(len(outline), -self.depth)]
-        self.body = [np.array([self.glass[i], self.glass[i + 1], back[i + 1], back[i]])
-                     for i in range(len(outline) - 1)] + [back]
-        self.imu = box_faces(self.imu_centre, self.chip_axes.T @ np.array(geometry["imu_size"]))
+        screen_corner = read_define(DISPLAY_HEADER, "DISPLAY_PANEL_CORNER_RADIUS") * screen["width_mm"] / PANEL_WIDTH
+        screen = rounded_outline(screen["width_mm"], screen["height_mm"], screen_corner)
+        self.glass = np.c_[screen, np.zeros(len(screen))]
+        self.case_outlines = (front, back)
+        # rounded_outline keeps the same point count for every radius, pairing bezel ring vertices.
+        self.body = [np.array([front[i], front[i + 1], other[i + 1], other[i]])
+                     for other in (back, self.glass) for i in range(len(outline) - 1)] + [back]
+        corners = np.array([(1, 1), (-1, 1), (-1, -1), (1, -1)]) * case["back_side_mm"] / 2
+        square = np.vstack((corners, corners[:1]))
+        radius = case["screw_radius_mm"]
+        circle = rounded_outline(2 * radius, 2 * radius, radius)
+        self.back_details = [np.c_[line, np.full(len(line), -self.depth)]
+                             for line in [square] + [circle + corner for corner in corners]]
+        pcb = rounded_outline(device["width_mm"], device["height_mm"], device["corner_radius_mm"])
+        self.pcb = np.c_[pcb, np.full(len(pcb), -device["depth_mm"])]
+        imu_size = np.array((imu["size_x_mm"], imu["size_y_mm"], imu["size_z_mm"]))
+        self.imu = box_faces(self.imu_centre, self.chip_axes.T @ imu_size)
+
+        self.buttons = []
+        self.holes = []
+        for feature in board["feature"]:
+            x = self.width / 2 * (1 if feature["side"] == "right" else -1)
+            size_y, size_z = feature["size_y"], feature["size_z"]
+            y = feature["y"]
+            z = -(device["depth_mm"] + size_z / 2) if feature.get("behind_pcb") else feature["z"]
+            if feature["shape"] == "box":
+                proud = feature["proud"]
+                faces = box_faces((x + proud / 2, y, z), (proud, size_y, size_z))
+                self.buttons.extend(faces)
+            elif feature["shape"] == "hole":
+                hole = rounded_outline(size_y, size_z, min(size_y, size_z) / 2) + (y, z)
+                self.holes.append(np.c_[np.full(len(hole), x), hole])
 
     def to_device(self, screen_vector):
         """A vector in the code's screen axes as a device vector."""
@@ -96,10 +139,17 @@ class DeviceModel:
         """Draw the posed device into a 3D axis made with computed_zorder=False, so arrows stay over the faces."""
         pose = np.asarray(pose)
         axis.add_collection3d(Poly3DCollection([face @ pose.T for face in self.body], facecolor=BODY,
-                                               edgecolor=MUTED, linewidth=EDGE_WIDTH, alpha=BODY_ALPHA))
+                                               edgecolor="none", alpha=BODY_ALPHA))
         axis.add_collection3d(Poly3DCollection([self.glass @ pose.T], facecolor=GLASS, edgecolor=GLASS,
                                                alpha=GLASS_ALPHA))
-        axis.add_collection3d(Poly3DCollection([face @ pose.T for face in self.imu], facecolor=IMU, edgecolor=IMU))
+        for line in (*self.case_outlines, *self.back_details):
+            axis.plot(*(line @ pose.T).T, color=MUTED, linewidth=EDGE_WIDTH)
+        axis.plot(*(self.pcb @ pose.T).T, color=MUTED, linewidth=EDGE_WIDTH, alpha=PCB_ALPHA)
+        axis.add_collection3d(Poly3DCollection([face @ pose.T for face in self.imu],
+                                               facecolor=IMU, edgecolor=IMU))
+        axis.add_collection3d(Poly3DCollection([face @ pose.T for face in (*self.holes, *self.buttons)],
+                                               facecolor=BODY, edgecolor=MUTED, linewidth=EDGE_WIDTH,
+                                               alpha=FEATURE_ALPHA))
         length = AXIS_SHARE * self.height
         sets = ((chip_axes, pose @ self.imu_centre, self.chip_axes, "XYZ", CHIP_AXES),
                 (screen_axes, np.zeros(3), self.screen_axes, "xyz", SCREEN_AXES))
@@ -158,7 +208,8 @@ class DeviceAnimation:
         self.cursors = [plot.axvline(0, color=INK, linewidth=1) for plot in self.plots]
         self.title = self.fig.text(0.5, TITLE_Y, "", ha="center", fontsize=TITLE_SIZE, color=INK)
         self.unit = VECTOR_SHARE * model.height
-        away = np.hypot(model.width, model.height) / 2 + BESIDE_SHARE * model.height
+        away = model.radius + BESIDE_SHARE * model.height
+        self.extent = away + self.unit + MARGIN_SHARE * model.height
         right = np.radians(VIEW_AZIMUTH + 90)
         right = away * np.array([np.cos(right), np.sin(right), 0.0])
         # World down is drawn on the right, centred on the device's height; the device's own motion on the left.
@@ -171,12 +222,12 @@ class DeviceAnimation:
 
     def frame(self, pose, vectors, time, title, azimuth=VIEW_AZIMUTH, **axes):
         """Draw one frame: the device in `pose` (draw's axis-set switches in `axes`), then the vectors over it."""
-        scene, extent = self.scene, EXTENT_SHARE * self.model.height
+        scene, extent = self.scene, self.extent
         scene.cla()
         scene.set_axis_off()
         for setter in (scene.set_xlim, scene.set_ylim, scene.set_zlim):
             setter(-extent, extent)
-        scene.set_box_aspect((1, 1, 1))
+        scene.set_box_aspect((1, 1, 1), zoom=SCENE_ZOOM)
         scene.view_init(elev=VIEW_ELEVATION, azim=azimuth)
         self.model.draw(scene, pose, **axes)
         for start, vector, colour, width in vectors:
@@ -187,4 +238,4 @@ class DeviceAnimation:
 
     def save(self, output, frames, draw_frame, fps=GIF_FPS):
         self.fig.set_dpi(ANIMATION_DPI)
-        save_gif(self.fig, draw_frame, frames, output, fps, colors=ANIMATION_COLORS)
+        save_gif(self.fig, draw_frame, frames, output, fps)

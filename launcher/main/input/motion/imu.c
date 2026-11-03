@@ -1,27 +1,21 @@
 /*
- * imu: QMI8658 driver.
- *
- * Register map and the initialisation values follow the QST QMI8658A/C
- * datasheet. The configuration chosen here is the common one for motion sensing
- * rather than navigation: a wide accelerometer range so a knock does not clip,
- * and a rotation range wide enough to survive a deliberate shake.
+ * imu: the polling task over the chip the board carries (imu_chip.h).
  */
 
 #include "input/motion/imu.h"
 
 #include <string.h>
 
-#include "board/board.h"
-#include "bsp/esp-bsp.h"
 #include "core/job.h"
 #include "core/memory.h"
 #include "core/timing.h"
 #include "core/tune.h"
-#include "driver/i2c_master.h"
 #include "esp_log.h"
-#include "esp_rom_sys.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "input/motion/imu_chip.h"
+#include "input/motion/imu_demand.h"
+#include "input/motion/imu_odr.h"
 #include "input/motion/imu_queue.h"
 
 static const char* TAG = "imu";
@@ -47,7 +41,7 @@ _Static_assert(IMU_DRAIN_MS* MATH_US_PER_MS < IMU_FIFO_SAMPLES * IMU_SAMPLE_US,
 #define IMU_TASK_BUS_PRIORITY (JOB_CORE1_PRIORITY + 1)
 _Static_assert(IMU_TASK_PRIORITY > tskIDLE_PRIORITY, "IMU task must run above idle priority");
 _Static_assert(IMU_TASK_BUS_PRIORITY < configMAX_PRIORITIES, "IMU bus priority must fit task priorities");
-/* Board dev stats: at worst 1572 of 3072 stack bytes free, idle and under load,
+/* Board dev stats: at worst 1440 of 3072 stack bytes free, idle and under load,
  * with no bus error. The bus-error path (driver ESP_LOGE) was not exercised. */
 #define IMU_TASK_STACK_BYTES (3 * 1024)
 
@@ -66,109 +60,43 @@ static imu_sample_t newest;
 static uint32_t newest_sequence;
 static bool have_newest;
 static TaskHandle_t task_handle;
+static imu_demand_t demand = {.newest_us = IMU_DEMAND_NEVER, .fifo_us = IMU_DEMAND_NEVER};
+/* Set by the task before it waits for a notification; the next reader clears it and notifies. */
+static bool parked;
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static int64_t newest_us;
 static uint64_t reader_age_total_us;
 static int64_t reader_age_max_us;
 static unsigned reader_age_count;
-static unsigned register_reads;
-static int64_t wake_gap_max_us;
+
+/* One imu.log_ms window of task work; the task alone writes it. */
+typedef struct {
+    int64_t last_log_us;
+    int64_t last_wake_us;
+    uint64_t drain_total_us;
+    int64_t drain_max_us;
+    uint64_t bus_us;
+    uint64_t parked_us;
+    int64_t wake_gap_max_us;
+    unsigned register_reads;
+    unsigned drains;
+    unsigned delivered;
+    unsigned lost;
+    unsigned parks;
+} imu_stats_t;
+
+static imu_stats_t stats;
 #endif
 
-/* The QMI8658A's I2C rating (Rev A, Table 43). Faster was measured on A308 and
- * rejected: docs/input/Gravity.md, Limits. */
-#define QMI8658_I2C_HZ          400000
-#define QMI8658_TIMEOUT_MS      100
-
-/* Registers */
-#define REG_WHO_AM_I            0x00
-#define REG_REVISION            0x01
-#define REG_CTRL1               0x02
-#define REG_CTRL2               0x03
-#define REG_CTRL3               0x04
-#define REG_CTRL7               0x08
-#define REG_CTRL9               0x0A
-#define REG_FIFO_CTRL           0x14
-#define REG_FIFO_SMPL_CNT       0x15
-#define REG_FIFO_DATA           0x17
-#define REG_STATUSINT           0x2D
-#define REG_AX_L                0x35
-
-#define WHO_AM_I_VALUE          0x05
-
-/* CTRL1.ADDR_AI enables bursts; BE stays clear for little-endian axes. */
-#define CTRL1_ADDR_AUTO_INC     0x40
-
-/* QMI8658A Rev A, Table 22: range fields and matching 6DOF ODR codes. */
-#define CTRL2_ACCEL_8G          (0x20 | IMU_ODR_CODE)
-#define CTRL3_GYRO_512DPS       (0x50 | IMU_ODR_CODE)
-#define REVISION_QMI8658C       0x79
-#define REVISION_QMI8658A       0x7C
-#define CTRL9_ACK               0x00
-#define CTRL9_RST_FIFO          0x04
-#define CTRL9_REQ_FIFO          0x05
-#define STATUSINT_CMD_DONE      0x80
-#define FIFO_CTRL_SIZE_128      0x0C
-#define FIFO_CTRL_STREAM        0x02
-#define FIFO_CTRL_CONFIG        (FIFO_CTRL_SIZE_128 | FIFO_CTRL_STREAM)
-#define FIFO_STATUS_COUNT_MSB   0x03
-#define FIFO_STATUS_OVERFLOW    0x20
-#define FIFO_STATUS_FULL        0x80
-#define FIFO_COUNT_MSB_SHIFT    8
-#define FIFO_WORD_BYTES         2
-#define CTRL9_TIMEOUT_US        (100U * MATH_US_PER_MS)
-/* Section 5.10.1 specifies no minimum delay: poll once per I2C status transaction. */
-#define CTRL9_POLL_US           0U
-
-/* CTRL7: enable the accelerometer and the gyroscope. */
-#define CTRL7_ENABLE_ACCEL_GYRO 0x03
-
-static i2c_master_dev_handle_t dev;
 static bool ready;
 static bool sensor_present;
-static bool fifo_gap;
-static uint32_t loss_remainder_us;
-static int pending_lost;
-
-static bool
-write_reg(uint8_t reg, uint8_t value) {
-    const uint8_t buf[2] = {reg, value};
-    return i2c_master_transmit(dev, buf, sizeof(buf), QMI8658_TIMEOUT_MS) == ESP_OK;
-}
-
-static bool
-read_regs(uint8_t reg, uint8_t* out, size_t len) {
-    return i2c_master_transmit_receive(dev, &reg, 1, out, len, QMI8658_TIMEOUT_MS) == ESP_OK;
-}
-
-static bool
-wait_command(bool done) {
-    const int64_t deadline = timing_now_us() + CTRL9_TIMEOUT_US;
-    do {
-        uint8_t status;
-        if (!read_regs(REG_STATUSINT, &status, sizeof status)) {
-            return false;
-        }
-        if (((status & STATUSINT_CMD_DONE) != 0) == done) {
-            return true;
-        }
-        esp_rom_delay_us(CTRL9_POLL_US);
-    } while (timing_now_us() < deadline);
-    return false;
-}
-
-/* Lewis He, SensorLib (MIT), SensorQMI8658.hpp writeCommand/configFIFO/readFromFifo:
- * QST QMI8658A datasheet Rev A (2022), sections 5.10 and 8 require acknowledgement before REG_FIFO_DATA. */
-static bool
-write_command(uint8_t command) {
-    return write_reg(REG_CTRL9, command) && wait_command(true) && write_reg(REG_CTRL9, CTRL9_ACK)
-           && wait_command(false);
-}
+/* An injection fed the drains: what the chip's FIFO holds is stale once it hands back. */
+static bool restart_due;
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static bool injected;
 static int64_t injected_drain_us;
-static imu_sample_t injected_sample = {.ax = IMU_COUNTS_PER_G};
+static imu_sample_t injected_sample = IMU_SAMPLE_UPRIGHT;
 
 void
 imu_inject(const imu_sample_t* sample) {
@@ -216,52 +144,15 @@ imu_init(void) {
         return true;
     }
 
-    i2c_master_bus_handle_t bus = bsp_i2c_get_handle();
+    i2c_master_bus_handle_t bus = board_i2c_bus();
     if (bus == NULL) {
         ESP_LOGE(TAG, "I2C bus is not initialised");
         return false;
     }
 
-    if (dev == NULL) {
-        const i2c_device_config_t config = {
-            .dev_addr_length = I2C_ADDR_BIT_LEN_7,
-            .device_address = BOARD_IMU_I2C_ADDR,
-            .scl_speed_hz = QMI8658_I2C_HZ,
-        };
-        if (i2c_master_bus_add_device(bus, &config, &dev) != ESP_OK) {
-            ESP_LOGE(TAG, "Could not add the QMI8658 to the bus");
-            return false;
-        }
-    }
-
-    /* Identify before configuring. Something else answering at 0x6b would
-     * otherwise be handed a stream of writes it never asked for. */
-    uint8_t who = 0;
-    if (!read_regs(REG_WHO_AM_I, &who, 1)) {
-        ESP_LOGE(TAG, "No response from 0x%02x", BOARD_IMU_I2C_ADDR);
+    if (!BOARD_IMU_CHIP.open(bus, BOARD_IMU_I2C_ADDR, IMU_ODR_CODE)) {
         return false;
     }
-    if (who != WHO_AM_I_VALUE) {
-        ESP_LOGE(TAG, "0x%02x answered WHO_AM_I 0x%02x, expected 0x%02x", BOARD_IMU_I2C_ADDR, who, WHO_AM_I_VALUE);
-        return false;
-    }
-
-    const bool configured = write_reg(REG_CTRL7, 0) && write_reg(REG_CTRL1, CTRL1_ADDR_AUTO_INC)
-                            && write_reg(REG_CTRL2, CTRL2_ACCEL_8G) && write_reg(REG_CTRL3, CTRL3_GYRO_512DPS)
-                            && write_command(CTRL9_RST_FIFO) && write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG)
-                            && write_reg(REG_CTRL7, CTRL7_ENABLE_ACCEL_GYRO);
-
-    if (!configured) {
-        ESP_LOGE(TAG, "Configuration write failed");
-        return false;
-    }
-
-    uint8_t revision = 0;
-    read_regs(REG_REVISION, &revision, 1);
-    const char* model = revision == REVISION_QMI8658C   ? "QMI8658C"
-                        : revision == REVISION_QMI8658A ? "QMI8658A"
-                                                        : "unknown";
-    ESP_LOGI(TAG, "QMI8658 up, revision 0x%02x (%s), +/-8g and +/-512dps", revision, model);
 
     sensor_present = true;
     ready = true;
@@ -271,6 +162,22 @@ imu_init(void) {
 bool
 imu_ready(void) {
     return ready;
+}
+
+/* Under `lock`: stamps a read of one kind. True when the caller must wake the task after unlocking. */
+static bool
+stamp_demand(int64_t* read_us) {
+    *read_us = timing_now_us();
+    const bool wake = parked;
+    parked = false;
+    return wake;
+}
+
+static void
+wake_task(bool wake) {
+    if (wake) {
+        xTaskNotifyGive(task_handle);
+    }
 }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -290,6 +197,7 @@ record_reader_age(void) {
 bool
 imu_read(imu_sample_t* out, uint32_t* sequence) {
     portENTER_CRITICAL(&lock);
+    const bool wake = ready && stamp_demand(&demand.newest_us);
     bool available = ready && have_newest;
     if (available) {
         *out = newest;
@@ -304,6 +212,7 @@ imu_read(imu_sample_t* out, uint32_t* sequence) {
         *sequence = newest_sequence;
     }
     portEXIT_CRITICAL(&lock);
+    wake_task(wake);
     return available;
 }
 
@@ -314,26 +223,60 @@ imu_take_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t lost_before[IMU_FIFO_S
         return -1;
     }
     portENTER_CRITICAL(&lock);
+    const bool wake = stamp_demand(&demand.fifo_us);
     const int count = imu_queue_take(&queue, out, lost_before, gap);
 #if CONFIG_LAUNCHER_DEVELOPMENT
     record_reader_age();
 #endif
     portEXIT_CRITICAL(&lock);
+    wake_task(wake);
     return count;
 }
 
-/* Whole samples waiting, before read mode (section 8.8); false on a bus error or a partial sample. */
+#if CONFIG_LAUNCHER_DEVELOPMENT
+/* A FIFO burst holding a gyro rate within IMU_SUSPECT_MARGIN_DPS of full scale is logged raw,
+ * with a register sample beside it, IMU_SUSPECT_LOGS times a boot at most: at rest, such a rate
+ * is a bad frame, and the bytes tell a shifted frame from a bad axis. */
+#define IMU_SUSPECT_MARGIN_DPS 8
+#define IMU_SUSPECT_COUNTS     ((int)((IMU_GYRO_RANGE_DPS - IMU_SUSPECT_MARGIN_DPS) * IMU_COUNTS_PER_DPS))
+#define IMU_SUSPECT_LOGS       8
+
 static bool
-read_fifo_count(int* count, bool* overflowed) {
-    uint8_t status[2];
-    if (!read_regs(REG_FIFO_SMPL_CNT, status, sizeof status)) {
-        return false;
+suspect_rate(int16_t rate) {
+    return rate > IMU_SUSPECT_COUNTS || rate < -IMU_SUSPECT_COUNTS;
+}
+
+static void
+log_suspect_burst(const imu_sample_t* samples, int count) {
+    static unsigned logged;
+    int first = -1;
+    for (int i = 0; i < count && first < 0; i++) {
+        if (suspect_rate(samples[i].gx) || suspect_rate(samples[i].gy) || suspect_rate(samples[i].gz)) {
+            first = i;
+        }
     }
-    const int words = ((status[1] & FIFO_STATUS_COUNT_MSB) << FIFO_COUNT_MSB_SHIFT) | status[0];
-    const int bytes = words * FIFO_WORD_BYTES;
-    *count = bytes / (int)sizeof(imu_sample_t);
-    *overflowed = fifo_gap || (status[1] & (FIFO_STATUS_FULL | FIFO_STATUS_OVERFLOW)) != 0;
-    return *count <= IMU_FIFO_SAMPLES && bytes % sizeof(imu_sample_t) == 0;
+    if (first < 0 || logged >= IMU_SUSPECT_LOGS) {
+        return;
+    }
+    logged++;
+    imu_sample_t reg = {0};
+    const bool reg_ok = BOARD_IMU_CHIP.read(&reg);
+    ESP_LOGW(TAG, "gyro near full scale in a FIFO burst: count %d first %d, register%s %d %d %d %d %d %d", count, first,
+             reg_ok ? "" : " (failed)", reg.ax, reg.ay, reg.az, reg.gx, reg.gy, reg.gz);
+    ESP_LOG_BUFFER_HEX_LEVEL(TAG, samples, (size_t)count * sizeof *samples, ESP_LOG_WARN);
+}
+#endif
+
+/* Drains resume on a fresh FIFO: what it held is stale, and the read-mode loss
+ * since the last drain was never counted. Queued samples drop behind a gap. */
+static void
+restart_fifo(void) {
+    if (sensor_present) {
+        BOARD_IMU_CHIP.restart();
+    }
+    portENTER_CRITICAL(&lock);
+    imu_queue_push(&queue, NULL, 0, 0, true);
+    portEXIT_CRITICAL(&lock);
 }
 
 static int
@@ -346,83 +289,66 @@ drain_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
     const int injected_count = read_injected_fifo(out, overflowed);
     if (injected_count >= 0) {
-        pending_lost = 0;
-        loss_remainder_us = 0;
-        fifo_gap = true;
+        restart_due = true;
         return injected_count;
     }
 #endif
     if (!sensor_present) {
         return 0;
     }
-    int count = 0;
-    bool ok = read_fifo_count(&count, overflowed);
-    const int64_t lock_start_us = timing_now_us();
-    if (ok) {
-        ok = write_command(CTRL9_REQ_FIFO);
+    if (restart_due) {
+        restart_due = false;
+        restart_fifo();
     }
-    if (ok && count > 0) {
-        ok = read_regs(REG_FIFO_DATA, (uint8_t*)out, (size_t)count * sizeof *out);
+    const int count = BOARD_IMU_CHIP.drain(out, lost, overflowed);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    if (count > 0) {
+        log_suspect_burst(out, count);
     }
-    const bool resumed = write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG);
-    const uint64_t locked_us = (uint64_t)(timing_now_us() - lock_start_us);
-    fifo_gap = !ok || !resumed;
-    if (fifo_gap) {
-        /* A failed burst may have consumed part of a sample (reads consume, section 8.8):
-         * reset and reconfigure, as imu_init does, so the next count starts on a sample boundary. */
-        (void)(write_command(CTRL9_RST_FIFO) && write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG));
-    }
-    *lost = fifo_gap || *overflowed ? 0 : pending_lost;
-    /* Read-mode losses follow this burst, so gravity advances them with the next batch. */
-    pending_lost = imu_fifo_lost(locked_us, &loss_remainder_us, fifo_gap || *overflowed);
-    return fifo_gap ? -1 : count;
+#endif
+    return count;
 }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
+/* Closes the window when log_ms has passed. Runs at IMU_TASK_BUS_PRIORITY: logged below the job
+ * worker, the line landed inside console_emit_line()'s chunked screenshot rows (A308). */
 static void
-log_drain_stats(int count, int lost, int64_t elapsed_us, int64_t now_us) {
-    static int64_t last_log_us;
-    static uint64_t total_us;
-    static int64_t max_us;
-    static unsigned drains;
-    static unsigned delivered;
-    static unsigned lost_total;
-    drains++;
-    total_us += (uint64_t)elapsed_us;
-    if (elapsed_us > max_us) {
-        max_us = elapsed_us;
+log_stats(int64_t now_us) {
+    const bool window_done = log_ms == 0 || now_us - stats.last_log_us >= (int64_t)log_ms * MATH_US_PER_MS;
+    if (!window_done) {
+        return;
     }
-    delivered += count > 0 ? (unsigned)count : 0;
-    lost_total += (unsigned)lost;
-    const bool window_done = log_ms == 0 || now_us - last_log_us >= (int64_t)log_ms * MATH_US_PER_MS;
-    uint64_t age_mean_us = 0;
-    int64_t age_max_us = 0;
-    if (window_done) {
-        portENTER_CRITICAL(&lock);
-        age_mean_us = reader_age_count > 0 ? reader_age_total_us / reader_age_count : 0;
-        age_max_us = reader_age_max_us;
-        reader_age_total_us = 0;
-        reader_age_max_us = 0;
-        reader_age_count = 0;
-        portEXIT_CRITICAL(&lock);
-    }
-    if (log_ms > 0 && window_done) {
+    portENTER_CRITICAL(&lock);
+    const uint64_t age_mean_us = reader_age_count > 0 ? reader_age_total_us / reader_age_count : 0;
+    const int64_t age_max_us = reader_age_max_us;
+    reader_age_total_us = 0;
+    reader_age_max_us = 0;
+    reader_age_count = 0;
+    portEXIT_CRITICAL(&lock);
+    if (log_ms > 0) {
         ESP_LOGI(TAG,
                  "register_reads %u drains %u drain_mean_us %llu drain_max_us %lld delivered %u lost %u "
-                 "reader_age_mean_us %llu "
-                 "reader_age_max_us %lld wake_gap_max_us %lld stack_free_bytes %u",
-                 register_reads, drains, (unsigned long long)(total_us / drains), (long long)max_us, delivered,
-                 lost_total, (unsigned long long)age_mean_us, (long long)age_max_us, (long long)wake_gap_max_us,
-                 (unsigned)uxTaskGetStackHighWaterMark(NULL));
+                 "reader_age_mean_us %llu reader_age_max_us %lld wake_gap_max_us %lld bus_ms %llu parks %u "
+                 "parked_ms %llu stack_free_bytes %u",
+                 stats.register_reads, stats.drains,
+                 (unsigned long long)(stats.drains > 0 ? stats.drain_total_us / stats.drains : 0),
+                 (long long)stats.drain_max_us, stats.delivered, stats.lost, (unsigned long long)age_mean_us,
+                 (long long)age_max_us, (long long)stats.wake_gap_max_us,
+                 (unsigned long long)(stats.bus_us / MATH_US_PER_MS), stats.parks,
+                 (unsigned long long)(stats.parked_us / MATH_US_PER_MS), (unsigned)uxTaskGetStackHighWaterMark(NULL));
     }
-    if (window_done) {
-        last_log_us = now_us;
-        register_reads = 0;
-        drains = delivered = lost_total = 0;
-        total_us = 0;
-        max_us = 0;
-        wake_gap_max_us = 0;
+    stats = (imu_stats_t){.last_log_us = now_us, .last_wake_us = stats.last_wake_us};
+}
+
+static void
+count_drain(int count, int lost, int64_t elapsed_us) {
+    stats.drains++;
+    stats.drain_total_us += (uint64_t)elapsed_us;
+    if (elapsed_us > stats.drain_max_us) {
+        stats.drain_max_us = elapsed_us;
     }
+    stats.delivered += count > 0 ? (unsigned)count : 0;
+    stats.lost += (unsigned)lost;
 }
 #endif
 
@@ -452,16 +378,16 @@ imu_read_or_drain(bool drain_due) {
         }
         portEXIT_CRITICAL(&lock);
 #if CONFIG_LAUNCHER_DEVELOPMENT
-        log_drain_stats(count, lost, now_us - start_us, now_us);
+        count_drain(count, lost, now_us - start_us);
 #else
         (void)now_us;
 #endif
     } else if (sensor_present) {
         imu_sample_t sample;
 #if CONFIG_LAUNCHER_DEVELOPMENT
-        register_reads++;
+        stats.register_reads++;
 #endif
-        if (read_regs(REG_AX_L, (uint8_t*)&sample, sizeof sample)) {
+        if (BOARD_IMU_CHIP.read(&sample)) {
             portENTER_CRITICAL(&lock);
             newest = sample;
             have_newest = true;
@@ -472,7 +398,138 @@ imu_read_or_drain(bool drain_due) {
             portEXIT_CRITICAL(&lock);
         }
     }
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    stats.bus_us += (uint64_t)(timing_now_us() - start_us);
+#endif
     return drain_due;
+}
+
+/* The level readers ask for; with none, marks the task parked under the same lock a reader stamps under. */
+static imu_demand_level_t
+take_demand(void) {
+    portENTER_CRITICAL(&lock);
+    const imu_demand_level_t level = imu_demand_level(&demand, timing_now_us());
+    parked = level == IMU_DEMAND_NONE;
+    portEXIT_CRITICAL(&lock);
+    return level;
+}
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+/* imu_set_odr() asks, the task applies between drains; both under `lock`. */
+static imu_odr_t odr = {.requested = IMU_ODR_CODE, .applied = IMU_ODR_CODE};
+/* Longest a request waits: two of the slowest task periods the tunables allow. */
+#define IMU_ODR_WAIT_MS (2 * IMU_PERIOD_MAX_MS)
+
+/* The bus work runs outside `lock` on a copy; imu_set_odr() only waits on it meanwhile.
+ * Any reconfigure resets the FIFO, so a gap drops queued samples spaced at the old rate. */
+static void
+apply_odr_request(void) {
+    portENTER_CRITICAL(&lock);
+    imu_odr_t next = odr;
+    portEXIT_CRITICAL(&lock);
+    const imu_odr_outcome_t outcome = imu_odr_apply(&next, BOARD_IMU_CHIP.configure);
+    if (outcome == IMU_ODR_UNCHANGED) {
+        return;
+    }
+    if (outcome == IMU_ODR_LOST) {
+        ESP_LOGE(TAG, "ODR switch to %u and restore of %u both failed; the sensor may be off", odr.requested,
+                 next.applied);
+    }
+    portENTER_CRITICAL(&lock);
+    imu_queue_set_rate(&queue, next.applied);
+    odr = next;
+    portEXIT_CRITICAL(&lock);
+}
+
+int
+imu_take_fifo_at(unsigned odr_code, imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t lost_before[IMU_FIFO_SAMPLES],
+                 bool* gap) {
+    *gap = false;
+    if (!ready) {
+        return -1;
+    }
+    portENTER_CRITICAL(&lock);
+    const bool wake = stamp_demand(&demand.fifo_us);
+    const int count = imu_queue_take_at(&queue, odr_code, out, lost_before, gap);
+    portEXIT_CRITICAL(&lock);
+    wake_task(wake);
+    return count;
+}
+
+bool
+imu_set_odr(unsigned odr_code) {
+    if (!sensor_present || task_handle == NULL) {
+        return false;
+    }
+    portENTER_CRITICAL(&lock);
+    odr.requested = odr_code;
+    const bool wake = stamp_demand(&demand.fifo_us);
+    portEXIT_CRITICAL(&lock);
+    wake_task(wake);
+    const int64_t deadline = timing_now_us() + ((int64_t)IMU_ODR_WAIT_MS * MATH_US_PER_MS);
+    for (;;) {
+        portENTER_CRITICAL(&lock);
+        const unsigned applied = odr.applied;
+        const unsigned requested = odr.requested;
+        portEXIT_CRITICAL(&lock);
+        if (applied == odr_code || requested != odr_code || timing_now_us() >= deadline) {
+            return applied == odr_code;
+        }
+        timing_sleep_ms(IMU_PERIOD_MIN_MS);
+    }
+}
+#endif
+
+/* Sleeps until a reader stamps demand; a read since take_demand() leaves the notification pending. */
+static void
+park_until_read(void) {
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    stats.parks++;
+    const int64_t parked_us = timing_now_us();
+#endif
+    (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    stats.last_wake_us = timing_now_us();
+    stats.parked_us += (uint64_t)(stats.last_wake_us - parked_us);
+#endif
+}
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+static void
+count_wake_gap(void) {
+    const int64_t now_us = timing_now_us();
+    const int64_t wake_gap_us = now_us - stats.last_wake_us;
+    if (wake_gap_us > stats.wake_gap_max_us) {
+        stats.wake_gap_max_us = wake_gap_us;
+    }
+    stats.last_wake_us = now_us;
+}
+#endif
+
+/* One period's bus work at `asked`: entering FIFO restarts it, then a register read or a due drain.
+ * The bus lock has no priority inheritance: a preempted transaction holds the bus,
+ * and a preempted drain keeps the FIFO in read mode, discarding arrivals. */
+static void
+serve_demand(imu_demand_level_t asked, imu_demand_level_t* level, unsigned* read_ticks, TickType_t drain_ticks) {
+    vTaskPrioritySet(NULL, IMU_TASK_BUS_PRIORITY);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    if (sensor_present) {
+        apply_odr_request();
+    }
+#endif
+    if (asked == IMU_DEMAND_FIFO && *level != IMU_DEMAND_FIFO) {
+        restart_fifo();
+        *read_ticks = 0;
+    }
+    *level = asked;
+    if (imu_read_or_drain(asked == IMU_DEMAND_FIFO && *read_ticks >= drain_ticks)) {
+        *read_ticks = 0;
+    }
+    (*read_ticks)++;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    log_stats(timing_now_us());
+#endif
+    vTaskPrioritySet(NULL, IMU_TASK_PRIORITY);
 }
 
 static void
@@ -480,30 +537,24 @@ imu_task(void* arg) {
     (void)arg;
     TickType_t last_wake = xTaskGetTickCount();
     unsigned read_ticks = 0;
+    imu_demand_level_t level = IMU_DEMAND_NONE;
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    int64_t last_wake_us = timing_now_us();
+    stats.last_wake_us = timing_now_us();
 #endif
     while (1) {
-#if CONFIG_LAUNCHER_DEVELOPMENT
-        const int64_t now_us = timing_now_us();
-        const int64_t wake_gap_us = now_us - last_wake_us;
-        if (wake_gap_us > wake_gap_max_us) {
-            wake_gap_max_us = wake_gap_us;
+        const imu_demand_level_t asked = take_demand();
+        if (asked == IMU_DEMAND_NONE) {
+            park_until_read();
+            level = IMU_DEMAND_NONE;
+            last_wake = xTaskGetTickCount();
+            continue;
         }
-        last_wake_us = now_us;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        count_wake_gap();
 #endif
         const TickType_t requested_period = pdMS_TO_TICKS(read_ms);
         const TickType_t period = requested_period > 0 ? requested_period : 1;
-        const TickType_t drain_ticks = pdMS_TO_TICKS(drain_ms) / period;
-        const bool drain_due = read_ticks == 0 || read_ticks >= drain_ticks;
-        /* The bus lock has no priority inheritance: a preempted drain holds the bus
-         * and keeps the FIFO in read mode, discarding arrivals. */
-        vTaskPrioritySet(NULL, IMU_TASK_BUS_PRIORITY);
-        if (imu_read_or_drain(drain_due)) {
-            read_ticks = 0;
-        }
-        read_ticks++;
-        vTaskPrioritySet(NULL, IMU_TASK_PRIORITY);
+        serve_demand(asked, &level, &read_ticks, pdMS_TO_TICKS(drain_ms) / period);
         if (xTaskDelayUntil(&last_wake, period) == pdFALSE) {
             last_wake = xTaskGetTickCount();
         }

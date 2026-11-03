@@ -2,7 +2,7 @@
 import io
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import subprocess
 import sys
 import tempfile
@@ -35,20 +35,36 @@ class JobInputsTests(unittest.TestCase):
         self.assertEqual(job_inputs.matching_paths([change], manifest,
             set(manifest['files'])), [])
 
-    def test_directory_matching_uses_nearest_base_ancestor(self):
-        base_files = {'docs/x/existing.md'}
+    def test_docs_only_change_skips_firmware_after_whole_tree_listing(self):
+        reads = ['launcher/main/core.c', 'launcher/main/core.h', 'docs/images/x.png']
+        base_files = set(reads) | {'docs/tools/Existing.md'}
+        tree = sorted({str(parent) for name in base_files for parent in PurePosixPath(name).parents})
+        manifest = {'files': reads, 'directories': tree}
         for status in ('added', 'removed', 'renamed'):
-            for name in ('docs/x/new.gif', 'docs/x/new/sub/new.gif'):
-                for directories, expected in [(['.', 'docs'], []),
-                        (['.', 'docs', 'docs/x'], [name])]:
+            with self.subTest(status=status):
+                change = {'filename': 'docs/tools/Citing-Sources.md', 'status': status}
+                self.assertEqual(job_inputs.matching_paths([change], manifest, base_files), [])
+        for name in ('launcher/main/new.c', 'launcher/new/deep/new.h'):
+            with self.subTest(name=name):
+                change = {'filename': name, 'status': 'added'}
+                self.assertEqual(job_inputs.matching_paths([change], manifest, base_files), [name])
+
+    def test_listed_directory_chain_widens_suffix_scope(self):
+        base_files = {'src/read.c', 'src/new/existing.h', 'docs/x/existing.md'}
+        manifest = {'files': ['src/read.c']}
+        for status in ('added', 'removed', 'renamed'):
+            for name in ('src/new/file.c', 'src/new/sub/file.c'):
+                for directories, expected in [([], []), (['src/new'], []),
+                        (['src', 'src/new'], [name])]:
                     with self.subTest(status=status, name=name, directories=directories):
                         change = {'filename': name, 'status': status}
+                        expected = [] if status == 'removed' and not directories else expected
                         self.assertEqual(job_inputs.matching_paths([change],
-                            {'files': [], 'directories': directories}, base_files), expected)
-        change = {'filename': 'elsewhere/new.gif', 'previous_filename': 'docs/x/old.gif',
-                  'status': 'renamed'}
-        self.assertEqual(job_inputs.matching_paths([change],
-            {'files': [], 'directories': ['docs/x']}, base_files), ['docs/x/old.gif'])
+                            dict(manifest, directories=directories), base_files), expected)
+            with self.subTest(status=status, name='docs/x/new.md'):
+                change = {'filename': 'docs/x/new.md', 'status': status}
+                self.assertEqual(job_inputs.matching_paths([change],
+                    dict(manifest, directories=['.', 'docs', 'docs/x', 'src']), base_files), [])
 
     def test_tracked_agents_read_establishes_extension_coverage(self):
         change = {'filename': 'NEW.md', 'status': 'added'}
@@ -78,20 +94,21 @@ class JobInputsTests(unittest.TestCase):
             {'files': ['docs/LICENSE'], 'directories': []}, {'docs/LICENSE'}), ['NOTICE'])
 
     def test_path_matching(self):
-        manifest = {'files': ['src/read.c', 'old/file.c'], 'directories': ['src/new']}
+        manifest = {'files': ['src/read.c', 'old/file.c'], 'directories': ['src', 'src/new']}
         cases = [({'filename': 'src/read.c', 'status': 'modified'}, ['src/read.c']),
                  ({'filename': 'src/other.c', 'status': 'modified'}, []),
                  ({'filename': 'src/new/file.c', 'status': 'added'}, ['src/new/file.c']),
                  ({'filename': 'src/new/file.c', 'status': 'modified'}, []),
                  ({'filename': 'src/new/file.c', 'status': 'removed'}, ['src/new/file.c']),
+                 ({'filename': 'src/new/file.md', 'status': 'added'}, []),
                  ({'filename': 'new/file.c', 'previous_filename': 'old/file.c',
-                   'status': 'renamed'}, ['old/file.c']),
+                   'status': 'renamed'}, ['new/file.c', 'old/file.c']),
                  ({'filename': 'src/new/sub/file.c', 'status': 'added'},
                   ['src/new/sub/file.c'])]
         for change, expected in cases:
             with self.subTest(change=change):
                 self.assertEqual(job_inputs.matching_paths([change], manifest,
-                    {'src/new/existing.h'}), expected)
+                    {'src/read.c', 'old/file.c', 'src/new/existing.h'}), expected)
 
     def test_latest_artifact_uses_base_branch_and_excludes_pr_runs(self):
         artifacts = [dict(id=number, name='job-inputs-ci-build', expired=expired,

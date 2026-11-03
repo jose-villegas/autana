@@ -32,8 +32,8 @@
 #include "boot/boot_anim_timeline.h"
 #include "core/handle.h"
 #include "draw/draw_font.h"
-#include "draw/draw_image.h"
 #include "gfx/target/gfx_color.h"
+#include "image/image.h"
 #include "image/pixel/rgb565.h"
 #include "image/pixel/rgb888.h"
 #include "math/linear/transformf.h"
@@ -77,11 +77,11 @@ void boot_anim_motion_release(boot_anim_motion_t* motion);
  * picture's pack entry, mounting its pack. On any failure, including a picture
  * that is not one panel, it logs why and leaves no pixels, so the animation
  * draws on without it. */
-void boot_anim_photo_load(draw_image_t* out);
+void boot_anim_photo_load(image_t* out);
 
 /* Drops the pack boot_anim_photo_load() mounted, if it did (`photo` has
  * pixels), and leaves no pixels in `photo`. */
-void boot_anim_photo_release(draw_image_t* photo);
+void boot_anim_photo_release(image_t* photo);
 
 typedef struct {
     transformf_t camera;
@@ -742,7 +742,7 @@ boot_anim_finale_reach(uint32_t now_ms) {
 
 /* Host render tests call this directly and read the firmware framebuffer.
  * `photo` with no pixels draws the scene through to the end in its place. */
-void boot_anim_draw_frame(const boot_anim_motion_t* motion, const draw_image_t* photo, uint32_t now_ms);
+void boot_anim_draw_frame(const boot_anim_motion_t* motion, const image_t* photo, uint32_t now_ms);
 
 /* What the picture dissolves INTO. Unset, the last frames fade to black and
  * whatever follows cuts in. Set, each of them starts from `paint`'s picture
