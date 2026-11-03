@@ -290,7 +290,7 @@ class DocImageFailureTest(unittest.TestCase):
             root = pathlib.Path(directory)
             tools = root / "launcher/tools/render"
             tools.mkdir(parents=True)
-            for name in ("render_doc_images.sh", "doc_images_demo.sh", "doc_import_examples.py", "gif_from_avi.sh"):
+            for name in ("render_doc_images.sh", "doc_images_demo.sh", "doc_import_examples.py"):
                 shutil.copyfile(ROOT / "launcher/tools/render" / name, tools / name)
             # The helpers --orphans sources, and the figures runner it asks for declared images.
             for name in ("scripts/lib/run.sh", "scripts/lib/python.sh", "scripts/lib/python-min-version",

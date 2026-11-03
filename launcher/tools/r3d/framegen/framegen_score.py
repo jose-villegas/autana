@@ -36,6 +36,7 @@ sys.path[:0] = [str(TOOLS), str(TOOLS / "render"), str(TOOLS / "device"), str(HE
 import render_compare  # noqa: E402
 import warp  # noqa: E402
 from build.c_header import read_define  # noqa: E402
+from docs.figures import save_gif  # noqa: E402
 from panel_size import PANEL_HEIGHT, PANEL_WIDTH  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402
 from r3d.poses import sample_camera_rows  # noqa: E402
@@ -56,7 +57,6 @@ HOLE_RED = (255, 0, 0)
 VIDEO_ZOOM = 2
 # A GIF's frames at the raster's own size, so a clip stays a docs-sized file.
 CLIP_ZOOM = 1
-CLIP_COLOURS = 64
 CLIP_FRAMES = 60
 MS_PER_SECOND = 1000
 # The places --sheet's crops show per frame.
@@ -131,13 +131,7 @@ def write_video(frame_path, lens, poses, frames, out):
 
 
 def write_clip(frame_path, lens, poses, frames, out):
-    """One palette for every frame, taken from all of them, so the clip does not flicker."""
-    shots = [Image.fromarray(video_frame(frame_path, lens, poses, frame, CLIP_ZOOM)) for frame in frames]
-    strip = Image.fromarray(np.concatenate([np.asarray(shot) for shot in shots], axis=0))
-    palette = strip.quantize(colors=CLIP_COLOURS)
-    quantized = [shot.quantize(palette=palette, dither=Image.Dither.NONE) for shot in shots]
-    quantized[0].save(out, save_all=True, append_images=quantized[1:], duration=DISPLAY_STEP_MS, loop=0,
-                      optimize=True)
+    save_gif([video_frame(frame_path, lens, poses, frame, CLIP_ZOOM) for frame in frames], out, DISPLAY_STEP_MS)
 
 
 def write_sheet(frame_path, lens, poses, frames, out):

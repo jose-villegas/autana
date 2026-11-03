@@ -20,7 +20,7 @@ from build.c_header import read_define
 from docs.figures import probe_into_folder
 from docs.producer import Producer
 
-from docs.plot_style import (DPI, FAINT, GIF_FPS, INK, LABEL_SIZE, MUTED, ORBIT_GIF_COLORS, SLOTS, TITLE_SIZE,
+from docs.plot_style import (DPI, FAINT, GIF_FPS, INK, LABEL_SIZE, MUTED, SLOTS, TITLE_SIZE,
                              style_axes, figure as new_figure, save, save_gif, subplots)
 from matplotlib.patches import Rectangle
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
@@ -90,7 +90,7 @@ def trs_figure(trs, output):
         draw(0)
         figure.canvas.draw()
         figure.set_layout_engine(None)
-        save_gif(figure, draw, len(frames), output / f"trs-{filename}.gif", GIF_FPS, colors=ORBIT_GIF_COLORS)
+        save_gif(figure, draw, len(frames), output / f"trs-{filename}.gif", GIF_FPS)
 
 
 def prism_faces(points, count):
