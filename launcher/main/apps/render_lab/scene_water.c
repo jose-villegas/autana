@@ -20,7 +20,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "app/app_arena.h"
 #include "board_geometry.h"
 #include "core/job.h"
 #include "core/timing.h"
@@ -246,46 +245,41 @@ fail(const char* what) {
     render_lab_scene_fail(TAG, failure, sizeof failure, what);
 }
 
-/* From the app arena, which render_lab rewinds when the scene goes. */
-static void*
-take(size_t bytes) {
-    return app_arena_take(bytes, _Alignof(max_align_t));
-}
-
 static bool
 allocate(void) {
     flip3_config_t config = {box, box.z / (float)WATER_CELLS_DEEP, 1};
-    void* grid = take(flip3_grid_bytes(&config));
+    void* grid = render_lab_scene_take(flip3_grid_bytes(&config));
     /* One particle to learn the seed lattice, then room for the most water
      * the slider allows; the grid is the same at any particle count. */
-    if (grid == NULL || !flip3_init(&water, &config, grid, take(flip3_particle_bytes(&config)))) {
+    if (grid == NULL || !flip3_init(&water, &config, grid, render_lab_scene_take(flip3_particle_bytes(&config)))) {
         return false;
     }
     config.max_particles = ((water.seed_count * WATER_FILL_MAX) + WATER_PERCENT - 1) / WATER_PERCENT;
-    if (!flip3_init(&water, &config, grid, take(flip3_particle_bytes(&config)))) {
+    if (!flip3_init(&water, &config, grid, render_lab_scene_take(flip3_particle_bytes(&config)))) {
         return false;
     }
     const float most = (float)WATER_SAMPLES_PCT_MAX / (float)WATER_PERCENT;
-    field = take(sizeof(float) * flip3_field_count(&water, most));
+    field = render_lab_scene_take(sizeof(float) * flip3_field_count(&water, most));
     if (field == NULL) {
         return false;
     }
     surface_field = flip3_field(&water, most, field);
-    through = take(sizeof(float) * (size_t)(surface_field.nx * surface_field.ny));
-    positions = take(sizeof(vec3f_t) * WATER_MAX_VERTICES);
-    normals = take(sizeof(vec3f_t) * WATER_MAX_VERTICES);
-    colors = take(sizeof(uint8_t[3]) * WATER_MAX_VERTICES);
-    triangles = take(sizeof(uint16_t[3]) * WATER_MAX_TRIANGLES);
+    through = render_lab_scene_take(sizeof(float) * (size_t)(surface_field.nx * surface_field.ny));
+    positions = render_lab_scene_take(sizeof(vec3f_t) * WATER_MAX_VERTICES);
+    normals = render_lab_scene_take(sizeof(vec3f_t) * WATER_MAX_VERTICES);
+    colors = render_lab_scene_take(sizeof(uint8_t[3]) * WATER_MAX_VERTICES);
+    triangles = render_lab_scene_take(sizeof(uint16_t[3]) * WATER_MAX_TRIANGLES);
     for (int half = 0; half < 2; half++) {
-        scratch[half] = take(sizeof(int32_t) * iso_surface_scratch_count(surface_field.ny, surface_field.nz));
+        scratch[half] =
+            render_lab_scene_take(sizeof(int32_t) * iso_surface_scratch_count(surface_field.ny, surface_field.nz));
     }
-    transfer = take(sizeof *transfer);
+    transfer = render_lab_scene_take(sizeof *transfer);
     if (transfer != NULL) {
         r3d_skin_light_transfer_build(WATER_TONEMAP_NONE, transfer);
     }
     const r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(WATER_MAX_VERTICES, WATER_MAX_TRIANGLES);
     const size_t mesh_bytes = r3d_dynamic_mesh_bytes(capacity);
-    void* mesh_block = take(mesh_bytes);
+    void* mesh_block = render_lab_scene_take(mesh_bytes);
     return through != NULL && transfer != NULL && positions != NULL && normals != NULL && colors != NULL
            && triangles != NULL && scratch[0] != NULL && scratch[1] != NULL && mesh_block != NULL
            && r3d_dynamic_mesh_init(&surface, mesh_block, mesh_bytes, capacity, WATER_TICKS_PER_MM);

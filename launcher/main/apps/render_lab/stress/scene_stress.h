@@ -10,9 +10,4 @@
 #include "apps/render_lab/render_lab_scene.h"
 #include "apps/render_lab/stress/stress_preset.h"
 
-/* The scene's id and pack, its camera, and its copies' names, numbered from 0. */
-#define STRESS_SCENE       "stress"
-#define STRESS_CAMERA      "camera"
-#define STRESS_SLOT_FORMAT "slot_%02d"
-
 extern const render_lab_scene_t scene_stress[STRESS_PRESET_COUNT];

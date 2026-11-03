@@ -34,20 +34,20 @@ typedef struct {
     bool per_frame;       /* the mesh is made again every frame, a wave running over it */
 } stress_params_t;
 
-/* X(context, ID, key, menu label, per_frame, params...): the one place a
- * preset is spelled out, its key the scene key's suffix. The scene table
+/* X(ID, key, per_frame, params...): the one place a preset is spelled
+ * out, its key the scene key's suffix and its menu label. The scene table
  * and every test expand it; the render_lab tools README names the option
  * each is the loss case of. */
-#define STRESS_PRESETS(X, context)                                                                                     \
-    X(context, OPEN, "open", "Open", false, STRESS_SHAPE_GRID, 8, 16, STRESS_LAYOUT_WALL, 60)                          \
-    X(context, STACK, "stack", "Stack", false, STRESS_SHAPE_GRID, 8, 8, STRESS_LAYOUT_STACK, 90)                       \
-    X(context, TINY_COPIES, "tiny-copies", "Tiny copies", false, STRESS_SHAPE_SPHERE, 4, 64, STRESS_LAYOUT_WALL, 40)   \
-    X(context, BIG_TRIS, "big-tris", "Big tris", false, STRESS_SHAPE_GRID, 2, 1, STRESS_LAYOUT_WALL, 100)              \
-    X(context, PER_FRAME, "per-frame", "Per frame", true, STRESS_SHAPE_GRID, 24, 1, STRESS_LAYOUT_WALL, 80)
+#define STRESS_PRESETS(X)                                                                                              \
+    X(OPEN, "open", false, STRESS_SHAPE_GRID, 8, 16, STRESS_LAYOUT_WALL, 60)                                           \
+    X(STACK, "stack", false, STRESS_SHAPE_GRID, 8, 8, STRESS_LAYOUT_STACK, 90)                                         \
+    X(TINY_COPIES, "tiny-copies", false, STRESS_SHAPE_SPHERE, 4, 64, STRESS_LAYOUT_WALL, 40)                           \
+    X(BIG_TRIS, "big-tris", false, STRESS_SHAPE_GRID, 2, 1, STRESS_LAYOUT_WALL, 100)                                   \
+    X(PER_FRAME, "per-frame", true, STRESS_SHAPE_GRID, 24, 1, STRESS_LAYOUT_WALL, 80)
 
-#define STRESS_PRESET_ID(context_, id_, key_, label_, per_frame_, ...) STRESS_##id_,
+#define STRESS_PRESET_ID(id_, ...) STRESS_##id_,
 
-typedef enum { STRESS_PRESETS(STRESS_PRESET_ID, ) STRESS_PRESET_COUNT } stress_preset_t;
+typedef enum { STRESS_PRESETS(STRESS_PRESET_ID) STRESS_PRESET_COUNT } stress_preset_t;
 
 extern const stress_params_t stress_presets[STRESS_PRESET_COUNT];
 
@@ -67,9 +67,9 @@ typedef struct {
  * wave stay inside int16. */
 #define STRESS_TICKS_PER_UNIT 16384
 
-/* A copy's mesh `t_ms` into its wave (still presets ignore it): the unit
- * shape, banded in colour across its height, and for a per-frame preset
- * pushed out along its normal by the wave. False when the shape cannot be
+/* A copy's mesh `t_ms` into its wave, which only a per-frame preset reads:
+ * the unit shape, banded in colour across its height, and for a per-frame
+ * preset pushed out along its normal by the wave. False when the shape cannot be
  * made. Equal arguments give equal bytes. */
 bool stress_source(const stress_params_t* p, uint32_t t_ms, const stress_buffers_t* b, r3d_dynamic_source_t* out);
 

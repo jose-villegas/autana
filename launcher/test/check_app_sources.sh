@@ -61,8 +61,8 @@ done
 
 status=0
 found=0
-# Recursive, as run_tests.sh skips them: a scene in an app's subfolder is as
-# hardware-facing as one at its top. tools/ is excluded the same way.
+# Every app_*.c and scene_*.c below an app, in subfolders too, except under
+# tools/: run_tests.sh skips the same files, so this is their only check.
 for f in $(find $(app_directories "$HERE/..") \( -name 'app_*.c' -o -name 'scene_*.c' \) ! -path '*/tools/*' | sort); do
     found=$((found + 1))
     # shellcheck disable=SC2086

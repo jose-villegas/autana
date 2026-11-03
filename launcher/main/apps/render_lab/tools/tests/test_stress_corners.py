@@ -5,7 +5,8 @@
 Builds the host renderer once and draws every preset stress_preset.h names
 with --view cull --counts, then holds each to what it is the loss case of:
 open hides and culls nothing, stack hides most of what it keeps, tiny copies
-are all in view, big tris draws every triangle it submits. The sizes the
+are all in view and all drawn, big tris draws every triangle it submits, and
+before a still camera only the per-frame preset's frames differ. The sizes the
 triangles are drawn at are suite_stress_preset.c's to hold.
 """
 import csv
@@ -25,9 +26,10 @@ PRESETS = HERE.parents[1] / "stress" / "stress_preset.h"
 FRAMES = 2
 
 
-def preset_keys():
-    """The preset keys, in the order STRESS_PRESETS lists them."""
-    return re.findall(r'^\s*X\(context, \w+, "([^"]+)"', PRESETS.read_text(), re.MULTILINE)
+def preset_copies():
+    """Each preset's copy count by its key, in the order STRESS_PRESETS lists them."""
+    rows = re.findall(r'^\s*X\(\w+, "([^"]+)", \w+, \w+, \d+, (\d+),', PRESETS.read_text(), re.MULTILINE)
+    return {key: int(copies) for key, copies in rows}
 
 
 class StressCorners(unittest.TestCase):
@@ -45,6 +47,16 @@ class StressCorners(unittest.TestCase):
     def setUp(self):
         self.assertTrue(self.built, self.build_output[-2000:])
 
+    def frames(self, key):
+        """Preset `key`'s last two frames as the still camera sees them, as raw raster bytes."""
+        dump = self.out / ("still-" + key)
+        dump.mkdir()
+        run = subprocess.run([str(self.binary), "--quarter", "1", "--no-hud", "--frames", str(FRAMES + 1), "--scene",
+                              "stress-" + key, "--camera", "still", "--dump", str(dump), "-o",
+                              str(dump / "last.bmp")], capture_output=True, text=True, timeout=120)
+        self.assertEqual(0, run.returncode, run.stderr[-2000:])
+        return [(dump / ("%04d.raw" % i)).read_bytes() for i in (FRAMES - 1, FRAMES)]
+
     def counts(self, key):
         """The last frame's counts of preset `key`, by name."""
         rows = self.out / (key + ".csv")
@@ -57,7 +69,7 @@ class StressCorners(unittest.TestCase):
         return {name: int(value) for name, value in last.items()}
 
     def test_every_preset_is_held_here(self):
-        self.assertEqual({"open", "stack", "tiny-copies", "big-tris", "per-frame"}, set(preset_keys()))
+        self.assertEqual({"open", "stack", "tiny-copies", "big-tris", "per-frame"}, set(preset_copies()))
 
     def test_open_hides_and_culls_nothing(self):
         c = self.counts("open")
@@ -68,10 +80,12 @@ class StressCorners(unittest.TestCase):
 
     def test_stack_hides_most_of_what_it_keeps(self):
         c = self.counts("stack")
+        self.assertGreater(c["clusters_drawn"], 0)
         self.assertGreater(c["clusters_hidden"], c["clusters_drawn"])
 
     def test_tiny_copies_are_all_in_view(self):
         c = self.counts("tiny-copies")
+        self.assertGreaterEqual(c["clusters_drawn"], preset_copies()["tiny-copies"])
         self.assertEqual(0, c["nodes_cut"])
         self.assertEqual(c["clusters_tested"], c["clusters_kept"])
 
@@ -84,6 +98,12 @@ class StressCorners(unittest.TestCase):
         c = self.counts("per-frame")
         self.assertGreater(c["triangles_submitted"], 0)
         self.assertEqual(c["triangles_submitted"], c["triangles_covering"])
+
+    def test_only_per_frame_moves_before_a_still_camera(self):
+        before, after = self.frames("per-frame")
+        self.assertNotEqual(before, after)
+        before, after = self.frames("stack")
+        self.assertEqual(before, after)
 
 
 if __name__ == "__main__":
