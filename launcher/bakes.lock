@@ -133,6 +133,15 @@ run = 41593137131
 host = "Linux x86_64"
 
 [[bake]]
+output = "slot.mesh"
+source = "launcher/demo/stress/stress.scene.toml"
+key = "2a76380df87aee8ddc88952476bb75cfe4b81058d31492dc0a4e9010e1dcd042"
+sha256 = "384e96bce54fcc75e1aee11daba4bb439911e92aedfee493d2da5e50363ae504"
+size = 124
+run = 41711399507
+host = "Linux x86_64"
+
+[[bake]]
 output = "sponza.atrium.bundle"
 source = "launcher/demo/sponza/sponza.scene.toml"
 key = "f92192da126e815471eaf81148888bdd074021bf118f2ab264ae895960c7561b"
