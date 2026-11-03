@@ -75,17 +75,14 @@ _Static_assert(IMU_FIFO_CHUNK_SAMPLES <= IMU_FIFO_SAMPLES, "a FIFO chunk must fi
 /* CTRL7: enable the accelerometer and the gyroscope. */
 #define CTRL7_ENABLE_ACCEL_GYRO 0x03
 
-/* The ranges imu.h states every chip delivers. */
-#define QMI8658_FIFO_SAMPLES    128
-#define QMI8658_ACCEL_RANGE_G   8
-#define QMI8658_COUNTS_PER_G    4096
-#define QMI8658_GYRO_RANGE_DPS  512
-#define QMI8658_COUNTS_PER_DPS  64
-_Static_assert(QMI8658_FIFO_SAMPLES == IMU_FIFO_SAMPLES, "FIFO_CTRL_SIZE_128 is imu.h's FIFO depth");
-_Static_assert(QMI8658_COUNTS_PER_G == IMU_COUNTS_PER_G, "CTRL2_ACCEL_8G gives imu_sample.h's scale");
-_Static_assert(QMI8658_COUNTS_PER_DPS == IMU_COUNTS_PER_DPS, "CTRL3_GYRO_512DPS gives imu_sample.h's scale");
-_Static_assert(QMI8658_GYRO_RANGE_DPS == (int)IMU_GYRO_RANGE_DPS, "CTRL3_GYRO_512DPS is imu.h's range");
-_Static_assert(QMI8658_COUNTS_PER_G* QMI8658_ACCEL_RANGE_G == (1 << 15), "+/-8 g fills int16");
+/* What the codes above give, which imu.h and imu_sample.h state every chip delivers. */
+#define QMI8658_FIFO_SAMPLES    128  /* FIFO_CTRL_SIZE_128 */
+#define QMI8658_COUNTS_PER_G    4096 /* CTRL2_ACCEL_8G */
+#define QMI8658_COUNTS_PER_DPS  64   /* CTRL3_GYRO_512DPS: +/-512 dps fills int16 */
+_Static_assert(QMI8658_FIFO_SAMPLES == IMU_FIFO_SAMPLES, "imu.h's FIFO depth");
+_Static_assert(QMI8658_COUNTS_PER_G == IMU_COUNTS_PER_G && QMI8658_COUNTS_PER_DPS == IMU_COUNTS_PER_DPS,
+               "imu_sample.h's scales");
+_Static_assert(QMI8658_COUNTS_PER_DPS*(int)IMU_GYRO_RANGE_DPS == (1 << 15), "imu.h's gyro range");
 
 static i2c_master_dev_handle_t dev;
 static bool fifo_gap;
@@ -160,7 +157,7 @@ qmi8658_open(i2c_master_bus_handle_t bus, uint8_t address, unsigned odr_code) {
         return false;
     }
 
-    if (!imu_reset(write_reg, read_regs, timing_now_us, esp_rom_delay_us) || !qmi8658_configure(odr_code)) {
+    if (!qmi8658_reset(write_reg, read_regs, timing_now_us, esp_rom_delay_us) || !qmi8658_configure(odr_code)) {
         ESP_LOGE(TAG, "Reset or configuration failed");
         return false;
     }
@@ -170,8 +167,7 @@ qmi8658_open(i2c_master_bus_handle_t bus, uint8_t address, unsigned odr_code) {
     const char* model = revision == REVISION_QMI8658C   ? "QMI8658C"
                         : revision == REVISION_QMI8658A ? "QMI8658A"
                                                         : "unknown";
-    ESP_LOGI(TAG, "QMI8658 up, revision 0x%02x (%s), +/-%dg and +/-%ddps", revision, model, QMI8658_ACCEL_RANGE_G,
-             QMI8658_GYRO_RANGE_DPS);
+    ESP_LOGI(TAG, "QMI8658 up, revision 0x%02x (%s), +/-8g and +/-512dps", revision, model);
     return true;
 }
 
