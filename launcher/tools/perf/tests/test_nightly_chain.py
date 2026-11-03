@@ -370,6 +370,11 @@ class NightlyTests(unittest.TestCase):
         gone = dict(steps=[], selftest=dict(outcome="incomplete", report=str(self.root / "gone.md")))
         self.assertEqual(chain.lane_failures(gone), [f"self-test incomplete: {self.root / 'gone.md'}"])
         self.assertEqual(chain.lane_failures(dict(steps=steps[:1], selftest=dict(outcome="passed", report=None))), [])
+        # A lane that ended past the plan's deadline says by how much, whatever zone each time is in.
+        late = dict(steps=[], selftest=dict(outcome="passed", report=None), ended="2026-11-03T11:05:08+01:00")
+        self.assertEqual(chain.lane_failures(late, "2026-11-03T09:00:00+00:00"),
+                         ["ended 66 min past the deadline 2026-11-03T09:00:00+00:00"])
+        self.assertEqual(chain.lane_failures(late, "2026-11-03T10:30:00+00:00"), [])
 
     def test_unplugged_before_second_step_keeps_result(self):
         with patch.object(chain, "plugged_boards", side_effect=[["20E8"], []]):
