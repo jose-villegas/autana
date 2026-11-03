@@ -15,8 +15,9 @@ own folder (docs/<app>/) and docs/plans/, whose designs span layers and name
 the apps they plan for, plus any Markdown file inside a lower layer. The
 "Cited by" part of a docs/Citations.md entry lists the files citing a source,
 wherever they live, so its paths are not read; nor is the figure index's
-generated block, which lists every doc image and the pages showing it,
-wherever they live.
+generated block, which lists every doc image with the alt text its pages give
+it and the pages showing it, wherever they live: those words are the pages',
+checked where they are written.
 
 App names come from the folders themselves, so adding an app extends the check.
 
@@ -44,7 +45,7 @@ from build.apps import APP_ROOTS  # noqa: E402
 from build.packages import FIRST_PARTY  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools/render"))
 from generated_blocks import MARKER, blocks  # noqa: E402
-from docs.figure_index import BLOCK as FIGURE_BLOCK, PAGE as FIGURE_INDEX  # noqa: E402
+from docs.figure_index import BLOCK as FIGURE_BLOCK  # noqa: E402
 
 # Below the apps: all of launcher/main/ except app folders, the packages and the
 # test tree. A new folder is checked from the day it exists.
@@ -97,6 +98,19 @@ def blank_cited_by(line):
     return CITED_BY.sub(lambda m: " " * len(m.group()), line)
 
 
+def blank_block(text, name):
+    """`text` with generated block `name`'s body blanked, lines kept, when it holds that block. Malformed
+    markers blank nothing: check_doc_generated reports them."""
+    try:
+        spans = blocks(text)
+    except ValueError:
+        return text
+    if name not in spans:
+        return text
+    start, end, *_ = spans[name]
+    return text[:start] + re.sub(r"[^\n]", " ", text[start:end]) + text[end:]
+
+
 def problems(root=".", context=False, files=None):
     names = app_names(root)
     word = name_pattern(names)
@@ -124,9 +138,7 @@ def problems(root=".", context=False, files=None):
         lines = text.splitlines()
         if rp == CITATIONS:
             text = "\n".join(blank_cited_by(line) for line in lines)
-        if rp == FIGURE_INDEX:
-            start, end, *_ = blocks(text)[FIGURE_BLOCK]
-            text = text[:start] + re.sub(r"[^\n]", " ", text[start:end]) + text[end:]
+        text = blank_block(text, FIGURE_BLOCK)
         for marker in reversed(list(MARKER.finditer(text))):
             if (marker.group(1) == "generated" and marker.group(4)
                     and "<!--" not in marker.group(4) and "-->" not in marker.group(4)):

@@ -43,7 +43,7 @@ holds the one way to write each kind of file:
 | Helper | Does |
 |---|---|
 | `save_png(picture, out)` | writes a PNG without metadata, so one picture always gives one file; `figures.py png` from a shell script |
-| `save_gif(frames, out, frame_ms)` | writes a looping GIF on the global palette: each pixel takes the entry nearest it in OKLab, without dithering; `frame_ms` is one time for every frame, or a list with a delay per frame |
+| `save_gif(frames, out, frame_ms)` | writes a looping GIF on the global palette: each pixel takes the entry nearest it in OKLab, without dithering; `delays=` gives each frame its own delay instead of one `frame_ms` |
 | `gif_from_avi(avi, out, fps, ...)` | writes a host render's AVI as such a GIF, resampled, cut and turned; `figures.py gif` from a shell script |
 | `render_scene(scene, *flags, log=...)` | runs the scene viewer and returns its output |
 
@@ -95,19 +95,18 @@ flowchart LR
 
 ## The figure index
 
-[Figures.md](Figures.md) lists every image under `docs/images/` by area. Each
-row has the image's picture linking to the full image, the alt text of the
-first page that shows it, every page that shows it, and the producer that
-declares it. `index` reads all of that from the tracked pages and the
-producer declarations, so nothing about an image is written by hand.
+[Figures.md](Figures.md) lists every image under `docs/images/` by area:
+its picture (linking to the full image), the first alt text a page gives it,
+every page that shows it, and the producer that declares it. All of it is
+read from the tracked pages and the producer declarations.
 
 | Image | Picture on the page |
 |---|---|
-| a still | the image itself, at most 160 px wide |
-| a GIF | a 160 px copy under `docs/tools/figure-thumbnails/`, made from the GIF on the global palette, each frame shown at least 200 ms, as long as the GIF |
+| a still | the image itself, at most the thumbnail width |
+| a GIF | a copy at that width under `docs/tools/figure-thumbnails/`, made from the GIF on the global palette by `shrink_gif`, with fewer frames and the same length |
 
-The generated-docs gate runs `index --check`, which fails when the page or a
-copy no longer matches the images, or a copy's GIF is gone. Rerun `index`
-after changing an image or a page that shows one; the doc-images refresh does
-this itself. An image no page shows, or a page showing an image that does not
-exist, is printed as a warning.
+The page's generated-block check runs `index --check`, which fails when the
+page or a copy no longer matches the images, or a copy's GIF is gone. Rerun
+`index` after changing an image or a page that shows one; the doc-images
+refresh ([`refresh_branch.py`](../../scripts/ci/refresh_branch.py)) does this
+itself. An image no page shows is printed as a warning.
