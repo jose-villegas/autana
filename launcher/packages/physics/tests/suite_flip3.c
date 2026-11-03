@@ -27,6 +27,9 @@
 #define SETTLE_STEPS  300  /* five simulated seconds */
 #define LONG_STEPS    1800 /* thirty */
 #define SAMPLES       2    /* density field samples per cell */
+#define LEVEL         0.5F /* the surface: half the rest density, as a scene draws it */
+#define THIN_FILL     0.1F /* the scene's lowest fill: flat, a film under half a cell thick */
+#define SCENE_SAMPLES 1.5F /* the water scene's default rate */
 
 static flip3_t water;
 static void* grid;
@@ -94,7 +97,7 @@ wet_share(void) {
     for (int x = 1; x < fx - 1; x++) {
         for (int y = 1; y < fy - 1; y++) {
             for (int z = 1; z < fz - 1; z++) {
-                wet += sample(x, y, z) > 0.5F ? 1 : 0;
+                wet += sample(x, y, z) > LEVEL ? 1 : 0;
             }
         }
     }
@@ -173,7 +176,7 @@ test_a_fractional_rate_finds_the_same_level(void) {
     for (int x = 1; x < coarse.nx - 1; x++) {
         for (int y = 1; y < coarse.ny - 1; y++) {
             for (int z = 1; z < coarse.nz - 1; z++) {
-                wet += field[(((x * coarse.ny) + y) * coarse.nz) + z] > 0.5F ? 1 : 0;
+                wet += field[(((x * coarse.ny) + y) * coarse.nz) + z] > LEVEL ? 1 : 0;
             }
         }
     }
@@ -233,7 +236,7 @@ test_upright_water_settles_level(void) {
     for (int x = 1; x < fx - 1; x++) {
         int top = fy - 1;
         for (int y = 1; y < fy - 1 && top == fy - 1; y++) {
-            if (sample(x, y, fz / 2) > 0.5F) {
+            if (sample(x, y, fz / 2) > LEVEL) {
                 top = y;
             }
         }
@@ -254,8 +257,8 @@ test_flat_water_lies_as_a_layer_on_the_glass_below(void) {
     take_field();
     for (int x = 1; x < fx - 1; x++) {
         for (int y = 1; y < fy - 1; y++) {
-            TEST_ASSERT_TRUE(sample(x, y, 1) > 0.5F);
-            TEST_ASSERT_TRUE(sample(x, y, fz - 2) < 0.5F);
+            TEST_ASSERT_TRUE(sample(x, y, 1) > LEVEL);
+            TEST_ASSERT_TRUE(sample(x, y, fz - 2) < LEVEL);
         }
     }
 }
@@ -269,6 +272,46 @@ test_tipped_toward_the_viewer_water_gathers_at_the_front(void) {
     for (int i = 0; i < water.count; i++) {
         TEST_ASSERT_TRUE(flip3_particle(&water, i).z > BOX_Z * 0.5F);
     }
+}
+
+/* No water is too thin to draw: settled at the lowest fill along `down`,
+ * every particle wets the field sample nearest it, at the water scene's
+ * sample rate and this suite's, on a box as odd as the device's. */
+static void
+expect_thin_water_shows(vec3f_t down) {
+    fixture_with(&ODD);
+    flip3_fill(&water, THIN_FILL, down);
+    run(SETTLE_STEPS, vec3f_scale(down, GRAVITY));
+    const float rates[] = {SCENE_SAMPLES, SAMPLES};
+    for (size_t r = 0; r < sizeof rates / sizeof rates[0]; r++) {
+        const iso_field_t f = flip3_field(&water, rates[r], field);
+        for (int i = 0; i < water.count; i++) {
+            const vec3f_t p = vec3f_sub(flip3_particle(&water, i), f.origin);
+            const int x = (int)lroundf(p.x / f.step.x);
+            const int y = (int)lroundf(p.y / f.step.y);
+            const int z = (int)lroundf(p.z / f.step.z);
+            TEST_ASSERT_TRUE_MESSAGE(f.values[(((x * f.ny) + y) * f.nz) + z] >= LEVEL, "a particle is not drawn");
+        }
+    }
+}
+
+/* Flat on its back: a film thinner than the field's smoothing, which once
+ * averaged it all below the level, so none of it was drawn. */
+static void
+test_a_thin_film_flat_on_the_glass_shows(void) {
+    expect_thin_water_shows(vec3f_back());
+}
+
+/* Leaned back halfway: thin where it runs up the back glass. */
+static void
+test_thin_water_leaned_back_shows(void) {
+    expect_thin_water_shows(vec3f_normalize(vec3f_add(vec3f_unit_y(), vec3f_back())));
+}
+
+/* Upright: a shallow pool, its lone drops included. */
+static void
+test_a_shallow_upright_pool_shows(void) {
+    expect_thin_water_shows(vec3f_unit_y());
 }
 
 /* Particles never leave the box, however it is thrown. */
@@ -412,6 +455,9 @@ suite_flip3(void) {
     RUN_TEST(test_upright_water_settles_level);
     RUN_TEST(test_flat_water_lies_as_a_layer_on_the_glass_below);
     RUN_TEST(test_tipped_toward_the_viewer_water_gathers_at_the_front);
+    RUN_TEST(test_a_thin_film_flat_on_the_glass_shows);
+    RUN_TEST(test_thin_water_leaned_back_shows);
+    RUN_TEST(test_a_shallow_upright_pool_shows);
     RUN_TEST(test_a_shaken_tank_keeps_every_particle_inside);
     RUN_TEST(test_a_resting_pool_keeps_its_volume);
     RUN_TEST(test_the_same_inputs_give_the_same_water);

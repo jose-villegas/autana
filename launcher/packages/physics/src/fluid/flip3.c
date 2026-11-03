@@ -768,8 +768,8 @@ smooth_axis(float* field, int stride, int count, int step_a, int a_from, int a_t
     }
 }
 
-/* flip3_field()'s work, split by lines: the samples, then three smoothing
- * passes along x, y and z. */
+/* flip3_field()'s work, split by lines: the samples, three smoothing passes
+ * along x, y and z, then the particles shown. */
 typedef struct {
     const flip3_t* f;
     float* out;
@@ -815,6 +815,56 @@ sample_lines(const field_work_t* w, int from, int to) {
     }
 }
 
+/* Every particle shows as a sample of water: the samples of the field cell
+ * it sits in read at least 1 less their distance from it in samples, along
+ * the farthest axis, so at half the rest density the surface keeps half a
+ * sample around it. Without it, water thinner than that, a film on the
+ * glass below or a lone drop, averages below the level and is not drawn.
+ * Raises only inside samples on x lines [from, to), so lines may run at once. */
+static void
+show_particles(const field_work_t* w, int from, int to) {
+    const flip3_t* f = w->f;
+    const int sy = w->d[1];
+    const int sz = w->d[2];
+    const float inv_step[3] = {1.0F / w->step[0], 1.0F / w->step[1], 1.0F / w->step[2]};
+    const float h[3] = {f->h.x, f->h.y, f->h.z};
+    float* const out = w->out;
+    for (int i = 0; i < f->count; i++) {
+        const float p[3] = {f->pos[i].x, f->pos[i].y, f->pos[i].z};
+        int lo[3];
+        float off[3][2]; /* each axis's distance in samples to its lower and upper sample */
+        for (int a = 0; a < 3; a++) {
+            /* Sample s sits at h + (s - 0.5) steps in grid coordinates. */
+            const float u = ((p[a] - h[a]) * inv_step[a]) + 0.5F;
+            lo[a] = (int)u;
+            off[a][0] = u - (float)lo[a];
+            off[a][1] = 1.0F - off[a][0];
+        }
+        for (int bx = 0; bx < 2; bx++) {
+            const int x = lo[0] + bx;
+            if (x < from || x >= to) {
+                continue;
+            }
+            for (int by = 0; by < 2; by++) {
+                const int y = lo[1] + by;
+                if (y < 1 || y > sy - 2) {
+                    continue;
+                }
+                const float far_xy = off[0][bx] > off[1][by] ? off[0][bx] : off[1][by];
+                for (int bz = 0; bz < 2; bz++) {
+                    const int z = lo[2] + bz;
+                    if (z < 1 || z > sz - 2) {
+                        continue;
+                    }
+                    const float shown = 1.0F - (far_xy > off[2][bz] ? far_xy : off[2][bz]);
+                    float* const v = &out[(((x * sy) + y) * sz) + z];
+                    *v = *v > shown ? *v : shown;
+                }
+            }
+        }
+    }
+}
+
 /* The pass's inside lines [from, to), counted from line 1. */
 static void
 field_range(void* ctx, int from, int to) {
@@ -826,7 +876,8 @@ field_range(void* ctx, int from, int to) {
         case FLIP3_SPLIT_FIELD_SAMPLE: sample_lines(w, 1 + from, 1 + to); break;
         case FLIP3_SPLIT_FIELD_SMOOTH_X: smooth_axis(w->out, sy * sz, sx, sz, 1 + from, 1 + to, 1, sz); break;
         case FLIP3_SPLIT_FIELD_SMOOTH_Y: smooth_axis(w->out, sz, sy, sy * sz, 1 + from, 1 + to, 1, sz); break;
-        default: smooth_axis(w->out, 1, sz, sy * sz, 1 + from, 1 + to, sz, sy); break;
+        case FLIP3_SPLIT_FIELD_SMOOTH_Z: smooth_axis(w->out, 1, sz, sy * sz, 1 + from, 1 + to, sz, sy); break;
+        default: show_particles(w, 1 + from, 1 + to); break;
     }
 }
 
@@ -838,7 +889,7 @@ flip3_field(const flip3_t* f, float samples, float* out) {
         w.step[a] = (float)(cells_on(f, a) - 2) * axis_of(f->h, a) / (float)(w.d[a] - 2);
     }
     memset(out, 0, (size_t)w.d[0] * (size_t)w.d[1] * (size_t)w.d[2] * sizeof(float));
-    for (w.pass = FLIP3_SPLIT_FIELD_SAMPLE; w.pass <= FLIP3_SPLIT_FIELD_SMOOTH_Z; w.pass++) {
+    for (w.pass = FLIP3_SPLIT_FIELD_SAMPLE; w.pass <= FLIP3_SPLIT_FIELD_PARTICLES; w.pass++) {
         const int lines = w.pass == FLIP3_SPLIT_FIELD_SMOOTH_X ? w.d[1] : w.d[0];
         run_split(f, w.pass, field_range, &w, lines - 2);
     }
