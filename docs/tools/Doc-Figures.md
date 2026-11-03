@@ -43,15 +43,14 @@ holds the one way to write each kind of file:
 | Helper | Does |
 |---|---|
 | `save_png(picture, out)` | writes a PNG without metadata, so one picture always gives one file; `figures.py png` from a shell script |
-| `save_gif(frames, out, frame_ms)` | writes a looping GIF on `GIF_PALETTE`: each pixel takes the entry nearest it in OKLab, without dithering |
+| `save_gif(frames, out, frame_ms)` | writes a looping GIF on the global palette: each pixel takes the entry nearest it in OKLab, without dithering |
 | `gif_from_avi(avi, out, fps, ...)` | writes a host render's AVI as such a GIF, resampled, cut and turned; `figures.py gif` from a shell script |
 | `render_scene(scene, *flags, log=...)` | runs the scene viewer and returns its output |
 
-Every doc GIF shares one `GIF_PALETTE`, so a colour has the same index
+Every doc GIF shares one 256-colour palette, so a colour has the same index
 everywhere: white, black and the
-[`plot_style`](../../launcher/tools/docs/plot_style.py) theme first, the rest
-fitted to the doc GIFs. [`gif_palette.py`](../../launcher/tools/docs/gif_palette.py)
-prints the table again from the GIFs it is given; a new table changes every GIF.
+[`plot_style`](../../launcher/tools/docs/plot_style.py) theme first, then
+`GIF_FITTED`, fitted once to the doc GIFs. A new table changes every GIF.
 
 ## Running them
 

@@ -11,13 +11,17 @@ import numpy as np
 from PIL import Image, PngImagePlugin
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from docs import figures, gif_palette, plot_style  # noqa: E402
+from docs import figures, plot_style  # noqa: E402
 from render.check_avi import read_video  # noqa: E402
 from test_render_compare import avi_bytes  # noqa: E402
 
 
+THEME = ("#ffffff", "#000000", plot_style.INK, plot_style.MUTED, plot_style.FAINT, *plot_style.SLOTS,
+         plot_style.DARK_BACKGROUND, plot_style.DARK_INK, plot_style.DARK_MUTED, plot_style.DARK_FAINT)
+
+
 def palette_colours():
-    return [tuple(int(name[at:at + 2], 16) for at in (1, 3, 5)) for name in figures.GIF_PALETTE]
+    return [tuple(int(v) for v in row) for row in figures.gif_palette()[0]]
 
 
 class Folder(unittest.TestCase):
@@ -41,6 +45,11 @@ class PaletteTests(unittest.TestCase):
         self.assertEqual(len(colours), figures.GIF_COLOURS)
         self.assertEqual(len(set(colours)), figures.GIF_COLOURS)
         self.assertEqual(colours[:2], [(255, 255, 255), (0, 0, 0)])
+
+    def test_a_theme_that_no_longer_fits_beside_the_fitted_colours_is_refused(self):
+        with mock.patch.object(figures, "GIF_FITTED", figures.GIF_FITTED[1:]):
+            with self.assertRaisesRegex(ValueError, "not 256"):
+                figures.gif_palette.__wrapped__()
 
     def test_nearest_picks_the_closest_row(self):
         table = np.array([[0.0, 0, 0], [1, 0, 0], [0, 5, 0]])
@@ -82,9 +91,15 @@ class SaveGifTests(Folder):
 
 
 class ClipTests(unittest.TestCase):
-    def test_a_lower_rate_takes_the_nearest_source_frame(self):
+    def test_a_lower_rate_shows_the_last_frame_landed_on_each_gif_frame(self):
         self.assertEqual(figures.clip(range(10), 10, 5), [0, 2, 4, 6, 8])
-        self.assertEqual(figures.clip(range(10), 10, 4), [0, 3, 5, 8])
+        self.assertEqual(figures.clip(range(10), 10, 4), [1, 3, 6, 8])
+
+    def test_frames_are_chosen_as_ffmpegs_fps_filter_chooses_them(self):
+        # ffmpeg -vf trim=start_frame=1:end_frame=56,setpts=PTS-STARTPTS,fps=6 on a 10 fps AVI.
+        shown = figures.clip(range(60), 10, 6, first=1, end=56)
+        self.assertEqual(shown[:10], [1, 3, 5, 6, 8, 10, 11, 13, 15, 16])
+        self.assertEqual((len(shown), shown[-1]), (33, 55))
 
     def test_the_same_rate_keeps_every_frame(self):
         self.assertEqual(figures.clip(range(7), 8, 8), list(range(7)))
@@ -341,48 +356,14 @@ class OklabTests(Folder):
 
 
 class ThemeInPaletteTests(Folder):
-    def test_the_palette_starts_with_the_pinned_theme_in_order(self):
-        pinned = gif_palette.pinned()
-        self.assertEqual(palette_colours()[:len(pinned)], [tuple(int(v) for v in row) for row in pinned])
+    def test_the_palette_starts_with_the_theme_in_order(self):
+        self.assertEqual(palette_colours()[:len(THEME)], [figures.rgb(name) for name in THEME])
 
     def test_every_theme_colour_round_trips_through_save_gif_exactly(self):
-        names = [plot_style.INK, plot_style.MUTED, plot_style.FAINT, *plot_style.SLOTS, plot_style.DARK_BACKGROUND,
-                 plot_style.DARK_INK, plot_style.DARK_MUTED, plot_style.DARK_FAINT]
-        wanted = [tuple(int(name[at:at + 2], 16) for at in (1, 3, 5)) for name in names]
+        wanted = [figures.rgb(name) for name in THEME]
         figures.save_gif([solid(colour) for colour in wanted], self.folder / "t.gif", 100)
         shown, _ = self.gif_frames(self.folder / "t.gif")
         self.assertEqual([tuple(int(v) for v in frame[0, 0]) for frame in shown], wanted)
-
-
-class FitTests(Folder):
-    def tiny_gifs(self):
-        rng = np.random.default_rng(2)
-        paths = []
-        for index in range(3):
-            frames = [Image.fromarray(rng.integers(0, 256, (12, 12, 3), dtype=np.uint8)).quantize(16)
-                      for _ in range(2)]
-            path = self.folder / f"t{index}.gif"
-            frames[0].save(path, save_all=True, append_images=frames[1:])
-            paths.append(path)
-        return paths
-
-    def test_fit_is_deterministic_full_and_led_by_the_pinned_theme(self):
-        gifs = self.tiny_gifs()
-        first, second = gif_palette.fit(gifs), gif_palette.fit(gifs)
-        self.assertEqual(first.shape, (figures.GIF_COLOURS, 3))
-        self.assertEqual(first.dtype, np.uint8)
-        self.assertTrue(np.array_equal(first, second))
-        pinned = gif_palette.pinned()
-        self.assertTrue(np.array_equal(first[:len(pinned)], pinned))
-
-    def test_source_parses_back_to_the_same_colours(self):
-        palette = gif_palette.fit(self.tiny_gifs())
-        text = gif_palette.source(palette)
-        scope = {}
-        exec(text, scope)
-        expected = tuple(f"#{r:02x}{g:02x}{b:02x}" for r, g, b in palette)
-        self.assertEqual(scope["GIF_PALETTE"], expected)
-        self.assertEqual(len(scope["GIF_PALETTE"]), figures.GIF_COLOURS)
 
 
 class ReadVideoTests(Folder):

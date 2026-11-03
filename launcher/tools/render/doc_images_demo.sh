@@ -78,7 +78,8 @@ import sys
 from PIL import Image
 sys.path[:0] = ["launcher/tools", "launcher/tools/render"]
 from docs.figures import clip, save_gif
-from render_compare import GAIN, heatmap, read_video
+from check_avi import read_video
+from render_compare import GAIN, heatmap
 work, render = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
 first, end, fps = map(int, sys.argv[3:6])
 rate, baseline = read_video(work / "small-fill-smooth.avi")

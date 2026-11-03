@@ -33,7 +33,8 @@ from r3d.import_settings import load_scene
 from r3d.lit_mesh import finest_triangles, read_lit_mesh
 from r3d.poses import camera_basis, camera_rays, either_way, read_poses, sample_camera_rows
 from r3d.ray_query import MAX_HITS, STEP, STEP_RELATIVE, RayQuery
-from render.render_compare import expand_565, read_video
+from render.check_avi import read_video
+from render.render_compare import expand_565
 
 SCALAR_VARIANT = 'scalar_rgb'
 LLVM_VARIANT = 'llvm_ad_rgb'

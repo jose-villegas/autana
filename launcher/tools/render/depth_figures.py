@@ -23,7 +23,7 @@ from render_compare import still_sheet
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
-from docs.figures import render_scene  # noqa: E402
+from docs.figures import render_scene, save_png  # noqa: E402
 
 FRAME_MS = 16  # one host frame, as the viewer steps by default
 FRAMES = 6  # consecutive frames per row: enough to see a fight come and go
@@ -83,7 +83,7 @@ def main(argv=None):
         cuts = [Image.fromarray(frame[y:y + height, x:x + width].astype(np.uint8)) for frame in rows[fit]]
         sheet.append([(f"{label}, {(first + k) * FRAME_MS / 1000:.3f} s",
                        cut.resize((width * ZOOM, height * ZOOM), Image.NEAREST)) for k, cut in enumerate(cuts)])
-    still_sheet(sheet).save(args.out, optimize=True)
+    save_png(still_sheet(sheet), args.out)
 
 
 if __name__ == "__main__":
