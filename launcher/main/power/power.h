@@ -45,7 +45,7 @@ typedef struct {
 } power_raw_t;
 
 void power_start(void);
-/* Input task only: clears PWR-key events (0x49) each tick, refreshing the battery
+/* Input task only: clears the chip's PWR-key events each tick, refreshing the battery
  * every POWER_BATTERY_PERIOD_US. This is the sole steady-state PMU bus traffic;
  * other users rely on that budget.
  * The log adds about 1-2 ms of flash write per record on the input task. */
