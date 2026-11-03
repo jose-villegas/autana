@@ -107,7 +107,7 @@ The CPU stage makes the launcher's and the UI toolkit's images, runs each app's
 ```
 
 It needs host C and C++ compilers, Python with Pillow and numpy, and ffmpeg
-5.1 or newer. Scratch bakes need the pinned meshoptimizer submodule:
+for the comparison videos. Scratch bakes need the pinned meshoptimizer submodule:
 
 ```sh
 git submodule update --init --depth 1 third_party/upstream/meshoptimizer
@@ -122,7 +122,7 @@ A render failure prints the failed command and the tails of its work logs,
 including logs inside bake directories.
 CPU `--check` renders into `launcher/tools/results/doc_images/out/cpu/`
 and compares decoded pixels with `compare_images.py`, never bytes: another
-ffmpeg or Pillow writes different GIF bytes for the same frames. It prints
+Pillow can write different bytes for the same pixels. It prints
 `same` or `changed` per image, and `orphan` for a file nothing makes.
 `--orphans` renders nothing and reports an image whose name no script
 mentions; the Comment Rules workflow runs it on every pull request. The

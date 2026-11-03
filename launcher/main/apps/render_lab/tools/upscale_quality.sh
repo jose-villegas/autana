@@ -47,14 +47,16 @@ REFERENCE=$(sh launcher/tools/render/render_compare.sh --reference-frames \
     "$FRAMES/$first-$FIGURE_SIZE" <<'PY'
 import pathlib
 import sys
-sys.path.insert(0, "launcher/tools/render")
+sys.path[:0] = ["launcher/tools", "launcher/tools/render"]
 from PIL import Image
 import render_compare
+from check_avi import read_video
+from docs.figures import save_png
 
 nearest_avi, surface_avi, reference_dir, prefix = sys.argv[1:]
 references = sorted(pathlib.Path(reference_dir).glob("*.png"))
-_, nearest = render_compare.read_video(nearest_avi)
-_, surface = render_compare.read_video(surface_avi)
+_, nearest = read_video(nearest_avi)
+_, surface = read_video(surface_avi)
 best = None
 for index, (a, b) in enumerate(zip(nearest, surface)):
     a, b = Image.fromarray(a), Image.fromarray(b)
@@ -65,5 +67,5 @@ for index, (a, b) in enumerate(zip(nearest, surface)):
         best = (gain, index, a, b, reference)
 _, index, a, b, reference = best
 for name, picture in (("reference", reference), ("nearest", a), ("surface", b)):
-    picture.save(f"{prefix}-{index}-{name}.png", optimize=True)
+    save_png(picture, f"{prefix}-{index}-{name}.png")
 PY

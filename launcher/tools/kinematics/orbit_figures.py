@@ -10,7 +10,7 @@ from math_figures import (DISPLAY, PANEL_SIZE, PANEL_TITLE_ROOM, ROOT,
 from docs.figures import probe_into_folder
 from docs.plot_style import (FAINT, INK, LABEL_SIZE, MUTED, SLOTS, TITLE_SIZE,
                              figure, save, save_gif, subplots, wire_sphere, GIF_FPS,
-                             ORBIT_GIF_COLORS, WIRE_WIDTH, WIRE_SAMPLES)
+                             WIRE_WIDTH, WIRE_SAMPLES)
 import numpy as np
 from matplotlib.lines import Line2D
 from mpl_toolkits.mplot3d.art3d import Line3DCollection, Poly3DCollection
@@ -125,7 +125,7 @@ def orbit_animation(data, output):
     draw(0)
     fig.canvas.draw()
     fig.set_layout_engine("none")
-    save_gif(fig, draw, len(samples), output, GIF_FPS, colors=ORBIT_GIF_COLORS)
+    save_gif(fig, draw, len(samples), output, GIF_FPS)
 
 
 def decay_figure(data, output):

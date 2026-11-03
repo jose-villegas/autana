@@ -310,7 +310,7 @@ be checked to have measured the same thing.
 | `render-lab-capybara.gif` | every clip the capybara scene lists, in its order and for an equal time, each blended into the next and, more slowly, back to the first, as the camera turns once around it |
 | `render-lab-water.gif` | the water scene's swing (`render water swing`): rocked side to side, hard and then calmer, flipped over and straight back twice on the way, leaned back so the surface shows, in the `FAST - DITHER` small fill; landscape, as the other clips |
 
-Run the app shots from the repository root with Python, Pillow, numpy and ffmpeg:
+Run the app shots from the repository root with Python, Pillow and numpy:
 
 ```sh
 PYTHON=python sh launcher/main/apps/render_lab/tools/doc_images.sh /path/to/out /path/to/work

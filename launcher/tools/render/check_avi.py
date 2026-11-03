@@ -86,6 +86,21 @@ def read_avi(path):
     return Avi(width, height, rate / scale, frames())
 
 
+def read_video(path):
+    """(fps, frames) of a render_video.c AVI; frames yields (h, w, 3) RGB arrays."""
+    import numpy as np
+    video = read_avi(path)
+    stride = (video.width * 3 + 3) // 4 * 4
+
+    def frames():
+        for body in video.frames:
+            rows = np.frombuffer(body, dtype=np.uint8).reshape(video.height, stride)
+            bgr = rows[::-1, : video.width * 3].reshape(video.height, video.width, 3)
+            yield np.ascontiguousarray(bgr[:, :, ::-1])
+
+    return video.fps, frames()
+
+
 def check_file(path):
     with open(path, "rb") as f:
         data = f.read()

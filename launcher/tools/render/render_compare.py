@@ -67,7 +67,7 @@ from dataclasses import dataclass
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-import check_avi
+from check_avi import read_video
 from colour_maths import GAMMA, expand_565, lab
 
 HOLE_RED = (255, 0, 0)
@@ -609,20 +609,6 @@ def reference_crop_sheet(reference, a, b, count, label_reference, label_a, label
 def crops_path(out):
     """Where the crops sheet for a sheet or video written to out goes."""
     return out.rsplit(".", 1)[0] + ".crops.png"
-
-
-def read_video(path):
-    """(fps, frames) of a render_video.c AVI; frames yields (h, w, 3) RGB arrays."""
-    video = check_avi.read_avi(path)
-    stride = (video.width * 3 + 3) // 4 * 4
-
-    def frames():
-        for body in video.frames:
-            rows = np.frombuffer(body, dtype=np.uint8).reshape(video.height, stride)
-            bgr = rows[::-1, : video.width * 3].reshape(video.height, video.width, 3)
-            yield np.ascontiguousarray(bgr[:, :, ::-1])
-
-    return video.fps, frames()
 
 
 def _font():

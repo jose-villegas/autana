@@ -36,8 +36,6 @@ WORLD_DOWN = np.array([0.0, 0.0, -1.0])
 VIEW_ELEVATION = 22
 VIEW_AZIMUTH = -60
 ANIMATION_DPI = 80
-# Palette size: the shaded device takes many entries, and every line and arrow colour must keep its own.
-ANIMATION_COLORS = 128
 ANIMATION_SIZE = (10, 5.4)
 # Vector unit length and scene margin as shares of the case height.
 VECTOR_SHARE = 0.5
@@ -227,4 +225,4 @@ class DeviceAnimation:
 
     def save(self, output, frames, draw_frame, fps=GIF_FPS):
         self.fig.set_dpi(ANIMATION_DPI)
-        save_gif(self.fig, draw_frame, frames, output, fps, colors=ANIMATION_COLORS)
+        save_gif(self.fig, draw_frame, frames, output, fps)
