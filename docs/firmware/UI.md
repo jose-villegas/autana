@@ -96,7 +96,10 @@ layout, and two translation units disagreeing would corrupt it silently.
 microui hovers a control only on a frame where the button is *not* held, and
 submits only once it is focused. A local change lets the first control under a
 press take hover on the frame the button goes down, so overlapping controls
-never share one press. Hover also needs `hover_root`, which `mu_begin()` copies from the
+never share one press. First means first built, the one drawn underneath: a
+control acts while it is built, before any later one exists, so where controls
+overlap in one window the one on top cannot take the press on contact. Put a
+control meant to sit on top in its own window instead. Hover also needs `hover_root`, which `mu_begin()` copies from the
 *previous* frame, before the finger existed.
 
 | Step | Owner | Does |
