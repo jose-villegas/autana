@@ -694,16 +694,21 @@ static void report_control(mu_Context *ctx, mu_Rect rect, int opt) {
 }
 
 
+/* LOCAL MODIFICATION: on the frame the button goes down, the first control
+** under it takes hover, so a press needs no hover frame before it and
+** overlapping controls never share one; a held button never moves hover. */
+static int may_take_hover(mu_Context *ctx) {
+  return ctx->mouse_pressed ? !ctx->hover : !ctx->mouse_down;
+}
+
+
 void mu_update_control(mu_Context *ctx, mu_Id id, mu_Rect rect, int opt) {
   int mouseover = mu_mouse_over(ctx, rect);
 
   if (ctx->focus == id) { ctx->updated_focus = 1; }
   report_control(ctx, rect, opt);
   if (opt & MU_OPT_NOINTERACT) { return; }
-  /* LOCAL MODIFICATION: on the frame the button goes down, the first control
-  ** under it takes hover, so a press needs no hover frame before it and
-  ** overlapping controls never share one; a held button never moves hover. */
-  if (mouseover && (ctx->mouse_pressed ? !ctx->hover : !ctx->mouse_down)) { ctx->hover = id; }
+  if (mouseover && may_take_hover(ctx)) { ctx->hover = id; }
 
   if (ctx->focus == id) {
     if (ctx->mouse_pressed && !mouseover) { mu_set_focus(ctx, 0); }
