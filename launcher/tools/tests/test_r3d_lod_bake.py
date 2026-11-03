@@ -21,6 +21,8 @@ from r3d.lod.bake_levels import INT16_MAX, push_outward, quantised_groups, withi
 from r3d.mesh_asset import LOD_ENCLOSE_MARGIN, LOD_NONE
 
 GRID = 24
+# A grid whose level 0 fits the format but whose levels together need over MAX_VERTICES vertices.
+CROWDED_GRID = 150
 # Every fourth triangle row is two-sided, so both sides get a hierarchy and share a border.
 DOUBLE_EVERY = 4
 FOCAL_PX = 64.0
@@ -194,6 +196,15 @@ class QuantisedGroupsTest(unittest.TestCase):
         self.assertEqual([True, True, False], joined(total[0] - 1, total[1]).tolist())
         self.assertEqual([True, True, False], joined(total[0], total[1] - 1).tolist())
         self.assertEqual([False, False, False], joined(cost[0, 0] - 1, total[1]).tolist())
+
+
+class CrowdedLevelsTest(unittest.TestCase):
+    def test_a_mesh_whose_levels_pass_the_vertex_count_bakes_the_levels_that_fit(self):
+        mesh = read_back(lit_mesh.bake_lit_mesh(*wavy_grid(CROWDED_GRID), lod=True))
+        self.assertLessEqual(len(mesh.pos), MAX_VERTICES)
+        self.assertLessEqual(len(mesh.tris), MAX_TRIANGLES)
+        finest = lit_mesh.finest(mesh)
+        self.assertTrue(len(mesh.groups) and not finest.all(), "no coarser level was kept")
 
 
 class PushOutwardTest(unittest.TestCase):
