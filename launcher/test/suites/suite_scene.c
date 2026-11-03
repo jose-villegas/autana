@@ -323,6 +323,12 @@ static const scene_spec_t SCENES[] = {
      .entities = {{"camera", CAMERA_AT(0)}, {"red", IDENTITY}, {"sun", IDENTITY}},
      .renderers = {{1, "red"}},
      .cameras = {{0, CLEAR_RGB, ""}}},
+    {.id = "test_mixed",
+     .skinned = true,
+     .entity_count = 2,
+     .renderer_count = 2,
+     .entities = {{"red", IDENTITY}, {"copy", AT(4, 0, 0)}},
+     .renderers = {{1, "red"}, {0, "red"}}},
     {.id = "test_skin",
      .skinned = true,
      .entity_count = 2,
@@ -793,6 +799,73 @@ pixel(float units_from_center) {
 static const uint16_t CLEAR = RGB565BE(CLEAR_RGB);
 
 static void
+assert_resident_positions(const scene_t* scene, size_t bytes) {
+    TEST_ASSERT_NOT_NULL(scene->resident);
+    const uintptr_t begin = (uintptr_t)scene->resident;
+    for (int i = 0; i < scene->asset.renderer_count; i++) {
+        const r3d_lit_mesh_t* mesh = &scene->renderers[i].mesh;
+        r3d_lit_mesh_t source;
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(&fx.pack, scene->asset.renderers[i].mesh, &source));
+        const size_t size = (size_t)mesh->vertex_count * sizeof *mesh->positions;
+        TEST_ASSERT_TRUE((uintptr_t)mesh->positions >= begin);
+        TEST_ASSERT_TRUE((uintptr_t)mesh->positions + size <= begin + bytes);
+        TEST_ASSERT_EQUAL_size_t(0, (uintptr_t)mesh->positions % _Alignof(int16_t));
+        TEST_ASSERT_EQUAL_MEMORY(source.positions, mesh->positions, size);
+    }
+}
+
+static void
+test_static_positions_are_resident_and_equal_the_pack(void) {
+    fixture();
+    scene_t* scene = load("test_pair");
+    const r3d_lit_mesh_t* mesh = &scene->renderers[0].mesh;
+    assert_resident_positions(scene,
+                              scene->asset.renderer_count * (size_t)mesh->vertex_count * sizeof *mesh->positions);
+    TEST_ASSERT_NOT_EQUAL(scene->renderers[0].mesh.positions, scene->renderers[1].mesh.positions);
+}
+
+static void
+test_only_static_positions_are_made_resident(void) {
+    fixture();
+    scene_t* scene = load("test_mixed");
+    const r3d_lit_mesh_t* mesh = &scene->renderers[0].mesh;
+    const size_t bytes = (size_t)mesh->vertex_count * sizeof *mesh->positions;
+    assert_resident_positions(scene, bytes);
+    const scene_skinned_renderer_t* skin = &scene->skinned_renderers[0];
+    r3d_lit_mesh_t source;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(&fx.pack, "red", &source));
+    TEST_ASSERT_EQUAL_PTR(source.positions, skin->bind.positions);
+    TEST_ASSERT_EQUAL_PTR(skin->output.positions, scene->renderers[scene->asset.renderer_count].mesh.positions);
+    const uintptr_t posed = (uintptr_t)skin->output.positions;
+    const uintptr_t begin = (uintptr_t)scene->resident;
+    TEST_ASSERT_TRUE(posed < begin || posed >= begin + bytes);
+    scene_unload(scene);
+    TEST_ASSERT_NULL(load("test_skin")->resident);
+    TEST_ASSERT_NULL(load("test_aliases")->resident);
+}
+
+static void
+test_resident_allocation_failure_rolls_back_the_load(void) {
+    fixture();
+    const size_t psram = memory_free_bytes(MEMORY_PSRAM);
+    const size_t internal = memory_free_bytes(MEMORY_INTERNAL);
+
+    enum { SCENE_BLOCK_ALLOCATION_COUNT = 1 };
+
+    scene_fail_allocation_after = SCENE_BLOCK_ALLOCATION_COUNT;
+    scene_failure_t why;
+    scene_t* scene = scene_load_from(&fx.pack, "test_pair", &why);
+    scene_fail_allocation_after = -1;
+    TEST_ASSERT_NULL(scene);
+    TEST_ASSERT_EQUAL_INT(SCENE_ERR_MEMORY, why.status);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, why.asset);
+    TEST_ASSERT_EQUAL_STRING("test_pair", why.what);
+    TEST_ASSERT_EQUAL_INT(0, scene_loaded_count());
+    TEST_ASSERT_EQUAL_size_t(psram, memory_free_bytes(MEMORY_PSRAM));
+    TEST_ASSERT_EQUAL_size_t(internal, memory_free_bytes(MEMORY_INTERNAL));
+}
+
+static void
 test_a_scene_loads_by_name_and_unloading_gives_back_everything_it_took(void) {
     fixture();
     const size_t before = memory_free_bytes(MEMORY_PSRAM);
@@ -834,6 +907,7 @@ test_a_lent_scene_takes_from_its_lender_and_unloading_returns_it_to_the_lender(v
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
     TEST_ASSERT_TRUE(lent_from(scene));
+    TEST_ASSERT_TRUE(lent_from(scene->resident));
     TEST_ASSERT_TRUE(lent_from(render_context_main()->scratch));
     TEST_ASSERT_EQUAL_size_t(before, memory_free_bytes(MEMORY_PSRAM));
     const size_t taken = fx.lent_used;
@@ -2100,6 +2174,8 @@ assert_lcol_scene(const lcol_case_t* spec, const char* message) {
         return;
     }
     TEST_ASSERT_NOT_NULL_MESSAGE(scene, message);
+    assert_resident_positions(scene, (size_t)scene->renderers[0].mesh.vertex_count
+                                         * sizeof *scene->renderers[0].mesh.positions);
     TEST_ASSERT_TRUE_MESSAGE(scene_activate(scene, SCENE_CAMERA_FIRST), message);
     render_context_set_scale(render_context_main(), 100);
     frame(16);
@@ -4423,6 +4499,9 @@ run_scene_suite(void) {
      * arena, put back once they are done. */
     scene_unload_all();
     const memory_take_fn lender = scene_set_take(NULL);
+    RUN_TEST(test_static_positions_are_resident_and_equal_the_pack);
+    RUN_TEST(test_only_static_positions_are_made_resident);
+    RUN_TEST(test_resident_allocation_failure_rolls_back_the_load);
     RUN_TEST(test_table_later_frames_mode_changes_and_light_enable);
     RUN_TEST(test_skin_modes_share_table_transactionally_and_rebuild_only_for_lights);
     RUN_TEST(test_invalid_normal_transform_skips_lighting_and_recovers);

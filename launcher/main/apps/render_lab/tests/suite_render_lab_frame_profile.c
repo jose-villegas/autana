@@ -1,3 +1,9 @@
+/*
+ * The frame-time profile of each Sponza, Bistro and capybara scenario, on the
+ * board only: every screen quarter against its pegged budget, and on request
+ * every scenario at every dynamic-resolution ladder step.
+ */
+
 #include "suites.h"
 #ifdef DEVICE_BUILD
 #include <stdarg.h>

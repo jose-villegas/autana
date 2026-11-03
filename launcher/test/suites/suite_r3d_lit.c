@@ -221,6 +221,83 @@ test_a_flat_triangle_keeps_its_face_colour_and_interpolates_depth(void) {
 }
 
 static void
+uniform_triangle_matches_solid(float left, float r, float g, float b, bool capped) {
+    const r3d_span_vertex_t a = sv(left, 4, 0.2F, r, g, b), b0 = sv(52, 4, 0.8F, r, g, b),
+                            c = sv(left, 40, 0.5F, r, g, b);
+    const r3d_span_target_t actual = fixture();
+    TEST_ASSERT_GREATER_THAN_INT(actual.small_fill->ceiling, 52 - left);
+    TEST_ASSERT_GREATER_THAN_INT(R3D_SPAN_SMALL_MAX_SIDE, 40 - 4);
+    gfx_color_t* want_color = calloc(W * H, sizeof(*want_color));
+    uint16_t* want_depth = calloc(W * H, sizeof(*want_depth));
+    TEST_ASSERT_NOT_NULL(want_color);
+    TEST_ASSERT_NOT_NULL(want_depth);
+    const r3d_span_target_t want = r3d_span_target(want_color, want_depth, W, 0, H);
+    const uint16_t face = r3d_span_pack_rgb(r, g, b);
+    if (capped) {
+        r3d_span_capped_triangle(&actual, &a, &b0, &c, NULL);
+        r3d_span_capped_triangle(&want, &a, &b0, &c, &face);
+    } else {
+        r3d_span_triangle(&actual, &a, &b0, &c);
+        r3d_span_triangle_solid(&want, &a, &b0, &c, face);
+    }
+    const bool same_color = memcmp(color, want_color, sizeof(*color) * W * H) == 0;
+    const bool same_depth = memcmp(depth, want_depth, sizeof(*depth) * W * H) == 0;
+    free(want_color);
+    free(want_depth);
+    TEST_ASSERT_GREATER_THAN_INT(0, covered());
+    TEST_ASSERT_TRUE(same_color);
+    TEST_ASSERT_TRUE(same_depth);
+}
+
+static void
+test_a_walked_uniform_triangle_matches_solid(void) {
+    uniform_triangle_matches_solid(4, 73, 127, 211, false);
+}
+
+static void
+test_a_walked_uniform_triangle_clipped_left_matches_solid(void) {
+    uniform_triangle_matches_solid(-12, 73, 127, 211, false);
+}
+
+static void
+test_a_walked_uniform_triangle_clamps_constant_colours(void) {
+    uniform_triangle_matches_solid(-12, UINT8_MAX + 17, -17, 127, false);
+}
+
+static void
+test_a_capped_walked_uniform_triangle_matches_solid(void) {
+    uniform_triangle_matches_solid(-12, UINT8_MAX + 17, -17, 127, true);
+}
+
+static void
+test_a_walked_triangle_with_one_colour_level_difference_interpolates(void) {
+    /* Straddling a 565 boundary makes a one-level change visible. */
+    const float green = ((float)UINT8_MAX / 2.0F);
+    const r3d_span_vertex_t a = sv(4, 4, 0.2F, 73, green, 211), b = sv(52, 4, 0.8F, 73, green + 1, 211),
+                            c = sv(4, 40, 0.5F, 73, green, 211);
+    const r3d_span_target_t target = draw_fixture_triangle(&a, &b, &c);
+    TEST_ASSERT_GREATER_THAN_INT(target.small_fill->ceiling, 52 - 4);
+    gfx_color_t* solid_color = calloc(W * H, sizeof(*solid_color));
+    uint16_t* solid_depth = calloc(W * H, sizeof(*solid_depth));
+    TEST_ASSERT_NOT_NULL(solid_color);
+    TEST_ASSERT_NOT_NULL(solid_depth);
+    const r3d_span_target_t solid = r3d_span_target(solid_color, solid_depth, W, 0, H);
+    r3d_span_triangle_solid(&solid, &a, &b, &c, r3d_span_pack_rgb(a.r, a.g, a.b));
+    const bool same_depth = memcmp(depth, solid_depth, sizeof(*depth) * W * H) == 0;
+    const bool same_color = memcmp(color, solid_color, sizeof(*color) * W * H) == 0;
+    free(solid_color);
+    free(solid_depth);
+    TEST_ASSERT_TRUE(same_depth);
+    TEST_ASSERT_FALSE(same_color);
+    const uint16_t first = color[5 * W + 5];
+    bool different = false;
+    for (int i = 0; i < W * H; i++) {
+        different = different || (depth[i] != R3D_DEPTH_EMPTY && color[i] != first);
+    }
+    TEST_ASSERT_TRUE(different);
+}
+
+static void
 test_a_tiny_solid_triangle_takes_its_face_colour(void) {
     const r3d_span_vertex_t a = sv(10.0f, 10.0f, 0.5f, 0, 0, 0), b = sv(12.6f, 10.0f, 0.5f, 0, 0, 0),
                             c = sv(10.0f, 12.6f, 0.5f, 0, 0, 0);
@@ -2830,6 +2907,11 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_tiny_and_large_triangles_tile_without_gaps_or_overlap);
     RUN_TEST(test_the_nearer_triangle_wins_in_either_order);
     RUN_TEST(test_a_flat_triangle_keeps_its_face_colour_and_interpolates_depth);
+    RUN_TEST(test_a_walked_uniform_triangle_matches_solid);
+    RUN_TEST(test_a_walked_uniform_triangle_clipped_left_matches_solid);
+    RUN_TEST(test_a_walked_uniform_triangle_clamps_constant_colours);
+    RUN_TEST(test_a_capped_walked_uniform_triangle_matches_solid);
+    RUN_TEST(test_a_walked_triangle_with_one_colour_level_difference_interpolates);
     RUN_TEST(test_a_tiny_solid_triangle_takes_its_face_colour);
     RUN_TEST(test_a_window_of_rows_matches_the_same_rows_of_a_full_draw);
     RUN_TEST(test_colours_stay_within_the_vertex_range_even_at_the_edges);
