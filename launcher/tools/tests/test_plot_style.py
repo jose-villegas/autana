@@ -1,12 +1,11 @@
-"""plot_style saves figures and shared-palette GIFs and closes what it opens."""
+"""plot_style saves figures and global-palette GIFs and closes what it opens."""
 import pathlib
 import sys
 import tempfile
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from docs import plot_style
-
+from docs import figures, plot_style
 
 from PIL import Image
 
@@ -20,8 +19,8 @@ class SaveTests(unittest.TestCase):
             self.assertTrue(path.read_bytes().startswith(b"\x89PNG"))
         self.assertNotIn(fig.number, plot_style.plt.get_fignums())
 
-    def test_gif_shared_palette_frames_and_close(self):
-        frames, colors = 5, 16
+    def test_gif_global_palette_frames_and_close(self):
+        frames = 5
         fig, axis = plot_style.subplots(1, 1, (2, 2))
         line, = axis.plot([], [], color=plot_style.SLOTS[0])
         axis.set(xlim=(0, frames), ylim=(0, frames))
@@ -33,10 +32,11 @@ class SaveTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             path = pathlib.Path(directory) / "deep" / "chart.gif"
-            plot_style.save_gif(fig, draw, frames, path, fps=10, colors=colors)
+            plot_style.save_gif(fig, draw, frames, path, fps=10)
             with Image.open(path) as gif:
                 self.assertEqual(gif.n_frames, frames)
-                self.assertLessEqual(len(gif.getpalette()) // 3, colors)
+                self.assertEqual(gif.getpalette()[:3], [255, 255, 255])
+                self.assertEqual(len(gif.getpalette()) // 3, figures.GIF_COLOURS)
                 self.assertEqual(gif.info["loop"], 0)
                 self.assertNotIn("comment", gif.info)
                 palette = gif.getpalette()
@@ -49,7 +49,7 @@ class SaveTests(unittest.TestCase):
             fig, axis = plot_style.subplots(1, 1, (2, 2))
             line, = axis.plot([], [], color=plot_style.SLOTS[0])
             axis.set(xlim=(0, frames), ylim=(0, frames))
-            plot_style.save_gif(fig, draw, frames, path, fps=10, colors=colors)
+            plot_style.save_gif(fig, draw, frames, path, fps=10)
             self.assertEqual(first, path.read_bytes())
         self.assertEqual(seen[:frames], list(range(frames)))
         self.assertNotIn(fig.number, plot_style.plt.get_fignums())

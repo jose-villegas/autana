@@ -28,9 +28,7 @@ DISPLAY_H=launcher/main/display/display.h
 quarter_name=$(sed -n 's/^#define DISPLAY_DEFAULT_QUARTER *\([A-Z_]*\).*/\1/p' "$DISPLAY_H")
 quarter=$(sed -n "s/^#define $quarter_name *\([0-9]*\).*/\1/p" "$DISPLAY_H")
 for page in motion:motion-page motion-results:motion-results; do
-    run "$PYTHON" -c 'import sys; from PIL import Image
-Image.open(sys.argv[1]).rotate(90 * int(sys.argv[3]), expand=True).save(sys.argv[2])' \
-        "$W/${page%%:*}.bmp" "$OUT/${page#*:}.png" "$quarter"
+    run "$PYTHON" launcher/tools/docs/figures.py png "$W/${page%%:*}.bmp" "$OUT/${page#*:}.png" --quarter "$quarter"
 done
 
 cc=$(find_cc) || exit 2

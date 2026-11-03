@@ -21,6 +21,7 @@ from PIL import Image, ImageDraw
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from geometry.vectors import cross  # noqa: E402
+from docs.figures import save_gif  # noqa: E402
 from r3d import gltf_skin  # noqa: E402
 
 LIGHT = (0.45, 0.80, 0.40)
@@ -230,8 +231,7 @@ def main():
         bind_sheet(asset, size).save(args.out)
         return
     frames = animation_frames(asset, args.gif, size, args.view, args.fps)
-    frames[0].save(args.out, save_all=True, append_images=frames[1:],
-                   duration=int(round(1000.0 / args.fps)), loop=0, disposal=2)
+    save_gif(frames, args.out, 1000.0 / args.fps)
 
 
 if __name__ == "__main__":

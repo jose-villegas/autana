@@ -65,13 +65,14 @@ def fires(renders, label):
 
 
 def write_renders(renders, out):
-    from PIL import Image
+    sys.path.insert(0, str(HERE.parent))
+    from docs.figures import save_png
 
     (out / "ui").mkdir(parents=True, exist_ok=True)
     (out / "tables").mkdir(parents=True, exist_ok=True)
 
     def save(label):
-        Image.open(renders / f"{label}.bmp").save(out / "ui" / f"{label}.png")
+        save_png(renders / f"{label}.bmp", out / "ui" / f"{label}.png")
 
     owners = block_owners(ROOT)
     controls, screens = examples()
