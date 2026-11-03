@@ -8,6 +8,7 @@
 
 #include <stdint.h>
 
+#include "board_config.h"
 #include "math/linear/vec3i.h"
 
 /* Raw sensor counts, in the chip's own axes.
@@ -26,16 +27,18 @@ _Static_assert(sizeof(imu_sample_t) == 12, "FIFO order is six little-endian int1
 
 #define IMU_COUNTS_PER_G   4096
 #define IMU_COUNTS_PER_DPS 64
-#define IMU_SAMPLE_UPRIGHT {.ax = IMU_COUNTS_PER_G}
+#define IMU_SAMPLE_UPRIGHT                                                                                             \
+    {.ax = BOARD_IMU_UP_X * IMU_COUNTS_PER_G,                                                                          \
+     .ay = BOARD_IMU_UP_Y * IMU_COUNTS_PER_G,                                                                          \
+     .az = BOARD_IMU_UP_Z * IMU_COUNTS_PER_G}
 
-/* Sensor axes to the screen labels x right, y down, z out. The chip sits with X
- * up the screen, Y right and Z out of the back (board_geometry.h). It reads
- * specific force, which points up at rest, and callers treat the vector as down,
- * so each label is a chip axis negated: held upright the chip reads +1 g on X,
- * which lands on +y, down. The labels are left-handed; the numbers are true down. */
+/* Sensor axes to the screen labels x right, y down, z out, as the board's
+ * board.toml mounts the chip. It reads specific force, which points up at rest,
+ * and callers treat the vector as down, so each label is a device axis negated.
+ * The labels are left-handed; the numbers are true down. */
 static inline vec3i_t
 imu_axes_screen(int x, int y, int z) {
-    return (vec3i_t){-y, x, z};
+    return (vec3i_t)BOARD_IMU_TO_SCREEN(x, y, z);
 }
 
 static inline vec2i_t

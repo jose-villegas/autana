@@ -235,8 +235,8 @@ shows its label alone, and an icon its short text: the no-pack rows.
 | `UI_MARGIN` | 16 | from the canvas edge |
 | `UI_TITLE_HEIGHT`, `UI_BANNER_HEIGHT` | 56 | a title strip; the empty status strip on the home screen |
 
-The panel is about 326 pixels per inch, from `BOARD_SCREEN_WIDTH_MM` in
-[`board_geometry.h`](../../launcher/main/board/waveshare_amoled_1_8/board_geometry.h).
+The panel is about 326 pixels per inch, from `screen.width_mm` in
+[`board.toml`](../../launcher/main/board/waveshare_amoled_1_8/board.toml).
 44 px is about 3.4 mm; 56 px is about 4.4 mm.
 
 - **Canvas size.** `ui_width()` and `ui_height()` are the logical canvas:

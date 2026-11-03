@@ -39,7 +39,7 @@ import struct
 import time
 import zlib
 
-from panel_size import PANEL_HEIGHT, PANEL_WIDTH
+from board import PANEL_HEIGHT, PANEL_WIDTH
 
 BEGIN_RE = re.compile(r"^SCREENSHOT_BEGIN size=(\d+)$")
 DATA_PREFIX = "SCREENSHOT_DATA:"

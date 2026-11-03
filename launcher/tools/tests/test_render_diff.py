@@ -18,7 +18,7 @@ sys.path.insert(0, str(TOOLS / "render"))
 
 import render_diff  # noqa: E402
 import screenshot  # noqa: E402
-from panel_size import PANEL_HEIGHT, PANEL_WIDTH  # noqa: E402
+from board import PANEL_HEIGHT, PANEL_WIDTH  # noqa: E402
 
 
 def panel_bmp():

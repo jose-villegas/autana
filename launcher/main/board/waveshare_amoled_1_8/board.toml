@@ -1,0 +1,155 @@
+# The Waveshare ESP32-S3-Touch-AMOLED-1.8, described once. gen_board_config.py writes board_config.h
+# from it; the figure tools read it directly. board.c asserts the values the vendor BSP also states.
+#
+# Device axes: x right, y up the screen, z out of the glass toward the viewer; origin at the centre
+# of the glass. Lengths in millimetres. The case and screen come from the dimension drawing, the
+# module and PCB from the Waveshare 3D model; chip axes from the QMI8658C datasheet.
+
+name = "Waveshare ESP32-S3-Touch-AMOLED-1.8"
+
+[panel]
+# The panel's size in pixels.
+width = 368
+height = 448
+x_gap = 0x10
+
+[i2c]
+sda_gpio = 15
+scl_gpio = 14
+
+[boot]
+# Pulled up, grounded when pressed, so LOW means down.
+gpio = 0
+
+[imu]
+chip = "imu_chip_qmi8658"
+i2c_addr = 0x6B
+# QMI8658C package, 2.5 x 3.0 x 0.86 mm LGA (datasheet, page 1); the 3.0 mm side runs along chip X.
+size_x_mm = 3.0
+size_y_mm = 2.5
+size_z_mm = 0.86
+# Package centre on the PCB's back face, from the glass centre (3D model, U5).
+centre_x_mm = -0.53
+centre_y_mm = 0.22
+# Chip axes as device unit vectors. The 3D model puts U5's pin-1 mark at its +x, -y corner with
+# the marked face toward the back; datasheet Figure 7 puts pin 1 at the chip's -X, +Y corner
+# with Z out of the marked face.
+axis_x = [0, 1, 0]
+axis_y = [1, 0, 0]
+axis_z = [0, 0, -1]
+
+[pmu]
+chip = "power_chip_axp2101"
+i2c_addr = 0x34
+
+[rtc]
+i2c_addr = 0x51
+
+[io_expander]
+i2c_addr = 0x20
+
+[audio_codec]
+# The ES8311 datasheet address is 8-bit 0x30; I2C takes the 7-bit address.
+i2c_addr = 0x18
+
+[touch_ft]
+name = "FT3168"
+i2c_addr = 0x38
+
+[touch_cst]
+i2c_addr = 0x15
+
+[device]
+# Display module outline (3D model); plan-view corner radius from a circle fit to the corner spline.
+width_mm = 33.6
+height_mm = 41.2
+corner_radius_mm = 6.4
+# Glass front to the PCB's back face: 6.2 mm module and stack, 1.2 mm PCB (3D model);
+# a placeholder until measured on a board.
+depth_mm = 7.4
+
+[case]
+# Width and height from the dimension drawing; the glass flush with the front, spanning
+# z = 0 to -depth, is an estimate.
+width_mm = 37.6
+height_mm = 45.2
+depth_mm = 15.0
+# The case wall follows the module outline: its corner plus half the width difference (estimate).
+corner_radius_mm = 8.4
+# The back face, square, with a screw in each corner (dimension drawing).
+back_side_mm = 27.6
+screw_radius_mm = 1.8
+
+[screen]
+# The visible area through the case (dimension drawing): panel.width x panel.height square pixels.
+width_mm = 28.7
+height_mm = 34.94
+
+# Side features for the device figures. y and size_y from the vendor dimension drawing's side
+# views (about 7.3 px/mm), oriented against the PCB with Waveshare's open-back photo; z, size_z and
+# proud are estimates unless noted. Buttons and USB-C sit behind the PCB: z = -(device depth + size_z / 2).
+
+[[feature]]
+# BOOT, above USB-C.
+side = "right"
+shape = "box"
+y = 10.8
+z = -8.65
+size_y = 3.9
+size_z = 2.5
+proud = 0.4
+
+[[feature]]
+# PWR, below USB-C.
+side = "right"
+shape = "box"
+y = -10.7
+z = -8.65
+size_y = 3.9
+size_z = 2.5
+proud = 0.4
+
+[[feature]]
+# USB Type-C receptacle shell, centred on the right.
+side = "right"
+shape = "hole"
+y = 0.0
+z = -9.03
+size_y = 8.94
+size_z = 3.26
+
+[[feature]]
+# Speaker port.
+side = "left"
+shape = "hole"
+y = 17.4
+z = -8.0
+size_y = 2.5
+size_z = 2.5
+
+[[feature]]
+# The slot beside the speaker; which opening carries sound is undocumented.
+side = "left"
+shape = "hole"
+y = 9.0
+z = -5.4
+size_y = 8.7
+size_z = 1.1
+
+[[feature]]
+# microSD opening; the photo places the slot on the PCB's module side.
+side = "left"
+shape = "hole"
+y = -6.3
+z = -5.4
+size_y = 14.5
+size_z = 2.7
+
+[[feature]]
+# Mic opening, behind the PCB in the open-back photo.
+side = "left"
+shape = "hole"
+y = -13.3
+z = -8.5
+size_y = 1.0
+size_z = 1.0

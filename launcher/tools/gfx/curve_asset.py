@@ -10,7 +10,7 @@ sys.path.insert(0, str(TOOLS / "device"))
 from asset import table_asset
 from build.c_header import read_define
 from gfx.image_asset import load_source
-from panel_size import PANEL_WIDTH, PANEL_HEIGHT
+from board import PANEL_WIDTH, PANEL_HEIGHT
 from render_diff import read_png
 
 TYPE = table_asset.TYPE
