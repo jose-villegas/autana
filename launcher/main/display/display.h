@@ -1,8 +1,10 @@
-/* display: board quarter names, panel geometry and shell display state. */
+/* display: board quarter names and panel geometry, the display face apps include. */
 #pragma once
 
 #include <stdbool.h>
 #include <stdint.h>
+
+#include "board_geometry.h"
 
 /* How far anything meant to be read sits from every panel edge: a reading
  * margin, not hidden pixels. The cover glass hides nothing along the straight
@@ -12,6 +14,12 @@
 
 /* Measured on the panel's cover glass. */
 #define DISPLAY_PANEL_CORNER_RADIUS        42
+
+/* The visible screen in millimetres, and how deep the case runs behind the
+ * glass less the display module and PCB stacked there. */
+#define DISPLAY_SCREEN_WIDTH_MM            BOARD_SCREEN_WIDTH_MM
+#define DISPLAY_SCREEN_HEIGHT_MM           BOARD_SCREEN_HEIGHT_MM
+#define DISPLAY_DEPTH_BEHIND_MM            (BOARD_CASE_DEPTH_MM - BOARD_DEVICE_DEPTH_MM)
 
 /* Quarter names are board-wiring facts, measured with the orientation
  * overlay rather than derived from source.
@@ -46,15 +54,3 @@ int display_panel_corner_inset(int radius, int canvas_height, int row);
  * transform: knowing when it changed underneath you, without reading the IMU
  * again or duplicating the hysteresis above. */
 int display_quarter_now(void);
-
-/* The panel clock. Every app starts at the system value, the user's choice
- * kept across reboots. An app wanting another rate sets it with
- * gfx_set_panel_clock_hz(); the shell puts the system value back whenever
- * an app starts or exits, so no app restores it. The setter keeps the choice across a reboot; unchanged and
- * unsupported rates are ignored. */
-int display_system_panel_clock_hz(void);
-void display_set_system_panel_clock_hz(int hz);
-
-/* Whatever the app that just started or exited did to the panel clock, the
- * next context begins from the system value. */
-void display_restore_system_state(void);

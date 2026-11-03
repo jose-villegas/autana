@@ -21,7 +21,6 @@
 #include <string.h>
 
 #include "app/app_arena.h"
-#include "board_geometry.h"
 #include "core/job.h"
 #include "core/timing.h"
 #include "core/tune.h"
@@ -65,8 +64,8 @@ static const char* TAG = "water";
 #define WATER_PERCENT         100
 
 /* The tank is the room behind the screen: the visible area, as deep as the
- * case less the display module and PCB stacked behind the glass. */
-#define WATER_TANK_DEPTH_MM   (BOARD_CASE_DEPTH_MM - BOARD_DEVICE_DEPTH_MM)
+ * case behind the glass. */
+#define WATER_TANK_DEPTH_MM   DISPLAY_DEPTH_BEHIND_MM
 
 /* Grid cells across the depth; the cell is the depth over this. Three over
  * the tank's 7.6 mm keeps cells near 2.5 mm, the size the frame budget was
@@ -618,7 +617,7 @@ scene_water_enter(const render_lab_scene_t* self) {
     (void)self;
     draw_clear(RGB565BE(UI_BACKGROUND));
     failure[0] = '\0';
-    box = (vec3f_t){BOARD_SCREEN_WIDTH_MM, BOARD_SCREEN_HEIGHT_MM, WATER_TANK_DEPTH_MM};
+    box = (vec3f_t){DISPLAY_SCREEN_WIDTH_MM, DISPLAY_SCREEN_HEIGHT_MM, WATER_TANK_DEPTH_MM};
     scene_failure_t why;
     tank_scene = scene_load(WATER_SCENE, &why);
     if (tank_scene == NULL) {
