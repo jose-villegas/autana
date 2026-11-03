@@ -1,4 +1,4 @@
-/* Private register encodings for the PMU. */
+/* Private register encodings for the AXP2101 PMU. */
 #pragma once
 #define AXP2101_I2C_HZ               400000
 #define AXP2101_TIMEOUT_MS           100

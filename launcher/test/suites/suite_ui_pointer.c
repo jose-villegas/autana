@@ -40,53 +40,83 @@ step(bool down, bool pressed, bool released, int x, int y) {
     return ui_pointer_step(&p, &in, ev, UI_POINTER_MAX_EVENTS);
 }
 
-/* The press frame, leaving the NEXT step() as the one that carries the DOWN. */
-static void
-press_through_hover(int x, int y) {
-    step(true, true, false, x, y);
-}
+static int count_kind(int n, ui_pointer_kind_t kind);
 
 /*
- * The press frame carries no DOWN, load-bearing, see ui.h's touch-to-mouse
- * comment. Lost, a touchscreen tap could never resolve into a click at all.
+ * The DOWN goes out on the frame of contact: microui takes hover on the frame
+ * its button goes down, under the hover root ui_bridge seeded. Lost, a tap
+ * would answer a frame later than the finger.
  */
 
 static void
-test_a_tap_hovers_before_pressing(void) {
+test_a_press_goes_down_on_the_frame_of_contact(void) {
     fixture();
 
-    /* The hover frames are MOVE-only. A DOWN before a control has been
-     * marked hovered lands with nothing hovered, so nothing takes focus and
-     * no button ever submits. */
-    {
-        const int n = step(true, true, false, 10, 20);
-        TEST_ASSERT_EQUAL_INT_MESSAGE(1, n, "a hover frame carries a move and nothing else");
-        TEST_ASSERT_EQUAL_INT(UI_POINTER_MOVE, ev[0].kind);
-        TEST_ASSERT_EQUAL_INT(10, ev[0].point.x);
-        TEST_ASSERT_EQUAL_INT(20, ev[0].point.y);
-    }
-
-    const int n = step(true, false, false, 10, 20);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(2, n, "the down follows the hover frames, with its own move");
+    const int n = step(true, true, false, 10, 20);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(2, n, "the frame of contact carries a move and the down");
     TEST_ASSERT_EQUAL_INT(UI_POINTER_MOVE, ev[0].kind);
     TEST_ASSERT_EQUAL_INT(UI_POINTER_DOWN, ev[1].kind);
     TEST_ASSERT_EQUAL_INT(10, ev[1].point.x);
     TEST_ASSERT_EQUAL_INT(20, ev[1].point.y);
+    TEST_ASSERT_TRUE(p.down);
 }
 
-/* While the caller reports the hover root unsettled, hover has not been
- * granted and the DOWN waits, however many frames that takes. */
+/* A DOWN the caller reports missed (a stale hover root, nothing focused) is
+ * pressed again on the next frame, and again while it keeps missing; one
+ * that landed is never repeated. */
 static void
-test_the_down_waits_for_a_settled_hover_root(void) {
+test_a_missed_press_is_pressed_again_until_it_lands(void) {
     fixture();
     step(true, true, false, 10, 20);
-    p.hover_unsettled = true;
-    TEST_ASSERT_EQUAL_INT_MESSAGE(1, step(true, false, false, 10, 20), "a MOVE-only frame");
-    TEST_ASSERT_EQUAL_INT(UI_POINTER_MOVE, ev[0].kind);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(1, step(true, false, false, 10, 20), "still waiting");
-    p.hover_unsettled = false;
-    TEST_ASSERT_EQUAL_INT_MESSAGE(2, step(true, false, false, 10, 20), "then the DOWN");
+    p.press_missed = true;
+    TEST_ASSERT_EQUAL_INT_MESSAGE(2, step(true, false, false, 10, 20), "the press again");
     TEST_ASSERT_EQUAL_INT(UI_POINTER_DOWN, ev[1].kind);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(2, step(true, false, false, 10, 20), "and again while it misses");
+    TEST_ASSERT_EQUAL_INT(UI_POINTER_DOWN, ev[1].kind);
+    p.press_missed = false;
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, step(true, false, false, 10, 20), "landed: a move only");
+    p.press_missed = true;
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, step(true, false, false, 10, 20), "a landed press is never repeated");
+}
+
+/* Missed on content that scrolls: the DOWN is taken back and the press waits
+ * for the lift, like any press there, so a drag can still scroll. */
+static void
+test_a_missed_press_on_scrollable_content_is_taken_back_to_wait(void) {
+    fixture();
+    step(true, true, false, 10, 20);
+    p.press_missed = true;
+    p.over_scrollable = true;
+    TEST_ASSERT_EQUAL_INT(2, step(true, false, false, 10, 20));
+    TEST_ASSERT_EQUAL_INT(UI_POINTER_UP, ev[0].kind);
+    TEST_ASSERT_EQUAL_INT(UI_POINTER_MOVE, ev[1].kind);
+    TEST_ASSERT_FALSE(p.down);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, count_kind(step(true, false, false, 10, 21), UI_POINTER_DOWN), "it waits");
+    const int n = step(false, false, true, 10, 21);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, count_kind(n, UI_POINTER_DOWN), "the lift makes the tap");
+    TEST_ASSERT_EQUAL_INT(1, count_kind(n, UI_POINTER_UP));
+}
+
+static void
+test_a_press_that_landed_is_not_pressed_again(void) {
+    fixture();
+    step(true, true, false, 10, 20);
+    TEST_ASSERT_EQUAL_INT(1, step(true, false, false, 10, 20));
+    TEST_ASSERT_EQUAL_INT(UI_POINTER_MOVE, ev[0].kind);
+}
+
+/* Missed, then lifted before the next frame: the press is made again with
+ * its release, so the tap still clicks. */
+static void
+test_a_missed_press_lifted_at_once_is_pressed_with_its_release(void) {
+    fixture();
+    step(true, true, false, 10, 20);
+    p.press_missed = true;
+    TEST_ASSERT_EQUAL_INT(3, step(false, false, true, 10, 20));
+    TEST_ASSERT_EQUAL_INT(UI_POINTER_MOVE, ev[0].kind);
+    TEST_ASSERT_EQUAL_INT(UI_POINTER_DOWN, ev[1].kind);
+    TEST_ASSERT_EQUAL_INT(UI_POINTER_UP, ev[2].kind);
+    TEST_ASSERT_FALSE(p.down);
 }
 
 /* The frame that carried the lift drew no UI, so its UP was never fed: the
@@ -113,10 +143,11 @@ test_a_new_press_pays_the_owed_up_first(void) {
     step(true, false, false, 10, 20);
     TEST_ASSERT_TRUE(p.down);
 
-    TEST_ASSERT_EQUAL_INT(2, step(true, true, false, 30, 40));
+    TEST_ASSERT_EQUAL_INT(3, step(true, true, false, 30, 40));
     TEST_ASSERT_EQUAL_INT(UI_POINTER_UP, ev[0].kind);
     TEST_ASSERT_EQUAL_INT(UI_POINTER_MOVE, ev[1].kind);
-    TEST_ASSERT_FALSE(p.down);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(UI_POINTER_DOWN, ev[2].kind, "then the new press goes down");
+    TEST_ASSERT_EQUAL_INT(30, ev[2].point.x);
 }
 
 /* Holding, not releasing: the whole point of this module. */
@@ -125,8 +156,7 @@ static void
 test_a_drag_stays_down_across_moves_then_lifts_once(void) {
     fixture();
 
-    press_through_hover(10, 20);
-    int n = step(true, false, false, 10, 20); /* the down */
+    int n = step(true, true, false, 10, 20);
     TEST_ASSERT_EQUAL_INT(2, n);
     TEST_ASSERT_EQUAL_INT(UI_POINTER_DOWN, ev[1].kind);
 
@@ -153,8 +183,7 @@ test_an_aim_stages_the_press_but_not_later_drag_moves(void) {
     fixture();
     ui_pointer_aim(&p, (vec2i_t){100, 200});
 
-    press_through_hover(80, 200);
-    int n = step(true, false, false, 80, 200);
+    int n = step(true, true, false, 80, 200);
     TEST_ASSERT_EQUAL_INT(UI_POINTER_MOVE, ev[0].kind);
     TEST_ASSERT_EQUAL_INT(100, ev[0].point.x);
     TEST_ASSERT_EQUAL_INT(UI_POINTER_DOWN, ev[1].kind);
@@ -254,13 +283,12 @@ test_a_too_small_buffer_returns_zero_and_leaves_state_untouched(void) {
     int n = ui_pointer_step(&p, &in, ev, UI_POINTER_MAX_EVENTS - 1);
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, n, "a buffer smaller than UI_POINTER_MAX_EVENTS must be rejected");
 
-    /* Rejected, not partially applied: the same press replayed with a
-     * proper buffer must still play out its normal hover-then-down. */
-    press_through_hover(10, 20);
+    TEST_ASSERT_FALSE(p.down);
 
-    n = step(true, false, false, 10, 20);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(2, n,
-                                  "the DOWN must still follow, proving the rejected call left press_stage untouched");
+    /* Rejected, not partially applied: the same press replayed with a
+     * proper buffer must still go down. */
+    n = step(true, true, false, 10, 20);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(2, n, "the DOWN must still go out, proving the rejected call left the press alone");
     TEST_ASSERT_EQUAL_INT(UI_POINTER_DOWN, ev[1].kind);
 }
 
@@ -343,8 +371,9 @@ test_a_sideways_drag_on_scrollable_content_presses_so_a_slider_still_moves(void)
     fixture();
     p.over_scrollable = true;
 
-    press_through_hover(100, 200);
-    int n = step(true, false, false, 100, 200);
+    int n = step(true, true, false, 100, 200);
+    TEST_ASSERT_EQUAL_INT(0, count_kind(n, UI_POINTER_DOWN));
+    n = step(true, false, false, 100, 200);
     TEST_ASSERT_EQUAL_INT(0, count_kind(n, UI_POINTER_DOWN));
 
     n = step(true, false, false, 100 + UI_POINTER_DRAG_THRESHOLD + 1, 202);
@@ -359,8 +388,11 @@ test_a_sideways_drag_on_scrollable_content_presses_so_a_slider_still_moves(void)
 
 void
 run_ui_pointer_suite(void) {
-    RUN_TEST(test_a_tap_hovers_before_pressing);
-    RUN_TEST(test_the_down_waits_for_a_settled_hover_root);
+    RUN_TEST(test_a_press_goes_down_on_the_frame_of_contact);
+    RUN_TEST(test_a_missed_press_is_pressed_again_until_it_lands);
+    RUN_TEST(test_a_press_that_landed_is_not_pressed_again);
+    RUN_TEST(test_a_missed_press_on_scrollable_content_is_taken_back_to_wait);
+    RUN_TEST(test_a_missed_press_lifted_at_once_is_pressed_with_its_release);
     RUN_TEST(test_a_lift_that_never_reached_the_ui_is_released_on_the_next_idle_frame);
     RUN_TEST(test_a_new_press_pays_the_owed_up_first);
     RUN_TEST(test_a_drag_stays_down_across_moves_then_lifts_once);

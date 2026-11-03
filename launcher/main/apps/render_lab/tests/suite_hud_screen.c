@@ -31,7 +31,7 @@ hud_frame(const render_lab_hud_screen_state_t* state) {
 
 static recti_t
 drawn(const char* s) {
-    recti_t r = {0};
+    recti_t r = recti_empty();
     TEST_ASSERT_TRUE_MESSAGE(ui_probe_text(s, &r), s);
     return r;
 }

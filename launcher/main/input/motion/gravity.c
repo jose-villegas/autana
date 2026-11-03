@@ -197,5 +197,5 @@ gravity_in_free_fall(const gravity_t* g) {
 
 void
 gravity_clear_gyro_bias(gravity_t* g) {
-    g->gyro_bias = (vec3f_t){0};
+    g->gyro_bias = vec3f_zero();
 }

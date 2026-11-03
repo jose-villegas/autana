@@ -682,7 +682,7 @@ test_append_char_the_tail_after_an_overflow_is_not_a_line_of_its_own(void) {
 static void
 test_touch_line_carries_its_sample(void) {
     bool down = false;
-    vec2i_t point = {0};
+    vec2i_t point = vec2i_zero();
 
     TEST_ASSERT_TRUE(console_touch_parse("down 184 224", &down, &point));
     TEST_ASSERT_TRUE(down);

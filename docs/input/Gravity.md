@@ -113,7 +113,7 @@ Periods and task settings live in `input/motion/imu.c`; header-owned settings na
 | `IMU_TASK_CORE` | `JOB_CORE1` | Core 1 |
 | `IMU_TASK_PRIORITY` | `JOB_CORE1_PRIORITY - 1` | Below job worker |
 | `IMU_TASK_BUS_PRIORITY` | `JOB_CORE1_PRIORITY + 1` | Bus lock has no priority inheritance; a preempted transaction holds the bus, a preempted drain holds FIFO read mode |
-| `IMU_BUS_HOLD_TARGET_US` | 1000 us of data | The FIFO burst is read in `IMU_FIFO_CHUNK_SAMPLES` whole samples per transaction; the bus lock is taken per transaction, so a touch read waits for at most one chunk |
+| `IMU_BUS_HOLD_TARGET_US` | 1000 us of data | `input/motion/qmi8658/qmi8658.c`: the FIFO burst is read in `IMU_FIFO_CHUNK_SAMPLES` whole samples per transaction; the bus lock is taken per transaction, so a touch read waits for at most one chunk |
 | `IMU_FIFO_SAMPLES` | 128 samples | `input/motion/imu.h` |
 | `IMU_SAMPLE_US` / `INPUT_MOTION_SAMPLE_US` | `1 / ODR` | `input/motion/imu.h` / `input/input.h` |
 
@@ -191,7 +191,7 @@ flowchart LR
 ![The cased device rocks about flat while the estimate of down converges on true down and the gyro bias error decays](../images/input/gravity-bias.gif)
 
 The device rocks about flat with a known gyro offset. Its readings pass through `imu_axes_screen()` into `gravity_update_batch()`.
-Device and IMU placement come from `board/waveshare_amoled_1_8/board_geometry.h`.<sup>[[89]](../Citations.md#waveshare-amoled-3d-model)</sup>
+Device and IMU placement come from [`board/waveshare/esp32_s3_touch_amoled_1_8/board.toml`](../../launcher/main/board/waveshare/esp32_s3_touch_amoled_1_8/board.toml).<sup>[[89]](../Citations.md#waveshare-amoled-3d-model)</sup>
 
 | Condition | Effect |
 |---|---|

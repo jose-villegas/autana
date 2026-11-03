@@ -21,7 +21,8 @@ class LocalHookTests(ShellGateTestCase):
         # scripts/, which the fixture would otherwise copy and stage.
         for path in tracked_files(ROOT, ('scripts', 'launcher/tools/build',
                                          'launcher/tools/render/generated_blocks.py',
-                                         'launcher/tools/render/doc_tables.py')):
+                                         'launcher/tools/render/doc_tables.py',
+                                         'launcher/tools/docs/figure_index.py')):
             (self.root / path).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(ROOT / path, self.root / path)
         (self.root / '.github/workflows').mkdir(parents=True)

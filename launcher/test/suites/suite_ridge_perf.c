@@ -45,7 +45,7 @@ run_arm(arm_t arm) {
     prime();
     ui_ridge_set_ambient(arm == ARM_AMBIENT || arm == ARM_AMBIENT_PORTRAIT);
     if (arm == ARM_AMBIENT_PORTRAIT) {
-        ui_ridge_set_gravity((vec3f_t){0, 1, 0}, 0);
+        ui_ridge_set_gravity(vec3f_unit_y(), 0);
         for (int frame = 0; frame < 200; frame++) {
             ui_ridge_step(&ridge_arm_idle_input, FRAME_DT_MS);
             gfx_present();

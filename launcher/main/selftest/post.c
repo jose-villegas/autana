@@ -15,7 +15,9 @@
 #include "core/timing.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
-#include "power/power_decode.h"
+#include "input/motion/imu_chip.h"
+#include "power/power.h"
+#include "power/power_chip.h"
 #include "sound/sound_status.h"
 
 static const char* TAG = "post";
@@ -224,13 +226,15 @@ check_pmu(void) {
     char detail[sizeof results[0].detail];
     int length;
     if (!pmu_ok) {
-        length = snprintf(detail, sizeof detail, "AXP2101: not responding");
+        length = snprintf(detail, sizeof detail, "%s: not responding", BOARD_PMU_CHIP.name);
     } else if (!battery.battery_present) {
-        length = snprintf(detail, sizeof detail, "AXP2101: battery absent, %s", battery.usb_present ? "USB" : "no USB");
+        length = snprintf(detail, sizeof detail, "%s: battery absent, %s", BOARD_PMU_CHIP.name,
+                          battery.usb_present ? "USB" : "no USB");
     } else {
-        length = snprintf(detail, sizeof detail, "AXP2101: %u mV %u%%, %s, %s (%s)", (unsigned)battery.battery_mv,
-                          (unsigned)battery.percent, battery.usb_present ? "USB" : "no USB",
-                          power_flow_name(battery.flow), power_charge_name(battery.charge));
+        length =
+            snprintf(detail, sizeof detail, "%s: %u mV %u%%, %s, %s (%s)", BOARD_PMU_CHIP.name,
+                     (unsigned)battery.battery_mv, (unsigned)battery.percent, battery.usb_present ? "USB" : "no USB",
+                     power_flow_name(battery.flow), power_charge_name(battery.charge));
     }
     const bool formatted = length >= 0 && (size_t)length < sizeof detail;
     report("pmu", pmu_ok && formatted, POST_REQUIRED, formatted ? detail : "battery format failed");
@@ -250,14 +254,14 @@ check_i2c_devices(void) {
     (void)snprintf(pins, sizeof pins, "SDA %d, SCL %d", BOARD_I2C_SDA_GPIO, BOARD_I2C_SCL_GPIO);
     report("i2c bus", true, POST_REQUIRED, pins);
 
-    static const struct {
+    const struct {
         const char* name;
         uint16_t address;
         const char* what;
         post_severity_t severity;
     } devices[] = {
         {"io expander", BOARD_IO_EXPANDER_I2C_ADDR, "TCA9554 reset lines", POST_OPTIONAL},
-        {"imu", BOARD_IMU_I2C_ADDR, "QMI8658 accel+gyro", POST_REQUIRED},
+        {"imu", BOARD_IMU_I2C_ADDR, BOARD_IMU_CHIP.name, POST_REQUIRED},
         {"rtc", BOARD_RTC_I2C_ADDR, "PCF85063 clock", POST_REQUIRED},
     };
 

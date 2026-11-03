@@ -21,13 +21,10 @@
 
 enum { JOINTS = 2, INFLUENCES = R3D_SKIN_INFLUENCES_MIN, ANGLES_MAX = 64, TRACED = 0 };
 
-static const vec3f_t BEND_AXIS = {0.0F, 0.0F, 1.0F};
-static const vec3f_t UNIT_SCALE = {1.0F, 1.0F, 1.0F};
-
 static mat4f_t
 joint_world(int joint, float hinge, float radians) {
     const vec3f_t position = {joint == 0 ? 0.0F : hinge, 0.0F, 0.0F};
-    return mat4f_from_trs(position, quatf_from_axis_angle(BEND_AXIS, joint == 0 ? 0.0F : radians), UNIT_SCALE);
+    return mat4f_from_trs(position, quatf_from_axis_angle(vec3f_unit_z(), joint == 0 ? 0.0F : radians), vec3f_one());
 }
 
 static void
@@ -125,7 +122,7 @@ main(int argc, char** argv) {
         printf("%s{\"angle\":%.7g,\"joints\":[", a ? "," : "", (double)angles[a]);
         for (int j = 0; j < JOINTS; j++) {
             printf(j ? "," : "");
-            print_point(mat4f_apply(&model[j], (vec3f_t){0}));
+            print_point(mat4f_apply(&model[j], vec3f_zero()));
         }
         printf("],\"traced\":[");
         for (int j = 0; j < JOINTS; j++) {

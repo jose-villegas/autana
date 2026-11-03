@@ -21,7 +21,6 @@ static const float PLANE_OBLIQUE_LENGTH = 5.0F;
 static const projectf_t PLANE_LENS = {1.0F, -1.0F, 0.25F, -0.5F, 1.0F};
 static const projectf_t PLANE_SCALED_LENS = {2.0F, 3.0F, 0.25F, -0.5F, 1.0F};
 static const rectf_t PLANE_SCREEN = {-2.0F, -1.5F, 4.0F, 3.0F};
-static const vec3f_t PLANE_ORIGIN = {0.0F, 0.0F, 1.0F};
 static const vec3f_t PLANE_AXIS_X = {1.0F, 0.0F, 1.0F};
 static const vec3f_t PLANE_AXIS_Y = {0.0F, 2.0F, 1.0F};
 static const vec3f_t PLANE_NORMAL = {0.0F, 0.0F, 2.0F};
@@ -59,7 +58,7 @@ test_fixed_normalize_zero_and_tilted_normals(void) {
     static const int32_t distances[] = {INT32_MIN, -1, 0, 1, INT32_MAX};
     for (size_t i = 0; i < sizeof(distances) / sizeof(distances[0]); i++) {
         const planex_t out = planex_normalize((planex_t){{0, 0, 0}, distances[i]});
-        TEST_ASSERT_TRUE(vec3x_equal((vec3x_t){0, 0, 0}, out.normal));
+        TEST_ASSERT_TRUE(vec3x_equal(vec3x_zero(), out.normal));
         TEST_ASSERT_EQUAL_INT32(mathx_div(distances[i], 0), out.d);
     }
     /* The double-precision reference runs on the host only: the device's FPU is single precision. */
@@ -85,20 +84,20 @@ test_fixed_normalize_zero_and_tilted_normals(void) {
 
 static void
 test_construction_winding_distance_and_normalize(void) {
-    const planef_t normal = planef_from_normal_point(PLANE_NORMAL, PLANE_ORIGIN);
-    const planef_t points = planef_from_points(PLANE_ORIGIN, PLANE_AXIS_X, PLANE_AXIS_Y);
-    const planef_t reversed = planef_from_points(PLANE_ORIGIN, PLANE_AXIS_Y, PLANE_AXIS_X);
+    const planef_t normal = planef_from_normal_point(PLANE_NORMAL, vec3f_unit_z());
+    const planef_t points = planef_from_points(vec3f_unit_z(), PLANE_AXIS_X, PLANE_AXIS_Y);
+    const planef_t reversed = planef_from_points(vec3f_unit_z(), PLANE_AXIS_Y, PLANE_AXIS_X);
     const planex_t fixed_normal =
-        planex_from_normal_point(vec3x_from_vec3f(PLANE_NORMAL), vec3x_from_vec3f(PLANE_ORIGIN));
-    const planex_t fixed_points = planex_from_points(vec3x_from_vec3f(PLANE_ORIGIN), vec3x_from_vec3f(PLANE_AXIS_X),
+        planex_from_normal_point(vec3x_from_vec3f(PLANE_NORMAL), vec3x_from_vec3f(vec3f_unit_z()));
+    const planex_t fixed_points = planex_from_points(vec3x_from_vec3f(vec3f_unit_z()), vec3x_from_vec3f(PLANE_AXIS_X),
                                                      vec3x_from_vec3f(PLANE_AXIS_Y));
-    const planex_t fixed_reversed = planex_from_points(vec3x_from_vec3f(PLANE_ORIGIN), vec3x_from_vec3f(PLANE_AXIS_Y),
+    const planex_t fixed_reversed = planex_from_points(vec3x_from_vec3f(vec3f_unit_z()), vec3x_from_vec3f(PLANE_AXIS_Y),
                                                        vec3x_from_vec3f(PLANE_AXIS_X));
     const planef_t unit = planef_normalize(normal);
     const planex_t fixed_unit = planex_normalize(fixed_normal);
     TEST_ASSERT_FLOAT_WITHIN(PLANE_FLOAT_TOLERANCE, mathf_one(), vec3f_dot(unit.normal, unit.normal));
     for (int side = -1; side <= 1; side++) {
-        const vec3f_t q = {PLANE_ORIGIN.x, PLANE_ORIGIN.y, PLANE_ORIGIN.z + (float)side * PLANE_EDGE_STEP};
+        const vec3f_t q = {vec3f_unit_z().x, vec3f_unit_z().y, vec3f_unit_z().z + (float)side * PLANE_EDGE_STEP};
         const float distance = (float)side * PLANE_EDGE_STEP * PLANE_NORMAL_SCALE;
         TEST_ASSERT_FLOAT_WITHIN(PLANE_FLOAT_TOLERANCE, distance, planef_distance(normal, q));
         TEST_ASSERT_FLOAT_WITHIN(PLANE_FLOAT_TOLERANCE, distance, planef_distance(points, q));
@@ -129,7 +128,7 @@ static void
 test_from_rows_tests_the_mapped_point(void) {
     const planef_t target = planef_from_normal_point(PLANE_OBLIQUE_NORMAL, PLANE_OBLIQUE_POINT);
     const planef_t source = planef_from_rows(&PLANE_MAP, target.normal.x, target.normal.y, target.normal.z, target.d);
-    const vec3f_t points[] = {PLANE_OBLIQUE_POINT, PLANE_OBLIQUE_QUERY, PLANE_ORIGIN, PLANE_AXIS_Y};
+    const vec3f_t points[] = {PLANE_OBLIQUE_POINT, PLANE_OBLIQUE_QUERY, vec3f_unit_z(), PLANE_AXIS_Y};
     for (size_t i = 0; i < sizeof(points) / sizeof(points[0]); i++) {
         TEST_ASSERT_FLOAT_WITHIN(PLANE_FLOAT_TOLERANCE, planef_distance(target, mat4f_apply(&PLANE_MAP, points[i])),
                                  planef_distance(source, points[i]));

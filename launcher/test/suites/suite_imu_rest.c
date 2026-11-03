@@ -45,7 +45,7 @@ test_rest_bias_and_noise(void) {
     for (int phase = 0; phase < 7; phase++) {
         imu_rest_t rest = {0};
         input_motion_t sample = fixture();
-        vec3i_t mean = {0};
+        vec3i_t mean = vec3i_zero();
         bool complete = false;
         /* A balanced +/-1 dps sequence has sigma 1 dps without random tail failures. */
         for (uint32_t t = 0; t < REST_TEST_DURATION_US + 2 * REST_TEST_DT_US; t += REST_TEST_DT_US) {
