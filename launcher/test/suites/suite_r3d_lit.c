@@ -982,7 +982,10 @@ compare_range_walk(r3d_span_vertex_t v[TRIANGLE_VERTICES], recti_t window, bool 
     gradient(&p, v[0].z * DEPTH_SCALE, v[1].z * DEPTH_SCALE, v[2].z * DEPTH_SCALE, 0, &g);
     fill_t f = {FILL_GOURAUD, 0, 0, &g, W - 1};
     const r3d_span_vertex_t* vertices[TRIANGLE_VERTICES] = {&v[0], &v[1], &v[2]};
-    set_up_planes(&f, vertices, &p, box, box.y, &g, capped);
+    set_up_planes(&f, vertices, &p, box, box.y, &g);
+    if (capped) {
+        cap_depth(vertices, box, &g);
+    }
     bool expected = !capped || g.depth_cap == R3D_DEPTH_NEAREST;
     for (int k = 0; k < ATTRIBUTES; k++) {
         bool vertices_inside = true;
