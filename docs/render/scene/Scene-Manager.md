@@ -163,7 +163,7 @@ scene keeps in PSRAM, and the render context's scratch, are taken from it:
 
 | Piece | From |
 |---|---|
-| The scene's block, its animators' storage | the app arena |
+| The scene's block, resident positions, its animators' storage | the app arena |
 | The raster scratch block | the app arena |
 | Skinning output, skin light storage, light tables | the internal heap |
 | A development debug view's state | the PSRAM heap |
@@ -173,9 +173,11 @@ app rewinds past it, so scenes still unload in any order. Unloading the last
 scene also drops the scratch, so an app that marks before `scene_load()` may
 rewind after `scene_unload()`. A scene is opened
 from an `asset_pack_t`: `scene_load()` mounts the scene's pack, and
-`scene_load_from()` takes the pack, so a test can load from one it builds. The
-pack outlives the scene, which reads its entry and every mesh, skin, skeleton
-and clip it names in place.
+`scene_load_from()` takes the pack, so a test can load from one it builds.
+
+The pack outlives the scene, which reads its entry and every mesh, skin, skeleton
+and clip it names in place, except for static mesh positions. A loaded scene
+keeps those positions in PSRAM, one copy per distinct mesh, released on unload.
 
 `scene_load_from()` validates the entry before attaching its components.
 Settings supply ambient and tone map before light and skin attachment.
