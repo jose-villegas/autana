@@ -189,7 +189,7 @@ scene_stress_exit(void) {
 /* A per-frame preset's wave moves on by the frame's time, so a replay at the same steps draws the same frames. */
 static void
 scene_stress_update(uint32_t dt_ms) {
-    if (loaded == NULL || failure[0] != '\0' || !shown->per_frame) {
+    if (loaded == NULL || failure[0] != '\0' || !stress_per_frame(shown)) {
         return;
     }
     wave_ms += dt_ms;
@@ -227,7 +227,7 @@ scene_stress_path(void) {
 }
 
 /* A still preset can have frames generated: only the camera moves. */
-#define STRESS_SCENE_ROW(id_, key_, per_frame_, ...)                                                                   \
+#define STRESS_SCENE_ROW(id_, key_, surface_, ...)                                                                     \
     [STRESS_##id_] = {.name = "Stress " key_,                                                                          \
                       .key = STRESS_SCENE "-" key_,                                                                    \
                       .family = "Stress",                                                                              \
@@ -238,8 +238,8 @@ scene_stress_path(void) {
                       .exit = scene_stress_exit,                                                                       \
                       .update = scene_stress_update,                                                                   \
                       .status = RENDER_LAB_SCENE_DEV(scene_stress_status),                                             \
-                      .controls = (per_frame_) ? NULL : scene_baked_controls,                                          \
-                      .generates_frames = !(per_frame_),                                                               \
+                      .controls = STRESS_SURFACE_##surface_ == STRESS_SURFACE_WAVE ? NULL : scene_baked_controls,      \
+                      .generates_frames = STRESS_SURFACE_##surface_ != STRESS_SURFACE_WAVE,                            \
                       .path = scene_stress_path},
 
 const render_lab_scene_t scene_stress[STRESS_PRESET_COUNT] = {STRESS_PRESETS(STRESS_SCENE_ROW)};

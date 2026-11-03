@@ -5,8 +5,8 @@
 #include "math/geometry/primitive_mesh.h"
 #include "math/scalar/math_const.h"
 
-#define STRESS_PRESET_PARAMS(id_, key_, per_frame_, shape_, cuts_, copies_, layout_, coverage_)                        \
-    [STRESS_##id_] = {shape_, cuts_, copies_, layout_, coverage_, per_frame_},
+#define STRESS_PRESET_PARAMS(id_, key_, surface_, shape_, cuts_, copies_, layout_, coverage_)                          \
+    [STRESS_##id_] = {shape_, cuts_, copies_, layout_, coverage_, STRESS_SURFACE_##surface_},
 
 const stress_params_t stress_presets[STRESS_PRESET_COUNT] = {STRESS_PRESETS(STRESS_PRESET_PARAMS)};
 
@@ -27,22 +27,78 @@ static const uint8_t stress_colour_high[3] = {0xE8, 0xB0, 0x5A};
 #define STRESS_WAVE_PERIOD_MS 2000
 #define STRESS_WAVE_HEIGHT    0.05F
 
-/* The unit shape's width: the grid's side, the sphere's diameter. */
+/* The unit shape's width: the plane's, cube's and cylinder's side, the sphere's diameter. */
 static float
 shape_span(stress_shape_t shape) {
-    return shape == STRESS_SHAPE_GRID ? 1.0F : 2.0F;
+    return shape == STRESS_SHAPE_SPHERE ? 2.0F : 1.0F;
+}
+
+/* A sphere's slices round its axis: twice its bands, so its cuts are as long as they are tall at the equator. */
+static int
+sphere_segments(int rings) {
+    return 2 * rings;
+}
+
+/* A cylinder's side in bands no taller than its radius, so no side
+ * triangle is longer than an end's slivers. */
+#define STRESS_CYLINDER_STACKS 2
+
+/* Each shape's parameters for a preset, one of them the preset's own. */
+typedef struct {
+    primitive_plane_t plane;
+    primitive_sphere_t sphere;
+    primitive_cube_t cube;
+    primitive_cylinder_t cylinder;
+} shapes_t;
+
+static shapes_t
+shapes_of(const stress_params_t* p) {
+    return (shapes_t){
+        .plane = {.subdivisions = p->cuts},
+        .sphere = {.segments = sphere_segments(p->cuts), .rings = p->cuts},
+        .cube = {.subdivisions = p->cuts},
+        .cylinder = {.top_radius = 0.5F,
+                     .bottom_radius = 0.5F,
+                     .height = 1.0F,
+                     .segments = p->cuts,
+                     .stacks = STRESS_CYLINDER_STACKS},
+    };
 }
 
 int
 stress_vertex_count(const stress_params_t* p) {
-    return p->shape == STRESS_SHAPE_GRID ? primitive_grid_vertex_count(p->cuts)
-                                         : primitive_sphere_vertex_count(p->cuts);
+    const shapes_t s = shapes_of(p);
+    switch (p->shape) {
+        case STRESS_SHAPE_PLANE: return primitive_plane_vertex_count(&s.plane);
+        case STRESS_SHAPE_SPHERE: return primitive_sphere_vertex_count(&s.sphere);
+        case STRESS_SHAPE_CUBE: return primitive_cube_vertex_count(&s.cube);
+        case STRESS_SHAPE_CYLINDER: return primitive_cylinder_vertex_count(&s.cylinder);
+    }
+    return 0;
 }
 
 int
 stress_triangle_count(const stress_params_t* p) {
-    return p->shape == STRESS_SHAPE_GRID ? primitive_grid_triangle_count(p->cuts)
-                                         : primitive_sphere_triangle_count(p->cuts);
+    const shapes_t s = shapes_of(p);
+    switch (p->shape) {
+        case STRESS_SHAPE_PLANE: return primitive_plane_triangle_count(&s.plane);
+        case STRESS_SHAPE_SPHERE: return primitive_sphere_triangle_count(&s.sphere);
+        case STRESS_SHAPE_CUBE: return primitive_cube_triangle_count(&s.cube);
+        case STRESS_SHAPE_CYLINDER: return primitive_cylinder_triangle_count(&s.cylinder);
+    }
+    return 0;
+}
+
+static bool
+make(const stress_params_t* p, primitive_mesh_t* m) {
+    const shapes_t s = shapes_of(p);
+    switch (p->shape) {
+        case STRESS_SHAPE_PLANE: return primitive_plane(&s.plane, m);
+        case STRESS_SHAPE_SPHERE: return primitive_sphere(&s.sphere, m);
+        case STRESS_SHAPE_CUBE: return primitive_cube(&s.cube, m);
+        case STRESS_SHAPE_CYLINDER: return primitive_cylinder(&s.cylinder, m);
+    }
+    return false;
 }
 
 /* The wave's height at a vertex `up` of the way from the shape's bottom to
@@ -52,18 +108,29 @@ band(float up, float turns) {
     return 0.5F + (0.5F * cosf(MATH_TAU * ((up * (float)STRESS_BANDS) - turns)));
 }
 
+/* Banded by height, or for a noisy surface the low colour and the high by
+ * turns: every triangle has two vertices in a row, so its corners differ by
+ * the whole range. */
+static float
+shade(const stress_params_t* p, int v, vec3f_t at, float turns) {
+    if (p->surface == STRESS_SURFACE_NOISY) {
+        return (float)(v % 2);
+    }
+    return band((at.y / shape_span(p->shape)) + 0.5F, turns);
+}
+
 static void
 colour_and_wave(const stress_params_t* p, uint32_t t_ms, int vertex_count, const stress_buffers_t* b) {
-    const float turns = p->per_frame ? (float)(t_ms % STRESS_WAVE_PERIOD_MS) / (float)STRESS_WAVE_PERIOD_MS : 0.0F;
-    const float span = shape_span(p->shape);
+    const bool per_frame = stress_per_frame(p);
+    const float turns = per_frame ? (float)(t_ms % STRESS_WAVE_PERIOD_MS) / (float)STRESS_WAVE_PERIOD_MS : 0.0F;
     for (int v = 0; v < vertex_count; v++) {
-        const float s = band((b->positions[v].y / span) + 0.5F, turns);
+        const float s = shade(p, v, b->positions[v], turns);
         for (int c = 0; c < 3; c++) {
             b->colors[v][c] =
                 (uint8_t)lroundf(stress_colour_low[c] + ((float)(stress_colour_high[c] - stress_colour_low[c]) * s));
         }
-        if (p->per_frame) {
-            const vec3f_t normal = p->shape == STRESS_SHAPE_GRID ? vec3f_unit_z() : b->positions[v];
+        if (per_frame) {
+            const vec3f_t normal = p->shape == STRESS_SHAPE_PLANE ? vec3f_unit_z() : b->positions[v];
             b->positions[v] = vec3f_add(b->positions[v], vec3f_scale(normal, STRESS_WAVE_HEIGHT * ((2.0F * s) - 1.0F)));
         }
     }
@@ -72,14 +139,13 @@ colour_and_wave(const stress_params_t* p, uint32_t t_ms, int vertex_count, const
 bool
 stress_source(const stress_params_t* p, uint32_t t_ms, const stress_buffers_t* b, r3d_dynamic_source_t* out) {
     primitive_mesh_t m = {b->positions, stress_vertex_count(p), b->triangles, stress_triangle_count(p), 0, 0};
-    const bool made = p->shape == STRESS_SHAPE_GRID ? primitive_grid(p->cuts, &m) : primitive_sphere(p->cuts, &m);
-    if (!made) {
+    if (!make(p, &m)) {
         return false;
     }
     colour_and_wave(p, t_ms, m.vertex_count, b);
     *out = (r3d_dynamic_source_t){b->positions,     (const uint8_t (*)[3])b->colors,
                                   m.vertex_count,   (const uint16_t (*)[3])b->triangles,
-                                  m.triangle_count, false};
+                                  m.triangle_count, p->surface == STRESS_SURFACE_TWO_SIDED};
     return true;
 }
 
@@ -119,17 +185,25 @@ stress_copy_place(const stress_params_t* p, int copy, stress_framing_t framing) 
     }
     transformf_t place = transformf_identity();
     transformf_set_position(&place, at);
+    if (p->shape == STRESS_SHAPE_CYLINDER) {
+        /* Its axis, +y, turned to +z: the top's fan faces the camera. */
+        transformf_set_rotation(&place, quatf_from_axis_angle(vec3f_unit_x(), MATH_PI * 0.5F));
+    }
     transformf_set_scale(&place, (vec3f_t){scale, scale, scale});
     return place;
 }
 
 /* A sphere's longest cut is round its equator: its circumference over its
- * segments, as long as a band is tall. */
+ * segments, as long as a band is tall. A cylinder's is an end's sliver,
+ * its radius, as long as a side band is tall. */
 float
 stress_cut_px(const stress_params_t* p, int short_px) {
     const float width = (float)short_px * (float)p->coverage_percent / STRESS_PERCENT * copy_share(p);
-    if (p->shape == STRESS_SHAPE_GRID) {
-        return width / (float)p->cuts;
+    switch (p->shape) {
+        case STRESS_SHAPE_PLANE:
+        case STRESS_SHAPE_CUBE: return width / (float)p->cuts;
+        case STRESS_SHAPE_SPHERE: return MATH_PI * width / (float)sphere_segments(p->cuts);
+        case STRESS_SHAPE_CYLINDER: return 0.5F * width;
     }
-    return MATH_PI * width / (float)primitive_sphere_segments(p->cuts);
+    return 0.0F;
 }

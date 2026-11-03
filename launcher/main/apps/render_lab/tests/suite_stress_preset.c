@@ -17,6 +17,7 @@
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/stress/stress_preset.h"
 #include "gfx/gfx.h"
+#include "image/pixel/rgb565.h"
 #include "render/dynamic/r3d_dynamic_mesh.h"
 #include "render/r3d_span.h"
 
@@ -144,10 +145,10 @@ test_only_a_per_frame_preset_moves(void) {
         r3d_dynamic_source_t first, later;
         TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &first));
         TEST_ASSERT_TRUE(stress_source(p, WAVE_LATER_MS, &f.at[1], &later));
-        TEST_ASSERT_EQUAL(!p->per_frame, same_source(&first, &later));
+        TEST_ASSERT_EQUAL(!stress_per_frame(p), same_source(&first, &later));
         release();
     }
-    TEST_ASSERT_TRUE(stress_presets[STRESS_PER_FRAME].per_frame);
+    TEST_ASSERT_TRUE(stress_per_frame(&stress_presets[STRESS_PER_FRAME]));
 }
 
 /* A copy's square on, in the plane it stands in: its centre and half width. */
@@ -158,7 +159,7 @@ typedef struct {
 static copy_box_t
 copy_box(const stress_params_t* p, int copy) {
     const transformf_t place = stress_copy_place(p, copy, framing);
-    const float unit_half = p->shape == STRESS_SHAPE_GRID ? 0.5F : 1.0F;
+    const float unit_half = p->shape == STRESS_SHAPE_SPHERE ? 1.0F : 0.5F;
     return (copy_box_t){place.position.x, place.position.y, place.position.z, unit_half * place.scale.x};
 }
 
@@ -245,6 +246,59 @@ test_big_tris_are_past_every_small_fill(void) {
     TEST_ASSERT_GREATER_OR_EQUAL_FLOAT((float)SMALL_FILL_CEILING_MAX, stress_cut_px(p, DEFAULT_SHORT_PX));
 }
 
+/* Two-sided: a closed cube drawn from both sides, so backface culling has
+ * half of it facing away and may skip none; only this preset is two-sided. */
+static void
+test_two_sided_is_a_closed_shape_drawn_from_both_sides(void) {
+    for (int i = 0; i < STRESS_PRESET_COUNT; i++) {
+        const stress_params_t* p = &stress_presets[i];
+        fixture_begin(p);
+        r3d_dynamic_source_t source;
+        TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &source));
+        TEST_ASSERT_EQUAL(i == STRESS_TWO_SIDED, source.double_sided);
+        release();
+    }
+    TEST_ASSERT_EQUAL_INT(STRESS_SHAPE_CUBE, stress_presets[STRESS_TWO_SIDED].shape);
+}
+
+/* The widest per-channel spread of a triangle's corners, in RGB565 units, as the small-fill gate measures it. */
+static int
+corner_spread(const r3d_dynamic_source_t* s, int t) {
+    unsigned low[3] = {UINT32_MAX, UINT32_MAX, UINT32_MAX};
+    unsigned high[3] = {0, 0, 0};
+    for (int k = 0; k < 3; k++) {
+        const uint8_t* c = s->colors[s->triangles[t][k]];
+        const uint16_t packed = (uint16_t)RGB565(((uint32_t)c[0] << 16) | ((uint32_t)c[1] << 8) | c[2]);
+        const unsigned channels[3] = {rgb565_r5(packed), rgb565_g6(packed), rgb565_b5(packed)};
+        for (int ch = 0; ch < 3; ch++) {
+            low[ch] = channels[ch] < low[ch] ? channels[ch] : low[ch];
+            high[ch] = channels[ch] > high[ch] ? channels[ch] : high[ch];
+        }
+    }
+    int widest = 0;
+    for (int ch = 0; ch < 3; ch++) {
+        widest = (int)(high[ch] - low[ch]) > widest ? (int)(high[ch] - low[ch]) : widest;
+    }
+    return widest;
+}
+
+/* Noisy tiny: slivers big enough for the small-fill gate to test, each
+ * spread past the loosest gate, so the test is paid for and always fails. */
+static void
+test_noisy_tiny_slivers_are_gated_and_fail_the_gate(void) {
+    const stress_params_t* p = &stress_presets[STRESS_NOISY_TINY];
+    const float cut = stress_cut_px(p, DEFAULT_SHORT_PX);
+    TEST_ASSERT_GREATER_THAN_FLOAT((float)R3D_SPAN_SMALL_MAX_SIDE, cut);
+    TEST_ASSERT_LESS_OR_EQUAL_FLOAT((float)SMALL_FILL_CEILING_FAST, cut);
+    fixture_begin(p);
+    r3d_dynamic_source_t source;
+    TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &source));
+    for (int t = 0; t < source.triangle_count; t++) {
+        TEST_ASSERT_GREATER_THAN_INT(SMALL_FILL_GATE_FAST, corner_spread(&source, t));
+    }
+    release();
+}
+
 void
 run_stress_preset_suite(void) {
     RUN_TEST(test_every_preset_mesh_is_whole_and_repeats);
@@ -257,6 +311,8 @@ run_stress_preset_suite(void) {
     RUN_TEST(test_stack_puts_every_copy_behind_the_last);
     RUN_TEST(test_tiny_copies_are_many_and_drawn_flat);
     RUN_TEST(test_big_tris_are_past_every_small_fill);
+    RUN_TEST(test_two_sided_is_a_closed_shape_drawn_from_both_sides);
+    RUN_TEST(test_noisy_tiny_slivers_are_gated_and_fail_the_gate);
 }
 
 SUITE_REGISTER(run_stress_preset_suite);

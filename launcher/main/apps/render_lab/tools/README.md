@@ -143,11 +143,13 @@ options, each by where it stops paying.
 
 | Scene key | As the swing starts | Made of | Loss case of |
 |---|---|---|---|
-| `stress-open` | ![Stress open: a wall of grids side by side](../../../../../docs/images/overview/render-lab-stress-open.png) | a wall of grids side by side | hidden-cluster skip and cluster cull: nothing hides and nothing is off screen |
-| `stress-stack` | ![Stress stack: grids one behind another](../../../../../docs/images/overview/render-lab-stress-stack.png) | grids one behind another | the skip's win, and the depth cost of the debug views |
+| `stress-open` | ![Stress open: a wall of planes side by side](../../../../../docs/images/overview/render-lab-stress-open.png) | a wall of planes side by side | hidden-cluster skip and cluster cull: nothing hides and nothing is off screen |
+| `stress-stack` | ![Stress stack: planes one behind another](../../../../../docs/images/overview/render-lab-stress-stack.png) | planes one behind another | the skip's win, and the depth cost of the debug views |
 | `stress-tiny-copies` | ![Stress tiny copies: many small spheres](../../../../../docs/images/overview/render-lab-stress-tiny-copies.png) | many small spheres | dynres, present and render scale: below about 10 px smarter traversal stops paying<sup>[[113]](../../../../../docs/Citations.md#giesen-2013)</sup>, and per-copy cost rules small batches<sup>[[114]](../../../../../docs/Citations.md#wloka-2003)</sup> |
 | `stress-big-tris` | ![Stress big tris: a few triangles over most of the picture](../../../../../docs/images/overview/render-lab-stress-big-tris.png) | a few triangles over most of the picture | small fill and batching |
-| `stress-per-frame` | ![Stress per frame: one grid with a wave running over it](../../../../../docs/images/overview/render-lab-stress-per-frame.png) | one grid made again every frame, a wave running over it | the mesh build, every frame |
+| `stress-per-frame` | ![Stress per frame: one plane with a wave running over it](../../../../../docs/images/overview/render-lab-stress-per-frame.png) | one plane made again every frame, a wave running over it | the mesh build, every frame |
+| `stress-two-sided` | ![Stress two-sided: a wall of cubes drawn from both sides](../../../../../docs/images/overview/render-lab-stress-two-sided.png) | a wall of closed cubes drawn from both sides | backface cull: half of each cube faces away and none of it is skipped |
+| `stress-noisy-tiny` | ![Stress noisy tiny: cylinders end on, their fans of slivers](../../../../../docs/images/overview/render-lab-stress-noisy-tiny.png) | many small cylinders end on, each end a fan of slivers whose corners are far apart in colour | the small-fill gate: every sliver is tested and none passes |
 
 | Part | Owner |
 |---|---|
