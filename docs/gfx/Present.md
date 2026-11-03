@@ -63,7 +63,7 @@ sequenceDiagram
 | `gfx_present_begin()` | hands the target to core 1, returns at once. A no-op in band-ring mode. In double mode it first drains the previous send and swaps front and back. Each call also ends a frame for the frame watch (`profile/frame_watch.h`). |
 | `gfx_present_wait()` | blocks until everything queued has landed. Double mode: returns at once. |
 | `gfx_set_present_async()` | `false` sends on the caller's core instead, for A/B timing |
-| `gfx_set_clear_on_send()` | double mode only: core 1 fills each frame with a colour once it is sent, so `draw_clear()` of that colour on it is skipped (`gfx_framebuffer_holds()`). Readback is unavailable until a send that keeps its frame. |
+| `clear_on_send` in `gfx_mode_request_t` | double mode only: core 1 fills each frame with a colour once it is sent, so `draw_clear()` of that colour on it is skipped (`gfx_framebuffer_holds()`). Readback is unavailable until a send that keeps its frame. |
 
 Outside double mode the wait is mandatory: DMA is still reading the buffer until it returns.
 
