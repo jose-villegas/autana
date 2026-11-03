@@ -43,18 +43,18 @@ typedef struct {
     stress_surface_t surface;
 } stress_params_t;
 
-/* X(ID, key, surface, params...): the one place a preset is spelled
- * out, its key the scene key's suffix and its menu label. The scene table
- * and every test expand it; the render_lab tools README names the option
- * each is the loss case of. */
+/* X(ID, key, surface): each preset, its key the scene key's suffix and its
+ * menu label. stress_presets gives each its shape and layout, one row per
+ * ID. The scene table and every test expand it; the render_lab tools README
+ * names the option each is the loss case of. */
 #define STRESS_PRESETS(X)                                                                                              \
-    X(OPEN, "open", BANDED, STRESS_SHAPE_PLANE, 8, 16, STRESS_LAYOUT_WALL, 60)                                         \
-    X(STACK, "stack", BANDED, STRESS_SHAPE_PLANE, 8, 8, STRESS_LAYOUT_STACK, 90)                                       \
-    X(TINY_COPIES, "tiny-copies", BANDED, STRESS_SHAPE_SPHERE, 4, 64, STRESS_LAYOUT_WALL, 40)                          \
-    X(BIG_TRIS, "big-tris", BANDED, STRESS_SHAPE_PLANE, 2, 1, STRESS_LAYOUT_WALL, 100)                                 \
-    X(PER_FRAME, "per-frame", WAVE, STRESS_SHAPE_PLANE, 24, 1, STRESS_LAYOUT_WALL, 80)                                 \
-    X(TWO_SIDED, "two-sided", TWO_SIDED, STRESS_SHAPE_CUBE, 4, 16, STRESS_LAYOUT_WALL, 60)                             \
-    X(NOISY_TINY, "noisy-tiny", NOISY, STRESS_SHAPE_CYLINDER, 16, 36, STRESS_LAYOUT_WALL, 75)
+    X(OPEN, "open", BANDED)                                                                                            \
+    X(STACK, "stack", BANDED)                                                                                          \
+    X(TINY_COPIES, "tiny-copies", BANDED)                                                                              \
+    X(BIG_TRIS, "big-tris", BANDED)                                                                                    \
+    X(PER_FRAME, "per-frame", WAVE)                                                                                    \
+    X(TWO_SIDED, "two-sided", TWO_SIDED)                                                                               \
+    X(NOISY_TINY, "noisy-tiny", NOISY)
 
 #define STRESS_PRESET_ID(id_, ...) STRESS_##id_,
 
