@@ -221,7 +221,7 @@ test_direct_sum_matches_independent_float_reference(void) {
         memcpy(lights.direction, directions, sizeof directions);
         memcpy(lights.color, colors, sizeof colors);
         uint8_t got[3];
-        light_evaluate((vec3f_t){0, 1, 0}, &lights, albedo, got);
+        light_evaluate(vec3f_unit_y(), &lights, albedo, got);
         const float sum[] = {
             lights.ambient.x + lights.color[0].x + (count == R3D_SKIN_LIGHT_MAX ? lights.color[3].x : 0),
             lights.ambient.y + lights.color[0].y + (count == R3D_SKIN_LIGHT_MAX ? lights.color[3].y : 0),
@@ -269,7 +269,7 @@ test_fused_rotations_unequal_weights_match_independent_reference(void) {
         f->bind.positions = positions;
         f->bind.colors = colors;
         for (int j = 0; j < JOINTS; j++) {
-            transformf_t transform = {.rotation = quatf_identity(), .scale = {1, 1, 1}};
+            transformf_t transform = {.rotation = quatf_identity(), .scale = vec3f_one()};
             transform.rotation = quatf_from_euler((vec3f_t){0.17F * (j + 1), -0.31F * j, 0.23F * (j + 1)});
             f->palette[j] = transformf_matrix(&transform);
             f->normals[j] = mat3f_cofactor(mat3f_from_mat4(f->palette[j]));
@@ -324,7 +324,7 @@ assert_scaled_lighting(bool joint_scale, bool rotate, bool distinct) {
     f->skin.vertices = f->records;
     f->bind.positions = positions;
     f->bind.colors = colors;
-    transformf_t entity = {.rotation = quatf_identity(), .scale = {1, 1, 1}};
+    transformf_t entity = {.rotation = quatf_identity(), .scale = vec3f_one()};
     transformf_t joint = entity;
     if (joint_scale) {
         joint.scale.x = 2;
@@ -383,7 +383,7 @@ test_distinct_joint_determinants_preserve_weights(void) {
 
 static void
 test_normal_palette_refuses_nonfinite_inverse(void) {
-    const transformf_t transform = {.rotation = {0, 0, 0, 1}, .scale = {1e-39F, 1e19F, 1e19F}};
+    const transformf_t transform = {.rotation = quatf_identity(), .scale = {1e-39F, 1e19F, 1e19F}};
     const mat4f_t palette = transformf_compute_matrix(&transform);
     mat3f_t normal;
     TEST_ASSERT_FALSE(r3d_skin_normal_palette(&palette, 1, mat4f_identity(), &normal));
@@ -458,7 +458,7 @@ test_irradiance_table_preserves_range_and_matches_float(void) {
             lights.color[i] = (vec3f_t){3, 2, 4};
         }
         lights.table_scale = r3d_skin_light_table_build(&lights, table);
-        TEST_ASSERT_GREATER_THAN_FLOAT(1, r3d_skin_light_table_sample((vec3f_t){0, 1, 0}, &lights).z);
+        TEST_ASSERT_GREATER_THAN_FLOAT(1, r3d_skin_light_table_sample(vec3f_unit_y(), &lights).z);
         for (int white = 0; white <= 1; white++) {
             r3d_skin_light_transfer_build((float)white, transfer);
             const int error = assert_table_sweep(&lights, (float)white);
@@ -467,7 +467,7 @@ test_irradiance_table_preserves_range_and_matches_float(void) {
     }
     TEST_ASSERT_LESS_OR_EQUAL_INT(R3D_SKIN_LIGHT_TABLE_ERROR_BOUND, maximum);
     const vec3f_t zero =
-        r3d_skin_light_table_sample((vec3f_t){0}, &(r3d_skin_lights_t){.table = table, .ambient = {1, 2, 3}});
+        r3d_skin_light_table_sample(vec3f_zero(), &(r3d_skin_lights_t){.table = table, .ambient = {1, 2, 3}});
     TEST_ASSERT_EQUAL_FLOAT(2, zero.y);
     free(table);
     free(transfer);
@@ -529,13 +529,13 @@ test_table_extreme_finite_intensities(void) {
     for (size_t i = 0; i < sizeof intensities / sizeof intensities[0]; i++) {
         r3d_skin_lights_t lights = {.count = 2, .table = table};
         for (int j = 0; j < lights.count; j++) {
-            lights.direction[j] = (vec3f_t){0, 1, 0};
+            lights.direction[j] = vec3f_unit_y();
             lights.color[j] = (vec3f_t){intensities[i], intensities[i], intensities[i]};
         }
         lights.table_scale = r3d_skin_light_table_build(&lights, table);
         TEST_ASSERT_TRUE(isfinite(lights.table_scale));
         TEST_ASSERT_GREATER_THAN_FLOAT(0, lights.table_scale);
-        const vec3f_t sampled = r3d_skin_light_table_sample((vec3f_t){0, 1, 0}, &lights);
+        const vec3f_t sampled = r3d_skin_light_table_sample(vec3f_unit_y(), &lights);
         TEST_ASSERT_TRUE(isfinite(sampled.x));
         if (i == 0) {
             TEST_ASSERT_EQUAL_FLOAT(1, lights.table_scale);

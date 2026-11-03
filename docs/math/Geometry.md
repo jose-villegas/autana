@@ -10,6 +10,7 @@ width or height is empty. Queries clamp result sizes to zero.
 
 | Function | Purpose | Formula |
 |---|---|---|
+| `P_empty()` | empty rect at the origin; identity for union | $`(0, 0, 0, 0)`$ |
 | `P_right(r)` | exclusive right edge | $`r_x + r_w`$ |
 | `P_bottom(r)` | exclusive bottom edge | $`r_y + r_h`$ |
 | `P_from_edges(left, top, right, bottom)` | rectangle from half-open edges; crossed edges are empty | $`(left, top, \max(right-left,0), \max(bottom-top,0))`$ |

@@ -10,6 +10,7 @@
 #include <limits.h>
 #include <math.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,6 +20,11 @@
 #include "transform_cache.h"
 #include "unity.h"
 
+#include "math/geometry/rectf.h"
+#include "math/geometry/recti.h"
+#include "math/geometry/rects.h"
+#include "math/geometry/rectx.h"
+#include "math/linear/mat3f.h"
 #include "math/linear/transformf.h"
 #include "math/linear/transformx.h"
 #include "math/linear/vec_convert.h"
@@ -35,6 +41,77 @@
 /* Q16.16's table-driven sine is good to about 1e-3; sums of products to far
  * less, so rotation results are compared at this. */
 #define FIXED_SLACK           2e-3F
+
+enum { CONSTANT_AXES = 3 };
+
+static const int CONSTANT_COMPONENTS[][CONSTANT_AXES] = {{0, 0, 0},  {1, 1, 1},  {1, 0, 0}, {0, 1, 0},
+                                                         {1, 0, 0},  {-1, 0, 0}, {0, 0, 1}, {0, 1, 0},
+                                                         {0, -1, 0}, {0, 0, 1},  {0, 0, -1}};
+
+#define ASSERT_VECTOR_CONSTANTS(P, T, OPS, N, ...)                                                                     \
+    do {                                                                                                               \
+        const P##_t actual[] = {P##_zero(),  P##_one(),  P##_unit_x(), P##_unit_y(),                                   \
+                                P##_right(), P##_left(), __VA_ARGS__};                                                 \
+        for (size_t row = 0; row < sizeof actual / sizeof *actual; row++) {                                            \
+            T expected[N];                                                                                             \
+            for (int axis = 0; axis < N; axis++) {                                                                     \
+                const int sign = CONSTANT_COMPONENTS[row][axis];                                                       \
+                expected[axis] = sign == 0 ? OPS##_zero() : sign < 0 ? OPS##_neg(OPS##_one()) : OPS##_one();           \
+            }                                                                                                          \
+            TEST_ASSERT_EQUAL_MEMORY(expected, &actual[row], sizeof actual[row]);                                      \
+        }                                                                                                              \
+    } while (0)
+
+#define ASSERT_NUMBER_CONSTANTS(SUFFIX, T, OPS)                                                                        \
+    do {                                                                                                               \
+        ASSERT_VECTOR_CONSTANTS(vec2##SUFFIX, T, OPS, 2);                                                              \
+        ASSERT_VECTOR_CONSTANTS(vec3##SUFFIX, T, OPS, 3, vec3##SUFFIX##_unit_z(), vec3##SUFFIX##_up(),                 \
+                                vec3##SUFFIX##_down(), vec3##SUFFIX##_forward(), vec3##SUFFIX##_back());               \
+        const rect##SUFFIX##_t empty = rect##SUFFIX##_empty();                                                         \
+        const rect##SUFFIX##_t expected = {OPS##_zero(), OPS##_zero(), OPS##_zero(), OPS##_zero()};                    \
+        TEST_ASSERT_EQUAL_MEMORY(&expected, &empty, sizeof empty);                                                     \
+    } while (0)
+
+static void
+test_type_constants_match_scalar_units(void) {
+    ASSERT_NUMBER_CONSTANTS(f, float, mathf);
+    ASSERT_NUMBER_CONSTANTS(i, int32_t, mathi);
+    ASSERT_NUMBER_CONSTANTS(s, int16_t, maths);
+    ASSERT_NUMBER_CONSTANTS(x, int32_t, mathx);
+    const mat3f_t identity = mat3f_identity();
+    for (int r = 0; r < MAT3F_AXES; r++) {
+        for (int c = 0; c < MAT3F_AXES; c++) {
+            TEST_ASSERT_EQUAL_FLOAT(r == c ? mathf_one() : mathf_zero(), identity.m[r][c]);
+        }
+    }
+}
+
+#define ASSERT_STATIC_IDENTITY(P, INITIALIZER)                                                                         \
+    do {                                                                                                               \
+        const P##_t want = INITIALIZER;                                                                                \
+        const P##_t got = P##_identity();                                                                              \
+        TEST_ASSERT_EQUAL_MEMORY(&want, &got, sizeof(got));                                                            \
+    } while (0)
+
+static void
+test_identity_initializers_match_functions(void) {
+    static const mat4f_t mf = MAT4F_IDENTITY;
+    static const mat4x_t mx = MAT4X_IDENTITY;
+    ASSERT_STATIC_IDENTITY(mat4f, mf);
+    ASSERT_STATIC_IDENTITY(mat4x, mx);
+    /* Transform tail padding is unspecified; compare the stored prefix and cached flag. */
+    static const transformf_t f = TRANSFORMF_IDENTITY;
+    static const transformx_t x = TRANSFORMX_IDENTITY;
+    const transformf_t fi = transformf_identity();
+    const transformx_t xi = transformx_identity();
+#define ASSERT_TRANSFORM(P, A, B)                                                                                      \
+    do {                                                                                                               \
+        TEST_ASSERT_EQUAL_MEMORY(&(A), &(B), offsetof(P##_t, cached));                                                 \
+        TEST_ASSERT_EQUAL((A).cached, (B).cached);                                                                     \
+    } while (0)
+    ASSERT_TRANSFORM(transformf, f, fi);
+    ASSERT_TRANSFORM(transformx, x, xi);
+}
 
 static vec3x_t
 to_x(float x, float y, float z) {
@@ -55,11 +132,11 @@ static const vec3f_t B = {1.0F, 4.0F, -6.0F};
 
 static void
 test_looking_keeps_forward_at_large_positions(void) {
-    const vec3f_t forward = {1.0F, 0.0F, 0.0F};
-    const vec3f_t up = {0.0F, 1.0F, 0.0F};
+    const vec3f_t forward = vec3f_unit_x();
+    const vec3f_t up = vec3f_unit_y();
     const vec3f_t far = {1e9F, 1e9F, 1e9F};
     const transformf_t pose = transformf_looking(far, forward, up);
-    const vec3f_t got = quatf_rotate(pose.rotation, (vec3f_t){0.0F, 0.0F, 1.0F});
+    const vec3f_t got = quatf_rotate(pose.rotation, vec3f_unit_z());
     TEST_ASSERT_FLOAT_WITHIN(FIXED_SLACK, forward.x, got.x);
     TEST_ASSERT_FLOAT_WITHIN(FIXED_SLACK, forward.y, got.y);
     TEST_ASSERT_FLOAT_WITHIN(FIXED_SLACK, forward.z, got.z);
@@ -151,7 +228,7 @@ assert_normalize_reference(vec3x_t a) {
 static void
 test_normalize_divide_zero_and_float(void) {
     static const int32_t numerators[] = {INT32_MIN, -1, 0, 1, INT32_MAX};
-    const vec3x_t zero = {0, 0, 0};
+    const vec3x_t zero = vec3x_zero();
     for (size_t i = 0; i < sizeof(numerators) / sizeof(numerators[0]); i++) {
         int32_t q;
         TEST_ASSERT_TRUE(vec3x_equal(zero, vec3x_normalize_divide(zero, numerators[i], &q)));
@@ -206,7 +283,7 @@ test_fixed_normalize_extreme_magnitudes(void) {
     TEST_ASSERT_EQUAL_INT32(MATHX_ONE, vec3x_normalize(cases[1]).x);
     const vec3x_t negative_axis = {INT32_MIN, 0, 0};
     int32_t q;
-    TEST_ASSERT_TRUE(vec3x_equal((vec3x_t){-MATHX_ONE, 0, 0}, vec3x_normalize_divide(negative_axis, INT32_MIN, &q)));
+    TEST_ASSERT_TRUE(vec3x_equal(vec3x_left(), vec3x_normalize_divide(negative_axis, INT32_MIN, &q)));
     TEST_ASSERT_EQUAL_INT32(-MATHX_ONE, q);
     vec3x_normalize_divide(cases[1], MATHX_ONE, &q);
     TEST_ASSERT_EQUAL_INT32(INT32_MAX, q);
@@ -255,13 +332,13 @@ test_fixed_quaternion_rotation_matches_float(void) {
 
 static void
 test_fixed_view_from_axes_maps_the_eye_and_frame_axes(void) {
-    const vec3x_t x = {0, MATHX_ONE, 0}, y = {0, 0, -MATHX_ONE}, z = {-MATHX_ONE, 0, 0};
+    const vec3x_t x = vec3x_unit_y(), y = {0, 0, -MATHX_ONE}, z = {-MATHX_ONE, 0, 0};
     const vec3x_t eye = {2 * MATHX_ONE, -3 * MATHX_ONE, 4 * MATHX_ONE}, origin = {0, 0, 0};
     const mat4x_t view = mat4x_view_from_axes(x, y, z, eye);
     TEST_ASSERT_TRUE(vec3x_equal(origin, mat4x_apply(&view, eye)));
-    TEST_ASSERT_TRUE(vec3x_equal((vec3x_t){MATHX_ONE, 0, 0}, mat4x_apply(&view, vec3x_add(eye, x))));
-    TEST_ASSERT_TRUE(vec3x_equal((vec3x_t){0, MATHX_ONE, 0}, mat4x_apply(&view, vec3x_add(eye, y))));
-    TEST_ASSERT_TRUE(vec3x_equal((vec3x_t){0, 0, MATHX_ONE}, mat4x_apply(&view, vec3x_add(eye, z))));
+    TEST_ASSERT_TRUE(vec3x_equal(vec3x_unit_x(), mat4x_apply(&view, vec3x_add(eye, x))));
+    TEST_ASSERT_TRUE(vec3x_equal(vec3x_unit_y(), mat4x_apply(&view, vec3x_add(eye, y))));
+    TEST_ASSERT_TRUE(vec3x_equal(vec3x_unit_z(), mat4x_apply(&view, vec3x_add(eye, z))));
 }
 
 static void
@@ -299,8 +376,8 @@ test_fixed_scale_columns_keeps_the_translation(void) {
 
 static void
 test_fixed_transform_matrix_and_view_match_float(void) {
-    transformf_t f = TRANSFORMF_IDENTITY;
-    transformx_t x = TRANSFORMX_IDENTITY;
+    transformf_t f = transformf_identity();
+    transformx_t x = transformx_identity();
     transformf_set_position(&f, (vec3f_t){1.0F, -2.0F, 3.0F});
     transformx_set_position(&x, to_x(1.0F, -2.0F, 3.0F));
     transformf_set_scale(&f, (vec3f_t){2.0F, 1.0F, 0.5F});
@@ -323,13 +400,13 @@ test_fixed_transform_matrix_and_view_match_float(void) {
 
 static void
 test_fixed_transform_look_at_matches_float(void) {
-    transformf_t f = TRANSFORMF_IDENTITY;
-    transformx_t x = TRANSFORMX_IDENTITY;
+    transformf_t f = transformf_identity();
+    transformx_t x = transformx_identity();
     transformf_set_position(&f, (vec3f_t){1.0F, -2.0F, 3.0F});
     transformx_set_position(&x, to_x(1.0F, -2.0F, 3.0F));
-    transformf_look_at(&f, (vec3f_t){4.0F, 1.0F, 9.0F}, (vec3f_t){0.0F, 1.0F, 0.0F});
+    transformf_look_at(&f, (vec3f_t){4.0F, 1.0F, 9.0F}, vec3f_unit_y());
     transformx_look_at(&x, to_x(4.0F, 1.0F, 9.0F), to_x(0.0F, 1.0F, 0.0F));
-    const vec3f_t fwd = {0.0F, 0.0F, 1.0F};
+    const vec3f_t fwd = vec3f_unit_z();
     assert_x_near_f(quatf_rotate(f.rotation, fwd), quatx_rotate(x.rotation, vec3x_from_vec3f(fwd)), FIXED_SLACK);
 }
 
@@ -341,7 +418,7 @@ rebuilds_x(transformx_t* t) {
 
 static void
 test_fixed_transform_builds_once_and_rebuilds_after_each_setter(void) {
-    transformx_t t = TRANSFORMX_IDENTITY;
+    transformx_t t = transformx_identity();
     TEST_ASSERT_FALSE(rebuilds_x(&t));
     ASSERT_TRANSFORM_SETTERS(transformx, t, to_x, quatx_from_axis_angle(to_x(0.0F, 1.0F, 0.0F), MATHX_ONE / 4),
                              rebuilds_x);
@@ -410,8 +487,8 @@ test_maths_saturate_exhaustive(void) {
 static void
 test_int16_arithmetic_and_conversion_saturate_at_the_int16_range(void) {
 
-    TEST_ASSERT_EQUAL_INT16(INT16_MAX, vec3s_add((vec3s_t){INT16_MAX, 0, 0}, (vec3s_t){1, 0, 0}).x);
-    TEST_ASSERT_EQUAL_INT16(INT16_MIN, vec3s_sub((vec3s_t){INT16_MIN, 0, 0}, (vec3s_t){1, 0, 0}).x);
+    TEST_ASSERT_EQUAL_INT16(INT16_MAX, vec3s_add((vec3s_t){INT16_MAX, 0, 0}, vec3s_unit_x()).x);
+    TEST_ASSERT_EQUAL_INT16(INT16_MIN, vec3s_sub((vec3s_t){INT16_MIN, 0, 0}, vec3s_unit_x()).x);
     TEST_ASSERT_EQUAL_INT16(INT16_MAX, vec3s_scale((vec3s_t){300, 0, 0}, 300).x);
     TEST_ASSERT_EQUAL_INT16(INT16_MAX, vec3s_from_vec3i((vec3i_t){100000, 0, 0}).x);
     TEST_ASSERT_EQUAL_INT16(INT16_MIN, vec3s_from_vec3i((vec3i_t){0, -100000, 0}).y);
@@ -483,8 +560,8 @@ test_normalize_by_value_and_repeated_rotation_stay_unit_length(void) {
     const quatx_t x = quatx_normalize((quatx_t){0, 0, 0, 2 * MATHX_ONE});
     TEST_ASSERT_EQUAL_INT32(MATHX_ONE, x.w);
 
-    transformf_t tf = TRANSFORMF_IDENTITY;
-    transformx_t tx = TRANSFORMX_IDENTITY;
+    transformf_t tf = transformf_identity();
+    transformx_t tx = transformx_identity();
     for (int i = 0; i < 200; i++) {
         transformf_rotate(&tf, quatf_from_euler((vec3f_t){0.01F, 0.02F, 0.03F}));
         transformx_rotate(&tx, quatx_from_euler((vec3x_t){MATHX_ONE / 600, MATHX_ONE / 300, MATHX_ONE / 200}));
@@ -500,7 +577,7 @@ test_normalize_by_value_and_repeated_rotation_stay_unit_length(void) {
 
 static void
 test_slerp_of_equal_and_opposite_quaternions_and_across_its_threshold(void) {
-    const quatf_t a = quatf_from_axis_angle((vec3f_t){0.0F, 1.0F, 0.0F}, 0.8F);
+    const quatf_t a = quatf_from_axis_angle(vec3f_unit_y(), 0.8F);
     const quatf_t same = quatf_slerp(a, a, 0.3F);
     TEST_ASSERT_FLOAT_WITHIN(1e-5F, 1.0F, fabsf((same.x * a.x) + (same.y * a.y) + (same.z * a.z) + (same.w * a.w)));
 
@@ -513,8 +590,8 @@ test_slerp_of_equal_and_opposite_quaternions_and_across_its_threshold(void) {
     const float cosines[] = {0.9996F, 0.9994F};
     for (int i = 0; i < 2; i++) {
         const float angle = 2.0F * acosf(cosines[i]);
-        const quatf_t end = quatf_from_axis_angle((vec3f_t){0.0F, 1.0F, 0.0F}, angle);
-        const vec3f_t got = quatf_rotate(quatf_slerp(quatf_identity(), end, 0.5F), (vec3f_t){0.0F, 0.0F, 1.0F});
+        const quatf_t end = quatf_from_axis_angle(vec3f_unit_y(), angle);
+        const vec3f_t got = quatf_rotate(quatf_slerp(quatf_identity(), end, 0.5F), vec3f_unit_z());
         TEST_ASSERT_FLOAT_WITHIN(1e-4F, sinf(angle / 2.0F), got.x);
         TEST_ASSERT_FLOAT_WITHIN(1e-4F, cosf(angle / 2.0F), got.z);
     }
@@ -523,9 +600,9 @@ test_slerp_of_equal_and_opposite_quaternions_and_across_its_threshold(void) {
 static void
 assert_basis_f(vec3f_t r, vec3f_t u, vec3f_t f) {
     const quatf_t q = quatf_from_basis(r, u, f);
-    const vec3f_t x = quatf_rotate(q, (vec3f_t){1.0F, 0.0F, 0.0F});
-    const vec3f_t y = quatf_rotate(q, (vec3f_t){0.0F, 1.0F, 0.0F});
-    const vec3f_t z = quatf_rotate(q, (vec3f_t){0.0F, 0.0F, 1.0F});
+    const vec3f_t x = quatf_rotate(q, vec3f_unit_x());
+    const vec3f_t y = quatf_rotate(q, vec3f_unit_y());
+    const vec3f_t z = quatf_rotate(q, vec3f_unit_z());
     TEST_ASSERT_FLOAT_WITHIN(1e-5F, r.x, x.x);
     TEST_ASSERT_FLOAT_WITHIN(1e-5F, u.y, y.y);
     TEST_ASSERT_FLOAT_WITHIN(1e-5F, f.z, z.z);
@@ -563,12 +640,11 @@ static void
 test_fixed_angles_negative_and_beyond_a_turn(void) {
     const vec3x_t y_axis = to_x(0.0F, 1.0F, 0.0F);
     const vec3x_t z = to_x(0.0F, 0.0F, 1.0F);
-    assert_x_near_f((vec3f_t){-1.0F, 0.0F, 0.0F}, quatx_rotate(quatx_from_axis_angle(y_axis, -MATHX_ONE / 4), z),
+    assert_x_near_f(vec3f_left(), quatx_rotate(quatx_from_axis_angle(y_axis, -MATHX_ONE / 4), z), FIXED_SLACK);
+    assert_x_near_f(vec3f_unit_x(), quatx_rotate(quatx_from_axis_angle(y_axis, MATHX_ONE + (MATHX_ONE / 4)), z),
                     FIXED_SLACK);
-    assert_x_near_f((vec3f_t){1.0F, 0.0F, 0.0F},
-                    quatx_rotate(quatx_from_axis_angle(y_axis, MATHX_ONE + (MATHX_ONE / 4)), z), FIXED_SLACK);
-    assert_x_near_f((vec3f_t){1.0F, 0.0F, 0.0F},
-                    quatx_rotate(quatx_from_axis_angle(y_axis, -3 * MATHX_ONE + (MATHX_ONE / 4)), z), FIXED_SLACK);
+    assert_x_near_f(vec3f_unit_x(), quatx_rotate(quatx_from_axis_angle(y_axis, -3 * MATHX_ONE + (MATHX_ONE / 4)), z),
+                    FIXED_SLACK);
 }
 
 static void
@@ -685,7 +761,7 @@ test_a_cross_dimension_swizzle_returns_the_other_vector_type(void) {
     const vec3f_t p = {1.5F, -2.0F, 4.0F};
     const vec2f_t ground = vec3f_xz(p);
     TEST_ASSERT_TRUE(_Generic(vec3f_xz(p), vec2f_t: true, default: false));
-    TEST_ASSERT_TRUE(_Generic(vec2x_yxy((vec2x_t){0, 0}), vec3x_t: true, default: false));
+    TEST_ASSERT_TRUE(_Generic(vec2x_yxy(vec2x_zero()), vec3x_t: true, default: false));
     TEST_ASSERT_TRUE(vec2f_equal((vec2f_t){1.5F, 4.0F}, ground));
     TEST_ASSERT_TRUE(vec3s_equal((vec3s_t){-7, 3, -7}, vec2s_yxy((vec2s_t){3, -7})));
 }
@@ -1997,6 +2073,8 @@ test_trig_sin_error_bins(void) {
 
 void
 suite_math_numbers(void) {
+    RUN_TEST(test_type_constants_match_scalar_units);
+    RUN_TEST(test_identity_initializers_match_functions);
 #ifndef ESP_PLATFORM
     RUN_TEST(test_fast_path_period_bins_and_fractional_ulp);
 #endif

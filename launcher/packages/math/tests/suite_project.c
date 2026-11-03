@@ -61,7 +61,7 @@ test_projectf_screen_center_and_independent_axes(void) {
 static void
 test_projectf_clip_near_rejects_and_preserves_endpoints(void) {
     const projectf_t lens = fixture();
-    vec3f_t a = {0, 0, 0}, b = {0, 0, lens.near_z};
+    vec3f_t a = vec3f_zero(), b = {0, 0, lens.near_z};
     const vec3f_t before_a = a, before_b = b;
     TEST_ASSERT_FALSE(projectf_clip_near(lens.near_z, &a, &b));
     TEST_ASSERT_EQUAL_MEMORY(&before_a, &a, sizeof a);
@@ -100,7 +100,7 @@ test_projectx_clip_near_at_two_scales(void) {
     const int32_t scales[] = {1, MATHX_ONE};
     for (unsigned i = 0; i < sizeof scales / sizeof scales[0]; i++) {
         const int32_t near_z = PROJECT_NEAR * scales[i];
-        vec3x_t a = {0, 0, 0}, b = {0, 0, near_z};
+        vec3x_t a = vec3x_zero(), b = {0, 0, near_z};
         const vec3x_t before_a = a, before_b = b;
         TEST_ASSERT_FALSE(projectx_clip_near(near_z, &a, &b));
         TEST_ASSERT_EQUAL_MEMORY(&before_a, &a, sizeof a);

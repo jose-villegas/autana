@@ -75,6 +75,6 @@ ridge_arm_drive(arm_t arm, int frame, input_t* input) {
     } else if (arm == ARM_TILT_WOBBLE) {
         ridge_arm_set_wobble_gravity(frame);
     } else if (arm == ARM_AMBIENT_SHAKE) {
-        ui_ridge_set_gravity((vec3f_t){-1, 0, 0}, frame % 40 < 10 ? 0.47F : 0);
+        ui_ridge_set_gravity(vec3f_left(), frame % 40 < 10 ? 0.47F : 0);
     }
 }

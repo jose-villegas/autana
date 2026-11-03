@@ -22,7 +22,7 @@
 #define SCENE_AMBIENT_INTENSITY_NONE  0.0F
 #define SCENE_TONEMAP_WHITE_NONE      0.0F
 #define SCENE_LIGHT_INTENSITY_DEFAULT 0.0F
-#define SCENE_LIGHT_COLOR_DEFAULT     ((vec3f_t){1.0F, 1.0F, 1.0F})
+#define SCENE_LIGHT_COLOR_DEFAULT     vec3f_one()
 
 typedef enum { SCENE_LIGHT_NONE, SCENE_LIGHT_DIRECTIONAL } scene_light_kind_t;
 
