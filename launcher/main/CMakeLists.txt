@@ -387,14 +387,19 @@ if(NOT CMAKE_SCRIPT_MODE_FILE)
         BYPRODUCTS "${asset_image}"
         COMMENT "Writing the asset packs"
         VERBATIM)
+    # The build fails when the image outgrows the partition, as an app does.
+    partition_table_add_check_size_target(asset_image_check_size
+        BINARY_PATH "${asset_image}" PARTITION_TYPE data PARTITION_SUBTYPE 0x40 DEPENDS asset_pack_image)
+    add_custom_target(asset_image_fits ALL)
+    add_dependencies(asset_image_fits asset_image_check_size)
     esptool_py_flash_to_partition(flash "assets" "${asset_image}")
-    add_dependencies(flash asset_pack_image)
+    add_dependencies(flash asset_image_fits)
     partition_table_get_partition_info(asset_offset "--partition-name assets" "offset")
     idf_component_get_property(flash_main_args esptool_py FLASH_ARGS)
     idf_component_get_property(flash_sub_args esptool_py FLASH_SUB_ARGS)
     esptool_py_flash_target(assets-flash "${flash_main_args}" "${flash_sub_args}")
     esptool_py_flash_target_image(assets-flash assets "${asset_offset}" "${asset_image}")
-    add_dependencies(assets-flash asset_pack_image)
+    add_dependencies(assets-flash asset_image_fits)
 endif()
 
 if(CONFIG_SPIRAM_SPEED_120M)
