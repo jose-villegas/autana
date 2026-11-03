@@ -1,7 +1,6 @@
 /*
  * imu: the IMU chip's stream FIFO, drained by a polling task (chip drivers: imu_chip.h).
- * imu_read() returns the newest sample read by the task. Register values follow the
- * QST QMI8658A datasheet Rev A (2022).
+ * imu_read() returns the newest sample read by the task.
  * The task works only for recent readers (imu_demand.h): FIFO takes keep the drains,
  * imu_read() alone keeps register reads, and with neither it parks until the next call.
  */
@@ -14,7 +13,6 @@
 #include "input/motion/imu_sample.h"
 #include "math/scalar/units.h"
 
-/* Must agree with CTRL3's full-scale code in imu.c. */
 #define IMU_GYRO_RANGE_DPS            512.0F
 /* QMI8658C datasheet, Table 8: board-level initial gyro offset tolerance. */
 #define IMU_GYRO_OFFSET_TOL_DPS       10.0F
@@ -26,8 +24,7 @@
 #define IMU_GYRO_BIAS_MAX_DPS         (IMU_GYRO_OFFSET_TOL_DPS + (IMU_GYRO_OFFSET_TCO_DPS_PER_C * IMU_GYRO_TEMP_SPAN_C))
 
 /* QST QMI8658A datasheet Rev A (2022), Table 22 CTRL2/CTRL3 (6DOF);
- * Lewis He, SensorLib GyroODR. We use stream mode, 128 samples,
- * and the datasheet count-before-request drain sequence. */
+ * Lewis He, SensorLib GyroODR. We use stream mode, 128 samples. */
 #define IMU_ODR_BASE_HZ               7174.4
 #define IMU_ODR_CODE                  5
 #define IMU_ODR_DIVIDER               (1U << IMU_ODR_CODE)

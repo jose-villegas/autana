@@ -267,7 +267,17 @@ log_suspect_burst(const imu_sample_t* samples, int count) {
 }
 #endif
 
-static void restart_fifo(void);
+/* Drains resume on a fresh FIFO: what it held is stale, and the read-mode loss
+ * since the last drain was never counted. Queued samples drop behind a gap. */
+static void
+restart_fifo(void) {
+    if (sensor_present) {
+        BOARD_IMU_CHIP.restart();
+    }
+    portENTER_CRITICAL(&lock);
+    imu_queue_push(&queue, NULL, 0, 0, true);
+    portEXIT_CRITICAL(&lock);
+}
 
 static int
 drain_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
@@ -392,18 +402,6 @@ imu_read_or_drain(bool drain_due) {
     stats.bus_us += (uint64_t)(timing_now_us() - start_us);
 #endif
     return drain_due;
-}
-
-/* Drains resume on a fresh FIFO: what it held is stale, and the read-mode loss
- * since the last drain was never counted. Queued samples drop behind a gap. */
-static void
-restart_fifo(void) {
-    if (sensor_present) {
-        BOARD_IMU_CHIP.restart();
-    }
-    portENTER_CRITICAL(&lock);
-    imu_queue_push(&queue, NULL, 0, 0, true);
-    portEXIT_CRITICAL(&lock);
 }
 
 /* The level readers ask for; with none, marks the task parked under the same lock a reader stamps under. */
