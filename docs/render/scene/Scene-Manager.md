@@ -30,6 +30,8 @@ block transactionally; attachment failure preserves the scene.
 | `renderers[]` | entity that draws | a view of its lit mesh in the asset pack, its entity id, and its world matrix |
 | `cameras[]` | camera | lens, clear color, its entity id (its pose is the entity's `locals[]` slot) |
 | `instances[]` | renderer | the list the raster draws this frame, refilled from `renderers[]` |
+| `staged[]` | entity | the entities with an animator, a skin or a light, in entity order; the animation stage walks only these |
+| `active_renderers[]` | renderer | the renderers whose entity is active, in renderer order; rebuilt at the resolve after an active flag flips |
 | names | entity | the scene entry's, read in the pack with each name's hash; looked up only by `scene_find()` |
 
 Array lengths come from the scene's `SCNE` entry
@@ -140,7 +142,7 @@ the parent's frame; a world is the parent's world times the local, an exact
 | Step | When | Does |
 |---|---|---|
 | `scene_entity_set_enabled()` | the call | recomputes the active flag of the entity and every later one, so a disabled parent hides its descendants at once; each keeps its own enabled flag |
-| resolve | each `scene_render()`, after animation, before the draw | rebuilds the world of each parent and renderer whose own transform moved or whose parent's world did, in entity order; nothing else is rebuilt |
+| resolve | each `scene_render()`, after animation, before the draw | rebuilds the world of each parent and active renderer whose own transform moved or whose parent's world did, in entity order; an inactive renderer's world waits until it turns active |
 | draw | after the resolve | the raster reads the renderers' worlds ([Each frame](#each-frame)) |
 
 Property clips move an entity's own transform, so a clip on a parent carries

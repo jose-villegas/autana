@@ -21,7 +21,7 @@
 #include <string.h>
 
 #include "app/app_arena.h"
-#include "board/board_geometry.h"
+#include "board_geometry.h"
 #include "core/job.h"
 #include "core/timing.h"
 #include "core/tune.h"

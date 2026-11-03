@@ -11,6 +11,8 @@ sys.path.insert(0, str(SCRIPTS))
 
 import check_style_audit  # noqa: E402
 
+BOARD_KCONFIG = 'choice BOARD\n    default BOARD_ONE\nendchoice\nconfig BOARD_DIR\n    default "one" if BOARD_ONE\n'
+
 
 class StyleAuditTest(unittest.TestCase):
     def rule_hits(self, root, rule_id, file_filter=None):
@@ -278,6 +280,25 @@ void f(void) {
         })
         self.assertEqual(len(findings), 1)
         self.assertIn("board/board.h", findings[0].message)
+
+    def test_the_boards_folder_is_its_own_include_root(self):
+        # The chosen board's folder is on the include path, so its headers are
+        # written bare; reaching one through main/ is the unqualified spelling.
+        # Other headers keep their own root: main/ for a layer, include/ for a package.
+        findings = self.audit("INCLUDE-LAYER", {
+            "launcher/main/Kconfig.projbuild": BOARD_KCONFIG,
+            "launcher/main/board/one/board_config.h": "#pragma once\n",
+            "launcher/main/board/board.h": '#include "board_config.h"\n',
+            "launcher/main/input/touch.h": "#pragma once\n",
+            "launcher/packages/p/include/p/p.h": "#pragma once\n",
+            "launcher/main/input/touch.c": ('#include "board/one/board_config.h"\n#include "input/touch.h"\n'
+                                            '#include "p/p.h"\n'),
+            "launcher/main/shell/shell.c": '#include "../input/touch.h"\n',
+        })
+        self.assertEqual([(hit.path, hit.line) for hit in findings],
+                         [("launcher/main/input/touch.c", 1), ("launcher/main/shell/shell.c", 1)])
+        self.assertIn('use "board_config.h"', findings[0].message)
+        self.assertIn('use "input/touch.h"', findings[1].message)
 
     def test_an_apps_internal_relative_include_is_not_flagged(self):
         findings = self.audit("INCLUDE-LAYER", {

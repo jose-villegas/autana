@@ -5,7 +5,7 @@
 #include <math.h>
 #include <stdio.h>
 
-#include "board/board_geometry.h"
+#include "board_geometry.h"
 #include "input/motion/imu_sample.h"
 
 #define PROBE_PI         3.14159265F

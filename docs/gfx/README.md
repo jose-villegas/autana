@@ -19,7 +19,7 @@ A caller includes the header for what it does:
 | `draw/` | primitives, images, icons, fonts, palettes, dithering |
 | `gfx/target/` | pixel colour, boxes, draw targets, render-target attachments |
 | `gfx/present/` | the framebuffer and presentation: layout values under `modes/`, send policy under `send/`, emulated panel backends under `panel/`; `gfx_internal.h` holds state only presentation shares |
-| `board/board_panel.c` | the panel link itself: QSPI and each revision's init sequence |
+| `board/waveshare_amoled_1_8/board_panel.c` | the panel link itself: QSPI and each revision's init sequence |
 
 Draw reaches presentation through `gfx_present.h`: `gfx_draw_begin()` hands it the
 target, clip and whether to mark, and the `gfx_mark_*` calls record what it wrote.
