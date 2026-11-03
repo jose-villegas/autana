@@ -29,6 +29,11 @@
         bool cached;                                                                                                   \
     } P##_t;                                                                                                           \
                                                                                                                        \
+    /* identity = {zero position, identity rotation, unit scale, identity matrix, cached}. */                          \
+    static inline P##_t P##_identity(void) {                                                                           \
+        return (P##_t){V##_zero(), Q##_identity(), V##_one(), M##_identity(), true};                                   \
+    }                                                                                                                  \
+                                                                                                                       \
     /* position = p, cached = false; likewise rotation and scale. */                                                   \
     static inline void P##_set_position(P##_t* t, V##_t position) {                                                    \
         t->position = position;                                                                                        \
@@ -70,8 +75,8 @@
     /* V = R^T * T(-position): rotation part R^T, column 3 = -(R^T * position). The inverse */                         \
     /* of position and rotation, parent to local; scale is ignored. */                                                 \
     static inline M##_t P##_view(const P##_t* t) {                                                                     \
-        const V##_t origin = {OPS##_zero(), OPS##_zero(), OPS##_zero()};                                               \
-        const V##_t one = {OPS##_one(), OPS##_one(), OPS##_one()};                                                     \
+        const V##_t origin = V##_zero();                                                                               \
+        const V##_t one = V##_one();                                                                                   \
         const M##_t pose = M##_from_trs(origin, t->rotation, one);                                                     \
         const V##_t x = {pose.m[0][0], pose.m[1][0], pose.m[2][0]}, y = {pose.m[0][1], pose.m[1][1], pose.m[2][1]},    \
                     z = {pose.m[0][2], pose.m[1][2], pose.m[2][2]};                                                    \
@@ -97,7 +102,7 @@
     static inline P##_t P##_looking(V##_t position, V##_t forward, V##_t up) {                                         \
         P##_t pose = {0};                                                                                              \
         pose.position = position;                                                                                      \
-        pose.scale = (V##_t){OPS##_one(), OPS##_one(), OPS##_one()};                                                   \
+        pose.scale = V##_one();                                                                                        \
         P##_look_along(&pose, forward, up);                                                                            \
         return pose;                                                                                                   \
     }

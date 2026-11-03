@@ -134,8 +134,8 @@ test_pixel_rounding_ties_and_single_round(void) {
     }
     x.origin = (vec2x_t){MATHX_ONE / AFFINE_SCALE, -MATHX_ONE / AFFINE_SCALE};
     f.origin = (vec2f_t){1.0F / AFFINE_SCALE, -1.0F / AFFINE_SCALE};
-    const vec2i_t xp = affine2x_map_pixel(&x, (vec2i_t){0, 0});
-    const vec2i_t fp = affine2f_map_pixel(&f, (vec2i_t){0, 0});
+    const vec2i_t xp = affine2x_map_pixel(&x, vec2i_zero());
+    const vec2i_t fp = affine2f_map_pixel(&f, vec2i_zero());
     TEST_ASSERT_EQUAL_INT(1, xp.x);
     TEST_ASSERT_EQUAL_INT(-1, xp.y);
     TEST_ASSERT_EQUAL_INT(1, fp.x);

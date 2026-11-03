@@ -240,8 +240,8 @@ tap_fixture(sand_colour_mode_t colour, bool landscape) {
     committed = (sand_options_t){.quality = 2, .color = colour, .dither = 2};
     sand_menu_init(&menu);
     sand_menu_title_clicked(&menu, SAND_TITLE_OPTIONS, committed);
-    options_frame(false, false, false, (vec2i_t){0, 0});
-    options_frame(false, false, false, (vec2i_t){0, 0});
+    options_frame(false, false, false, vec2i_zero());
+    options_frame(false, false, false, vec2i_zero());
 }
 
 static void
@@ -395,7 +395,7 @@ static void
 test_the_draft_colour_tile_is_selected_even_when_uncommitted(void) {
     tap_fixture(SAND_COLOUR_256, false);
     menu.draft.color = SAND_COLOUR_FULL;
-    options_frame(false, false, false, (vec2i_t){0, 0});
+    options_frame(false, false, false, vec2i_zero());
 
     const options_screen_layout_t lay = layout_for(false);
     for (int i = 0; i < OPTIONS_SCREEN_TILE_COUNT; i++) {

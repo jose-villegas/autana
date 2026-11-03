@@ -97,7 +97,7 @@ test_styles_match_pipeline_colours(void) {
     const uint16_t triangle[3] = {0, 1, 2};
     const r3d_lit_cluster_t cluster = {.vertex_count = 3};
     const r3d_lit_mesh_t mesh = {.positions = positions, .colors = (const uint8_t (*)[3])colours, .clusters = &cluster};
-    const r3d_lens_t lens = {.m = MAT4F_IDENTITY,
+    const r3d_lens_t lens = {.m = mat4f_identity(),
                              .project = {1.0F, -1.0F, 0.0F, 0.0F, 1.0F},
                              .depth_near = 1.0F,
                              .snap_cx = R3D_SNAP_BIAS,
@@ -145,7 +145,7 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
     const r3d_lit_cluster_t cluster = {.vertex_count = 6, .triangle_count = 2, .double_sided = true};
     const r3d_lit_mesh_t mesh = {
         .positions = positions, .colors = colors, .triangles = triangles, .clusters = &cluster};
-    const r3d_lens_t lens = {.m = MAT4F_IDENTITY,
+    const r3d_lens_t lens = {.m = mat4f_identity(),
                              .project = {1.0F, -1.0F, 0.0F, 0.0F, 1.0F},
                              .depth_near = 1.0F,
                              .snap_cx = R3D_SNAP_BIAS,
@@ -293,7 +293,7 @@ test_transform_matches_lens_projection_bits(void) {
     const r3d_lit_cluster_t cluster = {.vertex_count = 1};
     const uint16_t index = 0;
     for (size_t scale = 0; scale < sizeof scales / sizeof scales[0]; scale++) {
-        r3d_lens_t lens = {.m = MAT4F_IDENTITY,
+        r3d_lens_t lens = {.m = mat4f_identity(),
                            .project.near_z = 1.0F,
                            .snap_cx = R3D_SNAP_BIAS + 0.75F,
                            .snap_cy = R3D_SNAP_BIAS - 0.25F};
@@ -343,7 +343,7 @@ static void
 test_transform_pairs_and_odd_tail(void) {
     static const int16_t positions[TRANSFORM_PAIR_VERTICES][3] = {{1, -3, 4}, {2, 7, 5},    {-4, 2, 6},  {3, -8, 7},
                                                                   {5, 9, 8},  {-6, -11, 9}, {7, 13, 10}, {-8, -15, 11}};
-    const r3d_lens_t lens = {.m = MAT4F_IDENTITY,
+    const r3d_lens_t lens = {.m = mat4f_identity(),
                              .project.near_z = 1.0F,
                              .depth_near = 1.0F,
                              .snap_cx = R3D_SNAP_BIAS + 0.75F,
@@ -524,7 +524,7 @@ test_transform_nonfinite_paths(void) {
     for (int axis = 0; axis < MAT3F_AXES; axis++) {
         for (size_t i = 0; i < sizeof nonfinite / sizeof nonfinite[0]; i++) {
             r3d_lens_t lens = {
-                .m = MAT4F_IDENTITY, .project.near_z = 1.0F, .snap_cx = R3D_SNAP_BIAS, .snap_cy = R3D_SNAP_BIAS};
+                .m = mat4f_identity(), .project.near_z = 1.0F, .snap_cx = R3D_SNAP_BIAS, .snap_cy = R3D_SNAP_BIAS};
             r3d_lens_set_depth_near(&lens, lens.project.near_z);
             lens.m.m[axis][MAT3F_AXES] = nonfinite[i];
             r3d_pipeline_vertex_t out = {.sx = INT16_MIN, .sy = INT16_MIN};

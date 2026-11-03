@@ -15,6 +15,7 @@ import re
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3] / "scripts/gates"))
 from tracked import tracked_files
+from check_doc_index import SCHEME
 
 MARKER = re.compile(r"^<!-- (/?generated): ([a-z0-9][a-z0-9-]*)"
                     r"(?: sha256=([0-9a-f]{64})| check: (\S.*?))? -->$", re.M)
@@ -116,7 +117,7 @@ def rebase_links(body, page):
 
     def move(match):
         target = match.group(2)
-        if re.match(r"^[a-z][a-z0-9+.-]*:|^/", target):
+        if SCHEME.match(target) or target.startswith("/"):
             return match.group(0)
         path, _, fragment = target.partition("#")
         moved = posixpath.relpath(posixpath.normpath(posixpath.join(TABLE_BASE, path)), folder or ".")

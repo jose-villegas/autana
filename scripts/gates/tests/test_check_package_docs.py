@@ -56,6 +56,12 @@ def problems_for(**kwargs):
 
 
 class CheckMathDocs(unittest.TestCase):
+    def test_nested_constant_macro_arguments(self):
+        source = "MATH_DEFINE_CONSTANT(P, left, OPS##_neg(OPS##_one()), OPS##_zero())"
+        self.assertEqual(list(check_package_docs.macro_calls(source)), [
+            ("MATH_DEFINE_CONSTANT", "P, left, OPS##_neg(OPS##_one()), OPS##_zero()")])
+
+
     def test_family_sections_accept_both_heading_levels(self):
         for heading in ("##", "###"):
             with self.subTest(heading=heading):

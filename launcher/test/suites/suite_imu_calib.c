@@ -63,7 +63,7 @@ test_saved_requires_commit(void) {
     const int32_t saved[] = {1, -2, 3};
     imu_calib_t uncommitted;
     TEST_ASSERT_FALSE(imu_calib_from_saved(false, found, saved, IMU_CALIB_OFFSET_MAX, &uncommitted));
-    TEST_ASSERT_TRUE(vec3i_equal((vec3i_t){0}, uncommitted.offset));
+    TEST_ASSERT_TRUE(vec3i_equal(vec3i_zero(), uncommitted.offset));
     imu_calib_t committed;
     TEST_ASSERT_TRUE(imu_calib_from_saved(true, found, saved, IMU_CALIB_OFFSET_MAX, &committed));
     TEST_ASSERT_TRUE(vec3i_equal((vec3i_t){1, -2, 3}, committed.offset));
@@ -78,8 +78,8 @@ test_saved_validation(void) {
     TEST_ASSERT_EQUAL_INT(saved[0], valid.offset.x);
     TEST_ASSERT_EQUAL_INT(saved[1], valid.offset.y);
     const vec3i_t corrected = imu_calib_apply(&valid, valid.offset);
-    TEST_ASSERT_TRUE(vec3i_equal((vec3i_t){0}, corrected));
-    const vec3i_t zero = {0};
+    TEST_ASSERT_TRUE(vec3i_equal(vec3i_zero(), corrected));
+    const vec3i_t zero = vec3i_zero();
     for (int axis = 0; axis < 3; axis++) {
         found[axis] = false;
         imu_calib_t result;
@@ -115,19 +115,19 @@ test_gyro_saved_bounds(void) {
         TEST_ASSERT_EQUAL_INT(values[axis], ((int32_t[]){calib.offset.x, calib.offset.y, calib.offset.z})[axis]);
         found[axis] = false;
         imu_calib_from_saved(true, found, values, IMU_CALIB_GYRO_MAX, &calib);
-        TEST_ASSERT_TRUE(vec3i_equal((vec3i_t){0}, calib.offset));
+        TEST_ASSERT_TRUE(vec3i_equal(vec3i_zero(), calib.offset));
         values[axis] = IMU_CALIB_GYRO_MAX + 1;
         imu_calib_from_saved(true, complete, values, IMU_CALIB_GYRO_MAX, &calib);
-        TEST_ASSERT_TRUE(vec3i_equal((vec3i_t){0}, calib.offset));
+        TEST_ASSERT_TRUE(vec3i_equal(vec3i_zero(), calib.offset));
         imu_calib_from_saved(false, complete, values, IMU_CALIB_GYRO_MAX, &calib);
-        TEST_ASSERT_TRUE(vec3i_equal((vec3i_t){0}, calib.offset));
+        TEST_ASSERT_TRUE(vec3i_equal(vec3i_zero(), calib.offset));
     }
 }
 
 static void
 test_gyro_first_small_save(void) {
     imu_calib_gyro_t gyro = {0};
-    TEST_ASSERT_EQUAL_INT(IMU_CALIB_GYRO_SAVE_DUE, imu_calib_gyro_learn(&gyro, (vec3i_t){1, 0, 0}, 0));
+    TEST_ASSERT_EQUAL_INT(IMU_CALIB_GYRO_SAVE_DUE, imu_calib_gyro_learn(&gyro, vec3i_unit_x(), 0));
 }
 
 static vec3i_t
@@ -143,7 +143,7 @@ test_gyro_boundaries(void) {
             const vec3i_t maximum = axis_value(axis, sign * IMU_CALIB_GYRO_MAX);
             TEST_ASSERT_EQUAL_INT(IMU_CALIB_GYRO_REJECTED,
                                   imu_calib_gyro_learn(&gyro, axis_value(axis, sign * (IMU_CALIB_GYRO_MAX + 1)), 0));
-            TEST_ASSERT_TRUE(vec3i_equal((vec3i_t){0}, gyro.live.offset));
+            TEST_ASSERT_TRUE(vec3i_equal(vec3i_zero(), gyro.live.offset));
             TEST_ASSERT_FALSE(gyro.valid);
             TEST_ASSERT_EQUAL_INT(IMU_CALIB_GYRO_SAVE_DUE, imu_calib_gyro_learn(&gyro, maximum, 0));
             TEST_ASSERT_EQUAL_INT(IMU_CALIB_GYRO_REJECTED, imu_calib_gyro_learn(&gyro, axis_value(axis, sign), 0));
@@ -152,7 +152,7 @@ test_gyro_boundaries(void) {
             TEST_ASSERT_EQUAL_INT(
                 IMU_CALIB_GYRO_REJECTED,
                 imu_calib_gyro_learn(&gyro, axis_value(axis, sign * (IMU_CALIB_GYRO_RESIDUAL_MAX + 1)), 0));
-            TEST_ASSERT_TRUE(vec3i_equal((vec3i_t){0}, gyro.live.offset));
+            TEST_ASSERT_TRUE(vec3i_equal(vec3i_zero(), gyro.live.offset));
             TEST_ASSERT_EQUAL_INT(IMU_CALIB_GYRO_SAVE_DUE,
                                   imu_calib_gyro_learn(&gyro, axis_value(axis, sign * IMU_CALIB_GYRO_RESIDUAL_MAX), 0));
             gyro = (imu_calib_gyro_t){.valid = true, .storage_valid = true};
@@ -182,14 +182,14 @@ test_gyro_failed_save_retries_and_throttles(void) {
     imu_calib_gyro_saved(&gyro, false, attempt);
     TEST_ASSERT_FALSE(gyro.storage_valid);
     TEST_ASSERT_EQUAL_INT(IMU_CALIB_GYRO_APPLIED,
-                          imu_calib_gyro_learn(&gyro, (vec3i_t){0}, attempt + IMU_REST_WINDOW_MS * MATH_US_PER_MS));
+                          imu_calib_gyro_learn(&gyro, vec3i_zero(), attempt + IMU_REST_WINDOW_MS * MATH_US_PER_MS));
     TEST_ASSERT_EQUAL_INT(
         IMU_CALIB_GYRO_APPLIED,
         imu_calib_gyro_learn(&gyro, (vec3i_t){-IMU_CALIB_GYRO_SAVE_DELTA - 1, 0, 0}, attempt * 2 - 1));
-    TEST_ASSERT_EQUAL_INT(IMU_CALIB_GYRO_SAVE_DUE, imu_calib_gyro_learn(&gyro, (vec3i_t){0}, attempt * 2));
+    TEST_ASSERT_EQUAL_INT(IMU_CALIB_GYRO_SAVE_DUE, imu_calib_gyro_learn(&gyro, vec3i_zero(), attempt * 2));
     imu_calib_gyro_saved(&gyro, true, attempt * 2);
     TEST_ASSERT_TRUE(gyro.storage_valid);
-    TEST_ASSERT_EQUAL_INT(IMU_CALIB_GYRO_APPLIED, imu_calib_gyro_learn(&gyro, (vec3i_t){0}, attempt * 3));
+    TEST_ASSERT_EQUAL_INT(IMU_CALIB_GYRO_APPLIED, imu_calib_gyro_learn(&gyro, vec3i_zero(), attempt * 3));
 }
 
 static void
@@ -201,7 +201,7 @@ test_gyro_constructor(void) {
         TEST_ASSERT_EQUAL(state == 0, gyro.valid);
         TEST_ASSERT_EQUAL(gyro.valid, gyro.storage_valid);
         TEST_ASSERT_TRUE(vec3i_equal(gyro.live.offset, gyro.saved));
-        TEST_ASSERT_TRUE(vec3i_equal(state == 0 ? (vec3i_t){saved[0], saved[1], saved[2]} : (vec3i_t){0}, gyro.saved));
+        TEST_ASSERT_TRUE(vec3i_equal(state == 0 ? (vec3i_t){saved[0], saved[1], saved[2]} : vec3i_zero(), gyro.saved));
         TEST_ASSERT_EQUAL_INT64(0, gyro.next_save_us);
     }
 }

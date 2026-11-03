@@ -993,7 +993,7 @@ test_a_scene_gives_each_entity_s_mesh_id_and_each_camera_s_lens(void) {
     TEST_ASSERT_EQUAL_INT(0, render_context_main()->split.top_offset[0]);
     const transformf_t flight = scene_entity_local(scene, camera);
     TEST_ASSERT_EQUAL_FLOAT(2.5F, flight.position.x);
-    TEST_ASSERT_EQUAL_FLOAT(1.0F, quatf_rotate(flight.rotation, (vec3f_t){0, 0, 1}).z);
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, quatf_rotate(flight.rotation, vec3f_unit_z()).z);
 }
 
 /* Where the pair's entry puts its parts, as the pack holds it. */
@@ -1164,7 +1164,7 @@ test_a_child_is_drawn_where_its_parent_places_it(void) {
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(-2.0F));
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x00FF00), pixel(2.0F));
-    transformf_t home = TRANSFORMF_IDENTITY;
+    transformf_t home = transformf_identity();
     scene_entity_set_local(scene, scene_find(scene, name_hash("red")), home);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
@@ -1179,7 +1179,7 @@ test_a_child_moved_alone_stays_in_its_parents_frame(void) {
     fixture();
     scene_t* scene = show("test_family", SCENE_CAMERA_FIRST);
     frame(16);
-    transformf_t near = TRANSFORMF_IDENTITY;
+    transformf_t near = transformf_identity();
     transformf_set_position(&near, (vec3f_t){2, 0, 0});
     scene_entity_set_local(scene, scene_find(scene, name_hash("green")), near);
     frame(16);
@@ -1276,9 +1276,9 @@ test_a_world_set_under_turned_parents_reads_back_exactly(void) {
     fixture();
     scene_t* scene = load("test_tree");
     const scene_entity_t hand = scene_find(scene, name_hash("hand"));
-    transformf_t want = TRANSFORMF_IDENTITY;
+    transformf_t want = transformf_identity();
     transformf_set_position(&want, (vec3f_t){4, 5, 6});
-    transformf_set_rotation(&want, quatf_from_axis_angle((vec3f_t){0, 1, 0}, 0.7F));
+    transformf_set_rotation(&want, quatf_from_axis_angle(vec3f_unit_y(), 0.7F));
     transformf_set_scale(&want, (vec3f_t){1, 2, 3});
     scene_entity_set_world(scene, hand, want);
     const transformf_t got = scene_entity_world(scene, hand);
@@ -1316,7 +1316,7 @@ test_a_moved_grandparent_carries_its_grandchild(void) {
     const scene_entity_t root = scene_find(scene, name_hash("root"));
     scene_entity_set_enabled(scene, root, false);
     transformf_t moved = scene_entity_local(scene, root);
-    transformf_set_position(&moved, (vec3f_t){0, 0, 0});
+    transformf_set_position(&moved, vec3f_zero());
     scene_entity_set_local(scene, root, moved);
     transformf_set_position(&moved, (vec3f_t){3, 0, 0});
     scene_entity_set_local(scene, root, moved);
@@ -1784,7 +1784,7 @@ test_a_scene_the_tools_bake_loads_as_its_file_says(void) {
     TEST_ASSERT_EQUAL_STRING("green", scene_entity_mesh_id(scene, 2));
     TEST_ASSERT_NULL(scene_entity_mesh_id(scene, 1));
     /* a quarter turn about y, scaled (2, 4, 0.5), at (1, 2, 3) */
-    const mat4f_t want = mat4f_from_trs((vec3f_t){1, 2, 3}, quatf_from_axis_angle((vec3f_t){0, 1, 0}, MATH_PI * 0.5F),
+    const mat4f_t want = mat4f_from_trs((vec3f_t){1, 2, 3}, quatf_from_axis_angle(vec3f_unit_y(), MATH_PI * 0.5F),
                                         (vec3f_t){2, 4, 0.5F});
     const transformf_t pose = scene_entity_local(scene, 0);
     const mat4f_t got = transformf_compute_matrix(&pose);
@@ -2225,13 +2225,13 @@ test_a_moved_entity_is_drawn_where_it_now_stands(void) {
     scene_t* scene = show("test_pair", SCENE_CAMERA_FIRST);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
-    transformf_t away = TRANSFORMF_IDENTITY;
+    transformf_t away = transformf_identity();
     transformf_set_position(&away, (vec3f_t){-4, 0, 0});
     scene_entity_set_local(scene, scene_find(scene, name_hash("red")), away);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(0.0F));
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(-4.0F));
-    const transformf_t home = TRANSFORMF_IDENTITY;
+    const transformf_t home = transformf_identity();
     scene_entity_set_local(scene, scene_find(scene, name_hash("red")), home);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
@@ -2250,7 +2250,7 @@ assert_box(box3f_t box, vec3f_t lo, vec3f_t hi) {
 
 static void
 move_to(scene_t* scene, const char* name, float x, float y) {
-    transformf_t pose = TRANSFORMF_IDENTITY;
+    transformf_t pose = transformf_identity();
     transformf_set_position(&pose, (vec3f_t){x, y, 0});
     scene_entity_set_local(scene, scene_find(scene, name_hash(name)), pose);
 }
@@ -2330,8 +2330,7 @@ test_a_camera_rolled_about_its_view_axis_draws_the_picture_turned(void) {
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel_at(0.0F, beside));
 
     transformf_t rolled = scene_entity_local(scene, camera);
-    transformf_set_rotation(&rolled,
-                            quatf_mul(rolled.rotation, quatf_from_axis_angle((vec3f_t){0, 0, 1}, MATH_PI / 2)));
+    transformf_set_rotation(&rolled, quatf_mul(rolled.rotation, quatf_from_axis_angle(vec3f_unit_z(), MATH_PI / 2)));
     scene_entity_set_local(scene, camera, rolled);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(beside));
@@ -2542,7 +2541,7 @@ static void
 test_a_camera_without_a_path_follows_its_entitys_transform(void) {
     fixture();
     scene_t* pair = show("test_pair", name_hash("camera"));
-    transformf_t aside = TRANSFORMF_IDENTITY;
+    transformf_t aside = transformf_identity();
     transformf_set_position(&aside, (vec3f_t){4, 0, -10});
     scene_entity_set_local(pair, scene_find(pair, name_hash("camera")), aside);
     frame(16);
@@ -3004,7 +3003,7 @@ test_camera_small_fill_default_setter_and_view(void) {
     TEST_ASSERT_FALSE(scene_camera_set_small_fill(scene, SCENE_ENTITY_NONE, fill));
     TEST_ASSERT_FALSE(scene_camera_set_small_fill(scene, camera, (small_fill_t){4, 0, SMALL_FILL_STYLE_COUNT}));
     TEST_ASSERT_TRUE(scene_camera_set_small_fill(scene, camera, fill));
-    const transformf_t pose = TRANSFORMF_IDENTITY;
+    const transformf_t pose = transformf_identity();
     const render_view_t view = camera_view(lens, &pose, (viewport_t){64, 48, 0});
     TEST_ASSERT_EQUAL_INT(fill.ceiling, view.small_fill.ceiling);
     TEST_ASSERT_EQUAL_INT(fill.gate, view.small_fill.gate);
@@ -3638,7 +3637,7 @@ test_set_transform_reads_back_exactly_and_drives_placement(void) {
     fixture();
     scene_t* scene = show("test_pair", SCENE_CAMERA_FIRST);
     const scene_entity_t entity = scene_find(scene, name_hash("red"));
-    transformf_t pose = TRANSFORMF_IDENTITY;
+    transformf_t pose = transformf_identity();
     transformf_set_position(&pose, (vec3f_t){2, 3, 4});
     transformf_set_scale(&pose, (vec3f_t){2, 3, 4});
     transformf_set_rotation(&pose, quatf_from_axis_angle((vec3f_t){1, 2, 3}, 0.5F));
@@ -3719,7 +3718,7 @@ test_authored_tonemap_changes_skin_colors_in_both_attachment_orders(void) {
                 TEST_ASSERT_NULL(scene->light_transfer);
                 const scene_entity_t lamp = scene_find(scene, name_hash("lamp"));
                 transformf_t pose = scene_entity_local(scene, lamp);
-                transformf_set_rotation(&pose, quatf_from_axis_angle((vec3f_t){1, 0, 0}, MATH_PI / 2));
+                transformf_set_rotation(&pose, quatf_from_axis_angle(vec3f_unit_x(), MATH_PI / 2));
                 scene_entity_set_local(scene, lamp, pose);
                 TEST_ASSERT_TRUE(scene_light_set_intensity(scene, lamp, intensity));
             }
@@ -3803,13 +3802,13 @@ test_authored_light_preserves_static_mesh_colors(void) {
 
 static void
 test_a_camera_view_stands_at_its_pose_looking_down_the_rotated_plus_z(void) {
-    transformf_t pose = TRANSFORMF_IDENTITY;
+    transformf_t pose = transformf_identity();
     transformf_set_position(&pose, (vec3f_t){3.0F, 2.0F, 4.0F});
-    transformf_look_at(&pose, (vec3f_t){0.0F, 1.0F, 0.0F}, (vec3f_t){0.0F, 1.0F, 0.0F});
+    transformf_look_at(&pose, vec3f_unit_y(), vec3f_unit_y());
     transformf_set_scale(&pose, (vec3f_t){2.0F, 3.0F, 4.0F});
     const camera_t camera = {.half_fov_short_tan = 1.0F, .near_z = 1.0F};
     const render_view_t view = camera_view(&camera, &pose, (viewport_t){SIZE, SIZE, 0});
-    const vec3f_t ahead = quatf_rotate(pose.rotation, (vec3f_t){0.0F, 0.0F, 1.0F});
+    const vec3f_t ahead = quatf_rotate(pose.rotation, vec3f_unit_z());
     TEST_ASSERT_TRUE(vec3f_equal(pose.position, view.position));
     TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, ahead.x, view.forward.x);
     TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, ahead.y, view.forward.y);
@@ -3822,14 +3821,14 @@ test_translation_only_camera_clip_retains_rotation(void) {
     scene_t* scene = load("test_unturned");
     const scene_entity_t entity = scene_find(scene, name_hash("camera"));
     transformf_t pose = scene_entity_local(scene, entity);
-    transformf_set_rotation(&pose, quatf_from_axis_angle((vec3f_t){0, 1, 0}, 0.5F));
+    transformf_set_rotation(&pose, quatf_from_axis_angle(vec3f_unit_y(), 0.5F));
     scene_entity_set_local(scene, entity, pose);
     scene_animation_step(scene, RIG_DURATION_MS / 2);
     const transformf_t camera = scene_entity_local(scene, entity);
     TEST_ASSERT_EQUAL_FLOAT(2.5F, camera.position.x);
     TEST_ASSERT_EQUAL_MEMORY(&pose.rotation, &camera.rotation, sizeof pose.rotation);
-    const vec3f_t wanted = quatf_rotate(pose.rotation, (vec3f_t){0, 0, 1});
-    const vec3f_t forward = quatf_rotate(camera.rotation, (vec3f_t){0, 0, 1});
+    const vec3f_t wanted = quatf_rotate(pose.rotation, vec3f_unit_z());
+    const vec3f_t forward = quatf_rotate(camera.rotation, vec3f_unit_z());
     TEST_ASSERT_EQUAL_MEMORY(&wanted, &forward, sizeof wanted);
 }
 
@@ -3907,7 +3906,7 @@ test_set_transform_defers_placement_until_the_scene_draws(void) {
     const scene_entity_t entity = scene_find(scene, name_hash("red"));
     const int renderer = scene_renderer_index(scene, entity);
     const mat4f_t before = scene->renderers[renderer].model;
-    transformf_t pose = TRANSFORMF_IDENTITY;
+    transformf_t pose = transformf_identity();
     transformf_set_position(&pose, (vec3f_t){2, 3, 4});
     scene_entity_set_local(scene, entity, pose);
     TEST_ASSERT_TRUE(scene->flags[entity] & SCENE_FLAG_DIRTY);
@@ -4105,7 +4104,7 @@ test_invalid_normal_transform_skips_lighting_and_recovers(void) {
         }
     }
     transformf_t pose = scene_entity_local(scene, entity);
-    transformf_set_scale(&pose, (vec3f_t){1, 1, 1});
+    transformf_set_scale(&pose, vec3f_one());
     scene_entity_set_local(scene, entity, pose);
     scene_animation_step(scene, 0);
     TEST_ASSERT_TRUE(skin->lighting_valid);
