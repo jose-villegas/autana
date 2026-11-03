@@ -81,12 +81,12 @@ CFLAGS="-std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -O2"
 # The pipeline hands its triangles to the tool, which counts their boxes
 # and passes them on to r3d_span's own functions.
 # shellcheck disable=SC2086 # CFLAGS is a list of flags
-"$CC_BIN" $CFLAGS -I "$MAIN_DIR" $(package_includes "$LAUNCHER_DIR") \
+"$CC_BIN" $CFLAGS $(firmware_includes "$LAUNCHER_DIR") \
     -Dr3d_span_triangle=sizes_span_triangle -Dr3d_span_triangle_solid=sizes_span_triangle_solid \
     -c "$MAIN_DIR/render/r3d_pipeline.c" -o "$BUILD_DIR/r3d_pipeline_counted.o"
 # shellcheck disable=SC2086
 "$CC_BIN" $CFLAGS \
-    -I "$MAIN_DIR" $(package_includes "$LAUNCHER_DIR") -I "$SCRIPT_DIR" \
+    $(firmware_includes "$LAUNCHER_DIR") -I "$SCRIPT_DIR" \
     "$SCRIPT_DIR/triangle_sizes_main.c" \
     "$SCRIPT_DIR/triangle_sizes.c" \
     "$MAIN_DIR/asset/asset_pack.c" \
