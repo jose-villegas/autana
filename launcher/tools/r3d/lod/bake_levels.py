@@ -17,7 +17,9 @@ Group bounds and errors are rounded outward and up, then grown so each holds
 every group simplified into it with LOD_ENCLOSE_MARGIN to spare and carries
 at least its error. A group that would not fit the format's int16 bounds or
 uint16 error is dropped with every group above it: its finer clusters stay
-drawn at every distance.
+drawn at every distance. Groups join finest first, and the first whose
+clusters would take the mesh past the format's vertex, triangle or cluster
+count is dropped with every coarser one.
 """
 
 from collections import defaultdict
@@ -27,6 +29,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from r3d.geometry import closest_point_on_triangles
+from r3d.lit_mesh import MAX_CLUSTERS, MAX_TRIANGLES, MAX_VERTICES
 from r3d.lod.levels import build_levels
 from r3d.mesh_asset import LOD_ENCLOSE_MARGIN, LOD_NONE
 
@@ -179,6 +182,18 @@ def quantised_groups(sphere, error, sources):
     return rows, kept
 
 
+def within_format(rows, kept, cost, used):
+    """kept, less the groups from the first, finest first (by error, then id,
+    so a group comes after its sources), whose `cost` (vertices, triangles,
+    clusters) would take the mesh's `used` past the format's counts."""
+    order = np.lexsort((np.arange(len(rows)), rows[:, 4]))
+    total = used + np.cumsum(cost[order] * kept[order, None], axis=0)
+    fits = np.all(total <= (MAX_VERTICES, MAX_TRIANGLES, MAX_CLUSTERS), axis=1)
+    kept = kept.copy()
+    kept[order[np.argmin(fits):] if not fits.all() else []] = False
+    return kept
+
+
 def bake_levels(q, col, tris, double, face, meshlet_triangles):
     """The levels of a welded bake (q ticks, col and face colours or None,
     tris rows into q, double per triangle), clusters of at most
@@ -207,6 +222,11 @@ def bake_levels(q, col, tris, double, face, meshlet_triangles):
             errors += side_groups[1]
             sources += side_groups[2]
     rows, kept = quantised_groups(np.array(spheres).reshape(-1, 4), np.array(errors), sources)
+    cost = np.zeros((len(rows), 3), dtype=np.int64)
+    for e in coarse:
+        cost[e["own"]] += (len(np.unique(e["corners"].reshape(-1, 3), axis=0)), len(e["corners"]), 1)
+    used = np.sum([(len(np.unique(e["tris"])), len(e["tris"]), 1) for e in entries], axis=0)
+    kept = within_format(rows, kept, cost, used)
     return finish(q, col, level0, entries, coarse, rows, kept)
 
 

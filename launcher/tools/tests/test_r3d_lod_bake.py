@@ -16,7 +16,8 @@ from asset import engine_frame
 from r3d import lit_mesh, mesh_asset
 from r3d.geometry import closest_point_on_triangles
 from r3d.lod import pick
-from r3d.lod.bake_levels import INT16_MAX, push_outward, quantised_groups
+from r3d.lit_mesh import MAX_TRIANGLES, MAX_VERTICES
+from r3d.lod.bake_levels import INT16_MAX, push_outward, quantised_groups, within_format
 from r3d.mesh_asset import LOD_ENCLOSE_MARGIN, LOD_NONE
 
 GRID = 24
@@ -180,6 +181,19 @@ class QuantisedGroupsTest(unittest.TestCase):
         spheres[1, 0] = INT16_MAX + 1.0
         rows, kept = quantised_groups(spheres, self.ERRORS, self.SOURCES)
         self.assertEqual([True, False, False], kept.tolist())
+
+    def test_groups_join_finest_first_and_stop_at_the_first_past_a_format_count(self):
+        rows, kept = quantised_groups(self.SPHERES, self.ERRORS, self.SOURCES)
+        cost = np.array([[10, 4, 1], [10, 4, 1], [6, 2, 1]])
+        total = cost.sum(axis=0)
+
+        def joined(vertices, triangles):
+            return within_format(rows, kept, cost, np.array([MAX_VERTICES - vertices, MAX_TRIANGLES - triangles, 0]))
+
+        self.assertEqual([True, True, True], joined(total[0], total[1]).tolist())
+        self.assertEqual([True, True, False], joined(total[0] - 1, total[1]).tolist())
+        self.assertEqual([True, True, False], joined(total[0], total[1] - 1).tolist())
+        self.assertEqual([False, False, False], joined(cost[0, 0] - 1, total[1]).tolist())
 
 
 class PushOutwardTest(unittest.TestCase):
