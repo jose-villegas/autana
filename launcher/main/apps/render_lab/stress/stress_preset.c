@@ -65,28 +65,27 @@ shapes_of(const stress_params_t* p) {
     };
 }
 
-int
-stress_vertex_count(const stress_params_t* p) {
+/* The preset's shape's counts. */
+static primitive_counts_t
+counts_of(const stress_params_t* p) {
     const shapes_t s = shapes_of(p);
     switch (p->shape) {
-        case STRESS_SHAPE_PLANE: return primitive_plane_vertex_count(&s.plane);
-        case STRESS_SHAPE_SPHERE: return primitive_sphere_vertex_count(&s.sphere);
-        case STRESS_SHAPE_CUBE: return primitive_cube_vertex_count(&s.cube);
-        case STRESS_SHAPE_CYLINDER: return primitive_cylinder_vertex_count(&s.cylinder);
+        case STRESS_SHAPE_PLANE: return primitive_plane_counts(&s.plane);
+        case STRESS_SHAPE_SPHERE: return primitive_sphere_counts(&s.sphere);
+        case STRESS_SHAPE_CUBE: return primitive_cube_counts(&s.cube);
+        case STRESS_SHAPE_CYLINDER: return primitive_cylinder_counts(&s.cylinder);
     }
-    return 0;
+    return (primitive_counts_t){0, 0};
+}
+
+int
+stress_vertex_count(const stress_params_t* p) {
+    return counts_of(p).vertices;
 }
 
 int
 stress_triangle_count(const stress_params_t* p) {
-    const shapes_t s = shapes_of(p);
-    switch (p->shape) {
-        case STRESS_SHAPE_PLANE: return primitive_plane_triangle_count(&s.plane);
-        case STRESS_SHAPE_SPHERE: return primitive_sphere_triangle_count(&s.sphere);
-        case STRESS_SHAPE_CUBE: return primitive_cube_triangle_count(&s.cube);
-        case STRESS_SHAPE_CYLINDER: return primitive_cylinder_triangle_count(&s.cylinder);
-    }
-    return 0;
+    return counts_of(p).triangles;
 }
 
 static bool

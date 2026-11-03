@@ -235,15 +235,15 @@ crossing sample edge.
 The standard shapes as indexed triangles, for geometry made at run time or
 baked. Each shape is a struct of named parameters and one call that writes
 its positions and uint16 triangles into a `primitive_mesh_t` the caller
-owns; the shape's two counts size those buffers first.
+owns; the shape's `primitive_counts_t` sizes those buffers first.
 
 | Call, parameters | What the parameters make | Vertices | Triangles |
 |---|---|---|---|
-| `primitive_plane`, `primitive_plane_t` | `subdivisions` $`n`$: the square of side 1 at z = 0, facing +z | `primitive_plane_vertex_count`: $`(n+1)^2`$ | `primitive_plane_triangle_count`: $`2n^2`$ |
-| `primitive_sphere`, `primitive_sphere_t` | `segments` $`s`$, `rings` $`r`$: radius 1 | `primitive_sphere_vertex_count`: $`(r+1)(s+1)`$ | `primitive_sphere_triangle_count`: $`2s(r-1)`$ |
-| `primitive_cube`, `primitive_cube_t` | `subdivisions` $`n`$: side 1, each face a plane | `primitive_cube_vertex_count`: $`6(n+1)^2`$ | `primitive_cube_triangle_count`: $`12n^2`$ |
-| `primitive_capsule`, `primitive_capsule_t` | `radius`, `height` between the hemispheres' centres, `segments` $`s`$, `rings` $`r`$ a hemisphere | `primitive_capsule_vertex_count`: $`(2r+2)(s+1)`$ | `primitive_capsule_triangle_count`: $`4sr`$ |
-| `primitive_cylinder`, `primitive_cylinder_t` | `top_radius`, `bottom_radius`, `height`, `segments` $`s`$, `stacks` $`k`$; $`c`$ ends of radius above 0 | `primitive_cylinder_vertex_count`: $`(k+1)(s+1) + c(s+2)`$ | `primitive_cylinder_triangle_count`: $`2s(k - 1 + c)`$ |
+| `primitive_plane`, `primitive_plane_t`, `primitive_plane_counts` | `subdivisions` $`n`$: the square of side 1 at z = 0, facing +z | $`(n+1)^2`$ | $`2n^2`$ |
+| `primitive_sphere`, `primitive_sphere_t`, `primitive_sphere_counts` | `segments` $`s`$, `rings` $`r`$: radius 1 | $`(r+1)(s+1)`$ | $`2s(r-1)`$ |
+| `primitive_cube`, `primitive_cube_t`, `primitive_cube_counts` | `subdivisions` $`n`$: side 1, each face a plane | $`6(n+1)^2`$ | $`12n^2`$ |
+| `primitive_capsule`, `primitive_capsule_t`, `primitive_capsule_counts` | `radius`, `height` between the hemispheres' centres, `segments` $`s`$, `rings` $`r`$ a hemisphere | $`(2r+2)(s+1)`$ | $`4sr`$ |
+| `primitive_cylinder`, `primitive_cylinder_t`, `primitive_cylinder_counts` | `top_radius`, `bottom_radius`, `height`, `segments` $`s`$, `stacks` $`k`$; $`c`$ ends of radius above 0 | $`(k+1)(s+1) + c(s+2)`$ | $`2s(k - 1 + c)`$ |
 
 | Rule | Detail |
 |---|---|
