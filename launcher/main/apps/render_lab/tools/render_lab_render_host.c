@@ -169,6 +169,35 @@ apply_flags(int argc, char** argv) {
     }
 }
 
+static bool
+tap_option(int argc, char** argv) {
+    const char* at;
+    if (!option_value(argc, argv, "--tap", &at)) {
+        return false;
+    }
+    if (at == NULL) {
+        return true;
+    }
+    if (!vec2i_parse(at, NULL, &touch[0].point)) {
+        (void)fprintf(stderr, "render_lab_render_host: --tap is X,Y in panel pixels, not %s\n", at);
+        return false;
+    }
+    touch[1].point = touch[0].point;
+    tap = true;
+    return true;
+}
+
+static bool
+size_option(const char* size) {
+    if (!recti_parse(size, NULL, &size_rect) || size_rect.x != 0 || size_rect.y != 0 || size_rect.w <= 0
+        || size_rect.h <= 0 || size_rect.w > GFX_WIDTH || size_rect.h > GFX_HEIGHT) {
+        (void)fprintf(stderr, "render_lab_render_host: --size is WxH within %dx%d, not %s\n", GFX_WIDTH, GFX_HEIGHT,
+                      size);
+        return false;
+    }
+    return true;
+}
+
 /* Which names are valid is app_render_lab.c's own knowledge (each scene's
  * .key, render_lab_scene.h) - this only hands the string through. */
 static bool
@@ -178,17 +207,8 @@ options(int argc, char** argv) {
     const char* scale;
     const char* size;
     const char* small_fill;
-    const char* at;
-    if (!option_value(argc, argv, "--tap", &at)) {
+    if (!tap_option(argc, argv)) {
         return false;
-    }
-    if (at != NULL) {
-        if (!vec2i_parse(at, NULL, &touch[0].point)) {
-            (void)fprintf(stderr, "render_lab_render_host: --tap is X,Y in panel pixels, not %s\n", at);
-            return false;
-        }
-        touch[1].point = touch[0].point;
-        tap = true;
     }
 
     const struct {
@@ -205,11 +225,7 @@ options(int argc, char** argv) {
             return false;
         }
     }
-    if (size != NULL
-        && (!recti_parse(size, NULL, &size_rect) || size_rect.x != 0 || size_rect.y != 0 || size_rect.w <= 0
-            || size_rect.h <= 0 || size_rect.w > GFX_WIDTH || size_rect.h > GFX_HEIGHT)) {
-        (void)fprintf(stderr, "render_lab_render_host: --size is WxH within %dx%d, not %s\n", GFX_WIDTH, GFX_HEIGHT,
-                      size);
+    if (size != NULL && !size_option(size)) {
         return false;
     }
     if (scene == NULL) {
