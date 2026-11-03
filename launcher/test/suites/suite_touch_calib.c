@@ -62,7 +62,7 @@ test_a_correction_stays_on_the_panel(void) {
     point = touch_calib_apply(&calib, 368, 448, point);
     TEST_ASSERT_EQUAL_INT(367, point.x);
     TEST_ASSERT_EQUAL_INT(447, point.y);
-    point = (vec2i_t){0};
+    point = vec2i_zero();
     const touch_calib_t shift =
         touch_calib_from_fit((touch_calib_fit_t){.xx = 1.0f, .x0 = 20.0f, .yy = 1.0f, .y0 = 20.0f});
     point = touch_calib_apply(&shift, 368, 448, point);
