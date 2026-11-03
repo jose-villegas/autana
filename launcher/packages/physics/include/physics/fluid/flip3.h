@@ -195,7 +195,7 @@ size_t flip3_field_count(const flip3_t* f, float samples);
 
 /* The surface field: the water's density over the box, 1 at rest. One
  * [1 2 1] / 4 pass per axis rounds it; the walls mirror, so water against
- * glass keeps its density. Then every particle's nearest sample reads well
+ * glass keeps its density. Then every particle's nearest sample reads
  * above FLIP3_SURFACE_LEVEL, so a film or drop thinner than the smoothing
  * is still inside the surface. Returns its sizes,
  * origin and spacing in box coordinates, for iso_surface_nets(). */

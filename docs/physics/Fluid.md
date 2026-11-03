@@ -56,6 +56,6 @@ overlapping pairs apart; that sinks a pool by $`a\Delta t^2`$ each step and
 holds heaps up the way grains do, so flip3 does neither.
 
 The surface field averages a film under half a sample thick below the
-level, so each particle then raises the samples of its field cell to 1 less
-their distance in samples. Its nearest sample reads at least 0.75, so even a
-lone drop midway between samples stays inside the surface.
+level, so each particle whose nearest sample reads below it then raises the
+samples of its field cell to 1 less their distance in samples, the nearest
+to at least 0.75, so even a lone drop midway between samples stays inside.
