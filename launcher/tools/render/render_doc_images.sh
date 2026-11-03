@@ -279,7 +279,7 @@ run "$PYTHON" launcher/tools/input/motion_axes_figures.py --cc "$cc" --out "$OUT
     > "$WORK/motion_axes_figures.log"
 # --orphans scans this runner: motion-axes.png, motion-rotation.gif
 # The producers that declare their images (launcher/tools/docs/producer.py), in parallel.
-run "$PYTHON" launcher/tools/docs/figures_runner.py build --into "$OUT" > "$WORK/figures.log"
+run "$PYTHON" launcher/tools/docs/figures_runner.py build --needs host --into "$OUT" > "$WORK/figures.log"
 run "$PYTHON" launcher/tools/physics/spring_figures.py --cc "$cc" --out "$OUT/physics" > "$WORK/spring_figures.log"
 # --orphans scans this runner: spring-line-wave.gif, spring-line-spacetime.png
 run "$PYTHON" launcher/tools/kinematics/orbit_figures.py --cc "$cc" --out "$OUT/kinematics" > "$WORK/orbit_figures.log"

@@ -6,7 +6,8 @@ from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parents[3]
-sys.path[:0] = [str(ROOT / "launcher/tools"), str(ROOT / "launcher/tools/perf")]
+sys.path.insert(0, str(ROOT / "launcher/tools"))
+sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 import fast_paths
 import math_bench_table as bench
 from docs.plot_style import FAINT, SLOTS, style_axes, subplots, save
