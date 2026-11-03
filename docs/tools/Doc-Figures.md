@@ -43,7 +43,7 @@ holds the one way to write each kind of file:
 | Helper | Does |
 |---|---|
 | `save_png(picture, out)` | writes a PNG without metadata, so one picture always gives one file; `figures.py png` from a shell script |
-| `save_gif(frames, out, frame_ms)` | writes a looping GIF on the global palette: each pixel takes the entry nearest it in OKLab, without dithering |
+| `save_gif(frames, out, frame_ms)` | writes a looping GIF on the global palette: each pixel takes the entry nearest it in OKLab, without dithering; `delays=` gives each frame its own delay instead of one `frame_ms` |
 | `gif_from_avi(avi, out, fps, ...)` | writes a host render's AVI as such a GIF, resampled, cut and turned; `figures.py gif` from a shell script |
 | `render_scene(scene, *flags, log=...)` | runs the scene viewer and returns its output |
 
@@ -63,6 +63,7 @@ From the repository root, with a Python that has Pillow, numpy and matplotlib:
 | `which docs/images/math/frustum.png` | the producer that makes it, the data it reads, and the command that rebuilds it |
 | `build --area math` | make that area's images and copy them into `docs/images/` |
 | `check --area math` | make them and compare with the committed images |
+| `index [--check]` | write the [figure index](Figures.md), or say what in it is stale |
 
 `build` and `check` also take script paths in place of `--area`, or nothing for
 every producer. `--needs host,bakes` keeps the producers whose needs are all
@@ -91,3 +92,21 @@ flowchart LR
 | Check | The C compiler, the Python modules, each `reads` file, an item for each `each`, and every bake drawn (fetched into the bake cache), for all chosen producers | every problem printed, nothing runs, exit 2 |
 | Run | The runs in parallel (`--jobs N`, the core count by default), those needing a GPU or a board one at a time, each into its own folder and log under `launcher/tools/results/doc_images/work/figures/` | a run failed, left out a declared image or wrote an undeclared one: its log end, exit 2 |
 | Compare | Each image against `docs/images/` by decoded pixels | `changed IMAGE: how`, `changed IMAGE: new image`, or `orphan IMAGE` for a committed image a glob claims but no run made or skipped; exit 1 |
+
+## The figure index
+
+[Figures.md](Figures.md) lists every image under `docs/images/` by area:
+its picture (linking to the full image), the first alt text a page gives it,
+every page that shows it, and the producer that declares it. All of it is
+read from the tracked pages and the producer declarations.
+
+| Image | Picture on the page |
+|---|---|
+| a still | the image itself, at most the thumbnail width |
+| a GIF | a copy at that width under `docs/tools/figure-thumbnails/`, made from the GIF on the global palette by `shrink_gif`, with fewer frames and the same length |
+
+The page's generated-block check runs `index --check`, which fails when the
+page or a copy no longer matches the images, or a copy's GIF is gone. Rerun
+`index` after changing an image or a page that shows one; the doc-images
+refresh ([`refresh_branch.py`](../../scripts/ci/refresh_branch.py)) does this
+itself. An image no page shows is printed as a warning.
