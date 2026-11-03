@@ -21,6 +21,7 @@
 #include "math/scalar/math_const.h"
 #include "render/dynamic/r3d_dynamic_mesh.h"
 #include "render/r3d_span.h"
+#include "render/r3d_span_internal.h"
 
 /* Any framing: a preset is laid out in proportion to it. */
 static const stress_framing_t framing = {10.0F, 0.5F};
@@ -96,7 +97,8 @@ test_every_preset_mesh_is_whole_and_repeats(void) {
     for (int i = 0; i < STRESS_PRESET_COUNT; i++) {
         const stress_params_t* p = &stress_presets[i];
         fixture_begin(p);
-        r3d_dynamic_source_t a, b;
+        r3d_dynamic_source_t a;
+        r3d_dynamic_source_t b;
         TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &a));
         TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[1], &b));
         TEST_ASSERT_EQUAL_INT(stress_vertex_count(p), a.vertex_count);
@@ -277,15 +279,15 @@ test_two_sided_is_a_closed_shape_drawn_from_both_sides(void) {
     TEST_ASSERT_EQUAL_INT(STRESS_SHAPE_CUBE, stress_presets[STRESS_TWO_SIDED].shape);
 }
 
-/* The widest per-channel spread of a triangle's corners, in RGB565 units, as the small-fill gate measures it: its
- * packing keeps each 8-bit channel's top bits, as RGB565() does. */
+/* The widest per-channel spread of a triangle's corners, in RGB565 units, packed and measured as the small-fill
+ * gate does. */
 static int
 corner_spread(const r3d_dynamic_source_t* s, int t) {
     unsigned low[3] = {UINT32_MAX, UINT32_MAX, UINT32_MAX};
     unsigned high[3] = {0, 0, 0};
     for (int k = 0; k < 3; k++) {
         const uint8_t* c = s->colors[s->triangles[t][k]];
-        const uint16_t packed = (uint16_t)RGB565(((uint32_t)c[0] << 16) | ((uint32_t)c[1] << 8) | c[2]);
+        const uint16_t packed = rgb565_swap(r3d_span_pack_rgb(c[0], c[1], c[2]));
         const unsigned channels[3] = {rgb565_r5(packed), rgb565_g6(packed), rgb565_b5(packed)};
         for (int ch = 0; ch < 3; ch++) {
             low[ch] = channels[ch] < low[ch] ? channels[ch] : low[ch];

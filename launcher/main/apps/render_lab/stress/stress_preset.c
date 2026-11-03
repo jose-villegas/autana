@@ -145,7 +145,7 @@ colour_and_wave(const stress_params_t* p, uint32_t t_ms, int vertex_count, const
     for (int v = 0; v < vertex_count; v++) {
         const float s = shade(p, v, b->positions[v], turns);
         for (int c = 0; c < 3; c++) {
-            b->colors[v][c] = (uint8_t)lroundf(low[c] + ((float)(high[c] - low[c]) * s));
+            b->colors[v][c] = (uint8_t)lroundf((float)low[c] + ((float)(high[c] - low[c]) * s));
         }
         if (per_frame) {
             /* The position is the normal only on the unit sphere. */
