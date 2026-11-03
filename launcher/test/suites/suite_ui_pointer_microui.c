@@ -258,6 +258,37 @@ stacked_frame(const input_t* in) {
     return submitted;
 }
 
+/* The front window first appears on the frame of contact: the seed is stale,
+ * but the window the finger saw was still built, so its button takes the
+ * press. That counts as landed: the press is not made again on the window
+ * that just appeared. */
+static void
+test_a_press_that_landed_under_a_stale_seed_is_not_made_again(void) {
+    fixture();
+    const int opt = MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME;
+    const int x = BTN_X + BTN_W / 2;
+    const int y = BTN_Y + BTN_H / 2;
+    int total = 0;
+    for (int f = 0; f < 7; f++) {
+        const input_t in = {.down = f >= 2 && f < 6, .pressed = f == 2, .released = f == 6, .point = {x, y}};
+        ui_bridge_feed(ctx, &pointer, &in);
+        mu_begin(ctx);
+        if (mu_begin_window_ex(ctx, "back", mu_rect(0, 0, CANVAS_W, CANVAS_H), opt)) {
+            mu_layout_set_next(ctx, mu_rect(BTN_X, BTN_Y, BTN_W, BTN_H), 0);
+            total += mu_button(ctx, "BACK") ? 1 : 0;
+            mu_end_window(ctx);
+        }
+        if (f >= 2 && mu_begin_window_ex(ctx, "front", mu_rect(BTN_X, BTN_Y, BTN_W, BTN_H), opt)) {
+            mu_layout_set_next(ctx, mu_rect(BTN_X, BTN_Y, BTN_W, BTN_H), 0);
+            total += mu_button(ctx, "FRONT") ? 2 : 0;
+            mu_end_window(ctx);
+        }
+        mu_end(ctx);
+        ui_bridge_end(ctx, &pointer);
+    }
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, total, "the window the finger saw takes the press, once, and nothing else");
+}
+
 static void
 test_a_press_over_stacked_windows_reaches_only_the_top_one(void) {
     fixture();
@@ -545,6 +576,7 @@ run_ui_pointer_microui_suite(void) {
     RUN_TEST(test_a_press_under_a_stale_hover_root_is_made_again_and_clicks_once);
     RUN_TEST(test_a_quick_tap_under_a_stale_hover_root_still_clicks);
     RUN_TEST(test_hover_is_granted_on_the_frame_a_press_lands);
+    RUN_TEST(test_a_press_that_landed_under_a_stale_seed_is_not_made_again);
     RUN_TEST(test_a_press_over_stacked_windows_reaches_only_the_top_one);
     RUN_TEST(test_a_press_on_a_shared_vertical_edge_reaches_only_the_window_it_is_in);
     RUN_TEST(test_a_press_on_a_shared_horizontal_edge_reaches_only_the_window_it_is_in);
