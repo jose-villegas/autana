@@ -41,7 +41,7 @@ void gfx_deinit(void);
 #endif
 
 /* True while the framebuffer is known to hold `colour` and nothing else: a
- * send filled it (gfx_set_clear_on_send()) and nothing has drawn into it or
+ * send filled it (gfx_mode_request_t's clear_on_send) and nothing has drawn into it or
  * asked for it since. */
 bool gfx_framebuffer_holds(gfx_color_t colour);
 

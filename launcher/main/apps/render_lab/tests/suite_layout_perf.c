@@ -11,6 +11,7 @@
 #include "esp_log.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_debug.h"
+#include "gfx/present/gfx_internal.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "hash/crc32.h"
