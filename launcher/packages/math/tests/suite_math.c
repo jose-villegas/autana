@@ -40,13 +40,13 @@ assert_mat4(const mat4f_t* want, const mat4f_t* got) {
 
 static void
 test_view_from_axes_maps_the_eye_and_frame_axes(void) {
-    const vec3f_t x = {0.0F, 1.0F, 0.0F}, y = {0.0F, 0.0F, -1.0F}, z = {-1.0F, 0.0F, 0.0F};
+    const vec3f_t x = vec3f_unit_y(), y = {0.0F, 0.0F, -1.0F}, z = {-1.0F, 0.0F, 0.0F};
     const vec3f_t eye = {2.0F, -3.0F, 4.0F}, origin = {0.0F, 0.0F, 0.0F};
     const mat4f_t view = mat4f_view_from_axes(x, y, z, eye);
     assert_vec3(origin, mat4f_apply(&view, eye));
-    assert_vec3((vec3f_t){1.0F, 0.0F, 0.0F}, mat4f_apply(&view, vec3f_add(eye, x)));
-    assert_vec3((vec3f_t){0.0F, 1.0F, 0.0F}, mat4f_apply(&view, vec3f_add(eye, y)));
-    assert_vec3((vec3f_t){0.0F, 0.0F, 1.0F}, mat4f_apply(&view, vec3f_add(eye, z)));
+    assert_vec3(vec3f_unit_x(), mat4f_apply(&view, vec3f_add(eye, x)));
+    assert_vec3(vec3f_unit_y(), mat4f_apply(&view, vec3f_add(eye, y)));
+    assert_vec3(vec3f_unit_z(), mat4f_apply(&view, vec3f_add(eye, z)));
 }
 
 static void
@@ -60,7 +60,7 @@ assert_mat4_exact(const mat4f_t* want, const mat4f_t* got) {
 
 static void
 test_scale_rows_and_columns_match_diagonal_products_exactly(void) {
-    const vec3f_t origin = {0.0F, 0.0F, 0.0F}, scale = {2.0F, -3.0F, 0.5F};
+    const vec3f_t origin = vec3f_zero(), scale = {2.0F, -3.0F, 0.5F};
     const mat4f_t m =
         mat4f_from_trs((vec3f_t){4.0F, -2.0F, 3.0F}, quatf_from_euler((vec3f_t){0.2F, -0.4F, 0.6F}), scale);
     const mat4f_t diagonal = mat4f_from_trs(origin, quatf_identity(), scale);
@@ -73,16 +73,14 @@ test_scale_rows_and_columns_match_diagonal_products_exactly(void) {
 static void
 test_a_quarter_turn_about_y_takes_z_to_x(void) {
     const quatf_t q = quatf_from_euler((vec3f_t){0.0F, HALF_PI, 0.0F});
-    assert_vec3((vec3f_t){1.0F, 0.0F, 0.0F}, quatf_rotate(q, (vec3f_t){0.0F, 0.0F, 1.0F}));
-    assert_vec3((vec3f_t){0.0F, 1.0F, 0.0F}, quatf_rotate(q, (vec3f_t){0.0F, 1.0F, 0.0F}));
+    assert_vec3(vec3f_unit_x(), quatf_rotate(q, vec3f_unit_z()));
+    assert_vec3(vec3f_unit_y(), quatf_rotate(q, vec3f_unit_y()));
 }
 
 static void
 test_a_quarter_turn_about_x_takes_y_to_z_and_about_z_takes_x_to_y(void) {
-    assert_vec3((vec3f_t){0.0F, 0.0F, 1.0F},
-                quatf_rotate(quatf_from_euler((vec3f_t){HALF_PI, 0.0F, 0.0F}), (vec3f_t){0.0F, 1.0F, 0.0F}));
-    assert_vec3((vec3f_t){0.0F, 1.0F, 0.0F},
-                quatf_rotate(quatf_from_euler((vec3f_t){0.0F, 0.0F, HALF_PI}), (vec3f_t){1.0F, 0.0F, 0.0F}));
+    assert_vec3(vec3f_unit_z(), quatf_rotate(quatf_from_euler((vec3f_t){HALF_PI, 0.0F, 0.0F}), vec3f_unit_y()));
+    assert_vec3(vec3f_unit_y(), quatf_rotate(quatf_from_euler((vec3f_t){0.0F, 0.0F, HALF_PI}), vec3f_unit_x()));
 }
 
 static void
@@ -90,22 +88,22 @@ test_euler_angles_apply_z_then_x_then_y(void) {
     /* +x rolls to +y about z, which a quarter turn about x then takes to +z,
      * which a quarter turn about y takes to +x. Another order ends elsewhere. */
     const quatf_t q = quatf_from_euler((vec3f_t){HALF_PI, HALF_PI, HALF_PI});
-    assert_vec3((vec3f_t){1.0F, 0.0F, 0.0F}, quatf_rotate(q, (vec3f_t){1.0F, 0.0F, 0.0F}));
-    assert_vec3((vec3f_t){0.0F, 0.0F, 1.0F}, quatf_rotate(q, (vec3f_t){0.0F, 1.0F, 0.0F}));
+    assert_vec3(vec3f_unit_x(), quatf_rotate(q, vec3f_unit_x()));
+    assert_vec3(vec3f_unit_z(), quatf_rotate(q, vec3f_unit_y()));
 }
 
 static void
 test_a_product_applies_the_right_operand_first(void) {
-    const quatf_t about_y = quatf_from_axis_angle((vec3f_t){0.0F, 1.0F, 0.0F}, HALF_PI);
-    const quatf_t about_x = quatf_from_axis_angle((vec3f_t){1.0F, 0.0F, 0.0F}, HALF_PI);
-    assert_vec3((vec3f_t){1.0F, 0.0F, 0.0F}, quatf_rotate(quatf_mul(about_y, about_x), (vec3f_t){0.0F, 1.0F, 0.0F}));
+    const quatf_t about_y = quatf_from_axis_angle(vec3f_unit_y(), HALF_PI);
+    const quatf_t about_x = quatf_from_axis_angle(vec3f_unit_x(), HALF_PI);
+    assert_vec3(vec3f_unit_x(), quatf_rotate(quatf_mul(about_y, about_x), vec3f_unit_y()));
 }
 
 static void
 test_slerp_hits_both_ends_and_the_half_angle_between(void) {
     const quatf_t a = quatf_identity();
-    const quatf_t b = quatf_from_axis_angle((vec3f_t){0.0F, 1.0F, 0.0F}, HALF_PI);
-    const vec3f_t z = {0.0F, 0.0F, 1.0F};
+    const quatf_t b = quatf_from_axis_angle(vec3f_unit_y(), HALF_PI);
+    const vec3f_t z = vec3f_unit_z();
     assert_vec3(quatf_rotate(a, z), quatf_rotate(quatf_slerp(a, b, 0.0F), z));
     assert_vec3(quatf_rotate(b, z), quatf_rotate(quatf_slerp(a, b, 1.0F), z));
     const quatf_t mid = quatf_slerp(a, b, 0.5F);
@@ -115,16 +113,15 @@ test_slerp_hits_both_ends_and_the_half_angle_between(void) {
 
 static void
 test_slerp_takes_the_short_way_when_the_signs_differ(void) {
-    const quatf_t b = quatf_from_axis_angle((vec3f_t){0.0F, 1.0F, 0.0F}, HALF_PI);
+    const quatf_t b = quatf_from_axis_angle(vec3f_unit_y(), HALF_PI);
     const quatf_t negated = {-b.x, -b.y, -b.z, -b.w};
     const quatf_t mid = quatf_slerp(quatf_identity(), negated, 0.5F);
-    assert_vec3((vec3f_t){sinf(HALF_PI / 2.0F), 0.0F, cosf(HALF_PI / 2.0F)},
-                quatf_rotate(mid, (vec3f_t){0.0F, 0.0F, 1.0F}));
+    assert_vec3((vec3f_t){sinf(HALF_PI / 2.0F), 0.0F, cosf(HALF_PI / 2.0F)}, quatf_rotate(mid, vec3f_unit_z()));
 }
 
 static void
 test_a_trs_matrix_is_scale_then_rotate_then_translate(void) {
-    const quatf_t turn = quatf_from_axis_angle((vec3f_t){0.0F, 1.0F, 0.0F}, HALF_PI);
+    const quatf_t turn = quatf_from_axis_angle(vec3f_unit_y(), HALF_PI);
     const mat4f_t got = mat4f_from_trs((vec3f_t){1.0F, 2.0F, 3.0F}, turn, (vec3f_t){2.0F, 3.0F, 4.0F});
     /* A quarter turn about y sends x to -z and z to x. */
     const mat4f_t want = {{
@@ -155,7 +152,7 @@ static void
 test_a_transform_that_does_not_change_builds_its_matrix_once(void) {
     transformf_t t = {0};
     t.rotation = quatf_identity();
-    t.scale = (vec3f_t){1.0F, 1.0F, 1.0F};
+    t.scale = vec3f_one();
     transformf_set_position(&t, (vec3f_t){1.0F, 2.0F, 3.0F});
     TEST_ASSERT_FLOAT_WITHIN(SLACK, 1.0F, transformf_matrix(&t).m[0][3]);
 
@@ -168,7 +165,7 @@ test_a_transform_that_does_not_change_builds_its_matrix_once(void) {
 static void
 test_a_zero_initialized_transform_builds_on_first_use(void) {
     transformf_t t = {0};
-    t.scale = (vec3f_t){1.0F, 1.0F, 1.0F};
+    t.scale = vec3f_one();
     t.rotation = quatf_identity();
     t.position = (vec3f_t){4.0F, 0.0F, 0.0F};
     TEST_ASSERT_FALSE(t.cached);
@@ -183,18 +180,17 @@ to_f(float x, float y, float z) {
 
 static void
 test_every_setter_translate_rotate_and_look_at_rebuilds_the_matrix(void) {
-    transformf_t t = TRANSFORMF_IDENTITY;
-    ASSERT_TRANSFORM_SETTERS(transformf, t, to_f, quatf_from_axis_angle((vec3f_t){0.0F, 1.0F, 0.0F}, HALF_PI),
-                             rebuilds);
-    transformf_look_at(&t, (vec3f_t){0.0F, 0.0F, 9.0F}, (vec3f_t){0.0F, 1.0F, 0.0F});
+    transformf_t t = transformf_identity();
+    ASSERT_TRANSFORM_SETTERS(transformf, t, to_f, quatf_from_axis_angle(vec3f_unit_y(), HALF_PI), rebuilds);
+    transformf_look_at(&t, (vec3f_t){0.0F, 0.0F, 9.0F}, vec3f_unit_y());
     TEST_ASSERT_TRUE(rebuilds(&t));
-    transformf_rotate_around(&t, (vec3f_t){1.0F, 0.0F, 0.0F}, (vec3f_t){0.0F, 1.0F, 0.0F}, HALF_PI);
+    transformf_rotate_around(&t, vec3f_unit_x(), vec3f_unit_y(), HALF_PI);
     TEST_ASSERT_TRUE(rebuilds(&t));
 }
 
 static void
 test_compute_matrix_leaves_the_cache_alone(void) {
-    transformf_t t = TRANSFORMF_IDENTITY;
+    transformf_t t = transformf_identity();
     transformf_set_position(&t, (vec3f_t){7.0F, 0.0F, 0.0F});
     const mat4f_t fresh = transformf_compute_matrix(&t);
     TEST_ASSERT_FLOAT_WITHIN(SLACK, 7.0F, fresh.m[0][3]);
@@ -212,51 +208,51 @@ static void
 test_rotate_around_swings_the_position_round_the_point_and_turns_the_rotation_with_it(void) {
     /* A quarter turn about +y through (5, 0, 0) takes +x to -z and +z to +x. */
     const vec3f_t point = {5.0F, 0.0F, 0.0F};
-    transformf_t t = TRANSFORMF_IDENTITY;
+    transformf_t t = transformf_identity();
     transformf_set_position(&t, (vec3f_t){6.0F, 0.0F, 0.0F});
     transformf_rotate_around(&t, point, (vec3f_t){0.0F, 2.0F, 0.0F}, HALF_PI); /* any axis length */
     assert_vec3f((vec3f_t){5.0F, 0.0F, -1.0F}, t.position);
-    assert_vec3f((vec3f_t){1.0F, 0.0F, 0.0F}, quatf_rotate(t.rotation, (vec3f_t){0.0F, 0.0F, 1.0F}));
+    assert_vec3f(vec3f_unit_x(), quatf_rotate(t.rotation, vec3f_unit_z()));
 }
 
 static void
 test_rotate_around_its_own_position_only_turns(void) {
-    transformf_t t = TRANSFORMF_IDENTITY;
+    transformf_t t = transformf_identity();
     transformf_set_position(&t, (vec3f_t){1.0F, 2.0F, 3.0F});
-    transformf_rotate_around(&t, t.position, (vec3f_t){1.0F, 0.0F, 0.0F}, HALF_PI);
+    transformf_rotate_around(&t, t.position, vec3f_unit_x(), HALF_PI);
     assert_vec3f((vec3f_t){1.0F, 2.0F, 3.0F}, t.position);
-    assert_vec3f((vec3f_t){0.0F, -1.0F, 0.0F}, quatf_rotate(t.rotation, (vec3f_t){0.0F, 0.0F, 1.0F}));
+    assert_vec3f(vec3f_down(), quatf_rotate(t.rotation, vec3f_unit_z()));
 }
 
 static void
 test_rotate_around_what_it_faces_keeps_facing_it_at_the_same_distance(void) {
     const vec3f_t point = {1.0F, -1.0F, 2.0F};
-    transformf_t t = TRANSFORMF_IDENTITY;
+    transformf_t t = transformf_identity();
     transformf_set_position(&t, (vec3f_t){4.0F, 3.0F, 2.0F});
-    transformf_look_at(&t, point, (vec3f_t){0.0F, 1.0F, 0.0F});
+    transformf_look_at(&t, point, vec3f_unit_y());
     transformf_rotate_around(&t, point, (vec3f_t){0.3F, 1.0F, -0.5F}, 1.1F);
     const vec3f_t to_point = vec3f_sub(point, t.position);
     const float reach = sqrtf(vec3f_dot(to_point, to_point));
     TEST_ASSERT_FLOAT_WITHIN(SLACK, 5.0F, reach);
-    assert_vec3f(vec3f_scale(to_point, 1.0F / reach), quatf_rotate(t.rotation, (vec3f_t){0.0F, 0.0F, 1.0F}));
+    assert_vec3f(vec3f_scale(to_point, 1.0F / reach), quatf_rotate(t.rotation, vec3f_unit_z()));
 }
 
 static void
 test_translate_adds_and_rotate_turns_about_the_local_axes(void) {
-    transformf_t t = TRANSFORMF_IDENTITY;
-    transformf_translate(&t, (vec3f_t){1.0F, 0.0F, 0.0F});
+    transformf_t t = transformf_identity();
+    transformf_translate(&t, vec3f_unit_x());
     transformf_translate(&t, (vec3f_t){0.0F, 2.0F, 0.0F});
     assert_vec3((vec3f_t){1.0F, 2.0F, 0.0F}, t.position);
 
-    transformf_rotate(&t, quatf_from_axis_angle((vec3f_t){0.0F, 1.0F, 0.0F}, HALF_PI));
-    transformf_rotate(&t, quatf_from_axis_angle((vec3f_t){1.0F, 0.0F, 0.0F}, HALF_PI));
+    transformf_rotate(&t, quatf_from_axis_angle(vec3f_unit_y(), HALF_PI));
+    transformf_rotate(&t, quatf_from_axis_angle(vec3f_unit_x(), HALF_PI));
     /* Local turns multiply on the right: Ry * Rx sends +z to -y. */
-    assert_vec3((vec3f_t){0.0F, -1.0F, 0.0F}, quatf_rotate(t.rotation, (vec3f_t){0.0F, 0.0F, 1.0F}));
+    assert_vec3(vec3f_down(), quatf_rotate(t.rotation, vec3f_unit_z()));
 }
 
 static void
 test_the_view_matrix_inverts_a_rigid_model_matrix(void) {
-    transformf_t t = TRANSFORMF_IDENTITY;
+    transformf_t t = transformf_identity();
     transformf_set_position(&t, (vec3f_t){1.0F, -2.0F, 3.0F});
     transformf_set_rotation(&t, quatf_from_euler((vec3f_t){0.3F, -0.7F, 1.1F}));
     const mat4f_t model = transformf_matrix(&t);
@@ -268,25 +264,25 @@ test_the_view_matrix_inverts_a_rigid_model_matrix(void) {
 
 static void
 test_the_view_matrix_puts_the_camera_at_the_origin_looking_down_z(void) {
-    transformf_t camera = TRANSFORMF_IDENTITY;
+    transformf_t camera = transformf_identity();
     transformf_set_position(&camera, (vec3f_t){0.0F, 0.0F, -5.0F});
     const mat4f_t view = transformf_view(&camera);
-    assert_vec3((vec3f_t){0.0F, 0.0F, 5.0F}, mat4f_apply(&view, (vec3f_t){0.0F, 0.0F, 0.0F}));
+    assert_vec3((vec3f_t){0.0F, 0.0F, 5.0F}, mat4f_apply(&view, vec3f_zero()));
 }
 
 static void
 test_look_at_points_local_z_at_the_target_with_up_kept_up(void) {
-    const vec3f_t up = {0.0F, 1.0F, 0.0F};
+    const vec3f_t up = vec3f_unit_y();
     const vec3f_t targets[] = {{0.0F, 0.0F, 5.0F}, {5.0F, 0.0F, 0.0F}, {0.0F, 3.0F, 4.0F}, {-2.0F, -1.0F, -3.0F}};
     for (unsigned i = 0; i < sizeof(targets) / sizeof(targets[0]); i++) {
-        transformf_t t = TRANSFORMF_IDENTITY;
-        transformf_set_position(&t, (vec3f_t){1.0F, 1.0F, 1.0F});
+        transformf_t t = transformf_identity();
+        transformf_set_position(&t, vec3f_one());
         transformf_look_at(&t, targets[i], up);
 
-        const vec3f_t forward = quatf_rotate(t.rotation, (vec3f_t){0.0F, 0.0F, 1.0F});
+        const vec3f_t forward = quatf_rotate(t.rotation, vec3f_unit_z());
         assert_vec3(vec3f_normalize(vec3f_sub(targets[i], t.position)), forward);
 
-        const vec3f_t right = quatf_rotate(t.rotation, (vec3f_t){1.0F, 0.0F, 0.0F});
+        const vec3f_t right = quatf_rotate(t.rotation, vec3f_unit_x());
         TEST_ASSERT_FLOAT_WITHIN(SLACK, 0.0F, right.y);
         TEST_ASSERT_TRUE(vec3f_dot(right, vec3f_cross(up, forward)) > 0.0F);
         TEST_ASSERT_TRUE(vec3f_dot(quatf_rotate(t.rotation, up), up) > 0.0F);
@@ -295,10 +291,10 @@ test_look_at_points_local_z_at_the_target_with_up_kept_up(void) {
 
 static void
 test_look_at_straight_back_is_a_half_turn(void) {
-    transformf_t t = TRANSFORMF_IDENTITY;
-    transformf_look_at(&t, (vec3f_t){0.0F, 0.0F, -4.0F}, (vec3f_t){0.0F, 1.0F, 0.0F});
-    assert_vec3((vec3f_t){0.0F, 0.0F, -1.0F}, quatf_rotate(t.rotation, (vec3f_t){0.0F, 0.0F, 1.0F}));
-    assert_vec3((vec3f_t){0.0F, 1.0F, 0.0F}, quatf_rotate(t.rotation, (vec3f_t){0.0F, 1.0F, 0.0F}));
+    transformf_t t = transformf_identity();
+    transformf_look_at(&t, (vec3f_t){0.0F, 0.0F, -4.0F}, vec3f_unit_y());
+    assert_vec3(vec3f_back(), quatf_rotate(t.rotation, vec3f_unit_z()));
+    assert_vec3(vec3f_unit_y(), quatf_rotate(t.rotation, vec3f_unit_y()));
 }
 
 static void
@@ -333,8 +329,7 @@ test_affine_product_and_inverse_match_full_matrices(void) {
                                      (vec3f_t){0.5F, 3.0F, 2.0F});
     {
         const mat4f_t full = mat4f_mul(a, b), affine = mat4f_mul_affine(a, b);
-        assert_vec3(mat4f_apply(&a, mat4f_apply(&b, (vec3f_t){1.0F, 1.0F, 1.0F})),
-                    mat4f_apply(&full, (vec3f_t){1.0F, 1.0F, 1.0F}));
+        assert_vec3(mat4f_apply(&a, mat4f_apply(&b, vec3f_one())), mat4f_apply(&full, vec3f_one()));
         assert_mat4(&full, &affine);
     }
     {

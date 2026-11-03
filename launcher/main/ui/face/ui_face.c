@@ -244,7 +244,7 @@ recti_t
 ui_next(void) {
     UI_FACE_COST_BEGIN(face_from);
     UI_FACE_COST_BEGIN(backend_from);
-    recti_t result = window_open ? ui_recti_from_mu(mu_layout_next(ui_context())) : (recti_t){0};
+    recti_t result = window_open ? ui_recti_from_mu(mu_layout_next(ui_context())) : recti_empty();
     UI_FACE_COST_END(backend_from, "ui.backend");
     /* A row wider than its window keeps the window's width. */
     if (row_w > 0 && row_w < result.w) {

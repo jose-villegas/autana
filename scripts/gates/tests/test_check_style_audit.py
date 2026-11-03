@@ -28,6 +28,120 @@ class StyleAuditTest(unittest.TestCase):
             gate_tree.commit(root, *sorted({name.split("/")[0] for name in files}))
             return self.rule_hits(root, rule_id, file_filter)
 
+
+    def math_fixture(self, source, extra=""):
+        base = "launcher/packages/math/include/math/"
+        return {
+            base + "linear/vec3_template.h": """
+#define MATH_DEFINE_VEC3(P, T, W, OPS) \\
+typedef struct { T x, y, z; } P##_t; \\
+MATH_DEFINE_CONSTANT(P, zero, OPS##_zero(), OPS##_zero(), OPS##_zero()) \\
+MATH_DEFINE_CONSTANT(P, unit_y, OPS##_zero(), OPS##_one(), OPS##_zero()) \\
+MATH_DEFINE_CONSTANT_ALIAS(P, up, unit_y)
+""" + extra,
+            base + "linear/vec3f.h": "MATH_DEFINE_VEC3(vec3f, float, float, mathf)\n",
+            base + "linear/vec3x.h": "MATH_DEFINE_VEC3(vec3x, int32_t, int32_t, mathx)\n",
+            base + "scalar/mathx.h": "#define MATHX_SHIFT 16\n#define MATHX_ONE (1 << MATHX_SHIFT)\n",
+            base + "linear/mat4f.h": "#define MAT4F_IDENTITY { .m = {{1}} }\n",
+            "launcher/main/example.c": source,
+        }
+
+    def test_math_constant_literals_and_declarations(self):
+        hits = self.audit("MATH-CONSTANT", self.math_fixture("""
+void f(void) {
+    use((vec3f_t){0, 1.0F, 0});
+    const vec3f_t a = {0};
+    vec3x_t b = {.x = 0, .y = MATHX_ONE, .z = 0};
+}
+static const vec3f_t up = {0, 1, 0};
+"""))
+        self.assertEqual([hit.message for hit in hits], ["use vec3f_unit_y()", "use vec3f_zero()",
+                                                        "use vec3x_unit_y()", "use vec3f_unit_y()"])
+
+    def test_math_constant_negative_units_and_signed_zero(self):
+        extra = "MATH_DEFINE_CONSTANT(P, left, OPS##_neg(OPS##_one()), OPS##_zero(), OPS##_zero())"
+        hits = self.audit("MATH-CONSTANT", self.math_fixture("""
+void f(void) {
+    use((vec3f_t){-1.0F, 0, 0});
+    use((vec3x_t){-MATHX_ONE, 0, 0});
+    use((vec3f_t){-0.0F, 0, 0});
+}
+""", extra))
+        self.assertEqual([hit.message for hit in hits], ["use vec3f_left()", "use vec3x_left()"])
+
+    def test_math_constant_fixer_keeps_crlf(self):
+        source = "void f(void) {\r\n    vec3f_t a = {0};\r\n}\r\n"
+        with gate_tree.temporary_tree(self.math_fixture(source).items()) as root:
+            path = root / "launcher/main/example.c"
+            path.write_bytes(source.encode())
+            gate_tree.commit(root, "launcher")
+            hits = self.rule_hits(root, "MATH-CONSTANT")
+            check_style_audit.run_fix(root, hits)
+            self.assertEqual(path.read_bytes(), source.replace("{0}", "vec3f_zero()").encode())
+
+    def test_math_constant_address_requires_manual_local(self):
+        source = "void f(void) { use(&(vec3f_t){0}); }\n"
+        with gate_tree.temporary_tree(self.math_fixture(source).items()) as root:
+            path = root / "launcher/main/example.c"
+            self.assertEqual(check_style_audit.fix_math_constant(root, path, source), source)
+            self.assertEqual(len(list(check_style_audit.rule_math_constant(root, path, source))), 1)
+
+    def test_math_constant_exclusions(self):
+        files = self.math_fixture("""
+static vec3f_t state = {0};
+void f(void) {
+    static vec3f_t state = {0, 1, 0};
+    vec3f_t varying = {0, speed, 0};
+    vec3f_t rows[] = {{0, 1, 0}};
+    other_t nested = {.v = {0, 1, 0}};
+    // use((vec3f_t){0, 1, 0});
+    puts("(vec3f_t){0, 1, 0}");
+}
+#define UP {0, 1, 0}
+""")
+        files["launcher/packages/math/include/math/linear/use.h"] = "vec3f_t a = {0};\n"
+        self.assertEqual(self.audit("MATH-CONSTANT", files), [])
+
+    def test_math_constant_typed_define(self):
+        source = "#define UP ((vec3f_t){0, 1, 0})\n#define RAW {0, 1, 0}\n"
+        with gate_tree.temporary_tree(self.math_fixture(source).items()) as root:
+            path = root / "launcher/main/example.c"
+            hits = list(check_style_audit.rule_math_constant(root, path, source))
+            self.assertEqual(hits, [(1, "use vec3f_unit_y()")])
+            self.assertEqual(check_style_audit.fix_math_constant(root, path, source),
+                             "#define UP (vec3f_unit_y())\n#define RAW {0, 1, 0}\n")
+
+    def test_math_constant_macros_storage(self):
+        hits = self.audit("MATH-CONSTANT", self.math_fixture("""
+mat4f_t global = MAT4F_IDENTITY;
+other_t nested = (other_t){.matrix = MAT4F_IDENTITY};
+void f(void) {
+    static const mat4f_t local = MAT4F_IDENTITY;
+    mat4f_t automatic = MAT4F_IDENTITY;
+    use((mat4f_t)MAT4F_IDENTITY);
+}
+"""))
+        self.assertEqual([hit.line for hit in hits], [6, 7])
+        self.assertTrue(all(hit.message == "use mat4f_identity()" for hit in hits))
+
+    def test_math_constant_fixer_and_dynamic_table(self):
+        extra = "MATH_DEFINE_CONSTANT(P, back, OPS##_zero(), OPS##_zero(), OPS##_neg(OPS##_one()))"
+        source = """static const vec3f_t held = {0};
+void f(void) {
+    vec3f_t a = {0};
+    use((vec3x_t){0, 0, -MATHX_ONE});
+    mat4f_t b = MAT4F_IDENTITY;
+    use((mat4f_t)MAT4F_IDENTITY);
+}
+"""
+        with gate_tree.temporary_tree(self.math_fixture(source, extra).items()) as root:
+            path = root / "launcher/main/example.c"
+            fixed = check_style_audit.fix_math_constant(root, path, source)
+            self.assertEqual(fixed, source.replace("a = {0}", "a = vec3f_zero()")
+                             .replace("(vec3x_t){0, 0, -MATHX_ONE}", "vec3x_back()")
+                             .replace("b = MAT4F_IDENTITY", "b = mat4f_identity()")
+                             .replace("(mat4f_t)MAT4F_IDENTITY", "mat4f_identity()"))
+
     def test_pmu_owner(self):
         files = {
             "launcher/main/rogue.c": "int x = AXP2101_ROOT;\n",

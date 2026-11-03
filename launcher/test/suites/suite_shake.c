@@ -34,10 +34,10 @@ signal(uint32_t us, float amplitude) {
 static void
 test_still_and_zero_dt(void) {
     shake_t s = fixture();
-    shake_update(&s, (vec3f_t){0}, TEST_FRAME_US);
+    shake_update(&s, vec3f_zero(), TEST_FRAME_US);
     TEST_ASSERT_EQUAL_FLOAT(0, shake_level(&s));
     s.smooth_g = SHAKE_FULL_G;
-    shake_update(&s, (vec3f_t){0}, 0);
+    shake_update(&s, vec3f_zero(), 0);
     TEST_ASSERT_EQUAL_FLOAT(SHAKE_FULL_G, s.smooth_g);
     shake_reset(&s);
     TEST_ASSERT_EQUAL_FLOAT(0, s.smooth_g);

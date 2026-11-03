@@ -138,7 +138,7 @@ card_color(void) {
 static raster_rig_t*
 rig_with_card_behind(void) {
     raster_rig_t* r = rig_open(1U << CARD);
-    r->model[CARD] = (mat4f_t)MAT4F_IDENTITY;
+    r->model[CARD] = mat4f_identity();
     r->model[CARD].m[2][MAT3F_AXES] = CARD_BEHIND;
     return r;
 }
@@ -185,7 +185,7 @@ test_an_instance_behind_the_wall_is_full_when_asked(void) {
 static void
 test_instances_of_one_mesh_share_a_colour(void) {
     raster_rig_t* r = rig_open(1U << CARD);
-    r->model[CARD] = (mat4f_t)MAT4F_IDENTITY;
+    r->model[CARD] = mat4f_identity();
     r->model[CARD].m[0][MAT3F_AXES] = CARD_SHIFT;
     static const uint8_t red[4][3] = {{255, 0, 0}, {255, 0, 0}, {255, 0, 0}, {255, 0, 0}};
     r3d_lit_mesh_t copy = *r->instance[1].mesh; /* two cards, no wall, the copy in its own colour set */
@@ -254,7 +254,7 @@ test_a_steep_edge_is_hidden_where_a_near_card_covers_its_near_end(void) {
                             card_z};
     const vec3f_t world = world_of(&lens, centre);
     const float scale = mathf_abs(half / lens.m.m[0][0]) / (float)raster_rig_card[1][0];
-    r->model[CARD] = (mat4f_t)MAT4F_IDENTITY;
+    r->model[CARD] = mat4f_identity();
     for (int k = 0; k < 3; k++) {
         r->model[CARD].m[k][k] = scale;
     }
