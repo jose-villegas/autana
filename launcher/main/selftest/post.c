@@ -15,6 +15,7 @@
 #include "core/timing.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
+#include "input/motion/imu_chip.h"
 #include "power/power_decode.h"
 #include "sound/sound_status.h"
 
@@ -250,14 +251,14 @@ check_i2c_devices(void) {
     (void)snprintf(pins, sizeof pins, "SDA %d, SCL %d", BOARD_I2C_SDA_GPIO, BOARD_I2C_SCL_GPIO);
     report("i2c bus", true, POST_REQUIRED, pins);
 
-    static const struct {
+    const struct {
         const char* name;
         uint16_t address;
         const char* what;
         post_severity_t severity;
     } devices[] = {
         {"io expander", BOARD_IO_EXPANDER_I2C_ADDR, "TCA9554 reset lines", POST_OPTIONAL},
-        {"imu", BOARD_IMU_I2C_ADDR, "QMI8658 accel+gyro", POST_REQUIRED},
+        {"imu", BOARD_IMU_I2C_ADDR, BOARD_IMU_CHIP.name, POST_REQUIRED},
         {"rtc", BOARD_RTC_I2C_ADDR, "PCF85063 clock", POST_REQUIRED},
     };
 
