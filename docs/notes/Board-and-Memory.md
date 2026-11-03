@@ -110,7 +110,7 @@ Check these before writing a driver or guessing a register sequence.
 | [Examples repository](https://github.com/waveshareteam/ESP32-S3-Touch-AMOLED-1.8) | Waveshare's ESP-IDF and Arduino examples for every chip on the board: display, touch, IMU, RTC, power, codec, SD |
 | [Wiki](https://www.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-1.8) | Pinout, dimension drawing, datasheet links |
 | [Schematic](https://files.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-1.8/ESP32-S3-Touch-AMOLED-1.8.pdf) | Nets, pull-ups and part numbers<sup>[[81]](../Citations.md#waveshare-amoled-schematic)</sup> |
-| [3D model](https://files.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-1.8/ESP32-S3-Touch-AMOLED-1.8-3D.zip) | Module outline and part placement, the source of `launcher/main/board/waveshare_amoled_1_8/board_geometry.h`<sup>[[89]](../Citations.md#waveshare-amoled-3d-model)</sup> |
+| [3D model](https://files.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-1.8/ESP32-S3-Touch-AMOLED-1.8-3D.zip) | Module outline and part placement, the source of `launcher/main/board/waveshare_amoled_1_8/board.toml`<sup>[[89]](../Citations.md#waveshare-amoled-3d-model)</sup> |
 
 ## Memory: the constraint that shapes everything
 
