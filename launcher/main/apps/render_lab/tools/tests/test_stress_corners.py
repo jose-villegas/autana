@@ -5,7 +5,8 @@
 Builds the host renderer once and draws every preset stress_preset.h names
 with --view cull --counts, then holds each to what it is the loss case of:
 open hides and culls nothing, stack hides most of what it keeps, tiny copies
-are all in view and all drawn, big tris draws every triangle it submits, and
+are all in view and all drawn, big tris draws every triangle it submits,
+two-sided cubes skip nothing facing away, noisy tiny cylinders are all drawn, and
 before a still camera only the per-frame preset's frames differ. The sizes the
 triangles are drawn at are suite_stress_preset.c's to hold.
 """
@@ -69,7 +70,7 @@ class StressCorners(unittest.TestCase):
         return {name: int(value) for name, value in last.items()}
 
     def test_every_preset_is_held_here(self):
-        self.assertEqual({"open", "stack", "tiny-copies", "big-tris", "per-frame"}, set(preset_copies()))
+        self.assertEqual({"open", "stack", "tiny-copies", "big-tris", "per-frame", "two-sided", "noisy-tiny"}, set(preset_copies()))
 
     def assert_all_in_view(self, c):
         """Nothing culled: every cluster tested is kept, and no node is cut."""
@@ -95,6 +96,19 @@ class StressCorners(unittest.TestCase):
     def test_tiny_copies_are_all_in_view(self):
         c = self.counts("tiny-copies")
         self.assertGreaterEqual(c["clusters_drawn"], preset_copies()["tiny-copies"])
+        self.assert_all_in_view(c)
+
+    def test_two_sided_skips_nothing_facing_away(self):
+        """A closed shape drawn from both sides: the one-sided spheres skip their far half, these cubes none."""
+        self.assertGreater(self.counts("tiny-copies")["triangles_facing_away"], 0)
+        c = self.counts("two-sided")
+        self.assertGreater(c["triangles_submitted"], 0)
+        self.assertEqual(0, c["triangles_facing_away"])
+        self.assertGreater(c["clusters_hidden"], 0)
+
+    def test_noisy_tiny_copies_are_all_in_view(self):
+        c = self.counts("noisy-tiny")
+        self.assertGreaterEqual(c["clusters_drawn"], preset_copies()["noisy-tiny"])
         self.assert_all_in_view(c)
 
     def test_big_tris_draws_every_triangle_it_submits(self):

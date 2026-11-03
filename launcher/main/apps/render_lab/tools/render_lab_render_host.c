@@ -263,10 +263,9 @@ setup(int quarter) {
         const resolution_config_t one = resolution_config(&size, 1, 1, INT32_MAX);
         render_context_set_dynamic_resolution(render_context_main(), &one, NULL, 0);
     }
-    if (counts_path != NULL && (counts = render_counts_open(counts_path, "render_lab_render_host")) == NULL) {
-        return false;
-    }
-    return tune_options(option_count, option_args, "--live-tune");
+    /* Last, so that no failure after it leaves the file open. */
+    return tune_options(option_count, option_args, "--live-tune")
+           && (counts_path == NULL || (counts = render_counts_open(counts_path, "render_lab_render_host")) != NULL);
 }
 
 /* With --view overdraw, the last frame's totals on stderr, beside its image. */

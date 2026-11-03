@@ -232,21 +232,23 @@ crossing sample edge.
 
 ## primitive_mesh
 
-Standard shapes as indexed triangles, for geometry made at run time: a
-square grid of side 1 and a latitude-longitude sphere of radius 1, each
-tessellated by one count.
+The standard shapes as indexed triangles, for geometry made at run time or
+baked. Each shape is a struct of named parameters and one call that writes
+its positions and uint16 triangles into a `primitive_mesh_t` the caller
+owns; the shape's two counts size those buffers first.
 
-| Name | Purpose |
-|---|---|
-| `primitive_mesh_t` | Caller-owned positions and triangles, with capacities and counts |
-| `primitive_grid` | The unit square about the origin at z = 0, facing +z, in `cells` × `cells` squares cut in two |
-| `primitive_sphere` | The unit sphere about the origin in `rings` bands from +y to −y, each cut into `2 × rings` segments |
-| `primitive_grid_vertex_count`, `primitive_grid_triangle_count` | $`(c+1)^2`$ vertices, $`2c^2`$ triangles |
-| `primitive_sphere_segments` | $`2r`$ segments round the axis |
-| `primitive_sphere_vertex_count`, `primitive_sphere_triangle_count` | $`(r+1)(2r+1)`$ vertices, $`4r(r-1)`$ triangles |
+| Call, parameters | What the parameters make | Vertices | Triangles |
+|---|---|---|---|
+| `primitive_plane`, `primitive_plane_t` | `subdivisions` $`n`$: the square of side 1 at z = 0, facing +z | `primitive_plane_vertex_count`: $`(n+1)^2`$ | `primitive_plane_triangle_count`: $`2n^2`$ |
+| `primitive_sphere`, `primitive_sphere_t` | `segments` $`s`$, `rings` $`r`$: radius 1 | `primitive_sphere_vertex_count`: $`(r+1)(s+1)`$ | `primitive_sphere_triangle_count`: $`2s(r-1)`$ |
+| `primitive_cube`, `primitive_cube_t` | `subdivisions` $`n`$: side 1, each face a plane | `primitive_cube_vertex_count`: $`6(n+1)^2`$ | `primitive_cube_triangle_count`: $`12n^2`$ |
+| `primitive_capsule`, `primitive_capsule_t` | `radius`, `height` between the hemispheres' centres, `segments` $`s`$, `rings` $`r`$ a hemisphere | `primitive_capsule_vertex_count`: $`(2r+2)(s+1)`$ | `primitive_capsule_triangle_count`: $`4sr`$ |
+| `primitive_cylinder`, `primitive_cylinder_t` | `top_radius`, `bottom_radius`, `height`, `segments` $`s`$, `stacks` $`k`$; $`c`$ ends of radius above 0 | `primitive_cylinder_vertex_count`: $`(k+1)(s+1) + c(s+2)`$ | `primitive_cylinder_triangle_count`: $`2s(k - 1 + c)`$ |
 
 | Rule | Detail |
 |---|---|
+| Frame | About the origin; round shapes turn about +y, from +y down |
 | Winding | As iso_surface: counter-clockwise about the outward normal, right-handed |
-| Sphere caps | A band round a pole has one triangle per segment; the seam's and poles' vertices repeat, one per segment |
-| Refusal | Too few cuts, short buffers or more vertices than a uint16 index reaches: false, nothing written |
+| Seams and points | The seam's vertices, and a pole's or an apex's, repeat once per segment; a band beside a point has one triangle per segment |
+| Cone | A cylinder with one radius 0: no cap at that end. A quad is a plane of one subdivision |
+| Refusal | Parameters out of range, short buffers or more vertices than a uint16 index reaches: false, nothing written |
