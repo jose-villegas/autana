@@ -33,7 +33,6 @@ moved_vertically_past_threshold(const ui_pointer_t* p, const input_t* input) {
 
 static int
 begin_drag(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out, int n) {
-    p->press_stage = 0;
     p->press_deferred = false;
     p->dragging = true;
     p->aimed = false;
@@ -56,8 +55,8 @@ step_drag(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
     return n;
 }
 
-/* A press on scrollable content whose hover frames have played out: a
- * release is the tap, a sideways move hands the press to the control. */
+/* A press on scrollable content: a release is the tap, a sideways move hands
+ * the press to the control. */
 static int
 step_deferred(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
     if (!input->released && moved_vertically_past_threshold(p, input)) {
@@ -80,62 +79,39 @@ step_deferred(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
     return n;
 }
 
-/* The press frame: position only, the DOWN follows once the hover root is
- * settled. A tap resolved within this frame still owes a
- * down/up pair, fed here so microui sees a mouse_down-already-clear frame. */
+/* A DOWN at the aim, with the UP of a lift in the same frame. Held, it waits
+ * for the caller to report whether it landed. */
+static int
+press(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
+    int n = emit(out, 0, UI_POINTER_MOVE, p->aim);
+    n = emit(out, n, UI_POINTER_DOWN, p->aim);
+    p->aimed = false;
+    if (input->released) {
+        p->down = false;
+        return emit(out, n, UI_POINTER_UP, input->point);
+    }
+    p->down = true;
+    p->press_unconfirmed = true;
+    return n;
+}
+
+/* The frame of contact. microui takes hover on the frame its button goes down
+ * and the caller has seeded the hover root, so the DOWN goes out at once. On
+ * scrollable content it waits instead: the finger may be starting a scroll. */
 static int
 step_pressed(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
     p->press_deferred = false;
     p->dragging = false;
-    p->press_stage = 1;
+    p->press_unconfirmed = false;
     p->press = input->point;
     if (!p->aimed) {
         p->aim = p->press;
     }
-    int n = emit(out, 0, UI_POINTER_MOVE, p->aim);
-
-    if (!input->released) {
-        return n;
-    }
-    n = emit(out, n, UI_POINTER_DOWN, p->aim);
-    n = emit(out, n, UI_POINTER_UP, input->point);
-    p->press_stage = 0;
-    p->down = false;
-    p->aimed = false;
-    return n;
-}
-
-static int
-step_hover(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
-    if (p->over_scrollable && !input->released && moved_vertically_past_threshold(p, input)) {
-        return begin_drag(p, input, out, 0);
-    }
-    int n = emit(out, 0, UI_POINTER_MOVE, p->aim);
-
-    const bool last_hover_frame = !p->hover_unsettled;
-    if (last_hover_frame && p->over_scrollable && !input->released) {
-        p->press_stage = 0;
+    if (p->over_scrollable && !input->released) {
         p->press_deferred = true;
-    } else if (last_hover_frame) {
-        n = emit(out, n, UI_POINTER_DOWN, p->aim);
-        p->press_stage = 0;
-        p->down = true;
-        p->aimed = false;
+        return emit(out, 0, UI_POINTER_MOVE, p->aim);
     }
-
-    if (!input->released) {
-        return n;
-    }
-    /* Lifted mid-sequence. A press that never got its DOWN still owes one,
-     * or the tap vanishes entirely. */
-    if (!p->down) {
-        n = emit(out, n, UI_POINTER_DOWN, p->aim);
-    }
-    n = emit(out, n, UI_POINTER_UP, input->point);
-    p->press_stage = 0;
-    p->down = false;
-    p->aimed = false;
-    return n;
+    return press(p, input, out);
 }
 
 static int
@@ -154,8 +130,12 @@ step_input(ui_pointer_t* p, const input_t* input, ui_pointer_event_t* out) {
         return step_deferred(p, input, out);
     }
 
-    if (p->press_stage > 0) {
-        return step_hover(p, input, out);
+    /* A DOWN that went under a stale hover root and took nothing: the frame
+     * just built the right root, so the press is made again. */
+    const bool missed = p->press_unconfirmed && p->press_missed && p->down;
+    p->press_unconfirmed = false;
+    if (missed) {
+        return press(p, input, out);
     }
 
     if (input->released) {

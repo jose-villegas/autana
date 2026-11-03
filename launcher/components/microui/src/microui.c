@@ -21,7 +21,9 @@
 */
 
 /* LOCAL MODIFICATION: command alignment, zero padding and control capture keep shell state stable.
-** LOCAL MODIFICATION: mu_seed_hover_root() and hover_beats() give a new pointer its hover root a frame early. */
+** LOCAL MODIFICATION: mu_seed_hover_root() and hover_beats() give a new pointer its hover root a frame early.
+** LOCAL MODIFICATION: a control takes hover on the frame the button goes down on it, and mu_scrollable_at()
+** answers before the frame whether a press lands on content that scrolls. */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -695,7 +697,9 @@ void mu_update_control(mu_Context *ctx, mu_Id id, mu_Rect rect, int opt) {
   if (ctx->focus == id) { ctx->updated_focus = 1; }
   report_control(ctx, rect, opt);
   if (opt & MU_OPT_NOINTERACT) { return; }
-  if (mouseover && !ctx->mouse_down) { ctx->hover = id; }
+  /* LOCAL MODIFICATION: also on the frame the button goes down, so a press
+  ** needs no hover frame before it; a held button still never moves hover. */
+  if (mouseover && (!ctx->mouse_down || ctx->mouse_pressed)) { ctx->hover = id; }
 
   if (ctx->focus == id) {
     if (ctx->mouse_pressed && !mouseover) { mu_set_focus(ctx, 0); }
@@ -1037,11 +1041,19 @@ void mu_end_treenode(mu_Context *ctx) {
   } while (0)
 
 
-static void scrollbars(mu_Context *ctx, mu_Container *cnt, mu_Rect *body) {
-  int sz = ctx->style->scrollbar_size;
+/* LOCAL MODIFICATION: the extent scrollbars() compares with the body, shared
+** with mu_scrollable_at() so the two can never disagree on what scrolls. */
+static mu_Vec2 padded_content(mu_Context *ctx, mu_Container *cnt) {
   mu_Vec2 cs = cnt->content_size;
   cs.x += ctx->style->padding * 2;
   cs.y += ctx->style->padding * 2;
+  return cs;
+}
+
+
+static void scrollbars(mu_Context *ctx, mu_Container *cnt, mu_Rect *body) {
+  int sz = ctx->style->scrollbar_size;
+  mu_Vec2 cs = padded_content(ctx, cnt);
   mu_push_clip_rect(ctx, *body);
   /* resize body to make room for scrollbars */
   if (cs.y > cnt->body.h) { body->w -= sz; }
@@ -1195,6 +1207,26 @@ void mu_seed_hover_root(mu_Context *ctx) {
     }
   }
   ctx->next_hover_root = top;
+}
+
+
+/* LOCAL MODIFICATION. Whether mouse_pos lies in the body of a container the
+** last frame built whose content overflows it, by the rule scrollbars()
+** reserves room by. Call between feeding the pointer and mu_begin(); a covered
+** or stale container can only answer yes too often, never no. */
+int mu_scrollable_at(mu_Context *ctx) {
+  int i;
+  for (i = 0; i < MU_CONTAINERPOOL_SIZE; i++) {
+    mu_Container *cnt = &ctx->containers[i];
+    mu_Vec2 cs;
+    if (ctx->container_pool[i].last_update != ctx->frame || !cnt->open ||
+        !rect_overlaps_vec2(cnt->body, ctx->mouse_pos)) {
+      continue;
+    }
+    cs = padded_content(ctx, cnt);
+    if (cs.y > cnt->body.h || cs.x > cnt->body.w) { return 1; }
+  }
+  return 0;
 }
 
 
