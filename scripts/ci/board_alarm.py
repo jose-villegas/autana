@@ -147,6 +147,17 @@ def night_running(request):
     return running
 
 
+def boards_busy(request):
+    """Whether another run's board job is running: the probe would queue behind it, not find the runner down."""
+    busy = any(job.get('status') == 'in_progress' and BOARD_LABEL in job.get('labels', [])
+               for run in pages('/actions/runs?status=in_progress', 'workflow_runs', request)
+               if str(run['id']) != os.environ.get('GITHUB_RUN_ID')
+               for job in pages(f"/actions/runs/{run['id']}/jobs", 'jobs', request))
+    if busy:
+        print('::notice::A board job is running; the USB probe waits for the next check')
+    return busy
+
+
 def check(request, now, lanes, plugged, unreachable=(), nights=()):
     if night_running(request):
         return []
@@ -213,7 +224,7 @@ def run_url():
 
 
 def probe_devices(destination, reason_file, request=call, clock=time.monotonic, sleep=time.sleep):
-    enabled = nights_enabled(request) and not night_running(request)
+    enabled = nights_enabled(request) and not boards_busy(request)
     if os.environ.get('GITHUB_OUTPUT'):
         with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
             output.write(f'enabled={str(enabled).lower()}\n')
@@ -278,7 +289,12 @@ def main(argv=None):
                 reason = args.reason_file.read_text(encoding='utf-8')
             except FileNotFoundError:
                 reason = FAILURE_REASON
-        errors = run_errors(os.environ['GITHUB_RUN_ID'], call) if args.errors else []
+        try:
+            errors = run_errors(os.environ['GITHUB_RUN_ID'], call) if args.errors else []
+        except (HTTPError, OSError) as error:
+            # The quoted errors only decorate the alarm; it is raised without them.
+            print(f'::warning::could not read the errors of this run: {error}')
+            errors = []
         raise_alarm(args.kind, reason + ''.join(f'\n- {line}' for line in errors), run_url())
     elif args.command == 'clear':
         clear_alarm(args.kind, run_url())

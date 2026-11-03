@@ -124,12 +124,3 @@ jobs:
       - name: Clear the board-ci-down alarm
         if: (needs.board.result == 'success' || needs.board.result == 'failure') && needs.board.outputs.boards_ran == 'true'
         run: python3 scripts/ci/board_alarm.py clear --kind down
-
-      # On main only: a branch's own failures are its pull request's to fix.
-      - name: Raise the board-ci-red alarm
-        if: github.ref == 'refs/heads/main' && needs.board.result == 'failure' && needs.board.outputs.boards_ran == 'true'
-        run: python3 scripts/ci/board_alarm.py raise --kind red --errors --reason "board job failed on main with the boards up"
-
-      - name: Clear the board-ci-red alarm
-        if: github.ref == 'refs/heads/main' && needs.board.result == 'success' && needs.board.outputs.boards_ran == 'true'
-        run: python3 scripts/ci/board_alarm.py clear --kind red

@@ -187,6 +187,7 @@ class BoardAlarmTests(unittest.TestCase):
         for status in ('completed', 'in_progress'):
             request = Repository()
             request.runs[f'/actions/workflows/{alarm.NIGHTLY_WORKFLOW}/runs'] = [dict(id=1, status='in_progress')]
+            request.runs['/actions/runs'] = [dict(id=1, status='in_progress')]
             job = board_job('in_progress')
             job['name'] = 'nightly'
             request.jobs['/actions/runs/1/jobs'] = [
@@ -395,6 +396,23 @@ class BoardAlarmTests(unittest.TestCase):
                     alarm.main(['raise', *wrong])
                 self.assertEqual(error.exception.code, 2)
 
+    def test_raise_with_errors_still_raises_when_the_errors_cannot_be_read(self):
+        with mock.patch.object(alarm, 'run_errors', side_effect=OSError('timed out')), \
+                mock.patch.object(alarm, 'run_url', return_value='logs'), mock.patch.dict(os.environ, GITHUB_RUN_ID='42'), \
+                mock.patch.object(alarm, 'raise_alarm') as raised, mock.patch('sys.stdout', new_callable=io.StringIO):
+            self.assertEqual(alarm.main(['raise', '--kind', 'down', '--errors', '--reason', 'down']), 0)
+        raised.assert_called_once_with('down', 'down', 'logs')
+
+    def test_probe_waits_for_another_runs_board_job_not_its_own(self):
+        # Board CI (run 7) holds the runner while this check runs as 42; run 7's own probe job is no reason to wait.
+        for own, expected in [('42', True), ('7', False)]:
+            request = Repository()
+            request.runs['/actions/runs'] = [dict(id=7, status='in_progress')]
+            request.jobs['/actions/runs/7/jobs'] = [board_job('in_progress')]
+            with mock.patch.dict(os.environ, GITHUB_RUN_ID=own), \
+                    mock.patch('sys.stdout', new_callable=io.StringIO):
+                self.assertEqual(alarm.boards_busy(request), expected)
+
     def test_raise_with_errors_quotes_the_failed_jobs_error_annotations(self):
         request = Repository()
         request.jobs['/actions/runs/42/jobs'] = [dict(id=1, name='nightly', conclusion='failure'),
@@ -463,10 +481,13 @@ class BoardAlarmTests(unittest.TestCase):
         self.assertEqual(len(reports), 1)
         self.assertEqual(reports[0]['if'], 'failure()')
         self.assertIn('--kind down', reports[0]['run'])
-        # Pages is checked whether or not the boards are.
-        pages = [step for step in check['steps'] if 'board_alarm.py pages' in step.get('run', '')]
-        self.assertEqual([step.get('if') for step in pages], [None])
-        self.assertIn('deployments', check['permissions'])
+        # Pages is checked in its own job, so its failures never raise the boards' alarm.
+        self.assertFalse(any('board_alarm.py pages' in step.get('run', '') for step in check['steps']))
+        self.assertNotIn('deployments', check['permissions'])
+        pages = workflow['jobs']['pages']
+        self.assertEqual([step['run'] for step in pages['steps'] if 'run' in step], ['python3 scripts/ci/board_alarm.py pages'])
+        self.assertIn('deployments', pages['permissions'])
+        self.assertNotIn('needs', pages)
         for name in ('nightly-perf.yml', 'board-ci.yml'):
             job = yaml.safe_load((root / name).read_text())['jobs']['alarm']
             self.assertEqual(job['concurrency']['group'], 'board-ci-alarm')
@@ -497,27 +518,21 @@ class BoardAlarmTests(unittest.TestCase):
         self.assertEqual(conditions[alarm.CLEAR_STEP], "(needs.board.result == 'success' || "
                          "needs.board.result == 'failure') && needs.board.outputs.boards_ran == 'true'")
 
-    def test_red_alarm_follows_main_runs_whose_boards_ran(self):
+    def test_red_alarm_follows_main_nights_whose_boards_ran(self):
         root = Path(__file__).resolve().parents[3] / '.github/workflows'
-        for name, job in (('nightly-perf.yml', 'nightly'), ('board-ci.yml', 'board')):
-            steps = yaml.safe_load((root / name).read_text())['jobs']['alarm']['steps']
-            conditions = {step['name']: step['if'] for step in steps if 'if' in step}
-            ran = f"needs.{job}.outputs.boards_ran == 'true'"
-            self.assertEqual(conditions['Raise the board-ci-red alarm'],
-                             f"github.ref == 'refs/heads/main' && needs.{job}.result == 'failure' && {ran}")
-            self.assertEqual(conditions['Clear the board-ci-red alarm'],
-                             f"github.ref == 'refs/heads/main' && needs.{job}.result == 'success' && {ran}")
-            kinds = [step['run'].split('--kind ')[1].split()[0] for step in steps if 'board_alarm.py' in step.get('run', '')]
-            self.assertEqual(kinds, ['down', 'down', 'red', 'red'])
-
-    def test_pages_trigger_raises_on_a_failed_build_and_clears_on_a_built_one(self):
-        workflow = Path(__file__).resolve().parents[3] / '.github/workflows/pages-trigger.yml'
-        job = yaml.safe_load(workflow.read_text())['jobs']['alarm']
-        self.assertEqual(job['needs'], 'pages')
-        self.assertIn("github.event_name != 'pull_request'", job['if'])
-        runs = {step['if']: step['run'] for step in job['steps'] if 'if' in step}
-        self.assertIn('raise --kind pages', runs["needs.pages.result == 'failure'"])
-        self.assertIn('clear --kind pages', runs["needs.pages.result == 'success'"])
+        steps = yaml.safe_load((root / 'nightly-perf.yml').read_text())['jobs']['alarm']['steps']
+        conditions = {step['name']: step['if'] for step in steps if 'if' in step}
+        ran = "needs.nightly.outputs.boards_ran == 'true'"
+        self.assertEqual(conditions['Raise the board-ci-red alarm'],
+                         f"github.ref == 'refs/heads/main' && needs.nightly.result == 'failure' && {ran}")
+        self.assertEqual(conditions['Clear the board-ci-red alarm'],
+                         f"github.ref == 'refs/heads/main' && needs.nightly.result == 'success' && {ran}")
+        kinds = lambda steps: [step['run'].split('--kind ')[1].split()[0] for step in steps
+                               if 'board_alarm.py' in step.get('run', '')]
+        self.assertEqual(kinds(steps), ['down', 'down', 'red', 'red'])
+        # The nightly alone owns the red alarm: a dispatched Board CI never ran the lanes that failed.
+        board_ci = yaml.safe_load((root / 'board-ci.yml').read_text())['jobs']['alarm']['steps']
+        self.assertEqual(kinds(board_ci), ['down', 'down'])
 
     def test_cli_ran_needs_both_board_steps_stages_whatever_their_tests_reported(self):
         selftest = capture_ended_line('selftest', CAPTURE_COMPLETE)
