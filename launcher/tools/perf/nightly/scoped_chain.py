@@ -95,11 +95,16 @@ class StepResult:
     report: str | None = None
 
 
-def lane_failures(manifest):
-    """Why a lane's night manifest failed, one line per cause: each failed step, then the self-test with the
-    first failed tests of the capture beside its report. Empty when the lane passed."""
+def lane_failures(manifest, deadline=None):
+    """Why a lane's night manifest failed, one line per cause: each failed step, an end past the plan's
+    `deadline`, then the self-test with the first failed tests of the capture beside its report. Empty when
+    the lane passed."""
     lines = [f"step {step['position']} {step['commit'][:REPORT_SHA_DIGITS]}: {step['outcome']}"
              for step in manifest["steps"] if step["outcome"] in FAILED_STEPS]
+    late = (datetime.fromisoformat(manifest["ended"]) - datetime.fromisoformat(deadline)
+            if deadline and manifest.get("ended") else timedelta())
+    if late > timedelta():
+        lines.append(f"ended {math.ceil(late.total_seconds() / 60)} min past the deadline {deadline}")
     selftest = manifest["selftest"]
     if selftest["outcome"] not in FAILED_SELFTEST:
         return lines
@@ -763,7 +768,7 @@ def timeline(args):
         if record is None:
             lanes.append(f"{board}: no night manifest\n\n")
             continue
-        failures = lane_failures(record)
+        failures = lane_failures(record, planned.get("deadline"))
         steps.append(dict(name="board " + board, started=record["started"], ended=record["ended"],
                           outcome="failed" if failures else "passed" if record["ended"] else "running"))
         counts = Counter(step["outcome"] for step in record["steps"])
@@ -861,7 +866,7 @@ def main():
     with terminate_unwinds():
         results = run_chain(steps, args)
     manifest = read_last_night(args.data, short_id(args.board))
-    failures = lane_failures(manifest)
+    failures = lane_failures(manifest, planned.get("deadline"))
     for line in failures:
         print(f"::error::lane {short_id(args.board)}: {line}", file=sys.stderr)
     return int(bool(failures))
