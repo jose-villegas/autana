@@ -14,6 +14,14 @@ held(int64_t count) {
     return count > INT32_MAX ? INT32_MAX : (int)count;
 }
 
+/* A parameter's count, held at INDEXABLE_VERTICES: a shape cut that many
+ * times is already past what an index reaches, and its counts stay past it
+ * without the products overflowing. */
+static int64_t
+cut(int count) {
+    return count > INDEXABLE_VERTICES ? INDEXABLE_VERTICES : count;
+}
+
 /* Whether `counts` fit `out` and a uint16 index reaches every vertex. */
 static bool
 fits(const primitive_mesh_t* out, primitive_counts_t counts) {
@@ -45,12 +53,12 @@ add_triangle(primitive_mesh_t* out, int a, int b, int c) {
 
 static int64_t
 grid_vertices(int subdivisions) {
-    return (int64_t)(subdivisions + 1) * (subdivisions + 1);
+    return (cut(subdivisions) + 1) * (cut(subdivisions) + 1);
 }
 
 static int64_t
 grid_triangles(int subdivisions) {
-    return 2 * (int64_t)subdivisions * subdivisions;
+    return 2 * cut(subdivisions) * cut(subdivisions);
 }
 
 /* `centre` + a unit square spanned by `u` and `v`, facing u x v. */
@@ -133,15 +141,16 @@ typedef struct {
 /* Ring `row` of a shape, from the top down. */
 typedef ring_t (*ring_fn)(const void* shape, int row);
 
+/* `bands` between bands + 1 rings. */
 static int64_t
-lathe_vertices(int rows, int segments) {
-    return (int64_t)rows * (segments + 1);
+lathe_vertices(int64_t bands, int segments) {
+    return (bands + 1) * (cut(segments) + 1);
 }
 
 /* Each band two triangles a segment, but one where its top or bottom ring is a point. */
 static int64_t
-lathe_triangles(int rows, int segments, bool top_point, bool bottom_point) {
-    return (int64_t)segments * ((2 * (int64_t)(rows - 1)) - (top_point ? 1 : 0) - (bottom_point ? 1 : 0));
+lathe_triangles(int64_t bands, int segments, bool top_point, bool bottom_point) {
+    return cut(segments) * ((2 * bands) - (top_point ? 1 : 0) - (bottom_point ? 1 : 0));
 }
 
 /* A ring's vertex at slice `s`, in the same place whichever part of a shape asks. */
@@ -194,8 +203,8 @@ sphere_valid(const primitive_sphere_t* shape) {
 
 primitive_counts_t
 primitive_sphere_counts(const primitive_sphere_t* shape) {
-    return (primitive_counts_t){held(lathe_vertices(shape->rings + 1, shape->segments)),
-                                held(lathe_triangles(shape->rings + 1, shape->segments, true, true))};
+    return (primitive_counts_t){held(lathe_vertices(cut(shape->rings), shape->segments)),
+                                held(lathe_triangles(cut(shape->rings), shape->segments, true, true))};
 }
 
 bool
@@ -226,8 +235,10 @@ capsule_rows(const primitive_capsule_t* shape) {
 
 primitive_counts_t
 primitive_capsule_counts(const primitive_capsule_t* shape) {
-    return (primitive_counts_t){held(lathe_vertices(capsule_rows(shape), shape->segments)),
-                                held(lathe_triangles(capsule_rows(shape), shape->segments, true, true))};
+    /* Each hemisphere's bands and the cylinder's one between them. */
+    const int64_t bands = (2 * cut(shape->rings)) + 1;
+    return (primitive_counts_t){held(lathe_vertices(bands, shape->segments)),
+                                held(lathe_triangles(bands, shape->segments, true, true))};
 }
 
 bool
@@ -256,11 +267,11 @@ cylinder_caps(const primitive_cylinder_t* shape) {
 
 primitive_counts_t
 primitive_cylinder_counts(const primitive_cylinder_t* shape) {
-    return (primitive_counts_t){held(lathe_vertices(shape->stacks + 1, shape->segments)
-                                     + ((int64_t)cylinder_caps(shape) * (shape->segments + 2))),
-                                held(lathe_triangles(shape->stacks + 1, shape->segments, shape->top_radius == 0.0F,
-                                                     shape->bottom_radius == 0.0F)
-                                     + ((int64_t)cylinder_caps(shape) * shape->segments))};
+    return (primitive_counts_t){
+        held(lathe_vertices(cut(shape->stacks), shape->segments) + (cylinder_caps(shape) * (cut(shape->segments) + 2))),
+        held(lathe_triangles(cut(shape->stacks), shape->segments, shape->top_radius == 0.0F,
+                             shape->bottom_radius == 0.0F)
+             + (cylinder_caps(shape) * cut(shape->segments)))};
 }
 
 /* An end's fan: its centre and a ring of its own, facing up for the top. */
