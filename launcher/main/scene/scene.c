@@ -337,6 +337,9 @@ scene_load_from(const asset_pack_t* pack, const char* id, scene_failure_t* why) 
     scene_failure_t done =
         scene_hierarchy_open(scene) ? open_meshes(scene, pack) : scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id);
     if (done.status == SCENE_OK) {
+        done = scene_mesh_make_resident(scene);
+    }
+    if (done.status == SCENE_OK) {
         done = open_transforms(scene);
     }
     if (done.status == SCENE_OK) {
@@ -355,6 +358,7 @@ scene_load_from(const asset_pack_t* pack, const char* id, scene_failure_t* why) 
         scene_animation_release(scene);
         memory_free(scene->light_transfer);
         scene_hierarchy_release(scene);
+        scene_free_kept(scene->resident);
         scene_free_kept(scene);
         return NULL;
     }
@@ -392,6 +396,7 @@ scene_unload(scene_t* scene) {
         scene_animation_release(scene);
         memory_free(scene->light_transfer);
         scene_hierarchy_release(scene);
+        scene_free_kept(scene->resident);
         scene_free_kept(scene);
         if (loaded_count == 0) {
             /* Nothing left to draw: drop the scratch, so whoever lent it can
