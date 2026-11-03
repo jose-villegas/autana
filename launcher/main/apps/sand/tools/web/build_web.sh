@@ -38,13 +38,12 @@ $MAIN_DIR/core/job.c
 $SCRIPT_DIR/web_sand.c
 "
 
-# Each package's include root (launcher/packages/<name>/include), the same
-# roots launcher/tools/build/packages.sh gives the host builds.
-PACKAGE_FLAGS=""
-for package_include in "$MAIN_DIR"/../packages/*/include; do
-    [ -d "$package_include" ] && PACKAGE_FLAGS="$PACKAGE_FLAGS -I $package_include"
-done
-FLAGS="-std=c11 -DNDEBUG -I $MAIN_DIR$PACKAGE_FLAGS -I $SAND_DIR"
+# The firmware's include roots (main/, the board's folder, each package's
+# include/), as launcher/tools/build/packages.sh gives the host builds.
+# shellcheck source=/dev/null
+. "$MAIN_DIR/../tools/build/packages.sh"
+FIRMWARE_FLAGS=$(firmware_includes "$MAIN_DIR/..")
+FLAGS="-std=c11 -DNDEBUG $FIRMWARE_FLAGS -I $SAND_DIR"
 
 if [ "${1:-}" = --inputs ]; then
     ROOT=$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel)
