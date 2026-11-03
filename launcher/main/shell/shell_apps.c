@@ -12,6 +12,7 @@
 #include "app/app_arena.h"
 #include "core/memory.h"
 #include "display/display.h"
+#include "display/display_shell.h"
 #include "draw/draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
@@ -28,7 +29,7 @@
 #include "shell/ui/ui_ridge.h"
 #include "sound/sound_engine.h"
 #if CONFIG_LAUNCHER_DEVELOPMENT
-#include "console/verbs/console_sound.h"
+#include "sound/console/console_sound.h"
 #endif
 #include "ui/layout/ui_anchor.h"
 #include "ui/ui.h"
@@ -154,7 +155,7 @@ app_band_active(const app_t* app) {
     return app->draw_band != NULL && mode->layout == GFX_LAYOUT_BANDS;
 }
 
-/* The app half of gfx_request_full_redraw() (gfx_present.h): an app's own cache
+/* The app half of gfx_request_full_redraw() (gfx.h): an app's own cache
  * beyond the framebuffer, if it keeps one, or the launcher's ui.c canvas
  * cache while none is running. Consumes the pending flag before whichever
  * of the two draws next, not after: a request made inside that very

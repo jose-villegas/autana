@@ -24,6 +24,7 @@ typedef struct {
     uint16_t* pixels;
     int width, height;
     uint16_t* half_pixels; /* NULL disables expansion */
+    uint8_t* half_seams;   /* the half picture's seam mask, or NULL */
 } scene_target_t;
 
 /* Whether a camera needs a frame pass, including a paused expanded picture. */
@@ -48,3 +49,9 @@ void scene_unload_all(void);
  * take it back. Internal-RAM pieces stay on the heap either way. Returns the
 take it replaces. */
 memory_take_fn scene_set_take(memory_take_fn take);
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+typedef struct checkpoint checkpoint_t;
+void scene_shell_checkpoint_capture(checkpoint_t* saved);
+bool scene_shell_checkpoint_prepare(checkpoint_t* saved);
+#endif

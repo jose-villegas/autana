@@ -4,10 +4,11 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 scene_name=sand_sim
 scene_sources="
-main/core/job.c
 main/input/motion/motion_reader.c
 main/input/motion/gravity.c
 main/input/motion/shake.c
+main/input/motion/imu_rest.c
+main/input/motion/imu_calib.c
 test/input_fake.c
 test/clock_fake.c
 main/apps/sand/sand.c

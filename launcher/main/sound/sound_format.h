@@ -2,7 +2,7 @@
  * sound_format: the SOND file layout, a sound as it is stored in an asset
  * pack. launcher/tools/audio/sound_asset.py writes it and sound.c reads it;
  * both take every value below from this header, and
- * docs/audio/Sound-Assets.md draws it. sound.h includes it for the format
+ * docs/assets/formats/SOND.md draws it. sound.h includes it for the format
  * codes; code that plays sounds needs only sound.h.
  */
 #pragma once

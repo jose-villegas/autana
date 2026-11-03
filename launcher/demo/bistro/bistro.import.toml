@@ -14,20 +14,68 @@ seed = 1
 [geometry]
 alpha_mask = { keep_alpha = 0.5 }
 thin = { material = "Foliage_Paris_Flowers", keep = 0.3 }
-simplify = { dense_edge = 300.0, props = ["Paris_Chair_01", "Paris_Table_Terrace", "Vespa", "Streetlight_Metal", "Paris_StreetSign_01", "Paris_TrafficSign_A", "Bollards", "Trashcan"], props_share = 0.2, seal_seams = false, colour_deviation = 2.0 }
+simplify = { dense_edge = 300.0, props = ["Streetlight_Metal"], props_share = 0.13, seal_seams = false, colour_deviation = 2.0 }
 
+# The free-standing props: one mesh per repeated shape, each copy drawing
+# `triangles` times its variant's objects_scale: as many as the old pooled
+# props share drew inside its bounds. The streetlights stay
+# pooled in the rest, since their objects carry the string lights between
+# the buildings.
+[[objects.meshes]]
+match = { material = "Paris_Chair_01" }
+triangles = 21
+seam = "free"
+
+[[objects.meshes]]
+match = { material = "Paris_Table_Terrace" }
+triangles = 24
+seam = "free"
+
+[[objects.meshes]]
+match = { material = "Trashcan" }
+triangles = 71
+seam = "free"
+
+[[objects.meshes]]
+match = { material = "Vespa" }
+triangles = 203
+seam = "free"
+
+[[objects.meshes]]
+match = { material = "Bollards" }
+triangles = 30
+seam = "free"
+
+[[objects.meshes]]
+match = { material = "Paris_TrafficSign_A" }
+triangles = 17
+seam = "free"
+
+[[objects.meshes]]
+match = { material = "Paris_StreetSign_01" }
+triangles = 13
+seam = "free"
+
+# Each variant's triangles budget the rest; the props add 1322 at
+# objects_scale 1 and 650 at 0.5, so each ceiling is the old total.
 [[variants]]
 name = "bistro"
-triangles = 20000
+triangles = 18678
+ceiling = 20000
 
 [[variants]]
 name = "bistro_lite"
-triangles = 10000
+triangles = 9350
+objects_scale = 0.5
+ceiling = 10000
 
 [[variants]]
 name = "bistro_fitted"
-triangles = 15500
+triangles = 14850
+objects_scale = 0.5
+ceiling = 15500
 
 [[variants]]
 name = "bistro_fitted_full"
-triangles = 34500
+triangles = 33178
+ceiling = 34500

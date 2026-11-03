@@ -1,0 +1,434 @@
+{
+  "bypass-1462-170138-0007-noise-00.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -44.162369703,
+      "snr": 9.319006727,
+      "stoi": 0.781758015
+    },
+    "sha256": "cfb9bf541ff34984d08f5993a161747b1e6cf61b66dd4e8011ee35882483e0ab"
+  },
+  "bypass-1462-170138-0007-noise-01.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -44.317879977,
+      "snr": 9.296241185,
+      "stoi": 0.779762103
+    },
+    "sha256": "1d388adc5a74f3d746eae4a28c413bd38fe70bbf2164a2575000852c7e20e3aa"
+  },
+  "bypass-1462-170138-0007-noise-02.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -44.299266799,
+      "snr": 9.362148548,
+      "stoi": 0.781821026
+    },
+    "sha256": "c9b7dbcba3672700e3d1c1275f47ffdea27ad759a0917b0f7d6fc1fff4f0390b"
+  },
+  "bypass-1462-170138-0007-quiet-00.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -41.930677773,
+      "snr": 36.93871872,
+      "stoi": 0.895139022
+    },
+    "sha256": "cee0a0d0d11fd48cef03c6f55eb7235dc299f96db2b90fe82fd4a39ec9d1cde2"
+  },
+  "bypass-1462-170138-0007-quiet-01.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -42.037546479,
+      "snr": 33.791058817,
+      "stoi": 0.901599534
+    },
+    "sha256": "4189dfd7861e4ec435adc959ca780bb3942144946c84accd3c001d341be7e52f"
+  },
+  "bypass-1462-170138-0007-quiet-02.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -42.058339534,
+      "snr": 39.926444717,
+      "stoi": 0.897527536
+    },
+    "sha256": "04d601c8aac1913014a438eb00113e73f24883aa4c94a0ff832ad56be02f76f5"
+  },
+  "bypass-174-168635-0006-noise-00.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -43.229542856,
+      "snr": 16.393361019,
+      "stoi": 0.873263846
+    },
+    "sha256": "afd17a11c4be68440081a1f8fda0f3835b1c9df6783809887282b7f0aaed8ed3"
+  },
+  "bypass-174-168635-0006-noise-01.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -43.061112492,
+      "snr": 16.411914983,
+      "stoi": 0.8718238
+    },
+    "sha256": "a91eab67a4d2e33e86f06d9f454e5173efc0ea247e84e56feb9839a530bfe9cf"
+  },
+  "bypass-174-168635-0006-noise-02.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -43.214903511,
+      "snr": 16.397462956,
+      "stoi": 0.868748028
+    },
+    "sha256": "40dc5986a1f6e4c412d7784a13a26fd7ad75c9b5971c4ad145042c7622e55c66"
+  },
+  "bypass-174-168635-0006-quiet-00.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -41.517956937,
+      "snr": 37.439109717,
+      "stoi": 0.901776138
+    },
+    "sha256": "35e021240821238e3e723a954d8e3d7c620eee11d5ad2dd6dbd7ab1326afb7e2"
+  },
+  "bypass-174-168635-0006-quiet-01.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -41.473546781,
+      "snr": 39.500213792,
+      "stoi": 0.898236754
+    },
+    "sha256": "bd1923b5557409b970d8553599852b3f33457ea28a505448d6c86fc428e838ce"
+  },
+  "bypass-174-168635-0006-quiet-02.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -41.412807929,
+      "snr": 36.667708212,
+      "stoi": 0.899849956
+    },
+    "sha256": "9e6996a50c2ab46b10db2aafb69f6a690821d4dd080170830120bedea60a0dd2"
+  },
+  "highpass-1462-170138-0007-noise-00.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -44.466767824,
+      "snr": 9.076012274,
+      "stoi": 0.777685137
+    },
+    "sha256": "44307e532111926ee35675ddc3573afb8364617c2903d24717e6422825f07253"
+  },
+  "highpass-1462-170138-0007-noise-01.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -44.509536014,
+      "snr": 9.167049541,
+      "stoi": 0.777904746
+    },
+    "sha256": "cb368aa4a01dc84a45e7b0b7900f854779c72b5362ed14de3c3a0316d46e87de"
+  },
+  "highpass-1462-170138-0007-noise-02.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -44.444624733,
+      "snr": 9.264129513,
+      "stoi": 0.772878227
+    },
+    "sha256": "d81f71ee68df5429d18e1b809b31dada283ef0f5e353c2852fa203c36bb6f214"
+  },
+  "highpass-1462-170138-0007-quiet-00.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -42.25236386,
+      "snr": 24.791687594,
+      "stoi": 0.898518204
+    },
+    "sha256": "2989239c9ab51c9673686dfbd0f0cc49d6f4ee0bfc580e18e471d731c6f517d8"
+  },
+  "highpass-1462-170138-0007-quiet-01.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -42.099450167,
+      "snr": 40.37630791,
+      "stoi": 0.892619595
+    },
+    "sha256": "e85ebf5105d8f1ad5ea2d98120bc30eb8987bd552aa9317f804a611a32ef0d1f"
+  },
+  "highpass-1462-170138-0007-quiet-02.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -42.030947401,
+      "snr": 33.711228513,
+      "stoi": 0.895952858
+    },
+    "sha256": "10affcbe4e5ae9282fa8cbe5a4a04d9b994e4637f0b756da72a7ca9cd79a36c9"
+  },
+  "highpass-174-168635-0006-noise-00.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -43.112224317,
+      "snr": 16.47379662,
+      "stoi": 0.86219884
+    },
+    "sha256": "2833aa10b17ecedcbada0e2e9bfea01c4b894a09493ec26d6ab13173e1a92be8"
+  },
+  "highpass-174-168635-0006-noise-01.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -43.114018984,
+      "snr": 16.499424372,
+      "stoi": 0.861008218
+    },
+    "sha256": "677ebcded368c3bca64f473547604bebedc259a8cbd9e02226269900bf0d1f9e"
+  },
+  "highpass-174-168635-0006-noise-02.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -43.105317665,
+      "snr": 16.429087492,
+      "stoi": 0.862745152
+    },
+    "sha256": "de25b2bedfb8581b112eed4594baff508158f38087c5f08e8d89fc13a3f6c070"
+  },
+  "highpass-174-168635-0006-quiet-00.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -41.441605696,
+      "snr": 42.336567859,
+      "stoi": 0.890728493
+    },
+    "sha256": "f642f96d6f817d9689bda71b731457937cac16a4bb8e0bf711cf427f536b52bc"
+  },
+  "highpass-174-168635-0006-quiet-01.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -41.382628519,
+      "snr": 36.936304415,
+      "stoi": 0.890850148
+    },
+    "sha256": "6c73c68b31133b885969cc594f567bfeff5822487fb903da09169a23ceca24d3"
+  },
+  "highpass-174-168635-0006-quiet-02.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -41.349069652,
+      "snr": 36.33142905,
+      "stoi": 0.889667839
+    },
+    "sha256": "4355fdf21c8c4e707dddad1f0943b0e154fd504c73ae6038e280d70ad5c42937"
+  },
+  "presence-1462-170138-0007-noise-00.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -43.672047849,
+      "snr": 8.948586077,
+      "stoi": 0.778574663
+    },
+    "sha256": "6a494fe86ad7bd2f5f2fab723d89b0b09f04741b7f811af5e3b44e6e4bf00b1f"
+  },
+  "presence-1462-170138-0007-noise-01.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -43.924866465,
+      "snr": 8.914401344,
+      "stoi": 0.756491136
+    },
+    "sha256": "9682789e373aa962a662819f5ed69928523a3f617bf76273d7f05ac822b0494d"
+  },
+  "presence-1462-170138-0007-noise-02.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -43.257276768,
+      "snr": 9.469964751,
+      "stoi": 0.786646722
+    },
+    "sha256": "4b5ec6498b5f573e0b0274c4614dc69a19a62fda132dcfa01f9e05a93a38724a"
+  },
+  "presence-1462-170138-0007-quiet-00.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -41.473586775,
+      "snr": 39.160435511,
+      "stoi": 0.902018825
+    },
+    "sha256": "e1f6819ccb4ed4e62726c48d7d72530947ca4e2da73c8521d0fbc48f224867ef"
+  },
+  "presence-1462-170138-0007-quiet-01.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -41.264996644,
+      "snr": 35.248825348,
+      "stoi": 0.900263112
+    },
+    "sha256": "3ea923050833674604d0bf4589bc656fe8adee096767486f7f3c342686ec29b2"
+  },
+  "presence-1462-170138-0007-quiet-02.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -41.629106875,
+      "snr": 39.144456022,
+      "stoi": 0.90026525
+    },
+    "sha256": "368105e7a0efafbe622c87897c56d3b6f5f75a68fa8e6eac63d63c4e73241ea0"
+  },
+  "presence-174-168635-0006-noise-00.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -42.054215204,
+      "snr": 16.190495183,
+      "stoi": 0.87638519
+    },
+    "sha256": "e0e7ebdcdaa4480e30aec6653dad73b1219d6de2e0daf526bd482eb69ed1d838"
+  },
+  "presence-174-168635-0006-noise-01.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -41.944739467,
+      "snr": 16.261965642,
+      "stoi": 0.876782496
+    },
+    "sha256": "bc05f3f35eb8c74bd00c0f5abdbfcfd1de0d9680901f6d2970842325d7354d42"
+  },
+  "presence-174-168635-0006-noise-02.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -42.165295322,
+      "snr": 16.154264431,
+      "stoi": 0.876045941
+    },
+    "sha256": "75cc6edacade90cea2259f92d783adb717ef8e87503633c25f1f75e1be046842"
+  },
+  "presence-174-168635-0006-quiet-00.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -40.880726171,
+      "snr": 41.649779358,
+      "stoi": 0.901511953
+    },
+    "sha256": "db40d8e29a07d2a56d2aa9e59137ae4e54eb626ff36592dd5aa79242fabb035a"
+  },
+  "presence-174-168635-0006-quiet-01.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -40.805227718,
+      "snr": 41.319892195,
+      "stoi": 0.904245987
+    },
+    "sha256": "cdf5fc9d4853a9de50f082294cf8d086db0c5a5307f9817b8def4c05fa4b47ef"
+  },
+  "presence-174-168635-0006-quiet-02.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -40.796299713,
+      "snr": 41.5915268,
+      "stoi": 0.90230691
+    },
+    "sha256": "200ee5161136d08bab8ac5c7c94e41749d50f873d1955a929df2a7331c5a806b"
+  },
+  "voice-1462-170138-0007-noise-00.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -44.728362401,
+      "snr": 9.330179925,
+      "stoi": 0.777065017
+    },
+    "sha256": "aa019628b1ca90ff47f55428aa0bf3d83bb309ee345a137357c9335b53e691f1"
+  },
+  "voice-1462-170138-0007-noise-01.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -44.690370807,
+      "snr": 9.465394037,
+      "stoi": 0.776907808
+    },
+    "sha256": "6d417483cfb4807bdc2086da47904ccfb4ebc02b0d6371b9a39a031fd6aca02d"
+  },
+  "voice-1462-170138-0007-noise-02.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -45.010467233,
+      "snr": 9.327705585,
+      "stoi": 0.780111964
+    },
+    "sha256": "3d8ceff752f84052b9ca7cdcac57ae80d67248fc2e229ad03e8f6ee949eb988f"
+  },
+  "voice-1462-170138-0007-quiet-00.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -42.445281397,
+      "snr": 42.269773654,
+      "stoi": 0.894695794
+    },
+    "sha256": "05e9bed51e3893a593d94580ae03198e219b34554c89d4069f3d965680c45e4a"
+  },
+  "voice-1462-170138-0007-quiet-01.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -42.491065175,
+      "snr": 38.045030038,
+      "stoi": 0.889161805
+    },
+    "sha256": "0219bc81b8cb1001220afc636f14be618bf7b348a41123ec2b95cce0e98407f1"
+  },
+  "voice-1462-170138-0007-quiet-02.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -42.478726623,
+      "snr": 41.829879847,
+      "stoi": 0.894817702
+    },
+    "sha256": "95e80dd2d65aafeae30c40da15f2d36e613c9e5ea1c0c6ea0227981628424de2"
+  },
+  "voice-174-168635-0006-noise-00.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -43.610337647,
+      "snr": 16.659951142,
+      "stoi": 0.86649371
+    },
+    "sha256": "e30a90d8e5f9a35c703acceeeb584f4fcbca82001f01e3ca014ac09b774c229c"
+  },
+  "voice-174-168635-0006-noise-01.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -43.400591798,
+      "snr": 16.62993831,
+      "stoi": 0.856668328
+    },
+    "sha256": "113108ffce4c2803428b2c747801fc6b7d3bda4657d9e852392a3a2154fd1c54"
+  },
+  "voice-174-168635-0006-noise-02.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -43.310494998,
+      "snr": 16.72194232,
+      "stoi": 0.869462137
+    },
+    "sha256": "bd0884f110a9ec14b95b7c62ef5877731d967c36ea8d6d0f45d84b1485a72a5d"
+  },
+  "voice-174-168635-0006-quiet-00.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -41.525306626,
+      "snr": 36.500093732,
+      "stoi": 0.892601778
+    },
+    "sha256": "fd81e7636d9e1ef69c9c2fc759bfb1cfdbb792cc1276f45ac85c82aef738b22e"
+  },
+  "voice-174-168635-0006-quiet-01.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -41.444180252,
+      "snr": 38.312801353,
+      "stoi": 0.892709484
+    },
+    "sha256": "cb80e20b403cc690af94dc1213488a686b6541ccb31eafd9673549156ec2afc6"
+  },
+  "voice-174-168635-0006-quiet-02.wav": {
+    "metrics": {
+      "clips": 0,
+      "level": -41.441365146,
+      "snr": 38.981656146,
+      "stoi": 0.891243019
+    },
+    "sha256": "a614cf3159af86c624797f3b25a94787f3118815cc797a07e4daec4ffe705d85"
+  }
+}

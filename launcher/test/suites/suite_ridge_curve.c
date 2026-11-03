@@ -41,13 +41,14 @@ curve_row(int x) {
 }
 
 /* The photograph, stored a quarter turn clockwise into the panel's frame. */
-static draw_image_t photo;
+static image_t photo;
 
 static void
 photo_rgb(int view_x, int view_y, int rgb[3]) {
     const int panel_x = photo.width - 1 - view_y;
     const int panel_y = view_x;
-    const uint16_t stored = photo.pixels[(panel_y * (int)photo.stride) + panel_x];
+    const uint16_t* row = image_row(&photo, panel_y);
+    const uint16_t stored = row[panel_x];
     const uint16_t c = rgb565_swap(stored);
     rgb[0] = (int)rgb565_r5(c) * 255 / 31;
     rgb[1] = (int)rgb565_g6(c) * 255 / 63;
@@ -161,7 +162,7 @@ suite_ridge_curve(void) {
         RUN_TEST(test_a_displaced_curve_does_not);
     }
     asset_store_release(load);
-    photo = (draw_image_t){0};
+    photo = (image_t){0};
     curve = NULL;
 }
 

@@ -1,6 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
-#include "console/verbs/console_battery_reply.h"
+#include "power/console/console_battery_reply.h"
 #include "power/power_log.h"
 #include "suites.h"
 #include "unity.h"

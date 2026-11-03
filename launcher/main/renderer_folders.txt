@@ -1,6 +1,0 @@
-# The renderer's folders under launcher/main/: every .c below them is one of its
-# sources, so a file added to one is built everywhere the renderer is. Read by
-# main/CMakeLists.txt and, for host builds, tools/build/renderer.sh and renderer.py.
-render
-scene
-anim

@@ -1,6 +1,6 @@
 """Mirror entries from the source frame into the engine frame at the asset-pack boundary.
 
-The frame split and conversion are defined in docs/render/Mesh-Import.md,
+The frame split and conversion are defined in docs/render/offline/Mesh-Import.md,
 under "The offline tools".
 """
 
@@ -10,9 +10,9 @@ from audio import sound_asset
 from gfx import image_asset
 from asset import table_asset
 from anim import tracks_asset, skeleton_asset
-from r3d import mesh_asset, scene_asset, skin_asset
+from r3d import mesh_asset, scene_asset, skin_asset, lcol_asset
 
-FRAMELESS = frozenset((image_asset.TYPE, table_asset.TYPE, sound_asset.TYPE))
+FRAMELESS = frozenset((image_asset.TYPE, table_asset.TYPE, sound_asset.TYPE, lcol_asset.TYPE))
 
 AXIS_SIGNS = (1, 1, -1)
 ROTATION_SIGNS = (-1, -1, 1, 1)

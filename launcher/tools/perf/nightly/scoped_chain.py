@@ -1,14 +1,18 @@
 """Plan and acquire board-local first-parent performance chains."""
 import argparse
+from collections import Counter
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import signal
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -22,11 +26,16 @@ from build_paths import remove_output
 import autana_config
 from capture import require_same_board
 from device_lock import normalise_board, short_id, write_json
-from layout_measure import autana_command, run_flash, run_stamped, REPORT_LINE, latest_build
-from process_tree import launch_process_tree, stop_process_tree, close_process_tree
+from layout_measure import autana_command, capture_for, run_flash, run_stamped, REPORT_LINE, latest_build
+from device_report import parse_suite_results, read_capture_text
+from device_capture import board_steps_completed
+from process_tree import (launch_process_tree, stop_process_tree, close_process_tree, install_console_interrupt_handler,
+                          terminate_unwinds)
 from local_schedule import (Clock, wait_idle, gpu_pending, gpu_on_host, GPU_NOT_ON_HOST,
-                            NIGHT_STEP_HANG_SECONDS, MARKER_KEY_FORMAT, heavy_root)
-from nightly.lnt import lnt_report, night_manifest, read_last_night, VARIANT, BUILD_FLAGS, LAYOUT_SEED
+                            NIGHT_STEP_HANG_SECONDS, MARKER_KEY_FORMAT, heavy_root, night_cutoff, night_end)
+from nightly.lnt import (lnt_report, night_manifest, night_ran, read_night, read_last_night,
+                         manifests_since, night_record_path, read_last_night_record, VARIANT, BUILD_FLAGS,
+                         LAYOUT_SEED)
 
 IMAGE_HEADER_BYTES = 24
 SEGMENT_HEADER_BYTES = 8
@@ -41,10 +50,29 @@ STEP_INDEX_DIGITS = 2
 FIRST_STEP_SECONDS = 23 * 60
 RESCAN_SECONDS = 60
 CAPTURE_FAILURE_LIMIT = 2
+# The step outcomes that settle a commit: the next night moves past them.
+ATTEMPTED = ("measured", "skipped_same_image", "build_failed")
+# A lane fails on these step outcomes and these self-test outcomes.
+FAILED_STEPS = ("build_failed", "capture_failed")
+FAILED_SELFTEST = ("failed", "incomplete")
+# How many of a self-test's failed tests a lane's failure names; its capture holds them all.
+LISTED_FAILURES = 10
 SELFTEST_ALLOWANCE_SECONDS = 120 * 60
 CAPTURE_TIMEOUT_SECONDS = 1800
 BUILD_TIMEOUT_SECONDS = 3600
 LANE_HANG_FACTOR = 2
+# A command that reaches the boards of other machines, POSIX-quoted with forward slashes; unset, the
+# night uses this machine's only.
+# - `<command> boards` prints {"boards": [board, ...], "unreachable": [host, ...]}; each board is its host's
+#   `autana status --json` entry (board, port, state, holder, waiting) plus `host`, `name` (the host's short
+#   name for its captures) and, while the host refuses other machines' jobs, `gated` (why).
+# - `<command> run HOST BOARD FOLDER WAIT -- SCRIPT ARGS...` runs this checkout's SCRIPT on HOST's BOARD
+#   under one device lock, queueing for it up to WAIT seconds, with FOLDER copied there first and back
+#   after, and paths in ARGS naming their copies there.
+# - `<command> stop HOST BOARD` asks that run to stop; its run command then returns with what it has.
+REMOTE_LANE_ENV = "REMOTE_LANE_COMMAND"
+# How long a stopped remote lane gets to restore its board and bring its folder back.
+REMOTE_STOP_SECONDS = 20 * 60
 
 
 @dataclass
@@ -65,6 +93,27 @@ class StepResult:
     build_seconds: float = 0
     measure_seconds: float = 0
     report: str | None = None
+
+
+def lane_failures(manifest):
+    """Why a lane's night manifest failed, one line per cause: each failed step, then the self-test with the
+    first failed tests of the capture beside its report. Empty when the lane passed."""
+    lines = [f"step {step['position']} {step['commit'][:REPORT_SHA_DIGITS]}: {step['outcome']}"
+             for step in manifest["steps"] if step["outcome"] in FAILED_STEPS]
+    selftest = manifest["selftest"]
+    if selftest["outcome"] not in FAILED_SELFTEST:
+        return lines
+    lines.append(f"self-test {selftest['outcome']}: {selftest['report']}")
+    capture = capture_for(Path(selftest["report"]))
+    failures = parse_suite_results(read_capture_text(capture))[2] if capture.is_file() else []
+    lines += [f"self-test FAIL {name}" + (f": {message}" if message else "")
+              for name, message in failures[:LISTED_FAILURES]]
+    if len(failures) > LISTED_FAILURES:
+        lines.append(f"self-test: {len(failures) - LISTED_FAILURES} more failed tests in its capture")
+    elif capture.is_file() and not failures and selftest["outcome"] == "failed":
+        # board-steps.sh exits with the console tests' status when every self-test passed.
+        lines.append("self-test: every test in its capture passed, so the console tests failed")
+    return lines
 
 
 def image_hash(build_dir):
@@ -101,46 +150,87 @@ def history_steps(repo, tip):
     return steps
 
 
-def plan_steps(repo, tip, last_night, lane, lanes):
-    if lanes <= 0 or not 0 <= lane < lanes:
-        raise ValueError("lane must be in [0, lanes)")
+def on_history(history, commit, name):
+    """The step of `commit` on the tip's first-parent history; `name` says which cursor it is."""
+    found = next((step for step in history if step.commit == commit), None)
+    if found is None:
+        raise ValueError(f"{name} is not on the tip's first-parent history")
+    return found
+
+
+def night_queue(repo, tip, data, from_sha=None):
+    """The night's new steps, oldest first: what the last night record still owes, then every commit after its tip;
+    `--from` replaces it with history from that commit on. No commit is dropped, a commit may be measured twice."""
     history = history_steps(repo, tip)
-    commits = [step.commit for step in history]
-    anchor = (last_night or {}).get("last_measured")
-    if anchor and anchor not in commits:
-        raise ValueError("last_measured is not on the tip's first-parent history")
-    attempted = (last_night or {}).get("last_attempted") or anchor
-    if attempted and attempted not in commits:
-        raise ValueError("last_attempted is not on the tip first-parent history")
-    attempted_position = commits.index(attempted) + 1 if attempted else 0
-    selected = []
-    for step in history:
-        if step.commit == anchor:
-            step.role = "anchor"
-            selected.append(step)
-        elif step.position > attempted_position and step.position % lanes == lane:
-            selected.append(step)
-    return selected if anchor else selected[-1:]
-
-
-def select_steps(repo, tip, previous, lane, lanes, from_sha=None, max_steps=None):
-    steps = plan_steps(repo, tip, previous, lane, lanes)
     if from_sha:
         first = git(repo, "rev-parse", from_sha + "^{commit}")
-        history = history_steps(repo, tip)
-        commits = [step.commit for step in history]
-        if first not in commits:
-            raise ValueError("--from is not on the tip's first-parent history")
-        # --from replaces the planned new steps; the anchor stays.
-        steps = [step for step in steps if step.role == "anchor"]
-        steps.extend(step for step in history[commits.index(first):]
-                     if step.position % lanes == lane and step.commit != (previous or {}).get("last_measured"))
-    if max_steps is not None:
-        if max_steps < 0:
-            raise ValueError("--max-steps must be nonnegative")
-        anchors = [step for step in steps if step.role == "anchor"]
-        steps = anchors + [step for step in steps if step.role == "new"][:max_steps]
-    return steps
+        return history[on_history(history, first, "--from").position - 1:]
+    saved = read_last_night_record(data)
+    if saved:
+        key, record = saved
+        through = on_history(history, record["through"], "the night record's tip").position
+        owed = {*(commit for dealt in record["dealt"].values() for commit in dealt), *record["rest"],
+                *(step.commit for step in history[through:])}
+        settled = attempted(manifests_since(data, key))
+    else:
+        owed, settled = {history[-1].commit}, set()  # the first night ever takes the tip
+    return [step for step in history if step.commit in owed and step.commit not in settled]
+
+
+def attempted(nights):
+    """The commits these night manifests settled: the steps the next night moves past."""
+    return {step["commit"] for night in nights for step in night["steps"] if step["outcome"] in ATTEMPTED}
+
+
+def step_seconds(previous):
+    """A board's wall-clock seconds per step, as the deadline and the hang guard count them: the median heavy
+    queue wait, build and measure time of the measured steps in its last night manifest, else FIRST_STEP_SECONDS."""
+    seconds = [step["wait_seconds"] + step["build_seconds"] + step["measure_seconds"]
+               for step in (previous or {}).get("steps", []) if step["outcome"] == "measured"]
+    return statistics.median(seconds) if seconds else FIRST_STEP_SECONDS
+
+
+def lane_capacity(previous, start, deadline, selftest=False):
+    """How many new steps a lane started at `start` fits before `deadline`, after its anchor and, on the
+    self-test board, the self-test; None without a deadline."""
+    if deadline is None:
+        return None
+    pace = step_seconds(previous)
+    left = ((deadline - start).total_seconds() - (SELFTEST_ALLOWANCE_SECONDS if selftest else 0)
+            - (pace if (previous or {}).get("last_measured") else 0))
+    return max(0, math.floor(left / pace))
+
+
+def record_night(data, planned):
+    """Save the night's record for the next night: the tip it planned at, each lane's dealt steps and the rest.
+    A `--from` range is a person's, not the night's: it saves none."""
+    if planned.get("from_sha"):
+        return
+    write_json(night_record_path(data, datetime.fromisoformat(planned["started"]).strftime(MARKER_KEY_FORMAT)),
+               dict(through=planned["tip"], rest=[step["commit"] for step in planned["queue"]],
+                    dealt={board: [step["commit"] for step in lane["steps"] if step["role"] == "new"]
+                           for board, lane in planned["lanes"].items()}))
+
+
+def deal(repo, tip, previous, queue, count):
+    """A lane's steps and the queue left after it: the board's own anchor, then the queue's next `count` steps
+    (all with None)."""
+    history = history_steps(repo, tip)
+    anchor = previous and previous.get("last_measured")
+    anchors = [Step(**dict(asdict(on_history(history, anchor, "last_measured")), role="anchor"))] if anchor else []
+    new = [step for step in queue if step.commit != anchor]
+    dealt = new[:count] if count is not None else new
+    return anchors + dealt, [step for step in queue if step not in dealt]
+
+
+def rerange(repo, tip, steps, from_sha=None, max_steps=None):
+    """A lane's steps rerun on part of its own: its new steps from `--from` on, then the first `--max-steps`."""
+    anchors = [step for step in steps if step.role == "anchor"]
+    new = [step for step in steps if step.role == "new"]
+    if from_sha:
+        first = on_history(history_steps(repo, tip), git(repo, "rev-parse", from_sha + "^{commit}"), "--from")
+        new = [step for step in new if step.position >= first.position]
+    return anchors + new[:max_steps]
 
 
 def run_chain(steps, args, runner=None, clock=None):
@@ -189,17 +279,19 @@ def run_chain(steps, args, runner=None, clock=None):
         with log_path.open("w", encoding="utf-8") as log:
             try:
                 code, lines, _ = runner(args.selftest, log, SELFTEST_ALLOWANCE_SECONDS)
-                selftest["outcome"] = "failed" if code else "passed"
+                complete = board_steps_completed(line for _, line in lines)
+                selftest["outcome"] = "passed" if not code else "failed" if complete else "incomplete"
                 reports = [match[1] for _, line in lines if (match := REPORT_LINE.match(line))]
                 selftest["report"] = reports[-1] if reports else str(log_path.relative_to(output))
             except (OSError, RuntimeError) as error:
                 log.write(str(error) + "\n")
-                selftest["outcome"] = "failed"
+                selftest["outcome"] = "incomplete"
         selftest["seconds"] = (clock.now() - begin).total_seconds()
         save()
 
     save()
-    directory = tempfile.mkdtemp(prefix="nightly-", dir=output)
+    # Beside the output, not in it: a tree left by a failed cleanup must not travel back with a remote lane's folder.
+    directory = tempfile.mkdtemp(prefix="nightly-", dir=output.parent)
     worktree = Path(directory) / "tree"
     try:
         run_selftest()
@@ -225,6 +317,9 @@ def run_chain(steps, args, runner=None, clock=None):
                 try:
                     if not worktree.exists():
                         git(args.repo, "worktree", "add", "--detach", str(worktree), step.commit)
+                        # Captures land with the lane's output, on whichever machine runs it.
+                        (worktree / autana_config.CONFIG_NAME).write_text(
+                            f"records = '{(output / 'device').as_posix()}'\n", encoding="utf-8")
                     git(worktree, "checkout", "--detach", step.commit)
                     git(worktree, "submodule", "update", "--init", "--recursive")
                     code, _, _ = run_step(autana_command("--project", str(worktree), "build", VARIANT,
@@ -284,10 +379,13 @@ def run_chain(steps, args, runner=None, clock=None):
                             if failures >= CAPTURE_FAILURE_LIMIT:
                                 stop_reason = "capture_failures"
                     result.measure_seconds = (clock.now() - measure).total_seconds()
-            if result.outcome in ("measured", "skipped_same_image", "build_failed"):
+            if result.outcome in ATTEMPTED:
                 if step.position >= positions.get(last_attempted, 0):
                     last_attempted = step.commit
             save()
+    except KeyboardInterrupt:
+        stop_reason = "interrupted"
+        raise
     finally:
         errors = []
         try:
@@ -326,29 +424,113 @@ def run_chain(steps, args, runner=None, clock=None):
     return results
 
 
+def local_boards(autana=None):
+    """This machine's plugged boards, as `autana devices --json` lists them."""
+    listing = subprocess.check_output(autana_command("devices", "--json", override=autana), text=True)
+    return [board for board in json.loads(listing)["boards"] if board["port"]]
+
+
 def plugged_boards(autana=None):
     """Short ids of the boards on this machine's USB, in `autana devices` order."""
-    listing = subprocess.check_output(autana_command("devices", "--json", override=autana), text=True)
-    return [short_id(board["board"]) for board in json.loads(listing)["boards"] if board["port"]]
+    return [short_id(board["board"]) for board in local_boards(autana)]
 
 
-def plan_lane(args, selection, board, lane, lanes, selftest=False):
+def remote_command():
+    command = shlex.split(os.environ.get(REMOTE_LANE_ENV, ""))
+    if command:
+        # Windows looks in System32 before PATH, where a bare `bash` is WSL's.
+        command[0] = shutil.which(command[0]) or command[0]
+    return command
+
+
+def remote_boards():
+    """The other machines' plugged boards (short id, host, name and their lock state) and the hosts that did
+    not answer."""
+    if not remote_command():
+        return [], []
+    try:
+        listing = json.loads(subprocess.check_output([*remote_command(), "boards"], text=True))
+        boards = [dict(board, board=short_id(board["board"]), name=board.get("name") or board["host"])
+                  for board in listing["boards"] if board["port"]]
+        unreachable = list(listing.get("unreachable", []))
+    except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as error:
+        boards, unreachable = [], [REMOTE_LANE_ENV]
+        print(f"remote boards: {error}", file=sys.stderr)
+    return boards, unreachable
+
+
+def report_unreachable(unreachable, before=()):
+    """Warn of hosts that stopped answering since `before`, and note those that answer again."""
+    # An unreachable host costs its lanes, not the night; the summary says which.
+    if lost := [host for host in unreachable if host not in before]:
+        print("::warning::remote boards not listed from " + ", ".join(lost), file=sys.stderr)
+    if back := [host for host in before if host not in unreachable]:
+        print("::notice::remote boards listed again from " + ", ".join(back), file=sys.stderr)
+
+
+def board_listing():
+    """Every board the night can reach, this machine's first, and the hosts that did not answer."""
+    local = local_boards()
+    seen = {short_id(board["board"]) for board in local}
+    remote, unreachable = remote_boards()
+    return dict(boards=local + [board for board in remote if board["board"] not in seen], unreachable=unreachable)
+
+
+def busy(board):
+    """Why a listed board takes no new lane now, or None when its lock is free: a lane never queues behind
+    a day job, and a host whose person is present refuses other machines' jobs."""
+    if board.get("gated"):
+        return board["gated"]
+    if board.get("state") != "unlocked":
+        return "held by " + ((board.get("holder") or {}).get("owner") or str(board.get("state")))
+    if board.get("waiting"):
+        return f"{len(board['waiting'])} job(s) queued for it"
+    return None
+
+
+def fleet_scan(taken, before=()):
+    """Free boards on any host the night has no lane for (`taken` short ids), and the whole listing.
+    Held, queued and gated boards are left for a later scan."""
+    listing = board_listing()
+    report_unreachable(listing["unreachable"], before)
+    free = [dict(board, board=short_id(board["board"])) for board in listing["boards"]
+            if short_id(board["board"]) not in taken and not busy(board)]
+    return free, listing
+
+
+def plan_lane(args, selection, board, start, queue, selftest=False, remote=None, share=None, joiner=False):
+    """The lane for `board` started at `start`, dealt off the head of `queue`, and the queue it leaves; no lane
+    when the board fits no step before the deadline, or joins with nothing left to deal."""
     previous = read_last_night(args.data, board)
-    steps = select_steps(args.repo, selection["tip"], previous, lane, lanes,
-                         selection.get("from_sha"), selection.get("max_steps"))
-    return dict(lane=f"{lane}/{lanes}", previous=previous, steps=[asdict(step) for step in steps],
-                estimate=len(steps) * FIRST_STEP_SECONDS + (SELFTEST_ALLOWANCE_SECONDS if selftest else 0))
+    deadline = selection.get("deadline")
+    capacity = lane_capacity(previous, start, deadline and datetime.fromisoformat(deadline), selftest)
+    if capacity == 0:
+        print(f"::notice::board {board} fits no step before the deadline {deadline}; it stays free", file=sys.stderr)
+        return None, queue
+    limits = [limit for limit in (capacity, selection.get("max_steps"), share) if limit is not None]
+    steps, rest = deal(args.repo, selection["tip"], previous, queue, min(limits) if limits else None)
+    if joiner and len(rest) == len(queue):
+        print(f"::notice::board {board} joins with the night's queue dealt; it stays free", file=sys.stderr)
+        return None, queue
+    estimate = math.ceil(len(steps) * step_seconds(previous) + (SELFTEST_ALLOWANCE_SECONDS if selftest else 0))
+    planned = dict(lane=str(len(selection["lanes"])), previous=previous, capacity=capacity,
+                   steps=[asdict(step) for step in steps], estimate=estimate)
+    return (dict(planned, host=remote["host"], host_name=remote["name"]) if remote else planned), rest
 
 
 def run_night(args, clock=None, launch=None):
     clock, launch = clock or Clock(), launch or launch_process_tree
     planned = json.loads(args.plan.read_text(encoding="utf-8"))
+    cutoff = datetime.fromisoformat(planned["cutoff"])
     processes, skipped = [], set()
-    failed, interrupted = False, False
+    # Failed: a lane's tests failed or its board could not run; down: only the latter.
+    failed, down, interrupted = False, False, False
     hung = set()
+    unreachable, seen = [], bool(planned["listed"])
 
-    def start(board, lane, lane_plan):
-        wait = NIGHT_STEP_HANG_SECONDS
+    def start(board, lane, lane_plan, wait=NIGHT_STEP_HANG_SECONDS):
+        if lane.get("host"):
+            return start_remote(board, lane, lane_plan, wait)
         command = autana_command("--board", board, "--wait", str(wait), "lock", "run",
                                  "--estimate", str(lane["estimate"]), "--", sys.executable,
                                  str(Path(__file__).resolve()), "run", "--plan", str(lane_plan.resolve()),
@@ -371,41 +553,94 @@ def run_night(args, clock=None, launch=None):
         process = launch(command, cwd=args.repo, env=env)
         processes.append((process, clock.now(), lane["estimate"], board))
 
+    def start_remote(board, lane, lane_plan, wait):
+        # The lane's folder travels: its plan in, its data and captures back.
+        folder = args.out.resolve() / board
+        write_json(folder / "lane.json", dict(json.loads(lane_plan.read_text(encoding="utf-8")), lanes={board: lane}))
+        script = args.repo.resolve() / Path(__file__).resolve().relative_to(REPO)
+        command = [*remote_command(), "run", lane["host"], board, str(folder), str(wait), "--",
+                   str(script), "run",
+                   "--plan", str(folder / "lane.json"), "--repo", str(args.repo.resolve()),
+                   "--data", str(folder / "data"), "--out", str(folder), "--board", board, "--lane", lane["lane"]]
+        for suite in args.suite:
+            command.extend(["--suite", *suite])
+        env = dict(os.environ)
+        env.pop("BOARD_CI_LOG", None)
+        process = launch(command, cwd=args.repo, env=env)
+        processes.append((process, clock.now(), lane["estimate"], board))
+
+    def stop(process, board, grace):
+        # A remote lane is asked to stop first, so its host restores the board and the folder comes back.
+        lane = planned["lanes"].get(board, {})
+        if lane.get("host"):
+            try:
+                subprocess.run([*remote_command(), "stop", lane["host"], board], timeout=RESCAN_SECONDS,
+                               stdin=subprocess.DEVNULL)
+            except (OSError, subprocess.SubprocessError) as error:
+                print(f"lane {board}: remote stop: {error}", file=sys.stderr)
+            else:
+                try:
+                    process.wait(timeout=grace)
+                    return
+                except subprocess.TimeoutExpired:
+                    pass
+        stop_process_tree(process)
+
     previous_handler = signal.signal(signal.SIGTERM, signal.default_int_handler)
     try:
-        for board in planned["lanes"]:
+        # Remote lanes ship this checkout, so they start before a local self-test can build in it.
+        for board in sorted(planned["lanes"], key=lambda board: not planned["lanes"][board].get("host")):
             try:
                 start(board, planned["lanes"][board], args.plan)
             except (OSError, ValueError, subprocess.CalledProcessError) as error:
                 print(f"lane {board}: {error}", file=sys.stderr)
-                failed = True
+                failed = down = True
                 skipped.add(board)
-        while any(id(process) not in hung and process.poll() is None for process, *_ in processes):
+        # Before the cut-off the night watches the fleet even with no lane running; after it, only its lanes.
+        while (clock.now() < cutoff
+               or any(id(process) not in hung and process.poll() is None for process, *_ in processes)):
             clock.sleep(RESCAN_SECONDS)
             for process, started, estimate, board in processes:
                 if id(process) not in hung and process.poll() is None and (clock.now() - started).total_seconds() >= LANE_HANG_FACTOR * max(estimate, FIRST_STEP_SECONDS):
                     print(f"LANE_HANG_FACTOR expired for board {board}", file=sys.stderr)
-                    stop_process_tree(process)
+                    stop(process, board, REMOTE_STOP_SECONDS)
                     hung.add(id(process))
-                    failed = True
+                    failed = down = True
+            if clock.now() >= cutoff:
+                continue
             try:
-                boards = plugged_boards()
+                free, listing = fleet_scan({*planned["lanes"], *skipped}, unreachable)
+                unreachable, seen = listing["unreachable"], seen or bool(listing["boards"])
             except (OSError, ValueError, subprocess.CalledProcessError) as error:
-                print(f"devices: {error}", file=sys.stderr)
-                failed, boards = True, []
-            for board in boards:
-                if board in planned["lanes"] or board in skipped:
-                    continue
+                # Like a host that does not answer: asked again next minute.
+                print(f"::warning::devices: {error}", file=sys.stderr)
+                free = []
+            for row in free:
+                board = row["board"]
                 try:
-                    lane = plan_lane(args, planned, board, 0, 1)
+                    queue = [Step(**step) for step in planned.get("queue", [])]
+                    lane, rest = plan_lane(args, planned, board, clock.now(), queue,
+                                           board == os.environ.get("SELFTEST_BOARD"),
+                                           row if row.get("host") else None, joiner=True)
+                    if lane is None:
+                        # Its room only shrinks as the night goes on, and the queue only empties.
+                        skipped.add(board)
+                        continue
+                    # A slow scan or plan can reach the cut-off; a board taken after the scan is queued on
+                    # no later than it.
+                    left = (cutoff - clock.now()).total_seconds()
+                    if left <= 0:
+                        break
                     lane_plan = args.out / board / "lane.json"
                     write_json(lane_plan, dict(planned, lanes={board: lane}))
-                    start(board, lane, lane_plan)
+                    start(board, lane, lane_plan, math.ceil(left))
                     planned["lanes"][board] = lane
+                    planned["queue"] = [asdict(step) for step in rest]
                     write_json(args.plan, planned)
+                    record_night(args.data, planned)
                 except (OSError, ValueError, subprocess.CalledProcessError) as error:
                     print(f"lane {board}: {error}", file=sys.stderr)
-                    failed = True
+                    failed = down = True
                     skipped.add(board)
     except KeyboardInterrupt:
         interrupted = True
@@ -415,18 +650,36 @@ def run_night(args, clock=None, launch=None):
             while pending:
                 try:
                     if interrupted:
-                        for process in pending:
-                            if process.poll() is None:
-                                stop_process_tree(process)
+                        for process, _, _, board in processes:
+                            if process in pending and process.poll() is None:
+                                # A cancelled job has seconds: the remote board is freed, its data may not return.
+                                stop(process, board, 0)
                     if pending[0].wait():
                         failed = True
                     close_process_tree(pending.pop(0))
                 except KeyboardInterrupt:
                     interrupted = True
+            for board, lane in planned["lanes"].items():
+                returned = args.out.resolve() / board / "data" / "scoped"
+                if lane.get("host") and returned.is_dir():
+                    shutil.copytree(returned, args.data / "scoped", dirs_exist_ok=True)
         finally:
             signal.signal(signal.SIGTERM, previous_handler)
     if interrupted:
         raise KeyboardInterrupt
+    # Busy boards are working, not down: only a night that never listed a board fails for it.
+    if not planned["lanes"] and seen:
+        print("::warning::night: no listed board was free before its cut-off", file=sys.stderr)
+    elif not planned["lanes"]:
+        print("night: no board is plugged in", file=sys.stderr)
+        failed = down = True
+    if planned["lanes"]:
+        key = datetime.fromisoformat(planned["started"]).strftime(MARKER_KEY_FORMAT)
+        down |= not all(night_ran(read_night(args.data, board, key)) for board in planned["lanes"])
+    # For the board outage alarm: a night whose lanes all ran is no outage, whatever their tests reported.
+    if os.environ.get("GITHUB_OUTPUT"):
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+            output.write(f"boards_ran={str(not down).lower()}\n")
     return int(failed)
 
 
@@ -441,20 +694,53 @@ def plan(args, clock=None, request=None):
             with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
                 summary.write(GPU_NOT_ON_HOST + "\n")
     now = clock.now()
-    if not args.boards:
-        args.boards = plugged_boards()
-        if not args.boards:
-            raise SystemExit("plan: no board is plugged in")
-        # The self-test runs on one board, whichever is plugged in first.
-        args.selftest_board = args.selftest_board or args.boards[0]
+    discovered = not args.boards
+    # A discovered night takes boards as they free until BOARD_LAST_START; named boards are the whole night.
+    cutoff = night_cutoff(marker) if discovered else now
+    later = "waits for the rescan" if cutoff > now else "sits this night out"
+    listing = board_listing()
+    listing, unreachable = listing["boards"], listing["unreachable"]
+    report_unreachable(unreachable)
+    remote = {board["board"]: board for board in listing if board.get("host")}
+    # Only free boards plan, named or not: a lane never queues behind a day job.
+    waiting = {short_id(board["board"]): board for board in listing if busy(board)}
+    for name, board in waiting.items():
+        print(f"::notice::board {name} on {board.get('name', 'this machine')} {later}: {busy(board)}",
+              file=sys.stderr)
+    # GPU night work can hold a night's plan past its cut-off; an override marked after it is not late.
+    late = discovered and marker < cutoff <= now
+    if discovered:
+        args.boards = [] if late else [short_id(board["board"]) for board in listing]
+    args.boards = [board for board in args.boards if short_id(board) not in waiting]
+    if late:
+        print(f"::notice::plan: held past the last lane start ({cutoff.isoformat()}); the night runs no lane",
+              file=sys.stderr)
+    elif not args.boards:
+        print(f"::notice::plan: no free board; the night {later}", file=sys.stderr)
+    if discovered:
+        # The self-test runs on one board of this machine, whichever is plugged in first.
+        args.selftest_board = args.selftest_board or next((board for board in args.boards if board not in remote), None)
+    # A run marked after the deadline is a daytime override, which no deadline sizes.
+    deadline = night_end(marker) if marker <= night_end(marker) else None
     tip = git(args.repo, "rev-parse", args.tip + "^{commit}")
     planned = dict(tip=tip, night=marker.date().isoformat(), started=now.isoformat(),
-                   marker=args.marker, lanes={}, from_sha=args.from_sha, max_steps=args.max_steps)
+                   marker=args.marker, cutoff=cutoff.isoformat(), deadline=deadline and deadline.isoformat(),
+                   listed=[short_id(board["board"]) for board in listing],
+                   lanes={}, from_sha=args.from_sha, max_steps=args.max_steps)
     lanes = planned["lanes"]
-    for lane, board in enumerate(args.boards):
+    queue = night_queue(args.repo, tip, args.data, args.from_sha)
+    for index, board in enumerate(args.boards):
         board = short_id(board)
-        lanes[board] = plan_lane(args, planned, board, lane, len(args.boards),
-                                 args.selftest_board and board == short_id(args.selftest_board))
+        # Unsized, the queue splits into even runs; sized, each board takes what it fits.
+        share = None if deadline else math.ceil(len(queue) / (len(args.boards) - index))
+        lane, queue = plan_lane(args, planned, board, now, queue,
+                                bool(args.selftest_board) and board == short_id(args.selftest_board),
+                                remote.get(board), share)
+        if lane:
+            lanes[board] = lane
+    planned["queue"] = [asdict(step) for step in queue]
+    # The next night owes what this one does not settle.
+    record_night(args.data, planned)
     write_json(Path(args.out), planned)
     # For the workflow's later steps, which run one lane per board.
     print("SCOPED_BOARDS=" + " ".join(lanes))
@@ -471,15 +757,20 @@ def timeline(args):
         steps.append(dict(name="gpu " + record["workflow"], started=record["started"],
                           ended=record["ended"], outcome="failed" if record["exit"] else "passed"))
     lane_key = datetime.fromisoformat(planned["started"]).strftime(MARKER_KEY_FORMAT)
+    lanes = []
     for board in planned["lanes"]:
-        path = args.data / "scoped" / board / lane_key / "night.json"
-        if not path.is_file():
+        record = read_night(args.data, board, lane_key)
+        if record is None:
+            lanes.append(f"{board}: no night manifest\n\n")
             continue
-        record = json.loads(path.read_text(encoding="utf-8"))
-        failed = record["selftest"]["outcome"] == "failed" or any(
-            step["outcome"] in ("build_failed", "capture_failed") for step in record["steps"])
+        failures = lane_failures(record)
         steps.append(dict(name="board " + board, started=record["started"], ended=record["ended"],
-                          outcome="failed" if failed else "passed" if record["ended"] else "running"))
+                          outcome="failed" if failures else "passed" if record["ended"] else "running"))
+        counts = Counter(step["outcome"] for step in record["steps"])
+        lanes.append(f"{board}: " + ", ".join(f"{key}={value}" for key, value in sorted(counts.items()))
+                     + f"\n\nSelf-test {board}: {record['selftest']['outcome']}; report: {record['selftest']['report']}\n\n"
+                     + (f"### Lane {board} failed\n\n" + "".join(f"- {line}\n" for line in failures) + "\n"
+                        if failures else ""))
     ended = [datetime.fromisoformat(step["ended"]) for step in steps if step["ended"]]
     free_at = max(ended, default=marker)
     write_json(args.data / "scoped" / "timeline" / (key + ".json"),
@@ -493,7 +784,15 @@ def timeline(args):
         line = (f"Night {marker:%Y-%m-%d}: marker {marker:%H:%M}, " + ", ".join(spans)
                 + f", host free {free_at.astimezone():%H:%M} ({hours}h {minutes:02d}min after the marker)\n")
         with args.summary.open("a", encoding="utf-8") as summary:
-            summary.write(line)
+            summary.write("".join(lanes) + line)
+
+
+def steps_count(value):
+    """A --max-steps value: a nonnegative whole number."""
+    count = int(value)
+    if count < 0:
+        raise argparse.ArgumentTypeError("--max-steps must be nonnegative")
+    return count
 
 
 def lane_of(plan, board):
@@ -503,6 +802,7 @@ def lane_of(plan, board):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("boards", help="every board the night can reach, as `autana devices --json` lists them")
     timing = commands.add_parser("timeline")
     timing.add_argument("--plan", type=Path, required=True)
     timing.add_argument("--data", type=Path, required=True)
@@ -527,9 +827,14 @@ def main():
         command.add_argument("--out", type=Path, required=True)
     for command in (planning, running):
         command.add_argument("--from", dest="from_sha")
-        command.add_argument("--max-steps", type=int)
+        command.add_argument("--max-steps", type=steps_count)
     args = parser.parse_args()
     os.environ[autana_config.BUILD_PRIORITY_ENV] = autana_config.BUILD_PRIORITY_BELOW_NORMAL
+    if args.command == "boards":
+        listing = board_listing()
+        report_unreachable(listing["unreachable"])
+        print(json.dumps(listing))
+        return 0
     if args.command == "timeline":
         timeline(args)
         return 0
@@ -550,12 +855,16 @@ def main():
     args.night, args.started = (planned[key] for key in ("night", "started"))
     steps = [Step(**step) for step in lane["steps"]]
     if args.from_sha is not None or args.max_steps is not None:
-        index, count = map(int, args.lane.split("/"))
-        steps = select_steps(args.repo, planned["tip"], args.previous, index, count, args.from_sha, args.max_steps)
-    results = run_chain(steps, args)
+        steps = rerange(args.repo, planned["tip"], steps, args.from_sha, args.max_steps)
+    # A stop (Ctrl-Break on Windows, TERM elsewhere) unwinds, so the manifest and cleanup still save.
+    install_console_interrupt_handler()
+    with terminate_unwinds():
+        results = run_chain(steps, args)
     manifest = read_last_night(args.data, short_id(args.board))
-    return int(any(result.outcome in ("build_failed", "capture_failed") for result in results)
-               or manifest["selftest"]["outcome"] == "failed")
+    failures = lane_failures(manifest)
+    for line in failures:
+        print(f"::error::lane {short_id(args.board)}: {line}", file=sys.stderr)
+    return int(bool(failures))
 
 
 if __name__ == "__main__":

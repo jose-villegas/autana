@@ -1,0 +1,5 @@
+# Frame laps: layered on top of sdkconfig.defaults.diag_perf by build.sh
+# --frame-laps. It times the phases inside the frame stages (frame_laps.h);
+# the laps' own cost moves frame times, so a lapped image is read for its lap
+# lines, never against the perf scope's budgets.
+CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF_LAPS=y

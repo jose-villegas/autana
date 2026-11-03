@@ -6,11 +6,16 @@ from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parents[3]
-sys.path[:0] = [str(ROOT / "launcher/tools"), str(ROOT / "launcher/tools/perf")]
+sys.path.insert(0, str(ROOT / "launcher/tools"))
+sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 import fast_paths
 import math_bench_table as bench
 from docs.plot_style import SLOTS, MUTED, LABEL_SIZE, TITLE_SIZE, subplots, style_axes, save
+from docs.producer import Producer
 from matplotlib.patches import Patch
+
+PRODUCER = Producer(area="math", needs=("host",), run=("--out", "{out}"), outputs=("benchmark-families.png",),
+                    reads=("docs/math/data/math_bench_capture.txt", "docs/math/data/math_bench_fpu_ops.txt"))
 
 REFERENCE_HATCH = "///"
 REFERENCE_FILL = "white"
@@ -138,7 +143,7 @@ def main(argv=None):
     try:
         rows, _ = bench.read_fpu(args.fpu)
         _, measured = bench.parse_capture(args.capture.read_text(encoding="utf-8"), rows)
-        fig = render(rows, measured, fast_paths.annotations())
+        fig = render(rows, measured, [item for item in fast_paths.annotations() if item.unit != "bit"])
         save(fig, args.out / "benchmark-families.png")
     except (OSError, ValueError, KeyError) as error:
         parser.exit(1, f"math_bench_figures: {error}\n")

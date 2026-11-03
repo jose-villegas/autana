@@ -109,7 +109,7 @@ test_release_is_reported_after_the_quiet_period(void) {
     input_t in;
     touch_fsm_take(&fsm, &in);
 
-    touch_fsm_update(&fsm, false, (vec2i_t){0, 0}, MS(0) + TOUCH_RELEASE_QUIET_US + 1);
+    touch_fsm_update(&fsm, false, vec2i_zero(), MS(0) + TOUCH_RELEASE_QUIET_US + 1);
     touch_fsm_take(&fsm, &in);
 
     TEST_ASSERT_TRUE(in.released);
@@ -125,7 +125,7 @@ test_brief_dropout_is_not_a_release(void) {
     input_t in;
     touch_fsm_take(&fsm, &in);
 
-    touch_fsm_update(&fsm, false, (vec2i_t){0, 0}, MS(10));
+    touch_fsm_update(&fsm, false, vec2i_zero(), MS(10));
     touch_fsm_take(&fsm, &in);
 
     TEST_ASSERT_FALSE_MESSAGE(in.released, "a short gap is not a release");
@@ -139,7 +139,7 @@ test_contact_resuming_after_a_dropout_does_not_re_press(void) {
     input_t in;
     touch_fsm_take(&fsm, &in);
 
-    touch_fsm_update(&fsm, false, (vec2i_t){0, 0}, MS(10));  /* dropout */
+    touch_fsm_update(&fsm, false, vec2i_zero(), MS(10));     /* dropout */
     touch_fsm_update(&fsm, true, (vec2i_t){12, 12}, MS(20)); /* back again */
     touch_fsm_take(&fsm, &in);
 
@@ -175,7 +175,7 @@ test_a_full_tap_produces_exactly_one_press_and_one_release(void) {
     touch_fsm_update(&fsm, true, (vec2i_t){80, 90}, MS(0));
     touch_fsm_update(&fsm, true, (vec2i_t){80, 90}, MS(20));
     for (int t = 40; t <= 400; t += 10) {
-        touch_fsm_update(&fsm, false, (vec2i_t){0, 0}, MS(t));
+        touch_fsm_update(&fsm, false, vec2i_zero(), MS(t));
     }
 
     /* Drain everything the sequence produced. */
@@ -196,7 +196,7 @@ test_a_full_tap_produces_exactly_one_press_and_one_release(void) {
 static void
 test_touch_example_counts_edges_and_tracks_held_position(void) {
     fixture();
-    const vec2i_t start = {1, 1};
+    const vec2i_t start = vec2i_one();
     const vec2i_t middle = vec2i_add(start, start);
     const vec2i_t last = vec2i_add(middle, start);
     const int64_t step_us = TOUCH_RELEASE_QUIET_US;

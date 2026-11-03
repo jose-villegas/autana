@@ -3,12 +3,12 @@
 | File | Purpose |
 |---|---|
 | [examples_doc.py](examples_doc.py) | Embeds tracked C examples in their owning documents. |
+| [gen_board_config.py](gen_board_config.py) | Writes a board's `board_config.h` from its `board.toml`. |
 | [gen_boot_anim_timeline.py](gen_boot_anim_timeline.py) | Bakes the boot animation timeline. |
 | [gen_draw_dither_patterns.py](gen_draw_dither_patterns.py) | Bakes the ordered-dither threshold ranks `draw_dither.h` reads. |
 | [gen_draw_palette_standard.py](gen_draw_palette_standard.py) | Bakes standard graphics palette data. |
 | [gen_skin_light_directions.c](gen_skin_light_directions.c) | Bakes unit directions with the math package's octahedral decoder. |
 | [gen_skin_light_directions.sh](gen_skin_light_directions.sh) | Compiles and runs the host direction generator. |
-| [bake_ui_layout.py](bake_ui_layout.py) | Runs the C++ authored-layout baker built in `editor/build`. |
 | [package_headers.py](package_headers.py) | Writes each package README's header table from header banners. |
 | [gen_zeta_curve.py](gen_zeta_curve.py) | Bakes the boot animation curve. |
 | [draw_palette_gen.c](draw_palette_gen.c) | Portable palette table calculations shared by host tools and tests. |
@@ -25,6 +25,7 @@ same. Every checked-in output, from the banner each one carries:
 | [internal-pool.svg](../../../docs/memory/images/internal-pool.svg) | [memory_map.py](../build/memory_map.py) | `./` | `python launcher/tools/build/memory_map.py --chart pool docs/memory/images/internal-pool.svg` |
 | [iram-components.svg](../../../docs/memory/images/iram-components.svg) | [memory_map.py](../build/memory_map.py) | `./` | `python launcher/tools/build/memory_map.py --chart components docs/memory/images/iram-components.svg` |
 | [iram-what-if.svg](../../../docs/memory/images/iram-what-if.svg) | [iram_what_if.py](../build/iram_what_if.py) | `./` | `python launcher/tools/build/iram_what_if.py --chart docs/memory/images/iram-what-if.svg` |
+| [board_config.h](../../main/board/waveshare/esp32_s3_touch_amoled_1_8/board_config.h) | [gen_board_config.py](gen_board_config.py) | `launcher/` | `python tools/gen/gen_board_config.py main/board/waveshare/esp32_s3_touch_amoled_1_8/board.toml main/board/waveshare/esp32_s3_touch_amoled_1_8/board_config.h` |
 | [boot_anim_curve.h](../../main/boot/boot_anim_curve.h) | [gen_zeta_curve.py](gen_zeta_curve.py) | `launcher/` | `python tools/gen/gen_zeta_curve.py > main/boot/boot_anim_curve.h` |
 | [boot_anim_timeline.h](../../main/boot/boot_anim_timeline.h) | [gen_boot_anim_timeline.py](gen_boot_anim_timeline.py) | `launcher/` | `python tools/gen/gen_boot_anim_timeline.py main/boot/boot_anim_timeline.json main/boot/boot_anim_motion.glb > main/boot/boot_anim_timeline.h` |
 | [draw_dither_patterns_generated.h](../../main/draw/draw_dither_patterns_generated.h) | [gen_draw_dither_patterns.py](gen_draw_dither_patterns.py) | `launcher/` | `python tools/gen/gen_draw_dither_patterns.py main/draw/draw_dither_patterns_generated.h` |

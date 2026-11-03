@@ -4,6 +4,8 @@ python launcher/tools/audio/audio_doc_tables.py --write
 python launcher/tools/audio/audio_doc_tables.py --check
 """
 import argparse
+from functools import partial
+from importlib import import_module
 import json
 import math
 from statistics import median
@@ -25,10 +27,17 @@ from frame_cost import frame_cost_window, US_PER_MS
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from audio_drc_sweep import AUDIO, DB_AMPLITUDE_SCALE, DRC_LEVEL_DB, TUNABLES, VOLUME_MAX
 
-from audio_doc_blocks import caption, details, picture
+from audio_doc_blocks import CLIPPED_DBFS, REGENERATE, caption, details, picture
 
+EQ_CSD_CAPTURE = Path("docs/audio/data/mic_eq_csd_capture.txt")
+EQ_RESTART_CAPTURE = Path("docs/audio/data/mic_eq_restart_capture.txt")
+EQ_VOICE_CAPTURE = Path("docs/audio/data/eq_voice/mic_eq_voice_capture.txt")
+HPF_TAP_CAPTURE = Path("docs/audio/data/hpf_taps/mic_hpf_tap_capture.txt")
+PLAYBACK_CAPTURE = Path("docs/audio/data/playback/mic_playback_capture.txt")
+EQ_SLOTS_CAPTURE = Path("docs/audio/data/mic_eq_slots_capture.txt")
+EQ_CAPTURE = Path("docs/audio/data/mic_eq_probe_capture.txt")
+MIC_CAPTURE = Path("docs/audio/data/audio_mic_dsp_capture.txt")
 DRC_CAPTURE = Path("docs/audio/data/audio_drc_capture.txt")
-DRC_CLIPPED_DBFS = -0.5
 CODEC_VOLUME_MIN_DB = read_define(AUDIO / "audio_out.c", "AUDIO_OUT_CODEC_VOLUME_MIN_DB")
 CODEC_VOLUME_MAX_DB = read_define(AUDIO / "audio_out.c", "AUDIO_OUT_CODEC_VOLUME_MAX_DB")
 CODEC_PA_SUPPLY_VOLTS = read_define(AUDIO / "audio_codec.c", "AUDIO_CODEC_PA_SUPPLY_VOLTS")
@@ -36,7 +45,6 @@ CODEC_DAC_SUPPLY_VOLTS = read_define(AUDIO / "audio_codec.c", "AUDIO_CODEC_DAC_S
 
 CAPTURE = Path("docs/audio/data/audio_capture.txt")
 DOCUMENT = Path("docs/audio/Audio-Path.md")
-REGENERATE = "python launcher/tools/audio/audio_doc_tables.py --write"
 CAPTURE_COMMANDS = (
     ('buildid',),
     ('heap',),
@@ -70,7 +78,7 @@ DRC_DEFAULT = tuple(read_define(AUDIO / "audio_out.c", name) for name in (
     "AUDIO_OUT_DRC_MIN_LEVEL", "AUDIO_OUT_DRC_WINSIZE", "AUDIO_OUT_DRC_RAMP"))
 DRC_REFERENCE_CODEC = 50
 
-DEFAULT_VOLUME = read_define(ROOT / "launcher/main/console/verbs/console_tone_parse.h", "CONSOLE_TONE_DEFAULT_VOLUME_PCT")
+DEFAULT_VOLUME = read_define(ROOT / "launcher/main/sound/console/console_tone_parse.h", "CONSOLE_TONE_DEFAULT_VOLUME_PCT")
 
 
 def read_capture(path):
@@ -348,7 +356,7 @@ def render_drc(path):
         values = [*[f"{level:.1f}" for level in point["levels"]],
                   f"{point['thd']:.1f}" if point["thd"] is not None else "n/a"]
         rows.append((codec, f"{static_output:.1f}", label, window, ramp, *values, f"{point['peak']:.1f}",
-                     "yes" if point["peak"] >= DRC_CLIPPED_DBFS else "no"))
+                     "yes" if point["peak"] >= CLIPPED_DBFS else "no"))
         if key == DRC_DEFAULT or (codec == DRC_REFERENCE_CODEC and not on):
             summary.append(("Default" if on else f"Codec {codec}%, DRC off", *values))
     headings = [*[f"Level {volume}% (dBFS)" for volume in volumes], f"THD {volumes[-1]}% (dB)"]
@@ -362,6 +370,53 @@ def render_drc(path):
                         *headings, "Worst peak (dBFS)", "Mic clipped"], rows)
             + "\n</details>\n")
 
+
+
+def render_mic(path):
+    from audio_mic_dsp_tables import render
+    _, records, _ = read_capture(path)
+    return render(path, records, caption, picture, details, markdown, REGENERATE)
+
+
+def update_eq_probe(capture, document, check=False, slots_capture=None, restart_capture=None, csd_capture=None):
+    from audio.mic.mic_eq_probe_tables import render, render_slots, render_restart, render_csd
+    slots_capture = slots_capture or ROOT / EQ_SLOTS_CAPTURE
+    body = "No capture yet.\n"
+    if capture.exists():
+        _, records, _ = read_capture(capture)
+        body = render(capture, records, caption, picture, details, markdown, REGENERATE)
+    if slots_capture.exists():
+        _, records, _ = read_capture(slots_capture)
+        body += "\n" + render_slots(slots_capture, records, caption, picture, details, markdown, REGENERATE)
+    else:
+        body += "\nRun 2. No slots capture yet; the coefficient layout is unresolved.\n"
+    restart_capture = restart_capture or ROOT / EQ_RESTART_CAPTURE
+    if restart_capture.exists():
+        _, records, _ = read_capture(restart_capture)
+        body = body.rstrip("\n") + "\n\n" + render_restart(restart_capture, records, caption, markdown, REGENERATE)
+    csd_capture = csd_capture or ROOT / EQ_CSD_CAPTURE
+    if csd_capture.exists():
+        _, records, _ = read_capture(csd_capture)
+        body = body.rstrip("\n") + "\n\n" + render_csd(csd_capture, records, caption, markdown, REGENERATE)
+    return replace_block(document, "mic-eq-probe", body, check=check)
+
+
+def update_recorded_table(capture, document, check=False, *, key, renderer):
+    body = "No capture yet.\n"
+    if capture.exists():
+        _, records, _ = read_capture(capture)
+        body = import_module(renderer).render(capture, records, markdown, check=check)
+    return replace_block(document, key, body, check=check)
+
+
+update_playback = partial(update_recorded_table, key="mic-playback-dsp", renderer="audio.mic.playback_dsp_tables")
+update_eq_voice = partial(update_recorded_table, key="mic-eq-voice", renderer="audio.mic.eq_voice_tables")
+update_hpf_taps = partial(update_recorded_table, key="mic-hpf-taps", renderer="audio.mic.hpf_tap_tables")
+
+
+def update_mic(capture, document, check=False):
+    body = render_mic(capture) if capture.exists() else "No capture yet.\n"
+    return replace_block(document, "audio-mic-dsp", body, check=check)
 
 
 def update_drc(capture, document, check=False):
@@ -487,14 +542,23 @@ def main():
     mode.add_argument("--check", action="store_true")
     for flag, default in (("--capture", CAPTURE), ("--document", DOCUMENT), ("--mix-captures", MIX_CAPTURES),
                           ("--mix-document", MIX_DOCUMENT), ("--onset-document", ONSET_DOCUMENT),
-                          ("--drc-capture", DRC_CAPTURE)):
+                          ("--drc-capture", DRC_CAPTURE), ("--mic-capture", MIC_CAPTURE),
+                          ("--eq-voice-capture", EQ_VOICE_CAPTURE), ("--hpf-tap-capture", HPF_TAP_CAPTURE), ("--playback-capture", PLAYBACK_CAPTURE), ("--eq-restart-capture", EQ_RESTART_CAPTURE),
+                          ("--eq-csd-capture", EQ_CSD_CAPTURE), ("--eq-capture", EQ_CAPTURE), ("--eq-slots-capture", EQ_SLOTS_CAPTURE)):
         parser.add_argument(flag, type=Path, default=ROOT / default)
     args = parser.parse_args()
     try:
         changed = update(args.capture, args.document, args.check, args.mix_captures, args.mix_document, args.drc_capture)
+        changed |= update_mic(args.mic_capture, args.document, args.check)
+        changed |= update_eq_probe(args.eq_capture, args.document, args.check, args.eq_slots_capture, args.eq_restart_capture, args.eq_csd_capture)
+        changed |= update_eq_voice(args.eq_voice_capture, args.document, args.check)
+        changed |= update_hpf_taps(args.hpf_tap_capture, args.document, args.check)
+        changed |= update_playback(args.playback_capture, args.document, args.check)
         changed |= update_onset(args.mix_captures, args.onset_document, args.check)
         changed |= replace_block(ROOT / "docs/audio/Sound-Assets.md", "sound-storage", render_storage(),
                                  check=args.check)
+        from audio_buzz_doc import CAPTURE as BUZZ_CAPTURE, DOCUMENT as BUZZ_DOCUMENT, update as update_buzz
+        changed |= update_buzz(ROOT / BUZZ_CAPTURE, ROOT / BUZZ_DOCUMENT, args.check)
     except (ValueError, KeyError, OSError, RuntimeError) as error:
         parser.exit(2, f"{error}\n")
     print(f"audio tables: {'stale' if changed and args.check else 'updated' if changed else 'current'}")

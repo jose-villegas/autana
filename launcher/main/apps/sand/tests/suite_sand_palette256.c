@@ -1,7 +1,7 @@
 /*
  * Portable suite: the GFX_LAYOUT_INDEXED pipeline - material_colours()'s
  * body colour mapped to a sand_palette256_lut index (material_palette.c)
- * and back out through gfx_indexed_expand_row() (gfx_indexed.h). Pure and
+ * and back out through gfx_indexed_expand_row() (gfx_indexed_expand.h). Pure and
  * host-portable, the same reason suite_sand_*.c can drive the real
  * simulation at all, see suite_sand_common.h's own top comment.
  *
@@ -20,6 +20,7 @@
 #include "apps/sand/sand_dither_tables.h"
 #include "apps/sand/sand_palette256.h"
 #include "gfx/present/gfx_mode.h"
+#include "gfx/present/modes/indexed/gfx_indexed_expand.h"
 #include "image/pixel/rgb565.h"
 
 /* An OKLab dE around 2 is "just noticeable" per the palette study

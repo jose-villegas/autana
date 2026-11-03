@@ -5,6 +5,7 @@
 #include "math/linear/vec_convert.h"
 #include "math/scalar/math_const.h"
 #include "math/scalar/mathf.h"
+#include "math/scalar/maths.h"
 #include "math/scalar/trig.h"
 #include "testkit/bench.h"
 #include "testkit/cleanup.h"
@@ -49,6 +50,7 @@ typedef union {
     ARRAY(tf, transformf_t, MATH_BENCH_BATCH)                                                                          \
     ARRAY(tx, transformx_t, MATH_BENCH_BATCH)                                                                          \
     ARRAY(angle, float, MATH_BENCH_BATCH)                                                                              \
+    ARRAY(saturate, int32_t, MATH_BENCH_BATCH)                                                                         \
     ARRAY(phase, uint16_t, MATH_BENCH_BATCH)                                                                           \
     ARRAY(output, result_t, MATH_BENCH_BATCH)                                                                          \
     ARRAY(dot_a, float, MATH_BENCH_DOT_SIZE)                                                                           \
@@ -182,6 +184,9 @@ nlerp_div(quatx_t a, quatx_t b, int32_t t) {
     X(nlerp, "nlerp", type, "quaternion", false, q##type, quat##type##_nlerp(f->q##type[j].a, f->q##type[j].b, lerp))  \
     X(quat_mul, "quat mul", type, "quaternion", false, q##type, quat##type##_mul(f->q##type[j].a, f->q##type[j].b))
 
+/* A float scalar function of the first input lane. */
+#define MATH_SCALAR_F_ROW(X, fn) X(fn, #fn, f, "scalar", false, f, fn(f->vf[j].a.x))
+
 #define MATH_ROWS(X, DOT)                                                                                              \
     MATH_VECTOR_ROWS(X, f, vf, f, true, MATH_BENCH_LERP_F)                                                             \
     MATH_VECTOR_ROWS(X, i, vi, i, false, MATH_BENCH_LERP_NUMERATOR, MATH_BENCH_LERP_DENOMINATOR)                       \
@@ -208,9 +213,11 @@ nlerp_div(quatx_t a, quatx_t b, int32_t t) {
       transformf_compute_matrix(&f->tf[j]))                                                                            \
     X(transform_compute_matrix, "transform compute_matrix", x, "matrix", false, mx,                                    \
       transformx_compute_matrix(&f->tx[j]))                                                                            \
-    X(mathf_recip, "mathf_recip", f, "scalar", false, f, mathf_recip(f->vf[j].a.x))                                    \
-    X(mathf_rsqrt, "mathf_rsqrt", f, "scalar", false, f, mathf_rsqrt(f->vf[j].a.x))                                    \
-    X(mathf_rsqrt_approx, "mathf_rsqrt_approx", f, "scalar", false, f, mathf_rsqrt_approx(f->vf[j].a.x))               \
+    X(maths_saturate, "maths_saturate", s, "scalar", false, i, maths_saturate(f->saturate[j]))                         \
+    MATH_SCALAR_F_ROW(X, mathf_recip)                                                                                  \
+    MATH_SCALAR_F_ROW(X, mathf_recip_approx)                                                                           \
+    MATH_SCALAR_F_ROW(X, mathf_rsqrt)                                                                                  \
+    MATH_SCALAR_F_ROW(X, mathf_rsqrt_approx)                                                                           \
     X(wrap_fmodf, "wrap_fmodf", f, "libm", false, f,                                                                   \
       wrap_fmodf(f->angle[j], -MATH_BENCH_WRAP_LIMIT, MATH_BENCH_WRAP_LIMIT))                                          \
     X(normalize_div, "normalize_div", x, "vector", false, vx, normalize_div(f->vx[j].a))                               \
@@ -268,6 +275,8 @@ fixture(void) {
 #define MATH_BENCH_ALLOC(name, type, count) f->name = bench_alloc_internal(sizeof *f->name * (count), #name);
 #define MATH_BENCH_PAIR_ALLOC(name, type)   MATH_BENCH_ALLOC(name, pair_##name##_t, MATH_BENCH_BATCH)
     MATH_BENCH_ARRAYS(MATH_BENCH_PAIR_ALLOC, MATH_BENCH_ALLOC)
+    static const int32_t saturate_inputs[] = {INT32_MIN, INT16_MIN - 1, INT16_MIN, 0,
+                                              INT16_MAX, INT16_MAX + 1, INT32_MAX};
     for (int j = 0; j < MATH_BENCH_BATCH; j++) {
         const float v = (float)((j % MATH_BENCH_INPUT_PERIOD) + 1) * MATH_BENCH_INPUT_SCALE;
         const float turn = (float)j / MATH_BENCH_BATCH;
@@ -280,11 +289,12 @@ fixture(void) {
         f->vx[j].a = vec3x_from_vec3f(f->vf[j].a);
         f->vx[j].b = vec3x_from_vec3f(f->vf[j].b);
         f->angle[j] = (turn - 0.5F) * MATH_TAU;
+        f->saturate[j] = saturate_inputs[j % (sizeof saturate_inputs / sizeof saturate_inputs[0])];
         f->phase[j] = (uint16_t)(j * TRIG_TURN / MATH_BENCH_BATCH);
-        f->qf[j].a = quatf_from_axis_angle((vec3f_t){0.0F, 1.0F, 0.0F}, f->angle[j]);
-        f->qf[j].b = quatf_from_axis_angle((vec3f_t){1.0F, 0.0F, 0.0F}, f->angle[j] + (MATH_PI / 2.0F));
-        f->qx[j].a = quatx_from_axis_angle((vec3x_t){0, MATHX_ONE, 0}, mathf_to_x(turn - 0.5F));
-        f->qx[j].b = quatx_from_axis_angle((vec3x_t){MATHX_ONE, 0, 0}, mathf_to_x(turn - 0.25F));
+        f->qf[j].a = quatf_from_axis_angle(vec3f_unit_y(), f->angle[j]);
+        f->qf[j].b = quatf_from_axis_angle(vec3f_unit_x(), f->angle[j] + (MATH_PI / 2.0F));
+        f->qx[j].a = quatx_from_axis_angle(vec3x_unit_y(), mathf_to_x(turn - 0.5F));
+        f->qx[j].b = quatx_from_axis_angle(vec3x_unit_x(), mathf_to_x(turn - 0.25F));
         f->tf[j] = (transformf_t){.position = f->vf[j].a, .rotation = f->qf[j].a, .scale = f->vf[j].b};
         f->tx[j] = (transformx_t){.position = f->vx[j].a, .rotation = f->qx[j].a, .scale = f->vx[j].b};
         f->mf[j].a = transformf_compute_matrix(&f->tf[j]);
@@ -320,22 +330,7 @@ test_math_board_rows(void) {
     for (size_t j = 0; j < sizeof rows / sizeof *rows; j++) {
         const row_t* row = &rows[j];
         cycle_context_t ctx = {.row = row, .fixture = f};
-        const float warm = bench_cycle_median(run_cycles, &ctx, false) / (float)row->ops;
-        const bool cold = bench_cache_cold();
-        printf("MATHBENCH name=%s type=%s ops=%d warm=%.1f", row->name, row->type, row->ops, (double)warm);
-        if (cold) {
-            printf(" cold=%.1f", (double)bench_cycle_median(run_cycles, &ctx, true));
-        }
-        row->fn(f);
-        const bool counting = bench_insn_begin();
-        row->fn(f);
-        if (counting) {
-            uint32_t value;
-            TEST_ASSERT_TRUE(bench_insn_end(&value));
-            printf(" insn=%.1f", (double)((float)value / (float)row->ops));
-        }
-        printf("\n");
-        bench_yield();
+        bench_report_cycles("MATHBENCH", row->name, row->type, row->ops, run_cycles, &ctx);
     }
     release();
     suite_clear_test_cleanup();

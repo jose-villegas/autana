@@ -1,5 +1,6 @@
 #include "math/geometry/box3f.h"
 #include "math/geometry/planex.h"
+#include "math/scalar/rng.h"
 #include "testkit/suite.h"
 #include "unity.h"
 
@@ -10,7 +11,6 @@ static const float BOX_TOLERANCE = 0.00001F;
 static const float BOX_SCALE = 0.5F;
 static const box3s_t BOX_TICKS = {{-2, -2, -2}, {2, 2, 2}};
 static const vec3s_t BOX_FAR = {4, 0, 0};
-static const vec3f_t BOX_ORIGIN = {0.0F, 0.0F, 0.0F};
 static const vec3f_t BOX_START = {-2.0F, 0.0F, 0.0F};
 static const vec3f_t BOX_END = {2.0F, 0.0F, 0.0F};
 static const float BOX_ENTRY = 0.25F;
@@ -63,9 +63,9 @@ test_box3_closed_queries_and_empty_identity(void) {
     TEST_ASSERT_TRUE(box3f_is_empty(box3f_intersect(b, box3f_from_point(BOX_END))));
     TEST_ASSERT_FALSE(box3f_contains_point(b, BOX_END));
     TEST_ASSERT_FALSE(box3f_contains(b, box3f_from_point(BOX_END)));
-    TEST_ASSERT_TRUE(vec3f_equal(BOX_ORIGIN, box3f_closest_point(b, BOX_ORIGIN)));
-    TEST_ASSERT_TRUE(vec3f_equal((vec3f_t){b.hi.x, BOX_ORIGIN.y, BOX_ORIGIN.z}, box3f_closest_point(b, BOX_END)));
-    TEST_ASSERT_TRUE(vec3f_equal(BOX_ORIGIN, box3f_centre(b)));
+    TEST_ASSERT_TRUE(vec3f_equal(vec3f_zero(), box3f_closest_point(b, vec3f_zero())));
+    TEST_ASSERT_TRUE(vec3f_equal((vec3f_t){b.hi.x, vec3f_zero().y, vec3f_zero().z}, box3f_closest_point(b, BOX_END)));
+    TEST_ASSERT_TRUE(vec3f_equal(vec3f_zero(), box3f_centre(b)));
     TEST_ASSERT_TRUE(vec3f_equal(b.hi, box3f_half_extent(b)));
     TEST_ASSERT_TRUE(vec3f_equal(b.lo, box3f_corner(b, 0)));
     TEST_ASSERT_TRUE(vec3f_equal(b.hi, box3f_corner(b, 7)));
@@ -103,9 +103,9 @@ test_box3_segment_slabs(void) {
     TEST_ASSERT_FLOAT_WITHIN(BOX_TOLERANCE, BOX_ENTRY, t);
     TEST_ASSERT_TRUE(box3f_segment_hit(b, BOX_END, BOX_START, &t));
     TEST_ASSERT_FLOAT_WITHIN(BOX_TOLERANCE, BOX_ENTRY, t);
-    TEST_ASSERT_TRUE(box3f_segment_hit(b, BOX_ORIGIN, BOX_END, &t));
+    TEST_ASSERT_TRUE(box3f_segment_hit(b, vec3f_zero(), BOX_END, &t));
     TEST_ASSERT_EQUAL_FLOAT(mathf_zero(), t);
-    TEST_ASSERT_TRUE(box3f_segment_hit(b, BOX_ORIGIN, BOX_ORIGIN, &t));
+    TEST_ASSERT_TRUE(box3f_segment_hit(b, vec3f_zero(), vec3f_zero(), &t));
     TEST_ASSERT_FALSE(box3f_segment_hit(b, BOX_END, BOX_END, &t));
     TEST_ASSERT_FALSE(box3f_segment_hit(box3f_empty(), BOX_START, BOX_END, &t));
     const vec3f_t edge_start = {BOX_START.x, b.hi.y, b.hi.z};
@@ -172,6 +172,75 @@ test_box3_plane_oblique_touch_and_late_rejection(void) {
     mask = REJECT;
     TEST_ASSERT_FALSE(box3f_outside_planes(b, planes, 0, &mask));
     TEST_ASSERT_EQUAL_UINT(REJECT, mask);
+}
+
+enum { BOX_CORNERS = 8 };
+
+/* The least and greatest signed distance of b's corners: the box's own, as
+ * a plane is linear and a box is the hull of its corners. */
+static void
+corner_extremes(box3f_t b, planef_t plane, float* least, float* most) {
+    *least = INFINITY;
+    *most = -INFINITY;
+    for (int k = 0; k < BOX_CORNERS; k++) {
+        const float d = planef_distance(plane, box3f_corner(b, k));
+        *least = mathf_min(*least, d);
+        *most = mathf_max(*most, d);
+    }
+}
+
+static void
+test_box3_plane_distance_axis_aligned_is_exact(void) {
+    const box3f_t b = box3f_from_box3s(BOX_ASYMMETRIC_TICKS, BOX_SCALE);
+    const float offset = BOX_ASYMMETRIC_CENTRE.y;
+    /* x - offset, and its flip offset - x: the faces give the answer. */
+    const planef_t up = {{1.0F, 0.0F, 0.0F}, -offset};
+    const planef_t down = {{-1.0F, 0.0F, 0.0F}, offset};
+    TEST_ASSERT_EQUAL_FLOAT(b.lo.x - offset, box3f_plane_distance_min(b, up));
+    TEST_ASSERT_EQUAL_FLOAT(b.hi.x - offset, box3f_plane_distance_max(b, up));
+    TEST_ASSERT_EQUAL_FLOAT(offset - b.hi.x, box3f_plane_distance_min(b, down));
+    TEST_ASSERT_EQUAL_FLOAT(offset - b.lo.x, box3f_plane_distance_max(b, down));
+}
+
+static void
+test_box3_plane_distance_oblique_matches_the_corners(void) {
+    const box3f_t b = box3f_from_box3s(BOX_ASYMMETRIC_TICKS, BOX_SCALE);
+    static const planef_t planes[] = {
+        {{1.0F, 2.0F, -3.0F}, 0.5F}, {{-1.0F, -2.0F, 3.0F}, -0.5F}, {{-0.25F, 0.0F, -4.0F}, 7.0F}};
+    for (unsigned i = 0; i < sizeof planes / sizeof planes[0]; i++) {
+        float least, most;
+        corner_extremes(b, planes[i], &least, &most);
+        TEST_ASSERT_FLOAT_WITHIN(BOX_TOLERANCE, least, box3f_plane_distance_min(b, planes[i]));
+        TEST_ASSERT_FLOAT_WITHIN(BOX_TOLERANCE, most, box3f_plane_distance_max(b, planes[i]));
+    }
+}
+
+/* The least z on a box where a constraint holds. */
+static void
+test_box3_plane_distance_min_inside_one_half_space(void) {
+    const box3f_t cube = box3f_from_box3s(BOX_TICKS, BOX_SCALE);
+    const planef_t depth = {{0.0F, 0.0F, 1.0F}, 0.0F};
+    /* z >= x holds at the corner (lo.x, y, lo.z): it never binds. */
+    const planef_t loose = {{-1.0F, 0.0F, 1.0F}, 0.0F};
+    TEST_ASSERT_FLOAT_WITHIN(BOX_TOLERANCE, cube.lo.z, box3f_plane_distance_min_inside(cube, depth, loose));
+    /* z >= x + (hi.z - lo.z) / 2 binds at x = lo.x. */
+    const float rise = (cube.hi.z - cube.lo.z) * 0.5F;
+    const planef_t binding = {{-1.0F, 0.0F, 1.0F}, -rise};
+    TEST_ASSERT_FLOAT_WITHIN(BOX_TOLERANCE, cube.lo.x + rise, box3f_plane_distance_min_inside(cube, depth, binding));
+    /* A thin slab seen from above, as a ground square: z >= reach - slope y
+     * keeps only z >= reach - slope hi.y, at the top face, while the box
+     * alone reaches lo.z. */
+    const box3f_t slab = {{cube.lo.x, cube.hi.y - BOX_SCALE, cube.lo.z}, cube.hi};
+    const float slope = 2.0F;
+    const float reach = (slope * slab.hi.y) + (cube.hi.z * 0.5F); /* binds halfway up the cube */
+    const planef_t bottom = {{0.0F, slope, 1.0F}, -reach};
+    TEST_ASSERT_EQUAL_FLOAT(slab.lo.z, box3f_plane_distance_min(slab, depth));
+    TEST_ASSERT_FLOAT_WITHIN(BOX_TOLERANCE, reach - (slope * slab.hi.y),
+                             box3f_plane_distance_min_inside(slab, depth, bottom));
+    /* A box outside the half-space has no least value; the bound never falls
+     * under the box's own. */
+    const planef_t beyond = {{1.0F, 0.0F, 0.0F}, -(cube.hi.x + 1.0F)};
+    TEST_ASSERT_TRUE(box3f_plane_distance_min_inside(cube, depth, beyond) >= box3f_plane_distance_min(cube, depth));
 }
 
 static void
@@ -251,6 +320,89 @@ test_box3_empty_operands_never_overlap(void) {
     }
 }
 
+static float
+inline_radius(vec3f_t e, planef_t plane) {
+    return mathf_add(mathf_add(mathf_mul(mathf_abs(plane.normal.x), e.x), mathf_mul(mathf_abs(plane.normal.y), e.y)),
+                     mathf_mul(mathf_abs(plane.normal.z), e.z));
+}
+
+static bool
+inline_outside(box3f_t b, const planef_t* planes, int count, unsigned* mask) {
+    const vec3f_t c = box3f_centre(b), e = box3f_half_extent(b);
+    for (int p = 0; p < count; p++) {
+        if (!(*mask & (1U << p))) {
+            continue;
+        }
+        const float d = planef_distance(planes[p], c);
+        const float r = inline_radius(e, planes[p]);
+        if (mathf_add(d, r) < mathf_zero()) {
+            return true;
+        }
+        if (mathf_sub(d, r) >= mathf_zero()) {
+            *mask &= ~(1U << p);
+        }
+    }
+    return false;
+}
+
+static float
+random_value(rng_t* rng) {
+    enum { VALUE_BUCKETS = 8193 };
+
+    const float value_offset = 4096.0F, value_divisor = 37.0F;
+    return ((float)rng_below(rng, VALUE_BUCKETS) - value_offset) / value_divisor;
+}
+
+static box3f_t
+random_box(rng_t* rng) {
+    const vec3f_t a = {random_value(rng), random_value(rng), random_value(rng)};
+    const vec3f_t z = {random_value(rng), random_value(rng), random_value(rng)};
+    return (box3f_t){vec3f_min(a, z), vec3f_max(a, z)};
+}
+
+static planef_t
+random_plane(rng_t* rng) {
+    enum { ZERO_NORMAL_PERIOD = 5 };
+
+    planef_t plane = {{random_value(rng), random_value(rng), random_value(rng)}, random_value(rng)};
+    if (rng_below(rng, ZERO_NORMAL_PERIOD) == 0) {
+        plane.normal.x = mathf_zero();
+    }
+    if (rng_below(rng, ZERO_NORMAL_PERIOD) == 0) {
+        plane.normal.y = mathf_zero();
+    }
+    if (rng_below(rng, ZERO_NORMAL_PERIOD) == 0) {
+        plane.normal.z = mathf_zero();
+    }
+    return plane;
+}
+
+static void
+test_box3_planes_match_inline_formula_bitwise(void) {
+    enum { SAMPLE_COUNT = 4096, MAX_PLANES = 6 };
+
+    const uint32_t seed = 0x93A4B17Du;
+    rng_t rng;
+    rng_seed(&rng, seed);
+    for (unsigned sample = 0; sample < SAMPLE_COUNT; sample++) {
+        const box3f_t b = random_box(&rng);
+        const vec3f_t c = box3f_centre(b), e = box3f_half_extent(b);
+        planef_t planes[MAX_PLANES];
+        const int count = rng_below(&rng, MAX_PLANES + 1);
+        for (int p = 0; p < count; p++) {
+            planes[p] = random_plane(&rng);
+            const float d = planef_distance(planes[p], c);
+            const float expected = mathf_sub(d, inline_radius(e, planes[p]));
+            const float actual = box3f_plane_distance_min(b, planes[p]);
+            TEST_ASSERT_EQUAL_MEMORY(&expected, &actual, sizeof expected);
+        }
+        unsigned expected_mask = rng_next(&rng), actual_mask = expected_mask;
+        const bool expected_reject = inline_outside(b, planes, count, &expected_mask);
+        TEST_ASSERT_EQUAL(expected_reject, box3f_outside_planes(b, planes, count, &actual_mask));
+        TEST_ASSERT_EQUAL_UINT(expected_mask, actual_mask);
+    }
+}
+
 void
 suite_box3(void) {
     RUN_TEST(test_box3_empty_operands_never_overlap);
@@ -262,6 +414,10 @@ suite_box3(void) {
     RUN_TEST(test_box3_asymmetric_scale_and_extreme_bounds);
     RUN_TEST(test_box3_segment_slabs);
     RUN_TEST(test_box3_planes_preserve_only_crossing_bits);
+    RUN_TEST(test_box3_plane_distance_axis_aligned_is_exact);
+    RUN_TEST(test_box3_plane_distance_oblique_matches_the_corners);
+    RUN_TEST(test_box3_plane_distance_min_inside_one_half_space);
+    RUN_TEST(test_box3_planes_match_inline_formula_bitwise);
 }
 
 SUITE_REGISTER(suite_box3);

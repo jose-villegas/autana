@@ -13,6 +13,7 @@ typedef struct {
     float measured_hz;
     float thd_db;
     float peak_dbfs;
+    float noise_dbfs;
 } audio_loopback_result_t;
 
 /* Trim the first captured samples after audio starts. */

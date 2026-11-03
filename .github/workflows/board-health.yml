@@ -37,10 +37,14 @@ jobs:
           persist-credentials: false
           set-safe-directory: false
 
+      # This machine's boards and those the nightly reaches on other machines.
       - name: List boards on USB
+        env:
+          REMOTE_LANE_COMMAND: ${{ vars.REMOTE_LANE_COMMAND }}
         run: |
           export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/tools:$PATH"
-          autana devices --json > "$RUNNER_TEMP/devices.json"
+          PY=$(. scripts/lib/python.sh && find_python)
+          "$PY" launcher/tools/perf/nightly/scoped_chain.py boards > "$RUNNER_TEMP/devices.json"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

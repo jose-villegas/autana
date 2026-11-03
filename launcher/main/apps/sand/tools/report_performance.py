@@ -50,7 +50,9 @@ BUDGET_RES = (
 DEFINE_RE = re.compile(r"#define\s+(\w+)\s+(\d+)")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[5] / "scripts/lib"))
-from device_capture import RESULT_RE, SELFTEST_COMPLETE_RE  # noqa: E402
+from device_capture import RESULT_RE, SELFTEST_COMPLETE_RE, TEST_NAME  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[5] / "scripts/device"))
+from device_report import read_capture_text  # noqa: E402
 
 # A separate line - not part of the result line above - emitted by
 # test/timing.c for every test, on both host and device. Kept separate on
@@ -68,7 +70,7 @@ from device_capture import RESULT_RE, SELFTEST_COMPLETE_RE  # noqa: E402
 # "no timing data" with no error to notice. New fields go on the END of that
 # line, and are ignored here until something needs them.
 TEST_TIME_RE = re.compile(
-    r"^TEST_TIME name=(?P<name>\w+) elapsed_ms=(?P<ms>\d+)(?:\s.*)?$")
+    rf"^TEST_TIME name=(?P<name>{TEST_NAME}) elapsed_ms=(?P<ms>\d+)(?:\s.*)?$")
 
 # selftest.c's own sentinel, printed once at the very end of the run - the
 # one total this file cannot get by summing TEST_TIME lines, because a
@@ -112,12 +114,11 @@ FRAME_TIME_PHASE_RE = re.compile(
 # A run narrowed with `autana suite --test` lists every test of the suite and
 # whether it was selected (test/suites.c); the unselected ones were asked not
 # to run, so they are not "missing" from this capture.
-SUITE_TEST_RE = re.compile(r"^SUITE_TEST name=(?P<name>\w+) selected=(?P<selected>[01])\s*$", re.MULTILINE)
+SUITE_TEST_RE = re.compile(rf"^SUITE_TEST name=(?P<name>{TEST_NAME}) selected=(?P<selected>[01])\s*$", re.MULTILINE)
 
 
 def parse_unselected(capture_path: str) -> set:
-    with open(capture_path, "r", errors="replace") as f:
-        text = f.read()
+    text = read_capture_text(capture_path)
     return {m.group("name") for m in SUITE_TEST_RE.finditer(text) if m.group("selected") == "0"}
 
 
@@ -196,8 +197,7 @@ def make_slow_tests_section(capture: dict, total_ms, top_n: int = 15) -> list:
 
 
 def parse_capture(capture_path: str):
-    with open(capture_path, "r", errors="replace") as f:
-        text = f.read()
+    text = read_capture_text(capture_path)
 
     entries = {}  # test name -> {"status", "message", "measured", "elapsed_ms"}
     test_times = {}  # test name -> elapsed_ms, from TEST_TIME lines

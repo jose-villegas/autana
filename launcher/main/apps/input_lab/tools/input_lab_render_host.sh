@@ -11,6 +11,7 @@ main/input/motion/motion_reader.c
 main/input/motion/gravity.c
 main/input/motion/shake.c
 main/apps/input_lab/shake_probe.c
+main/input/motion/imu_rest.c
 main/input/motion/imu_calib.c
 main/apps/input_lab/imu_probe.c
 main/apps/input_lab/imu_record.c

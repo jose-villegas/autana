@@ -51,7 +51,7 @@ comment at `control_lock` in `sound_mixer_device.c`.
 | Voice handle | the slot and its voice generation |
 | App generation | which app sent it, so commands from an exited app are dropped |
 | Options | bus, gain and priority |
-| Payload | the sound pointer, a tone frequency or a capture sequence number |
+| Payload | the sound pointer, a tone frequency and duration, or a capture sequence number |
 
 Each entry is 16 bytes, checked at compile time against `SOUND_COMMAND_BYTES`.
 When the queue is full the command is dropped:

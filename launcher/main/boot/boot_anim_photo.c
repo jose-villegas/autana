@@ -8,6 +8,8 @@
 
 #include "boot/boot_anim.h"
 
+#include "draw/draw_image.h"
+
 #include "asset/asset_store.h"
 #include "draw/draw_image_format.h"
 #include "esp_log.h"
@@ -17,8 +19,8 @@ static const char* TAG = "boot_anim";
 static handle_t load;
 
 void
-boot_anim_photo_load(draw_image_t* out) {
-    *out = (draw_image_t){0};
+boot_anim_photo_load(image_t* out) {
+    *out = (image_t){0};
     load = asset_store_load(BOOT_PHOTO);
     const asset_pack_t* pack = asset_store_loaded(load);
     if (pack == NULL) {
@@ -26,14 +28,14 @@ boot_anim_photo_load(draw_image_t* out) {
         ESP_LOGW(TAG, "no pack %s: the animation draws without the photograph", BOOT_PHOTO);
         return;
     }
-    draw_image_t image = {0};
+    image_t image = {0};
     asset_view_t entry;
     asset_status_t status = asset_pack_find(pack, BOOT_PHOTO, DRAW_IMAGE_ASSET, &entry);
     if (status == ASSET_OK) {
         status = draw_image_open(entry, &image);
     }
     if (status == ASSET_OK
-        && (image.format != DRAW_IMAGE_RGB565 || image.width != GFX_WIDTH || image.height != GFX_HEIGHT)) {
+        && (image.format != IMAGE_RGB565BE || image.width != GFX_WIDTH || image.height != GFX_HEIGHT)) {
         status = ASSET_ERR_FORMAT;
     }
     if (status != ASSET_OK) {
@@ -46,9 +48,9 @@ boot_anim_photo_load(draw_image_t* out) {
 }
 
 void
-boot_anim_photo_release(draw_image_t* photo) {
+boot_anim_photo_release(image_t* photo) {
     if (photo->pixels != NULL) {
         asset_store_release(load);
     }
-    *photo = (draw_image_t){0};
+    *photo = (image_t){0};
 }

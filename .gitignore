@@ -135,9 +135,6 @@ $RECYCLE.BIN/
 # Built Visual Studio Code Extensions
 *.vsix
 
-# The host editor fetches its dependencies into its own build directory.
-/editor/build*/
-/editor/imgui.ini
 
 ### autana CLI
 # Where scripts/device/device.py writes a session's log and manifest when the

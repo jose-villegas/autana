@@ -4,7 +4,7 @@
  *
  * Selected by name or position, not a Kconfig choice; an app calls
  * draw_palette_standard_find() (or iterates draw_palette_standard_count()/
- * _at()) at runtime and installs the result through gfx_indexed_set_lut()
+ * _at()) at runtime and installs the result through gfx_indexed_set_palette()
  * or gfx_indexed_set_lut16() (tools/gen/draw_palette_gen.h builds the reverse
  * index map and dither table either one needs first).
  */

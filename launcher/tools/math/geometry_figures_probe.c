@@ -10,16 +10,15 @@
 #include "math/geometry/spheref.h"
 #include "math/linear/mat4f.h"
 #include "math/linear/vec2i.h"
+#include "math/text/math_text.h"
 
 static const recti_t RECT_A = {1, 1, 5, 4};
 static const recti_t RECT_B = {3, 2, 5, 4};
 static const int RECT_CROSSED_EDGES[] = {8, 7, 6, 6};
 static const vec2i_t RECT_SAMPLES[] = {{1, 3}, {3, 1}, {6, 3}, {3, 5}};
 static const vec3f_t DISTANCE_NORMAL = {2.0F, 1.0F, 2.0F};
-static const vec3f_t DISTANCE_POINT = {0.0F, 0.0F, 1.0F};
 static const vec3f_t TRIANGLE[] = {{-1.0F, 0.0F, 0.0F}, {1.0F, 0.3F, 0.0F}, {0.0F, 0.7F, 2.0F}};
 static const unsigned WINDING_ORDERS[][3] = {{0, 1, 2}, {0, 2, 1}};
-static const vec3f_t WORLD_UP = {0.0F, 1.0F, 0.0F};
 static const float SHOWN_DEPTH = 4.5F;
 static const vec3f_t LENS_SAMPLE = {0.0F, 0.0F, 3.0F};
 static const float LEVEL_VALUES[] = {-1.0F, 1.0F};
@@ -78,24 +77,19 @@ static const vec2f_t CIRCLE_SEGMENTS[][2] = {
 };
 
 static void
-print_vec2(vec2f_t p) {
-    printf("[%.7g,%.7g]", (double)p.x, (double)p.y);
-}
-
-static void
 print_circle_queries(void) {
     const vec2i_t lo = {CIRCLE_RECT.x, CIRCLE_RECT.y};
     const vec2i_t hi = {recti_right(CIRCLE_RECT) - mathi_one(), recti_bottom(CIRCLE_RECT) - mathi_one()};
-    printf(",\"circle\":{\"rect\":[%d,%d,%d,%d],\"last\":[%d,%d],\"circles\":[", CIRCLE_RECT.x, CIRCLE_RECT.y,
-           CIRCLE_RECT.w, CIRCLE_RECT.h, hi.x, hi.y);
+    printf(",\"circle\":{\"rect\":[%d,%d,%d,%d],\"last\":[%s],\"circles\":[", CIRCLE_RECT.x, CIRCLE_RECT.y,
+           CIRCLE_RECT.w, CIRCLE_RECT.h, vec2i_text(hi).chars);
     for (size_t i = 0; i < sizeof RECT_CIRCLES / sizeof RECT_CIRCLES[0]; i++) {
         const circlei_t circle = RECT_CIRCLES[i];
         const vec2i_t closest = vec2i_clamp(circle.centre, lo, hi);
         const vec2i_t delta = vec2i_sub(circle.centre, closest);
         const bool hit = circlei_overlaps_rect(circle, CIRCLE_RECT);
         const bool touch = vec2i_dot(delta, delta) == circle.radius * circle.radius;
-        printf("%s[[%d,%d],%d,[%d,%d],%s,\"%s\",[", i ? "," : "", circle.centre.x, circle.centre.y, circle.radius,
-               closest.x, closest.y, hit ? "true" : "false", hit ? (touch ? "touch" : "overlap") : "miss");
+        printf("%s[[%s],%d,[%s],%s,\"%s\",[", i ? "," : "", vec2i_text(circle.centre).chars, circle.radius,
+               vec2i_text(closest).chars, hit ? "true" : "false", hit ? (touch ? "touch" : "overlap") : "miss");
         for (int y = lo.y; y <= hi.y; y++) {
             for (int x = lo.x; x <= hi.x; x++) {
                 const bool inside = circlei_contains_point(circle, (vec2i_t){x, y});
@@ -105,18 +99,18 @@ print_circle_queries(void) {
         printf("]]");
     }
     printf("],\"segment_circle\":[");
-    print_vec2(SEGMENT_CIRCLE.centre);
+    printf("[%s]", vec2f_text(SEGMENT_CIRCLE.centre).chars);
     printf(",%.7g],\"segments\":[", (double)SEGMENT_CIRCLE.radius);
     for (size_t i = 0; i < sizeof CIRCLE_SEGMENTS / sizeof CIRCLE_SEGMENTS[0]; i++) {
         const vec2f_t a = CIRCLE_SEGMENTS[i][0], b = CIRCLE_SEGMENTS[i][1];
         float t = 0.0F;
         const bool hit = circlef_segment_hit(SEGMENT_CIRCLE, a, b, &t);
         printf("%s[", i ? "," : "");
-        print_vec2(a);
+        printf("[%s]", vec2f_text(a).chars);
         printf(",");
-        print_vec2(b);
+        printf("[%s]", vec2f_text(b).chars);
         printf(",%s,%.7g,", hit ? "true" : "false", (double)t);
-        print_vec2(circlef_closest_point(SEGMENT_CIRCLE, vec2f_lerp(a, b, t)));
+        printf("[%s]", vec2f_text(circlef_closest_point(SEGMENT_CIRCLE, vec2f_lerp(a, b, t))).chars);
         printf("]");
     }
     printf("]}");
@@ -124,7 +118,7 @@ print_circle_queries(void) {
 
 static void
 print_vec(vec3f_t p) {
-    printf("[%.7g,%.7g,%.7g]", (double)p.x, (double)p.y, (double)p.z);
+    printf("[%s]", vec3f_text(p).chars);
 }
 
 static void
@@ -140,12 +134,12 @@ print_sheet(vec3f_t centre, vec3f_t tangent, vec3f_t bitangent, const mat4f_t* m
 
 static void
 print_plane(planef_t p) {
-    printf("[%.7g,%.7g,%.7g,%.7g]", (double)p.normal.x, (double)p.normal.y, (double)p.normal.z, (double)p.d);
+    printf("[%s,%s]", vec3f_text(p.normal).chars, mathf_text(p.d).chars);
 }
 
 static void
 print_rect(recti_t r) {
-    printf("[%d,%d,%d,%d]", r.x, r.y, r.w, r.h);
+    printf("[%s,%s]", vec2i_text((vec2i_t){r.x, r.y}).chars, vec2i_text((vec2i_t){r.w, r.h}).chars);
 }
 
 static void
@@ -170,7 +164,7 @@ print_frustum(const mat4f_t* view, planef_t planes[PLANE_FRUSTUM_COUNT]) {
     const mat4f_t inverse = mat4f_invert_affine(lens);
     planef_frustum(view, &FRUSTUM_LENS, FRUSTUM_SCREEN, planes);
     printf("\"plane_count\":%d,\"camera\":", PLANE_FRUSTUM_COUNT);
-    print_vec(mat4f_apply(&inverse, (vec3f_t){0}));
+    print_vec(mat4f_apply(&inverse, vec3f_zero()));
     printf(",\"near\":%.7g,\"shown_depth\":%.7g,\"corners\":[", (double)FRUSTUM_LENS.near_z, (double)SHOWN_DEPTH);
     const vec2f_t picture[] = {{FRUSTUM_SCREEN.x, FRUSTUM_SCREEN.y},
                                {rectf_right(FRUSTUM_SCREEN), FRUSTUM_SCREEN.y},
@@ -204,7 +198,7 @@ print_box_frustum(int frames) {
         const float yaw = PATH_YAW + PATH_TURN * sinf(phase);
         const vec3f_t camera = vec3f_add(
             PATH_ORIGIN, (vec3f_t){PATH_TRAVEL.x * sinf(phase), 0, PATH_TRAVEL.z * sinf(PATH_DEPTH_FREQUENCY * phase)});
-        const mat4f_t view = mat4f_view_from_axes((vec3f_t){cosf(yaw), 0, -sinf(yaw)}, WORLD_UP,
+        const mat4f_t view = mat4f_view_from_axes((vec3f_t){cosf(yaw), 0, -sinf(yaw)}, vec3f_up(),
                                                   (vec3f_t){sinf(yaw), 0, cosf(yaw)}, camera);
         planef_t planes[PLANE_FRUSTUM_COUNT];
         printf("%s{\"frustum\":{", frame ? "," : "");
@@ -296,10 +290,10 @@ main(int argc, char** argv) {
     }
     printf("],\"samples\":[");
     for (size_t i = 0; i < sizeof RECT_SAMPLES / sizeof RECT_SAMPLES[0]; i++) {
-        printf("%s[%d,%d,%s]", i ? "," : "", RECT_SAMPLES[i].x, RECT_SAMPLES[i].y,
+        printf("%s[%s,%s]", i ? "," : "", vec2i_text(RECT_SAMPLES[i]).chars,
                recti_contains(RECT_A, RECT_SAMPLES[i].x, RECT_SAMPLES[i].y) ? "true" : "false");
     }
-    const planef_t raw = planef_from_normal_point(DISTANCE_NORMAL, DISTANCE_POINT);
+    const planef_t raw = planef_from_normal_point(DISTANCE_NORMAL, vec3f_unit_z());
     const planef_t unit = planef_normalize(raw);
     printf("]},\"distance\":{\"planes\":[");
     print_plane(raw);
@@ -313,7 +307,7 @@ main(int argc, char** argv) {
         printf("%s[", column ? "," : "");
         for (size_t level = 0; level < sizeof LEVEL_VALUES / sizeof LEVEL_VALUES[0]; level++) {
             const vec3f_t point =
-                vec3f_add(DISTANCE_POINT, vec3f_scale(unit.normal, LEVEL_VALUES[level] / normal_length));
+                vec3f_add(vec3f_unit_z(), vec3f_scale(unit.normal, LEVEL_VALUES[level] / normal_length));
             printf("%s[%.7g,%.7g]", level ? "," : "", (double)(LEVEL_VALUES[level] / normal_length),
                    (double)planef_distance(plane, point));
         }
@@ -321,13 +315,13 @@ main(int argc, char** argv) {
     }
     printf("],\"samples\":[");
     const vec3f_t side_up =
-        vec3f_normalize(vec3f_sub(WORLD_UP, vec3f_scale(unit.normal, vec3f_dot(WORLD_UP, unit.normal))));
+        vec3f_normalize(vec3f_sub(vec3f_up(), vec3f_scale(unit.normal, vec3f_dot(vec3f_up(), unit.normal))));
     for (size_t i = 0; i < sizeof DISTANCE_SAMPLES / sizeof DISTANCE_SAMPLES[0]; i++) {
         const vec3f_t point = DISTANCE_SAMPLES[i];
         printf("%s[", i ? "," : "");
         print_vec(point);
         printf(",%.7g,%.7g,%.7g]", (double)planef_distance(raw, point), (double)planef_distance(unit, point),
-               (double)vec3f_dot(vec3f_sub(point, DISTANCE_POINT), side_up));
+               (double)vec3f_dot(vec3f_sub(point, vec3f_unit_z()), side_up));
     }
     printf("]},\"triangle\":{\"points\":[");
     for (size_t i = 0; i < sizeof TRIANGLE / sizeof TRIANGLE[0]; i++) {
@@ -380,7 +374,7 @@ main(int argc, char** argv) {
     const vec3f_t sheet_centre = {-lens_plane.normal.z * LENS_SAMPLE.z, 0, LENS_SAMPLE.z};
     for (size_t space = 0; space < sizeof sheet_spaces / sizeof sheet_spaces[0]; space++) {
         printf("%s[", space ? "," : "");
-        print_sheet(sheet_centre, (vec3f_t){-lens_plane.normal.z, 0, 1}, (vec3f_t){0, 1, 0}, sheet_spaces[space]);
+        print_sheet(sheet_centre, (vec3f_t){-lens_plane.normal.z, 0, 1}, vec3f_unit_y(), sheet_spaces[space]);
         printf("]");
     }
     printf("]");

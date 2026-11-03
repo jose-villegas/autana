@@ -14,3 +14,6 @@ void input_fake_motion_batch(const input_motion_batch_t* next);
 
 /* Clears samples, batches and sensor presence; suitable for test cleanup. */
 void input_fake_reset(void);
+
+/* Loads a committed gyro offset through the production validation path. */
+void input_fake_stored_gyro(vec3i_t offset);

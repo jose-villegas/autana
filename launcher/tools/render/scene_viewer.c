@@ -4,25 +4,46 @@
 #include <string.h>
 
 #include "gfx/gfx.h"
+#include "math/text/math_text.h"
 #include "render/context/render_context.h"
 #include "render/view/raster_cull_view.h"
-#include "render_host.h"
 #include "scene/scene.h"
+#include "scene_viewer.h"
 
 static const char* scene_id;
 static const char* camera_name;
 static char** object_names;
 static int object_count;
 static int shell_quarter;
-static int size_width, size_height;
+static recti_t size_rect;
 static camera_present_t present;
 static small_fill_t small_fill = SMALL_FILL_SMOOTH;
 static int view = RENDER_DEBUG_VIEW_SHADED;
 static const char* counts_path;
 static FILE* counts;
+static const char* poses_path;
+static FILE* poses;
+static scene_t* shown;
+static scene_entity_t camera;
+
+/* Every option back to what a fresh process starts with, for an open after a closed run. */
+static void
+reset_options(void) {
+    scene_id = NULL;
+    camera_name = NULL;
+    object_names = NULL;
+    object_count = 0;
+    size_rect = recti_empty();
+    present = CAMERA_PRESENT_NEAREST;
+    small_fill = SMALL_FILL_SMOOTH;
+    view = RENDER_DEBUG_VIEW_SHADED;
+    counts_path = NULL;
+    poses_path = NULL;
+}
 
 static bool
 options(int argc, char** argv) {
+    reset_options();
     object_names = argv;
     for (int i = 0; i < argc; i += 2) {
         const char* flag = argv[i];
@@ -38,9 +59,8 @@ options(int argc, char** argv) {
         } else if (strcmp(flag, "--object") == 0) {
             object_names[object_count++] = argv[i + 1];
         } else if (strcmp(flag, "--size") == 0) {
-            char trailing;
-            if (sscanf(value, "%dx%d%c", &size_width, &size_height, &trailing) != 2 || size_width <= 0
-                || size_height <= 0 || size_width > GFX_WIDTH || size_height > GFX_HEIGHT) {
+            if (!recti_parse(value, NULL, &size_rect) || size_rect.x != 0 || size_rect.y != 0 || size_rect.w <= 0
+                || size_rect.h <= 0 || size_rect.w > GFX_WIDTH || size_rect.h > GFX_HEIGHT) {
                 fprintf(stderr, "scene_viewer: --size is WxH within %dx%d, not %s\n", GFX_WIDTH, GFX_HEIGHT, value);
                 return false;
             }
@@ -67,6 +87,8 @@ options(int argc, char** argv) {
             }
         } else if (strcmp(flag, "--counts") == 0) {
             counts_path = value;
+        } else if (strcmp(flag, "--poses") == 0) {
+            poses_path = value;
         } else if (strcmp(flag, "--view") == 0) {
             view = render_context_debug_view_named(value);
             if (view == RENDER_DEBUG_VIEW_UNKNOWN) {
@@ -126,6 +148,33 @@ select_objects(scene_t* scene) {
     return true;
 }
 
+/* The camera entity scene_activate() chose: the named one, or the first whose lens is the first camera's. */
+static scene_entity_t
+active_camera(const scene_t* scene) {
+    if (camera_name != NULL) {
+        return scene_find(scene, name_hash(camera_name));
+    }
+    const camera_t* first = scene_camera_lens(scene, SCENE_CAMERA_FIRST);
+    for (int i = 0; i < scene_entity_count(scene); i++) {
+        if (scene_camera_lens(scene, name_hash(scene_entity_name(scene, (scene_entity_t)i))) == first) {
+            return (scene_entity_t)i;
+        }
+    }
+    return SCENE_ENTITY_NONE;
+}
+
+/* A per-frame CSV with its header written; NULL, said on stderr, when it cannot be made. */
+static FILE*
+open_rows(const char* path, const char* header) {
+    FILE* rows = fopen(path, "w");
+    if (rows == NULL) {
+        fprintf(stderr, "scene_viewer: cannot write %s\n", path);
+        return NULL;
+    }
+    fprintf(rows, "%s\n", header);
+    return rows;
+}
+
 int
 display_quarter_now(void) {
     return shell_quarter;
@@ -167,52 +216,92 @@ setup(int quarter) {
         (void)scene_camera_set_present(scene, (scene_entity_t)i, present);
         (void)scene_camera_set_small_fill(scene, (scene_entity_t)i, small_fill);
     }
-    if (camera_name != NULL) {
-        /* What a caller sampling the path along its length reads. */
-        fprintf(stderr, "scene_viewer: camera path %u ms\n",
-                (unsigned)scene_animator_clip_duration_ms(scene, scene_find(scene, name_hash(camera_name)), 0));
-    }
+    shown = scene;
+    camera = active_camera(scene);
+    /* What a caller sampling the path along its length reads. */
+    fprintf(stderr, "scene_viewer: camera path %u ms\n", (unsigned)scene_animator_clip_duration_ms(scene, camera, 0));
     render_context_t* context = render_context_main();
     render_context_set_debug_view(context, view);
-    if (counts_path != NULL) {
-        counts = fopen(counts_path, "w");
-        if (counts == NULL) {
-            fprintf(stderr, "scene_viewer: cannot write %s\n", counts_path);
-            scene_unload(scene);
-            return false;
-        }
-        fprintf(counts, "frame,ms,nodes_visited,nodes_cut,clusters_tested,clusters_kept,clusters_not_set_up,"
-                        "clusters_hidden,clusters_drawn,triangles_submitted,triangles_behind,triangles_clipped,"
-                        "triangles_missed,triangles_facing_away,triangles_set_up,triangles_covering\n");
+#define COUNT_NAME(name, member) "," #name
+    if (counts_path != NULL
+        && (counts = open_rows(counts_path, "frame,ms" RASTER_CULL_FRAME_FIELDS(COUNT_NAME))) == NULL) {
+        scene_unload(scene);
+        return false;
     }
-    if (size_width > 0) {
-        const resolution_step_t size = {size_width, size_height};
+    if (poses_path != NULL && (poses = open_rows(poses_path, "frame,ms,px,py,pz,qx,qy,qz,qw")) == NULL) {
+        if (counts != NULL) {
+            fclose(counts);
+            counts = NULL;
+        }
+        scene_unload(scene);
+        return false;
+    }
+    if (size_rect.w > 0) {
+        const resolution_step_t size = {size_rect.w, size_rect.h};
         const resolution_config_t one = resolution_config(&size, 1, 1, INT32_MAX);
         render_context_set_dynamic_resolution(context, &one, NULL, 0);
     }
     return true;
 }
 
-/* One row per frame of what the cull view counted from the camera. */
+/* One row per frame of what the cull view counted from the camera, and of where the camera stood. */
 static void
-draw(const render_frame_t* frame) {
-    if (counts == NULL) {
-        return;
+draw(const provider_frame_t* frame) {
+    const bool last = frame->index + 1 == frame->count;
+    if (counts != NULL) {
+        const raster_cull_frame_t f = raster_cull_frame(render_context_debug_view_state(render_context_main()));
+        fprintf(counts, "%d,%u", frame->index, (unsigned)frame->elapsed_ms);
+#define COUNT_VALUE(name, member) fprintf(counts, ",%d", f.member);
+        RASTER_CULL_FRAME_FIELDS(COUNT_VALUE)
+        fputc('\n', counts);
+        if (last) {
+            fclose(counts);
+            counts = NULL;
+        }
     }
-    const raster_cull_frame_t f = raster_cull_frame(render_context_debug_view_state(render_context_main()));
-    const r3d_pipeline_counts_t* n = &f.counts;
-    fprintf(counts, "%d,%u,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n", frame->index, (unsigned)frame->elapsed_ms,
-            n->nodes_visited, n->nodes_cut, n->clusters_tested, n->clusters_kept, f.clusters[RASTER_FATE_NOT_SET_UP],
-            f.clusters[RASTER_FATE_HIDDEN], f.clusters[RASTER_FATE_DRAWN], n->triangles_submitted, n->triangles_behind,
-            n->triangles_clipped, n->triangles_missed, n->triangles_facing_away, n->triangles_set_up,
-            f.triangles_covering);
-    if (frame->index + 1 == frame->count) {
-        fclose(counts);
-        counts = NULL;
+    if (poses != NULL) {
+        const transformf_t world = scene_entity_world(shown, camera);
+        fprintf(poses, "%d,%u,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g,%.9g\n", frame->index, (unsigned)frame->elapsed_ms,
+                (double)world.position.x, (double)world.position.y, (double)world.position.z, (double)world.rotation.x,
+                (double)world.rotation.y, (double)world.rotation.z, (double)world.rotation.w);
+        if (last) {
+            fclose(poses);
+            poses = NULL;
+        }
     }
 }
 
-const render_scene_t render_scene = {
+/* The rows a run that stopped early left open closed; render_host_close unloads the scene. */
+static void
+teardown(void) {
+    if (counts != NULL) {
+        fclose(counts);
+        counts = NULL;
+    }
+    if (poses != NULL) {
+        fclose(poses);
+        poses = NULL;
+    }
+    shown = NULL;
+    camera = SCENE_ENTITY_NONE;
+}
+
+static uint32_t
+path_ms(void) {
+    return scene_animator_clip_duration_ms(shown, camera, 0);
+}
+
+static void
+seek(uint32_t t_ms) {
+    for (int i = 0; i < scene_entity_count(shown); i++) {
+        (void)scene_animator_seek(shown, (scene_entity_t)i, SCENE_ANIMATOR_CURRENT, t_ms);
+    }
+    /* Seeking cuts only when the active camera itself is animated; objects
+     * or a camera parent moving under a still camera need the cut too. */
+    render_context_forget(render_context_main());
+}
+
+const frame_provider_t scene_provider = {
     .name = "scene_viewer",
     .quarter = 1,
     .frames = 30,
@@ -220,4 +309,8 @@ const render_scene_t render_scene = {
     .options = options,
     .setup = setup,
     .draw = draw,
+    .teardown = teardown,
+    .path_ms = path_ms,
+    .seek = seek,
+    .render_context = render_context_main,
 };

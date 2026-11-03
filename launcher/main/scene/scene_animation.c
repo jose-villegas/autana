@@ -47,11 +47,11 @@ targets_for(scene_t* scene, scene_entity_t owner) {
 }
 
 static bool
-finish(scene_failure_t* why, scene_failure_t result) {
+finish(scene_failure_t* why, scene_status_t status, asset_status_t asset, const char* what) {
     if (why != NULL) {
-        *why = result;
+        *why = scene_failure_make(status, asset, what);
     }
-    return result.status == SCENE_OK;
+    return status == SCENE_OK;
 }
 
 typedef struct {
@@ -165,7 +165,7 @@ bool
 scene_animator_set_clips(scene_t* scene, scene_entity_t entity, const char* skeleton_id, const char* const* ids,
                          int count, scene_failure_t* why) {
     if (entity >= scene->asset.entity_count || !clip_count_fits(count, skeleton_id)) {
-        return finish(why, scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_BOUNDS, scene->id));
+        return finish(why, SCENE_ERR_ASSET, ASSET_ERR_BOUNDS, scene->id);
     }
     scene_animator_t a = {.root = skeleton_id == NULL ? ANIM_ROOT_SCENE : ANIM_ROOT_SKELETON, .wrap = ANIM_LOOP};
     asset_status_t status = skeleton_id == NULL ? ASSET_OK : anim_skeleton_open(scene->pack, skeleton_id, &a.skeleton);
@@ -179,15 +179,15 @@ scene_animator_set_clips(scene_t* scene, scene_entity_t entity, const char* skel
         status = ASSET_ERR_FORMAT;
     }
     if (status != ASSET_OK) {
-        return finish(why, scene_failure_make(SCENE_ERR_ASSET, status, failed));
+        return finish(why, SCENE_ERR_ASSET, status, failed);
     }
     if (!allocate_animator(&a, count, curves)) {
-        return finish(why, scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, failed));
+        return finish(why, SCENE_ERR_MEMORY, ASSET_OK, failed);
     }
     status = bind_clips(scene, &a, ids, curves, entity, &failed);
     if (status != ASSET_OK) {
         scene_free_kept(a.storage);
-        return finish(why, scene_failure_make(SCENE_ERR_ASSET, status, failed));
+        return finish(why, SCENE_ERR_ASSET, status, failed);
     }
     if (a.root == ANIM_ROOT_SKELETON) {
         a.posed = true;
@@ -207,7 +207,8 @@ scene_animator_set_clips(scene_t* scene, scene_entity_t entity, const char* skel
     scene_free_kept(old->storage);
     a.dirty = true;
     scene->animators[entity] = a;
-    return finish(why, scene_failure_make(SCENE_OK, ASSET_OK, scene->id));
+    scene_stage_add(scene, entity);
+    return finish(why, SCENE_OK, ASSET_OK, scene->id);
 }
 
 static asset_status_t
@@ -262,20 +263,20 @@ bool
 scene_renderer_set_skin(scene_t* scene, scene_entity_t entity, const char* id, scene_failure_t* why) {
     const int renderer = scene_renderer_index(scene, entity);
     if (renderer < 0) {
-        return finish(why, scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_NOT_FOUND, id));
+        return finish(why, SCENE_ERR_ASSET, ASSET_ERR_NOT_FOUND, id);
     }
     /* Its normals are lit in its own frame, so a skinned renderer is a root. */
     if (scene_entity_parent(scene, entity) != SCENE_ENTITY_NONE) {
-        return finish(why, scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, id));
+        return finish(why, SCENE_ERR_ASSET, ASSET_ERR_FORMAT, id);
     }
     scene_skinned_renderer_t next = {0};
     const asset_status_t status = open_renderer_skin(scene, entity, renderer, id, &next);
     if (status != ASSET_OK) {
-        return finish(why, scene_failure_make(SCENE_ERR_ASSET, status, id));
+        return finish(why, SCENE_ERR_ASSET, status, id);
     }
     const bool lit = scene->light_count > 0 || scene->ambient_intensity > 0.0F;
     if (lit && next.bind.colors == NULL) {
-        return finish(why, scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, SCENE_LIGHT_FAILURE_ALBEDO));
+        return finish(why, SCENE_ERR_ASSET, ASSET_ERR_FORMAT, SCENE_LIGHT_FAILURE_ALBEDO);
     }
     const size_t size = r3d_skin_output_bytes(&next.bind);
     size_t end = size;
@@ -288,11 +289,11 @@ scene_renderer_set_skin(scene_t* scene, scene_entity_t entity, const char* id, s
     SCENE_STORAGE_RESERVE(layout, end, palette, mat4f_t, next.skin.joint_count);
     next.internal_storage = memory_alloc(end, MEMORY_INTERNAL);
     if (next.internal_storage == NULL) {
-        return finish(why, scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id));
+        return finish(why, SCENE_ERR_MEMORY, ASSET_OK, id);
     }
     if (lit && !scene_skin_light_allocate(&next)) {
         memory_free(next.internal_storage);
-        return finish(why, scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id));
+        return finish(why, SCENE_ERR_MEMORY, ASSET_OK, id);
     }
     (void)r3d_skin_output_init(&next.bind, next.internal_storage, size, &next.output);
     next.model = (mat4f_t*)(void*)((uint8_t*)next.internal_storage + layout.model);
@@ -305,10 +306,10 @@ scene_renderer_set_skin(scene_t* scene, scene_entity_t entity, const char* id, s
     if (!prepare_skin_lighting(scene, entity, &next, lit)) {
         memory_free(next.light_storage);
         memory_free(next.internal_storage);
-        return finish(why, scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id));
+        return finish(why, SCENE_ERR_MEMORY, ASSET_OK, id);
     }
     attach_renderer_skin(scene, entity, renderer, &next);
-    return finish(why, scene_failure_make(SCENE_OK, ASSET_OK, id));
+    return finish(why, SCENE_OK, ASSET_OK, id);
 }
 
 static scene_animator_t*
@@ -367,6 +368,14 @@ scene_animator_clip_count(const scene_t* scene, scene_entity_t entity) {
                : scene->animators[entity].layer.clip_count;
 }
 
+int
+scene_animator_current_clip(const scene_t* scene, scene_entity_t entity) {
+    return scene_animator_clip_count(scene, entity) == 0
+                   || scene->animators[entity].layer.current.clip == ANIM_LAYER_CLIP_NONE
+               ? -1
+               : scene->animators[entity].layer.current.clip;
+}
+
 const char*
 scene_animator_clip_name(const scene_t* scene, scene_entity_t entity, int clip) {
     return clip < 0 || clip >= scene_animator_clip_count(scene, entity) ? NULL
@@ -387,6 +396,19 @@ scene_animation_release(scene_t* scene) {
     scene->skeleton_animator_count = 0;
 }
 
+void
+scene_stage_add(scene_t* scene, scene_entity_t entity) {
+    int at = scene->staged_count;
+    while (at > 0 && scene->staged[at - 1] >= entity) {
+        if (scene->staged[--at] == entity) {
+            return;
+        }
+    }
+    memmove(&scene->staged[at + 1], &scene->staged[at], sizeof *scene->staged * (size_t)(scene->staged_count - at));
+    scene->staged[at] = entity;
+    scene->staged_count++;
+}
+
 static bool
 advance_animator(scene_animator_t* a, uint32_t dt_ms) {
     const uint32_t current = a->layer.current.playhead.t_ms;
@@ -401,7 +423,8 @@ advance_animator(scene_animator_t* a, uint32_t dt_ms) {
 
 void
 scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms) {
-    for (int e = first; e < first + count; e++) {
+    for (int i = first; i < first + count; i++) {
+        const scene_entity_t e = scene->staged[i];
         scene_animator_t* a = &scene->animators[e];
         a->posed = false;
         if (a->storage == NULL || a->root != ANIM_ROOT_SKELETON || a->layer.current.clip == ANIM_LAYER_CLIP_NONE
@@ -445,7 +468,8 @@ _Static_assert(sizeof LIGHT_KERNELS / sizeof LIGHT_KERNELS[0] == SCENE_SKIN_LIGH
 void
 scene_skin_range(scene_t* scene, int first, int count) {
     int offset = 0;
-    for (int e = 0; e < scene->asset.entity_count; e++) {
+    for (int i = 0; i < scene->staged_count; i++) {
+        const scene_entity_t e = scene->staged[i];
         scene_skinned_renderer_t* skin = &scene->skinned_renderers[e];
         if (skin->internal_storage == NULL || !scene->animators[e].posed) {
             continue;
@@ -465,21 +489,18 @@ scene_skin_range(scene_t* scene, int first, int count) {
 
 typedef struct {
     scene_t* scene;
-    int first;
-    int count;
     uint32_t dt_ms;
-} range_t;
+} animate_work_t;
 
 static void
-animate_slice(void* ctx) {
-    const range_t* r = ctx;
-    scene_animate_range(r->scene, r->first, r->count, r->dt_ms);
+animate_slice(void* ctx, int from, int to) {
+    const animate_work_t* w = ctx;
+    scene_animate_range(w->scene, from, to - from, w->dt_ms);
 }
 
 static void
-skin_slice(void* ctx) {
-    const range_t* r = ctx;
-    scene_skin_range(r->scene, r->first, r->count);
+skin_slice(void* ctx, int from, int to) {
+    scene_skin_range(ctx, from, to - from);
 }
 
 static void
@@ -487,26 +508,18 @@ animate_entities(scene_t* scene, uint32_t dt_ms) {
     if (scene->skeleton_animator_count == 0) {
         return;
     }
-    const int entities = scene->asset.entity_count;
-    const int mine = entities - job_share_core1_count(&scene->animate_share, entities);
-    range_t a = {scene, 0, mine, dt_ms};
-    range_t b = {scene, mine, entities - mine, dt_ms};
-    _Static_assert(sizeof a <= JOB_CTX_MAX, "animation range fits job context");
-    if (entities < 2) {
-        animate_slice(&a);
-    } else {
-        job_run_steered(&scene->animate_share, animate_slice, &a, &b, sizeof a);
-    }
+    animate_work_t w = {scene, dt_ms};
+    (void)job_run_range(&scene->animate_share, animate_slice, &w, scene->staged_count);
 }
 
 static bool
 skin_lights_changed(const scene_t* scene) {
-    const int entities = scene->asset.entity_count;
     if (scene->light_count == 0) {
         return false;
     }
     bool lights_dirty = false;
-    for (int e = 0; e < entities; e++) {
+    for (int i = 0; i < scene->staged_count; i++) {
+        const scene_entity_t e = scene->staged[i];
         lights_dirty |= scene->lights[e].kind != SCENE_LIGHT_NONE && (scene->flags[e] & SCENE_FLAG_SKIN_DIRTY);
     }
     return lights_dirty;
@@ -516,7 +529,8 @@ static int
 skin_stage_prepare(scene_t* scene, uint32_t dt_ms) {
     const int entities = scene->asset.entity_count;
     int clusters = 0;
-    for (int e = 0; e < entities; e++) {
+    for (int i = 0; i < scene->staged_count; i++) {
+        const scene_entity_t e = scene->staged[i];
         scene_animator_t* animator = &scene->animators[e];
         if (animator->storage != NULL && animator->root == ANIM_ROOT_SCENE
             && animator->layer.current.clip != ANIM_LAYER_CLIP_NONE && (scene->flags[e] & SCENE_FLAG_ACTIVE)) {
@@ -525,7 +539,8 @@ skin_stage_prepare(scene_t* scene, uint32_t dt_ms) {
     }
     const bool lights_dirty = skin_lights_changed(scene);
     scene->light_table_dirty |= lights_dirty;
-    for (int e = 0; e < entities; e++) {
+    for (int i = 0; i < scene->staged_count; i++) {
+        const scene_entity_t e = scene->staged[i];
         scene_animator_t* animator = &scene->animators[e];
         scene_skinned_renderer_t* skin = &scene->skinned_renderers[e];
         if (!(scene->flags[e] & SCENE_FLAG_ACTIVE)) {
@@ -535,7 +550,7 @@ skin_stage_prepare(scene_t* scene, uint32_t dt_ms) {
             animator->posed |= lights_dirty || (scene->flags[e] & SCENE_FLAG_SKIN_DIRTY);
         }
         if (skin->internal_storage != NULL && animator->posed) {
-            scene_skin_light_prepare(scene, (scene_entity_t)e);
+            scene_skin_light_prepare(scene, e);
             clusters += skin->bind.cluster_count;
         }
     }
@@ -552,25 +567,18 @@ scene_animation_step(scene_t* scene, uint32_t dt_ms) {
     }
     animate_entities(scene, dt_ms);
     const int clusters = skin_stage_prepare(scene, dt_ms);
-    const int entities = scene->asset.entity_count;
     if (clusters == 0) {
         return;
     }
     if (scene->light_transfer != NULL) {
         scene_lights_prepare(scene);
     }
-    const int mine = clusters - job_share_core1_count(&scene->skin_share, clusters);
-    range_t a = {scene, 0, mine, 0};
-    range_t b = {scene, mine, clusters - mine, 0};
-    _Static_assert(sizeof a <= JOB_CTX_MAX, "skin range fits job context");
-    if (clusters < 2) {
-        skin_slice(&a);
-    } else {
-        job_run_steered(&scene->skin_share, skin_slice, &a, &b, sizeof a);
-    }
-    for (int e = 0; e < entities; e++) {
+    (void)job_run_range(&scene->skin_share, skin_slice, scene, clusters);
+    for (int i = 0; i < scene->staged_count; i++) {
+        const scene_entity_t e = scene->staged[i];
         if (scene->skinned_renderers[e].internal_storage != NULL && scene->animators[e].posed) {
             r3d_skin_refit_nodes(&scene->skinned_renderers[e].output);
+            scene_renderer_bound(&scene->renderers[scene_renderer_index(scene, e)]);
         }
     }
 }
@@ -596,3 +604,29 @@ scene_animator_seek(scene_t* scene, scene_entity_t entity, scene_animator_slot_t
     scene_animation_step(scene, 0);
     return true;
 }
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+void
+scene_animation_checkpoint_capture(checkpoint_t* saved, scene_t* scene) {
+    const size_t entities = scene->asset.entity_count;
+    for (size_t e = 0; e < entities; e++) {
+        scene_animator_t* a = &scene->animators[e];
+        checkpoint_capture_at(saved, &a->layer.shown.local,
+                              (size_t)a->skeleton.joint_count * sizeof(*a->layer.shown.local));
+        checkpoint_capture_at(saved, &a->layer.frozen.local,
+                              (size_t)a->skeleton.joint_count * sizeof(*a->layer.frozen.local));
+        scene_skinned_renderer_t* skin = &scene->skinned_renderers[e];
+        const size_t joints = skin->skin.joint_count;
+        const size_t internal_bytes =
+            skin->internal_storage == NULL
+                ? 0
+                : (size_t)((uint8_t*)(skin->palette + joints) - (uint8_t*)skin->internal_storage);
+        const size_t light_bytes =
+            skin->light_storage == NULL
+                ? 0
+                : (size_t)((uint8_t*)(skin->normal_palette + joints) - (uint8_t*)skin->light_storage);
+        checkpoint_capture_at(saved, &skin->internal_storage, internal_bytes);
+        checkpoint_capture_at(saved, &skin->light_storage, light_bytes);
+    }
+}
+#endif

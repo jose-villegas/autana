@@ -81,7 +81,7 @@ mathf_div(float a, float b) {
 
 /* source: Muller et al. 2018 */
 /* exact: y = 1/a */
-/* MATH_FAST_PATH(mathf_recip_f, div_recip_f, MATHF_RECIP_ULP_LIMIT) */
+/* FAST_PATH(mathf_recip_f, div_recip_f, MATHF_RECIP_ULP_LIMIT) */
 
 static inline float
 mathf_recip(float a) {
@@ -95,6 +95,27 @@ mathf_recip(float a) {
 #endif
 }
 
+/* Nonzero normal inputs of either sign with normal reciprocals, away from float range limits. */
+/* For nonzero input a, reciprocal seed y with one Newton correction. | y = y + y(1 - ay) | all mantissas in [1,2), both signs, normal exponent strides and edges */
+
+/* source: Muller et al. 2018 */
+/* exact: y = 1/a */
+/* FAST_PATH(mathf_recip_approx_f, div_recip_f, MATHF_RECIP_APPROX_RELATIVE_LIMIT) */
+
+static inline __attribute__((always_inline)) float
+mathf_recip_approx(float a) {
+#if defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
+    float y;
+    __asm__("recip0.s %0, %1" : "=f"(y) : "f"(a));
+    return y + y * (1.0F - a * y);
+#else
+    return 1.0F / a;
+#endif
+}
+
+/* The board proof's maximum rounded up to a power of two: the approximation keeps this many bits. */
+#define MATHF_RECIP_APPROX_BITS           14
+#define MATHF_RECIP_APPROX_RELATIVE_LIMIT (1.0F / (float)(1UL << MATHF_RECIP_APPROX_BITS))
 /* One seed correction trades accuracy for throughput; the suite proves this bound. */
 #define MATHF_RSQRT_APPROX_RELATIVE_LIMIT 0.0001F
 /* Two seed corrections must stay close to the correctly rounded reciprocal root. */
@@ -111,7 +132,7 @@ mathf_recip(float a) {
 
 /* source: Muller et al. 2018 */
 /* exact: y = 1/\sqrt{v} */
-/* MATH_FAST_PATH(mathf_rsqrt_approx_f, div_rsqrt_f, MATHF_RSQRT_APPROX_RELATIVE_LIMIT) */
+/* FAST_PATH(mathf_rsqrt_approx_f, div_rsqrt_f, MATHF_RSQRT_APPROX_RELATIVE_LIMIT) */
 
 static inline __attribute__((always_inline)) float
 mathf_rsqrt_approx(float value) {
@@ -140,7 +161,7 @@ mathf_rsqrt_normal(float value) {
 
 /* source: Muller et al. 2018 */
 /* exact: y = 1/\sqrt{v} */
-/* MATH_FAST_PATH(mathf_rsqrt_f, div_rsqrt_f, MATHF_RSQRT_ULP_LIMIT) */
+/* FAST_PATH(mathf_rsqrt_f, div_rsqrt_f, MATHF_RSQRT_ULP_LIMIT) */
 
 static inline __attribute__((always_inline)) float
 mathf_rsqrt(float value) {
@@ -216,7 +237,7 @@ _Static_assert((MATHF_RECIP_ULP_LIMIT + 0.5F) * MATHF_REPEAT_FAST_QUOTIENT * FLT
 /* Exactness for the floor quotient follows from 0 <= r < len. */
 /* source: Muller et al. 2018 */
 /* exact: r = v - \lfloor v/len \rfloor len */
-/* MATH_FAST_PATH(wrap_f, wrap_fmodf_f, MATHF_WRAP_ULP_LIMIT=0 ulp) */
+/* FAST_PATH(wrap_f, wrap_fmodf_f, MATHF_WRAP_ULP_LIMIT=0 ulp) */
 
 static inline float
 mathf_repeat(float v, float len) {

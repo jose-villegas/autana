@@ -15,23 +15,21 @@
 #include "math/linear/mat4f.h"
 #include "math/linear/quatf.h"
 #include "math/scalar/math_const.h"
+#include "math/text/math_text.h"
 #include "render/r3d_skin_format.h"
 #include "render/skin/r3d_skinning.h"
 
 enum { JOINTS = 2, INFLUENCES = R3D_SKIN_INFLUENCES_MIN, ANGLES_MAX = 64, TRACED = 0 };
 
-static const vec3f_t BEND_AXIS = {0.0F, 0.0F, 1.0F};
-static const vec3f_t UNIT_SCALE = {1.0F, 1.0F, 1.0F};
-
 static mat4f_t
 joint_world(int joint, float hinge, float radians) {
     const vec3f_t position = {joint == 0 ? 0.0F : hinge, 0.0F, 0.0F};
-    return mat4f_from_trs(position, quatf_from_axis_angle(BEND_AXIS, joint == 0 ? 0.0F : radians), UNIT_SCALE);
+    return mat4f_from_trs(position, quatf_from_axis_angle(vec3f_unit_z(), joint == 0 ? 0.0F : radians), vec3f_one());
 }
 
 static void
 print_point(vec3f_t p) {
-    printf("[%.7g,%.7g]", (double)p.x, (double)p.y);
+    printf("[%s]", vec2f_text(vec3f_xy(p)).chars);
 }
 
 int
@@ -124,7 +122,7 @@ main(int argc, char** argv) {
         printf("%s{\"angle\":%.7g,\"joints\":[", a ? "," : "", (double)angles[a]);
         for (int j = 0; j < JOINTS; j++) {
             printf(j ? "," : "");
-            print_point(mat4f_apply(&model[j], (vec3f_t){0}));
+            print_point(mat4f_apply(&model[j], vec3f_zero()));
         }
         printf("],\"traced\":[");
         for (int j = 0; j < JOINTS; j++) {

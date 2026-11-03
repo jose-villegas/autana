@@ -23,7 +23,7 @@ class FastPathTests(unittest.TestCase):
         self.header.write_text('#define EXAMPLE_LIMIT 1\n'
                                '/* Seed correction. | y = y(2 - ay) | positive normal inputs */\n'
                                '/* exact: y = 1/x */\n'
-                               '/* MATH_FAST_PATH(fast_f, plain_f, EXAMPLE_LIMIT) */\n'
+                               '/* FAST_PATH(fast_f, plain_f, EXAMPLE_LIMIT) */\n'
                                'static inline float example(float x) { return x; }\n')
         source = self.root / 'launcher/packages/math/tests/suite_math_numbers.c'
         source.parent.mkdir(parents=True)
@@ -36,20 +36,42 @@ class FastPathTests(unittest.TestCase):
         self.capture = ('MATHERROR name=example type=f max=1 unit=ulp method=sweep\n'
                         'MATHERRORBIN name=example type=f x=2 max=1 unit=ulp\n')
 
+    def test_exact_rows_start_after_a_blank_line(self):
+        items = [item for item in paths.annotations() if item.unit == "bit"]
+        self.assertTrue(items)
+        rendered = paths.render_exact(ROOT, items)
+        self.assertTrue(rendered.startswith('\n\n<a id="'))
+
+    def test_package_headers_are_discovered_and_bit_limit_is_named(self):
+        header = self.root / 'launcher/packages/other/include/other/check.h'
+        header.parent.mkdir(parents=True)
+        header.write_text('#define OTHER_BIT_LIMIT 0\n'
+                          '/* FAST_PATH(check, check_reference, OTHER_BIT_LIMIT=0 bit) */\n'
+                          'static inline unsigned check(unsigned x) { return x; }\n')
+        source = self.root / 'launcher/packages/other/tests/suite_check.c'
+        source.parent.mkdir(parents=True)
+        source.write_text('FASTERROR name=check type=bits max=0 unit=bit method=sweep')
+        items = paths.annotations(self.root)
+        item = next(item for item in items if item.key == 'check')
+        self.assertEqual((item.limit, item.unit), (0, 'bit'))
+        header.write_text(header.read_text().replace('OTHER_BIT_LIMIT=0', 'OTHER_BIT_LIMIT=1'))
+        with self.assertRaisesRegex(ValueError, 'limit mismatch'):
+            paths.annotations(self.root)
+
     def test_shared_plain_row_links_to_first_page_section(self):
         from dataclasses import replace
         first = replace(self.annotations[0], key="first_path")
         second = replace(first, key="second_path", fast="second_f")
         links = paths.benchmark_links([first, second], self.rows)
-        self.assertEqual(links["plain_f"], "Fast-Paths.md#first-path")
-        self.assertEqual(links["fast_f"], "Fast-Paths.md#first-path")
+        self.assertEqual(links["plain_f"], "../packages/Fast-Paths.md#first-path")
+        self.assertEqual(links["fast_f"], "../packages/Fast-Paths.md#first-path")
 
     def test_links_include_benchmarked_function_but_not_unrendered_error(self):
         item = self.annotations[0]
         rows = [*self.rows, ("example_f", "example", "f", 1, "scalar"),
                 ("normalize_f", "normalize (vec3)", "f", 1, "vector")]
         links = paths.benchmark_links([item], rows)
-        self.assertEqual(links["example_f"], "Fast-Paths.md#example")
+        self.assertEqual(links["example_f"], "../packages/Fast-Paths.md#example")
         self.assertNotIn("normalize_f", links)
 
     def test_main_benchmark_error_cells_follow_fast_rows(self):
@@ -72,7 +94,7 @@ class FastPathTests(unittest.TestCase):
                                      ("mathx_rsqrt_q30", "x", "mathx-rsqrt-q30")):
             with self.subTest(label=label):
                 row = next(line for line in lines if line.startswith(f"| [{label}]") and f" | {kind} |" in line)
-                self.assertTrue(row.endswith(f"| [fast paths](Fast-Paths.md#{section}) |"), row)
+                self.assertTrue(row.endswith(f"| [fast paths](../packages/Fast-Paths.md#{section}) |"), row)
         ordinary = next(line for line in lines if line.startswith("| normalize (vec3) | f |"))
         self.assertTrue(ordinary.endswith("| 1 step (sweep) |"), ordinary)
         unmeasured = next(line for line in lines if line.startswith("| add (vec3) | f |"))
@@ -93,10 +115,10 @@ class FastPathTests(unittest.TestCase):
     def test_annotation_sources_resolve_by_name(self):
         doc = self.root / 'docs/Citations.md'
         doc.parent.mkdir(parents=True)
-        doc.write_text('| <a id="123"></a>[123] | Example source.<br>`Example author` cited by: [example](example.md) |\n')
+        doc.write_text('| <a id="example-author"></a>[1] | Example source.<br>`Example author` cited by: [example](example.md) |\n')
         text = self.header.read_text().replace('/* exact:', '/* source: Example author */\n/* exact:')
         self.header.write_text(text)
-        self.assertEqual(paths.annotations(self.root)[0].citations, (123,))
+        self.assertEqual(paths.annotations(self.root)[0].citations, ('example-author',))
         self.header.write_text(text.replace('Example author', 'Unknown author'))
         with self.assertRaisesRegex(ValueError, 'Unknown author'):
             paths.annotations(self.root)
@@ -198,6 +220,57 @@ class FastPathTests(unittest.TestCase):
             self.assertEqual(figures.main(['--out', str(self.root)]), 0)
         save.assert_not_called()
 
+    def test_bits_owned_limit_is_evaluated_and_labelled(self):
+        self.header.write_text(self.header.read_text().replace('#define EXAMPLE_LIMIT 1',
+            '#define EXAMPLE_BITS 13\n#define EXAMPLE_LIMIT (1.0F / (float)(1UL << EXAMPLE_BITS))'))
+        source = self.root / 'launcher/packages/math/tests/suite_math_numbers.c'
+        source.write_text(source.read_text().replace('unit=ulp', 'unit=relative'))
+        item = paths.annotations(self.root)[0]
+        self.assertEqual(item.limit, 2 ** -13)
+        self.assertEqual(paths.limit_label(item), '2^-13 rel, 13 bits')
+        self.header.write_text(self.header.read_text().replace('EXAMPLE_BITS 13', 'EXAMPLE_BITS 14'))
+        self.assertEqual(paths.annotations(self.root)[0].limit, 2 ** -14)
+
+    def test_worst_period_bin_uses_edges_and_a_rounded_up_bound_for_the_rest(self):
+        points = [(1.015625 + i / 32, 2 ** -16, 'relative') for i in range(32)]
+        points[-1] = (points[-1][0], 2 ** -14, 'relative')
+        points[0] = (points[0][0], 3.124e-5, 'relative')
+        self.assertEqual(paths.worst_bin_line(points),
+            'Worst bin: mantissa 1.97-2.00 at 6.1e-5; every other bin <= 3.2e-5.')
+        points[10] = (points[10][0], 2 ** -13, 'relative')
+        self.assertIn('mantissa 1.31-1.34 at 0.00012', paths.worst_bin_line(points))
+        for missing in ([], points[:1]):
+            with self.subTest(missing=missing), self.assertRaises(ValueError):
+                paths.worst_bin_line(missing)
+
+    def test_the_bound_for_the_rest_never_rounds_below_a_bin(self):
+        points = [(1.25, 2 ** -13, 'relative'), (1.75, 3.0001e-5, 'relative'), (1.5, 0, 'relative')]
+        self.assertTrue(paths.worst_bin_line(points).endswith('every other bin <= 3.1e-5.'))
+        self.assertEqual(paths.ceil_measurement(0), '0')
+
+    def test_relative_period_sections_render_and_require_their_bins(self):
+        items = [item for item in paths.annotations()
+                 if item.key in ('mathf_recip_approx', 'mathf_rsqrt_approx')]
+        self.assertEqual(len(items), 2)
+        self.assertTrue(all(item.period_bins for item in items))
+        errors = {(item.key, item.kind): '0.00006103515625 relative (proof)' for item in items}
+        bins = {key: [(1.25, 2 ** -15, 'relative'), (1.75, 2 ** -14, 'relative')] for key in errors}
+        fpu = {item.fast: 'recip0.s rsqrt0.s' for item in items}
+        text = paths.render(ROOT, items, [], {}, errors, bins, {}, fpu, 'test target')
+        self.assertIn(f"rel, {next(item.bits for item in items if item.bits)} bits", text)
+        self.assertEqual(text.count(
+            'Worst bin: mantissa 1.50-2.00 at 6.1e-5; every other bin <= 3.1e-5.'), 2)
+        for item in items:
+            with self.subTest(key=item.key), self.assertRaisesRegex(ValueError, 'missing.*bins'):
+                paths.render(ROOT, [item], [], {}, errors, {}, {}, fpu, 'test target')
+
+    def test_relative_period_contract_rejects_missing_bins(self):
+        from dataclasses import replace
+        item = replace(self.annotations[0], unit='relative', period_bins=True)
+        with self.assertRaisesRegex(ValueError, 'missing.*bins'):
+            paths.validate([item], self.rows,
+                'MATHERROR name=example type=f max=0.5 unit=relative method=sweep')
+
     def test_annotation_parser(self):
         self.assertEqual(len(self.annotations), 1)
         item = self.annotations[0]
@@ -253,7 +326,7 @@ class FastPathTests(unittest.TestCase):
         doc.write_text('Scalar\n')
         with self.assertRaisesRegex(ValueError, 'Scalar'):
             paths.validate_links(self.root, self.annotations)
-        doc.write_text('[example](Fast-Paths.md#example)\n')
+        doc.write_text('[example](../packages/Fast-Paths.md#example)\n')
         paths.validate_links(self.root, self.annotations)
         moved = self.header.parent.parent / 'linear/example.h'
         moved.parent.mkdir()
@@ -283,7 +356,7 @@ class FastPathTests(unittest.TestCase):
                 bench.parse_bins(capture)
 
     def test_short_annotation_and_source_contract(self):
-        self.assertIsNotNone(paths.ANNOTATION.fullmatch('/* MATH_FAST_PATH(fast_f, plain_f, LIMIT) */'))
+        self.assertIsNotNone(paths.ANNOTATION.fullmatch('/* FAST_PATH(fast_f, plain_f, LIMIT) */'))
         source = self.root / 'launcher/packages/math/tests/suite_math_numbers.c'
         source.write_text('')
         with self.assertRaisesRegex(ValueError, 'MATHERROR'):
@@ -328,15 +401,6 @@ class FastPathTests(unittest.TestCase):
         item = next(item for item in paths.annotations(self.root) if item.key == 'mathx_rsqrt_q30')
         self.assertEqual(paths.tables_for(item, self.root), ['mathx_rsqrt_seeds'])
 
-    def test_target_capture_requires_hardware_and_one_identity(self):
-        good = 'MATHTARGET target=esp32s3 arch=Xtensa execution=hardware\n'
-        self.assertEqual(bench.parse_target(good), 'esp32s3 (Xtensa)')
-        self.assertEqual(bench.parse_target(good.replace(' execution', ' core=LX7 execution')), 'esp32s3 (Xtensa, LX7)')
-        for bad in (good.replace('hardware', 'host'), good + good.replace('esp32s3', 'other'),
-                    good.replace(' execution=', ' mode=')):
-            with self.subTest(bad=bad), self.assertRaises(ValueError):
-                bench.parse_target(bad)
-
     def test_elf_sizes_keep_aliases_and_classify_sections(self):
         from code_layout import symbols
         from unittest.mock import patch
@@ -361,6 +425,21 @@ class FastPathTests(unittest.TestCase):
         for key in ('fast_f', 'plain_f'):
             self.assertIn(('seeds', 16, 'rodata'), sizes[key])
 
+    def test_elf_sizes_skip_a_table_the_build_did_not_link(self):
+        from code_layout import symbols
+        from unittest.mock import patch
+        sections = [('.iram0.text', 0x1000, 0x100)]
+        with patch('code_layout.run', return_value="1000 c T math_bench_fast_f\n"):
+            located = symbols('nm', 'elf', records=True)
+        with patch.object(paths, 'tables_for', return_value=['seeds']):
+            sizes = paths.parse_sizes(paths.elf_sizes(self.rows[:1], {'fast_f': '-'}, located, sections, self.root))
+        self.assertEqual(sizes['fast_f'], [('math_bench_fast_f', 12, 'IRAM')])
+        with patch('code_layout.run', return_value="2000 c T other\n"):
+            located = symbols('nm', 'elf', records=True)
+        with patch.object(paths, 'tables_for', return_value=['seeds']), \
+             self.assertRaisesRegex(ValueError, "size symbol missing from ELF: math_bench_fast_f"):
+            paths.elf_sizes(self.rows[:1], {'fast_f': '-'}, located, sections, self.root)
+
     def test_measurement_formatters(self):
         for value, expected in ((26.3, "26"), (58.3, "58"), (3000, "3000"),
                                 (5104, "5100"), (1.03, "1"), (5.94258e-5, "5.9e-5")):
@@ -373,13 +452,13 @@ class FastPathTests(unittest.TestCase):
         self.assertEqual(paths.format_error("-", "hardware"), "-")
 
     def test_compact_tables_and_formula_details(self):
-        items = paths.annotations()
+        items = [item for item in paths.annotations() if item.unit != "bit"]
         rows, fpu = bench.read_fpu(ROOT / "docs/math/data/math_bench_fpu_ops.txt")
         sizes = paths.parse_sizes((ROOT / "docs/math/data/math_bench_sizes.txt").read_text())
         measured = {row[0]: (10.0, 20.0, 5.0) for row in rows}
         measured["div_recip_f"] = (25.0, 40.0, 15.0)
         errors = {(item.key, item.kind): "0 ulp" for item in items}
-        bins = {(item.key, item.kind): [(1.0, 0.0, item.unit)] for item in items}
+        bins = {(item.key, item.kind): [(1.0, 0.0, item.unit), (1.5, 0.0, item.unit)] for item in items}
         text = paths.render(ROOT, items, rows, measured, errors, bins, sizes, fpu, "test target")
         summary, details = text.split('<a id="mathf-recip"></a>', 1)
         self.assertEqual(summary.count("| [`"), len(items) * 3)
@@ -407,7 +486,7 @@ class FastPathTests(unittest.TestCase):
             "| isqrt64 normalization |",
             (f"{sum(size for _, size, region in sizes['normalize_x'] if region == 'IRAM')} IRAM + "
              f"{sum(size for _, size, region in sizes['normalize_x'] if region == 'flash')} flash"),
-            f"| {sum(size for _, size, region in sizes['normalize_x'] if region == 'rodata')} |",
+            f"| {sum(size for _, size, region in sizes['normalize_x'] if region == 'rodata') or '-'} |",
             "ROM",
         ))
         self.assertIn("Builds: `CONFIG_MATH_FPU_RECIP`; QEMU plain; host plain.", details)

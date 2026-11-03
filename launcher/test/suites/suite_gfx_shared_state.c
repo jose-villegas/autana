@@ -26,6 +26,9 @@
 #include "gfx/present/gfx_test.h"
 #include "gfx/present/modes/band/gfx_band_run.h"
 #include "testkit/cleanup.h"
+#ifdef HOST_HEAP_ARENA
+#include "heap_arena.h"
+#endif
 
 #ifndef DEVICE_BUILD
 
@@ -48,6 +51,30 @@ assert_marked_only_where_drawn(void) {
     TEST_ASSERT_FALSE(gfx_region_dirty(OTHER_X, OTHER_Y, SIZE, SIZE));
     gfx_present();
     TEST_ASSERT_FALSE(gfx_region_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT));
+}
+
+/* A host run that closes gives the framebuffer back, and opening again takes it once more. */
+static void
+test_deinit_frees_the_framebuffer_and_init_takes_it_again(void) {
+    fixture();
+#ifdef HOST_HEAP_ARENA
+    size_t blocks_open, bytes_open, blocks_closed, bytes_closed, blocks_again, bytes_again;
+    heap_arena_snapshot(&blocks_open, &bytes_open);
+#endif
+    gfx_deinit();
+#ifdef HOST_HEAP_ARENA
+    heap_arena_snapshot(&blocks_closed, &bytes_closed);
+    TEST_ASSERT_EQUAL_UINT(GFX_FRAMEBUFFER_BYTES, bytes_open - bytes_closed);
+#endif
+    gfx_deinit(); /* closing a closed run is harmless */
+    TEST_ASSERT_TRUE(gfx_init());
+    TEST_ASSERT_FALSE(gfx_framebuffer_holds(0));
+#ifdef HOST_HEAP_ARENA
+    heap_arena_snapshot(&blocks_again, &bytes_again);
+    TEST_ASSERT_EQUAL_UINT(blocks_open, blocks_again);
+    TEST_ASSERT_EQUAL_UINT(bytes_open, bytes_again);
+    TEST_ASSERT_EQUAL_UINT(blocks_open - 1, blocks_closed);
+#endif
 }
 
 /* A public caller may pass rows past either screen edge; only on-screen
@@ -98,6 +125,63 @@ test_draw_is_refused_while_a_mode_has_freed_the_framebuffer(void) {
     draw_pixel(DRAWN_X, DRAWN_Y, 0x4321);
     TEST_ASSERT_EQUAL_UINT(after_exit, gfx_fb_guard_trips);
     TEST_ASSERT_EQUAL_HEX16(0x4321, gfx_framebuffer()[DRAWN_Y * GFX_WIDTH + DRAWN_X]);
+}
+
+enum { INDEX_GRID_W = 6, INDEX_GRID_H = 3 };
+
+static const gfx_mode_request_t index_grid_request = {
+    .layout = GFX_LAYOUT_INDEXED,
+    .index_grid_w = INDEX_GRID_W,
+    .index_grid_h = INDEX_GRID_H,
+    .cell_size = 1,
+};
+
+static void
+test_the_index_image_is_the_granted_grid(void) {
+    fixture();
+    TEST_ASSERT_EQUAL_INT(GFX_LAYOUT_INDEXED, gfx_mode_enter(&index_grid_request)->layout);
+
+    const image_t index = gfx_indexed_image();
+    TEST_ASSERT_NOT_NULL(index.pixels);
+    TEST_ASSERT_EQUAL_INT(IMAGE_INDEXED8, index.format);
+    TEST_ASSERT_EQUAL_INT(INDEX_GRID_W, index.width);
+    TEST_ASSERT_EQUAL_INT(INDEX_GRID_H, index.height);
+    TEST_ASSERT_EQUAL_size_t(INDEX_GRID_W, index.pitch);
+
+    gfx_mode_exit();
+}
+
+/* Each index on row 0 reads back as that index's own palette entry. */
+static void
+test_the_installed_palette_is_what_indices_expand_through(void) {
+    fixture();
+    TEST_ASSERT_EQUAL_INT(GFX_LAYOUT_INDEXED, gfx_mode_enter(&index_grid_request)->layout);
+
+    gfx_color_t* entries = malloc(GFX_INDEXED_PALETTE_SIZE * sizeof *entries);
+    gfx_color_t* row = malloc(GFX_WIDTH * sizeof *row);
+    TEST_ASSERT_NOT_NULL(entries);
+    TEST_ASSERT_NOT_NULL(row);
+    for (int i = 0; i < GFX_INDEXED_PALETTE_SIZE; i++) {
+        entries[i] = (gfx_color_t)(0x0101U * (unsigned)i);
+    }
+    const palette_t palette = {"test", entries, GFX_INDEXED_PALETTE_SIZE};
+    gfx_indexed_set_palette(&palette);
+
+    const image_t index = gfx_indexed_image();
+    uint8_t* cells = image_row(&index, 0);
+    for (int x = 0; x < INDEX_GRID_W; x++) {
+        cells[x] = (uint8_t)(GFX_INDEXED_PALETTE_SIZE - 1 - (x * 37));
+    }
+    TEST_ASSERT_EQUAL_INT(GFX_READBACK_READY, gfx_readback_begin());
+    gfx_read_panel_row(0, row);
+    gfx_readback_end();
+    for (int x = 0; x < INDEX_GRID_W; x++) {
+        TEST_ASSERT_EQUAL_HEX16(entries[cells[x]], row[x]);
+    }
+
+    free(row);
+    free(entries);
+    gfx_mode_exit();
 }
 
 /* Enters `request` while `kind` holds no free block of `block_bytes`: holds
@@ -194,6 +278,8 @@ primitive(int kind, int y) {
     for (size_t i = 0; i < sizeof source / sizeof *source; i++) {
         source[i] = INK;
     }
+    const image_t image = {
+        .pixels = source, .format = IMAGE_RGB565BE, .width = SIZE, .height = SIZE, .pitch = SIZE * sizeof(gfx_color_t)};
     switch (kind) {
         case DRAW_CLEAR: draw_clear(INK); break;
         case DRAW_PIXEL: draw_pixel(DRAWN_X, y, INK); break;
@@ -201,7 +287,7 @@ primitive(int kind, int y) {
         case DRAW_FILL: draw_rect(DRAWN_X, y, SIZE, SIZE, INK); break;
         case DRAW_DITHER: draw_rect_dither(DRAWN_X, y, SIZE, SIZE, INK, ALPHA_OPAQUE); break;
         case DRAW_BLEND: draw_rect_blend(DRAWN_X, y, SIZE, SIZE, INK, ALPHA_OPAQUE); break;
-        case DRAW_BLIT: draw_blit_dither(DRAWN_X, y, SIZE, SIZE, source, SIZE, ALPHA_OPAQUE); break;
+        case DRAW_BLIT: draw_blit_dither(DRAWN_X, y, &image, ALPHA_OPAQUE); break;
         case DRAW_TEXT: draw_text_font(DRAWN_X, y, "H", INK, 1, 0, font); break;
         case DRAW_TEXT_DITHER: draw_text_font_dither(DRAWN_X, y, "H", INK, 1, 0, font, ALPHA_OPAQUE); break;
     }
@@ -504,6 +590,8 @@ run_gfx_shared_state_suite(void) {
     gfx_shared_state_t saved;
     gfx_shared_state_save(&saved);
 #ifndef DEVICE_BUILD
+    RUN_TEST(test_the_index_image_is_the_granted_grid);
+    RUN_TEST(test_the_installed_palette_is_what_indices_expand_through);
     RUN_TEST(test_text_turns_wrap_to_equivalent_quarter_turn);
     RUN_TEST(test_text_scale_below_one_matches_one);
     RUN_TEST(test_clear_clip_restores_full_screen_draw);
@@ -522,6 +610,7 @@ run_gfx_shared_state_suite(void) {
     RUN_TEST(test_clip_text);
     RUN_TEST(test_clip_text_dither);
     RUN_TEST(test_row_marks_outside_the_screen_mark_nothing);
+    RUN_TEST(test_deinit_frees_the_framebuffer_and_init_takes_it_again);
     RUN_TEST(test_box_marking_draw_is_seen_by_the_presenter);
     RUN_TEST(test_row_marking_draw_is_seen_by_the_presenter);
     RUN_TEST(test_draw_is_refused_while_a_mode_has_freed_the_framebuffer);

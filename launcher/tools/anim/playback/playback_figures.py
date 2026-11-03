@@ -1,4 +1,4 @@
-"""The scene playback figures of docs/render/Animation-Tracks.md: clip time against app time as wrap, speed and pause
+"""The scene playback figures of docs/render/animation/Animation-Tracks.md: clip time against app time as wrap, speed and pause
 change it; a transition blend and an interrupted one, as weight and as one joint's turn; nlerp beside slerp;
 and the skeleton itself through those blends, animated. The numbers come from playback_figures_probe.c, which
 plays a skinned glTF's clips, baked by the pack's own writers, on a scene entity through the scene's own calls.
@@ -18,8 +18,7 @@ import tempfile
 
 TOOLS = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(TOOLS))
-sys.path.insert(0, str(TOOLS / "math"))
-from math_figures import build_probe, probe_json  # noqa: E402
+from docs.figures import build_probe, probe_json  # noqa: E402
 from anim import skeleton_asset, tracks_asset  # noqa: E402
 from asset.asset_pack import build_pack  # noqa: E402
 from docs.plot_style import (FAINT, INK, LABEL_SIZE, MUTED, SLOTS, TITLE_SIZE, style_axes, figure as new_figure,  # noqa: E402

@@ -126,6 +126,8 @@ device_report_run() {
     report_project="$(cd "$_dr_project" && pwd)"
     # shellcheck source=../../../scripts/lib/python.sh
     . "$_dr_worktree/scripts/lib/python.sh"
+    # shellcheck source=../../../scripts/lib/terminal.sh
+    . "$_dr_worktree/scripts/lib/terminal.sh"
     PYTHON=$(find_python) || return 1
     _dr_owner="device_report-$report_name"
     command -v autana > /dev/null 2>&1 || {
@@ -240,13 +242,6 @@ device_report_finish() {
         echo
         echo "=== FAILED (exit $_dr_final) ==="
     fi
-    # The pause is a convenience for a double-clicked window, which always
-    # has a terminal. A piped or redirected run has none, and reading from
-    # one turned a clean run into a reported failure back when its status
-    # decided the script's.
-    if [ -t 0 ]; then
-        printf 'Press Enter to close...'
-        read -r _dr_dismissed || true
-    fi
+    pause_if_own_window
     exit "$_dr_final"
 }

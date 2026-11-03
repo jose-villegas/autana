@@ -51,7 +51,7 @@ screen.
 - [render/README.md](../render/README.md), `render/`: drawing a baked mesh (cameras,
   the span rasterizer, the two-core frame), making one from a source model, and
   describing a scene of objects.
-- [Animation-Tracks.md](../render/Animation-Tracks.md), `anim/`: glTF keyed values
+- [Animation-Tracks.md](../render/animation/Animation-Tracks.md), `anim/`: glTF keyed values
   sampled over time, and how a scene's properties are animated.
 - [assets/README.md](../assets/README.md), `asset/`: the binary pack of content the
   firmware maps from a flash partition, its format and how it is flashed.

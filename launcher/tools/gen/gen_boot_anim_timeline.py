@@ -9,7 +9,7 @@ WHERE THIS DATA COMES FROM
 main/boot/boot_anim_timeline.json is the source of truth for everything
 that is not motion, edited by hand. The camera and the space the grid and
 curve live in move by a glTF animation instead,
-main/boot/boot_anim_motion.glb (see docs/render/Animation-Tracks.md), authored in
+main/boot/boot_anim_motion.glb (see docs/render/animation/Animation-Tracks.md), authored in
 any glTF tool and baked into the boot clip's own asset pack by
 tools/r3d/build_pack.py from main/boot/boot_anim_motion.anim.toml; this
 script only reads it to check it.
@@ -38,7 +38,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from gltf import gltf_read  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "device"))
-from panel_size import PANEL_WIDTH, PANEL_HEIGHT
+from board import PANEL_WIDTH, PANEL_HEIGHT
 
 MOTION_ANIMATION = "boot_motion"
 MOTION_NODES = ("camera", "space")

@@ -23,7 +23,7 @@
 #include <stddef.h>
 #include <string.h>
 
-#include "app/app_console.h"
+#include "console/console_words.h"
 #include "core/tune.h"
 
 /* The longest line any registered verb needs today: "SET " (4) + a

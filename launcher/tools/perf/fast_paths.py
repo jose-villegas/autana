@@ -12,14 +12,16 @@ import math_bench_table as bench
 from generated_blocks import replace_block
 
 ROOT = bench.ROOT
-HEADERS = Path("launcher/packages/math/include/math")
-DOCUMENT = Path("docs/math/Fast-Paths.md")
-BLOCK = "math-fast-paths"
+HEADERS = Path("launcher/packages")
+DOCUMENT = Path("docs/packages/Fast-Paths.md")
+BLOCK = "package-fast-paths"
 HOST_CAPTURE = Path("docs/math/data/math_error_host_capture.txt")
 COMMAND = "python launcher/tools/perf/fast_paths.py --check"
-ANNOTATION = re.compile(r"^/\* MATH_FAST_PATH\(\s*(\w+),\s*(\w+),\s*(\w+)(?:=([^ )]+) (ulp|relative|lsb))?\) \*/", re.M)
+ANNOTATION = re.compile(r"^/\* FAST_PATH\(\s*(\w+),\s*(\w+),\s*(\w+)(?:=([^ )]+) (ulp|relative|lsb|bit))?\) \*/", re.M)
 FUNCTION = re.compile(r"^[ \t]*(?!(?:return|if|for|while|switch|case|else)\b)(?:(?:static[ \t]+)?(?:inline[ \t]+)?[\w*]+[ \t\n]+)(\w+)[ \t]*\([^;{}]*\)[ \t]*\{", re.M)
 MEASUREMENT_SIGNIFICANT_DIGITS = 2
+BIN_EDGE_DECIMAL_PLACES = 2
+TARGET_ULONG_BITS = 32
 CALL = re.compile(r"\b(\w+)\s*\(")
 
 
@@ -41,6 +43,8 @@ class Annotation:
     original: str
     coverage: str
     citations: tuple = ()
+    bits: int | None = None
+    period_bins: bool = False
 
     @property
     def anchor(self):
@@ -54,8 +58,12 @@ def benchmark_links(items, rows):
         keys.update(key for key, label, kind, _, _ in rows if (label, kind) == (item.key, item.kind))
         for key in keys:
             # A shared plain row belongs to the first section in page order.
-            links.setdefault(key, f"Fast-Paths.md#{item.anchor}")
+            links.setdefault(key, f"../packages/Fast-Paths.md#{item.anchor}")
     return links
+
+
+def package_headers(root):
+    return sorted(path for include in (root / HEADERS).glob("*/include") for path in include.rglob("*.h"))
 
 
 def annotations(root=ROOT):
@@ -64,34 +72,49 @@ def annotations(root=ROOT):
     rows, problems = citation_rows(root)
     if problems:
         raise ValueError("; ".join(problems))
-    citation_names = {name: number for number, (_, name, _) in rows.items() if name}
+    citation_names = {row[1]: key for key, row in rows.items() if row[1]}
     result = []
-    source = (root / "launcher/packages/math/tests/suite_math_numbers.c").read_text(encoding="utf-8")
-    contracts = {name: (unit, method) for name, unit, method in re.findall(
-        r'MATHERROR name=(\w+) type=\w+ max=.*? unit=(ulp|relative|lsb) method=(proof|sweep)', source)}
-    for header in sorted((root / HEADERS).rglob("*.h")):
+    for header in package_headers(root):
         text = header.read_text(encoding="utf-8")
         matches = list(ANNOTATION.finditer(text))
-        if len(matches) != len(re.findall(r"^/\* MATH_FAST_PATH\(", text, re.M)):
+        if len(matches) != len(re.findall(r"^/\* FAST_PATH\(", text, re.M)):
             raise ValueError(f"malformed fast-path annotation: {header}")
+        package = root / HEADERS / header.relative_to(root / HEADERS).parts[0]
+        source = "\n".join(path.read_text(encoding="utf-8") for path in sorted((package / "tests").glob("*.c"))) if matches else ""
+        contracts = {name: (unit, method) for name, unit, method in re.findall(
+            r'(?:MATH|FAST)ERROR name=(\w+) type=\w+ max=.*? unit=(ulp|relative|lsb|bit) method=(proof|sweep)', source)}
         for match in matches:
             fast, plain, limit_name, literal, literal_unit = match.groups()
             following = FUNCTION.search(re.sub(r"__attribute__\(\(.*?\)\)", "", text[match.end():]))
             if not following:
                 raise ValueError(f"missing function below {fast}")
-            key, kind = following[1], fast.rsplit("_", 1)[1]
+            key, kind = following[1], fast.rsplit("_", 1)[-1]
             if key not in contracts:
-                raise ValueError(f"missing MATHERROR row for {fast}: {key}")
-            definition_text = source if literal is not None else text
+                raise ValueError(f"missing MATHERROR/FASTERROR row for {fast}: {key}")
+            definition_text = text + "\n" + source if literal is not None else text
             define = re.search(r"^#define\s+" + limit_name + r"[ \t]+([^\n]+)$", definition_text, re.M)
             if not define:
                 raise ValueError(f"missing limit {limit_name}: {header}")
             value = define[1].strip().removesuffix("F").removesuffix("f")
-            limit = float.fromhex(value) if value.lower().startswith("0x") else float(value)
+            bits_expression = re.fullmatch(r"\(1\.0F / \(float\)\(1UL << (\w+_BITS)\)\)", value)
+            bits = None
+            if bits_expression:
+                owner = re.search(r"^#define\s+" + bits_expression[1] + r"[ \t]+([0-9]+)$", definition_text, re.M)
+                if not owner or not 0 <= int(owner[1]) < TARGET_ULONG_BITS:
+                    raise ValueError(f"invalid bits owner: {bits_expression[1]}")
+                bits = int(owner[1])
+                limit = 2.0 ** -bits
+            else:
+                limit = bench.error_number(value)
             if not math.isfinite(limit) or limit < 0:
                 raise ValueError(f"invalid limit {limit_name}")
             if literal is not None and (float(literal) != limit or literal_unit != contracts[key][0]):
                 raise ValueError(f"annotation/test limit mismatch: {limit_name}")
+            if literal_unit == "bit":
+                result.append(Annotation(key, "bits", fast, plain, limit_name, "bit", contracts[key][1],
+                                         "portable", header.relative_to(root), text[:match.start()].count("\n") + 1,
+                                         limit, "", "", "", ""))
+                continue
             before = text[:match.start()]
             comments = [" ".join(re.sub(r"^\s*\* ?", "", body, flags=re.M).split())
                         for body in re.findall(r"/\*(.*?)\*/", before, re.S) if body.count("|") == 2]
@@ -115,7 +138,9 @@ def annotations(root=ROOT):
             unit, method = contracts[key]
             result.append(Annotation(key, kind, fast, plain, limit_name, unit, method, target,
                                      header.relative_to(root), before.count("\n") + 1,
-                                     limit, description, formula, exact[1], coverage, citations))
+                                     limit, description, formula, exact[1], coverage, citations, bits,
+                                     bool(re.search(r'MATHERRORBIN name=' + re.escape(key)
+                                                    + r' type=\w+ .*axis=period', source))))
     if not result:
         raise ValueError("no fast-path annotations")
     return result
@@ -168,7 +193,7 @@ def validate_links(root, items):
     for item in items:
         for page in reference_pages(item, root):
             path = root / "docs/math" / (page + ".md")
-            if not path.exists() or f"Fast-Paths.md#{item.anchor}" not in path.read_text(encoding="utf-8"):
+            if not path.exists() or f"../packages/Fast-Paths.md#{item.anchor}" not in path.read_text(encoding="utf-8"):
                 raise ValueError(f"{page}.md lacks link to section {item.key}")
 
 
@@ -186,6 +211,8 @@ def validate(items, rows, capture):
             if key not in manifest:
                 raise ValueError(f"annotation row missing: {key}")
         identity = (item.key, item.kind)
+        if item.unit == "relative" and item.period_bins and identity in errors:
+            worst_bin_line(bins.get(identity, []))
         if identity in bins and identity not in errors:
             raise ValueError(f"missing error summary for bins: {identity}")
         if identity in errors:
@@ -238,7 +265,7 @@ def package_functions(root, with_owners=False):
     sys.path.insert(0, str(ROOT / "scripts/gates"))
     from check_package_docs import HEADER_CALL, TEMPLATE_MACRO, MACRO_CALL, split_args
     macros, headers, functions, owners = {}, [], {}, {}
-    for path in sorted((root / HEADERS).rglob("*.h")):
+    for path in package_headers(root):
         text = path.read_text(encoding="utf-8")
         if path.name.endswith("_template.h"):
             for name, params, body in TEMPLATE_MACRO.findall(text):
@@ -286,7 +313,9 @@ def tables_for(item, root):
 
 
 def callers(root, key):
-    functions = package_functions(root)
+    functions, owners = package_functions(root, with_owners=True)
+    owner = owners.get(key)
+    owner_package = root / HEADERS / owner.relative_to(root / HEADERS).parts[0] if owner else None
     reachable = {key}
     while True:
         expanded = reachable | {name for name, body in functions.items() if set(CALL.findall(body)) & reachable}
@@ -296,8 +325,8 @@ def callers(root, key):
     modules = {}
     sources = [path for folder in ("main", "packages") for path in (root / "launcher" / folder).rglob("*")]
     for path in sorted(sources):
-        if (path.suffix not in (".c", ".h") or path.is_relative_to(root / "launcher/packages/math")
-                or any(part in ("tests", "tools") for part in path.parts)):
+        if (path.suffix not in (".c", ".h") or (owner_package is not None and path.is_relative_to(owner_package))
+                or any(part in ("tests", "tools", "bench") for part in path.parts)):
             continue
         text = re.sub(r"/\*.*?\*/|//[^\n]*", "", path.read_text(encoding="utf-8"), flags=re.S)
         used = set(CALL.findall(text)) & reachable
@@ -354,6 +383,33 @@ def format_limit(value):
     return f"2^{exponent - 1}" if fraction == 0.5 and value < 1 else f"{value:g}"
 
 
+def limit_label(item):
+    unit = ("step" if item.limit == 1 else "steps") if item.unit == "ulp" else "rel" if item.unit == "relative" else item.unit
+    bits = f", {item.bits} bits" if item.bits is not None else ""
+    return f"{format_limit(item.limit)} {unit}{bits}"
+
+
+def worst_bin_line(points):
+    if len(points) < 2:
+        raise ValueError("missing period bins for relative error")
+    points = sorted(points)
+    worst = max(range(len(points)), key=lambda index: points[index][1])
+    centre, maximum, _ = points[worst]
+    left = (points[worst - 1][0] + centre) / 2 if worst else centre - (points[1][0] - centre) / 2
+    right = (centre + points[worst + 1][0]) / 2 if worst + 1 < len(points) else centre + (centre - points[-2][0]) / 2
+    other = max(value for index, (_, value, _) in enumerate(points) if index != worst)
+    return (f"Worst bin: mantissa {left:.{BIN_EDGE_DECIMAL_PLACES}f}-{right:.{BIN_EDGE_DECIMAL_PLACES}f} "
+            f"at {format_measurement(maximum)}; every other bin <= {ceil_measurement(other)}.")
+
+
+def ceil_measurement(value):
+    """Rounds up to the measurement digits, so a stated bound is never below the value."""
+    if value == 0:
+        return "0"
+    digits = MEASUREMENT_SIGNIFICANT_DIGITS - 1 - math.floor(math.log10(value))
+    return format_measurement(math.ceil(value * 10 ** digits) / 10 ** digits)
+
+
 def format_measurement(value):
     rounded = f"{value:.{MEASUREMENT_SIGNIFICANT_DIGITS}g}"
     mantissa, separator, exponent = rounded.partition("e")
@@ -372,6 +428,8 @@ def format_error(evidence, source):
 
 
 def render(root, items, rows, measured, errors, bins, sizes, fpu, target, sources=None, input_counts=None):
+    sys.path.insert(0, str(ROOT / "scripts/gates"))
+    from check_doc_citations import shown_link
     groups = {}
     for item in items:
         groups.setdefault(item.key, []).append(item)
@@ -416,8 +474,8 @@ def render(root, items, rows, measured, errors, bins, sizes, fpu, target, source
     lines.pop()
     for key, group in groups.items():
         item = group[0]
-        citations = "".join(f" <sup>[[{number}]](../Citations.md#{number})</sup>" for number in dict.fromkeys(
-            number for row in group for number in row.citations))
+        citations = "".join(" " + shown_link(root, key) for key in dict.fromkeys(
+            key for row in group for key in row.citations))
         lines += ["", f'<a id="{item.anchor}"></a>', "", f"## `{key}`{citations}", "",
                   "| Original | Fast path |", "|---|---|",
                   f"| $`{item.original}`$ | $`{item.formula}`$ |", "", f"Symbols: {_inline_expressions(_description_fields(item)[1])}.", "",
@@ -426,11 +484,12 @@ def render(root, items, rows, measured, errors, bins, sizes, fpu, target, source
         lines += [f"Target: {hardware}.", "", build_rows(item, root), "", f"Callers: {modules}.", ""]
         for row in group:
             _, expression, _ = entry_details[row.fast]
-            limit_unit = ("step" if row.limit == 1 else "steps") if row.unit == "ulp" else "rel" if row.unit == "relative" else row.unit
             lines += [f"Bench rows `{row.fast}` vs `{row.plain}`; limit `{row.limit_name}` "
-                      f"({format_limit(row.limit)} {limit_unit}); {row.method}.", "",
+                      f"({limit_label(row)}); {row.method}.", "",
                       f"Plain way: {expression}.", ""]
         identity = key, item.kind
+        if item.unit == "relative" and item.period_bins and identity in errors:
+            lines += [worst_bin_line(bins.get(identity, [])), ""]
         if identity in errors and float(errors[identity].split()[0]) == 0:
             count = (input_counts or {}).get(identity)
             sweep = f"{count} inputs of the sweep" if count is not None else "the sweep"
@@ -465,10 +524,12 @@ def elf_sizes(rows, fpu, located, sections=(), root=ROOT):
     for key, *_ in rows:
         calls = fpu[key].partition("calls ")[2].split(", ")
         names = [bench.ROW_SYMBOL_PREFIX + key, *(name for name in calls if name and not name.startswith("*"))]
-        if key in owners:
-            names.extend(tables_for(owners[key], root))
-        for name in sorted(set(names)):
+        # A table reachable only through a branch this build compiled out (#if) is not linked.
+        tables = set(tables_for(owners[key], root)) if key in owners else set()
+        for name in sorted(set(names) | tables):
             matches = [record for record in located if record.name == name or record.name.startswith(name + ".")]
+            if not matches and name in tables:
+                continue
             if not matches:
                 raise ValueError(f"size symbol missing from ELF: {name}")
             letters = {record.section.upper() for record in matches}
@@ -496,15 +557,29 @@ def update_links(root, items, check=False):
     groups = {"Scalar": [], "Linear": []}
     for item in items:
         for page in reference_pages(item, root):
-            link = f"[{item.key}](Fast-Paths.md#{item.anchor})"
+            link = f"[{item.key}](../packages/Fast-Paths.md#{item.anchor})"
             if link not in groups.setdefault(page, []):
                 groups[page].append(link)
-    groups["README"] = ["[Fast-path evidence](Fast-Paths.md)"]
+    groups["README"] = ["[Fast-path evidence](../packages/Fast-Paths.md)"]
     for page, links in groups.items():
         path = root / "docs/math" / (page + ".md")
         changed = replace_block(path, "math-fast-links-" + page.lower(), (", ".join(links) + " pairs costs, bounds and callers." if page == "README" else "Fast-path evidence: " + ", ".join(links) + "."), check=check, command=COMMAND)
         if check and changed:
             raise ValueError(f"{page}.md fast-path links are stale")
+
+
+def render_exact(root, items):
+    lines = [""] if items else []
+    for item in items:
+        package = item.header.relative_to(HEADERS).parts[0]
+        modules = ", ".join(f"`{module}`" for module in sorted(callers(root, item.key))) or "none"
+        lines += ["", f'<a id="{item.anchor}"></a>', "", f"## `{item.key}`", "",
+                  "| Fast path | Reference | Limit |", "|---|---|---|",
+                  f"| `{item.fast}` | `{item.plain}` | `{item.limit_name}` = {limit_label(item)} |", "",
+                  f"Contract and build choices: [{package} package](../../launcher/packages/{package}/README.md).", "",
+                  f"Callers: {modules}.", "",
+                  f"Correctness: [{package} tests](../../launcher/packages/{package}/tests); {item.method}."]
+    return "\n".join(lines)
 
 
 def main(argv=None):
@@ -517,7 +592,9 @@ def main(argv=None):
     args = parser.parse_args(argv)
     root = args.root
     try:
-        items = annotations(root)
+        all_items = annotations(root)
+        items = [item for item in all_items if item.unit != "bit"]
+        exact_items = [item for item in all_items if item.unit == "bit"]
         rows, fpu = bench.read_fpu(root / "docs/math/data/math_bench_fpu_ops.txt")
         if args.from_elf:
             import hashlib
@@ -540,10 +617,10 @@ def main(argv=None):
         section_order = re.findall(r"^## `?(\w+)`?(?: <sup>.*?</sup>)*\s*$", page_text, re.M)
         if section_order:
             if args.check:
-                validate_sections(page_text, items)
+                validate_sections(page_text, all_items)
             items.sort(key=lambda item: section_order.index(item.key) if item.key in section_order else len(section_order))
         elif args.check:
-            validate_sections(page_text, items)
+            validate_sections(page_text, all_items)
         links = benchmark_links(items, rows)
         # Fast-Paths renders the error of every linked row except the plain references.
         plain = {item.plain for item in items}
@@ -563,6 +640,7 @@ def main(argv=None):
             raise ValueError("error bins require a hardware MATHTARGET capture record")
         body = render(root, items, rows, measured if target else {}, errors if target else {}, bins, sizes,
                       fpu, target or "-", sources, bench.parse_input_counts(capture))
+        body += render_exact(root, exact_items)
         changed = replace_block(page, BLOCK, body, check=args.check, command=COMMAND)
         if args.check and changed:
             raise ValueError("fast-path generated sections are stale")

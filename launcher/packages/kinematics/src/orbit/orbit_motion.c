@@ -112,12 +112,11 @@ orbit_motion_update(orbit_motion_t* orbit, const orbit_motion_input_t* input, fl
  * target, so it faces the target all the way and its right stays level. */
 transformf_t
 orbit_motion_pose(const orbit_motion_t* orbit) {
-    const vec3f_t up = {0.0F, 1.0F, 0.0F};
-    transformf_t pose = TRANSFORMF_IDENTITY;
+    const vec3f_t up = vec3f_unit_y();
+    transformf_t pose = transformf_identity();
     transformf_set_position(&pose, vec3f_add(orbit->target, (vec3f_t){0.0F, 0.0F, expf(orbit->at.log_dist)}));
     transformf_look_at(&pose, orbit->target, up);
-    transformf_rotate_around(&pose, orbit->target, quatf_rotate(pose.rotation, (vec3f_t){1.0F, 0.0F, 0.0F}),
-                             orbit->at.pitch);
+    transformf_rotate_around(&pose, orbit->target, quatf_rotate(pose.rotation, vec3f_unit_x()), orbit->at.pitch);
     transformf_rotate_around(&pose, orbit->target, up, orbit->at.yaw);
     return pose;
 }

@@ -80,7 +80,7 @@ ui_transform_icon_emit(void* ctx, recti_t rect) {
 /* Every icon run must turn with its logical box; turning only the box
  * places the icon correctly but leaves the glyph upright. */
 static inline void
-ui_transform_icon_blocks(affine2x_t t, const draw_image_t* icon, recti_t box, icon_emit_fn emit, void* ctx) {
+ui_transform_icon_blocks(affine2x_t t, const image_t* icon, recti_t box, icon_emit_fn emit, void* ctx) {
     ui_transform_icon_ctx_t ic = {.t = t, .box_x = box.x, .box_y = box.y, .emit = emit, .ctx = ctx};
     icon_walk_blocks(icon, box.w, box.h, ui_transform_icon_emit, &ic);
 }

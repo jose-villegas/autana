@@ -14,6 +14,18 @@ quiet_begin() {
     echo "full log: $QUIET_LOG"
 }
 
+# Runs a command with its output shown and appended to a log; QUIET_TEE_STATUS
+# is the command's status, not tee's.
+quiet_tee() {
+    quiet_tee_status_file="$1.$$.status"
+    quiet_tee_log=$1
+    shift
+    { if "$@"; then echo 0 >"$quiet_tee_status_file"; else echo $? >"$quiet_tee_status_file"; fi; } 2>&1 |
+        tee -a "$quiet_tee_log"
+    QUIET_TEE_STATUS=$(cat "$quiet_tee_status_file")
+    rm -f "$quiet_tee_status_file"
+}
+
 quiet_run() {
     quiet_label=$1
     shift
@@ -21,11 +33,8 @@ quiet_run() {
 
     if [ "${VERBOSE:-0}" -eq 1 ]; then
         printf '== %s ==\n' "$quiet_label"
-        quiet_status_file="$QUIET_LOG.$$.status"
-        { if "$@"; then echo 0 >"$quiet_status_file"; else echo $? >"$quiet_status_file"; fi; } 2>&1 |
-            tee -a "$QUIET_LOG"
-        quiet_rc=$(cat "$quiet_status_file")
-        rm -f "$quiet_status_file"
+        quiet_tee "$QUIET_LOG" "$@"
+        quiet_rc=$QUIET_TEE_STATUS
     elif "$@" >>"$QUIET_LOG" 2>&1; then
         quiet_rc=0
     else
@@ -40,9 +49,13 @@ quiet_run() {
     return "$quiet_rc"
 }
 
+QUIET_ERROR_PATTERN='FAILED:|error:|undefined reference to|out of memory|cannot allocate|CMake Error|ninja: error|^  FAIL |:FAIL: |:FAIL$|^check_stack_usage: [0-9]+ function\(s\) exceed|^  NEW |^  GREW |AssertionError|^ *File "|^FAIL:|^ERROR:'
+
+# A caller whose stream carries expected failure text from passing tests
+# (fixtures, error-path assertions) narrows QUIET_ERROR_PATTERN to its own
+# failure headers before quiet_end.
 quiet_error_lines() {
-    grep -E 'FAILED:|error:|undefined reference to|out of memory|cannot allocate|CMake Error|ninja: error|^  FAIL |:FAIL: |:FAIL$|^check_stack_usage: [0-9]+ function\(s\) exceed|^  NEW |^  GREW |AssertionError|^ *File "|^FAIL:|^ERROR:' \
-        "$QUIET_LOG" | head -n "$QUIET_LIMIT" || true
+    grep -E "$QUIET_ERROR_PATTERN" "$QUIET_LOG" | head -n "$QUIET_LIMIT" || true
 }
 
 quiet_failed_sections() {

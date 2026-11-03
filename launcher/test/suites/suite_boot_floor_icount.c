@@ -17,6 +17,7 @@
 #include "core/timing.h"
 #include "draw/draw.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_present.h"
 #include "gfx/target/gfx_segment_clip.h"
 #include "suites.h"
 #include "testkit/bench.h"

@@ -9,8 +9,7 @@
  *===========================================================================*/
 #pragma once
 
-#include "gfx/target/gfx_color.h"
-#include "gfx/present/gfx_mode.h"
+#include "gfx/gfx.h"
 #include "image/palette/palette.h"
 
 #define SAND_PALETTE_UI_ENTRIES 16

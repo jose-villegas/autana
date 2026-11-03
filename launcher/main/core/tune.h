@@ -83,6 +83,9 @@ const tune_entry_t* tune_find(const tune_registry_t* registry, const char* name)
 
 #if TUNE_ENABLED
 
+typedef struct checkpoint checkpoint_t;
+void tune_checkpoint_capture(checkpoint_t* saved, const tune_registry_t* registry);
+
 /* The one TUNE() entries join, and the console answers from. */
 tune_registry_t* tune_shared(void);
 
@@ -110,6 +113,32 @@ tune_registry_t* tune_shared(void);
 #define TUNE                   TUNE_CONSTANT
 #define TUNE_GENERATION(owner) 0u
 
+#endif
+
+/* A tunable the image's own controls also set, such as a menu toggle: a
+ * variable in every build, registered only where TUNE_ENABLED.
+ * TUNE_SETTING_SET(what, value) is false, and leaves it, for a value outside
+ * its range; where there is a registry it writes through it, so GET sees the
+ * value and TUNE_GENERATION moves. */
+#if TUNE_ENABLED
+#define TUNE_SETTING                  TUNE_LIVE
+#define TUNE_SETTING_SET(what, value) tune_set(tune_shared(), what##_tunable.name, (value))
+#else
+#define TUNE_SETTING(owner, what, initial_value, low_value, high_value)                                                \
+    _Static_assert((initial_value) >= (low_value) && (initial_value) <= (high_value),                                  \
+                   #owner "." #what " starts outside its own range");                                                  \
+    static int32_t what = (initial_value);                                                                             \
+    __attribute__((unused)) static const int32_t what##_low = (low_value), what##_high = (high_value)
+#define TUNE_SETTING_SET(what, value) tune_setting_store(&what, what##_low, what##_high, (value))
+
+static inline bool
+tune_setting_store(int32_t* setting, int32_t low, int32_t high, int32_t value) {
+    if (value < low || value > high) {
+        return false;
+    }
+    *setting = value;
+    return true;
+}
 #endif
 
 /* Pinned code needs constants unless the build explicitly permits live

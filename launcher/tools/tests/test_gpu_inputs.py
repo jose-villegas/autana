@@ -15,6 +15,7 @@ from unittest import mock
 
 from test_doc_stages import stages, PATH
 from bake import bake
+from docs.inputs import named_files
 
 ROOT = PATH.parents[3]
 sys.path.insert(0, str(ROOT / 'scripts/ci'))
@@ -34,7 +35,8 @@ tools = root / 'launcher/tools'
 stages.ROOT = bake.REPO = root
 stages.TOOLS = bake.TOOLS = tools
 stages.__file__ = str(tools / 'entry.py')
-stages.tracked_files = lambda *args: json.loads((root / 'tracked.json').read_text())
+from docs import inputs
+inputs.tracked_files = lambda *args: json.loads((root / 'tracked.json').read_text())
 stages.host_inputs = lambda scene: {'host flags': (root / 'flags').read_text(),
     'host host.c': stages.content_checksum(root / 'host.c').decode()}
 bake.read_lock = lambda: ({(root / 'key').read_text(): {'sha256': (root / 'lock').read_text()}}
@@ -160,6 +162,27 @@ class InputContractTests(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         self.root = Path(directory.name).resolve()
 
+    def host_cmake_inputs(self, root):
+        files = {}
+        for name in ('CMakeLists.txt', 'scene/CMakeLists.txt'):
+            path = root / 'launcher/tools/render' / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('target_link_options(host INTERFACE -Wl,--wrap=malloc)\n')
+            files[f'host launcher/tools/render/{name}'] = stages.content_checksum(path).decode()
+        return files
+
+    def test_host_link_configuration_bytes_move_fingerprint(self):
+        self.host_cmake_inputs(self.root)
+        with mock.patch.object(stages, 'ROOT', self.root), mock.patch.object(
+                stages.subprocess, 'run', return_value=NS(stdout='flags -O1\n')):
+            baseline = bake.digest(stages.host_inputs(self.root / 'scene'))
+            for name in ('CMakeLists.txt', 'scene/CMakeLists.txt'):
+                path = self.root / 'launcher/tools/render' / name
+                original = path.read_text()
+                path.write_text(original + 'target_link_options(host INTERFACE -Wl,--wrap=free)\n')
+                self.assertNotEqual(bake.digest(stages.host_inputs(self.root / 'scene')), baseline)
+                path.write_text(original)
+
     def test_named_files_all_bases_tracked_only_and_single_line(self):
         tools = self.root / 'launcher/tools'
         own = tools / 'module'
@@ -171,8 +194,7 @@ class InputContractTests(unittest.TestCase):
         entry = own / 'entry.py'
         entry.write_text('A="root.txt"\nB="tools.txt"\nC="own.txt"\n'
                          'D="untracked.txt"\nE="""own.txt\n"""\n')
-        with mock.patch.object(stages, 'ROOT', self.root), mock.patch.object(stages, 'TOOLS', tools):
-            self.assertEqual(list(stages.named_files(entry, set(paths))), paths)
+        self.assertEqual(list(named_files(entry, set(paths), (self.root, tools))), paths)
 
     @unittest.skipUnless(sys.platform == 'linux', 'POSIX compiler listing required')
     def test_host_flags_and_deps_relative_and_invalid_listing_refused(self):
@@ -180,6 +202,7 @@ class InputContractTests(unittest.TestCase):
         for directory in ('__init__', 'one', 'two'):
             root = self.root / directory
             root.mkdir()
+            self.host_cmake_inputs(root)
             (root / 'host.c').write_text('source')
             listing = f'flags -I {root}/include -O1\nhost.o: {root}/host.c\n'
             with mock.patch.object(stages, 'ROOT', root), mock.patch.object(
@@ -196,6 +219,7 @@ class InputContractTests(unittest.TestCase):
                     stages.host_inputs(root / 'scene')
 
     def test_host_escaped_space_dependency_is_hashed_under_real_name(self):
+        cmake_inputs = self.host_cmake_inputs(self.root)
         header = self.root / 'my dir/host.h'
         header.parent.mkdir()
         header.write_text('#define VALUE 1\n')
@@ -203,10 +227,11 @@ class InputContractTests(unittest.TestCase):
         with mock.patch.object(stages, 'ROOT', self.root), mock.patch.object(
                 stages.subprocess, 'run', return_value=NS(stdout=listing)):
             self.assertEqual(stages.host_inputs(self.root / 'scene'),
-                             {'host flags': '-O1',
+                             {'host flags': '-O1', **cmake_inputs,
                               'host my dir/host.h': stages.content_checksum(header).decode()})
 
     def test_host_header_bytes_move_fingerprint_with_same_listing(self):
+        self.host_cmake_inputs(self.root)
         header = self.root / 'host.h'
         header.write_text('#define VALUE 1\n')
         listing = 'flags -O1\nhost.o: host.h\n'

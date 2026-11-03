@@ -65,6 +65,11 @@ class PsramTuningWrapGate(unittest.TestCase):
         self.assertEqual(1, len(found))
         self.assertIn("indirect call", found[0])
 
+    def test_tuning_address_bytes_across_two_words_pass(self):
+        """Two neighbouring words can hold the address's bytes at an
+        unaligned offset; no pointer sits there."""
+        self.assertEqual([], gate.problems(WRAPPED, sweeps=True, image=bytes(62) + TUNING_ADDRESS + bytes(2)))
+
     def test_a_wrapper_reached_only_through_its_address_passes(self):
         self.assertEqual([], gate.problems(INDIRECT_WRAPPER, sweeps=True, image=WRAPPER_ADDRESS))
 

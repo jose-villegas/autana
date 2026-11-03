@@ -136,7 +136,7 @@ test_counted_cull_returns_the_list_cull_returns(void) {
     uint16_t plain[3] = {0};
     uint16_t counted[3] = {0};
     r3d_pipeline_counts_t counts = {0};
-    const int expected = r3d_pipeline_cull(&mesh, &lens, plain, pipeline_work());
+    const int expected = r3d_pipeline_cull(&mesh, &lens, plain, pipeline_work(), NULL);
     const int actual = r3d_pipeline_cull_counted(&mesh, &lens, counted, count_walk(), &counts);
     TEST_ASSERT_EQUAL_INT(2, expected);
     TEST_ASSERT_EQUAL_INT(expected, actual);
@@ -226,7 +226,7 @@ sort_sample(r3d_pipeline_counts_t* counts, uint16_t* set_up) {
     const r3d_lens_t lens = lens_for(&looking_at_origin);
     const uint16_t clusters[] = {0, 1};
     r3d_pipeline_vertex_t cs[SORT_VERTICES];
-    r3d_pipeline_transform(&mesh, &lens, clusters, 2, cs, NULL);
+    r3d_pipeline_transform(&mesh, &lens, clusters, 2, cs, NULL, false);
     r3d_pipeline_count_triangles(&mesh, &lens, clusters, 2, cs, counts, set_up);
 }
 
@@ -257,7 +257,7 @@ test_set_up_per_cluster_counts_set_up_and_clipped_triangles(void) {
     const r3d_lens_t lens = lens_for(&looking_at_origin);
     const uint16_t second[] = {1};
     r3d_pipeline_vertex_t cs[SORT_VERTICES];
-    r3d_pipeline_transform(&mesh, &lens, second, 1, cs, NULL);
+    r3d_pipeline_transform(&mesh, &lens, second, 1, cs, NULL, false);
     r3d_pipeline_counts_t only = {0};
     uint16_t alone[UNLISTED] = {SENTINEL, SENTINEL, SENTINEL};
     r3d_pipeline_count_triangles(&mesh, &lens, second, 1, cs, &only, alone);
@@ -274,7 +274,7 @@ test_set_up_per_cluster_counts_set_up_and_clipped_triangles(void) {
 static bool* filled;
 
 static void
-mark_filled(const r3d_span_writer_t* writer, const gfx_render_target_t* rows, int y, int x_first, int x_last, int32_t z,
+mark_filled(const r3d_span_writer_t* writer, const gfx_target_t* rows, int y, int x_first, int x_last, int32_t z,
             int32_t dz) {
     (void)rows;
     (void)y;
@@ -300,7 +300,7 @@ test_the_draw_fills_the_triangles_the_count_sets_up(void) {
     const r3d_lens_t lens = lens_for(&looking_at_origin);
     const uint16_t in_front[] = {0}; /* cluster 0: no corner behind the eye */
     r3d_pipeline_vertex_t cs[SORT_VERTICES];
-    r3d_pipeline_transform(&mesh, &lens, in_front, 1, cs, NULL);
+    r3d_pipeline_transform(&mesh, &lens, in_front, 1, cs, NULL, false);
     r3d_pipeline_counts_t counts = {0};
     r3d_pipeline_count_triangles(&mesh, &lens, in_front, 1, cs, &counts, NULL);
 
@@ -393,9 +393,9 @@ static void
 test_per_triangle_writer_tags_the_triangle_that_won_each_pixel(void) {
     int per_triangle = 1;
     const raster_attachment_t tagged = {
-        .bytes_per_pixel = sizeof(uint32_t), .clear = tags_clear, .writer = instance_writer, .state = &per_triangle};
+        .format = IMAGE_U32, .clear = tags_clear, .writer = instance_writer, .state = &per_triangle};
     const raster_attachment_t constant = {
-        .bytes_per_pixel = sizeof(uint32_t), .clear = tags_clear, .writer = instance_writer, .state = NULL};
+        .format = IMAGE_U32, .clear = tags_clear, .writer = instance_writer, .state = NULL};
     const raster_attachment_t* const both[] = {&tagged, &constant};
     raster_rig_t* r = raster_rig_open(raster_rig_wall_and_card, 2, 0, W, H, 0);
     raster_rig_attach(r, both, 2);
@@ -500,7 +500,7 @@ scene_open(void) {
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(cullview, paint), RASTER_CULL_PAINT_FATES));
     for (int i = 0; i < SCENE_QUADS; i++) {
         r3d_quad_init(&s->quad[i], scene_corners[i]);
-        s->instance[i] = (r3d_instance_t){&s->quad[i].mesh, NULL};
+        s->instance[i] = (r3d_instance_t){&s->quad[i].mesh, NULL, NULL};
     }
     s->quad[SCENE_AWAY].cluster.double_sided = false;
     render_context_set_scale(&s->context, 100);

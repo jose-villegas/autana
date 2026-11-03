@@ -29,12 +29,12 @@ options(int argc, char** argv) {
 }
 
 static void
-draw(const render_frame_t* frame) {
+draw(const provider_frame_t* frame) {
     (void)frame;
     draw_clear(RGB565BE(0x000000));
 }
 
-const render_scene_t render_scene = {
+const frame_provider_t asset_fixture_provider = {
     .name = "asset_fixture",
     .quarter = 0,
     .frames = 1,

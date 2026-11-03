@@ -1,0 +1,414 @@
+# autana --json replies on A308, 2026-11-01, ADC EQ voice capture
+buildid	{"build_id": "69835725655c-dev"}
+status	"A308 90:70:69:FE:A3:08 COM5\n  held by ville@JV:board-job:45824 for autana lock run since 2026-11-01 14:27:10 (elapsed 280s; estimated free 2026-11-01 14:55:09; autana 0.1.0, lock protocol 5)\nheavy: unlocked"
+tune	"{\"tunables\": [{\"name\": \"audio.codec_volume\", \"value\": 70, \"min\": 0, \"max\": 100, \"default\": 70}, {\"name\": \"audio.drc\", \"value\": 1, \"min\": 0, \"max\": 1, \"default\": 1}, {\"name\": \"audio.drc_max\", \"value\": 2, \"min\": 0, \"max\": 15, \"default\": 2}, {\"name\": \"audio.drc_min\", \"value\": 2, \"min\": 0, \"max\": 15, \"default\": 2}, {\"name\": \"audio.drc_ramp\", \"value\": 2, \"min\": 0, \"max\": 15, \"default\": 2}, {\"name\": \"audio.drc_win\", \"value\": 4, \"min\": 0, \"max\": 15, \"default\": 4}, {\"name\": \"boxview.behind\", \"value\": 0, \"min\": 0, \"max\": 2, \"default\": 0}, {\"name\": \"boxview.copies\", \"value\": 1, \"min\": 1, \"max\": 65535, \"default\": 1}, {\"name\": \"cullview.from\", \"value\": 0, \"min\": 0, \"max\": 2, \"default\": 0}, {\"name\": \"cullview.level\", \"value\": 0, \"min\": 0, \"max\": 10, \"default\": 0}, {\"name\": \"cullview.paint\", \"value\": 0, \"min\": 0, \"max\": 2, \"default\": 0}, {\"name\": \"draw.tight_fill_marks\", \"value\": 1, \"min\": 0, \"max\": 1, \"default\": 1}, {\"name\": \"imu.drain_ms\", \"value\": 100, \"min\": 1, \"max\": 570, \"default\": 100}, {\"name\": \"imu.log_ms\", \"value\": 0, \"min\": 0, \"max\": 60000, \"default\": 0}, {\"name\": \"imu.read_ms\", \"value\": 20, \"min\": 1, \"max\": 570, \"default\": 20}, {\"name\": \"mic.alc\", \"value\": 0, \"min\": 0, \"max\": 1, \"default\": 0}, {\"name\": \"mic.alc_gain\", \"value\": 191, \"min\": 0, \"max\": 255, \"default\": 191}, {\"name\": \"mic.alc_max\", \"value\": 0, \"min\": 0, \"max\": 15, \"default\": 0}, {\"name\": \"mic.alc_min\", \"value\": 0, \"min\": 0, \"max\": 15, \"default\": 0}, {\"name\": \"mic.alc_win\", \"value\": 0, \"min\": 0, \"max\": 15, \"default\": 0}, {\"name\": \"mic.eq\", \"value\": 0, \"min\": 0, \"max\": 1, \"default\": 0}, {\"name\": \"mic.gate\", \"value\": 0, \"min\": 0, \"max\": 1, \"default\": 0}, {\"name\": \"mic.gate_depth\", \"value\": 0, \"min\": 0, \"max\": 7, \"default\": 0}, {\"name\": \"mic.gate_ng\", \"value\": 0, \"min\": 0, \"max\": 15, \"default\": 0}, {\"name\": \"mic.gate_win\", \"value\": 0, \"min\": 0, \"max\": 15, \"default\": 0}, {\"name\": \"mic.hpf\", \"value\": 1, \"min\": 0, \"max\": 1, \"default\": 1}, {\"name\": \"mic.hpf_s1\", \"value\": 10, \"min\": 0, \"max\": 31, \"default\": 10}, {\"name\": \"mic.hpf_s2\", \"value\": 10, \"min\": 0, \"max\": 31, \"default\": 10}, {\"name\": \"motion.log_ms\", \"value\": 0, \"min\": 0, \"max\": 60000, \"default\": 0}, {\"name\": \"render.batched\", \"value\": 1, \"min\": 0, \"max\": 1, \"default\": 1}, {\"name\": \"render.cull\", \"value\": 1, \"min\": 0, \"max\": 1, \"default\": 1}, {\"name\": \"render.depth_fit\", \"value\": 1, \"min\": 0, \"max\": 1, \"default\": 1}, {\"name\": \"render_lab.budget\", \"value\": 0, \"min\": 0, \"max\": 200, \"default\": 0}, {\"name\": \"render_lab.framegen\", \"value\": 0, \"min\": 0, \"max\": 1, \"default\": 0}, {\"name\": \"render_lab.layout\", \"value\": 0, \"min\": 0, \"max\": 2, \"default\": 0}, {\"name\": \"render_lab.orbit_ms\", \"value\": 0, \"min\": 0, \"max\": 60000, \"default\": 0}, {\"name\": \"render_lab.present\", \"value\": 0, \"min\": 0, \"max\": 2, \"default\": 0}, {\"name\": \"render_lab.scale\", \"value\": 200, \"min\": 100, \"max\": 800, \"default\": 200}, {\"name\": \"render_lab.small_fill_ceiling\", \"value\": 4, \"min\": 0, \"max\": 16, \"default\": 4}, {\"name\": \"render_lab.small_fill_gate\", \"value\": 0, \"min\": 0, \"max\": 255, \"default\": 0}, {\"name\": \"render_lab.small_fill_style\", \"value\": 0, \"min\": 0, \"max\": 2, \"default\": 0}, {\"name\": \"render_lab.upscale\", \"value\": 0, \"min\": 0, \"max\": 1, \"default\": 0}, {\"name\": \"render_lab.view\", \"value\": 0, \"min\": 0, \"max\": 6, \"default\": 0}, {\"name\": \"ridge.ambient_ease_ms\", \"value\": 4000, \"min\": 0, \"max\": 30000, \"default\": 4000}, {\"name\": \"ridge.axis_dissolve_ms\", \"value\": 0, \"min\": 0, \"max\": 3000, \"default\": 0}, {\"name\": \"ridge.back0_amplitude\", \"value\": 5, \"min\": 0, \"max\": 32, \"default\": 5}, {\"name\": \"ridge.back0_body_alpha\", \"value\": 204, \"min\": 0, \"max\": 255, \"default\": 204}, {\"name\": \"ridge.back0_lip_alpha\", \"value\": 71, \"min\": 0, \"max\": 255, \"default\": 71}, {\"name\": \"ridge.back0_offset\", \"value\": -70, \"min\": -160, \"max\": 80, \"default\": -70}, {\"name\": \"ridge.back0_period_ms\", \"value\": 6000, \"min\": 100, \"max\": 60000, \"default\": 6000}, {\"name\": \"ridge.back0_rgb\", \"value\": 748171, \"min\": 0, \"max\": 16777215, \"default\": 0}, {\"name\": \"ridge.back0_wavelength\", \"value\": 260, \"min\": 8, \"max\": 1000, \"default\": 260}, {\"name\": \"ridge.back1_amplitude\", \"value\": 8, \"min\": 0, \"max\": 32, \"default\": 8}, {\"name\": \"ridge.back1_body_alpha\", \"value\": 204, \"min\": 0, \"max\": 255, \"default\": 204}, {\"name\": \"ridge.back1_lip_alpha\", \"value\": 71, \"min\": 0, \"max\": 255, \"default\": 71}, {\"name\": \"ridge.back1_offset\", \"value\": -30, \"min\": -160, \"max\": 80, \"default\": -30}, {\"name\": \"ridge.back1_period_ms\", \"value\": 4300, \"min\": 100, \"max\": 60000, \"default\": 4300}, {\"name\": \"ridge.back1_rgb\", \"value\": 1987691, \"min\": 0, \"max\": 16777215, \"default\": 0}, {\"name\": \"ridge.back1_wavelength\", \"value\": 200, \"min\": 8, \"max\": 1000, \"default\": 200}, {\"name\": \"ridge.background_rgb\", \"value\": 3242906, \"min\": 0, \"max\": 16777215, \"default\": 0}, {\"name\": \"ridge.boot_hold_ms\", \"value\": 700, \"min\": 0, \"max\": 10000, \"default\": 700}, {\"name\": \"ridge.breath_depth\", \"value\": 164, \"min\": 0, \"max\": 256, \"default\": 164}, {\"name\": \"ridge.breath_ms\", \"value\": 5000, \"min\": 500, \"max\": 60000, \"default\": 5000}, {\"name\": \"ridge.breath_smooth\", \"value\": 20, \"min\": 0, \"max\": 60, \"default\": 20}, {\"name\": \"ridge.fill_pattern\", \"value\": 7, \"min\": 0, \"max\": 8, \"default\": 7}, {\"name\": \"ridge.front_amplitude\", \"value\": 6, \"min\": 0, \"max\": 32, \"default\": 6}, {\"name\": \"ridge.front_body_alpha\", \"value\": 217, \"min\": 0, \"max\": 255, \"default\": 217}, {\"name\": \"ridge.front_lip_alpha\", \"value\": 76, \"min\": 0, \"max\": 255, \"default\": 76}, {\"name\": \"ridge.front_offset\", \"value\": 0, \"min\": -160, \"max\": 80, \"default\": 0}, {\"name\": \"ridge.front_period_ms\", \"value\": 2600, \"min\": 100, \"max\": 60000, \"default\": 2600}, {\"name\": \"ridge.front_wavelength\", \"value\": 164, \"min\": 8, \"max\": 1000, \"default\": 164}, {\"name\": \"ridge.gradient_steps\", \"value\": 3, \"min\": 1, \"max\": 90, \"default\": 3}, {\"name\": \"ridge.level_tau_ms\", \"value\": 700, \"min\": 10, \"max\": 5000, \"default\": 700}, {\"name\": \"ridge.lip_px\", \"value\": 12, \"min\": 1, \"max\": 48, \"default\": 12}, {\"name\": \"ridge.pluck_strum\", \"value\": 3000, \"min\": 0, \"max\": 8000, \"default\": 3000}, {\"name\": \"ridge.pluck_tap\", \"value\": 4500, \"min\": 0, \"max\": 8000, \"default\": 4500}, {\"name\": \"ridge.pluck_width\", \"value\": 40, \"min\": 2, \"max\": 80, \"default\": 40}, {\"name\": \"ridge.sky_bottom_rgb\", \"value\": 6263982, \"min\": 0, \"max\": 16777215, \"default\": 0}, {\"name\": \"ridge.sky_top_rgb\", \"value\": 2063520, \"min\": 0, \"max\": 16777215, \"default\": 0}, {\"name\": \"ridge.spring_damping\", \"value\": 8, \"min\": 0, \"max\": 64, \"default\": 8}, {\"name\": \"ridge.spring_stiffness\", \"value\": 4, \"min\": 1, \"max\": 64, \"default\": 4}, {\"name\": \"ridge.spring_tension\", \"value\": 40, \"min\": 0, \"max\": 250, \"default\": 40}, {\"name\": \"ridge.theme_rgb\", \"value\": 1153480, \"min\": 0, \"max\": 16777215, \"default\": 1153480}, {\"name\": \"ridge.tilt_coast_ms\", \"value\": 2000, \"min\": 50, \"max\": 10000, \"default\": 2000}, {\"name\": \"ridge.tilt_push\", \"value\": 350, \"min\": 0, \"max\": 1000, \"default\": 350}, {\"name\": \"snap.reach\", \"value\": 40, \"min\": 0, \"max\": 120, \"default\": 40}, {\"name\": \"touch.calibrate\", \"value\": 1, \"min\": 0, \"max\": 1, \"default\": 1}, {\"name\": \"ui.band_stats_frames\", \"value\": 0, \"min\": 0, \"max\": 600, \"default\": 0}, {\"name\": \"water.gravity_mm_s2\", \"value\": 2000, \"min\": 100, \"max\": 9810, \"default\": 2000}, {\"name\": \"water.parallax_mm\", \"value\": 100, \"min\": 0, \"max\": 400, \"default\": 100}, {\"name\": \"water.plane\", \"value\": 0, \"min\": 0, \"max\": 1, \"default\": 0}, {\"name\": \"water.red_black\", \"value\": 1, \"min\": 0, \"max\": 1, \"default\": 1}, {\"name\": \"water.samples_pct\", \"value\": 150, \"min\": 100, \"max\": 200, \"default\": 150}, {\"name\": \"water.settle_ms\", \"value\": 1000, \"min\": 50, \"max\": 5000, \"default\": 1000}, {\"name\": \"water.slosh_damping_pct\", \"value\": 10, \"min\": 0, \"max\": 100, \"default\": 10}, {\"name\": \"water.slosh_decihz\", \"value\": 15, \"min\": 1, \"max\": 100, \"default\": 15}, {\"name\": \"water.substeps\", \"value\": 2, \"min\": 1, \"max\": 4, \"default\": 2}, {\"name\": \"water.two_core\", \"value\": 1, \"min\": 0, \"max\": 1, \"default\": 1}]}"
+codec 0x0	"CODEC reg=0x00 value=0x80"
+codec 0x16	"CODEC reg=0x16 value=0x24"
+codec 0x1b	"CODEC reg=0x1B value=0x0A"
+codec 0x1c	"CODEC reg=0x1C value=0x6A"
+codec 0x1d	"CODEC reg=0x1D value=0x00"
+codec 0x1e	"CODEC reg=0x1E value=0x00"
+codec 0x1f	"CODEC reg=0x1F value=0x00"
+codec 0x20	"CODEC reg=0x20 value=0x00"
+codec 0x21	"CODEC reg=0x21 value=0x00"
+codec 0x22	"CODEC reg=0x22 value=0x00"
+codec 0x23	"CODEC reg=0x23 value=0x00"
+codec 0x24	"CODEC reg=0x24 value=0x00"
+codec 0x25	"CODEC reg=0x25 value=0x00"
+codec 0x26	"CODEC reg=0x26 value=0x00"
+codec 0x27	"CODEC reg=0x27 value=0x00"
+codec 0x28	"CODEC reg=0x28 value=0x00"
+codec 0x29	"CODEC reg=0x29 value=0x00"
+codec 0x2a	"CODEC reg=0x2A value=0x00"
+codec 0x2b	"CODEC reg=0x2B value=0x00"
+codec 0x2c	"CODEC reg=0x2C value=0x00"
+codec 0x2d	"CODEC reg=0x2D value=0x00"
+codec 0x2e	"CODEC reg=0x2E value=0x00"
+codec 0x2f	"CODEC reg=0x2F value=0x00"
+codec 0x30	"CODEC reg=0x30 value=0x00"
+codec 0x31	"CODEC reg=0x31 value=0x00"
+codec 0x37	"CODEC reg=0x37 value=0x28"
+codec 0x38	"CODEC reg=0x38 value=0x00"
+codec 0x39	"CODEC reg=0x39 value=0x00"
+codec 0x3a	"CODEC reg=0x3A value=0x00"
+codec 0x3b	"CODEC reg=0x3B value=0x00"
+codec 0x3c	"CODEC reg=0x3C value=0x00"
+codec 0x3d	"CODEC reg=0x3D value=0x00"
+codec 0x3e	"CODEC reg=0x3E value=0x00"
+codec 0x3f	"CODEC reg=0x3F value=0x00"
+codec 0x40	"CODEC reg=0x40 value=0x00"
+codec 0x41	"CODEC reg=0x41 value=0x00"
+codec 0x42	"CODEC reg=0x42 value=0x00"
+codec 0x43	"CODEC reg=0x43 value=0x00"
+codec 0x37 0x28	"CODEC reg=0x37 value=0x28"
+tune audio.drc 0	"audio.drc=0"
+tune mic.eq 0	"mic.eq=0"
+tune mic.alc 0	"mic.alc=0"
+tune mic.alc_max 0	"mic.alc_max=0"
+tune mic.alc_min 0	"mic.alc_min=0"
+tune mic.alc_win 0	"mic.alc_win=0"
+tune mic.alc_gain 191	"mic.alc_gain=191"
+tune mic.gate 0	"mic.gate=0"
+tune mic.gate_ng 0	"mic.gate_ng=0"
+tune mic.gate_win 0	"mic.gate_win=0"
+tune mic.gate_depth 0	"mic.gate_depth=0"
+tune mic.hpf 1	"mic.hpf=1"
+tune mic.hpf_s1 10	"mic.hpf_s1=10"
+tune mic.hpf_s2 10	"mic.hpf_s2=10"
+codec 0x1c 0x6a	"CODEC reg=0x1C value=0x6A"
+tune mic.eq 0	"mic.eq=0"
+level-check	{}
+host-play	{"wav": "1462-170138-0007-quiet.wav", "gain": 0, "device": null}
+mic record 7756 --settle 500 -o level-check.wav	"{\"rate\": 22050, \"samples\": 171019, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 106, \"0x1D\": 0, \"0x1E\": 0, \"0x1F\": 0, \"0x20\": 0, \"0x21\": 0, \"0x22\": 0, \"0x23\": 0, \"0x24\": 0, \"0x25\": 0, \"0x26\": 0, \"0x27\": 0, \"0x28\": 0, \"0x29\": 0, \"0x2A\": 0, \"0x2B\": 0, \"0x2C\": 0, \"0x2D\": 0, \"0x2E\": 0, \"0x2F\": 0, \"0x30\": 0, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+runs	3
+materials	{"1462-170138-0007-quiet": {"sentence": "1462-170138-0007", "condition": "quiet"}, "1462-170138-0007-noise": {"sentence": "1462-170138-0007", "condition": "noise"}, "174-168635-0006-quiet": {"sentence": "174-168635-0006", "condition": "quiet"}, "174-168635-0006-noise": {"sentence": "174-168635-0006", "condition": "noise"}}
+arm	{"name": "bypass", "coefficients": null}
+codec 0x1c 0x6a	"CODEC reg=0x1C value=0x6A"
+tune mic.eq 0	"mic.eq=0"
+material	"1462-170138-0007-quiet"
+host-play	{"wav": "1462-170138-0007-quiet.wav", "gain": 0, "device": null}
+mic record 7756 --settle 500 -o bypass-1462-170138-0007-quiet-00.wav	"{\"rate\": 22050, \"samples\": 171019, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 106, \"0x1D\": 0, \"0x1E\": 0, \"0x1F\": 0, \"0x20\": 0, \"0x21\": 0, \"0x22\": 0, \"0x23\": 0, \"0x24\": 0, \"0x25\": 0, \"0x26\": 0, \"0x27\": 0, \"0x28\": 0, \"0x29\": 0, \"0x2A\": 0, \"0x2B\": 0, \"0x2C\": 0, \"0x2D\": 0, \"0x2E\": 0, \"0x2F\": 0, \"0x30\": 0, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "1462-170138-0007-quiet.wav", "gain": 0, "device": null}
+mic record 7756 --settle 500 -o bypass-1462-170138-0007-quiet-01.wav	"{\"rate\": 22050, \"samples\": 171019, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 106, \"0x1D\": 0, \"0x1E\": 0, \"0x1F\": 0, \"0x20\": 0, \"0x21\": 0, \"0x22\": 0, \"0x23\": 0, \"0x24\": 0, \"0x25\": 0, \"0x26\": 0, \"0x27\": 0, \"0x28\": 0, \"0x29\": 0, \"0x2A\": 0, \"0x2B\": 0, \"0x2C\": 0, \"0x2D\": 0, \"0x2E\": 0, \"0x2F\": 0, \"0x30\": 0, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "1462-170138-0007-quiet.wav", "gain": 0, "device": null}
+mic record 7756 --settle 500 -o bypass-1462-170138-0007-quiet-02.wav	"{\"rate\": 22050, \"samples\": 171019, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 106, \"0x1D\": 0, \"0x1E\": 0, \"0x1F\": 0, \"0x20\": 0, \"0x21\": 0, \"0x22\": 0, \"0x23\": 0, \"0x24\": 0, \"0x25\": 0, \"0x26\": 0, \"0x27\": 0, \"0x28\": 0, \"0x29\": 0, \"0x2A\": 0, \"0x2B\": 0, \"0x2C\": 0, \"0x2D\": 0, \"0x2E\": 0, \"0x2F\": 0, \"0x30\": 0, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+material	"1462-170138-0007-noise"
+host-play	{"wav": "1462-170138-0007-noise.wav", "gain": 0, "device": null}
+mic record 7756 --settle 500 -o bypass-1462-170138-0007-noise-00.wav	"{\"rate\": 22050, \"samples\": 171019, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 106, \"0x1D\": 0, \"0x1E\": 0, \"0x1F\": 0, \"0x20\": 0, \"0x21\": 0, \"0x22\": 0, \"0x23\": 0, \"0x24\": 0, \"0x25\": 0, \"0x26\": 0, \"0x27\": 0, \"0x28\": 0, \"0x29\": 0, \"0x2A\": 0, \"0x2B\": 0, \"0x2C\": 0, \"0x2D\": 0, \"0x2E\": 0, \"0x2F\": 0, \"0x30\": 0, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "1462-170138-0007-noise.wav", "gain": 0, "device": null}
+mic record 7756 --settle 500 -o bypass-1462-170138-0007-noise-01.wav	"{\"rate\": 22050, \"samples\": 171019, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 106, \"0x1D\": 0, \"0x1E\": 0, \"0x1F\": 0, \"0x20\": 0, \"0x21\": 0, \"0x22\": 0, \"0x23\": 0, \"0x24\": 0, \"0x25\": 0, \"0x26\": 0, \"0x27\": 0, \"0x28\": 0, \"0x29\": 0, \"0x2A\": 0, \"0x2B\": 0, \"0x2C\": 0, \"0x2D\": 0, \"0x2E\": 0, \"0x2F\": 0, \"0x30\": 0, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "1462-170138-0007-noise.wav", "gain": 0, "device": null}
+mic record 7756 --settle 500 -o bypass-1462-170138-0007-noise-02.wav	"{\"rate\": 22050, \"samples\": 171019, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 106, \"0x1D\": 0, \"0x1E\": 0, \"0x1F\": 0, \"0x20\": 0, \"0x21\": 0, \"0x22\": 0, \"0x23\": 0, \"0x24\": 0, \"0x25\": 0, \"0x26\": 0, \"0x27\": 0, \"0x28\": 0, \"0x29\": 0, \"0x2A\": 0, \"0x2B\": 0, \"0x2C\": 0, \"0x2D\": 0, \"0x2E\": 0, \"0x2F\": 0, \"0x30\": 0, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+material	"174-168635-0006-quiet"
+host-play	{"wav": "174-168635-0006-quiet.wav", "gain": 0, "device": null}
+mic record 9071 --settle 500 -o bypass-174-168635-0006-quiet-00.wav	"{\"rate\": 22050, \"samples\": 200015, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 106, \"0x1D\": 0, \"0x1E\": 0, \"0x1F\": 0, \"0x20\": 0, \"0x21\": 0, \"0x22\": 0, \"0x23\": 0, \"0x24\": 0, \"0x25\": 0, \"0x26\": 0, \"0x27\": 0, \"0x28\": 0, \"0x29\": 0, \"0x2A\": 0, \"0x2B\": 0, \"0x2C\": 0, \"0x2D\": 0, \"0x2E\": 0, \"0x2F\": 0, \"0x30\": 0, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "174-168635-0006-quiet.wav", "gain": 0, "device": null}
+mic record 9071 --settle 500 -o bypass-174-168635-0006-quiet-01.wav	"{\"rate\": 22050, \"samples\": 200015, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 106, \"0x1D\": 0, \"0x1E\": 0, \"0x1F\": 0, \"0x20\": 0, \"0x21\": 0, \"0x22\": 0, \"0x23\": 0, \"0x24\": 0, \"0x25\": 0, \"0x26\": 0, \"0x27\": 0, \"0x28\": 0, \"0x29\": 0, \"0x2A\": 0, \"0x2B\": 0, \"0x2C\": 0, \"0x2D\": 0, \"0x2E\": 0, \"0x2F\": 0, \"0x30\": 0, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "174-168635-0006-quiet.wav", "gain": 0, "device": null}
+mic record 9071 --settle 500 -o bypass-174-168635-0006-quiet-02.wav	"{\"rate\": 22050, \"samples\": 200015, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 106, \"0x1D\": 0, \"0x1E\": 0, \"0x1F\": 0, \"0x20\": 0, \"0x21\": 0, \"0x22\": 0, \"0x23\": 0, \"0x24\": 0, \"0x25\": 0, \"0x26\": 0, \"0x27\": 0, \"0x28\": 0, \"0x29\": 0, \"0x2A\": 0, \"0x2B\": 0, \"0x2C\": 0, \"0x2D\": 0, \"0x2E\": 0, \"0x2F\": 0, \"0x30\": 0, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+material	"174-168635-0006-noise"
+host-play	{"wav": "174-168635-0006-noise.wav", "gain": 0, "device": null}
+mic record 9071 --settle 500 -o bypass-174-168635-0006-noise-00.wav	"{\"rate\": 22050, \"samples\": 200015, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 106, \"0x1D\": 0, \"0x1E\": 0, \"0x1F\": 0, \"0x20\": 0, \"0x21\": 0, \"0x22\": 0, \"0x23\": 0, \"0x24\": 0, \"0x25\": 0, \"0x26\": 0, \"0x27\": 0, \"0x28\": 0, \"0x29\": 0, \"0x2A\": 0, \"0x2B\": 0, \"0x2C\": 0, \"0x2D\": 0, \"0x2E\": 0, \"0x2F\": 0, \"0x30\": 0, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "174-168635-0006-noise.wav", "gain": 0, "device": null}
+mic record 9071 --settle 500 -o bypass-174-168635-0006-noise-01.wav	"{\"rate\": 22050, \"samples\": 200015, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 106, \"0x1D\": 0, \"0x1E\": 0, \"0x1F\": 0, \"0x20\": 0, \"0x21\": 0, \"0x22\": 0, \"0x23\": 0, \"0x24\": 0, \"0x25\": 0, \"0x26\": 0, \"0x27\": 0, \"0x28\": 0, \"0x29\": 0, \"0x2A\": 0, \"0x2B\": 0, \"0x2C\": 0, \"0x2D\": 0, \"0x2E\": 0, \"0x2F\": 0, \"0x30\": 0, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "174-168635-0006-noise.wav", "gain": 0, "device": null}
+mic record 9071 --settle 500 -o bypass-174-168635-0006-noise-02.wav	"{\"rate\": 22050, \"samples\": 200015, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 106, \"0x1D\": 0, \"0x1E\": 0, \"0x1F\": 0, \"0x20\": 0, \"0x21\": 0, \"0x22\": 0, \"0x23\": 0, \"0x24\": 0, \"0x25\": 0, \"0x26\": 0, \"0x27\": 0, \"0x28\": 0, \"0x29\": 0, \"0x2A\": 0, \"0x2B\": 0, \"0x2C\": 0, \"0x2D\": 0, \"0x2E\": 0, \"0x2F\": 0, \"0x30\": 0, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+tone 300 500 30	{"hz": 300, "tone_db": -31.1, "silence_db": -112.1, "noise_dbfs": -73.4, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -33.6, "peak_dbfs": -30.8, "measured_hz": null, "hz_error": null, "shake_rms_mg": 3.38, "shake_peak_mg": 7.3, "silence_shake_rms_mg": 1.95}
+tone 300 500 30	{"hz": 300, "tone_db": -31.1, "silence_db": -104.8, "noise_dbfs": -72.9, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -33.2, "peak_dbfs": -30.7, "measured_hz": null, "hz_error": null, "shake_rms_mg": 3.28, "shake_peak_mg": 5.68, "silence_shake_rms_mg": 2.12}
+tone 300 500 30	{"hz": 300, "tone_db": -31.1, "silence_db": -114.8, "noise_dbfs": -72.9, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -33.2, "peak_dbfs": -30.7, "measured_hz": null, "hz_error": null, "shake_rms_mg": 3.65, "shake_peak_mg": 6.85, "silence_shake_rms_mg": 2.09}
+tone 500 500 30	{"hz": 500, "tone_db": -19.3, "silence_db": -109.2, "noise_dbfs": -72.9, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -33.7, "peak_dbfs": -19.1, "measured_hz": 499.99, "hz_error": -0.009999999999990905, "shake_rms_mg": 38.61, "shake_peak_mg": 61.48, "silence_shake_rms_mg": 2.02}
+tone 500 500 30	{"hz": 500, "tone_db": -19.3, "silence_db": -117.0, "noise_dbfs": -72.9, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -33.9, "peak_dbfs": -19.1, "measured_hz": 499.98, "hz_error": -0.01999999999998181, "shake_rms_mg": 43.42, "shake_peak_mg": 68.67, "silence_shake_rms_mg": 1.97}
+tone 500 500 30	{"hz": 500, "tone_db": -19.3, "silence_db": -110.1, "noise_dbfs": -72.9, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -32.9, "peak_dbfs": -19.1, "measured_hz": 499.98, "hz_error": -0.01999999999998181, "shake_rms_mg": 38.06, "shake_peak_mg": 56.5, "silence_shake_rms_mg": 1.91}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.7, "silence_db": -118.6, "noise_dbfs": -72.9, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -16.3, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0, "shake_rms_mg": 2.5, "shake_peak_mg": 4.39, "silence_shake_rms_mg": 2.23}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.7, "silence_db": -104.6, "noise_dbfs": -71.3, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -16.2, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0, "shake_rms_mg": 2.52, "shake_peak_mg": 5.38, "silence_shake_rms_mg": 2.26}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.7, "silence_db": -104.7, "noise_dbfs": -72.9, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -16.2, "peak_dbfs": -15.7, "measured_hz": 1000.0, "hz_error": 0.0, "shake_rms_mg": 2.63, "shake_peak_mg": 5.79, "silence_shake_rms_mg": 2.15}
+tone 2000 500 30	{"hz": 2000, "tone_db": -19.9, "silence_db": -113.9, "noise_dbfs": -71.3, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -39.9, "peak_dbfs": -19.8, "measured_hz": 1999.99, "hz_error": -0.009999999999990905, "shake_rms_mg": null, "shake_peak_mg": null, "silence_shake_rms_mg": null}
+tone 2000 500 30	{"hz": 2000, "tone_db": -19.9, "silence_db": -120.0, "noise_dbfs": -71.3, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -39.8, "peak_dbfs": -19.8, "measured_hz": 1999.99, "hz_error": -0.009999999999990905, "shake_rms_mg": 3.03, "shake_peak_mg": 6.52, "silence_shake_rms_mg": 2.1}
+tone 2000 500 30	{"hz": 2000, "tone_db": -19.9, "silence_db": -117.9, "noise_dbfs": -72.9, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -39.7, "peak_dbfs": -19.8, "measured_hz": 2000.0, "hz_error": 0.0, "shake_rms_mg": 2.5, "shake_peak_mg": 7.33, "silence_shake_rms_mg": 2.18}
+tone 3000 500 30	{"hz": 3000, "tone_db": -29.1, "silence_db": -106.1, "noise_dbfs": -72.9, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -42.1, "peak_dbfs": -28.7, "measured_hz": 3000.0, "hz_error": 0.0, "shake_rms_mg": 2.71, "shake_peak_mg": 5.37, "silence_shake_rms_mg": 1.94}
+tone 3000 500 30	{"hz": 3000, "tone_db": -29.1, "silence_db": -104.9, "noise_dbfs": -72.8, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -42.2, "peak_dbfs": -28.9, "measured_hz": 3000.0, "hz_error": 0.0, "shake_rms_mg": 2.41, "shake_peak_mg": 4.78, "silence_shake_rms_mg": 1.93}
+tone 3000 500 30	{"hz": 3000, "tone_db": -29.1, "silence_db": -113.3, "noise_dbfs": -72.9, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -42.1, "peak_dbfs": -28.8, "measured_hz": 3000.0, "hz_error": 0.0, "shake_rms_mg": 2.77, "shake_peak_mg": 5.8, "silence_shake_rms_mg": 2.03}
+tone 3400 500 30	{"hz": 3400, "tone_db": -32.1, "silence_db": -114.6, "noise_dbfs": -73.7, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -34.8, "peak_dbfs": -31.9, "measured_hz": 3400.0, "hz_error": 0.0, "shake_rms_mg": null, "shake_peak_mg": null, "silence_shake_rms_mg": null}
+tone 3400 500 30	{"hz": 3400, "tone_db": -32.1, "silence_db": -115.6, "noise_dbfs": -72.7, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -34.8, "peak_dbfs": -31.9, "measured_hz": 3400.0, "hz_error": 0.0, "shake_rms_mg": 2.97, "shake_peak_mg": 6.2, "silence_shake_rms_mg": 1.97}
+tone 3400 500 30	{"hz": 3400, "tone_db": -32.1, "silence_db": -112.2, "noise_dbfs": -72.9, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -34.8, "peak_dbfs": -31.9, "measured_hz": 3400.0, "hz_error": 0.0, "shake_rms_mg": 3.3, "shake_peak_mg": 10.37, "silence_shake_rms_mg": 2.05}
+arm	{"name": "highpass", "coefficients": [0.9702283766983296, -1.9404567533966592, 0.9702283766983296, 1.9395702073516703, -0.9413432994416484]}
+codec 0x1c 0x6a	"CODEC reg=0x1C value=0x6A"
+tune mic.eq 0	"mic.eq=0"
+codec 0x1d 0x1	"CODEC reg=0x1D value=0x01"
+codec 0x1e 0x54	"CODEC reg=0x1E value=0x54"
+codec 0x1f 0xed	"CODEC reg=0x1F value=0xED"
+codec 0x20 0xff	"CODEC reg=0x20 value=0xFF"
+codec 0x29 0x21	"CODEC reg=0x29 value=0x21"
+codec 0x2a 0x2	"CODEC reg=0x2A value=0x02"
+codec 0x2b 0x61	"CODEC reg=0x2B value=0x61"
+codec 0x2c 0x5f	"CODEC reg=0x2C value=0x5F"
+codec 0x2d 0x1	"CODEC reg=0x2D value=0x01"
+codec 0x2e 0x54	"CODEC reg=0x2E value=0x54"
+codec 0x2f 0xed	"CODEC reg=0x2F value=0xED"
+codec 0x30 0xff	"CODEC reg=0x30 value=0xFF"
+codec 0x21 0x0	"CODEC reg=0x21 value=0x00"
+codec 0x22 0xa	"CODEC reg=0x22 value=0x0A"
+codec 0x23 0x25	"CODEC reg=0x23 value=0x25"
+codec 0x24 0xce	"CODEC reg=0x24 value=0xCE"
+codec 0x25 0x20	"CODEC reg=0x25 value=0x20"
+codec 0x26 0x4c	"CODEC reg=0x26 value=0x4C"
+codec 0x27 0x39	"CODEC reg=0x27 value=0x39"
+codec 0x28 0xff	"CODEC reg=0x28 value=0xFF"
+codec 0x1c 0x2a	"CODEC reg=0x1C value=0x2A"
+tune mic.eq 1	"mic.eq=1"
+codec 0x16	"CODEC reg=0x16 value=0x01"
+codec 0x16 0x9	"CODEC reg=0x16 value=0x09"
+codec 0x16 0x1	"CODEC reg=0x16 value=0x01"
+ram-clear adc	{"register": 22, "mask": 8}
+material	"1462-170138-0007-quiet"
+host-play	{"wav": "1462-170138-0007-quiet.wav", "gain": 0, "device": null}
+mic record 7756 --settle 500 -o highpass-1462-170138-0007-quiet-00.wav	"{\"rate\": 22050, \"samples\": 171019, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 1, \"0x1E\": 84, \"0x1F\": 237, \"0x20\": 255, \"0x21\": 0, \"0x22\": 10, \"0x23\": 37, \"0x24\": 206, \"0x25\": 32, \"0x26\": 76, \"0x27\": 57, \"0x28\": 255, \"0x29\": 33, \"0x2A\": 2, \"0x2B\": 97, \"0x2C\": 95, \"0x2D\": 1, \"0x2E\": 84, \"0x2F\": 237, \"0x30\": 255, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "1462-170138-0007-quiet.wav", "gain": 0, "device": null}
+mic record 7756 --settle 500 -o highpass-1462-170138-0007-quiet-01.wav	"{\"rate\": 22050, \"samples\": 171019, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 1, \"0x1E\": 84, \"0x1F\": 237, \"0x20\": 255, \"0x21\": 0, \"0x22\": 10, \"0x23\": 37, \"0x24\": 206, \"0x25\": 32, \"0x26\": 76, \"0x27\": 57, \"0x28\": 255, \"0x29\": 33, \"0x2A\": 2, \"0x2B\": 97, \"0x2C\": 95, \"0x2D\": 1, \"0x2E\": 84, \"0x2F\": 237, \"0x30\": 255, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "1462-170138-0007-quiet.wav", "gain": 0, "device": null}
+mic record 7756 --settle 500 -o highpass-1462-170138-0007-quiet-02.wav	"{\"rate\": 22050, \"samples\": 171019, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 1, \"0x1E\": 84, \"0x1F\": 237, \"0x20\": 255, \"0x21\": 0, \"0x22\": 10, \"0x23\": 37, \"0x24\": 206, \"0x25\": 32, \"0x26\": 76, \"0x27\": 57, \"0x28\": 255, \"0x29\": 33, \"0x2A\": 2, \"0x2B\": 97, \"0x2C\": 95, \"0x2D\": 1, \"0x2E\": 84, \"0x2F\": 237, \"0x30\": 255, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+material	"1462-170138-0007-noise"
+host-play	{"wav": "1462-170138-0007-noise.wav", "gain": 0, "device": null}
+mic record 7756 --settle 500 -o highpass-1462-170138-0007-noise-00.wav	"{\"rate\": 22050, \"samples\": 171019, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 1, \"0x1E\": 84, \"0x1F\": 237, \"0x20\": 255, \"0x21\": 0, \"0x22\": 10, \"0x23\": 37, \"0x24\": 206, \"0x25\": 32, \"0x26\": 76, \"0x27\": 57, \"0x28\": 255, \"0x29\": 33, \"0x2A\": 2, \"0x2B\": 97, \"0x2C\": 95, \"0x2D\": 1, \"0x2E\": 84, \"0x2F\": 237, \"0x30\": 255, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "1462-170138-0007-noise.wav", "gain": 0, "device": null}
+mic record 7756 --settle 500 -o highpass-1462-170138-0007-noise-01.wav	"{\"rate\": 22050, \"samples\": 171019, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 1, \"0x1E\": 84, \"0x1F\": 237, \"0x20\": 255, \"0x21\": 0, \"0x22\": 10, \"0x23\": 37, \"0x24\": 206, \"0x25\": 32, \"0x26\": 76, \"0x27\": 57, \"0x28\": 255, \"0x29\": 33, \"0x2A\": 2, \"0x2B\": 97, \"0x2C\": 95, \"0x2D\": 1, \"0x2E\": 84, \"0x2F\": 237, \"0x30\": 255, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "1462-170138-0007-noise.wav", "gain": 0, "device": null}
+mic record 7756 --settle 500 -o highpass-1462-170138-0007-noise-02.wav	"{\"rate\": 22050, \"samples\": 171019, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 1, \"0x1E\": 84, \"0x1F\": 237, \"0x20\": 255, \"0x21\": 0, \"0x22\": 10, \"0x23\": 37, \"0x24\": 206, \"0x25\": 32, \"0x26\": 76, \"0x27\": 57, \"0x28\": 255, \"0x29\": 33, \"0x2A\": 2, \"0x2B\": 97, \"0x2C\": 95, \"0x2D\": 1, \"0x2E\": 84, \"0x2F\": 237, \"0x30\": 255, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+material	"174-168635-0006-quiet"
+host-play	{"wav": "174-168635-0006-quiet.wav", "gain": 0, "device": null}
+mic record 9071 --settle 500 -o highpass-174-168635-0006-quiet-00.wav	"{\"rate\": 22050, \"samples\": 200015, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 1, \"0x1E\": 84, \"0x1F\": 237, \"0x20\": 255, \"0x21\": 0, \"0x22\": 10, \"0x23\": 37, \"0x24\": 206, \"0x25\": 32, \"0x26\": 76, \"0x27\": 57, \"0x28\": 255, \"0x29\": 33, \"0x2A\": 2, \"0x2B\": 97, \"0x2C\": 95, \"0x2D\": 1, \"0x2E\": 84, \"0x2F\": 237, \"0x30\": 255, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "174-168635-0006-quiet.wav", "gain": 0, "device": null}
+mic record 9071 --settle 500 -o highpass-174-168635-0006-quiet-01.wav	"{\"rate\": 22050, \"samples\": 200015, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 1, \"0x1E\": 84, \"0x1F\": 237, \"0x20\": 255, \"0x21\": 0, \"0x22\": 10, \"0x23\": 37, \"0x24\": 206, \"0x25\": 32, \"0x26\": 76, \"0x27\": 57, \"0x28\": 255, \"0x29\": 33, \"0x2A\": 2, \"0x2B\": 97, \"0x2C\": 95, \"0x2D\": 1, \"0x2E\": 84, \"0x2F\": 237, \"0x30\": 255, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "174-168635-0006-quiet.wav", "gain": 0, "device": null}
+mic record 9071 --settle 500 -o highpass-174-168635-0006-quiet-02.wav	"{\"rate\": 22050, \"samples\": 200015, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 1, \"0x1E\": 84, \"0x1F\": 237, \"0x20\": 255, \"0x21\": 0, \"0x22\": 10, \"0x23\": 37, \"0x24\": 206, \"0x25\": 32, \"0x26\": 76, \"0x27\": 57, \"0x28\": 255, \"0x29\": 33, \"0x2A\": 2, \"0x2B\": 97, \"0x2C\": 95, \"0x2D\": 1, \"0x2E\": 84, \"0x2F\": 237, \"0x30\": 255, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+material	"174-168635-0006-noise"
+host-play	{"wav": "174-168635-0006-noise.wav", "gain": 0, "device": null}
+mic record 9071 --settle 500 -o highpass-174-168635-0006-noise-00.wav	"{\"rate\": 22050, \"samples\": 200015, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 1, \"0x1E\": 84, \"0x1F\": 237, \"0x20\": 255, \"0x21\": 0, \"0x22\": 10, \"0x23\": 37, \"0x24\": 206, \"0x25\": 32, \"0x26\": 76, \"0x27\": 57, \"0x28\": 255, \"0x29\": 33, \"0x2A\": 2, \"0x2B\": 97, \"0x2C\": 95, \"0x2D\": 1, \"0x2E\": 84, \"0x2F\": 237, \"0x30\": 255, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "174-168635-0006-noise.wav", "gain": 0, "device": null}
+mic record 9071 --settle 500 -o highpass-174-168635-0006-noise-01.wav	"{\"rate\": 22050, \"samples\": 200015, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 1, \"0x1E\": 84, \"0x1F\": 237, \"0x20\": 255, \"0x21\": 0, \"0x22\": 10, \"0x23\": 37, \"0x24\": 206, \"0x25\": 32, \"0x26\": 76, \"0x27\": 57, \"0x28\": 255, \"0x29\": 33, \"0x2A\": 2, \"0x2B\": 97, \"0x2C\": 95, \"0x2D\": 1, \"0x2E\": 84, \"0x2F\": 237, \"0x30\": 255, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "174-168635-0006-noise.wav", "gain": 0, "device": null}
+mic record 9071 --settle 500 -o highpass-174-168635-0006-noise-02.wav	"{\"rate\": 22050, \"samples\": 200015, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 1, \"0x1E\": 84, \"0x1F\": 237, \"0x20\": 255, \"0x21\": 0, \"0x22\": 10, \"0x23\": 37, \"0x24\": 206, \"0x25\": 32, \"0x26\": 76, \"0x27\": 57, \"0x28\": 255, \"0x29\": 33, \"0x2A\": 2, \"0x2B\": 97, \"0x2C\": 95, \"0x2D\": 1, \"0x2E\": 84, \"0x2F\": 237, \"0x30\": 255, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+tone 300 500 30	{"hz": 300, "tone_db": -31.4, "silence_db": -111.4, "noise_dbfs": -73.5, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -33.2, "peak_dbfs": -31.0, "measured_hz": null, "hz_error": null, "shake_rms_mg": 2.62, "shake_peak_mg": 5.33, "silence_shake_rms_mg": 2.04}
+tone 300 500 30	{"hz": 300, "tone_db": -31.4, "silence_db": -110.6, "noise_dbfs": -71.2, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -33.0, "peak_dbfs": -31.0, "measured_hz": null, "hz_error": null, "shake_rms_mg": 2.34, "shake_peak_mg": 4.66, "silence_shake_rms_mg": 2.28}
+tone 300 500 30	{"hz": 300, "tone_db": -31.3, "silence_db": -108.2, "noise_dbfs": -73.1, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -32.9, "peak_dbfs": -30.9, "measured_hz": null, "hz_error": null, "shake_rms_mg": 2.25, "shake_peak_mg": 5.89, "silence_shake_rms_mg": 2.11}
+tone 500 500 30	{"hz": 500, "tone_db": -19.4, "silence_db": -115.1, "noise_dbfs": -73.1, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -36.6, "peak_dbfs": -19.2, "measured_hz": 500.0, "hz_error": 0.0, "shake_rms_mg": 7.58, "shake_peak_mg": 11.43, "silence_shake_rms_mg": 2.16}
+tone 500 500 30	{"hz": 500, "tone_db": -19.3, "silence_db": -109.0, "noise_dbfs": -73.1, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -36.5, "peak_dbfs": -19.2, "measured_hz": 500.0, "hz_error": 0.0, "shake_rms_mg": 7.37, "shake_peak_mg": 10.95, "silence_shake_rms_mg": 2.12}
+tone 500 500 30	{"hz": 500, "tone_db": -19.3, "silence_db": -109.4, "noise_dbfs": -73.0, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -36.5, "peak_dbfs": -19.2, "measured_hz": 500.01, "hz_error": 0.009999999999990905, "shake_rms_mg": 7.59, "shake_peak_mg": 10.74, "silence_shake_rms_mg": 2.19}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.7, "silence_db": -104.8, "noise_dbfs": -73.1, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -16.0, "peak_dbfs": -14.7, "measured_hz": 1000.0, "hz_error": 0.0, "shake_rms_mg": 3.06, "shake_peak_mg": 7.49, "silence_shake_rms_mg": 2.15}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.7, "silence_db": -103.5, "noise_dbfs": -73.1, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -16.0, "peak_dbfs": -14.7, "measured_hz": 1000.0, "hz_error": 0.0, "shake_rms_mg": 3.08, "shake_peak_mg": 6.86, "silence_shake_rms_mg": 2.22}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.7, "silence_db": -102.0, "noise_dbfs": -73.6, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -16.0, "peak_dbfs": -14.7, "measured_hz": 1000.0, "hz_error": 0.0, "shake_rms_mg": 2.66, "shake_peak_mg": 6.48, "silence_shake_rms_mg": 2.03}
+tone 2000 500 30	{"hz": 2000, "tone_db": -20.5, "silence_db": -113.2, "noise_dbfs": -73.0, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -38.9, "peak_dbfs": -20.4, "measured_hz": 1999.99, "hz_error": -0.009999999999990905, "shake_rms_mg": 2.87, "shake_peak_mg": 6.5, "silence_shake_rms_mg": 2.13}
+tone 2000 500 30	{"hz": 2000, "tone_db": -20.5, "silence_db": -112.6, "noise_dbfs": -73.1, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -39.0, "peak_dbfs": -20.4, "measured_hz": 2000.0, "hz_error": 0.0, "shake_rms_mg": 3.46, "shake_peak_mg": 8.55, "silence_shake_rms_mg": 2.17}
+tone 2000 500 30	{"hz": 2000, "tone_db": -20.6, "silence_db": -118.0, "noise_dbfs": -73.1, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -39.1, "peak_dbfs": -20.5, "measured_hz": 2000.0, "hz_error": 0.0, "shake_rms_mg": 3.92, "shake_peak_mg": 10.51, "silence_shake_rms_mg": 2.15}
+tone 3000 500 30	{"hz": 3000, "tone_db": -29.2, "silence_db": -111.3, "noise_dbfs": -71.0, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -42.4, "peak_dbfs": -29.0, "measured_hz": 3000.0, "hz_error": 0.0, "shake_rms_mg": 3.28, "shake_peak_mg": 8.25, "silence_shake_rms_mg": 2.2}
+tone 3000 500 30	{"hz": 3000, "tone_db": -29.2, "silence_db": -108.1, "noise_dbfs": -72.6, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -42.3, "peak_dbfs": -29.0, "measured_hz": 3000.0, "hz_error": 0.0, "shake_rms_mg": 3.35, "shake_peak_mg": 7.98, "silence_shake_rms_mg": 2.16}
+tone 3000 500 30	{"hz": 3000, "tone_db": -29.2, "silence_db": -111.4, "noise_dbfs": -73.0, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -42.3, "peak_dbfs": -29.0, "measured_hz": 3000.0, "hz_error": 0.0, "shake_rms_mg": 3.19, "shake_peak_mg": 5.96, "silence_shake_rms_mg": 2.08}
+tone 3400 500 30	{"hz": 3400, "tone_db": -32.4, "silence_db": -114.9, "noise_dbfs": -73.1, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -34.9, "peak_dbfs": -32.2, "measured_hz": 3400.0, "hz_error": 0.0, "shake_rms_mg": 2.41, "shake_peak_mg": 5.11, "silence_shake_rms_mg": 2.18}
+tone 3400 500 30	{"hz": 3400, "tone_db": -32.4, "silence_db": -113.6, "noise_dbfs": -73.1, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -34.6, "peak_dbfs": -32.2, "measured_hz": 3400.0, "hz_error": 0.0, "shake_rms_mg": 2.42, "shake_peak_mg": 5.0, "silence_shake_rms_mg": 2.21}
+tone 3400 500 30	{"hz": 3400, "tone_db": -32.4, "silence_db": -107.1, "noise_dbfs": -73.0, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -34.8, "peak_dbfs": -32.3, "measured_hz": 3400.0, "hz_error": 0.0, "shake_rms_mg": 2.58, "shake_peak_mg": 5.24, "silence_shake_rms_mg": 2.16}
+arm	{"name": "voice", "coefficients": [0.30342891441991077, 0.0, -0.30342891441991077, 1.335848231675691, -0.3931421711601784]}
+codec 0x1c 0x6a	"CODEC reg=0x1C value=0x6A"
+tune mic.eq 0	"mic.eq=0"
+codec 0x1d 0x4	"CODEC reg=0x1D value=0x04"
+codec 0x1e 0x4b	"CODEC reg=0x1E value=0x4B"
+codec 0x1f 0xeb	"CODEC reg=0x1F value=0xEB"
+codec 0x20 0x9f	"CODEC reg=0x20 value=0x9F"
+codec 0x29 0x1f	"CODEC reg=0x29 value=0x1F"
+codec 0x2a 0xf7	"CODEC reg=0x2A value=0xF7"
+codec 0x2b 0xfd	"CODEC reg=0x2B value=0xFD"
+codec 0x2c 0xff	"CODEC reg=0x2C value=0xFF"
+codec 0x2d 0x25	"CODEC reg=0x2D value=0x25"
+codec 0x2e 0x43	"CODEC reg=0x2E value=0x43"
+codec 0x2f 0xa9	"CODEC reg=0x2F value=0xA9"
+codec 0x30 0x8f	"CODEC reg=0x30 value=0x8F"
+codec 0x21 0x0	"CODEC reg=0x21 value=0x00"
+codec 0x22 0x22	"CODEC reg=0x22 value=0x22"
+codec 0x23 0x18	"CODEC reg=0x23 value=0x18"
+codec 0x24 0xfe	"CODEC reg=0x24 value=0xFE"
+codec 0x25 0x22	"CODEC reg=0x25 value=0x22"
+codec 0x26 0x3b	"CODEC reg=0x26 value=0x3B"
+codec 0x27 0x67	"CODEC reg=0x27 value=0x67"
+codec 0x28 0x7e	"CODEC reg=0x28 value=0x7E"
+codec 0x1c 0x2a	"CODEC reg=0x1C value=0x2A"
+tune mic.eq 1	"mic.eq=1"
+codec 0x16	"CODEC reg=0x16 value=0x01"
+codec 0x16 0x9	"CODEC reg=0x16 value=0x09"
+codec 0x16 0x1	"CODEC reg=0x16 value=0x01"
+ram-clear adc	{"register": 22, "mask": 8}
+material	"1462-170138-0007-quiet"
+host-play	{"wav": "1462-170138-0007-quiet.wav", "gain": 0, "device": null}
+mic record 7756 --settle 500 -o voice-1462-170138-0007-quiet-00.wav	"{\"rate\": 22050, \"samples\": 171019, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 4, \"0x1E\": 75, \"0x1F\": 235, \"0x20\": 159, \"0x21\": 0, \"0x22\": 34, \"0x23\": 24, \"0x24\": 254, \"0x25\": 34, \"0x26\": 59, \"0x27\": 103, \"0x28\": 126, \"0x29\": 31, \"0x2A\": 247, \"0x2B\": 253, \"0x2C\": 255, \"0x2D\": 37, \"0x2E\": 67, \"0x2F\": 169, \"0x30\": 143, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "1462-170138-0007-quiet.wav", "gain": 0, "device": null}
+mic record 7756 --settle 500 -o voice-1462-170138-0007-quiet-01.wav	"{\"rate\": 22050, \"samples\": 171019, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 4, \"0x1E\": 75, \"0x1F\": 235, \"0x20\": 159, \"0x21\": 0, \"0x22\": 34, \"0x23\": 24, \"0x24\": 254, \"0x25\": 34, \"0x26\": 59, \"0x27\": 103, \"0x28\": 126, \"0x29\": 31, \"0x2A\": 247, \"0x2B\": 253, \"0x2C\": 255, \"0x2D\": 37, \"0x2E\": 67, \"0x2F\": 169, \"0x30\": 143, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "1462-170138-0007-quiet.wav", "gain": 0, "device": null}
+mic record 7756 --settle 500 -o voice-1462-170138-0007-quiet-02.wav	"{\"rate\": 22050, \"samples\": 171019, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 4, \"0x1E\": 75, \"0x1F\": 235, \"0x20\": 159, \"0x21\": 0, \"0x22\": 34, \"0x23\": 24, \"0x24\": 254, \"0x25\": 34, \"0x26\": 59, \"0x27\": 103, \"0x28\": 126, \"0x29\": 31, \"0x2A\": 247, \"0x2B\": 253, \"0x2C\": 255, \"0x2D\": 37, \"0x2E\": 67, \"0x2F\": 169, \"0x30\": 143, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+material	"1462-170138-0007-noise"
+host-play	{"wav": "1462-170138-0007-noise.wav", "gain": 0, "device": null}
+mic record 7756 --settle 500 -o voice-1462-170138-0007-noise-00.wav	"{\"rate\": 22050, \"samples\": 171019, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 4, \"0x1E\": 75, \"0x1F\": 235, \"0x20\": 159, \"0x21\": 0, \"0x22\": 34, \"0x23\": 24, \"0x24\": 254, \"0x25\": 34, \"0x26\": 59, \"0x27\": 103, \"0x28\": 126, \"0x29\": 31, \"0x2A\": 247, \"0x2B\": 253, \"0x2C\": 255, \"0x2D\": 37, \"0x2E\": 67, \"0x2F\": 169, \"0x30\": 143, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "1462-170138-0007-noise.wav", "gain": 0, "device": null}
+mic record 7756 --settle 500 -o voice-1462-170138-0007-noise-01.wav	"{\"rate\": 22050, \"samples\": 171019, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 4, \"0x1E\": 75, \"0x1F\": 235, \"0x20\": 159, \"0x21\": 0, \"0x22\": 34, \"0x23\": 24, \"0x24\": 254, \"0x25\": 34, \"0x26\": 59, \"0x27\": 103, \"0x28\": 126, \"0x29\": 31, \"0x2A\": 247, \"0x2B\": 253, \"0x2C\": 255, \"0x2D\": 37, \"0x2E\": 67, \"0x2F\": 169, \"0x30\": 143, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "1462-170138-0007-noise.wav", "gain": 0, "device": null}
+mic record 7756 --settle 500 -o voice-1462-170138-0007-noise-02.wav	"{\"rate\": 22050, \"samples\": 171019, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 4, \"0x1E\": 75, \"0x1F\": 235, \"0x20\": 159, \"0x21\": 0, \"0x22\": 34, \"0x23\": 24, \"0x24\": 254, \"0x25\": 34, \"0x26\": 59, \"0x27\": 103, \"0x28\": 126, \"0x29\": 31, \"0x2A\": 247, \"0x2B\": 253, \"0x2C\": 255, \"0x2D\": 37, \"0x2E\": 67, \"0x2F\": 169, \"0x30\": 143, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+material	"174-168635-0006-quiet"
+host-play	{"wav": "174-168635-0006-quiet.wav", "gain": 0, "device": null}
+mic record 9071 --settle 500 -o voice-174-168635-0006-quiet-00.wav	"{\"rate\": 22050, \"samples\": 200015, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 4, \"0x1E\": 75, \"0x1F\": 235, \"0x20\": 159, \"0x21\": 0, \"0x22\": 34, \"0x23\": 24, \"0x24\": 254, \"0x25\": 34, \"0x26\": 59, \"0x27\": 103, \"0x28\": 126, \"0x29\": 31, \"0x2A\": 247, \"0x2B\": 253, \"0x2C\": 255, \"0x2D\": 37, \"0x2E\": 67, \"0x2F\": 169, \"0x30\": 143, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "174-168635-0006-quiet.wav", "gain": 0, "device": null}
+mic record 9071 --settle 500 -o voice-174-168635-0006-quiet-01.wav	"{\"rate\": 22050, \"samples\": 200015, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 4, \"0x1E\": 75, \"0x1F\": 235, \"0x20\": 159, \"0x21\": 0, \"0x22\": 34, \"0x23\": 24, \"0x24\": 254, \"0x25\": 34, \"0x26\": 59, \"0x27\": 103, \"0x28\": 126, \"0x29\": 31, \"0x2A\": 247, \"0x2B\": 253, \"0x2C\": 255, \"0x2D\": 37, \"0x2E\": 67, \"0x2F\": 169, \"0x30\": 143, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "174-168635-0006-quiet.wav", "gain": 0, "device": null}
+mic record 9071 --settle 500 -o voice-174-168635-0006-quiet-02.wav	"{\"rate\": 22050, \"samples\": 200015, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 4, \"0x1E\": 75, \"0x1F\": 235, \"0x20\": 159, \"0x21\": 0, \"0x22\": 34, \"0x23\": 24, \"0x24\": 254, \"0x25\": 34, \"0x26\": 59, \"0x27\": 103, \"0x28\": 126, \"0x29\": 31, \"0x2A\": 247, \"0x2B\": 253, \"0x2C\": 255, \"0x2D\": 37, \"0x2E\": 67, \"0x2F\": 169, \"0x30\": 143, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+material	"174-168635-0006-noise"
+host-play	{"wav": "174-168635-0006-noise.wav", "gain": 0, "device": null}
+mic record 9071 --settle 500 -o voice-174-168635-0006-noise-00.wav	"{\"rate\": 22050, \"samples\": 200015, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 4, \"0x1E\": 75, \"0x1F\": 235, \"0x20\": 159, \"0x21\": 0, \"0x22\": 34, \"0x23\": 24, \"0x24\": 254, \"0x25\": 34, \"0x26\": 59, \"0x27\": 103, \"0x28\": 126, \"0x29\": 31, \"0x2A\": 247, \"0x2B\": 253, \"0x2C\": 255, \"0x2D\": 37, \"0x2E\": 67, \"0x2F\": 169, \"0x30\": 143, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "174-168635-0006-noise.wav", "gain": 0, "device": null}
+mic record 9071 --settle 500 -o voice-174-168635-0006-noise-01.wav	"{\"rate\": 22050, \"samples\": 200015, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 4, \"0x1E\": 75, \"0x1F\": 235, \"0x20\": 159, \"0x21\": 0, \"0x22\": 34, \"0x23\": 24, \"0x24\": 254, \"0x25\": 34, \"0x26\": 59, \"0x27\": 103, \"0x28\": 126, \"0x29\": 31, \"0x2A\": 247, \"0x2B\": 253, \"0x2C\": 255, \"0x2D\": 37, \"0x2E\": 67, \"0x2F\": 169, \"0x30\": 143, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "174-168635-0006-noise.wav", "gain": 0, "device": null}
+mic record 9071 --settle 500 -o voice-174-168635-0006-noise-02.wav	"{\"rate\": 22050, \"samples\": 200015, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 4, \"0x1E\": 75, \"0x1F\": 235, \"0x20\": 159, \"0x21\": 0, \"0x22\": 34, \"0x23\": 24, \"0x24\": 254, \"0x25\": 34, \"0x26\": 59, \"0x27\": 103, \"0x28\": 126, \"0x29\": 31, \"0x2A\": 247, \"0x2B\": 253, \"0x2C\": 255, \"0x2D\": 37, \"0x2E\": 67, \"0x2F\": 169, \"0x30\": 143, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+tone 300 500 30	{"hz": 300, "tone_db": -34.2, "silence_db": -117.1, "noise_dbfs": -81.8, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -30.9, "peak_dbfs": -33.9, "measured_hz": null, "hz_error": null, "shake_rms_mg": 2.91, "shake_peak_mg": 4.73, "silence_shake_rms_mg": 2.06}
+tone 300 500 30	{"hz": 300, "tone_db": -34.2, "silence_db": -120.0, "noise_dbfs": -80.2, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -30.7, "peak_dbfs": -33.8, "measured_hz": null, "hz_error": null, "shake_rms_mg": 2.86, "shake_peak_mg": 6.69, "silence_shake_rms_mg": 2.13}
+tone 300 500 30	{"hz": 300, "tone_db": -34.2, "silence_db": -111.8, "noise_dbfs": -80.3, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -30.5, "peak_dbfs": -33.8, "measured_hz": null, "hz_error": null, "shake_rms_mg": 2.92, "shake_peak_mg": 5.75, "silence_shake_rms_mg": 2.08}
+tone 500 500 30	{"hz": 500, "tone_db": -20.3, "silence_db": -106.9, "noise_dbfs": -80.1, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -34.7, "peak_dbfs": -20.2, "measured_hz": 500.0, "hz_error": 0.0, "shake_rms_mg": 20.88, "shake_peak_mg": 29.57, "silence_shake_rms_mg": 2.04}
+tone 500 500 30	{"hz": 500, "tone_db": -20.3, "silence_db": -114.8, "noise_dbfs": -80.1, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -34.6, "peak_dbfs": -20.2, "measured_hz": 500.0, "hz_error": 0.0, "shake_rms_mg": 20.24, "shake_peak_mg": 28.07, "silence_shake_rms_mg": 1.91}
+tone 500 500 30	{"hz": 500, "tone_db": -20.3, "silence_db": -111.8, "noise_dbfs": -80.3, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -34.6, "peak_dbfs": -20.2, "measured_hz": 500.01, "hz_error": 0.009999999999990905, "shake_rms_mg": 20.19, "shake_peak_mg": 27.39, "silence_shake_rms_mg": 2.19}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.7, "silence_db": -106.4, "noise_dbfs": -80.1, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -18.8, "peak_dbfs": -14.9, "measured_hz": 1000.0, "hz_error": 0.0, "shake_rms_mg": 3.54, "shake_peak_mg": 7.31, "silence_shake_rms_mg": 1.98}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.7, "silence_db": -111.5, "noise_dbfs": -80.2, "heard": true, "open_dma_bytes": 1440, "path": "acoustic", "thd_db": -18.8, "peak_dbfs": -14.9, "measured_hz": 1000.0, "hz_error": 0.0, "shake_rms_mg": 3.69, "shake_peak_mg": 7.73, "silence_shake_rms_mg": 2.17}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.7, "silence_db": -109.3, "noise_dbfs": -80.2, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -18.8, "peak_dbfs": -14.9, "measured_hz": 1000.0, "hz_error": 0.0, "shake_rms_mg": 3.75, "shake_peak_mg": 7.34, "silence_shake_rms_mg": 2.15}
+tone 2000 500 30	{"hz": 2000, "tone_db": -21.1, "silence_db": -120.0, "noise_dbfs": -80.0, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -47.7, "peak_dbfs": -21.1, "measured_hz": 1999.99, "hz_error": -0.009999999999990905, "shake_rms_mg": 2.88, "shake_peak_mg": 6.32, "silence_shake_rms_mg": 2.14}
+tone 2000 500 30	{"hz": 2000, "tone_db": -21.1, "silence_db": -111.8, "noise_dbfs": -80.1, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -47.4, "peak_dbfs": -21.0, "measured_hz": 2000.0, "hz_error": 0.0, "shake_rms_mg": 2.62, "shake_peak_mg": 5.04, "silence_shake_rms_mg": 2.18}
+tone 2000 500 30	{"hz": 2000, "tone_db": -21.1, "silence_db": -117.8, "noise_dbfs": -74.7, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -47.3, "peak_dbfs": -21.1, "measured_hz": 2000.0, "hz_error": 0.0, "shake_rms_mg": 2.69, "shake_peak_mg": 5.67, "silence_shake_rms_mg": 2.13}
+tone 3000 500 30	{"hz": 3000, "tone_db": -31.9, "silence_db": -109.0, "noise_dbfs": -80.1, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -51.6, "peak_dbfs": -31.7, "measured_hz": 3000.0, "hz_error": 0.0, "shake_rms_mg": 3.53, "shake_peak_mg": 7.94, "silence_shake_rms_mg": 2.18}
+tone 3000 500 30	{"hz": 3000, "tone_db": -31.9, "silence_db": -116.4, "noise_dbfs": -80.1, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -51.9, "peak_dbfs": -31.8, "measured_hz": 3000.0, "hz_error": 0.0, "shake_rms_mg": 3.09, "shake_peak_mg": 6.63, "silence_shake_rms_mg": 1.96}
+tone 3000 500 30	{"hz": 3000, "tone_db": -31.9, "silence_db": -113.3, "noise_dbfs": -80.1, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -52.0, "peak_dbfs": -31.7, "measured_hz": 3000.0, "hz_error": 0.0, "shake_rms_mg": 3.18, "shake_peak_mg": 7.16, "silence_shake_rms_mg": 2.0}
+tone 3400 500 30	{"hz": 3400, "tone_db": -35.8, "silence_db": -107.4, "noise_dbfs": -80.0, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -50.3, "peak_dbfs": -35.5, "measured_hz": 3400.0, "hz_error": 0.0, "shake_rms_mg": 2.39, "shake_peak_mg": 5.85, "silence_shake_rms_mg": 2.35}
+tone 3400 500 30	{"hz": 3400, "tone_db": -35.8, "silence_db": -116.2, "noise_dbfs": -79.9, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -50.2, "peak_dbfs": -35.6, "measured_hz": 3400.0, "hz_error": 0.0, "shake_rms_mg": 2.61, "shake_peak_mg": 5.85, "silence_shake_rms_mg": 2.0}
+tone 3400 500 30	{"hz": 3400, "tone_db": -35.7, "silence_db": -116.8, "noise_dbfs": -79.5, "heard": true, "open_dma_bytes": 1432, "path": "acoustic", "thd_db": -50.7, "peak_dbfs": -35.4, "measured_hz": 3400.0, "hz_error": 0.0, "shake_rms_mg": 2.21, "shake_peak_mg": 4.56, "silence_shake_rms_mg": 2.03}
+arm	{"name": "presence", "coefficients": [1.2097753026922071, -1.035982093408134, 0.36867693138285373, 1.035982093408134, -0.5784522340750609]}
+codec 0x1c 0x6a	"CODEC reg=0x1C value=0x6A"
+tune mic.eq 0	"mic.eq=0"
+codec 0x1d 0x0	"CODEC reg=0x1D value=0x00"
+codec 0x1e 0x2a	"CODEC reg=0x1E value=0x2A"
+codec 0x1f 0xdf	"CODEC reg=0x1F value=0xDF"
+codec 0x20 0x5c	"CODEC reg=0x20 value=0x5C"
+codec 0x29 0x21	"CODEC reg=0x29 value=0x21"
+codec 0x2a 0x5c	"CODEC reg=0x2A value=0x5C"
+codec 0x2b 0x69	"CODEC reg=0x2B value=0x69"
+codec 0x2c 0xaf	"CODEC reg=0x2C value=0xAF"
+codec 0x2d 0x4	"CODEC reg=0x2D value=0x04"
+codec 0x2e 0x3b	"CODEC reg=0x2E value=0x3B"
+codec 0x2f 0xa7	"CODEC reg=0x2F value=0xA7"
+codec 0x30 0x6f	"CODEC reg=0x30 value=0x6F"
+codec 0x21 0x0	"CODEC reg=0x21 value=0x00"
+codec 0x22 0x54	"CODEC reg=0x22 value=0x54"
+codec 0x23 0x2b	"CODEC reg=0x23 value=0x2B"
+codec 0x24 0xbf	"CODEC reg=0x24 value=0xBF"
+codec 0x25 0x23	"CODEC reg=0x25 value=0x23"
+codec 0x26 0x4b	"CODEC reg=0x26 value=0x4B"
+codec 0x27 0x73	"CODEC reg=0x27 value=0x73"
+codec 0x28 0xaf	"CODEC reg=0x28 value=0xAF"
+codec 0x1c 0x2a	"CODEC reg=0x1C value=0x2A"
+tune mic.eq 1	"mic.eq=1"
+codec 0x16	"CODEC reg=0x16 value=0x01"
+codec 0x16 0x9	"CODEC reg=0x16 value=0x09"
+codec 0x16 0x1	"CODEC reg=0x16 value=0x01"
+ram-clear adc	{"register": 22, "mask": 8}
+material	"1462-170138-0007-quiet"
+host-play	{"wav": "1462-170138-0007-quiet.wav", "gain": 0, "device": null}
+mic record 7756 --settle 500 -o presence-1462-170138-0007-quiet-00.wav	"{\"rate\": 22050, \"samples\": 171019, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 0, \"0x1E\": 42, \"0x1F\": 223, \"0x20\": 92, \"0x21\": 0, \"0x22\": 84, \"0x23\": 43, \"0x24\": 191, \"0x25\": 35, \"0x26\": 75, \"0x27\": 115, \"0x28\": 175, \"0x29\": 33, \"0x2A\": 92, \"0x2B\": 105, \"0x2C\": 175, \"0x2D\": 4, \"0x2E\": 59, \"0x2F\": 167, \"0x30\": 111, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "1462-170138-0007-quiet.wav", "gain": 0, "device": null}
+mic record 7756 --settle 500 -o presence-1462-170138-0007-quiet-01.wav	"{\"rate\": 22050, \"samples\": 171019, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 0, \"0x1E\": 42, \"0x1F\": 223, \"0x20\": 92, \"0x21\": 0, \"0x22\": 84, \"0x23\": 43, \"0x24\": 191, \"0x25\": 35, \"0x26\": 75, \"0x27\": 115, \"0x28\": 175, \"0x29\": 33, \"0x2A\": 92, \"0x2B\": 105, \"0x2C\": 175, \"0x2D\": 4, \"0x2E\": 59, \"0x2F\": 167, \"0x30\": 111, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "1462-170138-0007-quiet.wav", "gain": 0, "device": null}
+mic record 7756 --settle 500 -o presence-1462-170138-0007-quiet-02.wav	"{\"rate\": 22050, \"samples\": 171019, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 0, \"0x1E\": 42, \"0x1F\": 223, \"0x20\": 92, \"0x21\": 0, \"0x22\": 84, \"0x23\": 43, \"0x24\": 191, \"0x25\": 35, \"0x26\": 75, \"0x27\": 115, \"0x28\": 175, \"0x29\": 33, \"0x2A\": 92, \"0x2B\": 105, \"0x2C\": 175, \"0x2D\": 4, \"0x2E\": 59, \"0x2F\": 167, \"0x30\": 111, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+material	"1462-170138-0007-noise"
+host-play	{"wav": "1462-170138-0007-noise.wav", "gain": 0, "device": null}
+mic record 7756 --settle 500 -o presence-1462-170138-0007-noise-00.wav	"{\"rate\": 22050, \"samples\": 171019, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 0, \"0x1E\": 42, \"0x1F\": 223, \"0x20\": 92, \"0x21\": 0, \"0x22\": 84, \"0x23\": 43, \"0x24\": 191, \"0x25\": 35, \"0x26\": 75, \"0x27\": 115, \"0x28\": 175, \"0x29\": 33, \"0x2A\": 92, \"0x2B\": 105, \"0x2C\": 175, \"0x2D\": 4, \"0x2E\": 59, \"0x2F\": 167, \"0x30\": 111, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "1462-170138-0007-noise.wav", "gain": 0, "device": null}
+mic record 7756 --settle 500 -o presence-1462-170138-0007-noise-01.wav	"{\"rate\": 22050, \"samples\": 171019, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 0, \"0x1E\": 42, \"0x1F\": 223, \"0x20\": 92, \"0x21\": 0, \"0x22\": 84, \"0x23\": 43, \"0x24\": 191, \"0x25\": 35, \"0x26\": 75, \"0x27\": 115, \"0x28\": 175, \"0x29\": 33, \"0x2A\": 92, \"0x2B\": 105, \"0x2C\": 175, \"0x2D\": 4, \"0x2E\": 59, \"0x2F\": 167, \"0x30\": 111, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "1462-170138-0007-noise.wav", "gain": 0, "device": null}
+mic record 7756 --settle 500 -o presence-1462-170138-0007-noise-02.wav	"{\"rate\": 22050, \"samples\": 171019, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 0, \"0x1E\": 42, \"0x1F\": 223, \"0x20\": 92, \"0x21\": 0, \"0x22\": 84, \"0x23\": 43, \"0x24\": 191, \"0x25\": 35, \"0x26\": 75, \"0x27\": 115, \"0x28\": 175, \"0x29\": 33, \"0x2A\": 92, \"0x2B\": 105, \"0x2C\": 175, \"0x2D\": 4, \"0x2E\": 59, \"0x2F\": 167, \"0x30\": 111, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+material	"174-168635-0006-quiet"
+host-play	{"wav": "174-168635-0006-quiet.wav", "gain": 0, "device": null}
+mic record 9071 --settle 500 -o presence-174-168635-0006-quiet-00.wav	"{\"rate\": 22050, \"samples\": 200015, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 0, \"0x1E\": 42, \"0x1F\": 223, \"0x20\": 92, \"0x21\": 0, \"0x22\": 84, \"0x23\": 43, \"0x24\": 191, \"0x25\": 35, \"0x26\": 75, \"0x27\": 115, \"0x28\": 175, \"0x29\": 33, \"0x2A\": 92, \"0x2B\": 105, \"0x2C\": 175, \"0x2D\": 4, \"0x2E\": 59, \"0x2F\": 167, \"0x30\": 111, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "174-168635-0006-quiet.wav", "gain": 0, "device": null}
+mic record 9071 --settle 500 -o presence-174-168635-0006-quiet-01.wav	"{\"rate\": 22050, \"samples\": 200015, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 0, \"0x1E\": 42, \"0x1F\": 223, \"0x20\": 92, \"0x21\": 0, \"0x22\": 84, \"0x23\": 43, \"0x24\": 191, \"0x25\": 35, \"0x26\": 75, \"0x27\": 115, \"0x28\": 175, \"0x29\": 33, \"0x2A\": 92, \"0x2B\": 105, \"0x2C\": 175, \"0x2D\": 4, \"0x2E\": 59, \"0x2F\": 167, \"0x30\": 111, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "174-168635-0006-quiet.wav", "gain": 0, "device": null}
+mic record 9071 --settle 500 -o presence-174-168635-0006-quiet-02.wav	"{\"rate\": 22050, \"samples\": 200015, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 0, \"0x1E\": 42, \"0x1F\": 223, \"0x20\": 92, \"0x21\": 0, \"0x22\": 84, \"0x23\": 43, \"0x24\": 191, \"0x25\": 35, \"0x26\": 75, \"0x27\": 115, \"0x28\": 175, \"0x29\": 33, \"0x2A\": 92, \"0x2B\": 105, \"0x2C\": 175, \"0x2D\": 4, \"0x2E\": 59, \"0x2F\": 167, \"0x30\": 111, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+material	"174-168635-0006-noise"
+host-play	{"wav": "174-168635-0006-noise.wav", "gain": 0, "device": null}
+mic record 9071 --settle 500 -o presence-174-168635-0006-noise-00.wav	"{\"rate\": 22050, \"samples\": 200015, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 0, \"0x1E\": 42, \"0x1F\": 223, \"0x20\": 92, \"0x21\": 0, \"0x22\": 84, \"0x23\": 43, \"0x24\": 191, \"0x25\": 35, \"0x26\": 75, \"0x27\": 115, \"0x28\": 175, \"0x29\": 33, \"0x2A\": 92, \"0x2B\": 105, \"0x2C\": 175, \"0x2D\": 4, \"0x2E\": 59, \"0x2F\": 167, \"0x30\": 111, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "174-168635-0006-noise.wav", "gain": 0, "device": null}
+mic record 9071 --settle 500 -o presence-174-168635-0006-noise-01.wav	"{\"rate\": 22050, \"samples\": 200015, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 0, \"0x1E\": 42, \"0x1F\": 223, \"0x20\": 92, \"0x21\": 0, \"0x22\": 84, \"0x23\": 43, \"0x24\": 191, \"0x25\": 35, \"0x26\": 75, \"0x27\": 115, \"0x28\": 175, \"0x29\": 33, \"0x2A\": 92, \"0x2B\": 105, \"0x2C\": 175, \"0x2D\": 4, \"0x2E\": 59, \"0x2F\": 167, \"0x30\": 111, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+host-play	{"wav": "174-168635-0006-noise.wav", "gain": 0, "device": null}
+mic record 9071 --settle 500 -o presence-174-168635-0006-noise-02.wav	"{\"rate\": 22050, \"samples\": 200015, \"automute\": [], \"regs\": {\"0x14\": 26, \"0x15\": 64, \"0x16\": 1, \"0x17\": 191, \"0x18\": 0, \"0x19\": 0, \"0x1A\": 0, \"0x1B\": 10, \"0x1C\": 42, \"0x1D\": 0, \"0x1E\": 42, \"0x1F\": 223, \"0x20\": 92, \"0x21\": 0, \"0x22\": 84, \"0x23\": 43, \"0x24\": 191, \"0x25\": 35, \"0x26\": 75, \"0x27\": 115, \"0x28\": 175, \"0x29\": 33, \"0x2A\": 92, \"0x2B\": 105, \"0x2C\": 175, \"0x2D\": 4, \"0x2E\": 59, \"0x2F\": 167, \"0x30\": 111, \"0x31\": 0, \"0x32\": 168, \"0x33\": 0, \"0x34\": 4, \"0x35\": 34, \"0x36\": 0, \"0x37\": 40}, \"writes\": [], \"tones\": []}"
+tone 300 500 30	{"hz": 300, "tone_db": -31.1, "silence_db": -111.7, "noise_dbfs": -72.0, "heard": true, "open_dma_bytes": 1452, "path": "acoustic", "thd_db": -33.2, "peak_dbfs": -30.7, "measured_hz": null, "hz_error": null, "shake_rms_mg": 3.78, "shake_peak_mg": 7.55, "silence_shake_rms_mg": 2.16}
+tone 300 500 30	{"hz": 300, "tone_db": -33.2, "silence_db": -101.4, "noise_dbfs": -69.8, "heard": true, "open_dma_bytes": 1452, "path": "acoustic", "thd_db": -34.1, "peak_dbfs": -16.2, "measured_hz": null, "hz_error": null, "shake_rms_mg": 3.76, "shake_peak_mg": 6.82, "silence_shake_rms_mg": 2.08}
+tone 300 500 30	{"hz": 300, "tone_db": -31.1, "silence_db": -108.4, "noise_dbfs": -71.4, "heard": true, "open_dma_bytes": 1456, "path": "acoustic", "thd_db": -32.9, "peak_dbfs": -30.7, "measured_hz": null, "hz_error": null, "shake_rms_mg": 3.78, "shake_peak_mg": 7.28, "silence_shake_rms_mg": 2.09}
+tone 500 500 30	{"hz": 500, "tone_db": -19.2, "silence_db": -106.6, "noise_dbfs": -71.4, "heard": true, "open_dma_bytes": 1456, "path": "acoustic", "thd_db": -35.2, "peak_dbfs": -19.0, "measured_hz": 500.0, "hz_error": 0.0, "shake_rms_mg": 16.0, "shake_peak_mg": 23.03, "silence_shake_rms_mg": 2.19}
+tone 500 500 30	{"hz": 500, "tone_db": -19.2, "silence_db": -113.8, "noise_dbfs": -71.4, "heard": true, "open_dma_bytes": 1456, "path": "acoustic", "thd_db": -35.2, "peak_dbfs": -19.0, "measured_hz": 500.0, "hz_error": 0.0, "shake_rms_mg": 15.86, "shake_peak_mg": 22.76, "silence_shake_rms_mg": 2.16}
+tone 500 500 30	{"hz": 500, "tone_db": -19.2, "silence_db": -111.2, "noise_dbfs": -71.4, "heard": true, "open_dma_bytes": 1456, "path": "acoustic", "thd_db": -35.1, "peak_dbfs": -19.0, "measured_hz": 500.01, "hz_error": 0.009999999999990905, "shake_rms_mg": 15.4, "shake_peak_mg": 21.07, "silence_shake_rms_mg": 2.01}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.0, "silence_db": -106.1, "noise_dbfs": -71.4, "heard": true, "open_dma_bytes": 1456, "path": "acoustic", "thd_db": -10.8, "peak_dbfs": -13.2, "measured_hz": 1000.0, "hz_error": 0.0, "shake_rms_mg": 2.63, "shake_peak_mg": 5.09, "silence_shake_rms_mg": 2.15}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.0, "silence_db": -103.2, "noise_dbfs": -71.4, "heard": true, "open_dma_bytes": 1456, "path": "acoustic", "thd_db": -10.8, "peak_dbfs": -13.2, "measured_hz": 1000.0, "hz_error": 0.0, "shake_rms_mg": 2.62, "shake_peak_mg": 4.67, "silence_shake_rms_mg": 2.22}
+tone 1000 500 30	{"hz": 1000, "tone_db": -14.0, "silence_db": -99.2, "noise_dbfs": -71.4, "heard": true, "open_dma_bytes": 1456, "path": "acoustic", "thd_db": -10.8, "peak_dbfs": -13.2, "measured_hz": 1000.0, "hz_error": 0.0, "shake_rms_mg": 2.57, "shake_peak_mg": 4.95, "silence_shake_rms_mg": 1.96}
+tone 2000 500 30	{"hz": 2000, "tone_db": -17.0, "silence_db": -113.6, "noise_dbfs": -71.4, "heard": true, "open_dma_bytes": 1456, "path": "acoustic", "thd_db": -41.2, "peak_dbfs": -16.9, "measured_hz": 2000.0, "hz_error": 0.0, "shake_rms_mg": 3.68, "shake_peak_mg": 11.2, "silence_shake_rms_mg": 2.06}
+tone 2000 500 30	{"hz": 2000, "tone_db": -17.3, "silence_db": -114.2, "noise_dbfs": -72.2, "heard": true, "open_dma_bytes": 1456, "path": "acoustic", "thd_db": -36.2, "peak_dbfs": -16.9, "measured_hz": 1999.99, "hz_error": -0.009999999999990905, "shake_rms_mg": 3.45, "shake_peak_mg": 9.08, "silence_shake_rms_mg": 2.05}
+tone 2000 500 30	{"hz": 2000, "tone_db": -17.0, "silence_db": -120.0, "noise_dbfs": -71.4, "heard": true, "open_dma_bytes": 1456, "path": "acoustic", "thd_db": -41.1, "peak_dbfs": -16.9, "measured_hz": 2000.0, "hz_error": 0.0, "shake_rms_mg": 3.3, "shake_peak_mg": 8.06, "silence_shake_rms_mg": 2.12}
+tone 3000 500 30	{"hz": 3000, "tone_db": -23.2, "silence_db": -106.6, "noise_dbfs": -69.9, "heard": true, "open_dma_bytes": 1456, "path": "acoustic", "thd_db": -47.1, "peak_dbfs": -23.1, "measured_hz": 3000.0, "hz_error": 0.0, "shake_rms_mg": 3.64, "shake_peak_mg": 7.72, "silence_shake_rms_mg": 1.93}
+tone 3000 500 30	{"hz": 3000, "tone_db": -23.2, "silence_db": -102.4, "noise_dbfs": -71.4, "heard": true, "open_dma_bytes": 1456, "path": "acoustic", "thd_db": -47.6, "peak_dbfs": -23.0, "measured_hz": 3000.0, "hz_error": 0.0, "shake_rms_mg": 3.47, "shake_peak_mg": 6.09, "silence_shake_rms_mg": 2.34}
+tone 3000 500 30	{"hz": 3000, "tone_db": -23.2, "silence_db": -103.6, "noise_dbfs": -71.9, "heard": true, "open_dma_bytes": 1456, "path": "acoustic", "thd_db": -47.2, "peak_dbfs": -23.0, "measured_hz": 3000.0, "hz_error": 0.0, "shake_rms_mg": 3.52, "shake_peak_mg": 7.79, "silence_shake_rms_mg": 2.14}
+tone 3400 500 30	{"hz": 3400, "tone_db": -26.8, "silence_db": -104.5, "noise_dbfs": -71.3, "heard": true, "open_dma_bytes": 1456, "path": "acoustic", "thd_db": -41.0, "peak_dbfs": -26.6, "measured_hz": 3400.0, "hz_error": 0.0, "shake_rms_mg": 3.38, "shake_peak_mg": 9.5, "silence_shake_rms_mg": 2.33}
+tone 3400 500 30	{"hz": 3400, "tone_db": -26.8, "silence_db": -104.2, "noise_dbfs": -71.3, "heard": true, "open_dma_bytes": 1456, "path": "acoustic", "thd_db": -40.6, "peak_dbfs": -26.4, "measured_hz": 3400.0, "hz_error": 0.0, "shake_rms_mg": 2.86, "shake_peak_mg": 6.61, "silence_shake_rms_mg": 2.13}
+tone 3400 500 30	{"hz": 3400, "tone_db": -26.8, "silence_db": -99.9, "noise_dbfs": -71.3, "heard": true, "open_dma_bytes": 1456, "path": "acoustic", "thd_db": -40.8, "peak_dbfs": -26.5, "measured_hz": 3400.0, "hz_error": 0.0, "shake_rms_mg": 3.05, "shake_peak_mg": 6.52, "silence_shake_rms_mg": 2.17}
+buildid	{"build_id": "69835725655c-dev"}
+sound stop all	"SOUND_END stopped"
+tune reset mic.eq	"mic.eq=0"
+tune reset mic.alc	"mic.alc=0"
+tune reset mic.alc_max	"mic.alc_max=0"
+tune reset mic.alc_min	"mic.alc_min=0"
+tune reset mic.alc_win	"mic.alc_win=0"
+tune reset mic.alc_gain	"mic.alc_gain=191"
+tune reset mic.gate	"mic.gate=0"
+tune reset mic.gate_ng	"mic.gate_ng=0"
+tune reset mic.gate_win	"mic.gate_win=0"
+tune reset mic.gate_depth	"mic.gate_depth=0"
+tune reset mic.hpf	"mic.hpf=1"
+tune reset mic.hpf_s1	"mic.hpf_s1=10"
+tune reset mic.hpf_s2	"mic.hpf_s2=10"
+tune reset audio.drc	"audio.drc=1"
+codec 0x1c 0x6a	"CODEC reg=0x1C value=0x6A"
+codec 0x37 0x28	"CODEC reg=0x37 value=0x28"
+codec 0x16 0x24	"CODEC reg=0x16 value=0x24"
+codec 0x1b 0xa	"CODEC reg=0x1B value=0x0A"
+codec 0x1d 0x0	"CODEC reg=0x1D value=0x00"
+codec 0x1e 0x0	"CODEC reg=0x1E value=0x00"
+codec 0x1f 0x0	"CODEC reg=0x1F value=0x00"
+codec 0x20 0x0	"CODEC reg=0x20 value=0x00"
+codec 0x21 0x0	"CODEC reg=0x21 value=0x00"
+codec 0x22 0x0	"CODEC reg=0x22 value=0x00"
+codec 0x23 0x0	"CODEC reg=0x23 value=0x00"
+codec 0x24 0x0	"CODEC reg=0x24 value=0x00"
+codec 0x25 0x0	"CODEC reg=0x25 value=0x00"
+codec 0x26 0x0	"CODEC reg=0x26 value=0x00"
+codec 0x27 0x0	"CODEC reg=0x27 value=0x00"
+codec 0x28 0x0	"CODEC reg=0x28 value=0x00"
+codec 0x29 0x0	"CODEC reg=0x29 value=0x00"
+codec 0x2a 0x0	"CODEC reg=0x2A value=0x00"
+codec 0x2b 0x0	"CODEC reg=0x2B value=0x00"
+codec 0x2c 0x0	"CODEC reg=0x2C value=0x00"
+codec 0x2d 0x0	"CODEC reg=0x2D value=0x00"
+codec 0x2e 0x0	"CODEC reg=0x2E value=0x00"
+codec 0x2f 0x0	"CODEC reg=0x2F value=0x00"
+codec 0x30 0x0	"CODEC reg=0x30 value=0x00"
+codec 0x31 0x0	"CODEC reg=0x31 value=0x00"
+codec 0x38 0x0	"CODEC reg=0x38 value=0x00"
+codec 0x39 0x0	"CODEC reg=0x39 value=0x00"
+codec 0x3a 0x0	"CODEC reg=0x3A value=0x00"
+codec 0x3b 0x0	"CODEC reg=0x3B value=0x00"
+codec 0x3c 0x0	"CODEC reg=0x3C value=0x00"
+codec 0x3d 0x0	"CODEC reg=0x3D value=0x00"
+codec 0x3e 0x0	"CODEC reg=0x3E value=0x00"
+codec 0x3f 0x0	"CODEC reg=0x3F value=0x00"
+codec 0x40 0x0	"CODEC reg=0x40 value=0x00"
+codec 0x41 0x0	"CODEC reg=0x41 value=0x00"
+codec 0x42 0x0	"CODEC reg=0x42 value=0x00"
+codec 0x43 0x0	"CODEC reg=0x43 value=0x00"
+codec 0x1c 0x6a	"CODEC reg=0x1C value=0x6A"
+codec 0x37 0x28	"CODEC reg=0x37 value=0x28"
+codec 0x0 0x80	"CODEC reg=0x00 value=0x80"
+codec 0x0	"CODEC reg=0x00 value=0x80"
+codec 0x0 0x1f	"CODEC reg=0x00 value=0x1F"
+codec 0x0 0x0	"CODEC reg=0x00 value=0x00"
+codec 0x0 0x80	"CODEC reg=0x00 value=0x80"
+restart	{"values": [31, 0, 128]}
+codec 0x0 0x80	"CODEC reg=0x00 value=0x80"
+tune mic.eq 0	"mic.eq=0"
+tune mic.alc 0	"mic.alc=0"
+tune mic.alc_max 0	"mic.alc_max=0"
+tune mic.alc_min 0	"mic.alc_min=0"
+tune mic.alc_win 0	"mic.alc_win=0"
+tune mic.alc_gain 191	"mic.alc_gain=191"
+tune mic.gate 0	"mic.gate=0"
+tune mic.gate_ng 0	"mic.gate_ng=0"
+tune mic.gate_win 0	"mic.gate_win=0"
+tune mic.gate_depth 0	"mic.gate_depth=0"
+tune mic.hpf 1	"mic.hpf=1"
+tune mic.hpf_s1 10	"mic.hpf_s1=10"
+tune mic.hpf_s2 10	"mic.hpf_s2=10"
+tune audio.drc 1	"audio.drc=1"

@@ -12,7 +12,7 @@
 #include <stdint.h>
 
 #include "apps/sand/sand_colour_state.h"
-#include "gfx/target/gfx_color.h"
+#include "gfx/gfx.h"
 
 /* Two rows across a tile's width: its picture area is wider than tall. */
 #define SAND_SWATCH_ROWS       2
