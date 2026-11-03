@@ -69,11 +69,15 @@ def doc_headings(path):
     return heads
 
 
+# A link with a scheme (https:, mailto:) leaves the repository.
+SCHEME = re.compile(r"[a-z][a-z0-9+.-]*:", re.I)
+
+
 def resolved_link(page, target):
     """The repository path a link `target` on `page` names (both repository-relative, posix), or None for
     an empty link, one with a scheme (https:, mailto:) or one climbing out of the repository."""
     target = urllib.parse.unquote(target.split("#", 1)[0].split("?", 1)[0])
-    if not target or re.match(r"[a-z][a-z0-9+.-]*:", target, re.I):
+    if not target or SCHEME.match(target):
         return None
     path = posixpath.normpath(posixpath.join(posixpath.dirname(page), target))
     return None if path == ".." or path.startswith("../") else path
