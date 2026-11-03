@@ -85,16 +85,12 @@ class ShrinkGifTests(Folder):
         source = first_pixels(self.folder / "in.gif")
         self.assertEqual(first_pixels(out), [source[0], source[2], source[3]])
 
-    # shrink_gif's `delays[-2] += delays.pop()` pops before it stores, so the fold lands on the first
-    # frame's delay (an IndexError with two frames): expected to fail until that line is fixed.
-    @unittest.expectedFailure
     def test_a_short_last_frame_folds_into_the_one_before(self):
         out = self.shrunk([300, 400, 100], 200)
         self.assertEqual(figures.gif_delays(out), [300, 500])
         source = first_pixels(self.folder / "in.gif")
         self.assertEqual(first_pixels(out), source[:2])
 
-    @unittest.expectedFailure
     def test_a_short_last_frame_of_two_folds_into_the_first(self):
         out = self.shrunk([300, 100], 200)
         self.assertEqual(figures.gif_delays(out), [400])

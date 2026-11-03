@@ -227,7 +227,8 @@ def shrink_gif(source, out, width, min_frame_ms):
             delays.append(frame.info.get("duration", 0))
     if len(frames) > 1 and delays[-1] < min_frame_ms:
         frames.pop()
-        delays[-2] += delays.pop()
+        delays[-2] += delays[-1]
+        delays.pop()
     save_gif(frames, out, delays=delays)
 
 
