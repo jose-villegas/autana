@@ -44,7 +44,8 @@ import pathlib
 import re
 import sys
 
-from c_comments import balanced_end
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools"))
+from build.math_constants import macro_calls, split_args  # noqa: E402
 
 MATH = pathlib.Path("launcher/packages/math/include/math/linear")
 PAGE = pathlib.Path("docs/math/README.md")
@@ -100,17 +101,6 @@ def section(text, family):
 
 def read(path):
     return path.read_text(encoding="utf-8")
-
-
-def macro_calls(text):
-    text = re.sub(r"\\\r?\n", "", text)
-    for match in re.finditer(r"\b(MATH_\w+)\(", text):
-        end = balanced_end(text, match.end() - 1, "(", ")")
-        yield match[1], text[match.end():end - 1]
-
-
-def split_args(text):
-    return [a.strip() for a in text.split(",")]
 
 
 def instantiations(root):

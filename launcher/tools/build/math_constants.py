@@ -1,16 +1,71 @@
-"""Named aggregate math constants discovered from their defining headers."""
+"""Named aggregate math constants discovered from their defining headers.
+
+Standard library only: bake keys and the device tool reach this through c_header, so it must not pull in
+the gates (their requirements would join every mesh key, and their import-time scans read source)."""
+import ast
 import functools
+import operator
 import pathlib
 import re
-import sys
-
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3] / "scripts/gates"))
-from c_comments import blank_comments  # noqa: E402
-from c_constants import DEFINE, definitions, fold  # noqa: E402
-from check_package_docs import macro_calls, split_args  # noqa: E402
 
 
 MATH_HEADERS = "launcher/packages/math/include/math"
+# A string or char literal is kept, so a comment marker inside one is not taken for a comment.
+COMMENT = re.compile(r'"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'|/\*.*?\*/|//[^\n]*', re.S)
+INTEGER_DEFINE = re.compile(r"^[ \t]*#[ \t]*define[ \t]+([A-Za-z_]\w*)[ \t]+([^\n]+)$", re.M)
+OPERATORS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul,
+             ast.LShift: operator.lshift, ast.RShift: operator.rshift}
+
+
+def blank_comments(text):
+    """`text` with every comment blanked to spaces, newlines kept so offsets and lines hold."""
+    return COMMENT.sub(lambda m: m[0] if m[0][0] in "\"'" else re.sub(r"[^\n]", " ", m[0]), text)
+
+
+def macro_calls(text):
+    """(callee, argument text) of each MATH_* call in `text`, nested parentheses included."""
+    text = re.sub(r"\\\r?\n", "", text)
+    for match in re.finditer(r"\b(MATH_\w+)\(", text):
+        depth = 0
+        for end in range(match.end() - 1, len(text)):
+            depth += (text[end] == "(") - (text[end] == ")")
+            if depth == 0:
+                yield match[1], text[match.end():end]
+                break
+
+
+def split_args(text):
+    return [a.strip() for a in text.split(",")]
+
+
+def integer_defines(sources):
+    """Every #define in `sources` whose body folds to an integer, through the other defines it names."""
+    expressions = {m[1]: re.sub(r"[uUlL]+\b", "", m[2]).strip()
+                   for code in sources for m in INTEGER_DEFINE.finditer(code)}
+    values = {}
+
+    def fold(node, seen):
+        if isinstance(node, ast.Constant) and type(node.value) is int:
+            return node.value
+        if isinstance(node, ast.Name) and node.id in expressions and node.id not in seen:
+            return value(node.id, seen | {node.id})
+        if isinstance(node, ast.BinOp) and type(node.op) in OPERATORS:
+            return OPERATORS[type(node.op)](fold(node.left, seen), fold(node.right, seen))
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+            return -fold(node.operand, seen)
+        raise ValueError(node)
+
+    def value(name, seen):
+        if name not in values:
+            values[name] = fold(ast.parse(expressions[name], mode="eval").body, seen)
+        return values[name]
+
+    for name in expressions:
+        try:
+            value(name, {name})
+        except (SyntaxError, ValueError, TypeError):
+            values.pop(name, None)
+    return values
 
 
 def math_constant_table(root):
@@ -22,24 +77,13 @@ def math_constant_table(root):
 
 @functools.lru_cache(maxsize=8)
 def _math_constant_table(signature):
-    sources = {path: blank_comments(pathlib.Path(path).read_text(encoding="utf-8"), "code")
+    sources = {path: blank_comments(pathlib.Path(path).read_text(encoding="utf-8"))
                for path, _, _ in signature}
-    values = {}
-    pending = [d for path, code in sources.items() for d in definitions(str(path), code)
-               if d.kind == "define"]
-    for _ in range(len(pending)):
-        before = len(values)
-        for definition in pending:
-            value = fold(definition.expression, values)
-            if value is not None:
-                values[definition.name] = value
-        if len(values) == before:
-            break
+    values = integer_defines(sources.values())
     templates, macros = {}, {}
     for path, code in sources.items():
-        for macro in DEFINE.finditer(code):
-            body = re.sub(r"\\\r?\n", "", macro[2]).strip()
-            if body.startswith("{"):
+        for macro in INTEGER_DEFINE.finditer(re.sub(r"\\\r?\n", "", code)):
+            if macro[2].strip().startswith("{"):
                 macros[macro[1]] = macro[1].lower() + "()"
         code = re.sub(r"\\\r?\n", "", code)
         for definition in re.finditer(r"#define\s+(MATH_DEFINE_\w+)\(([^)]*)\)(.*?)(?=#define|\Z)", code, re.S):
