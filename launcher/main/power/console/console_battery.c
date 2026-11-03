@@ -31,10 +31,10 @@ console_verb_battery(const char* args, console_reply_fn reply) {
         default: break;
     }
     power_battery_t battery;
-    power_registers_t regs;
-    (void)power_read_battery_now(&battery, &regs);
+    power_raw_t raw;
+    (void)power_read_battery_now(&battery, &raw);
     char line[CONSOLE_BATTERY_REPLY_MAX];
-    console_battery_reply(line, sizeof line, &battery, &regs);
+    console_battery_reply(line, sizeof line, &battery, &raw);
     reply(line);
 }
 CONSOLE_VERB(battery, 0, console_verb_battery)
