@@ -179,7 +179,7 @@ discovery with no scene pairs fail the test. It writes `tour-model.json`
 (GraphWalker format) beside the serial log.
 
 - With scenes, the scene current right after OPEN is the landing state.
-- App transitions connect landing states and home; scene transitions connect every ordered pair within an app. Every edge changes state.
+- App transitions connect landing states and home. Scene transitions run once round a cycle of an app's scenes, so each is entered and left; `--tour-pairs` connects every ordered pair instead, which grows with the square of the scenes. Every edge changes state.
 - NetworkX loads the written model and its `eulerian_circuit` visits every edge, no JVM needed.
 
 ```mermaid
@@ -207,7 +207,7 @@ fresh `scenes` query, and every edge needs a `BUILDID` heartbeat. Crash and
 reset patterns come from `scripts/lib/device_capture.py` and apply to every
 expectation, the Unity summary included.
 
-CI runs the suite, recipes and tour against the instruction ratchet's shell
+CI runs the suite, recipes and the cycle tour against the instruction ratchet's shell
 build and uploads the pytest logs and model. Board CI runs pytest after
 selftest in the same hold, flashing the shell image with Unity suites first,
 and uploads both captures.
