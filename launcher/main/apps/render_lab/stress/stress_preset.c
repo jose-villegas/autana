@@ -5,10 +5,10 @@
 #include "math/geometry/primitive_mesh.h"
 #include "math/scalar/math_const.h"
 
-#define STRESS_PRESET_PARAMS(context_, id_, key_, label_, per_frame_, shape_, cuts_, copies_, layout_, coverage_)      \
+#define STRESS_PRESET_PARAMS(id_, key_, per_frame_, shape_, cuts_, copies_, layout_, coverage_)                        \
     [STRESS_##id_] = {shape_, cuts_, copies_, layout_, coverage_, per_frame_},
 
-const stress_params_t stress_presets[STRESS_PRESET_COUNT] = {STRESS_PRESETS(STRESS_PRESET_PARAMS, )};
+const stress_params_t stress_presets[STRESS_PRESET_COUNT] = {STRESS_PRESETS(STRESS_PRESET_PARAMS)};
 
 /* The share of its cell a wall copy fills: the rest is the gap that keeps
  * copies apart, so nothing on a wall covers anything. */

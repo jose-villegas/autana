@@ -312,11 +312,7 @@ draw(const provider_frame_t* frame) {
     app_list()->frame(frame->dt_ms, &in);
     report_overdraw(frame);
     if (counts != NULL) {
-        render_counts_row(counts, frame);
-        if (frame->index + 1 == frame->count) {
-            (void)fclose(counts);
-            counts = NULL;
-        }
+        render_counts_row(&counts, frame);
     }
     if (dump_dir != NULL) {
         dump_raster(frame->index);

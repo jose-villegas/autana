@@ -163,18 +163,6 @@ active_camera(const scene_t* scene) {
     return SCENE_ENTITY_NONE;
 }
 
-/* A per-frame CSV with its header written; NULL, said on stderr, when it cannot be made. */
-static FILE*
-open_rows(const char* path, const char* header) {
-    FILE* rows = fopen(path, "w");
-    if (rows == NULL) {
-        fprintf(stderr, "scene_viewer: cannot write %s\n", path);
-        return NULL;
-    }
-    fprintf(rows, "%s\n", header);
-    return rows;
-}
-
 int
 display_quarter_now(void) {
     return shell_quarter;
@@ -226,7 +214,8 @@ setup(int quarter) {
         scene_unload(scene);
         return false;
     }
-    if (poses_path != NULL && (poses = open_rows(poses_path, "frame,ms,px,py,pz,qx,qy,qz,qw")) == NULL) {
+    if (poses_path != NULL
+        && (poses = render_rows_open(poses_path, "frame,ms,px,py,pz,qx,qy,qz,qw", "scene_viewer")) == NULL) {
         if (counts != NULL) {
             fclose(counts);
             counts = NULL;
@@ -247,11 +236,7 @@ static void
 draw(const provider_frame_t* frame) {
     const bool last = frame->index + 1 == frame->count;
     if (counts != NULL) {
-        render_counts_row(counts, frame);
-        if (last) {
-            fclose(counts);
-            counts = NULL;
-        }
+        render_counts_row(&counts, frame);
     }
     if (poses != NULL) {
         const transformf_t world = scene_entity_world(shown, camera);

@@ -136,28 +136,31 @@ Source: `water-stages-board.log`
 
 The Stress family is one generated shape, shown in copies before a camera
 that swings round them. Each preset is the case where a render option should
-lose, beside one where it should win. As with a module copied N times to make
-depth complexity a parameter<sup>[[112]](../../../../../docs/Citations.md#greene-1993)</sup>,
-an option is judged by where it breaks even, not by one scene's speed-up.
+lose, beside one where it should win. Hierarchical Z-buffer visibility was
+tested on one module replicated on a grid<sup>[[112]](../../../../../docs/Citations.md#greene-1993)</sup>;
+here the copies are generated at run time, and what is judged is r3d's render
+options, each by where it stops paying.
 
-| Preset | Scene key | Made of | Loss case of |
+| Scene key | As the swing starts | Made of | Loss case of |
 |---|---|---|---|
-| ![Open](../../../../../docs/images/overview/render-lab-stress-open.png) | `stress-open` | 16 grids side by side | hidden-cluster skip and cluster cull: nothing hides and nothing is off screen |
-| ![Stack](../../../../../docs/images/overview/render-lab-stress-stack.png) | `stress-stack` | 8 grids one behind another | the skip's win, and the depth cost of the debug views |
-| ![Tiny copies](../../../../../docs/images/overview/render-lab-stress-tiny-copies.png) | `stress-tiny-copies` | 64 small spheres | dynres, present and render scale: per-triangle setup dominates below about 10 px<sup>[[113]](../../../../../docs/Citations.md#giesen-2013)</sup>, and per-copy cost below a hundred or so triangles<sup>[[114]](../../../../../docs/Citations.md#wloka-2003)</sup> |
-| ![Big tris](../../../../../docs/images/overview/render-lab-stress-big-tris.png) | `stress-big-tris` | 8 triangles over most of the picture | small fill and batching |
-| ![Per frame](../../../../../docs/images/overview/render-lab-stress-per-frame.png) | `stress-per-frame` | one grid made again every frame, a wave running over it | frame generation and the mesh build |
+| `stress-open` | ![Stress open: a wall of grids side by side](../../../../../docs/images/overview/render-lab-stress-open.png) | a wall of grids side by side | hidden-cluster skip and cluster cull: nothing hides and nothing is off screen |
+| `stress-stack` | ![Stress stack: grids one behind another](../../../../../docs/images/overview/render-lab-stress-stack.png) | grids one behind another | the skip's win, and the depth cost of the debug views |
+| `stress-tiny-copies` | ![Stress tiny copies: many small spheres](../../../../../docs/images/overview/render-lab-stress-tiny-copies.png) | many small spheres | dynres, present and render scale: below about 10 px smarter traversal stops paying<sup>[[113]](../../../../../docs/Citations.md#giesen-2013)</sup>, and per-copy cost rules small batches<sup>[[114]](../../../../../docs/Citations.md#wloka-2003)</sup> |
+| `stress-big-tris` | ![Stress big tris: a few triangles over most of the picture](../../../../../docs/images/overview/render-lab-stress-big-tris.png) | a few triangles over most of the picture | small fill and batching |
+| `stress-per-frame` | ![Stress per frame: one grid with a wave running over it](../../../../../docs/images/overview/render-lab-stress-per-frame.png) | one grid made again every frame, a wave running over it | the mesh build, every frame |
 
 | Part | Owner |
 |---|---|
 | Presets, the one table | `stress/stress_preset.h` `STRESS_PRESETS` |
 | Each copy's shape | `math/geometry/primitive_mesh.h` |
 | One mesh every copy draws | `render/dynamic/r3d_dynamic_mesh.h` |
-| The camera's swing and a pool of 64 copies | `launcher/demo/stress/` |
+| The camera's swing, a still camera at its start, and a pool of copies | `launcher/demo/stress/` |
 | Each preset's sizes, by the renderer's own limits | [`tests/suite_stress_preset.c`](../tests/suite_stress_preset.c) |
 | Each preset's corner in a render, by the cull counts | [`tools/tests/test_stress_corners.py`](tests/test_stress_corners.py) |
 
-`render_lab_render --view cull --counts FILE` writes those counts, one CSV row a frame.
+`render_lab_render --view cull --counts FILE` writes the cull view's counts
+(`raster_cull_frame_t`), one CSV row a frame; `--camera still` holds the
+camera, so a frame differs from the last only where the mesh moved.
 
 ### Small fill
 

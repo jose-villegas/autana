@@ -1,7 +1,7 @@
 /*
  * primitive_mesh: standard shapes as indexed triangle meshes, for geometry
- * made at run time: a square grid and a latitude-longitude sphere, each one
- * unit in size and tessellated by one count. Each triangle winds
+ * made at run time: a square grid of side 1 and a latitude-longitude sphere
+ * of radius 1, each tessellated by one count. Each triangle winds
  * counter-clockwise about its outward normal in a right-handed frame, as
  * iso_surface.h winds its own: (b - a) x (c - a) points out of the front.
  *

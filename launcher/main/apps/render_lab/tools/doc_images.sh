@@ -84,7 +84,7 @@ run "$W/render_lab_render" --quarter 1 --no-hud --scene water --small-fill "$WAT
 run "$PYTHON" launcher/tools/docs/figures.py gif "$W/water-swing.avi" "$OUT/render-lab-water.gif" --fps 15
 
 # Each stress preset as its swing starts, in the order stress_preset.h lists them.
-for key in $(sed -n 's/^ *X(context, [A-Z_]*, "\([^"]*\)".*/\1/p' launcher/main/apps/render_lab/stress/stress_preset.h); do
+for key in $(sed -n 's/^ *X([A-Z_]*, "\([^"]*\)".*/\1/p' launcher/main/apps/render_lab/stress/stress_preset.h); do
     run "$W/render_lab_render" --quarter 1 --no-hud --scene "stress-$key" --frames 2 -o "$W/stress-$key.bmp" \
         2> "$W/stress-$key.log"
     run "$PYTHON" launcher/tools/docs/figures.py png "$W/stress-$key.bmp" "$OUT/render-lab-stress-$key.png"

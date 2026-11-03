@@ -5,6 +5,7 @@
  * renderer's own limits at the size render_lab draws at.
  */
 
+#include <float.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,12 +22,17 @@
 
 /* Any framing: a preset is laid out in proportion to it. */
 static const stress_framing_t framing = {10.0F, 0.5F};
+/* Another, nearer and wider, to hold a layout to that proportion. */
+static const stress_framing_t other_framing = {3.0F, 1.25F};
 
 /* The picture's short side at render_lab's default render scale. */
 #define DEFAULT_SHORT_PX (GFX_WIDTH * RENDER_LAB_SCALE_UNIT / RENDER_LAB_SCALE_DEFAULT)
 
 /* A per-frame wave's quarter period in: far enough along that every vertex moves. */
 #define WAVE_LATER_MS    500
+/* Steps through a wave period and past its wrap, each a frame's time. */
+#define WAVE_STEP_MS     16
+#define WAVE_STEPS       160
 
 typedef struct {
     stress_buffers_t at[2];
@@ -110,6 +116,25 @@ test_every_preset_mesh_fits_a_dynamic_mesh(void) {
     }
 }
 
+/* A per-frame preset's mesh fits its dynamic mesh at every step of its wave, past the period's wrap. */
+static void
+test_a_per_frame_mesh_fits_all_through_its_wave(void) {
+    const stress_params_t* p = &stress_presets[STRESS_PER_FRAME];
+    fixture_begin(p);
+    const r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(stress_vertex_count(p), stress_triangle_count(p));
+    const size_t bytes = r3d_dynamic_mesh_bytes(capacity);
+    f.mesh_block = malloc(bytes);
+    TEST_ASSERT_NOT_NULL(f.mesh_block);
+    r3d_dynamic_mesh_t mesh;
+    TEST_ASSERT_TRUE(r3d_dynamic_mesh_init(&mesh, f.mesh_block, bytes, capacity, STRESS_TICKS_PER_UNIT));
+    for (int step = 0; step < WAVE_STEPS; step++) {
+        r3d_dynamic_source_t source;
+        TEST_ASSERT_TRUE(stress_source(p, (uint32_t)(step * WAVE_STEP_MS), &f.at[0], &source));
+        TEST_ASSERT_TRUE(r3d_dynamic_mesh_build(&mesh, &source));
+    }
+    release();
+}
+
 /* A per-frame preset's mesh moves with time; a still one's never does. */
 static void
 test_only_a_per_frame_preset_moves(void) {
@@ -157,6 +182,38 @@ test_open_has_nothing_to_hide_or_cull(void) {
     }
 }
 
+/* Every preset fills the same share of the picture however the camera frames it, so its triangles keep their size. */
+static void
+test_every_layout_scales_with_its_framing(void) {
+    const float seen = framing.distance * framing.half_fov_short_tan;
+    const float other_seen = other_framing.distance * other_framing.half_fov_short_tan;
+    for (int i = 0; i < STRESS_PRESET_COUNT; i++) {
+        const stress_params_t* p = &stress_presets[i];
+        for (int copy = 0; copy < p->copies; copy++) {
+            const transformf_t a = stress_copy_place(p, copy, framing);
+            const transformf_t b = stress_copy_place(p, copy, other_framing);
+            TEST_ASSERT_FLOAT_WITHIN(FLT_EPSILON, a.scale.x / seen, b.scale.x / other_seen);
+            TEST_ASSERT_FLOAT_WITHIN(FLT_EPSILON, a.position.x / seen, b.position.x / other_seen);
+            TEST_ASSERT_FLOAT_WITHIN(FLT_EPSILON, a.position.y / seen, b.position.y / other_seen);
+        }
+    }
+}
+
+/* A wall whose copies do not fill its last row still keeps every copy apart and in view. */
+static void
+test_a_ragged_wall_keeps_copies_apart(void) {
+    stress_params_t p = stress_presets[STRESS_OPEN];
+    p.copies = 5; /* 3 columns, the second row short */
+    const float seen = framing.distance * framing.half_fov_short_tan;
+    for (int i = 0; i < p.copies; i++) {
+        const copy_box_t a = copy_box(&p, i);
+        TEST_ASSERT_TRUE(fabsf(a.x) + a.half <= seen && fabsf(a.y) + a.half <= seen);
+        for (int j = i + 1; j < p.copies; j++) {
+            TEST_ASSERT_TRUE(apart(a, copy_box(&p, j)));
+        }
+    }
+}
+
 /* Stack: every copy the same square, each further from the camera: depth complexity is the copy count. */
 static void
 test_stack_puts_every_copy_behind_the_last(void) {
@@ -192,7 +249,10 @@ void
 run_stress_preset_suite(void) {
     RUN_TEST(test_every_preset_mesh_is_whole_and_repeats);
     RUN_TEST(test_every_preset_mesh_fits_a_dynamic_mesh);
+    RUN_TEST(test_a_per_frame_mesh_fits_all_through_its_wave);
     RUN_TEST(test_only_a_per_frame_preset_moves);
+    RUN_TEST(test_every_layout_scales_with_its_framing);
+    RUN_TEST(test_a_ragged_wall_keeps_copies_apart);
     RUN_TEST(test_open_has_nothing_to_hide_or_cull);
     RUN_TEST(test_stack_puts_every_copy_behind_the_last);
     RUN_TEST(test_tiny_copies_are_many_and_drawn_flat);

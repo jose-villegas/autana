@@ -233,10 +233,10 @@ crossing sample edge.
 ## primitive_mesh
 
 Standard shapes as indexed triangles, for geometry made at run time: a
-square grid and a latitude-longitude sphere, each one unit in size and
+square grid of side 1 and a latitude-longitude sphere of radius 1, each
 tessellated by one count.
 
-| Function | Purpose |
+| Name | Purpose |
 |---|---|
 | `primitive_mesh_t` | Caller-owned positions and triangles, with capacities and counts |
 | `primitive_grid` | The unit square about the origin at z = 0, facing +z, in `cells` × `cells` squares cut in two |
