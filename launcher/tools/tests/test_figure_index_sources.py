@@ -5,23 +5,16 @@ import io
 import pathlib
 import subprocess
 import sys
-import tempfile
 import unittest
 
 from PIL import Image
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "docs"))
 import figure_index  # noqa: E402
+from test_figure_index import PAGE, Tree, write  # noqa: E402
 from figures import gif_delays, save_gif  # noqa: E402
 
-PAGE = (f"# Figures\n\n<!-- generated: {figure_index.BLOCK} check: {figure_index.CHECK} -->\n"
-        f"<!-- /generated: {figure_index.BLOCK} -->\n")
 HOME = "docs/math/Page.md"
-
-
-def write(path, text):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8", newline="\n")
 
 
 def made(*names):
@@ -74,25 +67,6 @@ class EmbeddedSpellingTests(unittest.TestCase):
                 '![n](../images/math/a.png)\n')
         self.assertEqual([image for image, _ in self.embedded(text)],
                          [f"docs/images/math/{name}" for name in ("h.png", "m.png", "z.png", "a.png")])
-
-
-class Tree(unittest.TestCase):
-    """A checkout outside git: docs/images/math/wide.png and narrow.png, a GIF, and pages that show them."""
-
-    def setUp(self):
-        directory = tempfile.TemporaryDirectory()
-        self.addCleanup(directory.cleanup)
-        self.root = pathlib.Path(directory.name)
-        write(self.root / figure_index.PAGE, PAGE)
-        (self.root / "docs/images/math").mkdir(parents=True)
-        Image.new("RGB", (400, 100), "white").save(self.root / "docs/images/math/wide.png")
-        Image.new("RGB", (40, 10), "black").save(self.root / "docs/images/math/narrow.png")
-        frames = [Image.new("RGB", (320, 80), colour) for colour in ("red", "green", "blue", "white")]
-        save_gif(frames, self.root / "docs/images/anim/spin.gif", 100)
-
-    def snapshot(self):
-        return {path.relative_to(self.root).as_posix(): path.read_bytes()
-                for path in sorted(self.root.rglob("*")) if path.is_file()}
 
 
 class ShowingsTests(Tree):

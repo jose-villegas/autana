@@ -1,7 +1,6 @@
 """save_gif writes the frame delays it is given, and shrink_gif merges short frames without changing a GIF's length."""
 import pathlib
 import sys
-import tempfile
 import unittest
 
 import numpy as np
@@ -9,6 +8,7 @@ from PIL import Image, ImageSequence
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from docs import figures  # noqa: E402
+import test_figures  # noqa: E402
 
 # Consecutive frames differ, so Pillow does not merge two into one on saving.
 COLOURS = ("red", "green", "blue", "white", "black", "yellow")
@@ -24,12 +24,7 @@ def first_pixels(path):
         return [frame.convert("RGB").getpixel((0, 0)) for frame in ImageSequence.Iterator(gif)]
 
 
-class Folder(unittest.TestCase):
-    def setUp(self):
-        directory = tempfile.TemporaryDirectory()
-        self.addCleanup(directory.cleanup)
-        self.folder = pathlib.Path(directory.name)
-
+class Folder(test_figures.Folder):
     def shrunk(self, delays, min_ms, width=160, size=(40, 20)):
         gif_of(self.folder / "in.gif", delays, size)
         figures.shrink_gif(self.folder / "in.gif", self.folder / "out.gif", width, min_ms)
