@@ -12,8 +12,8 @@
 #   ./launcher/tools/render/render_doc_images.sh --stage board --capture PATH [--check]
 #   ./launcher/tools/render/render_doc_images.sh --stage meshlets [--check]
 #
-# Needs host C and C++ compilers, Python with Pillow and numpy, ffmpeg 5.1
-# or newer, and the initialized meshoptimizer submodule for scratch bakes.
+# Needs host C and C++ compilers, Python with Pillow and numpy, ffmpeg for
+# the comparison videos, and the initialized meshoptimizer submodule for scratch bakes.
 # Runs in Git Bash on Windows and on Linux.
 #
 # This makes the launcher and UI toolkit images itself and then runs every
@@ -35,8 +35,8 @@
 # generated_blocks.py rewrites the matching named blocks; --check compares
 # them without writing.
 #
-# Every GIF is drawn from figures.py's one palette, so a GIF's pixels do not
-# depend on the OS or on the ffmpeg version.
+# Every GIF is drawn from the one palette in figures.py, so its pixels are
+# the same on every OS.
 
 set -eu
 

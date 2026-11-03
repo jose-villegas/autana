@@ -107,7 +107,7 @@ The CPU stage makes the launcher's and the UI toolkit's images, runs each app's
 ```
 
 It needs host C and C++ compilers, Python with Pillow and numpy, and ffmpeg
-5.1 or newer. Scratch bakes need the pinned meshoptimizer submodule:
+for the comparison videos. Scratch bakes need the pinned meshoptimizer submodule:
 
 ```sh
 git submodule update --init --depth 1 third_party/upstream/meshoptimizer

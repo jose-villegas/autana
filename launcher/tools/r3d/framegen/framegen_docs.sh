@@ -16,7 +16,7 @@
 # runs it that way.
 #
 # Run from the repository root with $PYTHON set to a Python with Pillow,
-# numpy and matplotlib, and ffmpeg on PATH.
+# numpy and matplotlib.
 
 set -eu
 

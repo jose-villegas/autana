@@ -6,8 +6,7 @@ The theme colours (white, black and plot_style's ink, series slots and dark them
 other entries are k-means centres in OKLab over a fixed number of colour samples per GIF, each
 colour drawn with weight count**WEIGHT_POWER so large flat areas stay exact and rare hues still
 count. Every centre is replaced by the sampled colour nearest it, so each entry is a real sRGB
-colour. The fit is seeded, so the same GIFs give the same table. Changing the table changes every
-doc GIF; run it only to choose a new palette, then paste its output over GIF_PALETTE.
+colour. The fit is seeded, so the same GIFs give the same table; paste its output over GIF_PALETTE.
 """
 import pathlib
 import sys
