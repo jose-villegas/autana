@@ -76,18 +76,18 @@ typedef struct {
     int stacks;
 } primitive_cylinder_t;
 
-/* What each shape makes: its vertex and triangle counts, as many as its
- * call writes. Parameters out of range give counts the call refuses. */
-int primitive_plane_vertex_count(const primitive_plane_t* shape);
-int primitive_plane_triangle_count(const primitive_plane_t* shape);
-int primitive_sphere_vertex_count(const primitive_sphere_t* shape);
-int primitive_sphere_triangle_count(const primitive_sphere_t* shape);
-int primitive_cube_vertex_count(const primitive_cube_t* shape);
-int primitive_cube_triangle_count(const primitive_cube_t* shape);
-int primitive_capsule_vertex_count(const primitive_capsule_t* shape);
-int primitive_capsule_triangle_count(const primitive_capsule_t* shape);
-int primitive_cylinder_vertex_count(const primitive_cylinder_t* shape);
-int primitive_cylinder_triangle_count(const primitive_cylinder_t* shape);
+/* What a shape makes, as many as its call writes. Parameters out of range
+ * give counts the call refuses. */
+typedef struct {
+    int vertices;
+    int triangles;
+} primitive_counts_t;
+
+primitive_counts_t primitive_plane_counts(const primitive_plane_t* shape);
+primitive_counts_t primitive_sphere_counts(const primitive_sphere_t* shape);
+primitive_counts_t primitive_cube_counts(const primitive_cube_t* shape);
+primitive_counts_t primitive_capsule_counts(const primitive_capsule_t* shape);
+primitive_counts_t primitive_cylinder_counts(const primitive_cylinder_t* shape);
 
 /* Each writes its shape into `out` from index 0. False, writing nothing,
  * for parameters out of range (counts under 1, segments under

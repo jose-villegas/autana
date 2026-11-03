@@ -67,9 +67,9 @@ face_normal(const primitive_mesh_t* m, int t) {
 }
 
 static void
-assert_counts_and_indices(const primitive_mesh_t* m, int vertices, int triangle_count) {
-    TEST_ASSERT_EQUAL_INT(vertices, m->vertex_count);
-    TEST_ASSERT_EQUAL_INT(triangle_count, m->triangle_count);
+assert_counts_and_indices(const primitive_mesh_t* m, primitive_counts_t counts) {
+    TEST_ASSERT_EQUAL_INT(counts.vertices, m->vertex_count);
+    TEST_ASSERT_EQUAL_INT(counts.triangles, m->triangle_count);
     for (int t = 0; t < m->triangle_count; t++) {
         for (int k = 0; k < 3; k++) {
             TEST_ASSERT_LESS_THAN_INT(m->vertex_count, m->triangles[t][k]);
@@ -145,7 +145,7 @@ test_a_plane_covers_the_unit_square_facing_plus_z(void) {
     for (int n = 1; n <= MOST_CUTS; n++) {
         const primitive_plane_t plane = {.subdivisions = n};
         TEST_ASSERT_TRUE(primitive_plane(&plane, &m));
-        assert_counts_and_indices(&m, primitive_plane_vertex_count(&plane), primitive_plane_triangle_count(&plane));
+        assert_counts_and_indices(&m, primitive_plane_counts(&plane));
         TEST_ASSERT_EQUAL_INT(2 * n * n, m.triangle_count);
         for (int v = 0; v < m.vertex_count; v++) {
             TEST_ASSERT_TRUE(fabsf(m.positions[v].x) <= 0.5F && fabsf(m.positions[v].y) <= 0.5F);
@@ -169,8 +169,7 @@ test_a_sphere_is_closed_on_the_unit_sphere_wound_outward(void) {
         for (int segments = PRIMITIVE_SEGMENTS_MIN; segments <= MOST_CUTS; segments++) {
             const primitive_sphere_t sphere = {.segments = segments, .rings = rings};
             TEST_ASSERT_TRUE(primitive_sphere(&sphere, &m));
-            assert_counts_and_indices(&m, primitive_sphere_vertex_count(&sphere),
-                                      primitive_sphere_triangle_count(&sphere));
+            assert_counts_and_indices(&m, primitive_sphere_counts(&sphere));
             for (int v = 0; v < m.vertex_count; v++) {
                 TEST_ASSERT_FLOAT_WITHIN(ON_SHAPE, 1.0F, sqrtf(vec3f_dot(m.positions[v], m.positions[v])));
             }
@@ -187,7 +186,7 @@ test_a_cube_is_closed_on_the_unit_cube_wound_outward(void) {
     for (int n = 1; n <= MOST_CUTS; n++) {
         const primitive_cube_t cube = {.subdivisions = n};
         TEST_ASSERT_TRUE(primitive_cube(&cube, &m));
-        assert_counts_and_indices(&m, primitive_cube_vertex_count(&cube), primitive_cube_triangle_count(&cube));
+        assert_counts_and_indices(&m, primitive_cube_counts(&cube));
         for (int v = 0; v < m.vertex_count; v++) {
             const vec3f_t p = m.positions[v];
             TEST_ASSERT_FLOAT_WITHIN(ON_SHAPE, 0.5F, fmaxf(fabsf(p.x), fmaxf(fabsf(p.y), fabsf(p.z))));
@@ -207,8 +206,7 @@ test_a_capsule_is_closed_round_its_axis_wound_outward(void) {
     for (int rings = 1; rings <= MOST_CUTS; rings++) {
         const primitive_capsule_t capsule = {.radius = radius, .height = height, .segments = MOST_CUTS, .rings = rings};
         TEST_ASSERT_TRUE(primitive_capsule(&capsule, &m));
-        assert_counts_and_indices(&m, primitive_capsule_vertex_count(&capsule),
-                                  primitive_capsule_triangle_count(&capsule));
+        assert_counts_and_indices(&m, primitive_capsule_counts(&capsule));
         for (int v = 0; v < m.vertex_count; v++) {
             const vec3f_t p = m.positions[v];
             const float on_axis = fmaxf(-0.5F * height, fminf(0.5F * height, p.y));
@@ -233,8 +231,7 @@ test_a_cylinder_or_cone_is_closed_wound_outward(void) {
                                                    .segments = MOST_CUTS,
                                                    .stacks = stacks};
             TEST_ASSERT_TRUE(primitive_cylinder(&cylinder, &m));
-            assert_counts_and_indices(&m, primitive_cylinder_vertex_count(&cylinder),
-                                      primitive_cylinder_triangle_count(&cylinder));
+            assert_counts_and_indices(&m, primitive_cylinder_counts(&cylinder));
             for (int v = 0; v < m.vertex_count; v++) {
                 TEST_ASSERT_TRUE(fabsf(m.positions[v].y) <= 0.5F * cylinder.height + ON_SHAPE);
             }
@@ -275,10 +272,10 @@ test_parameters_out_of_range_write_nothing(void) {
 static void
 test_short_buffers_write_nothing(void) {
     const primitive_sphere_t sphere = {.segments = MOST_CUTS, .rings = MOST_CUTS};
-    primitive_mesh_t m = fixture_begin(primitive_sphere_vertex_count(&sphere) - 1, MAX_TRIANGLES);
+    primitive_mesh_t m = fixture_begin(primitive_sphere_counts(&sphere).vertices - 1, MAX_TRIANGLES);
     TEST_ASSERT_FALSE(primitive_sphere(&sphere, &m));
     const primitive_cube_t cube = {.subdivisions = MOST_CUTS};
-    m = (primitive_mesh_t){positions, MAX_VERTICES, triangles, primitive_cube_triangle_count(&cube) - 1, 0, 0};
+    m = (primitive_mesh_t){positions, MAX_VERTICES, triangles, primitive_cube_counts(&cube).triangles - 1, 0, 0};
     TEST_ASSERT_FALSE(primitive_cube(&cube, &m));
     TEST_ASSERT_EQUAL_INT(0, m.vertex_count);
     TEST_ASSERT_EQUAL_INT(0, m.triangle_count);
@@ -292,7 +289,7 @@ test_a_shape_past_uint16_indices_is_refused(void) {
 
     primitive_mesh_t m = {NULL, INT32_MAX, NULL, INT32_MAX, 0, 0};
     const primitive_plane_t past = {.subdivisions = SUBDIVISIONS_PAST_UINT16};
-    TEST_ASSERT_GREATER_THAN_INT(UINT16_MAX + 1, primitive_plane_vertex_count(&past));
+    TEST_ASSERT_GREATER_THAN_INT(UINT16_MAX + 1, primitive_plane_counts(&past).vertices);
     TEST_ASSERT_FALSE(primitive_plane(&past, &m));
     TEST_ASSERT_FALSE(primitive_plane(&(primitive_plane_t){.subdivisions = UINT16_MAX}, &m));
     TEST_ASSERT_FALSE(primitive_sphere(&(primitive_sphere_t){.segments = INT32_MAX / 2, .rings = INT32_MAX / 2}, &m));

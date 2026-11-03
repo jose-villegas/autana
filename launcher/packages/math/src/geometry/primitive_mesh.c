@@ -14,10 +14,11 @@ held(int64_t count) {
     return count > INT32_MAX ? INT32_MAX : (int)count;
 }
 
-/* Whether `vertices` and `triangles` fit `out` and a uint16 index reaches every vertex. */
+/* Whether `counts` fit `out` and a uint16 index reaches every vertex. */
 static bool
-fits(const primitive_mesh_t* out, int vertices, int triangles) {
-    return vertices <= out->vertex_capacity && triangles <= out->triangle_capacity && vertices <= INDEXABLE_VERTICES;
+fits(const primitive_mesh_t* out, primitive_counts_t counts) {
+    return counts.vertices <= out->vertex_capacity && counts.triangles <= out->triangle_capacity
+           && counts.vertices <= INDEXABLE_VERTICES;
 }
 
 static void
@@ -73,20 +74,14 @@ add_grid(primitive_mesh_t* out, int subdivisions, vec3f_t centre, vec3f_t u, vec
     }
 }
 
-int
-primitive_plane_vertex_count(const primitive_plane_t* shape) {
-    return held(grid_vertices(shape->subdivisions));
-}
-
-int
-primitive_plane_triangle_count(const primitive_plane_t* shape) {
-    return held(grid_triangles(shape->subdivisions));
+primitive_counts_t
+primitive_plane_counts(const primitive_plane_t* shape) {
+    return (primitive_counts_t){held(grid_vertices(shape->subdivisions)), held(grid_triangles(shape->subdivisions))};
 }
 
 bool
 primitive_plane(const primitive_plane_t* shape, primitive_mesh_t* out) {
-    if (shape->subdivisions < 1
-        || !fits(out, primitive_plane_vertex_count(shape), primitive_plane_triangle_count(shape))) {
+    if (shape->subdivisions < 1 || !fits(out, primitive_plane_counts(shape))) {
         return false;
     }
     begin(out);
@@ -103,20 +98,15 @@ axis(int a) {
     return a == 0 ? vec3f_unit_x() : a == 1 ? vec3f_unit_y() : vec3f_unit_z();
 }
 
-int
-primitive_cube_vertex_count(const primitive_cube_t* shape) {
-    return held(CUBE_FACES * grid_vertices(shape->subdivisions));
-}
-
-int
-primitive_cube_triangle_count(const primitive_cube_t* shape) {
-    return held(CUBE_FACES * grid_triangles(shape->subdivisions));
+primitive_counts_t
+primitive_cube_counts(const primitive_cube_t* shape) {
+    return (primitive_counts_t){held(CUBE_FACES * grid_vertices(shape->subdivisions)),
+                                held(CUBE_FACES * grid_triangles(shape->subdivisions))};
 }
 
 bool
 primitive_cube(const primitive_cube_t* shape, primitive_mesh_t* out) {
-    if (shape->subdivisions < 1
-        || !fits(out, primitive_cube_vertex_count(shape), primitive_cube_triangle_count(shape))) {
+    if (shape->subdivisions < 1 || !fits(out, primitive_cube_counts(shape))) {
         return false;
     }
     begin(out);
@@ -202,20 +192,15 @@ sphere_valid(const primitive_sphere_t* shape) {
     return shape->segments >= PRIMITIVE_SEGMENTS_MIN && shape->rings >= PRIMITIVE_SPHERE_RINGS_MIN;
 }
 
-int
-primitive_sphere_vertex_count(const primitive_sphere_t* shape) {
-    return held(lathe_vertices(shape->rings + 1, shape->segments));
-}
-
-int
-primitive_sphere_triangle_count(const primitive_sphere_t* shape) {
-    return held(lathe_triangles(shape->rings + 1, shape->segments, true, true));
+primitive_counts_t
+primitive_sphere_counts(const primitive_sphere_t* shape) {
+    return (primitive_counts_t){held(lathe_vertices(shape->rings + 1, shape->segments)),
+                                held(lathe_triangles(shape->rings + 1, shape->segments, true, true))};
 }
 
 bool
 primitive_sphere(const primitive_sphere_t* shape, primitive_mesh_t* out) {
-    if (!sphere_valid(shape)
-        || !fits(out, primitive_sphere_vertex_count(shape), primitive_sphere_triangle_count(shape))) {
+    if (!sphere_valid(shape) || !fits(out, primitive_sphere_counts(shape))) {
         return false;
     }
     begin(out);
@@ -239,21 +224,16 @@ capsule_rows(const primitive_capsule_t* shape) {
     return (2 * shape->rings) + 2;
 }
 
-int
-primitive_capsule_vertex_count(const primitive_capsule_t* shape) {
-    return held(lathe_vertices(capsule_rows(shape), shape->segments));
-}
-
-int
-primitive_capsule_triangle_count(const primitive_capsule_t* shape) {
-    return held(lathe_triangles(capsule_rows(shape), shape->segments, true, true));
+primitive_counts_t
+primitive_capsule_counts(const primitive_capsule_t* shape) {
+    return (primitive_counts_t){held(lathe_vertices(capsule_rows(shape), shape->segments)),
+                                held(lathe_triangles(capsule_rows(shape), shape->segments, true, true))};
 }
 
 bool
 primitive_capsule(const primitive_capsule_t* shape, primitive_mesh_t* out) {
     if (shape->segments < PRIMITIVE_SEGMENTS_MIN || shape->rings < 1 || !(shape->radius > 0.0F)
-        || !(shape->height >= 0.0F)
-        || !fits(out, primitive_capsule_vertex_count(shape), primitive_capsule_triangle_count(shape))) {
+        || !(shape->height >= 0.0F) || !fits(out, primitive_capsule_counts(shape))) {
         return false;
     }
     begin(out);
@@ -274,17 +254,13 @@ cylinder_caps(const primitive_cylinder_t* shape) {
     return (shape->top_radius > 0.0F ? 1 : 0) + (shape->bottom_radius > 0.0F ? 1 : 0);
 }
 
-int
-primitive_cylinder_vertex_count(const primitive_cylinder_t* shape) {
-    return held(lathe_vertices(shape->stacks + 1, shape->segments)
-                + ((int64_t)cylinder_caps(shape) * (shape->segments + 2)));
-}
-
-int
-primitive_cylinder_triangle_count(const primitive_cylinder_t* shape) {
-    return held(
-        lathe_triangles(shape->stacks + 1, shape->segments, shape->top_radius == 0.0F, shape->bottom_radius == 0.0F)
-        + ((int64_t)cylinder_caps(shape) * shape->segments));
+primitive_counts_t
+primitive_cylinder_counts(const primitive_cylinder_t* shape) {
+    return (primitive_counts_t){held(lathe_vertices(shape->stacks + 1, shape->segments)
+                                     + ((int64_t)cylinder_caps(shape) * (shape->segments + 2))),
+                                held(lathe_triangles(shape->stacks + 1, shape->segments, shape->top_radius == 0.0F,
+                                                     shape->bottom_radius == 0.0F)
+                                     + ((int64_t)cylinder_caps(shape) * shape->segments))};
 }
 
 /* An end's fan: its centre and a ring of its own, facing up for the top. */
@@ -308,7 +284,7 @@ bool
 primitive_cylinder(const primitive_cylinder_t* shape, primitive_mesh_t* out) {
     if (shape->segments < PRIMITIVE_SEGMENTS_MIN || shape->stacks < 1 || !(shape->height > 0.0F)
         || !(shape->top_radius >= 0.0F) || !(shape->bottom_radius >= 0.0F) || cylinder_caps(shape) == 0
-        || !fits(out, primitive_cylinder_vertex_count(shape), primitive_cylinder_triangle_count(shape))) {
+        || !fits(out, primitive_cylinder_counts(shape))) {
         return false;
     }
     begin(out);
