@@ -35,8 +35,8 @@ and host scene keys are unchanged.
 
 ### Water
 
-The Water scene is a tank the size of the screen and as deep as the case
-behind the glass (`display/display.h`), filled by `flip3` and tipped by the device's gravity
+The Water scene is a tank the size of the screen and as deep as the case's
+room behind the PCB (`display/display.h`), filled by `flip3` and tipped by the device's gravity
 and shake. The menu's WATER FILL sets the share of the tank's volume, 10 to
 90 % in steps of 10.
 

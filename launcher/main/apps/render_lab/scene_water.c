@@ -64,8 +64,8 @@ static const char* TAG = "water";
 #define WATER_PERCENT         100
 
 /* The tank is the room behind the screen: the visible area, as deep as the
- * case behind the glass. */
-#define WATER_TANK_DEPTH_MM   DISPLAY_DEPTH_BEHIND_MM
+ * case's room behind the PCB. */
+#define WATER_TANK_DEPTH_MM   DISPLAY_CAVITY_DEPTH_MM
 
 /* Grid cells across the depth; the cell is the depth over this. Three over
  * the tank's 7.6 mm keeps cells near 2.5 mm, the size the frame budget was
