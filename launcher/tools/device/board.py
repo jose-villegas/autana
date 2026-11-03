@@ -47,6 +47,10 @@ def screen_label_axes(board):
             for row in screen_from_chip(board)]
 
 
-_BOARD = load_board()
-PANEL_WIDTH = _BOARD["panel"]["width"]
-PANEL_HEIGHT = _BOARD["panel"]["height"]
+def __getattr__(name):
+    """PANEL_WIDTH and PANEL_HEIGHT, read from the built board on first use, so importing this
+    module for another board reads nothing."""
+    panel = {"PANEL_WIDTH": "width", "PANEL_HEIGHT": "height"}
+    if name not in panel:
+        raise AttributeError(name)
+    return load_board()["panel"][panel[name]]
