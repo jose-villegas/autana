@@ -94,7 +94,7 @@ for MODE in normal forced; do
     # palette.c and row_runs.c
     # are draw-path concerns the grid state does not depend on.
     # shellcheck disable=SC2086
-    "$CC_BIN" $CFLAGS $FORCE_FLAG -I "$MAIN_DIR" $(package_includes "$LAUNCHER_DIR") -I "$SAND_DIR" \
+    "$CC_BIN" $CFLAGS $FORCE_FLAG $(firmware_includes "$LAUNCHER_DIR") -I "$SAND_DIR" \
         "$SCRIPT_DIR/grid_fingerprint.c" "$LAUNCHER_DIR/packages/hash/src/name_hash64.c" \
         "$MAIN_DIR/core/job.c" \
         "$SAND_DIR/sand.c" \

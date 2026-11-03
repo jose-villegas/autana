@@ -86,45 +86,11 @@ every frame through the shared harness's video writer. `--deps` compiles
 nothing and prints what the viewer is compiled from: a `flags` line, then the
 compiler's `-MM` list.
 
-### A whole camera path, A against B, and one frame of it
-
-```sh
-sh launcher/tools/render/scene_viewer.sh PATH.scene.toml --object NAME --compare main
-sh launcher/tools/render/scene_viewer.sh PATH.scene.toml --object FITTED --compare . --b-args "--object SOURCE"
-sh launcher/tools/render/scene_viewer.sh PATH.scene.toml --object NAME --compare main --frame 812
-```
-
-`--compare REV|DIR` renders the whole camera path once per side, printing
-progress, and writes one video: A, B and their difference side by side, with
-each frame's index and time in its label. Any video player shows it; making it
-needs ffmpeg. The
-renderer arguments are A's and, without `--b-args`, B's too. `-o` names the
-video. The default is `launcher/tools/results/render/scene_viewer/compare/<scene>.mp4`.
-
-| Side B | Given as | What differs |
-|---|---|---|
-| the pack at a git revision | `--compare REV` | the bake: built in a temporary worktree, drawn by this checkout's viewer |
-| the pack of an existing checkout | `--compare DIR` | as `REV`, without the worktree |
-| other renderer arguments | `--compare . --b-args "ARGS"` | the renderer selection or settings |
-
-`--frame N` renders frame N of the same path to a PNG, with or without
-`--compare`. `-o` names A's file, and B's adds `-b` before the extension. The
-default is `scene_viewer/frames/<scene>-f<N>.png`. A frame number read off a
-video is all that is needed to render that frame again.
-
-Both time the path alike. Without `--dt`, frames are the viewer's frame time
-apart, or the shortest whole millisecond that fits the path in one video when
-it does not at that; stderr says which. Without `--frames`, they run from the
-path's start to its end. Pass the video's `--dt` and `--frames`, if it was
-given any, with `--frame`.
-
-![One frame of a compare video: the demo scene's fitted mesh, its source mesh and their difference](../images/render/sponza-compare.png)
-
 ## Images in these docs
 
 The CPU and GPU stages own the files under `docs/images/`, run from the
 repository root. `launcher/tools/render/doc_images_demo.sh` makes the demo's
-bake comparisons, view GIFs, a compare-video frame, fidelity and import sheets and CPU tables through
+bake comparisons, view GIFs, fidelity and import sheets and CPU tables through
 `scene_viewer.sh`, selecting one renderer with `--object NAME`.
 `doc_images_demo.sh OUT WORK SCENE OBJECT --meshlets-only` generates only the
 meshlet still; its normal run also writes that image beside the view GIFs.
@@ -141,7 +107,7 @@ The CPU stage makes the launcher's and the UI toolkit's images, runs each app's
 ```
 
 It needs host C and C++ compilers, Python with Pillow and numpy, and ffmpeg
-5.1 or newer. Scratch bakes need the pinned meshoptimizer submodule:
+for the comparison videos. Scratch bakes need the pinned meshoptimizer submodule:
 
 ```sh
 git submodule update --init --depth 1 third_party/upstream/meshoptimizer
@@ -156,7 +122,7 @@ A render failure prints the failed command and the tails of its work logs,
 including logs inside bake directories.
 CPU `--check` renders into `launcher/tools/results/doc_images/out/cpu/`
 and compares decoded pixels with `compare_images.py`, never bytes: another
-ffmpeg or Pillow writes different GIF bytes for the same frames. It prints
+Pillow can write different bytes for the same pixels. It prints
 `same` or `changed` per image, and `orphan` for a file nothing makes.
 `--orphans` renders nothing and reports an image whose name no script
 mentions; the Comment Rules workflow runs it on every pull request. The

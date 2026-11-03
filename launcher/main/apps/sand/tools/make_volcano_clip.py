@@ -5,6 +5,7 @@ import math
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 
 from PIL import Image, ImageDraw
@@ -12,6 +13,12 @@ from PIL import Image, ImageDraw
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_OUTPUT = HERE.parents[4] / "docs/images/overview/sand-simulation.gif"
+sys.path.insert(0, str(HERE.parents[3] / "tools"))
+from docs.figures import save_gif  # noqa: E402
+from render.check_avi import read_video  # noqa: E402
+
+FRAME_STEP = 6  # every sixth rendered frame, one GIF frame
+FRAME_MS = 99
 
 
 def render_scene(work: Path) -> tuple[Path, list[float]]:
@@ -24,17 +31,6 @@ def render_scene(work: Path) -> tuple[Path, list[float]]:
         env=env,
     )
     return work / "simulation-landscape.avi", [float(line) for line in angles.read_text().splitlines()]
-
-
-def extract_frames(video: Path, work: Path) -> list[Path]:
-    subprocess.run(
-        [
-            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(video),
-            "-vf", "select=not(mod(n\\,6))", "-fps_mode", "passthrough", str(work / "frame-%03d.png"),
-        ],
-        check=True,
-    )
-    return sorted(work.glob("frame-*.png"))
 
 
 MARGIN = 14
@@ -69,8 +65,8 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as temp:
         work = Path(temp)
         video, angles = render_scene(work)
-        paths = extract_frames(video, work)
-        images = [composite(Image.open(path), angles[i * 6]) for i, path in enumerate(paths)]
+        frames = list(read_video(video)[1])[::FRAME_STEP]
+        images = [composite(Image.fromarray(frame), angles[i * FRAME_STEP]) for i, frame in enumerate(frames)]
         if args.contact:
             size = images[0].width
             contact = Image.new("RGB", (3 * size, 2 * size))
@@ -78,13 +74,8 @@ def main() -> None:
                 contact.paste(images[index], ((slot % 3) * size, (slot // 3) * size))
             args.contact.parent.mkdir(parents=True, exist_ok=True)
             contact.save(args.contact)
-        sequence = [image.quantize(colors=32, method=Image.Quantize.FASTOCTREE) for image in images]
-        sequence += sequence[-2:0:-1]
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        sequence[0].save(
-            args.output, save_all=True, append_images=sequence[1:], duration=99, loop=0,
-            optimize=True, disposal=2,
-        )
+        sequence = images + images[-2:0:-1]
+        save_gif(sequence, args.output, FRAME_MS)
         print(f"{args.output}: {len(sequence)} frames, {args.output.stat().st_size} bytes")
 
 

@@ -12,14 +12,26 @@ import sys
 from typing import NamedTuple
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "scripts/gates"))
 
 # What a producer needs before it can run, and so which machine runs it.
 # host: the developer's machine, with the Python modules Pillow, numpy and
-# matplotlib; a C compiler too when `run` uses {cc}.
-NEEDS = ("host",)
-# The arguments the runner fills in a `run` entry: the host C compiler and
-# the folder the area's images go into, docs/images/<area>/ or its stand-in.
-FIELDS = ("cc", "out")
+# matplotlib; a C compiler too when `run` uses {cc}. bakes: the baked assets
+# it draws, fetched before any run. gpu, board: a GPU or a board.
+NEEDS = ("host", "bakes", "gpu", "board")
+# Needs whose producers run one at a time.
+EXCLUSIVE = ("gpu", "board")
+# The arguments the runner fills in a `run` entry: the host C compiler, the
+# folder the area's images go into (docs/images/<area>/ or its stand-in), and
+# the item of an `each` producer's run.
+FIELDS = ("cc", "out", "item")
+# Where an `each` producer's items come from: "bakes:<glob>" every bake whose
+# output matches (the item is that output less its suffix), "glob:<pattern>"
+# every file that matches (the item is its stem).
+EACH = ("bakes", "glob")
+# The environment variable the runner sets for a run: the folder a probe build (figures.py) writes a compiler
+# dependency list (.d) per source into, which tells the runner what C the images were made from.
+DEPENDS_FOLDER = "AUTANA_FIGURES_DEPENDS"
 DECLARATION = "PRODUCER"
 SEARCHED = ("launcher/*.py",)
 
@@ -28,8 +40,9 @@ class Producer(NamedTuple):
     area: str  # also the folder under docs/images/ its images go in
     needs: tuple[str, ...]
     outputs: tuple[str, ...]  # names in the area's folder; a glob (fast-path-*.png) where the code names them
-    run: tuple[str, ...] = ()  # the script's arguments; {cc} and {out} are filled in
+    run: tuple[str, ...] = ()  # the script's arguments; {cc}, {out} and, with an each, {item} are filled in
     reads: tuple[str, ...] = ()  # data files the script reads (globs), checked before any run
+    each: str = ""  # one run per item: "bakes:<glob>" or "glob:<pattern>"; outputs name {item}
 
 
 class Found(NamedTuple):
@@ -39,8 +52,12 @@ class Found(NamedTuple):
 
     @property
     def images(self):
-        """Its outputs as paths under docs/images/."""
-        return tuple(f"{self.producer.area}/{output}" for output in self.producer.outputs)
+        """Its outputs as paths under docs/images/, {item} as a glob."""
+        return self.images_of("*")
+
+    def images_of(self, item):
+        """Its outputs as paths under docs/images/ for one item."""
+        return tuple(f"{self.producer.area}/{output.replace('{item}', item)}" for output in self.producer.outputs)
 
 
 def declaration(source, name):
@@ -68,11 +85,20 @@ def validate(producer, name):
         raise ValueError(f"{name}: needs {producer.needs!r}, each one of {NEEDS}")
     if not producer.outputs:
         raise ValueError(f"{name}: declares no outputs")
+    kind, _, query = producer.each.partition(":")
+    if producer.each and (kind not in EACH or not query):
+        raise ValueError(f"{name}: each {producer.each!r} is not " + " or ".join(f"{kind}:<pattern>" for kind in EACH))
+    # Each item's run makes its own images, so they all name it; without items none may.
+    unmatched = [output for output in producer.outputs if ("{item}" in output) != bool(producer.each)]
+    if unmatched:
+        raise ValueError(f"{name}: outputs {unmatched!r} " + ("must name {item}" if producer.each
+                                                               else "name {item} without an each"))
+    fields = FIELDS if producer.each else tuple(field for field in FIELDS if field != "item")
     for argument in producer.run:
         try:
-            argument.format(**{field: "" for field in FIELDS})
+            argument.format(**{field: "" for field in fields})
         except (KeyError, IndexError, ValueError) as error:
-            raise ValueError(f"{name}: run argument {argument!r} fills only {FIELDS}: {error}") from None
+            raise ValueError(f"{name}: run argument {argument!r} fills only {fields}: {error}") from None
     return producer
 
 
@@ -80,7 +106,6 @@ def find(root=ROOT):
     """Every declared producer under launcher/, by name. Two producers whose outputs
     can name one image (equal, or one a glob matching the other) are an error; two
     globs that only overlap are caught when a run makes that image twice."""
-    sys.path.insert(0, str(ROOT / "scripts/gates"))
     from tracked import tracked_files
     found = {}
     owners = []

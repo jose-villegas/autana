@@ -8,7 +8,8 @@ import numpy as np
 from PIL import Image
 
 # These helpers stay private because render_compare is frozen until the next rebake.
-from render_compare import _box_mean, _ffmpeg_command, captioned, read_video
+from check_avi import read_video
+from render_compare import _box_mean, _ffmpeg_command, captioned
 
 TEMPORAL_BLOCK_SIDE = 4
 TEMPORAL_POP_THRESHOLD = 8

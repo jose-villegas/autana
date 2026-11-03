@@ -12,8 +12,8 @@
 #   ./launcher/tools/render/render_doc_images.sh --stage board --capture PATH [--check]
 #   ./launcher/tools/render/render_doc_images.sh --stage meshlets [--check]
 #
-# Needs host C and C++ compilers, Python with Pillow and numpy, ffmpeg 5.1
-# or newer, and the initialized meshoptimizer submodule for scratch bakes.
+# Needs host C and C++ compilers, Python with Pillow and numpy, ffmpeg for
+# the comparison videos, and the initialized meshoptimizer submodule for scratch bakes.
 # Runs in Git Bash on Windows and on Linux.
 #
 # This makes the launcher and UI toolkit images itself and then runs every
@@ -35,9 +35,8 @@
 # generated_blocks.py rewrites the matching named blocks; --check compares
 # them without writing.
 #
-# GIF palettes depend on the ffmpeg version, so a --check on another OS
-# or with another ffmpeg may report them changed; CI renders on Linux and
-# is the authority.
+# Every GIF is drawn from the one palette in figures.py, so its pixels are
+# the same on every OS.
 
 set -eu
 
@@ -46,7 +45,6 @@ ROOT=$(CDPATH= cd -- "$TOOLS_DIR/../../.." && pwd)
 cd "$ROOT"
 
 . scripts/lib/run.sh
-. launcher/tools/render/gif_from_avi.sh
 . launcher/tools/build/packages.sh
 
 app_image_scripts=
@@ -66,8 +64,6 @@ PLAYBACK_CLIPS="walk gallop idle"
 CULL_LEVEL=2
 # The cull chase GIFs play one path sample per frame at this rate.
 CULL_GIF_FPS=8
-# Colours in their palette: the camera moves every frame, so fewer keep them small.
-CULL_GIF_COLORS=64
 # Where Bistro's high view looks down on its street over the ground square: the depth figure's first frame.
 DEPTH_FIT_AT_MS=54300
 
@@ -236,12 +232,11 @@ for dir in $(app_directories launcher); do
 done
 # Two frames settle the window before the scene's synthetic press.
 run "$L/launcher_home_render" --quarter 1 --frames 2 "$@" -o "$L/release.bmp" 2> "$WORK/launcher_home_png.log"
-run "$PYTHON" -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).save(sys.argv[2])' \
-    "$L/release.bmp" "$OUT/overview/launcher-home.png"
+run "$PYTHON" launcher/tools/docs/figures.py png "$L/release.bmp" "$OUT/overview/launcher-home.png"
 # The board rocking either way.
 run "$L/launcher_home_render" --quarter 1 --tilt-sweep "$@" --frames 250 --dt 16 \
     -o "$L/sweep.bmp" --video "$L/sweep.avi" 2> "$WORK/launcher_home_sweep.log"
-gif_from_avi "$L/sweep.avi" "$OUT/overview/launcher-home.gif" "fps=15"
+run "$PYTHON" launcher/tools/docs/figures.py gif "$L/sweep.avi" "$OUT/overview/launcher-home.gif" --fps 15
 
 # The boot animation draws in panel orientation; turn it to the landscape the
 # other overview clips use.
@@ -250,7 +245,7 @@ run sh launcher/tools/render/scenes/boot_anim_render_host.sh --build-only -o "$B
 boot_ms=$(sed -n 's/^#define BOOT_ANIM_MS \([0-9]*\).*/\1/p' launcher/main/boot/boot_anim_timeline.h)
 run "$B/boot_anim_render" 0 "$@" --frames "$(((boot_ms + 15) / 16 + 1))" --dt 16 \
     -o "$B/boot.bmp" --video "$B/boot.avi" 2> "$WORK/boot_anim_video.log"
-gif_from_avi "$B/boot.avi" "$OUT/overview/boot-anim.gif" "transpose=2,fps=15" "stats_mode=full"
+run "$PYTHON" launcher/tools/docs/figures.py gif "$B/boot.avi" "$OUT/overview/boot-anim.gif" --quarter 1 --fps 15
 
 # UI render tables; source embedding: docs/tools/Generated-Files.md#usage-examples.
 U=$WORK/ui_examples
@@ -279,7 +274,7 @@ run "$PYTHON" launcher/tools/input/motion_axes_figures.py --cc "$cc" --out "$OUT
     > "$WORK/motion_axes_figures.log"
 # --orphans scans this runner: motion-axes.png, motion-rotation.gif
 # The producers that declare their images (launcher/tools/docs/producer.py), in parallel.
-run "$PYTHON" launcher/tools/docs/figures_runner.py build --into "$OUT" > "$WORK/figures.log"
+run "$PYTHON" launcher/tools/docs/figures_runner.py build --needs host --into "$OUT" > "$WORK/figures.log"
 run "$PYTHON" launcher/tools/physics/spring_figures.py --cc "$cc" --out "$OUT/physics" > "$WORK/spring_figures.log"
 # --orphans scans this runner: spring-line-wave.gif, spring-line-spacetime.png
 run "$PYTHON" launcher/tools/kinematics/orbit_figures.py --cc "$cc" --out "$OUT/kinematics" > "$WORK/orbit_figures.log"
@@ -392,8 +387,7 @@ for cull in "launcher/demo/bistro/bistro.scene.toml street_fitted_full cull-bist
     run "$PYTHON" launcher/tools/render/cull_figures.py --scene "$1" --object "$2" --camera camera --stem "$3" \
         --label "$4" --level "$CULL_LEVEL" --out "$OUT/render" --tables "$OUT/tables" --work "$WORK/cull" \
         ${5:+--overdraw "$5"} > "$WORK/$3.log"
-    gif_from_avi "$WORK/cull/$3-chase.avi" "$OUT/render/$3-chase.gif" "setpts=N/$CULL_GIF_FPS/TB,fps=$CULL_GIF_FPS" \
-        "stats_mode=diff:max_colors=$CULL_GIF_COLORS"
+    run "$PYTHON" launcher/tools/docs/figures.py gif "$WORK/cull/$3-chase.avi" "$OUT/render/$3-chase.gif" --rate "$CULL_GIF_FPS" --fps "$CULL_GIF_FPS"
 done
 # --orphans scans this runner: cull-bistro-sheet.png, cull-bistro-counts.png, cull-bistro-chase.gif,
 # overdraw-bistro-sheet.png, cull-sponza-sheet.png, cull-sponza-counts.png, cull-sponza-chase.gif

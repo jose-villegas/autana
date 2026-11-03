@@ -1,6 +1,11 @@
+#include "ball_cases.h"
 #include "math/geometry/spheref.h"
 #include "testkit/suite.h"
 #include "unity.h"
+
+#include <stddef.h>
+
+DEFINE_BALL_CONTAINMENT_TEST(spheref, vec3f, float)
 
 static const float SPHERE_TOLERANCE = 0.00001F;
 static const spheref_t SPHERE_UNIT = {{0, 0, 0}, 1};
@@ -132,11 +137,31 @@ test_spheres_ticks(void) {
     const spheref_t converted = spheref_from_spheres(ticks, units_per_tick);
     TEST_ASSERT_TRUE(vec3f_equal(units.centre, converted.centre));
     TEST_ASSERT_EQUAL_FLOAT(units.radius, converted.radius);
+    /* far + reach ticks apart: more than an int16 holds, where a saturated
+     * difference would land just inside; the test widens. */
+    static const int16_t far = 30000, reach = 3000;
+    const spheres_t east = {{far, 0, 0}, INT16_MAX};
+    TEST_ASSERT_FALSE(spheres_contains_ball(east, (spheres_t){{(int16_t)-reach, 0, 0}, 0}, 0));
+    const spheres_t touching = {{(int16_t)(far - INT16_MAX + 1), 0, 0}, 1};
+    TEST_ASSERT_TRUE(spheres_contains_ball(east, touching, 0));
+    TEST_ASSERT_FALSE(spheres_contains_ball(east, touching, 1));
+}
+
+static void
+test_sphere_contains_ball_depth(void) {
+    const spheref_t outer = {{2, -3, 4}, 10};
+    const spheref_t touching = {{2, -3, 9}, 5};
+    const spheref_t outside = {{2, -3, 10}, 5};
+    TEST_ASSERT_TRUE(spheref_contains_ball(outer, touching, 0));
+    TEST_ASSERT_FALSE(spheref_contains_ball(outer, outside, 0));
+    TEST_ASSERT_TRUE(spheref_contains_ball(outer, outside, -1));
 }
 
 void
 suite_sphere(void) {
     RUN_TEST(test_spheres_ticks);
+    RUN_TEST(test_spheref_contains_ball);
+    RUN_TEST(test_sphere_contains_ball_depth);
     RUN_TEST(test_sphere_closest_point);
     RUN_TEST(test_sphere_long_segment_misses);
     RUN_TEST(test_sphere_long_segment_entry);

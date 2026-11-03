@@ -1,4 +1,4 @@
-"""The case as a 3D figure: translucent walls, screen, IMU and both axis sets, from board/board_geometry.h.
+"""The case as a 3D figure: translucent walls, screen, IMU and both axis sets, from board/waveshare_amoled_1_8/board_geometry.h.
 
 Device axes: x right, y up the screen, z out of the glass; millimetres; origin at the glass centre.
 A pose is a 3x3 matrix whose columns are the device axes in the figure's world axes; world z is up.
@@ -36,8 +36,6 @@ WORLD_DOWN = np.array([0.0, 0.0, -1.0])
 VIEW_ELEVATION = 22
 VIEW_AZIMUTH = -60
 ANIMATION_DPI = 80
-# Palette size: the shaded device takes many entries, and every line and arrow colour must keep its own.
-ANIMATION_COLORS = 128
 ANIMATION_SIZE = (10, 5.4)
 # Vector unit length and scene margin as shares of the case height.
 VECTOR_SHARE = 0.5
@@ -227,4 +225,4 @@ class DeviceAnimation:
 
     def save(self, output, frames, draw_frame, fps=GIF_FPS):
         self.fig.set_dpi(ANIMATION_DPI)
-        save_gif(self.fig, draw_frame, frames, output, fps, colors=ANIMATION_COLORS)
+        save_gif(self.fig, draw_frame, frames, output, fps)
