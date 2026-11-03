@@ -39,23 +39,23 @@ typedef struct {
 #define UI_POINTER_DRAG_THRESHOLD 12
 
 typedef struct {
-    /* Non-zero while a press is staged: focus needs hover and microui hovers
-     * only with the button up, so the DOWN follows a MOVE-only frame once the
-     * hover root is settled. A press and release inside one frame resolves at
-     * once, so on an unsettled root it is lost. */
-    uint8_t press_stage;
+    /* The DOWN goes out on the frame of contact, aimed at the hover root the
+     * caller seeded from the last frame. Set until the caller reports whether
+     * it landed; a miss is pressed again on the next frame. A press and
+     * release inside one frame resolves at once, so a miss there is lost. */
+    bool press_unconfirmed;
     vec2i_t press;
     vec2i_t aim;
     bool aimed;
     bool down; /* a DOWN went out with no matching UP yet */
 
-    /* Set by the caller after each frame: whether the pointer rests on
-     * content that can scroll. */
+    /* Set by the caller before a press frame and after every frame: whether
+     * the pointer rests on content that can scroll. */
     bool over_scrollable;
 
-    /* Set by the caller after every frame: the root microui hovers is not
-     * the one it found under the pointer, so no control can be hovered yet. */
-    bool hover_unsettled;
+    /* Set by the caller after every frame: the seeded hover root was not the
+     * one the frame found, and nothing took focus. */
+    bool press_missed;
     bool press_deferred;
     bool dragging;
     vec2i_t last;
