@@ -23,13 +23,13 @@ def include_dirs(launcher=LAUNCHER):
 
 
 def board_include_dir(launcher=LAUNCHER):
-    """main/board/<folder> of the board a host build compiles: the BOARD_DIR of the Kconfig choice
+    """main/board/<vendor>/<board> of the board a host build compiles: the BOARD_DIR of the Kconfig choice
     BOARD's default, as main/board/board_dir.cmake reads it. Raises when the choice names none
     that exists."""
     kconfig = (pathlib.Path(launcher) / "main" / "Kconfig.projbuild").read_text(encoding="utf-8")
     choice = re.search(r"^ *choice BOARD\n(.*?)^ *endchoice", kconfig, re.S | re.M)
     default = choice and re.search(r"^ *default ([A-Z0-9_]+)$", choice.group(1), re.M)
-    folder = default and re.search(rf'^ *default "([a-z0-9_]+)" if {default.group(1)}$', kconfig, re.M)
+    folder = default and re.search(rf'^ *default "([a-z0-9_/]+)" if {default.group(1)}$', kconfig, re.M)
     path = folder and pathlib.Path(launcher) / "main" / "board" / folder.group(1)
     if not path or not path.is_dir():
         raise ValueError("no board folder: main/Kconfig.projbuild's choice BOARD names none that exists")

@@ -113,7 +113,7 @@ BOARD = "launcher/main/board/"
 def may_use(rel, module):
     """True when `rel` is one of core/`module`'s files, or is a driver. A
     suite's *_device.c is a test that runs on the board, not a driver. The
-    BSP is a board folder's alone: board/<folder>/, not board/'s own files."""
+    BSP is a board folder's alone: board/<vendor>/<board>/, not board/'s own files."""
     if rel.startswith(BOARD):
         return module != "board" or "/" in rel[len(BOARD):]
     if module == "board":
