@@ -226,8 +226,14 @@ def render(scene_path, object_name, work):
     work = pathlib.Path(work)
     scene = load_scene(scene_path)
     job = placed_variant(scene, object_name)
-    render_sets(reference_inputs(job, scene), [(work / "probes.txt", work / "reference_probes"),
-                                               (work / "probes_held_out.txt", work / "reference_probes_held_out")])
+    from r3d.poses import read_poses
+
+    sets = [(work / "probes.txt", work / "reference_probes"),
+            (work / "probes_held_out.txt", work / "reference_probes_held_out")]
+    sets = [(poses, out) for poses, out in sets
+            if len(list(out.glob("*.png"))) != len(read_poses(poses)[4])]
+    if sets:
+        render_sets(reference_inputs(job, scene), sets)
 
 
 def main(argv=None):
