@@ -29,6 +29,7 @@ from device_lock import normalise_board, short_id, write_json
 from layout_measure import autana_command, capture_for, run_flash, run_stamped, REPORT_LINE, latest_build
 from device_report import parse_suite_results, read_capture_text
 from device_capture import board_steps_completed
+from ci_step import output, summarize
 from process_tree import (launch_process_tree, stop_process_tree, close_process_tree, install_console_interrupt_handler,
                           terminate_unwinds)
 from local_schedule import (Clock, wait_idle, gpu_pending, gpu_on_host, GPU_NOT_ON_HOST,
@@ -682,9 +683,7 @@ def run_night(args, clock=None, launch=None):
         key = datetime.fromisoformat(planned["started"]).strftime(MARKER_KEY_FORMAT)
         down |= not all(night_ran(read_night(args.data, board, key)) for board in planned["lanes"])
     # For the board outage alarm: a night whose lanes all ran is no outage, whatever their tests reported.
-    if os.environ.get("GITHUB_OUTPUT"):
-        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-            output.write(f"boards_ran={str(not down).lower()}\n")
+    output({"boards_ran": not down})
     return int(failed)
 
 
@@ -695,9 +694,7 @@ def plan(args, clock=None, request=None):
         wait_idle(lambda: gpu_pending(request=request), clock, idle_polls=2)
     else:
         print(GPU_NOT_ON_HOST, file=sys.stderr)
-        if os.environ.get("GITHUB_STEP_SUMMARY"):
-            with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
-                summary.write(GPU_NOT_ON_HOST + "\n")
+        summarize(GPU_NOT_ON_HOST)
     now = clock.now()
     discovered = not args.boards
     # A discovered night takes boards as they free until BOARD_LAST_START; named boards are the whole night.
