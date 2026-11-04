@@ -300,7 +300,7 @@ The gfx mode is **not** reset; that is `exit()`'s job. Resolution logic:
 ### Full redraw
 
 `gfx_request_full_redraw()` marks everything dirty and latches a flag. At the
-top of the next pass `apply_pending_full_redraw()` clears the flag and calls
+top of the next pass `shell_apply_full_redraw()` clears the flag and calls
 `invalidate()`. A
 request made inside `frame()` is served the following pass. The shell requests
 one on launch, leave, an orientation change, a screenshot and a self-test run.

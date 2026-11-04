@@ -9,11 +9,8 @@
 #include "core/timing.h"
 #include "core/tune.h"
 #include "esp_log.h"
+#include "frame/test_frame.h"
 #include "gfx/gfx.h"
-#include "gfx/present/gfx_debug.h"
-#include "gfx/present/gfx_internal.h"
-#include "gfx/present/gfx_mode.h"
-#include "gfx/present/gfx_present.h"
 #include "hash/crc32.h"
 #include "perf_layout_labels.h"
 #include "render/context/render_context.h"
@@ -98,7 +95,7 @@ enter_app(fixture_t* f, const char* scene, int quarter) {
     render_lab_test_enter(&f->saved, scene);
     f->entered = true;
     f->primed = false;
-    render_lab_test_hold_quarter(quarter);
+    test_hold_quarter(quarter);
 }
 
 typedef struct {
@@ -115,12 +112,12 @@ pass(fixture_t* f) {
     pass_t took = {0};
     const int64_t start = timing_now_us();
     if (f->primed) {
-        gfx_present_begin();
+        test_present_begin();
         app_render_lab.update(LAYOUT_DT_MS, &input);
         const int64_t render_start = timing_now_us();
         scene_shell_render(LAYOUT_DT_MS);
         took.draw_us = timing_now_us() - render_start;
-        gfx_present_wait();
+        test_present_wait();
     }
     ui_clear_band_overlay();
     const int64_t compose_start = timing_now_us();
@@ -138,10 +135,7 @@ pass(fixture_t* f) {
  * clear-on-send off so the readback can keep it; the others read it as is. */
 static uint32_t
 sent_frame_crc(fixture_t* f) {
-    if (gfx_mode_current()->layout == GFX_LAYOUT_DOUBLE_FB) {
-        (void)gfx_set_clear_on_send(false, 0);
-        gfx_present_begin();
-    }
+    test_present_keep_frame();
     gfx_readback_t state = gfx_readback_begin();
     for (int tries = 0; state == GFX_READBACK_PENDING && tries < LAYOUT_WARMUP; tries++) {
         gfx_readback_end();
@@ -178,8 +172,9 @@ measure(fixture_t* f, const char* scene, int layout, const r3d_perf_quarter_t* q
             continue;
         }
         f->samples[STAGE_FRAME][i] = (int32_t)took.frame_us;
-        f->samples[STAGE_WAIT][i] = gfx_get_present_wait_us();
-        f->samples[STAGE_SEND][i] = gfx_get_present_send_us();
+        const test_send_stats_t sent = test_send_stats();
+        f->samples[STAGE_WAIT][i] = sent.wait_us;
+        f->samples[STAGE_SEND][i] = sent.send_us;
         f->samples[STAGE_DRAW][i] = (int32_t)took.draw_us;
         f->samples[STAGE_COMPOSE][i] = (int32_t)took.compose_us;
     }

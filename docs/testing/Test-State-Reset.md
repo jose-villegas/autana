@@ -27,7 +27,7 @@ assert aborted the test, so a failed test cannot leak its state either
 ## Pinning a clock for a timing test
 
 A timed present should measure a known clock, not the system's choice. A suite pins one in its
-fixture with [`panel_clock_pin()`](../../launcher/test/panel_clock_pin.h), which sets the clock
+fixture with [`test_panel_clock_pin()`](../../launcher/test/frame/test_frame.h), which sets the clock
 and presents once so the link reopen falls outside the timed window. The runner's `tearDown`
 puts the system clock back, so the suite does not undo it.
 

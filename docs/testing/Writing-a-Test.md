@@ -101,8 +101,11 @@ links against nothing and tests at any resolution, even one no real panel has.
 
 The device runner also resets the panel clock to the shell's state
 around every test (`display_restore_system_state()` in its `setUp`/`tearDown`);
-a test that times a present pins its clock with `panel_clock_pin()`. The host
-runner has no panel and does neither.
+a test that times a present pins its clock with `test_panel_clock_pin()`. The host
+runner has no panel and does neither. An app's test reaches the present, its
+send stats and a held orientation through
+[`launcher/test/frame/test_frame.h`](../../launcher/test/frame/test_frame.h),
+never `gfx/present/` or `display/display_shell.h`.
 
 Put the *why* in the assertion message, as the edge-consumption assertion
 in the suite below does: the message is what a reader sees at failure.

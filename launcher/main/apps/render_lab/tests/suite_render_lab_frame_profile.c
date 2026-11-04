@@ -22,6 +22,7 @@
 #include "core/timing.h"
 #include "core/tune.h"
 #include "esp_log.h"
+#include "frame/test_frame.h"
 #include "frame_profile.h"
 #include "perf_budget.h"
 #include "profile/frame_cost.h"
@@ -247,7 +248,7 @@ static scenario_path_t
 enter_scenario(void) {
     render_lab_test_enter(&saved, scenario->scene->key);
     suite_set_test_cleanup(release_fixture);
-    render_lab_test_hold_quarter(r3d_perf_quarters[quarter_index].quarter);
+    test_hold_quarter(r3d_perf_quarters[quarter_index].quarter);
     scene_t* scene = render_lab_test_loaded_scene(scenario->pack == NULL ? SPONZA_SCENE : scenario->pack);
     TEST_ASSERT_NOT_NULL(scene);
     const scene_entity_t entity =
