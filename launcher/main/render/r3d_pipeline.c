@@ -468,8 +468,8 @@ clip_to_guard(r3d_pipeline_work_t* work, int n) {
     return n;
 }
 
-/* How one cluster's triangles draw. Every bit but DRAW_BOUNDED is a constant
- * in each inlined copy, so what a copy does not use folds away. */
+/* How one cluster's triangles draw. A bit a copy never sets, or always
+ * sets, folds away in that copy; DRAW_BOUNDED is chosen per cluster. */
 enum {
     DRAW_BOUNDED = 1U << 0,  /* every vertex passed the near and range tests: no iz tests */
     DRAW_WRITES = 1U << 1,   /* the target's writers follow each fill */
@@ -597,7 +597,7 @@ draw_triangles(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit
         const uint16_t* tri = mesh->triangles[t];
         const uint16_t* face_color = mesh->face_colors == NULL ? NULL : &mesh->face_colors[t];
         const r3d_pipeline_vertex_t* const v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
-        /* Cluster-owned vertices all passed near and range tests when bounded. */
+        /* Cluster-owned vertices all passed near and range tests with DRAW_BOUNDED. */
         if ((mode & DRAW_BOUNDED) != 0 || (v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F)) {
             draw_in_front(mesh, v, tri, face_color, c->double_sided, target, mode);
         } else if (v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F) {
