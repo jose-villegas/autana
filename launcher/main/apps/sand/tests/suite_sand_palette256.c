@@ -49,12 +49,13 @@ is_real_cell(cell_t c) {
 
 static long
 channel_error_sq(gfx_color_t a, gfx_color_t b) {
-    const uint32_t ca = rgb565be_to_rgb888(a);
-    const uint32_t cb = rgb565be_to_rgb888(b);
-    const long dr = (long)((ca >> 16) & 0xFFU) - (long)((cb >> 16) & 0xFFU);
-    const long dg = (long)((ca >> 8) & 0xFFU) - (long)((cb >> 8) & 0xFFU);
-    const long db = (long)(ca & 0xFFU) - (long)(cb & 0xFFU);
-    return (dr * dr) + (dg * dg) + (db * db);
+    long sum = 0;
+    /* Blue, green, red: a byte each, low to high. */
+    for (uint32_t ca = rgb565be_to_rgb888(a), cb = rgb565be_to_rgb888(b); ca != 0 || cb != 0; ca >>= 8, cb >>= 8) {
+        const long d = (long)(ca & 0xFFU) - (long)(cb & 0xFFU);
+        sum += d * d;
+    }
+    return sum;
 }
 
 /* Every material's body colour maps within the study's own error budget -
