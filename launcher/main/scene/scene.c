@@ -161,31 +161,6 @@ scene_failure_make(scene_status_t status, asset_status_t asset, const char* what
     return out;
 }
 
-/* Opens every renderer's mesh; stops at the first that fails. */
-static scene_failure_t
-open_meshes(scene_t* scene, const asset_pack_t* pack) {
-    for (int i = 0; i < scene->renderer_count; i++) {
-        const char* mesh = i < scene->asset.renderer_count
-                               ? scene->asset.renderers[i].mesh
-                               : scene->asset.skinned_renderers[i - scene->asset.renderer_count].mesh;
-        r3d_lit_mesh_t* view = &scene->renderers[i].mesh;
-        asset_status_t status = r3d_lit_mesh_open(pack, mesh, view);
-        if (status == ASSET_OK && i < scene->asset.renderer_count) {
-            const uint16_t set = scene->asset.renderers[i].colour_set;
-            if (set != SCENE_ASSET_COLOUR_SET_OWN) {
-                status = r3d_lit_mesh_open_colours(pack, mesh, set, view);
-            }
-        }
-        if (status == ASSET_OK && view->colors == NULL && view->face_colors == NULL) {
-            status = ASSET_ERR_FORMAT;
-        }
-        if (status != ASSET_OK) {
-            return scene_failure_make(SCENE_ERR_ASSET, status, mesh);
-        }
-    }
-    return scene_failure_make(SCENE_OK, ASSET_OK, scene->id);
-}
-
 /* One block of coarse bits for the meshes with levels, each renderer's
  * words its own, all clear: every mesh starts at its finest. */
 static scene_failure_t
@@ -210,6 +185,31 @@ open_lod_bits(scene_t* scene) {
         next += r->lod_words;
     }
     return scene_failure_make(SCENE_OK, ASSET_OK, scene->id);
+}
+
+/* Opens every renderer's mesh, then their coarse bits; stops at the first that fails. */
+static scene_failure_t
+open_meshes(scene_t* scene, const asset_pack_t* pack) {
+    for (int i = 0; i < scene->renderer_count; i++) {
+        const char* mesh = i < scene->asset.renderer_count
+                               ? scene->asset.renderers[i].mesh
+                               : scene->asset.skinned_renderers[i - scene->asset.renderer_count].mesh;
+        r3d_lit_mesh_t* view = &scene->renderers[i].mesh;
+        asset_status_t status = r3d_lit_mesh_open(pack, mesh, view);
+        if (status == ASSET_OK && i < scene->asset.renderer_count) {
+            const uint16_t set = scene->asset.renderers[i].colour_set;
+            if (set != SCENE_ASSET_COLOUR_SET_OWN) {
+                status = r3d_lit_mesh_open_colours(pack, mesh, set, view);
+            }
+        }
+        if (status == ASSET_OK && view->colors == NULL && view->face_colors == NULL) {
+            status = ASSET_ERR_FORMAT;
+        }
+        if (status != ASSET_OK) {
+            return scene_failure_make(SCENE_ERR_ASSET, status, mesh);
+        }
+    }
+    return open_lod_bits(scene);
 }
 
 static const char*
@@ -362,12 +362,20 @@ scene_load_from(const asset_pack_t* pack, const char* id, scene_failure_t* why) 
     copy_id(scene->id, id);
     scene_failure_t done =
         scene_hierarchy_open(scene) ? open_meshes(scene, pack) : scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id);
-    /* What opens after the meshes, in order, until one fails. */
-    static scene_failure_t (*const steps[])(scene_t*) = {
-        scene_mesh_make_resident, open_lod_bits, open_transforms, open_lights, open_animators, open_skins,
-    };
-    for (size_t i = 0; done.status == SCENE_OK && i < sizeof(steps) / sizeof(steps[0]); i++) {
-        done = steps[i](scene);
+    if (done.status == SCENE_OK) {
+        done = scene_mesh_make_resident(scene);
+    }
+    if (done.status == SCENE_OK) {
+        done = open_transforms(scene);
+    }
+    if (done.status == SCENE_OK) {
+        done = open_lights(scene);
+    }
+    if (done.status == SCENE_OK) {
+        done = open_animators(scene);
+    }
+    if (done.status == SCENE_OK) {
+        done = open_skins(scene);
     }
     if (why != NULL) {
         *why = done;
