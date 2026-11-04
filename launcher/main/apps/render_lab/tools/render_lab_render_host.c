@@ -22,6 +22,7 @@
 #include "render/context/render_context.h"
 #include "render/resolution/resolution.h"
 #include "render/view/raster_overdraw.h"
+#include "render_counts.h"
 #include "render_host.h"
 #include "scene/scene_shell.h"
 #include "ui/layout/ui_transform.h"
@@ -71,6 +72,10 @@ static recti_t size_rect;
  * generation experiment (launcher/tools/r3d/framegen/); host only. */
 #define DUMP_PATH_MAX 512
 static const char* dump_dir;
+
+/* --counts PATH, with --view cull: a row per frame of what the cull view counted (render_counts.h). */
+static const char* counts_path;
+static FILE* counts;
 
 /* The value after `name` in `out`, NULL when the option is absent; false,
  * with a message, when it is the last argument and has none. */
@@ -164,6 +169,35 @@ apply_flags(int argc, char** argv) {
     }
 }
 
+static bool
+tap_option(int argc, char** argv) {
+    const char* at;
+    if (!option_value(argc, argv, "--tap", &at)) {
+        return false;
+    }
+    if (at == NULL) {
+        return true;
+    }
+    if (!vec2i_parse(at, NULL, &touch[0].point)) {
+        (void)fprintf(stderr, "render_lab_render_host: --tap is X,Y in panel pixels, not %s\n", at);
+        return false;
+    }
+    touch[1].point = touch[0].point;
+    tap = true;
+    return true;
+}
+
+static bool
+size_option(const char* size) {
+    if (!recti_parse(size, NULL, &size_rect) || size_rect.x != 0 || size_rect.y != 0 || size_rect.w <= 0
+        || size_rect.h <= 0 || size_rect.w > GFX_WIDTH || size_rect.h > GFX_HEIGHT) {
+        (void)fprintf(stderr, "render_lab_render_host: --size is WxH within %dx%d, not %s\n", GFX_WIDTH, GFX_HEIGHT,
+                      size);
+        return false;
+    }
+    return true;
+}
+
 /* Which names are valid is app_render_lab.c's own knowledge (each scene's
  * .key, render_lab_scene.h) - this only hands the string through. */
 static bool
@@ -173,26 +207,17 @@ options(int argc, char** argv) {
     const char* scale;
     const char* size;
     const char* small_fill;
-    const char* at;
-    if (!option_value(argc, argv, "--tap", &at)) {
+    if (!tap_option(argc, argv)) {
         return false;
-    }
-    if (at != NULL) {
-        if (!vec2i_parse(at, NULL, &touch[0].point)) {
-            (void)fprintf(stderr, "render_lab_render_host: --tap is X,Y in panel pixels, not %s\n", at);
-            return false;
-        }
-        touch[1].point = touch[0].point;
-        tap = true;
     }
 
     const struct {
         const char* name;
         const char** out;
     } values[] = {
-        {"--scene", &scene},   {"--view", &view}, {"--camera", &render_lab_start_camera},
-        {"--scale", &scale},   {"--size", &size}, {"--small-fill", &small_fill},
-        {"--dump", &dump_dir},
+        {"--scene", &scene},   {"--view", &view},          {"--camera", &render_lab_start_camera},
+        {"--scale", &scale},   {"--size", &size},          {"--small-fill", &small_fill},
+        {"--dump", &dump_dir}, {"--counts", &counts_path},
     };
 
     for (size_t i = 0; i < sizeof values / sizeof values[0]; i++) {
@@ -200,15 +225,15 @@ options(int argc, char** argv) {
             return false;
         }
     }
-    if (size != NULL
-        && (!recti_parse(size, NULL, &size_rect) || size_rect.x != 0 || size_rect.y != 0 || size_rect.w <= 0
-            || size_rect.h <= 0 || size_rect.w > GFX_WIDTH || size_rect.h > GFX_HEIGHT)) {
-        (void)fprintf(stderr, "render_lab_render_host: --size is WxH within %dx%d, not %s\n", GFX_WIDTH, GFX_HEIGHT,
-                      size);
+    if (size != NULL && !size_option(size)) {
         return false;
     }
     if (scene == NULL) {
         (void)fprintf(stderr, "render_lab_render_host needs --scene <key>\n");
+        return false;
+    }
+    if (counts_path != NULL && (view == NULL || strcmp(view, "cull") != 0)) {
+        (void)fprintf(stderr, "render_lab_render_host: --counts needs --view cull\n");
         return false;
     }
     option_count = argc;
@@ -254,7 +279,9 @@ setup(int quarter) {
         const resolution_config_t one = resolution_config(&size, 1, 1, INT32_MAX);
         render_context_set_dynamic_resolution(render_context_main(), &one, NULL, 0);
     }
-    return tune_options(option_count, option_args, "--live-tune");
+    /* Last, so that no failure after it leaves the file open. */
+    return tune_options(option_count, option_args, "--live-tune")
+           && (counts_path == NULL || (counts = render_counts_open(counts_path, "render_lab_render_host")) != NULL);
 }
 
 /* With --view overdraw, the last frame's totals on stderr, beside its image. */
@@ -299,6 +326,9 @@ draw(const provider_frame_t* frame) {
     }
     app_list()->frame(frame->dt_ms, &in);
     report_overdraw(frame);
+    if (counts != NULL) {
+        render_counts_row(&counts, frame);
+    }
     if (dump_dir != NULL) {
         dump_raster(frame->index);
     }

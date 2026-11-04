@@ -1,0 +1,8 @@
+# A stand-in for each of the stress scene's copies: one small triangle,
+# replaced at run time by the mesh the scene generates.
+mtllib slot.mtl
+v 0 0 0
+v 0.01 0 0
+v 0 0.01 0
+usemtl slot
+f 1 2 3

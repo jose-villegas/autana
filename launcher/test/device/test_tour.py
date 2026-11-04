@@ -21,7 +21,15 @@ def discover(console):
     return apps
 
 
-def model(apps):
+def scene_steps(scenes, pairs):
+    """Every ordered pair of an app's scenes, or one cycle through them in the order listed."""
+    keys = [key for key, _ in scenes]
+    if pairs:
+        return list(itertools.permutations(keys, 2))
+    return [(source, target) for source, target in zip(keys, keys[1:] + keys[:1]) if source != target]
+
+
+def model(apps, pairs=False):
     graph = nx.DiGraph()
     graph.add_node("home", name="Home")
     landings = ["home"]
@@ -33,7 +41,7 @@ def model(apps):
         graph.add_node(landing, name=name if not scenes else name + ": " + landing[1])
         for key, _ in scenes:
             graph.add_node((name, key), name=name + ": " + key)
-        for (source, _), (target, _) in itertools.permutations(scenes, 2):
+        for source, target in scene_steps(scenes, pairs):
             graph.add_edge((name, source), (name, target), command=f"{app['console']} scene {target}")
     for source, target in itertools.permutations(landings, 2):
         name = target[0] if isinstance(target, tuple) else target
@@ -52,8 +60,8 @@ def graphwalker(graph):
     }]}
 
 
-def test_lifecycle_tour(console):
-    graph = model(discover(console))
+def test_lifecycle_tour(console, request):
+    graph = model(discover(console), request.config.getoption("tour_pairs"))
     path = Path(console.dut.logfile).with_name("tour-model.json")
     path.write_text(json.dumps(graphwalker(graph), indent=2) + "\n")
     saved = json.loads(path.read_text())["models"][0]
@@ -65,14 +73,38 @@ def test_lifecycle_tour(console):
         console.move(graph[source][target]["command"])
 
 
+APPS = [
+    {"name": "gallery", "console": "VIEW", "scenes": [("a", False), ("b", True), ("c", False)]},
+    {"name": "clock", "console": "", "scenes": []},
+    {"name": "demo", "console": "DEMO", "scenes": [("x", True), ("y", False)]},
+]
+
+
+def scene_edges(graph, app):
+    return [(source, target) for source, target in graph.edges
+            if isinstance(source, tuple) and isinstance(target, tuple) and source[0] == target[0] == app["name"]]
+
+
+@pytest.mark.parametrize("embedded_services", [""], indirect=True)
+def test_a_cycle_enters_and_leaves_every_scene_once():
+    graph = model(APPS)
+    for app in APPS:
+        nodes = {(app["name"], key) for key, _ in app["scenes"]}
+        edges = scene_edges(graph, app)
+        if len(nodes) < 2:
+            assert not edges
+            continue
+        assert len(edges) == len(nodes)
+        assert {source for source, _ in edges} == nodes
+        assert {target for _, target in edges} == nodes
+        assert nx.is_strongly_connected(graph.subgraph(nodes))
+    assert nx.is_eulerian(graph)
+
+
 @pytest.mark.parametrize("embedded_services", [""], indirect=True)
 def test_model_has_only_state_changes():
-    apps = [
-        {"name": "gallery", "console": "VIEW", "scenes": [("a", False), ("b", True), ("c", False)]},
-        {"name": "clock", "console": "", "scenes": []},
-        {"name": "demo", "console": "DEMO", "scenes": [("x", True), ("y", False)]},
-    ]
-    graph = model(apps)
+    apps = APPS
+    graph = model(apps, pairs=True)
     landings = [("gallery", "b"), "clock", ("demo", "x")]
     assert set(graph) == {"home", "clock", ("gallery", "a"), ("gallery", "b"),
                           ("gallery", "c"), ("demo", "x"), ("demo", "y")}
