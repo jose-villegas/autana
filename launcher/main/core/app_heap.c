@@ -14,11 +14,6 @@
 #include "tlsf.h"
 #include "tlsf_block_functions.h"
 
-/* Free space is counted as ESP-IDF's multi_heap counts it: the pool less
- * each live block and its header, not the free blocks' own headers, so a
- * MEMORY_APP reading compares with a MEMORY_PSRAM one. */
-static tlsf_t heap;
-
 /* What a block's address is a multiple of. On the board, TLSF's own four
  * bytes, as ESP-IDF's PSRAM heap gives: no padding gap to split off. A host
  * wants what its malloc() gives, which TLSF only gives through memalign. */
@@ -27,6 +22,11 @@ static tlsf_t heap;
 #else
 #define BLOCK_ALIGN _Alignof(max_align_t)
 #endif
+
+/* Free space is counted as ESP-IDF's multi_heap counts it: the pool less
+ * each live block and its header, not the free blocks' own headers, so a
+ * MEMORY_APP reading compares with a MEMORY_PSRAM one. */
+static tlsf_t heap;
 static pool_t pool;
 static uintptr_t region_start;
 static size_t region_bytes;
@@ -95,9 +95,9 @@ app_heap_alloc(size_t bytes) {
             minimum_bytes = free_bytes;
         }
         blocks++;
+        /* memory_alloc() is inline, so this return address is its caller's. */
+        app_heap_trace_hook(true, __builtin_return_address(0));
     }
-    /* memory_alloc() is inline, so this return address is its caller's. */
-    app_heap_trace_hook(true, __builtin_return_address(0));
     return pointer;
 }
 
