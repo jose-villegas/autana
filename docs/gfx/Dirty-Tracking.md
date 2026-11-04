@@ -40,6 +40,5 @@ serves all three modes.
 | Call | Effect |
 |---|---|
 | `gfx_mark_all_dirty()` | send everything next present |
-| `gfx_invalidate()` | next band frame forces every band |
-| `gfx_request_full_redraw()` | both of the above, plus a pending flag the shell answers with the app's `invalidate()` |
+| `gfx_request_full_redraw()` | the above, the next band frame forcing every band, plus a pending flag the shell answers with the app's `invalidate()` |
 | `gfx_set_interlace()` | alternate strips on alternate presents; skipped strips stay dirty. Off by default, RGB565 full framebuffer only. |

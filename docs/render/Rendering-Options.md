@@ -45,7 +45,7 @@ flowchart LR
 |---|---|---|---|---|---|
 | [Full framebuffer](#framebuffer-layouts) | nothing: sends only what changed | one frame of PSRAM | on | nothing | [Modes](../gfx/Targets-and-Modes.md#modes) |
 | [Double framebuffer](#framebuffer-layouts) | a second frame of PSRAM for drawing during the send | a second frame of PSRAM | off | `gfx_mode_enter()` with `GFX_LAYOUT_DOUBLE_FB` | [Modes](../gfx/Targets-and-Modes.md#modes) |
-| [Clear on send](#framebuffer-layouts) | core 1's bus time for core 0's clear | none | off | `gfx_set_clear_on_send()` in `GFX_LAYOUT_DOUBLE_FB` | [Present](../gfx/Present.md#present-who-runs-it) |
+| [Clear on send](#framebuffer-layouts) | core 1's bus time for core 0's clear | none | off | `.clear_on_send` in a `GFX_LAYOUT_DOUBLE_FB` request | [Present](../gfx/Present.md#present-who-runs-it) |
 | [Band ring](#framebuffer-layouts) | kept content for a freed framebuffer | 0 extra internal on the device; frees the PSRAM frame | off | `GFX_LAYOUT_BANDS` and a `draw_band` callback | [The band ring](../gfx/Band-Ring.md#the-band-ring) |
 | [Indexed](#framebuffer-layouts) | colours for one byte a cell | grid bytes internal; frees the PSRAM frame | off | `GFX_LAYOUT_INDEXED` | [Indexed mode](../gfx/Targets-and-Modes.md#indexed-mode) |
 
@@ -124,18 +124,18 @@ was granted:
 ```c
 /* Double framebuffer: request the layout on entry and release it on exit. */
 #include "gfx/gfx.h"
-#include "gfx/present/gfx_present.h"
 #include "image/pixel/rgb565.h"
 
 static bool doubled;
 
 static void
 effect_enter(void) {
-    const gfx_mode_request_t request = {.layout = GFX_LAYOUT_DOUBLE_FB};
+    const gfx_mode_request_t request = {
+        .layout = GFX_LAYOUT_DOUBLE_FB,
+        .clear_on_send = true, /* frame() starts with draw_clear() of black */
+        .clear_colour = RGB565BE(0x000000),
+    };
     doubled = gfx_mode_enter(&request)->layout == GFX_LAYOUT_DOUBLE_FB;
-    if (doubled) {
-        (void)gfx_set_clear_on_send(true, RGB565BE(0x000000)); /* frame() starts with draw_clear() of black */
-    }
 }
 
 static void
@@ -158,7 +158,7 @@ granted `layout`.
 |---|---|---|---|---|
 | `GFX_LAYOUT_FULL_FB` | yes | present task, dirty cells only | anything that redraws part of a frame; an r3d scene | a full-size full-frame redraw, whose send cannot overlap the next draw |
 | `GFX_LAYOUT_DOUBLE_FB` | front only | present task, every strip | a full-frame redraw drawn straight into the framebuffer | an r3d scene: it loses the half picture, so compose upscales to full size |
-| `+ gfx_set_clear_on_send()` | no: the sent frame is filled | present task, then a fill on core 1 | a double-layout frame that starts with `draw_clear()` of one colour | a draw that overwrites every pixel anyway: the fill only adds bus traffic |
+| `+ .clear_on_send` | no: the sent frame is filled | present task, then a fill on core 1 | a double-layout frame that starts with `draw_clear()` of one colour | a draw that overwrites every pixel anyway: the fill only adds bus traffic |
 | `GFX_LAYOUT_BANDS` | **no**: a band is gone once sent | gfx, from the shell loop | a full-redraw renderer that can draw one band at a time and needs the PSRAM | anything that redraws part of a frame: every dirty band is drawn whole |
 | `GFX_LAYOUT_INDEXED` | yes | present task, through the LUT | a cell grid with a palette | true colour: 256 entries at most |
 

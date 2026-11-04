@@ -15,7 +15,6 @@
 #include "draw/draw.h"
 #include "esp_log.h"
 #include "gfx/gfx.h"
-#include "gfx/present/gfx_present.h"
 #include "image/pixel/rgb565.h"
 #include "render_lab.h"
 #include "render_lab_dynres.h"
@@ -145,13 +144,12 @@ enter_layout(void) {
 
         .interlace_x = false,
         .interlace_y = false,
+        .clear_on_send = chosen->clear_on_send,
+        .clear_colour = RGB565BE(UI_BACKGROUND),
     };
     (void)gfx_mode_enter(&mode_request);
-    if (chosen->clear_on_send) {
-        (void)gfx_set_clear_on_send(true, RGB565BE(UI_BACKGROUND));
-    }
 
-    gfx_invalidate();
+    gfx_request_full_redraw();
 }
 
 void
@@ -309,7 +307,7 @@ update_scene_title(uint32_t dt_ms) {
     }
     scene_title_remaining_ms = scene_title_remaining_ms > dt_ms ? scene_title_remaining_ms - dt_ms : 0;
     if (scene_title_remaining_ms == 0) {
-        gfx_invalidate();
+        gfx_request_full_redraw();
     }
 }
 
@@ -338,7 +336,7 @@ render_lab_frame(uint32_t dt_ms, const input_t* input) {
     if (input->boot.pressed) {
         menu_open = !menu_open;
         scene_set_paused(menu_open);
-        gfx_invalidate();
+        gfx_request_full_redraw();
 
         if (menu_open) {
             ui_invalidate();
@@ -348,7 +346,7 @@ render_lab_frame(uint32_t dt_ms, const input_t* input) {
     const uint32_t layout_generation = ui_layout_generation();
     if (layout_generation != last_layout_generation) {
         last_layout_generation = layout_generation;
-        gfx_invalidate();
+        gfx_request_full_redraw();
     }
 
     /* Everything below is the scene view: the fps counter measures ITS
@@ -377,7 +375,6 @@ void
 render_lab_exit(void) {
     render_lab_dynres_stop();
     exit_scene();
-    gfx_invalidate();
     gfx_mode_exit();
 }
 
