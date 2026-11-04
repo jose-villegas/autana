@@ -94,6 +94,17 @@ print_vec(const char* name, vec3f_t v) {
     printf(",\"%s\":[%s]", name, vec3f_text(v).chars);
 }
 
+static float
+step_batch(gravity_t* g, probe_pose_at_t pose_at, probe_linear_at_t linear, const float bias[3], unsigned* index,
+           int count, float dt) {
+    input_motion_batch_t batch = {.count = count};
+    for (int i = 0; i < batch.count; i++, (*index)++) {
+        batch.samples[i] = probe_motion_sample(pose_at, *index * dt, dt, bias, linear);
+    }
+    gravity_update_batch(g, &batch);
+    return (*index - 1) * dt;
+}
+
 static void
 print_scenario(const char* name, probe_pose_at_t pose_at, probe_linear_at_t linear, float duration) {
     printf(",\"%s\":[", name);
@@ -105,12 +116,7 @@ print_scenario(const char* name, probe_pose_at_t pose_at, probe_linear_at_t line
     unsigned index = 0;
     for (unsigned f = 0; f <= frames; f++) {
         const unsigned end = (unsigned)lroundf(f / (SCENARIO_FRAME_HZ * dt)) + 1;
-        input_motion_batch_t batch = {.count = (int)(end - index)};
-        for (int i = 0; i < batch.count; i++, index++) {
-            batch.samples[i] = probe_motion_sample(pose_at, index * dt, dt, no_bias, linear);
-        }
-        gravity_update_batch(&g, &batch);
-        const float t = (index - 1) * dt;
+        const float t = step_batch(&g, pose_at, linear, no_bias, &index, (int)(end - index), dt);
         const probe_pose_t p = pose_at(t);
         float truth[3];
         probe_to_device(&p, (const float[3]){0, 0, -1}, truth);
@@ -151,12 +157,7 @@ main(void) {
     const unsigned frames = (unsigned)(PROBE_DURATION_S * PROBE_FRAME_HZ);
     unsigned index = 0;
     for (unsigned f = 0; f <= frames; f++) {
-        input_motion_batch_t batch = {.count = f == 0 ? 1 : (int)per_frame};
-        for (int i = 0; i < batch.count; i++, index++) {
-            batch.samples[i] = probe_motion_sample(pose, index * dt, dt, bias, NULL);
-        }
-        gravity_update_batch(&g, &batch);
-        const float t = (index - 1) * dt;
+        const float t = step_batch(&g, pose, NULL, bias, &index, f == 0 ? 1 : (int)per_frame, dt);
         const probe_pose_t p = pose(t);
         float down[3];
         probe_to_device(&p, (const float[3]){0, 0, -1}, down);
