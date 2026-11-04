@@ -22,6 +22,16 @@ run = 41890489294
 host = "Linux x86_64"
 
 [[bake]]
+output = "bistro.street_fitted.fit.bundle"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "dd2e15c698ead29afe9770dd53091602c13552241774875c1c8f256934f2a7ee"
+sha256 = "ed8796d455163d5f75f03e0c071858d53d277f3056f87f7ec39b0a64183986da"
+size = 214706
+run = 41896680088
+host = "Linux x86_64"
+gpu = "NVIDIA GeForce RTX 2060"
+
+[[bake]]
 output = "bistro.street_fitted.start.bundle"
 source = "launcher/demo/bistro/bistro.scene.toml"
 key = "19074594c224aaca32a66b93db0dd9aff5a9aeaffa1452b81099f5fb33d04399"
@@ -29,6 +39,16 @@ sha256 = "d115ad89da1dde1f8ef22cfe8dbb775f182f7d17b7c2e3a9e181bb8ef06fabe7"
 size = 306914
 run = 41890489294
 host = "Linux x86_64"
+
+[[bake]]
+output = "bistro.street_fitted_full.fit.bundle"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "77e05af3d4c4271fa4781ccce55054e125a213330b98ba5f415833eabdbcf25f"
+sha256 = "f9b8e63911503deb0fca81157d78c83d23c6dbe67b9478c6170845e17fec2bfc"
+size = 420183
+run = 41896680088
+host = "Linux x86_64"
+gpu = "NVIDIA GeForce RTX 2060"
 
 [[bake]]
 output = "bistro.street_fitted_full.start.bundle"
@@ -47,6 +67,16 @@ sha256 = "004acdf738c1903e8fabd8ae5468032a324613ac608a8f1b22412990961980e9"
 size = 622176
 run = 41890489294
 host = "Linux x86_64"
+
+[[bake]]
+output = "bistro.street_flat_fitted.fit.bundle"
+source = "launcher/demo/bistro/bistro.scene.toml"
+key = "6167fe6b1f4068af4c73562eb97de9a29d0729f1f0fe963ccdf12b9d72fbaffe"
+sha256 = "8bcbc2f43df1326863c21aa27b9dca9da6182bc1e84a08914c32269b90b16ff5"
+size = 328023
+run = 41896680088
+host = "Linux x86_64"
+gpu = "NVIDIA GeForce RTX 2060"
 
 [[bake]]
 output = "bistro.street_flat_fitted.start.bundle"
