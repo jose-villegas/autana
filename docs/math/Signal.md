@@ -1,7 +1,7 @@
 # Signal: goertzel.h, pitch.h and smooth.h
 
 Single-bin detection, pitch conversion and exponential smoothing.
-Goertzel is compiled C; pitch and smoothing are header-only. [Math index](README.md).
+Goertzel and pitch are compiled C; smoothing is header-only. [Math index](README.md).
 
 `goertzel_t` accumulates one frequency across sample blocks with a float
 recurrence, including non-integer DFT bins.<sup>[[72]](../Citations.md#goertzel-1958)</sup>
@@ -86,7 +86,11 @@ f=f_r 2^{s/O}, \qquad s=O\log_2(f/f_r)
 ## smooth.h
 
 Exact exponential steps use nonnegative `dt` and positive `tau` or
-`half_life`, in matching time units. Two half steps compose to one full step.
+`half_life`, in matching time units. For a fixed half-life,
+`smooth_decay(a) * smooth_decay(b) = smooth_decay(a + b)`.
+
+For a fixed time constant, the shares left compose likewise:
+`(1 - smooth_alpha(a)) * (1 - smooth_alpha(b)) = 1 - smooth_alpha(a + b)`.
 
 | Function | Result |
 |---|---|

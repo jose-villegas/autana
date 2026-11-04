@@ -1,7 +1,6 @@
 #include "kinematics/orbit/orbit_motion.h"
 #include "kinematics/follow/follow.h"
 #include "math/scalar/math_const.h"
-#include "math/signal/smooth.h"
 
 #include <math.h>
 

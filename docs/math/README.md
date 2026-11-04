@@ -2,7 +2,8 @@
 
 The [math package](../../launcher/packages/math/README.md) holds scalar operations
 in `scalar/`, vectors and transforms in `linear/`, shapes and queries in
-`geometry/`, order statistics in `stats/`, and signal processing in `signal/`. [Text conversion](Text.md) lives in `text/`.
+`geometry/`, order statistics in `stats/`, and signal processing in `signal/`.
+[Text conversion](Text.md) lives in `text/`.
 
 <!-- generated: math-fast-links-readme check: python launcher/tools/perf/fast_paths.py --check -->
 [Fast-path evidence](../packages/Fast-Paths.md) pairs costs, bounds and callers.

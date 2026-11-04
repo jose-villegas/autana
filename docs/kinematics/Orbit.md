@@ -30,7 +30,8 @@ A transform orbits a target, with direct steering, a decaying fling and a critic
 
 Held steering applies the frame's turn $`\Delta`$ directly. Its smoothed speed
 follows that turn over the frame time $`\Delta t`$, with half-life $`h_d`$
-(`ORBIT_MOTION_DRAG_VELOCITY_HALF_LIFE_S`), its share left by [`smooth_decay`](../math/Signal.md#smoothh):
+(`ORBIT_MOTION_DRAG_VELOCITY_HALF_LIFE_S`), with its share left from
+[`smooth_decay`](../math/Signal.md#smoothh):
 
 ```math
 v \gets v + (\Delta/\Delta t-v)(1-2^{-\Delta t/h_d})
