@@ -712,8 +712,10 @@ def run_night(args, clock=None, launch=None):
         failed = down = True
     if planned["lanes"]:
         key = datetime.fromisoformat(planned["started"]).strftime(MARKER_KEY_FORMAT)
-        # A lane cut at the deadline ran: its board was up.
-        down |= not all(board in late or night_ran(read_night(args.data, board, key)) for board in planned["lanes"])
+        # A lane cut at the deadline is judged as one that stopped there itself.
+        manifests = {board: read_night(args.data, board, key) for board in planned["lanes"]}
+        down |= not all(night_ran(dict(manifest, stop_reason="deadline") if board in late and manifest else manifest)
+                        for board, manifest in manifests.items())
     # For the board outage alarm: a night whose lanes all ran is no outage, whatever their tests reported.
     output({"boards_ran": not down})
     return int(failed)

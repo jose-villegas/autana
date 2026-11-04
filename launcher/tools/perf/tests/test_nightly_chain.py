@@ -1089,31 +1089,66 @@ class NightlyTests(unittest.TestCase):
     def test_a_lane_starts_no_step_its_planned_pace_puts_past_the_deadline(self):
         pace = chain.FIRST_STEP_SECONDS
         self.args.previous = self.paced(pace)
-        self.args.deadline = (self.clock.now() + timedelta(seconds=pace - 1)).isoformat()
+        start = self.clock.now()
+        self.args.deadline = (start + timedelta(seconds=pace - 1)).isoformat()
         results, replay, writes = self.run_chain()
         self.assertEqual([r.outcome for r in results], ["not_run_deadline"] * 3)
         self.assertEqual(replay.calls, [])
         self.assertEqual(writes[-1]["stop_reason"], "deadline")
+        # A step whose pace ends exactly at the deadline still runs.
+        self.clock.value = start
+        self.args.deadline = (start + timedelta(seconds=pace)).isoformat()
+        results, _, _ = self.run_chain()
+        self.assertEqual(results[0].outcome, "measured")
+
+    def test_main_hands_the_plans_deadline_to_the_chain(self):
+        for deadline in ("2026-10-18T10:00:00+00:00", None):
+            with self.subTest(deadline=deadline):
+                path = self.root / "plan.json"
+                chain.write_json(path, dict(night="2026-10-18", started=self.clock.now().isoformat(), deadline=deadline,
+                                            lanes={"20E8": dict(lane="0", previous=None, steps=[])}))
+                argv = ["scoped_chain.py", "run", "--plan", str(path), "--board", "20E8", "--lane", "0",
+                        "--data", str(self.args.data), "--out", str(self.args.out), "--suite", "suite", "-", "-"]
+                with patch.object(sys, "argv", argv), patch.dict(os.environ, _AUTANA_DEVICE_LOCK_TOKEN="outer-hold"), \
+                        patch.object(chain, "run_chain", return_value=[]) as run, \
+                        patch.object(chain, "install_console_interrupt_handler"), \
+                        patch.object(chain, "read_last_night", return_value=dict(steps=[], selftest=dict(outcome="not_run"))):
+                    self.assertEqual(chain.main(), 0)
+                self.assertEqual(run.call_args.args[1].deadline, deadline)
 
     def test_the_night_stops_a_lane_still_running_at_the_deadline(self):
-        self.before_cutoff(2)
-        deadline = schedule.night_cutoff(self.clock.now()) + timedelta(seconds=3 * chain.RESCAN_SECONDS)
-        # An estimate whose hang guard lies far past the deadline: only the deadline stops the lane.
-        lane = dict(lane="0", estimate=10 * chain.FIRST_STEP_SECONDS, steps=[])
-        args = self.night(lanes={"20E8": lane}, window=dict(self.window(), deadline=deadline.isoformat()))
-        process = SimpleNamespace(poll=lambda: None, wait=lambda: 1)
-        output = self.root / "github-output"
-        with patch.object(chain, "fleet_scan", return_value=([], dict(boards=[], unreachable=[]))), \
-                patch.dict(os.environ, GITHUB_OUTPUT=str(output)), patch("builtins.print") as said:
-            self.assertEqual(chain.run_night(args, clock=self.clock, launch=lambda *a, **kw: process), 1)
-        self.stop_tree.assert_called_once_with(process)
-        # Cut at the first rescan at or after the deadline, and no later.
-        self.assertGreaterEqual(self.clock.now(), deadline)
-        self.assertLess(self.clock.now(), deadline + timedelta(seconds=chain.RESCAN_SECONDS))
-        self.assertIn(call(f"::warning::lane 20E8 still running at the deadline {deadline.isoformat()}; stopped",
-                           file=sys.stderr), said.call_args_list)
-        # The board ran until it was cut: no outage alarm.
-        self.assertEqual(output.read_text(), "boards_ran=true\n")
+        ran = dict(ended="2026-10-18T10:01:00+00:00", stop_reason="interrupted",
+                   selftest=dict(outcome="passed"), steps=[dict(outcome="measured"), dict(outcome="not_run_interrupted")])
+        # Cut at the deadline, a board that was running steps was up; one that left no manifest, or whose
+        # self-test never completed, was not.
+        for manifest, boards_ran in ((ran, "true"), (None, "false"),
+                                     (dict(ran, selftest=dict(outcome="incomplete")), "false")):
+            with self.subTest(manifest=manifest):
+                self.stop_tree.reset_mock()
+                self.before_cutoff(2)
+                deadline = schedule.night_cutoff(self.clock.now()) + timedelta(seconds=3 * chain.RESCAN_SECONDS)
+                # An estimate whose hang guard lies far past the deadline: only the deadline stops the lane.
+                lane = dict(lane="0", estimate=10 * chain.FIRST_STEP_SECONDS, steps=[])
+                args = self.night(lanes={"20E8": lane}, window=dict(self.window(), deadline=deadline.isoformat()))
+                key = self.clock.now().strftime(schedule.MARKER_KEY_FORMAT)
+                path = self.args.data / "scoped/20E8" / key / "night.json"
+                if manifest:
+                    chain.write_json(path, manifest)
+                elif path.exists():
+                    path.unlink()
+                process = SimpleNamespace(poll=lambda: None, wait=lambda: 1)
+                output = self.root / "github-output"
+                output.unlink(missing_ok=True)
+                with patch.object(chain, "fleet_scan", return_value=([], dict(boards=[], unreachable=[]))), \
+                        patch.dict(os.environ, GITHUB_OUTPUT=str(output)), patch("builtins.print") as said:
+                    self.assertEqual(chain.run_night(args, clock=self.clock, launch=lambda *a, **kw: process), 1)
+                self.stop_tree.assert_called_once_with(process)
+                # Cut at the first rescan at or after the deadline, and no later.
+                self.assertGreaterEqual(self.clock.now(), deadline)
+                self.assertLess(self.clock.now(), deadline + timedelta(seconds=chain.RESCAN_SECONDS))
+                self.assertIn(call(f"::warning::lane 20E8 still running at the deadline {deadline.isoformat()}; stopped",
+                                   file=sys.stderr), said.call_args_list)
+                self.assertEqual(output.read_text(), f"boards_ran={boards_ran}\n")
 
     def test_a_lane_at_its_median_pace_never_trips_the_hang_guard(self):
         # Slower than the guard's FIRST_STEP_SECONDS floor allows: only an estimate at the board's pace holds.
