@@ -60,8 +60,10 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
         command += ["--coverage-poses", str(poses)]
     if probes is not None and path:
         command += ["--coverage-weight", "1", "--coverage-weight", str(probe_coverage)]
-    command += ["--out", str(out), "--budget", str(recipe.budget if budget is None else budget),
-                "--steps", str(steps), "--batch", str(recipe.batch),
+    command += ["--out", str(out)]
+    if budget != 0:  # 0 keeps every start triangle: no prune
+        command += ["--budget", str(recipe.budget if budget is None else budget)]
+    command += ["--steps", str(steps), "--batch", str(recipe.batch),
                 "--laplacian", str(recipe.laplacian), "--normal-weight", str(recipe.normal_weight),
                 "--object", job.object.name, "--surface-weight", str(recipe.surface_weight),
                 "--surface-margin", str(recipe.surface_margin)]
