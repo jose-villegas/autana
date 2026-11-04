@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'device'))
 from device_lock import short_id
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'lib'))
 from device_capture import board_steps_completed
+from ci_step import output
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'launcher/tools/perf'))
 from nightly.lnt import night_ran
 
@@ -225,9 +226,7 @@ def run_url():
 
 def probe_devices(destination, reason_file, request=call, clock=time.monotonic, sleep=time.sleep):
     enabled = nights_enabled(request) and not boards_busy(request)
-    if os.environ.get('GITHUB_OUTPUT'):
-        with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
-            output.write(f'enabled={str(enabled).lower()}\n')
+    output({'enabled': enabled})
     if not enabled:
         return 0
     run = os.environ['GITHUB_RUN_ID']
