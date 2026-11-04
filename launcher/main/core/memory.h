@@ -43,6 +43,11 @@ size_t memory_free_bytes(memory_kind_t kind);
  * Shows a transient allocation already freed again. */
 size_t memory_min_free_bytes(memory_kind_t kind);
 
+/* Restarts every heap's low-water mark at its free space now, so
+ * memory_min_free_bytes() answers for the time since: how low one app's
+ * visit took a heap, rather than the lowest since boot. */
+void memory_min_free_restart(void);
+
 /* The largest single block an allocation of this kind could still get: free
  * space alone does not say whether one big buffer fits. */
 size_t memory_largest_block(memory_kind_t kind);

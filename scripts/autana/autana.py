@@ -534,10 +534,19 @@ def framewatch(args):
 
 
 def heap(args):
-    """Runtime free bytes, largest block and total internal DMA heap."""
+    """Runtime free bytes, largest block, total and low-water mark of the
+    internal DMA heap, or of PSRAM; `reset` restarts the low-water marks."""
     reject_unknown("heap", args, ("--json",))
-    json_output = read_json_flag(args, "usage: autana heap [--json]")
-    code, replies = send("HEAP", reply="HEAP")
+    usage = "usage: autana heap [psram] [--json] | autana heap reset"
+    if args == ["reset"]:
+        code, replies = send("HEAP reset", reply="HEAP")
+        if code != 0 or not replies:
+            return code or 1
+        print(replies[-1])
+        return 0 if replies[-1] == "HEAP reset" else 1
+    kind = args.pop(0) if args[:1] == ["psram"] else ""
+    json_output = read_json_flag(args, usage)
+    code, replies = send(f"HEAP {kind}".rstrip(), reply="HEAP")
     if code != 0 or not replies:
         return code or 1
     print(json.dumps(parse_heap(replies[-1])) if json_output else replies[-1])
@@ -693,11 +702,11 @@ def parse_tone(reply):
 
 
 def parse_heap(reply):
-    match = re.fullmatch(r"HEAP free=(\d+) largest=(\d+) total=(\d+)", reply)
+    match = re.fullmatch(r"HEAP free=(\d+) largest=(\d+) total=(\d+) min=(\d+)", reply)
     if not match:
         raise ValueError(f"invalid HEAP reply: {reply}")
-    free, largest, total = map(int, match.groups())
-    return {"free": free, "largest": largest, "total": total}
+    free, largest, total, low = map(int, match.groups())
+    return {"free": free, "largest": largest, "total": total, "min": low}
 
 
 def parse_framewatch(reply):
@@ -1838,7 +1847,10 @@ COMMAND_GROUPS = (
             ("battery [--json]", "fresh voltage, percentage, USB, charge phase and flow, plus raw PMU status bytes; development builds"),
             ("battery --log [--json]", "persistent battery records oldest first (JSON is an array); reasons: periodic, transition, boot, shutdown-warning; development builds"),
             ("battery --log --clear", "erase the battery history namespace"))),
-        one("heap", heap, "heap [--json]", "free bytes and largest block in the internal DMA pool (MEMORY_DMA); development builds"),
+        Command("heap", heap, (
+            ("heap [psram] [--json]", "free bytes, largest block, total and low-water mark of the internal DMA pool (MEMORY_DMA), or of PSRAM; development builds"),
+            ("heap reset", "restart the low-water marks, so the next reading's min covers only what ran since"),
+        )),
         Command("perf", perf, (
             ("perf", "the frame_cost names seen and the counter events"),
             ("perf <name> [event] [seconds]",

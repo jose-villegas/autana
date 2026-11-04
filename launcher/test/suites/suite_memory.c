@@ -15,6 +15,28 @@
 
 #include "core/memory.h"
 
+/* A restart forgets a low already passed and follows the next one down. Loose
+ * enough for the board, where another task may allocate in between: a block
+ * half the largest one moves every reading far past that. */
+static void
+test_a_restarted_low_water_mark_forgets_the_low_before_it(void) {
+    const size_t bytes = memory_largest_block(MEMORY_PSRAM) / 2;
+    memory_free(memory_alloc(bytes, MEMORY_PSRAM));
+    const size_t low_passed = memory_min_free_bytes(MEMORY_PSRAM);
+
+    memory_min_free_restart();
+    const size_t low_restarted = memory_min_free_bytes(MEMORY_PSRAM);
+    void* block = memory_alloc(bytes, MEMORY_PSRAM);
+    const size_t free_held = memory_free_bytes(MEMORY_PSRAM);
+    const size_t low_held = memory_min_free_bytes(MEMORY_PSRAM);
+    memory_free(block);
+
+    TEST_ASSERT_NOT_NULL(block);
+    TEST_ASSERT_GREATER_THAN_size_t(low_passed + bytes / 2, low_restarted);
+    TEST_ASSERT_LESS_THAN_size_t(low_restarted - bytes / 2, low_held);
+    TEST_ASSERT_LESS_OR_EQUAL_size_t(free_held, low_held);
+}
+
 #ifdef DEVICE_BUILD
 #include "esp_memory_utils.h"
 
@@ -47,6 +69,7 @@ test_each_kinds_block_lands_in_the_memory_it_names(void) {
 void
 suite_memory(void) {
     RUN_TEST(test_each_kinds_block_lands_in_the_memory_it_names);
+    RUN_TEST(test_a_restarted_low_water_mark_forgets_the_low_before_it);
 }
 
 #else
@@ -244,6 +267,7 @@ void
 suite_memory(void) {
     RUN_TEST(test_a_small_block_of_every_kind_is_writable_and_comes_back);
     RUN_TEST(test_the_lowest_free_space_remembers_a_block_freed_again);
+    RUN_TEST(test_a_restarted_low_water_mark_forgets_the_low_before_it);
     RUN_TEST(test_the_largest_block_is_less_than_free_space_once_a_pool_has_a_hole);
     RUN_TEST(test_only_a_psram_block_reads_as_in_psram);
     RUN_TEST(test_a_request_past_its_kinds_budget_fails_and_spares_the_other_pool);
