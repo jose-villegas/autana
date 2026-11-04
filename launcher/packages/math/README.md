@@ -116,6 +116,7 @@ header's opening comment; `--check` verifies it.
 | [include/math/scalar/units.h](include/math/scalar/units.h) | units: integer time conversion scales. |
 | [include/math/signal/goertzel.h](include/math/signal/goertzel.h) | Streaming single-bin detection (Goertzel, 1958). |
 | [include/math/signal/pitch.h](include/math/signal/pitch.h) | pitch: equal-temperament offsets relative to a caller's reference frequency. |
+| [include/math/signal/smooth.h](include/math/signal/smooth.h) | smooth: exact exponential approach toward a target, independent of frame step. |
 | [include/math/stats/stats_template.h](include/math/stats/stats_template.h) | stats_template: order statistics of a sample array for one number type; see docs/math/Conventions.md#templates for macro arguments. |
 | [include/math/stats/statsf.h](include/math/stats/statsf.h) | statsf: order statistics of float samples. |
 | [include/math/stats/statsi.h](include/math/stats/statsi.h) | statsi: order statistics of int32 samples, such as timings in microseconds or cycles. |
