@@ -886,13 +886,18 @@ present_reference_band(int hz, gfx_color_t colour) {
  * valid. */
 
 /* The narrow strip: a fraction of a band's width, a band's rows. */
-#define NARROW_STRIP_WIDTH      20
-#define NARROW_STRIP_ROWS       64
+#define NARROW_STRIP_WIDTH        20
+#define NARROW_STRIP_ROWS         64
 
-/* Worst of a 5-run capture on each of A308, 20E8 and 2124 (243, 259, 244 us),
- * + 1%: 259 * 1.01 = 261.6, up to 262. The suite keeps no per-board ceilings,
- * so the worst board sets the one; the 241 before sat on the noise edge. */
-#define NARROW_STRIP_CEILING_US 262
+/* The gather cases' ceilings, at GATHER_CLOCK_HZ: the worst of a 5-run
+ * capture on each of A308, 20E8 and 2124, + 1%, rounded up. The suite keeps
+ * no per-board ceilings, so the worst board sets each one. */
+#define NARROW_STRIP_CEILING_US   363  /* worst 359 */
+#define WIDE_SHORT_CEILING_US     425  /* worst 420 */
+#define FAR_CORNERS_CEILING_US    391  /* worst 387 */
+#define THREE_MARKS_CEILING_US    590  /* worst 584 */
+#define NEAR_BUDGET_CEILING_US    1261 /* worst 1248 */
+#define ONE_CELL_MARKS_CEILING_US 344  /* worst 340 */
 
 /* Measures the gather-copy path in gfx_present(): a strip whose
  * real dirty width is only a fraction of the band, written directly (not
@@ -1016,7 +1021,7 @@ test_a_short_wide_change_costs_less_than_a_full_band(void) {
      * different aspect ratio. */
     perf_guard("the gathered wide-short box cost more than its observed price - "
                "the gather-copy path may have regressed",
-               wide, 299);
+               wide, WIDE_SHORT_CEILING_US);
 }
 
 /* Full width, most of a band's height: 368x48 is far over GATHER_MAX_PIXELS,
@@ -1083,7 +1088,7 @@ test_two_far_corners_cost_less_than_a_full_band(void) {
      * for the copy-side jitter the single-piece gathers above show. */
     perf_guard("two far corners cost more than their observed price - one of the "
                "two independent gathers may have regressed",
-               two_corners, 320);
+               two_corners, FAR_CORNERS_CEILING_US);
 }
 
 /* Three separated marks, one more than LEAF_REFINE_MAX_RUNS (gfx_dirty.h)
@@ -1118,7 +1123,7 @@ test_three_far_apart_marks_falls_back_at_the_current_cap(void) {
      * safe to peg. */
     perf_guard("three far-apart marks' fallback send cost more than its observed "
                "price",
-               three_marks, 383);
+               three_marks, THREE_MARKS_CEILING_US);
 }
 
 /* A small mark plus a wide one in the same coarse run, sized to land the
@@ -1145,7 +1150,7 @@ test_a_near_budget_split_crosses_the_gather_threshold(void) {
 
     /* No ratio: whether gathering at this size helps is the open question a
      * sweep of GATHER_MAX_PIXELS is for. */
-    perf_guard("near-budget split", near_budget, 763);
+    perf_guard("near-budget split", near_budget, NEAR_BUDGET_CEILING_US);
 }
 
 /* Two small marks inside the SAME 92px cell, far enough apart to leave a
@@ -1173,7 +1178,7 @@ test_two_marks_in_one_cell_cost_less_than_the_coarse_box(void) {
                "less than sending the coarse box spanning both",
                two_marks, full_band);
 
-    perf_guard("two marks in one cell", two_marks, 308);
+    perf_guard("two marks in one cell", two_marks, ONE_CELL_MARKS_CEILING_US);
 }
 
 /* The drawing calls narrow the dirty region themselves: no app-side
