@@ -99,10 +99,10 @@ host = "Linux x86_64"
 [[bake]]
 output = "capybara.capybara.mesh"
 source = "launcher/demo/capybara/capybara.scene.toml"
-key = "c690aa886daea3f929b39cc32e4049d0f449a46a650f88ab65ebe6fbce6cde8f"
-sha256 = "ae828bd65916108ca2d29d436242ca146cf6c1ff00788c3cc3288f19832a987b"
-size = 27808
-run = 41672350426
+key = "d3181236f4480e4bfc1e6e389f86cd6d91ab95d8c7465fc0c8a78777d79e7c61"
+sha256 = "9cb206c76b9dd7d1af825a6e454517a303ec5a98808d0f4aec5431a816ca8e45"
+size = 14068
+run = 41753815885
 host = "Linux x86_64"
 
 [[bake]]
@@ -219,10 +219,10 @@ host = "Linux x86_64"
 [[bake]]
 output = "stress_copy.mesh"
 source = "launcher/demo/stress/stress.scene.toml"
-key = "70e62ad501887e82d222382b44e6bdb3ae063937b08b73420c4d43084d672aa5"
-sha256 = "384e96bce54fcc75e1aee11daba4bb439911e92aedfee493d2da5e50363ae504"
-size = 124
-run = 41734062054
+key = "02ce0b801d5f6964dd1ae21f279019901c512c9d7f6ae5581eeb94cdfc2c8287"
+sha256 = "8ca7f72fac1e4cecbdd3df4ffb53e489ea0ad86766f5ceec3c53967fc5184e3b"
+size = 136
+run = 41753815885
 host = "Linux x86_64"
 
 [[bake]]
