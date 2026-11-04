@@ -21,6 +21,8 @@
 #include "esp_log.h"
 #include "unity.h"
 
+#include "app/app_arena.h"
+#include "core/app_heap.h"
 #include "core/timing.h"
 #include "display/display_shell.h"
 #include "suites.h"
@@ -41,8 +43,14 @@ __wrap_esp_system_console_put_char(char c) {
  * reset the panel clock to the shell's own state, as an app's start
  * and exit do, so no test inherits what the screen before it or an earlier
  * test set - a failed assert included. */
+static bool test_owns_visit;
+
 void
 setUp(void) {
+    test_owns_visit = !app_heap_active();
+    if (test_owns_visit) {
+        app_arena_enter();
+    }
     display_restore_system_state();
 }
 
@@ -50,6 +58,11 @@ void
 tearDown(void) {
     display_restore_system_state();
     suite_judge_watched_test();
+    if (test_owns_visit && app_heap_active()) {
+        app_arena_exit();
+    } else if (!test_owns_visit && !app_heap_active()) {
+        app_arena_enter();
+    }
 }
 
 int

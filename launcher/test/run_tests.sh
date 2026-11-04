@@ -140,7 +140,6 @@ $MAIN_DIR/power/power_log.c
 $MAIN_DIR/audio/audio_tone.c
 $MAIN_DIR/audio/audio_frequency.c
 $MAIN_DIR/audio/audio_loopback_detector.c
-$MAIN_DIR/app/app_arena.c
 $MAIN_DIR/console/console_words.c
 $MAIN_DIR/app/app_registry.c
 $MAIN_DIR/shell/shell_system.c
@@ -385,7 +384,7 @@ FIRMWARE_INC=""
 for include_dir in $(firmware_include_dirs "$LAUNCHER_DIR"); do
     FIRMWARE_INC="$FIRMWARE_INC -I $(native "$include_dir")"
 done
-COMMON_INC="$FIRMWARE_INC -I $TEST_N $(testkit_includes "$LAUNCHER_N") -I $TEST_N/stubs"
+COMMON_INC="-I $LAUNCHER_N/../third_party/tlsf -I $LAUNCHER_N/../third_party/tlsf/include $FIRMWARE_INC -I $TEST_N $(testkit_includes "$LAUNCHER_N") -I $TEST_N/stubs"
 TEST_INC="$COMMON_INC -I $LAUNCHER_N/components/microui/include -I $LAUNCHER_N/tools/gen -I $LAUNCHER_N/tools/r3d"
 LDFLAGS="-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -Wl,--wrap=asset_store_load -Wl,--wrap=asset_store_backend_report -Wl,--wrap=job_try_core1 -Wl,--wrap=job_run_steered -Wl,--wrap=draw_line_ex -pthread -lm"
 
@@ -412,7 +411,7 @@ printf '%s\n' $SU_SOURCES | sed '/^$/d' | to_native | squash >"$SU_LIST"
 # "name source" pairs feed awk, so the whole Makefile costs a handful of
 # process launches (each one is expensive under MSYS).
 pairs() { # source-list-file
-    sed -e "s|^$LAUNCHER_N/||" -e 's|/|__|g' -e 's|\.c$||' "$1" | paste -d' ' - "$1"
+    sed -e "s|^$LAUNCHER_N/||" -e 's|:|_|g' -e 's|/|__|g' -e 's|\.c$||' "$1" | paste -d' ' - "$1"
 }
 UNITY_OBJECT=$(printf '%s/packages/testkit/unity/unity.c\n' "$LAUNCHER_N" | pairs /dev/stdin | cut -d' ' -f1)
 OBJ_PAIRS=$(pairs "$SRC_LIST")

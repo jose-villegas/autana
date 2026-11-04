@@ -19,7 +19,10 @@ foreach(asset asset_pack asset_table asset_file asset_store asset_store_file)
 endforeach()
 list(APPEND render_engine_sources
      "${launcher}/main/core/tune.c" "${launcher}/main/console/console_tune.c"
-     "${launcher}/main/core/job.c")
+     "${launcher}/main/core/job.c"
+     "${launcher}/main/core/app_heap.c"
+     "${launcher}/main/app/app_arena.c"
+     "${launcher}/../third_party/tlsf/tlsf.c")
 list(SORT render_engine_sources)
 
 if(CMAKE_SCRIPT_MODE_FILE STREQUAL CMAKE_CURRENT_LIST_FILE)

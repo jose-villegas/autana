@@ -1,25 +1,14 @@
-/*
- * memory: the heap by kind, so a caller above the drivers can place a buffer,
- * or measure what it kept or lost, without naming the allocator.
- *
- * On the board and in the host tests each kind maps to heap capabilities:
- * ESP-IDF's heap on the board, test/heap_arena.c's device-sized model
- * (HOST_HEAP_ARENA) on a host. Any other host build, a render,
- * allocates from the C library's malloc(), which has no budget, so it has no
- * size queries either: memory.c is not built there.
- *
- * Allocating and freeing are inline: a heap watch names the first frame
- * outside the allocator as the call site, so a frame of this module's own
- * would make every caller one site.
- *
- * Rejected: a cap mask in the interface. A caller names what the buffer is
- * for; which capability bits mean that on this chip is this module's call.
- */
+/* memory: allocation and size queries by kind. The app kind uses the visit's
+ * TLSF heap; system kinds use IDF capabilities or the host model. Other host
+ * builds use malloc for system kinds. Wrappers inline so heap watches name
+ * the caller. */
 #pragma once
 
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+
+#include "core/app_heap.h"
 
 #if defined(ESP_PLATFORM) || defined(HOST_HEAP_ARENA)
 #include "esp_heap_caps.h"
@@ -33,6 +22,7 @@ typedef enum {
     MEMORY_INTERNAL, /* on-chip RAM */
     MEMORY_8BIT,     /* anything a byte access reaches, internal or external */
     MEMORY_DMA,      /* what the heap hands out as DMA-capable: internal only */
+    MEMORY_APP,      /* the current app visit */
     MEMORY_PSRAM,    /* external RAM: large and slow */
 } memory_kind_t;
 
@@ -73,6 +63,7 @@ memory_caps(memory_kind_t kind) {
         case MEMORY_INTERNAL: return MALLOC_CAP_INTERNAL;
         case MEMORY_8BIT: return MALLOC_CAP_8BIT;
         case MEMORY_DMA: return MALLOC_CAP_DMA;
+        case MEMORY_APP: __builtin_trap();
         case MEMORY_PSRAM: return MALLOC_CAP_SPIRAM;
     }
     return MALLOC_CAP_8BIT;
@@ -84,6 +75,9 @@ memory_caps(memory_kind_t kind) {
  * buffer was meant to live is the failure a caller has to see. */
 static inline __attribute__((always_inline)) void*
 memory_alloc(size_t bytes, memory_kind_t kind) {
+    if (kind == MEMORY_APP) {
+        return app_heap_alloc(bytes);
+    }
 #if MEMORY_HEAP_CAPS
     /* Internal RAM also holds word-only regions, which a byte store faults
      * in. */
@@ -97,6 +91,10 @@ memory_alloc(size_t bytes, memory_kind_t kind) {
 /* Returns a block from memory_alloc(); NULL is a no-op. */
 static inline __attribute__((always_inline)) void
 memory_free(void* block) {
+    if (block != NULL && app_heap_contains(block)) {
+        app_heap_free(block);
+        return;
+    }
 #if MEMORY_HEAP_CAPS
     heap_caps_free(block);
 #else

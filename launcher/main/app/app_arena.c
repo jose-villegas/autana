@@ -1,30 +1,26 @@
-/*
- * app_arena: see app_arena.h. Portable: on a host the region comes from the
- * modeled PSRAM heap, or from malloc() sized from the device profile, so the
- * allocator is tested there as it runs on the board.
- */
+/* app_arena: chunked bump allocation from the visit's app heap. */
 #include "app/app_arena.h"
 
 #include <assert.h>
-#include <stdbool.h>
 #include <stdint.h>
 
 #include "core/memory.h"
 
-/* A cache line, so the region's first take shares none with the heap's. */
+/* A cache line keeps the region clear of the system heap's neighbours. */
 #define REGION_ALIGN 64u
+
+typedef struct arena_chunk {
+    struct arena_chunk* previous;
+    size_t start;
+    size_t capacity;
+    unsigned char data[];
+} arena_chunk_t;
 
 static unsigned char* block;
 static size_t block_bytes;
 static size_t used;
+static arena_chunk_t* current;
 
-static bool
-is_power_of_two(size_t n) {
-    return n != 0 && (n & (n - 1)) == 0;
-}
-
-/* The heap the region is carved from. A host without the modeled heap has no
- * size queries, so its build passes the device profile's PSRAM size. */
 static size_t
 psram_heap_bytes(void) {
 #if MEMORY_HEAP_CAPS
@@ -56,19 +52,46 @@ app_arena_bytes(void) {
     return block_bytes;
 }
 
+void
+app_arena_enter(void) {
+    assert(current == NULL && used == 0);
+    app_heap_enter(block, block_bytes);
+}
+
+void
+app_arena_exit(void) {
+    app_arena_rewind(0);
+    app_heap_exit();
+}
+
 void*
 app_arena_take(size_t size, size_t align) {
-    if (size == 0 || !is_power_of_two(align) || block == NULL) {
+    if (block == NULL || size == 0 || align == 0 || (align & (align - 1)) != 0 || size > SIZE_MAX - align) {
         return NULL;
     }
-    const uintptr_t base = (uintptr_t)block;
-    const uintptr_t start = (base + used + (align - 1)) & ~(uintptr_t)(align - 1);
-    const size_t offset = (size_t)(start - base);
-    if (offset > block_bytes || size > block_bytes - offset) {
+    if (current != NULL) {
+        const uintptr_t base = (uintptr_t)current->data;
+        const size_t offset = used - current->start;
+        const size_t padding = (-(base + offset)) & (align - 1);
+        if (padding <= current->capacity - offset && size <= current->capacity - offset - padding) {
+            used += padding + size;
+            return current->data + offset + padding;
+        }
+    }
+    const size_t requested = size + align;
+    const size_t capacity = requested > APP_ARENA_CHUNK_BYTES ? requested : APP_ARENA_CHUNK_BYTES;
+    if (capacity > SIZE_MAX - sizeof(arena_chunk_t) || size > SIZE_MAX - used - (align - 1)) {
         return NULL;
     }
-    used = offset + size;
-    return &block[offset];
+    arena_chunk_t* chunk = memory_alloc(sizeof *chunk + capacity, MEMORY_APP);
+    if (chunk == NULL) {
+        return NULL;
+    }
+    *chunk = (arena_chunk_t){.previous = current, .start = used, .capacity = capacity};
+    const size_t padding = (-(uintptr_t)chunk->data) & (align - 1);
+    current = chunk;
+    used += padding + size;
+    return chunk->data + padding;
 }
 
 size_t
@@ -79,5 +102,10 @@ app_arena_mark(void) {
 void
 app_arena_rewind(size_t mark) {
     assert(mark <= used);
+    while (current != NULL && mark <= current->start) {
+        arena_chunk_t* previous = current->previous;
+        memory_free(current);
+        current = previous;
+    }
     used = mark;
 }

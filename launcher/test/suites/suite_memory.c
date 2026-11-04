@@ -37,6 +37,68 @@ test_a_restarted_low_water_mark_forgets_the_low_before_it(void) {
     TEST_ASSERT_LESS_OR_EQUAL_size_t(free_held, low_held);
 }
 
+#define APP_TEST_BYTES      4096u
+#define APP_TEST_HOLE_BYTES (3u * _Alignof(max_align_t) + sizeof(void*))
+
+static void
+test_app_largest_block_is_allocatable_until_exhaustion(void) {
+    void* head = NULL;
+    void* before = memory_alloc(APP_TEST_HOLE_BYTES, MEMORY_APP);
+    void* hole = memory_alloc(APP_TEST_HOLE_BYTES, MEMORY_APP);
+    void* guard = memory_alloc(APP_TEST_HOLE_BYTES, MEMORY_APP);
+    bool allocatable = before != NULL && hole != NULL && guard != NULL;
+    size_t largest;
+    while ((largest = memory_largest_block(MEMORY_APP)) >= sizeof(void*)) {
+        void* block = memory_alloc(largest, MEMORY_APP);
+        if (block == NULL) {
+            allocatable = false;
+            break;
+        }
+        *(void**)block = head;
+        head = block;
+    }
+    memory_free(hole);
+    largest = memory_largest_block(MEMORY_APP);
+    void* refill = memory_alloc(largest, MEMORY_APP);
+    if (largest != 0 && refill == NULL) {
+        allocatable = false;
+    }
+    memory_free(refill);
+    memory_free(guard);
+    memory_free(before);
+    while (head != NULL) {
+        void* next = *(void**)head;
+        memory_free(head);
+        head = next;
+    }
+    TEST_ASSERT_TRUE(allocatable);
+}
+
+static void
+test_app_allocations_and_queries_use_the_region(void) {
+    const size_t free_before = memory_free_bytes(MEMORY_APP);
+    const size_t total = memory_total_bytes(MEMORY_APP);
+    const size_t system_free = memory_free_bytes(MEMORY_PSRAM);
+    const size_t blocks = app_heap_blocks();
+    memory_min_free_restart();
+    unsigned char* block = memory_alloc(APP_TEST_BYTES, MEMORY_APP);
+    TEST_ASSERT_NOT_NULL(block);
+    TEST_ASSERT_TRUE(app_heap_contains(block));
+    TEST_ASSERT_TRUE(memory_in_psram(block));
+    memset(block, 0xA5, APP_TEST_BYTES);
+    TEST_ASSERT_LESS_THAN_size_t(free_before, memory_free_bytes(MEMORY_APP));
+    TEST_ASSERT_LESS_OR_EQUAL_size_t(memory_free_bytes(MEMORY_APP), memory_min_free_bytes(MEMORY_APP));
+    TEST_ASSERT_GREATER_THAN_size_t(0, memory_largest_block(MEMORY_APP));
+    TEST_ASSERT_EQUAL_size_t(total, memory_total_bytes(MEMORY_APP));
+    TEST_ASSERT_EQUAL_size_t(system_free, memory_free_bytes(MEMORY_PSRAM));
+    memory_free(block);
+    TEST_ASSERT_EQUAL_size_t(blocks, app_heap_blocks());
+    TEST_ASSERT_EQUAL_size_t(free_before, memory_free_bytes(MEMORY_APP));
+    TEST_ASSERT_LESS_THAN_size_t(free_before, memory_min_free_bytes(MEMORY_APP));
+    memory_min_free_restart();
+    TEST_ASSERT_EQUAL_size_t(free_before, memory_min_free_bytes(MEMORY_APP));
+}
+
 #ifdef DEVICE_BUILD
 #include "esp_memory_utils.h"
 
@@ -68,6 +130,8 @@ test_each_kinds_block_lands_in_the_memory_it_names(void) {
 
 void
 suite_memory(void) {
+    RUN_TEST(test_app_allocations_and_queries_use_the_region);
+    RUN_TEST(test_app_largest_block_is_allocatable_until_exhaustion);
     RUN_TEST(test_each_kinds_block_lands_in_the_memory_it_names);
     RUN_TEST(test_a_restarted_low_water_mark_forgets_the_low_before_it);
 }
@@ -265,6 +329,8 @@ test_the_lowest_free_space_remembers_a_block_freed_again(void) {
 
 void
 suite_memory(void) {
+    RUN_TEST(test_app_allocations_and_queries_use_the_region);
+    RUN_TEST(test_app_largest_block_is_allocatable_until_exhaustion);
     RUN_TEST(test_a_small_block_of_every_kind_is_writable_and_comes_back);
     RUN_TEST(test_the_lowest_free_space_remembers_a_block_freed_again);
     RUN_TEST(test_a_restarted_low_water_mark_forgets_the_low_before_it);

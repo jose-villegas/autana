@@ -8,6 +8,7 @@ set(app_srcs
     "audio/audio_in.c"
     "audio/audio_tone.c"
     "app/app_arena.c"
+    "core/app_heap.c"
     "app/app_registry.c"
     "boot/boot_anim.c"
     "boot/boot_anim_motion.c"
@@ -337,7 +338,7 @@ endif()
 idf_component_register(
     SRCS ${app_srcs}
     INCLUDE_DIRS "." "${board_include_dir}"
-    PRIV_INCLUDE_DIRS ${app_private_include_dirs}
+    PRIV_INCLUDE_DIRS ${app_private_include_dirs} "$ENV{IDF_PATH}/components/heap/tlsf/include"
     LDFRAGMENTS "linker.lf"
     REQUIRES ${app_reqs}
 

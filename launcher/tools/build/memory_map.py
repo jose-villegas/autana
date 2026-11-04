@@ -60,7 +60,7 @@ HEADROOM_BLOCK = "internal-memory-headroom"
 CHIP_DATASHEET = "espressif-esp32-s3-datasheet"
 TIER_POLICY = (
     ("Internal SRAM", "stacks, ordinary mutable statics, DMA gather and bounce buffers, hot working data", "budget static storage and the largest allocation together"),
-    ("PSRAM", "full framebuffer (`MEMORY_PSRAM`) and the app region (`app/app_arena.h`)", "keep frequently accessed working data internal where it fits"),
+    ("PSRAM", "system buffers (`MEMORY_PSRAM`) and the visit TLSF heap (`MEMORY_APP`), including arena chunks (`app/app_arena.h`)", "keep frequently accessed working data internal where it fits"),
     ("Flash", "executable code, ordinary `static const` tables and mapped assets", "account for cache misses on bulk or scattered reads"),
 )
 CHARTS = {"pool": "docs/memory/images/internal-pool.svg", "components": "docs/memory/images/iram-components.svg"}

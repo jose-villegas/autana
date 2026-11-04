@@ -1,23 +1,6 @@
-/*
- * app_arena: the one block of bulk memory the shell lends to whichever app
- * is running.
- *
- * The app region: all of the PSRAM heap but what the system keeps, taken once
- * at boot before any other PSRAM user and never given back, so no visit can
- * fragment it. Handed out by bumping an offset. The shell rewinds it to 0
- * right after every app's exit(), so nothing an app takes outlives its visit
- * and an app never frees: leaving is the free. A mark and a rewind to it scope
- * a shorter lifetime inside one visit.
- *
- * Rejected: per-app memory_alloc()/memory_free(). Each call site is one more
- * dynamic allocation to justify, a missed memory_free() leaks across visits,
- * and a fragmented PSRAM heap can refuse a re-entry that worked the first
- * time. Rejected too: a block each app declares and takes on entry, for that
- * same fragmentation, and a fixed block linked into PSRAM, which leaves idle
- * whatever the system does not use.
- *
- * Called from the frame loop only; not safe from another task or core.
- */
+/* app_arena: nested bump lifetimes over chunks from the visit's TLSF heap.
+ * The region is taken once at boot, never returned to the system heap, and
+ * recreated empty at each app entry. Called from the frame loop only. */
 #pragma once
 
 #include <stdbool.h>
@@ -26,7 +9,7 @@
 #include "gfx/gfx.h"
 
 /* PSRAM the system holds besides the framebuffer, measured at the launcher
- * with `autana heap psram` (autana-6t5u5). */
+ * with `autana heap psram`. */
 #define APP_ARENA_SYSTEM_OTHER_BYTES   (41u * 1024u)
 
 /* The PSRAM heap the region leaves the system: the framebuffer, one more
@@ -34,6 +17,12 @@
  * double-framebuffer back buffer, the send audit's shadow, a readback's
  * snapshot), and the rest. */
 #define APP_ARENA_SYSTEM_RESERVE_BYTES (2u * GFX_FRAMEBUFFER_BYTES + APP_ARENA_SYSTEM_OTHER_BYTES)
+
+/* Amortizes heap metadata for small takes without keeping a large idle tail. */
+#define APP_ARENA_CHUNK_BYTES          (16u * 1024u)
+
+void app_arena_enter(void);
+void app_arena_exit(void);
 
 /* Takes the region from the PSRAM heap. Boot calls it once, before any other
  * PSRAM allocation can split the heap. False when the heap cannot give it;

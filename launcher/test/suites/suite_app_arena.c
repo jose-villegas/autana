@@ -2,210 +2,162 @@
 #include "unity.h"
 
 #include <stdint.h>
+#include <string.h>
 
 #include "app/app_arena.h"
-
-#if defined(HOST_HEAP_ARENA) || defined(DEVICE_BUILD)
 #include "core/memory.h"
-#endif
+#include "testkit/cleanup.h"
 
-/* What the app running the suites holds; every test here needs it to be 0. */
 static size_t suite_entry_mark;
 
 static void
-fixture(void) {
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(0, suite_entry_mark, "the app running the suites holds arena memory");
+release_fixture(void) {
     app_arena_rewind(0);
 }
 
-static uintptr_t
-block_base(void) {
-    fixture();
-    const uintptr_t base = (uintptr_t)app_arena_take(1, 1);
-    fixture();
-    return base;
+static void
+fixture(void) {
+    TEST_ASSERT_EQUAL_size_t_MESSAGE(0, suite_entry_mark, "the app running the suites holds arena memory");
+    app_arena_rewind(0);
+    suite_set_test_cleanup(release_fixture);
 }
 
 static void
 test_every_power_of_two_alignment_is_honoured(void) {
     fixture();
     for (size_t align = 1; align <= 4096; align *= 2) {
-        TEST_ASSERT_NOT_NULL(app_arena_take(1, 1)); /* knocks the offset off any boundary */
+        TEST_ASSERT_NOT_NULL(app_arena_take(1, 1));
         const uintptr_t p = (uintptr_t)app_arena_take(3, align);
         TEST_ASSERT_NOT_EQUAL(0, p);
-        TEST_ASSERT_EQUAL_UINT(0, p % align);
+        TEST_ASSERT_EQUAL_size_t(0, p % align);
     }
 }
 
 static void
-test_an_aligned_take_uses_its_padding_and_its_size(void) {
-    const uintptr_t base = block_base();
-    TEST_ASSERT_NOT_NULL(app_arena_take(1, 1));
-    const uintptr_t p = (uintptr_t)app_arena_take(8, 64);
-    TEST_ASSERT_NOT_EQUAL(0, p);
-    TEST_ASSERT_TRUE(p - base > 1); /* the take was padded */
-
-    TEST_ASSERT_EQUAL_UINT(p - base + 8, app_arena_mark());
-    TEST_ASSERT_EQUAL_UINT(p + 8, (uintptr_t)app_arena_take(1, 1));
+test_padding_is_counted_and_consecutive_takes_share_a_chunk(void) {
+    fixture();
+    const uintptr_t base = (uintptr_t)app_arena_take(1, 1);
+    const uintptr_t aligned = (uintptr_t)app_arena_take(8, 64);
+    TEST_ASSERT_NOT_EQUAL(0, base);
+    TEST_ASSERT_NOT_EQUAL(0, aligned);
+    TEST_ASSERT_EQUAL_size_t(aligned - base + 8, app_arena_mark());
+    TEST_ASSERT_EQUAL_PTR((void*)(aligned + 8), app_arena_take(1, 1));
 }
 
 static void
-test_consecutive_blocks_do_not_overlap(void) {
+test_crossing_a_chunk_end_opens_another_block(void) {
     fixture();
-    unsigned char* a = app_arena_take(100, 1);
-    unsigned char* b = app_arena_take(100, 1);
-    TEST_ASSERT_NOT_NULL(a);
-    TEST_ASSERT_NOT_NULL(b);
-    TEST_ASSERT_TRUE(b >= a + 100);
-    TEST_ASSERT_EQUAL_UINT(200, app_arena_mark());
+    const size_t before = app_heap_blocks();
+    unsigned char* first = app_arena_take(16, 1);
+    TEST_ASSERT_NOT_NULL(first);
+    TEST_ASSERT_EQUAL_size_t(before + 1, app_heap_blocks());
+    const size_t mark = app_arena_mark();
+    const size_t free_at_mark = memory_free_bytes(MEMORY_APP);
+    unsigned char* next = app_arena_take(APP_ARENA_CHUNK_BYTES, 1);
+    TEST_ASSERT_NOT_NULL(next);
+    TEST_ASSERT_TRUE(next != first + 16);
+    TEST_ASSERT_EQUAL_size_t(before + 2, app_heap_blocks());
+    app_arena_rewind(mark);
+    TEST_ASSERT_EQUAL_size_t(before + 1, app_heap_blocks());
+    TEST_ASSERT_EQUAL_size_t(free_at_mark, memory_free_bytes(MEMORY_APP));
+    TEST_ASSERT_EQUAL_PTR(first + 16, app_arena_take(1, 1));
 }
 
 static void
-test_the_whole_block_can_be_taken_at_once(void) {
+test_a_large_take_is_one_contiguous_block(void) {
     fixture();
-    TEST_ASSERT_NOT_NULL(app_arena_take(app_arena_bytes(), 1));
-    TEST_ASSERT_NULL(app_arena_take(1, 1));
+    const size_t before = app_heap_blocks();
+    const size_t bytes = 2 * APP_ARENA_CHUNK_BYTES;
+    unsigned char* block = app_arena_take(bytes, 64);
+    TEST_ASSERT_NOT_NULL(block);
+    memset(block, 0xA5, bytes);
+    TEST_ASSERT_EQUAL_HEX8(0xA5, block[bytes - 1]);
+    TEST_ASSERT_EQUAL_size_t(before + 1, app_heap_blocks());
 }
 
 static void
 test_exhaustion_refuses_without_taking_and_the_arena_stays_usable(void) {
     fixture();
-    TEST_ASSERT_NOT_NULL(app_arena_take(app_arena_bytes() - 64, 1));
-    const size_t used = app_arena_mark();
-
-    TEST_ASSERT_NULL(app_arena_take(65, 1));
+    TEST_ASSERT_NOT_NULL(app_arena_take(1, 1));
+    const size_t mark = app_arena_mark();
+    const size_t free_before = memory_free_bytes(MEMORY_APP);
+    const size_t blocks_before = app_heap_blocks();
+    TEST_ASSERT_NULL(app_arena_take(app_arena_bytes(), 1));
     TEST_ASSERT_NULL(app_arena_take(SIZE_MAX, 1));
-    TEST_ASSERT_EQUAL_UINT(used, app_arena_mark());
-
+    TEST_ASSERT_EQUAL_size_t(mark, app_arena_mark());
+    TEST_ASSERT_EQUAL_size_t(free_before, memory_free_bytes(MEMORY_APP));
+    TEST_ASSERT_EQUAL_size_t(blocks_before, app_heap_blocks());
     TEST_ASSERT_NOT_NULL(app_arena_take(64, 1));
 }
 
-static uintptr_t
-lowest_set_bit(uintptr_t n) {
-    return n & (~n + 1u);
-}
-
 static void
-test_padding_alone_past_the_block_end_is_refused(void) {
-    const uintptr_t end = block_base() + app_arena_bytes();
-    const size_t align = (size_t)(2u * lowest_set_bit(end)); /* the next such boundary lies past the end */
-
-    TEST_ASSERT_NOT_NULL(app_arena_take(app_arena_bytes() - 1, 1));
-    TEST_ASSERT_NULL(app_arena_take(1, align));
-    TEST_ASSERT_EQUAL_UINT(app_arena_bytes() - 1, app_arena_mark());
-}
-
-/* Address and offset alignment differ observably only when the lowest set
- * bit of the base is below app_arena_bytes(). An address-aligned take to twice
- * that bit lands at offset base_alignment, which fits while below the size. */
-static void
-test_alignment_is_of_the_address_not_the_offset(void) {
-    const uintptr_t base = block_base();
-    const uintptr_t base_alignment = lowest_set_bit(base);
-    if (base_alignment >= app_arena_bytes()) {
-        TEST_IGNORE_MESSAGE("the base is aligned to the arena size; every fitting alignment also aligns offsets");
-    }
-    const size_t align = (size_t)(2u * base_alignment);
-
-    TEST_ASSERT_NOT_NULL(app_arena_take(1, 1));
-    const uintptr_t p = (uintptr_t)app_arena_take(1, align);
-    TEST_ASSERT_NOT_EQUAL(0, p);
-    TEST_ASSERT_EQUAL_UINT(0, p % align);
-}
-
-static void
-test_zero_size_takes_nothing(void) {
+test_invalid_requests_take_nothing(void) {
     fixture();
     TEST_ASSERT_NULL(app_arena_take(0, 1));
-    TEST_ASSERT_EQUAL_UINT(0, app_arena_mark());
-}
-
-static void
-test_an_alignment_that_is_not_a_power_of_two_is_refused(void) {
-    fixture();
     TEST_ASSERT_NULL(app_arena_take(8, 0));
     TEST_ASSERT_NULL(app_arena_take(8, 3));
     TEST_ASSERT_NULL(app_arena_take(8, 24));
-    TEST_ASSERT_EQUAL_UINT(0, app_arena_mark());
-}
-
-static void
-test_rewind_gives_back_everything_since_the_mark(void) {
-    fixture();
-    TEST_ASSERT_NOT_NULL(app_arena_take(10, 1));
-    const size_t mark = app_arena_mark();
-    void* first = app_arena_take(1000, 16);
-    TEST_ASSERT_NOT_NULL(app_arena_take(5000, 16));
-
-    app_arena_rewind(mark);
-    TEST_ASSERT_EQUAL_UINT(10, app_arena_mark());
-    TEST_ASSERT_EQUAL_PTR(first, app_arena_take(1000, 16));
+    TEST_ASSERT_EQUAL_size_t(0, app_arena_mark());
 }
 
 static void
 test_nested_marks_rewind_inner_then_outer(void) {
     fixture();
+    TEST_ASSERT_NOT_NULL(app_arena_take(100, 1));
     const size_t outer = app_arena_mark();
-    TEST_ASSERT_NOT_NULL(app_arena_take(100, 1));
+    void* first = app_arena_take(APP_ARENA_CHUNK_BYTES, 16);
+    TEST_ASSERT_NOT_NULL(first);
     const size_t inner = app_arena_mark();
-    TEST_ASSERT_NOT_NULL(app_arena_take(100, 1));
-
+    TEST_ASSERT_NOT_NULL(app_arena_take(APP_ARENA_CHUNK_BYTES, 16));
     app_arena_rewind(inner);
-    TEST_ASSERT_EQUAL_UINT(100, app_arena_mark());
+    TEST_ASSERT_EQUAL_size_t(inner, app_arena_mark());
     app_arena_rewind(outer);
-    TEST_ASSERT_EQUAL_UINT(0, app_arena_mark());
+    TEST_ASSERT_EQUAL_size_t(outer, app_arena_mark());
+    TEST_ASSERT_EQUAL_PTR(first, app_arena_take(APP_ARENA_CHUNK_BYTES, 16));
 }
 
 static void
-test_rewinding_to_zero_empties_the_arena_and_hands_out_the_same_memory_again(void) {
+test_the_heap_is_empty_on_the_next_visit(void) {
     fixture();
-    void* first = app_arena_take(64, 64);
-    TEST_ASSERT_NOT_NULL(app_arena_take(app_arena_bytes() / 2, 1));
-
-    app_arena_rewind(0);
-    TEST_ASSERT_EQUAL_UINT(0, app_arena_mark());
-    TEST_ASSERT_EQUAL_PTR(first, app_arena_take(64, 64));
+    const size_t empty = memory_free_bytes(MEMORY_APP);
+    TEST_ASSERT_EQUAL_size_t(0, app_heap_blocks());
+    TEST_ASSERT_NOT_NULL(memory_alloc(APP_ARENA_CHUNK_BYTES, MEMORY_APP));
+    TEST_ASSERT_NOT_NULL(app_arena_take(APP_ARENA_CHUNK_BYTES, 64));
+    app_arena_exit();
+    app_arena_enter();
+    TEST_ASSERT_EQUAL_size_t(0, app_heap_blocks());
+    TEST_ASSERT_EQUAL_size_t(0, app_arena_mark());
+    TEST_ASSERT_EQUAL_size_t(empty, memory_free_bytes(MEMORY_APP));
 }
 
-#if defined(HOST_HEAP_ARENA) || defined(DEVICE_BUILD)
 static void
 test_the_region_is_the_psram_heap_less_the_system_reserve(void) {
-    TEST_ASSERT_EQUAL_UINT(memory_total_bytes(MEMORY_PSRAM) - APP_ARENA_SYSTEM_RESERVE_BYTES, app_arena_bytes());
-    TEST_ASSERT_TRUE(memory_in_psram((const void*)block_base()));
+    fixture();
+    TEST_ASSERT_EQUAL_size_t(memory_total_bytes(MEMORY_PSRAM) - APP_ARENA_SYSTEM_RESERVE_BYTES, app_arena_bytes());
+    TEST_ASSERT_TRUE(memory_in_psram(app_arena_take(1, 1)));
 }
 
-/* The reserve holds a buffer the framebuffer's size beside the framebuffer
- * itself, for what the shell makes on demand during a visit. */
 static void
 test_a_framebuffer_sized_buffer_still_fits_beside_the_region(void) {
+    fixture();
     void* buffer = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
     memory_free(buffer);
     TEST_ASSERT_NOT_NULL(buffer);
 }
-#endif
 
 void
 run_app_arena_suite(void) {
     suite_entry_mark = app_arena_mark();
     RUN_TEST(test_every_power_of_two_alignment_is_honoured);
-    RUN_TEST(test_an_aligned_take_uses_its_padding_and_its_size);
-    RUN_TEST(test_consecutive_blocks_do_not_overlap);
-    RUN_TEST(test_the_whole_block_can_be_taken_at_once);
+    RUN_TEST(test_padding_is_counted_and_consecutive_takes_share_a_chunk);
+    RUN_TEST(test_crossing_a_chunk_end_opens_another_block);
+    RUN_TEST(test_a_large_take_is_one_contiguous_block);
     RUN_TEST(test_exhaustion_refuses_without_taking_and_the_arena_stays_usable);
-    RUN_TEST(test_padding_alone_past_the_block_end_is_refused);
-    RUN_TEST(test_alignment_is_of_the_address_not_the_offset);
-    RUN_TEST(test_zero_size_takes_nothing);
-    RUN_TEST(test_an_alignment_that_is_not_a_power_of_two_is_refused);
-    RUN_TEST(test_rewind_gives_back_everything_since_the_mark);
+    RUN_TEST(test_invalid_requests_take_nothing);
     RUN_TEST(test_nested_marks_rewind_inner_then_outer);
-    RUN_TEST(test_rewinding_to_zero_empties_the_arena_and_hands_out_the_same_memory_again);
-#if defined(HOST_HEAP_ARENA) || defined(DEVICE_BUILD)
+    RUN_TEST(test_the_heap_is_empty_on_the_next_visit);
     RUN_TEST(test_the_region_is_the_psram_heap_less_the_system_reserve);
     RUN_TEST(test_a_framebuffer_sized_buffer_still_fits_beside_the_region);
-#endif
-    if (suite_entry_mark == 0) {
-        app_arena_rewind(0);
-    }
 }
 
 SUITE_REGISTER(run_app_arena_suite);

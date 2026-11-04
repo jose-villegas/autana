@@ -224,11 +224,11 @@ start_round(void) {
 
 static void
 input_lab_enter(void) {
-    motion_batch = memory_alloc(sizeof *motion_batch, MEMORY_PSRAM);
+    motion_batch = memory_alloc(sizeof *motion_batch, MEMORY_APP);
     if (motion_batch == NULL) {
         ESP_LOGE(TAG, "Cannot allocate motion batch in PSRAM");
     }
-    motion_slice = memory_alloc(sizeof *motion_slice, MEMORY_PSRAM);
+    motion_slice = memory_alloc(sizeof *motion_slice, MEMORY_APP);
     rng_seed(&rng, (uint32_t)timing_now_us());
     panel_max_x = -1;
     mode = MODE_RANDOM;

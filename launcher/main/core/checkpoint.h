@@ -35,7 +35,7 @@ checkpoint_capture(checkpoint_t* state, void* destination, size_t bytes) {
     if (destination == NULL || bytes == 0 || state->failed) {
         return;
     }
-    checkpoint_block_t* block = memory_alloc(sizeof(*block) + bytes, MEMORY_PSRAM);
+    checkpoint_block_t* block = memory_alloc(sizeof(*block) + bytes, MEMORY_APP);
     if (block == NULL) {
         state->failed = true;
         return;

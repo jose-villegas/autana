@@ -13,6 +13,7 @@
 #include "raster_rig.h"
 #include "render_view_fixture.h"
 #include "suites.h"
+#include "test_alloc.h"
 #include "unity.h"
 
 #include "core/memory.h"
@@ -628,14 +629,43 @@ test_zero_context_draws_shaded_and_meshlet_context_paints_colour(void) {
 }
 
 #ifdef HOST_HEAP_ARENA
+typedef struct held_block {
+    struct held_block* next;
+} held_block_t;
+
+static held_block_t*
+hold_app_heap(void) {
+    held_block_t* head = NULL;
+    for (size_t bytes = memory_largest_block(MEMORY_APP); bytes >= sizeof(held_block_t);) {
+        held_block_t* block = memory_alloc(bytes, MEMORY_APP);
+        if (block == NULL) {
+            bytes /= 2;
+        } else {
+            block->next = head;
+            head = block;
+            bytes = memory_largest_block(MEMORY_APP);
+        }
+    }
+    return head;
+}
+
+static void
+release_app_heap(held_block_t* head) {
+    while (head != NULL) {
+        held_block_t* next = head->next;
+        memory_free(head);
+        head = next;
+    }
+}
+
 static void
 test_failed_view_allocation_leaves_shaded(void) {
     render_context_t c = {0};
     render_context_set_debug_view(&c, render_context_debug_view_named("depth"));
-    void* occupied = memory_alloc(memory_largest_block(MEMORY_PSRAM), MEMORY_PSRAM);
+    held_block_t* occupied = hold_app_heap();
     TEST_ASSERT_NOT_NULL(occupied);
     render_context_set_debug_view(&c, render_context_debug_view_named("motion"));
-    memory_free(occupied);
+    release_app_heap(occupied);
     TEST_ASSERT_EQUAL_INT(0, c.debug_view);
     TEST_ASSERT_NULL(c.debug_view_state);
     TEST_ASSERT_NULL(c.raster.attachments);
@@ -654,10 +684,10 @@ test_motion_without_room_detaches_and_draws_shaded(void) {
     const render_view_t frame_view = render_view_fixture_at(&raster_rig_camera, (viewport_t){W, H, 0});
     TEST_ASSERT_TRUE(render_context_draw(c, r->instance, 1, &frame_view, 0));
     TEST_ASSERT_EQUAL_INT(1, c->raster.attachment_count);
-    void* occupied = memory_alloc(memory_largest_block(MEMORY_PSRAM), MEMORY_PSRAM);
+    held_block_t* occupied = hold_app_heap();
     TEST_ASSERT_NOT_NULL(occupied);
     const bool drew = render_context_draw(c, r->instance, 2, &frame_view, 0);
-    memory_free(occupied);
+    release_app_heap(occupied);
     TEST_ASSERT_TRUE(drew);
     TEST_ASSERT_EQUAL_INT(RENDER_DEBUG_VIEW_SHADED, c->debug_view);
     TEST_ASSERT_NULL(c->debug_view_state);
@@ -682,6 +712,7 @@ test_view_table_and_context_ownership(void) {
 #ifdef HOST_HEAP_ARENA
     size_t before_blocks, before_bytes, blocks, bytes;
     heap_arena_snapshot(&before_blocks, &before_bytes);
+    const size_t app_before = app_heap_blocks();
 #endif
     static const char* const names[] = {"depth", "tiles", "motion", "meshlets", "cull", "boxes", "overdraw", "copies"};
     TEST_ASSERT_EQUAL_INT(sizeof names / sizeof names[0], RENDER_DEBUG_VIEW_COUNT);
@@ -716,7 +747,8 @@ test_view_table_and_context_ownership(void) {
         }
 #ifdef HOST_HEAP_ARENA
         heap_arena_snapshot(&blocks, &bytes);
-        TEST_ASSERT_EQUAL_size_t(before_blocks + (row->state_bytes > 0), blocks);
+        TEST_ASSERT_EQUAL_size_t(before_blocks, blocks);
+        TEST_ASSERT_EQUAL_size_t(app_before + (row->state_bytes > 0), app_heap_blocks());
 #endif
     }
     render_context_set_debug_view(c, RENDER_DEBUG_VIEW_SHADED);
@@ -997,8 +1029,8 @@ test_draw_retains_only_the_drawn_instance_and_bounds_state(void) {
 
     r->raster.instances = instances;
     r->raster.instance_count = RASTER_SPLIT_INSTANCES + 1;
-    free(r->raster.scratch);
-    r->raster.scratch = malloc(raster_scratch_bytes(&r->raster));
+    memory_free(r->raster.scratch);
+    r->raster.scratch = memory_alloc(raster_scratch_bytes(&r->raster), MEMORY_APP);
     TEST_ASSERT_NOT_NULL(r->raster.scratch);
     r->raster.split = &state.split;
     int top_rows[RASTER_SPLIT_INSTANCES + 1] = {0};
