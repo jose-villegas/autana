@@ -6,7 +6,7 @@
 #include "gfx/gfx.h"
 #include "math/text/math_text.h"
 #include "render/context/render_context.h"
-#include "render/view/raster_cull_view.h"
+#include "render_counts.h"
 #include "scene/scene.h"
 #include "scene_viewer.h"
 
@@ -163,18 +163,6 @@ active_camera(const scene_t* scene) {
     return SCENE_ENTITY_NONE;
 }
 
-/* A per-frame CSV with its header written; NULL, said on stderr, when it cannot be made. */
-static FILE*
-open_rows(const char* path, const char* header) {
-    FILE* rows = fopen(path, "w");
-    if (rows == NULL) {
-        fprintf(stderr, "scene_viewer: cannot write %s\n", path);
-        return NULL;
-    }
-    fprintf(rows, "%s\n", header);
-    return rows;
-}
-
 int
 display_quarter_now(void) {
     return shell_quarter;
@@ -222,13 +210,12 @@ setup(int quarter) {
     fprintf(stderr, "scene_viewer: camera path %u ms\n", (unsigned)scene_animator_clip_duration_ms(scene, camera, 0));
     render_context_t* context = render_context_main();
     render_context_set_debug_view(context, view);
-#define COUNT_NAME(name, member) "," #name
-    if (counts_path != NULL
-        && (counts = open_rows(counts_path, "frame,ms" RASTER_CULL_FRAME_FIELDS(COUNT_NAME))) == NULL) {
+    if (counts_path != NULL && (counts = render_counts_open(counts_path, "scene_viewer")) == NULL) {
         scene_unload(scene);
         return false;
     }
-    if (poses_path != NULL && (poses = open_rows(poses_path, "frame,ms,px,py,pz,qx,qy,qz,qw")) == NULL) {
+    if (poses_path != NULL
+        && (poses = render_rows_open(poses_path, "frame,ms,px,py,pz,qx,qy,qz,qw", "scene_viewer")) == NULL) {
         if (counts != NULL) {
             fclose(counts);
             counts = NULL;
@@ -249,15 +236,7 @@ static void
 draw(const provider_frame_t* frame) {
     const bool last = frame->index + 1 == frame->count;
     if (counts != NULL) {
-        const raster_cull_frame_t f = raster_cull_frame(render_context_debug_view_state(render_context_main()));
-        fprintf(counts, "%d,%u", frame->index, (unsigned)frame->elapsed_ms);
-#define COUNT_VALUE(name, member) fprintf(counts, ",%d", f.member);
-        RASTER_CULL_FRAME_FIELDS(COUNT_VALUE)
-        fputc('\n', counts);
-        if (last) {
-            fclose(counts);
-            counts = NULL;
-        }
+        render_counts_row(&counts, frame);
     }
     if (poses != NULL) {
         const transformf_t world = scene_entity_world(shown, camera);

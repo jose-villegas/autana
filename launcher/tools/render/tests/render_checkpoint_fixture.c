@@ -5,6 +5,7 @@
 #include "core/tune.h"
 #include "draw/draw.h"
 #include "gfx/capture/screenshot.h"
+#include "gfx/present/gfx_internal.h"
 #include "gfx/present/gfx_present.h"
 
 #define CHECKPOINT_STEP_MS               37

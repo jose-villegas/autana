@@ -4,6 +4,7 @@
 
 #include "app/app.h"
 #include "display/display.h"
+#include "display/display_shell.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_present.h"

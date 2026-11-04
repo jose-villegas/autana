@@ -217,6 +217,15 @@ run = 41672350426
 host = "Linux x86_64"
 
 [[bake]]
+output = "stress_copy.mesh"
+source = "launcher/demo/stress/stress.scene.toml"
+key = "70e62ad501887e82d222382b44e6bdb3ae063937b08b73420c4d43084d672aa5"
+sha256 = "384e96bce54fcc75e1aee11daba4bb439911e92aedfee493d2da5e50363ae504"
+size = 124
+run = 41734062054
+host = "Linux x86_64"
+
+[[bake]]
 output = "tank.mesh"
 source = "launcher/demo/water/water.scene.toml"
 key = "1a444272cf5f548928a2f8e876300a7baa95f49371262dc3ff89e69549f85b1d"
@@ -238,36 +247,36 @@ host = "Linux x86_64"
 # and sampler code. bake.py lock writes them; bake.py check samples them again.
 
 [[poses]]
-key = "229fc33d39c29d0f4750ac7fda96a41571cb1407a4c15796d338766708582e13"
+key = "09a42b364a039c6102440afea0a394018e4b2bc3c4ff0dba14210a52819b0151"
+poses = "7f5a1e528b63cc2ebea4ea3c6795518dc30bb47befc15345be563a2d9a4ddd10"
+count = 1816
+clip = "launcher/demo/sponza/flythrough.anim.toml"
+host = "Windows AMD64"
+
+[[poses]]
+key = "33704893f9c375835850704d64e5b2e0e70ee5b861de86b377596faa2613ecd3"
 poses = "bc608ce3264275d892202b270ad05e255c7878431cbea66d907ba0e927ecf8da"
 count = 37
 clip = "launcher/demo/sponza/flythrough.anim.toml"
 host = "Windows AMD64"
 
 [[poses]]
-key = "6a966612ac61e2ecc127878b4c0e21942061550e5062eb03c58e84948a97239a"
-poses = "d22bd63bb589a7fcbd9126cc96d9d65ee9bd7f2d66560aec6e9d6b938397755f"
-count = 6605
-clip = "launcher/demo/bistro/street.anim.toml"
-host = "Windows AMD64"
-
-[[poses]]
-key = "a53529ba03b0f1d0ae9574b545b6ba277d51c541311b2ff7d0b05c954e89b6be"
+key = "7d3b2de8f1e81580ebf1538746bae9672e0cf754cf14712b653e00240c482df7"
 poses = "9ead88ddf14f89d2451a12a9e69686f4eeb66075f3ed042f999511be8e6e0998"
 count = 265
 clip = "launcher/demo/bistro/street.anim.toml"
 host = "Windows AMD64"
 
 [[poses]]
-key = "ab99bed6dd78c39afe6bb284bf29423c598a1016bc987d25271d706bfc7259ce"
-poses = "4e6038b04307b2374f3c90ae507e576d2cfd82d7508b742ba134ebfe01ceb18d"
-count = 133
+key = "a3ce66f1cf6352766761b75949fcc37570763a41b4d3399028e3649ec768d952"
+poses = "d22bd63bb589a7fcbd9126cc96d9d65ee9bd7f2d66560aec6e9d6b938397755f"
+count = 6605
 clip = "launcher/demo/bistro/street.anim.toml"
 host = "Windows AMD64"
 
 [[poses]]
-key = "d2ae8dcc652a7ca2d89d1aa2b7230bf6606af4421970e60bb3c949d375eb1ac7"
-poses = "7f5a1e528b63cc2ebea4ea3c6795518dc30bb47befc15345be563a2d9a4ddd10"
-count = 1816
-clip = "launcher/demo/sponza/flythrough.anim.toml"
+key = "f566dd36d5d21d2c52a86992ff2adce6479e2500f032898610f31582ba6f4570"
+poses = "4e6038b04307b2374f3c90ae507e576d2cfd82d7508b742ba134ebfe01ceb18d"
+count = 133
+clip = "launcher/demo/bistro/street.anim.toml"
 host = "Windows AMD64"

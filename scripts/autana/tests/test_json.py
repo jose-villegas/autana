@@ -325,7 +325,7 @@ class BatteryLogTests(unittest.TestCase):
     def test_firmware_names(self):
         root = Path(__file__).resolve().parents[3]
         reasons = re.findall(r'return "([^"]+)"', (root / 'launcher/main/power/power_log.c').read_text())
-        decode = (root / 'launcher/main/power/power_decode.c').read_text()
+        decode = (root / 'launcher/main/power/power_names.c').read_text()
         charges, flows = decode.split('power_flow_name', 1)
         for reason in reasons:
             if reason == 'unknown':

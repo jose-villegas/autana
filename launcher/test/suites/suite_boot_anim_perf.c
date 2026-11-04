@@ -39,6 +39,7 @@
 #include "draw/draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_debug.h"
+#include "gfx/present/gfx_internal.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 
@@ -48,7 +49,7 @@
  * not a hand-copy of boot_anim_draw_frame()'s own sequencing, means this
  * suite exercises the exact code a real frame runs. */
 extern void boot_anim_clear_frame(void);
-extern void boot_anim_clear_on_send(bool on);
+extern gfx_mode_request_t boot_anim_mode_request(gfx_layout_t layout, bool clear_on_send);
 extern void draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t* view);
 extern void draw_axes(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view);
 extern int32_t draw_curve(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view);
@@ -367,7 +368,7 @@ test_boot_anim_performance_by_checkpoint(void) {
         gfx_layout_t layout;
         const char* name;
         bool contend;
-        bool clear_on_send; /* gfx_set_clear_on_send(): core 1 clears, the boot's clear is free */
+        bool clear_on_send; /* gfx_mode_request_t's: core 1 clears, the boot's clear is free */
     } passes[] = {
         {GFX_LAYOUT_FULL_FB, PERF_LAYOUT_FULL_FB, false, false},
         {GFX_LAYOUT_DOUBLE_FB, PERF_LAYOUT_DOUBLE_FB, false, false},
@@ -376,9 +377,8 @@ test_boot_anim_performance_by_checkpoint(void) {
     };
 
     for (size_t pass = 0; pass < sizeof passes / sizeof passes[0]; pass++) {
-        const gfx_mode_request_t request = {.layout = passes[pass].layout};
+        const gfx_mode_request_t request = boot_anim_mode_request(passes[pass].layout, passes[pass].clear_on_send);
         TEST_ASSERT_EQUAL_INT(passes[pass].layout, gfx_mode_enter(&request)->layout);
-        boot_anim_clear_on_send(passes[pass].clear_on_send);
         for (size_t i = 0; i < sizeof checkpoints / sizeof checkpoints[0]; i++) {
             run_checkpoint(&motion, &photo, &checkpoints[i], passes[pass].name, passes[pass].contend,
                            passes[pass].clear_on_send);
