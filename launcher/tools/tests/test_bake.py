@@ -782,6 +782,14 @@ class FittedBakeTests(FittedBakeCase):
                 self.assertIn("is not locked", done.err)
                 self.assertEqual(done.produced, [])
 
+    def test_levels_whose_fit_is_not_locked_are_skipped_naming_the_fit_and_the_run_goes_on(self):
+        """The CPU run bakes --kind levels before any GPU run made the fit: it must not fail."""
+        done = self.command(["bake", "--kind", "levels"], self.locked(LOCKED_SHA256, run=RUN))
+        self.assertEqual(done.code, 0, done.err)
+        self.assertEqual(done.produced, [])
+        self.assertIn(f"skipped {self.level(LOCKED_SHA256).output}", done.out)
+        self.assertIn(self.fit(LOCKED_SHA256).key, done.out)
+
     def test_list_says_a_fit_waits_for_its_start_until_the_start_is_locked(self):
         waiting = self.command(["list"], {})
         lines = {line.split("\t")[0]: line for line in waiting.out.splitlines()}

@@ -1302,6 +1302,10 @@ def main(argv=None):
                     rows.extend(made_rows)
                 else:
                     for bake in selected:
+                        if bake.key is None and bake.kind == "levels":
+                            # Its fit comes from a GPU run: the CPU run makes the levels once the fit is locked.
+                            print(f"skipped {bake.output}: {unlocked(bake)}")
+                            continue
                         if bake.key is None:
                             raise BakeMissing(describe(bake, unlocked(bake), "bake its start first: bake.py bake --kind mesh"))
                         row = keep((None if args.again else produce.made(bake.key, cache)) or produce.produce(
