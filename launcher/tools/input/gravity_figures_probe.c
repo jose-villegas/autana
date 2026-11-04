@@ -63,16 +63,10 @@ pose(float t) {
                      PROBE_ROLL_DEG * PROBE_DEG_TO_RAD * sinf(2 * PROBE_PI * t / PROBE_ROLL_S));
 }
 
-static float
-ease(float t, float start, float end) {
-    const float fraction = fminf(1.0F, fmaxf(0.0F, (t - start) / (end - start)));
-    return (1.0F - cosf(PROBE_PI * fraction)) / 2;
-}
-
 static probe_pose_t
 reader_pose(float t) {
     const float roll_time = fminf(READER_ROLL_END_S, fmaxf(READER_TILT_END_S, t)) - READER_TILT_END_S;
-    return tilt_pose(READER_PITCH_DEG * PROBE_DEG_TO_RAD * ease(t, READER_TILT_START_S, READER_TILT_END_S),
+    return tilt_pose(READER_PITCH_DEG * PROBE_DEG_TO_RAD * probe_ease(t, READER_TILT_START_S, READER_TILT_END_S),
                      READER_ROLL_DEG * PROBE_DEG_TO_RAD
                          * sinf(2 * PROBE_PI * roll_time / (READER_ROLL_END_S - READER_TILT_END_S)));
 }
@@ -90,18 +84,9 @@ motion_pose(float t) {
 
 static void
 motion_linear(float t, float out[3]) {
-    const float envelope = ease(t, MOTION_START_S, MOTION_START_S + MOTION_FADE_S)
-                           * (1.0F - ease(t, MOTION_END_S - MOTION_FADE_S, MOTION_END_S));
+    const float envelope = probe_ease(t, MOTION_START_S, MOTION_START_S + MOTION_FADE_S)
+                           * (1.0F - probe_ease(t, MOTION_END_S - MOTION_FADE_S, MOTION_END_S));
     out[0] = MOTION_ACCEL_G * envelope * sinf(2 * PROBE_PI * t / MOTION_ACCEL_PERIOD_S);
-}
-
-/* What the chip reads, offset by the gyro bias, mapped by imu_axes_screen. */
-static input_motion_t
-sample(float t, float dt) {
-    const float bias[3] = PROBE_BIAS_DPS;
-    const imu_sample_t chip = probe_chip_sample(pose, t, dt, bias, NULL);
-    return (input_motion_t){.acceleration = imu_axes_screen(chip.ax, chip.ay, chip.az),
-                            .rotation = imu_axes_screen(chip.gx, chip.gy, chip.gz)};
 }
 
 static void
@@ -109,44 +94,29 @@ print_vec(const char* name, vec3f_t v) {
     printf(",\"%s\":[%s]", name, vec3f_text(v).chars);
 }
 
-/* True down and the down-signed chip force use device axes; filter outputs use screen axes. */
 static void
-print_scenario(const char* name, probe_pose_at_t pose_at, void (*linear)(float, float[3]), float duration) {
+print_scenario(const char* name, probe_pose_at_t pose_at, probe_linear_at_t linear, float duration) {
     printf(",\"%s\":[", name);
     gravity_t g;
     gravity_reset(&g);
     const float dt = (float)INPUT_MOTION_SAMPLE_US / MATH_US_PER_S;
     const float no_bias[3] = {0, 0, 0};
-    float label_axes[3][3];
-    probe_label_axes(label_axes);
     const unsigned frames = (unsigned)(duration * SCENARIO_FRAME_HZ);
     unsigned index = 0;
     for (unsigned f = 0; f <= frames; f++) {
         const unsigned end = (unsigned)lroundf(f / (SCENARIO_FRAME_HZ * dt)) + 1;
         input_motion_batch_t batch = {.count = (int)(end - index)};
         for (int i = 0; i < batch.count; i++, index++) {
-            const imu_sample_t chip = probe_chip_sample(pose_at, index * dt, dt, no_bias, linear);
-            batch.samples[i] = (input_motion_t){.acceleration = imu_axes_screen(chip.ax, chip.ay, chip.az),
-                                                .rotation = imu_axes_screen(chip.gx, chip.gy, chip.gz)};
+            batch.samples[i] = probe_motion_sample(pose_at, index * dt, dt, no_bias, linear);
         }
         gravity_update_batch(&g, &batch);
         const float t = (index - 1) * dt;
         const probe_pose_t p = pose_at(t);
         float truth[3];
         probe_to_device(&p, (const float[3]){0, 0, -1}, truth);
-        const vec3i_t acceleration = batch.samples[batch.count - 1].acceleration;
         printf("%s{\"t\":%g,", f ? "," : "", (double)t);
         probe_print_pose(&p);
         print_vec("true_down", (vec3f_t){truth[0], truth[1], truth[2]});
-        const float screen[3] = {(float)acceleration.x / INPUT_ACCEL_ONE_G, (float)acceleration.y / INPUT_ACCEL_ONE_G,
-                                 (float)acceleration.z / INPUT_ACCEL_ONE_G};
-        float device[3] = {0, 0, 0};
-        for (int axis = 0; axis < 3; axis++) {
-            for (int label = 0; label < 3; label++) {
-                device[axis] -= screen[label] * label_axes[label][axis];
-            }
-        }
-        print_vec("acceleration", (vec3f_t){device[0], device[1], device[2]});
         print_vec("down", gravity_down(&g));
         print_vec("linear", gravity_linear(&g));
         printf(",\"strength\":%g,\"free_fall\":%s}", (double)gravity_strength(&g),
@@ -183,7 +153,7 @@ main(void) {
     for (unsigned f = 0; f <= frames; f++) {
         input_motion_batch_t batch = {.count = f == 0 ? 1 : (int)per_frame};
         for (int i = 0; i < batch.count; i++, index++) {
-            batch.samples[i] = sample(index * dt, dt);
+            batch.samples[i] = probe_motion_sample(pose, index * dt, dt, bias, NULL);
         }
         gravity_update_batch(&g, &batch);
         const float t = (index - 1) * dt;

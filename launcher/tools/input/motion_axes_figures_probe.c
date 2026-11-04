@@ -21,7 +21,8 @@ static probe_pose_t
 pose(float t) {
     const int label = (int)(t / PROBE_TURN_S) < PROBE_AXES ? (int)(t / PROBE_TURN_S) : PROBE_AXES - 1;
     const float phase = (t - label * PROBE_TURN_S) / PROBE_TURN_S;
-    const float angle = PROBE_TURN_DEG * PROBE_DEG_TO_RAD * (1 - cosf(2 * PROBE_PI * phase)) / 2;
+    const float ramp = phase <= 0.5F ? phase : 1.0F - phase;
+    const float angle = PROBE_TURN_DEG * PROBE_DEG_TO_RAD * probe_ease(ramp, 0.0F, 0.5F);
     const float* k = label_axes[label];
     const float c = cosf(angle), s = sinf(angle);
     /* Rodrigues: rotation by angle about unit k. */
@@ -44,9 +45,9 @@ main(void) {
     for (int f = 0; f <= frames; f++) {
         const float t = (float)f / PROBE_FRAME_HZ;
         const probe_pose_t p = pose(t);
-        const imu_sample_t chip = probe_chip_sample(pose, t, dt, none, NULL);
-        const vec3i_t acceleration = imu_axes_screen(chip.ax, chip.ay, chip.az);
-        const vec3i_t rotation = imu_axes_screen(chip.gx, chip.gy, chip.gz);
+        const input_motion_t sample = probe_motion_sample(pose, t, dt, none, NULL);
+        const vec3i_t acceleration = sample.acceleration;
+        const vec3i_t rotation = sample.rotation;
         float rate[3];
         probe_body_rate(pose, t, dt, rate);
         printf("%s{\"t\":%g,", f ? "," : "", (double)t);
@@ -55,8 +56,8 @@ main(void) {
                (double)acceleration.x / INPUT_ACCEL_ONE_G, (double)acceleration.y / INPUT_ACCEL_ONE_G,
                (double)acceleration.z / INPUT_ACCEL_ONE_G, (double)rotation.x / INPUT_ROTATION_ONE_DPS,
                (double)rotation.y / INPUT_ROTATION_ONE_DPS, (double)rotation.z / INPUT_ROTATION_ONE_DPS,
-               imu_turn_speed((vec3i_t){chip.gx, chip.gy, chip.gz}), (double)(rate[0] / PROBE_DEG_TO_RAD),
-               (double)(rate[1] / PROBE_DEG_TO_RAD), (double)(rate[2] / PROBE_DEG_TO_RAD));
+               imu_turn_speed(rotation), (double)(rate[0] / PROBE_DEG_TO_RAD), (double)(rate[1] / PROBE_DEG_TO_RAD),
+               (double)(rate[2] / PROBE_DEG_TO_RAD));
     }
     puts("]}");
     return 0;

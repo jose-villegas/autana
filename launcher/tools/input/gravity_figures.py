@@ -94,8 +94,8 @@ def reader_figure(data, model, output):
         plot.axvspan(*data["fall_span"], color=FAINT, alpha=FALL_ALPHA)
         plot.set_ylim(0, max(1, values.max()) * PLOT_HEADROOM)
         plot.legend(fontsize=LABEL_SIZE, loc="lower left", frameon=False)
-    animation.legend([Line2D([], [], color=ESTIMATE, label="input_gravity()"),
-                      Line2D([], [], color=LINEAR, label="In-plane gravity")] + legend_handles()[:1])
+    animation.legend([Line2D([], [], color=ESTIMATE, label="gravity_down()"),
+                      Line2D([], [], color=LINEAR, label="In-plane gravity")] + legend_handles(screen_axes=False))
 
     def draw(index):
         frame = frames[index]
@@ -128,27 +128,27 @@ def motion_figure(data, model, output):
     frames = data["motion"]
     times = np.array([frame["t"] for frame in frames])
     truth = np.array([frame["true_down"] for frame in frames])
-    acceleration = np.array([frame["acceleration"] for frame in frames])
+    acceleration = np.array([model.to_device(np.array(frame["linear"]) + frame["down"]) for frame in frames])
     estimate = np.array([model.to_device(frame["down"]) for frame in frames])
-    raw_angle = angle_from_down(acceleration, truth)
+    raw_angle = angle_from_down(acceleration, estimate)
     estimate_angle = angle_from_down(estimate, truth)
     deviation = abs(np.linalg.norm(acceleration, axis=1) - 1)
-    animation = scenario_animation(model, times, ("Magnitude deviation from 1 g (g)", "Angle from true down (deg)"))
+    animation = scenario_animation(model, times, ("Magnitude deviation from 1 g (g)", "Angular separation (deg)"))
     top, bottom = animation.plots
     top.plot(times, deviation, color=ACCELERATION)
-    for key, label in (("full_g", "FULL"), ("none_g", "NONE")):
-        top.axhline(data[key], color=MUTED, linestyle=":" if key == "full_g" else "--", label=label)
+    for key, label, linestyle in (("full_g", "FULL", ":"), ("none_g", "NONE", "--")):
+        top.axhline(data[key], color=MUTED, linestyle=linestyle, label=label)
     top.set_ylim(0, max(data["none_g"], deviation.max()) * PLOT_HEADROOM)
     top.legend(fontsize=LABEL_SIZE, loc="center right", frameon=False)
-    bottom.plot(times, raw_angle, color=ACCELERATION)
-    bottom.plot(times, estimate_angle, color=ESTIMATE)
+    bottom.plot(times, raw_angle, color=ACCELERATION, label="Acceleration from estimate")
+    bottom.plot(times, estimate_angle, color=ESTIMATE, label="Estimate from true down")
     bottom.axhline(data["reject_deg"], color=MUTED, linestyle=":", label="REJECT")
     bottom.set_ylim(0, max(data["reject_deg"], raw_angle.max(), estimate_angle.max()) * PLOT_HEADROOM)
     bottom.legend(fontsize=LABEL_SIZE, loc="upper right", frameon=False)
     animation.legend([Line2D([], [], color=TRUE_DOWN, label="True down"),
                       Line2D([], [], color=ACCELERATION, label="Raw acceleration"),
                       Line2D([], [], color=ESTIMATE, label="Filter estimate"),
-                      Line2D([], [], color=LINEAR, label="Linear acceleration")] + legend_handles()[:1])
+                      Line2D([], [], color=LINEAR, label="gravity_linear()")] + legend_handles(screen_axes=False))
 
     def draw(index):
         frame = frames[index]
@@ -160,9 +160,9 @@ def motion_figure(data, model, output):
         animation.frame(pose, [(animation.beside, filtered, ESTIMATE, ESTIMATE_WIDTH),
                                (animation.beside, down, TRUE_DOWN, None),
                                (animation.beside, raw, ACCELERATION, None),
-                               (animation.beside + down, raw - down, LINEAR, None)], frame["t"],
-                        f"t = {frame['t']:4.1f} s    acceleration error {raw_angle[index]:4.1f} deg    "
-                        f"estimate error {estimate_angle[index]:3.1f} deg",
+                               (animation.beside + filtered, raw - filtered, LINEAR, None)], frame["t"],
+                        f"t = {frame['t']:4.1f} s    acceleration from estimate {raw_angle[index]:4.1f} deg    "
+                        f"estimate from true down {estimate_angle[index]:3.1f} deg",
                         azimuth=VIEW_AZIMUTH + swing, screen_axes=False)
 
     animation.save(output, len(frames), draw)
