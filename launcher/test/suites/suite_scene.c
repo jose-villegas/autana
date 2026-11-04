@@ -659,6 +659,9 @@ typedef struct {
     scene_target_t target;
     uint8_t* lent; /* a test's own lender: its block and how much it handed out */
     size_t lent_used;
+    void* lent_last;
+    size_t lent_last_size;
+    size_t lent_calls;
 } fixture_t;
 
 static fixture_t fx;
@@ -798,49 +801,133 @@ pixel(float units_from_center) {
 
 static const uint16_t CLEAR = RGB565BE(CLEAR_RGB);
 
+/* A lender as the app arena is one: a block handed out by bumping. */
+#define LENT_BYTES (1024u * 1024u)
+
+static void*
+lend(size_t size, size_t align) {
+    const size_t at = (fx.lent_used + align - 1) & ~(align - 1);
+    if (at > LENT_BYTES || size > LENT_BYTES - at) {
+        return NULL;
+    }
+    fx.lent_used = at + size;
+    fx.lent_calls++;
+    fx.lent_last = fx.lent + at;
+    fx.lent_last_size = size;
+    return fx.lent_last;
+}
+
+static size_t
+resident_mesh_bytes(const r3d_lit_mesh_t* mesh) {
+    size_t bytes = (size_t)mesh->vertex_count * sizeof *mesh->positions;
+    bytes = mathi_size_ceil(bytes, _Alignof(__typeof__(*mesh->triangles)))
+            + (size_t)mesh->triangle_count * sizeof *mesh->triangles;
+    if (mesh->colors != NULL) {
+        bytes = mathi_size_ceil(bytes, _Alignof(__typeof__(*mesh->colors)))
+                + (size_t)mesh->vertex_count * sizeof *mesh->colors;
+    }
+    if (mesh->face_colors != NULL) {
+        bytes = mathi_size_ceil(bytes, _Alignof(__typeof__(*mesh->face_colors)))
+                + (size_t)mesh->triangle_count * sizeof *mesh->face_colors;
+    }
+    return bytes;
+}
+
 static void
-assert_resident_positions(const scene_t* scene, size_t bytes) {
+assert_resident_mesh_arrays(const scene_t* scene, size_t bytes) {
     TEST_ASSERT_NOT_NULL(scene->resident);
+    if (fx.lent != NULL) {
+        TEST_ASSERT_EQUAL_PTR(scene->resident, fx.lent_last);
+        TEST_ASSERT_EQUAL_size_t(bytes, fx.lent_last_size);
+    }
     const uintptr_t begin = (uintptr_t)scene->resident;
     for (int i = 0; i < scene->asset.renderer_count; i++) {
         const r3d_lit_mesh_t* mesh = &scene->renderers[i].mesh;
         r3d_lit_mesh_t source;
         TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(&fx.pack, scene->asset.renderers[i].mesh, &source));
-        const size_t size = (size_t)mesh->vertex_count * sizeof *mesh->positions;
-        TEST_ASSERT_TRUE((uintptr_t)mesh->positions >= begin);
-        TEST_ASSERT_TRUE((uintptr_t)mesh->positions + size <= begin + bytes);
-        TEST_ASSERT_EQUAL_size_t(0, (uintptr_t)mesh->positions % _Alignof(int16_t));
-        TEST_ASSERT_EQUAL_MEMORY(source.positions, mesh->positions, size);
+        if (scene->asset.renderers[i].colour_set != SCENE_ASSET_COLOUR_SET_OWN) {
+            TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open_colours(&fx.pack, scene->asset.renderers[i].mesh,
+                                                                      scene->asset.renderers[i].colour_set, &source));
+        }
+
+        const struct {
+            const void* source;
+            const void* copy;
+            size_t size, alignment;
+        } arrays[] = {
+            {source.positions, mesh->positions, (size_t)mesh->vertex_count * sizeof *mesh->positions,
+             _Alignof(int16_t[3])},
+            {source.triangles, mesh->triangles, (size_t)mesh->triangle_count * sizeof *mesh->triangles,
+             _Alignof(uint16_t[3])},
+            {source.colors, mesh->colors, (size_t)mesh->vertex_count * sizeof *mesh->colors, _Alignof(uint8_t[3])},
+            {source.face_colors, mesh->face_colors, (size_t)mesh->triangle_count * sizeof *mesh->face_colors,
+             _Alignof(uint16_t)},
+        };
+
+        for (size_t j = 0; j < sizeof arrays / sizeof arrays[0]; j++) {
+            if (arrays[j].source == NULL) {
+                TEST_ASSERT_NULL(arrays[j].copy);
+                continue;
+            }
+            const uintptr_t at = (uintptr_t)arrays[j].copy;
+            TEST_ASSERT_TRUE(at >= begin);
+            TEST_ASSERT_TRUE(at + arrays[j].size <= begin + bytes);
+            TEST_ASSERT_EQUAL_size_t(0, at % arrays[j].alignment);
+            TEST_ASSERT_EQUAL_MEMORY(arrays[j].source, arrays[j].copy, arrays[j].size);
+        }
     }
 }
 
 static void
-test_static_positions_are_resident_and_equal_the_pack(void) {
+test_static_mesh_arrays_are_resident_and_equal_the_pack(void) {
     fixture();
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(fx.lent);
+    (void)scene_set_take(lend);
     scene_t* scene = load("test_pair");
     const r3d_lit_mesh_t* mesh = &scene->renderers[0].mesh;
-    assert_resident_positions(scene,
-                              scene->asset.renderer_count * (size_t)mesh->vertex_count * sizeof *mesh->positions);
+    assert_resident_mesh_arrays(scene, scene->asset.renderer_count * resident_mesh_bytes(mesh));
     TEST_ASSERT_NOT_EQUAL(scene->renderers[0].mesh.positions, scene->renderers[1].mesh.positions);
 }
 
 static void
-test_only_static_positions_are_made_resident(void) {
+test_only_static_mesh_arrays_are_made_resident(void) {
     fixture();
     scene_t* scene = load("test_mixed");
     const r3d_lit_mesh_t* mesh = &scene->renderers[0].mesh;
-    const size_t bytes = (size_t)mesh->vertex_count * sizeof *mesh->positions;
-    assert_resident_positions(scene, bytes);
+    const size_t bytes = resident_mesh_bytes(mesh);
+    assert_resident_mesh_arrays(scene, bytes);
     const scene_skinned_renderer_t* skin = &scene->skinned_renderers[0];
+    const r3d_lit_mesh_t* posed_mesh = &scene->renderers[scene->asset.renderer_count].mesh;
     r3d_lit_mesh_t source;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(&fx.pack, "red", &source));
     TEST_ASSERT_EQUAL_PTR(source.positions, skin->bind.positions);
-    TEST_ASSERT_EQUAL_PTR(skin->output.positions, scene->renderers[scene->asset.renderer_count].mesh.positions);
-    const uintptr_t posed = (uintptr_t)skin->output.positions;
+    TEST_ASSERT_EQUAL_PTR(source.triangles, skin->bind.triangles);
+    TEST_ASSERT_EQUAL_PTR(source.colors, skin->bind.colors);
+    TEST_ASSERT_EQUAL_PTR(source.face_colors, skin->bind.face_colors);
+    TEST_ASSERT_EQUAL_PTR(skin->output.positions, posed_mesh->positions);
+    TEST_ASSERT_EQUAL_PTR(skin->bind.triangles, posed_mesh->triangles);
+    TEST_ASSERT_EQUAL_PTR(skin->output.mesh.colors, posed_mesh->colors);
+    TEST_ASSERT_EQUAL_PTR(skin->bind.face_colors, posed_mesh->face_colors);
+    const void* arrays[] = {posed_mesh->positions, posed_mesh->triangles, posed_mesh->colors, posed_mesh->face_colors};
     const uintptr_t begin = (uintptr_t)scene->resident;
-    TEST_ASSERT_TRUE(posed < begin || posed >= begin + bytes);
+    for (size_t i = 0; i < sizeof arrays / sizeof arrays[0]; i++) {
+        if (arrays[i] != NULL) {
+            const uintptr_t at = (uintptr_t)arrays[i];
+            TEST_ASSERT_TRUE(at < begin || at >= begin + bytes);
+        }
+    }
     scene_unload(scene);
-    TEST_ASSERT_NULL(load("test_skin")->resident);
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(fx.lent);
+    (void)scene_set_take(lend);
+    scene_t* skin_scene = load("test_skin");
+    TEST_ASSERT_NULL(skin_scene->resident);
+
+    enum { SCENE_AND_ANIMATOR_TAKES = 2 };
+
+    TEST_ASSERT_EQUAL_size_t(SCENE_AND_ANIMATOR_TAKES, fx.lent_calls);
+    scene_unload(skin_scene);
     TEST_ASSERT_NULL(load("test_aliases")->resident);
 }
 
@@ -852,17 +939,26 @@ test_resident_allocation_failure_rolls_back_the_load(void) {
 
     enum { SCENE_BLOCK_ALLOCATION_COUNT = 1 };
 
-    scene_fail_allocation_after = SCENE_BLOCK_ALLOCATION_COUNT;
-    scene_failure_t why;
-    scene_t* scene = scene_load_from(&fx.pack, "test_pair", &why);
-    scene_fail_allocation_after = -1;
-    TEST_ASSERT_NULL(scene);
-    TEST_ASSERT_EQUAL_INT(SCENE_ERR_MEMORY, why.status);
-    TEST_ASSERT_EQUAL_INT(ASSET_OK, why.asset);
-    TEST_ASSERT_EQUAL_STRING("test_pair", why.what);
-    TEST_ASSERT_EQUAL_INT(0, scene_loaded_count());
-    TEST_ASSERT_EQUAL_size_t(psram, memory_free_bytes(MEMORY_PSRAM));
-    TEST_ASSERT_EQUAL_size_t(internal, memory_free_bytes(MEMORY_INTERNAL));
+    const struct {
+        const char* id;
+        int allocation;
+    } cases[] = {{"test_pair", SCENE_BLOCK_ALLOCATION_COUNT}, {"test_flight", SCENE_BLOCK_ALLOCATION_COUNT + 1}};
+
+    const size_t lent = fx.lent_used;
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        scene_fail_allocation_after = cases[i].allocation;
+        scene_failure_t why;
+        scene_t* scene = scene_load_from(&fx.pack, cases[i].id, &why);
+        scene_fail_allocation_after = -1;
+        TEST_ASSERT_NULL(scene);
+        TEST_ASSERT_EQUAL_INT(SCENE_ERR_MEMORY, why.status);
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, why.asset);
+        TEST_ASSERT_EQUAL_STRING(cases[i].id, why.what);
+        TEST_ASSERT_EQUAL_INT(0, scene_loaded_count());
+        TEST_ASSERT_EQUAL_size_t(psram, memory_free_bytes(MEMORY_PSRAM));
+        TEST_ASSERT_EQUAL_size_t(internal, memory_free_bytes(MEMORY_INTERNAL));
+        TEST_ASSERT_EQUAL_size_t(lent, fx.lent_used);
+    }
 }
 
 static void
@@ -873,19 +969,6 @@ test_a_scene_loads_by_name_and_unloading_gives_back_everything_it_took(void) {
     TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) < before);
     scene_unload(scene);
     TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) == before);
-}
-
-/* A lender as the app arena is one: a block handed out by bumping. */
-#define LENT_BYTES (1024u * 1024u)
-
-static void*
-lend(size_t size, size_t align) {
-    const size_t at = (fx.lent_used + align - 1) & ~(align - 1);
-    if (at > LENT_BYTES || size > LENT_BYTES - at) {
-        return NULL;
-    }
-    fx.lent_used = at + size;
-    return fx.lent + at;
 }
 
 static bool
@@ -2164,6 +2247,25 @@ make_lcol_pack(const lcol_case_t* spec, uint16_t encoding, const char* message) 
 }
 
 static void
+test_static_face_colours_are_resident_and_equal_the_pack(void) {
+    fixture();
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(fx.lent);
+    (void)scene_set_take(lend);
+    const lcol_case_t spec = {.second_set = LCOL_TEST_SETS - 1};
+    make_lcol_pack(&spec, LCOL_ENCODING_RGB565, "static face colours");
+    scene_t* scene = load("test_pair");
+    const r3d_lit_mesh_t* first = &scene->renderers[0].mesh;
+    const r3d_lit_mesh_t* second = &scene->renderers[1].mesh;
+    TEST_ASSERT_NULL(first->colors);
+    TEST_ASSERT_NULL(second->colors);
+    TEST_ASSERT_NOT_NULL(first->face_colors);
+    TEST_ASSERT_NOT_NULL(second->face_colors);
+    const size_t bytes = resident_mesh_bytes(first) + (size_t)second->triangle_count * sizeof *second->face_colors;
+    assert_resident_mesh_arrays(scene, bytes);
+}
+
+static void
 assert_lcol_scene(const lcol_case_t* spec, const char* message) {
     scene_failure_t why;
     scene_t* scene = scene_load_from(&fx.pack, "test_pair", &why);
@@ -2174,20 +2276,45 @@ assert_lcol_scene(const lcol_case_t* spec, const char* message) {
         return;
     }
     TEST_ASSERT_NOT_NULL_MESSAGE(scene, message);
-    assert_resident_positions(scene, (size_t)scene->renderers[0].mesh.vertex_count
-                                         * sizeof *scene->renderers[0].mesh.positions);
+    size_t bytes = resident_mesh_bytes(&scene->renderers[0].mesh);
+    if (spec->first_set != spec->second_set) {
+        const r3d_lit_mesh_t* mesh = &scene->renderers[1].mesh;
+        bytes += mesh->colors != NULL ? (size_t)mesh->vertex_count * sizeof *mesh->colors
+                                      : (size_t)mesh->triangle_count * sizeof *mesh->face_colors;
+    }
+    assert_resident_mesh_arrays(scene, bytes);
     TEST_ASSERT_TRUE_MESSAGE(scene_activate(scene, SCENE_CAMERA_FIRST), message);
     render_context_set_scale(render_context_main(), 100);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16_MESSAGE(RGB565BE(0xFF0000), pixel(0.0F), message);
-    TEST_ASSERT_EQUAL_HEX16_MESSAGE(RGB565BE(0x00FF00), pixel(4.0F), message);
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE(spec->second_set == 0 ? RGB565BE(0xFF0000) : RGB565BE(0x00FF00), pixel(4.0F),
+                                    message);
     TEST_ASSERT_EQUAL_PTR_MESSAGE(scene->renderers[0].mesh.positions, scene->renderers[1].mesh.positions, message);
+    TEST_ASSERT_EQUAL_PTR_MESSAGE(scene->renderers[0].mesh.triangles, scene->renderers[1].mesh.triangles, message);
+    if (spec->first_set != spec->second_set) {
+        const r3d_lit_mesh_t* first = &scene->renderers[0].mesh;
+        const r3d_lit_mesh_t* second = &scene->renderers[1].mesh;
+        if (first->colors != NULL) {
+            TEST_ASSERT_NOT_EQUAL(first->colors, second->colors);
+            TEST_ASSERT_NULL(first->face_colors);
+            TEST_ASSERT_NULL(second->face_colors);
+        } else {
+            TEST_ASSERT_NOT_NULL(first->face_colors);
+            TEST_ASSERT_NOT_EQUAL(first->face_colors, second->face_colors);
+            TEST_ASSERT_NULL(second->colors);
+        }
+    } else {
+        TEST_ASSERT_EQUAL_PTR_MESSAGE(scene->renderers[0].mesh.colors, scene->renderers[1].mesh.colors, message);
+        TEST_ASSERT_EQUAL_PTR_MESSAGE(scene->renderers[0].mesh.face_colors, scene->renderers[1].mesh.face_colors,
+                                      message);
+    }
 }
 
 static void
 test_lcol_instances_and_refusals(void) {
     static const lcol_case_t cases[] = {
         {.id = "valid", .expected = ASSET_OK, .second_set = LCOL_TEST_SETS - 1},
+        {.id = "shared", .expected = ASSET_OK},
         {.id = "range", .expected = ASSET_ERR_FORMAT, .second_set = LCOL_TEST_SETS},
         {.id = "missing", .expected = ASSET_ERR_NOT_FOUND, .missing = true},
         {.id = "count", .expected = ASSET_ERR_FORMAT, .count_extra = 1},
@@ -2205,11 +2332,15 @@ test_lcol_instances_and_refusals(void) {
          .coloured = true},
     };
     fixture();
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(fx.lent);
+    (void)scene_set_take(lend);
     for (uint16_t encoding = LCOL_ENCODING_RGB888; encoding <= LCOL_ENCODING_RGB565; encoding++) {
         for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
             char message[64];
             snprintf(message, sizeof message, "LCOL case %s encoding %u", cases[i].id, encoding);
             scene_unload_all();
+            fx.lent_used = 0;
             make_lcol_pack(&cases[i], encoding, message);
             assert_lcol_scene(&cases[i], message);
         }
@@ -3768,6 +3899,9 @@ test_authored_skin_load_allocation_failures_release_lighting(void) {
 static void
 test_authored_light_preserves_static_mesh_colors(void) {
     fixture();
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(fx.lent);
+    (void)scene_set_take(lend);
     r3d_lit_mesh_t packed;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(&fx.pack, "red", &packed));
     uint8_t expected[QUAD_VERTICES][R3D_SKIN_LIGHT_CHANNELS];
@@ -3780,8 +3914,14 @@ test_authored_light_preserves_static_mesh_colors(void) {
     const size_t available = memory_free_bytes(MEMORY_INTERNAL);
     scene_animation_step(scene, RIG_DURATION_MS);
     TEST_ASSERT_EQUAL_UINT(available, memory_free_bytes(MEMORY_INTERNAL));
-    TEST_ASSERT_EQUAL_PTR(packed.colors, scene_entity_mesh(scene, entity)->colors);
+    TEST_ASSERT_EQUAL_MEMORY(packed.colors, scene_entity_mesh(scene, entity)->colors,
+                             (size_t)packed.vertex_count * sizeof *packed.colors);
     TEST_ASSERT_EQUAL_MEMORY(expected, scene_entity_mesh(scene, entity)->colors, sizeof expected);
+    TEST_ASSERT_EQUAL_PTR(scene->resident, fx.lent_last);
+    const uintptr_t begin = (uintptr_t)scene->resident;
+    const uintptr_t colors = (uintptr_t)scene_entity_mesh(scene, entity)->colors;
+    TEST_ASSERT_TRUE(colors >= begin);
+    TEST_ASSERT_TRUE(colors + sizeof expected <= begin + fx.lent_last_size);
 }
 
 static void
@@ -4499,8 +4639,9 @@ run_scene_suite(void) {
      * arena, put back once they are done. */
     scene_unload_all();
     const memory_take_fn lender = scene_set_take(NULL);
-    RUN_TEST(test_static_positions_are_resident_and_equal_the_pack);
-    RUN_TEST(test_only_static_positions_are_made_resident);
+    RUN_TEST(test_static_mesh_arrays_are_resident_and_equal_the_pack);
+    RUN_TEST(test_static_face_colours_are_resident_and_equal_the_pack);
+    RUN_TEST(test_only_static_mesh_arrays_are_made_resident);
     RUN_TEST(test_resident_allocation_failure_rolls_back_the_load);
     RUN_TEST(test_table_later_frames_mode_changes_and_light_enable);
     RUN_TEST(test_skin_modes_share_table_transactionally_and_rebuild_only_for_lights);
