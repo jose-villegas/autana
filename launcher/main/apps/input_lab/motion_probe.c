@@ -66,9 +66,10 @@ motion_probe_format_gravity(char* out, size_t len, const gravity_t* gravity, int
     char gravity_text[GRAV_COUNT][MOTION_G_TEXT_SIZE];
     for (size_t i = 0; i < GRAV_COUNT; i++) {
         const bool bias = i >= GRAV_BIAS_X;
-        motion_probe_format_fixed(gravity_text[i], sizeof gravity_text[i],
-                                  (int)lroundf(gravity_values[i] * (float)(bias ? OFFSET_SCALE : IMU_PROBE_MILLI)),
-                                  bias ? OFFSET_DIGITS : MOTION_MILLI_DIGITS, i != GRAV_STRENGTH);
+        motion_probe_format_fixed(
+            gravity_text[i], sizeof gravity_text[i],
+            (int)lroundf(gravity_values[i] * (float)(bias ? MOTION_PROBE_OFFSET_SCALE : IMU_PROBE_MILLI)),
+            bias ? MOTION_PROBE_OFFSET_DIGITS : MOTION_MILLI_DIGITS, i != GRAV_STRENGTH);
     }
     if (snprintf(out, len, "GRAV %s,%s,%s S%s B%s,%s,%s Q%c", gravity_text[GRAV_X], gravity_text[GRAV_Y],
                  gravity_text[GRAV_Z], gravity_text[GRAV_STRENGTH], gravity_text[GRAV_BIAS_X],

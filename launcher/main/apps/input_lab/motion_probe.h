@@ -11,8 +11,8 @@
 #define MOTION_PROBE_FULL_TURN_DEG 360
 #define MOTION_G_TEXT_SIZE         16
 #define MOTION_MILLI_DIGITS        3
-#define OFFSET_DIGITS              1
-#define OFFSET_SCALE               10
+#define MOTION_PROBE_OFFSET_DIGITS 1
+#define MOTION_PROBE_OFFSET_SCALE  10
 #define MOTION_HUD_TEXT_SIZE       96
 #define MOTION_HUD_SCALE           1
 

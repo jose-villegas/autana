@@ -400,9 +400,10 @@ hud_offset_line(int row, const char* label, float mean, float spread) {
     char line[64];
     char mean_text[24];
     char spread_text[24];
-    motion_probe_format_fixed(mean_text, sizeof mean_text, (int)lroundf(mean * OFFSET_SCALE), OFFSET_DIGITS, true);
-    motion_probe_format_fixed(spread_text, sizeof spread_text, (int)lroundf(spread * OFFSET_SCALE), OFFSET_DIGITS,
-                              false);
+    motion_probe_format_fixed(mean_text, sizeof mean_text, (int)lroundf(mean * MOTION_PROBE_OFFSET_SCALE),
+                              MOTION_PROBE_OFFSET_DIGITS, true);
+    motion_probe_format_fixed(spread_text, sizeof spread_text, (int)lroundf(spread * MOTION_PROBE_OFFSET_SCALE),
+                              MOTION_PROBE_OFFSET_DIGITS, false);
     if (snprintf(line, sizeof line, "%s %s SD %s", label, mean_text, spread_text) < 0) {
         line[0] = '\0';
     }
@@ -589,7 +590,7 @@ read_motion(uint32_t dt_ms) {
         motion_log_ms %= MOTION_LOG_PERIOD_MS;
         const vec3f_t g = input_gravity();
         const vec3i_t down_mg = motion_log_vector(gravity_down(&gravity), IMU_PROBE_MILLI);
-        const vec3i_t bias_dps10 = motion_log_vector(gravity_gyro_bias(&gravity), OFFSET_SCALE);
+        const vec3i_t bias_dps10 = motion_log_vector(gravity_gyro_bias(&gravity), MOTION_PROBE_OFFSET_SCALE);
         ESP_LOGI(TAG,
                  "motion raw %d,%d,%d tilt %d bearing %d filt %d,%d str %d shake %d turn %d rot %d,%d,%d quarter %d "
                  "grav_mg %d,%d,%d bias_dps10 %d,%d,%d samples %d lost %d drain_us %lld",
