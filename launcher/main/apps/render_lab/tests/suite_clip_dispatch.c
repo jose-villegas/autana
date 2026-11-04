@@ -6,8 +6,8 @@
 #include "apps/render_lab/tests/render_lab_test.h"
 #include "core/memory.h"
 #include "display/display.h"
-#include "gfx/present/gfx_present.h"
-#include "gfx/present/gfx_present_guard.h"
+#include "frame/test_frame.h"
+#include "gfx_shared_state.h"
 #include "scene/scene_internal.h"
 #include "testkit/cleanup.h"
 #include "ui/layout/ui_transform.h"
@@ -186,7 +186,7 @@ test_cleanup_finishes_present_without_tripping_guard(void) {
     dispatch_fixture_t* f = fixture();
     enter(f, "capybara");
     const unsigned trips = gfx_present_guard_trips;
-    gfx_present_begin();
+    test_present_begin();
     TEST_ASSERT_TRUE(gfx_present_guard_in_flight);
     leave(f);
     TEST_ASSERT_FALSE(gfx_present_guard_in_flight);

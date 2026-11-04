@@ -2,7 +2,7 @@
 #pragma once
 
 #include <stdio.h>
-#include "display/display_shell.h"
+#include "display/display.h"
 #include "frame_profile.h"
 #include "perf_budget.h"
 
