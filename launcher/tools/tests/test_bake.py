@@ -650,7 +650,8 @@ class FittedBakeCase(unittest.TestCase):
 
     def fits(self, sha256):
         """The fits of the tree when its start has the bytes `sha256`."""
-        return [item for item in self.bakes({self.start.key: sha256}) if item.kind == "fit"]
+        starts = {key: row["sha256"] for key, row in self.locked(sha256).items()}
+        return [item for item in self.bakes(starts) if item.kind == "fit"]
 
     def fit(self, sha256):
         return self.fits(sha256)[0]
@@ -686,7 +687,7 @@ class FittedBakeCase(unittest.TestCase):
                                      mesh_cpu_vendor=kwargs.get("mesh_cpu_vendor"))
 
     def locked(self, sha256, **fields):
-        return {self.start.key: row_of(self.start, sha256, **fields)}
+        return {item.key: row_of(item, sha256, **fields) for item in self.bakes({}) if item.kind == "mesh"}
 
 
 class CarvedBakeTests(FittedBakeCase):
@@ -1266,8 +1267,8 @@ class KeptWorkTests(FittedBakeCase):
             sys.path.insert(0, sys.argv[1])
             from bake import bake, produce
             root, lock_sha, last = pathlib.Path(sys.argv[2]), sys.argv[3], sys.argv[4]
-            start = next(item for item in bake.bakes([root], {}) if not item.packed)
-            lock = {start.key: {"output": start.output, "key": start.key, "sha256": lock_sha, "run": 1}}
+            lock = {item.key: {"output": item.output, "key": item.key, "sha256": lock_sha, "run": 1}
+                    for item in bake.bakes([root], {}) if item.kind == "mesh"}
 
             def stub(item, cache, lock=None, blender=None, fresh_references=None):
                 if item.output == last:
