@@ -72,7 +72,8 @@ selftest_run(void) {
      * count so the sentinel below (and every harness that reads it) sees a
      * failed run rather than a green one that tested less than it claims. */
     if (suites_dropped() > 0) {
-        ESP_LOGE(TAG, "%d registration(s) dropped; raise the limit the SUITE OVERFLOW line names", suites_dropped());
+        printf("FAIL: %d registration(s) dropped; the SUITE OVERFLOW lines name them
+", suites_dropped());
         failures += suites_dropped();
     }
 

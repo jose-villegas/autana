@@ -99,7 +99,7 @@ main(int argc, char** argv) {
     /* A suite that did not fit is a test that did not run, so this run must
      * not come back green having quietly checked less than the whole set. */
     if (suites_dropped() > 0) {
-        printf("FAIL: %d registration(s) dropped; raise the limit the SUITE OVERFLOW line names\n", suites_dropped());
+        printf("FAIL: %d registration(s) dropped; the SUITE OVERFLOW lines name them\n", suites_dropped());
         failures += suites_dropped();
     }
     /* Only a full run skips the suites of a pack waiting on the lock. A read
