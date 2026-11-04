@@ -26,3 +26,29 @@ test_arena_fill(void) {
     while (app_arena_take(APP_ARENA_CHUNK_BYTES, 1) != NULL) {}
     while (app_arena_take(1, 1) != NULL) {}
 }
+
+/* Holds every block the app heap can still give, chained through the blocks
+ * themselves; test_app_heap_release() gives them back. */
+static inline void*
+test_app_heap_fill(void) {
+    void* head = NULL;
+    size_t largest;
+    while ((largest = memory_largest_block(MEMORY_APP)) >= sizeof(void*)) {
+        void* block = memory_alloc(largest, MEMORY_APP);
+        if (block == NULL) {
+            break;
+        }
+        *(void**)block = head;
+        head = block;
+    }
+    return head;
+}
+
+static inline void
+test_app_heap_release(void* head) {
+    while (head != NULL) {
+        void* next = *(void**)head;
+        memory_free(head);
+        head = next;
+    }
+}

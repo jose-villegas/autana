@@ -26,9 +26,10 @@
 
 #include "gfx/gfx.h"
 
-/* PSRAM the system holds besides its two framebuffers, at its peak: 46.4 KB
- * at boot, 41 KB at the launcher (`autana heap psram`). */
-#define APP_ARENA_SYSTEM_OTHER_BYTES   (48u * 1024u)
+/* PSRAM the system holds besides its framebuffers, in the build variant that
+ * holds most: a self-test build adds about 21 KB to a development build's
+ * 41 KB. With room for the heap's own fragments. */
+#define APP_ARENA_SYSTEM_OTHER_BYTES   (80u * 1024u)
 
 /* The PSRAM heap the region leaves the system: the framebuffer, one more
  * buffer its size, and the rest. The second is the double-framebuffer back
