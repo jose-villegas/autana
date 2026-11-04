@@ -21,6 +21,7 @@
 #include "core/memory.h"
 #include "display/viewport.h"
 #include "r3d_lit_mesh_expect.h"
+#include "render/lod/r3d_lod.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_pipeline.h"
 #include "render/raster.h"
@@ -112,7 +113,8 @@ check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(const r3d_lit_mesh_t* m
         }
         int flat = 0;
         for (int c = 0; c < mesh->cluster_count; c++) {
-            const bool in_view = cluster_in_view(&mesh->clusters[c], &lens);
+            /* Without coarse bits the walk draws the finest level. */
+            const bool in_view = r3d_lod_drawn(mesh, c, NULL) && cluster_in_view(&mesh->clusters[c], &lens);
             flat += in_view;
             TEST_ASSERT_EQUAL_MESSAGE(in_view, kept[c], "the walk and the flat test disagree on a cluster");
         }
@@ -202,7 +204,7 @@ clearance(const r3d_lit_mesh_t* mesh, v3 p) {
     float best = INFINITY;
     for (int i = 0; i < mesh->cluster_count; i++) {
         const r3d_lit_cluster_t* c = &mesh->clusters[i];
-        if (box_distance(mesh, c, p) >= best) {
+        if (!r3d_lod_drawn(mesh, i, NULL) || box_distance(mesh, c, p) >= best) {
             continue;
         }
         for (int t = c->triangle_first; t < c->triangle_first + c->triangle_count; t++) {
