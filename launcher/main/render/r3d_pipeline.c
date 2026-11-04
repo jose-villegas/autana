@@ -624,7 +624,6 @@ draw_writing_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16
     }
     for (int i = 0; i < count; i++) {
         const r3d_lit_cluster_t* c = &mesh->clusters[clusters[i]];
-        const bool bounded = rows != NULL && !rows[clusters[i]].unbounded;
         if (rows != NULL && cluster_skipped(&rows[clusters[i]], target, skipping)) {
             continue;
         }
@@ -635,7 +634,8 @@ draw_writing_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16
         const int step = per_triangle ? 1 : c->triangle_count;
         for (int t = c->triangle_first; t < end; t += step) {
             retag(writers, target->writers, target->writer_count, clusters[i], (uint32_t)t);
-            draw_triangles(mesh, lens, c, t, t + step, cs, &writing, bounded, true, skipping, work);
+            /* Not bounded: the cold path's frame has no room for one more live value. */
+            draw_triangles(mesh, lens, c, t, t + step, cs, &writing, false, true, skipping, work);
         }
     }
 }
