@@ -21,25 +21,9 @@ checked, and compared with device captures.
 
 ## Viewing a scene file
 
-To look at a scene, use [Loupe](https://github.com/jose-villegas/loupe), the frame
-debugger. Build it once, with autana as its submodule:
-
-```sh
-git clone --recurse-submodules https://github.com/jose-villegas/loupe
-cd loupe
-pip install -r tools/ci/requirements.txt
-cmake --workflow --preset default
-```
-
-```sh
-build/default/loupe PATH.scene.toml
-build/default/loupe PATH.scene.toml --view meshlets --frames 60 -o out.bmp
-build/default/loupe PATH.scene.toml --video out.avi
-```
-
-With `-o` or `--video`, Loupe writes the frames and exits without a window. The
-rest of this section covers the headless `scene_viewer.sh`, which bakes, doc
-figures and tests call:
+`scene_viewer.sh` renders a scene file headlessly; bakes, doc figures and
+tests call it. To look at a scene interactively, use
+[Loupe](https://github.com/jose-villegas/loupe), the frame debugger.
 
 ```sh
 sh launcher/tools/render/scene_viewer.sh PATH.scene.toml --object NAME --frames 2 -o out.bmp
