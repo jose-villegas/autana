@@ -35,6 +35,7 @@
 #include "math/scalar/mathf.h"
 #include "math/scalar/mathi.h"
 #include "math/scalar/units.h"
+#include "math/signal/smooth.h"
 #include "physics/fluid/flip3.h"
 #include "profile/frame_cost.h"
 #include "render/context/render_context.h"
@@ -343,7 +344,7 @@ parallax_eye(vec3f_t down, uint32_t dt_ms) {
     if (vec3f_dot(reference_down, reference_down) == 0.0F) {
         reference_down = down; /* the first reading: start centred, whatever the pose */
     }
-    const float catch_up = 1.0F - expf(-(float)dt_ms / (float)settle_ms);
+    const float catch_up = smooth_alpha((float)dt_ms, (float)settle_ms);
     reference_down = vec3f_normalize(vec3f_lerp(reference_down, down, catch_up));
     const vec3f_t turn = vec3f_cross(reference_down, down);
     return vec3f_scale((vec3f_t){-turn.y, -turn.x, 0.0F}, (float)parallax_mm);
