@@ -125,7 +125,7 @@ class FitMesh(NamedTuple):
     scale: int
     vertex_point: np.ndarray
     flat: bool = False
-    lod: bool = False  # the start carries levels of detail, so the fitted mesh does too
+    lod: bool = False  # the fitted mesh carries levels of detail: the start does, or --lod asks
 
 
 def start_mesh(path):
@@ -901,6 +901,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--scene", required=True, help="the scene file the references were rendered from")
     parser.add_argument("--start", required=True, help="a smooth or flat NAME.mesh to start from")
+    parser.add_argument("--lod", action="store_true", help="bake the fitted mesh with levels of detail")
     parser.add_argument("--poses", action="append", required=True, help="a track_host.py poses file")
     parser.add_argument("--reference", action="append", required=True, help="reference_render.py output for the poses")
     parser.add_argument("--out", required=True)
@@ -953,6 +954,7 @@ def main(argv=None):
         parser.error("--start must be a NAME.mesh")
     name = start.stem
     mesh = start_mesh(start)
+    mesh = mesh._replace(lod=mesh.lod or args.lod)
     log(f"start: {len(mesh.tris)} {'flat' if mesh.flat else 'smooth'} triangles, {len(mesh.points)} positions")
     copies = None if args.copies is None else placed_copies(args.copies, mesh.flat)
     if copies is not None:

@@ -46,7 +46,7 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
         start.write_bytes(rest)
     out = work / "fitted"
     steps = min(recipe.steps, 8) if smoke else recipe.steps
-    command = ["--scene", str(scene_path), "--start", str(start)]
+    command = ["--scene", str(scene_path), "--start", str(start)] + (["--lod"] if job.settings.lod else [])
     for poses, reference in TRAINING:
         command += ["--poses", str(inputs / poses), "--reference", str(inputs / reference)]
     command += ["--out", str(out), "--budget", str(recipe.budget if budget is None else budget),

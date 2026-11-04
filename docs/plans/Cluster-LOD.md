@@ -7,7 +7,8 @@ grouped, simplified with each group's border locked, and split again until a
 group no longer simplifies<sup>[[54]](../Citations.md#karis-2021)</sup>
 (meshoptimizer's<sup>[[11]](../Citations.md#meshoptimizer)</sup> `clusterlod`). The finest
 level holds the fitted mesh's triangles in `clusterlod`'s own clusters, and the
-bake draws those as its level 0. Positions only, so a strip of one colour is not
+bake draws those as its level 0. A fit starts from the mesh without levels and
+gets them on what it returns, so it never moves level 0's cluster seams. Positions only, so a strip of one colour is not
 simplified on its own; each coarser cluster samples its colours from the
 nearest level-0 surface facing its way.
 

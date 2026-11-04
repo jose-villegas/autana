@@ -276,7 +276,9 @@ def flat_colours(job, scene, geometry, face_samples, **knobs):
 def write_baked(job, scene, out_dir, name, geometry=None, recorder=None):
     """Writes `job`'s bake as <name>.mesh in `out_dir`, flat when the renderer
     is and smooth otherwise, from `geometry` when bake_geometry already made it.
-    Returns the baked mesh."""
+    Returns the baked mesh. A fitted renderer's mesh is its fit's start, which
+    has no levels of detail: the fit adds them to the fitted mesh, so the fit
+    moves the plain mesh's vertices."""
     renderer = job.renderer
     out_dir = pathlib.Path(out_dir)
     recorder = NULL_RECORDER if recorder is None else recorder
@@ -289,7 +291,8 @@ def write_baked(job, scene, out_dir, name, geometry=None, recorder=None):
     if len(geometry.tris):
         mesh = write_lit_mesh(out_dir, name, geometry.positions, None if renderer.face_samples else geometry.rgb,
                               geometry.tris, geometry.tri_double, face_rgb=face_rgb, recorder=recorder,
-                              meshlet_triangles=job.settings.meshlet_triangles, lod=job.settings.lod,
+                              meshlet_triangles=job.settings.meshlet_triangles,
+                              lod=job.settings.lod and getattr(renderer, "fit", None) is None,
                               **geometry.scale)
     if getattr(geometry, "shapes", None) is not None:
         entries = [(name, mesh_asset.TYPE, (out_dir / f"{name}.mesh").read_bytes())] if len(mesh.tris) else []

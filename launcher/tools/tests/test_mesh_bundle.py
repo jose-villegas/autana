@@ -24,7 +24,7 @@ from r3d.import_settings import MESHLET_TRIANGLES, albedo_jobs, load_import_sett
 from tests.test_r3d_bake import canonical
 
 
-def bundle_fixture(directory, flat=False):
+def bundle_fixture(directory, flat=False, lod=False, fit=None):
     p = np.array([[0., 0, 0], [4, 0, 0], [0, 4, 0]])
     t = np.array([[0, 1, 2]])
     rgb = np.full(p.shape, 80)
@@ -42,9 +42,9 @@ def bundle_fixture(directory, flat=False):
                                scale={}, shapes=[shape], src=SimpleNamespace(names=['prop'], object_names=['a', 'b', 'c']))
     obj = SimpleNamespace(name='atrium', matrix=np.diag([2., 3, 4]).tolist(), position=[5., 6, 7],
                           kind='mesh_renderer', animator=None)
-    renderer = SimpleNamespace(face_samples=(1, 1, 1, None) if flat else None, bake=True)
+    renderer = SimpleNamespace(face_samples=(1, 1, 1, None) if flat else None, bake=True, fit=fit)
     job = SimpleNamespace(object=obj, renderer=renderer, asset_name='hall.atrium',
-                          settings=SimpleNamespace(meshlet_triangles=MESHLET_TRIANGLES, double_sided=[], lod=False))
+                          settings=SimpleNamespace(meshlet_triangles=MESHLET_TRIANGLES, double_sided=[], lod=lod))
     scene = SimpleNamespace(objects=[obj], renderers=[job], lights=[])
     with mock.patch.object(mesh_import, 'flat_colours', side_effect=[np.full((1, 3), value) for value in (80, 80, 81, 82)]):
         mesh_import.write_baked(job, scene, pathlib.Path(directory), job.asset_name, geometry=geometry)
@@ -142,6 +142,42 @@ class MeshBundleTests(unittest.TestCase):
 
     def test_an_import_can_carve_every_source_object(self):
         self.check_whole_import(all_carved=True)
+
+    def test_a_fitted_renderer_s_start_bakes_its_rest_without_levels_and_its_copies_with_them(self):
+        baked = []
+        real = mesh_import.write_lit_mesh
+
+        def recording(out_dir, name, *args, **options):
+            baked.append((name, options["lod"]))
+            return real(out_dir, name, *args, **options)
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(mesh_import, "write_lit_mesh", recording):
+            _, _, _, job, _ = bundle_fixture(directory, lod=True, fit=SimpleNamespace())
+        self.assertEqual(baked[0], (job.asset_name, False))
+        self.assertTrue(len(baked) > 1 and all(lod for _, lod in baked[1:]))
+
+    def test_the_fit_bakes_levels_when_the_import_asks_for_them(self):
+        for lod in (False, True):
+            with self.subTest(lod=lod), tempfile.TemporaryDirectory() as directory:
+                work = pathlib.Path(directory)
+                data, _, _, job, scene = bundle_fixture(directory)
+                job.settings.lod = lod
+                start = work / (job.asset_name + '.start' + mesh_bundle.SUFFIX)
+                start.write_bytes(data)
+                job.renderer.variant = SimpleNamespace(name='fixture')
+                job.renderer.fit = SimpleNamespace(steps=1, batch=1, laplacian=0, normal_weight=0,
+                                                   surface_weight=0, surface_margin=0, budget=1)
+                asked = []
+
+                def fit_main(args):
+                    asked.append('--lod' in args)
+                    raw = pathlib.Path(args[args.index('--start') + 1])
+                    out = pathlib.Path(args[args.index('--out') + 1])
+                    out.mkdir()
+                    (out / raw.name).write_bytes(raw.read_bytes())
+                with mock.patch.dict(sys.modules, {'r3d.appearance_simplify': SimpleNamespace(main=fit_main)}):
+                    stage.fit(work / 'scene.scene.toml', scene, job, work, start=start,
+                              target=work / (job.asset_name + mesh_bundle.SUFFIX))
+                self.assertEqual(asked, [lod])
 
     def test_fit_changes_only_the_rest_of_a_start_bundle(self):
         with tempfile.TemporaryDirectory() as directory:
