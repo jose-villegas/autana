@@ -9,6 +9,29 @@
 
 #define ALL_PLANES ((1u << PLANE_FRUSTUM_COUNT) - 1u)
 
+/* A leaf's clusters that the levels draw and the planes keep, into `out`;
+ * how many. */
+static int
+keep_leaf(const r3d_lit_mesh_t* mesh, const r3d_lit_node_t* node, unsigned mask, const uint32_t* lod_coarse,
+          const planef_t* planes, uint16_t* out, r3d_pipeline_counts_t* counts) {
+    int count = 0;
+    for (int i = 0; i < node->count; i++) {
+        const int c = node->first + i;
+        unsigned cluster_mask = mask;
+        if (!r3d_lod_drawn(mesh, c, lod_coarse)) {
+            continue;
+        }
+        if (cluster_mask == 0
+            || !box3f_outside_planes(box3f_from_box3s(mesh->clusters[c].bounds, 1.0F), planes, PLANE_FRUSTUM_COUNT,
+                                     &cluster_mask)) {
+            out[count++] = (uint16_t)c;
+            counts->triangles_submitted += mesh->clusters[c].triangle_count;
+        }
+    }
+    counts->clusters_tested += node->count;
+    return count;
+}
+
 /* r3d_pipeline_cull()'s tests without its nearest-first order, which no count
  * depends on; the cull-view suite holds the two to the same clusters. */
 int
@@ -37,20 +60,7 @@ r3d_pipeline_cull_counted(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, co
             }
             continue;
         }
-        for (int i = 0; i < node->count; i++) {
-            const int c = node->first + i;
-            unsigned cluster_mask = mask;
-            if (!r3d_lod_drawn(mesh, c, lod_coarse)) {
-                continue;
-            }
-            if (cluster_mask == 0
-                || !box3f_outside_planes(box3f_from_box3s(mesh->clusters[c].bounds, 1.0F), walk->planes,
-                                         PLANE_FRUSTUM_COUNT, &cluster_mask)) {
-                out[count++] = (uint16_t)c;
-                counts->triangles_submitted += mesh->clusters[c].triangle_count;
-            }
-        }
-        counts->clusters_tested += node->count;
+        count += keep_leaf(mesh, node, mask, lod_coarse, walk->planes, &out[count], counts);
     }
     counts->clusters_kept += count;
     return count;

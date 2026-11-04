@@ -182,25 +182,32 @@ eye_at(int p, int steps) {
     return FAR_EYE * powf(STEP, (float)in);
 }
 
+/* Whether group `g`'s simplified clusters are drawn, which they are all or
+ * none; `next` is the group they simplify into. */
+static bool
+group_drawn(const r3d_lit_mesh_t* mesh, uint16_t g, const uint32_t* coarse, uint16_t* next) {
+    int on = 0, off = 0;
+    *next = R3D_LOD_NONE;
+    for (int c = 0; c < mesh->cluster_count; c++) {
+        if (mesh->cluster_lod[c].own == g) {
+            const bool shown = r3d_lod_drawn(mesh, c, coarse);
+            on += shown ? 1 : 0;
+            off += shown ? 0 : 1;
+            *next = mesh->cluster_lod[c].parent;
+        }
+    }
+    TEST_ASSERT_TRUE_MESSAGE(on == 0 || off == 0, "a group's clusters switched apart");
+    return on > 0;
+}
+
 /* How many of the levels covering finest cluster `f` are drawn: f itself,
- * then each group's simplified clusters up the chain. A level's clusters
- * are drawn all or none. */
+ * then each group's simplified clusters up the chain. */
 static int
 levels_drawn(const r3d_lit_mesh_t* mesh, int f, const uint32_t* coarse) {
     int drawn = r3d_lod_drawn(mesh, f, coarse) ? 1 : 0;
     for (uint16_t g = mesh->cluster_lod[f].parent; g != R3D_LOD_NONE;) {
-        int on = 0, off = 0;
-        uint16_t next = R3D_LOD_NONE;
-        for (int c = 0; c < mesh->cluster_count; c++) {
-            if (mesh->cluster_lod[c].own == g) {
-                const bool shown = r3d_lod_drawn(mesh, c, coarse);
-                on += shown ? 1 : 0;
-                off += shown ? 0 : 1;
-                next = mesh->cluster_lod[c].parent;
-            }
-        }
-        TEST_ASSERT_TRUE_MESSAGE(on == 0 || off == 0, "a group's clusters switched apart");
-        drawn += on > 0 ? 1 : 0;
+        uint16_t next;
+        drawn += group_drawn(mesh, g, coarse, &next) ? 1 : 0;
         g = next;
     }
     return drawn;
@@ -325,6 +332,17 @@ test_a_camera_backing_off_a_switch_by_less_than_the_band_does_not_switch_back(vo
     TEST_ASSERT_EQUAL_HEX32(held, coarse[0]);
 }
 
+/* Through `lens`, no group projects larger than its parent. */
+static void
+assert_parents_project_larger(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens) {
+    for (int c = 0; c < CLUSTERS; c++) {
+        const r3d_lit_cluster_lod_t lod = mesh->cluster_lod[c];
+        if (lod.own != R3D_LOD_NONE && lod.parent != R3D_LOD_NONE) {
+            TEST_ASSERT_TRUE(r3d_lod_group_pixels(mesh, lens, lod.own) <= r3d_lod_group_pixels(mesh, lens, lod.parent));
+        }
+    }
+}
+
 static void
 test_a_group_never_projects_larger_than_its_parent_under_a_stretched_turned_model(void) {
     const r3d_lit_mesh_t* mesh = levelled_mesh();
@@ -340,13 +358,7 @@ test_a_group_never_projects_larger_than_its_parent_under_a_stretched_turned_mode
             const mat4f_t model = transformf_compute_matrix(&pose);
             for (int p = 0; p < steps; p++) {
                 const r3d_lens_t lens = lens_at(eye_at(p, steps), &model);
-                for (int c = 0; c < CLUSTERS; c++) {
-                    const r3d_lit_cluster_lod_t lod = mesh->cluster_lod[c];
-                    if (lod.own != R3D_LOD_NONE && lod.parent != R3D_LOD_NONE) {
-                        TEST_ASSERT_TRUE(r3d_lod_group_pixels(mesh, &lens, lod.own)
-                                         <= r3d_lod_group_pixels(mesh, &lens, lod.parent));
-                    }
-                }
+                assert_parents_project_larger(mesh, &lens);
             }
         }
     }

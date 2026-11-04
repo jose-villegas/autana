@@ -29,7 +29,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from r3d.geometry import closest_point_on_triangles
-from r3d.lit_mesh import MAX_CLUSTERS, MAX_TRIANGLES, MAX_VERTICES
+from r3d.lit_mesh import MAX_CLUSTERS, MAX_TRIANGLES, MAX_VERTICES, oriented
 from r3d.lod.levels import build_levels
 from r3d.mesh_asset import LOD_ENCLOSE_MARGIN, LOD_NONE
 
@@ -54,11 +54,6 @@ class Baked(NamedTuple):
     col: object
     entries: list
     groups: np.ndarray
-
-
-def oriented(t):
-    k = int(np.argmin(t))
-    return int(t[k]), int(t[(k + 1) % 3]), int(t[(k + 2) % 3])
 
 
 def border_vertices(ids):

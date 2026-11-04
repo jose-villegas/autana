@@ -11,6 +11,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from asset import engine_frame
 from r3d import lit_mesh, mesh_asset
@@ -19,6 +20,7 @@ from r3d.lod import pick
 from r3d.lit_mesh import MAX_TRIANGLES, MAX_VERTICES
 from r3d.lod.bake_levels import INT16_MAX, push_outward, quantised_groups, within_format
 from r3d.mesh_asset import LOD_ENCLOSE_MARGIN, LOD_NONE
+import test_r3d_lod
 
 GRID = 24
 # A grid whose level 0 fits the format but whose levels together need over MAX_VERTICES vertices.
@@ -44,12 +46,8 @@ ROUNDING_TICKS = 1.0
 
 def wavy_grid(n=GRID):
     """An n x n quad grid, bent so simplifying it costs error, coloured by position."""
-    x, y = np.meshgrid(np.arange(n + 1), np.arange(n + 1))
-    points = np.stack([x.ravel(), y.ravel(), 3.0 * np.sin(x.ravel() / 5.0) * np.cos(y.ravel() / 7.0)], axis=1)
-    corner = (np.arange(n)[None, :] + np.arange(n)[:, None] * (n + 1)).ravel()
-    triangles = np.concatenate([np.stack([corner, corner + 1, corner + n + 2], 1),
-                                np.stack([corner, corner + n + 2, corner + n + 1], 1)])
-    rgb = np.stack([x.ravel() * 10, y.ravel() * 10, np.full(len(points), 100)], axis=1)
+    points, triangles = test_r3d_lod.wavy_grid(n, 3.0, (5.0, 7.0))
+    rgb = np.stack([points[:, 0] * 10, points[:, 1] * 10, np.full(len(points), 100)], axis=1).astype(int)
     double = (np.arange(len(triangles)) % n // (n // DOUBLE_EVERY) == 0).astype(int)
     return points, rgb, triangles, double
 

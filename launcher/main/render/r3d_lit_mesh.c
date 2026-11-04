@@ -144,6 +144,31 @@ lod_is_ordered(const r3d_lit_mesh_t* mesh) {
     return true;
 }
 
+/* The levels of a mesh whose other arrays are checked. They come whole: the
+ * groups and every cluster's record, or neither. */
+static asset_status_t
+levels_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
+    const uint32_t groups = word(asset->data, COUNT_LOD_GROUP);
+    const uint32_t cluster_lod_at = word(asset->data, AT_CLUSTER_LOD);
+    const uint32_t groups_at = word(asset->data, AT_LOD_GROUPS);
+    if (groups >= R3D_LOD_NONE) {
+        return ASSET_ERR_BOUNDS;
+    }
+    if ((groups == 0) != (cluster_lod_at == 0) || (groups == 0) != (groups_at == 0)) {
+        return ASSET_ERR_FORMAT;
+    }
+    if (groups == 0) {
+        return ASSET_OK;
+    }
+    mesh->cluster_lod = array_at(asset, cluster_lod_at, (uint32_t)mesh->cluster_count, sizeof(r3d_lit_cluster_lod_t));
+    mesh->lod_groups = array_at(asset, groups_at, groups, sizeof(r3d_lit_lod_group_t));
+    mesh->lod_group_count = (int)groups;
+    if (mesh->cluster_lod == NULL || mesh->lod_groups == NULL) {
+        return ASSET_ERR_BOUNDS;
+    }
+    return lod_is_ordered(mesh) ? ASSET_OK : ASSET_ERR_FORMAT;
+}
+
 asset_status_t
 r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
     *mesh = (r3d_lit_mesh_t){0};
@@ -158,16 +183,8 @@ r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
     const uint32_t nodes = word(asset->data, COUNT_NODE);
     const uint32_t colors_at = word(asset->data, AT_COLORS);
     const uint32_t face_at = word(asset->data, AT_FACE_COLORS);
-    const uint32_t groups = word(asset->data, COUNT_LOD_GROUP);
-    const uint32_t cluster_lod_at = word(asset->data, AT_CLUSTER_LOD);
-    const uint32_t groups_at = word(asset->data, AT_LOD_GROUPS);
-    if (vertices > VERTEX_LIMIT || triangles > VERTEX_LIMIT || clusters > VERTEX_LIMIT || nodes > VERTEX_LIMIT
-        || groups >= R3D_LOD_NONE) {
+    if (vertices > VERTEX_LIMIT || triangles > VERTEX_LIMIT || clusters > VERTEX_LIMIT || nodes > VERTEX_LIMIT) {
         return ASSET_ERR_BOUNDS;
-    }
-    /* Levels come whole: the groups and every cluster's record, or neither. */
-    if ((groups == 0) != (cluster_lod_at == 0) || (groups == 0) != (groups_at == 0)) {
-        return ASSET_ERR_FORMAT;
     }
     const uint32_t scale = word(asset->data, POSITION_SCALE);
     /* Colourless prototypes receive their lighting at scene open. */
@@ -186,21 +203,20 @@ r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
         .node_count = (int)nodes,
         .position_scale = (int)scale,
         .face_colors = face_at == 0 ? NULL : array_at(asset, face_at, triangles, 2),
-        .cluster_lod = groups == 0 ? NULL : array_at(asset, cluster_lod_at, clusters, sizeof(r3d_lit_cluster_lod_t)),
-        .lod_groups = groups == 0 ? NULL : array_at(asset, groups_at, groups, sizeof(r3d_lit_lod_group_t)),
-        .lod_group_count = (int)groups,
     };
     const bool colours_fit = (colors_at == 0 || built.colors != NULL) && (face_at == 0 || built.face_colors != NULL);
-    const bool levels_fit = groups == 0 || (built.cluster_lod != NULL && built.lod_groups != NULL);
     if (built.positions == NULL || built.triangles == NULL || built.clusters == NULL || built.nodes == NULL
-        || !colours_fit || !levels_fit || !clusters_are_inside(&built) || !nodes_are_inside(&built)) {
+        || !colours_fit || !clusters_are_inside(&built) || !nodes_are_inside(&built)) {
         return ASSET_ERR_BOUNDS;
     }
-    if (!clusters_cover_vertices(&built) || (groups != 0 && !lod_is_ordered(&built))) {
+    if (!clusters_cover_vertices(&built)) {
         return ASSET_ERR_FORMAT;
     }
-    *mesh = built;
-    return ASSET_OK;
+    const asset_status_t levels = levels_from_asset(asset, &built);
+    if (levels == ASSET_OK) {
+        *mesh = built;
+    }
+    return levels;
 }
 
 asset_status_t
