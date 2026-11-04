@@ -1237,6 +1237,10 @@ def main(argv=None):
         elif args.command == "bake":
             from bake import produce
 
+            # A run made again renders each reference set it reads once, from this time on.
+            references_after = time.time() if args.again else None
+            produce.prune_references(cache)
+
             unknown = sorted(set(args.only or ()) - {bake.output for bake in found})
             if unknown:
                 parser.error(f"--only: no bake makes {', '.join(unknown)}")
@@ -1287,7 +1291,7 @@ def main(argv=None):
                         if bake.key is None:
                             raise BakeMissing(describe(bake, unlocked(bake), "bake its start first: bake.py bake --kind mesh"))
                         rows.append(keep((None if args.again else produce.made(bake.key, cache)) or produce.produce(
-                            bake, cache, lock, args.blender, args.again)))
+                            bake, cache, lock, args.blender, references_after)))
             for row in rows:
                 locked = lock.get(row["key"])
                 versus = "" if locked is None else (

@@ -6,9 +6,9 @@ name: Bakes GPU
 # own; then `bake.py lock --from-run N` with this run. A fit's start is locked
 # first, from the Bakes run that made it, and fetched here by its bytes; fits
 # that share their reference inputs share one reference set, which stays in the
-# runner's cache until unread for produce.py's REFERENCE_KEEP_DAYS; the log names each one and
+# runner's cache until nothing has read it for REFERENCE_KEEP_DAYS (produce.py); the log names each one and
 # whether it was rendered or reused. `again` re-makes fits the lock already has,
-# from freshly rendered references, to measure a fit
+# rendering each reference set once more, to measure a fit
 # against its locked bytes; those are never locked from this run. `probe`
 # installs and bakes nothing: it reports whether Mitsuba's CUDA variant can
 # trace on the runner (its driver, OptiX, one small render). Reference sets
