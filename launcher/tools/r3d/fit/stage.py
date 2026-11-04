@@ -25,7 +25,7 @@ DEPTH_WEIGHT = 30.0
 
 
 def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False, target=None, inputs=None,
-        start=None, probes=None, probe_share=None, path=True):
+        start=None, probes=None, probe_share=None, path=True, probe_coverage=1.0):
     """Fit `start` (the variant's start in `inputs` when None) to the reference set in `inputs` (`work` when
     None) and write the renderer's mesh to `target`. A carved start bundle fits its rest with its copies drawn,
     and passes the copy-coverage gate over the held-out poses; its copies are written back unchanged."""
@@ -58,6 +58,8 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
         command += [arg for share in [(1 - probe_share) / 2] * 2 + [probe_share] for arg in ("--pair-weight", str(share))]
     for poses in coverage:
         command += ["--coverage-poses", str(poses)]
+    if probes is not None and path:
+        command += ["--coverage-weight", "1", "--coverage-weight", str(probe_coverage)]
     command += ["--out", str(out), "--budget", str(recipe.budget if budget is None else budget),
                 "--steps", str(steps), "--batch", str(recipe.batch),
                 "--laplacian", str(recipe.laplacian), "--normal-weight", str(recipe.normal_weight),
