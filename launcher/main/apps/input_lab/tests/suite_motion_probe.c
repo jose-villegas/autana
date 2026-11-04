@@ -116,7 +116,8 @@ test_gravity_line_quarters_and_width(void) {
     affine2x_t inverse;
     TEST_ASSERT_TRUE(affine2x_invert(pinned, &inverse));
     const int width = ui_transform_rect(inverse, (recti_t){0, 0, GFX_WIDTH, GFX_HEIGHT}).w;
-    char text[MOTION_HUD_TEXT_SIZE], expected[MOTION_HUD_TEXT_SIZE];
+    char text[MOTION_HUD_TEXT_SIZE];
+    char expected[MOTION_HUD_TEXT_SIZE];
     gravity.down = (vec3f_t){-0.6F, -0.8F, -0.0001F};
     gravity.gyro_bias = (vec3f_t){-IMU_GYRO_BIAS_MAX_DPS, -IMU_GYRO_BIAS_MAX_DPS, -IMU_GYRO_BIAS_MAX_DPS};
     motion_probe_format_gravity(text, sizeof text, &gravity, DISPLAY_DEFAULT_QUARTER);
