@@ -34,6 +34,22 @@ mesh_is_first(const scene_t* scene, int index, size_t offset) {
     return true;
 }
 
+static int
+mesh_array_count(const r3d_lit_mesh_t* mesh, size_t array) {
+    return mesh_arrays[array].per_vertex ? mesh->vertex_count : mesh->triangle_count;
+}
+
+static void
+mesh_array_repoint(scene_t* scene, int index, size_t array, const void* source, void* copy) {
+    for (int j = index; j < scene->asset.renderer_count; j++) {
+        r3d_lit_mesh_t* target = &scene->renderers[j].mesh;
+        if (mesh_array(target, mesh_arrays[array].offset) == source) {
+            assert(mesh_array_count(target, array) == mesh_array_count(&scene->renderers[index].mesh, array));
+            memcpy((uint8_t*)target + mesh_arrays[array].offset, &copy, sizeof copy);
+        }
+    }
+}
+
 static size_t
 resident_walk(scene_t* scene, void* block) {
     size_t end = 0;
@@ -44,21 +60,14 @@ resident_walk(scene_t* scene, void* block) {
             if (source == NULL || !mesh_is_first(scene, i, mesh_arrays[a].offset)) {
                 continue;
             }
-            const int count = mesh_arrays[a].per_vertex ? mesh->vertex_count : mesh->triangle_count;
-            const size_t bytes = (size_t)count * mesh_arrays[a].size;
+            const size_t bytes = (size_t)mesh_array_count(mesh, a) * mesh_arrays[a].size;
             const size_t at = scene_storage_carve(&end, bytes, mesh_arrays[a].alignment);
             if (block == NULL) {
                 continue;
             }
             void* copy = (uint8_t*)block + at;
             memcpy(copy, source, bytes);
-            for (int j = i; j < scene->asset.renderer_count; j++) {
-                r3d_lit_mesh_t* target = &scene->renderers[j].mesh;
-                if (mesh_array(target, mesh_arrays[a].offset) == source) {
-                    assert((mesh_arrays[a].per_vertex ? target->vertex_count : target->triangle_count) == count);
-                    memcpy((uint8_t*)target + mesh_arrays[a].offset, &copy, sizeof copy);
-                }
-            }
+            mesh_array_repoint(scene, i, a, source, copy);
         }
     }
     return end;
