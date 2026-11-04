@@ -62,11 +62,10 @@ tearDown(void) {
     if (!app_heap_active()) {
         app_arena_enter();
     }
-    printf("DEBUG6T5U5 %s app_free=%u app_largest=%u app_blocks=%u ps_free=%u ps_largest=%u
-           ", Unity.CurrentTestName,
-           (unsigned)memory_free_bytes(MEMORY_APP),
-           (unsigned)memory_largest_block(MEMORY_APP), (unsigned)app_heap_blocks(),
-           (unsigned)memory_free_bytes(MEMORY_PSRAM), (unsigned)memory_largest_block(MEMORY_PSRAM));
+    printf("DEBUG6T5U5 %s app_free=%u app_largest=%u app_blocks=%u ps_free=%u ps_largest=%u\n", Unity.CurrentTestName,
+           (unsigned)memory_free_bytes(MEMORY_APP), (unsigned)memory_largest_block(MEMORY_APP),
+           (unsigned)app_heap_blocks(), (unsigned)memory_free_bytes(MEMORY_PSRAM),
+           (unsigned)memory_largest_block(MEMORY_PSRAM));
     TEST_ASSERT_EQUAL_size_t_MESSAGE(app_blocks_before, app_heap_blocks(), "test leaked app heap blocks");
 }
 
