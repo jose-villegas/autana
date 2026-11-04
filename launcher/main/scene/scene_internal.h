@@ -185,7 +185,7 @@ struct scene {
     bool light_table_dirty;
     uint8_t* flags; /* one per entity: SCENE_FLAG_* */
     scene_renderer_t* renderers;
-    void* resident; /* every static renderer's positions, one copy per distinct mesh; NULL when there are none */
+    void* resident; /* mesh arrays (positions, triangles, colours), deduplicated; NULL when absent */
     scene_camera_t* cameras;
     const asset_pack_t* pack;
     transformf_t* locals;
@@ -218,8 +218,8 @@ void* scene_allocate(size_t bytes, memory_kind_t kind);
 void* scene_allocate_kept(size_t bytes);
 void scene_free_kept(void* block);
 
-/* Copies every static renderer's positions into one block from scene_allocate_kept(), one copy per distinct
- * mesh, and points the renderers at it. SCENE_ERR_MEMORY when the block cannot be had. */
+/* Copies static mesh arrays (positions, triangles, colours) into one block from scene_allocate_kept(),
+ * deduplicated per array, and points the renderers at it. SCENE_ERR_MEMORY when the block cannot be had. */
 scene_failure_t scene_mesh_make_resident(scene_t* scene);
 
 /* The loaded scenes, in load order. */
