@@ -761,8 +761,7 @@ test_repeated_presents_stay_in_sync(void) {
  * Most tests below assert a ratio against a reference measured in the same
  * run AND an absolute budget: the ratio proves the mechanism but is blind
  * to a uniform slowdown. Absolutes are affordable because these tests are
- * bus-bound: the full-band reference measured 3,405/3,405/3,404/3,406 us
- * across four captures, a 0.06% spread. */
+ * bus-bound: their runs differ by a few microseconds at most. */
 
 static int64_t
 time_present(void) {
@@ -848,10 +847,9 @@ test_a_partial_change_costs_less_than_a_full_frame(void) {
                one_band, full / 2);
     TEST_ASSERT_GREATER_THAN_MESSAGE(0, (int)one_band, "but it must still actually send something");
 
-    /* One band, un-pipelined: the reference every ratio test below
-     * measures, and among the most stable rows here, so its margin is the
-     * file's rule and no looser - slack beyond it is room a real
-     * regression could hide in. */
+    /* One band, un-pipelined, among the most stable rows here, so its
+     * margin is the file's rule and no looser - slack beyond it is room a
+     * real regression could hide in. */
     perf_guard("one band alone cost more than its stable observed price - the bus "
                "clock or the QSPI setup may have regressed",
                one_band, ONE_BAND_CEILING_US);
@@ -926,37 +924,33 @@ best_marks_present(int hz, gfx_color_t colour, band_marks_fn marks) {
 #define NEAR_BUDGET_CEILING_US    1224 /* worst 1200, spread 2 */
 #define ONE_CELL_MARKS_CEILING_US 343  /* worst 336, spread 1 */
 
-/* Measures the gather-copy path in gfx_present(): a strip whose
- * real dirty width is only a fraction of the band, written directly (not
- * through draw_rect(), which always claims the whole band via
- * mark_band() regardless of what it drew; see its comment). */
 /* A narrow strip within a band, written directly and marked with its real
- * bounds: a caller repainting a narrow changed strip. */
+ * bounds (draw_rect() would claim the whole band via mark_band()): a caller
+ * repainting a narrow changed strip. */
 static void
 mark_narrow_strip(gfx_color_t colour) {
     write_dirty_rectangle(0, 0, NARROW_STRIP_WIDTH, NARROW_STRIP_ROWS, colour);
 }
 
+/* Measures the gather-copy path in gfx_present(). */
 static void
 test_a_narrow_change_costs_less_than_a_full_band(void) {
     const band_marks_cost_t cost = best_marks_present(GATHER_CLOCK_HZ, RGB565BE(0x204060), mark_narrow_strip);
-    const int64_t full_band = cost.full_band;
-    const int64_t narrow = cost.marks;
 
-    ESP_LOGI(TAG, "present: full band %lld us, %d px wide (gathered) %lld us", (long long)full_band, NARROW_STRIP_WIDTH,
-             (long long)narrow);
+    ESP_LOGI(TAG, "present: full band %lld us, %d px wide (gathered) %lld us", (long long)cost.full_band,
+             NARROW_STRIP_WIDTH, (long long)cost.marks);
 
-    TEST_ASSERT_GREATER_THAN_INT64(0, full_band);
+    TEST_ASSERT_GREATER_THAN_INT64(0, cost.full_band);
     perf_guard("a strip a fraction of the band's width must cost less than "
                "claiming the whole band, or the gather-copy path is not paying "
                "for itself",
-               narrow, full_band);
+               cost.marks, cost.full_band);
 
     /* The gather code runs from IRAM (GFX_PRESENT_IRAM_ATTR), so a cold
      * instruction cache does not move this figure. */
     perf_guard("the gathered narrow strip cost more than its observed price - the "
-               "gather-copy path may have regressed",
-               narrow, NARROW_STRIP_CEILING_US);
+               "gather-copy path may have regressed, or a present's code left IRAM",
+               cost.marks, NARROW_STRIP_CEILING_US);
 }
 
 /* An instrument, not a gate: the narrow strip's present, counted alone,
@@ -1026,9 +1020,8 @@ test_narrow_present_counters(void) {
  * wide-but-short change gathers as cheaply as a narrow-but-tall one: tilt
  * the board so gravity points sideways and a falling stream is wide and
  * short instead of narrow and tall, and a width-only bound would give it no
- * benefit at all. */
-/* Wide but short: most of the band's width, a sliver of its height: the
- * shape a sideways-falling stream leaves behind. */
+ * benefit at all. Wide but short: most of the band's width, a sliver of
+ * its height. */
 #define WIDE_SHORT_WIDTH 300
 #define WIDE_SHORT_ROWS  8
 
@@ -1040,23 +1033,21 @@ mark_wide_short(gfx_color_t colour) {
 static void
 test_a_short_wide_change_costs_less_than_a_full_band(void) {
     const band_marks_cost_t cost = best_marks_present(GATHER_CLOCK_HZ, RGB565BE(0x602040), mark_wide_short);
-    const int64_t full_band = cost.full_band;
-    const int64_t wide = cost.marks;
 
-    ESP_LOGI(TAG, "present: full band %lld us, %dx%d px (gathered) %lld us", (long long)full_band, WIDE_SHORT_WIDTH,
-             WIDE_SHORT_ROWS, (long long)wide);
+    ESP_LOGI(TAG, "present: full band %lld us, %dx%d px (gathered) %lld us", (long long)cost.full_band,
+             WIDE_SHORT_WIDTH, WIDE_SHORT_ROWS, (long long)cost.marks);
 
-    TEST_ASSERT_GREATER_THAN_INT64(0, full_band);
+    TEST_ASSERT_GREATER_THAN_INT64(0, cost.full_band);
     perf_guard("a box short enough in height must cost less than claiming the "
                "whole band, even at most of its width - orientation must not "
                "matter to whether gathering pays off",
-               wide, full_band);
+               cost.marks, cost.full_band);
 
     /* The same memcpy-plus-DMA-wait shape as the narrow strip above at a
      * different aspect ratio. */
     perf_guard("the gathered wide-short box cost more than its observed price - "
                "the gather-copy path may have regressed",
-               wide, WIDE_SHORT_CEILING_US);
+               cost.marks, WIDE_SHORT_CEILING_US);
 }
 
 /* Full width, most of a band's height: 368x48 is far over GATHER_MAX_PIXELS,
@@ -1076,19 +1067,17 @@ mark_partial_band(gfx_color_t colour) {
 static void
 test_a_full_width_partial_height_change_costs_less_than_a_band(void) {
     const band_marks_cost_t cost = best_marks_present(GFX_PANEL_CLOCK_FAST_HZ, RGB565BE(0x406020), mark_partial_band);
-    const int64_t full_band = cost.full_band;
-    const int64_t partial = cost.marks;
 
     ESP_LOGI(TAG,
              "present: full band %lld us, full width x %d px (partial "
              "band) %lld us",
-             (long long)full_band, PARTIAL_BAND_ROWS, (long long)partial);
+             (long long)cost.full_band, PARTIAL_BAND_ROWS, (long long)cost.marks);
 
-    TEST_ASSERT_GREATER_THAN_INT64(0, full_band * 9 / 10);
+    TEST_ASSERT_GREATER_THAN_INT64(0, cost.full_band * 9 / 10);
     perf_guard("a full-width box shorter than a whole band must send fewer rows "
                "and cost less than claiming the whole band - see "
                "send_partial_band() in gfx_present.c",
-               partial, full_band * 9 / 10);
+               cost.marks, cost.full_band * 9 / 10);
 }
 
 /* Two small clusters in the same band but opposite corners, each cheap
@@ -1111,23 +1100,18 @@ mark_far_corners(gfx_color_t colour) {
 static void
 test_two_far_corners_cost_less_than_a_full_band(void) {
     const band_marks_cost_t cost = best_marks_present(GATHER_CLOCK_HZ, RGB565BE(0x206020), mark_far_corners);
-    const int64_t full_band = cost.full_band;
-    const int64_t two_corners = cost.marks;
 
-    ESP_LOGI(TAG, "present: full band %lld us, two %dx%d corners %lld us", (long long)full_band, SMALL_MARK_SIZE,
-             SMALL_MARK_SIZE, (long long)two_corners);
+    ESP_LOGI(TAG, "present: full band %lld us, two %dx%d corners %lld us", (long long)cost.full_band, SMALL_MARK_SIZE,
+             SMALL_MARK_SIZE, (long long)cost.marks);
 
-    TEST_ASSERT_GREATER_THAN_INT64(0, full_band);
+    TEST_ASSERT_GREATER_THAN_INT64(0, cost.full_band);
     perf_guard("two small, far-apart clusters sent independently together must "
                "still cost less than the whole band",
-               two_corners, full_band);
+               cost.marks, cost.full_band);
 
-    /* Nearly as stable as the full-band reference, because two
-     * independent gather-and-waits dominated by DMA time leave little room
-     * for the copy-side jitter the single-piece gathers above show. */
     perf_guard("two far corners cost more than their observed price - one of the "
                "two independent gathers may have regressed",
-               two_corners, FAR_CORNERS_CEILING_US);
+               cost.marks, FAR_CORNERS_CEILING_US);
 }
 
 /* Three separated marks, one more than LEAF_REFINE_MAX_RUNS (gfx_dirty.h)
@@ -1153,18 +1137,16 @@ mark_three_far_apart(gfx_color_t colour) {
 static void
 test_three_far_apart_marks_falls_back_at_the_current_cap(void) {
     const band_marks_cost_t cost = best_marks_present(GATHER_CLOCK_HZ, RGB565BE(0x602060), mark_three_far_apart);
-    const int64_t full_band = cost.full_band;
-    const int64_t three_marks = cost.marks;
 
-    ESP_LOGI(TAG, "present: full band %lld us, three %dx%d marks %lld us", (long long)full_band, SMALL_MARK_SIZE,
-             SMALL_MARK_SIZE, (long long)three_marks);
+    ESP_LOGI(TAG, "present: full band %lld us, three %dx%d marks %lld us", (long long)cost.full_band, SMALL_MARK_SIZE,
+             SMALL_MARK_SIZE, (long long)cost.marks);
 
-    /* No ratio against full_band on purpose: whether the fallback beats a
+    /* No ratio against the full band on purpose: whether the fallback beats a
      * full band is the open question this test measures. The absolute is
      * safe to peg. */
     perf_guard("three far-apart marks' fallback send cost more than its observed "
                "price",
-               three_marks, THREE_MARKS_CEILING_US);
+               cost.marks, THREE_MARKS_CEILING_US);
 }
 
 /* A small mark plus a wide one in the same coarse run, sized to land the
@@ -1185,15 +1167,13 @@ mark_near_budget_split(gfx_color_t colour) {
 static void
 test_a_near_budget_split_crosses_the_gather_threshold(void) {
     const band_marks_cost_t cost = best_marks_present(GATHER_CLOCK_HZ, RGB565BE(0x206040), mark_near_budget_split);
-    const int64_t full_band = cost.full_band;
-    const int64_t near_budget = cost.marks;
 
-    ESP_LOGI(TAG, "present: full band %lld us, near-budget split %lld us", (long long)full_band,
-             (long long)near_budget);
+    ESP_LOGI(TAG, "present: full band %lld us, near-budget split %lld us", (long long)cost.full_band,
+             (long long)cost.marks);
 
     /* No ratio: whether gathering at this size helps is the open question a
      * sweep of GATHER_MAX_PIXELS is for. */
-    perf_guard("near-budget split", near_budget, NEAR_BUDGET_CEILING_US);
+    perf_guard("near-budget split", cost.marks, NEAR_BUDGET_CEILING_US);
 }
 
 /* Two small marks inside the SAME 92px cell, far enough apart to leave a
@@ -1213,18 +1193,16 @@ mark_two_in_one_cell(gfx_color_t colour) {
 static void
 test_two_marks_in_one_cell_cost_less_than_the_coarse_box(void) {
     const band_marks_cost_t cost = best_marks_present(GATHER_CLOCK_HZ, RGB565BE(0x406020), mark_two_in_one_cell);
-    const int64_t full_band = cost.full_band;
-    const int64_t two_marks = cost.marks;
 
-    ESP_LOGI(TAG, "present: full band %lld us, two marks in one cell %lld us", (long long)full_band,
-             (long long)two_marks);
+    ESP_LOGI(TAG, "present: full band %lld us, two marks in one cell %lld us", (long long)cost.full_band,
+             (long long)cost.marks);
 
-    TEST_ASSERT_GREATER_THAN_INT64(0, full_band);
+    TEST_ASSERT_GREATER_THAN_INT64(0, cost.full_band);
     perf_guard("two small marks separated by a real gap inside one cell must cost "
                "less than sending the coarse box spanning both",
-               two_marks, full_band);
+               cost.marks, cost.full_band);
 
-    perf_guard("two marks in one cell", two_marks, ONE_CELL_MARKS_CEILING_US);
+    perf_guard("two marks in one cell", cost.marks, ONE_CELL_MARKS_CEILING_US);
 }
 
 /* The drawing calls narrow the dirty region themselves: no app-side
@@ -1246,13 +1224,11 @@ mark_corner_label(gfx_color_t colour) {
 static void
 test_a_corner_label_costs_less_than_its_rows_full_width(void) {
     const band_marks_cost_t cost = best_marks_present(GATHER_CLOCK_HZ, RGB565BE(0x406020), mark_corner_label);
-    const int64_t full_band = cost.full_band;
-    const int64_t label = cost.marks;
 
-    ESP_LOGI(TAG, "present: full band %lld us, corner label %lld us", (long long)full_band, (long long)label);
+    ESP_LOGI(TAG, "present: full band %lld us, corner label %lld us", (long long)cost.full_band, (long long)cost.marks);
 
-    TEST_ASSERT_GREATER_THAN_INT64(0, full_band);
-    perf_guard("a label in one corner must cost less than sending its rows full width", label, full_band);
+    TEST_ASSERT_GREATER_THAN_INT64(0, cost.full_band);
+    perf_guard("a label in one corner must cost less than sending its rows full width", cost.marks, cost.full_band);
 }
 
 static void
