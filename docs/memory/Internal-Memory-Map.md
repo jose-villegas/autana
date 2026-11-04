@@ -73,6 +73,7 @@ component discovery rule.
 |---|---|
 | Our linked IRAM symbol has no site | Fail |
 | A compiler clone (`.isra.N`, `.constprop.N`, `.part.N`, `.cold`, or their `$` forms) of a symbol-level IRAM placement in ldgen's fragment inputs lands outside IRAM | Fail; owned functions need `IRAM_ATTR` so clones inherit placement. For IDF or third-party code, map the whole object or move the caller-facing entry; linker mappings cannot name clones |
+| A *closed IRAM path* site's code references a function of the same object file that sits in flash, and the function's definition says neither `noinline` nor `cold` | Fail; give it the site's attribute, or `noinline` or `cold` to keep it in flash on purpose |
 | Site lacks an adjacent reason or required budget | Fail |
 | Measured bytes differ from the variant's budget, larger or smaller | Fail on pinned IDF; drift note otherwise |
 | Per-variant budget omits this build's variant | Fail |

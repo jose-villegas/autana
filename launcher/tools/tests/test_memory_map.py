@@ -86,6 +86,26 @@ class MemoryMapTests(unittest.TestCase):
         inputs, _, _ = memory.map_inputs(text, {0x40380004: ("foo", 2), 0x40380006: ("foo$part$0", 2)})
         self.assertEqual(self.check(sites, inputs)[0][1], 8)
 
+    def test_closed_path_fails_a_helper_the_inliner_left_in_flash(self):
+        body = ("/* Cache latency, a closed IRAM path. IRAM budget: 4 B */\n#define HOT_CODE IRAM_ATTR\n"
+                "static void HOT_CODE foo(void) {}\nstatic void\nluck(void) {}\n"
+                "static __attribute__((noinline)) void\nkept(void) {}\nvoid\nhot(void) {}\n")
+        placed = {("libmain.a", "foo.c.obj", ".iram1.0"): (".iram0.text", 0x40380000),
+                  ("libmain.a", "foo.c.obj", ".text.luck"): (".flash.text", 0x42000000),
+                  ("libmain.a", "foo.c.obj", ".text.kept$constprop$0"): (".flash.text", 0x42000010),
+                  ("libmain.a", "foo.c.obj", ".text.unlikely.rare"): (".flash.text", 0x42000020),
+                  ("libmain.a", "foo.c.obj", ".iram1.1"): (".iram0.text", 0x40380010)}
+        names = {0x40380000: ("foo", 4)}
+        references = [("libmain.a", "foo.c.obj", ".iram1.0.literal", target)
+                      for target in (".text.luck", ".text.kept$constprop$0", ".text.unlikely.rare", "hot", "memcpy")]
+        placed[("libmain.a", "foo.c.obj", ".text.hot")] = (".iram0.text", 0x40380010)
+        sites = self.source(body)
+        errors = memory.escapes(sites, placed, names, references, self.root)
+        self.assertEqual(len(errors), 1)
+        self.assertRegex(errors[0], r"foo calls luck, which the compiler left in \.flash\.text")
+        sites = self.source(body.replace("a closed IRAM path", "an open one"))
+        self.assertEqual(memory.escapes(sites, placed, names, references, self.root), [])
+
     def fragment_build(self, mappings, batch=False):
         fragment = self.root / "linker fragment.lf"
         fragment.write_text(json.dumps(mappings), encoding="utf-8")

@@ -10,7 +10,7 @@ engine creates are:
 
 | Task | Core | Priority | Created in |
 |---|---|---|---|
-| present (`gfx_present`) | 1 | 5 | [`gfx_present.c:299`](../../launcher/main/gfx/present/gfx_present.c#L299) |
+| present (`gfx_present`) | 1 | 5 | [`gfx_present.c:303`](../../launcher/main/gfx/present/gfx_present.c#L303) |
 | job (`core1_job`) | 1 | 3 | [`job.c:84`](../../launcher/main/core/job.c#L84) |
 | sound mixer | 1 | 6 | [`sound_mixer_device.c:443`](../../launcher/main/sound/sound_mixer_device.c#L443) |
 | touch poll | any | 6 | [`touch.c:264`](../../launcher/main/input/touch/touch.c#L264) |
@@ -36,7 +36,7 @@ flowchart TD
 | Update a few fields together | `portMUX_TYPE` with `portENTER_CRITICAL`/`portEXIT_CRITICAL` | [`touch.c:48`](../../launcher/main/input/touch/touch.c#L48), [`console_frame_request.c:33`](../../launcher/main/console/console_frame_request.c#L33) |
 | One flag taken by whoever gets there first | `atomic_flag` | [`sound_mixer_device.c:48`](../../launcher/main/sound/sound_mixer_device.c#L48) |
 | A lock-free ring with one reader | `__atomic_*` with acquire on read and release on write | [`frame_watch.c:82`](../../launcher/main/profile/frame_watch.c#L82) |
-| Signal a task from an ISR | `xSemaphoreGiveFromISR` then `portYIELD_FROM_ISR` | [`gfx_present.c:173`](../../launcher/main/gfx/present/gfx_present.c#L173) |
+| Signal a task from an ISR | `xSemaphoreGiveFromISR` then `portYIELD_FROM_ISR` | [`gfx_present.c:176`](../../launcher/main/gfx/present/gfx_present.c#L176) |
 | Serialise an operation that blocks | a static mutex | [`audio_out.c:27`](../../launcher/main/audio/audio_out.c#L27) |
 | Pass commands to a task | a queue; drop and log when full | [`console.c:148`](../../launcher/main/console/console.c#L148) |
 

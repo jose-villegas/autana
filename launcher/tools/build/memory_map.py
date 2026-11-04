@@ -53,6 +53,10 @@ DEFINE = re.compile(r"^#define\s+(\w+)\s+(.+)$", re.M)
 PLACEMENT = re.compile(r"\((?:noflash\w*|iram\w*)\)")
 CONFIG_PLACEMENT = re.compile(r"CONFIG_\w*(?:(?:IN_IRAM|PLACE_\w*INTO_IRAM)\w*=y|PLACE_\w*INTO_FLASH=n)")
 CLONE_SUFFIX = re.compile(r"(?:[.$][a-z_]+[.$]\d+|[.$]cold)+$")
+# A site whose reason says this keeps every helper of its own file in IRAM too,
+# unless the helper's definition says noinline or cold: never the inliner's choice.
+CLOSED = re.compile(r"\bclosed IRAM path\b")
+ON_PURPOSE = re.compile(r"\b(?:noinline|cold)\b")
 BLOCK = "internal-memory-map"
 TIERS_BLOCK = "memory-tiers"
 HEADROOM_BLOCK = "internal-memory-headroom"
@@ -103,6 +107,7 @@ class Site:
     archive: str
     entries: list | bool
     uses: list = field(default_factory=list)
+    closed: bool = False
 
     @property
     def label(self):
@@ -244,7 +249,7 @@ def sites(root, owned=None):
             reason = BUDGET.sub("", reason).strip()
             if not re.search(r"[A-Za-z][^.?!]*[.?!]", reason) or len(re.findall(r"[A-Za-z]+", reason)) < 2 or re.search(r"\b(?:TODO|TBD|FIXME)\b", reason, re.I):
                 raise ValueError(f"{name}:{index + 1}: missing IRAM reason beyond budget")
-            site = Site(name, index + 1, owner, reason, budget, archive, entries)
+            site = Site(name, index + 1, owner, reason, budget, archive, entries, closed=bool(CLOSED.search(reason)))
             found.append(site)
             if path.suffix in {".c", ".h"} and budget_alias:
                 alias_sites[define.group(1)] = site
@@ -349,6 +354,75 @@ def check(placements, inputs, variant, owned, active, idf_commit=None, pinned_co
     if errors:
         raise ValueError("\n".join(errors))
     return report
+
+def placed_on_purpose(text, function):
+    """Whether the function's definition says it stays out of line: noinline or cold."""
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        if re.match(r"(?:[\w*][\w\s*()]*[\s*])?" + re.escape(function) + r"\s*\(", line) and not line.rstrip().endswith(";"):
+            return bool(ON_PURPOSE.search(" ".join(lines[max(index - 1, 0):index + 1])))
+    return False
+
+
+def escapes(placements, placed, names, references, root):
+    """Helpers of a closed site's own file that its IRAM code references but
+    that sit in flash with no noinline or cold to say so."""
+    errors = []
+    for site in placements:
+        if not site.closed:
+            continue
+        files = [root / path for path in dict.fromkeys([site.path, *(use[0] for use in site.uses)])]
+        for archive, obj, section, target in references:
+            caller = placed.get((archive, obj, section.removesuffix(".literal")))
+            if archive != site.archive or not caller:
+                continue
+            caller_name = names.get(caller[1], ("",))[0]
+            if not matches_site(Input(archive, obj, caller_name, 0), site):
+                continue
+            callee_section = target if target.startswith(".text.") else ".text." + target
+            callee = placed.get((archive, obj, callee_section))
+            if not callee or callee[0].startswith(".iram") or callee_section.startswith(".text.unlikely."):
+                continue
+            function = clone_base(callee_section.removeprefix(".text."))
+            source = next((path for path in files if path.name == obj.removesuffix(".obj")), None)
+            if source and placed_on_purpose(source.read_text(encoding="utf-8"), function):
+                continue
+            message = (f"{site.label}: {clone_base(caller_name)} calls {function}, which the compiler left in "
+                       f"{callee[0]}; place it in IRAM as well, or mark it noinline or cold to keep it in flash on purpose")
+            if message not in errors:
+                errors.append(message)
+    return errors
+
+
+def iram_references(build, archive):
+    """(archive, object, IRAM section, referenced symbol) for every relocation in an archive's IRAM code."""
+    path = next(build.rglob(archive), None)
+    if path is None:
+        raise ValueError(f"{archive} is not in {build}")
+    found = []
+    obj = section = None
+    for line in run(find_tool("objdump"), "-r", str(path)).splitlines():
+        member = re.match(r"^(\S+):\s+file format", line)
+        records = re.match(r"^RELOCATION RECORDS FOR \[(.+)\]:", line)
+        relocation = re.match(r"^[\da-f]+\s+R_\w+\s+(\S+)", line)
+        if member:
+            obj = member.group(1)
+        elif records:
+            section = records.group(1)
+        elif relocation and section and section.startswith(".iram"):
+            found.append((archive, obj, section, re.sub(r"\+0x[\da-f]+$", "", relocation.group(1))))
+    return found
+
+
+def closure_check(placements, active, build, root):
+    archives = {site.archive for site in placements if site.closed and active(site)}
+    if not archives:
+        return
+    references = [reference for archive in sorted(archives) for reference in iram_references(build["build"], archive)]
+    errors = escapes([site for site in placements if active(site)], build["placed"], build["names"], references, root)
+    if errors:
+        raise ValueError("\n".join(errors))
+
 
 def preprocessed_lines(build, root, paths=None):
     alive = set()
@@ -531,6 +605,11 @@ def read_build(build, root=ROOT):
     mapfile = elf.with_suffix(".map")
     maptext = mapfile.read_text(encoding="utf-8")
     placed_inputs, sections, constants = map_inputs(maptext, elf_symbols)
+    placed = {}
+    for output, input_section, address, size, origin in placed_sections(maptext.splitlines()):
+        match = re.search(r"([^/\\\s]+\.a)\(([^)]+)\)", origin)
+        if output and size and match:
+            placed[match.groups() + (input_section,)] = (output, address)
     inputs = [item for item in placed_inputs if item.output.startswith(".iram")]
     size = json.loads(run(idf_python(), str(Path(metadata["idf_path"]) / "tools/idf_size.py"),
                           "--format", "json2", str(mapfile)))
@@ -544,7 +623,7 @@ def read_build(build, root=ROOT):
     regions = {name: (int(address, 16), int(size, 16)) for name, address, size in
                re.findall(r"^(iram0_0_seg|dram0_0_seg)\s+(0x[\da-f]+)\s+(0x[\da-f]+)", maptext, re.M)}
     build_id, variant = build_variant(build)
-    return dict(build=build, metadata=metadata, owned=components(root, metadata), build_id=build_id, variant=variant, idf_commit=idf_commit(metadata["idf_path"]), inputs=inputs, placed_inputs=placed_inputs, linker_entries=iram_entries(build), sections=sections, constants=constants,
+    return dict(build=build, metadata=metadata, owned=components(root, metadata), build_id=build_id, variant=variant, idf_commit=idf_commit(metadata["idf_path"]), inputs=inputs, placed_inputs=placed_inputs, placed=placed, names=elf_symbols, linker_entries=iram_entries(build), sections=sections, constants=constants,
                 size=size, align=align, pad=pad, slack=slack, config=config, regions=regions)
 
 
@@ -964,6 +1043,7 @@ def main():
                 if args.require_pin and drift:
                     errors.append(f"{build['variant']}: IDF drift: {drift}")
                 build["report"] = check(placements, build["placed_inputs"], build["variant"], build["owned"], active, build["idf_commit"], pin["commit"], exact=not args.update_budgets, linker_entries=build["linker_entries"])
+                closure_check(placements, active, build, args.root.resolve())
             except ValueError as error:
                 errors.append(f"{build['variant']}: {error}")
                 continue

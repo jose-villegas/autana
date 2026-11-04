@@ -34,9 +34,11 @@ _Static_assert(GFX_WIDTH == BOARD_PANEL_WIDTH && GFX_HEIGHT == BOARD_PANEL_HEIGH
 /* The send hot path runs from IRAM so a present after a cold instruction cache
  * does not wait on flash fetches. An attribute, not a linker.lf entry,
  * places it: the compiler's clones of a function inherit the attribute, and
- * a mapping entry names only the original. Development overlays and send
- * auditing make dev and diag larger.
- * IRAM budget: release 2426 B, dev 3242 B, diag 3242 B */
+ * a mapping entry names only the original. A closed IRAM path: a helper of
+ * this file it calls carries the attribute too, or noinline or cold where it
+ * stays in flash on purpose, never where the inliner left it. Development
+ * overlays and send auditing make dev and diag larger.
+ * IRAM budget: release 2585 B, dev 3475 B, diag 3475 B */
 #define GFX_PRESENT_IRAM_ATTR IRAM_ATTR
 static const char* TAG = "gfx";
 #else
@@ -200,12 +202,8 @@ static int panel_clock_applied_hz;
 
 /* VERY important: only with nothing queued on the link; deleting the io
  * waits out its transactions, but the strip_sent a caller is owed is lost. */
-void
-panel_clock_apply(void) {
-    const int hz = panel_clock_requested_hz;
-    if (hz == panel_clock_applied_hz) {
-        return;
-    }
+static __attribute__((cold)) void
+panel_clock_reopen(int hz) {
     esp_lcd_panel_del(panel);
     if (panel_io != NULL) {
         esp_lcd_panel_io_del(panel_io);
@@ -217,6 +215,15 @@ panel_clock_apply(void) {
         abort();
     }
     panel_clock_applied_hz = hz;
+}
+
+/* Every present asks; the reopen is rare. */
+void GFX_PRESENT_IRAM_ATTR
+panel_clock_apply(void) {
+    const int hz = panel_clock_requested_hz;
+    if (hz != panel_clock_applied_hz) {
+        panel_clock_reopen(hz);
+    }
 }
 
 static bool
@@ -438,7 +445,7 @@ static esp_err_t send_failure_kinds[SEND_FAILURE_KINDS_MAX];
 static int send_failure_kind_count;
 #endif
 
-void
+__attribute__((cold)) void
 note_send_failure(esp_err_t err) {
     present_send_failed = true;
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -567,7 +574,7 @@ send_picture_rows(int y0, int y1) {
     return false;
 }
 
-static void
+static void GFX_PRESENT_IRAM_ATTR
 send_full_row(int row, int* queued) {
     const int y = row * STRIP_HEIGHT;
 
@@ -589,7 +596,7 @@ send_full_row(int row, int* queued) {
  * dirty many short spans, 0% where strips are genuinely full-height.
  * Declines whenever either overlay layer is on: their save/restore
  * machinery assumes send_row_with_overlays()'s full STRIP_HEIGHT box. */
-static bool
+static bool GFX_PRESENT_IRAM_ATTR
 send_partial_band(int y0, int y1, int* queued) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
     if (overlay_any_on()) {
@@ -607,7 +614,7 @@ send_partial_band(int y0, int y1, int* queued) {
 /* See gfx_dirty.h file comment */
 
 /* Yellow; see gather_and_send()'s comment */
-static void
+static void GFX_PRESENT_IRAM_ATTR
 send_run(int row, int run_start, int run_end, int box_x0, int box_x1, int box_y0, int box_y1, int split_n,
          const int* split_x0, const int* split_x1, int* queued) {
     if (split_n == 0) {
@@ -629,7 +636,7 @@ panel_clock_is_fast(void) {
 /* Box [x0, x1) x [y0, y1) of strip `row` as one full-width send: just its
  * rows when the box is full width and shorter than the strip, else the
  * whole strip. */
-static void
+static void GFX_PRESENT_IRAM_ATTR
 send_rows_full_width(int row, int x0, int x1, int y0, int y1, int* queued) {
     if (x0 == 0 && x1 == GFX_WIDTH && y0 < y1 && y1 - y0 < STRIP_HEIGHT && send_partial_band(y0, y1, queued)) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -645,7 +652,7 @@ send_rows_full_width(int row, int x0, int x1, int y0, int y1, int* queued) {
 
 /* Cells merge into transactions; gaps remain. Falls back to full row for
  * large parts. */
-static void
+static void GFX_PRESENT_IRAM_ATTR
 send_one_row(int row, int* queued) {
     /* At the fast clock the panel can land a partial-width window a column off. */
     if (panel_clock_is_fast()) {
@@ -861,7 +868,7 @@ dispatch_present(void) {
 
 #endif /* ESP_PLATFORM: the presentation pipeline */
 
-int32_t
+int32_t GFX_PRESENT_IRAM_ATTR
 gfx_present_drain(void) {
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     const int64_t wait_start = timing_now_us();
@@ -882,7 +889,7 @@ gfx_present_drain(void) {
 #endif
 }
 
-static void
+static void GFX_PRESENT_IRAM_ATTR
 drain_present(void) {
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     dev_present_wait_us = gfx_present_drain();

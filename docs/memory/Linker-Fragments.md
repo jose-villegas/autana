@@ -35,7 +35,7 @@ panel driver ([`linker.lf:18`](../../launcher/main/linker.lf#L18)).
 
 | Code | Use | Why |
 |---|---|---|
-| Our own function | `IRAM_ATTR` ([Function attributes](../c-style/Function-Attributes.md)) | the compiler's clones (`.isra`, `.constprop`, `.cold`) inherit an attribute; a mapping names only the original ([`gfx_present.c:31`](../../launcher/main/gfx/present/gfx_present.c#L31)) |
+| Our own function | `IRAM_ATTR` ([Function attributes](../c-style/Function-Attributes.md)) | the compiler's clones (`.isra`, `.constprop`, `.cold`) inherit an attribute; a mapping names only the original ([`gfx_present.c:34`](../../launcher/main/gfx/present/gfx_present.c#L34)) |
 | A function in ESP-IDF or a managed component | a `noflash` mapping | the source cannot be changed |
 | A whole object or archive | a mapping with `*` | one line instead of one per function |
 | A section the stock script does not place | `[sections]` plus a scheme | the file places `__patchable_function_entries` in flash rodata this way |

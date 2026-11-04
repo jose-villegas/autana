@@ -6,7 +6,7 @@ costs. Part of the [C style guide](README.md).
 | Attribute | Use it when | Cost | Example |
 |---|---|---|---|
 | `IRAM_ATTR` | the function must not wait on a flash fetch: an ISR callback, a heap hook, or a per-frame hot path | internal RAM, counted in a budget | [`on_strip_sent`](../../launcher/main/gfx/present/gfx_present.c#L173) |
-| `__attribute__((noinline))` | a measurement or a placement needs the function to stay one symbol | a call per use | [`gfx_present.c:743`](../../launcher/main/gfx/present/gfx_present.c#L743) |
+| `__attribute__((noinline))` | a measurement or a placement needs the function to stay one symbol | a call per use | [`gfx_present.c:749`](../../launcher/main/gfx/present/gfx_present.c#L749) |
 | `static inline __attribute__((always_inline))` | a tiny helper in a hot loop that the compiler must not outline | code size per call site | [`memory.h:65`](../../launcher/main/core/memory.h#L65) |
 | `__attribute__((constructor))` | a self-registering table entry, run before `main` | none at run time | [`app.h:103`](../../launcher/main/app/app.h#L103) |
 | `__attribute__((aligned(N)))` | a buffer or entry point must sit on a boundary | padding | [`job.c:33`](../../launcher/main/core/job.c#L33) |
@@ -32,8 +32,9 @@ Rules, each enforced by `launcher/tools/build/memory_map.py` (see
 |---|---|
 | A comment directly above gives the reason and `IRAM budget: N B` | the byte count is compared with the linked size, so growth is a visible diff |
 | Put the attribute on the function, not only in a linker fragment | the compiler's clones (`.isra`, `.constprop`, `.cold`) inherit an attribute but not a fragment entry; see [Linker fragments](../memory/Linker-Fragments.md) |
+| A site whose reason calls it a *closed IRAM path* gives each helper of its own file the attribute too, or `noinline` or `cold` to keep it in flash | whether a static helper is inlined into IRAM code is the compiler's choice, so its placement would be luck; [`gfx_present.c:34`](../../launcher/main/gfx/present/gfx_present.c#L34) |
 | Code that runs with the flash cache off, and every callee, must be in IRAM or inline | a flash callee faults then; [`frame_watch.c:64`](../../launcher/main/profile/frame_watch.c#L64) states it for the heap hooks |
-| Wrap the attribute in a macro that is empty on the host | the host build has no IRAM; `GFX_PRESENT_IRAM_ATTR` ([`gfx_present.c:38`](../../launcher/main/gfx/present/gfx_present.c#L38)) and `RENDER_IRAM_ATTR` ([`code_layout.h:21`](../../launcher/main/render/code_layout.h#L21)) do this |
+| Wrap the attribute in a macro that is empty on the host | the host build has no IRAM; `GFX_PRESENT_IRAM_ATTR` ([`gfx_present.c:42`](../../launcher/main/gfx/present/gfx_present.c#L42)) and `RENDER_IRAM_ATTR` ([`code_layout.h:21`](../../launcher/main/render/code_layout.h#L21)) do this |
 
 An ISR callback needs `IRAM_ATTR` only if its interrupt is registered with the IRAM flag. The
 panel bus uses interrupt flags 0, so [`on_strip_sent`](../../launcher/main/gfx/present/gfx_present.c#L173)
