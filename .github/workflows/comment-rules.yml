@@ -221,7 +221,7 @@ jobs:
       - uses: ./.github/actions/host-tools
 
       - name: Generator dependencies
-        run: pip install -r launcher/tools/render/requirements.txt
+        run: pip install -r launcher/tools/render/requirements.txt -r launcher/tools/docs/requirements.txt
 
       # Each banner's command, rerun into a temporary folder; the sand
       # palette's builds with the runner's C compiler.

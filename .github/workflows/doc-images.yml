@@ -138,7 +138,7 @@ jobs:
       # refresh_branch.py regenerates the figure index, which imports compare_images and
       # docs.figures; comment-rules runs the index on the same requirements on every PR.
       - name: Figure index dependencies
-        run: pip install -r launcher/tools/render/requirements.txt
+        run: pip install -r launcher/tools/docs/requirements.txt
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: rendered-docs
