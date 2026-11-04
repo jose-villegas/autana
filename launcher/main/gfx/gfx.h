@@ -62,6 +62,12 @@ typedef struct {
     int index_grid_w; /* GFX_LAYOUT_INDEXED only: the index image's own size */
     int index_grid_h;
     int cell_size; /* GFX_LAYOUT_INDEXED only: panel pixels per index cell */
+    /* GFX_LAYOUT_DOUBLE_FB only: once a frame is sent, core 1 fills it with
+     * clear_colour, so draw_clear() of that colour on the frame after next costs
+     * core 0 nothing. Readback is unavailable until a send that keeps its frame.
+     * Ignored in any other granted layout; off again at mode exit. */
+    bool clear_on_send;
+    gfx_color_t clear_colour;
 } gfx_mode_request_t;
 
 typedef struct {

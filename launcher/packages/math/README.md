@@ -62,6 +62,7 @@ header's opening comment; `--check` verifies it.
 | [include/math/geometry/plane_template.h](include/math/geometry/plane_template.h) | plane_template: oriented planes for one number type; see docs/math/Conventions.md#templates for macro arguments. |
 | [include/math/geometry/planef.h](include/math/geometry/planef.h) | planef: an oriented plane of a float. |
 | [include/math/geometry/planex.h](include/math/geometry/planex.h) | planex: an oriented plane of a Q16.16. |
+| [include/math/geometry/primitive_mesh.h](include/math/geometry/primitive_mesh.h) | primitive_mesh: the standard shapes as indexed triangle meshes, for geometry made at run time or baked: a plane, a sphere, a cube, a capsule and a cylinder, each about the origin and each from a struct of its named parameters. |
 | [include/math/geometry/rect_template.h](include/math/geometry/rect_template.h) | rect_template: the half-open rectangle for one number type; see docs/math/Conventions.md#templates for the macro arguments. |
 | [include/math/geometry/rectf.h](include/math/geometry/rectf.h) | rectf: a half-open rectangle of a float. |
 | [include/math/geometry/recti.h](include/math/geometry/recti.h) | recti: a half-open rectangle of an int. |
