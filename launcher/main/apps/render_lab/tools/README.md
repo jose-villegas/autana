@@ -165,6 +165,28 @@ options, each by where it stops paying.
 (`raster_cull_frame_t`), one CSV row a frame; `--camera still` holds the
 camera, so a frame differs from the last only where the mesh moved.
 
+### Herd
+
+The Herd family is N skinned capybaras on the capybara's meadow, each playing
+its own clip at its own phase, while the camera laps them at a fixed radius,
+looking at their centre. Copies stand on rings inside and outside the lap, so
+over one lap each is near, far, off the frame and behind the camera in turn:
+the per-copy costs of posing, skinning and culling all show.
+
+| Scene key | Copies shown |
+|---|---|
+| `herd-1` | the centre one |
+| `herd-4` | centre, near, behind the lap and at the frame's side |
+| `herd-8` | the whole pool |
+
+![Herd 8: eight capybaras over one lap of the camera](../../../../../docs/images/overview/render-lab-herd.gif)
+
+| Part | Owner |
+|---|---|
+| Sizes: each ID, key and copy count | `herd/scene_herd.h` `HERD_SIZES` |
+| The pool, each copy's place and clip, and the camera's lap | `launcher/demo/capybara/herd.scene.toml`, `lap.keys.toml` |
+| Each size's copies, and a lap's frame and animation-step cost | [`tests/suite_herd_perf.c`](../tests/suite_herd_perf.c) |
+
 ### Small fill
 
 `render_lab.small_fill_ceiling`, `render_lab.small_fill_gate` and
