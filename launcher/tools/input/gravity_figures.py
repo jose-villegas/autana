@@ -14,6 +14,7 @@ ESTIMATE_WIDTH = 3
 ACCELERATION = SLOTS[6]
 LINEAR = SLOTS[2]
 PLOT_HEADROOM = 1.15
+MOTION_ANGLE_HEADROOM = 2.0
 FALL_ALPHA = 0.3
 
 
@@ -143,7 +144,7 @@ def motion_figure(data, model, output):
     bottom.plot(times, raw_angle, color=ACCELERATION, label="Acceleration from estimate")
     bottom.plot(times, estimate_angle, color=ESTIMATE, label="Estimate from true down")
     bottom.axhline(data["reject_deg"], color=MUTED, linestyle=":", label="REJECT")
-    bottom.set_ylim(0, max(data["reject_deg"], raw_angle.max(), estimate_angle.max()) * PLOT_HEADROOM)
+    bottom.set_ylim(0, max(data["reject_deg"], raw_angle.max(), estimate_angle.max()) * MOTION_ANGLE_HEADROOM)
     bottom.legend(fontsize=LABEL_SIZE, loc="upper right", frameon=False)
     animation.legend([Line2D([], [], color=TRUE_DOWN, label="True down"),
                       Line2D([], [], color=ACCELERATION, label="Raw acceleration"),
