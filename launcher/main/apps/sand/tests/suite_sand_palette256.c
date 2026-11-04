@@ -19,8 +19,7 @@
 #include "apps/sand/sand.h"
 #include "apps/sand/sand_dither_tables.h"
 #include "apps/sand/sand_palette256.h"
-#include "gfx/present/gfx_mode.h"
-#include "gfx/present/modes/indexed/gfx_indexed_expand.h"
+#include "frame/test_frame.h"
 #include "image/pixel/rgb565.h"
 
 /* An OKLab dE around 2 is "just noticeable" per the palette study

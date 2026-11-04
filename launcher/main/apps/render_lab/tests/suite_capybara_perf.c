@@ -13,6 +13,7 @@
 #include "core/timing.h"
 #include "esp_cpu.h"
 #include "esp_log.h"
+#include "frame/test_frame.h"
 #include "gfx/gfx.h"
 #include "perf_budget.h"
 #include "render/context/render_context.h"
@@ -257,7 +258,7 @@ test_animation_and_frame_cost(void) {
         const resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
         ESP_LOGI(TAG, "raster=%dx%d present=%d" R3D_PERF_QUARTER_FORMAT, size.width, size.height, render_lab_present(),
                  quarter->name);
-        render_lab_test_hold_quarter(quarter->quarter);
+        test_hold_quarter(quarter->quarter);
         bench_stats_t playing_render;
         bench_stats_t paused_render;
         const bench_stats_t playing = frame_cost(f, false, &playing_render, quarter->name);

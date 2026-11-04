@@ -20,9 +20,8 @@
 #include "core/memory.h"
 #include "draw/draw.h"
 #include "esp_log.h"
+#include "frame/test_frame.h"
 #include "gfx/gfx.h"
-#include "gfx/present/gfx_debug.h"
-#include "gfx/present/gfx_present.h"
 #include "image/pixel/rgb565.h"
 
 extern app_t app_sand;
@@ -30,19 +29,6 @@ extern int sand_app_enter_running_for_test(void);
 extern void sand_app_restore_colour_mode_for_test(int mode);
 
 static const char* TAG = "suite_sand_full_redraw";
-
-/* Applies a pending gfx_request_full_redraw() to sand the way shell_apps.c's
- * apply_pending_full_redraw() does to the running app: consumed before the
- * app draws, so a request made inside the app's own frame() reaches the pass
- * that follows rather than this one. */
-static void
-apply_pending_full_redraw(void) {
-    if (!gfx_full_redraw_pending()) {
-        return;
-    }
-    gfx_full_redraw_clear_pending();
-    app_sand.invalidate();
-}
 
 /* A rectangle well inside the default-quality grid's own drawable area
  * and clear of the one grain sand_app_enter_running_for_test() pours at
@@ -59,9 +45,9 @@ test_full_redraw_repaints_a_stale_rect_and_sends_every_strip(void) {
 
     app_sand.enter();
     const int previous_mode = sand_app_enter_running_for_test();
-    apply_pending_full_redraw();
+    test_apply_full_redraw(&app_sand);
     app_sand.frame(0, &idle);
-    gfx_present();
+    test_present();
 
     const size_t fb_bytes = GFX_FRAMEBUFFER_BYTES;
     gfx_color_t* reference = memory_alloc(fb_bytes, MEMORY_PSRAM);
@@ -72,23 +58,20 @@ test_full_redraw_repaints_a_stale_rect_and_sends_every_strip(void) {
      * real overlay's own draw+present would - sand's row-run/dirty-column
      * state never learns this rectangle exists. */
     draw_rect(STALE_X, STALE_Y, STALE_W, STALE_H, RGB565BE(0xFF00FF));
-    gfx_present();
+    test_present();
 
     gfx_request_full_redraw();
-    apply_pending_full_redraw();
+    test_apply_full_redraw(&app_sand);
 
-    gfx_reset_strip_send_counts();
+    test_send_stats_reset();
     app_sand.frame(0, &idle);
-    gfx_present();
+    test_present();
 
-    int full_bands = 0;
-    int gathered = 0;
-    int partial_bands = 0;
-    gfx_get_strip_send_counts(&full_bands, &gathered, &partial_bands);
-    ESP_LOGI(TAG, "strips sent: full=%d gathered=%d partial=%d", full_bands, gathered, partial_bands);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(0, gathered, "a full redraw must send whole strips, not gathered runs");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(0, partial_bands, "a full redraw must send whole strips, not a partial one");
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, full_bands, "every strip must actually be sent");
+    const test_send_stats_t sent = test_send_stats();
+    ESP_LOGI(TAG, "strips sent: full=%d gathered=%d partial=%d", sent.full_bands, sent.gathered, sent.partial_bands);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, sent.gathered, "a full redraw must send whole strips, not gathered runs");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, sent.partial_bands, "a full redraw must send whole strips, not a partial one");
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, sent.full_bands, "every strip must actually be sent");
 
     const int mismatch = memcmp(reference, gfx_framebuffer(), fb_bytes) != 0;
     ESP_LOGI(TAG, "framebuffer matches the clean reference: %s", mismatch ? "NO" : "yes");

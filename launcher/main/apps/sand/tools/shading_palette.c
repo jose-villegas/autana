@@ -37,7 +37,7 @@
 
 #include "collections/sort.h"
 #include "draw_palette_gen.h"
-#include "gfx/present/gfx_mode.h"
+#include "gfx/gfx.h"
 #include "hash/crc32.h"
 #include "image/palette/palette.h"
 #include "image/pixel/bayer.h"
