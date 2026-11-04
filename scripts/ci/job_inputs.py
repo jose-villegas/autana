@@ -11,13 +11,15 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import subprocess
+import sys
 import time
 import zipfile
 from urllib.parse import quote
 
 from github_api import call, pages
 from inputs_recorded import latest_job_artifact
-from step_summary import summarize  # scripts/lib, on the path github_api sets
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'lib'))
+from ci_step import output, summarize
 
 INDEX_SETTLE_SECONDS = 1
 ARTIFACT_PREFIX = 'job-inputs-'
@@ -220,15 +222,10 @@ def main(argv=None):
         if len(args.job) != 1:
             parser.error('record requires one --job')
         record(root, temporary, workflow, args.job[0])
-        with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-            output.write(f'name={ARTIFACT_PREFIX}{stem}-{args.job[0]}\n')
-            output.write(f'path={temporary / MANIFEST_NAME}\n')
+        output({'name': f'{ARTIFACT_PREFIX}{stem}-{args.job[0]}', 'path': temporary / MANIFEST_NAME})
     else:
         event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
-        decisions = affected(stem, args.job, event['pull_request']['number'], os.environ['GITHUB_BASE_REF'])
-        with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-            for job, decision in decisions.items():
-                output.write(f'{job}={decision}\n')
+        output(affected(stem, args.job, event['pull_request']['number'], os.environ['GITHUB_BASE_REF']))
 
 
 if __name__ == '__main__':

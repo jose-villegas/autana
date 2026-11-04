@@ -47,7 +47,7 @@ import docs_llama
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402
-from step_summary import summarize  # noqa: E402
+from ci_step import summarize  # noqa: E402
 
 Section = namedtuple("Section", "path start end title headings level body cites")
 Hit = namedtuple("Hit", "section score coverage similarity")

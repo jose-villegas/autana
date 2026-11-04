@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
 from scripts.ci.github_api import PER_PAGE, call, pages
 from device_lock import LockStore, board_read_root, heavy_root, write_json
 from process_tree import launch_process_tree, stop_process_tree, close_process_tree
-from step_summary import summarize
+from ci_step import output, summarize
 
 NIGHT_START = "01:00"
 # Boards start after the GPU's night work: two hours of day board time when no GPU work is queued.
@@ -168,9 +168,7 @@ def main():
         marker = now.astimezone(night_zone()) if os.environ.get("OVERRIDE") == "true" else next_marker(
             trigger_time(os.environ.get("GITHUB_EVENT_NAME"), os.environ.get("SCHEDULE", ""), now), start=args.start)
         print(marker.isoformat(), flush=True)
-        if os.environ.get("GITHUB_OUTPUT"):
-            with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-                output.write("marker=" + marker.isoformat() + "\n")
+        output({"marker": marker.isoformat()})
         return 0
     if args.mode == "wait":
         wait_parser = argparse.ArgumentParser(description="Wait for a marker within the hosted job budget")
@@ -192,9 +190,7 @@ def main():
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     if not command:
         parser.error("start needs -- <command...>")
-    if os.environ.get("GITHUB_OUTPUT"):
-        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-            output.write("rendered=true\n")
+    output({"rendered": True})
     started, code = clock.now(), EXIT_HUNG
     process = None
     try:
