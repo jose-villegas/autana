@@ -38,6 +38,9 @@ test_a_restarted_low_water_mark_forgets_the_low_before_it(void) {
 }
 
 #define TEST_BLOCK_BYTES    4096u
+/* A hole between two live blocks, sized off any alignment step so that
+ * memalign's padding search on a host is exercised: room for a pointer and
+ * a few alignment units. */
 #define APP_TEST_HOLE_BYTES (3u * _Alignof(max_align_t) + sizeof(void*))
 
 static void

@@ -27,15 +27,16 @@
 #include "gfx/gfx.h"
 
 /* PSRAM the system holds besides its two framebuffers, at its peak: 46.4 KB
- * at boot, 41 KB at the launcher (`autana heap psram`, low-water mark since
- * boot, autana-6t5u5). */
+ * at boot, 41 KB at the launcher (`autana heap psram`). */
 #define APP_ARENA_SYSTEM_OTHER_BYTES   (48u * 1024u)
 
 /* The PSRAM heap the region leaves the system: the framebuffer, one more
  * buffer its size, and the rest. The second is the double-framebuffer back
  * buffer the boot animation draws through, freed before the launcher, then
- * whichever one the shell makes on demand during a visit: a back buffer, the
- * send audit's shadow or a readback's snapshot. */
+ * whichever the shell makes during a visit: a back buffer, the send audit's
+ * shadow, a readback's snapshot, or the half picture a scene expands (a
+ * quarter of the size). A development send audit opened over a half picture
+ * does not fit and is refused with a log line. */
 #define APP_ARENA_SYSTEM_RESERVE_BYTES (2u * GFX_FRAMEBUFFER_BYTES + APP_ARENA_SYSTEM_OTHER_BYTES)
 
 /* The smallest chunk the arena takes from the app heap: small takes share one
@@ -62,7 +63,9 @@ void app_arena_exit(void);
  * hold it; a refusal takes nothing. Contents are undefined. */
 void* app_arena_take(size_t size, size_t align);
 
-/* How much is in use: 0 on an empty arena. */
+/* Where the arena stands, to rewind to: 0 on an empty arena. It counts the
+ * tails left in chunks a larger take moved past, so it is a position, not
+ * the bytes in use. */
 size_t app_arena_mark(void);
 
 /* Gives back everything taken since `mark`. Marks nest: rewind to them in

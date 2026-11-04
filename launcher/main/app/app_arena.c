@@ -6,9 +6,6 @@
 
 #include "core/memory.h"
 
-/* A cache line keeps the region clear of the system heap's neighbours. */
-#define REGION_ALIGN 64u
-
 typedef struct arena_chunk {
     struct arena_chunk* previous;
     size_t start;
@@ -38,11 +35,11 @@ app_arena_init(void) {
         return false;
     }
     const size_t bytes = heap - APP_ARENA_SYSTEM_RESERVE_BYTES;
-    const memory_aligned_t region = memory_alloc_aligned(bytes, REGION_ALIGN, MEMORY_PSRAM);
-    if (region.at == NULL) {
+    /* TLSF aligns its own blocks inside the region. */
+    block = memory_alloc(bytes, MEMORY_PSRAM);
+    if (block == NULL) {
         return false;
     }
-    block = region.at;
     block_bytes = bytes;
     return true;
 }
@@ -80,7 +77,7 @@ app_arena_take(size_t size, size_t align) {
     }
     const size_t requested = size + align;
     const size_t capacity = requested > APP_ARENA_CHUNK_BYTES ? requested : APP_ARENA_CHUNK_BYTES;
-    if (capacity > SIZE_MAX - sizeof(arena_chunk_t) || size > SIZE_MAX - used - (align - 1)) {
+    if (capacity > SIZE_MAX - sizeof(arena_chunk_t)) {
         return NULL;
     }
     arena_chunk_t* chunk = memory_alloc(sizeof *chunk + capacity, MEMORY_APP);

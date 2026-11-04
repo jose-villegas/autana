@@ -31,11 +31,7 @@ $(CDPATH= cd -- "$SCRIPT_DIR/../../../../" &&
     find main/apps/render_lab \( -type d \( -name tools -o -name tests \) -prune \) -o \
         \( -type f -name '*.c' ! -name 'suite_*.c' -print \) | LC_ALL=C sort)
 "
-# The app region is sized from the board's PSRAM, as on the device.
-# shellcheck source=../../../../tools/device/device_profile.sh
-. "$SCRIPT_DIR/../../../../tools/device/device_profile.sh"
-device_profile_load "" "$SCRIPT_DIR/../../../../tools/device/device_profiles" || exit 1
-scene_defines="-DCONFIG_LAUNCHER_DEVELOPMENT=0 -DAPP_ARENA_HOST_PSRAM_BYTES=$(device_profile_require DP_PSRAM_BYTES)"
+scene_defines="-DCONFIG_LAUNCHER_DEVELOPMENT=0"
 
 # The lit-mesh scene's views (--view shaded|depth|tiles|motion|meshlets|cull|overdraw) are raster_show()
 # over the same frame, so each is unpinned for the reason the shaded one is: its

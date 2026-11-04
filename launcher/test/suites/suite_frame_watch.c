@@ -13,6 +13,7 @@
 #ifdef DEVICE_BUILD
 #include <stdlib.h>
 
+#include "core/memory.h"
 #include "esp_log.h"
 #include "gfx/present/gfx_present.h"
 #endif
@@ -391,6 +392,17 @@ test_on_the_board_an_allocation_every_present_is_caught(void) {
     TEST_ASSERT_EQUAL_INT(2, sites_caught_so_far());
 }
 
+/* The app heap is TLSF over the app region, out of ESP-IDF's heap hooks'
+ * sight: it reports to the watch itself. */
+static void
+test_on_the_board_an_app_heap_allocation_every_present_is_caught(void) {
+    for (int i = 0; i < WATCHED_PRESENTS; i++) {
+        memory_free(memory_alloc(32, MEMORY_APP));
+        gfx_present();
+    }
+    TEST_ASSERT_EQUAL_INT(2, sites_caught_so_far());
+}
+
 static void
 test_on_the_board_a_log_line_every_present_is_caught(void) {
     for (int i = 0; i < WATCHED_PRESENTS; i++) {
@@ -476,6 +488,7 @@ suite_frame_watch(void) {
     RUN_TEST(test_the_verdict_counts_what_became_repeating_and_what_was_dropped);
 #ifdef DEVICE_BUILD
     RUN_TEST(test_on_the_board_an_allocation_every_present_is_caught);
+    RUN_TEST(test_on_the_board_an_app_heap_allocation_every_present_is_caught);
     RUN_TEST(test_on_the_board_a_log_line_every_present_is_caught);
     RUN_TEST(test_on_the_board_more_log_lines_than_the_queue_holds_between_presents_drop_none);
     RUN_TEST(test_on_the_board_one_allocation_among_many_presents_is_not);

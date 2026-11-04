@@ -17,3 +17,9 @@ size_t app_heap_min_free_bytes(void);
 void app_heap_min_free_restart(void);
 size_t app_heap_blocks(void);
 void app_heap_dump(void);
+
+/* Called after each allocation (`alloc` true) and free, with `site` the
+ * caller's return address: ESP-IDF's heap hooks do not see this heap. A
+ * no-op unless something above defines it, as ESP-IDF's
+ * esp_heap_trace_alloc_hook() is. */
+void app_heap_trace_hook(bool alloc, const void* site);
