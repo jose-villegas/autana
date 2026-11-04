@@ -915,15 +915,16 @@ best_marks_present(int hz, gfx_color_t colour, band_marks_fn marks) {
 #define NARROW_STRIP_WIDTH        20
 #define NARROW_STRIP_ROWS         64
 
-/* The gather cases' ceilings, at GATHER_CLOCK_HZ: the worst of a 5-run
- * capture on each of A308, 20E8 and 2124, + 1%, rounded up. The suite keeps
- * no per-board ceilings, so the worst board sets each one. */
-#define NARROW_STRIP_CEILING_US   363  /* worst 359 */
-#define WIDE_SHORT_CEILING_US     425  /* worst 420 */
-#define FAR_CORNERS_CEILING_US    391  /* worst 387 */
-#define THREE_MARKS_CEILING_US    590  /* worst 584 */
-#define NEAR_BUDGET_CEILING_US    1261 /* worst 1248 */
-#define ONE_CELL_MARKS_CEILING_US 344  /* worst 340 */
+/* The gather cases' ceilings, at GATHER_CLOCK_HZ: the suite rule above over
+ * a 5-run capture of best_marks_present() on each of A308, 20E8 and 2124,
+ * rounded up. The suite keeps no per-board ceilings, so the worst board sets
+ * each one. */
+#define NARROW_STRIP_CEILING_US   311  /* worst 304, spread 0 */
+#define WIDE_SHORT_CEILING_US     423  /* worst 414, spread 1 */
+#define FAR_CORNERS_CEILING_US    348  /* worst 341, spread 1 */
+#define THREE_MARKS_CEILING_US    582  /* worst 570, spread 1 */
+#define NEAR_BUDGET_CEILING_US    1224 /* worst 1200, spread 2 */
+#define ONE_CELL_MARKS_CEILING_US 343  /* worst 336, spread 1 */
 
 /* Measures the gather-copy path in gfx_present(): a strip whose
  * real dirty width is only a fraction of the band, written directly (not
