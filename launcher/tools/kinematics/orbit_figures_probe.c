@@ -41,7 +41,7 @@ orbit_samples(void) {
     const int maximum_frames = reset_frame + (int)(reset_duration_s / frame_s) + home_still_frames;
     int still_frames = 0;
     printf("\"half_life\":%.9g,\"release\":%.9g,\"reset_start\":%.9g,\"pitch_limit\":%.9g,"
-           "\"vec3f_zero()\":[%s],\"orbit\":[",
+           "\"target\":[%s],\"orbit\":[",
            orbit.fling_half_life_s, held_frames * frame_s, reset_frame * frame_s, ORBIT_MOTION_PITCH_LIMIT,
            vec3f_text(vec3f_zero()).chars);
     for (int i = 0; i < maximum_frames; i++) {
