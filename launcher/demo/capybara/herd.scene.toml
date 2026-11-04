@@ -1,0 +1,142 @@
+# The herd: eight capybaras sharing one mesh and skin, each with its own clip,
+# on rings round the centre the camera circles 5 m out (lap.keys.toml). render_lab
+# shows the first N and hides the rest, so the first copies mix every distance.
+tonemap_white = 0.3
+
+[ambient]
+color = [0.85, 0.9, 1.0]
+intensity = 0.35
+
+[bake]
+ray_offset = 0.002
+colour_merge_step = 6
+
+[[objects]]
+name = "sun"
+rotation = [40.0, 30.0, 0.0]
+
+[objects.light]
+type = "directional"
+color = [1.0, 0.95, 0.85]
+intensity = 1.6
+
+[[objects]]
+name = "camera"
+position = [0.0, 1.6, 5.0]
+
+[objects.camera]
+half_fov_short_tan = 0.5
+near_z = 0.05
+background = 0x9CC0E6
+path = { animation = "lap.anim.toml", node = "camera" }
+
+# the centre: in view all lap
+[[objects]]
+name = "capybara_00"
+position = [0.00, 0.0, 0.00]
+rotation = [0.0, 30.0, 0.0]
+
+[objects.skinned_renderer]
+mesh = "capybara.import.toml"
+
+[objects.animator]
+default_clip = "idle"
+wrap = "loop"
+
+# inside the lap: near as the camera passes
+[[objects]]
+name = "capybara_01"
+position = [2.17, 0.0, 1.25]
+rotation = [0.0, 150.0, 0.0]
+
+[objects.skinned_renderer]
+mesh = "capybara.import.toml"
+
+[objects.animator]
+default_clip = "walk"
+wrap = "loop"
+
+# outside the lap: behind the camera as it passes
+[[objects]]
+name = "capybara_02"
+position = [-2.22, 0.0, -6.11]
+rotation = [0.0, 290.0, 0.0]
+
+[objects.skinned_renderer]
+mesh = "capybara.import.toml"
+
+[objects.animator]
+default_clip = "gallop"
+wrap = "loop"
+
+# just inside the lap: off the frame's side as it passes
+[[objects]]
+name = "capybara_03"
+position = [-3.90, 0.0, 2.25]
+rotation = [0.0, 20.0, 0.0]
+
+[objects.skinned_renderer]
+mesh = "capybara.import.toml"
+
+[objects.animator]
+default_clip = "walk_fast"
+wrap = "loop"
+
+# near the centre
+[[objects]]
+name = "capybara_04"
+position = [0.75, 0.0, -1.30]
+rotation = [0.0, 240.0, 0.0]
+
+[objects.skinned_renderer]
+mesh = "capybara.import.toml"
+
+[objects.animator]
+default_clip = "half_bound"
+wrap = "loop"
+
+# far out: small, or behind the camera
+[[objects]]
+name = "capybara_05"
+position = [2.57, 0.0, 7.05]
+rotation = [0.0, 110.0, 0.0]
+
+[objects.skinned_renderer]
+mesh = "capybara.import.toml"
+
+[objects.animator]
+default_clip = "idle"
+wrap = "loop"
+
+# mid ring
+[[objects]]
+name = "capybara_06"
+position = [-3.03, 0.0, -1.75]
+rotation = [0.0, 330.0, 0.0]
+
+[objects.skinned_renderer]
+mesh = "capybara.import.toml"
+
+[objects.animator]
+default_clip = "walk"
+wrap = "loop"
+
+# just outside the lap: close by, then behind
+[[objects]]
+name = "capybara_07"
+position = [5.45, 0.0, -1.98]
+rotation = [0.0, 200.0, 0.0]
+
+[objects.skinned_renderer]
+mesh = "capybara.import.toml"
+
+[objects.animator]
+default_clip = "gallop"
+wrap = "loop"
+
+[[objects]]
+name = "meadow"
+
+[objects.mesh_renderer]
+mesh = "meadow.import.toml"
+bake = true
