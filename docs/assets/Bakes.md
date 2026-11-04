@@ -55,11 +55,18 @@ it is made, and the upload runs even when the job fails, so a failed run locks t
 
 Each attempt uploads its own artifact; a key two attempts made locks with the later attempt's bytes.
 
-A renderer whose import carves shared meshes has a `.bundle` row; an uncarved
-one has a `.mesh` row. A carved fit's CPU start is `.start.bundle`. The GPU fit
-trains only the rest, copying shapes, LCOL and the
-[MCOP manifest](formats/MCOP.md) unchanged; its key names the
-locked start bundle's bytes, and its references use the full source.
+Every mesh bake writes a `.bundle`: its LMSH entries, LCOL/LLOD siblings
+and copies manifest, including when no shapes are carved.
+
+| Fitted renderer stage | Output | Input |
+|---|---|---|
+| CPU start | `<entry>.start.bundle` | Source and import recipe |
+| GPU fit | `<entry>.fit.bundle` | Locked start bytes and references; rest without levels |
+| CPU levels | `<entry>.bundle` | Locked fit bytes, `lod` and meshlet size |
+
+The fit trains only the rest. Both later stages pass copy meshes, colour
+sets and the [MCOP manifest](formats/MCOP.md) through unchanged. Only the final
+bundle enters the scene pack.
 
 The lock's `[[poses]]` rows hold the digest and count of each camera-path sampling.
 

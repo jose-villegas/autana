@@ -22,7 +22,7 @@ from asset.asset_directory import build_directory, parse_directory  # noqa: E402
 from asset.asset_pack import PackError, build_pack as make_pack, parse_pack  # noqa: E402
 from r3d import build_pack, scene_asset, scene_name
 from asset.engine_frame import to_engine
-from test_engine_frame import mesh_entry  # noqa: E402
+from test_engine_frame import mesh_entry, write_mesh  # noqa: E402
 from r3d.import_settings import SettingsError, load_scene  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
@@ -149,7 +149,7 @@ class BuilderTests(unittest.TestCase):
             sources = (("a", "one", (1, 3, -7)), ("a2", "two", (2, 3, -7)), ("b", "three", (3, 3, -7)))
             for folder, mesh, point in sources:
                 import_file(root / folder, f"{mesh}.import.toml", mesh)
-                (root / folder / f"{mesh}.mesh").write_bytes(mesh_entry(point))
+                write_mesh(root / folder / f"{mesh}.bundle", point)
             packs = build_pack.pack_bytes([root])
         expected = {mesh: {mesh: to_engine(LIT_MESH, mesh_entry(point))} for _, mesh, point in sources}
         self.assertEqual(contents(packs), expected)
@@ -162,7 +162,7 @@ class BuilderTests(unittest.TestCase):
             variants_file(root, "free.import.toml", "lamp")
             scene_file(root, "room.scene.toml", ("chair.import.toml", "chair"), ("table.import.toml", "table"))
             for mesh in ("chair", "table", "lamp"):
-                (root / f"{mesh}.mesh").write_bytes(mesh_entry())
+                write_mesh(root / f"{mesh}.bundle")
             packs = build_pack.pack_bytes([root])
             room = to_engine(scene_asset.TYPE, scene_asset.bake(root / "room.scene.toml"))
         entry = to_engine(LIT_MESH, mesh_entry())
@@ -175,7 +175,7 @@ class BuilderTests(unittest.TestCase):
             variants_file(root, "kit.import.toml", "chair")
             scene_file(root, "room.scene.toml", ("kit.import.toml", "chair"))
             scene_file(root, "hall.scene.toml", ("kit.import.toml", "chair"))
-            (root / "chair.mesh").write_bytes(b"c")
+            (root / "chair.bundle").write_bytes(b"c")
             with self.assertRaisesRegex(SettingsError, "'chair' is named by packs"):
                 build_pack.pack_bytes([root])
 
@@ -191,12 +191,12 @@ class BuilderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             import_file(root / "a", "a.import.toml", "one")
-            (root / "a" / "one.mesh").write_bytes(mesh_entry((1, 3, -7)))
-            (root / "scratch.mesh").write_bytes(mesh_entry((9, 3, -7)))
-            packs = build_pack.pack_bytes([root / "a"], [f"one={root / 'scratch.mesh'}"])
+            write_mesh(root / "a" / "one.bundle", (1, 3, -7))
+            write_mesh(root / "scratch.bundle", (9, 3, -7), name="one")
+            packs = build_pack.pack_bytes([root / "a"], [f"one={root / 'scratch.bundle'}"])
             self.assertEqual(contents(packs), {"a": {"one": to_engine(LIT_MESH, mesh_entry((9, 3, -7)))}})
             with self.assertRaisesRegex(SettingsError, "no such mesh"):
-                build_pack.pack_bytes([root / "a"], ["other=x.mesh"])
+                build_pack.pack_bytes([root / "a"], ["other=x.bundle"])
 
     def test_a_mesh_never_baked_names_the_command_to_run(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -209,7 +209,7 @@ class BuilderTests(unittest.TestCase):
             root = pathlib.Path(directory)
             for mesh in ("one", "two"):
                 import_file(root / "src", f"{mesh}.import.toml", mesh)
-                (root / "src" / f"{mesh}.mesh").write_bytes(mesh_entry())
+                write_mesh(root / "src" / f"{mesh}.bundle")
             out = root / "out"
             out.mkdir()
             (out / "gone.apak").write_bytes(b"old")
@@ -252,7 +252,7 @@ class DevelopmentPackTests(unittest.TestCase):
             for name, setting in (("console", "true"), ("common", "false")):
                 folder = root / name
                 import_file(folder, f"{name}.import.toml", name)
-                (folder / f"{name}.mesh").write_bytes(mesh_entry((7, 3, -7)))
+                write_mesh(folder / f"{name}.bundle", (7, 3, -7))
                 write(folder / f"{name}.pack.toml", f"development = {setting}")
             out, image = root / "packs", root / "assets.bin"
             for flags, expected in ((["--development"], {"common", "console"}), ([], {"common"})):
@@ -291,7 +291,7 @@ class DemoAssetTests(unittest.TestCase):
         self.main.mkdir(parents=True)
         self.demo = self.root / "launcher/demo/sample"
         import_file(self.demo, "sample.import.toml", "one")
-        (self.demo / "one.mesh").write_bytes(mesh_entry((7, 3, -7)))
+        write_mesh(self.demo / "one.bundle", (7, 3, -7))
         self.entry = to_engine(LIT_MESH, mesh_entry((7, 3, -7)))
         patch = mock.patch.object(build_pack, "DEMO", self.demo.parent)
         patch.start()
@@ -320,7 +320,7 @@ class DemoAssetTests(unittest.TestCase):
     def test_only_the_named_demo_is_packed_and_removing_the_manifest_drops_it(self):
         other = self.demo.parent / "other"
         import_file(other, "other.import.toml", "two")
-        (other / "two.mesh").write_bytes(mesh_entry((8, 3, -7)))
+        write_mesh(other / "two.bundle", (8, 3, -7))
         manifest = write(self.main / "demo_assets.toml", 'demo = ["sample"]')
         self.assertEqual(contents(build_pack.pack_bytes([self.main])), {"sample": {"one": self.entry}})
         manifest.unlink()
@@ -369,7 +369,7 @@ class DemoAssetTests(unittest.TestCase):
     def test_a_manifest_can_select_two_different_demos(self):
         other = self.demo.parent / "other"
         import_file(other, "other.import.toml", "two")
-        (other / "two.mesh").write_bytes(mesh_entry((8, 3, -7)))
+        write_mesh(other / "two.bundle", (8, 3, -7))
         write(self.main / "demo_assets.toml", 'demo = ["sample", "other"]')
         self.assertEqual(contents(build_pack.pack_bytes([self.main])),
                          {"sample": {"one": self.entry}, "other": {"two": to_engine(LIT_MESH, mesh_entry((8, 3, -7)))}})

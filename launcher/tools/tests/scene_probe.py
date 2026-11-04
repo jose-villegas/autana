@@ -28,7 +28,7 @@ from test_r3d_import import NO_LEVELS, write_import
 from types import SimpleNamespace
 from unittest import mock
 from skin_probe import rig, POSITIONS, POSITION_SCALE
-from test_engine_frame import mesh_entry
+from test_engine_frame import mesh_entry, write_mesh
 from r3d import mesh_asset, skin_asset
 from anim import skeleton_asset
 from asset.engine_frame import to_engine

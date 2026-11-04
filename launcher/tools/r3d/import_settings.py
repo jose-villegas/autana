@@ -620,8 +620,7 @@ def load_renderer(component, base, where):
 def make_job(settings, renderer, obj, asset_name, asset_path, bake):
     """One mesh to write: its import, the renderer that decides its look, the scene object it belongs to
     (None for a bare import), where it is written and the scene bake settings it is traced with (None for albedo)."""
-    if settings.meshes:
-        asset_path = asset_path.with_suffix(BUNDLE_SUFFIX)
+    asset_path = asset_path.with_suffix(BUNDLE_SUFFIX)
     return SimpleNamespace(settings=settings, renderer=renderer, object=obj, asset_name=asset_name, asset_path=asset_path,
                            bake=bake)
 
@@ -632,7 +631,7 @@ def albedo_jobs(settings):
     for variant in settings.variants:
         renderer = SimpleNamespace(settings=settings, variant=variant, bake=False, face_samples=None, visibility=None,
                                    fit=None, indirect=True)
-        jobs.append(make_job(settings, renderer, None, variant.name, settings.mesh_dir / f"{variant.name}.mesh", None))
+        jobs.append(make_job(settings, renderer, None, variant.name, settings.mesh_dir / f"{variant.name}{BUNDLE_SUFFIX}", None))
     return jobs
 
 
@@ -779,10 +778,10 @@ def load_scene(path):
                 ray_offset=bake.ray_offset, colour_merge_step=bake.colour_merge_step,
                 indirect=bake.indirect if component.indirect else None, ao=bake.ao)
             asset_name = f"{scene_name}.{item.name}"
-            asset_path = path.parent / f"{asset_name}.mesh"
+            asset_path = path.parent / f"{asset_name}{BUNDLE_SUFFIX}"
         else:
             asset_name = f"{scene_name}.{item.name}" if item.kind == "skinned_renderer" else component.variant.name
-            asset_path = component.settings.mesh_dir / f"{asset_name}.mesh"
+            asset_path = component.settings.mesh_dir / f"{asset_name}{BUNDLE_SUFFIX}"
         try:
             too_long = len(asset_name.encode("ascii")) >= NAME_BYTES
         except UnicodeEncodeError:

@@ -20,7 +20,7 @@ from asset.asset_pack import NAME_BYTES, parse_pack  # noqa: E402
 from r3d import build_pack, scene_asset  # noqa: E402
 from asset.engine_frame import to_engine  # noqa: E402
 from build.name_hash import NONE as HASH_NONE, name_hash  # noqa: E402
-from test_engine_frame import mesh_entry  # noqa: E402
+from test_engine_frame import mesh_entry, write_mesh  # noqa: E402
 from r3d.import_settings import SettingsError, load_scene  # noqa: E402
 from r3d.mesh_asset import TYPE as LIT_MESH  # noqa: E402
 from r3d.scene_asset import CAMERA, HEADER, NAME, RENDERER, TRANSFORM, SceneError  # noqa: E402
@@ -50,7 +50,7 @@ class SceneFiles(unittest.TestCase):
         self.root = pathlib.Path(self.temp.name)
         for mesh in ("a", "b"):
             write_import(self.root, f"{mesh}.import.toml", output=f'[output]\nname = "{mesh}"\n')
-            (self.root / f"{mesh}.mesh").write_bytes(mesh_entry())
+            write_mesh(self.root / f"{mesh}.bundle")
         (self.root / "clips").mkdir()
         (self.root / "clips" / "probe.glb").write_bytes(probe_glb())
         (self.root / "clips" / "fly.anim.toml").write_text(CLIP)
@@ -471,12 +471,12 @@ class ScenePackTests(SceneFiles):
 
     def test_replace_takes_only_a_mesh(self):
         self.scene(renderer("a.import.toml") + lens("clips/fly.anim.toml"))
-        (self.root / "scratch.mesh").write_bytes(mesh_entry((9, 3, -7)))
-        packs = build_pack.pack_bytes([self.root], [f"a={self.root / 'scratch.mesh'}"])
+        write_mesh(self.root / "scratch.bundle", (9, 3, -7), name="a")
+        packs = build_pack.pack_bytes([self.root], [f"a={self.root / 'scratch.bundle'}"])
         self.assertEqual(parse_pack(packs["hall"])["a"], (LIT_MESH, to_engine(LIT_MESH, mesh_entry((9, 3, -7)))))
         for entry in ("hall", "fly"):
             with self.subTest(entry=entry), self.assertRaisesRegex(SettingsError, "no such mesh"):
-                build_pack.pack_bytes([self.root], [f"{entry}={self.root / 'scratch.mesh'}"])
+                build_pack.pack_bytes([self.root], [f"{entry}={self.root / 'scratch.bundle'}"])
 
     def test_a_scene_and_its_clip_cannot_share_an_id_and_the_refusal_names_both_files(self):
         (self.root / "clips" / "hall.anim.toml").write_text(CLIP)

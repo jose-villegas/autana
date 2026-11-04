@@ -279,7 +279,7 @@ class RunnerTests(TreeTest):
 
     def test_each_bakes_runs_once_per_bake_and_a_missing_bake_stops_everything(self):
         from bake import bake
-        found = drawn("hall.fit.bundle", "yard.fit.bundle", "hall.mesh")
+        found = drawn("hall.fit.bundle", "yard.fit.bundle", "hall.bundle")
         self.tree.each_bake()
         with baking(found) as fetched:
             code, _, err = self.tree.run("build")

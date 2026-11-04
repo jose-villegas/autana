@@ -83,12 +83,15 @@ typedef struct {
 
 /* The asset type of a lit mesh entry, and the bytes of its header. */
 #define R3D_LIT_MESH_ASSET        ASSET_TYPE('L', 'M', 'S', 'H')
-#define R3D_LIT_MESH_HEADER_BYTES 56
+#define R3D_LIT_MESH_HEADER_BYTES 44
 
 /* Fills `mesh` with pointers into `asset`, which must outlive it, after
  * checking every array and every cluster and node range against the entry.
  * On failure `mesh` is zeroed and the status says what was wrong. */
 asset_status_t r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh);
+
+/* A failed sibling clears only the levels; the geometry remains loaded. */
+asset_status_t r3d_lit_mesh_levels_from_asset(const asset_view_t* levels, r3d_lit_mesh_t* mesh);
 
 /* The same for the lit mesh entry named `id` in `pack`. */
 asset_status_t r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh);

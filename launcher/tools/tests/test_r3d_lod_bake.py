@@ -14,7 +14,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from asset import engine_frame
-from r3d import lit_mesh, mesh_asset
+from r3d import lit_mesh, mesh_asset, lod_asset
+from r3d.lod.bake_levels import bake_lit_mesh
 from r3d.geometry import closest_point_on_triangles
 from r3d.lod import pick
 from r3d.lit_mesh import MAX_TRIANGLES, MAX_VERTICES
@@ -54,9 +55,8 @@ def wavy_grid(n=GRID):
 
 def read_back(mesh):
     with tempfile.TemporaryDirectory() as folder:
-        path = pathlib.Path(folder) / "mesh.mesh"
-        path.write_bytes(lit_mesh.mesh_blob(mesh))
-        return lit_mesh.read_lit_mesh(path)
+        path = pathlib.Path(folder) / "mesh.bundle"
+        return lit_mesh.read_lit_mesh(lit_mesh.mesh_blob(mesh), lit_mesh.lod_blob(mesh))
 
 
 def corner_set(welded):
@@ -74,7 +74,7 @@ class BakedLevelsTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         points, rgb, triangles, double = wavy_grid()
-        cls.levelled = read_back(lit_mesh.bake_lit_mesh(points, rgb, triangles, double, lod=True))
+        cls.levelled = read_back(bake_lit_mesh(points, rgb, triangles, double, lod=True))
         cls.plain = read_back(lit_mesh.bake_lit_mesh(points, rgb, triangles, double))
 
     def test_level_zero_is_the_plain_bake_with_its_colours(self):
@@ -95,10 +95,10 @@ class BakedLevelsTest(unittest.TestCase):
         self.assertLessEqual(owned - parents, set())
 
     def test_the_engine_frame_mirrors_each_group_centre_and_keeps_its_radius_and_error(self):
-        blob = lit_mesh.mesh_blob(self.levelled)
-        mirrored = engine_frame.to_engine(mesh_asset.TYPE, blob)
-        header = mesh_asset.BLOB_HEADER.unpack_from(blob)
-        groups, groups_at = header[11], header[13]
+        blob = lit_mesh.lod_blob(self.levelled)
+        mirrored = engine_frame.to_engine(lod_asset.TYPE, blob)
+        _, groups, clusters = lod_asset.HEADER.unpack_from(blob)
+        groups_at = lod_asset.HEADER.size + clusters * mesh_asset.CLUSTER_LOD.size
         for index in range(groups):
             at = groups_at + index * mesh_asset.LOD_GROUP.size
             *centre, radius, error = mesh_asset.LOD_GROUP.unpack_from(blob, at)
@@ -198,7 +198,7 @@ class QuantisedGroupsTest(unittest.TestCase):
 
 class CrowdedLevelsTest(unittest.TestCase):
     def test_a_mesh_whose_levels_pass_the_vertex_count_bakes_the_levels_that_fit(self):
-        mesh = read_back(lit_mesh.bake_lit_mesh(*wavy_grid(CROWDED_GRID), lod=True))
+        mesh = read_back(bake_lit_mesh(*wavy_grid(CROWDED_GRID), lod=True))
         self.assertLessEqual(len(mesh.pos), MAX_VERTICES)
         self.assertLessEqual(len(mesh.tris), MAX_TRIANGLES)
         finest = lit_mesh.finest(mesh)

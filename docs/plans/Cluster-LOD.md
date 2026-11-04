@@ -7,8 +7,8 @@ grouped, simplified with each group's border locked, and split again until a
 group no longer simplifies<sup>[[54]](../Citations.md#karis-2021)</sup>
 (meshoptimizer's<sup>[[11]](../Citations.md#meshoptimizer)</sup> `clusterlod`). The finest
 level holds the fitted mesh's triangles in `clusterlod`'s own clusters, and the
-bake draws those as its level 0. A fit starts from the mesh without levels and
-gets them on what it returns, so it never moves level 0's cluster seams. Positions only, so a strip of one colour is not
+bake draws those as its level 0. A fit starts from a mesh without levels. A CPU levels stage builds the
+hierarchy from its fitted bytes. Positions only, so a strip of one colour is not
 simplified on its own; each coarser cluster samples its colours from the
 nearest level-0 surface facing its way.
 
@@ -16,10 +16,10 @@ nearest level-0 surface facing its way.
 builds one hierarchy per sidedness, with the positions the two share locked. It
 pushes each coarse vertex inside a group's border outward, up to the group's
 error, so a coarse level never sits inside the finer surface it replaces.
-Group spheres and errors are rounded outward into position ticks; the LMSH
-format ([LMSH.md](../assets/formats/LMSH.md)) states their ordering rules. The
+Group spheres and errors are rounded outward into position ticks; the LLOD
+format ([LLOD.md](../assets/formats/LLOD.md)) states their ordering rules. The
 `[geometry] lod` import setting turns levels off; level 0 is then the baked
-meshlets, as before.
+meshlets.
 
 **The pick.** A cluster is drawn when its own error, projected at its sphere,
 is at most the tolerance in pixels and its group's error is above it. Every

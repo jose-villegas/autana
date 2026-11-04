@@ -21,7 +21,7 @@ A NAME.pack.toml makes its folder one pack NAME instead:
 every root under that folder puts its entries there, and folder packs do
 not nest. `development = true` limits a folder pack to development images;
 host builds and bake discovery include every pack. A mesh is the entry
-<id>.mesh that mesh_import.py wrote, and its pack id is that id; a scene (r3d/scene_asset.py), a clip
+<id>.bundle that mesh_import.py wrote, and its pack id is that id; a scene (r3d/scene_asset.py), a clip
 (anim/tracks_asset.py), a picture (gfx/image_asset.py), a curve
 (gfx/curve_asset.py) and an icon (gfx/icons_asset.py) are baked here from
 their files, each with its stem for
@@ -72,7 +72,7 @@ SOUND = sound_asset.SUFFIX
 CURVE = curve_asset.SUFFIX
 ROOTS = (IMPORT, SCENE, CLIP, IMAGE, ICONS, CURVE, SOUND)
 BAKED_HERE = (SCENE, CLIP, IMAGE, ICONS, CURVE)  # entries baked from their file here; meshes and sounds come from the cache
-FETCHED = (bake.MESH_SUFFIX, mesh_bundle.SUFFIX, SOUND)
+FETCHED = (mesh_bundle.SUFFIX, SOUND)
 FOLDER_PACK = ".pack.toml"
 PACK_DEVELOPMENT = "development"
 PACK_SUFFIX = ".apak"
@@ -156,14 +156,14 @@ def folder_pack(path):
 
 def pack_files(paths):
     """{pack name: {entry id: its source}}, one pack per root under `paths`;
-    a mesh's source is its .mesh file, a scene's its .scene.toml, a clip's
+    a mesh's source is its .bundle file, a scene's its .scene.toml, a clip's
     its .anim.toml, a picture's its .image.toml."""
     return pack_jobs(paths)[0]
 
 
 def pack_jobs(paths, development=True):
     """pack_files() and, for each mesh source, the job that bakes it:
-    {resolved .mesh path: (job, its scene or None, the file that asks for it)}.
+    {resolved .bundle path: (job, its scene or None, the file that asks for it)}.
     Non-development images omit development-only folder packs."""
     files = input_files(paths)
     roots, placed, jobs = {}, set(), {}
@@ -229,7 +229,7 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
     for item in replace:
         mesh, _, file = item.partition("=")
         holder = next((entries for entries in packs.values() if mesh in entries), None)
-        if holder is None or not holder[mesh].name.endswith((bake.MESH_SUFFIX, mesh_bundle.SUFFIX)):
+        if holder is None or not holder[mesh].name.endswith((mesh_bundle.SUFFIX,)):
             raise SettingsError(f"--replace {mesh}: no such mesh")
         replaced[mesh] = pathlib.Path(file)
     locked = {path: job for path, job in jobs.items() if path.is_relative_to(REPO)}
@@ -284,6 +284,8 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
         for key, source in sources.items():
             if source.suffix == mesh_bundle.SUFFIX:
                 rows, bundle_copies[key] = mesh_bundle.decode(source.read_bytes())
+                if key in replaced:
+                    rows = mesh_bundle.rename_rest(rows, bundle_copies[key], key)
                 bundle_rows.extend(rows)
         entry_rows = [pack_entry(key, source, engine_frame=False, camera_node=camera_nodes.get(source.resolve()),
                                  cache=cache, offline=offline, copies=bundle_copies) for key, source in sorted(sources.items())
@@ -372,7 +374,7 @@ def pack_entry(key, source, engine_frame=True, camera_node=None, cache=None, off
         elif source.name.endswith(CLIP):
             kind, data = tracks_asset.TYPE, tracks_asset.bake(source, camera_node)
         else:
-            kind, data = LIT_MESH, source.read_bytes()
+            raise SettingsError("unsupported asset source: " + str(source))
         return key, kind, to_engine(kind, data) if engine_frame else data
     except ValueError as error:
         raise SettingsError(f"entry {key!r} ({source}): {error}") from error

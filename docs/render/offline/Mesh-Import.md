@@ -17,7 +17,7 @@ flowchart TB
     end
     subgraph Finish["3 · Reduce and write"]
     direction LR
-    Simp["Simplify to the budget<br/><i>import, opt in</i>"] --> Face["Light per face<br/><i>scene, flat only</i>"] --> Write["Write: quantise,<br/>meshlets, octree"] --> Pack["name.mesh into<br/>build_pack.py"]
+    Simp["Simplify to the budget<br/><i>import, opt in</i>"] --> Face["Light per face<br/><i>scene, flat only</i>"] --> Write["Write: quantise,<br/>meshlets, octree"] --> Pack["name.bundle into<br/>build_pack.py"]
     Simp -. smooth .-> Write
     end
     Cut --> Light --> Finish
@@ -548,7 +548,7 @@ flowchart LR
     end
     subgraph Cache["Bake cache, bake.py"]
     direction TB
-    Mesh["name.mesh"]
+    Mesh["name.bundle"]
     Rebake["rebake.py, optional<br/><i>rewrites its clusters</i>"]
     Mesh -.-> Rebake
     end
@@ -570,13 +570,12 @@ unknown key is an error.
 | `python launcher/tools/r3d/mesh_import.py IMPORT` | The import's authored albedo mesh into the bake cache. |
 | `python launcher/tools/r3d/mesh_import.py SCENE` | Each renderer's mesh: a `bake = true` renderer traced with the scene's lights, camera visibility and tone map; an albedo renderer its import's shared mesh. |
 | `python launcher/tools/r3d/mesh_import.py PATH --mesh NAME` | That one mesh only. |
-| `python launcher/tools/r3d/build_pack.py -o DIR` | One [pack](../../assets/Building-Packs.md#packs) per root from the `.mesh` entries it names, baking each scene's [entry](../../assets/formats/SCNE.md) on the way. |
-| `python launcher/tools/r3d/rebake.py MESH.mesh` | That cached `.mesh` in place, its clusters and octree only; rerun `build_pack.py` to pack it. |
+| `python launcher/tools/r3d/build_pack.py -o DIR` | One [pack](../../assets/Building-Packs.md#packs) per root from the `.bundle` entries it names, baking each scene's [entry](../../assets/formats/SCNE.md) on the way. |
+| `python launcher/tools/r3d/rebake.py MESH.bundle` | That cached `.bundle` in place, its clusters and octree only; rerun `build_pack.py` to pack it. |
 
-A cached `<name>.mesh` is an entry of the [asset pack](../../assets/README.md),
-held in the bake cache
-([`launcher/tools/bake/bake.py`](../../../launcher/tools/bake/bake.py)). It
-carries no normals: shading is already baked.
+A cached `<name>.bundle` holds LMSH entries, their LCOL/LLOD siblings and a
+copies manifest. `build_pack.py` expands it into the [asset pack](../../assets/README.md).
+LMSH carries no normals: shading is already baked.
 
 ### Frames
 

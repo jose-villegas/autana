@@ -317,3 +317,23 @@ def finish(q, col, level0, entries, coarse, rows, kept):
         at_vertex += len(unique)
         at_face += len(local)
     return Baked(np.concatenate(rows_q), np.concatenate(rows_col) if coloured else None, out, rows[kept])
+
+
+def bake_lit_mesh(positions, rgb, tris, double, position_scale=None, leaf_triangles=None,
+                  max_depth=None, meshlet_triangles=None, face_rgb=None, lod=True):
+    """Assemble a plain mesh or its CPU-built hierarchy from the same welded triangles."""
+    from r3d import lit_mesh
+    position_scale = lit_mesh.POSITION_SCALE if position_scale is None else position_scale
+    leaf_triangles = lit_mesh.LEAF_TRIANGLES if leaf_triangles is None else leaf_triangles
+    max_depth = lit_mesh.MAX_DEPTH if max_depth is None else max_depth
+    meshlet_triangles = lit_mesh.MESHLET_TRIANGLES if meshlet_triangles is None else meshlet_triangles
+    plain = lit_mesh.bake_lit_mesh(positions, rgb, tris, double, position_scale, leaf_triangles,
+                                  max_depth, meshlet_triangles, face_rgb)
+    if not lod:
+        return plain
+    q, col, tris, double, face = lit_mesh.finest_triangles(plain)
+    levels = bake_levels(q, col, tris, double, face, meshlet_triangles)
+    if not len(levels.groups):
+        return plain
+    return lit_mesh.assemble(levels.q, levels.col, levels.entries, position_scale, leaf_triangles,
+                             max_depth, levels.groups)

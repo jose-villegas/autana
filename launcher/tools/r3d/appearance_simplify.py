@@ -4,7 +4,7 @@ along a camera path, keeping its triangles (appearance-driven
 simplification, Hasselgren et al. 2021). A smooth mesh fits a colour per
 vertex, a flat one a colour per triangle.
 
-    python launcher/tools/r3d/appearance_simplify.py --scene SCENE.scene.toml --start NAME.mesh \\
+    python launcher/tools/r3d/appearance_simplify.py --scene SCENE.scene.toml --start NAME.bundle \\
         --poses POSES.txt --reference DIR [--poses ... --reference ...] --out DIR [--per-shot] \\
         [--object NAME --surface-weight W --surface-margin E --seam-margin E] [--coverage-poses POSES.txt]
 
@@ -13,7 +13,7 @@ triangle budget. Each --poses file (tools/anim/track_host.py) pairs with
 the --reference directory reference_render.py wrote for it; --scene is the
 scene they were rendered from, whose camera background shows where nothing
 is drawn. All pairs train one mesh; with --per-shot each pair trains its
-own. A mesh is written as NAME.mesh by the same writer as mesh_import.py,
+own. A mesh is written as NAME.bundle by the same writer as mesh_import.py,
 under DIR, or DIR/shot<k>. The surface term anchors the fit to the scene's
 alpha-masked source; --object names its renderer.
 
@@ -125,7 +125,6 @@ class FitMesh(NamedTuple):
     scale: int
     vertex_point: np.ndarray
     flat: bool = False
-    lod: bool = False  # the fitted mesh carries levels of detail: the start does, or --lod asks
 
 
 def start_mesh(path):
@@ -136,7 +135,7 @@ def start_mesh(path):
     flat = rgb is None
     points, vertex_point = np.unique(q, axis=0, return_inverse=True)
     return FitMesh(points / float(mesh.position_scale), (face if flat else rgb) / 255.0, tris, double, mesh.position_scale,
-                   vertex_point.reshape(-1), flat, mesh.lod is not None)
+                   vertex_point.reshape(-1), flat)
 
 
 def point_edges(tris, vertex_point):
@@ -680,7 +679,7 @@ def refine(mesh, error, budget):
     mesh's halves keep their triangle's colour."""
     from r3d.tessellate import split_marked_edges
 
-    points, rgb, tris, double, _scale, vertex_point, flat, _lod = mesh
+    points, rgb, tris, double, _scale, vertex_point, flat = mesh
     positions = points[vertex_point]
     while len(tris) < budget:
         corners = vertex_point[tris]
@@ -736,7 +735,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     as a copy."""
     import torch
 
-    points0, rgb0, tris, double, _scale, vertex_point, flat, _lod = mesh
+    points0, rgb0, tris, double, _scale, vertex_point, flat = mesh
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
     diagonal = float(np.linalg.norm(points0.max(axis=0) - points0.min(axis=0)))
@@ -870,7 +869,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
 
 
 def write_mesh(out_dir, name, mesh):
-    """The fitted mesh as <name>.mesh and <name>.obj, a flat one's OBJ with
+    """The fitted mesh as <name>.bundle and <name>.obj, a flat one's OBJ with
     three vertices of each triangle's colour; returns the baked mesh's
     triangle count."""
     from r3d.lit_mesh import write_lit_mesh
@@ -883,11 +882,11 @@ def write_mesh(out_dir, name, mesh):
     tris = mesh.tris
     if mesh.flat:
         baked = write_lit_mesh(out_dir, name, positions, None, tris, mesh.double, position_scale=mesh.scale,
-                               face_rgb=colours, lod=mesh.lod)
+                               face_rgb=colours)
         positions, rgb, tris = positions[tris].reshape(-1, 3), rgb.repeat(3, axis=0), np.arange(3 * len(tris)).reshape(-1, 3)
     else:
         baked = write_lit_mesh(out_dir, name, positions, colours, tris, mesh.double, position_scale=mesh.scale,
-                               lod=mesh.lod)
+                               )
     with open(out_dir / f"{name}.obj", "w", newline="\n") as obj:
         for p, c in zip(positions, rgb):
             obj.write("v %.4f %.4f %.4f %.4f %.4f %.4f\n" % (*p, *c))
@@ -900,8 +899,7 @@ def write_mesh(out_dir, name, mesh):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--scene", required=True, help="the scene file the references were rendered from")
-    parser.add_argument("--start", required=True, help="a smooth or flat NAME.mesh to start from")
-    parser.add_argument("--lod", action="store_true", help="bake the fitted mesh with levels of detail")
+    parser.add_argument("--start", required=True, help="a smooth or flat NAME.bundle to start from")
     parser.add_argument("--poses", action="append", required=True, help="a track_host.py poses file")
     parser.add_argument("--reference", action="append", required=True, help="reference_render.py output for the poses")
     parser.add_argument("--out", required=True)
@@ -950,11 +948,10 @@ def main(argv=None):
     background = scene.camera.component.background
     clear = tuple(((background >> shift) & 255) / 255.0 for shift in (16, 8, 0))
     start = pathlib.Path(args.start)
-    if start.suffix != ".mesh":
-        parser.error("--start must be a NAME.mesh")
+    if start.suffix != ".bundle":
+        parser.error("--start must be a NAME.bundle")
     name = start.stem
     mesh = start_mesh(start)
-    mesh = mesh._replace(lod=mesh.lod or args.lod)
     log(f"start: {len(mesh.tris)} {'flat' if mesh.flat else 'smooth'} triangles, {len(mesh.points)} positions")
     copies = None if args.copies is None else placed_copies(args.copies, mesh.flat)
     if copies is not None:

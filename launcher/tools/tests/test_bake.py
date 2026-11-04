@@ -68,7 +68,7 @@ def fitted_job():
 
 
 def bake_of(key, tree, kind="mesh"):
-    return bake.Bake(output="one.mesh", source=tree, holder="one", kind=kind, key=key, suffix=bake.MESH_SUFFIX,
+    return bake.Bake(output="one.bundle", source=tree, holder="one", kind=kind, key=key, suffix=bake.BUNDLE_SUFFIX,
                      tree=tree)
 
 
@@ -107,7 +107,7 @@ class MeshCommandTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.root = pathlib.Path(self.directory.name)
         self.found = [dataclasses.replace(bake_of(str(index), self.root),
-                                         output=f"{index}.mesh", holder=str(index)) for index in range(4)]
+                                         output=f"{index}.bundle", holder=str(index)) for index in range(4)]
 
     def command(self, capacity=2, again=True, memory_error=False):
         from r3d import process_budget as budget
@@ -610,7 +610,7 @@ class StageTests(unittest.TestCase):
         for fit in fits:
             self.assertIn(fit.stages["start"], starts)
             self.assertEqual(starts[fit.stages["start"]].output,
-                             fit.output.removesuffix(fit.suffix) + bake.START_MARKER + fit.suffix)
+                             fit.output.removesuffix(bake.FIT_MARKER + fit.suffix) + bake.START_MARKER + fit.suffix)
 
 
 def write_fitted_tree(root, names=("fit",), visibility=PATH):
@@ -627,7 +627,7 @@ def write_fitted_tree(root, names=("fit",), visibility=PATH):
 def row_of(item, sha256, **fields):
     """The row a run or the lock holds for `item`."""
     return {"output": item.output, "source": "scene.scene.toml", "key": item.key, "sha256": sha256, "size": 1,
-            "suffix": bake.MESH_SUFFIX, **fields}
+            "suffix": bake.BUNDLE_SUFFIX, **fields}
 
 
 class FittedBakeCase(unittest.TestCase):
@@ -655,6 +655,11 @@ class FittedBakeCase(unittest.TestCase):
     def fit(self, sha256):
         return self.fits(sha256)[0]
 
+    def level(self, sha256):
+        fit = self.fit(sha256)
+        return next(item for item in self.bakes({self.start.key: sha256, fit.key: FIT_SHA256})
+                    if item.kind == "levels")
+
     def command(self, argv, lock, made=None, mesh_cpu_vendor=None, cpu=None):
         """Runs bake.py main over the tree with the lock (naming `mesh_cpu_vendor`), the runs' makes and this host's CPU
         vendor given and produce.produce stubbed: a start is made with MADE_SHA256, a fit with FIT_SHA256.
@@ -664,7 +669,7 @@ class FittedBakeCase(unittest.TestCase):
         def stub(item, cache, lock=None, blender=None, fresh_references=None):
             produced.append(item)
             fresh.append(fresh_references)
-            return row_of(item, MADE_SHA256 if not item.packed else FIT_SHA256)
+            return row_of(item, MADE_SHA256 if item.kind == "mesh" else FIT_SHA256)
 
         out, err = io.StringIO(), io.StringIO()
         with mock.patch.object(bake, "read_lock_tables",
@@ -691,7 +696,7 @@ class CarvedBakeTests(FittedBakeCase):
         path = self.root / "mesh.import.toml"
         path.write_text(path.read_text() + '\n[[objects.meshes]]\nmatch = { material = "m" }\ntriangles = 4\n')
         found = self.bakes(AnyStart())
-        starts = [item for item in found if not item.packed]
+        starts = [item for item in found if item.kind == "mesh"]
         fits = [item for item in found if item.kind == "fit"]
         self.assertEqual(len(starts), len(self.names))
         self.assertEqual(len({item.key for item in starts}), len(self.names))
@@ -710,6 +715,7 @@ class FittedBakeTests(FittedBakeCase):
         made = {self.start.key: row_of(self.start, MADE_SHA256, run=RUN)}
         for sha256 in (LOCKED_SHA256, SEEDED_SHA256, MADE_SHA256):
             made[self.fit(sha256).key] = row_of(self.fit(sha256), FIT_SHA256, run=RUN)
+            made[self.level(sha256).key] = row_of(self.level(sha256), FIT_SHA256, run=RUN)
         return self.command(["lock", "--from-run", str(RUN)], lock, made)
 
     def test_a_seeded_start_is_replaced_by_the_runs_make_in_the_key_of_its_fit(self):
@@ -740,14 +746,14 @@ class FittedBakeTests(FittedBakeCase):
     def test_a_start_made_by_the_mesh_pass_keys_its_fit_in_the_fit_pass(self):
         done = self.command(["bake"], {})
         self.assertEqual(done.code, 0, done.err)
-        self.assertEqual([item.key for item in done.produced], [self.start.key, self.fit(MADE_SHA256).key])
+        self.assertEqual([item.key for item in done.produced], [self.start.key, self.fit(MADE_SHA256).key, self.level(MADE_SHA256).key])
 
     def test_the_locks_start_bytes_win_over_bytes_made_again_here_in_the_key_of_its_fit(self):
         """--again makes a locked start once more, with other bytes; its fit is still keyed on the lock's."""
         done = self.command(["bake", "--again"], self.locked(LOCKED_SHA256, run=RUN))
         self.assertEqual(done.code, 0, done.err)
         self.assertIn(f"sha256 {MADE_SHA256}", done.out)
-        self.assertEqual([item.key for item in done.produced], [self.start.key, self.fit(LOCKED_SHA256).key])
+        self.assertEqual([item.key for item in done.produced], [self.start.key, self.fit(LOCKED_SHA256).key, self.level(LOCKED_SHA256).key])
 
     def test_a_bake_prunes_first_and_only_a_run_made_again_renders_fresh_references(self):
         with mock.patch.object(produce, "prune_references") as prune:
@@ -763,7 +769,7 @@ class FittedBakeTests(FittedBakeCase):
 
     def test_a_locked_start_is_not_made_and_keys_its_fit(self):
         done = self.command(["bake"], self.locked(LOCKED_SHA256, run=RUN))
-        self.assertEqual([item.key for item in done.produced], [self.fit(LOCKED_SHA256).key])
+        self.assertEqual([item.key for item in done.produced], [self.fit(LOCKED_SHA256).key, self.level(LOCKED_SHA256).key])
 
     def test_a_fit_whose_start_is_neither_locked_nor_made_raises_naming_it_and_makes_nothing(self):
         fit_output = self.fit(MADE_SHA256).output
@@ -953,6 +959,7 @@ class PosesTests(FittedBakeCase):
         rows = bake.Poses({})
         found = bake.bakes([self.root], poses=rows)
         starts = {item.key: MADE_SHA256 for item in found if not item.packed}
+        starts.update({item.key: MADE_SHA256 for item in bake.bakes([self.root], starts, rows) if item.key})
         found = bake.bakes([self.root], starts, rows)
         locked = {item.key: row_of(item, MADE_SHA256) for item in found}
         path = self.root / "lock_row.lock"
@@ -976,7 +983,8 @@ class PosesTests(FittedBakeCase):
         plain = self.root / "plain"
         plain.mkdir()
         imported = write_import(plain, name="plain.import.toml")
-        (imported.parent / "mesh.mesh").write_bytes(b"plain mesh")
+        from test_engine_frame import write_mesh
+        write_mesh(imported.parent / "mesh.bundle")
         packs, jobs = build_pack.pack_jobs([self.root])
         rows = bake.Poses({})
         found = bake.bakes_in(packs, jobs, {}, rows)
@@ -1039,6 +1047,7 @@ class CpuVendorTests(FittedBakeCase):
         made = {self.start.key: row_of(self.start, MADE_SHA256, run=RUN, **({"cpu_vendor": start_cpu} if start_cpu else {}))}
         fit = self.fit(MADE_SHA256)
         made[fit.key] = row_of(fit, FIT_SHA256, run=RUN, **({"cpu_vendor": fit_cpu} if fit_cpu else {}))
+        made[self.level(MADE_SHA256).key] = row_of(self.level(MADE_SHA256), FIT_SHA256, run=RUN)
         return made
 
     def lock(self, made, mesh_cpu_vendor, lock=None):
@@ -1067,6 +1076,7 @@ class CpuVendorTests(FittedBakeCase):
     def test_a_mesh_the_lock_already_holds_is_not_taken_so_not_checked(self):
         made = self.made(self.INTEL)
         made[self.fit(LOCKED_SHA256).key] = row_of(self.fit(LOCKED_SHA256), FIT_SHA256, run=RUN)
+        made[self.level(LOCKED_SHA256).key] = row_of(self.level(LOCKED_SHA256), FIT_SHA256, run=RUN)
         done = self.lock(made, self.AMD, self.locked(LOCKED_SHA256, run=RUN - 1))
         self.assertEqual(done.code, 0, done.err)
         self.assertEqual(done.rows[self.start.output]["sha256"], LOCKED_SHA256)
@@ -1100,7 +1110,7 @@ class CpuVendorTests(FittedBakeCase):
     def test_the_vendor_is_read_from_cpuinfo_and_recorded_with_a_make(self):
         cpuinfo = self.root / "cpuinfo"
         cpuinfo.write_text("processor\t: 0\nvendor_id\t: AuthenticAMD\ncpu family\t: 25\n")
-        tree = self.root / "one.mesh"
+        tree = self.root / "one.bundle"
         tree.write_bytes(b"LMSH baked")
         with mock.patch.object(bake, "CPUINFO", cpuinfo):
             self.assertEqual(bake.cpu_vendor(), self.AMD)
@@ -1138,7 +1148,8 @@ class FitGpuTests(FittedBakeCase):
     def test_a_locked_fit_keeps_the_gpu_its_run_made_it_on(self):
         fit = self.fit(MADE_SHA256)
         made = {self.start.key: row_of(self.start, MADE_SHA256, run=RUN, cpu_vendor="AuthenticAMD"),
-                fit.key: row_of(fit, FIT_SHA256, run=RUN, gpu=self.GPU)}
+                fit.key: row_of(fit, FIT_SHA256, run=RUN, gpu=self.GPU),
+                self.level(MADE_SHA256).key: row_of(self.level(MADE_SHA256), FIT_SHA256, run=RUN)}
         done = self.command(["lock", "--from-run", str(RUN)], {}, made, mesh_cpu_vendor="AuthenticAMD")
         self.assertEqual(done.code, 0, done.err)
         self.assertEqual(done.rows[fit.output]["gpu"], self.GPU)
@@ -1239,7 +1250,7 @@ class KeptWorkTests(FittedBakeCase):
         rows = {"like": here, "vendor": {**here, "cpu_vendor": "GenuineIntel"},
                 "host": {**here, "host": "Windows AMD64" if platform.system() != "Windows" else "Linux x86_64"},
                 "unnamed": {"host": here["host"]}}
-        rows = [{"key": name * 8, "sha256": FIT_SHA256, "suffix": bake.MESH_SUFFIX, **fields}
+        rows = [{"key": name * 8, "sha256": FIT_SHA256, "suffix": bake.BUNDLE_SUFFIX, **fields}
                 for name, fields in rows.items()]
         with mock.patch.object(bake, "cpu_vendor", return_value="AuthenticAMD"), \
                 mock.patch.object(bake, "gpu_name", return_value=self.GPU):
@@ -1295,25 +1306,25 @@ class OnlyTests(FittedBakeCase):
             self.command(["bake", "--kind", "fit", "--only", self.start.output], {})
 
 
-class SharedStartTests(FittedBakeCase):
+class EntryStartTests(FittedBakeCase):
     """Two fitted renderers of one import."""
 
     names = ("first", "second")
 
-    def test_fits_that_share_a_start_make_one_start_bake(self):
+    def test_distinct_bundle_entry_ids_make_distinct_start_bakes(self):
         found = self.bakes({})
         fits = [item for item in found if item.kind == "fit"]
         starts = [item for item in found if item.kind == "mesh"]
         self.assertEqual(len(fits), len(self.names))
-        self.assertEqual(len(starts), 1)
-        self.assertEqual({item.stages["start"] for item in fits}, {starts[0].key})
-        self.assertEqual({item.start for item in fits}, {starts[0]})
+        self.assertEqual(len(starts), len(self.names))
+        self.assertEqual({item.stages["start"] for item in fits}, {start.key for start in starts})
+        self.assertEqual({item.start for item in fits}, set(starts))
 
     def test_a_fits_start_is_an_unpacked_mesh_bake_named_for_its_entry(self):
         fit = self.fits(MADE_SHA256)[0]
-        self.assertTrue(fit.packed)
+        self.assertFalse(fit.packed)
         self.assertFalse(self.start.packed)
-        self.assertEqual(self.start.output, fit.output.removesuffix(bake.MESH_SUFFIX) + bake.START_SUFFIX)
+        self.assertEqual(self.start.output, fit.output.removesuffix(bake.FIT_MARKER + bake.BUNDLE_SUFFIX) + bake.START_SUFFIX)
         self.assertEqual(self.start.kind, "mesh")
 
 
@@ -1322,9 +1333,9 @@ class LockTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.root = pathlib.Path(self.directory.name)
         self.cache = self.root / "cache"
-        self.tree = self.root / "one.mesh"
+        self.tree = self.root / "one.bundle"
         self.tree.write_bytes(b"LMSH baked")
-        self.row = {"output": "one.mesh", "source": "a.scene.toml", "key": "k" * 64,
+        self.row = {"output": "one.bundle", "source": "a.scene.toml", "key": "k" * 64,
                     "sha256": hashlib.sha256(b"LMSH baked").hexdigest(), "size": 10}
 
     def tearDown(self):
@@ -1365,8 +1376,8 @@ class LockTests(unittest.TestCase):
 
     def waiting_fit(self):
         """A fit whose start, key "k" * 64, the lock does not have yet: its own key is unknown."""
-        return bake.Bake(output="two.mesh", source=self.tree, holder="two", kind="fit", key=None,
-                         suffix=bake.MESH_SUFFIX, tree=self.root / "two.mesh", stages={"start": "k" * 64})
+        return bake.Bake(output="two.bundle", source=self.tree, holder="two", kind="fit", key=None,
+                         suffix=bake.BUNDLE_SUFFIX, tree=self.root / "two.bundle", stages={"start": "k" * 64})
 
     def test_a_run_locks_a_start_while_its_fit_waits_naming_the_fit(self):
         start = bake_of("k" * 64, self.tree)
@@ -1374,14 +1385,14 @@ class LockTests(unittest.TestCase):
         rows = bake.lock_rows([start, self.waiting_fit()], {}, {"k" * 64: {**self.row, "run": 9}}, missing)
         self.assertEqual([row["key"] for row in rows], ["k" * 64])
         self.assertEqual(len(missing), 1)
-        self.assertIn("two.mesh", missing[0])
+        self.assertIn("two.bundle", missing[0])
         self.assertIn("is not locked", missing[0])
-        with self.assertRaisesRegex(bake.BakeMissing, "two.mesh"):
+        with self.assertRaisesRegex(bake.BakeMissing, "two.bundle"):
             bake.lock_rows([start, self.waiting_fit()], {}, {"k" * 64: {**self.row, "run": 9}})
 
     def test_a_waiting_fit_is_never_seeded(self):
-        with self.assertRaisesRegex(bake.BakeMissing, "(?s)two.mesh.*is not locked"):
-            bake.seed([self.waiting_fit()], self.cache, {"j" * 64: {**self.row, "output": "two.mesh", "key": "j" * 64}})
+        with self.assertRaisesRegex(bake.BakeMissing, "(?s)two.bundle.*is not locked"):
+            bake.seed([self.waiting_fit()], self.cache, {"j" * 64: {**self.row, "output": "two.bundle", "key": "j" * 64}})
 
     def test_a_fits_start_takes_the_locked_bytes_over_a_runs(self):
         made = {"k" * 64: {**self.row, "sha256": "f" * 64}}
@@ -1390,23 +1401,23 @@ class LockTests(unittest.TestCase):
 
     def test_a_fit_fetches_the_start_its_key_names_and_fails_without_it(self):
         start = bake_of("k" * 64, self.tree)
-        fit = bake.Bake(output="two.mesh", source=self.tree, holder="two", kind="fit", key="f" * 64,
-                        suffix=bake.MESH_SUFFIX, tree=self.root / "two.mesh",
+        fit = bake.Bake(output="two.bundle", source=self.tree, holder="two", kind="fit", key="f" * 64,
+                        suffix=bake.BUNDLE_SUFFIX, tree=self.root / "two.bundle",
                         stages={"start": "k" * 64, "start_sha256": self.row["sha256"]}, start=start)
-        bake.store(self.tree, self.row, bake.MESH_SUFFIX, self.cache)
+        bake.store(self.tree, self.row, bake.BUNDLE_SUFFIX, self.cache)
         path = produce.start_file(fit, self.cache, {"k" * 64: self.row})
         self.assertEqual(path.read_bytes(), self.tree.read_bytes())
         other = {"k" * 64: {**self.row, "sha256": "e" * 64}}
         for lock, cache in (({}, self.root / "empty"), (other, self.root / "empty")):
-            with self.assertRaisesRegex(bake.BakeMissing, "two.mesh: its start k+ with sha256 .* is neither locked"):
+            with self.assertRaisesRegex(bake.BakeMissing, "two.bundle: its start k+ with sha256 .* is neither locked"):
                 produce.start_file(fit, cache, lock)
 
     def fit_of_start_made_here(self, start_sha256):
         """A fit naming `start_sha256`, whose start this cache made (no lock row) with the bytes of the tree's file."""
         start = bake_of("k" * 64, self.tree)
         produce.record(start, self.tree, self.cache)
-        return bake.Bake(output="two.mesh", source=self.tree, holder="two", kind="fit", key="f" * 64,
-                         suffix=bake.MESH_SUFFIX, tree=self.root / "two.mesh",
+        return bake.Bake(output="two.bundle", source=self.tree, holder="two", kind="fit", key="f" * 64,
+                         suffix=bake.BUNDLE_SUFFIX, tree=self.root / "two.bundle",
                          stages={"start": "k" * 64, "start_sha256": start_sha256}, start=start)
 
     def test_a_start_made_in_this_cache_with_the_named_sha_is_used_without_a_lock_row(self):
@@ -1415,21 +1426,21 @@ class LockTests(unittest.TestCase):
 
     def test_a_start_made_in_this_cache_with_another_sha_is_refused(self):
         fit = self.fit_of_start_made_here("e" * 64)
-        with self.assertRaisesRegex(bake.BakeMissing, "two.mesh: its start k+ with sha256 e+ is neither locked"):
+        with self.assertRaisesRegex(bake.BakeMissing, "two.bundle: its start k+ with sha256 e+ is neither locked"):
             produce.start_file(fit, self.cache, {})
 
     def test_one_seed_from_a_run_locks_the_start_and_carries_the_fits_bytes(self):
         start = bake_of("k" * 64, self.tree)
-        fit = bake.Bake(output="two.mesh", source=self.tree, holder="two", kind="fit", key="n" * 64,
-                        suffix=bake.MESH_SUFFIX, tree=self.root / "two.mesh", stages={"start": "k" * 64})
-        old_fit = {**self.row, "output": "two.mesh", "key": "o" * 64, "run": 3}
-        bake.store(self.tree, old_fit, bake.MESH_SUFFIX, self.cache)
+        fit = bake.Bake(output="two.bundle", source=self.tree, holder="two", kind="fit", key="n" * 64,
+                        suffix=bake.BUNDLE_SUFFIX, tree=self.root / "two.bundle", stages={"start": "k" * 64})
+        old_fit = {**self.row, "output": "two.bundle", "key": "o" * 64, "run": 3}
+        bake.store(self.tree, old_fit, bake.BUNDLE_SUFFIX, self.cache)
         rows = bake.seed([start, fit], self.cache, {"o" * 64: old_fit}, {"k" * 64: {**self.row, "run": 9}})
         self.assertEqual([(row["key"], row.get("seeded", False)) for row in rows],
                          [("k" * 64, False), ("n" * 64, True)])
 
     def test_seeding_fills_only_the_keys_the_lock_lacks(self):
-        other = self.root / "two.mesh"
+        other = self.root / "two.bundle"
         other.write_bytes(b"LMSH other")
         found = [bake_of("k" * 64, self.tree), bake_of("n" * 64, other)]
         written = []
@@ -1447,9 +1458,9 @@ class LockTests(unittest.TestCase):
         upload = self.root / "upload"
         (upload / "bakes-cpu" / "files").mkdir(parents=True)
         (upload / "bakes-cpu" / "keys").mkdir()
-        (upload / "bakes-cpu" / "files" / f"{self.row['sha256']}.mesh").write_bytes(b"LMSH baked")
+        (upload / "bakes-cpu" / "files" / f"{self.row['sha256']}.bundle").write_bytes(b"LMSH baked")
         (upload / "bakes-cpu" / "keys" / f"{self.row['key']}.json").write_text(
-            json.dumps({**self.row, "suffix": bake.MESH_SUFFIX}))
+            json.dumps({**self.row, "suffix": bake.BUNDLE_SUFFIX}))
         gone = urllib.error.HTTPError("url", 404, "Not Found", {}, None)
         with mock.patch("urllib.request.urlopen", side_effect=gone), \
                 mock.patch.object(bake, "run_files", return_value=upload) as run:
@@ -1460,33 +1471,33 @@ class LockTests(unittest.TestCase):
     def test_a_runs_uploads_are_read_through_the_api_without_gh(self):
         archive = io.BytesIO()
         with zipfile.ZipFile(archive, "w") as zipped:
-            zipped.writestr("files/a.mesh", b"mesh")
+            zipped.writestr("files/a.bundle", b"mesh")
         listing = {"artifacts": [{"name": "bakes-cpu", "expired": False, "archive_download_url": "zip"},
                                  {"name": "other", "expired": False, "archive_download_url": "never"}]}
         replies = {"zip": archive.getvalue()}
         with mock.patch.dict("os.environ", {"GH_TOKEN": "t"}), \
                 mock.patch.object(bake, "github_get", side_effect=lambda url, token: replies.get(url, json.dumps(listing).encode())) as get:
             bake.run_files(7, self.root / "run")
-        self.assertEqual((self.root / "run" / "bakes-cpu" / "files" / "a.mesh").read_bytes(), b"mesh")
+        self.assertEqual((self.root / "run" / "bakes-cpu" / "files" / "a.bundle").read_bytes(), b"mesh")
         self.assertNotIn("never", [call.args[0] for call in get.call_args_list])
 
     def test_a_refused_rename_onto_the_same_bytes_is_done_and_leaves_no_scratch(self):
-        target = self.cache / "a.mesh"
+        target = self.cache / "a.bundle"
         target.parent.mkdir(parents=True)
         target.write_bytes(b"same")
         with mock.patch("os.replace", side_effect=PermissionError("held")):
             self.assertEqual(bake.place(b"same", target), target)
-        self.assertEqual(sorted(path.name for path in self.cache.iterdir()), ["a.mesh"])
+        self.assertEqual(sorted(path.name for path in self.cache.iterdir()), ["a.bundle"])
 
     def test_a_refused_rename_onto_other_bytes_retries_then_fails_naming_it(self):
-        target = self.cache / "a.mesh"
+        target = self.cache / "a.bundle"
         target.parent.mkdir(parents=True)
         target.write_bytes(b"other")
         with mock.patch("os.replace", side_effect=PermissionError("held")) as rename, \
-                mock.patch("time.sleep"), self.assertRaisesRegex(bake.BakeMissing, "a.mesh: another process holds it"):
+                mock.patch("time.sleep"), self.assertRaisesRegex(bake.BakeMissing, "a.bundle: another process holds it"):
             bake.place(b"new", target)
         self.assertEqual(rename.call_count, bake.PLACE_ATTEMPTS)
-        self.assertEqual(sorted(path.name for path in self.cache.iterdir()), ["a.mesh"])
+        self.assertEqual(sorted(path.name for path in self.cache.iterdir()), ["a.bundle"])
 
     def test_a_process_can_have_a_cache_of_its_own(self):
         with mock.patch.dict("os.environ", {bake.CACHE_VARIABLE: str(self.cache)}):
@@ -1495,7 +1506,7 @@ class LockTests(unittest.TestCase):
     def test_a_rekeyed_output_keeps_the_bytes_its_stale_row_locked(self):
         refit = b"LMSH refit"
         stale = {**self.row, "key": "o" * 64, "sha256": hashlib.sha256(refit).hexdigest(), "size": len(refit), "run": 5}
-        bake.place(refit, bake.cached(stale, bake.MESH_SUFFIX, self.cache))
+        bake.place(refit, bake.cached(stale, bake.BUNDLE_SUFFIX, self.cache))
         found = [bake_of("k" * 64, self.tree)]
         written = []
         with mock.patch.object(bake, "bakes", return_value=found), \
@@ -1504,7 +1515,7 @@ class LockTests(unittest.TestCase):
                 mock.patch("urllib.request.urlopen") as network, contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(bake.main(["lock", "--seed", "--cache", str(self.cache)]), 0)
         network.assert_not_called()
-        self.assertEqual(written[0], [{"output": "one.mesh", "source": "a.scene.toml", "key": "k" * 64,
+        self.assertEqual(written[0], [{"output": "one.bundle", "source": "a.scene.toml", "key": "k" * 64,
                                        "sha256": stale["sha256"], "size": len(refit), "seeded": True}])
 
     def test_check_says_which_rows_are_seeded(self):
@@ -1514,7 +1525,7 @@ class LockTests(unittest.TestCase):
                 contextlib.redirect_stdout(io.StringIO()) as out:
             self.assertEqual(bake.main(["check"]), 0)
         self.assertIn("1 of 1 rows are seeded", out.getvalue())
-        self.assertIn("one.mesh", out.getvalue())
+        self.assertIn("one.bundle", out.getvalue())
 
     def test_check_names_a_missing_key_and_an_unneeded_one(self):
         problems = bake.check([bake_of("n" * 64, self.tree)], {"k" * 64: self.row})
@@ -1523,7 +1534,7 @@ class LockTests(unittest.TestCase):
         self.assertIn("nothing needs it", problems[1])
 
     def test_a_cached_file_with_the_locked_bytes_is_used_without_the_network(self):
-        bake.store(self.tree, self.row, bake.MESH_SUFFIX, self.cache)
+        bake.store(self.tree, self.row, bake.BUNDLE_SUFFIX, self.cache)
         with mock.patch("urllib.request.urlopen") as network:
             paths = bake.fetch_all([bake_of("k" * 64, self.tree)], {"k" * 64: self.row}, self.cache)
         network.assert_not_called()
@@ -1542,7 +1553,7 @@ class LockTests(unittest.TestCase):
         response.__enter__.return_value.read.return_value = b"LMSH baked"
         with mock.patch("urllib.request.urlopen", return_value=response):
             paths = bake.fetch_all([bake_of("k" * 64, self.tree)], {"k" * 64: self.row}, self.cache)
-        self.assertEqual(next(iter(paths.values())), self.cache / f"{self.row['sha256']}.mesh")
+        self.assertEqual(next(iter(paths.values())), self.cache / f"{self.row['sha256']}.bundle")
 
     def test_every_missing_bake_is_named_with_its_key_source_and_way_out(self):
         gone = urllib.error.HTTPError("url", 404, "Not Found", {}, None)
@@ -1572,7 +1583,7 @@ class LockTests(unittest.TestCase):
 
     def test_a_cached_file_with_other_bytes_is_not_used(self):
         self.cache.mkdir()
-        (self.cache / f"{self.row['sha256']}.mesh").write_bytes(b"stale")
+        (self.cache / f"{self.row['sha256']}.bundle").write_bytes(b"stale")
         with self.assertRaisesRegex(bake.BakeMissing, "offline"):
             bake.fetch_all([bake_of("k" * 64, self.tree)], {"k" * 64: self.row}, self.cache, offline=True)
 
@@ -1637,8 +1648,8 @@ class ProduceTests(unittest.TestCase):
     def test_a_mesh_is_made_into_the_cache_and_indexed_by_its_key(self):
         row = self.produce()
         self.assertEqual(produce.made(self.found[0].key, self.cache), row)
-        self.assertEqual(bake.file_sha256(bake.cached(row, bake.MESH_SUFFIX, self.cache)), row["sha256"])
-        self.assertFalse(list((self.root / "tree").glob("*.mesh")), "the tree is never written")
+        self.assertEqual(bake.file_sha256(bake.cached(row, bake.BUNDLE_SUFFIX, self.cache)), row["sha256"])
+        self.assertFalse(list((self.root / "tree").glob("*.bundle")), "the tree is never written")
         self.assertEqual(row["host"], f"{platform.system()} {platform.machine()}")
         self.assertEqual(bake.lock_rows(self.found, {}, {row["key"]: {**row, "run": 3}})[0]["host"], row["host"])
 
@@ -1653,7 +1664,7 @@ class ProduceTests(unittest.TestCase):
         produce.export(row, self.cache, out)
         made = produce.import_run(out, 41, self.root / "other")
         self.assertEqual(bake.lock_rows(self.found, {}, made)[0]["run"], 41)
-        (out / "files" / f"{row['sha256']}.mesh").write_bytes(b"other")
+        (out / "files" / f"{row['sha256']}.bundle").write_bytes(b"other")
         with self.assertRaisesRegex(bake.BakeMissing, "run 41"):
             produce.import_run(out, 41, self.root / "third")
 
@@ -1682,7 +1693,7 @@ class ProduceTests(unittest.TestCase):
             produce.export(row, self.cache, upload / f"bakes-cpu-{attempt}")
             if made is later:
                 artifact = upload / f"bakes-cpu-{attempt}"
-                (artifact / "files" / f"{later['sha256']}.mesh").write_bytes(b"later")
+                (artifact / "files" / f"{later['sha256']}.bundle").write_bytes(b"later")
                 (artifact / produce.KEY_INDEX / f"{row['key']}.json").write_text(json.dumps(later), encoding="utf-8")
         with mock.patch.object(bake, "run_files", side_effect=lambda run, folder: upload):
             made = bake.runs_made([41], self.root / "attempts")
@@ -1694,7 +1705,7 @@ class ProduceTests(unittest.TestCase):
         for upload in uploads.values():
             produce.export(row, self.cache, upload)
         other = {**row, "sha256": hashlib.sha256(b"other").hexdigest()}
-        (uploads[42] / "files" / f"{other['sha256']}.mesh").write_bytes(b"other")
+        (uploads[42] / "files" / f"{other['sha256']}.bundle").write_bytes(b"other")
         (uploads[42] / produce.KEY_INDEX / f"{row['key']}.json").write_text(json.dumps(other), encoding="utf-8")
         with mock.patch.object(bake, "run_files", side_effect=lambda run, folder: uploads[run]):
             with self.assertRaises(bake.BakeMissing) as failed:
@@ -1874,6 +1885,7 @@ def current_lock(path):
     key tests read instead of the repo's lock, which a re-keying change leaves stale until it is re-locked."""
     poses = bake.Poses({}, resample=True)
     starts = {item.key: "0" * 64 for item in bake.bakes([build_pack.DEFAULT_SEARCH], {}, poses) if item.key}
+    starts.update({item.key: "0" * 64 for item in bake.bakes([build_pack.DEFAULT_SEARCH], starts, poses) if item.key})
     found = bake.bakes([build_pack.DEFAULT_SEARCH], starts, poses)
     made = {item.key: {"output": item.output, "source": bake.relative(item.source), "key": item.key,
                        "sha256": "0" * 64, "size": 0, "run": 1} for item in found}
@@ -1950,13 +1962,13 @@ class TreeTests(unittest.TestCase):
             with mock.patch.object(bake, "bakes_in", return_value=[item for item in found if item is not dropped]), \
                     self.assertRaisesRegex(bake.BakeMissing, "no bake keys these meshes") as raised:
                 build_pack.pack_bytes([build_pack.DEFAULT_SEARCH], cache=pathlib.Path(directory), offline=True)
-        self.assertIn(dropped.output.removesuffix(bake.MESH_SUFFIX), str(raised.exception))
+        self.assertIn(dropped.output.removesuffix(bake.BUNDLE_SUFFIX), str(raised.exception))
 
     def test_a_mesh_outside_the_repository_is_its_own_file(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             found, lock = filled_cache(root, self)
-            some_mesh = bake.cached(lock[found[0].key], bake.MESH_SUFFIX, root).read_bytes()
+            some_mesh = bake.cached(lock[found[0].key], bake.BUNDLE_SUFFIX, root).read_bytes()
             (root / "tree").mkdir()
             imported = write_import(root / "tree")
             for entries in build_pack.pack_files([imported]).values():
@@ -1972,9 +1984,9 @@ class TreeTests(unittest.TestCase):
             cache = pathlib.Path(directory)
             found, lock = filled_cache(cache, self)
             scratch = found[0]
-            mesh = cache / "scratch.mesh"
-            mesh.write_bytes(bake.cached(lock[scratch.key], bake.MESH_SUFFIX, cache).read_bytes())
-            name = scratch.output.removesuffix(bake.MESH_SUFFIX)
+            mesh = cache / "scratch.bundle"
+            mesh.write_bytes(bake.cached(lock[scratch.key], bake.BUNDLE_SUFFIX, cache).read_bytes())
+            name = scratch.output.removesuffix(bake.BUNDLE_SUFFIX)
             rows = {key: row for key, row in lock.items() if key != scratch.key}
             with mock.patch.object(bake, "read_lock", side_effect=lambda **kw: (rows, {}) if kw.get("table", "bake") is None else rows), \
                     mock.patch("urllib.request.urlopen") as network:

@@ -2,7 +2,7 @@
 it holds, without lighting the model again: what a change to the clustering or
 the data format costs.
 
-    python launcher/tools/r3d/rebake.py MESH.mesh [options]
+    python launcher/tools/r3d/rebake.py MESH.bundle [options]
 
 from the repository root. The mesh is rewritten in place unless --out-dir says
 otherwise, and rewriting what was written is a fixed point: the same
@@ -17,16 +17,17 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from r3d import log  # noqa: E402
+from r3d import log, mesh_bundle, mesh_asset, lod_asset
+from r3d.lod.bake_levels import bake_lit_mesh  # noqa: E402
 from r3d.import_settings import load_import_settings  # noqa: E402
-from r3d.lit_mesh import finest_triangles, read_lit_mesh, write_lit_mesh  # noqa: E402
+from r3d.lit_mesh import finest_triangles  # noqa: E402
 
 OPTIONS = ("meshlet_triangles", "leaf_triangles", "max_depth")
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("mesh", help="a <name>.mesh")
+    parser.add_argument("mesh", help="a <name>.bundle")
     parser.add_argument("--import", dest="settings", help="geometry settings for clustering")
     parser.add_argument("--out-dir", help="where to write; the mesh's own directory when omitted")
     parser.add_argument("--meshlet-triangles", type=int, help="most triangles in a cluster")
@@ -42,13 +43,22 @@ def main(argv=None):
 
     path = pathlib.Path(args.mesh)
     out_dir = pathlib.Path(args.out_dir) if args.out_dir else path.parent
-    mesh = read_lit_mesh(path)
-    pos, rgb, tris, double, face = finest_triangles(mesh)
-    options.setdefault("lod", mesh.lod is not None)
-    baked = write_lit_mesh(out_dir, path.stem, pos / mesh.position_scale, rgb, tris, double,
-                           position_scale=mesh.position_scale, face_rgb=face, **options)
-    log(f"{path.stem}: {len(baked.pos)} vertices, {len(baked.tris)} triangles, {len(baked.clusters)} clusters, "
-        f"{len(baked.nodes)} nodes")
+    entries, copies = mesh_bundle.decode(path.read_bytes())
+    products = []
+    for name, kind, blob in entries:
+        if kind != mesh_asset.TYPE:
+            if kind != lod_asset.TYPE:
+                products.append((name, kind, blob))
+            continue
+        mesh = mesh_bundle.read_mesh(entries, name)
+        pos, rgb, tris, double, face = finest_triangles(mesh)
+        baked = bake_lit_mesh(pos / mesh.position_scale, rgb, tris, double,
+                              position_scale=mesh.position_scale, face_rgb=face,
+                              **{ "lod": mesh.lod is not None, **options})
+        products.extend(mesh_bundle.mesh_entries(name, baked))
+        log(f"{name}: {len(baked.pos)} vertices, {len(baked.tris)} triangles, {len(baked.clusters)} clusters, "
+            f"{len(baked.nodes)} nodes")
+    (out_dir / path.name).write_bytes(mesh_bundle.encode(products, copies))
     return 0
 
 

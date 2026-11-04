@@ -10,7 +10,7 @@ import unittest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from anim import skeleton_asset
-from r3d import skin_asset, mesh_asset
+from r3d import skin_asset, mesh_asset, mesh_bundle
 from asset.engine_frame import to_engine, AXIS_SIGNS, ROTATION_SIGNS
 
 
@@ -292,9 +292,9 @@ class PackStep(unittest.TestCase):
                     if not placed:
                         (path / 'room.scene.toml').unlink()
                     packs, _ = build_pack.pack_jobs([path])
-                    mesh_id = next(key for key, source in packs['room' if placed else 'rig'].items() if source.suffix == '.mesh')
+                    mesh_id = next(key for key, source in packs['room' if placed else 'rig'].items() if source.suffix == '.bundle')
                     mesh_source = packs['room' if placed else 'rig'][mesh_id]
-                    mesh_source.write_bytes(mesh)
+                    mesh_source.write_bytes(mesh_bundle.encode([(mesh_id, mesh_asset.TYPE, mesh)], []))
                     decoded = parse_pack(build_pack.pack_bytes([path], offline=True)['room' if placed else 'rig'])
                     self.assertEqual(decoded['armature'][0], skeleton_asset.TYPE)
                     self.assertEqual(decoded[mesh_id + '.skin'][0], skin_asset.TYPE)
@@ -316,7 +316,7 @@ class PackStep(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             (root / 'rig.glb').write_bytes(data)
-            mesh_source = root / 'rig.mesh'
+            mesh_source = root / 'rig.bundle'
             skin_pack.source_rig.cache_clear()
             with mock.patch.object(gltf_read, 'load_asset', wraps=gltf_read.load_asset) as read:
                 for mode in SKIN_LIGHTING:
@@ -396,7 +396,7 @@ class PackStep(unittest.TestCase):
             row = decoded['skinned_renderers'][0]
             self.assertEqual(row['skeleton'], 'named_skeleton')
             item = scene.renderers[0]
-            mesh_source = root / 'rig.mesh'
+            mesh_source = root / 'rig.bundle'
             job = SimpleNamespace(settings=item.settings, object=item.object)
             additions = skin_pack.entries([(row['mesh'], mesh_source, skin_probe.mesh_entry())],
                 {mesh_source.resolve(): (job, scene, root)}, root, True)

@@ -7,6 +7,7 @@
 #include "asset/asset_bytes.h"
 #include "asset/asset_entry.h"
 #include "render/lcol_format.h"
+#include "render/llod_format.h"
 
 /* The entry's bytes are the structs' own layout, written by lit_mesh.py. */
 _Static_assert(sizeof(r3d_lit_cluster_t) == 22 && offsetof(r3d_lit_cluster_t, bounds) == 8
@@ -20,7 +21,7 @@ _Static_assert(sizeof(r3d_lit_cluster_lod_t) == 4 && sizeof(r3d_lit_lod_group_t)
                "the LOD records are not the layout lit_mesh.py writes");
 
 enum {
-    HEADER_WORDS = 14,
+    HEADER_WORDS = 11,
     ENTRY_ALIGNMENT = 4,
     COUNT_VERTEX = 0,
     COUNT_TRIANGLE,
@@ -33,9 +34,6 @@ enum {
     AT_CLUSTERS,
     AT_NODES,
     AT_FACE_COLORS,
-    COUNT_LOD_GROUP,
-    AT_CLUSTER_LOD,
-    AT_LOD_GROUPS,
 };
 
 _Static_assert(HEADER_WORDS * sizeof(uint32_t) == R3D_LIT_MESH_HEADER_BYTES, "the header is its words");
@@ -144,29 +142,37 @@ lod_is_ordered(const r3d_lit_mesh_t* mesh) {
     return true;
 }
 
-/* The levels of a mesh whose other arrays are checked. They come whole: the
- * groups and every cluster's record, or neither. */
-static asset_status_t
-levels_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
-    const uint32_t groups = word(asset->data, COUNT_LOD_GROUP);
-    const uint32_t cluster_lod_at = word(asset->data, AT_CLUSTER_LOD);
-    const uint32_t groups_at = word(asset->data, AT_LOD_GROUPS);
+asset_status_t
+r3d_lit_mesh_levels_from_asset(const asset_view_t* levels, r3d_lit_mesh_t* mesh) {
+    mesh->cluster_lod = NULL;
+    mesh->lod_groups = NULL;
+    mesh->lod_group_count = 0;
+    const asset_status_t status =
+        asset_entry_validate(*levels, LLOD_VERSION, LLOD_AT_VERSION, LLOD_HEADER_SIZE, ENTRY_ALIGNMENT);
+    if (status != ASSET_OK) {
+        return status;
+    }
+    const uint16_t groups = asset_read_u16(levels->data + LLOD_AT_GROUP_COUNT);
+    const uint32_t clusters = asset_read_u32(levels->data + LLOD_AT_CLUSTER_COUNT);
+    if (clusters != (uint32_t)mesh->cluster_count || groups == 0) {
+        return ASSET_ERR_FORMAT;
+    }
     if (groups >= R3D_LOD_NONE) {
         return ASSET_ERR_BOUNDS;
     }
-    if ((groups == 0) != (cluster_lod_at == 0) || (groups == 0) != (groups_at == 0)) {
-        return ASSET_ERR_FORMAT;
-    }
-    if (groups == 0) {
-        return ASSET_OK;
-    }
-    mesh->cluster_lod = array_at(asset, cluster_lod_at, (uint32_t)mesh->cluster_count, sizeof(r3d_lit_cluster_lod_t));
-    mesh->lod_groups = array_at(asset, groups_at, groups, sizeof(r3d_lit_lod_group_t));
-    mesh->lod_group_count = (int)groups;
-    if (mesh->cluster_lod == NULL || mesh->lod_groups == NULL) {
+    const uint64_t groups_at = LLOD_HEADER_SIZE + ((uint64_t)clusters * sizeof(r3d_lit_cluster_lod_t));
+    if (groups_at + ((uint64_t)groups * sizeof(r3d_lit_lod_group_t)) != levels->size) {
         return ASSET_ERR_BOUNDS;
     }
-    return lod_is_ordered(mesh) ? ASSET_OK : ASSET_ERR_FORMAT;
+    r3d_lit_mesh_t built = *mesh;
+    built.cluster_lod = (const void*)(levels->data + LLOD_HEADER_SIZE);
+    built.lod_groups = (const void*)(levels->data + groups_at);
+    built.lod_group_count = groups;
+    if (!lod_is_ordered(&built)) {
+        return ASSET_ERR_FORMAT;
+    }
+    *mesh = built;
+    return ASSET_OK;
 }
 
 asset_status_t
@@ -212,42 +218,58 @@ r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
     if (!clusters_cover_vertices(&built)) {
         return ASSET_ERR_FORMAT;
     }
-    const asset_status_t levels = levels_from_asset(asset, &built);
-    if (levels == ASSET_OK) {
-        *mesh = built;
+    *mesh = built;
+    return ASSET_OK;
+}
+
+static asset_status_t
+sibling_name(const char* mesh_id, const char* suffix, char out[ASSET_NAME_MAX]) {
+    const size_t length = strlen(mesh_id);
+    const size_t tail = strlen(suffix) + 1;
+    if (length == 0) {
+        return ASSET_ERR_FORMAT;
     }
-    return levels;
+    if (length + tail > ASSET_NAME_MAX) {
+        return ASSET_ERR_BOUNDS;
+    }
+    memcpy(out, mesh_id, length);
+    memcpy(out + length, suffix, tail);
+    return ASSET_OK;
 }
 
 asset_status_t
 r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh) {
+    *mesh = (r3d_lit_mesh_t){0};
     asset_view_t asset;
-    const asset_status_t status = asset_pack_find(pack, id, R3D_LIT_MESH_ASSET, &asset);
+    asset_status_t status = asset_pack_find(pack, id, R3D_LIT_MESH_ASSET, &asset);
     if (status != ASSET_OK) {
-        *mesh = (r3d_lit_mesh_t){0};
         return status;
     }
-    return r3d_lit_mesh_from_asset(&asset, mesh);
-}
-
-static asset_status_t
-r3d_lit_mesh_colour_name(const char* mesh_id, char out[ASSET_NAME_MAX]) {
-    const size_t length = strlen(mesh_id);
-    if (length == 0) {
-        return ASSET_ERR_FORMAT;
+    status = r3d_lit_mesh_from_asset(&asset, mesh);
+    if (status != ASSET_OK) {
+        return status;
     }
-    if (length + sizeof LCOL_NAME_SUFFIX > ASSET_NAME_MAX) {
-        return ASSET_ERR_BOUNDS;
+    char name[ASSET_NAME_MAX];
+    status = sibling_name(id, LLOD_NAME_SUFFIX, name);
+    if (status == ASSET_OK) {
+        status = asset_pack_find(pack, name, LLOD_ASSET, &asset);
+        if (status == ASSET_ERR_NOT_FOUND) {
+            return ASSET_OK;
+        }
+        if (status == ASSET_OK) {
+            status = r3d_lit_mesh_levels_from_asset(&asset, mesh);
+        }
     }
-    memcpy(out, mesh_id, length);
-    memcpy(out + length, LCOL_NAME_SUFFIX, sizeof LCOL_NAME_SUFFIX);
-    return ASSET_OK;
+    if (status != ASSET_OK) {
+        *mesh = (r3d_lit_mesh_t){0};
+    }
+    return status;
 }
 
 asset_status_t
 r3d_lit_mesh_open_colours(const asset_pack_t* pack, const char* mesh_id, uint16_t set, r3d_lit_mesh_t* mesh) {
     char name[ASSET_NAME_MAX];
-    asset_status_t status = r3d_lit_mesh_colour_name(mesh_id, name);
+    asset_status_t status = sibling_name(mesh_id, LCOL_NAME_SUFFIX, name);
     if (status != ASSET_OK) {
         return status;
     }

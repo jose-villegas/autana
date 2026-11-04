@@ -7,13 +7,12 @@ or pruned.
 """
 
 import pathlib
-import tempfile
 
 import numpy as np
 
 from r3d import lcol_asset, mesh_bundle
 from r3d.fit.gbuffer import IN_FRONT, distance, reference_buffers
-from r3d.lit_mesh import read_lit_mesh, rgb888
+from r3d.lit_mesh import finest_triangles, rgb888
 
 # The copy-coverage gate: over the held-out poses, the fitted rest may hide more of the frame's copy pixels
 # than its start by at most HIDDEN_MEAN_GROWTH on the mean and HIDDEN_WORST_GROWTH on the worst pose. Set
@@ -35,15 +34,7 @@ def placed_copies(bundle, flat):
     points, rgb, tris, double, vertex_point = [], [], [], [], []
     point_count = vertex_count = 0
     for name in dict.fromkeys(row["mesh"] for row in rows):
-        with tempfile.TemporaryDirectory() as folder:
-            path = pathlib.Path(folder) / f"{name}.mesh"
-            path.write_bytes(data[name])
-            mesh = read_lit_mesh(path)
-        sided = np.zeros(len(mesh.tris), dtype=np.int64)
-        for _vb, _vc, tbase, tcount, _lo, _hi, is_double in mesh.clusters:
-            sided[tbase:tbase + tcount] = int(is_double)
-        local, welded = np.unique(mesh.pos, axis=0, return_inverse=True)
-        local, welded = local / float(mesh.position_scale), welded.reshape(-1)
+        mesh = mesh_bundle.read_mesh(entries, name)
         encoding, _count, sets = lcol_asset.decode(data[lcol_asset.name_for_mesh(name)])
         if (encoding == lcol_asset.RGB565) != flat:
             raise ValueError(f"copy mesh {name} is {'flat' if encoding == lcol_asset.RGB565 else 'smooth'} "
@@ -51,9 +42,13 @@ def placed_copies(bundle, flat):
         for row in (row for row in rows if row["mesh"] == name):
             colours = sets[row["colour_set"]]
             colours = rgb888(np.frombuffer(colours, "<u2")) if flat else np.frombuffer(colours, "u1").reshape(-1, 3)
+            mesh.rgb, mesh.face_colors = (None, colours) if flat else (colours, None)
+            q, colour, faces, sided, face_colour = finest_triangles(mesh)
+            local, welded = np.unique(q, axis=0, return_inverse=True)
+            local, welded = local / float(mesh.position_scale), welded.reshape(-1)
             points.append(local @ np.asarray(row["matrix"], dtype=np.float64).T + np.asarray(row["position"]))
-            rgb.append(colours / 255.0)
-            tris.append(mesh.tris + vertex_count)
+            rgb.append((face_colour if flat else colour) / 255.0)
+            tris.append(faces + vertex_count)
             double.append(sided)
             vertex_point.append(welded + point_count)
             point_count += len(local)

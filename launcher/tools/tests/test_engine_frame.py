@@ -33,7 +33,7 @@ def mesh_entry(point=POINT, points=None):
     cluster_at = colors_at + len(colors) + (-len(colors) % 4)
     node_at = cluster_at + len(points) * mesh_asset.CLUSTER.size
     header = mesh_asset.BLOB_HEADER.pack(len(points), 0, len(points), len(points), 1, mesh_asset.BLOB_HEADER.size,
-                                        colors_at, 0, cluster_at, node_at, 0, 0, 0, 0)
+                                        colors_at, 0, cluster_at, node_at, 0)
     boxes = [(p[0] - 1, p[1] - 1, p[2], p[0] + 2, p[1] + 2, p[2] + 1) for p in points]
     cluster = b"".join(mesh_asset.CLUSTER.pack(i, 1, 0, 0, *box, 0) for i, box in enumerate(boxes))
     node = b"".join(mesh_asset.NODE.pack(*box, i, 1, 1) for i, box in enumerate(boxes))
@@ -57,7 +57,8 @@ class EngineFrameTests(unittest.TestCase):
         source = self.root / "probe.mesh"
         raw = mesh_entry()
         source.write_bytes(raw)
-        _, kind, converted = build_pack.pack_entry("probe", source)
+        kind = mesh_asset.TYPE
+        converted = build_pack.to_engine(kind, raw)
         self.assertEqual(kind, mesh_asset.TYPE)
         header = mesh_asset.BLOB_HEADER.unpack_from(converted)
         self.assertEqual(POSITION.unpack_from(converted, header[5]), (2, 3, 7))
@@ -70,12 +71,12 @@ class EngineFrameTests(unittest.TestCase):
     def test_unrepresentable_mirror_is_rejected(self):
         source = self.root / "probe.mesh"
         source.write_bytes(mesh_entry((2, 3, INT16_MIN)))
-        with self.assertRaisesRegex(build_pack.SettingsError, "int16"):
-            build_pack.pack_entry("probe", source)
+        with self.assertRaisesRegex(ValueError, "int16"):
+            build_pack.to_engine(mesh_asset.TYPE, source.read_bytes())
 
     def test_unrepresentable_entry_is_a_named_usage_error(self):
-        source = self.root / "probe.mesh"
-        source.write_bytes(mesh_entry((2, 3, INT16_MIN)))
+        source = self.root / "probe.bundle"
+        write_mesh(source, (2, 3, INT16_MIN))
         error = io.StringIO()
         with mock.patch.object(build_pack, "pack_jobs", return_value=({"probe": {"probe": source}}, {})), \
                 contextlib.redirect_stderr(error), self.assertRaises(SystemExit) as caught:
@@ -128,7 +129,7 @@ class EngineFrameTests(unittest.TestCase):
         points = [POINT, (5, -9, INT16_MIN + 1), (-4, 8, 12)]
         source = self.root / "rows.mesh"
         source.write_bytes(mesh_entry(points=points))
-        _, _, converted = build_pack.pack_entry("rows", source)
+        converted = build_pack.to_engine(mesh_asset.TYPE, source.read_bytes())
         header = mesh_asset.BLOB_HEADER.unpack_from(converted)
         for index, point in enumerate(points):
             expected = (point[0], point[1], -point[2])
@@ -196,3 +197,8 @@ class EngineFrameTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def write_mesh(path, point=POINT, name=None):
+    from r3d import mesh_bundle, mesh_asset
+    path.write_bytes(mesh_bundle.encode([(name or path.stem, mesh_asset.TYPE, mesh_entry(point))], []))

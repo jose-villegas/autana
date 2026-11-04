@@ -12,7 +12,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 import numpy as np
 from r3d.fit import stage
-from r3d import build_pack, lcol_asset, mesh_bundle, mesh_import, mesh_asset, scene_asset
+from r3d import build_pack, lcol_asset, lod_asset, mesh_bundle, mesh_import, mesh_asset, scene_asset
 from build.name_hash import name_hash
 from asset.asset_pack import NAME_BYTES, PackError, build_pack as encode_pack, parse_pack
 from test_scene_asset import SceneFiles
@@ -73,9 +73,9 @@ class MeshBundleTests(unittest.TestCase):
             self.assertEqual(len({row['mesh'] for row in manifest}), 2)
             self.assertEqual(len({row['name'] for row in manifest}), len(copies))
             for mesh_id in {row['mesh'] for row in manifest}:
-                path = pathlib.Path(directory) / 'read.mesh'
+                path = pathlib.Path(directory) / 'read.bundle'
                 path.write_bytes(blobs[mesh_id][1])
-                mesh = read_lit_mesh(path)
+                mesh = read_lit_mesh(blobs[mesh_id][1])
                 self.assertIsNone(mesh.rgb)
                 self.assertIsNone(mesh.face_colors)
                 encoding, count, sets = lcol_asset.decode(blobs[lcol_asset.name_for_mesh(mesh_id)][1])
@@ -100,6 +100,24 @@ class MeshBundleTests(unittest.TestCase):
 
     def test_flat_shapes_have_one_set_per_copy(self):
         self.check_products(True)
+
+    def test_a_levels_sibling_with_the_wrong_type_is_refused(self):
+        with tempfile.TemporaryDirectory() as folder:
+            data, _, _, job, _ = bundle_fixture(folder)
+            entries, copies = mesh_bundle.decode(data)
+            entry = lod_asset.encode([(mesh_asset.LOD_NONE, 0)], [(0, 0, 0, 1, 0)])
+            entries.append((lod_asset.name_for_mesh(job.asset_name), b"TEST", entry))
+            with self.assertRaisesRegex(PackError, "LLOD"):
+                mesh_bundle.decode(mesh_bundle.encode(entries, copies))
+
+    def test_own_coloured_rest_does_not_need_room_for_a_colour_sibling(self):
+        with tempfile.TemporaryDirectory() as folder:
+            data, _, _, _, _ = bundle_fixture(folder)
+            entries, copies = mesh_bundle.decode(data)
+            name = "x" * (NAME_BYTES - len(lcol_asset.NAME_SUFFIX))
+            renamed = mesh_bundle.rename_rest(entries, copies, name)
+            self.assertIn(name, {key for key, _, _ in renamed})
+            mesh_bundle.decode(mesh_bundle.encode(renamed, copies))
 
     def test_repeated_bakes_are_byte_identical(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -130,9 +148,9 @@ class MeshBundleTests(unittest.TestCase):
             emitted.clear()
             rest = [dict(mesh=job.asset_name, matrix=np.eye(3), position=np.zeros(3))] if job.asset_name in blobs else []
             for row in [*rest, *copies]:
-                back = root / 'read.mesh'
+                back = root / 'read.bundle'
                 back.write_bytes(blobs[row['mesh']])
-                mesh = read_lit_mesh(back)
+                mesh = read_lit_mesh(blobs[row["mesh"]])
                 world = mesh.pos @ np.asarray(row['matrix']).T + np.asarray(row['position']) * mesh.position_scale
                 emitted.update(canonical(np.rint(world), mesh.tris))
             self.assertEqual(emitted, actual)
@@ -177,7 +195,7 @@ class MeshBundleTests(unittest.TestCase):
                 with mock.patch.dict(sys.modules, {'r3d.appearance_simplify': SimpleNamespace(main=fit_main)}):
                     stage.fit(work / 'scene.scene.toml', scene, job, work, start=start,
                               target=work / (job.asset_name + mesh_bundle.SUFFIX))
-                self.assertEqual(asked, [lod])
+                self.assertEqual(asked, [False])
 
     def test_fit_changes_only_the_rest_of_a_start_bundle(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -191,14 +209,15 @@ class MeshBundleTests(unittest.TestCase):
             target = work / (job.asset_name + mesh_bundle.SUFFIX)
             def fit_main(args):
                 raw = pathlib.Path(args[args.index('--start') + 1])
-                self.assertEqual(raw.suffix, '.mesh')
+                self.assertEqual(raw.suffix, '.bundle')
                 self.assertEqual(args[args.index('--copies') + 1], str(start))
                 self.assertEqual(args[args.index('--copy-poses') + 1], str(work / 'held_out.txt'))
-                blob = bytearray(raw.read_bytes())
+                products, copied = mesh_bundle.decode(raw.read_bytes())
+                blob = bytearray(products[0][2])
                 blob[mesh_asset.read_mesh_header(blob).colors_at] ^= 1
                 out = pathlib.Path(args[args.index('--out') + 1])
                 out.mkdir()
-                (out / raw.name).write_bytes(blob)
+                (out / raw.name).write_bytes(mesh_bundle.encode([(products[0][0], mesh_asset.TYPE, blob)], copied))
             with mock.patch.dict(sys.modules, {'r3d.appearance_simplify': SimpleNamespace(main=fit_main)}):
                 stage.fit(work / 'scene.scene.toml', scene, job, work, start=start, target=target)
             before, after = parse_pack(data), parse_pack(target.read_bytes())
@@ -235,6 +254,26 @@ class FitCopiesTests(unittest.TestCase):
         self.assertEqual((len(mesh.rgb), len(mesh.tris)), (len(copies), len(copies)))
         face = rgb888(panel_colour(np.full((1, 3), 80)))[0]
         np.testing.assert_array_equal(np.rint(mesh.rgb * 255), np.tile(face, (len(copies), 1)))
+
+    def test_copy_levels_draw_only_the_finest_triangles(self):
+        from r3d.fit.copies import placed_copies
+        from r3d.lod.bake_levels import bake_lit_mesh
+        from test_r3d_lod_bake import wavy_grid
+        mesh = bake_lit_mesh(*wavy_grid())
+        self.assertIsNotNone(mesh.lod)
+        expected = sum(count for (_, _, _, count, _, _, _), (own, _) in zip(mesh.clusters, mesh.lod)
+                       if own == mesh_asset.LOD_NONE)
+        colours = lcol_asset.encode(lcol_asset.RGB888, len(mesh.pos), [mesh.rgb.astype('u1').tobytes()])
+        mesh.rgb = None
+        with tempfile.TemporaryDirectory() as folder:
+            data, _, _, _, _ = bundle_fixture(folder)
+            _, copies = mesh_bundle.decode(data)
+            row = {**copies[0], "mesh": "prototype", "colour_set": 0}
+            entries = mesh_bundle.mesh_entries("prototype", mesh)
+            entries.append((lcol_asset.name_for_mesh("prototype"), lcol_asset.TYPE, colours))
+            path = pathlib.Path(folder) / 'copy.bundle'
+            path.write_bytes(mesh_bundle.encode(entries, [row]))
+            self.assertEqual(len(placed_copies(path, flat=False).tris), expected)
 
     def test_copies_must_be_shaded_as_their_rest_is(self):
         from r3d.fit.copies import placed_copies
