@@ -539,6 +539,10 @@ render_context_observer_pose(const render_context_t* c, transformf_t* out) {
 
 /* The context's bytes a checkpoint holds: all but the observer, which ends it. */
 #define CARRIED_BYTES offsetof(render_context_t, observing)
+_Static_assert(offsetof(render_context_t, observer) + sizeof(((render_context_t*)0)->observer)
+                       + _Alignof(render_context_t)
+                   > sizeof(render_context_t),
+               "the observer ends render_context_t: a checkpoint holds the bytes before it");
 
 void
 render_context_checkpoint_capture(checkpoint_t* saved, render_context_t* context) {

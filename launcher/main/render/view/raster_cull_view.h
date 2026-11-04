@@ -89,7 +89,7 @@ typedef struct {
     int next_cluster, next_triangle; /* the next instance's first IDs, as the draw reaches it */
     const raster_t* raster;
     render_view_t camera, spectator;
-    transformf_t spectator_pose; /* what `spectator` was made from */
+    transformf_t spectator_pose; /* what `spectator` was made from, exactly: render_view_pose() only to rounding */
     raster_cull_frame_t frame;
     uint8_t fate[RASTER_CULL_CLUSTERS_MAX];
     uint16_t set_up[RASTER_CULL_CLUSTERS_MAX];
