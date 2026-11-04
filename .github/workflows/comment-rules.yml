@@ -228,6 +228,11 @@ jobs:
       - name: Every generated file is what its banner's command makes
         run: python3 scripts/gates/check_generated_files.py
 
+      # Doc Images regenerates the figure index only on main; running it here with the same
+      # requirements catches a new import before it reaches main.
+      - name: The figure index runs on the generator dependencies
+        run: python3 launcher/tools/docs/figures_runner.py index
+
       - uses: ./.github/actions/job-inputs
         if: ${{ !cancelled() }}
         with: {step: record}
