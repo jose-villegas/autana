@@ -103,8 +103,11 @@ load(void) {
     scene_failure_t why;
     loaded = scene_load(HERD_SCENE, &why);
     if (loaded == NULL) {
-        fail(why.asset == ASSET_ERR_NOT_FOUND || why.asset == ASSET_ERR_NO_PACK ? "no herd pack: flash it"
-                                                                                : "herd did not load");
+        char what[RENDER_LAB_STATUS_LEN];
+        if (snprintf(what, sizeof what, "herd did not load: %s %d/%d", why.what, (int)why.status, (int)why.asset) < 0) {
+            what[0] = '\0';
+        }
+        fail(why.asset == ASSET_ERR_NOT_FOUND || why.asset == ASSET_ERR_NO_PACK ? "no herd pack: flash it" : what);
         return false;
     }
     camera = scene_find(loaded, name_hash(HERD_CAMERA));
