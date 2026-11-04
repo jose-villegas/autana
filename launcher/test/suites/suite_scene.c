@@ -661,6 +661,7 @@ typedef struct {
     size_t lent_used;
     void* lent_last;
     size_t lent_last_size;
+    size_t lent_calls;
 } fixture_t;
 
 static fixture_t fx;
@@ -810,6 +811,7 @@ lend(size_t size, size_t align) {
         return NULL;
     }
     fx.lent_used = at + size;
+    fx.lent_calls++;
     fx.lent_last = fx.lent + at;
     fx.lent_last_size = size;
     return fx.lent_last;
@@ -916,7 +918,16 @@ test_only_static_mesh_arrays_are_made_resident(void) {
         }
     }
     scene_unload(scene);
-    TEST_ASSERT_NULL(load("test_skin")->resident);
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(fx.lent);
+    (void)scene_set_take(lend);
+    scene_t* skin_scene = load("test_skin");
+    TEST_ASSERT_NULL(skin_scene->resident);
+
+    enum { SCENE_AND_ANIMATOR_TAKES = 2 };
+
+    TEST_ASSERT_EQUAL_size_t(SCENE_AND_ANIMATOR_TAKES, fx.lent_calls);
+    scene_unload(skin_scene);
     TEST_ASSERT_NULL(load("test_aliases")->resident);
 }
 
@@ -928,17 +939,26 @@ test_resident_allocation_failure_rolls_back_the_load(void) {
 
     enum { SCENE_BLOCK_ALLOCATION_COUNT = 1 };
 
-    scene_fail_allocation_after = SCENE_BLOCK_ALLOCATION_COUNT;
-    scene_failure_t why;
-    scene_t* scene = scene_load_from(&fx.pack, "test_pair", &why);
-    scene_fail_allocation_after = -1;
-    TEST_ASSERT_NULL(scene);
-    TEST_ASSERT_EQUAL_INT(SCENE_ERR_MEMORY, why.status);
-    TEST_ASSERT_EQUAL_INT(ASSET_OK, why.asset);
-    TEST_ASSERT_EQUAL_STRING("test_pair", why.what);
-    TEST_ASSERT_EQUAL_INT(0, scene_loaded_count());
-    TEST_ASSERT_EQUAL_size_t(psram, memory_free_bytes(MEMORY_PSRAM));
-    TEST_ASSERT_EQUAL_size_t(internal, memory_free_bytes(MEMORY_INTERNAL));
+    const struct {
+        const char* id;
+        int allocation;
+    } cases[] = {{"test_pair", SCENE_BLOCK_ALLOCATION_COUNT}, {"test_flight", SCENE_BLOCK_ALLOCATION_COUNT + 1}};
+
+    const size_t lent = fx.lent_used;
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        scene_fail_allocation_after = cases[i].allocation;
+        scene_failure_t why;
+        scene_t* scene = scene_load_from(&fx.pack, cases[i].id, &why);
+        scene_fail_allocation_after = -1;
+        TEST_ASSERT_NULL(scene);
+        TEST_ASSERT_EQUAL_INT(SCENE_ERR_MEMORY, why.status);
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, why.asset);
+        TEST_ASSERT_EQUAL_STRING(cases[i].id, why.what);
+        TEST_ASSERT_EQUAL_INT(0, scene_loaded_count());
+        TEST_ASSERT_EQUAL_size_t(psram, memory_free_bytes(MEMORY_PSRAM));
+        TEST_ASSERT_EQUAL_size_t(internal, memory_free_bytes(MEMORY_INTERNAL));
+        TEST_ASSERT_EQUAL_size_t(lent, fx.lent_used);
+    }
 }
 
 static void
@@ -2224,6 +2244,25 @@ make_lcol_pack(const lcol_case_t* spec, uint16_t encoding, const char* message) 
     }
     const uint32_t total = test_pack_finish(&pack);
     TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, total), message);
+}
+
+static void
+test_static_face_colours_are_resident_and_equal_the_pack(void) {
+    fixture();
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(fx.lent);
+    (void)scene_set_take(lend);
+    const lcol_case_t spec = {.second_set = LCOL_TEST_SETS - 1};
+    make_lcol_pack(&spec, LCOL_ENCODING_RGB565, "static face colours");
+    scene_t* scene = load("test_pair");
+    const r3d_lit_mesh_t* first = &scene->renderers[0].mesh;
+    const r3d_lit_mesh_t* second = &scene->renderers[1].mesh;
+    TEST_ASSERT_NULL(first->colors);
+    TEST_ASSERT_NULL(second->colors);
+    TEST_ASSERT_NOT_NULL(first->face_colors);
+    TEST_ASSERT_NOT_NULL(second->face_colors);
+    const size_t bytes = resident_mesh_bytes(first) + (size_t)second->triangle_count * sizeof *second->face_colors;
+    assert_resident_mesh_arrays(scene, bytes);
 }
 
 static void
@@ -4601,6 +4640,7 @@ run_scene_suite(void) {
     scene_unload_all();
     const memory_take_fn lender = scene_set_take(NULL);
     RUN_TEST(test_static_mesh_arrays_are_resident_and_equal_the_pack);
+    RUN_TEST(test_static_face_colours_are_resident_and_equal_the_pack);
     RUN_TEST(test_only_static_mesh_arrays_are_made_resident);
     RUN_TEST(test_resident_allocation_failure_rolls_back_the_load);
     RUN_TEST(test_table_later_frames_mode_changes_and_light_enable);
