@@ -12,7 +12,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 import numpy as np
 from r3d.fit import stage
-from r3d import build_pack, lcol_asset, lod_asset, mesh_bundle, mesh_import, mesh_asset, scene_asset
+from r3d import build_pack, lcol_asset, lod_asset, mesh_bundle, mesh_import, mesh_asset, scene_asset, rebake
 from build.name_hash import name_hash
 from asset.asset_pack import NAME_BYTES, PackError, build_pack as encode_pack, parse_pack
 from test_scene_asset import SceneFiles
@@ -24,9 +24,9 @@ from r3d.import_settings import MESHLET_TRIANGLES, albedo_jobs, load_import_sett
 from tests.test_r3d_bake import canonical
 
 
-def bundle_fixture(directory, flat=False, lod=False, fit=None):
-    p = np.array([[0., 0, 0], [4, 0, 0], [0, 4, 0]])
-    t = np.array([[0, 1, 2]])
+def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, triangles=None):
+    p = np.asarray(positions) if positions is not None else np.array([[0., 0, 0], [4, 0, 0], [0, 4, 0]])
+    t = np.asarray(triangles) if triangles is not None else np.array([[0, 1, 2]])
     rgb = np.full(p.shape, 80)
     labels = np.zeros(len(t), dtype=int)
     rule = {'match': {'material': 'prop'}, 'triangles': 1}
@@ -118,6 +118,21 @@ class MeshBundleTests(unittest.TestCase):
             renamed = mesh_bundle.rename_rest(entries, copies, name)
             self.assertIn(name, {key for key, _, _ in renamed})
             mesh_bundle.decode(mesh_bundle.encode(renamed, copies))
+
+    def test_rebaking_rest_preserves_copy_geometry_levels_and_lighting(self):
+        from test_r3d_lod_bake import wavy_grid
+        points, _, triangles, _ = wavy_grid()
+        with tempfile.TemporaryDirectory() as folder:
+            data, _, _, job, _ = bundle_fixture(folder, lod=True, positions=points, triangles=triangles)
+            before, copies = mesh_bundle.decode(data)
+            path = pathlib.Path(folder) / (job.asset_name + mesh_bundle.SUFFIX)
+            path.write_bytes(data)
+            rebake.main([str(path), "--meshlet-triangles", str(MESHLET_TRIANGLES // 2)])
+            after, placed = mesh_bundle.decode(path.read_bytes())
+            changed = {job.asset_name, lod_asset.name_for_mesh(job.asset_name)}
+            self.assertEqual([row for row in before if row[0] not in changed],
+                             [row for row in after if row[0] not in changed])
+            self.assertEqual(placed, copies)
 
     def test_repeated_bakes_are_byte_identical(self):
         with tempfile.TemporaryDirectory() as directory:

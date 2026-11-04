@@ -49,7 +49,7 @@ entry.
 | `build_pack.py --skip-unlocked FILE` | leaves out each pack whose bakes only lack their lock rows and names it in FILE; any other missing bake still fails |
 | `bake/bake.py list\|check\|fetch` | the bakes the packs need, each keyed on what makes it, and the lock of their bytes |
 | `bake/bake.py bake` then `lock --from-run N` | makes the bakes the lock lacks into the cache; locks the ones a CI run made |
-| `rebake.py` | rewrites one `.bundle`'s clusters and octree; a fixed point |
+| `rebake.py` | rewrites a `.bundle`'s rest mesh clusters and octree, retaining copies |
 
 `launcher/tools/asset/asset_pack.py` writes the pack,
 `launcher/tools/asset/asset_directory.py` the directory,

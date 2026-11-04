@@ -4,11 +4,11 @@ the data format costs.
 
     python launcher/tools/r3d/rebake.py MESH.bundle [options]
 
-from the repository root. The mesh is rewritten in place unless --out-dir says
+from the repository root. The rest is rewritten in place unless --out-dir says
 otherwise, and rewriting what was written is a fixed point: the same
 triangles always give the same bytes. Anything before that stage, the model,
 its simplification or its light, needs the import settings that baked it.
-Run build_pack.py afterwards to put the result in the pack.
+Copy entries pass through unchanged. Run build_pack.py to put the result in the pack.
 """
 
 import argparse
@@ -17,10 +17,9 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from r3d import log, mesh_bundle, mesh_asset, lod_asset
-from r3d.lod.bake_levels import bake_lit_mesh  # noqa: E402
-from r3d.import_settings import load_import_settings  # noqa: E402
-from r3d.lit_mesh import finest_triangles  # noqa: E402
+from r3d import log, mesh_bundle, lod_asset
+from r3d.lod.levels_stage import levels  # noqa: E402
+from r3d.import_settings import MESHLET_TRIANGLES, load_import_settings  # noqa: E402
 
 OPTIONS = ("meshlet_triangles", "leaf_triangles", "max_depth")
 
@@ -43,22 +42,16 @@ def main(argv=None):
 
     path = pathlib.Path(args.mesh)
     out_dir = pathlib.Path(args.out_dir) if args.out_dir else path.parent
-    entries, copies = mesh_bundle.decode(path.read_bytes())
-    products = []
-    for name, kind, blob in entries:
-        if kind != mesh_asset.TYPE:
-            if kind != lod_asset.TYPE:
-                products.append((name, kind, blob))
-            continue
-        mesh = mesh_bundle.read_mesh(entries, name)
-        pos, rgb, tris, double, face = finest_triangles(mesh)
-        baked = bake_lit_mesh(pos / mesh.position_scale, rgb, tris, double,
-                              position_scale=mesh.position_scale, face_rgb=face,
-                              **{ "lod": mesh.lod is not None, **options})
-        products.extend(mesh_bundle.mesh_entries(name, baked))
-        log(f"{name}: {len(baked.pos)} vertices, {len(baked.tris)} triangles, {len(baked.clusters)} clusters, "
-            f"{len(baked.nodes)} nodes")
-    (out_dir / path.name).write_bytes(mesh_bundle.encode(products, copies))
+    data = path.read_bytes()
+    entries, copies = mesh_bundle.decode(data)
+    name = mesh_bundle.rest_name(entries, copies)
+    lod = options.pop("lod", lod_asset.name_for_mesh(name) in {key for key, _, _ in entries})
+    meshlets = options.pop("meshlet_triangles", MESHLET_TRIANGLES)
+    result = levels(data, name, lod, meshlets, **options)
+    baked = mesh_bundle.read_mesh(mesh_bundle.decode(result)[0], name)
+    (out_dir / path.name).write_bytes(result)
+    log(f"{name}: {len(baked.pos)} vertices, {len(baked.tris)} triangles, {len(baked.clusters)} clusters, "
+        f"{len(baked.nodes)} nodes")
     return 0
 
 

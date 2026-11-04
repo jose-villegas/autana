@@ -71,11 +71,9 @@ The empty exclude clears the clone's default exclusion for this pull.
 The hosted doc workflow caches these LFS objects by their content identifiers;
 the self-hosted GPU runner retains its local LFS objects.
 
-**`rebake.py` or a full import.** Rebake a `.bundle` when only clustering
-or data format changes: it reads its triangles and colours back and rewrites
-the clusters in place. Run `build_pack.py` after either. Re-import a scene when a mesh's source,
-simplification or light changes. Both commands are fixed points: the former
-canonicalizes triangle order and the latter uses the import file's fixed seed.
+**`rebake.py` or a full import.** Recluster a bundle's rest mesh; copies and
+colour sets stay intact. Re-import for source, simplification or light changes.
+Run `build_pack.py` after either command.
 
 **The `seal_seams` import option.** `simplify(seal_seams=True)`, off by default,
 is another way to import the same mesh, with fewer empty pixel-sized spots at
