@@ -197,11 +197,11 @@ def step_seconds(previous):
 
 
 def lane_pace(results, previous):
-    """The seconds a lane's next step is taken to need: the pace of its own measured steps this night, else
-    the pace its board's last night manifest gives (step_seconds)."""
-    if any(result.outcome == "measured" for result in results):
-        return step_seconds(dict(steps=[vars(result) for result in results]))
-    return step_seconds(previous)
+    """The seconds a lane's next step is taken to need: its slowest measured step this night, so a slow step
+    in the last slot still ends by the deadline; else the pace its board's last night manifest gives."""
+    tonight = [result.wait_seconds + result.build_seconds + result.measure_seconds
+               for result in results if result.outcome == "measured"]
+    return max(tonight) if tonight else step_seconds(previous)
 
 
 def lane_capacity(previous, start, deadline, selftest=False):
@@ -407,7 +407,7 @@ def run_chain(steps, args, runner=None, clock=None):
             save()
     except KeyboardInterrupt:
         stop_reason = "interrupted"
-        if current and current.outcome not in ("measured", "skipped_same_image"):
+        if current and current.outcome in FAILED_STEPS:
             # A step stopped part way settles nothing: the next night owes it again.
             current.outcome = "not_run_interrupted"
         raise
@@ -596,22 +596,29 @@ def run_night(args, clock=None, launch=None):
         process = launch(command, cwd=args.repo, env=env)
         processes.append((process, clock.now(), lane["estimate"], board))
 
-    def stop(process, board, grace):
-        # A remote lane is asked to stop first, so its host restores the board and the folder comes back.
-        lane = planned["lanes"].get(board, {})
-        if lane.get("host"):
+    def stop(lanes, grace):
+        """Stops each (process, board) lane. Remote lanes are all asked first, so their hosts restore the boards
+        and the folders come back within one shared `grace`; what is still running then is stopped here."""
+        asked = []
+        for process, board in lanes:
+            host = planned["lanes"].get(board, {}).get("host")
+            if not host:
+                continue
             try:
-                subprocess.run([*remote_command(), "stop", lane["host"], board], timeout=RESCAN_SECONDS,
+                subprocess.run([*remote_command(), "stop", host, board], timeout=RESCAN_SECONDS,
                                stdin=subprocess.DEVNULL)
+                asked.append(process)
             except (OSError, subprocess.SubprocessError) as error:
                 print(f"lane {board}: remote stop: {error}", file=sys.stderr)
-            else:
-                try:
-                    process.wait(timeout=grace)
-                    return
-                except subprocess.TimeoutExpired:
-                    pass
-        stop_process_tree(process)
+        until = clock.now() + timedelta(seconds=grace)
+        for process, _ in lanes:
+            try:
+                if process in asked:
+                    process.wait(timeout=max(0, (until - clock.now()).total_seconds()))
+                    continue
+            except subprocess.TimeoutExpired:
+                pass
+            stop_process_tree(process)
 
     previous_handler = signal.signal(signal.SIGTERM, signal.default_int_handler)
     try:
@@ -628,21 +635,25 @@ def run_night(args, clock=None, launch=None):
                or any(id(process) not in hung and board not in late and process.poll() is None
                       for process, _, _, board in processes)):
             clock.sleep(RESCAN_SECONDS)
+            stopping = []
             for process, started, estimate, board in processes:
                 if id(process) in hung or board in late or process.poll() is not None:
                     continue
                 if (clock.now() - started).total_seconds() >= LANE_HANG_FACTOR * max(estimate, FIRST_STEP_SECONDS):
                     print(f"LANE_HANG_FACTOR expired for board {board}", file=sys.stderr)
-                    stop(process, board, REMOTE_STOP_SECONDS)
                     hung.add(id(process))
                     failed = down = True
                 elif deadline and clock.now() >= deadline:
                     # The board is the day's from the deadline: a lane whose step overran its pace is cut there.
                     print(f"::warning::lane {board} still running at the deadline {deadline.isoformat()}; stopped",
                           file=sys.stderr)
-                    stop(process, board, REMOTE_STOP_SECONDS)
                     late.add(board)
                     failed = True
+                else:
+                    continue
+                stopping.append((process, board))
+            if stopping:
+                stop(stopping, REMOTE_STOP_SECONDS)
             if clock.now() >= cutoff:
                 continue
             try:
@@ -687,10 +698,9 @@ def run_night(args, clock=None, launch=None):
             while pending:
                 try:
                     if interrupted:
-                        for process, _, _, board in processes:
-                            if process in pending and process.poll() is None:
-                                # A cancelled job has seconds: the remote board is freed, its data may not return.
-                                stop(process, board, 0)
+                        # A cancelled job has seconds: the remote board is freed, its data may not return.
+                        stop([(process, board) for process, _, _, board in processes
+                              if process in pending and process.poll() is None], 0)
                     if pending[0].wait():
                         failed = True
                     close_process_tree(pending.pop(0))
@@ -712,9 +722,11 @@ def run_night(args, clock=None, launch=None):
         failed = down = True
     if planned["lanes"]:
         key = datetime.fromisoformat(planned["started"]).strftime(MARKER_KEY_FORMAT)
-        # A lane cut at the deadline is judged as one that stopped there itself.
+        # A lane cut at the deadline is judged as one that stopped there itself; a lane stopped here
+        # without unwinding saved no end.
         manifests = {board: read_night(args.data, board, key) for board in planned["lanes"]}
-        down |= not all(night_ran(dict(manifest, stop_reason="deadline") if board in late and manifest else manifest)
+        down |= not all(night_ran(dict(manifest, stop_reason="deadline", ended=manifest.get("ended") or deadline.isoformat())
+                                  if board in late and manifest else manifest)
                         for board, manifest in manifests.items())
     # For the board outage alarm: a night whose lanes all ran is no outage, whatever their tests reported.
     output({"boards_ran": not down})

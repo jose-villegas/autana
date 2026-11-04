@@ -1086,6 +1086,17 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual((manifest["last_attempted"], manifest["last_measured"]), (self.commits[1], self.commits[1]))
         self.assertNotIn(self.commits[3], chain.attempted([manifest]))
 
+    def test_lane_pace_is_the_slowest_measured_step_tonight_else_the_last_nights(self):
+        previous = self.paced(chain.FIRST_STEP_SECONDS)
+        step = chain.Step(self.commits[1], 101, "new", 2)
+        results = [chain.StepResult(step, "measured", wait_seconds=1, build_seconds=2, measure_seconds=3),
+                   chain.StepResult(step, "measured", build_seconds=40, measure_seconds=60),
+                   chain.StepResult(step, "measured", build_seconds=5, measure_seconds=5),
+                   chain.StepResult(step, "skipped_same_image", build_seconds=1000)]
+        self.assertEqual(chain.lane_pace(results, previous), 100)
+        self.assertEqual(chain.lane_pace(results[3:], previous), chain.FIRST_STEP_SECONDS)
+        self.assertEqual(chain.lane_pace([], None), chain.FIRST_STEP_SECONDS)
+
     def test_a_lane_starts_no_step_its_planned_pace_puts_past_the_deadline(self):
         pace = chain.FIRST_STEP_SECONDS
         self.args.previous = self.paced(pace)
@@ -1119,9 +1130,10 @@ class NightlyTests(unittest.TestCase):
     def test_the_night_stops_a_lane_still_running_at_the_deadline(self):
         ran = dict(ended="2026-10-18T10:01:00+00:00", stop_reason="interrupted",
                    selftest=dict(outcome="passed"), steps=[dict(outcome="measured"), dict(outcome="not_run_interrupted")])
-        # Cut at the deadline, a board that was running steps was up; one that left no manifest, or whose
-        # self-test never completed, was not.
-        for manifest, boards_ran in ((ran, "true"), (None, "false"),
+        # Cut at the deadline, a board that was running steps was up, even when killed before it saved its end;
+        # one that left no manifest, or whose self-test never completed, was not.
+        killed = {key: value for key, value in ran.items() if key != "ended"}
+        for manifest, boards_ran in ((ran, "true"), (killed, "true"), (None, "false"),
                                      (dict(ran, selftest=dict(outcome="incomplete")), "false")):
             with self.subTest(manifest=manifest):
                 self.stop_tree.reset_mock()
@@ -1675,12 +1687,13 @@ class NightlyTests(unittest.TestCase):
                          [("44:BD:8D:78:21:24", None), ("20E8", "book2")])
         self.assertEqual(listing["unreachable"], ["legion"])
 
-    def remote_night(self, launch, lanes=None):
+    def remote_night(self, launch, lanes=None, deadline=None):
         lane = dict(lane="1/2", previous=None, steps=[], estimate=chain.FIRST_STEP_SECONDS, host="book2",
                     host_name="Book2")
         path = self.root / "plan.json"
         chain.write_json(path, dict(tip=self.commits[-1], night="2026-10-18", started=self.clock.now().isoformat(),
-                                    marker=self.clock.now().isoformat(), **self.window(), lanes=lanes or {"20E8": lane}))
+                                    marker=self.clock.now().isoformat(), **self.window(), deadline=deadline,
+                                    lanes=lanes or {"20E8": lane}))
         args = SimpleNamespace(plan=path, repo=self.repo, data=self.args.data, out=self.args.out,
                                suite=[("suite", "-", "table with spaces")])
         with patch.dict(os.environ, REMOTE_LANE_COMMAND="bash remote-lane.sh", SELFTEST_BOARD="20E8",
@@ -1740,6 +1753,24 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual(status, 1)
         self.assertEqual(stops, [["bash", "remote-lane.sh", "stop", "book2", "20E8"]])
         process.wait.assert_any_call(timeout=chain.REMOTE_STOP_SECONDS)
+        self.stop_tree.assert_not_called()
+
+    def test_remote_lanes_cut_at_the_deadline_are_all_asked_before_any_grace(self):
+        lane = dict(lane="1/2", previous=None, steps=[], estimate=10 * chain.FIRST_STEP_SECONDS, host="book2",
+                    host_name="Book2")
+        events = []
+
+        def launch(command, **options):
+            board = command[4]
+            return SimpleNamespace(poll=lambda: None, wait=lambda timeout=None: events.append("wait " + board))
+        deadline = self.clock.now() + timedelta(seconds=chain.RESCAN_SECONDS)
+        def stop(command, **options):
+            events.append("stop " + command[-1])
+        with patch.object(chain.subprocess, "run", side_effect=stop), patch("builtins.print"), \
+                patch.object(chain, "fleet_scan", return_value=([], dict(boards=[], unreachable=[]))):
+            self.remote_night(launch, lanes={"20E8": lane, "2124": dict(lane, lane="2/2")}, deadline=deadline.isoformat())
+        # One shared grace: a second remote lane is not cut a whole grace after the first.
+        self.assertEqual(events[:4], ["stop 20E8", "stop 2124", "wait 20E8", "wait 2124"])
         self.stop_tree.assert_not_called()
 
     def test_remote_stop_that_times_out_kills_the_local_tree(self):

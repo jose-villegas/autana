@@ -276,6 +276,7 @@ sequenceDiagram
     loop Every minute until BOARD_LAST_START
         Night->>Lanes: Start a lane on each newly free board, on any host
     end
+    Night->>Lanes: Stop each lane still running at BOARD_END
     Lanes-->>Night: Lane outcomes and timestamps
     Night->>Night: Record timeline and host free time
 ```
@@ -295,8 +296,8 @@ checks the step fits, and the night stops a lane still running there.
 | No room | The board gets no lane and stays free |
 | The rest | Stays in the queue for joiners, then the next night |
 | Override | A run marked after `BOARD_END` is not sized |
-| Running lane | Starts no step whose pace would end it past `BOARD_END`: the median of the lane's own measured steps that night, else the step time above |
-| At `BOARD_END` | The night stops a lane still running; its board counts as up |
+| Running lane | Starts no step whose pace would end it past `BOARD_END`: the slowest of the lane's own measured steps that night, else the step time above |
+| At `BOARD_END` | The night stops a lane still running; the outage alarm judges it as a lane that stopped there itself |
 
 The zone is the NIGHT_ZONE repository variable (IANA name; UTC when unset).
 The marker is the first local start at or after the trigger; override starts now.
@@ -367,7 +368,7 @@ an anchor always measures.
 
 A lane stops after `CAPTURE_FAILURE_LIMIT` consecutive capture failures, when its
 board unplugs, or with `not_run_deadline` steps at the deadline. A returning planned board does not restart.
-A step stopped part way is `not_run_interrupted`: like every `not_run` step, the next night owes it.
+A step stopped part way is owed again: a lane that unwinds records it as `not_run_interrupted`, one killed outright never saved it.
 
 A busy heavy lock stops the lane with `not_run_busy` and preserves its cursors.
 Build failures advance `last_attempted`; measured steps advance both cursors
