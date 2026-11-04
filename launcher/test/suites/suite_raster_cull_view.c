@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "box3f_expect.h"
 #include "raster_rig.h"
 #include "render_view_fixture.h"
 #include "suites.h"
@@ -670,12 +671,18 @@ somewhere_else(void) {
     return transformf_looking((vec3f_t){200.0F, 150.0F, -250.0F}, (vec3f_t){-1.0F, -0.5F, 1.0F}, vec3f_unit_y());
 }
 
+static raster_cull_from_t
+cull_from(void) {
+    const tune_entry_t* entry = tune_find(tune_shared(), TUNE_NAME(cullview, from));
+    TEST_ASSERT_NOT_NULL(entry);
+    return (raster_cull_from_t)*entry->value;
+}
+
 /* With the observer set for one frame and then cleared, every view draws its
  * next frame as a run that never set it; a view with no second draw draws
  * even the observed frame so, and reports no pose. */
 static void
-test_observer_off_draws_every_view_as_a_straight_run(void) {
-    scene_t* s = scene_open();
+observer_off_draws_every_view_as_a_straight_run(scene_t* s) {
     const transformf_t elsewhere = somewhere_else();
     for (int v = RENDER_DEBUG_VIEW_SHADED; v <= RENDER_DEBUG_VIEW_COUNT; v++) {
         const render_debug_view_t* row = render_context_debug_view(v);
@@ -694,7 +701,18 @@ test_observer_off_draws_every_view_as_a_straight_run(void) {
         context_draw(s, &s->straight);
         context_draw(s, &s->context);
         assert_same_picture(&s->straight, &s->context);
-        TEST_ASSERT_FALSE(render_context_observer_pose(&s->context, &seen));
+        TEST_ASSERT_EQUAL(second && cull_from() != RASTER_CULL_FROM_CAMERA,
+                          render_context_observer_pose(&s->context, &seen));
+    }
+}
+
+/* ... for each cullview.from: the camera, which then draws no second view, and both spectators. */
+static void
+test_observer_off_draws_every_view_as_a_straight_run(void) {
+    scene_t* s = scene_open();
+    for (int from = 0; from < RASTER_CULL_FROM_COUNT; from++) {
+        set_cull_from((raster_cull_from_t)from);
+        observer_off_draws_every_view_as_a_straight_run(s);
     }
 }
 
@@ -702,19 +720,14 @@ test_observer_off_draws_every_view_as_a_straight_run(void) {
  * from a view's unit axes. */
 #define POSE_ROUNDING 1e-4F
 
-static void
-assert_near(vec3f_t expected, vec3f_t actual) {
-    TEST_ASSERT_FLOAT_WITHIN(POSE_ROUNDING, expected.x, actual.x);
-    TEST_ASSERT_FLOAT_WITHIN(POSE_ROUNDING, expected.y, actual.y);
-    TEST_ASSERT_FLOAT_WITHIN(POSE_ROUNDING, expected.z, actual.z);
-}
-
 /* The same place, facing the same way with the same up. */
 static void
 assert_pose_near(const transformf_t* expected, const transformf_t* actual) {
-    assert_near(expected->position, actual->position);
-    assert_near(quatf_rotate(expected->rotation, vec3f_unit_z()), quatf_rotate(actual->rotation, vec3f_unit_z()));
-    assert_near(quatf_rotate(expected->rotation, vec3f_unit_y()), quatf_rotate(actual->rotation, vec3f_unit_y()));
+    vec3f_expect_within(POSE_ROUNDING, expected->position, actual->position);
+    vec3f_expect_within(POSE_ROUNDING, quatf_rotate(expected->rotation, vec3f_unit_z()),
+                        quatf_rotate(actual->rotation, vec3f_unit_z()));
+    vec3f_expect_within(POSE_ROUNDING, quatf_rotate(expected->rotation, vec3f_unit_y()),
+                        quatf_rotate(actual->rotation, vec3f_unit_y()));
 }
 
 /* The observer at TOP's or CHASE's own pose draws today's TOP or CHASE
@@ -753,25 +766,46 @@ static void
 test_a_checkpoint_neither_holds_nor_restores_the_observer(void) {
     scene_t* s = scene_open();
     const transformf_t elsewhere = somewhere_else();
+    checkpoint_t held[2] = {{0}}; /* taken with the observer set, then with none */
     render_context_set_observer(&s->context, &elsewhere);
-    checkpoint_t saved = {0};
-    render_context_checkpoint_capture(&saved, &s->context);
-    const render_context_t* held = (const render_context_t*)checkpoint_find(&saved, &s->context)->data;
-    TEST_ASSERT_FALSE(held->observing);
-
+    render_context_checkpoint_capture(&held[0], &s->context);
     render_context_set_observer(&s->context, NULL);
-    TEST_ASSERT_TRUE(render_context_checkpoint_prepare(&saved, &s->context));
-    TEST_ASSERT_TRUE(checkpoint_restore(&saved));
-    TEST_ASSERT_FALSE(s->context.observing);
-
-    render_context_set_observer(&s->context, &elsewhere);
-    TEST_ASSERT_TRUE(render_context_checkpoint_prepare(&saved, &s->context));
-    TEST_ASSERT_TRUE(checkpoint_restore(&saved));
-    checkpoint_clear(&saved);
+    render_context_checkpoint_capture(&held[1], &s->context);
+    for (int round = 0; round < 2; round++) {
+        const checkpoint_block_t* a = checkpoint_find(&held[0], &s->context);
+        const checkpoint_block_t* b = checkpoint_find(&held[1], &s->context);
+        TEST_ASSERT_EQUAL_size_t(a->bytes, b->bytes);
+        TEST_ASSERT_EQUAL_MEMORY(a->data, b->data, a->bytes);
+        /* Restored under a live observer, it keeps that one, whole. */
+        render_context_set_observer(&s->context, &elsewhere);
+        TEST_ASSERT_TRUE(render_context_checkpoint_prepare(&held[1], &s->context));
+        TEST_ASSERT_TRUE(render_context_checkpoint_prepare(&held[0], &s->context));
+        TEST_ASSERT_TRUE(checkpoint_restore(&held[0]));
+        TEST_ASSERT_TRUE(s->context.observing);
+        TEST_ASSERT_EQUAL_MEMORY(&elsewhere, &s->context.observer, sizeof elsewhere);
+    }
+    checkpoint_clear(&held[0]);
+    checkpoint_clear(&held[1]);
     scene_draw(s);
     transformf_t seen;
     TEST_ASSERT_TRUE(render_context_observer_pose(&s->context, &seen));
     TEST_ASSERT_EQUAL_MEMORY(&elsewhere, &seen, sizeof seen);
+}
+
+/* A frame generated after an observed one drew no second view, so reports no pose. */
+static void
+test_a_generated_frame_reports_no_observer_pose(void) {
+    scene_t* s = scene_open();
+    const transformf_t elsewhere = somewhere_else();
+    render_context_set_frame_generation(&s->context, true);
+    render_context_set_observer(&s->context, &elsewhere);
+    scene_draw(s);
+    transformf_t seen;
+    TEST_ASSERT_TRUE(render_context_observer_pose(&s->context, &seen));
+    render_context_set_debug_view(&s->context, RENDER_DEBUG_VIEW_SHADED);
+    scene_draw(s);
+    TEST_ASSERT_TRUE(render_context_frame(&s->context).generated);
+    TEST_ASSERT_FALSE(render_context_observer_pose(&s->context, &seen));
 }
 
 #ifndef DEVICE_BUILD
@@ -836,6 +870,16 @@ test_overlay_draws_the_frustum_from_the_observer(void) {
     scene_draw(s);
     overlay_screen(&s->context, screen[ELSEWHERE]);
     TEST_ASSERT_TRUE(memcmp(screen[FROM_TOP], screen[ELSEWHERE], sizeof(gfx_color_t) * W * H) != 0);
+    const raster_cull_t* state = scene_state(s);
+    TEST_ASSERT_EQUAL_FLOAT(state->camera.lens.fx, state->spectator.lens.fx);
+
+    /* Cleared, the camera draws no frustum again: nothing over a cleared screen at level 0. */
+    render_context_set_observer(&s->context, NULL);
+    scene_draw(s);
+    overlay_screen(&s->context, screen[OBSERVED]);
+    for (int p = 0; p < W * H; p++) {
+        TEST_ASSERT_EQUAL_UINT16(0, screen[OBSERVED][p]);
+    }
 }
 #endif
 
@@ -858,6 +902,7 @@ run_raster_cull_view_suite(void) {
     RUN_TEST(test_observer_off_draws_every_view_as_a_straight_run);
     RUN_TEST(test_observer_at_a_spectator_pose_draws_that_spectator);
     RUN_TEST(test_a_checkpoint_neither_holds_nor_restores_the_observer);
+    RUN_TEST(test_a_generated_frame_reports_no_observer_pose);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_overlay_draws_the_frustum_from_the_observer);
 #endif

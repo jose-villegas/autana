@@ -113,13 +113,13 @@ typedef struct {
     render_view_t kept_view;
     framegen_target_t framegen;
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    /* What render_context_set_observer() was last given: an input like the
-     * view pick, so a checkpoint neither holds nor restores it. */
-    bool observing;
-    transformf_t observer;
     /* Whether the last frame's debug view drew a second view, and from where. */
     bool observed;
     transformf_t observed_from;
+    /* Last: a checkpoint holds the bytes before `observing` only. What
+     * render_context_set_observer() was given is input, like the view pick. */
+    bool observing;
+    transformf_t observer;
 #endif
 } render_context_t;
 

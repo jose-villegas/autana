@@ -376,6 +376,9 @@ generate(render_context_t* c, const render_view_t* view) {
 bool
 render_context_draw(render_context_t* c, const r3d_instance_t* instances, int count, const render_view_t* view,
                     uint16_t clear) {
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    c->observed = false;
+#endif
     if (can_generate(c, view)) {
         generate(c, view);
         return true;
@@ -431,7 +434,6 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     }
     c->frame.step = current_step(c);
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    c->observed = false;
     if (r->attachment_count != 0) {
         draw_second_view(c);
         raster_show(r);
@@ -535,14 +537,12 @@ render_context_observer_pose(const render_context_t* c, transformf_t* out) {
     return c->observed;
 }
 
+/* The context's bytes a checkpoint holds: all but the observer, which ends it. */
+#define CARRIED_BYTES offsetof(render_context_t, observing)
+
 void
 render_context_checkpoint_capture(checkpoint_t* saved, render_context_t* context) {
-    checkpoint_capture(saved, context, sizeof(*context));
-    /* Held as unset, so a checkpoint's bytes do not depend on who was looking. */
-    checkpoint_block_t* held = checkpoint_find(saved, context);
-    if (held != NULL) {
-        render_context_set_observer((render_context_t*)held->data, NULL);
-    }
+    checkpoint_capture(saved, context, CARRIED_BYTES);
     checkpoint_capture(saved, context->scratch, context->scratch_bytes);
     const render_debug_view_t* row = render_context_debug_view(context->debug_view);
     if (row != NULL) {
@@ -569,8 +569,8 @@ render_context_checkpoint_prepare(checkpoint_t* saved, render_context_t* context
     if (data == NULL) {
         return false;
     }
-    render_context_t source;
-    memcpy(&source, data, sizeof source);
+    render_context_t source = *context;
+    memcpy(&source, data, CARRIED_BYTES);
     if (source.take != context->take) {
         return false;
     }
@@ -589,17 +589,14 @@ render_context_checkpoint_prepare(checkpoint_t* saved, render_context_t* context
     if (source.debug_view == RENDER_DEBUG_VIEW_SHADED) {
         free_view_state(context);
     }
-    render_context_t restored = source;
-    restored.observing = context->observing;
-    restored.observer = context->observer;
-    restored.scratch = context->scratch;
-    restored.scratch_bytes = context->scratch_bytes;
-    restored.raster.scratch = context->scratch;
-    restored.raster.upscale.columns = checkpoint_map(&source, context, source.raster.upscale.columns);
-    restored.raster.upscale.rows = checkpoint_map(&source, context, source.raster.upscale.rows);
-    restored.raster.upscale.blends = checkpoint_map(&source, context, source.raster.upscale.blends);
+    source.raster.upscale.columns = checkpoint_map(&source, context, source.raster.upscale.columns);
+    source.raster.upscale.rows = checkpoint_map(&source, context, source.raster.upscale.rows);
+    source.raster.upscale.blends = checkpoint_map(&source, context, source.raster.upscale.blends);
     (void)checkpoint_retarget(saved, source.scratch, context->scratch);
-    memcpy(data, &restored, sizeof restored);
+    source.scratch = context->scratch;
+    source.scratch_bytes = context->scratch_bytes;
+    source.raster.scratch = context->scratch;
+    memcpy(data, &source, CARRIED_BYTES);
     return true;
 }
 #endif

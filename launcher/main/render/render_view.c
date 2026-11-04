@@ -33,33 +33,26 @@ render_view_make(const transformf_t* pose, float half_fov_short_tan, float near_
     return view;
 }
 
-/* The camera's own right and down, undoing the picture's turn. */
-static void
-camera_axes(const render_view_t* view, vec3f_t* right, vec3f_t* down) {
-    const viewport_quarter_axes_t axes = viewport_quarter_axes(view->viewport.quarter);
-    *right =
-        vec3f_add(vec3f_scale(view->screen_x, (float)axes.x_right), vec3f_scale(view->screen_y, (float)axes.y_right));
-    *down = vec3f_add(vec3f_scale(view->screen_x, (float)axes.x_down), vec3f_scale(view->screen_y, (float)axes.y_down));
+/* The picture's axes mixed by a quarter turn's parts: the camera's own right or down. */
+static vec3f_t
+camera_axis(const render_view_t* view, int x_part, int y_part) {
+    return vec3f_add(vec3f_scale(view->screen_x, (float)x_part), vec3f_scale(view->screen_y, (float)y_part));
 }
 
 void
 render_view_refit(render_view_t* view, viewport_t viewport) {
     assert(view->lens.fx == view->lens.fy);
-    vec3f_t right;
-    vec3f_t down;
-    camera_axes(view, &right, &down);
+    const viewport_quarter_axes_t axes = viewport_quarter_axes(view->viewport.quarter);
+    const vec3f_t right = camera_axis(view, axes.x_right, axes.y_right);
+    const vec3f_t down = camera_axis(view, axes.x_down, axes.y_down);
     view_frame(view, right, down, render_view_half_fov_short_tan(view), viewport);
 }
 
 transformf_t
 render_view_pose(const render_view_t* view) {
-    vec3f_t right;
-    vec3f_t down;
-    camera_axes(view, &right, &down);
-    transformf_t pose = transformf_identity();
-    transformf_set_position(&pose, view->position);
-    transformf_set_rotation(&pose, quatf_normalize(quatf_from_basis(right, vec3f_scale(down, -1.0F), view->forward)));
-    return pose;
+    const viewport_quarter_axes_t axes = viewport_quarter_axes(view->viewport.quarter);
+    const vec3f_t up = vec3f_scale(camera_axis(view, axes.x_down, axes.y_down), -1.0F);
+    return transformf_looking(view->position, view->forward, up);
 }
 
 float

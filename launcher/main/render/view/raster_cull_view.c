@@ -83,7 +83,6 @@ begin(const raster_attachment_t* self, const raster_t* raster, const render_view
     s->raster = raster;
     s->camera = *view;
     s->from = (raster_cull_from_t)from;
-    s->spectated = false;
     totals(raster, &s->clusters, &s->triangles);
     assert(s->clusters <= RASTER_CULL_CLUSTERS_MAX && s->triangles <= RASTER_CULL_TRIANGLES_MAX);
     memset(&s->frame, 0, sizeof s->frame);
