@@ -450,9 +450,7 @@ heap_arena_reset_peak(void) {
      * starts after an earlier leak should show that leak weighing on its
      * own peak, the same way it would starve a real boot. */
     s_internal.peak_bytes = s_internal.cur_bytes;
-    arena_pool_init_once(&s_psram);
-    s_internal.low_free_bytes = s_internal.free_bytes;
-    s_psram.low_free_bytes = s_psram.free_bytes;
+    (void)heap_caps_monitor_local_minimum_free_size_start();
 }
 
 /* malloc/calloc/realloc/free interposition */
@@ -669,6 +667,22 @@ heap_caps_get_minimum_free_size(uint32_t caps) {
         total += s_psram.low_free_bytes;
     }
     return total;
+}
+
+/* The model keeps one low-water mark per pool, not ESP-IDF's two (since boot
+ * and since the start), so a start restarts it and a stop leaves it. */
+esp_err_t
+heap_caps_monitor_local_minimum_free_size_start(void) {
+    arena_pool_init_once(&s_internal);
+    arena_pool_init_once(&s_psram);
+    s_internal.low_free_bytes = s_internal.free_bytes;
+    s_psram.low_free_bytes = s_psram.free_bytes;
+    return 0;
+}
+
+esp_err_t
+heap_caps_monitor_local_minimum_free_size_stop(void) {
+    return 0;
 }
 
 /* The modelled chip: the PSRAM pool's heap and what the board reserves ahead

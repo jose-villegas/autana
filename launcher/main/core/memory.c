@@ -15,6 +15,12 @@ memory_min_free_bytes(memory_kind_t kind) {
     return heap_caps_get_minimum_free_size(memory_caps(kind));
 }
 
+void
+memory_min_free_restart(void) {
+    (void)heap_caps_monitor_local_minimum_free_size_stop(); /* fails only when none was running */
+    (void)heap_caps_monitor_local_minimum_free_size_start();
+}
+
 size_t
 memory_largest_block(memory_kind_t kind) {
     return heap_caps_get_largest_free_block(memory_caps(kind));
