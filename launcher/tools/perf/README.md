@@ -276,6 +276,7 @@ sequenceDiagram
     loop Every minute until BOARD_LAST_START
         Night->>Lanes: Start a lane on each newly free board, on any host
     end
+    Night->>Lanes: Stop each lane still running at BOARD_END
     Lanes-->>Night: Lane outcomes and timestamps
     Night->>Night: Record timeline and host free time
 ```
@@ -284,8 +285,8 @@ GPU work starts at `vars.NIGHT_START`; the board night starts at `vars.BOARD_STA
 It starts no new lane after `vars.BOARD_LAST_START` on the marker's date.
 A lane is given only the new steps that fit before `vars.BOARD_END` on that date.
 Each accepts HH:MM up to the latest hour `LOCAL_TIMES` in `scripts/lib/local_schedule.py` gives it; an empty value
-uses its default there. Started lanes have no end time: they run to
-completion under their hang guards, and day board jobs queue on the lock behind them.
+uses its default there. A started lane ends by `BOARD_END`: before each step it
+checks the step fits, and the night stops a lane still running there.
 
 | Lane sizing | Rule |
 |---|---|
@@ -295,6 +296,8 @@ completion under their hang guards, and day board jobs queue on the lock behind 
 | No room | The board gets no lane and stays free |
 | The rest | Stays in the queue for joiners, then the next night |
 | Override | A run marked after `BOARD_END` is not sized |
+| Running lane | Starts no step whose pace would end it past `BOARD_END`: the slowest of the lane's own measured steps that night, else the step time above |
+| At `BOARD_END` | The night stops a lane still running; the outage alarm judges it as a lane that stopped there itself |
 
 The zone is the NIGHT_ZONE repository variable (IANA name; UTC when unset).
 The marker is the first local start at or after the trigger; override starts now.
@@ -360,11 +363,12 @@ an anchor always measures.
 |---|---|
 | GPU process tree | `GPU_STAGE_HANG_SECONDS` in `scripts/lib/local_schedule.py` |
 | Lock wait | `NIGHT_STEP_HANG_SECONDS` in `scripts/lib/local_schedule.py` |
-| Lane process tree | `LANE_HANG_FACTOR` times the lane estimate in `nightly/scoped_chain.py` |
+| Lane process tree | `LANE_HANG_FACTOR` times the lane estimate in `nightly/scoped_chain.py`, and `BOARD_END` |
 | Build, capture and self-test | Their timeout constants in `nightly/scoped_chain.py` |
 
-A lane stops after `CAPTURE_FAILURE_LIMIT` consecutive capture failures or
-when its board unplugs. A returning planned board does not restart.
+A lane stops after `CAPTURE_FAILURE_LIMIT` consecutive capture failures, when its
+board unplugs, or with `not_run_deadline` steps at the deadline. A returning planned board does not restart.
+A step stopped part way is owed again: a lane that unwinds records it as `not_run_interrupted`, one killed outright never saved it.
 
 A busy heavy lock stops the lane with `not_run_busy` and preserves its cursors.
 Build failures advance `last_attempted`; measured steps advance both cursors
