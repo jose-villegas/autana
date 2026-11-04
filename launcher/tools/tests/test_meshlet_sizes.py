@@ -28,11 +28,12 @@ class MeshletSettingsTests(unittest.TestCase):
     def test_rebake_reads_import_limit_and_default_is_byte_identical(self):
         import numpy as np
         from r3d import rebake
+        from r3d.import_settings import LOD
         from r3d.lit_mesh import read_lit_mesh, write_lit_mesh
         from test_r3d_bake import sheet
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
-            write_lit_mesh(root, "tiny", *sheet(20))
+            write_lit_mesh(root, "tiny", *sheet(20), lod=LOD)
             entry = root / "tiny.mesh"
             original = entry.read_bytes()
             settings = write_import(root)
@@ -70,7 +71,7 @@ class MeshletSettingsTests(unittest.TestCase):
             root = pathlib.Path(directory)
             for size in (16, 64):
                 job = SimpleNamespace(renderer=SimpleNamespace(face_samples=None),
-                                      settings=SimpleNamespace(meshlet_triangles=size))
+                                      settings=SimpleNamespace(meshlet_triangles=size, lod=False))
                 mesh_import.write_baked(job, None, root, "tiny", geometry)
                 counts = [cluster[3] for cluster in read_lit_mesh(root / "tiny.mesh").clusters]
                 self.assertLessEqual(max(counts), size)
