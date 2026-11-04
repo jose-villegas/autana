@@ -292,9 +292,14 @@ draw_second_view(render_context_t* c) {
      * the hook reads render.cull as the frame drew. */
     const tune_entry_t* culling = tune_find(tune_shared(), TUNE_NAME(render, cull));
     const int32_t culled = *culling->value;
+    const transformf_t* observer = c->observing ? &c->observer : NULL;
     render_view_t second;
     bool listed = false;
-    while (row->second_view(c->debug_view_state, &c->raster, &second, &listed)) {
+    while (row->second_view(c->debug_view_state, &c->raster, observer, &second, &listed)) {
+        if (!c->observed) {
+            c->observed = true;
+            c->observed_from = observer != NULL ? *observer : render_view_pose(&second);
+        }
         c->raster.split = NULL;
         if (listed) {
             raster_draw_culled(&c->raster, &second);
@@ -426,6 +431,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     }
     c->frame.step = current_step(c);
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    c->observed = false;
     if (r->attachment_count != 0) {
         draw_second_view(c);
         raster_show(r);
@@ -516,8 +522,27 @@ render_context_debug_view_state(const render_context_t* c) {
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 void
+render_context_set_observer(render_context_t* c, const transformf_t* pose) {
+    c->observing = pose != NULL;
+    c->observer = pose != NULL ? *pose : transformf_identity();
+}
+
+bool
+render_context_observer_pose(const render_context_t* c, transformf_t* out) {
+    if (c->observed) {
+        *out = c->observed_from;
+    }
+    return c->observed;
+}
+
+void
 render_context_checkpoint_capture(checkpoint_t* saved, render_context_t* context) {
     checkpoint_capture(saved, context, sizeof(*context));
+    /* Held as unset, so a checkpoint's bytes do not depend on who was looking. */
+    checkpoint_block_t* held = checkpoint_find(saved, context);
+    if (held != NULL) {
+        render_context_set_observer((render_context_t*)held->data, NULL);
+    }
     checkpoint_capture(saved, context->scratch, context->scratch_bytes);
     const render_debug_view_t* row = render_context_debug_view(context->debug_view);
     if (row != NULL) {
@@ -565,6 +590,8 @@ render_context_checkpoint_prepare(checkpoint_t* saved, render_context_t* context
         free_view_state(context);
     }
     render_context_t restored = source;
+    restored.observing = context->observing;
+    restored.observer = context->observer;
     restored.scratch = context->scratch;
     restored.scratch_bytes = context->scratch_bytes;
     restored.raster.scratch = context->scratch;
