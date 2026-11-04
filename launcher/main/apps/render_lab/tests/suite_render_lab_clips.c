@@ -222,7 +222,7 @@ static void
 test_picker_init_reports_allocation_failure(void) {
     clip_fixture_t* f = fixture();
     ui_probe_widgets_start();
-    TEST_ASSERT_NOT_NULL(app_arena_take(APP_ARENA_BYTES - app_arena_mark(), 1)); /* the arena full */
+    TEST_ASSERT_NOT_NULL(app_arena_take(app_arena_bytes() - app_arena_mark(), 1)); /* the arena full */
     TEST_ASSERT_FALSE(render_lab_clips_init(&f->choice, &f->scene, 0, "gallop"));
     TEST_ASSERT_EQUAL_INT(1, f->animator.layer.current.clip);
     request(f, "clips");

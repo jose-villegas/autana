@@ -8,17 +8,6 @@
 #if defined(HOST_HEAP_ARENA) || defined(DEVICE_BUILD)
 #include "core/memory.h"
 #endif
-#ifdef HOST_HEAP_ARENA
-#include <stdlib.h>
-
-#include "heap_arena.h"
-#endif
-#ifdef DEVICE_BUILD
-#include "esp_memory_utils.h"
-
-extern unsigned char _ext_ram_noinit_start;
-extern unsigned char _ext_ram_noinit_end;
-#endif
 
 /* What the app running the suites holds; every test here needs it to be 0. */
 static size_t suite_entry_mark;
@@ -74,14 +63,14 @@ test_consecutive_blocks_do_not_overlap(void) {
 static void
 test_the_whole_block_can_be_taken_at_once(void) {
     fixture();
-    TEST_ASSERT_NOT_NULL(app_arena_take(APP_ARENA_BYTES, 1));
+    TEST_ASSERT_NOT_NULL(app_arena_take(app_arena_bytes(), 1));
     TEST_ASSERT_NULL(app_arena_take(1, 1));
 }
 
 static void
 test_exhaustion_refuses_without_taking_and_the_arena_stays_usable(void) {
     fixture();
-    TEST_ASSERT_NOT_NULL(app_arena_take(APP_ARENA_BYTES - 64, 1));
+    TEST_ASSERT_NOT_NULL(app_arena_take(app_arena_bytes() - 64, 1));
     const size_t used = app_arena_mark();
 
     TEST_ASSERT_NULL(app_arena_take(65, 1));
@@ -98,22 +87,22 @@ lowest_set_bit(uintptr_t n) {
 
 static void
 test_padding_alone_past_the_block_end_is_refused(void) {
-    const uintptr_t end = block_base() + APP_ARENA_BYTES;
+    const uintptr_t end = block_base() + app_arena_bytes();
     const size_t align = (size_t)(2u * lowest_set_bit(end)); /* the next such boundary lies past the end */
 
-    TEST_ASSERT_NOT_NULL(app_arena_take(APP_ARENA_BYTES - 1, 1));
+    TEST_ASSERT_NOT_NULL(app_arena_take(app_arena_bytes() - 1, 1));
     TEST_ASSERT_NULL(app_arena_take(1, align));
-    TEST_ASSERT_EQUAL_UINT(APP_ARENA_BYTES - 1, app_arena_mark());
+    TEST_ASSERT_EQUAL_UINT(app_arena_bytes() - 1, app_arena_mark());
 }
 
 /* Address and offset alignment differ observably only when the lowest set
- * bit of the base is below APP_ARENA_BYTES. An address-aligned take to twice
+ * bit of the base is below app_arena_bytes(). An address-aligned take to twice
  * that bit lands at offset base_alignment, which fits while below the size. */
 static void
 test_alignment_is_of_the_address_not_the_offset(void) {
     const uintptr_t base = block_base();
     const uintptr_t base_alignment = lowest_set_bit(base);
-    if (base_alignment >= APP_ARENA_BYTES) {
+    if (base_alignment >= app_arena_bytes()) {
         TEST_IGNORE_MESSAGE("the base is aligned to the arena size; every fitting alignment also aligns offsets");
     }
     const size_t align = (size_t)(2u * base_alignment);
@@ -171,51 +160,27 @@ static void
 test_rewinding_to_zero_empties_the_arena_and_hands_out_the_same_memory_again(void) {
     fixture();
     void* first = app_arena_take(64, 64);
-    TEST_ASSERT_NOT_NULL(app_arena_take(APP_ARENA_BYTES / 2, 1));
+    TEST_ASSERT_NOT_NULL(app_arena_take(app_arena_bytes() / 2, 1));
 
     app_arena_rewind(0);
     TEST_ASSERT_EQUAL_UINT(0, app_arena_mark());
     TEST_ASSERT_EQUAL_PTR(first, app_arena_take(64, 64));
 }
 
-#ifdef HOST_HEAP_ARENA
+#if defined(HOST_HEAP_ARENA) || defined(DEVICE_BUILD)
 static void
-test_the_psram_heap_offers_only_what_the_arena_leaves(void) {
-    const size_t heap_bytes = heap_arena_psram_heap_bytes(getenv("HOST_HEAP_ARENA_PSRAM_BYTES"));
-
-    TEST_ASSERT_LESS_OR_EQUAL_UINT(heap_bytes, memory_free_bytes(MEMORY_PSRAM));
-    TEST_ASSERT_NULL(memory_alloc(heap_bytes + 1, MEMORY_PSRAM));
+test_the_region_is_the_psram_heap_less_the_system_reserve(void) {
+    TEST_ASSERT_EQUAL_UINT(memory_total_bytes(MEMORY_PSRAM) - APP_ARENA_SYSTEM_RESERVE_BYTES, app_arena_bytes());
+    TEST_ASSERT_TRUE(memory_in_psram((const void*)block_base()));
 }
 
+/* The reserve holds a buffer the framebuffer's size beside the framebuffer
+ * itself, for what the shell makes on demand during a visit. */
 static void
-test_the_arena_is_reserved_whichever_source_gives_the_psram_size(void) {
-    TEST_ASSERT_EQUAL_UINT(HOST_HEAP_ARENA_PSRAM_BYTES - APP_ARENA_BYTES, heap_arena_psram_heap_bytes(NULL));
-    TEST_ASSERT_EQUAL_UINT(12u * 1024u * 1024u - APP_ARENA_BYTES, heap_arena_psram_heap_bytes("12582912"));
-}
-
-/* The modelled chip is the heap and the block the board places ahead of it. */
-static void
-test_the_psram_chip_is_the_heap_and_the_block(void) {
-    TEST_ASSERT_EQUAL_UINT(memory_total_bytes(MEMORY_PSRAM) + APP_ARENA_BYTES, memory_psram_bytes());
-}
-#endif
-
-#ifdef DEVICE_BUILD
-static void
-test_the_psram_heap_starts_past_the_block(void) {
-    const size_t psram = memory_psram_bytes();
-    const size_t heap = memory_total_bytes(MEMORY_PSRAM);
-    TEST_ASSERT_GREATER_THAN_UINT(APP_ARENA_BYTES, psram);
-    TEST_ASSERT_LESS_OR_EQUAL_UINT(psram - APP_ARENA_BYTES, heap);
-    TEST_ASSERT_GREATER_OR_EQUAL_UINT(psram / 2, heap); /* the block does not take the heap's share */
-}
-
-static void
-test_the_block_lies_in_the_uninitialised_external_ram_section(void) {
-    const uintptr_t base = block_base();
-    TEST_ASSERT_TRUE(esp_ptr_external_ram((const void*)base));
-    TEST_ASSERT_GREATER_OR_EQUAL_UINT((uintptr_t)&_ext_ram_noinit_start, base);
-    TEST_ASSERT_LESS_OR_EQUAL_UINT((uintptr_t)&_ext_ram_noinit_end, base + APP_ARENA_BYTES);
+test_a_framebuffer_sized_buffer_still_fits_beside_the_region(void) {
+    void* buffer = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
+    memory_free(buffer);
+    TEST_ASSERT_NOT_NULL(buffer);
 }
 #endif
 
@@ -234,14 +199,9 @@ run_app_arena_suite(void) {
     RUN_TEST(test_rewind_gives_back_everything_since_the_mark);
     RUN_TEST(test_nested_marks_rewind_inner_then_outer);
     RUN_TEST(test_rewinding_to_zero_empties_the_arena_and_hands_out_the_same_memory_again);
-#ifdef HOST_HEAP_ARENA
-    RUN_TEST(test_the_psram_heap_offers_only_what_the_arena_leaves);
-    RUN_TEST(test_the_arena_is_reserved_whichever_source_gives_the_psram_size);
-    RUN_TEST(test_the_psram_chip_is_the_heap_and_the_block);
-#endif
-#ifdef DEVICE_BUILD
-    RUN_TEST(test_the_psram_heap_starts_past_the_block);
-    RUN_TEST(test_the_block_lies_in_the_uninitialised_external_ram_section);
+#if defined(HOST_HEAP_ARENA) || defined(DEVICE_BUILD)
+    RUN_TEST(test_the_region_is_the_psram_heap_less_the_system_reserve);
+    RUN_TEST(test_a_framebuffer_sized_buffer_still_fits_beside_the_region);
 #endif
     if (suite_entry_mark == 0) {
         app_arena_rewind(0);

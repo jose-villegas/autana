@@ -40,8 +40,6 @@
 
 #include "heap_arena.h"
 
-#include "app/app_arena.h"
-
 #include "stubs/esp_heap_caps.h"
 #include "stubs/esp_memory_utils.h"
 #include "stubs/esp_psram.h"
@@ -132,7 +130,6 @@ typedef struct {
     size_t storage_bytes;
     size_t default_cap;  /* compile-time default, from the device profile */
     const char* env_var; /* widen-without-rebuild override, see below */
-    size_t reserved;     /* static memory the board places ahead of the heap */
     const char* label;   /* for messages only ("internal" / "psram") */
     arena_block_t* head;
     size_t cap; /* effective cap in bytes, <= storage_bytes */
@@ -179,7 +176,6 @@ static arena_pool_t s_psram = {
     .storage_bytes = sizeof(s_psram_storage),
     .default_cap = HOST_HEAP_ARENA_PSRAM_BYTES,
     .env_var = "HOST_HEAP_ARENA_PSRAM_BYTES",
-    .reserved = APP_ARENA_BYTES,
     .label = "psram",
 };
 
@@ -190,7 +186,7 @@ ptr_in_pool(const arena_pool_t* p, const void* ptr) {
 }
 
 /* A pool's heap: its memory from the compile-time default or, when it
- * parses, `override`, less what the board reserves ahead of the heap. */
+ * parses, `override`. */
 static size_t
 arena_pool_heap_bytes(const arena_pool_t* p, const char* override, const char** origin) {
     size_t memory = p->default_cap;
@@ -205,7 +201,7 @@ arena_pool_heap_bytes(const arena_pool_t* p, const char* override, const char** 
             fprintf(stderr, "heap_arena: ignoring unparseable %s=%s\n", p->env_var, override);
         }
     }
-    return memory > p->reserved ? memory - p->reserved : 0;
+    return memory;
 }
 
 size_t
@@ -685,12 +681,11 @@ heap_caps_monitor_local_minimum_free_size_stop(void) {
     return 0;
 }
 
-/* The modelled chip: the PSRAM pool's heap and what the board reserves ahead
- * of it. */
+/* The modelled chip: all of its PSRAM is the heap. */
 size_t
 esp_psram_get_size(void) {
     arena_pool_init_once(&s_psram);
-    return s_psram.cap + s_psram.reserved;
+    return s_psram.cap;
 }
 
 /* External RAM is the PSRAM pool's storage. */

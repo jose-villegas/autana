@@ -265,6 +265,12 @@ setup(int quarter) {
         return false;
     }
     shell_quarter = quarter;
+    /* The app region the board takes at boot, so a scene that outgrows it
+     * fails here too. */
+    if (!app_arena_init()) {
+        (void)fprintf(stderr, "the app region did not fit the PSRAM size\n");
+        return false;
+    }
     ui_init();
     gfx_set_frame_overlay(ui_replay_band);
     ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));

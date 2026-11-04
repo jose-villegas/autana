@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "app/app_arena.h"
 #include "heap_arena.h"
 #include "pack_reads.h"
 #include "shell/ui/ui_ridge.h"
@@ -82,7 +83,12 @@ main(int argc, char** argv) {
     (void)signal(SIGBUS, name_the_test_that_died);
 #endif
     /* The engine pack, as the shell loads it before any app: kept for the
-     * run, so no suite reads it first and none names it. */
+     * run, so no suite reads it first and none names it. The app region
+     * first, as boot takes it. */
+    if (!app_arena_init()) {
+        (void)printf("FAIL: the app region did not fit the modeled PSRAM heap\n");
+        return 1;
+    }
     ui_init();
     ui_ridge_load();
     pack_reads_begin();
