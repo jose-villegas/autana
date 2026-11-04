@@ -61,6 +61,14 @@ memory_unrounded_bytes(size_t bytes) {
 }
 
 size_t
+memory_block_bytes(const void* block) {
+    if (app_heap_contains(block)) {
+        return app_heap_block_bytes(block);
+    }
+    return heap_caps_get_allocated_size((void*)block);
+}
+
+size_t
 memory_psram_bytes(void) {
     return esp_psram_get_size();
 }

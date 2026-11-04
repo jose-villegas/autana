@@ -67,6 +67,9 @@ size_t memory_total_bytes(memory_kind_t kind);
  * several MB. */
 size_t memory_unrounded_bytes(size_t bytes);
 
+/* What the heap gave a block from memory_alloc(): at least what was asked. */
+size_t memory_block_bytes(const void* block);
+
 /* The external RAM chip's whole size, the part the board reserves ahead of
  * the heap included; 0 when the board has none. */
 size_t memory_psram_bytes(void);

@@ -612,6 +612,19 @@ heap_caps_free(void* ptr) {
     abort();
 }
 
+/* The model gives what was asked, rounded to its alignment: it has no size
+ * classes to round up to. */
+size_t
+heap_caps_get_allocated_size(void* ptr) {
+    if (!ptr_in_pool(&s_internal, ptr) && !ptr_in_pool(&s_psram, ptr)) {
+        fprintf(stderr, "heap_caps_get_allocated_size(%p): not inside either modeled pool\n", ptr);
+        abort();
+    }
+    arena_block_t* b = (arena_block_t*)((unsigned char*)ptr - ARENA_HEADER_SIZE);
+    arena_unpoison_header(b);
+    return b->size;
+}
+
 size_t
 heap_caps_get_free_size(uint32_t caps) {
     size_t total = 0, t, l, b;

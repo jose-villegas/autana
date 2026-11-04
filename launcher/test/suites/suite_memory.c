@@ -88,6 +88,7 @@ test_app_allocations_and_queries_use_the_region(void) {
     TEST_ASSERT_NOT_NULL(block);
     TEST_ASSERT_TRUE(app_heap_contains(block));
     TEST_ASSERT_TRUE(memory_in_psram(block));
+    TEST_ASSERT_GREATER_OR_EQUAL_size_t(TEST_BLOCK_BYTES, memory_block_bytes(block));
     memset(block, 0xA5, TEST_BLOCK_BYTES);
     TEST_ASSERT_LESS_THAN_size_t(free_before, memory_free_bytes(MEMORY_APP));
     TEST_ASSERT_LESS_OR_EQUAL_size_t(memory_free_bytes(MEMORY_APP), memory_min_free_bytes(MEMORY_APP));
@@ -153,7 +154,7 @@ test_the_psram_heap_gives_an_unrounded_request_exactly(void) {
     const size_t bytes = memory_unrounded_bytes(memory_largest_block(MEMORY_PSRAM) / 2);
     void* block = memory_alloc(bytes, MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(block);
-    const size_t given = heap_caps_get_allocated_size(block);
+    const size_t given = memory_block_bytes(block);
     memory_free(block);
     TEST_ASSERT_EQUAL_size_t(bytes, given);
 }

@@ -22,6 +22,7 @@ size_t app_heap_largest_block(void);
 size_t app_heap_min_free_bytes(void);
 void app_heap_min_free_restart(void);
 size_t app_heap_blocks(void);
+size_t app_heap_block_bytes(const void* pointer);
 void app_heap_dump(void);
 
 /* Called after each allocation (`alloc` true) and free, with `site` the

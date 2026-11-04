@@ -189,6 +189,12 @@ app_heap_blocks(void) {
     return blocks;
 }
 
+size_t
+app_heap_block_bytes(const void* pointer) {
+    assert(heap != NULL);
+    return tlsf_block_size((void*)pointer);
+}
+
 void
 app_heap_dump(void) {
     assert(heap != NULL);
