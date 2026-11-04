@@ -366,7 +366,17 @@ scene_load_from(const asset_pack_t* pack, const char* id, scene_failure_t* why) 
     return scene;
 }
 
-bool
+/* The separator in a scene id that names its pack. */
+#define SCENE_ID_PACK_SEPARATOR '/'
+
+/* A scene id's parts: the pack it is in and the scene's entry there. */
+typedef struct {
+    char pack[ASSET_NAME_MAX];
+    const char* scene; /* within the id split */
+} scene_id_t;
+
+/* Splits `id` as scene_load() reads it; false for an id it refuses. */
+static bool
 scene_id_split(const char* id, scene_id_t* out) {
     const char* separator = strchr(id, SCENE_ID_PACK_SEPARATOR);
     const char* scene = separator == NULL ? id : separator + 1;
