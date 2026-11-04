@@ -278,7 +278,7 @@ run "$PYTHON" launcher/tools/input/shake_figures.py --cc "$cc" --out "$OUT/input
     > "$WORK/shake_figures.log"
 run "$PYTHON" launcher/tools/input/gravity_figures.py --cc "$cc" --out "$OUT/input" \
     > "$WORK/gravity_figures.log"
-# --orphans scans this runner: gravity-trust.png, gravity-bias.gif
+# --orphans scans this runner: gravity-trust.png, gravity-bias.gif, gravity-reader.gif, gravity-motion.gif
 run "$PYTHON" launcher/tools/input/motion_axes_figures.py --cc "$cc" --out "$OUT/input" \
     > "$WORK/motion_axes_figures.log"
 # --orphans scans this runner: motion-axes.png, motion-rotation.gif

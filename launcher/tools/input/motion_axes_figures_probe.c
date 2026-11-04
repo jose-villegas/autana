@@ -44,7 +44,7 @@ main(void) {
     for (int f = 0; f <= frames; f++) {
         const float t = (float)f / PROBE_FRAME_HZ;
         const probe_pose_t p = pose(t);
-        const imu_sample_t chip = probe_chip_sample(pose, t, dt, none);
+        const imu_sample_t chip = probe_chip_sample(pose, t, dt, none, NULL);
         const vec3i_t acceleration = imu_axes_screen(chip.ax, chip.ay, chip.az);
         const vec3i_t rotation = imu_axes_screen(chip.gx, chip.gy, chip.gz);
         float rate[3];

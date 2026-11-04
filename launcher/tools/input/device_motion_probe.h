@@ -73,17 +73,23 @@ probe_body_rate(probe_pose_at_t pose, float t, float dt, float rate[3]) {
     rate[2] = (rel[1][0] - rel[0][1]) / (2 * dt);
 }
 
-/* What the chip reads in that pose: specific force (up, 1 g, no linear acceleration) and the body rate plus a
- * per-chip-axis offset in deg/s, in chip counts. */
+/* Chip counts of specific force (world linear acceleration minus gravity) and body rate plus offset_dps.
+ * linear supplies world acceleration in g; NULL means zero. */
 static inline imu_sample_t
-probe_chip_sample(probe_pose_at_t pose, float t, float dt, const float offset_dps[3]) {
+probe_chip_sample(probe_pose_at_t pose, float t, float dt, const float offset_dps[3],
+                  void (*linear)(float t, float out[3])) {
     const probe_pose_t now = pose(t);
-    float up[3], rate[3];
-    probe_to_device(&now, (const float[3]){0, 0, 1}, up);
+    float force_device[3], rate[3];
+    float force[3] = {0, 0, 0};
+    if (linear != NULL) {
+        linear(t, force);
+    }
+    force[2] += 1.0F;
+    probe_to_device(&now, force, force_device);
     probe_body_rate(pose, t, dt, rate);
     int16_t accel[3], gyro[3];
     for (int i = 0; i < 3; i++) {
-        accel[i] = (int16_t)lroundf(probe_dot(up, probe_chip_axes[i]) * IMU_COUNTS_PER_G);
+        accel[i] = (int16_t)lroundf(probe_dot(force_device, probe_chip_axes[i]) * IMU_COUNTS_PER_G);
         gyro[i] = (int16_t)lroundf((probe_dot(rate, probe_chip_axes[i]) / PROBE_DEG_TO_RAD + offset_dps[i])
                                    * IMU_COUNTS_PER_DPS);
     }
