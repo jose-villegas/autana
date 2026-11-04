@@ -21,6 +21,7 @@
 #include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_debug.h"
+#include "gfx/present/gfx_internal.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_test.h"

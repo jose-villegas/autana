@@ -19,6 +19,7 @@
 #include "apps/sand/ui/sand_icons.h"
 #include "core/memory.h"
 #include "core/timing.h"
+#include "gfx/present/gfx_internal.h"
 #include "gfx/present/gfx_mode.h"
 #ifdef DEVICE_BUILD
 #include "esp_log.h"
