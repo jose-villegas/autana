@@ -6,6 +6,7 @@ Layout defines: [`render/llod_format.h`](../../../launcher/main/render/llod_form
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #8fb3ee !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #93d6b0 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 8
     bitWidth: 100
