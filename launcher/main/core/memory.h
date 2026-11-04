@@ -1,7 +1,22 @@
-/* memory: allocation and size queries by kind. The app kind uses the visit's
- * TLSF heap; system kinds use IDF capabilities or the host model. Other host
- * builds use malloc for system kinds. Wrappers inline so heap watches name
- * the caller. */
+/*
+ * memory: the heap by kind, so a caller above the drivers can place a buffer,
+ * or measure what it kept or lost, without naming the allocator.
+ *
+ * MEMORY_APP is the running app's visit: a TLSF heap over the app region
+ * (app/app_arena.h), emptied at every entry, so what it holds dies with the
+ * visit. memory_free() tells its blocks apart by address. The other kinds
+ * map to heap capabilities: ESP-IDF's heap on the board, test/heap_arena.c's
+ * device-sized model (HOST_HEAP_ARENA) on a host. Any other host build, a
+ * render, allocates them from the C library's malloc(), which has no budget,
+ * so it has no size queries either: memory.c is not built there.
+ *
+ * Allocating and freeing are inline: a heap watch names the first frame
+ * outside the allocator as the call site, so a frame of this module's own
+ * would make every caller one site.
+ *
+ * Rejected: a cap mask in the interface. A caller names what the buffer is
+ * for; which capability bits mean that on this chip is this module's call.
+ */
 #pragma once
 
 #include <stdbool.h>

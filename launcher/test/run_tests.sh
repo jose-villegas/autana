@@ -60,6 +60,7 @@ TEST_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 MAIN_DIR=$(CDPATH= cd -- "$TEST_DIR/../main" && pwd)
 # shellcheck disable=SC1007
 LAUNCHER_DIR=$(CDPATH= cd -- "$TEST_DIR/.." && pwd)
+TLSF_DIR="$LAUNCHER_DIR/../third_party/tlsf"
 # --build-dir keeps two runs from clobbering each other: the build dir holds
 # one host_tests binary, so concurrent runs (two terminals, a sweep script
 # running beside a manual run) otherwise race to compile and execute the
@@ -264,6 +265,7 @@ case "${1:-}" in
             $(firmware_includes "$LAUNCHER_DIR") \
             -I "$TEST_DIR" $(testkit_includes "$TEST_DIR/..") -I "$TEST_DIR/stubs" \
             -I "$TEST_DIR/../components/microui/include" \
+            -I "$TLSF_DIR" -I "$TLSF_DIR/include" \
             -I "$TEST_DIR/../tools/gen" -I "$TEST_DIR/../tools/r3d" $HEAP_ARENA_DEFINES \
             -include "$TEST_DIR/timing.h"
         exit 0
@@ -384,7 +386,8 @@ FIRMWARE_INC=""
 for include_dir in $(firmware_include_dirs "$LAUNCHER_DIR"); do
     FIRMWARE_INC="$FIRMWARE_INC -I $(native "$include_dir")"
 done
-COMMON_INC="-I $LAUNCHER_N/../third_party/tlsf -I $LAUNCHER_N/../third_party/tlsf/include $FIRMWARE_INC -I $TEST_N $(testkit_includes "$LAUNCHER_N") -I $TEST_N/stubs"
+TLSF_N=$(native "$TLSF_DIR")
+COMMON_INC="-I $TLSF_N -I $TLSF_N/include $FIRMWARE_INC -I $TEST_N $(testkit_includes "$LAUNCHER_N") -I $TEST_N/stubs"
 TEST_INC="$COMMON_INC -I $LAUNCHER_N/components/microui/include -I $LAUNCHER_N/tools/gen -I $LAUNCHER_N/tools/r3d"
 LDFLAGS="-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -Wl,--wrap=asset_store_load -Wl,--wrap=asset_store_backend_report -Wl,--wrap=job_try_core1 -Wl,--wrap=job_run_steered -Wl,--wrap=draw_line_ex -pthread -lm"
 
