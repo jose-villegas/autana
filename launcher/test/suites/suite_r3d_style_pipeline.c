@@ -121,7 +121,7 @@ test_styles_match_pipeline_colours(void) {
         expected.small_fill = actual.small_fill = &resolved;
         memset(pixels, 0, TEST_PIXELS * 4 * sizeof(*pixels));
         r3d_span_triangle(&expected, reference, reference + 1, reference + 2);
-        draw_in_front(&mesh, vertices, triangle, NULL, true, &actual, false, false, work);
+        draw_in_front(&mesh, vertices, triangle, NULL, true, &actual, 0U);
         TEST_ASSERT_EQUAL_MEMORY(pixels, pixels + TEST_PIXELS * 2, TEST_PIXELS * 2 * sizeof(*pixels));
         int coloured = 0;
         for (int i = 0; i < TEST_PIXELS; i++) {
@@ -186,7 +186,7 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
                 r3d_span_triangle(expected, front, front + 1, front + 2);
             }
             draw_triangles(&mesh, &lens, &cluster, cluster.triangle_first, cluster.triangle_first + (mixed ? 2 : 1),
-                           transformed, actual, false, false, false, work);
+                           transformed, actual, 0U, work);
             TEST_ASSERT_EQUAL_MEMORY(pixels, pixels + TEST_PIXELS * 2, TEST_PIXELS * 2 * sizeof(*pixels));
             int covered = 0;
             for (int i = 0; i < TEST_PIXELS; i++) {
@@ -483,9 +483,9 @@ scene_draws_alike_with_the_hidden_test_on_and_off(bool writes) {
         target.skip_hidden = run == 0;
         r3d_pipeline_draw(&mesh, &lens, NEAREST_FIRST, SCENE_CLUSTERS, scene->cs, scene->rows, &target, work);
         if (run == 0) {
-            TEST_ASSERT_TRUE(cluster_skipped(&scene->rows[BEHIND_WALL_NEAR], &target, true));
-            TEST_ASSERT_TRUE(cluster_skipped(&scene->rows[BEHIND_WALL_FAR], &target, true));
-            TEST_ASSERT_FALSE(cluster_skipped(&scene->rows[PARTLY_BEHIND], &target, true));
+            TEST_ASSERT_TRUE(cluster_skipped(&scene->rows[BEHIND_WALL_NEAR], &target, DRAW_SKIPPING));
+            TEST_ASSERT_TRUE(cluster_skipped(&scene->rows[BEHIND_WALL_FAR], &target, DRAW_SKIPPING));
+            TEST_ASSERT_FALSE(cluster_skipped(&scene->rows[PARTLY_BEHIND], &target, DRAW_SKIPPING));
         }
     }
     const size_t bytes = (size_t)SCENE_W * SCENE_H * sizeof(uint16_t);
