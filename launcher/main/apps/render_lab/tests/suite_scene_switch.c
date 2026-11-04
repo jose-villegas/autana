@@ -10,6 +10,7 @@
 #include "unity.h"
 
 #include "app/app_arena.h"
+#include "apps/render_lab/herd/scene_herd.h"
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_dynres.h"
 #include "apps/render_lab/render_lab_scene.h"
@@ -88,6 +89,9 @@ test_scene_switches_keep_the_arena_flat(void) {
             show_scene(scene_bistro[v].key);
         }
         show_scene(scene_capybara.key);
+        for (int n = 0; n < HERD_SIZE_COUNT; n++) {
+            show_scene(scene_herd[n].key);
+        }
         show_scene("sponza");
         const size_t lap_end = app_arena_mark();
         TEST_ASSERT_GREATER_THAN_size_t(before, lap_end); /* the showing scene lives in the arena */
