@@ -70,5 +70,9 @@ void* app_arena_take(size_t size, size_t align);
 size_t app_arena_mark(void);
 
 /* Gives back everything taken since `mark`. Marks nest: rewind to them in
- * the reverse order they were made. A mark past what is in use asserts. */
+ * the reverse order they were made. A mark past what is in use asserts. The
+ * largest chunk it empties stays with the arena for the next take. */
 void app_arena_rewind(size_t mark);
+
+/* Gives that kept chunk back to the app heap. Exit does it too. */
+void app_arena_trim(void);

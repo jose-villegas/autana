@@ -58,9 +58,17 @@ test_crossing_a_chunk_end_opens_another_block(void) {
     TEST_ASSERT_TRUE(next != first + 16);
     TEST_ASSERT_EQUAL_size_t(before + 2, app_heap_blocks());
     app_arena_rewind(mark);
+    TEST_ASSERT_EQUAL_PTR(first + 16, app_arena_take(1, 1));
+    app_arena_rewind(mark);
+    /* The emptied chunk stays for the next take that spills, as a frame's
+     * scratch does every frame, and trimming gives it back. */
+    TEST_ASSERT_EQUAL_PTR(next, app_arena_take(APP_ARENA_CHUNK_BYTES, 1));
+    TEST_ASSERT_EQUAL_size_t(before + 2, app_heap_blocks());
+    app_arena_rewind(mark);
+    TEST_ASSERT_EQUAL_size_t(before + 2, app_heap_blocks());
+    app_arena_trim();
     TEST_ASSERT_EQUAL_size_t(before + 1, app_heap_blocks());
     TEST_ASSERT_EQUAL_size_t(free_at_mark, memory_free_bytes(MEMORY_APP));
-    TEST_ASSERT_EQUAL_PTR(first + 16, app_arena_take(1, 1));
 }
 
 static void
@@ -105,15 +113,16 @@ test_nested_marks_rewind_inner_then_outer(void) {
     fixture();
     TEST_ASSERT_NOT_NULL(app_arena_take(100, 1));
     const size_t outer = app_arena_mark();
-    void* first = app_arena_take(APP_ARENA_CHUNK_BYTES, 16);
-    TEST_ASSERT_NOT_NULL(first);
+    const size_t blocks_at_outer = app_heap_blocks();
+    TEST_ASSERT_NOT_NULL(app_arena_take(APP_ARENA_CHUNK_BYTES, 16));
     const size_t inner = app_arena_mark();
     TEST_ASSERT_NOT_NULL(app_arena_take(APP_ARENA_CHUNK_BYTES, 16));
     app_arena_rewind(inner);
     TEST_ASSERT_EQUAL_size_t(inner, app_arena_mark());
     app_arena_rewind(outer);
     TEST_ASSERT_EQUAL_size_t(outer, app_arena_mark());
-    TEST_ASSERT_EQUAL_PTR(first, app_arena_take(APP_ARENA_CHUNK_BYTES, 16));
+    app_arena_trim();
+    TEST_ASSERT_EQUAL_size_t(blocks_at_outer, app_heap_blocks());
 }
 
 static void

@@ -91,6 +91,9 @@ app_boot_init(void) {
     if (!app_arena_init()) {
         ESP_LOGE(TAG, "No app region: the PSRAM heap is %u bytes, its largest block %u",
                  (unsigned)memory_total_bytes(MEMORY_PSRAM), (unsigned)memory_largest_block(MEMORY_PSRAM));
+    } else {
+        ESP_LOGI(TAG, "App region %u bytes; PSRAM left %u, largest %u", (unsigned)app_arena_bytes(),
+                 (unsigned)memory_free_bytes(MEMORY_PSRAM), (unsigned)memory_largest_block(MEMORY_PSRAM));
     }
     ui_ridge_load();
     shell_init();

@@ -247,7 +247,7 @@ every app heap. Bulk memory comes from the app arena; see
 
 ### App memory
 
-The shell takes the app region from PSRAM once at boot, leaving
+The shell takes the app region from PSRAM once at boot, leaving at least
 `APP_ARENA_SYSTEM_RESERVE_BYTES` for the system. Each visit starts with an
 empty TLSF heap over that region. Nothing in it survives the visit.
 

@@ -190,6 +190,7 @@ shell_exit_app(const app_t** current) {
     }
 #endif
     app_arena_rewind(0);
+    app_arena_trim();
 #if CONFIG_LAUNCHER_DEVELOPMENT
     if (app_heap_blocks() != 0) {
         ESP_LOGW(TAG, "App %s kept %u app heap bytes", (*current)->name,

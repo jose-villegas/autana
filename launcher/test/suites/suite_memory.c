@@ -93,7 +93,10 @@ test_app_allocations_and_queries_use_the_region(void) {
     TEST_ASSERT_LESS_OR_EQUAL_size_t(memory_free_bytes(MEMORY_APP), memory_min_free_bytes(MEMORY_APP));
     TEST_ASSERT_GREATER_THAN_size_t(0, memory_largest_block(MEMORY_APP));
     TEST_ASSERT_EQUAL_size_t(total, memory_total_bytes(MEMORY_APP));
-    TEST_ASSERT_EQUAL_size_t(system_free, memory_free_bytes(MEMORY_PSRAM));
+    /* Other tasks move the system heap by a few bytes; the block is not
+     * among them. */
+    const size_t system_now = memory_free_bytes(MEMORY_PSRAM);
+    TEST_ASSERT_LESS_THAN_size_t(TEST_BLOCK_BYTES, system_free > system_now ? system_free - system_now : 0);
     memory_free(block);
     TEST_ASSERT_EQUAL_size_t(blocks, app_heap_blocks());
     TEST_ASSERT_EQUAL_size_t(free_before, memory_free_bytes(MEMORY_APP));
