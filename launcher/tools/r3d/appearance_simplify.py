@@ -721,7 +721,7 @@ def surface_loss(samples, centres, normals, scale, margin):
 def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian, seed=1, device="cuda", report=100,
              clear=(0.0, 0.0, 0.0), cost=None, cost_weight=0.0, scale=1, normal_weight=0.0, surface_weight=0.0,
              surface_margin=0.0, source=None, seam_margin=SEAM_MARGIN, copies=None, carved=None, front_weight=0.0,
-             depth_weight=0.0, draw=None):
+             depth_weight=0.0, view_odds=None):
     """Fit fixed triangles; return positions, colours and colour-only error history.
     Position steps use bounding diagonals and each vertex's capped local start scale.
     Laplacian drift and the source envelope use capped local start edge scales,
@@ -806,7 +806,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     finite = torch.ones((), dtype=torch.bool, device=device)
     started = time.time()
     for step in range(steps):
-        chosen = rng.choice(len(views), size=min(batch, len(views)), replace=False, p=draw)
+        chosen = rng.choice(len(views), size=min(batch, len(views)), replace=False, p=view_odds)
         adam.zero_grad()
         points = held_positions()
         draw, draw_colours = with_copies(points, colours)
@@ -972,11 +972,11 @@ def main(argv=None):
             pair_views, size = load_views([pair], args.scale)
             views += pair_views
             pair_of += [pair_index] * len(pair_views)
-        draw = None
+        view_odds = None
         if args.pair_weight and not args.per_shot:
             counts = np.bincount(pair_of)
-            draw = np.array([args.pair_weight[i] / counts[i] for i in pair_of])
-            draw /= draw.sum()
+            view_odds = np.array([args.pair_weight[i] / counts[i] for i in pair_of])
+            view_odds /= view_odds.sum()
         out = pathlib.Path(args.out) / (f"shot{index}" if args.per_shot else "")
         log(f"{out}: {len(views)} views at {size[0]}x{size[1]}")
         if args.score:
@@ -1004,7 +1004,7 @@ def main(argv=None):
                                         scale=args.scale, normal_weight=args.normal_weight, source=source,
                                         surface_weight=args.surface_weight, surface_margin=args.surface_margin,
                                         seam_margin=args.seam_margin, copies=copies, carved=carved,
-                                        front_weight=args.front_weight, depth_weight=args.depth_weight, draw=draw)
+                                        front_weight=args.front_weight, depth_weight=args.depth_weight, view_odds=view_odds)
         fitted = fitted._replace(points=points, rgb=rgb)
         kept = np.arange(len(fit_start.tris))
         if args.budget is not None:
