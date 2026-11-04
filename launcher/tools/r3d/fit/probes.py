@@ -1,9 +1,9 @@
 """Fit views from probes spread through a region, beside the camera path's (experiment).
 
-    python -m r3d.fit.probes select SCENE.scene.toml --object NAME --work DIR --spacing S [--face PX] [--seed N]
+    python -m r3d.fit.probes select SCENE.scene.toml --object NAME --work DIR --start START --spacing S [--face PX]
     python -m r3d.fit.probes render SCENE.scene.toml --object NAME --work DIR
 
-Run from launcher/tools. DIR is a `fitted_variant.py prepare` folder: the start mesh and the path's coverage poses.
+Run from launcher/tools. DIR holds the path's coverage poses (reference_set.prepare_references); START is the fit's start.
 `select` puts one jittered probe in every `spacing`-sized cell of the scene camera's region (the source's bounds
 without one), moves probes out of geometry and drops those still inside, gives each probe six 90 degree cube
 faces, and keeps faces greedily by the start triangles they show that neither the path nor a kept face shows yet.
@@ -154,8 +154,24 @@ def greedy_faces(sets, seen, plateau=PLATEAU, limit=None):
     return picked, gains
 
 
-def select(scene_path, object_name, work, spacing, face, seed):
+def drawn_mesh(start, asset_name, work):
+    """(the start as drawn, its fitted triangle count): a carved start bundle's rest with its copies after it."""
     from r3d.appearance_simplify import start_mesh
+    from r3d import mesh_bundle
+    from r3d.fit.copies import joined, placed_copies
+
+    start = pathlib.Path(start)
+    if start.suffix != mesh_bundle.SUFFIX:
+        mesh = start_mesh(start)
+        return mesh, len(mesh.tris)
+    entries, _ = mesh_bundle.decode(start.read_bytes())
+    rest_path = pathlib.Path(work) / f"{asset_name}.rest.mesh"
+    rest_path.write_bytes(next(data for name, kind, data in entries if name == asset_name))
+    rest = start_mesh(rest_path)
+    return joined(rest, placed_copies(start, rest.flat)), len(rest.tris)
+
+
+def select(scene_path, object_name, work, spacing, face, seed, start):
     from r3d.fitted_variant import placed_variant
     from r3d.import_settings import load_scene
     from r3d.reference_render import source_for
@@ -168,11 +184,12 @@ def select(scene_path, object_name, work, spacing, face, seed):
     source, _ = source_for(scene, job.object.name, lit=False)
     positions, tris = source.p, source.tri_v
     lo, hi = scene.region if scene.region is not None else (positions.min(axis=0), positions.max(axis=0))
-    mesh = start_mesh(work / f"{job.renderer.variant.name}.mesh")
+    mesh, fitted = drawn_mesh(start, job.asset_name, work)
     seen = path_shown(mesh, work / "coverage.txt")
-    log(f"path shows {np.count_nonzero(seen)} of {len(mesh.tris)} start triangles")
+    seen[fitted:] = True  # copies are drawn, never fitted or pruned
+    log(f"path shows {np.count_nonzero(seen[:fitted])} of {fitted} start triangles")
     record = {"spacing": spacing, "face": face, "seed": seed, "region": [list(map(float, lo)), list(map(float, hi))],
-              "start_triangles": len(mesh.tris), "path_shown": int(np.count_nonzero(seen))}
+              "start_triangles": fitted, "path_shown": int(np.count_nonzero(seen[:fitted]))}
     held_out = []
     for role, role_seed in (("train", seed), ("held_out", seed + 1)):
         points, cell = probe_points(lo, hi, spacing, role_seed)
@@ -180,8 +197,8 @@ def select(scene_path, object_name, work, spacing, face, seed):
         live = np.flatnonzero(state == "kept")
         poses = cube_poses(moved[live])
         sets = shown_sets(mesh, poses, SELECT_SIZE, near)
-        start = seen if role == "train" else np.zeros_like(seen)
-        picked, gains = greedy_faces(sets, start, limit=None if role == "train" else HELD_OUT_FACES)
+        start_seen = seen if role == "train" else np.arange(len(seen)) >= fitted
+        picked, gains = greedy_faces(sets, start_seen, limit=None if role == "train" else HELD_OUT_FACES)
         log(f"{role}: {len(points)} probes, {np.count_nonzero(state == 'inside')} inside, "
             f"{np.count_nonzero(state == 'near')} near, {len(live)} live; {len(picked)} of {len(poses)} faces kept")
         faces = {(int(live[i // 6]), i % 6): gain for i, gain in zip(picked, gains)}
@@ -190,7 +207,7 @@ def select(scene_path, object_name, work, spacing, face, seed):
                         "faces": [FACE_NAMES[k] for k in range(6) if (p, k) in faces],
                         "gains": [faces[p, k] for k in range(6) if (p, k) in faces]} for p in range(len(points))],
             "picked": [[int(live[i // 6]), FACE_NAMES[i % 6], g] for i, g in zip(picked, gains)],
-            "shown_after": int(np.count_nonzero(start)) + int(sum(gains))}
+            "shown_after": int(np.count_nonzero(start_seen[:fitted])) + int(sum(gains))}
         kept_poses = [poses[i] for i in picked]
         name = "probes.txt" if role == "train" else "probes_held_out.txt"
         (work / name).write_text(poses_text(face, face, FACE_LENS, near, kept_poses))
@@ -222,11 +239,15 @@ def main(argv=None):
     parser.add_argument("--spacing", type=float)
     parser.add_argument("--face", type=int, default=192)
     parser.add_argument("--seed", type=int, default=1)
+    parser.add_argument("--start", help="the fit's start mesh or carved start bundle")
     args = parser.parse_args(argv)
     if args.step == "select":
         if not args.spacing or args.spacing <= 0:
             parser.error("select needs a positive --spacing")
-        select(pathlib.Path(args.scene).resolve(), args.object, args.work, args.spacing, args.face, args.seed)
+        if not args.start:
+            parser.error("select needs --start")
+        select(pathlib.Path(args.scene).resolve(), args.object, args.work, args.spacing, args.face, args.seed,
+               args.start)
     else:
         render(pathlib.Path(args.scene).resolve(), args.object, args.work)
     return 0
