@@ -37,7 +37,7 @@ test_a_restarted_low_water_mark_forgets_the_low_before_it(void) {
     TEST_ASSERT_LESS_OR_EQUAL_size_t(free_held, low_held);
 }
 
-#define APP_TEST_BYTES      4096u
+#define TEST_BLOCK_BYTES    4096u
 #define APP_TEST_HOLE_BYTES (3u * _Alignof(max_align_t) + sizeof(void*))
 
 static void
@@ -81,11 +81,11 @@ test_app_allocations_and_queries_use_the_region(void) {
     const size_t system_free = memory_free_bytes(MEMORY_PSRAM);
     const size_t blocks = app_heap_blocks();
     memory_min_free_restart();
-    unsigned char* block = memory_alloc(APP_TEST_BYTES, MEMORY_APP);
+    unsigned char* block = memory_alloc(TEST_BLOCK_BYTES, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(block);
     TEST_ASSERT_TRUE(app_heap_contains(block));
     TEST_ASSERT_TRUE(memory_in_psram(block));
-    memset(block, 0xA5, APP_TEST_BYTES);
+    memset(block, 0xA5, TEST_BLOCK_BYTES);
     TEST_ASSERT_LESS_THAN_size_t(free_before, memory_free_bytes(MEMORY_APP));
     TEST_ASSERT_LESS_OR_EQUAL_size_t(memory_free_bytes(MEMORY_APP), memory_min_free_bytes(MEMORY_APP));
     TEST_ASSERT_GREATER_THAN_size_t(0, memory_largest_block(MEMORY_APP));
@@ -266,7 +266,7 @@ test_a_kinds_total_is_its_pools_capacity_while_a_block_is_held(void) {
         const size_t free_before = memory_free_bytes(TOTALS[i].kind);
         TEST_ASSERT_EQUAL_size_t_MESSAGE(TOTALS[i].capacity, memory_total_bytes(TOTALS[i].kind), TOTALS[i].name);
 
-        void* block = memory_alloc(4096, TOTALS[i].kind);
+        void* block = memory_alloc(TEST_BLOCK_BYTES, TOTALS[i].kind);
         TEST_ASSERT_NOT_NULL_MESSAGE(block, TOTALS[i].name);
         TEST_ASSERT_LESS_THAN_size_t_MESSAGE(free_before, memory_free_bytes(TOTALS[i].kind), TOTALS[i].name);
         TEST_ASSERT_EQUAL_size_t_MESSAGE(TOTALS[i].capacity, memory_total_bytes(TOTALS[i].kind), TOTALS[i].name);
@@ -281,13 +281,13 @@ static void
 test_the_largest_block_is_less_than_free_space_once_a_pool_has_a_hole(void) {
     for (size_t i = 0; i < sizeof SEPARATE_POOLS / sizeof SEPARATE_POOLS[0]; i++) {
         const memory_kind_t kind = SEPARATE_POOLS[i].kind;
-        void* before = memory_alloc(4096, kind);
-        void* hole = memory_alloc(4096, kind);
-        void* after = memory_alloc(4096, kind);
+        void* before = memory_alloc(TEST_BLOCK_BYTES, kind);
+        void* hole = memory_alloc(TEST_BLOCK_BYTES, kind);
+        void* after = memory_alloc(TEST_BLOCK_BYTES, kind);
         TEST_ASSERT_NOT_NULL_MESSAGE(after, SEPARATE_POOLS[i].name);
 
         memory_free(hole);
-        TEST_ASSERT_LESS_OR_EQUAL_size_t_MESSAGE(memory_free_bytes(kind) - 4096, memory_largest_block(kind),
+        TEST_ASSERT_LESS_OR_EQUAL_size_t_MESSAGE(memory_free_bytes(kind) - TEST_BLOCK_BYTES, memory_largest_block(kind),
                                                  SEPARATE_POOLS[i].name);
 
         memory_free(before);

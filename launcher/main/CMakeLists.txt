@@ -338,7 +338,7 @@ endif()
 idf_component_register(
     SRCS ${app_srcs}
     INCLUDE_DIRS "." "${board_include_dir}"
-    PRIV_INCLUDE_DIRS ${app_private_include_dirs} "$ENV{IDF_PATH}/components/heap/tlsf/include"
+    PRIV_INCLUDE_DIRS ${app_private_include_dirs} "${IDF_PATH}/components/heap/tlsf/include"
     LDFRAGMENTS "linker.lf"
     REQUIRES ${app_reqs}
 

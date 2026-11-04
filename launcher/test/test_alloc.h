@@ -1,5 +1,4 @@
-/* Aligned test buffers: the device's malloc gives 8 bytes, the host's 16, and
- * MinGW has no aligned_alloc. */
+/* test_alloc: visit-owned aligned buffers and arena exhaustion for test fixtures. */
 #pragma once
 
 #include <stddef.h>
