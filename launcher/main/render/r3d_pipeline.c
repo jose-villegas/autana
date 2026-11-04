@@ -634,7 +634,7 @@ draw_writing_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16
         const int step = per_triangle ? 1 : c->triangle_count;
         for (int t = c->triangle_first; t < end; t += step) {
             retag(writers, target->writers, target->writer_count, clusters[i], (uint32_t)t);
-            /* Not bounded: the cold path's frame has no room for one more live value. */
+            /* Not bounded: one more live value puts this frame over stack_chain_gate. */
             draw_triangles(mesh, lens, c, t, t + step, cs, &writing, false, true, skipping, work);
         }
     }

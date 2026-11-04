@@ -73,7 +73,9 @@ measures both.
 ## Per triangle
 
 The draw sorts each triangle of a kept cluster before it fills it
-([`r3d_triangle_tests.h`](../../../launcher/main/render/r3d_triangle_tests.h)):
+([`r3d_triangle_tests.h`](../../../launcher/main/render/r3d_triangle_tests.h)).
+A cluster whose vertices all passed the near and range tests skips the first
+two rows; a draw with writers keeps them:
 
 | Test | Then | Counted as |
 |---|---|---|
