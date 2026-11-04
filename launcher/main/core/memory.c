@@ -2,6 +2,8 @@
 
 #include "core/memory.h"
 
+#include <limits.h>
+
 #include "esp_memory_utils.h"
 #include "esp_psram.h"
 
@@ -42,6 +44,20 @@ memory_total_bytes(memory_kind_t kind) {
         return app_heap_total_bytes();
     }
     return heap_caps_get_total_size(memory_caps(kind));
+}
+
+/* The size classes per power of two in a TLSF heap over 256 KB. */
+#define TLSF_CLASSES_LOG2 5u
+
+size_t
+memory_unrounded_bytes(size_t bytes) {
+    if (bytes == 0) {
+        return 0;
+    }
+    const unsigned long long wide = bytes;
+    const size_t power = (size_t)1 << (sizeof wide * CHAR_BIT - 1 - (size_t)__builtin_clzll(wide));
+    const size_t interval = power >> TLSF_CLASSES_LOG2;
+    return interval == 0 ? bytes : bytes & ~(interval - 1);
 }
 
 size_t

@@ -49,7 +49,6 @@ static size_t app_blocks_before;
 
 void
 setUp(void) {
-    app_arena_trim();
     app_blocks_before = app_heap_blocks();
     display_restore_system_state();
 }
@@ -63,7 +62,6 @@ tearDown(void) {
     if (!app_heap_active()) {
         app_arena_enter();
     }
-    app_arena_trim();
     TEST_ASSERT_EQUAL_size_t_MESSAGE(app_blocks_before, app_heap_blocks(), "test leaked app heap blocks");
 }
 

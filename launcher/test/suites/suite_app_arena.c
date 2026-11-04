@@ -58,17 +58,9 @@ test_crossing_a_chunk_end_opens_another_block(void) {
     TEST_ASSERT_TRUE(next != first + 16);
     TEST_ASSERT_EQUAL_size_t(before + 2, app_heap_blocks());
     app_arena_rewind(mark);
-    TEST_ASSERT_EQUAL_PTR(first + 16, app_arena_take(1, 1));
-    app_arena_rewind(mark);
-    /* The emptied chunk stays for the next take that spills, as a frame's
-     * scratch does every frame, and trimming gives it back. */
-    TEST_ASSERT_EQUAL_PTR(next, app_arena_take(APP_ARENA_CHUNK_BYTES, 1));
-    TEST_ASSERT_EQUAL_size_t(before + 2, app_heap_blocks());
-    app_arena_rewind(mark);
-    TEST_ASSERT_EQUAL_size_t(before + 2, app_heap_blocks());
-    app_arena_trim();
     TEST_ASSERT_EQUAL_size_t(before + 1, app_heap_blocks());
     TEST_ASSERT_EQUAL_size_t(free_at_mark, memory_free_bytes(MEMORY_APP));
+    TEST_ASSERT_EQUAL_PTR(first + 16, app_arena_take(1, 1));
 }
 
 static void
@@ -113,16 +105,15 @@ test_nested_marks_rewind_inner_then_outer(void) {
     fixture();
     TEST_ASSERT_NOT_NULL(app_arena_take(100, 1));
     const size_t outer = app_arena_mark();
-    const size_t blocks_at_outer = app_heap_blocks();
-    TEST_ASSERT_NOT_NULL(app_arena_take(APP_ARENA_CHUNK_BYTES, 16));
+    void* first = app_arena_take(APP_ARENA_CHUNK_BYTES, 16);
+    TEST_ASSERT_NOT_NULL(first);
     const size_t inner = app_arena_mark();
     TEST_ASSERT_NOT_NULL(app_arena_take(APP_ARENA_CHUNK_BYTES, 16));
     app_arena_rewind(inner);
     TEST_ASSERT_EQUAL_size_t(inner, app_arena_mark());
     app_arena_rewind(outer);
     TEST_ASSERT_EQUAL_size_t(outer, app_arena_mark());
-    app_arena_trim();
-    TEST_ASSERT_EQUAL_size_t(blocks_at_outer, app_heap_blocks());
+    TEST_ASSERT_EQUAL_PTR(first, app_arena_take(APP_ARENA_CHUNK_BYTES, 16));
 }
 
 static void
@@ -142,7 +133,11 @@ test_the_heap_is_empty_on_the_next_visit(void) {
 static void
 test_the_region_is_the_psram_heap_less_the_system_reserve(void) {
     fixture();
-    TEST_ASSERT_EQUAL_size_t(memory_total_bytes(MEMORY_PSRAM) - APP_ARENA_SYSTEM_RESERVE_BYTES, app_arena_bytes());
+    /* Rounded down to a size class of the heap, so the system keeps at least
+     * the reserve: see memory_unrounded_bytes(). */
+    const size_t most = memory_total_bytes(MEMORY_PSRAM) - APP_ARENA_SYSTEM_RESERVE_BYTES;
+    TEST_ASSERT_LESS_OR_EQUAL_size_t(most, app_arena_bytes());
+    TEST_ASSERT_GREATER_THAN_size_t(most - most / 16, app_arena_bytes());
     TEST_ASSERT_TRUE(memory_in_psram(app_arena_take(1, 1)));
 }
 

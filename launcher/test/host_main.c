@@ -30,7 +30,6 @@ static size_t app_blocks_before;
 void
 setUp(void) {
     heap_arena_snapshot(&heap_blocks_before, &heap_bytes_before);
-    app_arena_trim();
     app_blocks_before = app_heap_blocks();
 }
 
@@ -38,7 +37,6 @@ void
 tearDown(void) {
     suite_run_test_cleanup();
 
-    app_arena_trim();
     TEST_ASSERT_EQUAL_size_t_MESSAGE(app_blocks_before, app_heap_blocks(), "test leaked app heap blocks");
     size_t heap_blocks_after;
     size_t heap_bytes_after;

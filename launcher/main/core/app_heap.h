@@ -10,6 +10,12 @@ bool app_heap_active(void);
 bool app_heap_contains(const void* pointer);
 void* app_heap_alloc(size_t bytes);
 void app_heap_free(void* pointer);
+
+/* app_heap_alloc() and app_heap_free() for a lender, the app arena, out of
+ * the trace hook's sight: a scene that loads through the arena is no heap
+ * work per frame, as it was none from the fixed block the arena replaced. */
+void* app_heap_lend(size_t bytes);
+void app_heap_reclaim(void* pointer);
 size_t app_heap_free_bytes(void);
 size_t app_heap_total_bytes(void);
 size_t app_heap_largest_block(void);

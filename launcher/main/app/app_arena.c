@@ -17,23 +17,6 @@ static unsigned char* block;
 static size_t block_bytes;
 static size_t used;
 static arena_chunk_t* current;
-/* The largest chunk a rewind emptied, kept so a frame whose scratch spills
- * into a new chunk does not take and free one from the app heap every frame. */
-static arena_chunk_t* spare;
-
-#ifdef ESP_PLATFORM
-/* ESP-IDF's TLSF rounds a request up to its size class and hands out the
- * rounded block. In a heap this large a class is a 32nd of the request's
- * power of two: asked for whole, the region would take up to 128 KB of the
- * reserve. A request on a class boundary takes what it asks. */
-#define PSRAM_HEAP_CLASSES_LOG2 5u
-
-static size_t
-size_class_floor(size_t bytes) {
-    const size_t power = (size_t)1 << (31 - __builtin_clz((unsigned)bytes));
-    return bytes & ~((power >> PSRAM_HEAP_CLASSES_LOG2) - 1);
-}
-#endif
 
 static size_t
 psram_heap_bytes(void) {
@@ -51,8 +34,8 @@ app_arena_init(void) {
     if (heap <= APP_ARENA_SYSTEM_RESERVE_BYTES) {
         return false;
     }
-#ifdef ESP_PLATFORM
-    const size_t bytes = size_class_floor(heap - APP_ARENA_SYSTEM_RESERVE_BYTES);
+#if MEMORY_HEAP_CAPS
+    const size_t bytes = memory_unrounded_bytes(heap - APP_ARENA_SYSTEM_RESERVE_BYTES);
 #else
     const size_t bytes = heap - APP_ARENA_SYSTEM_RESERVE_BYTES;
 #endif
@@ -79,16 +62,7 @@ app_arena_enter(void) {
 void
 app_arena_exit(void) {
     app_arena_rewind(0);
-    app_arena_trim();
     app_heap_exit();
-}
-
-void
-app_arena_trim(void) {
-    if (spare != NULL) {
-        memory_free(spare);
-        spare = NULL;
-    }
 }
 
 void*
@@ -110,20 +84,11 @@ app_arena_take(size_t size, size_t align) {
     if (capacity > SIZE_MAX - sizeof(arena_chunk_t)) {
         return NULL;
     }
-    arena_chunk_t* chunk = spare;
-    if (chunk != NULL && chunk->capacity >= capacity) {
-        spare = NULL;
-    } else {
-        /* A spare too small for this take would only block the heap. */
-        app_arena_trim();
-        chunk = memory_alloc(sizeof *chunk + capacity, MEMORY_APP);
-        if (chunk == NULL) {
-            return NULL;
-        }
-        chunk->capacity = capacity;
+    arena_chunk_t* chunk = app_heap_lend(sizeof *chunk + capacity);
+    if (chunk == NULL) {
+        return NULL;
     }
-    chunk->previous = current;
-    chunk->start = used;
+    *chunk = (arena_chunk_t){.previous = current, .start = used, .capacity = capacity};
     const size_t padding = (-(uintptr_t)chunk->data) & (align - 1);
     current = chunk;
     used += padding + size;
@@ -139,16 +104,9 @@ void
 app_arena_rewind(size_t mark) {
     assert(mark <= used);
     while (current != NULL && mark <= current->start) {
-        arena_chunk_t* emptied = current;
-        current = emptied->previous;
-        if (spare == NULL || emptied->capacity > spare->capacity) {
-            arena_chunk_t* smaller = spare;
-            spare = emptied;
-            emptied = smaller;
-        }
-        if (emptied != NULL) {
-            memory_free(emptied);
-        }
+        arena_chunk_t* previous = current->previous;
+        app_heap_reclaim(current);
+        current = previous;
     }
     used = mark;
 }

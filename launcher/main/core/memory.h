@@ -60,6 +60,13 @@ size_t memory_largest_block(memory_kind_t kind);
 /* Everything this kind's heap regions hold, free or not. */
 size_t memory_total_bytes(memory_kind_t kind);
 
+/* The largest request at or below `bytes` that this kind's heap gives at
+ * exactly its size. ESP-IDF's TLSF rounds a large request up to its size
+ * class, a 32nd of the request's power of two in a heap over 256 KB, and
+ * hands out the rounded block: up to 128 KB more than asked for a block of
+ * several MB. */
+size_t memory_unrounded_bytes(size_t bytes);
+
 /* The external RAM chip's whole size, the part the board reserves ahead of
  * the heap included; 0 when the board has none. */
 size_t memory_psram_bytes(void);

@@ -80,8 +80,8 @@ app_heap_contains(const void* pointer) {
     return address >= region_start && address - region_start < region_bytes;
 }
 
-void*
-app_heap_alloc(size_t bytes) {
+static void*
+allocate(size_t bytes) {
     assert(heap != NULL);
     if (bytes == 0 || bytes > total_bytes) {
         return NULL;
@@ -95,6 +95,22 @@ app_heap_alloc(size_t bytes) {
             minimum_bytes = free_bytes;
         }
         blocks++;
+    }
+    return pointer;
+}
+
+static void
+release(void* pointer) {
+    assert(heap != NULL && "a MEMORY_APP block freed after its visit ended");
+    free_bytes += tlsf_block_size(pointer) + tlsf_alloc_overhead();
+    blocks--;
+    tlsf_free(heap, pointer);
+}
+
+void*
+app_heap_alloc(size_t bytes) {
+    void* pointer = allocate(bytes);
+    if (pointer != NULL) {
         /* memory_alloc() is inline, so this return address is its caller's. */
         app_heap_trace_hook(true, __builtin_return_address(0));
     }
@@ -103,11 +119,18 @@ app_heap_alloc(size_t bytes) {
 
 void
 app_heap_free(void* pointer) {
-    assert(heap != NULL && "a MEMORY_APP block freed after its visit ended");
-    free_bytes += tlsf_block_size(pointer) + tlsf_alloc_overhead();
-    blocks--;
-    tlsf_free(heap, pointer);
+    release(pointer);
     app_heap_trace_hook(false, __builtin_return_address(0));
+}
+
+void*
+app_heap_lend(size_t bytes) {
+    return allocate(bytes);
+}
+
+void
+app_heap_reclaim(void* pointer) {
+    release(pointer);
 }
 
 size_t

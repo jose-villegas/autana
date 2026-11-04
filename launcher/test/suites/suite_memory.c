@@ -105,6 +105,18 @@ test_app_allocations_and_queries_use_the_region(void) {
     TEST_ASSERT_EQUAL_size_t(free_before, memory_min_free_bytes(MEMORY_APP));
 }
 
+/* Rounding down to a size class stays within one class of the request and
+ * is already on one. */
+static void
+test_an_unrounded_request_is_one_class_below_at_most(void) {
+    for (size_t bytes = TEST_BLOCK_BYTES; bytes < SIZE_MAX / 3; bytes = bytes * 3 + 1) {
+        const size_t unrounded = memory_unrounded_bytes(bytes);
+        TEST_ASSERT_LESS_OR_EQUAL_size_t(bytes, unrounded);
+        TEST_ASSERT_LESS_THAN_size_t(bytes / 16, bytes - unrounded);
+        TEST_ASSERT_EQUAL_size_t(unrounded, memory_unrounded_bytes(unrounded));
+    }
+}
+
 #ifdef DEVICE_BUILD
 #include "esp_memory_utils.h"
 
@@ -134,10 +146,24 @@ test_each_kinds_block_lands_in_the_memory_it_names(void) {
     }
 }
 
+/* The heap gives an unrounded request exactly what it asks, so a region
+ * sized that way leaves the system its whole reserve. */
+static void
+test_the_psram_heap_gives_an_unrounded_request_exactly(void) {
+    const size_t bytes = memory_unrounded_bytes(memory_largest_block(MEMORY_PSRAM) / 2);
+    void* block = memory_alloc(bytes, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(block);
+    const size_t given = heap_caps_get_allocated_size(block);
+    memory_free(block);
+    TEST_ASSERT_EQUAL_size_t(bytes, given);
+}
+
 void
 suite_memory(void) {
     RUN_TEST(test_app_allocations_and_queries_use_the_region);
     RUN_TEST(test_app_largest_block_is_allocatable_until_exhaustion);
+    RUN_TEST(test_an_unrounded_request_is_one_class_below_at_most);
+    RUN_TEST(test_the_psram_heap_gives_an_unrounded_request_exactly);
     RUN_TEST(test_each_kinds_block_lands_in_the_memory_it_names);
     RUN_TEST(test_a_restarted_low_water_mark_forgets_the_low_before_it);
 }
@@ -337,6 +363,7 @@ void
 suite_memory(void) {
     RUN_TEST(test_app_allocations_and_queries_use_the_region);
     RUN_TEST(test_app_largest_block_is_allocatable_until_exhaustion);
+    RUN_TEST(test_an_unrounded_request_is_one_class_below_at_most);
     RUN_TEST(test_a_small_block_of_every_kind_is_writable_and_comes_back);
     RUN_TEST(test_the_lowest_free_space_remembers_a_block_freed_again);
     RUN_TEST(test_a_restarted_low_water_mark_forgets_the_low_before_it);
