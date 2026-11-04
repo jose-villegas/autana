@@ -55,11 +55,6 @@ static const char* TAG = "input_lab";
 #define RULER_LABEL_SIDE      20
 #define COL_RULER             0xFFFFFF
 #define COL_RULER_MAJOR       0xFF3030
-#define MOTION_G_TEXT_SIZE    16
-#define MOTION_MILLI_DIGITS   3
-#define OFFSET_DIGITS         1
-#define OFFSET_SCALE          10
-#define MOTION_HUD_TEXT_SIZE  96
 #define MOTION_US_PER_MS      1000
 #define MOTION_LOG_PERIOD_MS  100
 
@@ -77,7 +72,6 @@ static const char* TAG = "input_lab";
 #define MOTION_FILTER_SIDE    11
 #define MOTION_MARGIN         16
 #define MOTION_HUD_ROWS       5
-#define MOTION_HUD_SCALE      1
 #define COL_HIT               0x40E060
 #define COL_MISS              0xFFB020
 #define COL_TARGET            0xFF00FF
@@ -950,25 +944,7 @@ static void
 draw_gravity_line(int row) {
     char line[MOTION_HUD_TEXT_SIZE];
 
-    enum { GRAV_X, GRAV_Y, GRAV_Z, GRAV_STRENGTH, GRAV_BIAS_X, GRAV_BIAS_Y, GRAV_BIAS_Z, GRAV_COUNT };
-
-    const float gravity_values[GRAV_COUNT] = {gravity_down(&gravity).x,      gravity_down(&gravity).y,
-                                              gravity_down(&gravity).z,      gravity_strength(&gravity),
-                                              gravity_gyro_bias(&gravity).x, gravity_gyro_bias(&gravity).y,
-                                              gravity_gyro_bias(&gravity).z};
-    char gravity_text[GRAV_COUNT][MOTION_G_TEXT_SIZE];
-    for (size_t i = 0; i < GRAV_COUNT; i++) {
-        const bool bias = i >= GRAV_BIAS_X;
-        motion_probe_format_fixed(gravity_text[i], sizeof gravity_text[i],
-                                  (int)lroundf(gravity_values[i] * (float)(bias ? OFFSET_SCALE : IMU_PROBE_MILLI)),
-                                  bias ? OFFSET_DIGITS : MOTION_MILLI_DIGITS, i != GRAV_STRENGTH);
-    }
-    if (snprintf(line, sizeof line, "GRAV %s,%s,%s S%s B%s,%s,%s", gravity_text[GRAV_X], gravity_text[GRAV_Y],
-                 gravity_text[GRAV_Z], gravity_text[GRAV_STRENGTH], gravity_text[GRAV_BIAS_X],
-                 gravity_text[GRAV_BIAS_Y], gravity_text[GRAV_BIAS_Z])
-        < 0) {
-        line[0] = '\0';
-    }
+    motion_probe_format_gravity(line, sizeof line, have_motion ? &gravity : NULL, display_quarter_now());
     hud_line(row, line);
 }
 
@@ -976,6 +952,7 @@ static void
 draw_motion(void) {
     if (!have_motion) {
         hud_line(0, "NO MOTION SENSOR");
+        draw_gravity_line(MOTION_HUD_ROWS - 1);
         return;
     }
     if (imu_round.step != IMU_PROBE_IDLE) {

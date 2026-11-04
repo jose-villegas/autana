@@ -2,6 +2,9 @@
 #include "unity.h"
 
 #include "apps/input_lab/motion_probe.h"
+#include "display/display.h"
+#include "draw/draw_font_roles.h"
+#include "gfx/gfx.h"
 
 #define ANGLE_TOLERANCE_DEG 0.02F
 #define COUNT_TOLERANCE     0.02F
@@ -101,8 +104,54 @@ test_fixed_point_formatter(void) {
     TEST_ASSERT_EQUAL_STRING("1.000", text);
 }
 
+static void
+test_gravity_line_quarters_and_width(void) {
+    gravity_t gravity;
+    gravity_reset(&gravity);
+    gravity.down = (vec3f_t){-0.5F, 0.5F, 0};
+    gravity.gyro_bias = (vec3f_t){-9.9F, 9.9F, 0};
+    const char* expected[DISPLAY_QUARTER_COUNT] = {
+        "GRAV -0.500,+0.500,+0.000 S0.707 B-9.9,+9.9,+0.0 Q0", "GRAV -0.500,+0.500,+0.000 S0.707 B-9.9,+9.9,+0.0 Q1",
+        "GRAV -0.500,+0.500,+0.000 S0.707 B-9.9,+9.9,+0.0 Q2", "GRAV -0.500,+0.500,+0.000 S0.707 B-9.9,+9.9,+0.0 Q3"};
+    char text[MOTION_HUD_TEXT_SIZE];
+    for (int q = 0; q < DISPLAY_QUARTER_COUNT; q++) {
+        motion_probe_format_gravity(text, sizeof text, &gravity, q);
+        TEST_ASSERT_EQUAL_STRING(expected[q], text);
+        TEST_ASSERT_LESS_OR_EQUAL_INT(GFX_HEIGHT, draw_font_text_width(draw_font_ui(), text, -1, MOTION_HUD_SCALE));
+    }
+}
+
+static void
+test_gravity_line_unavailable_and_buffer_edges(void) {
+    char text[MOTION_HUD_TEXT_SIZE];
+    const char* unavailable[DISPLAY_QUARTER_COUNT] = {"GRAV -- Q0", "GRAV -- Q1", "GRAV -- Q2", "GRAV -- Q3"};
+    for (int q = 0; q < DISPLAY_QUARTER_COUNT; q++) {
+        motion_probe_format_gravity(text, sizeof text, NULL, q);
+        TEST_ASSERT_EQUAL_STRING(unavailable[q], text);
+    }
+    gravity_t gravity;
+    gravity_reset(&gravity);
+    motion_probe_format_gravity(text, sizeof text, &gravity, DISPLAY_PORTRAIT);
+    TEST_ASSERT_EQUAL_STRING("GRAV +0.000,+0.000,-1.000 S0.000 B+0.0,+0.0,+0.0 Q0", text);
+    motion_probe_format_gravity(text, sizeof text, NULL, DISPLAY_QUARTER_COUNT);
+    TEST_ASSERT_EQUAL_STRING("GRAV -- Q?", text);
+    motion_probe_format_gravity(text, sizeof text, NULL, -1);
+    TEST_ASSERT_EQUAL_STRING("GRAV -- Q?", text);
+    motion_probe_format_gravity(text, 1, &gravity, DISPLAY_PORTRAIT);
+    TEST_ASSERT_EQUAL_STRING("", text);
+    char short_text[sizeof "GRAV"];
+    motion_probe_format_gravity(short_text, sizeof short_text, &gravity, DISPLAY_PORTRAIT);
+    TEST_ASSERT_EQUAL_STRING("GRAV", short_text);
+    text[0] = 'x';
+    motion_probe_format_gravity(text, 0, &gravity, DISPLAY_PORTRAIT);
+    TEST_ASSERT_EQUAL_CHAR('x', text[0]);
+    motion_probe_format_gravity(NULL, 0, NULL, DISPLAY_PORTRAIT);
+}
+
 void
 run_motion_probe_suite(void) {
+    RUN_TEST(test_gravity_line_quarters_and_width);
+    RUN_TEST(test_gravity_line_unavailable_and_buffer_edges);
     RUN_TEST(test_bubble_rounding_and_unclamped_signal);
     RUN_TEST(test_tilt_scale_invariance);
     RUN_TEST(test_bearing_rounds_and_wraps);
