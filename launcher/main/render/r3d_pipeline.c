@@ -582,13 +582,14 @@ draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3
 /* Triangles first to end - 1 of one cluster. */
 static inline __attribute__((always_inline)) void
 draw_triangles(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_cluster_t* c, int first, int end,
-               const r3d_pipeline_vertex_t* cs, const r3d_span_target_t* target, bool writes, bool skipping,
-               r3d_pipeline_work_t* work) {
+               const r3d_pipeline_vertex_t* cs, const r3d_span_target_t* target, bool bounded, bool writes,
+               bool skipping, r3d_pipeline_work_t* work) {
     for (int t = first; t < end; t++) {
         const uint16_t* tri = mesh->triangles[t];
         const uint16_t* face_color = mesh->face_colors == NULL ? NULL : &mesh->face_colors[t];
         const r3d_pipeline_vertex_t* const v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
-        if (v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F) {
+        /* Cluster-owned vertices all passed near and range tests when bounded. */
+        if (bounded || (v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F)) {
             draw_in_front(mesh, v, tri, face_color, c->double_sided, target, writes, skipping, work);
         } else if (v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F) {
             draw_rebuilt(mesh, lens, tri, face_color, c->double_sided, target, work);
@@ -633,7 +634,8 @@ draw_writing_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16
         const int step = per_triangle ? 1 : c->triangle_count;
         for (int t = c->triangle_first; t < end; t += step) {
             retag(writers, target->writers, target->writer_count, clusters[i], (uint32_t)t);
-            draw_triangles(mesh, lens, c, t, t + step, cs, &writing, true, skipping, work);
+            /* Not bounded: one more live value puts this frame over stack_chain_gate. */
+            draw_triangles(mesh, lens, c, t, t + step, cs, &writing, false, true, skipping, work);
         }
     }
 }
@@ -661,8 +663,9 @@ draw_reading_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16
             continue;
         }
         const r3d_lit_cluster_t* c = &mesh->clusters[clusters[i]];
-        draw_triangles(mesh, lens, c, c->triangle_first, c->triangle_first + c->triangle_count, cs, target, false,
-                       skipping, work);
+        const bool bounded = rows != NULL && !rows[clusters[i]].unbounded;
+        draw_triangles(mesh, lens, c, c->triangle_first, c->triangle_first + c->triangle_count, cs, target, bounded,
+                       false, skipping, work);
     }
 }
 
