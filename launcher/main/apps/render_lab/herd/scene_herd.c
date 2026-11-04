@@ -22,8 +22,10 @@
 
 static const char* TAG = "herd";
 
-/* The scene's id and pack, its camera, and its copies' names, numbered from 0. */
-#define HERD_SCENE          "herd"
+/* The scene's id in the capybara's pack, the scene keys' prefix, its camera,
+ * and its copies' names, numbered from 0. */
+#define HERD_SCENE          "capybara/herd"
+#define HERD_KEY            "herd"
 #define HERD_CAMERA         "camera"
 #define HERD_COPY_FORMAT    "capybara_%02d"
 
@@ -176,7 +178,7 @@ HERD_SIZES(HERD_COPIES)
 /* The copies are animated, so no frame is generated from the camera's pose alone. */
 #define HERD_SCENE_ROW(id_, key_, copies_)                                                                             \
     [HERD_##id_] = {.name = "Herd " key_,                                                                              \
-                    .key = HERD_SCENE "-" key_,                                                                        \
+                    .key = HERD_KEY "-" key_,                                                                          \
                     .family = "Herd",                                                                                  \
                     .variant = key_,                                                                                   \
                     .data = &herd_copies_##id_,                                                                        \

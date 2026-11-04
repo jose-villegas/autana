@@ -108,6 +108,8 @@ mounted packs; `ASSET_STORE_MOUNTS_MAX` bounds their table.
 
 `scene_load(id)` opens the scene and its dependencies synchronously;
 `scene_unload()` releases its pack. A scene that fails to load is not drawn.
+The id is `pack/scene`, or a bare `scene` in the pack of its own name: a
+folder pack (`NAME.pack.toml`) holding several scenes is read as `NAME/scene`.
 
 ## The device
 

@@ -101,9 +101,8 @@ def authored_entries(root):
     entries = [('authored', scene_asset.TYPE, scene), ('backdrop', mesh_asset.TYPE, bytes(mesh)),
                (name, skeleton_asset.TYPE, skeleton),
                ('idle', tracks_asset.TYPE, clip), ('walk', tracks_asset.TYPE, clip)]
-    for name in ('first', 'second'):
-        key = 'authored.' + name
-        entries.extend([(key, mesh_asset.TYPE, bytes(mesh)), (key + '.skin', skin_asset.TYPE, skin)])
+    # Both skinned objects place the one import, so they share its mesh and skin.
+    entries.extend([('mesh', mesh_asset.TYPE, bytes(mesh)), ('mesh.skin', skin_asset.TYPE, skin)])
     return [(name, kind, to_engine(kind, data)) for name, kind, data in entries]
 
 
