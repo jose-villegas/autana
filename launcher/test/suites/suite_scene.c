@@ -3379,6 +3379,7 @@ release_levelled(void) {
     free(levelled_mesh);
     levelled_mesh = NULL;
     levelled_entry = NULL;
+    release_fixture();
 }
 
 static asset_view_t
@@ -3449,16 +3450,9 @@ test_mesh_reader_refuses_levels_out_of_order(void) {
 }
 
 static void
-release_levelled_fixture(void) {
-    release_levelled();
-    release_fixture();
-}
-
-static void
 test_mesh_open_resolves_optional_levels(void) {
     fixture();
     const asset_view_t levels = levelled_quads();
-    suite_set_test_cleanup(release_levelled_fixture);
     for (int present = 0; present <= 1; present++) {
         test_pack_t writer = test_pack_begin(fx.bytes, PACK_MAX, 1 + present);
         memcpy(test_pack_add(&writer, "rig.mesh", R3D_LIT_MESH_ASSET, RIG_MESH_BYTES), levelled_mesh, RIG_MESH_BYTES);
