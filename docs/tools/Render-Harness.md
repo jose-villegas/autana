@@ -22,7 +22,7 @@ checked, and compared with device captures.
 ## Viewing a scene file
 
 `scene_viewer.sh` renders a scene file headlessly; bakes, doc figures and
-tests call it. To look at a scene interactively, use
+tests call it. To look at the same file interactively, use
 [Loupe](https://github.com/jose-villegas/loupe), the frame debugger.
 
 ```sh
