@@ -33,6 +33,8 @@ from tests.r3d_env import needs_mitsuba  # noqa: E402
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 SOURCE = '[source]\npath = "m.obj"\ncredit = "c"\n'
 OUTPUT = '[output]\nname = "mesh"\n'
+# The geometry a skinned renderer's import needs: skinning has no weights for coarser levels.
+NO_LEVELS = '[geometry]\nlod = false\n'
 AMBIENT = '[ambient]\ncolor = [1.0, 1.0, 1.0]\nintensity = 0.1\n'
 TONEMAP = 'tonemap_white = 0.3\n'
 SIMPLIFY = '[geometry]\nsimplify = { dense_edge = 1.0, props = [], props_share = 0.3, seal_seams = true, colour_deviation = 1.0 }\n'

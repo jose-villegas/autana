@@ -26,7 +26,7 @@ from r3d.mesh_asset import TYPE as LIT_MESH  # noqa: E402
 from r3d.scene_asset import CAMERA, HEADER, NAME, RENDERER, TRANSFORM, SceneError  # noqa: E402
 from unittest import mock
 from skin_probe import rig
-from test_r3d_import import HEAD, renderer, sun_object, write_import  # noqa: E402
+from test_r3d_import import HEAD, NO_LEVELS, renderer, sun_object, write_import  # noqa: E402
 
 CLIP = 'source = "probe.glb"\nanimation = "clip"\n'
 
@@ -81,7 +81,8 @@ class SceneEntryTests(SceneFiles):
         self.assertGreater(len(entry), len(scene_host.one_entity_scene()))
 
     def test_skinned_renderer_forwards_cache_and_offline(self):
-        import_file = write_import(self.root, "rig.import.toml", source='[source]\npath = "rig.glb"\ncredit = "test"\n')
+        import_file = write_import(self.root, "rig.import.toml", source='[source]\npath = "rig.glb"\ncredit = "test"\n',
+                                   body=NO_LEVELS)
         objects = renderer("rig.import.toml").replace("mesh_renderer", "skinned_renderer")
         scene = load_scene(self.scene(objects))
         document, binary = rig()
@@ -106,7 +107,8 @@ class SceneEntryTests(SceneFiles):
         self.assertEqual(set(parse_pack(packs["hall"])), {"hall", "a", "b", "fly", "tour"})
 
     def test_skinned_renderer_and_animator_are_authored(self):
-        import_file = write_import(self.root, "rig.import.toml", source='[source]\npath = "rig.glb"\ncredit = "test"\n')
+        import_file = write_import(self.root, "rig.import.toml", source='[source]\npath = "rig.glb"\ncredit = "test"\n',
+                                   body=NO_LEVELS)
         objects = (renderer("rig.import.toml").replace("mesh_renderer", "skinned_renderer")
                    + '[objects.animator]\nclips = ["move"]\ndefault_clip = "move"\nwrap = "clamp"\n' + sun_object().replace('color = [1.0, 1.0, 1.0]', 'color = [0.25, 0.5, 0.75]')
                    .replace('intensity = 1.0', 'intensity = 2.5'))

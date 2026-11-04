@@ -311,7 +311,7 @@ class PackStep(unittest.TestCase):
         from gltf import gltf_read
         from r3d import skin_pack
         from r3d.import_settings import load_import_settings, SKIN_LIGHTING
-        from test_r3d_import import write_import
+        from test_r3d_import import NO_LEVELS, write_import
         data = skin_probe.rig_glb()
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
@@ -321,7 +321,7 @@ class PackStep(unittest.TestCase):
             with mock.patch.object(gltf_read, 'load_asset', wraps=gltf_read.load_asset) as read:
                 for mode in SKIN_LIGHTING:
                     path = write_import(root, source='[source]\npath = "rig.glb"\ncredit = "probe"\n',
-                                        body=f'[skin]\nlighting = "{mode}"\n')
+                                        body=NO_LEVELS + f'[skin]\nlighting = "{mode}"\n')
                     settings = load_import_settings(path)
                     job = SimpleNamespace(settings=settings, object=SimpleNamespace(animator=None))
                     with mock.patch.object(skin_pack, 'load_rig', wraps=skin_pack.load_rig) as resolve:
@@ -343,7 +343,7 @@ class PackStep(unittest.TestCase):
         import skin_probe
         document, buffers = skin_probe.rig()
         node = next(index for index, item in enumerate(document['nodes']) if 'skin' in item)
-        settings = SimpleNamespace(path='rig.import.toml')
+        settings = SimpleNamespace(path='rig.import.toml', lod=False)
         default_cache = bake.default_cache()
         explicit_cache = default_cache / 'explicit'
         with mock.patch.object(skin_pack, 'load_rig', return_value=(None, document, buffers, node)) as load:
@@ -361,15 +361,26 @@ class PackStep(unittest.TestCase):
         from unittest import mock
         from r3d import skin_pack
         from r3d.import_settings import SettingsError
-        settings = SimpleNamespace(path='plain.import.toml')
+        settings = SimpleNamespace(path='plain.import.toml', lod=False)
         with mock.patch.object(skin_pack, 'load_rig', return_value=None):
             with self.assertRaisesRegex(SettingsError, 'plain.import.toml: skinned_renderer requires a rig'):
                 skin_pack.rig_ids('mesh', settings, None, True)
 
+    def test_rig_ids_refuse_a_mesh_that_bakes_levels(self):
+        from types import SimpleNamespace
+        from unittest import mock
+        from r3d import skin_pack
+        from r3d.import_settings import SettingsError
+        settings = SimpleNamespace(path='rig.import.toml', lod=True)
+        with mock.patch.object(skin_pack, 'load_rig') as load:
+            with self.assertRaisesRegex(SettingsError, r'rig.import.toml: .*\[geometry\] lod = false'):
+                skin_pack.rig_ids('mesh', settings, None, True)
+            load.assert_not_called()
+
     def test_scene_and_skeleton_entries_use_the_source_rig_name(self):
         from r3d import scene_asset, skin_pack
         from r3d.import_settings import load_scene
-        from test_r3d_import import write_import
+        from test_r3d_import import NO_LEVELS, write_import
         from types import SimpleNamespace
         import skin_probe
         document, _ = skin_probe.rig()
@@ -377,7 +388,7 @@ class PackStep(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             (root / 'rig.glb').write_bytes(skin_probe.rig_glb(document['nodes']))
-            write_import(root, 'rig.import.toml', source='[source]\npath="rig.glb"\ncredit="test"\n')
+            write_import(root, 'rig.import.toml', source='[source]\npath="rig.glb"\ncredit="test"\n', body=NO_LEVELS)
             path = root / 'room.scene.toml'
             path.write_text('[[objects]]\nname="subject"\n[objects.skinned_renderer]\nmesh="rig.import.toml"\n')
             scene = load_scene(path)
@@ -398,14 +409,15 @@ class PackStep(unittest.TestCase):
         from gltf import gltf_read
         from r3d import skin_pack
         from r3d.import_settings import load_import_settings
-        from test_r3d_import import write_import
+        from test_r3d_import import NO_LEVELS, write_import
         from unittest import mock
         import skin_probe
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             source = root / 'rig.glb'
             source.write_bytes(skin_probe.rig_glb())
-            settings = load_import_settings(write_import(root, source='[source]\npath="rig.glb"\ncredit="test"\n'))
+            settings = load_import_settings(write_import(root, source='[source]\npath="rig.glb"\ncredit="test"\n',
+                                                         body=NO_LEVELS))
             skin_pack.source_rig.cache_clear()
             self.addCleanup(skin_pack.source_rig.cache_clear)
             with mock.patch.object(gltf_read, 'load_asset', wraps=gltf_read.load_asset) as read:

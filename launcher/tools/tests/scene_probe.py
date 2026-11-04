@@ -24,7 +24,7 @@ from anim import tracks_asset  # noqa: E402
 from anim_probe import probe_entry, probe_glb  # noqa: E402
 from asset.asset_pack import DEFAULT_ALIGN, build_pack  # noqa: E402
 from r3d import scene_asset, scene_name  # noqa: E402
-from test_r3d_import import write_import
+from test_r3d_import import NO_LEVELS, write_import
 from types import SimpleNamespace
 from unittest import mock
 from skin_probe import rig, POSITIONS, POSITION_SCALE
@@ -71,7 +71,8 @@ def camera_entry():
 
 
 def authored_entries(root):
-    source = write_import(root, 'rig.import.toml', source='[source]\npath = "rig.glb"\ncredit = "test"\n')
+    source = write_import(root, 'rig.import.toml', source='[source]\npath = "rig.glb"\ncredit = "test"\n',
+                          body=NO_LEVELS)
     write_import(root, 'backdrop.import.toml', output='[output]\nname = "backdrop"\n')
     objects = ['[[objects]]\nname = "backdrop"\n[objects.mesh_renderer]\nmesh = "backdrop.import.toml"\n']
     for name, clip in (("first", "idle"), ("second", "walk")):
