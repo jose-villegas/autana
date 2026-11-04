@@ -2,6 +2,12 @@
 
 The [orientation capture and replay](tools/README.md) tool records shell quarter decisions.
 
+## Motion page
+
+The motion page stays pinned to `DISPLAY_DEFAULT_QUARTER`.
+The GRAV line's `Q0`–`Q3` shows the shell's live display quarter;
+`display/display.h` names the quarters. `GRAV --` means no motion sensor reading.
+
 ## Shake round
 
 Input Lab's development shake page follows motion in the BOOT cycle.
