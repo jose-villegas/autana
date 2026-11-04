@@ -659,6 +659,8 @@ typedef struct {
     scene_target_t target;
     uint8_t* lent; /* a test's own lender: its block and how much it handed out */
     size_t lent_used;
+    void* lent_last;
+    size_t lent_last_size;
 } fixture_t;
 
 static fixture_t fx;
@@ -798,15 +800,33 @@ pixel(float units_from_center) {
 
 static const uint16_t CLEAR = RGB565BE(CLEAR_RGB);
 
+/* A lender as the app arena is one: a block handed out by bumping. */
+#define LENT_BYTES (1024u * 1024u)
+
+static void*
+lend(size_t size, size_t align) {
+    const size_t at = (fx.lent_used + align - 1) & ~(align - 1);
+    if (at > LENT_BYTES || size > LENT_BYTES - at) {
+        return NULL;
+    }
+    fx.lent_used = at + size;
+    fx.lent_last = fx.lent + at;
+    fx.lent_last_size = size;
+    return fx.lent_last;
+}
+
 static size_t
 resident_mesh_bytes(const r3d_lit_mesh_t* mesh) {
-    size_t bytes =
-        (size_t)mesh->vertex_count * sizeof *mesh->positions + (size_t)mesh->triangle_count * sizeof *mesh->triangles;
+    size_t bytes = (size_t)mesh->vertex_count * sizeof *mesh->positions;
+    bytes = mathi_size_ceil(bytes, _Alignof(__typeof__(*mesh->triangles)))
+            + (size_t)mesh->triangle_count * sizeof *mesh->triangles;
     if (mesh->colors != NULL) {
-        bytes += (size_t)mesh->vertex_count * sizeof *mesh->colors;
+        bytes = mathi_size_ceil(bytes, _Alignof(__typeof__(*mesh->colors)))
+                + (size_t)mesh->vertex_count * sizeof *mesh->colors;
     }
     if (mesh->face_colors != NULL) {
-        (void)scene_storage_carve(&bytes, (size_t)mesh->triangle_count * sizeof *mesh->face_colors, _Alignof(uint16_t));
+        bytes = mathi_size_ceil(bytes, _Alignof(__typeof__(*mesh->face_colors)))
+                + (size_t)mesh->triangle_count * sizeof *mesh->face_colors;
     }
     return bytes;
 }
@@ -814,6 +834,10 @@ resident_mesh_bytes(const r3d_lit_mesh_t* mesh) {
 static void
 assert_resident_mesh_arrays(const scene_t* scene, size_t bytes) {
     TEST_ASSERT_NOT_NULL(scene->resident);
+    if (fx.lent != NULL) {
+        TEST_ASSERT_EQUAL_PTR(scene->resident, fx.lent_last);
+        TEST_ASSERT_EQUAL_size_t(bytes, fx.lent_last_size);
+    }
     const uintptr_t begin = (uintptr_t)scene->resident;
     for (int i = 0; i < scene->asset.renderer_count; i++) {
         const r3d_lit_mesh_t* mesh = &scene->renderers[i].mesh;
@@ -855,6 +879,9 @@ assert_resident_mesh_arrays(const scene_t* scene, size_t bytes) {
 static void
 test_static_mesh_arrays_are_resident_and_equal_the_pack(void) {
     fixture();
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(fx.lent);
+    (void)scene_set_take(lend);
     scene_t* scene = load("test_pair");
     const r3d_lit_mesh_t* mesh = &scene->renderers[0].mesh;
     assert_resident_mesh_arrays(scene, scene->asset.renderer_count * resident_mesh_bytes(mesh));
@@ -922,19 +949,6 @@ test_a_scene_loads_by_name_and_unloading_gives_back_everything_it_took(void) {
     TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) < before);
     scene_unload(scene);
     TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) == before);
-}
-
-/* A lender as the app arena is one: a block handed out by bumping. */
-#define LENT_BYTES (1024u * 1024u)
-
-static void*
-lend(size_t size, size_t align) {
-    const size_t at = (fx.lent_used + align - 1) & ~(align - 1);
-    if (at > LENT_BYTES || size > LENT_BYTES - at) {
-        return NULL;
-    }
-    fx.lent_used = at + size;
-    return fx.lent + at;
 }
 
 static bool
@@ -2238,7 +2252,19 @@ assert_lcol_scene(const lcol_case_t* spec, const char* message) {
                                     message);
     TEST_ASSERT_EQUAL_PTR_MESSAGE(scene->renderers[0].mesh.positions, scene->renderers[1].mesh.positions, message);
     TEST_ASSERT_EQUAL_PTR_MESSAGE(scene->renderers[0].mesh.triangles, scene->renderers[1].mesh.triangles, message);
-    if (spec->first_set == spec->second_set) {
+    if (spec->first_set != spec->second_set) {
+        const r3d_lit_mesh_t* first = &scene->renderers[0].mesh;
+        const r3d_lit_mesh_t* second = &scene->renderers[1].mesh;
+        if (first->colors != NULL) {
+            TEST_ASSERT_NOT_EQUAL(first->colors, second->colors);
+            TEST_ASSERT_NULL(first->face_colors);
+            TEST_ASSERT_NULL(second->face_colors);
+        } else {
+            TEST_ASSERT_NOT_NULL(first->face_colors);
+            TEST_ASSERT_NOT_EQUAL(first->face_colors, second->face_colors);
+            TEST_ASSERT_NULL(second->colors);
+        }
+    } else {
         TEST_ASSERT_EQUAL_PTR_MESSAGE(scene->renderers[0].mesh.colors, scene->renderers[1].mesh.colors, message);
         TEST_ASSERT_EQUAL_PTR_MESSAGE(scene->renderers[0].mesh.face_colors, scene->renderers[1].mesh.face_colors,
                                       message);
@@ -2267,11 +2293,15 @@ test_lcol_instances_and_refusals(void) {
          .coloured = true},
     };
     fixture();
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(fx.lent);
+    (void)scene_set_take(lend);
     for (uint16_t encoding = LCOL_ENCODING_RGB888; encoding <= LCOL_ENCODING_RGB565; encoding++) {
         for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
             char message[64];
             snprintf(message, sizeof message, "LCOL case %s encoding %u", cases[i].id, encoding);
             scene_unload_all();
+            fx.lent_used = 0;
             make_lcol_pack(&cases[i], encoding, message);
             assert_lcol_scene(&cases[i], message);
         }
@@ -3830,6 +3860,9 @@ test_authored_skin_load_allocation_failures_release_lighting(void) {
 static void
 test_authored_light_preserves_static_mesh_colors(void) {
     fixture();
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(fx.lent);
+    (void)scene_set_take(lend);
     r3d_lit_mesh_t packed;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(&fx.pack, "red", &packed));
     uint8_t expected[QUAD_VERTICES][R3D_SKIN_LIGHT_CHANNELS];
@@ -3845,6 +3878,11 @@ test_authored_light_preserves_static_mesh_colors(void) {
     TEST_ASSERT_EQUAL_MEMORY(packed.colors, scene_entity_mesh(scene, entity)->colors,
                              (size_t)packed.vertex_count * sizeof *packed.colors);
     TEST_ASSERT_EQUAL_MEMORY(expected, scene_entity_mesh(scene, entity)->colors, sizeof expected);
+    TEST_ASSERT_EQUAL_PTR(scene->resident, fx.lent_last);
+    const uintptr_t begin = (uintptr_t)scene->resident;
+    const uintptr_t colors = (uintptr_t)scene_entity_mesh(scene, entity)->colors;
+    TEST_ASSERT_TRUE(colors >= begin);
+    TEST_ASSERT_TRUE(colors + sizeof expected <= begin + fx.lent_last_size);
 }
 
 static void
