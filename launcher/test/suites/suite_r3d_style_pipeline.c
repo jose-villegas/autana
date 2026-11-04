@@ -186,7 +186,7 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
                 r3d_span_triangle(expected, front, front + 1, front + 2);
             }
             draw_triangles(&mesh, &lens, &cluster, cluster.triangle_first, cluster.triangle_first + (mixed ? 2 : 1),
-                           transformed, actual, false, false, work);
+                           transformed, actual, false, false, false, work);
             TEST_ASSERT_EQUAL_MEMORY(pixels, pixels + TEST_PIXELS * 2, TEST_PIXELS * 2 * sizeof(*pixels));
             int covered = 0;
             for (int i = 0; i < TEST_PIXELS; i++) {
@@ -514,6 +514,116 @@ test_the_hidden_test_changes_no_pixel_of_a_writing_draw(void) {
     scene_draws_alike_with_the_hidden_test_on_and_off(true);
 }
 
+/* Three clusters: a quad wholly in range, a triangle with one vertex behind
+ * the near plane, and one with a vertex far outside the fast range. */
+enum { BOUNDED_QUAD, ACROSS_NEAR, OFF_RANGE, BOUNDED_SCENE_CLUSTERS };
+
+/* The vertex behind the near plane, raw: lens-space x and y are these over
+ * R3D_SUBPIXEL, so the clip leaves a wide polygon on screen. */
+#define BEHIND_NEAR_RAW_X 700
+#define BEHIND_NEAR_RAW_Y 400
+#define OFF_RANGE_PIXEL   1500
+#define OFF_RANGE_Z       1
+/* Pixels of each cluster that no other one covers. */
+#define QUAD_PROBE_X      10
+#define QUAD_PROBE_Y      10
+#define ACROSS_PROBE_X    35
+#define ACROSS_PROBE_Y    12
+#define OFF_RANGE_PROBE_X 31
+#define OFF_RANGE_PROBE_Y 38
+#define UNTOUCHED_COLOUR  0x1234
+
+static void
+build_bounded_scene(void) {
+    static const float quad[4][2] = {{2, 2}, {20, 2}, {20, 30}, {2, 30}};
+    static const float across[3][2] = {{0, 0}, {26, 10}, {44, 10}};
+    static const float off_range[3][2] = {{30, 36}, {OFF_RANGE_PIXEL, 36}, {30, 46}};
+    static const uint8_t red[3] = {255, 0, 0}, green[3] = {0, 255, 0}, blue[3] = {0, 0, 255};
+    scene_add(quad, 4, 2, red);
+    scene_add(across, 3, 4, green);
+    scene->positions[scene->clusters[ACROSS_NEAR].vertex_first][0] = BEHIND_NEAR_RAW_X;
+    scene->positions[scene->clusters[ACROSS_NEAR].vertex_first][1] = BEHIND_NEAR_RAW_Y;
+    scene->positions[scene->clusters[ACROSS_NEAR].vertex_first][2] = 0;
+    scene_add(off_range, 3, OFF_RANGE_Z, blue);
+}
+
+static const uint16_t BOUNDED_SCENE_ORDER[BOUNDED_SCENE_CLUSTERS] = {BOUNDED_QUAD, ACROSS_NEAR, OFF_RANGE};
+
+/* Drawn with the rows the transform made, and again without them, every
+ * plane ends the same: a bounded cluster may skip the per-triangle tests,
+ * the others may not. */
+static void
+test_rows_change_no_pixel_of_a_draw(void) {
+    for (int writes = 0; writes <= 1; writes++) {
+        for (int skipping = 0; skipping <= 1; skipping++) {
+            cleanup();
+            scene_open();
+            build_bounded_scene();
+            const r3d_lit_mesh_t mesh = scene_mesh();
+            const r3d_lens_t lens = pixel_lens();
+            r3d_pipeline_transform(&mesh, &lens, BOUNDED_SCENE_ORDER, BOUNDED_SCENE_CLUSTERS, scene->cs, scene->rows,
+                                   true);
+            TEST_ASSERT_FALSE(scene->rows[BOUNDED_QUAD].unbounded);
+            TEST_ASSERT_TRUE(scene->rows[ACROSS_NEAR].unbounded);
+            TEST_ASSERT_TRUE(scene->rows[OFF_RANGE].unbounded);
+            r3d_span_writer_t writers[2];
+            for (int run = 0; run < 2; run++) {
+                for (int i = 0; i < SCENE_W * SCENE_H; i++) {
+                    plane(run, PLANE_DEPTH)[i] = R3D_DEPTH_EMPTY;
+                }
+                r3d_span_target_t target = scene_target(run, SCENE_H, writes ? &writers[run] : NULL);
+                target.skip_hidden = skipping;
+                r3d_pipeline_draw(&mesh, &lens, BOUNDED_SCENE_ORDER, BOUNDED_SCENE_CLUSTERS, scene->cs,
+                                  run == 0 ? scene->rows : NULL, &target, work);
+            }
+            const size_t bytes = (size_t)SCENE_W * SCENE_H * sizeof(uint16_t);
+            for (int kind = PLANE_COLOUR; kind <= (writes ? PLANE_TAG : PLANE_DEPTH); kind++) {
+                TEST_ASSERT_EQUAL_MEMORY(plane(1, kind), plane(0, kind), bytes);
+            }
+            const int probes[BOUNDED_SCENE_CLUSTERS] = {pixel_index(QUAD_PROBE_X, QUAD_PROBE_Y),
+                                                        pixel_index(ACROSS_PROBE_X, ACROSS_PROBE_Y),
+                                                        pixel_index(OFF_RANGE_PROBE_X, OFF_RANGE_PROBE_Y)};
+            for (int c = 0; c < BOUNDED_SCENE_CLUSTERS; c++) {
+                TEST_ASSERT_NOT_EQUAL_UINT16(R3D_DEPTH_EMPTY, plane(0, PLANE_DEPTH)[probes[c]]);
+                if (writes) {
+                    TEST_ASSERT_EQUAL_UINT16(TAG_BASE + c, plane(0, PLANE_TAG)[probes[c]]);
+                }
+            }
+        }
+    }
+}
+
+/* Infinite depth leaves every vertex at inverse depth 0 yet the cluster
+ * bounded; its triangles must draw nothing, with the rows and without. */
+static void
+test_infinite_depth_bounded_cluster_draws_nothing(void) {
+    scene_open();
+    static const float triangle[3][2] = {{10, 10}, {30, 10}, {10, 30}};
+    static const uint8_t white[3] = {255, 255, 255};
+    scene_add(triangle, 3, 2, white);
+    const r3d_lit_mesh_t mesh = scene_mesh();
+    r3d_lens_t lens = pixel_lens();
+    lens.m.m[2][MAT3F_AXES] = INFINITY;
+    const uint16_t only = 0;
+    r3d_pipeline_transform(&mesh, &lens, &only, 1, scene->cs, scene->rows, true);
+    TEST_ASSERT_FALSE(scene->rows[0].unbounded);
+    for (int v = 0; v < 3; v++) {
+        TEST_ASSERT_EQUAL_FLOAT(0.0F, scene->cs[v].iz);
+    }
+    for (int run = 0; run < 2; run++) {
+        for (int i = 0; i < SCENE_W * SCENE_H; i++) {
+            plane(run, PLANE_COLOUR)[i] = UNTOUCHED_COLOUR;
+            plane(run, PLANE_DEPTH)[i] = R3D_DEPTH_EMPTY;
+        }
+        r3d_span_target_t target = scene_target(run, SCENE_H, NULL);
+        r3d_pipeline_draw(&mesh, &lens, &only, 1, scene->cs, run == 0 ? scene->rows : NULL, &target, work);
+        for (int i = 0; i < SCENE_W * SCENE_H; i++) {
+            TEST_ASSERT_EQUAL_UINT16(UNTOUCHED_COLOUR, plane(run, PLANE_COLOUR)[i]);
+            TEST_ASSERT_EQUAL_UINT16(R3D_DEPTH_EMPTY, plane(run, PLANE_DEPTH)[i]);
+        }
+    }
+}
+
 static void
 test_transform_nonfinite_paths(void) {
     static const int16_t positions[1][3] = {{1, 1, 2}};
@@ -579,6 +689,8 @@ run_r3d_style_pipeline_suite(void) {
     RUN_TEST(test_styles_match_pipeline_colours);
     RUN_TEST(test_the_hidden_test_changes_no_pixel_of_a_reading_draw);
     RUN_TEST(test_the_hidden_test_changes_no_pixel_of_a_writing_draw);
+    RUN_TEST(test_rows_change_no_pixel_of_a_draw);
+    RUN_TEST(test_infinite_depth_bounded_cluster_draws_nothing);
 }
 
 SUITE_REGISTER(run_r3d_style_pipeline_suite);
