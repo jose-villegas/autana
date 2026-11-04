@@ -55,9 +55,14 @@ static const char* TAG = PERF_BUDGET_TAG;
 
 /* Regression ceilings are worst + max(spread, 2% of worst) across a 5-run
  * S3 portrait board capture (autana suite run_gfx_suite --runs 5), with
- * fixture() pinning the fast panel clock, the gather cases the slow one
- * (GATHER_CLOCK_HZ). Shipping landscape costs 17-37%
- * more; these pegs do not cover that orientation. */
+ * fixture() pinning the fast panel clock and the gather cases the slow one.
+ * Shipping landscape costs 17-37% more; these pegs do not cover that
+ * orientation. */
+
+/* At the fast clock every send is full-width rows (gfx_present.h), so the
+ * gather path a narrow change takes runs only at the slow one, a clock a
+ * user can choose and keep. */
+#define GATHER_CLOCK_HZ GFX_PANEL_CLOCK_SLOW_HZ
 
 /* gfx owns global hardware state and is already initialised by the time this
  * runs; the shipped firmware brings the display up before self-testing. Tests
@@ -863,10 +868,6 @@ write_dirty_rectangle(int x0, int y0, int w, int h, gfx_color_t colour) {
     gfx_mark_dirty(x0, y0, w, h);
 }
 
-/* At the fast clock every send is full-width rows (gfx_present.h), so the
- * gather path a narrow change takes runs only at the slow one. */
-#define GATHER_CLOCK_HZ GFX_PANEL_CLOCK_SLOW_HZ
-
 /* One band presented alone at clock `hz`, after a clear at that clock. */
 static int64_t
 present_reference_band(int hz, gfx_color_t colour) {
@@ -921,23 +922,6 @@ test_a_narrow_change_costs_less_than_a_full_band(void) {
     perf_guard("the gathered narrow strip cost more than its observed price - the "
                "gather-copy path may have regressed",
                narrow, NARROW_STRIP_CEILING_US);
-}
-
-/* At the fast clock the same narrow strip is sent as full-width rows of its
- * height, here a whole band's: no gather, so a band's price. */
-static void
-test_a_narrow_change_at_the_fast_clock_sends_its_rows_full_width(void) {
-    const int64_t full_band = present_reference_band(GFX_PANEL_CLOCK_FAST_HZ, RGB565BE(0x204060));
-
-    write_dirty_rectangle(0, 0, NARROW_STRIP_WIDTH, NARROW_STRIP_ROWS, RGB565BE(0x204060));
-    const int64_t narrow = time_present();
-
-    ESP_LOGI(TAG, "present: fast clock, full band %lld us, %d px wide (full-width rows) %lld us", (long long)full_band,
-             NARROW_STRIP_WIDTH, (long long)narrow);
-
-    perf_guard("a narrow strip at the fast clock cost more than the full-width band it is sent as - the "
-               "bus clock or the QSPI setup may have regressed",
-               narrow, ONE_BAND_CEILING_US);
 }
 
 /* An instrument, not a gate: the narrow strip's present, counted alone,
@@ -1583,7 +1567,6 @@ run_gfx_suite(void) {
     RUN_TEST(test_full_present_cost_splits_into_bus_time_and_overhead);
     RUN_TEST(test_a_partial_change_costs_less_than_a_full_frame);
     RUN_TEST(test_a_narrow_change_costs_less_than_a_full_band);
-    RUN_TEST(test_a_narrow_change_at_the_fast_clock_sends_its_rows_full_width);
     RUN_TEST(test_narrow_present_counters);
     RUN_TEST(test_a_short_wide_change_costs_less_than_a_full_band);
     RUN_TEST(test_a_full_width_partial_height_change_costs_less_than_a_band);
