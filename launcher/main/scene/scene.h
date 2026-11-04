@@ -47,18 +47,6 @@ typedef struct {
 scene_t* scene_load(const char* id, scene_failure_t* why);
 scene_t* scene_load_from(const asset_pack_t* pack, const char* id, scene_failure_t* why);
 
-/* The separator in a scene id that names its pack. */
-#define SCENE_ID_PACK_SEPARATOR '/'
-
-/* A scene id's parts: the pack it is in and the scene's entry there. */
-typedef struct {
-    char pack[ASSET_NAME_MAX];
-    const char* scene; /* within the id split */
-} scene_id_t;
-
-/* Splits `id` as scene_load() reads it; false for an id it refuses. */
-bool scene_id_split(const char* id, scene_id_t* out);
-
 /* Frees the scene. If its camera was the active one, nothing is drawn. */
 void scene_unload(scene_t* scene);
 

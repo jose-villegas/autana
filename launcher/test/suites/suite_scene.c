@@ -20,6 +20,7 @@
 
 #include "anim/anim_tracks.h"
 #include "asset/asset_pack.h"
+#include "asset/asset_store.h"
 #include "gfx/target/gfx_color.h"
 #ifndef DEVICE_BUILD
 #include "display/display.h"
@@ -2077,19 +2078,28 @@ test_scene_load_holds_its_pack_until_the_last_scene_from_it_unloads(void) {
     remove_pack("test_pair");
 }
 
-/* A "pack/scene" id loads the scene from the pack it names, whatever the pack is called. */
+/* A "pack/scene" id loads the scene from the pack it names, whatever the pack is called; two scenes
+ * of one pack share its one mount, which goes when the last of them unloads. */
 static void
 test_scene_load_reads_a_scene_from_the_pack_its_id_names(void) {
     fixture();
     test_asset_dir_use(".");
     write_pack("test_folder", false);
+    const int mounted = asset_store_mounted();
     scene_failure_t why;
-    scene_t* loaded = scene_load("test_folder/test_pair", &why);
+    scene_t* pair = scene_load("test_folder/test_pair", &why);
+    scene_t* tree = scene_load("test_folder/test_tree", &why);
     remove_pack("test_folder");
-    TEST_ASSERT_NOT_NULL(loaded);
+    TEST_ASSERT_NOT_NULL(pair);
+    TEST_ASSERT_NOT_NULL(tree);
     TEST_ASSERT_EQUAL_INT(SCENE_OK, why.status);
-    TEST_ASSERT_EQUAL_STRING("test_pair", loaded->id);
-    scene_unload(loaded);
+    TEST_ASSERT_EQUAL_STRING("test_pair", pair->id);
+    TEST_ASSERT_EQUAL_STRING("test_tree", tree->id);
+    TEST_ASSERT_EQUAL_INT(mounted + 1, asset_store_mounted());
+    scene_unload(pair);
+    TEST_ASSERT_EQUAL_INT(mounted + 1, asset_store_mounted());
+    scene_unload(tree);
+    TEST_ASSERT_EQUAL_INT(mounted, asset_store_mounted());
 }
 
 /* An id with an empty part, a part longer than a pack name holds, or a second separator is refused before
@@ -2107,13 +2117,9 @@ test_scene_load_refuses_a_malformed_id(void) {
         TEST_ASSERT_NULL_MESSAGE(scene_load(malformed[i], &why), malformed[i]);
         TEST_ASSERT_EQUAL_INT_MESSAGE(SCENE_ERR_ASSET, why.status, malformed[i]);
         TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_ERR_FORMAT, why.asset, malformed[i]);
-        scene_id_t parts;
-        TEST_ASSERT_FALSE_MESSAGE(scene_id_split(malformed[i], &parts), malformed[i]);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(0, strncmp(malformed[i], why.what, ASSET_NAME_MAX - 1),
+                                      malformed[i]); /* cut to fit */
     }
-    scene_id_t bare;
-    TEST_ASSERT_TRUE(scene_id_split("test_pair", &bare));
-    TEST_ASSERT_EQUAL_STRING("test_pair", bare.pack);
-    TEST_ASSERT_EQUAL_STRING("test_pair", bare.scene);
 }
 
 /* A load that fails gives its use of the pack back. */
