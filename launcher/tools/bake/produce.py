@@ -6,8 +6,8 @@ counts must match what is installed, so a key never names bytes made with other 
 A fit's start is a mesh bake of its own; the fit reads the bytes its key names, from the lock or this
 cache. A fit's references are made once per reference key into the cache's reference/ folder, so fits
 that share their inputs share them, and never leave the machine that made them: only the fit stage reads
-them, and it runs there. A run made `again` renders each set it reads afresh, once, so a repeat measures the whole
-chain; a set nothing has read for REFERENCE_KEEP_DAYS is deleted.
+them, and it runs there. A run made `again` renders each set it reads once more, in a folder of its own, so a repeat
+measures the whole chain; a set nothing has read for REFERENCE_KEEP_DAYS is deleted.
 """
 
 import copy
@@ -27,6 +27,7 @@ from bake import bake as keys
 KEY_INDEX = "keys"
 REFERENCES = "reference"
 DONE = "done"
+PRUNED = ".pruned"
 REFERENCE_KEEP_DAYS = 14
 DAY_S = 24 * 60 * 60
 PIN = re.compile(r"^([A-Za-z0-9_.-]+)==(\S+)$")
@@ -158,13 +159,11 @@ def produce_blend(bake, cache, blender=None):
         return record(bake, out, cache)
 
 
-def keyed_folder(folder, make, made_after=None):
-    """`folder` once its DONE marker is there, written at or after `made_after` when that is given; else make(partial)
-    fills a sibling, which is marked done and renamed into place, so a cut run leaves nothing a later one takes for
-    done."""
+def keyed_folder(folder, make):
+    """`folder` once its DONE marker is there; else make(partial) fills a sibling, which is marked done and renamed
+    into place, so a cut run leaves nothing a later one takes for done."""
     folder = pathlib.Path(folder)
-    done = folder / DONE
-    if done.is_file() and (made_after is None or done.stat().st_mtime >= made_after):
+    if (folder / DONE).is_file():
         return folder
     partial = folder.with_name(folder.name + ".partial")
     shutil.rmtree(partial, ignore_errors=True)
@@ -183,25 +182,27 @@ def read_references(folder):
 
 
 def prune_references(cache, now=None):
-    """Deletes each reference set, done or cut, that nothing has read for REFERENCE_KEEP_DAYS. A bake runs it before
-    it reads any set; a run reading a set meanwhile has just marked it read, so it is never the one deleted."""
+    """Deletes each reference set, done or cut, that nothing has read for REFERENCE_KEEP_DAYS; a bake runs it before
+    it reads any. Each is renamed aside first, so a delete cut short never leaves a set that looks done."""
     now = time.time() if now is None else now
     for folder in sorted((pathlib.Path(cache) / REFERENCES).glob("*")):
         if now - folder.stat().st_mtime > REFERENCE_KEEP_DAYS * DAY_S:
-            shutil.rmtree(folder, ignore_errors=True)
+            pruned = folder.with_name(folder.name + PRUNED) if not folder.name.endswith(PRUNED) else folder
+            os.replace(folder, pruned)
+            shutil.rmtree(pruned, ignore_errors=True)
 
 
-def reference_set(key, job, scene, cache, made_after=None):
-    """The reference set of `job`'s fit under its reference `key` in this cache, prepared there when it has none or
-    only one made before `made_after`; the log says which."""
+def reference_set(key, job, scene, cache, fresh=None):
+    """The reference set of `job`'s fit under its reference `key` in this cache, prepared there when it has none; or,
+    given `fresh`, a run's own folder, in that one, so a run made again never replaces a set another may be
+    reading. The log says whether it was rendered or reused."""
     from r3d.reference_set import prepare_references, reference_inputs
 
-    folder = pathlib.Path(cache) / REFERENCES / key
-    done = folder / DONE
-    before = done.stat().st_mtime_ns if done.is_file() else None
-    keyed_folder(folder, lambda partial: prepare_references(reference_inputs(job, scene), partial), made_after)
+    folder = (pathlib.Path(fresh) if fresh else pathlib.Path(cache) / REFERENCES) / key
+    reused = (folder / DONE).is_file()
+    keyed_folder(folder, lambda partial: prepare_references(reference_inputs(job, scene), partial))
     read_references(folder)
-    print(f"reference {key}: {'reused' if done.stat().st_mtime_ns == before else 'rendered'}", flush=True)
+    print(f"reference {key}: {'reused' if reused else 'rendered'}", flush=True)
     return folder
 
 
@@ -215,11 +216,11 @@ def start_file(bake, cache, lock):
     return keys.fetch_all([start], {start.key: row}, cache)[start]
 
 
-def produce_fit(bake, cache, lock, references_after):
+def produce_fit(bake, cache, lock, fresh_references):
     from r3d.fit.stage import fit
 
     start = start_file(bake, cache, lock)
-    inputs = reference_set(bake.stages["reference"], bake.job, bake.scene, cache, references_after)
+    inputs = reference_set(bake.stages["reference"], bake.job, bake.scene, cache, fresh_references)
     with tempfile.TemporaryDirectory() as work:
         target = pathlib.Path(work) / bake.output
         fit(bake.scene.path, bake.scene, bake.job, pathlib.Path(work), target=target, inputs=inputs, start=start)
@@ -238,9 +239,9 @@ def produce_sound(bake, cache):
         return record(bake, target, cache)
 
 
-def produce(bake, cache, lock=None, blender=None, references_after=None):
-    """Makes `bake` into the cache and returns its row; the environment must match its pins. A fit takes no reference
-    set made before `references_after`."""
+def produce(bake, cache, lock=None, blender=None, fresh_references=None):
+    """Makes `bake` into the cache and returns its row; the environment must match its pins. A fit given
+    `fresh_references`, a run's own folder, renders its reference set there (reference_set)."""
     if bake.kind == "blend":
         return produce_blend(bake, cache, blender)
     if bake.kind == "sound":
@@ -248,7 +249,7 @@ def produce(bake, cache, lock=None, blender=None, references_after=None):
         return produce_sound(bake, cache)
     check_environment(("mesh", "reference", "fit") if bake.kind == "fit" else ("mesh",))
     if bake.kind == "fit":
-        return produce_fit(bake, cache, lock or {}, references_after)
+        return produce_fit(bake, cache, lock or {}, fresh_references)
     return produce_mesh(bake, cache, lock or {})
 
 
