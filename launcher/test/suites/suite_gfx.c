@@ -36,6 +36,7 @@
 #include "core/timing.h"
 #include "draw/draw.h"
 #include "draw/draw_font_roles.h"
+#include "frame/test_frame.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_internal.h"
@@ -48,7 +49,6 @@
 #include "input/touch/touch.h"
 #include "input/touch/touch_fsm.h"
 #include "math/scalar/mathi.h"
-#include "panel_clock_pin.h"
 #include "profile/frame_cost.h"
 
 static const char* TAG = PERF_BUDGET_TAG;
@@ -70,7 +70,7 @@ static const char* TAG = PERF_BUDGET_TAG;
  * must reset the clip rect since they share it. */
 static void
 fixture_at(int hz) {
-    panel_clock_pin(hz);
+    test_panel_clock_pin(hz);
     draw_clear_clip();
     gfx_invalidate();
 }

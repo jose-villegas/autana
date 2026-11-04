@@ -1511,7 +1511,7 @@ class NightlyTests(unittest.TestCase):
                         patch.object(chain, "gpu_pending", side_effect=AssertionError("remote GPU queue queried")):
                     chain.plan(args, clock)
                 self.assertEqual(clock.sleeps, [])
-                self.assertEqual(summary.read_text(), schedule.GPU_NOT_ON_HOST + "\n")
+                self.assertEqual(summary.read_text(), schedule.GPU_NOT_ON_HOST + "\n\n")
                 self.assertTrue(json.loads(args.out.read_text())["lanes"])
 
     def remote_listing(self, *boards, unreachable=()):

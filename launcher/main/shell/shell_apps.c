@@ -155,14 +155,8 @@ app_band_active(const app_t* app) {
     return app->draw_band != NULL && mode->layout == GFX_LAYOUT_BANDS;
 }
 
-/* The app half of gfx_request_full_redraw() (gfx.h): an app's own cache
- * beyond the framebuffer, if it keeps one, or the launcher's ui.c canvas
- * cache while none is running. Consumes the pending flag before whichever
- * of the two draws next, not after: a request made inside that very
- * frame() call (an app invalidating itself) must reach the FOLLOWING
- * pass's check, not be cleared out from under it before ever being read. */
-static void
-apply_pending_full_redraw(const app_t* app) {
+void
+shell_apply_full_redraw(const app_t* app) {
     if (!gfx_full_redraw_pending()) {
         return;
     }
@@ -207,7 +201,7 @@ shell_exit_app(const app_t** current) {
 void
 shell_leave_app(const app_t** current, input_t* input, gesture_edge_t exit_edge, uint32_t dt_ms) {
     shell_exit_app(current);
-    apply_pending_full_redraw(NULL);
+    shell_apply_full_redraw(NULL);
     /* Draw it immediately, so the frame presented below is the home screen
      * rather than the app's last one. */
     ui_launcher_frame(input, dt_ms);
@@ -245,7 +239,7 @@ feed_launcher_gravity(void) {
 
 static void
 step_launcher(const app_t** current, input_t* input, gesture_edge_t exit_edge, uint32_t dt_ms) {
-    apply_pending_full_redraw(NULL);
+    shell_apply_full_redraw(NULL);
     feed_launcher_gravity();
     const app_t* chosen = ui_launcher_frame(input, dt_ms);
     if (chosen == NULL) {
@@ -327,7 +321,7 @@ shell_step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
         return;
     }
 
-    apply_pending_full_redraw(*current);
+    shell_apply_full_redraw(*current);
     step_running_app(*current, input, dt_ms);
 
     if ((*current)->home_gesture && gfx_mode_has_framebuffer(gfx_mode_current()) && !gfx_frame_expanded()) {

@@ -17,8 +17,6 @@
 static const char* TAG = "console";
 
 #define RUNSUITE_LIST_QUERY "?"
-#define SUITE_COUNT_DIGITS  3
-_Static_assert(TESTKIT_SUITE_MAX < 1000, "SUITE_COUNT_DIGITS holds TESTKIT_SUITE_MAX");
 #define RUNSUITE_LIST_BYTES (sizeof "RUNSUITE_SUITE name= on_request=0" + SUITE_NAME_MAX)
 
 CONSOLE_FRAME_SLOT(console_runsuite_slot, console_runsuite_request_t, true, NULL)
@@ -43,7 +41,7 @@ static void
 list_suites(console_reply_fn reply) {
     runsuite_listing_t listing = {.reply = reply};
     suites_each(list_one, &listing);
-    char line[sizeof "RUNSUITE_END count=" + SUITE_COUNT_DIGITS];
+    char line[sizeof "RUNSUITE_END count=-2147483648"];
     (void)snprintf(line, sizeof line, "RUNSUITE_END count=%d", listing.count);
     reply(line);
 }
