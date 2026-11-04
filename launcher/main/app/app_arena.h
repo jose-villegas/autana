@@ -37,7 +37,7 @@
  * shadow, a readback's snapshot, or the half picture a scene expands (a
  * quarter of the size). A development send audit opened over a half picture
  * does not fit and is refused with a log line. */
-#define APP_ARENA_SYSTEM_RESERVE_BYTES (2u * GFX_FRAMEBUFFER_BYTES + APP_ARENA_SYSTEM_OTHER_BYTES)
+#define APP_ARENA_SYSTEM_RESERVE_BYTES ((2u * GFX_FRAMEBUFFER_BYTES) + APP_ARENA_SYSTEM_OTHER_BYTES)
 
 /* The smallest chunk the arena takes from the app heap: small takes share one
  * heap block and its header, and an emptied tail is at most this much. A take

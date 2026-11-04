@@ -23,6 +23,7 @@
 
 #include "app/app_arena.h"
 #include "core/app_heap.h"
+#include "core/memory.h"
 #include "core/timing.h"
 #include "display/display_shell.h"
 #include "suites.h"
@@ -64,18 +65,29 @@ tearDown(void) {
     TEST_ASSERT_EQUAL_size_t_MESSAGE(app_blocks_before, app_heap_blocks(), "test leaked app heap blocks");
 }
 
+bool
+selftest_visit_begin(void) {
+    if (app_heap_active()) {
+        return false;
+    }
+    app_arena_enter();
+    return true;
+}
+
+void
+selftest_visit_end(bool owned) {
+    if (owned) {
+        app_arena_exit();
+    }
+}
+
 int
 selftest_run(void) {
     const int64_t started = timing_now_us();
 
     ESP_LOGI(TAG, "running self test");
 
-    /* At boot no app is running, so the run is a visit of its own; from an
-     * app, it runs in that app's. */
-    const bool own_visit = !app_heap_active();
-    if (own_visit) {
-        app_arena_enter();
-    }
+    const bool own_visit = selftest_visit_begin();
     UNITY_BEGIN();
 
     /* Every registered suite, portable and hardware alike. Which ones exist
@@ -84,9 +96,7 @@ selftest_run(void) {
     suite_report_frame_watch();
 
     int failures = UNITY_END();
-    if (own_visit) {
-        app_arena_exit();
-    }
+    selftest_visit_end(own_visit);
     const int64_t elapsed_ms = (timing_now_us() - started) / 1000;
 
     /* A suite that did not fit is a test that did not run. Folded into the

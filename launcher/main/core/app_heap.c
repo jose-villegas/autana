@@ -18,7 +18,7 @@
  * bytes, as ESP-IDF's PSRAM heap gives: no padding gap to split off. A host
  * wants what its malloc() gives, which TLSF only gives through memalign. */
 #ifdef ESP_PLATFORM
-#define BLOCK_ALIGN 4u
+#define BLOCK_ALIGN 4U
 #else
 #define BLOCK_ALIGN _Alignof(max_align_t)
 #endif
@@ -86,9 +86,9 @@ app_heap_alloc(size_t bytes) {
     if (bytes == 0 || bytes > total_bytes) {
         return NULL;
     }
-    _Static_assert(BLOCK_ALIGN >= 4u, "TLSF aligns to four bytes at least");
+    _Static_assert(BLOCK_ALIGN >= 4U, "TLSF aligns to four bytes at least");
     const size_t rounded = (bytes + sizeof(void*) - 1) & ~(sizeof(void*) - 1);
-    void* pointer = BLOCK_ALIGN == 4u ? tlsf_malloc(heap, rounded) : tlsf_memalign(heap, BLOCK_ALIGN, rounded);
+    void* pointer = BLOCK_ALIGN == 4U ? tlsf_malloc(heap, rounded) : tlsf_memalign(heap, BLOCK_ALIGN, rounded);
     if (pointer != NULL) {
         free_bytes -= tlsf_block_size(pointer) + tlsf_alloc_overhead();
         if (free_bytes < minimum_bytes) {
@@ -137,7 +137,7 @@ app_heap_largest_block(void) {
     assert(heap != NULL);
     size_t largest = 0;
     tlsf_walk_pool(pool, largest_block, &largest);
-    if (BLOCK_ALIGN == 4u) {
+    if (BLOCK_ALIGN == 4U) {
         return tlsf_fit_size(heap, largest);
     }
     /* memalign searches for room for a free header and alignment padding. */
