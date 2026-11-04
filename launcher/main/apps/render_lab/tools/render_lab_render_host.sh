@@ -68,6 +68,13 @@ menu-sponza-small-fill-landscape|--quarter 1 --menu --scene sponza --tap 46,224 
 menu-sponza-scene|--quarter 0 --menu --scene sponza --tap 184,72 --frames 6|368x448
 menu-sponza-mesh|--quarter 0 --menu --scene sponza --tap 184,172 --frames 6|368x448
 water-tour|--quarter 0 --no-hud --scene water --console 0:water tour --frames 880|368x448|nopin
+stress-open|--quarter 1 --no-hud --scene stress-open --frames 2|448x368|nopin
+stress-stack|--quarter 1 --no-hud --scene stress-stack --frames 2|448x368|nopin
+stress-tiny-copies|--quarter 1 --no-hud --scene stress-tiny-copies --frames 2|448x368|nopin
+stress-big-tris|--quarter 1 --no-hud --scene stress-big-tris --frames 2|448x368|nopin
+stress-per-frame|--quarter 1 --no-hud --scene stress-per-frame --frames 2|448x368|nopin
+stress-two-sided|--quarter 1 --no-hud --scene stress-two-sided --frames 2|448x368|nopin
+stress-noisy-tiny|--quarter 1 --no-hud --scene stress-noisy-tiny --frames 2|448x368|nopin
 "
 
 # The scenes read their meshes from asset packs of the baked meshes in the tree.

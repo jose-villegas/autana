@@ -23,25 +23,28 @@
 #include "render_lab_view.h"
 #include "scene/scene.h"
 #include "scene_baked.h"
+#include "stress/scene_stress.h"
 #include "ui/ui.h"
 
+/* Each stress preset, in the order its table lists them. */
+#define STRESS_SCENE_ENTRY(id_, ...) &scene_stress[STRESS_##id_],
+
 /* Index 0 is the scene a start with no key shows; a family's scenes keep this order in its dropdown. */
-static const render_lab_scene_t* const scenes[] = {
-    &scene_sponza[SCENE_BAKED_FITTED_FULL],
-    &scene_sponza[SCENE_BAKED_FITTED],
-    &scene_sponza[SCENE_BAKED_FULL],
-    &scene_sponza[SCENE_BAKED_LITE],
-    &scene_sponza[SCENE_BAKED_FLAT],
-    &scene_sponza[SCENE_BAKED_FLAT_FITTED],
-    &scene_capybara,
-    &scene_water,
-    &scene_bistro[SCENE_BAKED_FITTED_FULL],
-    &scene_bistro[SCENE_BAKED_FITTED],
-    &scene_bistro[SCENE_BAKED_FULL],
-    &scene_bistro[SCENE_BAKED_LITE],
-    &scene_bistro[SCENE_BAKED_FLAT],
-    &scene_bistro[SCENE_BAKED_FLAT_FITTED],
-};
+static const render_lab_scene_t* const scenes[] = {&scene_sponza[SCENE_BAKED_FITTED_FULL],
+                                                   &scene_sponza[SCENE_BAKED_FITTED],
+                                                   &scene_sponza[SCENE_BAKED_FULL],
+                                                   &scene_sponza[SCENE_BAKED_LITE],
+                                                   &scene_sponza[SCENE_BAKED_FLAT],
+                                                   &scene_sponza[SCENE_BAKED_FLAT_FITTED],
+                                                   &scene_capybara,
+                                                   &scene_water,
+                                                   &scene_bistro[SCENE_BAKED_FITTED_FULL],
+                                                   &scene_bistro[SCENE_BAKED_FITTED],
+                                                   &scene_bistro[SCENE_BAKED_FULL],
+                                                   &scene_bistro[SCENE_BAKED_LITE],
+                                                   &scene_bistro[SCENE_BAKED_FLAT],
+                                                   &scene_bistro[SCENE_BAKED_FLAT_FITTED],
+                                                   STRESS_PRESETS(STRESS_SCENE_ENTRY)};
 #define SCENE_COUNT ((int)(sizeof(scenes) / sizeof(scenes[0])))
 static int current_scene_index;
 
@@ -525,4 +528,9 @@ render_lab_scene_fail(const char* tag, char* failure, size_t size, const char* w
     if (snprintf(failure, size, "%s", what) < 0) {
         failure[0] = '\0';
     }
+}
+
+void*
+render_lab_scene_take(size_t bytes) {
+    return app_arena_take(bytes, _Alignof(max_align_t));
 }
