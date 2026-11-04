@@ -268,6 +268,9 @@ class NightlyTests(unittest.TestCase):
         manifest = lnt.read_last_night(self.args.data, "20E8")
         self.assertEqual((manifest["stop_reason"], manifest["cleanup"]), ("interrupted", "passed"))
         self.assertTrue(manifest["ended"])
+        # The step stopped in its build settles nothing: the cursors stay and the next night owes it.
+        self.assertEqual([step["outcome"] for step in manifest["steps"]], ["not_run_interrupted"])
+        self.assertIsNone(manifest["last_attempted"])
         self.assertEqual(chain.git(self.repo, "worktree", "list", "--porcelain").count("worktree "), 1)
 
     def test_captures_land_in_the_lanes_output(self):
@@ -1062,6 +1065,55 @@ class NightlyTests(unittest.TestCase):
         notices = [c for c in said.call_args_list if "fits no step" in str(c.args[0])]
         self.assertEqual(notices, [call(f"::notice::board 20E8 fits no step before the deadline {deadline.isoformat()}; "
                                         "it stays free", file=sys.stderr)])
+
+    def test_a_lane_stops_before_a_step_its_own_pace_would_end_past_the_deadline(self):
+        # The board's last night was quick; tonight's steps take far longer, as when the suites grew.
+        planned_pace, build = chain.FIRST_STEP_SECONDS / 100, chain.FIRST_STEP_SECONDS
+        self.args.previous = self.paced(planned_pace)
+        start = self.clock.now()
+        self.args.deadline = (start + timedelta(seconds=1.5 * build)).isoformat()
+        results, _, writes = self.run_chain(durations=(build,) * 3)
+        self.assertEqual([r.outcome for r in results], ["measured", "not_run_deadline", "not_run_deadline"])
+        # At the planned pace the second step would have started; at the first step's own it ends past the deadline.
+        first = chain.lane_pace(results[:1], self.args.previous)
+        self.assertGreater(start + timedelta(seconds=2 * first), datetime.fromisoformat(self.args.deadline))
+        self.assertLess(start + timedelta(seconds=first + planned_pace), datetime.fromisoformat(self.args.deadline))
+        self.assertLessEqual(self.clock.now(), datetime.fromisoformat(self.args.deadline))
+        manifest = writes[-1]
+        self.assertEqual(manifest["stop_reason"], "deadline")
+        # A deadline stop is no outage, and the steps it left stay owed: the cursors end at the measured step.
+        self.assertTrue(lnt.night_ran(manifest))
+        self.assertEqual((manifest["last_attempted"], manifest["last_measured"]), (self.commits[1], self.commits[1]))
+        self.assertNotIn(self.commits[3], chain.attempted([manifest]))
+
+    def test_a_lane_starts_no_step_its_planned_pace_puts_past_the_deadline(self):
+        pace = chain.FIRST_STEP_SECONDS
+        self.args.previous = self.paced(pace)
+        self.args.deadline = (self.clock.now() + timedelta(seconds=pace - 1)).isoformat()
+        results, replay, writes = self.run_chain()
+        self.assertEqual([r.outcome for r in results], ["not_run_deadline"] * 3)
+        self.assertEqual(replay.calls, [])
+        self.assertEqual(writes[-1]["stop_reason"], "deadline")
+
+    def test_the_night_stops_a_lane_still_running_at_the_deadline(self):
+        self.before_cutoff(2)
+        deadline = schedule.night_cutoff(self.clock.now()) + timedelta(seconds=3 * chain.RESCAN_SECONDS)
+        # An estimate whose hang guard lies far past the deadline: only the deadline stops the lane.
+        lane = dict(lane="0", estimate=10 * chain.FIRST_STEP_SECONDS, steps=[])
+        args = self.night(lanes={"20E8": lane}, window=dict(self.window(), deadline=deadline.isoformat()))
+        process = SimpleNamespace(poll=lambda: None, wait=lambda: 1)
+        output = self.root / "github-output"
+        with patch.object(chain, "fleet_scan", return_value=([], dict(boards=[], unreachable=[]))), \
+                patch.dict(os.environ, GITHUB_OUTPUT=str(output)), patch("builtins.print") as said:
+            self.assertEqual(chain.run_night(args, clock=self.clock, launch=lambda *a, **kw: process), 1)
+        self.stop_tree.assert_called_once_with(process)
+        # Cut at the first rescan at or after the deadline, and no later.
+        self.assertGreaterEqual(self.clock.now(), deadline)
+        self.assertLess(self.clock.now(), deadline + timedelta(seconds=chain.RESCAN_SECONDS))
+        self.assertIn(call(f"::warning::lane 20E8 still running at the deadline {deadline.isoformat()}; stopped",
+                           file=sys.stderr), said.call_args_list)
+        # The board ran until it was cut: no outage alarm.
+        self.assertEqual(output.read_text(), "boards_ran=true\n")
 
     def test_a_lane_at_its_median_pace_never_trips_the_hang_guard(self):
         # Slower than the guard's FIRST_STEP_SECONDS floor allows: only an estimate at the board's pace holds.
