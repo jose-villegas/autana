@@ -211,6 +211,15 @@ run = 41593137131
 host = "Linux x86_64"
 
 [[bake]]
+output = "stress_copy.mesh"
+source = "launcher/demo/stress/stress.scene.toml"
+key = "70e62ad501887e82d222382b44e6bdb3ae063937b08b73420c4d43084d672aa5"
+sha256 = "384e96bce54fcc75e1aee11daba4bb439911e92aedfee493d2da5e50363ae504"
+size = 124
+run = 41734062054
+host = "Linux x86_64"
+
+[[bake]]
 output = "tank.mesh"
 source = "launcher/demo/water/water.scene.toml"
 key = "56f1af61ffd2620d30601593756a82ac75e9526776c757262f6a00ac97b1b348"

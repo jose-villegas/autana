@@ -28,3 +28,7 @@ product the build fetches by its row in `launcher/bakes.lock`
   Amazon Lumberyard Bistro's exterior (CC BY 4.0), made by
   [`reduce_source.py`](../tools/r3d/source/reduce_source.py); the attribution,
   licence and the command that made it sit beside it.
+- [Stress](stress/stress.scene.toml) is a camera swinging round the origin and
+  a pool of copies, each a one-triangle [stand-in](stress/slot.import.toml);
+  render_lab generates the shape the copies draw at run time, so the pack
+  has no source in `source/`.
