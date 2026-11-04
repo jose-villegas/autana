@@ -1755,7 +1755,8 @@ class ProduceTests(unittest.TestCase):
         now = time.time()
         stale = now - (produce.REFERENCE_KEEP_DAYS + 1) * produce.DAY_S
         recent = now - (produce.REFERENCE_KEEP_DAYS - 1) * produce.DAY_S
-        for name, age in {"old": stale, "read": stale, "new": recent, "cut.partial": stale}.items():
+        for name, age in {"old": stale, "old" + produce.PRUNED: stale, "read": stale, "new": recent,
+                          "cut.partial": stale}.items():
             (references / name).mkdir(parents=True)
             os.utime(references / name, (age, age))
         produce.read_references(references / "read")

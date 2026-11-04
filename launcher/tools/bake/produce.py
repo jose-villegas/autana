@@ -183,13 +183,20 @@ def read_references(folder):
 
 def prune_references(cache, now=None):
     """Deletes each reference set, done or cut, that nothing has read for REFERENCE_KEEP_DAYS; a bake runs it before
-    it reads any. Each is renamed aside first, so a delete cut short never leaves a set that looks done."""
+    it reads any. Each is renamed aside first, so a delete cut short never leaves a set that looks done; one that
+    cannot be moved (a file held open) is left for a later bake."""
     now = time.time() if now is None else now
     for folder in sorted((pathlib.Path(cache) / REFERENCES).glob("*")):
-        if now - folder.stat().st_mtime > REFERENCE_KEEP_DAYS * DAY_S:
-            pruned = folder.with_name(folder.name + PRUNED) if not folder.name.endswith(PRUNED) else folder
-            os.replace(folder, pruned)
-            shutil.rmtree(pruned, ignore_errors=True)
+        pruned = folder if folder.name.endswith(PRUNED) else folder.with_name(folder.name + PRUNED)
+        try:
+            if now - folder.stat().st_mtime <= REFERENCE_KEEP_DAYS * DAY_S:
+                continue
+            if pruned != folder:
+                shutil.rmtree(pruned, ignore_errors=True)  # an earlier delete cut short
+                os.replace(folder, pruned)
+            shutil.rmtree(pruned)
+        except OSError:
+            continue  # gone already, or held open
 
 
 def reference_set(key, job, scene, cache, fresh=None):
