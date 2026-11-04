@@ -115,7 +115,7 @@ class SceneEntryTests(SceneFiles):
             entry = self.entry(objects, 'tonemap_white = 0.3\n[ambient]\ncolor = [0.4, 0.5, 0.6]\nintensity = 0.2\n')
             decoded = scene_asset.decode(entry)
         self.assertEqual(decoded["renderers"], [])
-        self.assertEqual(decoded["skinned_renderers"][0], dict(entity=0, mesh="hall.rig", skin="hall.rig.skin", skeleton="armature"))
+        self.assertEqual(decoded["skinned_renderers"][0], dict(entity=0, mesh="mesh", skin="mesh.skin", skeleton="armature"))
         self.assertEqual(decoded["animators"][0]["wrap"], scene_asset.WRAPS["clamp"])
         self.assertEqual(decoded["clips"], ["move"])
         self.assertEqual(decoded["lights"][0], dict(entity=1, kind=scene_asset.DIRECTIONAL,

@@ -40,10 +40,24 @@ typedef struct {
 
 /* Loads the scene `id` beside any already loaded: its entry, every mesh, skin,
  * skeleton and clip it names, from `pack`, or for scene_load() from the
- * asset pack `id`, held until the scene unloads. NULL on failure, and
- * `why`, which may be NULL, says why; a success sets it to SCENE_OK. */
+ * asset pack `id` names, held until the scene unloads. NULL on failure, and
+ * `why`, which may be NULL, says why; a success sets it to SCENE_OK.
+ * scene_load()'s id is "pack/scene", or a bare "scene" in the pack of its own
+ * name; any other id (a part empty or too long, a second '/') is SCENE_ERR_ASSET with ASSET_ERR_FORMAT. */
 scene_t* scene_load(const char* id, scene_failure_t* why);
 scene_t* scene_load_from(const asset_pack_t* pack, const char* id, scene_failure_t* why);
+
+/* The separator in a scene id that names its pack. */
+#define SCENE_ID_PACK_SEPARATOR '/'
+
+/* A scene id's parts: the pack it is in and the scene's entry there. */
+typedef struct {
+    char pack[ASSET_NAME_MAX];
+    const char* scene; /* within the id split */
+} scene_id_t;
+
+/* Splits `id` as scene_load() reads it; false for an id it refuses. */
+bool scene_id_split(const char* id, scene_id_t* out);
 
 /* Frees the scene. If its camera was the active one, nothing is drawn. */
 void scene_unload(scene_t* scene);

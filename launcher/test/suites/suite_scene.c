@@ -1772,7 +1772,10 @@ test_authored_rows_and_refusals(void) {
     TEST_ASSERT_EQUAL_INT(2, asset.animator_count);
     TEST_ASSERT_EQUAL_FLOAT(1.5F, asset.lights[0].intensity);
     TEST_ASSERT_EQUAL_FLOAT(0.5F, asset.settings->tonemap_white);
-    TEST_ASSERT_EQUAL_STRING("authored.first.skin", asset.skinned_renderers[0].skin);
+    /* Two skinned renderers of one import share its mesh and skin. */
+    TEST_ASSERT_EQUAL_STRING("mesh.skin", asset.skinned_renderers[0].skin);
+    TEST_ASSERT_EQUAL_STRING("mesh.skin", asset.skinned_renderers[1].skin);
+    TEST_ASSERT_EQUAL_STRING("mesh", asset.skinned_renderers[1].mesh);
     TEST_ASSERT_EQUAL_STRING("walk", asset.clips[1]);
     TEST_ASSERT_EQUAL_STRING("first", asset.names[1].name);
     TEST_ASSERT_EQUAL_HEX32(name_hash("first"), asset.names[1].hash); /* the tools' hash is the device's */
@@ -1855,7 +1858,7 @@ test_encoder_authored_components_load_and_reach_runtime(void) {
     TEST_ASSERT_EQUAL_INT(2, loaded->light_count);
     const scene_entity_t entity = scene_find(loaded, name_hash("first"));
     TEST_ASSERT_EQUAL_INT(1, entity);
-    TEST_ASSERT_EQUAL_STRING("authored.first", scene_entity_mesh_id(loaded, entity));
+    TEST_ASSERT_EQUAL_STRING("mesh", scene_entity_mesh_id(loaded, entity));
     TEST_ASSERT_NOT_NULL(loaded->skinned_renderers[entity].internal_storage);
     TEST_ASSERT_NOT_NULL(loaded->light_transfer);
     assert_light(loaded, scene_find(loaded, name_hash("sun")), (vec3f_t){0.8F, 0.7F, 0.6F}, 1.5F);
@@ -2072,6 +2075,45 @@ test_scene_load_holds_its_pack_until_the_last_scene_from_it_unloads(void) {
     TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_NO_PACK, why.asset);
     remove_pack("test_pair");
+}
+
+/* A "pack/scene" id loads the scene from the pack it names, whatever the pack is called. */
+static void
+test_scene_load_reads_a_scene_from_the_pack_its_id_names(void) {
+    fixture();
+    test_asset_dir_use(".");
+    write_pack("test_folder", false);
+    scene_failure_t why;
+    scene_t* loaded = scene_load("test_folder/test_pair", &why);
+    remove_pack("test_folder");
+    TEST_ASSERT_NOT_NULL(loaded);
+    TEST_ASSERT_EQUAL_INT(SCENE_OK, why.status);
+    TEST_ASSERT_EQUAL_STRING("test_pair", loaded->id);
+    scene_unload(loaded);
+}
+
+/* An id with an empty part, a part longer than a pack name holds, or a second separator is refused before
+ * any pack is read. */
+static void
+test_scene_load_refuses_a_malformed_id(void) {
+    fixture();
+    test_asset_dir_use(".");
+    char long_part[ASSET_NAME_MAX + 2];
+    (void)memset(long_part, 'a', ASSET_NAME_MAX);
+    long_part[ASSET_NAME_MAX] = '\0';
+    const char* const malformed[] = {"", "/test_pair", "test_folder/", "/", "a/b/c", long_part};
+    for (size_t i = 0; i < sizeof malformed / sizeof malformed[0]; i++) {
+        scene_failure_t why = {0};
+        TEST_ASSERT_NULL_MESSAGE(scene_load(malformed[i], &why), malformed[i]);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(SCENE_ERR_ASSET, why.status, malformed[i]);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_ERR_FORMAT, why.asset, malformed[i]);
+        scene_id_t parts;
+        TEST_ASSERT_FALSE_MESSAGE(scene_id_split(malformed[i], &parts), malformed[i]);
+    }
+    scene_id_t bare;
+    TEST_ASSERT_TRUE(scene_id_split("test_pair", &bare));
+    TEST_ASSERT_EQUAL_STRING("test_pair", bare.pack);
+    TEST_ASSERT_EQUAL_STRING("test_pair", bare.scene);
 }
 
 /* A load that fails gives its use of the pack back. */
@@ -4736,6 +4778,8 @@ run_scene_suite(void) {
     RUN_TEST(test_doc_small_fill_reaches_camera);
     RUN_TEST(test_scene_load_holds_its_pack_until_the_last_scene_from_it_unloads);
     RUN_TEST(test_a_scene_that_fails_to_load_does_not_hold_its_pack);
+    RUN_TEST(test_scene_load_reads_a_scene_from_the_pack_its_id_names);
+    RUN_TEST(test_scene_load_refuses_a_malformed_id);
 #endif
     RUN_TEST(test_a_load_with_no_memory_left_says_so_and_takes_nothing);
     RUN_TEST(test_a_full_manager_refuses_another_scene_until_one_is_unloaded);
