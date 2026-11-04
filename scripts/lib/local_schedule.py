@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
 from scripts.ci.github_api import PER_PAGE, call, pages
 from device_lock import LockStore, board_read_root, heavy_root, write_json
 from process_tree import launch_process_tree, stop_process_tree, close_process_tree
+from step_summary import summarize
 
 NIGHT_START = "01:00"
 # Boards start after the GPU's night work: two hours of day board time when no GPU work is queued.
@@ -184,9 +185,7 @@ def main():
         refresh_gpu_host(os.environ.get("RUNNER_NAME") or "local", clock)
         if workflow == DOC_IMAGES_WORKFLOW and gpu_pending((BAKES_WORKFLOW,)):
             print(DEFERRED)
-            if os.environ.get("GITHUB_STEP_SUMMARY"):
-                with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
-                    summary.write(DEFERRED + "\n")
+            summarize(DEFERRED)
             return EXIT_DEFERRED
         gpu_ready(clock)
         return 0

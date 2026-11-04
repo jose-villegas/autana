@@ -29,6 +29,7 @@ from device_lock import normalise_board, short_id, write_json
 from layout_measure import autana_command, capture_for, run_flash, run_stamped, REPORT_LINE, latest_build
 from device_report import parse_suite_results, read_capture_text
 from device_capture import board_steps_completed
+from step_summary import summarize
 from process_tree import (launch_process_tree, stop_process_tree, close_process_tree, install_console_interrupt_handler,
                           terminate_unwinds)
 from local_schedule import (Clock, wait_idle, gpu_pending, gpu_on_host, GPU_NOT_ON_HOST,
@@ -695,9 +696,7 @@ def plan(args, clock=None, request=None):
         wait_idle(lambda: gpu_pending(request=request), clock, idle_polls=2)
     else:
         print(GPU_NOT_ON_HOST, file=sys.stderr)
-        if os.environ.get("GITHUB_STEP_SUMMARY"):
-            with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
-                summary.write(GPU_NOT_ON_HOST + "\n")
+        summarize(GPU_NOT_ON_HOST)
     now = clock.now()
     discovered = not args.boards
     # A discovered night takes boards as they free until BOARD_LAST_START; named boards are the whole night.

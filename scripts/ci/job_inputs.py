@@ -17,6 +17,7 @@ from urllib.parse import quote
 
 from github_api import call, pages
 from inputs_recorded import latest_job_artifact
+from step_summary import summarize  # scripts/lib, on the path github_api sets
 
 INDEX_SETTLE_SECONDS = 1
 ARTIFACT_PREFIX = 'job-inputs-'
@@ -142,9 +143,7 @@ def matching_paths(changes, manifest, base_files=()):
 def report(job, decision, reason):
     line = f'{job}: {decision} — {reason}'
     print(line)
-    if os.environ.get('GITHUB_STEP_SUMMARY'):
-        with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as output:
-            output.write(line + '\n\n')
+    summarize(line)
 
 
 def affected(workflow, jobs, pull, base_ref, request=call):

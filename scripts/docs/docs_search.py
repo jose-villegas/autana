@@ -47,6 +47,7 @@ import docs_llama
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402
+from step_summary import summarize  # noqa: E402
 
 Section = namedtuple("Section", "path start end title headings level body cites")
 Hit = namedtuple("Hit", "section score coverage similarity")
@@ -660,9 +661,7 @@ def run_eval(index, expect=None):
             f"of {result['rows']} questions over {len(index.sections)} sections in "
             f"{time.perf_counter() - started:.1f} s")
     print(line)
-    if os.environ.get("GITHUB_STEP_SUMMARY"):
-        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
-            summary.write(line + "\n\n")
+    summarize(line)
     if expect and mode != expect:
         print(f"docs evaluation: expected {expect}, got {mode}", file=sys.stderr)
         return 1
