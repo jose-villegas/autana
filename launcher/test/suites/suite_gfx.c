@@ -55,7 +55,8 @@ static const char* TAG = PERF_BUDGET_TAG;
 
 /* Regression ceilings are worst + max(spread, 2% of worst) across a 5-run
  * S3 portrait board capture (autana suite run_gfx_suite --runs 5), with
- * fixture() pinning the fast panel clock. Shipping landscape costs 17-37%
+ * fixture() pinning the fast panel clock, the gather cases the slow one
+ * (GATHER_CLOCK_HZ). Shipping landscape costs 17-37%
  * more; these pegs do not cover that orientation. */
 
 /* gfx owns global hardware state and is already initialised by the time this
@@ -63,10 +64,15 @@ static const char* TAG = PERF_BUDGET_TAG;
  * may leave the framebuffer in any state, but must not deinitialise it, and
  * must reset the clip rect since they share it. */
 static void
-fixture(void) {
-    panel_clock_pin(GFX_PANEL_CLOCK_FAST_HZ);
+fixture_at(int hz) {
+    panel_clock_pin(hz);
     draw_clear_clip();
     gfx_invalidate();
+}
+
+static void
+fixture(void) {
+    fixture_at(GFX_PANEL_CLOCK_FAST_HZ);
 }
 
 static void
@@ -816,6 +822,10 @@ test_full_present_cost_splits_into_bus_time_and_overhead(void) {
     TEST_ASSERT_LESS_THAN_INT(500000, (int)raw_us);
 }
 
+/* One band presented alone at the fast clock, un-pipelined: the stable
+ * observed price of test_a_partial_change_costs_less_than_a_full_frame. */
+#define ONE_BAND_CEILING_US 1503
+
 static void
 test_a_partial_change_costs_less_than_a_full_frame(void) {
     clear_fixture(RGB565BE(0x000000));
@@ -839,7 +849,7 @@ test_a_partial_change_costs_less_than_a_full_frame(void) {
      * regression could hide in. */
     perf_guard("one band alone cost more than its stable observed price - the bus "
                "clock or the QSPI setup may have regressed",
-               one_band, 1503);
+               one_band, ONE_BAND_CEILING_US);
 }
 
 static void
@@ -853,9 +863,15 @@ write_dirty_rectangle(int x0, int y0, int w, int h, gfx_color_t colour) {
     gfx_mark_dirty(x0, y0, w, h);
 }
 
+/* At the fast clock every send is full-width rows (gfx_present.h), so the
+ * gather path a narrow change takes runs only at the slow one. */
+#define GATHER_CLOCK_HZ GFX_PANEL_CLOCK_SLOW_HZ
+
+/* One band presented alone at clock `hz`, after a clear at that clock. */
 static int64_t
-present_reference_band(gfx_color_t colour) {
-    clear_fixture(RGB565BE(0x000000));
+present_reference_band(int hz, gfx_color_t colour) {
+    fixture_at(hz);
+    draw_clear(RGB565BE(0x000000));
     (void)time_present();
     draw_rect(0, 0, GFX_WIDTH, 64, colour);
     return time_present();
@@ -883,7 +899,7 @@ present_reference_band(gfx_color_t colour) {
  * mark_band() regardless of what it drew; see its comment). */
 static void
 test_a_narrow_change_costs_less_than_a_full_band(void) {
-    const int64_t full_band = present_reference_band(RGB565BE(0x204060));
+    const int64_t full_band = present_reference_band(GATHER_CLOCK_HZ, RGB565BE(0x204060));
 
     /* A narrow strip within a band, written directly and marked with its
      * real bounds: a caller repainting a narrow changed strip. */
@@ -901,11 +917,27 @@ test_a_narrow_change_costs_less_than_a_full_band(void) {
                narrow, full_band);
 
     /* Its spread used to be whether the present's code was still in the
-     * instruction cache; that code runs from IRAM now (main/linker.lf), and
-     * a strip that costs more again likely runs from flash once more. */
+     * instruction cache; that code runs from IRAM now (GFX_PRESENT_IRAM_ATTR). */
     perf_guard("the gathered narrow strip cost more than its observed price - the "
-               "gather-copy path may have regressed, or a present's code left IRAM",
+               "gather-copy path may have regressed",
                narrow, NARROW_STRIP_CEILING_US);
+}
+
+/* At the fast clock the same narrow strip is sent as full-width rows of its
+ * height, here a whole band's: no gather, so a band's price. */
+static void
+test_a_narrow_change_at_the_fast_clock_sends_its_rows_full_width(void) {
+    const int64_t full_band = present_reference_band(GFX_PANEL_CLOCK_FAST_HZ, RGB565BE(0x204060));
+
+    write_dirty_rectangle(0, 0, NARROW_STRIP_WIDTH, NARROW_STRIP_ROWS, RGB565BE(0x204060));
+    const int64_t narrow = time_present();
+
+    ESP_LOGI(TAG, "present: fast clock, full band %lld us, %d px wide (full-width rows) %lld us", (long long)full_band,
+             NARROW_STRIP_WIDTH, (long long)narrow);
+
+    perf_guard("a narrow strip at the fast clock cost more than the full-width band it is sent as - the "
+               "bus clock or the QSPI setup may have regressed",
+               narrow, ONE_BAND_CEILING_US);
 }
 
 /* An instrument, not a gate: the narrow strip's present, counted alone,
@@ -924,7 +956,7 @@ static void
 count_narrow_presents(const char* scene, narrow_setting_t setting) {
     const int events = (int)(sizeof narrow_present_events / sizeof narrow_present_events[0]);
     int64_t total_us = 0;
-    (void)present_reference_band(RGB565BE(0x204060));
+    (void)present_reference_band(GATHER_CLOCK_HZ, RGB565BE(0x204060));
     for (int e = 0; e < events; e++) {
         const int event = frame_cost_event_index(narrow_present_events[e]);
         uint64_t cycles_sum = 0;
@@ -932,7 +964,7 @@ count_narrow_presents(const char* scene, narrow_setting_t setting) {
         bool counted = true;
         for (int i = 0; i < NARROW_PRESENTS; i++) {
             if (setting == NARROW_AFTER_BAND) {
-                (void)present_reference_band(RGB565BE(0x204060));
+                (void)present_reference_band(GATHER_CLOCK_HZ, RGB565BE(0x204060));
             }
             write_dirty_rectangle(0, 0, NARROW_STRIP_WIDTH, NARROW_STRIP_ROWS, RGB565BE(0x204060));
             if (setting == NARROW_COLD) {
@@ -978,7 +1010,7 @@ test_narrow_present_counters(void) {
  * benefit at all. */
 static void
 test_a_short_wide_change_costs_less_than_a_full_band(void) {
-    const int64_t full_band = present_reference_band(RGB565BE(0x602040));
+    const int64_t full_band = present_reference_band(GATHER_CLOCK_HZ, RGB565BE(0x602040));
 
     /* Wide but short: most of the band's width, a sliver of its height:
      * the shape a sideways-falling stream leaves behind. */
@@ -1012,7 +1044,7 @@ test_a_short_wide_change_costs_less_than_a_full_band(void) {
  * logged above), so with the fixed per-transaction cost the floor is ~78%. */
 static void
 test_a_full_width_partial_height_change_costs_less_than_a_band(void) {
-    const int64_t full_band = present_reference_band(RGB565BE(0x406020));
+    const int64_t full_band = present_reference_band(GFX_PANEL_CLOCK_FAST_HZ, RGB565BE(0x406020));
 
     /* Full width, 48 of the band's 64 rows: the shape a wide change
      * leaves that has not yet grown to fill its whole strip. */
@@ -1039,7 +1071,7 @@ test_a_full_width_partial_height_change_costs_less_than_a_band(void) {
  * separate pools settling in the same horizontal band, say. */
 static void
 test_two_far_corners_cost_less_than_a_full_band(void) {
-    const int64_t full_band = present_reference_band(RGB565BE(0x206020));
+    const int64_t full_band = present_reference_band(GATHER_CLOCK_HZ, RGB565BE(0x206020));
 
     const int size = 15;
 
@@ -1078,7 +1110,7 @@ test_two_far_corners_cost_less_than_a_full_band(void) {
  * that a raised cap's three small sends are not guaranteed to beat. */
 static void
 test_three_far_apart_marks_falls_back_at_the_current_cap(void) {
-    const int64_t full_band = present_reference_band(RGB565BE(0x602060));
+    const int64_t full_band = present_reference_band(GATHER_CLOCK_HZ, RGB565BE(0x602060));
 
     const int size = 15;
     /* Cells 0, 1 and 2 (COL_WIDTH=92 each): adjacent, so these merge
@@ -1113,7 +1145,7 @@ test_three_far_apart_marks_falls_back_at_the_current_cap(void) {
  * budget at 4096 and 6144, under it at the shipped 8192. */
 static void
 test_a_near_budget_split_crosses_the_gather_threshold(void) {
-    const int64_t full_band = present_reference_band(RGB565BE(0x206040));
+    const int64_t full_band = present_reference_band(GATHER_CLOCK_HZ, RGB565BE(0x206040));
 
     const int small_size = 15;
     const int wide_x = 48, wide_w = 110, wide_h = 64;
@@ -1139,7 +1171,7 @@ test_a_near_budget_split_crosses_the_gather_threshold(void) {
  * leaf layer; this test is the one that actually exercises it. */
 static void
 test_two_marks_in_one_cell_cost_less_than_the_coarse_box(void) {
-    const int64_t full_band = present_reference_band(RGB565BE(0x406020));
+    const int64_t full_band = present_reference_band(GATHER_CLOCK_HZ, RGB565BE(0x406020));
 
     const int size = 10;
 
@@ -1170,7 +1202,7 @@ test_two_marks_in_one_cell_cost_less_than_the_coarse_box(void) {
  * the board. */
 static void
 test_a_corner_label_costs_less_than_its_rows_full_width(void) {
-    const int64_t full_band = present_reference_band(RGB565BE(0x406020));
+    const int64_t full_band = present_reference_band(GATHER_CLOCK_HZ, RGB565BE(0x406020));
 
     /* 4 glyphs at DRAW_GLYPH_SCALE is 64 px wide and 16 tall, inside one
      * 92 px column, well inside one strip. */
@@ -1551,6 +1583,7 @@ run_gfx_suite(void) {
     RUN_TEST(test_full_present_cost_splits_into_bus_time_and_overhead);
     RUN_TEST(test_a_partial_change_costs_less_than_a_full_frame);
     RUN_TEST(test_a_narrow_change_costs_less_than_a_full_band);
+    RUN_TEST(test_a_narrow_change_at_the_fast_clock_sends_its_rows_full_width);
     RUN_TEST(test_narrow_present_counters);
     RUN_TEST(test_a_short_wide_change_costs_less_than_a_full_band);
     RUN_TEST(test_a_full_width_partial_height_change_costs_less_than_a_band);
