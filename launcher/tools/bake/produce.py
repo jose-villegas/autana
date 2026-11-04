@@ -6,7 +6,8 @@ counts must match what is installed, so a key never names bytes made with other 
 A fit's start is a mesh bake of its own; the fit reads the bytes its key names, from the lock or this
 cache. A fit's references are made once per reference key into the cache's reference/ folder, so fits
 that share their inputs share them, and never leave the machine that made them: only the fit stage reads
-them, and it runs there.
+them, and it runs there. A make `again` renders them afresh, so a repeat measures the whole chain; a set no fit
+has read for REFERENCE_KEEP_DAYS is deleted.
 """
 
 import copy
@@ -19,12 +20,15 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 
 from bake import bake as keys
 
 KEY_INDEX = "keys"
 REFERENCES = "reference"
 DONE = "done"
+REFERENCE_KEEP_DAYS = 14
+DAY_S = 24 * 60 * 60
 PIN = re.compile(r"^([A-Za-z0-9_.-]+)==(\S+)$")
 
 
@@ -154,11 +158,11 @@ def produce_blend(bake, cache, blender=None):
         return record(bake, out, cache)
 
 
-def keyed_folder(folder, make):
-    """`folder` once its DONE marker is there; else make(partial) fills a sibling, which is marked done and renamed
-    into place, so a cut run leaves nothing a later one takes for done."""
+def keyed_folder(folder, make, fresh=False):
+    """`folder` once its DONE marker is there, unless `fresh`; else make(partial) fills a sibling, which is marked
+    done and renamed into place, so a cut run leaves nothing a later one takes for done."""
     folder = pathlib.Path(folder)
-    if (folder / DONE).is_file():
+    if not fresh and (folder / DONE).is_file():
         return folder
     partial = folder.with_name(folder.name + ".partial")
     shutil.rmtree(partial, ignore_errors=True)
@@ -170,12 +174,36 @@ def keyed_folder(folder, make):
     return folder
 
 
-def reference_set(key, job, scene, cache):
-    """The reference set of `job`'s fit under its reference `key` in this cache, prepared there when it has none."""
+def prune_references(cache, keep, now=None):
+    """Deletes each reference set, done or cut, untouched for REFERENCE_KEEP_DAYS, except `keep`. One runner never
+    runs two bakes at once (bakes-gpu.yml's concurrency group), so no other run is reading a set it deletes."""
+    now = time.time() if now is None else now
+    for folder in sorted((pathlib.Path(cache) / REFERENCES).glob("*")):
+        touched = folder / DONE if (folder / DONE).is_file() else folder
+        if folder.name != keep and now - touched.stat().st_mtime > REFERENCE_KEEP_DAYS * DAY_S:
+            shutil.rmtree(folder, ignore_errors=True)
+
+
+def report(line):
+    """Prints `line`, and adds it to the CI step summary when there is one."""
+    print(line, flush=True)
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+            summary.write(f"- {line}\n")
+
+
+def reference_set(key, job, scene, cache, fresh=False):
+    """The reference set of `job`'s fit under its reference `key` in this cache, prepared there when it has none
+    or `fresh`; reading it marks it used, and older sets are pruned."""
     from r3d.reference_set import prepare_references, reference_inputs
 
-    return keyed_folder(pathlib.Path(cache) / REFERENCES / key,
-                        lambda partial: prepare_references(reference_inputs(job, scene), partial))
+    folder = pathlib.Path(cache) / REFERENCES / key
+    reused = not fresh and (folder / DONE).is_file()
+    prune_references(cache, key)
+    keyed_folder(folder, lambda partial: prepare_references(reference_inputs(job, scene), partial), fresh)
+    os.utime(folder / DONE)
+    report(f"reference {key}: {'reused' if reused else 'fresh'}")
+    return folder
 
 
 def start_file(bake, cache, lock):
@@ -188,11 +216,11 @@ def start_file(bake, cache, lock):
     return keys.fetch_all([start], {start.key: row}, cache)[start]
 
 
-def produce_fit(bake, cache, lock):
+def produce_fit(bake, cache, lock, again):
     from r3d.fit.stage import fit
 
     start = start_file(bake, cache, lock)
-    inputs = reference_set(bake.stages["reference"], bake.job, bake.scene, cache)
+    inputs = reference_set(bake.stages["reference"], bake.job, bake.scene, cache, again)
     with tempfile.TemporaryDirectory() as work:
         target = pathlib.Path(work) / bake.output
         fit(bake.scene.path, bake.scene, bake.job, pathlib.Path(work), target=target, inputs=inputs, start=start)
@@ -211,8 +239,9 @@ def produce_sound(bake, cache):
         return record(bake, target, cache)
 
 
-def produce(bake, cache, lock=None, blender=None):
-    """Makes `bake` into the cache and returns its row; the environment must match its pins."""
+def produce(bake, cache, lock=None, blender=None, again=False):
+    """Makes `bake` into the cache and returns its row; the environment must match its pins. A fit made `again`
+    renders its references afresh."""
     if bake.kind == "blend":
         return produce_blend(bake, cache, blender)
     if bake.kind == "sound":
@@ -220,7 +249,7 @@ def produce(bake, cache, lock=None, blender=None):
         return produce_sound(bake, cache)
     check_environment(("mesh", "reference", "fit") if bake.kind == "fit" else ("mesh",))
     if bake.kind == "fit":
-        return produce_fit(bake, cache, lock or {})
+        return produce_fit(bake, cache, lock or {}, again)
     return produce_mesh(bake, cache, lock or {})
 
 

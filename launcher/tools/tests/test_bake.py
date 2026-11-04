@@ -72,7 +72,7 @@ def bake_of(key, tree, kind="mesh"):
                      tree=tree)
 
 
-def mesh_process_stub(item, cache, lock=None, blender=None):
+def mesh_process_stub(item, cache, lock=None, blender=None, again=False):
     cache = pathlib.Path(cache)
     if item.holder == "fail":
         (cache / "failed").touch()
@@ -661,7 +661,7 @@ class FittedBakeCase(unittest.TestCase):
         Returns what it did."""
         written, produced = [], []
 
-        def stub(item, cache, lock=None, blender=None):
+        def stub(item, cache, lock=None, blender=None, again=False):
             produced.append(item)
             return row_of(item, MADE_SHA256 if not item.packed else FIT_SHA256)
 
@@ -1153,7 +1153,7 @@ class KeptWorkTests(FittedBakeCase):
         Returns its exit code and the outputs it made."""
         produced = []
 
-        def stub(item, cache, lock=None, blender=None):
+        def stub(item, cache, lock=None, blender=None, again=False):
             if item.output == fail:
                 raise bake.BakeMissing("the heavy lock was lost")
             produced.append(item.output)
@@ -1245,7 +1245,7 @@ class KeptWorkTests(FittedBakeCase):
             start = next(item for item in bake.bakes([root], {}) if not item.packed)
             lock = {start.key: {"output": start.output, "key": start.key, "sha256": lock_sha, "run": 1}}
 
-            def stub(item, cache, lock=None, blender=None):
+            def stub(item, cache, lock=None, blender=None, again=False):
                 if item.output == last:
                     (root / "started").touch()
                     time.sleep(600)
@@ -1711,6 +1711,44 @@ class ProduceTests(unittest.TestCase):
         self.assertEqual(produce.keyed_folder(folder, make), folder)
         self.assertEqual(len(made), 1, "a done folder is not made again")
         self.assertFalse(made[0].exists(), "the partial folder was renamed into place")
+        self.assertEqual(produce.keyed_folder(folder, make, fresh=True), folder)
+        self.assertEqual(len(made), 2, "a fresh make replaces a done folder")
+        self.assertEqual(sorted(path.name for path in folder.iterdir()), [produce.DONE, "frame.png"])
+
+    def test_a_reference_set_is_fresh_when_made_again_and_reports_which(self):
+        summary = self.root / "summary.md"
+        renders = []
+
+        def prepare(inputs, partial):
+            renders.append(inputs)
+            (partial / "frame.png").write_bytes(b"frame")
+
+        with mock.patch("r3d.reference_set.reference_inputs", side_effect=lambda job, scene: job), \
+             mock.patch("r3d.reference_set.prepare_references", side_effect=prepare), \
+             mock.patch.dict(os.environ, GITHUB_STEP_SUMMARY=str(summary)), \
+             contextlib.redirect_stdout(io.StringIO()) as printed:
+            for fresh in (False, False, True):
+                produce.reference_set("k" * 64, "job", None, self.cache, fresh)
+        self.assertEqual(len(renders), 2, "a cached set is read, not rendered again, unless fresh")
+        lines = [f"reference {'k' * 64}: {how}" for how in ("fresh", "reused", "fresh")]
+        self.assertEqual(printed.getvalue().splitlines(), lines)
+        self.assertEqual(summary.read_text(encoding="utf-8").splitlines(), [f"- {line}" for line in lines])
+
+    def test_reference_sets_unread_for_the_keep_days_are_pruned_but_not_the_one_in_use(self):
+        references = self.cache / produce.REFERENCES
+        now = time.time()
+        stale = now - (produce.REFERENCE_KEEP_DAYS + 1) * produce.DAY_S
+        recent = now - (produce.REFERENCE_KEEP_DAYS - 1) * produce.DAY_S
+        ages = {"old": stale, "used": stale, "new": recent}
+        for name, age in ages.items():
+            (references / name).mkdir(parents=True)
+            (references / name / produce.DONE).write_text(name, encoding="utf-8")
+            os.utime(references / name / produce.DONE, (age, age))
+        cut = references / "cut.partial"
+        cut.mkdir()
+        os.utime(cut, (stale, stale))
+        produce.prune_references(self.cache, "used", now)
+        self.assertEqual(sorted(path.name for path in references.iterdir()), ["new", "used"])
 
     def test_publish_takes_a_rows_file_from_its_run(self):
         row = self.produce()
