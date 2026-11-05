@@ -312,19 +312,17 @@ The surface term anchors fitted triangles to the alpha-masked source, with a
 recipe weight and a margin in each triangle's start edge scale;
 [Appearance-Fit.md describes the surface term](../../../docs/render/offline/Appearance-Fit.md#surface).
 
-### Reference on the GPU
+### Reference on the CPU
 
-A reference set traces its rays and bounced light on Mitsuba 3's `cuda_ad_rgb` variant, OptiX on the GPU, when
-that variant loads a scene in the process, and on `llvm_ad_rgb` otherwise (`ray_query.trace_variant`). Mesh bakes,
-starts included, always trace on `llvm_ad_rgb`, so their bytes never depend on a GPU.
+A reference set traces its rays and bounced light on `llvm_ad_rgb` (`ray_query.VARIANT`), as mesh bakes do, so a set
+made again repeats byte for byte on one kind of host; its bytes differ between CPU vendors by an ulp ([isa.py](isa.py)).
+It does not trace on the GPU: OptiX does not promise the same acceleration structure from the same
+triangles<sup>[[115]](../../../docs/Citations.md#nvidia-optix-bvh-repeat)</sup>. On a Turing GPU, a shadow ray grazing an
+edge hit or missed by the build, about one pixel in one frame of sixteen, and the fit makes that pixel a different
+mesh. The CPU takes about twice the GPU's time, paid once per reference key: the fits that read a set share it.
 
-| | CUDA | LLVM |
-|---|---|---|
-| Poses | one after another in the process, which frees the device before the fit | one after another, Mitsuba spreading each over every core |
-| Bytes | differ from LLVM's by float rounding; `test_r3d_reference.py` bounds the difference where both run | differ between CPU vendors by an ulp ([isa.py](isa.py)) |
-
-The reference key names the light model, not the device, so a set made on either serves the same fits; the set's
-`traced_on.txt` records which one made it. Under WSL 2 the Windows driver ships only an OptiX loader stub: Dr.Jit loads OptiX
+The path-traced backend still runs on `cuda_ad_rgb` where it loads a scene. Under WSL 2 the Windows driver ships only
+an OptiX loader stub: Dr.Jit loads OptiX
 from the Linux driver of the same version, whose `libnvoptix.so.1`, `libnvidia-rtcore`, `libnvidia-ptxjitcompiler`,
 `libnvidia-gpucomp` and `nvoptix.bin` sit in one folder named to the one process that traces, never to the shell's
 profile:

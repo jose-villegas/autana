@@ -5,11 +5,11 @@ hit rounds a caller can retire rays from. `RayQuery` answers them as `first_hit`
 `first_hits` gives the raw arrays behind the first. Triangle ids are the row numbers of the `tris` given,
 and every triangle is hit from both sides.
 
-A mesh bake is NumPy-bound on the CPU, so its queries run on the LLVM variant `VARIANT`: a CUDA context per forked
-pose worker would cost memory and copies for nothing, and the JIT of a process that forks workers must not be CUDA.
-A reference set traces on `trace_variant()`, Mitsuba's CUDA variant on OptiX where it loads (README, "Reference
-on the GPU"). Tests set `VARIANT` to `scalar_rgb`, which needs no libLLVM and traces one ray at a time. A worker
-forked after a query inherits the scene and traces serially on its own thread.
+Every bake traces on the LLVM variant `VARIANT`, reference sets included: Embree builds one tree per mesh, so a bake
+repeats byte for byte, while OptiX promises no such thing (README, "Reference on the CPU"). A mesh bake is NumPy-bound
+on the CPU anyway, and a CUDA context per forked pose worker would cost memory and copies for nothing. Tests set
+`VARIANT` to `scalar_rgb`, which needs no libLLVM and traces one ray at a time. A worker forked after a query
+inherits the scene and traces serially on its own thread.
 """
 import sys
 
@@ -29,9 +29,9 @@ GPU_VARIANT = "cuda_ad_rgb"
 
 
 def trace_variant():
-    """The variant a reference set traces on: `GPU_VARIANT` when it loads a scene here, else `VARIANT`, the one mesh
-    bakes keep. A variant Mitsuba was already on is restored. The probe may open CUDA in this process even when it falls
-    back, so the caller must not fork workers after it."""
+    """`GPU_VARIANT` when it loads a scene here, else `VARIANT`; no bake traces on it. A variant Mitsuba was
+    already on is restored. The probe may open CUDA in this process even when it falls back, so the caller must not
+    fork workers after it."""
     mi = import_mitsuba()
     if mi is None:
         return VARIANT
