@@ -2,6 +2,7 @@
 the groups keep the format's ordering after rounding to ticks, coarse vertices only move outward, and the
 engine frame mirrors the group records."""
 
+import math
 import pathlib
 import sys
 import tempfile
@@ -29,6 +30,8 @@ CROWDED_GRID = 150
 # Every fourth triangle row is two-sided, so both sides get a hierarchy and share a border.
 DOUBLE_EVERY = 4
 FOCAL_PX = 64.0
+# The picture the coverage cap is a share of; the reference rule has no cap.
+HEIGHT_PX = 2 * int(FOCAL_PX)
 NEAR = 1.0
 # The placement: a turn and one scale, so the device's bound on the largest scale is exact.
 TURN = Rotation.from_euler("xyz", [20, -35, 50], degrees=True).as_matrix()
@@ -150,7 +153,7 @@ class DevicePickTest(unittest.TestCase):
         for distance in EYES:
             eye = middle + direction * distance * extent
             _, drawn = pick.device_pick(mesh.lod, mesh.groups, lens_rows(eye, middle, model, SHIFT),
-                                        (FOCAL_PX, FOCAL_PX), NEAR)
+                                        (FOCAL_PX, FOCAL_PX), NEAR, HEIGHT_PX, coverage_max=math.inf)
             expected, near = reference_drawn(mesh.lod, mesh.groups, eye, model, SHIFT, tau)
             np.testing.assert_array_equal(expected[~near], drawn[~near])
             seen.update(np.flatnonzero(drawn).tolist())

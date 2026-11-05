@@ -47,7 +47,7 @@ Hoppe's<sup>[[111]](../Citations.md#hoppe-1997)</sup>; the floor of half a pixel
 | Pick, histogram, exact tolerance | [`lod/pick.py`](../../launcher/tools/r3d/lod/pick.py) | host |
 | Replay over a camera path | [`lod/lod_replay.py`](../../launcher/tools/r3d/lod/lod_replay.py) | host |
 | Levels in the baked mesh | [`lod/bake_levels.py`](../../launcher/tools/r3d/lod/bake_levels.py), [`r3d_lit_mesh.h`](../../launcher/main/render/r3d_lit_mesh.h) | built |
-| Pick at a tolerance, with hysteresis, once a frame in output pixels | [`r3d_lod_pick()`](../../launcher/main/render/lod/r3d_lod.h), run by `raster_pick_levels()`; its coarse bits live per scene renderer, and the cluster walk only reads them | built |
+| Pick at a tolerance, with hysteresis and a coverage cap, once a frame in output pixels | [`r3d_lod_pick()`](../../launcher/main/render/lod/r3d_lod.h), run by `raster_pick_levels()`; its coarse bits live per scene renderer, and the cluster walk only reads them | built |
 | Histogram from the last frame, steering the tolerance to a budget | `r3d_lod.c` | not built |
 | Tolerance per pose baked for the path; the fit trained on it | bake stage | not built |
 
@@ -73,6 +73,37 @@ rises that far above, so a still camera never flickers between levels. A
 coarse group's parent bounds hold its own, so its finer groups are always
 coarse too; a closing pass sets coarse any source float rounding left fine
 far off, so the cut stays crack-free whatever the floats do.
+
+**The coverage cap.** A group whose radius, projected where its error is,
+spans more than `R3D_LOD_COVERAGE_PERMILLE` thousandths of the picture's
+height stays fine, whatever its error. A large coarse group shows its
+simplified surface over much of the screen, and its colours, sampled from the
+nearest level-0 surface, shimmer under a slow camera drift where the
+geometric error alone says nothing changed. A parent's bounds hold its
+sources', so it never covers less than one of them, and the cap keeps a
+coarse parent's sources coarse. The table renders each cap along the paths
+and scores it against cap 0, the finest level. Blocks popping is
+frame-to-frame change beyond the finest level's own (render_temporal.py's
+measure); triangles are those submitted, against the finest level's.
+
+<!-- generated: lod-coverage sha256=ee49ccf800f048e26d32daef6d3399d43e520e58e999bdfb790c4ded59559623 -->
+| Path | Cap | Blocks popping | Mean difference /255 | Triangles, mean | Triangles, p95 |
+|---|---|---|---|---|---|
+| Sponza | none | 0.1201% | 0.273 | -2.4% | -4.4% |
+| Sponza | 50% | 0.0021% | 0.006 | -0.2% | -0.7% |
+| Sponza | 25% | 0.0000% | 0.000 | +0.0% | +0.0% |
+| Sponza | 10% | 0.0000% | 0.000 | +0.0% | +0.0% |
+| Bistro | none | 0.1842% | 0.132 | -13.2% | -17.5% |
+| Bistro | 50% | 0.1724% | 0.119 | -11.4% | -15.9% |
+| Bistro | 25% | 0.0561% | 0.037 | -7.1% | -10.8% |
+| Bistro | 10% | 0.0047% | 0.003 | -1.9% | -2.0% |
+<!-- /generated: lod-coverage -->
+
+```sh
+python launcher/tools/r3d/lod/coverage_table.py --script launcher/main/apps/render_lab/tools/render_lab_render_host.sh \
+    --render Sponza "--scene sponza-fitted-full --no-hud --frames 1101 --dt 33" \
+    --render Bistro "--scene bistro-fitted-full --no-hud --frames 900 --dt 33" --doc docs/plans/Cluster-LOD.md
+```
 
 **Gate before the runtime ships:** with the levels a pose picks, no more of
 the rest's hidden surface may show than at the finest level, and

@@ -53,6 +53,7 @@ enum {
 #define NEAR_Z        1.0F
 #define TOLERANCE     R3D_LOD_TOLERANCE_PX
 #define HYSTERESIS    R3D_LOD_HYSTERESIS_PX
+#define COVERAGE_MAX  ((float)R3D_LOD_COVERAGE_PERMILLE / (float)R3D_LOD_PERMILLE)
 /* A model stretch, and the share of it a group's radius may still shift at FAR_EYE. */
 #define STRETCH       3.0F
 #define FAR_SHARE     0.05F
@@ -223,7 +224,7 @@ test_a_coarse_group_keeps_every_group_simplified_into_it_coarse(void) {
     uint32_t ever_coarse = 0, ever_fine = 0;
     for (int p = 0; p < poses; p++) {
         const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
-        r3d_lod_pick(mesh, &lens, TOLERANCE, coarse);
+        r3d_lod_pick(mesh, &lens, TOLERANCE, COVERAGE_MAX, coarse);
         ever_coarse |= coarse[0];
         ever_fine |= ~coarse[0];
         for (int c = 0; c < CLUSTERS; c++) {
@@ -264,7 +265,7 @@ test_every_finest_cluster_is_drawn_at_exactly_one_level_along_the_path(void) {
     bool drew_top = false, drew_finest = false;
     for (int p = 0; p < poses; p++) {
         const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
-        r3d_lod_pick(mesh, &lens, TOLERANCE, coarse);
+        r3d_lod_pick(mesh, &lens, TOLERANCE, COVERAGE_MAX, coarse);
         for (int f = 0; f < FINEST_CLUSTERS; f++) {
             TEST_ASSERT_EQUAL_INT(1, levels_drawn(mesh, f, coarse));
         }
@@ -286,13 +287,14 @@ test_a_group_s_bit_follows_its_projected_error_within_the_hysteresis_band(void) 
     const int poses = 2 * steps;
     for (int p = 0; p < poses; p++) {
         const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
-        r3d_lod_pick(mesh, &lens, TOLERANCE, coarse);
+        r3d_lod_pick(mesh, &lens, TOLERANCE, COVERAGE_MAX, coarse);
         for (int g = 0; g < GROUPS; g++) {
             const float px = r3d_lod_group_pixels(mesh, &lens, g);
+            const bool capped = r3d_lod_group_coverage(mesh, &lens, g) > COVERAGE_MAX;
             if (r3d_lod_coarse(coarse, (uint16_t)g)) {
                 TEST_ASSERT_TRUE(px <= TOLERANCE + HYSTERESIS);
             } else {
-                TEST_ASSERT_TRUE(px > TOLERANCE - HYSTERESIS);
+                TEST_ASSERT_TRUE(capped || px > TOLERANCE - HYSTERESIS);
             }
         }
     }
@@ -304,13 +306,13 @@ static float
 top_turns_fine(const r3d_lit_mesh_t* mesh, uint32_t* coarse) {
     float d = FAR_EYE;
     r3d_lens_t lens = lens_at(d, NULL);
-    r3d_lod_pick(mesh, &lens, TOLERANCE, coarse);
+    r3d_lod_pick(mesh, &lens, TOLERANCE, COVERAGE_MAX, coarse);
     TEST_ASSERT_TRUE(r3d_lod_coarse(coarse, TOP_GROUP));
     while (r3d_lod_coarse(coarse, TOP_GROUP)) {
         TEST_ASSERT_TRUE(d > NEAR_EYE);
         d *= STEP;
         lens = lens_at(d, NULL);
-        r3d_lod_pick(mesh, &lens, TOLERANCE, coarse);
+        r3d_lod_pick(mesh, &lens, TOLERANCE, COVERAGE_MAX, coarse);
     }
     TEST_ASSERT_TRUE(r3d_lod_group_pixels(mesh, &lens, TOP_GROUP) > TOLERANCE + HYSTERESIS);
     return d;
@@ -325,22 +327,54 @@ test_a_camera_backing_off_a_switch_by_less_than_the_band_does_not_switch_back(vo
     const r3d_lens_t lens = lens_at(top_turns_fine(mesh, coarse) / STEP, NULL);
     const float back = r3d_lod_group_pixels(mesh, &lens, TOP_GROUP);
     TEST_ASSERT_TRUE(back > TOLERANCE - HYSTERESIS && back <= TOLERANCE + HYSTERESIS);
-    r3d_lod_pick(mesh, &lens, TOLERANCE, coarse);
+    r3d_lod_pick(mesh, &lens, TOLERANCE, COVERAGE_MAX, coarse);
     const uint32_t held = coarse[0];
     TEST_ASSERT_FALSE(r3d_lod_coarse(coarse, TOP_GROUP));
-    r3d_lod_pick(mesh, &lens, TOLERANCE, coarse);
+    r3d_lod_pick(mesh, &lens, TOLERANCE, COVERAGE_MAX, coarse);
     TEST_ASSERT_EQUAL_HEX32(held, coarse[0]);
 }
 
-/* Through `lens`, no group projects larger than its parent. */
+/* Through `lens`, no group projects larger than its parent: neither its
+ * error nor its radius. */
 static void
 assert_parents_project_larger(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens) {
     for (int c = 0; c < CLUSTERS; c++) {
         const r3d_lit_cluster_lod_t lod = mesh->cluster_lod[c];
         if (lod.own != R3D_LOD_NONE && lod.parent != R3D_LOD_NONE) {
             TEST_ASSERT_TRUE(r3d_lod_group_pixels(mesh, lens, lod.own) <= r3d_lod_group_pixels(mesh, lens, lod.parent));
+            TEST_ASSERT_TRUE(r3d_lod_group_coverage(mesh, lens, lod.own)
+                             <= r3d_lod_group_coverage(mesh, lens, lod.parent));
         }
     }
+}
+
+/* With no error anywhere, only the coverage cap keeps a group fine: along
+ * the path each group is coarse exactly while it covers at most
+ * COVERAGE_MAX, every group is seen both ways, and the closing pass
+ * never forces a capped group coarse, its parent covering at least as much. */
+static void
+test_a_group_covering_more_than_the_cap_stays_fine_whatever_its_error(void) {
+    const r3d_lit_mesh_t* mesh = levelled_mesh();
+    for (int g = 0; g < GROUPS; g++) {
+        levelled->groups[g].error = 0;
+    }
+    uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
+    const int steps = steps_in();
+    const int poses = 2 * steps;
+    uint32_t ever_coarse = 0, ever_fine = 0;
+    for (int p = 0; p < poses; p++) {
+        const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
+        r3d_lod_pick(mesh, &lens, TOLERANCE, COVERAGE_MAX, coarse);
+        for (int g = 0; g < GROUPS; g++) {
+            const bool small = r3d_lod_group_coverage(mesh, &lens, g) <= COVERAGE_MAX;
+            TEST_ASSERT_EQUAL(small, r3d_lod_coarse(coarse, (uint16_t)g));
+        }
+        ever_coarse |= coarse[0];
+        ever_fine |= ~coarse[0];
+    }
+    const uint32_t every = (1U << GROUPS) - 1U;
+    TEST_ASSERT_EQUAL_HEX32(every, ever_coarse & every);
+    TEST_ASSERT_EQUAL_HEX32(every, ever_fine & every);
 }
 
 static void
@@ -392,7 +426,7 @@ test_a_parent_turning_coarse_takes_an_out_of_order_source_with_it(void) {
     uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
     const r3d_lens_t lens = lens_at(FAR_EYE, NULL);
     TEST_ASSERT_TRUE(r3d_lod_group_pixels(mesh, &lens, 0) > TOLERANCE + HYSTERESIS);
-    r3d_lod_pick(mesh, &lens, TOLERANCE, coarse);
+    r3d_lod_pick(mesh, &lens, TOLERANCE, COVERAGE_MAX, coarse);
     TEST_ASSERT_TRUE(r3d_lod_coarse(coarse, TOP_GROUP));
     TEST_ASSERT_TRUE(r3d_lod_coarse(coarse, 0));
     for (int f = 0; f < FINEST_CLUSTERS; f++) {
@@ -437,6 +471,7 @@ suite_r3d_lod(void) {
     RUN_TEST(test_a_group_s_bit_follows_its_projected_error_within_the_hysteresis_band);
     RUN_TEST(test_a_camera_backing_off_a_switch_by_less_than_the_band_does_not_switch_back);
     RUN_TEST(test_a_group_never_projects_larger_than_its_parent_under_a_stretched_turned_model);
+    RUN_TEST(test_a_group_covering_more_than_the_cap_stays_fine_whatever_its_error);
     RUN_TEST(test_a_group_s_error_projects_at_the_model_s_largest_scale);
     RUN_TEST(test_a_parent_turning_coarse_takes_an_out_of_order_source_with_it);
     RUN_TEST(test_without_bits_a_levelled_mesh_walks_only_its_finest_clusters);

@@ -42,6 +42,7 @@ PICK_HOST = HERE / "pick_host.c"
 TOLERANCE_PX = read_define(LOD_HEADER, "R3D_LOD_TOLERANCE_PX")
 HYSTERESIS_PX = read_define(LOD_HEADER, "R3D_LOD_HYSTERESIS_PX")
 WORD_BITS = read_define(LOD_HEADER, "R3D_LOD_WORD_BITS")
+COVERAGE_MAX = read_define(LOD_HEADER, "R3D_LOD_COVERAGE_PERMILLE") / read_define(LOD_HEADER, "R3D_LOD_PERMILLE")
 
 # Below half a pixel a coarser level saves too little to be worth its pop; this tree's choice.
 TAU_FLOOR_PX = 0.5
@@ -167,12 +168,14 @@ def _device_library():
     return _device
 
 
-def device_pick(lod, groups, rows, focal, near, tolerance_px=TOLERANCE_PX, coarse=None):
+def device_pick(lod, groups, rows, focal, near, height, tolerance_px=TOLERANCE_PX, coverage_max=COVERAGE_MAX,
+                coarse=None):
     """(coarse, drawn): the device's pick over a read mesh's `lod` pairs and
     `groups` rows (lit_mesh.read_lit_mesh) seen through the lens matrix `rows`
     (4 x 4, position ticks to lens space, focal lengths applied to its first
     two rows), from the bits `coarse` of the frame before, all clear when
-    None. `focal` is (x, y) in pixels."""
+    None. `focal` is (x, y) in pixels; `height` is the picture's, which
+    `coverage_max` is a share of."""
     words = (len(groups) + WORD_BITS - 1) // WORD_BITS
     coarse = np.zeros(words, dtype=np.uint32) if coarse is None else np.array(coarse, dtype=np.uint32)
     pairs = b"".join(CLUSTER_LOD.pack(*pair) for pair in lod)
@@ -181,6 +184,7 @@ def device_pick(lod, groups, rows, focal, near, tolerance_px=TOLERANCE_PX, coars
     drawn = np.zeros(len(lod), dtype=np.uint8)
     _device_library().pick_host(pairs, ctypes.c_int(len(lod)), records, ctypes.c_int(len(groups)),
                                 lens.ctypes.data_as(ctypes.c_void_p), ctypes.c_float(focal[0]),
-                                ctypes.c_float(focal[1]), ctypes.c_float(near), ctypes.c_float(tolerance_px),
+                                ctypes.c_float(focal[1]), ctypes.c_float(near), ctypes.c_int(height),
+                                ctypes.c_float(tolerance_px), ctypes.c_float(coverage_max),
                                 coarse.ctypes.data_as(ctypes.c_void_p), drawn.ctypes.data_as(ctypes.c_void_p))
     return coarse, drawn.astype(bool)

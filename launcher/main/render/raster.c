@@ -21,6 +21,10 @@ TUNE(render, cull, 1, 0, 1);
 TUNE(render, depth_fit, 1, 0, 1);
 /* Off draws one instance a batch, the per-instance draw batching replaced. */
 TUNE(render, batched, 1, 0, 1);
+/* The thousandths of the picture's height a coarse group may cover
+ * (R3D_LOD_COVERAGE_PERMILLE); the doc's coverage table renders each cap it
+ * lists. */
+TUNE(render, lod_coverage_permille, R3D_LOD_COVERAGE_PERMILLE, 0, R3D_LOD_UNCAPPED);
 
 /* One instance of a batch: its lens, the clusters culling kept, where its
  * vertices and cluster rows start in the shared buffers, and its writers. */
@@ -358,12 +362,13 @@ void
 raster_pick_levels(const raster_t* raster, const render_view_t* view) {
     picture_lens_t picture;
     picture_lens_init(&picture, raster, view, false);
+    const float coverage_max = (float)lod_coverage_permille / (float)R3D_LOD_PERMILLE;
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];
         if (instance->lod_coarse != NULL && instance->mesh->lod_group_count > 0) {
             r3d_lens_t lens;
             instance_lens(&picture, instance, &lens);
-            r3d_lod_pick(instance->mesh, &lens, R3D_LOD_TOLERANCE_PX, instance->lod_coarse);
+            r3d_lod_pick(instance->mesh, &lens, R3D_LOD_TOLERANCE_PX, coverage_max, instance->lod_coarse);
         }
     }
 }
