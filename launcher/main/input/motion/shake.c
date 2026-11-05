@@ -5,6 +5,7 @@
 
 #include "math/scalar/mathf.h"
 #include "math/scalar/units.h"
+#include "math/signal/smooth.h"
 
 void
 shake_reset(shake_t* s) {
@@ -17,7 +18,7 @@ shake_update(shake_t* s, vec3f_t linear_g, uint32_t dt_us) {
         return;
     }
     const float size_g = sqrtf(vec3f_dot(linear_g, linear_g));
-    const float alpha = -expm1f(-(float)dt_us / (SHAKE_TAU_MS * MATH_US_PER_MS));
+    const float alpha = smooth_alpha((float)dt_us, SHAKE_TAU_MS * MATH_US_PER_MS);
     s->smooth_g += alpha * (size_g - s->smooth_g);
 }
 

@@ -21,11 +21,15 @@
 #include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_debug.h"
+#include "gfx/present/gfx_internal.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_test.h"
 #include "gfx/present/modes/band/gfx_band_run.h"
 #include "testkit/cleanup.h"
+#ifdef HOST_HEAP_ARENA
+#include "heap_arena.h"
+#endif
 
 #ifndef DEVICE_BUILD
 
@@ -48,6 +52,30 @@ assert_marked_only_where_drawn(void) {
     TEST_ASSERT_FALSE(gfx_region_dirty(OTHER_X, OTHER_Y, SIZE, SIZE));
     gfx_present();
     TEST_ASSERT_FALSE(gfx_region_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT));
+}
+
+/* A host run that closes gives the framebuffer back, and opening again takes it once more. */
+static void
+test_deinit_frees_the_framebuffer_and_init_takes_it_again(void) {
+    fixture();
+#ifdef HOST_HEAP_ARENA
+    size_t blocks_open, bytes_open, blocks_closed, bytes_closed, blocks_again, bytes_again;
+    heap_arena_snapshot(&blocks_open, &bytes_open);
+#endif
+    gfx_deinit();
+#ifdef HOST_HEAP_ARENA
+    heap_arena_snapshot(&blocks_closed, &bytes_closed);
+    TEST_ASSERT_EQUAL_UINT(GFX_FRAMEBUFFER_BYTES, bytes_open - bytes_closed);
+#endif
+    gfx_deinit(); /* closing a closed run is harmless */
+    TEST_ASSERT_TRUE(gfx_init());
+    TEST_ASSERT_FALSE(gfx_framebuffer_holds(0));
+#ifdef HOST_HEAP_ARENA
+    heap_arena_snapshot(&blocks_again, &bytes_again);
+    TEST_ASSERT_EQUAL_UINT(blocks_open, blocks_again);
+    TEST_ASSERT_EQUAL_UINT(bytes_open, bytes_again);
+    TEST_ASSERT_EQUAL_UINT(blocks_open - 1, blocks_closed);
+#endif
 }
 
 /* A public caller may pass rows past either screen edge; only on-screen
@@ -583,6 +611,7 @@ run_gfx_shared_state_suite(void) {
     RUN_TEST(test_clip_text);
     RUN_TEST(test_clip_text_dither);
     RUN_TEST(test_row_marks_outside_the_screen_mark_nothing);
+    RUN_TEST(test_deinit_frees_the_framebuffer_and_init_takes_it_again);
     RUN_TEST(test_box_marking_draw_is_seen_by_the_presenter);
     RUN_TEST(test_row_marking_draw_is_seen_by_the_presenter);
     RUN_TEST(test_draw_is_refused_while_a_mode_has_freed_the_framebuffer);

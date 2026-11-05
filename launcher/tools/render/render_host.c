@@ -4,8 +4,10 @@
  * BMP and AVI encoding use gfx/capture/screenshot.h. No device access.
  */
 
-#include "render_host.h"
+#include "app/app_arena.h"
+
 #include "core/checkpoint.h"
+#include "render_host.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,11 +35,7 @@
 #include "image/pixel/rgb565.h"
 #endif
 
-#define DEFAULT_DT_MS   16
-
-/* RIFF AVI 1.0 keeps its whole size in a 32-bit field; players choke well
- * before that wraps, so a run past this is refused instead of written. */
-#define VIDEO_MAX_BYTES ((int64_t)1024 * 1024 * 1024)
+#define DEFAULT_DT_MS 16
 
 static void
 tune_reply(const char* line) {
@@ -147,7 +145,7 @@ border_colour(const uint8_t* buf, int32_t stride, int out_w, int out_h) {
 static recti_t
 drawn_box(const uint8_t* buf, int32_t stride, int out_w, int out_h) {
     const uint8_t* background = border_colour(buf, stride, out_w, out_h);
-    recti_t box = {0, 0, 0, 0};
+    recti_t box = recti_empty();
     for (int y = 0; y < out_h; y++) {
         for (int x = 0; x < out_w; x++) {
             if (memcmp(frame_pixel(buf, stride, out_h, x, y), background, 3) != 0) {
@@ -203,6 +201,11 @@ __attribute__((weak)) void
 scene_shell_compose(uint32_t dt_ms) {
     (void)dt_ms;
 }
+
+/* The shell's app exit where a provider did not link the scene manager: no scene to unload. scene/scene.c's own
+ * definition replaces this, and takes the render context with it. */
+__attribute__((weak)) void
+scene_unload_all(void) {}
 
 /* The declared steps turned into one frame's input_t. `down` holds from
  * the step that set it, so edges come out of the change rather than out of
@@ -321,6 +324,24 @@ render_host_image(void) {
         .bgr = host.frame_buf, .width = host.out_w, .height = host.out_h, .stride = (size_t)host.stride};
 }
 
+int64_t
+render_host_video_frames_fit(void) {
+    return render_video_frames_that_fit(host.out_w, host.out_h);
+}
+
+/* Gives back what a run took, as the shell does when an app exits: the provider's own first, then every scene
+ * and the render context, then the framebuffer. Otherwise the next open in this process meets a mounted pack,
+ * the last run's resolution and a second framebuffer. */
+static void
+release(void) {
+    if (host.provider->teardown != NULL) {
+        host.provider->teardown();
+    }
+    scene_unload_all();
+    gfx_deinit();
+    app_arena_exit();
+}
+
 bool
 render_host_open(const frame_provider_t* provider, int argc, char** argv, int* exit_code) {
     memset(&host, 0, sizeof host);
@@ -377,9 +398,9 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
             fprintf(stderr, "%s: --video needs a nonzero --dt\n", host.provider->name);
             return false;
         }
-        const int64_t total = render_video_total_bytes(host.out_w, host.out_h, host.frame.count);
-        if (total > VIDEO_MAX_BYTES) {
-            const int64_t fits = render_video_frames_that_fit(host.out_w, host.out_h, VIDEO_MAX_BYTES);
+        const int64_t fits = render_host_video_frames_fit();
+        if (host.frame.count > fits) {
+            const int64_t total = render_video_total_bytes(host.out_w, host.out_h, host.frame.count);
             fprintf(stderr,
                     "%s: %d frames at %dx%d would write %lld MB, over RIFF AVI 1.0's 1 GB limit; "
                     "at this size and --dt %u, at most %lld frames fit\n",
@@ -396,12 +417,19 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
     _setmode(_fileno(stdout), _O_BINARY);
 #endif
 
+    if (app_arena_bytes() == 0 && !app_arena_init()) {
+        fprintf(stderr, "app region init failed\n");
+        return false;
+    }
+    app_arena_enter();
     if (!gfx_init()) {
+        app_arena_exit();
         fprintf(stderr, "gfx_init failed\n");
         return false;
     }
     if (host.provider->setup != NULL && !host.provider->setup(host.frame.quarter)) {
         fprintf(stderr, "%s: setup failed\n", host.provider->name);
+        release();
         return false;
     }
 
@@ -410,6 +438,7 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
          * nothing to write; the same refusal a device capture makes. A
          * provider wanting an image asks for the full-framebuffer layout. */
         fprintf(stderr, "no framebuffer to read: the scene left gfx in band mode\n");
+        release();
         return false;
     }
     host.t = ui_transform_quarter_turn(host.frame.quarter, GFX_WIDTH, GFX_HEIGHT);
@@ -418,6 +447,7 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
     host.frame_buf = malloc((size_t)host.stride * host.out_h);
     if (host.frame_buf == NULL) {
         fprintf(stderr, "out of memory\n");
+        release();
         return false;
     }
 
@@ -425,6 +455,7 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
         && !render_video_open(&host.video, host.video_path, host.out_w, host.out_h, host.frame.dt_ms)) {
         fprintf(stderr, "%s: cannot write %s\n", host.provider->name, host.video_path);
         free(host.frame_buf);
+        release();
         return false;
     }
 
@@ -439,6 +470,7 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
         fprintf(stderr, "%s: cannot capture stdout in %s\n", host.provider->name, host.console_path);
         free(host.console_path);
         free(host.frame_buf);
+        release();
         return false;
     }
 
@@ -471,7 +503,15 @@ render_host_step(uint32_t dt_ms, const input_t* input) {
     }
     gfx_present();
     if (host.video_path != NULL && host.video_ok) {
-        host.video_ok = render_video_write_frame(&host.video, host.frame_buf, host.stride * host.out_h);
+        /* Open checked --frames against the limit; a frame past them would
+         * not have been. */
+        if (host.frame.index >= host.frame.count) {
+            fprintf(stderr, "%s: stepped past --frames %d; %s stops there\n", host.provider->name, host.frame.count,
+                    host.video_path);
+            host.video_ok = false;
+        } else {
+            host.video_ok = render_video_write_frame(&host.video, host.frame_buf, host.stride * host.out_h);
+        }
     }
     host.frame.index++;
     host.frame.elapsed_ms += dt_ms;
@@ -493,6 +533,7 @@ render_host_close(void) {
         host.frame.elapsed_ms += host.frame.dt_ms;
     }
     gfx_readback_end();
+    release();
 
     const frame_watch_verdict_t verdict = render_watch_finish();
     free(host.console_path);

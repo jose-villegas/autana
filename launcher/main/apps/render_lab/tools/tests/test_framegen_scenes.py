@@ -20,7 +20,7 @@ sys.path.insert(0, str(HERE.parents[4] / "tools" / "render"))
 import host_render  # noqa: E402
 
 try:
-    from render_compare import read_video
+    from check_avi import read_video
 except ImportError:  # pragma: no cover - the tool tests' environment has it
     read_video = None
 

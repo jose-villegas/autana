@@ -221,6 +221,83 @@ test_a_flat_triangle_keeps_its_face_colour_and_interpolates_depth(void) {
 }
 
 static void
+uniform_triangle_matches_solid(float left, float r, float g, float b, bool capped) {
+    const r3d_span_vertex_t a = sv(left, 4, 0.2F, r, g, b), b0 = sv(52, 4, 0.8F, r, g, b),
+                            c = sv(left, 40, 0.5F, r, g, b);
+    const r3d_span_target_t actual = fixture();
+    TEST_ASSERT_GREATER_THAN_INT(actual.small_fill->ceiling, 52 - left);
+    TEST_ASSERT_GREATER_THAN_INT(R3D_SPAN_SMALL_MAX_SIDE, 40 - 4);
+    gfx_color_t* want_color = calloc(W * H, sizeof(*want_color));
+    uint16_t* want_depth = calloc(W * H, sizeof(*want_depth));
+    TEST_ASSERT_NOT_NULL(want_color);
+    TEST_ASSERT_NOT_NULL(want_depth);
+    const r3d_span_target_t want = r3d_span_target(want_color, want_depth, W, 0, H);
+    const uint16_t face = r3d_span_pack_rgb(r, g, b);
+    if (capped) {
+        r3d_span_capped_triangle(&actual, &a, &b0, &c, NULL);
+        r3d_span_capped_triangle(&want, &a, &b0, &c, &face);
+    } else {
+        r3d_span_triangle(&actual, &a, &b0, &c);
+        r3d_span_triangle_solid(&want, &a, &b0, &c, face);
+    }
+    const bool same_color = memcmp(color, want_color, sizeof(*color) * W * H) == 0;
+    const bool same_depth = memcmp(depth, want_depth, sizeof(*depth) * W * H) == 0;
+    free(want_color);
+    free(want_depth);
+    TEST_ASSERT_GREATER_THAN_INT(0, covered());
+    TEST_ASSERT_TRUE(same_color);
+    TEST_ASSERT_TRUE(same_depth);
+}
+
+static void
+test_a_walked_uniform_triangle_matches_solid(void) {
+    uniform_triangle_matches_solid(4, 73, 127, 211, false);
+}
+
+static void
+test_a_walked_uniform_triangle_clipped_left_matches_solid(void) {
+    uniform_triangle_matches_solid(-12, 73, 127, 211, false);
+}
+
+static void
+test_a_walked_uniform_triangle_clamps_constant_colours(void) {
+    uniform_triangle_matches_solid(-12, UINT8_MAX + 17, -17, 127, false);
+}
+
+static void
+test_a_capped_walked_uniform_triangle_matches_solid(void) {
+    uniform_triangle_matches_solid(-12, UINT8_MAX + 17, -17, 127, true);
+}
+
+static void
+test_a_walked_triangle_with_one_colour_level_difference_interpolates(void) {
+    /* Straddling a 565 boundary makes a one-level change visible. */
+    const float green = ((float)UINT8_MAX / 2.0F);
+    const r3d_span_vertex_t a = sv(4, 4, 0.2F, 73, green, 211), b = sv(52, 4, 0.8F, 73, green + 1, 211),
+                            c = sv(4, 40, 0.5F, 73, green, 211);
+    const r3d_span_target_t target = draw_fixture_triangle(&a, &b, &c);
+    TEST_ASSERT_GREATER_THAN_INT(target.small_fill->ceiling, 52 - 4);
+    gfx_color_t* solid_color = calloc(W * H, sizeof(*solid_color));
+    uint16_t* solid_depth = calloc(W * H, sizeof(*solid_depth));
+    TEST_ASSERT_NOT_NULL(solid_color);
+    TEST_ASSERT_NOT_NULL(solid_depth);
+    const r3d_span_target_t solid = r3d_span_target(solid_color, solid_depth, W, 0, H);
+    r3d_span_triangle_solid(&solid, &a, &b, &c, r3d_span_pack_rgb(a.r, a.g, a.b));
+    const bool same_depth = memcmp(depth, solid_depth, sizeof(*depth) * W * H) == 0;
+    const bool same_color = memcmp(color, solid_color, sizeof(*color) * W * H) == 0;
+    free(solid_color);
+    free(solid_depth);
+    TEST_ASSERT_TRUE(same_depth);
+    TEST_ASSERT_FALSE(same_color);
+    const uint16_t first = color[5 * W + 5];
+    bool different = false;
+    for (int i = 0; i < W * H; i++) {
+        different = different || (depth[i] != R3D_DEPTH_EMPTY && color[i] != first);
+    }
+    TEST_ASSERT_TRUE(different);
+}
+
+static void
 test_a_tiny_solid_triangle_takes_its_face_colour(void) {
     const r3d_span_vertex_t a = sv(10.0f, 10.0f, 0.5f, 0, 0, 0), b = sv(12.6f, 10.0f, 0.5f, 0, 0, 0),
                             c = sv(10.0f, 12.6f, 0.5f, 0, 0, 0);
@@ -708,9 +785,9 @@ release_canvas(void) {
 static canvas_t*
 canvas_open(int w, int h) {
     const size_t pixels = (size_t)w * (size_t)h;
-    canvas = (canvas_t){memory_alloc(sizeof(gfx_color_t) * pixels, MEMORY_PSRAM),
-                        memory_alloc(sizeof(uint16_t) * pixels, MEMORY_PSRAM),
-                        memory_alloc(sizeof(uint16_t) * pixels, MEMORY_PSRAM), w, h};
+    canvas = (canvas_t){memory_alloc(sizeof(gfx_color_t) * pixels, MEMORY_APP),
+                        memory_alloc(sizeof(uint16_t) * pixels, MEMORY_APP),
+                        memory_alloc(sizeof(uint16_t) * pixels, MEMORY_APP), w, h};
     TEST_ASSERT_NOT_NULL(canvas.color);
     TEST_ASSERT_NOT_NULL(canvas.depth);
     TEST_ASSERT_NOT_NULL(canvas.alone);
@@ -1942,7 +2019,7 @@ reference_frame(const parts_t* p, const r3d_lens_t* lens, gfx_color_t* upscaled)
 }
 
 /* A raster's one mesh, as the instance it is. */
-#define ONE_MESH(m) .instances = &(const r3d_instance_t){(m), NULL}, .instance_count = 1
+#define ONE_MESH(m) .instances = &(const r3d_instance_t){(m), NULL, NULL}, .instance_count = 1
 
 typedef struct {
     const char* at;
@@ -1974,7 +2051,7 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
     parts_t* const p = parts_buffer(&shared_parts);
     build_wall_and_stack(p);
     const r3d_lit_mesh_t empty = {0};
-    const r3d_instance_t instances[] = {{&p->mesh, NULL}, {&empty, NULL}};
+    const r3d_instance_t instances[] = {{&p->mesh, NULL, NULL}, {&empty, NULL, NULL}};
     raster_t raster = {.instances = instances, .instance_count = 2, .width = W, .height = H};
     const size_t bytes = raster_scratch_bytes(&raster);
     char* scratch = malloc(bytes);
@@ -2185,7 +2262,7 @@ expect_census_draws_match_at_any_size(raster_t* raster) {
  * carry it on the stack. */
 static mat4f_t*
 census_moved(void) {
-    transformf_t pose = TRANSFORMF_IDENTITY;
+    transformf_t pose = transformf_identity();
     transformf_set_position(&pose, (vec3f_t){-120.0F, 40.0F, 0.0F});
     mat4f_t* model = malloc(sizeof(*model));
     TEST_ASSERT_NOT_NULL(model);
@@ -2201,7 +2278,7 @@ test_a_census_list_draws_what_raster_draw_draws_at_any_size(void) {
     parts_t* const p = parts_buffer(&shared_parts);
     build_wall_and_stack(p);
     mat4f_t* const moved = census_moved();
-    const r3d_instance_t instances[] = {{&p->mesh, NULL}, {&p->mesh, moved}};
+    const r3d_instance_t instances[] = {{&p->mesh, NULL, NULL}, {&p->mesh, moved, NULL}};
     raster_t raster = census_raster(instances, 2);
     expect_census_draws_match_at_any_size(&raster);
     free(moved);
@@ -2218,7 +2295,8 @@ test_a_census_list_steps_by_each_instances_own_mesh(void) {
     build_floor_and_rects(floor);
     TEST_ASSERT_TRUE(wall->mesh.cluster_count != floor->mesh.cluster_count);
     mat4f_t* const moved = census_moved();
-    const r3d_instance_t instances[] = {{&floor->mesh, NULL}, {&wall->mesh, NULL}, {&wall->mesh, moved}};
+    const r3d_instance_t instances[] = {
+        {&floor->mesh, NULL, NULL}, {&wall->mesh, NULL, NULL}, {&wall->mesh, moved, NULL}};
     raster_t raster = census_raster(instances, 3);
     TEST_ASSERT_EQUAL_UINT32(3 + floor->mesh.cluster_count + (2 * wall->mesh.cluster_count),
                              (uint32_t)raster_culled_length(&raster));
@@ -2251,12 +2329,12 @@ test_batched_copies_draw_what_one_instance_at_a_time_draws(void) {
     TEST_ASSERT_TRUE(BATCH_COPIES * card->mesh.vertex_count <= wall->mesh.vertex_count);
     mat4f_t* models = frame_held.models = malloc(sizeof(*models) * BATCH_COPIES);
     TEST_ASSERT_NOT_NULL(models);
-    r3d_instance_t instances[1 + BATCH_COPIES] = {{&wall->mesh, NULL}};
+    r3d_instance_t instances[1 + BATCH_COPIES] = {{&wall->mesh, NULL, NULL}};
     for (int i = 0; i < BATCH_COPIES; i++) {
-        transformf_t pose = TRANSFORMF_IDENTITY;
+        transformf_t pose = transformf_identity();
         transformf_set_position(&pose, (vec3f_t){-300.0F + (90.0F * (float)i), 60.0F * (float)(i % 3), 0.0F});
         models[i] = transformf_compute_matrix(&pose);
-        instances[1 + i] = (r3d_instance_t){&card->mesh, &models[i]};
+        instances[1 + i] = (r3d_instance_t){&card->mesh, &models[i], NULL};
     }
     raster_t raster = census_raster(instances, 1 + BATCH_COPIES);
     uint16_t* const want = frame_held.color = malloc(sizeof(*want) * 2 * W * H);
@@ -2386,7 +2464,7 @@ shown_frame(int width, int height) {
     shown->raster.width = width;
     shown->raster.height = height;
     shown->raster.clear = SKY;
-    shown->instance = (r3d_instance_t){&shown->mesh, NULL};
+    shown->instance = (r3d_instance_t){&shown->mesh, NULL, NULL};
     shown->raster.instances = &shown->instance;
     shown->raster.instance_count = 1;
     shown->raster.scratch = calloc(1, raster_scratch_bytes(&shown->raster));
@@ -2829,6 +2907,11 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_tiny_and_large_triangles_tile_without_gaps_or_overlap);
     RUN_TEST(test_the_nearer_triangle_wins_in_either_order);
     RUN_TEST(test_a_flat_triangle_keeps_its_face_colour_and_interpolates_depth);
+    RUN_TEST(test_a_walked_uniform_triangle_matches_solid);
+    RUN_TEST(test_a_walked_uniform_triangle_clipped_left_matches_solid);
+    RUN_TEST(test_a_walked_uniform_triangle_clamps_constant_colours);
+    RUN_TEST(test_a_capped_walked_uniform_triangle_matches_solid);
+    RUN_TEST(test_a_walked_triangle_with_one_colour_level_difference_interpolates);
     RUN_TEST(test_a_tiny_solid_triangle_takes_its_face_colour);
     RUN_TEST(test_a_window_of_rows_matches_the_same_rows_of_a_full_draw);
     RUN_TEST(test_colours_stay_within_the_vertex_range_even_at_the_edges);

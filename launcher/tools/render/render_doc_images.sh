@@ -12,8 +12,8 @@
 #   ./launcher/tools/render/render_doc_images.sh --stage board --capture PATH [--check]
 #   ./launcher/tools/render/render_doc_images.sh --stage meshlets [--check]
 #
-# Needs host C and C++ compilers, Python with Pillow and numpy, ffmpeg 5.1
-# or newer, and the initialized meshoptimizer submodule for scratch bakes.
+# Needs host C and C++ compilers, Python with Pillow and numpy, ffmpeg for
+# the comparison videos, and the initialized meshoptimizer submodule for scratch bakes.
 # Runs in Git Bash on Windows and on Linux.
 #
 # This makes the launcher and UI toolkit images itself and then runs every
@@ -35,9 +35,8 @@
 # generated_blocks.py rewrites the matching named blocks; --check compares
 # them without writing.
 #
-# GIF palettes depend on the ffmpeg version, so a --check on another OS
-# or with another ffmpeg may report them changed; CI renders on Linux and
-# is the authority.
+# Every GIF is drawn from the one palette in figures.py, so its pixels are
+# the same on every OS.
 
 set -eu
 
@@ -46,7 +45,6 @@ ROOT=$(CDPATH= cd -- "$TOOLS_DIR/../../.." && pwd)
 cd "$ROOT"
 
 . scripts/lib/run.sh
-. launcher/tools/render/gif_from_avi.sh
 . launcher/tools/build/packages.sh
 
 app_image_scripts=
@@ -66,8 +64,6 @@ PLAYBACK_CLIPS="walk gallop idle"
 CULL_LEVEL=2
 # The cull chase GIFs play one path sample per frame at this rate.
 CULL_GIF_FPS=8
-# Colours in their palette: the camera moves every frame, so fewer keep them small.
-CULL_GIF_COLORS=64
 # Where Bistro's high view looks down on its street over the ground square: the depth figure's first frame.
 DEPTH_FIT_AT_MS=54300
 
@@ -133,18 +129,23 @@ case "${1:-}" in
         # launcher images, the scene scripts, or an app's doc_images.sh; when the
         # demo script spells it ${ID}-... or ends it with a loop variable, which
         # claims any name under that prefix (${ID}-view-$view); or when it is a
-        # pair sheet doc_tables.py lists for the demo scene.
+        # pair sheet doc_tables.py lists for the demo scene; or when a producer
+        # declares it (figures_runner.py list --outputs).
         comparing=1
         status=0
         pairs=
+        . "$ROOT/scripts/lib/python.sh"
+        PYTHON=$(find_python) || exit 2
+        declared=$("$PYTHON" launcher/tools/docs/figures_runner.py list --outputs) || exit 2
         if [ -f "$DEMO_SCENE" ]; then
-            . "$ROOT/scripts/lib/python.sh"
-            PYTHON=$(find_python) || exit 2
             pairs=$("$PYTHON" "$TOOLS_DIR/doc_tables.py" --pairs "$DEMO_SCENE" "$DEMO_OBJECT") || exit 2
             pairs=$(printf '%s\n' "$pairs" | awk '{print "compare-" $3 "-" $4}')
         fi
         for image in $(cd "$IMAGES" && find . -type f | sed 's|^\./||' | LC_ALL=C sort); do
             case "$image" in render/gpu/*|render/meshlets/*) continue ;; esac
+            if printf '%s\n' "$declared" | grep -qxF -- "$image"; then
+                continue
+            fi
             stem=$(basename "$image")
             stem=${stem%%.*}
             # A face example's renders are named after its file.
@@ -161,7 +162,16 @@ case "${1:-}" in
             if ! grep -qF -- "$stem" "$TOOLS_DIR/render_doc_images.sh" "$TOOLS_DIR"/scenes/*.sh "$TOOLS_DIR/doc_images_demo.sh" "$TOOLS_DIR/doc_import_examples.py" \
                 $app_image_scripts; then
                 claimed=0
+                # A name an app's loop ends with its variable, as render-lab-stress-$key.
+                prefix=$stem
+                while [ "$claimed" = 0 ] && [ "${prefix%-*}" != "$prefix" ]; do
+                    prefix=${prefix%-*}
+                    if [ -n "$app_image_scripts" ] && grep -qF -- "$prefix-\$" $app_image_scripts; then
+                        claimed=1
+                    fi
+                done
                 for scene in launcher/demo/*/*.scene.toml; do
+                    [ "$claimed" = 1 ] && break
                     id=$(basename "$scene" .scene.toml)
                     case "$stem" in
                         "$id"-*)
@@ -199,6 +209,19 @@ run rm -rf "$WORK" "$OUT"
 run mkdir -p "$WORK" "$OUT/overview" "$OUT/ui"
 
 if [ "$AUDIO_ONLY" = 0 ]; then
+# The cached bakes the figures draw, fetched first so a renamed output fails here, not after the renders.
+skin_asset=$("$PYTHON" launcher/tools/bake/bake.py path "$SKIN_BAKE") || exit 2
+# The demo object's lite mesh: a .mesh or a carved .bundle, whichever the scene bakes.
+lite_stem="$(basename "$DEMO_SCENE" .scene.toml).${DEMO_OBJECT}_lite"
+scene_bakes=$("$PYTHON" launcher/tools/bake/bake.py list "$DEMO_SCENE" --kind mesh) || exit 2
+lite_output=$(echo "$scene_bakes" |
+    awk -F '\t' -v stem="$lite_stem" '{ name = $1; sub(/\.[^.]*$/, "", name) } name == stem { print $1 }')
+if [ -z "$lite_output" ] || [ "$(echo "$lite_output" | wc -l)" -ne 1 ]; then
+    echo "$DEMO_SCENE bakes no single $lite_stem output: '$lite_output'" >&2
+    exit 2
+fi
+tree_mesh=$("$PYTHON" launcher/tools/bake/bake.py path "$lite_output") || exit 2
+
 # The launcher lists the release build's apps, read from the tree.
 L=$WORK/launcher_home
 run sh launcher/tools/render/scenes/launcher_home_render_host.sh -o "$L" > "$WORK/launcher_home.log"
@@ -218,12 +241,11 @@ for dir in $(app_directories launcher); do
 done
 # Two frames settle the window before the scene's synthetic press.
 run "$L/launcher_home_render" --quarter 1 --frames 2 "$@" -o "$L/release.bmp" 2> "$WORK/launcher_home_png.log"
-run "$PYTHON" -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).save(sys.argv[2])' \
-    "$L/release.bmp" "$OUT/overview/launcher-home.png"
+run "$PYTHON" launcher/tools/docs/figures.py png "$L/release.bmp" "$OUT/overview/launcher-home.png"
 # The board rocking either way.
 run "$L/launcher_home_render" --quarter 1 --tilt-sweep "$@" --frames 250 --dt 16 \
     -o "$L/sweep.bmp" --video "$L/sweep.avi" 2> "$WORK/launcher_home_sweep.log"
-gif_from_avi "$L/sweep.avi" "$OUT/overview/launcher-home.gif" "fps=15"
+run "$PYTHON" launcher/tools/docs/figures.py gif "$L/sweep.avi" "$OUT/overview/launcher-home.gif" --fps 15
 
 # The boot animation draws in panel orientation; turn it to the landscape the
 # other overview clips use.
@@ -232,7 +254,7 @@ run sh launcher/tools/render/scenes/boot_anim_render_host.sh --build-only -o "$B
 boot_ms=$(sed -n 's/^#define BOOT_ANIM_MS \([0-9]*\).*/\1/p' launcher/main/boot/boot_anim_timeline.h)
 run "$B/boot_anim_render" 0 "$@" --frames "$(((boot_ms + 15) / 16 + 1))" --dt 16 \
     -o "$B/boot.bmp" --video "$B/boot.avi" 2> "$WORK/boot_anim_video.log"
-gif_from_avi "$B/boot.avi" "$OUT/overview/boot-anim.gif" "transpose=2,fps=15" "stats_mode=full"
+run "$PYTHON" launcher/tools/docs/figures.py gif "$B/boot.avi" "$OUT/overview/boot-anim.gif" --quarter 1 --fps 15
 
 # UI render tables; source embedding: docs/tools/Generated-Files.md#usage-examples.
 U=$WORK/ui_examples
@@ -256,26 +278,12 @@ run "$PYTHON" launcher/tools/input/shake_figures.py --cc "$cc" --out "$OUT/input
     > "$WORK/shake_figures.log"
 run "$PYTHON" launcher/tools/input/gravity_figures.py --cc "$cc" --out "$OUT/input" \
     > "$WORK/gravity_figures.log"
-# --orphans scans this runner: gravity-trust.png, gravity-bias.gif
+# --orphans scans this runner: gravity-trust.png, gravity-bias.gif, gravity-reader.gif, gravity-motion.gif
 run "$PYTHON" launcher/tools/input/motion_axes_figures.py --cc "$cc" --out "$OUT/input" \
     > "$WORK/motion_axes_figures.log"
 # --orphans scans this runner: motion-axes.png, motion-rotation.gif
-run mkdir -p "$OUT/math"
-run "$PYTHON" launcher/tools/math/math_figures.py --cc "$cc" --trs "$OUT/math" \
-    --pixel "$OUT/math/camera-to-pixel.png" > "$WORK/math_figures.log"
-# --orphans scans this runner: trs-scale.gif, trs-rotate.gif, trs-translate.gif
-run "$PYTHON" launcher/tools/math/math_bench_figures.py --out "$OUT/math" > "$WORK/math_bench_figures.log"
-# --orphans scans this runner: benchmark-families.png
-run "$PYTHON" launcher/tools/math/fast_path_figures.py --out "$OUT/math" > "$WORK/fast_path_figures.log"
-# --orphans scans this runner: fast-path-mathf_recip.png, fast-path-mathf_recip_approx.png, fast-path-mathf_rsqrt.png, fast-path-mathf_rsqrt_approx.png, fast-path-mathf_repeat.png, fast-path-mathx_rsqrt_q30.png, fast-path-trig_sin.png
-run "$PYTHON" launcher/tools/math/geometry_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/geometry_figures.log"
-# --orphans scans this runner: rect-queries.png, circle-rect-queries.png, plane-distance.png, plane-from-points.png, plane-from-rows.png, frustum.png, box3-frustum.gif, box3-sphere-overlap.gif, box3-sphere-segments.png
-run "$PYTHON" launcher/tools/math/signal_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/signal_figures.log"
-# --orphans scans this runner: goertzel-response.png, goertzel-sweep.gif, pitch-curve.png
-run "$PYTHON" launcher/tools/math/stats_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/stats_figures.log"
-# --orphans scans this runner: stats-percentile-ranks.png
-run "$PYTHON" launcher/tools/math/inverse_depth_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/inverse_depth_figures.log"
-# --orphans scans this runner: inverse-depth-step.png
+# The producers that declare their images (launcher/tools/docs/producer.py), in parallel.
+run "$PYTHON" launcher/tools/docs/figures_runner.py build --needs host --into "$OUT" > "$WORK/figures.log"
 run "$PYTHON" launcher/tools/physics/spring_figures.py --cc "$cc" --out "$OUT/physics" > "$WORK/spring_figures.log"
 # --orphans scans this runner: spring-line-wave.gif, spring-line-spacetime.png
 run "$PYTHON" launcher/tools/kinematics/orbit_figures.py --cc "$cc" --out "$OUT/kinematics" > "$WORK/orbit_figures.log"
@@ -312,7 +320,6 @@ run "$PYTHON" launcher/tools/power/power_budget_doc.py --figures "$OUT/power" > 
 
 # The skeleton and skin figures: the demo rig over one clip, and a limb through the skinning kernel.
 run mkdir -p "$OUT/render" "$OUT/tables"
-skin_asset=$("$PYTHON" launcher/tools/bake/bake.py path "$SKIN_BAKE") || exit 2
 run "$PYTHON" launcher/tools/r3d/skin/skin_sheet.py "$skin_asset" "$OUT/render" "$OUT/tables" \
     --sheet "$SKIN_CLIP" > "$WORK/skin_sheet.log"
 run "$PYTHON" launcher/tools/r3d/skin/skin_figures.py --cc "$cc" --out "$OUT/render/skin-limb.png" \
@@ -335,8 +342,7 @@ run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/contact_figures.py --out "$OUT
 # --orphans scans this runner: import-mesh-contact.png
 
 # The baked mesh's figures: the demo scene's lite mesh, its clusters and tree, and the clusterizer's build.
-tree_mesh=$("$PYTHON" launcher/tools/bake/bake.py path "$(basename "$DEMO_SCENE" .scene.toml).${DEMO_OBJECT}_lite.mesh") || exit 2
-run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/mesh_figures.py --mesh "$tree_mesh" --out "$OUT/render" \
+run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/mesh_figures.py --mesh "$tree_mesh" --rest "$lite_stem" --out "$OUT/render" \
     > "$WORK/mesh_figures.log" 2>&1
 # --orphans scans this runner: baked-mesh-tree.gif, baked-mesh-ranges.png, meshlet-build.gif
 
@@ -390,8 +396,7 @@ for cull in "launcher/demo/bistro/bistro.scene.toml street_fitted_full cull-bist
     run "$PYTHON" launcher/tools/render/cull_figures.py --scene "$1" --object "$2" --camera camera --stem "$3" \
         --label "$4" --level "$CULL_LEVEL" --out "$OUT/render" --tables "$OUT/tables" --work "$WORK/cull" \
         ${5:+--overdraw "$5"} > "$WORK/$3.log"
-    gif_from_avi "$WORK/cull/$3-chase.avi" "$OUT/render/$3-chase.gif" "setpts=N/$CULL_GIF_FPS/TB,fps=$CULL_GIF_FPS" \
-        "stats_mode=diff:max_colors=$CULL_GIF_COLORS"
+    run "$PYTHON" launcher/tools/docs/figures.py gif "$WORK/cull/$3-chase.avi" "$OUT/render/$3-chase.gif" --rate "$CULL_GIF_FPS" --fps "$CULL_GIF_FPS"
 done
 # --orphans scans this runner: cull-bistro-sheet.png, cull-bistro-counts.png, cull-bistro-chase.gif,
 # overdraw-bistro-sheet.png, cull-sponza-sheet.png, cull-sponza-counts.png, cull-sponza-chase.gif
@@ -403,6 +408,16 @@ run "$PYTHON" launcher/tools/render/cull_cost.py docs/render/data/cull-cost-boar
 run "$PYTHON" launcher/tools/render/depth_figures.py --scene launcher/demo/bistro/bistro.scene.toml \
     --object street_fitted_full --object ground --camera camera --at-ms "$DEPTH_FIT_AT_MS" \
     --out "$OUT/render/depth-fit-bistro.png" --work "$WORK/depth" > "$WORK/depth.log"
+
+# Each fitted scene's held-out error by source object part, from the rows
+# objects_report.py --held-out --docs keeps beside the page.
+for data in docs/render/data/*-object-error.csv; do
+    [ -f "$data" ] || continue
+    stem=$(basename "$data" .csv)
+    run "$PYTHON" launcher/tools/r3d/objects/object_error.py "${data%.csv}" --figure "$OUT/render/$stem.png" \
+        --table "$OUT/tables/$stem.md" > "$WORK/$stem.log"
+done
+# --orphans scans this runner: bistro-street-fitted-full-object-error.png, sponza-atrium-fitted-full-object-error.png
 
 # Each picture's frame cost in each framebuffer layout, from the scene and
 # boot animation captures beside the render pages.

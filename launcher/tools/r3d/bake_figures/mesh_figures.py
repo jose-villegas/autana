@@ -7,9 +7,9 @@ importer calls (r3d.meshopt.build_meshlets) on a small flat patch, one meshlet p
 them. meshoptimizer has no per-triangle hook and the call reorders each meshlet's triangles, so a step is a
 whole meshlet.
 
-    python launcher/tools/r3d/bake_figures/mesh_figures.py --mesh MESH --out DIR
+    python launcher/tools/r3d/bake_figures/mesh_figures.py --mesh MESH [--rest NAME] --out DIR
 
-MESH is a baked .mesh (bake.py path OUTPUT). Needs launcher/tools/r3d/requirements.txt.
+MESH is a baked .mesh, or a carved .bundle with --rest naming its rest mesh (bake.py path OUTPUT). Needs launcher/tools/r3d/requirements.txt.
 launcher/tools/render/render_doc_images.sh runs it.
 """
 
@@ -18,6 +18,7 @@ import colorsys
 import pathlib
 import re
 import sys
+import tempfile
 
 import numpy as np
 from matplotlib.collections import PolyCollection
@@ -27,6 +28,7 @@ from scipy.spatial import Delaunay
 TOOLS = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(TOOLS))
 from docs.plot_style import FAINT, GIF_FPS, INK, LABEL_SIZE, MUTED, TITLE_SIZE, save, save_gif, subplots  # noqa: E402
+from r3d import mesh_asset, mesh_bundle  # noqa: E402
 from r3d.lit_mesh import read_lit_mesh  # noqa: E402
 from r3d.meshopt import build_meshlets  # noqa: E402
 
@@ -54,8 +56,6 @@ END_FRAMES = 12
 EDGE_WIDTH = 0.4
 NEW_EDGE_WIDTH = 1.6
 OLD_FADE = 0.55
-# Many cluster hues plus their fades: the 64 of an orbit tint the titles, so these GIFs take the format's most.
-HUE_GIF_COLORS = 256
 
 
 def view_hash():
@@ -157,7 +157,7 @@ def tree(mesh, path):
         frame(0)
         save(figure, path)
     else:
-        save_gif(figure, frame, ORBIT_FRAMES, path, GIF_FPS, colors=HUE_GIF_COLORS)
+        save_gif(figure, frame, ORBIT_FRAMES, path, GIF_FPS)
 
 
 def ranges(mesh, path):
@@ -249,16 +249,33 @@ def build(path):
         frame(frames // 2)
         save(figure, path)
     else:
-        save_gif(figure, frame, frames, path, GIF_FPS, colors=HUE_GIF_COLORS)
+        save_gif(figure, frame, frames, path, GIF_FPS)
+
+
+def read_baked_mesh(path, rest):
+    """A .mesh, or a carved .bundle's rest mesh: its entry named `rest`, the bundle's own asset name."""
+    if path.suffix != mesh_bundle.SUFFIX:
+        return read_lit_mesh(path)
+    entries, _ = mesh_bundle.decode(path.read_bytes())
+    blob = next((data for name, kind, data in entries if name == rest and kind == mesh_asset.TYPE), None)
+    if blob is None:
+        raise SystemExit(f"{path}: no {rest} mesh in the bundle")
+    with tempfile.TemporaryDirectory() as work:
+        mesh = pathlib.Path(work) / f"{rest}.mesh"
+        mesh.write_bytes(blob)
+        return read_lit_mesh(mesh)
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--mesh", type=pathlib.Path, required=True)
     parser.add_argument("--out", type=pathlib.Path, required=True)
+    parser.add_argument("--rest", help="a .bundle's rest mesh: the bake's output name without its suffix")
     parser.add_argument("--still", action="store_true", help="PNG stills in place of the GIFs")
     args = parser.parse_args(argv)
-    mesh = read_lit_mesh(args.mesh)
+    if args.mesh.suffix == mesh_bundle.SUFFIX and not args.rest:
+        parser.error("--rest names a .bundle's rest mesh")
+    mesh = read_baked_mesh(args.mesh, args.rest)
     moving = ".png" if args.still else ".gif"
     tree(mesh, args.out / f"baked-mesh-tree{moving}")
     ranges(mesh, args.out / "baked-mesh-ranges.png")

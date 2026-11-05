@@ -37,10 +37,9 @@ import tempfile
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
-sys.path.insert(0, str(ROOT / "launcher/tools/math"))
 from build.c_header import read_define  # noqa: E402
 from capture import QUARTER_RE, QUARTERS, select_quarter  # noqa: E402
-from math_figures import build_probe  # noqa: E402
+from docs.figures import build_probe  # noqa: E402
 from dynres_report import percentile  # noqa: E402
 
 FLIGHT_FIGURE = "dynamic-resolution-flight-sizes.png"

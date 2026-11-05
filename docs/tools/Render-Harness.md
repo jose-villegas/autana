@@ -21,6 +21,10 @@ checked, and compared with device captures.
 
 ## Viewing a scene file
 
+`scene_viewer.sh` renders a scene file headlessly; bakes, doc figures and
+tests call it. To look at the same file interactively, use
+[Loupe](https://github.com/jose-villegas/loupe), the frame debugger.
+
 ```sh
 sh launcher/tools/render/scene_viewer.sh PATH.scene.toml --object NAME --frames 2 -o out.bmp
 ```
@@ -66,45 +70,11 @@ every frame through the shared harness's video writer. `--deps` compiles
 nothing and prints what the viewer is compiled from: a `flags` line, then the
 compiler's `-MM` list.
 
-### A whole camera path, A against B, and one frame of it
-
-```sh
-sh launcher/tools/render/scene_viewer.sh PATH.scene.toml --object NAME --compare main
-sh launcher/tools/render/scene_viewer.sh PATH.scene.toml --object FITTED --compare . --b-args "--object SOURCE"
-sh launcher/tools/render/scene_viewer.sh PATH.scene.toml --object NAME --compare main --frame 812
-```
-
-`--compare REV|DIR` renders the whole camera path once per side, printing
-progress, and writes one video: A, B and their difference side by side, with
-each frame's index and time in its label. Any video player shows it; making it
-needs ffmpeg. The
-renderer arguments are A's and, without `--b-args`, B's too. `-o` names the
-video. The default is `launcher/tools/results/render/scene_viewer/compare/<scene>.mp4`.
-
-| Side B | Given as | What differs |
-|---|---|---|
-| the pack at a git revision | `--compare REV` | the bake: built in a temporary worktree, drawn by this checkout's viewer |
-| the pack of an existing checkout | `--compare DIR` | as `REV`, without the worktree |
-| other renderer arguments | `--compare . --b-args "ARGS"` | the renderer selection or settings |
-
-`--frame N` renders frame N of the same path to a PNG, with or without
-`--compare`. `-o` names A's file, and B's adds `-b` before the extension. The
-default is `scene_viewer/frames/<scene>-f<N>.png`. A frame number read off a
-video is all that is needed to render that frame again.
-
-Both time the path alike. Without `--dt`, frames are the viewer's frame time
-apart, or the shortest whole millisecond that fits the path in one video when
-it does not at that; stderr says which. Without `--frames`, they run from the
-path's start to its end. Pass the video's `--dt` and `--frames`, if it was
-given any, with `--frame`.
-
-![One frame of a compare video: the demo scene's fitted mesh, its source mesh and their difference](../images/render/sponza-compare.png)
-
 ## Images in these docs
 
 The CPU and GPU stages own the files under `docs/images/`, run from the
 repository root. `launcher/tools/render/doc_images_demo.sh` makes the demo's
-bake comparisons, view GIFs, a compare-video frame, fidelity and import sheets and CPU tables through
+bake comparisons, view GIFs, fidelity and import sheets and CPU tables through
 `scene_viewer.sh`, selecting one renderer with `--object NAME`.
 `doc_images_demo.sh OUT WORK SCENE OBJECT --meshlets-only` generates only the
 meshlet still; its normal run also writes that image beside the view GIFs.
@@ -112,8 +82,8 @@ Run alone, it needs `PYTHON` set to an interpreter with Pillow and NumPy.
 `render_doc_images.sh` passes it the demo scene file and `OBJECT`, the object
 name of the scene's full renderer; the scene must also place `OBJECT_lite`,
 `OBJECT_flat`, `OBJECT_fitted`, `OBJECT_fitted_full` and `OBJECT_flat_fitted`.
-The CPU stage makes the launcher's and the UI toolkit's images and runs each app's
-`tools/doc_images.sh` for the app's own:
+The CPU stage makes the launcher's and the UI toolkit's images, runs each app's
+`tools/doc_images.sh` for the app's own, and runs the [declared producers](Doc-Figures.md):
 
 ```sh
 ./launcher/tools/render/render_doc_images.sh           # rewrite images and tables
@@ -121,7 +91,7 @@ The CPU stage makes the launcher's and the UI toolkit's images and runs each app
 ```
 
 It needs host C and C++ compilers, Python with Pillow and numpy, and ffmpeg
-5.1 or newer. Scratch bakes need the pinned meshoptimizer submodule:
+for the comparison videos. Scratch bakes need the pinned meshoptimizer submodule:
 
 ```sh
 git submodule update --init --depth 1 third_party/upstream/meshoptimizer
@@ -136,10 +106,10 @@ A render failure prints the failed command and the tails of its work logs,
 including logs inside bake directories.
 CPU `--check` renders into `launcher/tools/results/doc_images/out/cpu/`
 and compares decoded pixels with `compare_images.py`, never bytes: another
-ffmpeg or Pillow writes different GIF bytes for the same frames. It prints
+Pillow can write different bytes for the same pixels. It prints
 `same` or `changed` per image, and `orphan` for a file nothing makes.
 `--orphans` renders nothing and reports an image whose name no script
-mentions; the Comment Rules workflow runs it on every pull request. The
+mentions, whole or as a loop's name ending in its variable (`name-$key`); the Comment Rules workflow runs it on every pull request. The
 `doc-images` workflow runs it on pushes to main that touch `launcher/` or
 `docs/`, and opens one pull request when an image or table changed. It needs the
 repository setting Actions > "Allow GitHub Actions to create and approve pull
@@ -432,7 +402,7 @@ stateDiagram-v2
     Open --> Step: run opened
     Step --> Step: elapsed time and input
     Step --> Close: judge warm-up frames, write outputs
-    Close --> [*]: success or failure
+    Close --> [*]: give back the scene, pack and framebuffer
 ```
 
 If `render_host_open()` returns false, no run opened and `exit_code` carries the command's result.
@@ -469,6 +439,9 @@ expose a provider's path duration and camera cuts. The scene-file provider
 seeks its animators and clears render history at a cut. An optional
 `render_context` hook returns the context a provider draws through, so a
 caller can switch debug views; providers without one leave it NULL.
+An optional `teardown` hook gives back what `setup` took; `render_host_close`
+calls it, then frees the framebuffer, so one process can open a run again,
+even of the same scene id from another pack folder.
 
 An engine scene lives in `launcher/tools/render/scenes/`; an app's scene lives
 in that app's own `tools/`, so nothing in the engine's tooling names an app.
@@ -578,7 +551,9 @@ python launcher/tools/render/check_avi.py out.avi ...      # re-reads the header
 Players stop reading a RIFF AVI 1.0 file well short of its 32-bit size
 field's 4 GB, so a run whose video would pass 1 GB is refused before
 anything is drawn, with the frame count
-that does fit stated in the refusal. `--video` never changes what a scene's
+that does fit stated in the refusal; `render_host_video_frames_fit()` gives
+an open run that count, and a run stepped past its `--frames` stops its
+video there with an error. `--video` never changes what a scene's
 BMP pins: the same bytes are written whether or not it is given, so it adds
 no baseline of its own.
 

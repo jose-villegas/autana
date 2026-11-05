@@ -1,32 +1,22 @@
 /*
- * imu: QMI8658 driver.
- *
- * Register map and the initialisation values follow the QST QMI8658A/C
- * datasheet. The configuration chosen here is the common one for motion sensing
- * rather than navigation: a wide accelerometer range so a knock does not clip,
- * and a rotation range wide enough to survive a deliberate shake.
+ * imu: the polling task over the chip the board carries (imu_chip.h).
  */
 
 #include "input/motion/imu.h"
 
 #include <string.h>
 
-#include "board/board.h"
-#include "bsp/esp-bsp.h"
 #include "core/job.h"
 #include "core/memory.h"
 #include "core/timing.h"
 #include "core/tune.h"
-#include "driver/i2c_master.h"
 #include "esp_log.h"
-#include "esp_rom_sys.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "input/motion/imu_chip.h"
 #include "input/motion/imu_demand.h"
 #include "input/motion/imu_odr.h"
 #include "input/motion/imu_queue.h"
-#include "input/motion/imu_reset.h"
-#include "math/scalar/mathi.h"
 
 static const char* TAG = "imu";
 
@@ -102,104 +92,10 @@ typedef struct {
 static imu_stats_t stats;
 #endif
 
-/* The QMI8658A's I2C rating (Rev A, Table 43). Faster was measured on A308 and
- * rejected: docs/input/Gravity.md, Limits. */
-#define QMI8658_I2C_HZ         400000
-#define QMI8658_TIMEOUT_MS     100
-
-/* A drain reads the FIFO in chunks of whole samples, a transaction each: the bus lock is taken
- * per transaction, so a touch read waits for at most one chunk, a tenth of its 10 ms poll.
- * The target counts data bytes only; each transaction's addressing adds about 10%. */
-#define IMU_BUS_HOLD_TARGET_US 1000
-#define I2C_BITS_PER_BYTE      9 /* 8 data bits and the ACK */
-#define IMU_FIFO_SAMPLE_DATA_US                                                                                        \
-    ((sizeof(imu_sample_t) * I2C_BITS_PER_BYTE * MATH_US_PER_S + QMI8658_I2C_HZ - 1) / QMI8658_I2C_HZ)
-#define IMU_FIFO_CHUNK_SAMPLES ((int)(IMU_BUS_HOLD_TARGET_US / IMU_FIFO_SAMPLE_DATA_US))
-_Static_assert(IMU_FIFO_CHUNK_SAMPLES >= 1, "a FIFO chunk must hold a sample");
-_Static_assert(IMU_FIFO_CHUNK_SAMPLES <= IMU_FIFO_SAMPLES, "a FIFO chunk must fit the FIFO");
-
-/* Registers; the reset pair and its poll are in imu_reset.h. */
-#define REG_WHO_AM_I            0x00
-#define REG_REVISION            0x01
-#define REG_CTRL1               0x02
-#define REG_CTRL2               0x03
-#define REG_CTRL3               0x04
-#define REG_CTRL7               0x08
-#define REG_CTRL9               0x0A
-#define REG_FIFO_CTRL           0x14
-#define REG_FIFO_SMPL_CNT       0x15
-#define REG_FIFO_DATA           0x17
-#define REG_STATUSINT           0x2D
-#define REG_AX_L                0x35
-
-#define WHO_AM_I_VALUE          0x05
-
-/* CTRL1.ADDR_AI enables bursts; BE stays clear for little-endian axes. */
-#define CTRL1_ADDR_AUTO_INC     0x40
-
-/* QMI8658A Rev A, Table 22: full-scale fields in bits 6:4; configure() ORs the 6DOF ODR code into bits 3:0. */
-#define CTRL2_ACCEL_8G          0x20
-#define CTRL3_GYRO_512DPS       0x50
-#define REVISION_QMI8658C       0x79
-#define REVISION_QMI8658A       0x7C
-#define CTRL9_ACK               0x00
-#define CTRL9_RST_FIFO          0x04
-#define CTRL9_REQ_FIFO          0x05
-#define STATUSINT_CMD_DONE      0x80
-#define FIFO_CTRL_SIZE_128      0x0C
-#define FIFO_CTRL_STREAM        0x02
-#define FIFO_CTRL_CONFIG        (FIFO_CTRL_SIZE_128 | FIFO_CTRL_STREAM)
-#define FIFO_STATUS_COUNT_MSB   0x03
-#define FIFO_STATUS_OVERFLOW    0x20
-#define FIFO_STATUS_FULL        0x80
-#define FIFO_COUNT_MSB_SHIFT    8
-#define FIFO_WORD_BYTES         2
-#define CTRL9_TIMEOUT_US        (100U * MATH_US_PER_MS)
-/* Section 5.10.1 specifies no minimum delay: poll once per I2C status transaction. */
-#define CTRL9_POLL_US           0U
-
-/* CTRL7: enable the accelerometer and the gyroscope. */
-#define CTRL7_ENABLE_ACCEL_GYRO 0x03
-
-static i2c_master_dev_handle_t dev;
 static bool ready;
 static bool sensor_present;
-static bool fifo_gap;
-static int pending_lost;
-
-static bool
-write_reg(uint8_t reg, uint8_t value) {
-    const uint8_t buf[2] = {reg, value};
-    return i2c_master_transmit(dev, buf, sizeof(buf), QMI8658_TIMEOUT_MS) == ESP_OK;
-}
-
-static bool
-read_regs(uint8_t reg, uint8_t* out, size_t len) {
-    return i2c_master_transmit_receive(dev, &reg, 1, out, len, QMI8658_TIMEOUT_MS) == ESP_OK;
-}
-
-static bool
-wait_command(bool done) {
-    return imu_poll(read_regs, REG_STATUSINT, STATUSINT_CMD_DONE, done ? STATUSINT_CMD_DONE : 0, timing_now_us,
-                    esp_rom_delay_us, CTRL9_TIMEOUT_US, CTRL9_POLL_US);
-}
-
-/* Lewis He, SensorLib (MIT), SensorQMI8658.hpp writeCommand/configFIFO/readFromFifo:
- * QST QMI8658A datasheet Rev A (2022), sections 5.10 and 8 require acknowledgement before REG_FIFO_DATA. */
-static bool
-write_command(uint8_t command) {
-    return write_reg(REG_CTRL9, command) && wait_command(true) && write_reg(REG_CTRL9, CTRL9_ACK)
-           && wait_command(false);
-}
-
-/* Sensors off, ranges and rate, a fresh FIFO, sensors on. */
-static bool
-configure(unsigned odr_code) {
-    return write_reg(REG_CTRL7, 0) && write_reg(REG_CTRL1, CTRL1_ADDR_AUTO_INC)
-           && write_reg(REG_CTRL2, (uint8_t)(CTRL2_ACCEL_8G | odr_code))
-           && write_reg(REG_CTRL3, (uint8_t)(CTRL3_GYRO_512DPS | odr_code)) && write_command(CTRL9_RST_FIFO)
-           && write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG) && write_reg(REG_CTRL7, CTRL7_ENABLE_ACCEL_GYRO);
-}
+/* An injection fed the drains: what the chip's FIFO holds is stale once it hands back. */
+static bool restart_due;
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static bool injected;
@@ -252,47 +148,15 @@ imu_init(void) {
         return true;
     }
 
-    i2c_master_bus_handle_t bus = bsp_i2c_get_handle();
+    i2c_master_bus_handle_t bus = board_i2c_bus();
     if (bus == NULL) {
         ESP_LOGE(TAG, "I2C bus is not initialised");
         return false;
     }
 
-    if (dev == NULL) {
-        const i2c_device_config_t config = {
-            .dev_addr_length = I2C_ADDR_BIT_LEN_7,
-            .device_address = BOARD_IMU_I2C_ADDR,
-            .scl_speed_hz = QMI8658_I2C_HZ,
-        };
-        if (i2c_master_bus_add_device(bus, &config, &dev) != ESP_OK) {
-            ESP_LOGE(TAG, "Could not add the QMI8658 to the bus");
-            return false;
-        }
-    }
-
-    /* Identify before configuring. Something else answering at 0x6b would
-     * otherwise be handed a stream of writes it never asked for. */
-    uint8_t who = 0;
-    if (!read_regs(REG_WHO_AM_I, &who, 1)) {
-        ESP_LOGE(TAG, "No response from 0x%02x", BOARD_IMU_I2C_ADDR);
+    if (!BOARD_IMU_CHIP.open(bus, BOARD_IMU_I2C_ADDR, IMU_ODR_CODE)) {
         return false;
     }
-    if (who != WHO_AM_I_VALUE) {
-        ESP_LOGE(TAG, "0x%02x answered WHO_AM_I 0x%02x, expected 0x%02x", BOARD_IMU_I2C_ADDR, who, WHO_AM_I_VALUE);
-        return false;
-    }
-
-    if (!imu_reset(write_reg, read_regs, timing_now_us, esp_rom_delay_us) || !configure(IMU_ODR_CODE)) {
-        ESP_LOGE(TAG, "Reset or configuration failed");
-        return false;
-    }
-
-    uint8_t revision = 0;
-    read_regs(REG_REVISION, &revision, 1);
-    const char* model = revision == REVISION_QMI8658C   ? "QMI8658C"
-                        : revision == REVISION_QMI8658A ? "QMI8658A"
-                                                        : "unknown";
-    ESP_LOGI(TAG, "QMI8658 up, revision 0x%02x (%s), +/-8g and +/-512dps", revision, model);
 
     sensor_present = true;
     ready = true;
@@ -373,20 +237,6 @@ imu_take_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t lost_before[IMU_FIFO_S
     return count;
 }
 
-/* Whole samples waiting, before read mode (section 8.8); false on a bus error or a partial sample. */
-static bool
-read_fifo_count(int* count, bool* overflowed) {
-    uint8_t status[2];
-    if (!read_regs(REG_FIFO_SMPL_CNT, status, sizeof status)) {
-        return false;
-    }
-    const int words = ((status[1] & FIFO_STATUS_COUNT_MSB) << FIFO_COUNT_MSB_SHIFT) | status[0];
-    const int bytes = words * FIFO_WORD_BYTES;
-    *count = bytes / (int)sizeof(imu_sample_t);
-    *overflowed = fifo_gap || (status[1] & (FIFO_STATUS_FULL | FIFO_STATUS_OVERFLOW)) != 0;
-    return *count <= IMU_FIFO_SAMPLES && bytes % sizeof(imu_sample_t) == 0;
-}
-
 #if CONFIG_LAUNCHER_DEVELOPMENT
 /* A FIFO burst holding a gyro rate within IMU_SUSPECT_MARGIN_DPS of full scale is logged raw,
  * with a register sample beside it, IMU_SUSPECT_LOGS times a boot at most: at rest, such a rate
@@ -414,26 +264,29 @@ log_suspect_burst(const imu_sample_t* samples, int count) {
     }
     logged++;
     imu_sample_t reg = {0};
-    const bool reg_ok = read_regs(REG_AX_L, (uint8_t*)&reg, sizeof reg);
+    const bool reg_ok = BOARD_IMU_CHIP.read(&reg);
     ESP_LOGW(TAG, "gyro near full scale in a FIFO burst: count %d first %d, register%s %d %d %d %d %d %d", count, first,
              reg_ok ? "" : " (failed)", reg.ax, reg.ay, reg.az, reg.gx, reg.gy, reg.gz);
     ESP_LOG_BUFFER_HEX_LEVEL(TAG, samples, (size_t)count * sizeof *samples, ESP_LOG_WARN);
 }
 #endif
 
-/* Requests read mode and reads count samples in chunks. locked_us spans the interval the sensor
- * discards arrivals (section 8.7): after the acknowledged request, every chunk and bus wait included. */
-static bool
-read_fifo_burst(imu_sample_t out[IMU_FIFO_SAMPLES], int count, uint64_t* locked_us) {
-    bool ok = write_command(CTRL9_REQ_FIFO);
-    const int64_t lock_start_us = timing_now_us();
-    for (int read = 0; ok && read < count;) {
-        const int chunk = mathi_min(count - read, IMU_FIFO_CHUNK_SAMPLES);
-        ok = read_regs(REG_FIFO_DATA, (uint8_t*)(out + read), (size_t)chunk * sizeof *out);
-        read += chunk;
+/* Drains resume on a fresh FIFO: what it held is stale, and the read-mode loss
+ * since the last drain was never counted. Queued samples drop behind a gap. */
+static void
+restart_fifo(void) {
+    if (sensor_present) {
+        BOARD_IMU_CHIP.restart();
     }
-    *locked_us = (uint64_t)(timing_now_us() - lock_start_us);
-    return ok;
+    portENTER_CRITICAL(&lock);
+    imu_queue_push(&queue, NULL, 0, 0, true);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    odr.flowing = false;
+#endif
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    odr.flowing = false;
+#endif
+    portEXIT_CRITICAL(&lock);
 }
 
 static int
@@ -446,37 +299,24 @@ drain_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
     const int injected_count = read_injected_fifo(out, overflowed);
     if (injected_count >= 0) {
-        pending_lost = 0;
-        fifo_gap = true;
+        restart_due = true;
         return injected_count;
     }
 #endif
     if (!sensor_present) {
         return 0;
     }
-    int count = 0;
-    uint64_t locked_us = 0;
-    const bool ok = read_fifo_count(&count, overflowed) && read_fifo_burst(out, count, &locked_us);
-    const bool resumed = write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG);
+    if (restart_due) {
+        restart_due = false;
+        restart_fifo();
+    }
+    const int count = BOARD_IMU_CHIP.drain(out, lost, overflowed);
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    if (ok) {
+    if (count > 0) {
         log_suspect_burst(out, count);
     }
 #endif
-    fifo_gap = !ok || !resumed;
-    if (fifo_gap) {
-        /* A failed burst may have consumed part of a sample (reads consume, section 8.8):
-         * reset and reconfigure, as imu_init does, so the next count starts on a sample boundary. */
-        (void)(write_command(CTRL9_RST_FIFO) && write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG));
-    }
-    *lost = fifo_gap || *overflowed ? 0 : pending_lost;
-    /* Read-mode losses follow this burst, so gravity advances them with the next batch. */
-    uint32_t sample_us = IMU_SAMPLE_US;
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    sample_us = odr.applied == IMU_BUZZ_ODR_CODE ? IMU_BUZZ_SAMPLE_US : IMU_SAMPLE_US;
-#endif
-    pending_lost = imu_fifo_lost(locked_us, sample_us, fifo_gap || *overflowed);
-    return fifo_gap ? -1 : count;
+    return count;
 }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -563,7 +403,7 @@ imu_read_or_drain(bool drain_due) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
         stats.register_reads++;
 #endif
-        if (read_regs(REG_AX_L, (uint8_t*)&sample, sizeof sample)) {
+        if (BOARD_IMU_CHIP.read(&sample)) {
             portENTER_CRITICAL(&lock);
             newest = sample;
             have_newest = true;
@@ -578,21 +418,6 @@ imu_read_or_drain(bool drain_due) {
     stats.bus_us += (uint64_t)(timing_now_us() - start_us);
 #endif
     return drain_due;
-}
-
-/* Drains resume on a fresh FIFO: what it held is stale, and the read-mode loss
- * since the last drain was never counted. Queued samples drop behind a gap. */
-static void
-restart_fifo(void) {
-    if (sensor_present) {
-        (void)(write_command(CTRL9_RST_FIFO) && write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG));
-    }
-    portENTER_CRITICAL(&lock);
-    imu_queue_restart(&queue, &fifo_gap, &pending_lost);
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    odr.flowing = false;
-#endif
-    portEXIT_CRITICAL(&lock);
 }
 
 /* The level readers ask for; with none, marks the task parked under the same lock a reader stamps under. */
@@ -616,7 +441,7 @@ apply_odr_request(imu_demand_level_t* level, unsigned* read_ticks) {
     portENTER_CRITICAL(&lock);
     imu_odr_t next = odr;
     portEXIT_CRITICAL(&lock);
-    const imu_odr_outcome_t outcome = imu_odr_apply(&next, configure, &fifo_gap, level);
+    const imu_odr_outcome_t outcome = imu_odr_apply(&next, BOARD_IMU_CHIP.configure, level);
     if (outcome == IMU_ODR_UNCHANGED) {
         return next.sequence;
     }
@@ -624,7 +449,6 @@ apply_odr_request(imu_demand_level_t* level, unsigned* read_ticks) {
         ESP_LOGE(TAG, "ODR switch to %u and restore of %u both failed; the sensor may be off", odr.requested,
                  next.applied);
     }
-    pending_lost = 0;
     *read_ticks = 0;
     portENTER_CRITICAL(&lock);
     imu_queue_set_rate(&queue, next.applied);

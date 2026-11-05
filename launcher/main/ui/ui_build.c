@@ -297,11 +297,10 @@ ui_init(void) {
 }
 
 /*
- * mu_update_control() takes hover only on a frame where the button is NOT
- * held, and submits only once it has focus: the mouse's "point, then
- * click". A touchscreen has no such sequence, so the missing frame is
- * synthesised: on the press, deliver the position alone and hold
- * button-down for the following frame.
+ * A touchscreen has no "point, then click": the pointer exists only once the
+ * finger is down. ui_bridge looks the press up among the last frame's
+ * containers and the DOWN goes out on the frame of contact; microui takes
+ * hover on the frame its button goes down (ui/input/ui_pointer.h).
  *
  * Touch also arrives in PHYSICAL coordinates while controls were laid out in
  * LOGICAL ones, so a touch needs the inverse transform first.

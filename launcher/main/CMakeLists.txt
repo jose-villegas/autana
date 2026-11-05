@@ -37,8 +37,11 @@ set(app_srcs
     "input/buttons/buttons.c"
     "input/touch/gesture.c"
     "input/motion/imu.c"
+    "input/motion/qmi8658/qmi8658.c"
     "input/motion/imu_queue.c"
-    "power/power_decode.c"
+    "power/axp2101/axp2101.c"
+    "power/axp2101/axp2101_decode.c"
+    "power/power_names.c"
     "power/power_cache.c"
     "power/power_log.c"
     "power/power_log_device.c"
@@ -77,6 +80,7 @@ set(app_srcs
     "core/pending.c"
     "shell/asset_system.c"
     "shell/pending_system.c"
+    "core/app_heap.c"
     "core/job.c"
     "core/memory.c"
     "core/timing_device.c"
@@ -124,8 +128,10 @@ if(CONFIG_LAUNCHER_SELFTEST)
     list(APPEND app_srcs "selftest/console_runsuite.c")
 endif()
 
-# board/board.h binds this target's hardware facts to board_esp32s3.c.
-list(APPEND app_srcs "board/board_esp32s3.c" "board/board_panel.c")
+# board/board.h's functions and values come from the chosen board's folder.
+include("${CMAKE_CURRENT_LIST_DIR}/board/board_dir.cmake")
+launcher_glob(board_srcs "${board_include_dir}/*.c")
+list(APPEND app_srcs ${board_srcs})
 # At 120 MHz, PSRAM tuning runs with the USB port off the bus; the wrap that
 # routes it through board_usb.c is added after idf_component_register below.
 if(CONFIG_SPIRAM_SPEED_120M)
@@ -201,9 +207,11 @@ endif()
 # SPI2. "sdmmc" itself is still needed for sdmmc_card_t and the protocol
 # layer underneath the host driver.
 #
-# esp_lcd_co5300 brings up the V2 (CO5300 panel) revision; see board/board_panel.c. It is
+# esp_lcd_co5300 brings up the V2 (CO5300 panel) revision; see the board's board_panel.c. It is
 # a PRIVATE dependency of the BSP's own idf_component.yml, so main needs its
 # own declaration (main/idf_component.yml) to see its headers.
+# esp32_s3_touch_amoled_1_8 is the board's BSP. REQUIRES is read before any
+# CONFIG_* is set, so a second board brings its BSP in its own component.
 set(app_reqs esp_codec_dev esp_driver_i2s math simd kinematics physics image hash collections microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
              esp_driver_i2c esp_driver_tsens esp_hw_support esp_psram spi_flash esp_partition
              fatfs esp_driver_sdmmc sdmmc
@@ -261,6 +269,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
         "../test/timing.c"
         "../test/bench_env.c"
         "../test/frame_profile.c"
+        "../test/frame/test_frame.c"
         "../test/ui_probe.c"
         ${suite_srcs}
         ${app_suites}
@@ -328,8 +337,8 @@ endif()
 
 idf_component_register(
     SRCS ${app_srcs}
-    INCLUDE_DIRS "."
-    PRIV_INCLUDE_DIRS ${app_private_include_dirs}
+    INCLUDE_DIRS "." "${board_include_dir}"
+    PRIV_INCLUDE_DIRS ${app_private_include_dirs} "${IDF_PATH}/components/heap/tlsf/include"
     LDFRAGMENTS "linker.lf"
     REQUIRES ${app_reqs}
 
@@ -382,14 +391,19 @@ if(NOT CMAKE_SCRIPT_MODE_FILE)
         BYPRODUCTS "${asset_image}"
         COMMENT "Writing the asset packs"
         VERBATIM)
+    # The build fails when the image outgrows the partition, as an app does.
+    partition_table_add_check_size_target(asset_image_check_size
+        BINARY_PATH "${asset_image}" PARTITION_TYPE data PARTITION_SUBTYPE 0x40 DEPENDS asset_pack_image)
+    add_custom_target(asset_image_fits ALL)
+    add_dependencies(asset_image_fits asset_image_check_size)
     esptool_py_flash_to_partition(flash "assets" "${asset_image}")
-    add_dependencies(flash asset_pack_image)
+    add_dependencies(flash asset_image_fits)
     partition_table_get_partition_info(asset_offset "--partition-name assets" "offset")
     idf_component_get_property(flash_main_args esptool_py FLASH_ARGS)
     idf_component_get_property(flash_sub_args esptool_py FLASH_SUB_ARGS)
     esptool_py_flash_target(assets-flash "${flash_main_args}" "${flash_sub_args}")
     esptool_py_flash_target_image(assets-flash assets "${asset_offset}" "${asset_image}")
-    add_dependencies(assets-flash asset_pack_image)
+    add_dependencies(assets-flash asset_image_fits)
 endif()
 
 if(CONFIG_SPIRAM_SPEED_120M)

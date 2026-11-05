@@ -524,7 +524,10 @@ audio_loopback_measure(uint16_t hz, uint16_t ms, float* db, audio_loopback_resul
 static void
 tone_imu_serve(void) {
     if (device.pulse.task.level != IMU_DEMAND_FIFO) {
-        imu_queue_restart(device.pulse.task.queue, &device.pulse.task.fifo_gap, &device.pulse.task.pending_lost);
+        imu_queue_push(device.pulse.task.queue, NULL, 0, 0, true);
+        device.pulse.task.fifo_gap = false;
+        device.pulse.task.pending_lost = 0;
+        device.pulse.task.odr.flowing = false;
         device.pulse.task.restarts++;
     }
     device.pulse.task.level = IMU_DEMAND_FIFO;
@@ -591,8 +594,7 @@ imu_set_odr(unsigned odr_code) {
         odr->requested = odr_code;
         odr->applied = device.odr_code;
         const uint32_t sequence = ++odr->sequence;
-        if (imu_odr_apply(odr, tone_configure_odr, &device.pulse.task.fifo_gap, &device.pulse.task.level)
-            != IMU_ODR_UNCHANGED) {
+        if (imu_odr_apply(odr, tone_configure_odr, &device.pulse.task.level) != IMU_ODR_UNCHANGED) {
             imu_queue_set_rate(device.pulse.task.queue, odr->applied);
             device.pulse.task.pending_lost = 0;
         }

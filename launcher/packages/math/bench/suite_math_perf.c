@@ -291,10 +291,10 @@ fixture(void) {
         f->angle[j] = (turn - 0.5F) * MATH_TAU;
         f->saturate[j] = saturate_inputs[j % (sizeof saturate_inputs / sizeof saturate_inputs[0])];
         f->phase[j] = (uint16_t)(j * TRIG_TURN / MATH_BENCH_BATCH);
-        f->qf[j].a = quatf_from_axis_angle((vec3f_t){0.0F, 1.0F, 0.0F}, f->angle[j]);
-        f->qf[j].b = quatf_from_axis_angle((vec3f_t){1.0F, 0.0F, 0.0F}, f->angle[j] + (MATH_PI / 2.0F));
-        f->qx[j].a = quatx_from_axis_angle((vec3x_t){0, MATHX_ONE, 0}, mathf_to_x(turn - 0.5F));
-        f->qx[j].b = quatx_from_axis_angle((vec3x_t){MATHX_ONE, 0, 0}, mathf_to_x(turn - 0.25F));
+        f->qf[j].a = quatf_from_axis_angle(vec3f_unit_y(), f->angle[j]);
+        f->qf[j].b = quatf_from_axis_angle(vec3f_unit_x(), f->angle[j] + (MATH_PI / 2.0F));
+        f->qx[j].a = quatx_from_axis_angle(vec3x_unit_y(), mathf_to_x(turn - 0.5F));
+        f->qx[j].b = quatx_from_axis_angle(vec3x_unit_x(), mathf_to_x(turn - 0.25F));
         f->tf[j] = (transformf_t){.position = f->vf[j].a, .rotation = f->qf[j].a, .scale = f->vf[j].b};
         f->tx[j] = (transformx_t){.position = f->vx[j].a, .rotation = f->qx[j].a, .scale = f->vx[j].b};
         f->mf[j].a = transformf_compute_matrix(&f->tf[j]);

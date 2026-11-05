@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "app/app_arena.h"
+#include "core/app_heap.h"
 #include "scene/scene_shell.h"
 #include "shell/shell_system.h"
 
@@ -20,6 +21,8 @@ bool shell_test_a_system_asking_for_overlap_takes_the_overlap_path(void);
 static void
 fixture(void) {
     TEST_ASSERT_EQUAL_UINT_MESSAGE(0, app_arena_mark(), "the app running the suites holds arena memory");
+    TEST_ASSERT_EQUAL_size_t(0, app_heap_blocks());
+    app_arena_exit();
     shell_test_fixture();
 }
 

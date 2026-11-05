@@ -14,6 +14,7 @@
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 #include "render/view/raster_boxes.h"
+#include "render/view/raster_copies.h"
 #include "render/view/raster_cull_view.h"
 #include "render/view/raster_meshlets.h"
 #include "render/view/raster_motion.h"
@@ -40,6 +41,7 @@ static const render_debug_view_t views[] = {
      .attachment = raster_boxes_view,
      .overlay = raster_boxes_overlay},
     {.name = "overdraw", .state_bytes = sizeof(raster_overdraw_t), .attachment = raster_overdraw_view},
+    {.name = "copies", .state_bytes = sizeof(raster_copies_t), .attachment = raster_copies_view},
 };
 _Static_assert(RENDER_DEBUG_VIEW_COUNT == sizeof views / sizeof views[0], "view table length");
 #endif
@@ -208,7 +210,7 @@ render_context_set_debug_view(render_context_t* c, int view) {
         return;
     }
     if (row->state_bytes != 0) {
-        c->debug_view_state = memory_alloc(row->state_bytes, MEMORY_PSRAM);
+        c->debug_view_state = memory_alloc(row->state_bytes, MEMORY_APP);
         if (c->debug_view_state == NULL) {
             return;
         }
@@ -272,7 +274,7 @@ fit_scratch(render_context_t* c) {
          * most to the destination's size, so a lender that gives back per
          * scene loses a few blocks at most. */
         render_context_drop_scratch(c);
-        c->scratch = c->take != NULL ? c->take(needed, _Alignof(max_align_t)) : memory_alloc(needed, MEMORY_PSRAM);
+        c->scratch = c->take != NULL ? c->take(needed, _Alignof(max_align_t)) : memory_alloc(needed, MEMORY_APP);
         c->scratch_bytes = c->scratch == NULL ? 0 : needed;
     }
     c->raster.scratch = c->scratch;
@@ -551,7 +553,7 @@ render_context_checkpoint_prepare(checkpoint_t* saved, render_context_t* context
         if (context->take != NULL) {
             return false;
         }
-        void* scratch = memory_alloc(source.scratch_bytes, MEMORY_PSRAM);
+        void* scratch = memory_alloc(source.scratch_bytes, MEMORY_APP);
         if (scratch == NULL) {
             return false;
         }

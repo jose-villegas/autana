@@ -9,10 +9,11 @@
  * The mechanism, so nobody re-derives it from scratch: mu_mouse_over() needs
  * in_hover_root(), and mu_begin() copies hover_root from the PREVIOUS frame's
  * next_hover_root. mu_update_control() then marks a control hovered only when
- * the mouse is over it AND mouse_down is clear, and focus is only taken from
- * a control that is already hovered. So a DOWN fed before hover has settled
- * lands with nothing hovered, nothing takes focus, and mu_button() renders a
- * pressed frame while returning 0 forever.
+ * the mouse is over it AND either mouse_down is clear or the button went down
+ * this frame (a local change), and focus is only taken from a control that is
+ * already hovered. So a DOWN fed under a stale hover root lands with nothing
+ * hovered, nothing takes focus, and mu_button() renders a pressed frame while
+ * returning 0 forever, unless the press is made again.
  *
  * microui.c is plain C over stdio/stdlib/string, so it links here unchanged;
  * this is the only suite that links it.
@@ -145,21 +146,72 @@ test_a_tap_submits_the_button_underneath_it(void) {
                                   "stayed green, leaving no app reachable from the launcher");
 }
 
-/* Latency: the press is answered on the second frame of contact, not the
- * third. The DOWN is fed one frame after the first position, so microui must
- * already have granted hover on that first frame. */
+/* Latency: the press is answered on the frame the finger lands. The DOWN is
+ * fed with the first position, so microui must grant hover on the frame its
+ * button goes down. */
 static void
-test_a_tap_submits_on_the_second_frame_of_contact(void) {
+test_a_tap_submits_on_the_frame_of_contact(void) {
     fixture();
     idle_frames(2);
 
     const int cx = BTN_X + BTN_W / 2;
     const int cy = BTN_Y + BTN_H / 2;
-    TEST_ASSERT_FALSE(frame(true, true, false, cx, cy));
-    TEST_ASSERT_TRUE_MESSAGE(frame(true, false, false, cx, cy),
-                             "the DOWN follows the first frame of contact, and it must click");
+    TEST_ASSERT_TRUE_MESSAGE(frame(true, true, false, cx, cy), "the frame of contact must click");
     TEST_ASSERT_FALSE_MESSAGE(frame(true, false, false, cx, cy), "holding must not click again");
+    TEST_ASSERT_FALSE(frame(true, false, false, cx, cy));
     TEST_ASSERT_FALSE(frame(false, false, true, cx, cy));
+}
+
+/* One frame of a full-screen window named `name` holding the one button. */
+static bool
+named_frame(const char* name, bool down, bool pressed, bool released) {
+    input_t in = {.down = down, .pressed = pressed, .released = released};
+    in.point.x = BTN_X + BTN_W / 2;
+    in.point.y = BTN_Y + BTN_H / 2;
+    ui_bridge_feed(ctx, &pointer, &in);
+    bool submitted = false;
+    mu_begin(ctx);
+    if (mu_begin_window_ex(ctx, name, mu_rect(0, 0, CANVAS_W, CANVAS_H),
+                           MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
+        mu_layout_set_next(ctx, mu_rect(BTN_X, BTN_Y, BTN_W, BTN_H), 0);
+        submitted = mu_button(ctx, "GO") != 0;
+        mu_end_window(ctx);
+    }
+    mu_end(ctx);
+    ui_bridge_end(ctx, &pointer);
+    return submitted;
+}
+
+/* The frame of contact builds a window the last frame did not, so the seeded
+ * hover root is stale and the DOWN takes nothing: it is made again on the
+ * next frame, and the tap clicks exactly once. */
+static void
+test_a_press_under_a_stale_hover_root_is_made_again_and_clicks_once(void) {
+    fixture();
+    named_frame("before", false, false, false);
+    named_frame("before", false, false, false);
+
+    TEST_ASSERT_FALSE_MESSAGE(named_frame("after", true, true, false), "the stale root takes nothing");
+    TEST_ASSERT_TRUE_MESSAGE(named_frame("after", true, false, false), "the press made again clicks");
+    int again = 0;
+    for (int i = 0; i < 4; i++) {
+        again += named_frame("after", true, false, false);
+    }
+    again += named_frame("after", false, false, true);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, again, "and only once");
+}
+
+/* The same stale root with the lift on the next frame: the press is made
+ * again with its release, so the tap still clicks. */
+static void
+test_a_quick_tap_under_a_stale_hover_root_still_clicks(void) {
+    fixture();
+    named_frame("before", false, false, false);
+    named_frame("before", false, false, false);
+
+    TEST_ASSERT_FALSE(named_frame("after", true, true, false));
+    TEST_ASSERT_TRUE(named_frame("after", false, false, true));
+    TEST_ASSERT_FALSE(named_frame("after", false, false, false));
 }
 
 /* Hover is resolved on the frame the finger lands, and on the control under
@@ -204,6 +256,37 @@ stacked_frame(const input_t* in) {
     mu_end(ctx);
     ui_bridge_end(ctx, &pointer);
     return submitted;
+}
+
+/* The front window first appears on the frame of contact: the seed is stale,
+ * but the window the finger saw was still built, so its button takes the
+ * press. That counts as landed: the press is not made again on the window
+ * that just appeared. */
+static void
+test_a_press_that_landed_under_a_stale_seed_is_not_made_again(void) {
+    fixture();
+    const int opt = MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME;
+    const int x = BTN_X + BTN_W / 2;
+    const int y = BTN_Y + BTN_H / 2;
+    int total = 0;
+    for (int f = 0; f < 7; f++) {
+        const input_t in = {.down = f >= 2 && f < 6, .pressed = f == 2, .released = f == 6, .point = {x, y}};
+        ui_bridge_feed(ctx, &pointer, &in);
+        mu_begin(ctx);
+        if (mu_begin_window_ex(ctx, "back", mu_rect(0, 0, CANVAS_W, CANVAS_H), opt)) {
+            mu_layout_set_next(ctx, mu_rect(BTN_X, BTN_Y, BTN_W, BTN_H), 0);
+            total += mu_button(ctx, "BACK") ? 1 : 0;
+            mu_end_window(ctx);
+        }
+        if (f >= 2 && mu_begin_window_ex(ctx, "front", mu_rect(BTN_X, BTN_Y, BTN_W, BTN_H), opt)) {
+            mu_layout_set_next(ctx, mu_rect(BTN_X, BTN_Y, BTN_W, BTN_H), 0);
+            total += mu_button(ctx, "FRONT") ? 2 : 0;
+            mu_end_window(ctx);
+        }
+        mu_end(ctx);
+        ui_bridge_end(ctx, &pointer);
+    }
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, total, "the window the finger saw takes the press, once, and nothing else");
 }
 
 static void
@@ -317,8 +400,8 @@ test_a_tap_outside_the_button_submits_nothing(void) {
 
 /* A slider needs mouse_down to persist ACROSS frames: microui only tracks
  * its value while (mouse_down | mouse_pressed) is set. This is what the
- * whole hold policy was introduced for, and it must keep working alongside
- * the hover frames the fix added. */
+ * whole hold policy was introduced for, and it must keep working now the
+ * press goes down on the frame of contact. */
 static void
 test_a_drag_moves_a_slider_microui_would_not_track_on_a_tap(void) {
     fixture();
@@ -444,6 +527,28 @@ test_dragging_up_scrolls_the_list_without_pressing_a_row(void) {
                                          "a drag up must move the content up");
 }
 
+/* The press lands on the frame of contact, so that frame must not also carry
+ * the move from where the last finger lifted: a press on the scrollbar's thumb
+ * would read that move as a drag and jump the list. */
+static void
+test_a_press_on_the_scrollbar_does_not_jump_the_list(void) {
+    fixture();
+    list_idle_frames(2);
+    const int bar_x = CANVAS_W - ctx->style->scrollbar_size / 2;
+    const int lift_y = 2;
+    const int thumb_y = 40;
+    list_tap(CANVAS_W / 2, lift_y);
+    list_idle_frames(1);
+    const mu_Container* cnt = mu_get_container(ctx, "list");
+    TEST_ASSERT_EQUAL_INT(0, cnt->scroll.y);
+
+    list_frame(true, true, false, bar_x, thumb_y);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, cnt->scroll.y, "pressing the thumb moves nothing");
+    list_frame(true, false, false, bar_x, thumb_y + 10);
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, cnt->scroll.y, "dragging the thumb from the press point scrolls");
+    list_frame(false, false, true, bar_x, thumb_y + 10);
+}
+
 static void
 test_a_tap_on_a_scrollable_list_presses_the_row_under_it_once(void) {
     fixture();
@@ -452,7 +557,8 @@ test_a_tap_on_a_scrollable_list_presses_the_row_under_it_once(void) {
     int submits = 0;
     const int cx = CANVAS_W / 2;
     const int cy = 5 + LIST_ROW_H / 2;
-    submits += list_frame(true, true, false, cx, cy) >= 0;
+    TEST_ASSERT_EQUAL_INT_MESSAGE(-1, list_frame(true, true, false, cx, cy),
+                                  "on content that scrolls the press waits: the finger may be starting a drag");
     for (int i = 0; i < 4; i++) {
         submits += list_frame(true, false, false, cx, cy) >= 0;
     }
@@ -484,12 +590,101 @@ test_scrolling_stops_at_the_end_and_the_last_row_is_reachable(void) {
                                   "the bottom of the glass must now hold the last row");
 }
 
+/* The list with a short window over its top: a press on the window's button
+ * is in a root that does not scroll, so it goes down at once. Returns 1 if
+ * the button submitted. */
+static int
+covered_list_frame(bool down, bool pressed, bool released, int x, int y) {
+    input_t in = {.down = down, .pressed = pressed, .released = released, .point = {x, y}};
+    ui_bridge_feed(ctx, &pointer, &in);
+    int submitted = 0;
+    const int opt = MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME;
+    mu_begin(ctx);
+    if (mu_begin_window_ex(ctx, "list", mu_rect(0, 0, CANVAS_W, CANVAS_H), opt)) {
+        for (int row = 0; row < LIST_ROWS; row++) {
+            mu_layout_row(ctx, 1, (int[]){-1}, LIST_ROW_H);
+            mu_push_id(ctx, &row, sizeof row);
+            (void)mu_button(ctx, "ROW");
+            mu_pop_id(ctx);
+        }
+        mu_end_window(ctx);
+    }
+    if (mu_begin_window_ex(ctx, "sheet", mu_rect(BTN_X, BTN_Y, BTN_W, BTN_H), opt)) {
+        mu_layout_set_next(ctx, mu_rect(BTN_X, BTN_Y, BTN_W, BTN_H), 0);
+        submitted = mu_button(ctx, "GO") ? 1 : 0;
+        mu_end_window(ctx);
+    }
+    mu_end(ctx);
+    ui_bridge_end(ctx, &pointer);
+    return submitted;
+}
+
+static void
+test_a_press_on_a_window_over_scrolling_content_goes_down_at_once(void) {
+    fixture();
+    covered_list_frame(false, false, false, 0, 0);
+    covered_list_frame(false, false, false, 0, 0);
+
+    const int x = BTN_X + BTN_W / 2;
+    const int y = BTN_Y + BTN_H / 2;
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, covered_list_frame(true, true, false, x, y),
+                                  "content scrolling under another window must not delay its press");
+    int again = 0;
+    for (int i = 0; i < 3; i++) {
+        again += covered_list_frame(true, false, false, x, y);
+    }
+    again += covered_list_frame(false, false, true, x, y);
+    TEST_ASSERT_EQUAL_INT(0, again);
+}
+
+/* Two buttons over the same point in one window: one press is one click, for
+ * a held press and for one lifted within its own frame. */
+static int
+overlap_frame(bool down, bool pressed, bool released) {
+    input_t in = {.down = down, .pressed = pressed, .released = released};
+    in.point.x = BTN_X + BTN_W / 2;
+    in.point.y = BTN_Y + BTN_H / 2;
+    ui_bridge_feed(ctx, &pointer, &in);
+    int submits = 0;
+    mu_begin(ctx);
+    if (mu_begin_window_ex(ctx, "screen", mu_rect(0, 0, CANVAS_W, CANVAS_H),
+                           MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
+        mu_layout_set_next(ctx, mu_rect(BTN_X, BTN_Y, BTN_W, BTN_H), 0);
+        submits += mu_button(ctx, "ONE") ? 1 : 0;
+        mu_layout_set_next(ctx, mu_rect(BTN_X, BTN_Y, BTN_W, BTN_H), 0);
+        submits += mu_button(ctx, "TWO") ? 1 : 0;
+        mu_end_window(ctx);
+    }
+    mu_end(ctx);
+    ui_bridge_end(ctx, &pointer);
+    return submits;
+}
+
+static void
+test_overlapping_controls_take_one_press_once(void) {
+    fixture();
+    overlap_frame(false, false, false);
+    overlap_frame(false, false, false);
+    int held = overlap_frame(true, true, false);
+    for (int i = 0; i < 3; i++) {
+        held += overlap_frame(true, false, false);
+    }
+    held += overlap_frame(false, false, true);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, held, "a held press over two controls clicks once");
+
+    overlap_frame(false, false, false);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, overlap_frame(true, true, true), "a one-frame tap over two controls clicks once");
+}
+
 void
 run_ui_pointer_microui_suite(void) {
     ctx = malloc(sizeof *ctx);
     RUN_TEST(test_a_tap_submits_the_button_underneath_it);
-    RUN_TEST(test_a_tap_submits_on_the_second_frame_of_contact);
+    RUN_TEST(test_a_tap_submits_on_the_frame_of_contact);
+    RUN_TEST(test_a_press_under_a_stale_hover_root_is_made_again_and_clicks_once);
+    RUN_TEST(test_a_quick_tap_under_a_stale_hover_root_still_clicks);
     RUN_TEST(test_hover_is_granted_on_the_frame_a_press_lands);
+    RUN_TEST(test_a_press_that_landed_under_a_stale_seed_is_not_made_again);
     RUN_TEST(test_a_press_over_stacked_windows_reaches_only_the_top_one);
     RUN_TEST(test_a_press_on_a_shared_vertical_edge_reaches_only_the_window_it_is_in);
     RUN_TEST(test_a_press_on_a_shared_horizontal_edge_reaches_only_the_window_it_is_in);
@@ -498,8 +693,11 @@ run_ui_pointer_microui_suite(void) {
     RUN_TEST(test_a_tap_outside_the_button_submits_nothing);
     RUN_TEST(test_a_drag_moves_a_slider_microui_would_not_track_on_a_tap);
     RUN_TEST(test_dragging_up_scrolls_the_list_without_pressing_a_row);
+    RUN_TEST(test_a_press_on_the_scrollbar_does_not_jump_the_list);
     RUN_TEST(test_a_tap_on_a_scrollable_list_presses_the_row_under_it_once);
     RUN_TEST(test_scrolling_stops_at_the_end_and_the_last_row_is_reachable);
+    RUN_TEST(test_a_press_on_a_window_over_scrolling_content_goes_down_at_once);
+    RUN_TEST(test_overlapping_controls_take_one_press_once);
     free(ctx);
     ctx = NULL;
 }

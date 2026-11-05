@@ -1664,11 +1664,11 @@ sand_app_test_start_button_survives_the_ui_build(int mode) {
     input_t in = {0};
     sand_frame(0, &in); /* the title on the glass before the finger lands */
 
-    in = (input_t){.pressed = true, .point = touch.point};
-    sand_frame(16, &in); /* hover granted on the frame the finger lands */
+    in = (input_t){.down = true, .pressed = true, .point = touch.point};
+    sand_frame(16, &in); /* the DOWN lands on START on the frame the finger lands */
 
-    in = (input_t){.point = touch.point};
-    sand_frame(16, &in); /* the DOWN: the press lands on START */
+    in = (input_t){.down = true, .point = touch.point};
+    sand_frame(16, &in); /* held */
 
     in = (input_t){.released = true, .point = touch.point};
     sand_frame(16, &in); /* the lift: the tap, queued as pending_start */

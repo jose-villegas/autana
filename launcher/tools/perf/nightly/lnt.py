@@ -38,8 +38,8 @@ def night_manifest(board, machine, night, lane, results, stop_reason, last_measu
 def night_ran(manifest):
     """Whether a lane ran its self-test and chain to the end, whatever its tests reported: its board
     was up. A missing or unfinished manifest, a self-test that never completed, captures that all
-    failed or a stop other than another job taking the board means the board could not run."""
-    if not (manifest and manifest.get("ended")) or manifest.get("stop_reason") not in (None, "busy"):
+    failed or a stop other than another job taking the board or the deadline means the board could not run."""
+    if not (manifest and manifest.get("ended")) or manifest.get("stop_reason") not in (None, "busy", "deadline"):
         return False
     outcomes = {step["outcome"] for step in manifest.get("steps", [])}
     return (manifest.get("selftest", {}).get("outcome") != "incomplete"
@@ -55,13 +55,6 @@ def read_night(data_dir, board, key):
 def read_last_night(data_dir, board):
     paths = sorted((Path(data_dir) / "scoped" / board).glob(NIGHT_KEY_GLOB + "/night.json"))
     return json.loads(paths[-1].read_text(encoding="utf-8")) if paths else None
-
-
-def last_manifests(data_dir):
-    """Every board's last night manifest, by board: the boards that sit tonight out too."""
-    root = Path(data_dir) / "scoped"
-    boards = sorted(path.name for path in root.iterdir() if path.is_dir()) if root.is_dir() else []
-    return {board: night for board in boards if (night := read_last_night(data_dir, board))}
 
 
 def manifests_since(data_dir, key):

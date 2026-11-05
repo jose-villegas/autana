@@ -271,8 +271,7 @@ def main():
     initial = args.initial_quarter
     if not 0 <= initial <= display_define("DISPLAY_LANDSCAPE_UPSIDE_DOWN"):
         parser.error("invalid initial quarter")
-    sys.path.insert(0, str(ROOT / "launcher/tools/math"))
-    from math_figures import build_probe
+    from docs.figures import build_probe
     models = ("accel", "fused") if args.model == "both" else (args.model,)
     with tempfile.TemporaryDirectory() as directory:
         binary = build_probe(args.cc, SOURCES, directory)

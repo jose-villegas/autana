@@ -12,7 +12,7 @@ flowchart LR
     end
     subgraph Census["the cull, core 0"]
         direction TB
-        Inst["instance<br/><i>its root box,<br/>under its model</i>"] --> Node["node<br/><i>box against the planes<br/>its parent crossed</i>"]
+        Inst["instance<br/><i>its world box, then<br/>its root box under its model</i>"] --> Node["node<br/><i>box against the planes<br/>its parent crossed</i>"]
         Node --> Cluster["cluster<br/><i>box against<br/>the leaf's planes</i>"]
     end
     subgraph Draw["the draw, both cores"]
@@ -26,7 +26,7 @@ flowchart LR
 | Stage | Test | Unit | Where | Saves |
 |---|---|---|---|---|
 | Visibility | no ray from the camera region or path reaches it | triangle | the importer, offline ([visibility](../scene/Scene-Files.md#visibility-camera_region)) | flash and every stage below |
-| Instance | its root node's box is outside a frustum plane | instance, each copy under its own model | `r3d_pipeline_cull()`, from the root | the whole mesh |
+| Instance | its world box, then its root node's box, is outside a frustum plane | instance, each copy under its own model | `cull_instances()` in [raster.c](../../../launcher/main/render/raster.c), then `r3d_pipeline_cull()` from the root | the whole mesh; with the world box, its lens and its walk too |
 | Node | its box is outside a plane its parent's box crossed | node of the cluster tree | `r3d_pipeline_cull()` | its subtree |
 | Cluster | its box is outside a plane its leaf's box crossed | cluster | `r3d_pipeline_cull()` | its vertices' transform and its triangles |
 | Rows | its transformed vertices span no row of this core's half | cluster, per core | `r3d_pipeline_draw()` | its triangles on that core |
@@ -54,15 +54,28 @@ There is no far plane. The boxes and the tree are the bake's
   [depth scale](Attachments.md#depth).
 
 An instance is culled through its own lens, the picture's composed with its
-model, so copies of one mesh each walk the tree where they sit. `render.cull`
-(a development tunable, default 1) set to 0 keeps every cluster; the
+model, so copies of one mesh each walk the tree where they sit. The picture's
+lens is built once per position scale and each copy only adds its placement.
+
+An instance may carry a world box: its root box through its model, in RAM
+(`r3d_lit_mesh_world_bounds()`), kept current by the caller as its meshes
+move or refit. It is tested first against the picture's planes, grown by a
+slack past float rounding, so it only drops instances the root test would
+drop. Those then build no lens and read no tree. Kept clusters and pixels are
+the same either way.
+
+An instance that kept no cluster gets no slot in the draw's batch; its
+attachment writers still see it. `render.cull` (a development tunable,
+default 1) set to 0 keeps every cluster and skips the world box; the
 meshlet-size table in [Baked-Mesh.md](../offline/Baked-Mesh.md#meshlets)
 measures both.
 
 ## Per triangle
 
 The draw sorts each triangle of a kept cluster before it fills it
-([`r3d_triangle_tests.h`](../../../launcher/main/render/r3d_triangle_tests.h)):
+([`r3d_triangle_tests.h`](../../../launcher/main/render/r3d_triangle_tests.h)).
+A cluster whose vertices all passed the near and range tests skips the first
+two rows; a draw with writers keeps them:
 
 | Test | Then | Counted as |
 |---|---|---|
@@ -123,19 +136,19 @@ Bistro along its camera path:
 
 ![Bistro's counts along its path](../../images/render/cull-bistro-counts.png)
 
-<!-- generated: cull-bistro sha256=c8ab3c5c527ead3520e2b7fdb145fecf73a3df5be49e08e26952397ff5fe8552 -->
+<!-- generated: cull-bistro sha256=075cbcc7fabbf1405417c6f72449fdaa9bd3ff9d5671eafb1df59232779a4057 -->
 | Per frame, path mean | Bistro |
 |---|---|
-| Nodes visited / cut | 145 / 32 |
-| Clusters tested / kept | 458 / 376 |
-| Kept clusters: nothing set up / hidden / drawn | 44 / 151 / 181 |
-| Triangles submitted | 7736 |
-| Submitted triangles behind the near plane | 67 (1 %) |
-| Submitted triangles clipped | 61 (1 %) |
-| Submitted triangles miss every pixel centre | 2371 (31 %) |
-| Submitted triangles facing away | 1648 (21 %) |
-| Submitted triangles set up | 3589 (46 %) |
-| Submitted triangles covering pixels | 1574 (20 %) |
+| Nodes visited / cut | 188 / 56 |
+| Clusters tested / kept | 472 / 396 |
+| Kept clusters: nothing set up / hidden / drawn | 44 / 167 / 185 |
+| Triangles submitted | 7657 |
+| Submitted triangles behind the near plane | 59 (1 %) |
+| Submitted triangles clipped | 53 (1 %) |
+| Submitted triangles miss every pixel centre | 2274 (30 %) |
+| Submitted triangles facing away | 1649 (22 %) |
+| Submitted triangles set up | 3621 (47 %) |
+| Submitted triangles covering pixels | 1613 (21 %) |
 <!-- /generated: cull-bistro -->
 
 Sponza's fitted full bake along its flythrough:
@@ -146,19 +159,19 @@ Sponza's fitted full bake along its flythrough:
 
 ![Sponza's counts along its path](../../images/render/cull-sponza-counts.png)
 
-<!-- generated: cull-sponza sha256=464a55906b51d0a10196a6c861853fce41a28670d872dd60dba95156104b226e -->
+<!-- generated: cull-sponza sha256=894349a2e183cceb9349e301904ba3a55feaf9aa45da9c02c30bb57ca149611a -->
 | Per frame, path mean | Sponza |
 |---|---|
-| Nodes visited / cut | 175 / 49 |
-| Clusters tested / kept | 371 / 300 |
-| Kept clusters: nothing set up / hidden / drawn | 11 / 43 / 246 |
-| Triangles submitted | 8369 |
-| Submitted triangles behind the near plane | 67 (1 %) |
-| Submitted triangles clipped | 77 (1 %) |
-| Submitted triangles miss every pixel centre | 2291 (27 %) |
-| Submitted triangles facing away | 704 (8 %) |
-| Submitted triangles set up | 5230 (62 %) |
-| Submitted triangles covering pixels | 2692 (32 %) |
+| Nodes visited / cut | 201 / 66 |
+| Clusters tested / kept | 427 / 353 |
+| Kept clusters: nothing set up / hidden / drawn | 22 / 75 / 256 |
+| Triangles submitted | 8233 |
+| Submitted triangles behind the near plane | 64 (1 %) |
+| Submitted triangles clipped | 65 (1 %) |
+| Submitted triangles miss every pixel centre | 2002 (24 %) |
+| Submitted triangles facing away | 899 (11 %) |
+| Submitted triangles set up | 5204 (63 %) |
+| Submitted triangles covering pixels | 2661 (32 %) |
 <!-- /generated: cull-sponza -->
 
 ## What a cluster and a triangle cost

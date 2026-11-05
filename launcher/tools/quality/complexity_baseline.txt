@@ -1099,8 +1099,8 @@
 5	launcher/main/apps/sand/tools/shading_palette.c:1364	ramps_stone_heat_grain
 5	launcher/main/apps/sand/tools/shading_palette.c:2132	write_gfx_color_array
 5	launcher/main/apps/sand/tools/shading_palette.c:2242	write_reverse_index
-5	launcher/main/board/board_esp32s3.c:49	board_detect
-5	launcher/main/board/board_panel.c:104	board_panel_open
+5	launcher/main/board/waveshare/esp32_s3_touch_amoled_1_8/board.c:49	board_detect
+5	launcher/main/board/waveshare/esp32_s3_touch_amoled_1_8/board_panel.c:104	board_panel_open
 5	launcher/main/boot/boot_anim.c:688	boot_anim_draw_frame
 5	launcher/main/boot/boot_anim.c:170	draw_grid_circle_segment
 5	launcher/main/boot/boot_anim.c:654	draw_image
@@ -1759,7 +1759,7 @@
 3	launcher/main/apps/sand/ui/options_screen.c:205	options_screen_draw
 3	launcher/main/apps/sand/ui/palette_screen.c:90	palette_screen_draw
 3	launcher/main/asset/asset_pack.c:76	reserved_is_zero
-3	launcher/main/board/board_esp32s3.c:105	board_temp_sensor_read_celsius
+3	launcher/main/board/waveshare/esp32_s3_touch_amoled_1_8/board.c:105	board_temp_sensor_read_celsius
 3	launcher/main/boot/boot_anim.c:733	boot_anim_run
 3	launcher/main/boot/boot_anim.c:185	draw_grid_circle
 3	launcher/main/draw/draw.c:518	draw_text_font_dither
@@ -2132,8 +2132,8 @@
 2	launcher/main/apps/sand/ui/title_screen.c:53	largest_title_scale
 2	launcher/main/asset/asset_file.c:56	asset_file_open
 2	launcher/main/asset/asset_pack.c:43	asset_pack_total_size
-2	launcher/main/board/board_esp32s3.c:92	board_audio_amp_enable
-2	launcher/main/board/board_panel.c:139	board_panel_bring_up
+2	launcher/main/board/waveshare/esp32_s3_touch_amoled_1_8/board.c:92	board_audio_amp_enable
+2	launcher/main/board/waveshare/esp32_s3_touch_amoled_1_8/board_panel.c:139	board_panel_bring_up
 2	launcher/main/gfx/present/gfx_debug.c:79	mark_rect_border
 2	launcher/main/gfx/present/gfx_debug.c:110	restore_border
 2	launcher/main/gfx/present/gfx_debug.c:97	save_border

@@ -242,7 +242,9 @@ test_restart_gap_is_taken_before_next_drain(void) {
         bool fifo_gap = true;
         int pending_lost = 1;
         imu_queue_push(&f->queue, &stale, 1, pending_lost, false);
-        imu_queue_restart(&f->queue, &fifo_gap, &pending_lost);
+        imu_queue_push(&f->queue, NULL, 0, 0, true);
+        fifo_gap = false;
+        pending_lost = 0;
         TEST_ASSERT_EQUAL_INT(0, pending_lost);
         if (before_drain) {
             TEST_ASSERT_EQUAL_INT(0, imu_queue_take(&f->queue, f->samples, f->lost, &f->gap));

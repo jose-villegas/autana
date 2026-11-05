@@ -10,6 +10,7 @@ width or height is empty. Queries clamp result sizes to zero.
 
 | Function | Purpose | Formula |
 |---|---|---|
+| `P_empty()` | empty rect at the origin; identity for union | $`(0, 0, 0, 0)`$ |
 | `P_right(r)` | exclusive right edge | $`r_x + r_w`$ |
 | `P_bottom(r)` | exclusive bottom edge | $`r_y + r_h`$ |
 | `P_from_edges(left, top, right, bottom)` | rectangle from half-open edges; crossed edges are empty | $`(left, top, \max(right-left,0), \max(bottom-top,0))`$ |
@@ -151,15 +152,18 @@ Circles and spheres store `centre` and nonnegative `radius`, including the bound
 | Function | Purpose | Formula |
 |---|---|---|
 | `P_contains_point(s, p)` | point inside or on the ball | $`\lVert p-c\rVert^2 \le r^2`$ |
+| `P_contains_ball(outer, inner, margin)` | inner ball fits with signed margin; touching counts | $`q=r_o-r_i-m`$<br>$`q \ge 0,\ \lVert c_o-c_i\rVert^2 \le q^2`$ |
 | `P_overlaps(a, b)` | balls share points, including tangency | $`\lVert c_a-c_b\rVert^2 \le (r_a+r_b)^2`$ |
 | `P_closest_point(c, p)` | p itself if inside, else the nearest boundary point (real only) | $`p`$ if inside, else $`c_c+(p-c_c)r/\lVert p-c_c\rVert`$ |
 | `P_segment_hit(s, a, c, &t)` | first real segment entry in `[0,1]`; inside starts at zero | $`m=a-s_c,\ v=c-a`$<br>$`A=v\cdot v,\ B=m\cdot v,\ f=m-(B/A)v`$<br>$`D=r^2-f\cdot f,\ t=(-B-\sqrt{AD})/A`$ |
 
 | Prefix | Generated ball functions |
 |---|---|
-| `circlef` | `circlef_contains_point`, `circlef_overlaps`, `circlef_closest_point`, `circlef_segment_hit` |
-| `circlei` | `circlei_contains_point`, `circlei_overlaps` |
-| `spheref` | `spheref_contains_point`, `spheref_overlaps`, `spheref_closest_point`, `spheref_segment_hit` |
+| `circlef` | `circlef_contains_point`, `circlef_contains_ball`, `circlef_overlaps`, `circlef_closest_point`, `circlef_segment_hit` |
+| `circlei` | `circlei_contains_point`, `circlei_contains_ball`, `circlei_overlaps` |
+| `spheref` | `spheref_contains_point`, `spheref_contains_ball`, `spheref_overlaps`, `spheref_closest_point`, `spheref_segment_hit` |
+
+Positive margins reserve clearance; negative margins allow protrusion. For `circlei_contains_ball`, centre components must be in `[INT_MIN/2, INT_MAX/2]`, and nonnegative room squared must fit `int64_t`.
 
 `P_segment_hit` uses Haines, Günther and Akenine-Möller's perpendicular-distance discriminant<sup>[[84]](../Citations.md#haines-2019)</sup> to avoid cancellation in the hit decision. It writes `t` only on a hit.
 
@@ -225,3 +229,26 @@ crossing sample edge.
 | Closed | A field below the level all round its border gives a closed surface |
 | Memory | Scratch is two slabs along x, so it does not grow with the field's length |
 | Parts | Parts over slabs `[0, a)`, `[a, b)`, … appended in x order make the whole surface's triangles; each needs its own scratch |
+
+## primitive_mesh
+
+The standard shapes as indexed triangles, for geometry made at run time or
+baked. Each shape is a struct of named parameters and one call that writes
+its positions and uint16 triangles into a `primitive_mesh_t` the caller
+owns; the shape's `primitive_counts_t` sizes those buffers first.
+
+| Call, parameters | What the parameters make | Vertices | Triangles |
+|---|---|---|---|
+| `primitive_plane`, `primitive_plane_t`, `primitive_plane_counts` | `subdivisions` $`n`$: the square of side 1 at z = 0, facing +z | $`(n+1)^2`$ | $`2n^2`$ |
+| `primitive_sphere`, `primitive_sphere_t`, `primitive_sphere_counts` | `segments` $`s`$, `rings` $`r`$: radius 1 | $`(r+1)(s+1)`$ | $`2s(r-1)`$ |
+| `primitive_cube`, `primitive_cube_t`, `primitive_cube_counts` | `subdivisions` $`n`$: side 1, each face a plane | $`6(n+1)^2`$ | $`12n^2`$ |
+| `primitive_capsule`, `primitive_capsule_t`, `primitive_capsule_counts` | `radius`, `height` between the hemispheres' centres, `segments` $`s`$, `rings` $`r`$ a hemisphere | $`(2r+2)(s+1)`$ | $`4sr`$ |
+| `primitive_cylinder`, `primitive_cylinder_t`, `primitive_cylinder_counts` | `top_radius`, `bottom_radius`, `height`, `segments` $`s`$, `stacks` $`k`$; $`c`$ ends of radius above 0 | $`(k+1)(s+1) + c(s+2)`$ | $`2s(k - 1 + c)`$ |
+
+| Rule | Detail |
+|---|---|
+| Frame | About the origin; round shapes turn about +y, from +y down |
+| Winding | As iso_surface: counter-clockwise about the outward normal, right-handed |
+| Seams and points | The seam's vertices, and a pole's or an apex's, repeat once per segment; a band beside a point has one triangle per segment |
+| Cone | A cylinder with one radius 0: no cap at that end. A quad is a plane of one subdivision |
+| Refusal | Parameters out of range, short buffers or more vertices than a uint16 index reaches: false, nothing written |

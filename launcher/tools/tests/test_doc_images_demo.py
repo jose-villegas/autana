@@ -89,6 +89,7 @@ class DocImageFailureTest(unittest.TestCase):
     def test_tables_use_the_callers_scene_and_object(self):
         sys.path.insert(0, str(ROOT / "launcher/tools/render"))
         import doc_tables
+        import check_avi
         import render_compare
         import numpy as np
         values = (1, 2, 3, 4, 5)
@@ -107,7 +108,7 @@ class DocImageFailureTest(unittest.TestCase):
             pair = SimpleNamespace(mean_delta_e=1, p95_delta_e=2, ssim_luma=3,
                                    edge_delta_e=4, interior_delta_e=5)
             with mock.patch.object(doc_tables, "scores", side_effect=scores) as read, \
-                    mock.patch.object(render_compare, "read_video", return_value=(None, [np.zeros((2, 2, 3), dtype=np.uint8)])), \
+                    mock.patch.object(check_avi, "read_video", return_value=(None, [np.zeros((2, 2, 3), dtype=np.uint8)])), \
                     mock.patch.object(render_compare, "reference_video", return_value=(None, pair)):
                 doc_tables.write_tables(work, work / "tables", "gallery", "painting", VARIANTS)
             self.assertIn(mock.call(work / "variant-painting_lite-compare.log"), read.call_args_list)
@@ -171,6 +172,7 @@ class DocImageFailureTest(unittest.TestCase):
         sys.path.insert(0, str(ROOT / "launcher/tools/render"))
         import bake_charts
         import doc_tables
+        import check_avi
         import render_compare
         import numpy as np
         from r3d import bake_fidelity
@@ -183,7 +185,7 @@ class DocImageFailureTest(unittest.TestCase):
             pair = SimpleNamespace(mean_delta_e=1, p95_delta_e=2, ssim_luma=0.5, edge_delta_e=3, interior_delta_e=4)
             # Every comparison log scores the same, whatever row write_tables asks it for.
             with mock.patch.object(doc_tables, "scores", return_value=collections.defaultdict(lambda: values)), \
-                    mock.patch.object(render_compare, "read_video", return_value=(None, [np.zeros((2, 2, 3), dtype=np.uint8)])), \
+                    mock.patch.object(check_avi, "read_video", return_value=(None, [np.zeros((2, 2, 3), dtype=np.uint8)])), \
                     mock.patch.object(render_compare, "reference_video", return_value=(None, pair)):
                 doc_tables.write_tables(work, work / "tables", "gallery", "painting", VARIANTS)
             bake_charts.write_charts(work / "tables", work / "render", "gallery")
@@ -290,14 +292,15 @@ class DocImageFailureTest(unittest.TestCase):
             root = pathlib.Path(directory)
             tools = root / "launcher/tools/render"
             tools.mkdir(parents=True)
-            for name in ("render_doc_images.sh", "doc_images_demo.sh", "doc_import_examples.py", "gif_from_avi.sh"):
+            for name in ("render_doc_images.sh", "doc_images_demo.sh", "doc_import_examples.py"):
                 shutil.copyfile(ROOT / "launcher/tools/render" / name, tools / name)
-            helper = root / "scripts/lib/run.sh"
-            helper.parent.mkdir(parents=True)
-            shutil.copyfile(ROOT / "scripts/lib/run.sh", helper)
-            packages = root / "launcher/tools/build/packages.sh"
-            packages.parent.mkdir(parents=True)
-            shutil.copyfile(ROOT / "launcher/tools/build/packages.sh", packages)
+            # The helpers --orphans sources, and the figures runner it asks for declared images.
+            for name in ("scripts/lib/run.sh", "scripts/lib/python.sh", "scripts/lib/python-min-version",
+                         "launcher/tools/build/packages.sh", "launcher/tools/build/find_cc.py",
+                         "launcher/tools/docs/producer.py", "launcher/tools/docs/figures_runner.py",
+                         "launcher/tools/render/compare_images.py", "scripts/gates/tracked.py"):
+                (root / name).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(ROOT / name, root / name)
             demo = root / "launcher/demo/gallery/gallery.scene.toml"
             demo.parent.mkdir(parents=True)
             demo.touch()

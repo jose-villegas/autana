@@ -72,7 +72,7 @@ def bake_of(key, tree, kind="mesh"):
                      tree=tree)
 
 
-def mesh_process_stub(item, cache, lock=None, blender=None):
+def mesh_process_stub(item, cache, lock=None, blender=None, fresh_references=None):
     cache = pathlib.Path(cache)
     if item.holder == "fail":
         (cache / "failed").touch()
@@ -535,7 +535,9 @@ class StageTests(unittest.TestCase):
 
     def test_a_stage_counts_its_entries_and_what_they_import(self):
         self.assertTrue({"r3d/mesh_import.py", "r3d/light.py", "r3d/__init__.py"} <= self.names("mesh"))
-        self.assertTrue({"r3d/appearance_simplify.py", "r3d/fitted_variant.py"} <= self.names("fit"))
+        self.assertTrue({"r3d/appearance_simplify.py", "r3d/fit/stage.py", "r3d/fit/copies.py"} <= self.names("fit"))
+        # The reference stage's entry is named by the fit's key through the reference key, so the fit stops there.
+        self.assertNotIn("r3d/fitted_variant.py", self.names("fit"))
 
     def test_modules_reached_through_sys_path_are_in_the_stages_that_import_them(self):
         for stage in ("mesh", "reference", "fit"):
@@ -657,10 +659,11 @@ class FittedBakeCase(unittest.TestCase):
         """Runs bake.py main over the tree with the lock (naming `mesh_cpu_vendor`), the runs' makes and this host's CPU
         vendor given and produce.produce stubbed: a start is made with MADE_SHA256, a fit with FIT_SHA256.
         Returns what it did."""
-        written, produced = [], []
+        written, produced, fresh = [], [], []
 
-        def stub(item, cache, lock=None, blender=None):
+        def stub(item, cache, lock=None, blender=None, fresh_references=None):
             produced.append(item)
+            fresh.append(fresh_references)
             return row_of(item, MADE_SHA256 if not item.packed else FIT_SHA256)
 
         out, err = io.StringIO(), io.StringIO()
@@ -673,7 +676,7 @@ class FittedBakeCase(unittest.TestCase):
                 contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             code = bake.main([*argv, str(self.root), "--cache", str(self.cache)])
         rows, kwargs = written[0] if written else ([], {})
-        return types.SimpleNamespace(code=code, out=out.getvalue(), err=err.getvalue(), produced=produced,
+        return types.SimpleNamespace(code=code, out=out.getvalue(), err=err.getvalue(), produced=produced, fresh=fresh,
                                      rows={row["output"]: row for row in rows}, written=bool(written),
                                      mesh_cpu_vendor=kwargs.get("mesh_cpu_vendor"))
 
@@ -745,6 +748,18 @@ class FittedBakeTests(FittedBakeCase):
         self.assertEqual(done.code, 0, done.err)
         self.assertIn(f"sha256 {MADE_SHA256}", done.out)
         self.assertEqual([item.key for item in done.produced], [self.start.key, self.fit(LOCKED_SHA256).key])
+
+    def test_a_bake_prunes_first_and_only_a_run_made_again_renders_fresh_references(self):
+        with mock.patch.object(produce, "prune_references") as prune:
+            plain = self.command(["bake"], self.locked(LOCKED_SHA256, run=RUN))
+            again = self.command(["bake", "--again"], self.locked(LOCKED_SHA256, run=RUN))
+        self.assertEqual([call.args for call in prune.call_args_list], [(self.cache,), (self.cache,)])
+        def fits(done):
+            return [fresh for item, fresh in zip(done.produced, done.fresh) if item.kind == "fit"]
+
+        self.assertEqual(fits(plain), [None])
+        self.assertEqual(len(fits(again)), 1)
+        self.assertIsNotNone(fits(again)[0], "a run made again gives its fits a folder of its own")
 
     def test_a_locked_start_is_not_made_and_keys_its_fit(self):
         done = self.command(["bake"], self.locked(LOCKED_SHA256, run=RUN))
@@ -1151,7 +1166,7 @@ class KeptWorkTests(FittedBakeCase):
         Returns its exit code and the outputs it made."""
         produced = []
 
-        def stub(item, cache, lock=None, blender=None):
+        def stub(item, cache, lock=None, blender=None, fresh_references=None):
             if item.output == fail:
                 raise bake.BakeMissing("the heavy lock was lost")
             produced.append(item.output)
@@ -1243,7 +1258,7 @@ class KeptWorkTests(FittedBakeCase):
             start = next(item for item in bake.bakes([root], {}) if not item.packed)
             lock = {start.key: {"output": start.output, "key": start.key, "sha256": lock_sha, "run": 1}}
 
-            def stub(item, cache, lock=None, blender=None):
+            def stub(item, cache, lock=None, blender=None, fresh_references=None):
                 if item.output == last:
                     (root / "started").touch()
                     time.sleep(600)
@@ -1710,6 +1725,45 @@ class ProduceTests(unittest.TestCase):
         self.assertEqual(len(made), 1, "a done folder is not made again")
         self.assertFalse(made[0].exists(), "the partial folder was renamed into place")
 
+    def test_a_run_made_again_renders_each_reference_set_once_and_logs_which(self):
+        renders = []
+
+        def prepare(inputs, partial):
+            renders.append(inputs)
+            (partial / "frame.png").write_bytes(b"frame")
+
+        def read(fresh=None):
+            produce.reference_set("k" * 64, "job", None, self.cache, fresh)
+
+        with mock.patch("r3d.reference_set.reference_inputs", side_effect=lambda job, scene: job), \
+             mock.patch("r3d.reference_set.prepare_references", side_effect=prepare), \
+             contextlib.redirect_stdout(io.StringIO()) as printed:
+            read()
+            read()
+            shared = self.cache / produce.REFERENCES / ("k" * 64) / produce.DONE
+            made_at = shared.stat().st_mtime_ns
+            read(self.root / "again")
+            read(self.root / "again")
+        self.assertEqual(len(renders), 2, "a set is rendered when missing, and once more in a run made again")
+        self.assertEqual(shared.stat().st_mtime_ns, made_at, "a run made again leaves the shared set alone")
+        self.assertTrue((self.root / "again" / ("k" * 64) / produce.DONE).is_file())
+        self.assertEqual(printed.getvalue().splitlines(),
+                         [f"reference {'k' * 64}: {how}" for how in ("rendered", "reused", "rendered", "reused")])
+
+    def test_reference_sets_unread_for_the_keep_days_are_pruned_and_a_read_keeps_one(self):
+        references = self.cache / produce.REFERENCES
+        now = time.time()
+        stale = now - (produce.REFERENCE_KEEP_DAYS + 1) * produce.DAY_S
+        recent = now - (produce.REFERENCE_KEEP_DAYS - 1) * produce.DAY_S
+        for name, age in {"old": stale, "old" + produce.PRUNED: stale, "read": stale, "new": recent,
+                          "cut.partial": stale}.items():
+            (references / name).mkdir(parents=True)
+            os.utime(references / name, (age, age))
+        produce.read_references(references / "read")
+        produce.read_references(references / "absent")
+        produce.prune_references(self.cache, now)
+        self.assertEqual(sorted(path.name for path in references.iterdir()), ["new", "read"])
+
     def test_publish_takes_a_rows_file_from_its_run(self):
         row = self.produce()
         out = self.root / "upload"
@@ -2008,3 +2062,12 @@ class SkipUnlockedTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_reference_closure_traces_source_only():
+    files = {path.relative_to(bake.TOOLS).as_posix() for path in bake.stage_files("reference")}
+    assert "r3d/reference_render.py" in files
+    assert "r3d/mesh_source.py" in files
+    assert "r3d/simplify.py" not in files
+    assert "r3d/meshopt.py" not in files
+    assert not any(path.startswith("r3d/objects/") for path in files)

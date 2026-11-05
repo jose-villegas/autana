@@ -39,7 +39,7 @@ motion_reader_reset(void) {
     gravity_reset(&gravity);
     imu_rest_reset(&rest);
     shake_reset(&shake);
-    down = (vec3f_t){0, 1, 0};
+    down = vec3f_unit_y();
     updated_us = INT64_MIN;
     updated_sequence = 0;
 }
@@ -64,10 +64,10 @@ static void
 update_without_sample(void) {
     imu_rest_reset(&rest);
     if (!imu_ready()) {
-        down = (vec3f_t){0, 1, 0};
+        down = vec3f_unit_y();
         shake_reset(&shake);
     } else if (updated_us == INT64_MIN) {
-        down = (vec3f_t){0};
+        down = vec3f_zero();
         shake_reset(&shake);
     }
 }
@@ -116,7 +116,7 @@ update(void) {
     gravity_update(&gravity, &sample, dt_us);
     update_rest_learning(&sample, elapsed);
     shake_update(&shake, gravity_linear(&gravity), dt_us);
-    down = gravity_in_free_fall(&gravity) ? (vec3f_t){0} : gravity_down(&gravity);
+    down = gravity_in_free_fall(&gravity) ? vec3f_zero() : gravity_down(&gravity);
 #if CONFIG_LAUNCHER_DEVELOPMENT
     if (log_ms > 0 && now_us - last_log_us >= (int64_t)log_ms * MATH_US_PER_MS) {
         ESP_LOGI("motion", "shake_smooth_mg %d", (int)lroundf(shake.smooth_g * MOTION_MG_PER_G));

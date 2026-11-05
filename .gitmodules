@@ -12,3 +12,6 @@
 	path = third_party/upstream/ufbx
 	url = https://github.com/ufbx/ufbx.git
 	branch = v0.23.1
+[submodule "third_party/upstream/tlsf"]
+	path = third_party/upstream/tlsf
+	url = https://github.com/espressif/tlsf.git

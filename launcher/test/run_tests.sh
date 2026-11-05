@@ -60,6 +60,7 @@ TEST_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 MAIN_DIR=$(CDPATH= cd -- "$TEST_DIR/../main" && pwd)
 # shellcheck disable=SC1007
 LAUNCHER_DIR=$(CDPATH= cd -- "$TEST_DIR/.." && pwd)
+TLSF_DIR="$LAUNCHER_DIR/../third_party/tlsf"
 # --build-dir keeps two runs from clobbering each other: the build dir holds
 # one host_tests binary, so concurrent runs (two terminals, a sweep script
 # running beside a manual run) otherwise race to compile and execute the
@@ -133,13 +134,13 @@ $TEST_DIR/job_calls.c
 $TEST_DIR/test_asset_dir.c
 $TEST_DIR/test_fence.c
 $MAIN_DIR/sound/sound_mixer.c
-$MAIN_DIR/power/power_decode.c
+$MAIN_DIR/power/axp2101/axp2101_decode.c
+$MAIN_DIR/power/power_names.c
 $MAIN_DIR/power/power_cache.c
 $MAIN_DIR/power/power_log.c
 $MAIN_DIR/audio/audio_tone.c
 $MAIN_DIR/audio/audio_frequency.c
 $MAIN_DIR/audio/audio_loopback_detector.c
-$MAIN_DIR/app/app_arena.c
 $MAIN_DIR/console/console_words.c
 $MAIN_DIR/app/app_registry.c
 $MAIN_DIR/shell/shell_system.c
@@ -261,9 +262,10 @@ case "${1:-}" in
         ;;
     --print-flags)
         printf '%s\n' -std=c11 -Wall -Wextra -Wno-unused-parameter -g -O1 \
-            -I "$MAIN_DIR" $(package_includes "$LAUNCHER_DIR") \
+            $(firmware_includes "$LAUNCHER_DIR") \
             -I "$TEST_DIR" $(testkit_includes "$TEST_DIR/..") -I "$TEST_DIR/stubs" \
             -I "$TEST_DIR/../components/microui/include" \
+            -I "$TLSF_DIR" -I "$TLSF_DIR/include" \
             -I "$TEST_DIR/../tools/gen" -I "$TEST_DIR/../tools/r3d" $HEAP_ARENA_DEFINES \
             -include "$TEST_DIR/timing.h"
         exit 0
@@ -377,15 +379,15 @@ mkdir -p "$BUILD_DIR/$OBJ_DIR" "$SU_DIR"
 
 CC_MK=$CC_BIN
 case "$CC_BIN" in */* | *\\*) CC_MK=$(native "$CC_BIN") ;; esac
-MAIN_N=$(native "$MAIN_DIR")
 TEST_N=$(native "$TEST_DIR")
 LAUNCHER_N=$(native "$LAUNCHER_DIR")
 BUILD_N=$(native "$BUILD_DIR")
-PACKAGE_INC=""
-for include_dir in $(package_include_dirs "$LAUNCHER_DIR"); do
-    PACKAGE_INC="$PACKAGE_INC -I $(native "$include_dir")"
+FIRMWARE_INC=""
+for include_dir in $(firmware_include_dirs "$LAUNCHER_DIR"); do
+    FIRMWARE_INC="$FIRMWARE_INC -I $(native "$include_dir")"
 done
-COMMON_INC="-I $MAIN_N$PACKAGE_INC -I $TEST_N $(testkit_includes "$LAUNCHER_N") -I $TEST_N/stubs"
+TLSF_N=$(native "$TLSF_DIR")
+COMMON_INC="-I $TLSF_N -I $TLSF_N/include $FIRMWARE_INC -I $TEST_N $(testkit_includes "$LAUNCHER_N") -I $TEST_N/stubs"
 TEST_INC="$COMMON_INC -I $LAUNCHER_N/components/microui/include -I $LAUNCHER_N/tools/gen -I $LAUNCHER_N/tools/r3d"
 LDFLAGS="-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -Wl,--wrap=asset_store_load -Wl,--wrap=asset_store_backend_report -Wl,--wrap=job_try_core1 -Wl,--wrap=job_run_steered -Wl,--wrap=draw_line_ex -pthread -lm"
 
@@ -412,7 +414,7 @@ printf '%s\n' $SU_SOURCES | sed '/^$/d' | to_native | squash >"$SU_LIST"
 # "name source" pairs feed awk, so the whole Makefile costs a handful of
 # process launches (each one is expensive under MSYS).
 pairs() { # source-list-file
-    sed -e "s|^$LAUNCHER_N/||" -e 's|/|__|g' -e 's|\.c$||' "$1" | paste -d' ' - "$1"
+    sed -e "s|^$LAUNCHER_N/||" -e 's|:|_|g' -e 's|/|__|g' -e 's|\.c$||' "$1" | paste -d' ' - "$1"
 }
 UNITY_OBJECT=$(printf '%s/packages/testkit/unity/unity.c\n' "$LAUNCHER_N" | pairs /dev/stdin | cut -d' ' -f1)
 OBJ_PAIRS=$(pairs "$SRC_LIST")
@@ -543,10 +545,17 @@ if [ "$SANITIZE" = 1 ] && [ "$(uname -s)" = Linux ]; then
     # Control ids are value addresses and must stay stable across frames, as on the device.
     ASAN_OPTIONS="${ASAN_OPTIONS:+$ASAN_OPTIONS:}detect_stack_use_after_return=0"
     export ASAN_OPTIONS
-    host_run "$OUT"
-else
-    host_run "$OUT"
 fi
+# The run's output is also kept, so it fails on the same signs a board capture
+# fails on, a test name reported twice among them (RUN_TEST_CASE in suites.h).
+# shellcheck source=../../scripts/quiet.sh
+. "$TEST_DIR/../../scripts/quiet.sh"
+HOST_LOG="$BUILD_DIR/host_run.log"
+: >"$HOST_LOG"
+quiet_tee "$HOST_LOG" host_run "$OUT"
+HOST_STATUS=$QUIET_TEE_STATUS
+"$PYTHON" "$TEST_DIR/../../scripts/lib/device_capture.py" "$HOST_LOG" || HOST_STATUS=1
+[ "$HOST_STATUS" -eq 0 ] || exit "$HOST_STATUS"
 
 "$PYTHON" "$TEST_DIR/../tools/tests/table_invalid_packs.py" -o "$BUILD_DIR"
 

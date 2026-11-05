@@ -91,6 +91,22 @@ class RefreshBranchTests(unittest.TestCase):
         self.assertFalse(self.refresh(images=()))
         self.assertEqual(git("branch", "--list", "refresh", cwd=self.remote), "")
 
+    def test_what_derive_regenerates_from_the_images_lands_in_the_same_commit(self):
+        def derive(root, images):
+            self.assertEqual((root / "docs/images/a.png").read_text(), "new pixels")
+            write(root / "docs/index.md", ",".join(images) + "\n")
+            git("add", "--", "docs/index.md", cwd=root)
+        refresh_branch.refresh(self.run, "refresh", "refresh", None, ["docs/images/a.png"], derive=derive)
+        self.assertEqual(self.branch_file("docs/index.md"), "docs/images/a.png\n")
+        self.assertEqual(git("rev-list", "--count", "main..refresh", cwd=self.remote).strip(), "1")
+
+    def test_the_figure_index_runs_only_when_a_doc_image_changed(self):
+        with mock.patch.object(refresh_branch.subprocess, "run") as run, mock.patch.object(refresh_branch, "git"):
+            refresh_branch.figure_index(self.run, ["launcher/idf-pin.json"])
+            run.assert_not_called()
+            refresh_branch.figure_index(self.run, ["launcher/idf-pin.json", "docs/images/a.png"])
+            self.assertIn("index", run.call_args.args[0])
+
 
 
 if __name__ == "__main__":

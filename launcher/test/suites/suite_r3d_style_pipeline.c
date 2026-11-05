@@ -25,7 +25,50 @@
 #include <string.h>
 #include "asset/asset_pack.h"
 #include "hash/crc32.h"
+#include "render/r3d_span.h"
+
+/* Fills the pipeline asked for, counted on their way to the real ones. */
+typedef struct {
+    int plain, solid, capped;
+} fill_counts_t;
+
+static fill_counts_t fills;
+
+static void
+counted_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                 const r3d_span_vertex_t* c) {
+    fills.plain++;
+    constant_r3d_span_triangle(target, a, b, c);
+}
+
+static void
+counted_triangle_solid(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                       const r3d_span_vertex_t* c, uint16_t color) {
+    fills.solid++;
+    constant_r3d_span_triangle_solid(target, a, b, c, color);
+}
+
+static void
+counted_capped_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                        const r3d_span_vertex_t* c, const uint16_t* face) {
+    fills.capped++;
+    constant_r3d_span_capped_triangle(target, a, b, c, face);
+}
+
+/* The pipeline calls the counting fills; the suite's own calls reach the real ones. */
+#undef r3d_span_triangle
+#undef r3d_span_triangle_solid
+#undef r3d_span_capped_triangle
+#define r3d_span_triangle        counted_triangle
+#define r3d_span_triangle_solid  counted_triangle_solid
+#define r3d_span_capped_triangle counted_capped_triangle
 #include "render/r3d_pipeline.c"
+#undef r3d_span_triangle
+#undef r3d_span_triangle_solid
+#undef r3d_span_capped_triangle
+#define r3d_span_triangle        constant_r3d_span_triangle
+#define r3d_span_triangle_solid  constant_r3d_span_triangle_solid
+#define r3d_span_capped_triangle constant_r3d_span_capped_triangle
 #include "render/r3d_span.c"
 #include "suites.h"
 #include "unity.h"
@@ -97,7 +140,7 @@ test_styles_match_pipeline_colours(void) {
     const uint16_t triangle[3] = {0, 1, 2};
     const r3d_lit_cluster_t cluster = {.vertex_count = 3};
     const r3d_lit_mesh_t mesh = {.positions = positions, .colors = (const uint8_t (*)[3])colours, .clusters = &cluster};
-    const r3d_lens_t lens = {.m = MAT4F_IDENTITY,
+    const r3d_lens_t lens = {.m = mat4f_identity(),
                              .project = {1.0F, -1.0F, 0.0F, 0.0F, 1.0F},
                              .depth_near = 1.0F,
                              .snap_cx = R3D_SNAP_BIAS,
@@ -121,7 +164,7 @@ test_styles_match_pipeline_colours(void) {
         expected.small_fill = actual.small_fill = &resolved;
         memset(pixels, 0, TEST_PIXELS * 4 * sizeof(*pixels));
         r3d_span_triangle(&expected, reference, reference + 1, reference + 2);
-        draw_in_front(&mesh, vertices, triangle, NULL, true, &actual, false, false, work);
+        draw_in_front(&mesh, vertices, triangle, NULL, true, &actual, 0U);
         TEST_ASSERT_EQUAL_MEMORY(pixels, pixels + TEST_PIXELS * 2, TEST_PIXELS * 2 * sizeof(*pixels));
         int coloured = 0;
         for (int i = 0; i < TEST_PIXELS; i++) {
@@ -145,7 +188,7 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
     const r3d_lit_cluster_t cluster = {.vertex_count = 6, .triangle_count = 2, .double_sided = true};
     const r3d_lit_mesh_t mesh = {
         .positions = positions, .colors = colors, .triangles = triangles, .clusters = &cluster};
-    const r3d_lens_t lens = {.m = MAT4F_IDENTITY,
+    const r3d_lens_t lens = {.m = mat4f_identity(),
                              .project = {1.0F, -1.0F, 0.0F, 0.0F, 1.0F},
                              .depth_near = 1.0F,
                              .snap_cx = R3D_SNAP_BIAS,
@@ -186,7 +229,7 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
                 r3d_span_triangle(expected, front, front + 1, front + 2);
             }
             draw_triangles(&mesh, &lens, &cluster, cluster.triangle_first, cluster.triangle_first + (mixed ? 2 : 1),
-                           transformed, actual, false, false, work);
+                           transformed, actual, 0U, work);
             TEST_ASSERT_EQUAL_MEMORY(pixels, pixels + TEST_PIXELS * 2, TEST_PIXELS * 2 * sizeof(*pixels));
             int covered = 0;
             for (int i = 0; i < TEST_PIXELS; i++) {
@@ -291,7 +334,7 @@ test_transform_matches_lens_projection_bits(void) {
     const r3d_lit_cluster_t cluster = {.vertex_count = 1};
     const uint16_t index = 0;
     for (size_t scale = 0; scale < sizeof scales / sizeof scales[0]; scale++) {
-        r3d_lens_t lens = {.m = MAT4F_IDENTITY,
+        r3d_lens_t lens = {.m = mat4f_identity(),
                            .project.near_z = 1.0F,
                            .snap_cx = R3D_SNAP_BIAS + 0.75F,
                            .snap_cy = R3D_SNAP_BIAS - 0.25F};
@@ -341,7 +384,7 @@ static void
 test_transform_pairs_and_odd_tail(void) {
     static const int16_t positions[TRANSFORM_PAIR_VERTICES][3] = {{1, -3, 4}, {2, 7, 5},    {-4, 2, 6},  {3, -8, 7},
                                                                   {5, 9, 8},  {-6, -11, 9}, {7, 13, 10}, {-8, -15, 11}};
-    const r3d_lens_t lens = {.m = MAT4F_IDENTITY,
+    const r3d_lens_t lens = {.m = mat4f_identity(),
                              .project.near_z = 1.0F,
                              .depth_near = 1.0F,
                              .snap_cx = R3D_SNAP_BIAS + 0.75F,
@@ -483,9 +526,9 @@ scene_draws_alike_with_the_hidden_test_on_and_off(bool writes) {
         target.skip_hidden = run == 0;
         r3d_pipeline_draw(&mesh, &lens, NEAREST_FIRST, SCENE_CLUSTERS, scene->cs, scene->rows, &target, work);
         if (run == 0) {
-            TEST_ASSERT_TRUE(cluster_skipped(&scene->rows[BEHIND_WALL_NEAR], &target, true));
-            TEST_ASSERT_TRUE(cluster_skipped(&scene->rows[BEHIND_WALL_FAR], &target, true));
-            TEST_ASSERT_FALSE(cluster_skipped(&scene->rows[PARTLY_BEHIND], &target, true));
+            TEST_ASSERT_TRUE(cluster_skipped(&scene->rows[BEHIND_WALL_NEAR], &target, DRAW_SKIPPING));
+            TEST_ASSERT_TRUE(cluster_skipped(&scene->rows[BEHIND_WALL_FAR], &target, DRAW_SKIPPING));
+            TEST_ASSERT_FALSE(cluster_skipped(&scene->rows[PARTLY_BEHIND], &target, DRAW_SKIPPING));
         }
     }
     const size_t bytes = (size_t)SCENE_W * SCENE_H * sizeof(uint16_t);
@@ -512,6 +555,233 @@ test_the_hidden_test_changes_no_pixel_of_a_writing_draw(void) {
     scene_draws_alike_with_the_hidden_test_on_and_off(true);
 }
 
+/* Three clusters: a quad wholly in range, a triangle with one vertex behind
+ * the near plane, and one with a vertex far outside the fast range. */
+enum { BOUNDED_QUAD, ACROSS_NEAR, OFF_RANGE, BOUNDED_SCENE_CLUSTERS };
+
+/* The vertex behind the near plane, raw: lens-space x and y are these over
+ * R3D_SUBPIXEL, so the clip leaves a wide polygon on screen. */
+#define BEHIND_NEAR_RAW_X 700
+#define BEHIND_NEAR_RAW_Y 400
+#define OFF_RANGE_PIXEL   1500
+#define OFF_RANGE_Z       1
+/* Pixels of each cluster that no other one covers. */
+#define QUAD_PROBE_X      10
+#define QUAD_PROBE_Y      10
+#define ACROSS_PROBE_X    35
+#define ACROSS_PROBE_Y    12
+#define OFF_RANGE_PROBE_X 31
+#define OFF_RANGE_PROBE_Y 38
+#define UNTOUCHED_COLOUR  0x1234
+
+static void
+build_bounded_scene(void) {
+    static const float quad[4][2] = {{2, 2}, {20, 2}, {20, 30}, {2, 30}};
+    static const float across[3][2] = {{0, 0}, {26, 10}, {44, 10}};
+    static const float off_range[3][2] = {{30, 36}, {OFF_RANGE_PIXEL, 36}, {30, 46}};
+    static const uint8_t red[3] = {255, 0, 0}, green[3] = {0, 255, 0}, blue[3] = {0, 0, 255};
+    scene_add(quad, 4, 2, red);
+    scene_add(across, 3, 4, green);
+    scene->positions[scene->clusters[ACROSS_NEAR].vertex_first][0] = BEHIND_NEAR_RAW_X;
+    scene->positions[scene->clusters[ACROSS_NEAR].vertex_first][1] = BEHIND_NEAR_RAW_Y;
+    scene->positions[scene->clusters[ACROSS_NEAR].vertex_first][2] = 0;
+    scene_add(off_range, 3, OFF_RANGE_Z, blue);
+}
+
+static const uint16_t BOUNDED_SCENE_ORDER[BOUNDED_SCENE_CLUSTERS] = {BOUNDED_QUAD, ACROSS_NEAR, OFF_RANGE};
+
+/* Drawn with the rows the transform made, and again without them, every
+ * plane ends the same: a bounded cluster may skip the per-triangle tests,
+ * the others may not. */
+static void
+test_rows_change_no_pixel_of_a_draw(void) {
+    for (int writes = 0; writes <= 1; writes++) {
+        for (int skipping = 0; skipping <= 1; skipping++) {
+            cleanup();
+            scene_open();
+            build_bounded_scene();
+            const r3d_lit_mesh_t mesh = scene_mesh();
+            const r3d_lens_t lens = pixel_lens();
+            r3d_pipeline_transform(&mesh, &lens, BOUNDED_SCENE_ORDER, BOUNDED_SCENE_CLUSTERS, scene->cs, scene->rows,
+                                   true);
+            TEST_ASSERT_FALSE(scene->rows[BOUNDED_QUAD].unbounded);
+            TEST_ASSERT_TRUE(scene->rows[ACROSS_NEAR].unbounded);
+            TEST_ASSERT_TRUE(scene->rows[OFF_RANGE].unbounded);
+            r3d_span_writer_t writers[2];
+            for (int run = 0; run < 2; run++) {
+                for (int i = 0; i < SCENE_W * SCENE_H; i++) {
+                    plane(run, PLANE_DEPTH)[i] = R3D_DEPTH_EMPTY;
+                }
+                r3d_span_target_t target = scene_target(run, SCENE_H, writes ? &writers[run] : NULL);
+                target.skip_hidden = skipping;
+                r3d_pipeline_draw(&mesh, &lens, BOUNDED_SCENE_ORDER, BOUNDED_SCENE_CLUSTERS, scene->cs,
+                                  run == 0 ? scene->rows : NULL, &target, work);
+            }
+            const size_t bytes = (size_t)SCENE_W * SCENE_H * sizeof(uint16_t);
+            for (int kind = PLANE_COLOUR; kind <= (writes ? PLANE_TAG : PLANE_DEPTH); kind++) {
+                TEST_ASSERT_EQUAL_MEMORY(plane(1, kind), plane(0, kind), bytes);
+            }
+            const int probes[BOUNDED_SCENE_CLUSTERS] = {pixel_index(QUAD_PROBE_X, QUAD_PROBE_Y),
+                                                        pixel_index(ACROSS_PROBE_X, ACROSS_PROBE_Y),
+                                                        pixel_index(OFF_RANGE_PROBE_X, OFF_RANGE_PROBE_Y)};
+            for (int c = 0; c < BOUNDED_SCENE_CLUSTERS; c++) {
+                TEST_ASSERT_NOT_EQUAL_UINT16(R3D_DEPTH_EMPTY, plane(0, PLANE_DEPTH)[probes[c]]);
+                if (writes) {
+                    TEST_ASSERT_EQUAL_UINT16(TAG_BASE + c, plane(0, PLANE_TAG)[probes[c]]);
+                }
+            }
+        }
+    }
+}
+
+/* Every fill the draw asked for, whichever kind. */
+static int
+fills_total(void) {
+    return fills.plain + fills.solid + fills.capped;
+}
+
+/* The wall scene's triangles: the wall has two, the clear cluster two, the
+ * other three clusters one each. Skipping drops the two wholly behind it. */
+#define WALL_SCENE_FILLS        7
+#define WALL_SCENE_HIDDEN_FILLS 2
+
+/* With the hidden test on, a draw never reaches a fill for a cluster wholly
+ * behind the wall, and every fill it does reach is the capped one; with it
+ * off every triangle is filled, none capped. */
+static void
+hidden_clusters_reach_no_fill(bool writes) {
+    for (int skipping = 0; skipping <= 1; skipping++) {
+        cleanup();
+        scene_open();
+        build_wall_scene();
+        const r3d_lit_mesh_t mesh = scene_mesh();
+        const r3d_lens_t lens = pixel_lens();
+        r3d_pipeline_transform(&mesh, &lens, NEAREST_FIRST, SCENE_CLUSTERS, scene->cs, scene->rows, true);
+        r3d_span_writer_t writer;
+        r3d_span_target_t target = scene_target(0, SCENE_H, writes ? &writer : NULL);
+        target.skip_hidden = skipping;
+        memset(&fills, 0, sizeof fills);
+        r3d_pipeline_draw(&mesh, &lens, NEAREST_FIRST, SCENE_CLUSTERS, scene->cs, scene->rows, &target, work);
+        if (skipping) {
+            TEST_ASSERT_EQUAL_INT(WALL_SCENE_FILLS - WALL_SCENE_HIDDEN_FILLS, fills_total());
+            TEST_ASSERT_EQUAL_INT(fills_total(), fills.capped);
+        } else {
+            TEST_ASSERT_EQUAL_INT(WALL_SCENE_FILLS, fills_total());
+            TEST_ASSERT_EQUAL_INT(0, fills.capped);
+        }
+    }
+}
+
+static void
+test_a_reading_draw_reaches_no_fill_for_a_hidden_cluster_only_when_skipping(void) {
+    hidden_clusters_reach_no_fill(false);
+}
+
+static void
+test_a_writing_draw_reaches_no_fill_for_a_hidden_cluster_only_when_skipping(void) {
+    hidden_clusters_reach_no_fill(true);
+}
+
+/* One cluster of the bounded scene drawn alone, with no rows so none is
+ * skipped. */
+static void
+draw_one_cluster_counting_fills(int cluster, bool writes, bool skipping) {
+    cleanup();
+    scene_open();
+    build_bounded_scene();
+    const r3d_lit_mesh_t mesh = scene_mesh();
+    const r3d_lens_t lens = pixel_lens();
+    const uint16_t only = (uint16_t)cluster;
+    r3d_pipeline_transform(&mesh, &lens, &only, 1, scene->cs, scene->rows, true);
+    r3d_span_writer_t writer;
+    r3d_span_target_t target = scene_target(0, SCENE_H, writes ? &writer : NULL);
+    target.skip_hidden = skipping;
+    memset(&fills, 0, sizeof fills);
+    r3d_pipeline_draw(&mesh, &lens, &only, 1, scene->cs, NULL, &target, work);
+}
+
+/* The capped fill runs for every triangle when skipping, the plain one when
+ * not, on the in-front path and on the clipped one alike. */
+static void
+test_skipping_selects_the_capped_fill_in_front_and_clipped(void) {
+    static const int clusters[] = {BOUNDED_QUAD, ACROSS_NEAR, OFF_RANGE};
+    for (size_t k = 0; k < sizeof clusters / sizeof clusters[0]; k++) {
+        for (int writes = 0; writes <= 1; writes++) {
+            draw_one_cluster_counting_fills(clusters[k], writes, true);
+            TEST_ASSERT_GREATER_THAN(0, fills.capped);
+            TEST_ASSERT_EQUAL_INT(fills.capped, fills_total());
+            draw_one_cluster_counting_fills(clusters[k], writes, false);
+            TEST_ASSERT_GREATER_THAN(0, fills.plain);
+            TEST_ASSERT_EQUAL_INT(fills.plain, fills_total());
+        }
+    }
+}
+
+/* A cluster the rows call bounded is drawn from its vertices as given, so a
+ * vertex hand-set to inverse depth 0 does not send it to the clip; without
+ * rows the same vertices send it there, and it is drawn from the mesh. The
+ * vertices are also moved right, so the two ends are told apart. */
+#define SHIFT_PIXELS    30
+#define SHIFTED_PROBE_X (QUAD_PROBE_X + SHIFT_PIXELS)
+
+static void
+test_bounded_rows_skip_the_per_triangle_depth_test(void) {
+    for (int skipping = 0; skipping <= 1; skipping++) {
+        for (int with_rows = 0; with_rows <= 1; with_rows++) {
+            cleanup();
+            scene_open();
+            build_bounded_scene();
+            const r3d_lit_mesh_t mesh = scene_mesh();
+            const r3d_lens_t lens = pixel_lens();
+            const uint16_t only = BOUNDED_QUAD;
+            r3d_pipeline_transform(&mesh, &lens, &only, 1, scene->cs, scene->rows, true);
+            TEST_ASSERT_FALSE(scene->rows[BOUNDED_QUAD].unbounded);
+            const r3d_lit_cluster_t* c = &scene->clusters[BOUNDED_QUAD];
+            for (int v = c->vertex_first; v < c->vertex_first + c->vertex_count; v++) {
+                scene->cs[v].sx = (int16_t)(scene->cs[v].sx + (SHIFT_PIXELS * R3D_SUBPIXEL));
+            }
+            scene->cs[c->vertex_first].iz = 0.0F;
+            r3d_span_target_t target = scene_target(0, SCENE_H, NULL);
+            target.skip_hidden = skipping;
+            r3d_pipeline_draw(&mesh, &lens, &only, 1, scene->cs, with_rows ? scene->rows : NULL, &target, work);
+            const uint16_t* colour = plane(0, PLANE_COLOUR);
+            TEST_ASSERT_EQUAL(!with_rows, colour[pixel_index(QUAD_PROBE_X, QUAD_PROBE_Y)] != 0);
+            TEST_ASSERT_EQUAL(with_rows, colour[pixel_index(SHIFTED_PROBE_X, QUAD_PROBE_Y)] != 0);
+        }
+    }
+}
+
+/* Infinite depth leaves every vertex at inverse depth 0 yet the cluster
+ * bounded; its triangles must draw nothing, with the rows and without. */
+static void
+test_infinite_depth_bounded_cluster_draws_nothing(void) {
+    scene_open();
+    static const float triangle[3][2] = {{10, 10}, {30, 10}, {10, 30}};
+    static const uint8_t white[3] = {255, 255, 255};
+    scene_add(triangle, 3, 2, white);
+    const r3d_lit_mesh_t mesh = scene_mesh();
+    r3d_lens_t lens = pixel_lens();
+    lens.m.m[2][MAT3F_AXES] = INFINITY;
+    const uint16_t only = 0;
+    r3d_pipeline_transform(&mesh, &lens, &only, 1, scene->cs, scene->rows, true);
+    TEST_ASSERT_FALSE(scene->rows[0].unbounded);
+    for (int v = 0; v < 3; v++) {
+        TEST_ASSERT_EQUAL_FLOAT(0.0F, scene->cs[v].iz);
+    }
+    for (int run = 0; run < 2; run++) {
+        for (int i = 0; i < SCENE_W * SCENE_H; i++) {
+            plane(run, PLANE_COLOUR)[i] = UNTOUCHED_COLOUR;
+            plane(run, PLANE_DEPTH)[i] = R3D_DEPTH_EMPTY;
+        }
+        r3d_span_target_t target = scene_target(run, SCENE_H, NULL);
+        r3d_pipeline_draw(&mesh, &lens, &only, 1, scene->cs, run == 0 ? scene->rows : NULL, &target, work);
+        for (int i = 0; i < SCENE_W * SCENE_H; i++) {
+            TEST_ASSERT_EQUAL_UINT16(UNTOUCHED_COLOUR, plane(run, PLANE_COLOUR)[i]);
+            TEST_ASSERT_EQUAL_UINT16(R3D_DEPTH_EMPTY, plane(run, PLANE_DEPTH)[i]);
+        }
+    }
+}
+
 static void
 test_transform_nonfinite_paths(void) {
     static const int16_t positions[1][3] = {{1, 1, 2}};
@@ -522,7 +792,7 @@ test_transform_nonfinite_paths(void) {
     for (int axis = 0; axis < MAT3F_AXES; axis++) {
         for (size_t i = 0; i < sizeof nonfinite / sizeof nonfinite[0]; i++) {
             r3d_lens_t lens = {
-                .m = MAT4F_IDENTITY, .project.near_z = 1.0F, .snap_cx = R3D_SNAP_BIAS, .snap_cy = R3D_SNAP_BIAS};
+                .m = mat4f_identity(), .project.near_z = 1.0F, .snap_cx = R3D_SNAP_BIAS, .snap_cy = R3D_SNAP_BIAS};
             r3d_lens_set_depth_near(&lens, lens.project.near_z);
             lens.m.m[axis][MAT3F_AXES] = nonfinite[i];
             r3d_pipeline_vertex_t out = {.sx = INT16_MIN, .sy = INT16_MIN};
@@ -577,6 +847,12 @@ run_r3d_style_pipeline_suite(void) {
     RUN_TEST(test_styles_match_pipeline_colours);
     RUN_TEST(test_the_hidden_test_changes_no_pixel_of_a_reading_draw);
     RUN_TEST(test_the_hidden_test_changes_no_pixel_of_a_writing_draw);
+    RUN_TEST(test_rows_change_no_pixel_of_a_draw);
+    RUN_TEST(test_infinite_depth_bounded_cluster_draws_nothing);
+    RUN_TEST(test_a_reading_draw_reaches_no_fill_for_a_hidden_cluster_only_when_skipping);
+    RUN_TEST(test_a_writing_draw_reaches_no_fill_for_a_hidden_cluster_only_when_skipping);
+    RUN_TEST(test_skipping_selects_the_capped_fill_in_front_and_clipped);
+    RUN_TEST(test_bounded_rows_skip_the_per_triangle_depth_test);
 }
 
 SUITE_REGISTER(run_r3d_style_pipeline_suite);

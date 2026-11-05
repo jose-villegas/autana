@@ -5,8 +5,8 @@
  * render_host.c for the frame bytes each call is handed.
  *
  * RIFF AVI 1.0 stores its whole size in a 32-bit field, so callers must
- * check render_video_frames_that_fit()/render_video_total_bytes() before
- * opening a file: this module does not refuse an oversized run itself.
+ * check render_video_frames_that_fit() before opening a file: this module
+ * does not refuse an oversized run itself.
  */
 #ifndef RENDER_VIDEO_H
 #define RENDER_VIDEO_H
@@ -41,8 +41,8 @@ int64_t render_video_frame_cost(int32_t width, int32_t height);
 int64_t render_video_total_bytes(int32_t width, int32_t height, int64_t frames);
 
 /* The most frames of `width` x `height` whose video stays within
- * `budget_bytes`; 0 if even one does not fit. */
-int64_t render_video_frames_that_fit(int32_t width, int32_t height, int64_t budget_bytes);
+ * RENDER_VIDEO_MAX_BYTES; 0 if even one does not fit. */
+int64_t render_video_frames_that_fit(int32_t width, int32_t height);
 
 /* Opens `path` and writes every header up to the 'movi' list, with
  * frame-count fields left at 0 to be patched by render_video_close().

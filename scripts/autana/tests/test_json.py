@@ -79,12 +79,13 @@ class JsonReadTests(unittest.TestCase):
                 self.assertEqual(autana.parse_battery(reply)["flow"], flow)
 
     def test_heap_reply_and_failure(self):
-        reply = "HEAP free=123456 largest=54321 total=200000"
-        self.assertEqual(autana.parse_heap(reply), {"free": 123456, "largest": 54321, "total": 200000})
-        with mock.patch.object(autana, "send", return_value=(0, [reply])) as send:
-            self.assertEqual(self.output(autana.heap, ["--json"]),
-                             {"free": 123456, "largest": 54321, "total": 200000})
-            send.assert_called_once_with("HEAP", reply="HEAP")
+        reply = "HEAP free=123456 largest=54321 total=200000 min=100000"
+        reading = {"free": 123456, "largest": 54321, "total": 200000, "min": 100000}
+        self.assertEqual(autana.parse_heap(reply), reading)
+        for args, line in ((["--json"], "HEAP"), (["psram", "--json"], "HEAP psram"), (["app", "--json"], "HEAP app")):
+            with mock.patch.object(autana, "send", return_value=(0, [reply])) as send:
+                self.assertEqual(self.output(autana.heap, args), reading)
+                send.assert_called_once_with(line, reply="HEAP")
         stream = io.StringIO()
         with mock.patch.object(autana, "send", return_value=(0, [reply])), contextlib.redirect_stdout(stream):
             self.assertEqual(autana.heap([]), 0)
@@ -92,12 +93,20 @@ class JsonReadTests(unittest.TestCase):
         for result, expected in (((0, []), 1), ((7, []), 7)):
             with mock.patch.object(autana, "send", return_value=result):
                 self.assertEqual(autana.heap([]), expected)
-        for args in (["extra"], ["--json", "--json"], ["--unknown"]):
+        for args in (["extra"], ["--json", "--json"], ["--unknown"], ["reset", "--json"], ["psram", "psram"]):
             with self.assertRaises(SystemExit):
                 autana.heap(args)
-        for reply in ("HEAP free=x largest=1", "HEAP free=1", "OTHER free=1 largest=1"):
+        for reply in ("HEAP free=x largest=1", "HEAP free=1", "OTHER free=1 largest=1",
+                      "HEAP free=1 largest=1 total=1"):
             with self.assertRaises(ValueError):
                 autana.parse_heap(reply)
+
+    def test_heap_reset_restarts_the_low_water_marks(self):
+        for replies, expected in ((["HEAP reset"], 0), (["HEAP_ERR want nothing, psram, app or reset"], 1)):
+            with mock.patch.object(autana, "send", return_value=(0, replies)) as send:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(autana.heap(["reset"]), expected)
+                send.assert_called_once_with("HEAP reset", reply="HEAP")
 
     def test_metrics_are_top_level_only(self):
         for name in ("heap", "perf", "framewatch"):
@@ -364,7 +373,7 @@ class BatteryLogTests(unittest.TestCase):
     def test_firmware_names(self):
         root = Path(__file__).resolve().parents[3]
         reasons = re.findall(r'return "([^"]+)"', (root / 'launcher/main/power/power_log.c').read_text())
-        decode = (root / 'launcher/main/power/power_decode.c').read_text()
+        decode = (root / 'launcher/main/power/power_names.c').read_text()
         charges, flows = decode.split('power_flow_name', 1)
         for reason in reasons:
             if reason == 'unknown':

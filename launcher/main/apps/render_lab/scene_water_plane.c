@@ -5,6 +5,7 @@
 
 #include "math/scalar/math_const.h"
 #include "math/scalar/mathf.h"
+#include "physics/fluid/flip3.h"
 
 /* The level is found by Newton's method from the last frame's; this many
  * steps a frame. */
@@ -14,8 +15,8 @@
 
 void
 water_plane_reset(water_plane_t* p, vec3f_t box) {
-    p->up = (vec3f_t){0.0F, -1.0F, 0.0F};
-    p->rate = (vec3f_t){0};
+    p->up = vec3f_down();
+    p->rate = vec3f_zero();
     p->level = vec3f_dot(p->up, vec3f_scale(box, 0.5F));
 }
 
@@ -31,7 +32,8 @@ water_plane_step(water_plane_t* p, float dt_s, vec3f_t accel_g, float hz, float 
     p->rate = vec3f_sub(p->rate, vec3f_scale(p->up, vec3f_dot(p->rate, p->up)));
 }
 
-/* The plane at `level` as density: 1 below it, 0 above, ramping across it.
+/* The plane at `level` as density: 1 below it, 0 above, ramping across it,
+ * the surface's level on the plane.
  * Returns the water's share of the inside samples, and through `band` the
  * samples on the ramp per mm of level. */
 static float
@@ -45,7 +47,7 @@ fill_at(const water_plane_t* p, const iso_field_t* f, float level, float* band) 
             for (int z = 1; z < f->nz - 1; z++) {
                 const vec3f_t at =
                     vec3f_add(f->origin, (vec3f_t){(float)x * f->step.x, (float)y * f->step.y, (float)z * f->step.z});
-                const float v = mathf_clamp(0.5F + ((level - vec3f_dot(p->up, at)) / ramp), 0.0F, 1.0F);
+                const float v = mathf_clamp(FLIP3_SURFACE_LEVEL + ((level - vec3f_dot(p->up, at)) / ramp), 0.0F, 1.0F);
                 sloped += v > 0.0F && v < 1.0F ? 1 : 0;
                 out[(((x * f->ny) + y) * f->nz) + z] = v;
                 sum += v;

@@ -20,8 +20,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "app/app_arena.h"
-#include "board/board_geometry.h"
+#include "board_config.h"
 #include "core/job.h"
 #include "core/timing.h"
 #include "core/tune.h"
@@ -36,6 +35,7 @@
 #include "math/scalar/mathf.h"
 #include "math/scalar/mathi.h"
 #include "math/scalar/units.h"
+#include "math/signal/smooth.h"
 #include "physics/fluid/flip3.h"
 #include "profile/frame_cost.h"
 #include "render/context/render_context.h"
@@ -77,8 +77,6 @@ static const char* TAG = "water";
  * 0.6 times the triangles 2 make; the field is sized for the most. */
 #define WATER_SAMPLES_PCT     150
 #define WATER_SAMPLES_PCT_MAX 200
-/* The surface sits where the density is half the rest density. */
-#define WATER_SURFACE_LEVEL   0.5F
 
 /* The most simulated time one frame advances: a longer frame slows the
  * water rather than costing a burst. */
@@ -246,46 +244,41 @@ fail(const char* what) {
     render_lab_scene_fail(TAG, failure, sizeof failure, what);
 }
 
-/* From the app arena, which render_lab rewinds when the scene goes. */
-static void*
-take(size_t bytes) {
-    return app_arena_take(bytes, _Alignof(max_align_t));
-}
-
 static bool
 allocate(void) {
     flip3_config_t config = {box, box.z / (float)WATER_CELLS_DEEP, 1};
-    void* grid = take(flip3_grid_bytes(&config));
+    void* grid = render_lab_scene_take(flip3_grid_bytes(&config));
     /* One particle to learn the seed lattice, then room for the most water
      * the slider allows; the grid is the same at any particle count. */
-    if (grid == NULL || !flip3_init(&water, &config, grid, take(flip3_particle_bytes(&config)))) {
+    if (grid == NULL || !flip3_init(&water, &config, grid, render_lab_scene_take(flip3_particle_bytes(&config)))) {
         return false;
     }
     config.max_particles = ((water.seed_count * WATER_FILL_MAX) + WATER_PERCENT - 1) / WATER_PERCENT;
-    if (!flip3_init(&water, &config, grid, take(flip3_particle_bytes(&config)))) {
+    if (!flip3_init(&water, &config, grid, render_lab_scene_take(flip3_particle_bytes(&config)))) {
         return false;
     }
     const float most = (float)WATER_SAMPLES_PCT_MAX / (float)WATER_PERCENT;
-    field = take(sizeof(float) * flip3_field_count(&water, most));
+    field = render_lab_scene_take(sizeof(float) * flip3_field_count(&water, most));
     if (field == NULL) {
         return false;
     }
     surface_field = flip3_field(&water, most, field);
-    through = take(sizeof(float) * (size_t)(surface_field.nx * surface_field.ny));
-    positions = take(sizeof(vec3f_t) * WATER_MAX_VERTICES);
-    normals = take(sizeof(vec3f_t) * WATER_MAX_VERTICES);
-    colors = take(sizeof(uint8_t[3]) * WATER_MAX_VERTICES);
-    triangles = take(sizeof(uint16_t[3]) * WATER_MAX_TRIANGLES);
+    through = render_lab_scene_take(sizeof(float) * (size_t)(surface_field.nx * surface_field.ny));
+    positions = render_lab_scene_take(sizeof(vec3f_t) * WATER_MAX_VERTICES);
+    normals = render_lab_scene_take(sizeof(vec3f_t) * WATER_MAX_VERTICES);
+    colors = render_lab_scene_take(sizeof(uint8_t[3]) * WATER_MAX_VERTICES);
+    triangles = render_lab_scene_take(sizeof(uint16_t[3]) * WATER_MAX_TRIANGLES);
     for (int half = 0; half < 2; half++) {
-        scratch[half] = take(sizeof(int32_t) * iso_surface_scratch_count(surface_field.ny, surface_field.nz));
+        scratch[half] =
+            render_lab_scene_take(sizeof(int32_t) * iso_surface_scratch_count(surface_field.ny, surface_field.nz));
     }
-    transfer = take(sizeof *transfer);
+    transfer = render_lab_scene_take(sizeof *transfer);
     if (transfer != NULL) {
         r3d_skin_light_transfer_build(WATER_TONEMAP_NONE, transfer);
     }
     const r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(WATER_MAX_VERTICES, WATER_MAX_TRIANGLES);
     const size_t mesh_bytes = r3d_dynamic_mesh_bytes(capacity);
-    void* mesh_block = take(mesh_bytes);
+    void* mesh_block = render_lab_scene_take(mesh_bytes);
     return through != NULL && transfer != NULL && positions != NULL && normals != NULL && colors != NULL
            && triangles != NULL && scratch[0] != NULL && scratch[1] != NULL && mesh_block != NULL
            && r3d_dynamic_mesh_init(&surface, mesh_block, mesh_bytes, capacity, WATER_TICKS_PER_MM);
@@ -327,7 +320,7 @@ static void
 place_camera(int quarter, vec3f_t eye) {
     const camera_t* lens = scene_camera_lens(tank_scene, name_hash(WATER_CAMERA));
     const float distance = 0.5F * box.x / lens->half_fov_short_tan;
-    const quatf_t roll = quatf_from_axis_angle((vec3f_t){0.0F, 0.0F, 1.0F}, -(float)quarter * WATER_QUARTER_TURN);
+    const quatf_t roll = quatf_from_axis_angle(vec3f_unit_z(), -(float)quarter * WATER_QUARTER_TURN);
     transformf_t t = scene_entity_local(tank_scene, camera_entity);
     transformf_set_rotation(&t, roll);
     transformf_set_position(&t, (vec3f_t){eye.x, eye.y, -distance});
@@ -335,8 +328,8 @@ place_camera(int quarter, vec3f_t eye) {
     /* The glass's centre lands a fraction eye / width of the short side off
      * the picture's middle, against the eye; the optical centre follows the
      * eye by as much, in the camera's own axes. */
-    const vec3f_t right = quatf_rotate(roll, (vec3f_t){1.0F, 0.0F, 0.0F});
-    const vec3f_t up = quatf_rotate(roll, (vec3f_t){0.0F, 1.0F, 0.0F});
+    const vec3f_t right = quatf_rotate(roll, vec3f_unit_x());
+    const vec3f_t up = quatf_rotate(roll, vec3f_unit_y());
     const vec3f_t follow = vec3f_scale(eye, 1.0F / box.x);
     (void)scene_camera_set_shift(tank_scene, camera_entity, (vec2f_t){vec3f_dot(follow, right), vec3f_dot(follow, up)});
 }
@@ -351,7 +344,7 @@ parallax_eye(vec3f_t down, uint32_t dt_ms) {
     if (vec3f_dot(reference_down, reference_down) == 0.0F) {
         reference_down = down; /* the first reading: start centred, whatever the pose */
     }
-    const float catch_up = 1.0F - expf(-(float)dt_ms / (float)settle_ms);
+    const float catch_up = smooth_alpha((float)dt_ms, (float)settle_ms);
     reference_down = vec3f_normalize(vec3f_lerp(reference_down, down, catch_up));
     const vec3f_t turn = vec3f_cross(reference_down, down);
     return vec3f_scale((vec3f_t){-turn.y, -turn.x, 0.0F}, (float)parallax_mm);
@@ -435,7 +428,7 @@ read_accel(uint32_t dt_ms, vec3f_t* down) {
         motion_seen = true;
     }
     if (!motion_seen) {
-        *down = (vec3f_t){0.0F, 1.0F, 0.0F};
+        *down = vec3f_unit_y();
         return *down;
     }
     *down = gravity_down(&gravity);
@@ -503,7 +496,7 @@ static void
 shade_range(void* ctx, int from, int to) {
     (void)ctx;
     const vec3f_t light = vec3f_normalize(WATER_LIGHT);
-    const vec3f_t eye = {0.0F, 0.0F, 1.0F};
+    const vec3f_t eye = vec3f_unit_z();
     const vec3f_t half = vec3f_normalize(vec3f_add(light, eye));
     for (int i = from; i < to; i++) {
         const vec3f_t n = normals[i];
@@ -536,7 +529,7 @@ nets_range(void* ctx, int from, int to) {
         return;
     }
     const int which = from == 0 ? 0 : 1;
-    w->fitted[which] = iso_surface_nets_slabs(&surface_field, WATER_SURFACE_LEVEL, from, to, &w->part[which]);
+    w->fitted[which] = iso_surface_nets_slabs(&surface_field, FLIP3_SURFACE_LEVEL, from, to, &w->part[which]);
 }
 
 /* The surface on both cores, joined into one mesh at the buffers' start;
@@ -558,7 +551,7 @@ mesh_split(iso_mesh_t* m) {
         return true;
     }
     stats.remeshed++;
-    return iso_surface_nets(&surface_field, WATER_SURFACE_LEVEL, m);
+    return iso_surface_nets(&surface_field, FLIP3_SURFACE_LEVEL, m);
 }
 
 /* The surface field meshed, shaded, moved into model axes and handed to the
@@ -577,7 +570,7 @@ rebuild_surface(void) {
     FRAME_COST_END(through_from, "water.through");
     FRAME_COST_BEGIN(nets_from);
     iso_mesh_t m = {positions, normals, WATER_MAX_VERTICES, triangles, WATER_MAX_TRIANGLES, scratch[0], 0, 0};
-    bool fitted = two_core != 0 ? mesh_split(&m) : iso_surface_nets(&surface_field, WATER_SURFACE_LEVEL, &m);
+    bool fitted = two_core != 0 ? mesh_split(&m) : iso_surface_nets(&surface_field, FLIP3_SURFACE_LEVEL, &m);
     FRAME_COST_END(nets_from, "water.nets");
     FRAME_COST_BEGIN(shade_from);
     water_split(WATER_SPLIT_SHADE, shade_range, NULL, m.vertex_count);
@@ -645,12 +638,12 @@ scene_water_enter(const render_lab_scene_t* self) {
 #endif
     flip3_split_with(&water, water_split);
     memset(split_share, 0, sizeof split_share);
-    refill((vec3f_t){0.0F, 1.0F, 0.0F});
+    refill(vec3f_unit_y());
     water_plane_reset(&plane_water, box);
     rebuild_surface();
     (void)scene_water_take_stats();
-    reference_down = (vec3f_t){0}; /* set by the first reading */
-    place_camera(display_quarter_now(), (vec3f_t){0});
+    reference_down = vec3f_zero(); /* set by the first reading */
+    place_camera(display_quarter_now(), vec3f_zero());
     (void)scene_activate(tank_scene, name_hash(WATER_CAMERA));
     render_lab_apply_raster_settings();
     (void)render_lab_apply_camera_settings(tank_scene, camera_entity);

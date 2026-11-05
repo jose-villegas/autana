@@ -534,10 +534,20 @@ def framewatch(args):
 
 
 def heap(args):
-    """Runtime free bytes, largest block and total internal DMA heap."""
+    """Runtime free bytes, largest block, total and low-water mark of the
+    internal DMA heap, of PSRAM, or of the running app's heap; `reset`
+    restarts the low-water marks."""
     reject_unknown("heap", args, ("--json",))
-    json_output = read_json_flag(args, "usage: autana heap [--json]")
-    code, replies = send("HEAP", reply="HEAP")
+    usage = "usage: autana heap [psram|app] [--json] | autana heap reset"
+    if args == ["reset"]:
+        code, replies = send("HEAP reset", reply="HEAP")
+        if code != 0 or not replies:
+            return code or 1
+        print(replies[-1])
+        return 0 if replies[-1] == "HEAP reset" else 1
+    kind = args.pop(0) if args[:1] in (["psram"], ["app"]) else ""
+    json_output = read_json_flag(args, usage)
+    code, replies = send(f"HEAP {kind}".rstrip(), reply="HEAP")
     if code != 0 or not replies:
         return code or 1
     print(json.dumps(parse_heap(replies[-1])) if json_output else replies[-1])
@@ -728,11 +738,11 @@ def parse_tone(reply):
 
 
 def parse_heap(reply):
-    match = re.fullmatch(r"HEAP free=(\d+) largest=(\d+) total=(\d+)", reply)
+    match = re.fullmatch(r"HEAP free=(\d+) largest=(\d+) total=(\d+) min=(\d+)", reply)
     if not match:
         raise ValueError(f"invalid HEAP reply: {reply}")
-    free, largest, total = map(int, match.groups())
-    return {"free": free, "largest": largest, "total": total}
+    free, largest, total, low = map(int, match.groups())
+    return {"free": free, "largest": largest, "total": total, "min": low}
 
 
 def parse_framewatch(reply):
@@ -1841,7 +1851,8 @@ COMMAND_GROUPS = (
              "run suites under one lock, N times each (1 when omitted); seconds caps each capture "
              "(1800 when omitted); --flash builds and flashes the diagnostics image first, so nobody flashes between captures"),
             ("suite <name> --test PATTERN[,PATTERN]",
-             "only the tests whose name contains a pattern (case-sensitive); --test repeats"),
+             "only the tests a pattern picks: part of a function name or a whole case segment, "
+             "a/b for segments in order (case-sensitive); --test repeats"),
             ("suite <name> --send LINE",
              "send a console line after tunables, before every capture; --send repeats in order; the sequence should be idempotent, and an error or incomplete reply stops the batch"),
             ("suite <name> --set NAME=VALUE",
@@ -1872,7 +1883,10 @@ COMMAND_GROUPS = (
             ("battery [--json]", "fresh voltage, percentage, USB, charge phase and flow, plus raw PMU status bytes; development builds"),
             ("battery --log [--json]", "persistent battery records oldest first (JSON is an array); reasons: periodic, transition, boot, shutdown-warning; development builds"),
             ("battery --log --clear", "erase the battery history namespace"))),
-        one("heap", heap, "heap [--json]", "free bytes and largest block in the internal DMA pool (MEMORY_DMA); development builds"),
+        Command("heap", heap, (
+            ("heap [psram|app] [--json]", "free bytes, largest block, total and low-water mark of the internal DMA pool (MEMORY_DMA), of PSRAM, or of the running app's heap; development builds"),
+            ("heap reset", "restart the low-water marks, so the next reading's min covers only what ran since"),
+        )),
         Command("perf", perf, (
             ("perf", "the frame_cost names seen and the counter events"),
             ("perf <name> [event] [seconds]",

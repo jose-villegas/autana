@@ -175,7 +175,7 @@ Unloading the scene frees all of them.
 flowchart LR
     subgraph Animate["skeleton animators, if attached"]
         direction TB
-        A0["core 0: first entity range"] ~~~ A1["core 1: second range"]
+        A0["core 0: first staged-entity range"] ~~~ A1["core 1: second range"]
     end
     subgraph Skin["posed clusters, if present"]
         direction TB

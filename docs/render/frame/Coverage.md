@@ -107,23 +107,23 @@ direction; if neither fits it uses flat. Channels never clamp independently.
 
 <table>
 <tr><th>Look</th><th>Picture</th><th>Amplified difference from SMOOTH</th></tr>
-<tr><td>SMOOTH (4/0 FLAT)</td><td><img src="../images/render/sponza-small-fill-smooth.gif" width="100%" alt="SMOOTH"></td><td></td></tr>
-<tr><td>FAST (12/16 FLAT)</td><td><img src="../images/render/sponza-small-fill-fast.gif" width="100%" alt="FAST (12/16 FLAT)"></td><td><img src="../images/render/sponza-small-fill-fast-diff.gif" width="100%" alt="FAST (12/16 FLAT) difference"></td></tr>
-<tr><td>12/16 GRAIN</td><td><img src="../images/render/sponza-small-fill-grain.gif" width="100%" alt="Hue-safe grain"></td><td><img src="../images/render/sponza-small-fill-grain-diff.gif" width="100%" alt="Grain difference"></td></tr>
-<tr><td>12/16 DITHER</td><td><img src="../images/render/sponza-small-fill-dither.gif" width="100%" alt="Ordered vertex colours"></td><td><img src="../images/render/sponza-small-fill-dither-diff.gif" width="100%" alt="Dither difference"></td></tr>
+<tr><td>SMOOTH (4/0 FLAT)</td><td><img src="../../images/render/sponza-small-fill-smooth.gif" width="100%" alt="SMOOTH"></td><td></td></tr>
+<tr><td>FAST (12/16 FLAT)</td><td><img src="../../images/render/sponza-small-fill-fast.gif" width="100%" alt="FAST (12/16 FLAT)"></td><td><img src="../../images/render/sponza-small-fill-fast-diff.gif" width="100%" alt="FAST (12/16 FLAT) difference"></td></tr>
+<tr><td>12/16 GRAIN</td><td><img src="../../images/render/sponza-small-fill-grain.gif" width="100%" alt="Hue-safe grain"></td><td><img src="../../images/render/sponza-small-fill-grain-diff.gif" width="100%" alt="Grain difference"></td></tr>
+<tr><td>12/16 DITHER</td><td><img src="../../images/render/sponza-small-fill-dither.gif" width="100%" alt="Ordered vertex colours"></td><td><img src="../../images/render/sponza-small-fill-dither-diff.gif" width="100%" alt="Dither difference"></td></tr>
 </table>
 
 Clips show the same full renderer frames and camera window, one look per GIF.
 The [temporal method](../../tools/Render-Harness.md#temporal-video-columns)
 measures triangle-scale pops; the difference clips also show spatial noise.
 
-<!-- generated: small-fill-temporal sha256=348854d83f0b4c0a5dc518fade64b76bc25fe53a467917f162e3356f235f3b5c -->
+<!-- generated: small-fill-temporal sha256=1abb609e09b49ab8b96e653f538b58bd80c615d11d2369dc488beaa08f815f3a -->
 | Look vs SMOOTH | Extra frame-to-frame change (levels of 255) | Blocks popping (>8/255) |
 |---|---|---|
 | SMOOTH (4/0 FLAT) | 0.000 | 0.0000% |
-| FAST (12/16 FLAT) | 0.809 | 1.7679% |
-| 12/16 GRAIN | 0.909 | 1.9629% |
-| 12/16 DITHER | 1.048 | 3.0372% |
+| FAST (12/16 FLAT) | 0.898 | 1.9966% |
+| 12/16 GRAIN | 1.003 | 2.2050% |
+| 12/16 DITHER | 1.144 | 3.3638% |
 <!-- /generated: small-fill-temporal -->
 
 ### Board frame-cost gains when opted in
