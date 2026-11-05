@@ -41,7 +41,7 @@ the step $`\mathbf{d}`$ along the summed key directions $`\mathbf{m}`$ is never
 longer than one key's:
 
 ```math
-s \gets \operatorname{clamp}\!\left(s\,k^{n},\; r_{\min} s_0,\; r_{\max} s_0\right), \qquad \mathbf{d}=\frac{s\,\Delta t\,\mathbf{m}}{\max(\lVert\mathbf{m}\rVert,1)}
+s \gets \mathrm{clamp}\!\left(s\,k^{n},\; r_{\min} s_0,\; r_{\max} s_0\right), \qquad \mathbf{d}=\frac{s\,\Delta t\,\mathbf{m}}{\max(\lVert\mathbf{m}\rVert,1)}
 ```
 
 Straight up or down, forward has no heading across the ground; the top of the
