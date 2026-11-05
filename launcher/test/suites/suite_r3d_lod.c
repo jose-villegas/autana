@@ -149,7 +149,7 @@ levelled_mesh(void) {
                                       .cluster_lod = levelled->lod,
                                       .lod_groups = levelled->groups,
                                       .lod_group_count = GROUPS};
-    levelled->mesh.lod_finest_root = r3d_lit_mesh_finest_root(&levelled->mesh);
+    r3d_lit_mesh_find_levels(&levelled->mesh);
     return &levelled->mesh;
 }
 
@@ -475,9 +475,10 @@ test_a_mesh_without_levels_walks_every_cluster_whatever_its_bits(void) {
 }
 
 static void
-test_a_frame_with_no_group_coarse_starts_its_walk_at_the_finest_clusters_tree(void) {
+test_levels_laid_out_apart_start_the_walk_at_the_finest_clusters_tree(void) {
     const r3d_lit_mesh_t* mesh = levelled_mesh();
     TEST_ASSERT_EQUAL_INT(FINEST_LEAF, mesh->lod_finest_root);
+    TEST_ASSERT_EQUAL_INT(FINEST_CLUSTERS, mesh->lod_coarse_first);
 }
 
 /* A finest cluster under the coarse child: the walk keeps starting at the
@@ -488,24 +489,50 @@ test_a_root_whose_children_mix_finest_and_coarse_clusters_keeps_the_walk_at_the_
     levelled->nodes[FINEST_LEAF].count--;
     levelled->nodes[COARSE_LEAF].first--;
     levelled->nodes[COARSE_LEAF].count++;
-    TEST_ASSERT_EQUAL_INT(0, r3d_lit_mesh_finest_root(mesh));
+    r3d_lit_mesh_find_levels(&levelled->mesh);
+    TEST_ASSERT_EQUAL_INT(0, mesh->lod_finest_root);
 }
 
-/* With every group fine, the walk from the finest clusters' tree keeps what
- * the walk from the root keeps. */
+/* Coarse clusters out of their groups' order cannot be found by group: the
+ * walk keeps starting at the root. */
 static void
-test_the_finest_tree_walk_keeps_what_the_whole_walk_keeps_while_no_group_is_coarse(void) {
+test_coarse_clusters_out_of_group_order_keep_the_walk_at_the_root(void) {
+    const r3d_lit_mesh_t* mesh = levelled_mesh();
+    const r3d_lit_cluster_lod_t first = levelled->lod[FINEST_CLUSTERS];
+    levelled->lod[FINEST_CLUSTERS] = levelled->lod[CLUSTERS - 1];
+    levelled->lod[CLUSTERS - 1] = first;
+    r3d_lit_mesh_find_levels(&levelled->mesh);
+    TEST_ASSERT_EQUAL_INT(0, mesh->lod_finest_root);
+}
+
+static int
+compare_cluster(const void* a, const void* b) {
+    return (int)*(const uint16_t*)a - (int)*(const uint16_t*)b;
+}
+
+/* Along the path, coarse groups and all, the walk of level 0 and the cut
+ * taken from its groups keeps what the walk of the whole tree keeps. */
+static void
+test_the_finest_tree_walk_and_the_cut_keep_what_the_whole_walk_keeps(void) {
     const r3d_lit_mesh_t* mesh = levelled_mesh();
     r3d_pipeline_work_t* w = pipeline_work();
-    const uint32_t clear[R3D_LOD_WORDS(GROUPS)] = {0};
     r3d_lit_mesh_t whole = *mesh;
     whole.lod_finest_root = 0;
-    const r3d_lens_t lens = lens_at(WHOLE_IN_VIEW, NULL);
-    uint16_t from_finest[CLUSTERS], from_root[CLUSTERS];
-    const int count = r3d_pipeline_cull(mesh, &lens, clear, from_finest, w, NULL);
-    TEST_ASSERT_EQUAL_INT(FINEST_CLUSTERS, count);
-    TEST_ASSERT_EQUAL_INT(count, r3d_pipeline_cull(&whole, &lens, clear, from_root, w, NULL));
-    TEST_ASSERT_EQUAL_HEX16_ARRAY(from_root, from_finest, count);
+    uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
+    const int steps = steps_in();
+    bool cut_drawn = false;
+    for (int p = 0; p < 2 * steps; p++) {
+        const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
+        r3d_lod_pick(mesh, &lens, TOLERANCE, COVERAGE_MAX, coarse);
+        uint16_t apart[CLUSTERS], together[CLUSTERS];
+        const int count = r3d_pipeline_cull(mesh, &lens, coarse, apart, w, NULL);
+        TEST_ASSERT_EQUAL_INT(count, r3d_pipeline_cull(&whole, &lens, coarse, together, w, NULL));
+        qsort(apart, (size_t)count, sizeof apart[0], compare_cluster);
+        qsort(together, (size_t)count, sizeof together[0], compare_cluster);
+        TEST_ASSERT_EQUAL_HEX16_ARRAY(together, apart, count);
+        cut_drawn |= count > 0 && apart[count - 1] >= FINEST_CLUSTERS;
+    }
+    TEST_ASSERT_TRUE(cut_drawn);
 }
 
 void
@@ -520,9 +547,10 @@ suite_r3d_lod(void) {
     RUN_TEST(test_a_parent_turning_coarse_takes_an_out_of_order_source_with_it);
     RUN_TEST(test_without_bits_a_levelled_mesh_walks_only_its_finest_clusters);
     RUN_TEST(test_a_mesh_without_levels_walks_every_cluster_whatever_its_bits);
-    RUN_TEST(test_a_frame_with_no_group_coarse_starts_its_walk_at_the_finest_clusters_tree);
+    RUN_TEST(test_levels_laid_out_apart_start_the_walk_at_the_finest_clusters_tree);
     RUN_TEST(test_a_root_whose_children_mix_finest_and_coarse_clusters_keeps_the_walk_at_the_root);
-    RUN_TEST(test_the_finest_tree_walk_keeps_what_the_whole_walk_keeps_while_no_group_is_coarse);
+    RUN_TEST(test_coarse_clusters_out_of_group_order_keep_the_walk_at_the_root);
+    RUN_TEST(test_the_finest_tree_walk_and_the_cut_keep_what_the_whole_walk_keeps);
 }
 
 SUITE_REGISTER(suite_r3d_lod);

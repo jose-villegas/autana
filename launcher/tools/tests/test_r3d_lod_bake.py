@@ -105,6 +105,13 @@ class BakedLevelsTest(unittest.TestCase):
         self.assertEqual(sorted(np.flatnonzero(finest)), sorted(under(root["first"])))
         self.assertEqual(sorted(np.flatnonzero(~finest)), sorted(under(root["first"] + 1)))
 
+    def test_the_coarse_clusters_follow_level_zero_in_the_order_of_their_own_group(self):
+        finest = lit_mesh.finest(self.levelled)
+        first = int(np.flatnonzero(~finest)[0])
+        self.assertTrue(finest[:first].all() and not finest[first:].any())
+        owns = [own for own, _ in self.levelled.lod[first:]]
+        self.assertEqual(sorted(owns), owns)
+
     def test_every_group_holds_clusters_and_has_clusters_simplified_from_it(self):
         owned = {own for own, _ in self.levelled.lod} - {LOD_NONE}
         parents = {parent for _, parent in self.levelled.lod} - {LOD_NONE}

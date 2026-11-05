@@ -163,21 +163,66 @@ fit_inside(box3f_t box, const planef_t* planes, unsigned crossing, planef_t dept
     }
 }
 
-/* Writes the clusters of a leaf the planes in `mask` keep to `out` from
- * `count`, lowering `fit`, and returns the new count. */
+/* Writes cluster `c` to `out` at `count` when the planes in `mask` keep it,
+ * lowering `fit`, and returns the new count. */
+static inline int
+cull_cluster(const r3d_lit_mesh_t* mesh, int c, unsigned mask, const planef_t* planes, planef_t depth, uint16_t* out,
+             int count, r3d_depth_fit_t* fit) {
+    const box3f_t box = box3f_from_box3s(mesh->clusters[c].bounds, 1.0F);
+    if (mask == 0 || !box3f_outside_planes(box, planes, PLANE_FRUSTUM_COUNT, &mask)) {
+        out[count++] = (uint16_t)c;
+        fit_inside(box, planes, mask, depth, fit);
+    }
+    return count;
+}
+
+/* The clusters of a leaf the planes in `mask` keep, as cull_cluster(). */
 static int
 cull_leaf(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, const r3d_lit_node_t* leaf, unsigned mask,
           const planef_t* planes, planef_t depth, uint16_t* out, int count, r3d_depth_fit_t* fit) {
     for (int i = 0; i < leaf->count; i++) {
         const int c = leaf->first + i;
-        if (!r3d_lod_drawn(mesh, c, lod_coarse)) {
-            continue;
+        if (r3d_lod_drawn(mesh, c, lod_coarse)) {
+            count = cull_cluster(mesh, c, mask, planes, depth, out, count, fit);
         }
-        unsigned cluster_mask = mask;
-        const box3f_t box = box3f_from_box3s(mesh->clusters[c].bounds, 1.0F);
-        if (cluster_mask == 0 || !box3f_outside_planes(box, planes, PLANE_FRUSTUM_COUNT, &cluster_mask)) {
-            out[count++] = (uint16_t)c;
-            fit_inside(box, planes, cluster_mask, depth, fit);
+    }
+    return count;
+}
+
+/* The first cluster from `lo` whose own group is at least `g`: the coarse
+ * clusters run in the order of their own group. */
+static int
+group_run(const r3d_lit_mesh_t* mesh, int lo, uint16_t g) {
+    int hi = mesh->cluster_count;
+    while (lo < hi) {
+        const int mid = lo + ((hi - lo) / 2);
+        if (mesh->cluster_lod[mid].own < g) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    return lo;
+}
+
+/* The coarse clusters of the picked cut the planes keep: those simplified
+ * from each coarse group that belong to a fine one, or to none. Groups come
+ * in rising order, so each search starts where the last run ended. */
+static int
+cull_cut(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, const planef_t* planes, planef_t depth, uint16_t* out,
+         int count, r3d_depth_fit_t* fit) {
+    int from = mesh->lod_coarse_first;
+    for (int w = 0; w < R3D_LOD_WORDS(mesh->lod_group_count); w++) {
+        for (uint32_t bits = lod_coarse[w]; bits != 0; bits &= bits - 1U) {
+            const uint16_t g = (uint16_t)((w * R3D_LOD_WORD_BITS) + __builtin_ctz(bits));
+            int c = group_run(mesh, from, g);
+            for (; c < mesh->cluster_count && mesh->cluster_lod[c].own == g; c++) {
+                const uint16_t parent = mesh->cluster_lod[c].parent;
+                if (parent == R3D_LOD_NONE || !r3d_lod_coarse(lod_coarse, parent)) {
+                    count = cull_cluster(mesh, c, ALL_PLANES, planes, depth, out, count, fit);
+                }
+            }
+            from = c;
         }
     }
     return count;
@@ -192,9 +237,10 @@ r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint
 
     walk_entry_t* stack = work->cull.stack;
     int top = 0;
-    /* With no group coarse, the coarse clusters' own subtree is never entered. */
-    const bool coarse = r3d_lod_any_coarse(lod_coarse, mesh->lod_group_count);
-    stack[top++] = (walk_entry_t){(uint16_t)(coarse ? 0 : mesh->lod_finest_root), ALL_PLANES};
+    /* With the levels laid out apart, the walk covers level 0 and the cut's
+     * coarse clusters come from their groups. */
+    const int start = mesh->lod_finest_root;
+    stack[top++] = (walk_entry_t){(uint16_t)start, ALL_PLANES};
     int count = 0;
     while (top > 0) {
         const walk_entry_t entry = stack[--top];
@@ -209,6 +255,9 @@ r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint
             continue;
         }
         count = cull_leaf(mesh, lod_coarse, node, mask, planes, depth, out, count, fit);
+    }
+    if (start != 0 && lod_coarse != NULL) {
+        count = cull_cut(mesh, lod_coarse, planes, depth, out, count, fit);
     }
     return count;
 }

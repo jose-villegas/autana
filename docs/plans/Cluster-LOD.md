@@ -19,9 +19,10 @@ error, so a coarse level never sits inside the finer surface it replaces.
 Group spheres and errors are rounded outward into position ticks; the LLOD
 format ([LLOD.md](../assets/formats/LLOD.md)) states their ordering rules.
 The cluster tree's root has two children: an octree over level 0 alone,
-built as a mesh without levels builds its own, and one over the coarse
-clusters. A frame whose pick leaves every group fine walks the first alone,
-so it costs what the mesh without levels costs. The
+built as a mesh without levels builds its own, and a run of the coarse
+clusters in the order of the group simplified into each. The cull walks
+level 0's octree, then takes the cut's coarse clusters from each coarse
+group's run, so a frame never visits a coarse cluster it does not draw. The
 `[geometry] lod` import setting turns levels off; level 0 is then the baked
 meshlets.
 

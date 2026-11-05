@@ -166,13 +166,33 @@ subtree_is(const r3d_lit_mesh_t* mesh, int node, bool finest) {
     return true;
 }
 
-int
-r3d_lit_mesh_finest_root(const r3d_lit_mesh_t* mesh) {
-    const r3d_lit_node_t* root = &mesh->nodes[0];
-    if (mesh->cluster_lod == NULL || root->leaf || root->count != 2) {
-        return 0;
+/* The first coarse cluster when every finest cluster comes before every
+ * coarse one and those run in the order of their own group; else -1. */
+static int
+coarse_run_first(const r3d_lit_mesh_t* mesh) {
+    int first = mesh->cluster_count;
+    for (int c = 0; c < mesh->cluster_count; c++) {
+        const uint16_t own = mesh->cluster_lod[c].own;
+        if (own == R3D_LOD_NONE ? first < c : (first < c && own < mesh->cluster_lod[c - 1].own)) {
+            return -1;
+        }
+        first = own == R3D_LOD_NONE ? c + 1 : first;
     }
-    return subtree_is(mesh, root->first, true) && subtree_is(mesh, root->first + 1, false) ? root->first : 0;
+    return first;
+}
+
+void
+r3d_lit_mesh_find_levels(r3d_lit_mesh_t* mesh) {
+    mesh->lod_finest_root = 0;
+    mesh->lod_coarse_first = 0;
+    const r3d_lit_node_t* root = &mesh->nodes[0];
+    const int first = mesh->cluster_lod == NULL ? -1 : coarse_run_first(mesh);
+    if (first < 0 || root->leaf || root->count != 2 || !subtree_is(mesh, root->first, true)
+        || !subtree_is(mesh, root->first + 1, false)) {
+        return;
+    }
+    mesh->lod_finest_root = root->first;
+    mesh->lod_coarse_first = (uint16_t)first;
 }
 
 asset_status_t
@@ -181,6 +201,7 @@ r3d_lit_mesh_levels_from_asset(const asset_view_t* levels, r3d_lit_mesh_t* mesh)
     mesh->lod_groups = NULL;
     mesh->lod_group_count = 0;
     mesh->lod_finest_root = 0;
+    mesh->lod_coarse_first = 0;
     const asset_status_t status =
         asset_entry_validate(*levels, LLOD_VERSION, LLOD_AT_VERSION, LLOD_HEADER_SIZE, ENTRY_ALIGNMENT);
     if (status != ASSET_OK) {
@@ -205,7 +226,7 @@ r3d_lit_mesh_levels_from_asset(const asset_view_t* levels, r3d_lit_mesh_t* mesh)
     if (!lod_is_ordered(&built)) {
         return ASSET_ERR_FORMAT;
     }
-    built.lod_finest_root = r3d_lit_mesh_finest_root(&built);
+    r3d_lit_mesh_find_levels(&built);
     *mesh = built;
     return ASSET_OK;
 }

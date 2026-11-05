@@ -17,6 +17,7 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "device"))
 import gfx_color  # noqa: E402  (path must be set up first)
+from build.c_header import read_define  # noqa: E402
 from r3d.mesh_asset import BLOB_HEADER, CLUSTER, LOD_NONE, NODE, TYPE  # noqa: E402
 from r3d.geometry import distinct_corners
 from r3d.process_budget import NULL_RECORDER
@@ -30,6 +31,9 @@ MAX_NODES = 65535
 MAX_TRIANGLES = 65535  # uint16 triangle_first
 MAX_CLUSTERS = 65535  # uint16 leaf first cluster
 MAX_NODE_CHILDREN = 255
+# Children of a node that is not a leaf, as the cull walk sorts them.
+NODE_FANOUT = read_define(pathlib.Path(__file__).resolve().parents[2] / "main/render/r3d_lit_mesh.h",
+                          "R3D_LIT_NODE_CHILDREN_MAX")
 
 LEAF_TRIANGLES = 320
 MAX_DEPTH = 10
@@ -150,7 +154,8 @@ def assemble(q, col, entries, position_scale, leaf_triangles, max_depth, groups=
 
     coarse = np.array([groups is not None and e["own"] != LOD_NONE for e in entries], dtype=bool)
     if coarse.any():
-        order, nodes = two_trees(*tree(np.flatnonzero(~coarse)), *tree(np.flatnonzero(coarse)))
+        by_own = sorted(np.flatnonzero(coarse), key=lambda i: entries[i]["own"])
+        order, nodes = two_trees(*tree(np.flatnonzero(~coarse)), *run_tree(by_own, weights, leaf_triangles))
     else:
         order, nodes = tree(np.arange(len(entries)))
 
@@ -166,11 +171,37 @@ def assemble(q, col, entries, position_scale, leaf_triangles, max_depth, groups=
     return out
 
 
+def run_tree(items, weights, leaf_weight):
+    """(order, nodes): `items` kept in their order, under leaves of
+    consecutive items up to `leaf_weight` (and MAX_NODE_CHILDREN items), and
+    those under nodes of up to NODE_FANOUT children, breadth first."""
+    leaves, start, weight = [], 0, 0
+    for i, item in enumerate(items):
+        if i > start and (weight + weights[item] > leaf_weight or i - start == MAX_NODE_CHILDREN):
+            leaves.append({"leaf": True, "first": start, "count": i - start})
+            start, weight = i, 0
+        weight += weights[item]
+    leaves.append({"leaf": True, "first": start, "count": len(items) - start})
+    level = leaves
+    while len(level) > 1:
+        level = [{"leaf": False, "children": level[i:i + NODE_FANOUT]} for i in range(0, len(level), NODE_FANOUT)]
+    queue, nodes = [level[0]], []
+    for node in queue:
+        if node["leaf"]:
+            nodes.append(node)
+        else:
+            nodes.append({"leaf": False, "first": len(queue), "count": len(node["children"])})
+            queue.extend(node["children"])
+    return [int(i) for i in items], nodes
+
+
 def two_trees(finest_order, finest_nodes, coarse_order, coarse_nodes):
     """One tree whose root's first child is the finest clusters' tree and its
-    second the coarse clusters': a frame that draws no coarse group walks the
-    first alone (r3d_lit_mesh_finest_root()). Each tree keeps its own node
-    order after the two roots, and its clusters stay one run."""
+    second the coarse clusters', in the order of the group simplified into
+    each: the cull walks the first, then takes the coarse clusters of the
+    picked cut straight from their groups (r3d_lit_mesh_finest_root()). Each
+    tree keeps its own node order after the two roots, and its clusters stay
+    one run."""
     finest_count = len(finest_nodes)
 
     def placed(node, nodes_at, items_at):
