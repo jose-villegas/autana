@@ -5,6 +5,8 @@
  */
 #pragma once
 
+#include <stdbool.h>
+
 /* Runs every test suite on the device and reports to the console.
  * Returns the number of failures; zero means everything passed.
  *
@@ -12,3 +14,9 @@
  * framebuffer) and before the launcher takes over, and again by any app that
  * offers a rerun. */
 int selftest_run(void);
+
+/* Tests run inside an app visit: a run that starts with no app running (at
+ * boot, or a RUNSUITE from the launcher) makes one for itself. Returns
+ * whether it did, for selftest_visit_end(). */
+bool selftest_visit_begin(void);
+void selftest_visit_end(bool owned);

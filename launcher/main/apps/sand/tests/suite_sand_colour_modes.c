@@ -364,7 +364,7 @@ measure_mode_frame(sand_t* sim, uint8_t* grid, int i, const colour_scene_t* scen
 static void
 measure_mode(const colour_scene_t* scene, colour_mode_t mode, gfx_dither_mode_t dither_mode, mode_result_t* out) {
     uint8_t* grid = malloc((size_t)CM_GRID_W * CM_GRID_H);
-    prev_grid = memory_alloc((size_t)CM_GRID_W * CM_GRID_H, MEMORY_PSRAM);
+    prev_grid = memory_alloc((size_t)CM_GRID_W * CM_GRID_H, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(grid);
     TEST_ASSERT_NOT_NULL(prev_grid);
     prev_grid_valid = false;

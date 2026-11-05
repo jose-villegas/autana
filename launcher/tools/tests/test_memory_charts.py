@@ -277,7 +277,7 @@ class MemoryTierTests(unittest.TestCase):
             gfx = root / 'launcher/main/gfx/gfx.h'
             for path in (arena, gfx):
                 path.parent.mkdir(parents=True)
-            arena.write_text('#define APP_ARENA_BYTES (2u * 1024u * 1024u)\n')
+            arena.write_text('#define APP_ARENA_SYSTEM_RESERVE_BYTES (2u * 1024u * 1024u)\n')
             gfx.write_text('#define GFX_WIDTH 128\n#define GFX_HEIGHT 256\n#define GFX_FRAMEBUFFER_BYTES (GFX_WIDTH * GFX_HEIGHT * 2u)\n')
             profile = root / 'launcher/tools/device/device_profiles/esp32s3.sh'
             profile.parent.mkdir(parents=True)
@@ -303,22 +303,21 @@ class MemoryTierTests(unittest.TestCase):
                 self.assertIn('free at floor', sizes['Internal SRAM'])
             expected_cells = {
                 'Internal SRAM': ('1 KB (1024 B) shared IRAM/DRAM pool',),
-                'PSRAM': ('2 MB app arena', '64 KB full framebuffer',
-                          '5.9 MB at most left for other PSRAM allocations while the full framebuffer is held (IDF use reduces it)'),
+                'PSRAM': ('2 MB system reserve, the 64 KB full framebuffer among it',
+                          '6 MB at most for the app region, taken at boot (IDF use reduces it)'),
                 'Flash': ('16 MB total', '2 MB app partition', '3 MB assets partition'),
             }
             for tier, phrases in expected_cells.items():
                 for phrase in phrases:
                     self.assertIn(phrase, sizes[tier])
-            arena.write_text('#define APP_ARENA_BYTES (3u * 1024u * 1024u)\n')
+            arena.write_text('#define APP_ARENA_SYSTEM_RESERVE_BYTES (2u * GFX_FRAMEBUFFER_BYTES)\n')
             gfx.write_text('#define GFX_FRAMEBUFFER_BYTES (128u * 1024u)\n')
             profile.write_text('DP_SRAM_BYTES=262144\nDP_PSRAM_BYTES=16777216\n')
             changed = memory.render_tiers(builds, root)
             self.assertIn('256 KB chip total', changed)
             self.assertIn('16 MB total', changed)
-            self.assertIn('3 MB app arena', changed)
-            self.assertIn('128 KB full framebuffer', changed)
-            self.assertIn('12.9 MB at most left for other PSRAM allocations', changed)
+            self.assertIn('256 KB system reserve, the 128 KB full framebuffer among it', changed)
+            self.assertIn('15.8 MB at most for the app region', changed)
             partitions.write_text('factory,app,factory,,0x400000,\nassets,data,0x40,,0x100000,\n')
             changed = memory.render_tiers(builds, root)
             self.assertIn('4 MB app partition', changed)

@@ -56,7 +56,7 @@ release_fixture(void) {
 
 static fixture_t*
 fixture(void) {
-    active = memory_alloc(sizeof *active, MEMORY_PSRAM);
+    active = memory_alloc(sizeof *active, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(active);
     *active = (fixture_t){0};
     heap_report(SKIN_PERF_PHASE_BEFORE_ENTER);
@@ -71,7 +71,7 @@ fixture(void) {
     TEST_ASSERT_GREATER_THAN_INT(0, mesh->vertex_count);
     heap_report(SKIN_PERF_PHASE_LOADED);
     active->position_bytes = (size_t)mesh->vertex_count * sizeof *mesh->positions;
-    active->positions = memory_alloc(active->position_bytes, MEMORY_PSRAM);
+    active->positions = memory_alloc(active->position_bytes, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(active->positions);
     TEST_ASSERT_NOT_NULL(app_render_lab.console);
     return active;
