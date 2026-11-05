@@ -142,8 +142,17 @@ def assemble(q, col, entries, position_scale, leaf_triangles, max_depth, groups=
     for e in entries:
         e["box"] = box_of(q, e["tris"])
     centres = np.array([(lo + hi) / 2.0 for lo, hi in (e["box"] for e in entries)])
-    root = build_octree(centres, [len(e["tris"]) for e in entries], leaf_triangles, max_depth)
-    order, nodes = flatten_octree(root)
+    weights = np.array([len(e["tris"]) for e in entries])
+
+    def tree(items):
+        order, nodes = flatten_octree(build_octree(centres[items], weights[items], leaf_triangles, max_depth))
+        return [int(items[i]) for i in order], nodes
+
+    coarse = np.array([groups is not None and e["own"] != LOD_NONE for e in entries], dtype=bool)
+    if coarse.any():
+        order, nodes = two_trees(*tree(np.flatnonzero(~coarse)), *tree(np.flatnonzero(coarse)))
+    else:
+        order, nodes = tree(np.arange(len(entries)))
 
     out = SimpleNamespace(position_scale=position_scale)
     ordered = [entries[i] for i in order]
@@ -155,6 +164,30 @@ def assemble(q, col, entries, position_scale, leaf_triangles, max_depth, groups=
     validate(out.pos, out.rgb, out.tris, out.clusters, out.nodes, out.face_colors)
     validate_levels(out.lod, out.groups, len(out.clusters))
     return out
+
+
+def two_trees(finest_order, finest_nodes, coarse_order, coarse_nodes):
+    """One tree whose root's first child is the finest clusters' tree and its
+    second the coarse clusters': a frame that draws no coarse group walks the
+    first alone (r3d_lit_mesh_finest_root()). Each tree keeps its own node
+    order after the two roots, and its clusters stay one run."""
+    finest_count = len(finest_nodes)
+
+    def placed(node, nodes_at, items_at):
+        if node["leaf"]:
+            return dict(node, first=node["first"] + items_at)
+        return dict(node, first=nodes_at(node["first"]))
+
+    def finest_at(j):
+        return 1 if j == 0 else 2 + j
+
+    def coarse_at(k):
+        return 2 if k == 0 else finest_count + 1 + k
+
+    root = {"leaf": False, "first": 1, "count": 2}
+    finest = [placed(n, finest_at, 0) for n in finest_nodes]
+    coarse = [placed(n, coarse_at, len(finest_order)) for n in coarse_nodes]
+    return finest_order + coarse_order, [root, finest[0], coarse[0], *finest[1:], *coarse[1:]]
 
 
 def box_of(q, tris):

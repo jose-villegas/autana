@@ -142,11 +142,45 @@ lod_is_ordered(const r3d_lit_mesh_t* mesh) {
     return true;
 }
 
+/* Whether every cluster under `node` is finest, or with `finest` false,
+ * every one coarse. */
+static bool
+subtree_is(const r3d_lit_mesh_t* mesh, int node, bool finest) {
+    uint16_t stack[R3D_LIT_WALK_STACK_MAX];
+    int top = 0;
+    stack[top++] = (uint16_t)node;
+    while (top > 0) {
+        const r3d_lit_node_t* n = &mesh->nodes[stack[--top]];
+        for (int i = 0; i < n->count; i++) {
+            if (n->leaf) {
+                if ((mesh->cluster_lod[n->first + i].own == R3D_LOD_NONE) != finest) {
+                    return false;
+                }
+            } else if (top < R3D_LIT_WALK_STACK_MAX) {
+                stack[top++] = (uint16_t)(n->first + i);
+            } else {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+int
+r3d_lit_mesh_finest_root(const r3d_lit_mesh_t* mesh) {
+    const r3d_lit_node_t* root = &mesh->nodes[0];
+    if (mesh->cluster_lod == NULL || root->leaf || root->count != 2) {
+        return 0;
+    }
+    return subtree_is(mesh, root->first, true) && subtree_is(mesh, root->first + 1, false) ? root->first : 0;
+}
+
 asset_status_t
 r3d_lit_mesh_levels_from_asset(const asset_view_t* levels, r3d_lit_mesh_t* mesh) {
     mesh->cluster_lod = NULL;
     mesh->lod_groups = NULL;
     mesh->lod_group_count = 0;
+    mesh->lod_finest_root = 0;
     const asset_status_t status =
         asset_entry_validate(*levels, LLOD_VERSION, LLOD_AT_VERSION, LLOD_HEADER_SIZE, ENTRY_ALIGNMENT);
     if (status != ASSET_OK) {
@@ -171,6 +205,7 @@ r3d_lit_mesh_levels_from_asset(const asset_view_t* levels, r3d_lit_mesh_t* mesh)
     if (!lod_is_ordered(&built)) {
         return ASSET_ERR_FORMAT;
     }
+    built.lod_finest_root = r3d_lit_mesh_finest_root(&built);
     *mesh = built;
     return ASSET_OK;
 }

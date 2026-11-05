@@ -91,6 +91,20 @@ class BakedLevelsTest(unittest.TestCase):
         self.assertEqual(len(self.plain.tris), len(lit_mesh.finest_triangles(self.levelled)[2]))
         self.assertGreater(len(self.levelled.tris), len(self.plain.tris))
 
+    def test_the_root_holds_the_finest_clusters_tree_then_the_coarse_clusters_tree(self):
+        nodes, finest = self.levelled.nodes, lit_mesh.finest(self.levelled)
+
+        def under(node):
+            n = nodes[node]
+            if n["leaf"]:
+                return list(range(n["first"], n["first"] + n["count"]))
+            return [c for child in range(n["first"], n["first"] + n["count"]) for c in under(child)]
+
+        root = nodes[0]
+        self.assertEqual((False, 2), (root["leaf"], root["count"]))
+        self.assertEqual(sorted(np.flatnonzero(finest)), sorted(under(root["first"])))
+        self.assertEqual(sorted(np.flatnonzero(~finest)), sorted(under(root["first"] + 1)))
+
     def test_every_group_holds_clusters_and_has_clusters_simplified_from_it(self):
         owned = {own for own, _ in self.levelled.lod} - {LOD_NONE}
         parents = {parent for _, parent in self.levelled.lod} - {LOD_NONE}

@@ -79,6 +79,10 @@ typedef struct {
     const r3d_lit_cluster_lod_t* cluster_lod; /* one per cluster, or NULL: every cluster is finest */
     const r3d_lit_lod_group_t* lod_groups;
     int lod_group_count;
+    /* The node the cluster walk starts at while no group is coarse: the
+     * root's first child when it holds the finest clusters and its second
+     * the coarse ones, else the root (r3d_lit_mesh_finest_root()). */
+    int lod_finest_root;
 } r3d_lit_mesh_t;
 
 /* The asset type of a lit mesh entry, and the bytes of its header. */
@@ -89,6 +93,12 @@ typedef struct {
  * checking every array and every cluster and node range against the entry.
  * On failure `mesh` is zeroed and the status says what was wrong. */
 asset_status_t r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh);
+
+/* The node every finest cluster hangs under, apart from the coarse ones: the
+ * root's first child when the root has two, the first holding only finest
+ * clusters and the second only coarse ones, as the levels bake lays them out;
+ * otherwise the root, 0. */
+int r3d_lit_mesh_finest_root(const r3d_lit_mesh_t* mesh);
 
 /* A failed sibling clears only the levels; the geometry remains loaded. */
 asset_status_t r3d_lit_mesh_levels_from_asset(const asset_view_t* levels, r3d_lit_mesh_t* mesh);

@@ -192,7 +192,9 @@ r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint
 
     walk_entry_t* stack = work->cull.stack;
     int top = 0;
-    stack[top++] = (walk_entry_t){0, ALL_PLANES};
+    /* With no group coarse, the coarse clusters' own subtree is never entered. */
+    const bool coarse = r3d_lod_any_coarse(lod_coarse, mesh->lod_group_count);
+    stack[top++] = (walk_entry_t){(uint16_t)(coarse ? 0 : mesh->lod_finest_root), ALL_PLANES};
     int count = 0;
     while (top > 0) {
         const walk_entry_t entry = stack[--top];

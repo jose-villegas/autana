@@ -63,6 +63,7 @@ title Levels: LOD group, 10 bytes a group after cluster records
 | Group bounds | centre, radius and error in position ticks; radius at least 0; where a cluster has both ids, its own group sits inside its parent with `R3D_LOD_ENCLOSE_MARGIN` (1) ticks to spare and has no larger error (`ASSET_ERR_FORMAT`), so a parent never projects smaller and the pick's cut cannot crack |
 | Opening | `r3d_lit_mesh_levels_from_asset()` attaches validated levels to an already loaded mesh; failure clears only its level pointers and count |
 | Sibling | `r3d_lit_mesh_open()` resolves the sibling once; absent means finest only, any other failure clears the mesh and returns the error |
+| Walk start | when the LMSH root has two children, the first holding only finest clusters and the second only coarse ones, `r3d_lit_mesh_finest_root()` names the first; the cluster walk starts there while no group is coarse, else at the root |
 
 Level 0 is clusterlod's finest clusters. The import's `[geometry] lod` setting
 controls whether the CPU bake builds a hierarchy.

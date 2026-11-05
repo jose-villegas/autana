@@ -17,7 +17,11 @@ builds one hierarchy per sidedness, with the positions the two share locked. It
 pushes each coarse vertex inside a group's border outward, up to the group's
 error, so a coarse level never sits inside the finer surface it replaces.
 Group spheres and errors are rounded outward into position ticks; the LLOD
-format ([LLOD.md](../assets/formats/LLOD.md)) states their ordering rules. The
+format ([LLOD.md](../assets/formats/LLOD.md)) states their ordering rules.
+The cluster tree's root has two children: an octree over level 0 alone,
+built as a mesh without levels builds its own, and one over the coarse
+clusters. A frame whose pick leaves every group fine walks the first alone,
+so it costs what the mesh without levels costs. The
 `[geometry] lod` import setting turns levels off; level 0 is then the baked
 meshlets.
 
