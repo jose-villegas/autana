@@ -1,7 +1,8 @@
 /* framegen against the raster itself: a warp to the view a frame was drawn
- * through gives that frame back, a warp to a moved camera puts the rig's
- * card where a draw through that camera does, and the render context
- * composes that generated picture. */
+ * through gives that frame back (its depth to the warp reciprocal's
+ * precision), a warp to a moved camera puts the rig's card where a draw
+ * through that camera does, and the render context composes that generated
+ * picture. */
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -13,6 +14,7 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "math/scalar/mathf.h"
 #include "render/context/render_context.h"
 #include "render/framegen/framegen.h"
 #include "render/r3d_span.h"
@@ -65,7 +67,13 @@ test_a_warp_to_the_drawn_view_gives_the_frame_back(void) {
     const render_view_t view = render_view_fixture(&raster_rig_camera, &r->raster, 0);
     (void)raster_draw(&r->raster, &view);
     framegen_warp(&r->raster, &view, &view, &target);
-    TEST_ASSERT_EQUAL_UINT16_ARRAY(raster_depth(&r->raster), target.depth, W * H);
+    /* The board's reciprocal keeps MATHF_RECIP_APPROX_BITS and the word truncates,
+     * so a depth may come back that fraction of itself plus one word off. */
+    const uint16_t* drawn = raster_depth(&r->raster);
+    for (int i = 0; i < W * H; i++) {
+        const uint32_t off = (uint32_t)((float)drawn[i] * MATHF_RECIP_APPROX_RELATIVE_LIMIT) + 1U;
+        TEST_ASSERT_UINT32_WITHIN(off, drawn[i], target.depth[i]);
+    }
     TEST_ASSERT_EQUAL_UINT16_ARRAY(raster_color(&r->raster), target.colour, W * H);
     TEST_ASSERT_EQUAL_INT(0, framegen_fill(&r->raster, &target));
 }

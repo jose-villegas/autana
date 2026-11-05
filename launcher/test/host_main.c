@@ -13,6 +13,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "app/app_arena.h"
+#include "core/app_heap.h"
 #include "heap_arena.h"
 #include "pack_reads.h"
 #include "shell/ui/ui_ridge.h"
@@ -23,16 +25,19 @@
 /* Unity requires these once per binary. The runner owns the memory audit. */
 static size_t heap_blocks_before;
 static size_t heap_bytes_before;
+static size_t app_blocks_before;
 
 void
 setUp(void) {
     heap_arena_snapshot(&heap_blocks_before, &heap_bytes_before);
+    app_blocks_before = app_heap_blocks();
 }
 
 void
 tearDown(void) {
     suite_run_test_cleanup();
 
+    TEST_ASSERT_EQUAL_size_t_MESSAGE(app_blocks_before, app_heap_blocks(), "test leaked app heap blocks");
     size_t heap_blocks_after;
     size_t heap_bytes_after;
     heap_arena_snapshot(&heap_blocks_after, &heap_bytes_after);
@@ -82,7 +87,13 @@ main(int argc, char** argv) {
     (void)signal(SIGBUS, name_the_test_that_died);
 #endif
     /* The engine pack, as the shell loads it before any app: kept for the
-     * run, so no suite reads it first and none names it. */
+     * run, so no suite reads it first and none names it. The app region
+     * first, as boot takes it. */
+    if (!app_arena_init()) {
+        (void)printf("FAIL: the app region did not fit the modeled PSRAM heap\n");
+        return 1;
+    }
+    app_arena_enter();
     ui_init();
     ui_ridge_load();
     pack_reads_begin();
