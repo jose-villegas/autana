@@ -23,7 +23,7 @@ sys.path.insert(0, str(ROOT / "launcher/tools"))
 from build.c_header import read_define  # noqa: E402
 
 DEVICE = ROOT / "scripts/device/device.py"
-FLY_HEADER = ROOT / "launcher/main/apps/render_lab/render_lab_fly.h"
+FLY_HEADER = ROOT / "launcher/main/apps/render_lab/console/render_lab_fly.h"
 AXES = int(read_define(FLY_HEADER, "RENDER_LAB_FLY_AXES"))
 IDLE_MS = int(read_define(FLY_HEADER, "RENDER_LAB_FLY_IDLE_MS"))
 
@@ -139,9 +139,10 @@ def run_window(child, scene):
         root.after(SEND_MS, tick)
 
     def read_board():
+        # Every line to the terminal, a panic or an error log among them; only replies to the status.
         for line in child.stdout:
+            print(line, end="", flush=True)
             if line.startswith("RENDER"):
-                print(line, end="", flush=True)
                 root.after(0, status.set, line.strip())
 
     def close():

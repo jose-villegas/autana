@@ -1,5 +1,7 @@
 #include "kinematics/fly/fly_motion.h"
 
+#include "math/scalar/mathf.h"
+
 #include <math.h>
 
 #pragma GCC diagnostic error "-Wdouble-promotion"
@@ -7,19 +9,9 @@
 /* Below this, a forward has no horizontal part to take a heading from. */
 #define LEVEL_EPSILON 1.0E-4F
 
-static float
-clampf(float x, float lo, float hi) {
-    return x < lo ? lo : (x > hi ? hi : x);
-}
-
 static vec3f_t
 level(vec3f_t v) {
     return (vec3f_t){v.x, 0.0F, v.z};
-}
-
-static float
-length(vec3f_t v) {
-    return sqrtf(vec3f_dot(v, v));
 }
 
 /* Where the pose faces across the ground. Looking straight up or down,
@@ -27,7 +19,7 @@ length(vec3f_t v) {
 static vec3f_t
 heading(const transformf_t* pose) {
     const vec3f_t forward = quatf_rotate(pose->rotation, vec3f_forward());
-    if (length(level(forward)) >= LEVEL_EPSILON) {
+    if (vec3f_length(level(forward)) >= LEVEL_EPSILON) {
         return level(forward);
     }
     const vec3f_t up = quatf_rotate(pose->rotation, vec3f_up());
@@ -40,8 +32,9 @@ turn(transformf_t* pose, vec2f_t look) {
     const vec3f_t ahead = heading(pose);
     const vec3f_t forward = quatf_rotate(pose->rotation, vec3f_forward());
     const float yaw = atan2f(ahead.x, ahead.z) + (look.x * FLY_MOTION_RADIANS_PER_PIXEL);
-    const float pitch = clampf(asinf(clampf(forward.y, -1.0F, 1.0F)) - (look.y * FLY_MOTION_RADIANS_PER_PIXEL),
-                               -FLY_MOTION_PITCH_LIMIT, FLY_MOTION_PITCH_LIMIT);
+    const float pitch =
+        mathf_clamp(asinf(mathf_clamp(forward.y, -1.0F, 1.0F)) - (look.y * FLY_MOTION_RADIANS_PER_PIXEL),
+                    -FLY_MOTION_PITCH_LIMIT, FLY_MOTION_PITCH_LIMIT);
     const vec3f_t facing = {cosf(pitch) * sinf(yaw), sinf(pitch), cosf(pitch) * cosf(yaw)};
     *pose = transformf_looking(pose->position, facing, vec3f_up());
 }
@@ -53,7 +46,7 @@ stride(const transformf_t* pose, vec3f_t move, float distance) {
     const vec3f_t along = vec3f_add(
         vec3f_add(vec3f_scale(quatf_rotate(pose->rotation, vec3f_right()), move.x), vec3f_scale(vec3f_up(), move.y)),
         vec3f_scale(quatf_rotate(pose->rotation, vec3f_forward()), move.z));
-    return vec3f_scale(along, distance / fmaxf(length(along), 1.0F));
+    return vec3f_scale(along, distance / fmaxf(vec3f_length(along), 1.0F));
 }
 
 fly_motion_t
@@ -63,8 +56,9 @@ fly_motion_start(transformf_t pose, float speed) {
 
 bool
 fly_motion_update(fly_motion_t* fly, const fly_motion_steer_t* steer, float dt_s) {
-    fly->speed = clampf(fly->speed * powf(FLY_MOTION_SPEED_STEP, steer->wheel),
-                        fly->start_speed * FLY_MOTION_SPEED_MIN_RATIO, fly->start_speed * FLY_MOTION_SPEED_MAX_RATIO);
+    fly->speed =
+        mathf_clamp(fly->speed * powf(FLY_MOTION_SPEED_STEP, steer->wheel),
+                    fly->start_speed * FLY_MOTION_SPEED_MIN_RATIO, fly->start_speed * FLY_MOTION_SPEED_MAX_RATIO);
     bool changed = false;
     if (steer->look.x != 0.0F || steer->look.y != 0.0F) {
         turn(&fly->pose, steer->look);

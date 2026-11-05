@@ -341,13 +341,35 @@ python launcher/main/apps/render_lab/tools/fly.py --scene sponza-fitted-full
 | wheel | scales the speed |
 | P | prints where the camera is |
 
-The window sends `autana render fly <right> <up> <forward> <drag x> <drag y> <wheel>`
-lines through `device.py stream`, holding the board's lock while it is open,
+It needs a development image on the board with Render Lab open. The window
+sends `render fly <right> <up> <forward> <drag x> <drag y> <wheel>` lines
+through `device.py stream`, which holds the board's lock while it is open,
 and the board flies the camera every frame from the keys held
-([render_lab_fly.h](../render_lab_fly.h), [fly reference](../../../../../docs/kinematics/Fly.md)).
+([render_lab_fly.h](../console/render_lab_fly.h), [fly reference](../../../../../docs/kinematics/Fly.md)):
+
+```mermaid
+sequenceDiagram
+    participant W as fly.py window
+    participant S as device.py stream
+    participant B as Render Lab on the board
+    W->>S: start, as a child process
+    S->>S: take the board's lock, open its port
+    loop every SEND_MS while the window is open
+        W->>S: render fly keys, drag, wheel
+        S->>B: the line, as it comes
+        B->>B: next frame: step the flight, set the camera
+    end
+    B-->>S: reply lines
+    S-->>W: every line, printed
+    W->>S: render fly release, on close
+    S->>S: stdin ends: close the port, release the lock
+```
+
 A flight starts at the speed that crosses the scene corner to corner in
-`RENDER_LAB_FLY_CROSSING_S` seconds, whatever its units. The camera's clip pauses while it flies. Closing the window, `render fly release`,
-a scene switch or a second with no line puts the camera back and lets the clip play.
+`RENDER_LAB_FLY_CROSSING_S` seconds, whatever its units. The camera's clip
+pauses while it flies. Closing the window, `render fly release`, a scene
+switch or `RENDER_LAB_FLY_IDLE_MS` with no line puts the camera back, its
+clip paused or playing as it was before.
 
 The Capybara scene's BOOT menu holds the same clip picker: the CLIP
 dropdown plays the chosen clip over the BLEND slider's time.

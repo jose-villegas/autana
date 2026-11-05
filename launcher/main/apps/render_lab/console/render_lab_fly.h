@@ -6,14 +6,14 @@
  * until the next line, its drag and wheel add up until the next frame takes
  * them. The first line pauses the camera's clip and flies from where it is;
  * "release", a scene switch, leaving the app, or RENDER_LAB_FLY_IDLE_MS with
- * no line puts the camera back where the flight began and lets its clip play.
+ * no line puts the camera back where the flight began and its clip as it was.
  */
 #pragma once
 
-#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "build/build_variant.h"
 #include "console/console_number.h"
 #include "kinematics/fly/fly_motion.h"
 #include "math/geometry/box3f.h"
@@ -59,16 +59,34 @@ render_lab_fly_start_speed(box3f_t bounds) {
     if (box3f_is_empty(bounds)) {
         return FLY_MOTION_START_SPEED;
     }
-    const vec3f_t diagonal = vec3f_sub(bounds.hi, bounds.lo);
-    return sqrtf(vec3f_dot(diagonal, diagonal)) / RENDER_LAB_FLY_CROSSING_S;
+    return vec3f_length(vec3f_sub(bounds.hi, bounds.lo)) / RENDER_LAB_FLY_CROSSING_S;
 }
 
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 /* "fly <six numbers>", "fly pose" or "fly release": the words after
  * "render ". False for any other line. */
 bool render_lab_fly_console(const char* args);
 
-/* Each scene frame, before the scene draws: steps the flight, if there is one. */
+/* Each pass, after the scene's own steer and update and before it draws:
+ * steps the flight, if there is one. */
 void render_lab_fly_frame(uint32_t dt_ms);
 
-/* Ends a flight, if there is one: the camera goes back and its clip plays. */
+/* Ends a flight, if there is one: the camera goes back and its clip is left
+ * paused or playing, as it was when the flight began. */
 void render_lab_fly_stop(void);
+#else
+/* A release build has no console to fly from. */
+static inline bool
+render_lab_fly_console(const char* args) {
+    (void)args;
+    return false;
+}
+
+static inline void
+render_lab_fly_frame(uint32_t dt_ms) {
+    (void)dt_ms;
+}
+
+static inline void
+render_lab_fly_stop(void) {}
+#endif

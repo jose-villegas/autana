@@ -4,30 +4,23 @@
 #include <string.h>
 
 #include "math/scalar/units.h"
-#include "render/context/render_context.h"
 #include "scene/scene.h"
 
-/* The one flight there can be: the camera it flies, where it began, and the
- * steering the lines since the last frame left. */
+/* The one flight there can be: the camera it flies, where it began and
+ * whether its clip was paused then, and the steering the lines since the
+ * last pass left. */
 typedef struct {
     bool flying;
     scene_t* scene;
     scene_entity_t camera;
     transformf_t home;
+    bool was_paused;
     fly_motion_t fly;
     fly_motion_steer_t steer;
     uint32_t idle_ms;
 } flight_t;
 
 static flight_t flight;
-
-/* Whether the camera the flight began on is still the one drawn. */
-static bool
-still_drawn(void) {
-    scene_t* scene;
-    scene_entity_t camera;
-    return scene_active_camera(&scene, &camera) && scene == flight.scene && camera == flight.camera;
-}
 
 static bool
 take_off(void) {
@@ -36,24 +29,28 @@ take_off(void) {
     if (!scene_active_camera(&scene, &camera)) {
         return false;
     }
+    flight = (flight_t){
+        .flying = true,
+        .scene = scene,
+        .camera = camera,
+        .home = scene_entity_local(scene, camera),
+        .was_paused = scene_animator_paused(scene, camera, SCENE_ANIMATOR_CURRENT),
+        /* In the world's terms, as fly_motion turns about the world's up, whatever the camera's parents. */
+        .fly = fly_motion_start(scene_entity_world(scene, camera), render_lab_fly_start_speed(scene_bounds(scene))),
+    };
     /* A camera with no clip has nothing to pause. */
     (void)scene_animator_set_paused(scene, camera, SCENE_ANIMATOR_CURRENT, true);
-    const transformf_t home = scene_entity_local(scene, camera);
-    flight = (flight_t){.flying = true,
-                        .scene = scene,
-                        .camera = camera,
-                        .home = home,
-                        .fly = fly_motion_start(home, render_lab_fly_start_speed(scene_bounds(scene)))};
     return true;
 }
 
 void
 render_lab_fly_stop(void) {
-    if (flight.flying && still_drawn()) {
-        scene_entity_set_local(flight.scene, flight.camera, flight.home);
-        (void)scene_animator_set_paused(flight.scene, flight.camera, SCENE_ANIMATOR_CURRENT, false);
-        render_context_forget(render_context_main());
+    if (!flight.flying) {
+        return;
     }
+    scene_entity_set_local(flight.scene, flight.camera, flight.home);
+    (void)scene_animator_set_paused(flight.scene, flight.camera, SCENE_ANIMATOR_CURRENT, flight.was_paused);
+    scene_camera_cut(flight.scene, flight.camera);
     flight.flying = false;
 }
 
@@ -108,12 +105,10 @@ render_lab_fly_frame(uint32_t dt_ms) {
         render_lab_fly_stop();
         return;
     }
-    if (!still_drawn()) {
-        flight.flying = false;
-        return;
-    }
-    (void)fly_motion_update(&flight.fly, &flight.steer, (float)dt_ms / (float)MATH_MS_PER_S);
+    const bool moved = fly_motion_update(&flight.fly, &flight.steer, (float)dt_ms / (float)MATH_MS_PER_S);
     flight.steer.look = vec2f_zero();
     flight.steer.wheel = 0.0F;
-    scene_entity_set_local(flight.scene, flight.camera, flight.fly.pose);
+    if (moved) {
+        scene_entity_set_world(flight.scene, flight.camera, flight.fly.pose);
+    }
 }

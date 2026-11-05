@@ -11,6 +11,7 @@
 #include "apps/render_lab/ui/render_lab_hud_screen.h"
 #include "apps/render_lab/ui/render_lab_menu_screen.h"
 #include "build/build_variant.h"
+#include "console/render_lab_fly.h"
 #include "core/tune.h"
 #include "draw/draw.h"
 #include "esp_log.h"
@@ -18,7 +19,6 @@
 #include "image/pixel/rgb565.h"
 #include "render_lab.h"
 #include "render_lab_dynres.h"
-#include "render_lab_fly.h"
 #include "render_lab_scene.h"
 #include "render_lab_view.h"
 #include "scene/scene.h"
@@ -366,7 +366,6 @@ render_lab_frame(uint32_t dt_ms, const input_t* input) {
     update_scene_title(dt_ms);
     render_context_set_frame_generation(render_context_main(),
                                         current_scene()->generates_frames && render_lab_framegen_on());
-    render_lab_fly_frame(dt_ms);
     current_scene()->frame(dt_ms);
     render_lab_dynres_apply();
     if (hud) {
@@ -382,20 +381,21 @@ render_lab_exit(void) {
 }
 
 /* The scene's own steer() and update(), where it has them, overlapped with
- * the send of the frame drawn last pass. A scene switch or the menu takes effect in frame(),
- * which runs after this, so a scene must cope with frame() arriving without
- * a matching update(). */
+ * the send of the frame drawn last pass, then the flight, last so it wins
+ * over a scene that places its own camera. A scene switch or the menu takes
+ * effect in frame(), which runs after this, so a scene must cope with frame()
+ * arriving without a matching update(). */
 static void
 render_lab_update(uint32_t dt_ms, const input_t* input) {
-    if (menu_open) {
-        return;
+    if (!menu_open) {
+        if (current_scene()->steer != NULL) {
+            current_scene()->steer(dt_ms, input);
+        }
+        if (current_scene()->update != NULL) {
+            current_scene()->update(dt_ms);
+        }
     }
-    if (current_scene()->steer != NULL) {
-        current_scene()->steer(dt_ms, input);
-    }
-    if (current_scene()->update != NULL) {
-        current_scene()->update(dt_ms);
-    }
+    render_lab_fly_frame(dt_ms);
 }
 
 /* The showing scene's path, with no scene when it has none or has not loaded. */

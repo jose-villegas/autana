@@ -17,7 +17,7 @@
 #include "math/linear/vec3f.h"
 #include "math/scalar/math_const.h"
 
-/* A start speed for a scene in metres, in metres per second. */
+/* A start speed in metres per second, for a scene measured in metres. */
 #define FLY_MOTION_START_SPEED       4.0F
 /* One wheel notch up multiplies the speed by this; one down divides by it. */
 #define FLY_MOTION_SPEED_STEP        1.25F

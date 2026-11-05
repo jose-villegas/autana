@@ -1927,39 +1927,68 @@ def send(args, store, board):
 
 
 STREAM_READ_BYTES = 4096
+# How often a stream waiting on its next line looks for a lost lock or a
+# reader that failed, so neither leaves it holding the board.
+STREAM_CHECK_SECONDS = 0.25
 
 
-def echo_board(connection, stop, out):
+def echo_board(connection, stop, out, failed):
     """Every whole line the board writes, to `out` as it comes, until `stop`;
-    then what is left of a last line."""
+    then what is left of a last line. A read that fails ends it, with the
+    error left in `failed` for the stream to raise."""
     pending = bytearray()
-    while not stop.is_set():
-        pending.extend(connection.read(STREAM_READ_BYTES))
-        end = pending.rfind(b"\n") + 1
-        if end:
-            out.write(bytes(pending[:end]).decode("utf-8", errors="replace"))
-            out.flush()
-            del pending[:end]
+    try:
+        while not stop.is_set():
+            pending.extend(connection.read(STREAM_READ_BYTES))
+            end = pending.rfind(b"\n") + 1
+            if end:
+                out.write(bytes(pending[:end]).decode("utf-8", errors="replace"))
+                out.flush()
+                del pending[:end]
+    except Exception as error:  # noqa: BLE001  (any read failure ends the stream, raised by its owner)
+        failed.append(error)
     if pending:
         out.write(bytes(pending).decode("utf-8", errors="replace") + "\n")
         out.flush()
+
+
+def feed_lines(lines, inbox):
+    """Each of `lines` into `inbox` as it arrives, then None for the end."""
+    for line in lines:
+        inbox.put(line)
+    inbox.put(None)
 
 
 def stream(args, store, board, lines=None, out=None):
     """Console lines from stdin to the board as each arrives, and every line
     the board writes to stdout, under one lock and one open port until stdin
     ends: for a desktop tool steering the board live, where a `send` per line
-    (a process, a lock and an open each) is far too slow."""
+    (a process, a lock and an open each) is far too slow. A lost lock or a
+    failed read ends it with an error, even while stdin is quiet."""
+    import queue
+
     lines = sys.stdin if lines is None else lines
     out = sys.stdout if out is None else out
     with HeldLock(store, board, args.owner, "stream", args.wait):
         with open_when_free() as connection:
             stop = threading.Event()
-            reader = threading.Thread(target=echo_board, args=(connection, stop, out), daemon=True)
+            failed = []
+            reader = threading.Thread(target=echo_board, args=(connection, stop, out, failed), daemon=True)
             reader.start()
+            # stdin is read on its own thread, so a quiet stdin never stops the checks below.
+            inbox = queue.Queue()
+            threading.Thread(target=feed_lines, args=(lines, inbox), daemon=True).start()
             try:
-                for line in lines:
+                while True:
+                    if failed:
+                        raise RuntimeError(f"reading the board failed: {failed[0]}") from failed[0]
                     require_unlost()
+                    try:
+                        line = inbox.get(timeout=STREAM_CHECK_SECONDS)
+                    except queue.Empty:
+                        continue
+                    if line is None:
+                        break
                     try:
                         data = (line.rstrip("\r\n") + "\n").encode("ascii")
                     except UnicodeEncodeError as error:

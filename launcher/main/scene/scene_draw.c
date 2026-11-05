@@ -74,7 +74,7 @@ scene_draw_release(void) {
 }
 
 void
-scene_draw_camera_cut(const scene_t* scene, scene_entity_t entity) {
+scene_camera_cut(const scene_t* scene, scene_entity_t entity) {
     if (active.scene == scene && scene->cameras[active.camera].entity == entity) {
         render_context_forget(render_context_main());
     }
