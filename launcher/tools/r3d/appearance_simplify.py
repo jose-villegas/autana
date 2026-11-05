@@ -562,10 +562,17 @@ def coverage(mesh, views, size, device="cuda"):
 
 def prune(mesh, shown, budget):
     """Drop never-shown triangles first, then those showing fewest pixels to
-    meet `budget`. A flat mesh's colours go with their triangles. Return the
-    pruned mesh and the kept start indices."""
-    order = np.argsort(-np.asarray(shown), kind="stable")
-    keep = np.sort(order[: min(budget, int(np.count_nonzero(shown)))])
+    meet `budget`. `shown` is one row of pixels per triangle, or ranked rows:
+    a triangle an earlier row shows outranks every one it does not, and each
+    is ordered by the pixels of the first row that shows it. A flat mesh's
+    colours go with their triangles. Return the pruned mesh and the kept
+    start indices."""
+    shown = np.atleast_2d(np.asarray(shown))
+    seen = shown > 0
+    first = np.where(seen.any(axis=0), seen.argmax(axis=0), len(shown))
+    pixels = np.where(first < len(shown), shown[np.minimum(first, len(shown) - 1), np.arange(shown.shape[1])], 0)
+    order = np.lexsort((-pixels, first))
+    keep = np.sort(order[: min(budget, int(np.count_nonzero(seen.any(axis=0))))])
     pruned = mesh._replace(rgb=mesh.rgb[keep] if mesh.flat else mesh.rgb, tris=mesh.tris[keep],
                            double=np.asarray(mesh.double)[keep])
     return pruned, keep
@@ -721,7 +728,7 @@ def surface_loss(samples, centres, normals, scale, margin):
 def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian, seed=1, device="cuda", report=100,
              clear=(0.0, 0.0, 0.0), cost=None, cost_weight=0.0, scale=1, normal_weight=0.0, surface_weight=0.0,
              surface_margin=0.0, source=None, seam_margin=SEAM_MARGIN, copies=None, carved=None, front_weight=0.0,
-             depth_weight=0.0, view_odds=None):
+             depth_weight=0.0):
     """Fit fixed triangles; return positions, colours and colour-only error history.
     Position steps use bounding diagonals and each vertex's capped local start scale.
     Laplacian drift and the source envelope use capped local start edge scales,
@@ -806,7 +813,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     finite = torch.ones((), dtype=torch.bool, device=device)
     started = time.time()
     for step in range(steps):
-        chosen = rng.choice(len(views), size=min(batch, len(views)), replace=False, p=view_odds)
+        chosen = rng.choice(len(views), size=min(batch, len(views)), replace=False)
         adam.zero_grad()
         points = held_positions()
         draw, draw_colours = with_copies(points, colours)
@@ -910,12 +917,7 @@ def main(argv=None):
     parser.add_argument("--lr-colour", type=float, default=0.01)
     parser.add_argument("--laplacian", type=float, default=10.0)
     parser.add_argument("--budget", type=int, help="prune to this many triangles, those that show least first")
-    parser.add_argument("--coverage-poses", action="append",
-                        help="a denser poses file to count shown pixels over, repeatable; the training poses otherwise")
-    parser.add_argument("--coverage-weight", type=float, action="append",
-                        help="per --coverage-poses, the weight of its shown pixels (1 each by default)")
-    parser.add_argument("--pair-weight", type=float, action="append",
-                        help="per --poses, its share of each batch's draws (every view equally likely by default)")
+    parser.add_argument("--coverage-poses", help="a denser poses file to count shown pixels over; the training poses otherwise")
     parser.add_argument("--cost-model", help="a cost_model.py weights file, such as board_cost_weights.txt")
     parser.add_argument("--cost-weight", type=float, default=0.0, help="dE76 per predicted millisecond")
     parser.add_argument("--object", help="the scene object whose source anchors the fit")
@@ -945,11 +947,7 @@ def main(argv=None):
         parser.error("front and depth weights must be finite and nonnegative")
     if (args.front_weight or args.depth_weight) and not args.copies:
         parser.error("front and depth terms need --copies, whose source shows where the copies are")
-    coverage_weights = args.coverage_weight or [1.0] * len(args.coverage_poses or [])
-    if args.coverage_poses and len(coverage_weights) != len(args.coverage_poses):
-        parser.error("give one --coverage-weight per --coverage-poses")
-    if args.pair_weight and (len(args.pair_weight) != len(args.poses) or min(args.pair_weight) < 0):
-        parser.error("give one nonnegative --pair-weight per --poses")
+    coverage_views, coverage_size = pose_views(args.coverage_poses, args.scale) if args.coverage_poses else (None, None)
     scene = load_scene(args.scene)
     if scene.camera is None:
         parser.error("--scene needs a camera")
@@ -967,16 +965,7 @@ def main(argv=None):
     pairs = list(zip(args.poses, args.reference))
     shots = [[pair] for pair in pairs] if args.per_shot else [pairs]
     for index, shot in enumerate(shots):
-        views, size, pair_of = [], None, []
-        for pair_index, pair in enumerate(shot):
-            pair_views, size = load_views([pair], args.scale)
-            views += pair_views
-            pair_of += [pair_index] * len(pair_views)
-        view_odds = None
-        if args.pair_weight and not args.per_shot:
-            counts = np.bincount(pair_of)
-            view_odds = np.array([args.pair_weight[i] / counts[i] for i in pair_of])
-            view_odds /= view_odds.sum()
+        views, size = load_views(shot, args.scale)
         out = pathlib.Path(args.out) / (f"shot{index}" if args.per_shot else "")
         log(f"{out}: {len(views)} views at {size[0]}x{size[1]}")
         if args.score:
@@ -1004,15 +993,12 @@ def main(argv=None):
                                         scale=args.scale, normal_weight=args.normal_weight, source=source,
                                         surface_weight=args.surface_weight, surface_margin=args.surface_margin,
                                         seam_margin=args.seam_margin, copies=copies, carved=carved,
-                                        front_weight=args.front_weight, depth_weight=args.depth_weight, view_odds=view_odds)
+                                        front_weight=args.front_weight, depth_weight=args.depth_weight)
         fitted = fitted._replace(points=points, rgb=rgb)
         kept = np.arange(len(fit_start.tris))
         if args.budget is not None:
-            if args.coverage_poses:
-                shown = sum(weight * coverage(joined(fitted, copies), *pose_views(path, args.scale))
-                            for path, weight in zip(args.coverage_poses, coverage_weights))[:len(fitted.tris)]
-            else:
-                shown = coverage(joined(fitted, copies), views, size)[:len(fitted.tris)]
+            shown = coverage(joined(fitted, copies), coverage_views if args.coverage_poses else views,
+                             coverage_size if args.coverage_poses else size)[:len(fitted.tris)]
             pruned, kept = prune(fitted, shown, args.budget)
             log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: {np.count_nonzero(shown == 0)} never shown")
             fitted = pruned
