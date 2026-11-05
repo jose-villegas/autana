@@ -39,6 +39,7 @@
 #include "hash/crc32.h"
 #include "math/linear/transformf.h"
 #include "profile/frame_cost.h"
+#include "render/lod/r3d_lod.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_span_internal.h"
 #include "render/raster_internal.h"
@@ -68,6 +69,8 @@ static r3d_lit_mesh_t meshes[SCENE_BAKED_VARIANT_COUNT];
 typedef struct {
     void* scratch;
     gfx_color_t* panel;
+    r3d_instance_t instance; /* the one drawn, with coarse bits when its mesh has levels */
+    uint32_t* coarse;
     raster_t raster;
     r3d_lens_t lens;
     char* report;
@@ -85,6 +88,7 @@ bench_close(void) {
         return;
     }
     memory_free(open_bench->frame_us);
+    memory_free(open_bench->coarse);
     memory_free(open_bench->report);
     memory_free(open_bench->scratch);
     memory_free(open_bench->panel);
@@ -100,9 +104,18 @@ bench_open(const r3d_instance_t* instance, const raster_attachment_t* const* att
     open_bench = b;
     suite_add_test_cleanup(bench_close);
     b->panel = memory_alloc(sizeof(gfx_color_t) * PANEL_PIXELS, MEMORY_PSRAM);
+    b->instance = *instance;
+    if (b->instance.lod_coarse == NULL && instance->mesh->lod_group_count > 0) {
+        /* All clear, as a scene's renderer starts: the finest level until raster_pick_levels() runs. */
+        const size_t words = R3D_LOD_WORDS(instance->mesh->lod_group_count);
+        b->coarse = memory_alloc(words * sizeof(*b->coarse), MEMORY_INTERNAL);
+        TEST_ASSERT_NOT_NULL(b->coarse);
+        memset(b->coarse, 0, words * sizeof(*b->coarse));
+        b->instance.lod_coarse = b->coarse;
+    }
     const resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
     b->raster = (raster_t){
-        .instances = instance,
+        .instances = &b->instance,
         .instance_count = 1,
         .width = size.width,
         .height = size.height,
@@ -340,6 +353,8 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
             *model = transformf_compute_matrix(moving);
         }
         const int64_t start = timing_now_us();
+        /* The levels the frame draws, picked as render_context_draw() picks them, inside the frame's time. */
+        raster_pick_levels(&b->raster, &view);
         const raster_stats_t stats = raster_draw(&b->raster, &view);
         const resolution_step_t composed = raster_compose_size(&b->raster);
         raster_upscale(&b->raster, b->panel, composed.width, composed.height);
