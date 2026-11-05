@@ -798,11 +798,13 @@ skin_of(entity_t entity) {
     return &columns(entity)->skinned_renderers[row_of(entity)];
 }
 
-/* The root of the loaded scene `index`, in load order. */
+#ifndef DEVICE_BUILD
+/* The root of the loaded scene `index`, in record order. */
 static entity_t
 loaded_root(int index) {
     return scene_row_entity(loaded_at(index), SCENE_ROW_ROOT);
 }
+#endif
 
 /* The entity at `row` of the scene under `root`. */
 static entity_t
@@ -4748,7 +4750,10 @@ test_table_later_frames_mode_changes_and_light_enable(void) {
     release_fixture();
 }
 
-/* The world: entity handles and scene roots. */
+/* The world: entity handles and scene roots. Host only: they hand the
+ * engine stale and foreign handles, which a development device build
+ * asserts on. */
+#ifndef DEVICE_BUILD
 
 static transformf_t
 moved_along_x(float x) {
@@ -5310,7 +5315,6 @@ test_a_failed_scene_holds_nothing_to_find_and_reports_no_failure_unless_failed(v
     TEST_ASSERT_ENTITY(entity_at(ready, 1), entity_find(ready, name_hash("red")));
 }
 
-#ifndef DEVICE_BUILD
 /* Poll passes that validate any test pack, with one to open the scene. */
 #define POLL_PASSES_MAX ((int)(PACK_MAX / ASSET_STORE_STEP_BYTES) + 2)
 
@@ -5944,6 +5948,7 @@ run_scene_suite(void) {
     RUN_TEST(test_staged_entities_stay_in_entity_order_once_each);
     RUN_TEST(test_a_light_or_skin_does_not_attach_under_a_parent);
     RUN_TEST(test_a_scene_with_parents_releases_everything_when_a_load_fails);
+#ifndef DEVICE_BUILD
     RUN_TEST(test_a_released_scenes_entities_are_refused_even_when_their_slots_return);
     RUN_TEST(test_a_handle_with_another_owners_tag_is_refused);
     RUN_TEST(test_a_root_slot_whose_generation_would_wrap_is_retired);
@@ -5970,7 +5975,6 @@ run_scene_suite(void) {
     RUN_TEST(test_mutators_refuse_foreign_stale_and_never_issued_handles);
     RUN_TEST(test_an_entity_that_is_not_a_root_is_no_scene_to_release_or_cancel);
     RUN_TEST(test_a_failed_scene_holds_nothing_to_find_and_reports_no_failure_unless_failed);
-#ifndef DEVICE_BUILD
     RUN_TEST(test_an_async_scene_opens_on_the_poll_and_completes_once);
     RUN_TEST(test_cancelling_before_ready_frees_the_request_without_a_callback);
     RUN_TEST(test_cancelling_a_ready_scene_keeps_it);
