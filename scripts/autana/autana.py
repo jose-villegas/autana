@@ -1804,7 +1804,7 @@ COMMAND_GROUPS = (
     ("build", "Build and flash", (
         Command("build", build, (
             ("build [rel|dev|diag] [--perf-scope [--frame-laps]] [--layout-seed N] [--hot-tunables] [--configure]",
-             "build without a board lock; dev when omitted; --layout-seed N > 0 pads the layout, 0 is the plain build; --frame-laps adds the laps inside the frame stages; --hot-tunables adds live hot-path knobs; --configure only writes sdkconfig and compile_commands.json"),
+             "build without a board lock; dev when omitted; --layout-seed N (with --perf-scope) pads the layout, 0 is the plain build; --frame-laps adds the laps inside the frame stages; --hot-tunables adds live hot-path knobs; --configure only writes sdkconfig and compile_commands.json"),
             ("build diag --check", "the diagnostics build plus the complexity ratchet, no board"))),
         one("flash", flash, "flash [rel|dev|diag] [--quiet] [--perf-scope [--frame-laps]] [--layout-seed N] [--hot-tunables]",
             "build, then flash under the lock; dev when omitted; --quiet logs only; --perf-scope (diag) builds the perf-scoped image, --frame-laps adds the laps inside its frame stages"),

@@ -12,7 +12,7 @@ from pathlib import Path
 from statistics import mean
 from types import SimpleNamespace
 
-from layout_measure import analyse, autana_command, required_seeds, run_flash, filter_limits, validate_filters, split_filters, FilterOverlap
+from layout_measure import LAYOUT_SEED_MAX, analyse, autana_command, required_seeds, run_flash, filter_limits, validate_filters, split_filters, FilterOverlap
 from device_capture import test_matches
 from capture import require_same_board
 from seed_statistics import compare, minimum_seeds, permutation_samples
@@ -195,9 +195,9 @@ def measure(args, runner=None, clock=time.monotonic):
             for side in sides:
                 suites = args.suite if active is None else selected_suites(
                     args.suite, active, extracted[side][2], limits[side], device_inventory(records[side]))
-                seed = rng.randint(1, 2147483647)
+                seed = rng.randint(1, LAYOUT_SEED_MAX)
                 while seed in used:
-                    seed = rng.randint(1, 2147483647)
+                    seed = rng.randint(1, LAYOUT_SEED_MAX)
                 used.add(seed)
                 repeated = sum(any(len(entry["runs"]) >= 2 for entry in record["suites"].values())
                                for record in records[side])

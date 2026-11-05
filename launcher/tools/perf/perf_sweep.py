@@ -10,7 +10,7 @@ import re
 from statistics import mean
 import sys
 
-from layout_measure import (REPO, autana_command, booted_build_id,
+from layout_measure import (LAYOUT_SEED_MAX, REPO, autana_command, booted_build_id,
                             capture_metadata, captured_runs, make_table, parse_markdown, timing_samples,
                             run_stamped, split_filters, filter_limits, status_snapshot)
 import device_lock
@@ -36,7 +36,6 @@ SET_REFUSED = "device: SET "
 
 class SweepStop(RuntimeError):
     """The board refused a knob: every later capture would meet the same."""
-LAYOUT_SEED_MAX = 2**32 - 1
 TUNE_VALUE_MIN = -(2**31)
 TUNE_VALUE_MAX = 2**31 - 1
 TUNE_NAME_MAX = read_define(REPO / "launcher/main/core/tune.h", "TUNE_NAME_MAX")
@@ -76,7 +75,7 @@ def parse_args(argv=None):
         if not 0 < args.threshold < 100 or not 0 < args.alpha < 1 or min(args.runs, args.timeout, args.wait) <= 0:
             parser.error("threshold, alpha, runs and time limits must be positive and in range")
         if len(set(args.seeds)) != len(args.seeds) or any(seed < 0 or seed > LAYOUT_SEED_MAX for seed in args.seeds):
-            parser.error("layout seeds must be distinct uint32 values")
+            parser.error(f"layout seeds must be distinct, from 0 to {LAYOUT_SEED_MAX}")
         if len({name for name, _ in args.knob}) != len(args.knob):
             parser.error("knob names must be unique")
         try:
