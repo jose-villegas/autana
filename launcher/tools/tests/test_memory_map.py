@@ -38,12 +38,12 @@ class MemoryMapTests(unittest.TestCase):
         path.write_text(text)
         return memory.sites(self.root)
 
-    def check(self, placements, inputs, config=None, active=None, variant="release"):
+    def check(self, placements, inputs, config=None, active=None, variant="release", inlines=()):
         config = config or {}
         for site in placements:
             if site.path.endswith(".lf") and isinstance(site.entries, bool):
                 site.entries = memory.fragment_entries(site, self.root, config)
-        return memory.check(placements, inputs, variant, memory.components(self.root), active or (lambda site: True))
+        return memory.check(placements, inputs, variant, memory.components(self.root), active or (lambda site: True), inlines=inlines)
 
     def test_missing_comment(self):
         with self.assertRaisesRegex(ValueError, "reason"):
@@ -75,15 +75,32 @@ class MemoryMapTests(unittest.TestCase):
         sites = self.source("/* Cache latency. IRAM budget: 4 B */\n#define HOT_CODE IRAM_ATTR\nstatic void HOT_CODE foo(void) {}\nstatic void HOT_CODE bar(void) {}")
         inputs = [memory.Input("libmain.a", "foo.c.obj", "foo", 4),
                   memory.Input("libmain.a", "foo.c.obj", "caller", 8, output=".flash.text")]
-        with self.assertRaisesRegex(ValueError, "bar: attributed function has no IRAM symbol"):
-            self.check(sites, inputs)
+        for emitted in (False, True):
+            copies = inputs + ([memory.Input("libmain.a", "foo.c.obj", "bar", 0)] if emitted else [])
+            with self.subTest(emitted=emitted), self.assertRaisesRegex(ValueError, "bar: inlined copy.*flash"):
+                self.check(sites, copies, inlines=[("launcher/main/foo.c", "bar", ".flash.text", 0x42000000, 0x42000008)])
 
-    def test_attributed_symbol_must_be_code_in_iram(self):
+    def test_attributed_function_inlined_only_into_iram(self):
+        sites = self.source("/* Cache latency. IRAM budget: 4 B */\n#define HOT_CODE IRAM_ATTR\nstatic void HOT_CODE foo(void) {}\nstatic void HOT_CODE bar(void) {}")
+        inputs = [memory.Input("libmain.a", "foo.c.obj", "foo", 4)]
+        self.assertEqual(self.check(sites, inputs, inlines=[("launcher/main/foo.c", "bar", ".iram0.text", 0x40380000, 0x40380004)])[0][1], 4)
+
+    def test_inline_only_site_has_no_out_of_line_budget(self):
+        sites = self.source("/* Cache latency. IRAM budget: 0 B */\nstatic void IRAM_ATTR foo(void) {}")
+        self.assertEqual(self.check(sites, [], inlines=[("launcher/main/foo.c", "foo", ".iram0.text", 0x40380000, 0x40380004)])[0][1], 0)
+
+    def test_discarded_inline_ranges_have_no_instance(self):
+        ranges = [(memory.DWARF_DISCARDED_PC, 3), (0x40380000, 0x40380004)]
+        rows = list(memory.inline_rows("launcher/main/foo.c", "foo", ranges,
+                                       {".debug_info": (0, 8), ".iram0.text": (0x40380000, 4)}))
+        self.assertEqual(rows, [("launcher/main/foo.c", "foo", ".iram0.text", 0x40380000, 0x40380004)])
+
+    def test_attributed_out_of_line_copy_must_be_in_iram(self):
         sites = self.source("/* Cache latency. IRAM budget: 4 B */\nstatic void IRAM_ATTR foo(void) {}")
-        for inputs in ([memory.Input("libmain.a", "foo.c.obj", "foo", 4, output=".flash.text")],
-                       [memory.Input("libmain.a", "foo.c.obj", "foo", 4, literal=True)]):
-            with self.subTest(inputs=inputs), self.assertRaisesRegex(ValueError, "no IRAM symbol"):
-                self.check(sites, inputs)
+        with self.assertRaisesRegex(ValueError, "out-of-line copy.*flash"):
+            self.check(sites, [memory.Input("libmain.a", "foo.c.obj", "foo", 4, output=".flash.text")])
+        literals = [memory.Input("libmain.a", "foo.c.obj", "foo", 4, literal=True)]
+        self.assertEqual(self.check(sites, literals)[0][1], 4)
 
     def test_compiled_out_alias_use_needs_no_symbol(self):
         self.source("/* Cache latency. IRAM budget: 4 B */\n#define HOT_CODE IRAM_ATTR\nstatic void HOT_CODE foo(void) {}\nstatic void HOT_CODE bar(void) {}")
@@ -172,7 +189,7 @@ class MemoryMapTests(unittest.TestCase):
             with self.subTest(output=output):
                 text = (".iram0.text 0x40380000 0x8\n .text.foo 0x40380000 0x4 main/libmain.a(foo.c.obj)\n"
                         f"{output} 0x42000000 0x4\n .text.foo.isra.0\n  0x42000000 0x4 main/libmain.a(foo.c.obj)\n"
-                        ".flash.text 0x42000004 0x40\n .text.foo 0x42000004 0x40 main/libmain.a(foo.c.obj)\n")
+                        ".flash.text 0x42000004 0x40\n .text.unrelated 0x42000004 0x40 main/libmain.a(foo.c.obj)\n")
                 placed, _, _ = memory.map_inputs(text, {})
                 build = dict(variant="release", idf_commit="pin", owned=memory.components(self.root),
                              inputs=[item for item in placed if item.output.startswith(".iram")], placed_inputs=placed,
@@ -457,8 +474,7 @@ print(m.render(builds))
         sites = self.source("/* Cache latency. IRAM budget: 0 B */\nstatic void IRAM_ATTR foo(void) {}")
         self.assertEqual(sites[0].budget, 0)
         self.assertEqual(self.check(sites, [], active=lambda site: False)[0][1], 0)
-        with self.assertRaisesRegex(ValueError, "placed nothing"):
-            self.check(sites, [])
+        self.assertEqual(self.check(sites, [])[0][1], 0)
 
     def test_symbol_reader_preserves_duplicate_names(self):
         import code_layout
@@ -715,7 +731,7 @@ print(m.render(builds))
         fragment = build / "linker.lf"
         fragment.write_text("[mapping:hot]\narchive: libchosen.a\nentries:\n    foo:foo (noflash)\n")
         (build / "build.ninja").write_text("build esp-idf/esp_system/ld/sections.ld : CUSTOM_COMMAND linker.lf\n  COMMAND = python idf/tools/ldgen/ldgen.py --config sdkconfig --kconfig Kconfig --env-file config.env --fragments-list linker.lf\n")
-        with patch.object(memory, "symbols", return_value={}), patch.object(memory, "find_tool", return_value="nm"), patch.object(memory, "run", side_effect=[json.dumps({"layout": []}), json.dumps([["libchosen.a", "foo.*", "foo"]])]), patch.object(memory, "idf_commit", return_value="idf-commit"):
+        with patch.object(memory, "inline_instances", return_value=[]), patch.object(memory, "symbols", return_value={}), patch.object(memory, "find_tool", return_value="nm"), patch.object(memory, "run", side_effect=[json.dumps({"layout": []}), json.dumps([["libchosen.a", "foo.*", "foo"]])]), patch.object(memory, "idf_commit", return_value="idf-commit"):
             measured = memory.read_build(build, self.root)
         self.assertEqual(measured["owned"], {"libchosen.a": self.root / "launcher/components/chosen"})
         self.assertEqual(measured["build_id"], "123456abcdef-diag")
@@ -796,6 +812,15 @@ print(m.render(builds))
             builds.append({"variant": variant, "idf_commit": "pinned", "inputs": inputs,
                            "owned": memory.components(self.root), "report": [(sites[0], size, ["foo"]), (sites[1], 0 if variant == "release" else 7, ["bar"])]})
         return builds
+
+    def test_update_budget_includes_active_inline_only_variant(self):
+        builds = self.budget_builds()
+        for build in builds:
+            build["active"] = lambda site: True
+        site = builds[0]["report"][0][0]
+        builds[0]["report"][0] = (site, 0, [])
+        memory.update_budgets(self.root, builds)
+        self.assertEqual(memory.sites(self.root)[0].budget, {"release": 0, "dev": 8, "diag": 8})
 
     def test_update_budgets_rewrites_clauses_then_exact_check_passes(self):
         builds = self.budget_builds()

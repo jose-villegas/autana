@@ -16,11 +16,11 @@
 /* Per-triangle setup and drawing run from IRAM to avoid flash fetch stalls
  * and cache-set placement effects; 4-byte alignment avoids wasting IRAM on
  * the render sources' cache-line function alignment.
- * IRAM budget: 5630 B */
+ * IRAM budget: 8588 B */
 #define RENDER_IRAM_ATTR IRAM_ATTR __attribute__((aligned(4)))
 /* A view that skips clusters behind drawn depth also runs its capped setup
  * and drawing in IRAM, keeping the skip path free of flash fetch stalls.
- * IRAM budget: 3217 B */
+ * IRAM budget: 5135 B */
 #define RENDER_SKIP_ATTR RENDER_IRAM_ATTR
 #else
 /* A host build has no instruction cache to place code in. */

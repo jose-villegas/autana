@@ -31,12 +31,10 @@ _Static_assert(GFX_WIDTH == BOARD_PANEL_WIDTH && GFX_HEIGHT == BOARD_PANEL_HEIGH
 #endif
 
 #ifdef ESP_PLATFORM
-/* The send hot path runs from IRAM so a present after a cold instruction cache
- * does not wait on flash fetches. An attribute, not a linker.lf entry,
- * places it: the compiler's clones of a function inherit the attribute, and
- * a mapping entry names only the original. Development overlays and send
- * auditing make dev and diag larger.
- * IRAM budget: release 2426 B, dev 3242 B, diag 3242 B */
+/* The present hot path uses attributes so compiler clones stay in IRAM;
+ * dispatch stays out of line so flash callers cannot inline its body.
+ * Development overlays and send auditing enlarge dev and diag.
+ * IRAM budget: release 2418 B, dev 3242 B, diag 3242 B */
 #define GFX_PRESENT_IRAM_ATTR IRAM_ATTR
 static const char* TAG = "gfx";
 #else
@@ -825,7 +823,7 @@ run_present_raw_full(void) {
     }
 }
 
-static void GFX_PRESENT_IRAM_ATTR
+static void GFX_PRESENT_IRAM_ATTR __attribute__((noinline))
 run_present(void) {
     if (present_task_mode == PRESENT_TASK_RAW_FULL) {
         run_present_raw_full();
