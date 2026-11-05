@@ -32,8 +32,8 @@ alignment is loaded with `EE.LD.128.USAR` and shifted into place.
 
 | Rule | Why |
 |---|---|
-| `CONFIG_SIMD_PIE` builds the kernels on the ESP32-S3 and in Espressif's QEMU | QEMU checks they match their `_ref`, not their timing |
-| Check kernels using instructions with an open [espressif/qemu S3 PIE bug (#161–#166)](https://github.com/espressif/qemu/issues?q=is%3Aissue%20is%3Aopen%20S3%20PIE) on the board only | QEMU gives incorrect results for those instructions |
+| The kernels build for the ESP32-S3 target, board and QEMU alike | Espressif's QEMU runs them bit for bit; `suite_simd` compares each with its `_ref` |
+| A kernel using EE.VADDS/EE.VSUBS, EE.LDXQ.32/EE.STXQ.32, SAR=32 EE.VSL/EE.VSR/EE.VMUL, aliased EE.CMUL.S16, EE.VMULAS.U8.QACC or a dynamic cross-shift is checked on the board only | Espressif's QEMU gets those wrong ([#161](https://github.com/espressif/qemu/issues/161) to [#166](https://github.com/espressif/qemu/issues/166)) |
 | Kernels load and store only at 16-byte boundaries | `EE.VLD.128` and `EE.VST.128` drop the low four address bits without a fault |
 | No call from an ISR | PIE is coprocessor CP3, whose state is saved for tasks only |
 | The first call pins an unpinned task to its core | ESP-IDF saves CP3 lazily in the owning task |

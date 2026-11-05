@@ -1,9 +1,9 @@
 /*
  * Every simd call against its C reference, bit for bit: each start offset
  * within a vector, lengths through the minimum and past several vectors,
- * every element distinct and extreme values, and guard elements around the output that no
- * call may touch. On the board and in QEMU this compares the PIE path; on
- * the host both sides are the reference.
+ * every element distinct and extreme values, and guard elements around the
+ * output that no call may touch. On the board and in QEMU this compares the
+ * PIE path; on the host both sides are the reference.
  */
 #include <stdint.h>
 #include <stdlib.h>
