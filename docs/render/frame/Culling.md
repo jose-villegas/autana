@@ -5,6 +5,12 @@ prove hidden at the cheapest unit it can: a triangle the bake never saw, an
 instance or subtree outside the frustum, a cluster outside a core's rows, a
 triangle that would fill nothing.
 
+![Bistro's fates from behind the camera](../../images/render/cull-bistro-chase.gif)
+
+Bistro along its camera path, seen from behind the camera: culled clusters as a
+grey screen door, each kept one outlined blue if not set up, red if hidden,
+green if drawn ([the cull, seen](#the-cull-seen)).
+
 ```mermaid
 flowchart LR
     subgraph Offline["offline, at the bake"]
@@ -134,8 +140,6 @@ The frame's own cull and draw count nothing; `r3d_pipeline_cull_counted()` and
 Bistro along its camera path:
 
 ![Bistro's cull along its path](../../images/render/cull-bistro-sheet.png)
-
-![Bistro's fates from behind the camera](../../images/render/cull-bistro-chase.gif)
 
 ![Bistro's counts along its path](../../images/render/cull-bistro-counts.png)
 
