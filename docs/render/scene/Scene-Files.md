@@ -102,8 +102,6 @@ or skinned renderer.
 | `light` | `type`, `color`, `intensity` | A directional light; see [light](#light). |
 | `camera` | `half_fov_short_tan`, `near_z`, `region`, `path`, `background` | The view; see [camera](#camera). Only the active camera renders. |
 
-A clip animating a parent's scale must keep it even on every axis; pack builds refuse uneven keys or cubic tangents.
-
 ## What the scene must carry
 
 | A scene with | Must carry | May also carry |
@@ -380,6 +378,12 @@ id comes from the imported rig. The mesh holds unlit albedo. `bake` is refused.
 animator's clips. `default_clip` names one of those clips; absent, nothing plays.
 `wrap` is `loop` (default) or `clamp`. Without an animator the skin uses its
 rest pose. Each component occurs once per entity.
+
+A clip may animate the scale of an entity with children only if its three axes
+stay equal (within the scale tolerance) at every key and every cubic tangent.
+
+Child worlds compose as exact TRS only under an even parent scale; pack builds
+refuse clips that break this rule.
 
 ### Light options
 

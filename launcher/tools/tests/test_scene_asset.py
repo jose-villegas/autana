@@ -4,6 +4,7 @@ scene. The firmware's reader of the same bytes is suite_scene.c."""
 
 import pathlib
 import math
+import re
 import struct
 import sys
 import tempfile
@@ -455,32 +456,72 @@ class SceneParentTests(unittest.TestCase):
 
 
 class ClipScaleTests(unittest.TestCase):
-    def test_parent_scale_tracks(self):
-        for path in (".", "parent"):
-            for interpolation, values in (
-                    ("LINEAR", [(1, 1, 1), (1, 2, 1)]),
-                    ("CUBICSPLINE", [(0, 0, 0), (1, 1, 1), (0, 0, 0),
-                                     (-1, -2, -1), (2, 2, 2), (0, 0, 0)])):
-                for has_children in (False, True):
-                    with self.subTest(path=path, interpolation=interpolation, has_children=has_children):
-                        scene = {"entities": [{"name": "parent", "parent": None},
-                                              {"name": "leaf", "parent": 0 if has_children else None}],
-                                 "animators": [{"entity": 0, "first_clip": 0, "clip_count": 1}],
-                                 "clips": ["grow"]}
-                        track = {"path": path, "component": tracks_asset.TRANSFORM, "field": "scale",
-                                 "root": tracks_asset.ROOT_SCENE, "interpolation": interpolation,
-                                 "times": [0.0, 1.0], "values": values}
-                        if has_children:
-                            with self.assertRaisesRegex(SceneError, "grow.*parent.*1"):
-                                scene_asset.check_clip_scales(scene, {"grow": [track]})
-                        else:
-                            scene_asset.check_clip_scales(scene, {"grow": [track]})
-                        track["values"] = [(v[0],) * 3 for v in values]
-                        scene_asset.check_clip_scales(scene, {"grow": [track]})
-                        scene_asset.check_clip_scales(scene, {})
-                        track["root"] = tracks_asset.ROOT_SKELETON
-                        track["values"] = values
-                        scene_asset.check_clip_scales(scene, {"grow": [track]})
+    @staticmethod
+    def scene(parent_name="parent", animator=0, first_clip=0):
+        return {"entities": [{"name": parent_name, "name_hash": name_hash(parent_name), "parent": None},
+                             {"name": "leaf", "name_hash": name_hash("leaf"), "parent": 0}],
+                "animators": [{"entity": animator, "first_clip": first_clip, "clip_count": 1}],
+                "clips": ["grow"]}
+
+    @staticmethod
+    def track(path="parent", **changes):
+        return {"path": path, "component": tracks_asset.TRANSFORM, "field": "scale",
+                "root": tracks_asset.ROOT_SCENE, "type": tracks_asset.VALUE_VEC3,
+                "name": "scale", "quaternion": False, "interpolation": "LINEAR",
+                "times": [0.25, 1.5], "values": [(1, 1, 1), (1, 2, 1)], **changes}
+
+    def test_named_target_uses_runtime_name_hash(self):
+        self.assertEqual(name_hash("liquid"), name_hash("costarring"))
+        with self.assertRaisesRegex(SceneError, "scale is not even at 1.5s"):
+            scene_asset.check_clip_scales(self.scene("costarring"), {"grow": [self.track("liquid")]})
+
+    def test_childless_animator_can_name_a_parent(self):
+        with self.assertRaisesRegex(SceneError, "scale is not even at 1.5s"):
+            scene_asset.check_clip_scales(self.scene(animator=1), {"grow": [self.track()]})
+
+    def test_self_on_childless_animator_ignores_other_parents(self):
+        scene_asset.check_clip_scales(self.scene(animator=1), {"grow": [self.track(".")]})
+
+    def test_named_childless_target_passes(self):
+        scene_asset.check_clip_scales(self.scene(), {"grow": [self.track("leaf")]})
+
+    def test_self_on_parent_refuses_uneven_scale(self):
+        with self.assertRaisesRegex(SceneError, "scale is not even at 1.5s"):
+            scene_asset.check_clip_scales(self.scene(), {"grow": [self.track(".")]})
+
+    def test_even_scale_passes(self):
+        scene_asset.check_clip_scales(self.scene(), {"grow": [self.track(values=[(1, 1, 1), (2, 2, 2)])]})
+
+    def test_cubic_checks_each_keys_tangents_and_value(self):
+        for row, time in enumerate((0.25, 0.25, 0.25, 1.5, 1.5, 1.5)):
+            values = [(0, 0, 0), (1, 1, 1), (0, 0, 0)] * 2
+            values[row] = (1, 2, 1)
+            track = self.track(interpolation="CUBICSPLINE", values=values)
+            with self.subTest(row=row), self.assertRaisesRegex(SceneError, re.escape(f"scale is not even at {time:g}s") + "$"):
+                scene_asset.check_clip_scales(self.scene(), {"grow": [track]})
+
+    def test_clip_outside_animator_slice_passes(self):
+        scene = self.scene(first_clip=1)
+        scene["clips"] = ["grow", "rest"]
+        scene_asset.check_clip_scales(scene, {"grow": [self.track()]})
+
+    def test_clip_inside_animator_slice_refuses(self):
+        scene = self.scene(first_clip=1)
+        scene["clips"] = ["rest", "grow", "rest"]
+        with self.assertRaisesRegex(SceneError, "scale is not even at 1.5s"):
+            scene_asset.check_clip_scales(scene, {"grow": [self.track()]})
+
+    def test_position_track_is_not_checked(self):
+        scene_asset.check_clip_scales(self.scene(), {"grow": [self.track(field="position")]})
+
+    def test_other_component_is_not_checked(self):
+        scene_asset.check_clip_scales(self.scene(), {"grow": [self.track(component=tracks_asset.CAMERA)]})
+
+    def test_skeleton_track_is_not_checked(self):
+        scene_asset.check_clip_scales(self.scene(), {"grow": [self.track(root=tracks_asset.ROOT_SKELETON)]})
+
+    def test_absent_clip_passes(self):
+        scene_asset.check_clip_scales(self.scene(), {})
 
     def test_pack_checks_mirrored_scene_and_clip_entries(self):
         objects = SceneParentTests.objects(("parent", "empty", None), ("leaf", "empty", "parent"))
@@ -513,6 +554,22 @@ class ScenePackTests(SceneFiles):
         self.assertEqual({name: kind for name, (kind, _) in hall.items()},
                          {"hall": scene_asset.TYPE, "a": LIT_MESH, "b": LIT_MESH, "fly": tracks_asset.TYPE})
         self.assertEqual(hall["fly"][1], to_engine(tracks_asset.TYPE, tracks_asset.bake(self.root / "clips/fly.anim.toml", "camera")))
+
+    def pack_with_parent_scale(self, values):
+        child = renderer("b.import.toml", name="leaf").replace(
+            '[objects.mesh_renderer]', 'parent = "parent"\n[objects.mesh_renderer]')
+        self.scene(renderer("a.import.toml", name="parent") + child + lens("clips/fly.anim.toml"))
+        clip = tracks_asset.encode([ClipScaleTests.track(values=values)], 1500)
+        with mock.patch.object(tracks_asset, "bake", return_value=clip):
+            return build_pack.pack_bytes([self.root])
+
+    def test_pack_refuses_uneven_parent_scale_clip(self):
+        with self.assertRaisesRegex(SettingsError, "hall.*fly.*parent.*scale is not even at 1.5s"):
+            self.pack_with_parent_scale([(1, 1, 1), (1, 2, 1)])
+
+    def test_pack_accepts_even_parent_scale_clip(self):
+        packs = self.pack_with_parent_scale([(1, 1, 1), (2, 2, 2)])
+        self.assertIn("fly", parse_pack(packs["hall"]))
 
     def test_replace_takes_only_a_mesh(self):
         self.scene(renderer("a.import.toml") + lens("clips/fly.anim.toml"))

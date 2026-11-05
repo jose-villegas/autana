@@ -19,7 +19,6 @@ from r3d.scene_rows import (CLIP, COLOUR_SET_OWN, NAME, RENDERER, TRANSFORM, TRA
 OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_format.h"
 INTERNAL = OWNER.with_name("scene_internal.h")
 ANIM_OWNER = OWNER.parents[1] / "anim/anim_track.h"
-ANIM_TARGET_SELF = read_define(ANIM_OWNER.with_name("anim_binding.h"), "ANIM_TARGET_SELF")
 TYPE = b"SCNE"
 VERSION = read_define(OWNER, "SCENE_ASSET_VERSION")
 DIRECTIONAL = read_define(OWNER, "SCENE_LIGHT_KIND_DIRECTIONAL")
@@ -147,10 +146,13 @@ def scale_is_even(scales):
 
 
 def check_clip_scales(scene, clips):
-    """Refuse uneven parent scale curves; clips absent from this pack are skipped."""
+    """Refuse uneven parent scale curves: they would shear turned children, whose worlds hold TRS.
+
+    Clips absent from this pack are skipped.
+    """
     entities = scene["entities"]
     parents = {row["parent"] for row in entities if row["parent"] is not None}
-    parent_names = {entities[index]["name"] for index in parents}
+    parent_hashes = {entities[index]["name_hash"] for index in parents}
     for animator in scene["animators"]:
         first = animator["first_clip"]
         for clip in scene["clips"][first:first + animator["clip_count"]]:
@@ -159,8 +161,8 @@ def check_clip_scales(scene, clips):
                         or track["field"] != "scale"):
                     continue
                 target = (entities[animator["entity"]]["name"]
-                          if track["path"] == ANIM_TARGET_SELF else track["path"])
-                if target not in parent_names:
+                          if track["path"] == tracks_asset.TARGET_SELF else track["path"])
+                if name_hash(target) not in parent_hashes:
                     continue
                 runs = tracks_asset.CUBIC_RUNS if track["interpolation"] == "CUBICSPLINE" else 1
                 for index, value in enumerate(track["values"]):

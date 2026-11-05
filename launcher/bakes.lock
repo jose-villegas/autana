@@ -241,36 +241,36 @@ host = "Linux x86_64"
 # and sampler code. bake.py lock writes them; bake.py check samples them again.
 
 [[poses]]
-key = "23682e22e0d7e55ea00d9030e9fbb24c915bd390f685b6432cc7da23538a5e9d"
+key = "0530f49135f930cfc417dba912fe05e48ed428fd5873a4196a660b74c888759f"
 poses = "9ead88ddf14f89d2451a12a9e69686f4eeb66075f3ed042f999511be8e6e0998"
 count = 265
 clip = "launcher/demo/bistro/street.anim.toml"
 host = "Linux x86_64"
 
 [[poses]]
-key = "4d2193254d8c9c3469e9e3c46cea022ec1ab67d4ded5d5f2324aeec212ad7e96"
-poses = "bc608ce3264275d892202b270ad05e255c7878431cbea66d907ba0e927ecf8da"
-count = 37
-clip = "launcher/demo/sponza/flythrough.anim.toml"
-host = "Linux x86_64"
-
-[[poses]]
-key = "5f4699344cc948ac8cd4b0271895185a67da56470cb98bbe6bbbc2ae0a9fa3ae"
-poses = "4e6038b04307b2374f3c90ae507e576d2cfd82d7508b742ba134ebfe01ceb18d"
-count = 133
+key = "44cc1f39e42efc040c48c822f0db78f125018de52990196971982abbc76ac86a"
+poses = "d22bd63bb589a7fcbd9126cc96d9d65ee9bd7f2d66560aec6e9d6b938397755f"
+count = 6605
 clip = "launcher/demo/bistro/street.anim.toml"
 host = "Linux x86_64"
 
 [[poses]]
-key = "7e9117ccad171759e112a78478b493ff66fc9e6a4a02e4445deb57316061be20"
+key = "adc7708ae822a814fb00dd251c459a90983b6f7cd7e811da15da73a927ed093d"
 poses = "7f5a1e528b63cc2ebea4ea3c6795518dc30bb47befc15345be563a2d9a4ddd10"
 count = 1816
 clip = "launcher/demo/sponza/flythrough.anim.toml"
 host = "Linux x86_64"
 
 [[poses]]
-key = "dde81ef5fef9cb1f621c666f84e7c43f8a4cdec18d65b2836644af9fa03ad0c9"
-poses = "d22bd63bb589a7fcbd9126cc96d9d65ee9bd7f2d66560aec6e9d6b938397755f"
-count = 6605
+key = "b6b52730c9d87c17a4796d175f77913e13cc01ea9729322e089ef6b31b72d25e"
+poses = "4e6038b04307b2374f3c90ae507e576d2cfd82d7508b742ba134ebfe01ceb18d"
+count = 133
 clip = "launcher/demo/bistro/street.anim.toml"
+host = "Linux x86_64"
+
+[[poses]]
+key = "dcd7a3fa3b920266be02ac494fe9aa85d120aa8ba3d7c733e94977e03a5ba251"
+poses = "bc608ce3264275d892202b270ad05e255c7878431cbea66d907ba0e927ecf8da"
+count = 37
+clip = "launcher/demo/sponza/flythrough.anim.toml"
 host = "Linux x86_64"

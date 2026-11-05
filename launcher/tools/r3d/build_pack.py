@@ -306,7 +306,7 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
 
 
 def validate_clip_scales(rows):
-    """Check parent scale animation in the pack's mirrored scenes and tracks."""
+    """Refuse a scene whose clips scale a parent unevenly; clips not in this pack are skipped."""
     scenes = {name: scene_asset.decode(data) for name, kind, data in rows if kind == scene_asset.TYPE}
     clips = {name: tracks_asset.decode(data)[0] for name, kind, data in rows if kind == tracks_asset.TYPE}
     for name, scene in scenes.items():
