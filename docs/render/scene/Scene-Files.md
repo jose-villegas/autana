@@ -102,6 +102,8 @@ or skinned renderer.
 | `light` | `type`, `color`, `intensity` | A directional light; see [light](#light). |
 | `camera` | `half_fov_short_tan`, `near_z`, `region`, `path`, `background` | The view; see [camera](#camera). Only the active camera renders. |
 
+A clip animating a parent's scale must keep it even on every axis; pack builds refuse uneven keys or cubic tangents.
+
 ## What the scene must carry
 
 | A scene with | Must carry | May also carry |

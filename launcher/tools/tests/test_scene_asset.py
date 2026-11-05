@@ -454,6 +454,53 @@ class SceneParentTests(unittest.TestCase):
                 scene_asset.encode(SimpleNamespace(objects=self.objects(*rows), renderers=[]))
 
 
+class ClipScaleTests(unittest.TestCase):
+    def test_parent_scale_tracks(self):
+        for path in (".", "parent"):
+            for interpolation, values in (
+                    ("LINEAR", [(1, 1, 1), (1, 2, 1)]),
+                    ("CUBICSPLINE", [(0, 0, 0), (1, 1, 1), (0, 0, 0),
+                                     (-1, -2, -1), (2, 2, 2), (0, 0, 0)])):
+                for has_children in (False, True):
+                    with self.subTest(path=path, interpolation=interpolation, has_children=has_children):
+                        scene = {"entities": [{"name": "parent", "parent": None},
+                                              {"name": "leaf", "parent": 0 if has_children else None}],
+                                 "animators": [{"entity": 0, "first_clip": 0, "clip_count": 1}],
+                                 "clips": ["grow"]}
+                        track = {"path": path, "component": tracks_asset.TRANSFORM, "field": "scale",
+                                 "root": tracks_asset.ROOT_SCENE, "interpolation": interpolation,
+                                 "times": [0.0, 1.0], "values": values}
+                        if has_children:
+                            with self.assertRaisesRegex(SceneError, "grow.*parent.*1"):
+                                scene_asset.check_clip_scales(scene, {"grow": [track]})
+                        else:
+                            scene_asset.check_clip_scales(scene, {"grow": [track]})
+                        track["values"] = [(v[0],) * 3 for v in values]
+                        scene_asset.check_clip_scales(scene, {"grow": [track]})
+                        scene_asset.check_clip_scales(scene, {})
+                        track["root"] = tracks_asset.ROOT_SKELETON
+                        track["values"] = values
+                        scene_asset.check_clip_scales(scene, {"grow": [track]})
+
+    def test_pack_checks_mirrored_scene_and_clip_entries(self):
+        objects = SceneParentTests.objects(("parent", "empty", None), ("leaf", "empty", "parent"))
+        objects[0].animator = SimpleNamespace(clips=["grow"], default_clip=None, wrap="loop")
+        scene = scene_asset.encode(SimpleNamespace(objects=objects, renderers=[]))
+        track = {"path": ".", "component": tracks_asset.TRANSFORM, "field": "scale",
+                 "type": tracks_asset.VALUE_VEC3, "name": "scale", "quaternion": False,
+                 "interpolation": "LINEAR", "times": [0.0, 1.0], "values": [(1, 1, 1), (1, 2, 1)]}
+        clip = tracks_asset.encode([track], 1000)
+        rows = [("room", scene_asset.TYPE, to_engine(scene_asset.TYPE, scene)),
+                ("grow", tracks_asset.TYPE, to_engine(tracks_asset.TYPE, clip))]
+        with self.assertRaisesRegex(SettingsError, "room.*grow.*parent.*1"):
+            build_pack.validate_clip_scales(rows)
+
+    def test_negative_scale_tangents_use_absolute_magnitude(self):
+        self.assertTrue(scene_asset.scale_is_even((-1, -1, -1)))
+        self.assertTrue(scene_asset.scale_is_even((-1, -1 + scene_asset.SCALE_TOLERANCE / 2, -1)))
+        self.assertFalse(scene_asset.scale_is_even((-1, -2, -1)))
+
+
 class ScenePackTests(SceneFiles):
     """build_pack: a scene's pack holds its entry, its meshes and its camera's clip."""
 

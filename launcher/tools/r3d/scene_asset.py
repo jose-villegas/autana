@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from asset.asset_pack import NAME_BYTES
+from anim import tracks_asset
 from build.c_header import read_define
 from build.name_hash import NONE as HASH_NONE, name_hash
 from r3d.import_settings import ANIM_WRAPS, SettingsError, color_fits, load_scene
@@ -18,6 +19,7 @@ from r3d.scene_rows import (CLIP, COLOUR_SET_OWN, NAME, RENDERER, TRANSFORM, TRA
 OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_format.h"
 INTERNAL = OWNER.with_name("scene_internal.h")
 ANIM_OWNER = OWNER.parents[1] / "anim/anim_track.h"
+ANIM_TARGET_SELF = read_define(ANIM_OWNER.with_name("anim_binding.h"), "ANIM_TARGET_SELF")
 TYPE = b"SCNE"
 VERSION = read_define(OWNER, "SCENE_ASSET_VERSION")
 DIRECTIONAL = read_define(OWNER, "SCENE_LIGHT_KIND_DIRECTIONAL")
@@ -141,7 +143,30 @@ def column_scales(matrix):
 
 
 def scale_is_even(scales):
-    return max(scales) - min(scales) <= SCALE_TOLERANCE * max(scales)
+    return max(scales) - min(scales) <= SCALE_TOLERANCE * max(abs(s) for s in scales)
+
+
+def check_clip_scales(scene, clips):
+    """Refuse uneven parent scale curves; clips absent from this pack are skipped."""
+    entities = scene["entities"]
+    parents = {row["parent"] for row in entities if row["parent"] is not None}
+    parent_names = {entities[index]["name"] for index in parents}
+    for animator in scene["animators"]:
+        first = animator["first_clip"]
+        for clip in scene["clips"][first:first + animator["clip_count"]]:
+            for track in clips.get(clip, []):
+                if (track["root"] != tracks_asset.ROOT_SCENE or track["component"] != tracks_asset.TRANSFORM
+                        or track["field"] != "scale"):
+                    continue
+                target = (entities[animator["entity"]]["name"]
+                          if track["path"] == ANIM_TARGET_SELF else track["path"])
+                if target not in parent_names:
+                    continue
+                runs = tracks_asset.CUBIC_RUNS if track["interpolation"] == "CUBICSPLINE" else 1
+                for index, value in enumerate(track["values"]):
+                    if not scale_is_even(value):
+                        time = track["times"][index // runs]
+                        raise SceneError(f"clip {clip}: entity {target}: scale is not even at {time:g}s")
 
 
 def fold_parent_scales(objects, parents, drawn):

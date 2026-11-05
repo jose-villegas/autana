@@ -33,7 +33,7 @@ static vec3f_t
 camera_space_by_hand(transformf_t camera, transformf_t model, vec3f_t point) {
     const vec3f_t scaled = {point.x * model.scale.x, point.y * model.scale.y, point.z * model.scale.z};
     const vec3f_t world = vec3f_add(quatf_rotate(model.rotation, scaled), model.position);
-    const quatf_t inverse = {-camera.rotation.x, -camera.rotation.y, -camera.rotation.z, camera.rotation.w};
+    const quatf_t inverse = quatf_conjugate(camera.rotation);
     return quatf_rotate(inverse, vec3f_sub(world, camera.position));
 }
 

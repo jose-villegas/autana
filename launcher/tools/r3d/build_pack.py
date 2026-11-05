@@ -300,8 +300,20 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
             except ValueError as error:
                 raise SettingsError(f"entry {key!r}: {error}") from error
         validate_colour_sets(mirrored)
+        validate_clip_scales(mirrored)
         result[name] = build_pack(sorted(mirrored))
     return result
+
+
+def validate_clip_scales(rows):
+    """Check parent scale animation in the pack's mirrored scenes and tracks."""
+    scenes = {name: scene_asset.decode(data) for name, kind, data in rows if kind == scene_asset.TYPE}
+    clips = {name: tracks_asset.decode(data)[0] for name, kind, data in rows if kind == tracks_asset.TYPE}
+    for name, scene in scenes.items():
+        try:
+            scene_asset.check_clip_scales(scene, clips)
+        except scene_asset.SceneError as error:
+            raise SettingsError(f"{name}: {error}") from error
 
 
 def validate_colour_sets(rows):
