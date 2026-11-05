@@ -281,6 +281,14 @@ fit_scratch(render_context_t* c) {
 }
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+/* Where the frame's second view was drawn from. Not inlined: the pose's
+ * maths stay off the draw's frame, under the deepest raster chain. */
+static __attribute__((noinline)) void
+note_observed(render_context_t* c, const transformf_t* observer, const render_view_t* second) {
+    c->observed = true;
+    c->observed_from = observer != NULL ? *observer : render_view_pose(second);
+}
+
 /* The debug view's second draw, when it asks for one, every cluster kept. */
 static void
 draw_second_view(render_context_t* c) {
@@ -297,8 +305,7 @@ draw_second_view(render_context_t* c) {
     bool listed = false;
     while (row->second_view(c->debug_view_state, &c->raster, observer, &second, &listed)) {
         if (!c->observed) {
-            c->observed = true;
-            c->observed_from = observer != NULL ? *observer : render_view_pose(&second);
+            note_observed(c, observer, &second);
         }
         c->raster.split = NULL;
         if (listed) {
