@@ -12,7 +12,7 @@ import numpy as np
 
 from r3d import lcol_asset, mesh_bundle
 from r3d.fit.gbuffer import IN_FRONT, distance, reference_buffers
-from r3d.lit_mesh import finest_triangles, octree_order, rgb888
+from r3d.lit_mesh import finest, rgb888
 
 # The copy-coverage gate: over the held-out poses, the fitted rest may hide more of the frame's copy pixels
 # than its start by at most HIDDEN_MEAN_GROWTH on the mean and HIDDEN_WORST_GROWTH on the worst pose. Set
@@ -23,9 +23,10 @@ HIDDEN_WORST_GROWTH = 0.010
 
 
 def placed_copies(bundle, flat):
-    """Every copy in a start bundle placed under its transform, as one FitMesh in the rest's units: welded
-    per copy mesh, one colour per vertex, or per triangle when `flat`. None when the bundle has no copies. A copy
-    mesh's triangles come in octree_order(), so the fit's input does not follow how the bundle lays out levels."""
+    """Every copy in a start bundle placed under its transform, as one FitMesh in the rest's units: a copy
+    mesh's finest clusters as the bundle stores them, their own vertices with positions welded, one colour per
+    vertex, or per triangle when `flat`. None when the bundle has no copies. No weld by value, so a copy's
+    vertices and triangles are the ones a mesh without levels holds."""
     from r3d.appearance_simplify import FitMesh
 
     entries, rows = mesh_bundle.decode(pathlib.Path(bundle).read_bytes())
@@ -36,28 +37,31 @@ def placed_copies(bundle, flat):
     point_count = vertex_count = 0
     for name in dict.fromkeys(row["mesh"] for row in rows):
         mesh = mesh_bundle.read_mesh(entries, name)
-        order = octree_order(mesh)
+        shown = [c for c, level0 in zip(mesh.clusters, finest(mesh)) if level0]
+        vertices = np.concatenate([np.arange(vbase, vbase + vcount) for vbase, vcount, *_ in shown])
+        faces = np.concatenate([np.arange(tbase, tbase + tcount) for _, _, tbase, tcount, *_ in shown])
+        sided = np.concatenate([np.full(tcount, int(is_double), dtype=np.int64)
+                                for _, _, _, tcount, _, _, is_double in shown])
+        renumber = np.full(len(mesh.pos), -1, dtype=np.int64)
+        renumber[vertices] = np.arange(len(vertices))
+        local, welded = np.unique(mesh.pos[vertices], axis=0, return_inverse=True)
+        local, welded = local / float(mesh.position_scale), welded.reshape(-1)
         encoding, _count, sets = lcol_asset.decode(data[lcol_asset.name_for_mesh(name)])
         if (encoding == lcol_asset.RGB565) != flat:
             raise ValueError(f"copy mesh {name} is {'flat' if encoding == lcol_asset.RGB565 else 'smooth'} "
                              f"and its rest is not")
         for row in (row for row in rows if row["mesh"] == name):
             colours = sets[row["colour_set"]]
-            colours = rgb888(np.frombuffer(colours, "<u2")) if flat else np.frombuffer(colours, "u1").reshape(-1, 3)
-            mesh.rgb, mesh.face_colors = (None, colours) if flat else (colours, None)
-            q, colour, faces, sided, face_colour = finest_triangles(mesh, order)
-            local, welded = np.unique(q, axis=0, return_inverse=True)
-            local, welded = local / float(mesh.position_scale), welded.reshape(-1)
+            colours = rgb888(np.frombuffer(colours, "<u2"))[faces] if flat                 else np.frombuffer(colours, "u1").reshape(-1, 3)[vertices]
             points.append(local @ np.asarray(row["matrix"], dtype=np.float64).T + np.asarray(row["position"]))
-            rgb.append((face_colour if flat else colour) / 255.0)
-            tris.append(faces + vertex_count)
+            rgb.append(colours / 255.0)
+            tris.append(renumber[mesh.tris[faces]] + vertex_count)
             double.append(sided)
             vertex_point.append(welded + point_count)
             point_count += len(local)
             vertex_count += len(welded)
     return FitMesh(np.concatenate(points), np.concatenate(rgb), np.concatenate(tris), np.concatenate(double), 1,
                    np.concatenate(vertex_point), flat)
-
 
 def joined(rest, copies):
     """The rest and the copies as one mesh to raster, the rest's triangles first."""

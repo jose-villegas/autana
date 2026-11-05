@@ -2,7 +2,6 @@
 the groups keep the format's ordering after rounding to ticks, coarse vertices only move outward, and the
 engine frame mirrors the group records."""
 
-import copy
 import math
 import pathlib
 import sys
@@ -21,15 +20,13 @@ from r3d.lod.bake_levels import bake_lit_mesh
 from r3d.geometry import closest_point_on_triangles
 from r3d.lod import pick
 from r3d.lit_mesh import MAX_TRIANGLES, MAX_VERTICES
-from r3d.lod.bake_levels import INT16_MAX, bake_levels, push_outward, quantised_groups, within_format
+from r3d.lod.bake_levels import INT16_MAX, push_outward, quantised_groups, within_format
 from r3d.mesh_asset import LOD_ENCLOSE_MARGIN, LOD_NONE
 import test_r3d_lod
 
 GRID = 24
 # A grid whose level 0 fits the format but whose levels together need over MAX_VERTICES vertices.
 CROWDED_GRID = 150
-# A grid whose level 0 fits one octree leaf but whose levels together do not.
-ONE_LEAF_GRID = 12
 # Every fourth triangle row is two-sided, so both sides get a hierarchy and share a border.
 DOUBLE_EVERY = 4
 FOCAL_PX = 64.0
@@ -131,32 +128,6 @@ class BakedLevelsTest(unittest.TestCase):
             *centre, radius, error = mesh_asset.LOD_GROUP.unpack_from(blob, at)
             self.assertEqual((*engine_frame._mirror_position(centre), radius, error),
                              mesh_asset.LOD_GROUP.unpack_from(mirrored, at))
-
-
-class OctreeOrderTest(unittest.TestCase):
-    """A fit draws a start's copies in octree_order(), so its input does not follow how the bundle lays out
-    the levels: level 0 comes out where one octree over every level put it."""
-
-    def test_level_zero_in_octree_order_is_where_one_octree_over_every_level_puts_it(self):
-        points, rgb, triangles, double = wavy_grid(ONE_LEAF_GRID)
-        plain = lit_mesh.bake_lit_mesh(points, rgb, triangles, double)
-        levels = bake_levels(*lit_mesh.finest_triangles(plain), lit_mesh.MESHLET_TRIANGLES)
-
-        def built(groups):
-            return read_back(lit_mesh.assemble(levels.q, levels.col, copy.deepcopy(levels.entries),
-                                               lit_mesh.POSITION_SCALE, lit_mesh.LEAF_TRIANGLES, lit_mesh.MAX_DEPTH,
-                                               groups))
-
-        def clusters(mesh, order):
-            return [mesh.pos[mesh.tris[c[2]:c[2] + c[3]]].tobytes() for c in (mesh.clusters[i] for i in order)]
-
-        apart, together = built(levels.groups), built(None)
-        level0 = set(clusters(apart, np.flatnonzero(lit_mesh.finest(apart))))
-        before = [c for c in clusters(together, range(len(together.clusters))) if c in level0]
-        stored = [c for c in clusters(apart, range(len(apart.clusters))) if c in level0]
-        self.assertTrue(apart.nodes[apart.nodes[0]["first"]]["leaf"])
-        self.assertNotEqual(before, stored)
-        self.assertEqual(before, [c for c in clusters(apart, lit_mesh.octree_order(apart)) if c in level0])
 
 
 def lens_rows(eye, target, model, shift):

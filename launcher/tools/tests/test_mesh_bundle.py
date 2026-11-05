@@ -270,14 +270,15 @@ class FitCopiesTests(unittest.TestCase):
         face = rgb888(panel_colour(np.full((1, 3), 80)))[0]
         np.testing.assert_array_equal(np.rint(mesh.rgb * 255), np.tile(face, (len(copies), 1)))
 
-    def test_copy_levels_draw_only_the_finest_triangles(self):
+    def test_copy_levels_draw_the_finest_clusters_as_stored(self):
         from r3d.fit.copies import placed_copies
         from r3d.lod.bake_levels import bake_lit_mesh
         from test_r3d_lod_bake import wavy_grid
         mesh = bake_lit_mesh(*wavy_grid())
         self.assertIsNotNone(mesh.lod)
-        expected = sum(count for (_, _, _, count, _, _, _), (own, _) in zip(mesh.clusters, mesh.lod)
-                       if own == mesh_asset.LOD_NONE)
+        shown = [c for c, (own, _) in zip(mesh.clusters, mesh.lod) if own == mesh_asset.LOD_NONE]
+        vertices = np.concatenate([np.arange(vbase, vbase + vcount) for vbase, vcount, *_ in shown])
+        faces = np.concatenate([mesh.tris[tbase:tbase + tcount] for _, _, tbase, tcount, *_ in shown])
         colours = lcol_asset.encode(lcol_asset.RGB888, len(mesh.pos), [mesh.rgb.astype('u1').tobytes()])
         mesh.rgb = None
         with tempfile.TemporaryDirectory() as folder:
@@ -288,7 +289,10 @@ class FitCopiesTests(unittest.TestCase):
             entries.append((lcol_asset.name_for_mesh("prototype"), lcol_asset.TYPE, colours))
             path = pathlib.Path(folder) / 'copy.bundle'
             path.write_bytes(mesh_bundle.encode(entries, [row]))
-            self.assertEqual(len(placed_copies(path, flat=False).tris), expected)
+            placed = placed_copies(path, flat=False)
+        # The finest clusters' own vertices and triangles, in the bundle's order: nothing welded by value.
+        np.testing.assert_array_equal(vertices[placed.tris], faces)
+        self.assertEqual(len(placed.vertex_point), len(vertices))
 
     def test_copies_must_be_shaded_as_their_rest_is(self):
         from r3d.fit.copies import placed_copies
