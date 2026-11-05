@@ -26,13 +26,13 @@ whose meshes were made on another, as `bake --out` does on such a host.
 A fit's start is a mesh bake of its own (`<entry>.start.mesh`, locked and published, held by no pack).
 The fit's key names the start's locked bytes, so it is unknown until the start is locked: `list` says the
 fit waits for its start, and the Bakes GPU run fits only once the start's row is committed. A fit's
-references are keyed on what they read (fitted_variant.ReferenceInputs), not on the start.
+references are keyed on what they read (reference_set.ReferenceInputs), not on the start.
 
 `list` prints every bake with its key, or with `--missing` those LOCK lacks. `bake` makes each bake LOCK has no
 row for into the cache (produce.py), and with `--out` also copies each one there as it is made, the folder a CI
 run uploads, so a run cut short still uploads what it finished; `--from-run N` first takes run N's uploads made on a
 host like this one into the cache, so a rerun makes only what is left; `--only` limits it to the named outputs and
-`--again` re-makes them even when locked, to compare a new make with the lock
+`--again` re-makes them even when locked, a fit from fresh references, to compare a new make with the lock
 (the lock keeps its row). `lock` drops the rows nothing needs, writes the rows it has and then fails naming the bakes still
 without one;
 `--from-run N` adds the rows CI run N made, from its uploads, and is the only
@@ -123,8 +123,8 @@ GPU_QUERY_TIMEOUT_S = 10
 STAGES = {
     "poses": ("anim/track_host.py",),
     "mesh": ("r3d/mesh_import.py",),
-    "reference": ("r3d/mesh_import.py", "r3d/reference_render.py", "r3d/fitted_variant.py"),
-    "fit": ("r3d/fitted_variant.py", "r3d/appearance_simplify.py"),
+    "reference": ("r3d/reference_render.py", "r3d/reference_set.py"),
+    "fit": ("r3d/fit/stage.py", "r3d/appearance_simplify.py"),
     "blend": ("gltf/blend_skin_to_glb.py",),
     "sound": ("audio/sound_import.py",),
 }
@@ -272,11 +272,12 @@ def imported_names(tree):
             yield from (((node.module + "." if node.module else "") + alias.name, node.level) for alias in node.names)
 
 
-def closure(entries, stop=(), consumers=False):
-    """The entries' import closure, including packages, under TOOLS or sys.path roots the code adds.
-    A file in `stop`, any file under bake/, and, unless `consumers`, a file that imports this tool
-    (it consumes bakes, so it makes none) are neither counted nor followed. Unplaced tracked imports fail."""
-    roots = [TOOLS]
+def closure(entries, stop=(), consumers=False, roots=()):
+    """The entries' import closure, including packages, under TOOLS, `roots` (the folders of entries run as
+    scripts) or sys.path roots the code adds. A file in `stop`, any file under bake/, and, unless `consumers`,
+    a file that imports this tool (it consumes bakes, so it makes none) are neither counted nor followed.
+    Unplaced tracked imports fail."""
+    roots = [TOOLS, *roots]
     while True:
         known = len(roots)
         found, pending, unplaced = set(), [(TOOLS / entry).resolve() for entry in entries], []
@@ -491,7 +492,7 @@ def tool_digest(stage):
 
 
 def canonical(value):
-    from r3d.fitted_variant import canonical as parsed
+    from r3d.reference_set import canonical as parsed
 
     return parsed(value)
 
@@ -587,7 +588,7 @@ def fit_recipe(fit):
 
 
 def reference_recipe(inputs, tools, poses=None, unavailable=None):
-    """A fit's reference set by every field of its fitted_variant.ReferenceInputs: the import as a mesh counts
+    """A fit's reference set by every field of its reference_set.ReferenceInputs: the import as a mesh counts
     it, the camera by its lens and sampled poses, the rest as parsed."""
     recipe = {}
     for field in dataclasses.fields(inputs):
@@ -617,7 +618,7 @@ def stage_keys(job, scene, tools, starts=None, poses=None):
     start = None if unavailable else digest(["mesh", recipe, tools["mesh"]])
     keys = {"mesh": start}
     if job.renderer.fit is not None:
-        from r3d.fitted_variant import reference_inputs
+        from r3d.reference_set import reference_inputs
 
         recipe = reference_recipe(reference_inputs(job, scene), tools, poses, unavailable)
         reference = None if unavailable else digest(["reference", recipe, tools["reference"]])
@@ -630,11 +631,12 @@ def stage_keys(job, scene, tools, starts=None, poses=None):
     return keys
 
 
-def bakes(paths, starts=None, poses=None):
-    """Every bake the packs under `paths` hold, in pack and entry order."""
-    from r3d.build_pack import pack_jobs
+def bakes(paths=None, starts=None, poses=None):
+    """Every bake the packs under `paths` (build_pack.py's default search when None) hold, in pack and entry
+    order."""
+    from r3d.build_pack import DEFAULT_SEARCH, pack_jobs
 
-    return bakes_in(*pack_jobs(paths), starts, poses)
+    return bakes_in(*pack_jobs(paths or [DEFAULT_SEARCH]), starts, poses)
 
 
 def blend_export(settings, tools):
@@ -835,6 +837,18 @@ def download(row, suffix, cache):
     if hashlib.sha256(data).hexdigest() != row["sha256"]:
         raise BakeMissing(f"{RELEASE_URL}{name} does not have the SHA-256 its name and the lock give")
     return place(data, cached(row, suffix, cache), row["sha256"])
+
+
+def locked_fit(scene_path, object_name):
+    """The fit bake of the renderer `object_name` in the scene at `scene_path`, keyed by the lock."""
+    tables = read_lock_tables()
+    found = bakes([scene_path], locked_starts(tables["bake"]), Poses(tables["poses"]))
+    return next(item for item in found if item.kind == "fit" and item.job.object.name == object_name)
+
+
+def fetch(bake, cache=None):
+    """One bake's file in `cache` (the default cache when None), fetched as fetch_all does."""
+    return fetch_all([bake], read_lock_tables()["bake"], cache or default_cache())[bake]
 
 
 def fetch_all(found, lock, cache, offline=False):
@@ -1223,6 +1237,10 @@ def main(argv=None):
         elif args.command == "bake":
             from bake import produce
 
+            produce.prune_references(cache)
+            # A run made again renders each reference set it reads once more, in a folder of its own.
+            fresh_references = tempfile.TemporaryDirectory(prefix="references-again-") if args.again else None
+
             unknown = sorted(set(args.only or ()) - {bake.output for bake in found})
             if unknown:
                 parser.error(f"--only: no bake makes {', '.join(unknown)}")
@@ -1273,7 +1291,8 @@ def main(argv=None):
                         if bake.key is None:
                             raise BakeMissing(describe(bake, unlocked(bake), "bake its start first: bake.py bake --kind mesh"))
                         rows.append(keep((None if args.again else produce.made(bake.key, cache)) or produce.produce(
-                            bake, cache, lock, args.blender)))
+                            bake, cache, lock, args.blender,
+                            fresh_references and fresh_references.name)))
             for row in rows:
                 locked = lock.get(row["key"])
                 versus = "" if locked is None else (

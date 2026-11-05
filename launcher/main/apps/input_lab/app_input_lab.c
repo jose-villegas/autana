@@ -55,11 +55,6 @@ static const char* TAG = "input_lab";
 #define RULER_LABEL_SIDE      20
 #define COL_RULER             0xFFFFFF
 #define COL_RULER_MAJOR       0xFF3030
-#define MOTION_G_TEXT_SIZE    16
-#define MOTION_MILLI_DIGITS   3
-#define OFFSET_DIGITS         1
-#define OFFSET_SCALE          10
-#define MOTION_HUD_TEXT_SIZE  96
 #define MOTION_US_PER_MS      1000
 #define MOTION_LOG_PERIOD_MS  100
 
@@ -77,7 +72,6 @@ static const char* TAG = "input_lab";
 #define MOTION_FILTER_SIDE    11
 #define MOTION_MARGIN         16
 #define MOTION_HUD_ROWS       5
-#define MOTION_HUD_SCALE      1
 #define COL_HIT               0x40E060
 #define COL_MISS              0xFFB020
 #define COL_TARGET            0xFF00FF
@@ -224,11 +218,11 @@ start_round(void) {
 
 static void
 input_lab_enter(void) {
-    motion_batch = memory_alloc(sizeof *motion_batch, MEMORY_PSRAM);
+    motion_batch = memory_alloc(sizeof *motion_batch, MEMORY_APP);
     if (motion_batch == NULL) {
         ESP_LOGE(TAG, "Cannot allocate motion batch in PSRAM");
     }
-    motion_slice = memory_alloc(sizeof *motion_slice, MEMORY_PSRAM);
+    motion_slice = memory_alloc(sizeof *motion_slice, MEMORY_APP);
     rng_seed(&rng, (uint32_t)timing_now_us());
     panel_max_x = -1;
     mode = MODE_RANDOM;
@@ -406,9 +400,10 @@ hud_offset_line(int row, const char* label, float mean, float spread) {
     char line[64];
     char mean_text[24];
     char spread_text[24];
-    motion_probe_format_fixed(mean_text, sizeof mean_text, (int)lroundf(mean * OFFSET_SCALE), OFFSET_DIGITS, true);
-    motion_probe_format_fixed(spread_text, sizeof spread_text, (int)lroundf(spread * OFFSET_SCALE), OFFSET_DIGITS,
-                              false);
+    motion_probe_format_fixed(mean_text, sizeof mean_text, (int)lroundf(mean * MOTION_PROBE_OFFSET_SCALE),
+                              MOTION_PROBE_OFFSET_DIGITS, true);
+    motion_probe_format_fixed(spread_text, sizeof spread_text, (int)lroundf(spread * MOTION_PROBE_OFFSET_SCALE),
+                              MOTION_PROBE_OFFSET_DIGITS, false);
     if (snprintf(line, sizeof line, "%s %s SD %s", label, mean_text, spread_text) < 0) {
         line[0] = '\0';
     }
@@ -468,8 +463,8 @@ motion_log_vector(vec3f_t value, int scale) {
 static void
 integrate_turn_gyro(const input_motion_batch_t* batch) {
     if (imu_round.step != IMU_PROBE_TURN && imu_round.step != IMU_PROBE_TRACE) {
-        turn_gyro_deg = (vec3f_t){0};
-        turn_gyro_rate = (vec3f_t){0};
+        turn_gyro_deg = vec3f_zero();
+        turn_gyro_rate = vec3f_zero();
         return;
     }
     const float dt = (float)INPUT_MOTION_SAMPLE_US / (float)MATH_US_PER_S;
@@ -595,7 +590,7 @@ read_motion(uint32_t dt_ms) {
         motion_log_ms %= MOTION_LOG_PERIOD_MS;
         const vec3f_t g = input_gravity();
         const vec3i_t down_mg = motion_log_vector(gravity_down(&gravity), IMU_PROBE_MILLI);
-        const vec3i_t bias_dps10 = motion_log_vector(gravity_gyro_bias(&gravity), OFFSET_SCALE);
+        const vec3i_t bias_dps10 = motion_log_vector(gravity_gyro_bias(&gravity), MOTION_PROBE_OFFSET_SCALE);
         ESP_LOGI(TAG,
                  "motion raw %d,%d,%d tilt %d bearing %d filt %d,%d str %d shake %d turn %d rot %d,%d,%d quarter %d "
                  "grav_mg %d,%d,%d bias_dps10 %d,%d,%d samples %d lost %d drain_us %lld",
@@ -700,7 +695,7 @@ update_imu_round(uint32_t dt_ms, const input_t* input) {
         const vec3f_t down = imu_round.trace_down;
         const vec3f_t acceleration = vec3f_from_vec3i(motion.acceleration);
         const vec3f_t direction =
-            vec3f_dot(acceleration, acceleration) > 0.0F ? vec3f_normalize(acceleration) : (vec3f_t){0};
+            vec3f_dot(acceleration, acceleration) > 0.0F ? vec3f_normalize(acceleration) : vec3f_zero();
         LOG_IMU_LINE("turn ms %u down %.*f %.*f %.*f accel %.*f %.*f %.*f gyro_deg %.1f", (unsigned)imu_round.trace_ms,
                      IMU_GRAVITY_DIGITS, (double)down.x, IMU_GRAVITY_DIGITS, (double)down.y, IMU_GRAVITY_DIGITS,
                      (double)down.z, IMU_GRAVITY_DIGITS, (double)direction.x, IMU_GRAVITY_DIGITS, (double)direction.y,
@@ -925,7 +920,7 @@ store_imu_result(imu_action_t action) {
         return;
     }
     const bool clear = action == IMU_ACTION_CLEAR;
-    const vec3i_t offset = clear ? (vec3i_t){0} : imu_probe_saved_offset(input_accel_offset(), &imu_round.fit);
+    const vec3i_t offset = clear ? vec3i_zero() : imu_probe_saved_offset(input_accel_offset(), &imu_round.fit);
     if (!input_set_accel_offset(offset)) {
         ESP_LOGW(TAG, "imu_calib could not save offset");
         return;
@@ -950,25 +945,7 @@ static void
 draw_gravity_line(int row) {
     char line[MOTION_HUD_TEXT_SIZE];
 
-    enum { GRAV_X, GRAV_Y, GRAV_Z, GRAV_STRENGTH, GRAV_BIAS_X, GRAV_BIAS_Y, GRAV_BIAS_Z, GRAV_COUNT };
-
-    const float gravity_values[GRAV_COUNT] = {gravity_down(&gravity).x,      gravity_down(&gravity).y,
-                                              gravity_down(&gravity).z,      gravity_strength(&gravity),
-                                              gravity_gyro_bias(&gravity).x, gravity_gyro_bias(&gravity).y,
-                                              gravity_gyro_bias(&gravity).z};
-    char gravity_text[GRAV_COUNT][MOTION_G_TEXT_SIZE];
-    for (size_t i = 0; i < GRAV_COUNT; i++) {
-        const bool bias = i >= GRAV_BIAS_X;
-        motion_probe_format_fixed(gravity_text[i], sizeof gravity_text[i],
-                                  (int)lroundf(gravity_values[i] * (float)(bias ? OFFSET_SCALE : IMU_PROBE_MILLI)),
-                                  bias ? OFFSET_DIGITS : MOTION_MILLI_DIGITS, i != GRAV_STRENGTH);
-    }
-    if (snprintf(line, sizeof line, "GRAV %s,%s,%s S%s B%s,%s,%s", gravity_text[GRAV_X], gravity_text[GRAV_Y],
-                 gravity_text[GRAV_Z], gravity_text[GRAV_STRENGTH], gravity_text[GRAV_BIAS_X],
-                 gravity_text[GRAV_BIAS_Y], gravity_text[GRAV_BIAS_Z])
-        < 0) {
-        line[0] = '\0';
-    }
+    motion_probe_format_gravity(line, sizeof line, have_motion ? &gravity : NULL, display_quarter_now());
     hud_line(row, line);
 }
 
@@ -976,6 +953,7 @@ static void
 draw_motion(void) {
     if (!have_motion) {
         hud_line(0, "NO MOTION SENSOR");
+        draw_gravity_line(MOTION_HUD_ROWS - 1);
         return;
     }
     if (imu_round.step != IMU_PROBE_IDLE) {

@@ -45,7 +45,7 @@ run_arm(arm_t arm) {
     prime();
     ui_ridge_set_ambient(arm == ARM_AMBIENT || arm == ARM_AMBIENT_PORTRAIT);
     if (arm == ARM_AMBIENT_PORTRAIT) {
-        ui_ridge_set_gravity((vec3f_t){0, 1, 0}, 0);
+        ui_ridge_set_gravity(vec3f_unit_y(), 0);
         for (int frame = 0; frame < 200; frame++) {
             ui_ridge_step(&ridge_arm_idle_input, FRAME_DT_MS);
             gfx_present();
@@ -133,7 +133,7 @@ note_unlike(unlike_t* unlike, size_t at, gfx_color_t repainted, gfx_color_t full
 static int
 unlike_a_full_paint_now(void) {
     const size_t bytes = GFX_FRAMEBUFFER_BYTES;
-    gfx_color_t* const repainted = memory_alloc(bytes, MEMORY_PSRAM);
+    gfx_color_t* const repainted = memory_alloc(bytes, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(repainted);
     memcpy(repainted, gfx_framebuffer(), bytes);
     ui_ridge_paint();

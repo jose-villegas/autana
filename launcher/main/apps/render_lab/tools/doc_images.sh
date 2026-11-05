@@ -7,13 +7,12 @@
 #
 # <out-tree> holds the app's images in overview/.
 #
-# Run from the repository root with $PYTHON set to a Python that has Pillow and numpy;
-# ffmpeg must be on PATH. Renderer output goes to logs under <work-dir>.
+# Run from the repository root with $PYTHON set to a Python that has Pillow and numpy.
+# Renderer output goes to logs under <work-dir>.
 
 set -eu
 
 . scripts/lib/run.sh
-. launcher/tools/render/gif_from_avi.sh
 
 OUT=$1/overview
 W=$2
@@ -24,7 +23,7 @@ run sh launcher/main/apps/render_lab/tools/render_lab_render_host.sh -o "$W" > "
 # The start of the flythrough, on the fitted full mesh.
 run "$W/render_lab_render" --quarter 1 --no-hud --scene sponza-fitted-full --frames 90 --dt 100 \
     -o "$W/sponza-motion.bmp" --video "$W/sponza-motion.avi" 2> "$W/sponza.log"
-gif_from_avi "$W/sponza-motion.avi" "$OUT/render-lab-sponza.gif" "fps=8" "stats_mode=diff" 6
+run "$PYTHON" launcher/tools/docs/figures.py gif "$W/sponza-motion.avi" "$OUT/render-lab-sponza.gif" --fps 8 --seconds 6
 
 # The capybara's clips in the order the scene lists them, each blended into
 # the next as the BLEND slider does and shown for an equal CLIP_MS share of
@@ -66,7 +65,7 @@ if grep -q "^RENDER_ERR" "$W/capybara-console.log"; then
     echo "doc_images.sh: the renderer refused a clip command; see $W/capybara-console.log" >&2
     exit 1
 fi
-gif_from_avi "$W/capybara-motion.avi" "$OUT/render-lab-capybara.gif" "fps=25/2" "stats_mode=diff"
+run "$PYTHON" launcher/tools/docs/figures.py gif "$W/capybara-motion.avi" "$OUT/render-lab-capybara.gif" --fps 25/2
 
 # The water scene's swing (`water swing`), landscape as the other clips:
 # rocked hard and then calmer, leaned back so the surface shows, its small
@@ -82,4 +81,11 @@ if [ -z "$swing_ms" ]; then
 fi
 run "$W/render_lab_render" --quarter 1 --no-hud --scene water --small-fill "$WATER_SMALL_FILL" \
     --console "0:water swing" --dt "$WATER_DT" --frames "$((swing_ms / WATER_DT))" -o "$W/water-swing.bmp" --video "$W/water-swing.avi" 2> "$W/water.log"
-gif_from_avi "$W/water-swing.avi" "$OUT/render-lab-water.gif" "fps=15" "stats_mode=diff"
+run "$PYTHON" launcher/tools/docs/figures.py gif "$W/water-swing.avi" "$OUT/render-lab-water.gif" --fps 15
+
+# Each stress preset as its swing starts, in the order stress_preset.h lists them.
+for key in $(sed -n 's/^ *X([A-Z_]*, "\([^"]*\)".*/\1/p' launcher/main/apps/render_lab/stress/stress_preset.h); do
+    run "$W/render_lab_render" --quarter 1 --no-hud --scene "stress-$key" --frames 2 -o "$W/stress-$key.bmp" \
+        2> "$W/stress-$key.log"
+    run "$PYTHON" launcher/tools/docs/figures.py png "$W/stress-$key.bmp" "$OUT/render-lab-stress-$key.png"
+done

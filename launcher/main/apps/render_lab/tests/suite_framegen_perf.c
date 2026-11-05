@@ -18,9 +18,9 @@
 
 #include "core/timing.h"
 #include "esp_log.h"
+#include "frame/test_frame.h"
 #include "frame_profile.h"
 #include "gfx/gfx.h"
-#include "gfx/present/gfx_mode.h"
 #include "render/context/render_context.h"
 #include "render/framegen/framegen.h"
 #include "scene/camera/camera.h"
@@ -134,7 +134,7 @@ static scenario_path_t
 enter_path(void) {
     render_lab_test_enter(&saved, scenario->scene->key);
     suite_set_test_cleanup(release_fixture);
-    render_lab_test_hold_quarter(r3d_perf_quarters[0].quarter);
+    test_hold_quarter(r3d_perf_quarters[0].quarter);
     scenario_path_t path = {.scene = render_lab_test_loaded_scene(scenario->pack)};
     TEST_ASSERT_NOT_NULL(path.scene);
     const char* camera_name = scenario->camera == NULL ? sponza_cameras[0] : scenario->camera;
@@ -191,17 +191,18 @@ test_generated_frame_cost(void) {
  * resolution off). The target frame first, then tighter ones, where frame
  * generation can buy speed rather than resolution. */
 typedef struct {
+    const char* name;
     bool generating;
     int budget_ms;
 } framegen_mode_t;
 
 static const framegen_mode_t modes[] = {
-    {false, 0},
-    {true, 0},
-    {false, RENDER_LAB_TARGET_MS},
-    {true, RENDER_LAB_TARGET_MS},
-    {true, RENDER_LAB_TARGET_MS * 3 / 4},
-    {true, RENDER_LAB_TARGET_MS / 2},
+    {"plain", false, 0},
+    {"framegen", true, 0},
+    {"dynres", false, RENDER_LAB_TARGET_MS},
+    {"framegen-dynres", true, RENDER_LAB_TARGET_MS},
+    {"framegen-dynres-3q", true, RENDER_LAB_TARGET_MS * 3 / 4},
+    {"framegen-dynres-half", true, RENDER_LAB_TARGET_MS / 2},
 };
 
 static const framegen_mode_t* mode;
@@ -258,7 +259,7 @@ run_framegen_perf_suite(void) {
         scenario = &scenarios[i];
         for (ladder_step = 0; ladder_step < RENDER_LAB_LADDER_STEPS; ladder_step++) {
             if (render_lab_ladder[ladder_step].width * 2 == GFX_WIDTH) {
-                RUN_TEST(test_generated_frame_cost);
+                RUN_TEST_CASE(test_generated_frame_cost, scenario->scene->key, render_lab_test_step_name(ladder_step));
             }
         }
     }
@@ -275,7 +276,7 @@ run_framegen_modes_suite(void) {
         scenario = &scenarios[i];
         for (size_t m = 0; m < sizeof modes / sizeof modes[0]; m++) {
             mode = &modes[m];
-            RUN_TEST(test_mode);
+            RUN_TEST_CASE(test_mode, scenario->scene->key, mode->name);
         }
     }
 #endif

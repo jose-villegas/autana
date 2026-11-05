@@ -9,8 +9,16 @@ add_library(render_engine INTERFACE)
 add_library(autana::render_engine ALIAS render_engine)
 target_sources(render_engine INTERFACE ${render_engine_sources})
 target_include_directories(render_engine INTERFACE
-    "${launcher}/main" "${launcher}/components/microui/include"
+    "${launcher}/../third_party/tlsf" "${launcher}/../third_party/tlsf/include"
+    "${launcher}/main" "${board_include_dir}" "${launcher}/components/microui/include"
     "${launcher}/test" "${launcher}/test/stubs")
+set(host_profile "$ENV{DEVICE_PROFILE}")
+if(NOT host_profile)
+    set(host_profile esp32s3)
+endif()
+file(STRINGS "${launcher}/tools/device/device_profiles/${host_profile}.sh" host_psram REGEX "^DP_PSRAM_BYTES=")
+string(REPLACE "DP_PSRAM_BYTES=" "" host_psram "${host_psram}")
+target_compile_definitions(render_engine INTERFACE APP_ARENA_HOST_PSRAM_BYTES=${host_psram})
 target_compile_options(render_engine INTERFACE -ffp-contract=off)
 if(NOT WIN32)
     target_link_libraries(render_engine INTERFACE m)
@@ -47,7 +55,7 @@ target_link_libraries(render_engine INTERFACE ${launcher_packages})
 # Consumers of the renderer define display_quarter_now (display/display.h).
 add_library(render_host INTERFACE)
 add_library(autana::render_host ALIAS render_host)
-target_sources(render_host INTERFACE ${renderer_sources})
+target_sources(render_host INTERFACE ${renderer_sources} "${CMAKE_CURRENT_LIST_DIR}/render_counts.c")
 target_link_libraries(render_host INTERFACE autana::render_host_core)
 
 # The scene-file provider, scene_provider (scene_viewer.c), for a consumer

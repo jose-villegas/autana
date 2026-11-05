@@ -19,6 +19,7 @@
 #include "apps/sand/ui/sand_icons.h"
 #include "core/memory.h"
 #include "core/timing.h"
+#include "gfx/present/gfx_internal.h"
 #include "gfx/present/gfx_mode.h"
 #ifdef DEVICE_BUILD
 #include "esp_log.h"
@@ -126,14 +127,21 @@ slider_frame(const input_t* in, int* value) {
     return *value;
 }
 
+/* A pointer frame at the button's centre. */
+static input_t
+on_button(bool down, bool pressed, bool released) {
+    return (input_t){.down = down,
+                     .pressed = pressed,
+                     .released = released,
+                     .point = {BUTTON.x + BUTTON.w / 2, BUTTON.y + BUTTON.h / 2}};
+}
+
 static bool
 tap(const widget_t* w) {
-    const int x = BUTTON.x + BUTTON.w / 2;
-    const int y = BUTTON.y + BUTTON.h / 2;
     const input_t idle = {0};
-    const input_t press = {.down = true, .pressed = true, .point = {x, y}};
-    const input_t hold = {.down = true, .point = {x, y}};
-    const input_t release = {.released = true, .point = {x, y}};
+    const input_t press = on_button(true, true, false);
+    const input_t hold = on_button(true, false, false);
+    const input_t release = on_button(false, false, true);
 
     widget_frame(w, &idle);
     widget_frame(w, &idle);
@@ -576,10 +584,9 @@ test_the_chevron_lags_the_lists_own_open_flag_by_one_frame(void) {
     const input_t press = {.down = true, .pressed = true, .point = {x, y}};
     const input_t hold = {.down = true, .point = {x, y}};
 
-    dropdown_frame(&press, 0);
     bool checked = false;
     for (int i = 0; i < 8 && !checked; i++) {
-        dropdown_frame(&hold, 0);
+        dropdown_frame(i == 0 ? &press : &hold, 0);
         if (list_open()) {
             checked = true;
             TEST_ASSERT_EQUAL_MESSAGE(closed, chevron_hash(),
@@ -862,7 +869,7 @@ test_dense_bands_match_a_full_repaint(void) {
     overflow_frame(false, 0);
     overflow_frame(false, 0);
     const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
-    gfx_color_t* expected = memory_alloc(bytes, MEMORY_PSRAM);
+    gfx_color_t* expected = memory_alloc(bytes, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(expected);
     overflow_frame(false, 1);
     memcpy(expected, gfx_framebuffer(), bytes);
@@ -1084,10 +1091,10 @@ named_screen_frame(const char* name, const input_t* in) {
     return hit;
 }
 
-/* The latency the shell exists to keep: the control answers on the second
- * frame of contact, through the real ui_begin(). */
+/* The latency the shell exists to keep: the control answers on the frame of
+ * contact, through the real ui_begin(). */
 static void
-test_a_tap_submits_on_the_second_frame_of_contact_through_ui_begin(void) {
+test_a_tap_submits_on_the_frame_of_contact_through_ui_begin(void) {
     fixture();
     const input_t idle = {0};
     plain_button_frame(&idle);
@@ -1095,14 +1102,14 @@ test_a_tap_submits_on_the_second_frame_of_contact_through_ui_begin(void) {
 
     const int x = BUTTON.x + BUTTON.w / 2;
     const int y = BUTTON.y + BUTTON.h / 2;
-    TEST_ASSERT_FALSE(plain_button_frame(&(input_t){.down = true, .pressed = true, .point = {x, y}}));
-    TEST_ASSERT_TRUE_MESSAGE(plain_button_frame(&(input_t){.down = true, .point = {x, y}}),
-                             "the second frame of contact must carry the click");
+    TEST_ASSERT_TRUE_MESSAGE(plain_button_frame(&(input_t){.down = true, .pressed = true, .point = {x, y}}),
+                             "the frame of contact must carry the click");
+    TEST_ASSERT_FALSE(plain_button_frame(&(input_t){.down = true, .point = {x, y}}));
 }
 
 /* A press frame that builds a window microui had not seen the frame before:
- * the seeded root is stale, and the tap must take the extra hover frame
- * rather than vanish. */
+ * the seeded root is stale, and the press must be made again rather than
+ * vanish. */
 static void
 test_a_tap_on_the_first_build_of_another_screen_still_submits_once(void) {
     fixture();
@@ -1249,9 +1256,9 @@ test_a_press_after_an_unseen_lift_still_submits(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, submits, "the second press must land although the first lift was never seen");
 }
 
-/* A finger resting on a button before ui_pointer lands its press (which
- * is all a drag across a list ever is) must not draw it pressed; the
- * press itself must. */
+/* A finger resting on a button with no press of its own (one already on the
+ * glass when the UI opened, which is all a drag across a list ever is) must
+ * not draw it pressed; a press must, from its frame of contact. */
 static void
 test_only_a_real_press_draws_a_button_pressed(void) {
     fixture();
@@ -1261,21 +1268,19 @@ test_only_a_real_press_draws_a_button_pressed(void) {
     widget_frame(&w, &idle);
     const uint64_t at_rest = canvas_hash("Widgets");
 
-    const int x = BUTTON.x + BUTTON.w / 2;
-    const int y = BUTTON.y + BUTTON.h / 2;
-    const input_t press = {.down = true, .pressed = true, .point = {x, y}};
-    const input_t hold = {.down = true, .point = {x, y}};
-    widget_frame(&w, &press);
-    TEST_ASSERT_EQUAL_MESSAGE(at_rest, canvas_hash("Widgets"), "hovered but not yet pressed must look at rest");
-
+    const input_t press = on_button(true, true, false);
+    const input_t hold = on_button(true, false, false);
+    const input_t release = on_button(false, false, true);
     widget_frame(&w, &hold);
-    widget_frame(&w, &hold);
-    const uint64_t pressed = canvas_hash("Widgets");
-
-    const input_t release = {.released = true, .point = {x, y}};
+    TEST_ASSERT_EQUAL_MESSAGE(at_rest, canvas_hash("Widgets"), "hovered but not pressed must look at rest");
     widget_frame(&w, &release);
     widget_frame(&w, &idle);
-    TEST_ASSERT_NOT_EQUAL_MESSAGE(at_rest, pressed, "a landed press must look pressed");
+
+    widget_frame(&w, &press);
+    const uint64_t pressed = canvas_hash("Widgets");
+    widget_frame(&w, &release);
+    widget_frame(&w, &idle);
+    TEST_ASSERT_NOT_EQUAL_MESSAGE(at_rest, pressed, "a press must look pressed on its frame of contact");
 }
 
 /* A press that lands off the button and only slides onto it afterward is
@@ -1481,7 +1486,7 @@ test_image_and_swatch_commands_match_rect_pixels(void) {
 #endif
     fixture();
     const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
-    gfx_color_t* expected = memory_alloc(bytes, MEMORY_PSRAM);
+    gfx_color_t* expected = memory_alloc(bytes, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(expected);
     for (int turn = 0; turn < 4; turn++) {
         ui_set_transform(ui_transform_quarter_turn(turn, GFX_WIDTH, GFX_HEIGHT));
@@ -1544,7 +1549,7 @@ run_ui_widgets_suite(void) {
     RUN_TEST(test_a_list_that_fits_does_not_scroll);
     RUN_TEST(test_only_a_real_press_draws_a_button_pressed);
     RUN_TEST(test_a_press_that_slides_onto_a_button_from_off_it_is_not_a_click);
-    RUN_TEST(test_a_tap_submits_on_the_second_frame_of_contact_through_ui_begin);
+    RUN_TEST(test_a_tap_submits_on_the_frame_of_contact_through_ui_begin);
     RUN_TEST(test_a_tap_on_the_first_build_of_another_screen_still_submits_once);
     RUN_TEST(test_a_press_after_an_unseen_lift_still_submits);
     RUN_TEST(test_a_tap_on_a_closing_list_reaches_exactly_one_thing);
@@ -1643,7 +1648,7 @@ sample_band_frame(int frame, int64_t began_us) {
 
 static void
 allocate_band_samples(void) {
-    band_samples = memory_alloc(sizeof *band_samples, MEMORY_PSRAM);
+    band_samples = memory_alloc(sizeof *band_samples, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(band_samples);
     memset(band_samples, 0, sizeof *band_samples);
 }
@@ -1783,11 +1788,11 @@ test_options_band_frame_cost(void) {
     band_icons_owned = !sand_icon_set.loaded;
     TEST_ASSERT_TRUE(ui_icon_set_load(&sand_icon_set));
     TEST_ASSERT_EQUAL(GFX_LAYOUT_BANDS, gfx_mode_enter(&BAND_MODE_REQUEST)->layout);
-    band_swatches = memory_alloc(SAND_COLOUR_MODE_COUNT * sizeof *band_swatches, MEMORY_PSRAM);
+    band_swatches = memory_alloc(SAND_COLOUR_MODE_COUNT * sizeof *band_swatches, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(band_swatches);
     sand_mode_swatches(sand_dither_none_lut, sand_palette256_lut, GFX_INDEXED_PALETTE_SIZE, SAND_PALETTE_UI_ENTRIES,
                        band_swatches);
-    band_options_fixture = memory_alloc(sizeof *band_options_fixture, MEMORY_PSRAM);
+    band_options_fixture = memory_alloc(sizeof *band_options_fixture, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(band_options_fixture);
     memset(band_options_fixture, 0, sizeof *band_options_fixture);
     band_options_fixture->menu = (sand_menu_t){.screen = SAND_MENU_OPTIONS, .draft = BAND_OPTIONS};

@@ -7,7 +7,7 @@
 static inline __attribute__((always_inline)) vec3f_t
 light_renormalise(vec3f_t normal) {
     const float length_squared = vec3f_dot(normal, normal);
-    return length_squared > 0.0F ? vec3f_scale(normal, mathf_rsqrt_approx(length_squared)) : (vec3f_t){0};
+    return length_squared > 0.0F ? vec3f_scale(normal, mathf_rsqrt_approx(length_squared)) : vec3f_zero();
 }
 
 static inline __attribute__((always_inline)) uint8_t

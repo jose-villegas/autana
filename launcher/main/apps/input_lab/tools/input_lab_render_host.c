@@ -19,7 +19,7 @@
 #define TAP_X 180
 #define TAP_Y 220
 static int page;
-static bool tapped, results, orientation;
+static bool tapped, results, orientation, no_sensor;
 static int shell_quarter;
 static int clock_frame;
 
@@ -38,11 +38,14 @@ display_quarter_now(void) {
 
 bool
 imu_ready(void) {
-    return true;
+    return !no_sensor;
 }
 
 bool
 input_read_motion(input_motion_t* out) {
+    if (no_sensor) {
+        return false;
+    }
     *out = (input_motion_t){.acceleration = {INPUT_ACCEL_ONE_G / 4, INPUT_ACCEL_ONE_G / 8, INPUT_ACCEL_ONE_G}};
     if (orientation) {
         out->acceleration = (vec3i_t){-INPUT_ACCEL_ONE_G, 0, -INPUT_ACCEL_ONE_G};
@@ -69,6 +72,9 @@ input_read_motion_sequence(input_motion_t* out, uint32_t* sequence) {
 
 bool
 input_read_motion_batch(input_motion_batch_t* out) {
+    if (no_sensor) {
+        return false;
+    }
     const int64_t now_us = (int64_t)clock_frame * FRAME_MS * MATH_US_PER_MS;
     static int64_t last_us;
     if (now_us < last_us) {
@@ -87,12 +93,12 @@ input_read_motion_batch(input_motion_batch_t* out) {
 
 vec3i_t
 input_accel_offset(void) {
-    return (vec3i_t){0};
+    return vec3i_zero();
 }
 
 vec3i_t
 input_gyro_offset(void) {
-    return (vec3i_t){0};
+    return vec3i_zero();
 }
 
 bool
@@ -124,6 +130,9 @@ options(int argc, char** argv) {
         page = 2;
     } else if (strcmp(name, "motion") == 0) {
         page = 3;
+    } else if (strcmp(name, "motion-no-sensor") == 0) {
+        page = 3;
+        no_sensor = true;
     } else if (strcmp(name, "motion-results") == 0) {
         page = 3;
         results = true;

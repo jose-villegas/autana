@@ -22,7 +22,7 @@
 #define SCENE_AMBIENT_INTENSITY_NONE  0.0F
 #define SCENE_TONEMAP_WHITE_NONE      0.0F
 #define SCENE_LIGHT_INTENSITY_DEFAULT 0.0F
-#define SCENE_LIGHT_COLOR_DEFAULT     ((vec3f_t){1.0F, 1.0F, 1.0F})
+#define SCENE_LIGHT_COLOR_DEFAULT     vec3f_one()
 
 typedef enum { SCENE_LIGHT_NONE, SCENE_LIGHT_DIRECTIONAL } scene_light_kind_t;
 
@@ -113,9 +113,14 @@ asset_status_t scene_asset_open(asset_view_t entry, scene_asset_t* out);
 typedef struct {
     r3d_lit_mesh_t mesh;
     mat4f_t model;
+    box3f_t world_bounds; /* the mesh's root box through `model`, kept with it */
     scene_entity_t entity;
     bool placed; /* false while the transform is the identity: drawn as it is */
 } scene_renderer_t;
+
+/* Sets `r`'s world box from its mesh and model; call after either changes,
+ * a skinned mesh's refit included. */
+void scene_renderer_bound(scene_renderer_t* r);
 
 typedef struct {
     camera_t lens;
@@ -180,6 +185,7 @@ struct scene {
     bool light_table_dirty;
     uint8_t* flags; /* one per entity: SCENE_FLAG_* */
     scene_renderer_t* renderers;
+    void* resident; /* mesh arrays (positions, triangles, colours), deduplicated; NULL when absent */
     scene_camera_t* cameras;
     const asset_pack_t* pack;
     transformf_t* locals;
@@ -190,6 +196,13 @@ struct scene {
     int world_count;
     mat4f_t* worlds;                /* one per entity with children, in entity order */
     scene_entity_t* world_entities; /* the entity each of `worlds` belongs to */
+    /* The per-frame loops walk these, not every entity or renderer: a scene
+     * with many disabled copies has few of either. */
+    scene_entity_t* staged; /* entities with an animator, a skin or a light, in entity order */
+    int staged_count;
+    uint16_t* active_renderers; /* renderers whose entity is ACTIVE, in renderer order */
+    int active_renderer_count;
+    bool active_renderers_stale; /* an ACTIVE bit flipped since the list was built */
 };
 
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
@@ -204,6 +217,10 @@ void* scene_allocate(size_t bytes, memory_kind_t kind);
  * when it came from the heap; a taken one goes back with its lender. */
 void* scene_allocate_kept(size_t bytes);
 void scene_free_kept(void* block);
+
+/* Copies static mesh arrays (positions, triangles, colours) into one block from scene_allocate_kept(),
+ * deduplicated per array, and points the renderers at it. SCENE_ERR_MEMORY when the block cannot be had. */
+scene_failure_t scene_mesh_make_resident(scene_t* scene);
 
 /* The loaded scenes, in load order. */
 int scene_loaded_count(void);
@@ -220,8 +237,9 @@ int scene_camera_index(const scene_t* scene, name_hash_t camera);
 void scene_draw_forget(const scene_t* scene);
 void scene_draw_release(void);
 
-/* Rebuilds the world of every parent and renderer whose own transform or an
- * ancestor's changed, then clears DIRTY and MOVED. */
+/* Rebuilds the world of every parent and active renderer whose own transform
+ * or an ancestor's changed, then clears DIRTY and MOVED. An inactive
+ * renderer's world waits: turning ACTIVE marks it CHANGED. */
 void scene_resolve(scene_t* scene);
 
 /* Numbers the entities with children and allocates their worlds; false when it could not. */
@@ -248,7 +266,11 @@ void scene_checkpoint_capture(checkpoint_t* saved, scene_t* scene);
 void scene_animation_checkpoint_capture(checkpoint_t* saved, scene_t* scene);
 #endif
 void scene_animation_release(scene_t* scene);
+/* An animator or light now exists on `entity`: adds it to `staged` once. A
+ * skin needs its entity's skeleton animator, so its entity is staged already. */
+void scene_stage_add(scene_t* scene, scene_entity_t entity);
 void scene_animation_step(scene_t* scene, uint32_t dt_ms);
+/* Animates staged[first, first + count). */
 void scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms);
 bool scene_skin_light_set_mode(scene_t* scene, scene_entity_t entity, scene_skin_light_mode_t mode);
 bool scene_skin_light_apply_mode(scene_t* scene, scene_entity_t entity, scene_skinned_renderer_t* skin,

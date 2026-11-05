@@ -258,10 +258,8 @@ build_full_size_step_scene(sand_t* real, uint8_t* big) {
 #include "core/timing.h"
 #include "esp_cpu.h"
 #include "esp_log.h"
+#include "frame/test_frame.h"
 #include "gfx/gfx.h"
-#include "gfx/present/gfx_debug.h"
-#include "gfx/present/gfx_present.h"
-#include "panel_clock_pin.h"
 #include "profile/frame_cost.h"
 #include "testkit/bench.h"
 #include "testkit/cleanup.h"
@@ -2634,14 +2632,14 @@ run_present_against_scene(sand_t* s, const uint8_t* cells, int w, int h, uint8_t
                           int measured_steps, int* full_bands, int* gathered, int* partial_bands, int64_t* sim_us_out,
                           int64_t* mark_us_out, int64_t* present_us_out) {
     const two_core_scope_t core = two_core_scope_begin(true);
-    panel_clock_pin(GFX_PANEL_CLOCK_FAST_HZ);
+    test_panel_clock_pin(GFX_PANEL_CLOCK_FAST_HZ);
     for (int i = 0; i < settle_steps; i++) {
         sand_step(s, gx, gy, gz);
         mirror_app_sand_marking(cells, w, h, dirty_rows, row_x0, row_x1, row_n);
-        gfx_present();
+        test_present();
     }
 
-    gfx_reset_strip_send_counts();
+    test_send_stats_reset();
 
     int64_t sim_us = 0;
     int64_t mark_us = 0;
@@ -2652,7 +2650,7 @@ run_present_against_scene(sand_t* s, const uint8_t* cells, int w, int h, uint8_t
         const int64_t t1 = timing_now_us();
         mirror_app_sand_marking(cells, w, h, dirty_rows, row_x0, row_x1, row_n);
         const int64_t t2 = timing_now_us();
-        gfx_present();
+        test_present();
         const int64_t t3 = timing_now_us();
 
         sim_us += t1 - t0;
@@ -2660,7 +2658,10 @@ run_present_against_scene(sand_t* s, const uint8_t* cells, int w, int h, uint8_t
         present_us += t3 - t2;
     }
 
-    gfx_get_strip_send_counts(full_bands, gathered, partial_bands);
+    const test_send_stats_t sent = test_send_stats();
+    *full_bands = sent.full_bands;
+    *gathered = sent.gathered;
+    *partial_bands = sent.partial_bands;
 
     /* Per-step MEANS, same as the return value below - three phases of the
      * same measured window, so they share one averaging convention. */
@@ -2967,14 +2968,14 @@ run_present_against_scene_span(sand_t* s, const uint8_t* cells, int w, int h, ui
     sand_track_dirty_cols(s, dirty_x0, dirty_x1);
 
     const two_core_scope_t core = two_core_scope_begin(true);
-    panel_clock_pin(GFX_PANEL_CLOCK_FAST_HZ);
+    test_panel_clock_pin(GFX_PANEL_CLOCK_FAST_HZ);
     for (int i = 0; i < settle_steps; i++) {
         sand_step(s, gx, gy, gz);
         mirror_app_sand_marking_span(cells, w, h, dirty_rows, dirty_x0, dirty_x1, row_x0, row_x1, row_n, NULL);
-        gfx_present();
+        test_present();
     }
 
-    gfx_reset_strip_send_counts();
+    test_send_stats_reset();
 
     int64_t present_us = 0;
     int64_t pixels_sent = 0;
@@ -2982,11 +2983,14 @@ run_present_against_scene_span(sand_t* s, const uint8_t* cells, int w, int h, ui
         sand_step(s, gx, gy, gz);
         mirror_app_sand_marking_span(cells, w, h, dirty_rows, dirty_x0, dirty_x1, row_x0, row_x1, row_n, &pixels_sent);
         const int64_t t0 = timing_now_us();
-        gfx_present();
+        test_present();
         present_us += timing_now_us() - t0;
     }
 
-    gfx_get_strip_send_counts(full_bands, gathered, partial_bands);
+    const test_send_stats_t sent = test_send_stats();
+    *full_bands = sent.full_bands;
+    *gathered = sent.gathered;
+    *partial_bands = sent.partial_bands;
 
     if (pixels_sent_out != NULL) {
         *pixels_sent_out = pixels_sent / measured_steps;
@@ -3566,20 +3570,17 @@ typedef struct {
 
 static void
 clock_row_frame(const input_t* in, int64_t* present_us) {
-    if (gfx_full_redraw_pending()) {
-        gfx_full_redraw_clear_pending();
-        app_sand.invalidate();
-    }
+    test_apply_full_redraw(&app_sand);
     app_sand.update(CLOCK_ROW_DT_MS, in);
     app_sand.frame(CLOCK_ROW_DT_MS, in);
     const int64_t t0 = timing_now_us();
-    gfx_present();
+    test_present();
     *present_us += timing_now_us() - t0;
 }
 
 static clock_row_window_t
 clock_row_measure(int frames, bool pouring, int* frame_index) {
-    gfx_reset_strip_send_counts();
+    test_send_stats_reset();
     clock_row_window_t w = {0};
     for (int i = 0; i < frames; i++, (*frame_index)++) {
         input_t in = {0};
@@ -3590,7 +3591,7 @@ clock_row_measure(int frames, bool pouring, int* frame_index) {
         clock_row_frame(&in, &w.present_us);
     }
     w.present_us /= frames;
-    w.bytes = gfx_get_bytes_sent() / frames;
+    w.bytes = test_send_stats().bytes / frames;
     return w;
 }
 

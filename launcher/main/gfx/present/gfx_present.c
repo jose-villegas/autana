@@ -26,7 +26,8 @@
 #include "image/pixel/rgb565.h"
 #endif
 
-_Static_assert(GFX_WIDTH == BSP_LCD_H_RES && GFX_HEIGHT == BSP_LCD_V_RES, "gfx.h's panel size must be the board's");
+_Static_assert(GFX_WIDTH == BOARD_PANEL_WIDTH && GFX_HEIGHT == BOARD_PANEL_HEIGHT,
+               "gfx.h's panel size must be the board's");
 #endif
 
 #ifdef ESP_PLATFORM
@@ -396,8 +397,8 @@ gfx_full_redraw_pending(void) {
 
 /* Ends the window gfx_request_full_redraw() opened. The shell calls this
  * once it has read the flag and decided whether to invoke an app's
- * invalidate(), before that pass's frame() runs; see shell/shell_apps.c's
- * apply_pending_full_redraw(). */
+ * invalidate(), before that pass's frame() runs; see shell/shell_apps.h's
+ * shell_apply_full_redraw(). */
 void
 gfx_full_redraw_clear_pending(void) {
     GFX_PRESENT_GUARD();

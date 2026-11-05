@@ -33,6 +33,9 @@
 #define FLIP3_RADIUS_CELLS       0.3F
 #define FLIP3_SEED_SPACING_CELLS (2.0F * FLIP3_RADIUS_CELLS)
 
+/* The surface: flip3_field() at half the rest density. */
+#define FLIP3_SURFACE_LEVEL      0.5F
+
 /* Muller's defaults: the share of FLIP in the grid-to-particle blend, and
  * the pressure solve's sweeps and over-relaxation. */
 #define FLIP3_FLIP_RATIO         0.9F
@@ -191,7 +194,9 @@ flip3_particle(const flip3_t* f, int i) {
 size_t flip3_field_count(const flip3_t* f, float samples);
 
 /* The surface field: the water's density over the box, 1 at rest. One
- * [1 2 1] / 4 pass per axis rounds it and sinks a film a sample thin; the
- * walls mirror, so water against glass keeps its density. Returns its sizes,
+ * [1 2 1] / 4 pass per axis rounds it; the walls mirror, so water against
+ * glass keeps its density. Then every particle's nearest sample reads
+ * above FLIP3_SURFACE_LEVEL, so a film or drop thinner than the smoothing
+ * is still inside the surface. Returns its sizes,
  * origin and spacing in box coordinates, for iso_surface_nets(). */
 iso_field_t flip3_field(const flip3_t* f, float samples, float* out);

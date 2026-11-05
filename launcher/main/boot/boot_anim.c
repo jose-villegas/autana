@@ -489,8 +489,8 @@ draw_far_grid(const mesh_pass_t* pass) {
 static vec3x_t
 mesh_plane(const mesh_pass_t* pass, vec3x_t* row) {
     if (!pass->stepping) {
-        *row = (vec3x_t){0};
-        return (vec3x_t){0};
+        *row = vec3x_zero();
+        return vec3x_zero();
     }
     const int32_t start = -MESH_HALF * BOOT_ANIM_MESH_STEP_Q12;
     const int32_t step = pass->stride * BOOT_ANIM_MESH_STEP_Q12;
@@ -876,10 +876,11 @@ boot_anim_clear_frame(void) {
     draw_clear(COL_BG);
 }
 
-/* Core 1 clears each frame once it is sent, so the clear above is free. */
-void
-boot_anim_clear_on_send(bool on) {
-    (void)gfx_set_clear_on_send(on, COL_BG); /* without the double layout, the clear stays on core 0 */
+/* The boot's mode. With clear_on_send, core 1 clears each frame once it is
+ * sent, so the clear above is free; without the double layout it stays on core 0. */
+gfx_mode_request_t
+boot_anim_mode_request(gfx_layout_t layout, bool clear_on_send) {
+    return (gfx_mode_request_t){.layout = layout, .clear_on_send = clear_on_send, .clear_colour = COL_BG};
 }
 
 void
@@ -943,9 +944,8 @@ boot_anim_run(void) {
     int64_t photo_mount_us = 0;
     int64_t photo_frame_us = 0;
 #endif
-    const gfx_mode_request_t mode = {.layout = GFX_LAYOUT_DOUBLE_FB};
+    const gfx_mode_request_t mode = boot_anim_mode_request(GFX_LAYOUT_DOUBLE_FB, true);
     gfx_mode_enter(&mode);
-    boot_anim_clear_on_send(true);
     boot_anim_motion_t motion;
     boot_anim_motion_load(&motion);
     image_t photo = {0};

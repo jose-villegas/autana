@@ -12,7 +12,7 @@ carry functions nothing calls yet.
 | `include/math/linear/` | Vectors, quaternions, 4x4 matrices and transforms, each one template instantiated per number type; [linear reference](../../../docs/math/Linear.md) describes the families |
 | `include/math/geometry/` | Shapes and their queries: half-open rectangles (`rectf`, `recti`, `rects`, `rectx`) and oriented planes (`planef`, `planex`), instantiated from geometry templates |
 | `include/math/stats/` | Order statistics of sample arrays: percentile and median; [stats reference](../../../docs/math/Stats.md) |
-| `include/math/signal/` | Signal processing on sample blocks: Goertzel single-bin detection; [signal reference](../../../docs/math/Signal.md) |
+| `include/math/signal/` | Signal processing: Goertzel single-bin detection, pitch conversion and exponential smoothing; [signal reference](../../../docs/math/Signal.md) |
 | `include/math/text/` | Canonical format and parse pairs; [text reference](../../../docs/math/Text.md) |
 | `src/` | The few functions that are not inline |
 | `bench/` | Shared host smoke, ESP-IDF hardware timing and QEMU instruction workloads |
@@ -62,6 +62,7 @@ header's opening comment; `--check` verifies it.
 | [include/math/geometry/plane_template.h](include/math/geometry/plane_template.h) | plane_template: oriented planes for one number type; see docs/math/Conventions.md#templates for macro arguments. |
 | [include/math/geometry/planef.h](include/math/geometry/planef.h) | planef: an oriented plane of a float. |
 | [include/math/geometry/planex.h](include/math/geometry/planex.h) | planex: an oriented plane of a Q16.16. |
+| [include/math/geometry/primitive_mesh.h](include/math/geometry/primitive_mesh.h) | primitive_mesh: the standard shapes as indexed triangle meshes, for geometry made at run time or baked: a plane, a sphere, a cube, a capsule and a cylinder, each about the origin and each from a struct of its named parameters. |
 | [include/math/geometry/rect_template.h](include/math/geometry/rect_template.h) | rect_template: the half-open rectangle for one number type; see docs/math/Conventions.md#templates for the macro arguments. |
 | [include/math/geometry/rectf.h](include/math/geometry/rectf.h) | rectf: a half-open rectangle of a float. |
 | [include/math/geometry/recti.h](include/math/geometry/recti.h) | recti: a half-open rectangle of an int. |
@@ -72,6 +73,7 @@ header's opening comment; `--check` verifies it.
 | [include/math/linear/affine2_template.h](include/math/linear/affine2_template.h) | affine2_template: a 2D affine map for one number type; see docs/math/Conventions.md#templates for the macro arguments. |
 | [include/math/linear/affine2f.h](include/math/linear/affine2f.h) | affine2f: a 2D affine map of a float, with integer-pixel maps. |
 | [include/math/linear/affine2x.h](include/math/linear/affine2x.h) | affine2x: a 2D affine map of a Q16.16, with integer-pixel maps. |
+| [include/math/linear/constant_template.h](include/math/linear/constant_template.h) | constant_template: named aggregate constants shared by math families. |
 | [include/math/linear/mat3f.h](include/math/linear/mat3f.h) | Row-major linear matrices and their normal transforms. |
 | [include/math/linear/mat4_template.h](include/math/linear/mat4_template.h) | mat4_template: a 4x4 matrix indexed m[row][col], acting on column vectors, for one number type; see docs/math/Conventions.md#templates for the macro arguments. |
 | [include/math/linear/mat4f.h](include/math/linear/mat4f.h) | mat4f: a 4x4 matrix of a float. |
@@ -114,6 +116,7 @@ header's opening comment; `--check` verifies it.
 | [include/math/scalar/units.h](include/math/scalar/units.h) | units: integer time conversion scales. |
 | [include/math/signal/goertzel.h](include/math/signal/goertzel.h) | Streaming single-bin detection (Goertzel, 1958). |
 | [include/math/signal/pitch.h](include/math/signal/pitch.h) | pitch: equal-temperament offsets relative to a caller's reference frequency. |
+| [include/math/signal/smooth.h](include/math/signal/smooth.h) | smooth: exact exponential approach toward a target, independent of frame step. |
 | [include/math/stats/stats_template.h](include/math/stats/stats_template.h) | stats_template: order statistics of a sample array for one number type; see docs/math/Conventions.md#templates for macro arguments. |
 | [include/math/stats/statsf.h](include/math/stats/statsf.h) | statsf: order statistics of float samples. |
 | [include/math/stats/statsi.h](include/math/stats/statsi.h) | statsi: order statistics of int32 samples, such as timings in microseconds or cycles. |

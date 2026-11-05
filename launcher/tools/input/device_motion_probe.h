@@ -5,8 +5,10 @@
 #include <math.h>
 #include <stdio.h>
 
-#include "board/board_geometry.h"
+#include "board_config.h"
+#include "input/input.h"
 #include "input/motion/imu_sample.h"
+#include "math/scalar/mathf.h"
 
 #define PROBE_PI         3.14159265F
 #define PROBE_DEG_TO_RAD (PROBE_PI / 180.0F)
@@ -16,6 +18,13 @@ typedef struct {
 } probe_pose_t;
 
 typedef probe_pose_t (*probe_pose_at_t)(float t);
+typedef void (*probe_linear_at_t)(float t, float out[3]);
+
+static inline float
+probe_ease(float t, float start, float end) {
+    const float fraction = mathf_clamp((t - start) / (end - start), 0.0F, 1.0F);
+    return (1.0F - cosf(PROBE_PI * fraction)) / 2;
+}
 
 static const float probe_chip_axes[3][3] = {BOARD_IMU_AXIS_X, BOARD_IMU_AXIS_Y, BOARD_IMU_AXIS_Z};
 
@@ -73,21 +82,27 @@ probe_body_rate(probe_pose_at_t pose, float t, float dt, float rate[3]) {
     rate[2] = (rel[1][0] - rel[0][1]) / (2 * dt);
 }
 
-/* What the chip reads in that pose: specific force (up, 1 g, no linear acceleration) and the body rate plus a
- * per-chip-axis offset in deg/s, in chip counts. */
-static inline imu_sample_t
-probe_chip_sample(probe_pose_at_t pose, float t, float dt, const float offset_dps[3]) {
+/* Screen counts of specific force (world linear acceleration minus gravity) and body rate plus offset_dps.
+ * linear supplies world acceleration in g; NULL means zero. */
+static inline input_motion_t
+probe_motion_sample(probe_pose_at_t pose, float t, float dt, const float offset_dps[3], probe_linear_at_t linear) {
     const probe_pose_t now = pose(t);
-    float up[3], rate[3];
-    probe_to_device(&now, (const float[3]){0, 0, 1}, up);
+    float force_device[3], rate[3];
+    float force[3] = {0, 0, 0};
+    if (linear != NULL) {
+        linear(t, force);
+    }
+    force[2] += 1.0F;
+    probe_to_device(&now, force, force_device);
     probe_body_rate(pose, t, dt, rate);
     int16_t accel[3], gyro[3];
     for (int i = 0; i < 3; i++) {
-        accel[i] = (int16_t)lroundf(probe_dot(up, probe_chip_axes[i]) * IMU_COUNTS_PER_G);
+        accel[i] = (int16_t)lroundf(probe_dot(force_device, probe_chip_axes[i]) * IMU_COUNTS_PER_G);
         gyro[i] = (int16_t)lroundf((probe_dot(rate, probe_chip_axes[i]) / PROBE_DEG_TO_RAD + offset_dps[i])
                                    * IMU_COUNTS_PER_DPS);
     }
-    return (imu_sample_t){accel[0], accel[1], accel[2], gyro[0], gyro[1], gyro[2]};
+    return (input_motion_t){.acceleration = imu_axes_screen(accel[0], accel[1], accel[2]),
+                            .rotation = imu_axes_screen(gyro[0], gyro[1], gyro[2])};
 }
 
 static inline void

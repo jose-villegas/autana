@@ -26,12 +26,11 @@ static const int fit_max_deg = 80;
 static const int fit_step_deg = 2;
 static const orbit_motion_state_t home = {0};
 static const orbit_motion_limits_t limits = {-ORBIT_MOTION_PITCH_LIMIT, ORBIT_MOTION_PITCH_LIMIT, 0, 0};
-static const vec3f_t target = {0};
 
 static orbit_motion_t
 new_orbit(void) {
     orbit_motion_t orbit;
-    orbit_motion_init(&orbit, target, home, limits);
+    orbit_motion_init(&orbit, vec3f_zero(), home, limits);
     return orbit;
 }
 
@@ -44,7 +43,7 @@ orbit_samples(void) {
     printf("\"half_life\":%.9g,\"release\":%.9g,\"reset_start\":%.9g,\"pitch_limit\":%.9g,"
            "\"target\":[%s],\"orbit\":[",
            orbit.fling_half_life_s, held_frames * frame_s, reset_frame * frame_s, ORBIT_MOTION_PITCH_LIMIT,
-           vec3f_text(target).chars);
+           vec3f_text(vec3f_zero()).chars);
     for (int i = 0; i < maximum_frames; i++) {
         if (i == reset_frame) {
             orbit_motion_update(&orbit, &(orbit_motion_input_t){.reset = true}, 0);

@@ -17,7 +17,10 @@ intensity = 0.005
 intensity = 2.0
 
 [bake]
-ray_offset = 0.5
+# The source's reduction error (source/copyright.txt): its thin two-shell
+# awnings cross by up to that much, and a smaller offset lets one shell shadow
+# the other.
+ray_offset = 5.0
 colour_merge_step = 6
 indirect = { bounces = 2, rays = 64 }
 ao = { distance = 40.0, rays = 32, indirect = true }

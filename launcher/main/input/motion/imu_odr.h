@@ -23,13 +23,12 @@ typedef enum {
 /* Applies a pending request through `configure`. A failed switch can stop partway with the
  * sensor off, so the old rate is configured again and the request dropped. Every outcome
  * but IMU_ODR_UNCHANGED reset the FIFO. The caller queues that gap, so the next drain
- * must not repeat it through `fifo_gap`. A configured FIFO also satisfies entry at `level`. */
+ * must not repeat it. A configured FIFO also satisfies entry at `level`. */
 static inline imu_odr_outcome_t
-imu_odr_apply(imu_odr_t* odr, bool (*configure)(unsigned odr_code), bool* fifo_gap, imu_demand_level_t* level) {
+imu_odr_apply(imu_odr_t* odr, bool (*configure)(unsigned odr_code), imu_demand_level_t* level) {
     if (odr->requested == odr->applied) {
         return IMU_ODR_UNCHANGED;
     }
-    *fifo_gap = false;
     odr->flowing = false;
     if (configure(odr->requested)) {
         *level = IMU_DEMAND_FIFO;

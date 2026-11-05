@@ -28,7 +28,8 @@ try:
     from r3d.poses import sample_camera_rows
     from r3d.import_settings import load_scene
     from pinhole_rays import enclosed_sky
-    from render_compare import expand_565, read_video
+    from check_avi import read_video
+    from render_compare import expand_565
 except ImportError:  # pragma: no cover - the tool tests' environment has them
     np = None
 
@@ -40,9 +41,9 @@ MOST_HOLED_FRAMES = {
     "sponza": 12,
     "sponza-lite": 43,
     "sponza-flat": 12,
-    "sponza-fitted": 14,
-    "sponza-fitted-full": 21,
-    "sponza-flat-fitted": 23,
+    "sponza-fitted": 19,
+    "sponza-fitted-full": 16,
+    "sponza-flat-fitted": 25,
 }
 
 

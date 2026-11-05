@@ -44,6 +44,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "build"))
 from compile_db import compile_flags
 from espressif import espressif_tools_root  # noqa: E402  (path must be set up first)
+from find_cc import host_cc  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/lib"))
 from pinned_tool import PINNED_MAJOR, resolve
 from native_path import to_native as to_native_path
@@ -91,7 +92,7 @@ VARIANT_ONLY_FILES = {
     "main/gfx/present/panel/gfx_null_panel_device.c": ("main/gfx/present/gfx_present.c", "CONFIG_LAUNCHER_QEMU"),
 }
 
-VENDORED_DIR_NAMES = {"components", "managed_components"}
+VENDORED_DIR_NAMES = {"components", "managed_components", "third_party"}
 
 # Vendored source -> its pristine upstream copy (a pinned submodule). A
 # vendored function is measured only where this project changed its BODY
@@ -102,6 +103,10 @@ VENDORED_REFERENCES = {
         "third_party/upstream/microui/src/microui.c",
     "launcher/components/microui/include/microui.h":
         "third_party/upstream/microui/src/microui.h",
+    "third_party/tlsf/tlsf.c": "third_party/upstream/tlsf/tlsf.c",
+    "third_party/tlsf/tlsf_block_functions.h": "third_party/upstream/tlsf/tlsf_block_functions.h",
+    "third_party/tlsf/tlsf_control_functions.h": "third_party/upstream/tlsf/tlsf_control_functions.h",
+    "third_party/tlsf/include/tlsf.h": "third_party/upstream/tlsf/include/tlsf.h",
 }
 
 # ANALYSIS_SCAN skips table uses of macros, so its unused-macro warning
@@ -162,15 +167,9 @@ def find_host_toolchain():
     target and install root from itself, portable to whatever compiler
     a given machine's find_cc() resolves to, MinGW or a Linux system gcc
     alike."""
-    find_cc_sh = TOOLS_DIR.parent / "build" / "find_cc.sh"
-    result = subprocess.run(
-        ["sh", "-c", f'. "{find_cc_sh.as_posix()}"; find_cc'],
-        capture_output=True, text=True)
-    if result.returncode != 0 or not result.stdout.strip():
+    resolved_cc = host_cc()
+    if resolved_cc is None:
         return None, None, None
-    cc = result.stdout.strip()
-    from shutil import which
-    resolved_cc = which(cc) or cc
     try:
         target = subprocess.run([resolved_cc, "-dumpmachine"],
                                  capture_output=True, text=True,
@@ -198,7 +197,7 @@ def run_tests_print(flag):
 
 def is_vendored(path_str):
     """launcher/components/ (microui, the board support package),
-    managed_components/ (registry drivers), and the vendored Unity framework
+    managed_components/ (registry drivers), third_party/, and the vendored Unity framework
     under packages/testkit/unity/, third-party code, out of scope for a ratchet on
     THIS project's own functions."""
     parts = Path(path_str).parts
@@ -542,11 +541,13 @@ def build_tools_entries(host_flags, already_covered):
     return entries
 
 
-def build_host_entries(host_flags, already_covered):
-    sources = {str(Path(src).resolve()) for src in run_tests_print("--print-sources")
-               if not is_vendored(src)}
-    runners = {str(path.resolve()) for path in
-               (LAUNCHER_DIR / "packages").glob("*/runner/**/*.c") if not is_vendored(str(path))}
+def build_host_entries(host_flags, already_covered, vendored=False):
+    sources = {str(Path(src).resolve()) for src in run_tests_print("--print-sources")}
+    references = {str((REPO_ROOT / rel).resolve()) for rel in VENDORED_REFERENCES}
+    sources = {src for src in sources if (src in references if vendored else not is_vendored(src))}
+    runners = set() if vendored else {
+        str(path.resolve()) for path in (LAUNCHER_DIR / "packages").glob("*/runner/**/*.c")
+        if not is_vendored(str(path))}
     entries = {}
     clang = resolve_analysis_clang()
     for source in sorted(sources | runners):
@@ -619,6 +620,8 @@ def build_compile_db():
     # of the first-party source list: scan_vendored() scores only the
     # functions this project modified.
     vendored_entries = build_idf_entries(toolchain_root, vendored=True)
+    vendored_entries.update(build_host_entries(
+        host_flags, {*all_entries, *vendored_entries}, vendored=True))
 
     BUILD_DIR.mkdir(parents=True, exist_ok=True)
     db_json = []

@@ -212,7 +212,7 @@ place_below(flip3_t* f, const lattice_t* l, vec3f_t down, float level, int targe
         const vec3f_t p = lattice_point(l, i / (l->n[1] * l->n[2]), (i / l->n[2]) % l->n[1], i % l->n[2]);
         if (vec3f_dot(p, down) >= level) {
             f->pos[f->count] = p;
-            f->vel[f->count] = (vec3f_t){0};
+            f->vel[f->count] = vec3f_zero();
             f->count++;
         }
     }
@@ -789,6 +789,11 @@ field_axis(const field_work_t* w, int axis, int i, int lo[3], int hi[3], float t
                 &hi[axis], &t[axis]);
 }
 
+static int
+field_index(const field_work_t* w, const int at[3]) {
+    return (((at[0] * w->d[1]) + at[1]) * w->d[2]) + at[2];
+}
+
 static void
 sample_lines(const field_work_t* w, int from, int to) {
     const flip3_t* f = w->f;
@@ -809,8 +814,93 @@ sample_lines(const field_work_t* w, int from, int to) {
                 for (int k = 0; k < 8; k++) {
                     density += s.weight[k] * f->density[s.at[k]];
                 }
-                w->out[(((x * sy) + y) * sz) + z] = density * inv_rest;
+                w->out[field_index(w, (const int[3]){x, y, z})] = density * inv_rest;
             }
+        }
+    }
+}
+
+/* A point's nearest sample is within half a sample on every axis; a
+ * particle reads at that sample as if it sat halfway to it, at most. */
+#define FIELD_NEAREST_REACH 0.5F
+#define FIELD_NEAREST_LEAST (1.0F - (0.5F * FIELD_NEAREST_REACH))
+_Static_assert(FIELD_NEAREST_LEAST > FLIP3_SURFACE_LEVEL, "a particle's nearest sample is inside the surface");
+
+/* A particle in the field: the lower corner of the field cell it sits in,
+ * and each axis's distance in samples to its lower and upper sample. */
+typedef struct {
+    int lo[3];
+    float off[3][2];
+} field_spot_t;
+
+static field_spot_t
+particle_spot(const field_work_t* w, const float inv_step[3], vec3f_t p) {
+    const float at[3] = {p.x - w->f->h.x, p.y - w->f->h.y, p.z - w->f->h.z};
+    field_spot_t s;
+    for (int a = 0; a < 3; a++) {
+        /* Sample s sits at h + (s - 0.5) steps in grid coordinates. */
+        const float u = (at[a] * inv_step[a]) + 0.5F;
+        s.lo[a] = (int)u;
+        s.off[a][0] = u - (float)s.lo[a];
+        s.off[a][1] = 1.0F - s.off[a][0];
+    }
+    return s;
+}
+
+/* Inside already, as nearly every particle in bulk water is: its nearest
+ * sample reads above the surface. */
+static bool
+particle_inside(const field_work_t* w, const float inv_step[3], vec3f_t p) {
+    const float at[3] = {p.x - w->f->h.x, p.y - w->f->h.y, p.z - w->f->h.z};
+    int near[3];
+    for (int a = 0; a < 3; a++) {
+        /* Sample s sits at h + (s - 0.5) steps, so the nearest rounds; the
+         * walls keep a particle a radius inside the box, so it is an inside
+         * sample, never the border. */
+        near[a] = (int)((at[a] * inv_step[a]) + 1.0F);
+    }
+    return w->out[field_index(w, near)] > FLIP3_SURFACE_LEVEL;
+}
+
+/* Raises an inside sample `far` samples (Chebyshev) from the particle. */
+static void
+show_sample(const field_work_t* w, const int at[3], float far) {
+    for (int a = 0; a < 3; a++) {
+        if (at[a] < 1 || at[a] > w->d[a] - 2) {
+            return;
+        }
+    }
+    const float least = far <= FIELD_NEAREST_REACH ? FIELD_NEAREST_LEAST : 0.0F;
+    const float shown = 1.0F - far > least ? 1.0F - far : least;
+    float* const v = &w->out[field_index(w, at)];
+    *v = *v > shown ? *v : shown;
+}
+
+/* Every particle shows as a sample of water, after the smoothing: one
+ * whose nearest sample already reads inside is left; every other one
+ * raises its cell's samples to 1 less their Chebyshev distance from it in
+ * samples, its nearest to FIELD_NEAREST_LEAST, so even from a midpoint it
+ * is a drop inside the surface.
+ * Without it, a film or lone drop thinner than the smoothing averages
+ * below the level. One pass on this core: split by lines, each core would
+ * read every particle. */
+static void
+show_particles(const field_work_t* w) {
+    const float inv_step[3] = {1.0F / w->step[0], 1.0F / w->step[1], 1.0F / w->step[2]};
+    for (int i = 0; i < w->f->count; i++) {
+        if (particle_inside(w, inv_step, w->f->pos[i])) {
+            continue;
+        }
+        const field_spot_t s = particle_spot(w, inv_step, w->f->pos[i]);
+        for (int corner = 0; corner < 8; corner++) {
+            int at[3];
+            float far = 0.0F;
+            for (int a = 0; a < 3; a++) {
+                const int up = (corner >> a) & 1;
+                at[a] = s.lo[a] + up;
+                far = s.off[a][up] > far ? s.off[a][up] : far;
+            }
+            show_sample(w, at, far);
         }
     }
 }
@@ -842,6 +932,7 @@ flip3_field(const flip3_t* f, float samples, float* out) {
         const int lines = w.pass == FLIP3_SPLIT_FIELD_SMOOTH_X ? w.d[1] : w.d[0];
         run_split(f, w.pass, field_range, &w, lines - 2);
     }
+    show_particles(&w);
     /* Sample (1, 1, 1) sits half a sample in from the box's origin. */
     const vec3f_t step = {w.step[0], w.step[1], w.step[2]};
     return (iso_field_t){out, w.d[0], w.d[1], w.d[2], vec3f_scale(step, -0.5F), step};

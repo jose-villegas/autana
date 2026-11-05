@@ -21,7 +21,6 @@ import argparse
 import csv
 import pathlib
 import re
-import subprocess
 import sys
 
 from PIL import Image
@@ -29,14 +28,14 @@ from PIL import Image
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
-import check_avi
 from build.c_header import read_define
 from cull_counts import CULL_HEADER, plot_counts
+from check_avi import read_video
+from docs.figures import render_scene, save_png
 from docs.plot_style import save, subplots
 from render.doc_tables import markdown
 from render_compare import still_sheet
 
-VIEWER = ROOT / "launcher/tools/render/scene_viewer.sh"
 GFX_HEADER = ROOT / "launcher/main/gfx/gfx.h"
 DISPLAY_HEADER = ROOT / "launcher/main/display/display.h"
 FRAMES = 120  # frames along the whole path, for the counts and the videos
@@ -56,11 +55,8 @@ def cull_from(name):
 
 
 def viewer(args, *flags, log):
-    """Runs the scene viewer on the scene; its stderr goes to `log`."""
-    command = ["sh", str(VIEWER), str(args.scene), "--object", args.object, "--camera", args.camera, *flags]
-    with open(log, "w") as handle:
-        subprocess.run(command, check=True, stdout=handle, stderr=subprocess.STDOUT)
-    return pathlib.Path(log).read_text(encoding="utf-8", errors="replace")
+    """Runs the scene viewer on the scene's object and camera; returns its output, also in `log`."""
+    return render_scene(args.scene, "--object", args.object, "--camera", args.camera, *flags, log=log)
 
 
 def path_ms(args):
@@ -93,23 +89,16 @@ def video(args, name, view_flags, dt, size=None):
 
 
 def frames_at(avi, indices):
-    """The frames at `indices` as RGB images (AVI frames are bottom-up BGR)."""
-    movie = check_avi.read_avi(avi)
-    wanted = set(indices)
-    found = {}
-    for index, frame in enumerate(movie.frames):
-        if index in wanted:
-            stride = (movie.width * 3 + 3) // 4 * 4
-            picture = Image.frombuffer("RGB", (movie.width, movie.height), bytes(frame), "raw", "BGR", stride, -1)
-            found[index] = picture.copy()
-    return [found[i] for i in indices]
+    """The frames at `indices` as RGB images."""
+    frames = list(read_video(avi)[1])
+    return [Image.fromarray(frames[index]) for index in indices]
 
 
 def sheet(args, columns, indices, dt, stem):
     """One render_compare still row per pose, stacked."""
     rows = [[(f"{label}, {index * dt / 1000:.1f} s", pictures[row].convert("RGB")) for label, pictures in columns]
             for row, index in enumerate(indices)]
-    still_sheet(rows).save(args.out / f"{stem}-sheet.png", optimize=True)
+    save_png(still_sheet(rows), args.out / f"{stem}-sheet.png")
 
 
 def read_counts(path):

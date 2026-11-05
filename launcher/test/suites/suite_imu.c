@@ -1,6 +1,6 @@
 /* imu: driver sequencing without a bus.
  * imu_odr: a requested sensor rate switches, or falls back to the rate that ran.
- * imu_reset: every boot soft-resets the sensor and waits until it is done; imu_poll waits on masked bits. */
+ * qmi8658_reset: every boot soft-resets the sensor and waits until it is done; imu_poll waits on masked bits. */
 #include <stdlib.h>
 
 #include "suites.h"
@@ -10,7 +10,7 @@
 #include "input/motion/imu.h"
 #include "input/motion/imu_odr.h"
 #include "input/motion/imu_queue.h"
-#include "input/motion/imu_reset.h"
+#include "input/motion/qmi8658/qmi8658_reset.h"
 
 #define TEST_CALLS_MAX 4
 
@@ -21,7 +21,6 @@ typedef struct {
 } test_bus_t;
 
 static test_bus_t bus;
-static bool fifo_gap;
 static imu_demand_level_t level;
 
 static bool
@@ -34,18 +33,15 @@ fake_configure(unsigned odr_code) {
 static void
 reset(int fail_first) {
     bus = (test_bus_t){.fail_first = fail_first};
-    fifo_gap = false;
     level = IMU_DEMAND_NONE;
 }
 
 static void
 test_nothing_asked_touches_nothing(void) {
     reset(0);
-    fifo_gap = true;
     imu_odr_t odr = {.requested = IMU_ODR_CODE, .applied = IMU_ODR_CODE};
-    TEST_ASSERT_EQUAL_INT(IMU_ODR_UNCHANGED, imu_odr_apply(&odr, fake_configure, &fifo_gap, &level));
+    TEST_ASSERT_EQUAL_INT(IMU_ODR_UNCHANGED, imu_odr_apply(&odr, fake_configure, &level));
     TEST_ASSERT_EQUAL_INT(0, bus.count);
-    TEST_ASSERT_TRUE(fifo_gap);
     TEST_ASSERT_EQUAL_INT(IMU_DEMAND_NONE, level);
 }
 
@@ -53,11 +49,11 @@ static void
 test_switch_applies_the_request(void) {
     reset(0);
     imu_odr_t odr = {.requested = IMU_BUZZ_ODR_CODE, .applied = IMU_ODR_CODE};
-    TEST_ASSERT_EQUAL_INT(IMU_ODR_SWITCHED, imu_odr_apply(&odr, fake_configure, &fifo_gap, &level));
+    TEST_ASSERT_EQUAL_INT(IMU_ODR_SWITCHED, imu_odr_apply(&odr, fake_configure, &level));
     TEST_ASSERT_EQUAL_UINT(IMU_BUZZ_ODR_CODE, odr.applied);
     TEST_ASSERT_EQUAL_INT(1, bus.count);
     TEST_ASSERT_EQUAL_INT(IMU_DEMAND_FIFO, level);
-    TEST_ASSERT_EQUAL_INT(IMU_ODR_UNCHANGED, imu_odr_apply(&odr, fake_configure, &fifo_gap, &level));
+    TEST_ASSERT_EQUAL_INT(IMU_ODR_UNCHANGED, imu_odr_apply(&odr, fake_configure, &level));
 }
 
 /* A partial write can leave the sensor off: the old rate is configured again. */
@@ -65,7 +61,7 @@ static void
 test_failed_switch_restores_the_old_rate(void) {
     reset(1);
     imu_odr_t odr = {.requested = IMU_BUZZ_ODR_CODE, .applied = IMU_ODR_CODE};
-    TEST_ASSERT_EQUAL_INT(IMU_ODR_RESTORED, imu_odr_apply(&odr, fake_configure, &fifo_gap, &level));
+    TEST_ASSERT_EQUAL_INT(IMU_ODR_RESTORED, imu_odr_apply(&odr, fake_configure, &level));
     TEST_ASSERT_EQUAL_INT(2, bus.count);
     TEST_ASSERT_EQUAL_INT(IMU_DEMAND_FIFO, level);
     TEST_ASSERT_EQUAL_UINT(IMU_BUZZ_ODR_CODE, bus.calls[0]);
@@ -78,7 +74,7 @@ static void
 test_failed_restore_is_lost(void) {
     reset(2);
     imu_odr_t odr = {.requested = IMU_BUZZ_ODR_CODE, .applied = IMU_ODR_CODE};
-    TEST_ASSERT_EQUAL_INT(IMU_ODR_LOST, imu_odr_apply(&odr, fake_configure, &fifo_gap, &level));
+    TEST_ASSERT_EQUAL_INT(IMU_ODR_LOST, imu_odr_apply(&odr, fake_configure, &level));
     TEST_ASSERT_EQUAL_INT(IMU_DEMAND_NONE, level);
     TEST_ASSERT_EQUAL_UINT(IMU_ODR_CODE, odr.applied);
     TEST_ASSERT_EQUAL_UINT(IMU_ODR_CODE, odr.requested);
@@ -91,15 +87,14 @@ test_switch_gap_is_taken_before_next_drain(void) {
         imu_odr_t odr = {.requested = IMU_BUZZ_ODR_CODE, .applied = IMU_ODR_CODE};
         imu_queue_t* queue = calloc(1, sizeof *queue);
         TEST_ASSERT_NOT_NULL(queue);
-        fifo_gap = true;
-        TEST_ASSERT_NOT_EQUAL(IMU_ODR_UNCHANGED, imu_odr_apply(&odr, fake_configure, &fifo_gap, &level));
+        TEST_ASSERT_NOT_EQUAL(IMU_ODR_UNCHANGED, imu_odr_apply(&odr, fake_configure, &level));
         imu_queue_set_rate(queue, odr.applied);
         imu_sample_t sample = {.ax = IMU_COUNTS_PER_G};
         uint8_t lost = 0;
         bool gap = false;
         TEST_ASSERT_EQUAL_INT(0, imu_queue_take_at(queue, odr.applied, &sample, &lost, &gap));
         TEST_ASSERT_TRUE(gap);
-        imu_queue_push_drain(queue, &sample, 1, 0, fifo_gap);
+        imu_queue_push_drain(queue, &sample, 1, 0, false);
         TEST_ASSERT_EQUAL_INT(1, imu_queue_take_at(queue, odr.applied, &sample, &lost, &gap));
         free(queue);
         TEST_ASSERT_FALSE(gap);
@@ -129,7 +124,7 @@ test_rate_ack_waits_for_first_batch(void) {
     TEST_ASSERT_FALSE(imu_odr_ready(&odr, odr.sequence + 1));
 }
 
-/* The fake sensor for imu_reset: reads `busy_value` until `done_at_us`, then the done value. */
+/* The fake sensor for qmi8658_reset: reads `busy_value` until `done_at_us`, then the done value. */
 #define TEST_RESET_CALLS_MAX 64
 #define STATUSINT_TEST_BIT   0x80
 #define TEST_STALE_VALUE     0x81 /* the done bit set among others: not the done value */
@@ -181,15 +176,15 @@ polls(void) {
 
 static bool
 sensor_write(uint8_t reg, uint8_t value) {
-    TEST_ASSERT_EQUAL_HEX8(REG_RESET, reg);
-    TEST_ASSERT_EQUAL_HEX8(RESET_COMMAND, value);
+    TEST_ASSERT_EQUAL_HEX8(QMI8658_REG_RESET, reg);
+    TEST_ASSERT_EQUAL_HEX8(QMI8658_RESET_COMMAND, value);
     record(CALL_RESET);
     return !sensor->reset_nack;
 }
 
 static bool
 sensor_read(uint8_t reg, uint8_t* out, size_t len) {
-    TEST_ASSERT_EQUAL_HEX8(REG_RESET_RESULT, reg);
+    TEST_ASSERT_EQUAL_HEX8(QMI8658_REG_RESET_RESULT, reg);
     TEST_ASSERT_EQUAL_UINT(1, len);
     if (sensor->first_poll_us < 0) {
         sensor->first_poll_us = sensor->now_us;
@@ -199,7 +194,7 @@ sensor_read(uint8_t reg, uint8_t* out, size_t len) {
     if (nack) {
         return false;
     }
-    *out = sensor->now_us >= sensor->done_at_us ? RESET_DONE : sensor->busy_value;
+    *out = sensor->now_us >= sensor->done_at_us ? QMI8658_RESET_DONE : sensor->busy_value;
     return true;
 }
 
@@ -215,22 +210,22 @@ sensor_delay(uint32_t us) {
 
 static bool
 reset_sensor(void) {
-    return imu_reset(sensor_write, sensor_read, sensor_now, sensor_delay);
+    return qmi8658_reset(sensor_write, sensor_read, sensor_now, sensor_delay);
 }
 
 /* The last poll inside the window lands one poll period before the deadline. */
 static int64_t
 last_poll_us(void) {
-    return IMU_RESET_SETTLE_US + IMU_RESET_TIMEOUT_US - IMU_RESET_POLL_US;
+    return QMI8658_RESET_SETTLE_US + QMI8658_RESET_TIMEOUT_US - QMI8658_RESET_POLL_US;
 }
 
 static void
 test_reset_settles_then_polls_until_done(void) {
-    new_sensor(IMU_RESET_SETTLE_US + (2 * IMU_RESET_POLL_US));
+    new_sensor(QMI8658_RESET_SETTLE_US + (2 * QMI8658_RESET_POLL_US));
     TEST_ASSERT_TRUE(reset_sensor());
     TEST_ASSERT_EQUAL_INT(CALL_RESET, sensor->calls[0]);
     TEST_ASSERT_EQUAL_INT(3, polls());
-    TEST_ASSERT_EQUAL_INT64(IMU_RESET_SETTLE_US, sensor->first_poll_us);
+    TEST_ASSERT_EQUAL_INT64(QMI8658_RESET_SETTLE_US, sensor->first_poll_us);
 }
 
 static void
@@ -240,12 +235,12 @@ test_reset_tolerates_nacks_while_resetting(void) {
     sensor->nack_polls = 2;
     TEST_ASSERT_TRUE(reset_sensor());
     TEST_ASSERT_EQUAL_INT(3, polls());
-    TEST_ASSERT_EQUAL_INT64(IMU_RESET_SETTLE_US, sensor->first_poll_us);
+    TEST_ASSERT_EQUAL_INT64(QMI8658_RESET_SETTLE_US, sensor->first_poll_us);
 }
 
 static void
 test_reset_waits_through_values_that_are_not_done(void) {
-    new_sensor(IMU_RESET_SETTLE_US + IMU_RESET_POLL_US);
+    new_sensor(QMI8658_RESET_SETTLE_US + QMI8658_RESET_POLL_US);
     sensor->busy_value = TEST_STALE_VALUE;
     TEST_ASSERT_TRUE(reset_sensor());
     TEST_ASSERT_EQUAL_INT(2, polls());
@@ -266,9 +261,9 @@ test_reset_done_on_the_last_poll_counts(void) {
 
 static void
 test_reset_done_after_the_deadline_fails(void) {
-    new_sensor(last_poll_us() + IMU_RESET_POLL_US);
+    new_sensor(last_poll_us() + QMI8658_RESET_POLL_US);
     TEST_ASSERT_FALSE(reset_sensor());
-    TEST_ASSERT_EQUAL_INT64(IMU_RESET_SETTLE_US + IMU_RESET_TIMEOUT_US, sensor->now_us);
+    TEST_ASSERT_EQUAL_INT64(QMI8658_RESET_SETTLE_US + QMI8658_RESET_TIMEOUT_US, sensor->now_us);
 }
 
 static uint8_t poll_value;

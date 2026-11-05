@@ -62,6 +62,9 @@ typedef struct render_lab_scene {
  * `failure` (`size` bytes) for the status line, in place of its stats. */
 void render_lab_scene_fail(const char* tag, char* failure, size_t size, const char* what);
 
+/* `bytes` from the app arena, which render_lab rewinds when the scene goes; NULL when it is spent. */
+void* render_lab_scene_take(size_t bytes);
+
 extern const render_lab_scene_t scene_capybara;
 extern const render_lab_scene_t scene_water;
 

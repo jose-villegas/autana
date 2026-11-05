@@ -53,10 +53,11 @@ RUNSUITE_COMPLETE name=<suite> found=<0|1> selected=<n> unmatched=<n>
 so a harness never has to guess from a quiet console.
 
 **Narrowing a suite.** `runsuite <suite> <pattern>[,<pattern>...]` runs only
-tests whose name contains a pattern; `autana suite <name> --test <pattern>`
+tests a pattern picks; `autana suite <name> --test <pattern>`
 sends it ([syntax](../cli/Tests.md)).
 
 - The `RUN_TEST` override in `launcher/test/timing.c` does the filtering, so no suite changes. Each test it reaches prints `SUITE_TEST name=<test> selected=<0|1>`.
+- `suite_test_matches()` in `launcher/test/suites.c` holds the pattern rule, and `test_matches()` in `scripts/lib/device_capture.py` repeats it for the tools; both are tested against `launcher/test/suites/suite_filter_cases.inc`.
 - Patterns live for that one request; the next `runsuite` runs everything.
 - In the completion line, `selected=` is how many tests ran and `unmatched=` how many patterns matched nothing. A refused pattern prints `SUITE_FILTER_REFUSED` and runs nothing.
 - Only `runsuite` reads a line long enough for the most patterns `launcher/test/suites.h` allows; other verbs keep `CONSOLE_LINE_MAX`.
@@ -111,9 +112,18 @@ captures, failed runs included.
 - It is not a required check. If no board frees up within the wait, the job succeeds with a neutral skipped notice.
 - The [nightly scoped performance](../../launcher/tools/perf/README.md#nightly-scoped-chain) workflow's designated board also runs Board CI's steps (`scripts/ci/board-steps.sh`: self-test, then console tests) in the same overnight hold.
 
-The `board-ci-down` issue means the boards could not run: a lane that did not start, hung or stopped early, a self-test capture or console tests that never completed, a board missing from USB, a board job stuck in the queue, or a crashed or cancelled job.
-A night whose lanes all ran to the end, or a Board CI run whose board did, clears it even when tests failed; those, such as a scene over its frame-time ceiling, leave that run red.
-Disabling the nightly workflow pauses health checks.
+CI alarms are GitHub issues labelled `ci-alarm`, one open issue per kind; each closes on the next run that shows recovery.
+
+| Label | Raised when | Cleared by |
+|---|---|---|
+| `board-ci-down` | the boards could not run: a lane that did not start, hung or stopped early, a self-test capture or console tests that never completed, a board of the last three nights missing from USB or on a host that does not answer, a board job stuck in the queue, or a crashed or cancelled job | a night whose lanes all ran to the end, or a Board CI run whose board did, whatever their tests reported |
+| `board-ci-red` | a night on main failed with its boards up: a failed test, such as a scene over its frame-time ceiling, a failed build, or a lane that ended past its deadline | the next night on main that passes |
+| `pages-down` | the latest main build of the Pages site failed, or nothing deployed for 30 hours | a check that finds neither |
+
+The issue quotes the run's errors.
+[Board health](../../.github/workflows/board-health.yml) checks the boards, the runner queue and Pages every three hours, and comments only when what it finds has changed.
+It skips the USB probe while another run holds a board.
+Disabling the nightly workflow pauses the board checks.
 
 ## Console recipes and lifecycle coverage
 
@@ -178,7 +188,7 @@ discovery with no scene pairs fail the test. It writes `tour-model.json`
 (GraphWalker format) beside the serial log.
 
 - With scenes, the scene current right after OPEN is the landing state.
-- App transitions connect landing states and home; scene transitions connect every ordered pair within an app. Every edge changes state.
+- App transitions connect landing states and home. Scene transitions run once round a cycle of an app's scenes, so each is entered and left; `--tour-pairs` connects every ordered pair instead, which grows with the square of the scenes. Every edge changes state.
 - NetworkX loads the written model and its `eulerian_circuit` visits every edge, no JVM needed.
 
 ```mermaid
@@ -206,7 +216,7 @@ fresh `scenes` query, and every edge needs a `BUILDID` heartbeat. Crash and
 reset patterns come from `scripts/lib/device_capture.py` and apply to every
 expectation, the Unity summary included.
 
-CI runs the suite, recipes and tour against the instruction ratchet's shell
+CI runs the suite, recipes and the cycle tour against the instruction ratchet's shell
 build and uploads the pytest logs and model. Board CI runs pytest after
 selftest in the same hold, flashing the shell image with Unity suites first,
 and uploads both captures.

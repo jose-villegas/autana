@@ -42,7 +42,7 @@ replay_frame(size_t i, bool rotating) {
                             .rotation = rotating ? (vec3i_t){MOTION_ROTATION_X_DPS * INPUT_ROTATION_ONE_DPS,
                                                              MOTION_ROTATION_Y_DPS * INPUT_ROTATION_ONE_DPS,
                                                              MOTION_ROTATION_Z_DPS * INPUT_ROTATION_ONE_DPS}
-                                                 : (vec3i_t){0}};
+                                                 : vec3i_zero()};
 }
 
 typedef struct {

@@ -2,7 +2,6 @@
 import csv
 import os
 import pathlib
-import re
 import shutil
 import subprocess
 import sys
@@ -20,10 +19,18 @@ from anim import track_host
 from build.c_header import read_define
 from r3d import build_pack
 from r3d.lit_mesh import write_lit_mesh  # noqa: E402
-from render import render_compare, scene_path  # noqa: E402
 
 SCRIPT = TOOLS / "render/scenes/scene_viewer_render_host.sh"
-REPO = TOOLS.parents[1]
+
+
+def write_card(directory, colour):
+    """The test scene's one coloured triangle, its import settings and camera clip in `directory`."""
+    positions = np.array([[-2, -2, -6], [2, -2, -6], [0, 2, -6]], dtype=float)
+    write_lit_mesh(directory, "card", positions, np.array([colour] * 3), np.array([[0, 1, 2]]), np.array([True]))
+    (directory / "card.import.toml").write_text(
+        '[source]\npath = "card.obj"\ncredit = "fixture"\n[output]\nname = "card"\n')
+    (directory / "card.obj").write_text("v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n")
+    write_camera_clip(directory, reach=2.0)
 
 
 @unittest.skipUnless(has_compiler(), "needs sh and a C compiler")
@@ -33,13 +40,7 @@ class SceneViewer(unittest.TestCase):
         cls.temp = tempfile.TemporaryDirectory(prefix="scene viewer ")
         cls.root = pathlib.Path(cls.temp.name)
         cls.scene = cls.root / "room.scene.toml"
-        positions = np.array([[-2, -2, -6], [2, -2, -6], [0, 2, -6]], dtype=float)
-        write_lit_mesh(cls.root, "card", positions, np.array([[255, 40, 20]] * 3),
-                       np.array([[0, 1, 2]]), np.array([True]))
-        (cls.root / "card.import.toml").write_text(
-            '[source]\npath = "card.obj"\ncredit = "fixture"\n[output]\nname = "card"\n')
-        (cls.root / "card.obj").write_text("v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n")
-        write_camera_clip(cls.root, reach=2.0)
+        write_card(cls.root, [255, 40, 20])
         cls.scene.write_text('''[[objects]]
 name = "card"
 [objects.mesh_renderer]
@@ -124,6 +125,33 @@ path = { animation = "fly.anim.toml", node = "camera" }
 
     def test_provider_path_seek_and_history(self):
         self.check_fixture("check_scene_provider.sh", "provider")
+
+    def test_close_gives_back_the_pack_so_the_same_id_reopens_from_another_folder(self):
+        other = self.root / "other"
+        other.mkdir(exist_ok=True)
+        write_card(other, [20, 220, 40])
+        (other / "room.scene.toml").write_text(self.scene.read_text())
+        packs_b = other / "assets"
+        build_pack.write_packs(packs_b, build_pack.pack_bytes([other / "room.scene.toml"]))
+        refused = self.root / "refused"
+        refused.mkdir(exist_ok=True)
+        pack = bytearray((self.out / "assets" / "room.apak").read_bytes())
+        pack[4:8] = (int.from_bytes(pack[4:8], "little") + 1).to_bytes(4, "little")
+        (refused / "room.apak").write_bytes(pack)
+        env = dict(os.environ, REOPEN_PACKS_A=str(self.out / "assets"), REOPEN_PACKS_B=str(packs_b), REOPEN_OUT_B=str(self.root / "reopen-b.bmp"),
+                   REOPEN_PACKS_BAD=str(refused))
+        check = TOOLS / "render/tests/check_scene_reopen.sh"
+        run = subprocess.run([shutil.which("sh"), str(check), "-o", str(self.root / "reopen"),
+                              "--asset-file", str(self.scene)], capture_output=True, text=True, timeout=120,
+                             env=env)
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        fresh = self.root / "fresh-b.bmp"
+        straight = subprocess.run([str(self.binary), "--scene", "room", "--frames", "2", "--dt", "100", "-o",
+                                   str(fresh)], capture_output=True, text=True, timeout=120,
+                                  env=dict(os.environ, AUTANA_ASSET_DIR=str(packs_b)))
+        self.assertEqual(straight.returncode, 0, straight.stderr)
+        self.assertEqual((self.root / "reopen-b.bmp").read_bytes(), fresh.read_bytes())
+        self.assertNotEqual((self.root / "reopen/reopen-a.bmp").read_bytes(), fresh.read_bytes())
 
     def test_checkpoint_replay_every_view(self):
         self.check_fixture("check_render_checkpoint.sh", "checkpoint")
@@ -276,68 +304,6 @@ path = { animation = "fly.anim.toml", node = "camera" }
         for pose in poses:
             self.assertAlmostEqual(float(np.linalg.norm([float(pose[q]) for q in ("qx", "qy", "qz", "qw")])), 1.0,
                                    places=5)
-
-    def sides(self, b_args="--object\ncard"):
-        assets = str(self.out / "assets")
-        return [scene_path.Side("all", self.binary, assets, "--scene\nroom"),
-                scene_path.Side("card", self.binary, assets, "--scene\nroom\n" + b_args)]
-
-    def test_frame_n_is_frame_n_of_the_rendered_path_on_both_sides(self):
-        work = self.root / "path"
-        work.mkdir(exist_ok=True)
-        sides = self.sides()
-        scene_path.render(sides, 4, 100, work)
-        written = scene_path.write_frame(sides, 2, 4, 100, work, self.root / "frame.png")
-        self.assertEqual([path.name for path in written], ["frame.png", "frame-b.png"])
-        pictures = []
-        for name, path in zip(scene_path.SIDES, written):
-            frames = list(render_compare.read_video(work / f"{name}.avi")[1])
-            self.assertEqual(len(frames), 4)
-            with Image.open(path) as image:
-                pictures.append(np.asarray(image.convert("RGB")))
-            np.testing.assert_array_equal(pictures[-1], frames[2])
-        self.assertFalse(np.array_equal(pictures[0], pictures[1]), "the offset card should pop out on side b")
-
-    def test_a_frame_past_the_path_end_is_refused(self):
-        with self.assertRaises(SystemExit) as refusal:
-            scene_path.write_frame(self.sides(), 4, 4, 100, self.root, self.root / "late.png")
-        self.assertIn("frames 0 to 3", str(refusal.exception))
-
-    def test_default_timing_is_the_viewers_frame_time_over_the_whole_path(self):
-        work = self.root / "timing"
-        work.mkdir(exist_ok=True)
-        side = self.sides()[0]
-        run, _ = self.render("--frames", "1")
-        duration_ms = int(re.search(r"camera path (\d+) ms", run.stderr).group(1))
-        dt_default = int(re.search(r"\.dt_ms = (\d+)", (TOOLS / "render/scene_viewer.c").read_text()).group(1))
-        self.assertEqual(scene_path.timing(side, work), (duration_ms // dt_default + 1, dt_default))
-        self.assertEqual(scene_path.timing(side, work, frames=3, dt_ms=7), (3, 7))
-
-    def wrapper(self, *arguments):
-        """scene_viewer.sh on the test scene, run from the repository (--compare needs it)."""
-        return subprocess.run([shutil.which("sh"), str(TOOLS / "render/scene_viewer.sh"), str(self.scene), *arguments],
-                              cwd=REPO, capture_output=True, text=True, timeout=300)
-
-    @unittest.skipUnless(shutil.which("ffmpeg"), "needs ffmpeg")
-    def test_wrapper_compares_this_checkout_against_itself_with_other_arguments(self):
-        out = self.root / "compare.mp4"
-        run = self.wrapper("--compare", ".", "--b-args", "--object card", "--frames", "3", "--dt", "100", "-o", str(out))
-        self.assertEqual(run.returncode, 0, run.stderr)
-        self.assertIn("video: 3 frames", run.stderr)
-        self.assertGreater(out.stat().st_size, 0)
-
-    def test_wrapper_frame_writes_both_sides(self):
-        out = self.root / "wrapper frame.png"
-        run = self.wrapper("--compare", ".", "--b-args", "--object card", "--dt", "100", "--frame", "1", "-o", str(out))
-        self.assertEqual(run.returncode, 0, run.stderr)
-        for path in (out, out.with_name("wrapper frame-b.png")):
-            with Image.open(path) as image:
-                self.assertEqual(image.size, (448, 368))
-
-    def test_wrapper_refuses_b_args_without_compare(self):
-        run = self.wrapper("--b-args", "--object card")
-        self.assertEqual(run.returncode, 2)
-        self.assertIn("--b-args needs --compare", run.stderr)
 
     def test_packer_replaces_a_scratch_mesh_for_one_render_only(self):
         scratch = self.root / "scratch mesh"

@@ -306,7 +306,7 @@ test_the_flythrough_moves_smoothly_and_closes_its_loop(void) {
     for (int camera = 0; camera < SPONZA_CAMERA_COUNT; camera++) {
         select_camera(sponza_cameras[camera]);
         const uint32_t period = scene_animator_clip_duration_ms(sponza, camera_entity, 0);
-        const vec3f_t forward_axis = {0.0F, 0.0F, 1.0F};
+        const vec3f_t forward_axis = vec3f_unit_z();
         (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, 0);
         vec3f_t previous = scene_entity_local(sponza, camera_entity).position;
         for (uint32_t t = 10; t <= period + 100; t += 10) {
@@ -345,10 +345,10 @@ share_covered_at(const raster_t* raster, uint32_t t_ms) {
  * only the building's far sides, about 0.6. */
 static void
 check_the_flythrough_sees_mostly_building(const r3d_lit_mesh_t* mesh) {
-    const r3d_instance_t instance = {mesh, NULL};
+    const r3d_instance_t instance = {mesh, NULL, NULL};
     raster_t raster = {
         .instances = &instance, .instance_count = 1, .width = SPONZA_RENDER_WIDTH, .height = SPONZA_RENDER_HEIGHT};
-    void* scratch = memory_alloc(raster_scratch_bytes(&raster), MEMORY_PSRAM);
+    void* scratch = memory_alloc(raster_scratch_bytes(&raster), MEMORY_APP);
     TEST_ASSERT_NOT_NULL(scratch);
     raster.scratch = scratch;
     const uint32_t period = scene_animator_clip_duration_ms(sponza, camera_entity, 0);

@@ -17,7 +17,8 @@ watch` lists the same commands.
 | `autana battery [--json]` | fresh voltage, percentage, USB, charge phase and flow, plus raw PMU status bytes; development builds |
 | `autana battery --log [--json]` | persistent battery records oldest first (JSON is an array); reasons: periodic, transition, boot, shutdown-warning; development builds |
 | `autana battery --log --clear` | erase the battery history namespace |
-| `autana heap [--json]` | free bytes and largest block in the internal DMA pool (MEMORY_DMA); development builds |
+| `autana heap [psram\|app] [--json]` | free bytes, largest block, total and low-water mark of the internal DMA pool (MEMORY_DMA), of PSRAM, or of the running app's heap; development builds |
+| `autana heap reset` | restart the low-water marks, so the next reading's min covers only what ran since |
 | `autana perf` | the frame_cost names seen and the counter events |
 | `autana perf <name> [event] [seconds]` | count one event (insn when omitted) on one frame_cost bracket for seconds (10 when omitted); prints cycles avg/min/max, n and cycles per event |
 | `autana perf off` | disarm the counters |

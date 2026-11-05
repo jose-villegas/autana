@@ -6,7 +6,7 @@
 #include "gfx/gfx.h"
 #include "math/text/math_text.h"
 #include "render/context/render_context.h"
-#include "render/view/raster_cull_view.h"
+#include "render_counts.h"
 #include "scene/scene.h"
 #include "scene_viewer.h"
 
@@ -26,8 +26,24 @@ static FILE* poses;
 static scene_t* shown;
 static scene_entity_t camera;
 
+/* Every option back to what a fresh process starts with, for an open after a closed run. */
+static void
+reset_options(void) {
+    scene_id = NULL;
+    camera_name = NULL;
+    object_names = NULL;
+    object_count = 0;
+    size_rect = recti_empty();
+    present = CAMERA_PRESENT_NEAREST;
+    small_fill = SMALL_FILL_SMOOTH;
+    view = RENDER_DEBUG_VIEW_SHADED;
+    counts_path = NULL;
+    poses_path = NULL;
+}
+
 static bool
 options(int argc, char** argv) {
+    reset_options();
     object_names = argv;
     for (int i = 0; i < argc; i += 2) {
         const char* flag = argv[i];
@@ -147,18 +163,6 @@ active_camera(const scene_t* scene) {
     return SCENE_ENTITY_NONE;
 }
 
-/* A per-frame CSV with its header written; NULL, said on stderr, when it cannot be made. */
-static FILE*
-open_rows(const char* path, const char* header) {
-    FILE* rows = fopen(path, "w");
-    if (rows == NULL) {
-        fprintf(stderr, "scene_viewer: cannot write %s\n", path);
-        return NULL;
-    }
-    fprintf(rows, "%s\n", header);
-    return rows;
-}
-
 int
 display_quarter_now(void) {
     return shell_quarter;
@@ -206,13 +210,16 @@ setup(int quarter) {
     fprintf(stderr, "scene_viewer: camera path %u ms\n", (unsigned)scene_animator_clip_duration_ms(scene, camera, 0));
     render_context_t* context = render_context_main();
     render_context_set_debug_view(context, view);
-#define COUNT_NAME(name, member) "," #name
-    if (counts_path != NULL
-        && (counts = open_rows(counts_path, "frame,ms" RASTER_CULL_FRAME_FIELDS(COUNT_NAME))) == NULL) {
+    if (counts_path != NULL && (counts = render_counts_open(counts_path, "scene_viewer")) == NULL) {
         scene_unload(scene);
         return false;
     }
-    if (poses_path != NULL && (poses = open_rows(poses_path, "frame,ms,px,py,pz,qx,qy,qz,qw")) == NULL) {
+    if (poses_path != NULL
+        && (poses = render_rows_open(poses_path, "frame,ms,px,py,pz,qx,qy,qz,qw", "scene_viewer")) == NULL) {
+        if (counts != NULL) {
+            fclose(counts);
+            counts = NULL;
+        }
         scene_unload(scene);
         return false;
     }
@@ -229,15 +236,7 @@ static void
 draw(const provider_frame_t* frame) {
     const bool last = frame->index + 1 == frame->count;
     if (counts != NULL) {
-        const raster_cull_frame_t f = raster_cull_frame(render_context_debug_view_state(render_context_main()));
-        fprintf(counts, "%d,%u", frame->index, (unsigned)frame->elapsed_ms);
-#define COUNT_VALUE(name, member) fprintf(counts, ",%d", f.member);
-        RASTER_CULL_FRAME_FIELDS(COUNT_VALUE)
-        fputc('\n', counts);
-        if (last) {
-            fclose(counts);
-            counts = NULL;
-        }
+        render_counts_row(&counts, frame);
     }
     if (poses != NULL) {
         const transformf_t world = scene_entity_world(shown, camera);
@@ -249,6 +248,21 @@ draw(const provider_frame_t* frame) {
             poses = NULL;
         }
     }
+}
+
+/* The rows a run that stopped early left open closed; render_host_close unloads the scene. */
+static void
+teardown(void) {
+    if (counts != NULL) {
+        fclose(counts);
+        counts = NULL;
+    }
+    if (poses != NULL) {
+        fclose(poses);
+        poses = NULL;
+    }
+    shown = NULL;
+    camera = SCENE_ENTITY_NONE;
 }
 
 static uint32_t
@@ -274,6 +288,7 @@ const frame_provider_t scene_provider = {
     .options = options,
     .setup = setup,
     .draw = draw,
+    .teardown = teardown,
     .path_ms = path_ms,
     .seek = seek,
     .render_context = render_context_main,

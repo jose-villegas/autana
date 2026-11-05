@@ -6,7 +6,8 @@ counts must match what is installed, so a key never names bytes made with other 
 A fit's start is a mesh bake of its own; the fit reads the bytes its key names, from the lock or this
 cache. A fit's references are made once per reference key into the cache's reference/ folder, so fits
 that share their inputs share them, and never leave the machine that made them: only the fit stage reads
-them, and it runs there.
+them, and it runs there. A run made `again` renders each set it reads once more, in a folder of its own, so a repeat
+measures the whole chain; a set nothing has read for REFERENCE_KEEP_DAYS is deleted.
 """
 
 import copy
@@ -19,12 +20,16 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 
 from bake import bake as keys
 
 KEY_INDEX = "keys"
 REFERENCES = "reference"
 DONE = "done"
+PRUNED = ".pruned"
+REFERENCE_KEEP_DAYS = 14
+DAY_S = 24 * 60 * 60
 PIN = re.compile(r"^([A-Za-z0-9_.-]+)==(\S+)$")
 
 
@@ -170,12 +175,42 @@ def keyed_folder(folder, make):
     return folder
 
 
-def reference_set(key, job, scene, cache):
-    """The reference set of `job`'s fit under its reference `key` in this cache, prepared there when it has none."""
-    from r3d.fitted_variant import prepare_references, reference_inputs
+def read_references(folder):
+    """Marks a reference set read, by its folder's time, the one prune_references ages it by."""
+    if folder.is_dir():
+        os.utime(folder)
 
-    return keyed_folder(pathlib.Path(cache) / REFERENCES / key,
-                        lambda partial: prepare_references(reference_inputs(job, scene), partial))
+
+def prune_references(cache, now=None):
+    """Deletes each reference set, done or cut, that nothing has read for REFERENCE_KEEP_DAYS; a bake runs it before
+    it reads any. Each is renamed aside first, so a delete cut short never leaves a set that looks done; one that
+    cannot be moved (a file held open) is left for a later bake."""
+    now = time.time() if now is None else now
+    for folder in sorted((pathlib.Path(cache) / REFERENCES).glob("*")):
+        pruned = folder if folder.name.endswith(PRUNED) else folder.with_name(folder.name + PRUNED)
+        try:
+            if now - folder.stat().st_mtime <= REFERENCE_KEEP_DAYS * DAY_S:
+                continue
+            if pruned != folder:
+                shutil.rmtree(pruned, ignore_errors=True)  # an earlier delete cut short
+                os.replace(folder, pruned)
+            shutil.rmtree(pruned)
+        except OSError:
+            continue  # gone already, or held open
+
+
+def reference_set(key, job, scene, cache, fresh=None):
+    """The reference set of `job`'s fit under its reference `key` in this cache, prepared there when it has none; or,
+    given `fresh`, a run's own folder, in that one, so a run made again never replaces a set another may be
+    reading. The log says whether it was rendered or reused."""
+    from r3d.reference_set import prepare_references, reference_inputs
+
+    folder = (pathlib.Path(fresh) if fresh else pathlib.Path(cache) / REFERENCES) / key
+    reused = (folder / DONE).is_file()
+    keyed_folder(folder, lambda partial: prepare_references(reference_inputs(job, scene), partial))
+    read_references(folder)
+    print(f"reference {key}: {'reused' if reused else 'rendered'}", flush=True)
+    return folder
 
 
 def start_file(bake, cache, lock):
@@ -188,11 +223,11 @@ def start_file(bake, cache, lock):
     return keys.fetch_all([start], {start.key: row}, cache)[start]
 
 
-def produce_fit(bake, cache, lock):
-    from r3d.fitted_variant import fit
+def produce_fit(bake, cache, lock, fresh_references):
+    from r3d.fit.stage import fit
 
     start = start_file(bake, cache, lock)
-    inputs = reference_set(bake.stages["reference"], bake.job, bake.scene, cache)
+    inputs = reference_set(bake.stages["reference"], bake.job, bake.scene, cache, fresh_references)
     with tempfile.TemporaryDirectory() as work:
         target = pathlib.Path(work) / bake.output
         fit(bake.scene.path, bake.scene, bake.job, pathlib.Path(work), target=target, inputs=inputs, start=start)
@@ -211,8 +246,9 @@ def produce_sound(bake, cache):
         return record(bake, target, cache)
 
 
-def produce(bake, cache, lock=None, blender=None):
-    """Makes `bake` into the cache and returns its row; the environment must match its pins."""
+def produce(bake, cache, lock=None, blender=None, fresh_references=None):
+    """Makes `bake` into the cache and returns its row; the environment must match its pins. A fit given
+    `fresh_references`, a run's own folder, renders its reference set there (reference_set)."""
     if bake.kind == "blend":
         return produce_blend(bake, cache, blender)
     if bake.kind == "sound":
@@ -220,7 +256,7 @@ def produce(bake, cache, lock=None, blender=None):
         return produce_sound(bake, cache)
     check_environment(("mesh", "reference", "fit") if bake.kind == "fit" else ("mesh",))
     if bake.kind == "fit":
-        return produce_fit(bake, cache, lock or {})
+        return produce_fit(bake, cache, lock or {}, fresh_references)
     return produce_mesh(bake, cache, lock or {})
 
 
