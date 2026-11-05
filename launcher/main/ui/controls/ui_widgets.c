@@ -8,6 +8,7 @@
 #include "draw/draw_font_roles.h"
 #include "ui/controls/ui_icons.h"
 #include "ui/controls/ui_style.h"
+#include "ui/input/ui_bridge.h"
 #include "ui/ui.h"
 #include "ui/ui_internal.h"
 
@@ -106,9 +107,9 @@ begin_control(mu_Context* ctx, mu_Id mid, mu_Rect r, bool enabled, bool selected
     control_t c = {0};
     mu_update_control(ctx, mid, r, enabled ? 0 : MU_OPT_NOINTERACT);
     if (enabled) {
-        /* Focus, not hover: on touch the pointer sits on whatever a drag
-         * crosses, and only a landed press is a press. */
-        c.pressed = ctx->focus == mid;
+        /* Not plain hover: on touch the pointer sits on whatever a drag
+         * crosses, and only a press is a press. */
+        c.pressed = ui_bridge_held(ctx, &ui_pointer_state, mid);
         c.clicked = ctx->mouse_pressed == MU_MOUSE_LEFT && ctx->focus == mid;
     }
 
