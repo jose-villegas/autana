@@ -675,8 +675,8 @@ release_fixture(void) {
     gfx_reset_for_test();
 #endif
     test_free_aligned(fx.raw);
-    free(fx.pixels);
-    free(fx.held);
+    memory_free(fx.pixels);
+    memory_free(fx.held);
     free(fx.instances);
     free(fx.saved_skin[0]);
     free(fx.saved_skin[1]);
@@ -881,7 +881,7 @@ assert_resident_mesh_arrays(const scene_t* scene, size_t bytes) {
 static void
 test_static_mesh_arrays_are_resident_and_equal_the_pack(void) {
     fixture();
-    fx.lent = memory_alloc(LENT_BYTES, MEMORY_PSRAM);
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(fx.lent);
     (void)scene_set_take(lend);
     scene_t* scene = load("test_pair");
@@ -918,7 +918,7 @@ test_only_static_mesh_arrays_are_made_resident(void) {
         }
     }
     scene_unload(scene);
-    fx.lent = memory_alloc(LENT_BYTES, MEMORY_PSRAM);
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(fx.lent);
     (void)scene_set_take(lend);
     scene_t* skin_scene = load("test_skin");
@@ -934,7 +934,7 @@ test_only_static_mesh_arrays_are_made_resident(void) {
 static void
 test_resident_allocation_failure_rolls_back_the_load(void) {
     fixture();
-    const size_t psram = memory_free_bytes(MEMORY_PSRAM);
+    const size_t psram = memory_free_bytes(MEMORY_APP);
     const size_t internal = memory_free_bytes(MEMORY_INTERNAL);
 
     enum { SCENE_BLOCK_ALLOCATION_COUNT = 1 };
@@ -955,7 +955,7 @@ test_resident_allocation_failure_rolls_back_the_load(void) {
         TEST_ASSERT_EQUAL_INT(ASSET_OK, why.asset);
         TEST_ASSERT_EQUAL_STRING(cases[i].id, why.what);
         TEST_ASSERT_EQUAL_INT(0, scene_loaded_count());
-        TEST_ASSERT_EQUAL_size_t(psram, memory_free_bytes(MEMORY_PSRAM));
+        TEST_ASSERT_EQUAL_size_t(psram, memory_free_bytes(MEMORY_APP));
         TEST_ASSERT_EQUAL_size_t(internal, memory_free_bytes(MEMORY_INTERNAL));
         TEST_ASSERT_EQUAL_size_t(lent, fx.lent_used);
     }
@@ -964,11 +964,11 @@ test_resident_allocation_failure_rolls_back_the_load(void) {
 static void
 test_a_scene_loads_by_name_and_unloading_gives_back_everything_it_took(void) {
     fixture();
-    const size_t before = memory_free_bytes(MEMORY_PSRAM);
+    const size_t before = memory_free_bytes(MEMORY_APP);
     scene_t* scene = load("test_pair");
-    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) < before);
+    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_APP) < before);
     scene_unload(scene);
-    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) == before);
+    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_APP) == before);
 }
 
 static bool
@@ -982,22 +982,22 @@ lent_from(const void* p) {
 static void
 test_a_lent_scene_takes_from_its_lender_and_unloading_returns_it_to_the_lender(void) {
     fixture();
-    fx.lent = memory_alloc(LENT_BYTES, MEMORY_PSRAM);
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(fx.lent);
     (void)scene_set_take(lend);
-    const size_t before = memory_free_bytes(MEMORY_PSRAM);
+    const size_t before = memory_free_bytes(MEMORY_APP);
     scene_t* scene = show("test_pair", SCENE_CAMERA_FIRST);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
     TEST_ASSERT_TRUE(lent_from(scene));
     TEST_ASSERT_TRUE(lent_from(scene->resident));
     TEST_ASSERT_TRUE(lent_from(render_context_main()->scratch));
-    TEST_ASSERT_EQUAL_size_t(before, memory_free_bytes(MEMORY_PSRAM));
+    TEST_ASSERT_EQUAL_size_t(before, memory_free_bytes(MEMORY_APP));
     const size_t taken = fx.lent_used;
     scene_unload(scene);
     TEST_ASSERT_NULL(render_context_main()->scratch);
     TEST_ASSERT_EQUAL_size_t(taken, fx.lent_used);
-    TEST_ASSERT_EQUAL_size_t(before, memory_free_bytes(MEMORY_PSRAM));
+    TEST_ASSERT_EQUAL_size_t(before, memory_free_bytes(MEMORY_APP));
 }
 
 /* A refused take leaves the scene unloaded, or its camera drawing nothing,
@@ -1005,7 +1005,7 @@ test_a_lent_scene_takes_from_its_lender_and_unloading_returns_it_to_the_lender(v
 static void
 test_a_refused_take_loads_nothing_and_a_refused_scratch_draws_nothing(void) {
     fixture();
-    fx.lent = memory_alloc(LENT_BYTES, MEMORY_PSRAM);
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(fx.lent);
     (void)scene_set_take(lend);
     fx.lent_used = LENT_BYTES;
@@ -1072,12 +1072,12 @@ test_a_load_that_fails_says_what_it_was_about(void) {
     TEST_ASSERT_EQUAL_INT(SCENE_ERR_UNKNOWN, why.status);
     TEST_ASSERT_EQUAL_STRING("test_nothing_of_the_kind", why.what);
 
-    const size_t before = memory_free_bytes(MEMORY_PSRAM);
+    const size_t before = memory_free_bytes(MEMORY_APP);
     TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_broken", &why));
     TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, why.asset);
     TEST_ASSERT_EQUAL_STRING("gone", why.what);
-    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) == before);
+    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_APP) == before);
 
     TEST_ASSERT_NULL(scene_load_from(NULL, "test_pair", &why));
     TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
@@ -1105,13 +1105,13 @@ test_an_id_too_long_for_a_pack_name_is_cut_where_the_failure_names_it(void) {
 /* Each failure names the entry it was about, and the load takes nothing. */
 static void
 expect_failure(const char* id, asset_status_t asset, const char* what) {
-    const size_t before = memory_free_bytes(MEMORY_PSRAM);
+    const size_t before = memory_free_bytes(MEMORY_APP);
     scene_failure_t why;
     TEST_ASSERT_NULL_MESSAGE(scene_load_from(&fx.pack, id, &why), id);
     TEST_ASSERT_EQUAL_INT_MESSAGE(SCENE_ERR_ASSET, why.status, id);
     TEST_ASSERT_EQUAL_INT_MESSAGE(asset, why.asset, id);
     TEST_ASSERT_EQUAL_STRING_MESSAGE(what, why.what, id);
-    TEST_ASSERT_TRUE_MESSAGE(memory_free_bytes(MEMORY_PSRAM) == before, id);
+    TEST_ASSERT_TRUE_MESSAGE(memory_free_bytes(MEMORY_APP) == before, id);
 }
 
 static void
@@ -1668,7 +1668,7 @@ test_the_reader_refuses_an_entry_that_breaks_any_one_rule(void) {
 static void
 assert_load_failures_release(const asset_pack_t* pack, const char* id) {
     const size_t internal = memory_free_bytes(MEMORY_INTERNAL);
-    const size_t psram = memory_free_bytes(MEMORY_PSRAM);
+    const size_t psram = memory_free_bytes(MEMORY_APP);
 
     enum { ALLOCATION_LIMIT = 16 };
 
@@ -1685,7 +1685,7 @@ assert_load_failures_release(const asset_pack_t* pack, const char* id) {
             TEST_ASSERT_EQUAL_INT_MESSAGE(SCENE_ERR_MEMORY, why.status, why.what);
         }
         TEST_ASSERT_EQUAL_UINT(internal, memory_free_bytes(MEMORY_INTERNAL));
-        TEST_ASSERT_EQUAL_UINT(psram, memory_free_bytes(MEMORY_PSRAM));
+        TEST_ASSERT_EQUAL_UINT(psram, memory_free_bytes(MEMORY_APP));
         if (succeeded) {
             break;
         }
@@ -1870,7 +1870,7 @@ test_authored_animator_clip_array_allocation_failure_releases_memory(void) {
     void* buffer = NULL;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_file_open(getenv("AUTANA_SCENE_PROBE"), &pack, &buffer));
     const size_t internal = memory_free_bytes(MEMORY_INTERNAL);
-    const size_t psram = memory_free_bytes(MEMORY_PSRAM);
+    const size_t psram = memory_free_bytes(MEMORY_APP);
 
     enum { ALLOCATION_SWEEP_LIMIT = 64 };
 
@@ -1889,7 +1889,7 @@ test_authored_animator_clip_array_allocation_failure_releases_memory(void) {
             TEST_ASSERT_EQUAL_INT(SCENE_ERR_MEMORY, why.status);
         }
         TEST_ASSERT_EQUAL_UINT(internal, memory_free_bytes(MEMORY_INTERNAL));
-        TEST_ASSERT_EQUAL_UINT(psram, memory_free_bytes(MEMORY_PSRAM));
+        TEST_ASSERT_EQUAL_UINT(psram, memory_free_bytes(MEMORY_APP));
         if (completed) {
             break;
         }
@@ -2249,7 +2249,7 @@ make_lcol_pack(const lcol_case_t* spec, uint16_t encoding, const char* message) 
 static void
 test_static_face_colours_are_resident_and_equal_the_pack(void) {
     fixture();
-    fx.lent = memory_alloc(LENT_BYTES, MEMORY_PSRAM);
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(fx.lent);
     (void)scene_set_take(lend);
     const lcol_case_t spec = {.second_set = LCOL_TEST_SETS - 1};
@@ -2332,7 +2332,7 @@ test_lcol_instances_and_refusals(void) {
          .coloured = true},
     };
     fixture();
-    fx.lent = memory_alloc(LENT_BYTES, MEMORY_PSRAM);
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(fx.lent);
     (void)scene_set_take(lend);
     for (uint16_t encoding = LCOL_ENCODING_RGB888; encoding <= LCOL_ENCODING_RGB565; encoding++) {
@@ -2656,14 +2656,14 @@ test_the_stats_count_what_the_last_draw_kept(void) {
 static void
 test_leaving_the_app_unloads_every_scene_and_frees_the_scratch(void) {
     fixture();
-    const size_t before = memory_free_bytes(MEMORY_PSRAM);
+    const size_t before = memory_free_bytes(MEMORY_APP);
     show("test_pair", SCENE_CAMERA_FIRST);
     load("test_solo");
     frame(16);
-    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) < before);
+    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_APP) < before);
     scene_unload_all();
     TEST_ASSERT_FALSE(scene_has_active_camera());
-    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) == before);
+    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_APP) == before);
 }
 
 /* The draw happens in scene_render(): it touches no framebuffer and leaves
@@ -2747,13 +2747,13 @@ test_the_render_scale_changes_the_picture_and_a_larger_one_grows_the_scratch(voi
     show("test_pair", SCENE_CAMERA_FIRST);
     render_context_set_scale(render_context_main(), 50);
     frame(16);
-    const size_t small_free = memory_free_bytes(MEMORY_PSRAM);
+    const size_t small_free = memory_free_bytes(MEMORY_APP);
     uint16_t* half = malloc(sizeof(*half) * SIZE * SIZE);
     TEST_ASSERT_NOT_NULL(half);
     memcpy(half, fx.pixels, sizeof(*half) * SIZE * SIZE);
     render_context_set_scale(render_context_main(), 100);
     frame(16);
-    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) < small_free);
+    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_APP) < small_free);
     TEST_ASSERT_TRUE(memcmp(half, fx.pixels, sizeof(*half) * SIZE * SIZE) != 0);
     free(half);
 }
@@ -2825,9 +2825,9 @@ test_the_scratch_is_the_finest_steps_raster_block(void) {
     const transformf_t camera_pose = scene_entity_world(scene, scene->cameras[0].entity);
     const render_view_t view =
         camera_view(scene_camera_lens(scene, SCENE_CAMERA_FIRST), &camera_pose, (viewport_t){SIZE, SIZE, 0});
-    const size_t before = memory_free_bytes(MEMORY_PSRAM);
+    const size_t before = memory_free_bytes(MEMORY_APP);
     TEST_ASSERT_TRUE(render_context_draw(c, instances, INSTANCES_MAX, &view, 0));
-    const size_t taken = before - memory_free_bytes(MEMORY_PSRAM);
+    const size_t taken = before - memory_free_bytes(MEMORY_APP);
 
     raster_t finest = c->raster;
     finest.width = LADDER[0].width;
@@ -2874,10 +2874,10 @@ expanded_fixture(void) {
     fixture();
     TEST_ASSERT_TRUE(gfx_init());
     show("test_pair", SCENE_CAMERA_FIRST);
-    free(fx.pixels);
-    free(fx.held);
-    fx.pixels = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
-    fx.held = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
+    memory_free(fx.pixels);
+    memory_free(fx.held);
+    fx.pixels = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_APP);
+    fx.held = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(fx.pixels);
     TEST_ASSERT_NOT_NULL(fx.held);
     gfx_set_frame_overlay(NULL);
@@ -2890,7 +2890,7 @@ expanded_picture(void) {
     scene_render(16, 0, GFX_WIDTH, GFX_HEIGHT);
     raster_t* raster = &render_context_main()->raster;
     raster_upscale(raster, fx.held, GFX_WIDTH, GFX_HEIGHT);
-    const size_t before_half = memory_free_bytes(MEMORY_PSRAM);
+    const size_t before_half = memory_free_bytes(MEMORY_APP);
     const scene_target_t half = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture(), NULL};
     TEST_ASSERT_NOT_NULL(half.half_pixels);
     TEST_ASSERT_TRUE(half.half_pixels != half.pixels);
@@ -2904,7 +2904,7 @@ expanded_picture(void) {
     TEST_ASSERT_EQUAL_HEX16(CLEAR, fx.pixels[0]);
     TEST_ASSERT_TRUE(fx.pixels[(GFX_HEIGHT / 2) * GFX_WIDTH + GFX_WIDTH / 2] != CLEAR);
     gfx_mode_exit();
-    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) == before_half);
+    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_APP) == before_half);
 }
 
 static void
@@ -3899,7 +3899,7 @@ test_authored_skin_load_allocation_failures_release_lighting(void) {
 static void
 test_authored_light_preserves_static_mesh_colors(void) {
     fixture();
-    fx.lent = memory_alloc(LENT_BYTES, MEMORY_PSRAM);
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(fx.lent);
     (void)scene_set_take(lend);
     r3d_lit_mesh_t packed;
@@ -3980,12 +3980,12 @@ test_failed_second_camera_releases_the_first_animator(void) {
     char (*clips)[ASSET_NAME_MAX] = (char (*)[ASSET_NAME_MAX])(uintptr_t)asset.clips;
     memset(clips[1], 0, ASSET_NAME_MAX);
     memcpy(clips[1], "nowhere", sizeof "nowhere");
-    const size_t before = memory_free_bytes(MEMORY_PSRAM);
+    const size_t before = memory_free_bytes(MEMORY_APP);
     scene_failure_t why;
     TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_aliases", &why));
     TEST_ASSERT_EQUAL_STRING("nowhere", why.what);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, why.asset);
-    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) == before);
+    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_APP) == before);
 }
 
 static void

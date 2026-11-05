@@ -869,7 +869,7 @@ test_dense_bands_match_a_full_repaint(void) {
     overflow_frame(false, 0);
     overflow_frame(false, 0);
     const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
-    gfx_color_t* expected = memory_alloc(bytes, MEMORY_PSRAM);
+    gfx_color_t* expected = memory_alloc(bytes, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(expected);
     overflow_frame(false, 1);
     memcpy(expected, gfx_framebuffer(), bytes);
@@ -1486,7 +1486,7 @@ test_image_and_swatch_commands_match_rect_pixels(void) {
 #endif
     fixture();
     const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
-    gfx_color_t* expected = memory_alloc(bytes, MEMORY_PSRAM);
+    gfx_color_t* expected = memory_alloc(bytes, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(expected);
     for (int turn = 0; turn < 4; turn++) {
         ui_set_transform(ui_transform_quarter_turn(turn, GFX_WIDTH, GFX_HEIGHT));
@@ -1648,7 +1648,7 @@ sample_band_frame(int frame, int64_t began_us) {
 
 static void
 allocate_band_samples(void) {
-    band_samples = memory_alloc(sizeof *band_samples, MEMORY_PSRAM);
+    band_samples = memory_alloc(sizeof *band_samples, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(band_samples);
     memset(band_samples, 0, sizeof *band_samples);
 }
@@ -1788,11 +1788,11 @@ test_options_band_frame_cost(void) {
     band_icons_owned = !sand_icon_set.loaded;
     TEST_ASSERT_TRUE(ui_icon_set_load(&sand_icon_set));
     TEST_ASSERT_EQUAL(GFX_LAYOUT_BANDS, gfx_mode_enter(&BAND_MODE_REQUEST)->layout);
-    band_swatches = memory_alloc(SAND_COLOUR_MODE_COUNT * sizeof *band_swatches, MEMORY_PSRAM);
+    band_swatches = memory_alloc(SAND_COLOUR_MODE_COUNT * sizeof *band_swatches, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(band_swatches);
     sand_mode_swatches(sand_dither_none_lut, sand_palette256_lut, GFX_INDEXED_PALETTE_SIZE, SAND_PALETTE_UI_ENTRIES,
                        band_swatches);
-    band_options_fixture = memory_alloc(sizeof *band_options_fixture, MEMORY_PSRAM);
+    band_options_fixture = memory_alloc(sizeof *band_options_fixture, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(band_options_fixture);
     memset(band_options_fixture, 0, sizeof *band_options_fixture);
     band_options_fixture->menu = (sand_menu_t){.screen = SAND_MENU_OPTIONS, .draft = BAND_OPTIONS};

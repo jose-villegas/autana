@@ -210,8 +210,8 @@ test_raster_stage_split_by_size(void) {
     raster.width = ladders[0].steps[0].width; /* every size is no larger */
     raster.height = ladders[0].steps[0].height;
     const size_t scratch_bytes = raster_scratch_bytes(&raster);
-    raster.scratch = memory_alloc(scratch_bytes, MEMORY_PSRAM);
-    gfx_color_t* destination = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
+    raster.scratch = memory_alloc(scratch_bytes, MEMORY_APP);
+    gfx_color_t* destination = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_APP);
     int32_t* frame_us = malloc(sizeof(int32_t) * POSES_MAX);
     char* report = malloc(FRAME_COST_REPORT_MAX); /* too big for the frame task's stack */
     TEST_ASSERT_NOT_NULL(report);
@@ -277,8 +277,8 @@ test_raster_counters(void) {
                        .destination_height = GFX_HEIGHT};
     ESP_LOGI(TAG, "raster=%dx%d present=%d" R3D_PERF_QUARTER_FORMAT, raster.width, raster.height, render_lab_present(),
              perf_quarter->name);
-    raster.scratch = memory_alloc(raster_scratch_bytes(&raster), MEMORY_PSRAM);
-    gfx_color_t* destination = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
+    raster.scratch = memory_alloc(raster_scratch_bytes(&raster), MEMORY_APP);
+    gfx_color_t* destination = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_APP);
     int32_t* frame_us = malloc(sizeof(*frame_us) * POSES_MAX);
     char* report = malloc(FRAME_COST_REPORT_MAX);
     TEST_ASSERT_NOT_NULL(raster.scratch);
@@ -333,10 +333,10 @@ calibrate(const resolution_config_t* config, resolution_model_t* model) {
     raster->destination_height = GFX_HEIGHT;
     const uint32_t period = scene_animator_clip_duration_ms(scene, camera_entity, 0);
     const int poses = (int)((period + POSE_EVERY_MS - 1) / POSE_EVERY_MS);
-    raster->scratch = memory_alloc(raster_scratch_bytes(raster), MEMORY_PSRAM);
-    gfx_color_t* destination = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
-    gfx_color_t* half = memory_alloc(sizeof(*half) * (GFX_WIDTH / 2) * (GFX_HEIGHT / 2), MEMORY_PSRAM);
-    resolution_sample_t* samples = memory_alloc(sizeof(*samples) * (size_t)(poses * config->step_count), MEMORY_PSRAM);
+    raster->scratch = memory_alloc(raster_scratch_bytes(raster), MEMORY_APP);
+    gfx_color_t* destination = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_APP);
+    gfx_color_t* half = memory_alloc(sizeof(*half) * (GFX_WIDTH / 2) * (GFX_HEIGHT / 2), MEMORY_APP);
+    resolution_sample_t* samples = memory_alloc(sizeof(*samples) * (size_t)(poses * config->step_count), MEMORY_APP);
     render_view_t* view = memory_alloc(sizeof(*view), MEMORY_INTERNAL);
     bool fitted = false;
     if (raster->scratch != NULL && destination != NULL && half != NULL && samples != NULL && view != NULL) {
@@ -424,7 +424,7 @@ fly(const char* camera, const char* policy, const ladder_t* ladder, const resolu
     render_lab_apply_raster_settings();
     render_context_set_dynamic_resolution(render_context_main(), config, model, ladder == NULL ? 0 : ladder->half);
     scene_target_t target = {picture, GFX_WIDTH, GFX_HEIGHT, NULL, NULL};
-    gfx_color_t* half = memory_alloc(sizeof(*half) * (GFX_WIDTH / 2) * (GFX_HEIGHT / 2), MEMORY_PSRAM);
+    gfx_color_t* half = memory_alloc(sizeof(*half) * (GFX_WIDTH / 2) * (GFX_HEIGHT / 2), MEMORY_APP);
     TEST_ASSERT_NOT_NULL(half);
     target.half_pixels = half;
     /* Timed here, around the scene's own two calls, so every policy and the
@@ -491,9 +491,9 @@ test_dynamic_resolution_policies_along_the_path(void) {
         resolution_model_t model;
     } fitted_t;
 
-    fitted_t* fitted = memory_alloc(sizeof(*fitted) * LADDER_COUNT, MEMORY_PSRAM);
-    uint16_t* picture = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
-    frame_record_t* records = memory_alloc(sizeof(*records) * FRAMES_MAX, MEMORY_PSRAM);
+    fitted_t* fitted = memory_alloc(sizeof(*fitted) * LADDER_COUNT, MEMORY_APP);
+    uint16_t* picture = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_APP);
+    frame_record_t* records = memory_alloc(sizeof(*records) * FRAMES_MAX, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(fitted);
     TEST_ASSERT_NOT_NULL(picture);
     TEST_ASSERT_NOT_NULL(records);

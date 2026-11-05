@@ -785,9 +785,9 @@ release_canvas(void) {
 static canvas_t*
 canvas_open(int w, int h) {
     const size_t pixels = (size_t)w * (size_t)h;
-    canvas = (canvas_t){memory_alloc(sizeof(gfx_color_t) * pixels, MEMORY_PSRAM),
-                        memory_alloc(sizeof(uint16_t) * pixels, MEMORY_PSRAM),
-                        memory_alloc(sizeof(uint16_t) * pixels, MEMORY_PSRAM), w, h};
+    canvas = (canvas_t){memory_alloc(sizeof(gfx_color_t) * pixels, MEMORY_APP),
+                        memory_alloc(sizeof(uint16_t) * pixels, MEMORY_APP),
+                        memory_alloc(sizeof(uint16_t) * pixels, MEMORY_APP), w, h};
     TEST_ASSERT_NOT_NULL(canvas.color);
     TEST_ASSERT_NOT_NULL(canvas.depth);
     TEST_ASSERT_NOT_NULL(canvas.alone);
