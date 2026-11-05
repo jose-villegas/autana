@@ -29,7 +29,8 @@
 #define IMU_ODR_CODE                  5
 #define IMU_ODR_DIVIDER               (1U << IMU_ODR_CODE)
 #define IMU_ODR_HZ                    (IMU_ODR_BASE_HZ / IMU_ODR_DIVIDER)
-#define IMU_SAMPLE_US                 ((uint32_t)((MATH_US_PER_S / IMU_ODR_HZ) + 0.5))
+#define IMU_ODR_PERIOD_US(code)       ((uint32_t)((MATH_US_PER_S * (1U << (code)) / IMU_ODR_BASE_HZ) + 0.5))
+#define IMU_SAMPLE_US                 IMU_ODR_PERIOD_US(IMU_ODR_CODE)
 #define IMU_FIFO_SAMPLES              128
 
 /* QMI8658A Rev A section 8.7: read mode discards arrivals. Only whole periods
@@ -64,7 +65,7 @@ bool imu_read(imu_sample_t* out, uint32_t* sequence);
  * default accelerometer bandwidth (half the ODR, Table 11) reaches the speaker's low tones. */
 #define IMU_BUZZ_ODR_CODE  3U
 #define IMU_BUZZ_ODR_HZ    (IMU_ODR_BASE_HZ / (1U << IMU_BUZZ_ODR_CODE))
-#define IMU_BUZZ_SAMPLE_US ((uint32_t)((MATH_US_PER_S / IMU_BUZZ_ODR_HZ) + 0.5))
+#define IMU_BUZZ_SAMPLE_US IMU_ODR_PERIOD_US(IMU_BUZZ_ODR_CODE)
 #define IMU_BUZZ_WINDOW_MS ((uint16_t)((IMU_FIFO_SAMPLES * MATH_MS_PER_S / IMU_BUZZ_ODR_HZ) + 1))
 /* Asks the IMU task to run the sensor at another ODR code until asked for IMU_ODR_CODE again,
  * and waits until the task delivers a batch at that rate with its gap queued. Every switch resets

@@ -8,6 +8,7 @@
 #include "input/motion/imu_odr.h"
 #include "input/motion/imu_queue.h"
 #include "input/motion/imu_vibration.h"
+#include "input/motion/qmi8658/qmi8658_fifo.h"
 #include "input_fake.h"
 #include "math/scalar/math_db.h"
 #include "math/scalar/rng.h"
@@ -249,7 +250,7 @@ static struct {
     struct {
         struct {
             imu_queue_t* queue;
-            bool fifo_gap;
+            qmi8658_fifo_t fifo;
             bool task_pending;
             imu_odr_t odr;
             imu_demand_level_t level;
@@ -257,7 +258,6 @@ static struct {
             unsigned midstep_waits;
             unsigned gaps_taken;
             unsigned restarts;
-            int pending_lost;
         } task;
 
         struct {
@@ -525,8 +525,7 @@ static void
 tone_imu_serve(void) {
     if (device.pulse.task.level != IMU_DEMAND_FIFO) {
         imu_queue_push(device.pulse.task.queue, NULL, 0, 0, true);
-        device.pulse.task.fifo_gap = false;
-        device.pulse.task.pending_lost = 0;
+        qmi8658_fifo_reset(&device.pulse.task.fifo, device.odr_code);
         device.pulse.task.odr.flowing = false;
         device.pulse.task.restarts++;
     }
@@ -584,6 +583,7 @@ audio_loopback_measure_observed(uint16_t hz, uint16_t ms, float* db, audio_loopb
 static bool
 tone_configure_odr(unsigned odr_code) {
     device.odr_code = odr_code;
+    qmi8658_fifo_reset(&device.pulse.task.fifo, odr_code);
     return true;
 }
 
@@ -596,7 +596,6 @@ imu_set_odr(unsigned odr_code) {
         const uint32_t sequence = ++odr->sequence;
         if (imu_odr_apply(odr, tone_configure_odr, &device.pulse.task.level) != IMU_ODR_UNCHANGED) {
             imu_queue_set_rate(device.pulse.task.queue, odr->applied);
-            device.pulse.task.pending_lost = 0;
         }
         device.pulse.task.task_sequence = sequence;
         device.pulse.task.task_pending = true;
@@ -657,9 +656,9 @@ imu_take_fifo_at(unsigned odr_code, imu_sample_t out[IMU_FIFO_SAMPLES], uint8_t 
         if (device.pulse.producer.draining) {
             const int64_t pushed_us =
                 device.pulse.producer.cadence ? device.pulse.producer.pushed_us : device.pulse.capture.now_us;
-            imu_queue_push_drain_timed(device.pulse.task.queue, out, count, 0, *gap || device.pulse.task.fifo_gap,
+            imu_queue_push_drain_timed(device.pulse.task.queue, out, count, 0, *gap || device.pulse.task.fifo.gap,
                                        pushed_us, IMU_BUZZ_SAMPLE_US);
-            device.pulse.task.fifo_gap = false;
+            device.pulse.task.fifo.gap = false;
         }
         const int taken = device.pulse.capture.times
                               ? imu_queue_take_timed_at(device.pulse.task.queue, odr_code, out, lost_before, gap,
@@ -1029,7 +1028,7 @@ test_tone_pulse_measures_from_parked_imu(void) {
                 device.pulse.producer.cadence = true;
                 device.pulse.producer.period_us = IMU_BUZZ_DRAIN_MAX_MS * MATH_US_PER_MS;
                 device.pulse.producer.next_push_us = device.pulse.producer.period_us;
-                device.pulse.task.pending_lost = 1;
+                device.pulse.task.fifo.pending_lost = 1;
                 char* line = malloc(CONSOLE_TONE_REPLY_BYTES);
                 TEST_ASSERT_NOT_NULL(line);
                 TEST_ASSERT_NULL(console_tone_check(&args, line));
