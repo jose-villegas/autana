@@ -95,6 +95,14 @@ fill_instances(scene_t* scene) {
     return count;
 }
 
+/* The active camera's view from its entity's world. Its own frame, gone
+ * before the draw: the pose and the world walk stay off the draw's stack. */
+static __attribute__((noinline)) render_view_t
+active_view(const scene_t* scene, const scene_camera_t* camera, viewport_t viewport) {
+    const transformf_t pose = scene_row_world(scene->root, camera->entity);
+    return lens_view(&camera->lens, &pose, viewport);
+}
+
 static void
 draw_active(int quarter, int width, int height) {
     scene_t* scene = active.scene;
@@ -104,8 +112,7 @@ draw_active(int quarter, int width, int height) {
     if (count == 0) {
         return;
     }
-    const transformf_t pose = scene_row_world(scene->root, camera->entity);
-    const render_view_t view = lens_view(&camera->lens, &pose, (viewport_t){width, height, quarter});
+    const render_view_t view = active_view(scene, camera, (viewport_t){width, height, quarter});
     rendered = render_context_draw(render_context_main(), scene->instances, count, &view, camera->clear);
     if (!rendered && !refused) {
         ESP_LOGE("scene", "no memory to draw '%s'; it stays blank", scene->root->id);
