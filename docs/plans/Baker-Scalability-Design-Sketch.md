@@ -25,7 +25,7 @@ flowchart LR
     CI["bakes.yml CPU job"] -- "mesh kind, starts too" --> Lock["bakes.lock + release"]
     Lock -- "start bytes" --> Fit
     Inputs["ReferenceInputs"] --> RefKey["reference key"]
-    RefKey --> Ref["render_sets: CUDA, else LLVM"]
+    RefKey --> Ref["render_sets: LLVM"]
     Ref -- "one set per key, runner cache" --> Fit["fit: torch, nvdiffrast"]
     Fit --> Lock
 ```
@@ -64,7 +64,7 @@ workflows already run in.
 | Step | Change | Keys | Bytes | Lock |
 |---|---|---|---|---|
 | 1 | Reference keyed on `ReferenceInputs`; start becomes a locked mesh bake made by CI; fit keyed on the start's bytes | every reference and fit key changes, once | starts: same as a runner-made start on the same CPU vendor; fits: reproducible on the same GPU model in the pinned environment; other GPUs may differ | the CPU job adds start rows; one GPU run, shared with the other fit re-keys waiting for it, re-makes the fits; `lock --from-run` both |
-| 2 | Reference on Mitsuba CUDA, LLVM kept as the fallback, same output files | `ray_query.py`, `path_bake.py` and `mesh_import.py` are in the mesh closure and `reference_render.py` in the reference one, so every mesh, start and fit re-keys once; mesh bytes stay the same, mesh bakes keeping LLVM | reference bytes differ between CUDA and LLVM, and LLVM's already differ between CPU vendors | references are never locked; fits are pinned by bytes, so a device change reaches a pack only at the next refit. A parity test bounds the CUDA-to-LLVM difference on a few poses |
+| 2 | Reference traced on `ray_query.VARIANT`, as mesh bakes trace | `reference_render.py` and `reference_set.py` are in the reference closure only, so the fits re-key and no mesh does | none: a set repeats byte for byte on one kind of CPU | references are never locked; fits are pinned by bytes, so the change reaches a pack at the next refit |
 | 3 | Visibility pass stops each ray at its first drawn hit plus the tie distance instead of collecting every hit | `mesh_import.py` is in every closure: every mesh, start, reference and fit key changes | identical visible sets, so identical mesh and start bytes (a test asserts the set) | CPU run re-makes meshes with the locked bytes under new keys; a fit re-keys only through the reference closure |
 | 4 | Parallel across cores: `bake.py bake` runs independent bakes as a stage graph, CPU stages beside GPU ones | none | none | none |
 | 5 | Native code only if the profile after steps 2 and 3 shows NumPy dominating: candidates are the reference's per-hit albedo and normals, and the visibility bookkeeping | the stage's closure (C sources count) | must be identical, asserted | as step 3 |
@@ -78,4 +78,3 @@ and forked workers each held a copy of the scene and ran the machine out of memo
   tracer, which holds the source's textures a second time, before the fit starts.
 - [A] Starts move to CI, where the hosted runners are AMD, so start bytes match the other CI meshes; nothing
   checks the vendor.
-- [A] The CUDA-to-LLVM parity bound is set from a first measurement, not chosen up front.
