@@ -45,7 +45,7 @@ test_double_fb_swaps_draw_target_and_reads_front(void) {
     TEST_ASSERT_EQUAL_PTR(original, gfx_target_color(gfx_present_target(), 0));
     original[0] = 0;
     TEST_ASSERT_EQUAL_INT(GFX_READBACK_READY, gfx_readback_begin());
-    gfx_color_t* row = memory_alloc(GFX_WIDTH * sizeof(*row), MEMORY_PSRAM);
+    gfx_color_t* row = memory_alloc(GFX_WIDTH * sizeof(*row), MEMORY_APP);
     TEST_ASSERT_NOT_NULL(row);
     gfx_read_panel_row(0, row);
     const gfx_color_t shown = row[0];

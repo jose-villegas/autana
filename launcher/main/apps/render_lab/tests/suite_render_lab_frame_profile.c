@@ -22,6 +22,7 @@
 #include "core/timing.h"
 #include "core/tune.h"
 #include "esp_log.h"
+#include "frame/test_frame.h"
 #include "frame_profile.h"
 #include "perf_budget.h"
 #include "profile/frame_cost.h"
@@ -214,7 +215,7 @@ report_path(const scenario_path_t* path, const frame_profile_t* p) {
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, p->frames, "frame profile failed");
     const int count = frame_profile_peaks(&played, NULL, 0);
     suite_add_test_cleanup(release_report);
-    peaks = memory_alloc((size_t)count * sizeof *peaks, MEMORY_PSRAM);
+    peaks = memory_alloc((size_t)count * sizeof *peaks, MEMORY_APP);
     pose_line = memory_alloc(sizeof *pose_line, MEMORY_INTERNAL);
     TEST_ASSERT_NOT_NULL_MESSAGE(peaks, "frame peak allocation failed");
     TEST_ASSERT_NOT_NULL_MESSAGE(pose_line, "frame peak allocation failed");
@@ -247,7 +248,7 @@ static scenario_path_t
 enter_scenario(void) {
     render_lab_test_enter(&saved, scenario->scene->key);
     suite_set_test_cleanup(release_fixture);
-    render_lab_test_hold_quarter(r3d_perf_quarters[quarter_index].quarter);
+    test_hold_quarter(r3d_perf_quarters[quarter_index].quarter);
     scene_t* scene = render_lab_test_loaded_scene(scenario->pack == NULL ? SPONZA_SCENE : scenario->pack);
     TEST_ASSERT_NOT_NULL(scene);
     const scene_entity_t entity =
@@ -328,7 +329,7 @@ static void
 test_dynres_steps(void) {
     const scenario_path_t path = enter_scenario();
     const int frames = (int)((path.duration_ms + DYNRES_STEPS_FRAME_DT_MS - 1) / DYNRES_STEPS_FRAME_DT_MS);
-    step_frame_t* records = memory_alloc(sizeof(*records) * (size_t)frames, MEMORY_PSRAM);
+    step_frame_t* records = memory_alloc(sizeof(*records) * (size_t)frames, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(records);
     /* One step and no recovery: the stepped policy holds it and times it. */
     const resolution_step_t size = render_lab_ladder[ladder_step];

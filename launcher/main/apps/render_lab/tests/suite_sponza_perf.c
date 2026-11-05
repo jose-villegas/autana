@@ -103,7 +103,7 @@ bench_open(const r3d_instance_t* instance, const raster_attachment_t* const* att
     *b = (bench_t){0};
     open_bench = b;
     suite_add_test_cleanup(bench_close);
-    b->panel = memory_alloc(sizeof(gfx_color_t) * PANEL_PIXELS, MEMORY_PSRAM);
+    b->panel = memory_alloc(sizeof(gfx_color_t) * PANEL_PIXELS, MEMORY_APP);
     b->instance = *instance;
     if (b->instance.lod_coarse == NULL && instance->mesh->lod_group_count > 0) {
         /* All clear, as a scene's renderer starts: the finest level until raster_pick_levels() runs. */
@@ -126,7 +126,7 @@ bench_open(const r3d_instance_t* instance, const raster_attachment_t* const* att
         .attachment_count = attachments == NULL ? 0 : 1,
     };
     b->raster.present = render_lab_present();
-    b->scratch = memory_alloc(raster_scratch_bytes(&b->raster), MEMORY_PSRAM);
+    b->scratch = memory_alloc(raster_scratch_bytes(&b->raster), MEMORY_APP);
     TEST_ASSERT_NOT_NULL(b->scratch);
     TEST_ASSERT_NOT_NULL(b->panel);
     b->raster.scratch = b->scratch;
@@ -135,8 +135,7 @@ bench_open(const r3d_instance_t* instance, const raster_attachment_t* const* att
              render_lab_present(), perf_quarter->name);
     ESP_LOGI(TAG, "heap after setup: internal free %u largest %u, psram free %u largest %u" R3D_PERF_QUARTER_FORMAT,
              (unsigned)memory_free_bytes(MEMORY_INTERNAL), (unsigned)memory_largest_block(MEMORY_INTERNAL),
-             (unsigned)memory_free_bytes(MEMORY_PSRAM), (unsigned)memory_largest_block(MEMORY_PSRAM),
-             perf_quarter->name);
+             (unsigned)memory_free_bytes(MEMORY_APP), (unsigned)memory_largest_block(MEMORY_APP), perf_quarter->name);
     return b;
 }
 
@@ -338,7 +337,7 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
     (void)frame_cost_take_report(1, report, FRAME_COST_REPORT_MAX);
     const int capacity = (int)((period + SPONZA_PERF_POSE_EVERY_MS - 1) / SPONZA_PERF_POSE_EVERY_MS);
     TEST_ASSERT_GREATER_THAN_INT(0, capacity);
-    b->frame_us = memory_alloc((size_t)capacity * sizeof *b->frame_us, MEMORY_PSRAM);
+    b->frame_us = memory_alloc((size_t)capacity * sizeof *b->frame_us, MEMORY_APP);
     int32_t* frame_us = b->frame_us;
     TEST_ASSERT_NOT_NULL(frame_us);
     int64_t frame_sum = 0;
@@ -462,7 +461,7 @@ void
 test_sponza_frame_cost_with_motion(void) {
     open_the_meshes();
     suite_add_test_cleanup(release_motion);
-    motion = memory_alloc(sizeof(*motion), MEMORY_PSRAM);
+    motion = memory_alloc(sizeof(*motion), MEMORY_APP);
     TEST_ASSERT_NOT_NULL(motion);
     *motion = (raster_motion_t){0};
     TEST_ASSERT_TRUE(raster_motion_reserve(motion, SPONZA_MOTION_INSTANCES));

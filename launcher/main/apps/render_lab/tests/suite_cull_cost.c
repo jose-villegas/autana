@@ -82,7 +82,7 @@ report_pose(const char* scene, const char* bake, uint32_t t_ms, variant_t varian
     const stage_us_t us = time_stages(raster, mesh, lens, &visible);
     const raster_buffers_t b = raster_carve(raster);
     r3d_pipeline_counts_t n = {0};
-    r3d_pipeline_count_walk_t* walk = memory_alloc(sizeof(*walk), MEMORY_PSRAM);
+    r3d_pipeline_count_walk_t* walk = memory_alloc(sizeof(*walk), MEMORY_APP);
     TEST_ASSERT_NOT_NULL(walk);
     TEST_ASSERT_EQUAL_INT(visible, r3d_pipeline_cull_counted(mesh, lens, NULL, b.culled + 1, walk, &n));
     memory_free(walk);
@@ -122,7 +122,7 @@ measure_family(const scene_baked_t* family) {
 
     /* The halved bake: the same clusters, each keeping its first half of triangles. */
     const size_t cluster_bytes = sizeof(r3d_lit_cluster_t) * (size_t)mesh.cluster_count;
-    r3d_lit_cluster_t* halved_clusters = memory_alloc(cluster_bytes, MEMORY_PSRAM);
+    r3d_lit_cluster_t* halved_clusters = memory_alloc(cluster_bytes, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(halved_clusters);
     memcpy(halved_clusters, mesh.clusters, cluster_bytes);
     for (int c = 0; c < mesh.cluster_count; c++) {
@@ -140,7 +140,7 @@ measure_family(const scene_baked_t* family) {
                        .upscaled = true,
                        .destination_width = GFX_WIDTH,
                        .destination_height = GFX_HEIGHT};
-    raster.scratch = memory_alloc(raster_scratch_bytes(&raster), MEMORY_PSRAM);
+    raster.scratch = memory_alloc(raster_scratch_bytes(&raster), MEMORY_APP);
     TEST_ASSERT_NOT_NULL(raster.scratch);
 
     const uint32_t period = scene_animator_clip_duration_ms(scene, camera, 0);

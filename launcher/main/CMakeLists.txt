@@ -80,6 +80,7 @@ set(app_srcs
     "core/pending.c"
     "shell/asset_system.c"
     "shell/pending_system.c"
+    "core/app_heap.c"
     "core/job.c"
     "core/memory.c"
     "core/timing_device.c"
@@ -268,6 +269,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
         "../test/timing.c"
         "../test/bench_env.c"
         "../test/frame_profile.c"
+        "../test/frame/test_frame.c"
         "../test/ui_probe.c"
         ${suite_srcs}
         ${app_suites}
@@ -336,7 +338,7 @@ endif()
 idf_component_register(
     SRCS ${app_srcs}
     INCLUDE_DIRS "." "${board_include_dir}"
-    PRIV_INCLUDE_DIRS ${app_private_include_dirs}
+    PRIV_INCLUDE_DIRS ${app_private_include_dirs} "${IDF_PATH}/components/heap/tlsf/include"
     LDFRAGMENTS "linker.lf"
     REQUIRES ${app_reqs}
 

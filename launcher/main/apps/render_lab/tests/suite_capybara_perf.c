@@ -13,6 +13,7 @@
 #include "core/timing.h"
 #include "esp_cpu.h"
 #include "esp_log.h"
+#include "frame/test_frame.h"
 #include "gfx/gfx.h"
 #include "perf_budget.h"
 #include "render/context/render_context.h"
@@ -55,7 +56,7 @@ release_fixture(void) {
 
 static fixture_t*
 fixture(void) {
-    active = memory_alloc(sizeof *active, MEMORY_PSRAM);
+    active = memory_alloc(sizeof *active, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(active);
     *active = (fixture_t){0};
     heap_report(SKIN_PERF_PHASE_BEFORE_ENTER);
@@ -70,7 +71,7 @@ fixture(void) {
     TEST_ASSERT_GREATER_THAN_INT(0, mesh->vertex_count);
     heap_report(SKIN_PERF_PHASE_LOADED);
     active->position_bytes = (size_t)mesh->vertex_count * sizeof *mesh->positions;
-    active->positions = memory_alloc(active->position_bytes, MEMORY_PSRAM);
+    active->positions = memory_alloc(active->position_bytes, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(active->positions);
     TEST_ASSERT_NOT_NULL(app_render_lab.console);
     return active;
@@ -257,7 +258,7 @@ test_animation_and_frame_cost(void) {
         const resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
         ESP_LOGI(TAG, "raster=%dx%d present=%d" R3D_PERF_QUARTER_FORMAT, size.width, size.height, render_lab_present(),
                  quarter->name);
-        render_lab_test_hold_quarter(quarter->quarter);
+        test_hold_quarter(quarter->quarter);
         bench_stats_t playing_render;
         bench_stats_t paused_render;
         const bench_stats_t playing = frame_cost(f, false, &playing_render, quarter->name);

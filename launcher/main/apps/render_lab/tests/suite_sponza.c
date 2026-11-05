@@ -350,7 +350,7 @@ check_the_flythrough_sees_mostly_building(const r3d_lit_mesh_t* mesh) {
     const r3d_instance_t instance = {mesh, NULL, NULL, NULL};
     raster_t raster = {
         .instances = &instance, .instance_count = 1, .width = SPONZA_RENDER_WIDTH, .height = SPONZA_RENDER_HEIGHT};
-    void* scratch = memory_alloc(raster_scratch_bytes(&raster), MEMORY_PSRAM);
+    void* scratch = memory_alloc(raster_scratch_bytes(&raster), MEMORY_APP);
     TEST_ASSERT_NOT_NULL(scratch);
     raster.scratch = scratch;
     const uint32_t period = scene_animator_clip_duration_ms(sponza, camera_entity, 0);
