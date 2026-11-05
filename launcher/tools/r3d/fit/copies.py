@@ -12,7 +12,7 @@ import numpy as np
 
 from r3d import lcol_asset, mesh_bundle
 from r3d.fit.gbuffer import IN_FRONT, distance, reference_buffers
-from r3d.lit_mesh import finest_triangles, rgb888
+from r3d.lit_mesh import finest_triangles, octree_order, rgb888
 
 # The copy-coverage gate: over the held-out poses, the fitted rest may hide more of the frame's copy pixels
 # than its start by at most HIDDEN_MEAN_GROWTH on the mean and HIDDEN_WORST_GROWTH on the worst pose. Set
@@ -24,7 +24,8 @@ HIDDEN_WORST_GROWTH = 0.010
 
 def placed_copies(bundle, flat):
     """Every copy in a start bundle placed under its transform, as one FitMesh in the rest's units: welded
-    per copy mesh, one colour per vertex, or per triangle when `flat`. None when the bundle has no copies."""
+    per copy mesh, one colour per vertex, or per triangle when `flat`. None when the bundle has no copies. A copy
+    mesh's triangles come in octree_order(), so the fit's input does not follow how the bundle lays out levels."""
     from r3d.appearance_simplify import FitMesh
 
     entries, rows = mesh_bundle.decode(pathlib.Path(bundle).read_bytes())
@@ -35,6 +36,7 @@ def placed_copies(bundle, flat):
     point_count = vertex_count = 0
     for name in dict.fromkeys(row["mesh"] for row in rows):
         mesh = mesh_bundle.read_mesh(entries, name)
+        order = octree_order(mesh)
         encoding, _count, sets = lcol_asset.decode(data[lcol_asset.name_for_mesh(name)])
         if (encoding == lcol_asset.RGB565) != flat:
             raise ValueError(f"copy mesh {name} is {'flat' if encoding == lcol_asset.RGB565 else 'smooth'} "
@@ -43,7 +45,7 @@ def placed_copies(bundle, flat):
             colours = sets[row["colour_set"]]
             colours = rgb888(np.frombuffer(colours, "<u2")) if flat else np.frombuffer(colours, "u1").reshape(-1, 3)
             mesh.rgb, mesh.face_colors = (None, colours) if flat else (colours, None)
-            q, colour, faces, sided, face_colour = finest_triangles(mesh)
+            q, colour, faces, sided, face_colour = finest_triangles(mesh, order)
             local, welded = np.unique(q, axis=0, return_inverse=True)
             local, welded = local / float(mesh.position_scale), welded.reshape(-1)
             points.append(local @ np.asarray(row["matrix"], dtype=np.float64).T + np.asarray(row["position"]))

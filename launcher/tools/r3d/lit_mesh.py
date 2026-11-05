@@ -397,14 +397,28 @@ def finest(mesh):
     return np.array([own == LOD_NONE for own, _ in mesh.lod], dtype=bool)
 
 
-def finest_triangles(mesh):
+def octree_order(mesh):
+    """A read mesh's clusters in the order one octree over all of them, every
+    level together, lays them out: how a bundle laid out a mesh's clusters
+    before each level had a tree of its own (assemble())."""
+    boxes = [box_of(mesh.pos, mesh.tris[tbase : tbase + tcount]) for _, _, tbase, tcount, _, _, _ in mesh.clusters]
+    centres = np.array([(lo + hi) / 2.0 for lo, hi in boxes])
+    weights = [tcount for _, _, _, tcount, _, _, _ in mesh.clusters]
+    order, _ = flatten_octree(build_octree(centres, weights, LEAF_TRIANGLES, MAX_DEPTH))
+    return order
+
+
+def finest_triangles(mesh, order=None):
     """(pos, rgb, tris, double, face) of a read mesh's finest level with the
     per-cluster vertex copies welded back together: one vertex per position
-    and colour, or per position alone for a flat mesh, whose rgb is None."""
-    double = np.zeros(len(mesh.tris), dtype=np.int64)
-    shown = np.zeros(len(mesh.tris), dtype=bool)
-    for (_, _, tbase, tcount, _, _, is_double), level0 in zip(mesh.clusters, finest(mesh)):
-        double[tbase : tbase + tcount] = int(is_double)
-        shown[tbase : tbase + tcount] = level0
-    face = None if mesh.face_colors is None else mesh.face_colors[shown]
-    return weld_quantised(mesh.pos, mesh.rgb, mesh.tris[shown], double[shown], face)
+    and colour, or per position alone for a flat mesh, whose rgb is None. The
+    triangles follow the clusters in `order`, the bundle's when None."""
+    order = range(len(mesh.clusters)) if order is None else order
+    level0 = finest(mesh)
+    shown = [c for c in order if level0[c]]
+    rows = np.concatenate([np.arange(mesh.clusters[c][2], mesh.clusters[c][2] + mesh.clusters[c][3]) for c in shown]
+                          or [np.zeros(0, dtype=np.int64)]).astype(np.int64)
+    double = np.concatenate([np.full(mesh.clusters[c][3], int(mesh.clusters[c][6]), dtype=np.int64) for c in shown]
+                            or [np.zeros(0, dtype=np.int64)])
+    face = None if mesh.face_colors is None else np.asarray(mesh.face_colors)[rows]
+    return weld_quantised(mesh.pos, mesh.rgb, mesh.tris[rows], double, face)
