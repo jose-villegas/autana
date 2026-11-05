@@ -660,17 +660,19 @@ release_app_heap(held_block_t* head) {
 
 static void
 test_failed_view_allocation_leaves_shaded(void) {
-    render_context_t c = {0};
-    render_context_set_debug_view(&c, render_context_debug_view_named("depth"));
+    render_context_t* c = calloc(1, sizeof(*c)); /* too big for the device stack */
+    TEST_ASSERT_NOT_NULL(c);
+    render_context_set_debug_view(c, render_context_debug_view_named("depth"));
     held_block_t* occupied = hold_app_heap();
     TEST_ASSERT_NOT_NULL(occupied);
-    render_context_set_debug_view(&c, render_context_debug_view_named("motion"));
+    render_context_set_debug_view(c, render_context_debug_view_named("motion"));
     release_app_heap(occupied);
-    TEST_ASSERT_EQUAL_INT(0, c.debug_view);
-    TEST_ASSERT_NULL(c.debug_view_state);
-    TEST_ASSERT_NULL(c.raster.attachments);
-    TEST_ASSERT_EQUAL_INT(0, c.raster.attachment_count);
-    render_context_release(&c);
+    TEST_ASSERT_EQUAL_INT(0, c->debug_view);
+    TEST_ASSERT_NULL(c->debug_view_state);
+    TEST_ASSERT_NULL(c->raster.attachments);
+    TEST_ASSERT_EQUAL_INT(0, c->raster.attachment_count);
+    render_context_release(c);
+    free(c);
 }
 
 /* No room for a draw's instances detaches the view, and the frame draws shaded. */

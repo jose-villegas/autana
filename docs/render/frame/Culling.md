@@ -107,6 +107,9 @@ only drawn clusters show, so it redraws from a spectator.
 | `cullview.paint` | 0 the baked colours, culled clusters as a sparse screen door with a dashed grey border, each kept cluster's border solid in its fate's colour; 1 each cluster flat in its fate's colour; 2 each cluster in the hue of its node at `cullview.level`, darker the earlier it was dropped |
 | `cullview.level` | the tree depth whose node boxes the overlay draws; 0 none, 1 the root's children |
 
+An observer set on the context replaces the spectator's pose, whatever
+`cullview.from` says; the lens stays the camera's.
+
 From a spectator the culled and the kept clusters are drawn apart, so culled
 geometry never hides kept geometry behind it: the holes in its screen door
 show what lies behind. The overlay also draws the camera's frustum.

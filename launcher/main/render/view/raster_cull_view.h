@@ -83,11 +83,13 @@ typedef struct {
 typedef struct {
     raster_cull_from_t from;
     bool spectating; /* drawing from the spectator */
+    bool spectated;  /* this frame drew from the spectator: an observer or cullview.from */
     int pass;        /* raster_cull_pass_t: which of the frame's draws is next */
     int clusters, triangles;
     int next_cluster, next_triangle; /* the next instance's first IDs, as the draw reaches it */
     const raster_t* raster;
     render_view_t camera, spectator;
+    transformf_t spectator_pose; /* what `spectator` was made from, exactly: render_view_pose() only to rounding */
     raster_cull_frame_t frame;
     uint8_t fate[RASTER_CULL_CLUSTERS_MAX];
     uint16_t set_up[RASTER_CULL_CLUSTERS_MAX];
@@ -105,9 +107,11 @@ typedef struct {
 
 raster_attachment_t raster_cull_view(void* state);
 
-/* After the camera's draw: tallies its fates and, unless cullview.from is
- * the camera, writes the spectator's view to draw from next. */
-bool raster_cull_second_view(void* state, const raster_t* raster, render_view_t* out, bool* listed);
+/* After the camera's draw: tallies its fates and, given an observer or
+ * unless cullview.from is the camera, writes the spectator's view to draw
+ * from next: from the observer's pose when given, else cullview.from's. */
+bool raster_cull_second_view(void* state, const raster_t* raster, const transformf_t* observer, render_view_t* out,
+                             bool* listed);
 
 /* Lines over the composed picture, `width` by `height` from (0, 0). */
 void raster_cull_overlay(void* state, int width, int height);
