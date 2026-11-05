@@ -56,6 +56,8 @@ typedef struct {
     /* Set by the caller after every frame: the seeded hover root was not the
      * one the frame found, and nothing took focus. */
     bool press_missed;
+    /* A press on scrollable content waiting for the lift, a sideways move or
+     * a scroll; the control under it draws pressed meanwhile. */
     bool press_deferred;
     bool dragging;
     vec2i_t last;
