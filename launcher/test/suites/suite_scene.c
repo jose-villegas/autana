@@ -745,12 +745,43 @@ fails(entity_t root, scene_failure_t* why) {
     return failed;
 }
 
+/* The columns of the scene `entity` is in: NULL while it is WAIT, FAILED or CANCELLED. */
+static __attribute__((noinline)) scene_t*
+columns_or_null(entity_t entity) {
+    scene_row_t row;
+    scene_root_t* record = scene_entity_lookup(entity, &row);
+    TEST_ASSERT_NOT_NULL(record);
+    return record->scene;
+}
+
 /* The columns of the loaded scene `entity` is in. */
-static scene_t*
+static __attribute__((noinline)) scene_t*
 columns(entity_t entity) {
-    scene_t* scene = scene_columns(entity);
+    scene_t* scene = columns_or_null(entity);
     TEST_ASSERT_NOT_NULL(scene);
     return scene;
+}
+
+/* How many scenes are READY. */
+static int
+loaded_count(void) {
+    int count = 0;
+    for (int i = 0; i < SCENE_ROOTS_MAX; i++) {
+        count += scene_ready_at(i) != NULL ? 1 : 0;
+    }
+    return count;
+}
+
+/* The columns of the `n`th READY scene, in record order. */
+static scene_t*
+loaded_at(int n) {
+    for (int i = 0; i < SCENE_ROOTS_MAX; i++) {
+        scene_t* scene = scene_ready_at(i);
+        if (scene != NULL && n-- == 0) {
+            return scene;
+        }
+    }
+    return NULL;
 }
 
 /* The row of `entity` in its scene's columns. */
@@ -770,7 +801,7 @@ skin_of(entity_t entity) {
 /* The root of the loaded scene `index`, in load order. */
 static entity_t
 loaded_root(int index) {
-    return scene_row_entity(scene_loaded_at(index), SCENE_ROW_ROOT);
+    return scene_row_entity(loaded_at(index), SCENE_ROW_ROOT);
 }
 
 /* The entity at `row` of the scene under `root`. */
@@ -1014,7 +1045,7 @@ test_resident_allocation_failure_rolls_back_the_load(void) {
         TEST_ASSERT_EQUAL_INT(SCENE_ERR_MEMORY, why.status);
         TEST_ASSERT_EQUAL_INT(ASSET_OK, why.asset);
         TEST_ASSERT_EQUAL_STRING(cases[i].id, why.what);
-        TEST_ASSERT_EQUAL_INT(0, scene_loaded_count());
+        TEST_ASSERT_EQUAL_INT(0, loaded_count());
         TEST_ASSERT_EQUAL_size_t(psram, memory_free_bytes(MEMORY_APP));
         TEST_ASSERT_EQUAL_size_t(internal, memory_free_bytes(MEMORY_INTERNAL));
         TEST_ASSERT_EQUAL_size_t(lent, fx.lent_used);
@@ -1181,7 +1212,7 @@ test_a_malformed_entry_a_missing_clip_or_track_and_a_mesh_id_fail_naming_the_ent
     expect_failure("test_lost", ASSET_ERR_NOT_FOUND, "nowhere");
     expect_failure("test_skewed", ASSET_ERR_FORMAT, "skewed");
     expect_failure("red", ASSET_ERR_TYPE, "red"); /* a mesh, not a scene */
-    TEST_ASSERT_EQUAL_INT(0, scene_loaded_count());
+    TEST_ASSERT_EQUAL_INT(0, loaded_count());
 }
 
 static void
@@ -1458,7 +1489,7 @@ assert_at(vec3f_t want, mat4f_t m) {
     TEST_ASSERT_FLOAT_WITHIN(1e-5F, want.z, m.m[2][3]);
 }
 
-static mat4f_t
+static __attribute__((noinline)) mat4f_t
 model_of(entity_t root, const char* name) {
     const scene_t* scene = columns(root);
     return scene->renderers[scene_renderer_index(scene, row_of(entity_find(root, name_hash(name))))].model;
@@ -1488,6 +1519,11 @@ test_a_world_is_the_parents_world_times_the_entitys_own(void) {
     assert_at((vec3f_t){0, 1, 5}, model_of(scene, "cup"));
 }
 
+static __attribute__((noinline)) void
+assert_same_transform(const transformf_t* want, const transformf_t* got, float tolerance) {
+    assert_same_placement(transformf_compute_matrix(want), transformf_compute_matrix(got), tolerance);
+}
+
 /* Under an evenly scaled root and a turned arm, a world set on the hand
  * reads back as set, and is where the hand draws; the stored local is
  * relative to the arm. A leaf may scale unevenly. */
@@ -1502,7 +1538,7 @@ test_a_world_set_under_turned_parents_reads_back_exactly(void) {
     transformf_set_scale(&want, (vec3f_t){1, 2, 3});
     transform_set_world(hand, want);
     const transformf_t got = transform_world(hand);
-    assert_same_placement(transformf_compute_matrix(&want), transformf_compute_matrix(&got), 1e-5F);
+    assert_same_transform(&want, &got, 1e-5F);
     TEST_ASSERT_FLOAT_WITHIN(1e-5F, 0.5F, transform_local(hand).scale.x); /* under the root's 2 */
     scene_resolve(columns(scene));
     assert_same_placement(transformf_compute_matrix(&got), model_of(scene, "hand"), 1e-4F);
@@ -2913,8 +2949,8 @@ test_unloading_the_first_of_two_scenes_leaves_the_second_with_its_own_time(void)
     entity_t flight = show("test_flight");
     frame(250);
     scene_release(pair);
-    TEST_ASSERT_EQUAL_INT(1, scene_loaded_count());
-    TEST_ASSERT_EQUAL_PTR(columns(flight), scene_loaded_at(0));
+    TEST_ASSERT_EQUAL_INT(1, loaded_count());
+    TEST_ASSERT_EQUAL_PTR(columns(flight), loaded_at(0));
     frame(250);
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(-2.5F)); /* 500 ms of flight */
 }
@@ -4807,7 +4843,7 @@ test_entity_next_walks_a_subtree_in_load_order(void) {
         TEST_ASSERT_TRUE(entity_is_within(e, root));
         seen++;
     }
-    TEST_ASSERT_EQUAL_INT(scene_columns(root)->asset.entity_count, seen);
+    TEST_ASSERT_EQUAL_INT(columns(root)->asset.entity_count, seen);
 }
 
 /* A scene and one of its entities often share a name (a capybara scene's capybara). */
@@ -4819,7 +4855,459 @@ test_entity_find_searches_below_within_and_never_finds_a_root(void) {
     TEST_ASSERT_ENTITY_NONE(entity_find(root, name_hash("test_pair")));
     TEST_ASSERT_ENTITY_NONE(entity_find(ENTITY_NONE, name_hash("test_pair")));
     TEST_ASSERT_ENTITY_NONE(entity_find(red, name_hash("red")));
-    TEST_ASSERT_ENTITY(red, entity_find(ENTITY_NONE, name_hash("red")));
+    TEST_ASSERT_ENTITY_NONE(entity_find(ENTITY_NONE, name_hash("red")));
+}
+
+/* The most rows any fixture scene walks. */
+enum { WALK_MAX = 16 };
+
+/* The rows of `root`'s scene below `ancestor`, found by walking parents up. */
+static bool
+row_below(const scene_t* scene, scene_row_t row, scene_row_t ancestor) {
+    for (scene_row_t p = scene_row_parent(scene, row); p != SCENE_ROW_NONE; p = scene_row_parent(scene, p)) {
+        if (p == ancestor) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* What entity_next() yields below `within`, from the start; the count. */
+static int
+walk(entity_t within, entity_t out[WALK_MAX]) {
+    int count = 0;
+    for (entity_t e = entity_next(within, ENTITY_NONE); !handle_is_none(e); e = entity_next(within, e)) {
+        TEST_ASSERT_TRUE(count < WALK_MAX);
+        out[count++] = e;
+    }
+    return count;
+}
+
+/* The handle `slot` would be before it was ever issued: generation 0. */
+static entity_t
+never_issued(uint32_t slot) {
+    return (handle_t){((uint32_t)HANDLE_OWNER_ENTITY << HANDLE_OWNER_SHIFT) | (slot << HANDLE_SLOT_SHIFT)};
+}
+
+/* A request never polled: it holds a record and opens nothing. */
+static entity_t
+request_unpolled(void) {
+    return scene_load_async("test_unpolled", NULL, HANDLE_NONE);
+}
+
+static void
+test_a_stale_root_does_not_release_or_cancel_the_scene_that_took_its_slot(void) {
+    fixture();
+    const entity_t old_root = load("test_pair");
+    scene_release(old_root);
+    const entity_t root = load("test_pair");
+    TEST_ASSERT_EQUAL_UINT32(handle_slot(old_root), handle_slot(root));
+    TEST_ASSERT_FALSE(handle_equal(old_root, root));
+    const int rows = columns(root)->asset.entity_count;
+    scene_release(old_root);
+    scene_cancel(old_root);
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, scene_state(root));
+    TEST_ASSERT_EQUAL_INT(1, loaded_count());
+    entity_t seen[WALK_MAX];
+    TEST_ASSERT_EQUAL_INT(rows, walk(root, seen));
+    TEST_ASSERT_ENTITY(entity_at(root, 1), entity_find(root, name_hash("red")));
+}
+
+static void
+test_a_stale_root_reports_neither_state_nor_failure_of_the_scene_that_took_its_slot(void) {
+    fixture();
+    const entity_t old_root = scene_load_from(NULL, "test_pair");
+    scene_failure_t why = {0};
+    TEST_ASSERT_TRUE(scene_failure(old_root, &why));
+    scene_release(old_root);
+    const entity_t root = scene_load_from(NULL, "test_solo"); /* fails too: a failure to be mistaken for */
+    TEST_ASSERT_EQUAL_UINT32(handle_slot(old_root), handle_slot(root));
+    TEST_ASSERT_EQUAL_INT(PENDING_FAILED, scene_state(root));
+    TEST_ASSERT_EQUAL_INT(PENDING_NONE, scene_state(old_root));
+    why = (scene_failure_t){.status = SCENE_OK};
+    TEST_ASSERT_FALSE(scene_failure(old_root, &why));
+    TEST_ASSERT_EQUAL_INT(SCENE_OK, why.status);
+    TEST_ASSERT_TRUE(scene_failure(root, &why));
+    TEST_ASSERT_EQUAL_STRING("test_solo", why.what);
+}
+
+static void
+test_a_full_world_of_ready_and_waiting_scenes_refuses_another_request(void) {
+    fixture();
+    entity_t held[SCENE_ROOTS_MAX];
+    for (int i = 0; i < SCENE_ROOTS_MAX; i++) {
+        held[i] = i % 2 == 0 ? load("test_solo") : request_unpolled();
+    }
+    TEST_ASSERT_ENTITY_NONE(request_unpolled());
+    TEST_ASSERT_ENTITY_NONE(scene_load_from(&fx.pack, "test_solo"));
+    for (int i = 0; i < SCENE_ROOTS_MAX; i++) {
+        TEST_ASSERT_EQUAL_INT(i % 2 == 0 ? PENDING_READY : PENDING_WAIT, scene_state(held[i]));
+    }
+}
+
+_Static_assert(SCENE_ROOTS_MAX >= 4, "the reclaim tests need a spent record below and one above the oldest");
+
+/* The record respent, the oldest spent and an older one: the oldest is neither the lowest nor the highest index. */
+enum { RESPENT = 1, OLDEST = 2, OLDER = SCENE_ROOTS_MAX - 2 };
+
+static void
+test_a_full_world_reclaims_the_oldest_spent_request_not_the_lowest_record(void) {
+    fixture();
+    entity_t held[SCENE_ROOTS_MAX];
+    held[0] = load("test_solo"); /* READY and the oldest request of all */
+    for (int i = 1; i < SCENE_ROOTS_MAX; i++) {
+        held[i] = request_unpolled();
+    }
+    /* Spend the record at RESPENT and reclaim it: it now holds the newest request, at a low index. */
+    scene_cancel(held[RESPENT]);
+    const entity_t newest = request_unpolled();
+    TEST_ASSERT_EQUAL_INT(PENDING_WAIT, scene_state(newest));
+    TEST_ASSERT_EQUAL_INT(PENDING_NONE, scene_state(held[RESPENT]));
+    scene_cancel(newest);
+    scene_cancel(held[OLDER]);
+    scene_cancel(held[OLDEST]);
+    const entity_t first = request_unpolled();
+    TEST_ASSERT_EQUAL_INT(PENDING_WAIT, scene_state(first));
+    TEST_ASSERT_EQUAL_INT(PENDING_NONE, scene_state(held[OLDEST]));
+    TEST_ASSERT_EQUAL_INT(PENDING_CANCELLED, scene_state(held[OLDER]));
+    TEST_ASSERT_EQUAL_INT(PENDING_CANCELLED, scene_state(newest));
+    const entity_t second = request_unpolled();
+    TEST_ASSERT_EQUAL_INT(PENDING_NONE, scene_state(held[OLDER]));
+    TEST_ASSERT_EQUAL_INT(PENDING_CANCELLED, scene_state(newest));
+    const entity_t third = request_unpolled();
+    TEST_ASSERT_EQUAL_INT(PENDING_NONE, scene_state(newest));
+    /* Nothing spent is left: the ready scene and every waiting request stay. */
+    TEST_ASSERT_ENTITY_NONE(request_unpolled());
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, scene_state(held[0]));
+    TEST_ASSERT_EQUAL_INT(PENDING_WAIT, scene_state(first));
+    TEST_ASSERT_EQUAL_INT(PENDING_WAIT, scene_state(second));
+    TEST_ASSERT_EQUAL_INT(PENDING_WAIT, scene_state(third));
+    TEST_ASSERT_EQUAL_INT(PENDING_WAIT, scene_state(held[SCENE_ROOTS_MAX - 1]));
+}
+
+static void
+test_a_reclaimed_records_old_root_is_stale_and_cannot_touch_the_new_request(void) {
+    fixture();
+    entity_t held[SCENE_ROOTS_MAX];
+    for (int i = 0; i < SCENE_ROOTS_MAX; i++) {
+        held[i] = request_unpolled();
+    }
+    scene_cancel(held[OLDEST]);
+    const entity_t reclaimed = request_unpolled();
+    TEST_ASSERT_FALSE(handle_equal(reclaimed, held[OLDEST]));
+    scene_release(held[OLDEST]);
+    scene_cancel(held[OLDEST]);
+    TEST_ASSERT_EQUAL_INT(PENDING_NONE, scene_state(held[OLDEST]));
+    TEST_ASSERT_EQUAL_INT(PENDING_WAIT, scene_state(reclaimed));
+    TEST_ASSERT_EQUAL_STRING("test_unpolled", entity_name(reclaimed));
+    TEST_ASSERT_NULL(entity_name(held[OLDEST]));
+}
+
+static void
+test_a_free_record_is_taken_before_a_spent_one(void) {
+    fixture();
+    const entity_t spent = request_unpolled();
+    scene_cancel(spent);
+    const entity_t next = request_unpolled(); /* the spent record sits at the lower index */
+    TEST_ASSERT_EQUAL_INT(PENDING_WAIT, scene_state(next));
+    TEST_ASSERT_EQUAL_INT(PENDING_CANCELLED, scene_state(spent));
+    TEST_ASSERT_FALSE(handle_equal(spent, next));
+}
+
+static void
+test_pending_owner_alive_is_true_only_for_a_live_entity(void) {
+    fixture();
+    const entity_t root = load("test_pair");
+    const entity_t red = entity_find(root, name_hash("red"));
+    TEST_ASSERT_TRUE(pending_owner_alive(red));
+    TEST_ASSERT_TRUE(pending_owner_alive(root));
+    const handle_t foreign = handle_make(HANDLE_OWNER_ASSET_LOAD, handle_slot(red), handle_generation(red));
+    TEST_ASSERT_FALSE(pending_owner_alive(foreign));
+    scene_release(root);
+    TEST_ASSERT_FALSE(pending_owner_alive(red));
+    TEST_ASSERT_FALSE(pending_owner_alive(root));
+    const entity_t again = load("test_pair");
+    TEST_ASSERT_TRUE(pending_owner_alive(entity_find(again, name_hash("red"))));
+    TEST_ASSERT_FALSE(pending_owner_alive(red)); /* its slot is back in use */
+}
+
+static void
+test_entity_next_yields_every_row_once_in_load_order(void) {
+    fixture();
+    const entity_t root = load("test_tree");
+    const int rows = columns(root)->asset.entity_count;
+    entity_t seen[WALK_MAX];
+    TEST_ASSERT_EQUAL_INT(rows, walk(root, seen));
+    for (int i = 0; i < rows; i++) {
+        TEST_ASSERT_ENTITY(entity_at(root, i), seen[i]);
+    }
+    TEST_ASSERT_ENTITY_NONE(entity_next(root, seen[rows - 1]));
+}
+
+static void
+test_entity_next_within_an_inner_entity_yields_only_its_descendants(void) {
+    fixture();
+    const entity_t root = load("test_tree");
+    const scene_t* scene = columns(root);
+    bool some_inner_has_descendants = false;
+    for (int top = 0; top < scene->asset.entity_count; top++) {
+        entity_t expected[WALK_MAX];
+        int want = 0;
+        for (int r = 0; r < scene->asset.entity_count; r++) {
+            if (row_below(scene, (scene_row_t)r, (scene_row_t)top)) {
+                expected[want++] = entity_at(root, r);
+            }
+        }
+        entity_t seen[WALK_MAX];
+        TEST_ASSERT_EQUAL_INT_MESSAGE(want, walk(entity_at(root, top), seen), entity_name(entity_at(root, top)));
+        for (int i = 0; i < want; i++) {
+            TEST_ASSERT_ENTITY(expected[i], seen[i]);
+        }
+        some_inner_has_descendants = some_inner_has_descendants || (want > 0 && want < scene->asset.entity_count - 1);
+    }
+    TEST_ASSERT_TRUE(some_inner_has_descendants);
+    entity_t seen[WALK_MAX];
+    const entity_t arm = entity_find(root, name_hash("arm"));
+    TEST_ASSERT_EQUAL_INT(1, walk(arm, seen));
+    TEST_ASSERT_ENTITY(entity_find(root, name_hash("hand")), seen[0]);
+}
+
+static void
+test_entity_next_refuses_an_after_that_is_the_root_stale_or_another_scenes(void) {
+    fixture();
+    const entity_t root = load("test_tree");
+    const entity_t other_scene = load("test_pair");
+    const entity_t gone_root = load("test_solo");
+    const entity_t gone = entity_find(gone_root, name_hash("blue"));
+    scene_release(gone_root);
+    const entity_t arm = entity_find(root, name_hash("arm"));
+    TEST_ASSERT_ENTITY(entity_at(root, 1), entity_next(root, entity_at(root, 0))); /* a real `after` works */
+    TEST_ASSERT_ENTITY_NONE(entity_next(root, root));
+    TEST_ASSERT_ENTITY_NONE(entity_next(arm, root));
+    TEST_ASSERT_ENTITY_NONE(entity_next(root, gone));
+    TEST_ASSERT_ENTITY_NONE(entity_next(root, entity_find(other_scene, name_hash("red"))));
+}
+
+static void
+test_entity_next_and_find_within_a_stale_or_failed_root_yield_nothing(void) {
+    fixture();
+    const entity_t gone = load("test_tree");
+    scene_release(gone);
+    TEST_ASSERT_ENTITY_NONE(entity_next(gone, ENTITY_NONE));
+    TEST_ASSERT_ENTITY_NONE(entity_find(gone, name_hash("hand")));
+    const entity_t failed = scene_load_from(NULL, "test_tree");
+    TEST_ASSERT_EQUAL_INT(PENDING_FAILED, scene_state(failed));
+    TEST_ASSERT_ENTITY_NONE(entity_next(failed, ENTITY_NONE));
+    TEST_ASSERT_ENTITY_NONE(entity_find(failed, name_hash("hand")));
+}
+
+static void
+test_entity_find_below_an_inner_entity_finds_only_its_descendants(void) {
+    fixture();
+    const entity_t root = load("test_tree");
+    const entity_t top = entity_find(root, name_hash("root"));
+    const entity_t arm = entity_find(root, name_hash("arm"));
+    const entity_t hand = entity_find(root, name_hash("hand"));
+    const entity_t other = entity_find(root, name_hash("other"));
+    const entity_t cup = entity_find(root, name_hash("cup"));
+    TEST_ASSERT_ENTITY(hand, entity_find(arm, name_hash("hand")));
+    TEST_ASSERT_ENTITY(hand, entity_find(top, name_hash("hand"))); /* a grandchild */
+    TEST_ASSERT_ENTITY(cup, entity_find(other, name_hash("cup")));
+    TEST_ASSERT_ENTITY_NONE(entity_find(arm, name_hash("cup")));   /* in the scene, outside the subtree */
+    TEST_ASSERT_ENTITY_NONE(entity_find(top, name_hash("other"))); /* a sibling subtree */
+    TEST_ASSERT_ENTITY_NONE(entity_find(hand, name_hash("hand"))); /* never itself */
+    TEST_ASSERT_ENTITY_NONE(entity_find(arm, name_hash("arm")));
+    TEST_ASSERT_ENTITY_NONE(entity_find(other, name_hash("hand")));
+}
+
+static void
+test_entity_find_within_stays_in_its_scene_and_needs_a_real_within(void) {
+    fixture();
+    const entity_t first = load("test_pair");
+    const entity_t second = load("test_family"); /* names its own camera and red too */
+    const entity_t red = entity_find(first, name_hash("red"));
+    TEST_ASSERT_ENTITY(entity_at(first, 1), red);
+    TEST_ASSERT_FALSE(handle_equal(red, entity_find(second, name_hash("red"))));
+    TEST_ASSERT_TRUE(entity_is_within(entity_find(second, name_hash("red")), second));
+    TEST_ASSERT_FALSE(entity_is_within(entity_find(second, name_hash("red")), first));
+    TEST_ASSERT_ENTITY_NONE(entity_find(ENTITY_NONE, name_hash("red")));
+}
+
+static const float ROOT_TURN = 0.7F;
+static const float ROOT_SCALE = 1.5F;
+
+/* A root's placement that moves, turns and scales evenly. */
+static __attribute__((noinline)) transformf_t
+placed_root(void) {
+    transformf_t t = transformf_identity();
+    transformf_set_position(&t, (vec3f_t){3.0F, -2.0F, 1.0F});
+    transformf_set_rotation(&t, quatf_from_axis_angle(vec3f_unit_y(), ROOT_TURN));
+    transformf_set_scale(&t, (vec3f_t){ROOT_SCALE, ROOT_SCALE, ROOT_SCALE});
+    return t;
+}
+
+static __attribute__((noinline)) mat4f_t
+local_matrix(entity_t entity) {
+    const transformf_t local = transform_local(entity);
+    return transformf_compute_matrix(&local);
+}
+
+/* `entity`'s world, as a placement and as a matrix, is `want`. */
+static __attribute__((noinline)) void
+assert_world_is(mat4f_t want, entity_t entity) {
+    const transformf_t world = transform_world(entity);
+    assert_same_placement(want, transformf_compute_matrix(&world), 1e-4F);
+    assert_same_placement(want, transform_world_matrix(entity), 1e-4F);
+}
+
+/* The last of `chain`, top entity first, has the scene root's placement times each local down to it. */
+static __attribute__((noinline)) void
+assert_world_down(entity_t root, const entity_t* chain, int length) {
+    const transformf_t placed = transform_local(root);
+    mat4f_t want = transformf_compute_matrix(&placed);
+    for (int i = 0; i < length; i++) {
+        want = mat4f_mul_affine(want, local_matrix(chain[i]));
+    }
+    assert_world_is(want, chain[length - 1]);
+}
+
+static void
+test_a_roots_turn_and_scale_reach_a_top_entity_and_a_grandchild(void) {
+    fixture();
+    const entity_t root = load("test_tree");
+    transform_set_local(root, placed_root());
+    const entity_t top = entity_find(root, name_hash("root"));
+    const entity_t other = entity_find(root, name_hash("other"));
+    const entity_t down_to_hand[] = {top, entity_find(root, name_hash("arm")), entity_find(root, name_hash("hand"))};
+    const entity_t down_to_cup[] = {other, entity_find(root, name_hash("cup"))};
+    assert_world_down(root, &top, 1);
+    assert_world_down(root, &other, 1);
+    assert_world_down(root, down_to_cup, 2);
+    assert_world_down(root, down_to_hand, 3);
+    TEST_ASSERT_FLOAT_WITHIN(1e-4F, ROOT_SCALE * transform_local(other).scale.x, transform_world(other).scale.x);
+}
+
+static void
+test_a_world_set_on_a_top_entity_under_a_placed_root_reads_back(void) {
+    fixture();
+    const entity_t root = load("test_pair");
+    transform_set_local(root, placed_root());
+    const entity_t red = entity_find(root, name_hash("red"));
+    transformf_t want = transformf_identity();
+    transformf_set_position(&want, (vec3f_t){4.0F, 5.0F, 6.0F});
+    transformf_set_rotation(&want, quatf_from_axis_angle(vec3f_unit_x(), ROOT_TURN));
+    transformf_set_scale(&want, (vec3f_t){1.0F, 2.0F, 3.0F});
+    transform_set_world(red, want);
+    assert_world_is(transformf_compute_matrix(&want), red);
+    TEST_ASSERT_FLOAT_WITHIN(1e-4F, 1.0F / ROOT_SCALE, transform_local(red).scale.x); /* local to the root */
+}
+
+static void
+test_re_enabling_a_root_keeps_a_child_disabled_itself_hidden(void) {
+    fixture();
+    const entity_t root = load("test_tree");
+    const entity_t other = entity_find(root, name_hash("other"));
+    const entity_t cup = entity_find(root, name_hash("cup"));
+    const entity_t arm = entity_find(root, name_hash("arm"));
+    const entity_t hand = entity_find(root, name_hash("hand"));
+    entity_set_enabled(other, false);
+    entity_set_enabled(arm, false);
+    entity_set_enabled(root, false);
+    entity_set_enabled(root, true);
+    TEST_ASSERT_FALSE(entity_enabled(other));
+    TEST_ASSERT_FALSE(entity_active(other));
+    TEST_ASSERT_FALSE(entity_active(cup)); /* enabled itself, under a disabled top entity */
+    TEST_ASSERT_FALSE(entity_active(arm));
+    TEST_ASSERT_FALSE(entity_active(hand));
+    TEST_ASSERT_TRUE(entity_active(entity_find(root, name_hash("root"))));
+    entity_set_enabled(other, true);
+    TEST_ASSERT_TRUE(entity_active(cup));
+}
+
+/* `entity`'s world and local are `world` and `local`, to the bit. */
+static __attribute__((noinline)) void
+assert_placed_as(entity_t entity, const transformf_t* world, const transformf_t* local) {
+    const transformf_t world_now = transform_world(entity);
+    const transformf_t local_now = transform_local(entity);
+    TEST_ASSERT_EQUAL_MEMORY(world, &world_now, sizeof world_now);
+    TEST_ASSERT_EQUAL_MEMORY(local, &local_now, sizeof local_now);
+}
+
+static void
+test_moving_one_scenes_root_leaves_another_scenes_entities_where_they_were(void) {
+    fixture();
+    const entity_t first = load("test_pair");
+    const entity_t second = load("test_family");
+    const entity_t green = entity_find(second, name_hash("green"));
+    const transformf_t world = transform_world(green);
+    const transformf_t local = transform_local(green);
+    transform_set_local(first, placed_root());
+    assert_placed_as(green, &world, &local);
+    const transformf_t second_root = transform_local(second);
+    assert_placed_as(second, &second_root, &second_root);
+    TEST_ASSERT_TRUE(transform_world(entity_find(first, name_hash("green"))).position.x != world.position.x);
+}
+
+static void
+test_mutators_refuse_foreign_stale_and_never_issued_handles(void) {
+    fixture();
+    const entity_t old_root = load("test_pair");
+    const entity_t old_red = entity_find(old_root, name_hash("red"));
+    scene_release(old_root);
+    const entity_t root = load("test_pair");
+    const entity_t red = entity_find(root, name_hash("red"));
+    TEST_ASSERT_EQUAL_UINT32(handle_slot(old_red), handle_slot(red));
+    const entity_t refused[] = {
+        old_root,
+        old_red,
+        handle_make(HANDLE_OWNER_ASSET_LOAD, handle_slot(root), handle_generation(root)),
+        handle_make(HANDLE_OWNER_ASSET_LOAD, handle_slot(red), handle_generation(red)),
+        never_issued(handle_slot(root)),
+        never_issued(handle_slot(red)),
+        never_issued(HANDLE_SLOT_MAX),
+    };
+    const transformf_t red_before = transform_local(red);
+    const transformf_t root_before = transform_local(root);
+    for (size_t i = 0; i < sizeof refused / sizeof refused[0]; i++) {
+        transform_set_local(refused[i], moved_along_x(7.0F));
+        entity_set_enabled(refused[i], false);
+        scene_cancel(refused[i]);
+        scene_release(refused[i]);
+        const transformf_t red_after = transform_local(red);
+        const transformf_t root_after = transform_local(root);
+        TEST_ASSERT_EQUAL_MEMORY_MESSAGE(&red_before, &red_after, sizeof red_before, "red moved");
+        TEST_ASSERT_EQUAL_MEMORY_MESSAGE(&root_before, &root_after, sizeof root_before, "root moved");
+        TEST_ASSERT_TRUE_MESSAGE(entity_enabled(red) && entity_enabled(root), "an entity was disabled");
+        TEST_ASSERT_EQUAL_INT_MESSAGE(PENDING_READY, scene_state(root), "the scene changed state");
+        TEST_ASSERT_EQUAL_INT_MESSAGE(1, loaded_count(), "the scene was released");
+    }
+    TEST_ASSERT_ENTITY(red, entity_find(root, name_hash("red")));
+}
+
+static void
+test_an_entity_that_is_not_a_root_is_no_scene_to_release_or_cancel(void) {
+    fixture();
+    const entity_t root = load("test_pair");
+    const entity_t red = entity_find(root, name_hash("red"));
+    scene_release(red);
+    scene_cancel(red);
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, scene_state(root));
+    TEST_ASSERT_EQUAL_INT(PENDING_NONE, scene_state(red));
+    TEST_ASSERT_ENTITY(red, entity_find(root, name_hash("red")));
+}
+
+static void
+test_a_failed_scene_holds_nothing_to_find_and_reports_no_failure_unless_failed(void) {
+    fixture();
+    const entity_t failed = scene_load_from(NULL, "test_pair");
+    TEST_ASSERT_EQUAL_INT(PENDING_FAILED, scene_state(failed));
+    TEST_ASSERT_ENTITY_NONE(entity_find(failed, name_hash("red")));
+    TEST_ASSERT_NULL(columns_or_null(failed));
+    scene_failure_t why;
+    TEST_ASSERT_TRUE(scene_failure(failed, &why));
+    const entity_t ready = load("test_pair");
+    TEST_ASSERT_FALSE(scene_failure(ready, &why));
+    TEST_ASSERT_ENTITY(entity_at(ready, 1), entity_find(ready, name_hash("red")));
 }
 
 #ifndef DEVICE_BUILD
@@ -4832,12 +5320,16 @@ typedef struct {
     handle_t request, owner;
     pending_t state;
     entity_t nested;
+    handle_t settled[SCENE_ROOTS_MAX]; /* every request a completion ran for, in order */
 } completion_t;
 
 static completion_t completion;
 
 static void
 on_loaded(handle_t request, pending_t state, handle_t owner) {
+    if (completion.calls < SCENE_ROOTS_MAX) {
+        completion.settled[completion.calls] = request;
+    }
     completion.calls++;
     completion.request = request;
     completion.state = state;
@@ -4988,6 +5480,286 @@ test_doc_scene_async_example_activates_once_ready(void) {
     load_scene_exit(&visit);
     TEST_ASSERT_FALSE(scene_has_active_camera());
     TEST_ASSERT_EQUAL_INT(PENDING_NONE, scene_state(hall_root));
+}
+
+/* The index of `root`'s record among the world's. */
+static int
+record_index(entity_t root) {
+    for (int i = 0; i < SCENE_ROOTS_MAX; i++) {
+        if (handle_equal(scene_roots[i].root, root)) {
+            return i;
+        }
+    }
+    TEST_FAIL_MESSAGE("no record holds the root");
+    return -1;
+}
+
+/* Leaves the READY scene `root` as a request that settled leaves it just before its callback runs: nothing in the
+ * public calls holds a READY request over a pass, since one pass opens the scene and calls back. */
+static void
+arm_callback(entity_t root, handle_t owner) {
+    scene_root_t* record = &scene_roots[record_index(root)];
+    record->async = true;
+    record->done = on_loaded;
+    record->owner = owner;
+}
+
+static void
+test_a_live_entity_owner_does_not_cancel_its_load(void) {
+    async_fixture();
+    const entity_t owner = entity_find(load("test_pair"), name_hash("red"));
+    const entity_t root = scene_load_async("test_pair", on_loaded, owner);
+    TEST_ASSERT_EQUAL_INT(PENDING_WAIT, scene_state(root));
+    poll_until_settled(root);
+    remove_pack("test_pair");
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, scene_state(root));
+    TEST_ASSERT_EQUAL_INT(1, completion.calls);
+    TEST_ASSERT_TRUE(handle_equal(owner, completion.owner));
+    TEST_ASSERT_TRUE(handle_equal(root, completion.request));
+    poll_once();
+    TEST_ASSERT_EQUAL_INT(1, completion.calls);
+}
+
+static void
+test_a_load_whose_token_is_dead_at_the_request_is_cancelled_at_once(void) {
+    async_fixture();
+    const handle_t token = pending_token_new();
+    pending_token_cancel(token);
+    const entity_t root = scene_load_async("test_pair", on_loaded, token);
+    TEST_ASSERT_EQUAL_INT(PENDING_CANCELLED, scene_state(root));
+    for (int i = 0; i < POLL_PASSES_MAX; i++) {
+        poll_once();
+    }
+    remove_pack("test_pair");
+    TEST_ASSERT_EQUAL_INT(PENDING_CANCELLED, scene_state(root));
+    TEST_ASSERT_EQUAL_INT(0, completion.calls);
+    TEST_ASSERT_EQUAL_INT(0, loaded_count());
+}
+
+static void
+test_a_load_whose_entity_owner_is_dead_at_the_request_is_cancelled_at_once(void) {
+    async_fixture();
+    const entity_t owner_root = load("test_pair");
+    const entity_t owner = entity_find(owner_root, name_hash("red"));
+    scene_release(owner_root);
+    const entity_t root = scene_load_async("test_pair", on_loaded, owner);
+    TEST_ASSERT_EQUAL_INT(PENDING_CANCELLED, scene_state(root));
+    for (int i = 0; i < POLL_PASSES_MAX; i++) {
+        poll_once();
+    }
+    remove_pack("test_pair");
+    TEST_ASSERT_EQUAL_INT(PENDING_CANCELLED, scene_state(root));
+    TEST_ASSERT_EQUAL_INT(0, completion.calls);
+    TEST_ASSERT_EQUAL_INT(0, loaded_count());
+}
+
+static void
+test_a_token_that_dies_after_the_scene_opened_keeps_it_and_runs_no_callback(void) {
+    fixture();
+    completion = (completion_t){0};
+    const handle_t token = pending_token_new();
+    const entity_t alive = load("test_pair");
+    arm_callback(alive, token);
+    scene_step(0);
+    TEST_ASSERT_EQUAL_INT(1, completion.calls); /* the control: a live owner is called back */
+    TEST_ASSERT_TRUE(handle_equal(token, completion.owner));
+    const entity_t dying = load("test_solo");
+    arm_callback(dying, token);
+    pending_token_cancel(token);
+    scene_step(0);
+    TEST_ASSERT_EQUAL_INT(1, completion.calls);
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, scene_state(dying));
+    TEST_ASSERT_ENTITY(entity_at(dying, 1), entity_find(dying, name_hash("blue")));
+}
+
+static void
+test_an_entity_owner_released_after_the_scene_opened_keeps_it_and_runs_no_callback(void) {
+    fixture();
+    completion = (completion_t){0};
+    const entity_t owner_root = load("test_pair");
+    const entity_t owner = entity_find(owner_root, name_hash("red"));
+    const entity_t alive = load("test_solo");
+    arm_callback(alive, owner);
+    scene_step(0);
+    TEST_ASSERT_EQUAL_INT(1, completion.calls); /* the control: a live owner is called back */
+    const entity_t dying = load("test_family");
+    arm_callback(dying, owner);
+    scene_release(owner_root);
+    scene_step(0);
+    TEST_ASSERT_EQUAL_INT(1, completion.calls);
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, scene_state(dying));
+    TEST_ASSERT_ENTITY(entity_at(dying, 1), entity_find(dying, name_hash("red")));
+}
+
+static void
+test_cancelling_a_ready_scene_with_its_callback_pending_suppresses_the_callback(void) {
+    fixture();
+    completion = (completion_t){0};
+    const entity_t called = load("test_pair");
+    arm_callback(called, HANDLE_NONE);
+    scene_step(0);
+    TEST_ASSERT_EQUAL_INT(1, completion.calls); /* the control: left alone, it is called */
+    const entity_t cancelled = load("test_solo");
+    arm_callback(cancelled, HANDLE_NONE);
+    scene_cancel(cancelled);
+    scene_step(0);
+    TEST_ASSERT_EQUAL_INT(1, completion.calls);
+    TEST_ASSERT_TRUE(handle_equal(called, completion.request));
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, scene_state(cancelled));
+    TEST_ASSERT_ENTITY(entity_at(cancelled, 1), entity_find(cancelled, name_hash("blue")));
+}
+
+static void
+test_cancelling_a_failed_request_keeps_its_failure_readable(void) {
+    async_fixture();
+    remove_pack("test_pair");
+    const entity_t root = scene_load_async("test_pair", on_loaded, HANDLE_NONE);
+    poll_until_settled(root);
+    TEST_ASSERT_EQUAL_INT(PENDING_FAILED, scene_state(root));
+    scene_cancel(root);
+    TEST_ASSERT_EQUAL_INT(PENDING_FAILED, scene_state(root));
+    scene_failure_t why;
+    TEST_ASSERT_TRUE(scene_failure(root, &why));
+    TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_NO_PACK, why.asset);
+    TEST_ASSERT_EQUAL_STRING("test_pair", why.what);
+    TEST_ASSERT_EQUAL_INT(1, completion.calls);
+}
+
+static void
+test_cancelling_twice_or_a_released_request_is_harmless(void) {
+    fixture();
+    const entity_t kept = load("test_pair");
+    const entity_t waiting = request_unpolled();
+    scene_cancel(waiting);
+    scene_cancel(waiting);
+    TEST_ASSERT_EQUAL_INT(PENDING_CANCELLED, scene_state(waiting));
+    scene_cancel(kept);
+    scene_cancel(kept);
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, scene_state(kept));
+    TEST_ASSERT_ENTITY(entity_at(kept, 1), entity_find(kept, name_hash("red")));
+    scene_release(waiting);
+    scene_cancel(waiting);
+    scene_release(waiting);
+    TEST_ASSERT_EQUAL_INT(PENDING_NONE, scene_state(waiting));
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, scene_state(kept));
+    TEST_ASSERT_EQUAL_INT(1, loaded_count());
+}
+
+static void
+test_releasing_a_waiting_request_leaves_later_polls_nothing_to_do(void) {
+    async_fixture();
+    const entity_t root = scene_load_async("test_pair", on_loaded, HANDLE_NONE);
+    TEST_ASSERT_EQUAL_INT(PENDING_WAIT, scene_state(root));
+    scene_release(root);
+    for (int i = 0; i < POLL_PASSES_MAX; i++) {
+        poll_once();
+    }
+    remove_pack("test_pair");
+    TEST_ASSERT_EQUAL_INT(PENDING_NONE, scene_state(root));
+    TEST_ASSERT_EQUAL_INT(0, completion.calls);
+    TEST_ASSERT_EQUAL_INT(0, loaded_count());
+}
+
+static void
+test_a_full_world_reclaims_a_failed_request_older_than_the_cancelled_ones(void) {
+    async_fixture();
+    remove_pack("test_pair");
+    const entity_t failed = scene_load_async("test_pair", NULL, HANDLE_NONE);
+    poll_until_settled(failed);
+    TEST_ASSERT_EQUAL_INT(PENDING_FAILED, scene_state(failed));
+    entity_t held[SCENE_ROOTS_MAX];
+    held[0] = failed;
+    for (int i = 1; i < SCENE_ROOTS_MAX; i++) {
+        held[i] = request_unpolled();
+    }
+    scene_cancel(held[SCENE_ROOTS_MAX - 1]);
+    scene_cancel(held[OLDEST]);
+    const entity_t next = request_unpolled();
+    TEST_ASSERT_EQUAL_INT(PENDING_WAIT, scene_state(next));
+    TEST_ASSERT_EQUAL_INT(PENDING_NONE, scene_state(failed));
+    scene_failure_t why;
+    TEST_ASSERT_FALSE(scene_failure(failed, &why));
+    TEST_ASSERT_EQUAL_INT(PENDING_CANCELLED, scene_state(held[SCENE_ROOTS_MAX - 1]));
+    TEST_ASSERT_EQUAL_INT(PENDING_CANCELLED, scene_state(held[OLDEST]));
+}
+
+static void
+test_a_waiting_or_cancelled_root_has_no_columns_nothing_to_find_and_no_failure(void) {
+    fixture();
+    const entity_t waiting = request_unpolled();
+    const entity_t ready = load("test_pair");
+    TEST_ASSERT_TRUE(record_index(waiting) < record_index(ready));
+    scene_failure_t why;
+    for (int round = 0; round < 2; round++) {
+        TEST_ASSERT_NULL(columns_or_null(waiting));
+        TEST_ASSERT_ENTITY_NONE(entity_find(waiting, name_hash("red")));
+        TEST_ASSERT_ENTITY_NONE(entity_next(waiting, ENTITY_NONE));
+        TEST_ASSERT_FALSE(scene_failure(waiting, &why));
+        TEST_ASSERT_FALSE(scene_failure(ready, &why));
+        TEST_ASSERT_ENTITY(entity_at(ready, 1), entity_find(ready, name_hash("red")));
+        scene_cancel(waiting);
+    }
+    TEST_ASSERT_EQUAL_INT(PENDING_CANCELLED, scene_state(waiting));
+}
+
+static void
+test_a_failed_async_scene_holds_nothing_and_completes_once(void) {
+    async_fixture();
+    remove_pack("test_pair");
+    const entity_t root = scene_load_async("test_pair", on_loaded, HANDLE_NONE);
+    poll_until_settled(root);
+    for (int i = 0; i < POLL_PASSES_MAX; i++) {
+        poll_once();
+    }
+    TEST_ASSERT_EQUAL_INT(PENDING_FAILED, scene_state(root));
+    TEST_ASSERT_EQUAL_INT(1, completion.calls);
+    TEST_ASSERT_EQUAL_INT(PENDING_FAILED, completion.state);
+    TEST_ASSERT_ENTITY_NONE(entity_find(root, name_hash("red")));
+    TEST_ASSERT_NULL(columns_or_null(root));
+}
+
+static void
+test_two_requests_settling_in_one_pass_both_complete_in_it(void) {
+    async_fixture();
+    const entity_t first = scene_load_async("test_pair", on_loaded, HANDLE_NONE);
+    const entity_t second = scene_load_async("test_pair", on_loaded, HANDLE_NONE);
+    for (int i = 0; i < POLL_PASSES_MAX && completion.calls == 0; i++) {
+        poll_once();
+    }
+    remove_pack("test_pair");
+    TEST_ASSERT_EQUAL_INT(2, completion.calls);
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, scene_state(first));
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, scene_state(second));
+    const bool in_order = handle_equal(first, completion.settled[0]) && handle_equal(second, completion.settled[1]);
+    const bool reversed = handle_equal(second, completion.settled[0]) && handle_equal(first, completion.settled[1]);
+    TEST_ASSERT_TRUE(in_order || reversed);
+}
+
+static void
+on_loaded_then_request_logged(handle_t request, pending_t state, handle_t owner) {
+    on_loaded(request, state, owner);
+    completion.nested = scene_load_async("test_pair", on_loaded, HANDLE_NONE);
+}
+
+static void
+test_a_request_made_in_a_callback_into_a_lower_record_waits_for_the_next_pass(void) {
+    async_fixture();
+    for (int i = 0; i < SCENE_ROOTS_MAX - 1; i++) {
+        scene_cancel(request_unpolled()); /* spent records below the last one */
+    }
+    const entity_t first = scene_load_async("test_pair", on_loaded_then_request_logged, HANDLE_NONE);
+    for (int i = 0; i < POLL_PASSES_MAX && completion.calls == 0; i++) {
+        poll_once();
+    }
+    TEST_ASSERT_EQUAL_INT(1, completion.calls);
+    TEST_ASSERT_TRUE(record_index(completion.nested) < record_index(first));
+    TEST_ASSERT_EQUAL_INT(PENDING_WAIT, scene_state(completion.nested));
+    poll_until_settled(completion.nested);
+    remove_pack("test_pair");
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, scene_state(completion.nested));
+    TEST_ASSERT_EQUAL_INT(2, completion.calls);
+    TEST_ASSERT_TRUE(handle_equal(completion.nested, completion.settled[1]));
 }
 #endif
 
@@ -5158,6 +5930,26 @@ run_scene_suite(void) {
     RUN_TEST(test_a_scenes_top_entities_hang_under_its_root_which_places_and_hides_them);
     RUN_TEST(test_entity_next_walks_a_subtree_in_load_order);
     RUN_TEST(test_entity_find_searches_below_within_and_never_finds_a_root);
+    RUN_TEST(test_a_stale_root_does_not_release_or_cancel_the_scene_that_took_its_slot);
+    RUN_TEST(test_a_stale_root_reports_neither_state_nor_failure_of_the_scene_that_took_its_slot);
+    RUN_TEST(test_a_full_world_of_ready_and_waiting_scenes_refuses_another_request);
+    RUN_TEST(test_a_full_world_reclaims_the_oldest_spent_request_not_the_lowest_record);
+    RUN_TEST(test_a_reclaimed_records_old_root_is_stale_and_cannot_touch_the_new_request);
+    RUN_TEST(test_a_free_record_is_taken_before_a_spent_one);
+    RUN_TEST(test_pending_owner_alive_is_true_only_for_a_live_entity);
+    RUN_TEST(test_entity_next_yields_every_row_once_in_load_order);
+    RUN_TEST(test_entity_next_within_an_inner_entity_yields_only_its_descendants);
+    RUN_TEST(test_entity_next_refuses_an_after_that_is_the_root_stale_or_another_scenes);
+    RUN_TEST(test_entity_next_and_find_within_a_stale_or_failed_root_yield_nothing);
+    RUN_TEST(test_entity_find_below_an_inner_entity_finds_only_its_descendants);
+    RUN_TEST(test_entity_find_within_stays_in_its_scene_and_needs_a_real_within);
+    RUN_TEST(test_a_roots_turn_and_scale_reach_a_top_entity_and_a_grandchild);
+    RUN_TEST(test_a_world_set_on_a_top_entity_under_a_placed_root_reads_back);
+    RUN_TEST(test_re_enabling_a_root_keeps_a_child_disabled_itself_hidden);
+    RUN_TEST(test_moving_one_scenes_root_leaves_another_scenes_entities_where_they_were);
+    RUN_TEST(test_mutators_refuse_foreign_stale_and_never_issued_handles);
+    RUN_TEST(test_an_entity_that_is_not_a_root_is_no_scene_to_release_or_cancel);
+    RUN_TEST(test_a_failed_scene_holds_nothing_to_find_and_reports_no_failure_unless_failed);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_an_async_scene_opens_on_the_poll_and_completes_once);
     RUN_TEST(test_cancelling_before_ready_frees_the_request_without_a_callback);
@@ -5167,6 +5959,20 @@ run_scene_suite(void) {
     RUN_TEST(test_a_load_requested_inside_a_callback_waits_for_the_next_pass);
     RUN_TEST(test_an_async_load_of_a_missing_pack_fails_with_its_reason);
     RUN_TEST(test_doc_scene_async_example_activates_once_ready);
+    RUN_TEST(test_a_live_entity_owner_does_not_cancel_its_load);
+    RUN_TEST(test_a_load_whose_token_is_dead_at_the_request_is_cancelled_at_once);
+    RUN_TEST(test_a_load_whose_entity_owner_is_dead_at_the_request_is_cancelled_at_once);
+    RUN_TEST(test_a_token_that_dies_after_the_scene_opened_keeps_it_and_runs_no_callback);
+    RUN_TEST(test_an_entity_owner_released_after_the_scene_opened_keeps_it_and_runs_no_callback);
+    RUN_TEST(test_cancelling_a_ready_scene_with_its_callback_pending_suppresses_the_callback);
+    RUN_TEST(test_cancelling_a_failed_request_keeps_its_failure_readable);
+    RUN_TEST(test_cancelling_twice_or_a_released_request_is_harmless);
+    RUN_TEST(test_releasing_a_waiting_request_leaves_later_polls_nothing_to_do);
+    RUN_TEST(test_a_full_world_reclaims_a_failed_request_older_than_the_cancelled_ones);
+    RUN_TEST(test_a_waiting_or_cancelled_root_has_no_columns_nothing_to_find_and_no_failure);
+    RUN_TEST(test_a_failed_async_scene_holds_nothing_and_completes_once);
+    RUN_TEST(test_two_requests_settling_in_one_pass_both_complete_in_it);
+    RUN_TEST(test_a_request_made_in_a_callback_into_a_lower_record_waits_for_the_next_pass);
 #endif
     scene_unload_all();
     (void)scene_set_take(lender);
