@@ -160,10 +160,14 @@ class DeviceModel:
                 axis.text(*(origin + arrow * LABEL_PAST), name, color=colour, fontsize=LABEL_SIZE, ha="center")
 
 
-def legend_handles():
-    """Legend entries for the two axis sets."""
-    return [Line2D([], [], color=CHIP_AXES, label="Chip axes X Y Z"),
-            Line2D([], [], color=SCREEN_AXES, label="Screen axes x y z")]
+def legend_handles(*, chip_axes=True, screen_axes=True):
+    """Legend entries for the axis sets drawn."""
+    handles = []
+    if chip_axes:
+        handles.append(Line2D([], [], color=CHIP_AXES, label="Chip axes X Y Z"))
+    if screen_axes:
+        handles.append(Line2D([], [], color=SCREEN_AXES, label="Screen axes x y z"))
+    return handles
 
 
 def pose_from_down(down, yaw=0.0):
