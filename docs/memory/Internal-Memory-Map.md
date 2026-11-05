@@ -72,6 +72,7 @@ component discovery rule.
 | Gate finds | Result |
 |---|---|
 | Our linked IRAM symbol has no site | Fail |
+| An active attributed function has no code symbol or compiler clone in IRAM | Fail; keep the function out of line with `noinline` |
 | A compiler clone (`.isra.N`, `.constprop.N`, `.part.N`, `.cold`, or their `$` forms) of a symbol-level IRAM placement in ldgen's fragment inputs lands outside IRAM | Fail; owned functions need `IRAM_ATTR` so clones inherit placement. For IDF or third-party code, map the whole object or move the caller-facing entry; linker mappings cannot name clones |
 | Site lacks an adjacent reason or required budget | Fail |
 | Measured bytes differ from the variant's budget, larger or smaller | Fail on pinned IDF; drift note otherwise |

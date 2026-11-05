@@ -103,6 +103,7 @@ class Site:
     archive: str
     entries: list | bool
     uses: list = field(default_factory=list)
+    required: list = field(default_factory=list)
 
     @property
     def label(self):
@@ -245,6 +246,8 @@ def sites(root, owned=None):
             if not re.search(r"[A-Za-z][^.?!]*[.?!]", reason) or len(re.findall(r"[A-Za-z]+", reason)) < 2 or re.search(r"\b(?:TODO|TBD|FIXME)\b", reason, re.I):
                 raise ValueError(f"{name}:{index + 1}: missing IRAM reason beyond budget")
             site = Site(name, index + 1, owner, reason, budget, archive, entries)
+            if kind == "c" and entries and attributed:
+                site.required.extend((obj, symbol, name, index + 1) for obj, symbol in entries)
             found.append(site)
             if path.suffix in {".c", ".h"} and budget_alias:
                 alias_sites[define.group(1)] = site
@@ -254,6 +257,8 @@ def sites(root, owned=None):
             if site and site.archive == archive:
                 site.entries.extend(entry for entry in entries if entry not in site.entries)
                 site.uses.append((name, line))
+                site.required.extend((obj, symbol, name, line) for obj, symbol in entries
+                                     if (obj, symbol, name, line) not in site.required)
     return found
 
 
@@ -330,6 +335,13 @@ def check(placements, inputs, variant, owned, active, idf_commit=None, pinned_co
             if size:
                 errors.append(f"{site.label}: compiled-out site owns {size} B")
         else:
+            for obj, symbol, _, _ in site.required:
+                if not any(not item.literal and item.output.startswith(".iram")
+                           and matches_site(item, Site(site.path, site.line, site.owner, site.reason,
+                                                       site.budget, site.archive, [(obj, symbol)]))
+                           for item in inputs):
+                    errors.append(f"{site.label}: {symbol}: attributed function has no IRAM symbol; "
+                                  "keep it out of line with noinline")
             if not size:
                 errors.append(f"{site.label}: placed nothing in this build")
             if exact:
@@ -420,6 +432,7 @@ def build_sites(root, build):
     alive = preprocessed_lines(build["build"], root, paths)
     enabled = {}
     for site in placements:
+        site.required = [entry for entry in site.required if (root / entry[2], entry[3]) in alive]
         if site.path.endswith(".lf"):
             site.entries = fragment_entries(site, root, build["config"])
             enabled[site.label] = bool(site.entries)

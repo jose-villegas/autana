@@ -71,6 +71,28 @@ class MemoryMapTests(unittest.TestCase):
             self.assertEqual(self.check(sites, [memory.Input("libmain.a", "foo.c.obj", name, size)
                                               for name in ("foo", "bar")], variant=variant)[0][1], size * 2)
 
+    def test_attributed_function_inlined_into_flash(self):
+        sites = self.source("/* Cache latency. IRAM budget: 4 B */\n#define HOT_CODE IRAM_ATTR\nstatic void HOT_CODE foo(void) {}\nstatic void HOT_CODE bar(void) {}")
+        inputs = [memory.Input("libmain.a", "foo.c.obj", "foo", 4),
+                  memory.Input("libmain.a", "foo.c.obj", "caller", 8, output=".flash.text")]
+        with self.assertRaisesRegex(ValueError, "bar: attributed function has no IRAM symbol"):
+            self.check(sites, inputs)
+
+    def test_attributed_symbol_must_be_code_in_iram(self):
+        sites = self.source("/* Cache latency. IRAM budget: 4 B */\nstatic void IRAM_ATTR foo(void) {}")
+        for inputs in ([memory.Input("libmain.a", "foo.c.obj", "foo", 4, output=".flash.text")],
+                       [memory.Input("libmain.a", "foo.c.obj", "foo", 4, literal=True)]):
+            with self.subTest(inputs=inputs), self.assertRaisesRegex(ValueError, "no IRAM symbol"):
+                self.check(sites, inputs)
+
+    def test_compiled_out_alias_use_needs_no_symbol(self):
+        self.source("/* Cache latency. IRAM budget: 4 B */\n#define HOT_CODE IRAM_ATTR\nstatic void HOT_CODE foo(void) {}\nstatic void HOT_CODE bar(void) {}")
+        build = dict(build=self.root, owned=memory.components(self.root), config={})
+        with patch.object(memory, "preprocessed_lines", return_value={(self.root / "launcher/main/foo.c", 3)}):
+            sites, active = memory.build_sites(self.root, build)
+        inputs = [memory.Input("libmain.a", "foo.c.obj", "foo", 4)]
+        self.assertEqual(memory.check(sites, inputs, "release", build["owned"], active)[0][1], 4)
+
     def test_clone_attributed_to_base_site(self):
         sites = self.source("/* Cache latency. IRAM budget: 4 B */\nstatic void IRAM_ATTR foo(void) {}")
         for suffix in ("$isra$0", "$constprop$0", "$part$0", "$cold", "$constprop$0$isra$0",

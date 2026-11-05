@@ -13,15 +13,13 @@
 
 #define CODE_ENTRY_OFFSET(slots)                                                                                       \
     __attribute__((aligned(CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE), patchable_function_entry(slots, slots)))
-/* The draw path's entry functions run from IRAM: on a dense scene, flash
- * fetch stalls cost the drawing core about a tenth of its draw cycles. IRAM
- * has no cache line to place a loop on, so the render sources' cache-line
- * function alignment would only waste IRAM; 4 bytes keeps entries aligned.
+/* Per-triangle setup and drawing run from IRAM to avoid flash fetch stalls
+ * and cache-set placement effects; 4-byte alignment avoids wasting IRAM on
+ * the render sources' cache-line function alignment.
  * IRAM budget: 5630 B */
 #define RENDER_IRAM_ATTR IRAM_ATTR __attribute__((aligned(4)))
-/* The draw path's copies for a view that skips clusters behind drawn depth
- * (render_view_t.skip_hidden), placed with the draw path. IRAM is granted per
- * measured ms saved per KB, the largest free internal block noted with it.
+/* A view that skips clusters behind drawn depth also runs its capped setup
+ * and drawing in IRAM, keeping the skip path free of flash fetch stalls.
  * IRAM budget: 3217 B */
 #define RENDER_SKIP_ATTR RENDER_IRAM_ATTR
 #else
