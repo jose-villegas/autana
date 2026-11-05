@@ -21,7 +21,6 @@ scene_name=render_lab
 scene_ui=1
 scene_target=render_host
 scene_sources="
-main/app/app_arena.c
 main/console/console_words.c
 main/app/app_registry.c
 main/input/touch/gesture.c

@@ -21,7 +21,7 @@ static void
 test_a_missing_curve_paints_a_level_nonblank_frame(void) {
     TEST_ASSERT_TRUE(gfx_init());
     ui_ridge_step(&(input_t){0}, 0);
-    gfx_color_t* frame = memory_alloc(FRAME_PIXELS * sizeof *frame, MEMORY_PSRAM);
+    gfx_color_t* frame = memory_alloc(FRAME_PIXELS * sizeof *frame, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(frame);
     ui_ridge_paint_reference_for_test(frame);
     bool level = true;

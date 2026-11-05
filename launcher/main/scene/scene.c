@@ -90,7 +90,7 @@ scene_allocate_kept(size_t bytes) {
     if (injected_failure()) {
         return NULL;
     }
-    return kept_take != NULL ? kept_take(bytes, _Alignof(max_align_t)) : memory_alloc(bytes, MEMORY_PSRAM);
+    return kept_take != NULL ? kept_take(bytes, _Alignof(max_align_t)) : memory_alloc(bytes, MEMORY_APP);
 }
 
 void
@@ -207,7 +207,7 @@ open_animator(scene_t* scene, const scene_asset_animator_t* row) {
     }
     const char** clips = NULL;
     if (row->clip_count > 0) {
-        clips = scene_allocate(sizeof *clips * row->clip_count, MEMORY_PSRAM);
+        clips = scene_allocate(sizeof *clips * row->clip_count, MEMORY_APP);
         if (clips == NULL) {
             return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, scene->id);
         }

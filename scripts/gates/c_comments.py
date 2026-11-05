@@ -32,7 +32,7 @@ def is_cmake(path):
 @cache
 def excluded():
     """Vendored prefixes and generated files excluded from repository gates."""
-    return ("launcher/components/", "launcher/packages/testkit/unity/", *generated_files())
+    return ("third_party/", "launcher/components/", "launcher/packages/testkit/unity/", *generated_files())
 
 
 # A drawn rule's run: 3+ of `=`, `_`, `#` or `-`; this tree's own

@@ -1,4 +1,8 @@
 /* A run closed and the same scene id opened again from another folder in one process. */
+#ifndef _WIN32
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #include <stdlib.h>
 
 #include "../scene_viewer.c"

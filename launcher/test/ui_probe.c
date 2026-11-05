@@ -244,7 +244,7 @@ ui_probe_observe(const char* label, recti_t r) {
 
 void
 ui_probe_widgets_start(void) {
-    ui_probe_widgets = memory_alloc(UI_PROBE_WIDGETS * sizeof *ui_probe_widgets, MEMORY_PSRAM);
+    ui_probe_widgets = memory_alloc(UI_PROBE_WIDGETS * sizeof *ui_probe_widgets, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(ui_probe_widgets);
     ui_probe_widget_count = 0;
     ui_face_widget_for_test = ui_probe_observe;
