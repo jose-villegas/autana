@@ -43,6 +43,15 @@ fixture(void) {
     return active;
 }
 
+/* The animator's playback state, which the public calls only partly show. */
+static const scene_animator_t*
+animator_state(entity_t entity) {
+    scene_row_t row;
+    const scene_t* columns = scene_entity_row(entity, &row);
+    TEST_ASSERT_NOT_NULL(columns);
+    return &columns->animators[row];
+}
+
 static void
 enter(dispatch_fixture_t* f, const char* key) {
     render_lab_test_enter(&f->saved, key);
@@ -64,31 +73,33 @@ test_scene_console_dispatch_and_repeated_exit_release_heap(void) {
     const size_t psram = memory_free_bytes(MEMORY_APP);
     for (int repeat = 0; repeat < DISPATCH_REPEATS; repeat++) {
         enter(f, "capybara");
-        scene_t* scene = render_lab_test_loaded_scene("capybara");
-        TEST_ASSERT_NOT_NULL(scene);
-        const scene_entity_t subject = scene_find(scene, name_hash("capybara"));
-        TEST_ASSERT_NOT_EQUAL(SCENE_ENTITY_NONE, subject);
-        const scene_animator_t* animator = &scene->animators[subject];
-        const char* playing = scene_animator_clip_name(scene, subject, animator->layer.current.clip);
+        entity_t scene = render_lab_test_loaded_scene("capybara");
+        TEST_ASSERT_FALSE(handle_is_none(scene));
+        const entity_t subject = entity_find(scene, name_hash("capybara"));
+        TEST_ASSERT_FALSE(handle_is_none(subject));
+        const scene_animator_t* animator = animator_state(subject);
+        const char* playing = animator_clip_name(subject, animator->layer.current.clip);
         TEST_ASSERT_EQUAL_STRING("idle", playing);
         TEST_ASSERT_TRUE(app_render_lab.console->handle("clips"));
         char command[ASSET_NAME_MAX + sizeof("clip  ") + RENDER_LAB_BLEND_TEXT_SIZE];
         TEST_ASSERT_TRUE(snprintf(command, sizeof command, "clip gallop %d", DISPATCH_BLEND_MS) >= 0);
         TEST_ASSERT_TRUE(app_render_lab.console->handle(command));
-        TEST_ASSERT_EQUAL_STRING("gallop", scene_animator_clip_name(scene, subject, animator->layer.current.clip));
+        TEST_ASSERT_EQUAL_STRING("gallop", animator_clip_name(subject, animator->layer.current.clip));
         TEST_ASSERT_EQUAL_UINT32(DISPATCH_BLEND_MS, animator->layer.blend_ms);
         leave(f);
         TEST_ASSERT_EQUAL_UINT(internal, memory_free_bytes(MEMORY_INTERNAL));
         TEST_ASSERT_EQUAL_UINT(psram, memory_free_bytes(MEMORY_APP));
     }
     enter(f, "sponza");
-    scene_t* plain = render_lab_test_loaded_scene("sponza");
-    TEST_ASSERT_NOT_NULL(plain);
-    const int animators = plain->animator_count;
+    entity_t plain = render_lab_test_loaded_scene("sponza");
+    TEST_ASSERT_FALSE(handle_is_none(plain));
+    const scene_t* plain_columns = scene_columns(plain);
+    TEST_ASSERT_NOT_NULL(plain_columns);
+    const int animators = plain_columns->animator_count;
     const size_t free_before = memory_free_bytes(MEMORY_APP);
     TEST_ASSERT_FALSE(app_render_lab.console->handle("clip gallop 0"));
     TEST_ASSERT_FALSE(app_render_lab.console->handle("clips"));
-    TEST_ASSERT_EQUAL_INT(animators, plain->animator_count);
+    TEST_ASSERT_EQUAL_INT(animators, plain_columns->animator_count);
     TEST_ASSERT_EQUAL_UINT(free_before, memory_free_bytes(MEMORY_APP));
 }
 
@@ -148,21 +159,21 @@ test_boot_clip_opening_touch_does_not_select_overlay_row(void) {
         TEST_ASSERT_TRUE(ui_probe_list(&rows, &scroll));
         TEST_ASSERT_EQUAL_INT(UI_MARGIN, rows.y);
         TEST_ASSERT_TRUE(idle.x >= rows.x && idle.x < recti_right(rows));
-        scene_t* scene = render_lab_test_loaded_scene("capybara");
-        const scene_entity_t subject = scene_find(scene, name_hash("capybara"));
-        const scene_animator_t* animator = &scene->animators[subject];
-        TEST_ASSERT_EQUAL_STRING_MESSAGE("idle", scene_animator_clip_name(scene, subject, animator->layer.current.clip),
+        entity_t scene = render_lab_test_loaded_scene("capybara");
+        const entity_t subject = entity_find(scene, name_hash("capybara"));
+        const scene_animator_t* animator = animator_state(subject);
+        TEST_ASSERT_EQUAL_STRING_MESSAGE("idle", animator_clip_name(subject, animator->layer.current.clip),
                                          "opening release must not play the overlay row under the finger");
         /* The finger rested on another clip's row; which one is the menu's layout. */
         const int covered_row = (idle.y - rows.y + scroll) / UI_ROW_HEIGHT;
-        TEST_ASSERT_TRUE(covered_row >= 0 && covered_row < scene_animator_clip_count(scene, subject));
+        TEST_ASSERT_TRUE(covered_row >= 0 && covered_row < animator_clip_count(subject));
         TEST_ASSERT_NOT_EQUAL_INT(animator->layer.current.clip, covered_row);
         for (int frame = 0; frame < UI_DROPDOWN_CLOSE_FRAMES; frame++) {
             render_lab_test_frame(false, NULL);
             TEST_ASSERT_TRUE(ui_probe_list(&rows, &scroll));
         }
         const int item = 1;
-        const char* expected = scene_animator_clip_name(scene, subject, item);
+        const char* expected = animator_clip_name(subject, item);
         touch = (input_t){.down = true, .pressed = true};
         const vec2i_t item_pixel =
             affine2x_map_pixel(&transform, (vec2i_t){rows.x + (rows.w / 2),
@@ -176,7 +187,7 @@ test_boot_clip_opening_touch_does_not_select_overlay_row(void) {
         touch.down = false;
         touch.released = true;
         render_lab_test_frame(false, &touch);
-        TEST_ASSERT_EQUAL_STRING(expected, scene_animator_clip_name(scene, subject, animator->layer.current.clip));
+        TEST_ASSERT_EQUAL_STRING(expected, animator_clip_name(subject, animator->layer.current.clip));
         leave(f);
     }
 }

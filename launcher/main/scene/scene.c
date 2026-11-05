@@ -1,5 +1,8 @@
 #include "scene/scene.h"
 
+#include "scene/light/light.h"
+#include "scene/renderer/renderer.h"
+
 #include <assert.h>
 #include <math.h>
 #include <stdalign.h>
@@ -9,18 +12,18 @@
 
 #include "asset/asset_store.h"
 #include "core/memory.h"
+#include "esp_log.h"
 #include "gfx/target/gfx_color.h"
 #include "image/pixel/rgb565.h"
 #include "math/scalar/mathi.h"
 #include "render/context/render_context.h"
 #include "scene/scene_internal.h"
 
-#define LOADED_MAX 8
-
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
 int scene_fail_allocation_after = -1;
 #endif
-static scene_t* loaded[LOADED_MAX];
+static scene_t* loaded[SCENE_ROOTS_MAX];
+static uint64_t requests; /* scene_root_t.order of the latest request */
 static int loaded_count;
 static memory_take_fn kept_take;
 
@@ -161,6 +164,14 @@ scene_failure_make(scene_status_t status, asset_status_t asset, const char* what
     return out;
 }
 
+bool
+scene_report(scene_failure_t* why, scene_status_t status, asset_status_t asset, const char* what) {
+    if (why != NULL) {
+        *why = scene_failure_make(status, asset, what);
+    }
+    return status == SCENE_OK;
+}
+
 /* Opens every renderer's mesh; stops at the first that fails. */
 static scene_failure_t
 open_meshes(scene_t* scene, const asset_pack_t* pack) {
@@ -183,11 +194,11 @@ open_meshes(scene_t* scene, const asset_pack_t* pack) {
             return scene_failure_make(SCENE_ERR_ASSET, status, mesh);
         }
     }
-    return scene_failure_make(SCENE_OK, ASSET_OK, scene->id);
+    return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
 }
 
 static const char*
-skeleton_for(const scene_t* scene, scene_entity_t entity) {
+skeleton_for(const scene_t* scene, scene_row_t entity) {
     for (int i = 0; i < scene->asset.skinned_renderer_count; i++) {
         if (scene->asset.skinned_renderers[i].entity == entity) {
             return scene->asset.skinned_renderers[i].skeleton;
@@ -199,33 +210,33 @@ skeleton_for(const scene_t* scene, scene_entity_t entity) {
 static scene_failure_t
 open_animator(scene_t* scene, const scene_asset_animator_t* row) {
     if (row->clip_count > ANIM_LAYER_CLIP_NONE) {
-        return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_BOUNDS, scene->id);
+        return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_BOUNDS, scene->root->id);
     }
     const char* skeleton = skeleton_for(scene, row->entity);
     if (row->clip_count == 0 && skeleton == NULL) {
-        return scene_failure_make(SCENE_OK, ASSET_OK, scene->id);
+        return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
     }
     const char** clips = NULL;
     if (row->clip_count > 0) {
         clips = scene_allocate(sizeof *clips * row->clip_count, MEMORY_APP);
         if (clips == NULL) {
-            return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, scene->id);
+            return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, scene->root->id);
         }
         for (int c = 0; c < row->clip_count; c++) {
             clips[c] = scene->asset.clips[row->first_clip + c];
         }
     }
     scene_failure_t why;
-    const bool bound = scene_animator_set_clips(scene, row->entity, skeleton, clips, row->clip_count, &why);
+    const bool bound = animator_set_clips(scene_row_entity(scene, row->entity), skeleton, clips, row->clip_count, &why);
     memory_free(clips);
     if (!bound) {
         return why;
     }
     scene->animators[row->entity].wrap = (anim_wrap_t)row->wrap;
     if (row->default_clip != SCENE_ASSET_DEFAULT_CLIP_NONE) {
-        (void)scene_animator_play(scene, row->entity, row->default_clip, 0);
+        (void)animator_play(scene_row_entity(scene, row->entity), row->default_clip, 0);
     }
-    return scene_failure_make(SCENE_OK, ASSET_OK, scene->id);
+    return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
 }
 
 static scene_failure_t
@@ -236,7 +247,7 @@ open_animators(scene_t* scene) {
             return why;
         }
     }
-    return scene_failure_make(SCENE_OK, ASSET_OK, scene->id);
+    return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
 }
 
 static scene_failure_t
@@ -245,26 +256,26 @@ open_skins(scene_t* scene) {
         const scene_asset_skinned_renderer_t* row = &scene->asset.skinned_renderers[i];
         scene_failure_t why;
         if (scene->animators[row->entity].storage == NULL
-            && !scene_animator_set_clips(scene, row->entity, row->skeleton, NULL, 0, &why)) {
+            && !animator_set_clips(scene_row_entity(scene, row->entity), row->skeleton, NULL, 0, &why)) {
             return why;
         }
-        if (!scene_renderer_set_skin(scene, row->entity, row->skin, &why)) {
+        if (!renderer_set_skin(scene_row_entity(scene, row->entity), row->skin, &why)) {
             return why;
         }
     }
-    return scene_failure_make(SCENE_OK, ASSET_OK, scene->id);
+    return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
 }
 
 static scene_failure_t
 open_lights(scene_t* scene) {
     for (int i = 0; i < scene->asset.light_count; i++) {
         const scene_asset_light_t* row = &scene->asset.lights[i];
-        if (!scene_light_set_color(scene, row->entity, row->color)
-            || !scene_light_set_intensity(scene, row->entity, row->intensity)) {
+        if (!light_set_color(scene_row_entity(scene, row->entity), row->color)
+            || !light_set_intensity(scene_row_entity(scene, row->entity), row->intensity)) {
             return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, scene->asset.names[row->entity].name);
         }
     }
-    return scene_failure_make(SCENE_OK, ASSET_OK, scene->id);
+    return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
 }
 
 static bool
@@ -290,7 +301,7 @@ open_transforms(scene_t* scene) {
             return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, scene->asset.names[e].name);
         }
     }
-    return scene_failure_make(SCENE_OK, ASSET_OK, scene->id);
+    return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
 }
 
 /* The pack's scene entry `id`, opened. */
@@ -310,32 +321,36 @@ open_asset(const asset_pack_t* pack, const char* id, scene_asset_t* asset) {
     return scene_failure_make(status == ASSET_OK ? SCENE_OK : SCENE_ERR_ASSET, status, id);
 }
 
-static scene_t*
-fail(scene_failure_t* why, scene_failure_t what) {
-    if (why != NULL) {
-        *why = what;
-    }
-    return NULL;
+static void
+free_columns(scene_t* scene) {
+    scene_animation_release(scene);
+    memory_free(scene->light_transfer);
+    scene_hierarchy_release(scene);
+    scene_free_kept(scene->resident);
+    scene_free_kept(scene);
 }
 
-scene_t*
-scene_load_from(const asset_pack_t* pack, const char* id, scene_failure_t* why) {
+/* Opens the record's scene from `pack`: its columns, rows and components. */
+static scene_failure_t
+open_scene(scene_root_t* record, const asset_pack_t* pack) {
     scene_asset_t asset;
-    const scene_failure_t opened = open_asset(pack, id, &asset);
+    const scene_failure_t opened = open_asset(pack, record->id, &asset);
     if (opened.status != SCENE_OK) {
-        return fail(why, opened);
+        return opened;
     }
-    if (loaded_count == LOADED_MAX) {
-        return fail(why, scene_failure_make(SCENE_ERR_FULL, ASSET_OK, id));
+    if (!scene_world_issue_rows(record, asset.entity_count)) {
+        return scene_failure_make(SCENE_ERR_FULL, ASSET_OK, record->id);
     }
     scene_t* scene = instantiate(&asset);
     if (scene == NULL) {
-        return fail(why, scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id));
+        return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, record->id);
     }
     scene->pack = pack;
-    copy_id(scene->id, id);
-    scene_failure_t done =
-        scene_hierarchy_open(scene) ? open_meshes(scene, pack) : scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, id);
+    scene->root = record;
+    record->scene = scene;
+    scene_hierarchy_update_active(scene, SCENE_ROW_ROOT);
+    scene_failure_t done = scene_hierarchy_open(scene) ? open_meshes(scene, pack)
+                                                       : scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, record->id);
     if (done.status == SCENE_OK) {
         done = scene_mesh_make_resident(scene);
     }
@@ -351,66 +366,209 @@ scene_load_from(const asset_pack_t* pack, const char* id, scene_failure_t* why) 
     if (done.status == SCENE_OK) {
         done = open_skins(scene);
     }
-    if (why != NULL) {
-        *why = done;
-    }
     if (done.status != SCENE_OK) {
-        scene_animation_release(scene);
-        memory_free(scene->light_transfer);
-        scene_hierarchy_release(scene);
-        scene_free_kept(scene->resident);
-        scene_free_kept(scene);
-        return NULL;
+        record->scene = NULL;
+        free_columns(scene);
+        return done;
     }
     loaded[loaded_count++] = scene;
-    return scene;
+    return done;
 }
 
-scene_t*
-scene_load(const char* id, scene_failure_t* why) {
-    const handle_t load = asset_store_load(id);
-    const asset_pack_t* pack = asset_store_loaded(load);
-    scene_t* scene = scene_load_from(pack, id, why);
+static void
+settle(scene_root_t* record, scene_failure_t done) {
+    record->failure = done;
+    record->state = done.status == SCENE_OK ? PENDING_READY : PENDING_FAILED;
+    if (done.status != SCENE_OK) {
+        record->rows = 0;
+        asset_store_release(record->load);
+        record->load = HANDLE_NONE;
+        ESP_LOGW("scene", "%s did not load: status %d, asset %d, about %s", record->id, (int)done.status,
+                 (int)done.asset, done.what);
+    }
+}
+
+static void
+forget(scene_root_t* record) {
+    scene_t* scene = record->scene;
     if (scene != NULL) {
-        scene->load = load;
-    } else {
-        asset_store_release(load);
-    }
-    return scene;
-}
-
-void
-scene_unload(scene_t* scene) {
-    if (scene == NULL) {
-        return;
-    }
-    for (int i = 0; i < loaded_count; i++) {
-        if (loaded[i] != scene) {
-            continue;
-        }
         scene_draw_forget(scene);
-        asset_store_release(scene->load);
-        loaded_count--;
-        memmove(&loaded[i], &loaded[i + 1], sizeof loaded[0] * (size_t)(loaded_count - i));
-        loaded[loaded_count] = NULL;
-        scene_animation_release(scene);
-        memory_free(scene->light_transfer);
-        scene_hierarchy_release(scene);
-        scene_free_kept(scene->resident);
-        scene_free_kept(scene);
+        for (int i = 0; i < loaded_count; i++) {
+            if (loaded[i] == scene) {
+                loaded_count--;
+                memmove(&loaded[i], &loaded[i + 1], sizeof loaded[0] * (size_t)(loaded_count - i));
+                loaded[loaded_count] = NULL;
+            }
+        }
+        free_columns(scene);
         if (loaded_count == 0) {
             /* Nothing left to draw: drop the scratch, so whoever lent it can
              * take it back. */
             render_context_drop_scratch(render_context_main());
         }
+    }
+    asset_store_release(record->load);
+    *record = (scene_root_t){0};
+}
+
+/* A free record, else the oldest cancelled or failed one, reclaimed; NULL
+ * when every one holds a scene. */
+static scene_root_t*
+claim(const char* id) {
+    scene_root_t* found = NULL;
+    for (int i = 0; i < SCENE_ROOTS_MAX; i++) {
+        scene_root_t* record = &scene_roots[i];
+        if (handle_is_none(record->root)) {
+            found = record;
+            break;
+        }
+        const bool spent = record->state == PENDING_FAILED || record->state == PENDING_CANCELLED;
+        if (spent && (found == NULL || record->order < found->order)) {
+            found = record;
+        }
+    }
+    if (found == NULL) {
+        ESP_LOGW("scene", "%s not requested: %d scenes are held", id, SCENE_ROOTS_MAX);
+        return NULL;
+    }
+    forget(found);
+    if (!scene_world_issue_root(found)) {
+        ESP_LOGW("scene", "%s not requested: no entity slot left", id);
+        return NULL;
+    }
+    copy_id(found->id, id);
+    found->state = PENDING_WAIT;
+    found->order = ++requests;
+    found->local = transformf_identity();
+    found->world = mat4f_identity();
+    found->flags = SCENE_FLAG_ENABLED | SCENE_FLAG_ACTIVE;
+    return found;
+}
+
+entity_t
+scene_load_from(const asset_pack_t* pack, const char* id) {
+    scene_root_t* record = claim(id);
+    if (record == NULL) {
+        return ENTITY_NONE;
+    }
+    settle(record, open_scene(record, pack));
+    return record->root;
+}
+
+entity_t
+scene_load(const char* id) {
+    scene_root_t* record = claim(id);
+    if (record == NULL) {
+        return ENTITY_NONE;
+    }
+    record->load = asset_store_load(id);
+    settle(record, open_scene(record, asset_store_loaded(record->load)));
+    return record->root;
+}
+
+/* The record whose root is `root`, or NULL. */
+static scene_root_t*
+record_of(entity_t root) {
+    scene_row_t row;
+    scene_root_t* record = scene_entity_lookup(root, &row);
+    return record != NULL && row == SCENE_ROW_ROOT ? record : NULL;
+}
+
+entity_t
+scene_load_async(const char* id, pending_fn done, handle_t owner) {
+    scene_root_t* record = claim(id);
+    if (record == NULL) {
+        return ENTITY_NONE;
+    }
+    record->async = true;
+    record->done = done;
+    record->owner = owner;
+    /* The root owns its pack request: releasing the root cancels it. */
+    record->load = asset_store_load_async(id, NULL, record->root);
+    if (!pending_owner_alive(owner)) {
+        scene_cancel(record->root);
+    }
+    return record->root;
+}
+
+pending_t
+scene_state(entity_t root) {
+    scene_row_t row;
+    const scene_root_t* record = scene_entity_peek(root, &row);
+    return record == NULL || row != SCENE_ROW_ROOT ? PENDING_NONE : record->state;
+}
+
+bool
+scene_failure(entity_t root, scene_failure_t* why) {
+    const scene_root_t* record = record_of(root);
+    if (record == NULL || record->state != PENDING_FAILED) {
+        return false;
+    }
+    *why = record->failure;
+    return true;
+}
+
+void
+scene_cancel(entity_t root) {
+    scene_root_t* record = record_of(root);
+    if (record == NULL) {
         return;
+    }
+    record->done = NULL;
+    if (record->state == PENDING_WAIT) {
+        asset_store_release(record->load);
+        record->load = HANDLE_NONE;
+        record->state = PENDING_CANCELLED;
+    }
+}
+
+void
+scene_release(entity_t root) {
+    scene_root_t* record = record_of(root);
+    if (record != NULL) {
+        forget(record);
+    }
+}
+
+static void
+step_request(scene_root_t* record) {
+    if (!pending_owner_alive(record->owner)) {
+        scene_cancel(record->root);
+        return;
+    }
+    if (record->state == PENDING_WAIT) {
+        const pending_t pack = asset_store_state(record->load);
+        if (pack == PENDING_READY) {
+            settle(record, open_scene(record, asset_store_loaded(record->load)));
+        } else if (pack != PENDING_WAIT) {
+            settle(record, scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_NO_PACK, record->id));
+        }
+    }
+    if ((record->state == PENDING_READY || record->state == PENDING_FAILED) && record->done != NULL) {
+        const pending_fn done = record->done;
+        record->done = NULL;
+        done(record->root, record->state, record->owner);
+    }
+}
+
+void
+scene_step(uint32_t dt_ms) {
+    (void)dt_ms;
+    /* Requests made inside a callback wait for the next pass. */
+    const uint64_t cutoff = requests;
+    for (int i = 0; i < SCENE_ROOTS_MAX; i++) {
+        scene_root_t* record = &scene_roots[i];
+        if (record->async && record->order <= cutoff && record->state != PENDING_CANCELLED
+            && !handle_is_none(record->root)) {
+            step_request(record);
+        }
     }
 }
 
 void
 scene_unload_all(void) {
-    while (loaded_count > 0) {
-        scene_unload(loaded[loaded_count - 1]);
+    for (int i = 0; i < SCENE_ROOTS_MAX; i++) {
+        forget(&scene_roots[i]);
     }
     scene_draw_release();
 }
@@ -425,30 +583,9 @@ scene_loaded_at(int index) {
     return loaded[index];
 }
 
-int
-scene_entity_count(const scene_t* scene) {
-    return scene->asset.entity_count;
-}
-
-const char*
-scene_entity_name(const scene_t* scene, scene_entity_t entity) {
-    assert(entity < scene->asset.entity_count);
-    return scene->asset.names[entity].name;
-}
-
-scene_entity_t
-scene_find(const scene_t* scene, name_hash_t name) {
-    for (int i = 0; i < scene->asset.entity_count; i++) {
-        if (scene->asset.names[i].hash == name) {
-            return (scene_entity_t)i;
-        }
-    }
-    return SCENE_ENTITY_NONE;
-}
-
 /* The index of the entity's renderer, or -1 when it draws nothing. */
 int
-scene_renderer_index(const scene_t* scene, scene_entity_t entity) {
+scene_renderer_index(const scene_t* scene, scene_row_t entity) {
     assert(entity < scene->asset.entity_count);
     for (int i = 0; i < scene->renderer_count; i++) {
         if (scene->renderers[i].entity == entity) {
@@ -456,132 +593,6 @@ scene_renderer_index(const scene_t* scene, scene_entity_t entity) {
         }
     }
     return -1;
-}
-
-const char*
-scene_entity_mesh_id(const scene_t* scene, scene_entity_t entity) {
-    const int i = scene_renderer_index(scene, entity);
-    if (i < 0) {
-        return NULL;
-    }
-    return i < scene->asset.renderer_count ? scene->asset.renderers[i].mesh
-                                           : scene->asset.skinned_renderers[i - scene->asset.renderer_count].mesh;
-}
-
-const r3d_lit_mesh_t*
-scene_entity_mesh(const scene_t* scene, scene_entity_t entity) {
-    const int i = scene_renderer_index(scene, entity);
-    return i < 0 ? NULL : &scene->renderers[i].mesh;
-}
-
-bool
-scene_renderer_set_mesh(scene_t* scene, scene_entity_t entity, const r3d_lit_mesh_t* mesh) {
-    const int i = scene_renderer_index(scene, entity);
-    if (i < 0 || i >= scene->asset.renderer_count) {
-        return false;
-    }
-    scene->renderers[i].mesh = *mesh;
-    scene_renderer_bound(&scene->renderers[i]);
-    return true;
-}
-
-int
-scene_camera_index(const scene_t* scene, name_hash_t camera) {
-    for (int i = 0; i < scene->asset.camera_count; i++) {
-        if (camera == SCENE_CAMERA_FIRST || scene->asset.names[scene->cameras[i].entity].hash == camera) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-const camera_t*
-scene_camera_lens(const scene_t* scene, name_hash_t camera) {
-    const int index = scene_camera_index(scene, camera);
-    return index < 0 ? NULL : &scene->cameras[index].lens;
-}
-
-static camera_t*
-camera_by_entity(scene_t* scene, scene_entity_t entity) {
-    if (scene != NULL) {
-        for (int i = 0; i < scene->asset.camera_count; i++) {
-            if (scene->cameras[i].entity == entity) {
-                return &scene->cameras[i].lens;
-            }
-        }
-    }
-    return NULL;
-}
-
-bool
-scene_camera_set_present(scene_t* scene, scene_entity_t camera, camera_present_t present) {
-    camera_t* found = camera_by_entity(scene, camera);
-    if (found == NULL || present < CAMERA_PRESENT_NEAREST || present > CAMERA_PRESENT_DOUBLE) {
-        return false;
-    }
-    found->present = present;
-    return true;
-}
-
-bool
-scene_camera_set_shift(scene_t* scene, scene_entity_t camera, vec2f_t shift) {
-    camera_t* found = camera_by_entity(scene, camera);
-    if (found == NULL || !isfinite(shift.x) || !isfinite(shift.y)) {
-        return false;
-    }
-    found->shift = shift;
-    return true;
-}
-
-bool
-scene_camera_set_small_fill(scene_t* scene, scene_entity_t camera, small_fill_t fill) {
-    camera_t* found = camera_by_entity(scene, camera);
-    if (found == NULL || fill.ceiling > SMALL_FILL_CEILING_MAX || fill.style >= SMALL_FILL_STYLE_COUNT) {
-        return false;
-    }
-    found->small_fill = fill;
-    return true;
-}
-
-bool
-scene_camera_set_skip_hidden(scene_t* scene, scene_entity_t camera, bool skip) {
-    camera_t* found = camera_by_entity(scene, camera);
-    if (found == NULL) {
-        return false;
-    }
-    found->skip_hidden = skip;
-    return true;
-}
-
-transformf_t
-scene_entity_local(const scene_t* scene, scene_entity_t entity) {
-    assert(entity < scene->asset.entity_count);
-    return scene->locals[entity];
-}
-
-void
-scene_entity_set_local(scene_t* scene, scene_entity_t entity, transformf_t local) {
-    assert(entity < scene->asset.entity_count);
-    /* A parent scales evenly, so every world below it is an exact TRS; the
-     * loader and the importer keep content so. */
-    assert(scene->world_slots[entity] == SCENE_WORLD_SLOT_NONE || transformf_scale_is_even(&local));
-    scene->locals[entity] = local;
-    scene->flags[entity] |= SCENE_FLAG_CHANGED;
-}
-
-bool
-scene_entity_enabled(const scene_t* scene, scene_entity_t entity) {
-    assert(entity < scene->asset.entity_count);
-    return (scene->flags[entity] & SCENE_FLAG_ENABLED) != 0;
-}
-
-void
-scene_entity_set_enabled(scene_t* scene, scene_entity_t entity, bool enabled) {
-    assert(entity < scene->asset.entity_count);
-    scene->flags[entity] = enabled ? (uint8_t)(scene->flags[entity] | SCENE_FLAG_ENABLED)
-                                   : (uint8_t)(scene->flags[entity] & ~SCENE_FLAG_ENABLED);
-    scene->flags[entity] |= SCENE_FLAG_CHANGED;
-    scene_hierarchy_update_active(scene, entity);
 }
 
 bool

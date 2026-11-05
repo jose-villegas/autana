@@ -1,30 +1,11 @@
-/* Scene lights own shared transfer tables and each lit skin's color and normal-palette block. */
+/* light: directional lights and the scene's shared light transfer table. */
+#include "scene/light/light.h"
+
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
 #include "core/memory.h"
 #include "scene/scene_internal.h"
-
-bool
-scene_skin_light_allocate(scene_skinned_renderer_t* skin) {
-    size_t end = 0;
-
-    struct {
-        size_t colors, normals;
-    } layout;
-
-    SCENE_STORAGE_RESERVE(layout, end, colors, uint8_t, skin->bind.vertex_count* R3D_SKIN_LIGHT_CHANNELS);
-    SCENE_STORAGE_RESERVE(layout, end, normals, mat3f_t, skin->skin.joint_count);
-    void* storage = scene_allocate(end, MEMORY_INTERNAL);
-    if (storage == NULL) {
-        return false;
-    }
-    memset(storage, 0, end);
-    skin->light_storage = storage;
-    skin->colors = (uint8_t (*)[R3D_SKIN_LIGHT_CHANNELS])(void*)((uint8_t*)storage + layout.colors);
-    skin->normal_palette = (mat3f_t*)(void*)((uint8_t*)storage + layout.normals);
-    return true;
-}
 
 r3d_skin_light_transfer_t*
 scene_light_transfer_take(const scene_t* scene) {
@@ -77,10 +58,9 @@ scene_lights_allocate(scene_t* scene) {
 }
 
 static scene_light_t*
-light_attach(scene_t* scene, scene_entity_t entity) {
-    /* Its direction is its own rotation, so a light is a root. */
-    if (scene == NULL || entity >= scene->asset.entity_count
-        || scene_entity_parent(scene, entity) != SCENE_ENTITY_NONE) {
+light_attach(scene_t* scene, scene_row_t entity) {
+    /* Its direction is its own rotation under the scene root, so a light has no other parent. */
+    if (scene_row_parent(scene, entity) != SCENE_ROW_NONE) {
         return NULL;
     }
     scene_light_t* light = &scene->lights[entity];
@@ -117,59 +97,61 @@ scene_light_color_fits(vec3f_t linear_rgb) {
 }
 
 bool
-scene_light_set_color(scene_t* scene, scene_entity_t entity, vec3f_t linear_rgb) {
+light_set_color(entity_t entity, vec3f_t linear_rgb) {
+    scene_row_t row;
+    scene_t* scene = scene_entity_row(entity, &row);
+    if (scene == NULL) {
+        return false;
+    }
     if (!scene_light_color_fits(linear_rgb)) {
         return false;
     }
-    scene_light_t* light = light_attach(scene, entity);
+    scene_light_t* light = light_attach(scene, row);
     if (light == NULL) {
         return false;
     }
     light->color = linear_rgb;
-    scene->flags[entity] |= SCENE_FLAG_SKIN_DIRTY;
+    scene->flags[row] |= SCENE_FLAG_SKIN_DIRTY;
     return true;
 }
 
 bool
-scene_light_set_intensity(scene_t* scene, scene_entity_t entity, float intensity) {
+light_set_intensity(entity_t entity, float intensity) {
+    scene_row_t row;
+    scene_t* scene = scene_entity_row(entity, &row);
+    if (scene == NULL) {
+        return false;
+    }
     if (!isfinite(intensity) || intensity < 0.0F) {
         return false;
     }
-    scene_light_t* light = light_attach(scene, entity);
+    scene_light_t* light = light_attach(scene, row);
     if (light == NULL) {
         return false;
     }
     light->intensity = intensity;
-    scene->flags[entity] |= SCENE_FLAG_SKIN_DIRTY;
+    scene->flags[row] |= SCENE_FLAG_SKIN_DIRTY;
     return true;
 }
 
 vec3f_t
-scene_light_color(const scene_t* scene, scene_entity_t entity) {
-    return scene == NULL || entity >= scene->asset.entity_count || scene->lights[entity].kind == SCENE_LIGHT_NONE
-               ? vec3f_zero()
-               : scene->lights[entity].color;
+light_color(entity_t entity) {
+    scene_row_t row;
+    const scene_t* scene = scene_entity_row(entity, &row);
+    if (scene == NULL) {
+        return vec3f_zero();
+    }
+    return scene->lights[row].kind == SCENE_LIGHT_NONE ? vec3f_zero() : scene->lights[row].color;
 }
 
 float
-scene_light_intensity(const scene_t* scene, scene_entity_t entity) {
-    return scene == NULL || entity >= scene->asset.entity_count || scene->lights[entity].kind == SCENE_LIGHT_NONE
-               ? 0.0F
-               : scene->lights[entity].intensity;
-}
-
-void
-scene_skin_light_prepare(scene_t* scene, scene_entity_t entity) {
-    if (scene->light_transfer == NULL) {
-        return;
+light_intensity(entity_t entity) {
+    scene_row_t row;
+    const scene_t* scene = scene_entity_row(entity, &row);
+    if (scene == NULL) {
+        return 0.0F;
     }
-    scene_skinned_renderer_t* skin = &scene->skinned_renderers[entity];
-    skin->lighting_valid = r3d_skin_normal_palette(
-        skin->palette, skin->skin.joint_count, transformf_compute_matrix(&scene->locals[entity]), skin->normal_palette);
-    if (!skin->lighting_valid) {
-        memset(skin->colors, 0, (size_t)skin->bind.vertex_count * R3D_SKIN_LIGHT_CHANNELS);
-        (void)fprintf(stderr, "scene: %s: %s\n", SCENE_LIGHT_FAILURE_NORMAL, scene->asset.names[entity].name);
-    }
+    return scene->lights[row].kind == SCENE_LIGHT_NONE ? 0.0F : scene->lights[row].intensity;
 }
 
 void
@@ -180,13 +162,13 @@ scene_lights_prepare(scene_t* scene) {
     r3d_skin_lights_t world = {.ambient = vec3f_scale(scene->ambient_color, scene->ambient_intensity),
                                .transfer = scene->light_transfer};
     for (int i = 0; i < scene->staged_count; i++) {
-        const scene_entity_t l = scene->staged[i];
+        const scene_row_t l = scene->staged[i];
         const scene_light_t* light = &scene->lights[l];
         if (light->kind == SCENE_LIGHT_NONE || !(scene->flags[l] & SCENE_FLAG_ACTIVE)) {
             continue;
         }
         const int at = world.count++;
-        world.direction[at] = quatf_rotate(scene->locals[l].rotation, SCENE_LIGHT_AXIS);
+        world.direction[at] = quatf_rotate(scene_row_world(scene->root, l).rotation, SCENE_LIGHT_AXIS);
         world.color[at] = vec3f_scale(light->color, light->intensity);
     }
     world.table = scene->light_table;
@@ -197,54 +179,4 @@ scene_lights_prepare(scene_t* scene) {
         world.table_scale = scene->world_lights.table_scale;
     }
     scene->world_lights = world;
-}
-
-bool
-scene_skin_light_set_mode(scene_t* scene, scene_entity_t entity, scene_skin_light_mode_t mode) {
-    if (scene == NULL || entity >= scene->asset.entity_count || mode < SCENE_SKIN_LIGHT_DIRECT
-        || mode > SCENE_SKIN_LIGHT_TABLE) {
-        return false;
-    }
-    return scene_skin_light_apply_mode(scene, entity, &scene->skinned_renderers[entity], mode);
-}
-
-bool
-scene_skin_light_apply_mode(scene_t* scene, scene_entity_t entity, scene_skinned_renderer_t* skin,
-                            scene_skin_light_mode_t mode) {
-    if (skin->internal_storage == NULL) {
-        return false;
-    }
-    if (skin->light_mode == mode) {
-        return true;
-    }
-    if (mode == SCENE_SKIN_LIGHT_TABLE && scene->light_table == NULL) {
-        r3d_skin_light_table_t* table = scene_allocate(sizeof *table, MEMORY_INTERNAL);
-        if (table == NULL) {
-            return false;
-        }
-        scene->light_table = table;
-        scene->light_table_dirty = true;
-    }
-    if (skin->light_mode == SCENE_SKIN_LIGHT_TABLE) {
-        scene_skin_light_table_release(scene, entity);
-    }
-    if (mode == SCENE_SKIN_LIGHT_TABLE) {
-        scene->light_table_users++;
-    }
-    skin->light_mode = mode;
-    scene->flags[entity] |= SCENE_FLAG_SKIN_DIRTY;
-    return true;
-}
-
-void
-scene_skin_light_table_release(scene_t* scene, scene_entity_t entity) {
-    if (scene->skinned_renderers[entity].light_mode != SCENE_SKIN_LIGHT_TABLE) {
-        return;
-    }
-    scene->light_table_users--;
-    if (scene->light_table_users == 0) {
-        memory_free(scene->light_table);
-        scene->light_table = NULL;
-        scene->world_lights.table = NULL;
-    }
 }

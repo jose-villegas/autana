@@ -11,9 +11,18 @@
 #include "core/checkpoint.h"
 #include "core/handle.h"
 #include "core/memory.h"
+#include "core/pending.h"
+#include "hash/name_hash.h"
 #include "math/linear/mat3f.h"
+#include "render/r3d_instance.h"
 #include "render/skin/r3d_skin_light.h"
+#include "scene/animator/animator.h"
+#include "scene/camera/camera.h"
+#include "scene/entity/entity.h"
 #include "scene/scene.h"
+#include "scene/skin/skin.h"
+
+typedef struct scene scene_t;
 #include "scene/scene_conventions.h"
 #include "scene/scene_format.h"
 #include "scene/scene_shell.h"
@@ -41,6 +50,12 @@ typedef struct {
 #define SCENE_WORLD_SLOT_NONE      0xFFFFU
 #define SCENE_LIGHT_FAILURE_ALBEDO "skin vertex colors required"
 #define SCENE_LIGHT_FAILURE_NORMAL "skin normal transform invalid"
+
+/* A row of one scene's columns: the SCNE entity index. Apps hold entity_t
+ * handles; the world (entity.c) turns one into its scene and row. */
+typedef uint16_t scene_row_t;
+#define SCENE_ROW_NONE ((scene_row_t)0xFFFFU)
+#define SCENE_ROW_ROOT ((scene_row_t)0xFFFEU) /* the scene's root entity, outside its columns */
 
 typedef struct {
     mat3f_t linear;
@@ -114,7 +129,7 @@ typedef struct {
     r3d_lit_mesh_t mesh;
     mat4f_t model;
     box3f_t world_bounds; /* the mesh's root box through `model`, kept with it */
-    scene_entity_t entity;
+    scene_row_t entity;
     bool placed; /* false while the transform is the identity: drawn as it is */
 } scene_renderer_t;
 
@@ -123,8 +138,8 @@ typedef struct {
 void scene_renderer_bound(scene_renderer_t* r);
 
 typedef struct {
-    camera_t lens;
-    scene_entity_t entity;
+    lens_t lens;
+    scene_row_t entity;
     uint16_t clear; /* panel pixel format */
 } scene_camera_t;
 
@@ -147,12 +162,6 @@ typedef struct {
     bool dirty, posed;
 } scene_animator_t;
 
-typedef enum {
-    SCENE_SKIN_LIGHT_DIRECT = R3D_SKIN_LIGHT_DIRECT,
-    SCENE_SKIN_LIGHT_RENORMALISED = R3D_SKIN_LIGHT_RENORMALISED,
-    SCENE_SKIN_LIGHT_TABLE = R3D_SKIN_LIGHT_TABLE
-} scene_skin_light_mode_t;
-
 typedef struct {
     r3d_skin_t skin;
     r3d_lit_mesh_t bind;
@@ -164,13 +173,51 @@ typedef struct {
     mat3f_t* normal_palette;
     void* light_storage;
     bool lighting_valid;
-    scene_skin_light_mode_t light_mode;
+    skin_light_mode_t light_mode;
 } scene_skinned_renderer_t;
+
+/* A scene's root entity and its load request. It exists from the request
+ * until its release, before the scene's columns do and after a failure. */
+typedef struct {
+    entity_t root; /* ENTITY_NONE: a free record */
+    handle_t load; /* its pack request, or HANDLE_NONE for scene_load_from() */
+    pending_t state;
+    bool async;
+    pending_fn done; /* NULL once delivered or cancelled */
+    handle_t owner;
+    uint64_t order; /* request order: requests made inside a callback wait a pass */
+    scene_failure_t failure;
+    char id[ASSET_NAME_MAX];
+    transformf_t local;
+    mat4f_t world;
+    uint8_t flags;       /* SCENE_FLAG_ENABLED, ACTIVE, DIRTY, MOVED */
+    bool placed;         /* `world` is not the identity */
+    uint16_t base, rows; /* the slots of its rows: [base, base + rows) */
+    struct scene* scene; /* its columns, while they exist */
+} scene_root_t;
+
+/* Loaded and pending scenes at once. */
+#define SCENE_ROOTS_MAX 8
+extern scene_root_t scene_roots[SCENE_ROOTS_MAX];
+
+/* The record and row `entity` names, or NULL when it is ENTITY_NONE, stale or
+ * another owner's; a development device build logs and asserts on the last two. */
+scene_root_t* scene_entity_lookup(entity_t entity, scene_row_t* row);
+/* The same, never logging: for questions such as whether an owner is alive. */
+scene_root_t* scene_entity_peek(entity_t entity, scene_row_t* row);
+/* The scene and row of an entity in a loaded scene's columns, or NULL (logged as lookup). */
+struct scene* scene_entity_row(entity_t entity, scene_row_t* row);
+entity_t scene_row_entity(const struct scene* scene, scene_row_t row);
+/* The columns of the scene `entity` is in, its root included, or NULL. */
+struct scene* scene_columns(entity_t entity);
+/* Issues a fresh root entity into `record`; false when no slot is left. */
+bool scene_world_issue_root(scene_root_t* record);
+/* Reserves `rows` slots for the record's columns, in one run; false when none is long enough. */
+bool scene_world_issue_rows(scene_root_t* record, int rows);
 
 struct scene {
     scene_asset_t asset;
-    char id[ASSET_NAME_MAX];
-    handle_t load;
+    scene_root_t* root;
     int renderer_count;
     int animator_count, skeleton_animator_count;
     int16_t animate_share, skin_share; /* core 1's, as core/job.h steers them */
@@ -194,11 +241,11 @@ struct scene {
     r3d_instance_t* instances; /* one per renderer: what the raster draws this frame */
     uint16_t* world_slots;     /* one per entity: its index in `worlds`, or SCENE_WORLD_SLOT_NONE when childless */
     int world_count;
-    mat4f_t* worlds;                /* one per entity with children, in entity order */
-    scene_entity_t* world_entities; /* the entity each of `worlds` belongs to */
+    mat4f_t* worlds;             /* one per entity with children, in entity order */
+    scene_row_t* world_entities; /* the entity each of `worlds` belongs to */
     /* The per-frame loops walk these, not every entity or renderer: a scene
      * with many disabled copies has few of either. */
-    scene_entity_t* staged; /* entities with an animator, a skin or a light, in entity order */
+    scene_row_t* staged; /* entities with an animator, a skin or a light, in entity order */
     int staged_count;
     uint16_t* active_renderers; /* renderers whose entity is ACTIVE, in renderer order */
     int active_renderer_count;
@@ -228,10 +275,13 @@ scene_t* scene_loaded_at(int index);
 
 /* Only activation and a seek of the active camera count as cuts. Other discontinuities,
  * such as a camera transform teleport or a clip switch, converge within a few frames. */
-void scene_draw_camera_cut(const scene_t* scene, scene_entity_t entity);
+void scene_draw_camera_cut(const scene_t* scene, scene_row_t entity);
 
-/* The index of the scene's camera named by `camera` (SCENE_CAMERA_FIRST: its first), or -1. */
-int scene_camera_index(const scene_t* scene, name_hash_t camera);
+/* The index of the camera on `entity`, or -1. */
+int scene_camera_index(const scene_t* scene, scene_row_t entity);
+
+/* Draws through the scene's camera `camera` (an index) from now on. */
+void scene_draw_activate(scene_t* scene, int camera);
 
 /* A scene is going away: the draw drops it if its camera is active. */
 void scene_draw_forget(const scene_t* scene);
@@ -242,6 +292,17 @@ void scene_draw_release(void);
  * renderer's world waits: turning ACTIVE marks it CHANGED. */
 void scene_resolve(scene_t* scene);
 
+/* Row-level component access for the public modules; `row` may be
+ * SCENE_ROW_ROOT, and the record's scene is NULL only for a root. */
+scene_row_t scene_row_parent(const scene_t* scene, scene_row_t row); /* SCENE_ROW_NONE: under the root */
+transformf_t scene_row_local(const scene_root_t* root, scene_row_t row);
+void scene_row_set_local(scene_root_t* root, scene_row_t row, transformf_t local);
+transformf_t scene_row_world(const scene_root_t* root, scene_row_t row);
+void scene_row_set_world(scene_root_t* root, scene_row_t row, transformf_t world);
+mat4f_t scene_row_world_matrix(const scene_root_t* root, scene_row_t row);
+uint8_t scene_row_flags(const scene_root_t* root, scene_row_t row);
+void scene_row_set_enabled(scene_root_t* root, scene_row_t row, bool enabled);
+
 /* Numbers the entities with children and allocates their worlds; false when it could not. */
 bool scene_hierarchy_open(scene_t* scene);
 void scene_hierarchy_release(scene_t* scene);
@@ -251,7 +312,7 @@ void scene_hierarchy_release(scene_t* scene);
  * forward pass is correct. O(entities) a call, cheap at today's counts; if
  * they grow, a later entity whose parent is before `entity` can be skipped,
  * since it cannot be a descendant. */
-void scene_hierarchy_update_active(scene_t* scene, scene_entity_t entity);
+void scene_hierarchy_update_active(scene_t* scene, scene_row_t entity);
 
 /* True when drawing the mesh as it is gives the same picture. */
 bool scene_transform_is_identity(const mat4f_t* transform);
@@ -259,25 +320,25 @@ bool scene_transform_is_identity(const mat4f_t* transform);
 size_t scene_storage_carve(size_t* end, size_t bytes, size_t align);
 #define SCENE_STORAGE_RESERVE(layout, end, member, type, count)                                                        \
     ((layout).member = scene_storage_carve(&(end), sizeof(type) * (size_t)(count), _Alignof(type)))
-int scene_renderer_index(const scene_t* scene, scene_entity_t entity);
+int scene_renderer_index(const scene_t* scene, scene_row_t entity);
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 void scene_draw_checkpoint_capture(checkpoint_t* saved);
+void scene_world_checkpoint_capture(checkpoint_t* saved);
 void scene_checkpoint_capture(checkpoint_t* saved, scene_t* scene);
 void scene_animation_checkpoint_capture(checkpoint_t* saved, scene_t* scene);
 #endif
 void scene_animation_release(scene_t* scene);
 /* An animator or light now exists on `entity`: adds it to `staged` once. A
  * skin needs its entity's skeleton animator, so its entity is staged already. */
-void scene_stage_add(scene_t* scene, scene_entity_t entity);
+void scene_stage_add(scene_t* scene, scene_row_t entity);
 void scene_animation_step(scene_t* scene, uint32_t dt_ms);
 /* Animates staged[first, first + count). */
 void scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms);
-bool scene_skin_light_set_mode(scene_t* scene, scene_entity_t entity, scene_skin_light_mode_t mode);
-bool scene_skin_light_apply_mode(scene_t* scene, scene_entity_t entity, scene_skinned_renderer_t* skin,
-                                 scene_skin_light_mode_t mode);
-void scene_skin_light_table_release(scene_t* scene, scene_entity_t entity);
+bool scene_skin_light_apply_mode(scene_t* scene, scene_row_t entity, scene_skinned_renderer_t* skin,
+                                 skin_light_mode_t mode);
+void scene_skin_light_table_release(scene_t* scene, scene_row_t entity);
 bool scene_skin_light_allocate(scene_skinned_renderer_t* skin);
-void scene_skin_light_prepare(scene_t* scene, scene_entity_t entity);
+void scene_skin_light_prepare(scene_t* scene, scene_row_t entity);
 bool scene_light_color_fits(vec3f_t linear_rgb);
 r3d_skin_light_transfer_t* scene_light_transfer_take(const scene_t* scene);
 bool scene_lights_allocate(scene_t* scene);
@@ -285,3 +346,5 @@ void scene_lights_prepare(scene_t* scene);
 void scene_skin_range(scene_t* scene, int first, int count);
 
 scene_failure_t scene_failure_make(scene_status_t status, asset_status_t asset, const char* what);
+/* Stores the failure in `why`, which may be NULL; true for SCENE_OK. */
+bool scene_report(scene_failure_t* why, scene_status_t status, asset_status_t asset, const char* what);

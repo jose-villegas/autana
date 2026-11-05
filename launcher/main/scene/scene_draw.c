@@ -8,6 +8,7 @@
 #include "esp_log.h"
 
 #include "render/context/render_context.h"
+#include "scene/camera/camera.h"
 #include "scene/scene_internal.h"
 
 #pragma GCC diagnostic error "-Wdouble-promotion"
@@ -36,23 +37,18 @@ scene_set_paused(bool pause) {
     stepped = false;
 }
 
-bool
-scene_activate(scene_t* scene, name_hash_t camera) {
-    const int index = scene_camera_index(scene, camera);
-    if (index < 0) {
-        return false;
-    }
-    active = (active_t){scene, index};
+void
+scene_draw_activate(scene_t* scene, int camera) {
+    active = (active_t){scene, camera};
     render_context_forget(render_context_main());
     refused = false;
     rendered = false;
     stepped = false;
     expanded = false;
-    return true;
 }
 
 void
-scene_deactivate(void) {
+camera_deactivate(void) {
     active = (active_t){NULL, 0};
     rendered = false;
     stepped = false;
@@ -62,19 +58,19 @@ scene_deactivate(void) {
 void
 scene_draw_forget(const scene_t* scene) {
     if (active.scene == scene) {
-        scene_deactivate();
+        camera_deactivate();
     }
 }
 
 void
 scene_draw_release(void) {
-    scene_deactivate();
+    camera_deactivate();
     render_context_release(render_context_main());
     paused = false;
 }
 
 void
-scene_draw_camera_cut(const scene_t* scene, scene_entity_t entity) {
+scene_draw_camera_cut(const scene_t* scene, scene_row_t entity) {
     if (active.scene == scene && scene->cameras[active.camera].entity == entity) {
         render_context_forget(render_context_main());
     }
@@ -108,11 +104,11 @@ draw_active(int quarter, int width, int height) {
     if (count == 0) {
         return;
     }
-    const render_view_t view =
-        camera_view(&camera->lens, &scene->locals[camera->entity], (viewport_t){width, height, quarter});
+    const transformf_t pose = scene_row_world(scene->root, camera->entity);
+    const render_view_t view = lens_view(&camera->lens, &pose, (viewport_t){width, height, quarter});
     rendered = render_context_draw(render_context_main(), scene->instances, count, &view, camera->clear);
     if (!rendered && !refused) {
-        ESP_LOGE("scene", "no memory to draw '%s'; it stays blank", scene->id);
+        ESP_LOGE("scene", "no memory to draw '%s'; it stays blank", scene->root->id);
         refused = true;
     }
 }
@@ -161,6 +157,7 @@ scene_draw_checkpoint_capture(checkpoint_t* saved) {
     CHECKPOINT_CAPTURE(saved, stepped);
     CHECKPOINT_CAPTURE(saved, rendered);
     CHECKPOINT_CAPTURE(saved, refused);
+    scene_world_checkpoint_capture(saved);
     for (int i = 0; i < scene_loaded_count(); i++) {
         scene_checkpoint_capture(saved, scene_loaded_at(i));
     }

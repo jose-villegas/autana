@@ -30,7 +30,10 @@
 #include "render_lab_dynres.h"
 #include "render_lab_scene.h"
 #include "render_lab_view.h"
+#include "scene/camera/camera.h"
+#include "scene/renderer/renderer.h"
 #include "scene/scene.h"
+#include "scene/transform/transform.h"
 #include "ui/ui.h"
 #if CONFIG_LAUNCHER_SELFTEST
 #include "apps/render_lab/tests/render_lab_test.h"
@@ -77,9 +80,9 @@ static const capybara_view_t views[] = {
     {CAPYBARA_VIEW_CLOSE, CAPYBARA_HOME_YAW, true},
 };
 
-static scene_t* capybara;
-static scene_entity_t camera_entity;
-static scene_entity_t subject_entity;
+static entity_t capybara;
+static entity_t camera_entity;
+static entity_t subject_entity;
 static render_lab_clips_t choice;
 static orbit_motion_t orbit;
 static orbit_motion_touch_t touch;
@@ -95,22 +98,21 @@ fail(const char* what) {
 static void
 place_camera(void) {
     const transformf_t pose = orbit_motion_pose(&orbit);
-    scene_entity_set_local(capybara, camera_entity, pose);
+    transform_set_local(camera_entity, pose);
 }
 
 /* Home and limits from the subject's sphere and the scene camera's lens. */
 static bool
 frame_subject(void) {
     const name_hash_t camera = name_hash(CAPYBARA_CAMERA);
-    const scene_entity_t subject = scene_find(capybara, name_hash(CAPYBARA_SUBJECT));
-    camera_entity = scene_find(capybara, camera);
-    const camera_t* lens = scene_camera_lens(capybara, camera);
-    if (subject == SCENE_ENTITY_NONE || camera_entity == SCENE_ENTITY_NONE || lens == NULL
-        || scene_entity_mesh(capybara, subject) == NULL) {
+    const entity_t subject = entity_find(capybara, name_hash(CAPYBARA_SUBJECT));
+    camera_entity = entity_find(capybara, camera);
+    const lens_t* lens = camera_lens(entity_find(capybara, camera));
+    if (handle_is_none(subject) || handle_is_none(camera_entity) || lens == NULL || renderer_mesh(subject) == NULL) {
         fail("no capybara or camera");
         return false;
     }
-    const spheref_t sphere = r3d_lit_mesh_bounding_sphere(scene_entity_mesh(capybara, subject));
+    const spheref_t sphere = r3d_lit_mesh_bounding_sphere(renderer_mesh(subject));
     const float fit = orbit_motion_fit_distance(sphere.radius, lens->half_fov_short_tan, ORBIT_MOTION_FRAME_PADDING);
     const float closest = fmaxf(fit * CAPYBARA_ZOOM_IN, sphere.radius + (CAPYBARA_NEAR_CLEARANCE * lens->near_z));
     orbit_motion_init(&orbit, sphere.centre, (orbit_motion_state_t){CAPYBARA_HOME_YAW, CAPYBARA_HOME_PITCH, logf(fit)},
@@ -126,9 +128,12 @@ scene_capybara_enter(const render_lab_scene_t* self) {
     (void)self;
     draw_clear(RGB565BE(UI_BACKGROUND));
     failure[0] = '\0';
-    scene_failure_t why;
-    capybara = scene_load(CAPYBARA_SCENE, &why);
-    if (capybara == NULL) {
+    scene_failure_t why = {.status = SCENE_ERR_FULL}; /* what scene_load() leaves when it returns no root */
+    capybara = scene_load(CAPYBARA_SCENE);
+    if (scene_state(capybara) != PENDING_READY) {
+        (void)scene_failure(capybara, &why);
+        scene_release(capybara);
+        capybara = ENTITY_NONE;
         fail(why.asset == ASSET_ERR_NOT_FOUND || why.asset == ASSET_ERR_NO_PACK ? "no capybara pack: flash it"
                                                                                 : "capybara did not load");
         return;
@@ -140,9 +145,9 @@ scene_capybara_enter(const render_lab_scene_t* self) {
         ESP_LOGW(TAG, "clip picker allocation failed");
     }
     place_camera();
-    (void)scene_activate(capybara, name_hash(CAPYBARA_CAMERA));
+    (void)camera_activate(entity_find(capybara, name_hash(CAPYBARA_CAMERA)));
     render_lab_apply_raster_settings();
-    (void)render_lab_apply_camera_settings(capybara, camera_entity);
+    (void)render_lab_apply_camera_settings(camera_entity);
 #if TUNE_ENABLED
     render_context_set_debug_view(render_context_main(), render_lab_debug_view());
 #endif
@@ -151,15 +156,15 @@ scene_capybara_enter(const render_lab_scene_t* self) {
 static void
 scene_capybara_exit(void) {
     render_lab_clips_destroy(&choice);
-    scene_unload(capybara);
-    capybara = NULL;
-    subject_entity = SCENE_ENTITY_NONE;
+    scene_release(capybara);
+    capybara = ENTITY_NONE;
+    subject_entity = ENTITY_NONE;
 }
 
 /* The finger turns the camera before the shell draws this frame. */
 static void
 scene_capybara_steer(uint32_t dt_ms, const input_t* input) {
-    if (capybara == NULL || failure[0] != '\0') {
+    if (handle_is_none(capybara) || failure[0] != '\0') {
         return;
     }
     const viewport_t panel = {GFX_WIDTH, GFX_HEIGHT, display_quarter_now()};
@@ -178,8 +183,8 @@ static void
 scene_capybara_frame(uint32_t dt_ms) {
     (void)dt_ms;
     render_lab_apply_raster_settings();
-    if (capybara != NULL) {
-        (void)render_lab_apply_camera_settings(capybara, camera_entity);
+    if (!handle_is_none(capybara)) {
+        (void)render_lab_apply_camera_settings(camera_entity);
     }
 #if TUNE_ENABLED
     render_context_set_debug_view(render_context_main(), render_lab_debug_view());
@@ -210,7 +215,7 @@ view_reply(const char* args, console_reply_fn reply) {
     if (!console_word_match(args, "view", &name)) {
         return false;
     }
-    if (capybara == NULL || failure[0] != '\0') {
+    if (handle_is_none(capybara) || failure[0] != '\0') {
         reply("RENDER_ERR no capybara");
         return true;
     }

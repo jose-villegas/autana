@@ -12,8 +12,8 @@
 
 /* What the scene plays along a clip: the entity animated, in its loaded scene. */
 typedef struct {
-    scene_t* scene; /* NULL when the scene has not loaded */
-    scene_entity_t entity;
+    entity_t scene; /* ENTITY_NONE when the scene has not loaded */
+    entity_t entity;
     const char* clip; /* the clip a frame profile plays; NULL keeps the entity's current one */
 } render_lab_path_t;
 

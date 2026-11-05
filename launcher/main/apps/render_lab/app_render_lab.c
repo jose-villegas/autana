@@ -20,6 +20,7 @@
 #include "render_lab_dynres.h"
 #include "render_lab_scene.h"
 #include "render_lab_view.h"
+#include "scene/animator/animator.h"
 #include "scene/scene.h"
 #include "scene_baked.h"
 #include "stress/scene_stress.h"
@@ -398,17 +399,18 @@ render_lab_update(uint32_t dt_ms, const input_t* input) {
 /* The showing scene's path, with no scene when it has none or has not loaded. */
 static render_lab_path_t
 shown_path(void) {
-    return current_scene()->path == NULL ? (render_lab_path_t){NULL, SCENE_ENTITY_NONE, NULL} : current_scene()->path();
+    return current_scene()->path == NULL ? (render_lab_path_t){ENTITY_NONE, ENTITY_NONE, NULL}
+                                         : current_scene()->path();
 }
 
 /* The path's clip, -1 when the scene has none or lacks the clip it names. */
 static int
 path_clip(const render_lab_path_t* path) {
-    if (path->scene == NULL || path->clip == NULL) {
-        return path->scene == NULL ? -1 : scene_animator_current_clip(path->scene, path->entity);
+    if (handle_is_none(path->scene) || path->clip == NULL) {
+        return handle_is_none(path->scene) ? -1 : animator_current_clip(path->entity);
     }
-    for (int clip = 0; clip < scene_animator_clip_count(path->scene, path->entity); clip++) {
-        if (strcmp(scene_animator_clip_name(path->scene, path->entity, clip), path->clip) == 0) {
+    for (int clip = 0; clip < animator_clip_count(path->entity); clip++) {
+        if (strcmp(animator_clip_name(path->entity, clip), path->clip) == 0) {
             return clip;
         }
     }
@@ -419,7 +421,7 @@ uint32_t
 render_lab_path_duration_ms(void) {
     const render_lab_path_t path = shown_path();
     const int clip = path_clip(&path);
-    return clip < 0 ? 0 : scene_animator_clip_duration_ms(path.scene, path.entity, clip);
+    return clip < 0 ? 0 : animator_clip_duration_ms(path.entity, clip);
 }
 
 bool
@@ -427,12 +429,10 @@ render_lab_seek_path(uint32_t t_ms) {
     const render_lab_path_t path = shown_path();
     const int clip = path_clip(&path);
     const uint32_t duration_ms = render_lab_path_duration_ms();
-    if (duration_ms == 0
-        || (clip != scene_animator_current_clip(path.scene, path.entity)
-            && !scene_animator_play(path.scene, path.entity, clip, 0))) {
+    if (duration_ms == 0 || (clip != animator_current_clip(path.entity) && !animator_play(path.entity, clip, 0))) {
         return false;
     }
-    return scene_animator_seek(path.scene, path.entity, SCENE_ANIMATOR_CURRENT, t_ms % duration_ms);
+    return animator_seek(path.entity, ANIMATOR_CURRENT, t_ms % duration_ms);
 }
 
 /* "render pose <ms> | play": the reply to the words after "pose ". */
@@ -445,11 +445,10 @@ pose_console(const char* rest) {
     if (render_lab_path_duration_ms() == 0) {
         (void)printf("RENDER_ERR scene %s has no path\n", current_scene()->key);
     } else if (play) {
-        (void)scene_animator_set_paused(path.scene, path.entity, SCENE_ANIMATOR_CURRENT, false);
+        (void)animator_set_paused(path.entity, ANIMATOR_CURRENT, false);
         (void)printf("RENDER pose=play\nRENDER_END\n");
     } else if (!isdigit((unsigned char)rest[0]) || *end != '\0' || t_ms > UINT32_MAX
-               || !render_lab_seek_path((uint32_t)t_ms)
-               || !scene_animator_set_paused(path.scene, path.entity, SCENE_ANIMATOR_CURRENT, true)) {
+               || !render_lab_seek_path((uint32_t)t_ms) || !animator_set_paused(path.entity, ANIMATOR_CURRENT, true)) {
         (void)printf("RENDER_ERR usage: render pose <ms> | render pose play\n");
     } else {
         (void)printf("RENDER pose=%lu\nRENDER_END\n", t_ms);

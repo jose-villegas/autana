@@ -162,7 +162,6 @@ $MAIN_DIR/boot/boot_anim.c
 $MAIN_DIR/boot/boot_anim_motion.c
 $MAIN_DIR/boot/boot_anim_photo.c
 $MAIN_DIR/selftest/post_layout.c
-$MAIN_DIR/core/pending.c
 $MAIN_DIR/shell/asset_system.c
 $MAIN_DIR/shell/pending_system.c
 $MAIN_DIR/core/memory.c
@@ -170,7 +169,6 @@ $MAIN_DIR/services/settings_policy.c
 $MAIN_DIR/sound/sound.c
 $MAIN_DIR/audio/audio_adpcm.c
 $MAIN_DIR/asset/asset_directory.c
-$MAIN_DIR/asset/asset_store_async.c
 $MAIN_DIR/input/mapping/orbit_motion_touch.c
 $MAIN_DIR/console/console_verbs.c
 $MAIN_DIR/sound/console/console_tone.c
@@ -185,7 +183,7 @@ $MAIN_DIR/../tools/gen/draw_palette_gen.c
 $MAIN_DIR/../tools/r3d/triangle_sizes.c
 "
 
-# The engine's drawing, assets, tune, jobs and renderer: autana::render_engine's
+# The engine's drawing, assets, tune, jobs, pending requests and renderer: autana::render_engine's
 # own list (tools/render/engine_sources.cmake), read rather than repeated.
 if ! command -v cmake > /dev/null 2>&1; then
     echo "No CMake found." >&2

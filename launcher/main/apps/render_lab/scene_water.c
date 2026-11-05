@@ -44,7 +44,10 @@
 #include "render_lab.h"
 #include "render_lab_scene.h"
 #include "render_lab_view.h"
+#include "scene/camera/camera.h"
+#include "scene/renderer/renderer.h"
 #include "scene/scene.h"
+#include "scene/transform/transform.h"
 #include "scene_water.h"
 #include "scene_water_plane.h"
 #include "ui/ui.h"
@@ -194,8 +197,8 @@ static const water_key_t TOUR[] = {
 static const uint32_t SWING_FLIPS_MS[] = {3500U, 3900U, 7500U, 7900U};
 #define SWING_FLIP_MS 250.0F /* how long a half turn takes */
 
-static scene_t* tank_scene;
-static scene_entity_t camera_entity, water_entity;
+static entity_t tank_scene;
+static entity_t camera_entity, water_entity;
 static flip3_t water;
 static float* field;
 static iso_field_t surface_field;
@@ -298,14 +301,14 @@ direction_to_model(vec3f_t d) {
 /* The tank: a unit box scaled to the device's inside, its open face on the glass. */
 static bool
 place_tank(void) {
-    const scene_entity_t tank = scene_find(tank_scene, name_hash(WATER_TANK));
-    if (tank == SCENE_ENTITY_NONE) {
+    const entity_t tank = entity_find(tank_scene, name_hash(WATER_TANK));
+    if (handle_is_none(tank)) {
         return false;
     }
-    transformf_t t = scene_entity_local(tank_scene, tank);
+    transformf_t t = transform_local(tank);
     transformf_set_position(&t, (vec3f_t){-0.5F * box.x, -0.5F * box.y, box.z});
     transformf_set_scale(&t, box);
-    scene_entity_set_local(tank_scene, tank, t);
+    transform_set_local(tank, t);
     return true;
 }
 
@@ -318,20 +321,20 @@ place_tank(void) {
  * picture is held. */
 static void
 place_camera(int quarter, vec3f_t eye) {
-    const camera_t* lens = scene_camera_lens(tank_scene, name_hash(WATER_CAMERA));
+    const lens_t* lens = camera_lens(entity_find(tank_scene, name_hash(WATER_CAMERA)));
     const float distance = 0.5F * box.x / lens->half_fov_short_tan;
     const quatf_t roll = quatf_from_axis_angle(vec3f_unit_z(), -(float)quarter * WATER_QUARTER_TURN);
-    transformf_t t = scene_entity_local(tank_scene, camera_entity);
+    transformf_t t = transform_local(camera_entity);
     transformf_set_rotation(&t, roll);
     transformf_set_position(&t, (vec3f_t){eye.x, eye.y, -distance});
-    scene_entity_set_local(tank_scene, camera_entity, t);
+    transform_set_local(camera_entity, t);
     /* The glass's centre lands a fraction eye / width of the short side off
      * the picture's middle, against the eye; the optical centre follows the
      * eye by as much, in the camera's own axes. */
     const vec3f_t right = quatf_rotate(roll, vec3f_unit_x());
     const vec3f_t up = quatf_rotate(roll, vec3f_unit_y());
     const vec3f_t follow = vec3f_scale(eye, 1.0F / box.x);
-    (void)scene_camera_set_shift(tank_scene, camera_entity, (vec2f_t){vec3f_dot(follow, right), vec3f_dot(follow, up)});
+    (void)camera_set_shift(camera_entity, (vec2f_t){vec3f_dot(follow, right), vec3f_dot(follow, up)});
 }
 
 /* The eye, in model axes (x right, y up), from the turn since the reference
@@ -588,7 +591,7 @@ rebuild_surface(void) {
         ESP_LOGW(TAG, "the surface outgrew its buffers and is cut");
     }
     truncated = !fitted;
-    (void)scene_renderer_set_mesh(tank_scene, water_entity, &surface.mesh);
+    (void)renderer_set_mesh(water_entity, &surface.mesh);
     FRAME_COST_END(build_from, "water.build");
 }
 
@@ -612,16 +615,19 @@ scene_water_enter(const render_lab_scene_t* self) {
     draw_clear(RGB565BE(UI_BACKGROUND));
     failure[0] = '\0';
     box = (vec3f_t){BOARD_SCREEN_WIDTH_MM, BOARD_SCREEN_HEIGHT_MM, WATER_TANK_DEPTH_MM};
-    scene_failure_t why;
-    tank_scene = scene_load(WATER_SCENE, &why);
-    if (tank_scene == NULL) {
+    scene_failure_t why = {.status = SCENE_ERR_FULL}; /* what scene_load() leaves when it returns no root */
+    tank_scene = scene_load(WATER_SCENE);
+    if (scene_state(tank_scene) != PENDING_READY) {
+        (void)scene_failure(tank_scene, &why);
+        scene_release(tank_scene);
+        tank_scene = ENTITY_NONE;
         fail(why.asset == ASSET_ERR_NOT_FOUND || why.asset == ASSET_ERR_NO_PACK ? "no water pack: flash it"
                                                                                 : "water did not load");
         return;
     }
-    camera_entity = scene_find(tank_scene, name_hash(WATER_CAMERA));
-    water_entity = scene_find(tank_scene, name_hash(WATER_ENTITY));
-    if (camera_entity == SCENE_ENTITY_NONE || water_entity == SCENE_ENTITY_NONE || !place_tank()) {
+    camera_entity = entity_find(tank_scene, name_hash(WATER_CAMERA));
+    water_entity = entity_find(tank_scene, name_hash(WATER_ENTITY));
+    if (handle_is_none(camera_entity) || handle_is_none(water_entity) || !place_tank()) {
         fail("no tank, water or camera");
         return;
     }
@@ -644,16 +650,16 @@ scene_water_enter(const render_lab_scene_t* self) {
     (void)scene_water_take_stats();
     reference_down = vec3f_zero(); /* set by the first reading */
     place_camera(display_quarter_now(), vec3f_zero());
-    (void)scene_activate(tank_scene, name_hash(WATER_CAMERA));
+    (void)camera_activate(entity_find(tank_scene, name_hash(WATER_CAMERA)));
     render_lab_apply_raster_settings();
-    (void)render_lab_apply_camera_settings(tank_scene, camera_entity);
+    (void)render_lab_apply_camera_settings(camera_entity);
     apply_view();
 }
 
 static void
 scene_water_exit(void) {
-    scene_unload(tank_scene);
-    tank_scene = NULL;
+    scene_release(tank_scene);
+    tank_scene = ENTITY_NONE;
 }
 
 /* The plane's swing, or flip3's substeps, over the frame's dt_ms. */
@@ -689,7 +695,7 @@ eye_rise(void) {
 /* Gravity, the fill, the steps and the surface, while the last frame goes out. */
 static void
 scene_water_update(uint32_t dt_ms) {
-    if (tank_scene == NULL || failure[0] != '\0') {
+    if (handle_is_none(tank_scene) || failure[0] != '\0') {
         return;
     }
     vec3f_t down;
@@ -715,8 +721,8 @@ scene_water_frame(uint32_t dt_ms) {
     (void)dt_ms;
     render_lab_apply_raster_settings();
     apply_view();
-    if (tank_scene != NULL) {
-        (void)render_lab_apply_camera_settings(tank_scene, camera_entity);
+    if (!handle_is_none(tank_scene)) {
+        (void)render_lab_apply_camera_settings(camera_entity);
     }
 }
 
