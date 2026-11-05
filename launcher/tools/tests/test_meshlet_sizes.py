@@ -192,8 +192,11 @@ int main(void) {
 ''')
             binary = work / "probe.exe"
             main = TOOLS.parents[1] / "launcher/main"
+            tlsf = TOOLS.parents[1] / "third_party/tlsf"
             built = subprocess.run(["gcc", "-std=gnu11", "-I", str(main), "-I", str(TOOLS.parents[1] / "launcher/test/stubs"),
-                                    str(probe), str(main / "core/tune.c"), "-o", str(binary)], capture_output=True, text=True)
+                                    "-I", str(tlsf), "-I", str(tlsf / "include"), str(probe),
+                                    str(main / "core/tune.c"), str(main / "core/app_heap.c"), str(tlsf / "tlsf.c"),
+                                    "-o", str(binary)], capture_output=True, text=True)
             self.assertEqual(built.returncode, 0, built.stderr)
             ran = subprocess.run([str(binary)], capture_output=True, text=True)
             self.assertEqual(ran.returncode, 0, ran.stderr)

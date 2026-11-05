@@ -65,24 +65,23 @@ static const capybara_take_t capybara_blend = {"capybara-blend", "blend", CAPYBA
 /* A capybara scenario: its take and budgets. */
 #define CAPYBARA_ROW(take, ...) {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, &(take), __VA_ARGS__}
 
-/* Worst of a 5-seed capture on A308 (before and after its move), 20E8 and
- * 2124, + 1%; per quarter, portrait then landscape. The Sponza and Bistro
- * rows are then scaled by the A308 gain of the per-frame instance cull, and
- * the Bistro row by that of walking only active renderers. */
+/* Worst of a perf-scoped 5-seed capture on A308, 20E8 and 2124, + 1%; per
+ * quarter, portrait then landscape. Sponza lite's portrait and Sponza flat's
+ * landscape keep an older peg, which that capture would have raised. */
 static const profile_scenario_t profile_scenarios[] = {
-    {.scene = &scene_sponza[SCENE_BAKED_FULL], .quarters = {{48135, 58790}, {46392, 55835}}},
-    {.scene = &scene_sponza[SCENE_BAKED_LITE], .quarters = {{41016, 47265}, {39777, 45453}}},
-    {.scene = &scene_sponza[SCENE_BAKED_FLAT], .quarters = {{39923, 49110}, {39269, 47716}}},
-    {.scene = &scene_sponza[SCENE_BAKED_FITTED], .quarters = {{40514, 49046}, {38906, 46226}}},
-    {.scene = &scene_sponza[SCENE_BAKED_FITTED_FULL], .quarters = {{48724, 61767}, {46644, 57701}}},
-    {.scene = &scene_sponza[SCENE_BAKED_FLAT_FITTED], .quarters = {{39625, 49999}, {38343, 47804}}},
-    CAPYBARA_ROW(capybara_home, {{20941, 21286}, {21500, 21803}}),
-    CAPYBARA_ROW(capybara_front, {{20907, 21289}, {21305, 21590}}),
-    CAPYBARA_ROW(capybara_side, {{20921, 21268}, {21591, 21909}}),
-    CAPYBARA_ROW(capybara_back, {{20352, 20994}, {20989, 21423}}),
-    CAPYBARA_ROW(capybara_close, {{23002, 23384}, {23807, 24080}}),
-    CAPYBARA_ROW(capybara_blend, {{21806, 22738}, {22438, 22866}}),
-    {&scene_bistro[SCENE_BAKED_FITTED_FULL], BISTRO_SCENE, BISTRO_CAMERA, NULL, {{40595, 61253}, {39333, 56879}}},
+    {.scene = &scene_sponza[SCENE_BAKED_FULL], .quarters = {{49828, 60264}, {47994, 57718}}},
+    {.scene = &scene_sponza[SCENE_BAKED_LITE], .quarters = {{41016, 47265}, {41193, 46324}}},
+    {.scene = &scene_sponza[SCENE_BAKED_FLAT], .quarters = {{40381, 48543}, {39269, 47716}}},
+    {.scene = &scene_sponza[SCENE_BAKED_FITTED], .quarters = {{40510, 48377}, {38679, 45264}}},
+    {.scene = &scene_sponza[SCENE_BAKED_FITTED_FULL], .quarters = {{48826, 60160}, {46066, 56159}}},
+    {.scene = &scene_sponza[SCENE_BAKED_FLAT_FITTED], .quarters = {{39384, 49012}, {37997, 46878}}},
+    CAPYBARA_ROW(capybara_home, {{20531, 20793}, {21164, 21432}}),
+    CAPYBARA_ROW(capybara_front, {{20164, 20395}, {20712, 20938}}),
+    CAPYBARA_ROW(capybara_side, {{20022, 20268}, {20899, 21129}}),
+    CAPYBARA_ROW(capybara_back, {{19426, 19847}, {20423, 20804}}),
+    CAPYBARA_ROW(capybara_close, {{22108, 22455}, {23064, 23340}}),
+    CAPYBARA_ROW(capybara_blend, {{21079, 21407}, {21735, 22015}}),
+    {&scene_bistro[SCENE_BAKED_FITTED_FULL], BISTRO_SCENE, BISTRO_CAMERA, NULL, {{36375, 54681}, {38062, 51881}}},
 };
 
 static const char* TAG = "render_lab_profile";
@@ -215,7 +214,7 @@ report_path(const scenario_path_t* path, const frame_profile_t* p) {
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, p->frames, "frame profile failed");
     const int count = frame_profile_peaks(&played, NULL, 0);
     suite_add_test_cleanup(release_report);
-    peaks = memory_alloc((size_t)count * sizeof *peaks, MEMORY_PSRAM);
+    peaks = memory_alloc((size_t)count * sizeof *peaks, MEMORY_APP);
     pose_line = memory_alloc(sizeof *pose_line, MEMORY_INTERNAL);
     TEST_ASSERT_NOT_NULL_MESSAGE(peaks, "frame peak allocation failed");
     TEST_ASSERT_NOT_NULL_MESSAGE(pose_line, "frame peak allocation failed");
@@ -329,7 +328,7 @@ static void
 test_dynres_steps(void) {
     const scenario_path_t path = enter_scenario();
     const int frames = (int)((path.duration_ms + DYNRES_STEPS_FRAME_DT_MS - 1) / DYNRES_STEPS_FRAME_DT_MS);
-    step_frame_t* records = memory_alloc(sizeof(*records) * (size_t)frames, MEMORY_PSRAM);
+    step_frame_t* records = memory_alloc(sizeof(*records) * (size_t)frames, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(records);
     /* One step and no recovery: the stepped policy holds it and times it. */
     const resolution_step_t size = render_lab_ladder[ladder_step];

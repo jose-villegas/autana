@@ -33,15 +33,26 @@ render_view_make(const transformf_t* pose, float half_fov_short_tan, float near_
     return view;
 }
 
+/* The picture's axes mixed by a quarter turn's parts: the camera's own right or down. */
+static vec3f_t
+camera_axis(const render_view_t* view, int x_part, int y_part) {
+    return vec3f_add(vec3f_scale(view->screen_x, (float)x_part), vec3f_scale(view->screen_y, (float)y_part));
+}
+
 void
 render_view_refit(render_view_t* view, viewport_t viewport) {
     assert(view->lens.fx == view->lens.fy);
-    const viewport_quarter_axes_t before = viewport_quarter_axes(view->viewport.quarter);
-    const vec3f_t right = vec3f_add(vec3f_scale(view->screen_x, (float)before.x_right),
-                                    vec3f_scale(view->screen_y, (float)before.y_right));
-    const vec3f_t down =
-        vec3f_add(vec3f_scale(view->screen_x, (float)before.x_down), vec3f_scale(view->screen_y, (float)before.y_down));
+    const viewport_quarter_axes_t axes = viewport_quarter_axes(view->viewport.quarter);
+    const vec3f_t right = camera_axis(view, axes.x_right, axes.y_right);
+    const vec3f_t down = camera_axis(view, axes.x_down, axes.y_down);
     view_frame(view, right, down, render_view_half_fov_short_tan(view), viewport);
+}
+
+transformf_t
+render_view_pose(const render_view_t* view) {
+    const viewport_quarter_axes_t axes = viewport_quarter_axes(view->viewport.quarter);
+    const vec3f_t up = vec3f_scale(camera_axis(view, axes.x_down, axes.y_down), -1.0F);
+    return transformf_looking(view->position, view->forward, up);
 }
 
 float

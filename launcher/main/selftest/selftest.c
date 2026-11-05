@@ -21,6 +21,9 @@
 #include "esp_log.h"
 #include "unity.h"
 
+#include "app/app_arena.h"
+#include "core/app_heap.h"
+#include "core/memory.h"
 #include "core/timing.h"
 #include "display/display_shell.h"
 #include "suites.h"
@@ -40,9 +43,13 @@ __wrap_esp_system_console_put_char(char c) {
  * abort frame of Unity's own, so it is where the verdict is asserted. Both
  * reset the panel clock to the shell's own state, as an app's start
  * and exit do, so no test inherits what the screen before it or an earlier
- * test set - a failed assert included. */
+ * test set - a failed assert included. A test that leaves app heap blocks
+ * behind fails by name, as on a host. */
+static size_t app_blocks_before;
+
 void
 setUp(void) {
+    app_blocks_before = app_heap_blocks();
     display_restore_system_state();
 }
 
@@ -50,6 +57,28 @@ void
 tearDown(void) {
     display_restore_system_state();
     suite_judge_watched_test();
+    /* A shell test leaves the app running the suites, as leaving any app
+     * does: the next test runs in a new visit. */
+    if (!app_heap_active()) {
+        app_arena_enter();
+    }
+    TEST_ASSERT_EQUAL_size_t_MESSAGE(app_blocks_before, app_heap_blocks(), "test leaked app heap blocks");
+}
+
+bool
+selftest_visit_begin(void) {
+    if (app_heap_active()) {
+        return false;
+    }
+    app_arena_enter();
+    return true;
+}
+
+void
+selftest_visit_end(bool owned) {
+    if (owned) {
+        app_arena_exit();
+    }
 }
 
 int
@@ -58,6 +87,7 @@ selftest_run(void) {
 
     ESP_LOGI(TAG, "running self test");
 
+    const bool own_visit = selftest_visit_begin();
     UNITY_BEGIN();
 
     /* Every registered suite, portable and hardware alike. Which ones exist
@@ -66,6 +96,7 @@ selftest_run(void) {
     suite_report_frame_watch();
 
     int failures = UNITY_END();
+    selftest_visit_end(own_visit);
     const int64_t elapsed_ms = (timing_now_us() - started) / 1000;
 
     /* A suite that did not fit is a test that did not run. Folded into the

@@ -535,16 +535,17 @@ def framewatch(args):
 
 def heap(args):
     """Runtime free bytes, largest block, total and low-water mark of the
-    internal DMA heap, or of PSRAM; `reset` restarts the low-water marks."""
+    internal DMA heap, of PSRAM, or of the running app's heap; `reset`
+    restarts the low-water marks."""
     reject_unknown("heap", args, ("--json",))
-    usage = "usage: autana heap [psram] [--json] | autana heap reset"
+    usage = "usage: autana heap [psram|app] [--json] | autana heap reset"
     if args == ["reset"]:
         code, replies = send("HEAP reset", reply="HEAP")
         if code != 0 or not replies:
             return code or 1
         print(replies[-1])
         return 0 if replies[-1] == "HEAP reset" else 1
-    kind = args.pop(0) if args[:1] == ["psram"] else ""
+    kind = args.pop(0) if args[:1] in (["psram"], ["app"]) else ""
     json_output = read_json_flag(args, usage)
     code, replies = send(f"HEAP {kind}".rstrip(), reply="HEAP")
     if code != 0 or not replies:
@@ -1848,7 +1849,7 @@ COMMAND_GROUPS = (
             ("battery --log [--json]", "persistent battery records oldest first (JSON is an array); reasons: periodic, transition, boot, shutdown-warning; development builds"),
             ("battery --log --clear", "erase the battery history namespace"))),
         Command("heap", heap, (
-            ("heap [psram] [--json]", "free bytes, largest block, total and low-water mark of the internal DMA pool (MEMORY_DMA), or of PSRAM; development builds"),
+            ("heap [psram|app] [--json]", "free bytes, largest block, total and low-water mark of the internal DMA pool (MEMORY_DMA), of PSRAM, or of the running app's heap; development builds"),
             ("heap reset", "restart the low-water marks, so the next reading's min covers only what ran since"),
         )),
         Command("perf", perf, (

@@ -1585,20 +1585,37 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
 }
 
 #if CONFIG_LAUNCHER_SELFTEST
+/* One input reused for every frame of the tap: four of them would sit on the
+ * stack under the whole menu draw. */
 static void
 sand_app_test_tap_menu_rect(recti_t r) {
-    const int x = r.x + (r.w / 2);
-    const int y = r.y + (r.h / 2);
-    const input_t press = {.down = true, .pressed = true, .point = {x, y}};
-    const input_t hold = {.down = true, .point = {x, y}};
-    const input_t release = {.released = true, .point = {x, y}};
-    const input_t idle = {0};
-    draw_menu(&press);
+    input_t in = {.down = true, .pressed = true, .point = {r.x + (r.w / 2), r.y + (r.h / 2)}};
+    draw_menu(&in);
+    in.pressed = false;
     for (int i = 0; i < 4; i++) {
-        draw_menu(&hold);
+        draw_menu(&in);
     }
-    draw_menu(&release);
-    draw_menu(&idle);
+    in.down = false;
+    in.released = true;
+    draw_menu(&in);
+    in.released = false;
+    draw_menu(&in);
+}
+
+/* Out of line, so a screen's whole layout is off the stack before the menu
+ * draws: only the one rect a tap needs comes back. */
+static __attribute__((noinline)) recti_t
+sand_app_test_title_button_rect(sand_title_button_t button) {
+    title_screen_layout_t title;
+    title_screen_layout(ui_width(), ui_height(), &title);
+    return title.buttons[button];
+}
+
+static __attribute__((noinline)) recti_t
+sand_app_test_options_footer_rect(bool apply) {
+    options_screen_layout_t lay;
+    options_screen_layout(ui_width(), ui_height(), &lay);
+    return apply ? lay.apply : lay.cancel;
 }
 
 bool
@@ -1610,22 +1627,17 @@ sand_app_test_options_reach_start(sand_test_start_action_t action) {
     sand_menu_title_clicked(&menu, SAND_TITLE_OPTIONS, before);
     menu.draft.quality = (before.quality + 1) % QUALITY_COUNT;
 
+    const input_t idle = {0};
     if (action == SAND_TEST_CANCEL_THEN_START || action == SAND_TEST_APPLY_THEN_START) {
-        const input_t idle = {0};
         draw_menu(&idle);
         draw_menu(&idle);
-        options_screen_layout_t lay;
-        options_screen_layout(ui_width(), ui_height(), &lay);
-        sand_app_test_tap_menu_rect(action == SAND_TEST_APPLY_THEN_START ? lay.apply : lay.cancel);
+        sand_app_test_tap_menu_rect(sand_app_test_options_footer_rect(action == SAND_TEST_APPLY_THEN_START));
     } else {
         sand_menu_init(&menu);
     }
 
-    title_screen_layout_t title;
-    title_screen_layout(ui_width(), ui_height(), &title);
-    const input_t idle = {0};
     draw_menu(&idle); /* a screen is on the glass before it is tapped */
-    sand_app_test_tap_menu_rect(title.buttons[SAND_TITLE_START]);
+    sand_app_test_tap_menu_rect(sand_app_test_title_button_rect(SAND_TITLE_START));
     const bool queued = pending_start;
     sand_frame(0, &idle);
     const int expected_quality = action == SAND_TEST_APPLY_THEN_START ? menu.draft.quality : before.quality;
@@ -1637,12 +1649,9 @@ sand_app_test_options_reach_start(sand_test_start_action_t action) {
     return ok;
 }
 
-/* Out of line, so the layout is off the stack before the frames draw. */
-static __attribute__((noinline)) input_t
+static input_t
 sand_app_test_start_button_touch(void) {
-    title_screen_layout_t title;
-    title_screen_layout(ui_width(), ui_height(), &title);
-    const recti_t start_rect = title.buttons[SAND_TITLE_START];
+    const recti_t start_rect = sand_app_test_title_button_rect(SAND_TITLE_START);
     const input_t touch = {.point = {start_rect.x + (start_rect.w / 2), start_rect.y + (start_rect.h / 2)}};
     ESP_LOGI(TAG, "START tap test: tapping (%d, %d), START rect (%d, %d, %d, %d)", (int)touch.point.x,
              (int)touch.point.y, start_rect.x, start_rect.y, start_rect.w, start_rect.h);

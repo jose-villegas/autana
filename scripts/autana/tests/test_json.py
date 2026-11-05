@@ -82,7 +82,7 @@ class JsonReadTests(unittest.TestCase):
         reply = "HEAP free=123456 largest=54321 total=200000 min=100000"
         reading = {"free": 123456, "largest": 54321, "total": 200000, "min": 100000}
         self.assertEqual(autana.parse_heap(reply), reading)
-        for args, line in ((["--json"], "HEAP"), (["psram", "--json"], "HEAP psram")):
+        for args, line in ((["--json"], "HEAP"), (["psram", "--json"], "HEAP psram"), (["app", "--json"], "HEAP app")):
             with mock.patch.object(autana, "send", return_value=(0, [reply])) as send:
                 self.assertEqual(self.output(autana.heap, args), reading)
                 send.assert_called_once_with(line, reply="HEAP")
@@ -102,7 +102,7 @@ class JsonReadTests(unittest.TestCase):
                 autana.parse_heap(reply)
 
     def test_heap_reset_restarts_the_low_water_marks(self):
-        for replies, expected in ((["HEAP reset"], 0), (["HEAP_ERR want nothing, psram or reset"], 1)):
+        for replies, expected in ((["HEAP reset"], 0), (["HEAP_ERR want nothing, psram, app or reset"], 1)):
             with mock.patch.object(autana, "send", return_value=(0, replies)) as send:
                 with contextlib.redirect_stdout(io.StringIO()):
                     self.assertEqual(autana.heap(["reset"]), expected)

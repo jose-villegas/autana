@@ -20,7 +20,7 @@ class CommentLengthTest(unittest.TestCase):
             spec.loader.exec_module(module)
         with mock.patch.object(module, "generated_files", return_value=("generated.h",)) as generated:
             self.assertEqual(module.excluded(),
-                             ("launcher/components/", "launcher/packages/testkit/unity/", "generated.h"))
+                             ("third_party/", "launcher/components/", "launcher/packages/testkit/unity/", "generated.h"))
             self.assertIs(module.excluded(), module.excluded())
             generated.assert_called_once_with()
 

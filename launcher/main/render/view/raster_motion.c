@@ -250,7 +250,7 @@ raster_motion_reserve(raster_motion_t* m, int instances) {
     if (instances > RASTER_MOTION_INSTANCES_MAX) {
         return false;
     }
-    uint8_t* block = memory_alloc(block_bytes(instances), MEMORY_PSRAM);
+    uint8_t* block = memory_alloc(block_bytes(instances), MEMORY_APP);
     if (block == NULL) {
         return false;
     }

@@ -61,8 +61,8 @@ prime(void) {
 static void
 rig_open(rig_t* rig) {
     *rig = (rig_t){.audit = {.first_unsent_frame = -1, .first_unlike_frame = -1}};
-    rig->before = memory_alloc(FB_BYTES, MEMORY_PSRAM);
-    rig->reference = memory_alloc(FB_BYTES, MEMORY_PSRAM);
+    rig->before = memory_alloc(FB_BYTES, MEMORY_APP);
+    rig->reference = memory_alloc(FB_BYTES, MEMORY_APP);
     if (rig->before == NULL || rig->reference == NULL) {
         memory_free(rig->before);
         memory_free(rig->reference);

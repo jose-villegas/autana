@@ -9,6 +9,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "core/app_heap.h"
 #include "core/job.h"
 #include "core/timing.h"
 
@@ -142,6 +143,14 @@ esp_heap_trace_free_hook(void* ptr) {
     (void)ptr;
     if (watching_this_task()) {
         record(FRAME_WATCH_FREE, heap_call_site());
+    }
+}
+
+/* The app heap's allocations, which the hooks above never see. */
+void
+app_heap_trace_hook(bool alloc, const void* site) {
+    if (watching_this_task()) {
+        record(alloc ? FRAME_WATCH_ALLOC : FRAME_WATCH_FREE, (uintptr_t)site);
     }
 }
 

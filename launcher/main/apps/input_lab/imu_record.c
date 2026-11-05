@@ -24,7 +24,7 @@ imu_record_start(imu_record_t* record, size_t capacity) {
     if (capacity < sizeof IMU_RECORD_TRUNCATED) {
         return false;
     }
-    record->text = memory_alloc(capacity, MEMORY_PSRAM);
+    record->text = memory_alloc(capacity, MEMORY_APP);
     if (record->text == NULL) {
         ESP_LOGE(TAG, "no memory for round: requested %zu bytes in PSRAM", capacity);
         return false;
