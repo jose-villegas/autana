@@ -302,6 +302,37 @@ class StreamTests(unittest.TestCase):
         self.assertEqual(status, 0)
         self.assertEqual(echoed, "RENDER fly=none\nRENDER_END\nRENDER_ER\n")
 
+    def test_a_lock_lost_while_stdin_is_quiet_ends_the_stream(self):
+        held = []
+        enter = device.HeldLock.__enter__
+
+        def recording(lock):
+            held.append(lock)
+            return enter(lock)
+
+        def lose_it():
+            deadline = time.monotonic() + STREAM_WAIT_SECONDS
+            while not held and time.monotonic() < deadline:
+                time.sleep(0.01)
+            held[0].lost.set()
+
+        quiet = threading.Event()
+
+        def lines():
+            # stdin that never ends by itself: only the lost lock can end the stream.
+            quiet.wait(STREAM_WAIT_SECONDS)
+            yield "render fly pose\n"
+
+        connection = FakeConnection()
+        threading.Thread(target=lose_it, daemon=True).start()
+        try:
+            with mock.patch.object(device.HeldLock, "__enter__", recording), \
+                    self.assertRaises(device.LockLost):
+                self.run_stream(connection, lines())
+        finally:
+            quiet.set()
+        self.assertEqual(connection.writes, [])
+
     def test_a_failed_read_ends_a_quiet_stream_with_an_error_and_releases_the_lock(self):
         store = mock_store()
         quiet = threading.Event()

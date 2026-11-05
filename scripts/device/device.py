@@ -10,6 +10,7 @@ from functools import partial
 import json
 import math
 import os
+import queue
 import re
 import shutil
 import subprocess
@@ -1965,8 +1966,6 @@ def stream(args, store, board, lines=None, out=None):
     ends: for a desktop tool steering the board live, where a `send` per line
     (a process, a lock and an open each) is far too slow. A lost lock or a
     failed read ends it with an error, even while stdin is quiet."""
-    import queue
-
     lines = sys.stdin if lines is None else lines
     out = sys.stdout if out is None else out
     with HeldLock(store, board, args.owner, "stream", args.wait):
