@@ -761,16 +761,19 @@ test_observer_at_a_spectator_pose_draws_that_spectator(void) {
 }
 
 /* A checkpoint holds no observer, and restoring one keeps the observer set
- * since: it is the person's input, not the frame's state. */
+ * since: it is the person's input, not the frame's state. Taken shaded: the
+ * cull view's own state outgrows a device's largest PSRAM block. */
 static void
 test_a_checkpoint_neither_holds_nor_restores_the_observer(void) {
     scene_t* s = scene_open();
     const transformf_t elsewhere = somewhere_else();
+    render_context_set_debug_view(&s->context, RENDER_DEBUG_VIEW_SHADED);
     checkpoint_t held[2] = {{0}}; /* taken with the observer set, then with none */
     render_context_set_observer(&s->context, &elsewhere);
     render_context_checkpoint_capture(&held[0], &s->context);
     render_context_set_observer(&s->context, NULL);
     render_context_checkpoint_capture(&held[1], &s->context);
+    TEST_ASSERT_FALSE(held[0].failed || held[1].failed);
     for (int round = 0; round < 2; round++) {
         const checkpoint_block_t* a = checkpoint_find(&held[0], &s->context);
         const checkpoint_block_t* b = checkpoint_find(&held[1], &s->context);
@@ -786,6 +789,7 @@ test_a_checkpoint_neither_holds_nor_restores_the_observer(void) {
     }
     checkpoint_clear(&held[0]);
     checkpoint_clear(&held[1]);
+    render_context_set_debug_view(&s->context, render_context_debug_view_named(CULL_VIEW));
     scene_draw(s);
     transformf_t seen;
     TEST_ASSERT_TRUE(render_context_observer_pose(&s->context, &seen));
