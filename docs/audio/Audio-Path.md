@@ -75,7 +75,7 @@ The [QMI8658A datasheet](https://files.waveshare.com/upload/5/5f/QMI8658A_Datash
 plus filter settling of 3/ODR seconds. Rate configuration disables and re-enables both sensors.
 
 Section 8.7 specifies that FIFO read mode discards arrivals even when space
-remains. Loss accounting uses whole active-rate periods inside each confirmed
+remains. The chip driver counts whole configured-rate periods inside each confirmed
 read interval; fractions from separate drains cannot establish a lost sample.
 
 Pulse shake needs `IMU_VIBRATION_MIN_SAMPLES` samples in the pulse span.

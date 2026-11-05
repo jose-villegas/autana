@@ -278,7 +278,7 @@ FIFO read mode discards arrivals (section 8.7). Loss is a lower bound: whole act
 | Condition | Effect |
 |---|---|
 | Read-mode exit | Count read before `CTRL9_REQ_FIFO`; CTRL9 polled with no minimum delay; every drain attempts to exit read mode, including errors<sup>[[79]](../Citations.md#qst-qmi8658a)</sup> |
-| Read-mode timing | `esp_timer`: after acknowledged `CTRL9_REQ_FIFO`, before `REG_FIFO_CTRL` rewrite, every chunk and any bus wait between them included |
+| Read-mode timing | `input/motion/qmi8658/qmi8658.c`: after acknowledged `CTRL9_REQ_FIFO`, before `REG_FIFO_CTRL` rewrite; chunks and bus waits included; loss uses the configured ODR period from `imu.h` |
 | Empty drain | Carry loss to next sample |
 | Loss boundary | Hold previous rotation for at most `GRAVITY_MAX_DT_MS` converted to us |
 | FIFO overflow, failed drain, queue overflow or loss beyond `uint8_t` | Mark gap; drop oldest on queue overflow |

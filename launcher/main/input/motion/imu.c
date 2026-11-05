@@ -283,9 +283,6 @@ restart_fifo(void) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
     odr.flowing = false;
 #endif
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    odr.flowing = false;
-#endif
     portEXIT_CRITICAL(&lock);
 }
 

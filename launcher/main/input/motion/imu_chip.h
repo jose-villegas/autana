@@ -15,8 +15,7 @@
 
 /* open identifies the chip before configuring it: false if nothing or something else answers.
  * configure and restart start a fresh FIFO; the caller queues its gap and the next drain does not repeat it.
- * drain returns
- * -1 on a bus error and recovers the FIFO itself; *lost counts arrivals dropped before out[0]. */
+ * drain returns -1 on a bus error and recovers the FIFO itself; *lost counts arrivals dropped before out[0]. */
 typedef struct {
     const char* name;
     bool (*open)(i2c_master_bus_handle_t bus, uint8_t address, unsigned rate);

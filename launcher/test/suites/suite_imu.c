@@ -10,6 +10,7 @@
 #include "input/motion/imu.h"
 #include "input/motion/imu_odr.h"
 #include "input/motion/imu_queue.h"
+#include "input/motion/qmi8658/qmi8658_fifo.h"
 #include "input/motion/qmi8658/qmi8658_reset.h"
 
 #define TEST_CALLS_MAX 4
@@ -17,6 +18,7 @@
 typedef struct {
     unsigned calls[TEST_CALLS_MAX];
     int count;
+    qmi8658_fifo_t fifo;
     int fail_first; /* this many configure() calls fail before any succeeds */
 } test_bus_t;
 
@@ -27,6 +29,7 @@ static bool
 fake_configure(unsigned odr_code) {
     TEST_ASSERT_LESS_THAN_INT(TEST_CALLS_MAX, bus.count);
     bus.calls[bus.count++] = odr_code;
+    qmi8658_fifo_reset(&bus.fifo, odr_code);
     return bus.count > bus.fail_first;
 }
 
@@ -48,9 +51,10 @@ test_nothing_asked_touches_nothing(void) {
 static void
 test_switch_applies_the_request(void) {
     reset(0);
-    imu_odr_t odr = {.requested = IMU_BUZZ_ODR_CODE, .applied = IMU_ODR_CODE};
+    imu_odr_t odr = {.requested = IMU_BUZZ_ODR_CODE, .applied = IMU_ODR_CODE, .flowing = true};
     TEST_ASSERT_EQUAL_INT(IMU_ODR_SWITCHED, imu_odr_apply(&odr, fake_configure, &level));
     TEST_ASSERT_EQUAL_UINT(IMU_BUZZ_ODR_CODE, odr.applied);
+    TEST_ASSERT_FALSE(odr.flowing);
     TEST_ASSERT_EQUAL_INT(1, bus.count);
     TEST_ASSERT_EQUAL_INT(IMU_DEMAND_FIFO, level);
     TEST_ASSERT_EQUAL_INT(IMU_ODR_UNCHANGED, imu_odr_apply(&odr, fake_configure, &level));
@@ -60,8 +64,9 @@ test_switch_applies_the_request(void) {
 static void
 test_failed_switch_restores_the_old_rate(void) {
     reset(1);
-    imu_odr_t odr = {.requested = IMU_BUZZ_ODR_CODE, .applied = IMU_ODR_CODE};
+    imu_odr_t odr = {.requested = IMU_BUZZ_ODR_CODE, .applied = IMU_ODR_CODE, .flowing = true};
     TEST_ASSERT_EQUAL_INT(IMU_ODR_RESTORED, imu_odr_apply(&odr, fake_configure, &level));
+    TEST_ASSERT_FALSE(odr.flowing);
     TEST_ASSERT_EQUAL_INT(2, bus.count);
     TEST_ASSERT_EQUAL_INT(IMU_DEMAND_FIFO, level);
     TEST_ASSERT_EQUAL_UINT(IMU_BUZZ_ODR_CODE, bus.calls[0]);
@@ -73,8 +78,9 @@ test_failed_switch_restores_the_old_rate(void) {
 static void
 test_failed_restore_is_lost(void) {
     reset(2);
-    imu_odr_t odr = {.requested = IMU_BUZZ_ODR_CODE, .applied = IMU_ODR_CODE};
+    imu_odr_t odr = {.requested = IMU_BUZZ_ODR_CODE, .applied = IMU_ODR_CODE, .flowing = true};
     TEST_ASSERT_EQUAL_INT(IMU_ODR_LOST, imu_odr_apply(&odr, fake_configure, &level));
+    TEST_ASSERT_FALSE(odr.flowing);
     TEST_ASSERT_EQUAL_INT(IMU_DEMAND_NONE, level);
     TEST_ASSERT_EQUAL_UINT(IMU_ODR_CODE, odr.applied);
     TEST_ASSERT_EQUAL_UINT(IMU_ODR_CODE, odr.requested);
@@ -84,7 +90,7 @@ static void
 test_switch_gap_is_taken_before_next_drain(void) {
     for (int failures = 0; failures <= 2; failures++) {
         reset(failures);
-        imu_odr_t odr = {.requested = IMU_BUZZ_ODR_CODE, .applied = IMU_ODR_CODE};
+        imu_odr_t odr = {.requested = IMU_BUZZ_ODR_CODE, .applied = IMU_ODR_CODE, .flowing = true};
         imu_queue_t* queue = calloc(1, sizeof *queue);
         TEST_ASSERT_NOT_NULL(queue);
         TEST_ASSERT_NOT_EQUAL(IMU_ODR_UNCHANGED, imu_odr_apply(&odr, fake_configure, &level));
@@ -94,10 +100,26 @@ test_switch_gap_is_taken_before_next_drain(void) {
         bool gap = false;
         TEST_ASSERT_EQUAL_INT(0, imu_queue_take_at(queue, odr.applied, &sample, &lost, &gap));
         TEST_ASSERT_TRUE(gap);
-        imu_queue_push_drain(queue, &sample, 1, 0, false);
+        imu_queue_push_drain(queue, &sample, 1, 0, bus.fifo.gap);
         TEST_ASSERT_EQUAL_INT(1, imu_queue_take_at(queue, odr.applied, &sample, &lost, &gap));
         free(queue);
         TEST_ASSERT_FALSE(gap);
+    }
+}
+
+static void
+test_fifo_loss_uses_configured_rate(void) {
+    const unsigned rates[] = {IMU_ODR_CODE, IMU_BUZZ_ODR_CODE, IMU_ODR_CODE - 1U, IMU_ODR_CODE + 1U};
+    for (unsigned i = 0; i < sizeof rates / sizeof rates[0]; i++) {
+        qmi8658_fifo_t fifo;
+        qmi8658_fifo_reset(&fifo, rates[i]);
+        const uint32_t period = IMU_ODR_PERIOD_US(rates[i]);
+        TEST_ASSERT_EQUAL_INT(0, qmi8658_fifo_loss(&fifo, period - 1U, false));
+        TEST_ASSERT_EQUAL_INT(0, qmi8658_fifo_loss(&fifo, period, false));
+        TEST_ASSERT_EQUAL_INT(1, qmi8658_fifo_loss(&fifo, 0, false));
+        TEST_ASSERT_EQUAL_INT(0, qmi8658_fifo_loss(&fifo, period, false));
+        TEST_ASSERT_EQUAL_INT(0, qmi8658_fifo_loss(&fifo, period, true));
+        TEST_ASSERT_EQUAL_INT(0, qmi8658_fifo_loss(&fifo, 0, false));
     }
 }
 
@@ -293,6 +315,7 @@ test_poll_compares_only_the_masked_bits(void) {
 
 void
 run_imu_suite(void) {
+    RUN_TEST(test_fifo_loss_uses_configured_rate);
     RUN_TEST(test_nothing_asked_touches_nothing);
     RUN_TEST(test_switch_applies_the_request);
     RUN_TEST(test_failed_switch_restores_the_old_rate);
