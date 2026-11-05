@@ -8,4 +8,10 @@ root sand_step frame
 # rooted so the gate prices the two together.
 root test_the_mature_tree_scene_is_finished_but_can_be_restarted test
 
+# The menu's options-then-START path: the test taps the options screen and
+# then START, drawing the whole microui menu under its own frame.
+root test_cancel_then_start_uses_the_old_options test
+root test_apply_then_start_uses_the_new_options test
+root test_start_without_apply_uses_the_old_options test
+
 indirect sand_chunk_step_lane sand_chunk_run_lane sand_chunk_run_rest : sweep_one_chunk step_one_gas_chunk equalise_gas_one_chunk equalise_one_chunk react_one_chunk
