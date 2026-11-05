@@ -25,7 +25,7 @@ DEPTH_WEIGHT = 30.0
 
 
 def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False, target=None, inputs=None,
-        start=None, probes=None, probe_share=None, path=True, probe_coverage=1.0):
+        start=None):
     """Fit `start` (the variant's start in `inputs` when None) to the reference set in `inputs` (`work` when
     None) and write the renderer's mesh to `target`. A carved start bundle fits its rest with its copies drawn,
     and passes the copy-coverage gate over the held-out poses; its copies are written back unchanged."""
@@ -47,23 +47,10 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     out = work / "fitted"
     steps = min(recipe.steps, 8) if smoke else recipe.steps
     command = ["--scene", str(scene_path), "--start", str(start)]
-    pairs = [(inputs / poses, inputs / reference) for poses, reference in TRAINING] if path else []
-    coverage = [inputs / COVERAGE] if path else []
-    if probes is not None:
-        pairs.append((pathlib.Path(probes) / "probes.txt", pathlib.Path(probes) / "reference_probes"))
-        coverage.append(pathlib.Path(probes) / "probes.txt")
-    for poses, reference in pairs:
-        command += ["--poses", str(poses), "--reference", str(reference)]
-    if probes is not None and path and probe_share is not None:
-        command += [arg for share in [(1 - probe_share) / 2] * 2 + [probe_share] for arg in ("--pair-weight", str(share))]
-    for poses in coverage:
-        command += ["--coverage-poses", str(poses)]
-    if probes is not None and path:
-        command += ["--coverage-weight", "1", "--coverage-weight", str(probe_coverage)]
-    command += ["--out", str(out)]
-    if budget != 0:  # 0 keeps every start triangle: no prune
-        command += ["--budget", str(recipe.budget if budget is None else budget)]
-    command += ["--steps", str(steps), "--batch", str(recipe.batch),
+    for poses, reference in TRAINING:
+        command += ["--poses", str(inputs / poses), "--reference", str(inputs / reference)]
+    command += ["--out", str(out), "--budget", str(recipe.budget if budget is None else budget),
+                "--coverage-poses", str(inputs / COVERAGE), "--steps", str(steps), "--batch", str(recipe.batch),
                 "--laplacian", str(recipe.laplacian), "--normal-weight", str(recipe.normal_weight),
                 "--object", job.object.name, "--surface-weight", str(recipe.surface_weight),
                 "--surface-margin", str(recipe.surface_margin)]

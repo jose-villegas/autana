@@ -584,7 +584,8 @@ def mesh_recipe(job, scene, tools, poses=None, unavailable=None):
 
 
 def fit_recipe(fit):
-    return dict(vars(fit))
+    """The fit's parsed settings; an optional one left unset (None) is left out, so adding one re-keys nothing."""
+    return {name: value for name, value in vars(fit).items() if value is not None}
 
 
 def reference_recipe(inputs, tools, poses=None, unavailable=None):

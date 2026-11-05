@@ -156,6 +156,11 @@ FIT_GROUPS = {
     "optimise": ("steps", "batch", "laplacian", "normal_weight", "surface_weight", "surface_margin"),
 }
 FIT_KEYS = tuple(key for keys in FIT_GROUPS.values() for key in keys)
+# Optional: absent, its attribute is None, which a fit's bake key leaves out.
+FIT_PROBES_KEYS = ("spacing", "face")
+# A table budget names a policy; an integer is the constant budget.
+BUDGET_POLICIES = ("settle",)
+SETTLE_KEYS = ("policy", "max", "step", "settle")
 
 
 def load_fit(value, variant, where):
@@ -170,7 +175,8 @@ def load_fit(value, variant, where):
         for key in keys:
             if key in value:
                 raise SettingsError(f"{where}.{key} moved to {where}.{group}.{key}")
-    check_keys(value, FIT_GROUPS, where)
+    check_keys(value, FIT_GROUPS, where, optional=("probes",))
+    probes = value.get("probes")
     values = {}
     for group, keys in FIT_GROUPS.items():
         table = value[group]
@@ -178,9 +184,11 @@ def load_fit(value, variant, where):
         values.update(table)
     if variant.triangles is None:
         raise SettingsError(f"{where} needs the variant's triangles, the budget its start is simplified to")
-    fit = SimpleNamespace(**{key: values[key] for key in FIT_KEYS})
+    fit = SimpleNamespace(**{key: values[key] for key in FIT_KEYS}, settle=None, probes=None)
+    if isinstance(values["budget"], dict):
+        fit.budget, fit.settle = settle_budget(values["budget"], f"{where}.prune.budget")
     for key in ("budget", "train_every_ms", "held_out_every_ms", "coverage_every_ms", "steps", "batch"):
-        setattr(fit, key, count(values[key], f"{where}.{key}"))
+        setattr(fit, key, count(getattr(fit, key), f"{where}.{key}"))
     fit.size = pixel_size(values["size"], f"{where}.poses.size")
     fit.laplacian = number(values["laplacian"], f"{where}.laplacian")
     fit.normal_weight = number(values["normal_weight"], f"{where}.normal_weight")
@@ -191,7 +199,26 @@ def load_fit(value, variant, where):
         setattr(fit, key, value)
     if fit.budget > variant.triangles:
         raise SettingsError(f"{where}.budget cannot exceed the variant's triangles")
+    if probes is not None:
+        check_keys(probes, FIT_PROBES_KEYS, f"{where}.probes")
+        fit.probes = SimpleNamespace(spacing=number(probes["spacing"], f"{where}.probes.spacing"),
+                                     face=count(probes["face"], f"{where}.probes.face"))
+        if fit.probes.spacing <= 0:
+            raise SettingsError(f"{where}.probes.spacing must be positive")
     return fit
+
+
+def settle_budget(table, where):
+    """(max, settle): a budget the fit settles on, from `step` triangles up to `max` in `step`s, stopping
+    at the first step whose held-out holes fall by less than the `settle` share of the step before."""
+    check_keys(table, SETTLE_KEYS, where)
+    policy = text(table["policy"], f"{where}.policy")
+    if policy not in BUDGET_POLICIES:
+        raise SettingsError(f"{where}.policy must be one of {', '.join(BUDGET_POLICIES)}")
+    settle = SimpleNamespace(step=count(table["step"], f"{where}.step"), share=number(table["settle"], f"{where}.settle"))
+    if not 0 <= settle.share < 1:
+        raise SettingsError(f"{where}.settle must be at least 0 and below 1")
+    return count(table["max"], f"{where}.max"), settle
 
 
 def load_variant(value, steps, where):
