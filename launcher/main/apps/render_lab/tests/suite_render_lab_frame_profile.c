@@ -68,10 +68,12 @@ static const capybara_take_t capybara_blend = {"capybara-blend", "blend", CAPYBA
 /* Worst of a 5-seed capture on A308 (before and after its move), 20E8 and
  * 2124, + 1%; per quarter, portrait then landscape. The Sponza and Bistro
  * rows are then scaled by the A308 gain of the per-frame instance cull, and
- * the Bistro row by that of walking only active renderers. */
+ * the Bistro row by that of walking only active renderers. The full Sponza
+ * row and Sponza lite's landscape, which that scaling left failing, are
+ * pegged again from a later 5-seed capture on the same three boards. */
 static const profile_scenario_t profile_scenarios[] = {
-    {.scene = &scene_sponza[SCENE_BAKED_FULL], .quarters = {{48135, 58790}, {46392, 55835}}},
-    {.scene = &scene_sponza[SCENE_BAKED_LITE], .quarters = {{41016, 47265}, {39777, 45453}}},
+    {.scene = &scene_sponza[SCENE_BAKED_FULL], .quarters = {{49828, 60264}, {47994, 57718}}},
+    {.scene = &scene_sponza[SCENE_BAKED_LITE], .quarters = {{41016, 47265}, {41193, 46324}}},
     {.scene = &scene_sponza[SCENE_BAKED_FLAT], .quarters = {{39923, 49110}, {39269, 47716}}},
     {.scene = &scene_sponza[SCENE_BAKED_FITTED], .quarters = {{40514, 49046}, {38906, 46226}}},
     {.scene = &scene_sponza[SCENE_BAKED_FITTED_FULL], .quarters = {{48724, 61767}, {46644, 57701}}},
