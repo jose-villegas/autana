@@ -1,8 +1,8 @@
 /*
- * scene_internal: the scene's layout and components, shared by scene.c
- * (load, entities), scene_animation.c (animators, skinning) and scene_draw.c
- * (the active camera and the draw), and the SCNE entry scene_asset.c reads.
- * Not for apps.
+ * scene_internal: the scene's columns and the world's records, shared by
+ * scene.c (load), entity/entity.c (the entity table), the component modules,
+ * scene_animation.c, scene_hierarchy.c and scene_draw.c, and the SCNE entry
+ * scene_asset.c reads. Not for apps.
  */
 #pragma once
 
@@ -205,11 +205,9 @@ extern scene_root_t scene_roots[SCENE_ROOTS_MAX];
 scene_root_t* scene_entity_lookup(entity_t entity, scene_row_t* row);
 /* The same, never logging: for questions such as whether an owner is alive. */
 scene_root_t* scene_entity_peek(entity_t entity, scene_row_t* row);
-/* The scene and row of an entity in a loaded scene's columns, or NULL (logged as lookup). */
+/* The scene and row of an entity in a loaded scene's columns, or NULL. */
 struct scene* scene_entity_row(entity_t entity, scene_row_t* row);
 entity_t scene_row_entity(const struct scene* scene, scene_row_t row);
-/* The columns of the scene `entity` is in, its root included, or NULL. */
-struct scene* scene_columns(entity_t entity);
 /* Issues a fresh root entity into `record`; false when no slot is left. */
 bool scene_world_issue_root(scene_root_t* record);
 /* Reserves `rows` slots for the record's columns, in one run; false when none is long enough. */
@@ -269,9 +267,8 @@ void scene_free_kept(void* block);
  * deduplicated per array, and points the renderers at it. SCENE_ERR_MEMORY when the block cannot be had. */
 scene_failure_t scene_mesh_make_resident(scene_t* scene);
 
-/* The loaded scenes, in load order. */
-int scene_loaded_count(void);
-scene_t* scene_loaded_at(int index);
+/* The columns of world record `index` (below SCENE_ROOTS_MAX) when it is READY, else NULL. */
+scene_t* scene_ready_at(int index);
 
 /* Only activation and a seek of the active camera count as cuts. Other discontinuities,
  * such as a camera transform teleport or a clip switch, converge within a few frames. */

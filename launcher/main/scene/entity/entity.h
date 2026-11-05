@@ -14,9 +14,9 @@ typedef handle_t entity_t;
 #define ENTITY_NONE HANDLE_NONE
 
 /* The first entity below `within`, in load order, whose name hashes to
- * `name` (name_hash()), or ENTITY_NONE; ENTITY_NONE searches every scene.
- * A root is never found by name: scene_load() returns it. Look it up once,
- * when the scene is READY, and keep it. */
+ * `name` (name_hash()), or ENTITY_NONE. A root is never found by name:
+ * scene_load() returns it. Look it up once, when the scene is READY, and
+ * keep it. */
 entity_t entity_find(entity_t within, name_hash_t name);
 
 /* The entity after `after` inside `within`, in load order, or ENTITY_NONE

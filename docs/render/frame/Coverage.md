@@ -71,7 +71,7 @@ style; `render_view_t.small_fill` carries them to the frame's row workers.
 <!-- /generated: small-fill-levers -->
 
 The presets are defined in `render_view.h`. Opt in with the
-[scene camera API](../scene/Scene-Manager.md#what-an-app-calls), or pass custom `small_fill_t` values:
+[scene camera API](../scene/Scene-Components.md#what-an-app-calls), or pass custom `small_fill_t` values:
 
 <!-- generated: scene-small-fill-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c

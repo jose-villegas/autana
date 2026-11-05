@@ -5396,6 +5396,23 @@ test_cancelling_before_ready_frees_the_request_without_a_callback(void) {
     TEST_ASSERT_EQUAL_INT(PENDING_NONE, scene_state(root));
 }
 
+/* App exit runs the asset store's phase before the scene system's: a scene's
+ * pack must stay held until the scene itself is released. */
+static void
+test_app_exit_keeps_a_scenes_pack_until_the_scene_is_released(void) {
+    async_fixture();
+    const entity_t root = scene_load_async("test_pair", NULL, HANDLE_NONE);
+    poll_until_settled(root);
+    remove_pack("test_pair");
+    scene_row_t row;
+    const handle_t load = scene_entity_lookup(root, &row)->load;
+    asset_store_app_exit();
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, asset_store_state(load));
+    scene_unload_all();
+    TEST_ASSERT_EQUAL_INT(PENDING_NONE, asset_store_state(load));
+    TEST_ASSERT_EQUAL_INT(PENDING_NONE, scene_state(root));
+}
+
 static void
 test_cancelling_a_ready_scene_keeps_it(void) {
     async_fixture();
@@ -5954,6 +5971,7 @@ run_scene_suite(void) {
     RUN_TEST(test_an_async_scene_opens_on_the_poll_and_completes_once);
     RUN_TEST(test_cancelling_before_ready_frees_the_request_without_a_callback);
     RUN_TEST(test_cancelling_a_ready_scene_keeps_it);
+    RUN_TEST(test_app_exit_keeps_a_scenes_pack_until_the_scene_is_released);
     RUN_TEST(test_a_dead_token_cancels_its_load_silently);
     RUN_TEST(test_a_load_owned_by_an_entity_ends_with_its_scene);
     RUN_TEST(test_a_load_requested_inside_a_callback_waits_for_the_next_pass);

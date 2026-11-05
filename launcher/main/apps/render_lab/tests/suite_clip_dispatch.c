@@ -93,7 +93,7 @@ test_scene_console_dispatch_and_repeated_exit_release_heap(void) {
     enter(f, "sponza");
     entity_t plain = render_lab_test_loaded_scene("sponza");
     TEST_ASSERT_FALSE(handle_is_none(plain));
-    const scene_t* plain_columns = scene_columns(plain);
+    const scene_t* plain_columns = scene_entity_lookup(plain, &(scene_row_t){0})->scene;
     TEST_ASSERT_NOT_NULL(plain_columns);
     const int animators = plain_columns->animator_count;
     const size_t free_before = memory_free_bytes(MEMORY_APP);

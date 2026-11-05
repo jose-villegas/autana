@@ -108,7 +108,7 @@ pool returns HANDLE_NONE and logs one reason. `asset_store_mounted()` counts
 mounted packs; `ASSET_STORE_MOUNTS_MAX` bounds their table.
 
 `scene_load(id)` and `scene_load_async()` load a scene the same way
-([Loading scenes](../render/scene/Scene-Manager.md#loading)); `scene_release()`
+([Loading scenes](../render/scene/Scene-Loading.md#loading)); `scene_release()`
 releases its pack.
 
 ## The device

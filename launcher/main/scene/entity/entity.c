@@ -18,7 +18,7 @@
 
 scene_root_t scene_roots[SCENE_ROOTS_MAX];
 
-/* Each slot's latest generation; 0: never issued, HANDLE_GENERATION_MAX: retired. */
+/* Each slot's latest generation; 0: never issued, HANDLE_GENERATION_MAX: retired once released. */
 static uint16_t* generations;
 
 static bool
@@ -118,12 +118,12 @@ scene_entity_peek(entity_t entity, scene_row_t* row) {
 scene_root_t*
 scene_entity_lookup(entity_t entity, scene_row_t* row) {
     scene_root_t* record = scene_entity_peek(entity, row);
+#if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
     if (record == NULL && !handle_is_none(entity)) {
         ESP_LOGE("entity", "refused entity %08lx: stale or not an entity", (unsigned long)entity.id);
-#if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
         assert(!"stale or foreign entity handle");
-#endif
     }
+#endif
     return record;
 }
 
@@ -131,13 +131,6 @@ scene_t*
 scene_entity_row(entity_t entity, scene_row_t* row) {
     scene_root_t* record = scene_entity_lookup(entity, row);
     return record == NULL || *row == SCENE_ROW_ROOT ? NULL : record->scene;
-}
-
-scene_t*
-scene_columns(entity_t entity) {
-    scene_row_t row;
-    const scene_root_t* record = scene_entity_lookup(entity, &row);
-    return record == NULL ? NULL : record->scene;
 }
 
 entity_t
@@ -156,6 +149,11 @@ scene_row_entity(const scene_t* scene, scene_row_t row) {
 static scene_t*
 ready(const scene_root_t* record) {
     return record->state == PENDING_READY ? record->scene : NULL;
+}
+
+scene_t*
+scene_ready_at(int index) {
+    return ready(&scene_roots[index]);
 }
 
 static bool
@@ -185,18 +183,9 @@ find_in(const scene_root_t* record, scene_row_t top, name_hash_t name) {
 
 entity_t
 entity_find(entity_t within, name_hash_t name) {
-    scene_row_t top = SCENE_ROW_ROOT;
-    if (!handle_is_none(within)) {
-        const scene_root_t* record = scene_entity_lookup(within, &top);
-        return record == NULL || ready(record) == NULL ? ENTITY_NONE : find_in(record, top, name);
-    }
-    for (int i = 0; i < SCENE_ROOTS_MAX; i++) {
-        const entity_t found = ready(&scene_roots[i]) == NULL ? ENTITY_NONE : find_in(&scene_roots[i], top, name);
-        if (!handle_is_none(found)) {
-            return found;
-        }
-    }
-    return ENTITY_NONE;
+    scene_row_t top;
+    const scene_root_t* record = scene_entity_lookup(within, &top);
+    return record == NULL || ready(record) == NULL ? ENTITY_NONE : find_in(record, top, name);
 }
 
 entity_t

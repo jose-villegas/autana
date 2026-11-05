@@ -144,6 +144,8 @@ void
 scene_row_set_local(scene_root_t* root, scene_row_t row, transformf_t local) {
     scene_t* scene = root->scene;
     if (row == SCENE_ROW_ROOT) {
+        /* The root is every top-level row's parent: the rule below holds for it too. */
+        assert(transformf_scale_is_even(&local));
         root->local = local;
         root->world = transformf_compute_matrix(&local);
         root->placed = !scene_transform_is_identity(&root->world);

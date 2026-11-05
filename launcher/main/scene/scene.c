@@ -22,9 +22,7 @@
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
 int scene_fail_allocation_after = -1;
 #endif
-static scene_t* loaded[SCENE_ROOTS_MAX];
 static uint64_t requests; /* scene_root_t.order of the latest request */
-static int loaded_count;
 static memory_take_fn kept_take;
 
 size_t
@@ -105,7 +103,9 @@ scene_free_kept(void* block) {
 
 memory_take_fn
 scene_set_take(memory_take_fn take) {
-    assert(loaded_count == 0);
+    for (int i = 0; i < SCENE_ROOTS_MAX; i++) {
+        assert(scene_roots[i].scene == NULL);
+    }
     const memory_take_fn replaced = kept_take;
     kept_take = take;
     render_context_set_take(render_context_main(), take);
@@ -371,7 +371,6 @@ open_scene(scene_root_t* record, const asset_pack_t* pack) {
         free_columns(scene);
         return done;
     }
-    loaded[loaded_count++] = scene;
     return done;
 }
 
@@ -388,20 +387,25 @@ settle(scene_root_t* record, scene_failure_t done) {
     }
 }
 
+/* Whether any record holds a scene's columns. */
+static bool
+any_scene(void) {
+    for (int i = 0; i < SCENE_ROOTS_MAX; i++) {
+        if (scene_roots[i].scene != NULL) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void
 forget(scene_root_t* record) {
     scene_t* scene = record->scene;
     if (scene != NULL) {
         scene_draw_forget(scene);
-        for (int i = 0; i < loaded_count; i++) {
-            if (loaded[i] == scene) {
-                loaded_count--;
-                memmove(&loaded[i], &loaded[i + 1], sizeof loaded[0] * (size_t)(loaded_count - i));
-                loaded[loaded_count] = NULL;
-            }
-        }
         free_columns(scene);
-        if (loaded_count == 0) {
+        record->scene = NULL;
+        if (!any_scene()) {
             /* Nothing left to draw: drop the scratch, so whoever lent it can
              * take it back. */
             render_context_drop_scratch(render_context_main());
@@ -470,7 +474,7 @@ scene_load(const char* id) {
 static scene_root_t*
 record_of(entity_t root) {
     scene_row_t row;
-    scene_root_t* record = scene_entity_lookup(root, &row);
+    scene_root_t* record = scene_entity_peek(root, &row);
     return record != NULL && row == SCENE_ROW_ROOT ? record : NULL;
 }
 
@@ -558,8 +562,8 @@ scene_step(uint32_t dt_ms) {
     const uint64_t cutoff = requests;
     for (int i = 0; i < SCENE_ROOTS_MAX; i++) {
         scene_root_t* record = &scene_roots[i];
-        if (record->async && record->order <= cutoff && record->state != PENDING_CANCELLED
-            && !handle_is_none(record->root)) {
+        const bool pending = record->state == PENDING_WAIT || record->done != NULL;
+        if (record->async && pending && record->order <= cutoff && !handle_is_none(record->root)) {
             step_request(record);
         }
     }
@@ -571,16 +575,6 @@ scene_unload_all(void) {
         forget(&scene_roots[i]);
     }
     scene_draw_release();
-}
-
-int
-scene_loaded_count(void) {
-    return loaded_count;
-}
-
-scene_t*
-scene_loaded_at(int index) {
-    return loaded[index];
 }
 
 /* The index of the entity's renderer, or -1 when it draws nothing. */
@@ -604,11 +598,6 @@ scene_transform_is_identity(const mat4f_t* transform) {
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 void
 scene_checkpoint_capture(checkpoint_t* saved, scene_t* scene) {
-    for (int i = 0; i < loaded_count; i++) {
-        if (loaded[i] == scene) {
-            checkpoint_capture_at(saved, &loaded[i], 0);
-        }
-    }
     checkpoint_capture(saved, scene, place(&scene->asset, NULL));
     checkpoint_capture_at(saved, &scene->worlds, (size_t)scene->world_count * sizeof(*scene->worlds));
     checkpoint_capture_at(saved, &scene->light_transfer, sizeof(*scene->light_transfer));

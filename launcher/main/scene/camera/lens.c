@@ -3,13 +3,13 @@
 #include <stddef.h>
 
 render_view_t
-lens_view(const lens_t* camera, const transformf_t* pose, viewport_t viewport) {
-    render_view_t view = render_view_make(pose, camera->half_fov_short_tan, camera->near_z, viewport);
-    view.present = camera->present;
-    view.small_fill = camera->small_fill;
-    view.skip_hidden = camera->skip_hidden;
-    if (camera->shift.x != 0.0F || camera->shift.y != 0.0F) {
-        render_view_set_shift(&view, camera->shift);
+lens_view(const lens_t* lens, const transformf_t* pose, viewport_t viewport) {
+    render_view_t view = render_view_make(pose, lens->half_fov_short_tan, lens->near_z, viewport);
+    view.present = lens->present;
+    view.small_fill = lens->small_fill;
+    view.skip_hidden = lens->skip_hidden;
+    if (lens->shift.x != 0.0F || lens->shift.y != 0.0F) {
+        render_view_set_shift(&view, lens->shift);
     }
     return view;
 }

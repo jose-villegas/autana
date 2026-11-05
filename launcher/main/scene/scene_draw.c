@@ -119,9 +119,11 @@ scene_render(uint32_t dt_ms, int quarter, int width, int height) {
         return;
     }
     stepped = true;
-    for (int i = 0; i < scene_loaded_count(); i++) {
-        scene_t* scene = scene_loaded_at(i);
-        scene_animation_step(scene, dt_ms);
+    for (int i = 0; i < SCENE_ROOTS_MAX; i++) {
+        scene_t* scene = scene_ready_at(i);
+        if (scene != NULL) {
+            scene_animation_step(scene, dt_ms);
+        }
     }
     if (active.scene != NULL) {
         draw_active(quarter, width, height);
@@ -158,8 +160,11 @@ scene_draw_checkpoint_capture(checkpoint_t* saved) {
     CHECKPOINT_CAPTURE(saved, rendered);
     CHECKPOINT_CAPTURE(saved, refused);
     scene_world_checkpoint_capture(saved);
-    for (int i = 0; i < scene_loaded_count(); i++) {
-        scene_checkpoint_capture(saved, scene_loaded_at(i));
+    for (int i = 0; i < SCENE_ROOTS_MAX; i++) {
+        scene_t* scene = scene_ready_at(i);
+        if (scene != NULL) {
+            scene_checkpoint_capture(saved, scene);
+        }
     }
 }
 #endif

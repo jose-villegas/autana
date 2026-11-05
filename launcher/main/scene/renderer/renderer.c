@@ -4,14 +4,18 @@
 #include "core/memory.h"
 #include "scene/scene_internal.h"
 
+/* The index of the entity's renderer in its scene `*scene`, or -1. */
+static int
+renderer_of(entity_t entity, scene_t** scene) {
+    scene_row_t row;
+    *scene = scene_entity_row(entity, &row);
+    return *scene == NULL ? -1 : scene_renderer_index(*scene, row);
+}
+
 const char*
 renderer_mesh_id(entity_t entity) {
-    scene_row_t row;
-    const scene_t* scene = scene_entity_row(entity, &row);
-    if (scene == NULL) {
-        return NULL;
-    }
-    const int i = scene_renderer_index(scene, row);
+    scene_t* scene;
+    const int i = renderer_of(entity, &scene);
     if (i < 0) {
         return NULL;
     }
@@ -21,23 +25,15 @@ renderer_mesh_id(entity_t entity) {
 
 const r3d_lit_mesh_t*
 renderer_mesh(entity_t entity) {
-    scene_row_t row;
-    const scene_t* scene = scene_entity_row(entity, &row);
-    if (scene == NULL) {
-        return NULL;
-    }
-    const int i = scene_renderer_index(scene, row);
+    scene_t* scene;
+    const int i = renderer_of(entity, &scene);
     return i < 0 ? NULL : &scene->renderers[i].mesh;
 }
 
 bool
 renderer_set_mesh(entity_t entity, const r3d_lit_mesh_t* mesh) {
-    scene_row_t row;
-    scene_t* scene = scene_entity_row(entity, &row);
-    if (scene == NULL) {
-        return false;
-    }
-    const int i = scene_renderer_index(scene, row);
+    scene_t* scene;
+    const int i = renderer_of(entity, &scene);
     if (i < 0 || i >= scene->asset.renderer_count) {
         return false;
     }
