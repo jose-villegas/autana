@@ -127,6 +127,14 @@ mat4f_t scene_entity_world_matrix(const scene_t* scene, scene_entity_t entity);
  * the active one. False when the scene has no such camera. */
 bool scene_activate(scene_t* scene, name_hash_t camera);
 
+/* The world box around everything the scene draws now, its active renderers
+ * with a mesh; empty when it draws nothing. */
+box3f_t scene_bounds(scene_t* scene);
+
+/* The active camera's scene and entity, for a caller that moves whichever
+ * camera is drawn. False, nothing written, when no camera is active. */
+bool scene_active_camera(scene_t** scene, scene_entity_t* entity);
+
 /* No camera is active, so nothing is drawn, until the next scene_activate(). */
 void scene_deactivate(void);
 

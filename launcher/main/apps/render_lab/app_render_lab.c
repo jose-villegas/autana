@@ -18,6 +18,7 @@
 #include "image/pixel/rgb565.h"
 #include "render_lab.h"
 #include "render_lab_dynres.h"
+#include "render_lab_fly.h"
 #include "render_lab_scene.h"
 #include "render_lab_view.h"
 #include "scene/scene.h"
@@ -109,6 +110,7 @@ enter_scene(void) {
 
 static void
 exit_scene(void) {
+    render_lab_fly_stop();
     current_scene()->exit();
     app_arena_rewind(scene_mark);
 }
@@ -364,6 +366,7 @@ render_lab_frame(uint32_t dt_ms, const input_t* input) {
     update_scene_title(dt_ms);
     render_context_set_frame_generation(render_context_main(),
                                         current_scene()->generates_frames && render_lab_framegen_on());
+    render_lab_fly_frame(dt_ms);
     current_scene()->frame(dt_ms);
     render_lab_dynres_apply();
     if (hud) {
@@ -457,7 +460,7 @@ pose_console(const char* rest) {
     (void)fflush(stdout);
 }
 
-/* "render scenes" lists each scene's key and name and which one shows; "render scene <key>" switches to that exact key at the next frame. "render pose <ms>" holds the showing scene's path there (render_lab_seek_path(), then paused), so a view can be compared at one pose; "render pose play" lets it move again. Replies are "RENDER ..." lines then "RENDER_END", or "RENDER_ERR <why>". Other words go to the showing scene's console hook, if it has one. */
+/* "render scenes" lists each scene's key and name and which one shows; "render scene <key>" switches to that exact key at the next frame. "render pose <ms>" holds the showing scene's path there (render_lab_seek_path(), then paused), so a view can be compared at one pose; "render pose play" lets it move again; "render fly" flies it (render_lab_fly.h). Replies are "RENDER ..." lines then "RENDER_END", or "RENDER_ERR <why>". Other words go to the showing scene's console hook, if it has one. */
 bool
 render_lab_console(const char* args) {
     if (strcmp(args, "scenes") == 0) {
@@ -484,6 +487,9 @@ render_lab_console(const char* args) {
     }
     if (strncmp(args, "pose ", 5) == 0) {
         pose_console(args + 5);
+        return true;
+    }
+    if (render_lab_fly_console(args)) {
         return true;
     }
     return current_scene()->console != NULL && current_scene()->console(args, console_reply_stdio);

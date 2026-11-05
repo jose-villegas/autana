@@ -1926,6 +1926,51 @@ def send(args, store, board):
                        " s - is a development build running?")
 
 
+STREAM_READ_BYTES = 4096
+
+
+def echo_board(connection, stop, out):
+    """Every whole line the board writes, to `out` as it comes, until `stop`;
+    then what is left of a last line."""
+    pending = bytearray()
+    while not stop.is_set():
+        pending.extend(connection.read(STREAM_READ_BYTES))
+        end = pending.rfind(b"\n") + 1
+        if end:
+            out.write(bytes(pending[:end]).decode("utf-8", errors="replace"))
+            out.flush()
+            del pending[:end]
+    if pending:
+        out.write(bytes(pending).decode("utf-8", errors="replace") + "\n")
+        out.flush()
+
+
+def stream(args, store, board, lines=None, out=None):
+    """Console lines from stdin to the board as each arrives, and every line
+    the board writes to stdout, under one lock and one open port until stdin
+    ends: for a desktop tool steering the board live, where a `send` per line
+    (a process, a lock and an open each) is far too slow."""
+    lines = sys.stdin if lines is None else lines
+    out = sys.stdout if out is None else out
+    with HeldLock(store, board, args.owner, "stream", args.wait):
+        with open_when_free() as connection:
+            stop = threading.Event()
+            reader = threading.Thread(target=echo_board, args=(connection, stop, out), daemon=True)
+            reader.start()
+            try:
+                for line in lines:
+                    require_unlost()
+                    try:
+                        data = (line.rstrip("\r\n") + "\n").encode("ascii")
+                    except UnicodeEncodeError as error:
+                        raise RuntimeError(f"console lines are ASCII: {line.rstrip()!r}") from error
+                    connection.write(data)
+            finally:
+                stop.set()
+                reader.join()
+    return 0
+
+
 def screenshot(args, store, board):
     """SCREENSHOT, decoded by read_screenshot()/write_capture() in
     launcher/tools/device/screenshot.py, the one decoder autana's own
@@ -2318,6 +2363,9 @@ def main(argv=None):
     send_parser.add_argument("--optional", action="store_true",
                              help="a timeout with nothing seen is success, not an error - "
                                   "for a verb that only answers when something is wrong")
+    subparsers.add_parser(
+        "stream", help="write console lines from stdin as they come and print every line the "
+                       "board writes, under one lock until stdin ends")
     screenshot_parser = subparsers.add_parser(
         "screenshot", help="capture what the panel shows right now, as a .png plus a .json state snapshot")
     screenshot_parser.add_argument("--out",
@@ -2527,7 +2575,8 @@ def main(argv=None):
         else:
             # Looked up per call, so a test's patch of one of them is the one run.
             board_commands = {"run-suite": run_suite, "selftest": selftest, "coredump": coredump,
-                              "reset": reset_device, "batch": batch, "screenshot": screenshot, "mic-record": mic_record}
+                              "reset": reset_device, "batch": batch, "screenshot": screenshot, "mic-record": mic_record,
+                              "stream": stream}
             result = board_commands.get(args.command, listen)(args, store, board)
             return result
         result = 0

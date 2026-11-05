@@ -9,6 +9,7 @@ package, [math](../math/README.md) (`set(kinematics_requires math)` in
 |---|---|
 | `include/kinematics/follow/` | Exact steps toward a target: halving decay, a coast and a critically damped spring; [follow reference](../../../docs/kinematics/Follow.md) |
 | `include/kinematics/orbit/` | A transform orbiting a target: steering, fling and reset; [orbit reference](../../../docs/kinematics/Orbit.md) |
+| `include/kinematics/fly/` | A transform flown freely from keys, a drag and a wheel; [fly reference](../../../docs/kinematics/Fly.md) |
 | `src/` | The functions that are not inline |
 | `tests/` | Its suites, run by both runners like every other suite |
 
@@ -23,6 +24,7 @@ target. Host scripts discover sources and suites through
 <!-- generated: package-kinematics-headers check: python launcher/tools/gen/package_headers.py --check -->
 | Header | Purpose |
 |---|---|
+| [include/kinematics/fly/fly_motion.h](include/kinematics/fly/fly_motion.h) | fly_motion: a transform flown freely, as a free camera is: keys move it along its own right and forward and the world's up at its speed, a drag turns it with a level horizon (yaw about the world's up, pitch short of straight up or down, no roll), and a wheel scales its speed. |
 | [include/kinematics/follow/follow.h](include/kinematics/follow/follow.h) | follow: a value moved toward a chosen target in closed form, so each step is solved exactly for its dt and the motion is the same at any frame rate. |
 | [include/kinematics/orbit/orbit_motion.h](include/kinematics/orbit/orbit_motion.h) | orbit_motion: moves a transform around a target, turntable style: it turns about the world's up axis (yaw) and tilts above or below the target (pitch), always facing it. |
 <!-- /generated: package-kinematics-headers -->

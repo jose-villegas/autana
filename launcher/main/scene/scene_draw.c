@@ -85,6 +85,16 @@ active_camera(void) {
     return &active.scene->cameras[active.camera];
 }
 
+bool
+scene_active_camera(scene_t** scene, scene_entity_t* entity) {
+    if (active.scene == NULL) {
+        return false;
+    }
+    *scene = active.scene;
+    *entity = active_camera()->entity;
+    return true;
+}
+
 /* The active renderers with something to draw, as the raster draws them;
  * scene_resolve() has listed them. */
 static int
@@ -97,6 +107,19 @@ fill_instances(scene_t* scene) {
         }
     }
     return count;
+}
+
+box3f_t
+scene_bounds(scene_t* scene) {
+    scene_resolve(scene);
+    box3f_t bounds = box3f_empty();
+    for (int i = 0; i < scene->active_renderer_count; i++) {
+        const scene_renderer_t* r = &scene->renderers[scene->active_renderers[i]];
+        if (r->mesh.node_count > 0) {
+            bounds = box3f_union(bounds, r->world_bounds);
+        }
+    }
+    return bounds;
 }
 
 static void

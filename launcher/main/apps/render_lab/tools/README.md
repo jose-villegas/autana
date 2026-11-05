@@ -322,6 +322,33 @@ its scene by name rather than through the menu:
 | `autana tune render_lab.framegen 1` | every other frame is generated from the one before instead of drawn; 0 draws them all, as does the menu's FRAME GEN |
 | `autana tune render_lab.orbit_ms <ms>` | turns the Capybara scene's camera once about the capybara every that many milliseconds; 0 stops it |
 
+### Flying the camera
+
+`fly.py` flies the showing scene's camera from this machine's keyboard and
+mouse while the board draws it, to look at a scene, a fit or an LOD from
+anywhere:
+
+```sh
+python launcher/main/apps/render_lab/tools/fly.py --scene sponza-fitted-full
+```
+
+| Input | Does |
+|---|---|
+| W, S | forward, back |
+| A, D | left, right |
+| E, Q | up, down along the world's up |
+| right-drag | look: yaw and pitch, the horizon level |
+| wheel | scales the speed |
+| P | prints where the camera is |
+
+The window sends `autana render fly <right> <up> <forward> <drag x> <drag y> <wheel>`
+lines through `device.py stream`, holding the board's lock while it is open,
+and the board flies the camera every frame from the keys held
+([render_lab_fly.h](../render_lab_fly.h), [fly reference](../../../../../docs/kinematics/Fly.md)).
+A flight starts at the speed that crosses the scene corner to corner in
+`RENDER_LAB_FLY_CROSSING_S` seconds, whatever its units. The camera's clip pauses while it flies. Closing the window, `render fly release`,
+a scene switch or a second with no line puts the camera back and lets the clip play.
+
 The Capybara scene's BOOT menu holds the same clip picker: the CLIP
 dropdown plays the chosen clip over the BLEND slider's time.
 
