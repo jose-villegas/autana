@@ -6,7 +6,6 @@ menu "SIMD"
         default y
         help
             Run the simd calls on the ESP32-S3 PIE vector unit (128-bit
-            integer lanes). Disable where the emulator lacks the EE
-            instructions (Espressif QEMU); the C references run instead.
+            integer lanes).
 
 endmenu
