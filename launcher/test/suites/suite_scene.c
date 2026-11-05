@@ -5537,28 +5537,9 @@ test_a_live_entity_owner_does_not_cancel_its_load(void) {
     TEST_ASSERT_EQUAL_INT(1, completion.calls);
 }
 
+/* A load requested for an owner already dead is CANCELLED at once and never completes. */
 static void
-test_a_load_whose_token_is_dead_at_the_request_is_cancelled_at_once(void) {
-    async_fixture();
-    const handle_t token = pending_token_new();
-    pending_token_cancel(token);
-    const entity_t root = scene_load_async("test_pair", on_loaded, token);
-    TEST_ASSERT_EQUAL_INT(PENDING_CANCELLED, scene_state(root));
-    for (int i = 0; i < POLL_PASSES_MAX; i++) {
-        poll_once();
-    }
-    remove_pack("test_pair");
-    TEST_ASSERT_EQUAL_INT(PENDING_CANCELLED, scene_state(root));
-    TEST_ASSERT_EQUAL_INT(0, completion.calls);
-    TEST_ASSERT_EQUAL_INT(0, loaded_count());
-}
-
-static void
-test_a_load_whose_entity_owner_is_dead_at_the_request_is_cancelled_at_once(void) {
-    async_fixture();
-    const entity_t owner_root = load("test_pair");
-    const entity_t owner = entity_find(owner_root, name_hash("red"));
-    scene_release(owner_root);
+assert_dead_owner_cancels_at_once(handle_t owner) {
     const entity_t root = scene_load_async("test_pair", on_loaded, owner);
     TEST_ASSERT_EQUAL_INT(PENDING_CANCELLED, scene_state(root));
     for (int i = 0; i < POLL_PASSES_MAX; i++) {
@@ -5571,22 +5552,50 @@ test_a_load_whose_entity_owner_is_dead_at_the_request_is_cancelled_at_once(void)
 }
 
 static void
+test_a_load_whose_token_is_dead_at_the_request_is_cancelled_at_once(void) {
+    async_fixture();
+    const handle_t token = pending_token_new();
+    pending_token_cancel(token);
+    assert_dead_owner_cancels_at_once(token);
+}
+
+static void
+test_a_load_whose_entity_owner_is_dead_at_the_request_is_cancelled_at_once(void) {
+    async_fixture();
+    const entity_t owner_root = load("test_pair");
+    const entity_t owner = entity_find(owner_root, name_hash("red"));
+    scene_release(owner_root);
+    assert_dead_owner_cancels_at_once(owner);
+}
+
+/* The control for the owner tests below: `root`'s callback runs while `owner` lives. */
+static void
+assert_called_back_while_alive(entity_t root, handle_t owner) {
+    arm_callback(root, owner);
+    scene_step(0);
+    TEST_ASSERT_EQUAL_INT(1, completion.calls);
+    TEST_ASSERT_TRUE(handle_equal(owner, completion.owner));
+}
+
+/* After `owner` died, `root` stays READY with `name` as its second entity and no callback runs. */
+static void
+assert_kept_without_callback(entity_t root, const char* name) {
+    scene_step(0);
+    TEST_ASSERT_EQUAL_INT(1, completion.calls);
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, scene_state(root));
+    TEST_ASSERT_ENTITY(entity_at(root, 1), entity_find(root, name_hash(name)));
+}
+
+static void
 test_a_token_that_dies_after_the_scene_opened_keeps_it_and_runs_no_callback(void) {
     fixture();
     completion = (completion_t){0};
     const handle_t token = pending_token_new();
-    const entity_t alive = load("test_pair");
-    arm_callback(alive, token);
-    scene_step(0);
-    TEST_ASSERT_EQUAL_INT(1, completion.calls); /* the control: a live owner is called back */
-    TEST_ASSERT_TRUE(handle_equal(token, completion.owner));
+    assert_called_back_while_alive(load("test_pair"), token);
     const entity_t dying = load("test_solo");
     arm_callback(dying, token);
     pending_token_cancel(token);
-    scene_step(0);
-    TEST_ASSERT_EQUAL_INT(1, completion.calls);
-    TEST_ASSERT_EQUAL_INT(PENDING_READY, scene_state(dying));
-    TEST_ASSERT_ENTITY(entity_at(dying, 1), entity_find(dying, name_hash("blue")));
+    assert_kept_without_callback(dying, "blue");
 }
 
 static void
@@ -5595,17 +5604,11 @@ test_an_entity_owner_released_after_the_scene_opened_keeps_it_and_runs_no_callba
     completion = (completion_t){0};
     const entity_t owner_root = load("test_pair");
     const entity_t owner = entity_find(owner_root, name_hash("red"));
-    const entity_t alive = load("test_solo");
-    arm_callback(alive, owner);
-    scene_step(0);
-    TEST_ASSERT_EQUAL_INT(1, completion.calls); /* the control: a live owner is called back */
+    assert_called_back_while_alive(load("test_solo"), owner);
     const entity_t dying = load("test_family");
     arm_callback(dying, owner);
     scene_release(owner_root);
-    scene_step(0);
-    TEST_ASSERT_EQUAL_INT(1, completion.calls);
-    TEST_ASSERT_EQUAL_INT(PENDING_READY, scene_state(dying));
-    TEST_ASSERT_ENTITY(entity_at(dying, 1), entity_find(dying, name_hash("red")));
+    assert_kept_without_callback(dying, "red");
 }
 
 static void
