@@ -96,7 +96,7 @@ budget_menu_frame(const input_t* input) {
 static void
 test_menu_with_full_clip_list_and_long_names_fits_budget(void) {
     fixture();
-    menu_budget = memory_alloc(sizeof *menu_budget, MEMORY_PSRAM);
+    menu_budget = memory_alloc(sizeof *menu_budget, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(menu_budget);
     suite_set_test_cleanup(release_menu_budget);
     *menu_budget = (menu_budget_fixture_t){0};

@@ -2,11 +2,13 @@
  * memory: the heap by kind, so a caller above the drivers can place a buffer,
  * or measure what it kept or lost, without naming the allocator.
  *
- * On the board and in the host tests each kind maps to heap capabilities:
- * ESP-IDF's heap on the board, test/heap_arena.c's device-sized model
- * (HOST_HEAP_ARENA) on a host. Any other host build, a render,
- * allocates from the C library's malloc(), which has no budget, so it has no
- * size queries either: memory.c is not built there.
+ * MEMORY_APP is the running app's visit: a TLSF heap over the app region
+ * (app/app_arena.h), emptied at every entry, so what it holds dies with the
+ * visit. memory_free() tells its blocks apart by address. The other kinds
+ * map to heap capabilities: ESP-IDF's heap on the board, test/heap_arena.c's
+ * device-sized model (HOST_HEAP_ARENA) on a host. Any other host build, a
+ * render, allocates them from the C library's malloc(), which has no budget,
+ * so it has no size queries either: memory.c is not built there.
  *
  * Allocating and freeing are inline: a heap watch names the first frame
  * outside the allocator as the call site, so a frame of this module's own
@@ -21,6 +23,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "core/app_heap.h"
+
 #if defined(ESP_PLATFORM) || defined(HOST_HEAP_ARENA)
 #include "esp_heap_caps.h"
 #define MEMORY_HEAP_CAPS 1
@@ -33,6 +37,7 @@ typedef enum {
     MEMORY_INTERNAL, /* on-chip RAM */
     MEMORY_8BIT,     /* anything a byte access reaches, internal or external */
     MEMORY_DMA,      /* what the heap hands out as DMA-capable: internal only */
+    MEMORY_APP,      /* the current app visit */
     MEMORY_PSRAM,    /* external RAM: large and slow */
 } memory_kind_t;
 
@@ -55,6 +60,16 @@ size_t memory_largest_block(memory_kind_t kind);
 /* Everything this kind's heap regions hold, free or not. */
 size_t memory_total_bytes(memory_kind_t kind);
 
+/* The largest request at or below `bytes` that this kind's heap gives at
+ * exactly its size. ESP-IDF's TLSF rounds a large request up to its size
+ * class, a 32nd of the request's power of two in a heap over 256 KB, and
+ * hands out the rounded block: up to 128 KB more than asked for a block of
+ * several MB. */
+size_t memory_unrounded_bytes(size_t bytes);
+
+/* What the heap gave a block from memory_alloc(): at least what was asked. */
+size_t memory_block_bytes(const void* block);
+
 /* The external RAM chip's whole size, the part the board reserves ahead of
  * the heap included; 0 when the board has none. */
 size_t memory_psram_bytes(void);
@@ -73,6 +88,7 @@ memory_caps(memory_kind_t kind) {
         case MEMORY_INTERNAL: return MALLOC_CAP_INTERNAL;
         case MEMORY_8BIT: return MALLOC_CAP_8BIT;
         case MEMORY_DMA: return MALLOC_CAP_DMA;
+        case MEMORY_APP: __builtin_trap();
         case MEMORY_PSRAM: return MALLOC_CAP_SPIRAM;
     }
     return MALLOC_CAP_8BIT;
@@ -84,6 +100,9 @@ memory_caps(memory_kind_t kind) {
  * buffer was meant to live is the failure a caller has to see. */
 static inline __attribute__((always_inline)) void*
 memory_alloc(size_t bytes, memory_kind_t kind) {
+    if (kind == MEMORY_APP) {
+        return app_heap_alloc(bytes);
+    }
 #if MEMORY_HEAP_CAPS
     /* Internal RAM also holds word-only regions, which a byte store faults
      * in. */
@@ -97,6 +116,10 @@ memory_alloc(size_t bytes, memory_kind_t kind) {
 /* Returns a block from memory_alloc(); NULL is a no-op. */
 static inline __attribute__((always_inline)) void
 memory_free(void* block) {
+    if (block != NULL && app_heap_contains(block)) {
+        app_heap_free(block);
+        return;
+    }
 #if MEMORY_HEAP_CAPS
     heap_caps_free(block);
 #else

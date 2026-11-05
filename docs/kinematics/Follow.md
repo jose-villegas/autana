@@ -9,14 +9,14 @@ time gives the same result at any frame step.
 
 | Function | Purpose |
 |---|---|
-| `follow_halved_over` | Share left of anything halving every half-life after a time step |
 | `follow_coast` | Speed halving every half-life, and the exact distance it covers |
 | `follow_spring` | Critically damped spring toward zero, from an offset at a speed |
 
 ### Coast
 
-The speed halves every $`h`$ seconds. The exact integral gives the distance
-covered, which approaches $`v_0 h/\ln 2`$:
+The speed halves every $`h`$ seconds, with share left from
+[`smooth_decay`](../math/Signal.md#smoothh). The exact integral gives the
+distance covered, which approaches $`v_0 h/\ln 2`$:
 
 ```math
 v(t)=v_0 2^{-t/h}, \qquad x(t)=\frac{v_0 h}{\ln 2}(1-2^{-t/h})

@@ -4,8 +4,10 @@
  * BMP and AVI encoding use gfx/capture/screenshot.h. No device access.
  */
 
-#include "render_host.h"
+#include "app/app_arena.h"
+
 #include "core/checkpoint.h"
+#include "render_host.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -337,6 +339,7 @@ release(void) {
     }
     scene_unload_all();
     gfx_deinit();
+    app_arena_exit();
 }
 
 bool
@@ -414,7 +417,13 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
     _setmode(_fileno(stdout), _O_BINARY);
 #endif
 
+    if (app_arena_bytes() == 0 && !app_arena_init()) {
+        fprintf(stderr, "app region init failed\n");
+        return false;
+    }
+    app_arena_enter();
     if (!gfx_init()) {
+        app_arena_exit();
         fprintf(stderr, "gfx_init failed\n");
         return false;
     }

@@ -1337,8 +1337,8 @@ test_memory_throughput_psram_against_internal(void) {
 
     uint8_t* int_a = memory_alloc(sample, MEMORY_INTERNAL);
     uint8_t* int_b = memory_alloc(sample, MEMORY_INTERNAL);
-    uint8_t* ps_a = memory_alloc(frame, MEMORY_PSRAM);
-    uint8_t* ps_b = memory_alloc(frame, MEMORY_PSRAM);
+    uint8_t* ps_a = memory_alloc(frame, MEMORY_APP);
+    uint8_t* ps_b = memory_alloc(frame, MEMORY_APP);
     const bool ok = int_a && int_b && ps_a && ps_b;
 
     if (ok) {

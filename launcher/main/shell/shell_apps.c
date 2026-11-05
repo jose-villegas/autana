@@ -190,6 +190,13 @@ shell_exit_app(const app_t** current) {
     }
 #endif
     app_arena_rewind(0);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    if (app_heap_blocks() != 0) {
+        ESP_LOGW(TAG, "App %s kept %u app heap bytes", (*current)->name,
+                 (unsigned)(memory_total_bytes(MEMORY_APP) - memory_free_bytes(MEMORY_APP)));
+    }
+#endif
+    app_arena_exit();
     display_restore_system_state();
     ui_invalidate();
     frame_watch_restart();
@@ -225,6 +232,7 @@ shell_start_app(const app_t** current, const app_t* next) {
     console_sound_release_views();
 #endif
     sound_begin_app();
+    app_arena_enter();
     (*current)->enter();
     frame_ready = false;
     frame_watch_restart();
