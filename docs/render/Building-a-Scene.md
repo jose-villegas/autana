@@ -163,8 +163,8 @@ Nothing else: the shell unloads what the app loaded when it exits. To move
 something, `transform_set_local(statue, where)`; to hide
 it, `entity_set_enabled()`. Several scenes may be loaded at once, and
 `camera_activate()` on another's camera changes what is drawn. How a frame is
-ordered against the panel send and the storage behind it are in
-[Scene-Manager.md](scene/Scene-Manager.md); how the raster draws each instance is in
+ordered against the panel send is in [Scene-Frame.md](scene/Scene-Frame.md),
+the storage behind it in [Scene-Loading.md](scene/Scene-Loading.md#ownership); how the raster draws each instance is in
 [Mesh-Rendering.md](Mesh-Rendering.md). To see the scene without a board, declare
 it for the [render harness](../tools/Render-Harness.md#declaring-a-scene), which
 composes the active scene before the app's `frame()`, as the shell does.

@@ -2,7 +2,7 @@
 
 The board half of the [render pipeline](../README.md). An app never calls
 draw: it loads a scene and activates a camera, and the shell advances and
-draws it each frame ([Scene-Manager.md](../scene/Scene-Frame.md#each-frame)).
+draws it each frame ([Scene-Frame.md](../scene/Scene-Frame.md#each-frame)).
 The work before the framebuffer runs while the previous frame is sent.
 
 ```mermaid
@@ -24,7 +24,7 @@ flowchart LR
 
 | Stage | Core | Reads → writes | Cost bracket | Owner |
 |---|---|---|---|---|
-| Scene and camera | 0 | the scene's pack → this frame's instances and view | part of `frame.rest` | [Scene-Manager.md](../scene/Scene-Frame.md#each-frame), [Camera.md](../scene/Camera.md) |
+| Scene and camera | 0 | the scene's pack → this frame's instances and view | part of `frame.rest` | [Scene-Frame.md](../scene/Scene-Frame.md#each-frame), [Camera.md](../scene/Camera.md) |
 | Render size | 0 | recent frames' cost, or the census → render width and height | part of `frame.rest` | [Dynamic-Resolution.md](Dynamic-Resolution.md) |
 | Cull | 0 | node and cluster bounds, the camera → kept clusters | `r3d.cull`, or `r3d.census` when the size is predicted | [Culling.md](Culling.md) |
 | Transform | both, by cluster share | kept clusters, the lens → screen vertices, each cluster's rows | `r3d.transform` | [Mesh-Rendering.md](../Mesh-Rendering.md#on-both-cores) |
