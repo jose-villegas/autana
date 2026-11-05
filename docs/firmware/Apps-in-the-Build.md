@@ -12,10 +12,14 @@ architecturally:
   no application, and deleting the folder deletes the declaration.
 - What each build variant carries is [Build-Variants.md](../tools/Build-Variants.md).
 
-**App memory is lent, not owned.** The shell holds one static block in PSRAM, the
-app arena (`APP_ARENA_BYTES`, `app/app_arena.h`), and empties it right after every
-app's `exit()`. An app takes bulk buffers from it and never frees them.
+The shell takes one app region from PSRAM at boot, leaving the system
+reserve defined in `app/app_arena.h`. Each app entry recreates an empty
+TLSF heap over it; exit drops that heap after app and system cleanup.
 
-- Re-entry cannot fail to heap fragmentation: every visit gets the same block.
-- Taking from it is no dynamic-memory call (MISRA 21.3); it bumps an offset.
-- Use: [Building-an-App.md](Building-an-App.md#app-memory).
+| Allocation | Release |
+|---|---|
+| `app_arena_take(size, align)` | Nested marks and rewinds; chunks come from the app heap |
+| `memory_alloc(bytes, MEMORY_APP)` | `memory_free(pointer)` within the visit |
+| Whole app region | Reused empty on the next entry; never returned to the system heap |
+
+See [App memory](Building-an-App.md#app-memory) for the lifecycle and reserve.

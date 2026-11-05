@@ -165,7 +165,7 @@ class SourceCoverageTest(unittest.TestCase):
              mock.patch.object(complexity_gate.subprocess, "run",
                                side_effect=lambda command, **kwargs: subprocess.CompletedProcess(
                                    command, int(command[-1] == Path(device).as_posix()), "", "")) as probe, \
-             mock.patch.object(complexity_gate, "run_tests_print", side_effect=[["-DHOST_TEST"], [host, nested]]):
+             mock.patch.object(complexity_gate, "run_tests_print", side_effect=[["-DHOST_TEST"], [host, nested], [host, nested]]):
             db_path, sources, counts = complexity_gate.build_compile_db()
         self.assertEqual(sources, sorted([host, runner, nested]))
         self.assertEqual(counts["host"], 3)

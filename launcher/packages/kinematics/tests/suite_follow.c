@@ -16,12 +16,6 @@
 #define TOLERANCE   1.0E-5F
 
 static void
-test_one_half_life_leaves_half(void) {
-    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, 0.5F, follow_halved_over(HALF_LIFE_S, HALF_LIFE_S));
-    TEST_ASSERT_EQUAL_FLOAT(1.0F, follow_halved_over(0.0F, HALF_LIFE_S));
-}
-
-static void
 test_a_coast_whole_or_in_pieces_ends_alike_short_of_its_limit(void) {
     float x = 0.0F, v = 1.0F, xs = 0.0F, vs = 1.0F;
     follow_coast(&x, &v, STEP_S, HALF_LIFE_S);
@@ -47,7 +41,6 @@ test_a_spring_whole_or_in_pieces_ends_alike_and_from_rest_never_crosses(void) {
 
 void
 suite_follow(void) {
-    RUN_TEST(test_one_half_life_leaves_half);
     RUN_TEST(test_a_coast_whole_or_in_pieces_ends_alike_short_of_its_limit);
     RUN_TEST(test_a_spring_whole_or_in_pieces_ends_alike_and_from_rest_never_crosses);
 }

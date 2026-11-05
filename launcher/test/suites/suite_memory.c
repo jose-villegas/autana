@@ -37,6 +37,87 @@ test_a_restarted_low_water_mark_forgets_the_low_before_it(void) {
     TEST_ASSERT_LESS_OR_EQUAL_size_t(free_held, low_held);
 }
 
+#define TEST_BLOCK_BYTES    4096u
+/* A hole between two live blocks, sized off any alignment step so that
+ * memalign's padding search on a host is exercised: room for a pointer and
+ * a few alignment units. */
+#define APP_TEST_HOLE_BYTES (3u * _Alignof(max_align_t) + sizeof(void*))
+
+static void
+test_app_largest_block_is_allocatable_until_exhaustion(void) {
+    void* head = NULL;
+    void* before = memory_alloc(APP_TEST_HOLE_BYTES, MEMORY_APP);
+    void* hole = memory_alloc(APP_TEST_HOLE_BYTES, MEMORY_APP);
+    void* guard = memory_alloc(APP_TEST_HOLE_BYTES, MEMORY_APP);
+    bool allocatable = before != NULL && hole != NULL && guard != NULL;
+    size_t largest;
+    while ((largest = memory_largest_block(MEMORY_APP)) >= sizeof(void*)) {
+        void* block = memory_alloc(largest, MEMORY_APP);
+        if (block == NULL) {
+            allocatable = false;
+            break;
+        }
+        *(void**)block = head;
+        head = block;
+    }
+    memory_free(hole);
+    largest = memory_largest_block(MEMORY_APP);
+    void* refill = memory_alloc(largest, MEMORY_APP);
+    if (largest != 0 && refill == NULL) {
+        allocatable = false;
+    }
+    memory_free(refill);
+    memory_free(guard);
+    memory_free(before);
+    while (head != NULL) {
+        void* next = *(void**)head;
+        memory_free(head);
+        head = next;
+    }
+    TEST_ASSERT_TRUE(allocatable);
+}
+
+static void
+test_app_allocations_and_queries_use_the_region(void) {
+    const size_t free_before = memory_free_bytes(MEMORY_APP);
+    const size_t total = memory_total_bytes(MEMORY_APP);
+    const size_t system_free = memory_free_bytes(MEMORY_PSRAM);
+    const size_t blocks = app_heap_blocks();
+    memory_min_free_restart();
+    unsigned char* block = memory_alloc(TEST_BLOCK_BYTES, MEMORY_APP);
+    TEST_ASSERT_NOT_NULL(block);
+    TEST_ASSERT_TRUE(app_heap_contains(block));
+    TEST_ASSERT_TRUE(memory_in_psram(block));
+    TEST_ASSERT_GREATER_OR_EQUAL_size_t(TEST_BLOCK_BYTES, memory_block_bytes(block));
+    memset(block, 0xA5, TEST_BLOCK_BYTES);
+    TEST_ASSERT_LESS_THAN_size_t(free_before, memory_free_bytes(MEMORY_APP));
+    TEST_ASSERT_LESS_OR_EQUAL_size_t(memory_free_bytes(MEMORY_APP), memory_min_free_bytes(MEMORY_APP));
+    TEST_ASSERT_GREATER_THAN_size_t(0, memory_largest_block(MEMORY_APP));
+    TEST_ASSERT_EQUAL_size_t(total, memory_total_bytes(MEMORY_APP));
+    /* Other tasks move the system heap by a few bytes; the block is not
+     * among them. */
+    const size_t system_now = memory_free_bytes(MEMORY_PSRAM);
+    TEST_ASSERT_LESS_THAN_size_t(TEST_BLOCK_BYTES, system_free > system_now ? system_free - system_now : 0);
+    memory_free(block);
+    TEST_ASSERT_EQUAL_size_t(blocks, app_heap_blocks());
+    TEST_ASSERT_EQUAL_size_t(free_before, memory_free_bytes(MEMORY_APP));
+    TEST_ASSERT_LESS_THAN_size_t(free_before, memory_min_free_bytes(MEMORY_APP));
+    memory_min_free_restart();
+    TEST_ASSERT_EQUAL_size_t(free_before, memory_min_free_bytes(MEMORY_APP));
+}
+
+/* Rounding down to a size class stays within one class of the request and
+ * is already on one. */
+static void
+test_an_unrounded_request_is_one_class_below_at_most(void) {
+    for (size_t bytes = TEST_BLOCK_BYTES; bytes < SIZE_MAX / 3; bytes = bytes * 3 + 1) {
+        const size_t unrounded = memory_unrounded_bytes(bytes);
+        TEST_ASSERT_LESS_OR_EQUAL_size_t(bytes, unrounded);
+        TEST_ASSERT_LESS_THAN_size_t(bytes / 16, bytes - unrounded);
+        TEST_ASSERT_EQUAL_size_t(unrounded, memory_unrounded_bytes(unrounded));
+    }
+}
+
 #ifdef DEVICE_BUILD
 #include "esp_memory_utils.h"
 
@@ -66,8 +147,24 @@ test_each_kinds_block_lands_in_the_memory_it_names(void) {
     }
 }
 
+/* The heap gives an unrounded request exactly what it asks, so a region
+ * sized that way leaves the system its whole reserve. */
+static void
+test_the_psram_heap_gives_an_unrounded_request_exactly(void) {
+    const size_t bytes = memory_unrounded_bytes(memory_largest_block(MEMORY_PSRAM) / 2);
+    void* block = memory_alloc(bytes, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(block);
+    const size_t given = memory_block_bytes(block);
+    memory_free(block);
+    TEST_ASSERT_EQUAL_size_t(bytes, given);
+}
+
 void
 suite_memory(void) {
+    RUN_TEST(test_app_allocations_and_queries_use_the_region);
+    RUN_TEST(test_app_largest_block_is_allocatable_until_exhaustion);
+    RUN_TEST(test_an_unrounded_request_is_one_class_below_at_most);
+    RUN_TEST(test_the_psram_heap_gives_an_unrounded_request_exactly);
     RUN_TEST(test_each_kinds_block_lands_in_the_memory_it_names);
     RUN_TEST(test_a_restarted_low_water_mark_forgets_the_low_before_it);
 }
@@ -202,7 +299,7 @@ test_a_kinds_total_is_its_pools_capacity_while_a_block_is_held(void) {
         const size_t free_before = memory_free_bytes(TOTALS[i].kind);
         TEST_ASSERT_EQUAL_size_t_MESSAGE(TOTALS[i].capacity, memory_total_bytes(TOTALS[i].kind), TOTALS[i].name);
 
-        void* block = memory_alloc(4096, TOTALS[i].kind);
+        void* block = memory_alloc(TEST_BLOCK_BYTES, TOTALS[i].kind);
         TEST_ASSERT_NOT_NULL_MESSAGE(block, TOTALS[i].name);
         TEST_ASSERT_LESS_THAN_size_t_MESSAGE(free_before, memory_free_bytes(TOTALS[i].kind), TOTALS[i].name);
         TEST_ASSERT_EQUAL_size_t_MESSAGE(TOTALS[i].capacity, memory_total_bytes(TOTALS[i].kind), TOTALS[i].name);
@@ -217,13 +314,13 @@ static void
 test_the_largest_block_is_less_than_free_space_once_a_pool_has_a_hole(void) {
     for (size_t i = 0; i < sizeof SEPARATE_POOLS / sizeof SEPARATE_POOLS[0]; i++) {
         const memory_kind_t kind = SEPARATE_POOLS[i].kind;
-        void* before = memory_alloc(4096, kind);
-        void* hole = memory_alloc(4096, kind);
-        void* after = memory_alloc(4096, kind);
+        void* before = memory_alloc(TEST_BLOCK_BYTES, kind);
+        void* hole = memory_alloc(TEST_BLOCK_BYTES, kind);
+        void* after = memory_alloc(TEST_BLOCK_BYTES, kind);
         TEST_ASSERT_NOT_NULL_MESSAGE(after, SEPARATE_POOLS[i].name);
 
         memory_free(hole);
-        TEST_ASSERT_LESS_OR_EQUAL_size_t_MESSAGE(memory_free_bytes(kind) - 4096, memory_largest_block(kind),
+        TEST_ASSERT_LESS_OR_EQUAL_size_t_MESSAGE(memory_free_bytes(kind) - TEST_BLOCK_BYTES, memory_largest_block(kind),
                                                  SEPARATE_POOLS[i].name);
 
         memory_free(before);
@@ -265,6 +362,9 @@ test_the_lowest_free_space_remembers_a_block_freed_again(void) {
 
 void
 suite_memory(void) {
+    RUN_TEST(test_app_allocations_and_queries_use_the_region);
+    RUN_TEST(test_app_largest_block_is_allocatable_until_exhaustion);
+    RUN_TEST(test_an_unrounded_request_is_one_class_below_at_most);
     RUN_TEST(test_a_small_block_of_every_kind_is_writable_and_comes_back);
     RUN_TEST(test_the_lowest_free_space_remembers_a_block_freed_again);
     RUN_TEST(test_a_restarted_low_water_mark_forgets_the_low_before_it);
