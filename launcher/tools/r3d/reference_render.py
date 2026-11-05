@@ -241,8 +241,7 @@ def budget_pose_capacity(budget, rss, estimate, cores):
 
 def render_poses(source, job, scene, poses, width, height, lens, samples, out, normals=False, workers=None, occlusion=False):
     """Return summed per-worker maxima of end-of-pose PSS samples and worker count.
-    A caller that may have initialised CUDA passes workers=1. Every pose's rays are fixed, so the output matches a
-    serial run.
+    Every pose's rays are fixed, so the output matches a serial run.
     """
     from r3d import process_budget
     from r3d.process_budget import available_bytes, worker_capacity, cores_available, FLOORS, parent_death_signal

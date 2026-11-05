@@ -29,7 +29,8 @@ GPU_VARIANT = "cuda_ad_rgb"
 
 
 def trace_variant():
-    """`GPU_VARIANT` when it loads a scene here, else `VARIANT`; no bake traces on it. A variant Mitsuba was
+    """`GPU_VARIANT` when it loads a scene here, else `VARIANT`. No bake calls it or `release_gpu`: they stay because
+    this file is in every mesh bake's key, and go with the next change that re-keys meshes. A variant Mitsuba was
     already on is restored. The probe may open CUDA in this process even when it falls back, so the caller must not
     fork workers after it."""
     mi = import_mitsuba()

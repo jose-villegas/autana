@@ -135,7 +135,7 @@ bake's heatmap, all on that one scale.
 `reference_render.py --backend mitsuba` renders the same source with Mitsuba 3 in
 place of the bake lighting. It reads the same geometry after alpha rejection, albedo,
 camera and poses, and shares exposure, tone map and RGB565 conversion. `bake` is the default backend.
-The variant is `cuda_ad_rgb` when a CUDA device can load a scene, else
+This backend's variant is `cuda_ad_rgb` when a CUDA device can load a scene, else
 `llvm_ad_rgb` when libLLVM is present, else `scalar_rgb` (`--variant`); only
 the tests are small enough for the scalar one.
 
@@ -317,9 +317,9 @@ recipe weight and a margin in each triangle's start edge scale;
 A reference set traces its rays and bounced light on `llvm_ad_rgb` (`ray_query.VARIANT`), as mesh bakes do, so a set
 made again repeats byte for byte on one kind of host; its bytes differ between CPU vendors by an ulp ([isa.py](isa.py)).
 It does not trace on the GPU: OptiX does not promise the same acceleration structure from the same
-triangles<sup>[[115]](../../../docs/Citations.md#nvidia-optix-bvh-repeat)</sup>. On a Turing GPU, a shadow ray grazing an
-edge hit or missed by the build, about one pixel in one frame of sixteen, and the fit makes that pixel a different
-mesh. The CPU takes about twice the GPU's time, paid once per reference key: the fits that read a set share it.
+triangles<sup>[[115]](../../../docs/Citations.md#nvidia-optix-bvh-repeat)</sup>. On some GPUs a shadow ray grazing an edge
+hits or misses by the build, now and then a pixel, and the fit makes that pixel a different mesh. The CPU is slower
+than the GPU, paid once per reference key: the fits that read a set share it.
 
 The path-traced backend still runs on `cuda_ad_rgb` where it loads a scene. Under WSL 2 the Windows driver ships only
 an OptiX loader stub: Dr.Jit loads OptiX

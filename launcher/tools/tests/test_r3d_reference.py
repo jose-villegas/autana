@@ -324,6 +324,35 @@ class RepeatTests(unittest.TestCase):
         self.assertGreater(renders[0].mean(), 0.0, "the poses see lit surfaces")
         self.assertEqual(renders[0].tobytes(), renders[1].tobytes())
 
+    def test_a_set_traces_on_the_bake_variant_and_never_asks_for_the_gpu(self):
+        import contextlib
+        import io
+        import tempfile
+        from unittest.mock import patch
+        from r3d import ray_query, reference_render
+        from r3d.fitted_variant import poses_text
+        from tests.test_r3d_path_bake import corridor
+
+        def variant_of(call, at):
+            args, kwargs = call
+            given = kwargs.get("variant", args[at] if len(args) > at else None)
+            return given or ray_query.VARIANT
+
+        job = SimpleNamespace(settings=SimpleNamespace(alpha_keep=None))
+        inputs = SimpleNamespace(job=lambda: job, scene=lambda: None)
+        with tempfile.TemporaryDirectory() as directory, contextlib.ExitStack() as stack:
+            poses = pathlib.Path(directory) / "poses.txt"
+            poses.write_text(poses_text(2, 2, 1.0, 0.01, [LOOK_DOWN.tolist()]))
+            stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+            stack.enter_context(patch.object(reference_render, "load_source", return_value=corridor()))
+            query = stack.enter_context(patch.object(reference_render, "RayQuery"))
+            light = stack.enter_context(patch.object(reference_render, "path_light_for"))
+            stack.enter_context(patch.object(ray_query, "trace_variant", side_effect=AssertionError("asked for the GPU")))
+            stack.enter_context(patch.object(reference_render, "render_poses", return_value=(0, 1)))
+            reference_render.render_sets(inputs, [(poses, pathlib.Path(directory) / "out")])
+        self.assertEqual(variant_of(query.call_args, 2), ray_query.VARIANT)
+        self.assertEqual(variant_of(light.call_args, 3), ray_query.VARIANT)
+
     def test_the_bounced_light_cache_is_dropped_even_when_a_pose_fails(self):
         import contextlib
         import io
