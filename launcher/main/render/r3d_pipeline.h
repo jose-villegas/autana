@@ -86,6 +86,15 @@ typedef struct r3d_depth_fit {
     float depth_near; /* inverse_depth_scale_fit(near_z, the nearest bound so far) */
 } r3d_depth_fit_t;
 
+/* The coarse clusters of the cut `lod_coarse` picks, for a mesh whose levels
+ * are laid out apart (lod_finest_root set): those simplified from each coarse
+ * group that belong to a fine group, or to none, written to `out` from
+ * `count` where `planes` keep them, lowering `fit` as r3d_pipeline_cull()
+ * does. Returns the new count and adds the clusters it box-tested to
+ * `tested`. r3d_pipeline_cull() calls it after walking level 0. */
+int r3d_pipeline_cull_cut(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, const planef_t* planes,
+                          planef_t depth, uint16_t* out, int count, r3d_depth_fit_t* fit, int* tested);
+
 /* Walks the node tree and writes the clusters any part of which may be on
  * screen, roughly nearest first, returning how many. `out` holds
  * mesh->cluster_count entries. A `fit` not NULL is lowered to the scale of a

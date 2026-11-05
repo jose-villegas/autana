@@ -39,7 +39,7 @@ r3d_pipeline_cull_counted(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, co
                           r3d_pipeline_count_walk_t* walk, r3d_pipeline_counts_t* counts) {
     r3d_lens_frustum(lens, walk->planes);
     int top = 0;
-    walk->node[top] = 0;
+    walk->node[top] = (uint16_t)mesh->lod_finest_root;
     walk->mask[top++] = (uint8_t)ALL_PLANES;
     int count = 0;
     while (top > 0) {
@@ -61,6 +61,15 @@ r3d_pipeline_cull_counted(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, co
             continue;
         }
         count += keep_leaf(mesh, node, mask, lod_coarse, walk->planes, &out[count], counts);
+    }
+    if (mesh->lod_finest_root != 0 && lod_coarse != NULL) {
+        const int before = count;
+        int tested = 0;
+        count = r3d_pipeline_cull_cut(mesh, lod_coarse, walk->planes, (planef_t){0}, out, count, NULL, &tested);
+        counts->clusters_tested += tested;
+        for (int i = before; i < count; i++) {
+            counts->triangles_submitted += mesh->clusters[out[i]].triangle_count;
+        }
     }
     counts->clusters_kept += count;
     return count;

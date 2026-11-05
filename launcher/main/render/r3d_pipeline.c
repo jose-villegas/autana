@@ -205,12 +205,11 @@ group_run(const r3d_lit_mesh_t* mesh, int lo, uint16_t g) {
     return lo;
 }
 
-/* The coarse clusters of the picked cut the planes keep: those simplified
- * from each coarse group that belong to a fine one, or to none. Groups come
- * in rising order, so each search starts where the last run ended. */
-static int
-cull_cut(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, const planef_t* planes, planef_t depth, uint16_t* out,
-         int count, r3d_depth_fit_t* fit) {
+/* Groups come in rising order, so each search starts where the last run
+ * ended. */
+int
+r3d_pipeline_cull_cut(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, const planef_t* planes, planef_t depth,
+                      uint16_t* out, int count, r3d_depth_fit_t* fit, int* tested) {
     int from = mesh->lod_coarse_first;
     for (int w = 0; w < R3D_LOD_WORDS(mesh->lod_group_count); w++) {
         for (uint32_t bits = lod_coarse[w]; bits != 0; bits &= bits - 1U) {
@@ -219,6 +218,7 @@ cull_cut(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, const planef_t*
             for (; c < mesh->cluster_count && mesh->cluster_lod[c].own == g; c++) {
                 const uint16_t parent = mesh->cluster_lod[c].parent;
                 if (parent == R3D_LOD_NONE || !r3d_lod_coarse(lod_coarse, parent)) {
+                    *tested += 1;
                     count = cull_cluster(mesh, c, ALL_PLANES, planes, depth, out, count, fit);
                 }
             }
@@ -257,7 +257,8 @@ r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint
         count = cull_leaf(mesh, lod_coarse, node, mask, planes, depth, out, count, fit);
     }
     if (start != 0 && lod_coarse != NULL) {
-        count = cull_cut(mesh, lod_coarse, planes, depth, out, count, fit);
+        int tested = 0;
+        count = r3d_pipeline_cull_cut(mesh, lod_coarse, planes, depth, out, count, fit, &tested);
     }
     return count;
 }
