@@ -115,7 +115,7 @@ none_can_coarsen(const r3d_lit_mesh_t* mesh, const lod_view_t* v, float near_z, 
         vec3f_add(box3f_half_extent(root),
                   (vec3f_t){GROUP_CENTRE_ROUNDING_TICKS, GROUP_CENTRE_ROUNDING_TICKS, GROUP_CENTRE_ROUNDING_TICKS});
     const float farthest = mathf_max(
-        mathf_sqrt(vec3f_dot(centre, centre)) + mathf_sqrt(vec3f_dot(half, half)) * v->units_per_tick, near_z);
+        mathf_sqrt(vec3f_dot(centre, centre)) + (mathf_sqrt(vec3f_dot(half, half)) * v->units_per_tick), near_z);
     const float px = (float)mesh->lod_error_least * v->units_per_tick * v->focal / farthest;
     return px > leave * (1.0F + LOD_BOUND_SLACK);
 }
