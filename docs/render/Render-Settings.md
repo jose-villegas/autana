@@ -1,8 +1,10 @@
 # Render Settings
 
 A render context draws with one settings value, `render_settings_t`: the
-renderer's quality and cost choices. The app sets it with
-`render_context_set_settings()`, and the next frame draws with it.
+renderer's quality and cost choices. An app authors it as a
+[render asset](#the-render-asset) its pack holds, which the shell applies as
+the app starts, and may set it with `render_context_set_settings()` on any
+frame; the next frame draws with it.
 
 In a development build each setting also has a `TUNE` knob
 ([Live-Tuning.md](../cli/Live-Tuning.md)). A knob that is set overrides the
@@ -11,6 +13,7 @@ override, and the app's value comes back.
 
 ```mermaid
 flowchart LR
+    Asset["the app's pack: entry render<br/>set by the shell at start"] --> Settings
     App["app<br/>render_context_set_settings()"] --> Settings["the context's settings<br/>render_context_settings() reads them back"]
     Settings --> Pick{"knob set?<br/>development builds only"}
     Knob["TUNE render.cull,<br/>render.depth_fit, render.batched"] -->|SET| Pick
@@ -100,3 +103,76 @@ off ([the captures](data/batched-board.log)):
 <!-- /generated: render-settings-batched -->
 
 Off is only for measuring.
+
+## The render asset
+
+Settings are authored in a `NAME.render.toml`, one key per field. The engine's
+is [`default.render.toml`](../../launcher/main/render/settings/default.render.toml),
+and `RENDER_SETTINGS_DEFAULT` is generated from it
+([`render_asset.py`](../../launcher/tools/render/settings/render_asset.py)).
+Any other file lists only the values it changes; the rest come from the
+default. A key that is no field, or a value of another type, fails the build.
+
+```toml
+# fast.render.toml: the default, but drawn one instance at a time
+batched = false
+```
+
+An app's `.pack.toml` names one with `render = "PATH"`, relative to itself
+([Building-Packs.md](../assets/Building-Packs.md#packs)), and the pack holds it
+as entry `render`. The shell mounts the pack an app names in `app_t.pack` and,
+before `enter()`, sets the main context's settings from that entry, or to
+`RENDER_SETTINGS_DEFAULT` without one. So no app starts with the last app's
+settings. Scenes never carry render settings.
+
+```mermaid
+flowchart LR
+    Default["default.render.toml"] -->|render_asset.py| Header["RENDER_SETTINGS_DEFAULT<br/>render_settings_default.h"]
+    File["NAME.render.toml"] -->|"build_pack.py<br/>missing keys from the default"| Entry["the app's pack:<br/>TABL entry render"]
+    Default --> Entry
+    Entry -->|"shell, at app start<br/>render_settings_read()"| Context["render_context_set_settings()<br/>on the main context"]
+    Header -->|"pack without the entry"| Context
+```
+
+The entry is a [TABL v1](../assets/formats/TABL.md) table, one value a row:
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 8
+    bitWidth: 84
+---
+packet-beta
+title Header, 8 bytes at 0, one cell a byte
+0-1: "version = 1"
+2-3: "rows = fields"
+4-5: "columns = 1"
+6: "frac = 0"
+7: "0"
+```
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 13
+    bitWidth: 56
+---
+packet-beta
+title A row, 26 bytes from byte 8, one per field
+0-23: "field name, NUL padded"
+24-25: "int16 value"
+```
+
+| Part | At | Size |
+|---|---|---|
+| Header | 0 | 8 bytes |
+| Rows | `8 + i * 26` | 26 bytes a row, one per field in struct order: 86 bytes for three fields |
+
+| Rule | Detail |
+|---|---|
+| Owners | `RENDER_SETTINGS_ENTRY` and the fields in `render_settings.h`; the table layout in `asset_table_format.h` |
+| Rows | exactly one per `render_settings_t` field, named by it; a `bool` is 0 or 1 |
+| Errors | `render_settings_read()`: `ASSET_ERR_NOT_FOUND` without the entry; `ASSET_ERR_FORMAT` for another row count, a missing field, more than one column or a nonzero `frac`; TABL's own errors. `out` is written only on `ASSET_OK` |
+| Failure at start | the shell logs it and starts the app with `RENDER_SETTINGS_DEFAULT` |

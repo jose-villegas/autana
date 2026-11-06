@@ -2,7 +2,8 @@
  * Portable suite: render_settings_t, the choices a render context draws
  * with. The default draws as the raster did before it had settings; a
  * development override (TUNE_OVERRIDE) goes on top of the caller's value
- * without writing it, and its reset brings that value back.
+ * without writing it, and its reset brings that value back. A pack's render
+ * entry reads into the value only when it holds every field and no other.
  *
  * The scene is the rig's wall and a card behind the camera, so culling
  * shows in what a frame kept.
@@ -15,8 +16,11 @@
 #include "raster_rig.h"
 #include "render_view_fixture.h"
 #include "suites.h"
+#include "test_alloc.h"
+#include "test_pack.h"
 #include "unity.h"
 
+#include "asset/asset_table_format.h"
 #include "core/tune.h"
 #include "render/context/render_context.h"
 #include "render/settings/render_settings.h"
@@ -198,6 +202,76 @@ test_a_release_build_carries_no_override(void) {
     TEST_ASSERT_EQUAL_INT(1, tune_override(knob, 1));
 }
 
+enum { FIELDS = 3, ROW_BYTES = ASSET_TABLE_NAME_SIZE + sizeof(int16_t), PACK_BYTES = 256 };
+
+static const char* const field_names[FIELDS + 1] = {"cull", "depth_fit", "batched", "fog"};
+
+/* Reads a pack whose render entry has the first `rows` of field_names, row i
+ * holding `values[i]`, with `frac` fractional bits; `out` starts all on. */
+static asset_status_t
+read_entry(int rows, const int16_t* values, int frac, render_settings_t* out) {
+    void* raw = NULL;
+    uint8_t* bytes = test_alloc_aligned(PACK_BYTES, ASSET_PACK_BASE_ALIGN, &raw);
+    TEST_ASSERT_NOT_NULL(bytes);
+    test_pack_t pack = test_pack_begin(bytes, PACK_BYTES, 1);
+    uint8_t* entry = test_pack_add(&pack, RENDER_SETTINGS_ENTRY, ASSET_TABLE_ASSET,
+                                   ASSET_TABLE_HEADER_SIZE + ((uint32_t)rows * ROW_BYTES));
+    test_pack_put16(entry, ASSET_TABLE_VERSION);
+    test_pack_put16(entry + ASSET_TABLE_AT_ROWS, rows);
+    test_pack_put16(entry + ASSET_TABLE_AT_COLUMNS, 1);
+    entry[ASSET_TABLE_AT_FRAC_BITS] = (uint8_t)frac;
+    for (int i = 0; i < rows; i++) {
+        uint8_t* row = entry + ASSET_TABLE_HEADER_SIZE + (i * ROW_BYTES);
+        memcpy(row, field_names[i], strlen(field_names[i]));
+        test_pack_put16(row + ASSET_TABLE_NAME_SIZE, values[i]);
+    }
+    asset_pack_t opened;
+    *out = RENDER_SETTINGS_DEFAULT;
+    asset_status_t status = asset_pack_open(&opened, bytes, test_pack_finish(&pack));
+    if (status == ASSET_OK) {
+        status = render_settings_read(&opened, out);
+    }
+    test_free_aligned(raw);
+    return status;
+}
+
+static void
+test_a_packs_render_entry_reads_every_field(void) {
+    static const int16_t values[FIELDS] = {0, 1, 0};
+    render_settings_t read;
+    TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, 0, &read));
+    TEST_ASSERT_FALSE(read.cull);
+    TEST_ASSERT_TRUE(read.depth_fit);
+    TEST_ASSERT_FALSE(read.batched);
+}
+
+static void
+test_an_entry_missing_a_field_with_another_or_fixed_point_is_refused_unread(void) {
+    static const int16_t values[FIELDS + 1] = {0};
+    render_settings_t read;
+    TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS - 1, values, 0, &read));
+    TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS + 1, values, 0, &read));
+    TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS, values, 1, &read));
+    TEST_ASSERT_EQUAL_MEMORY(&RENDER_SETTINGS_DEFAULT, &read, sizeof read);
+}
+
+static void
+test_a_pack_without_the_entry_reads_not_found(void) {
+    void* raw = NULL;
+    uint8_t* bytes = test_alloc_aligned(PACK_BYTES, ASSET_PACK_BASE_ALIGN, &raw);
+    TEST_ASSERT_NOT_NULL(bytes);
+    test_pack_t pack = test_pack_begin(bytes, PACK_BYTES, 1);
+    (void)test_pack_add(&pack, "ridge", ASSET_TABLE_ASSET, ASSET_TABLE_HEADER_SIZE);
+    asset_pack_t opened;
+    render_settings_t read = RENDER_SETTINGS_DEFAULT;
+    asset_status_t status = asset_pack_open(&opened, bytes, test_pack_finish(&pack));
+    if (status == ASSET_OK) {
+        status = render_settings_read(&opened, &read);
+    }
+    test_free_aligned(raw);
+    TEST_ASSERT_EQUAL(ASSET_ERR_NOT_FOUND, status);
+}
+
 void
 suite_render_settings(void) {
     RUN_TEST(test_the_default_is_every_setting_on_as_the_raster_drew_before);
@@ -206,6 +280,9 @@ suite_render_settings(void) {
     RUN_TEST(test_an_override_beats_the_callers_value_until_a_reset_brings_it_back);
     RUN_TEST(test_each_field_and_each_knob_reach_only_their_own_slot);
     RUN_TEST(test_a_release_build_carries_no_override);
+    RUN_TEST(test_a_packs_render_entry_reads_every_field);
+    RUN_TEST(test_an_entry_missing_a_field_with_another_or_fixed_point_is_refused_unread);
+    RUN_TEST(test_a_pack_without_the_entry_reads_not_found);
 }
 
 SUITE_REGISTER(suite_render_settings);

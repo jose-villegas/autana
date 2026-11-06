@@ -7,9 +7,11 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "app/app.h"
 #include "app/app_arena.h"
+#include "asset/asset_store.h"
 #include "core/memory.h"
 #include "display/display.h"
 #include "display/display_shell.h"
@@ -21,6 +23,8 @@
 #include "input/touch/gesture.h"
 #include "profile/frame_cost.h"
 #include "profile/frame_watch.h"
+#include "render/context/render_context.h"
+#include "render/settings/render_settings.h"
 #include "shell/shell.h"
 #include "shell/shell_apps.h"
 #include "shell/shell_frame.h"
@@ -170,11 +174,30 @@ shell_apply_full_redraw(const app_t* app) {
     }
 }
 
+/* The running app's pack (app_t.pack), held from start to exit. */
+static handle_t app_pack = HANDLE_NONE;
+
+/* Mounts the app's pack and applies what the shell reads from it at start. */
+static void
+enter_app_pack(const app_t* app) {
+    app_pack = app->pack != NULL ? asset_store_load(app->pack) : HANDLE_NONE;
+    const asset_pack_t* pack = asset_store_loaded(app_pack);
+    render_settings_t settings = RENDER_SETTINGS_DEFAULT;
+    const asset_status_t status = pack != NULL ? render_settings_read(pack, &settings) : ASSET_ERR_NOT_FOUND;
+    if (status != ASSET_OK && status != ASSET_ERR_NOT_FOUND) {
+        ESP_LOGW(TAG, "%s/%s: %s: default render settings", app->pack, RENDER_SETTINGS_ENTRY,
+                 asset_status_text(status));
+    }
+    render_context_set_settings(render_context_main(), &settings);
+}
+
 void
 shell_exit_app(const app_t** current) {
     ESP_LOGI(TAG, "Leaving %s", (*current)->name);
     sound_stop_app_voices();
     (*current)->exit();
+    asset_store_release(app_pack);
+    app_pack = HANDLE_NONE;
     shell_systems_app_exit();
     sound_end_app();
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -233,6 +256,7 @@ shell_start_app(const app_t** current, const app_t* next) {
 #endif
     sound_begin_app();
     app_arena_enter();
+    enter_app_pack(*current);
     (*current)->enter();
     frame_ready = false;
     frame_watch_restart();
@@ -508,6 +532,20 @@ shell_test_stale_exit_is_cleared(void) {
     }
     exit_requested = false;
     return first_frame;
+}
+
+bool
+shell_test_start_sets_the_packs_render_settings(void) {
+    app_t app = shell_test_app;
+    app.pack = ASSET_ENGINE_PACK; /* mounted, and holds no render entry */
+    const render_settings_t off = {0}, on = RENDER_SETTINGS_DEFAULT;
+    render_context_set_settings(render_context_main(), &off);
+    const app_t* current = NULL;
+    shell_start_app(&current, &app);
+    const bool reset = memcmp(render_context_settings(render_context_main()), &on, sizeof on) == 0;
+    shell_exit_app(&current);
+    exit_requested = false;
+    return reset && shell_test_enters == 1;
 }
 
 static int shell_test_system_updates;

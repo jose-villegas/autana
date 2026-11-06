@@ -8,6 +8,7 @@
 void shell_test_fixture(void);
 bool shell_test_requested_exit(void);
 bool shell_test_stale_exit_is_cleared(void);
+bool shell_test_start_sets_the_packs_render_settings(void);
 bool shell_test_leaving_empties_the_arena_after_exit(void);
 bool shell_test_band_update_frame_and_present(void);
 bool shell_test_leaving_runs_the_systems_app_exit_after_the_apps_exit(void);
@@ -35,6 +36,12 @@ test_a_request_before_start_does_not_end_the_first_frame(void) {
 }
 
 static void
+test_an_app_starts_with_its_packs_render_settings_or_the_default(void) {
+    fixture();
+    TEST_ASSERT_TRUE(shell_test_start_sets_the_packs_render_settings());
+}
+
+static void
 test_leaving_an_app_empties_the_arena_after_its_exit(void) {
     fixture();
     TEST_ASSERT_TRUE(shell_test_leaving_empties_the_arena_after_exit());
@@ -58,6 +65,7 @@ run_shell_exit_suite(void) {
 #ifdef DEVICE_BUILD
     RUN_TEST(test_a_requested_exit_leaves_once_and_the_launcher_runs_next);
     RUN_TEST(test_a_request_before_start_does_not_end_the_first_frame);
+    RUN_TEST(test_an_app_starts_with_its_packs_render_settings_or_the_default);
     RUN_TEST(test_leaving_an_app_empties_the_arena_after_its_exit);
     RUN_TEST(test_leaving_runs_the_systems_app_exit_phase_once_after_the_apps_exit);
     RUN_TEST(test_a_band_app_updates_frames_runs_bands_and_closes_the_frame_watch);
