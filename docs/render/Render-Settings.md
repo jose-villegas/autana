@@ -86,3 +86,17 @@ Instances draw in batches of consecutive instances whose vertices and
 clusters fit the scratch sized for the largest mesh, up to
 `RASTER_BATCH_INSTANCES`. Each batch takes one transform fork/join and one
 draw fork/join, where each instance took two. It changes no pixel.
+
+Mean and p95 frame time along each camera path on the board, batching on and
+off ([the captures](data/batched-board.log)):
+
+<!-- generated: render-settings-batched check: python launcher/tools/render/settings/batched_cost.py --check -->
+| Scene | Quarter | Mean ms, on | Mean ms, off | Off - on | p95 ms, on | p95 ms, off |
+|---|---|---|---|---|---|---|
+| bistro-fitted-full | landscape | 37.5 | 40.1 | 2.7 | 51.1 | 53.5 |
+| bistro-fitted-full | portrait | 35.8 | 38.5 | 2.7 | 53.8 | 56.4 |
+| sponza-fitted-full | landscape | 45.4 | 49.2 | 3.7 | 55.4 | 59.2 |
+| sponza-fitted-full | portrait | 48.2 | 51.9 | 3.7 | 59.4 | 63.0 |
+<!-- /generated: render-settings-batched -->
+
+Off is only for measuring.
