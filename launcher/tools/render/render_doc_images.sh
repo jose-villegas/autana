@@ -402,12 +402,15 @@ done
 # overdraw-bistro-sheet.png, cull-sponza-sheet.png, cull-sponza-counts.png, cull-sponza-chase.gif
 run "$PYTHON" launcher/tools/render/cull_cost.py docs/render/data/cull-cost-board.log --tables "$OUT/tables" \
     --chart "$OUT/render/cull-cost.png" > "$WORK/cull_cost.log"
+# What culling saves, from the meshlet-size captures' culling-off pass.
+run "$PYTHON" launcher/tools/render/settings/cull_saving.py --scene "$DEMO_SCENE" --captures docs/render/data     --table "$OUT/tables/render-settings-cull.md" > "$WORK/cull_saving.log"
 
 # The same frames with depth scaled by near_z and by the per-frame fit, cut
 # where the fit stops the most surfaces fighting.
 run "$PYTHON" launcher/tools/render/depth_figures.py --scene launcher/demo/bistro/bistro.scene.toml \
     --object street_fitted_full --object ground --camera camera --at-ms "$DEPTH_FIT_AT_MS" \
-    --out "$OUT/render/depth-fit-bistro.png" --work "$WORK/depth" > "$WORK/depth.log"
+    --out "$OUT/render/depth-fit-bistro.png" --diff "$OUT/render/depth-fit-bistro-diff.png"     --gif "$OUT/render/depth-fit-bistro.gif" --work "$WORK/depth" > "$WORK/depth.log"
+# --orphans scans this runner: depth-fit-bistro-diff.png, depth-fit-bistro-diff.crops.png, depth-fit-bistro.gif
 
 # Each fitted scene's held-out error by source object part, from the rows
 # objects_report.py --held-out --docs keeps beside the page.

@@ -5,12 +5,15 @@ by the clip plane's near_z (render.depth_fit=0) and by the fitted scale
 (render.depth_fit=1). launcher/tools/render/render_doc_images.sh runs it.
 
     python launcher/tools/render/depth_figures.py --scene SCENE.scene.toml --object NAME [--object NAME ...]
-        --camera NAME --at-ms MS --out PNG --work DIR
+        --camera NAME --at-ms MS --out PNG --work DIR [--diff PNG] [--gif GIF]
 
 It writes --out: a row per setting of FRAMES consecutive frames from --at-ms,
 each cut to the window where the fit removes the most flips (a pixel that
 changes for one frame and back: surfaces fighting), enlarged without
-smoothing.
+smoothing. --diff writes the frame the two settings differ most in, whole, as
+render_compare's sheet (near_z | fit | difference), and beside it the
+.crops.png of the places they differ most. --gif plays the window's frames,
+one setting above the other, slowed to GIF_FRAME_MS so the flips can be seen.
 """
 
 import argparse
@@ -19,11 +22,11 @@ import sys
 
 import numpy as np
 from PIL import Image
-from render_compare import still_sheet
+from render_compare import crops_path, find_clusters, sheet as compare_sheet, still_sheet, write_crops
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
-from docs.figures import render_scene, save_png  # noqa: E402
+from docs.figures import render_scene, save_gif, save_png  # noqa: E402
 
 FRAME_MS = 16  # one host frame, as the viewer steps by default
 FRAMES = 6  # consecutive frames per row: enough to see a fight come and go
@@ -31,6 +34,8 @@ WINDOW = (160, 96)  # the cut, in rendered pixels: wide enough to read the place
 ZOOM = 2  # the cut's enlargement
 CHANGE = 24  # summed RGB difference that counts a pixel as changed
 SETTINGS = (("depth scaled by near_z", 0), ("depth scaled by the fit", 1))
+GIF_FRAME_MS = 250  # each frame of --gif: slow enough to see one frame's flip
+CROPS = 4  # places --diff's crops show
 
 
 def render(args, frame, fit):
@@ -69,6 +74,8 @@ def main(argv=None):
     parser.add_argument("--at-ms", required=True, type=int, help="the first frame's time along the camera path")
     parser.add_argument("--out", required=True, type=pathlib.Path)
     parser.add_argument("--work", required=True, type=pathlib.Path)
+    parser.add_argument("--diff", type=pathlib.Path, help="the most different frame as a render_compare sheet")
+    parser.add_argument("--gif", type=pathlib.Path, help="the window's frames, one setting above the other")
     args = parser.parse_args(argv)
     args.work.mkdir(parents=True, exist_ok=True)
     args.out.parent.mkdir(parents=True, exist_ok=True)
@@ -84,6 +91,18 @@ def main(argv=None):
         sheet.append([(f"{label}, {(first + k) * FRAME_MS / 1000:.3f} s",
                        cut.resize((width * ZOOM, height * ZOOM), Image.NEAREST)) for k, cut in enumerate(cuts)])
     save_png(still_sheet(sheet), args.out)
+    if args.diff is not None:
+        near, fit = (rows[f] for _, f in SETTINGS)
+        k = max(range(FRAMES), key=lambda k: int(np.abs(near[k] - fit[k]).sum()))
+        a, b = (Image.fromarray(frames[k].astype(np.uint8)) for frames in (near, fit))
+        labels = [label for label, _ in SETTINGS]
+        save_png(compare_sheet([("", a, b)], None, *labels), args.diff)
+        write_crops([(f"{(first + k) * FRAME_MS / 1000:.3f} s", [a, b], find_clusters(a, b, None, CROPS))],
+                    crops_path(str(args.diff)), labels)
+    if args.gif is not None:
+        save_gif([np.concatenate([cut for cut in pair], axis=0) for pair in zip(*[
+            [frame[y:y + height, x:x + width].repeat(ZOOM, 0).repeat(ZOOM, 1).astype(np.uint8)
+             for frame in rows[fit]] for _, fit in SETTINGS])], args.gif, GIF_FRAME_MS)
 
 
 if __name__ == "__main__":

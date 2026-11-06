@@ -1,0 +1,88 @@
+# Render Settings
+
+A render context draws with one settings value, `render_settings_t`: the
+renderer's quality and cost choices. The app sets it with
+`render_context_set_settings()`, and the next frame draws with it.
+
+In a development build each setting also has a `TUNE` knob
+([Live-Tuning.md](../cli/Live-Tuning.md)). A knob that is set overrides the
+app's value for every frame, without writing into it. `RESET` clears the
+override, and the app's value comes back.
+
+```mermaid
+flowchart LR
+    App["app<br/>render_context_set_settings()"] --> Settings["the context's settings<br/>render_context_settings() reads them back"]
+    Settings --> Pick{"knob set?<br/>development builds only"}
+    Knob["TUNE render.cull,<br/>render.depth_fit, render.batched"] -->|SET| Pick
+    Knob -->|RESET| Unset["unset"]
+    Unset --> Pick
+    Pick -->|"no"| Frame["the frame draws with<br/>raster_settings()"]
+    Pick -->|"yes: the knob's value"| Frame
+```
+
+A release build has no knobs, so it draws with the app's settings only. A raster
+drawn without a context uses `RENDER_SETTINGS_DEFAULT`.
+
+## The settings
+
+Basic settings are for any app to weigh. Advanced ones need the renderer's
+workings to judge. Every default is on, as the raster drew before it had settings.
+
+<!-- generated: render-settings check: python launcher/tools/render/settings/settings_table.py --check -->
+| Field | Default | Tier | What it trades |
+|---|---|---|---|
+| `cull` | `true` | basic | skips clusters and world boxes outside the picture |
+| `depth_fit` | `true` | advanced | spends depth steps where the kept scene is, not from near_z |
+| `batched` | `true` | advanced | one transform and one draw fork/join a batch, not an instance |
+<!-- /generated: render-settings -->
+
+## cull
+
+Culling keeps only the clusters, and the instances, that can show in the
+picture ([every stage](frame/Culling.md)). It changes no pixel, so the figure
+is what it saves. The chase below marks each cluster's fate along Bistro's path:
+
+![Bistro's fates from behind the camera](../images/render/cull-bistro-chase.gif)
+
+Along Sponza's camera path on the board, with culling on and then off:
+
+<!-- generated: render-settings-cull sha256=5d303133eed2f3851202b76f0e87e9bce6bc029ce57cb2cc3151f5e402ec8c34 -->
+| Setting | Cull ms | Transform ms | Draw ms | Frame ms |
+|---|---|---|---|---|
+| `cull` on | 0.60 | 3.24 | 33.89 | 40.57 |
+| `cull` off | 0.34 | 5.70 | 48.46 | 57.28 |
+| off - on | -0.26 | 2.46 | 14.56 | 16.71 |
+<!-- /generated: render-settings-cull -->
+
+Culling itself costs a little more than the copy that replaces it. What it
+saves is in the transform and the draw. Off is only for measuring.
+
+## depth_fit
+
+Depth is stored in 16 bits as `depth_near / z`. With `depth_fit` on, each
+frame scales it to the nearest bound it kept, not the clip plane's `near_z`
+([Attachments.md](frame/Attachments.md#depth)). Seen from high up, the scale
+then gives distant surfaces many more steps.
+
+With `depth_fit` off, a ground square just under Bistro's street shows through it.
+Below is one frame with each setting, and their difference:
+
+![One Bistro frame with depth scaled by near_z and by the fit, and their difference](../images/render/depth-fit-bistro-diff.png)
+
+The places they differ most, enlarged:
+
+![The places the two settings differ most](../images/render/depth-fit-bistro-diff.crops.png)
+
+The artefact moves from frame to frame. Below, the same window is shown over
+consecutive frames, scaled by `near_z` on top and by the fit below:
+
+![Consecutive frames of one window, near_z on top and the fit below](../images/render/depth-fit-bistro.gif)
+
+The fit adds no pass of its own: the cull finds the nearest bound as it walks.
+
+## batched
+
+Instances draw in batches of consecutive instances whose vertices and
+clusters fit the scratch sized for the largest mesh, up to
+`RASTER_BATCH_INSTANCES`. Each batch takes one transform fork/join and one
+draw fork/join, where each instance took two. It changes no pixel.

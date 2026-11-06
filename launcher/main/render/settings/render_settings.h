@@ -8,9 +8,12 @@
 
 #include <stdbool.h>
 
-#define RENDER_SETTINGS_CULL      true /* clusters and world boxes outside the picture are skipped */
-#define RENDER_SETTINGS_DEPTH_FIT true /* depth is scaled to the nearest kept bound, not near_z */
-#define RENDER_SETTINGS_BATCHED   true /* instances draw in batches, not one fork/join each */
+/* Each default, then its tier and what it trades: docs/render/Render-Settings.md
+ * reads these lines. Basic is for any app; advanced needs the renderer's
+ * workings to judge. */
+#define RENDER_SETTINGS_CULL      true /* basic: skips clusters and world boxes outside the picture */
+#define RENDER_SETTINGS_DEPTH_FIT true /* advanced: spends depth steps where the kept scene is, not from near_z */
+#define RENDER_SETTINGS_BATCHED   true /* advanced: one transform and one draw fork/join a batch, not an instance */
 
 typedef struct {
     bool cull, depth_fit, batched;
