@@ -41,7 +41,7 @@ from r3d.import_settings import load_scene  # noqa: E402
 from r3d.light import drop_masked  # noqa: E402
 from r3d.objects.instances import MATCH_TOLERANCE, bounds_diagonal, match_instances, place, source_objects  # noqa: E402
 from r3d.objects.object_error import part_labels, part_names  # noqa: E402
-from r3d.objects.surface_match import SURFACE_TOLERANCE, merge  # noqa: E402
+from r3d.objects.surface_match import SURFACE_TOLERANCE, JoinedInstance, merge  # noqa: E402
 from r3d.mesh_import import load_source  # noqa: E402
 
 TOP_SHAPES = 25
@@ -91,12 +91,12 @@ def write_report(out, objects, shapes, tolerance):
                   source_triangles=sum(counts.values()),
                   unique_triangles=sum(len(s.triangles) for s in shapes),
                   repeated_triangles=sum(counts[i.object_name] for s in repeated for i in s.instances),
-                  surface_copies=sum(i.by_surface for s in shapes for i in s.instances))
+                  surface_copies=sum(isinstance(i, JoinedInstance) for s in shapes for i in s.instances))
     entries = [dict(triangles=len(s.triangles), instance_count=len(s.instances),
                     mirrored_count=sum(i.mirrored for i in s.instances),
-                    surface_count=sum(i.by_surface for i in s.instances),
+                    surface_count=sum(isinstance(i, JoinedInstance) for i in s.instances),
                     max_residual=max(i.residual for i in s.instances),
-                    max_gap=max(i.gap for i in s.instances),
+                    max_gap=max((i.gap for i in s.instances if isinstance(i, JoinedInstance)), default=0.0),
                     saved=saved(s, counts),
                     object_names=[i.object_name for i in s.instances]) for s in shapes]
     (out / 'objects.json').write_text(json.dumps(dict(totals=totals, shapes=entries), indent=2) + '\n')

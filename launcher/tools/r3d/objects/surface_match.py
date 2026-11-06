@@ -40,6 +40,14 @@ SEED = 1
 
 
 @dataclass(frozen=True)
+class JoinedInstance(Instance):
+    """A copy joined by its surface: its triangles do not correspond to the shape's, so it has no triangle order.
+    Kept here, not on Instance, because instances.py is in every mesh bake's key."""
+    # Largest distance between the copy's surface and the shape's.
+    gap: float = 0.0
+
+
+@dataclass(frozen=True)
 class Surface:
     corners: np.ndarray
     area: float
@@ -167,8 +175,7 @@ def surface_fit(rep, other, tolerance, floor=0.0):
 
 def merge(shapes, tolerance=SURFACE_TOLERANCE, floor=0.0):
     """Join shapes whose surfaces agree: the larger-area shape (earlier on a tie) keeps its geometry, and every
-    copy of a joined shape is placed onto it with its gap, by_surface and no triangle order: its own triangles
-    do not correspond to the shape's."""
+    copy of a joined shape is placed onto it as a JoinedInstance."""
     for value in (tolerance, floor):
         if not np.isfinite(value) or value < 0:
             raise ValueError('tolerance and floor must be finite and nonnegative')
@@ -201,8 +208,8 @@ def merge(shapes, tolerance=SURFACE_TOLERANCE, floor=0.0):
             for copy in shapes[other].instances:
                 placed = stored(place(linear, copy.linear, 0.0).T)
                 offset = stored(copy.position - place(back, copy.linear, 0.0)[0])
-                instances.append(Instance(copy.object_name, placed, offset, bool(np.linalg.det(placed) < 0),
-                                          copy.residual, (), gap, by_surface=True))
+                instances.append(JoinedInstance(copy.object_name, placed, offset, bool(np.linalg.det(placed) < 0),
+                                                copy.residual, (), gap))
         merged.append(replace(shape, instances=tuple(instances)))
     return merged
 

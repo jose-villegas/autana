@@ -31,11 +31,6 @@ class Instance:
     mirrored: bool
     residual: float
     triangle_order: tuple = ()
-    # Largest distance between the copy's surface and the shape's, for a copy joined by surface_match; zero for an
-    # exact match, whose vertices correspond.
-    gap: float = 0.0
-    # Joined by surface_match: the copy's triangles do not correspond to the shape's.
-    by_surface: bool = False
 
 
 @dataclass(frozen=True)
