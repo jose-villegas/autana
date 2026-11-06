@@ -439,6 +439,32 @@ test_vecf_wrap_offset_bounds(void) {
 }
 
 static void
+test_quatf_conjugate(void) {
+    const quatf_t q = quatf_from_euler((vec3f_t){0.3F, -0.7F, 1.1F});
+    const quatf_t back = quatf_conjugate(q);
+    const quatf_t identity = quatf_identity();
+    const quatf_t product = quatf_mul(q, back);
+    CHECK_QUAT_NEAR(TEST_ASSERT_FLOAT_WITHIN, SLACK, identity, product);
+    const vec3f_t v = {0.25F, -0.5F, 0.75F};
+    assert_vec3(v, quatf_rotate(back, quatf_rotate(q, v)));
+}
+
+static void
+test_quatx_conjugate(void) {
+    const quatx_t q = quatx_normalize(quatx_from_euler((vec3x_t){MATHX_ONE / 12, -MATHX_ONE / 8, MATHX_ONE / 6}));
+    const quatx_t back = quatx_conjugate(q);
+    const quatx_t identity = quatx_identity();
+    const quatx_t product = quatx_mul(q, back);
+    const int32_t slack = 16;
+    CHECK_QUAT_NEAR(TEST_ASSERT_INT32_WITHIN, slack, identity, product);
+    const vec3x_t v = {MATHX_ONE / 4, -MATHX_ONE / 2, 3 * MATHX_ONE / 4};
+    const vec3x_t got = quatx_rotate(back, quatx_rotate(q, v));
+    TEST_ASSERT_INT32_WITHIN(slack, v.x, got.x);
+    TEST_ASSERT_INT32_WITHIN(slack, v.y, got.y);
+    TEST_ASSERT_INT32_WITHIN(slack, v.z, got.z);
+}
+
+static void
 test_quatf_nlerp_components_and_zero_dot(void) {
     const quatf_t a = {1.0F / 8, 2.0F / 8, 3.0F / 8, 4.0F / 8};
     const quatf_t b = {4.0F / 8, -3.0F / 8, -2.0F / 8, 1.0F / 8};
@@ -784,6 +810,8 @@ suite_math(void) {
     RUN_TEST(test_vecf_wrap_offset_bounds);
     RUN_TEST(test_quatf_nlerp_components_and_zero_dot);
     RUN_TEST(test_quatx_nlerp_components_and_zero_dot);
+    RUN_TEST(test_quatf_conjugate);
+    RUN_TEST(test_quatx_conjugate);
     RUN_TEST(test_quatf_nlerp);
     RUN_TEST(test_quatx_nlerp);
 
