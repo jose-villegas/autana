@@ -110,10 +110,12 @@ test_switch_gap_is_taken_before_next_drain(void) {
 static void
 test_fifo_loss_uses_configured_rate(void) {
     const unsigned rates[] = {IMU_ODR_CODE, IMU_BUZZ_ODR_CODE, IMU_ODR_CODE - 1U, IMU_ODR_CODE + 1U};
+    TEST_ASSERT_EQUAL_UINT32(IMU_SAMPLE_US, imu_odr_period_us(IMU_ODR_CODE));
+    TEST_ASSERT_EQUAL_UINT32(IMU_BUZZ_SAMPLE_US, imu_odr_period_us(IMU_BUZZ_ODR_CODE));
     for (unsigned i = 0; i < sizeof rates / sizeof rates[0]; i++) {
         qmi8658_fifo_t fifo;
         qmi8658_fifo_reset(&fifo, rates[i]);
-        const uint32_t period = IMU_ODR_PERIOD_US(rates[i]);
+        const uint32_t period = imu_odr_period_us(rates[i]);
         TEST_ASSERT_EQUAL_INT(0, qmi8658_fifo_loss(&fifo, period - 1U, false));
         TEST_ASSERT_EQUAL_INT(0, qmi8658_fifo_loss(&fifo, period, false));
         TEST_ASSERT_EQUAL_INT(1, qmi8658_fifo_loss(&fifo, 0, false));
