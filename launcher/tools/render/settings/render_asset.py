@@ -87,7 +87,8 @@ def header():
     return (f"/* GENERATED FILE - do not edit.\n *     {COMMAND}\n */\n#pragma once\n\n"
             f"#define RENDER_SETTINGS_DEFAULT ((render_settings_t){{{initial}}})\n"
             "/* X(field) for each field of render_settings_t, in order. */\n"
-            f"#define RENDER_SETTINGS_FIELDS(X) {' '.join(f'X({key})' for key in values)}\n")
+            f"#define RENDER_SETTINGS_FIELDS(X) {' '.join(f'X({key})' for key in values)}\n"
+            f"#define RENDER_SETTINGS_FIELD_COUNT {len(values)}\n")
 
 
 def main(argv=None):

@@ -3,8 +3,6 @@
 #include "asset/asset_table.h"
 #include "asset/asset_table_format.h"
 
-#define COUNT_FIELD(field) +1
-
 asset_status_t
 render_settings_read(const asset_pack_t* pack, render_settings_t* out) {
     asset_view_t entry;
@@ -13,7 +11,7 @@ render_settings_read(const asset_pack_t* pack, render_settings_t* out) {
     if (status == ASSET_OK) {
         status = asset_table_open(entry, &table);
     }
-    if (status == ASSET_OK && (table.rows != (0 RENDER_SETTINGS_FIELDS(COUNT_FIELD)) || table.frac_bits != 0)) {
+    if (status == ASSET_OK && (table.rows != RENDER_SETTINGS_FIELD_COUNT || table.frac_bits != 0)) {
         status = ASSET_ERR_FORMAT;
     }
     render_settings_t read = {0};
