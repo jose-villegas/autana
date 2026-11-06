@@ -149,7 +149,7 @@ depth_cap_max(uint16_t cap) {
  * covers lies inside the triangle, where the plane peaks at a vertex; a steep
  * sliver's set-up can tilt it past the limit there, and then its spans clamp
  * to it. */
-static RENDER_SKIP_ATTR void
+static RENDER_SKIP_ATTR __attribute__((noinline)) void
 cap_depth(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, recti_t box,
           gradients_t* g) {
     g->depth_cap = R3D_DEPTH_NEAREST;
