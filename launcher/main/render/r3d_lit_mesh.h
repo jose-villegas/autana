@@ -79,6 +79,9 @@ typedef struct {
     const r3d_lit_cluster_lod_t* cluster_lod; /* one per cluster, or NULL: every cluster is finest */
     const r3d_lit_lod_group_t* lod_groups;
     int lod_group_count;
+    /* Position ticks: the least error of any group, which bounds when the
+     * pick can skip a pose (render/lod/r3d_lod.h); 0 never skips. */
+    uint16_t lod_error_least;
     /* The node the cluster walk starts at: the root's first child when it
      * holds the finest clusters and its second the coarse ones, in the order
      * of the group simplified into each; the walk then takes the coarse

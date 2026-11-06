@@ -200,6 +200,7 @@ r3d_lit_mesh_levels_from_asset(const asset_view_t* levels, r3d_lit_mesh_t* mesh)
     mesh->cluster_lod = NULL;
     mesh->lod_groups = NULL;
     mesh->lod_group_count = 0;
+    mesh->lod_error_least = 0;
     mesh->lod_finest_root = 0;
     mesh->lod_coarse_first = 0;
     const asset_status_t status =
@@ -225,6 +226,11 @@ r3d_lit_mesh_levels_from_asset(const asset_view_t* levels, r3d_lit_mesh_t* mesh)
     built.lod_group_count = groups;
     if (!lod_is_ordered(&built)) {
         return ASSET_ERR_FORMAT;
+    }
+    built.lod_error_least = UINT16_MAX;
+    for (int g = 0; g < groups; g++) {
+        built.lod_error_least =
+            built.lod_groups[g].error < built.lod_error_least ? built.lod_groups[g].error : built.lod_error_least;
     }
     r3d_lit_mesh_find_levels(&built);
     *mesh = built;

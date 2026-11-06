@@ -1,6 +1,9 @@
 #include "render/lod/r3d_lod.h"
 
+#include "math/geometry/box3f.h"
 #include "math/scalar/mathf.h"
+
+#include <string.h>
 
 /* The lens's linear part with its focal lengths divided out: position ticks
  * to view units. */
@@ -70,6 +73,32 @@ r3d_lod_group_coverage(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int g
     return group_coverage(&v, g, group_nearest(&v, g, lens->project.near_z), lens->height);
 }
 
+/* Float rounding of the whole-mesh bound below, as a share of what it
+ * compares: far more than the few ulps its sums and the exact test's differ by. */
+#define LOD_BOUND_SLACK             (1.0F / 1024.0F)
+/* How far a group's centre, rounded to ticks, may sit outside the vertices' bounds, per axis. */
+#define GROUP_CENTRE_ROUNDING_TICKS 1.0F
+
+/* Whether no group of `mesh` can be coarse through `v`: its least error, seen
+ * from as far as the root's bounds reach, still projects past `leave`. Every
+ * group's centre lies inside those bounds, give or take its rounding, so none
+ * comes farther. */
+static bool
+none_can_coarsen(const r3d_lit_mesh_t* mesh, const lod_view_t* v, float near_z, float leave) {
+    if (mesh->lod_error_least == 0) {
+        return false;
+    }
+    const box3f_t root = box3f_from_box3s(mesh->nodes[0].bounds, 1.0F);
+    const vec3f_t centre = mat4f_apply(&v->view, box3f_centre(root));
+    const vec3f_t half =
+        vec3f_add(box3f_half_extent(root),
+                  (vec3f_t){GROUP_CENTRE_ROUNDING_TICKS, GROUP_CENTRE_ROUNDING_TICKS, GROUP_CENTRE_ROUNDING_TICKS});
+    const float farthest = mathf_max(
+        mathf_sqrt(vec3f_dot(centre, centre)) + mathf_sqrt(vec3f_dot(half, half)) * v->units_per_tick, near_z);
+    const float px = (float)mesh->lod_error_least * v->units_per_tick * v->focal / farthest;
+    return px > leave * (1.0F + LOD_BOUND_SLACK);
+}
+
 /* Sets coarse every group simplified into a coarse one, until none is left
  * fine under a coarse parent. The ordering r3d_lit_mesh.h checks makes this
  * a pass that changes nothing, short of float rounding far off; then the cut
@@ -96,6 +125,11 @@ r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, float tolerance
     const lod_view_t v = lod_view(lens);
     const float enter = tolerance_px - R3D_LOD_HYSTERESIS_PX;
     const float leave = tolerance_px + R3D_LOD_HYSTERESIS_PX;
+    if (none_can_coarsen(mesh, &v, lens->project.near_z, leave)) {
+        memset(coarse, 0, R3D_LOD_WORDS(mesh->lod_group_count) * sizeof *coarse);
+        return;
+    }
+    bool any = false;
     for (int g = 0; g < mesh->lod_group_count; g++) {
         const r3d_lit_lod_group_t* group = &mesh->lod_groups[g];
         const float nearest = group_nearest(&v, group, lens->project.near_z);
@@ -103,12 +137,15 @@ r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, float tolerance
         const uint32_t bit = 1U << (g % R3D_LOD_WORD_BITS);
         uint32_t* word = &coarse[g / R3D_LOD_WORD_BITS];
         const bool was = (*word & bit) != 0;
-        const bool small = group_coverage(&v, group, nearest, lens->height) <= coverage_max;
-        if (small && (px <= enter || (was && px <= leave))) {
+        if ((px <= enter || (was && px <= leave)) && group_coverage(&v, group, nearest, lens->height) <= coverage_max) {
             *word |= bit;
+            any = true;
         } else {
             *word &= ~bit;
         }
     }
-    close_coarse(mesh, coarse);
+    /* Nothing coarse closes to nothing. */
+    if (any) {
+        close_coarse(mesh, coarse);
+    }
 }

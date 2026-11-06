@@ -189,11 +189,13 @@ def within_format(rows, kept, cost, used):
     return kept
 
 
-def bake_levels(q, col, tris, double, face, meshlet_triangles):
+def bake_levels(q, col, tris, double, face, meshlet_triangles, cluster):
     """The levels of a welded bake (q ticks, col and face colours or None,
     tris rows into q, double per triangle), clusters of at most
     meshlet_triangles; triangles whose corners share a position draw nothing
-    and are left out."""
+    and are left out. `cluster`, per row and ascending, is the plain bake's
+    cluster each triangle sits in: those clusters, in that order and their
+    rows in order, are the finest level."""
     welded, wid = np.unique(q, axis=0, return_inverse=True)
     wid = wid.reshape(-1)
     wt = wid[tris]
@@ -208,7 +210,8 @@ def bake_levels(q, col, tris, double, face, meshlet_triangles):
     for side in (0, 1):
         member = np.flatnonzero(keep & (double == side))
         if len(member):
-            levels = build_levels(welded, wt[member], meshlet_triangles, shared)
+            levels = build_levels(welded, wt[member], meshlet_triangles, shared,
+                                  np.unique(cluster[member], return_counts=True)[1])
             side_entries, side_coarse, side_groups = side_levels(levels, welded, wt, tris, face, member, side,
                                                                  len(spheres))
             entries += side_entries
@@ -216,6 +219,8 @@ def bake_levels(q, col, tris, double, face, meshlet_triangles):
             spheres += side_groups[0]
             errors += side_groups[1]
             sources += side_groups[2]
+    # The plain bake's clusters in its order, both sidednesses together.
+    entries = [{k: v for k, v in e.items() if k != "rows"} for e in sorted(entries, key=lambda e: int(e["rows"][0]))]
     rows, kept = quantised_groups(np.array(spheres).reshape(-1, 4), np.array(errors), sources)
     cost = np.zeros((len(rows), 3), dtype=np.int64)
     for e in coarse:
@@ -248,9 +253,11 @@ def side_levels(levels, welded, wt, tris, face, member, side, group_base):
     drawn = [None] * len(first)
     entries, coarse = [], []
     for c in np.flatnonzero(levels.cluster_refined < 0):
-        rows = np.array([by_shape[oriented(t)].pop() for t in corner_ids[c]])
+        # The given cluster's rows in their own order, whatever order clusterlod hands them back in.
+        rows = np.sort([by_shape[oriented(t)].pop() for t in corner_ids[c]])
         drawn[c] = welded[corner_ids[c]]
-        entries.append({"double": side, "tris": tris[rows], "face": None if face is None else np.asarray(face)[rows],
+        entries.append({"double": side, "rows": rows, "tris": tris[rows],
+                        "face": None if face is None else np.asarray(face)[rows],
                         "own": LOD_NONE, "parent": group_id(levels.cluster_group[c])})
     spheres, errors, sources = [], [], []
     for g in np.flatnonzero(produced):
@@ -332,7 +339,9 @@ def bake_lit_mesh(positions, rgb, tris, double, position_scale=None, leaf_triang
     if not lod:
         return plain
     q, col, tris, double, face = lit_mesh.finest_triangles(plain)
-    levels = bake_levels(q, col, tris, double, face, meshlet_triangles)
+    counts = [c[3] for c in plain.clusters]
+    assert len(tris) == sum(counts), "re-welding the plain bake dropped a triangle"
+    levels = bake_levels(q, col, tris, double, face, meshlet_triangles, np.repeat(np.arange(len(counts)), counts))
     if not len(levels.groups):
         return plain
     return lit_mesh.assemble(levels.q, levels.col, levels.entries, position_scale, leaf_triangles,

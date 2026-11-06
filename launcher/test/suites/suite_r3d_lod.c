@@ -392,6 +392,28 @@ test_a_group_covering_more_than_the_cap_stays_fine_whatever_its_error(void) {
     pick_along_the_path(mesh, coarse_exactly_while_small);
 }
 
+/* Knowing its least error lets the pick skip a pose where nothing can be
+ * coarse; along the path, there and back, it picks exactly what it picks
+ * without, the nearest poses included, where every group is fine. */
+static void
+test_the_least_error_skips_only_poses_that_pick_nothing_coarse(void) {
+    const r3d_lit_mesh_t* mesh = levelled_mesh();
+    r3d_lit_mesh_t bounded = *mesh;
+    bounded.lod_error_least = FINEST_ERROR;
+    uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
+    uint32_t skipping[R3D_LOD_WORDS(GROUPS)] = {0};
+    const int steps = steps_in();
+    for (int p = 0; p < 2 * steps; p++) {
+        const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
+        r3d_lod_pick(mesh, &lens, TOLERANCE, COVERAGE_MAX, coarse);
+        r3d_lod_pick(&bounded, &lens, TOLERANCE, COVERAGE_MAX, skipping);
+        TEST_ASSERT_EQUAL_HEX32_ARRAY(coarse, skipping, R3D_LOD_WORDS(GROUPS));
+        if (p == steps) {
+            TEST_ASSERT_EQUAL_HEX32(0, skipping[0]);
+        }
+    }
+}
+
 static void
 test_a_group_never_projects_larger_than_its_parent_under_a_stretched_turned_model(void) {
     const r3d_lit_mesh_t* mesh = levelled_mesh();
@@ -549,6 +571,7 @@ suite_r3d_lod(void) {
     RUN_TEST(test_a_camera_backing_off_a_switch_by_less_than_the_band_does_not_switch_back);
     RUN_TEST(test_a_group_never_projects_larger_than_its_parent_under_a_stretched_turned_model);
     RUN_TEST(test_a_group_covering_more_than_the_cap_stays_fine_whatever_its_error);
+    RUN_TEST(test_the_least_error_skips_only_poses_that_pick_nothing_coarse);
     RUN_TEST(test_a_group_s_error_projects_at_the_model_s_largest_scale);
     RUN_TEST(test_a_parent_turning_coarse_takes_an_out_of_order_source_with_it);
     RUN_TEST(test_without_bits_a_levelled_mesh_walks_only_its_finest_clusters);

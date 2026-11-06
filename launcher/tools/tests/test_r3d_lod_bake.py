@@ -84,6 +84,19 @@ class BakedLevelsTest(unittest.TestCase):
         self.assertEqual(corner_set(lit_mesh.finest_triangles(self.plain)),
                          corner_set(lit_mesh.finest_triangles(self.levelled)))
 
+    def test_the_finest_clusters_are_the_plain_bakes_in_its_order_vertex_for_vertex(self):
+        finest = lit_mesh.finest(self.levelled)
+        self.assertEqual(int(finest.sum()), len(self.plain.clusters))
+        self.assertTrue(finest[:len(self.plain.clusters)].all())
+        for mine, plain in zip(self.levelled.clusters, self.plain.clusters):
+            (v, vn, t, tn, *rest), (pv, pvn, pt, ptn, *prest) = mine, plain
+            self.assertEqual((vn, tn), (pvn, ptn))
+            np.testing.assert_array_equal(self.levelled.pos[v:v + vn], self.plain.pos[pv:pv + pvn])
+            np.testing.assert_array_equal(self.levelled.rgb[v:v + vn], self.plain.rgb[pv:pv + pvn])
+            np.testing.assert_array_equal(self.levelled.tris[t:t + tn] - v, self.plain.tris[pt:pt + ptn] - pv)
+            for a, b in zip(rest, prest):
+                np.testing.assert_array_equal(a, b)
+
     def test_coarser_levels_are_baked_but_left_out_of_the_finest_triangles(self):
         finest = lit_mesh.finest(self.levelled)
         self.assertTrue(finest.any() and not finest.all())

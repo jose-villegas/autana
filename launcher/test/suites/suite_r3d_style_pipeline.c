@@ -136,11 +136,11 @@ test_styles_match_pipeline_colours(void) {
     work = malloc(r3d_pipeline_work_bytes());
     TEST_ASSERT_NOT_NULL(work);
     TEST_ASSERT_EQUAL_UINT(8, sizeof(r3d_pipeline_vertex_t));
-    const int16_t positions[3][3] = {{0, 0, 2}, {1, 0, 2}, {0, 1, 2}};
-    uint8_t colours[3][3] = {{255, 0, 0}, {0, 255, 0}, {0, 0, 255}};
-    const uint16_t triangle[3] = {0, 1, 2};
-    const r3d_lit_cluster_t cluster = {.vertex_count = 3};
-    const r3d_lit_mesh_t mesh = {.positions = positions, .colors = (const uint8_t (*)[3])colours, .clusters = &cluster};
+    static const int16_t positions[3][3] = {{0, 0, 2}, {1, 0, 2}, {0, 1, 2}};
+    static const uint8_t colours[3][3] = {{255, 0, 0}, {0, 255, 0}, {0, 0, 255}};
+    static const uint16_t triangle[3] = {0, 1, 2};
+    static const r3d_lit_cluster_t cluster = {.vertex_count = 3};
+    static const r3d_lit_mesh_t mesh = {.positions = positions, .colors = colours, .clusters = &cluster};
     const r3d_lens_t lens = {.m = mat4f_identity(),
                              .project = {1.0F, -1.0F, 0.0F, 0.0F, 1.0F},
                              .depth_near = 1.0F,
