@@ -22,8 +22,6 @@ import tempfile
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from elftools.elf.elffile import ELFFile
-from elftools.dwarf.descriptions import describe_form_class
 
 VARIANTS = ("release", "dev", "diag")
 MAIN_VARIANT = VARIANTS[0]
@@ -306,6 +304,9 @@ def iram_entries(build):
 
 def inline_instances(elf, sections):
     """Read every emitted inline range from the build ELF with pyelftools."""
+    from elftools.elf.elffile import ELFFile
+    from elftools.dwarf.descriptions import describe_form_class
+
     result = []
     with elf.open("rb") as stream:
         dwarf = ELFFile(stream).get_dwarf_info()

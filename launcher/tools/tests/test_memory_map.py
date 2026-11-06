@@ -124,46 +124,45 @@ class MemoryMapTests(unittest.TestCase):
             stack.enter_context(contextlib.redirect_stderr(capture))
             return memory.main(), capture
 
-    def host_elf(self, version=5, ranges=False, debug=True):
-        source = self.root / "launcher/main/foo.c"
-        header = source.with_name("inline.h")
-        header.write_text(
-            ('static inline int foo(int x) { if (x > 7) { asm volatile("" : "+r"(x)); return x*x; } '
-             'asm volatile("" : "+r"(x)); return x+3; }\n' if ranges else
-             'static inline int foo(int x) { if (__builtin_expect(x == 7, 0)) return x*x; return x+3; }\n')
-            + 'static inline int bar(int x) { return x*3; }\n')
-        source.write_text('#include "inline.h"\n__attribute__((noinline)) int caller(int x) { int y = foo(x); '
-                          + ('asm volatile("" : "+r"(y)); ' if ranges else '')
-                          + 'return y + bar(x); }\nint main(int n, char **v) { return caller(n); }\n')
+    def fixture_elf(self, version=5, debug=True):
+        from elftools.elf.elffile import ELFFile
+
+        fixture = Path(__file__).parent / "fixtures/inline-dwarf" / f"inline-{version}.elf"
         elf = self.root / "inline.elf"
-        compiler = os.environ.get("CC", "cc")
-        subprocess.run([compiler, "-O2", *(["-g", f"-gdwarf-{version}"] if debug else []),
-                        str(source), "-o", str(elf)], check=True, capture_output=True)
+        data = fixture.read_bytes()
+        if not debug:
+            data = data.replace(b".debug_info\0", b".no_debug_x\0")
+        elf.write_bytes(data)
         with elf.open("rb") as stream:
-            image = memory.ELFFile(stream)
+            image = ELFFile(stream)
             sections = {section.name: (section["sh_addr"], section["sh_size"]) for section in image.iter_sections()}
-        return header, elf, sections
+        return self.root / "launcher/main/inline.h", elf, sections
 
     def test_inline_instances_compiler_dwarf(self):
+        from elftools.elf.elffile import ELFFile
+
         for version in (4, 5):
-            for ranges in (False, True):
-                with self.subTest(version=version, ranges=ranges):
-                    source, elf, sections = self.host_elf(version, ranges)
-                    rows = memory.inline_instances(elf, sections)
-                    self.assertTrue(rows)
-                    self.assertEqual({row[0] for row in rows}, {source.as_posix()})
-                    self.assertEqual({row[1] for row in rows}, {"foo", "bar"})
-                    start, size = sections[".text"]
-                    self.assertTrue(all(row[2] == ".text" and start <= row[3] < row[4] <= start + size for row in rows))
-                    with elf.open("rb") as stream:
-                        dwarf = memory.ELFFile(stream).get_dwarf_info()
-                        instances = [die for cu in dwarf.iter_CUs() for die in cu.iter_DIEs()
-                                     if die.tag == "DW_TAG_inlined_subroutine"]
-                        self.assertTrue(any(("DW_AT_ranges" if ranges else "DW_AT_low_pc") in die.attributes
-                                            for die in instances))
+            with self.subTest(version=version):
+                _, elf, sections = self.fixture_elf(version)
+                rows = memory.inline_instances(elf, sections)
+                source = (Path.cwd() / "launcher/main/inline.h").resolve().as_posix()
+                start, _ = sections[".text"]
+                self.assertEqual(sorted(rows), sorted([
+                    (source, "foo", ".text", start + 4, start + 12),
+                    (source, "foo", ".text", start + 16, start + 22),
+                    (source, "bar", ".text", start + 36, start + 39),
+                ]))
+                with elf.open("rb") as stream:
+                    dwarf = ELFFile(stream).get_dwarf_info()
+                    instances = [die for cu in dwarf.iter_CUs() for die in cu.iter_DIEs()
+                                 if die.tag == "DW_TAG_inlined_subroutine"]
+                    self.assertEqual(len(instances), 2)
+                    self.assertTrue(any("DW_AT_low_pc" in die.attributes and "DW_AT_high_pc" in die.attributes
+                                        for die in instances))
+                    self.assertTrue(any("DW_AT_ranges" in die.attributes for die in instances))
 
     def inline_build(self, debug=True):
-        header, elf, sections = self.host_elf(debug=debug)
+        header, elf, sections = self.fixture_elf(debug=debug)
         start, size = sections[".text"]
         build = self.root / "build"
         build.mkdir()
@@ -528,6 +527,7 @@ class MemoryMapTests(unittest.TestCase):
         fixture.write_text(json.dumps(builds))
         program = """import json, sys
 from pathlib import Path
+sys.modules["elftools"] = None
 sys.path.insert(0, sys.argv[1])
 import memory_map as m
 builds=json.load(open(sys.argv[2]))
