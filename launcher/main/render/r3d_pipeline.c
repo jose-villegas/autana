@@ -176,13 +176,14 @@ cull_cluster(const r3d_lit_mesh_t* mesh, int c, unsigned mask, const planef_t* p
     return count;
 }
 
-/* The clusters of a leaf the planes in `mask` keep, as cull_cluster(). */
+/* The clusters of a leaf the planes in `mask` keep, as cull_cluster(): all
+ * of them when `every`, else those r3d_lod_drawn() draws under `lod_coarse`. */
 static int
-cull_leaf(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, const r3d_lit_node_t* leaf, unsigned mask,
+cull_leaf(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, bool every, const r3d_lit_node_t* leaf, unsigned mask,
           const planef_t* planes, planef_t depth, uint16_t* out, int count, r3d_depth_fit_t* fit) {
     for (int i = 0; i < leaf->count; i++) {
         const int c = leaf->first + i;
-        if (r3d_lod_drawn(mesh, c, lod_coarse)) {
+        if (every || r3d_lod_drawn(mesh, c, lod_coarse)) {
             count = cull_cluster(mesh, c, mask, planes, depth, out, count, fit);
         }
     }
@@ -240,6 +241,10 @@ r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint
     /* With the levels laid out apart, the walk covers level 0 and the cut's
      * coarse clusters come from their groups. */
     const int start = mesh->lod_finest_root;
+    /* Nothing coarse: level 0's tree holds only what is drawn, so the walk
+     * tests no level and there is no cut, as for a mesh without levels. */
+    const bool cut = lod_coarse != NULL && r3d_lod_any(lod_coarse, mesh->lod_group_count);
+    const bool every = start != 0 && !cut;
     stack[top++] = (walk_entry_t){(uint16_t)start, ALL_PLANES};
     int count = 0;
     while (top > 0) {
@@ -254,9 +259,9 @@ r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint
             top = push_children(mesh, lens, node, mask, stack, top);
             continue;
         }
-        count = cull_leaf(mesh, lod_coarse, node, mask, planes, depth, out, count, fit);
+        count = cull_leaf(mesh, lod_coarse, every, node, mask, planes, depth, out, count, fit);
     }
-    if (start != 0 && lod_coarse != NULL) {
+    if (start != 0 && cut) {
         int tested = 0;
         count = r3d_pipeline_cull_cut(mesh, lod_coarse, planes, depth, out, count, fit, &tested);
     }

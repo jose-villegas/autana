@@ -45,6 +45,17 @@ r3d_lod_coarse(const uint32_t* coarse, uint16_t group) {
     return ((coarse[group / R3D_LOD_WORD_BITS] >> (group % R3D_LOD_WORD_BITS)) & 1U) != 0;
 }
 
+/* Whether any of a mesh's `groups` is coarse in `coarse`. */
+static inline bool
+r3d_lod_any(const uint32_t* coarse, int groups) {
+    for (int w = 0; w < R3D_LOD_WORDS(groups); w++) {
+        if (coarse[w] != 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* Whether cluster `c` of `mesh` is drawn under `coarse`: when the group
  * simplified into it is coarse (or it is finest) and its own group is not.
  * A NULL `coarse` draws the finest level, as does a mesh without levels. */

@@ -73,6 +73,27 @@ r3d_lod_group_coverage(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int g
     return group_coverage(&v, g, group_nearest(&v, g, lens->project.near_z), lens->height);
 }
 
+/* A group's bounds seen through a lod_view_t: the centre's squared distance
+ * from the eye, the radius in view units and the near plane, the nearest
+ * depth being max(distance - radius, near). */
+typedef struct {
+    float distance_squared;
+    float radius;
+    float near_z;
+} reach_t;
+
+/* Whether `length` projects within `limit` at the bounds' nearest depth:
+ * length <= limit * nearest, both sides squared once the near plane is
+ * ruled out, so the frame's pick needs no square root or division. */
+static inline bool
+within(const reach_t* at, float length, float limit) {
+    if (length <= limit * at->near_z) {
+        return true;
+    }
+    const float reach = length + (limit * at->radius);
+    return limit >= 0.0F && limit * limit * at->distance_squared >= reach * reach;
+}
+
 /* Float rounding of the whole-mesh bound below, as a share of what it
  * compares: far more than the few ulps its sums and the exact test's differ by. */
 #define LOD_BOUND_SLACK             (1.0F / 1024.0F)
@@ -129,15 +150,22 @@ r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, float tolerance
         memset(coarse, 0, R3D_LOD_WORDS(mesh->lod_group_count) * sizeof *coarse);
         return;
     }
+    /* Per group, in the form within() takes: its error and its radius, each
+     * times focal over units, against their limits times its nearest depth. */
+    const float scale = v.units_per_tick * v.focal;
+    const float covered = coverage_max * (float)lens->height;
+    const float near_z = lens->project.near_z;
     bool any = false;
     for (int g = 0; g < mesh->lod_group_count; g++) {
         const r3d_lit_lod_group_t* group = &mesh->lod_groups[g];
-        const float nearest = group_nearest(&v, group, lens->project.near_z);
-        const float px = group_pixels(&v, group, nearest);
+        const vec3f_t centre = mat4f_apply(&v.view, vec3f_from_vec3s(group->bounds.centre, 1.0F));
+        const reach_t at = {vec3f_dot(centre, centre), (float)group->bounds.radius * v.units_per_tick, near_z};
+        const float error = (float)group->error * scale;
         const uint32_t bit = 1U << (g % R3D_LOD_WORD_BITS);
         uint32_t* word = &coarse[g / R3D_LOD_WORD_BITS];
         const bool was = (*word & bit) != 0;
-        if ((px <= enter || (was && px <= leave)) && group_coverage(&v, group, nearest, lens->height) <= coverage_max) {
+        if ((within(&at, error, enter) || (was && within(&at, error, leave)))
+            && within(&at, (float)group->bounds.radius * scale, covered)) {
             *word |= bit;
             any = true;
         } else {

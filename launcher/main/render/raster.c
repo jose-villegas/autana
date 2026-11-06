@@ -345,8 +345,13 @@ cull_instance(const r3d_instance_t* instance, const r3d_lens_t* lens, uint16_t* 
     if (cull) {
         visible = r3d_pipeline_cull(mesh, lens, instance->lod_coarse, out, work, fit);
     } else {
-        for (int i = 0; i < mesh->cluster_count; i++) {
-            if (r3d_lod_drawn(mesh, i, instance->lod_coarse)) {
+        /* Nothing coarse in levels laid out apart: the finest clusters come first. */
+        const bool every =
+            mesh->lod_finest_root != 0
+            && (instance->lod_coarse == NULL || !r3d_lod_any(instance->lod_coarse, mesh->lod_group_count));
+        const int count = every ? mesh->lod_coarse_first : mesh->cluster_count;
+        for (int i = 0; i < count; i++) {
+            if (every || r3d_lod_drawn(mesh, i, instance->lod_coarse)) {
                 out[visible++] = (uint16_t)i;
             }
         }
