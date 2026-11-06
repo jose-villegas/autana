@@ -84,6 +84,34 @@ class BakedLevelsTest(unittest.TestCase):
         self.assertEqual(corner_set(lit_mesh.finest_triangles(self.plain)),
                          corner_set(lit_mesh.finest_triangles(self.levelled)))
 
+    def test_a_finest_cluster_keeps_its_triangles_in_the_plain_bakes_order(self):
+        """However the clusterer orders a cluster's triangles, level 0 draws them as the plain bake does."""
+        from unittest import mock
+        from r3d.lod import bake_levels, levels
+
+        def turned_around(*args, **kwargs):
+            built = levels.build_levels(*args, **kwargs)
+            indices = built.indices.copy()
+            for first, count in zip(built.cluster_first, built.cluster_triangles):
+                run = indices[first:first + 3 * count].reshape(-1, 3)
+                indices[first:first + 3 * count] = run[::-1].reshape(-1)
+            return built._replace(indices=indices)
+
+        points, rgb, triangles, double = wavy_grid()
+        with mock.patch.object(bake_levels, "build_levels", turned_around):
+            levelled = read_back(bake_lit_mesh(points, rgb, triangles, double, lod=True))
+
+        def shape(pos, t):
+            return tuple(sorted(tuple(pos[v]) for v in t))
+
+        plain = lit_mesh.finest_triangles(self.plain)
+        at = {shape(plain[0], t): row for row, t in enumerate(plain[2])}
+        level0 = lit_mesh.finest(levelled)
+        for c, (_, _, tbase, tcount, _, _, _) in enumerate(levelled.clusters):
+            if level0[c]:
+                rows = [at[shape(levelled.pos, t)] for t in levelled.tris[tbase:tbase + tcount]]
+                self.assertEqual(rows, sorted(rows), f"cluster {c}")
+
     def test_coarser_levels_are_baked_but_left_out_of_the_finest_triangles(self):
         finest = lit_mesh.finest(self.levelled)
         self.assertTrue(finest.any() and not finest.all())

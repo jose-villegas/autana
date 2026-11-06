@@ -248,7 +248,7 @@ def side_levels(levels, welded, wt, tris, face, member, side, group_base):
     drawn = [None] * len(first)
     entries, coarse = [], []
     for c in np.flatnonzero(levels.cluster_refined < 0):
-        rows = np.array([by_shape[oriented(t)].pop() for t in corner_ids[c]])
+        rows = np.sort([by_shape[oriented(t)].pop() for t in corner_ids[c]])
         drawn[c] = welded[corner_ids[c]]
         entries.append({"double": side, "tris": tris[rows], "face": None if face is None else np.asarray(face)[rows],
                         "own": LOD_NONE, "parent": group_id(levels.cluster_group[c])})
