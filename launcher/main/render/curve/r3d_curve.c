@@ -97,10 +97,11 @@ segment(knot_t a, knot_t b, float radius_scale, const r3d_lens_t* lens, const r3
         b = knot_between(b, a, (near - b.point.z) / (a.point.z - b.point.z));
         b.point.z = near;
     }
+    /* Lens space already points y down the picture, as r3d_pipeline's vertices take it. */
     const float ax = lens->project.cx + a.point.x / a.point.z;
-    const float ay = lens->project.cy - a.point.y / a.point.z;
+    const float ay = lens->project.cy + a.point.y / a.point.z;
     const float bx = lens->project.cx + b.point.x / b.point.z;
-    const float by = lens->project.cy - b.point.y / b.point.z;
+    const float by = lens->project.cy + b.point.y / b.point.z;
     const float dx = bx - ax, dy = by - ay;
     const float length = hypotf(dx, dy);
     const float ar = a.radius * radius_scale / a.point.z;
