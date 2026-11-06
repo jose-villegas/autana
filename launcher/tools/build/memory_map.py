@@ -22,6 +22,8 @@ import tempfile
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
+from elftools.elf.elffile import ELFFile
+from elftools.dwarf.descriptions import describe_form_class
 
 VARIANTS = ("release", "dev", "diag")
 MAIN_VARIANT = VARIANTS[0]
@@ -274,10 +276,14 @@ def clone_base(symbol):
     return CLONE_SUFFIX.sub("", symbol)
 
 
+def matches_entry(item, archive, obj, symbol):
+    return (fnmatch.fnmatch(item.archive, archive)
+            and fnmatch.fnmatch(item.object.removesuffix(".obj").removesuffix(".o").removesuffix(".c"), obj)
+            and fnmatch.fnmatch(clone_base(item.symbol), symbol))
+
+
 def matches_site(item, site):
-    return fnmatch.fnmatch(item.archive, site.archive) and any(
-        fnmatch.fnmatch(item.object.removesuffix(".obj").removesuffix(".o").removesuffix(".c"), obj)
-        and fnmatch.fnmatch(clone_base(item.symbol), symbol) for obj, symbol in site.entries)
+    return any(matches_entry(item, site.archive, obj, symbol) for obj, symbol in site.entries)
 
 
 def iram_entries(build):
@@ -300,11 +306,6 @@ def iram_entries(build):
 
 def inline_instances(elf, sections):
     """Read every emitted inline range from the build ELF with pyelftools."""
-    try:
-        from elftools.elf.elffile import ELFFile
-        from elftools.dwarf.descriptions import describe_form_class
-    except ImportError as error:
-        raise ValueError("pyelftools is required; run memory_map.py with the ESP-IDF Python environment") from error
     result = []
     with elf.open("rb") as stream:
         dwarf = ELFFile(stream).get_dwarf_info()
@@ -360,7 +361,7 @@ def inline_rows(source, name, ranges, sections):
         yield source, name, section, low, high
 
 
-def check(placements, inputs, variant, owned, active, idf_commit=None, pinned_commit=None, exact=True, linker_entries=(), inlines=()):
+def check(placements, inputs, variant, owned, active, idf_commit=None, pinned_commit=None, exact=True, linker_entries=(), inlines=(), inspect_inline=True):
     errors = []
     drift = commit_drift(idf_commit, pinned_commit) if idf_commit is not None else None
     used = Counter()
@@ -401,15 +402,17 @@ def check(placements, inputs, variant, owned, active, idf_commit=None, pinned_co
                 errors.append(f"{site.label}: compiled-out site owns {size} B")
         else:
             for obj, symbol, path, _ in site.required:
-                required_site = Site(site.path, site.line, site.owner, site.reason,
-                                     site.budget, site.archive, [(obj, symbol)])
-                copies = [item for item in inputs if not item.literal and matches_site(item, required_site)]
+                copies = [item for item in inputs if not item.literal and matches_entry(item, site.archive, obj, symbol)]
+                instances = [row for row in inlines
+                             if (row[0] == path or row[0].endswith("/" + path)) and clone_base(row[1]) == symbol]
+                if not copies and not instances and inspect_inline:
+                    errors.append(f"{site.label}: {symbol}: no emitted copy or inline instance")
                 outside = sorted({item.output for item in copies if not item.output.startswith(".iram")})
                 if outside:
                     errors.append(f"{site.label}: {symbol}: out-of-line copy in {', '.join(outside)}; "
-                                  "keep it out of line with noinline")
-                for source, name, section, low, high in inlines:
-                    if (source == path or source.endswith("/" + path)) and clone_base(name) == symbol and not section.startswith(".iram"):
+                                  "check compiler clones and linker mappings")
+                for source, name, section, low, high in instances:
+                    if not section.startswith(".iram"):
                         errors.append(f"{site.label}: {symbol}: inlined copy in {section} "
                                       f"[{low:#x}, {high:#x}); keep it out of line with noinline")
             if not size and not site.required:
@@ -606,7 +609,7 @@ def build_variant(build):
     return build_id, variant
 
 
-def read_build(build, root=ROOT):
+def read_build(build, root=ROOT, *, inspect_inline=False):
     build = build.resolve()
     metadata = json.loads((build / "project_description.json").read_text(encoding="utf-8"))
     elf = build / metadata["app_elf"]
@@ -627,7 +630,7 @@ def read_build(build, root=ROOT):
     regions = {name: (int(address, 16), int(size, 16)) for name, address, size in
                re.findall(r"^(iram0_0_seg|dram0_0_seg)\s+(0x[\da-f]+)\s+(0x[\da-f]+)", maptext, re.M)}
     build_id, variant = build_variant(build)
-    return dict(build=build, metadata=metadata, owned=components(root, metadata), build_id=build_id, variant=variant, idf_commit=idf_commit(metadata["idf_path"]), inputs=inputs, placed_inputs=placed_inputs, linker_entries=iram_entries(build), inlines=inline_instances(elf, sections), sections=sections, constants=constants,
+    return dict(build=build, metadata=metadata, owned=components(root, metadata), build_id=build_id, variant=variant, idf_commit=idf_commit(metadata["idf_path"]), inputs=inputs, placed_inputs=placed_inputs, linker_entries=iram_entries(build), inlines=inline_instances(elf, sections) if inspect_inline else (), sections=sections, constants=constants,
                 size=size, align=align, pad=pad, slack=slack, config=config, regions=regions)
 
 
@@ -1036,7 +1039,7 @@ def main():
             return 0
         if not args.builds:
             parser.error("build directories required unless --source-only")
-        builds = [read_build(build, args.root) for build in args.builds]
+        builds = [read_build(build, args.root, inspect_inline=args.check or args.update_budgets) for build in args.builds]
         pin = idf_pin(args.root)
         errors = []
         for build in builds:
@@ -1046,7 +1049,7 @@ def main():
                 drift = commit_drift(build["idf_commit"], pin["commit"])
                 if args.require_pin and drift:
                     errors.append(f"{build['variant']}: IDF drift: {drift}")
-                build["report"] = check(placements, build["placed_inputs"], build["variant"], build["owned"], active, build["idf_commit"], pin["commit"], exact=not args.update_budgets, linker_entries=build["linker_entries"], inlines=build.get("inlines", ()))
+                build["report"] = check(placements, build["placed_inputs"], build["variant"], build["owned"], active, build["idf_commit"], pin["commit"], exact=not args.update_budgets, linker_entries=build["linker_entries"], inlines=build.get("inlines", ()), inspect_inline=args.check or args.update_budgets)
             except ValueError as error:
                 errors.append(f"{build['variant']}: {error}")
                 continue
