@@ -41,7 +41,7 @@ from r3d.import_settings import load_scene  # noqa: E402
 from r3d.light import drop_masked  # noqa: E402
 from r3d.objects.instances import MATCH_TOLERANCE, bounds_diagonal, match_instances, place, source_objects  # noqa: E402
 from r3d.objects.object_error import part_labels, part_names  # noqa: E402
-from r3d.objects.surface_match import SURFACE_TOLERANCE  # noqa: E402
+from r3d.objects.surface_match import SURFACE_TOLERANCE, merge  # noqa: E402
 from r3d.mesh_import import load_source  # noqa: E402
 
 TOP_SHAPES = 25
@@ -91,13 +91,13 @@ def write_report(out, objects, shapes, tolerance):
                   source_triangles=sum(counts.values()),
                   unique_triangles=sum(len(s.triangles) for s in shapes),
                   repeated_triangles=sum(counts[i.object_name] for s in repeated for i in s.instances),
-                  surface_copies=sum(i.triangle_order == () for s in shapes for i in s.instances[1:]))
+                  surface_copies=sum(i.by_surface for s in shapes for i in s.instances))
     entries = [dict(triangles=len(s.triangles), instance_count=len(s.instances),
                     mirrored_count=sum(i.mirrored for i in s.instances),
-                    surface_count=sum(i.triangle_order == () for i in s.instances[1:]),
+                    surface_count=sum(i.by_surface for i in s.instances),
                     max_residual=max(i.residual for i in s.instances),
                     max_gap=max(i.gap for i in s.instances),
-                    copy_triangles=[counts[i.object_name] for i in s.instances],
+                    saved=saved(s, counts),
                     object_names=[i.object_name for i in s.instances]) for s in shapes]
     (out / 'objects.json').write_text(json.dumps(dict(totals=totals, shapes=entries), indent=2) + '\n')
     lines = ['# Objects and instances', '', '| Total | Count |', '|---|---:|']
@@ -105,10 +105,10 @@ def write_report(out, objects, shapes, tolerance):
     lines += ['', f'Largest triangle savings (up to {TOP_SHAPES} shapes):', '',
               '| First object | Triangles | Instances | Mirrored | By surface | Largest gap | Saved |',
               '|---|---:|---:|---:|---:|---:|---:|']
-    for entry in sorted(entries, key=saved, reverse=True)[:TOP_SHAPES]:
+    for entry in sorted(entries, key=lambda e: e['saved'], reverse=True)[:TOP_SHAPES]:
         name = entry['object_names'][0].replace('|', '\\|').replace('\n', ' ')
         lines.append(f'| {name} | {entry["triangles"]} | {entry["instance_count"]} | {entry["mirrored_count"]} | '
-                     f'{entry["surface_count"]} | {entry["max_gap"]:.3g} | {saved(entry)} |')
+                     f'{entry["surface_count"]} | {entry["max_gap"]:.3g} | {entry["saved"]} |')
     lines += ['', '![Accepted relative residuals](residuals.png)', '']
     (out / 'objects.md').write_text('\n'.join(lines))
     diagonals = {obj.name: bounds_diagonal(obj.positions) for obj in objects}
@@ -123,9 +123,9 @@ def write_report(out, objects, shapes, tolerance):
     plot_style.save_plot(fig, ax, out / 'residuals.png', 'Rigid matching residuals')
 
 
-def saved(entry):
-    """Source triangles that every copy but the shape's own holds."""
-    return sum(entry['copy_triangles']) - entry['triangles']
+def saved(shape, counts):
+    """Source triangles that every copy but the shape's own holds; counts is triangles by object name."""
+    return sum(counts[i.object_name] for i in shape.instances) - len(shape.triangles)
 
 
 def write_sheet(path, objects, shapes):
@@ -135,12 +135,9 @@ def write_sheet(path, objects, shapes):
     from matplotlib.collections import PolyCollection
 
     by_name = {obj.name: obj for obj in objects}
-
-    def copies_saved(shape):
-        return sum(len(by_name[i.object_name].triangles) for i in shape.instances) - len(shape.triangles)
-
+    counts = {name: len(obj.triangles) for name, obj in by_name.items()}
     repeated = sorted((s for s in shapes if len(s.instances) > 1 and len(s.triangles) >= SHEET_MIN_TRIANGLES),
-                      key=copies_saved, reverse=True)[:SHEET_SHAPES]
+                      key=lambda s: saved(s, counts), reverse=True)[:SHEET_SHAPES]
     rows = max(len(repeated), 1)
     fig, axes = plot_style.subplots(rows, SHEET_COPIES, (1.6 * SHEET_COPIES, 1.7 * rows), squeeze=False)
     for axis in axes.flat:
@@ -208,8 +205,9 @@ def main(argv=None):
     objects, _ = masked_objects(src, job.settings)
     if args.parts:
         objects = split_parts(objects)
-    shapes = match_instances(objects, args.tolerance, surface_tolerance=args.surface_tolerance,
-                             surface_floor=args.surface_floor)
+    shapes = match_instances(objects, args.tolerance)
+    if args.surface_tolerance is not None:
+        shapes = merge(shapes, args.surface_tolerance, args.surface_floor)
     out.mkdir(parents=True, exist_ok=True)
     write_report(out, objects, shapes, args.tolerance)
     if args.surface_tolerance is not None:
