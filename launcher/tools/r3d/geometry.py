@@ -134,8 +134,8 @@ def nearest_triangles(points, search):
     """For each point, the nearest triangle of `search` (exact), the barycentrics of the nearest point on it and the
     distance to it. A triangle within d has its centroid within d plus its radius: all the candidates once any gives d."""
     points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
-    parts = [nearest_chunk(points[i:i + QUERY_CHUNK], search) for i in range(0, len(points), QUERY_CHUNK)]
-    return tuple(np.concatenate(part) for part in zip(*parts)) if parts else (np.zeros(0, int), np.zeros((0, 3)), np.zeros(0))
+    parts = [nearest_chunk(points[i:i + QUERY_CHUNK], search) for i in range(0, max(len(points), 1), QUERY_CHUNK)]
+    return tuple(np.concatenate(part) for part in zip(*parts))
 
 
 def nearest_chunk(points, search):
@@ -150,7 +150,8 @@ def nearest_chunk(points, search):
         update = first[distance[first] < best[query[first]]]
         tri[query[update]], bary[query[update]], best[query[update]] = found[update], here[update], distance[update]
 
-    seeds = search.tree.query(points, k=min(SEEDS, len(corners)))[1].reshape(len(points), -1)
+    k = min(SEEDS, len(corners))
+    seeds = search.tree.query(points, k=k)[1].reshape(len(points), k)
     for column in seeds.T:
         consider(np.arange(len(points)), column)
     for tree, owner, radius in search.groups:

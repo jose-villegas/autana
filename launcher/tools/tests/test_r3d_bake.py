@@ -79,21 +79,18 @@ class SplitTests(unittest.TestCase):
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class NearestTrianglesTests(unittest.TestCase):
     def test_nearest_is_the_closest_triangle(self):
-        # Slivers next to coarse triangles: the dense points of a long thin triangle sit far from most of its area.
+        # Slivers next to coarse triangles: the centroid of a long thin triangle sits far from most of its area.
         rng = np.random.default_rng(3)
         points = np.vstack([rng.random((40, 3)) * [10, 1, 0.2], [[0, 0, 0], [10, 0, 0], [10, 0.01, 0], [0, 0.02, 1]]])
         triangles = np.vstack([rng.integers(0, 40, (60, 3)), [[40, 41, 42], [40, 42, 43], [41, 42, 43]]])
-        triangles = triangles[(triangles[:, 0] != triangles[:, 1]) & (triangles[:, 1] != triangles[:, 2])
-                              & (triangles[:, 0] != triangles[:, 2])]
+        triangles = triangles[(np.diff(np.sort(triangles, axis=1), axis=1) > 0).all(axis=1)]
         corners = points[triangles]
         queries = rng.random((300, 3)) * [12, 3, 2] - [1, 1, 0.5]
-        brute = np.array([closest_point_on_triangles(queries, *(np.repeat(corners[t:t + 1, k], len(queries), axis=0)
-                                                                for k in range(3)))[1]
-                          for t in range(len(corners))])
+        brute = np.array([closest_point_on_triangles(queries, *np.broadcast_to(t[:, None], (3, len(queries), 3)))[1]
+                          for t in corners])
         with mock.patch.object(geometry, 'QUERY_CHUNK', 64):
             tri, bary, distance = nearest_triangles(queries, triangle_search(corners))
         np.testing.assert_allclose(distance, brute.min(axis=0), atol=1e-12)
-        # The triangle returned is a nearest one and the barycentrics land on its closest point.
         np.testing.assert_allclose(brute[tri, np.arange(len(queries))], distance, atol=1e-12)
         point = np.einsum('ni,nij->nj', bary, corners[tri])
         np.testing.assert_allclose(np.linalg.norm(point - queries, axis=1), distance, atol=1e-9)
