@@ -421,6 +421,7 @@ world_cull_skips(const world_cull_t* world, const r3d_instance_t* instance) {
  * it is not drawn, and the frame it comes back in picks again before its draw. */
 void
 raster_pick_levels(const raster_t* raster, const render_view_t* view) {
+    FRAME_COST_BEGIN(picked_from);
     picture_lens_t picture;
     picture_lens_init(&picture, raster, view, false);
     world_cull_t world;
@@ -436,6 +437,7 @@ raster_pick_levels(const raster_t* raster, const render_view_t* view) {
         instance_lens(&picture, instance, &lens);
         r3d_lod_pick(instance->mesh, &lens, R3D_LOD_TOLERANCE_PX, coverage_max, instance->lod_coarse);
     }
+    FRAME_COST_END(picked_from, "r3d.pick");
 }
 
 /* Culls every instance into the census list and returns the depth scale
