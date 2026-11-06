@@ -153,16 +153,32 @@ r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
 }
 
 static asset_status_t
+r3d_lit_mesh_sibling_name(const char* mesh_id, const char* suffix, char out[ASSET_NAME_MAX]) {
+    const size_t length = strlen(mesh_id);
+    const size_t suffix_bytes = strlen(suffix) + 1;
+    if (length == 0) {
+        return ASSET_ERR_FORMAT;
+    }
+    if (length + suffix_bytes > ASSET_NAME_MAX) {
+        return ASSET_ERR_BOUNDS;
+    }
+    memcpy(out, mesh_id, length);
+    memcpy(out + length, suffix, suffix_bytes);
+    return ASSET_OK;
+}
+
+static asset_status_t
 open_curves(const asset_pack_t* pack, const char* id, r3d_curve_set_t* curves) {
     char name[ASSET_NAME_MAX];
-    const size_t length = strlen(id);
-    if (length + sizeof R3D_CURVE_NAME_SUFFIX > sizeof name) {
+    asset_status_t status = r3d_lit_mesh_sibling_name(id, R3D_CURVE_NAME_SUFFIX, name);
+    if (status == ASSET_ERR_BOUNDS) {
         return ASSET_OK;
     }
-    memcpy(name, id, length);
-    memcpy(name + length, R3D_CURVE_NAME_SUFFIX, sizeof R3D_CURVE_NAME_SUFFIX);
+    if (status != ASSET_OK) {
+        return status;
+    }
     asset_view_t asset;
-    asset_status_t status = asset_pack_find(pack, name, R3D_CURVE_ASSET, &asset);
+    status = asset_pack_find(pack, name, R3D_CURVE_ASSET, &asset);
     if (status == ASSET_ERR_NOT_FOUND) {
         return ASSET_OK;
     }
@@ -225,24 +241,10 @@ r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh
     return opened;
 }
 
-static asset_status_t
-r3d_lit_mesh_colour_name(const char* mesh_id, char out[ASSET_NAME_MAX]) {
-    const size_t length = strlen(mesh_id);
-    if (length == 0) {
-        return ASSET_ERR_FORMAT;
-    }
-    if (length + sizeof LCOL_NAME_SUFFIX > ASSET_NAME_MAX) {
-        return ASSET_ERR_BOUNDS;
-    }
-    memcpy(out, mesh_id, length);
-    memcpy(out + length, LCOL_NAME_SUFFIX, sizeof LCOL_NAME_SUFFIX);
-    return ASSET_OK;
-}
-
 asset_status_t
 r3d_lit_mesh_open_colours(const asset_pack_t* pack, const char* mesh_id, uint16_t set, r3d_lit_mesh_t* mesh) {
     char name[ASSET_NAME_MAX];
-    asset_status_t status = r3d_lit_mesh_colour_name(mesh_id, name);
+    asset_status_t status = r3d_lit_mesh_sibling_name(mesh_id, LCOL_NAME_SUFFIX, name);
     if (status != ASSET_OK) {
         return status;
     }

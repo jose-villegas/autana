@@ -234,7 +234,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             base += len(vpos)
             log(f"  {src.names[material]}: {len(vpos)} vertices")
         positions = np.concatenate(all_pos) if all_pos else curves[0].knots[:1]
-        rgb = np.concatenate(all_rgb) if all_rgb else np.full((len(positions), 3), 255)
+        rgb = np.concatenate(all_rgb) if all_rgb else np.full((len(positions), 3), np.iinfo(np.uint8).max)
         tris = np.concatenate(all_tris) if all_tris else np.empty((0, 3), dtype=np.int64)
         tri_double = np.concatenate(all_double) if all_double else np.empty(0, dtype=np.int64)
         tri_mat = np.concatenate(all_mat) if all_mat else np.empty(0, dtype=np.int64)

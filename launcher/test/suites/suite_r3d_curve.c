@@ -19,6 +19,8 @@
 #define FADE_RADIUS         1
 #define WIDE_RADIUS         15
 #define TEST_NEAR           1.0F
+#define SKIP_KNOTS          10
+#define SKIP_DEPTH_FACTOR   10
 #define FADE_SHARE          102
 
 static gfx_color_t* color;
@@ -78,7 +80,8 @@ changed(void) {
 static void
 test_curve_subpixel_fade(void) {
     const r3d_span_target_t target = fixture();
-    const r3d_curve_knot_t knots[] = {{-40, 0, FAR_Z, FADE_RADIUS, RED}, {40, 0, FAR_Z, FADE_RADIUS, RED}};
+    const r3d_curve_knot_t knots[] = {{-SEGMENT_HALF_LENGTH, 0, FAR_Z, FADE_RADIUS, RED},
+                                      {SEGMENT_HALF_LENGTH, 0, FAR_Z, FADE_RADIUS, RED}};
     draw(&target, knots, 2);
     TEST_ASSERT_EQUAL_HEX16(rgb565be_mix(BACKGROUND, RED, FADE_SHARE), color[MID * SIZE + MID]);
     TEST_ASSERT_EQUAL_INT((2 * SEGMENT_HALF_LENGTH * SCALE / FAR_Z) + 1, changed());
@@ -93,7 +96,8 @@ test_curve_subpixel_fade(void) {
 static void
 test_curve_wide_segment(void) {
     const r3d_span_target_t target = fixture();
-    const r3d_curve_knot_t knots[] = {{-40, 0, FAR_Z, WIDE_RADIUS, RED}, {40, 0, FAR_Z, WIDE_RADIUS, RED}};
+    const r3d_curve_knot_t knots[] = {{-SEGMENT_HALF_LENGTH, 0, FAR_Z, WIDE_RADIUS, RED},
+                                      {SEGMENT_HALF_LENGTH, 0, FAR_Z, WIDE_RADIUS, RED}};
     draw(&target, knots, 2);
     for (int y = MID - 2; y <= MID + 2; y++) {
         TEST_ASSERT_EQUAL_HEX16(RED, color[y * SIZE + MID]);
@@ -108,7 +112,8 @@ test_curve_occlusion(void) {
     for (int i = 0; i < PIXELS; i++) {
         depth[i] = R3D_DEPTH_NEAREST;
     }
-    const r3d_curve_knot_t knots[] = {{-40, 0, FAR_Z, FADE_RADIUS, RED}, {40, 0, FAR_Z, FADE_RADIUS, RED}};
+    const r3d_curve_knot_t knots[] = {{-SEGMENT_HALF_LENGTH, 0, FAR_Z, FADE_RADIUS, RED},
+                                      {SEGMENT_HALF_LENGTH, 0, FAR_Z, FADE_RADIUS, RED}};
     draw(&target, knots, 2);
     TEST_ASSERT_EQUAL_INT(0, changed());
     for (int y = 0; y < SIZE; y++) {
@@ -138,7 +143,7 @@ test_curve_end_on(void) {
 static void
 test_curve_near_crossing(void) {
     const r3d_span_target_t target = fixture();
-    const r3d_curve_knot_t knots[] = {{0, 0, -FAR_Z, 0, BLUE}, {40, 0, FAR_Z, FADE_RADIUS, RED}};
+    const r3d_curve_knot_t knots[] = {{0, 0, -FAR_Z, 0, BLUE}, {SEGMENT_HALF_LENGTH, 0, FAR_Z, FADE_RADIUS, RED}};
     draw(&target, knots, 2);
     TEST_ASSERT_GREATER_THAN_INT(0, changed());
     for (int i = 0; i < PIXELS; i++) {
@@ -153,8 +158,8 @@ test_curve_cover_solid_parity(void) {
     const r3d_span_target_t target = fixture();
     gfx_color_t* expected = malloc(PIXELS * sizeof(*expected));
     TEST_ASSERT_NOT_NULL(expected);
-    for (int size = 1; size <= 15; size++) {
-        const r3d_span_vertex_t a = {MID * R3D_SUBPIXEL, MID * R3D_SUBPIXEL, 0.5F, 255, 0, 0};
+    for (int size = 1; size < MID; size++) {
+        const r3d_span_vertex_t a = {MID * R3D_SUBPIXEL, MID * R3D_SUBPIXEL, 0.5F, UINT8_MAX, 0, 0};
         r3d_span_vertex_t b = a, c = a;
         b.x += size * R3D_SUBPIXEL;
         c.y += size * R3D_SUBPIXEL;
@@ -174,8 +179,9 @@ test_curve_cover_solid_parity(void) {
 static void
 test_curve_joint(void) {
     const r3d_span_target_t target = fixture();
-    const r3d_curve_knot_t knots[] = {
-        {-40, 0, FAR_Z, WIDE_RADIUS, RED}, {0, 0, FAR_Z, WIDE_RADIUS, RED}, {0, 40, FAR_Z, WIDE_RADIUS, RED}};
+    const r3d_curve_knot_t knots[] = {{-SEGMENT_HALF_LENGTH, 0, FAR_Z, WIDE_RADIUS, RED},
+                                      {0, 0, FAR_Z, WIDE_RADIUS, RED},
+                                      {0, SEGMENT_HALF_LENGTH, FAR_Z, WIDE_RADIUS, RED}};
     draw(&target, knots, 3);
     TEST_ASSERT_EQUAL_HEX16(RED, color[MID * SIZE + MID]);
 }
@@ -183,18 +189,18 @@ test_curve_joint(void) {
 static void
 test_curve_skip_knots(void) {
     const r3d_span_target_t target = fixture();
-    r3d_curve_knot_t knots[10];
-    for (int i = 0; i < 10; i++) {
-        knots[i] = (r3d_curve_knot_t){(int16_t)i, 0, FAR_Z * 10, FADE_RADIUS, RED};
+    r3d_curve_knot_t knots[SKIP_KNOTS];
+    for (int i = 0; i < SKIP_KNOTS; i++) {
+        knots[i] = (r3d_curve_knot_t){(int16_t)i, 0, FAR_Z * SKIP_DEPTH_FACTOR, FADE_RADIUS, RED};
     }
-    draw(&target, knots, 10);
+    draw(&target, knots, SKIP_KNOTS);
     gfx_color_t* expected = malloc(PIXELS * sizeof(*expected));
     TEST_ASSERT_NOT_NULL(expected);
     memcpy(expected, color, PIXELS * sizeof(*color));
     for (int i = 0; i < PIXELS; i++) {
         color[i] = BACKGROUND;
     }
-    const r3d_curve_knot_t ends[] = {knots[0], knots[9]};
+    const r3d_curve_knot_t ends[] = {knots[0], knots[SKIP_KNOTS - 1]};
     draw(&target, ends, 2);
     TEST_ASSERT_EQUAL_MEMORY(expected, color, PIXELS * sizeof(*color));
     TEST_ASSERT_GREATER_THAN_INT(0, changed());
