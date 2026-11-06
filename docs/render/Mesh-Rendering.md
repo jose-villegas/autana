@@ -237,7 +237,7 @@ The caller decides where it lives, so it need not consume internal RAM.
 ## Thin curves
 
 Thin connected parts can leave the triangle start and fit: edge collapse loses
-small cross-sections (Garland and Heckbert 1997, Fig. 3 [12](../Citations.md#garland-1997)).
+small cross-sections (Garland and Heckbert 1997, Fig. 3 [[12]](../Citations.md#garland-1997)).
 The optional `geometry.curves` setting stores them in [LCRV](../assets/formats/LCRV.md).
 
 | Stage | Behaviour |
@@ -250,7 +250,7 @@ The optional `geometry.curves` setting stores them in [LCRV](../assets/formats/L
 | Coverage | Subpixel ribbons fade by true width / drawn width, depth-tested without writing depth; solid ribbons write depth |
 
 The minimum width and coverage fade follow Persson's wire antialiasing
-[115](../Citations.md#persson-2012). Curve positions and radii share the mesh's
+[[115]](../Citations.md#persson-2012). Curve positions and radii share the mesh's
 position units and placed lens.
 
 ## Rules the layer keeps
