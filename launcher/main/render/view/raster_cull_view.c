@@ -129,6 +129,7 @@ keep_drawn(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, uint16_t* kep
     }
     counts->clusters_tested += count;
     counts->clusters_kept += count;
+    counts->clusters_coarse += r3d_pipeline_count_coarse(mesh, kept, count);
     return count;
 }
 

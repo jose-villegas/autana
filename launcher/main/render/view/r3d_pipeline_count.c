@@ -72,7 +72,17 @@ r3d_pipeline_cull_counted(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, co
         }
     }
     counts->clusters_kept += count;
+    counts->clusters_coarse += r3d_pipeline_count_coarse(mesh, out, count);
     return count;
+}
+
+int
+r3d_pipeline_count_coarse(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, int count) {
+    int coarse = 0;
+    for (int i = 0; mesh->cluster_lod != NULL && i < count; i++) {
+        coarse += mesh->cluster_lod[clusters[i]].own != R3D_LOD_NONE ? 1 : 0;
+    }
+    return coarse;
 }
 
 /* One triangle into its counter by the draw's own sort (r3d_pipeline.c,

@@ -14,6 +14,7 @@
 typedef struct {
     int nodes_visited, nodes_cut; /* nodes the walk reached; those whose box dropped their subtree */
     int clusters_tested, clusters_kept;
+    int clusters_coarse;       /* the kept ones from a coarser level than the finest */
     int triangles_submitted;   /* every triangle of the kept clusters */
     int triangles_behind;      /* every corner behind the near plane */
     int triangles_clipped;     /* a corner behind the near plane or too far off screen: rebuilt and clipped */
@@ -34,6 +35,9 @@ typedef struct {
  * holds mesh->cluster_count entries. */
 int r3d_pipeline_cull_counted(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint32_t* lod_coarse,
                               uint16_t* out, r3d_pipeline_count_walk_t* walk, r3d_pipeline_counts_t* counts);
+
+/* How many of `clusters` come from a coarser level than the finest. */
+int r3d_pipeline_count_coarse(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, int count);
 
 /* Sorts each triangle of `clusters` as r3d_pipeline_draw() would over the
  * whole screen, from `cs` as r3d_pipeline_transform() left it, adding to

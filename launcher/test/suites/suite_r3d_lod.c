@@ -21,6 +21,7 @@
 #include "math/linear/transformf.h"
 #include "render/lod/r3d_lod.h"
 #include "render/r3d_pipeline.h"
+#include "render/view/r3d_pipeline_count.h"
 
 #define W 64
 #define H 64
@@ -591,6 +592,26 @@ test_the_pick_keeps_the_bits_of_an_instance_culled_whole(void) {
     TEST_ASSERT_EQUAL_HEX32(0, coarse[BEHIND][0]);
 }
 
+/* The counted walk tells the coarse clusters it keeps from the finest: none
+ * with every group fine, all with the top group coarse. */
+static void
+test_the_counted_walk_counts_the_coarse_clusters_it_keeps(void) {
+    const r3d_lit_mesh_t* mesh = levelled_mesh();
+    r3d_pipeline_count_walk_t* walk = malloc(sizeof *walk);
+    TEST_ASSERT_NOT_NULL(walk);
+    const r3d_lens_t lens = lens_at(WHOLE_IN_VIEW, NULL);
+    uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
+    uint16_t out[CLUSTERS];
+    r3d_pipeline_counts_t fine = {0};
+    TEST_ASSERT_EQUAL_INT(FINEST_CLUSTERS, r3d_pipeline_cull_counted(mesh, &lens, coarse, out, walk, &fine));
+    TEST_ASSERT_EQUAL_INT(0, fine.clusters_coarse);
+    coarse[0] = (1U << GROUPS) - 1U;
+    r3d_pipeline_counts_t top = {0};
+    TEST_ASSERT_EQUAL_INT(1, r3d_pipeline_cull_counted(mesh, &lens, coarse, out, walk, &top));
+    TEST_ASSERT_EQUAL_INT(1, top.clusters_coarse);
+    free(walk);
+}
+
 void
 suite_r3d_lod(void) {
     RUN_TEST(test_a_coarse_group_keeps_every_group_simplified_into_it_coarse);
@@ -609,6 +630,7 @@ suite_r3d_lod(void) {
     RUN_TEST(test_coarse_clusters_out_of_group_order_keep_the_walk_at_the_root);
     RUN_TEST(test_the_finest_tree_walk_and_the_cut_keep_what_the_whole_walk_keeps);
     RUN_TEST(test_the_pick_keeps_the_bits_of_an_instance_culled_whole);
+    RUN_TEST(test_the_counted_walk_counts_the_coarse_clusters_it_keeps);
 }
 
 SUITE_REGISTER(suite_r3d_lod);
