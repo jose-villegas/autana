@@ -31,6 +31,9 @@ class Instance:
     mirrored: bool
     residual: float
     triangle_order: tuple = ()
+    # Largest distance between the copy's surface and the shape's, for a copy joined by surface_match; zero for an
+    # exact match, whose vertices correspond.
+    gap: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -196,10 +199,12 @@ def match_object(shape, obj, tolerance):
     return None
 
 
-def match_instances(objects, tolerance=MATCH_TOLERANCE) -> list[Shape]:
-    """Deterministic rigid matches in source order. Scaled copies remain separate shapes."""
-    if not np.isfinite(tolerance) or tolerance < 0:
-        raise ValueError('tolerance must be finite and nonnegative')
+def match_instances(objects, tolerance=MATCH_TOLERANCE, surface_tolerance=None, surface_floor=0.0) -> list[Shape]:
+    """Deterministic rigid matches in source order. Scaled copies remain separate shapes. With surface_tolerance,
+    surface_match.merge then joins shapes whose surfaces agree, whatever their triangles and materials."""
+    for value in (tolerance, surface_tolerance if surface_tolerance is not None else 0.0, surface_floor):
+        if not np.isfinite(value) or value < 0:
+            raise ValueError('tolerances must be finite and nonnegative')
     shapes, buckets = [], {}
     for obj in objects:
         key = (len(obj.triangles), len(obj.positions), tuple(sorted(Counter(obj.materials).items())))
@@ -214,4 +219,7 @@ def match_instances(objects, tolerance=MATCH_TOLERANCE) -> list[Shape]:
             first = Instance(obj.name, np.eye(3), centre, False, 0.0, tuple(range(len(obj.triangles))))
             buckets.setdefault(key, []).append(len(shapes))
             shapes.append(Shape(obj.positions - centre, obj.triangles, obj.materials, (first,)))
+    if surface_tolerance is not None:
+        from r3d.objects.surface_match import merge
+        shapes = merge(shapes, surface_tolerance, surface_floor)
     return shapes

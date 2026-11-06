@@ -315,12 +315,17 @@ node uses its index. Only vertices referenced by triangles belong to an object.
 [`objects/objects_report.py`](../../../launcher/tools/r3d/objects/objects_report.py)
 reports shared shapes after the import's alpha mask. Matching is rigid:
 scaled copies remain separate shapes. Reflections are recorded per instance.
+`--parts` matches every object's connected parts instead of whole objects,
+so a window inside a building-sized object is found. `--surface-floor D`
+raises the surface limit to D source units, at most 5% of the diagonal, for
+a source reduced object by object with up to D of error.
 
 | Test | Requirement |
 |---|---|
 | Candidate bucket | Equal vertex and triangle counts, and material multiset |
 | Correspondence | Matching topology uses Kabsch<sup>[[86]](../../Citations.md#kabsch-1976)</sup>; reordered vertices use signed PCA frames and bijective nearest neighbours, then Kabsch |
 | Acceptance | Largest vertex residual within `MATCH_TOLERANCE` times the object's bounds diagonal; mapped triangle winding and materials agree as multisets |
+| By surface (`--surface-tolerance`) | Shapes left apart are compared as surfaces, whatever their triangles and materials: a copy's materials are its shading. Iterative closest points<sup>[[115]](../../Citations.md#besl-1992)</sup> from 48 signed axis frames, mirrors included, must bring both surfaces within the tolerance times the larger bounds diagonal of each other, both ways |
 
 Each colour below is one repeated shape, boxed at every copy in view. The
 view is the camera-path pose where those boxes show the most visible edge;
@@ -331,6 +336,7 @@ view is the camera-path pose where those boxes show the most visible edge;
 | Report output (`--out` directory) | What it shows |
 |---|---|
 | objects.md / objects.json | Shapes, copies, triangles saved, match residuals |
+| shapes.png | With `--surface-tolerance`: the shapes of 20 triangles or more saving the most, each copy drawn in its shape's frame from an angle |
 | error.csv / error.json / error.md, error.png | With `--held-out`: every object part's path pixels and held-out error, ranked |
 
 What levels of detail save along the camera path is measured on the fitted mesh by [`lod/lod_replay.py`](../../../launcher/tools/r3d/lod/lod_replay.py); see [plans/Cluster-LOD.md](../../plans/Cluster-LOD.md).
