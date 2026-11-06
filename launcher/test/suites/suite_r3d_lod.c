@@ -563,6 +563,34 @@ test_the_finest_tree_walk_and_the_cut_keep_what_the_whole_walk_keeps(void) {
     TEST_ASSERT_TRUE(cut_drawn);
 }
 
+/* A frame's pick leaves an instance culled whole as it was and picks one in
+ * view: both far from the eye, where a pick sets the top group coarse. */
+static void
+test_the_pick_keeps_the_bits_of_an_instance_culled_whole(void) {
+    const r3d_lit_mesh_t* mesh = levelled_mesh();
+
+    enum { IN_VIEW, BEHIND, INSTANCES };
+
+    const float depth[INSTANCES] = {FAR_EYE, -FAR_EYE};
+    mat4f_t models[INSTANCES];
+    box3f_t boxes[INSTANCES];
+    uint32_t coarse[INSTANCES][R3D_LOD_WORDS(GROUPS)] = {{0}};
+    r3d_instance_t instances[INSTANCES];
+    for (int i = 0; i < INSTANCES; i++) {
+        transformf_t pose = transformf_identity();
+        transformf_set_position(&pose, (vec3f_t){0.0F, 0.0F, depth[i]});
+        models[i] = transformf_compute_matrix(&pose);
+        boxes[i] = r3d_lit_mesh_world_bounds(mesh, &models[i]);
+        instances[i] = (r3d_instance_t){mesh, &models[i], &boxes[i], coarse[i]};
+    }
+    const raster_t raster = {.instances = instances, .instance_count = INSTANCES, .width = W, .height = H};
+    const fixture_camera_t camera = {{0.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 1.0F}, HALF_FOV_TAN, NEAR_Z};
+    const render_view_t view = render_view_fixture_at(&camera, (viewport_t){W, H, 0});
+    raster_pick_levels(&raster, &view);
+    TEST_ASSERT_TRUE(r3d_lod_coarse(coarse[IN_VIEW], TOP_GROUP));
+    TEST_ASSERT_EQUAL_HEX32(0, coarse[BEHIND][0]);
+}
+
 void
 suite_r3d_lod(void) {
     RUN_TEST(test_a_coarse_group_keeps_every_group_simplified_into_it_coarse);
@@ -580,6 +608,7 @@ suite_r3d_lod(void) {
     RUN_TEST(test_a_root_whose_children_mix_finest_and_coarse_clusters_keeps_the_walk_at_the_root);
     RUN_TEST(test_coarse_clusters_out_of_group_order_keep_the_walk_at_the_root);
     RUN_TEST(test_the_finest_tree_walk_and_the_cut_keep_what_the_whole_walk_keeps);
+    RUN_TEST(test_the_pick_keeps_the_bits_of_an_instance_culled_whole);
 }
 
 SUITE_REGISTER(suite_r3d_lod);

@@ -241,10 +241,10 @@ r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint
     /* With the levels laid out apart, the walk covers level 0 and the cut's
      * coarse clusters come from their groups. */
     const int start = mesh->lod_finest_root;
-    /* Nothing coarse: level 0's tree holds only what is drawn, so the walk
-     * tests no level and there is no cut, as for a mesh without levels. */
+    /* Nothing coarse: level 0's tree, like a mesh without levels, holds only
+     * what is drawn, so the walk tests no level and there is no cut. */
     const bool cut = lod_coarse != NULL && r3d_lod_any(lod_coarse, mesh->lod_group_count);
-    const bool every = start != 0 && !cut;
+    const bool every = !cut && (start != 0 || mesh->cluster_lod == NULL);
     stack[top++] = (walk_entry_t){(uint16_t)start, ALL_PLANES};
     int count = 0;
     while (top > 0) {
