@@ -1,8 +1,10 @@
 """Plain triangle-mesh arithmetic shared by the other modules."""
 
 import math
+from dataclasses import dataclass
 
 import numpy as np
+from scipy.spatial import cKDTree
 
 
 def bounds_diagonal(positions):
@@ -101,3 +103,59 @@ def closest_point_on_triangles(q, a, b, c):
         done |= cond
     point = bary[:, 0:1] * a + bary[:, 1:2] * b + bary[:, 2:3] * c
     return bary, np.linalg.norm(point - q, axis=1)
+
+
+@dataclass(frozen=True)
+class CentroidTree:
+    """Triangles of one size: their centroids, and the largest distance from a centroid to its triangle's corner."""
+    tree: cKDTree
+    owner: np.ndarray
+    radius: np.ndarray
+
+
+@dataclass(frozen=True)
+class TriangleSearch:
+    """Triangles `corners` (n, 3, 3) in groups of one size: one huge triangle would otherwise widen every query's
+    ball to hold all the tiny triangles around it."""
+    corners: np.ndarray
+    groups: tuple
+
+
+def triangle_search(corners):
+    """The nearest-triangle lookup for triangles `corners`."""
+    centre = corners.mean(axis=1)
+    radius = np.linalg.norm(corners - centre[:, None], axis=2).max(axis=1)
+    size = np.floor(np.log2(np.maximum(radius, 1e-30))).astype(int)
+    return TriangleSearch(corners, tuple(CentroidTree(cKDTree(centre[chosen]), chosen, radius[chosen])
+                                         for chosen in (np.flatnonzero(size == i) for i in np.unique(size))))
+
+
+def nearest_triangles(points, search):
+    """For each point, the nearest triangle of `search` (exact), the barycentrics of the nearest point on it and the
+    distance to it. A triangle within d of the point has its centroid within d plus its radius, so once any triangle
+    gives d, the centroids inside that reach are all the candidates."""
+    corners = search.corners
+    tri, bary, best = np.zeros(len(points), dtype=int), np.zeros((len(points), 3)), np.full(len(points), np.inf)
+
+    def consider(query, found):
+        """Keep each query's nearer of its best triangle so far and the triangles `found` for it."""
+        here, distance = closest_point_on_triangles(points[query], *(corners[found, k] for k in range(3)))
+        first = np.lexsort((distance, query))
+        first = first[np.r_[True, query[first[1:]] != query[first[:-1]]][:len(first)]]
+        update = first[distance[first] < best[query[first]]]
+        tri[query[update]], bary[query[update]], best[query[update]] = found[update], here[update], distance[update]
+
+    reach = []
+    for group in search.groups:
+        reach.append(group.tree.query(points))
+        consider(np.arange(len(points)), group.owner[reach[-1][1]])
+    for group, (centre, _) in zip(search.groups, reach):
+        # The nearest centroid is over its triangle's distance by at most the group's largest radius.
+        radius = group.radius.max()
+        asked = np.flatnonzero(centre - radius <= best)
+        balls = group.tree.query_ball_point(points[asked], best[asked] + radius)
+        query = np.repeat(asked, [len(ball) for ball in balls])
+        found = np.concatenate([[], *balls]).astype(int)
+        keep = np.linalg.norm(points[query] - group.tree.data[found], axis=1) - group.radius[found] <= best[query]
+        consider(query[keep], group.owner[found[keep]])
+    return tri, bary, best
