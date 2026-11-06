@@ -91,17 +91,17 @@ and scores it against cap 0, the finest level. Blocks popping is
 frame-to-frame change beyond the finest level's own (render_temporal.py's
 measure); triangles are those submitted, against the finest level's.
 
-<!-- generated: lod-coverage sha256=ee49ccf800f048e26d32daef6d3399d43e520e58e999bdfb790c4ded59559623 -->
+<!-- generated: lod-coverage sha256=372d60bdcc88a87a235f4048ca763ca61047b63cc4d8fab7b8af4fa800f77ad4 -->
 | Path | Cap | Blocks popping | Mean difference /255 | Triangles, mean | Triangles, p95 |
 |---|---|---|---|---|---|
-| Sponza | none | 0.1201% | 0.273 | -2.4% | -4.4% |
-| Sponza | 50% | 0.0021% | 0.006 | -0.2% | -0.7% |
-| Sponza | 25% | 0.0000% | 0.000 | +0.0% | +0.0% |
-| Sponza | 10% | 0.0000% | 0.000 | +0.0% | +0.0% |
-| Bistro | none | 0.1842% | 0.132 | -13.2% | -17.5% |
-| Bistro | 50% | 0.1724% | 0.119 | -11.4% | -15.9% |
-| Bistro | 25% | 0.0561% | 0.037 | -7.1% | -10.8% |
-| Bistro | 10% | 0.0047% | 0.003 | -1.9% | -2.0% |
+| Sponza | none | 0.0906% | 0.177 | -12.3% | -14.0% |
+| Sponza | 50% | 0.0637% | 0.062 | -11.1% | -10.6% |
+| Sponza | 25% | 0.0637% | 0.062 | -11.1% | -10.6% |
+| Sponza | 10% | 0.0588% | 0.053 | -10.5% | -10.6% |
+| Bistro | none | 0.2961% | 0.243 | -14.5% | -17.3% |
+| Bistro | 50% | 0.2726% | 0.215 | -13.6% | -15.8% |
+| Bistro | 25% | 0.1760% | 0.108 | -10.9% | -15.1% |
+| Bistro | 10% | 0.0086% | 0.005 | -2.4% | -3.7% |
 <!-- /generated: lod-coverage -->
 
 ```sh
