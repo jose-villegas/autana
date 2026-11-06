@@ -28,13 +28,12 @@ heading(const transformf_t* pose) {
 
 /* The pose turned by the drag: yaw about the world's up, pitch within the limit, no roll, unit scale. */
 static void
-turn(transformf_t* pose, vec2f_t look) {
+turn(transformf_t* pose, vec2f_t look, const fly_motion_tuning_t* tuning) {
     const vec3f_t ahead = heading(pose);
     const vec3f_t forward = quatf_rotate(pose->rotation, vec3f_forward());
-    const float yaw = atan2f(ahead.x, ahead.z) + (look.x * FLY_MOTION_RADIANS_PER_PIXEL);
-    const float pitch =
-        mathf_clamp(asinf(mathf_clamp(forward.y, -1.0F, 1.0F)) - (look.y * FLY_MOTION_RADIANS_PER_PIXEL),
-                    -FLY_MOTION_PITCH_LIMIT, FLY_MOTION_PITCH_LIMIT);
+    const float yaw = atan2f(ahead.x, ahead.z) + (look.x * tuning->radians_per_pixel);
+    const float pitch = mathf_clamp(asinf(mathf_clamp(forward.y, -1.0F, 1.0F)) - (look.y * tuning->radians_per_pixel),
+                                    -tuning->pitch_limit, tuning->pitch_limit);
     const vec3f_t facing = {cosf(pitch) * sinf(yaw), sinf(pitch), cosf(pitch) * cosf(yaw)};
     *pose = transformf_looking(pose->position, facing, vec3f_up());
 }
@@ -50,18 +49,19 @@ stride(const transformf_t* pose, vec3f_t move, float distance) {
 }
 
 fly_motion_t
-fly_motion_start(transformf_t pose, float speed) {
-    return (fly_motion_t){.pose = pose, .speed = speed, .start_speed = speed};
+fly_motion_start(transformf_t pose, float speed, fly_motion_tuning_t tuning) {
+    tuning.pitch_limit = fminf(tuning.pitch_limit, FLY_MOTION_PITCH_LIMIT);
+    return (fly_motion_t){.pose = pose, .speed = speed, .start_speed = speed, .tuning = tuning};
 }
 
 bool
 fly_motion_update(fly_motion_t* fly, const fly_motion_steer_t* steer, float dt_s) {
-    fly->speed =
-        mathf_clamp(fly->speed * powf(FLY_MOTION_SPEED_STEP, steer->wheel),
-                    fly->start_speed * FLY_MOTION_SPEED_MIN_RATIO, fly->start_speed * FLY_MOTION_SPEED_MAX_RATIO);
+    const fly_motion_tuning_t* tuning = &fly->tuning;
+    fly->speed = mathf_clamp(fly->speed * powf(tuning->speed_step, steer->wheel),
+                             fly->start_speed * tuning->speed_min_ratio, fly->start_speed * tuning->speed_max_ratio);
     bool changed = false;
     if (steer->look.x != 0.0F || steer->look.y != 0.0F) {
-        turn(&fly->pose, steer->look);
+        turn(&fly->pose, steer->look, tuning);
         changed = true;
     }
     const vec3f_t step = stride(&fly->pose, steer->move, fly->speed * dt_s);

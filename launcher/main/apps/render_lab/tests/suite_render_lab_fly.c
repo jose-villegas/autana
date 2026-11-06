@@ -194,7 +194,7 @@ test_a_drag_turns_the_drawn_camera_once(void) {
     render_lab_test_frame(false, NULL);
     const quatf_t turned = camera_now().rotation;
     const vec3f_t after = quatf_rotate(turned, vec3f_forward());
-    TEST_ASSERT_TRUE(vec3f_dot(before, after) < cosf(0.5F * DRAG_PIXELS * FLY_MOTION_RADIANS_PER_PIXEL));
+    TEST_ASSERT_TRUE(vec3f_dot(before, after) < cosf(0.5F * DRAG_PIXELS * FLY_MOTION_TUNING_DEFAULT.radians_per_pixel));
     expect_at(home.position, camera_now().position);
     render_lab_test_frame(false, NULL);
     expect_at(after, quatf_rotate(camera_now().rotation, vec3f_forward()));
@@ -210,7 +210,7 @@ test_drags_between_frames_add_up(void) {
     render_lab_test_frame(false, NULL);
     const vec3f_t after = quatf_rotate(camera_now().rotation, vec3f_forward());
     /* A level yaw of twice the drag, whatever the pitch: the heading turns that far. */
-    const float yaw = 2.0F * DRAG_PIXELS * FLY_MOTION_RADIANS_PER_PIXEL;
+    const float yaw = 2.0F * DRAG_PIXELS * FLY_MOTION_TUNING_DEFAULT.radians_per_pixel;
     const vec3f_t level_before = vec3f_normalize((vec3f_t){before.x, 0.0F, before.z});
     const vec3f_t level_after = vec3f_normalize((vec3f_t){after.x, 0.0F, after.z});
     TEST_ASSERT_FLOAT_WITHIN(FLY_TOLERANCE, cosf(yaw), vec3f_dot(level_before, level_after));
@@ -222,7 +222,7 @@ test_the_wheel_speeds_the_flight(void) {
     const transformf_t home = held_fixture();
     TEST_ASSERT_TRUE(console(FASTER_LINE));
     render_lab_test_frame(false, NULL);
-    TEST_ASSERT_FLOAT_WITHIN(FLY_TOLERANCE, FLY_MOTION_SPEED_STEP * stride(),
+    TEST_ASSERT_FLOAT_WITHIN(FLY_TOLERANCE, FLY_MOTION_TUNING_DEFAULT.speed_step * stride(),
                              distance(home.position, camera_now().position));
 }
 

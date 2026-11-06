@@ -8,18 +8,23 @@ Keys move the transform, a drag turns it with a level horizon, and a wheel scale
 
 | Function | Purpose |
 |---|---|
-| `fly_motion_t` | The pose, its speed in scene units per second, and the start speed the wheel's bounds scale with |
+| `fly_motion_t` | The pose, its speed in scene units per second, the start speed the wheel's bounds scale with, and its tuning |
+| `fly_motion_tuning_t` | How one flight answers steering: speed step, speed ratios, turn per pixel, pitch limit |
 | `fly_motion_steer_t` | One step's key axes, drag in pixels and wheel notches |
-| `fly_motion_start` | Flying from a pose at a start speed in the scene's units |
+| `fly_motion_start` | Flying from a pose at a start speed in the scene's units, with a tuning |
 | `fly_motion_update` | Scales the speed, turns, then moves for the step; true when the pose changed |
 
 | Constant | Purpose |
 |---|---|
 | `FLY_MOTION_START_SPEED` | A start speed in metres per second, for a scene measured in metres |
-| `FLY_MOTION_SPEED_STEP` | Speed ratio per wheel notch |
-| `FLY_MOTION_SPEED_MIN_RATIO`, `FLY_MOTION_SPEED_MAX_RATIO` | Speed bounds, as multiples of the start speed |
-| `FLY_MOTION_RADIANS_PER_PIXEL` | Turn per pixel of drag |
-| `FLY_MOTION_PITCH_LIMIT` | Steepest pitch either way, short of a quarter turn |
+| `FLY_MOTION_TUNING_DEFAULT` | The tuning built from the defaults below |
+| `FLY_MOTION_SPEED_STEP` | Default speed ratio per wheel notch |
+| `FLY_MOTION_SPEED_MIN_RATIO`, `FLY_MOTION_SPEED_MAX_RATIO` | Default speed bounds, as multiples of the start speed |
+| `FLY_MOTION_RADIANS_PER_PIXEL` | Default turn per pixel of drag |
+| `FLY_MOTION_PITCH_LIMIT` | Steepest pitch either way, short of a quarter turn; the default and the most a tuning keeps |
+
+Each flight carries its own tuning, so two flyers of one scene can turn and
+speed up differently.
 
 ### Steering
 
@@ -28,15 +33,15 @@ Keys move the transform, a drag turns it with a level horizon, and a wheel scale
 | `move.x` | Along the pose's right |
 | `move.y` | Along the world's up, whichever way the pose faces |
 | `move.z` | Along the pose's forward |
-| `look.x` | Yaw about the world's up |
-| `look.y` | Pitch, clamped to `FLY_MOTION_PITCH_LIMIT`; no roll |
-| `wheel` | Speed scaled by `FLY_MOTION_SPEED_STEP` per notch, within the bounds |
+| `look.x` | Yaw about the world's up, `radians_per_pixel` per pixel |
+| `look.y` | Pitch, as far per pixel, clamped to `pitch_limit`; no roll |
+| `wheel` | Speed scaled by `speed_step` per notch, within the bounds |
 
 The bounds scale with the start speed, so a scene in centimetres flies as one
 in metres does once its caller starts it a hundred times faster.
 
 For wheel notches $`n`$, speed $`s`$, start speed $`s_0`$ and step $`\Delta t`$,
-with $`k`$ the `FLY_MOTION_SPEED_STEP` and $`r_{\min}, r_{\max}`$ the two ratios,
+with $`k`$ the tuning's `speed_step` and $`r_{\min}, r_{\max}`$ its two ratios,
 the step $`\mathbf{d}`$ along the summed key directions $`\mathbf{m}`$ is never
 longer than one key's:
 

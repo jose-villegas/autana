@@ -15,7 +15,7 @@
 #define STEP_S       0.5F
 #define QUARTER_TURN (MATH_TAU / 4.0F)
 /* A drag that turns a quarter turn. */
-#define QUARTER_DRAG (QUARTER_TURN / FLY_MOTION_RADIANS_PER_PIXEL)
+#define QUARTER_DRAG (QUARTER_TURN / FLY_MOTION_TUNING_DEFAULT.radians_per_pixel)
 /* Far enough either way to reach a wheel bound from the start speed. */
 #define FAR_NOTCHES  1000.0F
 /* A start speed for a scene in centimetres. */
@@ -36,7 +36,8 @@ forward_of(const fly_motion_t* fly) {
 /* At the origin, facing `direction` with the world's up above. */
 static fly_motion_t
 facing(vec3f_t direction) {
-    return fly_motion_start(transformf_looking(vec3f_zero(), direction, vec3f_up()), FLY_MOTION_START_SPEED);
+    return fly_motion_start(transformf_looking(vec3f_zero(), direction, vec3f_up()), FLY_MOTION_START_SPEED,
+                            FLY_MOTION_TUNING_DEFAULT);
 }
 
 static void
@@ -99,15 +100,15 @@ test_dragging_far_down_stops_at_the_pitch_limit(void) {
     fly_motion_t fly = facing(vec3f_forward());
     const fly_motion_steer_t drag = {.look = {0.0F, 4.0F * QUARTER_DRAG}};
     (void)fly_motion_update(&fly, &drag, 0.0F);
-    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, -sinf(FLY_MOTION_PITCH_LIMIT), forward_of(&fly).y);
+    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, -sinf(fly.tuning.pitch_limit), forward_of(&fly).y);
 }
 
 /* Straight down with the picture's top towards +x, as no straight-ahead
  * heading would guess: looking up from it tips forward towards the top. */
 static void
 test_looking_up_from_straight_down_tips_towards_the_picture_top(void) {
-    fly_motion_t fly =
-        fly_motion_start(transformf_looking(vec3f_zero(), vec3f_down(), vec3f_right()), FLY_MOTION_START_SPEED);
+    fly_motion_t fly = fly_motion_start(transformf_looking(vec3f_zero(), vec3f_down(), vec3f_right()),
+                                        FLY_MOTION_START_SPEED, FLY_MOTION_TUNING_DEFAULT);
     const fly_motion_steer_t drag = {.look = {0.0F, -QUARTER_DRAG / 2.0F}};
     (void)fly_motion_update(&fly, &drag, 0.0F);
     const vec3f_t tipped = forward_of(&fly);
@@ -118,16 +119,36 @@ test_looking_up_from_straight_down_tips_towards_the_picture_top(void) {
 static void
 test_the_wheel_scales_the_speed_within_bounds_and_leaves_the_pose(void) {
     /* Any start speed: the bounds are its multiples. */
-    fly_motion_t fly = fly_motion_start(transformf_identity(), SCENE_SPEED);
+    fly_motion_t fly = fly_motion_start(transformf_identity(), SCENE_SPEED, FLY_MOTION_TUNING_DEFAULT);
     fly_motion_steer_t notch = {.wheel = 1.0F};
     TEST_ASSERT_FALSE(fly_motion_update(&fly, &notch, 1.0F));
-    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, SCENE_SPEED * FLY_MOTION_SPEED_STEP, fly.speed);
+    TEST_ASSERT_FLOAT_WITHIN(TOLERANCE, SCENE_SPEED * fly.tuning.speed_step, fly.speed);
     notch.wheel = -FAR_NOTCHES;
     (void)fly_motion_update(&fly, &notch, 0.0F);
-    TEST_ASSERT_EQUAL_FLOAT(SCENE_SPEED * FLY_MOTION_SPEED_MIN_RATIO, fly.speed);
+    TEST_ASSERT_EQUAL_FLOAT(SCENE_SPEED * fly.tuning.speed_min_ratio, fly.speed);
     notch.wheel = FAR_NOTCHES;
     (void)fly_motion_update(&fly, &notch, 0.0F);
-    TEST_ASSERT_EQUAL_FLOAT(SCENE_SPEED * FLY_MOTION_SPEED_MAX_RATIO, fly.speed);
+    TEST_ASSERT_EQUAL_FLOAT(SCENE_SPEED * fly.tuning.speed_max_ratio, fly.speed);
+}
+
+/* A second flyer's tuning: twice the turn per pixel turns the same drag twice as far. */
+static void
+test_a_tuning_with_twice_the_turn_per_pixel_turns_twice_as_far(void) {
+    fly_motion_tuning_t keen = FLY_MOTION_TUNING_DEFAULT;
+    keen.radians_per_pixel *= 2.0F;
+    fly_motion_t fly = fly_motion_start(transformf_identity(), FLY_MOTION_START_SPEED, keen);
+    const fly_motion_steer_t drag = {.look = {QUARTER_DRAG, 0.0F}};
+    (void)fly_motion_update(&fly, &drag, 0.0F);
+    expect_near(vec3f_scale(vec3f_forward(), -1.0F), forward_of(&fly));
+}
+
+/* A pitch limit past FLY_MOTION_PITCH_LIMIT would let forward meet the world's up: it is held there. */
+static void
+test_a_pitch_limit_past_the_steepest_is_held_to_it(void) {
+    fly_motion_tuning_t steep = FLY_MOTION_TUNING_DEFAULT;
+    steep.pitch_limit = QUARTER_TURN;
+    const fly_motion_t fly = fly_motion_start(transformf_identity(), FLY_MOTION_START_SPEED, steep);
+    TEST_ASSERT_EQUAL_FLOAT(FLY_MOTION_PITCH_LIMIT, fly.tuning.pitch_limit);
 }
 
 void
@@ -141,6 +162,8 @@ suite_fly_motion(void) {
     RUN_TEST(test_dragging_far_down_stops_at_the_pitch_limit);
     RUN_TEST(test_looking_up_from_straight_down_tips_towards_the_picture_top);
     RUN_TEST(test_the_wheel_scales_the_speed_within_bounds_and_leaves_the_pose);
+    RUN_TEST(test_a_tuning_with_twice_the_turn_per_pixel_turns_twice_as_far);
+    RUN_TEST(test_a_pitch_limit_past_the_steepest_is_held_to_it);
 }
 
 SUITE_REGISTER(suite_fly_motion);

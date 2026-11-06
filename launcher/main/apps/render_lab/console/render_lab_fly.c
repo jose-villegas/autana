@@ -36,7 +36,8 @@ take_off(void) {
         .home = scene_entity_local(scene, camera),
         .was_paused = scene_animator_paused(scene, camera, SCENE_ANIMATOR_CURRENT),
         /* In the world's terms, as fly_motion turns about the world's up, whatever the camera's parents. */
-        .fly = fly_motion_start(scene_entity_world(scene, camera), render_lab_fly_start_speed(scene_bounds(scene))),
+        .fly = fly_motion_start(scene_entity_world(scene, camera), render_lab_fly_start_speed(scene_bounds(scene)),
+                                FLY_MOTION_TUNING_DEFAULT),
     };
     /* A camera with no clip has nothing to pause. */
     (void)scene_animator_set_paused(scene, camera, SCENE_ANIMATOR_CURRENT, true);

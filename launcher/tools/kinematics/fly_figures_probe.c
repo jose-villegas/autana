@@ -25,9 +25,9 @@ static const phase_t phases[] = {
 
 int
 main(void) {
-    fly_motion_t fly =
-        fly_motion_start(transformf_looking(vec3f_zero(), vec3f_forward(), vec3f_up()), FLY_MOTION_START_SPEED);
-    printf("{\"step\":%.9g,\"pitch_limit\":%.9g,\"phases\":[", step_s, FLY_MOTION_PITCH_LIMIT);
+    fly_motion_t fly = fly_motion_start(transformf_looking(vec3f_zero(), vec3f_forward(), vec3f_up()),
+                                        FLY_MOTION_START_SPEED, FLY_MOTION_TUNING_DEFAULT);
+    printf("{\"step\":%.9g,\"pitch_limit\":%.9g,\"phases\":[", step_s, (double)fly.tuning.pitch_limit);
     for (size_t p = 0; p < sizeof phases / sizeof phases[0]; p++) {
         printf("%s\"%s\"", p ? "," : "", phases[p].name);
     }
