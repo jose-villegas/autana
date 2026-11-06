@@ -127,6 +127,19 @@ mat4f_t scene_entity_world_matrix(const scene_t* scene, scene_entity_t entity);
  * the active one. False when the scene has no such camera. */
 bool scene_activate(scene_t* scene, name_hash_t camera);
 
+/* The world box around everything the scene draws now, its active renderers
+ * with a mesh, a sky or backdrop mesh among them; empty when it draws nothing. */
+box3f_t scene_bounds(scene_t* scene);
+
+/* The active camera's scene and entity, for a caller that moves whichever
+ * camera is drawn. False, nothing written, when no camera is active. */
+bool scene_active_camera(scene_t** scene, scene_entity_t* entity);
+
+/* For a caller that jumps `entity` when it is the active camera: the renderer
+ * drops what it carried from earlier frames, as it does on activation and on
+ * a seek. Smaller moves converge within a few frames and need no cut. */
+void scene_camera_cut(const scene_t* scene, scene_entity_t entity);
+
 /* No camera is active, so nothing is drawn, until the next scene_activate(). */
 void scene_deactivate(void);
 
@@ -144,6 +157,8 @@ bool scene_renderer_set_skin(scene_t* scene, scene_entity_t entity, const char* 
 bool scene_animator_play(scene_t* scene, scene_entity_t entity, int clip, uint32_t blend_ms);
 bool scene_animator_set_speed(scene_t* scene, scene_entity_t entity, scene_animator_slot_t slot, float speed);
 bool scene_animator_set_paused(scene_t* scene, scene_entity_t entity, scene_animator_slot_t slot, bool paused);
+/* Whether the slot's playhead is paused; false when the entity has no clip in that slot. */
+bool scene_animator_paused(scene_t* scene, scene_entity_t entity, scene_animator_slot_t slot);
 int scene_animator_clip_count(const scene_t* scene, scene_entity_t entity);
 const char* scene_animator_clip_name(const scene_t* scene, scene_entity_t entity, int clip);
 /* The clip the current slot plays, or -1 when none does. */

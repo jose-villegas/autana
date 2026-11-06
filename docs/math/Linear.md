@@ -66,6 +66,7 @@ The left-handed frame has x right, y up and z forward; right cross up is forward
 | `P_dot(a, b)` | dot product, in the wide type of the number type | $`a \cdot b = a_x b_x + a_y b_y + a_z b_z`$ |
 | `P_equal(a, b)` | exact component equality | $`a_x = b_x \land a_y = b_y \land a_z = b_z`$ |
 | `P_cross(a, b)` | cross product; x × y = z | $`(a \times b)_x = a_y b_z - a_z b_y`$<br> $`(a \times b)_y = a_z b_x - a_x b_z`$<br> $`(a \times b)_z = a_x b_y - a_y b_x`$ |
+| `P_length(a)` | length; `f` only | $`\lVert a\rVert = \sqrt{a \cdot a}`$ |
 | `P_normalize(a)` | unit vector; `f` and `x` only; `f` needs `a` nonzero | $`\hat a = \frac{a}{\sqrt{a \cdot a}}`$ |
 | `P_normalize_divide(a, t, &q)` | normalize and divide a scalar by the same length; `f` and `x` only | $`\mathrm{out}=a/\lVert a\rVert,\ q=t/\lVert a\rVert`$ |
 | `P_<c1><c2><c3>(v)` | swizzle, each `c` one of `x y z`: `vec3f_zyx(v)` reverses | $`(v_{c_1},\ v_{c_2},\ v_{c_3})`$ |

@@ -10,6 +10,7 @@ from functools import partial
 import json
 import math
 import os
+import queue
 import re
 import shutil
 import subprocess
@@ -1926,6 +1927,78 @@ def send(args, store, board):
                        " s - is a development build running?")
 
 
+STREAM_READ_BYTES = 4096
+# How often a stream waiting on its next line looks for a lost lock or a
+# reader that failed, so neither leaves it holding the board.
+STREAM_CHECK_SECONDS = 0.25
+
+
+def echo_board(connection, stop, out, failed):
+    """Every whole line the board writes, to `out` as it comes, until `stop`;
+    then what is left of a last line. A read that fails ends it, with the
+    error left in `failed` for the stream to raise."""
+    pending = bytearray()
+    try:
+        while not stop.is_set():
+            pending.extend(connection.read(STREAM_READ_BYTES))
+            end = pending.rfind(b"\n") + 1
+            if end:
+                out.write(bytes(pending[:end]).decode("utf-8", errors="replace"))
+                out.flush()
+                del pending[:end]
+    except Exception as error:  # noqa: BLE001  (any read failure ends the stream, raised by its owner)
+        failed.append(error)
+    if pending:
+        out.write(bytes(pending).decode("utf-8", errors="replace") + "\n")
+        out.flush()
+
+
+def feed_lines(lines, inbox):
+    """Each of `lines` into `inbox` as it arrives, then None for the end."""
+    for line in lines:
+        inbox.put(line)
+    inbox.put(None)
+
+
+def stream(args, store, board, lines=None, out=None):
+    """Console lines from stdin to the board as each arrives, and every line
+    the board writes to stdout, under one lock and one open port until stdin
+    ends: for a desktop tool steering the board live, where a `send` per line
+    (a process, a lock and an open each) is far too slow. A lost lock or a
+    failed read ends it with an error, even while stdin is quiet."""
+    lines = sys.stdin if lines is None else lines
+    out = sys.stdout if out is None else out
+    with HeldLock(store, board, args.owner, "stream", args.wait):
+        with open_when_free() as connection:
+            stop = threading.Event()
+            failed = []
+            reader = threading.Thread(target=echo_board, args=(connection, stop, out, failed), daemon=True)
+            reader.start()
+            # stdin is read on its own thread, so a quiet stdin never stops the checks below.
+            inbox = queue.Queue()
+            threading.Thread(target=feed_lines, args=(lines, inbox), daemon=True).start()
+            try:
+                while True:
+                    if failed:
+                        raise RuntimeError(f"reading the board failed: {failed[0]}") from failed[0]
+                    require_unlost()
+                    try:
+                        line = inbox.get(timeout=STREAM_CHECK_SECONDS)
+                    except queue.Empty:
+                        continue
+                    if line is None:
+                        break
+                    try:
+                        data = (line.rstrip("\r\n") + "\n").encode("ascii")
+                    except UnicodeEncodeError as error:
+                        raise RuntimeError(f"console lines are ASCII: {line.rstrip()!r}") from error
+                    connection.write(data)
+            finally:
+                stop.set()
+                reader.join()
+    return 0
+
+
 def screenshot(args, store, board):
     """SCREENSHOT, decoded by read_screenshot()/write_capture() in
     launcher/tools/device/screenshot.py, the one decoder autana's own
@@ -2318,6 +2391,9 @@ def main(argv=None):
     send_parser.add_argument("--optional", action="store_true",
                              help="a timeout with nothing seen is success, not an error - "
                                   "for a verb that only answers when something is wrong")
+    subparsers.add_parser(
+        "stream", help="write console lines from stdin as they come and print every line the "
+                       "board writes, under one lock until stdin ends")
     screenshot_parser = subparsers.add_parser(
         "screenshot", help="capture what the panel shows right now, as a .png plus a .json state snapshot")
     screenshot_parser.add_argument("--out",
@@ -2527,7 +2603,8 @@ def main(argv=None):
         else:
             # Looked up per call, so a test's patch of one of them is the one run.
             board_commands = {"run-suite": run_suite, "selftest": selftest, "coredump": coredump,
-                              "reset": reset_device, "batch": batch, "screenshot": screenshot, "mic-record": mic_record}
+                              "reset": reset_device, "batch": batch, "screenshot": screenshot, "mic-record": mic_record,
+                              "stream": stream}
             result = board_commands.get(args.command, listen)(args, store, board)
             return result
         result = 0

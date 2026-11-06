@@ -13,7 +13,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [anim](#anim) | 4 | 0 | 0 |
 | [audio](#audio) | 32 | 0 | 0 |
 | [input](#input) | 11 | 0 | 0 |
-| [kinematics](#kinematics) | 4 | 0 | 0 |
+| [kinematics](#kinematics) | 5 | 1 | 0 |
 | [math](#math) | 25 | 25 | 0 |
 | [overview](#overview) | 15 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
@@ -87,6 +87,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 
 | Picture | What it shows | Shown in | Made by |
 |---|---|---|---|
+| <a href="../images/kinematics/fly-path.png"><img src="../images/kinematics/fly-path.png" width="160" alt=""></a> | 3D path from the origin through forward, a turn right, a climb, a wheel speed-up and a dive, with forward arrows along it; speed against time below | [kinematics/Fly](../kinematics/Fly.md) | [fly_figures.py](../../launcher/tools/kinematics/fly_figures.py) |
 | <a href="../images/kinematics/orbit-fit-distance.png"><img src="../images/kinematics/orbit-fit-distance.png" width="160" alt=""></a> | 3D padded view pyramid with the camera at its apex and a fitted sphere binding the short axis; fit distance per radius against half field of view alongside | [kinematics/Orbit](../kinematics/Orbit.md) | not declared yet |
 | <a href="../images/kinematics/orbit-fling-decay.png"><img src="../images/kinematics/orbit-fling-decay.png" width="160" alt=""></a> | Fling speed and covered angle at 16 and 50 millisecond frame steps, approaching the same limiting angle | [kinematics/Follow](../kinematics/Follow.md) | not declared yet |
 | <a href="../images/kinematics/orbit-fling.gif"><img src="figure-thumbnails/kinematics/orbit-fling.gif" width="160" alt=""></a> | 3D orbit with pose axes, a fading trail and pitch-limit circles through held steering, fling and reset to home; signed yaw and pitch speeds below | [kinematics/Orbit](../kinematics/Orbit.md) | not declared yet |
