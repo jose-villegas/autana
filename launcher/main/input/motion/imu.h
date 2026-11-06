@@ -32,6 +32,19 @@
 #define IMU_ODR_PERIOD_US(code)       ((uint32_t)((MATH_US_PER_S * (1U << (code)) / IMU_ODR_BASE_HZ) + 0.5))
 #define IMU_SAMPLE_US                 IMU_ODR_PERIOD_US(IMU_ODR_CODE)
 #define IMU_FIFO_SAMPLES              128
+/* Table 22's 6DOF ODR codes, 0 (IMU_ODR_BASE_HZ) to 8. */
+#define IMU_ODR_CODES                 9U
+
+/* The period of a code chosen at run time. The FPU is single precision, so the
+ * double arithmetic happens in the compiler, once per code, never on the device. */
+static inline uint32_t
+imu_odr_period_us(unsigned odr_code) {
+    static const uint32_t periods_us[IMU_ODR_CODES] = {
+        IMU_ODR_PERIOD_US(0), IMU_ODR_PERIOD_US(1), IMU_ODR_PERIOD_US(2), IMU_ODR_PERIOD_US(3), IMU_ODR_PERIOD_US(4),
+        IMU_ODR_PERIOD_US(5), IMU_ODR_PERIOD_US(6), IMU_ODR_PERIOD_US(7), IMU_ODR_PERIOD_US(8),
+    };
+    return periods_us[odr_code];
+}
 
 /* QMI8658A Rev A section 8.7: read mode discards arrivals. Only whole periods
  * inside a confirmed read interval guarantee losses; separate intervals have independent phase. */

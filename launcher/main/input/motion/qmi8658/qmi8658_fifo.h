@@ -18,6 +18,6 @@ qmi8658_fifo_reset(qmi8658_fifo_t* fifo, unsigned odr_code) {
 static inline int
 qmi8658_fifo_loss(qmi8658_fifo_t* fifo, uint64_t locked_us, bool gap) {
     const int lost = gap ? 0 : fifo->pending_lost;
-    fifo->pending_lost = imu_fifo_lost(locked_us, IMU_ODR_PERIOD_US(fifo->odr_code), gap);
+    fifo->pending_lost = imu_fifo_lost(locked_us, imu_odr_period_us(fifo->odr_code), gap);
     return lost;
 }
