@@ -1,4 +1,5 @@
 #include "render/lod/r3d_lod.h"
+#include "profile/frame_cost.h"
 
 #include "math/geometry/box3f.h"
 #include "math/scalar/mathf.h"
@@ -146,7 +147,10 @@ r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, float tolerance
     const lod_view_t v = lod_view(lens);
     const float enter = tolerance_px - R3D_LOD_HYSTERESIS_PX;
     const float leave = tolerance_px + R3D_LOD_HYSTERESIS_PX;
-    if (none_can_coarsen(mesh, &v, lens->project.near_z, leave)) {
+    FRAME_COST_BEGIN(bound_from);
+    const bool none = none_can_coarsen(mesh, &v, lens->project.near_z, leave);
+    FRAME_COST_END(bound_from, "lod.bound");
+    if (none) {
         memset(coarse, 0, R3D_LOD_WORDS(mesh->lod_group_count) * sizeof *coarse);
         return;
     }
@@ -174,6 +178,8 @@ r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, float tolerance
     }
     /* Nothing coarse closes to nothing. */
     if (any) {
+        FRAME_COST_BEGIN(close_from);
         close_coarse(mesh, coarse);
+        FRAME_COST_END(close_from, "lod.close");
     }
 }
