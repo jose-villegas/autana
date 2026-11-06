@@ -121,6 +121,7 @@ class TriangleSearch:
 
 def triangle_search(corners):
     """The nearest-triangle lookup for triangles `corners`."""
+    corners = np.asarray(corners, dtype=np.float64)
     centre = corners.mean(axis=1)
     radius = np.linalg.norm(corners - centre[:, None], axis=2).max(axis=1)
     size = np.floor(np.log2(np.maximum(radius, 1e-30))).astype(int)
@@ -132,8 +133,9 @@ def triangle_search(corners):
 def nearest_triangles(points, search):
     """For each point, the nearest triangle of `search` (exact), the barycentrics of the nearest point on it and the
     distance to it. A triangle within d has its centroid within d plus its radius: all the candidates once any gives d."""
+    points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
     parts = [nearest_chunk(points[i:i + QUERY_CHUNK], search) for i in range(0, len(points), QUERY_CHUNK)]
-    return tuple(np.concatenate(part) for part in zip(*parts)) if parts else nearest_chunk(points, search)
+    return tuple(np.concatenate(part) for part in zip(*parts)) if parts else (np.zeros(0, int), np.zeros((0, 3)), np.zeros(0))
 
 
 def nearest_chunk(points, search):
