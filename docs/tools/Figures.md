@@ -12,7 +12,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 |---|---|---|---|
 | [anim](#anim) | 4 | 0 | 0 |
 | [audio](#audio) | 32 | 0 | 0 |
-| [input](#input) | 9 | 0 | 0 |
+| [input](#input) | 11 | 0 | 0 |
 | [kinematics](#kinematics) | 4 | 0 | 0 |
 | [math](#math) | 25 | 25 | 0 |
 | [overview](#overview) | 15 | 0 | 0 |
@@ -72,6 +72,8 @@ is stale, so rerun it after changing an image or the pages that show one.
 | Picture | What it shows | Shown in | Made by |
 |---|---|---|---|
 | <a href="../images/input/gravity-bias.gif"><img src="figure-thumbnails/input/gravity-bias.gif" width="160" alt=""></a> | The cased device rocks about flat while the estimate of down converges on true down and the gyro bias error decays | [input/Gravity](../input/Gravity.md) | not declared yet |
+| <a href="../images/input/gravity-motion.gif"><img src="figure-thumbnails/input/gravity-motion.gif" width="160" alt=""></a> | The pitched device rolls while carried sideways; the plots show acceleration magnitude deviation from 1 g and the acceleration angle from the estimate and the estimate angle from true down | [input/Gravity](../input/Gravity.md) | not declared yet |
+| <a href="../images/input/gravity-reader.gif"><img src="figure-thumbnails/input/gravity-reader.gif" width="160" alt=""></a> | The device tilts and rolls, then holds its pose in free fall; the plots show in-plane strength and acceleration magnitude with their direction and free-fall thresholds | [input/Gravity](../input/Gravity.md) | not declared yet |
 | <a href="../images/input/gravity-trust.png"><img src="../images/input/gravity-trust.png" width="160" alt=""></a> | Acceleration magnitude trust ramp | [input/Gravity](../input/Gravity.md) | not declared yet |
 | <a href="../images/input/motion-axes.png"><img src="../images/input/motion-axes.png" width="160" alt=""></a> | The cased device from the front and the back: chip axes X Y Z at the IMU behind the PCB, screen axes x y z at the glass centre | [input/Motion-Axes](../input/Motion-Axes.md) | not declared yet |
 | <a href="../images/input/motion-page.png"><img src="../images/input/motion-page.png" width="160" alt=""></a> | Motion page: raw and filtered readings, stored offset and the tilt bubble | [input/Motion-Calibration](../input/Motion-Calibration.md) | not declared yet |
