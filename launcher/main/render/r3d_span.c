@@ -149,7 +149,7 @@ depth_cap_max(uint16_t cap) {
  * covers lies inside the triangle, where the plane peaks at a vertex; a steep
  * sliver's set-up can tilt it past the limit there, and then its spans clamp
  * to it. */
-static RENDER_SKIP_ATTR __attribute__((noinline)) void
+static void
 cap_depth(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, recti_t box,
           gradients_t* g) {
     g->depth_cap = R3D_DEPTH_NEAREST;
@@ -246,7 +246,7 @@ floor_div(int32_t n, int32_t d, int32_t* q, int32_t* r) {
  * dx / dy, and the first centre at or right of it is ceil((x - 8) / 16).
  * With every coordinate inside R3D_SPAN_RANGE the numerator stays under
  * 2^31 for any row of the edge. */
-static RENDER_IRAM_ATTR edge_t
+static edge_t
 edge_at(const r3d_span_vertex_t* top, const r3d_span_vertex_t* bottom, int y) {
     const int32_t dx = bottom->x - top->x;
     const int32_t dy = bottom->y - top->y;
@@ -651,7 +651,8 @@ r3d_span_small_fill_resolve(r3d_span_small_fill_t* resolved, small_fill_t fill) 
     }
 }
 
-static RENDER_IRAM_ATTR __attribute__((noinline)) bool
+/* Colour conversion stays in flash; the side and gate checks stay on the draw path. */
+static __attribute__((noinline)) bool
 small_colours_within_spread(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c,
                             int spread) {
     return colours_within_spread(r3d_span_pack_rgb(a->r, a->g, a->b), r3d_span_pack_rgb(b->r, b->g, b->b),
@@ -690,7 +691,7 @@ small_visible(const small_edge_t edges[TRIANGLE_VERTICES], const pixel_row_t* ro
 
 /* Pineda 1988 [32]: test pixel centres against three edge functions.
  * Keep small-triangle temporaries off the row-walk call chain. */
-static RENDER_IRAM_ATTR __attribute__((noinline)) void
+static __attribute__((noinline)) void
 fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
            const r3d_span_vertex_t* c, bool positive, recti_t box, const uint16_t* face) {
     fill_t f;
@@ -889,7 +890,7 @@ set_up_planes(fill_t* f, const r3d_span_vertex_t* const v[TRIANGLE_VERTICES], co
 /* The depth plane first, then the colour planes only for a triangle not
  * already hidden; false when it would write nothing. Setup temporaries
  * must leave the stack before the row walk. */
-static RENDER_IRAM_ATTR __attribute__((noinline)) bool
+static __attribute__((noinline)) bool
 set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[TRIANGLE_VERTICES], recti_t box,
             int y_anchor, const uint16_t* face, fill_t* f, gradients_t* g) {
     plane_t p;
