@@ -303,8 +303,6 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
     ESP_LOGI(TAG, "=== %s FRAME COST (%d tris, %d verts, %d clusters, rendered %dx%d) ===" R3D_PERF_QUARTER_FORMAT,
              label, mesh->triangle_count, mesh->vertex_count, mesh->cluster_count, b->raster.width, b->raster.height,
              perf_quarter->name);
-    const tune_entry_t* culling = tune_find(tune_shared(), TUNE_NAME(render, cull));
-    TEST_ASSERT_NOT_NULL(culling);
     int size = 0;
     for (int i = 0; i < mesh->cluster_count; i++) {
         if (mesh->clusters[i].triangle_count > size) {
@@ -315,9 +313,9 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
     ESP_LOGI(TAG,
              "CAPTURE build_id=%s pack_crc32=%08x object=%s size=%d cull=%ld period_ms=%u "
              "pose_every_ms=%u raster=%dx%d present=%d" R3D_PERF_QUARTER_FORMAT,
-             build_id(), (unsigned)crc32_update(0, pack->base, pack->size), object_name, size, (long)*culling->value,
-             (unsigned)period, (unsigned)SPONZA_PERF_POSE_EVERY_MS, b->raster.width, b->raster.height,
-             render_lab_present(), perf_quarter->name);
+             build_id(), (unsigned)crc32_update(0, pack->base, pack->size), object_name, size,
+             (long)raster_settings(&b->raster).cull, (unsigned)period, (unsigned)SPONZA_PERF_POSE_EVERY_MS,
+             b->raster.width, b->raster.height, render_lab_present(), perf_quarter->name);
     b->report = memory_alloc(FRAME_COST_REPORT_MAX, MEMORY_INTERNAL);
     char* report = b->report;
     TEST_ASSERT_NOT_NULL(report);

@@ -16,6 +16,7 @@
 #include "render/raster_split.h"
 #include "render/render_view.h"
 #include "render/resolution/resolution.h"
+#include "render/settings/render_settings.h"
 #include "render/upscale.h"
 
 /* The caller's options; the scratch block holds everything else. */
@@ -39,7 +40,11 @@ struct raster {
     /* Drawn beside colour and depth, at most GFX_ATTACHMENTS_FURTHER_MAX. */
     const raster_attachment_t* const* attachments;
     int attachment_count;
+    const render_settings_t* settings; /* NULL draws with RENDER_SETTINGS_DEFAULT */
 };
+
+/* What a draw uses: the raster's settings, under any development override. */
+render_settings_t raster_settings(const raster_t* raster);
 
 /* The viewport a view frames: destination size when upscaled, otherwise drawn size. */
 static inline viewport_t

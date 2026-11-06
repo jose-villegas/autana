@@ -320,7 +320,7 @@ calibrate(const resolution_config_t* config, resolution_model_t* model) {
     if (context == NULL) {
         return false;
     }
-    memset(context, 0, sizeof(*context));
+    *context = RENDER_CONTEXT_DEFAULT;
     context->policy = RENDER_FIXED;
     raster_t* raster = &context->raster;
     raster->instances = &instance;

@@ -72,6 +72,7 @@ draw time; view modes give up frame time to show a diagnostic picture.
 | [Dynamic resolution](#dynamic-resolution) | sharpness for a held frame budget | scratch at the finest step | off | `render_context_set_dynamic_resolution()` | [Dynamic-Resolution.md](frame/Dynamic-Resolution.md) |
 | [Camera presentation](#camera-presentation) | half the rows drawn for a scanline or doubled look | none | `CAMERA_PRESENT_NEAREST` | `scene_camera_set_present()` | [Camera presentation](frame/Dynamic-Resolution.md#camera-presentation) |
 | [Small fill](#small-fill) | gradients on tiny triangles for draw time | none | `SMALL_FILL_SMOOTH` | `scene_camera_set_small_fill()` | [Small fill](frame/Coverage.md#small-fill) |
+| [Render settings](Render-Settings.md) | culling, depth fit and batching, each off only to compare | none | `RENDER_SETTINGS_DEFAULT`, all on | `render_context_set_settings()` | [Render-Settings.md](Render-Settings.md) |
 | [View modes](#view-modes) | frame time for a diagnostic picture | PSRAM per view | shaded | `render_context_set_debug_view()` | [View modes](frame/View-Modes.md) |
 
 ### Bake
@@ -271,9 +272,10 @@ picture exact.
 
 ### Culling and clusters
 
-Culling is always on: the draw keeps only the clusters inside the frustum,
-roughly nearest first, and drops a triangle hidden behind what was already
-drawn ([every stage](frame/Culling.md)). The knob is offline: the bake's
+Culling is on by default ([Render-Settings.md](Render-Settings.md#cull)): the
+draw keeps only the clusters inside the frustum, roughly nearest first, and
+drops a triangle hidden behind what was already drawn
+([every stage](frame/Culling.md)). The knob is offline: the bake's
 `geometry.meshlet_triangles` sets the cluster size.
 
 - **Use** the shipped 32: 16 ties it, and 64 lets more triangles through than

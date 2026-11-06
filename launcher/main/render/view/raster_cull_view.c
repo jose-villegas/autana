@@ -109,13 +109,6 @@ writer(const raster_attachment_t* self, int instance, r3d_span_writer_t* out) {
     return true;
 }
 
-/* Whether the frame culled at all: render.cull, the raster's own switch. */
-static bool
-culling(void) {
-    const tune_entry_t* entry = tune_find(tune_shared(), TUNE_NAME(render, cull));
-    return entry == NULL || *entry->value != 0;
-}
-
 /* After the camera's draw, its scratch lists and vertices are free: each
  * instance is culled, counted and transformed again into them, through the
  * lens the draw used, and its kept clusters are not set up or hidden. The
@@ -124,7 +117,7 @@ culling(void) {
 static void
 count_frame(raster_cull_t* s, const raster_t* raster) {
     const raster_buffers_t b = raster_carve(raster);
-    const bool culls = culling();
+    const bool culls = raster_settings(raster).cull; /* whether the frame culled at all */
     int offset = 0;
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];

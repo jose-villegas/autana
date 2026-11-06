@@ -908,7 +908,8 @@ def meshlets(args, out, work):
     from meshlet_sizes import table
     made = out / "render/meshlets"
     made.mkdir(parents=True)
-    body = table(args.scene, args.captures, args.bakes, made / "meshlet-sizes.png")
+    body = table(args.scene, args.captures, args.bakes, made / "meshlet-sizes.png",
+                 cull_table=out / "tables/render-settings-cull.md")
     (out / "tables/meshlet-sizes.md").write_text(body)
     changed = apply_tables(ROOT, out / "tables", args.check)
     changed |= sync_images(made, ROOT / "docs/images/render/meshlets", check=args.check)
