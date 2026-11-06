@@ -30,7 +30,16 @@
 
 /* The arrays of the one-triangle mesh below: each starts where the last ends,
  * on a 4-byte boundary, after the 44-byte header. */
-enum { POSITIONS_AT = 44, COLORS_AT = 64, TRIANGLES_AT = 76, CLUSTERS_AT = 84, NODES_AT = 108, ENTRY_END = 124 };
+enum {
+    POSITIONS_AT = 44,
+    COLORS_AT = 64,
+    TRIANGLES_AT = 76,
+    CLUSTERS_AT = 84,
+    NODES_AT = 108,
+    ENTRY_END = 124,
+    TRIANGLES_OFFSET_WORD = 7,
+    CLUSTER_TRIANGLES_WORD = 3
+};
 
 /* The bytes of that mesh entry; returns its size. */
 static uint32_t
@@ -108,8 +117,8 @@ test_mesh_open_finds_curve_sibling(void) {
             R3D_CURVE_HEADER_WORDS * sizeof(uint16_t) + sizeof(r3d_curve_t) + 2 * sizeof(r3d_curve_knot_t);
         if (empty) {
             test_pack_put32(f.entry + sizeof(uint32_t), 0);
-            test_pack_put32(f.entry + 7 * sizeof(uint32_t), 0);
-            test_pack_put16(f.entry + CLUSTERS_AT + 3 * sizeof(uint16_t), 0);
+            test_pack_put32(f.entry + TRIANGLES_OFFSET_WORD * sizeof(uint32_t), 0);
+            test_pack_put16(f.entry + CLUSTERS_AT + CLUSTER_TRIANGLES_WORD * sizeof(uint16_t), 0);
         }
         test_pack_t built = test_pack_begin(f.pack, BUFFER_BYTES, 2);
         memcpy(test_pack_add(&built, "tri", R3D_LIT_MESH_ASSET, f.entry_size), f.entry, f.entry_size);
