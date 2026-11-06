@@ -87,7 +87,7 @@ typedef struct {
     size_t scratch_bytes;
     memory_take_fn take; /* where the scratch comes from; NULL is the heap */
     int scale_percent;
-    render_settings_t settings; /* the app's; the raster reads them through `raster.settings` */
+    render_settings_t settings; /* the raster reads them through `raster.settings` */
 
     enum { RENDER_FIXED, RENDER_STEPPED, RENDER_PREDICTED } policy;
 
@@ -115,6 +115,7 @@ typedef struct {
     render_view_t kept_view;
     framegen_target_t framegen;
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    render_settings_t tuned; /* the knobs as the last frame took them (raster_tuned()) */
     /* Whether the last frame's debug view drew a second view, and from where. */
     bool observed;
     transformf_t observed_from;
@@ -125,12 +126,18 @@ typedef struct {
 #endif
 } render_context_t;
 
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+#define RENDER_CONTEXT_TUNED_DEFAULT .tuned = RENDER_SETTINGS_DEFAULT
+#else
+#define RENDER_CONTEXT_TUNED_DEFAULT
+#endif
 /* A context before any setting: what render_context_release() returns to. A
  * zeroed one draws with every setting off. */
 #define RENDER_CONTEXT_DEFAULT                                                                                         \
     ((render_context_t){.scale_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT,                                         \
                         .settings = RENDER_SETTINGS_DEFAULT,                                                           \
-                        .frame = {.step = -1}})
+                        .frame = {.step = -1},                                                                         \
+                        RENDER_CONTEXT_TUNED_DEFAULT})
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 void render_context_checkpoint_capture(checkpoint_t* saved, render_context_t* context);
@@ -196,9 +203,9 @@ void render_context_print_debug_views(FILE* out);
 bool render_context_draw(render_context_t* context, const r3d_instance_t* instances, int count,
                          const render_view_t* view, uint16_t clear);
 
-/* What the next frame draws with; the context keeps its own copy, and
- * RENDER_SETTINGS_DEFAULT until set. A development override goes on top of
- * them in the draw (raster_settings()), never into them. */
+/* What the next frame draws with: the context keeps its own copy,
+ * RENDER_SETTINGS_DEFAULT until set. A development knob that changes writes
+ * its field the same way, at the next frame; the last write holds. */
 void render_context_set_settings(render_context_t* context, const render_settings_t* settings);
 const render_settings_t* render_context_settings(const render_context_t* context);
 
