@@ -6,6 +6,7 @@ the pack; positions and radii use the LMSH's position scale.
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #ffffff !important; stroke-dasharray: 4 3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 8
     bitWidth: 100
@@ -14,12 +15,13 @@ packet-beta
 title Header, 8 bytes, one cell a byte
 0-1: "curve count"
 2-3: "knot count"
-4-7: "reserved = 0"
+4-7: "reserved"
 ```
 
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(2) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 8
     bitWidth: 100
@@ -35,6 +37,7 @@ title Curve row, 16 bytes, one cell a byte
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 10
     bitWidth: 80
