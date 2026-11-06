@@ -6,7 +6,8 @@ define states.
 
     python launcher/tools/render/settings/settings_table.py [--check]
 
-A field without a define, or a define without a known tier, is an error.
+A field without a define, a define without a field, or a tier not in TIERS is
+an error.
 """
 import argparse
 import pathlib
@@ -15,6 +16,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
+from doc_tables import markdown  # noqa: E402
 from generated_blocks import replace_block  # noqa: E402
 
 HEADER = ROOT / "launcher/main/render/settings/render_settings.h"
@@ -37,15 +39,18 @@ def fields(source):
 
 def render(source):
     defines = {name.lower(): rest for name, *rest in DEFINE.findall(source)}
-    lines = ["| Field | Default | Tier | What it trades |", "|---|---|---|---|"]
-    for field in fields(source):
+    names = fields(source)
+    if set(defines) - set(names):
+        raise ValueError(f"{HEADER.name}: {', '.join(sorted(set(defines) - set(names)))} has a define but no field")
+    rows = []
+    for field in names:
         if field not in defines:
             raise ValueError(f"{HEADER.name}: {field} has no RENDER_SETTINGS_{field.upper()} with a tier comment")
         value, tier, trade = defines[field]
         if tier not in TIERS:
             raise ValueError(f"{HEADER.name}: {field}'s tier {tier!r} is not one of {', '.join(TIERS)}")
-        lines.append(f"| `{field}` | `{value}` | {tier} | {trade} |")
-    return "\n".join(lines)
+        rows.append((f"`{field}`", f"`{value}`", tier, trade))
+    return markdown(["Field", "Default", "Tier", "What it trades"], rows).rstrip()
 
 
 def main(argv=None):

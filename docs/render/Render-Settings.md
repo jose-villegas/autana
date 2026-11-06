@@ -26,13 +26,13 @@ drawn without a context uses `RENDER_SETTINGS_DEFAULT`.
 ## The settings
 
 Basic settings are for any app to weigh. Advanced ones need the renderer's
-workings to judge. Every default is on, as the raster drew before it had settings.
+workings to judge. Every default is on.
 
 <!-- generated: render-settings check: python launcher/tools/render/settings/settings_table.py --check -->
 | Field | Default | Tier | What it trades |
 |---|---|---|---|
 | `cull` | `true` | basic | skips clusters and world boxes outside the picture |
-| `depth_fit` | `true` | advanced | spends depth steps where the kept scene is, not from near_z |
+| `depth_fit` | `true` | advanced | depth steps go where the kept scene is, not to near_z; needs cull |
 | `batched` | `true` | advanced | one transform and one draw fork/join a batch, not an instance |
 <!-- /generated: render-settings -->
 
@@ -44,7 +44,7 @@ is what it saves. The chase below marks each cluster's fate along Bistro's path:
 
 ![Bistro's fates from behind the camera](../images/render/cull-bistro-chase.gif)
 
-Along Sponza's camera path on the board, with culling on and then off:
+Mean frame stages along Sponza's camera path on the board, culling on and off:
 
 <!-- generated: render-settings-cull sha256=5d303133eed2f3851202b76f0e87e9bce6bc029ce57cb2cc3151f5e402ec8c34 -->
 | Setting | Cull ms | Transform ms | Draw ms | Frame ms |
@@ -54,8 +54,8 @@ Along Sponza's camera path on the board, with culling on and then off:
 | off - on | -0.26 | 2.46 | 14.56 | 16.71 |
 <!-- /generated: render-settings-cull -->
 
-Culling itself costs a little more than the copy that replaces it. What it
-saves is in the transform and the draw. Off is only for measuring.
+The cull stage itself costs more with culling on; the saving is in the
+transform and the draw. Off is only for measuring.
 
 ## depth_fit
 
@@ -64,7 +64,7 @@ frame scales it to the nearest bound it kept, not the clip plane's `near_z`
 ([Attachments.md](frame/Attachments.md#depth)). Seen from high up, the scale
 then gives distant surfaces many more steps.
 
-With `depth_fit` off, a ground square just under Bistro's street shows through it.
+With `depth_fit` off, a patch of ground just under Bistro's street shows through the road.
 Below is one frame with each setting, and their difference:
 
 ![One Bistro frame with depth scaled by near_z and by the fit, and their difference](../images/render/depth-fit-bistro-diff.png)
@@ -73,12 +73,12 @@ The places they differ most, enlarged:
 
 ![The places the two settings differ most](../images/render/depth-fit-bistro-diff.crops.png)
 
-The artefact moves from frame to frame. Below, the same window is shown over
-consecutive frames, scaled by `near_z` on top and by the fit below:
+The artefact moves from frame to frame:
 
 ![Consecutive frames of one window, near_z on top and the fit below](../images/render/depth-fit-bistro.gif)
 
-The fit adds no pass of its own: the cull finds the nearest bound as it walks.
+The fit adds no pass of its own: the cull's walk tracks the nearest bound it
+keeps. So `depth_fit` has an effect only with `cull` on.
 
 ## batched
 

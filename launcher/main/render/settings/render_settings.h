@@ -12,7 +12,7 @@
  * reads these lines. Basic is for any app; advanced needs the renderer's
  * workings to judge. */
 #define RENDER_SETTINGS_CULL      true /* basic: skips clusters and world boxes outside the picture */
-#define RENDER_SETTINGS_DEPTH_FIT true /* advanced: spends depth steps where the kept scene is, not from near_z */
+#define RENDER_SETTINGS_DEPTH_FIT true /* advanced: depth steps go where the kept scene is, not to near_z; needs cull */
 #define RENDER_SETTINGS_BATCHED   true /* advanced: one transform and one draw fork/join a batch, not an instance */
 
 typedef struct {
