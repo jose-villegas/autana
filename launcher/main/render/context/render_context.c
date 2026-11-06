@@ -87,10 +87,7 @@ render_context_print_debug_views(FILE* out) {
     }
 }
 
-static render_context_t main_context = {
-    .scale_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT,
-    .frame = {.step = -1},
-};
+static render_context_t main_context = RENDER_CONTEXT_DEFAULT;
 
 render_context_t*
 render_context_main(void) {
@@ -123,11 +120,9 @@ render_context_release(render_context_t* c) {
     render_context_drop_scratch(c);
     framegen_target_free(&c->framegen);
     free_view_state(c);
-    *c = (render_context_t){
-        .scale_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT,
-        .frame = {.step = -1},
-        .take = c->take,
-    };
+    const memory_take_fn take = c->take;
+    *c = RENDER_CONTEXT_DEFAULT;
+    c->take = take;
 }
 
 void
@@ -297,7 +292,7 @@ draw_second_view(render_context_t* c) {
         return;
     }
     /* Its own views and clusters: none may steer the frame's core split, and
-     * the hook reads render.cull as the frame drew. */
+     * the hook reads the override the frame drew with. */
     const tune_entry_t* culling = tune_find(tune_shared(), TUNE_NAME(render, cull));
     const int32_t culled = *culling->value;
     const transformf_t* observer = c->observing ? &c->observer : NULL;
@@ -399,6 +394,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     const int step = current_step(c);
     raster_t* r = &c->raster;
     r->split = &c->split;
+    r->settings = &c->settings;
     r->instances = instances;
     r->instance_count = count;
     reserve_view(c, count);
@@ -449,6 +445,16 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     c->kept = true;
     c->kept_view = *view;
     return true;
+}
+
+void
+render_context_set_settings(render_context_t* c, const render_settings_t* settings) {
+    c->settings = *settings;
+}
+
+const render_settings_t*
+render_context_settings(const render_context_t* c) {
+    return &c->settings;
 }
 
 void

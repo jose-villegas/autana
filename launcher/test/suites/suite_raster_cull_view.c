@@ -513,6 +513,7 @@ scene_open(void) {
         s->instance[i] = (r3d_instance_t){&s->quad[i].mesh, NULL, NULL};
     }
     s->quad[SCENE_AWAY].cluster.double_sided = false;
+    s->context = s->straight = RENDER_CONTEXT_DEFAULT;
     render_context_set_scale(&s->context, 100);
     render_context_set_scale(&s->straight, 100);
     render_context_set_debug_view(&s->context, render_context_debug_view_named(CULL_VIEW));
