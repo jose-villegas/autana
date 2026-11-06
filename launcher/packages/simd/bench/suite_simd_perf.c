@@ -2,8 +2,8 @@
  * simd board timing: cycles of each call against its C reference over
  * internal RAM, at lengths around each minimum and at screen-row lengths.
  * Rows print as "SIMD_BENCH <call> n=<elements> ref=<cycles> simd=<cycles>",
- * the median of BENCH_CYCLE_WARM_REPS warm runs.
- * QEMU has no hardware cache timing or performance monitor
+ * the median of BENCH_CYCLE_WARM_REPS warm runs. Board only: QEMU has no
+ * hardware cache timing or performance monitor.
  */
 #include <stdint.h>
 #include <stdio.h>
