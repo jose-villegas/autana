@@ -20,6 +20,7 @@ try:
     import numpy as np
     from tests import soup
 
+    from r3d import geometry
     from r3d.geometry import closest_point_on_triangles, nearest_triangles, triangle_areas, triangle_search, weld
     from r3d.light import adaptive_sample_counts, face_colours, light, merge_matching_colours, to_srgb8
     from r3d import lit_mesh, rebake
@@ -89,7 +90,8 @@ class NearestTrianglesTests(unittest.TestCase):
         brute = np.array([closest_point_on_triangles(queries, *(np.repeat(corners[t:t + 1, k], len(queries), axis=0)
                                                                 for k in range(3)))[1]
                           for t in range(len(corners))])
-        tri, bary, distance = nearest_triangles(queries, triangle_search(corners))
+        with mock.patch.object(geometry, 'QUERY_CHUNK', 64):
+            tri, bary, distance = nearest_triangles(queries, triangle_search(corners))
         np.testing.assert_allclose(distance, brute.min(axis=0), atol=1e-12)
         # The triangle returned is a nearest one and the barycentrics land on its closest point.
         np.testing.assert_allclose(brute[tri, np.arange(len(queries))], distance, atol=1e-12)
