@@ -332,6 +332,28 @@ instance_lens(picture_lens_t* picture, const r3d_instance_t* instance, r3d_lens_
     }
 }
 
+static void
+curve_slice(void* ctx) {
+    const slice_t* s = ctx;
+    const draw_work_t* work = s->buffers->draw;
+    picture_lens_t picture = work->picture;
+    picture.position_scale = 0;
+    r3d_span_target_t* target = s->target;
+    gfx_target_window(&target->rows, &s->buffers->picture, s->first, s->first + s->count);
+    target->small_fill = &work->small_fill;
+    target->skip_hidden = false;
+    target->writer_count = 0;
+    for (int i = 0; i < s->raster->instance_count; i++) {
+        const r3d_instance_t* instance = &s->raster->instances[i];
+        if (instance->mesh->curves.curve_count > 0) {
+            r3d_lens_t lens;
+            instance_lens(&picture, instance, &lens);
+            r3d_lens_set_depth_near(&lens, *s->buffers->depth_near);
+            r3d_curve_draw(&instance->mesh->curves, &lens, target);
+        }
+    }
+}
+
 static int
 cull_instance(const r3d_instance_t* instance, const r3d_lens_t* lens, uint16_t* out, raster_stats_t* stats,
               r3d_pipeline_work_t* work, r3d_depth_fit_t* fit) {
@@ -401,6 +423,9 @@ cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, r
             instance_lens(&picture, instance, &lens);
             culled[0] = (uint16_t)cull_instance(instance, &lens, culled + 1, stats, work->buffers.work[0],
                                                 depth_fit ? &fit : NULL);
+        }
+        if (instance->mesh->curves.curve_count > 0) {
+            fit.depth_near = view->lens.near_z;
         }
         culled += 1 + (size_t)instance->mesh->cluster_count;
     }
@@ -541,6 +566,20 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
             culled += 1 + (size_t)mesh->cluster_count;
         }
         draw_batch(raster, index, work);
+    }
+    bool curves = false;
+    for (int i = 0; i < raster->instance_count; i++) {
+        curves = curves || raster->instances[i].mesh->curves.curve_count > 0;
+    }
+    if (curves) {
+        const int mid = raster->height / 2;
+        work->mine = (slice_t){.raster = raster,
+                               .first = mid,
+                               .count = raster->height - mid,
+                               .buffers = &work->buffers,
+                               .target = &work->targets[1]};
+        work->other = (slice_t){.raster = raster, .count = mid, .buffers = &work->buffers, .target = &work->targets[0]};
+        job_run_steered(NULL, curve_slice, &work->mine, &work->other, sizeof work->mine);
     }
     if (resolves) {
         FRAME_COST_BEGIN(resolved_from);

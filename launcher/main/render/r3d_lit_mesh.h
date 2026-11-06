@@ -20,6 +20,7 @@
 #include "math/geometry/box3s.h"
 #include "math/geometry/spheref.h"
 #include "math/linear/mat4f.h"
+#include "render/curve/r3d_curve.h"
 
 typedef struct {
     uint16_t vertex_first, vertex_count;
@@ -54,6 +55,7 @@ typedef struct {
     int vertex_count, triangle_count, cluster_count, node_count;
     int position_scale;
     const uint16_t* face_colors; /* target-format RGB565, one per triangle, or NULL */
+    r3d_curve_set_t curves;
 } r3d_lit_mesh_t;
 
 /* The asset type of a lit mesh entry. */
@@ -85,10 +87,10 @@ r3d_lit_mesh_refit_nodes(r3d_lit_node_t* nodes, int node_count, const r3d_lit_cl
     }
 }
 
-/* A sphere holding every vertex, in model units: centred on the box of them
- * (the root node's bounds), its radius the furthest vertex from that centre. */
+/* A sphere holding the vertices and curve boxes in model units, centred on
+ * their union's box, reaching the furthest vertex or curve-box corner. */
 spheref_t r3d_lit_mesh_bounding_sphere(const r3d_lit_mesh_t* mesh);
 
-/* The box of the root node's bounds carried through `model` (NULL: as it is),
- * in world units: it holds every vertex where the instance sits. */
+/* The root node and curve bounds carried through `model` (NULL: as they are),
+ * in world units, holding the instance's complete geometry. */
 box3f_t r3d_lit_mesh_world_bounds(const r3d_lit_mesh_t* mesh, const mat4f_t* model);

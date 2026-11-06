@@ -58,7 +58,7 @@ make_quad(quad_t* q, uint8_t red, uint8_t green, uint8_t blue, int16_t cx) {
     q->triangles[1][2] = 3;
     q->cluster = (r3d_lit_cluster_t){0, 4, 0, 2, {{(int16_t)(cx - 1), -1, 0}, {(int16_t)(cx + 1), 1, 0}}, true};
     q->node = (r3d_lit_node_t){{{(int16_t)(cx - 1), -1, 0}, {(int16_t)(cx + 1), 1, 0}}, 0, 1, true};
-    q->mesh = (r3d_lit_mesh_t){q->positions, q->colors, q->triangles, &q->cluster, &q->node, 4, 2, 1, 1, 1, NULL};
+    q->mesh = (r3d_lit_mesh_t){q->positions, q->colors, q->triangles, &q->cluster, &q->node, 4, 2, 1, 1, 1, NULL, {0}};
 }
 
 static const fixture_camera_t CAMERA = {{0.0F, 0.0F, -10.0F}, {0.0F, 0.0F, 1.0F}, 1.0F, 1.0F};
