@@ -217,7 +217,9 @@ def pack_jobs(paths, development=True):
             add_entry(pack, key, source, maker)
     holder = {}
     for name, entries in packs.items():
-        for entry in entries.keys() - {render_asset.ENTRY}:  # every pack has its own render settings
+        for entry, source in entries.items():
+            if source.name.endswith(render_asset.SUFFIX):
+                continue  # every pack has its own render settings
             if entry in holder:
                 raise SettingsError(f"{entry!r} is named by packs {holder[entry]!r} and {name!r}: "
                                     "a shared asset needs a pack of its own, which is not built yet")
