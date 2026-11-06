@@ -110,13 +110,6 @@ writer(const raster_attachment_t* self, int instance, r3d_span_writer_t* out) {
     return true;
 }
 
-/* Whether the frame culled at all: render.cull, the raster's own switch. */
-static bool
-culling(void) {
-    const tune_entry_t* entry = tune_find(tune_shared(), TUNE_NAME(render, cull));
-    return entry == NULL || *entry->value != 0;
-}
-
 /* Without culling, every cluster the levels draw is kept; how many. */
 static int
 keep_drawn(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, uint16_t* kept, r3d_pipeline_counts_t* counts) {
@@ -141,7 +134,7 @@ keep_drawn(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, uint16_t* kep
 static void
 count_frame(raster_cull_t* s, const raster_t* raster) {
     const raster_buffers_t b = raster_carve(raster);
-    const bool culls = culling();
+    const bool culls = raster_settings(raster).cull; /* whether the frame culled at all */
     int offset = 0;
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];

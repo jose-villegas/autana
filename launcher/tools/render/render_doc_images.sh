@@ -408,6 +408,7 @@ run "$PYTHON" launcher/tools/render/cull_cost.py docs/render/data/cull-cost-boar
 run "$PYTHON" launcher/tools/render/depth_figures.py --scene launcher/demo/bistro/bistro.scene.toml \
     --object street_fitted_full --object ground --camera camera --at-ms "$DEPTH_FIT_AT_MS" \
     --out "$OUT/render/depth-fit-bistro.png" --work "$WORK/depth" > "$WORK/depth.log"
+# --orphans scans this runner: depth-fit-bistro-diff.png, depth-fit-bistro-diff.crops.png, depth-fit-bistro.gif
 
 # Each fitted scene's held-out error by source object part, from the rows
 # objects_report.py --held-out --docs keeps beside the page.
