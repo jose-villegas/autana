@@ -570,7 +570,7 @@ def mesh_recipe(job, scene, tools, poses=None, unavailable=None):
     settings, sources = import_recipe(job.settings, tools)
     renderer = {name: canonical(value) for name, value in vars(job.renderer).items() if name not in ("settings", "fit")}
     recipe = {"settings": settings, "renderer": renderer, "sources": sources}
-    if job.settings.meshes:
+    if job.settings.meshes or job.settings.curves:
         recipe["renderer_id"] = job.asset_name
     if job.bake is not None:
         recipe["scene"] = {"lights": canonical(scene.lights), "tonemap_white": scene.tonemap_white,

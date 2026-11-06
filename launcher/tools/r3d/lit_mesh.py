@@ -105,6 +105,13 @@ def bake_lit_mesh(positions, rgb, tris, double, position_scale=POSITION_SCALE, l
     the colours; otherwise face_colors is None. With neither input colour
     array, the mesh is colourless."""
     q = np.round(np.asarray(positions) * position_scale).astype(np.int64)
+    if not len(tris):
+        anchor = q[:1] if len(q) else np.zeros((1, 3), dtype=np.int64)
+        lo = hi = anchor[0]
+        return SimpleNamespace(pos=anchor, rgb=np.full((1, 3), 255), tris=np.empty((0, 3), dtype=np.int64),
+                               clusters=[(0, 1, 0, 0, lo, hi, False)],
+                               nodes=[dict(lo=lo, hi=hi, first=0, count=1, leaf=True)],
+                               position_scale=position_scale, face_colors=None)
     flat = face_rgb is not None
     col = None if flat or rgb is None else np.clip(np.rint(rgb), 0, 255).astype(np.int64)
     face = np.clip(np.rint(face_rgb), 0, 255).astype(np.int64) if flat else None
