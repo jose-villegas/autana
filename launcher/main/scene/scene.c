@@ -599,7 +599,8 @@ void
 scene_entity_set_local(scene_t* scene, scene_entity_t entity, transformf_t local) {
     assert(entity < scene->asset.entity_count);
     /* A parent scales evenly, so every world below it is an exact TRS; the
-     * loader and the importer keep content so. */
+     * loader and importer keep static content so, and the pack build keeps
+     * clip-driven scale so. */
     assert(scene->world_slots[entity] == SCENE_WORLD_SLOT_NONE || transformf_scale_is_even(&local));
     scene->locals[entity] = local;
     scene->flags[entity] |= SCENE_FLAG_CHANGED;

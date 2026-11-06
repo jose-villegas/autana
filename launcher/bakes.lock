@@ -301,36 +301,36 @@ host = "Linux x86_64"
 # and sampler code. bake.py lock writes them; bake.py check samples them again.
 
 [[poses]]
-key = "09a42b364a039c6102440afea0a394018e4b2bc3c4ff0dba14210a52819b0151"
-poses = "7f5a1e528b63cc2ebea4ea3c6795518dc30bb47befc15345be563a2d9a4ddd10"
-count = 1816
-clip = "launcher/demo/sponza/flythrough.anim.toml"
-host = "Windows AMD64"
-
-[[poses]]
-key = "33704893f9c375835850704d64e5b2e0e70ee5b861de86b377596faa2613ecd3"
-poses = "bc608ce3264275d892202b270ad05e255c7878431cbea66d907ba0e927ecf8da"
-count = 37
-clip = "launcher/demo/sponza/flythrough.anim.toml"
-host = "Windows AMD64"
-
-[[poses]]
-key = "7d3b2de8f1e81580ebf1538746bae9672e0cf754cf14712b653e00240c482df7"
+key = "034ebd28ad4f4316e9331b9527c826761b4f56b14ae6586cc301e8339035e3bc"
 poses = "9ead88ddf14f89d2451a12a9e69686f4eeb66075f3ed042f999511be8e6e0998"
 count = 265
 clip = "launcher/demo/bistro/street.anim.toml"
 host = "Windows AMD64"
 
 [[poses]]
-key = "a3ce66f1cf6352766761b75949fcc37570763a41b4d3399028e3649ec768d952"
+key = "402efba7409fd887f090f7eb16b25c45cc71571de8fd659761488a6a468331c7"
 poses = "d22bd63bb589a7fcbd9126cc96d9d65ee9bd7f2d66560aec6e9d6b938397755f"
 count = 6605
 clip = "launcher/demo/bistro/street.anim.toml"
 host = "Windows AMD64"
 
 [[poses]]
-key = "f566dd36d5d21d2c52a86992ff2adce6479e2500f032898610f31582ba6f4570"
+key = "551856e80552b10c0cf5a29e8c4be1e6d530826b45d1ff19c230b3124c109f85"
+poses = "7f5a1e528b63cc2ebea4ea3c6795518dc30bb47befc15345be563a2d9a4ddd10"
+count = 1816
+clip = "launcher/demo/sponza/flythrough.anim.toml"
+host = "Windows AMD64"
+
+[[poses]]
+key = "8f6d0e0604daee9ef7b200bcffbb07555a6789abccc2aed1a00341c4cba243a1"
 poses = "4e6038b04307b2374f3c90ae507e576d2cfd82d7508b742ba134ebfe01ceb18d"
 count = 133
 clip = "launcher/demo/bistro/street.anim.toml"
+host = "Windows AMD64"
+
+[[poses]]
+key = "b437a9ca6784e296c56bd768810250d50a016455129098a4786c4272252c1d72"
+poses = "bc608ce3264275d892202b270ad05e255c7878431cbea66d907ba0e927ecf8da"
+count = 37
+clip = "launcher/demo/sponza/flythrough.anim.toml"
 host = "Windows AMD64"
