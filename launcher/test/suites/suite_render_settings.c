@@ -168,19 +168,33 @@ test_a_reset_brings_back_the_callers_value_not_the_default(void) {
     TEST_ASSERT_EQUAL_INT(clusters_of(r, 0) + clusters_of(r, 1), draw(&c[0], r).clusters);
 }
 
+/* Whether every field of `s` is on but field `off`, which is off; SIZE_MAX for none. */
 static void
-test_each_knob_overrides_only_its_own_field(void) {
+assert_only_off(render_settings_t s, size_t off) {
+    const bool fields[] = {s.cull, s.depth_fit, s.batched};
+    for (size_t f = 0; f < sizeof fields / sizeof fields[0]; f++) {
+        TEST_ASSERT_EQUAL(f != off, fields[f]);
+    }
+}
+
+static void
+test_each_field_and_each_knob_reach_only_their_own_slot(void) {
     raster_rig_t* r = open_rig();
     static const char* const knobs[] = {TUNE_NAME(render, cull), TUNE_NAME(render, depth_fit),
                                         TUNE_NAME(render, batched)};
+    render_settings_t set;
+    bool* const fields[] = {&set.cull, &set.depth_fit, &set.batched};
+    _Static_assert(sizeof fields / sizeof fields[0] == sizeof knobs / sizeof knobs[0], "a field per knob");
+    r->raster.settings = &set;
     for (size_t k = 0; k < sizeof knobs / sizeof knobs[0]; k++) {
+        set = RENDER_SETTINGS_DEFAULT;
+        *fields[k] = false;
+        assert_only_off(raster_settings(&r->raster), k);
+        TEST_ASSERT_TRUE(tune_set(tune_shared(), knobs[k], 1));
+        assert_only_off(raster_settings(&r->raster), SIZE_MAX);
+        set = RENDER_SETTINGS_DEFAULT;
         TEST_ASSERT_TRUE(tune_set(tune_shared(), knobs[k], 0));
-        const render_settings_t s = raster_settings(&r->raster);
-        const bool fields[] = {s.cull, s.depth_fit, s.batched};
-        _Static_assert(sizeof fields / sizeof fields[0] == sizeof knobs / sizeof knobs[0], "a field per knob");
-        for (size_t f = 0; f < sizeof fields / sizeof fields[0]; f++) {
-            TEST_ASSERT_EQUAL(f != k, fields[f]);
-        }
+        assert_only_off(raster_settings(&r->raster), k);
         TEST_ASSERT_TRUE(tune_reset(tune_shared(), knobs[k]));
     }
 }
@@ -199,7 +213,7 @@ suite_render_settings(void) {
     RUN_TEST(test_the_call_and_the_knob_each_take_effect_the_next_frame);
     RUN_TEST(test_an_override_beats_the_callers_value_and_leaves_it_as_set);
     RUN_TEST(test_a_reset_brings_back_the_callers_value_not_the_default);
-    RUN_TEST(test_each_knob_overrides_only_its_own_field);
+    RUN_TEST(test_each_field_and_each_knob_reach_only_their_own_slot);
     RUN_TEST(test_a_release_build_carries_no_override);
 }
 
