@@ -1,14 +1,17 @@
 """LCRV radius-bearing polylines beside an object's LMSH, in its position ticks."""
 
+import pathlib
 import struct
 
 import numpy as np
 
-from asset.asset_pack import PackError
+from asset.asset_pack import NAME_BYTES, PackError
+from build.c_header import read_define
 from r3d.thin.curve_fit import Curve
 
+OWNER = pathlib.Path(__file__).resolve().parents[3] / "main/render/curve/r3d_curve.h"
 TYPE = b"LCRV"
-NAME_SUFFIX = ".curves"
+NAME_SUFFIX = read_define(OWNER, "R3D_CURVE_NAME_SUFFIX")
 HEADER = struct.Struct("<4H")
 CURVE = struct.Struct("<2H6h")
 KNOT = struct.Struct("<3h2H")
@@ -18,7 +21,10 @@ SRGB_MAX = (1 << 8) - 1
 
 
 def name_for_mesh(name):
-    return name + NAME_SUFFIX
+    result = name + NAME_SUFFIX
+    if len(result.encode("ascii")) >= NAME_BYTES:
+        raise PackError(f"mesh id {name!r} leaves no room for its curves")
+    return result
 
 
 def write_curves(curves, position_scale, tonemap_white=0.0):
