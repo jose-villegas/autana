@@ -105,16 +105,15 @@ def closest_point_on_triangles(q, a, b, c):
     return bary, np.linalg.norm(point - q, axis=1)
 
 
-# Centroids an upper bound is taken from, and queries searched in one go (a ball of candidates per query is held at once).
+# Centroids an upper bound is taken from; queries searched in one go, as every candidate pair is held at once.
 SEEDS = 4
 QUERY_CHUNK = 4096
 
 
 @dataclass(frozen=True)
 class TriangleSearch:
-    """Triangles `corners` (n, 3, 3): the tree of all their centroids, and in groups of one size (one huge triangle
-    would otherwise widen every query's ball to hold all the tiny triangles around it) each group's centroid tree,
-    triangles and largest distance from a centroid to its triangle's corner."""
+    """Triangles `corners` (n, 3, 3), their centroid tree, and groups of one size (so a huge triangle does not widen
+    every ball) as (centroid tree, triangles, distance from each centroid to its farthest corner)."""
     corners: np.ndarray
     tree: cKDTree
     groups: tuple
@@ -132,8 +131,7 @@ def triangle_search(corners):
 
 def nearest_triangles(points, search):
     """For each point, the nearest triangle of `search` (exact), the barycentrics of the nearest point on it and the
-    distance to it. A triangle within d of the point has its centroid within d plus its radius, so once any triangle
-    gives d, the centroids inside that reach are all the candidates."""
+    distance to it. A triangle within d has its centroid within d plus its radius: all the candidates once any gives d."""
     parts = [nearest_chunk(points[i:i + QUERY_CHUNK], search) for i in range(0, len(points), QUERY_CHUNK)]
     return tuple(np.concatenate(part) for part in zip(*parts)) if parts else nearest_chunk(points, search)
 
@@ -154,7 +152,6 @@ def nearest_chunk(points, search):
     for column in seeds.T:
         consider(np.arange(len(points)), column)
     for tree, owner, radius in search.groups:
-        # The farthest a candidate's centroid can be: the best distance so far plus the group's largest radius.
         balls = tree.query_ball_point(points, best + radius.max(), return_sorted=False)
         query = np.repeat(np.arange(len(points)), [len(ball) for ball in balls])
         found = np.concatenate([[], *balls]).astype(int)
