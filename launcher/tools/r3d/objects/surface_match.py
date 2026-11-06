@@ -48,6 +48,7 @@ class Surface:
     diagonal: float
     feature: np.ndarray
     samples: np.ndarray
+    vertices: np.ndarray
     tree: cKDTree
     owner: np.ndarray
     spacing: float
@@ -70,7 +71,9 @@ def surface(positions, triangles):
         12 * total)
     # Cyclic Jacobi rather than LAPACK, so every host picks the same axis signs and the same start frames tie.
     spread, axes = symmetric_eigen(moment)
-    diagonal = float(np.linalg.norm(np.ptp(corners.reshape(-1, 3), axis=0)))
+    vertices = np.unique(corners.reshape(-1, 3), axis=0)
+    # Bounds taken along the principal axes, so a turned copy measures the same.
+    diagonal = float(np.linalg.norm(np.ptp(place(vertices - centre, axes.T, 0.0), axis=0)))
     feature = np.log(np.concatenate([[total], np.sqrt(np.maximum(spread, 0)) + 1e-3 * diagonal]) + 1e-12)
     rng = np.random.default_rng(SEED)
     picked = rng.choice(len(areas), SURFACE_SAMPLES, p=areas / total)
@@ -87,7 +90,7 @@ def surface(positions, triangles):
                 u, v = i / m, j / m
                 points.append(corners[chosen, 0] * (1 - u - v) + corners[chosen, 1] * u + corners[chosen, 2] * v)
                 owner.append(chosen)
-    return Surface(corners, total, centre, axes, diagonal, feature, samples, cKDTree(np.concatenate(points)),
+    return Surface(corners, total, centre, axes, diagonal, feature, samples, vertices, cKDTree(np.concatenate(points)),
                    np.concatenate(owner), spacing)
 
 
@@ -152,10 +155,11 @@ def surface_fit(rep, other, tolerance, floor=0.0):
                 break
             previous = distance.max()
             linear, position, _ = rigid_fit(refine, closest, reflected)
-        forward = nearest(place(other.samples, linear, position), rep)[0].max()
+        # Samples cover the area; vertices add every feature too small to be sampled.
+        forward = nearest(place(np.vstack([other.samples, other.vertices]), linear, position), rep)[0].max()
         if forward > allowed:
             continue
-        backward = nearest(place(rep.samples - position, linear.T, 0.0), other)[0].max()
+        backward = nearest(place(np.vstack([rep.samples, rep.vertices]) - position, linear.T, 0.0), other)[0].max()
         if backward <= allowed:
             return linear, position, float(max(forward, backward))
     return None

@@ -414,18 +414,36 @@ class SurfaceMatchTests(unittest.TestCase):
                         for t in range(len(corners))], axis=0)
         np.testing.assert_allclose(nearest(queries, target)[0], brute, atol=1e-12)
 
+    def test_a_feature_too_small_to_sample_still_counts(self):
+        # A speck 0.7 units off the tetrahedron: too little area for a sample to land on, but its vertices are off.
+        speck = np.array([[1., 1., 1.], [1.0001, 1., 1.], [1., 1.0001, 1.]])
+        points, triangles = np.vstack([POINTS, speck]), np.vstack([TRIANGLES, [[4, 5, 6]]])
+        self.assertEqual(len(surface_shapes(('speck', points + [9, 0, 0], triangles))), 2)
+
+    def test_a_turned_flat_copy_meets_the_same_bucket(self):
+        # A flat shape's spreads are zero across it, so its size term decides the bucket; turned 45 degrees, an
+        # axis-aligned bounds diagonal would grow and part the copies.
+        plate = np.array([[0., 0., 0.], [3., 0., 0.], [3., 2., 0.], [0., 2., 0.]])
+        quads = np.array([[0, 1, 2], [0, 2, 3]])
+        fine_plate, fine_quads = subdivided(plate, quads)
+        turn = Rotation.from_rotvec([0., 0., np.pi / 4]).as_matrix()
+        shapes = merge(match_instances([SourceObject('plate', plate, quads, np.zeros(2, dtype=int)),
+                                        SourceObject('turned', fine_plate @ turn.T + [9, 0, 0], fine_quads,
+                                                     np.zeros(len(fine_quads), dtype=int))]))
+        self.assertEqual(len(shapes), 1)
+
     def test_materials_are_shading_not_shape(self):
         [shape] = surface_shapes(('painted', FINE_POINTS + [9, 0, 0], FINE_TRIANGLES,
                                   np.arange(len(FINE_TRIANGLES)) % 3 + 7))
         self.assertEqual(len(shape.instances), 2)
 
     def test_tolerance_boundary(self):
-        allowed = SURFACE_TOLERANCE * bounds_diagonal(POINTS)
+        allowed = SURFACE_TOLERANCE * surface(POINTS, TRIANGLES).diagonal
         self.assertEqual(len(surface_shapes(('near', lifted(0.5 * allowed), TRIANGLES))), 1)
         self.assertEqual(len(surface_shapes(('far', lifted(3 * allowed), TRIANGLES))), 2)
 
     def test_floor_loosens_up_to_its_cap(self):
-        diagonal = bounds_diagonal(POINTS)
+        diagonal = surface(POINTS, TRIANGLES).diagonal
         beyond_tolerance = ('lifted', lifted(3 * SURFACE_TOLERANCE * diagonal), TRIANGLES)
         self.assertEqual(len(surface_shapes(beyond_tolerance)), 2)
         self.assertEqual(len(surface_shapes(beyond_tolerance, floor=FLOOR_CAP * diagonal)), 1)
