@@ -128,7 +128,7 @@ launch, `shell_leave_app()` on leave (`shell/shell_apps.c`):
 | `gfx_request_full_redraw()` | `exit()` |
 | `display_restore_system_state()` | the app's `pack` released |
 | `app_arena_enter()` | the systems' `app_exit` phase: scenes unloaded |
-| `pack` mounted; the main render context's settings from it, or the default | `app_arena_exit()`: arena chunks freed, heap dropped |
+| `pack` mounted, then the systems' `app_enter` phase: render settings from it | `app_arena_exit()`: arena chunks freed, heap dropped |
 | `enter()` | `display_restore_system_state()` |
 | next pass: `invalidate()`, then the first `frame()` | `gfx_request_full_redraw()` |
 | | launcher drawn and presented the same pass |

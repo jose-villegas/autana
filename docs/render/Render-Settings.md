@@ -120,9 +120,9 @@ batched = false
 
 An app's `.pack.toml` names one with `render = "PATH"`, relative to itself
 ([Building-Packs.md](../assets/Building-Packs.md#packs)), and the pack holds it
-as entry `render`. The shell mounts the pack an app names in `app_t.pack` and,
-before `enter()`, sets the main context's settings from that entry, or to
-`RENDER_SETTINGS_DEFAULT` without one. So no app starts with the last app's
+as entry `render`. The shell mounts the pack an app names in `app_t.pack`, and
+before `enter()` its render system (`shell/render_system.c`) sets the main
+context's settings from that entry, or to `RENDER_SETTINGS_DEFAULT` without one. So no app starts with the last app's
 settings. Scenes never carry render settings.
 
 ```mermaid
@@ -134,7 +134,8 @@ flowchart LR
     Header -->|"pack without the entry"| Context
 ```
 
-The entry is a [TABL v1](../assets/formats/TABL.md) table, one value a row:
+The entry is a [TABL v1](../assets/formats/TABL.md) table with one row per
+`render_settings_t` field, named by it, one column and `frac` 0:
 
 ```mermaid
 ---
@@ -156,23 +157,23 @@ title Header, 8 bytes at 0, one cell a byte
 ---
 config:
   packet:
-    bitsPerRow: 13
-    bitWidth: 56
+    bitsPerRow: 26
+    bitWidth: 28
 ---
 packet-beta
-title A row, 26 bytes from byte 8, one per field
-0-23: "field name, NUL padded"
+title A row, 26 bytes from byte 8, one cell a byte
+0-23: "field name such as cull, NUL padded"
 24-25: "int16 value"
 ```
 
 | Part | At | Size |
 |---|---|---|
 | Header | 0 | 8 bytes |
-| Rows | `8 + i * 26` | 26 bytes a row, one per field in struct order: 86 bytes for three fields |
+| Rows | `8 + i * 26` | 26 bytes a row, one per field in struct order: `8 + 26 * fields` bytes in all |
 
 | Rule | Detail |
 |---|---|
 | Owners | `RENDER_SETTINGS_ENTRY` and the fields in `render_settings.h`; the table layout in `asset_table_format.h` |
-| Rows | exactly one per `render_settings_t` field, named by it; a `bool` is 0 or 1 |
+| Rows | exactly one per `render_settings_t` field, named by it; a `bool` is written as 0 or 1, and the reader takes any nonzero value as true |
 | Errors | `render_settings_read()`: `ASSET_ERR_NOT_FOUND` without the entry; `ASSET_ERR_FORMAT` for another row count, a missing field, more than one column or a nonzero `frac`; TABL's own errors. `out` is written only on `ASSET_OK` |
-| Failure at start | the shell logs it and starts the app with `RENDER_SETTINGS_DEFAULT` |
+| Failure at start | a pack without the entry starts the app with `RENDER_SETTINGS_DEFAULT`; any other read failure is logged and does the same |

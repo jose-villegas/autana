@@ -6,10 +6,11 @@ RENDER_SETTINGS_DEFAULT.
     python tools/render/settings/render_asset.py main/render/settings/render_settings_default.h
 
 The keys are render_settings_t's fields (launcher/main/render/settings/
-render_settings.h). default.render.toml beside it sets every one; another file
-lists only the values it changes, and the rest come from the default. An
-unknown key or a value of another type than its field is an error. Run as
-above, it writes the header that holds RENDER_SETTINGS_DEFAULT.
+render_settings.h). default.render.toml, in the same folder as that header,
+sets every one; another file lists only the values it changes, and the rest
+come from the default. An unknown key or a value of another type than its
+field is an error. Run as above, it writes the header that holds
+RENDER_SETTINGS_DEFAULT.
 """
 import pathlib
 import re

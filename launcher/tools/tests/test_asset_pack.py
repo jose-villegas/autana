@@ -294,6 +294,17 @@ class RenderSettingsPackTests(unittest.TestCase):
             self.assertEqual(kind, render_asset.TYPE)
             self.assertEqual(table_asset.decode(data), ({"cull": [0], "depth_fit": [1], "batched": [1]}, 0))
 
+    def test_each_app_pack_has_its_own_render_entry_whichever_root_selects_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            for app in ("one", "two"):
+                write(root / app / f"{app}.pack.toml", 'render = "../shared.render.toml"\n')
+                import_file(root / app, f"{app}.import.toml", app)
+            write(root / "shared.render.toml", "cull = false\n")
+            packs = build_pack.pack_files([root / "one" / "one.import.toml", root / "two"])
+            self.assertEqual({name: render_asset.ENTRY in entries for name, entries in packs.items()},
+                             {"one": True, "two": True})
+
     def test_a_render_key_must_name_a_render_file(self):
         for setting in ("render = 1", 'render = "missing.render.toml"', 'render = "app.pack.toml"'):
             with self.subTest(setting=setting), tempfile.TemporaryDirectory() as directory:

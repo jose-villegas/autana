@@ -191,10 +191,8 @@ def pack_jobs(paths, development=True):
         if path.name.endswith(CLIP) and path.resolve() not in placed:
             roots[path] = {tracks_asset.clip_id(path): path}
     for path in files:
-        if path.name.endswith(FOLDER_PACK):
-            render = folder_packs(path.resolve().parent)[path.resolve()][1]
-            if render is not None:
-                roots[path] = {render_asset.ENTRY: render}
+        if path.name.endswith(FOLDER_PACK) and folder_packs(path.parent)[path][1] is not None:
+            roots[path] = {}  # a pack of its render settings alone; added below
         elif path.name.endswith(IMAGE):
             roots[path] = {image_asset.image_id(path): path}
         elif path.name.endswith(SOUND):
@@ -214,11 +212,12 @@ def pack_jobs(paths, development=True):
         if owner.setdefault(name, maker) != maker:
             raise SettingsError(f"two roots make a pack named {name!r}: {owner[name]} and {maker}")
         pack = packs.setdefault(name, {})
-        for key, source in entries.items():
+        render = folder_packs(maker.parent)[maker][1] if maker.name.endswith(FOLDER_PACK) else None
+        for key, source in (entries | {render_asset.ENTRY: render} if render else entries).items():
             add_entry(pack, key, source, maker)
     holder = {}
     for name, entries in packs.items():
-        for entry in entries:
+        for entry in entries.keys() - {render_asset.ENTRY}:  # every pack has its own render settings
             if entry in holder:
                 raise SettingsError(f"{entry!r} is named by packs {holder[entry]!r} and {name!r}: "
                                     "a shared asset needs a pack of its own, which is not built yet")

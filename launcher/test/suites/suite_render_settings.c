@@ -1,12 +1,7 @@
 /*
  * Portable suite: render_settings_t, the choices a render context draws
- * with. The default draws as the raster did before it had settings; a
- * development override (TUNE_OVERRIDE) goes on top of the caller's value
- * without writing it, and its reset brings that value back. A pack's render
- * entry reads into the value only when it holds every field and no other.
- *
- * The scene is the rig's wall and a card behind the camera, so culling
- * shows in what a frame kept.
+ * with: its default, the development override on top of it, and a pack's
+ * render entry, read only when it holds every field and no other.
  */
 
 #include <stdint.h>
@@ -24,6 +19,7 @@
 #include "core/tune.h"
 #include "render/context/render_context.h"
 #include "render/settings/render_settings.h"
+#include "shell/shell_system.h"
 
 #define W           48
 #define H           32
@@ -35,6 +31,7 @@ static const int16_t behind_card[4][3] = {{-CARD_REACH, -CARD_REACH, CARD_BEHIND
                                           {CARD_REACH, -CARD_REACH, CARD_BEHIND},
                                           {CARD_REACH, CARD_REACH, CARD_BEHIND},
                                           {-CARD_REACH, CARD_REACH, CARD_BEHIND}};
+/* The rig's wall and the card behind the camera, so culling shows in what a frame kept. */
 static const int16_t (*const wall_and_behind[RASTER_RIG_QUADS])[3] = {raster_rig_wall, behind_card};
 
 static render_context_t* contexts;
@@ -206,12 +203,12 @@ enum { FIELDS = 3, ROW_BYTES = ASSET_TABLE_NAME_SIZE + sizeof(int16_t), PACK_BYT
 
 static const char* const field_names[FIELDS + 1] = {"cull", "depth_fit", "batched", "fog"};
 
-/* Reads a pack whose render entry has the first `rows` of field_names, row i
- * holding `values[i]`, with `frac` fractional bits; `out` starts all on. */
-static asset_status_t
-read_entry(int rows, const int16_t* values, int frac, render_settings_t* out) {
-    void* raw = NULL;
-    uint8_t* bytes = test_alloc_aligned(PACK_BYTES, ASSET_PACK_BASE_ALIGN, &raw);
+/* Opens into `opened` a pack whose render entry has the first `rows` of
+ * field_names, row i holding `values[i]`, with `frac` fractional bits; free
+ * `*raw` with test_free_aligned(). */
+static void
+open_entry(int rows, const int16_t* values, int frac, asset_pack_t* opened, void** raw) {
+    uint8_t* bytes = test_alloc_aligned(PACK_BYTES, ASSET_PACK_BASE_ALIGN, raw);
     TEST_ASSERT_NOT_NULL(bytes);
     test_pack_t pack = test_pack_begin(bytes, PACK_BYTES, 1);
     uint8_t* entry = test_pack_add(&pack, RENDER_SETTINGS_ENTRY, ASSET_TABLE_ASSET,
@@ -225,12 +222,17 @@ read_entry(int rows, const int16_t* values, int frac, render_settings_t* out) {
         memcpy(row, field_names[i], strlen(field_names[i]));
         test_pack_put16(row + ASSET_TABLE_NAME_SIZE, values[i]);
     }
+    TEST_ASSERT_EQUAL(ASSET_OK, asset_pack_open(opened, bytes, test_pack_finish(&pack)));
+}
+
+/* render_settings_read() of open_entry()'s pack; `out` starts all on. */
+static asset_status_t
+read_entry(int rows, const int16_t* values, int frac, render_settings_t* out) {
+    void* raw = NULL;
     asset_pack_t opened;
+    open_entry(rows, values, frac, &opened, &raw);
     *out = RENDER_SETTINGS_DEFAULT;
-    asset_status_t status = asset_pack_open(&opened, bytes, test_pack_finish(&pack));
-    if (status == ASSET_OK) {
-        status = render_settings_read(&opened, out);
-    }
+    const asset_status_t status = render_settings_read(&opened, out);
     test_free_aligned(raw);
     return status;
 }
@@ -272,6 +274,34 @@ test_a_pack_without_the_entry_reads_not_found(void) {
     TEST_ASSERT_EQUAL(ASSET_ERR_NOT_FOUND, status);
 }
 
+/* The shell's render system, as registered. */
+static const shell_system_t*
+render_system(void) {
+    shell_system_t* const real = shell_system_swap_for_test(NULL);
+    shell_system_swap_for_test(real);
+    const shell_system_t* system = real;
+    while (system != NULL && strcmp(system->name, "render") != 0) {
+        system = system->next;
+    }
+    TEST_ASSERT_NOT_NULL(system);
+    TEST_ASSERT_NOT_NULL(system->app_enter);
+    return system;
+}
+
+static void
+test_an_app_starts_with_its_packs_settings_and_without_one_the_default(void) {
+    static const int16_t values[FIELDS] = {0, 0, 0};
+    const render_settings_t off = {0};
+    void* raw = NULL;
+    asset_pack_t opened;
+    open_entry(FIELDS, values, 0, &opened, &raw);
+    render_system()->app_enter(&opened);
+    test_free_aligned(raw);
+    TEST_ASSERT_EQUAL_MEMORY(&off, render_context_settings(render_context_main()), sizeof off);
+    render_system()->app_enter(NULL);
+    TEST_ASSERT_EQUAL_MEMORY(&RENDER_SETTINGS_DEFAULT, render_context_settings(render_context_main()), sizeof off);
+}
+
 void
 suite_render_settings(void) {
     RUN_TEST(test_the_default_is_every_setting_on_as_the_raster_drew_before);
@@ -283,6 +313,7 @@ suite_render_settings(void) {
     RUN_TEST(test_a_packs_render_entry_reads_every_field);
     RUN_TEST(test_an_entry_missing_a_field_with_another_or_fixed_point_is_refused_unread);
     RUN_TEST(test_a_pack_without_the_entry_reads_not_found);
+    RUN_TEST(test_an_app_starts_with_its_packs_settings_and_without_one_the_default);
 }
 
 SUITE_REGISTER(suite_render_settings);
