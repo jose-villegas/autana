@@ -145,8 +145,10 @@ test_the_call_and_the_knob_each_take_effect_the_next_frame(void) {
     assert_same_frame(&c[0], &c[1]);
 }
 
+/* The override never writes the caller's value, so a reset brings that value
+ * back, not the default. */
 static void
-test_an_override_beats_the_callers_value_and_leaves_it_as_set(void) {
+test_an_override_beats_the_callers_value_until_a_reset_brings_it_back(void) {
     raster_rig_t* r = open_rig();
     render_context_t* c = open_contexts();
     const render_settings_t off = cull_off();
@@ -154,16 +156,6 @@ test_an_override_beats_the_callers_value_and_leaves_it_as_set(void) {
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, cull), 1));
     TEST_ASSERT_EQUAL_INT(clusters_of(r, 0), draw(&c[0], r).clusters);
     TEST_ASSERT_EQUAL_MEMORY(&off, render_context_settings(&c[0]), sizeof off);
-}
-
-static void
-test_a_reset_brings_back_the_callers_value_not_the_default(void) {
-    raster_rig_t* r = open_rig();
-    render_context_t* c = open_contexts();
-    const render_settings_t off = cull_off();
-    render_context_set_settings(&c[0], &off);
-    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, cull), 1));
-    TEST_ASSERT_EQUAL_INT(clusters_of(r, 0), draw(&c[0], r).clusters);
     TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, cull)));
     TEST_ASSERT_EQUAL_INT(clusters_of(r, 0) + clusters_of(r, 1), draw(&c[0], r).clusters);
 }
@@ -211,8 +203,7 @@ suite_render_settings(void) {
     RUN_TEST(test_the_default_is_every_setting_on_as_the_raster_drew_before);
     RUN_TEST(test_release_returns_the_settings_to_the_default);
     RUN_TEST(test_the_call_and_the_knob_each_take_effect_the_next_frame);
-    RUN_TEST(test_an_override_beats_the_callers_value_and_leaves_it_as_set);
-    RUN_TEST(test_a_reset_brings_back_the_callers_value_not_the_default);
+    RUN_TEST(test_an_override_beats_the_callers_value_until_a_reset_brings_it_back);
     RUN_TEST(test_each_field_and_each_knob_reach_only_their_own_slot);
     RUN_TEST(test_a_release_build_carries_no_override);
 }

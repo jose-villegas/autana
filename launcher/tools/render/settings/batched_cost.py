@@ -9,7 +9,6 @@ suite's frame_profile rows, each capture headed by a line
 A row and quarter is the mean of its captures' means and p95s. Every scene and
 quarter must appear under both settings, in the same number of runs.
 """
-import argparse
 import collections
 import pathlib
 import re
@@ -21,7 +20,7 @@ for folder in ("launcher/tools", "launcher/tools/render", "launcher/tools/perf")
     sys.path.insert(0, str(ROOT / folder))
 from doc_tables import markdown  # noqa: E402
 from frame_profile import PROFILE_RE  # noqa: E402
-from generated_blocks import replace_block  # noqa: E402
+from generated_blocks import block_main  # noqa: E402
 
 CAPTURE = ROOT / "docs/render/data/batched-board.log"
 PAGE = ROOT / "docs/render/Render-Settings.md"
@@ -63,17 +62,8 @@ def render(text):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--check", action="store_true")
-    args = parser.parse_args(argv)
-    try:
-        changed = replace_block(PAGE, BLOCK, render(CAPTURE.read_text(encoding="utf-8")), check=args.check,
-                                command=COMMAND)
-        if args.check and changed:
-            raise ValueError(f"{PAGE.name}#{BLOCK} is stale: run {COMMAND.replace(' --check', '')}")
-    except (OSError, ValueError) as error:
-        parser.exit(1, f"batched_cost: {error}\n")
-    return 0
+    return block_main(PAGE, BLOCK, COMMAND, lambda: render(CAPTURE.read_text(encoding="utf-8")),
+                      __doc__.split("\n\n")[0], argv)
 
 
 if __name__ == "__main__":

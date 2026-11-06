@@ -9,7 +9,6 @@ define states.
 A field without a define, a define without a field, or a tier not in TIERS is
 an error.
 """
-import argparse
 import pathlib
 import re
 import sys
@@ -17,7 +16,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
 from doc_tables import markdown  # noqa: E402
-from generated_blocks import replace_block  # noqa: E402
+from generated_blocks import block_main  # noqa: E402
 
 HEADER = ROOT / "launcher/main/render/settings/render_settings.h"
 PAGE = ROOT / "docs/render/Render-Settings.md"
@@ -54,17 +53,7 @@ def render(source):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--check", action="store_true")
-    args = parser.parse_args(argv)
-    try:
-        changed = replace_block(PAGE, BLOCK, render(HEADER.read_text(encoding="utf-8")), check=args.check,
-                                command=COMMAND)
-        if args.check and changed:
-            raise ValueError(f"{PAGE.name}#{BLOCK} is stale: run {COMMAND.replace(' --check', '')}")
-    except (OSError, ValueError) as error:
-        parser.exit(1, f"settings_table: {error}\n")
-    return 0
+    return block_main(PAGE, BLOCK, COMMAND, lambda: render(HEADER.read_text(encoding="utf-8")), __doc__, argv)
 
 
 if __name__ == "__main__":
