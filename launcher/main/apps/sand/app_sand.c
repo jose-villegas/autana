@@ -1745,6 +1745,7 @@ sand_invalidate(void) {
 app_t app_sand = {
     .name = "Falling Sand",
     .summary = "Tilt to steer, touch to pour",
+    .pack = SAND_PACK,
     .enter = sand_enter,
     .frame = sand_frame,
     .update = sand_update,

@@ -165,6 +165,7 @@ $MAIN_DIR/selftest/post_layout.c
 $MAIN_DIR/core/pending.c
 $MAIN_DIR/shell/asset_system.c
 $MAIN_DIR/shell/pending_system.c
+$MAIN_DIR/shell/render_system.c
 $MAIN_DIR/core/memory.c
 $MAIN_DIR/services/settings_policy.c
 $MAIN_DIR/sound/sound.c
