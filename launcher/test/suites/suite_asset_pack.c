@@ -101,6 +101,39 @@ release(fixture_t* f) {
 }
 
 static void
+test_mesh_open_finds_curve_sibling(void) {
+    for (int empty = 0; empty <= 1; empty++) {
+        fixture_t f = fixture();
+        const uint32_t curve_bytes =
+            R3D_CURVE_HEADER_WORDS * sizeof(uint16_t) + sizeof(r3d_curve_t) + 2 * sizeof(r3d_curve_knot_t);
+        if (empty) {
+            test_pack_put32(f.entry + sizeof(uint32_t), 0);
+            test_pack_put32(f.entry + 7 * sizeof(uint32_t), 0);
+            test_pack_put16(f.entry + CLUSTERS_AT + 3 * sizeof(uint16_t), 0);
+        }
+        test_pack_t built = test_pack_begin(f.pack, BUFFER_BYTES, 2);
+        memcpy(test_pack_add(&built, "tri", R3D_LIT_MESH_ASSET, f.entry_size), f.entry, f.entry_size);
+        uint8_t* data = test_pack_add(&built, "tri" R3D_CURVE_NAME_SUFFIX, R3D_CURVE_ASSET, curve_bytes);
+        test_pack_put16(data, 1);
+        test_pack_put16(data + sizeof(uint16_t), 2);
+        r3d_curve_t row = {.count = 2, .lo = {-1, -1, -1}, .hi = {11, 1, 1}};
+        r3d_curve_knot_t knots[] = {{0, 0, 0, 1, 0}, {10, 0, 0, 1, 0}};
+        memcpy(data + R3D_CURVE_HEADER_WORDS * sizeof(uint16_t), &row, sizeof row);
+        memcpy(data + R3D_CURVE_HEADER_WORDS * sizeof(uint16_t) + sizeof row, knots, sizeof knots);
+        f.total = test_pack_finish(&built);
+        asset_pack_t pack;
+        r3d_lit_mesh_t mesh;
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&pack, f.pack, f.total));
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(&pack, "tri", &mesh));
+        TEST_ASSERT_EQUAL_INT(1, mesh.curves.curve_count);
+        TEST_ASSERT_EQUAL_UINT16(2, mesh.curves.curves[0].count);
+        TEST_ASSERT_EQUAL_INT16(10, mesh.curves.knots[1].x);
+        TEST_ASSERT_EQUAL_PTR(data + R3D_CURVE_HEADER_WORDS * sizeof(uint16_t), mesh.curves.curves);
+        release(&f);
+    }
+}
+
+static void
 test_a_built_pack_opens_and_its_mesh_is_a_view_into_it(void) {
     fixture_t f = fixture();
     asset_pack_t pack;
@@ -108,6 +141,9 @@ test_a_built_pack_opens_and_its_mesh_is_a_view_into_it(void) {
     TEST_ASSERT_EQUAL_UINT32(1, pack.count);
     r3d_lit_mesh_t mesh;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(&pack, "tri", &mesh));
+    TEST_ASSERT_EQUAL_INT(0, mesh.curves.curve_count);
+    TEST_ASSERT_NULL(mesh.curves.curves);
+    TEST_ASSERT_NULL(mesh.curves.knots);
     TEST_ASSERT_EQUAL_INT(3, mesh.vertex_count);
     TEST_ASSERT_EQUAL_INT(8, mesh.position_scale);
     TEST_ASSERT_EQUAL_INT16(20, mesh.positions[2][0]);
@@ -455,6 +491,7 @@ test_entry_validation_spans_budgeted_passes(void) {
 void
 suite_asset_pack(void) {
     RUN_TEST(test_entry_validation_spans_budgeted_passes);
+    RUN_TEST(test_mesh_open_finds_curve_sibling);
     RUN_TEST(test_a_built_pack_opens_and_its_mesh_is_a_view_into_it);
     RUN_TEST(test_a_pack_larger_than_its_content_opens);
     RUN_TEST(test_one_changed_byte_fails_the_checksum);

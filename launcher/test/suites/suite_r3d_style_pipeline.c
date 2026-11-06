@@ -3,6 +3,7 @@
 #define r3d_span_small_fill_default  constant_default
 #define r3d_span_triangle            constant_r3d_span_triangle
 #define r3d_span_triangle_solid      constant_r3d_span_triangle_solid
+#define r3d_span_triangle_cover      constant_r3d_span_triangle_cover
 #define r3d_span_triangle_write      constant_r3d_span_triangle_write
 #define r3d_span_capped_triangle     constant_r3d_span_capped_triangle
 #define r3d_span_hidden              constant_r3d_span_hidden

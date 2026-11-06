@@ -43,6 +43,9 @@ word(const uint8_t* data, int index) {
  * do not fit the entry, or sit off a 4-byte boundary the structs need. */
 static const void*
 array_at(const asset_view_t* asset, uint32_t offset, uint32_t count, uint32_t bytes) {
+    if (offset == 0 && count == 0) {
+        return asset->data + HEADER_WORDS * sizeof(uint32_t);
+    }
     if (offset % 4U != 0 || offset < HEADER_WORDS * 4U) {
         return NULL;
     }
@@ -149,6 +152,61 @@ r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
     return ASSET_OK;
 }
 
+static asset_status_t
+open_curves(const asset_pack_t* pack, const char* id, r3d_curve_set_t* curves) {
+    char name[ASSET_NAME_MAX];
+    const size_t length = strlen(id);
+    if (length + sizeof R3D_CURVE_NAME_SUFFIX > sizeof name) {
+        return ASSET_OK;
+    }
+    memcpy(name, id, length);
+    memcpy(name + length, R3D_CURVE_NAME_SUFFIX, sizeof R3D_CURVE_NAME_SUFFIX);
+    asset_view_t asset;
+    asset_status_t status = asset_pack_find(pack, name, R3D_CURVE_ASSET, &asset);
+    if (status == ASSET_ERR_NOT_FOUND) {
+        return ASSET_OK;
+    }
+    if (status != ASSET_OK) {
+        return status;
+    }
+    const size_t header = R3D_CURVE_HEADER_WORDS * sizeof(uint16_t);
+    if (asset.size < header || asset_read_u16(asset.data + 2 * sizeof(uint16_t)) != 0
+        || asset_read_u16(asset.data + 3 * sizeof(uint16_t)) != 0) {
+        return ASSET_ERR_FORMAT;
+    }
+    const unsigned count = asset_read_u16(asset.data);
+    const unsigned knots = asset_read_u16(asset.data + sizeof(uint16_t));
+    const size_t at = header + count * sizeof(r3d_curve_t);
+    if (at + knots * sizeof(r3d_curve_knot_t) != asset.size) {
+        return ASSET_ERR_BOUNDS;
+    }
+    const r3d_curve_set_t built = {(const r3d_curve_t*)(asset.data + header),
+                                   (const r3d_curve_knot_t*)(asset.data + at), (int)count};
+    unsigned end = 0;
+    for (unsigned i = 0; i < count; i++) {
+        const r3d_curve_t* row = &built.curves[i];
+        if (row->first != end || row->count < 2 || (unsigned)row->first + row->count > knots) {
+            return ASSET_ERR_BOUNDS;
+        }
+        end = (unsigned)row->first + row->count;
+        for (unsigned k = row->first; k < end; k++) {
+            const r3d_curve_knot_t* knot = &built.knots[k];
+            const int16_t position[3] = {knot->x, knot->y, knot->z};
+            for (int axis = 0; axis < 3; axis++) {
+                if ((int)position[axis] - knot->radius < row->lo[axis]
+                    || (int)position[axis] + knot->radius > row->hi[axis]) {
+                    return ASSET_ERR_BOUNDS;
+                }
+            }
+        }
+    }
+    if (end != knots) {
+        return ASSET_ERR_BOUNDS;
+    }
+    *curves = built;
+    return ASSET_OK;
+}
+
 asset_status_t
 r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh) {
     asset_view_t asset;
@@ -157,7 +215,14 @@ r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh
         *mesh = (r3d_lit_mesh_t){0};
         return status;
     }
-    return r3d_lit_mesh_from_asset(&asset, mesh);
+    asset_status_t opened = r3d_lit_mesh_from_asset(&asset, mesh);
+    if (opened == ASSET_OK) {
+        opened = open_curves(pack, id, &mesh->curves);
+    }
+    if (opened != ASSET_OK) {
+        *mesh = (r3d_lit_mesh_t){0};
+    }
+    return opened;
 }
 
 static asset_status_t
@@ -210,22 +275,42 @@ r3d_lit_mesh_open_colours(const asset_pack_t* pack, const char* mesh_id, uint16_
     return ASSET_OK;
 }
 
+static box3f_t
+mesh_bounds(const r3d_lit_mesh_t* mesh) {
+    box3f_t box = box3f_from_box3s(mesh->nodes[0].bounds, 1.0F);
+    for (int i = 0; i < mesh->curves.curve_count; i++) {
+        const r3d_curve_t* curve = &mesh->curves.curves[i];
+        box = box3f_extend(box, (vec3f_t){curve->lo[0], curve->lo[1], curve->lo[2]});
+        box = box3f_extend(box, (vec3f_t){curve->hi[0], curve->hi[1], curve->hi[2]});
+    }
+    const float units = 1.0F / (float)mesh->position_scale;
+    return (box3f_t){vec3f_scale(box.lo, units), vec3f_scale(box.hi, units)};
+}
+
 spheref_t
 r3d_lit_mesh_bounding_sphere(const r3d_lit_mesh_t* mesh) {
     const float units = 1.0F / (float)mesh->position_scale;
-    const vec3f_t mid = box3f_centre(box3f_from_box3s(mesh->nodes[0].bounds, units));
+    const vec3f_t mid = box3f_centre(mesh_bounds(mesh));
     float furthest = 0.0F;
     for (int i = 0; i < mesh->vertex_count; i++) {
         const vec3f_t p = vec3f_from_vec3s(vec3s_from_array(mesh->positions[i]), units);
         const vec3f_t d = vec3f_sub(p, mid);
         furthest = fmaxf(furthest, vec3f_dot(d, d));
     }
+    for (int i = 0; i < mesh->curves.curve_count; i++) {
+        const r3d_curve_t* curve = &mesh->curves.curves[i];
+        const box3s_t box = {vec3s_from_array(curve->lo), vec3s_from_array(curve->hi)};
+        for (int k = 0; k < BOX3_CORNERS; k++) {
+            const vec3f_t d = vec3f_sub(vec3f_from_vec3s(box3s_corner(box, k), units), mid);
+            furthest = fmaxf(furthest, vec3f_dot(d, d));
+        }
+    }
     return (spheref_t){mid, sqrtf(furthest)};
 }
 
 box3f_t
 r3d_lit_mesh_world_bounds(const r3d_lit_mesh_t* mesh, const mat4f_t* model) {
-    const box3f_t box = box3f_from_box3s(mesh->nodes[0].bounds, 1.0F / (float)mesh->position_scale);
+    const box3f_t box = mesh_bounds(mesh);
     if (model == NULL) {
         return box;
     }
