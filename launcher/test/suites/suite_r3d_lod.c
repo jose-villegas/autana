@@ -223,10 +223,13 @@ levels_drawn(const r3d_lit_mesh_t* mesh, int f, const uint32_t* coarse) {
     return drawn;
 }
 
-/* The path shows every group both coarse and fine. */
+/* One pose's check on the groups picked there. */
+typedef void (*pose_check_t)(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint32_t* coarse);
+
+/* Picks the groups at every pose along the path, there and back, runs the
+ * check on each, and asserts the path shows every group both coarse and fine. */
 static void
-test_a_coarse_group_keeps_every_group_simplified_into_it_coarse(void) {
-    const r3d_lit_mesh_t* mesh = levelled_mesh();
+pick_along_the_path(const r3d_lit_mesh_t* mesh, pose_check_t check) {
     uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
     const int steps = steps_in();
     const int poses = 2 * steps;
@@ -234,18 +237,29 @@ test_a_coarse_group_keeps_every_group_simplified_into_it_coarse(void) {
     for (int p = 0; p < poses; p++) {
         const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
         r3d_lod_pick(mesh, &lens, TOLERANCE, COVERAGE_MAX, coarse);
+        check(mesh, &lens, coarse);
         ever_coarse |= coarse[0];
         ever_fine |= ~coarse[0];
-        for (int c = 0; c < CLUSTERS; c++) {
-            const r3d_lit_cluster_lod_t lod = mesh->cluster_lod[c];
-            if (lod.own != R3D_LOD_NONE && lod.parent != R3D_LOD_NONE && r3d_lod_coarse(coarse, lod.parent)) {
-                TEST_ASSERT_TRUE(r3d_lod_coarse(coarse, lod.own));
-            }
-        }
     }
     const uint32_t every = (1U << GROUPS) - 1U;
     TEST_ASSERT_EQUAL_HEX32(every, ever_coarse & every);
     TEST_ASSERT_EQUAL_HEX32(every, ever_fine & every);
+}
+
+static void
+parents_coarse_keep_children_coarse(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint32_t* coarse) {
+    (void)lens;
+    for (int c = 0; c < CLUSTERS; c++) {
+        const r3d_lit_cluster_lod_t lod = mesh->cluster_lod[c];
+        if (lod.own != R3D_LOD_NONE && lod.parent != R3D_LOD_NONE && r3d_lod_coarse(coarse, lod.parent)) {
+            TEST_ASSERT_TRUE(r3d_lod_coarse(coarse, lod.own));
+        }
+    }
+}
+
+static void
+test_a_coarse_group_keeps_every_group_simplified_into_it_coarse(void) {
+    pick_along_the_path(levelled_mesh(), parents_coarse_keep_children_coarse);
 }
 
 /* With every box on screen, the walk keeps exactly the drawn clusters. */
@@ -362,28 +376,20 @@ assert_parents_project_larger(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens
  * COVERAGE_MAX, every group is seen both ways, and the closing pass
  * never forces a capped group coarse, its parent covering at least as much. */
 static void
+coarse_exactly_while_small(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint32_t* coarse) {
+    for (int g = 0; g < GROUPS; g++) {
+        const bool small = r3d_lod_group_coverage(mesh, lens, g) <= COVERAGE_MAX;
+        TEST_ASSERT_EQUAL(small, r3d_lod_coarse(coarse, (uint16_t)g));
+    }
+}
+
+static void
 test_a_group_covering_more_than_the_cap_stays_fine_whatever_its_error(void) {
     const r3d_lit_mesh_t* mesh = levelled_mesh();
     for (int g = 0; g < GROUPS; g++) {
         levelled->groups[g].error = 0;
     }
-    uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
-    const int steps = steps_in();
-    const int poses = 2 * steps;
-    uint32_t ever_coarse = 0, ever_fine = 0;
-    for (int p = 0; p < poses; p++) {
-        const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
-        r3d_lod_pick(mesh, &lens, TOLERANCE, COVERAGE_MAX, coarse);
-        for (int g = 0; g < GROUPS; g++) {
-            const bool small = r3d_lod_group_coverage(mesh, &lens, g) <= COVERAGE_MAX;
-            TEST_ASSERT_EQUAL(small, r3d_lod_coarse(coarse, (uint16_t)g));
-        }
-        ever_coarse |= coarse[0];
-        ever_fine |= ~coarse[0];
-    }
-    const uint32_t every = (1U << GROUPS) - 1U;
-    TEST_ASSERT_EQUAL_HEX32(every, ever_coarse & every);
-    TEST_ASSERT_EQUAL_HEX32(every, ever_fine & every);
+    pick_along_the_path(mesh, coarse_exactly_while_small);
 }
 
 static void
