@@ -58,7 +58,7 @@ title Knot row, 10 bytes, one cell a byte
 | Rule | Detail |
 |---|---|
 | Owners | `r3d/thin/curve_asset.py`; `render/curve/r3d_curve.h` and `r3d_lit_mesh.c` |
-| Sibling | Entry type `LCRV`, named LMSH id plus `.curves`; optional |
+| Sibling | Entry type `LCRV`, named LMSH id plus `.crv`; optional |
 | Byte order | Little-endian integers; colour stores panel byte-swapped RGB565 |
 | Position | Signed ticks; model position is stored position divided by LMSH `position_scale` |
 | Radius | Unsigned ticks at the same scale; nonnegative |
