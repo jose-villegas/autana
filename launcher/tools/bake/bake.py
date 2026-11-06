@@ -627,7 +627,7 @@ def stage_keys(job, scene, tools, starts=None, poses=None):
             ["fit", reference, start_sha256, fit_recipe(job.renderer.fit), tools["fit"]])
         fit_sha256 = None if starts is None or fit is None else starts.get(fit)
         levels = None if fit_sha256 is None else digest(
-            ["levels", fit_sha256, (job.settings.lod, job.settings.meshlet_triangles), tools["levels"]])
+            ["levels", fit_sha256, start_sha256, (job.settings.lod, job.settings.meshlet_triangles), tools["levels"]])
         keys = {"start": start, "start_sha256": start_sha256, "reference": reference, "fit": fit,
                 "fit_sha256": fit_sha256, "levels": levels}
     if unavailable:

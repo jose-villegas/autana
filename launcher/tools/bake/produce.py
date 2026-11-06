@@ -261,8 +261,10 @@ def produce(bake, cache, lock=None, blender=None, fresh_references=None):
         from r3d.lod.levels_stage import levels
         with tempfile.TemporaryDirectory() as work:
             target = pathlib.Path(work) / bake.output
-            target.write_bytes(levels(start_file(bake, cache, lock or {}).read_bytes(), bake.job.asset_name,
-                                      bake.job.settings.lod, bake.job.settings.meshlet_triangles))
+            fit = start_file(bake, cache, lock or {})
+            start = start_file(bake.start, cache, lock or {})
+            target.write_bytes(levels(fit.read_bytes(), bake.job.asset_name, bake.job.settings.lod,
+                                      bake.job.settings.meshlet_triangles, start=start.read_bytes()))
             return record(bake, target, cache)
     check_environment(("mesh", "reference", "fit") if bake.kind == "fit" else ("mesh",))
     if bake.kind == "fit":

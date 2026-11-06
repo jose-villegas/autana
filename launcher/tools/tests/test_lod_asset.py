@@ -109,6 +109,14 @@ class LodAssetTests(unittest.TestCase):
             self.assertEqual(final_copies, copies)
             self.assertEqual([row for row in fitted if row[0] != job.asset_name],
                              [row for row in final if row[0] not in (job.asset_name, lod_asset.name_for_mesh(job.asset_name))])
+            # A fit that kept none of its start's copies levels into the bundle a fit that kept them gives: the
+            # copies come from the start.
+            seeded = mesh_bundle.encode([row for row in fitted if row[0] == job.asset_name], [])
+            kept = levels(target.read_bytes(), job.asset_name, True, job.settings.meshlet_triangles,
+                          start=start.read_bytes())
+            self.assertEqual(levels(seeded, job.asset_name, True, job.settings.meshlet_triangles,
+                                    start=start.read_bytes()), kept)
+            self.assertEqual(kept, levels(target.read_bytes(), job.asset_name, True, job.settings.meshlet_triangles))
 
     def test_bundle_entry_id_is_part_of_the_mesh_key(self):
         import copy
