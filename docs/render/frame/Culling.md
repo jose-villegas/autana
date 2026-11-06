@@ -71,9 +71,9 @@ drop. Those then build no lens and read no tree. Kept clusters and pixels are
 the same either way.
 
 An instance that kept no cluster gets no slot in the draw's batch; its
-attachment writers still see it. `render.cull` (a development tunable,
-default 1) set to 0 keeps every cluster and skips the world box; the
-meshlet-size table in [Baked-Mesh.md](../offline/Baked-Mesh.md#meshlets)
+attachment writers still see it. `cull` off in the context's settings
+(`render_context_set_settings()`), or the development override `render.cull`
+set to 0, keeps every cluster and skips the world box; the meshlet-size table in [Baked-Mesh.md](../offline/Baked-Mesh.md#meshlets)
 measures both.
 
 ## Per triangle

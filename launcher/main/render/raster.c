@@ -13,13 +13,28 @@
 #include "render/upscale.h"
 
 TUNE_OWNER(render);
+/* Overrides of the raster's settings: 0 or 1 replaces its value, and this,
+ * the start, leaves it. */
+#define RASTER_OVERRIDE_NONE -1
 /* The generated meshlet-size table measures both culling settings. */
-TUNE(render, cull, 1, 0, 1);
+TUNE(render, cull, RASTER_OVERRIDE_NONE, RASTER_OVERRIDE_NONE, 1);
 /* 0 encodes depth with the clip plane's near_z: the depth-precision figures
  * render both. */
-TUNE(render, depth_fit, 1, 0, 1);
+TUNE(render, depth_fit, RASTER_OVERRIDE_NONE, RASTER_OVERRIDE_NONE, 1);
 /* Off draws one instance a batch, the per-instance draw batching replaced. */
-TUNE(render, batched, 1, 0, 1);
+TUNE(render, batched, RASTER_OVERRIDE_NONE, RASTER_OVERRIDE_NONE, 1);
+
+static bool
+overridden(int32_t override, bool value) {
+    return override == RASTER_OVERRIDE_NONE ? value : override != 0;
+}
+
+render_settings_t
+raster_settings(const raster_t* raster) {
+    const render_settings_t s = raster->settings != NULL ? *raster->settings : RENDER_SETTINGS_DEFAULT;
+    return (render_settings_t){overridden(cull, s.cull), overridden(depth_fit, s.depth_fit),
+                               overridden(batched, s.batched)};
+}
 
 /* One instance of a batch: its lens, the clusters culling kept, where its
  * vertices and cluster rows start in the shared buffers, and its writers. */
@@ -35,7 +50,7 @@ typedef struct {
 
 int
 raster_batch_end(const raster_t* raster, int first) {
-    const int most = batched ? RASTER_BATCH_INSTANCES : 1;
+    const int most = raster_settings(raster).batched ? RASTER_BATCH_INSTANCES : 1;
     const int vertex_capacity = raster_vertex_capacity(raster);
     const int cluster_capacity = raster_cluster_capacity(raster);
     int vertices = 0;
@@ -333,11 +348,11 @@ instance_lens(picture_lens_t* picture, const r3d_instance_t* instance, r3d_lens_
 }
 
 static int
-cull_instance(const r3d_instance_t* instance, const r3d_lens_t* lens, uint16_t* out, raster_stats_t* stats,
+cull_instance(const r3d_instance_t* instance, bool culls, const r3d_lens_t* lens, uint16_t* out, raster_stats_t* stats,
               r3d_pipeline_work_t* work, r3d_depth_fit_t* fit) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
     int visible;
-    if (cull) {
+    if (culls) {
         visible = r3d_pipeline_cull(mesh, lens, out, work, fit);
     } else {
         visible = mesh->cluster_count;
@@ -385,6 +400,7 @@ static __attribute__((noinline)) float
 cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, raster_stats_t* stats,
                draw_work_t* work) {
     uint16_t* culled = work->buffers.culled;
+    const render_settings_t settings = raster_settings(raster);
     r3d_depth_fit_t fit = {view->lens.near_z, INFINITY};
     picture_lens_t picture;
     picture_lens_init(&picture, raster, view, fitted);
@@ -394,13 +410,14 @@ cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, r
     const float eye_reach = mathf_max(mathf_abs(eye.x), mathf_max(mathf_abs(eye.y), mathf_abs(eye.z)));
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];
-        if (cull && instance->world_bounds != NULL && world_bounds_outside(*instance->world_bounds, world, eye_reach)) {
+        if (settings.cull && instance->world_bounds != NULL
+            && world_bounds_outside(*instance->world_bounds, world, eye_reach)) {
             culled[0] = 0;
         } else {
             r3d_lens_t lens;
             instance_lens(&picture, instance, &lens);
-            culled[0] = (uint16_t)cull_instance(instance, &lens, culled + 1, stats, work->buffers.work[0],
-                                                depth_fit ? &fit : NULL);
+            culled[0] = (uint16_t)cull_instance(instance, settings.cull, &lens, culled + 1, stats,
+                                                work->buffers.work[0], settings.depth_fit ? &fit : NULL);
         }
         culled += 1 + (size_t)instance->mesh->cluster_count;
     }
