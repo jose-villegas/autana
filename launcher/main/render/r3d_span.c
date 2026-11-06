@@ -994,7 +994,9 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
     triangle_of(target, a, b, c, face, false);
 }
 
-/* An inlined copy would land in its flash wrapper. */
+/* The fill of a view that skips hidden clusters, its depth capped. Noinline:
+ * an inlined copy would land in its flash wrapper r3d_span_capped_triangle,
+ * outside IRAM. */
 static RENDER_SKIP_ATTR __attribute__((noinline)) void
 r3d_span_capped_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                               const r3d_span_vertex_t* c, const uint16_t* face) {
