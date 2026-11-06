@@ -1,8 +1,8 @@
 /*
  * Portable suite: render_settings_t, the choices a render context draws
- * with. The default draws as the raster did before it had settings, and a
- * development knob that changes writes its field as the call does, at the
- * next frame, so the last write holds.
+ * with. The default draws as the raster did before it had settings; a
+ * development override (TUNE_OVERRIDE) goes on top of the caller's value
+ * without writing it, and its reset brings that value back.
  *
  * The scene is the rig's wall and a card behind the camera, so culling
  * shows in what a frame kept.
@@ -96,14 +96,24 @@ assert_same_frame(const render_context_t* a, const render_context_t* b) {
     TEST_ASSERT_EQUAL_MEMORY(raster_depth(&a->raster), raster_depth(&b->raster), pixels * sizeof(uint16_t));
 }
 
+/* What TUNE_OVERRIDE(owner, what, 1) is in a release build. */
+TUNE_CONSTANT(released, knob, TUNE_UNSET, TUNE_UNSET, 1);
+
+static render_settings_t
+cull_off(void) {
+    render_settings_t off = RENDER_SETTINGS_DEFAULT;
+    off.cull = false;
+    return off;
+}
+
 static void
 test_the_default_is_every_setting_on_as_the_raster_drew_before(void) {
     raster_rig_t* r = open_rig();
     /* Before settings, the raster always culled, fitted depth and batched. */
     const render_settings_t on = {.cull = true, .depth_fit = true, .batched = true};
     TEST_ASSERT_EQUAL_MEMORY(&on, &RENDER_SETTINGS_DEFAULT, sizeof on);
-    const render_settings_t knobs = raster_tuned();
-    TEST_ASSERT_EQUAL_MEMORY(&on, &knobs, sizeof on);
+    const render_settings_t bare = raster_settings(&r->raster);
+    TEST_ASSERT_EQUAL_MEMORY(&on, &bare, sizeof on);
     render_context_t* c = open_contexts();
     TEST_ASSERT_EQUAL_MEMORY(&on, render_context_settings(&c[0]), sizeof on);
     /* Culled: the card behind the camera keeps nothing. */
@@ -113,70 +123,84 @@ test_the_default_is_every_setting_on_as_the_raster_drew_before(void) {
 static void
 test_release_returns_the_settings_to_the_default(void) {
     render_context_t* c = open_contexts();
-    render_context_set_settings(&c[0], &(render_settings_t){.cull = false});
+    const render_settings_t off = cull_off();
+    render_context_set_settings(&c[0], &off);
     render_context_release(&c[0]);
     TEST_ASSERT_EQUAL_MEMORY(&RENDER_SETTINGS_DEFAULT, render_context_settings(&c[0]), sizeof(render_settings_t));
 }
 
 static void
-test_cull_off_through_the_call_and_through_the_knob_reach_the_same_field(void) {
+test_the_call_and_the_knob_each_take_effect_the_next_frame(void) {
     raster_rig_t* r = open_rig();
     render_context_t* c = open_contexts();
-    render_settings_t off = RENDER_SETTINGS_DEFAULT;
-    off.cull = false;
+    const int kept = clusters_of(r, 0) + clusters_of(r, 1);
+    for (int i = 0; i < CONTEXTS; i++) {
+        TEST_ASSERT_EQUAL_INT(clusters_of(r, 0), draw(&c[i], r).clusters);
+    }
+    const render_settings_t off = cull_off();
     render_context_set_settings(&c[0], &off);
-    (void)draw(&c[0], r);
+    TEST_ASSERT_EQUAL_INT(kept, draw(&c[0], r).clusters);
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, cull), 0));
-    (void)draw(&c[1], r);
-    TEST_ASSERT_EQUAL_MEMORY(&off, render_context_settings(&c[1]), sizeof off);
-    TEST_ASSERT_EQUAL_INT(clusters_of(r, 0) + clusters_of(r, 1), c[0].frame.stats.clusters);
+    TEST_ASSERT_EQUAL_INT(kept, draw(&c[1], r).clusters);
     assert_same_frame(&c[0], &c[1]);
 }
 
 static void
-test_a_knob_change_takes_effect_the_next_frame_and_the_last_write_holds(void) {
+test_an_override_beats_the_callers_value_and_leaves_it_as_set(void) {
     raster_rig_t* r = open_rig();
     render_context_t* c = open_contexts();
-    const int culled = clusters_of(r, 0);
-    const int kept = clusters_of(r, 0) + clusters_of(r, 1);
-    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, cull), 0));
-    TEST_ASSERT_EQUAL_INT(kept, draw(&c[0], r).clusters);
-    render_context_set_settings(&c[0], &RENDER_SETTINGS_DEFAULT);
-    TEST_ASSERT_EQUAL_INT(culled, draw(&c[0], r).clusters);
-    /* A knob is read once a frame: it moves back to off only after a frame on. */
+    const render_settings_t off = cull_off();
+    render_context_set_settings(&c[0], &off);
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, cull), 1));
-    TEST_ASSERT_EQUAL_INT(culled, draw(&c[0], r).clusters);
-    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, cull), 0));
-    TEST_ASSERT_EQUAL_INT(kept, draw(&c[0], r).clusters);
+    TEST_ASSERT_EQUAL_INT(clusters_of(r, 0), draw(&c[0], r).clusters);
+    TEST_ASSERT_EQUAL_MEMORY(&off, render_context_settings(&c[0]), sizeof off);
 }
 
 static void
-test_each_knob_writes_only_its_own_field(void) {
+test_a_reset_brings_back_the_callers_value_not_the_default(void) {
+    raster_rig_t* r = open_rig();
+    render_context_t* c = open_contexts();
+    const render_settings_t off = cull_off();
+    render_context_set_settings(&c[0], &off);
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, cull), 1));
+    TEST_ASSERT_EQUAL_INT(clusters_of(r, 0), draw(&c[0], r).clusters);
+    TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, cull)));
+    TEST_ASSERT_EQUAL_INT(clusters_of(r, 0) + clusters_of(r, 1), draw(&c[0], r).clusters);
+}
+
+static void
+test_each_knob_overrides_only_its_own_field(void) {
     raster_rig_t* r = open_rig();
     static const char* const knobs[] = {TUNE_NAME(render, cull), TUNE_NAME(render, depth_fit),
                                         TUNE_NAME(render, batched)};
     for (size_t k = 0; k < sizeof knobs / sizeof knobs[0]; k++) {
-        render_context_t* c = open_contexts();
         TEST_ASSERT_TRUE(tune_set(tune_shared(), knobs[k], 0));
-        (void)draw(&c[0], r);
-        const render_settings_t* s = render_context_settings(&c[0]);
-        const bool fields[] = {s->cull, s->depth_fit, s->batched};
+        const render_settings_t s = raster_settings(&r->raster);
+        const bool fields[] = {s.cull, s.depth_fit, s.batched};
         _Static_assert(sizeof fields / sizeof fields[0] == sizeof knobs / sizeof knobs[0], "a field per knob");
         for (size_t f = 0; f < sizeof fields / sizeof fields[0]; f++) {
             TEST_ASSERT_EQUAL(f != k, fields[f]);
         }
-        release_contexts();
         TEST_ASSERT_TRUE(tune_reset(tune_shared(), knobs[k]));
     }
+}
+
+static void
+test_a_release_build_carries_no_override(void) {
+    TEST_ASSERT_EQUAL_INT(TUNE_UNSET, knob);
+    TEST_ASSERT_EQUAL_INT(0, tune_override(knob, 0));
+    TEST_ASSERT_EQUAL_INT(1, tune_override(knob, 1));
 }
 
 void
 suite_render_settings(void) {
     RUN_TEST(test_the_default_is_every_setting_on_as_the_raster_drew_before);
     RUN_TEST(test_release_returns_the_settings_to_the_default);
-    RUN_TEST(test_cull_off_through_the_call_and_through_the_knob_reach_the_same_field);
-    RUN_TEST(test_a_knob_change_takes_effect_the_next_frame_and_the_last_write_holds);
-    RUN_TEST(test_each_knob_writes_only_its_own_field);
+    RUN_TEST(test_the_call_and_the_knob_each_take_effect_the_next_frame);
+    RUN_TEST(test_an_override_beats_the_callers_value_and_leaves_it_as_set);
+    RUN_TEST(test_a_reset_brings_back_the_callers_value_not_the_default);
+    RUN_TEST(test_each_knob_overrides_only_its_own_field);
+    RUN_TEST(test_a_release_build_carries_no_override);
 }
 
 SUITE_REGISTER(suite_render_settings);

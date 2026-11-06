@@ -9,6 +9,7 @@
 #include "build/build_variant.h"
 #include "core/memory.h"
 #include "core/timing.h"
+#include "core/tune.h"
 #include "esp_log.h"
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
@@ -87,26 +88,6 @@ render_context_print_debug_views(FILE* out) {
 }
 
 static render_context_t main_context = RENDER_CONTEXT_DEFAULT;
-
-#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-/* The seam between the knobs and the settings: a knob that moved since the
- * last frame writes its field, as render_context_set_settings() would. */
-static void
-take_knob(bool* setting, bool* seen, bool knob) {
-    if (knob != *seen) {
-        *setting = knob;
-        *seen = knob;
-    }
-}
-
-static void
-take_tuned(render_context_t* c) {
-    const render_settings_t knobs = raster_tuned();
-    take_knob(&c->settings.cull, &c->tuned.cull, knobs.cull);
-    take_knob(&c->settings.depth_fit, &c->tuned.depth_fit, knobs.depth_fit);
-    take_knob(&c->settings.batched, &c->tuned.batched, knobs.batched);
-}
-#endif
 
 render_context_t*
 render_context_main(void) {
@@ -311,8 +292,9 @@ draw_second_view(render_context_t* c) {
         return;
     }
     /* Its own views and clusters: none may steer the frame's core split, and
-     * the hook reads render.cull as the frame drew. */
-    const bool culled = c->settings.cull;
+     * the hook reads the override the frame drew with. */
+    const tune_entry_t* culling = tune_find(tune_shared(), TUNE_NAME(render, cull));
+    const int32_t culled = *culling->value;
     const transformf_t* observer = c->observing ? &c->observer : NULL;
     render_view_t second;
     bool listed = false;
@@ -324,9 +306,9 @@ draw_second_view(render_context_t* c) {
         if (listed) {
             raster_draw_culled(&c->raster, &second);
         } else {
-            c->settings.cull = false;
+            (void)tune_set(tune_shared(), TUNE_NAME(render, cull), 0);
             (void)raster_draw(&c->raster, &second);
-            c->settings.cull = culled;
+            (void)tune_set(tune_shared(), TUNE_NAME(render, cull), culled);
         }
         c->raster.split = &c->split;
         listed = false;
@@ -398,7 +380,6 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
                     uint16_t clear) {
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     c->observed = false;
-    take_tuned(c);
 #endif
     if (can_generate(c, view)) {
         generate(c, view);

@@ -40,13 +40,10 @@ struct raster {
     /* Drawn beside colour and depth, at most GFX_ATTACHMENTS_FURTHER_MAX. */
     const raster_attachment_t* const* attachments;
     int attachment_count;
-    const render_settings_t* settings; /* NULL draws with raster_tuned() */
+    const render_settings_t* settings; /* NULL draws with RENDER_SETTINGS_DEFAULT */
 };
 
-/* The render.cull, render.depth_fit and render.batched knobs: their starts
- * are RENDER_SETTINGS_DEFAULT, and a release build has only those. */
-render_settings_t raster_tuned(void);
-/* What a draw uses: `settings`, or the knobs when it has none. */
+/* What a draw uses: the raster's settings, under any development override. */
 render_settings_t raster_settings(const raster_t* raster);
 
 /* The viewport a view frames: destination size when upscaled, otherwise drawn size. */

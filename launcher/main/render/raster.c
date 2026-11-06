@@ -13,24 +13,20 @@
 #include "render/upscale.h"
 
 TUNE_OWNER(render);
-/* The development knobs of the settings: a context takes one into its own
- * settings at its next frame once the knob changes (render_context.c). */
+/* Development overrides of the raster's settings (TUNE_OVERRIDE). */
 /* The generated meshlet-size table measures both culling settings. */
-TUNE(render, cull, RENDER_SETTINGS_CULL, 0, 1);
+TUNE_OVERRIDE(render, cull, 1);
 /* 0 encodes depth with the clip plane's near_z: the depth-precision figures
  * render both. */
-TUNE(render, depth_fit, RENDER_SETTINGS_DEPTH_FIT, 0, 1);
+TUNE_OVERRIDE(render, depth_fit, 1);
 /* Off draws one instance a batch. */
-TUNE(render, batched, RENDER_SETTINGS_BATCHED, 0, 1);
-
-render_settings_t
-raster_tuned(void) {
-    return (render_settings_t){cull != 0, depth_fit != 0, batched != 0};
-}
+TUNE_OVERRIDE(render, batched, 1);
 
 render_settings_t
 raster_settings(const raster_t* raster) {
-    return raster->settings != NULL ? *raster->settings : raster_tuned();
+    const render_settings_t s = raster->settings != NULL ? *raster->settings : RENDER_SETTINGS_DEFAULT;
+    return (render_settings_t){tune_override(cull, s.cull) != 0, tune_override(depth_fit, s.depth_fit) != 0,
+                               tune_override(batched, s.batched) != 0};
 }
 
 /* One instance of a batch: its lens, the clusters culling kept, where its
