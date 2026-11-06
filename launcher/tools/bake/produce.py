@@ -130,7 +130,7 @@ def produce_mesh(bake, cache, lock):
     if keys.is_blend(job.settings):
         job = with_source(job, export_file(job.settings, lock, cache))
     with tempfile.TemporaryDirectory() as work:
-        name = job.asset_name if job.settings.meshes else bake.output.removesuffix(bake.suffix)
+        name = job.asset_name if job.settings.meshes or job.settings.curves else bake.output.removesuffix(bake.suffix)
         write_baked(job, bake.scene, pathlib.Path(work), name)
         return record(bake, pathlib.Path(work) / (name + bake.suffix), cache)
 

@@ -11,6 +11,7 @@ from asset.asset_pack import PackError
 
 TYPE = b"LMSH"
 BLOB_HEADER = struct.Struct("<11I")
+POSITION_SCALE_INDEX = 4
 CLUSTER = struct.Struct("<4H6hBx")
 NODE = struct.Struct("<6hHBB")
 
