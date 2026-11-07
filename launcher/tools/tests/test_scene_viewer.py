@@ -311,10 +311,10 @@ path = { animation = "fly.anim.toml", node = "camera" }
         positions = np.array([[-2, -2, -6], [2, -2, -6], [0, 2, -6]], dtype=float)
         write_lit_mesh(scratch, "replacement", positions, np.array([[16, 40, 255]] * 3),
                        np.array([[0, 1, 2]]), np.array([True]))
-        original = (self.root / "card.mesh").read_bytes()
+        original = (self.root / "card.bundle").read_bytes()
         out = self.root / "replacement host"
         built = subprocess.run([sys.executable, str(TOOLS / "r3d/build_pack.py"), "-o", str(out / "assets"),
-                                str(self.scene), "--replace", f"card={scratch / 'replacement.mesh'}"],
+                                str(self.scene), "--replace", f"card={scratch / 'replacement.bundle'}"],
                                capture_output=True, text=True, timeout=120)
         self.assertEqual(built.returncode, 0, built.stderr)
         target = out / "frame.bmp"
@@ -326,7 +326,7 @@ path = { animation = "fly.anim.toml", node = "camera" }
         with Image.open(target) as image:
             self.assertGreater(dict((rgb, count) for count, rgb in image.getcolors(448 * 368)).get((16, 40, 255), 0),
                                1000)
-        self.assertEqual((self.root / "card.mesh").read_bytes(), original)
+        self.assertEqual((self.root / "card.bundle").read_bytes(), original)
 
         original_run, original_frame = self.render("--object", "card")
         self.assertEqual(original_run.returncode, 0, original_run.stderr)

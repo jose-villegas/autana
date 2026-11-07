@@ -6,10 +6,8 @@ the start's bytes and the reference set (training, held-out and pruning poses), 
 """
 
 import pathlib
-import shutil
 
-from r3d import mesh_bundle, log
-from r3d.import_settings import SettingsError
+from r3d import mesh_bundle, mesh_asset, log
 
 # The reference set's files the fit reads (fitted_variant.prepare_references writes them): the training
 # (poses, references) pairs, the poses the prune counts shown pixels over, and the held-out poses the
@@ -34,16 +32,13 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     renderer = job.renderer
     variant, recipe = renderer.variant, renderer.fit
     inputs = pathlib.Path(work) if inputs is None else pathlib.Path(inputs)
-    start = inputs / f"{variant.name}.mesh" if start is None else pathlib.Path(start)
-    bundle_entries = copies = None
+    start = inputs / f"{variant.name}.bundle" if start is None else pathlib.Path(start)
     bundle = start
-    if start.suffix == mesh_bundle.SUFFIX:
-        bundle_entries, copies = mesh_bundle.decode(start.read_bytes())
-        rest = next((data for name, kind, data in bundle_entries if name == job.asset_name), None)
-        if rest is None:
-            raise SettingsError("a fitted carved renderer needs a rest mesh")
-        start = pathlib.Path(work) / f"{job.asset_name}.mesh"
-        start.write_bytes(rest)
+    bundle_entries, copies = mesh_bundle.decode(start.read_bytes())
+    bundle_entries = mesh_bundle.rename_rest(bundle_entries, copies, job.asset_name)
+    rest = next(data for name, kind, data in bundle_entries if name == job.asset_name)
+    start = pathlib.Path(work) / f"{job.asset_name}{mesh_bundle.SUFFIX}"
+    start.write_bytes(mesh_bundle.encode([(job.asset_name, mesh_asset.TYPE, rest)], []))
     out = work / "fitted"
     steps = min(recipe.steps, 8) if smoke else recipe.steps
     command = ["--scene", str(scene_path), "--start", str(start)]
@@ -62,13 +57,11 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
                     "--cost-weight", str(cost_weight)]
     fit_main(command)
     if target is None:
-        target = pathlib.Path(work) / f"{job.asset_name}.mesh"
-    if bundle_entries is None:
-        shutil.copyfile(out / start.name, target)
-    else:
-        fitted = (out / start.name).read_bytes()
-        target.write_bytes(mesh_bundle.encode([(name, kind, fitted if name == job.asset_name else data)
-                                               for name, kind, data in bundle_entries], copies))
+        target = pathlib.Path(work) / f"{job.asset_name}.bundle"
+    fitted_entries, _ = mesh_bundle.decode((out / start.name).read_bytes())
+    fitted = next(data for name, kind, data in fitted_entries if name == job.asset_name)
+    target.write_bytes(mesh_bundle.encode([(name, kind, fitted if name == job.asset_name else data)
+                                           for name, kind, data in bundle_entries], copies))
     log(f"wrote {target}")
     return target
 
@@ -78,12 +71,12 @@ def fit_point(point, point_dir, scene_path, scene, job, inputs, smoke=False, tar
     import traceback
     from r3d.process_budget import NULL_RECORDER
     from r3d.lit_mesh import read_lit_mesh
-    target = pathlib.Path(point_dir).parent / f"{pathlib.Path(point_dir).name}.mesh" if target is None else target
+    target = pathlib.Path(point_dir).parent / f"{pathlib.Path(point_dir).name}.bundle" if target is None else target
     log_path = pathlib.Path(point_dir) / "fit.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     recording = recorder is not None
     recorder = NULL_RECORDER if recorder is None else recorder
-    triangles = len(read_lit_mesh(pathlib.Path(inputs) / f"{job.renderer.variant.name}.mesh").tris) if recording else 0
+    triangles = len(read_lit_mesh(pathlib.Path(inputs) / f"{job.renderer.variant.name}.bundle").tris) if recording else 0
     try:
         with recorder.step("fit", triangles, gpu=True) as step:
             with log_path.open("w") as output, contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):

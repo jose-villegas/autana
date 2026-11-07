@@ -10,6 +10,7 @@
 #include "math/geometry/box3f.h"
 #include "math/linear/transformf.h"
 #include "math/projection/projectf.h"
+#include "render/lod/r3d_lod.h"
 #include "render/r3d_span.h"
 #include "render/raster_internal.h"
 #include "render/view/r3d_pipeline_count.h"
@@ -109,11 +110,20 @@ writer(const raster_attachment_t* self, int instance, r3d_span_writer_t* out) {
     return true;
 }
 
-/* Whether the frame culled at all: render.cull, the raster's own switch. */
-static bool
-culling(void) {
-    const tune_entry_t* entry = tune_find(tune_shared(), TUNE_NAME(render, cull));
-    return entry == NULL || *entry->value != 0;
+/* Without culling, every cluster the levels draw is kept; how many. */
+static int
+keep_drawn(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, uint16_t* kept, r3d_pipeline_counts_t* counts) {
+    int count = 0;
+    for (int c = 0; c < mesh->cluster_count; c++) {
+        if (r3d_lod_drawn(mesh, c, lod_coarse)) {
+            kept[count++] = (uint16_t)c;
+            counts->triangles_submitted += mesh->clusters[c].triangle_count;
+        }
+    }
+    counts->clusters_tested += count;
+    counts->clusters_kept += count;
+    counts->clusters_coarse += r3d_pipeline_count_coarse(mesh, kept, count);
+    return count;
 }
 
 /* After the camera's draw, its scratch lists and vertices are free: each
@@ -124,7 +134,7 @@ culling(void) {
 static void
 count_frame(raster_cull_t* s, const raster_t* raster) {
     const raster_buffers_t b = raster_carve(raster);
-    const bool culls = culling();
+    const bool culls = raster_settings(raster).cull; /* whether the frame culled at all */
     int offset = 0;
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];
@@ -135,17 +145,9 @@ count_frame(raster_cull_t* s, const raster_t* raster) {
             r3d_lens_place(&lens, instance->model, mesh->position_scale);
         }
         uint16_t* kept = b.culled;
-        int count = mesh->cluster_count;
-        if (culls) {
-            count = r3d_pipeline_cull_counted(mesh, &lens, kept, &s->walk, &s->frame.counts);
-        } else {
-            for (int c = 0; c < count; c++) {
-                kept[c] = (uint16_t)c;
-                s->frame.counts.triangles_submitted += mesh->clusters[c].triangle_count;
-            }
-            s->frame.counts.clusters_tested += count;
-            s->frame.counts.clusters_kept += count;
-        }
+        const int count =
+            culls ? r3d_pipeline_cull_counted(mesh, &lens, instance->lod_coarse, kept, &s->walk, &s->frame.counts)
+                  : keep_drawn(mesh, instance->lod_coarse, kept, &s->frame.counts);
         r3d_pipeline_transform(mesh, &lens, kept, count, b.cs, NULL, false);
         r3d_pipeline_count_triangles(mesh, &lens, kept, count, b.cs, &s->frame.counts, &s->set_up[offset]);
         for (int k = 0; k < count; k++) {
@@ -257,8 +259,10 @@ world_bounds(const raster_t* raster) {
     return bounds;
 }
 
+/* From `observer` when given, else from cullview.from's pose, written to
+ * `pose`; the lens is the camera's either way. */
 static render_view_t
-spectator_view(const raster_cull_t* s, const raster_t* raster) {
+spectator_view(const raster_cull_t* s, const raster_t* raster, const transformf_t* observer, transformf_t* pose) {
     const render_view_t* camera = &s->camera;
     const box3f_t bounds = world_bounds(raster);
     const vec3f_t centre = box3f_centre(bounds);
@@ -266,17 +270,18 @@ spectator_view(const raster_cull_t* s, const raster_t* raster) {
     const float radius = sqrtf(vec3f_dot(half, half));
     const float tan_half = render_view_half_fov_short_tan(camera);
     const float near_z = mathf_max(camera->lens.near_z, radius * SPECTATOR_NEAR);
-    transformf_t pose;
-    if (s->from == RASTER_CULL_FROM_TOP) {
+    if (observer != NULL) {
+        *pose = *observer;
+    } else if (s->from == RASTER_CULL_FROM_TOP) {
         const float height = (TOP_MARGIN * mathf_max(half.x, half.z) / tan_half) + half.y;
-        pose = transformf_looking((vec3f_t){centre.x, centre.y + height, centre.z}, vec3f_down(), vec3f_unit_z());
+        *pose = transformf_looking((vec3f_t){centre.x, centre.y + height, centre.z}, vec3f_down(), vec3f_unit_z());
     } else {
         const vec3f_t ahead = vec3f_add(camera->position, vec3f_scale(camera->forward, CHASE_BACK * radius));
         const vec3f_t eye = vec3f_add(vec3f_sub(camera->position, vec3f_scale(camera->forward, CHASE_BACK * radius)),
                                       (vec3f_t){0.0F, CHASE_UP * radius, 0.0F});
-        pose = transformf_looking(eye, vec3f_sub(ahead, eye), vec3f_unit_y());
+        *pose = transformf_looking(eye, vec3f_sub(ahead, eye), vec3f_unit_y());
     }
-    render_view_t view = render_view_make(&pose, tan_half, near_z, camera->viewport);
+    render_view_t view = render_view_make(pose, tan_half, near_z, camera->viewport);
     view.present = camera->present;
     view.small_fill = camera->small_fill;
     return view;
@@ -327,17 +332,19 @@ keep_under(raster_cull_t* s, const raster_t* raster) {
 }
 
 bool
-raster_cull_second_view(void* state, const raster_t* raster, render_view_t* out, bool* listed) {
+raster_cull_second_view(void* state, const raster_t* raster, const transformf_t* observer, render_view_t* out,
+                        bool* listed) {
     raster_cull_t* s = state;
     switch ((raster_cull_pass_t)s->pass) {
         case RASTER_CULL_PASS_CAMERA:
             count_frame(s, raster);
             tally(s, raster);
             find_nodes(s, raster);
-            if (s->from == RASTER_CULL_FROM_CAMERA) {
+            s->spectated = observer != NULL || s->from != RASTER_CULL_FROM_CAMERA;
+            if (!s->spectated) {
                 return false;
             }
-            s->spectator = spectator_view(s, raster);
+            s->spectator = spectator_view(s, raster, observer, &s->spectator_pose);
             s->spectating = true;
             s->pass = RASTER_CULL_PASS_CULLED;
             list_clusters(s, raster, true);
@@ -542,8 +549,7 @@ raster_cull_overlay(void* state, int width, int height) {
         return;
     }
     const raster_t* raster = s->raster;
-    const bool spectated = s->from != RASTER_CULL_FROM_CAMERA;
-    render_view_t seen = spectated ? s->spectator : s->camera;
+    render_view_t seen = s->spectated ? s->spectator : s->camera;
     render_view_refit(&seen, (viewport_t){width, height, seen.viewport.quarter});
     for (int i = 0; level > 0 && i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];
@@ -554,7 +560,7 @@ raster_cull_overlay(void* state, int width, int height) {
         }
         level_boxes(s, &lens, instance->mesh);
     }
-    if (spectated) {
+    if (s->spectated) {
         r3d_lens_t lens;
         r3d_lens_init(&lens, &seen, 1);
         const vec3f_t half = box3f_half_extent(world_bounds(raster));

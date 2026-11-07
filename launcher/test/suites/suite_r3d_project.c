@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "box3f_expect.h"
 #include "math/scalar/math_const.h"
 #include "suites.h"
 #include "unity.h"
@@ -13,17 +14,13 @@
 #include "render/r3d_project.h"
 #include "render/r3d_project_x.h"
 
+/* Two routes to one point agree to within this, in world units. */
+#define PROJECT_ROUNDING 1e-4F
+
 static render_view_t
 fixture(void) {
     const transformf_t pose = transformf_identity();
     return render_view_make(&pose, 1.0F, R3D_LINE_NEAR_Z, (viewport_t){368, 448, 0});
-}
-
-static void
-assert_near(vec3f_t want, vec3f_t got) {
-    TEST_ASSERT_FLOAT_WITHIN(1e-4F, want.x, got.x);
-    TEST_ASSERT_FLOAT_WITHIN(1e-4F, want.y, got.y);
-    TEST_ASSERT_FLOAT_WITHIN(1e-4F, want.z, got.z);
 }
 
 /* Independent of the matrices: a model point goes to the world through the
@@ -33,7 +30,7 @@ static vec3f_t
 camera_space_by_hand(transformf_t camera, transformf_t model, vec3f_t point) {
     const vec3f_t scaled = {point.x * model.scale.x, point.y * model.scale.y, point.z * model.scale.z};
     const vec3f_t world = vec3f_add(quatf_rotate(model.rotation, scaled), model.position);
-    const quatf_t inverse = {-camera.rotation.x, -camera.rotation.y, -camera.rotation.z, camera.rotation.w};
+    const quatf_t inverse = quatf_conjugate(camera.rotation);
     return quatf_rotate(inverse, vec3f_sub(world, camera.position));
 }
 
@@ -46,7 +43,8 @@ check_view_matrix_matches_hand_built(transformf_t camera_pose, transformf_t mode
 
     const vec3f_t points[] = {{0.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, {0.0F, 2.0F, 0.0F}, {0.5F, -1.0F, 3.0F}};
     for (unsigned i = 0; i < sizeof(points) / sizeof(points[0]); i++) {
-        assert_near(camera_space_by_hand(camera_pose, model, points[i]), mat4f_apply(&got, points[i]));
+        vec3f_expect_within(PROJECT_ROUNDING, camera_space_by_hand(camera_pose, model, points[i]),
+                            mat4f_apply(&got, points[i]));
     }
 }
 

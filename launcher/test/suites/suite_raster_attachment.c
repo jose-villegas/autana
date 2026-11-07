@@ -216,7 +216,7 @@ place_trio(trio_t* t, unsigned culled, bool by_box) {
         if (out && by_box) {
             t->box[k] = (box3f_t){{TRIO_FAR, -TRIO_HALF, -TRIO_HALF}, {TRIO_FAR + 2 * TRIO_HALF, TRIO_HALF, TRIO_HALF}};
         }
-        t->instance[k] = (r3d_instance_t){&t->quad[k].mesh, NULL, out && !by_box ? NULL : &t->box[k]};
+        t->instance[k] = (r3d_instance_t){&t->quad[k].mesh, NULL, out && !by_box ? NULL : &t->box[k], NULL};
     }
     /* A batch holds instances up to the largest mesh's vertices and clusters,
      * so this one, always off to the right and so never walked, is declared
@@ -226,7 +226,7 @@ place_trio(trio_t* t, unsigned culled, bool by_box) {
     t->quad[TRIO].mesh.vertex_count = TRIO * 4;
     t->quad[TRIO].mesh.cluster_count = TRIO;
     t->box[TRIO] = (box3f_t){{TRIO_FAR, -TRIO_HALF, -TRIO_HALF}, {TRIO_FAR + 2 * TRIO_HALF, TRIO_HALF, TRIO_HALF}};
-    t->instance[TRIO] = (r3d_instance_t){&t->quad[TRIO].mesh, NULL, &t->box[TRIO]};
+    t->instance[TRIO] = (r3d_instance_t){&t->quad[TRIO].mesh, NULL, &t->box[TRIO], NULL};
 }
 
 /* Draws the trio with `culled` out of it right after a frame that kept all
@@ -440,7 +440,7 @@ test_copies_share_a_hue_and_a_shape_drawn_once_is_grey(void) {
     copy.colors = red;
     mat4f_t shifted = mat4f_identity();
     shifted.m[0][MAT3F_AXES] = COPY_SHIFT;
-    const r3d_instance_t three[] = {r->instance[0], r->instance[1], {&copy, &shifted, NULL}};
+    const r3d_instance_t three[] = {r->instance[0], r->instance[1], {&copy, &shifted, NULL, NULL}};
     r->raster.instances = three;
     r->raster.instance_count = 3;
     raster_rig_attach(r, one, 1);
@@ -660,17 +660,19 @@ release_app_heap(held_block_t* head) {
 
 static void
 test_failed_view_allocation_leaves_shaded(void) {
-    render_context_t c = {0};
-    render_context_set_debug_view(&c, render_context_debug_view_named("depth"));
+    render_context_t* c = calloc(1, sizeof(*c)); /* too big for the device stack */
+    TEST_ASSERT_NOT_NULL(c);
+    render_context_set_debug_view(c, render_context_debug_view_named("depth"));
     held_block_t* occupied = hold_app_heap();
     TEST_ASSERT_NOT_NULL(occupied);
-    render_context_set_debug_view(&c, render_context_debug_view_named("motion"));
+    render_context_set_debug_view(c, render_context_debug_view_named("motion"));
     release_app_heap(occupied);
-    TEST_ASSERT_EQUAL_INT(0, c.debug_view);
-    TEST_ASSERT_NULL(c.debug_view_state);
-    TEST_ASSERT_NULL(c.raster.attachments);
-    TEST_ASSERT_EQUAL_INT(0, c.raster.attachment_count);
-    render_context_release(&c);
+    TEST_ASSERT_EQUAL_INT(0, c->debug_view);
+    TEST_ASSERT_NULL(c->debug_view_state);
+    TEST_ASSERT_NULL(c->raster.attachments);
+    TEST_ASSERT_EQUAL_INT(0, c->raster.attachment_count);
+    render_context_release(c);
+    free(c);
 }
 
 /* No room for a draw's instances detaches the view, and the frame draws shaded. */
@@ -1017,7 +1019,8 @@ test_draw_retains_only_the_drawn_instance_and_bounds_state(void) {
     const raster_attachment_t observer = {.format = IMAGE_U16, .writer = observe_split_writer};
     const raster_attachment_t* attached[] = {&observer};
     raster_rig_t* r = rig_open(attached, 1);
-    r3d_instance_t instances[RASTER_SPLIT_INSTANCES + 1];
+    r3d_instance_t* instances = malloc(sizeof(r3d_instance_t) * (RASTER_SPLIT_INSTANCES + 1));
+    TEST_ASSERT_NOT_NULL(instances);
     for (int i = 0; i <= RASTER_SPLIT_INSTANCES; i++) {
         instances[i] = r->instance[0];
     }
@@ -1059,6 +1062,7 @@ test_draw_retains_only_the_drawn_instance_and_bounds_state(void) {
         TEST_ASSERT_EQUAL_INT(before.top_offset[i], state.split.top_offset[i]);
     }
     TEST_ASSERT_EQUAL_INT(JOB_SHARE_MIN, state.sentinel);
+    free(instances);
 }
 #endif
 

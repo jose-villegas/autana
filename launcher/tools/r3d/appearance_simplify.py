@@ -4,7 +4,7 @@ along a camera path, keeping its triangles (appearance-driven
 simplification, Hasselgren et al. 2021). A smooth mesh fits a colour per
 vertex, a flat one a colour per triangle.
 
-    python launcher/tools/r3d/appearance_simplify.py --scene SCENE.scene.toml --start NAME.mesh \\
+    python launcher/tools/r3d/appearance_simplify.py --scene SCENE.scene.toml --start NAME.bundle \\
         --poses POSES.txt --reference DIR [--poses ... --reference ...] --out DIR [--per-shot] \\
         [--object NAME --surface-weight W --surface-margin E --seam-margin E] [--coverage-poses POSES.txt]
 
@@ -13,7 +13,7 @@ triangle budget. Each --poses file (tools/anim/track_host.py) pairs with
 the --reference directory reference_render.py wrote for it; --scene is the
 scene they were rendered from, whose camera background shows where nothing
 is drawn. All pairs train one mesh; with --per-shot each pair trains its
-own. A mesh is written as NAME.mesh by the same writer as mesh_import.py,
+own. A mesh is written as NAME.bundle by the same writer as mesh_import.py,
 under DIR, or DIR/shot<k>. The surface term anchors the fit to the scene's
 alpha-masked source; --object names its renderer.
 
@@ -876,7 +876,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
 
 
 def write_mesh(out_dir, name, mesh):
-    """The fitted mesh as <name>.mesh and <name>.obj, a flat one's OBJ with
+    """The fitted mesh as <name>.bundle and <name>.obj, a flat one's OBJ with
     three vertices of each triangle's colour; returns the baked mesh's
     triangle count."""
     from r3d.lit_mesh import write_lit_mesh
@@ -892,7 +892,8 @@ def write_mesh(out_dir, name, mesh):
                                face_rgb=colours)
         positions, rgb, tris = positions[tris].reshape(-1, 3), rgb.repeat(3, axis=0), np.arange(3 * len(tris)).reshape(-1, 3)
     else:
-        baked = write_lit_mesh(out_dir, name, positions, colours, tris, mesh.double, position_scale=mesh.scale)
+        baked = write_lit_mesh(out_dir, name, positions, colours, tris, mesh.double, position_scale=mesh.scale,
+                               )
     with open(out_dir / f"{name}.obj", "w", newline="\n") as obj:
         for p, c in zip(positions, rgb):
             obj.write("v %.4f %.4f %.4f %.4f %.4f %.4f\n" % (*p, *c))
@@ -905,7 +906,7 @@ def write_mesh(out_dir, name, mesh):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--scene", required=True, help="the scene file the references were rendered from")
-    parser.add_argument("--start", required=True, help="a smooth or flat NAME.mesh to start from")
+    parser.add_argument("--start", required=True, help="a smooth or flat NAME.bundle to start from")
     parser.add_argument("--poses", action="append", required=True, help="a track_host.py poses file")
     parser.add_argument("--reference", action="append", required=True, help="reference_render.py output for the poses")
     parser.add_argument("--out", required=True)
@@ -954,8 +955,8 @@ def main(argv=None):
     background = scene.camera.component.background
     clear = tuple(((background >> shift) & 255) / 255.0 for shift in (16, 8, 0))
     start = pathlib.Path(args.start)
-    if start.suffix != ".mesh":
-        parser.error("--start must be a NAME.mesh")
+    if start.suffix != ".bundle":
+        parser.error("--start must be a NAME.bundle")
     name = start.stem
     mesh = start_mesh(start)
     log(f"start: {len(mesh.tris)} {'flat' if mesh.flat else 'smooth'} triangles, {len(mesh.points)} positions")

@@ -2,7 +2,7 @@
 """Bake an albedo import or a scene renderer's mesh.
 
 An import writes its named mesh, and a scene each baked renderer as
-<scene>.<object>.mesh, into --out DIR, or beside the file when it is outside
+<scene>.<object>.bundle, into --out DIR, or beside the file when it is outside
 this repository (a scratch copy). Inside it a mesh is a bake product: made by
 bake/bake.py into the bake cache and locked, so without --out the bake refuses.
 
@@ -40,6 +40,7 @@ from r3d.light import (  # noqa: E402
     visible_from_path,
     visible_from_region,
 )
+from r3d.lod.bake_levels import bake_lit_mesh
 from r3d.lit_mesh import POSITION_SCALE, WELD_PER_TICK, panel_colour, write_lit_mesh  # noqa: E402
 from r3d.mesh_source import load_source, load_glb_source, path_light_for, camera_path_poses
 from r3d.process_budget import NULL_RECORDER
@@ -274,9 +275,9 @@ def flat_colours(job, scene, geometry, face_samples, **knobs):
 
 
 def write_baked(job, scene, out_dir, name, geometry=None, recorder=None):
-    """Writes `job`'s bake as <name>.mesh in `out_dir`, flat when the renderer
-    is and smooth otherwise, from `geometry` when bake_geometry already made it.
-    Returns the baked mesh."""
+    """Write a mesh bundle from prepared geometry or its source, returning the rest mesh.
+    A fitted renderer's rest is its plain CPU start; the later CPU levels stage builds its hierarchy.
+    Copy prototypes retain their levels and colour sets."""
     renderer = job.renderer
     out_dir = pathlib.Path(out_dir)
     recorder = NULL_RECORDER if recorder is None else recorder
@@ -288,16 +289,17 @@ def write_baked(job, scene, out_dir, name, geometry=None, recorder=None):
     mesh = SimpleNamespace(pos=geometry.positions, tris=geometry.tris, clusters=[], nodes=[])
     if len(geometry.tris):
         mesh = write_lit_mesh(out_dir, name, geometry.positions, None if renderer.face_samples else geometry.rgb,
-                              geometry.tris, geometry.tri_double, face_rgb=face_rgb, recorder=recorder,
-                              meshlet_triangles=job.settings.meshlet_triangles, **geometry.scale)
-    if getattr(geometry, "shapes", None) is not None:
-        entries = [(name, mesh_asset.TYPE, (out_dir / f"{name}.mesh").read_bytes())] if len(mesh.tris) else []
-        copies = []
-        for shape in geometry.shapes:
-            products, placed = write_shape(job, scene, out_dir, name, geometry, shape, recorder)
-            entries.extend(products)
-            copies.extend(placed)
-        (out_dir / f"{name}{mesh_bundle.SUFFIX}").write_bytes(mesh_bundle.encode(entries, copies))
+                              geometry.tris, geometry.tri_double, face_rgb=face_rgb, recorder=recorder, mesh_builder=bake_lit_mesh,
+                              meshlet_triangles=job.settings.meshlet_triangles,
+                              lod=job.settings.lod and getattr(renderer, "fit", None) is None,
+                              **geometry.scale)
+    entries = mesh_bundle.mesh_entries(name, mesh) if len(mesh.tris) else []
+    copies = []
+    for shape in getattr(geometry, "shapes", None) or ():
+        products, placed = write_shape(job, scene, out_dir, name, geometry, shape, recorder)
+        entries.extend(products)
+        copies.extend(placed)
+    (out_dir / f"{name}{mesh_bundle.SUFFIX}").write_bytes(mesh_bundle.encode(entries, copies))
     return mesh
 
 
@@ -330,14 +332,15 @@ def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
         keys = np.concatenate(colours, axis=1)
         mesh = write_lit_mesh(out_dir, mesh_id, local, None if job.renderer.face_samples else keys,
                               tris, double, face_rgb=keys if job.renderer.face_samples else None,
-                              colourless=True, recorder=recorder,
-                              meshlet_triangles=job.settings.meshlet_triangles, **geometry.scale)
+                              colourless=True, recorder=recorder, mesh_builder=bake_lit_mesh,
+                              meshlet_triangles=job.settings.meshlet_triangles, lod=job.settings.lod,
+                              **geometry.scale)
         encoding = lcol_asset.RGB565 if job.renderer.face_samples else lcol_asset.RGB888
         keys = mesh.face_keys if job.renderer.face_samples else mesh.colour_keys
         channels = lcol_asset.STRIDES[lcol_asset.RGB888]
         sets = [panel_colour(keys[:, k:k + channels]).tobytes() if job.renderer.face_samples
                 else keys[:, k:k + channels].astype('u1').tobytes() for k in range(0, keys.shape[1], channels)]
-        entries.append((mesh_id, mesh_asset.TYPE, (out_dir / f"{mesh_id}.mesh").read_bytes()))
+        entries.extend(mesh_bundle.mesh_entries(mesh_id, mesh))
         entries.append((lcol_asset.name_for_mesh(mesh_id), lcol_asset.TYPE,
                         lcol_asset.encode(encoding, len(keys), sets)))
         for index, (instance, _) in enumerate(copies):

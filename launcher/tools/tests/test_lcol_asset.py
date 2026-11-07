@@ -14,7 +14,7 @@ from test_scene_asset import authored_entry
 
 class LcolTests(unittest.TestCase):
     def test_mesh_header(self):
-        words = tuple(range(1, 12))
+        words = tuple(range(1, mesh_asset.BLOB_HEADER.size // 4 + 1))
         mesh = mesh_asset.BLOB_HEADER.pack(*words)
         header = lcol_asset.read_mesh_header(mesh + b"payload")
         self.assertEqual(header.vertices, words[0])
