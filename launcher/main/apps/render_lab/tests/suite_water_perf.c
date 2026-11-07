@@ -122,9 +122,9 @@ play(const water_config_t* config) {
     suite_set_test_cleanup(release_fixture);
     TEST_ASSERT_TRUE(app_render_lab.console->handle("water tour"));
     const int capacity = (int)(scene_water_tour_length_ms() / WATER_PERF_FRAME_MS);
-    row.frame_us = memory_alloc((size_t)capacity * sizeof(int32_t), MEMORY_PSRAM);
-    row.update_us = memory_alloc((size_t)capacity * sizeof(int32_t), MEMORY_PSRAM);
-    row.draw_us = memory_alloc((size_t)capacity * sizeof(int32_t), MEMORY_PSRAM);
+    row.frame_us = memory_alloc((size_t)capacity * sizeof(int32_t), MEMORY_APP);
+    row.update_us = memory_alloc((size_t)capacity * sizeof(int32_t), MEMORY_APP);
+    row.draw_us = memory_alloc((size_t)capacity * sizeof(int32_t), MEMORY_APP);
     report = memory_alloc(FRAME_COST_REPORT_MAX, MEMORY_INTERNAL);
     TEST_ASSERT_TRUE(row.frame_us != NULL && row.update_us != NULL && row.draw_us != NULL && report != NULL);
     /* Untimed: the tour's upright refill. */

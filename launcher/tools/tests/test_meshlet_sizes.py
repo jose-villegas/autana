@@ -28,12 +28,14 @@ class MeshletSettingsTests(unittest.TestCase):
     def test_rebake_reads_import_limit_and_default_is_byte_identical(self):
         import numpy as np
         from r3d import rebake
+        from r3d.import_settings import LOD
+        from r3d.lod.bake_levels import bake_lit_mesh
         from r3d.lit_mesh import read_lit_mesh, write_lit_mesh
         from test_r3d_bake import sheet
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
-            write_lit_mesh(root, "tiny", *sheet(20))
-            entry = root / "tiny.mesh"
+            write_lit_mesh(root, "tiny", *sheet(20), mesh_builder=bake_lit_mesh, lod=LOD)
+            entry = root / "tiny.bundle"
             original = entry.read_bytes()
             settings = write_import(root)
             rebake.main([str(entry), "--import", str(settings)])
@@ -53,8 +55,8 @@ class MeshletSettingsTests(unittest.TestCase):
             root = pathlib.Path(directory)
             write_lit_mesh(root, "tiny", *sheet(20))
             settings = write_import(root, body="[geometry]\nmeshlet_triangles = 64\n")
-            rebake.main([str(root / "tiny.mesh"), "--import", str(settings), "--meshlet-triangles", "16"])
-            counts = [cluster[3] for cluster in read_lit_mesh(root / "tiny.mesh").clusters]
+            rebake.main([str(root / "tiny.bundle"), "--import", str(settings), "--meshlet-triangles", "16"])
+            counts = [cluster[3] for cluster in read_lit_mesh(root / "tiny.bundle").clusters]
             self.assertLessEqual(max(counts), 16)
             self.assertTrue(any(count > 8 for count in counts))
 
@@ -70,9 +72,9 @@ class MeshletSettingsTests(unittest.TestCase):
             root = pathlib.Path(directory)
             for size in (16, 64):
                 job = SimpleNamespace(renderer=SimpleNamespace(face_samples=None),
-                                      settings=SimpleNamespace(meshlet_triangles=size))
+                                      settings=SimpleNamespace(meshlet_triangles=size, lod=False))
                 mesh_import.write_baked(job, None, root, "tiny", geometry)
-                counts = [cluster[3] for cluster in read_lit_mesh(root / "tiny.mesh").clusters]
+                counts = [cluster[3] for cluster in read_lit_mesh(root / "tiny.bundle").clusters]
                 self.assertLessEqual(max(counts), size)
                 self.assertTrue(any(count > size // 2 for count in counts))
 
@@ -192,8 +194,11 @@ int main(void) {
 ''')
             binary = work / "probe.exe"
             main = TOOLS.parents[1] / "launcher/main"
+            tlsf = TOOLS.parents[1] / "third_party/tlsf"
             built = subprocess.run(["gcc", "-std=gnu11", "-I", str(main), "-I", str(TOOLS.parents[1] / "launcher/test/stubs"),
-                                    str(probe), str(main / "core/tune.c"), "-o", str(binary)], capture_output=True, text=True)
+                                    "-I", str(tlsf), "-I", str(tlsf / "include"), str(probe),
+                                    str(main / "core/tune.c"), str(main / "core/app_heap.c"), str(tlsf / "tlsf.c"),
+                                    "-o", str(binary)], capture_output=True, text=True)
             self.assertEqual(built.returncode, 0, built.stderr)
             ran = subprocess.run([str(binary)], capture_output=True, text=True)
             self.assertEqual(ran.returncode, 0, ran.stderr)
@@ -311,19 +316,19 @@ int main(void) {
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             (root / "bakes/16").mkdir(parents=True)
-            (root / "bakes/16/mesh.mesh").write_bytes(b"size16")
+            (root / "bakes/16/mesh.bundle").write_bytes(b"size16")
             lock = root / "tree" / bake.LOCK.relative_to(bake.REPO)
             lock.parent.mkdir(parents=True)
-            bake.write_lock([dict(output="mesh.mesh", source="assets/mesh.scene.toml", key="k", sha256="0" * 64, size=6),
-                             dict(output="other.mesh", source="other.scene.toml", key="o", sha256="1" * 64, size=1)], lock)
+            bake.write_lock([dict(output="mesh.bundle", source="assets/mesh.scene.toml", key="k", sha256="0" * 64, size=6),
+                             dict(output="other.bundle", source="other.scene.toml", key="o", sha256="1" * 64, size=1)], lock)
             output = io.StringIO()
             with contextlib.redirect_stdout(output), mock.patch.dict(os.environ, {bake.CACHE_VARIABLE: str(root / "cache")}):
                 meshlet_capture.install_row(root, dict(sizes=[16,32,64], suite="run_perf", size_tune="perf.shipped", shipped=32,
-                                                       meshes=["assets/mesh.mesh"]), 16)
+                                                       meshes=["assets/mesh.bundle"]), 16)
             rows = bake.read_lock(lock)
-            self.assertEqual(rows["k"]["sha256"], bake.file_sha256(root / "bakes/16/mesh.mesh"))
+            self.assertEqual(rows["k"]["sha256"], bake.file_sha256(root / "bakes/16/mesh.bundle"))
             self.assertEqual(rows["o"]["sha256"], "1" * 64)
-            self.assertEqual(bake.cached(rows["k"], bake.MESH_SUFFIX, root / "cache").read_bytes(), b"size16")
+            self.assertEqual(bake.cached(rows["k"], bake.BUNDLE_SUFFIX, root / "cache").read_bytes(), b"size16")
             lines = output.getvalue().splitlines()
             self.assertEqual(len(lines), 1)
             self.assertIn("suite run_perf --set perf.shipped=32 --flash --out", lines[0])
@@ -458,8 +463,8 @@ int main(void) {
                                   np.full((3,3), 128), np.array([[0,1,2]]), np.array([1]))
             poses = root / "poses.txt"
             poses.write_text("size 8 6\nlens 1 0.1\npose 0 0 0 0 0 -1\npose 100 0 0 0 0 -1\n")
-            self.assertEqual(meshlet_sizes.host_columns([root / "tiny.mesh"], poses), ((1, 3, 1), 0.5))
-            self.assertEqual(meshlet_sizes.host_columns([root / "tiny.mesh"], poses, cull=False), ((1, 3, 1), 1.0))
+            self.assertEqual(meshlet_sizes.host_columns([root / "tiny.bundle"], poses), ((1, 3, 1), 0.5))
+            self.assertEqual(meshlet_sizes.host_columns([root / "tiny.bundle"], poses, cull=False), ((1, 3, 1), 1.0))
 
 if __name__ == "__main__":
     unittest.main()

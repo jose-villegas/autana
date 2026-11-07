@@ -23,7 +23,7 @@ targets_for(scene_t* scene, scene_entity_t owner) {
     const size_t targets = scene_storage_carve(&end, sizeof(anim_target_t) * (size_t)entities, alignof(anim_target_t));
     const size_t components =
         scene_storage_carve(&end, sizeof(anim_component_ref_t) * (size_t)entities * 2, alignof(anim_component_ref_t));
-    uint8_t* block = memory_alloc(end, MEMORY_PSRAM);
+    uint8_t* block = memory_alloc(end, MEMORY_APP);
     targets_t out = {.block = block, .count = entities};
     if (block == NULL) {
         return out;
@@ -361,6 +361,13 @@ scene_animator_set_paused(scene_t* scene, scene_entity_t entity, scene_animator_
     return true;
 }
 
+bool
+scene_animator_paused(scene_t* scene, scene_entity_t entity, scene_animator_slot_t slot) {
+    scene_animator_t* a = animator_of(scene, entity);
+    const anim_playhead_t* p = a == NULL ? NULL : slot_playhead(a, slot);
+    return p != NULL && p->paused;
+}
+
 int
 scene_animator_clip_count(const scene_t* scene, scene_entity_t entity) {
     return entity >= scene->asset.entity_count || scene->animators[entity].storage == NULL
@@ -597,7 +604,7 @@ scene_animator_seek(scene_t* scene, scene_entity_t entity, scene_animator_slot_t
     if (p == NULL || a->layer.current.clip == ANIM_LAYER_CLIP_NONE) {
         return false;
     }
-    scene_draw_camera_cut(scene, entity);
+    scene_camera_cut(scene, entity);
     p->t_ms = t_ms;
     p->fraction = 0;
     a->dirty = true;

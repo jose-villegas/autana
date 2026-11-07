@@ -20,8 +20,10 @@ entry; an NAME.sound.toml is pack NAME, holding its one sound.
 A NAME.pack.toml makes its folder one pack NAME instead:
 every root under that folder puts its entries there, and folder packs do
 not nest. `development = true` limits a folder pack to development images;
-host builds and bake discovery include every pack. A mesh is the entry
-<id>.mesh that mesh_import.py wrote, and its pack id is that id; a scene (r3d/scene_asset.py), a clip
+host builds and bake discovery include every pack. `render = "PATH"` names a
+.render.toml, relative to the .pack.toml, that the pack holds as its render
+settings entry (render/settings/render_asset.py). A mesh is the entry
+<id>.bundle that mesh_import.py wrote, and its pack id is that id; a scene (r3d/scene_asset.py), a clip
 (anim/tracks_asset.py), a picture (gfx/image_asset.py), a curve
 (gfx/curve_asset.py) and an icon (gfx/icons_asset.py) are baked here from
 their files, each with its stem for
@@ -62,6 +64,7 @@ from asset.asset_directory import build_directory, parse_directory  # noqa: E402
 from r3d import mesh_bundle, mesh_asset, scene_asset, scene_name, skin_asset, skin_pack, lcol_asset  # noqa: E402
 from r3d.import_settings import SettingsError, albedo_jobs, load_demo_assets, load_import_settings, load_scene  # noqa: E402
 from r3d.mesh_asset import TYPE as LIT_MESH  # noqa: E402
+from render.settings import render_asset  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
 DEFAULT_SEARCH = REPO / "launcher" / "main"
@@ -72,9 +75,9 @@ SOUND = sound_asset.SUFFIX
 CURVE = curve_asset.SUFFIX
 ROOTS = (IMPORT, SCENE, CLIP, IMAGE, ICONS, CURVE, SOUND)
 BAKED_HERE = (SCENE, CLIP, IMAGE, ICONS, CURVE)  # entries baked from their file here; meshes and sounds come from the cache
-FETCHED = (bake.MESH_SUFFIX, mesh_bundle.SUFFIX, SOUND)
+FETCHED = (mesh_bundle.SUFFIX, SOUND)
 FOLDER_PACK = ".pack.toml"
-PACK_DEVELOPMENT = "development"
+PACK_DEVELOPMENT, PACK_RENDER = "development", "render"
 PACK_SUFFIX = ".apak"
 
 
@@ -89,7 +92,7 @@ def input_files(paths):
             continue
         searched.add(path)
         if path.is_dir():
-            found.update(p for p in path.rglob("*.toml") if p.name.endswith(ROOTS))
+            found.update(p for p in path.rglob("*.toml") if p.name.endswith((*ROOTS, FOLDER_PACK)))
             for manifest in sorted(path.rglob("demo_assets.toml")):
                 if manifest.is_relative_to(DEMO.resolve()):
                     raise SettingsError(f"{manifest}: only an app names demo assets")
@@ -98,11 +101,11 @@ def input_files(paths):
                     if not demo.is_dir():
                         raise SettingsError(f"{manifest}: no demo folder for {name!r}")
                     pending.append(demo)
-        elif path.name.endswith(ROOTS):
+        elif path.name.endswith((*ROOTS, FOLDER_PACK)):
             found.add(path)
         else:
             raise SettingsError(f"{path}: not an .import.toml, a .scene.toml, an .anim.toml, an .image.toml, "
-                                "an .icons.toml, a .curve.toml, a .sound.toml or a folder")
+                                "an .icons.toml, a .curve.toml, a .sound.toml, a .pack.toml or a folder")
     return sorted(found)
 
 
@@ -128,20 +131,25 @@ def scene_entries(path, scene):
 
 @functools.cache
 def folder_packs(folder):
-    """{NAME.pack.toml path: development-only}, with settings validated."""
+    """{NAME.pack.toml path: (development-only, its .render.toml or None)}, with settings validated."""
     found = {}
     for path in sorted(folder.glob("*" + FOLDER_PACK)):
         try:
             values = tomllib.loads(path.read_text(encoding="utf-8"))
         except tomllib.TOMLDecodeError as error:
             raise SettingsError(f"{path}: {error}") from None
-        unknown = values.keys() - {PACK_DEVELOPMENT}
+        unknown = values.keys() - {PACK_DEVELOPMENT, PACK_RENDER}
         if unknown:
             raise SettingsError(f"{path}: unknown keys {sorted(unknown)}")
         development = values.get(PACK_DEVELOPMENT, False)
         if not isinstance(development, bool):
             raise SettingsError(f"{path}: development must be a boolean")
-        found[path] = development
+        render = values.get(PACK_RENDER)
+        if render is not None:
+            render = (folder / render).resolve() if isinstance(render, str) else None
+            if render is None or not render.name.endswith(render_asset.SUFFIX) or not render.is_file():
+                raise SettingsError(f"{path}: render must name a {render_asset.SUFFIX} file, relative to it")
+        found[path] = development, render
     return found
 
 
@@ -156,14 +164,14 @@ def folder_pack(path):
 
 def pack_files(paths):
     """{pack name: {entry id: its source}}, one pack per root under `paths`;
-    a mesh's source is its .mesh file, a scene's its .scene.toml, a clip's
+    a mesh's source is its .bundle file, a scene's its .scene.toml, a clip's
     its .anim.toml, a picture's its .image.toml."""
     return pack_jobs(paths)[0]
 
 
 def pack_jobs(paths, development=True):
     """pack_files() and, for each mesh source, the job that bakes it:
-    {resolved .mesh path: (job, its scene or None, the file that asks for it)}.
+    {resolved .bundle path: (job, its scene or None, the file that asks for it)}.
     Non-development images omit development-only folder packs."""
     files = input_files(paths)
     roots, placed, jobs = {}, set(), {}
@@ -184,7 +192,9 @@ def pack_jobs(paths, development=True):
         if path.name.endswith(CLIP) and path.resolve() not in placed:
             roots[path] = {tracks_asset.clip_id(path): path}
     for path in files:
-        if path.name.endswith(IMAGE):
+        if path.name.endswith(FOLDER_PACK) and folder_packs(path.parent)[path][1] is not None:
+            roots[path] = {}  # a pack of its render settings alone; added below
+        elif path.name.endswith(IMAGE):
             roots[path] = {image_asset.image_id(path): path}
         elif path.name.endswith(SOUND):
             roots[path] = {sound_asset.sound_id(path): path}
@@ -195,7 +205,7 @@ def pack_jobs(paths, development=True):
     packs, owner = {}, {}
     for path, entries in roots.items():
         maker = folder_pack(path) or path
-        if maker.name.endswith(FOLDER_PACK) and folder_packs(maker.parent)[maker] and not development:
+        if maker.name.endswith(FOLDER_PACK) and folder_packs(maker.parent)[maker][0] and not development:
             continue
         name = maker.name
         for suffix in (FOLDER_PACK, *ROOTS):
@@ -203,11 +213,14 @@ def pack_jobs(paths, development=True):
         if owner.setdefault(name, maker) != maker:
             raise SettingsError(f"two roots make a pack named {name!r}: {owner[name]} and {maker}")
         pack = packs.setdefault(name, {})
-        for key, source in entries.items():
+        render = folder_packs(maker.parent)[maker][1] if maker.name.endswith(FOLDER_PACK) else None
+        for key, source in (entries | {render_asset.ENTRY: render} if render else entries).items():
             add_entry(pack, key, source, maker)
     holder = {}
     for name, entries in packs.items():
-        for entry in entries:
+        for entry, source in entries.items():
+            if source.name.endswith(render_asset.SUFFIX):
+                continue  # every pack has its own render settings
             if entry in holder:
                 raise SettingsError(f"{entry!r} is named by packs {holder[entry]!r} and {name!r}: "
                                     "a shared asset needs a pack of its own, which is not built yet")
@@ -229,7 +242,7 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
     for item in replace:
         mesh, _, file = item.partition("=")
         holder = next((entries for entries in packs.values() if mesh in entries), None)
-        if holder is None or not holder[mesh].name.endswith((bake.MESH_SUFFIX, mesh_bundle.SUFFIX)):
+        if holder is None or not holder[mesh].name.endswith((mesh_bundle.SUFFIX,)):
             raise SettingsError(f"--replace {mesh}: no such mesh")
         replaced[mesh] = pathlib.Path(file)
     locked = {path: job for path, job in jobs.items() if path.is_relative_to(REPO)}
@@ -284,6 +297,8 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
         for key, source in sources.items():
             if source.suffix == mesh_bundle.SUFFIX:
                 rows, bundle_copies[key] = mesh_bundle.decode(source.read_bytes())
+                if key in replaced:
+                    rows = mesh_bundle.rename_rest(rows, bundle_copies[key], key)
                 bundle_rows.extend(rows)
         entry_rows = [pack_entry(key, source, engine_frame=False, camera_node=camera_nodes.get(source.resolve()),
                                  cache=cache, offline=offline, copies=bundle_copies) for key, source in sorted(sources.items())
@@ -300,8 +315,20 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
             except ValueError as error:
                 raise SettingsError(f"entry {key!r}: {error}") from error
         validate_colour_sets(mirrored)
+        validate_clip_scales(mirrored)
         result[name] = build_pack(sorted(mirrored))
     return result
+
+
+def validate_clip_scales(rows):
+    """Refuse a scene whose clips scale a parent unevenly; clips not in this pack are skipped."""
+    scenes = {name: scene_asset.decode(data) for name, kind, data in rows if kind == scene_asset.TYPE}
+    clips = {name: tracks_asset.decode(data)[0] for name, kind, data in rows if kind == tracks_asset.TYPE}
+    for name, scene in scenes.items():
+        try:
+            scene_asset.check_clip_scales(scene, clips)
+        except scene_asset.SceneError as error:
+            raise SettingsError(f"{name}: {error}") from error
 
 
 def validate_colour_sets(rows):
@@ -351,7 +378,7 @@ def expand_copies(scene, copies):
 
 
 def pack_entry(key, source, engine_frame=True, camera_node=None, cache=None, offline=False, copies=None):
-    """The pack entry `key`: a scene, clip, picture, icon, sound or curve
+    """The pack entry `key`: a scene, clip, picture, icon, sound, curve or render settings
     baked from its recipe, or cached mesh or sound bytes. A scene, clip or mesh is in the
     engine frame unless `engine_frame` is false (the skin step matches the
     source-frame mesh)."""
@@ -362,6 +389,8 @@ def pack_entry(key, source, engine_frame=True, camera_node=None, cache=None, off
             raise SettingsError("sound needs a cached bake: " + str(source))
         if source.name.endswith(CURVE):
             return key, curve_asset.TYPE, curve_asset.bake(source)
+        if source.name.endswith(render_asset.SUFFIX):
+            return key, render_asset.TYPE, render_asset.bake(source)
         if source.name.endswith(IMAGE):
             return key, image_asset.TYPE, image_asset.bake(source)
         if source.name.endswith(ICONS):
@@ -372,7 +401,7 @@ def pack_entry(key, source, engine_frame=True, camera_node=None, cache=None, off
         elif source.name.endswith(CLIP):
             kind, data = tracks_asset.TYPE, tracks_asset.bake(source, camera_node)
         else:
-            kind, data = LIT_MESH, source.read_bytes()
+            raise SettingsError("unsupported asset source: " + str(source))
         return key, kind, to_engine(kind, data) if engine_frame else data
     except ValueError as error:
         raise SettingsError(f"entry {key!r} ({source}): {error}") from error

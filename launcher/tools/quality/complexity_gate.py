@@ -92,7 +92,7 @@ VARIANT_ONLY_FILES = {
     "main/gfx/present/panel/gfx_null_panel_device.c": ("main/gfx/present/gfx_present.c", "CONFIG_LAUNCHER_QEMU"),
 }
 
-VENDORED_DIR_NAMES = {"components", "managed_components"}
+VENDORED_DIR_NAMES = {"components", "managed_components", "third_party"}
 
 # Vendored source -> its pristine upstream copy (a pinned submodule). A
 # vendored function is measured only where this project changed its BODY
@@ -103,6 +103,10 @@ VENDORED_REFERENCES = {
         "third_party/upstream/microui/src/microui.c",
     "launcher/components/microui/include/microui.h":
         "third_party/upstream/microui/src/microui.h",
+    "third_party/tlsf/tlsf.c": "third_party/upstream/tlsf/tlsf.c",
+    "third_party/tlsf/tlsf_block_functions.h": "third_party/upstream/tlsf/tlsf_block_functions.h",
+    "third_party/tlsf/tlsf_control_functions.h": "third_party/upstream/tlsf/tlsf_control_functions.h",
+    "third_party/tlsf/include/tlsf.h": "third_party/upstream/tlsf/include/tlsf.h",
 }
 
 # ANALYSIS_SCAN skips table uses of macros, so its unused-macro warning
@@ -193,7 +197,7 @@ def run_tests_print(flag):
 
 def is_vendored(path_str):
     """launcher/components/ (microui, the board support package),
-    managed_components/ (registry drivers), and the vendored Unity framework
+    managed_components/ (registry drivers), third_party/, and the vendored Unity framework
     under packages/testkit/unity/, third-party code, out of scope for a ratchet on
     THIS project's own functions."""
     parts = Path(path_str).parts
@@ -537,11 +541,13 @@ def build_tools_entries(host_flags, already_covered):
     return entries
 
 
-def build_host_entries(host_flags, already_covered):
-    sources = {str(Path(src).resolve()) for src in run_tests_print("--print-sources")
-               if not is_vendored(src)}
-    runners = {str(path.resolve()) for path in
-               (LAUNCHER_DIR / "packages").glob("*/runner/**/*.c") if not is_vendored(str(path))}
+def build_host_entries(host_flags, already_covered, vendored=False):
+    sources = {str(Path(src).resolve()) for src in run_tests_print("--print-sources")}
+    references = {str((REPO_ROOT / rel).resolve()) for rel in VENDORED_REFERENCES}
+    sources = {src for src in sources if (src in references if vendored else not is_vendored(src))}
+    runners = set() if vendored else {
+        str(path.resolve()) for path in (LAUNCHER_DIR / "packages").glob("*/runner/**/*.c")
+        if not is_vendored(str(path))}
     entries = {}
     clang = resolve_analysis_clang()
     for source in sorted(sources | runners):
@@ -614,6 +620,8 @@ def build_compile_db():
     # of the first-party source list: scan_vendored() scores only the
     # functions this project modified.
     vendored_entries = build_idf_entries(toolchain_root, vendored=True)
+    vendored_entries.update(build_host_entries(
+        host_flags, {*all_entries, *vendored_entries}, vendored=True))
 
     BUILD_DIR.mkdir(parents=True, exist_ok=True)
     db_json = []

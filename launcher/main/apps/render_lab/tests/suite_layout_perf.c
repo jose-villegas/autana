@@ -78,7 +78,7 @@ release_fixture(void) {
 
 static fixture_t*
 fixture(void) {
-    active = memory_alloc(sizeof *active, MEMORY_PSRAM);
+    active = memory_alloc(sizeof *active, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(active);
     *active = (fixture_t){0};
     active->saved_layout = (int32_t)render_lab_layout();
@@ -143,7 +143,7 @@ sent_frame_crc(fixture_t* f) {
         state = gfx_readback_begin();
     }
     TEST_ASSERT_EQUAL_INT(GFX_READBACK_READY, state);
-    gfx_color_t* panel = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
+    gfx_color_t* panel = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(panel);
     for (int y = 0; y < GFX_HEIGHT; y++) {
         gfx_read_panel_row(y, &panel[(size_t)y * GFX_WIDTH]);
@@ -182,8 +182,8 @@ measure(fixture_t* f, const char* scene, int layout, const r3d_perf_quarter_t* q
     const int core1_share = JOB_SHARE_EVEN + render_context_main()->split.top_offset[0];
     const unsigned internal_free = (unsigned)memory_free_bytes(MEMORY_INTERNAL);
     const unsigned internal_largest = (unsigned)memory_largest_block(MEMORY_INTERNAL);
-    const unsigned psram_free = (unsigned)memory_free_bytes(MEMORY_PSRAM);
-    const unsigned psram_largest = (unsigned)memory_largest_block(MEMORY_PSRAM);
+    const unsigned psram_free = (unsigned)memory_free_bytes(MEMORY_APP);
+    const unsigned psram_largest = (unsigned)memory_largest_block(MEMORY_APP);
     const uint32_t crc = sent_frame_crc(f);
     const char* name = layout_names[layout];
     for (int stage = 0; stage < STAGE_COUNT; stage++) {

@@ -2,7 +2,7 @@
 """Compare the torch appearance forward model with the nvdiffrast library.
 
     sh launcher/tools/r3d/gpu_python.sh launcher/tools/r3d/appearance_parity.py \
-        --start NAME.mesh --poses POSES.txt [--poses POSES.txt] --scale 2
+        --start NAME.bundle --poses POSES.txt [--poses POSES.txt] --scale 2
 """
 
 import argparse

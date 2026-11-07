@@ -47,7 +47,7 @@ bake.tracked_modules = lambda: set()
 bake.tracked_requirements = lambda: sorted(tools.rglob(bake.REQUIREMENTS_GLOB))
 bake.packages.include_roots = lambda: []
 build_pack.pack_jobs = lambda paths: ({'scene': {'clip': root / 'clip.anim.toml',
-    'mesh': root / 'mesh.mesh'}}, {root / 'mesh.mesh': None})
+    'mesh': root / 'mesh.bundle'}}, {root / 'mesh.bundle': None})
 print(bake.digest(stages.gpu_inputs(root / 'scene.toml', 'object')))
 """
 
@@ -67,7 +67,7 @@ class GpuFingerprintTests(unittest.TestCase):
                  'launcher/tools/requirements.txt': 'package==1\n',
                  'data.txt': 'weights', 'host.c': 'int host = 1;\n',
                  'scene.toml': 'scene', 'clip.anim.toml': 'clip',
-                 'mesh.mesh': 'not downloaded', 'lock': 'locked bytes', 'key': 'key',
+                 'mesh.bundle': 'not downloaded', 'lock': 'locked bytes', 'key': 'key',
                  'flags': '-O1', 'launcher/main/apps/example/app.c': 'app', 'README.md': 'docs'}
         for name, content in files.items():
             path = self.root / name

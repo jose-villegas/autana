@@ -56,9 +56,8 @@ frame_profile_play(const frame_profile_scenario_t* s, frame_profile_frame_fn fra
         return p;
     }
     const int capacity = (int)((s->duration_us - 1) / FRAME_PROFILE_MIN_FRAME_US) + 2;
-    int32_t* samples = memory_alloc((size_t)capacity * sizeof *samples, MEMORY_PSRAM);
-    frame_profile_frame_t* traced =
-        trace == NULL ? NULL : memory_alloc((size_t)capacity * sizeof *traced, MEMORY_PSRAM);
+    int32_t* samples = memory_alloc((size_t)capacity * sizeof *samples, MEMORY_APP);
+    frame_profile_frame_t* traced = trace == NULL ? NULL : memory_alloc((size_t)capacity * sizeof *traced, MEMORY_APP);
     if (samples == NULL || (trace != NULL && traced == NULL)) {
         ESP_LOGE("frame_profile", "%s: sample allocation failed", s->row);
         memory_free(samples);

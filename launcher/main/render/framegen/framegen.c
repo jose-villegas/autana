@@ -15,7 +15,7 @@
 bool
 framegen_target_alloc(framegen_target_t* out, int width, int height) {
     const size_t bytes = (size_t)width * (size_t)height * sizeof(uint16_t);
-    *out = (framegen_target_t){memory_alloc(bytes, MEMORY_PSRAM), memory_alloc(bytes, MEMORY_PSRAM), width, height};
+    *out = (framegen_target_t){memory_alloc(bytes, MEMORY_APP), memory_alloc(bytes, MEMORY_APP), width, height};
     if (out->colour == NULL || out->depth == NULL) {
         framegen_target_free(out);
         return false;

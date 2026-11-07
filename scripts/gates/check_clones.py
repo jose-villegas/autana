@@ -47,7 +47,7 @@ SUFFIXES = {*SOURCE_EXTENSIONS, ".py"}
 def eligible_name(name):
     path = Path(name)
     return (path.suffix in SUFFIXES
-            and not name.startswith(("launcher/components/", "launcher/packages/testkit/unity/"))
+            and not name.startswith(("third_party/", "launcher/components/", "launcher/packages/testkit/unity/"))
             and "fixtures" not in path.parts and "fixture" not in path.parts)
 
 

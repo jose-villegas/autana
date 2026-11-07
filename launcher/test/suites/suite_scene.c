@@ -7,6 +7,7 @@
 
 #include <limits.h>
 #include <math.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -41,6 +42,7 @@
 #include "math/scalar/mathi.h"
 #include "render/context/render_context.h"
 #include "render/lcol_format.h"
+#include "render/llod_format.h"
 #include "scene/scene.h"
 #include "scene/scene_internal.h"
 #include "scene/scene_shell.h"
@@ -71,7 +73,7 @@
 #define CAMERA_DISTANCE    10
 #define PIXELS_PER_UNIT    ((float)CENTER / CAMERA_DISTANCE)
 #define CLEAR_RGB          0x336699
-#define QUAD_BYTES         132
+#define QUAD_BYTES         (R3D_LIT_MESH_HEADER_BYTES + 88)
 #define PACK_MAX           16384
 #define SENTINEL           0x5A5A
 
@@ -79,15 +81,15 @@
 #define INSTANCES_MAX      64
 
 /* A unit quad in the plane z = 0, two-sided, in one colour. The arrays sit
- * one after another after the 44-byte header. */
+ * one after another after the header. */
 enum {
     QUAD_VERTICES = 4,
     QUAD_TRIANGLES = 2,
-    MESH_HEADER = 44,
+    MESH_HEADER = R3D_LIT_MESH_HEADER_BYTES,
     MESH_SCALE_AT = 4 * sizeof(uint32_t),
     RIG_JOINTS = 4,
     RIG_ENTRIES = 10,
-    RIG_MESH_BYTES = 200,
+    RIG_MESH_BYTES = R3D_LIT_MESH_HEADER_BYTES + 156,
     RIG_VERTICES = 2 * QUAD_VERTICES,
     RIG_DURATION_MS = 1000,
     RIG_TRAVEL = 4
@@ -676,8 +678,8 @@ release_fixture(void) {
     gfx_reset_for_test();
 #endif
     test_free_aligned(fx.raw);
-    free(fx.pixels);
-    free(fx.held);
+    memory_free(fx.pixels);
+    memory_free(fx.held);
     free(fx.instances);
     free(fx.saved_skin[0]);
     free(fx.saved_skin[1]);
@@ -882,7 +884,7 @@ assert_resident_mesh_arrays(const scene_t* scene, size_t bytes) {
 static void
 test_static_mesh_arrays_are_resident_and_equal_the_pack(void) {
     fixture();
-    fx.lent = memory_alloc(LENT_BYTES, MEMORY_PSRAM);
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(fx.lent);
     (void)scene_set_take(lend);
     scene_t* scene = load("test_pair");
@@ -919,7 +921,7 @@ test_only_static_mesh_arrays_are_made_resident(void) {
         }
     }
     scene_unload(scene);
-    fx.lent = memory_alloc(LENT_BYTES, MEMORY_PSRAM);
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(fx.lent);
     (void)scene_set_take(lend);
     scene_t* skin_scene = load("test_skin");
@@ -935,7 +937,7 @@ test_only_static_mesh_arrays_are_made_resident(void) {
 static void
 test_resident_allocation_failure_rolls_back_the_load(void) {
     fixture();
-    const size_t psram = memory_free_bytes(MEMORY_PSRAM);
+    const size_t psram = memory_free_bytes(MEMORY_APP);
     const size_t internal = memory_free_bytes(MEMORY_INTERNAL);
 
     enum { SCENE_BLOCK_ALLOCATION_COUNT = 1 };
@@ -956,7 +958,7 @@ test_resident_allocation_failure_rolls_back_the_load(void) {
         TEST_ASSERT_EQUAL_INT(ASSET_OK, why.asset);
         TEST_ASSERT_EQUAL_STRING(cases[i].id, why.what);
         TEST_ASSERT_EQUAL_INT(0, scene_loaded_count());
-        TEST_ASSERT_EQUAL_size_t(psram, memory_free_bytes(MEMORY_PSRAM));
+        TEST_ASSERT_EQUAL_size_t(psram, memory_free_bytes(MEMORY_APP));
         TEST_ASSERT_EQUAL_size_t(internal, memory_free_bytes(MEMORY_INTERNAL));
         TEST_ASSERT_EQUAL_size_t(lent, fx.lent_used);
     }
@@ -965,11 +967,11 @@ test_resident_allocation_failure_rolls_back_the_load(void) {
 static void
 test_a_scene_loads_by_name_and_unloading_gives_back_everything_it_took(void) {
     fixture();
-    const size_t before = memory_free_bytes(MEMORY_PSRAM);
+    const size_t before = memory_free_bytes(MEMORY_APP);
     scene_t* scene = load("test_pair");
-    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) < before);
+    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_APP) < before);
     scene_unload(scene);
-    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) == before);
+    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_APP) == before);
 }
 
 static bool
@@ -983,22 +985,22 @@ lent_from(const void* p) {
 static void
 test_a_lent_scene_takes_from_its_lender_and_unloading_returns_it_to_the_lender(void) {
     fixture();
-    fx.lent = memory_alloc(LENT_BYTES, MEMORY_PSRAM);
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(fx.lent);
     (void)scene_set_take(lend);
-    const size_t before = memory_free_bytes(MEMORY_PSRAM);
+    const size_t before = memory_free_bytes(MEMORY_APP);
     scene_t* scene = show("test_pair", SCENE_CAMERA_FIRST);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
     TEST_ASSERT_TRUE(lent_from(scene));
     TEST_ASSERT_TRUE(lent_from(scene->resident));
     TEST_ASSERT_TRUE(lent_from(render_context_main()->scratch));
-    TEST_ASSERT_EQUAL_size_t(before, memory_free_bytes(MEMORY_PSRAM));
+    TEST_ASSERT_EQUAL_size_t(before, memory_free_bytes(MEMORY_APP));
     const size_t taken = fx.lent_used;
     scene_unload(scene);
     TEST_ASSERT_NULL(render_context_main()->scratch);
     TEST_ASSERT_EQUAL_size_t(taken, fx.lent_used);
-    TEST_ASSERT_EQUAL_size_t(before, memory_free_bytes(MEMORY_PSRAM));
+    TEST_ASSERT_EQUAL_size_t(before, memory_free_bytes(MEMORY_APP));
 }
 
 /* A refused take leaves the scene unloaded, or its camera drawing nothing,
@@ -1006,7 +1008,7 @@ test_a_lent_scene_takes_from_its_lender_and_unloading_returns_it_to_the_lender(v
 static void
 test_a_refused_take_loads_nothing_and_a_refused_scratch_draws_nothing(void) {
     fixture();
-    fx.lent = memory_alloc(LENT_BYTES, MEMORY_PSRAM);
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(fx.lent);
     (void)scene_set_take(lend);
     fx.lent_used = LENT_BYTES;
@@ -1073,12 +1075,12 @@ test_a_load_that_fails_says_what_it_was_about(void) {
     TEST_ASSERT_EQUAL_INT(SCENE_ERR_UNKNOWN, why.status);
     TEST_ASSERT_EQUAL_STRING("test_nothing_of_the_kind", why.what);
 
-    const size_t before = memory_free_bytes(MEMORY_PSRAM);
+    const size_t before = memory_free_bytes(MEMORY_APP);
     TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_broken", &why));
     TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, why.asset);
     TEST_ASSERT_EQUAL_STRING("gone", why.what);
-    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) == before);
+    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_APP) == before);
 
     TEST_ASSERT_NULL(scene_load_from(NULL, "test_pair", &why));
     TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
@@ -1106,13 +1108,13 @@ test_an_id_too_long_for_a_pack_name_is_cut_where_the_failure_names_it(void) {
 /* Each failure names the entry it was about, and the load takes nothing. */
 static void
 expect_failure(const char* id, asset_status_t asset, const char* what) {
-    const size_t before = memory_free_bytes(MEMORY_PSRAM);
+    const size_t before = memory_free_bytes(MEMORY_APP);
     scene_failure_t why;
     TEST_ASSERT_NULL_MESSAGE(scene_load_from(&fx.pack, id, &why), id);
     TEST_ASSERT_EQUAL_INT_MESSAGE(SCENE_ERR_ASSET, why.status, id);
     TEST_ASSERT_EQUAL_INT_MESSAGE(asset, why.asset, id);
     TEST_ASSERT_EQUAL_STRING_MESSAGE(what, why.what, id);
-    TEST_ASSERT_TRUE_MESSAGE(memory_free_bytes(MEMORY_PSRAM) == before, id);
+    TEST_ASSERT_TRUE_MESSAGE(memory_free_bytes(MEMORY_APP) == before, id);
 }
 
 static void
@@ -1669,7 +1671,7 @@ test_the_reader_refuses_an_entry_that_breaks_any_one_rule(void) {
 static void
 assert_load_failures_release(const asset_pack_t* pack, const char* id) {
     const size_t internal = memory_free_bytes(MEMORY_INTERNAL);
-    const size_t psram = memory_free_bytes(MEMORY_PSRAM);
+    const size_t psram = memory_free_bytes(MEMORY_APP);
 
     enum { ALLOCATION_LIMIT = 16 };
 
@@ -1686,7 +1688,7 @@ assert_load_failures_release(const asset_pack_t* pack, const char* id) {
             TEST_ASSERT_EQUAL_INT_MESSAGE(SCENE_ERR_MEMORY, why.status, why.what);
         }
         TEST_ASSERT_EQUAL_UINT(internal, memory_free_bytes(MEMORY_INTERNAL));
-        TEST_ASSERT_EQUAL_UINT(psram, memory_free_bytes(MEMORY_PSRAM));
+        TEST_ASSERT_EQUAL_UINT(psram, memory_free_bytes(MEMORY_APP));
         if (succeeded) {
             break;
         }
@@ -1874,7 +1876,7 @@ test_authored_animator_clip_array_allocation_failure_releases_memory(void) {
     void* buffer = NULL;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_file_open(getenv("AUTANA_SCENE_PROBE"), &pack, &buffer));
     const size_t internal = memory_free_bytes(MEMORY_INTERNAL);
-    const size_t psram = memory_free_bytes(MEMORY_PSRAM);
+    const size_t psram = memory_free_bytes(MEMORY_APP);
 
     enum { ALLOCATION_SWEEP_LIMIT = 64 };
 
@@ -1893,7 +1895,7 @@ test_authored_animator_clip_array_allocation_failure_releases_memory(void) {
             TEST_ASSERT_EQUAL_INT(SCENE_ERR_MEMORY, why.status);
         }
         TEST_ASSERT_EQUAL_UINT(internal, memory_free_bytes(MEMORY_INTERNAL));
-        TEST_ASSERT_EQUAL_UINT(psram, memory_free_bytes(MEMORY_PSRAM));
+        TEST_ASSERT_EQUAL_UINT(psram, memory_free_bytes(MEMORY_APP));
         if (completed) {
             break;
         }
@@ -2297,7 +2299,7 @@ make_lcol_pack(const lcol_case_t* spec, uint16_t encoding, const char* message) 
 static void
 test_static_face_colours_are_resident_and_equal_the_pack(void) {
     fixture();
-    fx.lent = memory_alloc(LENT_BYTES, MEMORY_PSRAM);
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(fx.lent);
     (void)scene_set_take(lend);
     const lcol_case_t spec = {.second_set = LCOL_TEST_SETS - 1};
@@ -2380,7 +2382,7 @@ test_lcol_instances_and_refusals(void) {
          .coloured = true},
     };
     fixture();
-    fx.lent = memory_alloc(LENT_BYTES, MEMORY_PSRAM);
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(fx.lent);
     (void)scene_set_take(lend);
     for (uint16_t encoding = LCOL_ENCODING_RGB888; encoding <= LCOL_ENCODING_RGB565; encoding++) {
@@ -2445,6 +2447,20 @@ test_a_runtime_mesh_is_drawn_in_place_of_the_loaded_one(void) {
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(4.0F));
     TEST_ASSERT_FALSE(scene_renderer_set_mesh(scene, scene_find(scene, name_hash("camera")), &blue));
     free(colors);
+}
+
+/* The loaded quad has no levels, so the scene holds no coarse bits for it: a
+ * mesh with levels would draw its finest forever, and is refused instead. */
+static void
+test_a_runtime_mesh_with_more_levels_than_the_bits_hold_is_refused(void) {
+    fixture();
+    scene_t* scene = show("test_pair", SCENE_CAMERA_FIRST);
+    const scene_entity_t green = scene_find(scene, name_hash("green"));
+    r3d_lit_mesh_t levelled = *scene_entity_mesh(scene, green);
+    TEST_ASSERT_EQUAL_INT(0, levelled.lod_group_count);
+    levelled.lod_group_count = 1;
+    TEST_ASSERT_FALSE(scene_renderer_set_mesh(scene, green, &levelled));
+    TEST_ASSERT_EQUAL_INT(0, scene_entity_mesh(scene, green)->lod_group_count);
 }
 
 /* A camera takes a lens shift; anything else, or a shift that is not a
@@ -2704,14 +2720,14 @@ test_the_stats_count_what_the_last_draw_kept(void) {
 static void
 test_leaving_the_app_unloads_every_scene_and_frees_the_scratch(void) {
     fixture();
-    const size_t before = memory_free_bytes(MEMORY_PSRAM);
+    const size_t before = memory_free_bytes(MEMORY_APP);
     show("test_pair", SCENE_CAMERA_FIRST);
     load("test_solo");
     frame(16);
-    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) < before);
+    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_APP) < before);
     scene_unload_all();
     TEST_ASSERT_FALSE(scene_has_active_camera());
-    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) == before);
+    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_APP) == before);
 }
 
 /* The draw happens in scene_render(): it touches no framebuffer and leaves
@@ -2795,13 +2811,13 @@ test_the_render_scale_changes_the_picture_and_a_larger_one_grows_the_scratch(voi
     show("test_pair", SCENE_CAMERA_FIRST);
     render_context_set_scale(render_context_main(), 50);
     frame(16);
-    const size_t small_free = memory_free_bytes(MEMORY_PSRAM);
+    const size_t small_free = memory_free_bytes(MEMORY_APP);
     uint16_t* half = malloc(sizeof(*half) * SIZE * SIZE);
     TEST_ASSERT_NOT_NULL(half);
     memcpy(half, fx.pixels, sizeof(*half) * SIZE * SIZE);
     render_context_set_scale(render_context_main(), 100);
     frame(16);
-    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) < small_free);
+    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_APP) < small_free);
     TEST_ASSERT_TRUE(memcmp(half, fx.pixels, sizeof(*half) * SIZE * SIZE) != 0);
     free(half);
 }
@@ -2865,7 +2881,7 @@ test_the_scratch_is_the_finest_steps_raster_block(void) {
     scene_t* scene = show("test_pair", SCENE_CAMERA_FIRST);
     r3d_instance_t* instances = fx.instances;
     for (int i = 0; i < INSTANCES_MAX; i++) {
-        instances[i] = (r3d_instance_t){&scene->renderers[0].mesh, NULL, NULL};
+        instances[i] = (r3d_instance_t){&scene->renderers[0].mesh, NULL, NULL, NULL};
     }
     const resolution_config_t config = resolution_config(LADDER, 3, 3, 2000);
     render_context_t* c = render_context_main();
@@ -2873,9 +2889,9 @@ test_the_scratch_is_the_finest_steps_raster_block(void) {
     const transformf_t camera_pose = scene_entity_world(scene, scene->cameras[0].entity);
     const render_view_t view =
         camera_view(scene_camera_lens(scene, SCENE_CAMERA_FIRST), &camera_pose, (viewport_t){SIZE, SIZE, 0});
-    const size_t before = memory_free_bytes(MEMORY_PSRAM);
+    const size_t before = memory_free_bytes(MEMORY_APP);
     TEST_ASSERT_TRUE(render_context_draw(c, instances, INSTANCES_MAX, &view, 0));
-    const size_t taken = before - memory_free_bytes(MEMORY_PSRAM);
+    const size_t taken = before - memory_free_bytes(MEMORY_APP);
 
     raster_t finest = c->raster;
     finest.width = LADDER[0].width;
@@ -2922,10 +2938,10 @@ expanded_fixture(void) {
     fixture();
     TEST_ASSERT_TRUE(gfx_init());
     show("test_pair", SCENE_CAMERA_FIRST);
-    free(fx.pixels);
-    free(fx.held);
-    fx.pixels = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
-    fx.held = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
+    memory_free(fx.pixels);
+    memory_free(fx.held);
+    fx.pixels = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_APP);
+    fx.held = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(fx.pixels);
     TEST_ASSERT_NOT_NULL(fx.held);
     gfx_set_frame_overlay(NULL);
@@ -2938,7 +2954,7 @@ expanded_picture(void) {
     scene_render(16, 0, GFX_WIDTH, GFX_HEIGHT);
     raster_t* raster = &render_context_main()->raster;
     raster_upscale(raster, fx.held, GFX_WIDTH, GFX_HEIGHT);
-    const size_t before_half = memory_free_bytes(MEMORY_PSRAM);
+    const size_t before_half = memory_free_bytes(MEMORY_APP);
     const scene_target_t half = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture(), NULL};
     TEST_ASSERT_NOT_NULL(half.half_pixels);
     TEST_ASSERT_TRUE(half.half_pixels != half.pixels);
@@ -2952,7 +2968,7 @@ expanded_picture(void) {
     TEST_ASSERT_EQUAL_HEX16(CLEAR, fx.pixels[0]);
     TEST_ASSERT_TRUE(fx.pixels[(GFX_HEIGHT / 2) * GFX_WIDTH + GFX_WIDTH / 2] != CLEAR);
     gfx_mode_exit();
-    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) == before_half);
+    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_APP) == before_half);
 }
 
 static void
@@ -3521,6 +3537,125 @@ test_mesh_reader_accepts_only_positive_int_scales(void) {
     TEST_ASSERT_NULL(mesh.positions);
 }
 
+/* rig.mesh's two quads with levels: the first finest in group 0, the second
+ * simplified from group 0 into group 1, which holds it. */
+enum {
+    LEVEL_GROUPS = 2,
+    LEVELS_AT = LLOD_HEADER_SIZE,
+    LEVEL_GROUPS_AT = LEVELS_AT + 2 * sizeof(r3d_lit_cluster_lod_t),
+    LEVELLED_BYTES = LEVEL_GROUPS_AT + LEVEL_GROUPS * sizeof(r3d_lit_lod_group_t),
+    INNER_GROUP = LEVEL_GROUPS_AT,
+    OUTER_GROUP = LEVEL_GROUPS_AT + sizeof(r3d_lit_lod_group_t),
+    SECOND_OWN = LEVELS_AT + sizeof(r3d_lit_cluster_lod_t),
+};
+
+static uint8_t* levelled_entry;
+static uint8_t* levelled_mesh;
+
+static void
+release_levelled(void) {
+    free(levelled_entry);
+    free(levelled_mesh);
+    levelled_mesh = NULL;
+    levelled_entry = NULL;
+    release_fixture();
+}
+
+static asset_view_t
+levelled_quads(void) {
+    levelled_entry = calloc(1, LEVELLED_BYTES);
+    suite_set_test_cleanup(release_levelled);
+    TEST_ASSERT_NOT_NULL(levelled_entry);
+    levelled_mesh = calloc(1, RIG_MESH_BYTES);
+    TEST_ASSERT_NOT_NULL(levelled_mesh);
+    make_quad_entry(levelled_mesh, 255, 0, 0, 2);
+    test_pack_put16(levelled_entry + LLOD_AT_VERSION, LLOD_VERSION);
+    test_pack_put16(levelled_entry + LLOD_AT_GROUP_COUNT, LEVEL_GROUPS);
+    test_pack_put32(levelled_entry + LLOD_AT_CLUSTER_COUNT, 2);
+    const r3d_lit_cluster_lod_t lod[] = {{R3D_LOD_NONE, 0}, {0, 1}};
+    memcpy(levelled_entry + LEVELS_AT, lod, sizeof lod);
+    const r3d_lit_lod_group_t inner = {{{0, 0, 0}, 1}, 1};
+    const r3d_lit_lod_group_t outer = {{{0, 0, 0}, 1 + 1 + R3D_LOD_ENCLOSE_MARGIN}, 2};
+    memcpy(levelled_entry + INNER_GROUP, &inner, sizeof inner);
+    memcpy(levelled_entry + OUTER_GROUP, &outer, sizeof outer);
+    return (asset_view_t){levelled_entry, LEVELLED_BYTES};
+}
+
+/* Each break of the levels' rules, made to a copy of the good entry. */
+static void
+test_mesh_reader_refuses_levels_out_of_order(void) {
+    const asset_view_t entry = levelled_quads();
+    uint8_t good[LEVELLED_BYTES];
+    memcpy(good, levelled_entry, sizeof good);
+    r3d_lit_mesh_t mesh;
+    const asset_view_t geometry = {levelled_mesh, RIG_MESH_BYTES};
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_from_asset(&geometry, &mesh));
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_levels_from_asset(&entry, &mesh));
+    TEST_ASSERT_EQUAL_INT(LEVEL_GROUPS, mesh.lod_group_count);
+
+    static const struct {
+        size_t at;
+        int value;
+        bool word;
+        asset_status_t status;
+    } breaks[] = {
+        {INNER_GROUP + offsetof(r3d_lit_lod_group_t, error), 3, false, ASSET_ERR_FORMAT},
+        {OUTER_GROUP + offsetof(r3d_lit_lod_group_t, bounds.radius), 1, false, ASSET_ERR_FORMAT},
+        {INNER_GROUP + offsetof(r3d_lit_lod_group_t, bounds.centre.x), 2, false, ASSET_ERR_FORMAT},
+        {INNER_GROUP + offsetof(r3d_lit_lod_group_t, bounds.radius), -1, false, ASSET_ERR_FORMAT},
+        {SECOND_OWN, LEVEL_GROUPS, false, ASSET_ERR_FORMAT},
+        {LLOD_AT_CLUSTER_COUNT, 1, true, ASSET_ERR_FORMAT},
+        {LLOD_AT_GROUP_COUNT, 0, false, ASSET_ERR_FORMAT},
+        {LLOD_AT_GROUP_COUNT, R3D_LOD_NONE, false, ASSET_ERR_BOUNDS},
+        {LLOD_AT_VERSION, LLOD_VERSION + 1, false, ASSET_ERR_VERSION},
+    };
+
+    for (size_t i = 0; i < sizeof breaks / sizeof breaks[0]; i++) {
+        memcpy(levelled_entry, good, sizeof good);
+        if (breaks[i].word) {
+            test_pack_put32(levelled_entry + breaks[i].at, (uint32_t)breaks[i].value);
+        } else {
+            test_pack_put16(levelled_entry + breaks[i].at, breaks[i].value);
+        }
+        TEST_ASSERT_EQUAL_INT(breaks[i].status, r3d_lit_mesh_levels_from_asset(&entry, &mesh));
+        TEST_ASSERT_NOT_NULL(mesh.positions);
+        TEST_ASSERT_NULL(mesh.cluster_lod);
+        TEST_ASSERT_NULL(mesh.lod_groups);
+        TEST_ASSERT_EQUAL_INT(0, mesh.lod_group_count);
+    }
+    memcpy(levelled_entry, good, sizeof good);
+    const asset_view_t short_entry = {entry.data, entry.size - 1};
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, r3d_lit_mesh_levels_from_asset(&short_entry, &mesh));
+}
+
+static void
+test_mesh_open_resolves_optional_levels(void) {
+    fixture();
+    const asset_view_t levels = levelled_quads();
+    for (int present = 0; present <= 1; present++) {
+        test_pack_t writer = test_pack_begin(fx.bytes, PACK_MAX, 1 + present);
+        memcpy(test_pack_add(&writer, "rig.mesh", R3D_LIT_MESH_ASSET, RIG_MESH_BYTES), levelled_mesh, RIG_MESH_BYTES);
+        if (present) {
+            memcpy(test_pack_add(&writer, "rig.mesh" LLOD_NAME_SUFFIX, LLOD_ASSET, levels.size), levels.data,
+                   levels.size);
+        }
+        const uint32_t size = test_pack_finish(&writer);
+        asset_pack_t pack;
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&pack, fx.bytes, size));
+        r3d_lit_mesh_t mesh;
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(&pack, "rig.mesh", &mesh));
+        TEST_ASSERT_EQUAL_INT(present ? LEVEL_GROUPS : 0, mesh.lod_group_count);
+        if (present) {
+            asset_view_t sibling;
+            TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(&pack, "rig.mesh" LLOD_NAME_SUFFIX, LLOD_ASSET, &sibling));
+            test_pack_put16((uint8_t*)(uintptr_t)sibling.data + LLOD_AT_VERSION, LLOD_VERSION + 1);
+            TEST_ASSERT_EQUAL_INT(ASSET_ERR_VERSION, r3d_lit_mesh_open(&pack, "rig.mesh", &mesh));
+            TEST_ASSERT_NULL(mesh.positions);
+            TEST_ASSERT_NULL(mesh.cluster_lod);
+        }
+    }
+}
+
 static void
 test_clip_bind_failure_names_the_first_rejected_clip(void) {
     fixture();
@@ -3947,7 +4082,7 @@ test_authored_skin_load_allocation_failures_release_lighting(void) {
 static void
 test_authored_light_preserves_static_mesh_colors(void) {
     fixture();
-    fx.lent = memory_alloc(LENT_BYTES, MEMORY_PSRAM);
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(fx.lent);
     (void)scene_set_take(lend);
     r3d_lit_mesh_t packed;
@@ -4028,12 +4163,12 @@ test_failed_second_camera_releases_the_first_animator(void) {
     char (*clips)[ASSET_NAME_MAX] = (char (*)[ASSET_NAME_MAX])(uintptr_t)asset.clips;
     memset(clips[1], 0, ASSET_NAME_MAX);
     memcpy(clips[1], "nowhere", sizeof "nowhere");
-    const size_t before = memory_free_bytes(MEMORY_PSRAM);
+    const size_t before = memory_free_bytes(MEMORY_APP);
     scene_failure_t why;
     TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_aliases", &why));
     TEST_ASSERT_EQUAL_STRING("nowhere", why.what);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_NOT_FOUND, why.asset);
-    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) == before);
+    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_APP) == before);
 }
 
 static void
@@ -4726,6 +4861,8 @@ run_scene_suite(void) {
     RUN_TEST(test_mesh_reader_refuses_overlapping_cluster_vertices);
     RUN_TEST(test_mesh_reader_requires_complete_cluster_coverage);
     RUN_TEST(test_mesh_reader_accepts_only_positive_int_scales);
+    RUN_TEST(test_mesh_reader_refuses_levels_out_of_order);
+    RUN_TEST(test_mesh_open_resolves_optional_levels);
     RUN_TEST(test_clip_bind_failure_names_the_first_rejected_clip);
     RUN_TEST(test_skinned_scene_draws_clip_output_and_reskins_from_bind);
     RUN_TEST(test_a_skinned_renderer_s_world_box_follows_its_refit);
@@ -4798,6 +4935,7 @@ run_scene_suite(void) {
     RUN_TEST(test_the_active_camera_draws_its_scenes_renderers);
     RUN_TEST(test_a_disabled_entity_is_not_drawn_and_enabling_it_draws_it_again);
     RUN_TEST(test_a_runtime_mesh_is_drawn_in_place_of_the_loaded_one);
+    RUN_TEST(test_a_runtime_mesh_with_more_levels_than_the_bits_hold_is_refused);
     RUN_TEST(test_a_camera_takes_a_lens_shift_and_nothing_else_does);
     RUN_TEST(test_a_moved_entity_is_drawn_where_it_now_stands);
     RUN_TEST(test_a_renderer_s_world_box_follows_its_entity_s_pose);

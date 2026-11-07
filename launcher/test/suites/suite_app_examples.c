@@ -6,6 +6,7 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_test.h"
+#include "test_alloc.h"
 #include "testkit/cleanup.h"
 #include "unity.h"
 
@@ -65,13 +66,13 @@ test_arena_callbacks_borrow_memory_until_the_shell_rewinds(void) {
     TEST_ASSERT_NULL(buf);
     TEST_ASSERT_EQUAL_UINT(BUF_BYTES, app_arena_mark());
     app_arena_rewind(0);
-    TEST_ASSERT_NOT_NULL(app_arena_take(APP_ARENA_BYTES, 1));
+    TEST_ASSERT_NOT_NULL(app_arena_take(APP_ARENA_CHUNK_BYTES, 1));
 }
 
 static void
 test_arena_exhaustion_keeps_a_null_fallback(void) {
     fixture();
-    TEST_ASSERT_NOT_NULL(app_arena_take(APP_ARENA_BYTES, 1));
+    test_arena_fill();
     arena_enter();
     TEST_ASSERT_NULL(buf);
     arena_exit();

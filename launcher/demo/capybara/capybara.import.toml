@@ -8,3 +8,6 @@ clips = ["idle", "walk", "walk_fast", "gallop", "half_bound"]
 [output]
 name = "capybara_body"
 position_scale = 16384   # ticks per metre: the model spans under 2 m, inside int16
+
+[geometry]
+lod = false   # a skinned mesh carries no levels of detail

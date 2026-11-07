@@ -35,6 +35,7 @@
 #include "math/scalar/mathf.h"
 #include "math/scalar/mathi.h"
 #include "math/scalar/units.h"
+#include "math/signal/smooth.h"
 #include "physics/fluid/flip3.h"
 #include "profile/frame_cost.h"
 #include "render/context/render_context.h"
@@ -211,7 +212,7 @@ static r3d_dynamic_mesh_t surface;
 static vec3f_t box;
 static gravity_t gravity;
 static bool motion_seen;
-static input_motion_batch_t batch;
+static input_motion_batch_t* batch;
 static int fill_percent = WATER_FILL_DEFAULT;
 static int filled_percent;
 
@@ -272,14 +273,15 @@ allocate(void) {
             render_lab_scene_take(sizeof(int32_t) * iso_surface_scratch_count(surface_field.ny, surface_field.nz));
     }
     transfer = render_lab_scene_take(sizeof *transfer);
+    batch = render_lab_scene_take(sizeof *batch);
     if (transfer != NULL) {
         r3d_skin_light_transfer_build(WATER_TONEMAP_NONE, transfer);
     }
     const r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(WATER_MAX_VERTICES, WATER_MAX_TRIANGLES);
     const size_t mesh_bytes = r3d_dynamic_mesh_bytes(capacity);
     void* mesh_block = render_lab_scene_take(mesh_bytes);
-    return through != NULL && transfer != NULL && positions != NULL && normals != NULL && colors != NULL
-           && triangles != NULL && scratch[0] != NULL && scratch[1] != NULL && mesh_block != NULL
+    return through != NULL && transfer != NULL && batch != NULL && positions != NULL && normals != NULL
+           && colors != NULL && triangles != NULL && scratch[0] != NULL && scratch[1] != NULL && mesh_block != NULL
            && r3d_dynamic_mesh_init(&surface, mesh_block, mesh_bytes, capacity, WATER_TICKS_PER_MM);
 }
 
@@ -343,7 +345,7 @@ parallax_eye(vec3f_t down, uint32_t dt_ms) {
     if (vec3f_dot(reference_down, reference_down) == 0.0F) {
         reference_down = down; /* the first reading: start centred, whatever the pose */
     }
-    const float catch_up = 1.0F - expf(-(float)dt_ms / (float)settle_ms);
+    const float catch_up = smooth_alpha((float)dt_ms, (float)settle_ms);
     reference_down = vec3f_normalize(vec3f_lerp(reference_down, down, catch_up));
     const vec3f_t turn = vec3f_cross(reference_down, down);
     return vec3f_scale((vec3f_t){-turn.y, -turn.x, 0.0F}, (float)parallax_mm);
@@ -422,8 +424,8 @@ read_accel(uint32_t dt_ms, vec3f_t* down) {
         tour_ms = (tour_ms + dt_ms) % SWING_MS;
         return swing_accel(tour_ms, down);
     }
-    if (input_read_motion_batch(&batch)) {
-        gravity_update_batch(&gravity, &batch);
+    if (input_read_motion_batch(batch)) {
+        gravity_update_batch(&gravity, batch);
         motion_seen = true;
     }
     if (!motion_seen) {

@@ -1,9 +1,10 @@
 # simd
 
-Integer lane operations on plain arrays. On the ESP32-S3 they run on the PIE
-vector unit (128-bit registers of integer lanes); everywhere else, and in
-QEMU, which stops at the first PIE instruction, the C references run. The
-package depends on nothing, so every layer may use it. Pixel and audio
+Integer lane operations on plain arrays. The PIE kernels (128-bit registers
+of integer lanes) run on the ESP32-S3 and in Espressif's QEMU; elsewhere
+the C references run.
+
+The package depends on nothing, so every layer may use it. Pixel and audio
 kernels that fuse several steps stay with their owners and build on this
 package's frame macro and test pattern.
 
@@ -31,7 +32,8 @@ alignment is loaded with `EE.LD.128.USAR` and shifted into place.
 
 | Rule | Why |
 |---|---|
-| `CONFIG_SIMD_PIE` builds the kernels; `sdkconfig.defaults.qemu` turns it off | QEMU has no PIE instructions |
+| The kernels build for the ESP32-S3 target, board and QEMU alike | Espressif's QEMU runs them bit for bit; `suite_simd` compares each with its `_ref` |
+| A kernel using EE.VADDS/EE.VSUBS, EE.LDXQ.32/EE.STXQ.32, SAR=32 EE.VSL/EE.VSR/EE.VMUL, aliased EE.CMUL.S16, EE.VMULAS.U8.QACC or a dynamic cross-shift is checked on the board only | Espressif's QEMU gets those wrong ([#161](https://github.com/espressif/qemu/issues/161) to [#166](https://github.com/espressif/qemu/issues/166)) |
 | Kernels load and store only at 16-byte boundaries | `EE.VLD.128` and `EE.VST.128` drop the low four address bits without a fault |
 | No call from an ISR | PIE is coprocessor CP3, whose state is saved for tasks only |
 | The first call pins an unpinned task to its core | ESP-IDF saves CP3 lazily in the owning task |
@@ -44,10 +46,11 @@ Data in PSRAM gains little: the bus, not the arithmetic, limits a pass.
 
 `tests/suite_simd.c` compares each call with its reference at every start
 offset within a vector, at lengths around the minimum and at long runs, with
-guard elements around the output. On the board it checks the PIE path;
-elsewhere both sides are the reference. `bench/suite_simd_perf.c` (board,
-perf scope) prints `SIMD_BENCH` rows: cycles of the reference and of the call
-at each length.
+guard elements around the output. On the board and in QEMU it checks the PIE
+path; on the host both sides are the reference.
+
+`bench/suite_simd_perf.c` (board, perf scope) prints `SIMD_BENCH` rows: cycles
+of the reference and of the call at each length.
 
 ## Headers
 

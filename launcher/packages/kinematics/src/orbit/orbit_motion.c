@@ -2,14 +2,11 @@
 #include "kinematics/follow/follow.h"
 #include "math/scalar/math_const.h"
 
+#include "math/scalar/mathf.h"
+
 #include <math.h>
 
 #pragma GCC diagnostic error "-Wdouble-promotion"
-
-static float
-clampf(float x, float lo, float hi) {
-    return x < lo ? lo : (x > hi ? hi : x);
-}
 
 /* The angle from b to a, the short way round. */
 static float
@@ -19,8 +16,8 @@ turn_between(float a, float b) {
 
 static orbit_motion_state_t
 clamp_state(orbit_motion_state_t s, const orbit_motion_limits_t* limits) {
-    s.pitch = clampf(s.pitch, limits->pitch_min, limits->pitch_max);
-    s.log_dist = clampf(s.log_dist, limits->log_dist_min, limits->log_dist_max);
+    s.pitch = mathf_clamp(s.pitch, limits->pitch_min, limits->pitch_max);
+    s.log_dist = mathf_clamp(s.log_dist, limits->log_dist_min, limits->log_dist_max);
     return s;
 }
 
@@ -45,7 +42,7 @@ steer(orbit_motion_t* orbit, const orbit_motion_input_t* input, float dt) {
     orbit->at.pitch += input->pitch_turn;
     orbit->at.log_dist += input->zoom_turn;
     if (dt > 0.0F) {
-        const float k = 1.0F - follow_halved_over(dt, orbit->drag_velocity_half_life_s);
+        const float k = 1.0F - smooth_decay(dt, orbit->drag_velocity_half_life_s);
         orbit->velocity.yaw += (input->yaw_turn / dt - orbit->velocity.yaw) * k;
         orbit->velocity.pitch += (input->pitch_turn / dt - orbit->velocity.pitch) * k;
         orbit->velocity.log_dist += (input->zoom_turn / dt - orbit->velocity.log_dist) * k;

@@ -36,7 +36,7 @@ release_fixture(void) {
 
 static dispatch_fixture_t*
 fixture(void) {
-    active = memory_alloc(sizeof *active, MEMORY_PSRAM);
+    active = memory_alloc(sizeof *active, MEMORY_APP);
     TEST_ASSERT_NOT_NULL(active);
     *active = (dispatch_fixture_t){0};
     suite_set_test_cleanup(release_fixture);
@@ -61,7 +61,7 @@ test_scene_console_dispatch_and_repeated_exit_release_heap(void) {
     enter(f, "capybara");
     leave(f);
     const size_t internal = memory_free_bytes(MEMORY_INTERNAL);
-    const size_t psram = memory_free_bytes(MEMORY_PSRAM);
+    const size_t psram = memory_free_bytes(MEMORY_APP);
     for (int repeat = 0; repeat < DISPATCH_REPEATS; repeat++) {
         enter(f, "capybara");
         scene_t* scene = render_lab_test_loaded_scene("capybara");
@@ -79,17 +79,17 @@ test_scene_console_dispatch_and_repeated_exit_release_heap(void) {
         TEST_ASSERT_EQUAL_UINT32(DISPATCH_BLEND_MS, animator->layer.blend_ms);
         leave(f);
         TEST_ASSERT_EQUAL_UINT(internal, memory_free_bytes(MEMORY_INTERNAL));
-        TEST_ASSERT_EQUAL_UINT(psram, memory_free_bytes(MEMORY_PSRAM));
+        TEST_ASSERT_EQUAL_UINT(psram, memory_free_bytes(MEMORY_APP));
     }
     enter(f, "sponza");
     scene_t* plain = render_lab_test_loaded_scene("sponza");
     TEST_ASSERT_NOT_NULL(plain);
     const int animators = plain->animator_count;
-    const size_t free_before = memory_free_bytes(MEMORY_PSRAM);
+    const size_t free_before = memory_free_bytes(MEMORY_APP);
     TEST_ASSERT_FALSE(app_render_lab.console->handle("clip gallop 0"));
     TEST_ASSERT_FALSE(app_render_lab.console->handle("clips"));
     TEST_ASSERT_EQUAL_INT(animators, plain->animator_count);
-    TEST_ASSERT_EQUAL_UINT(free_before, memory_free_bytes(MEMORY_PSRAM));
+    TEST_ASSERT_EQUAL_UINT(free_before, memory_free_bytes(MEMORY_APP));
 }
 
 static void
