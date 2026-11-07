@@ -920,7 +920,7 @@ set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[TR
 
 /* set_up_fill() with its depth capped, so the fill that is not capped keeps
  * its own set-up. */
-static bool
+static RENDER_SKIP_ATTR bool
 set_up_capped_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[TRIANGLE_VERTICES], recti_t box,
                    int y_anchor, const uint16_t* face, fill_t* f, gradients_t* g) {
     if (!set_up_fill(target, v, box, y_anchor, face, f, g)) {
@@ -994,8 +994,10 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
     triangle_of(target, a, b, c, face, false);
 }
 
-/* The fill of a view that skips hidden clusters, its depth capped. */
-static RENDER_SKIP_ATTR void
+/* The fill of a view that skips hidden clusters, its depth capped. Noinline:
+ * an inlined copy would land in its flash wrapper r3d_span_capped_triangle,
+ * outside IRAM. */
+static RENDER_SKIP_ATTR __attribute__((noinline)) void
 r3d_span_capped_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                               const r3d_span_vertex_t* c, const uint16_t* face) {
     triangle_of(target, a, b, c, face, true);
