@@ -231,6 +231,47 @@ test_curve_above_the_axis_draws_above_the_middle(void) {
     }
 }
 
+/* Each core draws its own rows and skips the curves and ribbons outside them: two halves drawn apart give the
+ * picture one whole target gives, for curves with boxes of their own crossing and grazing the seam. */
+static void
+test_curve_slices_match_the_whole_picture(void) {
+    r3d_span_target_t target = fixture();
+    const r3d_curve_knot_t knots[] = {{-SEGMENT_HALF_LENGTH, -SEGMENT_HALF_LENGTH, FAR_Z, WIDE_RADIUS, RED},
+                                      {SEGMENT_HALF_LENGTH, SEGMENT_HALF_LENGTH, FAR_Z, WIDE_RADIUS, RED},
+                                      {-SEGMENT_HALF_LENGTH, -FADE_RADIUS, FAR_Z, FADE_RADIUS, BLUE},
+                                      {SEGMENT_HALF_LENGTH, -FADE_RADIUS, FAR_Z, FADE_RADIUS, BLUE}};
+    r3d_curve_t curves[] = {{0, 2, {0}, {0}}, {2, 2, {0}, {0}}};
+    for (int c = 0; c < 2; c++) {
+        for (int axis = 0; axis < 3; axis++) {
+            curves[c].lo[axis] = INT16_MAX;
+            curves[c].hi[axis] = INT16_MIN;
+        }
+        for (int k = curves[c].first; k < curves[c].first + curves[c].count; k++) {
+            const int16_t p[3] = {knots[k].x, knots[k].y, knots[k].z};
+            for (int axis = 0; axis < 3; axis++) {
+                const int lo = p[axis] - (int)knots[k].radius;
+                const int hi = p[axis] + (int)knots[k].radius;
+                curves[c].lo[axis] = (int16_t)(lo < curves[c].lo[axis] ? lo : curves[c].lo[axis]);
+                curves[c].hi[axis] = (int16_t)(hi > curves[c].hi[axis] ? hi : curves[c].hi[axis]);
+            }
+        }
+    }
+    const r3d_curve_set_t set = {curves, knots, 2};
+    const r3d_lens_t camera = lens();
+    r3d_curve_draw(set, &camera, &target);
+    gfx_color_t* expected = malloc(PIXELS * sizeof(*expected));
+    TEST_ASSERT_NOT_NULL(expected);
+    memcpy(expected, color, PIXELS * sizeof(*color));
+    fixture();
+    target = r3d_span_target(color, depth, SIZE, 0, MID);
+    r3d_curve_draw(set, &camera, &target);
+    target = r3d_span_target(color + (MID * SIZE), depth + (MID * SIZE), SIZE, MID, SIZE);
+    r3d_curve_draw(set, &camera, &target);
+    TEST_ASSERT_EQUAL_MEMORY(expected, color, PIXELS * sizeof(*color));
+    TEST_ASSERT_GREATER_THAN_INT(0, changed());
+    free(expected);
+}
+
 #undef RUN_TEST
 #define RUN_TEST(test)                                                                                                 \
     do {                                                                                                               \
@@ -249,6 +290,7 @@ run_r3d_curve_suite(void) {
     RUN_TEST(test_curve_joint);
     RUN_TEST(test_curve_skip_knots);
     RUN_TEST(test_curve_above_the_axis_draws_above_the_middle);
+    RUN_TEST(test_curve_slices_match_the_whole_picture);
 }
 
 SUITE_REGISTER(run_r3d_curve_suite);

@@ -108,6 +108,20 @@ span_vertex(corner_t corner, uint32_t rgb) {
                                channel(rgb, 0)};
 }
 
+/* Whether a ribbon's corners all lie above or all below this core's rows, so it fills none of them. */
+static bool
+ribbon_misses_rows(const corner_t corners[QUAD_CORNERS], const r3d_span_target_t* target) {
+    const float top = (float)target->rows.first_row;
+    const float bottom = (float)gfx_target_end_row(&target->rows);
+    bool above = true;
+    bool below = true;
+    for (int i = 0; i < QUAD_CORNERS; i++) {
+        above = above && corners[i].y < top;
+        below = below && corners[i].y > bottom;
+    }
+    return above || below;
+}
+
 /* Out of line: the curve loop's knots stay off the ribbon's clip and fill. */
 static __attribute__((noinline)) void
 segment(const knot_t* from, const knot_t* to, float radius_scale, const r3d_lens_t* lens,
@@ -151,6 +165,9 @@ segment(const knot_t* from, const knot_t* to, float radius_scale, const r3d_lens
         {ex + (ux * bh) + (uy * bh), ey + (uy * bh) - (ux * bh), bz},
         {ex + (ux * bh) - (uy * bh), ey + (uy * bh) + (ux * bh), bz},
     };
+    if (ribbon_misses_rows(corners, target)) {
+        return;
+    }
     const int count = clip_ribbon(corners, lens);
     const uint16_t color = mean_color(a.color, b.color);
     if (count < TRIANGLE_CORNERS) {
@@ -174,11 +191,15 @@ segment(const knot_t* from, const knot_t* to, float radius_scale, const r3d_lens
     FRAME_LAP("r3d.curve.setup");
 }
 
-/* Whether a curve's box reaches the view; the planes stay off the segment draw's stack. */
+/* Whether a curve's box reaches this core's rows of the view, a ribbon's widening to its least width beside;
+ * the planes stay off the segment draw's stack. */
 static __attribute__((noinline)) bool
-curve_in_view(const r3d_curve_t* curve, const r3d_lens_t* lens) {
+curve_in_view(const r3d_curve_t* curve, const r3d_lens_t* lens, const r3d_span_target_t* target) {
     planef_t planes[PLANE_FRUSTUM_COUNT];
-    r3d_lens_frustum(lens, planes);
+    planef_frustum(&lens->m, &lens->project,
+                   rectf_from_edges(0.0F, (float)target->rows.first_row - R3D_CURVE_MIN_WIDTH_PX, (float)lens->width,
+                                    (float)gfx_target_end_row(&target->rows) + R3D_CURVE_MIN_WIDTH_PX),
+                   planes);
     const box3f_t box = {{curve->lo[0], curve->lo[1], curve->lo[2]}, {curve->hi[0], curve->hi[1], curve->hi[2]}};
     unsigned mask = (1U << PLANE_FRUSTUM_COUNT) - 1U;
     return !box3f_outside_planes(box, planes, PLANE_FRUSTUM_COUNT, &mask);
@@ -195,7 +216,7 @@ r3d_curve_draw(r3d_curve_set_t set, const r3d_lens_t* lens, const r3d_span_targe
                                      sqrtf((y[0] * y[0]) + (y[1] * y[1]) + (y[2] * y[2])));
     for (int i = 0; i < set.curve_count; i++) {
         const r3d_curve_t* curve = &set.curves[i];
-        if (curve->count < 2 || !curve_in_view(curve, lens)) {
+        if (curve->count < 2 || !curve_in_view(curve, lens, target)) {
             continue;
         }
         knot_t a = knot_at(&set.knots[curve->first], lens);
