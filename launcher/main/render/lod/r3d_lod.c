@@ -1,5 +1,4 @@
 #include "render/lod/r3d_lod.h"
-#include "profile/frame_cost.h"
 
 #include "math/geometry/box3f.h"
 #include "math/scalar/mathf.h"
@@ -147,10 +146,7 @@ r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, float tolerance
     const lod_view_t v = lod_view(lens);
     const float enter = tolerance_px - R3D_LOD_HYSTERESIS_PX;
     const float leave = tolerance_px + R3D_LOD_HYSTERESIS_PX;
-    FRAME_COST_BEGIN(bound_from);
-    const bool none = none_can_coarsen(mesh, &v, lens->project.near_z, leave);
-    FRAME_COST_END(bound_from, "lod.bound");
-    if (none) {
+    if (none_can_coarsen(mesh, &v, lens->project.near_z, leave)) {
         memset(coarse, 0, R3D_LOD_WORDS(mesh->lod_group_count) * sizeof *coarse);
         return;
     }
@@ -161,7 +157,6 @@ r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, float tolerance
     const float near_z = lens->project.near_z;
     bool any = false;
     bool changed = false;
-    FRAME_COST_BEGIN(groups_from);
     for (int g = 0; g < mesh->lod_group_count; g++) {
         const r3d_lit_lod_group_t* group = &mesh->lod_groups[g];
         const vec3f_t centre = mat4f_apply(&v.view, vec3f_from_vec3s(group->bounds.centre, 1.0F));
@@ -176,12 +171,9 @@ r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, float tolerance
         any |= coarse_now;
         changed |= coarse_now != was;
     }
-    FRAME_COST_END(groups_from, "lod.groups");
     /* Nothing coarse closes to nothing, and bits that did not change are as
      * closed as the frame that last closed them left them. */
     if (any && changed) {
-        FRAME_COST_BEGIN(close_from);
         close_coarse(mesh, coarse);
-        FRAME_COST_END(close_from, "lod.close");
     }
 }
