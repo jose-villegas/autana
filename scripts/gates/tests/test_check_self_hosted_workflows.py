@@ -1,4 +1,4 @@
-"""Self-hosted jobs must never accept untrusted pull request or comment events."""
+"""Self-hosted jobs never take untrusted events; a group shared across branches queues every pending run."""
 import sys
 import tempfile
 import unittest
@@ -50,6 +50,30 @@ class SelfHostedWorkflowTests(unittest.TestCase):
             for name in ("first.yml", "second.yml"):
                 (workflows / name).write_text(self.workflow("pull_request"))
             self.assertEqual(len(gate.check(root)), 2)
+
+    def concurrency(self, block, job_level):
+        if job_level:
+            lines = "".join(f"\n      {line}" for line in block)
+            return f"on: workflow_dispatch\njobs:\n  run:\n    runs-on: [self-hosted, linux, gpu]\n    concurrency:{lines}\n"
+        lines = "".join(f"\n  {line}" for line in block)
+        return f"on: workflow_dispatch\nconcurrency:{lines}\njobs:\n  run:\n    runs-on: ubuntu-latest\n"
+
+    def test_a_shared_group_without_a_queue_is_rejected_in_every_form(self):
+        for block in (["group: gpu"], ["group: gpu", "cancel-in-progress: false"],
+                      ["group: gpu-${{ inputs.runner }}", "cancel-in-progress: false"]):
+            for job_level in (False, True):
+                with self.subTest(block=block, job_level=job_level):
+                    self.assertTrue(self.check(self.concurrency(block, job_level)))
+        self.assertTrue(self.check("on: workflow_dispatch\nconcurrency: gpu\njobs:\n  run:\n    runs-on: ubuntu-latest\n"))
+
+    def test_queued_per_branch_or_cancelling_groups_pass(self):
+        for block in (["group: gpu", "queue: max"], ["group: gpu", "cancel-in-progress: false", "queue: max"],
+                      ["group: x-${{ github.ref }}"], ["group: x-${{ github.head_ref || github.run_id }}"],
+                      ["group: gpu", "cancel-in-progress: true"],
+                      ["group: gpu", "cancel-in-progress: ${{ github.event_name == 'push' }}"]):
+            for job_level in (False, True):
+                with self.subTest(block=block, job_level=job_level):
+                    self.assertEqual(self.check(self.concurrency(block, job_level)), [])
 
 
 if __name__ == "__main__":
