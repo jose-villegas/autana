@@ -120,5 +120,6 @@ sh launcher/tools/render/render_doc_images.sh --stage gpu
 ```
 
 RAM peaks are sampled process RSS; only GPU steps read VRAM. Each fitted
-input's rebake is `fit-start`, with its fit on its own row. The machine's
+input's rebake is `fit-start`, with its fit on its own row. `meshlets` builds
+every mesh of the bundle, the rest and each copy mesh, so its counts sum them. The machine's
 hardware and versions go in the stage's `measurements.json`.
