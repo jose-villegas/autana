@@ -298,15 +298,16 @@ def write_lit_mesh(out_dir, name, positions, rgb, tris, double, recorder=None, c
     (None for a flat mesh), tris counter-clockwise seen from the front,
     double one flag per triangle; options, face_rgb among them, go to
     bake_lit_mesh. With colourless, colour columns are weld keys returned in
-    colour_keys or face_keys; neither colour array is written. Returns the baked mesh."""
+    colour_keys or face_keys; neither colour array is written. Returns the baked mesh.
+    A bundle with copies enters here once per mesh, so its steps sum over them."""
     recorder = NULL_RECORDER if recorder is None else recorder
-    with recorder.step("meshlets", len(tris)) as step:
+    with recorder.step("meshlets", len(tris), summed=True) as step:
         mesh = mesh_builder(positions, rgb, tris, double, **options)
         step["triangles_out"] = len(mesh.tris)
     if colourless:
         mesh.colour_keys, mesh.face_keys = mesh.rgb, mesh.face_colors
         mesh.rgb = mesh.face_colors = None
-    with recorder.step("write", len(mesh.tris)):
+    with recorder.step("write", len(mesh.tris), summed=True):
         from r3d import mesh_bundle
         (pathlib.Path(out_dir) / f"{name}{mesh_bundle.SUFFIX}").write_bytes(
             mesh_bundle.encode(mesh_bundle.mesh_entries(name, mesh), []))

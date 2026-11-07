@@ -20,11 +20,12 @@ from test_r3d_import import SIMPLIFY, VARIANT, renderer, write_import
 from test_r3d_objects import POINTS, TRIANGLES, obj_text
 from r3d.lit_mesh import read_lit_mesh
 from r3d.objects.instances import Instance
+from r3d.process_budget import StepRecorder
 from r3d.import_settings import MESHLET_TRIANGLES, albedo_jobs, load_import_settings
 from tests.test_r3d_bake import canonical
 
 
-def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, triangles=None):
+def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, triangles=None, shapes=1, recorder=None):
     p = np.asarray(positions) if positions is not None else np.array([[0., 0, 0], [4, 0, 0], [0, 4, 0]])
     t = np.asarray(triangles) if triangles is not None else np.array([[0, 1, 2]])
     rgb = np.full(p.shape, 80)
@@ -39,7 +40,7 @@ def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, t
         copies.append((instance, (p @ linear.T + at, rgb + index, faces, labels)))
     shape = dict(positions=p, tris=t, materials=labels, rule=rule, copies=copies)
     geometry = SimpleNamespace(positions=p, rgb=rgb, tris=t, tri_double=labels, tri_mat=labels,
-                               scale={}, shapes=[shape], src=SimpleNamespace(names=['prop'], object_names=['a', 'b', 'c']))
+                               scale={}, shapes=[dict(shape, rule={**rule, 'triangles': 1 + k}) for k in range(shapes)], src=SimpleNamespace(names=['prop'], object_names=['a', 'b', 'c']))
     obj = SimpleNamespace(name='atrium', matrix=np.diag([2., 3, 4]).tolist(), position=[5., 6, 7],
                           kind='mesh_renderer', animator=None)
     renderer = SimpleNamespace(face_samples=(1, 1, 1, None) if flat else None, bake=True, fit=fit)
@@ -47,12 +48,23 @@ def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, t
                           settings=SimpleNamespace(meshlet_triangles=MESHLET_TRIANGLES, double_sided=[], lod=lod))
     scene = SimpleNamespace(objects=[obj], renderers=[job], lights=[])
     with mock.patch.object(mesh_import, 'flat_colours', side_effect=[np.full((1, 3), value) for value in (80, 80, 81, 82)]):
-        mesh_import.write_baked(job, scene, pathlib.Path(directory), job.asset_name, geometry=geometry)
+        mesh_import.write_baked(job, scene, pathlib.Path(directory), job.asset_name, geometry=geometry, recorder=recorder)
     return (pathlib.Path(directory) / (job.asset_name + mesh_bundle.SUFFIX)).read_bytes(), copies, geometry, job, scene
 
 
 
 class MeshBundleTests(unittest.TestCase):
+    def test_a_start_with_two_shapes_records_one_meshlets_and_one_write_step_over_every_mesh(self):
+        recorder = StepRecorder(probe=lambda gpu: (100, None), interval=None)
+        with tempfile.TemporaryDirectory() as directory:
+            data = bundle_fixture(directory, shapes=2, recorder=recorder)[0]
+        meshes = [name for name, kind, _ in mesh_bundle.decode(data)[0] if kind == mesh_asset.TYPE]
+        # The rest mesh, then each shape's plain and mirrored copy mesh, one triangle each.
+        self.assertEqual(len(meshes), 5)
+        triangles = len(meshes)
+        self.assertEqual([(row['step'], row['triangles_in'], row['triangles_out']) for row in recorder.rows],
+                         [('meshlets', triangles, triangles), ('write', triangles, triangles)])
+
     def test_manifest_has_plain_names_without_hashes(self):
         with tempfile.TemporaryDirectory() as directory:
             data = bundle_fixture(directory)[0]
