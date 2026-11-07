@@ -111,7 +111,11 @@ scored beside it.
 Bistro along its whole path at 184x224: where repeating the frame jumps
 (turns and fast passes), the generated frame stays close to the true one.
 
-![Bistro: mean dE of the generated frame against the true one along the path](../../images/render/framegen-bistro-path.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../images/render/framegen-bistro-path-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="../../images/render/framegen-bistro-path.png">
+  <img alt="Bistro: mean dE of the generated frame against the true one along the path" src="../../images/render/framegen-bistro-path.png">
+</picture>
 
 The frame with the most holes that are not pinholes, and the frame the
 generated one strays from most, against the true frame, with where they
@@ -226,7 +230,11 @@ The floor of one frame's budget keeps a slow generated frame from starving
 the drawn one. The drawn frame's budget against the generated frame's cost,
 with this board's generated frames marked:
 
-![A drawn frame's budget against the generated frame's cost](../../images/render/framegen-pricing.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../images/render/framegen-pricing-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="../../images/render/framegen-pricing.png">
+  <img alt="A drawn frame's budget against the generated frame's cost" src="../../images/render/framegen-pricing.png">
+</picture>
 
 The budget sets the trade. At the same budget the saving buys resolution: the
 drawn frame gets more than one frame's time and draws a finer step. At a
