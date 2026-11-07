@@ -29,7 +29,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from r3d import mesh_source, mitsuba_reference, ray_query
 from r3d.geometry import corner_normals
 from r3d.import_settings import load_scene
-from r3d.light import albedo_from_uv, coincident_faces, drop_masked, light, open_side_occlusion, to_srgb8
+from r3d.light import AlphaTest, albedo_from_uv, coincident_faces, hit_barycentrics, light, open_side_occlusion, to_srgb8
 from r3d.mesh_source import load_source, path_light_for
 from r3d.poses import camera_rays, read_poses
 from r3d.ray_query import RayQuery
@@ -37,16 +37,6 @@ from r3d.ray_query import RayQuery
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 
 from colour_maths import expand_565  # noqa: E402
-
-
-def hit_barycentrics(source, hits, locations):
-    """Barycentric weights of ray hits on their source triangles."""
-    faces = source.tri_v[hits]
-    a, b, c = source.p[faces[:, 0]], source.p[faces[:, 1]], source.p[faces[:, 2]]
-    total = np.abs(np.cross(b - a, c - a)).sum(axis=1)
-    wa = np.abs(np.cross(b - locations, c - locations)).sum(axis=1) / total
-    wb = np.abs(np.cross(c - locations, a - locations)).sum(axis=1) / total
-    return np.stack([wa, wb, 1.0 - wa - wb], axis=1)
 
 
 def hit_normals(source, hits, bary):
@@ -162,7 +152,7 @@ def device_picture(linear, covered, tonemap_white, background):
 
 def source_for(scene, name=None, lit=True):
     """The full-detail source of the scene object `name` (the first mesh renderer
-    when None), alpha-masked and lit as that renderer is baked; returns it with
+    when None), alpha-tested per hit with that renderer's bake lighting; returns it with
     the object's job. `lit=False` skips the ray queries and the
     bounced-light tracer, which only the bake backend uses, and loads float32 textures."""
     named = [item for item in scene.renderers if name in (None, item.object.name)]
@@ -172,19 +162,16 @@ def source_for(scene, name=None, lit=True):
 
 
 def lit_source(job, scene, lit=True, variant=None):
-    """The full-detail source of `job`, alpha-masked and lit as it is baked, traced on `variant` (`ray_query.VARIANT`
+    """The full-detail source of `job`, alpha-tested per hit with bake lighting, traced on `variant` (`ray_query.VARIANT`
     when None); see source_for."""
     settings = job.settings
     source = load_source(settings, np.float64 if lit else np.float32)
-    if settings.alpha_keep is not None:
-        source.tri_v, source.tri_t, source.tri_m, keep = drop_masked(source.p, source.uv, source.tri_v, source.tri_t,
-                                                                 source.tri_m, source.textures, settings.alpha_keep)
-        source.tri_o = source.tri_o[keep]
+    source.alpha_test = AlphaTest(source, settings.alpha_keep) if settings.alpha_keep is not None else None
     source.corner_normals = corner_normals(source.p, source.tri_v)
     source.twin = coincident_faces(source.p, source.tri_v)[0]
     if not lit:
         return source
-    source.intersector = RayQuery(source.p, source.tri_v, variant)
+    source.intersector = RayQuery(source.p, source.tri_v, variant, hit_filter=source.alpha_test)
     source.bounce = path_light_for(source, job, scene, variant)
     return source
 

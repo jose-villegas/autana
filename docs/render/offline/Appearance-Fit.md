@@ -60,6 +60,13 @@ the mesh to a larger budget, and fits it again.
 
 ## Poses
 
+References retain the full source and alpha-test each hit at its interpolated
+UV, including shadow and bounce rays. The depth and copy G-buffers trace the
+same alpha-tested source, preserving source triangle and carved flags.
+
+The fitted candidate carries baked colours, with no texture alpha to test.
+The importer's `alpha_mask` triangle drop applies to its drawn geometry.
+
 `size = [width, height]` is two positive integers. Coverage widens this view to
 cover both panel orientations. Of the samples `train_every_ms` takes from the
 camera path, those at multiples of `held_out_every_ms` (time 0 aside) are held

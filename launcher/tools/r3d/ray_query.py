@@ -3,7 +3,8 @@
 `light.py` and the importer ask three questions of a mesh: the first hit along each ray, whether a ray is blocked, and
 hit rounds a caller can retire rays from. `RayQuery` answers them as `first_hit`, `blocked` and `hit_rounds`;
 `first_hits` gives the raw arrays behind the first. Triangle ids are the row numbers of the `tris` given,
-and every triangle is hit from both sides.
+and every triangle is hit from both sides. An optional `hit_filter(triangles, locations)` accepts solid hits;
+rejected hits are stepped past by every query method.
 
 A mesh bake is NumPy-bound on the CPU, so its queries run on the LLVM variant `VARIANT`: a CUDA context per forked
 pose worker would cost memory and copies for nothing, and the JIT of a process that forks workers must not be CUDA.
@@ -55,7 +56,8 @@ def release_gpu():
 
 
 class RayQuery:
-    def __init__(self, positions, tris, variant=None):
+    def __init__(self, positions, tris, variant=None, hit_filter=None):
+        self.hit_filter = hit_filter
         variant = variant or VARIANT
         mi = import_mitsuba()
         if mi is None:
@@ -89,6 +91,19 @@ class RayQuery:
     def first_hits(self, origins, directions):
         """(hit mask, distance along the direction, triangle) for every ray; distance and triangle mean nothing where
         the mask is false."""
+        if self.hit_filter is None:
+            return self._first_hits(origins, directions)
+        origins, directions = np.asarray(origins, np.float64), np.asarray(directions, np.float64)
+        hit = np.zeros(len(origins), bool)
+        distance, tri = np.zeros(len(origins)), np.zeros(len(origins), np.int64)
+        active = np.ones(len(origins), bool)
+        for faces, rays, where in self.hit_rounds(origins, directions, active):
+            hit[rays], tri[rays] = True, faces
+            distance[rays] = ((where - origins[rays]) * directions[rays]).sum(axis=1) / (directions[rays] ** 2).sum(axis=1)
+            active[rays] = False
+        return hit, distance, tri
+
+    def _first_hits(self, origins, directions):
         self._check_variant()
         count = len(origins)
         hit, distance, tri = np.zeros(count, bool), np.zeros(count), np.zeros(count, np.int64)
@@ -122,7 +137,7 @@ class RayQuery:
 
     def blocked(self, origins, directions):
         """True for each ray that hits the mesh."""
-        if self.scalar:
+        if self.scalar or self.hit_filter is not None:
             return self.first_hits(np.asarray(origins), np.asarray(directions))[0]
         self._check_variant()
         import drjit as dr
@@ -146,10 +161,15 @@ class RayQuery:
         for _ in range(MAX_HITS):
             if not len(alive):
                 break
-            hit, distance, tri = self.first_hits(start[alive], directions[alive])
+            query = self.first_hits if self.hit_filter is None else self._first_hits
+            hit, distance, tri = query(start[alive], directions[alive])
             alive, distance, tri = alive[hit], distance[hit], tri[hit]
             where = start[alive] + directions[alive] * distance[:, None]
-            yield tri, alive, where
+            if self.hit_filter is None:
+                yield tri, alive, where
+            else:
+                solid = self.hit_filter(tri, where)
+                yield tri[solid], alive[solid], where[solid]
             keep = active[alive]
             alive, where = alive[keep], where[keep]
             step = np.maximum(STEP, STEP_RELATIVE * np.abs(where).max(axis=1, initial=0.0))
