@@ -16,7 +16,7 @@ from scripts.ci.github_api import PER_PAGE, call, pages
 from device_lock import LockStore, board_read_root, heavy_root, write_json
 from process_tree import launch_process_tree, stop_process_tree, close_process_tree
 from ci_step import output, summarize
-from r3d.process_budget import STAGE_PROGRESS_ENV
+from r3d.task_executor import STAGE_PROGRESS_ENV
 
 NIGHT_START = "01:00"
 # Boards start after the GPU's night work: two hours of day board time when no GPU work is queued.

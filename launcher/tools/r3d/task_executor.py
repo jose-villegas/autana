@@ -1,14 +1,22 @@
 """GPU stage admission using nonblocking NVML samples and shared process budgets."""
+import concurrent.futures
 import ctypes
 import os
+import pathlib
 import threading
 import time
 
 from r3d.process_budget import (FLOORS, GPU_QUERY_FAILURE_SECONDS,
                                 QueryFailures, TaskExecutor as _ProcessExecutor, _task, available_bytes,
-                                cores_available, function_name, join_worker, projected_available,
+                                cores_available, function_name, projected_available,
                                 resident_bytes, worker_capacity)
 
+# A worker that has sent its result is given this long to exit before it is killed: a join without a bound
+# under the executor's lock stalls every task behind it.
+WORKER_EXIT_SECONDS = 30
+# The environment variable naming the file a GPU stage's guard (scripts/lib/local_schedule.py) times progress
+# by; progressed() touches it each time a task or bake finishes.
+STAGE_PROGRESS_ENV = "AUTANA_STAGE_PROGRESS"
 _ADMISSION_POLL_SECONDS = 0.1
 _ADMISSION_LOG_SECONDS = 10
 GPU_QUERY_SAMPLE_SECONDS = 1
@@ -158,17 +166,67 @@ class _GpuSampler:
         self.thread.join(timeout=_GPU_QUERY_STOP_SECONDS)
 
 
+def progressed():
+    """Tell the stage's guard, when one runs this, that a task finished; a guard's lost file never fails the work."""
+    path = os.environ.get(STAGE_PROGRESS_ENV)
+    if path:
+        try:
+            pathlib.Path(path).touch()
+        except OSError:
+            pass
+
+
+def join_worker(process):
+    """Wait WORKER_EXIT_SECONDS for a worker that has answered, then kill it."""
+    process.join(WORKER_EXIT_SECONDS)
+    if process.is_alive():
+        print(f"worker {process.pid} still running {WORKER_EXIT_SECONDS} s after its result; killed", flush=True)
+        _ProcessExecutor._kill(process)
+        process.join()
+
+
 class TaskExecutor(_ProcessExecutor):
-    """Preserve active workers while failed or stalled GPU queries pause admission."""
+    """Preserve active workers while failed or stalled GPU queries pause admission. Futures settle outside the
+    lock: their done-callbacks may take locks of their own and submit, so settling them under it deadlocks
+    against a caller that holds such a lock while it submits."""
 
     def __init__(self):
+        # (future, result, error) reaped under the lock, settled by _settle() after it is released.
+        self.settled = []
         self.gpu_sampler = _GpuSampler()
         super().__init__()
 
+    def _settle(self):
+        with self.condition:
+            settled, self.settled = self.settled, []
+        for future, result, error in settled:
+            try:
+                future.set_exception(error) if error else future.set_result(result)
+            except concurrent.futures.InvalidStateError:
+                pass  # cancelled meanwhile
+            if not error:
+                progressed()
+
     def _run(self):
         try:
-            super()._run()
+            self._schedule()
+        except BaseException as error:
+            with self.condition:
+                self.failure = error
+                self.settled += [(future, None, error) for future in self.pending]
+                self.queue.clear()
+                self.priority_queue.clear()
+                self.pending.clear()
         finally:
+            self._settle()
+            with self.condition:
+                for process, connection, _future, _estimates in self.active:
+                    if self.failure:
+                        self._kill(process)
+                    process.join()
+                    connection.close()
+                    process.close()
+                self.active.clear()
             self.gpu_sampler.stop()
 
     def _reap(self):

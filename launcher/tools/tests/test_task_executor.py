@@ -29,10 +29,11 @@ class WorkerTests(ProcessTests):
 
     def test_a_worker_that_answers_but_never_exits_is_killed_and_work_goes_on(self):
         from unittest.mock import patch
-        from r3d import process_budget
+        from r3d import task_executor
         from r3d.task_executor import TaskExecutor
         exit_seconds = 1
-        with patch("r3d.task_executor.available_bytes", return_value=(1 << 60,) * 3),                 patch.object(process_budget, "WORKER_EXIT_SECONDS", exit_seconds):
+        with patch("r3d.task_executor.available_bytes", return_value=(1 << 60,) * 3), \
+                patch.object(task_executor, "WORKER_EXIT_SECONDS", exit_seconds):
             with TaskExecutor() as pool:
                 self.assertEqual(pool.submit(lingering_worker).result(timeout=30 * exit_seconds), "answered")
                 self.assertEqual(pool.submit(identity_worker, "next").result(timeout=30 * exit_seconds)[0], "next")
@@ -67,13 +68,13 @@ class WorkerTests(ProcessTests):
         import os
         import tempfile
         from unittest.mock import patch
-        from r3d.process_budget import STAGE_PROGRESS_ENV
-        from r3d.task_executor import TaskExecutor
+        from r3d.task_executor import STAGE_PROGRESS_ENV, TaskExecutor
         with tempfile.TemporaryDirectory() as folder:
             progress = pathlib.Path(folder) / "stage.progress"
             progress.touch()
             os.utime(progress, (0, 0))
-            with patch("r3d.task_executor.available_bytes", return_value=(1 << 60,) * 3),                     patch.dict(os.environ, {STAGE_PROGRESS_ENV: str(progress)}):
+            with patch("r3d.task_executor.available_bytes", return_value=(1 << 60,) * 3), \
+                    patch.dict(os.environ, {STAGE_PROGRESS_ENV: str(progress)}):
                 with TaskExecutor() as pool:
                     pool.submit(identity_worker, "done").result(timeout=30)
             self.assertGreater(progress.stat().st_mtime, 0)

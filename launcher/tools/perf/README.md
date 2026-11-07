@@ -366,7 +366,7 @@ an anchor always measures.
 |---|---|
 | GPU stage progress | `GPU_STAGE_PROGRESS_SECONDS` in `scripts/lib/local_schedule.py` |
 | GPU process tree | `GPU_STAGE_HANG_SECONDS` in `scripts/lib/local_schedule.py` |
-| A worker after its result | `WORKER_EXIT_SECONDS` in `launcher/tools/r3d/process_budget.py` |
+| A worker after its result | `WORKER_EXIT_SECONDS` in `launcher/tools/r3d/task_executor.py` |
 | The plan's GPU wait | `GPU_PLAN_WAIT_SECONDS` in `launcher/tools/perf/nightly/scoped_chain.py` |
 | Lock wait | `NIGHT_STEP_HANG_SECONDS` in `scripts/lib/local_schedule.py` |
 | Lane process tree | `LANE_HANG_FACTOR` times the lane estimate in `nightly/scoped_chain.py`, and `BOARD_END` |
