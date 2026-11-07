@@ -106,7 +106,7 @@ add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
     r3d_lens_fit(draw_lens, raster->width, raster->height);
     sum->buffers = raster_carve(raster);
     const raster_buffers_t* b = &sum->buffers;
-    const int visible = r3d_pipeline_cull(&mesh, draw_lens, b->culled + 1, b->work[0], NULL);
+    const int visible = r3d_pipeline_cull(&mesh, draw_lens, NULL, b->culled + 1, b->work[0], NULL);
     r3d_pipeline_transform(&mesh, draw_lens, b->culled + 1, visible, b->cs, b->rows, false);
     const size_t pixels = (size_t)raster->width * (size_t)raster->height;
     const int64_t clear_from = timing_now_us();
@@ -199,7 +199,7 @@ test_raster_stage_split_by_size(void) {
     TEST_IGNORE_MESSAGE("frame_cost is a development build's");
 #endif
     TEST_ASSERT_NOT_NULL_MESSAGE(scene, "the scene did not load: see the log above");
-    const r3d_instance_t instance = {&mesh, NULL, NULL};
+    const r3d_instance_t instance = {&mesh, NULL, NULL, NULL};
     raster_t raster = {
         .instances = &instance,
         .instance_count = 1,
@@ -266,7 +266,7 @@ test_raster_counters(void) {
     TEST_IGNORE_MESSAGE("frame_cost is a development build's");
 #else
     TEST_ASSERT_NOT_NULL_MESSAGE(scene, "the scene did not load: see the log above");
-    const r3d_instance_t instance = {&mesh, NULL, NULL};
+    const r3d_instance_t instance = {&mesh, NULL, NULL, NULL};
     const resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
     raster_t raster = {.instances = &instance,
                        .instance_count = 1,
@@ -315,7 +315,7 @@ typedef struct {
 /* Every step at every pose, drawn as the scene draws it, for the fit. */
 static bool
 calibrate(const resolution_config_t* config, resolution_model_t* model) {
-    const r3d_instance_t instance = {&mesh, NULL, NULL};
+    const r3d_instance_t instance = {&mesh, NULL, NULL, NULL};
     render_context_t* context = memory_alloc(sizeof(*context), MEMORY_INTERNAL);
     if (context == NULL) {
         return false;

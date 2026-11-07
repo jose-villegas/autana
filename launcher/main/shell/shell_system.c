@@ -55,6 +55,15 @@ shell_systems_compose(uint32_t dt_ms) {
 }
 
 void
+shell_systems_app_enter(const asset_pack_t* pack) {
+    for (const shell_system_t* system = systems_head; system != NULL; system = system->next) {
+        if (system->app_enter != NULL) {
+            system->app_enter(pack);
+        }
+    }
+}
+
+void
 shell_systems_app_exit(void) {
     for (const shell_system_t* system = systems_head; system != NULL; system = system->next) {
         if (system->app_exit != NULL) {

@@ -69,6 +69,7 @@ typedef struct {
     X(nodes_cut, counts.nodes_cut)                                                                                     \
     X(clusters_tested, counts.clusters_tested)                                                                         \
     X(clusters_kept, counts.clusters_kept)                                                                             \
+    X(clusters_coarse, counts.clusters_coarse)                                                                         \
     X(clusters_not_set_up, clusters[RASTER_FATE_NOT_SET_UP])                                                           \
     X(clusters_hidden, clusters[RASTER_FATE_HIDDEN])                                                                   \
     X(clusters_drawn, clusters[RASTER_FATE_DRAWN])                                                                     \

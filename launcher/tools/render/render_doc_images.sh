@@ -211,7 +211,7 @@ run mkdir -p "$WORK" "$OUT/overview" "$OUT/ui"
 if [ "$AUDIO_ONLY" = 0 ]; then
 # The cached bakes the figures draw, fetched first so a renamed output fails here, not after the renders.
 skin_asset=$("$PYTHON" launcher/tools/bake/bake.py path "$SKIN_BAKE") || exit 2
-# The demo object's lite mesh: a .mesh or a carved .bundle, whichever the scene bakes.
+# The demo object's lite mesh bundle.
 lite_stem="$(basename "$DEMO_SCENE" .scene.toml).${DEMO_OBJECT}_lite"
 scene_bakes=$("$PYTHON" launcher/tools/bake/bake.py list "$DEMO_SCENE" --kind mesh) || exit 2
 lite_output=$(echo "$scene_bakes" |
