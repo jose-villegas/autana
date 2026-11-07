@@ -397,6 +397,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     raster_t* r = &c->raster;
     r->split = &c->split;
     r->picks_levels = true;
+    r->pick_round++;
     r->settings = &c->settings;
     r->instances = instances;
     r->instance_count = count;

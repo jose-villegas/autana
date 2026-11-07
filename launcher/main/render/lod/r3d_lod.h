@@ -35,6 +35,10 @@
 #define R3D_LOD_COVERAGE_PERMILLE 250
 #define R3D_LOD_PERMILLE          1000
 #define R3D_LOD_UNCAPPED          INT32_MAX
+/* The most frames one round of the pick may be spread over (an experiment,
+ * render.lod_pick_every): each frame picks every Nth instance, so a level
+ * change lands up to N - 1 frames late. */
+#define R3D_LOD_PICK_EVERY_MAX    8
 
 #define R3D_LOD_WORD_BITS         32
 /* The words of coarse bits a mesh's groups need. */

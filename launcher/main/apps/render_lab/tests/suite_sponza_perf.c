@@ -340,6 +340,8 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
     TEST_ASSERT_NOT_NULL(frame_us);
     int64_t frame_sum = 0;
     int samples = 0;
+    const tune_entry_t* pick_every = tune_find(tune_shared(), TUNE_NAME(render, lod_pick_every));
+    TEST_ASSERT_NOT_NULL(pick_every);
     for (uint32_t t_ms = 0; t_ms < period; t_ms += SPONZA_PERF_POSE_EVERY_MS) {
         (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
         const render_view_t view = sponza_suite_view(flythrough, sponza, camera_entity,
@@ -349,9 +351,15 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
                                     (vec3f_t){(t_ms / SPONZA_PERF_POSE_EVERY_MS) % 2 == 0 ? 0.0F : 0.01F, 0.0F, 0.0F});
             *model = transformf_compute_matrix(moving);
         }
-        const int64_t start = timing_now_us();
-        /* The levels the frame draws, picked as render_context_draw() picks them, inside the frame's time. */
+        /* The levels the frame draws, picked as render_context_draw() picks them, inside the frame's time:
+         * a pick spread over frames has the pose's earlier frames drawn first, untimed. */
         b->raster.picks_levels = true;
+        for (int warm = 1; warm < *pick_every->value; warm++) {
+            b->raster.pick_round++;
+            (void)raster_draw(&b->raster, &view);
+        }
+        b->raster.pick_round++;
+        const int64_t start = timing_now_us();
         const raster_stats_t stats = raster_draw(&b->raster, &view);
         b->raster.picks_levels = false;
         const resolution_step_t composed = raster_compose_size(&b->raster);

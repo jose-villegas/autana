@@ -26,6 +26,9 @@ TUNE_OVERRIDE(render, batched, 1);
  * (R3D_LOD_COVERAGE_PERMILLE); the doc's coverage table renders each cap it
  * lists. */
 TUNE(render, lod_coverage_permille, R3D_LOD_COVERAGE_PERMILLE, 0, R3D_LOD_UNCAPPED);
+/* The frames one round of the pick is spread over (R3D_LOD_PICK_EVERY_MAX);
+ * 1 picks every instance every frame. */
+TUNE(render, lod_pick_every, 1, 1, R3D_LOD_PICK_EVERY_MAX);
 
 render_settings_t
 raster_settings(const raster_t* raster) {
@@ -422,6 +425,8 @@ world_cull_skips(const world_cull_t* world, const r3d_instance_t* instance) {
  * output's. */
 typedef struct {
     bool picks;
+    uint32_t round; /* raster_t.pick_round */
+    int every;      /* render.lod_pick_every */
     float tolerance_px;
     float coverage_max;
 } level_pick_t;
@@ -430,16 +435,17 @@ static level_pick_t
 level_pick_init(const raster_t* raster, picture_lens_t* picture, const render_view_t* view) {
     const r3d_lens_t* lens = picture_lens_at(picture, 1);
     const float drawn = mathf_max(lens->focal_x, lens->focal_y) / mathf_max(view->lens.fx, view->lens.fy);
-    return (level_pick_t){raster->picks_levels, R3D_LOD_TOLERANCE_PX * drawn,
+    return (level_pick_t){raster->picks_levels, raster->pick_round, lod_pick_every, R3D_LOD_TOLERANCE_PX * drawn,
                           (float)lod_coverage_permille / (float)R3D_LOD_PERMILLE};
 }
 
 /* An instance culled whole is not picked: it keeps the bits it last had, a
- * cut as whole as any, and the frame it comes back in picks again before its
- * draw. */
+ * cut as whole as any, and its next pick comes before its draw. Spread over
+ * frames, instance `index` picks in the frames its share comes round. */
 static void
-level_pick(const level_pick_t* pick, const r3d_instance_t* instance, const r3d_lens_t* lens) {
-    if (pick->picks && instance->lod_coarse != NULL && instance->mesh->lod_group_count > 0) {
+level_pick(const level_pick_t* pick, int index, const r3d_instance_t* instance, const r3d_lens_t* lens) {
+    const bool due = pick->every <= 1 || ((uint32_t)index + pick->round) % (uint32_t)pick->every == 0;
+    if (pick->picks && due && instance->lod_coarse != NULL && instance->mesh->lod_group_count > 0) {
         r3d_lod_pick(instance->mesh, lens, pick->tolerance_px, pick->coverage_max, instance->lod_coarse);
     }
 }
@@ -468,7 +474,7 @@ cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, r
         } else {
             r3d_lens_t lens;
             instance_lens(&picture, instance, &lens);
-            level_pick(&pick, instance, &lens);
+            level_pick(&pick, i, instance, &lens);
             culled[0] = (uint16_t)cull_instance(instance, settings.cull, &lens, culled + 1, stats,
                                                 work->buffers.work[0], settings.depth_fit ? &fit : NULL);
         }
