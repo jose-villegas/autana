@@ -35,6 +35,11 @@ ui_bridge_feed(mu_Context* ctx, ui_pointer_t* p, const input_t* input) {
     }
 }
 
+bool
+ui_bridge_held(const mu_Context* ctx, const ui_pointer_t* p, mu_Id id) {
+    return ctx->focus == id || (p->press_deferred && ctx->hover == id);
+}
+
 void
 ui_bridge_end(mu_Context* ctx, ui_pointer_t* p) {
     p->over_scrollable = mu_scrollable_at(ctx);

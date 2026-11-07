@@ -87,10 +87,7 @@ render_context_print_debug_views(FILE* out) {
     }
 }
 
-static render_context_t main_context = {
-    .scale_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT,
-    .frame = {.step = -1},
-};
+static render_context_t main_context = RENDER_CONTEXT_DEFAULT;
 
 render_context_t*
 render_context_main(void) {
@@ -123,11 +120,9 @@ render_context_release(render_context_t* c) {
     render_context_drop_scratch(c);
     framegen_target_free(&c->framegen);
     free_view_state(c);
-    *c = (render_context_t){
-        .scale_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT,
-        .frame = {.step = -1},
-        .take = c->take,
-    };
+    const memory_take_fn take = c->take;
+    *c = RENDER_CONTEXT_DEFAULT;
+    c->take = take;
 }
 
 void
@@ -281,6 +276,14 @@ fit_scratch(render_context_t* c) {
 }
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+/* Where the frame's second view was drawn from. Not inlined: the pose's
+ * maths stay off the draw's frame, under the deepest raster chain. */
+static __attribute__((noinline)) void
+note_observed(render_context_t* c, const transformf_t* observer, const render_view_t* second) {
+    c->observed = true;
+    c->observed_from = observer != NULL ? *observer : render_view_pose(second);
+}
+
 /* The debug view's second draw, when it asks for one, every cluster kept. */
 static void
 draw_second_view(render_context_t* c) {
@@ -289,12 +292,16 @@ draw_second_view(render_context_t* c) {
         return;
     }
     /* Its own views and clusters: none may steer the frame's core split, and
-     * the hook reads render.cull as the frame drew. */
+     * the hook reads the override the frame drew with. */
     const tune_entry_t* culling = tune_find(tune_shared(), TUNE_NAME(render, cull));
     const int32_t culled = *culling->value;
+    const transformf_t* observer = c->observing ? &c->observer : NULL;
     render_view_t second;
     bool listed = false;
-    while (row->second_view(c->debug_view_state, &c->raster, &second, &listed)) {
+    while (row->second_view(c->debug_view_state, &c->raster, observer, &second, &listed)) {
+        if (!c->observed) {
+            note_observed(c, observer, &second);
+        }
         c->raster.split = NULL;
         if (listed) {
             raster_draw_culled(&c->raster, &second);
@@ -371,6 +378,9 @@ generate(render_context_t* c, const render_view_t* view) {
 bool
 render_context_draw(render_context_t* c, const r3d_instance_t* instances, int count, const render_view_t* view,
                     uint16_t clear) {
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    c->observed = false;
+#endif
     if (can_generate(c, view)) {
         generate(c, view);
         return true;
@@ -384,6 +394,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     const int step = current_step(c);
     raster_t* r = &c->raster;
     r->split = &c->split;
+    r->settings = &c->settings;
     r->instances = instances;
     r->instance_count = count;
     reserve_view(c, count);
@@ -401,6 +412,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     }
     c->frame.width = r->width;
     c->frame.height = r->height;
+    raster_pick_levels(r, view);
     if (c->policy == RENDER_FIXED && !c->generating) {
         /* Off: the plain draw, nothing timed or chosen, unless frame generation needs the drawn cost. */
         c->frame.stats = raster_draw(r, view);
@@ -434,6 +446,16 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     c->kept = true;
     c->kept_view = *view;
     return true;
+}
+
+void
+render_context_set_settings(render_context_t* c, const render_settings_t* settings) {
+    c->settings = *settings;
+}
+
+const render_settings_t*
+render_context_settings(const render_context_t* c) {
+    return &c->settings;
 }
 
 void
@@ -516,8 +538,29 @@ render_context_debug_view_state(const render_context_t* c) {
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 void
+render_context_set_observer(render_context_t* c, const transformf_t* pose) {
+    c->observing = pose != NULL;
+    c->observer = pose != NULL ? *pose : transformf_identity();
+}
+
+bool
+render_context_observer_pose(const render_context_t* c, transformf_t* out) {
+    if (c->observed) {
+        *out = c->observed_from;
+    }
+    return c->observed;
+}
+
+/* The context's bytes a checkpoint holds: all but the observer, which ends it. */
+#define CARRIED_BYTES offsetof(render_context_t, observing)
+_Static_assert(offsetof(render_context_t, observer) + sizeof(((render_context_t*)0)->observer)
+                       + _Alignof(render_context_t)
+                   > sizeof(render_context_t),
+               "the observer ends render_context_t: a checkpoint holds the bytes before it");
+
+void
 render_context_checkpoint_capture(checkpoint_t* saved, render_context_t* context) {
-    checkpoint_capture(saved, context, sizeof(*context));
+    checkpoint_capture(saved, context, CARRIED_BYTES);
     checkpoint_capture(saved, context->scratch, context->scratch_bytes);
     const render_debug_view_t* row = render_context_debug_view(context->debug_view);
     if (row != NULL) {
@@ -544,8 +587,8 @@ render_context_checkpoint_prepare(checkpoint_t* saved, render_context_t* context
     if (data == NULL) {
         return false;
     }
-    render_context_t source;
-    memcpy(&source, data, sizeof source);
+    render_context_t source = *context;
+    memcpy(&source, data, CARRIED_BYTES);
     if (source.take != context->take) {
         return false;
     }
@@ -564,15 +607,14 @@ render_context_checkpoint_prepare(checkpoint_t* saved, render_context_t* context
     if (source.debug_view == RENDER_DEBUG_VIEW_SHADED) {
         free_view_state(context);
     }
-    render_context_t restored = source;
-    restored.scratch = context->scratch;
-    restored.scratch_bytes = context->scratch_bytes;
-    restored.raster.scratch = context->scratch;
-    restored.raster.upscale.columns = checkpoint_map(&source, context, source.raster.upscale.columns);
-    restored.raster.upscale.rows = checkpoint_map(&source, context, source.raster.upscale.rows);
-    restored.raster.upscale.blends = checkpoint_map(&source, context, source.raster.upscale.blends);
+    source.raster.upscale.columns = checkpoint_map(&source, context, source.raster.upscale.columns);
+    source.raster.upscale.rows = checkpoint_map(&source, context, source.raster.upscale.rows);
+    source.raster.upscale.blends = checkpoint_map(&source, context, source.raster.upscale.blends);
     (void)checkpoint_retarget(saved, source.scratch, context->scratch);
-    memcpy(data, &restored, sizeof restored);
+    source.scratch = context->scratch;
+    source.scratch_bytes = context->scratch_bytes;
+    source.raster.scratch = context->scratch;
+    memcpy(data, &source, CARRIED_BYTES);
     return true;
 }
 #endif

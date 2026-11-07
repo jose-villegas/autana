@@ -69,7 +69,7 @@ class DocImageFailureTest(unittest.TestCase):
                     mock.patch("r3d.bake_fidelity.write_packs"), \
                     mock.patch.object(examples.subprocess, "run") as run:
                 examples.main(scene_path, "painting", "painting_flat_fitted", pathlib.Path("viewer"), work, work, 3, 17)
-            pack.assert_called_once_with([scene_path], [f"gallery.paint={work / 'albedo/paint.mesh'}"])
+            pack.assert_called_once_with([scene_path], [f"gallery.paint={work / 'albedo/paint.bundle'}"])
             args = run.call_args_list[0].args[0]
             for flag, value in (("--scene", "gallery"), ("--object", "painting"), ("--frames", "3"), ("--dt", "17")):
                 self.assertEqual(args[args.index(flag) + 1], value)
@@ -341,7 +341,7 @@ class DocImageFailureTest(unittest.TestCase):
             imported = (root / "import.argv").read_text().splitlines()
             self.assertEqual(imported[imported.index("--out") + 1], "scratch")
             self.assertEqual((root / "pack.argv").read_text().splitlines(),
-                             ["-o", "scratch/assets", "gallery.scene.toml", "--replace", "gallery.paint=scratch/gallery.paint.mesh"])
+                             ["-o", "scratch/assets", "gallery.scene.toml", "--replace", "gallery.paint=scratch/gallery.paint.bundle"])
             args = (root / "render.argv").read_text().splitlines()
             self.assertEqual(args[args.index("--scene") + 1], "gallery")
             self.assertEqual(args[args.index("--object") + 1], "painting")
@@ -352,7 +352,7 @@ class DocImageFailureTest(unittest.TestCase):
             root = pathlib.Path(directory)
             meshes = root / DEMO_SCENE.parent.relative_to(ROOT)
             shutil.copytree(DEMO_SCENE.parent, meshes,
-                            ignore=shutil.ignore_patterns("*.mesh", "*.c", "*.h"))
+                            ignore=shutil.ignore_patterns("*.bundle", "*.c", "*.h"))
             importer = root / "launcher/tools/r3d/mesh_import.py"
             importer.parent.mkdir(parents=True)
             importer.write_text(

@@ -1,4 +1,5 @@
 /* render_view: pose basis, panel turns and perspective fit without raster scratch. */
+#include "box3f_expect.h"
 #include "math/scalar/math_const.h"
 #include "suites.h"
 #include "unity.h"
@@ -37,28 +38,21 @@ view_of(const transformf_t* pose, int quarter) {
 }
 
 static void
-expect_vector(vec3f_t expected, vec3f_t actual) {
-    TEST_ASSERT_FLOAT_WITHIN(EPSILON, expected.x, actual.x);
-    TEST_ASSERT_FLOAT_WITHIN(EPSILON, expected.y, actual.y);
-    TEST_ASSERT_FLOAT_WITHIN(EPSILON, expected.z, actual.z);
-}
-
-static void
 test_basis_is_orthonormal_and_picture_right_is_pose_plus_x(void) {
     const transformf_t pose = fixture();
     const render_view_t view = view_of(&pose, 0);
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.ceiling, view.small_fill.ceiling);
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.gate, view.small_fill.gate);
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.style, view.small_fill.style);
-    expect_vector(vec3f_one(),
-                  (vec3f_t){vec3f_dot(view.screen_x, view.screen_x), vec3f_dot(view.screen_y, view.screen_y),
-                            vec3f_dot(view.forward, view.forward)});
-    expect_vector(vec3f_zero(),
-                  (vec3f_t){vec3f_dot(view.screen_x, view.screen_y), vec3f_dot(view.screen_x, view.forward),
-                            vec3f_dot(view.screen_y, view.forward)});
-    expect_vector(view.forward, vec3f_cross(view.screen_y, view.screen_x));
-    expect_vector(quatf_rotate(pose.rotation, vec3f_unit_x()), view.screen_x);
-    expect_vector(pose.position, view.position);
+    vec3f_expect_within(EPSILON, vec3f_one(),
+                        (vec3f_t){vec3f_dot(view.screen_x, view.screen_x), vec3f_dot(view.screen_y, view.screen_y),
+                                  vec3f_dot(view.forward, view.forward)});
+    vec3f_expect_within(EPSILON, vec3f_zero(),
+                        (vec3f_t){vec3f_dot(view.screen_x, view.screen_y), vec3f_dot(view.screen_x, view.forward),
+                                  vec3f_dot(view.screen_y, view.forward)});
+    vec3f_expect_within(EPSILON, view.forward, vec3f_cross(view.screen_y, view.screen_x));
+    vec3f_expect_within(EPSILON, quatf_rotate(pose.rotation, vec3f_unit_x()), view.screen_x);
+    vec3f_expect_within(EPSILON, pose.position, view.position);
 }
 
 static void
@@ -68,13 +62,15 @@ test_quarter_turns_follow_viewport_axes(void) {
     for (int quarter = 0; quarter < 4; quarter++) {
         const render_view_t view = view_of(&pose, quarter);
         const viewport_quarter_axes_t axes = viewport_quarter_axes(quarter);
-        expect_vector(vec3f_add(vec3f_scale(upright.screen_x, (float)axes.x_right),
-                                vec3f_scale(upright.screen_y, (float)axes.x_down)),
-                      view.screen_x);
-        expect_vector(vec3f_add(vec3f_scale(upright.screen_x, (float)axes.y_right),
-                                vec3f_scale(upright.screen_y, (float)axes.y_down)),
-                      view.screen_y);
-        expect_vector(upright.forward, view.forward);
+        vec3f_expect_within(EPSILON,
+                            vec3f_add(vec3f_scale(upright.screen_x, (float)axes.x_right),
+                                      vec3f_scale(upright.screen_y, (float)axes.x_down)),
+                            view.screen_x);
+        vec3f_expect_within(EPSILON,
+                            vec3f_add(vec3f_scale(upright.screen_x, (float)axes.y_right),
+                                      vec3f_scale(upright.screen_y, (float)axes.y_down)),
+                            view.screen_y);
+        vec3f_expect_within(EPSILON, upright.forward, view.forward);
     }
 }
 
@@ -183,9 +179,28 @@ test_pose_roll_rotates_the_picture(void) {
     const render_view_t upright = view_of(&pose, 0);
     pose.rotation = quatf_from_axis_angle(upright.forward, MATH_TAU * 0.25F);
     const render_view_t rolled = view_of(&pose, 0);
-    expect_vector(vec3f_scale(upright.screen_y, -1.0F), rolled.screen_x);
-    expect_vector(upright.screen_x, rolled.screen_y);
-    expect_vector(upright.forward, rolled.forward);
+    vec3f_expect_within(EPSILON, vec3f_scale(upright.screen_y, -1.0F), rolled.screen_x);
+    vec3f_expect_within(EPSILON, upright.screen_x, rolled.screen_y);
+    vec3f_expect_within(EPSILON, upright.forward, rolled.forward);
+}
+
+/* render_view_pose() gives back the pose a view was made from at every
+ * quarter turn, rolled, at unit scale whatever the pose's. */
+static void
+test_pose_of_a_view_is_the_pose_it_was_made_from(void) {
+    const transformf_t pose = fixture();
+    for (int quarter = 0; quarter < 4; quarter++) {
+        const render_view_t view = view_of(&pose, quarter);
+        const transformf_t back = render_view_pose(&view);
+        vec3f_expect_within(EPSILON, pose.position, back.position);
+        vec3f_expect_within(EPSILON, vec3f_one(), back.scale);
+        vec3f_expect_within(EPSILON, quatf_rotate(pose.rotation, vec3f_unit_x()),
+                            quatf_rotate(back.rotation, vec3f_unit_x()));
+        vec3f_expect_within(EPSILON, quatf_rotate(pose.rotation, vec3f_unit_y()),
+                            quatf_rotate(back.rotation, vec3f_unit_y()));
+        vec3f_expect_within(EPSILON, quatf_rotate(pose.rotation, vec3f_unit_z()),
+                            quatf_rotate(back.rotation, vec3f_unit_z()));
+    }
 }
 
 void
@@ -197,6 +212,7 @@ run_render_view_suite(void) {
     RUN_TEST(test_a_shifted_lens_frames_a_point_off_its_axis);
     RUN_TEST(test_off_axis_lens_projection_and_anisotropic_fit);
     RUN_TEST(test_pose_roll_rotates_the_picture);
+    RUN_TEST(test_pose_of_a_view_is_the_pose_it_was_made_from);
 }
 
 SUITE_REGISTER(run_render_view_suite);

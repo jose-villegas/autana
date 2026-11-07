@@ -19,9 +19,9 @@
  * function alignment would only waste IRAM; 4 bytes keeps entries aligned.
  * IRAM budget: 5610 B */
 #define RENDER_IRAM_ATTR IRAM_ATTR __attribute__((aligned(4)))
-/* The draw path's capped copies for a view that skips clusters behind drawn
- * depth (render_view_t.skip_hidden). IRAM is granted per measured ms saved
- * per KB, with the largest free internal block noted alongside.
+/* The draw path's copies for a view that skips clusters behind drawn depth
+ * (render_view_t.skip_hidden), placed with the draw path. IRAM is granted per
+ * measured ms saved per KB, the largest free internal block noted with it.
  * IRAM budget: 4525 B */
 #define RENDER_SKIP_ATTR RENDER_IRAM_ATTR
 #else

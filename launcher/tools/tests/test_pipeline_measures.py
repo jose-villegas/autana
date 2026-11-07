@@ -160,7 +160,7 @@ class PipelineMeasuresTests(unittest.TestCase):
                     tri_v=np.array([[0, 1, 2], [1, 3, 2], [0, 1, 2], [0, 1, 2]]), tri_t=np.zeros((4, 3), dtype=int),
                     tri_m=np.array([0, 1, 0, 0]), uv=[], textures={}, names=["surface", "foliage"])
         settings = NS(seed=5, position_scale=None, alpha_keep=.5, thin=NS(material="foliage", keep=0),
-                      simplify=None, double_sided=[], meshes=(), meshlet_triangles=lit_mesh.MESHLET_TRIANGLES)
+                      simplify=None, double_sided=[], meshes=(), meshlet_triangles=lit_mesh.MESHLET_TRIANGLES, lod=False)
         job = NS(settings=settings, renderer=NS(visibility=object(), face_samples=None, variant=NS(triangles=None, ceiling=None)), bake=None)
         recorder = process_budget.StepRecorder(probe=lambda gpu: (100, None), interval=None)
         with patch.object(mesh_import, "load_source", return_value=source), \
@@ -169,7 +169,7 @@ class PipelineMeasuresTests(unittest.TestCase):
                 patch.object(mesh_import, "visible_triangles", return_value=np.array([True, True, False])), \
                 patch.object(mesh_import, "shade_unlit", side_effect=lambda src, mat, p, t: (p, np.zeros_like(p), t)):
             geometry = mesh_import.bake_geometry(job, None, recorder=recorder)
-        mesh = NS(tris=geometry.tris)
+        mesh = NS(tris=geometry.tris, lod=None, groups=None)
         with tempfile.TemporaryDirectory() as directory, patch.object(lit_mesh, "bake_lit_mesh", return_value=mesh), \
                 patch.object(lit_mesh, "mesh_blob", return_value=b"mesh"):
             mesh_import.write_baked(job, None, pathlib.Path(directory), "fixture", geometry, recorder=recorder)
@@ -195,7 +195,7 @@ class PipelineMeasuresTests(unittest.TestCase):
         recorder = process_budget.StepRecorder(probe=lambda gpu: (100, 200), interval=None)
         with tempfile.TemporaryDirectory() as directory, \
                 patch.object(lit_mesh, "read_lit_mesh", side_effect=[NS(tris=[0]*12), NS(tris=[0]*8)]), \
-                patch.object(stage, "fit", return_value=pathlib.Path(directory) / "fit.mesh"):
+                patch.object(stage, "fit", return_value=pathlib.Path(directory) / "fit.bundle"):
             result = stage.fit_point({}, pathlib.Path(directory) / "work", None, None, job,
                                      pathlib.Path(directory), recorder=recorder)
         self.assertEqual([(row["step"], row["triangles_in"], row["triangles_out"])
