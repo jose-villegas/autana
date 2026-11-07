@@ -52,7 +52,8 @@ def make_shape(src, material, settings, seed, keep_alpha, *, path=None, occluder
     count = len(positions)
     report = dict(candidates=len(selected), split_cards=len(cards), cards=count,
                   triangles=count * len(QUAD_TRIANGLES), splits=splits, long_sides=distribution,
-                  mask_rows=len(rows), mask_bytes=HEADER.size + count * len(QUAD_CORNERS) * UV.size + len(rows) * ROW.size)
+                  mask_rows=len(rows), mask_bytes=(HEADER.size + count * len(QUAD_CORNERS) * UV.size +
+                                                   len(rows) * ROW.size) if count else 0)
     log(f"cards: {len(selected)} selected, {len(cards)} after splitting, {count} baked, "
         f"{report['triangles']} masked triangles, {splits} splits, "
         f"{len(rows)} LMSK rows, {report['mask_bytes']} LMSK bytes")
