@@ -41,7 +41,7 @@ knot_at(const r3d_curve_knot_t* knot, const r3d_lens_t* lens) {
 static knot_t
 knot_between(knot_t a, knot_t b, float t) {
     return (knot_t){vec3f_add(a.point, vec3f_scale(vec3f_sub(b.point, a.point), t)),
-                    a.radius + t * (b.radius - a.radius), a.color};
+                    a.radius + (t * (b.radius - a.radius)), a.color};
 }
 
 static float
@@ -83,7 +83,7 @@ clip_ribbon(corner_t vertices[CLIPPED_CORNERS], const r3d_lens_t* lens) {
             const float db = screen_distance(b, plane, lens);
             if ((da >= 0) != (db >= 0)) {
                 const float t = da / (da - db);
-                next[kept++] = (corner_t){a.x + t * (b.x - a.x), a.y + t * (b.y - a.y), a.z + t * (b.z - a.z)};
+                next[kept++] = (corner_t){a.x + (t * (b.x - a.x)), a.y + (t * (b.y - a.y)), a.z + (t * (b.z - a.z))};
             }
             if (db >= 0) {
                 next[kept++] = b;
@@ -126,10 +126,10 @@ segment(const knot_t* from, const knot_t* to, float radius_scale, const r3d_lens
         b.point.z = near;
     }
     /* Lens space already points y down the picture, as r3d_pipeline's vertices take it. */
-    const float ax = lens->project.cx + a.point.x / a.point.z;
-    const float ay = lens->project.cy + a.point.y / a.point.z;
-    const float bx = lens->project.cx + b.point.x / b.point.z;
-    const float by = lens->project.cy + b.point.y / b.point.z;
+    const float ax = lens->project.cx + (a.point.x / a.point.z);
+    const float ay = lens->project.cy + (a.point.y / a.point.z);
+    const float bx = lens->project.cx + (b.point.x / b.point.z);
+    const float by = lens->project.cy + (b.point.y / b.point.z);
     const float dx = bx - ax, dy = by - ay;
     const float length = hypotf(dx, dy);
     const float ar = a.radius * radius_scale / a.point.z;
@@ -144,10 +144,10 @@ segment(const knot_t* from, const knot_t* to, float radius_scale, const r3d_lens
     const float az = fminf(1.0F, lens->depth_near / a.point.z);
     const float bz = fminf(1.0F, lens->depth_near / b.point.z);
     corner_t corners[CLIPPED_CORNERS] = {
-        {ax - ux * ah - uy * ah, ay - uy * ah + ux * ah, az},
-        {ax - ux * ah + uy * ah, ay - uy * ah - ux * ah, az},
-        {ex + ux * bh + uy * bh, ey + uy * bh - ux * bh, bz},
-        {ex + ux * bh - uy * bh, ey + uy * bh + ux * bh, bz},
+        {ax - (ux * ah) - (uy * ah), ay - (uy * ah) + (ux * ah), az},
+        {ax - (ux * ah) + (uy * ah), ay - (uy * ah) - (ux * ah), az},
+        {ex + (ux * bh) + (uy * bh), ey + (uy * bh) - (ux * bh), bz},
+        {ex + (ux * bh) - (uy * bh), ey + (uy * bh) + (ux * bh), bz},
     };
     const int count = clip_ribbon(corners, lens);
     const uint16_t color = mean_color(a.color, b.color);
@@ -198,7 +198,8 @@ r3d_curve_draw(r3d_curve_set_t set, const r3d_lens_t* lens, const r3d_span_targe
         for (int k = 1; k < curve->count; k++) {
             const knot_t b = knot_at(&set.knots[curve->first + k], lens);
             if (k + 1 < curve->count && a.point.z >= lens->project.near_z && b.point.z >= lens->project.near_z
-                && hypotf(a.point.x / a.point.z - b.point.x / b.point.z, a.point.y / a.point.z - b.point.y / b.point.z)
+                && hypotf((a.point.x / a.point.z) - (b.point.x / b.point.z),
+                          (a.point.y / a.point.z) - (b.point.y / b.point.z))
                        < CURVE_SKIP_PX) {
                 continue;
             }
