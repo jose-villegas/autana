@@ -98,6 +98,7 @@ assert_settings(const render_settings_t* expected, const render_settings_t* actu
     TEST_ASSERT_EQUAL_FLOAT(expected->lod.tolerance_px, actual->lod.tolerance_px);
     TEST_ASSERT_EQUAL_FLOAT(expected->lod.hysteresis_px, actual->lod.hysteresis_px);
     TEST_ASSERT_EQUAL_INT(expected->lod.coverage_permille, actual->lod.coverage_permille);
+    TEST_ASSERT_EQUAL_INT(expected->lod.pick_every, actual->lod.pick_every);
 }
 
 static void
@@ -123,10 +124,11 @@ static void
 test_the_default_is_every_setting_on_as_the_raster_drew_before(void) {
     raster_rig_t* r = open_rig();
     /* Before settings, the raster always culled, fitted depth and batched. */
-    const render_settings_t on = {.cull = true,
-                                  .depth_fit = true,
-                                  .batched = true,
-                                  .lod = {.tolerance_px = 2.0F, .hysteresis_px = 0.5F, .coverage_permille = 250}};
+    const render_settings_t on = {
+        .cull = true,
+        .depth_fit = true,
+        .batched = true,
+        .lod = {.tolerance_px = 2.0F, .hysteresis_px = 0.5F, .coverage_permille = 250, .pick_every = 4}};
     assert_settings(&on, &RENDER_SETTINGS_DEFAULT);
     const render_settings_t bare = raster_settings(&r->raster);
     assert_settings(&on, &bare);
@@ -220,23 +222,25 @@ static void
 test_the_coverage_knob_overrides_only_the_coverage_cap(void) {
     raster_rig_t* r = open_rig();
     render_settings_t set = RENDER_SETTINGS_DEFAULT;
-    set.lod = (render_lod_settings_t){3.0F, 0.25F, 100};
+    set.lod = (render_lod_settings_t){3.0F, 0.25F, 100, 2};
     r->raster.settings = &set;
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, lod_coverage_permille), 500));
     render_settings_t used = raster_settings(&r->raster);
     TEST_ASSERT_EQUAL_INT(500, used.lod.coverage_permille);
     TEST_ASSERT_EQUAL_FLOAT(3.0F, used.lod.tolerance_px);
     TEST_ASSERT_EQUAL_FLOAT(0.25F, used.lod.hysteresis_px);
+    TEST_ASSERT_EQUAL_INT(2, used.lod.pick_every);
     TEST_ASSERT_EQUAL_INT(100, set.lod.coverage_permille);
     TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, lod_coverage_permille)));
     used = raster_settings(&r->raster);
     TEST_ASSERT_EQUAL_INT(100, used.lod.coverage_permille);
 }
 
-enum { FIELDS = 6, ROW_BYTES = ASSET_TABLE_NAME_SIZE + sizeof(int16_t), PACK_BYTES = 512 };
+enum { FIELDS = RENDER_SETTINGS_FIELD_COUNT, ROW_BYTES = ASSET_TABLE_NAME_SIZE + sizeof(int16_t), PACK_BYTES = 512 };
 
 static const char* const field_names[FIELDS + 1] = {
-    "cull", "depth_fit", "batched", "lod.tolerance_px", "lod.hysteresis_px", "lod.coverage_permille", "fog"};
+    "cull",           "depth_fit", "batched", "lod.tolerance_px", "lod.hysteresis_px", "lod.coverage_permille",
+    "lod.pick_every", "fog"};
 #define STEP (1 << RENDER_SETTINGS_FRAC_BITS)
 
 /* Opens into `opened` a pack whose render entry has the first `rows` of
@@ -275,7 +279,7 @@ read_entry(int rows, const int16_t* values, int frac, render_settings_t* out) {
 
 static void
 test_a_packs_render_entry_reads_every_field(void) {
-    static const int16_t values[FIELDS] = {0, STEP, 0, (3 * STEP) + (STEP / 2), STEP / 4, 100 * STEP};
+    static const int16_t values[FIELDS] = {0, STEP, 0, (3 * STEP) + (STEP / 2), STEP / 4, 100 * STEP, 2 * STEP};
     render_settings_t read;
     TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
     TEST_ASSERT_FALSE(read.cull);
@@ -284,6 +288,7 @@ test_a_packs_render_entry_reads_every_field(void) {
     TEST_ASSERT_EQUAL_FLOAT(3.5F, read.lod.tolerance_px);
     TEST_ASSERT_EQUAL_FLOAT(0.25F, read.lod.hysteresis_px);
     TEST_ASSERT_EQUAL_INT(100, read.lod.coverage_permille);
+    TEST_ASSERT_EQUAL_INT(2, read.lod.pick_every);
 }
 
 static void
