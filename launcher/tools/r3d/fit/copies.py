@@ -5,13 +5,12 @@ or prune with the rest.
 """
 
 import pathlib
-import tempfile
 
 import numpy as np
 
 from r3d import lcol_asset, mesh_bundle, mesh_asset
 from r3d.fit.gbuffer import IN_FRONT, distance, reference_buffers
-from r3d.lit_mesh import read_lit_mesh, rgb888
+from r3d.lit_mesh import finest, rgb888
 
 # The copy-coverage gate: over the held-out poses, the fitted rest may hide more of the frame's copy pixels
 # than its start by at most HIDDEN_MEAN_GROWTH on the mean and HIDDEN_WORST_GROWTH on the worst pose. Set
@@ -22,8 +21,10 @@ HIDDEN_WORST_GROWTH = 0.010
 
 
 def placed_copies(bundle, flat):
-    """Every copy in a start bundle placed under its transform, as one FitMesh in the rest's units: welded
-    per copy mesh, one colour per vertex, or per triangle when `flat`. None when the bundle has neither copies nor curves."""
+    """Every copy in a start bundle placed under its transform, as one FitMesh in the rest's units: a copy
+    mesh's finest clusters as the bundle stores them, their own vertices with positions welded, one colour per
+    vertex, or per triangle when `flat`. None when the bundle has neither copies nor curves. No weld by value, so a copy's
+    vertices and triangles are the ones a mesh without levels holds."""
     from r3d.appearance_simplify import FitMesh
 
     entries, rows = mesh_bundle.decode(pathlib.Path(bundle).read_bytes())
@@ -43,14 +44,15 @@ def placed_copies(bundle, flat):
     points, rgb, tris, double, vertex_point = [], [], [], [], []
     point_count = vertex_count = 0
     for name in dict.fromkeys(row["mesh"] for row in rows):
-        with tempfile.TemporaryDirectory() as folder:
-            path = pathlib.Path(folder) / f"{name}.mesh"
-            path.write_bytes(data[name])
-            mesh = read_lit_mesh(path)
-        sided = np.zeros(len(mesh.tris), dtype=np.int64)
-        for _vb, _vc, tbase, tcount, _lo, _hi, is_double in mesh.clusters:
-            sided[tbase:tbase + tcount] = int(is_double)
-        local, welded = np.unique(mesh.pos, axis=0, return_inverse=True)
+        mesh = mesh_bundle.read_mesh(entries, name)
+        shown = [c for c, level0 in zip(mesh.clusters, finest(mesh)) if level0]
+        vertices = np.concatenate([np.arange(vbase, vbase + vcount) for vbase, vcount, *_ in shown])
+        faces = np.concatenate([np.arange(tbase, tbase + tcount) for _, _, tbase, tcount, *_ in shown])
+        sided = np.concatenate([np.full(tcount, int(is_double), dtype=np.int64)
+                                for _, _, _, tcount, _, _, is_double in shown])
+        renumber = np.full(len(mesh.pos), -1, dtype=np.int64)
+        renumber[vertices] = np.arange(len(vertices))
+        local, welded = np.unique(mesh.pos[vertices], axis=0, return_inverse=True)
         local, welded = local / float(mesh.position_scale), welded.reshape(-1)
         encoding, _count, sets = lcol_asset.decode(data[lcol_asset.name_for_mesh(name)])
         if (encoding == lcol_asset.RGB565) != flat:
@@ -58,10 +60,10 @@ def placed_copies(bundle, flat):
                              f"and its rest is not")
         for row in (row for row in rows if row["mesh"] == name):
             colours = sets[row["colour_set"]]
-            colours = rgb888(np.frombuffer(colours, "<u2")) if flat else np.frombuffer(colours, "u1").reshape(-1, 3)
+            colours = rgb888(np.frombuffer(colours, "<u2"))[faces] if flat                 else np.frombuffer(colours, "u1").reshape(-1, 3)[vertices]
             points.append(local @ np.asarray(row["matrix"], dtype=np.float64).T + np.asarray(row["position"]))
             rgb.append(colours / 255.0)
-            tris.append(mesh.tris + vertex_count)
+            tris.append(renumber[mesh.tris[faces]] + vertex_count)
             double.append(sided)
             vertex_point.append(welded + point_count)
             point_count += len(local)
@@ -69,7 +71,6 @@ def placed_copies(bundle, flat):
     copies = FitMesh(np.concatenate(points), np.concatenate(rgb), np.concatenate(tris), np.concatenate(double), 1,
                    np.concatenate(vertex_point), flat)
     return joined(copies, curves)
-
 
 def joined(rest, copies):
     """The rest and frozen geometry as one mesh to raster, the rest's triangles first."""

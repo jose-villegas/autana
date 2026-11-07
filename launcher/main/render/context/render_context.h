@@ -26,6 +26,7 @@ typedef struct checkpoint checkpoint_t;
 #include "render/raster.h"
 #include "render/render_view.h"
 #include "render/resolution/resolution.h"
+#include "render/settings/render_settings.h"
 
 /* The share of the destination a frame draws at until set. */
 #define RENDER_CONTEXT_DEFAULT_SCALE_PERCENT 50
@@ -86,6 +87,7 @@ typedef struct {
     size_t scratch_bytes;
     memory_take_fn take; /* where the scratch comes from; NULL is the heap */
     int scale_percent;
+    render_settings_t settings; /* the caller's own; the raster reads them through `raster.settings` */
 
     enum { RENDER_FIXED, RENDER_STEPPED, RENDER_PREDICTED } policy;
 
@@ -122,6 +124,13 @@ typedef struct {
     transformf_t observer;
 #endif
 } render_context_t;
+
+/* A context before any setting: what render_context_release() returns to. A
+ * zeroed one draws with every setting off. */
+#define RENDER_CONTEXT_DEFAULT                                                                                         \
+    ((render_context_t){.scale_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT,                                         \
+                        .settings = RENDER_SETTINGS_DEFAULT,                                                           \
+                        .frame = {.step = -1}})
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 void render_context_checkpoint_capture(checkpoint_t* saved, render_context_t* context);
@@ -186,6 +195,13 @@ void render_context_print_debug_views(FILE* out);
 /* Draws `count` instances through `view`; false when there is no scratch for it. */
 bool render_context_draw(render_context_t* context, const r3d_instance_t* instances, int count,
                          const render_view_t* view, uint16_t clear);
+
+/* What the next frame draws with; the context keeps its own copy, and
+ * RENDER_SETTINGS_DEFAULT until set. A development override goes on top of
+ * them in the draw (raster_settings()), never into them, so
+ * render_context_settings() returns them as set. */
+void render_context_set_settings(render_context_t* context, const render_settings_t* settings);
+const render_settings_t* render_context_settings(const render_context_t* context);
 
 /* How a kept-width upscale fills its rows; UPSCALE_FILTER_NEAREST until set. */
 void render_context_set_upscale_filter(render_context_t* context, upscale_filter_t filter);

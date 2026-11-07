@@ -1,0 +1,43 @@
+# board A308 (90:70:69:FE:A3:08), BUILD_ID=538d6b581c69-diag, tree 05851b2feaa0, one flash
+# autana suite run_render_lab_frame_profile_suite --runs 1 --test sponza-fitted-full,bistro-fitted-full --set render.batched=<0|1>, interleaved
+=== render.batched=1 run 1 ===
+I (74133) render_lab_profile: frame_profile: sponza-fitted-full frames=754 mean 48188us med 48767us p95 59356us worst 61510us best 31132us | fps mean 20.75 low 16.85 worst 16.26 quarter=portrait
+I (137279) render_lab_profile: frame_profile: sponza-fitted-full frames=755 mean 48135us med 48701us p95 59298us worst 61394us best 31294us | fps mean 20.77 low 16.86 worst 16.29 quarter=portrait
+I (200333) render_lab_profile: frame_profile: sponza-fitted-full frames=800 mean 45437us med 45974us p95 55452us worst 56724us best 32561us | fps mean 22.01 low 18.03 worst 17.63 quarter=landscape
+I (357980) render_lab_profile: frame_profile: bistro-fitted-full frames=3692 mean 35777us med 36134us p95 53761us worst 58300us best 20374us | fps mean 27.95 low 18.60 worst 17.15 quarter=portrait
+I (515147) render_lab_profile: frame_profile: bistro-fitted-full frames=3525 mean 37481us med 38930us p95 51107us worst 56690us best 22619us | fps mean 26.68 low 19.57 worst 17.64 quarter=landscape
+=== render.batched=0 run 1 ===
+I (579207) render_lab_profile: frame_profile: sponza-fitted-full frames=700 mean 51931us med 52615us p95 62997us worst 64847us best 34882us | fps mean 19.26 low 15.87 worst 15.42 quarter=portrait
+I (643411) render_lab_profile: frame_profile: sponza-fitted-full frames=739 mean 49155us med 49767us p95 59130us worst 60538us best 36078us | fps mean 20.34 low 16.91 worst 16.52 quarter=landscape
+I (802312) render_lab_profile: frame_profile: bistro-fitted-full frames=3434 mean 38470us med 38958us p95 56409us worst 60381us best 23079us | fps mean 25.99 low 17.73 worst 16.56 quarter=portrait
+I (960371) render_lab_profile: frame_profile: bistro-fitted-full frames=3291 mean 40149us med 41535us p95 53503us worst 59261us best 25293us | fps mean 24.91 low 18.69 worst 16.87 quarter=landscape
+=== render.batched=1 run 2 ===
+I (1025616) render_lab_profile: frame_profile: sponza-fitted-full frames=754 mean 48187us med 48779us p95 59339us worst 61525us best 31028us | fps mean 20.75 low 16.85 worst 16.25 quarter=portrait
+I (1088622) render_lab_profile: frame_profile: sponza-fitted-full frames=799 mean 45437us med 45969us p95 55363us worst 56791us best 32579us | fps mean 22.01 low 18.06 worst 17.61 quarter=landscape
+I (1246273) render_lab_profile: frame_profile: bistro-fitted-full frames=3692 mean 35777us med 36139us p95 53812us worst 58159us best 20419us | fps mean 27.95 low 18.58 worst 17.19 quarter=portrait
+I (1403422) render_lab_profile: frame_profile: bistro-fitted-full frames=3524 mean 37487us med 38957us p95 51018us worst 56818us best 22584us | fps mean 26.68 low 19.60 worst 17.60 quarter=landscape
+=== render.batched=0 run 2 ===
+I (1467588) render_lab_profile: frame_profile: sponza-fitted-full frames=700 mean 51932us med 52433us p95 62952us worst 64865us best 34773us | fps mean 19.26 low 15.89 worst 15.42 quarter=portrait
+I (1531792) render_lab_profile: frame_profile: sponza-fitted-full frames=739 mean 49155us med 49737us p95 59176us worst 60578us best 36012us | fps mean 20.34 low 16.90 worst 16.51 quarter=landscape
+I (1690691) render_lab_profile: frame_profile: bistro-fitted-full frames=3434 mean 38469us med 38980us p95 56356us worst 60601us best 22946us | fps mean 25.99 low 17.74 worst 16.50 quarter=portrait
+I (1848741) render_lab_profile: frame_profile: bistro-fitted-full frames=3291 mean 40147us med 41547us p95 53551us worst 59228us best 25280us | fps mean 24.91 low 18.67 worst 16.88 quarter=landscape
+=== render.batched=1 run 3 ===
+I (1943732) render_lab_profile: frame_profile: sponza-fitted-full frames=754 mean 48204us med 48687us p95 59404us worst 61513us best 31013us | fps mean 20.74 low 16.83 worst 16.26 quarter=portrait
+I (2006743) render_lab_profile: frame_profile: sponza-fitted-full frames=799 mean 45437us med 45949us p95 55395us worst 56777us best 32516us | fps mean 22.01 low 18.05 worst 17.61 quarter=landscape
+I (2164419) render_lab_profile: frame_profile: bistro-fitted-full frames=3693 mean 35773us med 36136us p95 53761us worst 58478us best 20542us | fps mean 27.95 low 18.60 worst 17.10 quarter=portrait
+I (2321566) render_lab_profile: frame_profile: bistro-fitted-full frames=3524 mean 37487us med 38974us p95 51087us worst 56839us best 22640us | fps mean 26.68 low 19.57 worst 17.59 quarter=landscape
+=== render.batched=0 run 3 ===
+I (2385471) render_lab_profile: frame_profile: sponza-fitted-full frames=700 mean 51927us med 52471us p95 63013us worst 64935us best 34642us | fps mean 19.26 low 15.87 worst 15.40 quarter=portrait
+I (2449666) render_lab_profile: frame_profile: sponza-fitted-full frames=739 mean 49147us med 49737us p95 59100us worst 60410us best 36233us | fps mean 20.35 low 16.92 worst 16.55 quarter=landscape
+I (2608556) render_lab_profile: frame_profile: bistro-fitted-full frames=3434 mean 38467us med 38994us p95 56428us worst 60337us best 22915us | fps mean 26.00 low 17.72 worst 16.57 quarter=portrait
+I (2766595) render_lab_profile: frame_profile: bistro-fitted-full frames=3291 mean 40145us med 41533us p95 53540us worst 59220us best 25237us | fps mean 24.91 low 18.68 worst 16.89 quarter=landscape
+=== render.batched=1 run 4 ===
+I (2831737) render_lab_profile: frame_profile: sponza-fitted-full frames=754 mean 48190us med 48676us p95 59369us worst 61510us best 31118us | fps mean 20.75 low 16.84 worst 16.26 quarter=portrait
+I (2894791) render_lab_profile: frame_profile: sponza-fitted-full frames=800 mean 45434us med 46013us p95 55440us worst 56786us best 32714us | fps mean 22.01 low 18.04 worst 17.61 quarter=landscape
+I (3052445) render_lab_profile: frame_profile: bistro-fitted-full frames=3692 mean 35778us med 36151us p95 53838us worst 58174us best 20352us | fps mean 27.95 low 18.57 worst 17.19 quarter=portrait
+I (3209579) render_lab_profile: frame_profile: bistro-fitted-full frames=3524 mean 37483us med 38944us p95 51038us worst 56903us best 22726us | fps mean 26.68 low 19.59 worst 17.57 quarter=landscape
+=== render.batched=0 run 4 ===
+I (3273448) render_lab_profile: frame_profile: sponza-fitted-full frames=700 mean 51932us med 52522us p95 62980us worst 64800us best 34727us | fps mean 19.26 low 15.88 worst 15.43 quarter=portrait
+I (3337653) render_lab_profile: frame_profile: sponza-fitted-full frames=739 mean 49155us med 49707us p95 59250us worst 60437us best 35976us | fps mean 20.34 low 16.88 worst 16.55 quarter=landscape
+I (3496562) render_lab_profile: frame_profile: bistro-fitted-full frames=3434 mean 38472us med 39061us p95 56390us worst 60576us best 22966us | fps mean 25.99 low 17.73 worst 16.51 quarter=portrait
+I (3654596) render_lab_profile: frame_profile: bistro-fitted-full frames=3291 mean 40144us med 41511us p95 53512us worst 59240us best 25323us | fps mean 24.91 low 18.69 worst 16.88 quarter=landscape

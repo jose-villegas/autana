@@ -25,6 +25,12 @@ typedef struct app {
     const char* name;
     const char* summary; /* one line, shown in the launcher list */
 
+    /* Optional, NULL for none: NAME of the app's NAME.pack.toml. The shell
+     * mounts that pack while the app runs and, before enter(), sets the main
+     * render context's settings from its render entry, or to
+     * RENDER_SETTINGS_DEFAULT when it has none. */
+    const char* pack;
+
     /* Called once as the app starts. Use it to reset state; there is no
      * guarantee the app has not run before. */
     void (*enter)(void);
