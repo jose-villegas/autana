@@ -1,4 +1,4 @@
-"""Workflow rules the self-hosted runners depend on.
+"""Rules every GitHub workflow here keeps.
 
 A self-hosted job never takes an untrusted event trigger. A concurrency group
 shared across branches that does not cancel in progress queues every pending
@@ -14,13 +14,18 @@ def untrusted(event):
     return event in {"pull_request", "pull_request_target", "issue_comment"} or event.startswith("pull_request_review")
 
 
+# A group naming one of these holds one branch's or one run's runs, never another branch's.
+PER_REF_KEYS = ("github.ref", "github.head_ref", "github.sha", "github.run_id", "github.event.number",
+                "github.event.pull_request.number")
+
+
 def shared_group_drops_pending(concurrency):
     """True for a group shared across refs that keeps one pending run and cancels the rest."""
     if isinstance(concurrency, str):
         concurrency = {"group": concurrency}
     if not isinstance(concurrency, dict) or "group" not in concurrency:
         return False
-    per_ref = "github.ref" in concurrency["group"] or "github.head_ref" in concurrency["group"]
+    per_ref = any(key in concurrency["group"] for key in PER_REF_KEYS)
     cancels = str(concurrency.get("cancel-in-progress", "false")).strip() not in ("false", "")
     return not per_ref and not cancels and concurrency.get("queue") != "max"
 
@@ -58,7 +63,7 @@ def main():
         return 2
     for violation in violations:
         print(violation)
-    print(f"self-hosted workflow gate: {len(violations)} violation(s)")
+    print(f"workflow gate: {len(violations)} violation(s)")
     return int(bool(violations))
 
 

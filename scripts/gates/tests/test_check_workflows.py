@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-import check_self_hosted_workflows as gate
+import check_workflows as gate
 
 
 class SelfHostedWorkflowTests(unittest.TestCase):
@@ -68,7 +68,8 @@ class SelfHostedWorkflowTests(unittest.TestCase):
 
     def test_queued_per_branch_or_cancelling_groups_pass(self):
         for block in (["group: gpu", "queue: max"], ["group: gpu", "cancel-in-progress: false", "queue: max"],
-                      ["group: x-${{ github.ref }}"], ["group: x-${{ github.head_ref || github.run_id }}"],
+                      ["group: x-${{ github.ref }}"], ["group: x-${{ github.head_ref || github.run_id }}"], ["group: x-${{ github.sha }}"],
+                      ["group: x-${{ github.event.pull_request.number }}"],
                       ["group: gpu", "cancel-in-progress: true"],
                       ["group: gpu", "cancel-in-progress: ${{ github.event_name == 'push' }}"]):
             for job_level in (False, True):
