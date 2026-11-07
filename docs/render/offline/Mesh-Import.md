@@ -116,7 +116,7 @@ Every Geometry table opts its step in; without it the step does not run.
 |---|---|---|---|---|---|
 | `geometry.alpha_mask` | `keep_alpha` | Drops alpha-tested triangles that are mostly transparent. | Off. | Seconds / fewer triangles. | [alpha_mask](#alpha_mask) |
 | `geometry.thin` | `material`, `keep` | Keeps a share of one material's triangles. | Off. | None / fewer triangles. | [thin](#thin) |
-| `geometry.curves` | Boolean | Extracts long thin connected parts as lit curves before simplifying the start; requires a start triangle budget. | `false` | Surface sampling and lighting / ribbons. | [Thin curves](../Mesh-Rendering.md#thin-curves) |
+| `geometry.curves` | Boolean | Extracts long thin connected parts as lit curves before simplifying the start; requires a start triangle budget. | `false` | Surface sampling and lighting / ribbons. | [curves](#curves) |
 | `geometry.simplify` | `dense_edge`, `seal_seams`, `colour_deviation` | Splits long edges and simplifies each variant to its budget, colour steering the collapses; can seal seams. | Off. | Seconds / set by the budget. | [simplify](#simplify) |
 
 #### alpha_mask
@@ -134,6 +134,13 @@ for material whose geometry occupies more of the budget than it shows. The
 share is random, so `process.seed` makes it repeatable.
 
 ![thin off against on](../images/import-thin.png)
+
+#### curves
+
+`geometry.curves` takes long, thin connected parts such as poles and cables
+out of the start and stores them as lit curves beside the mesh, so
+simplification cannot drop or thicken them. Detection reads only shape: see
+[Thin curves](../Mesh-Rendering.md#thin-curves) for the rule and how they draw.
 
 #### simplify
 

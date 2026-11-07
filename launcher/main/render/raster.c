@@ -367,6 +367,26 @@ curve_slice(void* ctx) {
     }
 }
 
+/* Curves after every cluster, each core drawing half the picture's rows. */
+static void
+draw_curves(const raster_t* raster, draw_work_t* work) {
+    bool curves = false;
+    for (int i = 0; i < raster->instance_count; i++) {
+        curves = curves || raster->instances[i].mesh->curves.curve_count > 0;
+    }
+    if (!curves) {
+        return;
+    }
+    const int mid = raster->height / 2;
+    work->mine = (slice_t){.raster = raster,
+                           .first = mid,
+                           .count = raster->height - mid,
+                           .buffers = &work->buffers,
+                           .target = &work->targets[1]};
+    work->other = (slice_t){.raster = raster, .count = mid, .buffers = &work->buffers, .target = &work->targets[0]};
+    job_run_steered(NULL, curve_slice, &work->mine, &work->other, sizeof work->mine);
+}
+
 static int
 cull_instance(const r3d_instance_t* instance, bool culls, const r3d_lens_t* lens, uint16_t* out, raster_stats_t* stats,
               r3d_pipeline_work_t* work, r3d_depth_fit_t* fit) {
@@ -629,20 +649,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
         }
         draw_batch(raster, index, work);
     }
-    bool curves = false;
-    for (int i = 0; i < raster->instance_count; i++) {
-        curves = curves || raster->instances[i].mesh->curves.curve_count > 0;
-    }
-    if (curves) {
-        const int mid = raster->height / 2;
-        work->mine = (slice_t){.raster = raster,
-                               .first = mid,
-                               .count = raster->height - mid,
-                               .buffers = &work->buffers,
-                               .target = &work->targets[1]};
-        work->other = (slice_t){.raster = raster, .count = mid, .buffers = &work->buffers, .target = &work->targets[0]};
-        job_run_steered(NULL, curve_slice, &work->mine, &work->other, sizeof work->mine);
-    }
+    draw_curves(raster, work);
     if (resolves) {
         FRAME_COST_BEGIN(resolved_from);
         int16_t* share = raster->split != NULL ? &raster->split->resolve_offset : NULL;
