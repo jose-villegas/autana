@@ -68,7 +68,7 @@ draw(const r3d_span_target_t* target, const r3d_curve_knot_t* knots, int count) 
         .count = (uint16_t)count, .lo = {INT16_MIN, INT16_MIN, INT16_MIN}, .hi = {INT16_MAX, INT16_MAX, INT16_MAX}};
     const r3d_curve_set_t curves = {&curve, knots, 1};
     const r3d_lens_t camera = lens();
-    r3d_curve_draw(&curves, &camera, target);
+    r3d_curve_draw(curves, &camera, target);
 }
 
 static int
@@ -224,7 +224,7 @@ test_curve_above_the_axis_draws_above_the_middle(void) {
     const r3d_curve_t curve = {
         .count = 2, .lo = {INT16_MIN, INT16_MIN, INT16_MIN}, .hi = {INT16_MAX, INT16_MAX, INT16_MAX}};
     const r3d_curve_set_t curves = {&curve, knots, 1};
-    r3d_curve_draw(&curves, &camera, &target);
+    r3d_curve_draw(curves, &camera, &target);
     TEST_ASSERT_GREATER_THAN_INT(0, changed());
     for (int i = MID * SIZE; i < PIXELS; i++) {
         TEST_ASSERT_EQUAL_HEX16(BACKGROUND, color[i]);

@@ -28,4 +28,5 @@ typedef struct {
 #define R3D_CURVE_NAME_SUFFIX  ".crv"
 #define R3D_CURVE_HEADER_WORDS 4
 
-void r3d_curve_draw(const r3d_curve_set_t* set, const r3d_lens_t* lens, const r3d_span_target_t* target);
+/* `set` by value: three words in registers, none on the draw path's stack. */
+void r3d_curve_draw(r3d_curve_set_t set, const r3d_lens_t* lens, const r3d_span_target_t* target);
