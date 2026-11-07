@@ -4,15 +4,17 @@
 #include <string.h>
 
 #include "math/scalar/units.h"
+#include "scene/animator/animator.h"
+#include "scene/camera/camera.h"
 #include "scene/scene.h"
+#include "scene/transform/transform.h"
 
 /* The one flight there can be: the camera it flies, where it began and
  * whether its clip was paused then, and the steering the lines since the
  * last pass left. */
 typedef struct {
     bool flying;
-    scene_t* scene;
-    scene_entity_t camera;
+    entity_t camera;
     transformf_t home;
     bool was_paused;
     fly_motion_t fly;
@@ -24,23 +26,21 @@ static flight_t flight;
 
 static bool
 take_off(void) {
-    scene_t* scene;
-    scene_entity_t camera;
-    if (!scene_active_camera(&scene, &camera)) {
+    const entity_t camera = camera_active();
+    if (handle_is_none(camera)) {
         return false;
     }
     flight = (flight_t){
         .flying = true,
-        .scene = scene,
         .camera = camera,
-        .home = scene_entity_local(scene, camera),
-        .was_paused = scene_animator_paused(scene, camera, SCENE_ANIMATOR_CURRENT),
+        .home = transform_local(camera),
+        .was_paused = animator_paused(camera, ANIMATOR_CURRENT),
         /* In the world's terms, as fly_motion turns about the world's up, whatever the camera's parents. */
-        .fly = fly_motion_start(scene_entity_world(scene, camera), render_lab_fly_start_speed(scene_bounds(scene)),
+        .fly = fly_motion_start(transform_world(camera), render_lab_fly_start_speed(scene_bounds(camera)),
                                 FLY_MOTION_TUNING_DEFAULT),
     };
     /* A camera with no clip has nothing to pause. */
-    (void)scene_animator_set_paused(scene, camera, SCENE_ANIMATOR_CURRENT, true);
+    (void)animator_set_paused(camera, ANIMATOR_CURRENT, true);
     return true;
 }
 
@@ -49,9 +49,9 @@ render_lab_fly_stop(void) {
     if (!flight.flying) {
         return;
     }
-    scene_entity_set_local(flight.scene, flight.camera, flight.home);
-    (void)scene_animator_set_paused(flight.scene, flight.camera, SCENE_ANIMATOR_CURRENT, flight.was_paused);
-    scene_camera_cut(flight.scene, flight.camera);
+    transform_set_local(flight.camera, flight.home);
+    (void)animator_set_paused(flight.camera, ANIMATOR_CURRENT, flight.was_paused);
+    camera_cut(flight.camera);
     flight.flying = false;
 }
 
@@ -110,6 +110,6 @@ render_lab_fly_frame(uint32_t dt_ms) {
     flight.steer.look = vec2f_zero();
     flight.steer.wheel = 0.0F;
     if (moved) {
-        scene_entity_set_world(flight.scene, flight.camera, flight.fly.pose);
+        transform_set_world(flight.camera, flight.fly.pose);
     }
 }

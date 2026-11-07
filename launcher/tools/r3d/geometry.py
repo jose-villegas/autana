@@ -161,3 +161,14 @@ def nearest_chunk(points, search):
         keep = np.linalg.norm(points[query] - tree.data[found], axis=1) - radius[found] <= best[query]
         consider(query[keep], owner[found[keep]])
     return tri, bary, best
+
+
+def majority(parts, values, count):
+    """Per part 0..count-1, the value most of its entries hold (0 for a part with none)."""
+    pairs, hits = np.unique(np.column_stack([parts, values]), axis=0, return_counts=True)
+    best = np.zeros(count, dtype=np.int64)
+    most = np.zeros(count, dtype=np.int64)
+    for (part, value), number in zip(pairs, hits):
+        if number > most[part]:
+            best[part], most[part] = value, number
+    return best
