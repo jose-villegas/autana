@@ -26,8 +26,8 @@ typedef struct {
 } water_config_t;
 
 /* The defaults, then one change each: on one core, other substep counts,
- * the pressure in index order, the surface at 2 samples a cell, and method
- * C, the plane. */
+ * the pressure in index order, the surface at 2 samples a cell, method C,
+ * the plane, and the surface eased toward the sim's at 30% an update. */
 static const water_config_t configs[] = {
     {"base", NULL, 0},
     {"one_core", TUNE_NAME(water, two_core), 0},
@@ -36,6 +36,7 @@ static const water_config_t configs[] = {
     {"index_order", TUNE_NAME(water, red_black), 0},
     {"samples2", TUNE_NAME(water, samples_pct), 200},
     {"plane", TUNE_NAME(water, plane), 1},
+    {"ease30", TUNE_NAME(water, ease_pct), 30},
 };
 
 static const water_config_t* playing;

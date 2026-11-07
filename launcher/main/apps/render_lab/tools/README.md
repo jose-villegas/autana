@@ -51,6 +51,7 @@ and shake. The menu's WATER FILL sets the share of the tank's volume, 10 to
 | `water.red_black` | 1 (default) solves the pressure in red-black order, each colour split across both cores; 0 in index order on one core |
 | `water.samples_pct` | the surface field's density samples per cell, in hundredths (100 to 200, default 150): fewer mesh, build and draw fewer triangles and lose the smallest ripples |
 | `water.plane` | 1 draws a plane at the fill's volume instead of flip3, its tilt following gravity's like a damped pendulum (`water.slosh_decihz`, `water.slosh_damping_pct`); much cheaper, but no crests or splash; 0 (default) is flip3 |
+| `water.ease_pct` | an experiment: the surface is meshed from a shown field that closes this percentage of its gap to the water's field each update, so it eases toward the water's shape over a few frames; it snaps on entering, a fill change or a script start; 0 (default) meshes the water's field itself |
 
 Each frame, while the last one goes out to the panel:
 

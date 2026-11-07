@@ -115,6 +115,12 @@ TUNE(water, slosh_decihz, 15, 1, 100);
 TUNE(water, slosh_damping_pct, 10, 0, 100);
 #define WATER_DECIHZ_PER_HZ 10.0F
 
+/* An experiment: the surface meshed from a shown field that closes this
+ * percentage of its gap to the sim's field each update (an exponential
+ * moving average), so it eases toward the water's shape over a few frames;
+ * 0 (the default) meshes the sim's field itself. */
+TUNE(water, ease_pct, 0, 0, 100);
+
 /* Surface buffers: the vertices and triangles iso_surface may make. The
  * tour's busiest frame makes about 2500 and 5000. */
 #define WATER_MAX_VERTICES  4000
@@ -199,7 +205,11 @@ static scene_entity_t camera_entity, water_entity;
 static flip3_t water;
 static float* field;
 static iso_field_t surface_field;
-static float* through; /* light left after crossing each field column's water */
+static float* shown;      /* the field as meshed while water.ease_pct is on */
+static bool shown_valid;  /* false: the next eased update copies the sim's field */
+static int shown_dims[3]; /* the field's samples along x, y and z when shown last took it */
+static int shown_plane;   /* water.plane when shown last took the field */
+static float* through;    /* light left after crossing each field column's water */
 static r3d_skin_light_transfer_t* transfer;
 static bool truncated;
 static vec3f_t reference_down; /* down as the eye last settled, box axes */
@@ -263,6 +273,7 @@ allocate(void) {
         return false;
     }
     surface_field = flip3_field(&water, most, field);
+    shown = render_lab_scene_take(sizeof(float) * flip3_field_count(&water, most));
     through = render_lab_scene_take(sizeof(float) * (size_t)(surface_field.nx * surface_field.ny));
     positions = render_lab_scene_take(sizeof(vec3f_t) * WATER_MAX_VERTICES);
     normals = render_lab_scene_take(sizeof(vec3f_t) * WATER_MAX_VERTICES);
@@ -280,7 +291,7 @@ allocate(void) {
     const r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(WATER_MAX_VERTICES, WATER_MAX_TRIANGLES);
     const size_t mesh_bytes = r3d_dynamic_mesh_bytes(capacity);
     void* mesh_block = render_lab_scene_take(mesh_bytes);
-    return through != NULL && transfer != NULL && batch != NULL && positions != NULL && normals != NULL
+    return shown != NULL && through != NULL && transfer != NULL && batch != NULL && positions != NULL && normals != NULL
            && colors != NULL && triangles != NULL && scratch[0] != NULL && scratch[1] != NULL && mesh_block != NULL
            && r3d_dynamic_mesh_init(&surface, mesh_block, mesh_bytes, capacity, WATER_TICKS_PER_MM);
 }
@@ -555,17 +566,50 @@ mesh_split(iso_mesh_t* m) {
     return iso_surface_nets(&surface_field, FLIP3_SURFACE_LEVEL, m);
 }
 
+/* The shown field eased toward the sim's: copied whole after a reset, a
+ * fill change, a new sample count or a switch to or from the plane; the
+ * surface field then reads it. */
+static void
+ease_field(void) {
+    const iso_field_t* f = &surface_field;
+    const int count = f->nx * f->ny * f->nz;
+    const bool same = shown_valid && shown_dims[0] == f->nx && shown_dims[1] == f->ny && shown_dims[2] == f->nz
+                      && shown_plane == plane;
+    if (!same) {
+        memcpy(shown, field, sizeof(float) * (size_t)count);
+        shown_valid = true;
+        shown_dims[0] = f->nx;
+        shown_dims[1] = f->ny;
+        shown_dims[2] = f->nz;
+        shown_plane = plane;
+    } else {
+        const float alpha = (float)ease_pct / (float)WATER_PERCENT;
+        for (int i = 0; i < count; i++) {
+            shown[i] += alpha * (field[i] - shown[i]);
+        }
+    }
+    surface_field.values = shown;
+}
+
 /* The surface field meshed, shaded, moved into model axes and handed to the
  * scene. A surface too big for the buffers is cut, said once and shown. */
 static void
 rebuild_surface(void) {
     FRAME_COST_BEGIN(field_from);
+    surface_field.values = field; /* the plane writes the sim's field in place */
     if (plane != 0) {
         water_plane_field(&plane_water, &surface_field, (float)fill_percent / (float)WATER_PERCENT);
     } else {
         surface_field = flip3_field(&water, (float)samples_pct / (float)WATER_PERCENT, field);
     }
     FRAME_COST_END(field_from, "water.field");
+    if (ease_pct != 0) {
+        FRAME_COST_BEGIN(ease_from);
+        ease_field();
+        FRAME_COST_END(ease_from, "water.ease");
+    } else {
+        shown_valid = false;
+    }
     FRAME_COST_BEGIN(through_from);
     measure_through();
     FRAME_COST_END(through_from, "water.through");
@@ -597,6 +641,7 @@ static void
 refill(vec3f_t down) {
     (void)flip3_fill(&water, (float)fill_percent / (float)WATER_PERCENT, down);
     filled_percent = fill_percent;
+    shown_valid = false; /* the surface snaps to the new water */
 }
 
 /* render_lab's debug view (`render_lab.view`), as every scene applies it. */
