@@ -11,8 +11,7 @@ silhouettes visibly drift from the source. It needs a CUDA GPU and minutes per
 mesh, and costs nothing at run time. A renderer asks for one with a `fit` table
 ([Scene-Files.md](../scene/Scene-Files.md#fitprune)); [`fitted_variant.py` remakes the mesh](../../../launcher/tools/r3d/README.md#appearance-fit)
 in its GPU environment. A `fit` table records the budget, the training,
-held-out and coverage poses, the optimiser settings and the output hashes; the
-reference, fitted-output, crop and heatmap sheets are in the scene tools README.
+held-out and coverage poses, the optimiser settings and the output hashes.
 Measured results are in
 [Bake-Quality.md](Bake-Quality.md#appearance-fit-of-the-lite-and-full-meshes).
 

@@ -153,7 +153,10 @@ The raster brackets its stages for [frame cost](../../tools/Frame-Cost.md): `r3d
 
 The suite draws the test scene's path at every size on both cores, then again on one core with the span rasterizer stopped after each stage.
 
-<!-- generated: dynres-stages sha256=ed7a438112dae64eca59a14c1936eab021fe12508def057affc0143dc88e6852 -->
+<!-- generated: dynres-stages sha256=f45bb0feea935543039fb55e97129d8be4ddcd872db439dde52516d1b2e28bb2 -->
+<details>
+<summary>Frame time at each of the 17 render sizes, both cores</summary>
+
 | Render size | Divisor | Pixels | Frame mean | p50 | max |
 |---|---|---|---|---|---|
 | 368x448 | 1.00 | 100% | 94.1 | 92.8 | 113.2 |
@@ -174,12 +177,22 @@ The suite draws the test scene's path at every size on both cores, then again on
 | 147x179 | 2.50 | 16% | 40.1 | 40.2 | 49.6 |
 | 122x149 | 3.02 | 11% | 35.8 | 36.6 | 43.8 |
 
-Milliseconds, both cores.
+Milliseconds.
+
+</details>
 <!-- /generated: dynres-stages -->
 
-![Frame time by stage at each render size](../../images/render/dynamic-resolution-stages.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../images/render/dynamic-resolution-stages-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="../../images/render/dynamic-resolution-stages.png">
+  <img alt="Frame time by stage at each render size" src="../../images/render/dynamic-resolution-stages.png">
+</picture>
 
-![One-core time by span stage at each render size](../../images/render/dynamic-resolution-one-core.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../images/render/dynamic-resolution-one-core-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="../../images/render/dynamic-resolution-one-core.png">
+  <img alt="One-core time by span stage at each render size" src="../../images/render/dynamic-resolution-one-core.png">
+</picture>
 
 The questions the split answers, as differences between two sizes:
 
@@ -242,7 +255,11 @@ Below, the predictor flown over the same frames against the fixed half scale: it
 Whole frame in milliseconds.
 <!-- /generated: dynres-flight -->
 
-![Time at each render size, per scenario](../../images/render/dynamic-resolution-flight-sizes.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../images/render/dynamic-resolution-flight-sizes-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="../../images/render/dynamic-resolution-flight-sizes.png">
+  <img alt="Time at each render size, per scenario" src="../../images/render/dynamic-resolution-flight-sizes.png">
+</picture>
 
 - A scene under budget at the top stays there at its fixed speed.
 - On a scene over budget the predictor spends most frames at the floor, which cuts the mean and cuts the p95 more.
@@ -282,7 +299,11 @@ The quality columns score every frame's size against the reference render of the
 Frame time is the scaled part, draw plus upscale, in milliseconds; dE and SSIM are against the reference at full size, lower dE and higher SSIM being closer.
 <!-- /generated: dynres-policies -->
 
-![Time at each render size along each ladder, per policy and budget](../../images/render/dynamic-resolution-sizes.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../images/render/dynamic-resolution-sizes-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="../../images/render/dynamic-resolution-sizes.png">
+  <img alt="Time at each render size along each ladder, per policy and budget" src="../../images/render/dynamic-resolution-sizes.png">
+</picture>
 
 Prediction error compares each predicted frame's corrected price with its
 measured cost, grouped by path, ladder and budget.
