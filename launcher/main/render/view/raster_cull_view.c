@@ -355,38 +355,52 @@ tally(raster_cull_t* s, const raster_t* raster) {
     }
 }
 
+/* `shown` for each cluster under `leaf` the instance at `w` drew. */
+static void
+name_leaf(raster_cull_t* s, const r3d_lit_node_t* leaf, drawn_at_t w, uint16_t shown) {
+    for (int k = 0; k < leaf->count; k++) {
+        const int j = index_in(s, w.at, leaf->first + k);
+        if (j >= 0) {
+            s->node[w.base + j] = shown;
+        }
+    }
+}
+
+/* The node at depth `level` (or the leaf, where the tree is shallower) of each
+ * cluster `mesh` drew, the instance's clusters starting at slot `w.base`. */
+static void
+find_nodes_of(raster_cull_t* s, const r3d_lit_mesh_t* mesh, drawn_at_t w) {
+    uint16_t* node_of = s->walk_node;
+    uint16_t* shown_of = s->walk_shown; /* the node standing for it at `level` */
+    uint8_t* depth = s->walk_depth;
+    int top = 0;
+    node_of[top] = 0;
+    shown_of[top] = 0;
+    depth[top++] = 0;
+    while (top > 0) {
+        top--;
+        const r3d_lit_node_t* node = &mesh->nodes[node_of[top]];
+        const uint16_t shown = depth[top] <= level ? node_of[top] : shown_of[top];
+        if (node->leaf) {
+            name_leaf(s, node, w, shown);
+            continue;
+        }
+        const uint8_t below = (uint8_t)(depth[top] + 1);
+        for (int k = 0; k < node->count; k++) {
+            assert(top < R3D_LIT_WALK_STACK_MAX);
+            node_of[top] = (uint16_t)(node->first + k);
+            shown_of[top] = shown;
+            depth[top++] = below;
+        }
+    }
+}
+
 /* Each drawn cluster's node at depth `level`, or its leaf where the tree is shallower. */
 static void
 find_nodes(raster_cull_t* s, const raster_t* raster) {
     drawn_at_t w = {0};
     for (int i = 0; i < raster->instance_count; i++) {
-        const r3d_lit_mesh_t* mesh = raster->instances[i].mesh;
-        uint16_t* node_of = s->walk_node;
-        uint16_t* shown_of = s->walk_shown; /* the node standing for it at `level` */
-        uint8_t* depth = s->walk_depth;
-        int top = 0;
-        node_of[top] = 0;
-        shown_of[top] = 0;
-        depth[top++] = 0;
-        while (top > 0) {
-            top--;
-            const r3d_lit_node_t* node = &mesh->nodes[node_of[top]];
-            const uint16_t shown = depth[top] <= level ? node_of[top] : shown_of[top];
-            const uint8_t below = (uint8_t)(depth[top] + 1);
-            for (int k = 0; k < node->count; k++) {
-                if (node->leaf) {
-                    const int j = index_in(s, w.at, node->first + k);
-                    if (j >= 0) {
-                        s->node[w.base + j] = shown;
-                    }
-                    continue;
-                }
-                assert(top < R3D_LIT_WALK_STACK_MAX);
-                node_of[top] = (uint16_t)(node->first + k);
-                shown_of[top] = shown;
-                depth[top++] = below;
-            }
-        }
+        find_nodes_of(s, raster->instances[i].mesh, w);
         walk_next(s, &w);
     }
 }
