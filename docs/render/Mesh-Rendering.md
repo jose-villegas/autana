@@ -248,7 +248,7 @@ The optional `geometry.curves` setting stores them in [LCRV](../assets/formats/L
 | Stage | Behaviour |
 |---|---|
 | Source | Detect connected parts by budget side, PCA width, length and slenderness; no names. A part with half its vertices within half its width of other geometry rests on a surface and stays in the mesh |
-| Start | Exclude their triangles; fit and light radius-bearing polylines against the full source |
+| Start | Exclude their triangles; fit and light radius-bearing polylines against the full source, each knot over the stretch it draws, from the ring directions not facing nearby geometry |
 | Fit | Exclude thin surface samples; draw frozen six-sided tubes with copies and include them in the coverage gate |
 | Runtime | After all triangle clusters, cull curve boxes and draw near-clipped camera-facing ribbons in each row band |
 | Width | Draw at least one picture pixel; end-on segments draw a square |
