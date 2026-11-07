@@ -24,7 +24,7 @@ from r3d.import_settings import MESHLET_TRIANGLES, albedo_jobs, load_import_sett
 from tests.test_r3d_bake import canonical
 
 
-def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, triangles=None):
+def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, triangles=None, materials=(0, 0, 0)):
     p = np.asarray(positions) if positions is not None else np.array([[0., 0, 0], [4, 0, 0], [0, 4, 0]])
     t = np.asarray(triangles) if triangles is not None else np.array([[0, 1, 2]])
     rgb = np.full(p.shape, 80)
@@ -36,15 +36,15 @@ def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, t
         at = np.array([index * 8., 0, 0])
         instance = Instance(str(index), linear, at, mirrored, 0.)
         faces = t[:, ::-1] if mirrored else t
-        copies.append((instance, (p @ linear.T + at, rgb + index, faces, labels)))
+        copies.append((instance, (p @ linear.T + at, rgb + index, faces, np.full(len(t), materials[index]))))
     shape = dict(positions=p, tris=t, materials=labels, rule=rule, copies=copies)
     geometry = SimpleNamespace(positions=p, rgb=rgb, tris=t, tri_double=labels, tri_mat=labels,
-                               scale={}, shapes=[shape], src=SimpleNamespace(names=['prop'], object_names=['a', 'b', 'c']))
+                               scale={}, shapes=[shape], src=SimpleNamespace(names=['prop', 'leaf'], object_names=['a', 'b', 'c']))
     obj = SimpleNamespace(name='atrium', matrix=np.diag([2., 3, 4]).tolist(), position=[5., 6, 7],
                           kind='mesh_renderer', animator=None)
     renderer = SimpleNamespace(face_samples=(1, 1, 1, None) if flat else None, bake=True, fit=fit)
     job = SimpleNamespace(object=obj, renderer=renderer, asset_name='hall.atrium',
-                          settings=SimpleNamespace(meshlet_triangles=MESHLET_TRIANGLES, double_sided=[], lod=lod))
+                          settings=SimpleNamespace(meshlet_triangles=MESHLET_TRIANGLES, double_sided=['leaf'], lod=lod))
     scene = SimpleNamespace(objects=[obj], renderers=[job], lights=[])
     with mock.patch.object(mesh_import, 'flat_colours', side_effect=[np.full((1, 3), value) for value in (80, 80, 81, 82)]):
         mesh_import.write_baked(job, scene, pathlib.Path(directory), job.asset_name, geometry=geometry)
@@ -94,6 +94,16 @@ class MeshBundleTests(unittest.TestCase):
                     self.assertEqual(sets[row['colour_set']], packed)
             self.assertTrue(all(row["owner"] == job.object.name for row in manifest))
             self.assertEqual([row["source"] for row in manifest], geometry.src.object_names)
+
+    def test_copies_whose_materials_differ_in_sidedness_get_their_own_mesh(self):
+        # Copies joined by surface keep their own materials; a double-sided one cannot share a single-sided mesh.
+        with tempfile.TemporaryDirectory() as directory:
+            data = bundle_fixture(directory, materials=(0, 1, 0))[0]
+        entries, manifest = mesh_bundle.decode(data)
+        meshes = [row['mesh'] for row in manifest]
+        self.assertEqual(len(set(meshes)), 3)
+        double = {row["mesh"]: {c[-1] for c in mesh_bundle.read_mesh(entries, row["mesh"]).clusters} for row in manifest}
+        self.assertEqual([double[mesh] for mesh in meshes], [{False}, {True}, {False}])
 
     def test_smooth_shapes_have_one_set_per_copy(self):
         self.check_products(False)

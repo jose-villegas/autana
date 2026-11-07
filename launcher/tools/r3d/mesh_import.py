@@ -221,10 +221,10 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
                                                    allocation=Allocation(tri_o=np.concatenate(all_obj), object_names=src.object_names,
                                                                          material_names=src.names, meshes=meshes, selection=selected,
                                                                          ceiling=getattr(renderer.variant, 'ceiling', None),
-                                                                         shade=(lambda p, c, t, m: shade_placed(src, job, scene, p, c, t, m,
-                                                                                                             intersector, bounce)) if job.bake else None,
-                                                                         shade_shared=(lambda p, c, t, m: shade_placed(src, job, scene, p, c, t, m,
-                                                                                                             intersector, bounce, preserve_corners=True))
+                                                                         shade=(lambda p, c, t, m, **kw: shade_placed(src, job, scene, p, c, t, m,
+                                                                                                             intersector, bounce, **kw)) if job.bake else None,
+                                                                         shade_shared=(lambda p, c, t, m, **kw: shade_placed(src, job, scene, p, c, t, m,
+                                                                                                             intersector, bounce, preserve_corners=True, **kw))
                                                                                       if job.bake and carve else None,
                                                                          report=mesh_report, shapes=shapes),
                                                    reserved=[(frozenset(i for i, name in enumerate(src.names) if name in steps.props),
@@ -238,12 +238,16 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
                            tri_mat=tri_mat, scale=scale, bounce=bounce, mesh_report=mesh_report, shapes=shapes)
 
 
-def shade_placed(src, job, scene, positions, rgb, tris, labels, intersector, bounce, *, preserve_corners=False):
-    """Light the simplified placed geometry against the full source occluder."""
+def shade_placed(src, job, scene, positions, rgb, tris, labels, intersector, bounce, *, preserve_corners=False,
+                 groups=None):
+    """Light the simplified placed geometry against the full source occluder, one group of triangles at a time. A
+    group holds equal `groups` values (`labels` by default) and is lit as its first triangle's material."""
     out_p, out_c, out_t, out_m = [], [], [], []
     base = 0
-    for material in np.unique(labels):
-        selected = labels == material
+    groups = labels if groups is None else groups
+    for group in np.unique(groups):
+        selected = groups == group
+        material = labels[selected][0]
         p, t = compact(positions, tris[selected])
         double = src.names[material] in job.settings.double_sided
         p, c, t, m = shade_lit(src, job, scene, material, p, t, double, intersector, bounce,
@@ -304,14 +308,16 @@ def write_baked(job, scene, out_dir, name, geometry=None, recorder=None):
 
 
 def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
-    """One local mesh per handedness, with colour sets following its baked array order."""
+    """One local mesh per handedness and double-sided mask (copies joined by surface keep their own materials,
+    which may differ in sidedness), with colour sets following its baked array order."""
     from r3d.objects.instances import place
 
+    double_sided = [i for i, material in enumerate(geometry.src.names) if material in job.settings.double_sided]
+    groups = {}
+    for instance, lit in shape['copies']:
+        groups.setdefault((instance.mirrored, np.isin(lit[3], double_sided).tobytes()), []).append((instance, lit))
     entries, rows = [], []
-    for mirrored in (False, True):
-        copies = [(instance, lit) for instance, lit in shape['copies'] if instance.mirrored == mirrored]
-        if not copies:
-            continue
+    for (mirrored, _), copies in sorted(groups.items(), key=lambda group: group[0][0]):
         first, lit = copies[0]
         first_name = geometry.src.object_names[int(first.object_name)]
         mesh_id = mesh_bundle.shape_id(name, shape['rule'], first_name)
@@ -319,8 +325,7 @@ def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
         p, _, t, labels = lit
         local = place(p[t].reshape(-1, 3) - first.position, first.linear.T, 0.0) * np.diag(reflect)
         tris = np.arange(len(local)).reshape(-1, 3)
-        double = np.isin(labels, [i for i, material in enumerate(geometry.src.names)
-                                if material in job.settings.double_sided]).astype(int)
+        double = np.isin(labels, double_sided).astype(int)
         colours = []
         for instance, (p, rgb, t, labels) in copies:
             if job.renderer.face_samples:
