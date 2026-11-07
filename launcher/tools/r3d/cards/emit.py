@@ -5,7 +5,7 @@ import numpy as np
 from r3d import log
 from r3d.cards.bake import bake_card, corner_colours
 from r3d.cards.choose import choose_cards
-from r3d.mask_asset import UV_FRACTION_BITS
+from r3d.mask_asset import HEADER, ROW, UV, UV_FRACTION_BITS
 from r3d.light import albedo_from_uv
 from r3d.objects.instances import Instance
 from r3d.ray_query import RayQuery
@@ -13,6 +13,7 @@ from r3d.ray_query import RayQuery
 QUAD_TRIANGLES = np.array([[0, 1, 2], [2, 1, 3]])
 QUAD_CORNERS = np.array([[0, 0], [1, 0], [0, 1], [1, 1]])
 UV_SCALE = 1 << UV_FRACTION_BITS
+SIDE_PERCENTILES = dict(min=0, median=50, p90=90, max=100)
 
 
 def make_shape(src, material, settings, seed, keep_alpha, *, path=None, occluder=None):
@@ -23,6 +24,11 @@ def make_shape(src, material, settings, seed, keep_alpha, *, path=None, occluder
     selected = choose_cards(src.p, triangles, seed=seed, epsilon=settings.epsilon, area_cost=settings.area_cost,
                             path=path, occluder=occluder, uv=src.uv, tri_uv=tri_uv,
                             texture=src.textures[material], keep_alpha=keep_alpha)
+    long_sides = np.array([max(card['hi'] - card['lo']) for card in selected])
+    distribution = (dict(zip(SIDE_PERCENTILES, np.percentile(long_sides, list(SIDE_PERCENTILES.values())).tolist()))
+                    if len(selected) else {})
+    log("cards: long side before splitting (model units): " +
+        ", ".join(f"{key}={value:.3f}" for key, value in distribution.items()))
     cards, splits = split_cards(selected)
     query = RayQuery(src.p, triangles)
     positions, colours, masks, uvs = [], [], [], []
@@ -45,9 +51,11 @@ def make_shape(src, material, settings, seed, keep_alpha, *, path=None, occluder
         masks.append(card)
     count = len(positions)
     report = dict(candidates=len(selected), split_cards=len(cards), cards=count,
-                  triangles=count * len(QUAD_TRIANGLES), splits=splits)
+                  triangles=count * len(QUAD_TRIANGLES), splits=splits, long_sides=distribution,
+                  mask_rows=len(rows), mask_bytes=HEADER.size + count * len(QUAD_CORNERS) * UV.size + len(rows) * ROW.size)
     log(f"cards: {len(selected)} selected, {len(cards)} after splitting, {count} baked, "
-        f"{report['triangles']} masked triangles, {splits} splits")
+        f"{report['triangles']} masked triangles, {splits} splits, "
+        f"{len(rows)} LMSK rows, {report['mask_bytes']} LMSK bytes")
     if not count:
         return None, report
     p = np.concatenate(positions)

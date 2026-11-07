@@ -14,7 +14,9 @@ UV_FRACTION_BITS = read_define(OWNER, "LMSK_UV_FRACTION_BITS")
 NAME_SUFFIX = read_define(OWNER, "LMSK_NAME_SUFFIX")
 HEADER_FIELDS = (("VERSION", "H"), ("MASK_WIDTH", "H"), ("VERTEX_FIRST", "I"), ("MASK_ROWS", "I"))
 HEADER = checked_struct(OWNER, "LMSK", HEADER_FIELDS)
+UV_BITS = 16
 UV = struct.Struct("<2H")
+MAX_ROWS = (1 << UV_BITS) >> UV_FRACTION_BITS
 ROW = struct.Struct("<I")
 
 
@@ -40,6 +42,8 @@ def decode(entry, vertex_count):
 
 
 def encode(vertex_first, uvs, rows):
+    if len(rows) > MAX_ROWS:
+        raise ValueError(f"LMSK atlas has {len(rows)} rows; limit is {MAX_ROWS}")
     entry = (HEADER.pack(VERSION, MASK_WIDTH, vertex_first, len(rows)) +
              b"".join(UV.pack(*uv) for uv in uvs) + b"".join(ROW.pack(row) for row in rows))
     decode(entry, vertex_first + len(uvs))

@@ -7,6 +7,7 @@ from scipy.spatial import cKDTree
 from r3d.cards import (CARD_AREA_COST, CARD_EPSILON, CARD_FLOOR_EPS2, CARD_LIMIT,
                       CARD_RADIUS, CANDIDATE_MIN_SAMPLES, CANDIDATE_PATCHES,
                       SAMPLES_PER_TRIANGLE, W_PENALTY)
+from r3d.mask_asset import MASK_WIDTH
 from r3d.poses import camera_basis, focal_px
 from r3d.surface_samples import uniform_barycentric
 
@@ -162,7 +163,9 @@ def split_cards(cards, max_side=None):
     from r3d.cards import CARD_MAX_SIDE
 
     max_side = CARD_MAX_SIDE if max_side is None else max_side
-    pending, result = list(cards), []
+    pending = [dict(card, texel_size=card.get("texel_size", max(card["hi"] - card["lo"]) / MASK_WIDTH))
+               for card in cards]
+    result = []
     while pending:
         card = pending.pop()
         size = card['hi'] - card['lo']

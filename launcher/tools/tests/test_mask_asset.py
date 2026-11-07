@@ -25,6 +25,15 @@ class MaskAssetTests(unittest.TestCase):
                 mask.encode(0, [uv], rows)
         self.assertEqual(mask.decode(mask.encode(0, [], []), 0), (0, [], []))
 
+    def test_atlas_row_address_limit(self):
+        row_limit = mask.MAX_ROWS
+        last_uv = (0, (row_limit << mask.UV_FRACTION_BITS) - 1)
+        rows = [1] * row_limit
+        blob = mask.encode(0, [last_uv], rows)
+        self.assertEqual(mask.decode(blob, 1)[1], [last_uv])
+        with self.assertRaisesRegex(ValueError, rf"{row_limit + 1}.*{row_limit}"):
+            mask.encode(0, [(0, 0)], rows + [1])
+
     def test_bundle_round_trip_and_refusals(self):
         import numpy as np
         from r3d.lit_mesh import bake_lit_mesh

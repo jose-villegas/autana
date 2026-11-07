@@ -105,7 +105,7 @@ class CardTests(unittest.TestCase):
             camera = SimpleNamespace(half_fov_short_tan=0.5, near_z=CARD_EPSILON,
                                      path=SimpleNamespace(animation=root / 'other.anim.toml', node='camera'))
             scene = SimpleNamespace(camera=SimpleNamespace(component=camera))
-            renderer = SimpleNamespace(fit=SimpleNamespace(size=(mask_asset.MASK_WIDTH,) * 2))
+            renderer = SimpleNamespace(fit=SimpleNamespace(size=(mask_asset.MASK_WIDTH * 2, mask_asset.MASK_WIDTH * 3)))
             path = camera_path(clip, scene, renderer)
             self.assertEqual(path[:4], (*renderer.fit.size, camera.half_fov_short_tan, camera.near_z))
             np.testing.assert_allclose(path[4][0], [0, 0, SIDE, 0, 0, -1])
@@ -121,6 +121,52 @@ class CardTests(unittest.TestCase):
             before = source_digest(settings)
             keys.write_text(keys.read_text().replace(f'[0, 0, {SIDE}]', f'[0, 0, {SIDE * 2}]'))
             self.assertNotEqual(before, source_digest(settings))
+
+    def test_path_choice_refuses_missing_fit_pose_size(self):
+        from r3d.cards.path import camera_path
+        from r3d.import_settings import SettingsError
+        scene = SimpleNamespace()
+        for renderer in (None, SimpleNamespace(fit=None),
+                         SimpleNamespace(fit=SimpleNamespace()),
+                         SimpleNamespace(fit=SimpleNamespace(size=None))):
+            with self.subTest(renderer=renderer), self.assertRaisesRegex(SettingsError, r"fit\.poses\.size"):
+                camera_path(None, scene, renderer)
+
+    def test_split_masks_keep_parent_texel_size(self):
+        from unittest.mock import Mock
+        from r3d.cards import CARD_MAX_SIDE
+        from r3d.cards.bake import bake_pixels, CARD_MASK_WIDTH
+        p, t = quads()
+        card = choose_cards(p, t)[0]
+        card['lo'] = np.zeros(2)
+        card['hi'] = np.array([CARD_MAX_SIDE * 4, CARD_MAX_SIDE * 2])
+        pieces, _ = split_cards([card])
+        query = Mock()
+        query.hit_rounds.return_value = []
+        parent, _, _ = bake_pixels(card, query, p, t, None, None, None, 0.5)
+        masks = [bake_pixels(piece, query, p, t, None, None, None, 0.5)[0] for piece in pieces]
+        self.assertEqual(parent.shape, (CARD_MASK_WIDTH // 2, CARD_MASK_WIDTH))
+        self.assertEqual(sum(mask.size for mask in masks), parent.size)
+        self.assertTrue(all(mask.shape == (CARD_MASK_WIDTH // 4,) * 2 for mask in masks))
+        for piece in pieces:
+            trimmed = dict(piece, hi=piece['lo'] + (piece['hi'] - piece['lo']) / 2)
+            mask = bake_pixels(trimmed, query, p, t, None, None, None, 0.5)[0]
+            self.assertEqual(mask.shape, (CARD_MASK_WIDTH // 8,) * 2)
+
+    def test_trimmed_mask_keeps_parent_texel_size(self):
+        from unittest.mock import Mock
+        from r3d.cards.bake import CARD_MASK_WIDTH
+        p, t = quads()
+        uv = p[:, :2] / SIDE + 0.5
+        card = dict(c=np.zeros(3), a=np.eye(3)[0], b=np.eye(3)[1], n=np.eye(3)[2],
+                    lo=np.full(2, -SIDE / 2), hi=np.full(2, SIDE / 2), depth=(-CARD_EPSILON, CARD_EPSILON))
+        texture = Mock()
+        texture.sample.side_effect = lambda uv, lod: np.column_stack([
+            np.ones((len(uv), 3)), ((uv > 0.25) & (uv < 0.75)).all(axis=1).astype(float)])
+        trimmed, mask, _, _ = bake_card(card, p, t, uv, t, texture, 0.5)
+        self.assertEqual(mask.shape, (CARD_MASK_WIDTH // 2,) * 2)
+        np.testing.assert_allclose(trimmed['hi'] - trimmed['lo'], SIDE / 2)
+        self.assertTrue(mask.all())
 
     def test_long_card_splits(self):
         from r3d.cards import CARD_MAX_SIDE

@@ -4,7 +4,7 @@
 CARD_EPSILON = 5.0
 CARD_AREA_COST = 0.03
 # Provisional model-unit bound for small close-range affine UV error; tune from closest-card render_compare crops.
-CARD_MAX_SIDE = 64.0
+CARD_MAX_SIDE = 128.0
 SAMPLES_PER_TRIANGLE = 6
 CANDIDATE_PATCHES = 400
 CANDIDATE_MIN_SAMPLES = 20

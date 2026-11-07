@@ -15,7 +15,8 @@ ALPHA_HIT_LIMIT = 16
 
 def bake_pixels(card, query, positions, triangles, uv, tri_uv, texture, keep_alpha):
     size = card['hi'] - card['lo']
-    width, height = np.maximum(MIN_TEXELS, np.rint(CARD_MASK_WIDTH * size / size.max()).astype(int))
+    texel_size = card.get("texel_size", size.max() / CARD_MASK_WIDTH)
+    width, height = np.maximum(MIN_TEXELS, np.rint(size / texel_size).astype(int))
     gx, gy = np.meshgrid((np.arange(width * SUPERSAMPLES) + 0.5) / (width * SUPERSAMPLES),
                          (np.arange(height * SUPERSAMPLES) + 0.5) / (height * SUPERSAMPLES))
     xy = card['lo'] + np.column_stack([gx.ravel(), gy.ravel()]) * size
@@ -53,6 +54,7 @@ def bake_pixels(card, query, positions, triangles, uv, tri_uv, texture, keep_alp
 
 def bake_card(card, positions, triangles, uv, tri_uv, texture, keep_alpha, *, query=None):
     query = RayQuery(positions, triangles) if query is None else query
+    card = dict(card, texel_size=card.get('texel_size', max(card['hi'] - card['lo']) / CARD_MASK_WIDTH))
     mask, _, _ = bake_pixels(card, query, positions, triangles, uv, tri_uv, texture, keep_alpha)
     if not mask.any():
         return None
