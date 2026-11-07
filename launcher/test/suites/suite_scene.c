@@ -42,6 +42,7 @@
 #include "render/context/render_context.h"
 #include "render/lcol_format.h"
 #include "render/llod_format.h"
+#include "render/lmor_format.h"
 #include "scene/scene.h"
 #include "scene/scene_internal.h"
 #include "scene/scene_shell.h"
@@ -3580,6 +3581,157 @@ test_mesh_reader_refuses_levels_out_of_order(void) {
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, r3d_lit_mesh_levels_from_asset(&short_entry, &mesh));
 }
 
+/* rig.mesh's levels with the morph entry beside them: a shift per cluster, an
+ * int8 delta per axis per vertex, and per vertex the colour it takes. Each
+ * part is padded to the entry's alignment. */
+enum {
+    MORPH_ALIGN = 4,
+    MORPH_VALUES = RIG_VERTICES * 3,
+    MORPH_COLOUR_BASE = 0x80,
+    MORPH_CLUSTERS = 2,
+    MORPH_SHIFTS_AT = LMOR_HEADER_SIZE,
+    MORPH_DELTAS_AT = MORPH_SHIFTS_AT + MORPH_ALIGN * ((MORPH_CLUSTERS + MORPH_ALIGN - 1) / MORPH_ALIGN),
+    MORPH_PART = MORPH_ALIGN * ((MORPH_VALUES + MORPH_ALIGN - 1) / MORPH_ALIGN),
+    MORPH_COLOURS_AT = MORPH_DELTAS_AT + MORPH_PART,
+    MORPH_PLAIN_BYTES = MORPH_COLOURS_AT,
+    MORPH_COLOURED_BYTES = MORPH_COLOURS_AT + MORPH_PART,
+    MORPH_UNKNOWN_FLAG = LMOR_COLOURS << 1,
+};
+
+static uint8_t* morph_entry;
+
+static void
+release_morph(void) {
+    free(morph_entry);
+    morph_entry = NULL;
+    release_levelled();
+}
+
+/* The entry, sized for colours or not, with the marks the reader reports back. */
+static void
+make_morph_entry(bool colours) {
+    free(morph_entry);
+    morph_entry = calloc(1, MORPH_COLOURED_BYTES);
+    suite_set_test_cleanup(release_morph);
+    TEST_ASSERT_NOT_NULL(morph_entry);
+    _Static_assert(LMOR_AXES == 3, "MORPH_VALUES counts three axes");
+    test_pack_put16(morph_entry + LMOR_AT_VERSION, LMOR_VERSION);
+    test_pack_put16(morph_entry + LMOR_AT_FLAGS, colours ? LMOR_COLOURS : 0);
+    test_pack_put32(morph_entry + LMOR_AT_CLUSTER_COUNT, MORPH_CLUSTERS);
+    test_pack_put32(morph_entry + LMOR_AT_VERTEX_COUNT, RIG_VERTICES);
+    morph_entry[MORPH_SHIFTS_AT] = 1;
+    morph_entry[MORPH_SHIFTS_AT + 1] = LMOR_SHIFT_MAX;
+    for (int i = 0; i < MORPH_VALUES; i++) {
+        morph_entry[MORPH_DELTAS_AT + i] = (uint8_t)(i + 1);
+        morph_entry[MORPH_COLOURS_AT + i] = (uint8_t)(MORPH_COLOUR_BASE + i);
+    }
+}
+
+static r3d_lit_mesh_t
+levelled_mesh_for_morph(void) {
+    const asset_view_t levels = levelled_quads();
+    r3d_lit_mesh_t mesh;
+    const asset_view_t geometry = {levelled_mesh, RIG_MESH_BYTES};
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_from_asset(&geometry, &mesh));
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_levels_from_asset(&levels, &mesh));
+    return mesh;
+}
+
+static void
+expect_no_morph(const r3d_lit_mesh_t* mesh) {
+    TEST_ASSERT_NULL(mesh->morph_shift);
+    TEST_ASSERT_NULL(mesh->morph_delta);
+    TEST_ASSERT_NULL(mesh->morph_colors);
+}
+
+static void
+test_morph_reader_attaches_a_well_formed_entry(void) {
+    r3d_lit_mesh_t mesh = levelled_mesh_for_morph();
+    for (int colours = 0; colours <= 1; colours++) {
+        make_morph_entry(colours != 0);
+        const asset_view_t view = {morph_entry, colours ? MORPH_COLOURED_BYTES : MORPH_PLAIN_BYTES};
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_morph_from_asset(&view, &mesh));
+        TEST_ASSERT_EQUAL_PTR(morph_entry + MORPH_SHIFTS_AT, mesh.morph_shift);
+        TEST_ASSERT_EQUAL_PTR(morph_entry + MORPH_DELTAS_AT, mesh.morph_delta);
+        TEST_ASSERT_EQUAL_PTR(colours ? morph_entry + MORPH_COLOURS_AT : NULL, mesh.morph_colors);
+        TEST_ASSERT_EQUAL_INT8(1, mesh.morph_delta[0][0]);
+        TEST_ASSERT_EQUAL_INT8(MORPH_VALUES, mesh.morph_delta[RIG_VERTICES - 1][2]);
+        TEST_ASSERT_EQUAL_UINT8(LMOR_SHIFT_MAX, mesh.morph_shift[MORPH_CLUSTERS - 1]);
+    }
+}
+
+/* Each break of the entry, made to a copy of a good one; a refusal clears what an earlier success attached. */
+static void
+test_morph_reader_refuses_malformed_entries_and_leaves_no_pointers(void) {
+    r3d_lit_mesh_t mesh = levelled_mesh_for_morph();
+    make_morph_entry(true);
+    uint8_t good[MORPH_COLOURED_BYTES];
+    memcpy(good, morph_entry, sizeof good);
+    const asset_view_t whole = {morph_entry, MORPH_COLOURED_BYTES};
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_morph_from_asset(&whole, &mesh));
+
+    static const struct {
+        size_t at;
+        int value;
+        int width;
+        int size;
+        asset_status_t status;
+    } breaks[] = {
+        {LMOR_AT_VERSION, LMOR_VERSION + 1, 2, MORPH_COLOURED_BYTES, ASSET_ERR_VERSION},
+        {LMOR_AT_FLAGS, MORPH_UNKNOWN_FLAG, 2, MORPH_COLOURED_BYTES, ASSET_ERR_FORMAT},
+        {LMOR_AT_FLAGS, LMOR_COLOURS | MORPH_UNKNOWN_FLAG, 2, MORPH_COLOURED_BYTES, ASSET_ERR_FORMAT},
+        {LMOR_AT_CLUSTER_COUNT, MORPH_CLUSTERS - 1, 4, MORPH_COLOURED_BYTES, ASSET_ERR_FORMAT},
+        {LMOR_AT_VERTEX_COUNT, RIG_VERTICES + 1, 4, MORPH_COLOURED_BYTES, ASSET_ERR_FORMAT},
+        {MORPH_SHIFTS_AT, LMOR_SHIFT_MAX + 1, 1, MORPH_COLOURED_BYTES, ASSET_ERR_FORMAT},
+        {MORPH_SHIFTS_AT + 1, UINT8_MAX, 1, MORPH_COLOURED_BYTES, ASSET_ERR_FORMAT},
+        {LMOR_AT_VERSION, LMOR_VERSION, 2, MORPH_COLOURED_BYTES - MORPH_ALIGN, ASSET_ERR_BOUNDS},
+        {LMOR_AT_VERSION, LMOR_VERSION, 2, MORPH_COLOURED_BYTES + MORPH_ALIGN, ASSET_ERR_BOUNDS},
+        {LMOR_AT_VERSION, LMOR_VERSION, 2, MORPH_PLAIN_BYTES, ASSET_ERR_BOUNDS},
+    };
+
+    for (size_t i = 0; i < sizeof breaks / sizeof breaks[0]; i++) {
+        memcpy(morph_entry, good, sizeof good);
+        if (breaks[i].width == 1) {
+            morph_entry[breaks[i].at] = (uint8_t)breaks[i].value;
+        } else if (breaks[i].width == 2) {
+            test_pack_put16(morph_entry + breaks[i].at, breaks[i].value);
+        } else {
+            test_pack_put32(morph_entry + breaks[i].at, (uint32_t)breaks[i].value);
+        }
+        const asset_view_t view = {morph_entry, (uint32_t)breaks[i].size};
+        TEST_ASSERT_EQUAL_INT_MESSAGE(breaks[i].status, r3d_lit_mesh_morph_from_asset(&view, &mesh), "break");
+        expect_no_morph(&mesh);
+        memcpy(morph_entry, good, sizeof good);
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_morph_from_asset(&whole, &mesh));
+    }
+}
+
+static void
+test_morph_reader_refuses_colours_for_a_mesh_without_vertex_colours(void) {
+    r3d_lit_mesh_t mesh = levelled_mesh_for_morph();
+    make_morph_entry(true);
+    const asset_view_t view = {morph_entry, MORPH_COLOURED_BYTES};
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_morph_from_asset(&view, &mesh));
+    mesh.colors = NULL;
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, r3d_lit_mesh_morph_from_asset(&view, &mesh));
+    expect_no_morph(&mesh);
+    make_morph_entry(false);
+    const asset_view_t plain = {morph_entry, MORPH_PLAIN_BYTES};
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_morph_from_asset(&plain, &mesh));
+    TEST_ASSERT_NULL(mesh.morph_colors);
+}
+
+static void
+test_morph_reader_refuses_a_mesh_without_levels(void) {
+    r3d_lit_mesh_t mesh = levelled_mesh_for_morph();
+    make_morph_entry(false);
+    const asset_view_t view = {morph_entry, MORPH_PLAIN_BYTES};
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_morph_from_asset(&view, &mesh));
+    mesh.cluster_lod = NULL;
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, r3d_lit_mesh_morph_from_asset(&view, &mesh));
+    expect_no_morph(&mesh);
+}
+
 static void
 test_mesh_open_resolves_optional_levels(void) {
     fixture();
@@ -4815,6 +4967,10 @@ run_scene_suite(void) {
     RUN_TEST(test_mesh_reader_accepts_only_positive_int_scales);
     RUN_TEST(test_mesh_reader_refuses_levels_out_of_order);
     RUN_TEST(test_mesh_open_resolves_optional_levels);
+    RUN_TEST(test_morph_reader_attaches_a_well_formed_entry);
+    RUN_TEST(test_morph_reader_refuses_malformed_entries_and_leaves_no_pointers);
+    RUN_TEST(test_morph_reader_refuses_colours_for_a_mesh_without_vertex_colours);
+    RUN_TEST(test_morph_reader_refuses_a_mesh_without_levels);
     RUN_TEST(test_clip_bind_failure_names_the_first_rejected_clip);
     RUN_TEST(test_skinned_scene_draws_clip_output_and_reskins_from_bind);
     RUN_TEST(test_a_skinned_renderer_s_world_box_follows_its_refit);

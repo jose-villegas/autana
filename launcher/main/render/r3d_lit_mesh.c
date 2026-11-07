@@ -8,6 +8,7 @@
 #include "asset/asset_entry.h"
 #include "render/lcol_format.h"
 #include "render/llod_format.h"
+#include "render/lmor_format.h"
 
 /* The entry's bytes are the structs' own layout, written by lit_mesh.py. */
 _Static_assert(sizeof(r3d_lit_cluster_t) == 22 && offsetof(r3d_lit_cluster_t, bounds) == 8
@@ -237,6 +238,48 @@ r3d_lit_mesh_levels_from_asset(const asset_view_t* levels, r3d_lit_mesh_t* mesh)
     return ASSET_OK;
 }
 
+/* Rounded up to the entry's alignment. */
+static uint64_t
+padded(uint64_t size) {
+    return (size + ENTRY_ALIGNMENT - 1U) / ENTRY_ALIGNMENT * ENTRY_ALIGNMENT;
+}
+
+asset_status_t
+r3d_lit_mesh_morph_from_asset(const asset_view_t* morph, r3d_lit_mesh_t* mesh) {
+    mesh->morph_shift = NULL;
+    mesh->morph_delta = NULL;
+    mesh->morph_colors = NULL;
+    const asset_status_t status =
+        asset_entry_validate(*morph, LMOR_VERSION, LMOR_AT_VERSION, LMOR_HEADER_SIZE, ENTRY_ALIGNMENT);
+    if (status != ASSET_OK) {
+        return status;
+    }
+    const uint16_t flags = asset_read_u16(morph->data + LMOR_AT_FLAGS);
+    const uint32_t clusters = asset_read_u32(morph->data + LMOR_AT_CLUSTER_COUNT);
+    const uint32_t vertices = asset_read_u32(morph->data + LMOR_AT_VERTEX_COUNT);
+    if (mesh->cluster_lod == NULL || clusters != (uint32_t)mesh->cluster_count
+        || vertices != (uint32_t)mesh->vertex_count || (flags & ~LMOR_COLOURS) != 0
+        || ((flags & LMOR_COLOURS) != 0 && mesh->colors == NULL)) {
+        return ASSET_ERR_FORMAT;
+    }
+    const uint64_t deltas_at = LMOR_HEADER_SIZE + padded(clusters);
+    const uint64_t colours_at = deltas_at + padded((uint64_t)vertices * LMOR_AXES);
+    const uint64_t end = colours_at + ((flags & LMOR_COLOURS) != 0 ? padded((uint64_t)vertices * LMOR_AXES) : 0U);
+    if (end != morph->size) {
+        return ASSET_ERR_BOUNDS;
+    }
+    const uint8_t* shift = morph->data + LMOR_HEADER_SIZE;
+    for (uint32_t c = 0; c < clusters; c++) {
+        if (shift[c] > LMOR_SHIFT_MAX) {
+            return ASSET_ERR_FORMAT;
+        }
+    }
+    mesh->morph_shift = shift;
+    mesh->morph_delta = (const void*)(morph->data + deltas_at);
+    mesh->morph_colors = (flags & LMOR_COLOURS) != 0 ? (const void*)(morph->data + colours_at) : NULL;
+    return ASSET_OK;
+}
+
 asset_status_t
 r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
     *mesh = (r3d_lit_mesh_t){0};
@@ -320,6 +363,18 @@ r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh
         }
         if (status == ASSET_OK) {
             status = r3d_lit_mesh_levels_from_asset(&asset, mesh);
+        }
+    }
+    if (status == ASSET_OK) {
+        status = sibling_name(id, LMOR_NAME_SUFFIX, name);
+    }
+    if (status == ASSET_OK) {
+        status = asset_pack_find(pack, name, LMOR_ASSET, &asset);
+        if (status == ASSET_ERR_NOT_FOUND) {
+            return ASSET_OK;
+        }
+        if (status == ASSET_OK) {
+            status = r3d_lit_mesh_morph_from_asset(&asset, mesh);
         }
     }
     if (status != ASSET_OK) {

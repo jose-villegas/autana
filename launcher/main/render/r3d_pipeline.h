@@ -113,6 +113,7 @@ typedef struct {
     int16_t x0, y0, x1, y1; /* 1/R3D_SUBPIXEL pixels */
     uint16_t depth;         /* no depth its fill writes is nearer */
     bool unbounded;
+    uint8_t morph; /* the weight it was transformed with toward its morph targets, 0 to R3D_LOD_MORPH_ONE */
 } r3d_pipeline_rows_t;
 
 /* True when every pixel of `target` under a cluster's box already holds
@@ -125,6 +126,13 @@ bool r3d_pipeline_cluster_hidden(const r3d_pipeline_rows_t* rows, const r3d_span
  * depth, which only a target that skips hidden clusters reads. */
 void r3d_pipeline_transform(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
                             r3d_pipeline_vertex_t* cs, r3d_pipeline_rows_t* rows, bool boxed);
+
+/* r3d_pipeline_transform() with each cluster blended toward its morph
+ * targets by r3d_lod_morph_weight() (render/lod/r3d_lod.h); NULL blends none. */
+struct r3d_lod_morph;
+void r3d_pipeline_transform_morphed(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
+                                    const struct r3d_lod_morph* morph, const uint16_t* clusters, int count,
+                                    r3d_pipeline_vertex_t* cs, r3d_pipeline_rows_t* rows, bool boxed);
 
 /* `rows` as r3d_pipeline_transform() filled it, boxed when
  * target->skip_hidden, or NULL to test every triangle. */

@@ -110,6 +110,46 @@ python launcher/tools/r3d/lod/coverage_table.py --script launcher/main/apps/rend
     --render Bistro "--scene bistro-fitted-full --no-hud --frames 900 --dt 33" --doc docs/plans/Cluster-LOD.md
 ```
 
+## The blend
+
+A fine group blends toward its parent's coarse surface as the parent nears
+its switch, so the switch itself moves nothing: a geomorph<sup>[[116]](../Citations.md#hoppe-1996)</sup>
+whose weight is a function of the view alone<sup>[[117]](../Citations.md#strugar-2009)</sup>, with no
+state kept per instance. The weight is whole while the parent's projected
+error is within the hysteresis band and fades to none `R3D_LOD_MORPH_PX` past
+it; the coverage cap fades it the same way over `R3D_LOD_MORPH_COVER_RAMP` of
+the cap. Each vertex's target is in the mesh's [LMOR](../assets/formats/LMOR.md)
+sibling ([`lod/morph.py`](../../launcher/tools/r3d/lod/morph.py)). The
+`render.lod_morph` development knob turns it off.
+
+| Target | Rule |
+|---|---|
+| Kept vertex | The coarse vertex it became, matched within the group's error |
+| Removed vertex | The nearest point on the parent's coarse triangles facing its way |
+| Open border, or a position another parent's clusters share | Stays put, so clusters blending by different amounts never crack |
+| Colour | The coarse colour where the vertex lands; only meshes with vertex colours carry it |
+
+The table renders each path with the finest level, the pick's switches drawn
+as they are, and blended, scored as the coverage cap's is. Vertices blended
+is the share of transformed vertices with a weight above none. Stacked are
+those whose target's own level was blending too, so the target sits off the
+surface drawn next to it; the last column is the most pixels that put one off.
+
+<!-- generated: lod-morph sha256=181835e03a8ae40e24cfa00c828da591239361edca3205076227b72b85d697fa -->
+| Path | Arm | Blocks popping | Mean difference /255 | Vertices blended | Frames stacked | Vertices stacked | Stacked, most px |
+|---|---|---|---|---|---|---|---|
+| Bistro | switches | 0.1718% | 0.105 | 0.0% | 0.0% | 0.00% | 0.00 |
+| Bistro | blend, position | 0.1904% | 0.113 | 22.4% | 9.9% | 0.57% | 0.45 |
+| Sponza | switches | 0.0937% | 0.071 | 0.0% | 0.0% | 0.00% | 0.00 |
+| Sponza | blend, position | 0.1720% | 0.110 | 10.6% | 86.5% | 6.63% | 1.25 |
+<!-- /generated: lod-morph -->
+
+```sh
+python launcher/tools/r3d/lod/morph_table.py --script launcher/main/apps/render_lab/tools/render_lab_render_host.sh \
+    --render Sponza "--scene sponza-fitted-full --no-hud --frames 1101 --dt 33" \
+    --render Bistro "--scene bistro-fitted-full --no-hud --frames 900 --dt 33" --doc docs/plans/Cluster-LOD.md
+```
+
 **Gate before the runtime ships:** with the levels a pose picks, no more of
 the rest's hidden surface may show than at the finest level, and
 [`test_sky_through_walls.py`](../../launcher/main/apps/render_lab/tools/tests/test_sky_through_walls.py)

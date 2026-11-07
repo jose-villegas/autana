@@ -348,6 +348,40 @@ def mesh_blob(mesh):
     return head + body
 
 
+def morph_blob(blob, levels):
+    """The sibling LMOR bytes of LMSH `blob` with LLOD `levels`
+    (lod/morph.py), measured from the mesh as it is written."""
+    from r3d import morph_asset
+    from r3d.lod.morph import read_targets
+    mesh = read_lit_mesh(blob, levels)
+    target, colours = read_targets(mesh)
+    shifts, deltas = morph_deltas(mesh.pos, target, mesh.clusters, [parent for _, parent in mesh.lod])
+    colours = None if colours is None else colours.reshape(-1).tolist()
+    return morph_asset.encode(shifts, deltas.reshape(-1).tolist(), colours)
+
+
+def morph_deltas(pos, target, clusters, parents):
+    """(shift per cluster, int8 delta per row): the least shift that fits the
+    largest move of every cluster under one parent group in an int8, and each
+    move rounded to it. Clusters under one parent share their shift, so rows
+    they share land on one target."""
+    from r3d import morph_asset
+    move = np.asarray(target, dtype=np.int64) - np.asarray(pos, dtype=np.int64)
+    reach = {}
+    for (first, count, *_), parent in zip(clusters, parents):
+        reach[parent] = max(reach.get(parent, 0), int(np.abs(move[first:first + count]).max(initial=0)))
+    shifts, deltas = [], np.zeros_like(move)
+    for (first, count, *_), parent in zip(clusters, parents):
+        shift = 0
+        while (reach[parent] + (1 << shift >> 1)) >> shift > morph_asset.DELTA_MAX:
+            shift += 1
+        half = (1 << shift) >> 1
+        deltas[first:first + count] = np.clip(np.floor_divide(move[first:first + count] + half, 1 << shift),
+                                              morph_asset.DELTA_MIN, morph_asset.DELTA_MAX)
+        shifts.append(shift)
+    return shifts, deltas
+
+
 def lod_blob(mesh):
     """The sibling LLOD bytes, or None for a mesh without levels."""
     from r3d import lod_asset

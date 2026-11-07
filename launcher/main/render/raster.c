@@ -25,6 +25,10 @@ TUNE_OVERRIDE(render, batched, 1);
 /* Overrides lod.coverage_permille (INT32_MAX lifts the cap); coverage_table.py
  * sets it once per cap. */
 TUNE_OVERRIDE(render, lod_coverage_permille, INT32_MAX);
+/* 0 draws level switches without the geomorph blend (render/lod/r3d_lod.h),
+ * to score what it buys. */
+#define RASTER_LOD_MORPH_ON 1
+TUNE(render, lod_morph, RASTER_LOD_MORPH_ON, 0, RASTER_LOD_MORPH_ON);
 
 render_settings_t
 raster_settings(const raster_t* raster) {
@@ -41,6 +45,7 @@ raster_settings(const raster_t* raster) {
 typedef struct {
     const r3d_lit_mesh_t* mesh;
     r3d_lens_t lens;
+    r3d_lod_morph_t morph;
     const uint16_t* visible;
     int visible_count;
     int vertex_base, cluster_base;
@@ -121,8 +126,9 @@ transform_slice(void* ctx) {
         const int lo = mathi_max(s->first, start) - start;
         const int hi = mathi_min(end, start + item->visible_count) - start;
         if (lo < hi) {
-            r3d_pipeline_transform(item->mesh, &item->lens, item->visible + lo, hi - lo, b.cs + item->vertex_base,
-                                   b.rows + item->cluster_base, ((const draw_work_t*)b.draw)->skip_hidden);
+            r3d_pipeline_transform_morphed(item->mesh, &item->lens, &item->morph, item->visible + lo, hi - lo,
+                                           b.cs + item->vertex_base, b.rows + item->cluster_base,
+                                           ((const draw_work_t*)b.draw)->skip_hidden);
         }
         start += item->visible_count;
     }
@@ -440,6 +446,16 @@ raster_pick_levels(const raster_t* raster, const render_view_t* view) {
     }
 }
 
+void
+raster_lod_morph(const raster_t* raster, const render_view_t* view, const r3d_instance_t* instance,
+                 const r3d_lens_t* lens, r3d_lod_morph_t* morph) {
+    /* The pick measures in output pixels; the lens draws at its fitted size. */
+    const float drawn = mathf_max(lens->focal_x, lens->focal_y) / mathf_max(view->lens.fx, view->lens.fy);
+    const render_settings_t settings = raster_settings(raster);
+    r3d_lod_morph_init(morph, instance->mesh, lens, &settings.lod, drawn,
+                       lod_morph != 0 && instance->lod_coarse != NULL);
+}
+
 /* Culls every instance into the census list and returns the depth scale
  * the picture is drawn with: the fit of the nearest bound of what was kept,
  * and near_z when nothing was. The fit's power of two keeps the scale still
@@ -595,6 +611,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
                 item->mesh = mesh;
                 instance_lens(picture, instance, &item->lens);
                 r3d_lens_set_depth_near(&item->lens, *work->buffers.depth_near);
+                raster_lod_morph(raster, view, instance, &item->lens, &item->morph);
                 item->visible = culled + 1;
                 item->visible_count = culled[0];
                 item->vertex_base = vertices;
