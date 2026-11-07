@@ -6,7 +6,7 @@ import struct
 
 from asset.asset_pack import NAME_BYTES, PackError, build_pack, parse_pack
 from build.name_hash import name_hash
-from r3d import lcol_asset, lod_asset, mesh_asset
+from r3d import lcol_asset, lod_asset, mask_asset, mesh_asset
 from r3d.lcol_asset import NAME_SUFFIX
 
 SUFFIX = ".bundle"
@@ -135,6 +135,24 @@ def decode(data):
             if mesh is None or mesh[0] != mesh_asset.TYPE or not name.endswith(lod_asset.NAME_SUFFIX):
                 raise PackError("LLOD sibling has no LMSH")
             lod_asset.validate_mesh(blob, mesh[1])
+        if kind == mask_asset.TYPE:
+            mesh = entries.get(name.removesuffix(mask_asset.NAME_SUFFIX))
+            if mesh is None or mesh[0] != mesh_asset.TYPE or not name.endswith(mask_asset.NAME_SUFFIX):
+                raise PackError("LMSK sibling has no LMSH")
+            levels = entries.get(lod_asset.name_for_mesh(name.removesuffix(mask_asset.NAME_SUFFIX)))
+            mask_asset.validate_mesh(blob, mesh[1], None if levels is None else levels[1])
+        if kind == mesh_asset.TYPE:
+            try:
+                mask = entries.get(mask_asset.name_for_mesh(name))
+            except PackError:
+                mask = None
+            if mask is not None and mask[0] != mask_asset.TYPE:
+                raise PackError("LMSK sibling has the wrong type")
+            if mask is None:
+                header = mesh_asset.BLOB_HEADER.unpack_from(blob)
+                if any(mesh_asset.CLUSTER.unpack_from(blob, header[8] + i * mesh_asset.CLUSTER.size)[-1]
+                       for i in range(header[2])):
+                    raise PackError("masked LMSH has no LMSK")
     for row in copies:
         mesh = entries.get(row["mesh"])
         colours = entries.get(lcol_asset.name_for_mesh(row["mesh"]))
@@ -145,20 +163,28 @@ def decode(data):
 
 
 def mesh_entries(name, mesh):
-    """The LMSH and optional levels sibling of one assembled mesh."""
+    """The LMSH and optional levels and mask siblings of one assembled mesh."""
     from r3d.lit_mesh import mesh_blob, lod_blob
     entries = [(name, mesh_asset.TYPE, mesh_blob(mesh))]
     levels = lod_blob(mesh)
     if levels is not None:
         entries.append((lod_asset.name_for_mesh(name), lod_asset.TYPE, levels))
+    if getattr(mesh, "mask_uvs", None) is not None:
+        mask = mask_asset.encode(mesh.mask_vertex_first, mesh.mask_uvs, mesh.mask_rows)
+        mask_asset.validate_mesh(mask, entries[0][2], levels)
+        entries.append((mask_asset.name_for_mesh(name), mask_asset.TYPE, mask))
     return entries
 
 
 def read_mesh(entries, name):
-    """Read a bundle mesh together with its optional LLOD sibling."""
+    """Read a bundle mesh with its optional levels and mask siblings."""
     from r3d.lit_mesh import read_lit_mesh
     blobs = {key: blob for key, _, blob in entries}
-    return read_lit_mesh(blobs[name], blobs.get(lod_asset.name_for_mesh(name)))
+    try:
+        mask = blobs.get(mask_asset.name_for_mesh(name))
+    except PackError:
+        mask = None
+    return read_lit_mesh(blobs[name], blobs.get(lod_asset.name_for_mesh(name)), mask)
 
 
 def rest_name(entries, copies):
@@ -177,6 +203,6 @@ def rename_rest(entries, copies, name):
         return entries
     names = {old: name}
     for key, _, _ in entries:
-        if key.startswith(old) and key[len(old):] in (lcol_asset.NAME_SUFFIX, lod_asset.NAME_SUFFIX):
+        if key.startswith(old) and key[len(old):] in (lcol_asset.NAME_SUFFIX, lod_asset.NAME_SUFFIX, mask_asset.NAME_SUFFIX):
             names[key] = lcol_asset.sibling_name(name, key[len(old):])
     return [(names.get(key, key), kind, blob) for key, kind, blob in entries]

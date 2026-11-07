@@ -92,8 +92,13 @@ group_box(const r3d_lit_lod_group_t* g) {
     const vec3s_t c = g->bounds.centre;
     const int16_t r = g->bounds.radius;
     return (r3d_lit_cluster_t){
-        0,   0, 0, 0, {{(int16_t)(c.x - r), (int16_t)(c.y - r), c.z}, {(int16_t)(c.x + r), (int16_t)(c.y + r), c.z}},
-        true};
+        0,
+        0,
+        0,
+        0,
+        {{(int16_t)(c.x - r), (int16_t)(c.y - r), c.z}, {(int16_t)(c.x + r), (int16_t)(c.y + r), c.z}},
+        true,
+        false};
 }
 
 /* A group holding `count` groups from `first`: their centres' mean, a radius

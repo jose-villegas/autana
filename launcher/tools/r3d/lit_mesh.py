@@ -336,11 +336,14 @@ def mesh_blob(mesh):
     """The entry's bytes for a baked mesh: BLOB_HEADER, then each array at an
     offset from the entry's first byte, in the layouts r3d_lit_mesh.h's
     structs have."""
+    masked = getattr(mesh, "masked", [False] * len(mesh.clusters))
+    if len(masked) != len(mesh.clusters):
+        raise ValueError("masked flags must match the cluster count")
     arrays = [
         ("positions", np.asarray(mesh.pos, dtype="<i2").tobytes()),
         ("colors", b"" if mesh.rgb is None else np.asarray(mesh.rgb, dtype="u1").tobytes()),
         ("triangles", np.asarray(mesh.tris, dtype="<u2").tobytes()),
-        ("clusters", b"".join(CLUSTER.pack(vb, vc, tb, tc, *lo, *hi, int(dbl)) for vb, vc, tb, tc, lo, hi, dbl in mesh.clusters)),
+        ("clusters", b"".join(CLUSTER.pack(vb, vc, tb, tc, *lo, *hi, int(dbl), int(masked[i])) for i, (vb, vc, tb, tc, lo, hi, dbl) in enumerate(mesh.clusters))),
         ("nodes", b"".join(NODE.pack(*n["lo"], *n["hi"], n["first"], n["count"], int(n["leaf"])) for n in mesh.nodes)),
         ("face_colors", b"" if mesh.face_colors is None else panel_colour(mesh.face_colors).tobytes()),
     ]
@@ -360,7 +363,7 @@ def lod_blob(mesh):
     return None if mesh.lod is None else lod_asset.encode(mesh.lod, mesh.groups)
 
 
-def read_lit_mesh(path, levels=None):
+def read_lit_mesh(path, levels=None, mask=None):
     """Reads a <name>.bundle back into what bake_lit_mesh returns."""
     if not isinstance(path, (bytes, bytearray)):
         from r3d import mesh_bundle
@@ -379,9 +382,11 @@ def read_lit_mesh(path, levels=None):
     mesh.face_colors = rgb888(array(face_at, "<u2", triangles)) if face_at else None
     mesh.tris = array(tri_at, "<u2", triangles * 3).reshape(-1, 3)
     mesh.clusters = []
+    mesh.masked = []
     for i in range(clusters):
-        vb, vc, tb, tc, *box, dbl = CLUSTER.unpack_from(blob, cl_at + i * CLUSTER.size)
+        vb, vc, tb, tc, *box, dbl, masked = CLUSTER.unpack_from(blob, cl_at + i * CLUSTER.size)
         mesh.clusters.append((vb, vc, tb, tc, np.array(box[:3]), np.array(box[3:]), bool(dbl)))
+        mesh.masked.append(bool(masked))
     mesh.nodes = []
     for i in range(nodes):
         *box, first, count, leaf = NODE.unpack_from(blob, node_at + i * NODE.size)
@@ -393,6 +398,14 @@ def read_lit_mesh(path, levels=None):
         mesh.lod, groups = lod_asset.decode(levels)
         mesh.groups = np.asarray(groups, dtype=np.int64)
         validate_levels(mesh.lod, mesh.groups, clusters)
+    mesh.mask_vertex_first = 0
+    mesh.mask_uvs = mesh.mask_rows = None
+    if mask is not None:
+        from r3d import mask_asset
+        mask_asset.validate_mesh(mask, blob, levels)
+        mesh.mask_vertex_first, mesh.mask_uvs, mesh.mask_rows = mask_asset.decode(mask, vertices)
+    elif any(mesh.masked):
+        raise ValueError("masked LMSH has no LMSK")
     return mesh
 
 

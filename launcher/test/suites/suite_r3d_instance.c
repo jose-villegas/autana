@@ -56,7 +56,7 @@ make_quad(quad_t* q, uint8_t red, uint8_t green, uint8_t blue, int16_t cx) {
     q->triangles[1][0] = 0;
     q->triangles[1][1] = 2;
     q->triangles[1][2] = 3;
-    q->cluster = (r3d_lit_cluster_t){0, 4, 0, 2, {{(int16_t)(cx - 1), -1, 0}, {(int16_t)(cx + 1), 1, 0}}, true};
+    q->cluster = (r3d_lit_cluster_t){0, 4, 0, 2, {{(int16_t)(cx - 1), -1, 0}, {(int16_t)(cx + 1), 1, 0}}, true, false};
     q->node = (r3d_lit_node_t){{{(int16_t)(cx - 1), -1, 0}, {(int16_t)(cx + 1), 1, 0}}, 0, 1, true};
     q->mesh = (r3d_lit_mesh_t){.positions = q->positions,
                                .colors = q->colors,
@@ -456,7 +456,7 @@ test_a_world_box_through_a_model_holds_every_transformed_corner(void) {
 static void
 test_a_mesh_s_bounding_sphere_is_centred_on_its_box_and_reaches_its_furthest_vertex(void) {
     static const int16_t corners[4][3] = {{0, 0, 0}, {8, 0, 0}, {8, 4, 0}, {0, 2, 0}};
-    static const r3d_lit_cluster_t cluster = {0, 4, 0, 2, {{0, 0, 0}, {8, 4, 0}}, false};
+    static const r3d_lit_cluster_t cluster = {0, 4, 0, 2, {{0, 0, 0}, {8, 4, 0}}, false, false};
     static const r3d_lit_node_t node = {{{0, 0, 0}, {8, 4, 0}}, 0, 1, true};
     r3d_lit_mesh_t mesh = r3d_quad_mesh(corners, NULL, NULL, &cluster, &node);
     mesh.position_scale = 2; /* ticks per unit: the box is 4 by 2 units */
