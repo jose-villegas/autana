@@ -160,6 +160,7 @@ r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, float tolerance
     const float covered = coverage_max * (float)lens->height;
     const float near_z = lens->project.near_z;
     bool any = false;
+    bool changed = false;
     for (int g = 0; g < mesh->lod_group_count; g++) {
         const r3d_lit_lod_group_t* group = &mesh->lod_groups[g];
         const vec3f_t centre = mat4f_apply(&v.view, vec3f_from_vec3s(group->bounds.centre, 1.0F));
@@ -168,16 +169,15 @@ r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, float tolerance
         const uint32_t bit = 1U << (g % R3D_LOD_WORD_BITS);
         uint32_t* word = &coarse[g / R3D_LOD_WORD_BITS];
         const bool was = (*word & bit) != 0;
-        if ((within(&at, error, enter) || (was && within(&at, error, leave)))
-            && within(&at, (float)group->bounds.radius * scale, covered)) {
-            *word |= bit;
-            any = true;
-        } else {
-            *word &= ~bit;
-        }
+        const bool coarse_now = (within(&at, error, enter) || (was && within(&at, error, leave)))
+                                && within(&at, (float)group->bounds.radius * scale, covered);
+        *word = coarse_now ? *word | bit : *word & ~bit;
+        any |= coarse_now;
+        changed |= coarse_now != was;
     }
-    /* Nothing coarse closes to nothing. */
-    if (any) {
+    /* Nothing coarse closes to nothing, and bits that did not change are as
+     * closed as the frame that last closed them left them. */
+    if (any && changed) {
         FRAME_COST_BEGIN(close_from);
         close_coarse(mesh, coarse);
         FRAME_COST_END(close_from, "lod.close");
