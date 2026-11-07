@@ -16,8 +16,10 @@ SOURCES = [pathlib.Path(__file__).with_name("scene_draw_stand_ins.c"), *[MAIN / 
     "anim/anim_track.c", "anim/anim_tracks.c", "anim/anim_binding.c", "anim/anim_skeleton.c",
     "anim/pose/anim_pose.c", "anim/playback/anim_playhead.c", "render/r3d_skin.c",
     "render/skin/r3d_skinning.c", "render/skin/r3d_skin_light.c", "render/r3d_lit_mesh.c", "asset/asset_pack.c",
-    "asset/asset_file.c", "core/job.c", "scene/scene.c", "scene/scene_mesh.c", "scene/scene_animation.c", "scene/scene_light.c", "scene/scene_asset.c", "scene/scene_hierarchy.c",
-    "anim/playback/anim_layer.c", "scene/camera/camera.c", "render/render_view.c", "asset/asset_store.c", "asset/asset_store_file.c")],
+    "asset/asset_file.c", "core/job.c", "core/pending.c", "anim/playback/anim_layer.c", "render/render_view.c",
+    "asset/asset_store.c", "asset/asset_store_async.c", "asset/asset_store_file.c")],
+    # Every scene source but the draw and the shell half, which the stand-ins replace.
+    *sorted(path for path in (MAIN / "scene").rglob("*.c") if path.name not in ("scene_draw.c", "scene_shell.c")),
     MAIN.parent / "packages/hash/src/name_hash.c"]
 SCENE_ID = "scene"
 ENTITY_NAME = "subject"

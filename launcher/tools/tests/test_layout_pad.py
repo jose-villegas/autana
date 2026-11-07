@@ -1,6 +1,7 @@
 """layout_pad.py: seed 0 is the plain build, any other seed picks a pad in
 whole cache-line steps from the seed and the source's own name."""
 
+import contextlib
 import pathlib
 import subprocess
 import sys
@@ -15,6 +16,23 @@ import layout_pad as pads  # noqa: E402
 SOURCES = [f"render/file_{n}.c" for n in range(400)]
 RASTER = "esp-idf/main/libmain.a(raster.c.obj)"
 OTHER = "esp-idf/vfs/libvfs.a(vfs.c.obj)"
+GEOMETRY = ((32, 4096), (64, 8192))
+
+
+@contextlib.contextmanager
+def inputs_file(sources, geometry=GEOMETRY):
+    """The INPUTS file main/CMakeLists.txt writes, for `sources`."""
+    (text_line, text_way), (rodata_line, rodata_way) = geometry
+    with tempfile.TemporaryDirectory() as scratch:
+        path = pathlib.Path(scratch) / "layout_pad_inputs.txt"
+        lines = [f"{text_line} {text_way} {rodata_line} {rodata_way}", *sources]
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        yield str(path)
+
+
+def run_tool(*args, check=False):
+    return subprocess.run([sys.executable, str(BUILD / "layout_pad.py"), *args],
+                          check=check, capture_output=True, text=True)
 
 
 def seeded_map(text_pad, rodata_pad, early=False):
@@ -71,12 +89,29 @@ class LayoutPadTest(unittest.TestCase):
         self.assertTrue(any(text // 32 != rodata // 64 for text, rodata in rows))
 
     def test_the_command_line_prints_one_row_per_source(self):
-        out = subprocess.run([sys.executable, str(BUILD / "layout_pad.py"), "3", "32", "4096",
-                              "64", "8192", "a.c", "b/c.c"],
-                             check=True, capture_output=True, text=True).stdout
+        with inputs_file(["a.c", "b/c.c"]) as path:
+            out = run_tool("3", path, check=True).stdout
         rows = [row.split(",") for row in out.split(";")]
         self.assertEqual([row[0] for row in rows], ["a.c", "b/c.c"])
         self.assertEqual([int(v) for v in rows[0][1:]], list(pads.pad_sizes(3, "a.c")))
+
+    def test_seeds_outside_one_to_the_limit_are_refused(self):
+        with inputs_file(["a.c"]) as path:
+            self.assertEqual(run_tool("1", path).returncode, 0)
+            self.assertEqual(run_tool(str(pads.LAYOUT_SEED_MAX), path).returncode, 0)
+            for seed in ("0", str(pads.LAYOUT_SEED_MAX + 1)):
+                run = run_tool(seed, path)
+                self.assertNotEqual(run.returncode, 0)
+                self.assertIn(f"1 to {pads.LAYOUT_SEED_MAX}", run.stderr)
+
+    def test_the_worst_seed_is_the_first_that_pads_the_most(self):
+        sources = SOURCES[:20]
+        totals = {seed: sum(text + rodata for text, rodata in (pads.pad_sizes(seed, source) for source in sources))
+                  for seed in range(1, pads.LAYOUT_SEED_MAX + 1)}
+        with inputs_file(sources) as path:
+            run = run_tool("--worst", path, check=True)
+        self.assertEqual(run.stdout.splitlines(), [str(min(seed for seed, total in totals.items()
+                                                           if total == max(totals.values())))])
 
     def test_a_wider_cache_way_allows_larger_pads(self):
         pads_seen = {pads.pad_sizes(seed, source, (32, 8192), (64, 16384))
@@ -134,9 +169,8 @@ class LayoutPadTest(unittest.TestCase):
                 self.assertEqual(run.returncode == 0, ok, run.stderr)
 
     def test_a_seed_that_is_not_a_number_is_refused(self):
-        run = subprocess.run([sys.executable, str(BUILD / "layout_pad.py"), "x", "32", "4096", "64", "8192", "a.c"],
-                             capture_output=True, text=True)
-        self.assertNotEqual(run.returncode, 0)
+        with inputs_file(["a.c"]) as path:
+            self.assertNotEqual(run_tool("x", path).returncode, 0)
 
 
 if __name__ == "__main__":
