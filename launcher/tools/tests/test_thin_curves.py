@@ -11,8 +11,7 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from r3d.thin.thin_parts import ThinPart, budget_side, find_thin_parts
-from r3d.thin.curve_fit import (CURVE_LIGHT_INSET_PER_WIDTH, CURVE_LIGHT_RING, TUBE_SIDES, Curve, fit_curve,
-                                light_centres, light_curve)
+from r3d.thin.curve_fit import CURVE_LIGHT_RING, TUBE_SIDES, Curve, fit_curve, light_curve, nearest_lit
 from r3d.thin.curve_asset import read_curves, write_curves
 from r3d.import_settings import SettingsError, load_geometry
 from r3d.light import LIGHT_GAMMA
@@ -86,12 +85,9 @@ class ThinCurvesTests(unittest.TestCase):
                 np.testing.assert_allclose(curve.radius, 2, rtol=0.05)
                 np.testing.assert_allclose(sorted(curve.knots[:, 2]), [0, 200], atol=1e-10)
 
-    def test_light_rings_sit_inward_of_the_ends(self):
-        knots = np.array([[0., 0, 0], [0, 0, 100], [0, 0, 103]])
-        centres = light_centres(knots, 4.0)
-        np.testing.assert_allclose(centres[0], [0, 0, CURVE_LIGHT_INSET_PER_WIDTH * 4])
-        np.testing.assert_allclose(centres[1], knots[1])
-        np.testing.assert_allclose(centres[2], [0, 0, 101.5])
+    def test_an_unlit_knot_takes_its_nearest_lit_knot(self):
+        np.testing.assert_array_equal(nearest_lit(np.array([False, True, True, False, False])), [1, 1, 2, 2, 2])
+        np.testing.assert_array_equal(nearest_lit(np.array([False, False])), [0, 1])
 
     def test_bend_fit(self):
         p, t = cylinder()
@@ -130,6 +126,24 @@ class ThinCurvesTests(unittest.TestCase):
         np.testing.assert_allclose((radial * normals).sum(axis=1), np.repeat(curve.radius, CURVE_LIGHT_RING))
         np.testing.assert_allclose(lit.color, 2 * 0.25 ** LIGHT_GAMMA)
         np.testing.assert_array_equal(lit.knots, curve.knots)
+
+    def test_a_knot_inside_a_wall_takes_its_lit_neighbours_colour(self):
+        p, t = cylinder()
+        part = find_thin_parts(p, t, SIDE)[0]
+        curve = fit_curve(p, t, part)
+        source = SimpleNamespace(p=p, tri_v=t, tri_t=t, tri_m=np.zeros(len(t), dtype=int),
+                                 uv=np.zeros((len(p), 2)), materials={'surface': {'Kd': (0.25, 0.25, 0.25)}},
+                                 names=['surface'], textures=[None], colors=None)
+
+        def walled(points, *args, **kwargs):
+            radiance = np.ones((len(points), 3))
+            radiance[:CURVE_LIGHT_RING] = 0
+            return radiance
+
+        with mock.patch('r3d.light.light', walled):
+            lit = light_curve(curve, source, part, None, [], 0.5)
+        np.testing.assert_allclose(lit.color[0], lit.color[1])
+        self.assertGreater(lit.color[0].min(), 0)
 
     def test_frozen_tubes(self):
         from r3d.fit.copies import placed_curves, joined
