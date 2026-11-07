@@ -24,6 +24,8 @@ from r3d import build_pack, scene_asset, scene_name
 from asset.engine_frame import to_engine
 from test_engine_frame import mesh_entry, write_mesh  # noqa: E402
 from r3d.import_settings import SettingsError, load_scene  # noqa: E402
+from asset import table_asset  # noqa: E402
+from render.settings import render_asset  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
 LIT_MESH = b"LMSH"
@@ -280,6 +282,36 @@ class DevelopmentPackTests(unittest.TestCase):
         self.assertNotIn("carreno_waltz", packs["engine"])
         release, _ = build_pack.pack_jobs([build_pack.DEFAULT_SEARCH], development=False)
         self.assertNotIn("console", release)
+
+
+class RenderSettingsPackTests(unittest.TestCase):
+    def test_a_pack_toml_render_key_bakes_the_settings_entry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            write(root / "app" / "fast.render.toml", "cull = false\n")
+            write(root / "app" / "app.pack.toml", 'render = "fast.render.toml"\n')
+            kind, data = parse_pack(build_pack.pack_bytes([root])["app"])[render_asset.ENTRY]
+            self.assertEqual(kind, render_asset.TYPE)
+            self.assertEqual(table_asset.decode(data), ({"cull": [0], "depth_fit": [1], "batched": [1]}, 0))
+
+    def test_each_app_pack_has_its_own_render_entry_whichever_root_selects_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            for app in ("one", "two"):
+                write(root / app / f"{app}.pack.toml", 'render = "../shared.render.toml"\n')
+                import_file(root / app, f"{app}.import.toml", app)
+            write(root / "shared.render.toml", "cull = false\n")
+            packs = build_pack.pack_files([root / "one" / "one.import.toml", root / "two"])
+            self.assertEqual({name: render_asset.ENTRY in entries for name, entries in packs.items()},
+                             {"one": True, "two": True})
+
+    def test_a_render_key_must_name_a_render_file(self):
+        for setting in ("render = 1", 'render = "missing.render.toml"', 'render = "app.pack.toml"'):
+            with self.subTest(setting=setting), tempfile.TemporaryDirectory() as directory:
+                manifest = write(pathlib.Path(directory) / "app.pack.toml", setting)
+                with self.assertRaisesRegex(SettingsError, "render must name") as caught:
+                    build_pack.pack_files([manifest.parent])
+                self.assertIn(str(manifest), str(caught.exception))
 
 
 class DemoAssetTests(unittest.TestCase):
