@@ -223,7 +223,6 @@ typedef struct {
     uint16_t flat_color;
     gradients_t* g;
     int last_column;
-    unsigned coverage;
 } fill_t;
 
 /* An edge's first column at or right of it, row by row, exactly: ceil(n /
@@ -387,7 +386,7 @@ static void write_span(const r3d_span_target_t* target, int y, int x_first, int 
 
 static inline __attribute__((always_inline)) void
 flat_rows(const r3d_span_target_t* target, const fill_t* f, int y0, int y1, edge_t* left, edge_t* right, bool writing,
-          bool covered) {
+          unsigned coverage) {
     const size_t pitch = target->rows.attachment[GFX_ATTACHMENT_COLOR].pitch;
     size_t offset = (size_t)(y0 - target->rows.first_row) * pitch;
     for (int remaining = y1 - y0; remaining > 0; remaining--) {
@@ -396,9 +395,9 @@ flat_rows(const r3d_span_target_t* target, const fill_t* f, int y0, int y1, edge
             if (writing) {
                 write_span(target, y1 - remaining, span.first, span.last, (int32_t)f->flat_z << R3D_DEPTH_SHIFT, 0);
             } else {
-                if (covered) {
+                if (coverage <= R3D_SPAN_COVERAGE_FULL) {
                     fill_cover(span.depth, span.color, span.last - span.first + 1,
-                               (int32_t)f->flat_z << R3D_DEPTH_SHIFT, 0, f->flat_color, f->coverage);
+                               (int32_t)f->flat_z << R3D_DEPTH_SHIFT, 0, f->flat_color, coverage);
                 } else {
                     fill_flat(span.depth, span.color, span.last - span.first + 1, f->flat_z, f->flat_color);
                 }
@@ -412,7 +411,7 @@ flat_rows(const r3d_span_target_t* target, const fill_t* f, int y0, int y1, edge
 
 static inline __attribute__((always_inline)) void
 fill_carried_span(const r3d_span_target_t* target, const fill_t* f, const uint32_t row[ATTRIBUTES], int y, int column,
-                  const row_span_t* span, int n, bool writing, bool capped, bool covered) {
+                  const row_span_t* span, int n, bool writing, bool capped, unsigned coverage) {
     const gradients_t* g = f->g;
     if (n == 1) {
         int32_t z;
@@ -421,8 +420,8 @@ fill_carried_span(const r3d_span_target_t* target, const fill_t* f, const uint32
         if (writing) {
             write_span(target, y, span->first, span->last, z, dz);
         } else {
-            if (covered) {
-                fill_cover(span->depth, span->color, span->last - span->first + 1, z, dz, f->flat_color, f->coverage);
+            if (coverage <= R3D_SPAN_COVERAGE_FULL) {
+                fill_cover(span->depth, span->color, span->last - span->first + 1, z, dz, f->flat_color, coverage);
             } else {
                 fill_solid(span->depth, span->color, span->last - span->first + 1, z, dz, f->flat_color);
             }
@@ -436,7 +435,7 @@ fill_carried_span(const r3d_span_target_t* target, const fill_t* f, const uint32
 
 static inline __attribute__((always_inline)) void
 carried_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBUTES], int y0, int y1, edge_t* left,
-             edge_t* right, int n, bool writing, bool capped, bool covered) {
+             edge_t* right, int n, bool writing, bool capped, unsigned coverage) {
     const gradients_t* g = f->g;
     uint32_t increment[ATTRIBUTES];
     uint32_t extra_increment[ATTRIBUTES];
@@ -450,7 +449,7 @@ carried_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTR
         const int y = y1 - remaining;
         row_span_t span;
         if (clip_row(target, f->last_column, offset, left, right, &span)) {
-            fill_carried_span(target, f, row, y, left->q, &span, n, writing, capped, covered);
+            fill_carried_span(target, f, row, y, left->q, &span, n, writing, capped, coverage);
         }
         const uint32_t* advance = increment;
         if (step_edge(left)) {
@@ -472,7 +471,7 @@ carried_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTR
 /* Unsigned carries preserve extrapolated planes until a visible start. */
 static inline __attribute__((always_inline)) void
 walk_rows_of(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBUTES], int y0, int y1,
-             edge_t* left_edge, edge_t* right_edge, bool capped, bool covered) {
+             edge_t* left_edge, edge_t* right_edge, bool capped, unsigned coverage) {
     edge_t left = *left_edge;
     edge_t right = *right_edge;
     if (r3d_span_stop_after == 2) {
@@ -481,11 +480,11 @@ walk_rows_of(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTR
             step_edge(&right);
         }
     } else if (f->shading == FILL_FLAT) {
-        flat_rows(target, f, y0, y1, &left, &right, false, covered);
+        flat_rows(target, f, y0, y1, &left, &right, false, coverage);
     } else if (f->shading == FILL_FACE) {
-        carried_rows(target, f, row, y0, y1, &left, &right, 1, false, capped, covered);
+        carried_rows(target, f, row, y0, y1, &left, &right, 1, false, capped, coverage);
     } else {
-        carried_rows(target, f, row, y0, y1, &left, &right, ATTRIBUTES, false, capped, false);
+        carried_rows(target, f, row, y0, y1, &left, &right, ATTRIBUTES, false, capped, COVERAGE_DEPTH_WRITE);
     }
     *left_edge = left;
     *right_edge = right;
@@ -494,21 +493,21 @@ walk_rows_of(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTR
 static RENDER_IRAM_ATTR void
 walk_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBUTES], int y0, int y1, edge_t* left_edge,
           edge_t* right_edge) {
-    walk_rows_of(target, f, row, y0, y1, left_edge, right_edge, false, false);
+    walk_rows_of(target, f, row, y0, y1, left_edge, right_edge, false, COVERAGE_DEPTH_WRITE);
 }
 
 /* The walk of a scene that skips hidden clusters, its depth capped. */
 static RENDER_SKIP_ATTR void
 walk_capped_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBUTES], int y0, int y1,
                  edge_t* left_edge, edge_t* right_edge) {
-    walk_rows_of(target, f, row, y0, y1, left_edge, right_edge, true, false);
+    walk_rows_of(target, f, row, y0, y1, left_edge, right_edge, true, COVERAGE_DEPTH_WRITE);
 }
 
 /* The walk of a coverage-mixed fill: off the draw path's IRAM, so the opaque walks carry no coverage test. */
 static void
 walk_covered_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBUTES], int y0, int y1,
-                  edge_t* left_edge, edge_t* right_edge) {
-    walk_rows_of(target, f, row, y0, y1, left_edge, right_edge, false, true);
+                  edge_t* left_edge, edge_t* right_edge, unsigned coverage) {
+    walk_rows_of(target, f, row, y0, y1, left_edge, right_edge, false, coverage);
 }
 
 /* Every writer of the target over one span. */
@@ -525,9 +524,9 @@ static __attribute__((noinline)) void
 writer_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBUTES], int y0, int y1, edge_t* left,
             edge_t* right, bool capped) {
     if (f->shading == FILL_FLAT) {
-        flat_rows(target, f, y0, y1, left, right, true, false);
+        flat_rows(target, f, y0, y1, left, right, true, COVERAGE_DEPTH_WRITE);
     } else {
-        carried_rows(target, f, row, y0, y1, left, right, 1, true, capped, false);
+        carried_rows(target, f, row, y0, y1, left, right, 1, true, capped, COVERAGE_DEPTH_WRITE);
     }
 }
 
@@ -541,13 +540,13 @@ typedef struct {
  * target's writers when `writing`. */
 static inline __attribute__((always_inline)) void
 rows_between(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBUTES], int y0, int y1,
-             edge_t* long_edge, edge_t* short_edge, bool writing, bool long_on_left, bool capped, bool covered) {
+             edge_t* long_edge, edge_t* short_edge, bool writing, bool long_on_left, bool capped, unsigned coverage) {
     edge_t* left = long_on_left ? long_edge : short_edge;
     edge_t* right = long_on_left ? short_edge : long_edge;
     if (writing) {
         writer_rows(target, f, row, y0, y1, left, right, capped);
-    } else if (covered) {
-        walk_covered_rows(target, f, row, y0, y1, left, right);
+    } else if (coverage <= R3D_SPAN_COVERAGE_FULL) {
+        walk_covered_rows(target, f, row, y0, y1, left, right, coverage);
     } else if (capped) {
         walk_capped_rows(target, f, row, y0, y1, left, right);
     } else {
@@ -573,7 +572,7 @@ shift_carry(const fill_t* f, uint32_t carry[ATTRIBUTES], int attributes, int col
 /* The long edge v0-v2 runs the whole height on one side; the short side is
  * v0-v1 above the split and v1-v2 below it. */
 static inline __attribute__((always_inline)) void
-walk(const r3d_span_target_t* target, const fill_t* f, const walk_t* w, bool writing, bool capped, bool covered) {
+walk(const r3d_span_target_t* target, const fill_t* f, const walk_t* w, bool writing, bool capped, unsigned coverage) {
     edge_t long_edge = edge_at(w->v0, w->v2, w->y_first);
     uint32_t* carry = (uint32_t*)f->g->base;
     const int attributes = carried_attributes(f, writing);
@@ -582,7 +581,7 @@ walk(const r3d_span_target_t* target, const fill_t* f, const walk_t* w, bool wri
     shift_carry(f, carry, attributes, carry_column - f->g->x_origin);
     if (w->y_first < w->split) {
         rows_between(target, f, carry, w->y_first, w->split, &long_edge, &short_edge, writing, w->long_on_left, capped,
-                     covered);
+                     coverage);
         if (w->split == w->y_end) {
             return;
         }
@@ -592,7 +591,7 @@ walk(const r3d_span_target_t* target, const fill_t* f, const walk_t* w, bool wri
         shift_carry(f, carry, attributes, lower_column - carry_column);
     }
     rows_between(target, f, carry, w->split, w->y_end, &long_edge, &short_edge, writing, w->long_on_left, capped,
-                 covered);
+                 coverage);
 }
 
 /* Returns true when the sort swapped an odd number of times, which turns
@@ -1012,8 +1011,10 @@ triangle_of(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r
         return;
     }
 
-    fill_t f = {e.flat ? FILL_FLAT : face != NULL ? FILL_FACE : FILL_GOURAUD, 0,       0, NULL,
-                target->rows.attachment[GFX_ATTACHMENT_COLOR].width - 1,      coverage};
+    fill_t f = {e.flat         ? FILL_FLAT
+                : face != NULL ? FILL_FACE
+                               : FILL_GOURAUD,
+                0, 0, NULL, target->rows.attachment[GFX_ATTACHMENT_COLOR].width - 1};
     /* Attributes anchor at the triangle's first row, or at screen row 0 for
      * one starting above the screen: never at a window's own edge. */
     const int y_anchor = mathi_clamp(e.centres.y, -1, gfx_target_end_row(&target->rows) + 1);
@@ -1039,7 +1040,7 @@ triangle_of(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r
                       recti_bottom(box),
                       (area2 > 0) != odd};
     FRAME_LAP("r3d.draw.fill");
-    walk(target, &f, &w, false, capped, coverage <= R3D_SPAN_COVERAGE_FULL);
+    walk(target, &f, &w, false, capped, coverage);
 }
 
 static RENDER_IRAM_ATTR void
@@ -1072,12 +1073,7 @@ triangle_write_of(const r3d_span_target_t* target, const r3d_span_vertex_t* a, c
         return;
     }
     /* FILL_FACE selects a depth carry here; writers do not read face colour. */
-    fill_t f = {e.flat ? FILL_FLAT : FILL_FACE,
-                0,
-                0,
-                NULL,
-                target->rows.attachment[GFX_ATTACHMENT_COLOR].width - 1,
-                COVERAGE_DEPTH_WRITE};
+    fill_t f = {e.flat ? FILL_FLAT : FILL_FACE, 0, 0, NULL, target->rows.attachment[GFX_ATTACHMENT_COLOR].width - 1};
     if (select_small(a, b, c, e.centres, solid, target->small_fill) != SMALL_FILL_WALK) {
         set_flat(&f, a, b, c);
         for (int y = box.y; y < recti_bottom(box); y++) {
@@ -1109,7 +1105,7 @@ triangle_write_of(const r3d_span_target_t* target, const r3d_span_vertex_t* a, c
                       mathi_clamp(r3d_span_first_centre(v1->y), box.y, recti_bottom(box)),
                       recti_bottom(box),
                       (area2 > 0) != odd};
-    walk(target, &f, &w, true, capped, false);
+    walk(target, &f, &w, true, capped, COVERAGE_DEPTH_WRITE);
 }
 
 void

@@ -322,14 +322,20 @@ picture_lens_init(picture_lens_t* picture, const raster_t* raster, const render_
     picture->position_scale = 0;
 }
 
+/* The picture's lens at `position_scale`, made into `lens`. */
+static void
+picture_lens_make(const picture_lens_t* picture, int position_scale, r3d_lens_t* lens) {
+    if (picture->fitted) {
+        raster_lens(picture->raster, picture->view, position_scale, lens);
+    } else {
+        r3d_lens_init(lens, picture->view, position_scale);
+    }
+}
+
 static const r3d_lens_t*
 picture_lens_at(picture_lens_t* picture, int position_scale) {
     if (picture->position_scale != position_scale) {
-        if (picture->fitted) {
-            raster_lens(picture->raster, picture->view, position_scale, &picture->lens);
-        } else {
-            r3d_lens_init(&picture->lens, picture->view, position_scale);
-        }
+        picture_lens_make(picture, position_scale, &picture->lens);
         picture->position_scale = position_scale;
     }
     return &picture->lens;
@@ -349,8 +355,6 @@ static void
 curve_slice(void* ctx) {
     const slice_t* s = ctx;
     const draw_work_t* work = s->buffers->draw;
-    picture_lens_t picture = work->picture;
-    picture.position_scale = 0;
     r3d_span_target_t* target = s->target;
     gfx_target_window(&target->rows, &s->buffers->picture, s->first, s->first + s->count);
     target->small_fill = &work->small_fill;
@@ -359,8 +363,12 @@ curve_slice(void* ctx) {
     for (int i = 0; i < s->raster->instance_count; i++) {
         const r3d_instance_t* instance = &s->raster->instances[i];
         if (instance->mesh->curves.curve_count > 0) {
+            /* Made in place, not cached: a curve pass holds one lens on its stack. */
             r3d_lens_t lens;
-            instance_lens(&picture, instance, &lens);
+            picture_lens_make(&work->picture, instance->mesh->position_scale, &lens);
+            if (instance->model != NULL) {
+                r3d_lens_place(&lens, instance->model, instance->mesh->position_scale);
+            }
             r3d_lens_set_depth_near(&lens, *s->buffers->depth_near);
             r3d_curve_draw(&instance->mesh->curves, &lens, target);
         }
