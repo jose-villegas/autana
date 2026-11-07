@@ -277,16 +277,18 @@ def measure(args, runner=None, clock=time.monotonic):
                           len(sizes) - 1)
     incomplete = stop_error is not None or not decisions or any(
         row["verdict"] == "not measured" for row in decisions.values())
+    stop = str(stop_error) if stop_error else None
     estimates = {side: recommendations(records[side], observations(records[side])[0],
                                       args.threshold / 100, look_alpha / max(1, len(decisions)))
                  for side in records}
     write_summary(destination / "summary.md", args, records, decisions, estimates, sizes, plan,
-                  incomplete=incomplete, budget_stop=budget_stop)
+                  incomplete=incomplete, budget_stop=budget_stop, stop=stop)
     payload = dict(command=getattr(args, "command", None),
                    label_a=args.label_a, label_b=args.label_b, threshold=args.threshold,
                    alpha=args.alpha, look_alpha=look_alpha,
                    rng_seed=args.rng_seed, max_seeds=args.max_seeds, first_pass=sizes[0],
-                   max_runs=MAX_RUNS, incomplete=incomplete, budget_stop=budget_stop,
+                   max_runs=MAX_RUNS, incomplete=incomplete, stop=stop,
+                   budget_stop=budget_stop,
                    rows=decisions, estimates=estimates, plan=plan)
     (destination / "comparison.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
     print((destination / "summary.md").read_text(encoding="utf-8"))
@@ -310,7 +312,7 @@ def pr_table(payload):
     return lines
 
 
-def write_summary(path, args, records, rows, estimates, sizes, plan, incomplete=False, budget_stop=None):
+def write_summary(path, args, records, rows, estimates, sizes, plan, incomplete=False, budget_stop=None, stop=None):
     """Write observed costs, seed identities, decisions, and acquisition completeness."""
     lines = ["# Performance comparison", "",
              f"A: `{args.label_a}`; B: `{args.label_b}`.", "",
@@ -318,8 +320,8 @@ def write_summary(path, args, records, rows, estimates, sizes, plan, incomplete=
              f"per-family per-look alpha: {args.alpha / len(sizes) / 2:g}. "
              f"First pass: {sizes[0]} seeds per side. Cap: {args.max_seeds} seeds per side.", "",
              f"RNG seed: {args.rng_seed}; R clamp: [1, {MAX_RUNS}].", "",
-             ("Incomplete: stopped after capture failures, no rows, or rows not measured; see plan errors and the not-measured rows"
-              if incomplete else "Complete") +
+             (f"Incomplete: stopped: {stop.rstrip('.')}" if stop else
+              "Incomplete: no rows, or rows not measured; see the not-measured rows" if incomplete else "Complete") +
              ("." if not budget_stop else
               f"; stopped at the time budget before look {budget_stop['look']}: "
               f"{budget_stop['elapsed_seconds'] / 60:.0f} min used, its estimated {budget_stop['estimate_seconds'] / 60:.0f} min "
