@@ -16,6 +16,7 @@ from layout_measure import analyse, autana_command, required_seeds, run_flash, f
 from device_capture import test_matches
 from capture import require_same_board
 from seed_statistics import compare, minimum_seeds, permutation_samples
+from layout_pad import LAYOUT_SEED_MAX  # layout_measure puts tools/build on the path
 
 DEFAULT_THRESHOLD = 1.0
 DEFAULT_ALPHA = 0.05
@@ -32,6 +33,9 @@ def schedule(cap, alpha):
     first = minimum_seeds(alpha)
     if cap < first:
         raise ValueError(f"--max-seeds must be at least {first} for permutation resolution")
+    # Both sides draw distinct seeds from one range.
+    if cap > LAYOUT_SEED_MAX // 2:
+        raise ValueError(f"--max-seeds must be at most {LAYOUT_SEED_MAX // 2}: both sides share seeds 1 to {LAYOUT_SEED_MAX}")
     sizes = [first]
     while sizes[-1] < cap:
         sizes.append(min(cap, sizes[-1] * 2))
@@ -195,9 +199,9 @@ def measure(args, runner=None, clock=time.monotonic):
             for side in sides:
                 suites = args.suite if active is None else selected_suites(
                     args.suite, active, extracted[side][2], limits[side], device_inventory(records[side]))
-                seed = rng.randint(1, 2147483647)
+                seed = rng.randint(1, LAYOUT_SEED_MAX)
                 while seed in used:
-                    seed = rng.randint(1, 2147483647)
+                    seed = rng.randint(1, LAYOUT_SEED_MAX)
                 used.add(seed)
                 repeated = sum(any(len(entry["runs"]) >= 2 for entry in record["suites"].values())
                                for record in records[side])

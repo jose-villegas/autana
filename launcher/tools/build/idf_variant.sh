@@ -38,7 +38,7 @@ idf_variant_disagreement() {
 }
 
 # idf_variant_build <launcher-dir> <release|dev|diag> <build-dir> [options]
-# Options: --autorun, --perf-scope, --frame-laps (after --perf-scope), --qemu, --layout-seed <n>, --defaults <fragment> <symbol>,
+# Options: --autorun, --perf-scope, --frame-laps (after --perf-scope), --qemu, --layout-seed <n> (after --perf-scope), --defaults <fragment> <symbol>,
 # --hot-tunables, --configure (reconfigure only: sdkconfig and compile_commands.json,
 # no compile).
 idf_variant_build() {
