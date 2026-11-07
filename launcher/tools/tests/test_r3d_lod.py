@@ -25,10 +25,10 @@ WIDE_LENS = 100.0
 PLACEMENT = (2.0 * Rotation.from_euler("xyz", [20, -35, 50], degrees=True).as_matrix(), np.array([5.0, -3.0, 7.0]))
 
 
-def wavy_grid(n=GRID):
-    """An n x n quad grid in z = 0, bent a little so simplifying it costs error."""
+def wavy_grid(n=GRID, height=0.4, waves=(4.0, 5.0)):
+    """An n x n quad grid in z = 0, bent `height` over `waves` so simplifying it costs error."""
     x, y = np.meshgrid(np.arange(n + 1, dtype=float), np.arange(n + 1, dtype=float))
-    points = np.stack([x.ravel(), y.ravel(), 0.4 * np.sin(x.ravel() / 4) * np.cos(y.ravel() / 5)], axis=1)
+    points = np.stack([x.ravel(), y.ravel(), height * np.sin(x.ravel() / waves[0]) * np.cos(y.ravel() / waves[1])], axis=1)
     corner = (np.arange(n)[None, :] + np.arange(n)[:, None] * (n + 1)).ravel()
     triangles = np.concatenate([np.stack([corner, corner + 1, corner + n + 2], 1),
                                 np.stack([corner, corner + n + 2, corner + n + 1], 1)])

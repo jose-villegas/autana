@@ -7,6 +7,7 @@
 #include "asset/asset_bytes.h"
 #include "asset/asset_entry.h"
 #include "render/lcol_format.h"
+#include "render/llod_format.h"
 
 /* The entry's bytes are the structs' own layout, written by lit_mesh.py. */
 _Static_assert(sizeof(r3d_lit_cluster_t) == 22 && offsetof(r3d_lit_cluster_t, bounds) == 8
@@ -15,6 +16,9 @@ _Static_assert(sizeof(r3d_lit_cluster_t) == 22 && offsetof(r3d_lit_cluster_t, bo
 _Static_assert(sizeof(r3d_lit_node_t) == 16 && offsetof(r3d_lit_node_t, first) == 12
                    && offsetof(r3d_lit_node_t, leaf) == 15,
                "r3d_lit_node_t is not the layout lit_mesh.py writes");
+_Static_assert(sizeof(r3d_lit_cluster_lod_t) == 4 && sizeof(r3d_lit_lod_group_t) == 10
+                   && offsetof(r3d_lit_lod_group_t, error) == 8,
+               "the LOD records are not the layout lit_mesh.py writes");
 
 enum {
     HEADER_WORDS = 11,
@@ -31,6 +35,8 @@ enum {
     AT_NODES,
     AT_FACE_COLORS,
 };
+
+_Static_assert(HEADER_WORDS * sizeof(uint32_t) == R3D_LIT_MESH_HEADER_BYTES, "the header is its words");
 
 #define VERTEX_LIMIT 65535U /* triangles index vertices with 16 bits */
 
@@ -102,6 +108,135 @@ nodes_are_inside(const r3d_lit_mesh_t* mesh) {
     return true;
 }
 
+/* A group's id names a group, or none. */
+static bool
+lod_id_fits(uint16_t id, int group_count) {
+    return id == R3D_LOD_NONE || id < group_count;
+}
+
+/* The pick's ordering (render/r3d_lod.h): a cluster's own group, the one
+ * simplified into it, sits inside its parent with R3D_LOD_ENCLOSE_MARGIN to
+ * spare and has no larger error, so a parent never projects smaller. */
+static bool
+lod_is_ordered(const r3d_lit_mesh_t* mesh) {
+    for (int c = 0; c < mesh->cluster_count; c++) {
+        const r3d_lit_cluster_lod_t lod = mesh->cluster_lod[c];
+        if (!lod_id_fits(lod.own, mesh->lod_group_count) || !lod_id_fits(lod.parent, mesh->lod_group_count)) {
+            return false;
+        }
+        if (lod.own == R3D_LOD_NONE || lod.parent == R3D_LOD_NONE) {
+            continue;
+        }
+        const r3d_lit_lod_group_t* inner = &mesh->lod_groups[lod.own];
+        const r3d_lit_lod_group_t* outer = &mesh->lod_groups[lod.parent];
+        if (inner->error > outer->error
+            || !spheres_contains_ball(outer->bounds, inner->bounds, R3D_LOD_ENCLOSE_MARGIN)) {
+            return false;
+        }
+    }
+    for (int g = 0; g < mesh->lod_group_count; g++) {
+        if (mesh->lod_groups[g].bounds.radius < 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* Whether every cluster under `node` is finest, or with `finest` false,
+ * every one coarse. */
+static bool
+subtree_is(const r3d_lit_mesh_t* mesh, int node, bool finest) {
+    uint16_t stack[R3D_LIT_WALK_STACK_MAX];
+    int top = 0;
+    stack[top++] = (uint16_t)node;
+    while (top > 0) {
+        const r3d_lit_node_t* n = &mesh->nodes[stack[--top]];
+        for (int i = 0; i < n->count; i++) {
+            if (n->leaf) {
+                if ((mesh->cluster_lod[n->first + i].own == R3D_LOD_NONE) != finest) {
+                    return false;
+                }
+            } else if (top < R3D_LIT_WALK_STACK_MAX) {
+                stack[top++] = (uint16_t)(n->first + i);
+            } else {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+/* The first coarse cluster when every finest cluster comes before every
+ * coarse one and those run in the order of their own group; else -1. */
+static int
+coarse_run_first(const r3d_lit_mesh_t* mesh) {
+    int first = mesh->cluster_count;
+    for (int c = 0; c < mesh->cluster_count; c++) {
+        const uint16_t own = mesh->cluster_lod[c].own;
+        if (own == R3D_LOD_NONE ? first < c : (first < c && own < mesh->cluster_lod[c - 1].own)) {
+            return -1;
+        }
+        first = own == R3D_LOD_NONE ? c + 1 : first;
+    }
+    return first;
+}
+
+void
+r3d_lit_mesh_find_levels(r3d_lit_mesh_t* mesh) {
+    mesh->lod_finest_root = 0;
+    mesh->lod_coarse_first = 0;
+    const r3d_lit_node_t* root = &mesh->nodes[0];
+    const int first = mesh->cluster_lod == NULL ? -1 : coarse_run_first(mesh);
+    if (first < 0 || root->leaf || root->count != 2 || !subtree_is(mesh, root->first, true)
+        || !subtree_is(mesh, root->first + 1, false)) {
+        return;
+    }
+    mesh->lod_finest_root = root->first;
+    mesh->lod_coarse_first = (uint16_t)first;
+}
+
+asset_status_t
+r3d_lit_mesh_levels_from_asset(const asset_view_t* levels, r3d_lit_mesh_t* mesh) {
+    mesh->cluster_lod = NULL;
+    mesh->lod_groups = NULL;
+    mesh->lod_group_count = 0;
+    mesh->lod_error_least = 0;
+    mesh->lod_finest_root = 0;
+    mesh->lod_coarse_first = 0;
+    const asset_status_t status =
+        asset_entry_validate(*levels, LLOD_VERSION, LLOD_AT_VERSION, LLOD_HEADER_SIZE, ENTRY_ALIGNMENT);
+    if (status != ASSET_OK) {
+        return status;
+    }
+    const uint16_t groups = asset_read_u16(levels->data + LLOD_AT_GROUP_COUNT);
+    const uint32_t clusters = asset_read_u32(levels->data + LLOD_AT_CLUSTER_COUNT);
+    if (clusters != (uint32_t)mesh->cluster_count || groups == 0) {
+        return ASSET_ERR_FORMAT;
+    }
+    if (groups >= R3D_LOD_NONE) {
+        return ASSET_ERR_BOUNDS;
+    }
+    const uint64_t groups_at = LLOD_HEADER_SIZE + ((uint64_t)clusters * sizeof(r3d_lit_cluster_lod_t));
+    if (groups_at + ((uint64_t)groups * sizeof(r3d_lit_lod_group_t)) != levels->size) {
+        return ASSET_ERR_BOUNDS;
+    }
+    r3d_lit_mesh_t built = *mesh;
+    built.cluster_lod = (const void*)(levels->data + LLOD_HEADER_SIZE);
+    built.lod_groups = (const void*)(levels->data + groups_at);
+    built.lod_group_count = groups;
+    if (!lod_is_ordered(&built)) {
+        return ASSET_ERR_FORMAT;
+    }
+    built.lod_error_least = UINT16_MAX;
+    for (int g = 0; g < groups; g++) {
+        built.lod_error_least =
+            built.lod_groups[g].error < built.lod_error_least ? built.lod_groups[g].error : built.lod_error_least;
+    }
+    r3d_lit_mesh_find_levels(&built);
+    *mesh = built;
+    return ASSET_OK;
+}
+
 asset_status_t
 r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
     *mesh = (r3d_lit_mesh_t){0};
@@ -149,35 +284,54 @@ r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
     return ASSET_OK;
 }
 
-asset_status_t
-r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh) {
-    asset_view_t asset;
-    const asset_status_t status = asset_pack_find(pack, id, R3D_LIT_MESH_ASSET, &asset);
-    if (status != ASSET_OK) {
-        *mesh = (r3d_lit_mesh_t){0};
-        return status;
-    }
-    return r3d_lit_mesh_from_asset(&asset, mesh);
-}
-
 static asset_status_t
-r3d_lit_mesh_colour_name(const char* mesh_id, char out[ASSET_NAME_MAX]) {
+sibling_name(const char* mesh_id, const char* suffix, char out[ASSET_NAME_MAX]) {
     const size_t length = strlen(mesh_id);
+    const size_t tail = strlen(suffix) + 1;
     if (length == 0) {
         return ASSET_ERR_FORMAT;
     }
-    if (length + sizeof LCOL_NAME_SUFFIX > ASSET_NAME_MAX) {
+    if (length + tail > ASSET_NAME_MAX) {
         return ASSET_ERR_BOUNDS;
     }
     memcpy(out, mesh_id, length);
-    memcpy(out + length, LCOL_NAME_SUFFIX, sizeof LCOL_NAME_SUFFIX);
+    memcpy(out + length, suffix, tail);
     return ASSET_OK;
+}
+
+asset_status_t
+r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh) {
+    *mesh = (r3d_lit_mesh_t){0};
+    asset_view_t asset;
+    asset_status_t status = asset_pack_find(pack, id, R3D_LIT_MESH_ASSET, &asset);
+    if (status != ASSET_OK) {
+        return status;
+    }
+    status = r3d_lit_mesh_from_asset(&asset, mesh);
+    if (status != ASSET_OK) {
+        return status;
+    }
+    char name[ASSET_NAME_MAX];
+    status = sibling_name(id, LLOD_NAME_SUFFIX, name);
+    if (status == ASSET_OK) {
+        status = asset_pack_find(pack, name, LLOD_ASSET, &asset);
+        if (status == ASSET_ERR_NOT_FOUND) {
+            return ASSET_OK;
+        }
+        if (status == ASSET_OK) {
+            status = r3d_lit_mesh_levels_from_asset(&asset, mesh);
+        }
+    }
+    if (status != ASSET_OK) {
+        *mesh = (r3d_lit_mesh_t){0};
+    }
+    return status;
 }
 
 asset_status_t
 r3d_lit_mesh_open_colours(const asset_pack_t* pack, const char* mesh_id, uint16_t set, r3d_lit_mesh_t* mesh) {
     char name[ASSET_NAME_MAX];
-    asset_status_t status = r3d_lit_mesh_colour_name(mesh_id, name);
+    asset_status_t status = sibling_name(mesh_id, LCOL_NAME_SUFFIX, name);
     if (status != ASSET_OK) {
         return status;
     }

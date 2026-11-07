@@ -37,6 +37,7 @@ from r3d.import_settings import SettingsError, load_scene  # noqa: E402
 from r3d.light import triangle_areas  # noqa: E402
 from r3d.build_pack import pack_bytes, write_packs  # noqa: E402
 from r3d.lit_mesh import write_lit_mesh  # noqa: E402
+from r3d.lod.bake_levels import bake_lit_mesh
 from r3d.mesh_import import REPO, bake_geometry, flat_colours  # noqa: E402
 
 LAUNCHER = REPO / "launcher"
@@ -96,15 +97,15 @@ def write_assets(name, mesh_file, out, scene):
 
 def write_variant(job, scene, geometry, spec, out):
     """Bakes `spec` (see the module docstring) over `geometry` into
-    out/<name>.mesh; returns its path."""
+    out/<name>.bundle; returns its path."""
     renderer = job.renderer
     median = float(np.median(triangle_areas(geometry.positions, geometry.tris)))
     samples, knobs = parse_spec(spec, declared_samples(renderer, median), median)
     face_rgb = flat_colours(job, scene, geometry, samples, **knobs)
     out.mkdir(parents=True, exist_ok=True)
-    write_lit_mesh(out, renderer.variant.name, geometry.positions, None, geometry.tris, geometry.tri_double,
-                   face_rgb=face_rgb, **geometry.scale)
-    return out / f"{renderer.variant.name}.mesh"
+    write_lit_mesh(out, job.asset_name, geometry.positions, None, geometry.tris, geometry.tri_double,
+                   face_rgb=face_rgb, mesh_builder=bake_lit_mesh, lod=job.settings.lod, **geometry.scale)
+    return out / f"{job.asset_name}.bundle"
 
 
 def score(args, host, assets, work):

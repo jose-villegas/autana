@@ -35,7 +35,7 @@ class PinholeRays(unittest.TestCase):
         tris = np.arange(len(positions)).reshape(-1, 3)
         double = np.zeros(len(tris), bool) if double is None else np.asarray(double)
         self.write_mesh(self.root, name, positions, np.full(positions.shape, 255), tris, double)
-        return self.root / (name + '.mesh')
+        return self.root / (name + '.bundle')
 
     def test_rays_reports_gap_and_raster_miss_at_covered_pixel(self):
         np = self.np
@@ -86,7 +86,7 @@ class PinholeRays(unittest.TestCase):
              mock.patch.object(self.tool, 'count_shown', return_value=(1, 2)) as count, \
              mock.patch.object(self.tool, 'load_scene', return_value=self.scene), \
              contextlib.redirect_stdout(output):
-            self.assertEqual(self.tool.main(['shown', 'scene.scene.toml', '--object', 'wall', 'start.mesh']), 0)
+            self.assertEqual(self.tool.main(['shown', 'scene.scene.toml', '--object', 'wall', 'start.bundle']), 0)
         self.assertEqual(sample.call_args.args[2:5], (100, 5, 3))
         self.assertEqual(count.call_args.args[1][:4], (5, 5, 5 / 3, 0.1))
         self.assertIn('triangles 2; shown 1', output.getvalue())

@@ -12,6 +12,7 @@
 #include "core/handle.h"
 #include "core/memory.h"
 #include "math/linear/mat3f.h"
+#include "render/lod/r3d_lod.h"
 #include "render/skin/r3d_skin_light.h"
 #include "scene/scene.h"
 #include "scene/scene_conventions.h"
@@ -115,7 +116,9 @@ typedef struct {
     mat4f_t model;
     box3f_t world_bounds; /* the mesh's root box through `model`, kept with it */
     scene_entity_t entity;
-    bool placed; /* false while the transform is the identity: drawn as it is */
+    bool placed;          /* false while the transform is the identity: drawn as it is */
+    uint16_t lod_words;   /* the coarse bits held for the mesh opened: R3D_LOD_WORDS of its groups */
+    uint32_t* lod_coarse; /* into the scene's lod_bits, or NULL without levels */
 } scene_renderer_t;
 
 /* Sets `r`'s world box from its mesh and model; call after either changes,
@@ -196,6 +199,7 @@ struct scene {
     int world_count;
     mat4f_t* worlds;                /* one per entity with children, in entity order */
     scene_entity_t* world_entities; /* the entity each of `worlds` belongs to */
+    uint32_t* lod_bits;             /* every renderer's coarse bits, kept from frame to frame */
     /* The per-frame loops walk these, not every entity or renderer: a scene
      * with many disabled copies has few of either. */
     scene_entity_t* staged; /* entities with an animator, a skin or a light, in entity order */
@@ -225,10 +229,6 @@ scene_failure_t scene_mesh_make_resident(scene_t* scene);
 /* The loaded scenes, in load order. */
 int scene_loaded_count(void);
 scene_t* scene_loaded_at(int index);
-
-/* Only activation and a seek of the active camera count as cuts. Other discontinuities,
- * such as a camera transform teleport or a clip switch, converge within a few frames. */
-void scene_draw_camera_cut(const scene_t* scene, scene_entity_t entity);
 
 /* The index of the scene's camera named by `camera` (SCENE_CAMERA_FIRST: its first), or -1. */
 int scene_camera_index(const scene_t* scene, name_hash_t camera);

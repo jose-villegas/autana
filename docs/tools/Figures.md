@@ -12,13 +12,13 @@ is stale, so rerun it after changing an image or the pages that show one.
 |---|---|---|---|
 | [anim](#anim) | 4 | 0 | 0 |
 | [audio](#audio) | 32 | 0 | 0 |
-| [input](#input) | 9 | 0 | 0 |
-| [kinematics](#kinematics) | 4 | 0 | 0 |
+| [input](#input) | 11 | 0 | 0 |
+| [kinematics](#kinematics) | 5 | 1 | 0 |
 | [math](#math) | 25 | 25 | 0 |
 | [overview](#overview) | 15 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
-| [render](#render) | 129 | 0 | 11 |
+| [render](#render) | 133 | 0 | 11 |
 | [ui](#ui) | 62 | 0 | 0 |
 
 ## anim
@@ -72,6 +72,8 @@ is stale, so rerun it after changing an image or the pages that show one.
 | Picture | What it shows | Shown in | Made by |
 |---|---|---|---|
 | <a href="../images/input/gravity-bias.gif"><img src="figure-thumbnails/input/gravity-bias.gif" width="160" alt=""></a> | The cased device rocks about flat while the estimate of down converges on true down and the gyro bias error decays | [input/Gravity](../input/Gravity.md) | not declared yet |
+| <a href="../images/input/gravity-motion.gif"><img src="figure-thumbnails/input/gravity-motion.gif" width="160" alt=""></a> | The pitched device rolls while carried sideways; the plots show acceleration magnitude deviation from 1 g and the acceleration angle from the estimate and the estimate angle from true down | [input/Gravity](../input/Gravity.md) | not declared yet |
+| <a href="../images/input/gravity-reader.gif"><img src="figure-thumbnails/input/gravity-reader.gif" width="160" alt=""></a> | The device tilts and rolls, then holds its pose in free fall; the plots show in-plane strength and acceleration magnitude with their direction and free-fall thresholds | [input/Gravity](../input/Gravity.md) | not declared yet |
 | <a href="../images/input/gravity-trust.png"><img src="../images/input/gravity-trust.png" width="160" alt=""></a> | Acceleration magnitude trust ramp | [input/Gravity](../input/Gravity.md) | not declared yet |
 | <a href="../images/input/motion-axes.png"><img src="../images/input/motion-axes.png" width="160" alt=""></a> | The cased device from the front and the back: chip axes X Y Z at the IMU behind the PCB, screen axes x y z at the glass centre | [input/Motion-Axes](../input/Motion-Axes.md) | not declared yet |
 | <a href="../images/input/motion-page.png"><img src="../images/input/motion-page.png" width="160" alt=""></a> | Motion page: raw and filtered readings, stored offset and the tilt bubble | [input/Motion-Calibration](../input/Motion-Calibration.md) | not declared yet |
@@ -85,6 +87,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 
 | Picture | What it shows | Shown in | Made by |
 |---|---|---|---|
+| <a href="../images/kinematics/fly-path.png"><img src="../images/kinematics/fly-path.png" width="160" alt=""></a> | 3D path from the origin through forward, a turn right, a climb, a wheel speed-up and a dive, with forward arrows along it; speed against time below | [kinematics/Fly](../kinematics/Fly.md) | [fly_figures.py](../../launcher/tools/kinematics/fly_figures.py) |
 | <a href="../images/kinematics/orbit-fit-distance.png"><img src="../images/kinematics/orbit-fit-distance.png" width="160" alt=""></a> | 3D padded view pyramid with the camera at its apex and a fitted sphere binding the short axis; fit distance per radius against half field of view alongside | [kinematics/Orbit](../kinematics/Orbit.md) | not declared yet |
 | <a href="../images/kinematics/orbit-fling-decay.png"><img src="../images/kinematics/orbit-fling-decay.png" width="160" alt=""></a> | Fling speed and covered angle at 16 and 50 millisecond frame steps, approaching the same limiting angle | [kinematics/Follow](../kinematics/Follow.md) | not declared yet |
 | <a href="../images/kinematics/orbit-fling.gif"><img src="figure-thumbnails/kinematics/orbit-fling.gif" width="160" alt=""></a> | 3D orbit with pose axes, a fading trail and pitch-limit circles through held steering, fling and reset to home; signed yaw and pitch speeds below | [kinematics/Orbit](../kinematics/Orbit.md) | not declared yet |
@@ -188,13 +191,16 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/compare-full-lite.png"><img src="../images/render/compare-full-lite.png" width="160" alt=""></a> | full against lite | [render/offline/Bake-Quality](../render/offline/Bake-Quality.md) | not declared yet |
 | <a href="../images/render/compare-lite-fitted.crops.png"><img src="../images/render/compare-lite-fitted.crops.png" width="160" alt=""></a> | lite against fitted, the places they differ most | [render/offline/Bake-Quality](../render/offline/Bake-Quality.md) | not declared yet |
 | <a href="../images/render/compare-lite-fitted.png"><img src="../images/render/compare-lite-fitted.png" width="160" alt=""></a> | lite against fitted | [render/offline/Bake-Quality](../render/offline/Bake-Quality.md) | not declared yet |
-| <a href="../images/render/cull-bistro-chase.gif"><img src="figure-thumbnails/render/cull-bistro-chase.gif" width="160" alt=""></a> | Bistro's fates from behind the camera | [render/frame/Culling](../render/frame/Culling.md) | not declared yet |
+| <a href="../images/render/cull-bistro-chase.gif"><img src="figure-thumbnails/render/cull-bistro-chase.gif" width="160" alt=""></a> | Bistro's fates from behind the camera | [render/Render-Settings](../render/Render-Settings.md), [render/frame/Culling](../render/frame/Culling.md) | not declared yet |
 | <a href="../images/render/cull-bistro-counts.png"><img src="../images/render/cull-bistro-counts.png" width="160" alt=""></a> | Bistro's counts along its path | [render/frame/Culling](../render/frame/Culling.md) | not declared yet |
 | <a href="../images/render/cull-bistro-sheet.png"><img src="../images/render/cull-bistro-sheet.png" width="160" alt=""></a> | Bistro's cull along its path | [render/frame/Culling](../render/frame/Culling.md) | not declared yet |
 | <a href="../images/render/cull-cost.png"><img src="../images/render/cull-cost.png" width="160" alt=""></a> | Each stage's fit against what the board measured | [render/frame/Culling](../render/frame/Culling.md) | not declared yet |
 | <a href="../images/render/cull-sponza-chase.gif"><img src="figure-thumbnails/render/cull-sponza-chase.gif" width="160" alt=""></a> | Sponza's fates from behind the camera | [render/frame/Culling](../render/frame/Culling.md) | not declared yet |
 | <a href="../images/render/cull-sponza-counts.png"><img src="../images/render/cull-sponza-counts.png" width="160" alt=""></a> | Sponza's counts along its path | [render/frame/Culling](../render/frame/Culling.md) | not declared yet |
 | <a href="../images/render/cull-sponza-sheet.png"><img src="../images/render/cull-sponza-sheet.png" width="160" alt=""></a> | Sponza's cull along its path | [render/frame/Culling](../render/frame/Culling.md) | not declared yet |
+| <a href="../images/render/depth-fit-bistro-diff.crops.png"><img src="../images/render/depth-fit-bistro-diff.crops.png" width="160" alt=""></a> | The places the two settings differ most | [render/Render-Settings](../render/Render-Settings.md) | not declared yet |
+| <a href="../images/render/depth-fit-bistro-diff.png"><img src="../images/render/depth-fit-bistro-diff.png" width="160" alt=""></a> | One Bistro frame with depth scaled by near_z and by the fit, and their difference | [render/Render-Settings](../render/Render-Settings.md) | not declared yet |
+| <a href="../images/render/depth-fit-bistro.gif"><img src="figure-thumbnails/render/depth-fit-bistro.gif" width="160" alt=""></a> | Consecutive frames of one window, near_z on top and the fit below | [render/Render-Settings](../render/Render-Settings.md) | not declared yet |
 | <a href="../images/render/depth-fit-bistro.png"><img src="../images/render/depth-fit-bistro.png" width="160" alt=""></a> | Six consecutive frames of a street seen from above: with depth scaled by near_z the ground under it flickers through as grey dashes; with the fitted scale it does not | [render/frame/Attachments](../render/frame/Attachments.md) | not declared yet |
 | <a href="../images/render/dynamic-resolution-flight-sizes-dark.png"><img src="../images/render/dynamic-resolution-flight-sizes-dark.png" width="160" alt=""></a> | — | — | not declared yet |
 | <a href="../images/render/dynamic-resolution-flight-sizes.png"><img src="../images/render/dynamic-resolution-flight-sizes.png" width="160" alt=""></a> | Time at each render size, per scenario | [render/frame/Dynamic-Resolution](../render/frame/Dynamic-Resolution.md) | not declared yet |
@@ -235,6 +241,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/import-face-samples.png"><img src="../images/render/import-face-samples.png" width="160" alt=""></a> | One fixed face sample against adaptive, then adaptive against the flat fit | [render/scene/Scene-Files](../render/scene/Scene-Files.md) | not declared yet |
 | <a href="../images/render/import-light.png"><img src="../images/render/import-light.png" width="160" alt=""></a> | Albedo against the fitted bake | [render/scene/Scene-Files](../render/scene/Scene-Files.md) | not declared yet |
 | <a href="../images/render/import-mesh-contact.png"><img src="../images/render/import-mesh-contact.png" width="160" alt=""></a> | A pillar's contact with the floor under weld, lock and free | [render/offline/Mesh-Import](../render/offline/Mesh-Import.md) | not declared yet |
+| <a href="../images/render/lod-settings.png"><img src="../images/render/lod-settings.png" width="160" alt=""></a> | The hysteresis band and the coverage cap, from the default values | [render/Render-Settings](../render/Render-Settings.md) | not declared yet |
 | <a href="../images/render/meshlet-build.gif"><img src="figure-thumbnails/render/meshlet-build.gif" width="160" alt=""></a> | The clusterizer cutting a small flat patch into meshlets, one per step | [render/offline/Baked-Mesh](../render/offline/Baked-Mesh.md) | not declared yet |
 | <a href="../images/render/meshlets/meshlet-size-trade.png"><img src="../images/render/meshlets/meshlet-size-trade.png" width="160" alt=""></a> | Clusters and submitted triangles against the meshlet size | [render/offline/Baked-Mesh](../render/offline/Baked-Mesh.md) | not declared yet |
 | <a href="../images/render/meshlets/meshlet-sizes.png"><img src="../images/render/meshlets/meshlet-sizes.png" width="160" alt=""></a> | Frame cost by meshlet size | [render/offline/Baked-Mesh](../render/offline/Baked-Mesh.md) | not declared yet |

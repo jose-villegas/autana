@@ -181,7 +181,7 @@ open_context(void) {
     destination = malloc(sizeof(uint16_t) * W * H);
     TEST_ASSERT_NOT_NULL(context);
     TEST_ASSERT_NOT_NULL(destination);
-    context->scale_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT;
+    *context = RENDER_CONTEXT_DEFAULT;
     const resolution_step_t size = {W, H};
     const resolution_config_t ladder = resolution_config(&size, 1, 1, BUDGET_US);
     framegen_example(context, &ladder);

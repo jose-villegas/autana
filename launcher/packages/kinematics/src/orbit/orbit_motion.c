@@ -2,14 +2,11 @@
 #include "kinematics/follow/follow.h"
 #include "math/scalar/math_const.h"
 
+#include "math/scalar/mathf.h"
+
 #include <math.h>
 
 #pragma GCC diagnostic error "-Wdouble-promotion"
-
-static float
-clampf(float x, float lo, float hi) {
-    return x < lo ? lo : (x > hi ? hi : x);
-}
 
 /* The angle from b to a, the short way round. */
 static float
@@ -19,8 +16,8 @@ turn_between(float a, float b) {
 
 static orbit_motion_state_t
 clamp_state(orbit_motion_state_t s, const orbit_motion_limits_t* limits) {
-    s.pitch = clampf(s.pitch, limits->pitch_min, limits->pitch_max);
-    s.log_dist = clampf(s.log_dist, limits->log_dist_min, limits->log_dist_max);
+    s.pitch = mathf_clamp(s.pitch, limits->pitch_min, limits->pitch_max);
+    s.log_dist = mathf_clamp(s.log_dist, limits->log_dist_min, limits->log_dist_max);
     return s;
 }
 

@@ -14,8 +14,8 @@
 /* Bytes in one vector register: the alignment every PIE load and store needs. */
 #define SIMD_ALIGN 16
 
-/* 1 where the PIE kernels are built (the ESP32-S3 with CONFIG_SIMD_PIE), else 0. */
-#if defined(__XTENSA__) && defined(CONFIG_SIMD_PIE) && CONFIG_SIMD_PIE
+/* 1 for the ESP32-S3 target, board and QEMU alike; elsewhere 0. */
+#if defined(__XTENSA__) && defined(CONFIG_IDF_TARGET_ESP32S3) && CONFIG_IDF_TARGET_ESP32S3
 #define SIMD_PIE 1
 #else
 #define SIMD_PIE 0
