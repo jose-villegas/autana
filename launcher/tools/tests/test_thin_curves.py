@@ -84,6 +84,31 @@ class ThinCurvesTests(unittest.TestCase):
         shape = soup.concatenate([bar, wall])
         self.assertEqual(find_thin_parts(shape.vertices, shape.faces, SIDE), [])
 
+    def test_bar_on_a_wall_of_large_triangles_rests(self):
+        bar, wall = soup.box((4.5, 4.5, 310)), soup.box((4000, 1, 4000))
+        wall.vertices = wall.vertices + [0, 2.75, 0]
+        specks = [soup.box((0.5, 0.5, 0.5)) for _ in range(20)]
+        for k, speck in enumerate(specks):
+            speck.vertices = speck.vertices + [30 + k, -30, 0]
+        shape = soup.concatenate([bar, wall, *specks])
+        self.assertEqual(find_thin_parts(shape.vertices, shape.faces, SIDE), [])
+
+    def test_proximity_finds_what_a_full_search_finds(self):
+        from r3d.geometry import TriangleProximity, closest_point_on_triangles
+        rng = np.random.default_rng(3)
+        corners = rng.random((300, 3, 3)) * 100
+        corners[:5] *= 40
+        proximity = TriangleProximity(corners)
+        for point in rng.random((40, 3)) * 100:
+            _, distance = closest_point_on_triangles(np.broadcast_to(point, (len(corners), 3)), *corners.transpose(1, 0, 2))
+            np.testing.assert_array_equal(proximity.within(point, 6.0), np.flatnonzero(distance <= 6.0))
+
+    def test_bars_flush_with_each_other_rest(self):
+        left, right = soup.box((4.5, 4.5, 310)), soup.box((4.5, 4.5, 310))
+        right.vertices = right.vertices + [4.6, 0, 0]
+        shape = soup.concatenate([left, right])
+        self.assertEqual(find_thin_parts(shape.vertices, shape.faces, SIDE), [])
+
     def test_pole_off_a_wall_stands(self):
         pole, wall = soup.box((4.5, 4.5, 310)), soup.box((400, 1, 400))
         wall.vertices = wall.vertices + [0, 40, 0]
