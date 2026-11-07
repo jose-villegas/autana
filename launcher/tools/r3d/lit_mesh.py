@@ -100,7 +100,7 @@ def local_vertices(tris):
 
 
 def bake_lit_mesh(positions, rgb, tris, double, position_scale=POSITION_SCALE, leaf_triangles=LEAF_TRIANGLES,
-                  max_depth=MAX_DEPTH, meshlet_triangles=MESHLET_TRIANGLES, face_rgb=None):
+                  max_depth=MAX_DEPTH, meshlet_triangles=MESHLET_TRIANGLES, face_rgb=None, mask_uvs=None, mask_rows=None):
     """Bakes positions (model units), rgb (0..255 per vertex) and tris
     (counter-clockwise seen from the front, `double` one flag per triangle)
     into a SimpleNamespace holding pos, rgb, tris, clusters, nodes, the
@@ -115,10 +115,17 @@ def bake_lit_mesh(positions, rgb, tris, double, position_scale=POSITION_SCALE, l
     col = None if flat or rgb is None else np.clip(np.rint(rgb), 0, 255).astype(np.int64)
     face = np.clip(np.rint(face_rgb), 0, 255).astype(np.int64) if flat else None
     assert not flat or len(face) == len(tris), "a flat bake needs one face colour per triangle"
-    q, col, tris, double, face = weld_quantised(q, col, np.asarray(tris, dtype=np.int64), double, face)
+    if mask_uvs is not None:
+        channels = 0 if col is None else col.shape[1]
+        keys = np.asarray(mask_uvs) if col is None else np.column_stack([col, mask_uvs])
+        q, keys, tris, double, face = weld_quantised(q, keys, np.asarray(tris, dtype=np.int64), double, face)
+        col = keys[:, :channels] if channels else None
+        mask_uvs = keys[:, channels:]
+    else:
+        q, col, tris, double, face = weld_quantised(q, col, np.asarray(tris, dtype=np.int64), double, face)
     tris, double, face = canonical_order(tris, double, face)
     return assemble(q, col, meshlet_entries(q, tris, double, face, meshlet_triangles), position_scale,
-                    leaf_triangles, max_depth)
+                    leaf_triangles, max_depth, mask_uvs=mask_uvs, mask_rows=mask_rows)
 
 
 def meshlet_entries(q, tris, double, face, meshlet_triangles):
@@ -138,7 +145,8 @@ def meshlet_entries(q, tris, double, face, meshlet_triangles):
     return entries
 
 
-def assemble(q, col, entries, position_scale, leaf_triangles, max_depth, groups=None):
+def assemble(q, col, entries, position_scale, leaf_triangles, max_depth, groups=None,
+             mask_uvs=None, mask_rows=None):
     """The baked mesh of clusters cut by any means: an octree over their
     centres, each cluster owning its vertices, checked against the format.
     With `groups`, each entry's "own" and "parent" become the cluster's
@@ -162,6 +170,11 @@ def assemble(q, col, entries, position_scale, leaf_triangles, max_depth, groups=
     out = SimpleNamespace(position_scale=position_scale)
     ordered = [entries[i] for i in order]
     out.pos, out.rgb, out.tris, out.clusters, out.face_colors = lay_out(q, col, ordered)
+    if mask_uvs is not None:
+        out.masked = [True] * len(ordered)
+        out.mask_vertex_first = 0
+        out.mask_uvs = np.concatenate([mask_uvs[local_vertices(e["tris"])[0]] for e in ordered]).tolist()
+        out.mask_rows = mask_rows
     node_bounds(nodes, out.clusters)
     out.nodes = nodes
     out.lod = None if groups is None else [(e["own"], e["parent"]) for e in ordered]

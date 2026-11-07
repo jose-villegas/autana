@@ -266,9 +266,9 @@ def load_process(process, steps):
     steps.seed = integer(process["seed"], "process.seed") if steps.seed_given else 0
 
 
-def load_geometry(table, steps):
+def load_geometry(table, steps, directory=None):
     """The optional steps that decide which source triangles remain."""
-    check_keys(table, (), "geometry", optional=("alpha_mask", "thin", "simplify", "meshlet_triangles", "lod"))
+    check_keys(table, (), "geometry", optional=("alpha_mask", "cards", "thin", "simplify", "meshlet_triangles", "lod"))
     steps.meshlet_triangles = count(table.get("meshlet_triangles", MESHLET_TRIANGLES), "geometry.meshlet_triangles")
     steps.lod = boolean(table.get("lod", LOD), "geometry.lod")
     if not 4 <= steps.meshlet_triangles <= 256:
@@ -277,6 +277,31 @@ def load_geometry(table, steps):
         alpha_mask = table["alpha_mask"]
         check_keys(alpha_mask, ("keep_alpha",), "geometry.alpha_mask")
         steps.alpha_keep = number(alpha_mask["keep_alpha"], "geometry.alpha_mask.keep_alpha")
+    if "cards" in table:
+        from r3d.cards import CARD_EPSILON, CARD_AREA_COST
+
+        cards = table["cards"]
+        where = "geometry.cards"
+        check_keys(cards, ("material",), where, optional=("choice", "path", "epsilon", "area_cost"))
+        if steps.alpha_keep is None:
+            raise SettingsError("geometry.cards needs geometry.alpha_mask")
+        choice = text(cards.get("choice", "geometry"), f"{where}.choice")
+        if choice not in ("geometry", "path"):
+            raise SettingsError(f"{where}.choice must be geometry or path")
+        if choice == "path" and "path" not in cards:
+            raise SettingsError(f"{where}.path is required for choice path")
+        if choice == "geometry" and "path" in cards:
+            raise SettingsError(f"{where}.path needs choice path")
+        epsilon = number(cards.get("epsilon", CARD_EPSILON), f"{where}.epsilon")
+        cost = number(cards.get("area_cost", CARD_AREA_COST), f"{where}.area_cost")
+        if epsilon <= 0:
+            raise SettingsError(f"{where}.epsilon must be positive")
+        if cost < 0:
+            raise SettingsError(f"{where}.area_cost must be nonnegative")
+        steps.cards = SimpleNamespace(material=text(cards["material"], f"{where}.material"),
+                                      choice=choice, epsilon=epsilon, area_cost=cost)
+        if choice == "path":
+            steps.cards.path = (directory / text(cards["path"], f"{where}.path")).resolve()
     if "thin" in table:
         thin = table["thin"]
         check_keys(thin, ("material", "keep"), "geometry.thin")
@@ -395,9 +420,9 @@ def load_import_settings(path):
     check_keys(materials, (), "materials", optional=("double_sided",))
     steps = SimpleNamespace(seed=0, seed_given=False, alpha_keep=None, thin=None, simplify=None)
     load_process(values.get("process", {}), steps)
-    load_geometry(values.get("geometry", {}), steps)
-    if steps.seed_given and not steps.thin:
-        raise SettingsError("process.seed needs geometry.thin")
+    load_geometry(values.get("geometry", {}), steps, path.parent)
+    if steps.seed_given and not steps.thin and not hasattr(steps, "cards"):
+        raise SettingsError("process.seed needs geometry.thin or geometry.cards")
     if "variants" in values:
         variants = values["variants"]
         if not isinstance(variants, list) or not variants:
@@ -416,6 +441,11 @@ def load_import_settings(path):
             raise SettingsError("geometry.simplify needs variants, each with its triangles budget")
         variants = [SimpleNamespace(name=text(output.get("name"), "output.name"), triangles=None)]
     meshes = load_object_meshes(values.get("objects", {}))
+    if hasattr(steps, "cards"):
+        material = steps.cards.material
+        if steps.thin and steps.thin.material == material or any(
+                "material" in rule["match"] and fnmatchcase(material, rule["match"]["material"]) for rule in meshes):
+            raise SettingsError(f"material {material} is drawn by cards")
     if meshes and not steps.simplify:
         raise SettingsError("objects.meshes needs geometry.simplify")
     for index, rule in enumerate(meshes):
@@ -429,7 +459,8 @@ def load_import_settings(path):
         alpha_keep=steps.alpha_keep, thin=steps.thin, simplify=steps.simplify, named=("variants" in values),
         meshes=meshes,
         meshlet_triangles=steps.meshlet_triangles, lod=steps.lod,
-        variants=variants, skin_lighting=lighting)
+        variants=variants, skin_lighting=lighting,
+        **({"cards": steps.cards} if hasattr(steps, "cards") else {}))
 
 
 def source_files(settings):
@@ -437,14 +468,19 @@ def source_files(settings):
     from r3d.obj import TEXTURE_KEYS, load_mtl
 
     path = settings.source["path"]
-    if path.suffix.lower() in (*ASSET_SUFFIXES, BLEND_SUFFIX):
-        return [path]
-    material = path.with_suffix(".mtl")
-    files = {path, material}
-    for entry in load_mtl(material).values():
-        for name in TEXTURE_KEYS:
-            if name in entry:
-                files.add((path.parent / entry[name]).resolve())
+    files = {path}
+    if path.suffix.lower() not in (*ASSET_SUFFIXES, BLEND_SUFFIX):
+        material = path.with_suffix(".mtl")
+        files.add(material)
+        for entry in load_mtl(material).values():
+            for name in TEXTURE_KEYS:
+                if name in entry:
+                    files.add((path.parent / entry[name]).resolve())
+    cards = getattr(settings, "cards", None)
+    if cards is not None and cards.choice == "path":
+        from anim.tracks_asset import load_source
+
+        files.update((cards.path, load_source(cards.path)[0]))
     return sorted(files)
 
 

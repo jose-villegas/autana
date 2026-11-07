@@ -115,6 +115,7 @@ Every Geometry table opts its step in; without it the step does not run.
 | Option | Keys | What it does | Default | Cost (bake / frame) | Option link |
 |---|---|---|---|---|---|
 | `geometry.alpha_mask` | `keep_alpha` | Drops alpha-tested triangles that are mostly transparent. | Off. | Seconds / fewer triangles. | [alpha_mask](#alpha_mask) |
+| `geometry.cards` | `material`, `choice`, `path`, `epsilon`, `area_cost` | Replaces one alpha-masked material with a billboard cloud. | Off. | Offline selection and mask tracing / masked quads. | [cards](#cards) |
 | `geometry.thin` | `material`, `keep` | Keeps a share of one material's triangles. | Off. | None / fewer triangles. | [thin](#thin) |
 | `geometry.simplify` | `dense_edge`, `seal_seams`, `colour_deviation` | Splits long edges and simplifies each variant to its budget, colour steering the collapses; can seal seams. | Off. | Seconds / set by the budget. | [simplify](#simplify) |
 
@@ -126,7 +127,30 @@ what the simplifier keeps elsewhere, so not every difference is a card.
 
 ![alpha_mask off against on](../images/import-alpha-mask.png)
 
-#### thin
+#### cards
+
+`geometry.cards` draws one source material as double-sided masked quads.
+It requires `alpha_mask`; that material cannot also have `thin` or an
+`objects.meshes` rule. Cards bypass simplification and have no coarser LOD.
+
+The greedy billboard cloud follows Décoret et al. 2003, with an area cost,
+a per-card floor and a nonpositive-score stop.<sup>[[116]](../../Citations.md#decoret-2003)</sup>
+`geometry` weights projected surface area independently of the view.
+`path` also weights visible samples by projected size along a camera clip.
+
+| Key | Meaning | Default |
+|---|---|---|
+| `material` | Source material to replace. | Required. |
+| `choice` | `geometry` or `path`. | `geometry`. |
+| `path` | Camera `.anim.toml`, relative to this settings file; required only for `path`. | Absent. |
+| `epsilon` | Plane slab half-depth, in model units. | `5.0`, provisional. |
+| `area_cost` | Penalty per unit of card area. | `0.03`, provisional. |
+
+Long cards split before mask baking to bound affine UV error. Each mask
+uses the LMSK width on its long side, is alpha-tested with 2×2 sampling,
+and trims to its occupied bounds. Four quadrant albedos become lit corner colours.
+
+### thin
 
 `geometry.thin` retains a selected share of one material's triangles. It is
 for material whose geometry occupies more of the budget than it shows. The
