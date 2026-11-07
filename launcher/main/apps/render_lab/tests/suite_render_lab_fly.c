@@ -57,6 +57,10 @@ test_a_flight_crosses_its_scene_in_the_same_time_whatever_its_units(void) {
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/tests/render_lab_test.h"
 #include "math/scalar/units.h"
+#include "scene/animator/animator.h"
+#include "scene/camera/camera.h"
+#include "scene/scene.h"
+#include "scene/transform/transform.h"
 #include "testkit/cleanup.h"
 
 #define FLY_TOLERANCE 1.0E-3F
@@ -97,33 +101,28 @@ frames(int count) {
     }
 }
 
-static scene_t*
-drawn_scene(scene_entity_t* camera) {
-    scene_t* scene;
-    TEST_ASSERT_TRUE(scene_active_camera(&scene, camera));
-    return scene;
+static entity_t
+drawn_camera(void) {
+    const entity_t camera = camera_active();
+    TEST_ASSERT_FALSE(handle_is_none(camera));
+    return camera;
 }
 
 static transformf_t
 camera_now(void) {
-    scene_entity_t camera;
-    scene_t* scene = drawn_scene(&camera);
-    return scene_entity_world(scene, camera);
+    return transform_world(drawn_camera());
 }
 
 static bool
 clip_paused(void) {
-    scene_entity_t camera;
-    scene_t* scene = drawn_scene(&camera);
-    return scene_animator_paused(scene, camera, SCENE_ANIMATOR_CURRENT);
+    return animator_paused(drawn_camera(), ANIMATOR_CURRENT);
 }
 
 /* How far one fixture frame flies at the start speed. */
 static float
 stride(void) {
-    scene_entity_t camera;
-    scene_t* scene = drawn_scene(&camera);
-    return render_lab_fly_start_speed(scene_bounds(scene)) * (float)RENDER_LAB_TEST_FRAME_MS / (float)MATH_MS_PER_S;
+    return render_lab_fly_start_speed(scene_bounds(drawn_camera())) * (float)RENDER_LAB_TEST_FRAME_MS
+           / (float)MATH_MS_PER_S;
 }
 
 static float

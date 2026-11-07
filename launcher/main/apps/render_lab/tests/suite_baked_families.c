@@ -8,23 +8,24 @@
 #include "app/app_arena.h"
 #include "apps/render_lab/baked_families.h"
 #include "apps/render_lab/sponza_content.h"
+#include "scene/renderer/renderer.h"
 #include "scene/scene.h"
 
 static void
 test_every_family_places_each_variant_and_its_camera(void) {
     for (int f = 0; f < BAKED_FAMILY_COUNT; f++) {
         const scene_baked_t* family = baked_families[f];
-        scene_failure_t why;
         const size_t mark = app_arena_mark();
-        scene_t* scene = scene_load(family->scene, &why);
-        TEST_ASSERT_NOT_NULL_MESSAGE(scene, family->scene);
+        entity_t scene = scene_load(family->scene);
+        TEST_ASSERT_FALSE_MESSAGE(handle_is_none(scene), family->scene);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(PENDING_READY, scene_state(scene), family->scene);
         for (int v = 0; v < (int)SCENE_BAKED_VARIANT_COUNT; v++) {
-            const scene_entity_t bake = scene_find(scene, name_hash(family->bakes[v]));
-            TEST_ASSERT_NOT_EQUAL_MESSAGE(SCENE_ENTITY_NONE, bake, family->bakes[v]);
-            TEST_ASSERT_NOT_NULL_MESSAGE(scene_entity_mesh(scene, bake), family->bakes[v]);
+            const entity_t bake = entity_find(scene, name_hash(family->bakes[v]));
+            TEST_ASSERT_FALSE_MESSAGE(handle_is_none(bake), family->bakes[v]);
+            TEST_ASSERT_NOT_NULL_MESSAGE(renderer_mesh(bake), family->bakes[v]);
         }
-        TEST_ASSERT_NOT_EQUAL_MESSAGE(SCENE_ENTITY_NONE, scene_find(scene, name_hash(family->camera)), family->camera);
-        scene_unload(scene);
+        TEST_ASSERT_FALSE_MESSAGE(handle_is_none(entity_find(scene, name_hash(family->camera))), family->camera);
+        scene_release(scene);
         app_arena_rewind(mark);
     }
 }
