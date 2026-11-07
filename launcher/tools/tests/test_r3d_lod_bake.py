@@ -2,7 +2,6 @@
 the groups keep the format's ordering after rounding to ticks, coarse vertices only move outward, and the
 engine frame mirrors the group records."""
 
-import math
 import pathlib
 import sys
 import tempfile
@@ -187,7 +186,7 @@ class DevicePickTest(unittest.TestCase):
         for distance in EYES:
             eye = middle + direction * distance * extent
             _, drawn = pick.device_pick(mesh.lod, mesh.groups, lens_rows(eye, middle, model, SHIFT),
-                                        (FOCAL_PX, FOCAL_PX), NEAR, HEIGHT_PX, coverage_max=math.inf)
+                                        (FOCAL_PX, FOCAL_PX), NEAR, HEIGHT_PX, coverage_permille=pick.UNCAPPED)
             expected, near = reference_drawn(mesh.lod, mesh.groups, eye, model, SHIFT, tau)
             np.testing.assert_array_equal(expected[~near], drawn[~near])
             seen.update(np.flatnonzero(drawn).tolist())

@@ -14,13 +14,14 @@
 void
 pick_host(const r3d_lit_cluster_lod_t* cluster_lod, int clusters, const r3d_lit_lod_group_t* groups, int group_count,
           const float* rows, float focal_x, float focal_y, float near_z, int height, float tolerance_px,
-          float coverage_max, uint32_t* coarse, uint8_t* drawn) {
+          float hysteresis_px, int coverage_permille, uint32_t* coarse, uint8_t* drawn) {
     const r3d_lit_mesh_t mesh = {
         .cluster_count = clusters, .cluster_lod = cluster_lod, .lod_groups = groups, .lod_group_count = group_count};
     r3d_lens_t lens = {.focal_x = focal_x, .focal_y = focal_y, .height = height};
     memcpy(lens.m.m, rows, sizeof lens.m.m);
     lens.project.near_z = near_z;
-    r3d_lod_pick(&mesh, &lens, tolerance_px, coverage_max, coarse);
+    const render_lod_settings_t lod = {tolerance_px, hysteresis_px, coverage_permille};
+    r3d_lod_pick(&mesh, &lens, &lod, coarse);
     for (int c = 0; c < clusters; c++) {
         drawn[c] = r3d_lod_drawn(&mesh, c, coarse) ? 1U : 0U;
     }

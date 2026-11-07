@@ -16,7 +16,7 @@ flowchart LR
     Asset["the app's pack: entry render<br/>set by the shell at start"] --> Settings
     App["app<br/>render_context_set_settings()"] --> Settings["the context's settings<br/>render_context_settings() reads them back"]
     Settings --> Pick{"knob set?<br/>development builds only"}
-    Knob["TUNE render.cull,<br/>render.depth_fit, render.batched"] -->|SET| Pick
+    Knob["TUNE render.cull, render.depth_fit,<br/>render.batched, render.lod_coverage_permille"] -->|SET| Pick
     Knob -->|RESET| Unset["unset"]
     Unset --> Pick
     Pick -->|"no"| Frame["the frame draws with<br/>raster_settings()"]
@@ -29,7 +29,8 @@ drawn without a context uses `RENDER_SETTINGS_DEFAULT`.
 ## The settings
 
 Basic settings are for any app to weigh. Advanced ones need the renderer's
-workings to judge. Every default is on.
+workings to judge. A member of a struct field is named `field.member`, and its key sits under
+that field's table in the asset.
 
 <!-- generated: render-settings check: python launcher/tools/render/settings/settings_table.py --check -->
 | Field | Default | Tier | What it trades |
@@ -37,6 +38,9 @@ workings to judge. Every default is on.
 | `cull` | `true` | basic | skips clusters and world boxes outside the picture |
 | `depth_fit` | `true` | advanced | depth steps go where the kept scene is, not to near_z; needs cull |
 | `batched` | `true` | advanced | one transform and one draw fork/join a batch, not an instance |
+| `lod.tolerance_px` | `2.0` | basic | the projected error a group may have and still draw coarse; more saves, pops more |
+| `lod.hysteresis_px` | `0.5` | advanced | how far past the tolerance a coarse group's error goes before it turns fine |
+| `lod.coverage_permille` | `250` | basic | the thousandths of the picture's height a coarse group may span; smaller pops less |
 <!-- /generated: render-settings -->
 
 ## cull
@@ -104,9 +108,23 @@ off ([the captures](data/batched-board.log)):
 
 Off is only for measuring.
 
+## lod
+
+The [LOD pick](../plans/Cluster-LOD.md), once a frame per instance, draws a group's coarser
+level when its projected error is within `tolerance_px` and its radius spans at most
+`coverage_permille` thousandths of the picture's height.
+
+A coarse group turns fine only once its error passes the tolerance by `hysteresis_px`, and a
+fine one turns coarse only once it is that far under, so a still camera never flickers:
+
+![The hysteresis band and the coverage cap, from the default values](../images/render/lod-settings.png)
+
+These change which clusters draw, so they change pixels. A larger tolerance saves triangles and
+pops more; [Cluster-LOD.md](../plans/Cluster-LOD.md) scores each coverage cap.
+
 ## The render asset
 
-Settings are authored in a `NAME.render.toml`, one key per field. The engine's
+Settings are authored in a `NAME.render.toml`, one key per field, a struct field's under its own table. The engine's
 is [`default.render.toml`](../../launcher/main/render/settings/default.render.toml),
 and `RENDER_SETTINGS_DEFAULT` is generated from it
 ([`render_asset.py`](../../launcher/tools/render/settings/render_asset.py)).
@@ -114,8 +132,11 @@ Any other file lists only the values it changes; the rest come from the
 default. A key that is no field, or a value of another type, fails the build.
 
 ```toml
-# fast.render.toml: the default, but drawn one instance at a time
+# fast.render.toml: the default, but drawn one instance at a time and a coarser LOD
 batched = false
+
+[lod]
+tolerance_px = 3.0
 ```
 
 An app's `.pack.toml` names one with `render = "PATH"`, relative to itself
@@ -135,7 +156,8 @@ flowchart LR
 ```
 
 The entry is a [TABL v1](../assets/formats/TABL.md) table with one row per
-`render_settings_t` field, named by it, one column and `frac` 0:
+`render_settings_t` field, named by it, one column and `frac` `RENDER_SETTINGS_FRAC_BITS` (4): a value is a multiple of 1/16, so a
+`bool` is 0 or 16:
 
 ```mermaid
 ---
@@ -149,7 +171,7 @@ title Header, 8 bytes at 0, one cell a byte
 0-1: "version = 1"
 2-3: "rows = fields"
 4-5: "columns = 1"
-6: "frac = 0"
+6: "frac = 4"
 7: "0"
 ```
 
@@ -174,6 +196,6 @@ title A row, 26 bytes from byte 8, one cell a byte
 | Rule | Detail |
 |---|---|
 | Owners | `RENDER_SETTINGS_ENTRY` and the fields in `render_settings.h`; the table layout in `asset_table_format.h` |
-| Rows | exactly one per `render_settings_t` field, named by it; a `bool` is written as 0 or 1, and the reader takes any nonzero value as true |
-| Errors | `render_settings_read()`: `ASSET_ERR_NOT_FOUND` without the entry; `ASSET_ERR_FORMAT` for another row count, a missing field, more than one column or a nonzero `frac`; TABL's own errors. `out` is written only on `ASSET_OK` |
+| Rows | exactly one per `render_settings_t` field, named `field` or `struct.member`; the reader takes any nonzero `bool` as true |
+| Errors | `render_settings_read()`: `ASSET_ERR_NOT_FOUND` without the entry; `ASSET_ERR_FORMAT` for another row count, a missing field, more than one column or a `frac` other than 4; TABL's own errors. `out` is written only on `ASSET_OK` |
 | Failure at start | a pack without the entry starts the app with `RENDER_SETTINGS_DEFAULT`; any other read failure is logged and does the same |
