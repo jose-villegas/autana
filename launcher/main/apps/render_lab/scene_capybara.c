@@ -128,14 +128,8 @@ scene_capybara_enter(const render_lab_scene_t* self) {
     (void)self;
     draw_clear(RGB565BE(UI_BACKGROUND));
     failure[0] = '\0';
-    scene_failure_t why = {.status = SCENE_ERR_FULL}; /* what scene_load() leaves when it returns no root */
-    capybara = scene_load(CAPYBARA_SCENE);
-    if (scene_state(capybara) != PENDING_READY) {
-        (void)scene_failure(capybara, &why);
-        scene_release(capybara);
-        capybara = ENTITY_NONE;
-        fail(why.asset == ASSET_ERR_NOT_FOUND || why.asset == ASSET_ERR_NO_PACK ? "no capybara pack: flash it"
-                                                                                : "capybara did not load");
+    capybara = render_lab_scene_load(TAG, failure, sizeof failure, CAPYBARA_SCENE, "capybara");
+    if (handle_is_none(capybara)) {
         return;
     }
     if (!frame_subject()) {

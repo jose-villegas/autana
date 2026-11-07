@@ -62,6 +62,11 @@ typedef struct render_lab_scene {
  * `failure` (`size` bytes) for the status line, in place of its stats. */
 void render_lab_scene_fail(const char* tag, char* failure, size_t size, const char* what);
 
+/* Loads the scene `id` and returns its READY root. Otherwise releases it,
+ * fails as render_lab_scene_fail() with "no <label> pack: flash it" or
+ * "<label> did not load", and returns ENTITY_NONE. */
+entity_t render_lab_scene_load(const char* tag, char* failure, size_t size, const char* id, const char* label);
+
 /* `bytes` from the app arena, which render_lab rewinds when the scene goes; NULL when it is spent. */
 void* render_lab_scene_take(size_t bytes);
 

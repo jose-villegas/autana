@@ -140,14 +140,8 @@ apply_settings(void) {
 
 static bool
 load(void) {
-    scene_failure_t why = {.status = SCENE_ERR_FULL}; /* what scene_load() leaves when it returns no root */
-    loaded = scene_load(STRESS_SCENE);
-    if (scene_state(loaded) != PENDING_READY) {
-        (void)scene_failure(loaded, &why);
-        scene_release(loaded);
-        loaded = ENTITY_NONE;
-        fail(why.asset == ASSET_ERR_NOT_FOUND || why.asset == ASSET_ERR_NO_PACK ? "no stress pack: flash it"
-                                                                                : "stress did not load");
+    loaded = render_lab_scene_load(TAG, failure, sizeof failure, STRESS_SCENE, "stress");
+    if (handle_is_none(loaded)) {
         return false;
     }
     camera = entity_find(loaded, name_hash(STRESS_CAMERA));

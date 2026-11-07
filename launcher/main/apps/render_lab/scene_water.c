@@ -616,14 +616,8 @@ scene_water_enter(const render_lab_scene_t* self) {
     draw_clear(RGB565BE(UI_BACKGROUND));
     failure[0] = '\0';
     box = (vec3f_t){BOARD_SCREEN_WIDTH_MM, BOARD_SCREEN_HEIGHT_MM, WATER_TANK_DEPTH_MM};
-    scene_failure_t why = {.status = SCENE_ERR_FULL}; /* what scene_load() leaves when it returns no root */
-    tank_scene = scene_load(WATER_SCENE);
-    if (scene_state(tank_scene) != PENDING_READY) {
-        (void)scene_failure(tank_scene, &why);
-        scene_release(tank_scene);
-        tank_scene = ENTITY_NONE;
-        fail(why.asset == ASSET_ERR_NOT_FOUND || why.asset == ASSET_ERR_NO_PACK ? "no water pack: flash it"
-                                                                                : "water did not load");
+    tank_scene = render_lab_scene_load(TAG, failure, sizeof failure, WATER_SCENE, "water");
+    if (handle_is_none(tank_scene)) {
         return;
     }
     camera_entity = entity_find(tank_scene, name_hash(WATER_CAMERA));

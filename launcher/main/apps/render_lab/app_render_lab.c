@@ -532,6 +532,30 @@ render_lab_scene_fail(const char* tag, char* failure, size_t size, const char* w
     }
 }
 
+/* Its own frame, so the reason is not on the stack while the scene loads. */
+static __attribute__((noinline)) void
+fail_load(const char* tag, char* failure, size_t size, entity_t root, const char* label) {
+    scene_failure_t why = {.status = SCENE_ERR_FULL}; /* what scene_load() leaves when it returns no root */
+    (void)scene_failure(root, &why);
+    scene_release(root);
+    const bool missing = why.asset == ASSET_ERR_NOT_FOUND || why.asset == ASSET_ERR_NO_PACK;
+    char what[RENDER_LAB_STATUS_LEN];
+    if (snprintf(what, sizeof what, missing ? "no %s pack: flash it" : "%s did not load", label) < 0) {
+        what[0] = '\0';
+    }
+    render_lab_scene_fail(tag, failure, size, what);
+}
+
+entity_t
+render_lab_scene_load(const char* tag, char* failure, size_t size, const char* id, const char* label) {
+    const entity_t root = scene_load(id);
+    if (scene_state(root) == PENDING_READY) {
+        return root;
+    }
+    fail_load(tag, failure, size, root, label);
+    return ENTITY_NONE;
+}
+
 void*
 render_lab_scene_take(size_t bytes) {
     return app_arena_take(bytes, _Alignof(max_align_t));
