@@ -253,7 +253,7 @@ def sweep_main(argv):
 
         work = point_dir / "work"
         mesh = fit(scene_path, scene, job, work, budget=point["budget"], cost_weight=point["cost_weight"],
-                   smoke=args.smoke, target=point_dir / f"{variant.name}.mesh", inputs=reference_work)
+                   smoke=args.smoke, target=point_dir / f"{variant.name}.bundle", inputs=reference_work)
         mean, p95 = held_out_score(job, mesh, work, host, inputs=reference_work, scene=scene_path)
         from r3d.cost_model import load, mesh_rows, predict
         from r3d.lit_mesh import finest_triangles, read_lit_mesh

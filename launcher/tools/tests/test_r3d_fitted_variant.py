@@ -46,12 +46,12 @@ class WriteBakedTests(unittest.TestCase):
         geometry = SimpleNamespace(positions=positions, rgb=np.full((4, 3), 100), tris=np.array([[0, 1, 2], [0, 2, 3]]),
                                    tri_double=np.zeros(2, dtype=int), scale={"position_scale": 8})
         job = SimpleNamespace(renderer=SimpleNamespace(face_samples=face_samples),
-                              settings=SimpleNamespace(meshlet_triangles=MESHLET_TRIANGLES))
+                              settings=SimpleNamespace(meshlet_triangles=MESHLET_TRIANGLES, lod=False))
         faces = np.array([[255.0, 0.0, 0.0], [0.0, 0.0, 255.0]])
         with tempfile.TemporaryDirectory() as directory, \
                 unittest.mock.patch.object(mesh_import, "flat_colours", return_value=faces) as lit:
             mesh_import.write_baked(job, None, pathlib.Path(directory), "card", geometry)
-            back = read_lit_mesh(pathlib.Path(directory) / "card.mesh")
+            back = read_lit_mesh(pathlib.Path(directory) / "card.bundle")
         return back, lit
 
     def test_a_flat_renderer_writes_a_flat_mesh(self):
@@ -160,11 +160,11 @@ class SweepTests(unittest.TestCase):
             with mock.patch.object(bake_fidelity, "score", return_value=(1, 2)) as score, \
                     mock.patch.object(bake_fidelity, "pack_bytes", return_value={}) as pack, \
                     mock.patch.object(bake_fidelity, "write_packs"):
-                fitted_variant.held_out_score(job, pathlib.Path("scratch.mesh"), work, work / "host", scene)
+                fitted_variant.held_out_score(job, pathlib.Path("scratch.bundle"), work, work / "host", scene)
         fields = score.call_args.args[0].render_args.split()
         self.assertEqual(fields[fields.index("--scene") + 1], "gallery")
         self.assertEqual(fields[fields.index("--object") + 1], "painting")
-        pack.assert_called_once_with([scene], ["gallery.paint=scratch.mesh"])
+        pack.assert_called_once_with([scene], ["gallery.paint=scratch.bundle"])
 
     def test_sweep_builds_the_scene_viewer_with_the_input_scene(self):
         from r3d import bake_fidelity, cost_model
@@ -182,7 +182,7 @@ class SweepTests(unittest.TestCase):
                 mock.patch.object(fitted_variant, "placed_variant", return_value=job), \
                 mock.patch.object(fitted_variant, "sweep_references"), \
                 mock.patch.object(fitted_variant, "run_sweep_points", side_effect=run_points), \
-                mock.patch.object(stage, "fit", return_value=pathlib.Path("scratch.mesh")), \
+                mock.patch.object(stage, "fit", return_value=pathlib.Path("scratch.bundle")), \
                 mock.patch.object(fitted_variant, "held_out_score", return_value=(1, 2)), \
                 mock.patch.object(fitted_variant, "plot_pareto"), mock.patch.object(fitted_variant, "sweep_rows", return_value=[]), \
                 mock.patch.object(bake_fidelity, "build_host", return_value=pathlib.Path("host")) as build, \
@@ -198,7 +198,7 @@ class SweepTests(unittest.TestCase):
     def test_fit_point_default_target_and_recipe_arguments(self):
         with tempfile.TemporaryDirectory() as directory:
             point_dir = pathlib.Path(directory) / "budget-42-cost-0.5"
-            target = point_dir.parent / (point_dir.name + ".mesh")
+            target = point_dir.parent / (point_dir.name + ".bundle")
             scene_path, scene, job, inputs = "scene.toml", object(), object(), pathlib.Path(directory) / "inputs"
             with unittest.mock.patch.object(stage, "fit", return_value=target) as fit:
                 result = stage.fit_point(
@@ -242,7 +242,7 @@ class SweepTests(unittest.TestCase):
             (work / "held_out.txt").write_text(poses_text(2, 3, 0.5, 1.0, [[0, 0, 0, 0, 0, -1], [1, 0, 0, 0, 0, -1]]))
             job = SimpleNamespace(asset_name="tiny.fitted", object=SimpleNamespace(name="fitted"), renderer=SimpleNamespace(
                 variant=SimpleNamespace(name="tiny_fitted"), fit=SimpleNamespace(held_out_every_ms=5)))
-            meshes = [work / name for name in ("source.mesh", "first.mesh", "second.mesh")]
+            meshes = [work / name for name in ("source.bundle", "first.bundle", "second.bundle")]
             for value, mesh in enumerate(meshes):
                 mesh.write_text(str(value))
             for pose in (1, 2):
@@ -310,8 +310,11 @@ class SweepTests(unittest.TestCase):
                          ["reference", "reference_landscape", "reference_held_out"])
 
     def test_a_fit_copies_the_mesh_the_fitter_wrote_under_its_start_files_name(self):
-        """A start is `<entry>.start.mesh`, not the variant's name; the fitter writes out/<start's name>."""
-        start_name, fitted_bytes = "entry.start.mesh", b"LMSH fitted"
+        """A fit writes its rest mesh under the prepared start file name."""
+        from r3d import mesh_bundle, mesh_asset
+        from test_engine_frame import mesh_entry
+        start_name = "entry.start.bundle"
+        fitted_bytes = mesh_bundle.encode([("scene.entry", mesh_asset.TYPE, mesh_entry())], [])
 
         def fitter(command):
             out = pathlib.Path(command[command.index("--out") + 1])
@@ -327,7 +330,8 @@ class SweepTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory) / "work"
             work.mkdir()
-            target = work / "target.mesh"
+            target = work / "target.bundle"
+            (work / start_name).write_bytes(fitted_bytes)
             with unittest.mock.patch.dict(sys.modules, {"r3d.appearance_simplify": SimpleNamespace(main=fitter)}):
                 stage.fit("scene.toml", None, job, work, target=target, inputs=work, start=work / start_name)
             self.assertEqual(target.read_bytes(), fitted_bytes)

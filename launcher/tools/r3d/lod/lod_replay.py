@@ -24,14 +24,13 @@ import argparse
 import csv
 import pathlib
 import sys
-import tempfile
 
 import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from docs import plot_style  # noqa: E402
-from r3d import mesh_bundle  # noqa: E402
+from r3d import mesh_bundle, lod_asset  # noqa: E402
 from r3d.appearance_simplify import projection  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402
 from r3d.lit_mesh import read_lit_mesh  # noqa: E402
@@ -48,12 +47,11 @@ DEFAULT_EVERY_MS = 100
 DEFAULT_BUDGET_SHARES = (0.5, 0.75)
 
 
-def mesh_levels(blob):
+def mesh_levels(blob, levels=None):
     """The levels of an LMSH entry, in its model units, at its own median cluster size."""
-    with tempfile.TemporaryDirectory() as folder:
-        path = pathlib.Path(folder) / "mesh"
-        path.write_bytes(blob)
-        mesh = read_lit_mesh(path)
+    from r3d.lit_mesh import finest_triangles
+    mesh = read_lit_mesh(blob, levels)
+    mesh.pos, _, mesh.tris, _, _ = finest_triangles(mesh)
     ticks, triangles = weld_keeping(mesh.pos, mesh.tris, tolerance=1)
     return build_levels(ticks / float(mesh.position_scale), triangles, int(np.median([c[3] for c in mesh.clusters])))
 
@@ -62,7 +60,7 @@ def placements(bundle, rest_name, matrix, position):
     """Every placed mesh of a fit bundle; each copy shape's levels are built once."""
     entries, rows = mesh_bundle.decode(pathlib.Path(bundle).read_bytes())
     data = {name: blob for name, _kind, blob in entries}
-    shapes = {name: mesh_levels(data[name]) for name in [rest_name, *dict.fromkeys(row["mesh"] for row in rows)]}
+    shapes = {name: mesh_levels(data[name], data.get(lod_asset.name_for_mesh(name))) for name in [rest_name, *dict.fromkeys(row["mesh"] for row in rows)]}
     return placed_meshes(shapes, rows, rest_name, matrix, position)
 
 
