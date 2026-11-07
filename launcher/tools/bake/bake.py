@@ -965,6 +965,18 @@ def seed(found, cache, lock=None, made=None):
     return rows
 
 
+
+def seed_chain(paths, starts, poses, cache, lock=None, made=None):
+    """seed() in rounds: a fit's key names its start's bytes and a levels bake's its fit's, so each round's
+    rows key the next. Fails as seed() does once a round keys nothing new."""
+    while True:
+        found = bakes(paths, starts, poses)
+        rows = seed([bake for bake in found if bake.key is not None], cache, lock, made)
+        keyed = {row["key"]: row["sha256"] for row in rows}
+        if all(bake.key is not None for bake in found) or keyed.keys() <= starts.keys():
+            return seed(found, cache, lock, made)
+        starts = {**starts, **keyed}
+
 def from_run(row, suffix, cache):
     """(the locked file from the CI run that made it, before main publishes it, or None; why not)."""
     from bake import produce
@@ -1323,7 +1335,7 @@ def main(argv=None):
         elif args.command == "lock":
             mesh_cpu_vendor = runs_mesh_cpu_vendor(found, lock, made, tables.get("mesh_cpu_vendor"))
             if args.seed:
-                rows = seed(found, cache, lock, made)
+                rows = seed_chain(paths, starts, poses, cache, lock, made)
             else:
                 # A fit waits for its start's row: what is made locks now, and the rest is named.
                 missing = []
