@@ -18,6 +18,7 @@ from seed_statistics import t_quantile
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO / "scripts/lib"))
 sys.path.insert(0, str(REPO / "launcher/tools/render"))
+sys.path.insert(0, str(REPO / "launcher/tools/build"))
 from doc_tables import table_rows  # noqa: E402
 from process_tree import stop_process_tree, launch_process_tree, close_process_tree, terminate_unwinds  # noqa: E402
 from device_capture import RESULT_RE, BUILD_ID_RE as BUILD_LINE  # noqa: E402

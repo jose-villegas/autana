@@ -32,7 +32,7 @@ flowchart LR
 | Stage | Test | Unit | Where | Saves |
 |---|---|---|---|---|
 | Visibility | no ray from the camera region or path reaches it | triangle | the importer, offline ([visibility](../scene/Scene-Files.md#visibility-camera_region)) | flash and every stage below |
-| Instance | its world box, then its root node's box, is outside a frustum plane | instance, each copy under its own model | `cull_instances()` in [raster.c](../../../launcher/main/render/raster.c), then `r3d_pipeline_cull()` from the root | the whole mesh; with the world box, its lens and its walk too |
+| Instance | its world box, then its root node's box, is outside a frustum plane | instance, each copy under its own model | `cull_instances()` in [raster.c](../../../launcher/main/render/raster.c), then `r3d_pipeline_cull()` from the root | the whole mesh; with the world box, its lens, its level pick and its walk too |
 | Node | its box is outside a plane its parent's box crossed | node of the cluster tree | `r3d_pipeline_cull()` | its subtree |
 | Cluster | its box is outside a plane its leaf's box crossed | cluster | `r3d_pipeline_cull()` | its vertices' transform and its triangles |
 | Rows | its transformed vertices span no row of this core's half | cluster, per core | `r3d_pipeline_draw()` | its triangles on that core |

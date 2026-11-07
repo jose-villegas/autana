@@ -1403,6 +1403,16 @@ class LockTests(unittest.TestCase):
         with self.assertRaisesRegex(bake.BakeMissing, "(?s)two.bundle.*is not locked"):
             bake.seed([self.waiting_fit()], self.cache, {"j" * 64: {**self.row, "output": "two.bundle", "key": "j" * 64}})
 
+    def test_a_seed_round_locks_the_start_and_keeps_the_waiting_fits_old_row(self):
+        start = bake_of("k" * 64, self.tree)
+        old_fit = {**self.row, "output": "two.bundle", "key": "j" * 64}
+        missing = []
+        rows = bake.seed([start, self.waiting_fit()], self.cache, {"j" * 64: old_fit},
+                         {"k" * 64: {**self.row, "run": 9}}, missing)
+        self.assertEqual([row["key"] for row in rows], ["k" * 64, "j" * 64])
+        self.assertEqual(len(missing), 1)
+        self.assertIn("two.bundle", missing[0])
+
     def test_a_fits_start_takes_the_locked_bytes_over_a_runs(self):
         made = {"k" * 64: {**self.row, "sha256": "f" * 64}}
         self.assertEqual(bake.locked_starts({"k" * 64: self.row}, made), {"k" * 64: self.row["sha256"]})

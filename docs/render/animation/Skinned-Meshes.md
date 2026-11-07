@@ -77,34 +77,36 @@ app's own functions:
 <!-- generated: scene-animator-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* Animator: find an entity at load and blend to a selected clip. */
+#include "scene/animator/animator.h"
+#include "scene/camera/camera.h"
 #include "scene/scene.h"
 
 #define BLEND_MS 250
 
-static scene_t* scene;
-static scene_entity_t subject;
+static entity_t scene;
+static entity_t subject;
 
 static void
 start(void) {
-    scene = scene_load("meadow", NULL);
-    subject = scene_find(scene, name_hash("subject"));
-    scene_activate(scene, SCENE_CAMERA_FIRST);
+    scene = scene_load("meadow");
+    subject = entity_find(scene, name_hash("subject"));
+    camera_activate(camera_first(scene));
 }
 
 static bool
 on_pick(int clip) {
-    return scene_animator_play(scene, subject, clip, BLEND_MS);
+    return animator_play(subject, clip, BLEND_MS);
 }
 ```
 <!-- /generated: scene-animator-example -->
 
 | Call | Does |
 |---|---|
-| `scene_animator_play(scene, entity, clip, blend_ms)` | Plays a clip, blending from the shown pose over `blend_ms` (0 cuts). |
-| `scene_animator_clip_count()` / `_clip_name()` / `_clip_duration_ms()` | Lists the attached clips, for a picker. |
-| `scene_animator_set_speed()` / `_set_paused()` / `_seek()` | Controls one playback slot. |
-| `scene_animator_set_clips()` / `scene_renderer_set_skin()` | Attach clips or a skin by asset id at run time, when the scene file has no rows for them. |
-| `scene_light_set_color()` / `_set_intensity()` | Attach or change a directional light; runtime lights shade skinned renderers only; mesh renderers keep their bake. |
+| `animator_play(entity, clip, blend_ms)` | Plays a clip, blending from the shown pose over `blend_ms` (0 cuts). |
+| `animator_clip_count()` / `_clip_name()` / `_clip_duration_ms()` | Lists the attached clips, for a picker. |
+| `animator_set_speed()` / `_set_paused()` / `_seek()` | Controls one playback slot. |
+| `animator_set_clips()` / `renderer_set_skin()` | Attach clips or a skin by asset id at run time, when the scene file has no rows for them. |
+| `light_set_color()` / `_set_intensity()` | Attach or change a directional light; runtime lights shade skinned renderers only; mesh renderers keep their bake. |
 
 ## 4. Budget
 

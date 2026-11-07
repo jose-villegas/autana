@@ -227,6 +227,8 @@ class AcquisitionTest(ShellJobTests, unittest.TestCase):
                                     for row in payload['rows'].values()))
                 seeds = [item['seed'] for item in payload['plan']]
                 self.assertEqual(len(seeds), len(set(seeds)))
+                flashed = [int(call[call.index('--layout-seed')+1]) for call in fake.calls if '--flash' in call]
+                self.assertTrue(flashed and all(1 <= seed <= tool.LAYOUT_SEED_MAX for seed in flashed), flashed)
                 self.assertTrue(all(set(item['side'] for item in payload['plan'][i:i+2]) == {'a', 'b'}
                                     for i in range(0, len(seeds), 2)))
                 self.assertIn('Delta insn %', summary)
@@ -239,6 +241,12 @@ class AcquisitionTest(ShellJobTests, unittest.TestCase):
                     with contextlib.redirect_stdout(io.StringIO()):
                         aa = tool.measure(args, FakeAutana(root))
                     self.assertEqual([item['seed'] for item in aa['plan']], seeds)
+
+    def test_a_seed_cap_past_half_the_seed_range_is_refused(self):
+        half = tool.LAYOUT_SEED_MAX // 2
+        self.assertEqual(tool.schedule(half, tool.DEFAULT_ALPHA)[-1], half)
+        with self.assertRaises(ValueError):
+            tool.schedule(half + 1, tool.DEFAULT_ALPHA)
 
     def test_compare_estimate_covers_first_pass(self):
         with tempfile.TemporaryDirectory() as root:
