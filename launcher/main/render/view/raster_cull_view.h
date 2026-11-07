@@ -6,7 +6,7 @@
  *
  * Seen from the camera only drawn clusters show, so the view can draw a
  * second time from a spectator, above the scene or behind the camera, and
- * paint the camera's fates there, every cluster drawn. Its overlay draws one
+ * paint the camera's fates there, every cluster the levels drew. Its overlay draws one
  * tree level's node boxes and, from a spectator, the camera's frustum.
  *
  * Tunables: cullview.from (raster_cull_from_t), cullview.paint

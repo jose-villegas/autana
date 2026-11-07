@@ -55,8 +55,8 @@ static const unsigned FATE_KEEP[RASTER_FATE_COUNT] = {
 
 #define BITS           (sizeof(uint32_t) * CHAR_BIT)
 
-/* Each instance's drawn clusters into s->drawn, as the levels the frame
- * picked draw them, and how many clusters and triangles that is. */
+/* Each instance's drawn clusters into s->drawn, the level each instance
+ * drew this frame, and how many clusters and triangles that is. */
 static void
 list_drawn(raster_cull_t* s, const raster_t* raster) {
     int at = 0;
@@ -105,11 +105,11 @@ index_in(const raster_cull_t* s, int at, int c) {
  * slot and the pair of triangle_first it starts at. */
 typedef struct {
     int at, base, pair;
-} walk_t;
+} drawn_at_t;
 
 /* The next instance's place. */
 static void
-walk_next(const raster_cull_t* s, walk_t* w) {
+walk_next(const raster_cull_t* s, drawn_at_t* w) {
     const int count = s->drawn[w->at];
     w->base += count;
     w->pair += (count + 1) / 2;
@@ -157,20 +157,15 @@ writer(const raster_attachment_t* self, int instance, r3d_span_writer_t* out) {
     return true;
 }
 
-/* Without culling, every cluster the levels draw is kept; how many. */
-static int
-keep_drawn(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, uint16_t* kept, r3d_pipeline_counts_t* counts) {
-    int count = 0;
-    for (int c = 0; c < mesh->cluster_count; c++) {
-        if (r3d_lod_drawn(mesh, c, lod_coarse)) {
-            kept[count++] = (uint16_t)c;
-            counts->triangles_submitted += mesh->clusters[c].triangle_count;
-        }
+/* Without culling, every drawn cluster, the `count` of `drawn`, is kept: counted as the cull counts them. */
+static void
+keep_drawn(const r3d_lit_mesh_t* mesh, const uint16_t* drawn, int count, r3d_pipeline_counts_t* counts) {
+    for (int k = 0; k < count; k++) {
+        counts->triangles_submitted += mesh->clusters[drawn[k]].triangle_count;
     }
     counts->clusters_tested += count;
     counts->clusters_kept += count;
-    counts->clusters_coarse += r3d_pipeline_count_coarse(mesh, kept, count);
-    return count;
+    counts->clusters_coarse += r3d_pipeline_count_coarse(mesh, drawn, count);
 }
 
 /* After the camera's draw, which picked each instance's level, its drawn
@@ -185,7 +180,7 @@ count_frame(raster_cull_t* s, const raster_t* raster) {
     memset(s->fate, RASTER_FATE_CULLED, (size_t)s->clusters);
     const raster_buffers_t b = raster_carve(raster);
     const bool culls = raster_settings(raster).cull; /* whether the frame culled at all */
-    walk_t w = {0};
+    drawn_at_t w = {0};
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];
         const r3d_lit_mesh_t* mesh = instance->mesh;
@@ -194,10 +189,14 @@ count_frame(raster_cull_t* s, const raster_t* raster) {
         if (instance->model != NULL) {
             r3d_lens_place(&lens, instance->model, mesh->position_scale);
         }
-        uint16_t* kept = b.culled;
-        const int count =
-            culls ? r3d_pipeline_cull_counted(mesh, &lens, instance->lod_coarse, kept, &s->walk, &s->frame.counts)
-                  : keep_drawn(mesh, instance->lod_coarse, kept, &s->frame.counts);
+        const uint16_t* kept = &s->drawn[w.at + 1];
+        int count = s->drawn[w.at];
+        if (culls) {
+            kept = b.culled;
+            count = r3d_pipeline_cull_counted(mesh, &lens, instance->lod_coarse, b.culled, &s->walk, &s->frame.counts);
+        } else {
+            keep_drawn(mesh, kept, count, &s->frame.counts);
+        }
         r3d_pipeline_transform(mesh, &lens, kept, count, b.cs, NULL, false);
         r3d_pipeline_count_triangles(mesh, &lens, kept, count, b.cs, &s->frame.counts, s->set_up);
         for (int k = 0; k < count; k++) {
@@ -237,27 +236,44 @@ cluster_of(const r3d_lit_mesh_t* mesh, uint32_t triangle) {
     return lo;
 }
 
+/* The instance a tag last fell in: its IDs first to end - 1, its mesh and
+ * its place in the drawn lists. Neighbouring pixels mostly share one, so a
+ * picture's walk keeps a hint and goes through the instances only on a miss. */
+typedef struct {
+    uint32_t first, end;
+    const r3d_lit_mesh_t* mesh;
+    drawn_at_t at;
+} tag_hint_t;
+
 /* Where a tag falls: its instance's mesh and place in the drawn lists, and
  * the ID within the mesh. Tags count clusters, or triangles, across the
  * instances' whole meshes, from 1; 0 is none. */
 static bool
-place_tag(const raster_cull_t* s, const raster_t* raster, uint32_t tag, bool clusters, const r3d_lit_mesh_t** mesh,
-          walk_t* w, uint32_t* id) {
+place_tag(const raster_cull_t* s, const raster_t* raster, uint32_t tag, bool clusters, tag_hint_t* hint, uint32_t* id) {
     if (tag == 0) {
         return false;
     }
-    *id = tag - 1U;
-    *w = (walk_t){0};
-    for (int i = 0; i < raster->instance_count; i++) {
-        *mesh = raster->instances[i].mesh;
-        const uint32_t span = (uint32_t)(clusters ? (*mesh)->cluster_count : (*mesh)->triangle_count);
-        if (*id < span) {
-            return true;
+    const uint32_t wanted = tag - 1U;
+    if (wanted < hint->first || wanted >= hint->end) {
+        drawn_at_t w = {0};
+        uint32_t first = 0;
+        int i = 0;
+        for (; i < raster->instance_count; i++) {
+            const r3d_lit_mesh_t* mesh = raster->instances[i].mesh;
+            const uint32_t span = (uint32_t)(clusters ? mesh->cluster_count : mesh->triangle_count);
+            if (wanted < first + span) {
+                *hint = (tag_hint_t){first, first + span, mesh, w};
+                break;
+            }
+            first += span;
+            walk_next(s, &w);
         }
-        *id -= span;
-        walk_next(s, w);
+        if (i == raster->instance_count) {
+            return false;
+        }
     }
-    return false;
+    *id = wanted - hint->first;
+    return true;
 }
 
 static bool
@@ -269,10 +285,11 @@ covered(const raster_cull_t* s, uint32_t triangle) {
  * the instances in slot order: one per pair, so they fit node's room. */
 static void
 pair_triangles(raster_cull_t* s, const raster_t* raster) {
-    walk_t w = {0};
+    drawn_at_t w = {0};
     uint32_t first = 0;
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_lit_mesh_t* mesh = raster->instances[i].mesh;
+        assert(w.pair + ((s->drawn[w.at] + 1) / 2) <= RASTER_CULL_CLUSTERS_MAX / 2);
         for (int j = 0; j < s->drawn[w.at]; j++) {
             if (j % 2 == 0) {
                 s->triangle_first[w.pair + (j / 2)] = first;
@@ -290,15 +307,16 @@ mark_covered(raster_cull_t* s, const raster_t* raster) {
     pair_triangles(s, raster);
     const raster_buffers_t b = raster_carve(raster);
     const int index = attachment_index(raster, s);
+    tag_hint_t hint = {0};
     for (int y = 0; y < raster->height; y++) {
         const uint32_t* tag = gfx_target_row(&b.picture, index, y);
         for (int x = 0; x < raster->width; x++) {
-            const r3d_lit_mesh_t* mesh = NULL;
-            walk_t w;
             uint32_t t;
-            if (!place_tag(s, raster, tag[x], false, &mesh, &w, &t)) {
+            if (!place_tag(s, raster, tag[x], false, &hint, &t)) {
                 continue;
             }
+            const r3d_lit_mesh_t* mesh = hint.mesh;
+            const drawn_at_t w = hint.at;
             const int c = cluster_of(mesh, t);
             const int j = index_in(s, w.at, c);
             assert(j >= 0);
@@ -316,7 +334,7 @@ mark_covered(raster_cull_t* s, const raster_t* raster) {
 static void
 tally(raster_cull_t* s, const raster_t* raster) {
     mark_covered(s, raster);
-    walk_t w = {0};
+    drawn_at_t w = {0};
     uint32_t first = 0;
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_lit_mesh_t* mesh = raster->instances[i].mesh;
@@ -340,7 +358,7 @@ tally(raster_cull_t* s, const raster_t* raster) {
 /* Each drawn cluster's node at depth `level`, or its leaf where the tree is shallower. */
 static void
 find_nodes(raster_cull_t* s, const raster_t* raster) {
-    walk_t w = {0};
+    drawn_at_t w = {0};
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_lit_mesh_t* mesh = raster->instances[i].mesh;
         uint16_t* node_of = s->walk_node;
@@ -420,7 +438,7 @@ list_clusters(const raster_cull_t* s, const raster_t* raster, bool culled) {
     const raster_buffers_t buffers = raster_carve(raster);
     *buffers.depth_near = s->spectator.lens.near_z;
     uint16_t* list = buffers.culled;
-    walk_t w = {0};
+    drawn_at_t w = {0};
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_lit_mesh_t* mesh = raster->instances[i].mesh;
         int count = 0;
@@ -499,15 +517,13 @@ cluster_color(const raster_cull_t* s, int cluster) {
 /* The slot of the cluster a tag names, or -1 for none: a spectator's tags
  * are clusters, the camera's triangles, each finding its cluster. */
 static int
-tagged_cluster(const raster_cull_t* s, const raster_t* raster, uint32_t tag) {
-    const r3d_lit_mesh_t* mesh = NULL;
-    walk_t w;
+tagged_cluster(const raster_cull_t* s, const raster_t* raster, uint32_t tag, tag_hint_t* hint) {
     uint32_t id;
-    if (!place_tag(s, raster, tag, s->spectating, &mesh, &w, &id)) {
+    if (!place_tag(s, raster, tag, s->spectating, hint, &id)) {
         return -1;
     }
-    const int j = index_in(s, w.at, s->spectating ? (int)id : cluster_of(mesh, id));
-    return j < 0 ? -1 : w.base + j;
+    const int j = index_in(s, hint->at.at, s->spectating ? (int)id : cluster_of(hint->mesh, id));
+    return j < 0 ? -1 : hint->at.base + j;
 }
 
 /* One shaded pixel of cluster `c` (-1 for none) at (x, y), on its border or inside. */
@@ -531,15 +547,17 @@ shaded_pixel(const raster_cull_t* s, gfx_color_t clear, gfx_color_t drawn, int c
  * fate's colour: the clusters' borders, a culled one's dashed. */
 static void
 show_shaded(raster_cull_t* s, const raster_t* raster, const gfx_target_t* picture, int index) {
+    tag_hint_t hint = {0};
+    tag_hint_t below_hint = {0};
     for (int y = picture->first_row; y < gfx_target_end_row(picture); y++) {
         const uint32_t* tag = gfx_target_row(picture, index, y);
         const uint32_t* below = y + 1 < gfx_target_end_row(picture) ? gfx_target_row(picture, index, y + 1) : NULL;
         gfx_color_t* color = gfx_target_color(picture, y);
-        int right = tagged_cluster(s, raster, tag[0]);
+        int right = tagged_cluster(s, raster, tag[0], &hint);
         for (int x = 0; x < picture->attachment[0].width; x++) {
             const int c = right;
-            right = x + 1 < picture->attachment[0].width ? tagged_cluster(s, raster, tag[x + 1]) : c;
-            const int under = below != NULL ? tagged_cluster(s, raster, below[x]) : c;
+            right = x + 1 < picture->attachment[0].width ? tagged_cluster(s, raster, tag[x + 1], &hint) : c;
+            const int under = below != NULL ? tagged_cluster(s, raster, below[x], &below_hint) : c;
             color[x] = shaded_pixel(s, raster->clear, color[x], c, c != right || c != under, x, y);
         }
     }
@@ -552,11 +570,12 @@ paint_picture(raster_cull_t* s, const raster_t* raster, const gfx_target_t* pict
         show_shaded(s, raster, picture, index);
         return;
     }
+    tag_hint_t hint = {0};
     for (int y = picture->first_row; y < gfx_target_end_row(picture); y++) {
         const uint32_t* tag = gfx_target_row(picture, index, y);
         gfx_color_t* color = gfx_target_color(picture, y);
         for (int x = 0; x < picture->attachment[0].width; x++) {
-            const int c = tagged_cluster(s, raster, tag[x]);
+            const int c = tagged_cluster(s, raster, tag[x], &hint);
             color[x] = c < 0 ? raster->clear : cluster_color(s, c);
         }
     }
