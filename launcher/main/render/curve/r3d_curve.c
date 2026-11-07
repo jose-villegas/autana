@@ -145,22 +145,28 @@ segment(knot_t a, knot_t b, float radius_scale, const r3d_lens_t* lens, const r3
     }
 }
 
+/* Whether a curve's box reaches the view; the planes stay off the segment draw's stack. */
+static __attribute__((noinline)) bool
+curve_in_view(const r3d_curve_t* curve, const r3d_lens_t* lens) {
+    planef_t planes[PLANE_FRUSTUM_COUNT];
+    r3d_lens_frustum(lens, planes);
+    const box3f_t box = {{curve->lo[0], curve->lo[1], curve->lo[2]}, {curve->hi[0], curve->hi[1], curve->hi[2]}};
+    unsigned mask = (1U << PLANE_FRUSTUM_COUNT) - 1U;
+    return !box3f_outside_planes(box, planes, PLANE_FRUSTUM_COUNT, &mask);
+}
+
 void
 r3d_curve_draw(const r3d_curve_set_t* set, const r3d_lens_t* lens, const r3d_span_target_t* target) {
     if (set->curve_count == 0) {
         return;
     }
-    planef_t planes[PLANE_FRUSTUM_COUNT];
-    r3d_lens_frustum(lens, planes);
     const float* x = lens->m.m[0];
     const float* y = lens->m.m[1];
     const float radius_scale = fmaxf(sqrtf((x[0] * x[0]) + (x[1] * x[1]) + (x[2] * x[2])),
                                      sqrtf((y[0] * y[0]) + (y[1] * y[1]) + (y[2] * y[2])));
     for (int i = 0; i < set->curve_count; i++) {
         const r3d_curve_t* curve = &set->curves[i];
-        const box3f_t box = {{curve->lo[0], curve->lo[1], curve->lo[2]}, {curve->hi[0], curve->hi[1], curve->hi[2]}};
-        unsigned mask = (1U << PLANE_FRUSTUM_COUNT) - 1U;
-        if (box3f_outside_planes(box, planes, PLANE_FRUSTUM_COUNT, &mask) || curve->count < 2) {
+        if (curve->count < 2 || !curve_in_view(curve, lens)) {
             continue;
         }
         knot_t a = knot_at(&set->knots[curve->first], lens);
