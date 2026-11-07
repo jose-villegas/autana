@@ -120,6 +120,13 @@ TUNE(water, slosh_damping_pct, 10, 0, 100);
  * moving average), so it eases toward the water's shape over a few frames;
  * 0 (the default) meshes the sim's field itself. */
 TUNE(water, ease_pct, 0, 0, 100);
+/* Against the tank's side walls (the screen's edges) the shown field eases
+ * slower: at the wall by ease_wall_pct percent of ease_pct, rising to all of
+ * it ease_wall_mm in, so water thrown at a wall arrives there slowly. 100
+ * eases the same everywhere. The front and back glass are not counted: the
+ * tank is only a few cells deep. */
+TUNE(water, ease_wall_pct, 100, 0, 100);
+TUNE(water, ease_wall_mm, 3, 1, 20);
 
 /* Surface buffers: the vertices and triangles iso_surface may make. The
  * tour's busiest frame makes about 2500 and 5000. */
@@ -584,8 +591,20 @@ ease_field(void) {
         shown_plane = plane;
     } else {
         const float alpha = (float)ease_pct / (float)WATER_PERCENT;
-        for (int i = 0; i < count; i++) {
-            shown[i] += alpha * (field[i] - shown[i]);
+        const float wall = (float)ease_wall_pct / (float)WATER_PERCENT;
+        for (int x = 0; x < f->nx; x++) {
+            const float px = f->origin.x + ((float)x * f->step.x);
+            const float near_x = fminf(px, box.x - px);
+            for (int y = 0; y < f->ny; y++) {
+                const float py = f->origin.y + ((float)y * f->step.y);
+                const float in = mathf_clamp(fminf(near_x, fminf(py, box.y - py)) / (float)ease_wall_mm, 0.0F, 1.0F);
+                const float a = alpha * (wall + ((1.0F - wall) * in));
+                float* const to = &shown[((x * f->ny) + y) * f->nz];
+                const float* const from = &field[((x * f->ny) + y) * f->nz];
+                for (int z = 0; z < f->nz; z++) {
+                    to[z] += a * (from[z] - to[z]);
+                }
+            }
         }
     }
     surface_field.values = shown;
