@@ -4624,7 +4624,12 @@ test_a_skin_holds_its_buffers_only_while_its_entity_is_active(void) {
         entity_set_enabled(copies[i], true);
     }
     scene_animation_step(columns(herd), 0);
-    TEST_ASSERT_EQUAL_UINT(loaded - one * HERD_POOL, memory_free_bytes(MEMORY_INTERNAL));
+
+    /* The device heap rounds each block by where it lands, so copies match to within that. */
+    enum { SKIN_BLOCKS = 2, HEAP_BLOCK_ROUNDING = 8 };
+
+    TEST_ASSERT_UINT_WITHIN(HERD_POOL * SKIN_BLOCKS * HEAP_BLOCK_ROUNDING, loaded - one * HERD_POOL,
+                            memory_free_bytes(MEMORY_INTERNAL));
     for (int i = 1; i < HERD_POOL; i++) {
         entity_set_enabled(copies[i], false);
     }

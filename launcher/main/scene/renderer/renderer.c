@@ -72,6 +72,39 @@ open_renderer_skin(scene_t* scene, scene_row_t entity, int renderer, const char*
     return status;
 }
 
+/* A lit scene's first skin takes the light transfer; with `take`, an ACTIVE
+ * row takes its buffers too. False, with nothing taken, when they do not fit. */
+static bool
+take_skin_memory(scene_t* scene, scene_row_t row, scene_skinned_renderer_t* next, bool lit, bool take) {
+    r3d_skin_light_transfer_t* transfer = NULL;
+    if (lit && scene->light_transfer == NULL) {
+        transfer = scene_light_transfer_take(scene);
+        if (transfer == NULL) {
+            return false;
+        }
+        scene->light_transfer = transfer;
+    }
+    if (take && (scene->flags[row] & SCENE_FLAG_ACTIVE) != 0 && !scene_skin_take(scene, row, next)) {
+        if (transfer != NULL) {
+            memory_free(transfer);
+            scene->light_transfer = NULL;
+        }
+        return false;
+    }
+    return true;
+}
+
+/* Replaces the row's skin with `next`, giving the old one's buffers back. */
+static void
+install_skin(scene_t* scene, scene_row_t row, const scene_skinned_renderer_t* next) {
+    scene_skinned_renderer_t* slot = &scene->skinned_renderers[row];
+    scene_skin_give(scene, slot);
+    scene->starved_count -= slot->starved;
+    *slot = *next;
+    scene_skin_show(scene, row);
+    scene->skins_pending |= next->internal_storage == NULL;
+}
+
 bool
 scene_renderer_bind_skin(scene_t* scene, scene_row_t row, const char* id, bool take, scene_failure_t* why) {
     const int renderer = scene_renderer_index(scene, row);
@@ -91,30 +124,10 @@ scene_renderer_bind_skin(scene_t* scene, scene_row_t row, const char* id, bool t
     if (lit && next.bind.colors == NULL) {
         return scene_report(why, SCENE_ERR_ASSET, ASSET_ERR_FORMAT, SCENE_LIGHT_FAILURE_ALBEDO);
     }
-    r3d_skin_light_transfer_t* transfer = NULL;
-    if (lit && scene->light_transfer == NULL) {
-        transfer = scene_light_transfer_take(scene);
-        if (transfer == NULL) {
-            return scene_report(why, SCENE_ERR_MEMORY, ASSET_OK, id);
-        }
-        scene->light_transfer = transfer;
-    }
-    take = take && (scene->flags[row] & SCENE_FLAG_ACTIVE) != 0;
-    if (take && !scene_skin_take(scene, row, &next)) {
-        if (transfer != NULL) {
-            memory_free(transfer);
-            scene->light_transfer = NULL;
-        }
+    if (!take_skin_memory(scene, row, &next, lit, take)) {
         return scene_report(why, SCENE_ERR_MEMORY, ASSET_OK, id);
     }
-    scene_skinned_renderer_t* slot = &scene->skinned_renderers[row];
-    scene_skin_give(scene, slot);
-    if (slot->starved) {
-        scene->starved_count--;
-    }
-    *slot = next;
-    scene_skin_show(scene, row);
-    scene->skins_pending |= !take;
+    install_skin(scene, row, &next);
     return scene_report(why, SCENE_OK, ASSET_OK, id);
 }
 
