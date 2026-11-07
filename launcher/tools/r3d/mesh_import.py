@@ -156,7 +156,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         if any(obj in rules for obj in src.tri_o[selected_cards]):
             raise SettingsError(f"material {cards.material} is drawn by cards")
         with recorder.step("cards", int(selected_cards.sum())) as step:
-            path = camera_path(cards.path) if cards.choice == "path" else None
+            path = camera_path(cards.path, scene, renderer) if cards.choice == "path" else None
             occluder = RayQuery(src.p, tri_v[~selected_cards]) if path and (~selected_cards).any() else None
             card_shape, card_report = make_shape(src, material, cards, settings.seed, settings.alpha_keep,
                                                  path=path, occluder=occluder)
@@ -239,13 +239,18 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         tri_double = np.concatenate(all_double) if all_double else np.empty(0, dtype=int)
         tri_mat = np.concatenate(all_mat) if all_mat else np.empty(0, dtype=int)
         step["triangles_out"] = len(tris)
+    ceiling = getattr(renderer.variant, 'ceiling', None)
+    card_triangles = card_report['triangles'] if card_report is not None else 0
+    check_ceiling(card_triangles, ceiling)
+    available = None if ceiling is None else ceiling - card_triangles
     with recorder.step("simplify", len(tris)) as step:
         if settings.simplify:
             steps = settings.simplify
-            positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, tri_mat, renderer.variant.triangles,
+            budget = renderer.variant.triangles if available is None else min(renderer.variant.triangles, available)
+            positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, tri_mat, budget,
                                                    allocation=Allocation(tri_o=np.concatenate(all_obj), object_names=src.object_names,
                                                                          material_names=src.names, meshes=meshes, selection=selected,
-                                                                         ceiling=getattr(renderer.variant, 'ceiling', None),
+                                                                         ceiling=available,
                                                                          shade=(lambda p, c, t, m: shade_placed(src, job, scene, p, c, t, m,
                                                                                                              intersector, bounce)) if job.bake else None,
                                                                          shade_shared=(lambda p, c, t, m: shade_placed(src, job, scene, p, c, t, m,
@@ -273,9 +278,11 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         shapes.append(card_shape)
     if card_report is not None:
         mesh_report['cards'] = card_report
+        if 'ceiling' in mesh_report:
+            mesh_report['ceiling'] = ceiling
         mesh_report['scene_total'] = mesh_report['output_triangles'] = (
             mesh_report.get('scene_total', len(tris)) + card_report['triangles'])
-    check_ceiling(mesh_report.get('scene_total', len(tris)), getattr(renderer.variant, 'ceiling', None))
+    check_ceiling(mesh_report.get('scene_total', len(tris)), ceiling)
     return SimpleNamespace(src=src, intersector=intersector, positions=positions, rgb=rgb, tris=tris, tri_double=tri_double,
                            tri_mat=tri_mat, scale=scale, bounce=bounce, mesh_report=mesh_report, shapes=shapes)
 

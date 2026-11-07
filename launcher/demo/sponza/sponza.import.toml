@@ -16,9 +16,9 @@ alpha_mask = { keep_alpha = 0.5 }
 cards = { material = "leaf" }
 simplify = { dense_edge = 45.0, props = [], props_share = 0.0, seal_seams = true, colour_deviation = 1.0 }
 
-# The free-standing props: one mesh per repeated shape, each copy drawing
-# `triangles` (as many as the old pooled props share gave it) times its
-# variant's objects_scale. The flagpoles stay in the rest: each passes
+# Free-standing props share one mesh per repeated shape; each copy draws
+# `triangles` times its variant's objects_scale.
+# The flagpoles stay in the rest: each passes
 # through the wall, and a carved pole too thin to fill its socket shows sky
 # around it. Seams are free: a locked contact keeps every copy's
 # border vertices, which a prop of a few dozen triangles cannot afford.
@@ -47,8 +47,7 @@ match = { material = "Material__47" }
 triangles = 45
 seam = "free"
 
-# The chains draw a triangle each, as little as the pooled share gave them,
-# so their triangles go to the rest's walls and arches.
+# Chains budget one triangle per copy to leave room for walls and arches.
 [[objects.meshes]]
 match = { material = "chain" }
 triangles = 1
