@@ -437,8 +437,10 @@ class TreeTests(unittest.TestCase):
         self.assertTrue(scenes, "no scene file found: the tree test would pass for nothing")
         for path in scenes:
             name = scene_name.scene_id(path)
-            self.assertIn(name, packs, f"{path.name} makes no pack")
-            entries = parse_pack(packs[name])
+            folder = build_pack.folder_pack(path)  # a folder pack holds the scene under its own name
+            pack = name if folder is None else folder.name.removesuffix(build_pack.FOLDER_PACK)
+            self.assertIn(pack, packs, f"{path.name} makes no pack")
+            entries = parse_pack(packs[pack])
             self.assertEqual(entries[name][0], scene_asset.TYPE)
             scene = scene_asset.decode(entries[name][1])
             self.assertTrue(scene["renderers"], f"{path.name} names no mesh")

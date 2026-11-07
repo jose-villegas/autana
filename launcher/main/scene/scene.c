@@ -165,14 +165,28 @@ scene_id_split(const char* id, scene_id_t* out) {
            && strlen(out->scene) < ASSET_NAME_MAX && strchr(out->scene, SCENE_ID_PACK_SEPARATOR) == NULL;
 }
 
-/* Requests the pack `parts` names in `id`, for `root` when `async`. Kept out
- * of line, so its copy of the name is off the stack while the scene opens. */
+/* The pack name `parts` finds in `id`, into `out`. */
+static void
+copy_pack_name(char out[ASSET_NAME_MAX], const char* id, scene_id_t parts) {
+    (void)memcpy(out, id, parts.pack_length);
+    out[parts.pack_length] = '\0';
+}
+
+/* Requests the pack `parts` names in `id`. Kept out of line, as is
+ * request_pack_async(), so the copy of the name is off the stack while the
+ * scene opens. */
 static __attribute__((noinline)) handle_t
-request_pack(const char* id, scene_id_t parts, bool async, entity_t root) {
+request_pack(const char* id, scene_id_t parts) {
     char pack[ASSET_NAME_MAX];
-    (void)memcpy(pack, id, parts.pack_length);
-    pack[parts.pack_length] = '\0';
-    return async ? asset_store_load_async(pack, NULL, root) : asset_store_load(pack);
+    copy_pack_name(pack, id, parts);
+    return asset_store_load(pack);
+}
+
+static __attribute__((noinline)) handle_t
+request_pack_async(const char* id, scene_id_t parts, entity_t root) {
+    char pack[ASSET_NAME_MAX];
+    copy_pack_name(pack, id, parts);
+    return asset_store_load_async(pack, NULL, root);
 }
 
 /* `id`, cut to what a pack name holds: an id from the pack always fits, a
@@ -537,7 +551,7 @@ scene_load(const char* id) {
         settle(record, scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, id));
         return record->root;
     }
-    record->load = request_pack(id, parts, false, record->root);
+    record->load = request_pack(id, parts);
     settle(record, open_scene(record, asset_store_loaded(record->load)));
     return record->root;
 }
@@ -566,7 +580,7 @@ scene_load_async(const char* id, pending_fn done, handle_t owner) {
         return record->root;
     }
     /* The root owns its pack request: releasing the root cancels it. */
-    record->load = request_pack(id, parts, true, record->root);
+    record->load = request_pack_async(id, parts, record->root);
     if (!pending_owner_alive(owner)) {
         scene_cancel(record->root);
     }
