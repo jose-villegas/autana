@@ -106,7 +106,7 @@ bench_open(const r3d_instance_t* instance, const raster_attachment_t* const* att
     b->panel = memory_alloc(sizeof(gfx_color_t) * PANEL_PIXELS, MEMORY_APP);
     b->instance = *instance;
     if (b->instance.lod_coarse == NULL && instance->mesh->lod_group_count > 0) {
-        /* All clear, as a scene's renderer starts: the finest level until raster_pick_levels() runs. */
+        /* All clear, as a scene's renderer starts: the finest level until a draw picks. */
         const size_t words = R3D_LOD_WORDS(instance->mesh->lod_group_count);
         b->coarse = memory_alloc(words * sizeof(*b->coarse), MEMORY_INTERNAL);
         TEST_ASSERT_NOT_NULL(b->coarse);
@@ -351,8 +351,9 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
         }
         const int64_t start = timing_now_us();
         /* The levels the frame draws, picked as render_context_draw() picks them, inside the frame's time. */
-        raster_pick_levels(&b->raster, &view);
+        b->raster.picks_levels = true;
         const raster_stats_t stats = raster_draw(&b->raster, &view);
+        b->raster.picks_levels = false;
         const resolution_step_t composed = raster_compose_size(&b->raster);
         raster_upscale(&b->raster, b->panel, composed.width, composed.height);
         const int64_t us = timing_now_us() - start;

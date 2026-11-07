@@ -303,6 +303,7 @@ draw_second_view(render_context_t* c) {
             note_observed(c, observer, &second);
         }
         c->raster.split = NULL;
+        c->raster.picks_levels = false;
         if (listed) {
             raster_draw_culled(&c->raster, &second);
         } else {
@@ -311,6 +312,7 @@ draw_second_view(render_context_t* c) {
             (void)tune_set(tune_shared(), TUNE_NAME(render, cull), culled);
         }
         c->raster.split = &c->split;
+        c->raster.picks_levels = true;
         listed = false;
     }
 }
@@ -394,6 +396,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     const int step = current_step(c);
     raster_t* r = &c->raster;
     r->split = &c->split;
+    r->picks_levels = true;
     r->settings = &c->settings;
     r->instances = instances;
     r->instance_count = count;
@@ -412,7 +415,6 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     }
     c->frame.width = r->width;
     c->frame.height = r->height;
-    raster_pick_levels(r, view);
     if (c->policy == RENDER_FIXED && !c->generating) {
         /* Off: the plain draw, nothing timed or chosen, unless frame generation needs the drawn cost. */
         c->frame.stats = raster_draw(r, view);

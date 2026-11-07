@@ -417,27 +417,31 @@ world_cull_skips(const world_cull_t* world, const r3d_instance_t* instance) {
            && world_bounds_outside(*instance->world_bounds, world->planes, world->eye_reach);
 }
 
-/* An instance culled whole keeps the bits it last had, a cut as whole as any:
- * it is not drawn, and the frame it comes back in picks again before its draw. */
-void
-raster_pick_levels(const raster_t* raster, const render_view_t* view) {
-    FRAME_COST_BEGIN(picked_from);
-    picture_lens_t picture;
-    picture_lens_init(&picture, raster, view, false);
-    world_cull_t world;
-    world_cull_init(&world, &picture, view, raster_settings(raster).cull);
-    const float coverage_max = (float)lod_coverage_permille / (float)R3D_LOD_PERMILLE;
-    for (int i = 0; i < raster->instance_count; i++) {
-        const r3d_instance_t* instance = &raster->instances[i];
-        if (instance->lod_coarse == NULL || instance->mesh->lod_group_count == 0
-            || world_cull_skips(&world, instance)) {
-            continue;
-        }
-        r3d_lens_t lens;
-        instance_lens(&picture, instance, &lens);
-        r3d_lod_pick(instance->mesh, &lens, R3D_LOD_TOLERANCE_PX, coverage_max, instance->lod_coarse);
+/* The pick a cull makes before each instance, in its picture's pixels: the
+ * view's output tolerance times what the picture's focal length is to the
+ * output's. */
+typedef struct {
+    bool picks;
+    float tolerance_px;
+    float coverage_max;
+} level_pick_t;
+
+static level_pick_t
+level_pick_init(const raster_t* raster, picture_lens_t* picture, const render_view_t* view) {
+    const r3d_lens_t* lens = picture_lens_at(picture, 1);
+    const float drawn = mathf_max(lens->focal_x, lens->focal_y) / mathf_max(view->lens.fx, view->lens.fy);
+    return (level_pick_t){raster->picks_levels, R3D_LOD_TOLERANCE_PX * drawn,
+                          (float)lod_coverage_permille / (float)R3D_LOD_PERMILLE};
+}
+
+/* An instance culled whole is not picked: it keeps the bits it last had, a
+ * cut as whole as any, and the frame it comes back in picks again before its
+ * draw. */
+static void
+level_pick(const level_pick_t* pick, const r3d_instance_t* instance, const r3d_lens_t* lens) {
+    if (pick->picks && instance->lod_coarse != NULL && instance->mesh->lod_group_count > 0) {
+        r3d_lod_pick(instance->mesh, lens, pick->tolerance_px, pick->coverage_max, instance->lod_coarse);
     }
-    FRAME_COST_END(picked_from, "r3d.pick");
 }
 
 /* Culls every instance into the census list and returns the depth scale
@@ -456,6 +460,7 @@ cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, r
     picture_lens_init(&picture, raster, view, fitted);
     world_cull_t world;
     world_cull_init(&world, &picture, view, settings.cull);
+    const level_pick_t pick = level_pick_init(raster, &picture, view);
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];
         if (world_cull_skips(&world, instance)) {
@@ -463,6 +468,7 @@ cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, r
         } else {
             r3d_lens_t lens;
             instance_lens(&picture, instance, &lens);
+            level_pick(&pick, instance, &lens);
             culled[0] = (uint16_t)cull_instance(instance, settings.cull, &lens, culled + 1, stats,
                                                 work->buffers.work[0], settings.depth_fit ? &fit : NULL);
         }

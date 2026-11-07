@@ -584,10 +584,14 @@ test_the_pick_keeps_the_bits_of_an_instance_culled_whole(void) {
         boxes[i] = r3d_lit_mesh_world_bounds(mesh, &models[i]);
         instances[i] = (r3d_instance_t){mesh, &models[i], &boxes[i], coarse[i]};
     }
-    const raster_t raster = {.instances = instances, .instance_count = INSTANCES, .width = W, .height = H};
+    raster_t raster = {
+        .instances = instances, .instance_count = INSTANCES, .width = W, .height = H, .picks_levels = true};
+    raster.scratch = malloc(raster_scratch_bytes(&raster));
+    TEST_ASSERT_NOT_NULL(raster.scratch);
     const fixture_camera_t camera = {{0.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 1.0F}, HALF_FOV_TAN, NEAR_Z};
     const render_view_t view = render_view_fixture_at(&camera, (viewport_t){W, H, 0});
-    raster_pick_levels(&raster, &view);
+    (void)raster_census(&raster, &view);
+    free(raster.scratch);
     TEST_ASSERT_TRUE(r3d_lod_coarse(coarse[IN_VIEW], TOP_GROUP));
     TEST_ASSERT_EQUAL_HEX32(0, coarse[BEHIND][0]);
 }

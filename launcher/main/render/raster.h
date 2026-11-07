@@ -36,7 +36,12 @@ struct raster {
     camera_present_t present;
     upscale_t upscale;     /* maps retained in `scratch`, rebuilt when size changes */
     raster_split_t* split; /* optional feedback retained between continuous frames */
-    void* scratch;         /* raster_scratch_bytes() of it */
+    /* The frame's own view: culling first sets each instance's level coarse
+     * bits (render/lod/r3d_lod.h), measured in the view's output pixels
+     * whatever size the picture is drawn at. A second view of the frame
+     * leaves it off and draws the levels the frame picked. */
+    bool picks_levels;
+    void* scratch; /* raster_scratch_bytes() of it */
     /* Drawn beside colour and depth, at most GFX_ATTACHMENTS_FURTHER_MAX. */
     const raster_attachment_t* const* attachments;
     int attachment_count;
@@ -82,12 +87,6 @@ float raster_depth_near(const raster_t* raster);
  * instances' meshes and size: the caller obtains it once, from any memory,
  * so none of it has to live in internal RAM. */
 size_t raster_scratch_bytes(const raster_t* raster);
-
-/* Sets each instance's level coarse bits (render/lod/r3d_lod.h) for the
- * frame seen through `view`, measured in its output pixels whatever size the
- * picture is drawn at. Once a frame, before drawing: a draw only reads the
- * bits, so a second view of the same frame draws the levels this one picked. */
-void raster_pick_levels(const raster_t* raster, const render_view_t* view);
 
 /* Draws every instance through the picture basis and fit in `view`. */
 raster_stats_t raster_draw(const raster_t* raster, const render_view_t* view);
