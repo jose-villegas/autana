@@ -8,10 +8,8 @@
 
 #include <stdbool.h>
 #include <stddef.h>
-#include <stdio.h>
 
 #include "apps/render_lab/render_lab.h"
-#include "apps/render_lab/render_lab_dynres.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "core/tune.h"
 #include "draw/draw.h"
@@ -27,13 +25,10 @@ static const char* TAG = "herd";
 
 /* The scene's id in the capybara's pack, the scene keys' prefix, its camera,
  * and its copies' names, numbered from 0. */
-#define HERD_SCENE          "capybara/herd"
-#define HERD_KEY            "herd"
-#define HERD_CAMERA         "camera"
-#define HERD_COPY_FORMAT    "capybara_%02d"
-
-/* The longest copy name HERD_COPY_FORMAT makes, with its terminator. */
-#define HERD_COPY_NAME_SIZE 16
+#define HERD_SCENE       "capybara/herd"
+#define HERD_KEY         "herd"
+#define HERD_CAMERA      "camera"
+#define HERD_COPY_FORMAT "capybara_%02d"
 
 static const int* shown; /* the size's copy count */
 static entity_t loaded;
@@ -49,28 +44,11 @@ fail(const char* what) {
     render_lab_scene_fail(TAG, failure, sizeof failure, what);
 }
 
-static entity_t
-find_copy(int index) {
-    char name[HERD_COPY_NAME_SIZE];
-    const int length = snprintf(name, sizeof name, HERD_COPY_FORMAT, index);
-    return length > 0 && (size_t)length < sizeof name ? entity_find(loaded, name_hash(name)) : ENTITY_NONE;
-}
-
 /* The pool is every copy the pack names, from 0 up to the first it lacks. */
 static bool
 find_pool(void) {
-    pool = 0;
-    while (!handle_is_none(find_copy(pool))) {
-        pool++;
-    }
-    copies = render_lab_scene_take(sizeof *copies * (size_t)(pool > 0 ? pool : 1));
-    if (copies == NULL) {
-        return false;
-    }
-    for (int i = 0; i < pool; i++) {
-        copies[i] = find_copy(i);
-    }
-    return true;
+    copies = render_lab_scene_copies(loaded, HERD_COPY_FORMAT, &pool);
+    return copies != NULL;
 }
 
 /* The first N copies shown, each `i / pool` of the way through its clip, so
@@ -153,16 +131,7 @@ scene_herd_frame(uint32_t dt_ms) {
 /* The size drawn at, the triangle count and the copies, or why the scene did not load. */
 static const char*
 scene_herd_status(void) {
-    static char buf[RENDER_LAB_STATUS_LEN];
-    if (failure[0] != '\0') {
-        return failure;
-    }
-    if (snprintf(buf, sizeof buf, "%s%5d tris x%d", render_lab_dynres_size(),
-                 render_context_frame(render_context_main()).stats.triangles, *shown)
-        < 0) {
-        buf[0] = '\0';
-    }
-    return buf;
+    return render_lab_scene_copies_status(failure, *shown);
 }
 
 /* The camera's lap. */
