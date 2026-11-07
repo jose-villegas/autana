@@ -31,18 +31,18 @@ check_path(void) {
     if (scene_provider.path_ms == NULL || scene_provider.seek == NULL) {
         return false;
     }
-    const uint32_t duration = scene_animator_clip_duration_ms(shown, camera, 0);
+    const uint32_t duration = animator_clip_duration_ms(camera, 0);
     if (duration == 0 || scene_provider.path_ms() != duration) {
         return false;
     }
-    const transformf_t initial = scene_entity_world(shown, camera);
+    const transformf_t initial = transform_world(camera);
     const input_t input = {0};
     for (int i = 0; i < FIXTURE_STEPS; i++) {
         render_host_step(FIXTURE_STEP_MS, &input);
     }
-    const transformf_t expected = scene_entity_world(shown, camera);
+    const transformf_t expected = transform_world(camera);
     scene_provider.seek(0);
-    const transformf_t reset = scene_entity_world(shown, camera);
+    const transformf_t reset = transform_world(camera);
     if (!pose_near(reset, initial) || pose_near(reset, expected)) {
         return false;
     }
@@ -51,7 +51,7 @@ check_path(void) {
     context->paying = true;
     context->drawn_in_row = FRAMEGEN_RETRY_DRAWN;
     scene_provider.seek(FIXTURE_STEP_MS * FIXTURE_STEPS);
-    const transformf_t actual = scene_entity_world(shown, camera);
+    const transformf_t actual = transform_world(camera);
     if (!pose_near(actual, expected)) {
         return false;
     }

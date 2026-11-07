@@ -16,6 +16,7 @@ from layout_measure import analyse, autana_command, required_seeds, run_flash, f
 from device_capture import test_matches
 from capture import require_same_board
 from seed_statistics import compare, minimum_seeds, permutation_samples
+from layout_pad import LAYOUT_SEED_MAX  # layout_measure puts tools/build on the path
 
 DEFAULT_THRESHOLD = 1.0
 DEFAULT_ALPHA = 0.05
@@ -32,6 +33,9 @@ def schedule(cap, alpha):
     first = minimum_seeds(alpha)
     if cap < first:
         raise ValueError(f"--max-seeds must be at least {first} for permutation resolution")
+    # Both sides draw distinct seeds from one range.
+    if cap > LAYOUT_SEED_MAX // 2:
+        raise ValueError(f"--max-seeds must be at most {LAYOUT_SEED_MAX // 2}: both sides share seeds 1 to {LAYOUT_SEED_MAX}")
     sizes = [first]
     while sizes[-1] < cap:
         sizes.append(min(cap, sizes[-1] * 2))
@@ -195,9 +199,9 @@ def measure(args, runner=None, clock=time.monotonic):
             for side in sides:
                 suites = args.suite if active is None else selected_suites(
                     args.suite, active, extracted[side][2], limits[side], device_inventory(records[side]))
-                seed = rng.randint(1, 2147483647)
+                seed = rng.randint(1, LAYOUT_SEED_MAX)
                 while seed in used:
-                    seed = rng.randint(1, 2147483647)
+                    seed = rng.randint(1, LAYOUT_SEED_MAX)
                 used.add(seed)
                 repeated = sum(any(len(entry["runs"]) >= 2 for entry in record["suites"].values())
                                for record in records[side])
@@ -273,16 +277,18 @@ def measure(args, runner=None, clock=time.monotonic):
                           len(sizes) - 1)
     incomplete = stop_error is not None or not decisions or any(
         row["verdict"] == "not measured" for row in decisions.values())
+    stop = str(stop_error) if stop_error else None
     estimates = {side: recommendations(records[side], observations(records[side])[0],
                                       args.threshold / 100, look_alpha / max(1, len(decisions)))
                  for side in records}
     write_summary(destination / "summary.md", args, records, decisions, estimates, sizes, plan,
-                  incomplete=incomplete, budget_stop=budget_stop)
+                  incomplete=incomplete, budget_stop=budget_stop, stop=stop)
     payload = dict(command=getattr(args, "command", None),
                    label_a=args.label_a, label_b=args.label_b, threshold=args.threshold,
                    alpha=args.alpha, look_alpha=look_alpha,
                    rng_seed=args.rng_seed, max_seeds=args.max_seeds, first_pass=sizes[0],
-                   max_runs=MAX_RUNS, incomplete=incomplete, budget_stop=budget_stop,
+                   max_runs=MAX_RUNS, incomplete=incomplete, stop=stop,
+                   budget_stop=budget_stop,
                    rows=decisions, estimates=estimates, plan=plan)
     (destination / "comparison.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
     print((destination / "summary.md").read_text(encoding="utf-8"))
@@ -306,7 +312,7 @@ def pr_table(payload):
     return lines
 
 
-def write_summary(path, args, records, rows, estimates, sizes, plan, incomplete=False, budget_stop=None):
+def write_summary(path, args, records, rows, estimates, sizes, plan, incomplete=False, budget_stop=None, stop=None):
     """Write observed costs, seed identities, decisions, and acquisition completeness."""
     lines = ["# Performance comparison", "",
              f"A: `{args.label_a}`; B: `{args.label_b}`.", "",
@@ -314,8 +320,8 @@ def write_summary(path, args, records, rows, estimates, sizes, plan, incomplete=
              f"per-family per-look alpha: {args.alpha / len(sizes) / 2:g}. "
              f"First pass: {sizes[0]} seeds per side. Cap: {args.max_seeds} seeds per side.", "",
              f"RNG seed: {args.rng_seed}; R clamp: [1, {MAX_RUNS}].", "",
-             ("Incomplete: stopped after capture failures, no rows, or rows not measured; see plan errors and the not-measured rows"
-              if incomplete else "Complete") +
+             (f"Incomplete: stopped: {stop.rstrip('.')}" if stop else
+              "Incomplete: no rows, or rows not measured; see the not-measured rows" if incomplete else "Complete") +
              ("." if not budget_stop else
               f"; stopped at the time budget before look {budget_stop['look']}: "
               f"{budget_stop['elapsed_seconds'] / 60:.0f} min used, its estimated {budget_stop['estimate_seconds'] / 60:.0f} min "

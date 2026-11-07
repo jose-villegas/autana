@@ -1,6 +1,6 @@
 """Path-traced backend for reference_render.py: the same source mesh, albedo, camera and lights, rendered by Mitsuba 3.
 
-The adapter only translates what the bake reference already interprets (geometry after alpha rejection, the
+The adapter only translates what the bake reference already interprets (geometry with per-hit alpha masks, the
 albedo decode, the pinhole camera, the scene's lights) into a Mitsuba scene, so the two backends differ in
 transport and nothing else. It returns linear radiance and per-pixel coverage; exposure, tone map and RGB565
 conversion stay with reference_render.device_picture. Mitsuba and Dr.Jit are pinned in requirements.txt.
@@ -57,7 +57,7 @@ def boosted_albedo(albedo, boost):
     return np.minimum(albedo * boost, np.maximum(albedo, ALBEDO_CEILING))
 
 
-def material_bsdf(mi, kd, texture, two_sided, boost=1.0):
+def material_bsdf(mi, kd, texture, two_sided, boost=1.0, alpha_test=None):
     """The diffuse BSDF of one material: texture (linear, level 0) times Kd as `albedo_from_uv` samples it, or Kd
     decoded with the same power 2.2 when untextured, both through `boosted_albedo`. `raw` keeps Mitsuba from
     decoding the bitmap a second time."""
@@ -69,7 +69,14 @@ def material_bsdf(mi, kd, texture, two_sided, boost=1.0):
         reflectance = {"type": "bitmap", "bitmap": mi.Bitmap(pixels), "raw": True, "filter_type": "bilinear",
                        "wrap_mode": "repeat"}
     bsdf = {"type": "diffuse", "reflectance": reflectance}
-    return {"type": "twosided", "bsdf": bsdf} if two_sided else bsdf
+    bsdf = {"type": "twosided", "bsdf": bsdf} if two_sided else bsdf
+    if alpha_test is not None and texture is not None and np.any(texture.levels[0][..., 3] < 1.0):
+        # Mitsuba 3.9.1's mask has no threshold parameter; nearest filtering keeps its opacity binary.
+        opacity = alpha_test.solid(texture.levels[0][..., 3]).astype(np.float32)[..., None]
+        bsdf = {"type": "mask", "bsdf": bsdf,
+                "opacity": {"type": "bitmap", "bitmap": mi.Bitmap(opacity), "raw": True,
+                            "filter_type": "nearest", "wrap_mode": "repeat"}}
+    return bsdf
 
 
 def source_meshes(mi, source, double_sided, keep_textures=False, boost=1.0):
@@ -88,7 +95,8 @@ def source_meshes(mi, source, double_sided, keep_textures=False, boost=1.0):
             continue
         properties = mi.Properties()
         properties["bsdf"] = mi.load_dict(material_bsdf(mi, source.materials.get(name, {}).get("Kd", (1.0, 1.0, 1.0)),
-                                                         source.textures[index], name in double_sided, boost))
+                                                         source.textures[index], name in double_sided, boost,
+                                                         getattr(source, "alpha_test", None)))
         mesh = mi.Mesh(name, count * 3, count, properties, has_vertex_normals=True, has_vertex_texcoords=True)
         params = mi.traverse(mesh)
         params["vertex_positions"] = source.p[source.tri_v[chosen]].astype(np.float32).ravel()
@@ -150,23 +158,25 @@ def sensor(mi, pose, width, height, lens, near):
                                   "pixel_format": "rgba", "component_format": "float32"}})
 
 
-def integrator(max_depth):
+def integrator(max_depth, masked=False):
     """A path tracer with next-event estimation, MIS and Russian roulette from depth 5, emitters hidden so the film's
     alpha is the coverage of the mesh."""
-    return {"type": "path", "max_depth": int(max_depth), "rr_depth": 5, "hide_emitters": True}
+    # The volumetric path tracer follows the mask BSDF's null transmission on shadow rays.
+    return {"type": "volpath" if masked else "path", "max_depth": int(max_depth), "rr_depth": 5, "hide_emitters": True}
 
 
 class PathScene:
     """The exported source and lights, traced from any pose at any spp and depth."""
 
-    def __init__(self, mi, scene, pixels_per_pass):
+    def __init__(self, mi, scene, pixels_per_pass, masked=False):
         self.mi, self.scene, self.pixels_per_pass, self.integrators = mi, scene, pixels_per_pass, {}
+        self.masked = masked
 
     def trace(self, pose, width, height, lens, near, spp=DEFAULT_SPP, seed=0, max_depth=DEFAULT_DEPTH):
         """(linear RGB, coverage) of a pose: `spp` paths per pixel averaged over passes small enough to bound
         memory. Coverage is the share of each pixel's paths that hit the mesh."""
         if max_depth not in self.integrators:
-            self.integrators[max_depth] = self.mi.load_dict(integrator(max_depth))
+            self.integrators[max_depth] = self.mi.load_dict(integrator(max_depth, self.masked))
         camera = sensor(self.mi, pose, width, height, lens, near)
         per_pass = min(spp, max(1, self.pixels_per_pass // (width * height)))
         total, done, index = np.zeros((height, width, 4)), 0, 0
@@ -187,10 +197,12 @@ def prepare(source, lights, double_sided, sky=None, variant=None, pixels_per_pas
     if mi is None:
         raise RuntimeError("the path-traced backend needs Mitsuba: pip install -r launcher/tools/r3d/requirements.txt")
     mi.set_variant(variant or default_variant(mi))
-    scene = {"type": "scene", "integrator": integrator(DEFAULT_DEPTH)}
+    alpha = getattr(source, "alpha_test", None)
+    masked = alpha is not None and bool(alpha.masked.any())
+    scene = {"type": "scene", "integrator": integrator(DEFAULT_DEPTH, masked)}
     scene.update(source_meshes(mi, source, double_sided, keep_textures, albedo_boost))
     scene.update(emitters(mi, lights, sky))
-    return PathScene(mi, mi.load_dict(scene), pixels_per_pass)
+    return PathScene(mi, mi.load_dict(scene), pixels_per_pass, masked)
 
 
 def add_options(parser):

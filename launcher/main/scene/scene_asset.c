@@ -223,7 +223,7 @@ scene_asset_open(asset_view_t entry, scene_asset_t* out) {
     }
     const uint16_t entities = count(entry, SCENE_ASSET_NAMES);
     if (count(entry, SCENE_ASSET_TRANSFORMS) != entities || count(entry, SCENE_ASSET_PARENTS) != entities
-        || entities == SCENE_ENTITY_NONE || count(entry, SCENE_ASSET_SETTINGS) != 1
+        || entities == SCENE_ROW_NONE || count(entry, SCENE_ASSET_SETTINGS) != 1
         || !asset_entry_zero(entry, AT_HEADER_PAD, SCENE_ASSET_AT_OFFSETS)) {
         return ASSET_ERR_FORMAT;
     }
