@@ -11,7 +11,7 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from r3d.thin.thin_parts import ThinPart, budget_side, find_thin_parts
-from r3d.thin.curve_fit import CURVE_LIGHT_RING, TUBE_SIDES, Curve, fit_curve, light_curve, nearest_lit
+from r3d.thin.curve_fit import CURVE_LIGHT_RING, CURVE_LIGHT_SPAN, TUBE_SIDES, Curve, fit_curve, light_curve
 from r3d.thin.curve_asset import read_curves, write_curves
 from r3d.import_settings import SettingsError, load_geometry
 from r3d.light import LIGHT_GAMMA
@@ -85,10 +85,6 @@ class ThinCurvesTests(unittest.TestCase):
                 np.testing.assert_allclose(curve.radius, 2, rtol=0.05)
                 np.testing.assert_allclose(sorted(curve.knots[:, 2]), [0, 200], atol=1e-10)
 
-    def test_an_unlit_knot_takes_its_nearest_lit_knot(self):
-        np.testing.assert_array_equal(nearest_lit(np.array([False, True, True, False, False])), [1, 1, 2, 2, 2])
-        np.testing.assert_array_equal(nearest_lit(np.array([False, False])), [0, 1])
-
     def test_bend_fit(self):
         p, t = cylinder()
         ring = p[:96]
@@ -120,14 +116,18 @@ class ThinCurvesTests(unittest.TestCase):
             lit = light_curve(curve, source, part, None,
                               [{'type': 'ambient', 'color': [1, 1, 1], 'intensity': 2}], 0.5)
         points, normals = shade.call_args.args[:2]
-        self.assertEqual(len(points), len(curve.knots) * CURVE_LIGHT_RING)
+        self.assertEqual(len(points), len(curve.knots) * (1 + 2 * len(CURVE_LIGHT_SPAN)) * CURVE_LIGHT_RING)
         np.testing.assert_allclose(np.linalg.norm(normals, axis=1), 1)
-        radial = points - np.repeat(curve.knots, CURVE_LIGHT_RING, axis=0)
-        np.testing.assert_allclose((radial * normals).sum(axis=1), np.repeat(curve.radius, CURVE_LIGHT_RING))
+        axis = (curve.knots[1] - curve.knots[0]) / np.linalg.norm(curve.knots[1] - curve.knots[0])
+        np.testing.assert_allclose(normals @ axis, 0, atol=1e-9)
+        offset = points - curve.knots[0]
+        radial = np.linalg.norm(offset - np.outer(offset @ axis, axis), axis=1)
+        self.assertTrue(np.all((radial >= curve.radius.min() - 1e-9) & (radial <= curve.radius.max() + 1e-9)))
+        self.assertTrue(np.all((offset @ axis >= -1e-9) & (offset @ axis <= np.linalg.norm(curve.knots[1] - curve.knots[0]) + 1e-9)))
         np.testing.assert_allclose(lit.color, 2 * 0.25 ** LIGHT_GAMMA)
         np.testing.assert_array_equal(lit.knots, curve.knots)
 
-    def test_a_knot_inside_a_wall_takes_its_lit_neighbours_colour(self):
+    def test_a_knot_inside_a_wall_is_lit_along_the_stretch_it_draws(self):
         p, t = cylinder()
         part = find_thin_parts(p, t, SIDE)[0]
         curve = fit_curve(p, t, part)
@@ -136,14 +136,12 @@ class ThinCurvesTests(unittest.TestCase):
                                  names=['surface'], textures=[None], colors=None)
 
         def walled(points, *args, **kwargs):
-            radiance = np.ones((len(points), 3))
-            radiance[:CURVE_LIGHT_RING] = 0
-            return radiance
+            return np.where(points[:, 2:3] < 10, 0.0, 1.0) * np.ones((len(points), 3))
 
         with mock.patch('r3d.light.light', walled):
             lit = light_curve(curve, source, part, None, [], 0.5)
-        np.testing.assert_allclose(lit.color[0], lit.color[1])
-        self.assertGreater(lit.color[0].min(), 0)
+        end = int(np.argmin(curve.knots[:, 2]))
+        self.assertGreater(lit.color[end].min(), 0.5 * lit.color[1 - end].min())
 
     def test_frozen_tubes(self):
         from r3d.fit.copies import placed_curves, joined
