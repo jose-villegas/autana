@@ -10,9 +10,9 @@ from audio import sound_asset
 from gfx import image_asset
 from asset import table_asset
 from anim import tracks_asset, skeleton_asset
-from r3d import mesh_asset, scene_asset, skin_asset, lcol_asset, lod_asset
+from r3d import mesh_asset, scene_asset, skin_asset, lcol_asset, lod_asset, mask_asset
 
-FRAMELESS = frozenset((image_asset.TYPE, table_asset.TYPE, sound_asset.TYPE, lcol_asset.TYPE))
+FRAMELESS = frozenset((image_asset.TYPE, table_asset.TYPE, sound_asset.TYPE, lcol_asset.TYPE, mask_asset.TYPE))
 
 AXIS_SIGNS = (1, 1, -1)
 ROTATION_SIGNS = (-1, -1, 1, 1)
@@ -54,8 +54,8 @@ def to_engine(kind, entry):
             POSITION.pack_into(out, at, *_mirror_position(POSITION.unpack_from(entry, at)))
         for index in range(clusters):
             at = cl_at + index * mesh_asset.CLUSTER.size
-            vb, vc, tb, tc, *box, double = mesh_asset.CLUSTER.unpack_from(entry, at)
-            mesh_asset.CLUSTER.pack_into(out, at, vb, vc, tb, tc, *_mirror_box(box), double)
+            vb, vc, tb, tc, *box, double, masked = mesh_asset.CLUSTER.unpack_from(entry, at)
+            mesh_asset.CLUSTER.pack_into(out, at, vb, vc, tb, tc, *_mirror_box(box), double, masked)
         for index in range(nodes):
             at = node_at + index * mesh_asset.NODE.size
             *box, first, count, leaf = mesh_asset.NODE.unpack_from(entry, at)

@@ -35,6 +35,8 @@ typedef struct r3d_span_writer r3d_span_writer_t;
 typedef struct {
     const r3d_span_writer_t* writers; /* writer_count of them; none: colour and depth only */
     int writer_count;
+    const uint32_t* mask_rows;
+    int mask_row_count;
     bool skip_hidden; /* render_view_t.skip_hidden: fills cap their depth, and writers follow */
     const r3d_span_small_fill_t* small_fill;
 
@@ -93,6 +95,7 @@ typedef struct {
     int32_t x, y;  /* screen position in subpixels; pixel i's centre is at R3D_SUBPIXEL i + R3D_SUBPIXEL / 2 */
     float z;       /* inverse depth, (0, 1] */
     float r, g, b; /* 0..255 */
+    float u, v;    /* LMSK 12.4 texel coordinates */
 } r3d_span_vertex_t;
 
 void r3d_span_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,

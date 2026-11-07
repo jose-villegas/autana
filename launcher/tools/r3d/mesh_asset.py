@@ -15,7 +15,7 @@ MESH_HEADER = Path(__file__).resolve().parents[2] / "main" / "render" / "r3d_lit
 
 TYPE = b"LMSH"
 BLOB_HEADER = struct.Struct("<11I")
-CLUSTER = struct.Struct("<4H6hBx")
+CLUSTER = struct.Struct("<4H6hBB")
 NODE = struct.Struct("<6hHBB")
 # A cluster's own and parent group; a group's bounds (centre and radius, ticks) and error (ticks).
 CLUSTER_LOD = struct.Struct("<2H")

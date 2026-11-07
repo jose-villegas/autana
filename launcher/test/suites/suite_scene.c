@@ -42,6 +42,7 @@
 #include "render/context/render_context.h"
 #include "render/lcol_format.h"
 #include "render/llod_format.h"
+#include "render/lmsk_format.h"
 #include "scene/scene.h"
 #include "scene/scene_internal.h"
 #include "scene/scene_shell.h"
@@ -120,8 +121,13 @@ make_quad_entry(uint8_t* entry, uint8_t red, uint8_t green, uint8_t blue, int co
                                 corners[t][axis] + c * QUAD_VERTICES);
             }
         }
-        const r3d_lit_cluster_t cluster = {c * QUAD_VERTICES,        QUAD_VERTICES, c * QUAD_TRIANGLES, QUAD_TRIANGLES,
-                                           {{-1, -1, 0}, {1, 1, 0}}, true};
+        const r3d_lit_cluster_t cluster = {c * QUAD_VERTICES,
+                                           QUAD_VERTICES,
+                                           c * QUAD_TRIANGLES,
+                                           QUAD_TRIANGLES,
+                                           {{-1, -1, 0}, {1, 1, 0}},
+                                           true,
+                                           false};
         memcpy(entry + clusters + c * sizeof cluster, &cluster, sizeof cluster);
     }
     const r3d_lit_node_t node = {{{-1, -1, 0}, {1, 1, 0}}, 0, copies, true};
@@ -3608,6 +3614,174 @@ test_mesh_open_resolves_optional_levels(void) {
     }
 }
 
+enum {
+    MASK_TEST_ROWS = 4,
+    MASK_TEST_BYTES = LMSK_HEADER_SIZE + QUAD_VERTICES * sizeof(uint16_t[2]) + MASK_TEST_ROWS * sizeof(uint32_t),
+};
+
+static r3d_lit_mesh_t
+masked_quads(uint32_t mask[MASK_TEST_BYTES / sizeof(uint32_t)]) {
+    (void)levelled_quads();
+    memset(mask, 0, MASK_TEST_BYTES);
+    uint8_t* bytes = (void*)mask;
+    test_pack_put16(bytes + LMSK_AT_VERSION, LMSK_VERSION);
+    test_pack_put16(bytes + LMSK_AT_MASK_WIDTH, LMSK_MASK_WIDTH);
+    test_pack_put32(bytes + LMSK_AT_VERTEX_FIRST, QUAD_VERTICES);
+    test_pack_put32(bytes + LMSK_AT_MASK_ROWS, MASK_TEST_ROWS);
+    for (int v = 0; v < QUAD_VERTICES; v++) {
+        test_pack_put16(bytes + LMSK_HEADER_SIZE + v * sizeof(uint16_t[2]),
+                        (LMSK_MASK_WIDTH << LMSK_UV_FRACTION_BITS) - 1);
+        test_pack_put16(bytes + LMSK_HEADER_SIZE + v * sizeof(uint16_t[2]) + sizeof(uint16_t),
+                        (MASK_TEST_ROWS << LMSK_UV_FRACTION_BITS) - 1);
+    }
+    const asset_view_t geometry = {levelled_mesh, RIG_MESH_BYTES};
+    r3d_lit_mesh_t mesh;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_from_asset(&geometry, &mesh));
+    r3d_lit_cluster_t* clusters = (void*)(uintptr_t)mesh.clusters;
+    clusters[1].masked = true;
+    return mesh;
+}
+
+static asset_pack_t
+mask_pack(const uint32_t* mask) {
+    test_pack_t writer = test_pack_begin(fx.bytes, PACK_MAX, 1 + (mask != NULL));
+    memcpy(test_pack_add(&writer, "cards", R3D_LIT_MESH_ASSET, RIG_MESH_BYTES), levelled_mesh, RIG_MESH_BYTES);
+    if (mask != NULL) {
+        memcpy(test_pack_add(&writer, "cards" LMSK_NAME_SUFFIX, LMSK_ASSET, MASK_TEST_BYTES), mask, MASK_TEST_BYTES);
+    }
+    const uint32_t size = test_pack_finish(&writer);
+    asset_pack_t pack;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&pack, fx.bytes, size));
+    return pack;
+}
+
+static void
+test_mask_round_trip_and_old_mesh(void) {
+    fixture();
+    uint32_t mask[MASK_TEST_BYTES / sizeof(uint32_t)];
+    r3d_lit_mesh_t mesh = masked_quads(mask);
+    const asset_view_t entry = {(const void*)mask, sizeof mask};
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_mask_from_asset(&entry, &mesh));
+    TEST_ASSERT_EQUAL_PTR((const uint8_t*)mask + LMSK_HEADER_SIZE, mesh.mask_uvs);
+    TEST_ASSERT_EQUAL_INT(QUAD_VERTICES, mesh.mask_vertex_first);
+    TEST_ASSERT_EQUAL_INT(MASK_TEST_ROWS, mesh.mask_row_count);
+    TEST_ASSERT_EQUAL_UINT16((LMSK_MASK_WIDTH << LMSK_UV_FRACTION_BITS) - 1, mesh.mask_uvs[0][0]);
+    r3d_lit_cluster_t* source_clusters = (void*)(uintptr_t)mesh.clusters;
+    for (int present = 0; present <= 1; present++) {
+        source_clusters[1].masked = present != 0;
+        const asset_pack_t pack = mask_pack(present ? mask : NULL);
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(&pack, "cards", &mesh));
+        TEST_ASSERT_EQUAL_INT(present ? MASK_TEST_ROWS : 0, mesh.mask_row_count);
+        TEST_ASSERT_EQUAL_INT(present, mesh.mask_uvs != NULL);
+        TEST_ASSERT_EQUAL_INT(RIG_VERTICES, mesh.vertex_count);
+    }
+}
+
+static void
+test_mask_keeps_old_mesh_name_capacity(void) {
+    fixture();
+    (void)levelled_quads();
+    char name[ASSET_NAME_MAX - sizeof(LLOD_NAME_SUFFIX) + 1];
+    memset(name, 'm', sizeof name - 1);
+    name[sizeof name - 1] = '\0';
+    test_pack_t writer = test_pack_begin(fx.bytes, PACK_MAX, 1);
+    memcpy(test_pack_add(&writer, name, R3D_LIT_MESH_ASSET, RIG_MESH_BYTES), levelled_mesh, RIG_MESH_BYTES);
+    const uint32_t size = test_pack_finish(&writer);
+    asset_pack_t pack;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&pack, fx.bytes, size));
+    r3d_lit_mesh_t mesh;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(&pack, name, &mesh));
+    TEST_ASSERT_NULL(mesh.mask_rows);
+}
+
+static void
+test_mask_rejects_cluster_order(void) {
+    uint32_t mask[MASK_TEST_BYTES / sizeof(uint32_t)];
+    r3d_lit_mesh_t mesh = masked_quads(mask);
+    r3d_lit_cluster_t* clusters = (void*)(uintptr_t)mesh.clusters;
+    clusters[0].masked = true;
+    clusters[1].masked = false;
+    const asset_view_t entry = {levelled_mesh, RIG_MESH_BYTES};
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, r3d_lit_mesh_from_asset(&entry, &mesh));
+}
+
+static void
+test_mask_rejects_vertex_first(void) {
+    uint32_t mask[MASK_TEST_BYTES / sizeof(uint32_t)];
+    r3d_lit_mesh_t mesh = masked_quads(mask);
+    test_pack_put32((uint8_t*)mask + LMSK_AT_VERTEX_FIRST, QUAD_VERTICES - 1);
+    const asset_view_t entry = {(const void*)mask, sizeof mask};
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, r3d_lit_mesh_mask_from_asset(&entry, &mesh));
+}
+
+static void
+test_mask_rejects_missing_or_unneeded_sibling(void) {
+    fixture();
+    uint32_t mask[MASK_TEST_BYTES / sizeof(uint32_t)];
+    r3d_lit_mesh_t mesh = masked_quads(mask);
+    for (int present = 0; present <= 1; present++) {
+        ((r3d_lit_cluster_t*)(uintptr_t)mesh.clusters)[1].masked = present == 0;
+        const asset_pack_t pack = mask_pack(present ? mask : NULL);
+        TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, r3d_lit_mesh_open(&pack, "cards", &mesh));
+        TEST_ASSERT_NULL(mesh.positions);
+        const asset_view_t geometry = {levelled_mesh, RIG_MESH_BYTES};
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_from_asset(&geometry, &mesh));
+    }
+}
+
+static void
+test_mask_rejects_version_and_width(void) {
+    uint32_t mask[MASK_TEST_BYTES / sizeof(uint32_t)];
+    r3d_lit_mesh_t mesh = masked_quads(mask);
+    const asset_view_t entry = {(const void*)mask, sizeof mask};
+    test_pack_put16((uint8_t*)mask + LMSK_AT_VERSION, LMSK_VERSION + 1);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, r3d_lit_mesh_mask_from_asset(&entry, &mesh));
+    test_pack_put16((uint8_t*)mask + LMSK_AT_VERSION, LMSK_VERSION);
+    test_pack_put16((uint8_t*)mask + LMSK_AT_MASK_WIDTH, LMSK_MASK_WIDTH - 1);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, r3d_lit_mesh_mask_from_asset(&entry, &mesh));
+}
+
+static void
+test_mask_rejects_uv_bounds(void) {
+    uint32_t mask[MASK_TEST_BYTES / sizeof(uint32_t)];
+    r3d_lit_mesh_t mesh = masked_quads(mask);
+    const asset_view_t entry = {(const void*)mask, sizeof mask};
+    test_pack_put16((uint8_t*)mask + LMSK_HEADER_SIZE, LMSK_MASK_WIDTH << LMSK_UV_FRACTION_BITS);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, r3d_lit_mesh_mask_from_asset(&entry, &mesh));
+    test_pack_put16((uint8_t*)mask + LMSK_HEADER_SIZE, 0);
+    test_pack_put16((uint8_t*)mask + LMSK_HEADER_SIZE + sizeof(uint16_t), MASK_TEST_ROWS << LMSK_UV_FRACTION_BITS);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, r3d_lit_mesh_mask_from_asset(&entry, &mesh));
+}
+
+static void
+test_mask_rejects_size(void) {
+    uint32_t mask[MASK_TEST_BYTES / sizeof(uint32_t)];
+    r3d_lit_mesh_t mesh = masked_quads(mask);
+    const asset_view_t good = {(const void*)mask, sizeof mask};
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_mask_from_asset(&good, &mesh));
+    for (int size = MASK_TEST_BYTES - 1; size <= MASK_TEST_BYTES + 1; size += 2) {
+        const asset_view_t entry = {(const void*)mask, (uint32_t)size};
+        TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, r3d_lit_mesh_mask_from_asset(&entry, &mesh));
+        TEST_ASSERT_NULL(mesh.mask_uvs);
+        TEST_ASSERT_NULL(mesh.mask_rows);
+    }
+}
+
+static void
+test_mask_rejects_lod_groups(void) {
+    uint32_t mask[MASK_TEST_BYTES / sizeof(uint32_t)];
+    r3d_lit_mesh_t mesh = masked_quads(mask);
+    const asset_view_t levels = {levelled_entry, LEVELLED_BYTES};
+    test_pack_put16(levelled_entry + SECOND_OWN, R3D_LOD_NONE);
+    test_pack_put16(levelled_entry + SECOND_OWN + sizeof(uint16_t), R3D_LOD_NONE);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_levels_from_asset(&levels, &mesh));
+    for (int field = 0; field < 2; field++) {
+        test_pack_put16(levelled_entry + SECOND_OWN + field * sizeof(uint16_t), 0);
+        TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, r3d_lit_mesh_levels_from_asset(&levels, &mesh));
+        test_pack_put16(levelled_entry + SECOND_OWN + field * sizeof(uint16_t), R3D_LOD_NONE);
+    }
+}
+
 static void
 test_clip_bind_failure_names_the_first_rejected_clip(void) {
     fixture();
@@ -4815,6 +4989,15 @@ run_scene_suite(void) {
     RUN_TEST(test_mesh_reader_accepts_only_positive_int_scales);
     RUN_TEST(test_mesh_reader_refuses_levels_out_of_order);
     RUN_TEST(test_mesh_open_resolves_optional_levels);
+    RUN_TEST(test_mask_round_trip_and_old_mesh);
+    RUN_TEST(test_mask_keeps_old_mesh_name_capacity);
+    RUN_TEST(test_mask_rejects_cluster_order);
+    RUN_TEST(test_mask_rejects_vertex_first);
+    RUN_TEST(test_mask_rejects_missing_or_unneeded_sibling);
+    RUN_TEST(test_mask_rejects_version_and_width);
+    RUN_TEST(test_mask_rejects_uv_bounds);
+    RUN_TEST(test_mask_rejects_size);
+    RUN_TEST(test_mask_rejects_lod_groups);
     RUN_TEST(test_clip_bind_failure_names_the_first_rejected_clip);
     RUN_TEST(test_skinned_scene_draws_clip_output_and_reskins_from_bind);
     RUN_TEST(test_a_skinned_renderer_s_world_box_follows_its_refit);

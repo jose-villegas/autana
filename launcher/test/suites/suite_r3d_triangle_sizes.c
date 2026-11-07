@@ -151,7 +151,7 @@ test_distance_moves_triangles_between_the_bins(void) {
 
 static r3d_span_vertex_t
 at(float x, float y) {
-    return (r3d_span_vertex_t){(int32_t)(x * R3D_SUBPIXEL), (int32_t)(y * R3D_SUBPIXEL), 0.5f, 10, 20, 30};
+    return (r3d_span_vertex_t){(int32_t)(x * R3D_SUBPIXEL), (int32_t)(y * R3D_SUBPIXEL), 0.5f, 10, 20, 30, 0, 0};
 }
 
 /* A triangle lands in its mode's bin by the centres its box holds, whole,
@@ -160,29 +160,34 @@ at(float x, float y) {
 static void
 test_a_triangle_counts_by_its_whole_box_and_shading_mode(void) {
     /* Counting reads no pixel, so the targets need none. */
-    const r3d_span_target_t whole = r3d_span_target(NULL, NULL, 16, 0, 16);
-    const r3d_span_target_t top_rows = r3d_span_target(NULL, NULL, 16, 0, 2);
+    enum { WHOLE, TOP_ROWS, BOTTOM_ROWS, TARGETS };
+
+    r3d_span_target_t* targets = malloc(TARGETS * sizeof(*targets));
+    TEST_ASSERT_NOT_NULL(targets);
+    targets[WHOLE] = r3d_span_target(NULL, NULL, 16, 0, 16);
+    targets[TOP_ROWS] = r3d_span_target(NULL, NULL, 16, 0, 2);
+    targets[BOTTOM_ROWS] = r3d_span_target(NULL, NULL, 16, 14, 16);
+    const r3d_span_target_t* whole = &targets[WHOLE];
     r3d_boxes_t* b = calloc(1, sizeof(*b));
     TEST_ASSERT_NOT_NULL(b);
     /* Centres 1..3 across and 1..4 down: a 3 x 4 box. */
     const r3d_span_vertex_t tall[3] = {at(1.2f, 1.2f), at(3.8f, 1.2f), at(1.2f, 4.8f)};
-    r3d_boxes_count(b, &top_rows, &tall[0], &tall[1], &tall[2], false);
-    r3d_boxes_count(b, &whole, &tall[0], &tall[1], &tall[2], true);
+    r3d_boxes_count(b, &targets[TOP_ROWS], &tall[0], &tall[1], &tall[2], false);
+    r3d_boxes_count(b, whole, &tall[0], &tall[1], &tall[2], true);
     TEST_ASSERT_EQUAL_INT(1, (int)b->boxes[R3D_BOXES_SMOOTH][3][2]);
     TEST_ASSERT_EQUAL_INT(1, (int)b->boxes[R3D_BOXES_FACE][3][2]);
     /* Two rows and under three pixels wide: flat in either call. */
     const r3d_span_vertex_t tiny[3] = {at(5.2f, 5.2f), at(7.6f, 5.2f), at(5.2f, 6.8f)};
-    r3d_boxes_count(b, &whole, &tiny[0], &tiny[1], &tiny[2], true);
+    r3d_boxes_count(b, whole, &tiny[0], &tiny[1], &tiny[2], true);
     TEST_ASSERT_EQUAL_INT(1, (int)b->boxes[R3D_BOXES_FLAT][1][2]);
     /* Ten centres a side share the last bin. */
     const r3d_span_vertex_t big[3] = {at(0.2f, 0.2f), at(10.2f, 0.2f), at(0.2f, 10.2f)};
-    r3d_boxes_count(b, &whole, &big[0], &big[1], &big[2], false);
+    r3d_boxes_count(b, whole, &big[0], &big[1], &big[2], false);
     TEST_ASSERT_EQUAL_INT(1, (int)b->boxes[R3D_BOXES_SMOOTH][R3D_BOXES_SIDES - 1][R3D_BOXES_SIDES - 1]);
     /* Below the target's rows, and a line with no area. */
-    const r3d_span_target_t bottom_rows = r3d_span_target(NULL, NULL, 16, 14, 16);
-    r3d_boxes_count(b, &bottom_rows, &tall[0], &tall[1], &tall[2], false);
+    r3d_boxes_count(b, &targets[BOTTOM_ROWS], &tall[0], &tall[1], &tall[2], false);
     const r3d_span_vertex_t line[3] = {at(1.2f, 1.2f), at(3.2f, 3.2f), at(5.2f, 5.2f)};
-    r3d_boxes_count(b, &whole, &line[0], &line[1], &line[2], false);
+    r3d_boxes_count(b, whole, &line[0], &line[1], &line[2], false);
     long all = 0;
     for (int m = 0; m < R3D_BOXES_MODES; m++) {
         for (int r = 0; r < R3D_BOXES_SIDES; r++) {
@@ -192,6 +197,7 @@ test_a_triangle_counts_by_its_whole_box_and_shading_mode(void) {
         }
     }
     free(b);
+    free(targets);
     TEST_ASSERT_EQUAL_INT(4, (int)all);
 }
 

@@ -363,12 +363,14 @@ test_cluster_values_and_constant_writers(void) {
         TEST_ASSERT_TRUE(both[k]->writer(both[k], 0, &writers[k]));
         writers[k].attachment = GFX_ATTACHMENT_FURTHER + k;
     }
-    r3d_span_target_t target = {.writers = writers, .writer_count = 2, .small_fill = &r3d_span_small_fill_default};
-    gfx_target_window(&target.rows, &buffers.picture, 0, H);
+    r3d_span_target_t* target = malloc(sizeof(*target));
+    TEST_ASSERT_NOT_NULL(target);
+    *target = (r3d_span_target_t){.writers = writers, .writer_count = 2, .small_fill = &r3d_span_small_fill_default};
+    gfx_target_window(&target->rows, &buffers.picture, 0, H);
     raster_lens(&r->raster, &r->view, 1, &r->lens);
     const uint16_t visible = 1;
     r3d_pipeline_transform(&r->quad[0].mesh, &r->lens, &visible, 1, buffers.cs, buffers.rows, false);
-    r3d_pipeline_draw(&r->quad[0].mesh, &r->lens, &visible, 1, buffers.cs, buffers.rows, &target, buffers.work[0]);
+    r3d_pipeline_draw(&r->quad[0].mesh, &r->lens, &visible, 1, buffers.cs, buffers.rows, target, buffers.work[0]);
     int drawn = 0;
     for (int p = 0; p < W * H; p++) {
         const bool won = raster_depth(&r->raster)[p] != 0;
@@ -379,6 +381,7 @@ test_cluster_values_and_constant_writers(void) {
     TEST_ASSERT_TRUE(drawn > 0);
     TEST_ASSERT_EQUAL_UINT32(17, writers[0].value);
     TEST_ASSERT_EQUAL_UINT32(17, writers[1].value);
+    free(target);
     free(clusters);
 }
 
@@ -847,7 +850,9 @@ small_fill_reference(raster_rig_t* r, small_fill_t fill) {
                                           1.0F / SMALL_FILL_CAMERA_DISTANCE,
                                           rgb[0],
                                           rgb[1],
-                                          rgb[2]};
+                                          rgb[2],
+                                          0,
+                                          0};
     }
     for (int triangle = 0; triangle < 2; triangle++) {
         const uint16_t* indices = r->quad[0].mesh.triangles[triangle];

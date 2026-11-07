@@ -9,6 +9,8 @@
 #define r3d_span_plane_bound         constant_r3d_span_plane_bound
 #define r3d_span_plane_in_range      constant_r3d_span_plane_in_range
 #define r3d_span_stop_after          constant_r3d_span_stop_after
+#define r3d_span_fill_gouraud        constant_r3d_span_fill_gouraud
+#define r3d_span_fill_masked         constant_r3d_span_fill_masked
 #define r3d_lens_init                constant_r3d_lens_init
 #define r3d_lens_fit                 constant_r3d_lens_fit
 #define r3d_lens_place               constant_r3d_lens_place
@@ -152,8 +154,8 @@ test_styles_match_pipeline_colours(void) {
     for (int k = 0; k < 3; k++) {
         transformed[k].sx = k == 1 ? TEST_SIDE * R3D_SUBPIXEL : 0;
         transformed[k].sy = k == 2 ? TEST_SIDE * R3D_SUBPIXEL : 0;
-        reference[k] = (r3d_span_vertex_t){transformed[k].sx, transformed[k].sy, transformed[k].iz,
-                                           colours[k][0],     colours[k][1],     colours[k][2]};
+        reference[k] = (r3d_span_vertex_t){
+            transformed[k].sx, transformed[k].sy, transformed[k].iz, colours[k][0], colours[k][1], colours[k][2], 0, 0};
     }
     r3d_span_target_t expected = r3d_span_target(pixels, pixels + TEST_PIXELS, TEST_SIDE, 0, TEST_SIDE);
     r3d_span_target_t actual =
@@ -203,10 +205,10 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
     r3d_span_target_t* actual = &clipped->actual;
     *expected = r3d_span_target(pixels, pixels + TEST_PIXELS, TEST_SIDE, 0, TEST_SIDE);
     *actual = r3d_span_target(pixels + TEST_PIXELS * 2, pixels + TEST_PIXELS * 3, TEST_SIDE, 0, TEST_SIDE);
-    const clip_vertex_t polygon[4] = {{8.75F, 0.75F, 1, 191.25F, 63.75F, 0},
-                                      {32, 0, 4, 0, 255, 0},
-                                      {0, 32, 4, 0, 0, 255},
-                                      {0.75F, 8.75F, 1, 191.25F, 0, 63.75F}};
+    const clip_vertex_t polygon[4] = {{{8.75F, 0.75F, 1}, {191.25F, 63.75F, 0}, {0, 0}},
+                                      {{32, 0, 4}, {0, 255, 0}, {0, 0}},
+                                      {{0, 32, 4}, {0, 0, 255}, {0, 0}},
+                                      {{0.75F, 8.75F, 1}, {191.25F, 0, 63.75F}, {0, 0}}};
     uint32_t checksums[SMALL_FILL_STYLE_COUNT];
     for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
         r3d_span_small_fill_t* resolved = &clipped->resolved;
@@ -224,8 +226,8 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
                 r3d_span_vertex_t* front = clipped->front;
                 for (int k = 0; k < 3; k++) {
                     const r3d_pipeline_vertex_t* v = transformed + k + 3;
-                    front[k] =
-                        (r3d_span_vertex_t){v->sx, v->sy, v->iz, colors[k + 3][0], colors[k + 3][1], colors[k + 3][2]};
+                    front[k] = (r3d_span_vertex_t){
+                        v->sx, v->sy, v->iz, colors[k + 3][0], colors[k + 3][1], colors[k + 3][2], 0, 0};
                 }
                 r3d_span_triangle(expected, front, front + 1, front + 2);
             }
@@ -369,7 +371,7 @@ test_transform_matches_lens_projection_bits(void) {
                 TEST_ASSERT_EQUAL_MEMORY(&iz, &out.iz, sizeof iz);
                 TEST_ASSERT_EQUAL_INT16(r3d_span_unbias(bx), out.sx);
                 TEST_ASSERT_EQUAL_INT16(r3d_span_unbias(by), out.sy);
-                const clip_vertex_t v = {.x = l.x, .y = l.y, .z = l.z};
+                const clip_vertex_t v = {.position = l};
                 const r3d_span_vertex_t clipped = project(&lens, &v);
                 TEST_ASSERT_EQUAL_INT16(out.sx, clipped.x);
                 TEST_ASSERT_EQUAL_INT16(out.sy, clipped.y);
@@ -428,7 +430,7 @@ test_transform_pairs_and_odd_tail(void) {
                             const float bx = lens.snap_cx + l.x * inv;
                             const float by = lens.snap_cy + l.y * inv;
                             if (bx > FAST_LO && bx < FAST_HI && by > FAST_LO && by < FAST_HI) {
-                                const clip_vertex_t vertex = {.x = l.x, .y = l.y, .z = l.z};
+                                const clip_vertex_t vertex = {.position = l};
                                 const r3d_span_vertex_t projected = project(&lens, &vertex);
                                 expected = (r3d_pipeline_vertex_t){projected.x, projected.y, projected.z};
                                 y0 = mathi_min(expected.sy, y0);

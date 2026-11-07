@@ -57,7 +57,7 @@ make_slab(slab_t* s, int16_t reach, int16_t y, uint16_t color) {
         bounds = box3s_extend(bounds, vec3s_from_array(s->corners[i]));
     }
     s->faces[0] = s->faces[1] = color;
-    s->cluster = (r3d_lit_cluster_t){0, 4, 0, 2, bounds, true};
+    s->cluster = (r3d_lit_cluster_t){0, 4, 0, 2, bounds, true, false};
     s->node = (r3d_lit_node_t){bounds, 0, 1, true};
     s->mesh = r3d_quad_mesh(s->corners, NULL, s->faces, &s->cluster, &s->node);
 }
