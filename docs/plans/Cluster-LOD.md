@@ -52,7 +52,7 @@ Hoppe's<sup>[[111]](../Citations.md#hoppe-1997)</sup>; the floor of half a pixel
 | Pick, histogram, exact tolerance | [`lod/pick.py`](../../launcher/tools/r3d/lod/pick.py) | host |
 | Replay over a camera path | [`lod/lod_replay.py`](../../launcher/tools/r3d/lod/lod_replay.py) | host |
 | Levels in the baked mesh | [`lod/bake_levels.py`](../../launcher/tools/r3d/lod/bake_levels.py), [`r3d_lit_mesh.h`](../../launcher/main/render/r3d_lit_mesh.h) | built |
-| Pick at a tolerance, with hysteresis and a coverage cap, once a frame in output pixels | [`r3d_lod_pick()`](../../launcher/main/render/lod/r3d_lod.h), run by the main view's cull just before each instance (`raster_t.picks_levels`); its coarse bits live per scene renderer, and the cluster walk only reads them | built |
+| Pick at a tolerance, with hysteresis and a coverage cap, in output pixels, each instance every `R3D_LOD_PICK_EVERY` frames and all of them on a scene's first frame | [`r3d_lod_pick()`](../../launcher/main/render/lod/r3d_lod.h), run by the main view's cull just before each instance (`raster_t.picks_levels`); its coarse bits live per scene renderer, and the cluster walk only reads them | built |
 | Histogram from the last frame, steering the tolerance to a budget | `r3d_lod.c` | not built |
 | Tolerance per pose baked for the path; the fit trained on it | bake stage | not built |
 

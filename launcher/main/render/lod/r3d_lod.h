@@ -1,6 +1,6 @@
 /*
  * r3d_lod: which level of a mesh's clusters an instance draws
- * (docs/plans/Cluster-LOD.md). Once per instance a frame, r3d_lod_pick()
+ * (docs/plans/Cluster-LOD.md). Once per instance every R3D_LOD_PICK_EVERY frames, r3d_lod_pick()
  * sets one bit per group: coarse when the group's error, projected at its
  * bounds' nearest point, is within the tolerance and its bounds' radius,
  * projected there, spans at most a share of the picture's height. The
@@ -35,9 +35,11 @@
 #define R3D_LOD_COVERAGE_PERMILLE 250
 #define R3D_LOD_PERMILLE          1000
 #define R3D_LOD_UNCAPPED          INT32_MAX
-/* The most frames one round of the pick may be spread over (an experiment,
- * render.lod_pick_every): each frame picks every Nth instance, so a level
- * change lands up to N - 1 frames late. */
+/* The frames one round of the pick is spread over: each frame picks every
+ * Nth instance, so a level change lands up to N - 1 frames late, and a
+ * scene's first frame picks them all. At 4 the cull is 0.06 to 0.1 ms
+ * cheaper a frame with no more blocks popping (docs/plans/Cluster-LOD.md). */
+#define R3D_LOD_PICK_EVERY        4
 #define R3D_LOD_PICK_EVERY_MAX    8
 
 #define R3D_LOD_WORD_BITS         32

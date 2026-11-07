@@ -26,9 +26,9 @@ TUNE_OVERRIDE(render, batched, 1);
  * (R3D_LOD_COVERAGE_PERMILLE); the doc's coverage table renders each cap it
  * lists. */
 TUNE(render, lod_coverage_permille, R3D_LOD_COVERAGE_PERMILLE, 0, R3D_LOD_UNCAPPED);
-/* The frames one round of the pick is spread over (R3D_LOD_PICK_EVERY_MAX);
- * 1 picks every instance every frame. */
-TUNE(render, lod_pick_every, 1, 1, R3D_LOD_PICK_EVERY_MAX);
+/* The frames one round of the pick is spread over (R3D_LOD_PICK_EVERY); 1
+ * picks every instance every frame. */
+TUNE(render, lod_pick_every, R3D_LOD_PICK_EVERY, 1, R3D_LOD_PICK_EVERY_MAX);
 
 render_settings_t
 raster_settings(const raster_t* raster) {
