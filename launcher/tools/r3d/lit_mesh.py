@@ -292,20 +292,26 @@ def validate_levels(lod, groups, clusters):
         lod_asset.encode(lod, groups)
 
 
-def write_lit_mesh(out_dir, name, positions, rgb, tris, double, recorder=None, colourless=False, mesh_builder=bake_lit_mesh, **options):
-    """Writes <name>.bundle into out_dir, the pack entry main/render/
-    r3d_lit_mesh.h reads. positions are model units, rgb 0..255 per vertex
-    (None for a flat mesh), tris counter-clockwise seen from the front,
-    double one flag per triangle; options, face_rgb among them, go to
-    bake_lit_mesh. With colourless, colour columns are weld keys returned in
-    colour_keys or face_keys; neither colour array is written. Returns the baked mesh."""
+def build_lit_mesh(positions, rgb, tris, double, recorder=None, colourless=False, mesh_builder=bake_lit_mesh, **options):
+    """The baked mesh main/render/r3d_lit_mesh.h reads. positions are model units, rgb 0..255 per
+    vertex (None for a flat mesh), tris counter-clockwise seen from the front, double one flag per
+    triangle; options, face_rgb among them, go to bake_lit_mesh. With colourless, colour columns are
+    weld keys returned in colour_keys or face_keys, and the mesh holds neither colour array. A bundle
+    builds each of its meshes here, so the meshlets step sums over them."""
     recorder = NULL_RECORDER if recorder is None else recorder
-    with recorder.step("meshlets", len(tris)) as step:
+    with recorder.step("meshlets", len(tris), summed=True) as step:
         mesh = mesh_builder(positions, rgb, tris, double, **options)
         step["triangles_out"] = len(mesh.tris)
     if colourless:
         mesh.colour_keys, mesh.face_keys = mesh.rgb, mesh.face_colors
         mesh.rgb = mesh.face_colors = None
+    return mesh
+
+
+def write_lit_mesh(out_dir, name, positions, rgb, tris, double, recorder=None, **options):
+    """build_lit_mesh's mesh written alone as <name>.bundle into out_dir; returns the mesh."""
+    recorder = NULL_RECORDER if recorder is None else recorder
+    mesh = build_lit_mesh(positions, rgb, tris, double, recorder=recorder, **options)
     with recorder.step("write", len(mesh.tris)):
         from r3d import mesh_bundle
         (pathlib.Path(out_dir) / f"{name}{mesh_bundle.SUFFIX}").write_bytes(

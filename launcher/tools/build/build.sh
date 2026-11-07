@@ -34,9 +34,10 @@
 #   --frame-laps  with --perf-scope only: layer sdkconfig.defaults.diag_perf_laps,
 #               timing the phases inside the frame stages (profile/frame_laps.h).
 #               The laps' own cost moves frame times: read only the lap lines.
-#   --layout-seed N  pad every source's code and rodata by sizes seed N picks
-#               (tools/build/layout_pad.py), to sample the cache layouts a
-#               timing could have landed on. 0, the default, is the plain build.
+#   --layout-seed N  with --perf-scope only: pad every source's code and
+#               rodata by sizes seed N picks (tools/build/layout_pad.py), to
+#               sample the cache layouts a timing could have landed on. 0, the
+#               default, is the plain build.
 #   --configure  only configure the variant's build directory, compile nothing:
 #               writes its sdkconfig and compile_commands.json, and no image.
 #               For a tool that reads which sources a variant compiles.

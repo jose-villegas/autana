@@ -7,7 +7,7 @@ Runs suites, and other pass/fail signals from the board such as `tone`.
 <!-- generated: cli-tests check: python scripts/autana/cli_reference.py --check -->
 | Command | What it does |
 |---|---|
-| `autana suite <name>... [seconds] [--runs N] [--flash] [--layout-seed N] [--hot-tunables] [--verbose]` | run suites under one lock, N times each (1 when omitted); seconds caps each capture (1800 when omitted); --flash builds and flashes the diagnostics image first, so nobody flashes between captures |
+| `autana suite <name>... [seconds] [--runs N] [--flash] [--perf-scope] [--layout-seed N] [--hot-tunables] [--verbose]` | run suites under one lock, N times each (1 when omitted); seconds caps each capture (1800 when omitted); --flash builds and flashes the diagnostics image first, so nobody flashes between captures; --layout-seed N (with --perf-scope) pads its layout |
 | `autana suite <name> --test PATTERN[,PATTERN]` | only the tests a pattern picks: part of a function name or a whole case segment, a/b for segments in order (case-sensitive); --test repeats |
 | `autana suite <name> --send LINE` | send a console line after tunables, before every capture; --send repeats in order; the sequence should be idempotent, and an error or incomplete reply stops the batch |
 | `autana suite <name> --set NAME=VALUE` | set a tunable before each capture; --set repeats |
@@ -36,7 +36,7 @@ project directories (two git worktrees, say), each built with `autana build`.
 | Route | Use it for |
 |---|---|
 | `--runs N --test PATTERN` | A quick look: repeat only the tests you changed. |
-| `--layout-seed N` | The same code laid out differently in memory. A difference that holds across several seeds is not layout luck. |
+| `--layout-seed N` | The same code laid out differently in memory; needs `--perf-scope`. A difference that holds across several seeds is not layout luck. |
 | `launcher/tools/perf/perf_compare.sh A B --suite NAME TESTS TABLE` | A verdict: flashes seeded images of both sides in a randomised plan and says whether they differ ([perf README](../../launcher/tools/perf/README.md)). `TESTS` is a `--test` filter and `TABLE` the timing table; `-` means all or raw timings. `A A` measures the noise. Run it from Git Bash on Windows. |
 
 `--test` takes a case-sensitive pattern; the board filters, so the capture is

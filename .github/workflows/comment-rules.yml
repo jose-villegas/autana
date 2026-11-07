@@ -94,8 +94,8 @@ jobs:
       - name: Node gate dependencies
         run: npm ci --prefix scripts/gates
 
-      - name: Self-hosted workflows reject untrusted pull request and comment events
-        run: python3 scripts/gates/check_self_hosted_workflows.py
+      - name: Workflows take no untrusted events on self-hosted jobs and queue shared groups
+        run: python3 scripts/gates/check_workflows.py
 
       - name: Length beside code, and header height
         env:

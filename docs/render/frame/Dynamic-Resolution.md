@@ -23,11 +23,12 @@ One call turns it on; there are no other settings:
 <!-- generated: scene-present-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
 /* Presentation: choose how the camera's rendered rows reach the panel. */
+#include "scene/camera/camera.h"
 #include "scene/scene.h"
 
 static bool
-present_example(scene_t* scene, scene_entity_t cam) {
-    return scene_camera_set_present(scene, cam, CAMERA_PRESENT_SCANLINE);
+present_example(entity_t cam) {
+    return camera_set_present(cam, CAMERA_PRESENT_SCANLINE);
 }
 ```
 <!-- /generated: scene-present-example -->

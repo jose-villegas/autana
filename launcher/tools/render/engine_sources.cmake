@@ -1,6 +1,6 @@
 # The engine sources every host build compiles, the one list. Sets launcher
 # (the launcher/ folder), render_engine_sources (drawing without device
-# backends, the asset store, tune and jobs), renderer_sources
+# backends, the asset store, tune, jobs and pending requests), renderer_sources
 # (main/renderer_sources.cmake) and, for CMakeLists.txt, which includes it,
 # board_include_dir (main/board/board_dir.cmake).
 #
@@ -14,12 +14,12 @@ include("${launcher}/main/board/board_dir.cmake")
 
 launcher_glob(render_engine_sources "${launcher}/main/gfx/*.c" "${launcher}/main/draw/*.c")
 list(FILTER render_engine_sources EXCLUDE REGEX "_device\\.c$")
-foreach(asset asset_pack asset_table asset_file asset_store asset_store_file)
+foreach(asset asset_pack asset_table asset_file asset_store asset_store_async asset_store_file)
     list(APPEND render_engine_sources "${launcher}/main/asset/${asset}.c")
 endforeach()
 list(APPEND render_engine_sources
      "${launcher}/main/core/tune.c" "${launcher}/main/console/console_tune.c"
-     "${launcher}/main/core/job.c"
+     "${launcher}/main/core/job.c" "${launcher}/main/core/pending.c"
      "${launcher}/main/core/app_heap.c"
      "${launcher}/main/app/app_arena.c"
      "${launcher}/../third_party/tlsf/tlsf.c")
