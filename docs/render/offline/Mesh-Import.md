@@ -161,6 +161,7 @@ Each `[[objects.meshes]]` rule carves out matching source objects:
 | `variants` | Optional `{ variant = triangles }`: a variant's own per-copy budget. |
 | `min_triangles` | Optional floor on the scaled budget, at most `triangles`. Default 1. |
 | `seam` | Optional policy; touching defaults to `lock`, otherwise `free`. |
+| `shape` | Optional: `exact` (the default) matches copies by their vertices and triangles; `surface` also joins copies whose surfaces agree whatever their triangles and materials ([by surface](#objects-and-instances)). |
 
 A variant draws each copy with its entry in `variants`, or else
 round(`triangles` x its `objects_scale`), never below `min_triangles`;
@@ -191,6 +192,11 @@ floor's side pinned, and the pass spends what it frees up the shaft.
 
 Rigid copies share local simplification and their union of locks. Each copy
 is lit against the full source.
+
+A copy joined by surface takes the shape's simplified triangles, placed on its own surface, and keeps its own
+materials: each shape material becomes the copy's material most of its triangles land nearest. Its triangles
+are not the shape's, so it cannot keep a locked border: a shape with a copy whose contact is locked or welded
+stays exact.
 
 A shape writes a colourless LMSH and an LCOL with one set per copy: RGB888
 vertices for smooth shading, RGB565 faces for flat. Mirrored copies own a
