@@ -10,7 +10,7 @@ from audio import sound_asset
 from gfx import image_asset
 from asset import table_asset
 from anim import tracks_asset, skeleton_asset
-from r3d import mesh_asset, scene_asset, skin_asset, lcol_asset, lod_asset
+from r3d import mesh_asset, scene_asset, skin_asset, lcol_asset, lod_asset, morph_asset
 
 FRAMELESS = frozenset((image_asset.TYPE, table_asset.TYPE, sound_asset.TYPE, lcol_asset.TYPE))
 
@@ -67,6 +67,10 @@ def to_engine(kind, entry):
             at = groups_at + index * mesh_asset.LOD_GROUP.size
             *centre, radius, error = mesh_asset.LOD_GROUP.unpack_from(entry, at)
             mesh_asset.LOD_GROUP.pack_into(out, at, *_mirror_position(centre), radius, error)
+    elif kind == morph_asset.TYPE:
+        shifts, deltas, colours = morph_asset.decode(entry)
+        mirrored = [value * AXIS_SIGNS[index % AXIS_COUNT] for index, value in enumerate(deltas)]
+        return morph_asset.encode(shifts, mirrored, colours)
     elif kind == scene_asset.TYPE:
         header = scene_asset.HEADER.unpack_from(entry)
         entities = header[1]

@@ -70,6 +70,44 @@ float r3d_lod_group_pixels(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, i
  * so it never covers less than one of them. */
 float r3d_lod_group_coverage(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int group);
 
+/* Geomorphing (render/lmor_format.h): a drawn cluster with a parent group
+ * blends its vertices toward their targets on that group's coarse surface by
+ * a weight from the group's projected error alone, with no state. The weight
+ * is whole wherever the pick can switch the group (up to the tolerance plus
+ * the hysteresis), so a switch moves nothing, and falls to none over
+ * R3D_LOD_MORPH_PX more; for the coverage cap, whole at the cap,
+ * none R3D_LOD_MORPH_COVER_RAMP of it above. The lesser weight is drawn. */
+#define R3D_LOD_MORPH_PX         1.0F
+#define R3D_LOD_MORPH_COVER_RAMP 0.25F
+/* A weight's whole: the transform's fixed-point unit. */
+#define R3D_LOD_MORPH_ONE        128
+
+/* One instance's blend through one lens; `enabled` false draws no blend. */
+typedef struct r3d_lod_morph {
+    mat4f_t view; /* the lens's linear part, focal lengths divided out */
+    float units_per_tick, scale, near_z;
+    float leave, ramp;         /* pixels: whole at leave, none at leave + ramp */
+    float covered, cover_ramp; /* pixels of radius: whole at covered, none at covered + cover_ramp */
+    bool enabled;
+} r3d_lod_morph_t;
+
+/* The blend of `mesh` seen through `lens`, measured as the pick measures it,
+ * its thresholds `pixels_per_output_pixel` times `lod`'s. Disabled for a mesh
+ * without morph targets or when `enabled` is false. */
+void r3d_lod_morph_init(r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
+                        const render_lod_settings_t* lod, float pixels_per_output_pixel, bool enabled);
+
+/* Cluster `c`'s weight toward its parent group's coarse surface, 0 to
+ * R3D_LOD_MORPH_ONE; 0 without a parent or a blend. */
+int r3d_lod_morph_weight(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, int c);
+
+/* A bound, in the blend's pixels, on how far cluster `c`'s targets sit from
+ * the coarse surface as it draws: its targets lie on its parent's coarse
+ * clusters unblended, while those clusters may be blending toward their own
+ * parent. 0 when `c` is not blending or its target level is not. For
+ * measurement: it walks every cluster. */
+float r3d_lod_morph_stacked_px(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, int c);
+
 /* Updates `coarse`, R3D_LOD_WORDS(mesh->lod_group_count) words, for one
  * frame seen through `lens`: coarse where a group's error projects within
  * `lod.tolerance_px` (`lod.hysteresis_px` either side of it, by the bit's

@@ -615,6 +615,362 @@ test_the_counted_walk_counts_the_coarse_clusters_it_keeps(void) {
     free(walk);
 }
 
+/* Geomorph weights (r3d_lod_morph_weight()). A weight is read where a group's
+ * error or radius projects a chosen amount, which the eye is searched for: the
+ * measure falls as the eye backs away. */
+typedef float (*group_measure_t)(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int group);
+
+enum {
+    SEARCH_ROUNDS = 80,
+    /* The group a weight is read from, and the cluster whose parent it is. */
+    WEIGHT_GROUP = 0,
+    WEIGHT_CLUSTER = 0,
+    /* Rounding the weight to a count may land one off the ideal. */
+    WEIGHT_SLACK = 1,
+};
+
+#define SEARCH_FAR 1.0e6F
+/* Past a ramp's end by this share of the ramp, a weight is none whatever the float rounding. */
+#define PAST_RAMP  0.01F
+
+/* A radius large enough that one error unit projects well under a pixel where the coverage ramps,
+ * and two errors, the first within the leave and the second inside the ramp past it. */
+enum { WIDE_RADIUS = 40, ERROR_SMALL = 5, ERROR_RAMPING = 7 };
+
+/* Shares of a ramp, from whole (0) to none (1), the weights are read at. */
+#define SHARE_QUARTER        0.25F
+#define SHARE_HALF           0.5F
+#define SHARE_THREE_QUARTERS 0.75F
+
+/* A mesh whose vertices carry no morph data but whose pointer says it has some. */
+static const int8_t NO_DELTAS[1][3] = {{0, 0, 0}};
+
+static float
+eye_for(group_measure_t measure, const r3d_lit_mesh_t* mesh, int group, float target) {
+    float near_eye = 0.0F;
+    float far_eye = SEARCH_FAR;
+    for (int i = 0; i < SEARCH_ROUNDS; i++) {
+        const float mid = 0.5F * (near_eye + far_eye);
+        const r3d_lens_t lens = lens_at(mid, NULL);
+        if (measure(mesh, &lens, group) > target) {
+            near_eye = mid;
+        } else {
+            far_eye = mid;
+        }
+    }
+    return far_eye;
+}
+
+static int
+weight_at(const r3d_lit_mesh_t* mesh, float eye, int cluster, bool enabled) {
+    const r3d_lens_t lens = lens_at(eye, NULL);
+    r3d_lod_morph_t morph;
+    r3d_lod_morph_init(&morph, mesh, &lens, &LOD, 1.0F, enabled);
+    return r3d_lod_morph_weight(&morph, mesh, cluster);
+}
+
+/* The weight a ramp from whole to none gives `share` of the way down it. */
+static int
+ramp_weight_at(float share) {
+    return (int)((1.0F - share) * (float)R3D_LOD_MORPH_ONE + 0.5F);
+}
+
+static float
+leave_px(void) {
+    return TOLERANCE + HYSTERESIS;
+}
+
+static float
+error_eye(const r3d_lit_mesh_t* mesh, float px) {
+    return eye_for(r3d_lod_group_pixels, mesh, WEIGHT_GROUP, px);
+}
+
+static float
+cover_eye(const r3d_lit_mesh_t* mesh, float share_of_height) {
+    return eye_for(r3d_lod_group_coverage, mesh, WEIGHT_GROUP, share_of_height);
+}
+
+static levelled_t*
+morphing_levels(void) {
+    levelled_mesh();
+    levelled->mesh.morph_delta = NO_DELTAS;
+    return levelled;
+}
+
+static void
+test_the_morph_weight_falls_from_whole_to_none_over_a_pixel_past_the_pick_leave_error(void) {
+    const r3d_lit_mesh_t* mesh = &morphing_levels()->mesh;
+    const float shares[] = {SHARE_QUARTER, SHARE_HALF, SHARE_THREE_QUARTERS};
+    TEST_ASSERT_EQUAL_INT(R3D_LOD_MORPH_ONE, weight_at(mesh, error_eye(mesh, leave_px() * 0.5F), WEIGHT_CLUSTER, true));
+    TEST_ASSERT_EQUAL_INT(R3D_LOD_MORPH_ONE,
+                          weight_at(mesh, error_eye(mesh, leave_px() - PAST_RAMP), WEIGHT_CLUSTER, true));
+    for (size_t i = 0; i < sizeof shares / sizeof shares[0]; i++) {
+        const float px = leave_px() + (shares[i] * R3D_LOD_MORPH_PX);
+        TEST_ASSERT_INT_WITHIN(WEIGHT_SLACK, ramp_weight_at(shares[i]),
+                               weight_at(mesh, error_eye(mesh, px), WEIGHT_CLUSTER, true));
+    }
+    const float past = leave_px() + (R3D_LOD_MORPH_PX * (1.0F + PAST_RAMP));
+    TEST_ASSERT_EQUAL_INT(0, weight_at(mesh, error_eye(mesh, past), WEIGHT_CLUSTER, true));
+    TEST_ASSERT_EQUAL_INT(0, weight_at(mesh, error_eye(mesh, leave_px() * 4.0F), WEIGHT_CLUSTER, true));
+}
+
+/* A view past one output pixel's leave but inside the scaled one's. */
+static void
+test_the_morph_thresholds_scale_with_the_pixels_per_output_pixel(void) {
+    const r3d_lit_mesh_t* mesh = &morphing_levels()->mesh;
+    const float scale = 2.0F;
+    const r3d_lens_t lens = lens_at(error_eye(mesh, scale * leave_px() * 0.75F), NULL);
+    r3d_lod_morph_t one, two;
+    r3d_lod_morph_init(&one, mesh, &lens, &LOD, 1.0F, true);
+    r3d_lod_morph_init(&two, mesh, &lens, &LOD, scale, true);
+    TEST_ASSERT_EQUAL_INT(0, r3d_lod_morph_weight(&one, mesh, WEIGHT_CLUSTER));
+    TEST_ASSERT_EQUAL_INT(R3D_LOD_MORPH_ONE, r3d_lod_morph_weight(&two, mesh, WEIGHT_CLUSTER));
+}
+
+static void
+test_the_morph_weight_falls_over_a_quarter_of_the_cap_above_the_coverage_cap(void) {
+    morphing_levels()->groups[WEIGHT_GROUP].error = 0;
+    const r3d_lit_mesh_t* mesh = &levelled->mesh;
+    const float shares[] = {SHARE_QUARTER, SHARE_HALF, SHARE_THREE_QUARTERS};
+    TEST_ASSERT_EQUAL_INT(R3D_LOD_MORPH_ONE,
+                          weight_at(mesh, cover_eye(mesh, COVERAGE_MAX * 0.5F), WEIGHT_CLUSTER, true));
+    TEST_ASSERT_EQUAL_INT(R3D_LOD_MORPH_ONE,
+                          weight_at(mesh, cover_eye(mesh, COVERAGE_MAX * (1.0F - PAST_RAMP)), WEIGHT_CLUSTER, true));
+    for (size_t i = 0; i < sizeof shares / sizeof shares[0]; i++) {
+        const float cover = COVERAGE_MAX * (1.0F + (shares[i] * R3D_LOD_MORPH_COVER_RAMP));
+        TEST_ASSERT_INT_WITHIN(WEIGHT_SLACK, ramp_weight_at(shares[i]),
+                               weight_at(mesh, cover_eye(mesh, cover), WEIGHT_CLUSTER, true));
+    }
+    const float past = COVERAGE_MAX * (1.0F + (R3D_LOD_MORPH_COVER_RAMP * (1.0F + PAST_RAMP)));
+    TEST_ASSERT_EQUAL_INT(0, weight_at(mesh, cover_eye(mesh, past), WEIGHT_CLUSTER, true));
+}
+
+/* A small error leaves the coverage in charge; a larger one, projecting into its ramp
+ * and weighing less, takes over. */
+static void
+test_the_lesser_of_the_error_and_coverage_weights_is_drawn(void) {
+    morphing_levels()->groups[WEIGHT_GROUP].bounds.radius = WIDE_RADIUS;
+    const r3d_lit_mesh_t* mesh = &levelled->mesh;
+    const float eye = cover_eye(mesh, COVERAGE_MAX * (1.0F + (SHARE_HALF * R3D_LOD_MORPH_COVER_RAMP)));
+    const r3d_lens_t lens = lens_at(eye, NULL);
+    const int by_cover = ramp_weight_at(SHARE_HALF);
+    levelled->groups[WEIGHT_GROUP].error = ERROR_SMALL;
+    TEST_ASSERT_TRUE(r3d_lod_group_pixels(mesh, &lens, WEIGHT_GROUP) <= leave_px());
+    TEST_ASSERT_INT_WITHIN(WEIGHT_SLACK, by_cover, weight_at(mesh, eye, WEIGHT_CLUSTER, true));
+    levelled->groups[WEIGHT_GROUP].error = ERROR_RAMPING;
+    const float px = r3d_lod_group_pixels(mesh, &lens, WEIGHT_GROUP);
+    TEST_ASSERT_TRUE(px > leave_px() && px < leave_px() + R3D_LOD_MORPH_PX);
+    const int by_error = ramp_weight_at((px - leave_px()) / R3D_LOD_MORPH_PX);
+    TEST_ASSERT_TRUE(by_error < by_cover);
+    TEST_ASSERT_INT_WITHIN(WEIGHT_SLACK, by_error, weight_at(mesh, eye, WEIGHT_CLUSTER, true));
+}
+
+static void
+test_there_is_no_morph_weight_without_a_parent_without_morph_data_or_when_disabled(void) {
+    const r3d_lit_mesh_t* mesh = &morphing_levels()->mesh;
+    const float eye = error_eye(mesh, leave_px() * 0.5F);
+    TEST_ASSERT_EQUAL_INT(R3D_LOD_MORPH_ONE, weight_at(mesh, eye, WEIGHT_CLUSTER, true));
+    TEST_ASSERT_EQUAL_INT(R3D_LOD_NONE, mesh->cluster_lod[CLUSTERS - 1].parent);
+    TEST_ASSERT_EQUAL_INT(0, weight_at(mesh, eye, CLUSTERS - 1, true));
+    TEST_ASSERT_EQUAL_INT(0, weight_at(mesh, eye, WEIGHT_CLUSTER, false));
+    levelled->mesh.morph_delta = NULL;
+    TEST_ASSERT_EQUAL_INT(0, weight_at(mesh, eye, WEIGHT_CLUSTER, true));
+}
+
+/* A mesh of two clusters to transform: the first finest in group 0, with morph
+ * targets; the second the coarse cluster simplified from it, with no parent. */
+enum {
+    MORPH_VERTICES = 6,
+    MORPH_FIRST_VERTICES = 3,
+    MORPH_CLUSTERS = 2,
+    MORPH_GROUP_RADIUS = 8,
+    MORPH_GROUP_ERROR = 4,
+    /* The first cluster's shift: each delta moves 1 << shift ticks. */
+    MORPH_SHIFT = 1,
+};
+
+/* The second cluster's deltas are set though its cluster has no parent, so they are never applied. */
+typedef struct {
+    int16_t positions[MORPH_VERTICES][3];
+    int16_t targets[MORPH_VERTICES][3];
+    int8_t delta[MORPH_VERTICES][3];
+    uint8_t shift[MORPH_CLUSTERS];
+    r3d_lit_cluster_t clusters[MORPH_CLUSTERS];
+    r3d_lit_node_t nodes[1];
+    r3d_lit_cluster_lod_t lod[MORPH_CLUSTERS];
+    r3d_lit_lod_group_t groups[1];
+    r3d_lit_mesh_t mesh;      /* blends toward `targets` */
+    r3d_lit_mesh_t reference; /* sits at `targets`, with no morph data */
+} morphing_t;
+
+static morphing_t* morphing;
+
+static void
+release_morphing(void) {
+    free(morphing);
+    morphing = NULL;
+}
+
+static const morphing_t*
+morphing_mesh(void) {
+    morphing = calloc(1, sizeof *morphing);
+    suite_set_test_cleanup(release_morphing);
+    TEST_ASSERT_NOT_NULL(morphing);
+    static const int16_t positions[MORPH_VERTICES][3] = {{-6, -4, 0}, {6, -4, 0}, {0, 6, 0},
+                                                         {-5, -3, 1}, {5, -3, 1}, {0, 5, 1}};
+    static const int8_t delta[MORPH_VERTICES][3] = {{3, -2, 0}, {-4, 1, 2}, {0, 5, -3},
+                                                    {7, 7, 7},  {-7, 7, 7}, {7, -7, 7}};
+    memcpy(morphing->positions, positions, sizeof positions);
+    memcpy(morphing->delta, delta, sizeof delta);
+    morphing->shift[0] = MORPH_SHIFT;
+    box3s_t bounds = box3s_empty();
+    for (int v = 0; v < MORPH_VERTICES; v++) {
+        for (int a = 0; a < 3; a++) {
+            const int move = v < MORPH_FIRST_VERTICES ? delta[v][a] * (1 << MORPH_SHIFT) : 0;
+            morphing->targets[v][a] = (int16_t)(positions[v][a] + move);
+        }
+        bounds = box3s_extend(bounds, vec3s_from_array(morphing->targets[v]));
+        bounds = box3s_extend(bounds, vec3s_from_array(morphing->positions[v]));
+    }
+    for (int c = 0; c < MORPH_CLUSTERS; c++) {
+        morphing->clusters[c] =
+            (r3d_lit_cluster_t){(uint32_t)(c * MORPH_FIRST_VERTICES), MORPH_FIRST_VERTICES, 0, 0, bounds, true};
+    }
+    morphing->nodes[0] = (r3d_lit_node_t){bounds, 0, MORPH_CLUSTERS, true};
+    morphing->lod[0] = (r3d_lit_cluster_lod_t){R3D_LOD_NONE, 0};
+    morphing->lod[1] = (r3d_lit_cluster_lod_t){0, R3D_LOD_NONE};
+    morphing->groups[0] = (r3d_lit_lod_group_t){{{0, 0, 0}, MORPH_GROUP_RADIUS}, MORPH_GROUP_ERROR};
+    morphing->mesh = (r3d_lit_mesh_t){.positions = morphing->positions,
+                                      .clusters = morphing->clusters,
+                                      .nodes = morphing->nodes,
+                                      .vertex_count = MORPH_VERTICES,
+                                      .cluster_count = MORPH_CLUSTERS,
+                                      .node_count = 1,
+                                      .position_scale = 1,
+                                      .cluster_lod = morphing->lod,
+                                      .lod_groups = morphing->groups,
+                                      .lod_group_count = 1,
+                                      .morph_shift = morphing->shift,
+                                      .morph_delta = morphing->delta};
+    morphing->reference = morphing->mesh;
+    morphing->reference.positions = morphing->targets;
+    morphing->reference.morph_shift = NULL;
+    morphing->reference.morph_delta = NULL;
+    return morphing;
+}
+
+typedef struct {
+    r3d_pipeline_vertex_t cs[MORPH_VERTICES];
+    r3d_pipeline_rows_t rows[MORPH_CLUSTERS];
+} transformed_t;
+
+static const uint16_t BOTH_CLUSTERS[MORPH_CLUSTERS] = {0, 1};
+
+/* The eye at which the first cluster's weight is `share` of the way down its error ramp. */
+static float
+morph_eye(const morphing_t* m, float share) {
+    return error_eye(&m->mesh, leave_px() + (share * R3D_LOD_MORPH_PX));
+}
+
+static int
+transform_morphed_at(const morphing_t* m, float eye, bool boxed, transformed_t* out) {
+    const r3d_lens_t lens = lens_at(eye, NULL);
+    r3d_lod_morph_t morph;
+    r3d_lod_morph_init(&morph, &m->mesh, &lens, &LOD, 1.0F, true);
+    r3d_pipeline_transform_morphed(&m->mesh, &lens, &morph, BOTH_CLUSTERS, MORPH_CLUSTERS, out->cs, out->rows, boxed);
+    return r3d_lod_morph_weight(&morph, &m->mesh, 0);
+}
+
+static void
+transform_plain_at(const r3d_lit_mesh_t* mesh, float eye, bool boxed, transformed_t* out) {
+    const r3d_lens_t lens = lens_at(eye, NULL);
+    r3d_pipeline_transform(mesh, &lens, BOTH_CLUSTERS, MORPH_CLUSTERS, out->cs, out->rows, boxed);
+}
+
+static void
+expect_same_vertices(const r3d_pipeline_vertex_t* expected, const r3d_pipeline_vertex_t* actual, int first, int count) {
+    for (int v = first; v < first + count; v++) {
+        TEST_ASSERT_EQUAL_INT16(expected[v].sx, actual[v].sx);
+        TEST_ASSERT_EQUAL_INT16(expected[v].sy, actual[v].sy);
+        TEST_ASSERT_EQUAL_FLOAT(expected[v].iz, actual[v].iz);
+    }
+}
+
+static void
+expect_same_rows(const r3d_pipeline_rows_t* expected, const r3d_pipeline_rows_t* actual) {
+    TEST_ASSERT_EQUAL_INT16(expected->x0, actual->x0);
+    TEST_ASSERT_EQUAL_INT16(expected->y0, actual->y0);
+    TEST_ASSERT_EQUAL_INT16(expected->x1, actual->x1);
+    TEST_ASSERT_EQUAL_INT16(expected->y1, actual->y1);
+    TEST_ASSERT_EQUAL_UINT16(expected->depth, actual->depth);
+    TEST_ASSERT_EQUAL(expected->unbounded, actual->unbounded);
+}
+
+/* The cluster with no parent stays put, with no weight. */
+static void
+test_a_cluster_transformed_with_the_whole_weight_lands_on_its_targets(void) {
+    const morphing_t* m = morphing_mesh();
+    const float eye = morph_eye(m, -SHARE_HALF);
+    for (int boxed = 0; boxed <= 1; boxed++) {
+        transformed_t blended, direct;
+        TEST_ASSERT_EQUAL_INT(R3D_LOD_MORPH_ONE, transform_morphed_at(m, eye, boxed != 0, &blended));
+        transform_plain_at(&m->reference, eye, boxed != 0, &direct);
+        expect_same_vertices(direct.cs, blended.cs, 0, MORPH_FIRST_VERTICES);
+        expect_same_rows(&direct.rows[0], &blended.rows[0]);
+        TEST_ASSERT_EQUAL_UINT8(R3D_LOD_MORPH_ONE, blended.rows[0].morph);
+        expect_same_vertices(direct.cs, blended.cs, MORPH_FIRST_VERTICES, MORPH_VERTICES - MORPH_FIRST_VERTICES);
+        TEST_ASSERT_EQUAL_UINT8(0, blended.rows[1].morph);
+    }
+}
+
+static void
+test_a_cluster_transformed_with_no_weight_matches_the_plain_transform_exactly(void) {
+    const morphing_t* m = morphing_mesh();
+    const float eye = morph_eye(m, 4.0F);
+    for (int boxed = 0; boxed <= 1; boxed++) {
+        transformed_t blended, plain;
+        memset(&blended, 0, sizeof blended);
+        memset(&plain, 0, sizeof plain);
+        TEST_ASSERT_EQUAL_INT(0, transform_morphed_at(m, eye, boxed != 0, &blended));
+        transform_plain_at(&m->mesh, eye, boxed != 0, &plain);
+        TEST_ASSERT_EQUAL_MEMORY(plain.cs, blended.cs, sizeof plain.cs);
+        TEST_ASSERT_EQUAL_MEMORY(plain.rows, blended.rows, sizeof plain.rows);
+        TEST_ASSERT_EQUAL_UINT8(0, blended.rows[0].morph);
+    }
+}
+
+static void
+test_a_null_morph_transforms_as_the_plain_transform_does(void) {
+    const morphing_t* m = morphing_mesh();
+    const float eye = morph_eye(m, -SHARE_HALF);
+    const r3d_lens_t lens = lens_at(eye, NULL);
+    transformed_t blended, plain;
+    memset(&blended, 0, sizeof blended);
+    memset(&plain, 0, sizeof plain);
+    r3d_pipeline_transform_morphed(&m->mesh, &lens, NULL, BOTH_CLUSTERS, MORPH_CLUSTERS, blended.cs, blended.rows,
+                                   false);
+    transform_plain_at(&m->mesh, eye, false, &plain);
+    TEST_ASSERT_EQUAL_MEMORY(plain.cs, blended.cs, sizeof plain.cs);
+    TEST_ASSERT_EQUAL_MEMORY(plain.rows, blended.rows, sizeof plain.rows);
+}
+
+/* Vertex 0 moves along +x by a few pixels. */
+static void
+test_a_part_weight_puts_a_vertex_between_where_it_is_and_its_target(void) {
+    const morphing_t* m = morphing_mesh();
+    const float eye = morph_eye(m, SHARE_HALF);
+    transformed_t blended, fine, target;
+    const int weight = transform_morphed_at(m, eye, false, &blended);
+    TEST_ASSERT_INT_WITHIN(WEIGHT_SLACK, R3D_LOD_MORPH_ONE / 2, weight);
+    TEST_ASSERT_EQUAL_UINT8(weight, blended.rows[0].morph);
+    transform_plain_at(&m->mesh, eye, false, &fine);
+    transform_plain_at(&m->reference, eye, false, &target);
+    TEST_ASSERT_TRUE(target.cs[0].sx > fine.cs[0].sx + R3D_SUBPIXEL);
+    TEST_ASSERT_TRUE(blended.cs[0].sx > fine.cs[0].sx);
+    TEST_ASSERT_TRUE(blended.cs[0].sx < target.cs[0].sx);
+    TEST_ASSERT_INT_WITHIN(R3D_SUBPIXEL, (fine.cs[0].sx + target.cs[0].sx) / 2, blended.cs[0].sx);
+}
+
 void
 suite_r3d_lod(void) {
     RUN_TEST(test_a_coarse_group_keeps_every_group_simplified_into_it_coarse);
@@ -634,6 +990,15 @@ suite_r3d_lod(void) {
     RUN_TEST(test_the_finest_tree_walk_and_the_cut_keep_what_the_whole_walk_keeps);
     RUN_TEST(test_the_pick_keeps_the_bits_of_an_instance_culled_whole);
     RUN_TEST(test_the_counted_walk_counts_the_coarse_clusters_it_keeps);
+    RUN_TEST(test_the_morph_weight_falls_from_whole_to_none_over_a_pixel_past_the_pick_leave_error);
+    RUN_TEST(test_the_morph_thresholds_scale_with_the_pixels_per_output_pixel);
+    RUN_TEST(test_the_morph_weight_falls_over_a_quarter_of_the_cap_above_the_coverage_cap);
+    RUN_TEST(test_the_lesser_of_the_error_and_coverage_weights_is_drawn);
+    RUN_TEST(test_there_is_no_morph_weight_without_a_parent_without_morph_data_or_when_disabled);
+    RUN_TEST(test_a_cluster_transformed_with_the_whole_weight_lands_on_its_targets);
+    RUN_TEST(test_a_cluster_transformed_with_no_weight_matches_the_plain_transform_exactly);
+    RUN_TEST(test_a_null_morph_transforms_as_the_plain_transform_does);
+    RUN_TEST(test_a_part_weight_puts_a_vertex_between_where_it_is_and_its_target);
 }
 
 SUITE_REGISTER(suite_r3d_lod);

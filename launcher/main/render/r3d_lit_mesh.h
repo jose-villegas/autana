@@ -89,6 +89,12 @@ typedef struct {
      * (r3d_lit_mesh_find_levels()). */
     uint16_t lod_finest_root;
     uint16_t lod_coarse_first; /* the first coarse cluster, with lod_finest_root set */
+    /* Geomorph targets (render/lmor_format.h), or NULL: where each vertex
+     * lands on the coarse surface of its cluster's parent group, as
+     * delta << shift ticks; morph_colors, the colour it takes there. */
+    const uint8_t* morph_shift;       /* one per cluster */
+    const int8_t (*morph_delta)[3];   /* one per vertex */
+    const uint8_t (*morph_colors)[3]; /* one per vertex, or NULL */
 } r3d_lit_mesh_t;
 
 /* The asset type of a lit mesh entry, and the bytes of its header. */
@@ -109,6 +115,10 @@ void r3d_lit_mesh_find_levels(r3d_lit_mesh_t* mesh);
 
 /* A failed sibling clears only the levels; the geometry remains loaded. */
 asset_status_t r3d_lit_mesh_levels_from_asset(const asset_view_t* levels, r3d_lit_mesh_t* mesh);
+
+/* Attaches validated morph targets to a mesh with levels; failure clears
+ * only the morph pointers. */
+asset_status_t r3d_lit_mesh_morph_from_asset(const asset_view_t* morph, r3d_lit_mesh_t* mesh);
 
 /* The same for the lit mesh entry named `id` in `pack`. */
 asset_status_t r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh);

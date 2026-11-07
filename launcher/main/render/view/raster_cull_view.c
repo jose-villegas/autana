@@ -126,6 +126,9 @@ keep_drawn(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, uint16_t* kep
     return count;
 }
 
+/* Hundredths: the unit the stacked-blend bound is counted in. */
+#define RASTER_CULL_CENTI 100.0F
+
 /* After the camera's draw, its scratch lists and vertices are free: each
  * instance is culled, counted and transformed again into them, through the
  * lens the draw used, and its kept clusters are not set up or hidden. The
@@ -148,7 +151,20 @@ count_frame(raster_cull_t* s, const raster_t* raster) {
         const int count =
             culls ? r3d_pipeline_cull_counted(mesh, &lens, instance->lod_coarse, kept, &s->walk, &s->frame.counts)
                   : keep_drawn(mesh, instance->lod_coarse, kept, &s->frame.counts);
-        r3d_pipeline_transform(mesh, &lens, kept, count, b.cs, NULL, false);
+        r3d_lod_morph_t morph;
+        raster_lod_morph(raster, &s->camera, instance, &lens, &morph);
+        r3d_pipeline_transform_morphed(mesh, &lens, &morph, kept, count, b.cs, NULL, false);
+        for (int k = 0; k < count; k++) {
+            const int vertices = mesh->clusters[kept[k]].vertex_count;
+            s->frame.counts.vertices_transformed += vertices;
+            s->frame.counts.vertices_morphed += r3d_lod_morph_weight(&morph, mesh, kept[k]) != 0 ? vertices : 0;
+            const float stacked = r3d_lod_morph_stacked_px(&morph, mesh, kept[k]);
+            if (stacked > 0.0F) {
+                s->frame.counts.vertices_stacked += vertices;
+                s->frame.counts.stacked_centipixels =
+                    mathi_max(s->frame.counts.stacked_centipixels, (int)(stacked * RASTER_CULL_CENTI));
+            }
+        }
         r3d_pipeline_count_triangles(mesh, &lens, kept, count, b.cs, &s->frame.counts, &s->set_up[offset]);
         for (int k = 0; k < count; k++) {
             const int c = offset + kept[k];

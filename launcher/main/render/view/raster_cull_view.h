@@ -79,6 +79,10 @@ typedef struct {
     X(triangles_missed, counts.triangles_missed)                                                                       \
     X(triangles_facing_away, counts.triangles_facing_away)                                                             \
     X(triangles_set_up, counts.triangles_set_up)                                                                       \
+    X(vertices_transformed, counts.vertices_transformed)                                                               \
+    X(vertices_morphed, counts.vertices_morphed)                                                                       \
+    X(vertices_stacked, counts.vertices_stacked)                                                                       \
+    X(stacked_centipixels, counts.stacked_centipixels)                                                                 \
     X(triangles_covering, triangles_covering)
 
 typedef struct {

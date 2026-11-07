@@ -141,6 +141,86 @@ close_coarse(const r3d_lit_mesh_t* mesh, uint32_t* coarse) {
 }
 
 void
+r3d_lod_morph_init(r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
+                   const render_lod_settings_t* lod, float pixels_per_output_pixel, bool enabled) {
+    const lod_view_t v = lod_view(lens);
+    const float covered = ((float)lod->coverage_permille / (float)R3D_LOD_PERMILLE) * (float)lens->height;
+    *morph = (r3d_lod_morph_t){
+        .view = v.view,
+        .units_per_tick = v.units_per_tick,
+        .scale = v.units_per_tick * v.focal,
+        .near_z = lens->project.near_z,
+        .leave = (lod->tolerance_px + lod->hysteresis_px) * pixels_per_output_pixel,
+        .ramp = R3D_LOD_MORPH_PX * pixels_per_output_pixel,
+        .covered = covered,
+        .cover_ramp = covered * R3D_LOD_MORPH_COVER_RAMP,
+        .enabled = enabled && mesh->morph_delta != NULL,
+    };
+}
+
+/* 1 at or below `whole`, 0 at or past `whole + ramp`, linear between. */
+static float
+ramp_weight(float value, float whole, float ramp) {
+    if (value <= whole) {
+        return 1.0F;
+    }
+    if (value >= whole + ramp) {
+        return 0.0F;
+    }
+    return (whole + ramp - value) / ramp;
+}
+
+/* Group `g`'s error and radius projected where the pick measures them, in
+ * the blend's pixels. */
+static float
+group_morph_pixels(const r3d_lod_morph_t* morph, const r3d_lit_lod_group_t* g, float* radius_px) {
+    const vec3f_t centre = mat4f_apply(&morph->view, vec3f_from_vec3s(g->bounds.centre, 1.0F));
+    const float distance = mathf_sqrt(vec3f_dot(centre, centre)) - ((float)g->bounds.radius * morph->units_per_tick);
+    const float nearest = mathf_max(distance, morph->near_z);
+    *radius_px = (float)g->bounds.radius * morph->scale / nearest;
+    return (float)g->error * morph->scale / nearest;
+}
+
+static int
+group_morph_weight(const r3d_lod_morph_t* morph, const r3d_lit_lod_group_t* g) {
+    float radius_px = 0.0F;
+    const float error_px = group_morph_pixels(morph, g, &radius_px);
+    const float weight = mathf_min(ramp_weight(error_px, morph->leave, morph->ramp),
+                                   ramp_weight(radius_px, morph->covered, morph->cover_ramp));
+    return (int)((weight * (float)R3D_LOD_MORPH_ONE) + 0.5F);
+}
+
+int
+r3d_lod_morph_weight(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, int c) {
+    if (!morph->enabled) {
+        return 0;
+    }
+    const uint16_t parent = mesh->cluster_lod[c].parent;
+    return parent == R3D_LOD_NONE ? 0 : group_morph_weight(morph, &mesh->lod_groups[parent]);
+}
+
+float
+r3d_lod_morph_stacked_px(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, int c) {
+    if (r3d_lod_morph_weight(morph, mesh, c) == 0) {
+        return 0.0F;
+    }
+    const uint16_t parent = mesh->cluster_lod[c].parent;
+    float most = 0.0F;
+    for (int k = 0; k < mesh->cluster_count; k++) {
+        const r3d_lit_cluster_lod_t lod = mesh->cluster_lod[k];
+        if (lod.own != parent || lod.parent == R3D_LOD_NONE) {
+            continue;
+        }
+        const r3d_lit_lod_group_t* g = &mesh->lod_groups[lod.parent];
+        float radius_px = 0.0F;
+        const float error_px = group_morph_pixels(morph, g, &radius_px);
+        const float weight = (float)group_morph_weight(morph, g) / (float)R3D_LOD_MORPH_ONE;
+        most = mathf_max(most, weight * error_px);
+    }
+    return most;
+}
+
+void
 r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod, uint32_t* coarse) {
     const lod_view_t v = lod_view(lens);
     const float enter = lod->tolerance_px - lod->hysteresis_px;

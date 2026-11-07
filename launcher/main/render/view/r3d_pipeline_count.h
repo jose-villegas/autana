@@ -21,6 +21,10 @@ typedef struct {
     int triangles_missed;      /* no pixel centre inside: off the screen or between centres */
     int triangles_facing_away; /* single-sided, back-facing */
     int triangles_set_up;      /* handed to r3d_span whole */
+    int vertices_transformed;  /* every vertex of the kept clusters */
+    int vertices_morphed;      /* those blended toward their morph targets (render/lod/r3d_lod.h) */
+    int vertices_stacked;      /* those whose targets' level is itself blending */
+    int stacked_centipixels;   /* the most r3d_lod_morph_stacked_px() of any, hundredths of a pixel */
 } r3d_pipeline_counts_t;
 
 /* The pending nodes of a counted walk and the frustum it tests them against. */
