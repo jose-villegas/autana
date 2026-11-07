@@ -14,7 +14,7 @@ Runs suites, and other pass/fail signals from the board such as `tone`.
 | `autana suite list [text] [--json]` | the registered suites; [on request] ones run only by name |
 | `autana selftest [seconds] [--verbose]` | build the autorun diagnostics image, flash, run every suite; 3000 s when omitted |
 | `autana melody [volume] [--check] [--internal] [--json]` | development builds: play the phrase, or check every note with --check; --internal selects silent codec feedback |
-| `autana tone <hz> <ms> [volume] [--internal] [--json]` | development builds: play <hz> for <ms> at volume % (firmware default 30) and report the level against a silence baseline, whether it was heard and the measured frequency; --internal uses silent codec feedback |
+| `autana tone <hz> <ms> [volume] [--pulse MS] [--internal] [--json]` | development builds: measure <hz> over <ms> at volume % (firmware default 30) and report the level against a silence baseline, whether it was heard and the measured frequency; --pulse MS limits playback within the measurement window; --internal uses silent codec feedback |
 <!-- /generated: cli-tests -->
 
 A run prints report and capture paths, PASS/FAIL counts and failures. A
@@ -26,6 +26,19 @@ all. `autana batch` is `suite ... --runs N --perf-scope --verbose --flash`.
 documents. `tone`'s JSON adds `path`, `measured_hz` and `hz_error` (Hz,
 measured minus requested); with fewer than two analysis windows the
 frequency fields are null.
+
+After the silence baseline, `--pulse MS` plays a timed SYSTEM-bus tone.
+Its positive length must fit a full-queue measurement window, bounded by
+`CONSOLE_TONE_PULSE_WINDOW_MAX_MS` in `console_tone_parse.h`.
+
+Pulse capture selects IMU samples by their producer times and collects
+delayed batches after the pulse span. The edges estimate audible onset.
+The microphone window includes silence after playback ends.
+
+JSON includes `pulse_ms` (zero for continuous playback), `shake_rms_mg`,
+`shake_peak_mg`, and `silence_shake_rms_mg`; unavailable shake values are null.
+`gx_mg`, `gy_mg`, and `gz_mg` report the silence-window accelerometer mean
+in mg, including gravity; they are null without a silence reading.
 
 ## A/B testing
 
