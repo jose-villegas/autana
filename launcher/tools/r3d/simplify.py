@@ -225,10 +225,10 @@ def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, loc
         if obj_id in single:
             rule = selected[obj_id]
             buckets.setdefault(id(rule), []).append(obj)
+    held = {obj for obj, index in single.items() if np.any(locks[np.unique(tris[parts[index][0]])])}
     emitted, consumed, shared = [], set(), []
     for candidates in buckets.values():
-        for shape in rule_shapes(candidates, selected[int(candidates[0].name)],
-                                 lambda obj: np.any(locks[np.unique(tris[parts[single[obj]][0]])])):
+        for shape in rule_shapes(candidates, selected[int(candidates[0].name)], held):
             if len(shape.instances) == 1:
                 continue
             union = np.zeros(len(shape.positions), dtype=bool)
@@ -240,6 +240,7 @@ def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, loc
                 used = np.unique(tris[sel])
                 placed = place(shape.positions, instance.linear, instance.position)
                 _, nearest = cKDTree(pos[used]).query(placed)
+                # A copy joined by surface holds no locked vertex (rule_shapes), so its nearest rows add nothing here.
                 indices = used[nearest]
                 union |= locks[indices]
                 if first_indices is None:
@@ -269,8 +270,9 @@ def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, loc
                     sel = parts[single[int(instance.object_name)]][0]
                     own = own_materials(placed, faces, mat, pos, tris[sel], labels[sel])
                 result = placed, c.copy(), faces, own.copy()
-                # Shaded in the shape's material groups, so every copy's corners come out in one order.
-                lit = (shade(*result, groups=mat) if own is not mat else shade(*result)) if shade is not None                     else result
+                # Shaded in the shape's material groups, so every copy's corners come out in the order of the
+                # shape's one triangle list, which its copy meshes share.
+                lit = shade(*result, groups=mat) if shade is not None else result
                 if shapes is None:
                     emitted.append(lit)
                 else:
@@ -281,29 +283,29 @@ def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, loc
     return emitted, consumed, shared
 
 
-def rule_shapes(candidates, rule, locked):
+def rule_shapes(candidates, rule, held):
     """A rule's objects as shapes: exact matches, joined by surface when the rule's `shape` is "surface". A copy
-    joined by surface has no vertex under the shape's, so it cannot hold a locked border: shapes with a locked
-    copy (`locked(object id)`) stay exact."""
+    joined by surface does not share the shape's vertices, so it cannot keep a locked border: a shape with a copy
+    in `held` (object ids with a locked border) stays exact."""
     from .objects.instances import match_instances
     from .objects.surface_match import merge
 
     shapes = match_instances(candidates)
     if rule.get('shape', 'exact') == 'exact':
         return shapes
-    held = [any(locked(int(i.object_name)) for i in shape.instances) for shape in shapes]
-    return merge([s for s, h in zip(shapes, held) if not h]) + [s for s, h in zip(shapes, held) if h]
+    locked = [any(int(i.object_name) in held for i in shape.instances) for shape in shapes]
+    return merge([s for s, h in zip(shapes, locked) if not h]) + [s for s, h in zip(shapes, locked) if h]
 
 
 def own_materials(placed, faces, materials, pos, own_tris, own_labels):
-    """A surface-joined copy's own material for each stamped triangle: per shape material, the one most of its
-    triangles land nearest to among the copy's own triangles (a copy's materials are its shading)."""
-    from scipy.spatial import cKDTree
+    """A copy joined by surface keeps its own materials: each shape material becomes the copy material that lies
+    nearest to most of that material's stamped triangles."""
+    from .geometry import majority
+    from .light import nearest_on_triangles
 
-    _, nearest = cKDTree(pos[own_tris].mean(axis=1)).query(placed[faces].mean(axis=1))
+    nearest, _ = nearest_on_triangles(placed[faces].mean(axis=1), np.arange(len(own_tris)), pos, own_tris)
     found = np.asarray(own_labels)[nearest]
-    mapping = {m: np.bincount(found[materials == m]).argmax() for m in np.unique(materials)}
-    return np.array([mapping[m] for m in materials], dtype=np.asarray(materials).dtype)
+    return majority(materials, found, int(materials.max()) + 1)[materials].astype(np.asarray(materials).dtype)
 
 
 def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocation, deviation, options, position_scale):
