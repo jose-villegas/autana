@@ -12,10 +12,11 @@ from pathlib import Path
 from statistics import mean
 from types import SimpleNamespace
 
-from layout_measure import LAYOUT_SEED_MAX, analyse, autana_command, required_seeds, run_flash, filter_limits, validate_filters, split_filters, FilterOverlap
+from layout_measure import analyse, autana_command, required_seeds, run_flash, filter_limits, validate_filters, split_filters, FilterOverlap
 from device_capture import test_matches
 from capture import require_same_board
 from seed_statistics import compare, minimum_seeds, permutation_samples
+from layout_pad import LAYOUT_SEED_MAX  # layout_measure puts tools/build on the path
 
 DEFAULT_THRESHOLD = 1.0
 DEFAULT_ALPHA = 0.05
@@ -32,6 +33,9 @@ def schedule(cap, alpha):
     first = minimum_seeds(alpha)
     if cap < first:
         raise ValueError(f"--max-seeds must be at least {first} for permutation resolution")
+    # Both sides draw distinct seeds from one range.
+    if cap > LAYOUT_SEED_MAX // 2:
+        raise ValueError(f"--max-seeds must be at most {LAYOUT_SEED_MAX // 2}: both sides share seeds 1 to {LAYOUT_SEED_MAX}")
     sizes = [first]
     while sizes[-1] < cap:
         sizes.append(min(cap, sizes[-1] * 2))

@@ -10,7 +10,7 @@ import re
 from statistics import mean
 import sys
 
-from layout_measure import (LAYOUT_SEED_MAX, REPO, autana_command, booted_build_id,
+from layout_measure import (REPO, autana_command, booted_build_id,
                             capture_metadata, captured_runs, make_table, parse_markdown, timing_samples,
                             run_stamped, split_filters, filter_limits, status_snapshot)
 import device_lock
@@ -25,6 +25,7 @@ from device_capture import PERF_SEGMENT
 sys.path.insert(0, str(REPO / "launcher/tools/r3d"))
 sys.path.insert(0, str(REPO / "launcher/tools"))
 from build.c_header import read_define
+from build.layout_pad import LAYOUT_SEED_MAX
 from dynres_report import SPANS, SPAN_FIELDS, STAGE
 
 DEFAULT_RUNS = 5

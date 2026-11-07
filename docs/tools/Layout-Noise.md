@@ -25,9 +25,11 @@ autana suite run_sponza_perf_suite --flash --perf-scope --layout-seed 3
 | Which sources | none | every source of the main component, taken from its `SRCS` |
 | Size | none | a hash of the seed and the source's path, so it does not shift when another source is added |
 
-The line size, cache size and ways come from the build's sdkconfig, and
-`main/CMakeLists.txt` hands them to `launcher/tools/build/layout_pad.py`, the
-mapping. `launcher/tools/build/layout_pad.h` is the pad: a retained section of
+The line size, cache size and ways come from the build's sdkconfig.
+[`main/CMakeLists.txt`](../../launcher/main/CMakeLists.txt) writes them, with
+the source list, to `layout_pad_inputs.txt` in the build directory, and
+[`layout_pad.py`](../../launcher/tools/build/layout_pad.py), the mapping, reads
+that file. [`layout_pad.h`](../../launcher/tools/build/layout_pad.h) is the pad: a retained section of
 its own (`.text.layout_pad`, `.rodata.layout_pad`) that nothing refers to,
 which is why `--gc-sections` keeps it and the linker places it first among the
 object's sections. The Xtensa linker moves code that loads no literal behind
@@ -40,10 +42,11 @@ lines, so in-line offsets hold for every seed.
 Only the perf-scoped image takes a seed. Pads average half a way per source,
 and over every source of the full diagnostics image they push it past the app
 partition; a release build refuses a seed too. Seeds stop at
-`LAYOUT_SEED_MAX` in `layout_pad.py`, so the largest seeded image is known:
-`layout_pad.py --worst build.diag/layout_pad_inputs.txt` names the seed whose
-pads add up to the most bytes, and CI builds that seed on every change that
-could grow the image.
+`LAYOUT_SEED_MAX` in `layout_pad.py`, a few thousand, so the largest seeded
+image is known: `layout_pad.py --worst build.diag/layout_pad_inputs.txt` names
+the seed whose pads add up to the most bytes. CI builds that seed with every
+flag a seeded image may add (`--frame-laps`, `--hot-tunables`) on every change
+that could grow the image.
 
 A seeded image has its own `BUILD_ID`, and the same seed builds the same image.
 

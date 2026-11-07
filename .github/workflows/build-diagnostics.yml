@@ -76,8 +76,10 @@ jobs:
             ../tools/autana build diag --perf-scope --project ..
             && ../tools/autana build diag --perf-scope --frame-laps --project ..
 
-  # A layout seed pads the perf-scoped image (tools/build/layout_pad.py): build
-  # the seed that pads it the most, so the app partition holds every seed.
+  # A layout seed pads the perf-scoped image (tools/build/layout_pad.py). Build
+  # the seed that pads it the most, with every flag a seeded image may add, so a
+  # seed that outgrows the app partition fails here; and check that a seed
+  # without the perf scope is refused.
   build-worst-seed:
     needs: inputs
     if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.inputs.result != 'success' || needs.inputs.outputs.build-worst-seed == 'true') }}
@@ -93,9 +95,10 @@ jobs:
         with:
           cache-name: diag-perf-worst-seed
           command: >-
-            ../tools/autana build diag --perf-scope --configure --project ..
+            { ../tools/autana build diag --layout-seed 1 --configure --project .. 2>&1 | grep -q 'needs --perf-scope'; }
+            && ../tools/autana build diag --perf-scope --frame-laps --hot-tunables --configure --project ..
             && seed=$(python3 tools/build/layout_pad.py --worst build.diag/layout_pad_inputs.txt)
-            && ../tools/autana build diag --perf-scope --layout-seed "$seed" --project ..
+            && ../tools/autana build diag --perf-scope --frame-laps --hot-tunables --layout-seed "$seed" --project ..
 
       - uses: ./.github/actions/job-inputs
         if: ${{ !cancelled() }}

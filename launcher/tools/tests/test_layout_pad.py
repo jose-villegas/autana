@@ -95,17 +95,23 @@ class LayoutPadTest(unittest.TestCase):
         self.assertEqual([row[0] for row in rows], ["a.c", "b/c.c"])
         self.assertEqual([int(v) for v in rows[0][1:]], list(pads.pad_sizes(3, "a.c")))
 
-    def test_a_seed_past_the_range_is_refused(self):
+    def test_seeds_outside_one_to_the_limit_are_refused(self):
         with inputs_file(["a.c"]) as path:
+            self.assertEqual(run_tool("1", path).returncode, 0)
             self.assertEqual(run_tool(str(pads.LAYOUT_SEED_MAX), path).returncode, 0)
-            self.assertNotEqual(run_tool(str(pads.LAYOUT_SEED_MAX + 1), path).returncode, 0)
+            for seed in ("0", str(pads.LAYOUT_SEED_MAX + 1)):
+                run = run_tool(seed, path)
+                self.assertNotEqual(run.returncode, 0)
+                self.assertIn(f"1 to {pads.LAYOUT_SEED_MAX}", run.stderr)
 
-    def test_the_worst_seed_pads_the_most_of_every_seed_in_range(self):
-        sources = SOURCES[:3]
-        totals = {seed: pads.seed_bytes(seed, sources, *GEOMETRY) for seed in range(1, pads.LAYOUT_SEED_MAX + 1)}
+    def test_the_worst_seed_is_the_first_that_pads_the_most(self):
+        sources = SOURCES[:20]
+        totals = {seed: sum(text + rodata for text, rodata in (pads.pad_sizes(seed, source) for source in sources))
+                  for seed in range(1, pads.LAYOUT_SEED_MAX + 1)}
         with inputs_file(sources) as path:
-            worst = int(run_tool("--worst", path, check=True).stdout)
-        self.assertEqual(totals[worst], max(totals.values()))
+            run = run_tool("--worst", path, check=True)
+        self.assertEqual(run.stdout.splitlines(), [str(min(seed for seed, total in totals.items()
+                                                           if total == max(totals.values())))])
 
     def test_a_wider_cache_way_allows_larger_pads(self):
         pads_seen = {pads.pad_sizes(seed, source, (32, 8192), (64, 16384))
