@@ -208,8 +208,9 @@ def _mesh_passes(tris, labels, tri_o, triangles, reserved, selected, edges):
 
 def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, locks, deviation, options, shade, shapes=None):
     from scipy.spatial import cKDTree
-    from .objects.instances import match_instances, place, source_objects
+    from .objects.instances import place, source_objects
     from .objects.stand_ins import best_stand_in
+    from .objects.surface_match import JoinedInstance
 
     single = {}
     for index, (sel, budget) in enumerate(parts):
@@ -226,7 +227,8 @@ def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, loc
             buckets.setdefault(id(rule), []).append(obj)
     emitted, consumed, shared = [], set(), []
     for candidates in buckets.values():
-        for shape in match_instances(candidates):
+        for shape in rule_shapes(candidates, selected[int(candidates[0].name)],
+                                 lambda obj: np.any(locks[np.unique(tris[parts[single[obj]][0]])])):
             if len(shape.instances) == 1:
                 continue
             union = np.zeros(len(shape.positions), dtype=bool)
@@ -249,6 +251,7 @@ def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, loc
                 options, union if np.any(union) else None)
             p, c, t, kept = stand_in.positions, stand_in.rgb, stand_in.tris, stand_in.kept
             shared.append(dict(objects=[int(i.object_name) for i in shape.instances], copies=len(shape.instances),
+                               joined=sum(isinstance(i, JoinedInstance) for i in shape.instances),
                                budget=budget, policy=('lock' if np.any(union) else policies[int(shape.instances[0].object_name)]),
                                locked_vertices=int(union.sum()), output_triangles=len(t),
                                stand_in=stand_in.kind, stand_ins=candidates,
@@ -261,8 +264,13 @@ def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, loc
                 if kept is not None:
                     placed[union[kept]] = pos[indices[kept[union[kept]]]].astype(np.float32)
                 faces = t[:, ::-1] if instance.mirrored else t
-                result = placed, c.copy(), faces, mat.copy()
-                lit = shade(*result) if shade is not None else result
+                own = mat
+                if isinstance(instance, JoinedInstance):
+                    sel = parts[single[int(instance.object_name)]][0]
+                    own = own_materials(placed, faces, mat, pos, tris[sel], labels[sel])
+                result = placed, c.copy(), faces, own.copy()
+                # Shaded in the shape's material groups, so every copy's corners come out in one order.
+                lit = (shade(*result, groups=mat) if own is not mat else shade(*result)) if shade is not None                     else result
                 if shapes is None:
                     emitted.append(lit)
                 else:
@@ -271,6 +279,31 @@ def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, loc
                 shapes.append(dict(positions=p, tris=t, materials=mat, rule=selected[int(shape.instances[0].object_name)],
                                    copies=copies))
     return emitted, consumed, shared
+
+
+def rule_shapes(candidates, rule, locked):
+    """A rule's objects as shapes: exact matches, joined by surface when the rule's `shape` is "surface". A copy
+    joined by surface has no vertex under the shape's, so it cannot hold a locked border: shapes with a locked
+    copy (`locked(object id)`) stay exact."""
+    from .objects.instances import match_instances
+    from .objects.surface_match import merge
+
+    shapes = match_instances(candidates)
+    if rule.get('shape', 'exact') == 'exact':
+        return shapes
+    held = [any(locked(int(i.object_name)) for i in shape.instances) for shape in shapes]
+    return merge([s for s, h in zip(shapes, held) if not h]) + [s for s, h in zip(shapes, held) if h]
+
+
+def own_materials(placed, faces, materials, pos, own_tris, own_labels):
+    """A surface-joined copy's own material for each stamped triangle: per shape material, the one most of its
+    triangles land nearest to among the copy's own triangles (a copy's materials are its shading)."""
+    from scipy.spatial import cKDTree
+
+    _, nearest = cKDTree(pos[own_tris].mean(axis=1)).query(placed[faces].mean(axis=1))
+    found = np.asarray(own_labels)[nearest]
+    mapping = {m: np.bincount(found[materials == m]).argmax() for m in np.unique(materials)}
+    return np.array([mapping[m] for m in materials], dtype=np.asarray(materials).dtype)
 
 
 def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocation, deviation, options, position_scale):

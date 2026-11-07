@@ -221,10 +221,10 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
                                                    allocation=Allocation(tri_o=np.concatenate(all_obj), object_names=src.object_names,
                                                                          material_names=src.names, meshes=meshes, selection=selected,
                                                                          ceiling=getattr(renderer.variant, 'ceiling', None),
-                                                                         shade=(lambda p, c, t, m: shade_placed(src, job, scene, p, c, t, m,
-                                                                                                             intersector, bounce)) if job.bake else None,
-                                                                         shade_shared=(lambda p, c, t, m: shade_placed(src, job, scene, p, c, t, m,
-                                                                                                             intersector, bounce, preserve_corners=True))
+                                                                         shade=(lambda p, c, t, m, **kw: shade_placed(src, job, scene, p, c, t, m,
+                                                                                                             intersector, bounce, **kw)) if job.bake else None,
+                                                                         shade_shared=(lambda p, c, t, m, **kw: shade_placed(src, job, scene, p, c, t, m,
+                                                                                                             intersector, bounce, preserve_corners=True, **kw))
                                                                                       if job.bake and carve else None,
                                                                          report=mesh_report, shapes=shapes),
                                                    reserved=[(frozenset(i for i, name in enumerate(src.names) if name in steps.props),
@@ -238,12 +238,16 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
                            tri_mat=tri_mat, scale=scale, bounce=bounce, mesh_report=mesh_report, shapes=shapes)
 
 
-def shade_placed(src, job, scene, positions, rgb, tris, labels, intersector, bounce, *, preserve_corners=False):
-    """Light the simplified placed geometry against the full source occluder."""
+def shade_placed(src, job, scene, positions, rgb, tris, labels, intersector, bounce, *, preserve_corners=False,
+                 groups=None):
+    """Light the simplified placed geometry against the full source occluder, one material group at a time:
+    `groups` (default labels) orders them, each group lit with its triangles' one label."""
     out_p, out_c, out_t, out_m = [], [], [], []
     base = 0
-    for material in np.unique(labels):
-        selected = labels == material
+    groups = labels if groups is None else groups
+    for group in np.unique(groups):
+        selected = groups == group
+        material = labels[selected][0]
         p, t = compact(positions, tris[selected])
         double = src.names[material] in job.settings.double_sided
         p, c, t, m = shade_lit(src, job, scene, material, p, t, double, intersector, bounce,

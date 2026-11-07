@@ -15,7 +15,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from r3d.import_settings import SettingsError
 from r3d import import_settings
 from r3d.simplify import Allocation, simplify
-from soup import edge_counts, sphere, split_sphere
+from soup import edge_counts, sphere, split_sphere, subdivided
 
 
 @contextmanager
@@ -30,14 +30,30 @@ def watched_simplify():
 CARVED_RULE = 40  # triangles a carved mesh asks for
 REST_ASK = 80  # triangles the rest asks for
 ROUNDING = 3  # meshoptimizer lands near a budget, not on it
+STRETCH = np.array([2.0, 1.0, 0.5])  # a test shape's axes, far enough apart to be told apart
+BEND = 0.6  # x shifts by BEND * y^2, so no mirror or half turn maps the shape onto itself
+
+
+def bent(points):
+    """Unit-sphere points stretched along the axes and bent."""
+    points = points * STRETCH
+    return points + np.outer(BEND * points[:, 1] ** 2, [1, 0, 0])
+
+
+def unbent(points):
+    """bent's inverse."""
+    points = points - np.outer(BEND * points[:, 1] ** 2, [1, 0, 0])
+    return points / STRETCH
 
 
 class MeshPolicyTests(unittest.TestCase):
     def test_schema(self):
         valid = {'match': {'material': 'vase*'}, 'triangles': 40, 'seam': 'lock'}
         self.assertEqual(import_settings.load_object_meshes({'meshes': [valid]}), [valid])
+        self.assertEqual(import_settings.load_object_meshes({'meshes': [{**valid, 'shape': 'surface'}]})[0]['shape'],
+                         'surface')
         for invalid in ({**valid, 'match': {'object': '*', 'material': '*'}},
-                        {**valid, 'seam': 'unknown'}, {**valid, 'typo': True},
+                        {**valid, 'seam': 'unknown'}, {**valid, 'typo': True}, {**valid, 'shape': 'loose'},
                         {**valid, 'match': {'typo': '*'}}, {**valid, 'triangles': 0}):
             with self.subTest(invalid=invalid), self.assertRaises(SettingsError):
                 import_settings.load_object_meshes({'meshes': [invalid]})
@@ -286,6 +302,73 @@ class MeshPolicyTests(unittest.TestCase):
         np.testing.assert_allclose(q[:n] * [-1, 1, 1] + [6, 0, 0], q[n:], atol=1e-6)
         np.testing.assert_array_equal(out[:40][:, ::-1] + n, out[40:])
         self.assertFalse(np.array_equal(c[:n], c[n:]))
+
+    @staticmethod
+    def _retriangulated_copies(shape, seam='free', touching=False):
+        """A vase and a turned copy of it split in four per triangle, in another material; with `touching`, a
+        rest triangle meets the copy at one of its vertices."""
+        from scipy.spatial.transform import Rotation
+        # Stretched and bent: a near-round or near-symmetric shape gives the surface match no start frame of its own.
+        p, t = sphere(11)
+        p = bent(p)
+        fine_p, fine_t = subdivided(p, t)
+        turn = Rotation.from_rotvec([0.3, -0.8, 0.4]).as_matrix()
+        points = [p, fine_p @ turn.T + [6, 0, 0]]
+        faces = [t, fine_t + len(p)]
+        owners, labels = [np.zeros(len(t), int), np.ones(len(fine_t), int)], [np.zeros(len(t), int), np.ones(len(fine_t), int)]
+        if touching:
+            corner = points[1][0]
+            points.append(np.array([corner, corner + [0, 0, 2], corner + [0, 2, 0]]))
+            faces.append(np.array([[0, 1, 2]]) + len(p) + len(fine_p))
+            owners.append([2])
+            labels.append([0])
+        allocation = Allocation(tri_o=np.concatenate(owners), object_names=('vase_a', 'vase_b', 'rest'),
+                                material_names=('stone', 'brass'),
+                                meshes=({'match': {'object': 'vase*'}, 'triangles': 40, 'seam': seam,
+                                         'shape': shape},))
+        return np.concatenate(points), np.concatenate(faces), np.concatenate(labels), allocation, (p, turn)
+
+    def test_a_surface_rule_simplifies_a_retriangulated_copy_once_and_shades_it_in_its_own_material(self):
+        points, faces, labels, allocation, (p, turn) = self._retriangulated_copies('surface')
+        shaded = []
+
+        def shade(q, c, out, labels, groups=None):
+            shaded.append((labels.copy(), None if groups is None else groups.copy()))
+            return q, c, out, labels
+        allocation.shade, report = shade, {}
+        allocation.report = report
+        with watched_simplify() as run:
+            q, _, out, out_labels = simplify(points, np.full_like(points, 100), faces, labels, 80,
+                                             colour_deviation=1, allocation=allocation)
+        self.assertEqual(run.call_count, 1)
+        [entry] = report['meshes']
+        self.assertEqual((entry['copies'], entry['joined']), (2, 1))
+        n = len(q) // 2
+        # The stamped copy lies on the copy's own surface (the sphere's points turned and moved), in its material.
+        self.assertLess(np.abs(np.linalg.norm(unbent((q[n:] - [6, 0, 0]) @ turn), axis=1) - 1).max(), 1e-3)
+        np.testing.assert_array_equal(out_labels, np.repeat([0, 1], len(out) // 2))
+        # The copy is lit in its own material, grouped by the shape's, so its corners keep the shape's order.
+        self.assertEqual([labels.max() for labels, _ in shaded], [0, 1])
+        self.assertIsNone(shaded[0][1])
+        np.testing.assert_array_equal(shaded[1][1], np.zeros(len(out) // 2))
+
+    def test_an_exact_rule_keeps_a_retriangulated_copy_apart(self):
+        points, faces, labels, allocation, _ = self._retriangulated_copies('exact')
+        with watched_simplify() as run:
+            simplify(points, np.full_like(points, 100), faces, labels, 80, colour_deviation=1, allocation=allocation)
+        self.assertEqual(run.call_count, 2)
+
+    def test_a_copy_with_a_locked_border_is_not_joined_by_surface(self):
+        # Its border vertices are not the shape's, so a stamp would open the seam.
+        for seam in ('lock', 'weld'):
+            with self.subTest(seam=seam):
+                points, faces, labels, allocation, _ = self._retriangulated_copies('surface', seam, touching=True)
+                report = {}
+                allocation.report = report
+                with watched_simplify():
+                    simplify(points, np.full_like(points, 100), faces, labels, 80, colour_deviation=1,
+                             allocation=allocation)
+                self.assertFalse(any(row.get('joined') for row in report['meshes']))
 
     # Carved meshes are charged at what they emit; the rest scales into what is left of the ceiling.
 
