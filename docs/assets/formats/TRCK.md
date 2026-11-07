@@ -70,6 +70,6 @@ A row's `component` and `field` name what it drives. The components a scene bind
 | Component | Defined in | Fields |
 |---|---|---|
 | `TRNS` | `ANIM_COMPONENT_TRANSFORM`, `anim/anim_tracks_format.h` | `position` vec3, `rotation` quaternion, `scale` vec3 (`anim/pose/anim_pose.c`) |
-| `CAMR` | `ANIM_COMPONENT_CAMERA`, `scene/camera/camera.h` | `half_fov_short_tan` float, `near_z` float (`CAMERA_FIELDS` in `camera.c`); the glTF bake writes only `half_fov_short_tan` |
+| `CAMR` | `ANIM_COMPONENT_CAMERA`, `scene/camera/lens.h` | `half_fov_short_tan` float, `near_z` float (`LENS_FIELDS` in `scene/camera/lens.c`); the glTF bake writes only `half_fov_short_tan` |
 
 [Binding any field](../../render/animation/Animation-Tracks.md#binding-any-field) adds a component.

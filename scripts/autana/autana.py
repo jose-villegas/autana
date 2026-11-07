@@ -162,7 +162,7 @@ def pop_layout_seed(args):
 def refuse_release_seed(seed, variant):
     """A release image carries no padding to sample, so a seed there is a typo."""
     if seed is not None and variant == "release":
-        sys.exit("autana: --layout-seed is for measuring; a release image is never padded")
+        sys.exit("autana: --layout-seed is for measuring; a release image is never padded (seed the diag --perf-scope image)")
 
 
 def device_tool():
@@ -1804,17 +1804,18 @@ COMMAND_GROUPS = (
     ("build", "Build and flash", (
         Command("build", build, (
             ("build [rel|dev|diag] [--perf-scope [--frame-laps]] [--layout-seed N] [--hot-tunables] [--configure]",
-             "build without a board lock; dev when omitted; --layout-seed N > 0 pads the layout, 0 is the plain build; --frame-laps adds the laps inside the frame stages; --hot-tunables adds live hot-path knobs; --configure only writes sdkconfig and compile_commands.json"),
+             "build without a board lock; dev when omitted; --layout-seed N (with --perf-scope) pads the layout, 0 is the plain build; --frame-laps adds the laps inside the frame stages; --hot-tunables adds live hot-path knobs; --configure only writes sdkconfig and compile_commands.json"),
             ("build diag --check", "the diagnostics build plus the complexity ratchet, no board"))),
         one("flash", flash, "flash [rel|dev|diag] [--quiet] [--perf-scope [--frame-laps]] [--layout-seed N] [--hot-tunables]",
-            "build, then flash under the lock; dev when omitted; --quiet logs only; --perf-scope (diag) builds the perf-scoped image, --frame-laps adds the laps inside its frame stages"),
+            "build, then flash under the lock; dev when omitted; --quiet logs only; --perf-scope (diag) builds the perf-scoped image, --frame-laps adds the laps inside its frame stages; --layout-seed N (with --perf-scope) pads the layout"),
         one("buildid", buildid, "buildid [--json]", "the BUILD_ID the board runs, to check against what was flashed"),
     )),
     ("tests", "Tests", (
         Command("suite", suite, (
-            ("suite <name>... [seconds] [--runs N] [--flash] [--layout-seed N] [--hot-tunables] [--verbose]",
+            ("suite <name>... [seconds] [--runs N] [--flash] [--perf-scope] [--layout-seed N] [--hot-tunables] [--verbose]",
              "run suites under one lock, N times each (1 when omitted); seconds caps each capture "
-             "(1800 when omitted); --flash builds and flashes the diagnostics image first, so nobody flashes between captures"),
+             "(1800 when omitted); --flash builds and flashes the diagnostics image first, so nobody flashes between captures; "
+             "--layout-seed N (with --perf-scope) pads its layout"),
             ("suite <name> --test PATTERN[,PATTERN]",
              "only the tests a pattern picks: part of a function name or a whole case segment, "
              "a/b for segments in order (case-sensitive); --test repeats"),

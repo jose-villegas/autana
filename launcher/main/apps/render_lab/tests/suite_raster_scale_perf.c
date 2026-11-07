@@ -43,6 +43,9 @@
 #include "render/r3d_span_internal.h"
 #include "render/raster_internal.h"
 #include "render/resolution/resolution.h"
+#include "scene/animator/animator.h"
+#include "scene/camera/camera.h"
+#include "scene/renderer/renderer.h"
 #include "scene/scene.h"
 #include "scene/scene_shell.h"
 #include "sponza_suite.h"
@@ -80,10 +83,10 @@ static const resolution_step_t mapped_sizes[] = {
     {294, 358}, {276, 336}, {245, 298}, {210, 256}, {245, 224}, {147, 179}, {122, 149},
 };
 
-static scene_t* scene;
+static entity_t scene;
 static const asset_pack_t* pack;
-static const camera_t* lens;
-static scene_entity_t camera_entity;
+static const lens_t* lens;
+static entity_t camera_entity;
 static r3d_lit_mesh_t mesh;
 
 typedef struct {
@@ -96,7 +99,7 @@ typedef struct {
  * not inlined, so its frame is gone before the raster draws. */
 static __attribute__((noinline)) void
 add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
-    (void)scene_animator_seek(scene, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
+    (void)animator_seek(camera_entity, ANIMATOR_CURRENT, t_ms);
     r3d_lens_t* draw_lens = &sum->lens;
     {
         const render_view_t view =
@@ -143,11 +146,11 @@ measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size,
     raster->width = size.width;
     raster->height = size.height;
     (void)frame_cost_take_report(1, report, FRAME_COST_REPORT_MAX); /* forget whatever ran before */
-    const uint32_t period = scene_animator_clip_duration_ms(scene, camera_entity, 0);
+    const uint32_t period = animator_clip_duration_ms(camera_entity, 0);
     int poses = 0;
     int64_t triangles = 0;
     for (uint32_t t_ms = 0; t_ms < period && poses < POSES_MAX; t_ms += POSE_EVERY_MS) {
-        (void)scene_animator_seek(scene, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
+        (void)animator_seek(camera_entity, ANIMATOR_CURRENT, t_ms);
         triangles += timed_pose(raster, destination, &frame_us[poses++]);
     }
     (void)frame_cost_take_report((uint32_t)poses, report, FRAME_COST_REPORT_MAX);
@@ -198,7 +201,7 @@ test_raster_stage_split_by_size(void) {
 #if !FRAME_COST_ENABLED
     TEST_IGNORE_MESSAGE("frame_cost is a development build's");
 #endif
-    TEST_ASSERT_NOT_NULL_MESSAGE(scene, "the scene did not load: see the log above");
+    TEST_ASSERT_FALSE_MESSAGE(handle_is_none(scene), "the scene did not load: see the log above");
     const r3d_instance_t instance = {&mesh, NULL, NULL, NULL};
     raster_t raster = {
         .instances = &instance,
@@ -243,9 +246,9 @@ count_along_path(raster_t* raster, gfx_color_t* destination, int bracket, const 
     const int index = frame_cost_event_index(event);
     TEST_ASSERT_TRUE(index >= 0);
     frame_cost_shared_post_arm(bracket, index);
-    const uint32_t period = scene_animator_clip_duration_ms(scene, camera_entity, 0);
+    const uint32_t period = animator_clip_duration_ms(camera_entity, 0);
     for (uint32_t t_ms = 0; t_ms < period && t_ms / POSE_EVERY_MS < POSES_MAX; t_ms += POSE_EVERY_MS) {
-        (void)scene_animator_seek(scene, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
+        (void)animator_seek(camera_entity, ANIMATOR_CURRENT, t_ms);
         const render_view_t view =
             sponza_suite_view(lens, scene, camera_entity, raster_viewport(raster, perf_quarter->quarter));
         (void)raster_draw(raster, &view);
@@ -265,7 +268,7 @@ test_raster_counters(void) {
 #if !FRAME_COST_ENABLED
     TEST_IGNORE_MESSAGE("frame_cost is a development build's");
 #else
-    TEST_ASSERT_NOT_NULL_MESSAGE(scene, "the scene did not load: see the log above");
+    TEST_ASSERT_FALSE_MESSAGE(handle_is_none(scene), "the scene did not load: see the log above");
     const r3d_instance_t instance = {&mesh, NULL, NULL, NULL};
     const resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
     raster_t raster = {.instances = &instance,
@@ -331,7 +334,7 @@ calibrate(const resolution_config_t* config, resolution_model_t* model) {
     raster->height = config->steps[0].height;
     raster->destination_width = GFX_WIDTH;
     raster->destination_height = GFX_HEIGHT;
-    const uint32_t period = scene_animator_clip_duration_ms(scene, camera_entity, 0);
+    const uint32_t period = animator_clip_duration_ms(camera_entity, 0);
     const int poses = (int)((period + POSE_EVERY_MS - 1) / POSE_EVERY_MS);
     raster->scratch = memory_alloc(raster_scratch_bytes(raster), MEMORY_APP);
     gfx_color_t* destination = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_APP);
@@ -345,7 +348,7 @@ calibrate(const resolution_config_t* config, resolution_model_t* model) {
             raster->width = config->steps[step].width;
             raster->height = raster_present_size(config->steps[step], render_lab_present()).height;
             for (uint32_t t_ms = 0; t_ms < period; t_ms += POSE_EVERY_MS) {
-                (void)scene_animator_seek(scene, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
+                (void)animator_seek(camera_entity, ANIMATOR_CURRENT, t_ms);
                 *view = sponza_suite_view(lens, scene, camera_entity,
                                           (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
                 const int64_t start = timing_now_us();
@@ -408,17 +411,17 @@ log_refit(const char* camera, const ladder_t* ladder, const resolution_config_t*
 static __attribute__((noinline)) void
 fly(const char* camera, const char* policy, const ladder_t* ladder, const resolution_config_t* config,
     const resolution_model_t* model, uint16_t* picture, frame_record_t* records) {
-    scene_t* flown = scene_load(SPONZA_SCENE, NULL);
-    TEST_ASSERT_NOT_NULL(flown);
+    entity_t flown = scene_load(SPONZA_SCENE);
+    TEST_ASSERT_EQUAL_INT(PENDING_READY, scene_state(flown));
     for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
-        scene_entity_set_enabled(flown, scene_find(flown, name_hash(sponza_bakes[i])), i == (int)SCENE_BAKED_FULL);
+        entity_set_enabled(entity_find(flown, name_hash(sponza_bakes[i])), i == (int)SCENE_BAKED_FULL);
     }
     const name_hash_t camera_name = name_hash(camera);
-    const scene_entity_t flown_camera = scene_find(flown, camera_name);
-    TEST_ASSERT_TRUE(scene_activate(flown, camera_name));
-    TEST_ASSERT_TRUE(render_lab_apply_camera_settings(flown, flown_camera));
-    TEST_ASSERT_NOT_NULL(scene_camera_lens(flown, camera_name));
-    const uint32_t period = scene_animator_clip_duration_ms(flown, flown_camera, 0);
+    const entity_t flown_camera = entity_find(flown, camera_name);
+    TEST_ASSERT_TRUE(camera_activate(entity_find(flown, camera_name)));
+    TEST_ASSERT_TRUE(render_lab_apply_camera_settings(flown_camera));
+    TEST_ASSERT_NOT_NULL(camera_lens(entity_find(flown, camera_name)));
+    const uint32_t period = animator_clip_duration_ms(flown_camera, 0);
     const int frames = (int)((period + FRAME_DT_MS - 1) / FRAME_DT_MS);
     TEST_ASSERT_TRUE(frames > 0 && frames <= FRAMES_MAX);
     render_lab_apply_raster_settings();
@@ -442,7 +445,7 @@ fly(const char* camera, const char* policy, const ladder_t* ladder, const resolu
     }
     render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
     memory_free(half);
-    scene_unload(flown);
+    scene_release(flown);
     log_frames(camera, policy, ladder == NULL ? "half" : ladder->name, config == NULL ? 0 : config->budget_us, records,
                frames);
 }
@@ -483,7 +486,7 @@ static const int32_t budgets_us[] = {RENDER_LAB_TARGET_MS * MATH_US_PER_MS, 7500
 
 void
 test_dynamic_resolution_policies_along_the_path(void) {
-    TEST_ASSERT_NOT_NULL_MESSAGE(scene, "the scene did not load: see the log above");
+    TEST_ASSERT_FALSE_MESSAGE(handle_is_none(scene), "the scene did not load: see the log above");
 
     /* Each ladder's config and fitted model: too big for the frame task's stack. */
     typedef struct {
@@ -552,15 +555,15 @@ run_raster_scale_perf_suite(void) {
     scene = loaded.scene;
     pack = asset_store_loaded(loaded.load);
     lens = loaded.lens;
-    camera_entity = scene == NULL ? SCENE_ENTITY_NONE : scene_find(scene, name_hash(sponza_cameras[0]));
-    (void)render_lab_apply_camera_settings(scene, camera_entity);
-    if (scene != NULL) {
-        const scene_entity_t full = scene_find(scene, name_hash(sponza_bakes[SCENE_BAKED_FULL]));
-        const char* id = full == SCENE_ENTITY_NONE ? NULL : scene_entity_mesh_id(scene, full);
+    camera_entity = handle_is_none(scene) ? ENTITY_NONE : entity_find(scene, name_hash(sponza_cameras[0]));
+    (void)render_lab_apply_camera_settings(camera_entity);
+    if (!handle_is_none(scene)) {
+        const entity_t full = entity_find(scene, name_hash(sponza_bakes[SCENE_BAKED_FULL]));
+        const char* id = handle_is_none(full) ? NULL : renderer_mesh_id(full);
         if (id == NULL || r3d_lit_mesh_open(pack, id, &mesh) != ASSET_OK) {
             ESP_LOGE(TAG, "the scene's full bake did not open");
-            scene_unload(scene);
-            scene = NULL;
+            scene_release(scene);
+            scene = ENTITY_NONE;
         }
     }
     RUN_TEST(test_dynamic_resolution_refit_cost);
@@ -572,7 +575,7 @@ run_raster_scale_perf_suite(void) {
     }
     loaded = (sponza_suite_t){scene, loaded.load, lens, loaded.arena_mark};
     sponza_suite_release(&loaded);
-    scene = NULL;
+    scene = ENTITY_NONE;
     pack = NULL;
     lens = NULL;
 }

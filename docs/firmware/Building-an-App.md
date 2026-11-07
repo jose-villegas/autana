@@ -283,8 +283,8 @@ arena_exit(void) {
 <!-- /generated: app-arena-example -->
 
 The scenes an app loads live in it too
-([Scene-Manager.md](../render/scene/Scene-Manager.md#ownership)): mark before
-`scene_load()` and rewind after `scene_unload()` to reuse their memory within
+([Scene-Loading.md](../render/scene/Scene-Loading.md#ownership)): mark before
+`scene_load()` and rewind after `scene_release()` to reuse their memory within
 one visit.
 
 Arena takes bump within chunks from `MEMORY_APP`; a take larger than
