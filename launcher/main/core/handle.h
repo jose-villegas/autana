@@ -13,7 +13,7 @@
 #define HANDLE_SLOT_MAX         ((1U << HANDLE_SLOT_BITS) - 1U)
 #define HANDLE_GENERATION_MAX   ((1U << HANDLE_GENERATION_BITS) - 1U)
 
-typedef enum { HANDLE_OWNER_TOKEN = 1, HANDLE_OWNER_ASSET_LOAD = 2 } handle_owner_t;
+typedef enum { HANDLE_OWNER_TOKEN = 1, HANDLE_OWNER_ASSET_LOAD = 2, HANDLE_OWNER_ENTITY = 3 } handle_owner_t;
 
 /* Bits: owner 4 | slot 12 | generation 16. */
 typedef struct {
