@@ -11,7 +11,8 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from r3d.thin.thin_parts import ThinPart, budget_side, find_thin_parts
-from r3d.thin.curve_fit import CURVE_LIGHT_RING, TUBE_SIDES, Curve, fit_curve, light_curve
+from r3d.thin.curve_fit import (CURVE_LIGHT_INSET_PER_WIDTH, CURVE_LIGHT_RING, TUBE_SIDES, Curve, fit_curve,
+                                light_centres, light_curve)
 from r3d.thin.curve_asset import read_curves, write_curves
 from r3d.import_settings import SettingsError, load_geometry
 from r3d.light import LIGHT_GAMMA
@@ -59,6 +60,19 @@ class ThinCurvesTests(unittest.TestCase):
         self.assertEqual(len(parts), 1)
         self.assertEqual(len(parts[0].triangles), 2 * len(t))
 
+    def test_bar_on_a_wall_rests(self):
+        bar, wall = soup.box((4.5, 4.5, 310)), soup.box((400, 1, 400))
+        wall.vertices = wall.vertices + [0, 2.75, 0]
+        shape = soup.concatenate([bar, wall])
+        self.assertEqual(find_thin_parts(shape.vertices, shape.faces, SIDE), [])
+
+    def test_pole_off_a_wall_stands(self):
+        pole, wall = soup.box((4.5, 4.5, 310)), soup.box((400, 1, 400))
+        wall.vertices = wall.vertices + [0, 40, 0]
+        shape = soup.concatenate([pole, wall])
+        self.assertEqual([len(part.triangles) for part in find_thin_parts(shape.vertices, shape.faces, SIDE)],
+                         [len(pole.faces)])
+
     def test_budget_area(self):
         p = np.array([[0, 0, 0], [4, 0, 0], [0, 2, 0]])
         self.assertEqual(budget_side(p, np.array([[0, 1, 2]]), 4), 1)
@@ -71,6 +85,13 @@ class ThinCurvesTests(unittest.TestCase):
                 self.assertEqual(len(curve.knots), 2)
                 np.testing.assert_allclose(curve.radius, 2, rtol=0.05)
                 np.testing.assert_allclose(sorted(curve.knots[:, 2]), [0, 200], atol=1e-10)
+
+    def test_light_rings_sit_inward_of_the_ends(self):
+        knots = np.array([[0., 0, 0], [0, 0, 100], [0, 0, 103]])
+        centres = light_centres(knots, 4.0)
+        np.testing.assert_allclose(centres[0], [0, 0, CURVE_LIGHT_INSET_PER_WIDTH * 4])
+        np.testing.assert_allclose(centres[1], knots[1])
+        np.testing.assert_allclose(centres[2], [0, 0, 101.5])
 
     def test_bend_fit(self):
         p, t = cylinder()
