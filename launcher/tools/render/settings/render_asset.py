@@ -6,11 +6,14 @@ RENDER_SETTINGS_DEFAULT.
     python tools/render/settings/render_asset.py main/render/settings/render_settings_default.h
 
 The keys are render_settings_t's fields (launcher/main/render/settings/
-render_settings.h). default.render.toml, in the same folder as that header,
+render_settings.h), a field of a struct field under that struct's table, as
+`[lod]` for `lod`. default.render.toml, in the same folder as that header,
 sets every one; another file lists only the values it changes, and the rest
 come from the default. An unknown key or a value of another type than its
-field is an error. Run as above, it writes the header that holds
-RENDER_SETTINGS_DEFAULT.
+field is an error. A table row holds a value in 1/2^RENDER_SETTINGS_FRAC_BITS
+steps, so a float or an int must be a multiple of one.
+
+Run as above, it writes the header that holds RENDER_SETTINGS_DEFAULT.
 """
 import pathlib
 import re
@@ -28,31 +31,55 @@ DEFAULT = SETTINGS / "default.render.toml"
 SUFFIX = ".render.toml"
 TYPE = table_asset.TYPE
 ENTRY = read_define(HEADER, "RENDER_SETTINGS_ENTRY")
-STRUCT = re.compile(r"typedef struct \{(.*?)\} render_settings_t;", re.S)
-FIELD = re.compile(r"^\s*(\w+) (\w+); +/\* (\w+): (.*?) \*/$", re.M)
-TYPES = {"bool": bool}
+FRAC_BITS = read_define(HEADER, "RENDER_SETTINGS_FRAC_BITS")
+STRUCTS = re.compile(r"typedef struct \{(.*?)\} (\w+);", re.S)
+FIELD = re.compile(r"^\s*(\w+) (\w+);\s*/\*(.*?)\*/$", re.M)
+TIER = re.compile(r"^ (\w+): (.*) $")
+TYPES = {"bool": (bool,), "int": (int,), "float": (int, float)}
 COMMAND = "python tools/render/settings/render_asset.py main/render/settings/render_settings_default.h"
 
 
 def fields(source=None):
-    """{field: (C type, tier, trade)} of render_settings_t in order, each declared
-    on its own line with its tier comment."""
+    """{field: (C type, tier, trade)} of render_settings_t in order, a struct field's own
+    as `field.member`. Each is declared on its own line with its tier comment."""
     source = HEADER.read_text(encoding="utf-8") if source is None else source
-    found = STRUCT.search(source)
-    if found is None:
+    structs = {}
+    for body, name in STRUCTS.findall(source):
+        rows = FIELD.findall(body.strip())
+        if len(rows) != len([line for line in body.strip().splitlines() if line.strip()]):
+            raise ValueError(f"{HEADER.name}: declare each field on its own line with a /* tier: trade */ comment")
+        structs[name] = rows
+
+    def expand(name, prefix):
+        found = {}
+        for kind, field, comment in structs[name]:
+            if kind in structs:
+                found.update(expand(kind, f"{prefix}{field}."))
+                continue
+            tier = TIER.match(comment)
+            if kind not in TYPES or tier is None:
+                raise ValueError(f"{HEADER.name}: {prefix}{field} needs a bool, int or float and /* tier: trade */")
+            found[prefix + field] = (kind, *tier.groups())
+        return found
+
+    if "render_settings_t" not in structs:
         raise ValueError(f"{HEADER.name}: no render_settings_t")
-    body = found.group(1).strip()
-    rows = FIELD.findall(body)
-    if len(rows) != len([line for line in body.splitlines() if line.strip()]):
-        raise ValueError(f"{HEADER.name}: declare each field on its own line with a /* tier: trade */ comment")
-    return {name: (kind, tier, trade) for kind, name, tier, trade in rows}
+    return expand("render_settings_t", "")
+
+
+def flatten(values, prefix=""):
+    """{key: value} of a TOML table, a nested table's keys as `table.key`."""
+    flat = {}
+    for key, value in values.items():
+        flat.update(flatten(value, f"{prefix}{key}.") if isinstance(value, dict) else {prefix + key: value})
+    return flat
 
 
 def read(path):
-    """The validated keys of one settings file."""
+    """The validated keys of one settings file, flattened."""
     path = pathlib.Path(path)
     try:
-        values = tomllib.loads(path.read_text(encoding="utf-8"))
+        values = flatten(tomllib.loads(path.read_text(encoding="utf-8")))
     except tomllib.TOMLDecodeError as error:
         raise ValueError(f"{path}: {error}") from None
     known = fields()
@@ -60,8 +87,9 @@ def read(path):
     if unknown:
         raise ValueError(f"{path}: {', '.join(sorted(unknown))} is not a render setting")
     for key, value in values.items():
-        if type(value) is not TYPES[known[key][0]]:
-            raise ValueError(f"{path}: {key} must be a TOML {TYPES[known[key][0]].__name__}")
+        kind = known[key][0]
+        if type(value) not in TYPES[kind]:
+            raise ValueError(f"{path}: {key} must be a TOML {kind}")
     return values
 
 
@@ -75,19 +103,41 @@ def load(path):
     return {key: values[key] for key in fields()}
 
 
+def literal(kind, value, suffix=""):
+    """`value` as C source of its field's type, `suffix` after a float."""
+    return str(value).lower() if kind == "bool" else repr(float(value)) + suffix if kind == "float" else str(value)
+
+
+def nested(values, kinds, prefix=""):
+    """The C designated initialiser body of the flat `values`, a struct field's as a nested one."""
+    parts = []
+    for head in dict.fromkeys(key[len(prefix):].partition(".")[0] for key in values if key.startswith(prefix)):
+        key = prefix + head
+        parts.append(f".{head} = " + (literal(kinds[key], values[key], "F") if key in values
+                                      else "{" + nested(values, kinds, key + ".") + "}"))
+    return ", ".join(parts)
+
+
 def bake(path):
     """The RENDER_SETTINGS_ENTRY bytes of a settings file."""
-    return table_asset.encode({key: [int(value)] for key, value in load(path).items()}, 0)
+    rows = {}
+    for key, value in load(path).items():
+        steps = float(value) * (1 << FRAC_BITS)
+        if steps != int(steps) or not table_asset.VALUE_MIN <= steps <= table_asset.VALUE_MAX:
+            raise ValueError(f"{key} = {value}: not a multiple of 1/{1 << FRAC_BITS} below "
+                             f"{table_asset.VALUE_MAX >> FRAC_BITS}")
+        rows[key] = [int(steps)]
+    return table_asset.encode(rows, FRAC_BITS)
 
 
 def header():
     """render_settings_default.h's text."""
-    values = load(DEFAULT)
-    initial = ", ".join(f".{key} = {str(value).lower()}" for key, value in values.items())
+    values, known = load(DEFAULT), fields()
+    kinds = {key: kind for key, (kind, _, _) in known.items()}
     return (f"/* GENERATED FILE - do not edit.\n *     {COMMAND}\n */\n#pragma once\n\n"
-            f"#define RENDER_SETTINGS_DEFAULT ((render_settings_t){{{initial}}})\n"
-            "/* X(field) for each field of render_settings_t, in order. */\n"
-            f"#define RENDER_SETTINGS_FIELDS(X) {' '.join(f'X({key})' for key in values)}\n"
+            f"#define RENDER_SETTINGS_DEFAULT ((render_settings_t){{{nested(values, kinds)}}})\n"
+            "/* X(field, type) for each field of render_settings_t, in order: `field` as a member path. */\n"
+            f"#define RENDER_SETTINGS_FIELDS(X) {' '.join(f'X({key}, {kinds[key]})' for key in values)}\n"
             f"#define RENDER_SETTINGS_FIELD_COUNT {len(values)}\n")
 
 

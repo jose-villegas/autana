@@ -22,16 +22,18 @@ TUNE_OVERRIDE(render, cull, 1);
 TUNE_OVERRIDE(render, depth_fit, 1);
 /* Off draws one instance a batch. */
 TUNE_OVERRIDE(render, batched, 1);
-/* The thousandths of the picture's height a coarse group may cover
- * (R3D_LOD_COVERAGE_PERMILLE); the doc's coverage table renders each cap it
- * lists. */
-TUNE(render, lod_coverage_permille, R3D_LOD_COVERAGE_PERMILLE, 0, R3D_LOD_UNCAPPED);
+/* Overrides lod.coverage_permille (INT32_MAX lifts the cap); coverage_table.py
+ * sets it once per cap. */
+TUNE_OVERRIDE(render, lod_coverage_permille, INT32_MAX);
 
 render_settings_t
 raster_settings(const raster_t* raster) {
     const render_settings_t s = raster->settings != NULL ? *raster->settings : RENDER_SETTINGS_DEFAULT;
-    return (render_settings_t){tune_override(cull, s.cull) != 0, tune_override(depth_fit, s.depth_fit) != 0,
-                               tune_override(batched, s.batched) != 0};
+    return (render_settings_t){
+        tune_override(cull, s.cull) != 0,
+        tune_override(depth_fit, s.depth_fit) != 0,
+        tune_override(batched, s.batched) != 0,
+        {s.lod.tolerance_px, s.lod.hysteresis_px, tune_override(lod_coverage_permille, s.lod.coverage_permille)}};
 }
 
 /* One instance of a batch: its lens, the clusters culling kept, where its
@@ -407,8 +409,8 @@ raster_pick_levels(const raster_t* raster, const render_view_t* view) {
     picture_lens_t picture;
     picture_lens_init(&picture, raster, view, false);
     world_cull_t world;
-    world_cull_init(&world, &picture, view, raster_settings(raster).cull);
-    const float coverage_max = (float)lod_coverage_permille / (float)R3D_LOD_PERMILLE;
+    const render_settings_t settings = raster_settings(raster);
+    world_cull_init(&world, &picture, view, settings.cull);
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];
         if (instance->lod_coarse == NULL || instance->mesh->lod_group_count == 0
@@ -417,7 +419,7 @@ raster_pick_levels(const raster_t* raster, const render_view_t* view) {
         }
         r3d_lens_t lens;
         instance_lens(&picture, instance, &lens);
-        r3d_lod_pick(instance->mesh, &lens, R3D_LOD_TOLERANCE_PX, coverage_max, instance->lod_coarse);
+        r3d_lod_pick(instance->mesh, &lens, &settings.lod, instance->lod_coarse);
     }
 }
 

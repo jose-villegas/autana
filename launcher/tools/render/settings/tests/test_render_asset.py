@@ -20,17 +20,30 @@ class RenderAssetTests(unittest.TestCase):
 
     def test_a_file_changes_only_its_keys(self):
         self.assertEqual(render_asset.load(self.settings("batched = false\n")),
-                         {"cull": True, "depth_fit": True, "batched": False})
+                         {"cull": True, "depth_fit": True, "batched": False, "lod.tolerance_px": 2.0,
+                          "lod.hysteresis_px": 0.5, "lod.coverage_permille": 250})
+        lod = render_asset.load(self.settings("[lod]\ncoverage_permille = 100\n"))
+        self.assertEqual(lod["lod.coverage_permille"], 100)
 
     def test_the_bake_is_one_row_per_field_in_struct_order(self):
         rows, frac = table_asset.decode(render_asset.bake(self.settings("cull = false\n")))
-        self.assertEqual((list(rows.items()), frac), ([("cull", [0]), ("depth_fit", [1]), ("batched", [1])], 0))
+        self.assertEqual((list(rows.items()), frac), ([("cull", [0]), ("depth_fit", [16]), ("batched", [16]),
+                                                  ("lod.tolerance_px", [32]), ("lod.hysteresis_px", [8]),
+                                                  ("lod.coverage_permille", [4000])], 4))
 
     def test_an_unknown_key_or_another_type_is_refused(self):
         for text, message in (("fog = true\n", "fog is not a render setting"),
-                              ("cull = 1\n", "cull must be a TOML bool"), ("cull = \n", "app.render.toml")):
+                              ("cull = 1\n", "cull must be a TOML bool"),
+                              ("[lod]\nfog = 1\n", "lod.fog is not a render setting"),
+                              ("[lod]\ncoverage_permille = 1.5\n", "lod.coverage_permille must be a TOML int"),
+                              ("cull = \n", "app.render.toml")):
             with self.subTest(text=text), self.assertRaisesRegex(ValueError, message):
                 render_asset.load(self.settings(text))
+
+    def test_a_value_between_the_tables_steps_is_refused(self):
+        for text in ("[lod]\ntolerance_px = 0.1\n", "[lod]\ncoverage_permille = 3000\n"):
+            with self.subTest(text=text), self.assertRaisesRegex(ValueError, "not a multiple of 1/16"):
+                render_asset.bake(self.settings(text))
 
     def test_each_field_needs_its_own_line_and_tier_comment(self):
         for body in ("bool cull, batched; /* basic: x */", "bool cull;"):
