@@ -10,7 +10,10 @@ by the clip plane's near_z (render.depth_fit=0) and by the fitted scale
 It writes --out: a row per setting of FRAMES consecutive frames from --at-ms,
 each cut to the window where the fit removes the most flips (a pixel that
 changes for one frame and back: surfaces fighting), enlarged without
-smoothing.
+smoothing. Beside it, <stem>-diff.png is the frame the two settings differ
+most in, whole, as render_compare's sheet (near_z | fit | difference), with
+its .crops.png of the places they differ most; <stem>.gif plays the window's
+frames, one setting above the other, slowed to GIF_FRAME_MS so the flips show.
 """
 
 import argparse
@@ -19,11 +22,11 @@ import sys
 
 import numpy as np
 from PIL import Image
-from render_compare import still_sheet
+from render_compare import crops_path, find_clusters, sheet as compare_sheet, still_sheet, write_crops
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
-from docs.figures import render_scene, save_png  # noqa: E402
+from docs.figures import render_scene, save_gif, save_png  # noqa: E402
 
 FRAME_MS = 16  # one host frame, as the viewer steps by default
 FRAMES = 6  # consecutive frames per row: enough to see a fight come and go
@@ -31,6 +34,7 @@ WINDOW = (160, 96)  # the cut, in rendered pixels: wide enough to read the place
 ZOOM = 2  # the cut's enlargement
 CHANGE = 24  # summed RGB difference that counts a pixel as changed
 SETTINGS = (("depth scaled by near_z", 0), ("depth scaled by the fit", 1))
+GIF_FRAME_MS = 250  # each frame of --gif: slow enough to see one frame's flip
 
 
 def render(args, frame, fit):
@@ -78,12 +82,20 @@ def main(argv=None):
     removed = np.maximum(flips(rows[SETTINGS[0][1]]) - flips(rows[SETTINGS[1][1]]), 0)
     x, y = busiest(removed)
     width, height = WINDOW
-    sheet = []
-    for label, fit in SETTINGS:
-        cuts = [Image.fromarray(frame[y:y + height, x:x + width].astype(np.uint8)) for frame in rows[fit]]
-        sheet.append([(f"{label}, {(first + k) * FRAME_MS / 1000:.3f} s",
-                       cut.resize((width * ZOOM, height * ZOOM), Image.NEAREST)) for k, cut in enumerate(cuts)])
-    save_png(still_sheet(sheet), args.out)
+    cuts = {fit: [Image.fromarray(frame[y:y + height, x:x + width].astype(np.uint8))
+                  .resize((width * ZOOM, height * ZOOM), Image.NEAREST) for frame in rows[fit]] for _, fit in SETTINGS}
+    at = lambda k: f"{(first + k) * FRAME_MS / 1000:.3f} s"
+    save_png(still_sheet([[(f"{label}, {at(k)}", cut) for k, cut in enumerate(cuts[fit])] for label, fit in SETTINGS]),
+             args.out)
+    near, fit = (rows[f] for _, f in SETTINGS)
+    k = max(range(FRAMES), key=lambda k: int(np.abs(near[k] - fit[k]).sum()))
+    a, b = (Image.fromarray(frames[k].astype(np.uint8)) for frames in (near, fit))
+    labels = [label for label, _ in SETTINGS]
+    diff = str(args.out.with_name(args.out.stem + "-diff.png"))
+    save_png(compare_sheet([("", a, b)], None, *labels), diff)
+    write_crops([(at(k), [a, b], find_clusters(a, b, None))], crops_path(diff), labels)
+    save_gif([np.concatenate([np.asarray(cut) for cut in pair], axis=0) for pair in zip(*cuts.values())],
+             args.out.with_suffix(".gif"), GIF_FRAME_MS)
 
 
 if __name__ == "__main__":
