@@ -29,6 +29,22 @@ def cylinder():
     return p, t
 
 
+def sagging(half_width, depth, sides=12):
+    """A tube of radius `half_width` (sides >= 3), or a flat band that wide (sides == 2), hanging 600 long with
+    `depth` of sag."""
+    x = np.linspace(0, 600, 61)
+    z = -depth * (1 - ((x - 300) / 300) ** 2)
+    angle = np.arange(sides) * 2 * np.pi / sides
+    ring = [(np.cos(a), np.sin(a)) for a in angle] if sides > 2 else [(0, -1), (0, 1)]
+    p = np.array([[xi, half_width * c, zi + half_width * s] for xi, zi in zip(x, z) for c, s in ring])
+    n = len(ring)
+    edges = range(n) if sides > 2 else range(1)
+    t = np.array([[k * n + i, k * n + (i + 1) % n, (k + 1) * n + i] for k in range(len(x) - 1) for i in edges] +
+                 [[k * n + (i + 1) % n, (k + 1) * n + (i + 1) % n, (k + 1) * n + i]
+                  for k in range(len(x) - 1) for i in edges])
+    return p, t
+
+
 class Open:
     """An intersector with nothing in the way."""
 
@@ -116,6 +132,18 @@ class ThinCurvesTests(unittest.TestCase):
         self.assertEqual([len(part.triangles) for part in find_thin_parts(shape.vertices, shape.faces, SIDE)],
                          [len(pole.faces)])
 
+    def test_a_sagging_cable_is_as_thin_as_a_taut_one(self):
+        p, t = sagging(2, 60)
+        part, = find_thin_parts(p, t, SIDE)
+        self.assertAlmostEqual(part.width, 4, delta=0.5)
+        curve = fit_curve(p, t, part)
+        self.assertAlmostEqual(curve.knots[:, 2].min(), -60, delta=3)
+        np.testing.assert_allclose(curve.radius, 2, rtol=0.15)
+
+    def test_a_sagging_band_wider_than_thin_stays(self):
+        p, t = sagging(10, 60, sides=2)
+        self.assertEqual(find_thin_parts(p, t, SIDE), [])
+
     def test_budget_area(self):
         p = np.array([[0, 0, 0], [4, 0, 0], [0, 2, 0]])
         self.assertEqual(budget_side(p, np.array([[0, 1, 2]]), 4), 1)
@@ -135,7 +163,7 @@ class ThinCurvesTests(unittest.TestCase):
         p = np.concatenate([ring, ring + [0, 0, 100], ring + [100, 0, 100]])
         t = np.concatenate([t, t + 96])
         axes = np.array([[1, -1, 0], [0, 0, np.sqrt(2)], [1, 1, 0]]) / np.sqrt(2)
-        part = ThinPart(np.arange(len(t)), p.mean(axis=0), axes, np.array([145, 4, 4]))
+        part = ThinPart(np.arange(len(t)), p.mean(axis=0), axes, np.array([145, 4, 4]), 4)
         curve = fit_curve(p, t, part)
         self.assertGreater(len(curve.knots), 2)
         self.assertLess(np.linalg.norm(curve.knots - [0, 0, 100], axis=1).min(), 6)

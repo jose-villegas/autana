@@ -32,7 +32,7 @@ class Curve:
 
 def fit_curve(positions, triangles, part):
     """Area samples sliced along the long PCA axis, simplified in position and radius."""
-    width = float(part.extents[1])
+    width = float(part.width)
     if width <= 0:
         raise ValueError("a curve needs a nonzero surface width")
     source = SimpleNamespace(p=np.asarray(positions), tri_v=np.asarray(triangles))
