@@ -54,16 +54,18 @@ def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, t
 
 
 class MeshBundleTests(unittest.TestCase):
-    def test_a_start_with_two_shapes_records_one_meshlets_and_one_write_step_over_every_mesh(self):
+    def test_a_start_with_two_shapes_sums_meshlets_over_every_mesh_and_writes_one_file(self):
         recorder = StepRecorder(probe=lambda gpu: (100, None), interval=None)
         with tempfile.TemporaryDirectory() as directory:
-            data = bundle_fixture(directory, shapes=2, recorder=recorder)[0]
+            data, _, geometry, job, _ = bundle_fixture(directory, shapes=2, recorder=recorder)
+            written = sorted(path.name for path in pathlib.Path(directory).iterdir())
         meshes = [name for name, kind, _ in mesh_bundle.decode(data)[0] if kind == mesh_asset.TYPE]
         # The rest mesh, then each shape's plain and mirrored copy mesh, one triangle each.
         self.assertEqual(len(meshes), 5)
-        triangles = len(meshes)
+        self.assertEqual(written, [job.asset_name + mesh_bundle.SUFFIX])
+        rest = len(geometry.tris)
         self.assertEqual([(row['step'], row['triangles_in'], row['triangles_out']) for row in recorder.rows],
-                         [('meshlets', triangles, triangles), ('write', triangles, triangles)])
+                         [('meshlets', len(meshes) * rest, len(meshes) * rest), ('write', rest, rest)])
 
     def test_manifest_has_plain_names_without_hashes(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -190,15 +192,15 @@ class MeshBundleTests(unittest.TestCase):
 
     def test_a_fitted_renderer_s_start_bakes_its_rest_without_levels_and_its_copies_with_them(self):
         baked = []
-        real = mesh_import.write_lit_mesh
+        real = mesh_import.build_lit_mesh
 
-        def recording(out_dir, name, *args, **options):
-            baked.append((name, options["lod"]))
-            return real(out_dir, name, *args, **options)
-        with tempfile.TemporaryDirectory() as directory, mock.patch.object(mesh_import, "write_lit_mesh", recording):
-            _, _, _, job, _ = bundle_fixture(directory, lod=True, fit=SimpleNamespace())
-        self.assertEqual(baked[0], (job.asset_name, False))
-        self.assertTrue(len(baked) > 1 and all(lod for _, lod in baked[1:]))
+        def recording(*args, **options):
+            baked.append(options["lod"])
+            return real(*args, **options)
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(mesh_import, "build_lit_mesh", recording):
+            bundle_fixture(directory, lod=True, fit=SimpleNamespace())
+        self.assertFalse(baked[0])
+        self.assertTrue(len(baked) > 1 and all(baked[1:]))
 
     def test_the_fit_bakes_levels_when_the_import_asks_for_them(self):
         for lod in (False, True):
