@@ -579,6 +579,8 @@ test_same_view_survives_frames_and_contexts_own_their_states(void) {
         const render_view_t frame_view = render_view_fixture_at(&raster_rig_camera, (viewport_t){W, H, 0});
         TEST_ASSERT_TRUE(render_context_draw(a, r->instance, 2, &frame_view, 0));
         TEST_ASSERT_EQUAL_PTR(state, a->debug_view_state);
+        TEST_ASSERT_TRUE(((const raster_meshlets_t*)state)->next > 1);
+        TEST_ASSERT_EQUAL_UINT32(0, ((const raster_meshlets_t*)b->debug_view_state)->next);
     }
     render_context_release(a);
     TEST_ASSERT_NOT_NULL(b->debug_view_state);

@@ -96,7 +96,7 @@ bench_close(void) {
 }
 
 static bench_t*
-bench_open(const r3d_instance_t* instance, const raster_attachment_t* const* attachments) {
+bench_open(const r3d_instance_t* instance) {
     bench_t* b = memory_alloc(sizeof(*b), MEMORY_INTERNAL);
     TEST_ASSERT_NOT_NULL(b);
     *b = (bench_t){0};
@@ -121,8 +121,6 @@ bench_open(const r3d_instance_t* instance, const raster_attachment_t* const* att
         .upscaled = true,
         .destination_width = GFX_WIDTH,
         .destination_height = GFX_HEIGHT,
-        .attachments = attachments,
-        .attachment_count = attachments == NULL ? 0 : 1,
     };
     b->raster.present = render_lab_present();
     b->scratch = memory_alloc(raster_scratch_bytes(&b->raster), MEMORY_APP);
@@ -233,7 +231,7 @@ open_the_meshes(void) {
 static void
 report_stage_split(int bake) {
     const r3d_instance_t instance = {&meshes[bake], NULL, NULL, NULL};
-    bench_t* b = bench_open(&instance, NULL);
+    bench_t* b = bench_open(&instance);
     const raster_buffers_t* parts = &b->buffers;
     const r3d_lens_t* lens = &b->lens;
     const uint32_t period = scene_animator_clip_duration_ms(sponza, camera_entity, 0);
@@ -266,7 +264,7 @@ test_sponza_draw_stage_breakdown(void) {
         report_stage_split(i);
     }
     const r3d_instance_t atrium = {&meshes[SCENE_BAKED_FULL], NULL, NULL, NULL};
-    bench_t* b = bench_open(&atrium, NULL);
+    bench_t* b = bench_open(&atrium);
     view_at(atrium.mesh, 0, &b->lens);
     const r3d_lens_t* lens = &b->lens;
     const raster_buffers_t* parts = &b->buffers;
@@ -307,11 +305,10 @@ test_sponza_draw_stage_breakdown(void) {
 /* `moving`, when not NULL, is the pose behind the instance's `model`,
  * nudged every frame. */
 static void
-report_frame_cost(const char* label, const char* object_name, const r3d_instance_t* instance,
-                  const raster_attachment_t* const* attachments, transformf_t* moving, mat4f_t* model,
-                  const perf_budget_t budget[R3D_PERF_QUARTER_COUNT]) {
+report_frame_cost(const char* label, const char* object_name, const r3d_instance_t* instance, transformf_t* moving,
+                  mat4f_t* model, const perf_budget_t budget[R3D_PERF_QUARTER_COUNT]) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
-    bench_t* b = bench_open(instance, attachments);
+    bench_t* b = bench_open(instance);
     ESP_LOGI(TAG, "=== %s FRAME COST (%d tris, %d verts, %d clusters, rendered %dx%d) ===" R3D_PERF_QUARTER_FORMAT,
              label, mesh->triangle_count, mesh->vertex_count, mesh->cluster_count, b->raster.width, b->raster.height,
              perf_quarter->name);
@@ -430,12 +427,12 @@ test_sponza_frame_cost_along_the_flythrough(void) {
     static const perf_budget_t cull_off_budget[R3D_PERF_QUARTER_COUNT] = {{61138, 67896}, {58104, 66246}};
     for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
         const r3d_instance_t instance = {&meshes[i], NULL, NULL, NULL};
-        report_frame_cost(sponza_bakes[i], sponza_bakes[i], &instance, NULL, NULL, NULL, bake_budgets[i]);
+        report_frame_cost(sponza_bakes[i], sponza_bakes[i], &instance, NULL, NULL, bake_budgets[i]);
     }
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, cull), 0));
     const scene_baked_variant_t showcase = showcase_bake();
     const r3d_instance_t shown = {&meshes[showcase], NULL, NULL, NULL};
-    report_frame_cost("cull_off", sponza_bakes[showcase], &shown, NULL, NULL, NULL, cull_off_budget);
+    report_frame_cost("cull_off", sponza_bakes[showcase], &shown, NULL, NULL, cull_off_budget);
     TEST_PASS();
 }
 
@@ -449,7 +446,7 @@ test_sponza_frame_cost_placed(void) {
     transformf_t pose = transformf_identity();
     mat4f_t model = transformf_compute_matrix(&pose);
     const r3d_instance_t moving = {&meshes[0], &model, NULL, NULL};
-    report_frame_cost("placed", sponza_bakes[0], &moving, NULL, &pose, &model, placed_budget);
+    report_frame_cost("placed", sponza_bakes[0], &moving, &pose, &model, placed_budget);
     TEST_PASS();
 }
 

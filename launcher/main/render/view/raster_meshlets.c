@@ -46,5 +46,10 @@ show(const raster_attachment_t* self, const raster_t* raster, const gfx_target_t
 
 raster_attachment_t
 raster_meshlets_view(void* state) {
-    return (raster_attachment_t){IMAGE_U16, raster_attachment_clear_u16, begin, writer, show, state};
+    return (raster_attachment_t){.format = IMAGE_U16,
+                                 .clear = raster_attachment_clear_u16,
+                                 .begin = begin,
+                                 .writer = writer,
+                                 .show = show,
+                                 .state = state};
 }

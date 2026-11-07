@@ -40,8 +40,6 @@ A row may also carry optional hooks:
 |---|---|
 | `second_view` | After the frame's draw and after each draw it asks for, may name another view and fill the census list with the clusters to draw through it, and its depth scale; the frame's stats stay those of the first draw. It is handed the observer, a pose to draw from in place of its own |
 | `overlay` | Draws lines over the composed picture; the shell then composes at full size, not into a half picture |
-| `reserve` | Before each draw, makes room in the state for that draw's instances; when it cannot, the view is detached with an error log and the frame draws shaded |
-| `release` | Frees what `reserve` took, before the context frees the state |
 
 `render_context_set_observer()` sets that observer, NULL for none, and
 `render_context_observer_pose()` reads where the last second draw was seen
