@@ -198,14 +198,20 @@ r3d_lit_mesh_find_levels(r3d_lit_mesh_t* mesh) {
     mesh->lod_coarse_first = (uint16_t)first;
 }
 
-asset_status_t
-r3d_lit_mesh_levels_from_asset(const asset_view_t* levels, r3d_lit_mesh_t* mesh) {
+static void
+clear_levels(r3d_lit_mesh_t* mesh) {
     mesh->cluster_lod = NULL;
     mesh->lod_groups = NULL;
     mesh->lod_group_count = 0;
     mesh->lod_error_least = 0;
     mesh->lod_finest_root = 0;
     mesh->lod_coarse_first = 0;
+}
+
+/* Fills the levels in place, not through a copy of the mesh: the load path's stack holds no second mesh. */
+asset_status_t
+r3d_lit_mesh_levels_from_asset(const asset_view_t* levels, r3d_lit_mesh_t* mesh) {
+    clear_levels(mesh);
     const asset_status_t status =
         asset_entry_validate(*levels, LLOD_VERSION, LLOD_AT_VERSION, LLOD_HEADER_SIZE, ENTRY_ALIGNMENT);
     if (status != ASSET_OK) {
@@ -223,20 +229,19 @@ r3d_lit_mesh_levels_from_asset(const asset_view_t* levels, r3d_lit_mesh_t* mesh)
     if (groups_at + ((uint64_t)groups * sizeof(r3d_lit_lod_group_t)) != levels->size) {
         return ASSET_ERR_BOUNDS;
     }
-    r3d_lit_mesh_t built = *mesh;
-    built.cluster_lod = (const void*)(levels->data + LLOD_HEADER_SIZE);
-    built.lod_groups = (const void*)(levels->data + groups_at);
-    built.lod_group_count = groups;
-    if (!lod_is_ordered(&built)) {
+    mesh->cluster_lod = (const void*)(levels->data + LLOD_HEADER_SIZE);
+    mesh->lod_groups = (const void*)(levels->data + groups_at);
+    mesh->lod_group_count = groups;
+    if (!lod_is_ordered(mesh)) {
+        clear_levels(mesh);
         return ASSET_ERR_FORMAT;
     }
-    built.lod_error_least = UINT16_MAX;
+    mesh->lod_error_least = UINT16_MAX;
     for (int g = 0; g < groups; g++) {
-        built.lod_error_least =
-            built.lod_groups[g].error < built.lod_error_least ? built.lod_groups[g].error : built.lod_error_least;
+        mesh->lod_error_least =
+            mesh->lod_groups[g].error < mesh->lod_error_least ? mesh->lod_groups[g].error : mesh->lod_error_least;
     }
-    r3d_lit_mesh_find_levels(&built);
-    *mesh = built;
+    r3d_lit_mesh_find_levels(mesh);
     return ASSET_OK;
 }
 
@@ -326,8 +331,9 @@ curves_are_inside(const r3d_curve_set_t* set, unsigned knots) {
     return end == knots;
 }
 
-static asset_status_t
-open_curves(const asset_pack_t* pack, const char* id, r3d_curve_set_t* curves) {
+/* Out of line: its name and view stay off the stack the levels' walk adds to. */
+static __attribute__((noinline)) asset_status_t
+open_curves(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh) {
     char name[ASSET_NAME_MAX];
     asset_status_t status = sibling_name(id, R3D_CURVE_NAME_SUFFIX, name);
     if (status == ASSET_ERR_BOUNDS) {
@@ -360,7 +366,8 @@ open_curves(const asset_pack_t* pack, const char* id, r3d_curve_set_t* curves) {
     if (!curves_are_inside(&built, knots)) {
         return ASSET_ERR_BOUNDS;
     }
-    *curves = built;
+    mesh->curves = built.curves;
+    mesh->curve_count = (uint16_t)count;
     return ASSET_OK;
 }
 
@@ -374,7 +381,7 @@ r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh
     }
     status = r3d_lit_mesh_from_asset(&asset, mesh);
     if (status == ASSET_OK) {
-        status = open_curves(pack, id, &mesh->curves);
+        status = open_curves(pack, id, mesh);
     }
     if (status != ASSET_OK) {
         *mesh = (r3d_lit_mesh_t){0};
@@ -436,8 +443,8 @@ r3d_lit_mesh_open_colours(const asset_pack_t* pack, const char* mesh_id, uint16_
 static box3f_t
 mesh_bounds(const r3d_lit_mesh_t* mesh) {
     box3f_t box = box3f_from_box3s(mesh->nodes[0].bounds, 1.0F);
-    for (int i = 0; i < mesh->curves.curve_count; i++) {
-        const r3d_curve_t* curve = &mesh->curves.curves[i];
+    for (int i = 0; i < mesh->curve_count; i++) {
+        const r3d_curve_t* curve = &mesh->curves[i];
         box = box3f_extend(box, (vec3f_t){curve->lo[0], curve->lo[1], curve->lo[2]});
         box = box3f_extend(box, (vec3f_t){curve->hi[0], curve->hi[1], curve->hi[2]});
     }
@@ -455,8 +462,8 @@ r3d_lit_mesh_bounding_sphere(const r3d_lit_mesh_t* mesh) {
         const vec3f_t d = vec3f_sub(p, mid);
         furthest = fmaxf(furthest, vec3f_dot(d, d));
     }
-    for (int i = 0; i < mesh->curves.curve_count; i++) {
-        const r3d_curve_t* curve = &mesh->curves.curves[i];
+    for (int i = 0; i < mesh->curve_count; i++) {
+        const r3d_curve_t* curve = &mesh->curves[i];
         const box3s_t box = {vec3s_from_array(curve->lo), vec3s_from_array(curve->hi)};
         for (int k = 0; k < BOX3_CORNERS; k++) {
             const vec3f_t d = vec3f_sub(vec3f_from_vec3s(box3s_corner(box, k), units), mid);

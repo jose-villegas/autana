@@ -135,10 +135,11 @@ test_mesh_open_finds_curve_sibling(void) {
         r3d_lit_mesh_t mesh;
         TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&pack, f.pack, f.total));
         TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(&pack, "tri", &mesh));
-        TEST_ASSERT_EQUAL_INT(1, mesh.curves.curve_count);
-        TEST_ASSERT_EQUAL_UINT16(2, mesh.curves.curves[0].count);
-        TEST_ASSERT_EQUAL_INT16(10, mesh.curves.knots[1].x);
-        TEST_ASSERT_EQUAL_PTR(data + R3D_CURVE_HEADER_WORDS * sizeof(uint16_t), mesh.curves.curves);
+        const r3d_curve_set_t curves = r3d_lit_mesh_curves(&mesh);
+        TEST_ASSERT_EQUAL_INT(1, curves.curve_count);
+        TEST_ASSERT_EQUAL_UINT16(2, curves.curves[0].count);
+        TEST_ASSERT_EQUAL_INT16(10, curves.knots[1].x);
+        TEST_ASSERT_EQUAL_PTR(data + R3D_CURVE_HEADER_WORDS * sizeof(uint16_t), curves.curves);
         release(&f);
     }
 }
@@ -151,9 +152,10 @@ test_a_built_pack_opens_and_its_mesh_is_a_view_into_it(void) {
     TEST_ASSERT_EQUAL_UINT32(1, pack.count);
     r3d_lit_mesh_t mesh;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(&pack, "tri", &mesh));
-    TEST_ASSERT_EQUAL_INT(0, mesh.curves.curve_count);
-    TEST_ASSERT_NULL(mesh.curves.curves);
-    TEST_ASSERT_NULL(mesh.curves.knots);
+    const r3d_curve_set_t curves = r3d_lit_mesh_curves(&mesh);
+    TEST_ASSERT_EQUAL_INT(0, curves.curve_count);
+    TEST_ASSERT_NULL(curves.curves);
+    TEST_ASSERT_NULL(curves.knots);
     TEST_ASSERT_EQUAL_INT(3, mesh.vertex_count);
     TEST_ASSERT_EQUAL_INT(8, mesh.position_scale);
     TEST_ASSERT_EQUAL_INT16(20, mesh.positions[2][0]);

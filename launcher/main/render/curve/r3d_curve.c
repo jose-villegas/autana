@@ -7,8 +7,9 @@
 #include "render/r3d_span.h"
 #include "render/r3d_span_internal.h"
 
-#define QUAD_CORNERS    4
-#define CLIPPED_CORNERS (QUAD_CORNERS + SCREEN_PLANES)
+#define QUAD_CORNERS     4
+#define TRIANGLE_CORNERS 3
+#define CLIPPED_CORNERS  (QUAD_CORNERS + SCREEN_PLANES)
 
 enum { SCREEN_LEFT, SCREEN_RIGHT, SCREEN_TOP, SCREEN_BOTTOM, SCREEN_PLANES };
 
@@ -56,8 +57,9 @@ screen_distance(corner_t v, int plane, const r3d_lens_t* lens) {
     }
 }
 
-/* Screen clipping precedes snapping so near-plane ribbons stay within span arithmetic's range. */
-static int
+/* Screen clipping precedes snapping so near-plane ribbons stay within span arithmetic's range. Out of line:
+ * its scratch corners are gone before the ribbon's triangles are drawn. */
+static __attribute__((noinline)) int
 clip_ribbon(corner_t vertices[CLIPPED_CORNERS], const r3d_lens_t* lens) {
     corner_t next[CLIPPED_CORNERS];
     int count = QUAD_CORNERS;
@@ -82,6 +84,16 @@ clip_ribbon(corner_t vertices[CLIPPED_CORNERS], const r3d_lens_t* lens) {
         }
     }
     return count;
+}
+
+static r3d_span_vertex_t
+span_vertex(corner_t corner, uint32_t rgb) {
+    return (r3d_span_vertex_t){(int32_t)lroundf(corner.x * R3D_SUBPIXEL),
+                               (int32_t)lroundf(corner.y * R3D_SUBPIXEL),
+                               corner.z,
+                               (float)(rgb >> COLOR_RED_SHIFT),
+                               (float)((rgb >> COLOR_GREEN_SHIFT) & COLOR_MASK),
+                               (float)(rgb & COLOR_MASK)};
 }
 
 static void
@@ -125,23 +137,22 @@ segment(knot_t a, knot_t b, float radius_scale, const r3d_lens_t* lens, const r3
     const int count = clip_ribbon(corners, lens);
     const uint16_t color =
         r3d_span_pack_rgb((a.r + b.r) * CURVE_HALF, (a.g + b.g) * CURVE_HALF, (a.b + b.b) * CURVE_HALF);
-    const uint32_t rgb = rgb565be_to_rgb888(color);
-    r3d_span_vertex_t vertices[CLIPPED_CORNERS];
-    for (int i = 0; i < count; i++) {
-        vertices[i] = (r3d_span_vertex_t){(int32_t)lroundf(corners[i].x * R3D_SUBPIXEL),
-                                          (int32_t)lroundf(corners[i].y * R3D_SUBPIXEL),
-                                          corners[i].z,
-                                          (float)(rgb >> COLOR_RED_SHIFT),
-                                          (float)((rgb >> COLOR_GREEN_SHIFT) & COLOR_MASK),
-                                          (float)(rgb & COLOR_MASK)};
+    if (count < TRIANGLE_CORNERS) {
+        return;
     }
-    for (int i = 1; i + 1 < count; i++) {
+    const uint32_t rgb = rgb565be_to_rgb888(color);
+    /* A fan from the first corner, three vertices at a time: no array of them on the stack. */
+    const r3d_span_vertex_t first = span_vertex(corners[0], rgb);
+    r3d_span_vertex_t previous = span_vertex(corners[1], rgb);
+    for (int i = 2; i < count; i++) {
+        const r3d_span_vertex_t next = span_vertex(corners[i], rgb);
         if (coverage >= 1.0F) {
-            r3d_span_triangle_solid(target, &vertices[0], &vertices[i], &vertices[i + 1], color);
+            r3d_span_triangle_solid(target, &first, &previous, &next, color);
         } else {
-            r3d_span_triangle_cover(target, &vertices[0], &vertices[i], &vertices[i + 1],
+            r3d_span_triangle_cover(target, &first, &previous, &next,
                                     (unsigned)lroundf(coverage * R3D_SPAN_COVERAGE_FULL));
         }
+        previous = next;
     }
 }
 
