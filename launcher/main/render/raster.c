@@ -455,37 +455,81 @@ level_pick(const level_pick_t* pick, int index, const r3d_instance_t* instance, 
     }
 }
 
-/* Culls every instance into the census list and returns the depth scale
- * the picture is drawn with: the fit of the nearest bound of what was kept,
- * and near_z when nothing was. The fit's power of two keeps the scale still
- * while the bound drifts, so ties do not flip from frame to frame, and the
- * same at every size. Not inlined, so the world planes stay off the
- * draw's stack. */
-static __attribute__((noinline)) float
-cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, raster_stats_t* stats,
-               draw_work_t* work) {
-    uint16_t* culled = work->buffers.culled;
-    const render_settings_t settings = raster_settings(raster);
-    r3d_depth_fit_t fit = {view->lens.near_z, INFINITY};
-    picture_lens_t picture;
-    picture_lens_init(&picture, raster, view, fitted);
+/* One core's share of a cull: its own lens cache, pipeline work block,
+ * counts and depth fit; what both read is the job's. */
+typedef struct {
+    raster_stats_t stats;
+    r3d_depth_fit_t fit;
+} cull_half_t;
+
+typedef struct {
+    const raster_t* raster;
+    const render_view_t* view;
+    bool fitted;
+    render_settings_t settings;
     world_cull_t world;
-    world_cull_init(&world, &picture, view, settings.cull);
-    const level_pick_t pick = level_pick_init(raster, &picture, view, &settings.lod);
-    for (int i = 0; i < raster->instance_count; i++) {
+    level_pick_t pick;
+    draw_work_t* work;
+    cull_half_t halves[2]; /* [0] this core's first instances, [1] core 1's last */
+} cull_job_t;
+
+/* Culls instances [from, to) into their places in the census list: an
+ * instance's list starts after every earlier one's count and clusters. */
+static void
+cull_slice(void* ctx, int from, int to) {
+    cull_job_t* job = ctx;
+    const raster_t* raster = job->raster;
+    const int half = from == 0 ? 0 : 1;
+    cull_half_t* mine = &job->halves[half];
+    r3d_pipeline_work_t* block = job->work->buffers.work[half];
+    uint16_t* culled = job->work->buffers.culled;
+    for (int i = 0; i < from; i++) {
+        culled += 1 + (size_t)raster->instances[i].mesh->cluster_count;
+    }
+    picture_lens_t picture;
+    picture_lens_init(&picture, raster, job->view, job->fitted);
+    for (int i = from; i < to; i++) {
         const r3d_instance_t* instance = &raster->instances[i];
-        if (world_cull_skips(&world, instance)) {
+        if (world_cull_skips(&job->world, instance)) {
             culled[0] = 0;
         } else {
             r3d_lens_t lens;
             instance_lens(&picture, instance, &lens);
-            level_pick(&pick, i, instance, &lens);
-            culled[0] = (uint16_t)cull_instance(instance, settings.cull, &lens, culled + 1, stats,
-                                                work->buffers.work[0], settings.depth_fit ? &fit : NULL);
+            level_pick(&job->pick, i, instance, &lens);
+            culled[0] = (uint16_t)cull_instance(instance, job->settings.cull, &lens, culled + 1, &mine->stats, block,
+                                                job->settings.depth_fit ? &mine->fit : NULL);
         }
         culled += 1 + (size_t)instance->mesh->cluster_count;
     }
-    return fit.depth_near < INFINITY ? fit.depth_near : view->lens.near_z;
+}
+
+/* Culls every instance into the census list, both cores each a range of
+ * instances, and returns the depth scale the picture is drawn with: the fit
+ * of the nearest bound of what was kept, and near_z when nothing was. The
+ * fit's power of two keeps the scale still while the bound drifts, so ties
+ * do not flip from frame to frame, and the same at every size. Not inlined,
+ * so the world planes stay off the draw's stack. */
+static __attribute__((noinline)) float
+cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, raster_stats_t* stats,
+               draw_work_t* work) {
+    cull_job_t job = {
+        .raster = raster, .view = view, .fitted = fitted, .settings = raster_settings(raster), .work = work};
+    picture_lens_t picture;
+    picture_lens_init(&picture, raster, view, fitted);
+    world_cull_init(&job.world, &picture, view, job.settings.cull);
+    job.pick = level_pick_init(raster, &picture, view, &job.settings.lod);
+    for (int h = 0; h < 2; h++) {
+        job.halves[h] = (cull_half_t){{0, 0}, {view->lens.near_z, INFINITY}};
+    }
+    int16_t* share = raster->split != NULL ? &raster->split->cull_offset : NULL;
+    (void)job_run_range(share, cull_slice, &job, raster->instance_count);
+    float depth_near = INFINITY;
+    for (int h = 0; h < 2; h++) {
+        stats->clusters += job.halves[h].stats.clusters;
+        stats->triangles += job.halves[h].stats.triangles;
+        depth_near = mathf_min(depth_near, job.halves[h].fit.depth_near);
+    }
+    return depth_near < INFINITY ? depth_near : view->lens.near_z;
 }
 
 /* The writers of the attachments that write while instance `index` is
