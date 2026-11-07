@@ -41,7 +41,8 @@ and the fits of a Bakes GPU run lock together, so every locked file can be publi
 locks the keys LOCK lacks, keeping every row it has: a new key takes the bytes
 of the stale row for the same output when there is one, else the tree's file,
 and each new row is marked `seeded`: its bytes
-were carried over, not made by the code its key names. `check` fails when LOCK lacks a
+were carried over, not made by the code its key names. Like `lock`, it locks
+what it can and names the rest: a key that waits for a stage's row seeds in the next round. `check` fails when LOCK lacks a
 needed key or holds one nothing needs, and samples every needed poses row again, failing on one
 missing, unneeded or different, exactly.
 
@@ -928,19 +929,24 @@ def check_poses(found, held):
     return problems
 
 
-def seed(found, cache, lock=None, made=None):
+def seed(found, cache, lock=None, made=None, missing=None):
     """Rows marked seeded, whose bytes are carried over, not made by the code their key names; a run
-    that makes the key again writes a row without the mark. A key `lock` holds a made row for keeps
+    that makes the key again writes a row without the mark. A bake whose key waits for a stage's row
+    (a fit's start, levels' fit) is named in `missing` and seeds in the next round; with no `missing`
+    list, any such bake fails the seed. A key `lock` holds a made row for keeps
     it, as with a run's make. A re-keyed output carries the bytes of the row `lock` holds for it
     under its old key, so what a run made outlives the re-key (its file fetched as any locked file).
     Otherwise the bytes are the tree's own file, or once the tree has none the seeded row's."""
     lock = lock or {}
     needed = {bake.key for bake in found}
     previous = {row["output"]: row for key, row in lock.items() if key not in needed}
-    rows, missing = [], []
+    rows, waiting = [], []
     for bake in found:
         if bake.key is None:
-            missing.append(describe(bake, unlocked(bake), bake_again(bake)))
+            waiting.append(describe(bake, unlocked(bake), bake_again(bake)))
+            previous_row = next((row for row in lock.values() if row["output"] == bake.output), None)
+            if previous_row is not None:
+                rows.append(previous_row)
             continue
         held = lock.get(bake.key) or (made or {}).get(bake.key)
         if held is not None and not held.get("seeded"):
@@ -953,15 +959,17 @@ def seed(found, cache, lock=None, made=None):
                          "key": bake.key, "seeded": True})
             continue
         if not bake.tree.is_file():
-            missing.append(describe(bake, f"{relative(bake.tree)} is not in the tree to seed from", bake_again(bake)))
+            waiting.append(describe(bake, f"{relative(bake.tree)} is not in the tree to seed from", bake_again(bake)))
             continue
         data = bake.tree.read_bytes()
         row = {"output": bake.output, "source": relative(bake.source), "key": bake.key,
                "sha256": hashlib.sha256(data).hexdigest(), "size": len(data), "seeded": True}
         store(bake.tree, row, bake.suffix, cache)
         rows.append(row)
-    if missing:
-        raise BakeMissing("cannot seed:\n" + "\n".join(missing))
+    if waiting and missing is None:
+        raise BakeMissing("cannot seed:\n" + "\n".join(waiting))
+    if missing is not None:
+        missing += waiting
     return rows
 
 
@@ -1322,15 +1330,13 @@ def main(argv=None):
                 print(f"made {row['output']}  key {row['key']}  sha256 {row['sha256']}{versus}")
         elif args.command == "lock":
             mesh_cpu_vendor = runs_mesh_cpu_vendor(found, lock, made, tables.get("mesh_cpu_vendor"))
-            if args.seed:
-                rows = seed(found, cache, lock, made)
-            else:
-                # A fit waits for its start's row: what is made locks now, and the rest is named.
-                missing = []
-                rows = lock_rows(found, lock, made, missing)
+            # A fit waits for its start's row, levels for their fit's: what can lock now does, and the
+            # rest is named for the next round.
+            missing = []
+            rows = seed(found, cache, lock, made, missing) if args.seed else lock_rows(found, lock, made, missing)
             write_lock(rows, path=LOCK, poses=poses.used.values(), mesh_cpu_vendor=mesh_cpu_vendor)
             print(f"locked {len(rows)} bakes in {relative(LOCK)}")
-            if not args.seed and missing:
+            if missing:
                 raise BakeMissing("still to lock:\n" + "\n".join(missing))
         elif args.command == "check":
             problems = check(found, lock) + check_poses(found, held)
