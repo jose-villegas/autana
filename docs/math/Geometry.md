@@ -162,6 +162,7 @@ Circles and spheres store `centre` and nonnegative `radius`, including the bound
 | `circlef` | `circlef_contains_point`, `circlef_contains_ball`, `circlef_overlaps`, `circlef_closest_point`, `circlef_segment_hit` |
 | `circlei` | `circlei_contains_point`, `circlei_contains_ball`, `circlei_overlaps` |
 | `spheref` | `spheref_contains_point`, `spheref_contains_ball`, `spheref_overlaps`, `spheref_closest_point`, `spheref_segment_hit` |
+| `spheres` | `spheres_contains_point`, `spheres_contains_ball`, `spheres_overlaps` |
 
 Positive margins reserve clearance; negative margins allow protrusion. For `circlei_contains_ball`, centre components must be in `[INT_MIN/2, INT_MAX/2]`, and nonnegative room squared must fit `int64_t`.
 
@@ -169,9 +170,10 @@ Positive margins reserve clearance; negative margins allow protrusion. For `circ
 
 Zero-length segments hit when the point is inside; tangency counts as a hit.
 
-## sphere (`f`)
+## sphere (`f`, `s`)
 
 `spheref` has a vec3 centre and the shared [ball queries](#ball-shared-circle-and-sphere-queries-f-i); box bounds must be finite and nonempty.
+`spheres` stores a sphere in int16 position ticks, as `box3s` stores a box, and has the integer ball queries.
 `spheref_overlaps_box` compares the closest box point's squared distance
 with the squared radius (Arvo 1990<sup>[[83]](../Citations.md#arvo-1990)</sup>).
 
@@ -179,6 +181,7 @@ with the squared radius (Arvo 1990<sup>[[83]](../Citations.md#arvo-1990)</sup>).
 |---|---|---|
 | `spheref_from_box(b)` | circumscribed sphere | $`c=\mathrm{centre}(b),\ r=\lVert\mathrm{half\_extent}(b)\rVert`$ |
 | `spheref_overlaps_box(s, b)` | closest box point inside the sphere | $`q=\mathrm{closest\_point}(b,c)`$<br>$`\lVert q-c\rVert^2\le r^2`$ |
+| `spheref_from_spheres(s, units)` | convert position ticks to float units | $`(c\,units,\ r\,units)`$ |
 
 ![Fixed view of a sphere moving past and into a box, with miss, touch and overlap states, a closest point and a dashed centre-to-closest line](../images/math/box3-sphere-overlap.gif)
 

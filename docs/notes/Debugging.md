@@ -223,11 +223,10 @@ work. Measurement-only skips and probes do not belong in the result image.
 
 Two ways to see raw sensor readings without adding any code:
 
-- **A development-only app's orientation readout** (`--dev`/`--diag`
-  build); shows the raw accelerometer counts, the derived gx/gy display
-  orientation is actually computed from, and the shell's current
-  quarter-turn, all at once, so a physical hold can be pinned to an exact
-  number.
+- **A development-only app's motion page** (`--dev`/`--diag` build): the raw and
+  filtered accelerometer readings, the gravity vector display orientation is
+  computed from, and the quarter the shell would pick for this hold, all at
+  once, so a physical hold can be pinned to an exact number.
 - **An `autana screenshot` capture's `.json`**: the `imu` object (raw
   accelerometer + gyroscope counts) and `orientation_quarter` field are a
   snapshot at one specific frame, useful when the question is "what was the

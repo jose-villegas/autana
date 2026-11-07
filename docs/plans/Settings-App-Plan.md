@@ -1,8 +1,9 @@
 # Plan: Settings and SELFTEST/diagnostics naming
 
-**Status**: Step 1's first milestone is built: Settings shows DISPLAY in every
-build and DEVELOPER in development builds. Orientation and the self-test
-runner remain in Diagnostics. The remaining milestones and step 2 are open.
+**Status**: Step 1's first two milestones are built: Settings shows DISPLAY in
+every build and DEVELOPER in development builds, and the orientation readout
+lives on the input lab's motion page. The remaining milestones and step 2 are
+open.
 
 ## Current ownership
 
@@ -19,15 +20,13 @@ The fast clock is outside the panel's rating, so gfx sends only full-width
 rows at it; see
 [Display-and-Rendering.md](../notes/Display-and-Rendering.md).
 
-Diagnostics is development-only. It shows the POST report and orientation
-readout; the self-test button and result line additionally require
-`CONFIG_LAUNCHER_SELFTEST`.
+Diagnostics is development-only. It shows the POST report; a second page
+with the self-test button and result line requires `CONFIG_LAUNCHER_SELFTEST`.
 
 ## Step 1: remaining milestones
 
 | Milestone | Adds |
 |---|---|
-| Orientation move | The orientation readout leaves Diagnostics for the input lab's motion page, once that page shows the shell's live quarter. |
 | Backdrop colour | A preset picker; the shell keeps the choice in NVS space `shell`. The boot animation dissolves onto that backdrop, so its pins change with it. |
 | Memory view | The allocation ledger beside display-mode choices: framebuffer, static data, free heap and largest contiguous block, plus each choice's projected change. Waits on half-resolution support in gfx. |
 

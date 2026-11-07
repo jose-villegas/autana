@@ -30,6 +30,7 @@ same. Every checked-in output, from the banner each one carries:
 | [boot_anim_timeline.h](../../main/boot/boot_anim_timeline.h) | [gen_boot_anim_timeline.py](gen_boot_anim_timeline.py) | `launcher/` | `python tools/gen/gen_boot_anim_timeline.py main/boot/boot_anim_timeline.json main/boot/boot_anim_motion.glb > main/boot/boot_anim_timeline.h` |
 | [draw_dither_patterns_generated.h](../../main/draw/draw_dither_patterns_generated.h) | [gen_draw_dither_patterns.py](gen_draw_dither_patterns.py) | `launcher/` | `python tools/gen/gen_draw_dither_patterns.py main/draw/draw_dither_patterns_generated.h` |
 | [draw_palette_standard_generated.h](../../main/draw/draw_palette_standard_generated.h) | [gen_draw_palette_standard.py](gen_draw_palette_standard.py) | `launcher/` | `python tools/gen/gen_draw_palette_standard.py > main/draw/draw_palette_standard_generated.h` |
+| [render_settings_default.h](../../main/render/settings/render_settings_default.h) | [render_asset.py](../render/settings/render_asset.py) | `launcher/` | `python tools/render/settings/render_asset.py main/render/settings/render_settings_default.h` |
 | [r3d_skin_light_directions.h](../../main/render/skin/r3d_skin_light_directions.h) | [gen_skin_light_directions.sh](gen_skin_light_directions.sh) | `launcher/` | `sh tools/gen/gen_skin_light_directions.sh > main/render/skin/r3d_skin_light_directions.h` |
 <!-- /generated: generated-files -->
 

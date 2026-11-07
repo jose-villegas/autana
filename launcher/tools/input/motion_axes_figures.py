@@ -67,7 +67,7 @@ def rotation_figure(data, model, output):
     style_axes(speed, "turn_speed")
     animation.legend([Line2D([], [], color=ACCELERATION, label="acceleration (1 g)"),
                       Line2D([], [], color=ROTATION, label="rotation axis, right-hand rule")]
-                     + legend_handles()[1:])
+                     + legend_handles(chip_axes=False))
 
     def draw(index):
         frame = frames[index]
