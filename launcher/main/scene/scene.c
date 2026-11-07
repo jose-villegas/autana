@@ -393,11 +393,40 @@ scene_load_from(const asset_pack_t* pack, const char* id, scene_failure_t* why) 
     return scene;
 }
 
+/* The separator in a scene id that names its pack. */
+#define SCENE_ID_PACK_SEPARATOR '/'
+
+/* A scene id's parts: the pack it is in and the scene's entry there. */
+typedef struct {
+    char pack[ASSET_NAME_MAX];
+    const char* scene; /* within the id split */
+} scene_id_t;
+
+/* Splits `id` as scene_load() reads it; false for an id it refuses. */
+static bool
+scene_id_split(const char* id, scene_id_t* out) {
+    const char* separator = strchr(id, SCENE_ID_PACK_SEPARATOR);
+    const char* scene = separator == NULL ? id : separator + 1;
+    const size_t pack_length = separator == NULL ? strlen(id) : (size_t)(separator - id);
+    if (pack_length == 0 || pack_length >= ASSET_NAME_MAX || scene[0] == '\0' || strlen(scene) >= ASSET_NAME_MAX
+        || strchr(scene, SCENE_ID_PACK_SEPARATOR) != NULL) {
+        return false;
+    }
+    (void)memcpy(out->pack, id, pack_length);
+    out->pack[pack_length] = '\0';
+    out->scene = scene;
+    return true;
+}
+
 scene_t*
 scene_load(const char* id, scene_failure_t* why) {
-    const handle_t load = asset_store_load(id);
+    scene_id_t parts;
+    if (!scene_id_split(id, &parts)) {
+        return fail(why, scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, id));
+    }
+    const handle_t load = asset_store_load(parts.pack);
     const asset_pack_t* pack = asset_store_loaded(load);
-    scene_t* scene = scene_load_from(pack, id, why);
+    scene_t* scene = scene_load_from(pack, parts.scene, why);
     if (scene != NULL) {
         scene->load = load;
     } else {

@@ -780,7 +780,7 @@ def load_scene(path):
             asset_name = f"{scene_name}.{item.name}"
             asset_path = path.parent / f"{asset_name}{BUNDLE_SUFFIX}"
         else:
-            asset_name = f"{scene_name}.{item.name}" if item.kind == "skinned_renderer" else component.variant.name
+            asset_name = component.variant.name
             asset_path = component.settings.mesh_dir / f"{asset_name}{BUNDLE_SUFFIX}"
         try:
             too_long = len(asset_name.encode("ascii")) >= NAME_BYTES

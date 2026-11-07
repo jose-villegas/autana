@@ -16,6 +16,7 @@
 #include "draw/draw.h"
 #include "esp_log.h"
 #include "gfx/gfx.h"
+#include "herd/scene_herd.h"
 #include "image/pixel/rgb565.h"
 #include "render_lab.h"
 #include "render_lab_dynres.h"
@@ -28,6 +29,9 @@
 
 /* Each stress preset, in the order its table lists them. */
 #define STRESS_SCENE_ENTRY(id_, ...) &scene_stress[STRESS_##id_],
+
+/* Each herd size, smallest first. */
+#define HERD_SCENE_ENTRY(id_, ...)   &scene_herd[HERD_##id_],
 
 /* Index 0 is the scene a start with no key shows; a family's scenes keep this order in its dropdown. */
 static const render_lab_scene_t* const scenes[] = {&scene_sponza[SCENE_BAKED_FITTED_FULL],
@@ -44,7 +48,7 @@ static const render_lab_scene_t* const scenes[] = {&scene_sponza[SCENE_BAKED_FIT
                                                    &scene_bistro[SCENE_BAKED_LITE],
                                                    &scene_bistro[SCENE_BAKED_FLAT],
                                                    &scene_bistro[SCENE_BAKED_FLAT_FITTED],
-                                                   STRESS_PRESETS(STRESS_SCENE_ENTRY)};
+                                                   STRESS_PRESETS(STRESS_SCENE_ENTRY) HERD_SIZES(HERD_SCENE_ENTRY)};
 #define SCENE_COUNT ((int)(sizeof(scenes) / sizeof(scenes[0])))
 static int current_scene_index;
 
