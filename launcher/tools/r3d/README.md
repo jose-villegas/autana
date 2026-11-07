@@ -17,10 +17,10 @@ mesh. Nothing here runs on the board.
 | [build_pack.py](build_pack.py) | Writes one [asset pack](../../../docs/assets/README.md) per root from its meshes, scenes, clips, pictures, icons, curves and sounds, using [`tools/asset/`](../asset/asset_pack.py). `-o DIR`, `--image FILE`; standard library only. |
 | [scene_asset.py](scene_asset.py) | The scene entry (`SCNE`): bakes a scene file's entities, renderers and camera, and reads the entry back as `scene_asset_open()` does. Standard library only. |
 | [mesh_asset.py](mesh_asset.py) | The lit mesh entry's type and byte layout, shared by the baker and the pack builder. Standard library only. |
-| [lit_mesh.py](lit_mesh.py) | `write_lit_mesh()`: cuts a lit mesh into meshlets under an octree, quantizes it, checks it against `r3d_lit_mesh.h`'s invariants and writes it as a `<name>.mesh` pack entry; a flat import carries one RGB565 colour per face and welds positions without colour seams. The size defaults live here and nowhere else. `read_lit_mesh()` reads an entry back. |
+| [lit_mesh.py](lit_mesh.py) | `write_lit_mesh()`: cuts a lit mesh into meshlets under an octree, quantizes it, checks it against `r3d_lit_mesh.h`'s invariants and writes it as a `<name>.bundle` pack entry; a flat import carries one RGB565 colour per face and welds positions without colour seams. The size defaults live here and nowhere else. `read_lit_mesh()` reads an entry back. |
 | [import_settings.py](import_settings.py) | Reads and validates an import file and a scene file; standard library only, every table closed. |
-| [mesh_import.py](mesh_import.py) | Bakes an import file, or the meshes a scene file places: loads the local source, runs the steps the import opts into, lights with the scene's lights, then writes each `.mesh` entry into `--out DIR`, or beside a file outside the repository; inside it, bake/bake.py makes a mesh into the bake cache. |
-| [rebake.py](rebake.py) | Rewrites a baked `.mesh`'s clusters from its own triangles and colours, with no relighting. |
+| [mesh_import.py](mesh_import.py) | Bakes an import file, or the meshes a scene file places: loads the local source, runs the steps the import opts into, lights with the scene's lights, then writes each `.bundle` entry into `--out DIR`, or beside a file outside the repository; inside it, bake/bake.py makes a mesh into the bake cache. |
+| [rebake.py](rebake.py) | Rewrites a baked `.bundle`'s clusters from its own triangles and colours, with no relighting. |
 | [gltf_skin.py](gltf_skin.py) | Reads a binary glTF 2.0 and poses its skinned mesh on the CPU: accessors, node tree, one skin, animation sampling (LINEAR, STEP, CUBICSPLINE), linear-blend skinning; reads through [`tools/gltf/`](../gltf/gltf_read.py), the reader and reference sampler [`tools/anim/`](../anim/README.md) shares. Standard library only. |
 | [../gltf/blend_skin_to_glb.py](../gltf/blend_skin_to_glb.py) | Run inside Blender: exports any `.blend` armature and the meshes it deforms to a skinned `.glb`, every action (or `--clips`) as an animation; see its header. |
 | [gltf_preview.py](gltf_preview.py) | Renders any skinned `.glb` with Pillow: a looping GIF of one animation (`--gif NAME`) or the bind pose from four sides (`--sheet`). |
@@ -71,11 +71,9 @@ The empty exclude clears the clone's default exclusion for this pull.
 The hosted doc workflow caches these LFS objects by their content identifiers;
 the self-hosted GPU runner retains its local LFS objects.
 
-**`rebake.py` or a full import.** Rebake a `.mesh` when only clustering
-or data format changes: it reads its triangles and colours back and rewrites
-the clusters in place. Run `build_pack.py` after either. Re-import a scene when a mesh's source,
-simplification or light changes. Both commands are fixed points: the former
-canonicalizes triangle order and the latter uses the import file's fixed seed.
+**`rebake.py` or a full import.** Recluster a bundle's rest mesh; copies and
+colour sets stay intact. Re-import for source, simplification or light changes.
+Run `build_pack.py` after either command.
 
 **The `seal_seams` import option.** `simplify(seal_seams=True)`, off by default,
 is another way to import the same mesh, with fewer empty pixel-sized spots at
@@ -83,7 +81,7 @@ the price of frame time; what it does and costs is in
 [Mesh-Import.md](../../../docs/render/offline/Mesh-Import.md#seal_seams). An import turns it on with `seal_seams = true` in `[geometry.simplify]`.
 
 `mesh_import.py` is the shared full-import command. Each import file, the
-scene file that places it and the `.mesh` it bakes live together.
+scene file that places it and the `.bundle` it bakes live together.
 Reference content lives in `launcher/demo/`; an app [selects](../../../docs/assets/Building-Packs.md#packs)
 what ships.
 
@@ -196,7 +194,7 @@ what the fit changes from the paper.
 
 | | |
 |---|---|
-| Start | a smooth or flat `NAME.mesh`, welded so the vertices of a colour seam share one position |
+| Start | a smooth or flat `NAME.bundle`, welded so the vertices of a colour seam share one position |
 | Fitted | every welded position, and every vertex's sRGB colour, or every triangle's when the start is flat |
 | Forward model | nvdiffrast rasterizes visibility<sup>[[2]](../../../docs/Citations.md#laine-2020)</sup>; torch carries gradients through homogeneous barycentrics<sup>[[70]](../../../docs/Citations.md#olano-1997)</sup>, Gouraud or per-triangle shading, and analytic antialiasing (Laine et al. 2020)<sup>[[2]](../../../docs/Citations.md#laine-2020)</sup>. Single-sided faces are culled, the `--scene` camera supplies the background, and rendering uses `--scale` times the reference size |
 | Loss | the mean CIE76 ΔE<sup>[[4]](../../../docs/Citations.md#iso-11664-4)</sup> of `render_compare.py` against the nearest-upscaled reference PNG, over a batch of random poses, plus `--laplacian` times the drift of the positions' uniform-Laplacian coordinates<sup>[[5]](../../../docs/Citations.md#sorkine-2005)</sup> from the start's |
@@ -223,7 +221,7 @@ Compare every pose with the library reference (RGB values in 0..1):
 
 ```sh
 sh launcher/tools/r3d/gpu_python.sh launcher/tools/r3d/appearance_parity.py \
-    --start NAME.mesh --poses POSES.txt --scale 2 --clear 0 0 0
+    --start NAME.bundle --poses POSES.txt --scale 2 --clear 0 0 0
 ```
 
 The parity tool compares the torch and library forward images for every pose,
@@ -263,7 +261,7 @@ run the fit when the machine has several GPUs. With the reference images of
 the training poses:
 
 ```sh
-"$GPU_ENV/bin/python3" launcher/tools/r3d/appearance_simplify.py --scene SCENE.scene.toml --start NAME.mesh \
+"$GPU_ENV/bin/python3" launcher/tools/r3d/appearance_simplify.py --scene SCENE.scene.toml --start NAME.bundle \
     --poses train.txt --reference reference_train --coverage-poses coverage.txt --object NAME --surface-weight 10 --surface-margin 0.25 --out fitted
 ```
 
@@ -393,9 +391,9 @@ columns, the `weight` row, and one `frame LABEL POSE MS feature...` row per
 measured frame.
 
 ```sh
-$PY tools/r3d/cost_model.py features NAME.mesh --poses BOARD_POSES   # a frame row's features
+$PY tools/r3d/cost_model.py features NAME.bundle --poses BOARD_POSES   # a frame row's features
 $PY tools/r3d/cost_model.py fit tools/r3d/board_cost_weights.txt                 # refit the frames: the weight row
-$PY tools/r3d/cost_model.py predict NAME.mesh --poses BOARD_POSES --weights tools/r3d/board_cost_weights.txt
+$PY tools/r3d/cost_model.py predict NAME.bundle --poses BOARD_POSES --weights tools/r3d/board_cost_weights.txt
 ```
 
 `BOARD_POSES` are the poses the board's frame-cost suite times, at its render

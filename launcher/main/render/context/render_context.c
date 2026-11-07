@@ -412,6 +412,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     }
     c->frame.width = r->width;
     c->frame.height = r->height;
+    raster_pick_levels(r, view);
     if (c->policy == RENDER_FIXED && !c->generating) {
         /* Off: the plain draw, nothing timed or chosen, unless frame generation needs the drawn cost. */
         c->frame.stats = raster_draw(r, view);

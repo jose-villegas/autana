@@ -44,14 +44,14 @@ entry.
 
 | Tool | Does |
 |---|---|
-| `mesh_import.py --out DIR` | bakes a mesh and writes `<name>.mesh`, one entry, into DIR (a scratch bake) |
+| `mesh_import.py --out DIR` | bakes a mesh and writes `<name>.bundle`, including its sibling entries and manifest, into DIR (a scratch bake) |
 | `build_pack.py -o DIR [--image FILE]` | writes `DIR/<pack>.apak` for each root in `launcher/main` and its selected demo folders, and with `--image` the partition image |
 | `build_pack.py --pack-of ID` | prints the pack that holds mesh `ID` |
 | `build_pack.py [--bake-cache DIR] [--offline]` | takes every mesh from the bake cache by `launcher/bakes.lock` |
 | `build_pack.py --skip-unlocked FILE` | leaves out each pack whose bakes only lack their lock rows and names it in FILE; any other missing bake still fails |
 | `bake/bake.py list\|check\|fetch` | the bakes the packs need, each keyed on what makes it, and the lock of their bytes |
 | `bake/bake.py bake` then `lock --from-run N` | makes the bakes the lock lacks into the cache; locks the ones a CI run made |
-| `rebake.py` | rewrites one `.mesh`'s clusters and octree; a fixed point |
+| `rebake.py` | rewrites a `.bundle`'s rest mesh clusters and octree, retaining copies |
 
 `launcher/tools/asset/asset_pack.py` writes the pack,
 `launcher/tools/asset/asset_directory.py` the directory,

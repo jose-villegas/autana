@@ -4,18 +4,42 @@
 
 #include "math/geometry/box3f.h"
 #include "math/geometry/planef.h"
+#include "render/lod/r3d_lod.h"
 #include "render/r3d_triangle_tests.h"
 
 #define ALL_PLANES ((1u << PLANE_FRUSTUM_COUNT) - 1u)
 
+/* A leaf's clusters that the levels draw and the planes keep, into `out`;
+ * how many. */
+static int
+keep_leaf(const r3d_lit_mesh_t* mesh, const r3d_lit_node_t* node, unsigned mask, const uint32_t* lod_coarse,
+          const planef_t* planes, uint16_t* out, r3d_pipeline_counts_t* counts) {
+    int count = 0;
+    for (int i = 0; i < node->count; i++) {
+        const int c = node->first + i;
+        unsigned cluster_mask = mask;
+        if (!r3d_lod_drawn(mesh, c, lod_coarse)) {
+            continue;
+        }
+        if (cluster_mask == 0
+            || !box3f_outside_planes(box3f_from_box3s(mesh->clusters[c].bounds, 1.0F), planes, PLANE_FRUSTUM_COUNT,
+                                     &cluster_mask)) {
+            out[count++] = (uint16_t)c;
+            counts->triangles_submitted += mesh->clusters[c].triangle_count;
+        }
+    }
+    counts->clusters_tested += node->count;
+    return count;
+}
+
 /* r3d_pipeline_cull()'s tests without its nearest-first order, which no count
  * depends on; the cull-view suite holds the two to the same clusters. */
 int
-r3d_pipeline_cull_counted(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* out,
+r3d_pipeline_cull_counted(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint32_t* lod_coarse, uint16_t* out,
                           r3d_pipeline_count_walk_t* walk, r3d_pipeline_counts_t* counts) {
     r3d_lens_frustum(lens, walk->planes);
     int top = 0;
-    walk->node[top] = 0;
+    walk->node[top] = (uint16_t)mesh->lod_finest_root;
     walk->mask[top++] = (uint8_t)ALL_PLANES;
     int count = 0;
     while (top > 0) {
@@ -36,20 +60,29 @@ r3d_pipeline_cull_counted(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, ui
             }
             continue;
         }
-        for (int i = 0; i < node->count; i++) {
-            const int c = node->first + i;
-            unsigned cluster_mask = mask;
-            if (cluster_mask == 0
-                || !box3f_outside_planes(box3f_from_box3s(mesh->clusters[c].bounds, 1.0F), walk->planes,
-                                         PLANE_FRUSTUM_COUNT, &cluster_mask)) {
-                out[count++] = (uint16_t)c;
-                counts->triangles_submitted += mesh->clusters[c].triangle_count;
-            }
+        count += keep_leaf(mesh, node, mask, lod_coarse, walk->planes, &out[count], counts);
+    }
+    if (mesh->lod_finest_root != 0 && lod_coarse != NULL) {
+        const int before = count;
+        int tested = 0;
+        count = r3d_pipeline_cull_cut(mesh, lod_coarse, walk->planes, (planef_t){0}, out, count, NULL, &tested);
+        counts->clusters_tested += tested;
+        for (int i = before; i < count; i++) {
+            counts->triangles_submitted += mesh->clusters[out[i]].triangle_count;
         }
-        counts->clusters_tested += node->count;
     }
     counts->clusters_kept += count;
+    counts->clusters_coarse += r3d_pipeline_count_coarse(mesh, out, count);
     return count;
+}
+
+int
+r3d_pipeline_count_coarse(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, int count) {
+    int coarse = 0;
+    for (int i = 0; mesh->cluster_lod != NULL && i < count; i++) {
+        coarse += mesh->cluster_lod[clusters[i]].own != R3D_LOD_NONE ? 1 : 0;
+    }
+    return coarse;
 }
 
 /* One triangle into its counter by the draw's own sort (r3d_pipeline.c,
