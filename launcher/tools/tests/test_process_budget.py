@@ -36,6 +36,18 @@ def fail_worker():
     raise RuntimeError("worker sentinel failure")
 
 
+# Longer than any test waits: a worker holding a thread this long never exits on its own.
+LINGER_SECONDS = 600
+
+
+def lingering_worker():
+    """Answers, then cannot exit: a non-daemon thread outlives the task."""
+    import threading
+    import time
+    threading.Thread(target=time.sleep, args=(LINGER_SECONDS,)).start()
+    return "answered"
+
+
 class ProjectionTests(unittest.TestCase):
     def test_running_allocations_are_not_counted_twice(self):
         from r3d.process_budget import projected_available

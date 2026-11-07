@@ -59,6 +59,10 @@ FAILED_SELFTEST = ("failed", "incomplete")
 # How many of a self-test's failed tests a lane's failure names; its capture holds them all.
 LISTED_FAILURES = 10
 SELFTEST_ALLOWANCE_SECONDS = 120 * 60
+# The plan waits this long for GPU night work to drain, then plans without it: a stuck GPU run must not
+# hold the board night (its builds still wait for the heavy lock the GPU stage holds).
+GPU_PLAN_WAIT_SECONDS = 2 * 60 * 60
+GPU_STILL_PENDING = "GPU work still pending after GPU_PLAN_WAIT_SECONDS; the night plans without waiting"
 CAPTURE_TIMEOUT_SECONDS = 1800
 BUILD_TIMEOUT_SECONDS = 3600
 LANE_HANG_FACTOR = 2
@@ -737,7 +741,10 @@ def plan(args, clock=None, request=None):
     clock = clock or Clock()
     marker = datetime.fromisoformat(args.marker)
     if gpu_on_host(clock):
-        wait_idle(lambda: gpu_pending(request=request), clock, idle_polls=2)
+        if not wait_idle(lambda: gpu_pending(request=request), clock, idle_polls=2,
+                         until=clock.now() + timedelta(seconds=GPU_PLAN_WAIT_SECONDS)):
+            print(f"::warning::{GPU_STILL_PENDING}", file=sys.stderr)
+            summarize(GPU_STILL_PENDING)
     else:
         print(GPU_NOT_ON_HOST, file=sys.stderr)
         summarize(GPU_NOT_ON_HOST)
