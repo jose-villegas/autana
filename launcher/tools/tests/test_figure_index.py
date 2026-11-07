@@ -108,9 +108,10 @@ class IndexTests(Tree):
         self.assertIn("| [math](#math) | 2 | 1 | 1 |", self.page())
         self.assertLess(self.page().index("## anim"), self.page().index("## math"))
 
-    def test_an_image_no_page_shows_is_a_warning(self):
-        _, warnings = self.index()
-        self.assertIn("shown nowhere docs/images/math/narrow.png", warnings)
+    def test_an_image_no_page_shows_is_a_difference_even_once_written(self):
+        self.index()
+        differences, _ = self.index(check=True)
+        self.assertEqual(differences, ["shown nowhere docs/images/math/narrow.png"])
 
     def test_a_gif_copy_is_narrow_on_the_palette_and_as_long_as_the_gif(self):
         self.index()
@@ -127,6 +128,7 @@ class IndexTests(Tree):
         self.assertTrue(any("new thumbnail" in line for line in differences))
         self.assertFalse(self.thumbnail().exists())
         self.assertNotIn("## math", self.page())
+        write(self.root / "docs/math/Three.md", "![](../images/math/narrow.png)\n")
         self.index()
         self.assertEqual(self.index(check=True)[0], [])
 

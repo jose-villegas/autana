@@ -64,7 +64,7 @@ Each frame, while the last one goes out to the panel:
 | Its surface, as triangles | `math/geometry/iso_surface.h` `iso_surface_nets()` |
 | Shading per vertex, encoded through a table | the scene; `r3d_skin_light_encode()` |
 | Clusters and a tree the raster walks | `render/dynamic/r3d_dynamic_mesh.h` |
-| Drawn as the water entity | `scene_renderer_set_mesh()` |
+| Drawn as the water entity | `renderer_set_mesh()` |
 
 ![The water scene's swing](../../../../../docs/images/overview/render-lab-water.gif)
 

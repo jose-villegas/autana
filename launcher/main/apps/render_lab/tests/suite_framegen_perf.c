@@ -23,8 +23,10 @@
 #include "gfx/gfx.h"
 #include "render/context/render_context.h"
 #include "render/framegen/framegen.h"
+#include "scene/animator/animator.h"
 #include "scene/camera/camera.h"
-#include "scene/scene_internal.h"
+#include "scene/camera/lens.h"
+#include "scene/transform/transform.h"
 #include "testkit/cleanup.h"
 #include "unity.h"
 
@@ -71,10 +73,10 @@ release_fixture(void) {
 
 /* The view through the camera at `t_ms` along its path, as the scene draws it. */
 static render_view_t
-view_at(scene_t* scene, scene_entity_t camera, const camera_t* lens, uint32_t t_ms) {
-    TEST_ASSERT_TRUE(scene_animator_seek(scene, camera, SCENE_ANIMATOR_CURRENT, t_ms));
-    const transformf_t pose = scene_entity_world(scene, camera);
-    return camera_view(lens, &pose, (viewport_t){GFX_WIDTH, GFX_HEIGHT, r3d_perf_quarters[0].quarter});
+view_at(entity_t scene, entity_t camera, const lens_t* lens, uint32_t t_ms) {
+    TEST_ASSERT_TRUE(animator_seek(camera, ANIMATOR_CURRENT, t_ms));
+    const transformf_t pose = transform_world(camera);
+    return lens_view(lens, &pose, (viewport_t){GFX_WIDTH, GFX_HEIGHT, r3d_perf_quarters[0].quarter});
 }
 
 typedef struct {
@@ -88,7 +90,7 @@ static totals_t sum;
 /* The frame drawn at `t_ms` warped one display step on, filled and composed,
  * timed. Not inlined: its views are off the stack while the frame draws. */
 static __attribute__((noinline)) void
-time_warp(scene_t* scene, scene_entity_t camera, const camera_t* lens, uint32_t t_ms) {
+time_warp(entity_t scene, entity_t camera, const lens_t* lens, uint32_t t_ms) {
     raster_t* raster = &render_context_main()->raster;
     const render_view_t now = view_at(scene, camera, lens, t_ms);
     const render_view_t next = view_at(scene, camera, lens, t_ms + FRAMEGEN_AHEAD_MS);
@@ -124,9 +126,9 @@ time_warp(scene_t* scene, scene_entity_t camera, const camera_t* lens, uint32_t 
 
 /* The scenario's path as Render Lab shows it, portrait, its clip from the start. */
 typedef struct {
-    scene_t* scene;
-    scene_entity_t camera;
-    const camera_t* lens;
+    entity_t scene;
+    entity_t camera;
+    const lens_t* lens;
     uint32_t duration_ms;
 } scenario_path_t;
 
@@ -136,15 +138,14 @@ enter_path(void) {
     suite_set_test_cleanup(release_fixture);
     test_hold_quarter(r3d_perf_quarters[0].quarter);
     scenario_path_t path = {.scene = render_lab_test_loaded_scene(scenario->pack)};
-    TEST_ASSERT_NOT_NULL(path.scene);
+    TEST_ASSERT_FALSE(handle_is_none(path.scene));
     const char* camera_name = scenario->camera == NULL ? sponza_cameras[0] : scenario->camera;
-    path.camera = scene_find(path.scene, name_hash(camera_name));
-    TEST_ASSERT_NOT_EQUAL(SCENE_ENTITY_NONE, path.camera);
-    path.lens = scene_camera_lens(path.scene, name_hash(camera_name));
+    path.camera = entity_find(path.scene, name_hash(camera_name));
+    TEST_ASSERT_FALSE(handle_is_none(path.camera));
+    path.lens = camera_lens(entity_find(path.scene, name_hash(camera_name)));
     TEST_ASSERT_NOT_NULL(path.lens);
-    TEST_ASSERT_TRUE(scene_animator_seek(path.scene, path.camera, SCENE_ANIMATOR_CURRENT, 0));
-    path.duration_ms =
-        scene_animator_clip_duration_ms(path.scene, path.camera, path.scene->animators[path.camera].layer.current.clip);
+    TEST_ASSERT_TRUE(animator_seek(path.camera, ANIMATOR_CURRENT, 0));
+    path.duration_ms = animator_clip_duration_ms(path.camera, animator_current_clip(path.camera));
     TEST_ASSERT_GREATER_THAN_UINT32(FRAMEGEN_AHEAD_MS, path.duration_ms);
     return path;
 }
@@ -152,9 +153,9 @@ enter_path(void) {
 static void
 test_generated_frame_cost(void) {
     const scenario_path_t path = enter_path();
-    scene_t* scene = path.scene;
-    const scene_entity_t camera = path.camera;
-    const camera_t* lens = path.lens;
+    entity_t scene = path.scene;
+    const entity_t camera = path.camera;
+    const lens_t* lens = path.lens;
     const uint32_t duration_ms = path.duration_ms;
 
     const resolution_step_t size = render_lab_ladder[ladder_step];
@@ -166,7 +167,7 @@ test_generated_frame_cost(void) {
     sum = (totals_t){0};
     for (int i = 0; i < FRAMEGEN_POSES; i++) {
         const uint32_t t_ms = (uint32_t)(((uint64_t)(duration_ms - FRAMEGEN_AHEAD_MS) * (uint64_t)i) / FRAMEGEN_POSES);
-        TEST_ASSERT_TRUE(scene_animator_seek(scene, camera, SCENE_ANIMATOR_CURRENT, t_ms));
+        TEST_ASSERT_TRUE(animator_seek(camera, ANIMATOR_CURRENT, t_ms));
         const int64_t start = timing_now_us();
         (void)render_lab_test_frame_dt(0, false, NULL);
         sum.frame += timing_now_us() - start;
