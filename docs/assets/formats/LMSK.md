@@ -7,6 +7,7 @@ A one-bit atlas and affine UVs for a sibling [LMSH](LMSH.md), named
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #8fb3ee !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 8
     bitWidth: 100
@@ -22,6 +23,7 @@ title Header, 12 bytes at 0, one cell a byte
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 4
     bitWidth: 160
@@ -35,6 +37,7 @@ title UV record, 4 bytes a masked vertex from byte 12
 ```mermaid
 ---
 config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 4
     bitWidth: 160
