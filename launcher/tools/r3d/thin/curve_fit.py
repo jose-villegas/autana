@@ -8,6 +8,9 @@ import numpy as np
 from r3d.surface_samples import area_samples
 
 CURVE_TOLERANCE_PER_WIDTH = 0.15
+# Each knot's light ring sits this many widths inward along the curve, at most half way to its neighbour, so an
+# end that meets a wall or a finial is lit where its surface shows rather than inside them.
+CURVE_LIGHT_INSET_PER_WIDTH = 1.0
 CURVE_LIGHT_RING = 8
 SAMPLES_PER_WIDTH = 6
 MIN_BINS = 4
@@ -68,6 +71,23 @@ def fit_curve(positions, triangles, part):
     return Curve(rows[:, :3], rows[:, 3], np.zeros((len(rows), 3)))
 
 
+def light_centres(knots, width):
+    """Where each knot's light ring sits: CURVE_LIGHT_INSET_PER_WIDTH widths inward along the curve, at most half
+    way to the neighbour inward."""
+    centres = knots.copy()
+    if len(knots) < 2:
+        return centres
+    middle = (len(knots) - 1) / 2
+    for index in range(len(knots)):
+        if index == middle:
+            continue
+        toward = knots[index + 1] - knots[index] if index < middle else knots[index - 1] - knots[index]
+        length = np.linalg.norm(toward)
+        if length:
+            centres[index] += toward / length * min(CURVE_LIGHT_INSET_PER_WIDTH * width, length / 2)
+    return centres
+
+
 def light_curve(curve, source, part, intersector, lights, ray_offset, bounce=None, ao=None, bounce_intensity=1.0, double_sided=False):
     """Light outward ring normals with the start bake's radiance and the part's own albedo."""
     from r3d.light import light, sample_albedo, tangent_frame
@@ -77,7 +97,8 @@ def light_curve(curve, source, part, intersector, lights, ray_offset, bounce=Non
     tangent /= np.linalg.norm(tangent, axis=1, keepdims=True)
     u, v = tangent_frame(tangent)
     normals = np.cos(angle)[None, :, None] * u[:, None] + np.sin(angle)[None, :, None] * v[:, None]
-    points = (curve.knots[:, None] + curve.radius[:, None, None] * normals).reshape(-1, 3)
+    points = (light_centres(curve.knots, float(part.extents[1]))[:, None]
+              + curve.radius[:, None, None] * normals).reshape(-1, 3)
     normals = normals.reshape(-1, 3)
     materials = source.tri_m[part.triangles]
     centres = source.p[source.tri_v[part.triangles]].mean(axis=1)
