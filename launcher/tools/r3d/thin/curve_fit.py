@@ -13,6 +13,10 @@ CURVE_LIGHT_RING = 8
 # knot and these fractions of the way to each neighbour. One ring at a pole's end in a wall bracket would sit in
 # the bracket and darken the whole shaft.
 CURVE_LIGHT_SPAN = (0.25, 0.5)
+# A ring direction that meets other geometry within CURVE_SEEN_REACH_PER_RADIUS radii faces a wall or a neighbour,
+# a side no viewer stands on: the colour is the mean over the open directions, as a double-sided surface is lit on
+# its open side. A ring with no open direction takes the mean over all of them.
+CURVE_SEEN_REACH_PER_RADIUS = 8.0
 SAMPLES_PER_WIDTH = 6
 MIN_BINS = 4
 SAMPLE_SEED = 0
@@ -114,4 +118,16 @@ def light_curve(curve, source, part, intersector, lights, ray_offset, bounce=Non
                      intersector, lights, ray_offset, bounce,
                      bounce_groups=np.unique(points, axis=0, return_inverse=True)[1], ao=ao,
                      bounce_intensity=bounce_intensity)
-    return replace(curve, color=albedo * radiance.reshape(len(curve.knots), -1, 3).mean(axis=1))
+    reach = CURVE_SEEN_REACH_PER_RADIUS * np.repeat(radii.reshape(-1), CURVE_LIGHT_RING)
+    seen = open_directions(points, normals, reach, intersector, ray_offset).reshape(len(curve.knots), -1)
+    seen[~seen.any(axis=1)] = True
+    radiance = radiance.reshape(len(curve.knots), -1, 3)
+    return replace(curve, color=albedo * (radiance * seen[:, :, None]).sum(axis=1) / seen.sum(axis=1)[:, None])
+
+
+def open_directions(points, normals, reach, intersector, ray_offset):
+    """Whether nothing stands within `reach` of each point along its normal; with no `intersector`, nothing does."""
+    if intersector is None:
+        return np.ones(len(points), bool)
+    hit, distance, _ = intersector.first_hits(points + normals * ray_offset, np.ascontiguousarray(normals))
+    return ~hit | (distance > reach)

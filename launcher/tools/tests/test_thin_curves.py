@@ -29,6 +29,25 @@ def cylinder():
     return p, t
 
 
+class Open:
+    """An intersector with nothing in the way."""
+
+    def first_hits(self, origins, directions):
+        return np.zeros(len(origins), bool), np.zeros(len(origins)), np.zeros(len(origins), np.int64)
+
+
+class Wall:
+    """An intersector with a wall at x = `at`: rays heading +x hit it."""
+
+    def __init__(self, at):
+        self.at = at
+
+    def first_hits(self, origins, directions):
+        ahead = directions[:, 0] > 1e-9
+        distance = np.where(ahead, (self.at - origins[:, 0]) / np.where(ahead, directions[:, 0], 1), 0)
+        return ahead & (distance > 0), distance, np.zeros(len(origins), np.int64)
+
+
 class ThinCurvesTests(unittest.TestCase):
     def test_thin_box(self):
         shape = soup.box((4.5, 4.5, 310))
@@ -113,7 +132,7 @@ class ThinCurvesTests(unittest.TestCase):
                                  names=['surface'], textures=[None], colors=None)
         from r3d.light import light
         with mock.patch('r3d.light.light', wraps=light) as shade:
-            lit = light_curve(curve, source, part, None,
+            lit = light_curve(curve, source, part, Open(),
                               [{'type': 'ambient', 'color': [1, 1, 1], 'intensity': 2}], 0.5)
         points, normals = shade.call_args.args[:2]
         self.assertEqual(len(points), len(curve.knots) * (1 + 2 * len(CURVE_LIGHT_SPAN)) * CURVE_LIGHT_RING)
@@ -139,9 +158,26 @@ class ThinCurvesTests(unittest.TestCase):
             return np.where(points[:, 2:3] < 10, 0.0, 1.0) * np.ones((len(points), 3))
 
         with mock.patch('r3d.light.light', walled):
-            lit = light_curve(curve, source, part, None, [], 0.5)
+            lit = light_curve(curve, source, part, Open(), [], 0.5)
         end = int(np.argmin(curve.knots[:, 2]))
         self.assertGreater(lit.color[end].min(), 0.5 * lit.color[1 - end].min())
+
+    def test_a_pole_beside_a_wall_takes_the_colour_of_its_open_side(self):
+        p, t = cylinder()
+        part = find_thin_parts(p, t, SIDE)[0]
+        curve = fit_curve(p, t, part)
+        source = SimpleNamespace(p=p, tri_v=t, tri_t=t, tri_m=np.zeros(len(t), dtype=int),
+                                 uv=np.zeros((len(p), 2)), materials={'surface': {'Kd': (0.25, 0.25, 0.25)}},
+                                 names=['surface'], textures=[None], colors=None)
+
+        def shaded_toward_the_wall(points, normals, *args, **kwargs):
+            return np.where(normals[:, 0:1] > 1e-9, 0.0, 1.0) * np.ones((len(points), 3))
+
+        with mock.patch('r3d.light.light', shaded_toward_the_wall):
+            beside = light_curve(curve, source, part, Wall(3.0), [], 0.0)
+            far = light_curve(curve, source, part, Wall(1e6), [], 0.0)
+        np.testing.assert_allclose(beside.color, 0.25 ** LIGHT_GAMMA)
+        self.assertTrue(np.all(far.color < beside.color))
 
     def test_frozen_tubes(self):
         from r3d.fit.copies import placed_curves, joined
