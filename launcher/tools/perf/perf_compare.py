@@ -273,16 +273,17 @@ def measure(args, runner=None, clock=time.monotonic):
                           len(sizes) - 1)
     incomplete = stop_error is not None or not decisions or any(
         row["verdict"] == "not measured" for row in decisions.values())
+    stop = str(stop_error) if stop_error else None
     estimates = {side: recommendations(records[side], observations(records[side])[0],
                                       args.threshold / 100, look_alpha / max(1, len(decisions)))
                  for side in records}
     write_summary(destination / "summary.md", args, records, decisions, estimates, sizes, plan,
-                  incomplete=incomplete, budget_stop=budget_stop, stop=stop_error and str(stop_error))
+                  incomplete=incomplete, budget_stop=budget_stop, stop=stop)
     payload = dict(command=getattr(args, "command", None),
                    label_a=args.label_a, label_b=args.label_b, threshold=args.threshold,
                    alpha=args.alpha, look_alpha=look_alpha,
                    rng_seed=args.rng_seed, max_seeds=args.max_seeds, first_pass=sizes[0],
-                   max_runs=MAX_RUNS, incomplete=incomplete, stop=stop_error and str(stop_error),
+                   max_runs=MAX_RUNS, incomplete=incomplete, stop=stop,
                    budget_stop=budget_stop,
                    rows=decisions, estimates=estimates, plan=plan)
     (destination / "comparison.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
