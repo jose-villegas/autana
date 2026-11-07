@@ -123,7 +123,7 @@ r3d_pipeline_count_triangles(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
             reached += count_triangle(v, c->double_sided, &screen, counts) ? 1 : 0;
         }
         if (set_up != NULL) {
-            set_up[clusters[i]] = (uint16_t)reached;
+            set_up[i] = (uint16_t)reached;
         }
     }
 }
