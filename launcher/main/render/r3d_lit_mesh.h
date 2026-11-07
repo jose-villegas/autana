@@ -90,8 +90,20 @@ typedef struct {
      * (r3d_lit_mesh_find_levels()). */
     uint16_t lod_finest_root;
     uint16_t lod_coarse_first; /* the first coarse cluster, with lod_finest_root set */
-    r3d_curve_set_t curves;
+    /* Its LCRV sibling's rows, their knots after them in the entry (r3d_lit_mesh_curves()); none: 0, NULL. */
+    uint16_t curve_count;
+    const r3d_curve_t* curves;
 } r3d_lit_mesh_t;
+
+/* A mesh's curves as r3d_curve_draw() takes them. */
+static inline r3d_curve_set_t
+r3d_lit_mesh_curves(const r3d_lit_mesh_t* mesh) {
+    if (mesh->curve_count == 0) {
+        return (r3d_curve_set_t){0};
+    }
+    return (r3d_curve_set_t){mesh->curves, (const r3d_curve_knot_t*)(const void*)(mesh->curves + mesh->curve_count),
+                             mesh->curve_count};
+}
 
 /* The asset type of a lit mesh entry, and the bytes of its header. */
 #define R3D_LIT_MESH_ASSET        ASSET_TYPE('L', 'M', 'S', 'H')
