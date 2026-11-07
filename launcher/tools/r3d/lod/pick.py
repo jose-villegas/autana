@@ -34,15 +34,20 @@ from native.shared_library import build_shared, find_compiler
 from r3d import log
 from r3d.cost_model import clusters_in_view
 from r3d.mesh_asset import CLUSTER_LOD, LOD_GROUP
+from render.settings import render_asset
 
 HERE = pathlib.Path(__file__).resolve().parent
 MAIN = HERE.parents[2] / "main"
 LOD_HEADER = MAIN / "render" / "lod" / "r3d_lod.h"
 PICK_HOST = HERE / "pick_host.c"
-TOLERANCE_PX = read_define(LOD_HEADER, "R3D_LOD_TOLERANCE_PX")
-HYSTERESIS_PX = read_define(LOD_HEADER, "R3D_LOD_HYSTERESIS_PX")
+SETTINGS = render_asset.load(render_asset.DEFAULT)
+TOLERANCE_PX = SETTINGS["lod.tolerance_px"]
+HYSTERESIS_PX = SETTINGS["lod.hysteresis_px"]
+COVERAGE_PERMILLE = SETTINGS["lod.coverage_permille"]
+PERMILLE = read_define(LOD_HEADER, "R3D_LOD_PERMILLE")
+# The most a tunable holds: no coverage cap.
+UNCAPPED = 2**31 - 1
 WORD_BITS = read_define(LOD_HEADER, "R3D_LOD_WORD_BITS")
-COVERAGE_MAX = read_define(LOD_HEADER, "R3D_LOD_COVERAGE_PERMILLE") / read_define(LOD_HEADER, "R3D_LOD_PERMILLE")
 
 # Below half a pixel a coarser level saves too little to be worth its pop; this tree's choice.
 TAU_FLOOR_PX = 0.5
@@ -162,20 +167,21 @@ def _device_library():
         _device = build_shared("lod_pick", HERE / ".cache", (PICK_HOST, render / "lod" / "r3d_lod.c"),
                                find_compiler("CC", ("cc", "gcc", "clang"), "C"),
                                flags=[f"-I{root}" for root in packages.include_roots()],
-                               depends=(LOD_HEADER, render / "r3d_lit_mesh.h", render / "r3d_pipeline.h"),
+                               depends=(LOD_HEADER, render / "r3d_lit_mesh.h", render / "r3d_pipeline.h",
+                                        render_asset.HEADER),
                                libraries=["-lm"], log=log)
         _device.pick_host.restype = None
     return _device
 
 
-def device_pick(lod, groups, rows, focal, near, height, tolerance_px=TOLERANCE_PX, coverage_max=COVERAGE_MAX,
-                coarse=None):
+def device_pick(lod, groups, rows, focal, near, height, tolerance_px=TOLERANCE_PX, hysteresis_px=HYSTERESIS_PX,
+                coverage_permille=COVERAGE_PERMILLE, coarse=None):
     """(coarse, drawn): the device's pick over a read mesh's `lod` pairs and
     `groups` rows (lit_mesh.read_lit_mesh) seen through the lens matrix `rows`
     (4 x 4, position ticks to lens space, focal lengths applied to its first
     two rows), from the bits `coarse` of the frame before, all clear when
     None. `focal` is (x, y) in pixels; `height` is the picture's, which
-    `coverage_max` is a share of."""
+    `coverage_permille` is thousandths of."""
     words = (len(groups) + WORD_BITS - 1) // WORD_BITS
     coarse = np.zeros(words, dtype=np.uint32) if coarse is None else np.array(coarse, dtype=np.uint32)
     pairs = b"".join(CLUSTER_LOD.pack(*pair) for pair in lod)
@@ -185,6 +191,7 @@ def device_pick(lod, groups, rows, focal, near, height, tolerance_px=TOLERANCE_P
     _device_library().pick_host(pairs, ctypes.c_int(len(lod)), records, ctypes.c_int(len(groups)),
                                 lens.ctypes.data_as(ctypes.c_void_p), ctypes.c_float(focal[0]),
                                 ctypes.c_float(focal[1]), ctypes.c_float(near), ctypes.c_int(height),
-                                ctypes.c_float(tolerance_px), ctypes.c_float(coverage_max),
+                                ctypes.c_float(tolerance_px), ctypes.c_float(hysteresis_px),
+                                ctypes.c_int(coverage_permille),
                                 coarse.ctypes.data_as(ctypes.c_void_p), drawn.ctypes.data_as(ctypes.c_void_p))
     return coarse, drawn.astype(bool)

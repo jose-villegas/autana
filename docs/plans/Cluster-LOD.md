@@ -52,7 +52,7 @@ Hoppe's<sup>[[111]](../Citations.md#hoppe-1997)</sup>; the floor of half a pixel
 | Pick, histogram, exact tolerance | [`lod/pick.py`](../../launcher/tools/r3d/lod/pick.py) | host |
 | Replay over a camera path | [`lod/lod_replay.py`](../../launcher/tools/r3d/lod/lod_replay.py) | host |
 | Levels in the baked mesh | [`lod/bake_levels.py`](../../launcher/tools/r3d/lod/bake_levels.py), [`r3d_lit_mesh.h`](../../launcher/main/render/r3d_lit_mesh.h) | built |
-| Pick at a tolerance, with hysteresis and a coverage cap, in output pixels, each instance every `R3D_LOD_PICK_EVERY` frames and all of them on a scene's first frame | [`r3d_lod_pick()`](../../launcher/main/render/lod/r3d_lod.h), run by the main view's cull just before each instance (`raster_t.picks_levels`); its coarse bits live per scene renderer, and the cluster walk only reads them | built |
+| Pick at a tolerance, with hysteresis and a coverage cap, in output pixels, each instance every `lod.pick_every` frames and all of them on a scene's first frame | [`r3d_lod_pick()`](../../launcher/main/render/lod/r3d_lod.h), run by the main view's cull just before each instance (`raster_t.picks_levels`); its coarse bits live per scene renderer, and the cluster walk only reads them | built |
 | Histogram from the last frame, steering the tolerance to a budget | `r3d_lod.c` | not built |
 | Tolerance per pose baked for the path; the fit trained on it | bake stage | not built |
 
@@ -73,14 +73,14 @@ mesh is rebaked; the histogram is built from the last frame's clusters in view,
 a frame late.
 
 **The pick's hysteresis.** A group turns coarse once its projected error falls
-`R3D_LOD_HYSTERESIS_PX` below the tolerance and turns fine again once it
+the [`lod.hysteresis_px`](../render/Render-Settings.md#lod) setting below the tolerance and turns fine again once it
 rises that far above, so a still camera never flickers between levels. A
 coarse group's parent bounds hold its own, so its finer groups are always
 coarse too; a closing pass sets coarse any source float rounding left fine
 far off, so the cut stays crack-free whatever the floats do.
 
 **The coverage cap.** A group whose radius, projected where its error is,
-spans more than `R3D_LOD_COVERAGE_PERMILLE` thousandths of the picture's
+spans more than the settings' `lod.coverage_permille` thousandths of the picture's
 height stays fine, whatever its error. A large coarse group shows its
 simplified surface over much of the screen, and its colours, sampled from the
 nearest level-0 surface, shimmer under a slow camera drift where the

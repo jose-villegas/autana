@@ -18,7 +18,6 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "core/tune.h"
 #include "math/linear/transformf.h"
 #include "render/context/render_context.h"
 #include "render/lod/r3d_lod.h"
@@ -59,9 +58,12 @@ enum {
 #define WHOLE_IN_VIEW 64.0F
 #define HALF_FOV_TAN  0.5F
 #define NEAR_Z        1.0F
-#define TOLERANCE     R3D_LOD_TOLERANCE_PX
-#define HYSTERESIS    R3D_LOD_HYSTERESIS_PX
-#define COVERAGE_MAX  ((float)R3D_LOD_COVERAGE_PERMILLE / (float)R3D_LOD_PERMILLE)
+#define TOLERANCE     (LOD.tolerance_px)
+#define HYSTERESIS    (LOD.hysteresis_px)
+#define COVERAGE_MAX  ((float)LOD.coverage_permille / (float)R3D_LOD_PERMILLE)
+
+/* The engine's LOD settings, which every pick here runs under. */
+#define LOD           (RENDER_SETTINGS_DEFAULT.lod)
 /* A model stretch, and the share of it a group's radius may still shift at FAR_EYE. */
 #define STRETCH       3.0F
 #define FAR_SHARE     0.05F
@@ -239,7 +241,7 @@ pick_along_the_path(const r3d_lit_mesh_t* mesh, pose_check_t check) {
     uint32_t ever_coarse = 0, ever_fine = 0;
     for (int p = 0; p < poses; p++) {
         const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
-        r3d_lod_pick(mesh, &lens, TOLERANCE, COVERAGE_MAX, coarse);
+        r3d_lod_pick(mesh, &lens, &LOD, coarse);
         check(mesh, &lens, coarse);
         ever_coarse |= coarse[0];
         ever_fine |= ~coarse[0];
@@ -291,7 +293,7 @@ test_every_finest_cluster_is_drawn_at_exactly_one_level_along_the_path(void) {
     bool drew_top = false, drew_finest = false;
     for (int p = 0; p < poses; p++) {
         const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
-        r3d_lod_pick(mesh, &lens, TOLERANCE, COVERAGE_MAX, coarse);
+        r3d_lod_pick(mesh, &lens, &LOD, coarse);
         for (int f = 0; f < FINEST_CLUSTERS; f++) {
             TEST_ASSERT_EQUAL_INT(1, levels_drawn(mesh, f, coarse));
         }
@@ -313,7 +315,7 @@ test_a_group_s_bit_follows_its_projected_error_within_the_hysteresis_band(void) 
     const int poses = 2 * steps;
     for (int p = 0; p < poses; p++) {
         const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
-        r3d_lod_pick(mesh, &lens, TOLERANCE, COVERAGE_MAX, coarse);
+        r3d_lod_pick(mesh, &lens, &LOD, coarse);
         for (int g = 0; g < GROUPS; g++) {
             const float px = r3d_lod_group_pixels(mesh, &lens, g);
             const bool capped = r3d_lod_group_coverage(mesh, &lens, g) > COVERAGE_MAX;
@@ -332,13 +334,13 @@ static float
 top_turns_fine(const r3d_lit_mesh_t* mesh, uint32_t* coarse) {
     float d = FAR_EYE;
     r3d_lens_t lens = lens_at(d, NULL);
-    r3d_lod_pick(mesh, &lens, TOLERANCE, COVERAGE_MAX, coarse);
+    r3d_lod_pick(mesh, &lens, &LOD, coarse);
     TEST_ASSERT_TRUE(r3d_lod_coarse(coarse, TOP_GROUP));
     while (r3d_lod_coarse(coarse, TOP_GROUP)) {
         TEST_ASSERT_TRUE(d > NEAR_EYE);
         d *= STEP;
         lens = lens_at(d, NULL);
-        r3d_lod_pick(mesh, &lens, TOLERANCE, COVERAGE_MAX, coarse);
+        r3d_lod_pick(mesh, &lens, &LOD, coarse);
     }
     TEST_ASSERT_TRUE(r3d_lod_group_pixels(mesh, &lens, TOP_GROUP) > TOLERANCE + HYSTERESIS);
     return d;
@@ -353,10 +355,10 @@ test_a_camera_backing_off_a_switch_by_less_than_the_band_does_not_switch_back(vo
     const r3d_lens_t lens = lens_at(top_turns_fine(mesh, coarse) / STEP, NULL);
     const float back = r3d_lod_group_pixels(mesh, &lens, TOP_GROUP);
     TEST_ASSERT_TRUE(back > TOLERANCE - HYSTERESIS && back <= TOLERANCE + HYSTERESIS);
-    r3d_lod_pick(mesh, &lens, TOLERANCE, COVERAGE_MAX, coarse);
+    r3d_lod_pick(mesh, &lens, &LOD, coarse);
     const uint32_t held = coarse[0];
     TEST_ASSERT_FALSE(r3d_lod_coarse(coarse, TOP_GROUP));
-    r3d_lod_pick(mesh, &lens, TOLERANCE, COVERAGE_MAX, coarse);
+    r3d_lod_pick(mesh, &lens, &LOD, coarse);
     TEST_ASSERT_EQUAL_HEX32(held, coarse[0]);
 }
 
@@ -408,8 +410,8 @@ test_the_least_error_skips_only_poses_that_pick_nothing_coarse(void) {
     const int steps = steps_in();
     for (int p = 0; p < 2 * steps; p++) {
         const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
-        r3d_lod_pick(mesh, &lens, TOLERANCE, COVERAGE_MAX, coarse);
-        r3d_lod_pick(&bounded, &lens, TOLERANCE, COVERAGE_MAX, skipping);
+        r3d_lod_pick(mesh, &lens, &LOD, coarse);
+        r3d_lod_pick(&bounded, &lens, &LOD, skipping);
         TEST_ASSERT_EQUAL_HEX32_ARRAY(coarse, skipping, R3D_LOD_WORDS(GROUPS));
         if (p == steps) {
             TEST_ASSERT_EQUAL_HEX32(0, skipping[0]);
@@ -466,7 +468,7 @@ test_a_parent_turning_coarse_takes_an_out_of_order_source_with_it(void) {
     uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
     const r3d_lens_t lens = lens_at(FAR_EYE, NULL);
     TEST_ASSERT_TRUE(r3d_lod_group_pixels(mesh, &lens, 0) > TOLERANCE + HYSTERESIS);
-    r3d_lod_pick(mesh, &lens, TOLERANCE, COVERAGE_MAX, coarse);
+    r3d_lod_pick(mesh, &lens, &LOD, coarse);
     TEST_ASSERT_TRUE(r3d_lod_coarse(coarse, TOP_GROUP));
     TEST_ASSERT_TRUE(r3d_lod_coarse(coarse, 0));
     for (int f = 0; f < FINEST_CLUSTERS; f++) {
@@ -554,7 +556,7 @@ test_the_finest_tree_walk_and_the_cut_keep_what_the_whole_walk_keeps(void) {
     bool cut_drawn = false;
     for (int p = 0; p < 2 * steps; p++) {
         const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
-        r3d_lod_pick(mesh, &lens, TOLERANCE, COVERAGE_MAX, coarse);
+        r3d_lod_pick(mesh, &lens, &LOD, coarse);
         uint16_t apart[CLUSTERS], together[CLUSTERS];
         const int count = r3d_pipeline_cull(mesh, &lens, coarse, apart, w, NULL);
         TEST_ASSERT_EQUAL_INT(count, r3d_pipeline_cull(&whole, &lens, coarse, together, w, NULL));
@@ -566,6 +568,55 @@ test_the_finest_tree_walk_and_the_cut_keep_what_the_whole_walk_keeps(void) {
     TEST_ASSERT_TRUE(cut_drawn);
 }
 
+/* Instances of the levelled mesh on the eye's axis, each with its own model,
+ * world box and coarse bits, all clear. */
+enum { PLACED_MAX = 2 };
+
+typedef struct {
+    mat4f_t models[PLACED_MAX];
+    box3f_t boxes[PLACED_MAX];
+    uint32_t coarse[PLACED_MAX][R3D_LOD_WORDS(GROUPS)];
+    r3d_instance_t instances[PLACED_MAX];
+} placed_t;
+
+/* Places `count` instances of `mesh` in `p`, instance i at depth[i]. */
+static void
+place(placed_t* p, const r3d_lit_mesh_t* mesh, int count, const float* depth) {
+    memset(p->coarse, 0, sizeof p->coarse);
+    for (int i = 0; i < count; i++) {
+        transformf_t pose = transformf_identity();
+        transformf_set_position(&pose, (vec3f_t){0.0F, 0.0F, depth[i]});
+        p->models[i] = transformf_compute_matrix(&pose);
+        p->boxes[i] = r3d_lit_mesh_world_bounds(mesh, &p->models[i]);
+        p->instances[i] = (r3d_instance_t){mesh, &p->models[i], &p->boxes[i], p->coarse[i]};
+    }
+}
+
+/* The view down the axis place() puts instances on. */
+static render_view_t
+axis_view(void) {
+    const fixture_camera_t camera = {{0.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 1.0F}, HALF_FOV_TAN, NEAR_Z};
+    return render_view_fixture_at(&camera, (viewport_t){W, H, 0});
+}
+
+/* Which of `p`'s `count` instances have their top group coarse: bit i for instance i. */
+static unsigned
+top_coarse(const placed_t* p, int count) {
+    unsigned coarse = 0;
+    for (int i = 0; i < count; i++) {
+        coarse |= r3d_lod_coarse(p->coarse[i], TOP_GROUP) ? 1U << i : 0U;
+    }
+    return coarse;
+}
+
+/* Settings that spread the pick over `every` frames. */
+static render_settings_t
+spread_over(int every) {
+    render_settings_t settings = RENDER_SETTINGS_DEFAULT;
+    settings.lod.pick_every = every;
+    return settings;
+}
+
 /* A frame's pick leaves an instance culled whole as it was and picks one in
  * view: both far from the eye, where a pick sets the top group coarse. */
 static void
@@ -575,77 +626,50 @@ test_the_pick_keeps_the_bits_of_an_instance_culled_whole(void) {
     enum { IN_VIEW, BEHIND, INSTANCES };
 
     const float depth[INSTANCES] = {FAR_EYE, -FAR_EYE};
-    mat4f_t models[INSTANCES];
-    box3f_t boxes[INSTANCES];
-    uint32_t coarse[INSTANCES][R3D_LOD_WORDS(GROUPS)] = {{0}};
-    r3d_instance_t instances[INSTANCES];
-    for (int i = 0; i < INSTANCES; i++) {
-        transformf_t pose = transformf_identity();
-        transformf_set_position(&pose, (vec3f_t){0.0F, 0.0F, depth[i]});
-        models[i] = transformf_compute_matrix(&pose);
-        boxes[i] = r3d_lit_mesh_world_bounds(mesh, &models[i]);
-        instances[i] = (r3d_instance_t){mesh, &models[i], &boxes[i], coarse[i]};
-    }
+    placed_t* p = malloc(sizeof *p);
+    TEST_ASSERT_NOT_NULL(p);
+    place(p, mesh, INSTANCES, depth);
     raster_t raster = {
-        .instances = instances, .instance_count = INSTANCES, .width = W, .height = H, .picks_levels = true};
+        .instances = p->instances, .instance_count = INSTANCES, .width = W, .height = H, .picks_levels = true};
     raster.scratch = malloc(raster_scratch_bytes(&raster));
     TEST_ASSERT_NOT_NULL(raster.scratch);
-    const fixture_camera_t camera = {{0.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 1.0F}, HALF_FOV_TAN, NEAR_Z};
-    const render_view_t view = render_view_fixture_at(&camera, (viewport_t){W, H, 0});
+    const render_view_t view = axis_view();
     (void)raster_census(&raster, &view);
     free(raster.scratch);
-    TEST_ASSERT_TRUE(r3d_lod_coarse(coarse[IN_VIEW], TOP_GROUP));
-    TEST_ASSERT_EQUAL_HEX32(0, coarse[BEHIND][0]);
+    const unsigned coarse = top_coarse(p, INSTANCES);
+    const uint32_t behind = p->coarse[BEHIND][0];
+    free(p);
+    TEST_ASSERT_EQUAL_HEX(1U << IN_VIEW, coarse);
+    TEST_ASSERT_EQUAL_HEX32(0, behind);
 }
 
-/* Two instances at the same pose, in view, censused with `every` frames to a
- * pick round at frame `round`; `picks` as raster_t.picks_levels. Returns which
- * picked: bit i set where instance i turned its top group coarse. `scratch`
- * is the test's, of picked_scratch_bytes(), and `mesh` its levelled_mesh(). */
-enum { PICKED_INSTANCES = 2 };
-
+/* The scratch picked_in_round() draws in. */
 static size_t
 picked_scratch_bytes(const r3d_lit_mesh_t* mesh) {
-    r3d_instance_t instances[PICKED_INSTANCES] = {{mesh, NULL, NULL, NULL}, {mesh, NULL, NULL, NULL}};
-    const raster_t raster = {.instances = instances, .instance_count = PICKED_INSTANCES, .width = W, .height = H};
+    r3d_instance_t instances[PLACED_MAX] = {{mesh, NULL, NULL, NULL}, {mesh, NULL, NULL, NULL}};
+    const raster_t raster = {.instances = instances, .instance_count = PLACED_MAX, .width = W, .height = H};
     return raster_scratch_bytes(&raster);
 }
 
+/* PLACED_MAX instances far down the axis, censused with the pick spread over
+ * `every` frames at round `round`; `picks` as raster_t.picks_levels. Returns
+ * top_coarse(). `p` and `scratch` are the test's. */
 static unsigned
-picked_in_round(const r3d_lit_mesh_t* mesh, void* scratch, bool picks, int every, uint32_t round) {
-    enum { INSTANCES = PICKED_INSTANCES };
-
-    mat4f_t models[INSTANCES];
-    box3f_t boxes[INSTANCES];
-    uint32_t coarse[INSTANCES][R3D_LOD_WORDS(GROUPS)] = {{0}};
-    r3d_instance_t instances[INSTANCES];
-    for (int i = 0; i < INSTANCES; i++) {
-        transformf_t pose = transformf_identity();
-        transformf_set_position(&pose, (vec3f_t){0.0F, 0.0F, FAR_EYE});
-        models[i] = transformf_compute_matrix(&pose);
-        boxes[i] = r3d_lit_mesh_world_bounds(mesh, &models[i]);
-        instances[i] = (r3d_instance_t){mesh, &models[i], &boxes[i], coarse[i]};
-    }
-    raster_t raster = {.instances = instances,
-                       .instance_count = INSTANCES,
-                       .width = W,
-                       .height = H,
-                       .picks_levels = picks,
-                       .pick_round = round};
-    raster.scratch = scratch;
-    const tune_entry_t* spread = tune_find(tune_shared(), TUNE_NAME(render, lod_pick_every));
-    TEST_ASSERT_NOT_NULL(spread);
-    const int32_t saved = *spread->value;
-    *spread->value = every;
-    const fixture_camera_t camera = {{0.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 1.0F}, HALF_FOV_TAN, NEAR_Z};
-    const render_view_t view = render_view_fixture_at(&camera, (viewport_t){W, H, 0});
+picked_in_round(placed_t* p, const r3d_lit_mesh_t* mesh, void* scratch, bool picks, int every, uint32_t round) {
+    const float depth[PLACED_MAX] = {FAR_EYE, FAR_EYE};
+    place(p, mesh, PLACED_MAX, depth);
+    const render_settings_t settings = spread_over(every);
+    const raster_t raster = {.instances = p->instances,
+                             .instance_count = PLACED_MAX,
+                             .width = W,
+                             .height = H,
+                             .picks_levels = picks,
+                             .pick_round = round,
+                             .scratch = scratch,
+                             .settings = &settings};
+    const render_view_t view = axis_view();
     (void)raster_census(&raster, &view);
-    *spread->value = saved;
-    unsigned picked = 0;
-    for (int i = 0; i < INSTANCES; i++) {
-        picked |= r3d_lod_coarse(coarse[i], TOP_GROUP) ? 1U << i : 0U;
-    }
-    return picked;
+    return top_coarse(p, PLACED_MAX);
 }
 
 /* A second view of the frame draws the levels the frame picked: with
@@ -653,28 +677,43 @@ picked_in_round(const r3d_lit_mesh_t* mesh, void* scratch, bool picks, int every
 static void
 test_a_cull_that_does_not_pick_levels_leaves_every_bit(void) {
     const r3d_lit_mesh_t* mesh = levelled_mesh();
+    placed_t* p = malloc(sizeof *p);
     void* scratch = malloc(picked_scratch_bytes(mesh));
+    TEST_ASSERT_NOT_NULL(p);
     TEST_ASSERT_NOT_NULL(scratch);
-    TEST_ASSERT_EQUAL_HEX(0x3, picked_in_round(mesh, scratch, true, 1, 0));
-    TEST_ASSERT_EQUAL_HEX(0x0, picked_in_round(mesh, scratch, false, 1, 0));
+    const unsigned picking = picked_in_round(p, mesh, scratch, true, 1, 0);
+    const unsigned not_picking = picked_in_round(p, mesh, scratch, false, 1, 0);
     free(scratch);
+    free(p);
+    TEST_ASSERT_EQUAL_HEX(0x3, picking);
+    TEST_ASSERT_EQUAL_HEX(0x0, not_picking);
 }
 
 /* Spread over two frames, each frame picks every other instance, in turn. */
 static void
 test_a_pick_spread_over_frames_picks_each_instance_in_its_own_frame(void) {
+    enum { ROUNDS = 4 };
+
     const r3d_lit_mesh_t* mesh = levelled_mesh();
+    placed_t* p = malloc(sizeof *p);
     void* scratch = malloc(picked_scratch_bytes(mesh));
+    TEST_ASSERT_NOT_NULL(p);
     TEST_ASSERT_NOT_NULL(scratch);
-    TEST_ASSERT_EQUAL_HEX(0x2, picked_in_round(mesh, scratch, true, 2, 1));
-    TEST_ASSERT_EQUAL_HEX(0x1, picked_in_round(mesh, scratch, true, 2, 2));
-    TEST_ASSERT_EQUAL_HEX(0x2, picked_in_round(mesh, scratch, true, 2, 3));
-    /* Round 0, a scene's or view's first frame, picks every instance. */
-    TEST_ASSERT_EQUAL_HEX(0x3, picked_in_round(mesh, scratch, true, 2, 0));
+    unsigned rounds[ROUNDS];
+    for (uint32_t round = 0; round < ROUNDS; round++) {
+        rounds[round] = picked_in_round(p, mesh, scratch, true, 2, round);
+    }
     free(scratch);
+    free(p);
+    /* Round 0, a scene's or view's first frame, picks every instance. */
+    TEST_ASSERT_EQUAL_HEX(0x3, rounds[0]);
+    TEST_ASSERT_EQUAL_HEX(0x2, rounds[1]);
+    TEST_ASSERT_EQUAL_HEX(0x1, rounds[2]);
+    TEST_ASSERT_EQUAL_HEX(0x2, rounds[3]);
 }
 
 static render_context_t* spread_context;
+static placed_t* spread_placed;
 
 static void
 release_spread_context(void) {
@@ -683,6 +722,8 @@ release_spread_context(void) {
         free(spread_context);
         spread_context = NULL;
     }
+    free(spread_placed);
+    spread_placed = NULL;
     release();
 }
 
@@ -691,54 +732,32 @@ release_spread_context(void) {
  * makes the next frame a first frame again. */
 static void
 test_a_context_s_first_frame_picks_every_instance_of_a_spread_pick(void) {
+    enum { EVERY = 4 };
+
     const r3d_lit_mesh_t* mesh = levelled_mesh();
-
-    enum { INSTANCES = 2, EVERY = 4 };
-
-    mat4f_t models[INSTANCES];
-    box3f_t boxes[INSTANCES];
-    uint32_t coarse[INSTANCES][R3D_LOD_WORDS(GROUPS)] = {{0}};
-    r3d_instance_t instances[INSTANCES];
-    for (int i = 0; i < INSTANCES; i++) {
-        transformf_t pose = transformf_identity();
-        transformf_set_position(&pose, (vec3f_t){0.0F, 0.0F, FAR_EYE});
-        models[i] = transformf_compute_matrix(&pose);
-        boxes[i] = r3d_lit_mesh_world_bounds(mesh, &models[i]);
-        instances[i] = (r3d_instance_t){mesh, &models[i], &boxes[i], coarse[i]};
-    }
+    suite_set_test_cleanup(release_spread_context);
+    spread_placed = malloc(sizeof *spread_placed);
     spread_context = malloc(sizeof *spread_context);
+    TEST_ASSERT_NOT_NULL(spread_placed);
     TEST_ASSERT_NOT_NULL(spread_context);
+    const float depth[PLACED_MAX] = {FAR_EYE, FAR_EYE};
+    place(spread_placed, mesh, PLACED_MAX, depth);
     *spread_context = RENDER_CONTEXT_DEFAULT;
     render_context_set_scale(spread_context, 100);
-    suite_set_test_cleanup(release_spread_context);
-    const tune_entry_t* spread = tune_find(tune_shared(), TUNE_NAME(render, lod_pick_every));
-    TEST_ASSERT_NOT_NULL(spread);
-    const int32_t saved = *spread->value;
-    *spread->value = EVERY;
-    const fixture_camera_t camera = {{0.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 1.0F}, HALF_FOV_TAN, NEAR_Z};
-    const render_view_t view = render_view_fixture_at(&camera, (viewport_t){W, H, 0});
-    bool first[INSTANCES], second[INSTANCES], again[INSTANCES];
-    TEST_ASSERT_TRUE(render_context_draw(spread_context, instances, INSTANCES, &view, 0));
-    for (int i = 0; i < INSTANCES; i++) {
-        first[i] = r3d_lod_coarse(coarse[i], TOP_GROUP);
-        memset(coarse[i], 0, sizeof coarse[i]);
-    }
+    const render_settings_t settings = spread_over(EVERY);
+    render_context_set_settings(spread_context, &settings);
+    const render_view_t view = axis_view();
+    TEST_ASSERT_TRUE(render_context_draw(spread_context, spread_placed->instances, PLACED_MAX, &view, 0));
+    const unsigned first = top_coarse(spread_placed, PLACED_MAX);
+    memset(spread_placed->coarse, 0, sizeof spread_placed->coarse);
     /* Round 1 of 4: neither instance's share. */
-    TEST_ASSERT_TRUE(render_context_draw(spread_context, instances, INSTANCES, &view, 0));
-    for (int i = 0; i < INSTANCES; i++) {
-        second[i] = r3d_lod_coarse(coarse[i], TOP_GROUP);
-    }
+    TEST_ASSERT_TRUE(render_context_draw(spread_context, spread_placed->instances, PLACED_MAX, &view, 0));
+    const unsigned second = top_coarse(spread_placed, PLACED_MAX);
     render_context_forget(spread_context);
-    TEST_ASSERT_TRUE(render_context_draw(spread_context, instances, INSTANCES, &view, 0));
-    for (int i = 0; i < INSTANCES; i++) {
-        again[i] = r3d_lod_coarse(coarse[i], TOP_GROUP);
-    }
-    *spread->value = saved;
-    for (int i = 0; i < INSTANCES; i++) {
-        TEST_ASSERT_TRUE(first[i]);
-        TEST_ASSERT_FALSE(second[i]);
-        TEST_ASSERT_TRUE(again[i]);
-    }
+    TEST_ASSERT_TRUE(render_context_draw(spread_context, spread_placed->instances, PLACED_MAX, &view, 0));
+    TEST_ASSERT_EQUAL_HEX(0x3, first);
+    TEST_ASSERT_EQUAL_HEX(0x0, second);
+    TEST_ASSERT_EQUAL_HEX(0x3, top_coarse(spread_placed, PLACED_MAX));
 }
 
 /* The counted walk tells the coarse clusters it keeps from the finest: none

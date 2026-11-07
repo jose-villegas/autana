@@ -22,19 +22,21 @@ TUNE_OVERRIDE(render, cull, 1);
 TUNE_OVERRIDE(render, depth_fit, 1);
 /* Off draws one instance a batch. */
 TUNE_OVERRIDE(render, batched, 1);
-/* The thousandths of the picture's height a coarse group may cover
- * (R3D_LOD_COVERAGE_PERMILLE); the doc's coverage table renders each cap it
- * lists. */
-TUNE(render, lod_coverage_permille, R3D_LOD_COVERAGE_PERMILLE, 0, R3D_LOD_UNCAPPED);
-/* The frames one round of the pick is spread over (R3D_LOD_PICK_EVERY); 1
- * picks every instance every frame. */
-TUNE(render, lod_pick_every, R3D_LOD_PICK_EVERY, 1, R3D_LOD_PICK_EVERY_MAX);
+/* Overrides lod.coverage_permille (INT32_MAX lifts the cap); coverage_table.py
+ * sets it once per cap. */
+TUNE_OVERRIDE(render, lod_coverage_permille, INT32_MAX);
+/* Overrides lod.pick_every; 1 picks every instance every frame. */
+TUNE_OVERRIDE(render, lod_pick_every, R3D_LOD_PICK_EVERY_MAX);
 
 render_settings_t
 raster_settings(const raster_t* raster) {
     const render_settings_t s = raster->settings != NULL ? *raster->settings : RENDER_SETTINGS_DEFAULT;
-    return (render_settings_t){tune_override(cull, s.cull) != 0, tune_override(depth_fit, s.depth_fit) != 0,
-                               tune_override(batched, s.batched) != 0};
+    return (render_settings_t){tune_override(cull, s.cull) != 0,
+                               tune_override(depth_fit, s.depth_fit) != 0,
+                               tune_override(batched, s.batched) != 0,
+                               {s.lod.tolerance_px, s.lod.hysteresis_px,
+                                tune_override(lod_coverage_permille, s.lod.coverage_permille),
+                                tune_override(lod_pick_every, s.lod.pick_every)}};
 }
 
 /* One instance of a batch: its lens, the clusters culling kept, where its
@@ -421,22 +423,23 @@ world_cull_skips(const world_cull_t* world, const r3d_instance_t* instance) {
 }
 
 /* The pick a cull makes before each instance, in its picture's pixels: the
- * view's output tolerance times what the picture's focal length is to the
+ * settings' output pixels times what the picture's focal length is to the
  * output's. */
 typedef struct {
     bool picks;
     uint32_t round; /* raster_t.pick_round */
-    int every;      /* render.lod_pick_every */
-    float tolerance_px;
-    float coverage_max;
+    render_lod_settings_t lod;
 } level_pick_t;
 
 static level_pick_t
-level_pick_init(const raster_t* raster, picture_lens_t* picture, const render_view_t* view) {
+level_pick_init(const raster_t* raster, picture_lens_t* picture, const render_view_t* view,
+                const render_lod_settings_t* lod) {
     const r3d_lens_t* lens = picture_lens_at(picture, 1);
     const float drawn = mathf_max(lens->focal_x, lens->focal_y) / mathf_max(view->lens.fx, view->lens.fy);
-    return (level_pick_t){raster->picks_levels, raster->pick_round, lod_pick_every, R3D_LOD_TOLERANCE_PX * drawn,
-                          (float)lod_coverage_permille / (float)R3D_LOD_PERMILLE};
+    level_pick_t pick = {raster->picks_levels, raster->pick_round, *lod};
+    pick.lod.tolerance_px *= drawn;
+    pick.lod.hysteresis_px *= drawn;
+    return pick;
 }
 
 /* An instance culled whole is not picked: it keeps the bits it last had, a
@@ -445,10 +448,10 @@ level_pick_init(const raster_t* raster, picture_lens_t* picture, const render_vi
  * every instance in round 0. */
 static void
 level_pick(const level_pick_t* pick, int index, const r3d_instance_t* instance, const r3d_lens_t* lens) {
-    const bool due =
-        pick->every <= 1 || pick->round == 0 || ((uint32_t)index + pick->round) % (uint32_t)pick->every == 0;
+    const int every = pick->lod.pick_every;
+    const bool due = every <= 1 || pick->round == 0 || ((uint32_t)index + pick->round) % (uint32_t)every == 0;
     if (pick->picks && due && instance->lod_coarse != NULL && instance->mesh->lod_group_count > 0) {
-        r3d_lod_pick(instance->mesh, lens, pick->tolerance_px, pick->coverage_max, instance->lod_coarse);
+        r3d_lod_pick(instance->mesh, lens, &pick->lod, instance->lod_coarse);
     }
 }
 
@@ -468,7 +471,7 @@ cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, r
     picture_lens_init(&picture, raster, view, fitted);
     world_cull_t world;
     world_cull_init(&world, &picture, view, settings.cull);
-    const level_pick_t pick = level_pick_init(raster, &picture, view);
+    const level_pick_t pick = level_pick_init(raster, &picture, view, &settings.lod);
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];
         if (world_cull_skips(&world, instance)) {

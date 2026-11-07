@@ -340,8 +340,7 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
     TEST_ASSERT_NOT_NULL(frame_us);
     int64_t frame_sum = 0;
     int samples = 0;
-    const tune_entry_t* pick_every = tune_find(tune_shared(), TUNE_NAME(render, lod_pick_every));
-    TEST_ASSERT_NOT_NULL(pick_every);
+    const int pick_every = raster_settings(&b->raster).lod.pick_every;
     for (uint32_t t_ms = 0; t_ms < period; t_ms += SPONZA_PERF_POSE_EVERY_MS) {
         (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
         const render_view_t view = sponza_suite_view(flythrough, sponza, camera_entity,
@@ -354,7 +353,7 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
         /* The levels the frame draws, picked as render_context_draw() picks them, inside the frame's time:
          * a pick spread over frames has the pose's earlier frames drawn first, untimed. */
         b->raster.picks_levels = true;
-        for (int warm = 1; warm < *pick_every->value; warm++) {
+        for (int warm = 1; warm < pick_every; warm++) {
             b->raster.pick_round++;
             (void)raster_draw(&b->raster, &view);
         }
