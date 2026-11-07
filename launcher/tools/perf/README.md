@@ -146,8 +146,9 @@ other exit codes, incomplete captures, wrong builds and table errors are
 failures. Two consecutive failures stop measurement, and so does a suite
 whose first flash on each side gives no timing rows; that error names the
 suite and its table. A stop writes the summary so far, with decisions and
-errors, and marks it incomplete, as does any row not measured. A success
-resets the failure count. Failed attempts consume the cap.
+errors, and marks it incomplete with the stop's reason, as does any row
+not measured. A success resets the failure count. Failed attempts consume
+the cap.
 
 ## Reading the result
 

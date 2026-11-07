@@ -5,6 +5,7 @@ on:
 
 concurrency:
   group: board-ci
+  queue: max
 
 permissions:
   contents: read
@@ -101,6 +102,7 @@ jobs:
     concurrency:
       group: board-ci-alarm
       cancel-in-progress: false
+      queue: max
     permissions:
       issues: write
       actions: read

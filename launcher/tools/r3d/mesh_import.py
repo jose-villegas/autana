@@ -41,7 +41,7 @@ from r3d.light import (  # noqa: E402
     visible_from_region,
 )
 from r3d.lod.bake_levels import bake_lit_mesh
-from r3d.lit_mesh import POSITION_SCALE, WELD_PER_TICK, panel_colour, write_lit_mesh  # noqa: E402
+from r3d.lit_mesh import POSITION_SCALE, WELD_PER_TICK, panel_colour, build_lit_mesh  # noqa: E402
 from r3d.mesh_source import load_source, load_glb_source, path_light_for, camera_path_poses
 from r3d.process_budget import NULL_RECORDER
 from r3d.ray_query import RayQuery  # noqa: E402
@@ -288,7 +288,7 @@ def write_baked(job, scene, out_dir, name, geometry=None, recorder=None):
             face_rgb = flat_colours(job, scene, geometry, renderer.face_samples)
     mesh = SimpleNamespace(pos=geometry.positions, tris=geometry.tris, clusters=[], nodes=[])
     if len(geometry.tris):
-        mesh = write_lit_mesh(out_dir, name, geometry.positions, None if renderer.face_samples else geometry.rgb,
+        mesh = build_lit_mesh(geometry.positions, None if renderer.face_samples else geometry.rgb,
                               geometry.tris, geometry.tri_double, face_rgb=face_rgb, recorder=recorder, mesh_builder=bake_lit_mesh,
                               meshlet_triangles=job.settings.meshlet_triangles,
                               lod=job.settings.lod and getattr(renderer, "fit", None) is None,
@@ -299,7 +299,8 @@ def write_baked(job, scene, out_dir, name, geometry=None, recorder=None):
         products, placed = write_shape(job, scene, out_dir, name, geometry, shape, recorder)
         entries.extend(products)
         copies.extend(placed)
-    (out_dir / f"{name}{mesh_bundle.SUFFIX}").write_bytes(mesh_bundle.encode(entries, copies))
+    with recorder.step("write", len(mesh.tris)):
+        (out_dir / f"{name}{mesh_bundle.SUFFIX}").write_bytes(mesh_bundle.encode(entries, copies))
     return mesh
 
 
@@ -330,7 +331,7 @@ def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
             else:
                 colours.append(rgb[t].reshape(-1, 3))
         keys = np.concatenate(colours, axis=1)
-        mesh = write_lit_mesh(out_dir, mesh_id, local, None if job.renderer.face_samples else keys,
+        mesh = build_lit_mesh(local, None if job.renderer.face_samples else keys,
                               tris, double, face_rgb=keys if job.renderer.face_samples else None,
                               colourless=True, recorder=recorder, mesh_builder=bake_lit_mesh,
                               meshlet_triangles=job.settings.meshlet_triangles, lod=job.settings.lod,

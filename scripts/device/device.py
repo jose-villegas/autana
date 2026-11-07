@@ -2327,7 +2327,7 @@ def main(argv=None):
     flash_parser.add_argument("--frame-laps", action="store_true",
                               help="with --perf-scope: time the phases inside the frame stages")
     flash_parser.add_argument("--layout-seed", type=int, default=0,
-                              help="pad the layout by this seed (0 is the plain build)")
+                              help="pad the layout by this seed; needs --perf-scope (0 is the plain build)")
     suite = subparsers.add_parser("run-suite")
     suite.add_argument("suite")
     suite.add_argument("--out")
@@ -2428,7 +2428,7 @@ def main(argv=None):
     batch_parser.add_argument("--perf-scope", action="store_true",
                               help="build the perf-scoped image (needs --flash, the default)")
     batch_parser.add_argument("--layout-seed", type=int, default=0,
-                              help="pad the layout by this seed (needs --flash, the default)")
+                              help="pad the layout by this seed; needs --perf-scope and --flash, the default")
     batch_parser.add_argument("--max-seconds", type=float, default=1800)
     batch_parser.add_argument("--send", dest="console_send", action="append", metavar="LINE",
                               help="send before every capture; repeatable, sequence should be idempotent")
