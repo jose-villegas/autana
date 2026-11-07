@@ -21,11 +21,11 @@
 #include "testkit/bench.h"
 #include "unity.h"
 
+#include "esp_attr.h"
 #include "esp_log.h"
 
 #include "../sponza_content.h"
 #include "core/memory.h"
-#include "render/code_layout.h"
 #include "render/r3d_span_internal.h"
 
 static const char* TAG = "masked_span";
@@ -53,16 +53,21 @@ static const int mask_permille[MASK_COUNT] = {285, 631};
 static const int card_sides[] = {4, 8, 16, 32, 64};
 
 /* A Gouraud ramp across every span: start colour and per-pixel steps. */
-#define RAMP_R         30000
-#define RAMP_G         40000
-#define RAMP_B         20000
-#define RAMP_DZ        3
-#define RAMP_DR        40
-#define RAMP_DG        (-30)
-#define RAMP_DB        20
+#define RAMP_R                30000
+#define RAMP_G                40000
+#define RAMP_B                20000
+#define RAMP_DZ               3
+#define RAMP_DR               40
+#define RAMP_DG               (-30)
+#define RAMP_DB               20
 /* Each timed run draws this much nearer than the last, so every run passes
  * the depth test; the target's widest card ramp stays below it. */
-#define RUN_DEPTH_STEP (TARGET_WIDTH * RAMP_DZ + MASK_SIDE)
+#define RUN_DEPTH_STEP        (TARGET_WIDTH * RAMP_DZ + MASK_SIDE)
+
+/* The fills run from IRAM as the draw path's do, so the mask test is timed
+ * where it would run, without spending the draw path's own budget.
+ * IRAM budget: diag 223 B */
+#define MASKED_SPAN_IRAM_ATTR IRAM_ATTR __attribute__((aligned(4)))
 
 #if defined(__XTENSA__) && __has_attribute(optimize)
 #define MASKED_FILL_ATTR __attribute__((optimize("no-schedule-insns")))
@@ -72,7 +77,7 @@ static const int card_sides[] = {4, 8, 16, 32, 64};
 
 /* r3d_span's Gouraud fill loop, so the masked arm below differs from it by
  * the mask test alone. */
-static RENDER_IRAM_ATTR __attribute__((noinline)) MASKED_FILL_ATTR int
+static MASKED_SPAN_IRAM_ATTR __attribute__((noinline)) MASKED_FILL_ATTR int
 fill_opaque(uint16_t* depth, uint16_t* color, int count, int32_t z, int32_t r, int32_t g, int32_t b, int32_t dz,
             int32_t dr, int32_t dg, int32_t db) {
     for (int i = 0; i < count; i++) {
@@ -89,7 +94,7 @@ fill_opaque(uint16_t* depth, uint16_t* color, int count, int32_t z, int32_t r, i
     return count;
 }
 
-static RENDER_IRAM_ATTR __attribute__((noinline)) MASKED_FILL_ATTR int
+static MASKED_SPAN_IRAM_ATTR __attribute__((noinline)) MASKED_FILL_ATTR int
 fill_masked(uint16_t* depth, uint16_t* color, int count, int32_t z, int32_t r, int32_t g, int32_t b, int32_t dz,
             int32_t dr, int32_t dg, int32_t db, uint32_t mask_row, uint32_t u, uint32_t du) {
     int written = 0;
