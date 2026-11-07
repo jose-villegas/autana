@@ -18,6 +18,9 @@ typedef struct {
 } active_t;
 
 static active_t active;
+/* The last frame's drawn count, and this frame's changed boxes (render/partial). */
+static int drawn_count = -1;
+static box3f_t changed[RENDER_PARTIAL_CHANGES_MAX];
 static bool paused;
 static bool expanded;
 static bool stepped;  /* scene_render() ran, and scene_compose() has not yet */
@@ -43,6 +46,7 @@ scene_activate(scene_t* scene, name_hash_t camera) {
         return false;
     }
     active = (active_t){scene, index};
+    drawn_count = -1;
     render_context_forget(render_context_main());
     refused = false;
     rendered = false;
@@ -110,6 +114,30 @@ fill_instances(scene_t* scene) {
     return count;
 }
 
+/* Where each changed renderer was and is, for partial redraw; -1 when the
+ * drawn set changed or more changed than fit. Every drawn renderer's box is
+ * kept as where it was drawn. */
+static int
+fill_changed(scene_t* scene, int count) {
+    int changes = count == drawn_count ? 0 : -1;
+    drawn_count = count;
+    for (int i = 0; i < scene->active_renderer_count; i++) {
+        scene_renderer_t* r = &scene->renderers[scene->active_renderers[i]];
+        if (r->mesh.node_count == 0) {
+            continue;
+        }
+        if (r->changed && changes >= 0) {
+            changes = changes < RENDER_PARTIAL_CHANGES_MAX ? changes : -1;
+            if (changes >= 0) {
+                changed[changes++] = box3f_union(r->drawn_bounds, r->world_bounds);
+            }
+        }
+        r->changed = false;
+        r->drawn_bounds = r->world_bounds;
+    }
+    return changes;
+}
+
 box3f_t
 scene_bounds(scene_t* scene) {
     scene_resolve(scene);
@@ -134,6 +162,7 @@ draw_active(int quarter, int width, int height) {
     }
     const render_view_t view =
         camera_view(&camera->lens, &scene->locals[camera->entity], (viewport_t){width, height, quarter});
+    render_context_set_changed(render_context_main(), changed, fill_changed(scene, count));
     rendered = render_context_draw(render_context_main(), scene->instances, count, &view, camera->clear);
     if (!rendered && !refused) {
         ESP_LOGE("scene", "no memory to draw '%s'; it stays blank", scene->id);

@@ -23,14 +23,13 @@ scene_shell_compose(uint32_t dt_ms) {
     const bool blended = render_context_upscale_filter(render_context_main()) == UPSCALE_FILTER_SURFACE;
     const scene_target_t target = {full, GFX_WIDTH, GFX_HEIGHT, overlay ? NULL : gfx_half_picture(),
                                    overlay || !blended ? NULL : gfx_half_seams()};
-    if (scene_compose(dt_ms, display_quarter_now(), &target)) {
-        if (blended) {
-            gfx_expand_frame_blended();
-        } else {
-            gfx_expand_frame();
-        }
+    const bool expanded = scene_compose(dt_ms, display_quarter_now(), &target);
+    /* Partial redraw rewrites some rows only; otherwise these are all of them. */
+    const render_context_frame_t frame = render_context_frame(render_context_main());
+    if (expanded) {
+        gfx_expand_frame(blended, frame.rows_first, frame.rows_end);
     } else if (target.pixels != NULL) {
-        gfx_mark_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT);
+        gfx_mark_dirty(0, frame.rows_first, GFX_WIDTH, frame.rows_end - frame.rows_first);
         render_context_overlay(render_context_main(), GFX_WIDTH, GFX_HEIGHT);
     }
 }

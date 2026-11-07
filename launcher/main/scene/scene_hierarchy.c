@@ -75,6 +75,7 @@ world_from_parent(const scene_t* scene, scene_entity_t entity) {
 
 void
 scene_renderer_bound(scene_renderer_t* r) {
+    r->changed = true;
     if (r->mesh.node_count > 0) {
         r->world_bounds = r3d_lit_mesh_world_bounds(&r->mesh, r->placed ? &r->model : NULL);
     }

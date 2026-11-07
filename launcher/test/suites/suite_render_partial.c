@@ -26,6 +26,9 @@
 #define H    64
 #define CARD 1 /* the rig quad the tests move */
 
+/* The card's two faces, red against the white wall, so every move shows. */
+static const uint16_t card_colors[2] = {0xF800, 0xF800};
+
 /* The card's path, rig units from where it starts: a slide, a hold, a step
  * toward the camera and back (the depth scale may refit), and a drop. */
 static const vec3f_t card_path[] = {
@@ -40,6 +43,7 @@ typedef struct {
     render_context_t context[2]; /* [0] partial redraw as the test asks, [1] off */
     render_settings_t settings[2];
     uint16_t destination[2][W * H];
+    uint16_t last[W * H];                         /* the full picture one frame back */
     box3f_t many[RENDER_PARTIAL_CHANGES_MAX + 1]; /* more changed boxes than a frame holds */
 } pair_t;
 
@@ -59,6 +63,8 @@ release_pair(void) {
 static raster_rig_t*
 open_pair(bool partial) {
     raster_rig_t* r = raster_rig_open(raster_rig_wall_and_card, RASTER_RIG_QUADS, 1U << CARD, W, H, 0);
+    r->quad[CARD].mesh.colors = NULL;
+    r->quad[CARD].mesh.face_colors = card_colors;
     suite_set_test_cleanup(release_pair);
     pair = calloc(1, sizeof(*pair));
     TEST_ASSERT_NOT_NULL(pair);
@@ -120,8 +126,11 @@ test_a_moving_card_redraws_only_its_rows_and_matches_a_full_redraw(void) {
         place_card(r, card_path[i]);
         const bool moved = memcmp(&card_path[i], &card_path[i - 1], sizeof card_path[i]) != 0;
         const box3f_t changed = box3f_union(was, card_box(r));
+        memcpy(pair->last, raster_color(&pair->context[1].raster), sizeof pair->last);
         const render_context_frame_t f = frame(r, &view, &changed, moved ? 1 : 0);
         TEST_ASSERT_EQUAL(!moved, f.unchanged);
+        /* A move the full picture shows, so a partial one that missed rows differs. */
+        TEST_ASSERT_EQUAL(moved, memcmp(pair->last, raster_color(&pair->context[1].raster), sizeof pair->last) != 0);
         if (moved && card_path[i].z == card_path[i - 1].z) {
             TEST_ASSERT_LESS_THAN_INT(H, rows(f)); /* a slide keeps the depth scale */
         }
