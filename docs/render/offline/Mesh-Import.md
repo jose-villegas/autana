@@ -120,9 +120,12 @@ Every Geometry table opts its step in; without it the step does not run.
 
 #### alpha_mask
 
-`geometry.alpha_mask` removes mostly transparent cut-out cards because the
-rasterizer does not alpha-test them. Off is above on; this step also changes
-what the simplifier keeps elsewhere, so not every difference is a card.
+`geometry.alpha_mask` drops mostly transparent triangles from the drawn mesh.
+The reference keeps every triangle and tests texture alpha at each ray hit:
+values below `keep_alpha` pass through, including shadow and bounce rays.
+
+The board rasterizer does not alpha-test. Off is above on; triangle removal
+also changes what the simplifier keeps elsewhere.
 
 ![alpha_mask off against on](../images/import-alpha-mask.png)
 

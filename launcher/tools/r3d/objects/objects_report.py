@@ -38,7 +38,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from docs import plot_style  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402
-from r3d.light import drop_masked  # noqa: E402
+from r3d.light import AlphaTest  # noqa: E402
 from r3d.objects.instances import MATCH_TOLERANCE, bounds_diagonal, match_instances, place, source_objects  # noqa: E402
 from r3d.objects.object_error import part_labels, part_names  # noqa: E402
 from r3d.objects.surface_match import SURFACE_TOLERANCE, JoinedInstance, merge  # noqa: E402
@@ -59,17 +59,9 @@ REPO = pathlib.Path(__file__).resolve().parents[4]
 
 
 def masked_objects(src, settings):
-    """Return source objects and merged source-index triangles after alpha masking."""
-    if settings.alpha_keep is None:
-        return source_objects(src.p, src.tri_v, src.tri_m, src.tri_o, src.object_names), src.tri_v
-    objects, triangles = [], []
-    for index, name in enumerate(src.object_names):
-        selected = src.tri_o == index
-        tv, _, tm, _ = drop_masked(src.p, src.uv, src.tri_v[selected], src.tri_t[selected], src.tri_m[selected],
-                                src.textures, settings.alpha_keep)
-        triangles.append(tv)
-        objects.extend(source_objects(src.p, tv, tm, np.zeros(len(tv), dtype=int), [name]))
-    return objects, np.concatenate(triangles) if triangles else np.empty((0, 3), dtype=int)
+    """Return full-detail source objects and attach their per-hit alpha test."""
+    src.alpha_test = AlphaTest(src, settings.alpha_keep) if settings.alpha_keep is not None else None
+    return source_objects(src.p, src.tri_v, src.tri_m, src.tri_o, src.object_names), src.tri_v
 
 
 def split_parts(objects):

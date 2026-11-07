@@ -372,7 +372,7 @@ def held_out_error(scene_path, scene, job, bundle, inputs, work):
     count = int(labels.max()) + 1
     names, owner, parts_of_object = part_names(labels, tri_o, source.object_names)
     shapes = match_instances(source_objects(p, tri_v, tri_m, labels, names))
-    source.intersector = RayQuery(p, tri_v)
+    source.intersector = RayQuery(p, tri_v, hit_filter=source.alpha_test)
     _, _, lens, _, poses = read_poses(inputs / "held_out.txt")
 
     def ids_for(index, width, height):
