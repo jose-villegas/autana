@@ -20,43 +20,11 @@ size = 742011
 seeded = true
 
 [[bake]]
-output = "bistro.street_fitted.bundle"
-source = "launcher/demo/bistro/bistro.scene.toml"
-key = "c8ded8d73c5a3fe1f2c9cfb3dfcc7aae5d47a8bec7cb750e1e0bf717711839e1"
-sha256 = "8d44f45d6400fb6c6ab27c96dbfb9584beca71f1e7a6a6301f339fc229fbd1af"
-size = 399586
-seeded = true
-
-[[bake]]
-output = "bistro.street_fitted.fit.bundle"
-source = "launcher/demo/bistro/bistro.scene.toml"
-key = "0caacb147f81315cf49330801787b44617eb64bbc6b2f720d72b7ea419539418"
-sha256 = "d60e816c8831085f9b665db900726829a7a8944222d1d7ed05c8aea181e79da9"
-size = 211858
-seeded = true
-
-[[bake]]
 output = "bistro.street_fitted.start.bundle"
 source = "launcher/demo/bistro/bistro.scene.toml"
 key = "3fea8f1bae3d3a8dc63d6db571d2789039d6435ea00dad64bd1065cc5ece87f8"
 sha256 = "2839dfe40c42c6b0a47aca7049de45c6461a7cdc2d18ee44d2738e70028a3a45"
 size = 307170
-seeded = true
-
-[[bake]]
-output = "bistro.street_fitted_full.bundle"
-source = "launcher/demo/bistro/bistro.scene.toml"
-key = "a0e8d3b9f5d1abfb60565f79b9a075389e8568314743027f800703dce8d65d15"
-sha256 = "2177005e06115af7d08e4cf1329594f7f60769dd91aa253f576b47d4aaa74933"
-size = 804439
-seeded = true
-
-[[bake]]
-output = "bistro.street_fitted_full.fit.bundle"
-source = "launcher/demo/bistro/bistro.scene.toml"
-key = "503b4442e64af2948218f34932389c0b438ab5554349c4ff0f081c52043cb98e"
-sha256 = "88de643c5f3dda1daa9aa4c17e31ba887d52a10d77ad73f4c6468c76f5683667"
-size = 415639
 seeded = true
 
 [[bake]]
@@ -73,22 +41,6 @@ source = "launcher/demo/bistro/bistro.scene.toml"
 key = "ca90a03fa0353827e44c60d0765ac7a7f3fb467fa1313f70afb94321e574d7cf"
 sha256 = "e1034e79d66156a97be4f24e5e8018338e4000994df10a0391a53df920d03ad3"
 size = 618032
-seeded = true
-
-[[bake]]
-output = "bistro.street_flat_fitted.bundle"
-source = "launcher/demo/bistro/bistro.scene.toml"
-key = "c318d1aad26f7bc65bba8dfc494f40d8b8f6ab34b382ba4a2a224410652ef558"
-sha256 = "5591b92cfa31a397dd88429c174f90be4d42400c144093474897264450746f95"
-size = 663767
-seeded = true
-
-[[bake]]
-output = "bistro.street_flat_fitted.fit.bundle"
-source = "launcher/demo/bistro/bistro.scene.toml"
-key = "9e743bbf2c4cb9133bc48d875a094ae65e96a70ae0f7b8e25c7a43eccb463767"
-sha256 = "cb793410ab4daf43829a4510eed32b81e3dd2284ac3df0dc86ea05c6c6f3bef8"
-size = 323511
 seeded = true
 
 [[bake]]
@@ -150,43 +102,11 @@ size = 501648
 seeded = true
 
 [[bake]]
-output = "sponza.atrium_fitted.bundle"
-source = "launcher/demo/sponza/sponza.scene.toml"
-key = "480c11d81c6c13e8220c7cd895f56cf728d00cb51909b888fa2880fa6e8e25fe"
-sha256 = "1c910c428c0dc00b3fb8f0c1bf9939f03a02d689cdabf0ee6d41cb553370b217"
-size = 261918
-seeded = true
-
-[[bake]]
-output = "sponza.atrium_fitted.fit.bundle"
-source = "launcher/demo/sponza/sponza.scene.toml"
-key = "fe37b16779aad9d6590b575f54c8289fbeca0976d094cf16d20dd528d682b2ff"
-sha256 = "729fbf708aa73858776580b0cc3304f6d4a39e9ddc1205ecb510ade5be410f41"
-size = 141401
-seeded = true
-
-[[bake]]
 output = "sponza.atrium_fitted.start.bundle"
 source = "launcher/demo/sponza/sponza.scene.toml"
 key = "69a559ba1439e7c5a36b6906453446e201f5ef6c3101dfe5200d8a92964cac6b"
 sha256 = "cda4076af43820d69c6e62f149404591c6e0a1a5b9b82fd7565a007f582a775c"
 size = 221166
-seeded = true
-
-[[bake]]
-output = "sponza.atrium_fitted_full.bundle"
-source = "launcher/demo/sponza/sponza.scene.toml"
-key = "fcbba82a1acf298423af8895dff1de5d183ed0b927c8c69c7e4e91cbde15bc82"
-sha256 = "1b1fe4dbc4f73e1201003a1661ba2a608a0942fb26583e692ebc4d9a6cd332cb"
-size = 511480
-seeded = true
-
-[[bake]]
-output = "sponza.atrium_fitted_full.fit.bundle"
-source = "launcher/demo/sponza/sponza.scene.toml"
-key = "34517a5bd5f4b36bc486c9a8af78b5f400b82212e8bb12131182900602d7ebf3"
-sha256 = "c9636d55ce602b5c35ecdd376efcba153a663fc7fe38e0486eac9884b7721a5d"
-size = 269575
 seeded = true
 
 [[bake]]
@@ -203,22 +123,6 @@ source = "launcher/demo/sponza/sponza.scene.toml"
 key = "a4f30b5ca32982382e05e542afedeb154d8ebc7d1441bfa947f9819cb2d355ff"
 sha256 = "835b0d6e407b3ac5e484bfb403a97fe1d39dae0ff4583949e1744eb3e51e8267"
 size = 445100
-seeded = true
-
-[[bake]]
-output = "sponza.atrium_flat_fitted.bundle"
-source = "launcher/demo/sponza/sponza.scene.toml"
-key = "617934e5754a956c41fb868ff8d34172f4ec6348a768ae1846e029c010adb458"
-sha256 = "31003d636132d660feafb16233a2058d3f7e7ac873880c1dfa5aced7731a23e2"
-size = 446696
-seeded = true
-
-[[bake]]
-output = "sponza.atrium_flat_fitted.fit.bundle"
-source = "launcher/demo/sponza/sponza.scene.toml"
-key = "3d96f54a6fc14e2a02d7256d6c97586392a024edce4d1e124b796970d4418682"
-sha256 = "7248d6f7e328541164a59cca22c08150394af01fb08ff99041b1aebcb0d1ff7b"
-size = 224398
 seeded = true
 
 [[bake]]

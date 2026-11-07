@@ -40,6 +40,10 @@ a run that made a mesh on another vendor, naming both, and the CPU job fails
 before baking when the hosted runner it got is another vendor's. Either way,
 re-run the failed job until it lands on the lock's vendor.
 
+A fit's reference set is traced on the CPU, as a mesh is, since the GPU's ray
+tracing may build a different tree each time
+([Reference on the CPU](../../launcher/tools/r3d/README.md#reference-on-the-cpu)).
+
 A fit repeats byte for byte only on one GPU model, so a fit's row also names
 its `gpu`. The Bakes GPU run's `runner` input picks the self-hosted runner by
 its label (default `gpu`). One attempt fits on one runner; a rerun attempt may land on
