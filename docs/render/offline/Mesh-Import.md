@@ -161,6 +161,7 @@ Each `[[objects.meshes]]` rule carves out matching source objects:
 | `variants` | Optional `{ variant = triangles }`: a variant's own per-copy budget. |
 | `min_triangles` | Optional floor on the scaled budget, at most `triangles`. Default 1. |
 | `seam` | Optional policy; touching defaults to `lock`, otherwise `free`. |
+| `shape` | Optional: `exact` (the default) matches copies by their vertices and triangles; `surface` also joins copies whose surfaces match within `SURFACE_TOLERANCE`, whatever their triangles and materials ([by surface](#objects-and-instances)). |
 
 A variant draws each copy with its entry in `variants`, or else
 round(`triangles` x its `objects_scale`), never below `min_triangles`;
@@ -192,6 +193,11 @@ floor's side pinned, and the pass spends what it frees up the shaft.
 Rigid copies share local simplification and their union of locks. Each copy
 is lit against the full source.
 
+A copy joined by surface is drawn with the shape's simplified triangles, placed on its own surface. Each
+material of the shape becomes the copy's own material nearest most of its triangles. These are not the copy's
+triangles, so a shape with a locked or welded copy stays exact. Copies whose materials differ in sidedness get
+separate shapes.
+
 A shape writes a colourless LMSH and an LCOL with one set per copy: RGB888
 vertices for smooth shading, RGB565 faces for flat. Mirrored copies own a
 shape with reversed winding and a positive-determinant placement.
@@ -204,7 +210,7 @@ Shape ids use the scene name and a stable name hash; the manifest retains
 the rule, source object and copy names.
 
 Rules match the alpha-masked source. Carved meshes skip per-triangle visibility;
-`thin` runs once per shared shape with the import seed. The rest keeps its
+`thin` runs once per exact shape with the import seed, before copies are joined by surface. The rest keeps its
 visibility and thinning steps.
 
 `objects/seams_report.py` accepts a scene renderer, scratch import settings and
