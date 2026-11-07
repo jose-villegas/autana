@@ -73,14 +73,14 @@ mesh is rebaked; the histogram is built from the last frame's clusters in view,
 a frame late.
 
 **The pick's hysteresis.** A group turns coarse once its projected error falls
-`R3D_LOD_HYSTERESIS_PX` below the tolerance and turns fine again once it
+the [`lod.hysteresis_px`](../render/Render-Settings.md#lod) setting below the tolerance and turns fine again once it
 rises that far above, so a still camera never flickers between levels. A
 coarse group's parent bounds hold its own, so its finer groups are always
 coarse too; a closing pass sets coarse any source float rounding left fine
 far off, so the cut stays crack-free whatever the floats do.
 
 **The coverage cap.** A group whose radius, projected where its error is,
-spans more than `R3D_LOD_COVERAGE_PERMILLE` thousandths of the picture's
+spans more than the settings' `lod.coverage_permille` thousandths of the picture's
 height stays fine, whatever its error. A large coarse group shows its
 simplified surface over much of the screen, and its colours, sampled from the
 nearest level-0 surface, shimmer under a slow camera drift where the

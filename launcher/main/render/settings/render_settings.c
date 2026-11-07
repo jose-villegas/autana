@@ -11,17 +11,21 @@ render_settings_read(const asset_pack_t* pack, render_settings_t* out) {
     if (status == ASSET_OK) {
         status = asset_table_open(entry, &table);
     }
-    if (status == ASSET_OK && (table.rows != RENDER_SETTINGS_FIELD_COUNT || table.frac_bits != 0)) {
+    if (status == ASSET_OK
+        && (table.rows != RENDER_SETTINGS_FIELD_COUNT || table.frac_bits != RENDER_SETTINGS_FRAC_BITS)) {
         status = ASSET_ERR_FORMAT;
     }
     render_settings_t read = {0};
     const int16_t* value = NULL;
-#define READ_FIELD(field)                                                                                              \
+#define FROM_bool(v)  ((v) != 0)
+#define FROM_float(v) ((float)(v) / (float)(1 << RENDER_SETTINGS_FRAC_BITS))
+#define FROM_int(v)   ((v) >> RENDER_SETTINGS_FRAC_BITS)
+#define READ_FIELD(field, type)                                                                                        \
     if (status == ASSET_OK) {                                                                                          \
         status = asset_table_row(&table, #field, 1, &value) == ASSET_OK ? ASSET_OK : ASSET_ERR_FORMAT;                 \
     }                                                                                                                  \
     if (status == ASSET_OK) {                                                                                          \
-        read.field = *value;                                                                                           \
+        read.field = FROM_##type(*value);                                                                              \
     }
     RENDER_SETTINGS_FIELDS(READ_FIELD)
     if (status == ASSET_OK) {
