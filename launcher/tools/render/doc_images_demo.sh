@@ -266,44 +266,19 @@ run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/indirect-look.pn
     > "$W/indirect-look.log"
 
 # Each fitted target against the same reference: its heatmap sheet at the
-# same two poses, and its last frame beside the reference, enlarged where they
-# differ most.
-#   against_reference <object> <heatmap image> <reference image> <label> [--sheet] [--crops]
+# same two poses.
+#   against_reference <object> <heatmap image> <label>
 run "$PYTHON" -c 'import pathlib, sys; from PIL import Image
 frame = sorted(pathlib.Path(sys.argv[1]).glob("*.png"))[4]
 picture = Image.open(frame).convert("RGB")
-picture.resize((picture.width * 2, picture.height * 2), Image.Resampling.NEAREST).save(sys.argv[2])' \
-    "$REFERENCE" "$W/fidelity-reference-4.png"
+picture.resize((picture.width * 2, picture.height * 2), Image.Resampling.NEAREST).save(sys.argv[2])'     "$REFERENCE" "$W/fidelity-reference-4.png"
 against_reference() {
-    scene=$1 heat=$2 reference=$3 label=$4
-    shift 4
-    sheet=no crops=no
-    while [ "$#" -gt 0 ]; do
-        case "$1" in
-            --sheet) sheet=yes ;;
-            --crops) crops=yes ;;
-            *) echo "$0: against_reference unknown option $1" >&2; exit 2 ;;
-        esac
-        shift
-    done
-    run "$HOST" --quarter 0 --scene "$ID" --object "$scene" --frames "$FIDELITY_FRAMES" --dt "$FIDELITY_DT" \
-        -o "$W/fidelity-$scene.bmp" --video "$W/fidelity-$scene.avi" 2> "$W/fidelity-$scene.log"
-    run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/$scene-unused.png" \
-        --reference-video "$W/fidelity-$scene.avi" "$REFERENCE" --reference-scale 2 \
-        --reference-sheet "$RENDER/$heat.png" --sheet-frames 2,4 --label-a "$label" > "$W/$scene-compare.log"
-    if [ "$crops" = yes ]; then
-        run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/$reference.png" --crops 3 \
-            --label-a "$label" --label-b reference --row "$label | reference" "$W/fidelity-$scene.bmp" "$W/fidelity-reference-4.png" > "$W/$scene-reference.log"
-        cp "$W/$reference.crops.png" "$RENDER/" || {
-            echo "$0: $scene matches the reference, no crops." >&2
-            exit 1
-        }
-    fi
-    [ "$sheet" = no ] || cp "$W/$reference.png" "$RENDER/"
+    scene=$1 heat=$2 label=$3
+    run "$HOST" --quarter 0 --scene "$ID" --object "$scene" --frames "$FIDELITY_FRAMES" --dt "$FIDELITY_DT"         -o "$W/fidelity-$scene.bmp" --video "$W/fidelity-$scene.avi" 2> "$W/fidelity-$scene.log"
+    run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/$scene-unused.png"         --reference-video "$W/fidelity-$scene.avi" "$REFERENCE" --reference-scale 2         --reference-sheet "$RENDER/$heat.png" --sheet-frames 2,4 --label-a "$label" > "$W/$scene-compare.log"
 }
-against_reference "${FULL}_fitted" appearance-chosen-heat appearance-chosen-reference fitted --crops
-against_reference "${FULL}_fitted_full" appearance-fitted-full-heat appearance-fitted-full-reference "fitted full" --sheet --crops
-against_reference "${FULL}_lite" appearance-lite-reference appearance-lite-reference-row simplifier
+against_reference "${FULL}_fitted" appearance-chosen-heat fitted
+against_reference "${FULL}_lite" appearance-lite-reference simplifier
 run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/appearance-lite-fitted-reference.crops.png" --crops 3 \
     --label-a simplifier --label-b fitted --reference-crops "$W/fidelity-reference-4.png" \
     "$W/fidelity-${FULL}_lite.bmp" "$W/fidelity-${FULL}_fitted.bmp" > "$W/appearance-lite-fitted-reference.log"
