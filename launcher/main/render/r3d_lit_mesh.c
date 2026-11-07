@@ -302,6 +302,30 @@ sibling_name(const char* mesh_id, const char* suffix, char out[ASSET_NAME_MAX]) 
     return ASSET_OK;
 }
 
+/* Each curve's knots follow the last curve's, at least two, every knot's tube inside the curve's box. */
+static bool
+curves_are_inside(const r3d_curve_set_t* set, unsigned knots) {
+    unsigned end = 0;
+    for (int i = 0; i < set->curve_count; i++) {
+        const r3d_curve_t* row = &set->curves[i];
+        if (row->first != end || row->count < 2 || (unsigned)row->first + row->count > knots) {
+            return false;
+        }
+        end = (unsigned)row->first + row->count;
+        for (unsigned k = row->first; k < end; k++) {
+            const r3d_curve_knot_t* knot = &set->knots[k];
+            const int16_t position[3] = {knot->x, knot->y, knot->z};
+            for (int axis = 0; axis < 3; axis++) {
+                if ((int)position[axis] - knot->radius < row->lo[axis]
+                    || (int)position[axis] + knot->radius > row->hi[axis]) {
+                    return false;
+                }
+            }
+        }
+    }
+    return end == knots;
+}
+
 static asset_status_t
 open_curves(const asset_pack_t* pack, const char* id, r3d_curve_set_t* curves) {
     char name[ASSET_NAME_MAX];
@@ -333,25 +357,7 @@ open_curves(const asset_pack_t* pack, const char* id, r3d_curve_set_t* curves) {
     }
     const r3d_curve_set_t built = {(const r3d_curve_t*)(asset.data + header),
                                    (const r3d_curve_knot_t*)(asset.data + at), (int)count};
-    unsigned end = 0;
-    for (unsigned i = 0; i < count; i++) {
-        const r3d_curve_t* row = &built.curves[i];
-        if (row->first != end || row->count < 2 || (unsigned)row->first + row->count > knots) {
-            return ASSET_ERR_BOUNDS;
-        }
-        end = (unsigned)row->first + row->count;
-        for (unsigned k = row->first; k < end; k++) {
-            const r3d_curve_knot_t* knot = &built.knots[k];
-            const int16_t position[3] = {knot->x, knot->y, knot->z};
-            for (int axis = 0; axis < 3; axis++) {
-                if ((int)position[axis] - knot->radius < row->lo[axis]
-                    || (int)position[axis] + knot->radius > row->hi[axis]) {
-                    return ASSET_ERR_BOUNDS;
-                }
-            }
-        }
-    }
-    if (end != knots) {
+    if (!curves_are_inside(&built, knots)) {
         return ASSET_ERR_BOUNDS;
     }
     *curves = built;

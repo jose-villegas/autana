@@ -4,6 +4,7 @@
 #include "image/pixel/rgb565.h"
 #include "math/geometry/box3f.h"
 #include "render/r3d_pipeline.h"
+#include "render/r3d_span.h"
 #include "render/r3d_span_internal.h"
 
 #define QUAD_CORNERS    4

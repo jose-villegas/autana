@@ -3,9 +3,8 @@
 
 #include <stdint.h>
 #include "asset/asset_pack.h"
-#include "render/r3d_span.h"
-
 typedef struct r3d_lens r3d_lens_t;
+typedef struct r3d_span_target r3d_span_target_t;
 
 typedef struct {
     int16_t x, y, z;
