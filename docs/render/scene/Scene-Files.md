@@ -409,7 +409,7 @@ keeps the brighter.
 #### camera
 
 A scene may hold many cameras; only one renders at a time, the active one
-selected by `scene_activate()`. Camera-region visibility, camera-path
+selected by `camera_activate()`. Camera-region visibility, camera-path
 visibility and fitted variants read the scene's first camera. A region on
 any other camera is refused because no bake step reads it.
 

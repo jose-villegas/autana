@@ -17,3 +17,7 @@ void pending_tokens_cancel(void);
 /* HANDLE_NONE is the default owner, ended when the frame loop ends the current app;
  * unknown and stale owners are dead. */
 bool pending_owner_alive(handle_t owner);
+
+/* Lets the issuer of `kind`'s handles answer pending_owner_alive() for them: core cannot see it. */
+typedef bool (*pending_alive_fn)(handle_t owner);
+void pending_owner_register(handle_owner_t kind, pending_alive_fn alive);

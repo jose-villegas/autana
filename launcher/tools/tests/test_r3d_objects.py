@@ -24,6 +24,7 @@ from r3d.objects.instances import (MATCH_TOLERANCE, SourceObject, bounds_diagona
                                    source_objects)
 from r3d.geometry import closest_point_on_triangles
 from r3d.objects.surface_match import FLOOR_CAP, SURFACE_TOLERANCE, limit, merge, nearest, surface
+from soup import subdivided
 from r3d.objects.object_error import (PLANAR_AREA_SHARE, PLANAR_DEGREES, SHEET_DEGREES, SHEET_GROWTH, SKY, Parts,
                                       cell, common_prefix, object_rows, part_labels, part_names, planar_parts, read,
                                       nearest_source, report_body, rows_for, shape_rows, sheet_triangles, write)
@@ -324,23 +325,6 @@ class ObjectsTests(unittest.TestCase):
             self.assertEqual(data['totals']['source_triangles'], 8)
             self.assertEqual(data['totals']['unique_triangles'], 4)
             self.assertEqual(data['totals']['repeated_shapes'], 1)
-
-
-def subdivided(points, triangles):
-    """Every triangle split in four at its edge midpoints: the same surface, triangulated differently."""
-    points, faces, middle = [np.asarray(p, dtype=np.float64) for p in points], [], {}
-
-    def midpoint(a, b):
-        key = (min(a, b), max(a, b))
-        if key not in middle:
-            middle[key] = len(points)
-            points.append((points[a] + points[b]) / 2)
-        return middle[key]
-
-    for a, b, c in triangles:
-        ab, bc, ca = midpoint(a, b), midpoint(b, c), midpoint(c, a)
-        faces += [[a, ab, ca], [ab, b, bc], [ca, bc, c], [ab, bc, ca]]
-    return np.array(points), np.array(faces)
 
 
 FINE_POINTS, FINE_TRIANGLES = subdivided(POINTS, TRIANGLES)
