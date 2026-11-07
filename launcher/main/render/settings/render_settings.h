@@ -14,16 +14,25 @@
  * reads these lines. Basic is for any app; advanced needs the renderer's
  * workings to judge. */
 typedef struct {
-    bool cull;      /* basic: skips clusters and world boxes outside the picture */
-    bool depth_fit; /* advanced: depth steps go where the kept scene is, not to near_z; needs cull */
-    bool batched;   /* advanced: one transform and one draw fork/join a batch, not an instance */
+    float tolerance_px;  /* basic: the projected error a group may have and still draw coarse; more saves, pops more */
+    float hysteresis_px; /* advanced: how far past the tolerance a coarse group's error goes before it turns fine */
+    int coverage_permille; /* basic: the thousandths of the picture's height a coarse group may span; smaller pops less */
+} render_lod_settings_t;
+
+typedef struct {
+    bool cull;                 /* basic: skips clusters and world boxes outside the picture */
+    bool depth_fit;            /* advanced: depth steps go where the kept scene is, not to near_z; needs cull */
+    bool batched;              /* advanced: one transform and one draw fork/join a batch, not an instance */
+    render_lod_settings_t lod; /* which level of a mesh's clusters an instance draws (docs/plans/Cluster-LOD.md) */
 } render_settings_t;
 
 /* RENDER_SETTINGS_DEFAULT, from default.render.toml beside this header. */
 #include "render/settings/render_settings_default.h"
 
-/* The pack entry a .pack.toml's `render` key bakes: a TABL with one row per field. */
-#define RENDER_SETTINGS_ENTRY "render"
+/* The pack entry a .pack.toml's `render` key bakes: a TABL with one row per field,
+ * each value in 1/2^RENDER_SETTINGS_FRAC_BITS steps. */
+#define RENDER_SETTINGS_ENTRY     "render"
+#define RENDER_SETTINGS_FRAC_BITS 4
 
 /* Reads `pack`'s RENDER_SETTINGS_ENTRY: a row for every field and no other.
  * ASSET_ERR_NOT_FOUND when the pack has none; `out` is written only on ASSET_OK. */

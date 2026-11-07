@@ -52,6 +52,7 @@ release_all(void) {
     (void)tune_reset(tune_shared(), TUNE_NAME(render, cull));
     (void)tune_reset(tune_shared(), TUNE_NAME(render, depth_fit));
     (void)tune_reset(tune_shared(), TUNE_NAME(render, batched));
+    (void)tune_reset(tune_shared(), TUNE_NAME(render, lod_coverage_permille));
     raster_rig_release();
 }
 
@@ -88,6 +89,17 @@ draw(render_context_t* c, raster_rig_t* r) {
     return c->frame.stats;
 }
 
+/* Field by field: the struct has padding, whose bytes mean nothing. */
+static void
+assert_settings(const render_settings_t* expected, const render_settings_t* actual) {
+    TEST_ASSERT_EQUAL(expected->cull, actual->cull);
+    TEST_ASSERT_EQUAL(expected->depth_fit, actual->depth_fit);
+    TEST_ASSERT_EQUAL(expected->batched, actual->batched);
+    TEST_ASSERT_EQUAL_FLOAT(expected->lod.tolerance_px, actual->lod.tolerance_px);
+    TEST_ASSERT_EQUAL_FLOAT(expected->lod.hysteresis_px, actual->lod.hysteresis_px);
+    TEST_ASSERT_EQUAL_INT(expected->lod.coverage_permille, actual->lod.coverage_permille);
+}
+
 static void
 assert_same_frame(const render_context_t* a, const render_context_t* b) {
     TEST_ASSERT_EQUAL_INT(a->frame.stats.clusters, b->frame.stats.clusters);
@@ -111,12 +123,15 @@ static void
 test_the_default_is_every_setting_on_as_the_raster_drew_before(void) {
     raster_rig_t* r = open_rig();
     /* Before settings, the raster always culled, fitted depth and batched. */
-    const render_settings_t on = {.cull = true, .depth_fit = true, .batched = true};
-    TEST_ASSERT_EQUAL_MEMORY(&on, &RENDER_SETTINGS_DEFAULT, sizeof on);
+    const render_settings_t on = {.cull = true,
+                                  .depth_fit = true,
+                                  .batched = true,
+                                  .lod = {.tolerance_px = 2.0F, .hysteresis_px = 0.5F, .coverage_permille = 250}};
+    assert_settings(&on, &RENDER_SETTINGS_DEFAULT);
     const render_settings_t bare = raster_settings(&r->raster);
-    TEST_ASSERT_EQUAL_MEMORY(&on, &bare, sizeof on);
+    assert_settings(&on, &bare);
     render_context_t* c = open_contexts();
-    TEST_ASSERT_EQUAL_MEMORY(&on, render_context_settings(&c[0]), sizeof on);
+    assert_settings(&on, render_context_settings(&c[0]));
     /* Culled: the card behind the camera keeps nothing. */
     TEST_ASSERT_EQUAL_INT(clusters_of(r, 0), draw(&c[0], r).clusters);
 }
@@ -127,7 +142,7 @@ test_release_returns_the_settings_to_the_default(void) {
     const render_settings_t off = cull_off();
     render_context_set_settings(&c[0], &off);
     render_context_release(&c[0]);
-    TEST_ASSERT_EQUAL_MEMORY(&RENDER_SETTINGS_DEFAULT, render_context_settings(&c[0]), sizeof(render_settings_t));
+    assert_settings(&RENDER_SETTINGS_DEFAULT, render_context_settings(&c[0]));
 }
 
 static void
@@ -156,7 +171,7 @@ test_an_override_beats_the_callers_value_until_a_reset_brings_it_back(void) {
     render_context_set_settings(&c[0], &off);
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, cull), 1));
     TEST_ASSERT_EQUAL_INT(clusters_of(r, 0), draw(&c[0], r).clusters);
-    TEST_ASSERT_EQUAL_MEMORY(&off, render_context_settings(&c[0]), sizeof off);
+    assert_settings(&off, render_context_settings(&c[0]));
     TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, cull)));
     TEST_ASSERT_EQUAL_INT(clusters_of(r, 0) + clusters_of(r, 1), draw(&c[0], r).clusters);
 }
@@ -199,9 +214,30 @@ test_a_release_build_carries_no_override(void) {
     TEST_ASSERT_EQUAL_INT(1, tune_override(knob, 1));
 }
 
-enum { FIELDS = 3, ROW_BYTES = ASSET_TABLE_NAME_SIZE + sizeof(int16_t), PACK_BYTES = 256 };
+/* The coverage cap's knob changes that field of what a draw uses and no other, and a reset gives the caller's
+ * value back. */
+static void
+test_the_coverage_knob_overrides_only_the_coverage_cap(void) {
+    raster_rig_t* r = open_rig();
+    render_settings_t set = RENDER_SETTINGS_DEFAULT;
+    set.lod = (render_lod_settings_t){3.0F, 0.25F, 100};
+    r->raster.settings = &set;
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, lod_coverage_permille), 500));
+    render_settings_t used = raster_settings(&r->raster);
+    TEST_ASSERT_EQUAL_INT(500, used.lod.coverage_permille);
+    TEST_ASSERT_EQUAL_FLOAT(3.0F, used.lod.tolerance_px);
+    TEST_ASSERT_EQUAL_FLOAT(0.25F, used.lod.hysteresis_px);
+    TEST_ASSERT_EQUAL_INT(100, set.lod.coverage_permille);
+    TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, lod_coverage_permille)));
+    used = raster_settings(&r->raster);
+    TEST_ASSERT_EQUAL_INT(100, used.lod.coverage_permille);
+}
 
-static const char* const field_names[FIELDS + 1] = {"cull", "depth_fit", "batched", "fog"};
+enum { FIELDS = 6, ROW_BYTES = ASSET_TABLE_NAME_SIZE + sizeof(int16_t), PACK_BYTES = 512 };
+
+static const char* const field_names[FIELDS + 1] = {
+    "cull", "depth_fit", "batched", "lod.tolerance_px", "lod.hysteresis_px", "lod.coverage_permille", "fog"};
+#define STEP (1 << RENDER_SETTINGS_FRAC_BITS)
 
 /* Opens into `opened` a pack whose render entry has the first `rows` of
  * field_names, row i holding `values[i]`, with `frac` fractional bits; free
@@ -239,22 +275,25 @@ read_entry(int rows, const int16_t* values, int frac, render_settings_t* out) {
 
 static void
 test_a_packs_render_entry_reads_every_field(void) {
-    static const int16_t values[FIELDS] = {0, 1, 0};
+    static const int16_t values[FIELDS] = {0, STEP, 0, (3 * STEP) + (STEP / 2), STEP / 4, 100 * STEP};
     render_settings_t read;
-    TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, 0, &read));
+    TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
     TEST_ASSERT_FALSE(read.cull);
     TEST_ASSERT_TRUE(read.depth_fit);
     TEST_ASSERT_FALSE(read.batched);
+    TEST_ASSERT_EQUAL_FLOAT(3.5F, read.lod.tolerance_px);
+    TEST_ASSERT_EQUAL_FLOAT(0.25F, read.lod.hysteresis_px);
+    TEST_ASSERT_EQUAL_INT(100, read.lod.coverage_permille);
 }
 
 static void
 test_an_entry_missing_a_field_with_another_or_fixed_point_is_refused_unread(void) {
     static const int16_t values[FIELDS + 1] = {0};
     render_settings_t read;
-    TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS - 1, values, 0, &read));
-    TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS + 1, values, 0, &read));
-    TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS, values, 1, &read));
-    TEST_ASSERT_EQUAL_MEMORY(&RENDER_SETTINGS_DEFAULT, &read, sizeof read);
+    TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS - 1, values, RENDER_SETTINGS_FRAC_BITS, &read));
+    TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS + 1, values, RENDER_SETTINGS_FRAC_BITS, &read));
+    TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, read_entry(FIELDS, values, 0, &read));
+    assert_settings(&RENDER_SETTINGS_DEFAULT, &read);
 }
 
 static void
@@ -290,16 +329,16 @@ render_system(void) {
 
 static void
 test_an_app_starts_with_its_packs_settings_and_without_one_the_default(void) {
-    static const int16_t values[FIELDS] = {0, 0, 0};
+    static const int16_t values[FIELDS] = {0};
     const render_settings_t off = {0};
     void* raw = NULL;
     asset_pack_t opened;
-    open_entry(FIELDS, values, 0, &opened, &raw);
+    open_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &opened, &raw);
     render_system()->app_enter(&opened);
     test_free_aligned(raw);
-    TEST_ASSERT_EQUAL_MEMORY(&off, render_context_settings(render_context_main()), sizeof off);
+    assert_settings(&off, render_context_settings(render_context_main()));
     render_system()->app_enter(NULL);
-    TEST_ASSERT_EQUAL_MEMORY(&RENDER_SETTINGS_DEFAULT, render_context_settings(render_context_main()), sizeof off);
+    assert_settings(&RENDER_SETTINGS_DEFAULT, render_context_settings(render_context_main()));
 }
 
 void
@@ -309,6 +348,7 @@ suite_render_settings(void) {
     RUN_TEST(test_the_call_and_the_knob_each_take_effect_the_next_frame);
     RUN_TEST(test_an_override_beats_the_callers_value_until_a_reset_brings_it_back);
     RUN_TEST(test_each_field_and_each_knob_reach_only_their_own_slot);
+    RUN_TEST(test_the_coverage_knob_overrides_only_the_coverage_cap);
     RUN_TEST(test_a_release_build_carries_no_override);
     RUN_TEST(test_a_packs_render_entry_reads_every_field);
     RUN_TEST(test_an_entry_missing_a_field_with_another_or_fixed_point_is_refused_unread);
