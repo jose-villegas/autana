@@ -357,27 +357,36 @@ free_columns(scene_t* scene) {
     scene_free_kept(scene);
 }
 
-/* Opens the record's scene from `pack`: its columns, rows and components. */
-static scene_failure_t
-open_scene(scene_root_t* record, const asset_pack_t* pack) {
+/* The record's columns and rows from the scene entry in `pack`. Its own
+ * frame: the entry's view is gone before the meshes open. */
+static __attribute__((noinline)) scene_failure_t
+open_columns(scene_root_t* record, const asset_pack_t* pack, scene_t** opened) {
     scene_asset_t asset;
-    const scene_failure_t opened = open_asset(pack, record->id, &asset);
-    if (opened.status != SCENE_OK) {
-        return opened;
+    const scene_failure_t read = open_asset(pack, record->id, &asset);
+    if (read.status != SCENE_OK) {
+        return read;
     }
     if (!scene_world_issue_rows(record, asset.entity_count)) {
         return scene_failure_make(SCENE_ERR_FULL, ASSET_OK, record->id);
     }
-    scene_t* scene = instantiate(&asset);
-    if (scene == NULL) {
-        return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, record->id);
+    *opened = instantiate(&asset);
+    return scene_failure_make(*opened == NULL ? SCENE_ERR_MEMORY : SCENE_OK, ASSET_OK, record->id);
+}
+
+/* Opens the record's scene from `pack`: its columns, rows and components. */
+static scene_failure_t
+open_scene(scene_root_t* record, const asset_pack_t* pack) {
+    scene_t* scene = NULL;
+    scene_failure_t done = open_columns(record, pack, &scene);
+    if (done.status != SCENE_OK) {
+        return done;
     }
     scene->pack = pack;
     scene->root = record;
     record->scene = scene;
     scene_hierarchy_update_active(scene, SCENE_ROW_ROOT);
-    scene_failure_t done = scene_hierarchy_open(scene) ? open_meshes(scene, pack)
-                                                       : scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, record->id);
+    done = scene_hierarchy_open(scene) ? open_meshes(scene, pack)
+                                       : scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, record->id);
     if (done.status == SCENE_OK) {
         done = scene_mesh_make_resident(scene);
     }
@@ -396,7 +405,6 @@ open_scene(scene_root_t* record, const asset_pack_t* pack) {
     if (done.status != SCENE_OK) {
         record->scene = NULL;
         free_columns(scene);
-        return done;
     }
     return done;
 }
