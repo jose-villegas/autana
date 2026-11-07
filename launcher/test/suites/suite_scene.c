@@ -7,6 +7,7 @@
 
 #include <limits.h>
 #include <math.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,6 +43,7 @@
 #include "math/scalar/mathi.h"
 #include "render/context/render_context.h"
 #include "render/lcol_format.h"
+#include "render/llod_format.h"
 #include "scene/animator/animator.h"
 #include "scene/camera/camera.h"
 #include "scene/light/light.h"
@@ -79,7 +81,7 @@
 #define CAMERA_DISTANCE    10
 #define PIXELS_PER_UNIT    ((float)CENTER / CAMERA_DISTANCE)
 #define CLEAR_RGB          0x336699
-#define QUAD_BYTES         132
+#define QUAD_BYTES         (R3D_LIT_MESH_HEADER_BYTES + 88)
 #define PACK_MAX           16384
 #define SENTINEL           0x5A5A
 
@@ -87,15 +89,15 @@
 #define INSTANCES_MAX      64
 
 /* A unit quad in the plane z = 0, two-sided, in one colour. The arrays sit
- * one after another after the 44-byte header. */
+ * one after another after the header. */
 enum {
     QUAD_VERTICES = 4,
     QUAD_TRIANGLES = 2,
-    MESH_HEADER = 44,
+    MESH_HEADER = R3D_LIT_MESH_HEADER_BYTES,
     MESH_SCALE_AT = 4 * sizeof(uint32_t),
     RIG_JOINTS = 4,
     RIG_ENTRIES = 10,
-    RIG_MESH_BYTES = 200,
+    RIG_MESH_BYTES = R3D_LIT_MESH_HEADER_BYTES + 156,
     RIG_VERTICES = 2 * QUAD_VERTICES,
     RIG_DURATION_MS = 1000,
     RIG_TRAVEL = 4
@@ -2506,6 +2508,20 @@ test_a_runtime_mesh_is_drawn_in_place_of_the_loaded_one(void) {
     free(colors);
 }
 
+/* The loaded quad has no levels, so the scene holds no coarse bits for it: a
+ * mesh with levels would draw its finest forever, and is refused instead. */
+static void
+test_a_runtime_mesh_with_more_levels_than_the_bits_hold_is_refused(void) {
+    fixture();
+    const entity_t scene = show("test_pair");
+    const entity_t green = entity_find(scene, name_hash("green"));
+    r3d_lit_mesh_t levelled = *renderer_mesh(green);
+    TEST_ASSERT_EQUAL_INT(0, levelled.lod_group_count);
+    levelled.lod_group_count = 1;
+    TEST_ASSERT_FALSE(renderer_set_mesh(green, &levelled));
+    TEST_ASSERT_EQUAL_INT(0, renderer_mesh(green)->lod_group_count);
+}
+
 /* A camera takes a lens shift; anything else, or a shift that is not a
  * number, is refused. */
 static void
@@ -2925,7 +2941,7 @@ test_the_scratch_is_the_finest_steps_raster_block(void) {
     entity_t scene = show("test_pair");
     r3d_instance_t* instances = fx.instances;
     for (int i = 0; i < INSTANCES_MAX; i++) {
-        instances[i] = (r3d_instance_t){&columns(scene)->renderers[0].mesh, NULL, NULL};
+        instances[i] = (r3d_instance_t){&columns(scene)->renderers[0].mesh, NULL, NULL, NULL};
     }
     const resolution_config_t config = resolution_config(LADDER, 3, 3, 2000);
     render_context_t* c = render_context_main();
@@ -3573,6 +3589,125 @@ test_mesh_reader_accepts_only_positive_int_scales(void) {
     test_pack_put32(bytes + MESH_SCALE_AT, (uint32_t)INT_MAX + 1U);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, r3d_lit_mesh_from_asset(&entry, &mesh));
     TEST_ASSERT_NULL(mesh.positions);
+}
+
+/* rig.mesh's two quads with levels: the first finest in group 0, the second
+ * simplified from group 0 into group 1, which holds it. */
+enum {
+    LEVEL_GROUPS = 2,
+    LEVELS_AT = LLOD_HEADER_SIZE,
+    LEVEL_GROUPS_AT = LEVELS_AT + 2 * sizeof(r3d_lit_cluster_lod_t),
+    LEVELLED_BYTES = LEVEL_GROUPS_AT + LEVEL_GROUPS * sizeof(r3d_lit_lod_group_t),
+    INNER_GROUP = LEVEL_GROUPS_AT,
+    OUTER_GROUP = LEVEL_GROUPS_AT + sizeof(r3d_lit_lod_group_t),
+    SECOND_OWN = LEVELS_AT + sizeof(r3d_lit_cluster_lod_t),
+};
+
+static uint8_t* levelled_entry;
+static uint8_t* levelled_mesh;
+
+static void
+release_levelled(void) {
+    free(levelled_entry);
+    free(levelled_mesh);
+    levelled_mesh = NULL;
+    levelled_entry = NULL;
+    release_fixture();
+}
+
+static asset_view_t
+levelled_quads(void) {
+    levelled_entry = calloc(1, LEVELLED_BYTES);
+    suite_set_test_cleanup(release_levelled);
+    TEST_ASSERT_NOT_NULL(levelled_entry);
+    levelled_mesh = calloc(1, RIG_MESH_BYTES);
+    TEST_ASSERT_NOT_NULL(levelled_mesh);
+    make_quad_entry(levelled_mesh, 255, 0, 0, 2);
+    test_pack_put16(levelled_entry + LLOD_AT_VERSION, LLOD_VERSION);
+    test_pack_put16(levelled_entry + LLOD_AT_GROUP_COUNT, LEVEL_GROUPS);
+    test_pack_put32(levelled_entry + LLOD_AT_CLUSTER_COUNT, 2);
+    const r3d_lit_cluster_lod_t lod[] = {{R3D_LOD_NONE, 0}, {0, 1}};
+    memcpy(levelled_entry + LEVELS_AT, lod, sizeof lod);
+    const r3d_lit_lod_group_t inner = {{{0, 0, 0}, 1}, 1};
+    const r3d_lit_lod_group_t outer = {{{0, 0, 0}, 1 + 1 + R3D_LOD_ENCLOSE_MARGIN}, 2};
+    memcpy(levelled_entry + INNER_GROUP, &inner, sizeof inner);
+    memcpy(levelled_entry + OUTER_GROUP, &outer, sizeof outer);
+    return (asset_view_t){levelled_entry, LEVELLED_BYTES};
+}
+
+/* Each break of the levels' rules, made to a copy of the good entry. */
+static void
+test_mesh_reader_refuses_levels_out_of_order(void) {
+    const asset_view_t entry = levelled_quads();
+    uint8_t good[LEVELLED_BYTES];
+    memcpy(good, levelled_entry, sizeof good);
+    r3d_lit_mesh_t mesh;
+    const asset_view_t geometry = {levelled_mesh, RIG_MESH_BYTES};
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_from_asset(&geometry, &mesh));
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_levels_from_asset(&entry, &mesh));
+    TEST_ASSERT_EQUAL_INT(LEVEL_GROUPS, mesh.lod_group_count);
+
+    static const struct {
+        size_t at;
+        int value;
+        bool word;
+        asset_status_t status;
+    } breaks[] = {
+        {INNER_GROUP + offsetof(r3d_lit_lod_group_t, error), 3, false, ASSET_ERR_FORMAT},
+        {OUTER_GROUP + offsetof(r3d_lit_lod_group_t, bounds.radius), 1, false, ASSET_ERR_FORMAT},
+        {INNER_GROUP + offsetof(r3d_lit_lod_group_t, bounds.centre.x), 2, false, ASSET_ERR_FORMAT},
+        {INNER_GROUP + offsetof(r3d_lit_lod_group_t, bounds.radius), -1, false, ASSET_ERR_FORMAT},
+        {SECOND_OWN, LEVEL_GROUPS, false, ASSET_ERR_FORMAT},
+        {LLOD_AT_CLUSTER_COUNT, 1, true, ASSET_ERR_FORMAT},
+        {LLOD_AT_GROUP_COUNT, 0, false, ASSET_ERR_FORMAT},
+        {LLOD_AT_GROUP_COUNT, R3D_LOD_NONE, false, ASSET_ERR_BOUNDS},
+        {LLOD_AT_VERSION, LLOD_VERSION + 1, false, ASSET_ERR_VERSION},
+    };
+
+    for (size_t i = 0; i < sizeof breaks / sizeof breaks[0]; i++) {
+        memcpy(levelled_entry, good, sizeof good);
+        if (breaks[i].word) {
+            test_pack_put32(levelled_entry + breaks[i].at, (uint32_t)breaks[i].value);
+        } else {
+            test_pack_put16(levelled_entry + breaks[i].at, breaks[i].value);
+        }
+        TEST_ASSERT_EQUAL_INT(breaks[i].status, r3d_lit_mesh_levels_from_asset(&entry, &mesh));
+        TEST_ASSERT_NOT_NULL(mesh.positions);
+        TEST_ASSERT_NULL(mesh.cluster_lod);
+        TEST_ASSERT_NULL(mesh.lod_groups);
+        TEST_ASSERT_EQUAL_INT(0, mesh.lod_group_count);
+    }
+    memcpy(levelled_entry, good, sizeof good);
+    const asset_view_t short_entry = {entry.data, entry.size - 1};
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, r3d_lit_mesh_levels_from_asset(&short_entry, &mesh));
+}
+
+static void
+test_mesh_open_resolves_optional_levels(void) {
+    fixture();
+    const asset_view_t levels = levelled_quads();
+    for (int present = 0; present <= 1; present++) {
+        test_pack_t writer = test_pack_begin(fx.bytes, PACK_MAX, 1 + present);
+        memcpy(test_pack_add(&writer, "rig.mesh", R3D_LIT_MESH_ASSET, RIG_MESH_BYTES), levelled_mesh, RIG_MESH_BYTES);
+        if (present) {
+            memcpy(test_pack_add(&writer, "rig.mesh" LLOD_NAME_SUFFIX, LLOD_ASSET, levels.size), levels.data,
+                   levels.size);
+        }
+        const uint32_t size = test_pack_finish(&writer);
+        asset_pack_t pack;
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&pack, fx.bytes, size));
+        r3d_lit_mesh_t mesh;
+        TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(&pack, "rig.mesh", &mesh));
+        TEST_ASSERT_EQUAL_INT(present ? LEVEL_GROUPS : 0, mesh.lod_group_count);
+        if (present) {
+            asset_view_t sibling;
+            TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(&pack, "rig.mesh" LLOD_NAME_SUFFIX, LLOD_ASSET, &sibling));
+            test_pack_put16((uint8_t*)(uintptr_t)sibling.data + LLOD_AT_VERSION, LLOD_VERSION + 1);
+            TEST_ASSERT_EQUAL_INT(ASSET_ERR_VERSION, r3d_lit_mesh_open(&pack, "rig.mesh", &mesh));
+            TEST_ASSERT_NULL(mesh.positions);
+            TEST_ASSERT_NULL(mesh.cluster_lod);
+        }
+    }
 }
 
 static void
@@ -5832,6 +5967,8 @@ run_scene_suite(void) {
     RUN_TEST(test_mesh_reader_refuses_overlapping_cluster_vertices);
     RUN_TEST(test_mesh_reader_requires_complete_cluster_coverage);
     RUN_TEST(test_mesh_reader_accepts_only_positive_int_scales);
+    RUN_TEST(test_mesh_reader_refuses_levels_out_of_order);
+    RUN_TEST(test_mesh_open_resolves_optional_levels);
     RUN_TEST(test_clip_bind_failure_names_the_first_rejected_clip);
     RUN_TEST(test_skinned_scene_draws_clip_output_and_reskins_from_bind);
     RUN_TEST(test_a_skinned_renderer_s_world_box_follows_its_refit);
@@ -5902,6 +6039,7 @@ run_scene_suite(void) {
     RUN_TEST(test_the_active_camera_draws_its_scenes_renderers);
     RUN_TEST(test_a_disabled_entity_is_not_drawn_and_enabling_it_draws_it_again);
     RUN_TEST(test_a_runtime_mesh_is_drawn_in_place_of_the_loaded_one);
+    RUN_TEST(test_a_runtime_mesh_with_more_levels_than_the_bits_hold_is_refused);
     RUN_TEST(test_a_camera_takes_a_lens_shift_and_nothing_else_does);
     RUN_TEST(test_a_moved_entity_is_drawn_where_it_now_stands);
     RUN_TEST(test_a_renderer_s_world_box_follows_its_entity_s_pose);

@@ -18,6 +18,8 @@ bool animator_set_clips(entity_t entity, const char* skeleton_id, const char* co
 bool animator_play(entity_t entity, int clip, uint32_t blend_ms);
 bool animator_set_speed(entity_t entity, animator_slot_t slot, float speed);
 bool animator_set_paused(entity_t entity, animator_slot_t slot, bool paused);
+/* Whether the slot's playhead is paused; false when the entity has no clip in that slot. */
+bool animator_paused(entity_t entity, animator_slot_t slot);
 /* Samples the scene systems at once, without drawing. */
 bool animator_seek(entity_t entity, animator_slot_t slot, uint32_t t_ms);
 

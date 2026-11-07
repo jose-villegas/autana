@@ -39,6 +39,7 @@
 #include "hash/crc32.h"
 #include "math/linear/transformf.h"
 #include "profile/frame_cost.h"
+#include "render/lod/r3d_lod.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_span_internal.h"
 #include "render/raster_internal.h"
@@ -70,6 +71,8 @@ static r3d_lit_mesh_t meshes[SCENE_BAKED_VARIANT_COUNT];
 typedef struct {
     void* scratch;
     gfx_color_t* panel;
+    r3d_instance_t instance; /* the one drawn, with coarse bits when its mesh has levels */
+    uint32_t* coarse;
     raster_t raster;
     r3d_lens_t lens;
     char* report;
@@ -87,6 +90,7 @@ bench_close(void) {
         return;
     }
     memory_free(open_bench->frame_us);
+    memory_free(open_bench->coarse);
     memory_free(open_bench->report);
     memory_free(open_bench->scratch);
     memory_free(open_bench->panel);
@@ -102,9 +106,18 @@ bench_open(const r3d_instance_t* instance, const raster_attachment_t* const* att
     open_bench = b;
     suite_add_test_cleanup(bench_close);
     b->panel = memory_alloc(sizeof(gfx_color_t) * PANEL_PIXELS, MEMORY_APP);
+    b->instance = *instance;
+    if (b->instance.lod_coarse == NULL && instance->mesh->lod_group_count > 0) {
+        /* All clear, as a scene's renderer starts: the finest level until raster_pick_levels() runs. */
+        const size_t words = R3D_LOD_WORDS(instance->mesh->lod_group_count);
+        b->coarse = memory_alloc(words * sizeof(*b->coarse), MEMORY_INTERNAL);
+        TEST_ASSERT_NOT_NULL(b->coarse);
+        memset(b->coarse, 0, words * sizeof(*b->coarse));
+        b->instance.lod_coarse = b->coarse;
+    }
     const resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
     b->raster = (raster_t){
-        .instances = instance,
+        .instances = &b->instance,
         .instance_count = 1,
         .width = size.width,
         .height = size.height,
@@ -222,7 +235,7 @@ open_the_meshes(void) {
  * flythrough's poses: each stage is the difference of two stopped draws. */
 static void
 report_stage_split(int bake) {
-    const r3d_instance_t instance = {&meshes[bake], NULL, NULL};
+    const r3d_instance_t instance = {&meshes[bake], NULL, NULL, NULL};
     bench_t* b = bench_open(&instance, NULL);
     const raster_buffers_t* parts = &b->buffers;
     const r3d_lens_t* lens = &b->lens;
@@ -231,7 +244,7 @@ report_stage_split(int bake) {
     int poses = 0;
     for (uint32_t t_ms = 0; t_ms < period; t_ms += SPONZA_POSE_EVERY_MS) {
         view_at(&meshes[bake], t_ms, &b->lens);
-        const int visible = r3d_pipeline_cull(&meshes[bake], lens, parts->culled + 1, parts->work[0], NULL);
+        const int visible = r3d_pipeline_cull(&meshes[bake], lens, NULL, parts->culled + 1, parts->work[0], NULL);
         r3d_pipeline_transform(&meshes[bake], lens, parts->culled + 1, visible, parts->cs, parts->rows, false);
         for (int stop = 0; stop <= 3; stop++) {
             stopped[stop] += one_core_draw_us(&b->raster, parts, lens, visible, stop);
@@ -255,12 +268,12 @@ test_sponza_draw_stage_breakdown(void) {
     for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
         report_stage_split(i);
     }
-    const r3d_instance_t atrium = {&meshes[SCENE_BAKED_FULL], NULL, NULL};
+    const r3d_instance_t atrium = {&meshes[SCENE_BAKED_FULL], NULL, NULL, NULL};
     bench_t* b = bench_open(&atrium, NULL);
     view_at(atrium.mesh, 0, &b->lens);
     const r3d_lens_t* lens = &b->lens;
     const raster_buffers_t* parts = &b->buffers;
-    const int visible = r3d_pipeline_cull(atrium.mesh, lens, parts->culled + 1, parts->work[0], NULL);
+    const int visible = r3d_pipeline_cull(atrium.mesh, lens, NULL, parts->culled + 1, parts->work[0], NULL);
     int64_t start = timing_now_us();
     r3d_pipeline_transform(atrium.mesh, lens, parts->culled + 1, visible, parts->cs, parts->rows, false);
     ESP_LOGI(TAG, "stage, one core: %-22s %7lldus" R3D_PERF_QUARTER_FORMAT, "transform",
@@ -305,8 +318,6 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
     ESP_LOGI(TAG, "=== %s FRAME COST (%d tris, %d verts, %d clusters, rendered %dx%d) ===" R3D_PERF_QUARTER_FORMAT,
              label, mesh->triangle_count, mesh->vertex_count, mesh->cluster_count, b->raster.width, b->raster.height,
              perf_quarter->name);
-    const tune_entry_t* culling = tune_find(tune_shared(), TUNE_NAME(render, cull));
-    TEST_ASSERT_NOT_NULL(culling);
     int size = 0;
     for (int i = 0; i < mesh->cluster_count; i++) {
         if (mesh->clusters[i].triangle_count > size) {
@@ -317,9 +328,9 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
     ESP_LOGI(TAG,
              "CAPTURE build_id=%s pack_crc32=%08x object=%s size=%d cull=%ld period_ms=%u "
              "pose_every_ms=%u raster=%dx%d present=%d" R3D_PERF_QUARTER_FORMAT,
-             build_id(), (unsigned)crc32_update(0, pack->base, pack->size), object_name, size, (long)*culling->value,
-             (unsigned)period, (unsigned)SPONZA_PERF_POSE_EVERY_MS, b->raster.width, b->raster.height,
-             render_lab_present(), perf_quarter->name);
+             build_id(), (unsigned)crc32_update(0, pack->base, pack->size), object_name, size,
+             (long)raster_settings(&b->raster).cull, (unsigned)period, (unsigned)SPONZA_PERF_POSE_EVERY_MS,
+             b->raster.width, b->raster.height, render_lab_present(), perf_quarter->name);
     b->report = memory_alloc(FRAME_COST_REPORT_MAX, MEMORY_INTERNAL);
     char* report = b->report;
     TEST_ASSERT_NOT_NULL(report);
@@ -341,6 +352,8 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
             *model = transformf_compute_matrix(moving);
         }
         const int64_t start = timing_now_us();
+        /* The levels the frame draws, picked as render_context_draw() picks them, inside the frame's time. */
+        raster_pick_levels(&b->raster, &view);
         const raster_stats_t stats = raster_draw(&b->raster, &view);
         const resolution_step_t composed = raster_compose_size(&b->raster);
         raster_upscale(&b->raster, b->panel, composed.width, composed.height);
@@ -419,12 +432,12 @@ test_sponza_frame_cost_along_the_flythrough(void) {
     };
     static const perf_budget_t cull_off_budget[R3D_PERF_QUARTER_COUNT] = {{61138, 67896}, {58104, 66246}};
     for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
-        const r3d_instance_t instance = {&meshes[i], NULL, NULL};
+        const r3d_instance_t instance = {&meshes[i], NULL, NULL, NULL};
         report_frame_cost(sponza_bakes[i], sponza_bakes[i], &instance, NULL, NULL, NULL, bake_budgets[i]);
     }
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, cull), 0));
     const scene_baked_variant_t showcase = showcase_bake();
-    const r3d_instance_t shown = {&meshes[showcase], NULL, NULL};
+    const r3d_instance_t shown = {&meshes[showcase], NULL, NULL, NULL};
     report_frame_cost("cull_off", sponza_bakes[showcase], &shown, NULL, NULL, NULL, cull_off_budget);
     TEST_PASS();
 }
@@ -459,12 +472,12 @@ test_sponza_frame_cost_with_motion(void) {
     static const perf_budget_t motion_budget[R3D_PERF_QUARTER_COUNT] = {{56316, 67715}, {53984, 62771}};
     static const perf_budget_t moving_budget[R3D_PERF_QUARTER_COUNT] = {{77597, 95705}, {73747, 87554}};
     static const perf_budget_t placed_budget[R3D_PERF_QUARTER_COUNT] = {{41115, 52181}, {38830, 47638}};
-    const r3d_instance_t still = {&meshes[0], NULL, NULL};
+    const r3d_instance_t still = {&meshes[0], NULL, NULL, NULL};
     report_frame_cost("motion", sponza_bakes[0], &still, attached, NULL, NULL, motion_budget);
     raster_motion_forget(motion);
     transformf_t pose = transformf_identity();
     mat4f_t model = transformf_compute_matrix(&pose);
-    const r3d_instance_t moving = {&meshes[0], &model, NULL};
+    const r3d_instance_t moving = {&meshes[0], &model, NULL, NULL};
     report_frame_cost("motion_moving", sponza_bakes[0], &moving, attached, &pose, &model, moving_budget);
     report_frame_cost("placed", sponza_bakes[0], &moving, NULL, &pose, &model, placed_budget);
     release_motion();

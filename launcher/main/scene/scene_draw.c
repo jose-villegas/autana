@@ -81,6 +81,20 @@ active_camera(void) {
     return &active.scene->cameras[active.camera];
 }
 
+entity_t
+camera_active(void) {
+    return active.scene == NULL ? ENTITY_NONE : scene_row_entity(active.scene, active_camera()->entity);
+}
+
+void
+camera_cut(entity_t camera) {
+    scene_row_t row;
+    const scene_t* scene = scene_entity_row(camera, &row);
+    if (scene != NULL) {
+        scene_draw_camera_cut(scene, row);
+    }
+}
+
 /* The active renderers with something to draw, as the raster draws them;
  * scene_resolve() has listed them. */
 static int
@@ -89,7 +103,8 @@ fill_instances(scene_t* scene) {
     for (int i = 0; i < scene->active_renderer_count; i++) {
         const scene_renderer_t* r = &scene->renderers[scene->active_renderers[i]];
         if (r->mesh.node_count > 0) {
-            scene->instances[count++] = (r3d_instance_t){&r->mesh, r->placed ? &r->model : NULL, &r->world_bounds};
+            scene->instances[count++] =
+                (r3d_instance_t){&r->mesh, r->placed ? &r->model : NULL, &r->world_bounds, r->lod_coarse};
         }
     }
     return count;
@@ -101,6 +116,25 @@ static __attribute__((noinline)) render_view_t
 active_view(const scene_t* scene, const scene_camera_t* camera, viewport_t viewport) {
     const transformf_t pose = scene_row_world(scene->root, camera->entity);
     return lens_view(&camera->lens, &pose, viewport);
+}
+
+box3f_t
+scene_bounds(entity_t entity) {
+    scene_row_t row;
+    const scene_root_t* record = scene_entity_lookup(entity, &row);
+    scene_t* scene = record == NULL ? NULL : record->scene;
+    if (scene == NULL) {
+        return box3f_empty();
+    }
+    scene_resolve(scene);
+    box3f_t bounds = box3f_empty();
+    for (int i = 0; i < scene->active_renderer_count; i++) {
+        const scene_renderer_t* r = &scene->renderers[scene->active_renderers[i]];
+        if (r->mesh.node_count > 0) {
+            bounds = box3f_union(bounds, r->world_bounds);
+        }
+    }
+    return bounds;
 }
 
 static void

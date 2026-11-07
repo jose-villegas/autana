@@ -13,6 +13,7 @@
 
 #include "asset/asset_pack.h"
 #include "core/pending.h"
+#include "math/geometry/box3f.h"
 #include "scene/entity/entity.h"
 
 typedef enum {
@@ -52,6 +53,11 @@ void scene_cancel(entity_t root);
 /* Unloads the scene in any state: its entities are refused from now on. If
  * its camera was the active one, nothing is drawn. */
 void scene_release(entity_t root);
+
+/* The world box around everything the scene holding `entity` (its root or
+ * any entity below) draws now, its active renderers with a mesh, a sky or
+ * backdrop mesh among them; empty when it draws nothing or is not READY. */
+box3f_t scene_bounds(entity_t entity);
 
 /* While paused nothing advances or draws, as if no camera were active, and
  * the camera stays where it was; for an app drawing its own full screen. */

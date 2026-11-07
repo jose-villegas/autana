@@ -10,6 +10,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "asset/asset_pack.h"
+
 /* Every system's place in a pass, all in one list, so a new system is
  * placed against the ones already here rather than guessed. Gaps leave room
  * to insert one between two others. */
@@ -17,6 +19,7 @@
 /* Token users must cancel requests while their owners are still checkable. */
 #define SHELL_ORDER_PENDING 95
 #define SHELL_ORDER_SCENE   100
+#define SHELL_ORDER_RENDER  105
 #define SHELL_ORDER_CONSOLE 110
 
 typedef struct shell_system {
@@ -32,6 +35,9 @@ typedef struct shell_system {
     /* Into the framebuffer, before the app's frame() draws over it. Runs only
      * on a pass that overlaps the present. */
     void (*compose)(uint32_t dt_ms);
+    /* An app is about to enter(): `pack` is its mounted pack (app_t.pack), NULL
+     * for none or a pack that failed to mount. */
+    void (*app_enter)(const asset_pack_t* pack);
     /* The running app has exited: free what was held on its behalf. */
     void (*app_exit)(void);
     /* True when the app's frame must be presented a pass late, so update()
@@ -52,6 +58,7 @@ void shell_system_register(shell_system_t* system);
 void shell_systems_poll(uint32_t dt_ms);
 void shell_systems_update(uint32_t dt_ms);
 void shell_systems_compose(uint32_t dt_ms);
+void shell_systems_app_enter(const asset_pack_t* pack);
 void shell_systems_app_exit(void);
 bool shell_systems_overlap_present(void);
 

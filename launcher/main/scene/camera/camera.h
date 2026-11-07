@@ -15,6 +15,15 @@ const lens_t* camera_lens(entity_t camera);
 /* Draws through `camera` from now on. False when the entity has no camera. */
 bool camera_activate(entity_t camera);
 
+/* The camera drawn now, for a caller that moves whichever camera is drawn;
+ * ENTITY_NONE when no camera is active. */
+entity_t camera_active(void);
+
+/* For a caller that jumps `camera` when it is the active one: the renderer
+ * drops what it carried from earlier frames, as it does on activation and on
+ * a seek. Smaller moves converge within a few frames and need no cut. */
+void camera_cut(entity_t camera);
+
 /* No camera is active, so nothing is drawn, until the next camera_activate(). */
 void camera_deactivate(void);
 

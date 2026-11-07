@@ -78,6 +78,7 @@ phase over all of them, lowest `order` first, and skips a NULL callback.
 | `update(dt_ms)` | after the app's `update()`, while the last frame is still being sent; touches no framebuffer |
 | `compose(dt_ms)` | once the send is done, before the app's `frame()` draws over it |
 | `poll(dt_ms)` | every running-app pass, including priming, immediately before `frame()`; advances pending work and delivers completions |
+| `app_enter(pack)` | right before the app's `enter()`, with its mounted `app_t.pack` or NULL; `shell/render_system.c` sets the main render context's settings from it |
 | `app_exit()` | right after the app's `exit()` |
 | `overlaps_present()` | a query, not a phase: true makes the app's frame present a pass late, so `update` has a send to overlap |
 

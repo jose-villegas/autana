@@ -282,6 +282,15 @@ animator_set_paused(entity_t entity, animator_slot_t slot, bool paused) {
     return true;
 }
 
+bool
+animator_paused(entity_t entity, animator_slot_t slot) {
+    scene_row_t row;
+    scene_t* scene = scene_entity_row(entity, &row);
+    scene_animator_t* a = scene == NULL ? NULL : animator_of(scene, row);
+    const anim_playhead_t* p = a == NULL ? NULL : slot_playhead(a, slot);
+    return p != NULL && p->paused;
+}
+
 int
 animator_clip_count(entity_t entity) {
     scene_row_t row;

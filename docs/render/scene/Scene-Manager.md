@@ -14,7 +14,8 @@ frame is [Scene-Frame.md](Scene-Frame.md).
 
 The engine has one world. Every loaded scene is a subtree in it under its
 **root entity**, which `scene_load()` returns; moving or disabling the root
-moves or hides the whole scene.
+moves or hides the whole scene. `scene_bounds()` gives the world box around
+what a scene draws now, from its root or any entity in it.
 
 An `entity_t` is a [handle](../../../launcher/main/core/handle.h): owner,
 slot and generation. The world keeps a generation per slot for the whole run,

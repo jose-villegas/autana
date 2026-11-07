@@ -1,6 +1,8 @@
 /* renderer: an entity's mesh, and the skin that deforms it. */
 #include "scene/renderer/renderer.h"
 
+#include <string.h>
+
 #include "core/memory.h"
 #include "scene/scene_internal.h"
 
@@ -37,8 +39,16 @@ renderer_set_mesh(entity_t entity, const r3d_lit_mesh_t* mesh) {
     if (i < 0 || i >= scene->asset.renderer_count) {
         return false;
     }
-    scene->renderers[i].mesh = *mesh;
-    scene_renderer_bound(&scene->renderers[i]);
+    scene_renderer_t* r = &scene->renderers[i];
+    if (R3D_LOD_WORDS(mesh->lod_group_count) > r->lod_words) {
+        return false;
+    }
+    r->mesh = *mesh;
+    scene_renderer_bound(r);
+    /* Another mesh's groups are not these bits': start it at its finest. */
+    if (r->lod_coarse != NULL) {
+        memset(r->lod_coarse, 0, sizeof(uint32_t) * r->lod_words);
+    }
     return true;
 }
 

@@ -132,6 +132,10 @@ TUNE(glow, theme_rgb, 0x1199C8, 0, 0xffffff);
   controls also set, such as a menu toggle: a variable in release too, with
   no registry there. `TUNE_SETTING_SET(what, value)` writes it within its
   range, and on a development build through the registry, so `GET` sees it.
+- `TUNE_OVERRIDE(owner, what, high)` is a knob over a value the code sets
+  elsewhere, such as a render setting: it starts at `TUNE_UNSET`, `RESET`
+  returns it there, and `tune_override(knob, value)` gives `value` until a
+  `SET`. A release build has only `TUNE_UNSET`.
 - A value read every frame takes effect at once. One baked into a table needs
   its owner to notice:
   `TUNE_GENERATION(ridge)` goes up on every `SET` or `RESET` of one of that

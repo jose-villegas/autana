@@ -1,7 +1,7 @@
 name: Bakes
 
 # The expensive bakes (launcher/tools/bake/bake.py). On a pull request the CPU
-# job bakes every mesh and sound launcher/bakes.lock has no row for and uploads the
+# job bakes every mesh, fit's levels and sound launcher/bakes.lock has no row for and uploads the
 # files; the lock job then fails until the author runs
 # `bake.py lock --from-run N` with that run and commits the lock. A mesh's
 # bytes differ by CPU vendor, so on a runner of another vendor than the lock's
@@ -71,10 +71,11 @@ jobs:
           python launcher/tools/bake/bake.py list --missing --kind blend | tee "$RUNNER_TEMP/blend.txt"
           python launcher/tools/bake/bake.py list --missing --kind mesh | tee "$RUNNER_TEMP/mesh.txt"
           python launcher/tools/bake/bake.py list --missing --kind sound | tee "$RUNNER_TEMP/sound.txt"
-          echo "mesh=$(wc -l < "$RUNNER_TEMP/mesh.txt")" >> "$GITHUB_OUTPUT"
+          python launcher/tools/bake/bake.py list --missing --kind levels | tee "$RUNNER_TEMP/levels.txt"
+          echo "mesh=$(cat "$RUNNER_TEMP/mesh.txt" "$RUNNER_TEMP/levels.txt" | wc -l)" >> "$GITHUB_OUTPUT"
           echo "sound=$(wc -l < "$RUNNER_TEMP/sound.txt")" >> "$GITHUB_OUTPUT"
           echo "blend=$(wc -l < "$RUNNER_TEMP/blend.txt")" >> "$GITHUB_OUTPUT"
-          echo "count=$(cat "$RUNNER_TEMP/blend.txt" "$RUNNER_TEMP/mesh.txt" "$RUNNER_TEMP/sound.txt" | wc -l)" >> "$GITHUB_OUTPUT"
+          echo "count=$(cat "$RUNNER_TEMP/blend.txt" "$RUNNER_TEMP/mesh.txt" "$RUNNER_TEMP/levels.txt" "$RUNNER_TEMP/sound.txt" | wc -l)" >> "$GITHUB_OUTPUT"
 
       # The exporter names the Blender it needs; the job installs that one.
       - name: Install Blender
@@ -118,6 +119,7 @@ jobs:
           if [ "$GITHUB_RUN_ATTEMPT" -gt 1 ]; then earlier=(--from-run "$GITHUB_RUN_ID"); fi
           python launcher/tools/bake/bake.py bake --kind blend --out "$RUNNER_TEMP/bakes" "${earlier[@]}"
           python launcher/tools/bake/bake.py bake --kind mesh --out "$RUNNER_TEMP/bakes"
+          python launcher/tools/bake/bake.py bake --kind levels --out "$RUNNER_TEMP/bakes"
           python launcher/tools/bake/bake.py bake --kind sound --out "$RUNNER_TEMP/bakes"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

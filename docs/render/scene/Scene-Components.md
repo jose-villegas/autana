@@ -21,14 +21,15 @@ false for a non-camera entity or an invalid value.
 | | `transform_world()` / `_set_world()` | the derived world; setting it stores the local that puts it there |
 | | `transform_world_matrix()` | the same world as the `mat4f_t` the renderer draws with |
 | `scene/renderer/renderer.h` | `renderer_mesh()` / `_mesh_id()` | the mesh it draws, or NULL |
-| | `renderer_set_mesh()` | draws a mesh made at run time in place of its loaded one; call again after each rebuild; false for no renderer or a skinned one |
+| | `renderer_set_mesh()` | draws a mesh made at run time in place of its loaded one; call again after each rebuild; false for no renderer, a skinned one, or a mesh with more levels of detail than the loaded one |
 | | `renderer_set_skin()` | skins it by asset id |
 | `scene/skin/skin.h` | `skin_set_light_mode()` | [Per-renderer lighting mode](#per-renderer-lighting-mode) |
 | `scene/animator/animator.h` | `animator_set_clips()` | attaches clips and a skeleton |
 | | `animator_play()`, `_set_speed()`, `_set_paused()`, `_seek()` | control its playback slots |
-| | `animator_clip_count()`, `_clip_name()`, `_clip_duration_ms()`, `_current_clip()` | query them |
+| | `animator_clip_count()`, `_clip_name()`, `_clip_duration_ms()`, `_current_clip()`, `_paused()` | query them |
 | `scene/camera/camera.h` | `camera_first(within)`, `camera_lens()` | the first camera below `within`; a camera's lens |
-| | `camera_activate()`, `camera_deactivate()` | the one active camera engine-wide |
+| | `camera_activate()`, `camera_deactivate()`, `camera_active()` | the one active camera engine-wide |
+| | `camera_cut()` | after a jump of the active camera, the renderer drops what it carried from earlier frames |
 | | `camera_set_present()`, `_set_small_fill()`, `_set_skip_hidden()` | per-camera settings; small fill defaults to `SMALL_FILL_SMOOTH` ([Small fill](../frame/Coverage.md#small-fill)) |
 | | `camera_set_shift()` | an off-axis view along the camera's right and up, in picture short sides ([Camera](Camera.md#lens-shift)) |
 | `scene/light/light.h` | `light_set_color()` / `_set_intensity()` | attach or update one directional light: color finite linear RGB in [0,1], intensity finite and nonnegative; a full light array or a skin without vertex colors fails without mutation |

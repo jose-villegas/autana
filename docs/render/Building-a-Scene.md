@@ -10,7 +10,7 @@ flowchart LR
     Model["Source model<br/><i>zipped OBJ</i>"] --> Import["Import file<br/><i>.import.toml</i>"]
     Import --> Scene["Scene file<br/><i>.scene.toml</i>"]
     Scene --> Bake["mesh_import.py"]
-    Bake --> Meshes["Baked meshes<br/><i>name.mesh</i>"]
+    Bake --> Meshes["Baked meshes<br/><i>name.bundle</i>"]
     Meshes --> Pack["build_pack.py<br/><i>one pack per scene:<br/>its entry, meshes and clip</i>"]
     Scene --> Pack
     Pack --> Draw["Your app<br/><i>scene_load(), camera_activate()</i>"]
@@ -176,5 +176,5 @@ composes the active scene before the app's `frame()`, as the shell does.
 - A host suite that draws instances at transforms and checks where they appear
   is `launcher/test/suites/suite_r3d_instance.c`; copy its quad meshes to test your
   own placement.
-- After a change to the tools, bake again: the committed `.mesh` entries change
+- After a change to the tools, bake again: the keyed `.bundle` outputs change
   only where the change reaches them.

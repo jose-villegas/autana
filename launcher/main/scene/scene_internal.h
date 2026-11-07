@@ -14,6 +14,7 @@
 #include "core/pending.h"
 #include "hash/name_hash.h"
 #include "math/linear/mat3f.h"
+#include "render/lod/r3d_lod.h"
 #include "render/r3d_instance.h"
 #include "render/skin/r3d_skin_light.h"
 #include "scene/animator/animator.h"
@@ -130,7 +131,9 @@ typedef struct {
     mat4f_t model;
     box3f_t world_bounds; /* the mesh's root box through `model`, kept with it */
     scene_row_t entity;
-    bool placed; /* false while the transform is the identity: drawn as it is */
+    bool placed;          /* false while the transform is the identity: drawn as it is */
+    uint16_t lod_words;   /* the coarse bits held for the mesh opened: R3D_LOD_WORDS of its groups */
+    uint32_t* lod_coarse; /* into the scene's lod_bits, or NULL without levels */
 } scene_renderer_t;
 
 /* Sets `r`'s world box from its mesh and model; call after either changes,
@@ -241,6 +244,7 @@ struct scene {
     int world_count;
     mat4f_t* worlds;             /* one per entity with children, in entity order */
     scene_row_t* world_entities; /* the entity each of `worlds` belongs to */
+    uint32_t* lod_bits;          /* every renderer's coarse bits, kept from frame to frame */
     /* The per-frame loops walk these, not every entity or renderer: a scene
      * with many disabled copies has few of either. */
     scene_row_t* staged; /* entities with an animator, a skin or a light, in entity order */

@@ -21,6 +21,7 @@
 #include "core/memory.h"
 #include "display/viewport.h"
 #include "r3d_lit_mesh_expect.h"
+#include "render/lod/r3d_lod.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_pipeline.h"
 #include "render/raster.h"
@@ -109,14 +110,15 @@ check_the_tree_walk_keeps_exactly_what_a_flat_test_keeps(const r3d_lit_mesh_t* m
         r3d_lens_init(&lens, &view, mesh->position_scale);
 
         memset(kept, 0, (size_t)mesh->cluster_count);
-        const int count = r3d_pipeline_cull(mesh, &lens, walked, work, NULL);
+        const int count = r3d_pipeline_cull(mesh, &lens, NULL, walked, work, NULL);
         for (int i = 0; i < count; i++) {
             TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, kept[walked[i]], "a cluster was listed twice");
             kept[walked[i]] = 1;
         }
         int flat = 0;
         for (int c = 0; c < mesh->cluster_count; c++) {
-            const bool in_view = cluster_in_view(&mesh->clusters[c], &lens);
+            /* Without coarse bits the walk draws the finest level. */
+            const bool in_view = r3d_lod_drawn(mesh, c, NULL) && cluster_in_view(&mesh->clusters[c], &lens);
             flat += in_view;
             TEST_ASSERT_EQUAL_MESSAGE(in_view, kept[c], "the walk and the flat test disagree on a cluster");
         }
@@ -206,7 +208,7 @@ clearance(const r3d_lit_mesh_t* mesh, v3 p) {
     float best = INFINITY;
     for (int i = 0; i < mesh->cluster_count; i++) {
         const r3d_lit_cluster_t* c = &mesh->clusters[i];
-        if (box_distance(mesh, c, p) >= best) {
+        if (!r3d_lod_drawn(mesh, i, NULL) || box_distance(mesh, c, p) >= best) {
             continue;
         }
         for (int t = c->triangle_first; t < c->triangle_first + c->triangle_count; t++) {
@@ -349,7 +351,7 @@ share_covered_at(const raster_t* raster, uint32_t t_ms) {
  * only the building's far sides, about 0.6. */
 static void
 check_the_flythrough_sees_mostly_building(const r3d_lit_mesh_t* mesh) {
-    const r3d_instance_t instance = {mesh, NULL, NULL};
+    const r3d_instance_t instance = {mesh, NULL, NULL, NULL};
     raster_t raster = {
         .instances = &instance, .instance_count = 1, .width = SPONZA_RENDER_WIDTH, .height = SPONZA_RENDER_HEIGHT};
     void* scratch = memory_alloc(raster_scratch_bytes(&raster), MEMORY_APP);

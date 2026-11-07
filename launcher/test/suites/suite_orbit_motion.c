@@ -9,6 +9,7 @@
 
 #include <math.h>
 
+#include "box3f_expect.h"
 #include "gfx/gfx.h"
 #include "kinematics/orbit/orbit_motion.h"
 #include "math/scalar/math_const.h"
@@ -142,13 +143,6 @@ ahead_of(const transformf_t* light, float ahead) {
     return mat4f_apply(&m, (vec3f_t){0.0F, 0.0F, ahead});
 }
 
-static void
-assert_near(vec3f_t want, vec3f_t got) {
-    TEST_ASSERT_FLOAT_WITHIN(STATE_EPSILON, want.x, got.x);
-    TEST_ASSERT_FLOAT_WITHIN(STATE_EPSILON, want.y, got.y);
-    TEST_ASSERT_FLOAT_WITHIN(STATE_EPSILON, want.z, got.z);
-}
-
 void
 test_orbit_motion_a_light_orbiting_a_prop_keeps_shining_on_it(void) {
     const vec3f_t prop = {1.0F, 0.0F, -2.0F};
@@ -159,12 +153,12 @@ test_orbit_motion_a_light_orbiting_a_prop_keeps_shining_on_it(void) {
         (orbit_motion_state_t){90.0F * MATH_RADIANS_PER_DEGREE, 30.0F * MATH_RADIANS_PER_DEGREE, logf(reach)},
         open_limits(logf(reach)));
     transformf_t light = orbit_motion_pose(&orbit);
-    assert_near(prop, ahead_of(&light, reach));
+    vec3f_expect_within(STATE_EPSILON, prop, ahead_of(&light, reach));
     drag(&orbit, DRAG_TURN, DRAG_TURN, DRAG_FRAMES);
     const vec3f_t before = light.position;
     light = orbit_motion_pose(&orbit);
     TEST_ASSERT_FALSE_MESSAGE(vec3f_equal(before, light.position), "the light moved");
-    assert_near(prop, ahead_of(&light, reach));
+    vec3f_expect_within(STATE_EPSILON, prop, ahead_of(&light, reach));
 }
 
 static void
