@@ -358,7 +358,7 @@ class CaptureRulesTests(unittest.TestCase):
         plan, error, summary = self.measure_silent(('a', 'b'))
         self.assertRegex(str(error), r"silent.*no timing rows with table 'table_silent'.*table command")
         self.assertEqual(sorted(item['side'] for item in plan), ['a', 'b'])
-        self.assertIn('Incomplete', summary)
+        self.assertIn(f"Incomplete: stopped: {error}", summary)
 
     def test_every_silent_suite_is_named_with_its_table(self):
         _, error, _ = self.measure_silent(('a', 'b'), silent=('silent', 'mute'))
