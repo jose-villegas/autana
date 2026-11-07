@@ -948,7 +948,9 @@ def seed(found, cache, lock=None, made=None, missing=None):
             if previous_row is not None:
                 rows.append(previous_row)
             continue
-        held = lock.get(bake.key) or (made or {}).get(bake.key)
+        held = lock.get(bake.key)
+        if held is None or held.get("seeded"):
+            held = (made or {}).get(bake.key) or held
         if held is not None and not held.get("seeded"):
             rows.append({name: held[name] for name in ROW_FIELDS if name in held})
             continue

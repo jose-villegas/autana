@@ -1046,6 +1046,43 @@ set_up_capped_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* con
     return true;
 }
 
+/* A small triangle drawn by its chosen small fill: styled (grain, dither) or plain. */
+static inline __attribute__((always_inline)) void
+fill_small_as(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+              const r3d_span_vertex_t* c, bool positive, recti_t box, const uint16_t* face, int style) {
+    if (style == SMALL_FILL_GRAIN || style == SMALL_FILL_DITHER) {
+        fill_small_styled(target, a, b, c, positive, box, style);
+    } else {
+        fill_small(target, a, b, c, positive, box, face);
+    }
+}
+
+/* A masked triangle's fill: Gouraud colour (or its face colour) plus the mask's affine u, v gradients. */
+static bool
+set_up_masked(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, recti_t box,
+              const uint16_t* face, fill_t* f, gradients_t* g, gradients_t* uv) {
+    plane_t p;
+    if (!plane_of(a, b, c, box.x, box.y, &p)) {
+        return false;
+    }
+    uv->x_origin = box.x;
+    gradient(&p, a->u * R3D_SPAN_MASK_SCALE, b->u * R3D_SPAN_MASK_SCALE, c->u * R3D_SPAN_MASK_SCALE, 0, uv);
+    gradient(&p, a->v * R3D_SPAN_MASK_SCALE, b->v * R3D_SPAN_MASK_SCALE, c->v * R3D_SPAN_MASK_SCALE, 1, uv);
+    if (face == NULL) {
+        colour_gradients(&p, a, b, c, g);
+    } else {
+        const uint32_t rgb = rgb565be_to_rgb888(*face);
+        g->base[1] = (int32_t)((rgb >> (2 * CHAR_BIT)) * R3D_SPAN_COLOR_SCALE);
+        g->base[2] = (int32_t)(((rgb >> CHAR_BIT) & UINT8_MAX) * R3D_SPAN_COLOR_SCALE);
+        g->base[3] = (int32_t)((rgb & UINT8_MAX) * R3D_SPAN_COLOR_SCALE);
+    }
+    f->shading = FILL_GOURAUD;
+    g->in_range = false;
+    f->uv = uv;
+    f->y_origin = box.y;
+    return true;
+}
+
 static inline __attribute__((always_inline)) void
 triangle_of(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
             const r3d_span_vertex_t* c, const uint16_t* face, bool capped, bool masked) {
@@ -1062,11 +1099,7 @@ triangle_of(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r
     const int style = select_small(a, b, c, e.centres, face != NULL, target->small_fill);
     if (!masked && style != SMALL_FILL_WALK) {
         FRAME_LAP("r3d.draw.fill");
-        if (style == SMALL_FILL_GRAIN || style == SMALL_FILL_DITHER) {
-            fill_small_styled(target, a, b, c, area2 > 0, box, style);
-        } else {
-            fill_small(target, a, b, c, area2 > 0, box, face);
-        }
+        fill_small_as(target, a, b, c, area2 > 0, box, face, style);
         return;
     }
 
@@ -1105,26 +1138,8 @@ triangle_of(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r
                       (area2 > 0) != odd};
     FRAME_LAP("r3d.draw.fill");
     gradients_t uv = {0};
-    if (masked) {
-        plane_t p;
-        if (!plane_of(a, b, c, box.x, box.y, &p)) {
-            return;
-        }
-        uv.x_origin = box.x;
-        gradient(&p, a->u * R3D_SPAN_MASK_SCALE, b->u * R3D_SPAN_MASK_SCALE, c->u * R3D_SPAN_MASK_SCALE, 0, &uv);
-        gradient(&p, a->v * R3D_SPAN_MASK_SCALE, b->v * R3D_SPAN_MASK_SCALE, c->v * R3D_SPAN_MASK_SCALE, 1, &uv);
-        if (face == NULL) {
-            colour_gradients(&p, a, b, c, &g);
-        } else {
-            const uint32_t rgb = rgb565be_to_rgb888(*face);
-            g.base[1] = (int32_t)((rgb >> (2 * CHAR_BIT)) * R3D_SPAN_COLOR_SCALE);
-            g.base[2] = (int32_t)(((rgb >> CHAR_BIT) & UINT8_MAX) * R3D_SPAN_COLOR_SCALE);
-            g.base[3] = (int32_t)((rgb & UINT8_MAX) * R3D_SPAN_COLOR_SCALE);
-        }
-        f.shading = FILL_GOURAUD;
-        g.in_range = false;
-        f.uv = &uv;
-        f.y_origin = box.y;
+    if (masked && !set_up_masked(a, b, c, box, face, &f, &g, &uv)) {
+        return;
     }
     walk(target, &f, &w, false, capped, masked);
 }

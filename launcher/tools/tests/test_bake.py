@@ -1448,6 +1448,12 @@ class LockTests(unittest.TestCase):
         with self.assertRaisesRegex(bake.BakeMissing, "two.bundle: its start k+ with sha256 e+ is neither locked"):
             produce.start_file(fit, self.cache, {})
 
+    def test_a_run_that_makes_a_seeded_key_clears_its_mark(self):
+        seeded = {**self.row, "key": "k" * 64, "seeded": True}
+        made = {**self.row, "key": "k" * 64, "run": 9}
+        rows = bake.seed([bake_of("k" * 64, self.tree)], self.cache, {"k" * 64: seeded}, {"k" * 64: made})
+        self.assertEqual([(row.get("run"), row.get("seeded", False)) for row in rows], [(9, False)])
+
     def test_one_seed_from_a_run_locks_the_start_and_carries_the_fits_bytes(self):
         start = bake_of("k" * 64, self.tree)
         fit = bake.Bake(output="two.bundle", source=self.tree, holder="two", kind="fit", key="n" * 64,

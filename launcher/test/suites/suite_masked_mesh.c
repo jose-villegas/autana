@@ -85,6 +85,29 @@ record_written(const r3d_span_writer_t* writer, const gfx_target_t* rows, int y,
     }
 }
 
+/* Depth before the draw, cycling nearest (the quad loses), the quad's own
+ * depth (a tie loses) and empty (the quad wins). */
+static uint16_t
+depth_before(int i) {
+    const int kind = i % MASK_SHADINGS;
+    if (kind == 0) {
+        return R3D_DEPTH_NEAREST;
+    }
+    return kind == 1 ? MASK_DEPTH : R3D_DEPTH_EMPTY;
+}
+
+static void
+assert_only_winners_written(const uint16_t* hits) {
+    for (int y = 0; y < MASK_SIDE; y++) {
+        for (int x = 0; x < MASK_SIDE; x++) {
+            const int i = y * MASK_SIDE + x;
+            const bool won = (x + y) % 2 != 0 && depth_before(i) == R3D_DEPTH_EMPTY;
+            TEST_ASSERT_EQUAL_UINT16(won ? 1 : 0, hits[i]);
+            TEST_ASSERT_EQUAL_HEX16(won ? MASK_COLOR : 0, pixels[i]);
+        }
+    }
+}
+
 static void
 test_masked_writers_see_only_depth_winners(void) {
     r3d_span_target_t target = fixture();
@@ -96,19 +119,10 @@ test_masked_writers_see_only_depth_winners(void) {
     for (int shading = 0; shading < MASK_SHADINGS; shading++) {
         memset(pixels, 0, MASK_PIXELS * 3 * sizeof(*pixels));
         for (int i = 0; i < MASK_PIXELS; i++) {
-            depth[i] = i % MASK_SHADINGS == 0   ? R3D_DEPTH_NEAREST
-                       : i % MASK_SHADINGS == 1 ? MASK_DEPTH
-                                                : R3D_DEPTH_EMPTY;
+            depth[i] = depth_before(i);
         }
         draw_checker(&target, shading);
-        for (int y = 0; y < MASK_SIDE; y++) {
-            for (int x = 0; x < MASK_SIDE; x++) {
-                const int i = y * MASK_SIDE + x;
-                const bool won = (x + y) % 2 != 0 && i % MASK_SHADINGS == MASK_SHADINGS - 1;
-                TEST_ASSERT_EQUAL_UINT16(won ? 1 : 0, hits[i]);
-                TEST_ASSERT_EQUAL_HEX16(won ? MASK_COLOR : 0, pixels[i]);
-            }
-        }
+        assert_only_winners_written(hits);
     }
 }
 

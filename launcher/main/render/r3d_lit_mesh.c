@@ -115,26 +115,32 @@ lod_id_fits(uint16_t id, int group_count) {
     return id == R3D_LOD_NONE || id < group_count;
 }
 
+/* One cluster's LOD ids: in range, none for a masked cluster (finest only),
+ * and its group inside its parent's with no larger error. */
+static bool
+cluster_lod_is_ordered(const r3d_lit_mesh_t* mesh, int c) {
+    const r3d_lit_cluster_lod_t lod = mesh->cluster_lod[c];
+    if (mesh->clusters[c].masked) {
+        return lod.own == R3D_LOD_NONE && lod.parent == R3D_LOD_NONE;
+    }
+    if (!lod_id_fits(lod.own, mesh->lod_group_count) || !lod_id_fits(lod.parent, mesh->lod_group_count)) {
+        return false;
+    }
+    if (lod.own == R3D_LOD_NONE || lod.parent == R3D_LOD_NONE) {
+        return true;
+    }
+    const r3d_lit_lod_group_t* inner = &mesh->lod_groups[lod.own];
+    const r3d_lit_lod_group_t* outer = &mesh->lod_groups[lod.parent];
+    return inner->error <= outer->error && spheres_contains_ball(outer->bounds, inner->bounds, R3D_LOD_ENCLOSE_MARGIN);
+}
+
 /* The pick's ordering (render/r3d_lod.h): a cluster's own group, the one
  * simplified into it, sits inside its parent with R3D_LOD_ENCLOSE_MARGIN to
  * spare and has no larger error, so a parent never projects smaller. */
 static bool
 lod_is_ordered(const r3d_lit_mesh_t* mesh) {
     for (int c = 0; c < mesh->cluster_count; c++) {
-        const r3d_lit_cluster_lod_t lod = mesh->cluster_lod[c];
-        if (mesh->clusters[c].masked && (lod.own != R3D_LOD_NONE || lod.parent != R3D_LOD_NONE)) {
-            return false;
-        }
-        if (!lod_id_fits(lod.own, mesh->lod_group_count) || !lod_id_fits(lod.parent, mesh->lod_group_count)) {
-            return false;
-        }
-        if (lod.own == R3D_LOD_NONE || lod.parent == R3D_LOD_NONE) {
-            continue;
-        }
-        const r3d_lit_lod_group_t* inner = &mesh->lod_groups[lod.own];
-        const r3d_lit_lod_group_t* outer = &mesh->lod_groups[lod.parent];
-        if (inner->error > outer->error
-            || !spheres_contains_ball(outer->bounds, inner->bounds, R3D_LOD_ENCLOSE_MARGIN)) {
+        if (!cluster_lod_is_ordered(mesh, c)) {
             return false;
         }
     }
@@ -241,6 +247,19 @@ r3d_lit_mesh_levels_from_asset(const asset_view_t* levels, r3d_lit_mesh_t* mesh)
     return ASSET_OK;
 }
 
+/* Masked clusters form the registry's tail: none is followed by an unmasked one. */
+static bool
+masked_clusters_are_last(const r3d_lit_mesh_t* mesh) {
+    bool masked = false;
+    for (int c = 0; c < mesh->cluster_count; c++) {
+        if (masked && !mesh->clusters[c].masked) {
+            return false;
+        }
+        masked = mesh->clusters[c].masked;
+    }
+    return true;
+}
+
 asset_status_t
 r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
     *mesh = (r3d_lit_mesh_t){0};
@@ -281,14 +300,7 @@ r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
         || !colours_fit || !clusters_are_inside(&built) || !nodes_are_inside(&built)) {
         return ASSET_ERR_BOUNDS;
     }
-    bool masked = false;
-    for (int c = 0; c < built.cluster_count; c++) {
-        if (masked && !built.clusters[c].masked) {
-            return ASSET_ERR_FORMAT;
-        }
-        masked = built.clusters[c].masked;
-    }
-    if (!clusters_cover_vertices(&built)) {
+    if (!masked_clusters_are_last(&built) || !clusters_cover_vertices(&built)) {
         return ASSET_ERR_FORMAT;
     }
     *mesh = built;
@@ -356,6 +368,39 @@ sibling_name(const char* mesh_id, const char* suffix, char out[ASSET_NAME_MAX]) 
     return ASSET_OK;
 }
 
+/* The mesh's optional LLOD sibling; none leaves it without levels. */
+static asset_status_t
+open_levels(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh) {
+    char name[ASSET_NAME_MAX];
+    asset_status_t status = sibling_name(id, LLOD_NAME_SUFFIX, name);
+    if (status != ASSET_OK) {
+        return status;
+    }
+    asset_view_t asset;
+    status = asset_pack_find(pack, name, LLOD_ASSET, &asset);
+    if (status == ASSET_ERR_NOT_FOUND) {
+        return ASSET_OK;
+    }
+    return status == ASSET_OK ? r3d_lit_mesh_levels_from_asset(&asset, mesh) : status;
+}
+
+/* The LMSK sibling: required exactly when the mesh has a masked cluster. */
+static asset_status_t
+open_mask(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh) {
+    const bool masked = masked_vertex_first(mesh) >= 0;
+    char name[ASSET_NAME_MAX];
+    asset_status_t status = sibling_name(id, LMSK_NAME_SUFFIX, name);
+    if (status != ASSET_OK) {
+        return status == ASSET_ERR_BOUNDS && !masked ? ASSET_OK : status;
+    }
+    asset_view_t asset;
+    status = asset_pack_find(pack, name, LMSK_ASSET, &asset);
+    if (status == ASSET_ERR_NOT_FOUND) {
+        return masked ? ASSET_ERR_FORMAT : ASSET_OK;
+    }
+    return status == ASSET_OK ? r3d_lit_mesh_mask_from_asset(&asset, mesh) : status;
+}
+
 asset_status_t
 r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh) {
     *mesh = (r3d_lit_mesh_t){0};
@@ -368,28 +413,9 @@ r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh
     if (status != ASSET_OK) {
         return status;
     }
-    char name[ASSET_NAME_MAX];
-    status = sibling_name(id, LLOD_NAME_SUFFIX, name);
+    status = open_levels(pack, id, mesh);
     if (status == ASSET_OK) {
-        status = asset_pack_find(pack, name, LLOD_ASSET, &asset);
-        if (status == ASSET_OK) {
-            status = r3d_lit_mesh_levels_from_asset(&asset, mesh);
-        } else if (status == ASSET_ERR_NOT_FOUND) {
-            status = ASSET_OK;
-        }
-    }
-    if (status == ASSET_OK) {
-        status = sibling_name(id, LMSK_NAME_SUFFIX, name);
-        if (status == ASSET_ERR_BOUNDS && masked_vertex_first(mesh) < 0) {
-            status = ASSET_OK;
-        } else if (status == ASSET_OK) {
-            status = asset_pack_find(pack, name, LMSK_ASSET, &asset);
-            if (status == ASSET_OK) {
-                status = r3d_lit_mesh_mask_from_asset(&asset, mesh);
-            } else if (status == ASSET_ERR_NOT_FOUND) {
-                status = masked_vertex_first(mesh) < 0 ? ASSET_OK : ASSET_ERR_FORMAT;
-            }
-        }
+        status = open_mask(pack, id, mesh);
     }
     if (status != ASSET_OK) {
         *mesh = (r3d_lit_mesh_t){0};
