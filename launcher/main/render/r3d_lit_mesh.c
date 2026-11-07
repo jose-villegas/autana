@@ -8,10 +8,11 @@
 #include "asset/asset_entry.h"
 #include "render/lcol_format.h"
 #include "render/llod_format.h"
+#include "render/lmsk_format.h"
 
 /* The entry's bytes are the structs' own layout, written by lit_mesh.py. */
 _Static_assert(sizeof(r3d_lit_cluster_t) == 22 && offsetof(r3d_lit_cluster_t, bounds) == 8
-                   && offsetof(r3d_lit_cluster_t, double_sided) == 20,
+                   && offsetof(r3d_lit_cluster_t, double_sided) == 20 && offsetof(r3d_lit_cluster_t, masked) == 21,
                "r3d_lit_cluster_t is not the layout lit_mesh.py writes");
 _Static_assert(sizeof(r3d_lit_node_t) == 16 && offsetof(r3d_lit_node_t, first) == 12
                    && offsetof(r3d_lit_node_t, leaf) == 15,
@@ -121,6 +122,9 @@ static bool
 lod_is_ordered(const r3d_lit_mesh_t* mesh) {
     for (int c = 0; c < mesh->cluster_count; c++) {
         const r3d_lit_cluster_lod_t lod = mesh->cluster_lod[c];
+        if (mesh->clusters[c].masked && (lod.own != R3D_LOD_NONE || lod.parent != R3D_LOD_NONE)) {
+            return false;
+        }
         if (!lod_id_fits(lod.own, mesh->lod_group_count) || !lod_id_fits(lod.parent, mesh->lod_group_count)) {
             return false;
         }
@@ -277,10 +281,63 @@ r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
         || !colours_fit || !clusters_are_inside(&built) || !nodes_are_inside(&built)) {
         return ASSET_ERR_BOUNDS;
     }
+    bool masked = false;
+    for (int c = 0; c < built.cluster_count; c++) {
+        if (masked && !built.clusters[c].masked) {
+            return ASSET_ERR_FORMAT;
+        }
+        masked = built.clusters[c].masked;
+    }
     if (!clusters_cover_vertices(&built)) {
         return ASSET_ERR_FORMAT;
     }
     *mesh = built;
+    return ASSET_OK;
+}
+
+static int
+masked_vertex_first(const r3d_lit_mesh_t* mesh) {
+    for (int c = 0; c < mesh->cluster_count; c++) {
+        if (mesh->clusters[c].masked) {
+            return mesh->clusters[c].vertex_first;
+        }
+    }
+    return -1;
+}
+
+asset_status_t
+r3d_lit_mesh_mask_from_asset(const asset_view_t* mask, r3d_lit_mesh_t* mesh) {
+    mesh->mask_uvs = NULL;
+    mesh->mask_vertex_first = 0;
+    mesh->mask_rows = NULL;
+    mesh->mask_row_count = 0;
+    const asset_status_t status =
+        asset_entry_validate(*mask, LMSK_VERSION, LMSK_AT_VERSION, LMSK_HEADER_SIZE, ENTRY_ALIGNMENT);
+    if (status != ASSET_OK) {
+        return status == ASSET_ERR_VERSION ? ASSET_ERR_FORMAT : status;
+    }
+    const uint32_t first = asset_read_u32(mask->data + LMSK_AT_VERTEX_FIRST);
+    const uint32_t rows = asset_read_u32(mask->data + LMSK_AT_MASK_ROWS);
+    const int masked_first = masked_vertex_first(mesh);
+    if (asset_read_u16(mask->data + LMSK_AT_MASK_WIDTH) != LMSK_MASK_WIDTH || masked_first < 0
+        || first != (uint32_t)masked_first) {
+        return ASSET_ERR_FORMAT;
+    }
+    const uint64_t atlas_at = LMSK_HEADER_SIZE + ((uint64_t)(mesh->vertex_count - first) * sizeof(uint16_t[2]));
+    if (atlas_at + ((uint64_t)rows * sizeof(uint32_t)) != mask->size || rows > INT_MAX) {
+        return ASSET_ERR_BOUNDS;
+    }
+    const uint16_t (*uvs)[2] = (const void*)(mask->data + LMSK_HEADER_SIZE);
+    for (int v = (int)first; v < mesh->vertex_count; v++) {
+        if (uvs[v - first][0] >= (LMSK_MASK_WIDTH << LMSK_UV_FRACTION_BITS)
+            || (uint64_t)uvs[v - first][1] >= ((uint64_t)rows << LMSK_UV_FRACTION_BITS)) {
+            return ASSET_ERR_BOUNDS;
+        }
+    }
+    mesh->mask_vertex_first = (int)first;
+    mesh->mask_uvs = uvs;
+    mesh->mask_rows = (const void*)(mask->data + atlas_at);
+    mesh->mask_row_count = (int)rows;
     return ASSET_OK;
 }
 
@@ -315,11 +372,23 @@ r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh
     status = sibling_name(id, LLOD_NAME_SUFFIX, name);
     if (status == ASSET_OK) {
         status = asset_pack_find(pack, name, LLOD_ASSET, &asset);
-        if (status == ASSET_ERR_NOT_FOUND) {
-            return ASSET_OK;
-        }
         if (status == ASSET_OK) {
             status = r3d_lit_mesh_levels_from_asset(&asset, mesh);
+        } else if (status == ASSET_ERR_NOT_FOUND) {
+            status = ASSET_OK;
+        }
+    }
+    if (status == ASSET_OK) {
+        status = sibling_name(id, LMSK_NAME_SUFFIX, name);
+        if (status == ASSET_ERR_BOUNDS && masked_vertex_first(mesh) < 0) {
+            status = ASSET_OK;
+        } else if (status == ASSET_OK) {
+            status = asset_pack_find(pack, name, LMSK_ASSET, &asset);
+            if (status == ASSET_OK) {
+                status = r3d_lit_mesh_mask_from_asset(&asset, mesh);
+            } else if (status == ASSET_ERR_NOT_FOUND) {
+                status = masked_vertex_first(mesh) < 0 ? ASSET_OK : ASSET_ERR_FORMAT;
+            }
         }
     }
     if (status != ASSET_OK) {

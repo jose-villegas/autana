@@ -2,9 +2,9 @@
  * Device-only suite, on request: what a 1-bit card mask costs a span. One
  * core fills a render-sized colour and depth target in PSRAM, where the mesh
  * raster keeps its own, with square cards of side 4 to 64 pixels, one span
- * per card row: with the Gouraud fill, and with the same fill testing a
- * 32x32 1-bit mask per pixel. The masks are two cards baked from Sponza's
- * vines. Each line gives the median cycles of a whole target with its spans,
+ * per card row: with r3d_span's Gouraud fill, and with its masked fill
+ * testing a 32x32 1-bit mask per pixel. The masks are two cards baked from
+ * Sponza's vines. Each line gives the median cycles of a whole target with its spans,
  * pixels and written pixels, so cycles per span, per pixel and per written
  * pixel can be fitted.
  *
@@ -21,7 +21,6 @@
 #include "testkit/bench.h"
 #include "unity.h"
 
-#include "esp_attr.h"
 #include "esp_log.h"
 
 #include "../sponza_content.h"
@@ -34,8 +33,6 @@ static const char* TAG = "masked_span";
 #define TARGET_HEIGHT SPONZA_RENDER_HEIGHT
 #define MASK_SIDE     32
 #define MASK_COUNT    2
-/* Mask coordinates step in 16.16 fixed point across a span. */
-#define MASK_U_SHIFT  16
 
 /* Two 32x32 card masks, one bit per texel; their opaque share in mask_permille. */
 static const uint32_t masks[MASK_COUNT][MASK_SIDE] = {
@@ -53,66 +50,17 @@ static const int mask_permille[MASK_COUNT] = {285, 631};
 static const int card_sides[] = {4, 8, 16, 32, 64};
 
 /* A Gouraud ramp across every span: start colour and per-pixel steps. */
-#define RAMP_R                30000
-#define RAMP_G                40000
-#define RAMP_B                20000
-#define RAMP_DZ               3
-#define RAMP_DR               40
-#define RAMP_DG               (-30)
-#define RAMP_DB               20
+#define RAMP_R  30000
+#define RAMP_G  40000
+#define RAMP_B  20000
+#define RAMP_DZ 3
+#define RAMP_DR 40
+#define RAMP_DG (-30)
+#define RAMP_DB 20
+static const int32_t ramp_step[R3D_SPAN_ATTRIBUTES] = {RAMP_DZ, RAMP_DR, RAMP_DG, RAMP_DB};
 /* Each timed run draws this much nearer than the last, so every run passes
  * the depth test; the target's widest card ramp stays below it. */
-#define RUN_DEPTH_STEP        (TARGET_WIDTH * RAMP_DZ + MASK_SIDE)
-
-/* The fills run from IRAM as the draw path's do, so the mask test is timed
- * where it would run, without spending the draw path's own budget.
- * IRAM budget: diag 223 B */
-#define MASKED_SPAN_IRAM_ATTR IRAM_ATTR __attribute__((aligned(4)))
-
-#if defined(__XTENSA__) && __has_attribute(optimize)
-#define MASKED_FILL_ATTR __attribute__((optimize("no-schedule-insns")))
-#else
-#define MASKED_FILL_ATTR
-#endif
-
-/* r3d_span's Gouraud fill loop, so the masked arm below differs from it by
- * the mask test alone. */
-static MASKED_SPAN_IRAM_ATTR __attribute__((noinline)) MASKED_FILL_ATTR int
-fill_opaque(uint16_t* depth, uint16_t* color, int count, int32_t z, int32_t r, int32_t g, int32_t b, int32_t dz,
-            int32_t dr, int32_t dg, int32_t db) {
-    for (int i = 0; i < count; i++) {
-        const uint16_t zq = (uint16_t)(z >> R3D_DEPTH_SHIFT);
-        if (zq > depth[i]) {
-            depth[i] = zq;
-            color[i] = r3d_span_pack(r, g, b);
-        }
-        z += dz;
-        r += dr;
-        g += dg;
-        b += db;
-    }
-    return count;
-}
-
-static MASKED_SPAN_IRAM_ATTR __attribute__((noinline)) MASKED_FILL_ATTR int
-fill_masked(uint16_t* depth, uint16_t* color, int count, int32_t z, int32_t r, int32_t g, int32_t b, int32_t dz,
-            int32_t dr, int32_t dg, int32_t db, uint32_t mask_row, uint32_t u, uint32_t du) {
-    int written = 0;
-    for (int i = 0; i < count; i++) {
-        const uint16_t zq = (uint16_t)(z >> R3D_DEPTH_SHIFT);
-        if (((mask_row >> (u >> MASK_U_SHIFT)) & 1U) && zq > depth[i]) {
-            depth[i] = zq;
-            color[i] = r3d_span_pack(r, g, b);
-            written++;
-        }
-        z += dz;
-        r += dr;
-        g += dg;
-        b += db;
-        u += du;
-    }
-    return written;
-}
+#define RUN_DEPTH_STEP (TARGET_WIDTH * RAMP_DZ + MASK_SIDE)
 
 typedef struct {
     uint16_t* depth;
@@ -120,7 +68,7 @@ typedef struct {
     int side;
     int mask; /* -1: opaque */
     int run;
-    int spans, pixels, written;
+    int spans, pixels;
 } cards_t;
 
 /* Square cards of side `side` tiled over the target, one span per card row;
@@ -128,9 +76,9 @@ typedef struct {
 static void
 fill_cards(void* ctx) {
     cards_t* c = ctx;
-    const uint32_t du = ((uint32_t)MASK_SIDE << MASK_U_SHIFT) / (uint32_t)c->side;
+    const uint32_t du = ((uint32_t)MASK_SIDE << R3D_SPAN_MASK_SHIFT) / (uint32_t)c->side;
     c->run++;
-    c->spans = c->pixels = c->written = 0;
+    c->spans = c->pixels = 0;
     for (int y = 0; y + c->side <= TARGET_HEIGHT; y += c->side) {
         for (int row = 0; row < c->side; row++) {
             const int v = (row * MASK_SIDE) / c->side;
@@ -138,15 +86,31 @@ fill_cards(void* ctx) {
             uint16_t* crow = c->color + ((y + row) * TARGET_WIDTH);
             for (int x = 0; x + c->side <= TARGET_WIDTH; x += c->side) {
                 const int32_t z = (c->run * RUN_DEPTH_STEP + x) << R3D_DEPTH_SHIFT;
-                c->written += c->mask < 0 ? fill_opaque(drow + x, crow + x, c->side, z, RAMP_R, RAMP_G, RAMP_B, RAMP_DZ,
-                                                        RAMP_DR, RAMP_DG, RAMP_DB)
-                                          : fill_masked(drow + x, crow + x, c->side, z, RAMP_R, RAMP_G, RAMP_B, RAMP_DZ,
-                                                        RAMP_DR, RAMP_DG, RAMP_DB, masks[c->mask][v], du / 2U, du);
+                const uint32_t value[R3D_SPAN_ATTRIBUTES] = {(uint32_t)z, RAMP_R, RAMP_G, RAMP_B};
+                if (c->mask < 0) {
+                    r3d_span_fill_gouraud(drow + x, crow + x, c->side, value, ramp_step);
+                } else {
+                    r3d_span_fill_masked(drow + x, crow + x, c->side, value, ramp_step, masks[c->mask][v], du / 2U, du);
+                }
                 c->spans++;
                 c->pixels += c->side;
             }
         }
     }
+}
+
+/* The pixels one pass writes into a cleared depth target: all of them
+ * opaque, only the mask's kept texels masked. */
+static int
+written_pixels(cards_t* cards, size_t bytes) {
+    memset(cards->depth, 0, bytes);
+    cards->run = 0;
+    fill_cards(cards);
+    int written = 0;
+    for (int p = 0; p < TARGET_WIDTH * TARGET_HEIGHT; p++) {
+        written += cards->depth[p] != 0;
+    }
+    return written;
 }
 
 static void
@@ -159,13 +123,13 @@ test_masked_span_cost(void) {
     for (int s = 0; s < (int)(sizeof card_sides / sizeof card_sides[0]); s++) {
         for (int mask = -1; mask < MASK_COUNT; mask++) {
             memset(depth, 0, bytes);
-            cards_t cards = {depth, color, card_sides[s], mask, 0, 0, 0, 0};
+            cards_t cards = {depth, color, card_sides[s], mask, 0, 0, 0};
             const float cycles = bench_cycle_median(fill_cards, &cards, false);
-            /* Every run draws nearer, so each one writes what the mask keeps. */
-            TEST_ASSERT_TRUE(mask < 0 ? cards.written == cards.pixels : cards.written < cards.pixels);
+            const int written = written_pixels(&cards, bytes);
+            TEST_ASSERT_TRUE(mask < 0 ? written == cards.pixels : written > 0 && written < cards.pixels);
             ESP_LOGI(TAG, "masked_span arm=%s side=%d coverage=%d cycles=%.0f spans=%d pixels=%d written=%d",
                      mask < 0 ? "opaque" : "mask1", cards.side, mask < 0 ? 1000 : mask_permille[mask], (double)cycles,
-                     cards.spans, cards.pixels, cards.written);
+                     cards.spans, cards.pixels, written);
         }
     }
     memory_free(depth);

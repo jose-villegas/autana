@@ -7,7 +7,8 @@ A baked mesh is an entry of type `LMSH` in the [asset pack](../README.md).
 entry, once, and nothing is allocated or copied; the rasterizer reads that
 struct.
 
-Levels are an optional sibling [LLOD](LLOD.md) entry, resolved once by `r3d_lit_mesh_open()`.
+Levels are an optional sibling [LLOD](LLOD.md) entry; masked clusters require
+a sibling [LMSK](LMSK.md). `r3d_lit_mesh_open()` resolves both.
 
 ```mermaid
 ---
@@ -35,7 +36,7 @@ title Header, 44 bytes (11 words) at 0, one cell a byte
 ```mermaid
 ---
 config:
-  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(3) { fill: #ffffff !important; stroke-dasharray: 4 3 !important; } .packetLabel { fill: #1b1b1b !important; }"
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #93d6b0 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(4) { fill: #93d6b0 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(4) rect:nth-of-type(3) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 8
     bitWidth: 100
@@ -49,7 +50,7 @@ title Cluster registry, one 22-byte row a cluster from clusters_off
 8-13: "int16 lo[3]"
 14-19: "int16 hi[3]"
 20: "double_sided"
-21: "0"
+21: "masked"
 ```
 
 ```mermaid
@@ -145,5 +146,6 @@ title Content: face colour, 2 bytes a triangle from face_colours_off
 | Scale | `position_scale` is ticks per model unit, in 1..`INT_MAX` (`ASSET_ERR_FORMAT`); positions are int16 ticks |
 | Counts | at least one cluster and one node (`ASSET_ERR_FORMAT`) |
 | Clusters | vertex ranges tile every vertex once and in order: the first starts at 0, each starts at the previous end, the last ends at `vertex_count` (`ASSET_ERR_FORMAT`); each cluster's vertex and triangle ranges lie inside the mesh and its triangles index only its own vertices (`ASSET_ERR_BOUNDS`); the writer also tiles the triangle ranges in order |
+| Masks | Byte 21 is `masked`; masked clusters follow every unmasked cluster and require [LMSK](LMSK.md) |
 | Nodes | a leaf's children are clusters, an inner node's are nodes, `first + count` inside that array; an inner node's children come after it, so a walk down the tree ends, and number at most `R3D_LIT_NODE_CHILDREN_MAX` (8), the octree's split (`ASSET_ERR_BOUNDS`); the writer limits `count` to `MAX_NODE_CHILDREN` and hangs every cluster off exactly one leaf |
 | Order | header, then the arrays in the order of the Part table, each padded to 4; padding zero |

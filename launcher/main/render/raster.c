@@ -222,6 +222,8 @@ draw_slice(void* ctx) {
     r3d_span_target_t* target = s->target;
     FRAME_LAP("r3d.draw.clear");
     gfx_target_window(&target->rows, &b->picture, s->first, s->first + s->count);
+    target->mask_rows = NULL;
+    target->mask_row_count = 0;
     target->small_fill = &((const draw_work_t*)b->draw)->small_fill;
     target->skip_hidden = ((const draw_work_t*)b->draw)->skip_hidden;
 

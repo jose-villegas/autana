@@ -12,9 +12,23 @@
 #include <stdint.h>
 
 #include "math/scalar/mathf.h"
+#include "render/lmsk_format.h"
 #include "render/r3d_span.h"
 
 #define R3D_SPAN_COLOR_SCALE 256.0F
+#define R3D_SPAN_MASK_SHIFT  16
+#define R3D_SPAN_MASK_SCALE  (1U << (R3D_SPAN_MASK_SHIFT - LMSK_UV_FRACTION_BITS))
+/* A Gouraud span's carried values: depth 16.8, then r, g, b. */
+#define R3D_SPAN_ATTRIBUTES  4
+
+/* The span fills, `count` pixels from `value` stepping `step` a pixel: the
+ * depth-tested Gouraud fill, and the same fill keeping only pixels whose bit
+ * of `row_word` at u >> R3D_SPAN_MASK_SHIFT is set, u stepping `du`. Shared
+ * so the board suite times the fills the draw path runs. */
+void r3d_span_fill_gouraud(uint16_t* depth, uint16_t* color, int count, const uint32_t value[R3D_SPAN_ATTRIBUTES],
+                           const int32_t step[R3D_SPAN_ATTRIBUTES]);
+void r3d_span_fill_masked(uint16_t* depth, uint16_t* color, int count, const uint32_t value[R3D_SPAN_ATTRIBUTES],
+                          const int32_t step[R3D_SPAN_ATTRIBUTES], uint32_t row_word, uint32_t u, uint32_t du);
 
 /* An upper bound on the depth a triangle writes inside `box`, as the
  * 16-bit depth, from its depth plane in 16.8: `top` at the centre of pixel
