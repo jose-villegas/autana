@@ -27,6 +27,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "render"))
 
 from docs import plot_style  # noqa: E402
+from r3d.geometry import majority  # noqa: E402
 
 SKY = "(sky)"
 TOP_ROWS = 20
@@ -110,13 +111,7 @@ def part_names(labels, tri_o, object_names):
 
 def main_materials(labels, tri_m, material_names, count):
     """Per part, the material most of its triangles use."""
-    pairs, hits = np.unique(np.column_stack([labels, tri_m]), axis=0, return_counts=True)
-    best = np.zeros(count, dtype=np.int64)
-    most = np.zeros(count, dtype=np.int64)
-    for (part, material), number in zip(pairs, hits):
-        if number > most[part]:
-            best[part], most[part] = material, number
-    return [material_names[m] for m in best]
+    return [material_names[m] for m in majority(labels, tri_m, count)]
 
 
 def nearest_source(source_p, tri_v, drawn_p, drawn_tris):
