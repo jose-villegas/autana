@@ -245,7 +245,7 @@ normal_weight = 1.0
 `bake = true` writes this renderer's lit mesh; otherwise it draws the shared
 imported albedo mesh. `shading`, `visibility`, `fit`, and `indirect` require
 `bake = true`. A baked renderer's transform must be identity. Its output is
-`<scene>.<object>.mesh`; an albedo renderer uses `<variant>.mesh`. An import is
+`<scene>.<object>.bundle`; an albedo renderer uses `<variant>.bundle`. An import is
 packed only through the scenes that place it. The same import can have
 independent bakes in several scenes; an albedo renderer's mesh is shared and
 may be placed anywhere, by many scenes.

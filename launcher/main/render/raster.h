@@ -83,6 +83,12 @@ float raster_depth_near(const raster_t* raster);
  * so none of it has to live in internal RAM. */
 size_t raster_scratch_bytes(const raster_t* raster);
 
+/* Sets each instance's level coarse bits (render/lod/r3d_lod.h) for the
+ * frame seen through `view`, measured in its output pixels whatever size the
+ * picture is drawn at. Once a frame, before drawing: a draw only reads the
+ * bits, so a second view of the same frame draws the levels this one picked. */
+void raster_pick_levels(const raster_t* raster, const render_view_t* view);
+
 /* Draws every instance through the picture basis and fit in `view`. */
 raster_stats_t raster_draw(const raster_t* raster, const render_view_t* view);
 

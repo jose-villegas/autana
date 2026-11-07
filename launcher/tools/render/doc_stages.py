@@ -104,7 +104,7 @@ def source_stamp(root, paths):
 def current_stamp():
     names = tracked_files(ROOT, ("launcher", "scripts"))
     paths = {ROOT / name for name in names if name and
-             Path(name).suffix in (".py", ".sh", ".c", ".h", ".toml", ".mesh", ".txt", ".lock")}
+             Path(name).suffix in (".py", ".sh", ".c", ".h", ".toml", ".bundle", ".txt", ".lock")}
     for name in names:
         if name.endswith(".import.toml"):
             paths.update(source_files(load_import_settings(ROOT / name)))
@@ -377,7 +377,7 @@ def measure_worker(label, job, mesh, reference_inputs, work, host, weights, scen
 
 # A kept result's files in its folder: the steps the run that made it recorded, a fit's mesh, a path-culled bake.
 STEPS = "steps.json"
-FITTED_MESH = "fitted.mesh"
+FITTED_MESH = "fitted.bundle"
 CULLED = "culled"
 # The bake cache's folder of the stage's own results; reference sets live in produce.py's.
 DOC_CACHE = "doc"
@@ -455,7 +455,7 @@ def code_digest(function):
 def link_inputs(inputs, start, references):
     """`inputs` as fit_point and measure_worker read it: the reference set's files and the start mesh, linked."""
     inputs.mkdir(parents=True, exist_ok=True)
-    for source in [*references.iterdir(), *start.glob("*.mesh")]:
+    for source in [*references.iterdir(), *start.glob("*.bundle")]:
         link = inputs / source.name
         if link.is_symlink() or link.exists():
             link.unlink()
@@ -524,7 +524,7 @@ class Keeper:
         if point.get("budget") is not None:
             variant.renderer.fit.budget = point["budget"]
         cost = point.get("cost_weight", 0.0)
-        folder = self.doc("fit", self.keys(variant, scene, inputs / f"{job.renderer.variant.name}.mesh")["fit"],
+        folder = self.doc("fit", self.keys(variant, scene, inputs / f"{job.renderer.variant.name}.bundle")["fit"],
                           cost, content_checksum(WEIGHTS).decode() if cost else None, code_digest(fit_into))
         return self.keep(folder, make_kept, folder, fit_into, point, point_dir, scene_path, scene, job, inputs,
                          estimates=FIT_BYTES)
@@ -549,7 +549,7 @@ def smoke_prepare(scene_path, scene, job, inputs):
     from r3d.fitted_variant import poses_text
     from r3d.reference_render import main as reference_main
     inputs.mkdir(exist_ok=True)
-    shutil.copyfile(job.asset_path, inputs / f"{job.renderer.variant.name}.mesh")
+    shutil.copyfile(job.asset_path, inputs / f"{job.renderer.variant.name}.bundle")
     width, height, lens, near, poses = camera_path_poses(scene, job.renderer.fit, 5000, either_way_up=False)
     for name in ("train", "train_landscape", "held_out", "coverage"):
         (inputs / f"{name}.txt").write_text(poses_text(32, 40, lens, near, poses[:2]))
@@ -738,7 +738,7 @@ def _gpu(args, out, work, executor):
         job = jobs[0]
         executor.submit(smoke_prepare, scene_path, scene, job, inputs, estimates=SMOKE_PREPARE_BYTES).result()
         executor.submit(fit_point, {}, work / "fit", scene_path, scene, job, inputs, True,
-                        work / "smoke.mesh", estimates=FIT_BYTES).result()
+                        work / "smoke.bundle", estimates=FIT_BYTES).result()
         print(f"GPU smoke: eight steps completed; scratch only: {work}")
         return 0
     keeper = Keeper(executor)
@@ -784,9 +784,9 @@ def _gpu(args, out, work, executor):
         baked = bakes[index].result()
         bake_steps.append((f"{prefix}-GI-bake", baked.steps))
         baked_job = next(item for item in scene.renderers if item.object.name == args.object + entry.baked)
-        measure(f"{prefix}-GI-bake", job, baked.folder / f"{baked_job.renderer.variant.name}.mesh", reference_inputs)
+        measure(f"{prefix}-GI-bake", job, baked.folder / f"{baked_job.renderer.variant.name}.bundle", reference_inputs)
         if entry.path_cull:
-            measure("full-path-culled", job, baked.folder / f"{CULLED}.mesh", reference_inputs)
+            measure("full-path-culled", job, baked.folder / f"{CULLED}.bundle", reference_inputs)
             run([sys.executable, ROOT / "launcher/tools/render/render_compare.py", "--out",
                  out / "render/gpu/appearance-path-culled.png", "--reference-bakes",
                  reference_inputs / "reference_held_out", "--reference-scale", "2", "--sheet-frames", "0,4",

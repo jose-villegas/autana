@@ -21,13 +21,13 @@ from asset.asset_pack import NAME_BYTES, parse_pack  # noqa: E402
 from r3d import build_pack, scene_asset  # noqa: E402
 from asset.engine_frame import to_engine  # noqa: E402
 from build.name_hash import NONE as HASH_NONE, name_hash  # noqa: E402
-from test_engine_frame import mesh_entry  # noqa: E402
+from test_engine_frame import mesh_entry, write_mesh  # noqa: E402
 from r3d.import_settings import SettingsError, load_scene  # noqa: E402
 from r3d.mesh_asset import TYPE as LIT_MESH  # noqa: E402
 from r3d.scene_asset import CAMERA, HEADER, NAME, RENDERER, TRANSFORM, SceneError  # noqa: E402
 from unittest import mock
 from skin_probe import rig
-from test_r3d_import import HEAD, renderer, sun_object, write_import  # noqa: E402
+from test_r3d_import import HEAD, NO_LEVELS, renderer, sun_object, write_import  # noqa: E402
 
 CLIP = 'source = "probe.glb"\nanimation = "clip"\n'
 
@@ -51,7 +51,7 @@ class SceneFiles(unittest.TestCase):
         self.root = pathlib.Path(self.temp.name)
         for mesh in ("a", "b"):
             write_import(self.root, f"{mesh}.import.toml", output=f'[output]\nname = "{mesh}"\n')
-            (self.root / f"{mesh}.mesh").write_bytes(mesh_entry())
+            write_mesh(self.root / f"{mesh}.bundle")
         (self.root / "clips").mkdir()
         (self.root / "clips" / "probe.glb").write_bytes(probe_glb())
         (self.root / "clips" / "fly.anim.toml").write_text(CLIP)
@@ -82,7 +82,8 @@ class SceneEntryTests(SceneFiles):
         self.assertGreater(len(entry), len(scene_host.one_entity_scene()))
 
     def test_skinned_renderer_forwards_cache_and_offline(self):
-        import_file = write_import(self.root, "rig.import.toml", source='[source]\npath = "rig.glb"\ncredit = "test"\n')
+        import_file = write_import(self.root, "rig.import.toml", source='[source]\npath = "rig.glb"\ncredit = "test"\n',
+                                   body=NO_LEVELS)
         objects = renderer("rig.import.toml").replace("mesh_renderer", "skinned_renderer")
         scene = load_scene(self.scene(objects))
         document, binary = rig()
@@ -107,7 +108,8 @@ class SceneEntryTests(SceneFiles):
         self.assertEqual(set(parse_pack(packs["hall"])), {"hall", "a", "b", "fly", "tour"})
 
     def test_skinned_renderer_and_animator_are_authored(self):
-        import_file = write_import(self.root, "rig.import.toml", source='[source]\npath = "rig.glb"\ncredit = "test"\n')
+        import_file = write_import(self.root, "rig.import.toml", source='[source]\npath = "rig.glb"\ncredit = "test"\n',
+                                   body=NO_LEVELS)
         objects = (renderer("rig.import.toml").replace("mesh_renderer", "skinned_renderer")
                    + '[objects.animator]\nclips = ["move"]\ndefault_clip = "move"\nwrap = "clamp"\n' + sun_object().replace('color = [1.0, 1.0, 1.0]', 'color = [0.25, 0.5, 0.75]')
                    .replace('intensity = 1.0', 'intensity = 2.5'))
@@ -573,12 +575,12 @@ class ScenePackTests(SceneFiles):
 
     def test_replace_takes_only_a_mesh(self):
         self.scene(renderer("a.import.toml") + lens("clips/fly.anim.toml"))
-        (self.root / "scratch.mesh").write_bytes(mesh_entry((9, 3, -7)))
-        packs = build_pack.pack_bytes([self.root], [f"a={self.root / 'scratch.mesh'}"])
+        write_mesh(self.root / "scratch.bundle", (9, 3, -7), name="a")
+        packs = build_pack.pack_bytes([self.root], [f"a={self.root / 'scratch.bundle'}"])
         self.assertEqual(parse_pack(packs["hall"])["a"], (LIT_MESH, to_engine(LIT_MESH, mesh_entry((9, 3, -7)))))
         for entry in ("hall", "fly"):
             with self.subTest(entry=entry), self.assertRaisesRegex(SettingsError, "no such mesh"):
-                build_pack.pack_bytes([self.root], [f"{entry}={self.root / 'scratch.mesh'}"])
+                build_pack.pack_bytes([self.root], [f"{entry}={self.root / 'scratch.bundle'}"])
 
     def test_a_scene_and_its_clip_cannot_share_an_id_and_the_refusal_names_both_files(self):
         (self.root / "clips" / "hall.anim.toml").write_text(CLIP)

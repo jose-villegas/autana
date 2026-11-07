@@ -10,6 +10,7 @@
 #include "math/geometry/box3f.h"
 #include "math/linear/transformf.h"
 #include "math/projection/projectf.h"
+#include "render/lod/r3d_lod.h"
 #include "render/r3d_span.h"
 #include "render/raster_internal.h"
 #include "render/view/r3d_pipeline_count.h"
@@ -109,6 +110,22 @@ writer(const raster_attachment_t* self, int instance, r3d_span_writer_t* out) {
     return true;
 }
 
+/* Without culling, every cluster the levels draw is kept; how many. */
+static int
+keep_drawn(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, uint16_t* kept, r3d_pipeline_counts_t* counts) {
+    int count = 0;
+    for (int c = 0; c < mesh->cluster_count; c++) {
+        if (r3d_lod_drawn(mesh, c, lod_coarse)) {
+            kept[count++] = (uint16_t)c;
+            counts->triangles_submitted += mesh->clusters[c].triangle_count;
+        }
+    }
+    counts->clusters_tested += count;
+    counts->clusters_kept += count;
+    counts->clusters_coarse += r3d_pipeline_count_coarse(mesh, kept, count);
+    return count;
+}
+
 /* After the camera's draw, its scratch lists and vertices are free: each
  * instance is culled, counted and transformed again into them, through the
  * lens the draw used, and its kept clusters are not set up or hidden. The
@@ -128,17 +145,9 @@ count_frame(raster_cull_t* s, const raster_t* raster) {
             r3d_lens_place(&lens, instance->model, mesh->position_scale);
         }
         uint16_t* kept = b.culled;
-        int count = mesh->cluster_count;
-        if (culls) {
-            count = r3d_pipeline_cull_counted(mesh, &lens, kept, &s->walk, &s->frame.counts);
-        } else {
-            for (int c = 0; c < count; c++) {
-                kept[c] = (uint16_t)c;
-                s->frame.counts.triangles_submitted += mesh->clusters[c].triangle_count;
-            }
-            s->frame.counts.clusters_tested += count;
-            s->frame.counts.clusters_kept += count;
-        }
+        const int count =
+            culls ? r3d_pipeline_cull_counted(mesh, &lens, instance->lod_coarse, kept, &s->walk, &s->frame.counts)
+                  : keep_drawn(mesh, instance->lod_coarse, kept, &s->frame.counts);
         r3d_pipeline_transform(mesh, &lens, kept, count, b.cs, NULL, false);
         r3d_pipeline_count_triangles(mesh, &lens, kept, count, b.cs, &s->frame.counts, &s->set_up[offset]);
         for (int k = 0; k < count; k++) {

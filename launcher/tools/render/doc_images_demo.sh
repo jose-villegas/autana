@@ -221,7 +221,7 @@ bake_and_render() {
     dir=$1 mesh=$2 object=$3
     run ln -sfn "$PWD/$DEMO/source" "$dir/source"
     run "$R3D_PYTHON" launcher/tools/r3d/mesh_import.py "$dir/$ID.scene.toml" --mesh "$mesh" --out "$dir" > "$dir/bake.log" 2>&1
-    run "$PYTHON" launcher/tools/r3d/build_pack.py -o "$dir/assets" "$SCENE" --replace "$mesh=$dir/$mesh.mesh"
+    run "$PYTHON" launcher/tools/r3d/build_pack.py -o "$dir/assets" "$SCENE" --replace "$mesh=$dir/$mesh.bundle"
     AUTANA_ASSET_DIR="$dir/assets" run "$HOST" --quarter 0 --scene "$ID" --object "$object" --frames "$FIDELITY_FRAMES" --dt "$FIDELITY_DT" \
         -o "$dir/frame.bmp" --video "$dir.avi" 2> "$dir/render.log"
 }

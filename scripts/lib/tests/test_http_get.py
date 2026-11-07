@@ -91,7 +91,7 @@ class HttpGetTests(unittest.TestCase):
                     mock.patch.object(bake, 'API_URL', url), \
                     mock.patch.object(bake, 'github_token', return_value='secret'), \
                     mock.patch.object(http_get.time, 'sleep'):
-                path, reason = bake.from_run({'run': RUN}, bake.MESH_SUFFIX, Path(folder))
+                path, reason = bake.from_run({'run': RUN}, bake.BUNDLE_SUFFIX, Path(folder))
                 self.assertIsNone(path)
                 self.assertEqual(len(requests), attempts)
                 self.assertIn('HTTPError: HTTP Error', reason)

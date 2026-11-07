@@ -29,6 +29,9 @@ def skin_id(mesh_id):
 
 
 def rig_ids(mesh_id, settings, cache=None, offline=False):
+    if settings.lod:
+        raise SettingsError(f'{settings.path}: a skinned_renderer has no weights for levels of detail; '
+                            'set [geometry] lod = false')
     rig = load_rig(settings, cache or bake.default_cache(), offline)
     if rig is None:
         raise SettingsError(f'{settings.path}: skinned_renderer requires a rig')
