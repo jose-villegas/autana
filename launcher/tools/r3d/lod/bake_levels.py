@@ -336,7 +336,7 @@ def bake_lit_mesh(positions, rgb, tris, double, position_scale=None, leaf_triang
     meshlet_triangles = lit_mesh.MESHLET_TRIANGLES if meshlet_triangles is None else meshlet_triangles
     plain = lit_mesh.bake_lit_mesh(positions, rgb, tris, double, position_scale, leaf_triangles,
                                   max_depth, meshlet_triangles, face_rgb)
-    if not lod:
+    if not lod or not len(plain.tris):
         return plain
     q, col, tris, double, face = lit_mesh.finest_triangles(plain)
     counts = [c[3] for c in plain.clusters]
