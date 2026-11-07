@@ -939,6 +939,10 @@ def seed(found, cache, lock=None, made=None):
     previous = {row["output"]: row for key, row in lock.items() if key not in needed}
     rows, missing = [], []
     for bake in found:
+        if bake.key is None and bake.kind == "levels":
+            # Its key names its fit's bytes: the CPU run makes the levels once this seed locks the fit.
+            print(f"skipped {bake.output}: {unlocked(bake)}")
+            continue
         if bake.key is None:
             missing.append(describe(bake, unlocked(bake), bake_again(bake)))
             continue

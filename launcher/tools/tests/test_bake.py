@@ -1403,6 +1403,15 @@ class LockTests(unittest.TestCase):
         with self.assertRaisesRegex(bake.BakeMissing, "(?s)two.bundle.*is not locked"):
             bake.seed([self.waiting_fit()], self.cache, {"j" * 64: {**self.row, "output": "two.bundle", "key": "j" * 64}})
 
+    def test_seeding_skips_levels_whose_fit_it_is_seeding_and_locks_the_rest(self):
+        """A seed carries a re-keyed fit over; its levels' key names those bytes, so the CPU run makes them after."""
+        levels = bake.Bake(output="two.levels.bundle", source=self.tree, holder="two", kind="levels", key=None,
+                           suffix=bake.BUNDLE_SUFFIX, tree=self.root / "two.levels.bundle", stages={"fit": "f" * 64})
+        with contextlib.redirect_stdout(io.StringIO()) as said:
+            rows = bake.seed([bake_of("k" * 64, self.tree), levels], self.cache, {}, {"k" * 64: {**self.row, "run": 9}})
+        self.assertEqual([row["key"] for row in rows], ["k" * 64])
+        self.assertIn("skipped two.levels.bundle: its fit " + "f" * 64 + " is not locked", said.getvalue())
+
     def test_a_fits_start_takes_the_locked_bytes_over_a_runs(self):
         made = {"k" * 64: {**self.row, "sha256": "f" * 64}}
         self.assertEqual(bake.locked_starts({"k" * 64: self.row}, made), {"k" * 64: self.row["sha256"]})
