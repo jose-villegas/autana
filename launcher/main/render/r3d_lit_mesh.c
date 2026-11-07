@@ -50,7 +50,7 @@ word(const uint8_t* data, int index) {
 static const void*
 array_at(const asset_view_t* asset, uint32_t offset, uint32_t count, uint32_t bytes) {
     if (offset == 0 && count == 0) {
-        return asset->data + HEADER_WORDS * sizeof(uint32_t);
+        return asset->data + (HEADER_WORDS * sizeof(uint32_t));
     }
     if (offset % 4U != 0 || offset < HEADER_WORDS * 4U) {
         return NULL;
@@ -351,14 +351,14 @@ open_curves(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh) {
         return status;
     }
     const size_t header = R3D_CURVE_HEADER_WORDS * sizeof(uint16_t);
-    if (asset.size < header || asset_read_u16(asset.data + 2 * sizeof(uint16_t)) != 0
-        || asset_read_u16(asset.data + 3 * sizeof(uint16_t)) != 0) {
+    if (asset.size < header || asset_read_u16(asset.data + (2 * sizeof(uint16_t))) != 0
+        || asset_read_u16(asset.data + (3 * sizeof(uint16_t))) != 0) {
         return ASSET_ERR_FORMAT;
     }
     const unsigned count = asset_read_u16(asset.data);
     const unsigned knots = asset_read_u16(asset.data + sizeof(uint16_t));
-    const size_t at = header + count * sizeof(r3d_curve_t);
-    if (at + knots * sizeof(r3d_curve_knot_t) != asset.size) {
+    const size_t at = header + (count * sizeof(r3d_curve_t));
+    if (at + (knots * sizeof(r3d_curve_knot_t)) != asset.size) {
         return ASSET_ERR_BOUNDS;
     }
     const r3d_curve_set_t built = {(const r3d_curve_t*)(asset.data + header),
