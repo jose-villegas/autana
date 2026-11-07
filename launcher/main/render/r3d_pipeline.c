@@ -1,4 +1,5 @@
 #include "render/r3d_pipeline.h"
+#include "profile/frame_cost.h"
 
 #include "render/r3d_span_internal.h"
 
@@ -263,7 +264,9 @@ r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint
     }
     if (start != 0 && cut) {
         int tested = 0;
+        FRAME_COST_BEGIN(cut_from);
         count = r3d_pipeline_cull_cut(mesh, lod_coarse, planes, depth, out, count, fit, &tested);
+        FRAME_COST_END(cut_from, "lod.cut");
     }
     return count;
 }
