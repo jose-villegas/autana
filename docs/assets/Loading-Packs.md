@@ -62,6 +62,7 @@ A token from `pending_token_new()` groups requests. Dead owners are
 cancelled silently, at the request or on the next poll.
 
 `HANDLE_NONE` owns requests the loop cancels when the app exits.
+An entity owns requests that end when its scene is released.
 App exit also cancels every live token, after the app's `exit()`.
 Blocking handles have no owner and remain held until their caller releases them.
 
@@ -106,10 +107,11 @@ Release on WAIT cancels; on FAILED or CANCELLED it frees the slot; stale handles
 pool returns HANDLE_NONE and logs one reason. `asset_store_mounted()` counts
 mounted packs; `ASSET_STORE_MOUNTS_MAX` bounds their table.
 
-`scene_load(id)` opens the scene and its dependencies synchronously;
-`scene_unload()` releases its pack. A scene that fails to load is not drawn.
-The id is `pack/scene`, or a bare `scene` in the pack of its own name: a
-folder pack (`NAME.pack.toml`) holding several scenes is read as `NAME/scene`.
+`scene_load(id)` and `scene_load_async()` load a scene the same way
+([Loading scenes](../render/scene/Scene-Loading.md#loading)); `scene_release()`
+releases its pack. The id is `pack/scene`, or a bare `scene` in the pack of its
+own name: a folder pack (`NAME.pack.toml`) holding several scenes is read as
+`NAME/scene`.
 
 ## The device
 

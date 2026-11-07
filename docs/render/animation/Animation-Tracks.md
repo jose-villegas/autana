@@ -144,7 +144,7 @@ Apply only a set that resolved.
 
 Its failed index is -1 on success and for root or storage errors, otherwise
 the failing binding. A component's declaration sits beside its struct, such
-as `CAMERA_FIELDS` in `scene/camera/camera.h`.
+as `LENS_FIELDS` in `scene/camera/lens.h`.
 
 ## Sampling
 
@@ -305,11 +305,11 @@ An app plays clips through the scene and includes only `scene/scene.h`;
 
 | Call | Does |
 |---|---|
-| `scene_animator_set_clips()` | gives an entity its clips, resolving asset ids once; the scene owns the animator, its bindings and buffers |
-| `scene_animator_play()` | starts a clip in the current slot at clip time 0, speed 1, unpaused, blending from what is shown over `blend_ms` |
-| `scene_animator_set_speed()`, `scene_animator_set_paused()` | one slot's speed or pause, current or previous ([Sampling](#sampling)) |
-| `scene_animator_seek()` | puts a slot at a clip time and samples at once, without drawing |
-| `scene_animator_clip_count()`, `scene_animator_clip_name()`, `scene_animator_clip_duration_ms()` | the entity's clips |
+| `animator_set_clips()` | gives an entity its clips, resolving asset ids once; the scene owns the animator, its bindings and buffers |
+| `animator_play()` | starts a clip in the current slot at clip time 0, speed 1, unpaused, blending from what is shown over `blend_ms` |
+| `animator_set_speed()`, `animator_set_paused()` | one slot's speed or pause, current or previous ([Sampling](#sampling)) |
+| `animator_seek()` | puts a slot at a clip time and samples at once, without drawing |
+| `animator_clip_count()`, `animator_clip_name()`, `animator_clip_duration_ms()` | the entity's clips |
 
 The scene file's `wrap` sets loop or clamp. A camera `path` loads as an
 animator on the camera's entity: the pack build keeps the path node's tracks

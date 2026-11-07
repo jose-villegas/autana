@@ -296,6 +296,9 @@ def load_geometry(table, steps):
 
 
 SEAM_POLICIES = ("weld", "lock", "free")
+# How a rule's objects are matched into shapes: by vertices and triangles, or also by surface
+# (objects/surface_match.py), so copies whose triangles or materials differ share one shape.
+SHAPE_MATCHES = ("exact", "surface")
 
 
 def load_object_meshes(table):
@@ -308,7 +311,7 @@ def load_object_meshes(table):
         raise SettingsError("objects.meshes must be an array of tables")
     for index, rule in enumerate(rules):
         where = f"objects.meshes[{index}]"
-        check_keys(rule, ("match", "triangles"), where, optional=("seam", "variants", "min_triangles"))
+        check_keys(rule, ("match", "triangles"), where, optional=("seam", "variants", "min_triangles", "shape"))
         match = rule["match"]
         check_keys(match, (), f"{where}.match", optional=("material", "object"))
         if len(match) != 1:
@@ -324,6 +327,8 @@ def load_object_meshes(table):
             raise SettingsError(f"{where}.min_triangles cannot exceed its triangles")
         if "seam" in rule and rule["seam"] not in SEAM_POLICIES:
             raise SettingsError(f"{where}.seam must be one of {', '.join(SEAM_POLICIES)}")
+        if "shape" in rule and rule["shape"] not in SHAPE_MATCHES:
+            raise SettingsError(f"{where}.shape must be one of {', '.join(SHAPE_MATCHES)}")
     return rules
 
 

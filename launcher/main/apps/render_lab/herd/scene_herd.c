@@ -17,6 +17,9 @@
 #include "draw/draw.h"
 #include "image/pixel/rgb565.h"
 #include "render/context/render_context.h"
+#include "scene/animator/animator.h"
+#include "scene/camera/camera.h"
+#include "scene/entity/entity.h"
 #include "scene/scene.h"
 #include "ui/ui.h"
 
@@ -33,9 +36,9 @@ static const char* TAG = "herd";
 #define HERD_COPY_NAME_SIZE 16
 
 static const int* shown; /* the size's copy count */
-static scene_t* loaded;
-static scene_entity_t camera;
-static scene_entity_t* copies; /* the pool, in name order */
+static entity_t loaded;
+static entity_t camera;
+static entity_t* copies; /* the pool, in name order */
 static int pool;
 
 /* What the panel says in place of the triangle count when the scene could not load. */
@@ -46,18 +49,18 @@ fail(const char* what) {
     render_lab_scene_fail(TAG, failure, sizeof failure, what);
 }
 
-static scene_entity_t
+static entity_t
 find_copy(int index) {
     char name[HERD_COPY_NAME_SIZE];
     const int length = snprintf(name, sizeof name, HERD_COPY_FORMAT, index);
-    return length > 0 && (size_t)length < sizeof name ? scene_find(loaded, name_hash(name)) : SCENE_ENTITY_NONE;
+    return length > 0 && (size_t)length < sizeof name ? entity_find(loaded, name_hash(name)) : ENTITY_NONE;
 }
 
 /* The pool is every copy the pack names, from 0 up to the first it lacks. */
 static bool
 find_pool(void) {
     pool = 0;
-    while (find_copy(pool) != SCENE_ENTITY_NONE) {
+    while (!handle_is_none(find_copy(pool))) {
         pool++;
     }
     copies = render_lab_scene_take(sizeof *copies * (size_t)(pool > 0 ? pool : 1));
@@ -77,12 +80,11 @@ static void
 show_copies(void) {
     for (int i = 0; i < pool; i++) {
         const bool used = i < *shown;
-        scene_entity_set_enabled(loaded, copies[i], used);
-        const int clip = scene_animator_current_clip(loaded, copies[i]);
-        const uint32_t duration_ms = scene_animator_clip_duration_ms(loaded, copies[i], clip);
+        entity_set_enabled(copies[i], used);
+        const uint32_t duration_ms = animator_clip_duration_ms(copies[i], animator_current_clip(copies[i]));
         if (used && duration_ms > 0) {
-            (void)scene_animator_seek(loaded, copies[i], SCENE_ANIMATOR_CURRENT,
-                                      (uint32_t)((uint64_t)duration_ms * (uint32_t)i / (uint32_t)pool));
+            (void)animator_seek(copies[i], ANIMATOR_CURRENT,
+                                (uint32_t)((uint64_t)duration_ms * (uint32_t)i / (uint32_t)pool));
         }
     }
 }
@@ -90,8 +92,8 @@ show_copies(void) {
 static void
 apply_settings(void) {
     render_lab_apply_raster_settings();
-    if (loaded != NULL) {
-        (void)render_lab_apply_camera_settings(loaded, camera);
+    if (!handle_is_none(loaded)) {
+        (void)render_lab_apply_camera_settings(camera);
     }
 #if TUNE_ENABLED
     render_context_set_debug_view(render_context_main(), render_lab_debug_view());
@@ -100,18 +102,12 @@ apply_settings(void) {
 
 static bool
 load(void) {
-    scene_failure_t why;
-    loaded = scene_load(HERD_SCENE, &why);
-    if (loaded == NULL) {
-        char what[RENDER_LAB_STATUS_LEN];
-        if (snprintf(what, sizeof what, "herd did not load: %s %d/%d", why.what, (int)why.status, (int)why.asset) < 0) {
-            what[0] = '\0';
-        }
-        fail(why.asset == ASSET_ERR_NOT_FOUND || why.asset == ASSET_ERR_NO_PACK ? "no herd pack: flash it" : what);
+    loaded = render_lab_scene_load(TAG, failure, sizeof failure, HERD_SCENE, HERD_KEY);
+    if (handle_is_none(loaded)) {
         return false;
     }
-    camera = scene_find(loaded, name_hash(HERD_CAMERA));
-    if (camera == SCENE_ENTITY_NONE) {
+    camera = entity_find(loaded, name_hash(HERD_CAMERA));
+    if (handle_is_none(camera)) {
         fail("no herd camera");
         return false;
     }
@@ -135,14 +131,14 @@ scene_herd_enter(const render_lab_scene_t* self) {
         return;
     }
     show_copies();
-    (void)scene_activate(loaded, name_hash(HERD_CAMERA));
+    (void)camera_activate(camera);
     apply_settings();
 }
 
 static void
 scene_herd_exit(void) {
-    scene_unload(loaded);
-    loaded = NULL;
+    scene_release(loaded);
+    loaded = ENTITY_NONE;
     copies = NULL;
     pool = 0;
 }
@@ -172,7 +168,7 @@ scene_herd_status(void) {
 /* The camera's lap. */
 static render_lab_path_t
 scene_herd_path(void) {
-    return (render_lab_path_t){loaded, loaded == NULL ? SCENE_ENTITY_NONE : camera, NULL};
+    return (render_lab_path_t){loaded, handle_is_none(loaded) ? ENTITY_NONE : camera, NULL};
 }
 
 #define HERD_COPIES(id_, key_, copies_) static const int herd_copies_##id_ = copies_;
