@@ -21,6 +21,8 @@ folder puts its entries there instead of making a pack of its own, each with
 its stem for id. Folder packs do not nest. `development = true` limits a
 folder pack to development firmware images (`--image --development`); release
 images omit it. Host builds and bake checks include every pack.
+`render = "PATH"` names a `.render.toml`, relative to the `.pack.toml`, that
+the pack holds as its [render settings](../render/Render-Settings.md#the-render-asset).
 The engine's own content, which any app may use, is the folder pack
 `engine` (`launcher/main/engine/`); an app's artwork is a folder pack the app
 names, mounted while it runs.
