@@ -94,6 +94,7 @@ render_context_drop_scratch(render_context_t* c) {
     c->scratch = NULL;
     c->scratch_bytes = 0;
     c->raster.scratch = NULL;
+    render_partial_forget(&c->partial); /* the picture went with it */
 }
 
 static void
@@ -128,6 +129,7 @@ forget_costs(render_context_t* c) {
 
 void
 render_context_forget(render_context_t* c) {
+    render_partial_forget(&c->partial);
     raster_split_forget(&c->split);
     c->kept = false;
     forget_costs(c); /* a new scene or view measures its own */
@@ -144,6 +146,11 @@ render_context_set_frame_generation(render_context_t* c, bool on) {
     if (!on) {
         framegen_target_free(&c->framegen);
     }
+}
+
+void
+render_context_set_changed(render_context_t* c, const box3f_t* boxes, int count) {
+    render_partial_set_changed(&c->partial, boxes, count);
 }
 
 void
@@ -338,6 +345,30 @@ generate(render_context_t* c, const render_view_t* view) {
     c->drawn_in_row = 0;
 }
 
+/* The rows partial redraw plans, drawn; false when none changed, so the
+ * picture stays as it is. A draw that had to change its depth scale drew
+ * every row. */
+static bool
+draw_partial(render_context_t* c, const render_view_t* view) {
+    raster_t* r = &c->raster;
+    const render_rows_t rows = render_partial_rows(&c->partial, r, view);
+    render_partial_set_changed(&c->partial, NULL, -1);
+    if (rows.first == rows.end) {
+        c->frame.unchanged = true;
+        return false;
+    }
+    const bool every_row = rows.first == 0 && rows.end == r->height;
+    r->first_row = every_row ? 0 : rows.first;
+    r->end_row = every_row ? 0 : rows.end;
+    const float kept_near = raster_depth_near(r);
+    c->frame.stats = raster_draw(r, view);
+    if (raster_depth_near(r) != kept_near) {
+        r->first_row = 0;
+        r->end_row = 0;
+    }
+    return true;
+}
+
 bool
 render_context_draw(render_context_t* c, const r3d_instance_t* instances, int count, const render_view_t* view,
                     uint16_t clear) {
@@ -349,6 +380,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
         return true;
     }
     c->frame.generated = false;
+    c->frame.unchanged = false;
     c->kept = false;
     if (c->drawn_in_row < FRAMEGEN_RETRY_DRAWN) {
         c->drawn_in_row++;
@@ -375,10 +407,19 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     c->frame.width = r->width;
     c->frame.height = r->height;
     raster_pick_levels(r, view);
+    r->first_row = 0;
+    r->end_row = 0;
     if (c->policy == RENDER_FIXED && !c->generating) {
         /* Off: the plain draw, nothing timed or chosen, unless frame generation needs the drawn cost. */
-        c->frame.stats = raster_draw(r, view);
+        const bool partial = raster_settings(r).partial_redraw;
+        if (partial && !draw_partial(c, view)) {
+            return true;
+        }
+        if (!partial) {
+            c->frame.stats = raster_draw(r, view);
+        }
     } else {
+        render_partial_forget(&c->partial);
         const int64_t began_us = timing_now_us();
         if (c->policy == RENDER_PREDICTED) {
             /* Culled once: the census prices the frame and the draw reuses its list. */
@@ -407,6 +448,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
 #endif
     c->kept = true;
     c->kept_view = *view;
+    render_partial_kept(&c->partial, r, view);
     return true;
 }
 
@@ -430,6 +472,23 @@ render_context_upscale_filter(const render_context_t* c) {
     return c->raster.upscale.filter;
 }
 
+/* The destination rows this compose rewrites, at the view's destination size,
+ * from the rows of a compose `height` tall. */
+static void
+compose_rows(render_context_t* c, int height) {
+    const raster_t* r = &c->raster;
+    int first = 0;
+    int end = height;
+    if (c->frame.unchanged) {
+        end = 0;
+    } else if (r->first_row < r->end_row) {
+        raster_destination_rows(r, height, &first, &end);
+    }
+    const int per = r->destination_height / height;
+    c->frame.rows_first = first * per;
+    c->frame.rows_end = end * per;
+}
+
 bool
 render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* half, uint8_t* half_seams) {
     const raster_t* r = &c->raster;
@@ -439,9 +498,14 @@ render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* hal
     destination = expanded ? half : destination;
     uint8_t* seams = expanded ? half_seams : NULL;
     if (c->policy == RENDER_FIXED && !c->generating) {
-        raster_upscale_picture(&c->raster, NULL, destination, seams, size.width, size.height);
+        compose_rows(c, size.height);
+        if (!c->frame.unchanged) {
+            raster_upscale_picture(&c->raster, NULL, destination, seams, size.width, size.height);
+        }
         return expanded;
     }
+    c->frame.rows_first = 0;
+    c->frame.rows_end = r->destination_height;
     const int64_t began_us = timing_now_us();
     GFX_TARGET_STORAGE(GFX_ATTACHMENT_FURTHER) generated;
     gfx_target_of_color_depth(&generated.target, c->framegen.colour, c->framegen.depth, c->framegen.width,

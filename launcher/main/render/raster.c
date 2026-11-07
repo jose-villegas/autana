@@ -22,6 +22,8 @@ TUNE_OVERRIDE(render, cull, 1);
 TUNE_OVERRIDE(render, depth_fit, 1);
 /* Off draws one instance a batch. */
 TUNE_OVERRIDE(render, batched, 1);
+/* 1 turns partial redraw on whatever the app's settings say: the board compares both. */
+TUNE_OVERRIDE(render, partial_redraw, 1);
 /* Overrides lod.coverage_permille (INT32_MAX lifts the cap); coverage_table.py
  * sets it once per cap. */
 TUNE_OVERRIDE(render, lod_coverage_permille, INT32_MAX);
@@ -33,6 +35,7 @@ raster_settings(const raster_t* raster) {
         tune_override(cull, s.cull) != 0,
         tune_override(depth_fit, s.depth_fit) != 0,
         tune_override(batched, s.batched) != 0,
+        tune_override(partial_redraw, s.partial_redraw) != 0,
         {s.lod.tolerance_px, s.lod.hysteresis_px, tune_override(lod_coverage_permille, s.lod.coverage_permille)}};
 }
 
@@ -102,7 +105,8 @@ typedef struct {
     slice_t mine, other;
     r3d_span_target_t targets[2];
     r3d_span_small_fill_t small_fill;
-    bool skip_hidden; /* the view's */
+    bool skip_hidden;       /* the view's */
+    int first_row, end_row; /* the rows this draw redraws */
     raster_buffers_t buffers;
 } draw_work_t;
 
@@ -510,15 +514,22 @@ draw_batch(const raster_t* raster, int index, draw_work_t* work) {
 
     FRAME_COST_BEGIN(drawn_from);
     FRAME_LAP("r3d.draw.split");
-    const int mid = r3d_pipeline_draw_split(batch->parts, batch->count, raster->height, job_share_permille(draw_share));
+    /* Some rows only (render/partial): split at their middle, steering nothing. */
+    const int top = work->first_row;
+    const int bottom = work->end_row;
+    const bool every_row = top == 0 && bottom == raster->height;
+    draw_share = every_row ? draw_share : NULL;
+    const int mid =
+        every_row ? r3d_pipeline_draw_split(batch->parts, batch->count, raster->height, job_share_permille(draw_share))
+                  : (top + bottom) / 2;
     mine->work_index = 1;
     other->work_index = 0;
     mine->target = &work->targets[1];
     other->target = &work->targets[0];
     mine->first = mid;
-    mine->count = raster->height - mid;
-    other->first = 0;
-    other->count = mid;
+    mine->count = bottom - mid;
+    other->first = top;
+    other->count = mid - top;
     FRAME_LAP_END();
     job_run_steered(draw_share, draw_slice, mine, other, sizeof *mine);
     FRAME_LAP_SINCE("r3d.draw.wait");
@@ -541,11 +552,16 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     assert_view_size(raster, view);
     draw_work_t* work = scratch_draw(raster);
     /* Every instance is culled before any is drawn: they share one depth scale. */
+    const float kept_near = *work->buffers.depth_near;
     if (stats != NULL) {
         FRAME_COST_BEGIN(culled_from);
         *work->buffers.depth_near = cull_instances(raster, view, true, stats, work);
         FRAME_COST_END(culled_from, "r3d.cull");
     }
+    /* Kept rows hold depth at the last draw's scale: a new one redraws them all. */
+    const bool some_rows = raster->first_row < raster->end_row && *work->buffers.depth_near == kept_near;
+    work->first_row = some_rows ? mathi_max(raster->first_row, 0) : 0;
+    work->end_row = some_rows ? mathi_min(raster->end_row, raster->height) : raster->height;
     for (int i = 0; i < raster->attachment_count; i++) {
         const raster_attachment_t* a = raster->attachments[i];
         if (a->begin != NULL) {
@@ -649,6 +665,23 @@ raster_upscale(raster_t* raster, uint16_t* destination, int width, int height) {
 }
 
 void
+raster_destination_rows(const raster_t* raster, int height, int* first, int* end) {
+    /* A filtered row reads its source row's neighbours: one more each side. */
+    const int from = raster->first_row - 1;
+    const int to = raster->end_row + 1;
+    const uint16_t* rows = raster->upscale.rows;
+    int y = 0;
+    while (y < height && rows[y] < from) {
+        y++;
+    }
+    *first = y;
+    while (y < height && rows[y] < to) {
+        y++;
+    }
+    *end = y;
+}
+
+void
 raster_upscale_picture(raster_t* raster, const gfx_target_t* picture, uint16_t* destination, uint8_t* seams, int width,
                        int height) {
     assert(raster->upscaled && destination != NULL);
@@ -668,15 +701,25 @@ raster_upscale_picture(raster_t* raster, const gfx_target_t* picture, uint16_t* 
         upscale_init_blends(&raster->upscale, rows + height);
     }
     int16_t* share = raster->split != NULL ? &raster->split->upscale_offset : NULL;
-    const int mid = job_share_core1_count(share, height);
+    int top = 0;
+    int bottom = height;
+    if (raster->first_row < raster->end_row) {
+        raster_destination_rows(raster, height, &top, &bottom);
+        share = NULL;
+    }
+    const int mid = top + job_share_core1_count(share, bottom - top);
     upscale_slice_t mine = {.raster = raster,
                             .first = mid,
-                            .count = height - mid,
+                            .count = bottom - mid,
                             .destination = destination,
                             .seams = seams,
                             .picture = picture};
-    const upscale_slice_t other = {
-        .raster = raster, .count = mid, .destination = destination, .seams = seams, .picture = picture};
+    const upscale_slice_t other = {.raster = raster,
+                                   .first = top,
+                                   .count = mid - top,
+                                   .destination = destination,
+                                   .seams = seams,
+                                   .picture = picture};
     job_run_steered(share, upscale_slice, &mine, &other, sizeof mine);
     FRAME_COST_END(upscaled_from, "r3d.upscale");
 }

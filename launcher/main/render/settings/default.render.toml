@@ -4,6 +4,7 @@
 cull = true
 depth_fit = true
 batched = true
+partial_redraw = false
 
 [lod]
 tolerance_px = 2.0
