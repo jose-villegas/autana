@@ -142,6 +142,28 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         step["triangles_out"] = len(src.tri_v)
     scale = {} if settings.position_scale is None else {"position_scale": settings.position_scale}
     tri_v, tri_t, tri_m = src.tri_v, src.tri_t, src.tri_m
+    card_shape, card_report = None, None
+    cards = getattr(settings, "cards", None)
+    if cards is not None:
+        from r3d.cards.emit import make_shape
+        from r3d.cards.path import camera_path
+
+        if cards.material not in src.names:
+            raise SettingsError(f"geometry.cards.material {cards.material!r} is not a source material")
+        material = src.names.index(cards.material)
+        selected_cards = tri_m == material
+        rules = match_meshes(src.tri_o, tri_m, src.object_names, src.names, settings.meshes) if settings.meshes else {}
+        if any(obj in rules for obj in src.tri_o[selected_cards]):
+            raise SettingsError(f"material {cards.material} is drawn by cards")
+        with recorder.step("cards", int(selected_cards.sum())) as step:
+            path = camera_path(cards.path) if cards.choice == "path" else None
+            occluder = RayQuery(src.p, tri_v[~selected_cards]) if path and (~selected_cards).any() else None
+            card_shape, card_report = make_shape(src, material, cards, settings.seed, settings.alpha_keep,
+                                                 path=path, occluder=occluder)
+            step["triangles_out"] = card_report['triangles']
+        tri_v, tri_t, tri_m = tri_v[~selected_cards], tri_t[~selected_cards], tri_m[~selected_cards]
+        src.tri_o = src.tri_o[~selected_cards]
+        src.tri_v, src.tri_t, src.tri_m = tri_v, tri_t, tri_m
     with recorder.step("alpha mask", len(tri_v)) as step:
         if settings.alpha_keep is not None:
             tri_v, tri_t, tri_m, keep = drop_masked(src.p, src.uv, tri_v, tri_t, tri_m, src.textures, settings.alpha_keep)
@@ -155,7 +177,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         intersector = None
         visibility = renderer.visibility
         if visibility or job.bake:
-            intersector = RayQuery(src.p, tri_v)
+            intersector = RayQuery(src.p, tri_v) if len(tri_v) else None
         double_names = settings.double_sided
         seen = np.ones(len(tri_v), dtype=bool)
         if visibility:
@@ -211,8 +233,11 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             all_obj.append(owners)
             base += len(vpos)
             log(f"  {src.names[material]}: {len(vpos)} vertices")
-        positions, rgb, tris = np.concatenate(all_pos), np.concatenate(all_rgb), np.concatenate(all_tris)
-        tri_double, tri_mat = np.concatenate(all_double), np.concatenate(all_mat)
+        positions = np.concatenate(all_pos) if all_pos else np.empty((0, 3))
+        rgb = np.concatenate(all_rgb) if all_rgb else np.empty((0, 3), dtype=int)
+        tris = np.concatenate(all_tris) if all_tris else np.empty((0, 3), dtype=int)
+        tri_double = np.concatenate(all_double) if all_double else np.empty(0, dtype=int)
+        tri_mat = np.concatenate(all_mat) if all_mat else np.empty(0, dtype=int)
         step["triangles_out"] = len(tris)
     with recorder.step("simplify", len(tris)) as step:
         if settings.simplify:
@@ -233,7 +258,24 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             rgb = np.clip(np.round(rgb), 0, 255).astype(np.int64)
             tri_double = np.isin(tri_mat, [index for index, name in enumerate(src.names) if name in double_names]).astype(np.int64)
         step["triangles_out"] = len(tris)
-    check_ceiling(len(tris), getattr(renderer.variant, 'ceiling', None))
+    if card_shape is not None:
+        p, albedo = card_shape['positions'], card_shape['albedo']
+        if job.bake:
+            radiance = light(p, card_shape['normals'], np.ones(len(p), bool), intersector, scene.lights,
+                             job.bake.ray_offset, bounce, ao=job.bake.ao,
+                             bounce_intensity=scene.indirect.intensity)
+            colours = to_srgb8(albedo * radiance, scene.tonemap_white)
+        else:
+            colours = encode_srgb8(albedo)
+        instance, (_, _, t, labels) = card_shape['copies'][0]
+        card_shape['copies'] = [(instance, (p, colours, t, labels))]
+        shapes = [] if shapes is None else shapes
+        shapes.append(card_shape)
+    if card_report is not None:
+        mesh_report['cards'] = card_report
+        mesh_report['scene_total'] = mesh_report['output_triangles'] = (
+            mesh_report.get('scene_total', len(tris)) + card_report['triangles'])
+    check_ceiling(mesh_report.get('scene_total', len(tris)), getattr(renderer.variant, 'ceiling', None))
     return SimpleNamespace(src=src, intersector=intersector, positions=positions, rgb=rgb, tris=tris, tri_double=tri_double,
                            tri_mat=tri_mat, scale=scale, bounce=bounce, mesh_report=mesh_report, shapes=shapes)
 
@@ -307,6 +349,8 @@ def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
     """One local mesh per handedness, with colour sets following its baked array order."""
     from r3d.objects.instances import place
 
+    masked = "mask_uvs" in shape
+    flat = job.renderer.face_samples and not masked
     entries, rows = [], []
     for mirrored in (False, True):
         copies = [(instance, lit) for instance, lit in shape['copies'] if instance.mirrored == mirrored]
@@ -321,24 +365,27 @@ def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
         tris = np.arange(len(local)).reshape(-1, 3)
         double = np.isin(labels, [i for i, material in enumerate(geometry.src.names)
                                 if material in job.settings.double_sided]).astype(int)
+        if masked:
+            double[:] = 1
+        options = dict(mask_uvs=shape['mask_uvs'][t].reshape(-1, 2), mask_rows=shape['mask_rows']) if masked else {}
         colours = []
         for instance, (p, rgb, t, labels) in copies:
-            if job.renderer.face_samples:
+            if flat:
                 placed = SimpleNamespace(**vars(geometry))
                 placed.positions, placed.tris, placed.tri_mat = p, t, labels
                 colours.append(flat_colours(job, scene, placed, job.renderer.face_samples))
             else:
                 colours.append(rgb[t].reshape(-1, 3))
         keys = np.concatenate(colours, axis=1)
-        mesh = write_lit_mesh(out_dir, mesh_id, local, None if job.renderer.face_samples else keys,
-                              tris, double, face_rgb=keys if job.renderer.face_samples else None,
+        mesh = write_lit_mesh(out_dir, mesh_id, local, None if flat else keys,
+                              tris, double, face_rgb=keys if flat else None,
                               colourless=True, recorder=recorder, mesh_builder=bake_lit_mesh,
-                              meshlet_triangles=job.settings.meshlet_triangles, lod=job.settings.lod,
-                              **geometry.scale)
-        encoding = lcol_asset.RGB565 if job.renderer.face_samples else lcol_asset.RGB888
-        keys = mesh.face_keys if job.renderer.face_samples else mesh.colour_keys
+                              meshlet_triangles=job.settings.meshlet_triangles, lod=job.settings.lod and not masked,
+                              **geometry.scale, **options)
+        encoding = lcol_asset.RGB565 if flat else lcol_asset.RGB888
+        keys = mesh.face_keys if flat else mesh.colour_keys
         channels = lcol_asset.STRIDES[lcol_asset.RGB888]
-        sets = [panel_colour(keys[:, k:k + channels]).tobytes() if job.renderer.face_samples
+        sets = [panel_colour(keys[:, k:k + channels]).tobytes() if flat
                 else keys[:, k:k + channels].astype('u1').tobytes() for k in range(0, keys.shape[1], channels)]
         entries.extend(mesh_bundle.mesh_entries(mesh_id, mesh))
         entries.append((lcol_asset.name_for_mesh(mesh_id), lcol_asset.TYPE,

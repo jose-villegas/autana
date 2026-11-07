@@ -13,7 +13,7 @@ seed = 1
 
 [geometry]
 alpha_mask = { keep_alpha = 0.5 }
-thin = { material = "leaf", keep = 0.35 }
+cards = { material = "leaf" }
 simplify = { dense_edge = 45.0, props = [], props_share = 0.0, seal_seams = true, colour_deviation = 1.0 }
 
 # The free-standing props: one mesh per repeated shape, each copy drawing
@@ -38,11 +38,6 @@ triangles = 19
 seam = "free"
 
 [[objects.meshes]]
-match = { material = "leaf" }
-triangles = 45
-seam = "free"
-
-[[objects.meshes]]
 match = { material = "Material__298" }
 triangles = 484
 seam = "free"
@@ -59,10 +54,9 @@ match = { material = "chain" }
 triangles = 1
 seam = "free"
 
-# Each variant's triangles budget the rest; the props add 4433 at
-# objects_scale 1 and 2236 at 0.5, so each ceiling is the old total. The
-# fitted variants scale their props lower: the fit's prune (sponza.scene.toml)
-# then keeps every rest triangle the camera sees within the old drawn total.
+# Each variant budgets the rest separately from its props and cards.
+# The fitted variants scale their props lower; the fit's prune
+# (sponza.scene.toml) keeps the rest triangles the camera sees.
 [[variants]]
 name = "sponza"
 triangles = 12948
