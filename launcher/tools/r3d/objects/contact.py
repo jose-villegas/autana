@@ -4,9 +4,8 @@ from dataclasses import dataclass
 from itertools import combinations
 
 import numpy as np
-from scipy.spatial import cKDTree
 
-from r3d.geometry import closest_point_on_triangles
+from r3d.geometry import TriangleProximity
 from r3d.lit_mesh import POSITION_SCALE
 from r3d.repair import seal_tolerance
 
@@ -21,19 +20,10 @@ class Contact:
 
 
 def _surface_border(pos, vertices, faces, tolerance):
-    corners = pos[faces]
-    centres = corners.mean(axis=1)
-    radii = np.linalg.norm(corners - centres[:, None], axis=2).max(axis=1)
-    tree = cKDTree(centres)
+    proximity = TriangleProximity(pos[faces])
     source, target, unshared = set(), set(), False
-    for vertex, candidates in zip(vertices, tree.query_ball_point(pos[vertices], radii.max() + tolerance)):
-        candidates = np.asarray(candidates, dtype=int)
-        candidates = candidates[np.linalg.norm(centres[candidates] - pos[vertex], axis=1) <= radii[candidates] + tolerance]
-        if not len(candidates):
-            continue
-        tri = corners[candidates]
-        _, distance = closest_point_on_triangles(np.broadcast_to(pos[vertex], (len(tri), 3)), *tri.transpose(1, 0, 2))
-        near = candidates[distance <= tolerance]
+    for vertex in vertices:
+        near = proximity.within(pos[vertex], tolerance)
         if len(near):
             source.add(int(vertex))
             shared = np.any(np.all(pos[faces[near]].astype(np.float32) == pos[vertex].astype(np.float32), axis=2))

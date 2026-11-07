@@ -101,3 +101,35 @@ def closest_point_on_triangles(q, a, b, c):
         done |= cond
     point = bary[:, 0:1] * a + bary[:, 1:2] * b + bary[:, 2:3] * c
     return bary, np.linalg.norm(point - q, axis=1)
+
+
+class TriangleProximity:
+    """The triangles of `corners` (n x 3 x 3) within a reach of a point, exactly: candidates by bounding sphere,
+    then the closest-point distance. Triangles are grouped by the power of two of their sphere's radius, one tree
+    each, so one large triangle does not widen every query."""
+
+    def __init__(self, corners):
+        from scipy.spatial import cKDTree
+
+        self.corners = np.asarray(corners, dtype=np.float64)
+        self.centres = self.corners.mean(axis=1)
+        self.radii = np.linalg.norm(self.corners - self.centres[:, None], axis=2).max(axis=1)
+        size = np.ceil(np.log2(np.maximum(self.radii, np.finfo(np.float64).tiny))).astype(int)
+        self.groups = [(np.flatnonzero(size == s), cKDTree(self.centres[size == s]), 2.0 ** s)
+                       for s in np.unique(size)]
+
+    def within(self, point, reach):
+        """Indices of the triangles with a point within `reach` of `point`, in ascending order."""
+        found = [members[np.asarray(near, dtype=int)]
+                 for members, tree, radius in self.groups
+                 for near in [tree.query_ball_point(point, radius + reach)] if len(near)]
+        if not found:
+            return np.zeros(0, dtype=int)
+        candidates = np.sort(np.concatenate(found))
+        candidates = candidates[np.linalg.norm(self.centres[candidates] - point, axis=1)
+                                <= self.radii[candidates] + reach]
+        if not len(candidates):
+            return candidates
+        tri = self.corners[candidates]
+        _, distance = closest_point_on_triangles(np.broadcast_to(point, (len(tri), 3)), *tri.transpose(1, 0, 2))
+        return candidates[distance <= reach]

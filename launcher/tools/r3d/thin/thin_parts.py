@@ -14,7 +14,8 @@ THIN_SLENDERNESS_MIN = 12.0
 WELD_CELLS_PER_SIDE = 1000
 # A part rests on a surface, and stays in the mesh, when at least RESTING_SHARE of its vertices lie within
 # RESTING_REACH_PER_WIDTH of its own width from other geometry: trims and frames flush with a wall, which the
-# wall's fit would cover. Poles and cables meet other geometry only at their ends.
+# wall's fit would cover. Poles and cables meet other geometry only at their ends. Other geometry is every
+# triangle but the part's own, thin ones too: a hem along a trim rests on it though both read as thin.
 RESTING_REACH_PER_WIDTH = 0.5
 RESTING_SHARE = 0.5
 
@@ -57,18 +58,19 @@ def find_thin_parts(positions, triangles, side):
         if (extents[1] <= side * THIN_WIDTH_PER_SIDE and extents[0] >= side * THIN_LENGTH_PER_SIDE
                 and extents[0] >= THIN_SLENDERNESS_MIN * extents[1]):
             result.append(ThinPart(np.asarray(rows), centre, axes, extents))
-    thin = np.zeros(len(triangles), dtype=bool)
-    for part in result:
-        thin[part.triangles] = True
-    rest = np.flatnonzero(~thin)
-    return [part for part in result if not len(rest) or not resting(part, positions, triangles, rest)]
+    if not result:
+        return []
+    from r3d.geometry import TriangleProximity
+
+    proximity = TriangleProximity(positions[triangles])
+    return [part for part in result if not resting(part, positions, triangles, proximity)]
 
 
-def resting(part, positions, triangles, rest):
-    """Whether `part` lies along the `rest` triangles, by RESTING_SHARE and its reach."""
-    from r3d.light import nearest_on_triangles
-
+def resting(part, positions, triangles, proximity):
+    """Whether `part` lies along the other triangles, by RESTING_SHARE and its reach; `proximity` holds them all."""
+    reach = RESTING_REACH_PER_WIDTH * part.extents[1]
+    own = np.zeros(len(triangles), dtype=bool)
+    own[part.triangles] = True
     points = positions[np.unique(triangles[part.triangles])]
-    nearest, bary = nearest_on_triangles(points, rest, positions, triangles)
-    distance = np.linalg.norm(points - (positions[triangles[nearest]] * bary[:, :, None]).sum(axis=1), axis=1)
-    return bool(np.mean(distance <= RESTING_REACH_PER_WIDTH * part.extents[1]) >= RESTING_SHARE)
+    near = [not own[proximity.within(point, reach)].all() for point in points]
+    return bool(np.mean(near) >= RESTING_SHARE)
