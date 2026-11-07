@@ -148,7 +148,7 @@ HERD_SIZES(HERD_COPIES)
     [HERD_##id_] = {.name = "Herd " key_,                                                                              \
                     .key = HERD_KEY "-" key_,                                                                          \
                     .family = "Herd",                                                                                  \
-                    .variant = key_,                                                                                   \
+                    .variant = (key_),                                                                                 \
                     .data = &herd_copies_##id_,                                                                        \
                     .enter = scene_herd_enter,                                                                         \
                     .frame = scene_herd_frame,                                                                         \
