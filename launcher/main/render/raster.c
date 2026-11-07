@@ -82,6 +82,7 @@ typedef struct {
     const batch_t* batch;
     int first, count; /* clusters across the batch's items, or rows */
     bool clear;       /* the first batch of a picture clears it; later ones draw over it */
+    bool last;        /* the last batch's draw then draws the picture's curves in its rows */
     uint16_t* destination;
     int work_index;
     const raster_buffers_t* buffers;
@@ -217,6 +218,8 @@ raster_depth_near(const raster_t* raster) {
     return *raster_carve(raster).depth_near;
 }
 
+static void curve_slice(const slice_t* s);
+
 static void
 draw_slice(void* ctx) {
     const slice_t* s = ctx;
@@ -246,6 +249,9 @@ draw_slice(void* ctx) {
                           b->rows + item->cluster_base, target, b->work[s->work_index]);
     }
     FRAME_LAP_END();
+    if (s->last) {
+        curve_slice(s);
+    }
 }
 
 static void
@@ -327,14 +333,20 @@ picture_lens_init(picture_lens_t* picture, const raster_t* raster, const render_
     picture->position_scale = 0;
 }
 
+/* The picture's lens at `position_scale`, made into `lens`. */
+static void
+picture_lens_make(const picture_lens_t* picture, int position_scale, r3d_lens_t* lens) {
+    if (picture->fitted) {
+        raster_lens(picture->raster, picture->view, position_scale, lens);
+    } else {
+        r3d_lens_init(lens, picture->view, position_scale);
+    }
+}
+
 static const r3d_lens_t*
 picture_lens_at(picture_lens_t* picture, int position_scale) {
     if (picture->position_scale != position_scale) {
-        if (picture->fitted) {
-            raster_lens(picture->raster, picture->view, position_scale, &picture->lens);
-        } else {
-            r3d_lens_init(&picture->lens, picture->view, position_scale);
-        }
+        picture_lens_make(picture, position_scale, &picture->lens);
         picture->position_scale = position_scale;
     }
     return &picture->lens;
@@ -347,6 +359,29 @@ instance_lens(picture_lens_t* picture, const r3d_instance_t* instance, r3d_lens_
     *lens = *picture_lens_at(picture, mesh->position_scale);
     if (instance->model != NULL) {
         r3d_lens_place(lens, instance->model, mesh->position_scale);
+    }
+}
+
+/* The picture's curves in a slice's rows, after every cluster there. Its lens takes the slice's
+ * pipeline work block, free once the clusters are drawn, so no frame on the draw path holds it. */
+static __attribute__((noinline)) void
+curve_slice(const slice_t* s) {
+    const draw_work_t* work = s->buffers->draw;
+    assert(r3d_pipeline_work_bytes() >= sizeof(r3d_lens_t));
+    r3d_lens_t* lens = (r3d_lens_t*)(void*)s->buffers->work[s->work_index];
+    r3d_span_target_t* target = s->target;
+    target->skip_hidden = false;
+    target->writer_count = 0;
+    for (int i = 0; i < s->raster->instance_count; i++) {
+        const r3d_instance_t* instance = &s->raster->instances[i];
+        if (instance->mesh->curve_count > 0) {
+            picture_lens_make(&work->picture, instance->mesh->position_scale, lens);
+            if (instance->model != NULL) {
+                r3d_lens_place(lens, instance->model, instance->mesh->position_scale);
+            }
+            r3d_lens_set_depth_near(lens, *s->buffers->depth_near);
+            r3d_curve_draw(r3d_lit_mesh_curves(instance->mesh), lens, target);
+        }
     }
 }
 
@@ -483,6 +518,9 @@ cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, r
             culled[0] = (uint16_t)cull_instance(instance, settings.cull, &lens, culled + 1, stats,
                                                 work->buffers.work[0], settings.depth_fit ? &fit : NULL);
         }
+        if (instance->mesh->curve_count > 0) {
+            fit.depth_near = view->lens.near_z;
+        }
         culled += 1 + (size_t)instance->mesh->cluster_count;
     }
     return fit.depth_near < INFINITY ? fit.depth_near : view->lens.near_z;
@@ -514,7 +552,7 @@ scratch_draw(const raster_t* raster) {
 /* Draws batch `index`: one transform fork/join over every item's clusters,
  * then one draw fork/join in which each core draws every item in its rows. */
 static inline __attribute__((always_inline)) void
-draw_batch(const raster_t* raster, int index, draw_work_t* work) {
+draw_batch(const raster_t* raster, int index, bool last, draw_work_t* work) {
     batch_t* batch = &work->batch;
     int count = 0;
     for (int k = 0; k < batch->count; k++) {
@@ -533,7 +571,8 @@ draw_batch(const raster_t* raster, int index, draw_work_t* work) {
                                                   JOB_SHARE_PERMILLE - job_share_permille(transform_share));
     slice_t* mine = &work->mine;
     slice_t* other = &work->other;
-    *mine = (slice_t){.raster = raster, .batch = batch, .count = half, .clear = index == 0, .buffers = &work->buffers};
+    *mine = (slice_t){
+        .raster = raster, .batch = batch, .count = half, .clear = index == 0, .last = last, .buffers = &work->buffers};
     *other = *mine;
     other->first = half;
     other->count = count - half;
@@ -621,7 +660,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
             clusters += mesh->cluster_count;
             culled += 1 + (size_t)mesh->cluster_count;
         }
-        draw_batch(raster, index, work);
+        draw_batch(raster, index, first == raster->instance_count, work);
     }
     if (resolves) {
         FRAME_COST_BEGIN(resolved_from);

@@ -268,7 +268,8 @@ def load_process(process, steps):
 
 def load_geometry(table, steps):
     """The optional steps that decide which source triangles remain."""
-    check_keys(table, (), "geometry", optional=("alpha_mask", "thin", "simplify", "meshlet_triangles", "lod"))
+    check_keys(table, (), "geometry", optional=("alpha_mask", "thin", "curves", "simplify", "meshlet_triangles", "lod"))
+    steps.curves = boolean(table.get("curves", False), "geometry.curves")
     steps.meshlet_triangles = count(table.get("meshlet_triangles", MESHLET_TRIANGLES), "geometry.meshlet_triangles")
     steps.lod = boolean(table.get("lod", LOD), "geometry.lod")
     if not 4 <= steps.meshlet_triangles <= 256:
@@ -415,6 +416,8 @@ def load_import_settings(path):
         if steps.simplify:
             raise SettingsError("geometry.simplify needs variants, each with its triangles budget")
         variants = [SimpleNamespace(name=text(output.get("name"), "output.name"), triangles=None)]
+    if steps.curves and any(variant.triangles is None for variant in variants):
+        raise SettingsError("geometry.curves needs a start triangle budget in every variant")
     meshes = load_object_meshes(values.get("objects", {}))
     if meshes and not steps.simplify:
         raise SettingsError("objects.meshes needs geometry.simplify")
@@ -426,7 +429,7 @@ def load_import_settings(path):
         path=path, source=source, mesh_dir=path.parent,
         position_scale=count(output["position_scale"], "output.position_scale") if "position_scale" in output else None,
         double_sided=set(strings(materials.get("double_sided", []), "materials.double_sided")), seed=steps.seed,
-        alpha_keep=steps.alpha_keep, thin=steps.thin, simplify=steps.simplify, named=("variants" in values),
+        alpha_keep=steps.alpha_keep, thin=steps.thin, curves=steps.curves, simplify=steps.simplify, named=("variants" in values),
         meshes=meshes,
         meshlet_triangles=steps.meshlet_triangles, lod=steps.lod,
         variants=variants, skin_lighting=lighting)

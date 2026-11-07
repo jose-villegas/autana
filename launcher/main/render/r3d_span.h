@@ -32,7 +32,7 @@ typedef struct r3d_span_writer r3d_span_writer_t;
  * own format, RGB565 with its two bytes swapped, so a framebuffer can be its
  * colour as it is, and whose depth is R3D_DEPTH_EMPTY where nothing was
  * drawn; and what a further attachment writes beside them. */
-typedef struct {
+typedef struct r3d_span_target {
     const r3d_span_writer_t* writers; /* writer_count of them; none: colour and depth only */
     int writer_count;
     bool skip_hidden; /* render_view_t.skip_hidden: fills cap their depth, and writers follow */
@@ -114,3 +114,9 @@ void r3d_span_capped_triangle(const r3d_span_target_t* target, const r3d_span_ve
  * of their cost. */
 void r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                              const r3d_span_vertex_t* c, bool solid);
+
+#define R3D_SPAN_COVERAGE_FULL UINT8_MAX
+
+/* Depth tested and mixed by coverage with rgb565be_mix; writes no depth. */
+void r3d_span_triangle_cover(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                             const r3d_span_vertex_t* c, unsigned coverage);

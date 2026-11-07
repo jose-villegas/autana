@@ -15,6 +15,7 @@ from anim import tracks_asset
 from asset.engine_frame import INT16_MIN, POSITION
 from gltf import gltf_write
 from r3d import build_pack, mesh_asset, scene_asset
+from r3d.thin import curve_format
 from r3d.gltf_skin import mat_from_trs, transform_vector
 from test_r3d_import import renderer, write_import
 
@@ -67,6 +68,18 @@ class EngineFrameTests(unittest.TestCase):
         self.assertEqual(converted[:mesh_asset.BLOB_HEADER.size], raw[:mesh_asset.BLOB_HEADER.size])
         self.assertEqual(source.read_bytes(), raw)
         self.assertEqual(build_pack.to_engine(kind, converted), raw)
+
+    def test_curve_knots_and_boxes_are_mirrored_without_reordering(self):
+        knots = [(*POINT, 4, 0x1234), (5, 6, 8, 2, 0x5678)]
+        box = (1, 2, -8, 6, 7, 9)
+        raw = (curve_format.HEADER.pack(1, len(knots), 0, 0) + curve_format.CURVE.pack(0, len(knots), *box)
+               + b"".join(curve_format.KNOT.pack(*knot) for knot in knots))
+        converted = build_pack.to_engine(curve_format.TYPE, raw)
+        at = curve_format.HEADER.size + curve_format.CURVE.size
+        self.assertEqual(curve_format.CURVE.unpack_from(converted, curve_format.HEADER.size), (0, 2, 1, 2, -9, 6, 7, 8))
+        self.assertEqual([curve_format.KNOT.unpack_from(converted, at + i * curve_format.KNOT.size) for i in range(2)],
+                         [(2, 3, 7, 4, 0x1234), (5, 6, -8, 2, 0x5678)])
+        self.assertEqual(build_pack.to_engine(curve_format.TYPE, converted), raw)
 
     def test_unrepresentable_mirror_is_rejected(self):
         source = self.root / "probe.mesh"

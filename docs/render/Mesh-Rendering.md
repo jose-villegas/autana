@@ -239,6 +239,25 @@ A mesh with levels of detail is drawn through its instance's coarse bits, one
 bit a group, which persist between frames; the scene owns them, one block for
 all its renderers.
 
+## Thin curves
+
+Thin connected parts can leave the triangle start and fit: edge collapse loses
+small cross-sections (Garland and Heckbert 1997, Fig. 3 [[12]](../Citations.md#garland-1997)).
+The optional `geometry.curves` setting stores them in [LCRV](../assets/formats/LCRV.md).
+
+| Stage | Behaviour |
+|---|---|
+| Source | Detect connected parts by budget side, PCA width, length and slenderness; no names. A part with half its vertices within half its width of other geometry rests on a surface and stays in the mesh |
+| Start | Exclude their triangles; fit and light radius-bearing polylines against the full source |
+| Fit | Exclude thin surface samples; draw frozen six-sided tubes with copies and include them in the coverage gate |
+| Runtime | After all triangle clusters, cull curve boxes and draw near-clipped camera-facing ribbons in each row band |
+| Width | Draw at least one picture pixel; end-on segments draw a square |
+| Coverage | Subpixel ribbons fade by true width / drawn width, depth-tested without writing depth; solid ribbons write depth |
+
+The minimum width and coverage fade follow Persson's wire antialiasing
+[[116]](../Citations.md#persson-2012). Curve positions and radii share the mesh's
+position units and placed lens.
+
 ## Rules the layer keeps
 
 - **Single precision only.** The FPU has no double, and one stray promotion

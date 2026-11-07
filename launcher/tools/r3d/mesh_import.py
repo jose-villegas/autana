@@ -46,6 +46,9 @@ from r3d.mesh_source import load_source, load_glb_source, path_light_for, camera
 from r3d.process_budget import NULL_RECORDER
 from r3d.ray_query import RayQuery  # noqa: E402
 from r3d.scene_name import SUFFIX  # noqa: E402
+from r3d.thin.thin_parts import budget_side, find_thin_parts
+from r3d.thin.curve_fit import fit_curve, light_curve
+from r3d.thin import curve_asset
 from r3d.simplify import Allocation, check_ceiling, densify, simplify  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
@@ -148,6 +151,13 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             src.tri_o = src.tri_o[keep]
             src.tri_v, src.tri_t, src.tri_m = tri_v, tri_t, tri_m
         step["triangles_out"] = len(tri_v)
+    curve_parts = []
+    excluded = np.zeros(len(tri_v), dtype=bool)
+    if getattr(settings, "curves", False):
+        side = budget_side(src.p, tri_v, renderer.variant.triangles)
+        curve_parts = find_thin_parts(src.p, tri_v, side)
+        for part in curve_parts:
+            excluded[part.triangles] = True
     meshes = variant_meshes(settings.meshes, renderer.variant)
     selected = match_meshes(src.tri_o, tri_m, src.object_names, src.names, meshes) if meshes else {}
     carved_keep = thin_meshes(src, selected, settings.thin, settings.seed) if selected else None
@@ -169,13 +179,26 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         if selected:
             carved = np.isin(src.tri_o, list(selected))
             seen[carved] = carved_keep[carved]
+        seen &= ~excluded
         step["triangles_out"] = int(seen.sum())
     shown_v, shown_m, shown_o = tri_v[seen], tri_m[seen], src.tri_o[seen]
     mesh_report = {}
     shapes = [] if settings.meshes and carve else None
     with recorder.step("light", len(shown_v)) as step:
         bounce = path_light_for(src, job, scene)
-        if settings.simplify:
+        curves = []
+        for part in curve_parts:
+            curve = fit_curve(src.p, tri_v, part)
+            if job.bake:
+                curve = light_curve(curve, src, part, intersector, scene.lights, job.bake.ray_offset, bounce,
+                                    ao=job.bake.ao, bounce_intensity=scene.indirect.intensity,
+                                    double_sided=np.isin(src.tri_m[part.triangles],
+                                                          [i for i, name in enumerate(src.names) if name in double_names]))
+            else:
+                curve = light_curve(curve, src, part, None,
+                                    [dict(type="ambient", color=[1, 1, 1], intensity=1)], 0)
+            curves.append(curve)
+        if settings.simplify and len(shown_v):
             log("splitting evenly")
             wp, wt = weld_keeping(src.p, shown_v)
             dp, dt, ownership = densify(wp, wt, np.column_stack([shown_m, shown_o]), settings.simplify.dense_edge)
@@ -211,11 +234,14 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             all_obj.append(owners)
             base += len(vpos)
             log(f"  {src.names[material]}: {len(vpos)} vertices")
-        positions, rgb, tris = np.concatenate(all_pos), np.concatenate(all_rgb), np.concatenate(all_tris)
-        tri_double, tri_mat = np.concatenate(all_double), np.concatenate(all_mat)
+        positions = np.concatenate(all_pos) if all_pos else curves[0].knots[:1]
+        rgb = np.concatenate(all_rgb) if all_rgb else np.full((len(positions), 3), np.iinfo(np.uint8).max)
+        tris = np.concatenate(all_tris) if all_tris else np.empty((0, 3), dtype=np.int64)
+        tri_double = np.concatenate(all_double) if all_double else np.empty(0, dtype=np.int64)
+        tri_mat = np.concatenate(all_mat) if all_mat else np.empty(0, dtype=np.int64)
         step["triangles_out"] = len(tris)
     with recorder.step("simplify", len(tris)) as step:
-        if settings.simplify:
+        if settings.simplify and len(tris):
             steps = settings.simplify
             positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, tri_mat, renderer.variant.triangles,
                                                    allocation=Allocation(tri_o=np.concatenate(all_obj), object_names=src.object_names,
@@ -235,7 +261,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         step["triangles_out"] = len(tris)
     check_ceiling(len(tris), getattr(renderer.variant, 'ceiling', None))
     return SimpleNamespace(src=src, intersector=intersector, positions=positions, rgb=rgb, tris=tris, tri_double=tri_double,
-                           tri_mat=tri_mat, scale=scale, bounce=bounce, mesh_report=mesh_report, shapes=shapes)
+                           tri_mat=tri_mat, scale=scale, bounce=bounce, mesh_report=mesh_report, shapes=shapes, curves=curves)
 
 
 def shade_placed(src, job, scene, positions, rgb, tris, labels, intersector, bounce, *, preserve_corners=False):
@@ -286,15 +312,20 @@ def write_baked(job, scene, out_dir, name, geometry=None, recorder=None):
     if renderer.face_samples and len(geometry.tris):
         with recorder.step("face colours", len(geometry.tris)):
             face_rgb = flat_colours(job, scene, geometry, renderer.face_samples)
+    curves = getattr(job.settings, "curves", False)
     mesh = SimpleNamespace(pos=geometry.positions, tris=geometry.tris, clusters=[], nodes=[])
-    if len(geometry.tris):
+    if len(geometry.tris) or curves:
         mesh = write_lit_mesh(out_dir, name, geometry.positions, None if renderer.face_samples else geometry.rgb,
                               geometry.tris, geometry.tri_double, face_rgb=face_rgb, recorder=recorder, mesh_builder=bake_lit_mesh,
                               meshlet_triangles=job.settings.meshlet_triangles,
                               lod=job.settings.lod and getattr(renderer, "fit", None) is None,
                               **geometry.scale)
-    entries = mesh_bundle.mesh_entries(name, mesh) if len(mesh.tris) else []
+    entries = mesh_bundle.mesh_entries(name, mesh) if len(mesh.tris) or curves else []
     copies = []
+    if curves:
+        entries.append((curve_asset.name_for_mesh(name), curve_asset.TYPE,
+                        curve_asset.write_curves(geometry.curves, mesh.position_scale,
+                                                 scene.tonemap_white if job.bake else 0.0)))
     for shape in getattr(geometry, "shapes", None) or ():
         products, placed = write_shape(job, scene, out_dir, name, geometry, shape, recorder)
         entries.extend(products)

@@ -11,6 +11,7 @@ from gfx import image_asset
 from asset import table_asset
 from anim import tracks_asset, skeleton_asset
 from r3d import mesh_asset, scene_asset, skin_asset, lcol_asset, lod_asset
+from r3d.thin import curve_format
 
 FRAMELESS = frozenset((image_asset.TYPE, table_asset.TYPE, sound_asset.TYPE, lcol_asset.TYPE))
 
@@ -60,6 +61,19 @@ def to_engine(kind, entry):
             at = node_at + index * mesh_asset.NODE.size
             *box, first, count, leaf = mesh_asset.NODE.unpack_from(entry, at)
             mesh_asset.NODE.pack_into(out, at, *_mirror_box(box), first, count, leaf)
+    elif kind == curve_format.TYPE:
+        curves, knots, *_ = curve_format.HEADER.unpack_from(entry)
+        for index in range(curves):
+            at = curve_format.HEADER.size + index * curve_format.CURVE.size
+            row = list(curve_format.CURVE.unpack_from(entry, at))
+            row[curve_format.CURVE_BOX] = _mirror_box(row[curve_format.CURVE_BOX])
+            curve_format.CURVE.pack_into(out, at, *row)
+        knots_at = curve_format.HEADER.size + curves * curve_format.CURVE.size
+        for index in range(knots):
+            at = knots_at + index * curve_format.KNOT.size
+            row = list(curve_format.KNOT.unpack_from(entry, at))
+            row[curve_format.KNOT_POSITION] = _mirror_position(row[curve_format.KNOT_POSITION])
+            curve_format.KNOT.pack_into(out, at, *row)
     elif kind == lod_asset.TYPE:
         pairs, groups = lod_asset.decode(entry)
         groups_at = lod_asset.HEADER.size + len(pairs) * mesh_asset.CLUSTER_LOD.size
