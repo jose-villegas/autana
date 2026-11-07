@@ -130,7 +130,8 @@ segment(const knot_t* from, const knot_t* to, float radius_scale, const r3d_lens
     const float ay = lens->project.cy + (a.point.y / a.point.z);
     const float bx = lens->project.cx + (b.point.x / b.point.z);
     const float by = lens->project.cy + (b.point.y / b.point.z);
-    const float dx = bx - ax, dy = by - ay;
+    const float dx = bx - ax;
+    const float dy = by - ay;
     const float length = hypotf(dx, dy);
     const float ar = a.radius * radius_scale / a.point.z;
     const float br = b.radius * radius_scale / b.point.z;
