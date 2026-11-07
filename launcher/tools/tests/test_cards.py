@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from r3d.cards import CARD_EPSILON
+from r3d.cards import CARD_EPSILON, CANDIDATE_MIN_SAMPLES, SAMPLES_PER_TRIANGLE
 from r3d.cards.choose import choose_cards, split_cards
 from r3d.cards.bake import bake_card, corner_colours
 from r3d import mask_asset, mesh_bundle, mesh_import
@@ -17,16 +17,21 @@ from tests import soup  # noqa: F401
 
 SIDE = CARD_EPSILON * 12
 SEEDS = range(3)
-PATH_EVERY_MS = 250
+SUBDIVISIONS = int(np.ceil(np.sqrt(CANDIDATE_MIN_SAMPLES)))
 NORMAL_TOLERANCE = 0.02
 
 
 def quads(crossed=False):
-    p = np.array([[-1, -1, 0], [1, -1, 0], [-1, 1, 0], [1, 1, 0]], float) * SIDE / 2
-    t = np.array([[0, 1, 2], [2, 1, 3]])
+    x, y = np.meshgrid(np.linspace(-SIDE / 2, SIDE / 2, SUBDIVISIONS + 1),
+                       np.linspace(-SIDE / 2, SIDE / 2, SUBDIVISIONS + 1))
+    p = np.column_stack([x.ravel(), y.ravel(), np.zeros(x.size)])
+    ids = np.arange(len(p)).reshape(x.shape)
+    low = ids[:-1, :-1].ravel()
+    right, up = low + 1, low + SUBDIVISIONS + 1
+    t = np.concatenate([np.column_stack([low, right, up]), np.column_stack([up, right, up + 1])])
     if crossed:
+        t = np.concatenate([t, t + len(p)])
         p = np.concatenate([p, p[:, [2, 1, 0]]])
-        t = np.concatenate([t, t + 4])
     return p, t
 
 
@@ -43,6 +48,29 @@ class CardTests(unittest.TestCase):
                     if crossed:
                         self.assertEqual(set(normals.argmax(axis=1)), {0, 2})
 
+    def test_samples_drop_transparent_uvs_and_keep_triangle_weights(self):
+        from r3d.cards.choose import samples
+        from unittest.mock import Mock
+        p, t = quads(True)
+        uv = p[:, :2] / SIDE + 0.5
+        texture = Mock()
+        texture.sample.side_effect = lambda uv, lod: np.column_stack([
+            np.ones((len(uv), 3)), (uv[:, 0] >= 0.5).astype(float)])
+        for seed in SEEDS:
+            points, normals, area = samples(p, t, np.random.default_rng(seed), uv=uv, tri_uv=t,
+                                             texture=texture, keep_alpha=0.5)
+            self.assertGreater(len(points), CANDIDATE_MIN_SAMPLES)
+            self.assertLess(len(points), len(t) * SAMPLES_PER_TRIANGLE)
+            self.assertTrue(np.all(points[:, 0] >= 0))
+            np.testing.assert_allclose(np.linalg.norm(normals, axis=1), 1)
+            triangle_area = (SIDE / SUBDIVISIONS) ** 2 / 2
+            np.testing.assert_allclose(area, triangle_area / SAMPLES_PER_TRIANGLE)
+            texture.sample.side_effect = lambda uv, lod: np.zeros((len(uv), 4))
+            self.assertEqual(choose_cards(p, t, uv=uv, tri_uv=t, texture=texture,
+                                          keep_alpha=0.5, seed=seed), [])
+            texture.sample.side_effect = lambda uv, lod: np.column_stack([
+                np.ones((len(uv), 3)), (uv[:, 0] >= 0.5).astype(float)])
+
     def test_area_cost_can_stop_selection(self):
         p, t = quads(True)
         for seed in SEEDS:
@@ -52,7 +80,7 @@ class CardTests(unittest.TestCase):
     def test_path_weights_unseen_quad_to_zero(self):
         p, t = quads()
         p = np.concatenate([p, p + [SIDE * 4, 0, 0]])
-        t = np.concatenate([t, t + 4])
+        t = np.concatenate([t, t + len(p) // 2])
         poses = (mask_asset.MASK_WIDTH, mask_asset.MASK_WIDTH, 0.5, CARD_EPSILON,
                  [np.array([0, 0, SIDE, 0, 0, -1])])
         for seed in SEEDS:
@@ -65,7 +93,7 @@ class CardTests(unittest.TestCase):
         from r3d.import_settings import load_import_settings, source_digest
         p, t = quads()
         p = np.concatenate([p, p + [SIDE * 4, 0, 0]])
-        t = np.concatenate([t, t + 4])
+        t = np.concatenate([t, t + len(p) // 2])
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             keys = root / 'camera.keys.toml'
@@ -74,7 +102,14 @@ class CardTests(unittest.TestCase):
                 f'[[keys]]\nt = 1\neye = [0, 0, {SIDE}]\nlook_at = [0, 0, 0]\n')
             clip = root / 'fly.anim.toml'
             clip.write_text('source = "camera.keys.toml"\nanimation = "fly"\n')
-            path = camera_path(clip, size=(mask_asset.MASK_WIDTH,) * 2, every_ms=PATH_EVERY_MS)
+            camera = SimpleNamespace(half_fov_short_tan=0.5, near_z=CARD_EPSILON,
+                                     path=SimpleNamespace(animation=root / 'other.anim.toml', node='camera'))
+            scene = SimpleNamespace(camera=SimpleNamespace(component=camera))
+            renderer = SimpleNamespace(fit=SimpleNamespace(size=(mask_asset.MASK_WIDTH,) * 2))
+            path = camera_path(clip, scene, renderer)
+            self.assertEqual(path[:4], (*renderer.fit.size, camera.half_fov_short_tan, camera.near_z))
+            np.testing.assert_allclose(path[4][0], [0, 0, SIDE, 0, 0, -1])
+            self.assertEqual(camera.path.animation, root / 'other.anim.toml')
             self.assertEqual(len(choose_cards(p, t, path=path)), 1)
             (root / 'mesh.obj').write_text('')
             (root / 'mesh.mtl').write_text('')
@@ -101,7 +136,7 @@ class CardTests(unittest.TestCase):
     def test_uniform_texture_and_mask_roundtrip(self):
         from PIL import Image
         p, t = quads()
-        uv = np.array([[0, 0], [1, 0], [0, 1], [1, 1]], float)
+        uv = p[:, :2] / SIDE + 0.5
         with tempfile.TemporaryDirectory() as directory:
             image = pathlib.Path(directory) / 'texture.png'
             colour = np.array([64, 128, 192], np.uint8)
@@ -120,8 +155,8 @@ class CardTests(unittest.TestCase):
         p, t = quads()
         # The first layer is transparent; the rear layer is fully opaque.
         p = np.concatenate([p, p - [0, 0, CARD_EPSILON / 2]])
-        t = np.concatenate([t, t + 4])
-        uv = np.concatenate([np.tile([0.25, 0.5], (4, 1)), np.tile([0.75, 0.5], (4, 1))])
+        t = np.concatenate([t, t + len(p) // 2])
+        uv = np.concatenate([np.tile([0.25, 0.5], (len(p) // 2, 1)), np.tile([0.75, 0.5], (len(p) // 2, 1))])
         with tempfile.TemporaryDirectory() as directory:
             path = pathlib.Path(directory) / 'alpha.png'
             image = Image.new('RGBA', (8, 8), (255, 255, 255, 0))
@@ -151,9 +186,11 @@ class CardTests(unittest.TestCase):
             Image.fromarray(checker).save(root / 'leaf.png')
             (root / 'source.mtl').write_text('newmtl leaf\nKd 1 1 1\nmap_Kd leaf.png\nnewmtl solid\nKd 1 1 1\n')
             lines = ['mtllib source.mtl'] + ['v ' + ' '.join(map(str, row)) for row in p]
-            lines += ['vt 0 0', 'vt 1 0', 'vt 0 1', 'vt 1 1', 'o leaf_object', 'usemtl leaf',
-                      'f 1/1 2/2 3/3', 'f 3/3 2/2 4/4', 'o solid_object', 'usemtl solid',
-                      f'v 0 0 {SIDE}', f'v {SIDE} 0 {SIDE}', f'v 0 {SIDE} {SIDE}', 'f 5 6 7']
+            lines += ['vt ' + ' '.join(map(str, row)) for row in (p[:, :2] / SIDE + 0.5)]
+            lines += ['o leaf_object', 'usemtl leaf']
+            lines += ['f ' + ' '.join(f'{i + 1}/{i + 1}' for i in tri) for tri in t]
+            lines += ['o solid_object', 'usemtl solid', f'v 0 0 {SIDE}', f'v {SIDE} 0 {SIDE}',
+                      f'v 0 {SIDE} {SIDE}', 'f ' + ' '.join(str(len(p) + i) for i in (1, 2, 3))]
             (root / 'source.obj').write_text('\n'.join(lines))
             settings_path = root / 'mesh.import.toml'
             settings_path.write_text('[source]\npath = "source.obj"\ncredit = "synthetic"\n'
@@ -182,6 +219,19 @@ class CardTests(unittest.TestCase):
                 mask_asset.name_for_mesh(mesh_id)], len(masked.pos))
             self.assertEqual(first, 0)
             self.assertEqual(rows, shape['mask_rows'])
+
+            lines = lines[:-4] + ['v ' + ' '.join(map(str, row)) for row in p + [0, 0, SIDE]]
+            lines += ['f ' + ' '.join(str(i + len(p) + 1) for i in tri) for tri in t]
+            (root / 'source.obj').write_text('\n'.join(lines))
+            settings_path.write_text('[source]\npath = "source.obj"\ncredit = "synthetic"\n[output]\n'
+                '[geometry]\nalpha_mask = { keep_alpha = 0.5 }\ncards = { material = "leaf" }\n'
+                f'simplify = {{ dense_edge = {SIDE}, props = [], props_share = 0.0, seal_seams = false, colour_deviation = 1.0 }}\n'
+                f'[[variants]]\nname = "mesh"\ntriangles = {len(t)}\nceiling = {len(t)}\n')
+            limited = albedo_jobs(load_import_settings(settings_path))[0]
+            geometry = mesh_import.bake_geometry(limited, None, carve=True)
+            self.assertEqual(geometry.mesh_report['cards'], report)
+            self.assertLessEqual(geometry.mesh_report['scene_total'], limited.renderer.variant.ceiling)
+            self.assertGreater(len(geometry.tris), 0)
 
 
 

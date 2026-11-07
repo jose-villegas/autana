@@ -1,22 +1,20 @@
-"""Sample a camera animation for billboard-cloud visibility weights."""
+"""Sample the scene camera with the card selection clip and fit pose resolution."""
 
-from anim import tracks_asset
-from gltf import gltf_read
+from types import SimpleNamespace
+
 from r3d.import_settings import SettingsError
-from r3d.poses import sample_camera_path
+from r3d.mesh_source import camera_path_poses
+
+PATH_SAMPLE_MS = 1000
 
 
-def camera_path(path, *, size, every_ms):
-    source, _ = tracks_asset.load_source(path)
-    document, _ = gltf_read.load_asset(source)
-    holders = [(i, node['camera']) for i, node in enumerate(document.get('nodes', [])) if 'camera' in node]
-    if len(holders) != 1:
-        raise SettingsError('geometry.cards.path needs exactly one camera node')
-    node, index = holders[0]
-    camera = document['cameras'][index]
-    if camera['type'] != 'perspective':
-        raise SettingsError('geometry.cards.path needs a perspective camera')
-    perspective = camera['perspective']
-    lens = gltf_read.camera_half_fov_short_tan(perspective['yfov'], perspective.get('aspectRatio', 1.0))
-    return sample_camera_path(path, tracks_asset.object_name(document, 'nodes', node), every_ms,
-                              *size, lens, perspective['znear'])
+def camera_path(path, scene, renderer):
+    if scene is None or getattr(renderer, "fit", None) is None:
+        raise SettingsError("geometry.cards.path needs a scene renderer with fit.poses.size")
+    camera = scene.camera.component
+    if camera.path is None:
+        raise SettingsError("geometry.cards.path needs the scene camera's path.node")
+    camera = SimpleNamespace(**{**vars(camera), "path": SimpleNamespace(**{**vars(camera.path), "animation": path})})
+    sampled_scene = SimpleNamespace(camera=SimpleNamespace(component=camera))
+    visibility = SimpleNamespace(size=renderer.fit.size)
+    return camera_path_poses(sampled_scene, visibility, PATH_SAMPLE_MS, either_way_up=False)

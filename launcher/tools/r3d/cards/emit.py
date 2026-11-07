@@ -21,7 +21,8 @@ def make_shape(src, material, settings, seed, keep_alpha, *, path=None, occluder
     ids = np.flatnonzero(src.tri_m == material)
     triangles, tri_uv = src.tri_v[ids], src.tri_t[ids]
     selected = choose_cards(src.p, triangles, seed=seed, epsilon=settings.epsilon, area_cost=settings.area_cost,
-                            path=path, occluder=occluder)
+                            path=path, occluder=occluder, uv=src.uv, tri_uv=tri_uv,
+                            texture=src.textures[material], keep_alpha=keep_alpha)
     cards, splits = split_cards(selected)
     query = RayQuery(src.p, triangles)
     positions, colours, masks, uvs = [], [], [], []
@@ -43,8 +44,10 @@ def make_shape(src, material, settings, seed, keep_alpha, *, path=None, occluder
         rows.extend(sum(int(bit) << x for x, bit in enumerate(row)) for row in mask)
         masks.append(card)
     count = len(positions)
-    report = dict(candidates=len(selected), cards=count, triangles=count * len(QUAD_TRIANGLES), splits=splits)
-    log(f"cards: {count} cards, {report['triangles']} triangles, {splits} splits")
+    report = dict(candidates=len(selected), split_cards=len(cards), cards=count,
+                  triangles=count * len(QUAD_TRIANGLES), splits=splits)
+    log(f"cards: {len(selected)} selected, {len(cards)} after splitting, {count} baked, "
+        f"{report['triangles']} masked triangles, {splits} splits")
     if not count:
         return None, report
     p = np.concatenate(positions)

@@ -18,7 +18,7 @@ VISIBILITY_MARGIN = 1.0
 AXIS_ALIGNMENT_MIN = 0.1
 
 
-def samples(positions, triangles, rng):
+def samples(positions, triangles, rng, *, uv=None, tri_uv=None, texture=None, keep_alpha=None):
     corners = positions[triangles]
     cross = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
     lengths = np.linalg.norm(cross, axis=1)
@@ -28,16 +28,22 @@ def samples(positions, triangles, rng):
     points = (corners[:, None] * bary[..., None]).sum(axis=2).reshape(-1, 3)
     normals = np.repeat(cross / lengths[:, None], SAMPLES_PER_TRIANGLE, axis=0)
     area = np.repeat(lengths / (2 * SAMPLES_PER_TRIANGLE), SAMPLES_PER_TRIANGLE)
+    if texture is not None:
+        sample_uv = (uv[tri_uv[keep]][:, None] * bary[..., None]).sum(axis=2).reshape(-1, 2)
+        opaque = texture.sample(sample_uv, np.zeros(len(sample_uv)))[:, 3] >= keep_alpha
+        points, normals, area = points[opaque], normals[opaque], area[opaque]
     return points, normals, area
 
 
 def candidates(points, normals, rng):
-    patches = min(CANDIDATE_PATCHES, max(1, len(points) // CANDIDATE_MIN_SAMPLES))
+    patches = min(CANDIDATE_PATCHES, len(points) // CANDIDATE_MIN_SAMPLES)
+    if not patches:
+        return []
     _, labels = kmeans2(points, patches, seed=int(rng.integers(CANDIDATE_SEED_LIMIT)), minit='++')
     out = []
     for patch in range(patches):
         member = labels == patch
-        if member.sum() < CANDIDATE_MIN_SAMPLES and patches != 1:
+        if member.sum() < CANDIDATE_MIN_SAMPLES:
             continue
         p = points[member]
         centre = p.mean(axis=0)
@@ -111,9 +117,10 @@ def card_from(centre, normal, points, epsilon):
 
 
 def choose_cards(positions, triangles, *, seed=0, epsilon=CARD_EPSILON, area_cost=CARD_AREA_COST,
-                 path=None, occluder=None):
+                 path=None, occluder=None, uv=None, tri_uv=None, texture=None, keep_alpha=None):
     rng = np.random.default_rng(seed)
-    points, normals, area = samples(np.asarray(positions), np.asarray(triangles), rng)
+    points, normals, area = samples(np.asarray(positions), np.asarray(triangles), rng, uv=uv, tri_uv=tri_uv,
+                                    texture=texture, keep_alpha=keep_alpha)
     if not len(points):
         return []
     weighted_area = area if path is None else area * path_weights(points, path, occluder)

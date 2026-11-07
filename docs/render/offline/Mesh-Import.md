@@ -135,8 +135,10 @@ It requires `alpha_mask`; that material cannot also have `thin` or an
 
 The greedy billboard cloud follows Décoret et al. 2003, with an area cost,
 a per-card floor and a nonpositive-score stop.<sup>[[116]](../../Citations.md#decoret-2003)</sup>
-`geometry` weights projected surface area independently of the view.
-`path` also weights visible samples by projected size along a camera clip.
+
+`geometry` weights projected surface area. `path` weights visible projected size
+every 1000 ms with the scene camera's node, lens, near plane and fit pose size;
+the named clip changes only the animation.
 
 | Key | Meaning | Default |
 |---|---|---|
@@ -146,9 +148,9 @@ a per-card floor and a nonpositive-score stop.<sup>[[116]](../../Citations.md#de
 | `epsilon` | Plane slab half-depth, in model units. | `5.0`, provisional. |
 | `area_cost` | Penalty per unit of card area. | `0.03`, provisional. |
 
-Long cards split before mask baking to bound affine UV error. Each mask
-uses the LMSK width on its long side, is alpha-tested with 2×2 sampling,
-and trims to its occupied bounds. Four quadrant albedos become lit corner colours.
+Samples pass `keep_alpha` before selection. Cards split at 64 model units to bound
+affine UV error. Masks use LMSK's width, 2×2 alpha sampling and trimmed bounds.
+Quadrant albedos light four corners.
 
 ### thin
 
