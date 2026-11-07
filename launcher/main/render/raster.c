@@ -365,6 +365,7 @@ curve_slice(const slice_t* s) {
     assert(r3d_pipeline_work_bytes() >= sizeof(r3d_lens_t));
     r3d_lens_t* lens = (r3d_lens_t*)(void*)s->buffers->work[s->work_index];
     r3d_span_target_t* target = s->target;
+    FRAME_LAP("r3d.curve.setup");
     target->skip_hidden = false;
     target->writer_count = 0;
     for (int i = 0; i < s->raster->instance_count; i++) {
@@ -378,6 +379,7 @@ curve_slice(const slice_t* s) {
             r3d_curve_draw(r3d_lit_mesh_curves(instance->mesh), lens, target);
         }
     }
+    FRAME_LAP_END();
 }
 
 static int

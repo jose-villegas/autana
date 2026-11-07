@@ -3,6 +3,7 @@
 #include <math.h>
 #include "image/pixel/rgb565.h"
 #include "math/geometry/box3f.h"
+#include "profile/frame_laps.h"
 #include "render/r3d_pipeline.h"
 #include "render/r3d_span.h"
 #include "render/r3d_span_internal.h"
@@ -156,6 +157,7 @@ segment(const knot_t* from, const knot_t* to, float radius_scale, const r3d_lens
         return;
     }
     const uint32_t rgb = rgb565be_to_rgb888(color);
+    FRAME_LAP("r3d.curve.fill");
     /* A fan from the first corner, three vertices at a time: no array of them on the stack. */
     const r3d_span_vertex_t first = span_vertex(corners[0], rgb);
     r3d_span_vertex_t previous = span_vertex(corners[1], rgb);
@@ -169,6 +171,7 @@ segment(const knot_t* from, const knot_t* to, float radius_scale, const r3d_lens
         }
         previous = next;
     }
+    FRAME_LAP("r3d.curve.setup");
 }
 
 /* Whether a curve's box reaches the view; the planes stay off the segment draw's stack. */
