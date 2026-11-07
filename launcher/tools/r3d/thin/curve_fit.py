@@ -9,6 +9,10 @@ from r3d.surface_samples import area_samples
 
 CURVE_TOLERANCE_PER_WIDTH = 0.15
 CURVE_LIGHT_RING = 8
+# A segment draws the mean of its two knots' colours, so each knot is lit over the stretch it draws: rings at the
+# knot and these fractions of the way to each neighbour. One ring at a pole's end in a wall bracket would sit in
+# the bracket and darken the whole shaft.
+CURVE_LIGHT_SPAN = (0.25, 0.5)
 SAMPLES_PER_WIDTH = 6
 MIN_BINS = 4
 SAMPLE_SEED = 0
@@ -68,8 +72,21 @@ def fit_curve(positions, triangles, part):
     return Curve(rows[:, :3], rows[:, 3], np.zeros((len(rows), 3)))
 
 
+def light_stations(knots, radius):
+    """Each knot's ring centres and radii over the stretch it draws: the knot, then CURVE_LIGHT_SPAN of the way to
+    the knot before and the knot after; an end looks to its one neighbour on both sides."""
+    index = np.arange(len(knots))
+    before = np.where(index > 0, index - 1, np.minimum(index + 1, len(knots) - 1))
+    after = np.where(index < len(knots) - 1, index + 1, np.maximum(index - 1, 0))
+    fractions = np.array([0.0, *CURVE_LIGHT_SPAN, *CURVE_LIGHT_SPAN])
+    toward = np.stack([index] + [before] * len(CURVE_LIGHT_SPAN) + [after] * len(CURVE_LIGHT_SPAN), axis=1)
+    centres = knots[:, None] + fractions[None, :, None] * (knots[toward] - knots[:, None])
+    radii = radius[:, None] + fractions[None] * (radius[toward] - radius[:, None])
+    return centres, radii
+
+
 def light_curve(curve, source, part, intersector, lights, ray_offset, bounce=None, ao=None, bounce_intensity=1.0, double_sided=False):
-    """Light outward ring normals with the start bake's radiance and the part's own albedo."""
+    """Light outward ring normals over each knot's stretch with the start bake's radiance and the part's own albedo."""
     from r3d.light import light, sample_albedo, tangent_frame
 
     angle = np.arange(CURVE_LIGHT_RING) * (2 * np.pi / CURVE_LIGHT_RING)
@@ -77,8 +94,10 @@ def light_curve(curve, source, part, intersector, lights, ray_offset, bounce=Non
     tangent /= np.linalg.norm(tangent, axis=1, keepdims=True)
     u, v = tangent_frame(tangent)
     normals = np.cos(angle)[None, :, None] * u[:, None] + np.sin(angle)[None, :, None] * v[:, None]
-    points = (curve.knots[:, None] + curve.radius[:, None, None] * normals).reshape(-1, 3)
-    normals = normals.reshape(-1, 3)
+    centres, radii = light_stations(curve.knots, curve.radius)
+    stations = centres.shape[1]
+    points = (centres[:, :, None] + radii[:, :, None, None] * normals[:, None]).reshape(-1, 3)
+    normals = np.broadcast_to(normals[:, None], (len(curve.knots), stations, CURVE_LIGHT_RING, 3)).reshape(-1, 3)
     materials = source.tri_m[part.triangles]
     centres = source.p[source.tri_v[part.triangles]].mean(axis=1)
     nearest = np.linalg.norm(curve.knots[:, None] - centres, axis=2).argmin(axis=1)
@@ -90,18 +109,9 @@ def light_curve(curve, source, part, intersector, lights, ray_offset, bounce=Non
         albedo[mask] = sample_albedo(curve.knots[mask], curve.radius[mask], material, source.p, source.uv,
                                      source.tri_v[own], source.tri_t[own], source.tri_m[own], source.textures, kd,
                                      source.colors)
-    radiance = light(points, normals, np.repeat(np.broadcast_to(double_sided, (len(part.triangles),))[nearest], CURVE_LIGHT_RING), intersector, lights, ray_offset, bounce,
+    radiance = light(points, normals,
+                     np.repeat(np.broadcast_to(double_sided, (len(part.triangles),))[nearest], stations * CURVE_LIGHT_RING),
+                     intersector, lights, ray_offset, bounce,
                      bounce_groups=np.unique(points, axis=0, return_inverse=True)[1], ao=ao,
                      bounce_intensity=bounce_intensity)
-    radiance = radiance.reshape(-1, CURVE_LIGHT_RING, 3)
-    return replace(curve, color=albedo * radiance.mean(axis=1)[nearest_lit(radiance.any(axis=(1, 2)))])
-
-
-def nearest_lit(lit):
-    """For each knot, the nearest knot along the curve whose ring any light reaches: a ring no light reaches sits
-    inside other geometry, such as a pole's end in a wall, and would draw its segments black. Itself where lit, or
-    where no knot is."""
-    lit_index = np.flatnonzero(lit)
-    if not len(lit_index):
-        return np.arange(len(lit))
-    return lit_index[np.abs(np.arange(len(lit))[:, None] - lit_index[None]).argmin(axis=1)]
+    return replace(curve, color=albedo * radiance.reshape(len(curve.knots), -1, 3).mean(axis=1))
