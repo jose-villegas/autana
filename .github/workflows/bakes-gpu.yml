@@ -53,6 +53,7 @@ on:
 concurrency:
   group: bakes-gpu-${{ inputs.runner }}
   cancel-in-progress: false
+  queue: max
 
 # actions: read lets a fit fetch its locked start from the run that made it, before main publishes it.
 permissions:

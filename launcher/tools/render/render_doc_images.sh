@@ -403,6 +403,9 @@ done
 run "$PYTHON" launcher/tools/render/cull_cost.py docs/render/data/cull-cost-board.log --tables "$OUT/tables" \
     --chart "$OUT/render/cull-cost.png" > "$WORK/cull_cost.log"
 
+# What the LOD settings decide, drawn from the default values.
+run "$PYTHON" launcher/tools/render/settings/lod_figure.py "$OUT/render/lod-settings.png"
+
 # The same frames with depth scaled by near_z and by the per-frame fit, cut
 # where the fit stops the most surfaces fighting.
 run "$PYTHON" launcher/tools/render/depth_figures.py --scene launcher/demo/bistro/bistro.scene.toml \

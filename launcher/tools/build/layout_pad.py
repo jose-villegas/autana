@@ -5,13 +5,25 @@ Where hot code and its constants land modulo a cache way moves a frame's time
 by a fraction of a percent. Seed 0 is the build as it is; seed N > 0 puts a
 never-run pad ahead of each source's code and of its flash rodata, a whole
 number of cache lines up to one way less a line, so a set of seeds samples the
-layouts a change could have landed on. main/CMakeLists.txt calls this at
-configure time with the cache geometry from sdkconfig:
+layouts a change could have landed on. Seeds run from 1 to LAYOUT_SEED_MAX,
+so the largest image any seed builds is known. main/CMakeLists.txt writes
+INPUTS, the cache geometry from sdkconfig and the padded sources:
 
-  layout_pad.py SEED TEXT_LINE TEXT_WAY RODATA_LINE RODATA_WAY SOURCE [SOURCE ...]
+  TEXT_LINE TEXT_WAY RODATA_LINE RODATA_WAY
+  SOURCE
+  ...
 
-and reads back "SOURCE,TEXT,RODATA;..." on one line. After a seeded link,
-launcher/CMakeLists.txt checks the pads landed where they shift code:
+and at configure time calls
+
+  layout_pad.py SEED INPUTS
+
+reading back "SOURCE,TEXT,RODATA;..." on one line.
+
+  layout_pad.py --worst INPUTS
+
+prints the seed whose pads add up to the most bytes, the one image a size
+check needs to build. After a seeded link, launcher/CMakeLists.txt checks the
+pads landed where they shift code:
 
   layout_pad.py --check MAP
 
@@ -30,6 +42,9 @@ from collections import defaultdict
 # (.strN, .cstN): the linker pools those across objects.
 PADDED = {".flash.text": (".text.layout_pad", re.compile(r"\.text")),
           ".flash.rodata": (".rodata.layout_pad", re.compile(r"\.rodata(?!.*\.(str|cst)\d)"))}
+# Thousands of layouts for comparisons that use tens of seeds, few enough that
+# --worst tries every one in seconds.
+LAYOUT_SEED_MAX = 2**12 - 1
 OUTPUT = re.compile(r"^(\.\S+)")
 INPUT = re.compile(r"^ (\.\S+)(?:\s+0x([0-9a-f]+)\s+0x([0-9a-f]+)\s+(\S.*))?$")
 PLACED = re.compile(r"^\s+0x([0-9a-f]+)\s+0x([0-9a-f]+)\s+(\S.*)$")
@@ -49,6 +64,25 @@ def pad_sizes(seed, source, text=(32, 4096), rodata=(64, 8192)):
         return 0, 0
     return tuple(steps(seed, source, kind, way // line) * line
                  for kind, (line, way) in (("text", text), ("rodata", rodata)))
+
+
+def read_inputs(path):
+    """((text line, text way), (rodata line, rodata way)), [source, ...] from
+    the INPUTS file main/CMakeLists.txt writes."""
+    with open(path, encoding="utf-8") as handle:
+        lines = handle.read().splitlines()
+    text_line, text_way, rodata_line, rodata_way = (int(word) for word in lines[0].split())
+    return ((text_line, text_way), (rodata_line, rodata_way)), [line for line in lines[1:] if line]
+
+
+def seed_bytes(seed, sources, text, rodata):
+    """Every pad byte `seed` adds to the image."""
+    return sum(sum(pad_sizes(seed, source, text, rodata)) for source in sources)
+
+
+def worst_seed(sources, text, rodata):
+    """The seed in 1..LAYOUT_SEED_MAX that pads the image the most."""
+    return max(range(1, LAYOUT_SEED_MAX + 1), key=lambda seed: seed_bytes(seed, sources, text, rodata))
 
 
 def placed_sections(map_lines):
@@ -123,13 +157,22 @@ def main(argv):
     if len(argv) == 2 and argv[0] == "--check":
         check(argv[1])
         return
-    if len(argv) < 6 or not all(word.isdigit() for word in argv[:5]):
-        sys.exit("usage: layout_pad.py SEED TEXT_LINE TEXT_WAY RODATA_LINE RODATA_WAY "
-                 "SOURCE [SOURCE ...]")
-    seed, text_line, text_way, rodata_line, rodata_way = (int(word) for word in argv[:5])
+    if len(argv) == 2 and argv[0] == "--worst":
+        (text, rodata), sources = read_inputs(argv[1])
+        seed = worst_seed(sources, text, rodata)
+        print(seed)
+        print(f"seed {seed} pads {len(sources)} sources by {seed_bytes(seed, sources, text, rodata):#x} bytes",
+              file=sys.stderr)
+        return
+    if len(argv) != 2 or not argv[0].isdigit():
+        sys.exit("usage: layout_pad.py SEED INPUTS | --worst INPUTS | --check MAP")
+    seed = int(argv[0])
+    if not 1 <= seed <= LAYOUT_SEED_MAX:
+        sys.exit(f"layout_pad.py: a layout seed runs from 1 to {LAYOUT_SEED_MAX}, not {seed}")
+    (text_geometry, rodata_geometry), sources = read_inputs(argv[1])
     rows = []
-    for source in argv[5:]:
-        text, data = pad_sizes(seed, source, (text_line, text_way), (rodata_line, rodata_way))
+    for source in sources:
+        text, data = pad_sizes(seed, source, text_geometry, rodata_geometry)
         rows.append(f"{source},{text},{data}")
     print(";".join(rows), end="")
 
