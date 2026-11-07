@@ -36,6 +36,43 @@ def drop_masked(p, uv, tri_v, tri_t, tri_m, textures, keep_alpha=0.5):
     return (*result, keep)
 
 
+def hit_barycentrics(source, hits, locations):
+    """Barycentric weights of ray hits on their source triangles."""
+    faces = source.tri_v[hits]
+    a, b, c = source.p[faces[:, 0]], source.p[faces[:, 1]], source.p[faces[:, 2]]
+    total = np.abs(np.cross(b - a, c - a)).sum(axis=1)
+    wa = np.abs(np.cross(b - locations, c - locations)).sum(axis=1) / total
+    wb = np.abs(np.cross(c - locations, a - locations)).sum(axis=1) / total
+    return np.stack([wa, wb, 1.0 - wa - wb], axis=1)
+
+
+class AlphaTest:
+    """The source's level-zero texture alpha, tested at each hit's interpolated UV."""
+
+    def __init__(self, source, keep_alpha):
+        self.source, self.keep_alpha = source, keep_alpha
+        self.masked = np.array([tex is not None and np.any(tex.levels[0][..., 3] < 1.0)
+                                for tex in source.textures])
+
+    def solid(self, alpha):
+        return alpha >= self.keep_alpha
+
+    def __call__(self, hits, locations):
+        source = self.source
+        solid = np.ones(len(hits), dtype=bool)
+        materials = source.tri_m[hits]
+        selected = np.flatnonzero(self.masked[materials])
+        if not len(selected):
+            return solid
+        bary = hit_barycentrics(source, hits[selected], locations[selected])
+        uv = (source.uv[source.tri_t[hits[selected]]] * bary[:, :, None]).sum(axis=1)
+        for material in np.unique(materials[selected]):
+            chosen = materials[selected] == material
+            sample = source.textures[material].sample(uv[chosen], np.zeros(np.count_nonzero(chosen)))
+            solid[selected[chosen]] = self.solid(sample[:, 3])
+        return solid
+
+
 def visible_from_region(p, tri_v, double, intersector, rounds, rng, lo, hi):
     """A triangle is kept if, in any of `rounds` tries, a random point on it
     sees a random point of the box lo..hi from its front side. A try tests

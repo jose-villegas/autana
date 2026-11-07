@@ -88,8 +88,9 @@ what ships.
 ## Fidelity reference
 
 `reference_render.py` takes a scene and the pose file its camera path emits.
-It uses the source mesh after alpha masking, before simplification, and the
-same lights, albedo sampling, tone map and RGB565 quantisation as the bake.
+It keeps the full source before simplification and alpha-tests masked
+materials per hit, including shadow and bounce rays. It shares the bake's
+lights, albedo sampler, tone map and RGB565 quantisation.
 A camera ray passes a single-sided face seen from behind, as the device culls
 it, so where a reduced source's two shells cross the outer one shows.
 The .npy output retains the linear, box-filtered image; the PNG is the form a

@@ -103,6 +103,23 @@ def sphere(seed):
     return points, ConvexHull(points).simplices
 
 
+def subdivided(points, triangles):
+    """Every triangle split in four at its edge midpoints: the same surface, triangulated differently."""
+    points, faces, middle = [np.asarray(p, dtype=np.float64) for p in points], [], {}
+
+    def midpoint(a, b):
+        key = (min(a, b), max(a, b))
+        if key not in middle:
+            middle[key] = len(points)
+            points.append((points[a] + points[b]) / 2)
+        return middle[key]
+
+    for a, b, c in triangles:
+        ab, bc, ca = midpoint(a, b), midpoint(b, c), midpoint(c, a)
+        faces += [[a, ab, ca], [ab, b, bc], [ca, bc, c], [ab, bc, ca]]
+    return np.array(points), np.array(faces)
+
+
 def edge_counts(faces):
     edges = np.sort(np.concatenate([faces[:, [0, 1]], faces[:, [1, 2]], faces[:, [2, 0]]]), axis=1)
     return np.unique(edges, axis=0, return_counts=True)[1]

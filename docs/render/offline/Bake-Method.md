@@ -95,6 +95,10 @@ it reaches. Where bounce light changes the picture is measured in
 
 ## Fidelity against a reference
 
+With `geometry.alpha_mask`, the reference keeps the full source and alpha-tests
+each hit at its interpolated UV. Primary, shadow and bounce rays pass through
+alpha below `keep_alpha`; the importer's triangle drop applies to drawn geometry.
+
 How close is a bake to the ground truth, and where is it off? The reference
 renderer lights the full source mesh per pixel, with the scene's own lights,
 shadows and tone map, at the device render size and supersampled, for the

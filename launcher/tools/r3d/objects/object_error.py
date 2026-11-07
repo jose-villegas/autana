@@ -27,13 +27,13 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "render"))
 
 from docs import plot_style  # noqa: E402
+from r3d.geometry import majority  # noqa: E402
 
 SKY = "(sky)"
 TOP_ROWS = 20
-FIGURE_ROWS = 30
-# The bar figure grows by this many inches per part, past a fixed frame for its title and axis.
-ROW_INCHES = 0.24
-FRAME_INCHES = 1.2
+# The figure numbers this many rows of each table by rank; the rest stay faint dots.
+FIGURE_LABELS = 8
+FIGURE_INCHES = (plot_style.FIGURE_SIZE[0], 3.0)
 # Shares and dE76 keep this many significant digits in error.csv.
 CSV_DIGITS = 6
 # The held-out score prints four decimals; the mean over the parts' pixels must round to it.
@@ -110,13 +110,7 @@ def part_names(labels, tri_o, object_names):
 
 def main_materials(labels, tri_m, material_names, count):
     """Per part, the material most of its triangles use."""
-    pairs, hits = np.unique(np.column_stack([labels, tri_m]), axis=0, return_counts=True)
-    best = np.zeros(count, dtype=np.int64)
-    most = np.zeros(count, dtype=np.int64)
-    for (part, material), number in zip(pairs, hits):
-        if number > most[part]:
-            best[part], most[part] = material, number
-    return [material_names[m] for m in best]
+    return [material_names[m] for m in majority(labels, tri_m, count)]
 
 
 def nearest_source(source_p, tri_v, drawn_p, drawn_tris):
@@ -261,33 +255,35 @@ def flags(row):
 
 
 def caption(text, names):
-    """A table's caption, naming the prefix its shown names share and leave out; returns it and the prefix."""
+    """A table's dropdown summary, and its caption naming the prefix its shown names share and leave out; returns
+    them and the prefix."""
     prefix = common_prefix(names)
-    return [text + (f" Names leave out `{prefix}`." if prefix else ""), ""], prefix
+    lines = [f"<details><summary>{text}</summary>", ""]
+    return lines + ([f"Names leave out `{prefix}`.", ""] if prefix else []), prefix
 
 
 def part_table(rows, top=TOP_ROWS):
-    lines, prefix = caption("Object parts, ranked by error share.", [row["object"] for row in rows[:top]])
+    lines, prefix = caption(f"Top {top} object parts, ranked by error share", [row["object"] for row in rows[:top]])
     lines += ["| Rank | Object part | Material | Path pixels | Mean dE76 | Error share | Source triangles | "
               "Drawn triangles | Flags |", "|---:|---|---|---:|---:|---:|---:|---:|---|"]
     for rank, row in enumerate(rows[:top], 1):
         lines.append(f"| {rank} | {cell(row['object'], prefix)} | {cell(row['material'])} | {row['pixel_share']:.2%} | "
                      f"{row['mean_delta_e']:.1f} | {row['error_share']:.2%} | {row['source_share']:.2%} | "
                      f"{row['drawn_share']:.2%} | {flags(row)} |")
-    return lines
+    return lines + ["", "</details>"]
 
 
 def group_table(groups, score, text, label, count, top=TOP_ROWS):
     """A group's mean dE76 is the path mean scaled by its error share over its pixel share."""
     lines, prefix = caption(text, [group["name"] for group in groups[:top]])
-    lines += [f"| {label} | Material | {count} | Path pixels | Mean dE76 | Error share | Source triangles | "
-              "Drawn triangles |", "|---|---|---:|---:|---:|---:|---:|---:|"]
-    for group in groups[:top]:
-        lines.append(f"| {cell(group['name'], prefix)} | {cell(group['material'])} | {group['seen']} / "
+    lines += [f"| Rank | {label} | Material | {count} | Path pixels | Mean dE76 | Error share | Source triangles | "
+              "Drawn triangles |", "|---:|---|---|---:|---:|---:|---:|---:|---:|"]
+    for rank, group in enumerate(groups[:top], 1):
+        lines.append(f"| {rank} | {cell(group['name'], prefix)} | {cell(group['material'])} | {group['seen']} / "
                      f"{group['placed']} | {group['pixel_share']:.2%} | "
                      f"{score * group['error_share'] / group['pixel_share']:.1f} | {group['error_share']:.2%} | "
                      f"{group['source_triangles']} | {group['drawn_triangles']} |")
-    return lines
+    return lines + ["", "</details>"]
 
 
 def surface_text(rows):
@@ -303,30 +299,37 @@ def report_body(rows, score, unseen):
     lines = [f"Mean dE76 over the held-out path {score:.3f}, over {len(rows) - 1} object parts in view. "
              f"{unseen:.1%} of the drawn triangles sit on parts no held-out pixel shows.{surface_text(rows)}", ""]
     lines += part_table(rows) + [""]
-    lines += group_table(object_rows(rows), score, "Source objects, every part summed.", "Source object",
-                         "Parts seen / all") + [""]
-    lines += group_table(shape_rows(rows), score, "Repeated shapes, every copy summed.", "Shape (first copy)",
+    lines += group_table(object_rows(rows), score, f"Top {TOP_ROWS} source objects, every part summed",
+                         "Source object", "Parts seen / all") + [""]
+    lines += group_table(shape_rows(rows), score, f"Top {TOP_ROWS} repeated shapes, every copy summed",
+                         "Shape (first copy)",
                          "Copies seen / placed")
     return "\n".join(lines)
 
 
-def figure(rows, path, title, top=FIGURE_ROWS):
-    """The parts with the largest error share, each beside its share of path pixels, named without the prefix all
-    their names share."""
-    shown = rows[:top]
-    prefix = common_prefix([row["object"] for row in shown])
-    fig, ax = plot_style.subplots(1, 1, (plot_style.FIGURE_SIZE[0], ROW_INCHES * len(shown) + FRAME_INCHES))
-    index = np.arange(len(shown))
-    half = plot_style.BAR_HEIGHT / 2
-    ax.barh(index - half / 2, [100 * row["error_share"] for row in shown], half, color=plot_style.SLOTS[1],
-            label="Share of path error")
-    ax.barh(index + half / 2, [100 * row["pixel_share"] for row in shown], half, color=plot_style.SLOTS[0],
-            label="Share of path pixels")
-    ax.set_yticks(index, [row["object"].removeprefix(prefix) for row in shown])
-    ax.invert_yaxis()
-    ax.set(xlabel="% of the held-out path", xlim=(0, None))
-    ax.legend(loc="lower right", fontsize=plot_style.LABEL_SIZE)
-    plot_style.style_axes(ax, title)
+def figure(rows, path, title, top=FIGURE_LABELS):
+    """Error share against path-pixel share for the parts, the source objects and the repeated shapes, one panel
+    each: every row a faint dot, the `top` of each table numbered by its rank there. Above the dashed line a row's
+    mean dE76 is over the path's."""
+    panels = (("Object parts", rows),
+              ("Source objects", object_rows(rows)), ("Repeated shapes", shape_rows(rows)))
+    fig, axes = plot_style.subplots(1, len(panels), FIGURE_INCHES)
+    for axis, (name, ranked) in zip(axes, panels):
+        x = 100 * np.array([row["pixel_share"] for row in ranked])
+        y = 100 * np.array([row["error_share"] for row in ranked])
+        axis.scatter(x, y, s=4, color=plot_style.FAINT, linewidths=0)
+        axis.scatter(x[:top], y[:top], s=14, color=plot_style.SLOTS[1], linewidths=0, zorder=3)
+        reach = 1.1 * max(x.max(initial=0), y.max(initial=0)) or 1.0
+        axis.plot([0, reach], [0, reach], linestyle="--", linewidth=0.8, color=plot_style.MUTED)
+        axis.set(xlim=(0, reach), ylim=(0, reach))
+        axis.set_xlabel("% of path pixels", fontsize=plot_style.LABEL_SIZE)
+        plot_style.style_axes(axis, name, square=True)
+    axes[0].set_ylabel("% of path error", fontsize=plot_style.LABEL_SIZE)
+    fig.suptitle(title, fontsize=plot_style.TITLE_SIZE, color=plot_style.INK)
+    for axis, (_, ranked) in zip(axes, panels):
+        shown = ranked[:top]
+        plot_style.place_labels(axis, [(100 * row["pixel_share"], 100 * row["error_share"]) for row in shown],
+                                [str(rank) for rank in range(1, len(shown) + 1)])
     plot_style.save(fig, path)
 
 
@@ -372,7 +375,7 @@ def held_out_error(scene_path, scene, job, bundle, inputs, work):
     count = int(labels.max()) + 1
     names, owner, parts_of_object = part_names(labels, tri_o, source.object_names)
     shapes = match_instances(source_objects(p, tri_v, tri_m, labels, names))
-    source.intersector = RayQuery(p, tri_v)
+    source.intersector = RayQuery(p, tri_v, hit_filter=source.alpha_test)
     _, _, lens, _, poses = read_poses(inputs / "held_out.txt")
 
     def ids_for(index, width, height):

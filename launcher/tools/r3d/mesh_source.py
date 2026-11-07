@@ -55,7 +55,9 @@ def path_light_for(src, job, scene, variant=None):
     settings = job.settings
     boost = scene.indirect.albedo_boost
     variant = variant or ray_query.VARIANT
-    key = (str(settings.path), repr(vars(job.bake.indirect)), repr(scene.lights), boost, variant)
+    alpha = getattr(src, "alpha_test", None)
+    key = (str(settings.path), repr(vars(job.bake.indirect)), repr(scene.lights), boost, variant,
+           None if alpha is None else alpha.keep_alpha)
     if key not in PATH_LIGHTS:
         PATH_LIGHTS.clear()
         PATH_LIGHTS[key] = PathLight(src, scene.lights, settings.double_sided, job.bake.indirect, boost, variant)

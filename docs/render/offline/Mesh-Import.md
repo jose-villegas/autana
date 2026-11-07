@@ -121,9 +121,12 @@ Every Geometry table opts its step in; without it the step does not run.
 
 #### alpha_mask
 
-`geometry.alpha_mask` removes mostly transparent cut-out cards because the
-rasterizer does not alpha-test them. Off is above on; this step also changes
-what the simplifier keeps elsewhere, so not every difference is a card.
+`geometry.alpha_mask` drops mostly transparent triangles from the drawn mesh.
+The reference keeps every triangle and tests texture alpha at each ray hit:
+values below `keep_alpha` pass through, including shadow and bounce rays.
+
+The board rasterizer does not alpha-test. Off is above on; triangle removal
+also changes what the simplifier keeps elsewhere.
 
 ![alpha_mask off against on](../images/import-alpha-mask.png)
 
@@ -187,6 +190,7 @@ Each `[[objects.meshes]]` rule carves out matching source objects:
 | `variants` | Optional `{ variant = triangles }`: a variant's own per-copy budget. |
 | `min_triangles` | Optional floor on the scaled budget, at most `triangles`. Default 1. |
 | `seam` | Optional policy; touching defaults to `lock`, otherwise `free`. |
+| `shape` | Optional: `exact` (the default) matches copies by their vertices and triangles; `surface` also joins copies whose surfaces match within `SURFACE_TOLERANCE`, whatever their triangles and materials ([by surface](#objects-and-instances)). |
 
 A variant draws each copy with its entry in `variants`, or else
 round(`triangles` x its `objects_scale`), never below `min_triangles`;
@@ -218,6 +222,11 @@ floor's side pinned, and the pass spends what it frees up the shaft.
 Rigid copies share local simplification and their union of locks. Each copy
 is lit against the full source.
 
+A copy joined by surface is drawn with the shape's simplified triangles, placed on its own surface. Each
+material of the shape becomes the copy's own material nearest most of its triangles. These are not the copy's
+triangles, so a shape with a locked or welded copy stays exact. Copies whose materials differ in sidedness get
+separate shapes.
+
 A shape writes a colourless LMSH and an LCOL with one set per copy: RGB888
 vertices for smooth shading, RGB565 faces for flat. Mirrored copies own a
 shape with reversed winding and a positive-determinant placement.
@@ -230,7 +239,7 @@ Shape ids use the scene name and a stable name hash; the manifest retains
 the rule, source object and copy names.
 
 Rules match the alpha-masked source. Carved meshes skip per-triangle visibility;
-`thin` runs once per shared shape with the import seed. The rest keeps its
+`thin` runs once per exact shape with the import seed, before copies are joined by surface. The rest keeps its
 visibility and thinning steps.
 
 `objects/seams_report.py` accepts a scene renderer, scratch import settings and
@@ -381,6 +390,9 @@ python launcher/tools/r3d/objects/objects_report.py SCENE.scene.toml --object NA
 `--docs` keeps every part's row under `docs/render/data/<scene>-<object>-object-error.*`;
 `render_doc_images.sh` makes the figures and tables below from those rows; the
 object and shape tables sum every part, so all of them are kept.
+Each figure plots error share against path-pixel share for parts, source objects
+and repeated shapes. Dots above the dashed line are worse than the path's mean
+dE76; the numbers are ranks in the tables under the figure.
 
 | Term | Meaning |
 |---|---|
@@ -393,12 +405,14 @@ object and shape tables sum every part, so all of them are kept.
 | welded | Shares a position with another object |
 | segment | One welded part: only sub-mesh segmentation can split it |
 
-![Error and pixel share of the costliest Bistro parts](../../images/render/bistro-street-fitted-full-object-error.png)
+![Bistro error share against pixel share for parts, objects and shapes](../../images/render/bistro-street-fitted-full-object-error.png)
 
-<!-- generated: bistro-street-fitted-full-object-error sha256=53e1a21364248c118e2586da619c4c624961e332488f136e1c8196546db175af -->
+<!-- generated: bistro-street-fitted-full-object-error sha256=e7ac9a8f9f31abfad8b34f071c7d2e42387f700a5c70d29834b30dd5472f4baa -->
 Mean dE76 over the held-out path 6.364, over 10014 object parts in view. 9.1% of the drawn triangles sit on parts no held-out pixel shows. 1397 drawn triangles sit on planar parts in view; 384 are sheets (over 4 times their part's median triangle, turned over 30° from the source).
 
-Object parts, ranked by error share. Names leave out `Bistro_Research_Exterior_`.
+<details><summary>Top 20 object parts, ranked by error share</summary>
+
+Names leave out `Bistro_Research_Exterior_`.
 
 | Rank | Object part | Material | Path pixels | Mean dE76 | Error share | Source triangles | Drawn triangles | Flags |
 |---:|---|---|---:|---:|---:|---:|---:|---|
@@ -423,63 +437,73 @@ Object parts, ranked by error share. Names leave out `Bistro_Research_Exterior_`
 | 19 | paris_building_02_4909#23 | MASTER_Concrete_Smooth | 0.45% | 6.5 | 0.46% | 0.01% | 0.08% |  |
 | 20 | Paris_Building_01_paris_buildi_9d4444b | MASTER_Concrete_Grooved | 0.52% | 5.5 | 0.45% | 0.01% | 0.14% | segment |
 
-Source objects, every part summed. Names leave out `Bistro_Research_Exterior_`.
+</details>
 
-| Source object | Material | Parts seen / all | Path pixels | Mean dE76 | Error share | Source triangles | Drawn triangles |
-|---|---|---:|---:|---:|---:|---:|---:|
-| Paris_Street_6225 | Pavement_Cobblestone_Wet_BLENDSHADER | 3 / 3 | 14.99% | 6.7 | 15.75% | 721 | 236 |
-| Paris_Street_6185 | Pavement_Cobblestone_Big_BLENDSHADER | 2 / 2 | 11.37% | 5.4 | 9.69% | 337 | 304 |
-| paris_building_02_4909 | MASTER_Concrete_Smooth | 138 / 258 | 3.73% | 6.3 | 3.71% | 6156 | 900 |
-| Paris_Street_6231 | Pavement_Cobblestone_01_BLENDSHADER | 2 / 2 | 3.59% | 4.9 | 2.77% | 116 | 57 |
-| paris_building_09_5453 | MASTER_Roofing_Metal_01 | 1 / 1 | 2.24% | 7.2 | 2.55% | 208 | 114 |
-| paris_building_07_1__5349 | MASTER_Concrete_Smooth_BLENDSHADER | 192 / 233 | 2.17% | 6.1 | 2.06% | 13451 | 1141 |
-| paris_building_09_5433 | MASTER_Concrete_Smooth | 152 / 216 | 1.66% | 7.7 | 2.01% | 4854 | 443 |
-| paris_building_07_5319 | MASTER_Concrete_Smooth_BLENDSHADER | 195 / 233 | 2.39% | 5.2 | 1.96% | 12934 | 1045 |
-| paris_building_04_5019 | MASTER_Concrete | 178 / 185 | 0.95% | 11.4 | 1.70% | 2111 | 403 |
-| Paris_Street_14_NormalsFix_2 | Pavement_Curbstones | 413 / 586 | 1.49% | 6.9 | 1.61% | 3229 | 289 |
-| Paris_Street_6253 | MASTER_Brick_Small_Red_BLENDSHADER | 2 / 2 | 1.95% | 4.9 | 1.49% | 212 | 193 |
-| paris_building_09_5443 | MASTER_Concrete | 45 / 62 | 1.97% | 4.6 | 1.42% | 1256 | 293 |
-| paris_building_02_4921 | MASTER_Brick_Large_Beige_BLENDSHADER | 1 / 1 | 1.43% | 5.0 | 1.12% | 120 | 77 |
-| paris_building_04_4993 | MASTER_Brick_Small_Red | 1 / 1 | 0.59% | 11.6 | 1.08% | 128 | 64 |
-| paris_building_05_5137 | MASTER_Concrete | 51 / 95 | 0.52% | 13.0 | 1.07% | 1141 | 145 |
-| Paris_MainBalcony_01_6103 | Balcony_Trims | 86 / 86 | 0.44% | 14.9 | 1.02% | 3205 | 70 |
-| Paris_Building_01_paris_buildi_bc2b90d | MASTER_Concrete_Yellow | 1 / 1 | 0.78% | 7.3 | 0.90% | 44 | 19 |
-| paris_building_05_5169 | MASTER_Roofing_Shingle_Grey | 4 / 8 | 0.69% | 7.8 | 0.85% | 67 | 43 |
-| paris_building_05_5127 | MASTER_Concrete_Smooth | 55 / 107 | 0.51% | 10.1 | 0.81% | 1406 | 189 |
-| paris_building_05_5129 | MASTER_Concrete_Grooved | 7 / 9 | 0.65% | 7.3 | 0.75% | 150 | 99 |
+<details><summary>Top 20 source objects, every part summed</summary>
 
-Repeated shapes, every copy summed.
+Names leave out `Bistro_Research_Exterior_`.
 
-| Shape (first copy) | Material | Copies seen / placed | Path pixels | Mean dE76 | Error share | Source triangles | Drawn triangles |
-|---|---|---:|---:|---:|---:|---:|---:|
-| Bistro_Research_Exterior_paris_building_07_5329#1 | MASTER_Brick_Large_Beige_BLENDSHADER | 2 / 2 | 1.17% | 4.9 | 0.90% | 132 | 58 |
-| Bistro_Research_Exterior_Paris_Building_01_paris_buildi_7c1faab#0 | MASTER_Curtains | 71 / 148 | 0.38% | 12.3 | 0.75% | 142 | 28 |
-| Bistro_Research_Exterior_paris_building_02_4907#1 | MASTER_Brick_Large_Beige_BLENDSHADER | 2 / 2 | 0.80% | 5.4 | 0.67% | 4 | 4 |
-| Bistro_Research_Exterior_paris_building_05_5169#1 | MASTER_Roofing_Shingle_Grey | 2 / 2 | 0.51% | 7.9 | 0.63% | 62 | 37 |
-| Bistro_Research_Exterior_bux_hedge_box_long_low2_3977 | Foliage_Bux_Hedges46.DoubleSided | 12 / 12 | 0.80% | 4.2 | 0.53% | 504 | 120 |
-| Bistro_Research_Exterior_Paris_SidewalkBarrier_01A4_6177#0 | Sidewalkbarrier | 5 / 5 | 0.38% | 8.4 | 0.51% | 2360 | 10 |
-| Bistro_Research_Exterior_Paris_Building_01_paris_buildi_6a0ff93#0 | MASTER_Concrete_Smooth | 16 / 16 | 0.32% | 9.9 | 0.50% | 1568 | 105 |
-| Bistro_Research_Exterior_paris_building_05_51__5261#8 | MASTER_Concrete_Grooved | 2 / 2 | 0.51% | 5.9 | 0.48% | 86 | 72 |
-| Bistro_Research_Exterior_Paris_PlantPot_01A3_6141 | Plantpots | 9 / 9 | 0.29% | 9.9 | 0.45% | 720 | 49 |
-| Bistro_Research_Exterior_Paris_Bollard_01A2_4137#0 | Bollards | 4 / 4 | 0.17% | 15.8 | 0.41% | 440 | 81 |
-| Bistro_Research_Exterior_paris_building_05_5129#7 | MASTER_Concrete_Grooved | 2 / 2 | 0.32% | 7.7 | 0.39% | 82 | 54 |
-| Bistro_Research_Exterior_Paris_BistroAwning_02B7_4127#5 | Awnings_Hotel_Fabric | 9 / 9 | 0.20% | 12.4 | 0.39% | 918 | 50 |
-| StringLight_Wind_23 | Stringlights | 3 / 3 | 0.09% | 22.4 | 0.32% | 72 | 10 |
-| Bistro_Research_Exterior_paris_building_10_5471#50 | MASTER_Concrete_Smooth | 2 / 2 | 0.26% | 7.8 | 0.32% | 104 | 28 |
-| Bistro_Research_Exterior_paris_building_10_11__5511 | MASTER_Brick_Large_Beige_BLENDSHADER | 2 / 2 | 0.53% | 3.7 | 0.31% | 216 | 122 |
-| Bistro_Research_Exterior_paris_building_10_5493#0 | MASTER_Roofing_Metal_01 | 2 / 2 | 0.25% | 7.4 | 0.29% | 152 | 55 |
-| Bistro_Research_Exterior_Paris_StreetPivot_018_6387 | Paris_StreetPivot | 42 / 50 | 0.13% | 13.8 | 0.28% | 504 | 17 |
-| Bistro_Research_Exterior_paris_building_04_4987#52 | MASTER_Building_Details | 52 / 64 | 0.23% | 6.9 | 0.25% | 208 | 15 |
-| Bistro_Research_Exterior_Paris_SidewalkBarrier_01A3_6175#2 | Sidewalkbarrier | 5 / 5 | 0.20% | 7.7 | 0.24% | 460 | 2 |
-| Bistro_Research_Exterior_Paris_Table_01___10__6493#0 | Paris_Table_Terrace | 87 / 121 | 0.15% | 10.2 | 0.23% | 1044 | 35 |
+| Rank | Source object | Material | Parts seen / all | Path pixels | Mean dE76 | Error share | Source triangles | Drawn triangles |
+|---:|---|---|---:|---:|---:|---:|---:|---:|
+| 1 | Paris_Street_6225 | Pavement_Cobblestone_Wet_BLENDSHADER | 3 / 3 | 14.99% | 6.7 | 15.75% | 721 | 236 |
+| 2 | Paris_Street_6185 | Pavement_Cobblestone_Big_BLENDSHADER | 2 / 2 | 11.37% | 5.4 | 9.69% | 337 | 304 |
+| 3 | paris_building_02_4909 | MASTER_Concrete_Smooth | 138 / 258 | 3.73% | 6.3 | 3.71% | 6156 | 900 |
+| 4 | Paris_Street_6231 | Pavement_Cobblestone_01_BLENDSHADER | 2 / 2 | 3.59% | 4.9 | 2.77% | 116 | 57 |
+| 5 | paris_building_09_5453 | MASTER_Roofing_Metal_01 | 1 / 1 | 2.24% | 7.2 | 2.55% | 208 | 114 |
+| 6 | paris_building_07_1__5349 | MASTER_Concrete_Smooth_BLENDSHADER | 192 / 233 | 2.17% | 6.1 | 2.06% | 13451 | 1141 |
+| 7 | paris_building_09_5433 | MASTER_Concrete_Smooth | 152 / 216 | 1.66% | 7.7 | 2.01% | 4854 | 443 |
+| 8 | paris_building_07_5319 | MASTER_Concrete_Smooth_BLENDSHADER | 195 / 233 | 2.39% | 5.2 | 1.96% | 12934 | 1045 |
+| 9 | paris_building_04_5019 | MASTER_Concrete | 178 / 185 | 0.95% | 11.4 | 1.70% | 2111 | 403 |
+| 10 | Paris_Street_14_NormalsFix_2 | Pavement_Curbstones | 413 / 586 | 1.49% | 6.9 | 1.61% | 3229 | 289 |
+| 11 | Paris_Street_6253 | MASTER_Brick_Small_Red_BLENDSHADER | 2 / 2 | 1.95% | 4.9 | 1.49% | 212 | 193 |
+| 12 | paris_building_09_5443 | MASTER_Concrete | 45 / 62 | 1.97% | 4.6 | 1.42% | 1256 | 293 |
+| 13 | paris_building_02_4921 | MASTER_Brick_Large_Beige_BLENDSHADER | 1 / 1 | 1.43% | 5.0 | 1.12% | 120 | 77 |
+| 14 | paris_building_04_4993 | MASTER_Brick_Small_Red | 1 / 1 | 0.59% | 11.6 | 1.08% | 128 | 64 |
+| 15 | paris_building_05_5137 | MASTER_Concrete | 51 / 95 | 0.52% | 13.0 | 1.07% | 1141 | 145 |
+| 16 | Paris_MainBalcony_01_6103 | Balcony_Trims | 86 / 86 | 0.44% | 14.9 | 1.02% | 3205 | 70 |
+| 17 | Paris_Building_01_paris_buildi_bc2b90d | MASTER_Concrete_Yellow | 1 / 1 | 0.78% | 7.3 | 0.90% | 44 | 19 |
+| 18 | paris_building_05_5169 | MASTER_Roofing_Shingle_Grey | 4 / 8 | 0.69% | 7.8 | 0.85% | 67 | 43 |
+| 19 | paris_building_05_5127 | MASTER_Concrete_Smooth | 55 / 107 | 0.51% | 10.1 | 0.81% | 1406 | 189 |
+| 20 | paris_building_05_5129 | MASTER_Concrete_Grooved | 7 / 9 | 0.65% | 7.3 | 0.75% | 150 | 99 |
+
+</details>
+
+<details><summary>Top 20 repeated shapes, every copy summed</summary>
+
+| Rank | Shape (first copy) | Material | Copies seen / placed | Path pixels | Mean dE76 | Error share | Source triangles | Drawn triangles |
+|---:|---|---|---:|---:|---:|---:|---:|---:|
+| 1 | Bistro_Research_Exterior_paris_building_07_5329#1 | MASTER_Brick_Large_Beige_BLENDSHADER | 2 / 2 | 1.17% | 4.9 | 0.90% | 132 | 58 |
+| 2 | Bistro_Research_Exterior_Paris_Building_01_paris_buildi_7c1faab#0 | MASTER_Curtains | 71 / 148 | 0.38% | 12.3 | 0.75% | 142 | 28 |
+| 3 | Bistro_Research_Exterior_paris_building_02_4907#1 | MASTER_Brick_Large_Beige_BLENDSHADER | 2 / 2 | 0.80% | 5.4 | 0.67% | 4 | 4 |
+| 4 | Bistro_Research_Exterior_paris_building_05_5169#1 | MASTER_Roofing_Shingle_Grey | 2 / 2 | 0.51% | 7.9 | 0.63% | 62 | 37 |
+| 5 | Bistro_Research_Exterior_bux_hedge_box_long_low2_3977 | Foliage_Bux_Hedges46.DoubleSided | 12 / 12 | 0.80% | 4.2 | 0.53% | 504 | 120 |
+| 6 | Bistro_Research_Exterior_Paris_SidewalkBarrier_01A4_6177#0 | Sidewalkbarrier | 5 / 5 | 0.38% | 8.4 | 0.51% | 2360 | 10 |
+| 7 | Bistro_Research_Exterior_Paris_Building_01_paris_buildi_6a0ff93#0 | MASTER_Concrete_Smooth | 16 / 16 | 0.32% | 9.9 | 0.50% | 1568 | 105 |
+| 8 | Bistro_Research_Exterior_paris_building_05_51__5261#8 | MASTER_Concrete_Grooved | 2 / 2 | 0.51% | 5.9 | 0.48% | 86 | 72 |
+| 9 | Bistro_Research_Exterior_Paris_PlantPot_01A3_6141 | Plantpots | 9 / 9 | 0.29% | 9.9 | 0.45% | 720 | 49 |
+| 10 | Bistro_Research_Exterior_Paris_Bollard_01A2_4137#0 | Bollards | 4 / 4 | 0.17% | 15.8 | 0.41% | 440 | 81 |
+| 11 | Bistro_Research_Exterior_paris_building_05_5129#7 | MASTER_Concrete_Grooved | 2 / 2 | 0.32% | 7.7 | 0.39% | 82 | 54 |
+| 12 | Bistro_Research_Exterior_Paris_BistroAwning_02B7_4127#5 | Awnings_Hotel_Fabric | 9 / 9 | 0.20% | 12.4 | 0.39% | 918 | 50 |
+| 13 | StringLight_Wind_23 | Stringlights | 3 / 3 | 0.09% | 22.4 | 0.32% | 72 | 10 |
+| 14 | Bistro_Research_Exterior_paris_building_10_5471#50 | MASTER_Concrete_Smooth | 2 / 2 | 0.26% | 7.8 | 0.32% | 104 | 28 |
+| 15 | Bistro_Research_Exterior_paris_building_10_11__5511 | MASTER_Brick_Large_Beige_BLENDSHADER | 2 / 2 | 0.53% | 3.7 | 0.31% | 216 | 122 |
+| 16 | Bistro_Research_Exterior_paris_building_10_5493#0 | MASTER_Roofing_Metal_01 | 2 / 2 | 0.25% | 7.4 | 0.29% | 152 | 55 |
+| 17 | Bistro_Research_Exterior_Paris_StreetPivot_018_6387 | Paris_StreetPivot | 42 / 50 | 0.13% | 13.8 | 0.28% | 504 | 17 |
+| 18 | Bistro_Research_Exterior_paris_building_04_4987#52 | MASTER_Building_Details | 52 / 64 | 0.23% | 6.9 | 0.25% | 208 | 15 |
+| 19 | Bistro_Research_Exterior_Paris_SidewalkBarrier_01A3_6175#2 | Sidewalkbarrier | 5 / 5 | 0.20% | 7.7 | 0.24% | 460 | 2 |
+| 20 | Bistro_Research_Exterior_Paris_Table_01___10__6493#0 | Paris_Table_Terrace | 87 / 121 | 0.15% | 10.2 | 0.23% | 1044 | 35 |
+
+</details>
 <!-- /generated: bistro-street-fitted-full-object-error -->
 
-![Error and pixel share of the costliest Sponza parts](../../images/render/sponza-atrium-fitted-full-object-error.png)
+![Sponza error share against pixel share for parts, objects and shapes](../../images/render/sponza-atrium-fitted-full-object-error.png)
 
-<!-- generated: sponza-atrium-fitted-full-object-error sha256=a8f59d94496285c1f8161c15992668297f8fb4e26657a8eab44cd2462bef816b -->
+<!-- generated: sponza-atrium-fitted-full-object-error sha256=e752ae8f94ae645b97d2a067eaeefe401383c5acb71057f2f0b3fded181baf33 -->
 Mean dE76 over the held-out path 5.390, over 1026 object parts in view. 8.1% of the drawn triangles sit on parts no held-out pixel shows. 61 drawn triangles sit on planar parts in view; 514 are sheets (over 4 times their part's median triangle, turned over 30° from the source).
 
-Object parts, ranked by error share. Names leave out `sponza_`.
+<details><summary>Top 20 object parts, ranked by error share</summary>
+
+Names leave out `sponza_`.
 
 | Rank | Object part | Material | Path pixels | Mean dE76 | Error share | Source triangles | Drawn triangles | Flags |
 |---:|---|---|---:|---:|---:|---:|---:|---|
@@ -504,55 +528,65 @@ Object parts, ranked by error share. Names leave out `sponza_`.
 | 19 | 327 | fabric_f | 1.00% | 8.4 | 1.56% | 1.98% | 1.47% | repeat ×2 |
 | 20 | 381 | roof | 0.94% | 8.8 | 1.53% | 5.70% | 3.58% |  |
 
-Source objects, every part summed. Names leave out `sponza_`.
+</details>
 
-| Source object | Material | Parts seen / all | Path pixels | Mean dE76 | Error share | Source triangles | Drawn triangles |
-|---|---|---:|---:|---:|---:|---:|---:|
-| 117 | floor | 1 / 1 | 21.14% | 4.3 | 16.93% | 5 | 45 |
-| 17 | arch | 1 / 1 | 7.32% | 5.9 | 8.01% | 2896 | 732 |
-| 06 | bricks | 1 / 1 | 4.39% | 5.5 | 4.46% | 100 | 103 |
-| 36 | bricks | 1 / 1 | 4.79% | 3.9 | 3.50% | 148 | 317 |
-| 123 | arch | 1 / 1 | 2.80% | 6.1 | 3.15% | 1860 | 434 |
-| 326 | fabric_g | 1 / 1 | 1.36% | 12.1 | 3.04% | 4608 | 287 |
-| 34 | bricks | 1 / 1 | 3.51% | 4.6 | 3.02% | 204 | 301 |
-| 124 | arch | 1 / 1 | 3.03% | 5.3 | 3.00% | 1860 | 337 |
-| 324 | fabric_f | 1 / 1 | 2.87% | 5.5 | 2.91% | 4608 | 159 |
-| 19 | ceiling | 1 / 1 | 2.76% | 5.4 | 2.78% | 2332 | 1205 |
-| 68 | bricks | 1 / 1 | 2.62% | 5.2 | 2.52% | 18 | 76 |
-| 286 | fabric_d | 1 / 1 | 1.14% | 10.1 | 2.13% | 5504 | 154 |
-| 329 | fabric_g | 1 / 1 | 0.94% | 10.8 | 1.88% | 4864 | 315 |
-| 287 | fabric_e | 1 / 1 | 1.17% | 8.6 | 1.87% | 5504 | 145 |
-| 283 | fabric_d | 1 / 1 | 1.42% | 6.9 | 1.84% | 5504 | 95 |
-| 284 | fabric_a | 1 / 1 | 1.69% | 5.3 | 1.66% | 5504 | 99 |
-| 328 | fabric_c | 1 / 1 | 0.91% | 9.6 | 1.62% | 4608 | 244 |
-| 288 | fabric_a | 1 / 1 | 1.02% | 8.5 | 1.60% | 5504 | 118 |
-| 327 | fabric_f | 1 / 1 | 1.00% | 8.4 | 1.56% | 4864 | 242 |
-| 381 | roof | 1 / 1 | 0.94% | 8.8 | 1.53% | 13988 | 590 |
+<details><summary>Top 20 source objects, every part summed</summary>
 
-Repeated shapes, every copy summed. Names leave out `sponza_`.
+Names leave out `sponza_`.
 
-| Shape (first copy) | Material | Copies seen / placed | Path pixels | Mean dE76 | Error share | Source triangles | Drawn triangles |
-|---|---|---:|---:|---:|---:|---:|---:|
-| 123 | arch | 2 / 2 | 5.83% | 5.7 | 6.15% | 3720 | 771 |
-| 286 | fabric_d | 3 / 3 | 3.16% | 8.6 | 5.06% | 16512 | 389 |
-| 19 | ceiling | 2 / 2 | 3.73% | 5.0 | 3.48% | 4664 | 2106 |
-| 287 | fabric_e | 3 / 3 | 2.58% | 6.9 | 3.30% | 16512 | 301 |
-| 284 | fabric_a | 2 / 2 | 2.71% | 6.5 | 3.26% | 11008 | 217 |
-| 329 | fabric_g | 2 / 2 | 2.20% | 7.9 | 3.23% | 9728 | 488 |
-| 11 | column_a | 8 / 8 | 2.64% | 5.7 | 2.81% | 1456 | 183 |
-| 32 | column_c | 4 / 4 | 2.15% | 6.7 | 2.69% | 1048 | 151 |
-| 30 | column_c | 4 / 4 | 2.56% | 5.6 | 2.67% | 1048 | 124 |
-| 328 | fabric_c | 2 / 2 | 1.80% | 7.6 | 2.55% | 9216 | 363 |
-| 67 | arch | 2 / 2 | 2.65% | 5.0 | 2.47% | 560 | 355 |
-| 327 | fabric_f | 2 / 2 | 1.18% | 7.8 | 1.70% | 9728 | 341 |
-| 213 | column_b | 6 / 6 | 1.35% | 5.5 | 1.39% | 7320 | 195 |
-| 33 | column_c | 4 / 4 | 1.10% | 5.5 | 1.13% | 1584 | 158 |
-| 325 | fabric_c | 2 / 2 | 1.21% | 4.7 | 1.06% | 9728 | 302 |
-| 21 | arch | 2 / 2 | 0.67% | 6.9 | 0.85% | 1096 | 131 |
-| 120 | column_a | 4 / 4 | 0.69% | 4.6 | 0.59% | 1360 | 136 |
-| 61 | arch | 11 / 11 | 0.43% | 6.8 | 0.54% | 440 | 382 |
-| 297 | flagpole | 10 / 10 | 0.26% | 10.9 | 0.52% | 1920 | 14 |
-| 369#50 | vase_round | 8 / 8 | 0.38% | 7.2 | 0.50% | 17592 | 1055 |
+| Rank | Source object | Material | Parts seen / all | Path pixels | Mean dE76 | Error share | Source triangles | Drawn triangles |
+|---:|---|---|---:|---:|---:|---:|---:|---:|
+| 1 | 117 | floor | 1 / 1 | 21.14% | 4.3 | 16.93% | 5 | 45 |
+| 2 | 17 | arch | 1 / 1 | 7.32% | 5.9 | 8.01% | 2896 | 732 |
+| 3 | 06 | bricks | 1 / 1 | 4.39% | 5.5 | 4.46% | 100 | 103 |
+| 4 | 36 | bricks | 1 / 1 | 4.79% | 3.9 | 3.50% | 148 | 317 |
+| 5 | 123 | arch | 1 / 1 | 2.80% | 6.1 | 3.15% | 1860 | 434 |
+| 6 | 326 | fabric_g | 1 / 1 | 1.36% | 12.1 | 3.04% | 4608 | 287 |
+| 7 | 34 | bricks | 1 / 1 | 3.51% | 4.6 | 3.02% | 204 | 301 |
+| 8 | 124 | arch | 1 / 1 | 3.03% | 5.3 | 3.00% | 1860 | 337 |
+| 9 | 324 | fabric_f | 1 / 1 | 2.87% | 5.5 | 2.91% | 4608 | 159 |
+| 10 | 19 | ceiling | 1 / 1 | 2.76% | 5.4 | 2.78% | 2332 | 1205 |
+| 11 | 68 | bricks | 1 / 1 | 2.62% | 5.2 | 2.52% | 18 | 76 |
+| 12 | 286 | fabric_d | 1 / 1 | 1.14% | 10.1 | 2.13% | 5504 | 154 |
+| 13 | 329 | fabric_g | 1 / 1 | 0.94% | 10.8 | 1.88% | 4864 | 315 |
+| 14 | 287 | fabric_e | 1 / 1 | 1.17% | 8.6 | 1.87% | 5504 | 145 |
+| 15 | 283 | fabric_d | 1 / 1 | 1.42% | 6.9 | 1.84% | 5504 | 95 |
+| 16 | 284 | fabric_a | 1 / 1 | 1.69% | 5.3 | 1.66% | 5504 | 99 |
+| 17 | 328 | fabric_c | 1 / 1 | 0.91% | 9.6 | 1.62% | 4608 | 244 |
+| 18 | 288 | fabric_a | 1 / 1 | 1.02% | 8.5 | 1.60% | 5504 | 118 |
+| 19 | 327 | fabric_f | 1 / 1 | 1.00% | 8.4 | 1.56% | 4864 | 242 |
+| 20 | 381 | roof | 1 / 1 | 0.94% | 8.8 | 1.53% | 13988 | 590 |
+
+</details>
+
+<details><summary>Top 20 repeated shapes, every copy summed</summary>
+
+Names leave out `sponza_`.
+
+| Rank | Shape (first copy) | Material | Copies seen / placed | Path pixels | Mean dE76 | Error share | Source triangles | Drawn triangles |
+|---:|---|---|---:|---:|---:|---:|---:|---:|
+| 1 | 123 | arch | 2 / 2 | 5.83% | 5.7 | 6.15% | 3720 | 771 |
+| 2 | 286 | fabric_d | 3 / 3 | 3.16% | 8.6 | 5.06% | 16512 | 389 |
+| 3 | 19 | ceiling | 2 / 2 | 3.73% | 5.0 | 3.48% | 4664 | 2106 |
+| 4 | 287 | fabric_e | 3 / 3 | 2.58% | 6.9 | 3.30% | 16512 | 301 |
+| 5 | 284 | fabric_a | 2 / 2 | 2.71% | 6.5 | 3.26% | 11008 | 217 |
+| 6 | 329 | fabric_g | 2 / 2 | 2.20% | 7.9 | 3.23% | 9728 | 488 |
+| 7 | 11 | column_a | 8 / 8 | 2.64% | 5.7 | 2.81% | 1456 | 183 |
+| 8 | 32 | column_c | 4 / 4 | 2.15% | 6.7 | 2.69% | 1048 | 151 |
+| 9 | 30 | column_c | 4 / 4 | 2.56% | 5.6 | 2.67% | 1048 | 124 |
+| 10 | 328 | fabric_c | 2 / 2 | 1.80% | 7.6 | 2.55% | 9216 | 363 |
+| 11 | 67 | arch | 2 / 2 | 2.65% | 5.0 | 2.47% | 560 | 355 |
+| 12 | 327 | fabric_f | 2 / 2 | 1.18% | 7.8 | 1.70% | 9728 | 341 |
+| 13 | 213 | column_b | 6 / 6 | 1.35% | 5.5 | 1.39% | 7320 | 195 |
+| 14 | 33 | column_c | 4 / 4 | 1.10% | 5.5 | 1.13% | 1584 | 158 |
+| 15 | 325 | fabric_c | 2 / 2 | 1.21% | 4.7 | 1.06% | 9728 | 302 |
+| 16 | 21 | arch | 2 / 2 | 0.67% | 6.9 | 0.85% | 1096 | 131 |
+| 17 | 120 | column_a | 4 / 4 | 0.69% | 4.6 | 0.59% | 1360 | 136 |
+| 18 | 61 | arch | 11 / 11 | 0.43% | 6.8 | 0.54% | 440 | 382 |
+| 19 | 297 | flagpole | 10 / 10 | 0.26% | 10.9 | 0.52% | 1920 | 14 |
+| 20 | 369#50 | vase_round | 8 / 8 | 0.38% | 7.2 | 0.50% | 17592 | 1055 |
+
+</details>
 <!-- /generated: sponza-atrium-fitted-full-object-error -->
 
 ## The offline tools
