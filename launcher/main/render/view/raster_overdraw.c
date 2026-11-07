@@ -78,7 +78,7 @@ show(const raster_attachment_t* self, const raster_t* raster, const gfx_target_t
 
 raster_attachment_t
 raster_overdraw_view(void* state) {
-    return (raster_attachment_t){IMAGE_U16, clear, NULL, writer, NULL, show, state};
+    return (raster_attachment_t){IMAGE_U16, clear, NULL, writer, show, state};
 }
 
 raster_overdraw_frame_t

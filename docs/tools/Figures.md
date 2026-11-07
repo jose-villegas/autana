@@ -18,7 +18,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [overview](#overview) | 15 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
-| [render](#render) | 132 | 0 | 11 |
+| [render](#render) | 129 | 0 | 11 |
 | [ui](#ui) | 62 | 0 | 0 |
 
 ## anim
@@ -247,7 +247,6 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/overdraw-bistro-sheet.png"><img src="../images/render/overdraw-bistro-sheet.png" width="160" alt=""></a> | Bistro's overdraw along its path | [render/frame/Overdraw](../render/frame/Overdraw.md) | not declared yet |
 | <a href="../images/render/pipeline-frame-stages.depth.png"><img src="../images/render/pipeline-frame-stages.depth.png" width="160" alt=""></a> | Frame stages with the depth view | [render/frame/README](../render/frame/README.md) | not declared yet |
 | <a href="../images/render/pipeline-frame-stages.meshlets.png"><img src="../images/render/pipeline-frame-stages.meshlets.png" width="160" alt=""></a> | Frame stages with the meshlets view | [render/frame/README](../render/frame/README.md) | not declared yet |
-| <a href="../images/render/pipeline-frame-stages.motion.png"><img src="../images/render/pipeline-frame-stages.motion.png" width="160" alt=""></a> | Frame stages with the motion view | [render/frame/README](../render/frame/README.md) | not declared yet |
 | <a href="../images/render/pipeline-frame-stages.png"><img src="../images/render/pipeline-frame-stages.png" width="160" alt=""></a> | Frame stages as shipped | [render/frame/README](../render/frame/README.md) | not declared yet |
 | <a href="../images/render/pipeline-frame-stages.sub-stages.png"><img src="../images/render/pipeline-frame-stages.sub-stages.png" width="160" alt=""></a> | Inside transform and draw | [render/frame/README](../render/frame/README.md) | not declared yet |
 | <a href="../images/render/pipeline-frame-stages.tiles.png"><img src="../images/render/pipeline-frame-stages.tiles.png" width="160" alt=""></a> | Frame stages with the tiles view | [render/frame/README](../render/frame/README.md) | not declared yet |
@@ -270,7 +269,6 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/sponza-lite.gif"><img src="figure-thumbnails/render/sponza-lite.gif" width="160" alt=""></a> | lite flythrough | [render/offline/Bake-Quality](../render/offline/Bake-Quality.md) | not declared yet |
 | <a href="../images/render/sponza-meshlets.gif"><img src="figure-thumbnails/render/sponza-meshlets.gif" width="160" alt=""></a> | The meshlets view along a flythrough | [render/frame/Attachments](../render/frame/Attachments.md) | not declared yet |
 | <a href="../images/render/sponza-meshlets.png"><img src="../images/render/sponza-meshlets.png" width="160" alt=""></a> | Clusters painted by the meshlets debug view | [render/offline/Baked-Mesh](../render/offline/Baked-Mesh.md), [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
-| <a href="../images/render/sponza-motion-vectors.gif"><img src="figure-thumbnails/render/sponza-motion-vectors.gif" width="160" alt=""></a> | The motion-vector view along a flythrough | [render/frame/Attachments](../render/frame/Attachments.md) | not declared yet |
 | <a href="../images/render/sponza-present-double.gif"><img src="figure-thumbnails/render/sponza-present-double.gif" width="160" alt=""></a> | Doubled presentation | [render/frame/Dynamic-Resolution](../render/frame/Dynamic-Resolution.md) | not declared yet |
 | <a href="../images/render/sponza-present-nearest.gif"><img src="figure-thumbnails/render/sponza-present-nearest.gif" width="160" alt=""></a> | Nearest presentation | [render/frame/Dynamic-Resolution](../render/frame/Dynamic-Resolution.md) | not declared yet |
 | <a href="../images/render/sponza-present-scanline.gif"><img src="figure-thumbnails/render/sponza-present-scanline.gif" width="160" alt=""></a> | Scanline presentation | [render/frame/Dynamic-Resolution](../render/frame/Dynamic-Resolution.md) | not declared yet |
@@ -287,7 +285,6 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/sponza-view-cull.png"><img src="../images/render/sponza-view-cull.png" width="160" alt=""></a> | The cull view | [render/frame/View-Modes](../render/frame/View-Modes.md) | not declared yet |
 | <a href="../images/render/sponza-view-depth.png"><img src="../images/render/sponza-view-depth.png" width="160" alt=""></a> | The depth view | [render/frame/View-Modes](../render/frame/View-Modes.md) | not declared yet |
 | <a href="../images/render/sponza-view-meshlets.png"><img src="../images/render/sponza-view-meshlets.png" width="160" alt=""></a> | The meshlets view | [render/frame/View-Modes](../render/frame/View-Modes.md) | not declared yet |
-| <a href="../images/render/sponza-view-motion.png"><img src="../images/render/sponza-view-motion.png" width="160" alt=""></a> | The motion view | [render/frame/View-Modes](../render/frame/View-Modes.md) | not declared yet |
 | <a href="../images/render/sponza-view-overdraw.png"><img src="../images/render/sponza-view-overdraw.png" width="160" alt=""></a> | The overdraw view | [render/frame/View-Modes](../render/frame/View-Modes.md) | not declared yet |
 | <a href="../images/render/sponza-view-shaded.png"><img src="../images/render/sponza-view-shaded.png" width="160" alt=""></a> | The shaded view | [render/frame/View-Modes](../render/frame/View-Modes.md) | not declared yet |
 | <a href="../images/render/sponza-view-tiles.png"><img src="../images/render/sponza-view-tiles.png" width="160" alt=""></a> | The tiles view | [render/frame/View-Modes](../render/frame/View-Modes.md) | not declared yet |

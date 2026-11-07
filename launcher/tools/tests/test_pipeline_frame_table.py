@@ -18,14 +18,15 @@ class PipelineFrameTableTests(unittest.TestCase):
             frame_stages.chart(list(base), base, added, pathlib.Path(directory) / "chart.png")
         return [call.args[0].axes[0] for call in close.call_args_list if hasattr(call.args[0], "axes")]
 
-    def test_stage_figure_keeps_resolve_only_when_captured(self):
+    def test_stage_figure_keeps_a_stage_only_when_captured(self):
         base = {'mean': 1000, 'p50': 1000, 'max': 1000, 'r3d.draw': 2.0, 'r3d.upscale': 3.0}
         spans = dict(setup=100, edges=100, carry=100, fill=100)
-        splits = {(184, 224): dict(base, **{'r3d.resolve': 4.0}), (92, 112): base}
+        splits = {(184, 224): dict(base, **{'r3d.cull': 4.0}), (92, 112): base}
         with tempfile.TemporaryDirectory() as directory, patch("docs.plot_style.save_themes") as save:
             dynres_report.stage_figures(splits, spans, directory)
         stages = [text.get_text() for text in save.call_args_list[0].args[0].axes[0].get_legend().get_texts()]
-        self.assertIn("resolve", stages)
+        self.assertIn("cull", stages)
+        self.assertNotIn("transform", stages)
         self.assertEqual(len(dynres_report.stages_table(splits).splitlines()), 6)
 
     def test_views_add_their_difference_in_report_order(self):
@@ -270,7 +271,7 @@ class PipelineFrameTableTests(unittest.TestCase):
 
     def test_view_names_come_from_the_view_table(self):
         names = frame_stages.view_names()
-        self.assertEqual(names, ["depth", "tiles", "motion", "meshlets", "cull", "boxes", "overdraw", "copies"])
+        self.assertEqual(names, ["depth", "tiles", "meshlets", "cull", "boxes", "overdraw", "copies"])
         with tempfile.TemporaryDirectory() as directory:
             source = pathlib.Path(directory) / "context.c"
             source.write_text('static const render_debug_view_t views[] = {\n'

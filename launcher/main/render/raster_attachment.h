@@ -22,9 +22,6 @@ struct raster_attachment {
      * this instance, or returns false to leave this attachment unwritten.
      * Called once per instance in order, drawn or not, so it may count. */
     bool (*writer)(const raster_attachment_t* self, int instance, r3d_span_writer_t* out);
-    /* Optional. Once every instance is drawn, `rows` of the picture, both
-     * cores at once on disjoint rows; `index` is this attachment's in it. */
-    void (*resolve)(const raster_attachment_t* self, const raster_t* raster, const gfx_target_t* rows, int index);
     /* Optional. Development builds: paints `picture`'s colour from this
      * attachment. */
     void (*show)(const raster_attachment_t* self, const raster_t* raster, const gfx_target_t* picture, int index);

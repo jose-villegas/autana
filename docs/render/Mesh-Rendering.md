@@ -72,7 +72,6 @@ The importer bakes the placement from a position, a rotation and a scale
 | `raster.h` | An array of instances drawn on both cores, optionally upscaled into a destination picture |
 | `raster_show.h` | Development views paint colour from the raster maps |
 | `raster_attachment.h` | What a further attachment declares: its size per pixel, its clear, and the hooks it takes part in a picture with |
-| `raster_motion.h` | The motion-vector attachment: where each pixel's point was in the previous picture |
 | `context/render_context.h` | The render context: the size and quality a frame is drawn at, apart from what is drawn and from where |
 | `resolution/resolution.h` | Dynamic resolution: the steps, the stepped controller and the predictor a render context can opt into |
 | `viewport.h` | The viewport, and where a physical pixel lands in the upright picture |
@@ -98,7 +97,7 @@ from `math/linear/`, documented in [linear maths](../math/Linear.md) and
 | `math/projection/projectf.h` | The pinhole lens value, continuous float projection and float near clipping |
 | `projectx_t` | A Q16.16 lens; fixed near clipping accepts any common camera-space scale |
 | `render_view_t.lens` | The view's square-pixel pinhole |
-| `mat4f_t` | The raster's lens and motion maps: composed with `mat4f_mul_affine()`, inverted with `mat4f_invert_affine()`, applied to each vertex with `mat4f_apply()` |
+| `mat4f_t` | The raster's lens and the frame-generation warp's map: composed with `mat4f_mul_affine()`, inverted with `mat4f_invert_affine()`, applied to each vertex with `mat4f_apply()` |
 | render | Pixel snapping and fixed line units: its 32-bit quotient truncates toward zero before the pixel-scale multiply |
 | `render/r3d_project.h` | The float reference: biases pixel offsets slightly away from zero before truncating toward zero |
 

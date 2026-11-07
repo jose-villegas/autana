@@ -43,7 +43,6 @@
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_span_internal.h"
 #include "render/raster_internal.h"
-#include "render/view/raster_motion.h"
 #include "scene/scene.h"
 #include "services/build_id.h"
 #include "sponza_suite.h"
@@ -306,7 +305,7 @@ test_sponza_draw_stage_breakdown(void) {
 }
 
 /* `moving`, when not NULL, is the pose behind the instance's `model`,
- * nudged every frame so an attached motion tags every triangle. */
+ * nudged every frame. */
 static void
 report_frame_cost(const char* label, const char* object_name, const r3d_instance_t* instance,
                   const raster_attachment_t* const* attachments, transformf_t* moving, mat4f_t* model,
@@ -440,45 +439,17 @@ test_sponza_frame_cost_along_the_flythrough(void) {
     TEST_PASS();
 }
 
-static raster_motion_t* motion;
-/* Each motion draw below draws one instance. */
-#define SPONZA_MOTION_INSTANCES 1
-
-static void
-release_motion(void) {
-    if (motion != NULL) {
-        raster_motion_release(motion);
-    }
-    memory_free(motion);
-    motion = NULL;
-}
-
-/* The full bake with motion vectors attached: the camera's motion alone,
- * then with the mesh moving too, so every triangle also tags its pixels. */
+/* The full bake placed by a model matrix nudged every frame. */
 void
-test_sponza_frame_cost_with_motion(void) {
+test_sponza_frame_cost_placed(void) {
     open_the_meshes();
-    suite_add_test_cleanup(release_motion);
-    motion = memory_alloc(sizeof(*motion), MEMORY_APP);
-    TEST_ASSERT_NOT_NULL(motion);
-    *motion = (raster_motion_t){0};
-    TEST_ASSERT_TRUE(raster_motion_reserve(motion, SPONZA_MOTION_INSTANCES));
-    const raster_attachment_t attachment = raster_motion_view(motion);
-    const raster_attachment_t* const attached[] = {&attachment};
     /* Worst of a 5-seed capture on A308 (before and after its move), 20E8 and
      * 2124, + 1%; per quarter, portrait then landscape. */
-    static const perf_budget_t motion_budget[R3D_PERF_QUARTER_COUNT] = {{56316, 67715}, {53984, 62771}};
-    static const perf_budget_t moving_budget[R3D_PERF_QUARTER_COUNT] = {{77597, 95705}, {73747, 87554}};
     static const perf_budget_t placed_budget[R3D_PERF_QUARTER_COUNT] = {{41115, 52181}, {38830, 47638}};
-    const r3d_instance_t still = {&meshes[0], NULL, NULL, NULL};
-    report_frame_cost("motion", sponza_bakes[0], &still, attached, NULL, NULL, motion_budget);
-    raster_motion_forget(motion);
     transformf_t pose = transformf_identity();
     mat4f_t model = transformf_compute_matrix(&pose);
     const r3d_instance_t moving = {&meshes[0], &model, NULL, NULL};
-    report_frame_cost("motion_moving", sponza_bakes[0], &moving, attached, &pose, &model, moving_budget);
     report_frame_cost("placed", sponza_bakes[0], &moving, NULL, &pose, &model, placed_budget);
-    release_motion();
     TEST_PASS();
 }
 
@@ -494,7 +465,7 @@ run_sponza_perf_suite(void) {
         perf_quarter = &r3d_perf_quarters[q];
         RUN_TEST_CASE(test_sponza_draw_stage_breakdown, perf_quarter->name);
         RUN_TEST_CASE(test_sponza_frame_cost_along_the_flythrough, perf_quarter->name);
-        RUN_TEST_CASE(test_sponza_frame_cost_with_motion, perf_quarter->name);
+        RUN_TEST_CASE(test_sponza_frame_cost_placed, perf_quarter->name);
     }
     loaded = (sponza_suite_t){sponza, loaded.load, flythrough, loaded.arena_mark};
     sponza_suite_release(&loaded);
