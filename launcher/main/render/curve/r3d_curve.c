@@ -22,10 +22,11 @@ enum { SCREEN_LEFT, SCREEN_RIGHT, SCREEN_TOP, SCREEN_BOTTOM, SCREEN_PLANES };
 _Static_assert(sizeof(r3d_curve_t) == 16, "LCRV curve row layout");
 _Static_assert(sizeof(r3d_curve_knot_t) == 10, "LCRV knot row layout");
 
+/* A knot in lens space; its colour stays packed, the ribbon drawing one mean of its two ends. */
 typedef struct {
     vec3f_t point;
     float radius;
-    float r, g, b;
+    uint16_t color;
 } knot_t;
 
 typedef struct {
@@ -34,17 +35,27 @@ typedef struct {
 
 static knot_t
 knot_at(const r3d_curve_knot_t* knot, const r3d_lens_t* lens) {
-    const uint32_t rgb = rgb565be_to_rgb888(knot->color);
-    return (knot_t){mat4f_apply(&lens->m, (vec3f_t){knot->x, knot->y, knot->z}), (float)knot->radius,
-                    (float)(rgb >> COLOR_RED_SHIFT), (float)((rgb >> COLOR_GREEN_SHIFT) & COLOR_MASK),
-                    (float)(rgb & COLOR_MASK)};
+    return (knot_t){mat4f_apply(&lens->m, (vec3f_t){knot->x, knot->y, knot->z}), (float)knot->radius, knot->color};
 }
 
 static knot_t
 knot_between(knot_t a, knot_t b, float t) {
     return (knot_t){vec3f_add(a.point, vec3f_scale(vec3f_sub(b.point, a.point), t)),
-                    a.radius + t * (b.radius - a.radius), a.r + t * (b.r - a.r), a.g + t * (b.g - a.g),
-                    a.b + t * (b.b - a.b)};
+                    a.radius + t * (b.radius - a.radius), a.color};
+}
+
+static float
+channel(uint32_t rgb, unsigned shift) {
+    return (float)((rgb >> shift) & COLOR_MASK);
+}
+
+static uint16_t
+mean_color(uint16_t a, uint16_t b) {
+    const uint32_t x = rgb565be_to_rgb888(a);
+    const uint32_t y = rgb565be_to_rgb888(b);
+    return r3d_span_pack_rgb((channel(x, COLOR_RED_SHIFT) + channel(y, COLOR_RED_SHIFT)) * CURVE_HALF,
+                             (channel(x, COLOR_GREEN_SHIFT) + channel(y, COLOR_GREEN_SHIFT)) * CURVE_HALF,
+                             (channel(x, 0) + channel(y, 0)) * CURVE_HALF);
 }
 
 static float
@@ -91,13 +102,17 @@ span_vertex(corner_t corner, uint32_t rgb) {
     return (r3d_span_vertex_t){(int32_t)lroundf(corner.x * R3D_SUBPIXEL),
                                (int32_t)lroundf(corner.y * R3D_SUBPIXEL),
                                corner.z,
-                               (float)(rgb >> COLOR_RED_SHIFT),
-                               (float)((rgb >> COLOR_GREEN_SHIFT) & COLOR_MASK),
-                               (float)(rgb & COLOR_MASK)};
+                               channel(rgb, COLOR_RED_SHIFT),
+                               channel(rgb, COLOR_GREEN_SHIFT),
+                               channel(rgb, 0)};
 }
 
-static void
-segment(knot_t a, knot_t b, float radius_scale, const r3d_lens_t* lens, const r3d_span_target_t* target) {
+/* Out of line: the curve loop's knots stay off the ribbon's clip and fill. */
+static __attribute__((noinline)) void
+segment(const knot_t* from, const knot_t* to, float radius_scale, const r3d_lens_t* lens,
+        const r3d_span_target_t* target) {
+    knot_t a = *from;
+    knot_t b = *to;
     const float near = lens->project.near_z;
     if (a.point.z < near && b.point.z < near) {
         return;
@@ -135,8 +150,7 @@ segment(knot_t a, knot_t b, float radius_scale, const r3d_lens_t* lens, const r3
         {ex + ux * bh - uy * bh, ey + uy * bh + ux * bh, bz},
     };
     const int count = clip_ribbon(corners, lens);
-    const uint16_t color =
-        r3d_span_pack_rgb((a.r + b.r) * CURVE_HALF, (a.g + b.g) * CURVE_HALF, (a.b + b.b) * CURVE_HALF);
+    const uint16_t color = mean_color(a.color, b.color);
     if (count < TRIANGLE_CORNERS) {
         return;
     }
@@ -167,28 +181,28 @@ curve_in_view(const r3d_curve_t* curve, const r3d_lens_t* lens) {
 }
 
 void
-r3d_curve_draw(const r3d_curve_set_t* set, const r3d_lens_t* lens, const r3d_span_target_t* target) {
-    if (set->curve_count == 0) {
+r3d_curve_draw(r3d_curve_set_t set, const r3d_lens_t* lens, const r3d_span_target_t* target) {
+    if (set.curve_count == 0) {
         return;
     }
     const float* x = lens->m.m[0];
     const float* y = lens->m.m[1];
     const float radius_scale = fmaxf(sqrtf((x[0] * x[0]) + (x[1] * x[1]) + (x[2] * x[2])),
                                      sqrtf((y[0] * y[0]) + (y[1] * y[1]) + (y[2] * y[2])));
-    for (int i = 0; i < set->curve_count; i++) {
-        const r3d_curve_t* curve = &set->curves[i];
+    for (int i = 0; i < set.curve_count; i++) {
+        const r3d_curve_t* curve = &set.curves[i];
         if (curve->count < 2 || !curve_in_view(curve, lens)) {
             continue;
         }
-        knot_t a = knot_at(&set->knots[curve->first], lens);
+        knot_t a = knot_at(&set.knots[curve->first], lens);
         for (int k = 1; k < curve->count; k++) {
-            const knot_t b = knot_at(&set->knots[curve->first + k], lens);
+            const knot_t b = knot_at(&set.knots[curve->first + k], lens);
             if (k + 1 < curve->count && a.point.z >= lens->project.near_z && b.point.z >= lens->project.near_z
                 && hypotf(a.point.x / a.point.z - b.point.x / b.point.z, a.point.y / a.point.z - b.point.y / b.point.z)
                        < CURVE_SKIP_PX) {
                 continue;
             }
-            segment(a, b, radius_scale, lens, target);
+            segment(&a, &b, radius_scale, lens, target);
             a = b;
         }
     }

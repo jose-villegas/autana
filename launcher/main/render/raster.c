@@ -103,9 +103,6 @@ typedef struct {
     r3d_span_small_fill_t small_fill;
     bool skip_hidden; /* the view's */
     raster_buffers_t buffers;
-    /* Each core's curve pass lens, by slice work_index, off its stack; last, so the draw's fields keep
-     * their short offsets. */
-    r3d_lens_t curve_lens[2];
 } draw_work_t;
 
 _Static_assert(sizeof(slice_t) <= JOB_CTX_MAX, "slice_t must fit JOB_CTX_MAX");
@@ -360,12 +357,13 @@ instance_lens(picture_lens_t* picture, const r3d_instance_t* instance, r3d_lens_
     }
 }
 
-/* The picture's curves in a slice's rows, after every cluster there: out of line, so the
- * cluster draw's frame does not hold the curve pass's lens. */
+/* The picture's curves in a slice's rows, after every cluster there. Its lens takes the slice's
+ * pipeline work block, free once the clusters are drawn, so no frame on the draw path holds it. */
 static __attribute__((noinline)) void
 curve_slice(const slice_t* s) {
-    draw_work_t* work = s->buffers->draw;
-    r3d_lens_t* lens = &work->curve_lens[s->work_index];
+    const draw_work_t* work = s->buffers->draw;
+    assert(r3d_pipeline_work_bytes() >= sizeof(r3d_lens_t));
+    r3d_lens_t* lens = (r3d_lens_t*)(void*)s->buffers->work[s->work_index];
     r3d_span_target_t* target = s->target;
     target->skip_hidden = false;
     target->writer_count = 0;
@@ -377,8 +375,7 @@ curve_slice(const slice_t* s) {
                 r3d_lens_place(lens, instance->model, instance->mesh->position_scale);
             }
             r3d_lens_set_depth_near(lens, *s->buffers->depth_near);
-            const r3d_curve_set_t curves = r3d_lit_mesh_curves(instance->mesh);
-            r3d_curve_draw(&curves, lens, target);
+            r3d_curve_draw(r3d_lit_mesh_curves(instance->mesh), lens, target);
         }
     }
 }
