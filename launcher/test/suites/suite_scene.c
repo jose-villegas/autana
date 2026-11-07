@@ -2196,8 +2196,9 @@ test_scene_load_reads_a_scene_from_the_pack_its_id_names(void) {
     remove_pack("test_folder");
     TEST_ASSERT_EQUAL_INT(PENDING_READY, scene_state(pair));
     TEST_ASSERT_EQUAL_INT(PENDING_READY, scene_state(tree));
-    TEST_ASSERT_EQUAL_STRING("test_pair", columns(pair)->id);
-    TEST_ASSERT_EQUAL_STRING("test_tree", columns(tree)->id);
+    scene_row_t row;
+    TEST_ASSERT_EQUAL_STRING("test_pair", scene_entity_peek(pair, &row)->id);
+    TEST_ASSERT_EQUAL_STRING("test_tree", scene_entity_peek(tree, &row)->id);
     TEST_ASSERT_EQUAL_INT(mounted + 1, asset_store_mounted());
     scene_release(pair);
     TEST_ASSERT_EQUAL_INT(mounted + 1, asset_store_mounted());
