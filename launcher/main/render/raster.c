@@ -9,17 +9,30 @@
 #include "core/tune.h"
 #include "profile/frame_cost.h"
 #include "profile/frame_laps.h"
+#include "render/lod/r3d_lod.h"
 #include "render/raster_internal.h"
 #include "render/upscale.h"
 
 TUNE_OWNER(render);
+/* Development overrides of the raster's settings (TUNE_OVERRIDE). */
 /* The generated meshlet-size table measures both culling settings. */
-TUNE(render, cull, 1, 0, 1);
+TUNE_OVERRIDE(render, cull, 1);
 /* 0 encodes depth with the clip plane's near_z: the depth-precision figures
  * render both. */
-TUNE(render, depth_fit, 1, 0, 1);
-/* Off draws one instance a batch, the per-instance draw batching replaced. */
-TUNE(render, batched, 1, 0, 1);
+TUNE_OVERRIDE(render, depth_fit, 1);
+/* Off draws one instance a batch. */
+TUNE_OVERRIDE(render, batched, 1);
+/* The thousandths of the picture's height a coarse group may cover
+ * (R3D_LOD_COVERAGE_PERMILLE); the doc's coverage table renders each cap it
+ * lists. */
+TUNE(render, lod_coverage_permille, R3D_LOD_COVERAGE_PERMILLE, 0, R3D_LOD_UNCAPPED);
+
+render_settings_t
+raster_settings(const raster_t* raster) {
+    const render_settings_t s = raster->settings != NULL ? *raster->settings : RENDER_SETTINGS_DEFAULT;
+    return (render_settings_t){tune_override(cull, s.cull) != 0, tune_override(depth_fit, s.depth_fit) != 0,
+                               tune_override(batched, s.batched) != 0};
+}
 
 /* One instance of a batch: its lens, the clusters culling kept, where its
  * vertices and cluster rows start in the shared buffers, and its writers. */
@@ -35,7 +48,7 @@ typedef struct {
 
 int
 raster_batch_end(const raster_t* raster, int first) {
-    const int most = batched ? RASTER_BATCH_INSTANCES : 1;
+    const int most = raster_settings(raster).batched ? RASTER_BATCH_INSTANCES : 1;
     const int vertex_capacity = raster_vertex_capacity(raster);
     const int cluster_capacity = raster_cluster_capacity(raster);
     int vertices = 0;
@@ -355,16 +368,22 @@ curve_slice(void* ctx) {
 }
 
 static int
-cull_instance(const r3d_instance_t* instance, const r3d_lens_t* lens, uint16_t* out, raster_stats_t* stats,
+cull_instance(const r3d_instance_t* instance, bool culls, const r3d_lens_t* lens, uint16_t* out, raster_stats_t* stats,
               r3d_pipeline_work_t* work, r3d_depth_fit_t* fit) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
-    int visible;
-    if (cull) {
-        visible = r3d_pipeline_cull(mesh, lens, out, work, fit);
+    int visible = 0;
+    if (culls) {
+        visible = r3d_pipeline_cull(mesh, lens, instance->lod_coarse, out, work, fit);
     } else {
-        visible = mesh->cluster_count;
-        for (int i = 0; i < visible; i++) {
-            out[i] = (uint16_t)i;
+        /* Nothing coarse: every cluster of a mesh without levels, or the
+         * finest, which levels laid out apart put first. */
+        const bool every = (instance->lod_coarse == NULL || !r3d_lod_any(instance->lod_coarse, mesh->lod_group_count))
+                           && (mesh->lod_finest_root != 0 || mesh->cluster_lod == NULL);
+        const int count = !every || mesh->cluster_lod == NULL ? mesh->cluster_count : mesh->lod_coarse_first;
+        for (int i = 0; i < count; i++) {
+            if (every || r3d_lod_drawn(mesh, i, instance->lod_coarse)) {
+                out[visible++] = (uint16_t)i;
+            }
         }
     }
     stats->clusters += visible;
@@ -397,6 +416,50 @@ world_bounds_outside(box3f_t box, const planef_t planes[PLANE_FRUSTUM_COUNT], fl
     return box3f_outside_planes(grown, planes, PLANE_FRUSTUM_COUNT, &mask);
 }
 
+/* The picture's planes in world units and the eye's reach that
+ * world_bounds_outside() takes. */
+typedef struct {
+    planef_t planes[PLANE_FRUSTUM_COUNT];
+    float eye_reach;
+    bool cull; /* the draw's settings.cull: off skips no instance */
+} world_cull_t;
+
+static void
+world_cull_init(world_cull_t* world, picture_lens_t* picture, const render_view_t* view, bool cull) {
+    world->cull = cull;
+    r3d_lens_frustum(picture_lens_at(picture, 1), world->planes);
+    const vec3f_t eye = view->position;
+    world->eye_reach = mathf_max(mathf_abs(eye.x), mathf_max(mathf_abs(eye.y), mathf_abs(eye.z)));
+}
+
+/* Whether culling skips `instance` whole: its world box is outside the picture. */
+static bool
+world_cull_skips(const world_cull_t* world, const r3d_instance_t* instance) {
+    return world->cull && instance->world_bounds != NULL
+           && world_bounds_outside(*instance->world_bounds, world->planes, world->eye_reach);
+}
+
+/* An instance culled whole keeps the bits it last had, a cut as whole as any:
+ * it is not drawn, and the frame it comes back in picks again before its draw. */
+void
+raster_pick_levels(const raster_t* raster, const render_view_t* view) {
+    picture_lens_t picture;
+    picture_lens_init(&picture, raster, view, false);
+    world_cull_t world;
+    world_cull_init(&world, &picture, view, raster_settings(raster).cull);
+    const float coverage_max = (float)lod_coverage_permille / (float)R3D_LOD_PERMILLE;
+    for (int i = 0; i < raster->instance_count; i++) {
+        const r3d_instance_t* instance = &raster->instances[i];
+        if (instance->lod_coarse == NULL || instance->mesh->lod_group_count == 0
+            || world_cull_skips(&world, instance)) {
+            continue;
+        }
+        r3d_lens_t lens;
+        instance_lens(&picture, instance, &lens);
+        r3d_lod_pick(instance->mesh, &lens, R3D_LOD_TOLERANCE_PX, coverage_max, instance->lod_coarse);
+    }
+}
+
 /* Culls every instance into the census list and returns the depth scale
  * the picture is drawn with: the fit of the nearest bound of what was kept,
  * and near_z when nothing was. The fit's power of two keeps the scale still
@@ -407,22 +470,21 @@ static __attribute__((noinline)) float
 cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, raster_stats_t* stats,
                draw_work_t* work) {
     uint16_t* culled = work->buffers.culled;
+    const render_settings_t settings = raster_settings(raster);
     r3d_depth_fit_t fit = {view->lens.near_z, INFINITY};
     picture_lens_t picture;
     picture_lens_init(&picture, raster, view, fitted);
-    planef_t world[PLANE_FRUSTUM_COUNT];
-    r3d_lens_frustum(picture_lens_at(&picture, 1), world);
-    const vec3f_t eye = view->position;
-    const float eye_reach = mathf_max(mathf_abs(eye.x), mathf_max(mathf_abs(eye.y), mathf_abs(eye.z)));
+    world_cull_t world;
+    world_cull_init(&world, &picture, view, settings.cull);
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];
-        if (cull && instance->world_bounds != NULL && world_bounds_outside(*instance->world_bounds, world, eye_reach)) {
+        if (world_cull_skips(&world, instance)) {
             culled[0] = 0;
         } else {
             r3d_lens_t lens;
             instance_lens(&picture, instance, &lens);
-            culled[0] = (uint16_t)cull_instance(instance, &lens, culled + 1, stats, work->buffers.work[0],
-                                                depth_fit ? &fit : NULL);
+            culled[0] = (uint16_t)cull_instance(instance, settings.cull, &lens, culled + 1, stats,
+                                                work->buffers.work[0], settings.depth_fit ? &fit : NULL);
         }
         if (instance->mesh->curves.curve_count > 0) {
             fit.depth_near = view->lens.near_z;

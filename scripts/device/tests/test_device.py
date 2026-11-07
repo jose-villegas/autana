@@ -15,6 +15,7 @@ import re
 import struct
 import subprocess
 import tempfile
+import threading
 import time
 import types
 import unittest
@@ -207,6 +208,152 @@ class OpenSerialTests(unittest.TestCase):
                 with self.assertRaises(device.BoardNotReading):
                     connection.write(bytes(1 << 20))
                 self.assertLess(time.monotonic() - started, device.BOOT_WAIT_SECONDS)
+
+
+STREAM_WAIT_SECONDS = 5
+
+
+class StreamTests(unittest.TestCase):
+    """device.py stream through a real port: the OS's pseudo-terminal, with
+    the test as the board on its other end."""
+
+    @staticmethod
+    def board_reads(fd, line):
+        """What the board end reads until `line` has arrived whole."""
+        import select
+        data = b""
+        deadline = time.monotonic() + STREAM_WAIT_SECONDS
+        while not data.endswith(line.encode("ascii")) and time.monotonic() < deadline:
+            if select.select([fd], [], [], 0.1)[0]:
+                data += os.read(fd, 4096)
+        return data.decode("ascii")
+
+    @staticmethod
+    def wait_for(out, text):
+        deadline = time.monotonic() + STREAM_WAIT_SECONDS
+        while text not in out.getvalue() and time.monotonic() < deadline:
+            time.sleep(0.01)
+
+    @unittest.skipUnless(hasattr(os, "openpty") and importlib.util.find_spec("serial"),
+                         "needs a pseudo-terminal and pyserial")
+    def test_each_line_reaches_the_board_before_the_next_is_read_and_the_board_is_echoed(self):
+        sent = ("render fly 0 0 1 0 0 0\n", "render fly pose\n")
+        reply = "RENDER fly=none\nRENDER_END\n"
+        arrived = []
+        out = io.StringIO()
+        with port_guard.fake_port() as (board, name), \
+                mock.patch.object(device, "locked_port", return_value=name), \
+                mock.patch.object(device, "open_when_free",
+                               side_effect=lambda *unused, **unused_kw: device.open_serial()):
+            def lines():
+                for line in sent:
+                    yield line
+                    # The stream asks for the next line only once this one is written.
+                    arrived.append(self.board_reads(board, line))
+                os.write(board, reply.encode("ascii"))
+                self.wait_for(out, reply)
+
+            status = device.stream(Namespace(owner="agent", wait=0), mock_store(), BOARD, lines(), out)
+        self.assertEqual(status, 0)
+        self.assertEqual(arrived, list(sent))
+        self.assertIn(reply, out.getvalue())
+
+    def test_a_line_that_is_not_ascii_is_refused_and_the_lock_released(self):
+        store = mock_store()
+        connection = FakeConnection()
+        with mock.patch.object(device, "open_when_free", return_value=connection):
+            with self.assertRaisesRegex(RuntimeError, "console lines are ASCII"):
+                device.stream(Namespace(owner="agent", wait=0), store, BOARD, ["render fly café\n"],
+                              io.StringIO())
+        self.assertEqual(connection.writes, [])
+        store.release.assert_called_once_with(BOARD, "token")
+
+    def run_stream(self, connection, lines, store=None):
+        out = io.StringIO()
+        store = mock_store() if store is None else store
+        with mock.patch.object(device, "open_when_free", return_value=connection):
+            status = device.stream(Namespace(owner="agent", wait=0), store, BOARD, lines, out)
+        return status, out.getvalue()
+
+    def test_lines_go_out_one_newline_each_and_the_lock_is_released_at_the_end(self):
+        store = mock_store()
+        connection = FakeConnection()
+        status, _ = self.run_stream(connection, ["render fly pose\r\n", "render fly release"], store)
+        self.assertEqual(status, 0)
+        self.assertEqual(connection.writes, [b"render fly pose\n", b"render fly release\n"])
+        store.release.assert_called_once_with(BOARD, "token")
+
+    def test_a_board_line_split_across_reads_is_echoed_whole_and_a_last_part_line_too(self):
+        board_said = threading.Event()
+
+        class Board(FakeConnection):
+            def read(self, size):
+                chunk = super().read(size)
+                if not self.chunks:
+                    board_said.set()
+                return chunk
+
+        def lines():
+            board_said.wait(STREAM_WAIT_SECONDS)
+            yield from ()
+
+        connection = Board([b"RENDER fl", b"y=none\nRENDER_END\nRENDER_ER"])
+        status, echoed = self.run_stream(connection, lines())
+        self.assertEqual(status, 0)
+        self.assertEqual(echoed, "RENDER fly=none\nRENDER_END\nRENDER_ER\n")
+
+    def test_a_lock_lost_while_stdin_is_quiet_ends_the_stream(self):
+        held = []
+        enter = device.HeldLock.__enter__
+
+        def recording(lock):
+            held.append(lock)
+            return enter(lock)
+
+        def lose_it():
+            deadline = time.monotonic() + STREAM_WAIT_SECONDS
+            while not held and time.monotonic() < deadline:
+                time.sleep(0.01)
+            held[0].lost.set()
+
+        quiet = threading.Event()
+
+        def lines():
+            # stdin that never ends by itself: only the lost lock can end the stream.
+            quiet.wait(STREAM_WAIT_SECONDS)
+            yield "render fly pose\n"
+
+        connection = FakeConnection()
+        threading.Thread(target=lose_it, daemon=True).start()
+        try:
+            with mock.patch.object(device.HeldLock, "__enter__", recording), \
+                    self.assertRaises(device.LockLost):
+                self.run_stream(connection, lines())
+        finally:
+            quiet.set()
+        self.assertEqual(connection.writes, [])
+
+    def test_a_failed_read_ends_a_quiet_stream_with_an_error_and_releases_the_lock(self):
+        store = mock_store()
+        quiet = threading.Event()
+
+        class Broken(FakeConnection):
+            def read(self, unused_size):
+                raise OSError("device unplugged")
+
+        def lines():
+            # stdin that never ends by itself: only the failed read can end the stream.
+            quiet.wait(STREAM_WAIT_SECONDS)
+            yield "render fly pose\n"
+
+        connection = Broken()
+        try:
+            with self.assertRaisesRegex(RuntimeError, "reading the board failed: device unplugged"):
+                self.run_stream(connection, lines(), store)
+        finally:
+            quiet.set()
+        self.assertEqual(connection.writes, [])
+        store.release.assert_called_once_with(BOARD, "token")
 
 
 @unittest.skipUnless(importlib.util.find_spec("serial"), "needs pyserial")
@@ -915,6 +1062,13 @@ class RemovedParameterTests(unittest.TestCase):
             store.check_token.return_value = False
             self.assertEqual(device.main(["--board", BOARD, "check-token", "--token", "t"]), 1)
         store.check_token.assert_called_with(BOARD, "t")
+
+    def test_stream_is_a_board_command(self):
+        with mock.patch.object(device.device_lock, "LockStore", return_value=mock.Mock()), \
+                mock.patch.object(device, "stream", return_value=0) as stream:
+            self.assertEqual(device.main(["--board", BOARD, "stream"]), 0)
+        self.assertEqual(stream.call_args.args[0].command, "stream")
+        self.assertEqual(stream.call_args.args[2], BOARD)
 
     def test_the_lock_module_has_no_command_line_of_its_own(self):
         self.assertFalse(hasattr(device_lock, "main"))

@@ -15,6 +15,7 @@
 #define r3d_lens_place               constant_r3d_lens_place
 #define r3d_pipeline_work_bytes      constant_r3d_pipeline_work_bytes
 #define r3d_pipeline_cull            constant_r3d_pipeline_cull
+#define r3d_pipeline_cull_cut        constant_r3d_pipeline_cull_cut
 #define r3d_pipeline_transform       constant_r3d_pipeline_transform
 #define r3d_pipeline_transform_split constant_r3d_pipeline_transform_split
 #define r3d_pipeline_draw_split      constant_r3d_pipeline_draw_split
@@ -136,11 +137,11 @@ test_styles_match_pipeline_colours(void) {
     work = malloc(r3d_pipeline_work_bytes());
     TEST_ASSERT_NOT_NULL(work);
     TEST_ASSERT_EQUAL_UINT(8, sizeof(r3d_pipeline_vertex_t));
-    const int16_t positions[3][3] = {{0, 0, 2}, {1, 0, 2}, {0, 1, 2}};
-    uint8_t colours[3][3] = {{255, 0, 0}, {0, 255, 0}, {0, 0, 255}};
-    const uint16_t triangle[3] = {0, 1, 2};
-    const r3d_lit_cluster_t cluster = {.vertex_count = 3};
-    const r3d_lit_mesh_t mesh = {.positions = positions, .colors = (const uint8_t (*)[3])colours, .clusters = &cluster};
+    static const int16_t positions[3][3] = {{0, 0, 2}, {1, 0, 2}, {0, 1, 2}};
+    static const uint8_t colours[3][3] = {{255, 0, 0}, {0, 255, 0}, {0, 0, 255}};
+    static const uint16_t triangle[3] = {0, 1, 2};
+    static const r3d_lit_cluster_t cluster = {.vertex_count = 3};
+    static const r3d_lit_mesh_t mesh = {.positions = positions, .colors = colours, .clusters = &cluster};
     const r3d_lens_t lens = {.m = mat4f_identity(),
                              .project = {1.0F, -1.0F, 0.0F, 0.0F, 1.0F},
                              .depth_near = 1.0F,
@@ -255,7 +256,9 @@ pixel_lens(void) {
                         SCENE_H,
                         R3D_SNAP_BIAS,
                         R3D_SNAP_BIAS,
-                        0.5F / (float)R3D_SUBPIXEL};
+                        0.5F / (float)R3D_SUBPIXEL,
+                        1.0F,
+                        1.0F};
 }
 
 /* One cluster: a fan over `count` pixel corners at `z` ticks, all one colour. */

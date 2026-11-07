@@ -33,6 +33,7 @@ typedef struct r3d_lens {
     int width, height;
     float snap_cx, snap_cy; /* the centre in subpixels, plus R3D_SNAP_BIAS */
     float depth_near;       /* inverse-depth encoding scale */
+    float focal_x, focal_y; /* pixels a view unit spans at unit depth, as m's rows apply them */
 } r3d_lens_t;
 
 /* 8 bytes: the screen position is snapped to r3d_span's subpixels once, so
@@ -85,14 +86,24 @@ typedef struct r3d_depth_fit {
     float depth_near; /* inverse_depth_scale_fit(near_z, the nearest bound so far) */
 } r3d_depth_fit_t;
 
+/* The coarse clusters of the cut `lod_coarse` picks, for a mesh whose levels
+ * are laid out apart (lod_finest_root set): those simplified from each coarse
+ * group that belong to a fine group, or to none, written to `out` from
+ * `count` where `planes` keep them, lowering `fit` as r3d_pipeline_cull()
+ * does. Returns the new count and adds the clusters it box-tested to
+ * `tested`. r3d_pipeline_cull() calls it after walking level 0. */
+int r3d_pipeline_cull_cut(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, const planef_t* planes,
+                          planef_t depth, uint16_t* out, int count, r3d_depth_fit_t* fit, int* tested);
+
 /* Walks the node tree and writes the clusters any part of which may be on
  * screen, roughly nearest first, returning how many. `out` holds
  * mesh->cluster_count entries. A `fit` not NULL is lowered to the scale of a
  * bound on the view depth of every kept cluster's box where the frustum keeps
  * it (box3f_plane_distance_min_inside() per plane the box crosses); a box
- * reaching the near plane gives near_z. */
-int r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* out, r3d_pipeline_work_t* work,
-                      r3d_depth_fit_t* fit);
+ * reaching the near plane gives near_z. Levels: what r3d_lod_drawn() draws
+ * under `lod_coarse`, the finest when NULL. */
+int r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint32_t* lod_coarse, uint16_t* out,
+                      r3d_pipeline_work_t* work, r3d_depth_fit_t* fit);
 
 /* The screen box a cluster's vertices span and the nearest depth its fill
  * can write, for a caller drawing only some rows, or over depth already

@@ -20,7 +20,10 @@ from gltf.gltf_write import build_glb
 from r3d.gltf_mesh import load_gltf_mesh
 from r3d.obj import Texture, load_obj
 from r3d.import_settings import SettingsError, load_import_settings, load_scene
-from r3d.objects.instances import MATCH_TOLERANCE, SourceObject, bounds_diagonal, match_instances, rigid_fit, source_objects
+from r3d.objects.instances import (MATCH_TOLERANCE, SourceObject, bounds_diagonal, match_instances, place, rigid_fit,
+                                   source_objects)
+from r3d.geometry import closest_point_on_triangles
+from r3d.objects.surface_match import FLOOR_CAP, SURFACE_TOLERANCE, limit, merge, nearest, surface
 from r3d.objects.object_error import (PLANAR_AREA_SHARE, PLANAR_DEGREES, SHEET_DEGREES, SHEET_GROWTH, SKY, Parts,
                                       cell, common_prefix, object_rows, part_labels, part_names, planar_parts, read,
                                       nearest_source, report_body, rows_for, shape_rows, sheet_triangles, write)
@@ -321,6 +324,172 @@ class ObjectsTests(unittest.TestCase):
             self.assertEqual(data['totals']['source_triangles'], 8)
             self.assertEqual(data['totals']['unique_triangles'], 4)
             self.assertEqual(data['totals']['repeated_shapes'], 1)
+
+
+def subdivided(points, triangles):
+    """Every triangle split in four at its edge midpoints: the same surface, triangulated differently."""
+    points, faces, middle = [np.asarray(p, dtype=np.float64) for p in points], [], {}
+
+    def midpoint(a, b):
+        key = (min(a, b), max(a, b))
+        if key not in middle:
+            middle[key] = len(points)
+            points.append((points[a] + points[b]) / 2)
+        return middle[key]
+
+    for a, b, c in triangles:
+        ab, bc, ca = midpoint(a, b), midpoint(b, c), midpoint(c, a)
+        faces += [[a, ab, ca], [ab, b, bc], [ca, bc, c], [ab, bc, ca]]
+    return np.array(points), np.array(faces)
+
+
+FINE_POINTS, FINE_TRIANGLES = subdivided(POINTS, TRIANGLES)
+TURN = Rotation.from_rotvec([0.4, 0.8, 1.2]).as_matrix()
+MIRROR = np.diag([-1., 1., 1.])
+
+
+def surface_shapes(*copies, **options):
+    """The original tetrahedron and each (name, points, triangles[, materials]) copy, matched by surface."""
+    objects = [SourceObject('original', POINTS, TRIANGLES, MATERIALS)]
+    objects += [SourceObject(name, points, triangles, rest[0] if rest else np.zeros(len(triangles), dtype=int))
+                for name, points, triangles, *rest in copies]
+    return merge(match_instances(objects), options.get('tolerance', SURFACE_TOLERANCE), options.get('floor', 0.0))
+
+
+def lifted(height):
+    """The tetrahedron with its apex raised by height: a surface off the original by about that much."""
+    return POINTS + np.array([[0., 0., 0.]] * 3 + [[0., 0., height]])
+
+
+class SurfaceMatchTests(unittest.TestCase):
+    def test_retriangulated_copy_joins_only_by_surface(self):
+        copy = ('fine', FINE_POINTS @ TURN.T + [5, 1, 2], FINE_TRIANGLES)
+        self.assertEqual(len(match_instances([SourceObject('original', POINTS, TRIANGLES, MATERIALS),
+                                              SourceObject(*copy, np.zeros(len(FINE_TRIANGLES), dtype=int))])), 2)
+        [shape] = surface_shapes(copy)
+        joined = next(i for i in shape.instances if i.triangle_order == ())
+        self.assertFalse(joined.mirrored)
+        self.assertLess(joined.gap, 1e-6)
+
+    def test_joined_copy_places_the_shape_on_its_surface(self):
+        for name, points, triangles in (('turned', FINE_POINTS @ TURN.T + [5, 1, 2], FINE_TRIANGLES),
+                                        ('mirrored', FINE_POINTS @ MIRROR @ TURN.T, FINE_TRIANGLES[:, ::-1])):
+            with self.subTest(name):
+                [shape] = surface_shapes((name, points, triangles))
+                for instance in shape.instances:
+                    target = surface(points, triangles) if instance.object_name == name else surface(POINTS, TRIANGLES)
+                    placed = place(surface(shape.positions, shape.triangles).samples, instance.linear,
+                                   instance.position)
+                    self.assertLess(nearest(placed, target)[0].max(), 1e-5)
+                self.assertEqual(sorted(i.mirrored for i in shape.instances), [False, name == 'mirrored'])
+
+    def test_turned_exact_copies_of_both_shapes_land_on_their_objects(self):
+        # Each shape also has an exact copy turned away from it, so whichever shape keeps its geometry, the joined
+        # one's placement composes a turned copy with the surface fit.
+        other_turn = Rotation.from_rotvec([-0.9, 0.3, 0.5]).as_matrix()
+        copies = {'tetra turned': (POINTS @ other_turn.T + [0, 7, 0], TRIANGLES),
+                  'fine': (FINE_POINTS @ TURN.T + [5, 1, 2], FINE_TRIANGLES),
+                  'fine turned': (FINE_POINTS @ other_turn.T + [-6, 2, 1], FINE_TRIANGLES)}
+        [shape] = surface_shapes(*((name, *copy) for name, copy in copies.items()))
+        copies['original'] = POINTS, TRIANGLES
+        self.assertEqual(sorted(i.object_name for i in shape.instances), sorted(copies))
+        model = surface(shape.positions, shape.triangles)
+        for instance in shape.instances:
+            with self.subTest(instance.object_name):
+                placed = place(model.samples, instance.linear, instance.position)
+                self.assertLess(nearest(placed, surface(*copies[instance.object_name]))[0].max(), 1e-5)
+
+    def test_nearest_is_the_closest_triangle(self):
+        # Slivers next to coarse triangles: the dense points of a long thin triangle sit far from most of its area.
+        rng = np.random.default_rng(3)
+        points = np.vstack([rng.random((40, 3)) * [10, 1, 0.2], [[0, 0, 0], [10, 0, 0], [10, 0.01, 0], [0, 0.02, 1]]])
+        triangles = np.vstack([rng.integers(0, 40, (60, 3)), [[40, 41, 42], [40, 42, 43], [41, 42, 43]]])
+        triangles = triangles[(triangles[:, 0] != triangles[:, 1]) & (triangles[:, 1] != triangles[:, 2])
+                              & (triangles[:, 0] != triangles[:, 2])]
+        target = surface(points, triangles)
+        queries = rng.random((300, 3)) * [12, 3, 2] - [1, 1, 0.5]
+        corners = target.corners
+        brute = np.min([closest_point_on_triangles(queries, *(np.repeat(corners[t:t + 1, k], len(queries), axis=0)
+                                                               for k in range(3)))[1]
+                        for t in range(len(corners))], axis=0)
+        np.testing.assert_allclose(nearest(queries, target)[0], brute, atol=1e-12)
+
+    def test_a_feature_too_small_to_sample_still_counts(self):
+        # A speck 0.7 units off the tetrahedron: too little area for a sample to land on, but its vertices are off.
+        speck = np.array([[1., 1., 1.], [1.0001, 1., 1.], [1., 1.0001, 1.]])
+        points, triangles = np.vstack([POINTS, speck]), np.vstack([TRIANGLES, [[4, 5, 6]]])
+        self.assertEqual(len(surface_shapes(('speck', points + [9, 0, 0], triangles))), 2)
+
+    def test_a_turned_flat_copy_meets_the_same_bucket(self):
+        # A flat shape's spreads are zero across it, so its size term decides the bucket; turned 45 degrees, an
+        # axis-aligned bounds diagonal would grow and part the copies.
+        plate = np.array([[0., 0., 0.], [3., 0., 0.], [3., 2., 0.], [0., 2., 0.]])
+        quads = np.array([[0, 1, 2], [0, 2, 3]])
+        fine_plate, fine_quads = subdivided(plate, quads)
+        turn = Rotation.from_rotvec([0., 0., np.pi / 4]).as_matrix()
+        shapes = merge(match_instances([SourceObject('plate', plate, quads, np.zeros(2, dtype=int)),
+                                        SourceObject('turned', fine_plate @ turn.T + [9, 0, 0], fine_quads,
+                                                     np.zeros(len(fine_quads), dtype=int))]))
+        self.assertEqual(len(shapes), 1)
+
+    def test_materials_are_shading_not_shape(self):
+        [shape] = surface_shapes(('painted', FINE_POINTS + [9, 0, 0], FINE_TRIANGLES,
+                                  np.arange(len(FINE_TRIANGLES)) % 3 + 7))
+        self.assertEqual(len(shape.instances), 2)
+
+    def test_tolerance_boundary(self):
+        allowed = SURFACE_TOLERANCE * surface(POINTS, TRIANGLES).diagonal
+        self.assertEqual(len(surface_shapes(('near', lifted(0.5 * allowed), TRIANGLES))), 1)
+        self.assertEqual(len(surface_shapes(('far', lifted(3 * allowed), TRIANGLES))), 2)
+
+    def test_floor_loosens_up_to_its_cap(self):
+        diagonal = surface(POINTS, TRIANGLES).diagonal
+        beyond_tolerance = ('lifted', lifted(3 * SURFACE_TOLERANCE * diagonal), TRIANGLES)
+        self.assertEqual(len(surface_shapes(beyond_tolerance)), 2)
+        self.assertEqual(len(surface_shapes(beyond_tolerance, floor=FLOOR_CAP * diagonal)), 1)
+        # A lift past the cap also moves the area out of the compared bucket, so the cap is read off limit().
+        tetrahedron = surface(POINTS, TRIANGLES)
+        self.assertAlmostEqual(limit(tetrahedron, tetrahedron, SURFACE_TOLERANCE, 10 * diagonal),
+                               FLOOR_CAP * diagonal)
+
+    def test_same_input_same_placements(self):
+        copies = [('turned', FINE_POINTS @ TURN.T + [5, 1, 2], FINE_TRIANGLES),
+                  ('mirrored', FINE_POINTS @ MIRROR @ TURN.T, FINE_TRIANGLES[:, ::-1])]
+        first, second = surface_shapes(*copies), surface_shapes(*copies)
+        for a, b in zip(first, second):
+            np.testing.assert_array_equal(a.positions, b.positions)
+            for x, y in zip(a.instances, b.instances):
+                self.assertEqual(x.object_name, y.object_name)
+                np.testing.assert_array_equal(x.linear, y.linear)
+                np.testing.assert_array_equal(x.position, y.position)
+
+    def test_invalid_surface_options(self):
+        for options in (dict(tolerance=-1.), dict(tolerance=float('nan')), dict(floor=-1.),
+                        dict(floor=float('inf'))):
+            with self.subTest(options=options), self.assertRaises(ValueError):
+                surface_shapes(**options)
+
+    def test_report_parts_and_surfaces(self):
+        def obj_lines(name, points, triangles, offset):
+            return ([f'o {name}', 'usemtl material_0'] + ['v ' + ' '.join(map(str, p)) for p in points]
+                    + ['f ' + ' '.join(str(int(v) + offset + 1) for v in face) for face in triangles])
+
+        # One object holding two apart copies (two parts), and a retriangulated copy of its own.
+        twice = np.vstack([POINTS, POINTS + [20, 0, 0]]), np.vstack([TRIANGLES, TRIANGLES + len(POINTS)])
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            write_import(root)
+            (root / 'm.obj').write_text('\n'.join(
+                obj_lines('pair', *twice, 0) + obj_lines('fine', FINE_POINTS + [0, 9, 0], FINE_TRIANGLES, 8)) + '\n')
+            scene = write_scene(root, renderer() + camera(path=True, region=False))
+            out = root / 'report'
+            with self.assertRaises(SystemExit):
+                main([str(scene), '--object', 'mesh', '--out', str(out), '--surface-floor', '1'])
+            main([str(scene), '--object', 'mesh', '--out', str(out), '--parts', '--surface-tolerance'])
+            self.assertTrue((out / 'shapes.png').is_file())
+            totals = json.loads((out / 'objects.json').read_text())['totals']
+            self.assertEqual((totals['objects'], totals['shapes'], totals['surface_copies']), (3, 1, 1))
+            self.assertEqual(totals['repeated_triangles'], 8 + len(FINE_TRIANGLES))
 
 
 class InstancesFigureTests(unittest.TestCase):

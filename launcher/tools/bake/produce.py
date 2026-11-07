@@ -130,7 +130,7 @@ def produce_mesh(bake, cache, lock):
     if keys.is_blend(job.settings):
         job = with_source(job, export_file(job.settings, lock, cache))
     with tempfile.TemporaryDirectory() as work:
-        name = job.asset_name if job.settings.meshes or job.settings.curves else bake.output.removesuffix(bake.suffix)
+        name = job.asset_name
         write_baked(job, bake.scene, pathlib.Path(work), name)
         return record(bake, pathlib.Path(work) / (name + bake.suffix), cache)
 
@@ -215,11 +215,13 @@ def reference_set(key, job, scene, cache, fresh=None):
 
 def start_file(bake, cache, lock):
     """The start whose bytes the fit's key names, from the lock or, when this run made it, this cache."""
-    start, sha256 = bake.start, bake.stages["start_sha256"]
+    start = bake.start
+    dependency = "fit" if bake.kind == "levels" else "start"
+    sha256 = bake.stages[dependency + "_sha256"]
     row = next((row for row in (lock.get(start.key), made(start.key, cache)) if row and row["sha256"] == sha256), None)
     if row is None:
-        raise keys.BakeMissing(f"{bake.output}: its start {start.key} with sha256 {sha256} is neither locked nor "
-                               "made here; bake.py bake --kind mesh first")
+        raise keys.BakeMissing(f"{bake.output}: its {dependency} {start.key} with sha256 {sha256} is neither locked nor "
+                               f"made here; bake.py bake --kind {start.kind} first")
     return keys.fetch_all([start], {start.key: row}, cache)[start]
 
 
@@ -254,6 +256,16 @@ def produce(bake, cache, lock=None, blender=None, fresh_references=None):
     if bake.kind == "sound":
         check_environment(("sound",))
         return produce_sound(bake, cache)
+    if bake.kind == "levels":
+        check_environment(("levels",))
+        from r3d.lod.levels_stage import levels
+        with tempfile.TemporaryDirectory() as work:
+            target = pathlib.Path(work) / bake.output
+            fit = start_file(bake, cache, lock or {})
+            start = start_file(bake.start, cache, lock or {})
+            target.write_bytes(levels(fit.read_bytes(), bake.job.asset_name, bake.job.settings.lod,
+                                      bake.job.settings.meshlet_triangles, start=start.read_bytes()))
+            return record(bake, target, cache)
     check_environment(("mesh", "reference", "fit") if bake.kind == "fit" else ("mesh",))
     if bake.kind == "fit":
         return produce_fit(bake, cache, lock or {}, fresh_references)

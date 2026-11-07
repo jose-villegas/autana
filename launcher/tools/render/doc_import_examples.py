@@ -24,7 +24,7 @@ def main(scene_path, object_name, flat_name, host, work, out, frames, dt):
     geometry = bake_geometry(job, scene)
     write_lit_mesh(scratch, job.renderer.variant.name, geometry.positions, geometry.rgb, geometry.tris,
                    geometry.tri_double, **geometry.scale)
-    assets = write_assets(job.asset_name, scratch / f"{job.renderer.variant.name}.mesh", scratch, scene_path)
+    assets = write_assets(job.asset_name, scratch / f"{job.renderer.variant.name}.bundle", scratch, scene_path)
     subprocess.run([str(host), "--quarter", "0", "--scene", scene_id(scene_path), "--object", object_name,
                     "--frames", str(frames), "--dt", str(dt), "-o", str(scratch / "last.bmp")], check=True,
                    env={**os.environ, "AUTANA_ASSET_DIR": str(assets)})

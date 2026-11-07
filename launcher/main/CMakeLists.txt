@@ -71,6 +71,7 @@ set(app_srcs
     "asset/asset_store_async.c"
     "asset/asset_store_flash.c"
     "input/mapping/orbit_motion_touch.c"
+    "shell/render_system.c"
     "shell/scene_system.c"
     "shell/shell.c"
     "shell/shell_apps.c"

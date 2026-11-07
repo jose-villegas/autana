@@ -16,6 +16,7 @@
 #include "render/raster_split.h"
 #include "render/render_view.h"
 #include "render/resolution/resolution.h"
+#include "render/settings/render_settings.h"
 #include "render/upscale.h"
 
 /* The caller's options; the scratch block holds everything else. */
@@ -39,7 +40,11 @@ struct raster {
     /* Drawn beside colour and depth, at most GFX_ATTACHMENTS_FURTHER_MAX. */
     const raster_attachment_t* const* attachments;
     int attachment_count;
+    const render_settings_t* settings; /* NULL draws with RENDER_SETTINGS_DEFAULT */
 };
+
+/* What a draw uses: the raster's settings, under any development override. */
+render_settings_t raster_settings(const raster_t* raster);
 
 /* The viewport a view frames: destination size when upscaled, otherwise drawn size. */
 static inline viewport_t
@@ -77,6 +82,12 @@ float raster_depth_near(const raster_t* raster);
  * instances' meshes and size: the caller obtains it once, from any memory,
  * so none of it has to live in internal RAM. */
 size_t raster_scratch_bytes(const raster_t* raster);
+
+/* Sets each instance's level coarse bits (render/lod/r3d_lod.h) for the
+ * frame seen through `view`, measured in its output pixels whatever size the
+ * picture is drawn at. Once a frame, before drawing: a draw only reads the
+ * bits, so a second view of the same frame draws the levels this one picked. */
+void raster_pick_levels(const raster_t* raster, const render_view_t* view);
 
 /* Draws every instance through the picture basis and fit in `view`. */
 raster_stats_t raster_draw(const raster_t* raster, const render_view_t* view);

@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from asset.asset_pack import NAME_BYTES
+from anim import tracks_asset
 from build.c_header import read_define
 from build.name_hash import NONE as HASH_NONE, name_hash
 from r3d.import_settings import ANIM_WRAPS, SettingsError, color_fits, load_scene
@@ -141,7 +142,33 @@ def column_scales(matrix):
 
 
 def scale_is_even(scales):
-    return max(scales) - min(scales) <= SCALE_TOLERANCE * max(scales)
+    return max(scales) - min(scales) <= SCALE_TOLERANCE * max(abs(s) for s in scales)
+
+
+def check_clip_scales(scene, clips):
+    """Refuse uneven parent scale curves: they would shear turned children, whose worlds hold TRS.
+
+    Clips absent from this pack are skipped.
+    """
+    entities = scene["entities"]
+    parents = {row["parent"] for row in entities if row["parent"] is not None}
+    parent_hashes = {entities[index]["name_hash"] for index in parents}
+    for animator in scene["animators"]:
+        first = animator["first_clip"]
+        for clip in scene["clips"][first:first + animator["clip_count"]]:
+            for track in clips.get(clip, []):
+                if (track["root"] != tracks_asset.ROOT_SCENE or track["component"] != tracks_asset.TRANSFORM
+                        or track["field"] != "scale"):
+                    continue
+                target = (entities[animator["entity"]]["name"]
+                          if track["path"] == tracks_asset.TARGET_SELF else track["path"])
+                if name_hash(target) not in parent_hashes:
+                    continue
+                runs = tracks_asset.CUBIC_RUNS if track["interpolation"] == "CUBICSPLINE" else 1
+                for index, value in enumerate(track["values"]):
+                    if not scale_is_even(value):
+                        time = track["times"][index // runs]
+                        raise SceneError(f"clip {clip}: entity {target}: scale is not even at {time:g}s")
 
 
 def fold_parent_scales(objects, parents, drawn):
