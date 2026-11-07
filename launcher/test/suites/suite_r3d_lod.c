@@ -20,6 +20,7 @@
 
 #include "core/tune.h"
 #include "math/linear/transformf.h"
+#include "render/context/render_context.h"
 #include "render/lod/r3d_lod.h"
 #include "render/r3d_pipeline.h"
 #include "render/view/r3d_pipeline_count.h"
@@ -665,10 +666,79 @@ test_a_pick_spread_over_frames_picks_each_instance_in_its_own_frame(void) {
     const r3d_lit_mesh_t* mesh = levelled_mesh();
     void* scratch = malloc(picked_scratch_bytes(mesh));
     TEST_ASSERT_NOT_NULL(scratch);
-    TEST_ASSERT_EQUAL_HEX(0x1, picked_in_round(mesh, scratch, true, 2, 0));
     TEST_ASSERT_EQUAL_HEX(0x2, picked_in_round(mesh, scratch, true, 2, 1));
     TEST_ASSERT_EQUAL_HEX(0x1, picked_in_round(mesh, scratch, true, 2, 2));
+    TEST_ASSERT_EQUAL_HEX(0x2, picked_in_round(mesh, scratch, true, 2, 3));
+    /* Round 0, a scene's or view's first frame, picks every instance. */
+    TEST_ASSERT_EQUAL_HEX(0x3, picked_in_round(mesh, scratch, true, 2, 0));
     free(scratch);
+}
+
+static render_context_t* spread_context;
+
+static void
+release_spread_context(void) {
+    if (spread_context != NULL) {
+        render_context_release(spread_context);
+        free(spread_context);
+        spread_context = NULL;
+    }
+    release();
+}
+
+/* A render context's first frame picks every instance, however far the pick
+ * is spread; the frames after it pick their share, and forgetting the scene
+ * makes the next frame a first frame again. */
+static void
+test_a_context_s_first_frame_picks_every_instance_of_a_spread_pick(void) {
+    const r3d_lit_mesh_t* mesh = levelled_mesh();
+
+    enum { INSTANCES = 2, EVERY = 4 };
+
+    mat4f_t models[INSTANCES];
+    box3f_t boxes[INSTANCES];
+    uint32_t coarse[INSTANCES][R3D_LOD_WORDS(GROUPS)] = {{0}};
+    r3d_instance_t instances[INSTANCES];
+    for (int i = 0; i < INSTANCES; i++) {
+        transformf_t pose = transformf_identity();
+        transformf_set_position(&pose, (vec3f_t){0.0F, 0.0F, FAR_EYE});
+        models[i] = transformf_compute_matrix(&pose);
+        boxes[i] = r3d_lit_mesh_world_bounds(mesh, &models[i]);
+        instances[i] = (r3d_instance_t){mesh, &models[i], &boxes[i], coarse[i]};
+    }
+    spread_context = malloc(sizeof *spread_context);
+    TEST_ASSERT_NOT_NULL(spread_context);
+    *spread_context = RENDER_CONTEXT_DEFAULT;
+    render_context_set_scale(spread_context, 100);
+    suite_set_test_cleanup(release_spread_context);
+    const tune_entry_t* spread = tune_find(tune_shared(), TUNE_NAME(render, lod_pick_every));
+    TEST_ASSERT_NOT_NULL(spread);
+    const int32_t saved = *spread->value;
+    *spread->value = EVERY;
+    const fixture_camera_t camera = {{0.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 1.0F}, HALF_FOV_TAN, NEAR_Z};
+    const render_view_t view = render_view_fixture_at(&camera, (viewport_t){W, H, 0});
+    bool first[INSTANCES], second[INSTANCES], again[INSTANCES];
+    TEST_ASSERT_TRUE(render_context_draw(spread_context, instances, INSTANCES, &view, 0));
+    for (int i = 0; i < INSTANCES; i++) {
+        first[i] = r3d_lod_coarse(coarse[i], TOP_GROUP);
+        memset(coarse[i], 0, sizeof coarse[i]);
+    }
+    /* Round 1 of 4: neither instance's share. */
+    TEST_ASSERT_TRUE(render_context_draw(spread_context, instances, INSTANCES, &view, 0));
+    for (int i = 0; i < INSTANCES; i++) {
+        second[i] = r3d_lod_coarse(coarse[i], TOP_GROUP);
+    }
+    render_context_forget(spread_context);
+    TEST_ASSERT_TRUE(render_context_draw(spread_context, instances, INSTANCES, &view, 0));
+    for (int i = 0; i < INSTANCES; i++) {
+        again[i] = r3d_lod_coarse(coarse[i], TOP_GROUP);
+    }
+    *spread->value = saved;
+    for (int i = 0; i < INSTANCES; i++) {
+        TEST_ASSERT_TRUE(first[i]);
+        TEST_ASSERT_FALSE(second[i]);
+        TEST_ASSERT_TRUE(again[i]);
+    }
 }
 
 /* The counted walk tells the coarse clusters it keeps from the finest: none
@@ -711,6 +781,7 @@ suite_r3d_lod(void) {
     RUN_TEST(test_the_pick_keeps_the_bits_of_an_instance_culled_whole);
     RUN_TEST(test_a_cull_that_does_not_pick_levels_leaves_every_bit);
     RUN_TEST(test_a_pick_spread_over_frames_picks_each_instance_in_its_own_frame);
+    RUN_TEST(test_a_context_s_first_frame_picks_every_instance_of_a_spread_pick);
     RUN_TEST(test_the_counted_walk_counts_the_coarse_clusters_it_keeps);
 }
 

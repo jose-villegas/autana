@@ -41,8 +41,10 @@ struct raster {
      * whatever size the picture is drawn at. A second view of the frame
      * leaves it off and draws the levels the frame picked. */
     bool picks_levels;
-    uint32_t pick_round; /* the frame's count, which share of the instances a spread pick takes */
-    void* scratch;       /* raster_scratch_bytes() of it */
+    /* The frame's count, which share of the instances a spread pick takes;
+     * round 0, a scene's or view's first frame, picks every instance. */
+    uint32_t pick_round;
+    void* scratch; /* raster_scratch_bytes() of it */
     /* Drawn beside colour and depth, at most GFX_ATTACHMENTS_FURTHER_MAX. */
     const raster_attachment_t* const* attachments;
     int attachment_count;

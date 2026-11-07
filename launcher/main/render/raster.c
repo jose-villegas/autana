@@ -441,10 +441,12 @@ level_pick_init(const raster_t* raster, picture_lens_t* picture, const render_vi
 
 /* An instance culled whole is not picked: it keeps the bits it last had, a
  * cut as whole as any, and its next pick comes before its draw. Spread over
- * frames, instance `index` picks in the frames its share comes round. */
+ * frames, instance `index` picks in the frames its share comes round, and
+ * every instance in round 0. */
 static void
 level_pick(const level_pick_t* pick, int index, const r3d_instance_t* instance, const r3d_lens_t* lens) {
-    const bool due = pick->every <= 1 || ((uint32_t)index + pick->round) % (uint32_t)pick->every == 0;
+    const bool due =
+        pick->every <= 1 || pick->round == 0 || ((uint32_t)index + pick->round) % (uint32_t)pick->every == 0;
     if (pick->picks && due && instance->lod_coarse != NULL && instance->mesh->lod_group_count > 0) {
         r3d_lod_pick(instance->mesh, lens, pick->tolerance_px, pick->coverage_max, instance->lod_coarse);
     }
