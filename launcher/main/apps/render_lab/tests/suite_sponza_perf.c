@@ -105,7 +105,7 @@ bench_open(const r3d_instance_t* instance) {
     b->panel = memory_alloc(sizeof(gfx_color_t) * PANEL_PIXELS, MEMORY_APP);
     b->instance = *instance;
     if (b->instance.lod_coarse == NULL && instance->mesh->lod_group_count > 0) {
-        /* All clear, as a scene's renderer starts: the finest level until raster_pick_levels() runs. */
+        /* All clear, as a scene's renderer starts: the finest level until a draw picks. */
         const size_t words = R3D_LOD_WORDS(instance->mesh->lod_group_count);
         b->coarse = memory_alloc(words * sizeof(*b->coarse), MEMORY_INTERNAL);
         TEST_ASSERT_NOT_NULL(b->coarse);
@@ -336,6 +336,7 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
     TEST_ASSERT_NOT_NULL(frame_us);
     int64_t frame_sum = 0;
     int samples = 0;
+    const int pick_every = raster_settings(&b->raster).lod.pick_every;
     for (uint32_t t_ms = 0; t_ms < period; t_ms += SPONZA_PERF_POSE_EVERY_MS) {
         (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
         const render_view_t view = sponza_suite_view(flythrough, sponza, camera_entity,
@@ -345,10 +346,17 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
                                     (vec3f_t){(t_ms / SPONZA_PERF_POSE_EVERY_MS) % 2 == 0 ? 0.0F : 0.01F, 0.0F, 0.0F});
             *model = transformf_compute_matrix(moving);
         }
+        /* The levels the frame draws, picked as render_context_draw() picks them, inside the frame's time:
+         * a pick spread over frames has the pose's earlier frames drawn first, untimed. */
+        b->raster.picks_levels = true;
+        for (int warm = 1; warm < pick_every; warm++) {
+            b->raster.pick_round++;
+            (void)raster_draw(&b->raster, &view);
+        }
+        b->raster.pick_round++;
         const int64_t start = timing_now_us();
-        /* The levels the frame draws, picked as render_context_draw() picks them, inside the frame's time. */
-        raster_pick_levels(&b->raster, &view);
         const raster_stats_t stats = raster_draw(&b->raster, &view);
+        b->raster.picks_levels = false;
         const resolution_step_t composed = raster_compose_size(&b->raster);
         raster_upscale(&b->raster, b->panel, composed.width, composed.height);
         const int64_t us = timing_now_us() - start;

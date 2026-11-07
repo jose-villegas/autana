@@ -271,6 +271,14 @@ class SweepTests(ShellJobTests, unittest.TestCase):
                     self.assertIsNone(base['suite/mesh quarter=portrait']['mean'])
                     self.assertEqual(base['suite/mesh']['mean'], 10000)
 
+    def test_seeds_run_from_zero_to_the_layout_seed_limit(self):
+        with tempfile.TemporaryDirectory() as root:
+            self.assertEqual(arguments(root, (0, tool.LAYOUT_SEED_MAX)).seeds, [0, tool.LAYOUT_SEED_MAX])
+            for seeds in ((tool.LAYOUT_SEED_MAX + 1,), (-1,), (3, 3)):
+                with self.subTest(seeds=seeds), contextlib.redirect_stderr(io.StringIO()), \
+                        self.assertRaises(SystemExit):
+                    arguments(root, seeds)
+
     def test_report_units_verdicts_and_table(self):
         for seeds in ((1,), tuple(range(1, 17))):
             with self.subTest(seeds=seeds), tempfile.TemporaryDirectory() as root:

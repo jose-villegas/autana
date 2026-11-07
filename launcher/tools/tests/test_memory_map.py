@@ -38,12 +38,12 @@ class MemoryMapTests(unittest.TestCase):
         path.write_text(text)
         return memory.sites(self.root)
 
-    def check(self, placements, inputs, config=None, active=None, variant="release"):
+    def check(self, placements, inputs, config=None, active=None, variant="release", inlines=()):
         config = config or {}
         for site in placements:
             if site.path.endswith(".lf") and isinstance(site.entries, bool):
                 site.entries = memory.fragment_entries(site, self.root, config)
-        return memory.check(placements, inputs, variant, memory.components(self.root), active or (lambda site: True))
+        return memory.check(placements, inputs, variant, memory.components(self.root), active or (lambda site: True), inlines=inlines)
 
     def test_missing_comment(self):
         with self.assertRaisesRegex(ValueError, "reason"):
@@ -67,9 +67,201 @@ class MemoryMapTests(unittest.TestCase):
             with patch.object(memory, "preprocessed_lines", return_value=alive):
                 placements, active = memory.build_sites(self.root, build)
                 self.assertEqual(active(placements[0]), expected)
+                self.assertEqual([entry[1] for entry in placements[0].required], ["foo"] if expected else [])
         for variant, size in (("release", 4), ("dev", 6), ("diag", 6)):
             self.assertEqual(self.check(sites, [memory.Input("libmain.a", "foo.c.obj", name, size)
                                               for name in ("foo", "bar")], variant=variant)[0][1], size * 2)
+
+    def test_attributed_function_inlined_into_flash(self):
+        sites = self.source("/* Cache latency. IRAM budget: 4 B */\n#define HOT_CODE IRAM_ATTR\nstatic void HOT_CODE foo(void) {}\nstatic void HOT_CODE bar(void) {}")
+        inputs = [memory.Input("libmain.a", "foo.c.obj", "foo", 4),
+                  memory.Input("libmain.a", "foo.c.obj", "caller", 8, output=".flash.text")]
+        for emitted in (False, True):
+            copies = inputs + ([memory.Input("libmain.a", "foo.c.obj", "bar", 0)] if emitted else [])
+            with self.subTest(emitted=emitted), self.assertRaisesRegex(ValueError, "bar: inlined copy.*flash"):
+                self.check(sites, copies, inlines=[("launcher/main/foo.c", "bar", ".flash.text", 0x42000000, 0x42000008)])
+
+    def test_attributed_function_inlined_only_into_iram(self):
+        sites = self.source("/* Cache latency. IRAM budget: 4 B */\n#define HOT_CODE IRAM_ATTR\nstatic void HOT_CODE foo(void) {}\nstatic void HOT_CODE bar(void) {}")
+        inputs = [memory.Input("libmain.a", "foo.c.obj", "foo", 4)]
+        self.assertEqual(self.check(sites, inputs, inlines=[("launcher/main/foo.c", "bar", ".iram0.text", 0x40380000, 0x40380004)])[0][1], 4)
+
+    def test_inline_only_site_has_no_out_of_line_budget(self):
+        sites = self.source("/* Cache latency. IRAM budget: 0 B */\nstatic void IRAM_ATTR foo(void) {}")
+        self.assertEqual(self.check(sites, [], inlines=[("launcher/main/foo.c", "foo", ".iram0.text", 0x40380000, 0x40380004)])[0][1], 0)
+
+    def test_discarded_inline_ranges_have_no_instance(self):
+        ranges = [(memory.DWARF_DISCARDED_PC, 3), (0x40380000, 0x40380004)]
+        rows = list(memory.inline_rows("launcher/main/foo.c", "foo", ranges,
+                                       {".debug_info": (0, 8), ".iram0.text": (0x40380000, 4)}))
+        self.assertEqual(rows, [("launcher/main/foo.c", "foo", ".iram0.text", 0x40380000, 0x40380004)])
+
+    def test_attributed_out_of_line_copy_must_be_in_iram(self):
+        sites = self.source("/* Cache latency. IRAM budget: 4 B */\nstatic void IRAM_ATTR foo(void) {}")
+        with self.assertRaisesRegex(ValueError, "out-of-line copy.*flash"):
+            self.check(sites, [memory.Input("libmain.a", "foo.c.obj", "foo", 4, output=".flash.text")])
+        literals = [memory.Input("libmain.a", "foo.c.obj", "foo", 4, literal=True)]
+        with self.assertRaisesRegex(ValueError, "no emitted copy"):
+            self.check(sites, literals)
+
+    def test_compiled_out_alias_use_needs_no_symbol(self):
+        self.source("/* Cache latency. IRAM budget: 4 B */\n#define HOT_CODE IRAM_ATTR\nstatic void HOT_CODE foo(void) {}\nstatic void HOT_CODE bar(void) {}")
+        build = dict(build=self.root, owned=memory.components(self.root), config={})
+        with patch.object(memory, "preprocessed_lines", return_value={(self.root / "launcher/main/foo.c", 3)}):
+            sites, active = memory.build_sites(self.root, build)
+        inputs = [memory.Input("libmain.a", "foo.c.obj", "foo", 4)]
+        self.assertEqual(memory.check(sites, inputs, "release", build["owned"], active)[0][1], 4)
+
+    def check_cli(self, arguments, sites, build=None, active=None):
+        capture = io.StringIO()
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(patch.object(sys, "argv", ["memory_map.py", "--check", *arguments]))
+            stack.enter_context(patch.object(memory, "build_sites", return_value=(sites, active or (lambda site: True))))
+            stack.enter_context(patch.object(memory, "idf_pin", return_value={"commit": "pin"}))
+            if build is not None:
+                stack.enter_context(patch.object(memory, "read_build", return_value=build))
+            stack.enter_context(contextlib.redirect_stdout(capture))
+            stack.enter_context(contextlib.redirect_stderr(capture))
+            return memory.main(), capture
+
+    def fixture_elf(self, version=5, debug=True):
+        from elftools.elf.elffile import ELFFile
+
+        fixture = Path(__file__).parent / "fixtures/inline-dwarf" / f"inline-{version}.elf"
+        elf = self.root / "inline.elf"
+        data = fixture.read_bytes()
+        if not debug:
+            data = data.replace(b".debug_info\0", b".no_debug_x\0")
+        elf.write_bytes(data)
+        with elf.open("rb") as stream:
+            image = ELFFile(stream)
+            sections = {section.name: (section["sh_addr"], section["sh_size"]) for section in image.iter_sections()}
+        return self.root / "launcher/main/inline.h", elf, sections
+
+    def test_inline_instances_compiler_dwarf(self):
+        from elftools.elf.elffile import ELFFile
+
+        for version in (4, 5):
+            with self.subTest(version=version):
+                _, elf, sections = self.fixture_elf(version)
+                rows = memory.inline_instances(elf, sections)
+                source = (Path.cwd() / "launcher/main/inline.h").resolve().as_posix()
+                start, _ = sections[".text"]
+                self.assertEqual(sorted(rows), sorted([
+                    (source, "foo", ".text", start + 4, start + 12),
+                    (source, "foo", ".text", start + 16, start + 22),
+                    (source, "bar", ".text", start + 36, start + 39),
+                ]))
+                with elf.open("rb") as stream:
+                    dwarf = ELFFile(stream).get_dwarf_info()
+                    instances = [die for cu in dwarf.iter_CUs() for die in cu.iter_DIEs()
+                                 if die.tag == "DW_TAG_inlined_subroutine"]
+                    self.assertEqual(len(instances), 2)
+                    self.assertTrue(any("DW_AT_low_pc" in die.attributes and "DW_AT_high_pc" in die.attributes
+                                        for die in instances))
+                    self.assertTrue(any("DW_AT_ranges" in die.attributes for die in instances))
+
+    def inline_build(self, debug=True):
+        header, elf, sections = self.fixture_elf(debug=debug)
+        start, size = sections[".text"]
+        build = self.root / "build"
+        build.mkdir()
+        (build / "project_description.json").write_text(json.dumps({"app_elf": str(elf), "idf_path": str(self.root / "idf"), "build_components": [], "build_component_paths": []}))
+        (build / "build_id.txt").write_text("123456abcdef-release\n")
+        (build / "sdkconfig").write_text("")
+        elf.with_suffix(".map").write_text(
+            "iram0_0_seg 0x40380000 0x400\ndram0_0_seg 0x3fc80000 0x400\n"
+            f".iram0.text 0x40380000 0x0\n.flash.text {start:#x} {size:#x}\n")
+        ld = build / "esp-idf/esp_system/ld"
+        ld.mkdir(parents=True)
+        (ld / "sections.ld").write_text(".iram0.text_end : { . = ALIGN(256); }")
+        (ld / "memory.ld").write_text("")
+        for name, value in (("symbols", {}), ("find_tool", "nm"), ("run", json.dumps({"layout": []})),
+                            ("idf_commit", "pin"), ("iram_entries", [])):
+            self.enterContext(patch.object(memory, name, return_value=value))
+        return header, elf, build
+
+    def test_check_cli_reads_inline_dwarf(self):
+        header, elf, build = self.inline_build()
+        header.write_text("/* Cache latency. IRAM budget: 0 B */\nstatic void IRAM_ATTR foo(void) {}")
+        sites = memory.sites(self.root)
+        for section, expected in ((".flash.text", 1), (".iram0.text", 0)):
+            with self.subTest(section=section):
+                text = elf.with_suffix(".map").read_text()
+                if section == ".iram0.text":
+                    text = text.replace(".flash.text", ".iram0.text")
+                    elf.with_suffix(".map").write_text(text)
+                status, output = self.check_cli(["--root", str(self.root), str(build)], sites)
+                self.assertEqual(status, expected)
+                self.assertIn("foo: inlined copy in .flash.text" if expected else "PASS IRAM release", output.getvalue())
+
+    def test_read_build_dwarf_only_when_requested(self):
+        _, _, build = self.inline_build(debug=False)
+        with patch.object(memory, "inline_instances", wraps=memory.inline_instances) as walk:
+            memory.read_build(build, self.root)
+            walk.assert_not_called()
+        output = io.StringIO()
+        with patch.object(sys, "argv", ["memory_map.py", "--check", "--root", str(self.root), str(build)]), contextlib.redirect_stderr(output):
+            self.assertEqual(memory.main(), 1)
+        self.assertIn("DWARF debug info required for inline placement", output.getvalue())
+
+    def test_document_modes_do_not_request_dwarf(self):
+        sites = self.source("/* Cache latency. IRAM budget: 0 B */\nstatic void IRAM_ATTR foo(void) {}")
+        build = dict(variant="release", idf_commit="pin", owned={}, placed_inputs=[], linker_entries=[])
+        for mode in ([], ["--write"], ["--tables", str(self.root / "tables")], ["--source-only"]):
+            with self.subTest(mode=mode), patch.object(sys, "argv", ["memory_map.py", *mode, "fixture"]), patch.object(memory, "read_build", return_value=build) as read, patch.object(memory, "build_sites", return_value=(sites, lambda site: True)), patch.object(memory, "idf_pin", return_value={"commit": "pin"}), patch.object(memory, "sites", return_value=sites), patch.object(memory, "render", return_value=""), patch.object(memory, "render_tiers", return_value=""), patch.object(memory, "render_headroom", return_value=""), patch.object(memory, "apply_tables"), patch.object(memory, "write_chart"), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(memory.main(), 0)
+                if mode == ["--source-only"]:
+                    read.assert_not_called()
+                else:
+                    self.assertFalse(read.call_args.kwargs["inspect_inline"])
+
+    def test_inline_rows_boundaries(self):
+        rows = list(memory.inline_rows("foo.c", "foo", [(12, 17), (12, 12), (12, 16)], {".iram0.text": (8, 8)}))
+        self.assertEqual([row[2:] for row in rows], [("outside linked sections", 12, 17), (".iram0.text", 12, 16)])
+
+    def test_inline_matching_reports_only_flash_instance(self):
+        for path in ("launcher/main/foo.c", "launcher/main/foo.h"):
+            with self.subTest(path=path):
+                sites = self.source("/* Cache latency. IRAM budget: 0 B */\n#define HOT_CODE IRAM_ATTR\nstatic void HOT_CODE foo(void) {}\nstatic void HOT_CODE bar(void) {}", path)
+                rows = [(path, "foo", ".iram0.text", 8, 12), (path, "bar", ".iram0.text", 12, 16),
+                        ("other/foo.c", "foo", ".flash.text", 20, 24),
+                        ("launcher/main/xfoo.c", "foo", ".flash.text", 24, 28)]
+                self.check(sites, [], inlines=rows)
+                rows.append((path, "foo", ".flash.text", 28, 32))
+                with self.assertRaises(ValueError) as caught:
+                    self.check(sites, [], inlines=rows)
+                self.assertEqual(str(caught.exception).count("inlined copy"), 1)
+                self.assertIn("[0x1c, 0x20)", str(caught.exception))
+                self.assertNotIn("bar:", str(caught.exception))
+                (self.root / path).unlink()
+
+    def test_inline_only_budget_round_trip_and_label(self):
+        sites = self.source("/* Cache latency. IRAM budget: 4 B */\nstatic void IRAM_ATTR foo(void) {}")
+        builds = []
+        for variant in memory.VARIANTS:
+            active = lambda site, variant=variant: variant != "diag"
+            rows = [(sites[0].path, "foo", ".iram0.text", 8, 12)] if active(sites[0]) else []
+            inputs = [memory.Input("libmain.a", "foo.c.obj", "foo", 8)] if variant == "dev" else []
+            report = memory.check(sites, inputs, variant, {}, active, exact=False, inlines=rows)
+            builds.append(dict(variant=variant, idf_commit="pin", report=report, active=active,
+                               owned={}, placed_inputs=inputs, linker_entries=[], inlines=rows))
+        with patch.object(memory, "idf_pin", return_value={"commit": "pin"}), contextlib.redirect_stdout(io.StringIO()):
+            memory.update_budgets(self.root, builds)
+        sites = memory.sites(self.root)
+        self.assertEqual(sites[0].budget, {"release": 0, "dev": 8})
+        # The compiled-out variant must not acquire a budget entry.
+        self.assertNotIn("diag", (self.root / sites[0].path).read_text())
+        for build in builds:
+            status, capture = self.check_cli(["fixture"], sites, build, build["active"])
+            self.assertEqual(status, 0)
+            self.assertEqual("(note: compiled out)" in capture.getvalue(), build["variant"] == "diag")
+
+    def test_active_attribute_must_emit_code(self):
+        sites = self.source("/* Cache latency. IRAM budget: 0 B */\nstatic void IRAM_ATTR foo(void) {}")
+        with self.assertRaisesRegex(ValueError, "foo: no emitted copy or inline instance"):
+            self.check(sites, [])
+        self.assertEqual(self.check(sites, [], active=lambda site: False)[0][1], 0)
 
     def test_clone_attributed_to_base_site(self):
         sites = self.source("/* Cache latency. IRAM budget: 4 B */\nstatic void IRAM_ATTR foo(void) {}")
@@ -150,14 +342,13 @@ class MemoryMapTests(unittest.TestCase):
             with self.subTest(output=output):
                 text = (".iram0.text 0x40380000 0x8\n .text.foo 0x40380000 0x4 main/libmain.a(foo.c.obj)\n"
                         f"{output} 0x42000000 0x4\n .text.foo.isra.0\n  0x42000000 0x4 main/libmain.a(foo.c.obj)\n"
-                        ".flash.text 0x42000004 0x40\n .text.foo 0x42000004 0x40 main/libmain.a(foo.c.obj)\n")
+                        ".flash.text 0x42000004 0x40\n .text.unrelated 0x42000004 0x40 main/libmain.a(foo.c.obj)\n")
                 placed, _, _ = memory.map_inputs(text, {})
                 build = dict(variant="release", idf_commit="pin", owned=memory.components(self.root),
                              inputs=[item for item in placed if item.output.startswith(".iram")], placed_inputs=placed,
                              linker_entries=[("libmain.a", "foo.*", "foo")])
-                capture = io.StringIO()
-                with patch.object(sys, "argv", ["memory_map.py", "--check", "fixture"]), patch.object(memory, "read_build", return_value=build), patch.object(memory, "build_sites", return_value=(sites, lambda site: True)), patch.object(memory, "idf_pin", return_value={"commit": "pin"}), contextlib.redirect_stdout(capture), contextlib.redirect_stderr(capture):
-                    self.assertEqual(memory.main(), status)
+                actual, capture = self.check_cli(["fixture"], sites, build)
+                self.assertEqual(actual, status)
                 self.assertIn("clone foo.isra.0 is in .flash.text" if status else "8 B", capture.getvalue())
 
     def test_clone_suffix_shape(self):
@@ -210,6 +401,7 @@ class MemoryMapTests(unittest.TestCase):
             with patch.object(memory, "preprocessed_lines", return_value={(self.root / "launcher/main/foo.c", line) for line in lines}):
                 placements, active = memory.build_sites(self.root, build)
                 self.assertEqual(active(placements[0]), expected)
+                self.assertEqual([entry[1] for entry in placements[0].required], ["foo"] if expected else [])
 
     def test_alias_detection_requires_attribute_and_word_boundary(self):
         found = self.source("#define HOT_CODE IRAM_ATTR\n/* Ordinary macro. IRAM budget: 4 B */\n#define NOT_CODE ordinary\nstatic void NOT_CODE ignored(void) {}\nstatic void HOT_CODE_SUFFIX unrelated(void) {}\n/* Cache latency. IRAM budget: 4 B */\nstatic void HOT_CODE foo(void) {}")
@@ -335,6 +527,7 @@ class MemoryMapTests(unittest.TestCase):
         fixture.write_text(json.dumps(builds))
         program = """import json, sys
 from pathlib import Path
+sys.modules["elftools"] = None
 sys.path.insert(0, sys.argv[1])
 import memory_map as m
 builds=json.load(open(sys.argv[2]))
@@ -435,7 +628,7 @@ print(m.render(builds))
         sites = self.source("/* Cache latency. IRAM budget: 0 B */\nstatic void IRAM_ATTR foo(void) {}")
         self.assertEqual(sites[0].budget, 0)
         self.assertEqual(self.check(sites, [], active=lambda site: False)[0][1], 0)
-        with self.assertRaisesRegex(ValueError, "placed nothing"):
+        with self.assertRaisesRegex(ValueError, "no emitted copy"):
             self.check(sites, [])
 
     def test_symbol_reader_preserves_duplicate_names(self):
@@ -693,7 +886,7 @@ print(m.render(builds))
         fragment = build / "linker.lf"
         fragment.write_text("[mapping:hot]\narchive: libchosen.a\nentries:\n    foo:foo (noflash)\n")
         (build / "build.ninja").write_text("build esp-idf/esp_system/ld/sections.ld : CUSTOM_COMMAND linker.lf\n  COMMAND = python idf/tools/ldgen/ldgen.py --config sdkconfig --kconfig Kconfig --env-file config.env --fragments-list linker.lf\n")
-        with patch.object(memory, "symbols", return_value={}), patch.object(memory, "find_tool", return_value="nm"), patch.object(memory, "run", side_effect=[json.dumps({"layout": []}), json.dumps([["libchosen.a", "foo.*", "foo"]])]), patch.object(memory, "idf_commit", return_value="idf-commit"):
+        with patch.object(memory, "inline_instances", return_value=[]), patch.object(memory, "symbols", return_value={}), patch.object(memory, "find_tool", return_value="nm"), patch.object(memory, "run", side_effect=[json.dumps({"layout": []}), json.dumps([["libchosen.a", "foo.*", "foo"]])]), patch.object(memory, "idf_commit", return_value="idf-commit"):
             measured = memory.read_build(build, self.root)
         self.assertEqual(measured["owned"], {"libchosen.a": self.root / "launcher/components/chosen"})
         self.assertEqual(measured["build_id"], "123456abcdef-diag")
@@ -775,6 +968,15 @@ print(m.render(builds))
                            "owned": memory.components(self.root), "report": [(sites[0], size, ["foo"]), (sites[1], 0 if variant == "release" else 7, ["bar"])]})
         return builds
 
+    def test_update_budget_includes_active_inline_only_variant(self):
+        builds = self.budget_builds()
+        for build in builds:
+            build["active"] = lambda site: True
+        site = builds[0]["report"][0][0]
+        builds[0]["report"][0] = (site, 0, [])
+        memory.update_budgets(self.root, builds)
+        self.assertEqual(memory.sites(self.root)[0].budget, {"release": 0, "dev": 8, "diag": 8})
+
     def test_update_budgets_rewrites_clauses_then_exact_check_passes(self):
         builds = self.budget_builds()
         memory.update_budgets(self.root, builds)
@@ -823,11 +1025,11 @@ print(m.render(builds))
         def build_sites(root, build):
             return memory.sites(root), lambda site: site.entries[0][1] == "foo" or build["variant"] != "release"
         arguments = ["memory_map.py", "--root", str(self.root), "--update-budgets", "release", "dev", "diag"]
-        with patch.object(sys, "argv", arguments), patch.object(memory, "read_build", side_effect=lambda path, root: next(b for b in builds if b["variant"] == str(path))), patch.object(memory, "build_sites", side_effect=build_sites), contextlib.redirect_stdout(io.StringIO()):
+        with patch.object(sys, "argv", arguments), patch.object(memory, "read_build", side_effect=lambda path, root, **kwargs: next(b for b in builds if b["variant"] == str(path))), patch.object(memory, "build_sites", side_effect=build_sites), contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(memory.main(), 0)
         content = source.read_bytes()
         self.assertEqual(content.count(b"\n"), content.count(b"\r\n"))
-        with patch.object(sys, "argv", [arguments[0], "--root", str(self.root), "--check", *arguments[-3:]]), patch.object(memory, "read_build", side_effect=lambda path, root: next(b for b in builds if b["variant"] == str(path))), patch.object(memory, "build_sites", side_effect=build_sites), contextlib.redirect_stdout(io.StringIO()):
+        with patch.object(sys, "argv", [arguments[0], "--root", str(self.root), "--check", *arguments[-3:]]), patch.object(memory, "read_build", side_effect=lambda path, root, **kwargs: next(b for b in builds if b["variant"] == str(path))), patch.object(memory, "build_sites", side_effect=build_sites), contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(memory.main(), 0)
 
     def test_cli_exit_status(self):

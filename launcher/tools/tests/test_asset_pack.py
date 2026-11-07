@@ -294,7 +294,8 @@ class RenderSettingsPackTests(unittest.TestCase):
             self.assertEqual(kind, render_asset.TYPE)
             self.assertEqual(table_asset.decode(data), ({"cull": [0], "depth_fit": [16], "batched": [16],
                                                     "lod.tolerance_px": [32],
-                                                    "lod.hysteresis_px": [8], "lod.coverage_permille": [4000]}, 4))
+                                                    "lod.hysteresis_px": [8], "lod.coverage_permille": [4000],
+                                                    "lod.pick_every": [64]}, 4))
 
     def test_each_app_pack_has_its_own_render_entry_whichever_root_selects_it(self):
         with tempfile.TemporaryDirectory() as directory:
