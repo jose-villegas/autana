@@ -9,6 +9,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 
+#include "core/memory.h"
 #include "r3d_quad_mesh.h"
 #include "render/raster_internal.h"
 #include "render_view_fixture.h"
@@ -42,7 +43,7 @@ static raster_rig_t* raster_rig_now;
 static void
 raster_rig_release(void) {
     if (raster_rig_now != NULL) {
-        free(raster_rig_now->raster.scratch);
+        memory_free(raster_rig_now->raster.scratch);
         free(raster_rig_now);
         raster_rig_now = NULL;
     }
@@ -52,12 +53,12 @@ raster_rig_release(void) {
  * largest picture. */
 static inline void
 raster_rig_attach(raster_rig_t* r, const raster_attachment_t* const* attachments, int count) {
-    free(r->raster.scratch);
+    memory_free(r->raster.scratch);
     r->raster.attachments = attachments;
     r->raster.attachment_count = count;
     r->raster.width = r->width;
     r->raster.height = r->height;
-    r->raster.scratch = malloc(raster_scratch_bytes(&r->raster));
+    r->raster.scratch = memory_alloc(raster_scratch_bytes(&r->raster), MEMORY_APP);
     TEST_ASSERT_NOT_NULL(r->raster.scratch);
 }
 
@@ -75,7 +76,8 @@ raster_rig_open(const int16_t (*const positions[])[3], int count, unsigned place
     suite_set_test_cleanup(raster_rig_release);
     for (int i = 0; i < count; i++) {
         r3d_quad_init(&r->quad[i], positions[i]);
-        r->instance[i] = (r3d_instance_t){&r->quad[i].mesh, (placed & (1U << i)) != 0 ? &r->model[i] : NULL, NULL};
+        r->instance[i] =
+            (r3d_instance_t){&r->quad[i].mesh, (placed & (1U << i)) != 0 ? &r->model[i] : NULL, NULL, NULL};
     }
     r->raster = (raster_t){.instances = r->instance, .instance_count = count, .clear = 0x1234};
     r->width = width;

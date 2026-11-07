@@ -1,14 +1,30 @@
 # Cluster level of detail
 
-**Status:** approved; the host replay is built, the runtime is not.
+**Status:** approved; the host replay, the baked levels and the pick at a fixed tolerance are built; the budget is not.
 
 The fitted mesh's welded positions are split into clusters, which are
 grouped, simplified with each group's border locked, and split again until a
 group no longer simplifies<sup>[[54]](../Citations.md#karis-2021)</sup>
 (meshoptimizer's<sup>[[11]](../Citations.md#meshoptimizer)</sup> `clusterlod`). The finest
-level holds the fitted mesh's triangles, but in `clusterlod`'s own clusters, not
-the baked ones. Positions only, so a strip of one colour is not simplified on
-its own; each level will get its own colour set.
+level holds the fitted mesh's triangles in `clusterlod`'s own clusters, and the
+bake draws those as its level 0. A fit starts from a mesh without levels. A CPU levels stage builds the
+hierarchy from its fitted bytes. Positions only, so a strip of one colour is not
+simplified on its own; each coarser cluster samples its colours from the
+nearest level-0 surface facing its way.
+
+**The bake.** [`lod/bake_levels.py`](../../launcher/tools/r3d/lod/bake_levels.py)
+builds one hierarchy per sidedness, with the positions the two share locked. It
+pushes each coarse vertex inside a group's border outward, up to the group's
+error, so a coarse level never sits inside the finer surface it replaces.
+Group spheres and errors are rounded outward into position ticks; the LLOD
+format ([LLOD.md](../assets/formats/LLOD.md)) states their ordering rules.
+The cluster tree's root has two children: an octree over level 0 alone,
+built as a mesh without levels builds its own, and a run of the coarse
+clusters in the order of the group simplified into each. The cull walks
+level 0's octree, then takes the cut's coarse clusters from each coarse
+group's run, so a frame never visits a coarse cluster it does not draw. The
+`[geometry] lod` import setting turns levels off; level 0 is then the baked
+meshlets.
 
 **The pick.** A cluster is drawn when its own error, projected at its sphere,
 is at most the tolerance in pixels and its group's error is above it. Every
@@ -35,7 +51,9 @@ Hoppe's<sup>[[111]](../Citations.md#hoppe-1997)</sup>; the floor of half a pixel
 | Levels of a mesh | [`lod/levels.py`](../../launcher/tools/r3d/lod/levels.py), [`lod/clusterlod.cpp`](../../launcher/tools/r3d/lod/clusterlod.cpp) | host |
 | Pick, histogram, exact tolerance | [`lod/pick.py`](../../launcher/tools/r3d/lod/pick.py) | host |
 | Replay over a camera path | [`lod/lod_replay.py`](../../launcher/tools/r3d/lod/lod_replay.py) | host |
-| Levels in the baked mesh, pick in the cluster walk | planned `r3d_lod_pick()`, in `r3d_pipeline.c`; it then owns the pick and its constants, and `pick.py` calls it | not built |
+| Levels in the baked mesh | [`lod/bake_levels.py`](../../launcher/tools/r3d/lod/bake_levels.py), [`r3d_lit_mesh.h`](../../launcher/main/render/r3d_lit_mesh.h) | built |
+| Pick at a tolerance, with hysteresis and a coverage cap, once a frame in output pixels | [`r3d_lod_pick()`](../../launcher/main/render/lod/r3d_lod.h), run by `raster_pick_levels()`; its coarse bits live per scene renderer, and the cluster walk only reads them | built |
+| Histogram from the last frame, steering the tolerance to a budget | `r3d_lod.c` | not built |
 | Tolerance per pose baked for the path; the fit trained on it | bake stage | not built |
 
 ```sh
@@ -50,12 +68,47 @@ what fixed tolerances draw, and for each budget:
 - the terminal share: drawn triangles whose group cannot be simplified
   further, which no budget removes.
 
-**Open for the runtime:**
+**Decided for the runtime:** level 0 is `clusterlod`'s clusters, so every
+mesh is rebaked; the histogram is built from the last frame's clusters in view,
+a frame late.
 
-- Which clusters level 0 is: `clusterlod`'s, so the baked clusters change and
-  every mesh is rebaked; or the baked ones, with the levels built over them.
-- Whether the histogram is built in the frame it steers, one more pass over the
-  clusters in view of every level, or from the last frame's, a frame late.
+**The pick's hysteresis.** A group turns coarse once its projected error falls
+the [`lod.hysteresis_px`](../render/Render-Settings.md#lod) setting below the tolerance and turns fine again once it
+rises that far above, so a still camera never flickers between levels. A
+coarse group's parent bounds hold its own, so its finer groups are always
+coarse too; a closing pass sets coarse any source float rounding left fine
+far off, so the cut stays crack-free whatever the floats do.
+
+**The coverage cap.** A group whose radius, projected where its error is,
+spans more than the settings' `lod.coverage_permille` thousandths of the picture's
+height stays fine, whatever its error. A large coarse group shows its
+simplified surface over much of the screen, and its colours, sampled from the
+nearest level-0 surface, shimmer under a slow camera drift where the
+geometric error alone says nothing changed. A parent's bounds hold its
+sources', so it never covers less than one of them, and the cap keeps a
+coarse parent's sources coarse. The table renders each cap along the paths
+and scores it against cap 0, the finest level. Blocks popping is
+frame-to-frame change beyond the finest level's own (render_temporal.py's
+measure); triangles are those submitted, against the finest level's.
+
+<!-- generated: lod-coverage sha256=4855e966b49f151d1d1af951e227554d290e8018633391fa0d6d7e3d6cb96a44 -->
+| Path | Cap | Blocks popping | Mean difference /255 | Triangles, mean | Triangles, p95 |
+|---|---|---|---|---|---|
+| Sponza | none | 0.1618% | 0.251 | -13.5% | -14.7% |
+| Sponza | 50% | 0.0932% | 0.071 | -11.7% | -11.4% |
+| Sponza | 25% | 0.0932% | 0.071 | -11.7% | -11.4% |
+| Sponza | 10% | 0.0913% | 0.067 | -11.1% | -11.4% |
+| Bistro | none | 0.2316% | 0.178 | -15.7% | -18.2% |
+| Bistro | 50% | 0.2023% | 0.140 | -13.8% | -17.4% |
+| Bistro | 25% | 0.1718% | 0.105 | -10.7% | -13.6% |
+| Bistro | 10% | 0.0518% | 0.033 | -4.8% | -5.4% |
+<!-- /generated: lod-coverage -->
+
+```sh
+python launcher/tools/r3d/lod/coverage_table.py --script launcher/main/apps/render_lab/tools/render_lab_render_host.sh \
+    --render Sponza "--scene sponza-fitted-full --no-hud --frames 1101 --dt 33" \
+    --render Bistro "--scene bistro-fitted-full --no-hud --frames 900 --dt 33" --doc docs/plans/Cluster-LOD.md
+```
 
 **Gate before the runtime ships:** with the levels a pose picks, no more of
 the rest's hidden surface may show than at the finest level, and

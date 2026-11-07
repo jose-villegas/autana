@@ -3,11 +3,83 @@
 // hands it back as flat arrays. levels.py builds it with meshoptimizer's sources.
 #include "meshoptimizer.h"
 
-#define CLUSTERLOD_IMPLEMENTATION
-#include "clusterlod.h"
-
 #include <algorithm>
 #include <vector>
+
+namespace {
+
+// The finest clusters a caller hands lod_build: triangles per cluster, each
+// cluster's indices consecutive in the mesh's index buffer. clusterlod's first
+// meshlet build, the split of the whole mesh, takes these instead of cutting
+// its own; every later build (a group's simplified triangles) is meshoptimizer's.
+struct Given {
+    const unsigned int* triangles = nullptr;
+    size_t count = 0;
+    bool taken = false;
+    bool failed = false;
+};
+
+thread_local Given given;
+
+size_t
+given_or_built(meshopt_Meshlet* meshlets, unsigned int* meshlet_vertices, unsigned char* meshlet_triangles,
+               const unsigned int* indices, size_t index_count, const float* vertex_positions, size_t vertex_count,
+               size_t vertex_positions_stride, size_t max_vertices, size_t min_triangles, size_t max_triangles,
+               float cone_weight, float split_factor) {
+    if (given.triangles == nullptr || given.taken) {
+        return meshopt_buildMeshletsFlex(meshlets, meshlet_vertices, meshlet_triangles, indices, index_count,
+                                         vertex_positions, vertex_count, vertex_positions_stride, max_vertices,
+                                         min_triangles, max_triangles, cone_weight, split_factor);
+    }
+    given.taken = true;
+    // clusterlod sized the buffers for meshoptimizer's own worst case.
+    if (given.count > meshopt_buildMeshletsBound(index_count, max_vertices, min_triangles)) {
+        given.failed = true;
+        return 0;
+    }
+    std::vector<int> local(vertex_count, -1);
+    size_t at = 0, vertex_at = 0;
+    for (size_t k = 0; k < given.count; k++) {
+        const size_t count = given.triangles[k];
+        if (count == 0 || count > max_triangles || at + 3 * count > index_count) {
+            given.failed = true;
+            return 0;
+        }
+        meshopt_Meshlet& m = meshlets[k];
+        m.vertex_offset = static_cast<unsigned int>(vertex_at);
+        m.triangle_offset = static_cast<unsigned int>(at);
+        m.vertex_count = 0;
+        m.triangle_count = static_cast<unsigned int>(count);
+        for (size_t j = at; j < at + 3 * count; j++) {
+            const unsigned int v = indices[j];
+            if (local[v] < 0) {
+                if (m.vertex_count == max_vertices) {
+                    given.failed = true;
+                    return 0;
+                }
+                local[v] = static_cast<int>(m.vertex_count++);
+                meshlet_vertices[vertex_at++] = v;
+            }
+            meshlet_triangles[j] = static_cast<unsigned char>(local[v]);
+        }
+        for (size_t j = m.vertex_offset; j < vertex_at; j++) {
+            local[meshlet_vertices[j]] = -1;
+        }
+        at += 3 * count;
+    }
+    if (at != index_count) {
+        given.failed = true;
+        return 0;
+    }
+    return given.count;
+}
+
+} // namespace
+
+#define meshopt_buildMeshletsFlex given_or_built
+#define CLUSTERLOD_IMPLEMENTATION
+#include "clusterlod.h"
+#undef meshopt_buildMeshletsFlex
 
 #ifdef _WIN32
 #define LOD_API extern "C" __declspec(dllexport)
@@ -31,9 +103,14 @@ struct Levels {
 
 // Regular (border-locked) simplify with the sloppy fallback for stuck groups,
 // position error only. max_triangles is clusterlod's cluster size, 4..256.
+// locks, one per vertex or null, holds meshopt_SimplifyVertex_Lock where a
+// vertex must stay put at every level.
+// cluster_triangles, cluster_count: the finest clusters, or null to let
+// clusterlod cut them; a null result when they do not fit its limits.
 LOD_API void*
 lod_build(const float* positions, size_t vertex_count, const unsigned int* indices, size_t index_count,
-          size_t max_triangles) {
+          size_t max_triangles, const unsigned char* locks, const unsigned int* cluster_triangles,
+          size_t cluster_count) {
     clodConfig config = clodDefaultConfig(max_triangles);
     config.simplify_permissive = false;
     config.simplify_fallback_sloppy = true;
@@ -43,6 +120,8 @@ lod_build(const float* positions, size_t vertex_count, const unsigned int* indic
     mesh.vertex_count = vertex_count;
     mesh.vertex_positions = positions;
     mesh.vertex_positions_stride = sizeof(float) * 3;
+    mesh.vertex_lock = locks;
+    given = Given{cluster_triangles, cluster_count};
     Levels* out = new Levels();
     clodBuild(config, mesh, [out](clodGroup group, const clodCluster* clusters, size_t count) -> int {
         const int id = static_cast<int>(out->group_error.size());
@@ -60,6 +139,12 @@ lod_build(const float* positions, size_t vertex_count, const unsigned int* indic
         }
         return id;
     });
+    const bool failed = given.failed;
+    given = Given{};
+    if (failed) {
+        delete out;
+        return nullptr;
+    }
     return out;
 }
 

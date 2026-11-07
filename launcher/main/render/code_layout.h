@@ -22,7 +22,7 @@
 /* The draw path's copies for a view that skips clusters behind drawn depth
  * (render_view_t.skip_hidden), placed with the draw path. IRAM is granted per
  * measured ms saved per KB, the largest free internal block noted with it.
- * IRAM budget: 3217 B */
+ * IRAM budget: 3213 B */
 #define RENDER_SKIP_ATTR RENDER_IRAM_ATTR
 #else
 /* A host build has no instruction cache to place code in. */

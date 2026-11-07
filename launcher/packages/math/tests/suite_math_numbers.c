@@ -244,6 +244,14 @@ test_normalize_divide_zero_and_float(void) {
     }
 }
 
+static void
+test_length_is_the_root_of_the_self_dot(void) {
+    static const vec3f_t three_four_twelve = {3.0F, 4.0F, 12.0F};
+    TEST_ASSERT_EQUAL_FLOAT(13.0F, vec3f_length(three_four_twelve));
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, vec3f_length(vec3f_zero()));
+    TEST_ASSERT_FLOAT_WITHIN(FLT_EPSILON, 1.0F, vec3f_length(vec3f_normalize(A)));
+}
+
 /* The double-precision reference runs on the host only: the device's FPU is single precision. */
 #ifndef ESP_PLATFORM
 static void
@@ -2147,6 +2155,7 @@ suite_math_numbers(void) {
     RUN_TEST(test_vec3_add_sub_scale_dot_cross_agree_across_every_number_type);
     RUN_TEST(test_vec2_ops_agree_across_every_number_type);
     RUN_TEST(test_normalize_divide_zero_and_float);
+    RUN_TEST(test_length_is_the_root_of_the_self_dot);
 #ifndef ESP_PLATFORM
     RUN_TEST(test_fixed_normalize_saturation_edges);
 #endif

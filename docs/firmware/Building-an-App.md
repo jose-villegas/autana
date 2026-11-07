@@ -71,6 +71,7 @@ board-free preview of its drawing, declare a scene with the
 | `app_t` field | Required | Called | Contract |
 |---|---|---|---|
 | `name`, `summary` | yes | - | launcher list text; `name` is also the sort key |
+| `pack` | no (`NULL`) | - | `NAME` of the app's `NAME.pack.toml`: mounted while the app runs; its [render settings](../render/Render-Settings.md#the-render-asset) apply before `enter()` |
 | `enter()` | yes | once, on launch | reset state, take memory from the app arena, `gfx_mode_enter()`. May have run before. |
 | `frame(dt_ms, input)` | yes | every pass | draw and return. `dt_ms` is clamped to `FRAME_DT_MAX_MS` (250 ms). |
 | `draw_band(row0, row1, target)` | no | each dirty transient band | required with `GFX_LAYOUT_BANDS` (gfx asserts it); after `frame()`, fill full-width rows `[row0, row1)` of `target`, row0 first. gfx replays the UI over them and sends the band. |
@@ -125,10 +126,11 @@ launch, `shell_leave_app()` on leave (`shell/shell_apps.c`):
 | Launch | Leave |
 |---|---|
 | `gfx_request_full_redraw()` | `exit()` |
-| `display_restore_system_state()` | the systems' `app_exit` phase: scenes unloaded |
-| `enter()` | `app_arena_rewind(0)` |
-| next pass: `invalidate()`, then the first `frame()` | `display_restore_system_state()` |
-| | `gfx_request_full_redraw()` |
+| `display_restore_system_state()` | the app's `pack` released |
+| `app_arena_enter()` | the systems' `app_exit` phase: scenes unloaded |
+| `pack` mounted, then the systems' `app_enter` phase: render settings from it | `app_arena_exit()`: arena chunks freed, heap dropped |
+| `enter()` | `display_restore_system_state()` |
+| next pass: `invalidate()`, then the first `frame()` | `gfx_request_full_redraw()` |
 | | launcher drawn and presented the same pass |
 
 `enter()` always precedes the first `frame()`; `exit()` always follows the
@@ -247,14 +249,16 @@ every app heap. Bulk memory comes from the app arena; see
 
 ### App memory
 
-The shell owns one block in PSRAM, `APP_ARENA_BYTES` long (`app_arena.h`),
-and lends it to the running app. Nothing taken from it survives the visit.
+The shell takes the app region from PSRAM once at boot, leaving at least
+`APP_ARENA_SYSTEM_RESERVE_BYTES` for the system. Each visit starts with an
+empty TLSF heap over that region. Nothing in it survives the visit.
 
 | Call | Who | What |
 |---|---|---|
 | `app_arena_take(size, align)` | the app, usually in `enter()` | the next `size` bytes, or `NULL` when the rest cannot hold them; never an abort, so keep a fallback |
 | `app_arena_mark()` / `app_arena_rewind(mark)` | the app | scope a shorter lifetime inside one visit; rewinding past what is in use asserts |
-| `app_arena_rewind(0)` | the shell only | right after the leaving app's `exit()` |
+| `memory_alloc(bytes, MEMORY_APP)` / `memory_free(pointer)` | the app | independently freed visit buffers; allocation and size queries assert outside a visit |
+| `app_arena_enter()` / `app_arena_exit()` | the shell only | create the heap before `enter()`; free arena chunks and drop the heap after `exit()` and the systems' `app_exit` |
 
 <!-- generated: app-arena-example check: python launcher/tools/gen/examples_doc.py --check -->
 ```c
@@ -283,12 +287,19 @@ The scenes an app loads live in it too
 `scene_load()` and rewind after `scene_unload()` to reuse their memory within
 one visit.
 
-The arena is PSRAM: right for large buffers, wrong for a small hot table
-that wants internal RAM. An app frees in `exit()` everything it took from the
-heap in `enter()`, including whatever a failed `enter()` had already taken;
-bulk buffers come from the arena. A development build logs
-`App <name> kept <n> <heap> heap bytes (other tasks can move this)` when either
-the internal or 8-bit heap has less free after `exit()` than it had before `enter()`.
+Arena takes bump within chunks from `MEMORY_APP`; a take larger than
+`APP_ARENA_CHUNK_BYTES` gets one contiguous chunk. Rewind releases whole
+chunks after the mark and reuses the marked chunk's tail.
+
+| Memory | Lifetime and placement |
+|---|---|
+| Arena | Nested bulk lifetimes; no free per take |
+| `MEMORY_APP` | Visit-owned PSRAM; explicitly free independent buffers, including partial entry failures |
+| `MEMORY_INTERNAL` | Hot working data; explicitly free on exit |
+| `MEMORY_PSRAM` | System buffers; outside the app region |
+
+Development builds warn by app name about app heap allocations left after
+arena cleanup, and about internal or 8-bit heap loss across the visit.
 
 ### What the shell resets for you
 

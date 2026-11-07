@@ -41,6 +41,10 @@ FIFO batches have one queue consumer and do not feed the shared readers.
 
 `GRAVITY_MIN_DIRECTION_STRENGTH` is the minimum in-plane strength for a meaningful direction.
 
+![The device tilts and rolls, then holds its pose in free fall; the plots show in-plane strength and acceleration magnitude with their direction and free-fall thresholds](../images/input/gravity-reader.gif)
+
+`input_gravity()` returns `gravity_down()`, zero in free fall; both vectors vanish during the shaded interval.
+
 In development builds, `autana tune motion.log_ms 1000` logs the reader's
 smoothed shake magnitude in mg. Zero disables the log.
 
@@ -168,6 +172,10 @@ flowchart LR
 ## Trust and rejection
 
 ![Acceleration magnitude trust ramp](../images/input/gravity-trust.png)
+
+![The pitched device rolls while carried sideways; the plots show acceleration magnitude deviation from 1 g and the acceleration angle from the estimate and the estimate angle from true down](../images/input/gravity-motion.gif)
+
+Sideways acceleration tilts the raw reading while the gyro-led estimate stays near true down.
 
 | Condition | Effect |
 |---|---|

@@ -11,6 +11,7 @@
 #include "apps/render_lab/ui/render_lab_hud_screen.h"
 #include "apps/render_lab/ui/render_lab_menu_screen.h"
 #include "build/build_variant.h"
+#include "console/render_lab_fly.h"
 #include "core/tune.h"
 #include "draw/draw.h"
 #include "esp_log.h"
@@ -113,6 +114,7 @@ enter_scene(void) {
 
 static void
 exit_scene(void) {
+    render_lab_fly_stop();
     current_scene()->exit();
     app_arena_rewind(scene_mark);
 }
@@ -383,20 +385,21 @@ render_lab_exit(void) {
 }
 
 /* The scene's own steer() and update(), where it has them, overlapped with
- * the send of the frame drawn last pass. A scene switch or the menu takes effect in frame(),
- * which runs after this, so a scene must cope with frame() arriving without
- * a matching update(). */
+ * the send of the frame drawn last pass, then the flight, last so it wins
+ * over a scene that places its own camera. A scene switch or the menu takes
+ * effect in frame(), which runs after this, so a scene must cope with frame()
+ * arriving without a matching update(). */
 static void
 render_lab_update(uint32_t dt_ms, const input_t* input) {
-    if (menu_open) {
-        return;
+    if (!menu_open) {
+        if (current_scene()->steer != NULL) {
+            current_scene()->steer(dt_ms, input);
+        }
+        if (current_scene()->update != NULL) {
+            current_scene()->update(dt_ms);
+        }
     }
-    if (current_scene()->steer != NULL) {
-        current_scene()->steer(dt_ms, input);
-    }
-    if (current_scene()->update != NULL) {
-        current_scene()->update(dt_ms);
-    }
+    render_lab_fly_frame(dt_ms);
 }
 
 /* The showing scene's path, with no scene when it has none or has not loaded. */
@@ -461,7 +464,7 @@ pose_console(const char* rest) {
     (void)fflush(stdout);
 }
 
-/* "render scenes" lists each scene's key and name and which one shows; "render scene <key>" switches to that exact key at the next frame. "render pose <ms>" holds the showing scene's path there (render_lab_seek_path(), then paused), so a view can be compared at one pose; "render pose play" lets it move again. Replies are "RENDER ..." lines then "RENDER_END", or "RENDER_ERR <why>". Other words go to the showing scene's console hook, if it has one. */
+/* "render scenes" lists each scene's key and name and which one shows; "render scene <key>" switches to that exact key at the next frame. "render pose <ms>" holds the showing scene's path there (render_lab_seek_path(), then paused), so a view can be compared at one pose; "render pose play" lets it move again; "render fly" flies it (render_lab_fly.h). Replies are "RENDER ..." lines then "RENDER_END", or "RENDER_ERR <why>". Other words go to the showing scene's console hook, if it has one. */
 bool
 render_lab_console(const char* args) {
     if (strcmp(args, "scenes") == 0) {
@@ -488,6 +491,9 @@ render_lab_console(const char* args) {
     }
     if (strncmp(args, "pose ", 5) == 0) {
         pose_console(args + 5);
+        return true;
+    }
+    if (render_lab_fly_console(args)) {
         return true;
     }
     return current_scene()->console != NULL && current_scene()->console(args, console_reply_stdio);
