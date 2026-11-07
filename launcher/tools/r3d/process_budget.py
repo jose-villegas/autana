@@ -23,6 +23,31 @@ FLOORS = (GIB, GIB // 2, GIB // 4)
 FIT_BYTES = (22 * GIB // 10, 7 * GIB // 10, 22 * GIB // 10)
 PREPARE_BYTES = (21 * GIB // 4, 0, 21 * GIB // 4)
 BAKE_BYTES = (17 * GIB // 4, 0, 17 * GIB // 4)
+# A worker that has sent its result is given this long to exit before it is killed: a join without a bound,
+# under the executor's lock, hung a GPU stage for hours with every task stalled behind it.
+WORKER_EXIT_SECONDS = 30
+# The environment variable naming the file a GPU stage's guard (scripts/lib/local_schedule.py) times progress
+# by; progressed() touches it each time a task or bake finishes.
+STAGE_PROGRESS_ENV = "AUTANA_STAGE_PROGRESS"
+
+
+def progressed():
+    """Tell the stage's guard, when one runs this, that a task finished; a guard's lost file never fails the work."""
+    path = os.environ.get(STAGE_PROGRESS_ENV)
+    if path:
+        try:
+            pathlib.Path(path).touch()
+        except OSError:
+            pass
+
+
+def join_worker(process):
+    """Wait WORKER_EXIT_SECONDS for a worker that has answered, then kill it."""
+    process.join(WORKER_EXIT_SECONDS)
+    if process.is_alive():
+        print(f"worker {process.pid} still running {WORKER_EXIT_SECONDS} s after its result; killed", flush=True)
+        TaskExecutor._kill(process)
+        process.join()
 MEASURE_BYTES = (3 * GIB // 2, 128 * 1024 ** 2, 3 * GIB // 2)
 SMOKE_PREPARE_BYTES = (2 * GIB, 0, 2 * GIB)
 GPU_QUERY_FAILURE_SECONDS = 300
@@ -287,6 +312,8 @@ class TaskExecutor:
     """Spawn tasks independently, admitting their remaining allocations against live memory."""
     def __init__(self):
         self.pending = []
+        # (future, result, error) reaped under the lock, settled by _settle() outside it.
+        self.settled = []
         self.queue = deque()
         self.priority_queue = deque()
         self.active = []
@@ -311,19 +338,31 @@ class TaskExecutor:
             self.condition.notify_all()
         return future
 
+    def _settle(self):
+        """Settle reaped futures outside the lock: their done-callbacks may take locks of their own and submit,
+        so settling them under it deadlocks against a caller that holds such a lock while it submits."""
+        with self.condition:
+            settled, self.settled = self.settled, []
+        for future, result, error in settled:
+            try:
+                future.set_exception(error) if error else future.set_result(result)
+            except concurrent.futures.InvalidStateError:
+                pass  # cancelled meanwhile
+            if not error:
+                progressed()
+
     def _run(self):
         try:
             self._schedule()
         except BaseException as error:
             with self.condition:
                 self.failure = error
-                for future in list(self.pending):
-                    if not future.done():
-                        future.set_exception(error)
+                self.settled += [(future, None, error) for future in self.pending]
                 self.queue.clear()
                 self.priority_queue.clear()
                 self.pending.clear()
         finally:
+            self._settle()
             with self.condition:
                 for process, connection, future, estimates in self.active:
                     if self.failure:
@@ -354,6 +393,7 @@ class TaskExecutor:
         query_failures = QueryFailures()
         last_wait_log = None
         while True:
+            self._settle()
             with self.condition:
                 if self.failure:
                     raise self.failure
@@ -364,13 +404,13 @@ class TaskExecutor:
                             success, result = connection.recv()
                         except EOFError:
                             success, result = False, f"worker {process.pid} exited without a result"
-                        process.join()
+                        join_worker(process)
                         self.active.remove(item)
                         connection.close()
                         process.close()
                         if not success:
                             raise RuntimeError(result)
-                        future.set_result(result)
+                        self.settled.append((future, result, None))
                         self.pending.remove(future)
                     elif not process.is_alive():
                         if connection.poll():

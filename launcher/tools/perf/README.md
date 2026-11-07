@@ -316,6 +316,8 @@ Every Bakes GPU completion triggers a fresh image check.
 
 The plan waits for two polls without queued, waiting or running jobs carrying
 `gpu` in either GPU workflow. Hosted jobs waiting for a later marker do not count.
+After `GPU_PLAN_WAIT_SECONDS` it warns and plans anyway; board builds still wait
+for the heavy lock a GPU stage holds.
 
 This check requires a host GPU runner marker fresh within `GPU_HOST_MARKER_DAYS`.
 Otherwise it reports “GPU runner not on this host” and continues.
@@ -362,7 +364,10 @@ an anchor always measures.
 
 | Guard | Owner |
 |---|---|
+| GPU stage progress | `GPU_STAGE_PROGRESS_SECONDS` in `scripts/lib/local_schedule.py` |
 | GPU process tree | `GPU_STAGE_HANG_SECONDS` in `scripts/lib/local_schedule.py` |
+| A worker after its result | `WORKER_EXIT_SECONDS` in `launcher/tools/r3d/process_budget.py` |
+| The plan's GPU wait | `GPU_PLAN_WAIT_SECONDS` in `launcher/tools/perf/nightly/scoped_chain.py` |
 | Lock wait | `NIGHT_STEP_HANG_SECONDS` in `scripts/lib/local_schedule.py` |
 | Lane process tree | `LANE_HANG_FACTOR` times the lane estimate in `nightly/scoped_chain.py`, and `BOARD_END` |
 | Build, capture and self-test | Their timeout constants in `nightly/scoped_chain.py` |

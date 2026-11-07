@@ -4,7 +4,8 @@ import pathlib
 import sys
 import unittest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from test_process_budget import identity_worker, handshake_worker, fail_worker, exit_worker, reservation_worker
+from test_process_budget import (identity_worker, handshake_worker, fail_worker, exit_worker, lingering_worker,
+                                 reservation_worker)
 
 class ProcessTests(unittest.TestCase):
     def setUp(self):
@@ -25,6 +26,57 @@ class WorkerTests(ProcessTests):
             with self.assertRaisesRegex(RuntimeError, "worker sentinel failure"):
                 with TaskExecutor() as pool:
                     pool.submit(fail_worker).result(timeout=30)
+
+    def test_a_worker_that_answers_but_never_exits_is_killed_and_work_goes_on(self):
+        from unittest.mock import patch
+        from r3d import process_budget
+        from r3d.task_executor import TaskExecutor
+        exit_seconds = 1
+        with patch("r3d.task_executor.available_bytes", return_value=(1 << 60,) * 3),                 patch.object(process_budget, "WORKER_EXIT_SECONDS", exit_seconds):
+            with TaskExecutor() as pool:
+                self.assertEqual(pool.submit(lingering_worker).result(timeout=30 * exit_seconds), "answered")
+                self.assertEqual(pool.submit(identity_worker, "next").result(timeout=30 * exit_seconds)[0], "next")
+
+    def test_a_done_callback_may_take_a_lock_the_submitting_thread_holds(self):
+        import threading
+        import time
+        from unittest.mock import patch
+        from r3d.task_executor import TaskExecutor
+        lock, submitted, wait_seconds = threading.RLock(), threading.Event(), 30
+        with patch("r3d.task_executor.available_bytes", return_value=(1 << 60,) * 3):
+            with TaskExecutor() as pool:
+                first = pool.submit(identity_worker, "first")
+
+                def callback(_future):
+                    with lock:
+                        pass
+
+                def caller():
+                    with lock:
+                        first.add_done_callback(callback)
+                        while not first.done():
+                            time.sleep(0.01)
+                        time.sleep(0.2)  # the callback now waits for `lock`, as doc_stages' Keeper.keep does
+                        second = pool.submit(identity_worker, "second")
+                    submitted.set()
+                    second.result(timeout=wait_seconds)
+                threading.Thread(target=caller, daemon=True).start()
+                self.assertTrue(submitted.wait(wait_seconds), "submit deadlocked against a done-callback")
+
+    def test_each_finished_task_touches_the_stage_progress_file(self):
+        import os
+        import tempfile
+        from unittest.mock import patch
+        from r3d.process_budget import STAGE_PROGRESS_ENV
+        from r3d.task_executor import TaskExecutor
+        with tempfile.TemporaryDirectory() as folder:
+            progress = pathlib.Path(folder) / "stage.progress"
+            progress.touch()
+            os.utime(progress, (0, 0))
+            with patch("r3d.task_executor.available_bytes", return_value=(1 << 60,) * 3),                     patch.dict(os.environ, {STAGE_PROGRESS_ENV: str(progress)}):
+                with TaskExecutor() as pool:
+                    pool.submit(identity_worker, "done").result(timeout=30)
+            self.assertGreater(progress.stat().st_mtime, 0)
 
     def test_sweep_consumes_out_of_order_completion_in_point_order(self):
         import concurrent.futures

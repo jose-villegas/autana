@@ -6,7 +6,8 @@ import time
 
 from r3d.process_budget import (FLOORS, GPU_QUERY_FAILURE_SECONDS,
                                 QueryFailures, TaskExecutor as _ProcessExecutor, _task, available_bytes,
-                                cores_available, function_name, projected_available, resident_bytes, worker_capacity)
+                                cores_available, function_name, join_worker, projected_available,
+                                resident_bytes, worker_capacity)
 
 _ADMISSION_POLL_SECONDS = 0.1
 _ADMISSION_LOG_SECONDS = 10
@@ -181,13 +182,13 @@ class TaskExecutor(_ProcessExecutor):
                 success, result = connection.recv()
             except EOFError:
                 success, result = False, f"worker {process.pid} exited without a result"
-            process.join()
+            join_worker(process)
             self.active.remove(item)
             connection.close()
             process.close()
             if not success:
                 raise RuntimeError(result)
-            future.set_result(result)
+            self.settled.append((future, result, None))
             self.pending.remove(future)
 
     def _start(self, item):
@@ -229,6 +230,7 @@ class TaskExecutor(_ProcessExecutor):
         next_admission = 0
         last_wait_log = None
         while True:
+            self._settle()
             with self.condition:
                 if self.failure:
                     raise self.failure

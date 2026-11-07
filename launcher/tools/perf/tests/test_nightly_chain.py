@@ -1642,6 +1642,28 @@ class NightlyTests(unittest.TestCase):
         self.assertIn(call("SCOPED_BOARDS=2124 20E8"), said.call_args_list)
         self.assertIn(call("SELFTEST_BOARD=2124"), said.call_args_list)
 
+    def test_plan_stops_waiting_for_gpu_work_at_its_deadline(self):
+        args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=None, data=self.args.data,
+                               out=self.root / "plan.json", marker=self.clock.now().isoformat(),
+                               from_sha=None, max_steps=None, selftest_board=None)
+        started, polls = self.clock.now(), []
+
+        def pending(**_):
+            polls.append(1)
+            # Well past the deadline, a wait without one would poll forever: fail instead.
+            self.assertLess(len(polls), 2 * chain.GPU_PLAN_WAIT_SECONDS // QUEUE_POLL_SECONDS)
+            return True
+        with patch.object(chain, "local_boards", return_value=[self.row("2124", port="COM4")]), \
+                patch.object(chain, "remote_boards", return_value=([], [])), \
+                patch.object(chain, "gpu_on_host", return_value=True), \
+                patch.object(chain, "gpu_pending", side_effect=pending), \
+                patch.object(chain, "summarize") as summary, patch("builtins.print") as said:
+            chain.plan(args, self.clock)
+        self.assertGreaterEqual(self.clock.now() - started, timedelta(seconds=chain.GPU_PLAN_WAIT_SECONDS))
+        self.assertIn(call(chain.GPU_STILL_PENDING), summary.call_args_list)
+        self.assertTrue(any(chain.GPU_STILL_PENDING in str(c.args[0]) for c in said.call_args_list))
+        self.assertEqual(list(json.loads(args.out.read_text())["lanes"]), ["2124"])
+
     def test_plan_skips_a_gated_hosts_boards(self):
         args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=None, data=self.args.data,
                                out=self.root / "plan.json", marker=self.clock.now().isoformat(),
