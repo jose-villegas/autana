@@ -77,12 +77,12 @@ scene_failure_t
 scene_mesh_make_resident(scene_t* scene) {
     const size_t total = resident_walk(scene, NULL);
     if (total == 0) {
-        return scene_failure_make(SCENE_OK, ASSET_OK, scene->id);
+        return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
     }
     scene->resident = scene_allocate_kept(total);
     if (scene->resident == NULL) {
-        return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, scene->id);
+        return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, scene->root->id);
     }
     (void)resident_walk(scene, scene->resident);
-    return scene_failure_make(SCENE_OK, ASSET_OK, scene->id);
+    return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
 }
