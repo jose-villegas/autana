@@ -29,21 +29,29 @@
 #define OTHER_TYPE   7U
 
 /* The arrays of the one-triangle mesh below: each starts where the last ends,
- * on a 4-byte boundary, after the 44-byte header. */
-enum { POSITIONS_AT = 44, COLORS_AT = 64, TRIANGLES_AT = 76, CLUSTERS_AT = 84, NODES_AT = 108, ENTRY_END = 124 };
+ * on a 4-byte boundary, after the header. */
+enum {
+    POSITIONS_AT = R3D_LIT_MESH_HEADER_BYTES,
+    COLORS_AT = POSITIONS_AT + 20,
+    TRIANGLES_AT = COLORS_AT + 12,
+    CLUSTERS_AT = TRIANGLES_AT + 8,
+    NODES_AT = CLUSTERS_AT + 24,
+    ENTRY_END = NODES_AT + 16,
+    ENTRY_BYTES = ENTRY_END + 4
+};
 
 /* The bytes of that mesh entry; returns its size. */
 static uint32_t
 make_mesh_entry(uint8_t* entry) {
-    memset(entry, 0, 128);
+    memset(entry, 0, ENTRY_BYTES);
     const uint32_t positions = POSITIONS_AT;
     const uint32_t colors = COLORS_AT;
     const uint32_t triangles = TRIANGLES_AT;
     const uint32_t clusters = CLUSTERS_AT;
     const uint32_t nodes = NODES_AT;
     const uint32_t end = ENTRY_END;
-    const uint32_t words[11] = {3, 1, 1, 1, 8, positions, colors, triangles, clusters, nodes, 0};
-    for (int i = 0; i < 11; i++) {
+    const uint32_t words[] = {3, 1, 1, 1, 8, positions, colors, triangles, clusters, nodes, 0};
+    for (size_t i = 0; i < sizeof words / sizeof words[0]; i++) {
         test_pack_put32(entry + (4 * i), words[i]);
     }
     for (int v = 0; v < 3; v++) {
@@ -85,7 +93,7 @@ typedef struct {
 
 static fixture_t
 fixture(void) {
-    fixture_t f = {.entry = malloc(128)};
+    fixture_t f = {.entry = malloc(ENTRY_BYTES)};
     f.pack = test_alloc_aligned(BUFFER_BYTES, ASSET_PACK_BASE_ALIGN, &f.raw);
     TEST_ASSERT_NOT_NULL(f.pack);
     TEST_ASSERT_NOT_NULL(f.entry);

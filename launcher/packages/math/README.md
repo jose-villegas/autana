@@ -70,6 +70,7 @@ header's opening comment; `--check` verifies it.
 | [include/math/geometry/rectx.h](include/math/geometry/rectx.h) | rectx: a half-open rectangle of a Q16.16. |
 | [include/math/geometry/sphere_template.h](include/math/geometry/sphere_template.h) | sphere_template: closed spheres for a real number type; see docs/math/Conventions.md#templates for macro arguments. |
 | [include/math/geometry/spheref.h](include/math/geometry/spheref.h) | spheref: a closed sphere of a float. |
+| [include/math/geometry/spheres.h](include/math/geometry/spheres.h) | spheres: a closed sphere of int16 position ticks. |
 | [include/math/linear/affine2_template.h](include/math/linear/affine2_template.h) | affine2_template: a 2D affine map for one number type; see docs/math/Conventions.md#templates for the macro arguments. |
 | [include/math/linear/affine2f.h](include/math/linear/affine2f.h) | affine2f: a 2D affine map of a float, with integer-pixel maps. |
 | [include/math/linear/affine2x.h](include/math/linear/affine2x.h) | affine2x: a 2D affine map of a Q16.16, with integer-pixel maps. |

@@ -361,6 +361,13 @@ scene_animator_set_paused(scene_t* scene, scene_entity_t entity, scene_animator_
     return true;
 }
 
+bool
+scene_animator_paused(scene_t* scene, scene_entity_t entity, scene_animator_slot_t slot) {
+    scene_animator_t* a = animator_of(scene, entity);
+    const anim_playhead_t* p = a == NULL ? NULL : slot_playhead(a, slot);
+    return p != NULL && p->paused;
+}
+
 int
 scene_animator_clip_count(const scene_t* scene, scene_entity_t entity) {
     return entity >= scene->asset.entity_count || scene->animators[entity].storage == NULL
@@ -597,7 +604,7 @@ scene_animator_seek(scene_t* scene, scene_entity_t entity, scene_animator_slot_t
     if (p == NULL || a->layer.current.clip == ANIM_LAYER_CLIP_NONE) {
         return false;
     }
-    scene_draw_camera_cut(scene, entity);
+    scene_camera_cut(scene, entity);
     p->t_ms = t_ms;
     p->fraction = 0;
     a->dirty = true;

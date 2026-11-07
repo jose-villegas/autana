@@ -2,7 +2,8 @@
  * simd board timing: cycles of each call against its C reference over
  * internal RAM, at lengths around each minimum and at screen-row lengths.
  * Rows print as "SIMD_BENCH <call> n=<elements> ref=<cycles> simd=<cycles>",
- * the median of BENCH_CYCLE_WARM_REPS warm runs. Board only: QEMU has no PIE.
+ * the median of BENCH_CYCLE_WARM_REPS warm runs. Board only: QEMU has no
+ * hardware cache timing or performance monitor.
  */
 #include <stdint.h>
 #include <stdio.h>
@@ -83,7 +84,7 @@ bench_call(const char* name, call_fn ref, call_fn simd, void* dst, const void* s
 static void
 test_simd_board_rows(void) {
     if (bench_is_qemu()) {
-        TEST_IGNORE_MESSAGE("PIE runs on the board only");
+        TEST_IGNORE_MESSAGE("QEMU has no hardware cache timing or performance monitor");
     }
     /* Twice the longest run for repeat's output; one element past alignment
      * so the unaligned source rows run too. */

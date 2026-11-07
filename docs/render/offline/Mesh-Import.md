@@ -17,7 +17,7 @@ flowchart TB
     end
     subgraph Finish["3 · Reduce and write"]
     direction LR
-    Simp["Simplify to the budget<br/><i>import, opt in</i>"] --> Face["Light per face<br/><i>scene, flat only</i>"] --> Write["Write: quantise,<br/>meshlets, octree"] --> Pack["name.mesh into<br/>build_pack.py"]
+    Simp["Simplify to the budget<br/><i>import, opt in</i>"] --> Face["Light per face<br/><i>scene, flat only</i>"] --> Write["Write: quantise,<br/>meshlets, octree"] --> Pack["name.bundle into<br/>build_pack.py"]
     Simp -. smooth .-> Write
     end
     Cut --> Light --> Finish
@@ -315,12 +315,17 @@ node uses its index. Only vertices referenced by triangles belong to an object.
 [`objects/objects_report.py`](../../../launcher/tools/r3d/objects/objects_report.py)
 reports shared shapes after the import's alpha mask. Matching is rigid:
 scaled copies remain separate shapes. Reflections are recorded per instance.
+`--parts` matches every object's connected parts instead of whole objects,
+so a window inside a building-sized object is found. `--surface-floor D`
+raises the surface limit to D source units, at most 5% of the diagonal, for
+a source reduced object by object with up to D of error.
 
 | Test | Requirement |
 |---|---|
 | Candidate bucket | Equal vertex and triangle counts, and material multiset |
 | Correspondence | Matching topology uses Kabsch<sup>[[86]](../../Citations.md#kabsch-1976)</sup>; reordered vertices use signed PCA frames and bijective nearest neighbours, then Kabsch |
 | Acceptance | Largest vertex residual within `MATCH_TOLERANCE` times the object's bounds diagonal; mapped triangle winding and materials agree as multisets |
+| By surface (`--surface-tolerance`) | Shapes left apart are compared as surfaces, whatever their triangles and materials: a copy's materials are its shading. Iterative closest points<sup>[[115]](../../Citations.md#besl-1992)</sup> from 48 signed axis frames, mirrors included, must bring both surfaces, every sample and vertex, within the tolerance times the larger bounds diagonal (taken along each surface's principal axes) of each other, both ways |
 
 Each colour below is one repeated shape, boxed at every copy in view. The
 view is the camera-path pose where those boxes show the most visible edge;
@@ -331,6 +336,7 @@ view is the camera-path pose where those boxes show the most visible edge;
 | Report output (`--out` directory) | What it shows |
 |---|---|
 | objects.md / objects.json | Shapes, copies, triangles saved, match residuals |
+| shapes.png | With `--surface-tolerance`: the shapes of 20 triangles or more saving the most, each copy drawn in its shape's frame from an angle |
 | error.csv / error.json / error.md, error.png | With `--held-out`: every object part's path pixels and held-out error, ranked |
 
 What levels of detail save along the camera path is measured on the fitted mesh by [`lod/lod_replay.py`](../../../launcher/tools/r3d/lod/lod_replay.py); see [plans/Cluster-LOD.md](../../plans/Cluster-LOD.md).
@@ -548,7 +554,7 @@ flowchart LR
     end
     subgraph Cache["Bake cache, bake.py"]
     direction TB
-    Mesh["name.mesh"]
+    Mesh["name.bundle"]
     Rebake["rebake.py, optional<br/><i>rewrites its clusters</i>"]
     Mesh -.-> Rebake
     end
@@ -570,13 +576,12 @@ unknown key is an error.
 | `python launcher/tools/r3d/mesh_import.py IMPORT` | The import's authored albedo mesh into the bake cache. |
 | `python launcher/tools/r3d/mesh_import.py SCENE` | Each renderer's mesh: a `bake = true` renderer traced with the scene's lights, camera visibility and tone map; an albedo renderer its import's shared mesh. |
 | `python launcher/tools/r3d/mesh_import.py PATH --mesh NAME` | That one mesh only. |
-| `python launcher/tools/r3d/build_pack.py -o DIR` | One [pack](../../assets/Building-Packs.md#packs) per root from the `.mesh` entries it names, baking each scene's [entry](../../assets/formats/SCNE.md) on the way. |
-| `python launcher/tools/r3d/rebake.py MESH.mesh` | That cached `.mesh` in place, its clusters and octree only; rerun `build_pack.py` to pack it. |
+| `python launcher/tools/r3d/build_pack.py -o DIR` | One [pack](../../assets/Building-Packs.md#packs) per root from the `.bundle` entries it names, baking each scene's [entry](../../assets/formats/SCNE.md) on the way. |
+| `python launcher/tools/r3d/rebake.py MESH.bundle` | The bundle's rest clusters and octree in place, retaining copies; rerun `build_pack.py` to pack it. |
 
-A cached `<name>.mesh` is an entry of the [asset pack](../../assets/README.md),
-held in the bake cache
-([`launcher/tools/bake/bake.py`](../../../launcher/tools/bake/bake.py)). It
-carries no normals: shading is already baked.
+A cached `<name>.bundle` holds LMSH entries, their LCOL/LLOD siblings and a
+copies manifest. `build_pack.py` expands it into the [asset pack](../../assets/README.md).
+LMSH carries no normals: shading is already baked.
 
 ### Frames
 

@@ -33,7 +33,7 @@ void
 scene_draw_release(void) {}
 
 void
-scene_draw_camera_cut(const scene_t* scene, scene_entity_t entity) {
+scene_camera_cut(const scene_t* scene, scene_entity_t entity) {
     (void)scene;
     (void)entity;
 }

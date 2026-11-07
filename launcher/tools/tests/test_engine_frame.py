@@ -57,7 +57,8 @@ class EngineFrameTests(unittest.TestCase):
         source = self.root / "probe.mesh"
         raw = mesh_entry()
         source.write_bytes(raw)
-        _, kind, converted = build_pack.pack_entry("probe", source)
+        kind = mesh_asset.TYPE
+        converted = build_pack.to_engine(kind, raw)
         self.assertEqual(kind, mesh_asset.TYPE)
         header = mesh_asset.BLOB_HEADER.unpack_from(converted)
         self.assertEqual(POSITION.unpack_from(converted, header[5]), (2, 3, 7))
@@ -70,12 +71,12 @@ class EngineFrameTests(unittest.TestCase):
     def test_unrepresentable_mirror_is_rejected(self):
         source = self.root / "probe.mesh"
         source.write_bytes(mesh_entry((2, 3, INT16_MIN)))
-        with self.assertRaisesRegex(build_pack.SettingsError, "int16"):
-            build_pack.pack_entry("probe", source)
+        with self.assertRaisesRegex(ValueError, "int16"):
+            build_pack.to_engine(mesh_asset.TYPE, source.read_bytes())
 
     def test_unrepresentable_entry_is_a_named_usage_error(self):
-        source = self.root / "probe.mesh"
-        source.write_bytes(mesh_entry((2, 3, INT16_MIN)))
+        source = self.root / "probe.bundle"
+        write_mesh(source, (2, 3, INT16_MIN))
         error = io.StringIO()
         with mock.patch.object(build_pack, "pack_jobs", return_value=({"probe": {"probe": source}}, {})), \
                 contextlib.redirect_stderr(error), self.assertRaises(SystemExit) as caught:
@@ -128,7 +129,7 @@ class EngineFrameTests(unittest.TestCase):
         points = [POINT, (5, -9, INT16_MIN + 1), (-4, 8, 12)]
         source = self.root / "rows.mesh"
         source.write_bytes(mesh_entry(points=points))
-        _, _, converted = build_pack.pack_entry("rows", source)
+        converted = build_pack.to_engine(mesh_asset.TYPE, source.read_bytes())
         header = mesh_asset.BLOB_HEADER.unpack_from(converted)
         for index, point in enumerate(points):
             expected = (point[0], point[1], -point[2])
@@ -196,3 +197,8 @@ class EngineFrameTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def write_mesh(path, point=POINT, name=None):
+    from r3d import mesh_bundle, mesh_asset
+    path.write_bytes(mesh_bundle.encode([(name or path.stem, mesh_asset.TYPE, mesh_entry(point))], []))

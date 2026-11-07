@@ -211,7 +211,7 @@ run mkdir -p "$WORK" "$OUT/overview" "$OUT/ui"
 if [ "$AUDIO_ONLY" = 0 ]; then
 # The cached bakes the figures draw, fetched first so a renamed output fails here, not after the renders.
 skin_asset=$("$PYTHON" launcher/tools/bake/bake.py path "$SKIN_BAKE") || exit 2
-# The demo object's lite mesh: a .mesh or a carved .bundle, whichever the scene bakes.
+# The demo object's lite mesh bundle.
 lite_stem="$(basename "$DEMO_SCENE" .scene.toml).${DEMO_OBJECT}_lite"
 scene_bakes=$("$PYTHON" launcher/tools/bake/bake.py list "$DEMO_SCENE" --kind mesh) || exit 2
 lite_output=$(echo "$scene_bakes" |
@@ -408,6 +408,7 @@ run "$PYTHON" launcher/tools/render/cull_cost.py docs/render/data/cull-cost-boar
 run "$PYTHON" launcher/tools/render/depth_figures.py --scene launcher/demo/bistro/bistro.scene.toml \
     --object street_fitted_full --object ground --camera camera --at-ms "$DEPTH_FIT_AT_MS" \
     --out "$OUT/render/depth-fit-bistro.png" --work "$WORK/depth" > "$WORK/depth.log"
+# --orphans scans this runner: depth-fit-bistro-diff.png, depth-fit-bistro-diff.crops.png, depth-fit-bistro.gif
 
 # Each fitted scene's held-out error by source object part, from the rows
 # objects_report.py --held-out --docs keeps beside the page.

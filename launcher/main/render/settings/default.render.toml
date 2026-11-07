@@ -1,0 +1,6 @@
+# The engine's render settings: RENDER_SETTINGS_DEFAULT
+# (render_settings_default.h) is generated from this file. An app's
+# NAME.render.toml lists only the values it changes.
+cull = true
+depth_fit = true
+batched = true
