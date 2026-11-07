@@ -63,6 +63,7 @@ static const char* TAG = "water";
 #define WATER_FILL_DEFAULT    50
 #define WATER_FILL_LABEL      "WATER FILL: %d%%"
 #define WATER_PERCENT         100
+#define WATER_PERMILLE        1000
 
 /* The tank is the room behind the screen: the visible area, as deep as the
  * case less the display module and PCB stacked behind the glass. */
@@ -121,11 +122,11 @@ TUNE(water, slosh_damping_pct, 10, 0, 100);
  * 0 (the default) meshes the sim's field itself. */
 TUNE(water, ease_pct, 0, 0, 100);
 /* Against the tank's side walls (the screen's edges) the shown field eases
- * slower: at the wall by ease_wall_pct percent of ease_pct, rising to all of
- * it ease_wall_mm in, so water thrown at a wall arrives there slowly. 100
- * eases the same everywhere. The front and back glass are not counted: the
+ * slower: at the wall by ease_wall_permille thousandths of ease_pct, rising
+ * to all of it ease_wall_mm in, so water thrown at a wall comes and goes
+ * there almost to a stop. 1000 eases the same everywhere. The front and back glass are not counted: the
  * tank is only a few cells deep. */
-TUNE(water, ease_wall_pct, 100, 0, 100);
+TUNE(water, ease_wall_permille, WATER_PERMILLE, 0, WATER_PERMILLE);
 TUNE(water, ease_wall_mm, 3, 1, 20);
 
 /* Surface buffers: the vertices and triangles iso_surface may make. The
@@ -591,7 +592,7 @@ ease_field(void) {
         shown_plane = plane;
     } else {
         const float alpha = (float)ease_pct / (float)WATER_PERCENT;
-        const float wall = (float)ease_wall_pct / (float)WATER_PERCENT;
+        const float wall = (float)ease_wall_permille / (float)WATER_PERMILLE;
         for (int x = 0; x < f->nx; x++) {
             const float px = f->origin.x + ((float)x * f->step.x);
             const float near_x = fminf(px, box.x - px);
