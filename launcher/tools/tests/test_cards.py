@@ -247,10 +247,13 @@ class CardTests(unittest.TestCase):
             job = albedo_jobs(settings)[0]
             geometry = mesh_import.bake_geometry(job, None, carve=True)
             self.assertEqual(report, geometry.mesh_report['cards'])
-            mesh_import.write_baked(job, None, root, 'mesh', geometry)
-            entries, copies = mesh_bundle.decode((root / 'mesh.bundle').read_bytes())
+            # A bundle name as long as a shape id can carry: the cards' id is named after their material instead.
+            name = 'm' * (mesh_bundle.NAME_BYTES - len(mesh_bundle.NAME_SUFFIX) - mesh_bundle.HASH_HEX_DIGITS - 1)
+            mesh_import.write_baked(job, None, root, name, geometry)
+            entries, copies = mesh_bundle.decode((root / f'{name}{mesh_bundle.SUFFIX}').read_bytes())
             self.assertEqual(len(copies), 1)
-            rest = mesh_bundle.read_mesh(entries, 'mesh')
+            self.assertTrue(copies[0]['mesh'].startswith('leaf.'))
+            rest = mesh_bundle.read_mesh(entries, name)
             self.assertFalse(any(rest.masked))
             mesh_id = copies[0]['mesh']
             masked = mesh_bundle.read_mesh(entries, mesh_id)

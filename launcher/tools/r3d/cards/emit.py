@@ -65,6 +65,6 @@ def make_shape(src, material, settings, seed, keep_alpha, *, path=None, occluder
     normal = np.repeat([card['n'] for card in masks], len(QUAD_CORNERS), axis=0)
     instance = Instance(str(src.tri_o[ids[0]]), np.eye(3), np.zeros(3), False, 0.0)
     shape = dict(positions=p, tris=t, materials=labels, normals=normal, albedo=np.concatenate(colours),
-                 mask_uvs=np.asarray(uvs), mask_rows=rows, rule=dict(match=dict(material=settings.material)),
+                 mask_uvs=np.asarray(uvs), mask_rows=rows, name=settings.material, rule=dict(match=dict(material=settings.material)),
                  copies=[(instance, (p, None, t, labels))])
     return shape, report
