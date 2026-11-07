@@ -148,9 +148,10 @@ instantiate(const scene_asset_t* asset) {
 /* The separator in a scene id that names its pack. */
 #define SCENE_ID_PACK_SEPARATOR '/'
 
-/* A scene id's parts: the pack it is in and the scene's entry there. */
+/* A scene id's parts: its pack's name, the id's first `pack_length` bytes,
+ * and the scene's entry there. */
 typedef struct {
-    char pack[ASSET_NAME_MAX];
+    size_t pack_length;
     const char* scene; /* within the id split */
 } scene_id_t;
 
@@ -158,16 +159,20 @@ typedef struct {
 static bool
 scene_id_split(const char* id, scene_id_t* out) {
     const char* separator = strchr(id, SCENE_ID_PACK_SEPARATOR);
-    const char* scene = separator == NULL ? id : separator + 1;
-    const size_t pack_length = separator == NULL ? strlen(id) : (size_t)(separator - id);
-    if (pack_length == 0 || pack_length >= ASSET_NAME_MAX || scene[0] == '\0' || strlen(scene) >= ASSET_NAME_MAX
-        || strchr(scene, SCENE_ID_PACK_SEPARATOR) != NULL) {
-        return false;
-    }
-    (void)memcpy(out->pack, id, pack_length);
-    out->pack[pack_length] = '\0';
-    out->scene = scene;
-    return true;
+    out->scene = separator == NULL ? id : separator + 1;
+    out->pack_length = separator == NULL ? strlen(id) : (size_t)(separator - id);
+    return out->pack_length > 0 && out->pack_length < ASSET_NAME_MAX && out->scene[0] != '\0'
+           && strlen(out->scene) < ASSET_NAME_MAX && strchr(out->scene, SCENE_ID_PACK_SEPARATOR) == NULL;
+}
+
+/* Requests the pack `parts` names in `id`, for `root` when `async`. Kept out
+ * of line, so its copy of the name is off the stack while the scene opens. */
+static __attribute__((noinline)) handle_t
+request_pack(const char* id, scene_id_t parts, bool async, entity_t root) {
+    char pack[ASSET_NAME_MAX];
+    (void)memcpy(pack, id, parts.pack_length);
+    pack[parts.pack_length] = '\0';
+    return async ? asset_store_load_async(pack, NULL, root) : asset_store_load(pack);
 }
 
 /* `id`, cut to what a pack name holds: an id from the pack always fits, a
@@ -532,7 +537,7 @@ scene_load(const char* id) {
         settle(record, scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, id));
         return record->root;
     }
-    record->load = asset_store_load(parts.pack);
+    record->load = request_pack(id, parts, false, record->root);
     settle(record, open_scene(record, asset_store_loaded(record->load)));
     return record->root;
 }
@@ -561,7 +566,7 @@ scene_load_async(const char* id, pending_fn done, handle_t owner) {
         return record->root;
     }
     /* The root owns its pack request: releasing the root cancels it. */
-    record->load = asset_store_load_async(parts.pack, NULL, record->root);
+    record->load = request_pack(id, parts, true, record->root);
     if (!pending_owner_alive(owner)) {
         scene_cancel(record->root);
     }

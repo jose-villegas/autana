@@ -70,6 +70,18 @@ entity_t render_lab_scene_load(const char* tag, char* failure, size_t size, cons
 /* `bytes` from the app arena, which render_lab rewinds when the scene goes; NULL when it is spent. */
 void* render_lab_scene_take(size_t bytes);
 
+/* The longest copy name a render_lab_scene_copies() format makes, with its terminator. */
+#define RENDER_LAB_COPY_NAME_SIZE 16
+
+/* A scene's numbered copies: each entity `format` (one %d, such as
+ * "slot_%02d") names from 0 up to the first `scene` lacks, in order, in the
+ * app arena, with their `count`; NULL when the arena is spent. */
+entity_t* render_lab_scene_copies(entity_t scene, const char* format, int* count);
+
+/* A scene of copies' status line: the size drawn at, the triangle count and
+ * `copies`, or `failure` when it says why the scene did not load. */
+const char* render_lab_scene_copies_status(const char* failure, int copies);
+
 extern const render_lab_scene_t scene_capybara;
 extern const render_lab_scene_t scene_water;
 

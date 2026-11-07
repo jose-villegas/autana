@@ -18,11 +18,13 @@
 #include "gfx/gfx.h"
 #include "herd/scene_herd.h"
 #include "image/pixel/rgb565.h"
+#include "render/context/render_context.h"
 #include "render_lab.h"
 #include "render_lab_dynres.h"
 #include "render_lab_scene.h"
 #include "render_lab_view.h"
 #include "scene/animator/animator.h"
+#include "scene/entity/entity.h"
 #include "scene/scene.h"
 #include "scene_baked.h"
 #include "stress/scene_stress.h"
@@ -563,4 +565,43 @@ render_lab_scene_load(const char* tag, char* failure, size_t size, const char* i
 void*
 render_lab_scene_take(size_t bytes) {
     return app_arena_take(bytes, _Alignof(max_align_t));
+}
+
+/* The copy `scene` names `format` with `index`, or ENTITY_NONE. */
+static entity_t
+find_copy(entity_t scene, const char* format, int index) {
+    char name[RENDER_LAB_COPY_NAME_SIZE];
+    const int length = snprintf(name, sizeof name, format, index);
+    return length > 0 && (size_t)length < sizeof name ? entity_find(scene, name_hash(name)) : ENTITY_NONE;
+}
+
+entity_t*
+render_lab_scene_copies(entity_t scene, const char* format, int* count) {
+    int found = 0;
+    while (!handle_is_none(find_copy(scene, format, found))) {
+        found++;
+    }
+    entity_t* copies = render_lab_scene_take(sizeof *copies * (size_t)(found > 0 ? found : 1));
+    if (copies == NULL) {
+        return NULL;
+    }
+    for (int i = 0; i < found; i++) {
+        copies[i] = find_copy(scene, format, i);
+    }
+    *count = found;
+    return copies;
+}
+
+const char*
+render_lab_scene_copies_status(const char* failure, int copies) {
+    static char buf[RENDER_LAB_STATUS_LEN];
+    if (failure[0] != '\0') {
+        return failure;
+    }
+    if (snprintf(buf, sizeof buf, "%s%5d tris x%d", render_lab_dynres_size(),
+                 render_context_frame(render_context_main()).stats.triangles, copies)
+        < 0) {
+        buf[0] = '\0';
+    }
+    return buf;
 }
