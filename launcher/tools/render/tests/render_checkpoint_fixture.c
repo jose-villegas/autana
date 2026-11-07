@@ -142,7 +142,7 @@ main(int argc, char** argv) {
                 ok = false;
             }
             if (v == RENDER_DEBUG_VIEW_SHADED) {
-                render_context_set_debug_view(render_context_main(), render_context_debug_view_named("motion"));
+                render_context_set_debug_view(render_context_main(), render_context_debug_view_named("meshlets"));
                 step_frames(1);
             }
             if (!render_host_restore(saved)) {

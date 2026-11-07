@@ -1,7 +1,7 @@
 # View Modes
 
 Development builds select one row from the `render_debug_view_t` table in
-`render/context/render_context.c`: depth, tiles, motion, meshlets, cull, boxes, overdraw or copies.
+`render/context/render_context.c`: depth, tiles, meshlets, cull, boxes, overdraw or copies.
 
 Every view, drawn at the same pose:
 
@@ -10,7 +10,6 @@ Every view, drawn at the same pose:
 | shaded | ![The shaded view](../../images/render/sponza-view-shaded.png) | untouched: the baked colours as drawn |
 | depth | ![The depth view](../../images/render/sponza-view-depth.png) | the depth as a grey ramp, nearest white and farthest black |
 | tiles | ![The tiles view](../../images/render/sponza-view-tiles.png) | the same ramp, each `RASTER_SHOW_TILE` square at its farthest depth |
-| motion | ![The motion view](../../images/render/sponza-view-motion.png) | mid-grey for none, red for x and green for y |
 | meshlets | ![The meshlets view](../../images/render/sponza-view-meshlets.png) | a flat hue for each cluster, with disjoint IDs for each instance |
 | cull | ![The cull view](../../images/render/sponza-view-cull.png) | each cluster in the colour of its fate this frame; see [The cull, seen](Culling.md#the-cull-seen) |
 | boxes | ![The boxes view](../../images/render/sponza-view-boxes.png) | untouched; its overlay draws each instance's box as the frame placed it, one hue per mesh, for meshes drawn at least `boxview.copies` times; edges behind the drawn depth hidden, dimmed or full by `boxview.behind` |
@@ -41,8 +40,6 @@ A row may also carry optional hooks:
 |---|---|
 | `second_view` | After the frame's draw and after each draw it asks for, may name another view and fill the census list with the clusters to draw through it, and its depth scale; the frame's stats stay those of the first draw. It is handed the observer, a pose to draw from in place of its own |
 | `overlay` | Draws lines over the composed picture; the shell then composes at full size, not into a half picture |
-| `reserve` | Before each draw, makes room in the state for that draw's instances; when it cannot, the view is detached with an error log and the frame draws shaded |
-| `release` | Frees what `reserve` took, before the context frees the state |
 
 `render_context_set_observer()` sets that observer, NULL for none, and
 `render_context_observer_pose()` reads where the last second draw was seen
