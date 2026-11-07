@@ -44,6 +44,8 @@
 #include "render/r3d_span_internal.h"
 #include "render/raster_internal.h"
 #include "render/view/raster_motion.h"
+#include "scene/animator/animator.h"
+#include "scene/renderer/renderer.h"
 #include "scene/scene.h"
 #include "services/build_id.h"
 #include "sponza_suite.h"
@@ -58,10 +60,10 @@ TUNE_OWNER(sponza_perf);
 TUNE(sponza_perf, shipped_meshlet, 0, 0, UINT16_MAX);
 
 /* The scene, loaded for the suite, its pack, and one mesh for each bake. */
-static scene_t* sponza;
+static entity_t sponza;
 static const asset_pack_t* pack;
-static const camera_t* flythrough;
-static scene_entity_t camera_entity;
+static const lens_t* flythrough;
+static entity_t camera_entity;
 static r3d_lit_mesh_t meshes[SCENE_BAKED_VARIANT_COUNT];
 
 #define PANEL_PIXELS ((size_t)GFX_WIDTH * GFX_HEIGHT)
@@ -141,7 +143,7 @@ bench_open(const r3d_instance_t* instance, const raster_attachment_t* const* att
 
 static __attribute__((noinline)) void
 view_at(const r3d_lit_mesh_t* mesh, uint32_t t_ms, r3d_lens_t* lens) {
-    (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
+    (void)animator_seek(camera_entity, ANIMATOR_CURRENT, t_ms);
     const resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
     const render_view_t view = sponza_suite_view(flythrough, sponza, camera_entity,
                                                  (viewport_t){size.width, size.height, perf_quarter->quarter});
@@ -219,11 +221,11 @@ report_core_contention(const raster_t* raster, const r3d_lens_t* lens, int visib
 
 static void
 open_the_meshes(void) {
-    TEST_ASSERT_NOT_NULL_MESSAGE(sponza, "scene sponza did not load: see the log above");
+    TEST_ASSERT_FALSE_MESSAGE(handle_is_none(sponza), "scene sponza did not load: see the log above");
     for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
-        const scene_entity_t bake = scene_find(sponza, name_hash(sponza_bakes[i]));
-        TEST_ASSERT_NOT_EQUAL_MESSAGE(SCENE_ENTITY_NONE, bake, sponza_bakes[i]);
-        const char* mesh = scene_entity_mesh_id(sponza, bake);
+        const entity_t bake = entity_find(sponza, name_hash(sponza_bakes[i]));
+        TEST_ASSERT_FALSE_MESSAGE(handle_is_none(bake), sponza_bakes[i]);
+        const char* mesh = renderer_mesh_id(bake);
         TEST_ASSERT_NOT_NULL_MESSAGE(mesh, sponza_bakes[i]);
         TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, r3d_lit_mesh_open(pack, mesh, &meshes[i]), mesh);
     }
@@ -237,7 +239,7 @@ report_stage_split(int bake) {
     bench_t* b = bench_open(&instance, NULL);
     const raster_buffers_t* parts = &b->buffers;
     const r3d_lens_t* lens = &b->lens;
-    const uint32_t period = scene_animator_clip_duration_ms(sponza, camera_entity, 0);
+    const uint32_t period = animator_clip_duration_ms(camera_entity, 0);
     int64_t stopped[4] = {0};
     int poses = 0;
     for (uint32_t t_ms = 0; t_ms < period; t_ms += SPONZA_POSE_EVERY_MS) {
@@ -322,7 +324,7 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
             size = mesh->clusters[i].triangle_count;
         }
     }
-    const uint32_t period = scene_animator_clip_duration_ms(sponza, camera_entity, 0);
+    const uint32_t period = animator_clip_duration_ms(camera_entity, 0);
     ESP_LOGI(TAG,
              "CAPTURE build_id=%s pack_crc32=%08x object=%s size=%d cull=%ld period_ms=%u "
              "pose_every_ms=%u raster=%dx%d present=%d" R3D_PERF_QUARTER_FORMAT,
@@ -342,7 +344,7 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
     int samples = 0;
     const int pick_every = raster_settings(&b->raster).lod.pick_every;
     for (uint32_t t_ms = 0; t_ms < period; t_ms += SPONZA_PERF_POSE_EVERY_MS) {
-        (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
+        (void)animator_seek(camera_entity, ANIMATOR_CURRENT, t_ms);
         const render_view_t view = sponza_suite_view(flythrough, sponza, camera_entity,
                                                      (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
         if (moving != NULL) {
@@ -390,17 +392,17 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
 /* The scene's showcase: the bake of its first renderer. */
 static scene_baked_variant_t
 showcase_bake(void) {
-    for (int i = 0; i < scene_entity_count(sponza); i++) {
-        const scene_entity_t entity = (scene_entity_t)i;
-        if (scene_entity_mesh_id(sponza, entity) == NULL) {
+    for (entity_t entity = entity_next(sponza, ENTITY_NONE); !handle_is_none(entity);
+         entity = entity_next(sponza, entity)) {
+        if (renderer_mesh_id(entity) == NULL) {
             continue;
         }
         for (int bake = 0; bake < (int)SCENE_BAKED_VARIANT_COUNT; bake++) {
-            if (strcmp(scene_entity_name(sponza, entity), sponza_bakes[bake]) == 0) {
+            if (strcmp(entity_name(entity), sponza_bakes[bake]) == 0) {
                 return (scene_baked_variant_t)bake;
             }
         }
-        TEST_FAIL_MESSAGE(scene_entity_name(sponza, entity));
+        TEST_FAIL_MESSAGE(entity_name(entity));
     }
     TEST_FAIL_MESSAGE("the scene has no renderer");
     return SCENE_BAKED_VARIANT_COUNT;
@@ -496,8 +498,8 @@ run_sponza_perf_suite(void) {
     sponza = loaded.scene;
     pack = asset_store_loaded(loaded.load);
     flythrough = loaded.lens;
-    camera_entity = sponza == NULL ? SCENE_ENTITY_NONE : scene_find(sponza, name_hash(sponza_cameras[0]));
-    (void)render_lab_apply_camera_settings(sponza, camera_entity);
+    camera_entity = handle_is_none(sponza) ? ENTITY_NONE : entity_find(sponza, name_hash(sponza_cameras[0]));
+    (void)render_lab_apply_camera_settings(camera_entity);
     for (size_t q = 0; q < R3D_PERF_QUARTER_COUNT; q++) {
         perf_quarter = &r3d_perf_quarters[q];
         RUN_TEST_CASE(test_sponza_draw_stage_breakdown, perf_quarter->name);
@@ -506,7 +508,7 @@ run_sponza_perf_suite(void) {
     }
     loaded = (sponza_suite_t){sponza, loaded.load, flythrough, loaded.arena_mark};
     sponza_suite_release(&loaded);
-    sponza = NULL;
+    sponza = ENTITY_NONE;
     pack = NULL;
     flythrough = NULL;
 }

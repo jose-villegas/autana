@@ -12,6 +12,8 @@
 #include "core/timing.h"
 #include "esp_log.h"
 #include "frame/test_frame.h"
+#include "scene/animator/animator.h"
+#include "scene/entity/entity.h"
 #include "scene/scene_internal.h"
 #include "testkit/bench.h"
 #include "testkit/cleanup.h"
@@ -43,7 +45,8 @@ static int
 copies_shown(const scene_t* scene) {
     int shown = 0;
     for (int e = 0; e < scene->asset.entity_count; e++) {
-        shown += scene->skinned_renderers[e].internal_storage != NULL && scene_entity_active(scene, e);
+        shown += scene->skinned_renderers[e].internal_storage != NULL
+                 && entity_active(scene_row_entity(scene, (scene_row_t)e));
     }
     return shown;
 }
@@ -56,7 +59,10 @@ test_herd_lap_cost(void) {
     const size_t internal_before = memory_free_bytes(MEMORY_INTERNAL);
     render_lab_test_enter(&active->saved, herd->key);
     suite_set_test_cleanup(release_fixture);
-    scene_t* scene = render_lab_test_loaded_scene("herd");
+    TEST_ASSERT_FALSE(handle_is_none(render_lab_test_loaded_scene("herd")));
+    const render_lab_path_t path = herd->path();
+    scene_row_t row;
+    scene_t* scene = scene_entity_row(path.entity, &row);
     TEST_ASSERT_NOT_NULL(scene);
     const int copies = *(const int*)herd->data;
     TEST_ASSERT_EQUAL_INT(copies, copies_shown(scene));
@@ -64,15 +70,13 @@ test_herd_lap_cost(void) {
              (unsigned)(internal_before - memory_free_bytes(MEMORY_INTERNAL)),
              (unsigned)memory_free_bytes(MEMORY_INTERNAL), (unsigned)memory_largest_block(MEMORY_INTERNAL));
 
-    const render_lab_path_t path = herd->path();
-    const int lap_clip = scene_animator_current_clip(path.scene, path.entity);
-    const uint32_t lap_ms = scene_animator_clip_duration_ms(path.scene, path.entity, lap_clip);
+    const uint32_t lap_ms = animator_clip_duration_ms(path.entity, animator_current_clip(path.entity));
     TEST_ASSERT_GREATER_THAN_UINT32(HERD_PERF_SAMPLES, lap_ms);
     const uint32_t dt_ms = lap_ms / HERD_PERF_SAMPLES;
     for (size_t q = 0; q < R3D_PERF_QUARTER_COUNT; q++) {
         const r3d_perf_quarter_t* quarter = &r3d_perf_quarters[q];
         test_hold_quarter(quarter->quarter);
-        TEST_ASSERT_TRUE(scene_animator_seek(path.scene, path.entity, SCENE_ANIMATOR_CURRENT, 0));
+        TEST_ASSERT_TRUE(animator_seek(path.entity, ANIMATOR_CURRENT, 0));
         for (int i = -1; i < HERD_PERF_SAMPLES; i++) {
             const int64_t step_start = timing_now_us();
             scene_animation_step(scene, RENDER_LAB_TEST_FRAME_MS);
