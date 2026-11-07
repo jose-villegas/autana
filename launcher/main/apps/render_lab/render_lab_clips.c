@@ -9,15 +9,16 @@
 #include "app/app_arena.h"
 #include "apps/render_lab/ui/render_lab_menu_screen.h"
 #include "esp_log.h"
+#include "scene/animator/animator.h"
 #include "ui/ui.h"
 
-static int render_lab_clips_find(const scene_t* scene, scene_entity_t subject, const char* name);
+static int render_lab_clips_find(entity_t scene, entity_t subject, const char* name);
 static bool render_lab_clips_play(render_lab_clips_t* choice, int clip, int blend_ms);
 
 bool
-render_lab_clips_init(render_lab_clips_t* choice, scene_t* scene, scene_entity_t subject, const char* default_clip) {
+render_lab_clips_init(render_lab_clips_t* choice, entity_t scene, entity_t subject, const char* default_clip) {
     *choice = (render_lab_clips_t){.scene = scene, .subject = subject, .blend_ms = RENDER_LAB_BLEND_DEFAULT_MS};
-    const int count = scene == NULL ? 0 : scene_animator_clip_count(scene, subject);
+    const int count = handle_is_none(scene) ? 0 : animator_clip_count(subject);
     if (count == 0) {
         return true;
     }
@@ -26,13 +27,13 @@ render_lab_clips_init(render_lab_clips_t* choice, scene_t* scene, scene_entity_t
         choice->selected = 0;
         ESP_LOGW("render_clips", "default clip missing");
     }
-    (void)scene_animator_play(scene, subject, choice->selected, 0);
+    (void)animator_play(subject, choice->selected, 0);
     const char** items = app_arena_take((size_t)count * sizeof *items, _Alignof(const char*));
     if (items == NULL) {
         return false;
     }
     for (int i = 0; i < count; i++) {
-        items[i] = scene_animator_clip_name(scene, subject, i);
+        items[i] = animator_clip_name(subject, i);
     }
     choice->items = items;
     choice->count = count;
@@ -45,12 +46,12 @@ render_lab_clips_destroy(render_lab_clips_t* choice) {
 }
 
 static int
-render_lab_clips_find(const scene_t* scene, scene_entity_t subject, const char* name) {
-    if (scene == NULL) {
+render_lab_clips_find(entity_t scene, entity_t subject, const char* name) {
+    if (handle_is_none(scene)) {
         return -1;
     }
-    for (int i = 0; i < scene_animator_clip_count(scene, subject); i++) {
-        if (strcmp(scene_animator_clip_name(scene, subject, i), name) == 0) {
+    for (int i = 0; i < animator_clip_count(subject); i++) {
+        if (strcmp(animator_clip_name(subject, i), name) == 0) {
             return i;
         }
     }
@@ -59,8 +60,8 @@ render_lab_clips_find(const scene_t* scene, scene_entity_t subject, const char* 
 
 static bool
 render_lab_clips_play(render_lab_clips_t* choice, int clip, int blend_ms) {
-    if (choice->scene == NULL || blend_ms < 0 || blend_ms > RENDER_LAB_BLEND_MAX_MS
-        || !scene_animator_play(choice->scene, choice->subject, clip, (uint32_t)blend_ms)) {
+    if (handle_is_none(choice->scene) || blend_ms < 0 || blend_ms > RENDER_LAB_BLEND_MAX_MS
+        || !animator_play(choice->subject, clip, (uint32_t)blend_ms)) {
         return false;
     }
     choice->selected = clip;
@@ -128,14 +129,13 @@ render_lab_clips_reply(render_lab_clips_t* choice, const char* args, console_rep
     if (!listing && !console_word_match(args, "clip", &rest)) {
         return false;
     }
-    const scene_t* scene = choice->scene;
-    const scene_entity_t subject = choice->subject;
-    if (scene == NULL || scene_animator_clip_count(scene, subject) == 0) {
+    entity_t scene = choice->scene;
+    const entity_t subject = choice->subject;
+    if (handle_is_none(scene) || animator_clip_count(subject) == 0) {
         reply("RENDER_ERR no animated subject");
     } else if (listing) {
-        for (int i = 0; i < scene_animator_clip_count(scene, subject); i++) {
-            reply_line(reply, "RENDER clip=%s current=%d", scene_animator_clip_name(scene, subject, i),
-                       i == choice->selected);
+        for (int i = 0; i < animator_clip_count(subject); i++) {
+            reply_line(reply, "RENDER clip=%s current=%d", animator_clip_name(subject, i), i == choice->selected);
         }
         reply("RENDER_END");
     } else {

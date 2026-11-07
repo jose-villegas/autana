@@ -38,13 +38,22 @@ bool scene_compose(uint32_t dt_ms, int quarter, const scene_target_t* target);
 void scene_shell_render(uint32_t dt_ms);
 void scene_shell_compose(uint32_t dt_ms);
 
-/* An app has exited: unloads every scene, releases the render context and
- * lifts a pause. */
+/* Allocates the world's entity table, kept for the run; does nothing once it
+ * exists. Boot calls it before any app, so no visit's memory holds it; a host
+ * tool may leave it to its first load. False when PSRAM cannot: loads fail. */
+bool scene_world_init(void);
+
+/* Opens async scene requests whose packs are READY and delivers their
+ * completions: the frame loop's poll, after the asset store's. */
+void scene_step(uint32_t dt_ms);
+
+/* An app has exited: releases every scene, blocking and async, releases the
+ * render context and lifts a pause. */
 void scene_unload_all(void);
 
 /* Where the memory a loaded scene keeps in PSRAM comes from, the render
  * context's scratch included; NULL, the default, is the heap. Set while no
- * scene is loaded. With a take, scene_unload() gives none of it back: once
+ * scene is loaded. With a take, scene_release() gives none of it back: once
  * the last scene is unloaded nothing points into it, and the lender may
  * take it back. Internal-RAM pieces stay on the heap either way. Returns the
 take it replaces. */
