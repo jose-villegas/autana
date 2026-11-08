@@ -236,7 +236,7 @@ r3d_pipeline_fit_curves(r3d_curve_set_t set, const r3d_lens_t* lens, r3d_pipelin
         const box3f_t box = box3f_from_box3s(r3d_curve_box(&set.curves[i]), 1.0F);
         unsigned mask = PLANE_FRUSTUM_ALL;
         if (!box3f_outside_planes(box, planes, PLANE_FRUSTUM_COUNT, &mask)) {
-            fit_inside(box, planes, 0, depth, fit);
+            fit_inside(box, planes, mask, depth, fit);
         }
     }
 }
