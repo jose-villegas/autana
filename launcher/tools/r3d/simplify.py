@@ -251,6 +251,10 @@ def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, loc
                 shape.materials, budget, colour_weight(shape.positions, shape.triangles, budget, deviation),
                 options, union if np.any(union) else None)
             p, c, t, kept = stand_in.positions, stand_in.rgb, stand_in.tris, stand_in.kept
+            if not len(t):
+                log(f"  shape of {len(shape.instances)} copies keeps no triangle at {budget}: not carved")
+                consumed.difference_update(single[int(i.object_name)] for i in shape.instances)
+                continue
             shared.append(dict(objects=[int(i.object_name) for i in shape.instances], copies=len(shape.instances),
                                joined=sum(isinstance(i, JoinedInstance) for i in shape.instances),
                                budget=budget, policy=('lock' if np.any(union) else policies[int(shape.instances[0].object_name)]),
@@ -360,6 +364,9 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
             result = _run_pass(pos, rgb, tris[sel], labels[sel], budget, deviation, options,
                                locks if np.any(locks) else None)
         shade = (allocation.shade_shared or allocation.shade) if carved else allocation.shade
+        if carved and not len(result[2]):
+            log(f"  {allocation.object_names[objects[0]]} keeps no triangle at {budget}: dropped")
+            return 0
         if shade is not None and np.any(np.isin(tri_o[sel], list(selected))):
             result = shade(*result)
         entry = dict(objects=[allocation.object_names[obj] for obj in objects], copies=1, budget=budget,
