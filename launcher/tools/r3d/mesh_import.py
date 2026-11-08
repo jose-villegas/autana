@@ -292,8 +292,8 @@ def write_baked(job, scene, out_dir, name, geometry=None, recorder=None):
                               geometry.tris, geometry.tri_double, face_rgb=face_rgb, recorder=recorder, mesh_builder=bake_lit_mesh,
                               meshlet_triangles=job.settings.meshlet_triangles,
                               lod=job.settings.lod and getattr(renderer, "fit", None) is None,
-                              **geometry.scale)
-    entries = mesh_bundle.mesh_entries(name, mesh) if len(mesh.tris) else []
+                              morph=job.settings.morph, **geometry.scale)
+    entries = mesh_bundle.mesh_entries(name, mesh, job.settings.morph) if len(mesh.tris) else []
     copies = []
     for shape in getattr(geometry, "shapes", None) or ():
         products, placed = write_shape(job, scene, out_dir, name, geometry, shape, recorder)
@@ -334,13 +334,13 @@ def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
                               tris, double, face_rgb=keys if job.renderer.face_samples else None,
                               colourless=True, recorder=recorder, mesh_builder=bake_lit_mesh,
                               meshlet_triangles=job.settings.meshlet_triangles, lod=job.settings.lod,
-                              **geometry.scale)
+                              morph=job.settings.morph, **geometry.scale)
         encoding = lcol_asset.RGB565 if job.renderer.face_samples else lcol_asset.RGB888
         keys = mesh.face_keys if job.renderer.face_samples else mesh.colour_keys
         channels = lcol_asset.STRIDES[lcol_asset.RGB888]
         sets = [panel_colour(keys[:, k:k + channels]).tobytes() if job.renderer.face_samples
                 else keys[:, k:k + channels].astype('u1').tobytes() for k in range(0, keys.shape[1], channels)]
-        entries.extend(mesh_bundle.mesh_entries(mesh_id, mesh))
+        entries.extend(mesh_bundle.mesh_entries(mesh_id, mesh, job.settings.morph))
         entries.append((lcol_asset.name_for_mesh(mesh_id), lcol_asset.TYPE,
                         lcol_asset.encode(encoding, len(keys), sets)))
         for index, (instance, _) in enumerate(copies):

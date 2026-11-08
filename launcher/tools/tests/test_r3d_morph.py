@@ -429,12 +429,14 @@ class BakedMorphTargetTests(unittest.TestCase):
         self.assertEqual(self.mesh.pos.shape, self.target.shape)
         self.assertEqual((len(self.mesh.pos), AXES), self.landing.shape)
 
-    def test_the_bundle_carries_a_morph_entry_only_with_levels(self):
-        kinds = [kind for _, kind, _ in mesh_bundle.mesh_entries("m", self.plain)]
+    def test_the_bundle_carries_a_morph_entry_only_when_asked_and_with_levels(self):
+        kinds = [kind for _, kind, _ in mesh_bundle.mesh_entries("m", self.plain, morph=True)]
         self.assertNotIn(morph_asset.TYPE, kinds)
         points, rgb, triangles, double = wavy_grid()
         levelled = bake_lit_mesh(points, rgb, triangles, double, lod=True)
-        entries = mesh_bundle.mesh_entries("m", levelled)
+        unasked = [kind for _, kind, _ in mesh_bundle.mesh_entries("m", levelled)]
+        self.assertNotIn(morph_asset.TYPE, unasked)
+        entries = mesh_bundle.mesh_entries("m", levelled, morph=True)
         self.assertIn(("m.morph", morph_asset.TYPE), [(name, kind) for name, kind, _ in entries])
 
     def test_every_row_with_a_parent_targets_a_point_on_the_parents_coarse_triangles(self):

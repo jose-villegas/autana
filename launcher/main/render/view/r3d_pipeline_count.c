@@ -65,7 +65,7 @@ r3d_pipeline_cull_counted(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, co
     if (mesh->lod_finest_root != 0 && lod_coarse != NULL) {
         const int before = count;
         int tested = 0;
-        count = r3d_pipeline_cull_cut(mesh, lod_coarse, walk->planes, (planef_t){0}, out, count, NULL, &tested);
+        count = r3d_pipeline_cull_cut(mesh, lod_coarse, NULL, walk->planes, (planef_t){0}, out, count, NULL, &tested);
         counts->clusters_tested += tested;
         for (int i = before; i < count; i++) {
             counts->triangles_submitted += mesh->clusters[out[i]].triangle_count;

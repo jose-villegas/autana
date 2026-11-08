@@ -143,7 +143,7 @@ close_coarse(const r3d_lit_mesh_t* mesh, uint32_t* coarse) {
 void
 r3d_lod_morph_init(r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
                    const render_lod_settings_t* lod, float pixels_per_output_pixel, const uint32_t* arrived,
-                   bool enabled) {
+                   int blend) {
     const lod_view_t v = lod_view(lens);
     const float covered = ((float)lod->coverage_permille / (float)R3D_LOD_PERMILLE) * (float)lens->height;
     *morph = (r3d_lod_morph_t){
@@ -158,7 +158,8 @@ r3d_lod_morph_init(r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, const r3d
         .ramp = lod->blend_px * pixels_per_output_pixel,
         .covered = covered,
         .cover_ramp = covered * R3D_LOD_MORPH_COVER_RAMP,
-        .enabled = enabled && mesh->morph_delta != NULL,
+        .enabled = blend == RENDER_LOD_BLEND_ON,
+        .dither = mesh->morph_delta == NULL,
     };
 }
 
@@ -196,16 +197,45 @@ group_morph_weight(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, uin
     return (int)((weight * (float)R3D_LOD_MORPH_ONE) + 0.5F);
 }
 
+/* Group `group`'s weight when it blends, else 0. */
+static int
+blending_weight(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, uint16_t group) {
+    if (group == R3D_LOD_NONE || (morph->blending != NULL && !r3d_lod_coarse(morph->blending, group))) {
+        return 0;
+    }
+    return group_morph_weight(morph, mesh, group);
+}
+
 int
 r3d_lod_morph_weight(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, int c) {
-    if (!morph->enabled) {
+    if (!morph->enabled || morph->dither) {
         return 0;
     }
-    const uint16_t parent = mesh->cluster_lod[c].parent;
-    if (parent == R3D_LOD_NONE || (morph->blending != NULL && !r3d_lod_coarse(morph->blending, parent))) {
+    return blending_weight(morph, mesh, mesh->cluster_lod[c].parent);
+}
+
+/* The levels a weight covers: those whose threshold, at the middle of its
+ * step, is under it. */
+static int
+dither_level(int weight) {
+    return ((2 * weight * R3D_LOD_DITHER_LEVELS) + R3D_LOD_MORPH_ONE - 1) / (2 * R3D_LOD_MORPH_ONE);
+}
+
+uint8_t
+r3d_lod_dither_band(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, int c) {
+    if (!morph->enabled || !morph->dither || mesh->cluster_lod == NULL) {
         return 0;
     }
-    return group_morph_weight(morph, mesh, parent);
+    const r3d_lit_cluster_lod_t lod = mesh->cluster_lod[c];
+    /* A cluster simplified from a group still fine is drawn only while that group blends. */
+    const bool fading_in =
+        lod.own != R3D_LOD_NONE && morph->blending != NULL && r3d_lod_coarse(morph->blending, lod.own);
+    const int lo = dither_level(blending_weight(morph, mesh, lod.parent));
+    const int hi = fading_in ? dither_level(group_morph_weight(morph, mesh, lod.own)) : R3D_LOD_DITHER_LEVELS;
+    if (lo >= hi) {
+        return (uint8_t)((R3D_LOD_DITHER_LEVELS - 1) | ((R3D_LOD_DITHER_LEVELS - 1) << R3D_LOD_DITHER_SHIFT));
+    }
+    return (uint8_t)(lo | ((R3D_LOD_DITHER_LEVELS - hi) << R3D_LOD_DITHER_SHIFT));
 }
 
 float

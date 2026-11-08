@@ -150,15 +150,17 @@ def decode(data):
     return [(name, kind, blob) for name, (kind, blob) in sorted(entries.items())], copies
 
 
-def mesh_entries(name, mesh):
-    """The LMSH of one assembled mesh, and with levels its LLOD and LMOR siblings."""
+def mesh_entries(name, mesh, morph=False):
+    """The LMSH of one assembled mesh, with levels its LLOD sibling, and with
+    `morph` too its LMOR sibling."""
     from r3d.lit_mesh import mesh_blob, lod_blob, morph_blob
     blob = mesh_blob(mesh)
     entries = [(name, mesh_asset.TYPE, blob)]
     levels = lod_blob(mesh)
     if levels is not None:
         entries.append((lod_asset.name_for_mesh(name), lod_asset.TYPE, levels))
-        entries.append((morph_asset.name_for_mesh(name), morph_asset.TYPE, morph_blob(blob, levels)))
+        if morph:
+            entries.append((morph_asset.name_for_mesh(name), morph_asset.TYPE, morph_blob(blob, levels)))
     return entries
 
 

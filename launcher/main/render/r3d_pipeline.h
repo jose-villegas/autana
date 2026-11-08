@@ -91,9 +91,11 @@ typedef struct r3d_depth_fit {
  * group that belong to a fine group, or to none, written to `out` from
  * `count` where `planes` keep them, lowering `fit` as r3d_pipeline_cull()
  * does. Returns the new count and adds the clusters it box-tested to
- * `tested`. r3d_pipeline_cull() calls it after walking level 0. */
-int r3d_pipeline_cull_cut(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, const planef_t* planes,
-                          planef_t depth, uint16_t* out, int count, r3d_depth_fit_t* fit, int* tested);
+ * `tested`. r3d_pipeline_cull() calls it after walking level 0. With
+ * `blending` not NULL, those simplified from each blending group too. */
+int r3d_pipeline_cull_cut(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, const uint32_t* blending,
+                          const planef_t* planes, planef_t depth, uint16_t* out, int count, r3d_depth_fit_t* fit,
+                          int* tested);
 
 /* Walks the node tree and writes the clusters any part of which may be on
  * screen, roughly nearest first, returning how many. `out` holds
@@ -105,6 +107,12 @@ int r3d_pipeline_cull_cut(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse
 int r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint32_t* lod_coarse, uint16_t* out,
                       r3d_pipeline_work_t* work, r3d_depth_fit_t* fit);
 
+/* r3d_pipeline_cull() keeping what r3d_lod_drawn_blending() draws: both
+ * levels of each group blending in `blending`, for the dither. */
+int r3d_pipeline_cull_blending(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint32_t* lod_coarse,
+                               const uint32_t* blending, uint16_t* out, r3d_pipeline_work_t* work,
+                               r3d_depth_fit_t* fit);
+
 /* The screen box a cluster's vertices span and the nearest depth its fill
  * can write, for a caller drawing only some rows, or over depth already
  * drawn, to skip it whole. A cluster with a vertex behind the near plane or
@@ -112,8 +120,9 @@ int r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const 
 typedef struct {
     int16_t x0, y0, x1, y1; /* 1/R3D_SUBPIXEL pixels */
     uint16_t depth;         /* no depth its fill writes is nearer */
-    bool unbounded;
-    uint8_t morph; /* the weight it was transformed with toward its morph targets, 0 to R3D_LOD_MORPH_ONE */
+    bool unbounded : 1;
+    bool dithered  : 1; /* drawn through the screen door of its dither band, held in `morph` */
+    uint8_t morph;      /* the weight it was transformed with toward its morph targets, 0 to R3D_LOD_MORPH_ONE */
 } r3d_pipeline_rows_t;
 
 /* True when every pixel of `target` under a cluster's box already holds

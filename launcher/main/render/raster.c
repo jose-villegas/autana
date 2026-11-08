@@ -27,16 +27,20 @@ TUNE_OVERRIDE(render, batched, 1);
 TUNE_OVERRIDE(render, lod_coverage_permille, INT32_MAX);
 /* Overrides lod.blend; morph_table.py sets it once per arm. */
 TUNE_OVERRIDE(render, lod_blend, RENDER_LOD_BLEND_COUNT - 1);
+/* Overrides lod.blend_px in hundredths of a pixel; morph_table.py sweeps it. */
+#define LOD_BLEND_CENTI 100
+TUNE_OVERRIDE(render, lod_blend_centipixels, (int32_t)(RENDER_LOD_BLEND_PX_MAX * LOD_BLEND_CENTI));
 
 render_settings_t
 raster_settings(const raster_t* raster) {
     const render_settings_t s = raster->settings != NULL ? *raster->settings : RENDER_SETTINGS_DEFAULT;
-    return (render_settings_t){tune_override(cull, s.cull) != 0,
-                               tune_override(depth_fit, s.depth_fit) != 0,
-                               tune_override(batched, s.batched) != 0,
-                               {s.lod.tolerance_px, s.lod.hysteresis_px,
-                                tune_override(lod_coverage_permille, s.lod.coverage_permille),
-                                tune_override(lod_blend, s.lod.blend), s.lod.blend_px}};
+    return (render_settings_t){
+        tune_override(cull, s.cull) != 0,
+        tune_override(depth_fit, s.depth_fit) != 0,
+        tune_override(batched, s.batched) != 0,
+        {s.lod.tolerance_px, s.lod.hysteresis_px, tune_override(lod_coverage_permille, s.lod.coverage_permille),
+         tune_override(lod_blend, s.lod.blend),
+         lod_blend_centipixels == TUNE_UNSET ? s.lod.blend_px : (float)lod_blend_centipixels / LOD_BLEND_CENTI}};
 }
 
 /* One instance of a batch: its lens, the clusters culling kept, where its
@@ -229,6 +233,7 @@ draw_slice(void* ctx) {
     gfx_target_window(&target->rows, &b->picture, s->first, s->first + s->count);
     target->small_fill = &((const draw_work_t*)b->draw)->small_fill;
     target->skip_hidden = ((const draw_work_t*)b->draw)->skip_hidden;
+    target->screen_mask = 0;
 
     if (s->clear) {
         const size_t pixels = (size_t)s->count * (size_t)r->width;
@@ -352,21 +357,34 @@ instance_lens(picture_lens_t* picture, const r3d_instance_t* instance, r3d_lens_
     }
 }
 
+/* The blending bits the dither draws both levels of, or NULL for one level. */
+static const uint32_t*
+dither_blending(const r3d_instance_t* instance, int blend) {
+    if (blend != RENDER_LOD_BLEND_ON || instance->lod_coarse == NULL || instance->mesh->morph_delta != NULL) {
+        return NULL;
+    }
+    const int groups = instance->mesh->lod_group_count;
+    return r3d_lod_blending(r3d_lod_arrived(instance->lod_coarse, groups), groups);
+}
+
 static int
-cull_instance(const r3d_instance_t* instance, bool culls, const r3d_lens_t* lens, uint16_t* out, raster_stats_t* stats,
-              r3d_pipeline_work_t* work, r3d_depth_fit_t* fit) {
+cull_instance(const r3d_instance_t* instance, bool culls, const r3d_lens_t* lens, int blend, uint16_t* out,
+              raster_stats_t* stats, r3d_pipeline_work_t* work, r3d_depth_fit_t* fit) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
+    const uint32_t* blending = dither_blending(instance, blend);
     int visible = 0;
     if (culls) {
-        visible = r3d_pipeline_cull(mesh, lens, instance->lod_coarse, out, work, fit);
+        visible = r3d_pipeline_cull_blending(mesh, lens, instance->lod_coarse, blending, out, work, fit);
     } else {
-        /* Nothing coarse: every cluster of a mesh without levels, or the
-         * finest, which levels laid out apart put first. */
-        const bool every = (instance->lod_coarse == NULL || !r3d_lod_any(instance->lod_coarse, mesh->lod_group_count))
+        /* Nothing coarse or blending: every cluster of a mesh without levels,
+         * or the finest, which levels laid out apart put first. */
+        const bool every = (instance->lod_coarse == NULL
+                            || (!r3d_lod_any(instance->lod_coarse, mesh->lod_group_count)
+                                && (blending == NULL || !r3d_lod_any(blending, mesh->lod_group_count))))
                            && (mesh->lod_finest_root != 0 || mesh->cluster_lod == NULL);
         const int count = !every || mesh->cluster_lod == NULL ? mesh->cluster_count : mesh->lod_coarse_first;
         for (int i = 0; i < count; i++) {
-            if (every || r3d_lod_drawn(mesh, i, instance->lod_coarse)) {
+            if (every || r3d_lod_drawn_blending(mesh, i, instance->lod_coarse, blending)) {
                 out[visible++] = (uint16_t)i;
             }
         }
@@ -457,7 +475,7 @@ raster_lod_morph(const raster_t* raster, const render_view_t* view, const r3d_in
     r3d_lod_morph_init(
         morph, instance->mesh, lens, &settings.lod, drawn,
         instance->lod_coarse != NULL ? r3d_lod_arrived(instance->lod_coarse, instance->mesh->lod_group_count) : NULL,
-        settings.lod.blend == RENDER_LOD_BLEND_MORPH && instance->lod_coarse != NULL);
+        instance->lod_coarse != NULL ? settings.lod.blend : RENDER_LOD_BLEND_SWITCH);
 }
 
 /* Culls every instance into the census list and returns the depth scale
@@ -483,7 +501,7 @@ cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, r
         } else {
             r3d_lens_t lens;
             instance_lens(&picture, instance, &lens);
-            culled[0] = (uint16_t)cull_instance(instance, settings.cull, &lens, culled + 1, stats,
+            culled[0] = (uint16_t)cull_instance(instance, settings.cull, &lens, settings.lod.blend, culled + 1, stats,
                                                 work->buffers.work[0], settings.depth_fit ? &fit : NULL);
         }
         culled += 1 + (size_t)instance->mesh->cluster_count;

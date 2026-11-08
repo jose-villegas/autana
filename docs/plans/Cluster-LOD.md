@@ -120,14 +120,28 @@ The weight is whole at the switch the group meets next and fades to none
 `R3D_LOD_MORPH_COVER_RAMP` of the cap. Each vertex's target is in the mesh's
 [LMOR](../assets/formats/LMOR.md) sibling
 ([`lod/morph.py`](../../launcher/tools/r3d/lod/morph.py)). The
-[`lod.blend`](../render/Render-Settings.md#lod) setting picks it, a dither or
-a plain switch.
+[`lod.blend`](../render/Render-Settings.md#lod) setting turns blending on
+or leaves a plain switch. Only a mesh imported with `[geometry] morph = true`
+carries targets and morphs; any other dithers, at no cost in bytes.
 
-The hysteresis band puts the two switches apart, so the pick keeps one more
-bit per group, *arrived*: set when the group turns fine, cleared once its
-error is `lod.blend_px` past the band. An arrived group fades from the
+The hysteresis band puts the two switches apart, so the pick keeps two more
+bits per group. *Arrived* is set when the group turns fine and cleared once
+its error is `lod.blend_px` past the band. An arrived group fades from the
 band's top, where it came through; any other fine group from the bottom,
 where it turns coarse. Both weights are none where the bit changes.
+*Blending* is set while a fine group's weight is above none, so a cluster
+under any other group pays one bit test for the blend.
+
+| Blend | Draws during a blend | Flash |
+|---|---|---|
+| Switch (`lod.blend = 0`) | One level | none |
+| Morph (`geometry.morph`) | The fine level, moved toward the coarse surface | the LMOR sibling |
+| Dither (any other mesh) | Both levels through complementary 4×4 ordered screen doors, the coarse where the threshold is under the weight | none |
+
+Blending keeps three bit sets per instance, not one.
+
+The dither draws the coarse clusters of each blending group as well, each
+through its own band of thresholds, so the two levels never share a pixel.
 
 | Target | Rule |
 |---|---|

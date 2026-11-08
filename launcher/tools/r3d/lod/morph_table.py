@@ -1,14 +1,17 @@
 """What the geomorph blend buys at level switches, over a scene's camera path.
 
     python launcher/tools/r3d/lod/morph_table.py --script HOST_RENDER.sh \\
-        --render LABEL "RENDERER ARGS" [--render ...] [--assets VARIANT=DIR ...] [--doc PAGE.md] [--work DIR]
+        --render LABEL "RENDERER ARGS" [--render ...] [--assets VARIANT=DIR ...] [--ramp PX ...]
+        [--doc PAGE.md] [--work DIR]
 
 Builds the scene's host renderer once (the script's --build-only), or takes
 one --renderer already built, and runs
-each --render path in three arms: the finest level (render.lod_coverage_permille
-0), the pick's switches drawn as they are and each blend (render.lod_blend,
-the values of render_lod_blend_t), once per --assets variant, a folder of packs the
-renderer reads instead of its own (AUTANA_ASSET_DIR). Per path and arm it
+each --render path in its arms: the finest level (render.lod_coverage_permille
+0), the pick's switches drawn as they are, and blended (render.lod_blend) once
+per --assets variant, a folder of packs the renderer reads instead of its own
+(AUTANA_ASSET_DIR): meshes whose packs carry morph targets morph, the rest
+dither. Each blend runs once per --ramp (render.lod_blend_centipixels), or at
+its setting. Per path and arm it
 reports the blocks popping beyond the finest level's own frame-to-frame
 change and the mean difference from the finest level (coverage_table.py's
 scores), the share of transformed vertices blended, and the vertices whose
@@ -47,8 +50,13 @@ def blends():
 BLEND = blends()
 SWITCHES = (f"render.lod_blend={BLEND['switch']}",)
 FINEST = ("render.lod_coverage_permille=0",) + SWITCHES
-BLENDED = (f"render.lod_blend={BLEND['morph']}",)
 CENTI = 100.0
+
+
+def blended(name, ramp):
+    """The settings of blend `name` over a ramp of `ramp` pixels, or its setting's when None."""
+    ramped = () if ramp is None else (f"render.lod_blend_centipixels={round(ramp * CENTI)}",)
+    return (f"render.lod_blend={BLEND[name]}",) + ramped
 BLOCK = "lod-morph"
 
 
@@ -77,7 +85,16 @@ def blend_shares(rows):
     return share(morphed), 100.0 * frames / max(len(rows), 1), share(stacked), most
 
 
-def table(renderer, renders, variants, work):
+def arms(variants, ramps):
+    """(label, settings, assets) per arm: the switches, then each variant blended at each ramp."""
+    out = [("switches", SWITCHES, variants[0][1])]
+    for ramp in ramps:
+        at = "" if ramp is None else f" {ramp:g} px"
+        out += [(f"blend{at}, {name}", blended("on", ramp), assets) for name, assets in variants]
+    return out
+
+
+def table(renderer, renders, variants, ramps, work):
     lines = ["| Path | Arm | Blocks popping | Mean difference /255 | Vertices blended | Frames stacked "
              "| Vertices stacked | Stacked, most px |",
              "|---|---|---|---|---|---|---|---|"]
@@ -85,14 +102,13 @@ def table(renderer, renders, variants, work):
         first = variants[0][1]
         finest = work / label / "finest"
         render(renderer, args, FINEST, first, finest)
-        arms = [("switches", SWITCHES, first)] + [(f"blend, {name}", BLENDED, assets) for name, assets in variants]
-        for arm, sets, assets in arms:
-            out = work / label / arm.replace(", ", "-")
+        for arm, sets, assets in arms(variants, ramps):
+            out = work / label / re.sub(r"[^\w.]+", "-", arm)
             rows = render(renderer, args, sets, assets, out)
             popping, difference = scored(finest / "path.avi", out / "path.avi")
             (out / "path.avi").unlink()
-            blended, frames, stacked, most = blend_shares(rows)
-            lines.append(f"| {label} | {arm} | {popping:.4f}% | {difference:.3f} | {blended:.1f}% | {frames:.1f}% "
+            vertices, frames, stacked, most = blend_shares(rows)
+            lines.append(f"| {label} | {arm} | {popping:.4f}% | {difference:.3f} | {vertices:.1f}% | {frames:.1f}% "
                          f"| {stacked:.2f}% | {most:.2f} |")
         (finest / "path.avi").unlink()
     return "\n".join(lines)
@@ -106,6 +122,8 @@ def main():
     parser.add_argument("--render", nargs=2, action="append", required=True, metavar=("LABEL", "ARGS"))
     parser.add_argument("--assets", action="append", default=[], metavar="VARIANT=DIR",
                         help="packs to read instead of the build's own; the first also draws the finest and switches")
+    parser.add_argument("--ramp", type=float, action="append", default=[], metavar="PX",
+                        help="each blend's ramp, in pixels; without one, the setting's")
     parser.add_argument("--doc", help=f"page whose `{BLOCK}` block takes the table")
     parser.add_argument("--work", help="keep the renders here, not in a temporary folder")
     options = parser.parse_args()
@@ -113,7 +131,7 @@ def main():
     with tempfile.TemporaryDirectory() as temporary:
         work = pathlib.Path(options.work or temporary)
         renderer = options.renderer or build(options.script, work / "build")
-        body = table(renderer, options.render, variants, work)
+        body = table(renderer, options.render, variants, options.ramp or [None], work)
     print(body)
     if options.doc:
         replace_block(options.doc, BLOCK, "\n" + body + "\n")
