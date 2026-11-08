@@ -9,7 +9,7 @@ from scipy.sparse.csgraph import connected_components
 
 from render.colour_maths import lab
 from r3d import log
-from r3d.geometry import bounds_diagonal, closest_point_on_triangles
+from r3d.geometry import bounds_diagonal, closest_point_on_triangles, weld_keeping
 from r3d.meshopt import simplify_with_update
 from r3d.objects.contact import _surface_border
 from r3d.ray_query import RayQuery
@@ -28,6 +28,10 @@ PARALLEL_COS = 0.97
 PLANE_SHARE = 0.02
 # Small gaps between separate plates may be filled by one surface.
 TOUCH_SHARE = 0.03
+# Faces meeting at a fold sharper than about 78 degrees lie on different sides of a slab.
+FOLD_COS = 0.2
+# A slab's two sides each hold at least this share of its area; its rim holds the rest.
+SIDE_SHARE = 0.4
 # Numerically equal scores keep the earlier candidate.
 ERROR_TIE = 1e-9
 # Vertex colours and the two backgrounds use the source's byte channel scale.
@@ -47,7 +51,7 @@ class StandIn:
     kept: np.ndarray | None
 
 
-def regular(positions, rgb, tris, materials, budget, weight, options, lock):
+def regular(positions, rgb, tris, materials, budget, weight, options, lock, double=()):
     p, c, t, kept = simplify_with_update(positions, rgb, tris, budget, weight, options, vertex_lock=lock)
     return StandIn('regular', p, c, t, _label_after(tris, materials, kept, t), kept)
 
@@ -61,7 +65,7 @@ def _frame(points):
     return centre, axes, local.min(axis=0), local.max(axis=0)
 
 
-def plane(positions, rgb, tris, materials, budget, weight, options, lock):
+def plane(positions, rgb, tris, materials, budget, weight, options, lock, double=()):
     if lock is not None and np.any(lock):
         return None
     parts = object_groups(positions, tris, np.arange(len(tris)))
@@ -121,6 +125,47 @@ def plane(positions, rgb, tris, materials, budget, weight, options, lock):
                    np.concatenate(out_m), None)
 
 
+def _sides(positions, tris):
+    """Each face's side and area: faces join across an edge only two faces share, where it folds less than
+    FOLD_COS."""
+    points, welded = weld_keeping(positions, tris)
+    normal = np.cross(points[welded[:, 1]] - points[welded[:, 0]], points[welded[:, 2]] - points[welded[:, 0]])
+    area = np.linalg.norm(normal, axis=1) / 2
+    normal /= np.maximum(2 * area, np.finfo(float).tiny)[:, None]
+    edges = np.sort(welded[:, [0, 1, 1, 2, 2, 0]].reshape(-1, 2), axis=1)
+    faces = np.repeat(np.arange(len(tris)), 3)
+    _, edge, count = np.unique(edges, axis=0, return_inverse=True, return_counts=True)
+    edge = edge.reshape(-1)
+    two = count[edge] == 2
+    pairs = faces[two][np.argsort(edge[two], kind='stable')].reshape(-1, 2)
+    smooth = pairs[(normal[pairs[:, 0]] * normal[pairs[:, 1]]).sum(axis=1) > FOLD_COS]
+    graph = coo_matrix((np.ones(len(smooth)), (smooth[:, 0], smooth[:, 1])), shape=(len(tris), len(tris)))
+    return connected_components(graph, directed=False)[1], area
+
+
+def sheet(positions, rgb, tris, materials, budget, weight, options, lock, double=()):
+    """A thin closed slab (cloth, a banner) as one of its two sides: an open sheet whose border is the slab's
+    outline, which simplification keeps where it shrinks the closed slab. Faces of a single-sided material get
+    both windings. None when the shape is not two large sides or has locked vertices."""
+    if lock is not None and np.any(lock):
+        return None
+    side, area = _sides(positions, tris)
+    share = np.bincount(side, weights=area) / max(area.sum(), np.finfo(float).tiny)
+    if len(share) < 2:
+        return None
+    first, second = np.argsort(share)[::-1][:2]
+    if share[second] < SIDE_SHARE:
+        return None
+    faces = side == first
+    used, local = np.unique(tris[faces], return_inverse=True)
+    one_sided = ~np.isin(materials[faces], double)
+    kept = regular(positions[used], rgb[used], local.reshape(-1, 3), materials[faces],
+                   max(1, budget // 2) if one_sided.any() else budget, weight, options, None)
+    flip = ~np.isin(kept.materials, double)
+    return StandIn('sheet', kept.positions, kept.rgb, np.concatenate([kept.tris, kept.tris[flip][:, ::-1]]),
+                   np.concatenate([kept.materials, kept.materials[flip]]), used[kept.kept])
+
+
 def _draw(mesh, query, origins, directions):
     colours = np.zeros((len(origins), 3))
     locations, rays, hits = query.first_hit(origins, directions)
@@ -154,13 +199,14 @@ def view_error(source, candidate):
     return float(np.mean(errors))
 
 
-CANDIDATES = (regular, plane)
+CANDIDATES = (regular, plane, sheet)
 
 
-def best_stand_in(positions, rgb, tris, materials, budget, weight, options, lock):
+def best_stand_in(positions, rgb, tris, materials, budget, weight, options, lock, double=()):
+    """`double` lists the materials drawn from both sides."""
     source = StandIn('source', positions, rgb, tris, materials, np.arange(len(positions)))
     candidates = [candidate for bake in CANDIDATES
-                  if (candidate := bake(positions, rgb, tris, materials, budget, weight, options, lock)) is not None]
+                  if (candidate := bake(positions, rgb, tris, materials, budget, weight, options, lock, double)) is not None]
     errors = [view_error(source, candidate) for candidate in candidates] if len(candidates) > 1 else [None]
     chosen = 0
     for i in range(1, len(candidates)):

@@ -116,3 +116,64 @@ def test_shared_copies():
     copies = shapes[0]['copies']
     np.testing.assert_allclose(copies[1][1][0] - copies[0][1][0], np.broadcast_to(offset, copies[0][1][0].shape), atol=1e-6)
     assert len(copies[0][1][2]) <= BUDGET
+
+
+CLOTH_THICKNESS = 0.01
+
+
+def cloth(columns=32, rows=16, thickness=CLOTH_THICKNESS):
+    """A draped banner as cloth meshes are modelled: a closed slab, two curved sides joined by a thin rim,
+    its lower edge cut into a V."""
+    u, v = np.meshgrid(np.linspace(0., 2., columns + 1), np.linspace(0., 1., rows + 1))
+    notch = 0.6 * (1. - abs(u - 1.))
+    surface = np.column_stack([u.ravel(), (notch + v * (1. - notch)).ravel(), 0.2 * np.sin(np.pi * u.ravel())])
+    grid = np.arange(len(surface)).reshape(rows + 1, columns + 1)
+    a, b, c, d = grid[:-1, :-1].ravel(), grid[:-1, 1:].ravel(), grid[1:, 1:].ravel(), grid[1:, :-1].ravel()
+    front = np.concatenate([np.column_stack([a, b, c]), np.column_stack([a, c, d])])
+    count = len(surface)
+    ring = np.concatenate([grid[0, :-1], grid[:-1, -1], grid[-1, :0:-1], grid[:0:-1, 0]])
+    rim = np.concatenate([np.column_stack([ring, np.roll(ring, -1), np.roll(ring, -1) + count]),
+                          np.column_stack([ring, np.roll(ring, -1) + count, ring + count])])
+    # Solidified along the surface normal, as modelling tools thicken cloth.
+    shaped = surface.reshape(rows + 1, columns + 1, 3)
+    normal = np.cross(np.gradient(shaped, axis=1), np.gradient(shaped, axis=0)).reshape(-1, 3)
+    normal /= np.linalg.norm(normal, axis=1, keepdims=True)
+    positions = np.concatenate([surface, surface - thickness * normal])
+    tris = np.concatenate([front, front[:, ::-1] + count, rim[:, ::-1]])
+    return positions, np.full_like(positions, 180.), tris, np.zeros(len(tris), dtype=int)
+
+
+CLOTH_BUDGET = 16
+
+
+def test_cloth_keeps_its_outline_as_one_sheet():
+    data = cloth()
+    for double in ((), (0,)):
+        with patch.object(ray_query, 'VARIANT', 'scalar_rgb'):
+            candidate, rows = stand_ins.best_stand_in(*data, CLOTH_BUDGET, WEIGHT, PERMISSIVE, None, double)
+        assert candidate.kind == 'sheet'
+        errors = {row['kind']: row['error'] for row in rows}
+        assert errors['sheet'] < errors['regular']
+        assert len(candidate.tris) <= CLOTH_BUDGET
+        np.testing.assert_allclose(np.ptp(candidate.positions[:, :2], axis=0), np.ptp(data[0][:, :2], axis=0), atol=CLOTH_THICKNESS)
+
+
+def winding(face):
+    return tuple(np.roll(face, -np.argmin(face)))
+
+
+def test_single_sided_sheet_has_both_windings():
+    one_sided = stand_ins.sheet(*cloth(), CLOTH_BUDGET, WEIGHT, PERMISSIVE, None)
+    two_sided = stand_ins.sheet(*cloth(), CLOTH_BUDGET, WEIGHT, PERMISSIVE, None, double=[0])
+    faces = {winding(t) for t in one_sided.tris}
+    assert all(winding(t[::-1]) in faces for t in one_sided.tris)
+    assert len(one_sided.tris) <= CLOTH_BUDGET < 2 * len(one_sided.tris)
+    assert len(two_sided.tris) <= CLOTH_BUDGET < 2 * len(two_sided.tris)
+    faces = {winding(t) for t in two_sided.tris}
+    assert not any(winding(t[::-1]) in faces for t in two_sided.tris)
+
+
+def test_box_is_not_a_sheet():
+    mesh = box([1., 1., 1.])
+    assert stand_ins.sheet(mesh.vertices, np.full_like(mesh.vertices, 180.), mesh.faces,
+                           np.zeros(len(mesh.faces), dtype=int), BUDGET, WEIGHT, PERMISSIVE, None) is None

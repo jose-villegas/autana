@@ -219,7 +219,8 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             steps = settings.simplify
             positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, tri_mat, renderer.variant.triangles,
                                                    allocation=Allocation(tri_o=np.concatenate(all_obj), object_names=src.object_names,
-                                                                         material_names=src.names, meshes=meshes, selection=selected,
+                                                                         material_names=src.names, double_sided=frozenset(settings.double_sided),
+                                                                         meshes=meshes, selection=selected,
                                                                          ceiling=getattr(renderer.variant, 'ceiling', None),
                                                                          shade=(lambda p, c, t, m, **kw: shade_placed(src, job, scene, p, c, t, m,
                                                                                                              intersector, bounce, **kw)) if job.bake else None,
