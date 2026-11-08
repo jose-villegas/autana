@@ -348,18 +348,34 @@ test_a_shallow_upright_pool_shows(void) {
     expect_thin_water_shows(vec3f_unit_y());
 }
 
+/* The lone drop's sample on every axis: it sits midway between this
+ * sample and the one before, half a sample from each. */
+#define LONE_DROP_SAMPLE 2
+
+/* One particle, at rest, midway between samples on every axis. */
+static void
+lone_drop_midway(void) {
+    fixture_begin();
+    TEST_ASSERT_EQUAL_INT(1, flip3_fill(&water, 1.0F / (float)water.seed_count, vec3f_unit_y()));
+    /* Sample s sits (s - 0.5) steps into the box: midway to the next, s steps. */
+    const vec3f_t step = flip3_field(&water, SAMPLES, field).step;
+    water.pos[0] = vec3f_add(water.h, vec3f_scale(step, (float)LONE_DROP_SAMPLE));
+    water.vel[0] = vec3f_zero();
+}
+
+static float
+lone_drop_value(const iso_field_t* f) {
+    const int s = LONE_DROP_SAMPLE;
+    return f->values[(((s * f->ny) + s) * f->nz) + s];
+}
+
 /* A lone drop midway between samples on every axis, where each sample of
  * its cell is half a sample away, is still a drop the field meshes. */
 static void
 test_a_drop_midway_between_samples_shows(void) {
-    fixture_begin();
-    TEST_ASSERT_EQUAL_INT(1, flip3_fill(&water, 1.0F / (float)water.seed_count, vec3f_unit_y()));
-    /* Sample s sits (s - 0.5) steps into the box: midway to the next, s steps. */
-    const int s = 2;
-    const vec3f_t step = flip3_field(&water, SAMPLES, field).step;
-    water.pos[0] = vec3f_add(water.h, vec3f_scale(step, (float)s));
+    lone_drop_midway();
     const iso_field_t f = flip3_field(&water, SAMPLES, field);
-    TEST_ASSERT_TRUE(f.values[(((s * f.ny) + s) * f.nz) + s] > FLIP3_SURFACE_LEVEL);
+    TEST_ASSERT_TRUE(lone_drop_value(&f) > FLIP3_SURFACE_LEVEL);
     TEST_ASSERT_GREATER_THAN_INT(0, mesh_triangles(&f));
 }
 
@@ -369,17 +385,13 @@ test_a_drop_midway_between_samples_shows(void) {
 
 static void
 test_a_drop_slower_than_the_show_speed_is_left_out(void) {
-    fixture_begin();
-    TEST_ASSERT_EQUAL_INT(1, flip3_fill(&water, 1.0F / (float)water.seed_count, vec3f_unit_y()));
-    const int s = 2;
-    const vec3f_t step = flip3_field(&water, SAMPLES, field).step;
-    water.pos[0] = vec3f_add(water.h, vec3f_scale(step, (float)s));
+    lone_drop_midway();
     water.tuning.show_speed = SHOW_SPEED;
     const float speeds[] = {0.0F, 0.5F * SHOW_SPEED, SHOW_SPEED};
     for (size_t i = 0; i < sizeof speeds / sizeof speeds[0]; i++) {
         water.vel[0] = (vec3f_t){speeds[i], 0.0F, 0.0F};
         const iso_field_t f = flip3_field(&water, SAMPLES, field);
-        TEST_ASSERT_EQUAL(speeds[i] >= SHOW_SPEED, f.values[(((s * f.ny) + s) * f.nz) + s] > FLIP3_SURFACE_LEVEL);
+        TEST_ASSERT_EQUAL(speeds[i] >= SHOW_SPEED, lone_drop_value(&f) > FLIP3_SURFACE_LEVEL);
     }
 }
 

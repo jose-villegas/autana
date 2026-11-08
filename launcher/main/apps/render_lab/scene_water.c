@@ -574,7 +574,6 @@ rebuild_surface(void) {
     if (plane != 0) {
         water_plane_field(&plane_water, &surface_field, (float)fill_percent / (float)WATER_PERCENT);
     } else {
-        water.tuning.show_speed = (float)show_speed_mm_s;
         surface_field = flip3_field(&water, (float)samples_pct / (float)WATER_PERCENT, field);
     }
     FRAME_COST_END(field_from, "water.field");
@@ -672,6 +671,7 @@ step_water(vec3f_t accel_g, uint32_t dt_ms) {
     FRAME_COST_BEGIN(step_from);
     const vec3f_t accel = vec3f_scale(accel_g, (float)gravity_mm_s2);
     water.tuning.red_black = red_black != 0;
+    water.tuning.show_speed = (float)show_speed_mm_s;
     const float step_s = (float)mathi_min((int)dt_ms, WATER_MAX_STEP_MS) / (float)MATH_MS_PER_S;
     if (plane != 0) {
         water_plane_step(&plane_water, step_s, accel_g, (float)slosh_decihz / WATER_DECIHZ_PER_HZ,

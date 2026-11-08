@@ -23,7 +23,7 @@ driven by any acceleration, in caller-owned grid and particle blocks.
 | `flip3_fraction` | The share of the volume the particles stand for |
 | `flip3_particle` | A particle in box coordinates |
 | `flip3_field_count` | The floats a surface field at that many samples per cell needs; the rate may be fractional, each axis rounding its own count |
-| `flip3_field` | The surface field: density over the box, 1 at rest, smoothed once with the walls mirrored and padded with empty samples, then every particle put inside the surface; returns the `iso_field_t` that `iso_surface_nets()` meshes ([Geometry](../math/Geometry.md#iso_surface)) |
+| `flip3_field` | The surface field: density over the box, 1 at rest, smoothed once with the walls mirrored and padded with empty samples, then every particle at least `show_speed` fast put inside the surface; returns the `iso_field_t` that `iso_surface_nets()` meshes ([Geometry](../math/Geometry.md#iso_surface)) |
 
 | Constant | Purpose |
 |---|---|
@@ -57,9 +57,8 @@ overlapping pairs apart; that sinks a pool by $`a\Delta t^2`$ each step and
 holds heaps up the way grains do, so flip3 does neither.
 
 The surface field averages a film under half a sample thick below the
-level, so each particle whose nearest sample reads below it, and that moves
-at least the tuning's `show_speed` fast, then raises the
-samples of its field cell to 1 less their distance in samples, the nearest
-to at least 0.75, so even a lone drop midway between samples stays inside.
-A slower one rests on the surface rather than flying off it, and would only
-hold a one-sample spike there, so it blends in.
+level, so each particle below the level and at least `show_speed` fast
+raises the samples of its field cell to 1 less their distance in samples,
+the nearest to at least 0.75, so even a lone drop midway between samples
+stays inside. A slower one rests on the surface rather than flying off it,
+and would only hold a one-sample spike there, so it blends in.
