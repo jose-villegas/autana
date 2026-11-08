@@ -17,6 +17,7 @@
 
 #include "core/tune.h"
 #include "math/geometry/box3f.h"
+#include "math/linear/mat3f.h"
 #include "math/linear/transformf.h"
 #include "r3d_quad_mesh.h"
 #include "render/r3d_lit_mesh.h"
@@ -76,7 +77,8 @@ typedef struct {
     uint16_t* color;
     uint16_t* depth;
     raster_stats_t stats;
-    void* scratch; /* the caller frees it */
+    int drawn_count; /* raster_drawn()'s */
+    void* scratch;   /* the caller frees it */
 } drawn_t;
 
 static drawn_t
@@ -89,6 +91,7 @@ draw(const r3d_instance_t* instances, int count) {
     out.stats = raster_draw(&raster, &frame_view);
     out.color = raster_color(&raster);
     out.depth = raster_depth(&raster);
+    (void)raster_drawn(&raster, &out.drawn_count);
     return out;
 }
 
@@ -112,7 +115,7 @@ static void
 test_a_mesh_with_no_model_draws_where_it_is(void) {
     quad_t red;
     make_quad(&red, 255, 0, 0, 0);
-    const r3d_instance_t one = {&red.mesh, NULL, NULL, NULL};
+    const r3d_instance_t one = {&red.mesh, NULL, NULL, NULL, NULL, 0};
     const drawn_t drawn = draw(&one, 1);
     TEST_ASSERT_NOT_EQUAL_HEX16(CLEAR, pixel(drawn.color, 0.0F));
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(drawn.color, 3.0F));
@@ -125,8 +128,8 @@ test_two_instances_appear_at_their_own_models(void) {
     quad_t green;
     make_quad(&red, 255, 0, 0, 0);
     make_quad(&green, 0, 255, 0, 0);
-    const r3d_instance_t red_alone = {&red.mesh, NULL, NULL, NULL};
-    const r3d_instance_t green_alone = {&green.mesh, NULL, NULL, NULL};
+    const r3d_instance_t red_alone = {&red.mesh, NULL, NULL, NULL, NULL, 0};
+    const r3d_instance_t green_alone = {&green.mesh, NULL, NULL, NULL, NULL, 0};
     drawn_t alone = draw(&red_alone, 1);
     const uint16_t red_pixel = pixel(alone.color, 0.0F);
     free(alone.scratch);
@@ -137,7 +140,7 @@ test_two_instances_appear_at_their_own_models(void) {
 
     const mat4f_t left = placed(-3.0F, 0.0F, 1.0F);
     const mat4f_t right = placed(3.0F, 0.0F, 1.0F);
-    const r3d_instance_t both[] = {{&red.mesh, &left, NULL, NULL}, {&green.mesh, &right, NULL, NULL}};
+    const r3d_instance_t both[] = {{&red.mesh, &left, NULL, NULL, NULL, 0}, {&green.mesh, &right, NULL, NULL, NULL, 0}};
     const drawn_t drawn = draw(both, 2);
     TEST_ASSERT_EQUAL_HEX16(red_pixel, pixel(drawn.color, -3.0F));
     TEST_ASSERT_EQUAL_HEX16(green_pixel, pixel(drawn.color, 3.0F));
@@ -162,7 +165,8 @@ test_position_ticks_keep_a_placed_instance_in_model_units(void) {
     ticks.node.bounds = ticks.cluster.bounds;
     ticks.mesh.position_scale = POSITION_SCALE;
     const mat4f_t model = placed(3.0F, 0.0F, 1.0F);
-    const r3d_instance_t reference = {&unit.mesh, &model, NULL, NULL}, scaled = {&ticks.mesh, &model, NULL, NULL};
+    const r3d_instance_t reference = {&unit.mesh, &model, NULL, NULL, NULL, 0},
+                         scaled = {&ticks.mesh, &model, NULL, NULL, NULL, 0};
     const drawn_t expected = draw(&reference, 1);
     const drawn_t actual = draw(&scaled, 1);
     TEST_ASSERT_NOT_EQUAL_HEX16(CLEAR, pixel(actual.color, 3.0F));
@@ -199,8 +203,8 @@ test_a_scale_widens_an_instance_about_its_position(void) {
     make_quad(&red, 255, 0, 0, 0);
     /* 1.5 units from the centre is outside the unit quad and inside a scale of 2. */
     const mat4f_t doubled_at = placed(0.0F, 0.0F, 2.0F);
-    const r3d_instance_t plain = {&red.mesh, NULL, NULL, NULL};
-    const r3d_instance_t doubled = {&red.mesh, &doubled_at, NULL, NULL};
+    const r3d_instance_t plain = {&red.mesh, NULL, NULL, NULL, NULL, 0};
+    const r3d_instance_t doubled = {&red.mesh, &doubled_at, NULL, NULL, NULL, 0};
     drawn_t drawn = draw(&plain, 1);
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(drawn.color, 1.5F));
     free(drawn.scratch);
@@ -217,8 +221,8 @@ test_a_rotation_turns_an_instance_about_its_position(void) {
     transformf_t pose = transformf_identity();
     transformf_set_rotation(&pose, (quatf_t){0, 1, 0, 0});
     const mat4f_t half_turn = transformf_compute_matrix(&pose);
-    const r3d_instance_t as_built = {&offset.mesh, NULL, NULL, NULL};
-    const r3d_instance_t turned = {&offset.mesh, &half_turn, NULL, NULL};
+    const r3d_instance_t as_built = {&offset.mesh, NULL, NULL, NULL, NULL, 0};
+    const r3d_instance_t turned = {&offset.mesh, &half_turn, NULL, NULL, NULL, 0};
     drawn_t drawn = draw(&as_built, 1);
     TEST_ASSERT_NOT_EQUAL_HEX16(CLEAR, pixel(drawn.color, 3.0F));
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(drawn.color, -3.0F));
@@ -236,8 +240,10 @@ test_a_nearer_instance_covers_a_farther_one_whichever_is_drawn_first(void) {
     make_quad(&red, 255, 0, 0, 0);
     make_quad(&green, 0, 255, 0, 0);
     const mat4f_t nearer = placed(0.0F, -2.0F, 1.0F);
-    const r3d_instance_t near_first[] = {{&green.mesh, &nearer, NULL, NULL}, {&red.mesh, NULL, NULL, NULL}};
-    const r3d_instance_t far_first[] = {{&red.mesh, NULL, NULL, NULL}, {&green.mesh, &nearer, NULL, NULL}};
+    const r3d_instance_t near_first[] = {{&green.mesh, &nearer, NULL, NULL, NULL, 0},
+                                         {&red.mesh, NULL, NULL, NULL, NULL, 0}};
+    const r3d_instance_t far_first[] = {{&red.mesh, NULL, NULL, NULL, NULL, 0},
+                                        {&green.mesh, &nearer, NULL, NULL, NULL, 0}};
     drawn_t drawn = draw(near_first, 2);
     const uint16_t first = pixel(drawn.color, 0.0F);
     free(drawn.scratch);
@@ -292,8 +298,8 @@ test_world_boxes_keep_every_copy_s_pixels_depth_and_clusters(void) {
     for (int i = 0; i < COPIES; i++) {
         const r3d_lit_mesh_t* mesh = i % 2 == 0 ? &unit->mesh : &ticks->mesh;
         boxes[i] = r3d_lit_mesh_world_bounds(mesh, &models[i]);
-        tested[i] = (r3d_instance_t){mesh, &models[i], NULL, NULL};
-        boxed[i] = (r3d_instance_t){mesh, &models[i], &boxes[i], NULL};
+        tested[i] = (r3d_instance_t){mesh, &models[i], NULL, NULL, NULL, 0};
+        boxed[i] = (r3d_instance_t){mesh, &models[i], &boxes[i], NULL, NULL, 0};
     }
     const drawn_t expected = draw(tested, COPIES);
     const drawn_t actual = draw(boxed, COPIES);
@@ -318,7 +324,7 @@ test_an_instance_whose_world_box_is_off_screen_is_skipped(void) {
     quad_t red;
     make_quad(&red, 255, 0, 0, 0);
     const box3f_t behind = {{-1.0F, -1.0F, -30.0F}, {1.0F, 1.0F, -20.0F}};
-    const r3d_instance_t boxed = {&red.mesh, NULL, &behind, NULL};
+    const r3d_instance_t boxed = {&red.mesh, NULL, &behind, NULL, NULL, 0};
     const drawn_t drawn = draw(&boxed, 1);
     TEST_ASSERT_EQUAL_INT(0, drawn.stats.clusters);
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(drawn.color, 0.0F));
@@ -344,12 +350,12 @@ static void
 test_a_world_box_wholly_outside_one_plane_skips_its_instance(void) {
     quad_t red;
     make_quad(&red, 255, 0, 0, 0);
-    const r3d_instance_t plain = {&red.mesh, NULL, NULL, NULL};
+    const r3d_instance_t plain = {&red.mesh, NULL, NULL, NULL, NULL, 0};
     const drawn_t seen = draw(&plain, 1);
     TEST_ASSERT_EQUAL_INT(1, seen.stats.clusters);
     free(seen.scratch);
     for (size_t i = 0; i < sizeof OUTSIDE / sizeof OUTSIDE[0]; i++) {
-        const r3d_instance_t boxed = {&red.mesh, NULL, &OUTSIDE[i].box, NULL};
+        const r3d_instance_t boxed = {&red.mesh, NULL, &OUTSIDE[i].box, NULL, NULL, 0};
         const drawn_t drawn = draw(&boxed, 1);
         TEST_ASSERT_EQUAL_INT_MESSAGE(0, drawn.stats.clusters, OUTSIDE[i].side);
         TEST_ASSERT_EQUAL_INT_MESSAGE(0, drawn.stats.triangles, OUTSIDE[i].side);
@@ -375,7 +381,8 @@ test_a_world_box_straddling_a_plane_keeps_the_instance_and_its_pixels(void) {
         transformf_set_position(&pose, (vec3f_t){EDGES[i].x, EDGES[i].y, 0.0F});
         const mat4f_t model = transformf_compute_matrix(&pose);
         const box3f_t box = r3d_lit_mesh_world_bounds(&red.mesh, &model);
-        const r3d_instance_t unboxed = {&red.mesh, &model, NULL, NULL}, boxed = {&red.mesh, &model, &box, NULL};
+        const r3d_instance_t unboxed = {&red.mesh, &model, NULL, NULL, NULL, 0},
+                             boxed = {&red.mesh, &model, &box, NULL, NULL, 0};
         const drawn_t expected = draw(&unboxed, 1);
         const drawn_t actual = draw(&boxed, 1);
         TEST_ASSERT_EQUAL_INT_MESSAGE(1, expected.stats.clusters, EDGES[i].side);
@@ -387,7 +394,7 @@ test_a_world_box_straddling_a_plane_keeps_the_instance_and_its_pixels(void) {
         free(actual.scratch);
     }
     const box3f_t across_near = {{-0.1F, -0.1F, -9.5F}, {0.1F, 0.1F, -8.5F}};
-    const r3d_instance_t boxed = {&red.mesh, NULL, &across_near, NULL};
+    const r3d_instance_t boxed = {&red.mesh, NULL, &across_near, NULL, NULL, 0};
     const drawn_t drawn = draw(&boxed, 1);
     TEST_ASSERT_EQUAL_INT(1, drawn.stats.clusters);
     TEST_ASSERT_NOT_EQUAL_HEX16(CLEAR, pixel(drawn.color, 0.0F));
@@ -409,7 +416,7 @@ static void
 test_with_culling_off_an_off_screen_world_box_does_not_skip(void) {
     quad_t red;
     make_quad(&red, 255, 0, 0, 0);
-    const r3d_instance_t boxed = {&red.mesh, NULL, &OUTSIDE[0].box, NULL};
+    const r3d_instance_t boxed = {&red.mesh, NULL, &OUTSIDE[0].box, NULL, NULL, 0};
     const tune_entry_t* entry = tune_find(tune_shared(), TUNE_NAME(render, cull));
     TEST_ASSERT_NOT_NULL(entry);
     saved_cull = *entry->value;
@@ -465,6 +472,153 @@ test_a_mesh_s_bounding_sphere_is_centred_on_its_box_and_reaches_its_furthest_ver
     TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, sqrtf(5.0F), sphere.radius); /* corner (4, 2) or (0, 0): 2 by 1 from the centre */
 }
 
+/* Batches: copies of one quad from packed rows, each drawn as the instance
+ * its placement makes. */
+enum { BATCH_SETS = 2, CHUNK_REACH = 4 };
+
+/* A turn row about z by `half_angle`: x and y zero, w the largest. */
+static r3d_copy_turn_t
+turn_about_z(float half_angle) {
+    const float step = R3D_COPY_TURN_RANGE / (float)R3D_COPY_STEPS;
+    return (r3d_copy_turn_t){{0, 0, (int16_t)lroundf(sinf(half_angle) / step)}, 3};
+}
+
+/* A place row `x` units along the chunk's row from its centre, in colour set `set`. */
+static r3d_copy_place_t
+place_at(float x, uint16_t set) {
+    return (r3d_copy_place_t){{(int16_t)lroundf(x / CHUNK_REACH * (float)R3D_COPY_STEPS), 0, 0}, set};
+}
+
+/* `q`'s colours as BATCH_SETS sets, red then green, the mesh's view at set 0. */
+static void
+two_colour_sets(quad_t* q, uint8_t (*colours)[3]) {
+    for (int v = 0; v < 4; v++) {
+        memcpy(colours[v], (const uint8_t[3]){255, 0, 0}, 3);
+        memcpy(colours[4 + v], (const uint8_t[3]){0, 255, 0}, 3);
+    }
+    q->mesh.colors = (const uint8_t (*)[3])colours;
+}
+
+static r3d_batch_t
+batch_of(const quad_t* q, const r3d_copy_chunk_t* chunks, const r3d_copy_place_t* places, const r3d_copy_turn_t* turns,
+         int copies) {
+    return (r3d_batch_t){.chunks = chunks,
+                         .places = places,
+                         .turns = turns,
+                         .colour_stride = (uint32_t)q->mesh.vertex_count,
+                         .copy_radius = r3d_batch_copy_radius(&q->mesh),
+                         .copy_count = (uint16_t)copies,
+                         .chunk_count = (uint16_t)r3d_batch_chunks(copies)};
+}
+
+/* What a batch test draws from, on the heap: the device stack is small. */
+typedef struct {
+    quad_t q;
+    uint8_t colours[4 * BATCH_SETS][3];
+    r3d_copy_place_t places[R3D_BATCH_CHUNK_COPIES + 1];
+    r3d_copy_turn_t turns[R3D_BATCH_CHUNK_COPIES + 1];
+    mat4f_t models[R3D_BATCH_CHUNK_COPIES + 1];
+    r3d_lit_mesh_t views[R3D_BATCH_CHUNK_COPIES + 1];
+    r3d_instance_t one_each[R3D_BATCH_CHUNK_COPIES + 1];
+} batch_rig_t;
+
+static batch_rig_t*
+batch_rig(void) {
+    batch_rig_t* rig = calloc(1, sizeof *rig);
+    TEST_ASSERT_NOT_NULL(rig);
+    make_quad(&rig->q, 255, 0, 0, 0);
+    return rig;
+}
+
+static void
+test_a_batch_draws_each_copy_as_the_instance_its_rows_place(void) {
+    batch_rig_t* rig = batch_rig();
+    two_colour_sets(&rig->q, rig->colours);
+    const float eighth = 0.39269908F; /* half of a quarter turn */
+    static const r3d_copy_chunk_t chunk = {{0.0F, 0.0F, 0.0F}, CHUNK_REACH};
+
+    enum { COPIES = 3 };
+
+    rig->places[0] = place_at(-3.0F, 0);
+    rig->places[1] = place_at(0.0F, 1);
+    rig->places[2] = place_at(3.0F, 0);
+    rig->turns[0] = turn_about_z(0.0F);
+    rig->turns[1] = turn_about_z(eighth);
+    rig->turns[2] = turn_about_z(eighth / 2.0F);
+    const r3d_batch_t batch = batch_of(&rig->q, &chunk, rig->places, rig->turns, COPIES);
+    const r3d_instance_t batched = {&rig->q.mesh, NULL, NULL, NULL, &batch, 0};
+    const drawn_t got = draw(&batched, 1);
+    TEST_ASSERT_EQUAL_INT(COPIES, got.drawn_count);
+    for (int i = 0; i < COPIES; i++) {
+        rig->models[i] = r3d_batch_copy_model(&batch, i);
+        rig->views[i] = r3d_batch_copy_mesh(&batch, &rig->q.mesh, i);
+        rig->one_each[i] = (r3d_instance_t){&rig->views[i], &rig->models[i], NULL, NULL, NULL, 0};
+    }
+    const drawn_t want = draw(rig->one_each, COPIES);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(want.color, got.color, SIZE * SIZE);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(want.depth, got.depth, SIZE * SIZE);
+    /* The rows decode to the placements they were made from. */
+    TEST_ASSERT_FLOAT_WITHIN(1e-3F, 3.0F, rig->models[2].m[0][MAT3F_AXES]);
+    TEST_ASSERT_FLOAT_WITHIN(1e-4F, cosf(2.0F * eighth), rig->models[1].m[0][0]);
+    TEST_ASSERT_FLOAT_WITHIN(1e-4F, sinf(2.0F * eighth), rig->models[1].m[1][0]);
+    /* The middle copy is in its own set: green, where the others are red. */
+    TEST_ASSERT_NOT_EQUAL_HEX16(pixel(got.color, -3.0F), pixel(got.color, 0.0F));
+    TEST_ASSERT_EQUAL_HEX16(pixel(got.color, -3.0F), pixel(got.color, 3.0F));
+    free(want.scratch);
+    free(got.scratch);
+    free(rig);
+}
+
+static void
+test_a_chunk_off_screen_draws_none_of_its_copies(void) {
+    batch_rig_t* rig = batch_rig();
+    /* One chunk far to the side, a full one, then one copy in view. */
+    const r3d_copy_chunk_t chunks[] = {{{1000.0F, 0.0F, 0.0F}, CHUNK_REACH}, {{0.0F, 0.0F, 0.0F}, CHUNK_REACH}};
+    for (int i = 0; i <= R3D_BATCH_CHUNK_COPIES; i++) {
+        rig->places[i] = place_at(0.0F, 0);
+        rig->turns[i] = turn_about_z(0.0F);
+    }
+    const r3d_batch_t batch = batch_of(&rig->q, chunks, rig->places, rig->turns, R3D_BATCH_CHUNK_COPIES + 1);
+    const r3d_instance_t batched = {&rig->q.mesh, NULL, NULL, NULL, &batch, 0};
+    const drawn_t got = draw(&batched, 1);
+    TEST_ASSERT_EQUAL_INT(1, got.drawn_count);
+    const r3d_instance_t alone = {&rig->q.mesh, NULL, NULL, NULL, NULL, 0};
+    const drawn_t want = draw(&alone, 1);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(want.color, got.color, SIZE * SIZE);
+    free(want.scratch);
+    free(got.scratch);
+
+    /* Every copy away: nothing drawn, and the picture still clears. */
+    const r3d_batch_t away = batch_of(&rig->q, chunks, rig->places, rig->turns, R3D_BATCH_CHUNK_COPIES);
+    const r3d_instance_t gone = {&rig->q.mesh, NULL, NULL, NULL, &away, 0};
+    const drawn_t none = draw(&gone, 1);
+    TEST_ASSERT_EQUAL_INT(0, none.drawn_count);
+    for (int p = 0; p < SIZE * SIZE; p++) {
+        TEST_ASSERT_EQUAL_HEX16(CLEAR, none.color[p]);
+    }
+    free(none.scratch);
+    free(rig);
+}
+
+static void
+test_a_copy_off_screen_in_a_kept_chunk_is_skipped(void) {
+    quad_t q;
+    make_quad(&q, 255, 0, 0, 0);
+
+    /* A chunk reaching from the picture to far beside it: the chunk is kept, its far copy is not. */
+    enum { WIDE = 400 };
+
+    const r3d_copy_chunk_t chunk = {{0.0F, 0.0F, 0.0F}, WIDE};
+    const float unit = (float)R3D_COPY_STEPS / WIDE;
+    const r3d_copy_place_t places[] = {{{0, 0, 0}, 0}, {{(int16_t)lroundf(WIDE * unit), 0, 0}, 0}};
+    const r3d_copy_turn_t turns[] = {turn_about_z(0.0F), turn_about_z(0.0F)};
+    const r3d_batch_t batch = batch_of(&q, &chunk, places, turns, 2);
+    const r3d_instance_t batched = {&q.mesh, NULL, NULL, NULL, &batch, 0};
+    const drawn_t got = draw(&batched, 1);
+    TEST_ASSERT_EQUAL_INT(1, got.drawn_count);
+    free(got.scratch);
+}
+
 void
 suite_r3d_instance(void) {
     RUN_TEST(test_a_mesh_with_no_model_draws_where_it_is);
@@ -482,6 +636,9 @@ suite_r3d_instance(void) {
     RUN_TEST(test_a_world_box_with_no_model_is_the_root_box_in_model_units);
     RUN_TEST(test_a_world_box_through_a_model_holds_every_transformed_corner);
     RUN_TEST(test_a_mesh_s_bounding_sphere_is_centred_on_its_box_and_reaches_its_furthest_vertex);
+    RUN_TEST(test_a_batch_draws_each_copy_as_the_instance_its_rows_place);
+    RUN_TEST(test_a_chunk_off_screen_draws_none_of_its_copies);
+    RUN_TEST(test_a_copy_off_screen_in_a_kept_chunk_is_skipped);
 }
 
 SUITE_REGISTER(suite_r3d_instance);

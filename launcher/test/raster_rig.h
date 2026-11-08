@@ -77,7 +77,7 @@ raster_rig_open(const int16_t (*const positions[])[3], int count, unsigned place
     for (int i = 0; i < count; i++) {
         r3d_quad_init(&r->quad[i], positions[i]);
         r->instance[i] =
-            (r3d_instance_t){&r->quad[i].mesh, (placed & (1U << i)) != 0 ? &r->model[i] : NULL, NULL, NULL};
+            (r3d_instance_t){&r->quad[i].mesh, (placed & (1U << i)) != 0 ? &r->model[i] : NULL, NULL, NULL, NULL, 0};
     }
     r->raster = (raster_t){.instances = r->instance, .instance_count = count, .clear = 0x1234};
     r->width = width;

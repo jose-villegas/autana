@@ -379,7 +379,11 @@ r3d_lit_mesh_bounding_sphere(const r3d_lit_mesh_t* mesh) {
 
 box3f_t
 r3d_lit_mesh_world_bounds(const r3d_lit_mesh_t* mesh, const mat4f_t* model) {
-    const box3f_t box = box3f_from_box3s(mesh->nodes[0].bounds, 1.0F / (float)mesh->position_scale);
+    return r3d_box_placed(box3f_from_box3s(mesh->nodes[0].bounds, 1.0F / (float)mesh->position_scale), model);
+}
+
+box3f_t
+r3d_box_placed(box3f_t box, const mat4f_t* model) {
     if (model == NULL) {
         return box;
     }
