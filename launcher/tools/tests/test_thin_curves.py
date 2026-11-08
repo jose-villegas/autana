@@ -45,6 +45,23 @@ def sagging(half_width, depth, sides=12):
     return p, t
 
 
+def grey_cylinder():
+    """The cylinder's thin part, its fitted curve and a grey source to light it from."""
+    p, t = cylinder()
+    part = find_thin_parts(p, t, SIDE)[0]
+    source = SimpleNamespace(p=p, tri_v=t, tri_t=t, tri_m=np.zeros(len(t), dtype=int),
+                             uv=np.zeros((len(p), 2)), materials={'surface': {'Kd': (0.25, 0.25, 0.25)}},
+                             names=['surface'], textures=[None], colors=None)
+    return part, fit_curve(p, t, part), source
+
+
+def beside(bar, wall_size, offset, *more):
+    """`bar` with a wall `wall_size` (x, z) one thick, its centre `offset` away along y, and `more` shapes."""
+    wall = soup.box((wall_size[0], 1, wall_size[1]))
+    wall.vertices = wall.vertices + [0, offset, 0]
+    return soup.concatenate([bar, wall, *more])
+
+
 class Open:
     """An intersector with nothing in the way."""
 
@@ -102,18 +119,14 @@ class ThinCurvesTests(unittest.TestCase):
         self.assertEqual(len(parts[0].triangles), 2 * len(t))
 
     def test_bar_on_a_wall_rests(self):
-        bar, wall = soup.box((4.5, 4.5, 310)), soup.box((400, 1, 400))
-        wall.vertices = wall.vertices + [0, 2.75, 0]
-        shape = soup.concatenate([bar, wall])
+        shape = beside(soup.box((4.5, 4.5, 310)), (400, 400), 2.75)
         self.assertEqual(find_thin_parts(shape.vertices, shape.faces, SIDE), [])
 
     def test_bar_on_a_wall_of_large_triangles_rests(self):
-        bar, wall = soup.box((4.5, 4.5, 310)), soup.box((4000, 1, 4000))
-        wall.vertices = wall.vertices + [0, 2.75, 0]
         specks = [soup.box((0.5, 0.5, 0.5)) for _ in range(20)]
         for k, speck in enumerate(specks):
             speck.vertices = speck.vertices + [30 + k, -30, 0]
-        shape = soup.concatenate([bar, wall, *specks])
+        shape = beside(soup.box((4.5, 4.5, 310)), (4000, 4000), 2.75, *specks)
         self.assertEqual(find_thin_parts(shape.vertices, shape.faces, SIDE), [])
 
     def test_proximity_finds_what_a_full_search_finds(self):
@@ -133,9 +146,8 @@ class ThinCurvesTests(unittest.TestCase):
         self.assertEqual(find_thin_parts(shape.vertices, shape.faces, SIDE), [])
 
     def test_pole_off_a_wall_stands(self):
-        pole, wall = soup.box((4.5, 4.5, 310)), soup.box((400, 1, 400))
-        wall.vertices = wall.vertices + [0, 40, 0]
-        shape = soup.concatenate([pole, wall])
+        pole = soup.box((4.5, 4.5, 310))
+        shape = beside(pole, (400, 400), 40)
         self.assertEqual([len(part.triangles) for part in find_thin_parts(shape.vertices, shape.faces, SIDE)],
                          [len(pole.faces)])
 
@@ -184,12 +196,7 @@ class ThinCurvesTests(unittest.TestCase):
         np.testing.assert_allclose(curve.color, result.color)
 
     def test_ring_lighting(self):
-        p, t = cylinder()
-        part = find_thin_parts(p, t, SIDE)[0]
-        curve = fit_curve(p, t, part)
-        source = SimpleNamespace(p=p, tri_v=t, tri_t=t, tri_m=np.zeros(len(t), dtype=int),
-                                 uv=np.zeros((len(p), 2)), materials={'surface': {'Kd': (0.25, 0.25, 0.25)}},
-                                 names=['surface'], textures=[None], colors=None)
+        part, curve, source = grey_cylinder()
         from r3d.light import light
         with mock.patch('r3d.light.light', wraps=light) as shade:
             lit = light_curve(curve, source, part, Open(),
@@ -207,12 +214,7 @@ class ThinCurvesTests(unittest.TestCase):
         np.testing.assert_array_equal(lit.knots, curve.knots)
 
     def test_a_knot_inside_a_wall_is_lit_along_the_stretch_it_draws(self):
-        p, t = cylinder()
-        part = find_thin_parts(p, t, SIDE)[0]
-        curve = fit_curve(p, t, part)
-        source = SimpleNamespace(p=p, tri_v=t, tri_t=t, tri_m=np.zeros(len(t), dtype=int),
-                                 uv=np.zeros((len(p), 2)), materials={'surface': {'Kd': (0.25, 0.25, 0.25)}},
-                                 names=['surface'], textures=[None], colors=None)
+        part, curve, source = grey_cylinder()
 
         def walled(points, *args, **kwargs):
             return np.where(points[:, 2:3] < 10, 0.0, 1.0) * np.ones((len(points), 3))
@@ -223,12 +225,7 @@ class ThinCurvesTests(unittest.TestCase):
         self.assertGreater(lit.color[end].min(), 0.5 * lit.color[1 - end].min())
 
     def test_a_pole_beside_a_wall_takes_the_colour_of_its_open_side(self):
-        p, t = cylinder()
-        part = find_thin_parts(p, t, SIDE)[0]
-        curve = fit_curve(p, t, part)
-        source = SimpleNamespace(p=p, tri_v=t, tri_t=t, tri_m=np.zeros(len(t), dtype=int),
-                                 uv=np.zeros((len(p), 2)), materials={'surface': {'Kd': (0.25, 0.25, 0.25)}},
-                                 names=['surface'], textures=[None], colors=None)
+        part, curve, source = grey_cylinder()
 
         def shaded_toward_the_wall(points, normals, *args, **kwargs):
             return np.where(normals[:, 0:1] > 1e-9, 0.0, 1.0) * np.ones((len(points), 3))
