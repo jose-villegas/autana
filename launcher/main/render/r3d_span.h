@@ -11,6 +11,7 @@
 #include <stdint.h>
 
 #include "gfx/target/gfx_target.h"
+#include "render/lmsk_format.h"
 #include "render/render_view.h"
 
 /* Largest bounding-box side, in pixel centres, always filled flat; the camera gate and style apply only above it. */
@@ -107,18 +108,11 @@ void r3d_span_triangle_solid(const r3d_span_target_t* target, const r3d_span_ver
 void r3d_span_capped_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                               const r3d_span_vertex_t* c, const uint16_t* face);
 
-/* An LMSK atlas as a fill reads it: one 1-bit word per atlas row, a pixel
- * kept where its u bit is set in the row its v picks. */
-typedef struct {
-    const uint32_t* rows;
-    int row_count;
-} r3d_span_mask_t;
-
 /* Either fill, `face` NULL or its colour, keeping only the pixels `mask`
  * keeps at the vertices' u, v; capped as r3d_span_capped_triangle() when
  * target->skip_hidden. The target's writers follow each kept run inside it:
  * no r3d_span_triangle_write() after it. */
-void r3d_span_masked_triangle(const r3d_span_target_t* target, const r3d_span_mask_t* mask, const r3d_span_vertex_t* a,
+void r3d_span_masked_triangle(const r3d_span_target_t* target, const lmsk_atlas_t* mask, const r3d_span_vertex_t* a,
                               const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, const uint16_t* face);
 
 /* Right after either fill of the same triangle into the same target: its

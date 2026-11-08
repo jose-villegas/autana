@@ -232,7 +232,7 @@ typedef enum { FILL_FLAT, FILL_FACE, FILL_GOURAUD } shading_t;
 typedef struct {
     plane_step_t u, v;
     int x_origin, y_origin;
-    const r3d_span_mask_t* mask;
+    const lmsk_atlas_t* mask;
 } mask_planes_t;
 
 typedef struct {
@@ -1103,7 +1103,7 @@ set_up_masked(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_
 
 static inline __attribute__((always_inline)) void
 triangle_of(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-            const r3d_span_vertex_t* c, const uint16_t* face, bool capped, bool masked, const r3d_span_mask_t* mask) {
+            const r3d_span_vertex_t* c, const uint16_t* face, bool capped, bool masked, const lmsk_atlas_t* mask) {
     const r3d_span_extent_t e = r3d_span_extent_limits(a, b, c, flat_max_rows, flat_max_width);
     const recti_t box = r3d_span_window_box(target, e.centres);
     if (recti_is_empty(box)) {
@@ -1240,7 +1240,7 @@ r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t
 }
 
 void
-r3d_span_masked_triangle(const r3d_span_target_t* target, const r3d_span_mask_t* mask, const r3d_span_vertex_t* a,
+r3d_span_masked_triangle(const r3d_span_target_t* target, const lmsk_atlas_t* mask, const r3d_span_vertex_t* a,
                          const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, const uint16_t* face) {
     triangle_of(target, a, b, c, face, target->skip_hidden, true, mask);
 }

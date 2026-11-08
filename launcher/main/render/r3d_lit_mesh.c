@@ -321,7 +321,7 @@ asset_status_t
 r3d_lit_mesh_mask_from_asset(const asset_view_t* mask, r3d_lit_mesh_t* mesh) {
     mesh->mask_uvs = NULL;
     mesh->mask_vertex_first = 0;
-    mesh->mask = (r3d_span_mask_t){0};
+    mesh->mask = (lmsk_atlas_t){0};
     const asset_status_t status =
         asset_entry_validate(*mask, LMSK_VERSION, LMSK_AT_VERSION, LMSK_HEADER_SIZE, ENTRY_ALIGNMENT);
     if (status != ASSET_OK) {
@@ -347,7 +347,7 @@ r3d_lit_mesh_mask_from_asset(const asset_view_t* mask, r3d_lit_mesh_t* mesh) {
     }
     mesh->mask_vertex_first = (int)first;
     mesh->mask_uvs = uvs;
-    mesh->mask = (r3d_span_mask_t){(const void*)(mask->data + atlas_at), (int)rows};
+    mesh->mask = (lmsk_atlas_t){(const void*)(mask->data + atlas_at), (int)rows};
     return ASSET_OK;
 }
 

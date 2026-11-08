@@ -91,7 +91,7 @@ struct r3d_pipeline_work {
             clip_vertex_t poly[CLIP_VERTEX_MAX], other[CLIP_VERTEX_MAX];
             r3d_span_vertex_t projected[CLIP_VERTEX_MAX];
             planef_t planes[PLANE_FRUSTUM_COUNT];
-            const r3d_span_mask_t* mask; /* the clipped triangle's, NULL when it is not masked */
+            const lmsk_atlas_t* mask; /* the clipped triangle's, NULL when it is not masked */
         } clip;
     };
 };
@@ -555,7 +555,7 @@ typedef unsigned draw_mode_t;
 /* One triangle, then the target's writers over it with DRAW_WRITES; a
  * masked one's writers follow inside its fill. */
 static inline __attribute__((always_inline)) void
-fill_triangle(const r3d_span_target_t* target, const r3d_span_mask_t* mask, const r3d_span_vertex_t* a,
+fill_triangle(const r3d_span_target_t* target, const lmsk_atlas_t* mask, const r3d_span_vertex_t* a,
               const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, const uint16_t* face_color, draw_mode_t mode) {
     FRAME_LAP("r3d.draw.set_up");
     if (mask != NULL) {
@@ -653,8 +653,8 @@ draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
 
 static inline __attribute__((always_inline)) void
 draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3], const uint16_t* tri,
-              const uint16_t* face_color, bool double_sided, const r3d_span_mask_t* mask,
-              const r3d_span_target_t* target, draw_mode_t mode, r3d_span_vertex_t s[3]) {
+              const uint16_t* face_color, bool double_sided, const lmsk_atlas_t* mask, const r3d_span_target_t* target,
+              draw_mode_t mode, r3d_span_vertex_t s[3]) {
     FRAME_LAP("r3d.draw.tests");
     if (misses_every_centre(v[0], v[1], v[2], target)) {
         FRAME_LAP("r3d.draw.cluster");
@@ -677,6 +677,12 @@ draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3
     fill_triangle(target, mask, &s[0], &s[1], &s[2], face_color, mode);
 }
 
+/* Triangle t's face colour, or NULL when the mesh shades by vertex. */
+static inline __attribute__((always_inline)) const uint16_t*
+face_color_of(const r3d_lit_mesh_t* mesh, int t) {
+    return mesh->face_colors == NULL ? NULL : &mesh->face_colors[t];
+}
+
 /* Masked triangle t in front: out of line, its span vertices in the clip's
  * own (here idle) buffer, and its arguments few enough to pass in registers,
  * so none of them sits on a stack stack_chain_gate bounds. A masked fill
@@ -685,31 +691,40 @@ static __attribute__((noinline)) void
 draw_masked_in_front(const r3d_lit_mesh_t* mesh, const r3d_lit_cluster_t* c, int t,
                      const r3d_pipeline_vertex_t* const v[3], const r3d_span_target_t* target,
                      r3d_pipeline_work_t* work) {
-    const uint16_t* face_color = mesh->face_colors == NULL ? NULL : &mesh->face_colors[t];
+    const uint16_t* face_color = face_color_of(mesh, t);
     draw_in_front(mesh, v, mesh->triangles[t], face_color, c->double_sided, &mesh->mask, target, 0U,
                   work->clip.projected);
+}
+
+/* Triangle t, all in front: masked out of line, or with writers (a cold
+ * draw) its vertices in the clip's idle buffer, off a stack stack_chain_gate
+ * bounds. */
+static inline __attribute__((always_inline)) void
+draw_one_in_front(const r3d_lit_mesh_t* mesh, const r3d_lit_cluster_t* c, int t,
+                  const r3d_pipeline_vertex_t* const v[3], const lmsk_atlas_t* mask, const r3d_span_target_t* target,
+                  draw_mode_t mode, r3d_pipeline_work_t* work) {
+    if (mask != NULL) {
+        draw_masked_in_front(mesh, c, t, v, target, work);
+        return;
+    }
+    const uint16_t* face_color = face_color_of(mesh, t);
+    r3d_span_vertex_t s[3];
+    draw_in_front(mesh, v, mesh->triangles[t], face_color, c->double_sided, NULL, target, mode,
+                  (mode & DRAW_WRITES) != 0 ? work->clip.projected : s);
 }
 
 /* Triangles first to end - 1 of one cluster, through `mask` when it is masked. */
 static inline __attribute__((always_inline)) void
 draw_triangles_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_cluster_t* c, int first, int end,
-                  const r3d_pipeline_vertex_t* cs, const r3d_span_mask_t* mask, const r3d_span_target_t* target,
+                  const r3d_pipeline_vertex_t* cs, const lmsk_atlas_t* mask, const r3d_span_target_t* target,
                   draw_mode_t mode, r3d_pipeline_work_t* work) {
     for (int t = first; t < end; t++) {
         const uint16_t* tri = mesh->triangles[t];
-        const uint16_t* face_color = mesh->face_colors == NULL ? NULL : &mesh->face_colors[t];
+        const uint16_t* face_color = face_color_of(mesh, t);
         const r3d_pipeline_vertex_t* const v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
         /* Cluster-owned vertices all passed near and range tests with DRAW_BOUNDED. */
         if ((mode & DRAW_BOUNDED) != 0 || (v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F)) {
-            if (mask != NULL) {
-                draw_masked_in_front(mesh, c, t, v, target, work);
-            } else {
-                /* With writers, the draw is cold: its vertices go in the clip's idle
-                 * buffer, off a stack stack_chain_gate bounds. */
-                r3d_span_vertex_t s[3];
-                draw_in_front(mesh, v, tri, face_color, c->double_sided, NULL, target, mode,
-                              (mode & DRAW_WRITES) != 0 ? work->clip.projected : s);
-            }
+            draw_one_in_front(mesh, c, t, v, mask, target, mode, work);
         } else if (v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F) {
             work->clip.mask = mask;
             draw_rebuilt(mesh, lens, tri, face_color, c->double_sided, target, work);

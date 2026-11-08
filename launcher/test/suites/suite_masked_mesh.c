@@ -14,13 +14,13 @@
 #define MASK_DEPTH    ((uint16_t)(R3D_DEPTH_NEAREST / 2))
 
 static uint16_t* pixels;
-static r3d_span_mask_t checker; /* rows inside pixels */
+static lmsk_atlas_t checker; /* rows inside pixels */
 
 static void
 cleanup(void) {
     free(pixels);
     pixels = NULL;
-    checker = (r3d_span_mask_t){0};
+    checker = (lmsk_atlas_t){0};
 }
 
 static r3d_span_target_t
@@ -37,7 +37,7 @@ fixture(void) {
         }
     }
     const r3d_span_target_t target = r3d_span_target(pixels, depth, MASK_SIDE, 0, MASK_SIDE);
-    checker = (r3d_span_mask_t){mask, MASK_SIDE};
+    checker = (lmsk_atlas_t){mask, MASK_SIDE};
     return target;
 }
 
