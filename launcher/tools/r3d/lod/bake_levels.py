@@ -14,8 +14,7 @@ coarse vertex takes its colour from the nearest level-0 point facing its way,
 one colour per cluster, and a flat triangle from the nearest to its middle.
 
 A group's error is at least the farthest its coarse clusters lie from the
-finer ones they replace, either way, plus the largest error among the groups
-those came from. clusterlod's own error measures distance off the input's
+level-0 triangles under them, either way. clusterlod's own error measures distance off the input's
 planes, so an outline that shrinks within its own plane (a thin slab's rim
 folding in) costs it nothing.
 
@@ -126,24 +125,35 @@ def outside_need(fine, at, corner, movable):
     return need
 
 
-def one_way(points, corners):
-    """Each of `points` (N x 3) to its nearest triangle of `corners` (T x 3 x 3), the farthest."""
-    farthest = 0.0
-    a, b, c = corners[:, 0], corners[:, 1], corners[:, 2]
-    for start in range(0, len(points), PUSH_CHUNK):
-        q = points[start:start + PUSH_CHUNK]
-        rows = np.repeat(q, len(corners), axis=0)
-        _, distance = closest_point_on_triangles(rows, *(np.tile(v, (len(q), 1)) for v in (a, b, c)))
-        farthest = max(farthest, float(distance.reshape(len(q), -1).min(axis=1).max()))
-    return farthest
+class Triangles:
+    """Triangles (T x 3 x 3) with a tree of their middles, for the farthest of many points from them."""
+
+    def __init__(self, corners):
+        self.corners = np.asarray(corners, dtype=np.float64)
+        self.tree = cKDTree(self.corners.mean(axis=1))
+
+    def farthest(self, points):
+        """The farthest of `points` (N x 3) from its nearest triangle. Each point tries the SAMPLE_CANDIDATES
+        triangles whose middles lie nearest: missing the nearest can only overstate the distance."""
+        k = min(SAMPLE_CANDIDATES, len(self.corners))
+        near = np.asarray(self.tree.query(points, k=k)[1]).reshape(len(points), k)
+        a, b, c = self.corners[:, 0], self.corners[:, 1], self.corners[:, 2]
+        farthest = 0.0
+        for start in range(0, len(points), PUSH_CHUNK):
+            rows = near[start:start + PUSH_CHUNK].reshape(-1)
+            q = np.repeat(points[start:start + PUSH_CHUNK], k, axis=0)
+            _, distance = closest_point_on_triangles(q, a[rows], b[rows], c[rows])
+            farthest = max(farthest, float(distance.reshape(-1, k).min(axis=1).max()))
+        return farthest
 
 
-def surface_gap(fine, coarse):
-    """How far apart two triangle sets (N x 3 x 3) lie: every vertex of each to the other's nearest triangle,
-    the farthest."""
-    fine, coarse = np.asarray(fine, dtype=np.float64), np.asarray(coarse, dtype=np.float64)
-    return max(one_way(np.unique(fine.reshape(-1, 3), axis=0), coarse),
-               one_way(np.unique(coarse.reshape(-1, 3), axis=0), fine))
+def surface_gap(level0, coarse, everything):
+    """How far coarse triangles (N x 3 x 3) lie from the level-0 triangles under them, either way: every level-0
+    vertex to the coarse triangles, and every coarse vertex to `everything`, the side's level-0 Triangles (a
+    nearer level-0 triangle elsewhere can only understate a bulge, which the push already bounds)."""
+    level0 = np.unique(np.asarray(level0, dtype=np.float64).reshape(-1, 3), axis=0)
+    coarse = np.asarray(coarse, dtype=np.float64)
+    return max(Triangles(coarse).farthest(level0), everything.farthest(np.unique(coarse.reshape(-1, 3), axis=0)))
 
 
 class Level0:
@@ -277,16 +287,18 @@ def side_levels(levels, welded, wt, tris, face, member, side, group_base):
         return LOD_NONE if g < 0 or number[g] < 0 else int(number[g])
 
     drawn = [None] * len(first)
+    under = [None] * len(first)  # the level-0 clusters each cluster stands for
     entries, coarse = [], []
     for c in np.flatnonzero(levels.cluster_refined < 0):
         # The given cluster's rows in their own order, whatever order clusterlod hands them back in.
         rows = np.sort([by_shape[oriented(t)].pop() for t in corner_ids[c]])
         drawn[c] = welded[corner_ids[c]]
+        under[c] = frozenset((int(c),))
         entries.append({"double": side, "rows": rows, "tris": tris[rows],
                         "face": None if face is None else np.asarray(face)[rows],
                         "own": LOD_NONE, "parent": group_id(levels.cluster_group[c])})
+    everything = Triangles(np.concatenate([drawn[c] for c in range(len(first)) if under[c] is not None]))
     spheres, errors, sources = [], [], []
-    made = {}
     for g in np.flatnonzero(produced):
         inputs = np.flatnonzero(levels.cluster_group == g)
         outputs = np.flatnonzero(levels.cluster_refined == g)
@@ -294,12 +306,13 @@ def side_levels(levels, welded, wt, tris, face, member, side, group_base):
         moved = push_outward(np.concatenate([corner_ids[c] for c in inputs]),
                              np.concatenate([drawn[c] for c in inputs]),
                              np.concatenate([corner_ids[c] for c in outputs]), error)
-        below = max((made.get(int(levels.cluster_refined[c]), 0.0) for c in inputs), default=0.0)
-        error = max(error, surface_gap(np.concatenate([drawn[c] for c in inputs]), moved) + below)
-        made[int(g)] = error
+        level0 = frozenset().union(*(under[c] for c in inputs))
+        error = max(error, surface_gap(welded[np.concatenate([corner_ids[c] for c in sorted(level0)])], moved,
+                                       everything))
         at = 0
         for c in outputs:
             drawn[c] = moved[at:at + len(corner_ids[c])]
+            under[c] = level0
             at += len(corner_ids[c])
             coarse.append({"double": side, "corners": drawn[c], "own": group_id(g),
                            "parent": group_id(levels.cluster_group[c])})
