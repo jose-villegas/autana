@@ -19,7 +19,9 @@ render_partial_set_changed(render_partial_t* partial, const box3f_t* boxes, int 
         partial->changed_count = -1;
         return;
     }
-    memcpy(partial->changed, boxes, sizeof(*boxes) * (size_t)count);
+    if (count > 0) { /* none may come as NULL */
+        memcpy(partial->changed, boxes, sizeof(*boxes) * (size_t)count);
+    }
     partial->changed_count = count;
 }
 
