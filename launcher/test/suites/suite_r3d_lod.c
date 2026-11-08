@@ -251,6 +251,42 @@ pick_along_the_path(const r3d_lit_mesh_t* mesh, pose_check_t check) {
     TEST_ASSERT_EQUAL_HEX32(every, ever_fine & every);
 }
 
+/* r3d_lod_list_drawn() of `mesh` under `coarse` lists, in order, the clusters
+ * r3d_lod_drawn() keeps one by one. */
+static void
+expect_the_list_is_what_drawn_keeps(const r3d_lit_mesh_t* mesh, const uint32_t* coarse) {
+    uint16_t want[CLUSTERS], listed[CLUSTERS];
+    int count = 0;
+    for (int c = 0; c < mesh->cluster_count; c++) {
+        if (r3d_lod_drawn(mesh, c, coarse)) {
+            want[count++] = (uint16_t)c;
+        }
+    }
+    TEST_ASSERT_EQUAL_INT(count, r3d_lod_list_drawn(mesh, coarse, listed, CLUSTERS));
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(want, listed, count);
+}
+
+static void
+lists_what_drawn_keeps(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint32_t* coarse) {
+    (void)lens;
+    expect_the_list_is_what_drawn_keeps(mesh, coarse);
+}
+
+/* Every cut along the path, nothing coarse (the list's fast path) and no
+ * bits at all, with the levels laid out apart and not. */
+static void
+test_the_drawn_list_holds_what_each_cluster_s_test_draws(void) {
+    const r3d_lit_mesh_t* mesh = levelled_mesh();
+    pick_along_the_path(mesh, lists_what_drawn_keeps);
+    const uint32_t clear[R3D_LOD_WORDS(GROUPS)] = {0};
+    expect_the_list_is_what_drawn_keeps(mesh, clear);
+    expect_the_list_is_what_drawn_keeps(mesh, NULL);
+    r3d_lit_mesh_t mixed = *mesh;
+    mixed.lod_finest_root = 0;
+    expect_the_list_is_what_drawn_keeps(&mixed, clear);
+    expect_the_list_is_what_drawn_keeps(&mixed, NULL);
+}
+
 static void
 parents_coarse_keep_children_coarse(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint32_t* coarse) {
     (void)lens;
@@ -784,6 +820,7 @@ void
 suite_r3d_lod(void) {
     RUN_TEST(test_a_coarse_group_keeps_every_group_simplified_into_it_coarse);
     RUN_TEST(test_every_finest_cluster_is_drawn_at_exactly_one_level_along_the_path);
+    RUN_TEST(test_the_drawn_list_holds_what_each_cluster_s_test_draws);
     RUN_TEST(test_a_group_s_bit_follows_its_projected_error_within_the_hysteresis_band);
     RUN_TEST(test_a_camera_backing_off_a_switch_by_less_than_the_band_does_not_switch_back);
     RUN_TEST(test_a_group_never_projects_larger_than_its_parent_under_a_stretched_turned_model);
