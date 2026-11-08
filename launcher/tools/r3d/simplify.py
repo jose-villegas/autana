@@ -363,14 +363,14 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
                 colour_weight(pos[used], local, budget, deviation), options, locks[used] if np.any(locks[used]) else None)
             result = stand_in.positions, stand_in.rgb, stand_in.tris, stand_in.materials
             if not len(result[2]):
-                # As a shape that keeps nothing: the object stays in the rest.
+                # As a shape that keeps nothing: the object joins the rest's pass (below).
                 fallen.add(int(objects[0]))
-                carved, candidates = False, None
-        if not carved:
+                return None
+        else:
             result = _run_pass(pos, rgb, tris[sel], labels[sel], budget, deviation, options,
                                locks if np.any(locks) else None)
         shade = (allocation.shade_shared or allocation.shade) if carved else allocation.shade
-        if shade is not None and len(result[2]) and np.any(np.isin(tri_o[sel], list(selected))):
+        if shade is not None and len(result[2]) and np.any(np.isin(tri_o[sel], list(set(selected) - fallen))):
             result = shade(*result)
         entry = dict(objects=[allocation.object_names[obj] for obj in objects], copies=1, budget=budget,
                      output_triangles=len(result[2]), locked_vertices=int(locks[np.unique(tris[sel])].sum()),
@@ -398,7 +398,19 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
     carved_first = [index for index in waiting if np.all(np.isin(tri_o[parts[index][0]], list(selected)))]
     rest = [index for index in waiting if index not in carved_first]
     carved_total = sum(entry['output_triangles'] * entry['copies'] for entry in shared)
-    carved_total += sum(run_part(*parts[index]) for index in carved_first)
+    for index in carved_first:
+        if int(tri_o[parts[index][0]][0]) not in fallen:
+            carved_total += run_part(*parts[index]) or 0
+    # A carved object that keeps no triangle as a copy is simplified with the rest, its budget added to the
+    # rest's largest pass.
+    back = [index for index in carved_first if int(tri_o[parts[index][0]][0]) in fallen]
+    if back:
+        if not rest:
+            rest = [back.pop(0)]
+        largest = max(rest, key=lambda index: parts[index][0].sum())
+        sel, budget = parts[largest]
+        parts[largest] = (np.logical_or.reduce([sel] + [parts[index][0] for index in back]),
+                          budget + sum(parts[index][1] for index in back))
     check_ceiling(carved_total + len(rest), allocation.ceiling)
     asked = sum(parts[index][1] for index in rest)
     room = asked if allocation.ceiling is None else min(asked, allocation.ceiling - carved_total)
