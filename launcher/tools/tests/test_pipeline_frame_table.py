@@ -18,53 +18,54 @@ class PipelineFrameTableTests(unittest.TestCase):
             frame_stages.chart(list(base), base, added, pathlib.Path(directory) / "chart.png")
         return [call.args[0].axes[0] for call in close.call_args_list if hasattr(call.args[0], "axes")]
 
-    def test_stage_figure_keeps_resolve_only_when_captured(self):
+    def test_stage_figure_keeps_a_stage_only_when_captured(self):
         base = {'mean': 1000, 'p50': 1000, 'max': 1000, 'r3d.draw': 2.0, 'r3d.upscale': 3.0}
         spans = dict(setup=100, edges=100, carry=100, fill=100)
-        splits = {(184, 224): dict(base, **{'r3d.resolve': 4.0}), (92, 112): base}
+        splits = {(184, 224): dict(base, **{'r3d.cull': 4.0}), (92, 112): base}
         with tempfile.TemporaryDirectory() as directory, patch("docs.plot_style.save_themes") as save:
             dynres_report.stage_figures(splits, spans, directory)
         stages = [text.get_text() for text in save.call_args_list[0].args[0].axes[0].get_legend().get_texts()]
-        self.assertIn("resolve", stages)
-        self.assertEqual(len(dynres_report.stages_table(splits).splitlines()), 6)
+        self.assertIn("cull", stages)
+        self.assertNotIn("transform", stages)
+        self.assertEqual(sum(line.startswith("|") for line in dynres_report.stages_table(splits).splitlines()), 4)
 
     def test_views_add_their_difference_in_report_order(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
             (root / "shipped.log").write_text("ms/frame avg/worst: stage.a 40/41 stage.idle 0/0 stage.rest 1/1 | total 41\n")
-            (root / "view-motion.log").write_text(
+            (root / "view-meshlets.log").write_text(
                 "ms/frame avg/worst: stage.a 42/43 view.only 15/15 stage.idle 0/0 stage.rest 7/7 | total 64\n")
             order, base, added = frame_stages.stage_costs(root / "shipped.log", str(root / "view-{view}.log"),
-                                                    ["depth", "motion"])
+                                                    ["depth", "meshlets"])
             self.assertEqual(order, ["stage.a", "view.only", "stage.idle", "stage.rest"])
             self.assertNotIn("view.only", base)
-            self.assertEqual(list(added), ["motion"])
-            self.assertEqual(added["motion"], {"stage.a": 2, "view.only": 15, "stage.idle": 0, "stage.rest": 6})
-            table = frame_stages.table(order, base, added, ["depth", "motion"], [1, 1], "chart.png")
+            self.assertEqual(list(added), ["meshlets"])
+            self.assertEqual(added["meshlets"], {"stage.a": 2, "view.only": 15, "stage.idle": 0, "stage.rest": 6})
+            table = frame_stages.table(order, base, added, ["depth", "meshlets"], [1, 1], "chart.png")
             self.assertIn("| view.only | not run | not run | +15.00 |", table)
             self.assertIn("| total | 41.00 | 100% | +23.00 |", table)
             self.assertIn("Not captured: depth.", table)
             self.assertIn("mean of 1 report windows", table)
             self.assertIn("mean of 1 to 3 report windows",
-                          frame_stages.table(order, base, added, ["motion"], [3, 1], "chart.png"))
-            (root / "view-motion.log").write_text(
-                "ms/frame avg/worst: stage.a 30/31 view.shared 2/2 tail.shared 3/3 motion.tail 1/1 | total 36\n")
+                          frame_stages.table(order, base, added, ["meshlets"], [3, 1], "chart.png"))
+            (root / "view-meshlets.log").write_text(
+                "ms/frame avg/worst: stage.a 30/31 view.shared 2/2 tail.shared 3/3 meshlets.tail 1/1 | total 36\n")
             (root / "view-tiles.log").write_text(
                 "ms/frame avg/worst: stage.a 40/41 view.shared 1/1 tail.shared 2/2 tiles.tail 1/1 | total 44\n")
             order, base, added = frame_stages.stage_costs(root / "shipped.log", str(root / "view-{view}.log"),
-                                                        ["depth", "motion", "tiles"])
+                                                        ["depth", "meshlets", "tiles"])
             self.assertEqual(order, ["stage.a", "stage.idle", "stage.rest", "view.shared",
-                                     "tail.shared", "motion.tail", "tiles.tail"])
-            self.assertEqual(list(added), ["motion", "tiles"])
-            self.assertEqual(added["motion"]["stage.a"], -10)
-            self.assertEqual(added["motion"]["stage.rest"], -1)
-            table = frame_stages.table(order, base, added, ["depth", "motion", "tiles"], [1, 1, 1], "chart.png")
+                                     "tail.shared", "meshlets.tail", "tiles.tail"])
+            self.assertEqual(list(added), ["meshlets", "tiles"])
+            self.assertEqual(added["meshlets"]["stage.a"], -10)
+            self.assertEqual(added["meshlets"]["stage.rest"], -1)
+            table = frame_stages.table(order, base, added, ["depth", "meshlets", "tiles"], [1, 1, 1], "chart.png")
             self.assertIn("| stage.a | 40.00 | 98% | -10.00 | +0.00 |", table)
             self.assertIn("| stage.rest | 1.00 | 2% | -1.00 | -1.00 |", table)
             self.assertIn("| view.shared | not run | not run | +2.00 | +1.00 |", table)
             self.assertIn("| total | 41.00 | 100% | -5.00 | +3.00 |", table)
             with self.assertRaises(ValueError):
-                frame_stages.stage_costs(root / "missing.log", str(root / "view-{view}.log"), ["motion"])
+                frame_stages.stage_costs(root / "missing.log", str(root / "view-{view}.log"), ["meshlets"])
 
     def test_each_captured_view_has_its_own_chart(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -72,16 +73,16 @@ class PipelineFrameTableTests(unittest.TestCase):
             shipped = root / "frame.png"
             order = ["stage.a", "view.shared", "stage.idle", "stage.rest"]
             base = {"stage.a": 40, "stage.idle": 0, "stage.rest": 1}
-            added = {"motion": {"stage.a": -10, "view.shared": 2, "stage.idle": 0, "stage.rest": -1},
+            added = {"meshlets": {"stage.a": -10, "view.shared": 2, "stage.idle": 0, "stage.rest": -1},
                      "tiles": {"stage.a": 1, "view.shared": 3, "stage.idle": 0, "stage.rest": 0}}
-            names = ["depth", "motion", "tiles"]
+            names = ["depth", "meshlets", "tiles"]
             import matplotlib.pyplot as plt
             with patch("matplotlib.pyplot.close", wraps=plt.close) as close:
                 frame_stages.chart(order, base, added, shipped)
             axes = [call.args[0].axes[0] for call in close.call_args_list
                     if hasattr(call.args[0], "axes")]
             self.assertEqual([axis.get_title() for axis in axes],
-                             ["As shipped", "With the motion view", "With the tiles view"])
+                             ["As shipped", "With the meshlets view", "With the tiles view"])
             self.assertEqual(axes[0].get_xlim(), (0, max(sum(base.values()),
                              max(frame_stages.MS_PER_SECOND / rate for rate in frame_stages.FRAME_RATES))
                              * (1 + frame_stages.AXIS_HEADROOM)))
@@ -116,12 +117,12 @@ class PipelineFrameTableTests(unittest.TestCase):
                                  [frame_stages.MS_PER_SECOND / rate for rate in frame_stages.FRAME_RATES
                                   if axis.get_xlim()[0] <= frame_stages.MS_PER_SECOND / rate <= axis.get_xlim()[1]])
             self.assertEqual({path.name for path in root.glob("*.png")},
-                             {"frame.png", "frame.motion.png", "frame.tiles.png"})
+                             {"frame.png", "frame.meshlets.png", "frame.tiles.png"})
             table = frame_stages.table(order, base, added, names, [1, 1, 1], shipped.name)
             images = [line for line in table.splitlines() if line.startswith("![")]
             self.assertEqual(images, [
                 "![Frame stages as shipped](../images/render/frame.png)",
-                "![Frame stages with the motion view](../images/render/frame.motion.png)",
+                "![Frame stages with the meshlets view](../images/render/frame.meshlets.png)",
                 "![Frame stages with the tiles view](../images/render/frame.tiles.png)"])
             self.assertIn("Not captured: depth.", table)
 
@@ -151,25 +152,25 @@ class PipelineFrameTableTests(unittest.TestCase):
 
     def test_zero_rounded_shares_are_absent_from_bars_and_legends(self):
         base = {"stage.a": 99.6, "stage.b": 0.4}
-        added = {"motion": {"stage.a": 20, "stage.b": 0.4}}
+        added = {"meshlets": {"stage.a": 20, "stage.b": 0.4}}
         axes = self.chart_axes(base, added)
         for axis, value, label in zip(axes, [99.6, 20], ["stage.a 100%", "stage.a +20%"]):
             with self.subTest(chart=axis.get_title()):
                 self.assertEqual([bar.get_width() for bar in axis.patches], [value])
                 self.assertEqual([text.get_text() for text in axis.figure.legends[0].texts], [label])
-        table = frame_stages.table(list(base), base, added, ["motion"], [1, 1], "chart.png")
+        table = frame_stages.table(list(base), base, added, ["meshlets"], [1, 1], "chart.png")
         self.assertIn("| stage.b | 0.40 | 0% | +0.40 |", table)
 
     def test_negative_delta_is_absent_from_bars_and_legend(self):
         base = {"stage.a": 90, "stage.rest": 10}
-        added = {"motion": {"stage.a": 20, "stage.rest": -5}}
+        added = {"meshlets": {"stage.a": 20, "stage.rest": -5}}
         axis = self.chart_axes(base, added)[-1]
         self.assertEqual([bar.get_width() for bar in axis.patches], [20])
         self.assertEqual([text.get_text() for text in axis.figure.legends[0].texts], ["stage.a +20%"])
 
     def test_view_legend_handles_match_drawn_bar_styles(self):
         base = {"stage.a": 90, "stage.rest": 10}
-        added = {"motion": {"stage.a": 20, "stage.rest": 5}}
+        added = {"meshlets": {"stage.a": 20, "stage.rest": 5}}
         axes = self.chart_axes(base, added)
         for axis in axes:
             handles = axis.figure.legends[0].legend_handles
@@ -270,7 +271,7 @@ class PipelineFrameTableTests(unittest.TestCase):
 
     def test_view_names_come_from_the_view_table(self):
         names = frame_stages.view_names()
-        self.assertEqual(names, ["depth", "tiles", "motion", "meshlets", "cull", "boxes", "overdraw", "copies"])
+        self.assertEqual(names, ["depth", "tiles", "meshlets", "cull", "boxes", "overdraw", "copies"])
         with tempfile.TemporaryDirectory() as directory:
             source = pathlib.Path(directory) / "context.c"
             source.write_text('static const render_debug_view_t views[] = {\n'

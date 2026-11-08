@@ -159,6 +159,47 @@ def save_themed_plot(fig, axis, path, title, *, legend_columns=LEGEND_COLUMNS):
     save_themes(fig, path)
 
 
+POINT_LABEL_GAP = 3  # points between a labelled dot and its label, the nearest ring tried
+POINT_LABEL_RINGS = 4  # rings of candidate places, each POINT_LABEL_GAP further out
+POINT_LABEL_MARKER = 3  # half the side, in pixels, of the box a labelled dot keeps free
+
+
+def place_labels(axis, points, texts, color=INK):
+    """Label each (x, y) data point with its text, in order, at the nearest of eight places per ring around it whose
+    box overlaps no earlier label, no labelled dot and nothing outside the axes; a label past the first ring draws a
+    leader line to its dot. Call after the axes' limits are final."""
+    fig = axis.figure
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    frame = axis.get_window_extent(renderer)
+    side = 2 * POINT_LABEL_MARKER
+    taken = [matplotlib.transforms.Bbox.from_bounds(x - POINT_LABEL_MARKER, y - POINT_LABEL_MARKER, side, side)
+             for x, y in axis.transData.transform(points)]
+    places = [(ring, dx, dy) for ring in range(1, POINT_LABEL_RINGS + 1)
+              for dx, dy in ((1, 1), (1, -1), (-1, 1), (-1, -1), (1, 0), (-1, 0), (0, 1), (0, -1))]
+
+    def label(point, text, ring, dx, dy, arrow=None):
+        return axis.annotate(text, point, xytext=(dx * ring * POINT_LABEL_GAP, dy * ring * POINT_LABEL_GAP),
+                             textcoords="offset points", fontsize=LABEL_SIZE, color=color, arrowprops=arrow,
+                             ha={1: "left", -1: "right", 0: "center"}[dx], va={1: "bottom", -1: "top", 0: "center"}[dy])
+
+    for point, text in zip(points, texts):
+        # No free place: the nearest one, overlapping.
+        chosen = places[0]
+        for place in places:
+            trial = label(point, text, *place)
+            box = trial.get_window_extent(renderer)
+            trial.remove()
+            if (frame.contains(box.x0, box.y0) and frame.contains(box.x1, box.y1)
+                    and not any(box.overlaps(other) for other in taken)):
+                chosen = place
+                break
+        arrow = dict(arrowstyle="-", color=MUTED, linewidth=0.5, shrinkA=0, shrinkB=2) if chosen[0] > 1 else None
+        placed = label(point, text, *chosen, arrow)
+        placed.set_in_layout(False)
+        taken.append(placed.get_window_extent(renderer))
+
+
 def wire_sphere(axis, center, radius, color=FAINT):
     yaw = np.linspace(0, 2 * np.pi, WIRE_SAMPLES)
     pitch = np.linspace(-np.pi / 2, np.pi / 2, WIRE_SAMPLES)
