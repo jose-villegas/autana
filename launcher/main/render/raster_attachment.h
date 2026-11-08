@@ -22,9 +22,6 @@ struct raster_attachment {
      * this instance, or returns false to leave this attachment unwritten.
      * Called once per instance in order, drawn or not, so it may count. */
     bool (*writer)(const raster_attachment_t* self, int instance, r3d_span_writer_t* out);
-    /* Optional. Once every instance is drawn, `rows` of the picture, both
-     * cores at once on disjoint rows; `index` is this attachment's in it. */
-    void (*resolve)(const raster_attachment_t* self, const raster_t* raster, const gfx_target_t* rows, int index);
     /* Optional. Development builds: paints `picture`'s colour from this
      * attachment. */
     void (*show)(const raster_attachment_t* self, const raster_t* raster, const gfx_target_t* picture, int index);
@@ -33,6 +30,12 @@ struct raster_attachment {
 
 /* A clear hook zeroing a 16-bit attachment, as depth starts empty. */
 void raster_attachment_clear_u16(const raster_attachment_t* self, const raster_t* raster, void* pixels, size_t count);
+
+/* A 16-bit id map: cleared to 0, `writer`'s ids tagged on each pixel won. */
+raster_attachment_t
+raster_attachment_ids(void (*begin)(const raster_attachment_t*, const raster_t*, const render_view_t*),
+                      bool (*writer)(const raster_attachment_t*, int, r3d_span_writer_t*),
+                      void (*show)(const raster_attachment_t*, const raster_t*, const gfx_target_t*, int), void* state);
 
 /* A span writer for a 16- or 32-bit attachment: the pixels this triangle
  * won, those whose depth is the one it filled with, take `writer->value`. */

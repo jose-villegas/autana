@@ -133,3 +133,14 @@ class TriangleProximity:
         tri = self.corners[candidates]
         _, distance = closest_point_on_triangles(np.broadcast_to(point, (len(tri), 3)), *tri.transpose(1, 0, 2))
         return candidates[distance <= reach]
+
+
+def majority(parts, values, count):
+    """Per part 0..count-1, the value most of its entries hold (0 for a part with none)."""
+    pairs, hits = np.unique(np.column_stack([parts, values]), axis=0, return_counts=True)
+    best = np.zeros(count, dtype=np.int64)
+    most = np.zeros(count, dtype=np.int64)
+    for (part, value), number in zip(pairs, hits):
+        if number > most[part]:
+            best[part], most[part] = value, number
+    return best

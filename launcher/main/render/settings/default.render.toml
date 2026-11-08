@@ -4,3 +4,9 @@
 cull = true
 depth_fit = true
 batched = true
+
+[lod]
+tolerance_px = 2.0
+hysteresis_px = 0.5
+coverage_permille = 250
+pick_every = 4

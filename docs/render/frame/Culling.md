@@ -16,7 +16,7 @@ flowchart LR
     subgraph Offline["offline, at the bake"]
         Vis["visibility<br/><i>triangles no camera<br/>pose sees</i>"]
     end
-    subgraph Census["the cull, core 0"]
+    subgraph Census["the cull, both cores"]
         direction TB
         Inst["instance<br/><i>its world box, then<br/>its root box under its model</i>"] --> Node["node<br/><i>box against the planes<br/>its parent crossed</i>"]
         Node --> Cluster["cluster<br/><i>box against<br/>the leaf's planes</i>"]
@@ -32,7 +32,7 @@ flowchart LR
 | Stage | Test | Unit | Where | Saves |
 |---|---|---|---|---|
 | Visibility | no ray from the camera region or path reaches it | triangle | the importer, offline ([visibility](../scene/Scene-Files.md#visibility-camera_region)) | flash and every stage below |
-| Instance | its world box, then its root node's box, is outside a frustum plane | instance, each copy under its own model | `cull_instances()` in [raster.c](../../../launcher/main/render/raster.c), then `r3d_pipeline_cull()` from the root | the whole mesh; with the world box, its lens and its walk too |
+| Instance | its world box, then its root node's box, is outside a frustum plane | instance, each copy under its own model | `cull_instances()` in [raster.c](../../../launcher/main/render/raster.c), then `r3d_pipeline_cull()` from the root | the whole mesh; with the world box, its lens, its level pick and its walk too |
 | Node | its box is outside a plane its parent's box crossed | node of the cluster tree | `r3d_pipeline_cull()` | its subtree |
 | Cluster | its box is outside a plane its leaf's box crossed | cluster | `r3d_pipeline_cull()` | its vertices' transform and its triangles |
 | Rows | its transformed vertices span no row of this core's half | cluster, per core | `r3d_pipeline_draw()` | its triangles on that core |
@@ -98,8 +98,9 @@ with the walk's nodes visited and cut and its clusters tested and kept.
 ## The cull, seen
 
 The cull view ([raster_cull_view.h](../../../launcher/main/render/view/raster_cull_view.h))
-paints every cluster in the colour of its fate this frame. Seen from the camera
-only drawn clusters show, so it redraws from a spectator.
+paints every cluster in the colour of its fate this frame: of a mesh with
+levels, only the clusters its level pick chose. Seen from the camera only drawn
+clusters show, so it redraws from a spectator.
 
 | Fate | Colour | The cluster |
 |---|---|---|

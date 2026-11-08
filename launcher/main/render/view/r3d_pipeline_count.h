@@ -41,9 +41,9 @@ int r3d_pipeline_count_coarse(const r3d_lit_mesh_t* mesh, const uint16_t* cluste
 
 /* Sorts each triangle of `clusters` as r3d_pipeline_draw() would over the
  * whole screen, from `cs` as r3d_pipeline_transform() left it, adding to
- * `counts`. `set_up`, when not NULL, holds mesh->cluster_count entries and
- * each listed cluster's is how many of its triangles reach r3d_span, the
- * clipped ones included. */
+ * `counts`. `set_up`, when not NULL, holds `count` entries, one per listed
+ * cluster in order: how many of its triangles reach r3d_span, the clipped
+ * ones included. */
 void r3d_pipeline_count_triangles(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters,
                                   int count, const r3d_pipeline_vertex_t* cs, r3d_pipeline_counts_t* counts,
                                   uint16_t* set_up);
