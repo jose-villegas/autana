@@ -19,7 +19,7 @@ from r3d.lod.bake_levels import bake_lit_mesh
 from r3d.geometry import closest_point_on_triangles
 from r3d.lod import pick
 from r3d.lit_mesh import MAX_TRIANGLES, MAX_VERTICES
-from r3d.lod.bake_levels import INT16_MAX, push_outward, quantised_groups, within_format
+from r3d.lod.bake_levels import INT16_MAX, push_outward, quantised_groups, surface_gap, within_format
 from r3d.mesh_asset import LOD_ENCLOSE_MARGIN, LOD_NONE
 import test_r3d_lod
 
@@ -286,3 +286,46 @@ class PushOutwardTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# A banner's sides and rim, in ticks: wide enough for several levels, thin as cloth.
+SLAB_COLUMNS, SLAB_ROWS = 48, 24
+SLAB_SIZE = (2000.0, 1000.0)
+SLAB_THICKNESS = 10.0
+
+
+def thin_slab():
+    """A closed slab as cloth is modelled: two curved sides joined by a rim, with a V cut into its lower edge.
+    Simplifying it may fold the rim in, which shrinks the outline within the sides' own planes."""
+    u, v = np.meshgrid(np.linspace(0., 1., SLAB_COLUMNS + 1), np.linspace(0., 1., SLAB_ROWS + 1))
+    notch = 0.6 * (1. - abs(2 * u - 1.))
+    surface = np.column_stack([u.ravel() * SLAB_SIZE[0], (notch + v * (1. - notch)).ravel() * SLAB_SIZE[1],
+                               0.2 * SLAB_SIZE[1] * np.sin(2 * np.pi * u.ravel())])
+    grid = np.arange(len(surface)).reshape(SLAB_ROWS + 1, SLAB_COLUMNS + 1)
+    a, b, c, d = grid[:-1, :-1].ravel(), grid[:-1, 1:].ravel(), grid[1:, 1:].ravel(), grid[1:, :-1].ravel()
+    side = np.concatenate([np.column_stack([a, b, c]), np.column_stack([a, c, d])])
+    shaped = surface.reshape(SLAB_ROWS + 1, SLAB_COLUMNS + 1, 3)
+    normal = np.cross(np.gradient(shaped, axis=1), np.gradient(shaped, axis=0)).reshape(-1, 3)
+    normal /= np.linalg.norm(normal, axis=1, keepdims=True)
+    count = len(surface)
+    ring = np.concatenate([grid[0, :-1], grid[:-1, -1], grid[-1, :0:-1], grid[:0:-1, 0]])
+    rim = np.concatenate([np.column_stack([ring, np.roll(ring, -1), np.roll(ring, -1) + count]),
+                          np.column_stack([ring, np.roll(ring, -1) + count, ring + count])])
+    points = np.concatenate([surface, surface - SLAB_THICKNESS * normal])
+    triangles = np.concatenate([side, side[:, ::-1] + count, rim[:, ::-1]])
+    return points, np.full((len(points), 3), 128), triangles, np.ones(len(triangles), dtype=int)
+
+
+def cluster_triangles(mesh, clusters):
+    return np.concatenate([mesh.pos[mesh.tris[c[2]:c[2] + c[3]]] for c in clusters]).astype(np.float64)
+
+
+class ThinSlabErrorTest(unittest.TestCase):
+    def test_each_group_error_holds_how_far_its_coarse_clusters_lie_from_the_finer_ones(self):
+        mesh = read_back(bake_lit_mesh(*thin_slab(), position_scale=1, lod=True))
+        self.assertGreater(len(mesh.groups), 0)
+        for g, row in enumerate(mesh.groups):
+            fine = cluster_triangles(mesh, [c for c, (_, parent) in zip(mesh.clusters, mesh.lod) if parent == g])
+            coarse = cluster_triangles(mesh, [c for c, (own, _) in zip(mesh.clusters, mesh.lod) if own == g])
+            gap = surface_gap(fine, coarse)
+            self.assertGreaterEqual(row[4] + ROUNDING_TICKS, gap, f"group {g}")
