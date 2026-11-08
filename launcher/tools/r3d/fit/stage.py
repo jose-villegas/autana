@@ -58,11 +58,7 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     if cost_weight:
         command += ["--cost-model", str(pathlib.Path(__file__).parents[1] / "board_cost_weights.txt"),
                     "--cost-weight", str(cost_weight)]
-    if bundle_entries is None or mesh_asset.read_mesh_header(start.read_bytes()).triangles:
-        fit_main(command)
-    else:
-        out.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(start, out / start.name)
+    fit_main(command)
     if target is None:
         target = pathlib.Path(work) / f"{job.asset_name}.bundle"
     fitted_entries, _ = mesh_bundle.decode((out / start.name).read_bytes())

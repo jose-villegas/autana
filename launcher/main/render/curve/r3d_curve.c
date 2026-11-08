@@ -1,6 +1,8 @@
 #include "render/curve/r3d_curve.h"
 
 #include <math.h>
+#include "asset/asset_bytes.h"
+#include "asset/asset_entry.h"
 #include "image/pixel/rgb565.h"
 #include "math/geometry/box3f.h"
 #include "profile/frame_laps.h"
@@ -14,11 +16,17 @@
 
 enum { SCREEN_LEFT, SCREEN_RIGHT, SCREEN_TOP, SCREEN_BOTTOM, SCREEN_PLANES };
 
-#define CURVE_SKIP_PX     1.0F
-#define CURVE_HALF        0.5F
-#define COLOR_RED_SHIFT   16
-#define COLOR_GREEN_SHIFT 8
-#define COLOR_MASK        UINT8_MAX
+#define CURVE_SKIP_PX 1.0F
+#define CURVE_HALF    0.5F
+
+enum {
+    HEADER_BYTES = R3D_CURVE_HEADER_WORDS * sizeof(uint16_t),
+    AT_COUNT = 0,
+    AT_KNOTS = sizeof(uint16_t),
+    AT_VERSION = 2 * sizeof(uint16_t),
+    AT_RESERVED = 3 * sizeof(uint16_t),
+    ENTRY_ALIGNMENT = sizeof(uint16_t),
+};
 
 _Static_assert(sizeof(r3d_curve_t) == 16, "LCRV curve row layout");
 _Static_assert(sizeof(r3d_curve_knot_t) == 10, "LCRV knot row layout");
@@ -43,20 +51,6 @@ static knot_t
 knot_between(knot_t a, knot_t b, float t) {
     return (knot_t){vec3f_add(a.point, vec3f_scale(vec3f_sub(b.point, a.point), t)),
                     a.radius + (t * (b.radius - a.radius)), a.color};
-}
-
-static float
-channel(uint32_t rgb, unsigned shift) {
-    return (float)((rgb >> shift) & COLOR_MASK);
-}
-
-static uint16_t
-mean_color(uint16_t a, uint16_t b) {
-    const uint32_t x = rgb565be_to_rgb888(a);
-    const uint32_t y = rgb565be_to_rgb888(b);
-    return r3d_span_pack_rgb((channel(x, COLOR_RED_SHIFT) + channel(y, COLOR_RED_SHIFT)) * CURVE_HALF,
-                             (channel(x, COLOR_GREEN_SHIFT) + channel(y, COLOR_GREEN_SHIFT)) * CURVE_HALF,
-                             (channel(x, 0) + channel(y, 0)) * CURVE_HALF);
 }
 
 static float
@@ -98,14 +92,11 @@ clip_ribbon(corner_t vertices[CLIPPED_CORNERS], const r3d_lens_t* lens) {
     return count;
 }
 
+/* Colour goes to the fill as one packed value, so the vertex carries none. */
 static r3d_span_vertex_t
-span_vertex(corner_t corner, uint32_t rgb) {
-    return (r3d_span_vertex_t){(int32_t)lroundf(corner.x * R3D_SUBPIXEL),
-                               (int32_t)lroundf(corner.y * R3D_SUBPIXEL),
-                               corner.z,
-                               channel(rgb, COLOR_RED_SHIFT),
-                               channel(rgb, COLOR_GREEN_SHIFT),
-                               channel(rgb, 0)};
+span_vertex(corner_t corner) {
+    return (r3d_span_vertex_t){
+        .x = (int32_t)lroundf(corner.x * R3D_SUBPIXEL), .y = (int32_t)lroundf(corner.y * R3D_SUBPIXEL), .z = corner.z};
 }
 
 /* Whether a ribbon's corners all lie above or all below this core's rows, so it fills none of them. */
@@ -125,7 +116,7 @@ ribbon_misses_rows(const corner_t corners[QUAD_CORNERS], const r3d_span_target_t
 /* Out of line: the curve loop's knots stay off the ribbon's clip and fill. */
 static __attribute__((noinline)) void
 segment(const knot_t* from, const knot_t* to, float radius_scale, const r3d_lens_t* lens,
-        const r3d_span_target_t* target) {
+        const r3d_span_target_t* target, bool covered) {
     knot_t a = *from;
     knot_t b = *to;
     const float near = lens->project.near_z;
@@ -153,6 +144,9 @@ segment(const knot_t* from, const knot_t* to, float radius_scale, const r3d_lens
     const float ah = fmaxf(ar, R3D_CURVE_MIN_WIDTH_PX * CURVE_HALF);
     const float bh = fmaxf(br, R3D_CURVE_MIN_WIDTH_PX * CURVE_HALF);
     const float coverage = fminf(1.0F, (ar + br) / (ah + bh));
+    if ((coverage < 1.0F) != covered) {
+        return;
+    }
     const float ux = length >= CURVE_SKIP_PX ? dx / length : 1.0F;
     const float uy = length >= CURVE_SKIP_PX ? dy / length : 0.0F;
     const float ex = length >= CURVE_SKIP_PX ? bx : ax;
@@ -169,22 +163,21 @@ segment(const knot_t* from, const knot_t* to, float radius_scale, const r3d_lens
         return;
     }
     const int count = clip_ribbon(corners, lens);
-    const uint16_t color = mean_color(a.color, b.color);
     if (count < TRIANGLE_CORNERS) {
         return;
     }
-    const uint32_t rgb = rgb565be_to_rgb888(color);
+    const uint16_t color = rgb565be_blend(a.color, b.color, RGB565_SCALE_UNIT / 2);
     FRAME_LAP("r3d.curve.fill");
     /* A fan from the first corner, three vertices at a time: no array of them on the stack. */
-    const r3d_span_vertex_t first = span_vertex(corners[0], rgb);
-    r3d_span_vertex_t previous = span_vertex(corners[1], rgb);
+    const r3d_span_vertex_t first = span_vertex(corners[0]);
+    r3d_span_vertex_t previous = span_vertex(corners[1]);
     for (int i = 2; i < count; i++) {
-        const r3d_span_vertex_t next = span_vertex(corners[i], rgb);
-        if (coverage >= 1.0F) {
-            r3d_span_triangle_solid(target, &first, &previous, &next, color);
-        } else {
-            r3d_span_triangle_cover(target, &first, &previous, &next,
+        const r3d_span_vertex_t next = span_vertex(corners[i]);
+        if (covered) {
+            r3d_span_triangle_cover(target, &first, &previous, &next, color,
                                     (unsigned)lroundf(coverage * R3D_SPAN_COVERAGE_FULL));
+        } else {
+            r3d_span_triangle_solid(target, &first, &previous, &next, color);
         }
         previous = next;
     }
@@ -205,8 +198,57 @@ curve_in_view(const r3d_curve_t* curve, const r3d_lens_t* lens, const r3d_span_t
     return !box3f_outside_planes(box, planes, PLANE_FRUSTUM_COUNT, &mask);
 }
 
+/* Each curve's knots follow the last curve's, at least two, every knot's tube inside the curve's box. */
+static bool
+curves_are_inside(r3d_curve_set_t set, unsigned knots) {
+    unsigned end = 0;
+    for (int i = 0; i < set.curve_count; i++) {
+        const r3d_curve_t* row = &set.curves[i];
+        if (row->first != end || row->count < 2 || (unsigned)row->first + row->count > knots) {
+            return false;
+        }
+        end = (unsigned)row->first + row->count;
+        for (unsigned k = row->first; k < end; k++) {
+            const r3d_curve_knot_t* knot = &set.knots[k];
+            const int16_t position[3] = {knot->x, knot->y, knot->z};
+            for (int axis = 0; axis < 3; axis++) {
+                if ((int)position[axis] - knot->radius < row->lo[axis]
+                    || (int)position[axis] + knot->radius > row->hi[axis]) {
+                    return false;
+                }
+            }
+        }
+    }
+    return end == knots;
+}
+
+asset_status_t
+r3d_curve_set_from_asset(asset_view_t asset, r3d_curve_set_t* out) {
+    *out = (r3d_curve_set_t){0};
+    asset_status_t status = asset_entry_validate(asset, R3D_CURVE_VERSION, AT_VERSION, HEADER_BYTES, ENTRY_ALIGNMENT);
+    if (status != ASSET_OK) {
+        return status;
+    }
+    if (asset_read_u16(asset.data + AT_RESERVED) != 0) {
+        return ASSET_ERR_FORMAT;
+    }
+    const unsigned count = asset_read_u16(asset.data + AT_COUNT);
+    const unsigned knots = asset_read_u16(asset.data + AT_KNOTS);
+    const size_t at = HEADER_BYTES + (count * sizeof(r3d_curve_t));
+    if (at + (knots * sizeof(r3d_curve_knot_t)) != asset.size) {
+        return ASSET_ERR_BOUNDS;
+    }
+    const r3d_curve_set_t set =
+        r3d_curve_set_at((const r3d_curve_t*)(const void*)(asset.data + HEADER_BYTES), (int)count);
+    if (!curves_are_inside(set, knots)) {
+        return ASSET_ERR_BOUNDS;
+    }
+    *out = set;
+    return ASSET_OK;
+}
+
 void
-r3d_curve_draw(r3d_curve_set_t set, const r3d_lens_t* lens, const r3d_span_target_t* target) {
+r3d_curve_draw(r3d_curve_set_t set, const r3d_lens_t* lens, const r3d_span_target_t* target, bool covered) {
     if (set.curve_count == 0) {
         return;
     }
@@ -228,7 +270,7 @@ r3d_curve_draw(r3d_curve_set_t set, const r3d_lens_t* lens, const r3d_span_targe
                        < CURVE_SKIP_PX) {
                 continue;
             }
-            segment(&a, &b, radius_scale, lens, target);
+            segment(&a, &b, radius_scale, lens, target, covered);
             a = b;
         }
     }

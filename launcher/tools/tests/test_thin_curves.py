@@ -291,20 +291,8 @@ class ThinCurvesTests(unittest.TestCase):
             source.p, source.tri_v, source.tri_t = p, t, t
             source.tri_m = source.tri_o = np.zeros(len(t), dtype=int)
             source.uv = np.zeros((len(p), 2))
-            with mock.patch.object(mesh_import, 'load_source', return_value=source):
-                only_curves = mesh_import.bake_geometry(job, None)
-            self.assertEqual(len(only_curves.tris), 0)
-            mesh_import.write_baked(job, None, folder, 'mesh', only_curves)
-            frozen = placed_copies(pathlib.Path(folder) / 'mesh.bundle', False)
-            self.assertGreater(len(frozen.tris), 0)
-
-    def test_curve_only_start(self):
-        from r3d.lit_mesh import bake_lit_mesh, mesh_blob
-        from r3d.mesh_asset import read_mesh_header
-        mesh = bake_lit_mesh(np.zeros((1, 3)), np.ones((1, 3)), np.empty((0, 3), dtype=int), np.empty(0))
-        self.assertEqual(read_mesh_header(mesh_blob(mesh)).triangles, 0)
-        self.assertEqual(len(mesh.nodes), 1)
-        self.assertEqual(len(mesh.clusters), 1)
+            with mock.patch.object(mesh_import, 'load_source', return_value=source),                     self.assertRaisesRegex(ValueError, 'every shown triangle is thin'):
+                mesh_import.bake_geometry(job, None)
 
     def test_settings_default(self):
         steps = SimpleNamespace()

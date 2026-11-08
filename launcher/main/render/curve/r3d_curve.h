@@ -1,6 +1,7 @@
 /* r3d_curve: thin tubes drawn as camera-facing ribbons with coverage fading. */
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 #include "asset/asset_pack.h"
 typedef struct r3d_lens r3d_lens_t;
@@ -27,6 +28,21 @@ typedef struct {
 #define R3D_CURVE_ASSET        ASSET_TYPE('L', 'C', 'R', 'V')
 #define R3D_CURVE_NAME_SUFFIX  ".crv"
 #define R3D_CURVE_HEADER_WORDS 4
+#define R3D_CURVE_VERSION      1
 
-/* `set` by value: three words in registers, none on the draw path's stack. */
-void r3d_curve_draw(r3d_curve_set_t set, const r3d_lens_t* lens, const r3d_span_target_t* target);
+/* An LCRV entry's rows, their knots right after them. */
+static inline r3d_curve_set_t
+r3d_curve_set_at(const r3d_curve_t* curves, int count) {
+    if (count == 0) {
+        return (r3d_curve_set_t){0};
+    }
+    return (r3d_curve_set_t){curves, (const r3d_curve_knot_t*)(const void*)(curves + count), count};
+}
+
+/* Checks an LCRV entry, header to last knot, and points `out` into it; `out` is empty on failure. */
+asset_status_t r3d_curve_set_from_asset(asset_view_t asset, r3d_curve_set_t* out);
+
+/* The opaque segments of `set`, or with `covered` the faded ones. Draw every set's opaque segments first: a faded
+ * segment mixes over what is behind it without hiding it. `set` is passed by value so the draw path's stack holds
+ * no copy of it. */
+void r3d_curve_draw(r3d_curve_set_t set, const r3d_lens_t* lens, const r3d_span_target_t* target, bool covered);

@@ -229,6 +229,21 @@ r3d_pipeline_cull_cut(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, co
     return count;
 }
 
+void
+r3d_pipeline_fit_curves(r3d_curve_set_t set, const r3d_lens_t* lens, r3d_pipeline_work_t* work, r3d_depth_fit_t* fit) {
+    planef_t* planes = work->cull.planes;
+    r3d_lens_frustum(lens, planes);
+    const planef_t depth = lens_depth_plane(lens);
+    for (int i = 0; i < set.curve_count; i++) {
+        const r3d_curve_t* curve = &set.curves[i];
+        const box3f_t box = {{curve->lo[0], curve->lo[1], curve->lo[2]}, {curve->hi[0], curve->hi[1], curve->hi[2]}};
+        unsigned mask = ALL_PLANES;
+        if (!box3f_outside_planes(box, planes, PLANE_FRUSTUM_COUNT, &mask)) {
+            fit_inside(box, planes, mask, depth, fit);
+        }
+    }
+}
+
 int
 r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint32_t* lod_coarse, uint16_t* out,
                   r3d_pipeline_work_t* work, r3d_depth_fit_t* fit) {

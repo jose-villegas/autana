@@ -50,7 +50,9 @@ fixture(void) {
         color[i] = BACKGROUND;
         depth[i] = 0;
     }
-    return r3d_span_target(color, depth, SIZE, 0, SIZE);
+    r3d_span_target_t target = r3d_span_target(color, depth, SIZE, 0, SIZE);
+    target.clear = BACKGROUND;
+    return target;
 }
 
 static r3d_lens_t
@@ -62,13 +64,20 @@ lens(void) {
     return result;
 }
 
+/* Both passes, as the raster draws them: opaque segments, then faded ones. */
+static void
+draw_set(r3d_curve_set_t set, const r3d_lens_t* camera, const r3d_span_target_t* target) {
+    r3d_curve_draw(set, camera, target, false);
+    r3d_curve_draw(set, camera, target, true);
+}
+
 static void
 draw(const r3d_span_target_t* target, const r3d_curve_knot_t* knots, int count) {
     const r3d_curve_t curve = {
         .count = (uint16_t)count, .lo = {INT16_MIN, INT16_MIN, INT16_MIN}, .hi = {INT16_MAX, INT16_MAX, INT16_MAX}};
     const r3d_curve_set_t curves = {&curve, knots, 1};
     const r3d_lens_t camera = lens();
-    r3d_curve_draw(curves, &camera, target);
+    draw_set(curves, &camera, target);
 }
 
 static int
@@ -92,7 +101,8 @@ test_curve_subpixel_fade(void) {
         if (i / SIZE != MID) {
             TEST_ASSERT_EQUAL_HEX16(BACKGROUND, color[i]);
         }
-        TEST_ASSERT_EQUAL_UINT16(0, depth[i]);
+        /* Over empty depth a faded pixel takes its depth, or the picture would show the clear colour there. */
+        TEST_ASSERT_EQUAL(color[i] != BACKGROUND, depth[i] != 0);
     }
 }
 
@@ -160,7 +170,9 @@ static void
 test_curve_cover_solid_parity(void) {
     const r3d_span_target_t target = fixture();
     gfx_color_t* expected = malloc(PIXELS * sizeof(*expected));
+    uint16_t* expected_depth = malloc(PIXELS * sizeof(*expected_depth));
     TEST_ASSERT_NOT_NULL(expected);
+    TEST_ASSERT_NOT_NULL(expected_depth);
     for (int size = 1; size < MID; size++) {
         const r3d_span_vertex_t a = {MID * R3D_SUBPIXEL, MID * R3D_SUBPIXEL, 0.5F, UINT8_MAX, 0, 0};
         r3d_span_vertex_t b = a, c = a;
@@ -169,14 +181,14 @@ test_curve_cover_solid_parity(void) {
         (void)fixture();
         r3d_span_triangle_solid(&target, &a, &b, &c, RED);
         memcpy(expected, color, PIXELS * sizeof(*color));
+        memcpy(expected_depth, depth, PIXELS * sizeof(*depth));
         (void)fixture();
-        r3d_span_triangle_cover(&target, &a, &b, &c, R3D_SPAN_COVERAGE_FULL);
+        r3d_span_triangle_cover(&target, &a, &b, &c, RED, R3D_SPAN_COVERAGE_FULL);
         TEST_ASSERT_EQUAL_MEMORY(expected, color, PIXELS * sizeof(*color));
-        for (int i = 0; i < PIXELS; i++) {
-            TEST_ASSERT_EQUAL_UINT16(0, depth[i]);
-        }
+        TEST_ASSERT_EQUAL_MEMORY(expected_depth, depth, PIXELS * sizeof(*depth));
     }
     free(expected);
+    free(expected_depth);
 }
 
 static void
@@ -200,9 +212,7 @@ test_curve_skip_knots(void) {
     gfx_color_t* expected = malloc(PIXELS * sizeof(*expected));
     TEST_ASSERT_NOT_NULL(expected);
     memcpy(expected, color, PIXELS * sizeof(*color));
-    for (int i = 0; i < PIXELS; i++) {
-        color[i] = BACKGROUND;
-    }
+    (void)fixture();
     const r3d_curve_knot_t ends[] = {knots[0], knots[SKIP_KNOTS - 1]};
     draw(&target, ends, 2);
     TEST_ASSERT_EQUAL_MEMORY(expected, color, PIXELS * sizeof(*color));
@@ -224,7 +234,7 @@ test_curve_above_the_axis_draws_above_the_middle(void) {
     const r3d_curve_t curve = {
         .count = 2, .lo = {INT16_MIN, INT16_MIN, INT16_MIN}, .hi = {INT16_MAX, INT16_MAX, INT16_MAX}};
     const r3d_curve_set_t curves = {&curve, knots, 1};
-    r3d_curve_draw(curves, &camera, &target);
+    draw_set(curves, &camera, &target);
     TEST_ASSERT_GREATER_THAN_INT(0, changed());
     for (int i = MID * SIZE; i < PIXELS; i++) {
         TEST_ASSERT_EQUAL_HEX16(BACKGROUND, color[i]);
@@ -258,15 +268,17 @@ test_curve_slices_match_the_whole_picture(void) {
     }
     const r3d_curve_set_t set = {curves, knots, 2};
     const r3d_lens_t camera = lens();
-    r3d_curve_draw(set, &camera, &target);
+    draw_set(set, &camera, &target);
     gfx_color_t* expected = malloc(PIXELS * sizeof(*expected));
     TEST_ASSERT_NOT_NULL(expected);
     memcpy(expected, color, PIXELS * sizeof(*color));
     fixture();
     target = r3d_span_target(color, depth, SIZE, 0, MID);
-    r3d_curve_draw(set, &camera, &target);
+    target.clear = BACKGROUND;
+    draw_set(set, &camera, &target);
     target = r3d_span_target(color + (MID * SIZE), depth + (MID * SIZE), SIZE, MID, SIZE);
-    r3d_curve_draw(set, &camera, &target);
+    target.clear = BACKGROUND;
+    draw_set(set, &camera, &target);
     TEST_ASSERT_EQUAL_MEMORY(expected, color, PIXELS * sizeof(*color));
     TEST_ASSERT_GREATER_THAN_INT(0, changed());
     free(expected);

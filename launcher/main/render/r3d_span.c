@@ -327,12 +327,23 @@ fill_solid(uint16_t* depth, uint16_t* color, int count, int32_t z, int32_t dz, u
     }
 }
 
+/* A covered pixel mixes over what is behind it and keeps its depth; over empty depth, nothing is behind but the
+ * clear colour, and the pixel takes the depth so that it is shown. */
+static inline __attribute__((always_inline)) void
+cover_pixel(uint16_t* depth, uint16_t* color, uint16_t z, uint16_t face, unsigned coverage, uint16_t clear) {
+    if (*depth == R3D_DEPTH_EMPTY) {
+        *color = rgb565be_mix(clear, face, (uint8_t)coverage);
+        *depth = z;
+    } else if (z > *depth) {
+        *color = rgb565be_mix(*color, face, (uint8_t)coverage);
+    }
+}
+
 static void
-fill_cover(uint16_t* depth, uint16_t* color, int count, int32_t z, int32_t dz, uint16_t face, unsigned coverage) {
+fill_cover(uint16_t* depth, uint16_t* color, int count, int32_t z, int32_t dz, uint16_t face, unsigned coverage,
+           uint16_t clear) {
     for (int i = 0; i < count; i++, z += dz) {
-        if ((z >> R3D_DEPTH_SHIFT) > depth[i]) {
-            color[i] = rgb565be_mix(color[i], face, (uint8_t)coverage);
-        }
+        cover_pixel(&depth[i], &color[i], (uint16_t)(z >> R3D_DEPTH_SHIFT), face, coverage, clear);
     }
 }
 
@@ -397,7 +408,7 @@ flat_rows(const r3d_span_target_t* target, const fill_t* f, int y0, int y1, edge
             } else {
                 if (coverage <= R3D_SPAN_COVERAGE_FULL) {
                     fill_cover(span.depth, span.color, span.last - span.first + 1,
-                               (int32_t)f->flat_z << R3D_DEPTH_SHIFT, 0, f->flat_color, coverage);
+                               (int32_t)f->flat_z << R3D_DEPTH_SHIFT, 0, f->flat_color, coverage, target->clear);
                 } else {
                     fill_flat(span.depth, span.color, span.last - span.first + 1, f->flat_z, f->flat_color);
                 }
@@ -421,7 +432,8 @@ fill_carried_span(const r3d_span_target_t* target, const fill_t* f, const uint32
             write_span(target, y, span->first, span->last, z, dz);
         } else {
             if (coverage <= R3D_SPAN_COVERAGE_FULL) {
-                fill_cover(span->depth, span->color, span->last - span->first + 1, z, dz, f->flat_color, coverage);
+                fill_cover(span->depth, span->color, span->last - span->first + 1, z, dz, f->flat_color, coverage,
+                           target->clear);
             } else {
                 fill_solid(span->depth, span->color, span->last - span->first + 1, z, dz, f->flat_color);
             }
@@ -722,11 +734,11 @@ small_visible(const small_edge_t edges[TRIANGLE_VERTICES], const pixel_row_t* ro
 
 /* Pineda 1988 [32]: test pixel centres against three edge functions.
  * Keep small-triangle temporaries off the row-walk call chain. */
-/* A covered pixel mixes its colour and keeps the depth; an opaque one writes both. */
+/* A covered pixel as cover_pixel(); an opaque one writes colour and depth. */
 static inline __attribute__((always_inline)) void
-small_put(const pixel_row_t* row, int x, const fill_t* f, unsigned coverage) {
+small_put(const pixel_row_t* row, int x, const fill_t* f, unsigned coverage, uint16_t clear) {
     if (coverage <= R3D_SPAN_COVERAGE_FULL) {
-        row->color[x] = rgb565be_mix(row->color[x], f->flat_color, (uint8_t)coverage);
+        cover_pixel(&row->depth[x], &row->color[x], f->flat_z, f->flat_color, coverage, clear);
     } else {
         row->depth[x] = f->flat_z;
         row->color[x] = f->flat_color;
@@ -755,7 +767,7 @@ fill_small_of(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const
                  | small_side(&e[2], cx, row.centre))
                     >= 0
                 && f.flat_z > row.depth[x]) {
-                small_put(&row, x, &f, coverage);
+                small_put(&row, x, &f, coverage, target->clear);
             }
         }
     }
@@ -1140,8 +1152,7 @@ r3d_span_capped_triangle(const r3d_span_target_t* target, const r3d_span_vertex_
 
 void
 r3d_span_triangle_cover(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-                        const r3d_span_vertex_t* c, unsigned coverage) {
-    const uint16_t color = r3d_span_pack_rgb(a->r, a->g, a->b);
+                        const r3d_span_vertex_t* c, uint16_t color, unsigned coverage) {
     if (coverage > R3D_SPAN_COVERAGE_FULL) {
         coverage = R3D_SPAN_COVERAGE_FULL;
     }

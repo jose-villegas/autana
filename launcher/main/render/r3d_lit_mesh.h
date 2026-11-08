@@ -98,11 +98,7 @@ typedef struct {
 /* A mesh's curves as r3d_curve_draw() takes them. */
 static inline r3d_curve_set_t
 r3d_lit_mesh_curves(const r3d_lit_mesh_t* mesh) {
-    if (mesh->curve_count == 0) {
-        return (r3d_curve_set_t){0};
-    }
-    return (r3d_curve_set_t){mesh->curves, (const r3d_curve_knot_t*)(const void*)(mesh->curves + mesh->curve_count),
-                             mesh->curve_count};
+    return r3d_curve_set_at(mesh->curves, mesh->curve_count);
 }
 
 /* The asset type of a lit mesh entry, and the bytes of its header. */

@@ -4,8 +4,9 @@ import numpy as np
 
 from asset.asset_pack import NAME_BYTES, PackError
 from r3d.thin.curve_fit import Curve
-from r3d.thin.curve_format import CURVE, HEADER, KNOT, NAME_SUFFIX, TYPE
-U16_MAX = (1 << 16) - 1
+from r3d.mesh_bundle import U16_MAX
+from r3d.thin.curve_format import CURVE, HEADER, KNOT, NAME_SUFFIX, TYPE, VERSION
+
 I16_MIN, I16_MAX = -(1 << 15), (1 << 15) - 1
 SRGB_MAX = (1 << 8) - 1
 
@@ -48,7 +49,7 @@ def write_curves(curves, position_scale, tonemap_white=0.0):
         colors = panel_colour(to_srgb8(curve.color, tonemap_white))
         knots.extend(KNOT.pack(*point.astype(int), int(radius), int(color)) for point, radius, color in zip(p, r, colors))
         first += len(p)
-    return HEADER.pack(len(curves), count, 0, 0) + b"".join(records + knots)
+    return HEADER.pack(len(curves), count, VERSION, 0) + b"".join(records + knots)
 
 
 def read_curves(blob, position_scale):
@@ -58,8 +59,8 @@ def read_curves(blob, position_scale):
 
     if position_scale <= 0 or len(blob) < HEADER.size:
         raise PackError("LCRV header or scale is invalid")
-    count, knots, reserved0, reserved1 = HEADER.unpack_from(blob)
-    if reserved0 or reserved1 or len(blob) != HEADER.size + count * CURVE.size + knots * KNOT.size:
+    count, knots, version, reserved = HEADER.unpack_from(blob)
+    if version != VERSION or reserved or len(blob) != HEADER.size + count * CURVE.size + knots * KNOT.size:
         raise PackError("LCRV sections are invalid")
     start = HEADER.size + count * CURVE.size
     result, end = [], 0
