@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from r3d.thin.thin_parts import ThinPart, budget_side, find_thin_parts
+from r3d.thin.thin_parts import THIN_LENGTH_PER_SIDE, THIN_SLENDERNESS_MIN, ThinPart, budget_side, find_thin_parts
 from r3d.thin.curve_fit import CURVE_LIGHT_RING, CURVE_LIGHT_SPAN, TUBE_SIDES, Curve, fit_curve, light_curve
 from r3d.thin.curve_asset import read_curves, write_curves
 from r3d.import_settings import SettingsError, load_geometry
@@ -82,8 +82,15 @@ class ThinCurvesTests(unittest.TestCase):
         shape = soup.box((36, 36, 330))
         self.assertEqual(find_thin_parts(shape.vertices, shape.faces, SIDE), [])
 
+    def test_a_post_shorter_than_a_side_is_thin(self):
+        length = 0.85 * SIDE
+        shape = soup.box((length / 11.5, length / 11.5, length))
+        self.assertEqual(len(find_thin_parts(shape.vertices, shape.faces, SIDE)), 1)
+
     def test_short_part(self):
-        shape = soup.box((4.5, 4.5, 50))
+        length = 0.9 * THIN_LENGTH_PER_SIDE * SIDE
+        width = length / (THIN_SLENDERNESS_MIN + 1)
+        shape = soup.box((width, width, length))
         self.assertEqual(find_thin_parts(shape.vertices, shape.faces, SIDE), [])
 
     def test_position_weld(self):

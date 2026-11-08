@@ -9,8 +9,8 @@ from dataclasses import dataclass
 import numpy as np
 
 THIN_WIDTH_PER_SIDE = 0.25
-THIN_LENGTH_PER_SIDE = 1.0
-THIN_SLENDERNESS_MIN = 12.0
+THIN_LENGTH_PER_SIDE = 0.75
+THIN_SLENDERNESS_MIN = 11.0
 WELD_CELLS_PER_SIDE = 1000
 # Width is measured across the part's own centreline, not its straight box: a cable sagging between two walls is as
 # thin as a taut one. The centreline runs through stations THIN_WIDTH_PER_SIDE long down the long axis, from
