@@ -477,7 +477,7 @@ class AppearanceMeshTests(unittest.TestCase):
         with mock.patch.object(appearance, "Renderer", return_value=render):
             for seed in (1, 7, 19):
                 with self.subTest(seed=seed):
-                    fitted, _, history = appearance.optimise(
+                    fitted, _, history, _ = appearance.optimise(
                         mesh, views, (len(tiny), 1), steps=60, batch=1, lr_position=0.001,
                         lr_colour=0, laplacian=40, report=0, device="cpu", seed=seed, seam_margin=0)
                     final = np.linalg.norm(fitted[edges[:, 0]] - fitted[edges[:, 1]], axis=1)
@@ -509,7 +509,7 @@ class AppearanceMeshTests(unittest.TestCase):
                 tolerance = np.finfo(np.float32).eps * diagonal
                 np.testing.assert_allclose(step_scale[tiny_count:], 1)
                 with mock.patch.object(appearance, "Renderer", return_value=render):
-                    fitted, _, _ = appearance.optimise(
+                    fitted, _, _, _ = appearance.optimise(
                         mesh, views, (len(points), 1), steps=1, batch=1, lr_position=lr_position,
                         lr_colour=0, laplacian=0, report=0, device="cpu", seam_margin=0)
                 displacement = np.linalg.norm(fitted - points, axis=1)
@@ -657,7 +657,7 @@ class PruneAndCostTests(unittest.TestCase):
                             pose_views=mock.Mock(return_value=(["coverage"], (80, 80))),
                             optimise=calls.optimise, coverage=calls.coverage, prune=calls.prune,
                             write_mesh=calls.write_mesh):
-                        calls.optimise.return_value = (points, rgb, [1.0])
+                        calls.optimise.return_value = (points, rgb, [1.0], None)
                         calls.coverage.return_value = np.ones(len(mesh.tris))
                         calls.prune.return_value = (pruned, np.arange(len(pruned.tris)))
                         calls.write_mesh.return_value = len(pruned.tris)
@@ -710,7 +710,7 @@ class PruneAndCostTests(unittest.TestCase):
                     optimise=mock.DEFAULT, coverage=mock.DEFAULT, prune=mock.DEFAULT,
                     write_mesh=mock.DEFAULT) as calls, mock.patch.dict(sys.modules, {
                         "r3d.reference_render": SimpleNamespace(source_for=source_for)}):
-                calls["optimise"].return_value = (points, rgb, [1.0])
+                calls["optimise"].return_value = (points, rgb, [1.0], None)
                 calls["write_mesh"].return_value = len(mesh.tris)
                 appearance.main(["--scene", "scene.toml", "--start", "start.bundle", "--poses", "poses.txt",
                                  "--reference", "reference", "--out", directory,
@@ -986,7 +986,7 @@ class AppearanceFitTests(unittest.TestCase):
             matrix = projection([0.2, -0.1, 3.0], [0.0, 0.0, -1.0], 24, 20, 0.62, 0.5)
             truth = Renderer(mesh[2], mesh[3], mesh[5], size, "cuda")
             target = draw(truth, mesh[0] * [1.3, 0.8, 1.0], mesh[1][::-1].copy(), matrix)
-            _points, _rgb, history = optimise(mesh, [(matrix, target)], size, steps=150, batch=1, lr_position=0.01,
+            _points, _rgb, history, _ = optimise(mesh, [(matrix, target)], size, steps=150, batch=1, lr_position=0.01,
                                               lr_colour=0.05, laplacian=0.0, report=0, seam_margin=0)
             self.assertLess(np.mean(history[-10:]), 0.5 * np.mean(history[:3]))
 
@@ -1001,7 +1001,7 @@ class AppearanceFitTests(unittest.TestCase):
         # The target's colour boundary sits a third of a column to the right of the start's.
         shifted = mesh.points + np.where(np.abs(mesh.points[:, :1]) < 0.4, [[0.15, 0.0, 0.0]], 0.0)
         target = draw(truth, shifted, mesh.rgb, matrix)
-        points, rgb, history = optimise(mesh, [(matrix, target)], size, steps=150, batch=1, lr_position=0.005,
+        points, rgb, history, _ = optimise(mesh, [(matrix, target)], size, steps=150, batch=1, lr_position=0.005,
                                         lr_colour=0.0, laplacian=0.0, report=0, seam_margin=0)
         self.assertEqual(rgb.shape, mesh.rgb.shape)
         self.assertLess(np.mean(history[-10:]), 0.5 * np.mean(history[:3]), "the colour edge did not move")
@@ -1039,7 +1039,7 @@ class AppearanceFitTests(unittest.TestCase):
         target = draw(truth, positions, wanted, matrix)
         start = np.full((count, 3), 0.5)
         mesh = FitMesh(positions, start, tris, double, 64, vertex_point, True)
-        _points, rgb, _history = optimise(mesh, [(matrix, target)], size, steps=400, batch=1, lr_position=0.0, lr_colour=0.05,
+        _points, rgb, _history, _ = optimise(mesh, [(matrix, target)], size, steps=400, batch=1, lr_position=0.0, lr_colour=0.05,
                                           laplacian=0.0, report=0, seam_margin=0)
         with torch.no_grad():
             ids = truth.visible_ids(cuda(positions), cuda(matrix)).cpu().numpy()
@@ -1065,7 +1065,7 @@ class AppearanceFitTests(unittest.TestCase):
             target = draw(truth, mesh[0] * [1.3, 0.8, 1.0], mesh[1][::-1].copy(), matrix)
             self.assertEqual(target.shape[:2], (2 * height, 2 * width))
             views.append((matrix, target))
-        _points, _rgb, history = optimise(mesh, views, None, steps=150, batch=2, lr_position=0.01, lr_colour=0.05,
+        _points, _rgb, history, _ = optimise(mesh, views, None, steps=150, batch=2, lr_position=0.01, lr_colour=0.05,
                                           laplacian=0.0, report=0, seam_margin=0)
         self.assertLess(np.mean(history[-10:]), 0.5 * np.mean(history[:3]))
 
@@ -1082,7 +1082,7 @@ class AppearanceFitTests(unittest.TestCase):
         colour = draw(render, mesh[0], mesh[1], matrix)
         view = (matrix, colour, reference, eye)
         before = normal_error(mesh, [view], size)
-        points, _rgb, _history = optimise(mesh, [view], size, steps=200, batch=1, lr_position=0.02, lr_colour=0.0,
+        points, _rgb, _history, _ = optimise(mesh, [view], size, steps=200, batch=1, lr_position=0.02, lr_colour=0.0,
                                           laplacian=0.0, report=0, normal_weight=1.0, seam_margin=0)
         after = normal_error(mesh._replace(points=points), [view], size)
         self.assertLess(after, 0.5 * before)
@@ -1113,6 +1113,13 @@ class AppearanceFitTests(unittest.TestCase):
         return FitMesh(positions, np.full((len(positions), 3), rgb), tris, np.zeros(len(tris), dtype=int), 1,
                        np.arange(len(positions)))
 
+    def copy_of(self, card):
+        """`card` as one copy placed where it stands: its own table, an identity transform."""
+        from r3d.fit.copies import Copies
+
+        return Copies(card, card.points.copy(), np.arange(len(card.points)), np.broadcast_to(np.eye(3), (len(card.points), 3, 3)),
+                      np.zeros((len(card.points), 3)), point_edges(card.tris, card.vertex_point))
+
     def test_copies_drawn_in_front_hide_the_rest_from_the_fit(self):
         from r3d.appearance_simplify import Renderer, optimise
 
@@ -1123,7 +1130,7 @@ class AppearanceFitTests(unittest.TestCase):
                       np.zeros_like(rest.rgb), matrix)
         fits = {copies is None: optimise(rest, [(matrix, target)], size, steps=20, batch=1, lr_position=0.0,
                                          lr_colour=0.05, laplacian=0.0, report=0, seam_margin=0, copies=copies)[1]
-                for copies in (None, copy)}
+                for copies in (None, self.copy_of(copy))}
         self.assertLess(fits[True].max(), 0.4, "without copies the rest is fitted to the target")
         np.testing.assert_array_equal(fits[False], rest.rgb, "a rest behind a copy is not fitted")
 
@@ -1174,13 +1181,49 @@ class AppearanceFitTests(unittest.TestCase):
                         laplacian=0.0, report=0, seam_margin=0, copies=copies, source=source, carved=carved,
                         **weights)[0]
 
+    def test_copies_train_their_colours_and_shared_shape_with_the_rest(self):
+        from r3d.appearance_simplify import Renderer, optimise
+
+        size = (48, 40)
+        matrix = projection([0.0, 0.0, 3.0], [0.0, 0.0, -1.0], 24, 20, 0.62, 0.5)
+        shown = self.card(1.0, half=0.6, rgb=0.1)
+        target = draw(Renderer(shown.tris, shown.double, shown.vertex_point, size, "cuda"), shown.points, shown.rgb,
+                      matrix)
+        copy = self.copy_of(self.card(1.0, half=0.5, rgb=0.5))
+        _points, _rgb, _history, trained = optimise(self.card(-1.0, half=0.2), [(matrix, target)], size, steps=200,
+                                                    batch=1, lr_position=0.01, lr_colour=0.05, laplacian=0.0,
+                                                    report=0, seam_margin=0, copies=copy)
+        self.assertLess(np.abs(trained.mesh.rgb - 0.1).max(), 0.05, "the copy's colours trained to the target")
+        spread = lambda points: np.abs(points[:, :2]).max()
+        self.assertGreater(spread(trained.local), spread(copy.local) + 0.05, "the copy's table grew to the target")
+        placed = np.einsum('nij,nj->ni', trained.matrix, trained.local[trained.gather]) + trained.position
+        np.testing.assert_allclose(trained.mesh.points, placed, atol=1e-6)
+
+    def test_where_the_source_shows_a_copy_the_rest_drawn_through_its_gap_learns_no_colour(self):
+        from r3d.appearance_simplify import Renderer, optimise
+
+        size = (48, 40)
+        matrix = projection([0.0, 0.0, 3.0], [0.0, 0.0, -1.0], 24, 20, 0.62, 0.5)
+        # The source's copy covers the whole rest; the fit's copy is smaller, so the rest shows around it.
+        source_copy = self.card(1.0, half=1.5, rgb=0.9)
+        source = SimpleNamespace(p=source_copy.points, tri_v=source_copy.tris)
+        carved = np.ones(len(source_copy.tris), dtype=bool)
+        target = draw(Renderer(source_copy.tris, source_copy.double, source_copy.vertex_point, size, "cuda"),
+                      source_copy.points, source_copy.rgb, matrix)
+        rest = self.card(0.0, half=1.0, rgb=0.5)
+        _points, rgb, _history, _trained = optimise(rest, [(matrix, target)], size, steps=50, batch=1, lr_position=0.0,
+                                                    lr_colour=0.05, laplacian=0.0, report=0, seam_margin=0,
+                                                    copies=self.copy_of(self.card(1.0, half=0.3, rgb=0.9)),
+                                                    source=source, carved=carved, depth_weight=1.0)
+        np.testing.assert_array_equal(rgb, rest.rgb)
+
     def test_the_front_term_pushes_the_rest_behind_the_copy(self):
         copy = self.card(0.0, half=1.0, rgb=0.2)
         source = SimpleNamespace(p=copy.points, tri_v=copy.tris)
         carved = np.ones(len(copy.tris), dtype=bool)
         # The rest takes the copy's colour, so the colour term alone has no reason to move it.
-        points = {weight: self.gbuffer_fit(self.card(0.5, half=0.5, rgb=0.2), copy, source, carved, copies=copy,
-                                           front_weight=weight)
+        points = {weight: self.gbuffer_fit(self.card(0.5, half=0.5, rgb=0.2), copy, source, carved,
+                                           copies=self.copy_of(copy), front_weight=weight)
                   for weight in (0.0, 10.0)}
         # In front means nearer than the copy's distance 3 by more than IN_FRONT of it, z above 0.3.
         self.assertGreater(points[0.0][:, 2].min(), 0.3, "the colour term alone leaves the rest in front")

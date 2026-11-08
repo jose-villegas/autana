@@ -3,7 +3,7 @@ import pathlib
 import sys
 import unittest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from r3d import lod_asset, mesh_asset
+from r3d import lcol_asset, lod_asset, mesh_asset
 from build.c_header import read_define
 
 class LodAssetTests(unittest.TestCase):
@@ -69,7 +69,7 @@ class LodAssetTests(unittest.TestCase):
                            np.array([[0,1,2]]), np.array([0]))
             self.assertEqual([p.name for p in pathlib.Path(folder).iterdir()], ["card.bundle"])
 
-    def test_cpu_levels_follow_a_fit_without_touching_copies(self):
+    def test_cpu_levels_keep_a_fits_copies_and_take_a_seeded_fits_from_its_start(self):
         import tempfile
         from unittest import mock
         from types import SimpleNamespace
@@ -77,7 +77,7 @@ class LodAssetTests(unittest.TestCase):
         from r3d.fit import stage
         from r3d.lit_mesh import write_lit_mesh
         from r3d.lod.levels_stage import levels
-        from test_mesh_bundle import bundle_fixture
+        from test_mesh_bundle import bundle_fixture, write_fit_copies
         from test_r3d_lod_bake import wavy_grid
         with tempfile.TemporaryDirectory() as folder:
             work = pathlib.Path(folder)
@@ -99,6 +99,7 @@ class LodAssetTests(unittest.TestCase):
                 output = pathlib.Path(args[args.index("--out") + 1])
                 output.mkdir()
                 output.joinpath(incoming.name).write_bytes(incoming.read_bytes())
+                write_fit_copies(output, start, job.asset_name)
             with mock.patch.dict(sys.modules, {"r3d.appearance_simplify": SimpleNamespace(main=fit_main)}):
                 stage.fit(work / "scene.scene.toml", scene, job, work, start=start, target=target)
             fitted, _ = mesh_bundle.decode(target.read_bytes())
@@ -109,14 +110,18 @@ class LodAssetTests(unittest.TestCase):
             self.assertEqual(final_copies, copies)
             self.assertEqual([row for row in fitted if row[0] != job.asset_name],
                              [row for row in final if row[0] not in (job.asset_name, lod_asset.name_for_mesh(job.asset_name))])
-            # A fit that kept none of its start's copies levels into the bundle a fit that kept them gives: the
-            # copies come from the start.
+            # A fit seeded with its rest alone levels into the bundle the fit that wrote its copies gives: the
+            # copies come from the start. A fit that wrote copies keeps its own.
             seeded = mesh_bundle.encode([row for row in fitted if row[0] == job.asset_name], [])
             kept = levels(target.read_bytes(), job.asset_name, True, job.settings.meshlet_triangles,
                           start=start.read_bytes())
             self.assertEqual(levels(seeded, job.asset_name, True, job.settings.meshlet_triangles,
                                     start=start.read_bytes()), kept)
             self.assertEqual(kept, levels(target.read_bytes(), job.asset_name, True, job.settings.meshlet_triangles))
+            refit = mesh_bundle.encode([(n, k, d if n == job.asset_name or k != lcol_asset.TYPE else bytes(d[:-1]) + bytes([d[-1] ^ 1]))
+                                        for n, k, d in fitted], copies)
+            self.assertNotEqual(levels(refit, job.asset_name, True, job.settings.meshlet_triangles,
+                                       start=start.read_bytes()), kept)
 
     def test_bundle_entry_id_is_part_of_the_mesh_key(self):
         import copy

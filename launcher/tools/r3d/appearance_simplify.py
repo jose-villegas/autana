@@ -37,7 +37,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import log  # noqa: E402
 from r3d.geometry import closest_point_on_triangles, triangle_areas  # noqa: E402
-from r3d.fit.copies import check_hidden_copies, hidden_copy_pixels, joined, placed_copies  # noqa: E402
+from r3d.fit.copies import (COPY_GUARD_MARGIN, COPY_GUARD_WEIGHT, COPY_POSITION_RATE, check_hidden_copies,  # noqa: E402
+                            fit_copies, hidden_copy_pixels, joined, write_copies)
 from r3d.fit import gbuffer  # noqa: E402
 from r3d.import_settings import load_scene, match_meshes  # noqa: E402
 from r3d.lit_mesh import finest_triangles, read_lit_mesh  # noqa: E402
@@ -722,7 +723,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
              clear=(0.0, 0.0, 0.0), cost=None, cost_weight=0.0, scale=1, normal_weight=0.0, surface_weight=0.0,
              surface_margin=0.0, source=None, seam_margin=SEAM_MARGIN, copies=None, carved=None, front_weight=0.0,
              depth_weight=0.0):
-    """Fit fixed triangles; return positions, colours and colour-only error history.
+    """Fit fixed triangles; return positions, colours, colour-only error history and the trained copies.
     Position steps use bounding diagonals and each vertex's capped local start scale.
     Laplacian drift and the source envelope use capped local start edge scales,
     averaged per triangle for the envelope; normals and predicted cost add their
@@ -730,9 +731,12 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     Both learning rates decay tenfold over the run.
     Seam holds pin border points that start near another part to its moving
     triangles by default; `seam_margin=0` turns them off.
-    `copies` (a FitMesh, fit/copies.py) is drawn after the mesh, unchanged.
+    `copies` (Copies, fit/copies.py) is drawn after the mesh and trained with it: its shape-local table, under
+    the rest's laplacian and an envelope past COPY_GUARD_MARGIN edge scales, and its colours; returned as
+    Copies, or None without copies.
     The front and depth terms (fit/gbuffer.py) need the source and `carved`, one flag per source triangle drawn
-    as a copy."""
+    as a copy. With them, a pixel where the source shows a copy and the fit draws the rest gives the rest no
+    colour gradient: a gap in a copy's outline is not the rest's colour to learn."""
     import torch
 
     points0, rgb0, tris, double, _scale, vertex_point, flat = mesh
@@ -740,7 +744,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     rng = np.random.default_rng(seed)
     diagonal = float(np.linalg.norm(points0.max(axis=0) - points0.min(axis=0)))
     renderers = {}
-    drawn = joined(mesh, copies)
+    drawn = joined(mesh, None if copies is None else copies.mesh)
 
     def renderer_for(index):
         """The renderer at view `index`'s size: a reference of either
@@ -766,13 +770,24 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         points = start + step_scale * delta
         return hold_seams(points, holds) if holds is not None else points
 
-    copy_points, copy_colours = (None, None) if copies is None else (
-        torch.as_tensor(values, dtype=torch.float32, device=device) for values in (copies.points, copies.rgb))
+    as_tensor = lambda values: torch.as_tensor(np.ascontiguousarray(values), dtype=torch.float32, device=device)
+    if copies is not None:
+        local = as_tensor(copies.local).requires_grad_(True)
+        copy_colours = as_tensor(copies.mesh.rgb).requires_grad_(True)
+        gather = torch.as_tensor(copies.gather, device=device)
+        copy_matrix, copy_position = as_tensor(copies.matrix), as_tensor(copies.position)
+        copy_edges = torch.as_tensor(copies.edges, device=device)
+        local_start = local.detach().clone()
+        local_rest = uniform_laplacian(local_start, copy_edges)
+        local_scale = vertex_scale(local_start, copy_edges)
+
+    def placed_copies():
+        return torch.einsum("nij,nj->ni", copy_matrix, local[gather]) + copy_position
 
     def with_copies(points, colours):
         if copies is None:
             return points, colours
-        return torch.cat([points, copy_points]), torch.cat([colours, copy_colours])
+        return torch.cat([points, placed_copies()]), torch.cat([colours, copy_colours])
 
     matrices = [torch.as_tensor(view[0], dtype=torch.float32, device=device) for view in views]
     targets = [torch.as_tensor(view[1], device=device) for view in views]
@@ -801,6 +816,9 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         barycentric = torch.as_tensor(uniform_barycentric(surface_rng, (len(tris), SURFACE_SAMPLES_PER_TRIANGLE)),
                                       dtype=start.dtype, device=device)
     adam = torch.optim.Adam([{"params": [delta], "lr": lr_position * diagonal}, {"params": [colours], "lr": lr_colour}])
+    if copies is not None:
+        adam.add_param_group({"params": [local], "lr": lr_position * diagonal * COPY_POSITION_RATE})
+        adam.add_param_group({"params": [copy_colours], "lr": lr_colour})
     schedule = torch.optim.lr_scheduler.LambdaLR(adam, lambda step: 0.1 ** (step / max(steps, 1)))
     history = torch.empty(steps, device=device)
     finite = torch.ones((), dtype=torch.bool, device=device)
@@ -830,7 +848,11 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
                 rest_shown = (shown >= 0) & (shown < len(tris))
                 front = front + gbuffer.front_loss(fitted, rest_shown, buffers.depth[i], buffers.copy[i]) / len(chosen)
                 depth = depth + gbuffer.depth_loss(fitted, rest_shown, buffers.depth[i], buffers.copy[i]) / len(chosen)
-            colour = delta_e76(render(draw, draw_colours, matrices[i], clip, **samples), targets[i]).mean() / len(chosen)
+            colour = delta_e76(render(draw, draw_colours, matrices[i], clip, **samples), targets[i])
+            if buffers is not None:
+                gap = (rest_shown & buffers.copy[i].reshape(rest_shown.shape)).reshape(colour.shape)
+                colour = torch.where(gap, colour.detach(), colour)
+            colour = colour.mean() / len(chosen)
             colour_error = colour_error + colour
             error = error + colour
             if cost is not None:
@@ -850,11 +872,17 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
             surface = surface_weight * surface_loss(samples, reference[nearest], face_normals[nearest],
                                                      sample_scale, surface_margin)
         loss = error + laplacian * drift + cost_weight * predicted + surface + front_weight * front + depth_weight * depth
+        if copies is not None:
+            copy_drift = ((uniform_laplacian(local, copy_edges) - local_rest) / local_scale).pow(2).sum(dim=1).mean()
+            envelope = ((local - local_start).norm(dim=1, keepdim=True) / local_scale - COPY_GUARD_MARGIN)
+            loss = loss + laplacian * copy_drift + COPY_GUARD_WEIGHT * envelope.clamp_min(0).pow(2).mean()
         loss.backward()
         adam.step()
         schedule.step()
         with torch.no_grad():
             colours.clamp_(0.0, 1.0)
+            if copies is not None:
+                copy_colours.clamp_(0.0, 1.0)
         history[step] = colour_error.detach()
         finite &= torch.isfinite(loss.detach())
         if (report and step % report == 0) or step == steps - 1:
@@ -865,7 +893,10 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
                 f"surface {float(surface):.6f}, front {float(front):.3e}, depth {float(depth):.3e}, "
                 f"{time.time() - started:.1f} s")
     points = held_positions()
-    return points.detach().cpu().numpy().astype(np.float64), colours.detach().cpu().numpy().astype(np.float64), history.cpu().tolist()
+    as_array = lambda values: values.detach().cpu().numpy().astype(np.float64)
+    trained = None if copies is None else copies._replace(
+        mesh=copies.mesh._replace(points=as_array(placed_copies()), rgb=as_array(copy_colours)), local=as_array(local))
+    return as_array(points), as_array(colours), history.cpu().tolist(), trained
 
 
 def write_mesh(out_dir, name, mesh):
@@ -918,7 +949,7 @@ def main(argv=None):
     parser.add_argument("--surface-weight", type=float, default=0.0, help="weight of the source-surface envelope")
     parser.add_argument("--surface-margin", type=float, default=0.0, help="source envelope margin in local start edge scales")
     parser.add_argument("--seam-margin", type=float, default=SEAM_MARGIN, help="seam hold margin in local start edge scales (0 holds nothing)")
-    parser.add_argument("--copies", help="a carved start bundle: its copies are drawn with the start, unchanged")
+    parser.add_argument("--copies", help="a carved start bundle: its copies are drawn and trained with the start")
     parser.add_argument("--copy-poses", help="with --copies, the poses the copy-coverage gate checks the fit over")
     parser.add_argument("--front-weight", type=float, default=0.0,
                         help="with --copies, weight of the term pushing the rest behind the copies the source shows")
@@ -953,9 +984,10 @@ def main(argv=None):
     name = start.stem
     mesh = start_mesh(start)
     log(f"start: {len(mesh.tris)} {'flat' if mesh.flat else 'smooth'} triangles, {len(mesh.points)} positions")
-    copies = None if args.copies is None else placed_copies(args.copies, mesh.flat)
+    copies = None if args.copies is None else fit_copies(args.copies, mesh.flat)
     if copies is not None:
-        log(f"copies: {len(copies.tris)} triangles drawn with the start")
+        log(f"copies: {len(copies.mesh.tris)} triangles drawn and trained with the start, {len(copies.local)} "
+            f"shape-local points")
     pairs = list(zip(args.poses, args.reference))
     shots = [[pair] for pair in pairs] if args.per_shot else [pairs]
     for index, shot in enumerate(shots):
@@ -982,7 +1014,7 @@ def main(argv=None):
             carved = carved[source.tri_o]
         fit_start = fitted
         cost = None if args.cost_model is None else load_cost(args.cost_model)[0]
-        points, rgb, history = optimise(fitted, views, size, args.steps, args.batch, args.lr_position, args.lr_colour,
+        points, rgb, history, trained = optimise(fitted, views, size, args.steps, args.batch, args.lr_position, args.lr_colour,
                                         args.laplacian, clear=clear, cost=cost, cost_weight=args.cost_weight,
                                         scale=args.scale, normal_weight=args.normal_weight, source=source,
                                         surface_weight=args.surface_weight, surface_margin=args.surface_margin,
@@ -991,7 +1023,7 @@ def main(argv=None):
         fitted = fitted._replace(points=points, rgb=rgb)
         kept = np.arange(len(fit_start.tris))
         if args.budget is not None:
-            shown = coverage(joined(fitted, copies), coverage_views if args.coverage_poses else views,
+            shown = coverage(joined(fitted, None if trained is None else trained.mesh), coverage_views if args.coverage_poses else views,
                              coverage_size if args.coverage_poses else size)[:len(fitted.tris)]
             pruned, kept = prune(fitted, shown, args.budget)
             log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: {np.count_nonzero(shown == 0)} never shown")
@@ -1000,6 +1032,8 @@ def main(argv=None):
             hidden = hidden_copy_pixels(source, carved, (fit_start, fitted), args.copy_poses)
             log(check_hidden_copies(*hidden))
         count = write_mesh(out, name, fitted)
+        if copies is not None:
+            log(f"wrote {write_copies(args.copies, trained, job, out)}")
         report = stretch_report(fit_start, fitted, kept)
         for measure, threshold in (("stretch", STRETCH_RATIO), ("area_growth", AREA_GROWTH_RATIO), ("moved", MOVED_EDGES)):
             log(f"{measure} > {threshold:g}x: small parts {report['small'][measure]:.2f}%, rest {report['rest'][measure]:.2f}%")
