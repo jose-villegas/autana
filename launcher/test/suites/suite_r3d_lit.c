@@ -322,7 +322,7 @@ test_a_tiny_solid_triangle_takes_its_face_colour(void) {
     }
 }
 
-/* Screen mask (r3d_span_target_t.screen_mask), a door here: a door and its complement are two draws
+/* Screen mask (r3d_span_screen_triangle()), a door here: a door and its complement are two draws
  * that must together be the plain draw, pixel for pixel, each pixel in one. */
 typedef enum {
     DOOR_ENTRY_TRIANGLE,
@@ -360,9 +360,17 @@ door_triangle(r3d_span_vertex_t v[3]) {
     v[2] = sv(10.2F, 42.6F, 0.5F, 0, 0, 255);
 }
 
+/* `entry` plain when `door` is 0, else through it, capped where the entry is. */
 static void
-draw_door_entry(door_entry_t entry, const r3d_span_target_t* target, const r3d_span_vertex_t v[3]) {
+draw_door_entry(door_entry_t entry, const r3d_span_target_t* target, const r3d_span_vertex_t v[3], uint16_t door) {
     const uint16_t face = DOOR_FACE;
+    if (door != 0) {
+        r3d_span_target_t capped = *target;
+        capped.skip_hidden = entry == DOOR_ENTRY_CAPPED || entry == DOOR_ENTRY_CAPPED_SOLID;
+        const bool solid = entry == DOOR_ENTRY_SOLID || entry == DOOR_ENTRY_CAPPED_SOLID;
+        r3d_span_screen_triangle(&capped, &v[0], &v[1], &v[2], solid ? &face : NULL, door, false);
+        return;
+    }
     switch (entry) {
         case DOOR_ENTRY_TRIANGLE: r3d_span_triangle(target, &v[0], &v[1], &v[2]); break;
         case DOOR_ENTRY_SOLID: r3d_span_triangle_solid(target, &v[0], &v[1], &v[2], face); break;
@@ -373,11 +381,9 @@ draw_door_entry(door_entry_t entry, const r3d_span_target_t* target, const r3d_s
 }
 
 static r3d_span_target_t
-canvas_target(int which, uint16_t door) {
+canvas_target(int which) {
     TEST_ASSERT_NOT_NULL(canvases);
-    r3d_span_target_t target = r3d_span_target(canvases[which].color, canvases[which].depth, W, 0, H);
-    target.screen_mask = door;
-    return target;
+    return r3d_span_target(canvases[which].color, canvases[which].depth, W, 0, H);
 }
 
 static void
@@ -409,14 +415,13 @@ check_door_partition(door_entry_t entry, uint16_t door) {
     canvases_clear();
     r3d_span_vertex_t v[3];
     door_triangle(v);
-    const r3d_span_target_t plain = canvas_target(CANVAS_PLAIN, 0);
+    const r3d_span_target_t plain = canvas_target(CANVAS_PLAIN);
     const uint16_t rest_door = (uint16_t)~door;
-    TEST_ASSERT_EQUAL_HEX16(0, plain.screen_mask);
-    draw_door_entry(entry, &plain, v);
-    const r3d_span_target_t through = canvas_target(CANVAS_DOOR, door);
-    const r3d_span_target_t rest = canvas_target(CANVAS_REST, rest_door);
-    draw_door_entry(entry, &through, v);
-    draw_door_entry(entry, &rest, v);
+    draw_door_entry(entry, &plain, v, 0);
+    const r3d_span_target_t through = canvas_target(CANVAS_DOOR);
+    const r3d_span_target_t rest = canvas_target(CANVAS_REST);
+    draw_door_entry(entry, &through, v, door);
+    draw_door_entry(entry, &rest, v, rest_door);
     int plain_covered = 0;
     int door_covered = 0;
     for (int y = 0; y < H; y++) {
@@ -485,10 +490,10 @@ test_a_mask_drawing_every_pixel_of_its_tile_fills_what_a_plain_triangle_fills(vo
         canvases_clear();
         r3d_span_vertex_t v[3];
         door_triangle(v);
-        const r3d_span_target_t plain = canvas_target(CANVAS_PLAIN, 0);
-        const r3d_span_target_t open = canvas_target(CANVAS_DOOR, DOOR_ALL_OPEN);
-        draw_door_entry((door_entry_t)entry, &plain, v);
-        draw_door_entry((door_entry_t)entry, &open, v);
+        const r3d_span_target_t plain = canvas_target(CANVAS_PLAIN);
+        const r3d_span_target_t open = canvas_target(CANVAS_DOOR);
+        draw_door_entry((door_entry_t)entry, &plain, v, 0);
+        draw_door_entry((door_entry_t)entry, &open, v, DOOR_ALL_OPEN);
         for (int i = 0; i < W * H; i++) {
             TEST_ASSERT_EQUAL_INT(canvases[CANVAS_PLAIN].depth[i] != R3D_DEPTH_EMPTY,
                                   canvases[CANVAS_DOOR].depth[i] != R3D_DEPTH_EMPTY);
@@ -506,8 +511,8 @@ test_a_door_over_nearer_depth_leaves_that_depth_and_colour(void) {
     for (int i = 0; i < W * H; i++) {
         canvases[CANVAS_DOOR].depth[i] = R3D_DEPTH_NEAREST;
     }
-    const r3d_span_target_t target = canvas_target(CANVAS_DOOR, DOORS[0]);
-    draw_door_entry(DOOR_ENTRY_TRIANGLE, &target, v);
+    const r3d_span_target_t target = canvas_target(CANVAS_DOOR);
+    draw_door_entry(DOOR_ENTRY_TRIANGLE, &target, v, DOORS[0]);
     for (int i = 0; i < W * H; i++) {
         TEST_ASSERT_EQUAL_HEX16(R3D_DEPTH_NEAREST, canvases[CANVAS_DOOR].depth[i]);
         TEST_ASSERT_EQUAL_HEX16(0, canvases[CANVAS_DOOR].color[i]);
@@ -536,8 +541,8 @@ test_writers_run_only_over_the_pixels_a_door_leaves_open(void) {
     door_triangle(v);
     const r3d_span_writer_t writer = {
         .span = count_writer_span, .attachment = 0, .step = R3D_SPAN_STEP_NONE, .value = 0};
-    r3d_span_target_t plain = canvas_target(CANVAS_PLAIN, 0);
-    r3d_span_target_t through = canvas_target(CANVAS_DOOR, DOORS[0]);
+    r3d_span_target_t plain = canvas_target(CANVAS_PLAIN);
+    r3d_span_target_t through = canvas_target(CANVAS_DOOR);
     plain.writers = through.writers = &writer;
     plain.writer_count = through.writer_count = 1;
     uint8_t* const plain_hits = writer_hits_base;
@@ -547,7 +552,7 @@ test_writers_run_only_over_the_pixels_a_door_leaves_open(void) {
         writer_hits = plain_hits;
         r3d_span_triangle_write(&plain, &v[0], &v[1], &v[2], solid != 0);
         writer_hits = door_hits;
-        r3d_span_triangle_write(&through, &v[0], &v[1], &v[2], solid != 0);
+        r3d_span_screen_triangle(&through, &v[0], &v[1], &v[2], NULL, DOORS[0], true);
         int written = 0;
         int skipped = 0;
         for (int y = 0; y < H; y++) {

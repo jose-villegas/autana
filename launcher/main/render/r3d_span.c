@@ -953,13 +953,16 @@ screen_value(const screen_plane_t* p, float x, float y) {
     return p->at + (p->dx * x) + (p->dy * y);
 }
 
-/* A fill, or with `writing` the target's writers, through the target's
- * screen mask: pixel centres tested against the edges as fill_small() does,
- * so it covers what the walk would, and each attribute from a float plane.
- * The rarer path, for a level fading in or out over another. */
-static __attribute__((noinline, cold)) void
-screen_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-            const r3d_span_vertex_t* c, const uint16_t* face, bool capped, bool writing) {
+/* The bits of one row of the screen mask's tile. */
+#define SCREEN_ROW_BITS ((1U << R3D_SPAN_SCREEN_SIDE) - 1U)
+
+/* r3d_span_screen_triangle(): pixel centres tested against the edges as
+ * fill_small() does, so it covers what the walk would, and each attribute
+ * from a float plane. */
+void
+r3d_span_screen_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                         const r3d_span_vertex_t* c, const uint16_t* face, uint16_t mask, bool writing) {
+    const bool capped = target->skip_hidden;
     const recti_t box = r3d_span_window_box(target, r3d_span_extent_limits(a, b, c, 0, 0).centres);
     const int32_t area2 = r3d_span_area2(a, b, c);
     if (recti_is_empty(box) || area2 == 0 || r3d_span_stop_after != 0) {
@@ -976,14 +979,25 @@ screen_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r
     const screen_plane_t bl = screen_plane(a, b, c, area, a->b, b->b, c->b);
     const uint16_t cap = capped ? r3d_span_depth_limit(mathf_max(a->z, mathf_max(b->z, c->z))) : R3D_DEPTH_NEAREST;
     for (int y = box.y; y < recti_bottom(box); y++) {
+        /* A row of the tile the mask closes whole draws nothing. */
+        if (((mask >> R3D_SPAN_SCREEN_BIT(0, y)) & SCREEN_ROW_BITS) == 0) {
+            continue;
+        }
         const pixel_row_t row = pixel_row(target, y);
         const float fy = (float)(row.centre - a->y);
+        bool entered = false;
         for (int x = box.x, end = recti_right(box); x < end; x++) {
             const int32_t cx = (x << R3D_SUBPIXEL_SHIFT) + HALF_PIXEL;
-            if (((target->screen_mask >> R3D_SPAN_SCREEN_BIT(x, y)) & 1U) == 0
-                || (small_side(&e[0], cx, row.centre) | small_side(&e[1], cx, row.centre)
-                    | small_side(&e[2], cx, row.centre))
-                       < 0) {
+            if ((small_side(&e[0], cx, row.centre) | small_side(&e[1], cx, row.centre)
+                 | small_side(&e[2], cx, row.centre))
+                < 0) {
+                if (entered) {
+                    break; /* convex: past its right edge, the row is done */
+                }
+                continue;
+            }
+            entered = true;
+            if (((mask >> R3D_SPAN_SCREEN_BIT(x, y)) & 1U) == 0) {
                 continue;
             }
             const float fx = (float)(cx - a->x);
@@ -1004,10 +1018,6 @@ screen_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r
 static inline __attribute__((always_inline)) void
 triangle_of(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
             const r3d_span_vertex_t* c, const uint16_t* face, bool capped) {
-    if (__builtin_expect(target->screen_mask != 0, 0)) {
-        screen_fill(target, a, b, c, face, capped, false);
-        return;
-    }
     const r3d_span_extent_t e = r3d_span_extent_limits(a, b, c, flat_max_rows, flat_max_width);
     const recti_t box = r3d_span_window_box(target, e.centres);
     if (recti_is_empty(box)) {
@@ -1082,10 +1092,6 @@ r3d_span_capped_triangle_impl(const r3d_span_target_t* target, const r3d_span_ve
 static inline __attribute__((always_inline)) void
 triangle_write_of(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                   const r3d_span_vertex_t* c, bool solid, bool capped) {
-    if (target->screen_mask != 0) {
-        screen_fill(target, a, b, c, NULL, capped, true);
-        return;
-    }
     const r3d_span_vertex_t* v0 = a;
     const r3d_span_vertex_t* v1 = b;
     const r3d_span_vertex_t* v2 = c;
