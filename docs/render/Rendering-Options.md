@@ -315,10 +315,10 @@ direct, renormalised or table lighting.
 ### View modes
 
 Development builds only: `render_context_set_debug_view()` replaces the
-colour with depth, depth tiles, motion vectors or cluster IDs. Each view
+colour with depth, depth tiles, cluster IDs or the cull. Each view
 adds frame time and holds PSRAM state until switched off.
 
-- **Use** to see why a frame costs what it does: overdraw, cull, motion.
+- **Use** to see why a frame costs what it does: overdraw, cull.
 - **Cost per view**: the view charts in
   [frame/](frame/README.md#where-the-time-goes).
 
