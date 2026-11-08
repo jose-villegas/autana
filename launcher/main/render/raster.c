@@ -474,6 +474,7 @@ cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, r
     world_cull_t world;
     world_cull_init(&world, &picture, view, settings.cull);
     const level_pick_t pick = level_pick_init(raster, &picture, view, &settings.lod);
+    work->levels_changed = false; /* a draw on this census reads it */
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];
         if (world_cull_skips(&world, instance)) {
@@ -591,7 +592,6 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     draw_work_t* work = scratch_draw(raster);
     /* Every instance is culled before any is drawn: they share one depth scale. */
     const float kept_near = *work->buffers.depth_near;
-    work->levels_changed = false;
     if (stats != NULL) {
         FRAME_COST_BEGIN(culled_from);
         *work->buffers.depth_near = cull_instances(raster, view, true, stats, work);
