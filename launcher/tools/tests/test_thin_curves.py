@@ -10,9 +10,12 @@ from types import SimpleNamespace
 import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from r3d.thin.thin_parts import THIN_LENGTH_PER_SIDE, THIN_SLENDERNESS_MIN, ThinPart, budget_side, find_thin_parts
+from asset.asset_pack import NAME_BYTES, PackError
+from r3d.thin.curve_format import CURVE, HEADER, KNOT, NAME_SUFFIX, VERSION
+from r3d.thin.thin_parts import (THIN_LENGTH_PER_SIDE, THIN_SLENDERNESS_MIN, WELD_CELLS_PER_SIDE, ThinPart, budget_side,
+                                 find_thin_parts, thin_parts_at)
 from r3d.thin.curve_fit import CURVE_LIGHT_RING, CURVE_LIGHT_SPAN, TUBE_SIDES, Curve, fit_curve, light_curve
-from r3d.thin.curve_asset import read_curves, write_curves
+from r3d.thin.curve_asset import I16_MAX, name_for_mesh, read_curves, write_curves
 from r3d.import_settings import SettingsError, load_geometry
 from r3d.light import LIGHT_GAMMA
 from tests import soup
@@ -60,6 +63,30 @@ def beside(bar, wall_size, offset, *more):
     wall = soup.box((wall_size[0], 1, wall_size[1]))
     wall.vertices = wall.vertices + [0, offset, 0]
     return soup.concatenate([bar, wall, *more])
+
+
+def line_curve(knots, radius, colour=0.5):
+    """A curve through `knots`, `radius` thick everywhere, one grey."""
+    knots = np.asarray(knots, dtype=float)
+    return Curve(knots, np.full(len(knots), float(radius)), np.full(knots.shape, colour))
+
+
+TICKS = 1  # ticks to a unit: the entries below are written in ticks
+TICK_KNOTS = [(0, 0, 0, 1, 0), (10, 0, 0, 1, 0), (0, 5, 0, 1, 0), (10, 5, 0, 1, 0)]
+
+
+def lcrv(ranges=((0, 2), (2, 2)), knots=TICK_KNOTS, version=VERSION, reserved=0, shrink_first_box=False, extra=b""):
+    """An LCRV entry over `knots` of one tick a unit, the knots of each (first, count) in `ranges` a curve, its box
+    just holding their tubes; `shrink_first_box` takes a tick off the first box's far x."""
+    rows = []
+    for index, (first, count) in enumerate(ranges):
+        tube = np.array(knots[first:first + count])
+        lo = (tube[:, :3] - tube[:, 3:4]).min(axis=0)
+        hi = (tube[:, :3] + tube[:, 3:4]).max(axis=0)
+        hi[0] -= shrink_first_box and index == 0
+        rows.append(CURVE.pack(first, count, *lo.astype(int), *hi.astype(int)))
+    return (HEADER.pack(len(ranges), len(knots), version, reserved) + b"".join(rows)
+            + b"".join(KNOT.pack(*knot) for knot in knots) + extra)
 
 
 class Open:
@@ -293,6 +320,82 @@ class ThinCurvesTests(unittest.TestCase):
             source.uv = np.zeros((len(p), 2))
             with mock.patch.object(mesh_import, 'load_source', return_value=source),                     self.assertRaisesRegex(ValueError, 'every shown triangle is thin'):
                 mesh_import.bake_geometry(job, None)
+
+    def test_a_radius_that_exceeds_its_box_once_rounded_is_refused(self):
+        # Ties round to even: 1.5 rounds up to 2 and the knot's tick to its even neighbour, so the rounded tube ends
+        # a tick past the last one the box can name, though the unrounded one ends on it.
+        edge = I16_MAX - 2
+        write_curves([line_curve([[edge, 0, 0], [0, 0, 0]], 1.5)], TICKS)
+        with self.assertRaisesRegex(PackError, "radius exceeds its box"):
+            write_curves([line_curve([[edge + 0.5, 0, 0], [0, 0, 0]], 1.5)], TICKS)
+
+    def test_a_negative_colour_is_refused(self):
+        valid = line_curve([[0, 0, 0], [1, 0, 0]], 0.5)
+        write_curves([valid], TICKS)
+        negative = Curve(valid.knots, valid.radius, valid.color - [[0, 0, 0], [0, 0, 0.5 + 1e-3]])
+        with self.assertRaisesRegex(PackError, "arrays are invalid"):
+            write_curves([negative], TICKS)
+
+    def test_a_curve_of_one_knot_is_refused(self):
+        write_curves([line_curve([[0, 0, 0], [1, 0, 0]], 0.5)], TICKS)
+        with self.assertRaisesRegex(PackError, "arrays are invalid"):
+            write_curves([line_curve([[0, 0, 0]], 0.5)], TICKS)
+
+    def test_a_mesh_id_with_no_room_for_its_curves_is_refused(self):
+        room = NAME_BYTES - 1 - len(NAME_SUFFIX)
+        self.assertEqual(name_for_mesh("m" * room), "m" * room + NAME_SUFFIX)
+        with self.assertRaisesRegex(PackError, "no room"):
+            name_for_mesh("m" * (room + 1))
+
+    def test_a_valid_entry_reads_back(self):
+        self.assertEqual(len(read_curves(lcrv(), TICKS)), 2)
+
+    def test_reading_refuses_a_box_that_does_not_hold_its_knots(self):
+        with self.assertRaisesRegex(PackError, "box does not contain"):
+            read_curves(lcrv(shrink_first_box=True), TICKS)
+
+    def test_reading_refuses_a_knot_range_that_does_not_follow_on(self):
+        for name, ranges in (("a row of one knot", ((0, 1), (1, 3))),
+                             ("a row that skips back", ((0, 2), (1, 3))),
+                             ("a row past the last knot", ((0, 2), (2, 3)))):
+            with self.subTest(name), self.assertRaisesRegex(PackError, "knot range"):
+                read_curves(lcrv(ranges), TICKS)
+
+    def test_reading_refuses_a_wrong_version_and_a_reserved_word(self):
+        for name, entry in (("version", lcrv(version=VERSION + 1)), ("reserved", lcrv(reserved=1))):
+            with self.subTest(name), self.assertRaisesRegex(PackError, "sections are invalid"):
+                read_curves(entry, TICKS)
+
+    def test_reading_refuses_an_entry_of_another_length_than_its_header_says(self):
+        with self.assertRaisesRegex(PackError, "sections are invalid"):
+            read_curves(lcrv(extra=bytes(KNOT.size)), TICKS)
+        with self.assertRaisesRegex(PackError, "header"):
+            read_curves(lcrv()[:HEADER.size - 1], TICKS)
+
+    def test_reading_refuses_knots_no_curve_owns(self):
+        with self.assertRaisesRegex(PackError, "unowned"):
+            read_curves(lcrv(knots=TICK_KNOTS + [(0, 9, 0, 1, 0)]), TICKS)
+
+    def test_thin_parts_agree_for_float32_and_float64_copies_of_the_same_positions(self):
+        # Two bars end to end, the first's top ring a hair under a weld cell's midpoint and the second's bottom ring a
+        # hair over it: float64 puts them in two cells and float32 rounds the hair away, so only positions rounded
+        # first give both loads one welded bar.
+        from r3d.geometry import triangle_areas
+        cell = SIDE / WELD_CELLS_PER_SIDE
+        join = (np.floor(200 / cell) + 0.5) * cell
+        hair = 1e-9
+        p, t = cylinder()
+        ring = len(p) // 2
+        below, above = p.copy(), p.copy()
+        below[ring:, 2] = join - hair
+        above[:ring, 2] = join + hair
+        above[ring:, 2] = 2 * join
+        p, t = np.concatenate([below, above]), np.concatenate([t, t + len(p)])
+        budget = triangle_areas(p, t).sum() / SIDE ** 2
+        wide, narrow = thin_parts_at(p, t, budget), thin_parts_at(p.astype(np.float32), t, budget)
+        self.assertEqual([len(part.triangles) for part in narrow], [len(t)])
+        self.assertEqual([len(part.triangles) for part in wide], [len(t)])
+        np.testing.assert_array_equal(wide[0].triangles, narrow[0].triangles)
 
     def test_settings_default(self):
         steps = SimpleNamespace()

@@ -136,6 +136,157 @@ test_mesh_open_finds_curve_sibling(void) {
     release(&f);
 }
 
+/* An LCRV entry of two curves of two knots each, field by field, so a test breaks one and nothing else; a spare
+ * knot after them is the one an entry that counts it owns no row of. */
+enum { CURVES = 2, KNOTS = 4, SPARE_KNOTS = 1, CURVE_HEADER_BYTES = R3D_CURVE_HEADER_WORDS * sizeof(uint16_t) };
+
+typedef struct {
+    uint16_t header[R3D_CURVE_HEADER_WORDS]; /* curves, knots, version, reserved */
+    r3d_curve_t rows[CURVES];
+    r3d_curve_knot_t knots[KNOTS + SPARE_KNOTS];
+} curve_entry_t;
+
+_Static_assert(sizeof(curve_entry_t)
+                   == CURVE_HEADER_BYTES + (CURVES * sizeof(r3d_curve_t))
+                          + ((KNOTS + SPARE_KNOTS) * sizeof(r3d_curve_knot_t)),
+               "the entry's parts lie end to end");
+
+/* Rows `first`/`count` of each curve over the knots, each box just holding its tubes. */
+static void
+refit(curve_entry_t* e, const uint16_t firsts[CURVES], const uint16_t counts[CURVES]) {
+    for (int c = 0; c < CURVES; c++) {
+        r3d_curve_t* row = &e->rows[c];
+        *row =
+            (r3d_curve_t){firsts[c], counts[c], {INT16_MAX, INT16_MAX, INT16_MAX}, {INT16_MIN, INT16_MIN, INT16_MIN}};
+        for (int k = firsts[c]; k < firsts[c] + counts[c]; k++) {
+            const int16_t at[3] = {e->knots[k].x, e->knots[k].y, e->knots[k].z};
+            for (int axis = 0; axis < 3; axis++) {
+                const int16_t lo = (int16_t)(at[axis] - (int)e->knots[k].radius);
+                const int16_t hi = (int16_t)(at[axis] + (int)e->knots[k].radius);
+                row->lo[axis] = lo < row->lo[axis] ? lo : row->lo[axis];
+                row->hi[axis] = hi > row->hi[axis] ? hi : row->hi[axis];
+            }
+        }
+    }
+}
+
+static curve_entry_t
+valid_curves(void) {
+    curve_entry_t e = {
+        .header = {CURVES, KNOTS, R3D_CURVE_VERSION, 0},
+        .knots = {{0, 0, 0, 1, 0}, {10, 0, 0, 1, 0}, {0, 5, 0, 1, 0}, {10, 5, 0, 1, 0}, {0, 9, 0, 1, 0}}};
+    refit(&e, (const uint16_t[CURVES]){0, 2}, (const uint16_t[CURVES]){2, 2});
+    return e;
+}
+
+static size_t
+valid_curve_bytes(void) {
+    return sizeof(curve_entry_t) - (SPARE_KNOTS * sizeof(r3d_curve_knot_t));
+}
+
+/* Opens the mesh "tri" of a pack that also holds `bytes` of `entry` as its curves, or no curves when `entry` is NULL. */
+static asset_status_t
+open_with_curves(const curve_entry_t* entry, size_t bytes, r3d_lit_mesh_t* mesh) {
+    fixture_t f = fixture();
+    test_pack_t built = test_pack_begin(f.pack, BUFFER_BYTES, entry != NULL ? 2 : 1);
+    memcpy(test_pack_add(&built, "tri", R3D_LIT_MESH_ASSET, f.entry_size), f.entry, f.entry_size);
+    if (entry != NULL) {
+        memcpy(test_pack_add(&built, "tri" R3D_CURVE_NAME_SUFFIX, R3D_CURVE_ASSET, (uint32_t)bytes), entry, bytes);
+    }
+    f.total = test_pack_finish(&built);
+    asset_pack_t pack;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&pack, f.pack, f.total));
+    const asset_status_t status = r3d_lit_mesh_open(&pack, "tri", mesh);
+    release(&f);
+    return status;
+}
+
+/* The entry as it stands is refused with `status` and leaves the mesh zeroed; the valid one beside it opens. */
+static void
+expect_curves_refused(const curve_entry_t* entry, size_t bytes, asset_status_t status) {
+    const curve_entry_t valid = valid_curves();
+    r3d_lit_mesh_t mesh;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, open_with_curves(&valid, valid_curve_bytes(), &mesh));
+    TEST_ASSERT_EQUAL_INT(CURVES, mesh.curve_count);
+    TEST_ASSERT_EQUAL_INT(status, open_with_curves(entry, bytes, &mesh));
+    TEST_ASSERT_EQUAL_INT(0, mesh.vertex_count);
+    TEST_ASSERT_NULL(mesh.positions);
+    TEST_ASSERT_EQUAL_INT(0, mesh.curve_count);
+    TEST_ASSERT_NULL(mesh.curves);
+}
+
+static void
+test_a_mesh_opens_with_curves_or_without_a_sibling(void) {
+    const curve_entry_t valid = valid_curves();
+    r3d_lit_mesh_t mesh;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, open_with_curves(&valid, valid_curve_bytes(), &mesh));
+    TEST_ASSERT_EQUAL_INT(CURVES, mesh.curve_count);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, open_with_curves(NULL, 0, &mesh));
+    TEST_ASSERT_EQUAL_INT(0, mesh.curve_count);
+    TEST_ASSERT_NULL(mesh.curves);
+    TEST_ASSERT_EQUAL_INT(3, mesh.vertex_count);
+}
+
+/* An entry of no curves and no knots is whole at the header's size and short a byte under it. */
+static void
+test_a_curve_entry_shorter_than_its_header_is_refused(void) {
+    const curve_entry_t empty = {.header = {0, 0, R3D_CURVE_VERSION, 0}};
+    r3d_lit_mesh_t mesh;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, open_with_curves(&empty, CURVE_HEADER_BYTES, &mesh));
+    TEST_ASSERT_EQUAL_INT(0, mesh.curve_count);
+    expect_curves_refused(&empty, CURVE_HEADER_BYTES - 1, ASSET_ERR_BOUNDS);
+}
+
+static void
+test_a_curve_entry_of_another_version_is_refused(void) {
+    curve_entry_t e = valid_curves();
+    e.header[2] = R3D_CURVE_VERSION + 1;
+    expect_curves_refused(&e, valid_curve_bytes(), ASSET_ERR_VERSION);
+}
+
+static void
+test_a_curve_entry_with_a_nonzero_reserved_word_is_refused(void) {
+    curve_entry_t e = valid_curves();
+    e.header[3] = 1;
+    expect_curves_refused(&e, valid_curve_bytes(), ASSET_ERR_FORMAT);
+}
+
+/* The header counts four knots and the entry holds a fifth, owned by no curve: only the entry's size is wrong. */
+static void
+test_a_curve_entry_longer_than_its_counts_is_refused(void) {
+    const curve_entry_t e = valid_curves();
+    expect_curves_refused(&e, sizeof e, ASSET_ERR_BOUNDS);
+}
+
+static void
+test_a_curve_row_that_does_not_start_where_the_last_ended_is_refused(void) {
+    curve_entry_t e = valid_curves();
+    refit(&e, (const uint16_t[CURVES]){0, 1}, (const uint16_t[CURVES]){2, 3});
+    expect_curves_refused(&e, valid_curve_bytes(), ASSET_ERR_BOUNDS);
+}
+
+static void
+test_a_curve_row_of_one_knot_is_refused(void) {
+    curve_entry_t e = valid_curves();
+    refit(&e, (const uint16_t[CURVES]){0, 1}, (const uint16_t[CURVES]){1, 3});
+    expect_curves_refused(&e, valid_curve_bytes(), ASSET_ERR_BOUNDS);
+}
+
+static void
+test_a_knot_tube_outside_its_curve_box_is_refused(void) {
+    curve_entry_t e = valid_curves();
+    e.rows[0].hi[0] = (int16_t)(e.rows[0].hi[0] - 1);
+    expect_curves_refused(&e, valid_curve_bytes(), ASSET_ERR_BOUNDS);
+}
+
+/* The header counts the fifth knot and the entry holds it: sizes agree, and no row owns it. */
+static void
+test_a_curve_entry_with_knots_no_row_owns_is_refused(void) {
+    curve_entry_t e = valid_curves();
+    e.header[1] = KNOTS + SPARE_KNOTS;
+    expect_curves_refused(&e, sizeof e, ASSET_ERR_BOUNDS);
+}
+
 static void
 test_a_built_pack_opens_and_its_mesh_is_a_view_into_it(void) {
     fixture_t f = fixture();
@@ -496,6 +647,15 @@ void
 suite_asset_pack(void) {
     RUN_TEST(test_entry_validation_spans_budgeted_passes);
     RUN_TEST(test_mesh_open_finds_curve_sibling);
+    RUN_TEST(test_a_mesh_opens_with_curves_or_without_a_sibling);
+    RUN_TEST(test_a_curve_entry_shorter_than_its_header_is_refused);
+    RUN_TEST(test_a_curve_entry_of_another_version_is_refused);
+    RUN_TEST(test_a_curve_entry_with_a_nonzero_reserved_word_is_refused);
+    RUN_TEST(test_a_curve_entry_longer_than_its_counts_is_refused);
+    RUN_TEST(test_a_curve_row_that_does_not_start_where_the_last_ended_is_refused);
+    RUN_TEST(test_a_curve_row_of_one_knot_is_refused);
+    RUN_TEST(test_a_knot_tube_outside_its_curve_box_is_refused);
+    RUN_TEST(test_a_curve_entry_with_knots_no_row_owns_is_refused);
     RUN_TEST(test_a_built_pack_opens_and_its_mesh_is_a_view_into_it);
     RUN_TEST(test_a_pack_larger_than_its_content_opens);
     RUN_TEST(test_one_changed_byte_fails_the_checksum);
