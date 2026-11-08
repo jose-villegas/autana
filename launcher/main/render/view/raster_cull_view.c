@@ -68,16 +68,14 @@ list_drawn(raster_cull_t* s, const raster_t* raster) {
         const r3d_lit_mesh_t* mesh = instance->mesh;
         assert(at < RASTER_CULL_CLUSTERS_MAX);
         const int head = at++;
-        const uint32_t* blending = raster_lod_dithering(raster, instance);
-        for (int c = 0; c < mesh->cluster_count; c++) {
-            if (r3d_lod_drawn_blending(mesh, c, instance->lod_coarse, blending)) {
-                assert(at < RASTER_CULL_CLUSTERS_MAX);
-                s->drawn[at++] = (uint16_t)c;
-                s->triangles += mesh->clusters[c].triangle_count;
-            }
+        const int count = r3d_lod_list_drawn(mesh, instance->lod_coarse, raster_lod_dithering(raster, instance),
+                                             &s->drawn[at], RASTER_CULL_CLUSTERS_MAX - at);
+        for (int k = 0; k < count; k++) {
+            s->triangles += mesh->clusters[s->drawn[at + k]].triangle_count;
         }
-        s->drawn[head] = (uint16_t)(at - head - 1);
-        s->clusters += s->drawn[head];
+        at += count;
+        s->drawn[head] = (uint16_t)count;
+        s->clusters += count;
     }
     assert(s->triangles <= RASTER_CULL_TRIANGLES_MAX);
 }

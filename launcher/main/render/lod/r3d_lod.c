@@ -372,3 +372,22 @@ r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lo
     }
     return changed || blend_changed;
 }
+
+int
+r3d_lod_list_drawn(const r3d_lit_mesh_t* mesh, const uint32_t* coarse, const uint32_t* blending, uint16_t* out,
+                   int room) {
+    const bool any = coarse != NULL
+                     && (r3d_lod_any(coarse, mesh->lod_group_count)
+                         || (blending != NULL && r3d_lod_any(blending, mesh->lod_group_count)));
+    const bool every = r3d_lod_finest_untested(mesh, any);
+    const int count = !every || mesh->cluster_lod == NULL ? mesh->cluster_count : mesh->lod_coarse_first;
+    int drawn = 0;
+    for (int c = 0; c < count; c++) {
+        if (every || r3d_lod_drawn_blending(mesh, c, coarse, blending)) {
+            assert(drawn < room);
+            out[drawn++] = (uint16_t)c;
+        }
+    }
+    (void)room;
+    return drawn;
+}
