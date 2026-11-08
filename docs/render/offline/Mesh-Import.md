@@ -139,8 +139,8 @@ share is random, so `process.seed` makes it repeatable.
 
 `geometry.curves` takes long, thin connected parts such as poles and cables
 out of the start and stores them as lit curves beside the mesh, so
-simplification cannot drop or thicken them. Detection reads only shape: see
-[Thin curves](../Mesh-Rendering.md#thin-curves) for the rule and how they draw.
+simplification cannot drop or thicken them. How parts are chosen and drawn is
+[Thin-Curves.md](../Thin-Curves.md).
 
 ```toml
 [geometry]

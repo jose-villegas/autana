@@ -18,7 +18,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [overview](#overview) | 15 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
-| [render](#render) | 126 | 0 | 0 |
+| [render](#render) | 128 | 2 | 0 |
 | [ui](#ui) | 62 | 0 | 0 |
 
 ## anim
@@ -194,6 +194,8 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/cull-sponza-chase.gif"><img src="figure-thumbnails/render/cull-sponza-chase.gif" width="160" alt=""></a> | Sponza's fates from behind the camera | [render/frame/Culling](../render/frame/Culling.md) | not declared yet |
 | <a href="../images/render/cull-sponza-counts.png"><img src="../images/render/cull-sponza-counts.png" width="160" alt=""></a> | Sponza's counts along its path | [render/frame/Culling](../render/frame/Culling.md) | not declared yet |
 | <a href="../images/render/cull-sponza-sheet.png"><img src="../images/render/cull-sponza-sheet.png" width="160" alt=""></a> | Sponza's cull along its path | [render/frame/Culling](../render/frame/Culling.md) | not declared yet |
+| <a href="../images/render/curves-detection.gif"><img src="figure-thumbnails/render/curves-detection.gif" width="160" alt=""></a> | a small scene orbiting: the posts and the hanging cable are curves, the rail lying on the block stays mesh | [render/Thin-Curves](../render/Thin-Curves.md) | [thin_figures.py](../../launcher/tools/r3d/thin/thin_figures.py) |
+| <a href="../images/render/curves-ribbon.png"><img src="../images/render/curves-ribbon.png" width="160" alt=""></a> | four pictures drawn by the curve draw: a near ribbon, a far one fading, an end-on pole as a square, a far one over a wall and behind a pillar | [render/Thin-Curves](../render/Thin-Curves.md) | [thin_figures.py](../../launcher/tools/r3d/thin/thin_figures.py) |
 | <a href="../images/render/depth-fit-bistro-diff.crops.png"><img src="../images/render/depth-fit-bistro-diff.crops.png" width="160" alt=""></a> | The places the two settings differ most | [render/Render-Settings](../render/Render-Settings.md) | not declared yet |
 | <a href="../images/render/depth-fit-bistro-diff.png"><img src="../images/render/depth-fit-bistro-diff.png" width="160" alt=""></a> | One Bistro frame with depth scaled by near_z and by the fit, and their difference | [render/Render-Settings](../render/Render-Settings.md) | not declared yet |
 | <a href="../images/render/depth-fit-bistro.gif"><img src="figure-thumbnails/render/depth-fit-bistro.gif" width="160" alt=""></a> | Consecutive frames of one window, near_z on top and the fit below | [render/Render-Settings](../render/Render-Settings.md) | not declared yet |

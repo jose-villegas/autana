@@ -245,22 +245,8 @@ all its renderers.
 
 ## Thin curves
 
-Thin connected parts can leave the triangle start and fit: edge collapse loses
-small cross-sections (Garland and Heckbert 1997, Fig. 3 [[12]](../Citations.md#garland-1997)).
-The optional `geometry.curves` setting stores them in [LCRV](../assets/formats/LCRV.md).
-
-| Stage | Behaviour |
-|---|---|
-| Source | Detect connected parts by budget side, length, slenderness and width across their own centreline, so a sagging cable counts as thin as a taut one; no names. A part with half its vertices within half its width of any other triangle, thin ones included, rests on a surface and stays in the mesh |
-| Start | Exclude their triangles; fit and light radius-bearing polylines against the full source, each knot over the stretch it draws, from the ring directions not facing nearby geometry |
-| Fit | Exclude thin surface samples; draw frozen six-sided tubes with copies and include them in the coverage gate |
-| Runtime | After all triangle clusters, cull curve boxes and draw near-clipped camera-facing ribbons in each row band: every opaque segment first, then the faded ones. The depth fit counts the curve boxes |
-| Width | Draw at least one picture pixel; end-on segments draw a square |
-| Coverage | Subpixel ribbons fade by true width / drawn width, depth-tested, mixing over what is behind; they write depth only over empty depth, mixed with the clear colour, so upscaling shows them. Solid ribbons write depth |
-
-The minimum width and coverage fade follow Persson's wire antialiasing
-[[116]](../Citations.md#persson-2012). Curve positions and radii share the mesh's
-position units and placed lens.
+Thin parts an import takes out of the mesh draw as lit ribbons after every
+triangle cluster: [Thin-Curves.md](Thin-Curves.md).
 
 ## Rules the layer keeps
 
