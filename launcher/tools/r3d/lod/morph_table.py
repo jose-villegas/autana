@@ -6,8 +6,8 @@
 Builds the scene's host renderer once (the script's --build-only), or takes
 one --renderer already built, and runs
 each --render path in three arms: the finest level (render.lod_coverage_permille
-0), the pick's switches drawn as they are (render.lod_morph 0) and blended
-(render.lod_morph 1), once per --assets variant, a folder of packs the
+0), the pick's switches drawn as they are and each blend (render.lod_blend,
+the values of render_lod_blend_t), once per --assets variant, a folder of packs the
 renderer reads instead of its own (AUTANA_ASSET_DIR). Per path and arm it
 reports the blocks popping beyond the finest level's own frame-to-frame
 change and the mean difference from the finest level (coverage_table.py's
@@ -25,15 +25,29 @@ import subprocess
 import sys
 import tempfile
 
+import re
+
 import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from coverage_table import ROOT, build, scored  # noqa: E402
 from generated_blocks import replace_block  # noqa: E402
 
-FINEST = ("render.lod_coverage_permille=0", "render.lod_morph=0")
-SWITCHES = ("render.lod_morph=0",)
-BLENDED = ("render.lod_morph=1",)
+SETTINGS_HEADER = ROOT / "launcher/main/render/settings/render_settings.h"
+BLEND_PREFIX = "RENDER_LOD_BLEND_"
+
+
+def blends():
+    """render_lod_blend_t's values by lower-case name, read from its header."""
+    body = re.search(r"typedef enum \{(.*?)\} render_lod_blend_t;", SETTINGS_HEADER.read_text(), re.S).group(1)
+    names = re.findall(BLEND_PREFIX + r"(\w+)", body)
+    return {name.lower(): value for value, name in enumerate(names)}
+
+
+BLEND = blends()
+SWITCHES = (f"render.lod_blend={BLEND['switch']}",)
+FINEST = ("render.lod_coverage_permille=0",) + SWITCHES
+BLENDED = (f"render.lod_blend={BLEND['morph']}",)
 CENTI = 100.0
 BLOCK = "lod-morph"
 

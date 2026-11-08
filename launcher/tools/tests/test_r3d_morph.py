@@ -385,6 +385,32 @@ def distance_to_triangles(point, corners):
     return float(distance.min())
 
 
+class AboveTests(unittest.TestCase):
+    def test_a_group_is_above_itself_and_every_ancestor_through_its_clusters_parents(self):
+        mesh = SimpleNamespace(groups=[None] * 4, lod=[(1, 0), (2, 1), (LOD_NONE, 2), (3, LOD_NONE)])
+        self.assertEqual({0: {0}, 1: {1, 0}, 2: {2, 1, 0}, 3: {3}}, morph.above(mesh))
+
+
+class SharedRowTests(unittest.TestCase):
+    """Two clusters of two rows, rows 0 and 2 at one position."""
+
+    def mesh(self, lod):
+        pos = np.array([[0, 0, 0], [5, 5, 5], [0, 0, 0], [9, 9, 9]])
+        return SimpleNamespace(pos=pos, lod=lod, groups=[None] * 2, clusters=[(0, 2), (2, 2)])
+
+    def test_clusters_under_different_parents_holding_a_position_hold_it(self):
+        held = morph.shared_rows(self.mesh([(LOD_NONE, 0), (LOD_NONE, 1)]))
+        self.assertEqual([True, False, True, False], held.tolist())
+
+    def test_clusters_under_one_parent_hold_nothing(self):
+        held = morph.shared_rows(self.mesh([(LOD_NONE, 0), (LOD_NONE, 0)]))
+        self.assertFalse(held.any())
+
+    def test_a_fine_cluster_and_the_coarse_one_simplified_from_its_parent_never_meet(self):
+        held = morph.shared_rows(self.mesh([(LOD_NONE, 0), (0, LOD_NONE)]))
+        self.assertFalse(held.any())
+
+
 class BakedMorphTargetTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -412,12 +438,17 @@ class BakedMorphTargetTests(unittest.TestCase):
         self.assertIn(("m.morph", morph_asset.TYPE), [(name, kind) for name, kind, _ in entries])
 
     def test_every_row_with_a_parent_targets_a_point_on_the_parents_coarse_triangles(self):
+        held = morph.shared_rows(self.mesh)
+        self.assertTrue(held.any())
         checked = 0
         for c, (_, parent) in enumerate(self.mesh.lod):
             if parent == LOD_NONE:
                 continue
             corners = coarse_corners(self.mesh, parent)
             for row in self.cluster_rows(c):
+                if held[row]:
+                    np.testing.assert_array_equal(self.mesh.pos[row], self.target[row])
+                    continue
                 self.assertLessEqual(distance_to_triangles(self.target[row], corners), ROUNDING_TICKS,
                                      f"cluster {c} row {row} is off the surface")
                 checked += 1
@@ -493,6 +524,36 @@ class BakedMorphTargetTests(unittest.TestCase):
                 first_landed = decoded.setdefault(at, (c, landed))[1]
                 self.assertEqual(first_landed, landed, f"cluster {c} row {row} at {at}")
         self.assertGreater(shared, 0)
+
+    def test_no_two_clusters_drawable_together_leave_a_gap_at_a_shared_position(self):
+        shifts, deltas, _ = morph_asset.decode(lit_mesh.morph_blob(self.blob, self.levels_blob))
+        deltas = np.array(deltas).reshape(-1, AXES)
+        ancestors = morph.above(self.mesh)
+        at = {}
+        for c, (first, count, *_) in enumerate(self.mesh.clusters):
+            for row in range(first, first + count):
+                at.setdefault(tuple(self.mesh.pos[row]), []).append((c, row))
+
+        def apart(a, b):
+            (own_a, parent_a), (own_b, parent_b) = self.mesh.lod[a], self.mesh.lod[b]
+            return ((own_b != LOD_NONE and parent_a != LOD_NONE and own_b in ancestors[parent_a])
+                    or (own_a != LOD_NONE and parent_b != LOD_NONE and own_a in ancestors[parent_b]))
+
+        different = same = 0
+        for place, rows in at.items():
+            for i, (ca, ra) in enumerate(rows):
+                for cb, rb in rows[i + 1:]:
+                    if ca != cb and apart(ca, cb):
+                        continue
+                    move_a, move_b = deltas[ra] << shifts[ca], deltas[rb] << shifts[cb]
+                    if self.mesh.lod[ca][1] == self.mesh.lod[cb][1]:
+                        same += 1
+                        np.testing.assert_array_equal(move_a, move_b, f"{place}: clusters {ca}, {cb}")
+                    else:
+                        different += 1
+                        self.assertFalse(move_a.any() or move_b.any(), f"{place}: clusters {ca}, {cb} crack")
+        self.assertGreater(different, 0)
+        self.assertGreater(same, 0)
 
     def test_clusters_under_one_parent_share_a_shift_in_the_blob(self):
         shifts, _, _ = morph_asset.decode(lit_mesh.morph_blob(self.blob, self.levels_blob))

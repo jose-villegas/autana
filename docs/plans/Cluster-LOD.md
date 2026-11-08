@@ -114,24 +114,31 @@ python launcher/tools/r3d/lod/coverage_table.py --script launcher/main/apps/rend
 
 A fine group blends toward its parent's coarse surface as the parent nears
 its switch, so the switch itself moves nothing: a geomorph<sup>[[116]](../Citations.md#hoppe-1996)</sup>
-whose weight is a function of the view alone<sup>[[117]](../Citations.md#strugar-2009)</sup>, with no
-state kept per instance. The weight is whole while the parent's projected
-error is within the hysteresis band and fades to none `R3D_LOD_MORPH_PX` past
-it; the coverage cap fades it the same way over `R3D_LOD_MORPH_COVER_RAMP` of
-the cap. Each vertex's target is in the mesh's [LMOR](../assets/formats/LMOR.md)
-sibling ([`lod/morph.py`](../../launcher/tools/r3d/lod/morph.py)). The
-`render.lod_morph` development knob turns it off.
+whose weight follows the parent's projected error<sup>[[117]](../Citations.md#strugar-2009)</sup>.
+The weight is whole at the switch the group meets next and fades to none
+[`lod.blend_px`](../render/Render-Settings.md#lod) past it; the coverage cap fades it over
+`R3D_LOD_MORPH_COVER_RAMP` of the cap. Each vertex's target is in the mesh's
+[LMOR](../assets/formats/LMOR.md) sibling
+([`lod/morph.py`](../../launcher/tools/r3d/lod/morph.py)). The
+[`lod.blend`](../render/Render-Settings.md#lod) setting picks it, a dither or
+a plain switch.
+
+The hysteresis band puts the two switches apart, so the pick keeps one more
+bit per group, *arrived*: set when the group turns fine, cleared once its
+error is `lod.blend_px` past the band. An arrived group fades from the
+band's top, where it came through; any other fine group from the bottom,
+where it turns coarse. Both weights are none where the bit changes.
 
 | Target | Rule |
 |---|---|
 | Kept vertex | The coarse vertex it became: each coarse vertex claims the nearest fine one within the group's error, nearer pairs first |
 | Removed vertex | The nearest point on the parent's coarse triangles, one facing its way when such a point is within the group's error of the nearest |
 | Colour | The coarse colour where the vertex lands, from its landing point; meshes with face colours blend positions only |
+| Shared position | Stays put when clusters under different parents that can be drawn together share it, so clusters blending by different amounts never crack |
 
-A border between groups is locked, so its vertices are kept and land on
-themselves: clusters blending by different amounts never crack. A target
-on a coarse level that is itself blending moves with it
-(`R3D_LOD_MORPH_CHAIN` levels), so the switch lands on the surface drawn.
+Two clusters are never drawn together when one's own group is the other's
+parent or above it. Clusters under one parent share a shift, so the rows
+they share move as one.
 
 The table renders each path with the finest level, the pick's switches drawn
 as they are, and blended, scored as the coverage cap's is. Vertices blended

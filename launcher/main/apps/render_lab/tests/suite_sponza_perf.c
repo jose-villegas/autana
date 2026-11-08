@@ -107,7 +107,7 @@ bench_open(const r3d_instance_t* instance, const raster_attachment_t* const* att
     b->instance = *instance;
     if (b->instance.lod_coarse == NULL && instance->mesh->lod_group_count > 0) {
         /* All clear, as a scene's renderer starts: the finest level until raster_pick_levels() runs. */
-        const size_t words = R3D_LOD_WORDS(instance->mesh->lod_group_count);
+        const size_t words = R3D_LOD_STATE_WORDS(instance->mesh->lod_group_count);
         b->coarse = memory_alloc(words * sizeof(*b->coarse), MEMORY_INTERNAL);
         TEST_ASSERT_NOT_NULL(b->coarse);
         memset(b->coarse, 0, words * sizeof(*b->coarse));

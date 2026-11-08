@@ -154,7 +154,7 @@ r3d_lod_morph_init(r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, const r3d
         .enter = (lod->tolerance_px - lod->hysteresis_px) * pixels_per_output_pixel,
         .leave = (lod->tolerance_px + lod->hysteresis_px) * pixels_per_output_pixel,
         .arrived = arrived,
-        .ramp = R3D_LOD_MORPH_PX * pixels_per_output_pixel,
+        .ramp = lod->blend_px * pixels_per_output_pixel,
         .covered = covered,
         .cover_ramp = covered * R3D_LOD_MORPH_COVER_RAMP,
         .enabled = enabled && mesh->morph_delta != NULL,
@@ -260,7 +260,7 @@ r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lo
             *word &= ~bit;
             if (arrived != NULL && was) {
                 arrived[g / R3D_LOD_WORD_BITS] |= bit;
-            } else if (arrived != NULL && !within(&at, error, leave + R3D_LOD_MORPH_PX)) {
+            } else if (arrived != NULL && !within(&at, error, leave + lod->blend_px)) {
                 arrived[g / R3D_LOD_WORD_BITS] &= ~bit;
             }
         }
