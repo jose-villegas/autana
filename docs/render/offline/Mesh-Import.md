@@ -142,6 +142,15 @@ out of the start and stores them as lit curves beside the mesh, so
 simplification cannot drop or thicken them. Detection reads only shape: see
 [Thin curves](../Mesh-Rendering.md#thin-curves) for the rule and how they draw.
 
+```toml
+[geometry]
+curves = true
+```
+
+Detection measures parts against the start's triangle budget, so every
+variant needs `triangles`. An object whose shown triangles are all thin is
+refused: its curves need a mesh to belong to.
+
 #### simplify
 
 `geometry.simplify` splits long edges and simplifies each variant to its

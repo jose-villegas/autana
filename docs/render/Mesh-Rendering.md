@@ -109,7 +109,7 @@ flowchart TB
     subgraph Census["raster_census()"]
         direction LR
         Picture["r3d_lens_init()<br/><i>for the picture</i><br/>world box, r3d_lens_place()<br/><i>per instance</i>"] --> Cull
-        Cull["r3d_pipeline_cull()<br/><i>walk the tree, nearest first;<br/>bound each kept box's depth</i>"] --> Scale
+        Cull["r3d_pipeline_cull()<br/><i>walk the tree, nearest first;<br/>bound each kept box's depth</i><br/>r3d_pipeline_fit_curves()<br/><i>each kept curve box too</i>"] --> Scale
         Scale["inverse_depth_scale_fit()<br/><i>the depth scale</i>"]
     end
     Census --> List["the scratch block's census<br/><i>depth scale, then culled list;<br/>fixed offset across render sizes</i>"]
@@ -120,6 +120,7 @@ flowchart TB
         direction LR
         Fit["r3d_lens_init(), r3d_lens_fit()<br/><i>once, fitted to the render size</i><br/>r3d_lens_place(), r3d_lens_set_depth_near()<br/><i>per kept instance</i>"] --> Transform["r3d_pipeline_transform()<br/><i>each vertex once</i>"]
         Transform --> DrawStage["r3d_pipeline_draw()<br/><i>near clip, r3d_span</i>"]
+        DrawStage --> Curves["r3d_curve_draw()<br/><i>last batch: opaque segments,<br/>then faded ones</i>"]
     end
     Draw --> Upscale["raster_upscale()<br/><i>into the destination</i>"]
 ```
@@ -202,6 +203,7 @@ sequenceDiagram
     Note over C0: pick the row at the instance's top share
     C0->>J: clear depth and draw the rows above it
     Note over C0: clear depth and draw the rows below it
+    Note over C0,J: the last batch then draws each half's curves in its rows
     J-->>C0: job_wait()
     Note over C0: job_share_update() steers each share by both halves' times
     C0->>P: gfx_present_wait()
@@ -252,9 +254,9 @@ The optional `geometry.curves` setting stores them in [LCRV](../assets/formats/L
 | Source | Detect connected parts by budget side, length, slenderness and width across their own centreline, so a sagging cable counts as thin as a taut one; no names. A part with half its vertices within half its width of any other triangle, thin ones included, rests on a surface and stays in the mesh |
 | Start | Exclude their triangles; fit and light radius-bearing polylines against the full source, each knot over the stretch it draws, from the ring directions not facing nearby geometry |
 | Fit | Exclude thin surface samples; draw frozen six-sided tubes with copies and include them in the coverage gate |
-| Runtime | After all triangle clusters, cull curve boxes and draw near-clipped camera-facing ribbons in each row band |
+| Runtime | After all triangle clusters, cull curve boxes and draw near-clipped camera-facing ribbons in each row band: every opaque segment first, then the faded ones. The depth fit counts the curve boxes |
 | Width | Draw at least one picture pixel; end-on segments draw a square |
-| Coverage | Subpixel ribbons fade by true width / drawn width, depth-tested without writing depth; solid ribbons write depth |
+| Coverage | Subpixel ribbons fade by true width / drawn width, depth-tested, mixing over what is behind; they write depth only over empty depth, mixed with the clear colour, so upscaling shows them. Solid ribbons write depth |
 
 The minimum width and coverage fade follow Persson's wire antialiasing
 [[116]](../Citations.md#persson-2012). Curve positions and radii share the mesh's

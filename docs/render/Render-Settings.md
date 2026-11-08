@@ -86,7 +86,8 @@ The artefact moves from frame to frame:
 ![Consecutive frames of one window, near_z on top and the fit below](../images/render/depth-fit-bistro.gif)
 
 The fit adds no pass of its own: the cull's walk tracks the nearest bound it
-keeps. So `depth_fit` has an effect only with `cull` on.
+keeps, and a mesh's curve boxes join it. So `depth_fit` has an effect only
+with `cull` on.
 
 ## batched
 
