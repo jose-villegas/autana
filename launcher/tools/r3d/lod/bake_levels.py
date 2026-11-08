@@ -13,6 +13,12 @@ border stays where the finer level put it, and neighbours never crack. A
 coarse vertex takes its colour from the nearest level-0 point facing its way,
 one colour per cluster, and a flat triangle from the nearest to its middle.
 
+A group's error is at least the farthest its coarse clusters lie from the
+finer ones they replace, either way, plus the largest error among the groups
+those came from. clusterlod's own error measures distance off the input's
+planes, so an outline that shrinks within its own plane (a thin slab's rim
+folding in) costs it nothing.
+
 Group bounds and errors are rounded outward and up, then grown so each holds
 every group simplified into it with LOD_ENCLOSE_MARGIN to spare and carries
 at least its error. A group that would not fit the format's int16 bounds or
@@ -118,6 +124,26 @@ def outside_need(fine, at, corner, movable):
         for k in range(3):
             np.maximum.at(need, corner[nearest, k], np.where(movable[corner[nearest, k]], share, 0.0))
     return need
+
+
+def one_way(points, corners):
+    """Each of `points` (N x 3) to its nearest triangle of `corners` (T x 3 x 3), the farthest."""
+    farthest = 0.0
+    a, b, c = corners[:, 0], corners[:, 1], corners[:, 2]
+    for start in range(0, len(points), PUSH_CHUNK):
+        q = points[start:start + PUSH_CHUNK]
+        rows = np.repeat(q, len(corners), axis=0)
+        _, distance = closest_point_on_triangles(rows, *(np.tile(v, (len(q), 1)) for v in (a, b, c)))
+        farthest = max(farthest, float(distance.reshape(len(q), -1).min(axis=1).max()))
+    return farthest
+
+
+def surface_gap(fine, coarse):
+    """How far apart two triangle sets (N x 3 x 3) lie: every vertex of each to the other's nearest triangle,
+    the farthest."""
+    fine, coarse = np.asarray(fine, dtype=np.float64), np.asarray(coarse, dtype=np.float64)
+    return max(one_way(np.unique(fine.reshape(-1, 3), axis=0), coarse),
+               one_way(np.unique(coarse.reshape(-1, 3), axis=0), fine))
 
 
 class Level0:
@@ -260,6 +286,7 @@ def side_levels(levels, welded, wt, tris, face, member, side, group_base):
                         "face": None if face is None else np.asarray(face)[rows],
                         "own": LOD_NONE, "parent": group_id(levels.cluster_group[c])})
     spheres, errors, sources = [], [], []
+    made = {}
     for g in np.flatnonzero(produced):
         inputs = np.flatnonzero(levels.cluster_group == g)
         outputs = np.flatnonzero(levels.cluster_refined == g)
@@ -267,6 +294,9 @@ def side_levels(levels, welded, wt, tris, face, member, side, group_base):
         moved = push_outward(np.concatenate([corner_ids[c] for c in inputs]),
                              np.concatenate([drawn[c] for c in inputs]),
                              np.concatenate([corner_ids[c] for c in outputs]), error)
+        below = max((made.get(int(levels.cluster_refined[c]), 0.0) for c in inputs), default=0.0)
+        error = max(error, surface_gap(np.concatenate([drawn[c] for c in inputs]), moved) + below)
+        made[int(g)] = error
         at = 0
         for c in outputs:
             drawn[c] = moved[at:at + len(corner_ids[c])]
