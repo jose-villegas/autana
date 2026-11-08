@@ -1080,14 +1080,15 @@ set_up_capped_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* con
 static __attribute__((noinline)) bool
 set_up_masked(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[TRIANGLE_VERTICES], recti_t box,
               int y_anchor, const uint16_t* face, fill_t* f, gradients_t* g, mask_planes_t* uv) {
-    const bool set = target->skip_hidden ? set_up_capped_fill(target, v, box, y_anchor, face, f, g)
-                                         : set_up_fill(target, v, box, y_anchor, face, f, g);
-    if (!set) {
+    if (!set_up_fill(target, v, box, y_anchor, face, f, g)) {
         return false;
     }
     const r3d_span_vertex_t* a = v[0];
     const r3d_span_vertex_t* b = v[1];
     const r3d_span_vertex_t* c = v[2];
+    if (target->skip_hidden) {
+        cap_depth(a, b, c, box, g); /* set_up_capped_fill() inlined here would leave its IRAM section */
+    }
     plane_t p;
     if (!plane_of(a, b, c, box.x, box.y, &p)) {
         return false;
