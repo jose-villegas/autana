@@ -98,7 +98,7 @@ draw_fixture_triangle(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, co
 
 static r3d_span_vertex_t
 sv(float x, float y, float z, float r, float g, float b) {
-    return (r3d_span_vertex_t){r3d_span_snap(x), r3d_span_snap(y), z, r, g, b, 0, 0};
+    return (r3d_span_vertex_t){r3d_span_snap(x), r3d_span_snap(y), z, r, g, b};
 }
 
 static void
@@ -695,9 +695,7 @@ random_vertex(uint32_t* state, float cx, float cy, float radius, float z_lo, flo
                                z,
                                r,
                                g,
-                               b,
-                               0,
-                               0};
+                               b};
 }
 
 /* Anything from half a pixel to thirty across; mostly at depths within a
@@ -1494,9 +1492,7 @@ large_triangle(uint32_t* state, int n, r3d_span_vertex_t v[3]) {
                                    (float)random_within(state, 1, INVERSE_DEPTH_MAX) / (float)INVERSE_DEPTH_MAX,
                                    9,
                                    9,
-                                   9,
-                                   0,
-                                   0};
+                                   9};
     }
     if (n % 2 == 1) {
         v[0].x = random_within(state, 0, window_x);

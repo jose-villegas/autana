@@ -850,9 +850,7 @@ small_fill_reference(raster_rig_t* r, small_fill_t fill) {
                                           1.0F / SMALL_FILL_CAMERA_DISTANCE,
                                           rgb[0],
                                           rgb[1],
-                                          rgb[2],
-                                          0,
-                                          0};
+                                          rgb[2]};
     }
     for (int triangle = 0; triangle < 2; triangle++) {
         const uint16_t* indices = r->quad[0].mesh.triangles[triangle];

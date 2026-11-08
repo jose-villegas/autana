@@ -41,7 +41,7 @@ static const int32_t value_max[ATTRIBUTES] = {DEPTH_MAX, 65280, 65280, 65280};
 #define SMALL_GRAIN_RB_MAX     ((int)RGB565_G6_MAX >> 1)
 #define SMALL_GRAIN_MIDPOINT   (((2 * SMALL_GRAIN_GREEN_STEP * SMALL_GRAIN_RB_MAX) + (int)RGB565_G6_MAX + 1) / 2)
 #define SMALL_FILL_WALK        (-1)
-#define TRIANGLE_VERTICES      3
+#define TRIANGLE_VERTICES      R3D_SPAN_TRIANGLE_VERTICES
 
 TUNE_OWNER(r3d_span);
 TUNE_HOT(r3d_span, flat_max_rows, R3D_SPAN_FLAT_MAX_ROWS, 0, 8);
@@ -93,27 +93,28 @@ plane_of(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_
     return true;
 }
 
+static inline __attribute__((always_inline)) void
+gradient(const plane_t* p, float va, float vb, float vc, int k, gradients_t* out) {
+    const float d1 = vb - va;
+    const float d2 = vc - va;
+    const float ddx = (d1 * p->e2y - d2 * p->e1y) * p->inv;
+    const float ddy = (d2 * p->e1x - d1 * p->e2x) * p->inv;
+    out->dx[k] = to_step(ddx);
+    out->dy[k] = to_step(ddy);
+    out->base[k] = (int32_t)mathf_clamp(va + (ddx * p->ox) + (ddy * p->oy), -2.0e9F, 2.0e9F);
+}
+
 /* One attribute's plane: its value at the origin and its steps along x and y. */
 typedef struct {
     int32_t base, dx, dy;
 } plane_step_t;
 
+/* gradient() of one attribute on its own, for planes a fill keeps apart. */
 static inline __attribute__((always_inline)) plane_step_t
 plane_step(const plane_t* p, float va, float vb, float vc) {
-    const float d1 = vb - va;
-    const float d2 = vc - va;
-    const float ddx = (d1 * p->e2y - d2 * p->e1y) * p->inv;
-    const float ddy = (d2 * p->e1x - d1 * p->e2x) * p->inv;
-    return (plane_step_t){(int32_t)mathf_clamp(va + (ddx * p->ox) + (ddy * p->oy), -2.0e9F, 2.0e9F), to_step(ddx),
-                          to_step(ddy)};
-}
-
-static inline __attribute__((always_inline)) void
-gradient(const plane_t* p, float va, float vb, float vc, int k, gradients_t* out) {
-    const plane_step_t step = plane_step(p, va, vb, vc);
-    out->base[k] = step.base;
-    out->dx[k] = step.dx;
-    out->dy[k] = step.dy;
+    gradients_t one;
+    gradient(p, va, vb, vc, 0, &one);
+    return (plane_step_t){one.base[0], one.dx[0], one.dy[0]};
 }
 
 /* The colour planes, left until the depth plane has shown the triangle is
@@ -232,7 +233,7 @@ typedef enum { FILL_FLAT, FILL_FACE, FILL_GOURAUD } shading_t;
 typedef struct {
     plane_step_t u, v;
     int x_origin, y_origin;
-    const lmsk_atlas_t* mask;
+    const r3d_span_mask_t* given;
 } mask_planes_t;
 
 typedef struct {
@@ -352,6 +353,13 @@ fill_solid(uint16_t* depth, uint16_t* color, int count, int32_t z, int32_t dz, u
 #define FILL_GOURAUD_ATTR
 #endif
 
+/* Every span fills at least one pixel. Said to the compiler, so a fill
+ * shared outside this file tests for no empty span its callers never make. */
+#define SPAN_NOT_EMPTY(count)                                                                                          \
+    if ((count) < 1) {                                                                                                 \
+        __builtin_unreachable();                                                                                       \
+    }
+
 #define GOURAUD_VALUES(value, step)                                                                                    \
     int32_t z = (int32_t)(value)[0];                                                                                   \
     int32_t r = (int32_t)(value)[1];                                                                                   \
@@ -368,6 +376,7 @@ fill_solid(uint16_t* depth, uint16_t* color, int count, int32_t z, int32_t dz, u
 RENDER_IRAM_ATTR __attribute__((noinline)) FILL_GOURAUD_ATTR void
 r3d_span_fill_gouraud(uint16_t* depth, uint16_t* color, int count, const uint32_t value[ATTRIBUTES],
                       const int32_t step[ATTRIBUTES]) {
+    SPAN_NOT_EMPTY(count);
     GOURAUD_VALUES(value, step);
     for (int i = 0; i < count; i++) {
         const uint16_t zq = (uint16_t)(z >> R3D_DEPTH_SHIFT);
@@ -385,6 +394,7 @@ r3d_span_fill_gouraud(uint16_t* depth, uint16_t* color, int count, const uint32_
 RENDER_IRAM_ATTR __attribute__((noinline)) FILL_GOURAUD_ATTR void
 r3d_span_fill_masked(uint16_t* depth, uint16_t* color, int count, const uint32_t value[ATTRIBUTES],
                      const int32_t step[ATTRIBUTES], uint32_t row_word, uint32_t u, uint32_t du) {
+    SPAN_NOT_EMPTY(count);
     GOURAUD_VALUES(value, step);
     for (int i = 0; i < count; i++) {
         const uint16_t zq = (uint16_t)(z >> R3D_DEPTH_SHIFT);
@@ -478,8 +488,8 @@ mask_row_word(const fill_t* f, int y, const row_span_t* span, int count) {
     const int64_t x = span->first - uv->x_origin;
     const int64_t dy = y - uv->y_origin;
     const int64_t v = (int64_t)uv->v.base + (x * uv->v.dx) + (dy * uv->v.dy) + ((int64_t)(count / 2) * uv->v.dx);
-    const int atlas_row = (int)mathi_clamp((int)(v >> R3D_SPAN_MASK_SHIFT), 0, uv->mask->row_count - 1);
-    return uv->mask->rows[atlas_row];
+    const int atlas_row = (int)mathi_clamp((int)(v >> R3D_SPAN_MASK_SHIFT), 0, uv->given->atlas->row_count - 1);
+    return uv->given->atlas->rows[atlas_row];
 }
 
 /* With span writers attached, each run of kept pixels is filled and then handed to the writers. */
@@ -1064,31 +1074,31 @@ set_up_capped_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* con
     return true;
 }
 
-/* A small triangle drawn by its chosen small fill: styled (grain, dither) or plain. */
-static inline __attribute__((always_inline)) void
-fill_small_as(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-              const r3d_span_vertex_t* c, bool positive, recti_t box, const uint16_t* face, int style) {
-    if (style == SMALL_FILL_GRAIN || style == SMALL_FILL_DITHER) {
-        fill_small_styled(target, a, b, c, positive, box, style);
-    } else {
-        fill_small(target, a, b, c, positive, box, face);
+/* A masked triangle's fill: its depth and colour planes as the opaque fill
+ * sets them up, capped when the target skips hidden clusters; then the mask's
+ * affine u, v planes, and Gouraud spans always. */
+static __attribute__((noinline)) bool
+set_up_masked(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[TRIANGLE_VERTICES], recti_t box,
+              int y_anchor, const uint16_t* face, fill_t* f, gradients_t* g, mask_planes_t* uv) {
+    const bool set = target->skip_hidden ? set_up_capped_fill(target, v, box, y_anchor, face, f, g)
+                                         : set_up_fill(target, v, box, y_anchor, face, f, g);
+    if (!set) {
+        return false;
     }
-}
-
-/* A masked triangle's fill: Gouraud colour (or its face colour) plus the mask's affine u, v gradients. */
-static bool
-set_up_masked(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, recti_t box,
-              const uint16_t* face, fill_t* f, gradients_t* g, mask_planes_t* uv) {
+    const r3d_span_vertex_t* a = v[0];
+    const r3d_span_vertex_t* b = v[1];
+    const r3d_span_vertex_t* c = v[2];
     plane_t p;
     if (!plane_of(a, b, c, box.x, box.y, &p)) {
         return false;
     }
     uv->x_origin = box.x;
-    uv->u = plane_step(&p, a->u * R3D_SPAN_MASK_SCALE, b->u * R3D_SPAN_MASK_SCALE, c->u * R3D_SPAN_MASK_SCALE);
-    uv->v = plane_step(&p, a->v * R3D_SPAN_MASK_SCALE, b->v * R3D_SPAN_MASK_SCALE, c->v * R3D_SPAN_MASK_SCALE);
-    if (face == NULL) {
-        colour_gradients(&p, a, b, c, g);
-    } else {
+    const r3d_span_mask_t* m = uv->given;
+    uv->u = plane_step(&p, m->u[0] * R3D_SPAN_MASK_SCALE, m->u[1] * R3D_SPAN_MASK_SCALE, m->u[2] * R3D_SPAN_MASK_SCALE);
+    uv->v = plane_step(&p, m->v[0] * R3D_SPAN_MASK_SCALE, m->v[1] * R3D_SPAN_MASK_SCALE, m->v[2] * R3D_SPAN_MASK_SCALE);
+    /* set_up_fill() has left Gouraud colour planes at box.y; a face
+     * colour becomes the bases of planes that do not step. */
+    if (face != NULL) {
         const uint32_t rgb = rgb565be_to_rgb888(*face);
         g->base[1] = (int32_t)((float)(rgb >> (2 * CHAR_BIT)) * R3D_SPAN_COLOR_SCALE);
         g->base[2] = (int32_t)((float)((rgb >> CHAR_BIT) & UINT8_MAX) * R3D_SPAN_COLOR_SCALE);
@@ -1101,9 +1111,27 @@ set_up_masked(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_
     return true;
 }
 
+/* The walk of a triangle sorted by y, its box and winding given. */
+static inline __attribute__((always_inline)) walk_t
+walk_of(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, recti_t box,
+        int32_t area2) {
+    const r3d_span_vertex_t* v0 = a;
+    const r3d_span_vertex_t* v1 = b;
+    const r3d_span_vertex_t* v2 = c;
+    const bool odd = sort_by_y(&v0, &v1, &v2);
+    /* v1 lies right of the long edge v0-v2 when v0-v1-v2 winds positive. */
+    return (walk_t){v0,
+                    v1,
+                    v2,
+                    box.y,
+                    mathi_clamp(r3d_span_first_centre(v1->y), box.y, recti_bottom(box)),
+                    recti_bottom(box),
+                    (area2 > 0) != odd};
+}
+
 static inline __attribute__((always_inline)) void
 triangle_of(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-            const r3d_span_vertex_t* c, const uint16_t* face, bool capped, bool masked, const lmsk_atlas_t* mask) {
+            const r3d_span_vertex_t* c, const uint16_t* face, bool capped) {
     const r3d_span_extent_t e = r3d_span_extent_limits(a, b, c, flat_max_rows, flat_max_width);
     const recti_t box = r3d_span_window_box(target, e.centres);
     if (recti_is_empty(box)) {
@@ -1115,20 +1143,18 @@ triangle_of(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r
     }
 
     const int style = select_small(a, b, c, e.centres, face != NULL, target->small_fill);
-    if (!masked && style != SMALL_FILL_WALK) {
+    if (style != SMALL_FILL_WALK) {
         FRAME_LAP("r3d.draw.fill");
-        fill_small_as(target, a, b, c, area2 > 0, box, face, style);
+        if (style == SMALL_FILL_GRAIN || style == SMALL_FILL_DITHER) {
+            fill_small_styled(target, a, b, c, area2 > 0, box, style);
+        } else {
+            fill_small(target, a, b, c, area2 > 0, box, face);
+        }
         return;
     }
 
-    fill_t f = {!masked && e.flat ? FILL_FLAT
-                : face != NULL    ? FILL_FACE
-                                  : FILL_GOURAUD,
-                0,
-                0,
-                NULL,
-                target->rows.attachment[GFX_ATTACHMENT_COLOR].width - 1,
-                NULL};
+    fill_t f = {e.flat ? FILL_FLAT : face != NULL ? FILL_FACE : FILL_GOURAUD, 0,   0, NULL,
+                target->rows.attachment[GFX_ATTACHMENT_COLOR].width - 1,      NULL};
     /* Attributes anchor at the triangle's first row, or at screen row 0 for
      * one starting above the screen: never at a window's own edge. */
     const int y_anchor = mathi_clamp(e.centres.y, -1, gfx_target_end_row(&target->rows) + 1);
@@ -1141,30 +1167,15 @@ triangle_of(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r
     if (r3d_span_stop_after == 1) {
         return;
     }
-    const r3d_span_vertex_t* v0 = a;
-    const r3d_span_vertex_t* v1 = b;
-    const r3d_span_vertex_t* v2 = c;
-    const bool odd = sort_by_y(&v0, &v1, &v2);
-    /* v1 lies right of the long edge v0-v2 when v0-v1-v2 winds positive. */
-    const walk_t w = {v0,
-                      v1,
-                      v2,
-                      box.y,
-                      mathi_clamp(r3d_span_first_centre(v1->y), box.y, recti_bottom(box)),
-                      recti_bottom(box),
-                      (area2 > 0) != odd};
+    const walk_t w = walk_of(a, b, c, box, area2);
     FRAME_LAP("r3d.draw.fill");
-    mask_planes_t uv = {.mask = mask};
-    if (masked && !set_up_masked(a, b, c, box, face, &f, &g, &uv)) {
-        return;
-    }
-    walk(target, &f, &w, false, capped, masked);
+    walk(target, &f, &w, false, capped, false);
 }
 
 static RENDER_IRAM_ATTR void
 r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                        const r3d_span_vertex_t* c, const uint16_t* face) {
-    triangle_of(target, a, b, c, face, false, false, NULL);
+    triangle_of(target, a, b, c, face, false);
 }
 
 /* The fill of a view that skips hidden clusters, its depth capped. Noinline:
@@ -1173,7 +1184,7 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
 static RENDER_SKIP_ATTR __attribute__((noinline)) void
 r3d_span_capped_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                               const r3d_span_vertex_t* c, const uint16_t* face) {
-    triangle_of(target, a, b, c, face, true, false, NULL);
+    triangle_of(target, a, b, c, face, true);
 }
 
 /* The fill's own setup, depth plane only: the same path, box, plane and
@@ -1239,10 +1250,35 @@ r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t
     }
 }
 
+/* Apart from triangle_of(), so the opaque fills keep their own code: no
+ * small fill (a small triangle's pixels still need the mask), never flat,
+ * capped as the target says. */
 void
-r3d_span_masked_triangle(const r3d_span_target_t* target, const lmsk_atlas_t* mask, const r3d_span_vertex_t* a,
+r3d_span_masked_triangle(const r3d_span_target_t* target, const r3d_span_mask_t* mask, const r3d_span_vertex_t* a,
                          const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, const uint16_t* face) {
-    triangle_of(target, a, b, c, face, target->skip_hidden, true, mask);
+    const r3d_span_extent_t e = r3d_span_extent_limits(a, b, c, flat_max_rows, flat_max_width);
+    const recti_t box = r3d_span_window_box(target, e.centres);
+    const int32_t area2 = r3d_span_area2(a, b, c);
+    if (recti_is_empty(box) || area2 == 0) {
+        return;
+    }
+    fill_t f = {face != NULL ? FILL_FACE : FILL_GOURAUD,
+                0,
+                0,
+                NULL,
+                target->rows.attachment[GFX_ATTACHMENT_COLOR].width - 1,
+                NULL};
+    const int y_anchor = mathi_clamp(e.centres.y, -1, gfx_target_end_row(&target->rows) + 1);
+    gradients_t g = {0};
+    f.g = &g;
+    mask_planes_t uv = {.given = mask};
+    if (!set_up_masked(target, (const r3d_span_vertex_t* const[TRIANGLE_VERTICES]){a, b, c}, box, y_anchor, face, &f,
+                       &g, &uv)
+        || r3d_span_stop_after == 1) {
+        return;
+    }
+    const walk_t w = walk_of(a, b, c, box, area2);
+    walk(target, &f, &w, false, target->skip_hidden, true);
 }
 
 void

@@ -43,20 +43,27 @@ fixture(void) {
 
 static void
 draw_checker(const r3d_span_target_t* target, int shading) {
+    enum { SIDE_UV = MASK_SIDE << LMSK_UV_FRACTION_BITS };
+
     static const r3d_span_vertex_t quad[] = {
-        {0, 0, 0.5F, UINT8_MAX, 0, 0, 0, 0},
-        {MASK_SIDE * R3D_SUBPIXEL, 0, 0.5F, UINT8_MAX, 0, 0, MASK_SIDE << LMSK_UV_FRACTION_BITS, 0},
-        {MASK_SIDE * R3D_SUBPIXEL, MASK_SIDE * R3D_SUBPIXEL, 0.5F, UINT8_MAX, 0, 0, MASK_SIDE << LMSK_UV_FRACTION_BITS,
-         MASK_SIDE << LMSK_UV_FRACTION_BITS},
-        {0, MASK_SIDE * R3D_SUBPIXEL, 0.5F, UINT8_MAX, 0, 0, 0, MASK_SIDE << LMSK_UV_FRACTION_BITS},
+        {0, 0, 0.5F, UINT8_MAX, 0, 0},
+        {MASK_SIDE * R3D_SUBPIXEL, 0, 0.5F, UINT8_MAX, 0, 0},
+        {MASK_SIDE * R3D_SUBPIXEL, MASK_SIDE * R3D_SUBPIXEL, 0.5F, UINT8_MAX, 0, 0},
+        {0, MASK_SIDE * R3D_SUBPIXEL, 0.5F, UINT8_MAX, 0, 0},
     };
-    static const int corners[][3] = {{0, 1, 2}, {0, 2, 3}};
+    static const float quad_u[] = {0, SIDE_UV, SIDE_UV, 0}, quad_v[] = {0, 0, SIDE_UV, SIDE_UV};
+    static const int corners[][R3D_SPAN_TRIANGLE_VERTICES] = {{0, 1, 2}, {0, 2, 3}};
     for (int t = 0; t < (int)(sizeof corners / sizeof corners[0]); t++) {
         const r3d_span_vertex_t *a = &quad[corners[t][0]], *b = &quad[corners[t][1]], *c = &quad[corners[t][2]];
+        r3d_span_mask_t mask = {&checker, {0}, {0}};
+        for (int k = 0; k < R3D_SPAN_TRIANGLE_VERTICES; k++) {
+            mask.u[k] = quad_u[corners[t][k]];
+            mask.v[k] = quad_v[corners[t][k]];
+        }
         const uint16_t color = MASK_COLOR;
         r3d_span_target_t view = *target;
         view.skip_hidden = shading == 2;
-        r3d_span_masked_triangle(&view, &checker, a, b, c, shading == 1 ? &color : NULL);
+        r3d_span_masked_triangle(&view, &mask, a, b, c, shading == 1 ? &color : NULL);
     }
 }
 

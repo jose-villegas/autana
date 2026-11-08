@@ -84,9 +84,7 @@ oracle_vertices(r3d_span_vertex_t v[TRIANGLE_VERTICES], rng_t* random, int side)
                                    (float)(1 + rng_below(random, UINT8_MAX)) / (float)(UINT8_MAX + 1),
                                    (float)rng_below(random, UINT8_MAX + 1),
                                    (float)rng_below(random, UINT8_MAX + 1),
-                                   (float)rng_below(random, UINT8_MAX + 1),
-                                   0,
-                                   0};
+                                   (float)rng_below(random, UINT8_MAX + 1)};
     }
     v[0].x = R3D_SUBPIXEL;
     v[1].x = (side + 1) * R3D_SUBPIXEL;
@@ -371,10 +369,9 @@ test_grain_screen_phase_with_odd_window_and_known_shades(void) {
     actual.rows.attachment[GFX_ATTACHMENT_COLOR].pixels = pixels + TEST_SIDE;
     actual.rows.attachment[GFX_ATTACHMENT_DEPTH].pixels = pixels + TEST_PIXELS + TEST_SIDE;
     resolve_fill((small_fill_t){ORACLE_MAX_SIDE, 0, SMALL_FILL_GRAIN});
-    const r3d_span_vertex_t v[TRIANGLE_VERTICES] = {
-        {-R3D_SUBPIXEL, 0, 0.5F, 0, 0, 0, 0, 0},
-        {(ORACLE_MAX_SIDE - 1) * R3D_SUBPIXEL, 0, 0.5F, 0, 0, 0, 0, 0},
-        {-R3D_SUBPIXEL, ORACLE_MAX_SIDE * R3D_SUBPIXEL, 0.5F, 0, 0, 0, 0, 0}};
+    const r3d_span_vertex_t v[TRIANGLE_VERTICES] = {{-R3D_SUBPIXEL, 0, 0.5F, 0, 0, 0},
+                                                    {(ORACLE_MAX_SIDE - 1) * R3D_SUBPIXEL, 0, 0.5F, 0, 0, 0},
+                                                    {-R3D_SUBPIXEL, ORACLE_MAX_SIDE * R3D_SUBPIXEL, 0.5F, 0, 0, 0}};
     draw_triangle(&actual, v, false);
     TEST_ASSERT_EQUAL_HEX16(rgb565be_pack(1, TEST_GREEN_STEP, 1), pixels[TEST_SIDE]);
     TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x000000), pixels[TEST_SIDE + 1]);
@@ -388,9 +385,9 @@ test_grain_screen_phase_with_odd_window_and_known_shades(void) {
 static void
 test_dither_equal_packed_colours_and_equal_edges_use_flat(void) {
     r3d_span_target_t actual = fixture();
-    r3d_span_vertex_t v[TRIANGLE_VERTICES] = {{0, 0, 0.5F, 80, 80, 80, 0, 0},
-                                              {ORACLE_MAX_SIDE * R3D_SUBPIXEL, 0, 0.5F, 81, 81, 81, 0, 0},
-                                              {0, ORACLE_MAX_SIDE * R3D_SUBPIXEL, 0.5F, 82, 82, 82, 0, 0}};
+    r3d_span_vertex_t v[TRIANGLE_VERTICES] = {{0, 0, 0.5F, 80, 80, 80},
+                                              {ORACLE_MAX_SIDE * R3D_SUBPIXEL, 0, 0.5F, 81, 81, 81},
+                                              {0, ORACLE_MAX_SIDE * R3D_SUBPIXEL, 0.5F, 82, 82, 82}};
     resolve_fill((small_fill_t){ORACLE_MAX_SIDE, 0, SMALL_FILL_DITHER});
     draw_triangle(&actual, v, false);
     r3d_span_target_t expected =
@@ -402,9 +399,9 @@ test_dither_equal_packed_colours_and_equal_edges_use_flat(void) {
     memset(pixels, 0, TEST_PIXELS * 4 * sizeof(*pixels));
     const int centre = (ORACLE_MAX_SIDE / 2) * R3D_SUBPIXEL + HALF_PIXEL;
     const int reach = (R3D_SPAN_SMALL_MAX_SIDE + 1) * R3D_SUBPIXEL;
-    v[0] = (r3d_span_vertex_t){centre + reach, centre, 0.5F, UINT8_MAX, 0, 0, 0, 0};
-    v[1] = (r3d_span_vertex_t){centre, centre + 1, 0.5F, 0, UINT8_MAX, 0, 0, 0};
-    v[2] = (r3d_span_vertex_t){centre - reach + 1, centre - 1, 0.5F, 0, 0, UINT8_MAX, 0, 0};
+    v[0] = (r3d_span_vertex_t){centre + reach, centre, 0.5F, UINT8_MAX, 0, 0};
+    v[1] = (r3d_span_vertex_t){centre, centre + 1, 0.5F, 0, UINT8_MAX, 0};
+    v[2] = (r3d_span_vertex_t){centre - reach + 1, centre - 1, 0.5F, 0, 0, UINT8_MAX};
     for (int edge = 0; edge < TRIANGLE_VERTICES; edge++) {
         const small_edge_t line = small_edge(v + edge, v + (edge + 1) % TRIANGLE_VERTICES);
         TEST_ASSERT_EQUAL_INT(reach - 1, small_side(&line, centre, centre));
@@ -436,9 +433,9 @@ test_writer_and_draw_select_the_same_depth_under_every_style(void) {
             for (int spread = SMALL_FILL_GATE_FAST - 1; spread <= SMALL_FILL_GATE_FAST + 1; spread++) {
                 memset(pixels, 0, TEST_PIXELS * 4 * sizeof(*pixels));
                 const r3d_span_vertex_t v[TRIANGLE_VERTICES] = {
-                    {0, 0, 0.25F, 80, 0, 80, 0, 0},
-                    {ORACLE_MAX_SIDE * R3D_SUBPIXEL, 0, 0.5F, 80, spread * TEST_GREEN_SCALE, 80, 0, 0},
-                    {0, ORACLE_MAX_SIDE * R3D_SUBPIXEL, 0.75F, 80, 0, 80, 0, 0}};
+                    {0, 0, 0.25F, 80, 0, 80},
+                    {ORACLE_MAX_SIDE * R3D_SUBPIXEL, 0, 0.5F, 80, spread * TEST_GREEN_SCALE, 80},
+                    {0, ORACLE_MAX_SIDE * R3D_SUBPIXEL, 0.75F, 80, 0, 80}};
                 draw_triangle(&target, v, false);
                 hot_triangle_write(&target, v, v + 1, v + 2, false);
                 int covered = 0;

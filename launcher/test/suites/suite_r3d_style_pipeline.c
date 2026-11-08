@@ -155,8 +155,8 @@ test_styles_match_pipeline_colours(void) {
     for (int k = 0; k < 3; k++) {
         transformed[k].sx = k == 1 ? TEST_SIDE * R3D_SUBPIXEL : 0;
         transformed[k].sy = k == 2 ? TEST_SIDE * R3D_SUBPIXEL : 0;
-        reference[k] = (r3d_span_vertex_t){
-            transformed[k].sx, transformed[k].sy, transformed[k].iz, colours[k][0], colours[k][1], colours[k][2], 0, 0};
+        reference[k] = (r3d_span_vertex_t){transformed[k].sx, transformed[k].sy, transformed[k].iz,
+                                           colours[k][0],     colours[k][1],     colours[k][2]};
     }
     r3d_span_target_t expected = r3d_span_target(pixels, pixels + TEST_PIXELS, TEST_SIDE, 0, TEST_SIDE);
     r3d_span_target_t actual =
@@ -207,10 +207,10 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
     r3d_span_target_t* actual = &clipped->actual;
     *expected = r3d_span_target(pixels, pixels + TEST_PIXELS, TEST_SIDE, 0, TEST_SIDE);
     *actual = r3d_span_target(pixels + TEST_PIXELS * 2, pixels + TEST_PIXELS * 3, TEST_SIDE, 0, TEST_SIDE);
-    const clip_vertex_t polygon[4] = {{{8.75F, 0.75F, 1}, {191.25F, 63.75F, 0}, {0, 0}},
-                                      {{32, 0, 4}, {0, 255, 0}, {0, 0}},
-                                      {{0, 32, 4}, {0, 0, 255}, {0, 0}},
-                                      {{0.75F, 8.75F, 1}, {191.25F, 0, 63.75F}, {0, 0}}};
+    const clip_vertex_t polygon[4] = {{8.75F, 0.75F, 1, 191.25F, 63.75F, 0},
+                                      {32, 0, 4, 0, 255, 0},
+                                      {0, 32, 4, 0, 0, 255},
+                                      {0.75F, 8.75F, 1, 191.25F, 0, 63.75F}};
     uint32_t checksums[SMALL_FILL_STYLE_COUNT];
     for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
         r3d_span_small_fill_t* resolved = &clipped->resolved;
@@ -228,8 +228,8 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
                 r3d_span_vertex_t* front = clipped->front;
                 for (int k = 0; k < 3; k++) {
                     const r3d_pipeline_vertex_t* v = transformed + k + 3;
-                    front[k] = (r3d_span_vertex_t){
-                        v->sx, v->sy, v->iz, colors[k + 3][0], colors[k + 3][1], colors[k + 3][2], 0, 0};
+                    front[k] =
+                        (r3d_span_vertex_t){v->sx, v->sy, v->iz, colors[k + 3][0], colors[k + 3][1], colors[k + 3][2]};
                 }
                 r3d_span_triangle(expected, front, front + 1, front + 2);
             }
@@ -373,7 +373,7 @@ test_transform_matches_lens_projection_bits(void) {
                 TEST_ASSERT_EQUAL_MEMORY(&iz, &out.iz, sizeof iz);
                 TEST_ASSERT_EQUAL_INT16(r3d_span_unbias(bx), out.sx);
                 TEST_ASSERT_EQUAL_INT16(r3d_span_unbias(by), out.sy);
-                const clip_vertex_t v = {.position = l};
+                const clip_vertex_t v = {.x = l.x, .y = l.y, .z = l.z};
                 const r3d_span_vertex_t clipped = project(&lens, &v);
                 TEST_ASSERT_EQUAL_INT16(out.sx, clipped.x);
                 TEST_ASSERT_EQUAL_INT16(out.sy, clipped.y);
@@ -432,7 +432,7 @@ test_transform_pairs_and_odd_tail(void) {
                             const float bx = lens.snap_cx + l.x * inv;
                             const float by = lens.snap_cy + l.y * inv;
                             if (bx > FAST_LO && bx < FAST_HI && by > FAST_LO && by < FAST_HI) {
-                                const clip_vertex_t vertex = {.position = l};
+                                const clip_vertex_t vertex = {.x = l.x, .y = l.y, .z = l.z};
                                 const r3d_span_vertex_t projected = project(&lens, &vertex);
                                 expected = (r3d_pipeline_vertex_t){projected.x, projected.y, projected.z};
                                 y0 = mathi_min(expected.sy, y0);
@@ -844,6 +844,44 @@ test_transform_fast_range_bits(void) {
     }
 }
 
+/* Largest u, v error of a clipped corner, in LMSK 12.4 units: float rounding only. */
+#define FAN_UV_TOLERANCE 1.0e-2F
+
+/* A clipped masked fan's corners take the u, v the source triangle has
+ * where they lie: a source corner keeps its own, an edge midpoint the
+ * average, an inside point its weighted mix. */
+static void
+test_a_clipped_masked_fan_takes_the_source_u_v_where_each_corner_lies(void) {
+    work = malloc(r3d_pipeline_work_bytes());
+    suite_set_test_cleanup(cleanup);
+    TEST_ASSERT_NOT_NULL(work);
+    static const vec3f_t source[R3D_SPAN_TRIANGLE_VERTICES] = {{1, 2, 3}, {9, 2, 5}, {1, 8, 7}};
+    static const float source_u[] = {0, 160, 32}, source_v[] = {16, 48, 400};
+    static const float weights[][R3D_SPAN_TRIANGLE_VERTICES] = {{1, 0, 0}, {0.5F, 0.5F, 0}, {0.25F, 0.25F, 0.5F}};
+    for (int k = 0; k < R3D_SPAN_TRIANGLE_VERTICES; k++) {
+        work->clip.source[k] = source[k];
+        work->clip.source_u[k] = source_u[k];
+        work->clip.source_v[k] = source_v[k];
+        vec3f_t at = vec3f_zero();
+        for (int j = 0; j < R3D_SPAN_TRIANGLE_VERTICES; j++) {
+            at = vec3f_add(at, vec3f_scale(source[j], weights[k][j]));
+        }
+        work->clip.poly[k] = (clip_vertex_t){at.x, at.y, at.z, 0, 0, 0};
+    }
+    const r3d_span_mask_t* mask = fan_mask(work, 1);
+    TEST_ASSERT_EQUAL_PTR(&work->clip.mask, mask);
+    for (int k = 0; k < R3D_SPAN_TRIANGLE_VERTICES; k++) {
+        float u = 0;
+        float v = 0;
+        for (int j = 0; j < R3D_SPAN_TRIANGLE_VERTICES; j++) {
+            u += weights[k][j] * source_u[j];
+            v += weights[k][j] * source_v[j];
+        }
+        TEST_ASSERT_FLOAT_WITHIN(FAN_UV_TOLERANCE, u, mask->u[k]);
+        TEST_ASSERT_FLOAT_WITHIN(FAN_UV_TOLERANCE, v, mask->v[k]);
+    }
+}
+
 void
 run_r3d_style_pipeline_suite(void) {
     RUN_TEST(test_transform_matches_lens_projection_bits);
@@ -860,6 +898,7 @@ run_r3d_style_pipeline_suite(void) {
     RUN_TEST(test_a_writing_draw_reaches_no_fill_for_a_hidden_cluster_only_when_skipping);
     RUN_TEST(test_skipping_selects_the_capped_fill_in_front_and_clipped);
     RUN_TEST(test_bounded_rows_skip_the_per_triangle_depth_test);
+    RUN_TEST(test_a_clipped_masked_fan_takes_the_source_u_v_where_each_corner_lies);
 }
 
 SUITE_REGISTER(run_r3d_style_pipeline_suite);

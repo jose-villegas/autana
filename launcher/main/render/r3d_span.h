@@ -15,7 +15,10 @@
 #include "render/render_view.h"
 
 /* Largest bounding-box side, in pixel centres, always filled flat; the camera gate and style apply only above it. */
-#define R3D_SPAN_SMALL_MAX_SIDE 4
+#define R3D_SPAN_SMALL_MAX_SIDE    4
+
+/* Corners of the triangle every fill draws. */
+#define R3D_SPAN_TRIANGLE_VERTICES 3
 
 /* Resolved once per frame and shared read-only by row workers. */
 typedef struct {
@@ -94,8 +97,15 @@ typedef struct {
     int32_t x, y;  /* screen position in subpixels; pixel i's centre is at R3D_SUBPIXEL i + R3D_SUBPIXEL / 2 */
     float z;       /* inverse depth, (0, 1] */
     float r, g, b; /* 0..255 */
-    float u, v;    /* LMSK 12.4 texel coordinates */
 } r3d_span_vertex_t;
+
+/* A masked triangle's mask: its atlas, and its vertices' LMSK 12.4 texel
+ * coordinates in the order the fill takes them. Apart from the vertex, so an
+ * opaque triangle's vertices carry none. */
+typedef struct {
+    const lmsk_atlas_t* atlas;
+    float u[R3D_SPAN_TRIANGLE_VERTICES], v[R3D_SPAN_TRIANGLE_VERTICES];
+} r3d_span_mask_t;
 
 void r3d_span_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                        const r3d_span_vertex_t* c);
@@ -108,11 +118,11 @@ void r3d_span_triangle_solid(const r3d_span_target_t* target, const r3d_span_ver
 void r3d_span_capped_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                               const r3d_span_vertex_t* c, const uint16_t* face);
 
-/* Either fill, `face` NULL or its colour, keeping only the pixels `mask`
- * keeps at the vertices' u, v; capped as r3d_span_capped_triangle() when
+/* Either fill, `face` NULL or its colour, keeping only the pixels `mask`'s
+ * atlas keeps at its u, v; capped as r3d_span_capped_triangle() when
  * target->skip_hidden. The target's writers follow each kept run inside it:
  * no r3d_span_triangle_write() after it. */
-void r3d_span_masked_triangle(const r3d_span_target_t* target, const lmsk_atlas_t* mask, const r3d_span_vertex_t* a,
+void r3d_span_masked_triangle(const r3d_span_target_t* target, const r3d_span_mask_t* mask, const r3d_span_vertex_t* a,
                               const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, const uint16_t* face);
 
 /* Right after either fill of the same triangle into the same target: its

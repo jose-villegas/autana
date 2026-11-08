@@ -14,7 +14,6 @@
 #include "math/geometry/box3f.h"
 #include "math/geometry/planef.h"
 #include "math/linear/mat3f.h"
-#include "math/linear/vec2f.h"
 #include "math/projection/inverse_depth.h"
 #include "math/scalar/float_bits.h"
 #include "math/scalar/mathf.h"
@@ -76,8 +75,7 @@ typedef struct {
 #define CLIP_VERTEX_MAX (3 + PLANE_FRUSTUM_COUNT)
 
 typedef struct {
-    vec3f_t position, color;
-    vec2f_t uv;
+    float x, y, z, r, g, b;
 } clip_vertex_t;
 
 struct r3d_pipeline_work {
@@ -91,7 +89,9 @@ struct r3d_pipeline_work {
             clip_vertex_t poly[CLIP_VERTEX_MAX], other[CLIP_VERTEX_MAX];
             r3d_span_vertex_t projected[CLIP_VERTEX_MAX];
             planef_t planes[PLANE_FRUSTUM_COUNT];
-            const lmsk_atlas_t* mask; /* the clipped triangle's, NULL when it is not masked */
+            r3d_span_mask_t mask; /* a masked triangle's atlas and u, v; atlas NULL when it is not masked */
+            vec3f_t source[R3D_SPAN_TRIANGLE_VERTICES]; /* a masked clipped triangle's corners, before clipping */
+            float source_u[R3D_SPAN_TRIANGLE_VERTICES], source_v[R3D_SPAN_TRIANGLE_VERTICES];
         } clip;
     };
 };
@@ -492,16 +492,33 @@ static r3d_span_vertex_t
 project(const r3d_lens_t* lens, const clip_vertex_t* v) {
     /* Scaling by 16 is exact: (16*x)*r == x*(16*r), and (d/16)*(16*r) == d*r,
      * so lens-space clip vertices and the screen rows snap and encode depth alike. */
-    const float r = mathf_recip(v->position.z);
-    const biased_t b = biased_screen(lens, v->position.x * R3D_SUBPIXEL, v->position.y * R3D_SUBPIXEL, r);
-    return (r3d_span_vertex_t){r3d_span_unbias(b.x),
-                               r3d_span_unbias(b.y),
-                               lens->depth_near * r,
-                               v->color.x,
-                               v->color.y,
-                               v->color.z,
-                               v->uv.x,
-                               v->uv.y};
+    const float r = mathf_recip(v->z);
+    const biased_t b = biased_screen(lens, v->x * R3D_SUBPIXEL, v->y * R3D_SUBPIXEL, r);
+    return (r3d_span_vertex_t){r3d_span_unbias(b.x), r3d_span_unbias(b.y), lens->depth_near * r, v->r, v->g, v->b};
+}
+
+/* Fan triangle i's mask. A clipped corner lies in its source triangle's plane, so its u, v are the
+ * source corners' weighted by its barycentric coordinates there; only a
+ * masked fan pays for them, and the clip carries none. */
+static r3d_span_mask_t*
+fan_mask(r3d_pipeline_work_t* work, int i) {
+    r3d_span_mask_t* mask = &work->clip.mask;
+    const vec3f_t* s = work->clip.source;
+    const vec3f_t e1 = vec3f_sub(s[1], s[0]);
+    const vec3f_t e2 = vec3f_sub(s[2], s[0]);
+    const vec3f_t n = vec3f_cross(e1, e2);
+    const float inverse = mathf_recip(vec3f_dot(n, n));
+    const int corner[] = {0, i, i + 1};
+    for (int k = 0; k < R3D_SPAN_TRIANGLE_VERTICES; k++) {
+        const clip_vertex_t* p = &work->clip.poly[corner[k]];
+        const vec3f_t d = vec3f_sub((vec3f_t){p->x, p->y, p->z}, s[0]);
+        const float w1 = vec3f_dot(vec3f_cross(d, e2), n) * inverse;
+        const float w2 = vec3f_dot(vec3f_cross(e1, d), n) * inverse;
+        const float w0 = 1.0F - w1 - w2;
+        mask->u[k] = (w0 * work->clip.source_u[0]) + (w1 * work->clip.source_u[1]) + (w2 * work->clip.source_u[2]);
+        mask->v[k] = (w0 * work->clip.source_v[0]) + (w1 * work->clip.source_v[1]) + (w2 * work->clip.source_v[2]);
+    }
+    return mask;
 }
 
 /* One Sutherland-Hodgman pass (Sutherland and Hodgman 1974): the polygon's part on the plane's inside. */
@@ -511,15 +528,16 @@ clip_to_plane(const planef_t* p, const clip_vertex_t* in, int n, clip_vertex_t* 
     for (int i = 0; i < n; i++) {
         const clip_vertex_t* a = &in[i];
         const clip_vertex_t* b = &in[(i + 1) % n];
-        const float da = planef_distance(*p, a->position);
-        const float db = planef_distance(*p, b->position);
+        const float da = planef_distance(*p, (vec3f_t){a->x, a->y, a->z});
+        const float db = planef_distance(*p, (vec3f_t){b->x, b->y, b->z});
         if (da >= 0.0F) {
             out[m++] = *a;
         }
         if ((da >= 0.0F) != (db >= 0.0F)) {
             const float t = da / (da - db);
-            out[m++] = (clip_vertex_t){vec3f_lerp(a->position, b->position, t), vec3f_lerp(a->color, b->color, t),
-                                       vec2f_lerp(a->uv, b->uv, t)};
+            out[m++] =
+                (clip_vertex_t){a->x + ((b->x - a->x) * t), a->y + ((b->y - a->y) * t), a->z + ((b->z - a->z) * t),
+                                a->r + ((b->r - a->r) * t), a->g + ((b->g - a->g) * t), a->b + ((b->b - a->b) * t)};
         }
     }
     return m;
@@ -529,8 +547,9 @@ clip_to_plane(const planef_t* p, const clip_vertex_t* in, int n, clip_vertex_t* 
 static const mat4f_t LENS_SPACE = MAT4F_IDENTITY;
 
 /* The near plane, then the screen's guard band: every corner left projects
- * inside what r3d_span takes. */
-static int
+ * inside what r3d_span takes. Inline in each rebuild: shared out of line,
+ * it costs every opaque rebuild a call. */
+static inline __attribute__((always_inline)) int
 clip_to_guard(r3d_pipeline_work_t* work, int n) {
     clip_vertex_t* poly = work->clip.poly;
     const planef_t* planes = work->clip.planes;
@@ -555,7 +574,7 @@ typedef unsigned draw_mode_t;
 /* One triangle, then the target's writers over it with DRAW_WRITES; a
  * masked one's writers follow inside its fill. */
 static inline __attribute__((always_inline)) void
-fill_triangle(const r3d_span_target_t* target, const lmsk_atlas_t* mask, const r3d_span_vertex_t* a,
+fill_triangle(const r3d_span_target_t* target, const r3d_span_mask_t* mask, const r3d_span_vertex_t* a,
               const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, const uint16_t* face_color, draw_mode_t mode) {
     FRAME_LAP("r3d.draw.set_up");
     if (mask != NULL) {
@@ -578,7 +597,7 @@ fill_triangle(const r3d_span_target_t* target, const lmsk_atlas_t* mask, const r
 
 static inline __attribute__((always_inline)) void
 draw_clipped(const r3d_lens_t* lens, bool double_sided, const uint16_t* face_color, const r3d_span_target_t* target,
-             r3d_pipeline_work_t* work) {
+             r3d_pipeline_work_t* work, bool masked) {
     clip_vertex_t* poly = work->clip.poly;
     const int n = clip_to_guard(work, 3);
     if (n < 3) {
@@ -596,7 +615,7 @@ draw_clipped(const r3d_lens_t* lens, bool double_sided, const uint16_t* face_col
         return;
     }
     for (int i = 1; i + 1 < n; i++) {
-        fill_triangle(target, work->clip.mask, &s[0], &s[i], &s[i + 1], face_color,
+        fill_triangle(target, masked ? fan_mask(work, i) : NULL, &s[0], &s[i], &s[i + 1], face_color,
                       (target->writer_count != 0 ? DRAW_WRITES : 0U) | (target->skip_hidden ? DRAW_SKIPPING : 0U));
     }
 }
@@ -631,29 +650,46 @@ cluster_skipped(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target, d
 }
 
 /* A triangle with a corner behind the near plane or too far off screen to
- * snap is rebuilt from the mesh and clipped, through work->clip.mask. */
-static __attribute__((noinline, cold)) void
-draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* tri, const uint16_t* face_color,
-             bool double_sided, const r3d_span_target_t* target, r3d_pipeline_work_t* work) {
+ * snap is rebuilt from the mesh and clipped; a masked one also keeps its
+ * corners and their u, v for its fan's masks. */
+static inline __attribute__((always_inline)) void
+rebuild(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* tri, const uint16_t* face_color,
+        bool double_sided, const r3d_span_target_t* target, r3d_pipeline_work_t* work, bool masked) {
     FRAME_LAP("r3d.draw.clip");
     clip_vertex_t* in = work->clip.poly;
     for (int k = 0; k < 3; k++) {
         const int16_t* p = mesh->positions[tri[k]];
         const uint8_t* rgb = face_color == NULL ? mesh->colors[tri[k]] : (const uint8_t[3]){0, 0, 0};
         const vec3f_t l = mat4f_apply(&lens->m, (vec3f_t){(float)p[0], (float)p[1], (float)p[2]});
-        in[k] = (clip_vertex_t){l, {rgb[0], rgb[1], rgb[2]}, {0, 0}};
-        if (work->clip.mask != NULL) {
+        in[k] = (clip_vertex_t){l.x, l.y, l.z, rgb[0], rgb[1], rgb[2]};
+        if (masked) {
             const uint16_t* uv = mesh->mask_uvs[tri[k] - mesh->mask_vertex_first];
-            in[k].uv = (vec2f_t){uv[0], uv[1]};
+            work->clip.source[k] = l;
+            work->clip.source_u[k] = uv[0];
+            work->clip.source_v[k] = uv[1];
         }
     }
-    draw_clipped(lens, double_sided, face_color, target, work);
+    draw_clipped(lens, double_sided, face_color, target, work, masked);
     FRAME_LAP("r3d.draw.cluster");
+}
+
+static __attribute__((noinline, cold)) void
+draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* tri, const uint16_t* face_color,
+             bool double_sided, const r3d_span_target_t* target, r3d_pipeline_work_t* work) {
+    rebuild(mesh, lens, tri, face_color, double_sided, target, work, false);
+}
+
+/* rebuild() of a masked triangle, through work->clip.mask's atlas: apart, so
+ * the opaque one tests no mask. */
+static __attribute__((noinline, cold)) void
+draw_masked_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* tri, const uint16_t* face_color,
+                    bool double_sided, const r3d_span_target_t* target, r3d_pipeline_work_t* work) {
+    rebuild(mesh, lens, tri, face_color, double_sided, target, work, true);
 }
 
 static inline __attribute__((always_inline)) void
 draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3], const uint16_t* tri,
-              const uint16_t* face_color, bool double_sided, const lmsk_atlas_t* mask, const r3d_span_target_t* target,
+              const uint16_t* face_color, bool double_sided, r3d_span_mask_t* mask, const r3d_span_target_t* target,
               draw_mode_t mode, r3d_span_vertex_t s[3]) {
     FRAME_LAP("r3d.draw.tests");
     if (misses_every_centre(v[0], v[1], v[2], target)) {
@@ -667,11 +703,11 @@ draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3
     FRAME_LAP("r3d.draw.vertices");
     for (int k = 0; k < 3; k++) {
         const uint8_t* rgb = face_color == NULL ? mesh->colors[tri[k]] : (const uint8_t[3]){0, 0, 0};
-        s[k] = (r3d_span_vertex_t){v[k]->sx, v[k]->sy, v[k]->iz, rgb[0], rgb[1], rgb[2], 0, 0};
+        s[k] = (r3d_span_vertex_t){v[k]->sx, v[k]->sy, v[k]->iz, rgb[0], rgb[1], rgb[2]};
         if (mask != NULL) {
             const uint16_t* uv = mesh->mask_uvs[tri[k] - mesh->mask_vertex_first];
-            s[k].u = uv[0];
-            s[k].v = uv[1];
+            mask->u[k] = uv[0];
+            mask->v[k] = uv[1];
         }
     }
     fill_triangle(target, mask, &s[0], &s[1], &s[2], face_color, mode);
@@ -692,7 +728,8 @@ draw_masked_in_front(const r3d_lit_mesh_t* mesh, const r3d_lit_cluster_t* c, int
                      const r3d_pipeline_vertex_t* const v[3], const r3d_span_target_t* target,
                      r3d_pipeline_work_t* work) {
     const uint16_t* face_color = face_color_of(mesh, t);
-    draw_in_front(mesh, v, mesh->triangles[t], face_color, c->double_sided, &mesh->mask, target, 0U,
+    work->clip.mask.atlas = &mesh->mask;
+    draw_in_front(mesh, v, mesh->triangles[t], face_color, c->double_sided, &work->clip.mask, target, 0U,
                   work->clip.projected);
 }
 
@@ -726,8 +763,12 @@ draw_triangles_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_
         if ((mode & DRAW_BOUNDED) != 0 || (v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F)) {
             draw_one_in_front(mesh, c, t, v, mask, target, mode, work);
         } else if (v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F) {
-            work->clip.mask = mask;
-            draw_rebuilt(mesh, lens, tri, face_color, c->double_sided, target, work);
+            if (mask != NULL) {
+                work->clip.mask.atlas = mask;
+                draw_masked_rebuilt(mesh, lens, tri, face_color, c->double_sided, target, work);
+            } else {
+                draw_rebuilt(mesh, lens, tri, face_color, c->double_sided, target, work);
+            }
         }
     }
 }
