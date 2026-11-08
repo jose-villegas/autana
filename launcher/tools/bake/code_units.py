@@ -51,6 +51,28 @@ class Unit:
         return (first, self.node.end_lineno), skip
 
 
+def class_effects(node):
+    """Whether a class body does something at import the walk cannot see the reader of: a decorator on the
+    class or a method, a statement that binds no name or writes into an object, or one in a nested class."""
+    return bool(node.decorator_list) or any(
+        bool(item.decorator_list) if isinstance(item, DEFS) else class_effects(item) if isinstance(item, ast.ClassDef)
+        else not stored(item) or stores_into_objects(item) if isinstance(item, ASSIGNS) else True
+        for item in node.body)
+
+
+def import_time(node):
+    """The expressions a class body evaluates at import: its statements, its methods' decorators and default
+    arguments, and the same for nested classes."""
+    for item in node.body:
+        if isinstance(item, DEFS):
+            yield from item.decorator_list + item.args.defaults + [d for d in item.args.kw_defaults if d is not None]
+        elif isinstance(item, ast.ClassDef):
+            yield from item.decorator_list + item.bases
+            yield from import_time(item)
+        else:
+            yield item
+
+
 def stored(node):
     return {sub.id for sub in ast.walk(node) if isinstance(sub, ast.Name) and isinstance(sub.ctx, ast.Store)} | {
         sub.name for sub in ast.walk(node) if isinstance(sub, (*DEFS, ast.ClassDef))}
@@ -89,6 +111,9 @@ class Module:
             elif isinstance(node, ast.ImportFrom):
                 base = find_module(node.module or "", node.level)
                 for alias in node.names:
+                    if (node.module, alias.name, node.level) == ("sys", "modules", 0):
+                        self.bind(alias.asname or alias.name, ("module", None, "sys.modules"))
+                        continue
                     if alias.name == "*":
                         self.stars.append(base)
                         continue
@@ -110,11 +135,8 @@ class Module:
                 yield Unit(self.path, node, {node.name}, always=bool(node.decorator_list))
             elif isinstance(node, ast.ClassDef):
                 body = [item for item in node.body if not isinstance(item, DEFS)]
-                effects = bool(node.decorator_list) or any(
-                    isinstance(item, ASSIGNS) and (not stored(item) or stores_into_objects(item))
-                    or not isinstance(item, (*ASSIGNS, ast.ClassDef)) for item in body)
                 yield Unit(self.path, node, {node.name}, attributes=set().union(set(), *map(stored, body)),
-                           always=effects)
+                           always=class_effects(node))
                 yield from (Unit(self.path, item, {item.name}, owner=node.name)
                             for item in node.body if isinstance(item, DEFS))
             elif isinstance(node, ASSIGNS):
@@ -200,7 +222,7 @@ class Walk:
         elif isinstance(node, DEFS):
             evaluated = node.args.defaults + [default for default in node.args.kw_defaults if default is not None]
         elif isinstance(node, ast.ClassDef):
-            evaluated = [item for item in node.body if not isinstance(item, DEFS)]
+            evaluated = list(import_time(node))
         else:
             evaluated = []
         return [sub for part in evaluated for sub in ast.walk(part) if isinstance(sub, ast.Call)]
@@ -321,11 +343,11 @@ class Walk:
             bases = {id(sub.value) for sub in ast.walk(part) if isinstance(sub, ast.Attribute)}
             parents = {id(child): node for node in ast.walk(part) for child in ast.iter_child_nodes(node)}
             for sub in ast.walk(part):
+                if isinstance(sub, (ast.Name, ast.Attribute)) and "sys.modules" in self.dotted(unit.path, sub):
+                    found += self.sys_modules(unit.path, sub, parents)
                 if isinstance(sub, ast.Attribute):
                     if id(sub) in bases and self.modules_of(unit.path, sub):
                         continue  # `pkg.sub` in `pkg.sub.f`: the outer attribute names what is read
-                    if sub.attr == "modules" and "sys" in self.dotted(unit.path, sub.value):
-                        found += self.sys_modules(unit.path, sub, parents)
                     modules = self.modules_of(unit.path, sub.value)
                     found += [] if modules else self.attribute(sub.attr)
                     for base in modules:

@@ -310,6 +310,15 @@ class ImportTests(WalkCase):
             """)
         self.assertNotIn("shading:other", self.kept())
 
+    def test_sys_modules_imported_by_name_counts_the_module_it_hands_out(self):
+        self.write(shading="def shade_flat():\n    return 1\n", entry="""
+            from sys import modules
+            import shading
+            def main():
+                return modules["shading"].shade_flat()
+            """)
+        self.assertIn("shading:shade_flat", self.kept())
+
     def test_a_module_used_as_a_value_counts_all_of_it(self):
         self.write(cpu="def render():\n    return 1\n", gpu="def render():\n    return 2\n", entry="""
             import cpu, gpu
@@ -423,6 +432,15 @@ class ImportTimeTests(WalkCase):
                 return 1
             """)
         self.assertIn("cpu:setup", self.kept())
+
+    def test_a_decorated_method_a_nested_class_statement_and_a_method_default_count(self):
+        for body in ("@register\n    def flat(self):\n        return 41",
+                     "class Inner:\n        REG[:] = [41]",
+                     "def m(self, x=register(None)):\n        return x"):
+            with self.subTest(body=body):
+                self.write(entry="REG = []\ndef register(fn):\n    REG.append(fn)\n    return fn\n"
+                                 f"class Shaders:\n    {body}\ndef main():\n    return REG\n")
+                self.assertIn("entry:Shaders", self.kept())
 
     def test_a_default_argument_that_calls_stage_code_counts(self):
         self.write(entry="""
