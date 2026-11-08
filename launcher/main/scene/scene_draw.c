@@ -110,7 +110,7 @@ fill_instances(scene_t* scene) {
         const scene_renderer_t* r = &scene->renderers[scene->active_renderers[i]];
         if (r->mesh.node_count > 0) {
             scene->instances[count++] =
-                (r3d_instance_t){&r->mesh, r->placed ? &r->model : NULL, &r->world_bounds, r->lod_coarse};
+                (r3d_instance_t){&r->mesh, r->placed ? &r->model : NULL, &r->world_bounds, r->lod_coarse, r->batch, 0};
         }
     }
     return count;

@@ -9,6 +9,7 @@
 #include "core/tune.h"
 #include "profile/frame_cost.h"
 #include "profile/frame_laps.h"
+#include "render/batch/r3d_batch.h"
 #include "render/lod/r3d_lod.h"
 #include "render/raster_internal.h"
 #include "render/upscale.h"
@@ -59,6 +60,7 @@ raster_settings(const raster_t* raster) {
  * vertices and cluster rows start in the shared buffers, and its writers. */
 typedef struct {
     const r3d_lit_mesh_t* mesh;
+    r3d_lit_mesh_t copy_mesh; /* a batch's copy: its mesh with its colour set, which `mesh` points at */
     r3d_lens_t lens;
     const uint16_t* visible;
     int visible_count;
@@ -67,16 +69,17 @@ typedef struct {
     r3d_span_writer_t writers[GFX_ATTACHMENTS_FURTHER_MAX];
 } batch_item_t;
 
-int
-raster_batch_end(const raster_t* raster, int first) {
+/* raster_batch_end() over `count` of `list`. */
+static int
+batch_end_in(const raster_t* raster, const r3d_instance_t* list, int count, int first) {
     const int most = raster_settings(raster).batched ? RASTER_BATCH_INSTANCES : 1;
     const int vertex_capacity = raster_vertex_capacity(raster);
     const int cluster_capacity = raster_cluster_capacity(raster);
     int vertices = 0;
     int clusters = 0;
     int end = first;
-    while (end < raster->instance_count && end - first < most) {
-        const r3d_lit_mesh_t* mesh = raster->instances[end].mesh;
+    while (end < count && end - first < most) {
+        const r3d_lit_mesh_t* mesh = list[end].mesh;
         if (vertices + mesh->vertex_count > vertex_capacity || clusters + mesh->cluster_count > cluster_capacity) {
             break;
         }
@@ -85,6 +88,11 @@ raster_batch_end(const raster_t* raster, int first) {
         end++;
     }
     return end;
+}
+
+int
+raster_batch_end(const raster_t* raster, int first) {
+    return batch_end_in(raster, raster->instances, raster->instance_count, first);
 }
 
 typedef struct {
@@ -147,6 +155,7 @@ typedef struct {
     world_cull_t world;
     level_pick_t pick;
     const raster_buffers_t* buffers;
+    int drawn_count;       /* the drawn list's, which both cores cull a range of */
     cull_half_t halves[2]; /* [0] this core's first instances, [1] core 1's last */
     job_range_t ranges[2]; /* job_run_range_in()'s */
 } cull_job_t;
@@ -398,11 +407,8 @@ picture_lens_at(picture_lens_t* picture, int position_scale) {
 /* The lens an instance is drawn with: the picture's at its mesh's scale, placed. */
 static void
 instance_lens(picture_lens_t* picture, const r3d_instance_t* instance, r3d_lens_t* lens) {
-    const r3d_lit_mesh_t* mesh = instance->mesh;
-    *lens = *picture_lens_at(picture, mesh->position_scale);
-    if (instance->model != NULL) {
-        r3d_lens_place(lens, instance->model, mesh->position_scale);
-    }
+    *lens = *picture_lens_at(picture, instance->mesh->position_scale);
+    r3d_instance_place(instance, lens);
 }
 
 static int
@@ -469,6 +475,69 @@ world_cull_skips(const world_cull_t* world, const r3d_instance_t* instance) {
            && world_bounds_outside(*instance->world_bounds, world->planes, world->eye_reach);
 }
 
+/* Whether culling skips a sphere, in world units, whole. */
+static bool
+world_cull_skips_sphere(const world_cull_t* world, spheref_t sphere) {
+    const vec3f_t r = {sphere.radius, sphere.radius, sphere.radius};
+    return world->cull
+           && world_bounds_outside((box3f_t){vec3f_sub(sphere.centre, r), vec3f_add(sphere.centre, r)}, world->planes,
+                                   world->eye_reach);
+}
+
+/* `sphere`, in the batch's frame, where `model` puts it; its radius grows by
+ * the model's scale, the same on every axis. */
+static spheref_t
+placed_sphere(const mat4f_t* model, spheref_t sphere) {
+    if (model == NULL) {
+        return sphere;
+    }
+    const vec3f_t x = {model->m[0][0], model->m[1][0], model->m[2][0]};
+    return (spheref_t){mat4f_apply(model, sphere.centre), sphere.radius * mathf_sqrt(vec3f_dot(x, x))};
+}
+
+/* Appends to `drawn` each copy of `batch_instance`'s batch whose chunk's
+ * sphere and own are not outside the picture; returns the new count. A copy's
+ * sphere needs only its place, so a copy is read no further until it is kept. */
+static int
+expand_batch(const world_cull_t* world, const r3d_instance_t* batch_instance, r3d_instance_t* drawn, int count) {
+    const r3d_batch_t* batch = batch_instance->batch;
+    for (int c = 0; c < batch->chunk_count; c++) {
+        if (world_cull_skips_sphere(world, placed_sphere(batch_instance->model, r3d_batch_chunk_sphere(batch, c)))) {
+            continue;
+        }
+        const int end = mathi_min((c + 1) * R3D_BATCH_CHUNK_COPIES, batch->copy_count);
+        for (int copy = c * R3D_BATCH_CHUNK_COPIES; copy < end; copy++) {
+            const spheref_t sphere = {r3d_batch_copy_position(batch, copy), batch->copy_radius};
+            if (!world_cull_skips_sphere(world, placed_sphere(batch_instance->model, sphere))) {
+                r3d_instance_t* kept = &drawn[count++];
+                *kept = *batch_instance;
+                kept->world_bounds = NULL;
+                kept->lod_coarse =
+                    batch->lod_coarse != NULL ? batch->lod_coarse + ((size_t)copy * batch->lod_words) : NULL;
+                kept->copy = copy;
+            }
+        }
+    }
+    return count;
+}
+
+/* Fills the drawn list from the instances: each without a batch as it is,
+ * each with one as the copies its spheres keep, none when its world box is
+ * outside. Returns its length. */
+static int
+expand_instances(const raster_t* raster, const world_cull_t* world, r3d_instance_t* drawn) {
+    int count = 0;
+    for (int i = 0; i < raster->instance_count; i++) {
+        const r3d_instance_t* instance = &raster->instances[i];
+        if (instance->batch == NULL) {
+            drawn[count++] = *instance;
+        } else if (!world_cull_skips(world, instance)) {
+            count = expand_batch(world, instance, drawn, count);
+        }
+    }
+    return count;
+}
+
 static level_pick_t
 level_pick_init(const raster_t* raster, picture_lens_t* picture, const render_view_t* view,
                 const render_lod_settings_t* lod) {
@@ -504,13 +573,14 @@ cull_slice(void* ctx, int from, int to) {
     cull_half_t* mine = &job->halves[half];
     r3d_pipeline_work_t* block = job->buffers->work[half];
     uint16_t* culled = job->buffers->culled;
+    const r3d_instance_t* drawn = job->buffers->drawn;
     for (int i = 0; i < from; i++) {
-        culled += 1 + (size_t)raster->instances[i].mesh->cluster_count;
+        culled += 1 + (size_t)drawn[i].mesh->cluster_count;
     }
     picture_lens_t picture;
     picture_lens_init(&picture, raster, job->view, job->fitted);
     for (int i = from; i < to; i++) {
-        const r3d_instance_t* instance = &raster->instances[i];
+        const r3d_instance_t* instance = &drawn[i];
         if (world_cull_skips(&job->world, instance)) {
             culled[0] = 0;
         } else {
@@ -538,6 +608,8 @@ cull_begin(draw_work_t* work, const raster_t* raster, const render_view_t* view,
     picture_lens_t* picture = &work->picture;
     picture_lens_init(picture, raster, view, fitted);
     world_cull_init(&job->world, picture, view, job->settings.cull);
+    job->drawn_count = expand_instances(raster, &job->world, work->buffers.drawn);
+    *work->buffers.drawn_count = job->drawn_count;
     job->pick = level_pick_init(raster, picture, view, &job->settings.lod);
     for (int h = 0; h < 2; h++) {
         job->halves[h] = (cull_half_t){{0}, {view->lens.near_z, INFINITY}};
@@ -569,7 +641,7 @@ cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, r
                draw_work_t* work) {
     cull_begin(work, raster, view, fitted);
     int16_t* share = raster->split != NULL ? &raster->split->cull_offset : NULL;
-    (void)job_run_range_in(share, cull_slice, &work->cull, raster->instance_count, work->cull.ranges);
+    (void)job_run_range_in(share, cull_slice, &work->cull, work->cull.drawn_count, work->cull.ranges);
     const float depth_near = cull_end(&work->cull, stats, view->lens.near_z);
     work->levels_changed = stats->levels_changed; /* a draw on this census reads it */
     return depth_near;
@@ -701,12 +773,15 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     batch_t* batch = &work->batch;
     picture_lens_t* picture = &work->picture;
     picture_lens_init(picture, raster, view, true);
-    for (int first = 0, index = 0; first < raster->instance_count; index++) {
-        const int end = raster_batch_end(raster, first);
+    const r3d_instance_t* drawn = work->buffers.drawn;
+    const int drawn_count = *work->buffers.drawn_count;
+    /* The first batch clears the picture, so it runs with nothing kept too. */
+    for (int first = 0, index = 0; index == 0 || first < drawn_count; index++) {
+        const int end = batch_end_in(raster, drawn, drawn_count, first);
         int vertices = 0;
         int clusters = 0;
         for (batch->count = 0; first < end; first++) {
-            const r3d_instance_t* instance = &raster->instances[first];
+            const r3d_instance_t* instance = &drawn[first];
             const r3d_lit_mesh_t* mesh = instance->mesh;
             /* A writer may number clusters across every instance, so it sees
              * this one even when it kept nothing; that one's slot is reused. */
@@ -715,6 +790,10 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
             if (culled[0] > 0) {
                 batch->count++;
                 item->mesh = mesh;
+                if (instance->batch != NULL) {
+                    item->copy_mesh = r3d_batch_copy_mesh(instance->batch, mesh, instance->copy);
+                    item->mesh = &item->copy_mesh;
+                }
                 instance_lens(picture, instance, &item->lens);
                 r3d_lens_set_depth_near(&item->lens, *work->buffers.depth_near);
                 item->visible = culled + 1;
@@ -737,13 +816,39 @@ raster_draw(const raster_t* raster, const render_view_t* view) {
     return stats;
 }
 
+/* What one instance takes of the drawn list: itself, or its batch's copies. */
+static size_t
+drawn_entries(const r3d_instance_t* instance) {
+    return instance->batch != NULL ? instance->batch->copy_count : 1U;
+}
+
 size_t
 raster_culled_length(const raster_t* raster) {
     size_t length = 0;
     for (int i = 0; i < raster->instance_count; i++) {
-        length += 1 + (size_t)raster->instances[i].mesh->cluster_count;
+        length += drawn_entries(&raster->instances[i]) * (1 + (size_t)raster->instances[i].mesh->cluster_count);
     }
     return length;
+}
+
+size_t
+raster_drawn_capacity(const raster_t* raster) {
+    size_t length = 0;
+    for (int i = 0; i < raster->instance_count; i++) {
+        length += drawn_entries(&raster->instances[i]);
+    }
+    return length;
+}
+
+const r3d_instance_t*
+raster_drawn(const raster_t* raster, int* count) {
+    if (raster->scratch == NULL) {
+        *count = raster->instance_count;
+        return raster->instances;
+    }
+    const raster_buffers_t b = raster_carve(raster);
+    *count = *b.drawn_count;
+    return b.drawn;
 }
 
 raster_stats_t

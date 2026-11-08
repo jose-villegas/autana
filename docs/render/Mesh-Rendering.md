@@ -32,7 +32,7 @@ and picture basis from `render_view_t`.
 | `r3d_lit_mesh_t` | A mesh whose light is baked into its colours, made offline ([Mesh-Import.md](offline/Mesh-Import.md)); a view of arrays that stay in the asset pack ([Baked-Mesh.md](offline/Baked-Mesh.md#clusters-and-the-tree)) |
 | `render_view_t` | One frame: eye, picture axes and forward in world units, pixels per unit depth, centre, near plane and picture size |
 | `viewport_t` | The picture's size and the quarter turn the panel is read at; `render_view_make()` and `render_view_refit()` take one |
-| `r3d_instance_t` | One mesh and, optionally, its baked placement: a 3x3 (rotation times a positive scale) and a position. No placement draws the mesh as it is. An optional world box lets the cull drop it before its lens ([Culling.md](frame/Culling.md#the-tree-walk)) |
+| `r3d_instance_t` | One mesh and, optionally, its baked placement: a 3x3 (rotation times a positive scale) and a position. No placement draws the mesh as it is. An optional world box lets the cull drop it before its lens ([Culling.md](frame/Culling.md#the-tree-walk)). An optional batch draws copies of the mesh from packed rows in the placement's frame ([SCNE batches](../assets/formats/SCNE.md#batches)) |
 | `raster_t` | The `r3d_instance_t` array it draws (one mesh is a count of one), at one size, into a scratch block the caller hands it. Its options are fields the caller sets: `clear`, and `upscaled` with a destination picture at least as large |
 | `raster_draw()` | Takes a `const render_view_t*` and draws every instance through that frame view |
 | `raster_census()` | `raster_draw()`'s cull alone, into the scratch block's list: on an upscaled raster with unchanged destination dimensions it holds at any render size, so a caller can price sizes first ([Dynamic-Resolution.md](frame/Dynamic-Resolution.md)) |
@@ -108,17 +108,18 @@ flowchart TB
     View["render_view_t<br/><i>basis, fit, picture</i>"] --> Census
     subgraph Census["raster_census()"]
         direction LR
-        Picture["r3d_lens_init()<br/><i>for the picture</i><br/>world box, r3d_lens_place()<br/><i>per instance</i>"] --> Cull
+        Expand["drawn list<br/><i>each instance; a batch's copies<br/>its chunk and copy spheres keep</i>"] --> Picture
+        Picture["r3d_lens_init()<br/><i>for the picture</i><br/>world box, r3d_instance_place()<br/><i>per drawn instance</i>"] --> Cull
         Cull["r3d_pipeline_cull()<br/><i>walk the tree, nearest first;<br/>bound each kept box's depth</i>"] --> Scale
         Scale["inverse_depth_scale_fit()<br/><i>the depth scale</i>"]
     end
-    Census --> List["the scratch block's census<br/><i>depth scale, then culled list;<br/>fixed offset across render sizes</i>"]
+    Census --> List["the scratch block's census<br/><i>depth scale, drawn list, culled list;<br/>fixed offset across render sizes</i>"]
     View --> Draw
     Size["the render size"] --> Draw
     List --> Draw
     subgraph Draw["raster_draw_culled()"]
         direction LR
-        Fit["r3d_lens_init(), r3d_lens_fit()<br/><i>once, fitted to the render size</i><br/>r3d_lens_place(), r3d_lens_set_depth_near()<br/><i>per kept instance</i>"] --> Transform["r3d_pipeline_transform()<br/><i>each vertex once</i>"]
+        Fit["r3d_lens_init(), r3d_lens_fit()<br/><i>once, fitted to the render size</i><br/>r3d_instance_place(), r3d_lens_set_depth_near()<br/><i>per kept instance</i>"] --> Transform["r3d_pipeline_transform()<br/><i>each vertex once</i>"]
         Transform --> DrawStage["r3d_pipeline_draw()<br/><i>near clip, r3d_span</i>"]
     end
     Draw --> Upscale["raster_upscale()<br/><i>into the destination</i>"]
@@ -227,9 +228,11 @@ The layer allocates nothing. Raster draw work owns the resolved camera
 settings and per-side spread table, shared read-only by the row workers.
 
 Per-vertex and per-cluster buffers, the census list, picture
-[attachments](frame/Attachments.md#attachments) and upscale maps share one block. The census comes first, its depth scale then
-its list, at an offset independent of render size; storage is padded for
-picture attachments.
+[attachments](frame/Attachments.md#attachments) and upscale maps share one block. The census comes first: its depth scale,
+the drawn list (each instance, and in a batch's place the copies the cull
+keeps), then the culled list, at an offset independent of render size;
+storage is padded for picture attachments. Writers and views number
+instances in the drawn list (`raster_drawn()`).
 
 `raster_carve()` in `raster_internal.h` states the layout once, and
 `raster_scratch_bytes()` sizes the block from it.

@@ -12,6 +12,7 @@
 #define r3d_lens_init                constant_r3d_lens_init
 #define r3d_lens_fit                 constant_r3d_lens_fit
 #define r3d_lens_place               constant_r3d_lens_place
+#define r3d_instance_place           constant_r3d_instance_place
 #define r3d_pipeline_work_bytes      constant_r3d_pipeline_work_bytes
 #define r3d_pipeline_cull            constant_r3d_pipeline_cull
 #define r3d_pipeline_cull_cut        constant_r3d_pipeline_cull_cut

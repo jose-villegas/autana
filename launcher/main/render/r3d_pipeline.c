@@ -65,6 +65,20 @@ r3d_lens_place(r3d_lens_t* lens, const mat4f_t* model, int position_scale) {
     lens->m = mat4f_mul_affine(lens->m, placed);
 }
 
+void
+r3d_instance_place(const r3d_instance_t* instance, r3d_lens_t* lens) {
+    const int scale = instance->mesh->position_scale;
+    if (instance->batch != NULL) {
+        mat4f_t model = r3d_batch_copy_model(instance->batch, instance->copy);
+        if (instance->model != NULL) {
+            model = mat4f_mul_affine(*instance->model, model);
+        }
+        r3d_lens_place(lens, &model, scale);
+    } else if (instance->model != NULL) {
+        r3d_lens_place(lens, instance->model, scale);
+    }
+}
+
 #define ALL_PLANES ((1u << PLANE_FRUSTUM_COUNT) - 1u)
 
 typedef struct {

@@ -232,7 +232,7 @@ open_the_meshes(void) {
  * flythrough's poses: each stage is the difference of two stopped draws. */
 static void
 report_stage_split(int bake) {
-    const r3d_instance_t instance = {&meshes[bake], NULL, NULL, NULL};
+    const r3d_instance_t instance = {&meshes[bake], NULL, NULL, NULL, NULL, 0};
     bench_t* b = bench_open(&instance);
     const raster_buffers_t* parts = &b->buffers;
     const r3d_lens_t* lens = &b->lens;
@@ -265,7 +265,7 @@ test_sponza_draw_stage_breakdown(void) {
     for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
         report_stage_split(i);
     }
-    const r3d_instance_t atrium = {&meshes[SCENE_BAKED_FULL], NULL, NULL, NULL};
+    const r3d_instance_t atrium = {&meshes[SCENE_BAKED_FULL], NULL, NULL, NULL, NULL, 0};
     bench_t* b = bench_open(&atrium);
     view_at(atrium.mesh, 0, &b->lens);
     const r3d_lens_t* lens = &b->lens;
@@ -436,12 +436,12 @@ test_sponza_frame_cost_along_the_flythrough(void) {
     };
     static const perf_budget_t cull_off_budget[R3D_PERF_QUARTER_COUNT] = {{61138, 67896}, {58104, 66246}};
     for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
-        const r3d_instance_t instance = {&meshes[i], NULL, NULL, NULL};
+        const r3d_instance_t instance = {&meshes[i], NULL, NULL, NULL, NULL, 0};
         report_frame_cost(sponza_bakes[i], sponza_bakes[i], &instance, NULL, NULL, bake_budgets[i]);
     }
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, cull), 0));
     const scene_baked_variant_t showcase = showcase_bake();
-    const r3d_instance_t shown = {&meshes[showcase], NULL, NULL, NULL};
+    const r3d_instance_t shown = {&meshes[showcase], NULL, NULL, NULL, NULL, 0};
     report_frame_cost("cull_off", sponza_bakes[showcase], &shown, NULL, NULL, cull_off_budget);
     TEST_PASS();
 }
@@ -455,7 +455,7 @@ test_sponza_frame_cost_placed(void) {
     static const perf_budget_t placed_budget[R3D_PERF_QUARTER_COUNT] = {{41115, 52181}, {38830, 47638}};
     transformf_t pose = transformf_identity();
     mat4f_t model = transformf_compute_matrix(&pose);
-    const r3d_instance_t moving = {&meshes[0], &model, NULL, NULL};
+    const r3d_instance_t moving = {&meshes[0], &model, NULL, NULL, NULL, 0};
     report_frame_cost("placed", sponza_bakes[0], &moving, &pose, &model, placed_budget);
     TEST_PASS();
 }

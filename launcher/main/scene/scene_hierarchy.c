@@ -78,9 +78,21 @@ world_from_parent(const scene_t* scene, scene_row_t entity) {
 void
 scene_renderer_bound(scene_renderer_t* r) {
     r->changed = true;
-    if (r->mesh.node_count > 0) {
-        r->world_bounds = r3d_lit_mesh_world_bounds(&r->mesh, r->placed ? &r->model : NULL);
+    if (r->mesh.node_count == 0) {
+        return;
     }
+    if (r->batch == NULL) {
+        r->world_bounds = r3d_lit_mesh_world_bounds(&r->mesh, r->placed ? &r->model : NULL);
+        return;
+    }
+    /* Every chunk's sphere as a box, where the model puts it. */
+    box3f_t local = box3f_empty();
+    for (int c = 0; c < r->batch->chunk_count; c++) {
+        const spheref_t s = r3d_batch_chunk_sphere(r->batch, c);
+        const vec3f_t reach = {s.radius, s.radius, s.radius};
+        local = box3f_union(local, (box3f_t){vec3f_sub(s.centre, reach), vec3f_add(s.centre, reach)});
+    }
+    r->world_bounds = r3d_box_placed(local, r->placed ? &r->model : NULL);
 }
 
 static void
