@@ -47,6 +47,14 @@ r3d_lod_any(const uint32_t* coarse, int groups) {
     return false;
 }
 
+/* Whether, with `any_coarse` false, every cluster drawn is known without a
+ * test: all of a mesh without levels, or the finest, which levels laid out
+ * apart (lod_finest_root set) put first, up to lod_coarse_first. */
+static inline bool
+r3d_lod_finest_untested(const r3d_lit_mesh_t* mesh, bool any_coarse) {
+    return !any_coarse && (mesh->lod_finest_root != 0 || mesh->cluster_lod == NULL);
+}
+
 /* Whether cluster `c` of `mesh` is drawn under `coarse`: when the group
  * simplified into it is coarse (or it is finest) and its own group is not.
  * A NULL `coarse` draws the finest level, as does a mesh without levels. */

@@ -286,6 +286,14 @@ test_the_drawn_list_holds_what_each_cluster_s_test_draws(void) {
     mixed.lod_coarse_first = 0;
     expect_the_list_is_what_drawn_keeps(&mixed, clear);
     expect_the_list_is_what_drawn_keeps(&mixed, NULL);
+    r3d_lit_mesh_t plain = *mesh; /* no levels: every cluster */
+    plain.cluster_lod = NULL;
+    plain.lod_groups = NULL;
+    plain.lod_group_count = 0;
+    plain.lod_finest_root = 0;
+    plain.lod_coarse_first = 0;
+    expect_the_list_is_what_drawn_keeps(&plain, NULL);
+    expect_the_list_is_what_drawn_keeps(&plain, clear);
 }
 
 static void

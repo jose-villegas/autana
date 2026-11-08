@@ -180,10 +180,7 @@ r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lo
 
 int
 r3d_lod_list_drawn(const r3d_lit_mesh_t* mesh, const uint32_t* coarse, uint16_t* out, int room) {
-    /* Nothing coarse: every cluster of a mesh without levels, or the finest,
-     * which levels laid out apart put first. */
-    const bool every = (coarse == NULL || !r3d_lod_any(coarse, mesh->lod_group_count))
-                       && (mesh->lod_finest_root != 0 || mesh->cluster_lod == NULL);
+    const bool every = r3d_lod_finest_untested(mesh, coarse != NULL && r3d_lod_any(coarse, mesh->lod_group_count));
     const int count = !every || mesh->cluster_lod == NULL ? mesh->cluster_count : mesh->lod_coarse_first;
     int drawn = 0;
     for (int c = 0; c < count; c++) {
