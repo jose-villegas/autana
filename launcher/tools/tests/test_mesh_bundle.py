@@ -19,6 +19,8 @@ from test_scene_asset import SceneFiles
 from test_r3d_import import SIMPLIFY, VARIANT, renderer, write_import
 from test_r3d_objects import POINTS, TRIANGLES, obj_text
 from r3d.lit_mesh import read_lit_mesh
+from r3d.thin import curve_asset, curve_format
+from r3d.thin.curve_fit import Curve
 from r3d.objects.instances import Instance
 from r3d.process_budget import StepRecorder
 from r3d.import_settings import MESHLET_TRIANGLES, albedo_jobs, load_import_settings
@@ -144,6 +146,22 @@ class MeshBundleTests(unittest.TestCase):
             renamed = mesh_bundle.rename_rest(entries, copies, name)
             self.assertIn(name, {key for key, _, _ in renamed})
             mesh_bundle.decode(mesh_bundle.encode(renamed, copies))
+
+    def test_renaming_the_rest_renames_its_curves_with_it(self):
+        with tempfile.TemporaryDirectory() as folder:
+            data, _, _, _, _ = bundle_fixture(folder)
+        entries, copies = mesh_bundle.decode(data)
+        old = mesh_bundle.rest_name(entries, copies)
+        curves = curve_asset.write_curves([Curve(np.array([[0., 0, 0], [1, 0, 0]]), np.full(2, 0.5), np.full((2, 3), 0.5))], 1)
+        entries.append((old + curve_format.NAME_SUFFIX, curve_asset.TYPE, curves))
+        name = "renamed"
+        renamed = {key: blob for key, _, blob in mesh_bundle.rename_rest(entries, copies, name)}
+        self.assertNotIn(old + curve_format.NAME_SUFFIX, renamed)
+        self.assertEqual(renamed[name + curve_format.NAME_SUFFIX], curves)
+        siblings = (lcol_asset.NAME_SUFFIX, curve_format.NAME_SUFFIX)
+        self.assertEqual(set(renamed), {name if key == old else name + key[len(old):]
+                                        if key.startswith(old) and key[len(old):] in siblings else key
+                                        for key, _, _ in entries})
 
     def test_rebaking_rest_preserves_copy_geometry_levels_and_lighting(self):
         from test_r3d_lod_bake import wavy_grid

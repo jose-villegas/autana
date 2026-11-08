@@ -465,6 +465,92 @@ test_a_mesh_s_bounding_sphere_is_centred_on_its_box_and_reaches_its_furthest_ver
     TEST_ASSERT_FLOAT_WITHIN(1.0E-6F, sqrtf(5.0F), sphere.radius); /* corner (4, 2) or (0, 0): 2 by 1 from the centre */
 }
 
+/* A mesh at two ticks a unit whose one curve box reaches out of the root box on every axis it can: x and y below it,
+ * z above it, the root being flat. */
+enum { CURVE_BOX_TICKS = 2 };
+
+static const int16_t BOXED_CORNERS[4][3] = {{0, 0, 0}, {8, 0, 0}, {8, 4, 0}, {0, 2, 0}};
+static const r3d_lit_cluster_t BOXED_CLUSTER = {0, 4, 0, 2, {{0, 0, 0}, {8, 4, 0}}, false};
+static const r3d_lit_node_t BOXED_NODE = {{{0, 0, 0}, {8, 4, 0}}, 0, 1, true};
+static const r3d_curve_t BOXED_CURVE = {0, 2, {-10, -3, -4}, {-2, 3, 4}};
+
+static r3d_lit_mesh_t
+mesh_with_a_curve_box(void) {
+    r3d_lit_mesh_t mesh = r3d_quad_mesh(BOXED_CORNERS, NULL, NULL, &BOXED_CLUSTER, &BOXED_NODE);
+    mesh.position_scale = CURVE_BOX_TICKS;
+    mesh.curves = &BOXED_CURVE;
+    mesh.curve_count = 1;
+    return mesh;
+}
+
+/* Corner `k` of the curve box in model units. */
+static vec3f_t
+curve_corner(int k) {
+    const float units = 1.0F / (float)CURVE_BOX_TICKS;
+    return (vec3f_t){(float)BOXED_CURVE.lo[0] * units
+                         + (float)(k & 1) * (float)(BOXED_CURVE.hi[0] - BOXED_CURVE.lo[0]) * units,
+                     (float)BOXED_CURVE.lo[1] * units
+                         + (float)((k >> 1) & 1) * (float)(BOXED_CURVE.hi[1] - BOXED_CURVE.lo[1]) * units,
+                     (float)BOXED_CURVE.lo[2] * units
+                         + (float)((k >> 2) & 1) * (float)(BOXED_CURVE.hi[2] - BOXED_CURVE.lo[2]) * units};
+}
+
+static void
+test_a_world_box_holds_a_curve_box_outside_the_root_box(void) {
+    const r3d_lit_mesh_t mesh = mesh_with_a_curve_box();
+    const box3f_t box = r3d_lit_mesh_world_bounds(&mesh, NULL);
+    for (int k = 0; k < BOX3_CORNERS; k++) {
+        TEST_ASSERT_TRUE(box3f_contains_point(box, curve_corner(k)));
+    }
+    for (int k = 0; k < 4; k++) {
+        TEST_ASSERT_TRUE(
+            box3f_contains_point(box, vec3f_scale(vec3f_from_vec3s(vec3s_from_array(BOXED_CORNERS[k]), 1.0F),
+                                                  1.0F / (float)CURVE_BOX_TICKS)));
+    }
+}
+
+/* Doubled, turned a quarter about z and moved: every corner of the curve box lands inside the box through the model. */
+static void
+test_a_world_box_through_a_model_holds_a_curve_box_outside_the_root_box(void) {
+    const r3d_lit_mesh_t mesh = mesh_with_a_curve_box();
+    transformf_t pose = transformf_identity();
+    const float half_angle = 0.78539816F /* a quarter of pi */;
+    transformf_set_rotation(&pose, (quatf_t){0.0F, 0.0F, sinf(half_angle), cosf(half_angle)});
+    transformf_set_scale(&pose, (vec3f_t){2.0F, 2.0F, 2.0F});
+    transformf_set_position(&pose, (vec3f_t){5.0F, 6.0F, 7.0F});
+    const mat4f_t model = transformf_compute_matrix(&pose);
+    const box3f_t box = r3d_lit_mesh_world_bounds(&mesh, &model);
+    const float slack = 1e-4F;
+    for (int k = 0; k < BOX3_CORNERS; k++) {
+        const vec3f_t corner = mat4f_apply(&model, curve_corner(k));
+        TEST_ASSERT_TRUE(corner.x >= box.lo.x - slack && corner.x <= box.hi.x + slack);
+        TEST_ASSERT_TRUE(corner.y >= box.lo.y - slack && corner.y <= box.hi.y + slack);
+        TEST_ASSERT_TRUE(corner.z >= box.lo.z - slack && corner.z <= box.hi.z + slack);
+    }
+}
+
+/* The furthest point of the curve box from the sphere's centre is further than any vertex, so the sphere is
+ * as big as the box makes it, and its centre is that of the box holding both. */
+static void
+test_a_bounding_sphere_holds_a_curve_box_outside_the_root_box(void) {
+    const r3d_lit_mesh_t mesh = mesh_with_a_curve_box();
+    const spheref_t sphere = r3d_lit_mesh_bounding_sphere(&mesh);
+    const box3f_t both = r3d_lit_mesh_world_bounds(&mesh, NULL);
+    vec3f_expect_within(1e-6F, box3f_centre(both), sphere.centre);
+    float furthest = 0.0F;
+    for (int k = 0; k < BOX3_CORNERS; k++) {
+        const vec3f_t d = vec3f_sub(curve_corner(k), sphere.centre);
+        furthest = fmaxf(furthest, sqrtf(vec3f_dot(d, d)));
+    }
+    for (int v = 0; v < mesh.vertex_count; v++) {
+        const vec3f_t d = vec3f_sub(
+            vec3f_scale(vec3f_from_vec3s(vec3s_from_array(mesh.positions[v]), 1.0F), 1.0F / (float)CURVE_BOX_TICKS),
+            sphere.centre);
+        TEST_ASSERT_TRUE_MESSAGE(sqrtf(vec3f_dot(d, d)) < furthest, "a curve corner is the furthest point");
+    }
+    TEST_ASSERT_FLOAT_WITHIN(1e-5F, furthest, sphere.radius);
+}
+
 void
 suite_r3d_instance(void) {
     RUN_TEST(test_a_mesh_with_no_model_draws_where_it_is);
@@ -482,6 +568,9 @@ suite_r3d_instance(void) {
     RUN_TEST(test_a_world_box_with_no_model_is_the_root_box_in_model_units);
     RUN_TEST(test_a_world_box_through_a_model_holds_every_transformed_corner);
     RUN_TEST(test_a_mesh_s_bounding_sphere_is_centred_on_its_box_and_reaches_its_furthest_vertex);
+    RUN_TEST(test_a_world_box_holds_a_curve_box_outside_the_root_box);
+    RUN_TEST(test_a_world_box_through_a_model_holds_a_curve_box_outside_the_root_box);
+    RUN_TEST(test_a_bounding_sphere_holds_a_curve_box_outside_the_root_box);
 }
 
 SUITE_REGISTER(suite_r3d_instance);
