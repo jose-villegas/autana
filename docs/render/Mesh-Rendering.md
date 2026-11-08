@@ -193,7 +193,10 @@ sequenceDiagram
     participant J as core 1 job worker
     participant P as present on core 1
     C0->>P: gfx_present_begin() sends frame N-1
-    Note over C0: update(), cull every cluster
+    Note over C0: update()
+    C0->>J: cull the instances past the cull share
+    Note over C0: cull the instances before it
+    J-->>C0: job_wait()
     C0->>J: transform the clusters past the instance's transform share
     Note over C0: transform the clusters before it
     J-->>C0: job_wait()
