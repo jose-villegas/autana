@@ -1,4 +1,4 @@
-root test_sponza_frame_cost_with_motion test
+root test_sponza_frame_cost_placed test
 root test_sponza_frame_cost_along_the_flythrough test
 root test_sponza_draw_stage_breakdown test
 root test_raster_stage_split_by_size test

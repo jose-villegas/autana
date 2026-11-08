@@ -112,6 +112,14 @@ TUNE(water, plane, 0, 0, 1);
 /* The surface's density samples per cell, in hundredths: fewer mesh,
  * build and draw fewer triangles and lose the smallest ripples. */
 TUNE(water, samples_pct, WATER_SAMPLES_PCT, WATER_PERCENT, WATER_SAMPLES_PCT_MAX);
+/* The speed a particle outside the surface needs to show in it
+ * (flip3_tuning_t's show_speed), in mm/s: slower ones rest on the surface
+ * and would each hold a one-sample spike; drops and splash fly faster.
+ * 0 shows every one. Ours, by eye from host renders of the swing and tour
+ * at 0, 50, 75 and 100. */
+#define WATER_SHOW_SPEED_MM_S     50
+#define WATER_SHOW_SPEED_MM_S_MAX 400
+TUNE(water, show_speed_mm_s, WATER_SHOW_SPEED_MM_S, 0, WATER_SHOW_SPEED_MM_S_MAX);
 /* The plane's swing: its natural frequency in tenths of a hertz, and its
  * damping as a percentage of critical. Ours, by eye. */
 TUNE(water, slosh_decihz, 15, 1, 100);
@@ -663,6 +671,7 @@ step_water(vec3f_t accel_g, uint32_t dt_ms) {
     FRAME_COST_BEGIN(step_from);
     const vec3f_t accel = vec3f_scale(accel_g, (float)gravity_mm_s2);
     water.tuning.red_black = red_black != 0;
+    water.tuning.show_speed = (float)show_speed_mm_s;
     const float step_s = (float)mathi_min((int)dt_ms, WATER_MAX_STEP_MS) / (float)MATH_MS_PER_S;
     if (plane != 0) {
         water_plane_step(&plane_water, step_s, accel_g, (float)slosh_decihz / WATER_DECIHZ_PER_HZ,
