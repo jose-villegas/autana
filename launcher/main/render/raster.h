@@ -107,6 +107,15 @@ raster_stats_t raster_draw(const raster_t* raster, const render_view_t* view);
  * Upscaled rasters may change render size with a fixed destination; other
  * rasters must keep the census size. */
 size_t raster_culled_length(const raster_t* raster);
+/* The census's drawn list holds at most this many: one for each instance,
+ * and one for each copy of an instance's batch. */
+size_t raster_drawn_capacity(const raster_t* raster);
+/* What the census drew from, `*count` of them: each instance without a batch
+ * as it was handed over, in order, and in a batch's place each copy its
+ * spheres kept, as an instance of its own (its batch and copy set, no world
+ * box). Without batches, or before any scratch is set, it is the instances.
+ * Writers and views number instances in this list. */
+const r3d_instance_t* raster_drawn(const raster_t* raster, int* count);
 raster_stats_t raster_census(const raster_t* raster, const render_view_t* view);
 void raster_draw_culled(const raster_t* raster, const render_view_t* view);
 
