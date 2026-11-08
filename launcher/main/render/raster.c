@@ -27,6 +27,18 @@ TUNE_OVERRIDE(render, batched, 1);
 TUNE_OVERRIDE(render, lod_coverage_permille, INT32_MAX);
 /* Overrides lod.pick_every; 1 picks every instance every frame. */
 TUNE_OVERRIDE(render, lod_pick_every, R3D_LOD_PICK_EVERY_MAX);
+/* Override lod.tolerance_px and lod.hysteresis_px in thousandths of a pixel: a
+ * replay scores a path at the tolerance that meets a triangle budget. */
+TUNE_OVERRIDE(render, lod_tolerance_millipx, INT32_MAX);
+TUNE_OVERRIDE(render, lod_hysteresis_millipx, INT32_MAX);
+
+enum { MILLIPX_PER_PX = 1000 };
+
+/* `value` in pixels, or the knob's thousandths of a pixel when it is set. */
+static float
+px_override(int32_t knob, float value) {
+    return knob == TUNE_UNSET ? value : (float)knob / (float)MILLIPX_PER_PX;
+}
 
 render_settings_t
 raster_settings(const raster_t* raster) {
@@ -34,7 +46,8 @@ raster_settings(const raster_t* raster) {
     return (render_settings_t){tune_override(cull, s.cull) != 0,
                                tune_override(depth_fit, s.depth_fit) != 0,
                                tune_override(batched, s.batched) != 0,
-                               {s.lod.tolerance_px, s.lod.hysteresis_px,
+                               {px_override(tune_override(lod_tolerance_millipx, TUNE_UNSET), s.lod.tolerance_px),
+                                px_override(tune_override(lod_hysteresis_millipx, TUNE_UNSET), s.lod.hysteresis_px),
                                 tune_override(lod_coverage_permille, s.lod.coverage_permille),
                                 tune_override(lod_pick_every, s.lod.pick_every)}};
 }
