@@ -36,12 +36,13 @@ gfx_mode_resolve(const gfx_mode_request_t* request, int full_width, int full_hei
  * Returns NULL outside GFX_LAYOUT_FULL_FB or when allocation fails. */
 gfx_color_t* gfx_half_picture(void);
 
-/* Presents the half picture doubled in both axes, with every strip dirty.
- * Raw framebuffer drawing is refused until that present completes. */
-void gfx_expand_frame(void);
-/* gfx_expand_frame() blended bilinearly except across the seams (gfx_target.h)
- * marked in gfx_half_seams(). */
-void gfx_expand_frame_blended(void);
+/* Presents the half picture doubled in both axes, panel rows [first_row,
+ * end_row) dirty (0 and GFX_HEIGHT for all of it): the rest of the panel
+ * keeps what it last showed. `blended`: bilinearly except across the seams
+ * (gfx_target.h) marked in gfx_half_seams(), the row beside each end dirty
+ * too, as it blends with the range. Raw framebuffer drawing is refused until
+ * that present completes. */
+void gfx_expand_frame(bool blended, int first_row, int end_row);
 bool gfx_frame_expanded(void);
 
 /* The half picture's seam mask, GFX_SEAM_BYTES of the half size; NULL with no half picture. */
