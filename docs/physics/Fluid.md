@@ -11,7 +11,7 @@ driven by any acceleration, in caller-owned grid and particle blocks.
 | Function | Purpose |
 |---|---|
 | `flip3_config_t` | Box size, nominal cell and particle capacity |
-| `flip3_tuning_t` | FLIP share, pressure sweeps, over-relaxation, drift gain, and red-black order for a pressure solve split across two cores |
+| `flip3_tuning_t` | FLIP share, pressure sweeps, over-relaxation, drift gain, red-black order for a pressure solve split across two cores, and the speed a particle outside the surface needs to show in the field |
 | `flip3_t` | Grid, particles, cell and seed spacing per axis, rest density |
 | `flip3_grid_bytes`, `flip3_particle_bytes` | The two blocks a configuration needs; 0 when refused |
 | `flip3_init` | Carves the blocks; empty, at the default tuning |
@@ -32,7 +32,8 @@ driven by any acceleration, in caller-owned grid and particle blocks.
 | `FLIP3_SEED_SPACING_CELLS` | Seed lattice spacing; a cell holds about 4.6 seeds |
 | `FLIP3_FLIP_RATIO`, `FLIP3_PRESSURE_ITERS`, `FLIP3_OVER_RELAXATION` | Defaults of the Ten Minute Physics tank<sup>[[94]](../Citations.md#muller-2022)</sup> |
 | `FLIP3_DRIFT_GAIN` | Share of a cell's density error turned into flow per step |
-| `FLIP3_TUNING_DEFAULT` | All five together, index order |
+| `FLIP3_SHOW_SPEED` | 0: the field shows every particle outside the surface, since a speed depends on the length unit |
+| `FLIP3_TUNING_DEFAULT` | All six together, index order |
 
 ### The step
 
@@ -56,6 +57,9 @@ overlapping pairs apart; that sinks a pool by $`a\Delta t^2`$ each step and
 holds heaps up the way grains do, so flip3 does neither.
 
 The surface field averages a film under half a sample thick below the
-level, so each particle whose nearest sample reads below it then raises the
+level, so each particle whose nearest sample reads below it, and that moves
+at least the tuning's `show_speed` fast, then raises the
 samples of its field cell to 1 less their distance in samples, the nearest
 to at least 0.75, so even a lone drop midway between samples stays inside.
+A slower one rests on the surface rather than flying off it, and would only
+hold a one-sample spike there, so it blends in.
