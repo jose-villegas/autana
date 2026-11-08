@@ -70,8 +70,8 @@ draw time; view modes give up frame time to show a diagnostic picture.
 |---|---|---|---|---|---|
 | [Render scale](#render-scale-and-the-half-picture) | pixels drawn for sharpness | scratch at the drawn size | 50% | `render_context_set_scale()` | [Mesh-Rendering.md](Mesh-Rendering.md#the-render-context) |
 | [Dynamic resolution](#dynamic-resolution) | sharpness for a held frame budget | scratch at the finest step | off | `render_context_set_dynamic_resolution()` | [Dynamic-Resolution.md](frame/Dynamic-Resolution.md) |
-| [Camera presentation](#camera-presentation) | half the rows drawn for a scanline or doubled look | none | `CAMERA_PRESENT_NEAREST` | `scene_camera_set_present()` | [Camera presentation](frame/Dynamic-Resolution.md#camera-presentation) |
-| [Small fill](#small-fill) | gradients on tiny triangles for draw time | none | `SMALL_FILL_SMOOTH` | `scene_camera_set_small_fill()` | [Small fill](frame/Coverage.md#small-fill) |
+| [Camera presentation](#camera-presentation) | half the rows drawn for a scanline or doubled look | none | `CAMERA_PRESENT_NEAREST` | `camera_set_present()` | [Camera presentation](frame/Dynamic-Resolution.md#camera-presentation) |
+| [Small fill](#small-fill) | gradients on tiny triangles for draw time | none | `SMALL_FILL_SMOOTH` | `camera_set_small_fill()` | [Small fill](frame/Coverage.md#small-fill) |
 | [Render settings](Render-Settings.md) | culling, depth fit and batching, each off only to compare | none | `RENDER_SETTINGS_DEFAULT`, all on | `render_context_set_settings()`, or a [`.render.toml`](Render-Settings.md#the-render-asset) in the app's pack | [Render-Settings.md](Render-Settings.md) |
 | [View modes](#view-modes) | frame time for a diagnostic picture | PSRAM per view | shaded | `render_context_set_debug_view()` | [View modes](frame/View-Modes.md) |
 
@@ -96,7 +96,7 @@ callbacks. What the app writes, and where, is the whole choice.
 |---|---|---|
 | 2D in `frame()` | `draw_*` ([`draw/draw.h`](../../launcher/main/draw/draw.h)) | what the calls marked dirty |
 | raw pixels | `gfx_framebuffer()`, then `gfx_mark_dirty()` on the box it wrote | the marked box; an unmarked write never reaches the panel |
-| a 3D scene | `scene_load()` and `scene_activate()` in `enter()` ([Building-a-Scene.md](Building-a-Scene.md#6-draw-it)) | the composed picture, then whatever `frame()` drew over it |
+| a 3D scene | `scene_load()` and `camera_activate()` in `enter()` ([Building-a-Scene.md](Building-a-Scene.md#6-draw-it)) | the composed picture, then whatever `frame()` drew over it |
 
 A scene's draw runs on both cores while core 1 still sends the last frame;
 `frame()` runs after the send:
@@ -249,7 +249,7 @@ board are in
 
 ### Camera presentation
 
-`scene_camera_set_present(scene, camera, mode)` draws half the rows and lets
+`camera_set_present(camera, mode)` draws half the rows and lets
 the present fill the rest. `CAMERA_PRESENT_SCANLINE` dims every second row;
 `CAMERA_PRESENT_DOUBLE` repeats it.
 
@@ -260,7 +260,7 @@ the present fill the rest. `CAMERA_PRESENT_SCANLINE` dims every second row;
 
 ### Small fill
 
-`scene_camera_set_small_fill(scene, camera, SMALL_FILL_FAST)` fills
+`camera_set_small_fill(camera, SMALL_FILL_FAST)` fills
 triangles a few pixels across with one depth and one colour instead of
 walking their planes. `SMALL_FILL_SMOOTH`, the default, keeps the smooth
 picture exact.
@@ -285,7 +285,7 @@ drops a triangle hidden behind what was already drawn
 
 A scene can also have its camera drop each cluster wholly behind what was
 already drawn, before any of its triangles is set up:
-`scene_camera_set_skip_hidden()`, off by default. Pixels do not change.
+`camera_set_skip_hidden()`, off by default. Pixels do not change.
 
 - **Use** it where most clusters hide behind nearer ones. Elsewhere the test
   and the capped fill it needs cost more than they skip.
@@ -316,10 +316,10 @@ direct, renormalised or table lighting.
 ### View modes
 
 Development builds only: `render_context_set_debug_view()` replaces the
-colour with depth, depth tiles, motion vectors or cluster IDs. Each view
+colour with depth, depth tiles, cluster IDs or the cull. Each view
 adds frame time and holds PSRAM state until switched off.
 
-- **Use** to see why a frame costs what it does: overdraw, cull, motion.
+- **Use** to see why a frame costs what it does: overdraw, cull.
 - **Cost per view**: the view charts in
   [frame/](frame/README.md#where-the-time-goes).
 

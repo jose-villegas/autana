@@ -21,7 +21,9 @@
 typedef struct {
     scene_animator_clip_t clips[TEST_CLIP_COUNT];
     scene_animator_t animator;
-    scene_t scene;
+    scene_t columns;         /* the one-entity scene the animator sits in */
+    scene_root_t* record;    /* its claimed record in the world's table */
+    entity_t scene, subject; /* its root and its one entity */
     transformf_t shown_pose, frozen_pose;
     render_lab_clips_t choice;
     size_t arena_mark; /* the arena before the test, given back after it */
@@ -37,6 +39,9 @@ release_fixture(void) {
     ui_probe_widgets_stop();
 #endif
     render_lab_clips_destroy(&shown->choice);
+    if (shown->record != NULL) {
+        *shown->record = (scene_root_t){0};
+    }
     app_arena_rewind(shown->arena_mark);
     memory_free(shown);
     shown = NULL;
@@ -55,10 +60,20 @@ fixture(void) {
     f->animator = (scene_animator_t){.storage = f->clips, .clips = f->clips, .root = ANIM_ROOT_SKELETON};
     anim_layer_init(&f->animator.layer, times, TEST_CLIP_COUNT, (anim_pose_t){&f->shown_pose, 1},
                     (anim_pose_t){&f->frozen_pose, 1});
-    f->scene = (scene_t){.asset = {.entity_count = 1}, .animators = &f->animator};
-    TEST_ASSERT_TRUE(scene_animator_play(&f->scene, 0, 0, 0));
-    f->choice.scene = &f->scene;
-    f->choice.subject = 0;
+    f->columns = (scene_t){.asset = {.entity_count = 1}, .animators = &f->animator};
+    for (int i = 0; i < SCENE_ROOTS_MAX && f->record == NULL; i++) {
+        f->record = handle_is_none(scene_roots[i].root) ? &scene_roots[i] : NULL;
+    }
+    TEST_ASSERT_NOT_NULL(f->record);
+    *f->record = (scene_root_t){.state = PENDING_READY, .scene = &f->columns};
+    TEST_ASSERT_TRUE(scene_world_issue_root(f->record));
+    TEST_ASSERT_TRUE(scene_world_issue_rows(f->record, 1));
+    f->columns.root = f->record;
+    f->scene = f->record->root;
+    f->subject = scene_row_entity(&f->columns, 0);
+    TEST_ASSERT_TRUE(animator_play(f->subject, 0, 0));
+    f->choice.scene = f->scene;
+    f->choice.subject = f->subject;
     return f;
 }
 
@@ -89,12 +104,12 @@ reject(clip_fixture_t* f, const char* args, const char* expected) {
 static void
 test_listing_marks_default_and_fallback_playback(void) {
     clip_fixture_t* f = fixture();
-    TEST_ASSERT_TRUE(render_lab_clips_init(&f->choice, &f->scene, 0, "gallop"));
+    TEST_ASSERT_TRUE(render_lab_clips_init(&f->choice, f->scene, f->subject, "gallop"));
     TEST_ASSERT_EQUAL_INT(1, f->animator.layer.current.clip);
     request(f, "clips");
     TEST_ASSERT_EQUAL_STRING("RENDER clip=idle current=0\nRENDER clip=gallop current=1\nRENDER_END\n", f->reply);
     render_lab_clips_destroy(&f->choice);
-    TEST_ASSERT_TRUE(render_lab_clips_init(&f->choice, &f->scene, 0, "missing"));
+    TEST_ASSERT_TRUE(render_lab_clips_init(&f->choice, f->scene, f->subject, "missing"));
     TEST_ASSERT_EQUAL_INT(RENDER_LAB_BLEND_DEFAULT_MS, f->choice.blend_ms);
     TEST_ASSERT_EQUAL_INT(0, f->animator.layer.current.clip);
     request(f, "clips");
@@ -121,7 +136,7 @@ test_console_success_reports_applied_blend_and_end(void) {
 static void
 test_init_plays_without_blend_and_console_uses_default(void) {
     clip_fixture_t* f = fixture();
-    TEST_ASSERT_TRUE(render_lab_clips_init(&f->choice, &f->scene, 0, "idle"));
+    TEST_ASSERT_TRUE(render_lab_clips_init(&f->choice, f->scene, f->subject, "idle"));
     TEST_ASSERT_EQUAL_UINT32(0, f->animator.layer.blend_ms);
     request(f, "clip gallop");
     TEST_ASSERT_EQUAL_UINT32(RENDER_LAB_BLEND_DEFAULT_MS, f->animator.layer.blend_ms);
@@ -150,9 +165,9 @@ test_console_errors_leave_playback_unchanged(void) {
     }
     TEST_ASSERT_TRUE(snprintf(command, sizeof command, "clip idle %d", RENDER_LAB_BLEND_MAX_MS + 1) >= 0);
     reject(f, command, "RENDER_ERR bad blend\n");
-    f->choice.scene = NULL;
+    f->choice.scene = ENTITY_NONE;
     reject(f, "clips", "RENDER_ERR no animated subject\n");
-    f->choice.scene = &f->scene;
+    f->choice.scene = f->scene;
     f->animator.storage = NULL;
     reject(f, "clip idle", "RENDER_ERR no animated subject\n");
     f->animator.storage = f->clips;
@@ -205,7 +220,7 @@ static void
 test_picker_init_takes_items_from_the_arena(void) {
     clip_fixture_t* f = fixture();
     const size_t psram_before = memory_free_bytes(MEMORY_PSRAM);
-    TEST_ASSERT_TRUE(render_lab_clips_init(&f->choice, &f->scene, 0, "idle"));
+    TEST_ASSERT_TRUE(render_lab_clips_init(&f->choice, f->scene, f->subject, "idle"));
     TEST_ASSERT_EQUAL_INT(TEST_CLIP_COUNT, f->choice.count);
     TEST_ASSERT_NOT_NULL(f->choice.items);
     for (int i = 0; i < TEST_CLIP_COUNT; i++) {
@@ -225,7 +240,7 @@ test_picker_init_reports_allocation_failure(void) {
     clip_fixture_t* f = fixture();
     ui_probe_widgets_start();
     test_arena_fill();
-    TEST_ASSERT_FALSE(render_lab_clips_init(&f->choice, &f->scene, 0, "gallop"));
+    TEST_ASSERT_FALSE(render_lab_clips_init(&f->choice, f->scene, f->subject, "gallop"));
     TEST_ASSERT_EQUAL_INT(1, f->animator.layer.current.clip);
     request(f, "clips");
     TEST_ASSERT_EQUAL_STRING("RENDER clip=idle current=0\nRENDER clip=gallop current=1\nRENDER_END\n", f->reply);
@@ -338,7 +353,7 @@ slider_drag(int blend_ms) {
 static void
 test_menu_dropdown_plays_with_selected_blend(void) {
     clip_fixture_t* f = fixture();
-    TEST_ASSERT_TRUE(render_lab_clips_init(&f->choice, &f->scene, 0, "idle"));
+    TEST_ASSERT_TRUE(render_lab_clips_init(&f->choice, f->scene, f->subject, "idle"));
     const char* const* items = f->choice.items;
     ui_probe_widgets_start();
     const size_t free_before = memory_free_bytes(MEMORY_APP);
@@ -361,7 +376,7 @@ test_menu_dropdown_plays_with_selected_blend(void) {
 static void
 test_draw_accepts_blend_boundaries_for_next_pick(void) {
     clip_fixture_t* f = fixture();
-    TEST_ASSERT_TRUE(render_lab_clips_init(&f->choice, &f->scene, 0, "idle"));
+    TEST_ASSERT_TRUE(render_lab_clips_init(&f->choice, f->scene, f->subject, "idle"));
     ui_init();
     ui_probe_widgets_start();
     menu_frame(NULL);

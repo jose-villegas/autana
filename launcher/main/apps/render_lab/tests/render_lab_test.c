@@ -22,15 +22,15 @@ render_lab_test_step_name(int step) {
     return name;
 }
 
-scene_t*
+entity_t
 render_lab_test_loaded_scene(const char* key) {
-    for (int i = 0; i < scene_loaded_count(); i++) {
-        scene_t* scene = scene_loaded_at(i);
-        if (strcmp(scene->id, key) == 0) {
-            return scene;
+    for (int i = 0; i < SCENE_ROOTS_MAX; i++) {
+        const scene_root_t* record = &scene_roots[i];
+        if (!handle_is_none(record->root) && record->state == PENDING_READY && strcmp(record->id, key) == 0) {
+            return record->root;
         }
     }
-    return NULL;
+    return ENTITY_NONE;
 }
 
 void

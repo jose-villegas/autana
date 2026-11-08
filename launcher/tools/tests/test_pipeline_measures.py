@@ -1,4 +1,5 @@
 """Pipeline costs use recorded stages and injected machine probes."""
+import itertools
 import pathlib
 import sys
 import tempfile
@@ -134,6 +135,25 @@ class PipelineMeasuresTests(unittest.TestCase):
                 pass
         self.assertEqual(recorder.rows[0]["triangles_in"], 12)
 
+    def test_summed_entries_add_into_one_row_and_a_plain_repeat_still_raises(self):
+        peaks = itertools.chain([(5, None), (9, None), (7, 30), (2, 40)], itertools.repeat((0, None)))
+        clock = itertools.chain([0, 2, 10, 13], itertools.repeat(0))
+        recorder = process_budget.StepRecorder(clock=clock.__next__, probe=lambda gpu: next(peaks), interval=None)
+        with recorder.step("meshlets", 4, summed=True) as step:
+            step["triangles_out"] = 3
+        with recorder.step("meshlets", 6, summed=True, gpu=True) as step:
+            step["triangles_out"] = 5
+        self.assertEqual(recorder.rows, [{"step": "meshlets", "triangles_in": 10, "triangles_out": 8, "wall_s": 5,
+                                          "peak_ram_bytes": 9, "peak_vram_bytes": 40}])
+        with self.assertRaises(ValueError):
+            with recorder.step("meshlets", 1):
+                pass
+        with recorder.step("light", 1):
+            pass
+        with self.assertRaises(ValueError):
+            with recorder.step("light", 1, summed=True):
+                pass
+
     def test_missing_memory_is_not_available(self):
         row = dict(step="fit", wall_s=1, triangles_in=2, triangles_out=1,
                    peak_ram_bytes=None, peak_vram_bytes=None)
@@ -160,7 +180,8 @@ class PipelineMeasuresTests(unittest.TestCase):
                     tri_v=np.array([[0, 1, 2], [1, 3, 2], [0, 1, 2], [0, 1, 2]]), tri_t=np.zeros((4, 3), dtype=int),
                     tri_m=np.array([0, 1, 0, 0]), uv=[], textures={}, names=["surface", "foliage"])
         settings = NS(seed=5, position_scale=None, alpha_keep=.5, thin=NS(material="foliage", keep=0),
-                      simplify=None, double_sided=[], meshes=(), meshlet_triangles=lit_mesh.MESHLET_TRIANGLES, lod=False)
+                      simplify=None, double_sided=[], meshes=(), meshlet_triangles=lit_mesh.MESHLET_TRIANGLES, lod=False,
+                      morph=False)
         job = NS(settings=settings, renderer=NS(visibility=object(), face_samples=None, variant=NS(triangles=None, ceiling=None)), bake=None)
         recorder = process_budget.StepRecorder(probe=lambda gpu: (100, None), interval=None)
         with patch.object(mesh_import, "load_source", return_value=source), \

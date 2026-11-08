@@ -208,8 +208,9 @@ def _mesh_passes(tris, labels, tri_o, triangles, reserved, selected, edges):
 
 def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, locks, deviation, options, shade, shapes=None):
     from scipy.spatial import cKDTree
-    from .objects.instances import match_instances, place, source_objects
+    from .objects.instances import place, source_objects
     from .objects.stand_ins import best_stand_in
+    from .objects.surface_match import JoinedInstance
 
     single = {}
     for index, (sel, budget) in enumerate(parts):
@@ -224,9 +225,10 @@ def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, loc
         if obj_id in single:
             rule = selected[obj_id]
             buckets.setdefault(id(rule), []).append(obj)
+    held = {obj for obj, index in single.items() if np.any(locks[np.unique(tris[parts[index][0]])])}
     emitted, consumed, shared = [], set(), []
     for candidates in buckets.values():
-        for shape in match_instances(candidates):
+        for shape in rule_shapes(candidates, selected[int(candidates[0].name)], held):
             if len(shape.instances) == 1:
                 continue
             union = np.zeros(len(shape.positions), dtype=bool)
@@ -238,6 +240,7 @@ def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, loc
                 used = np.unique(tris[sel])
                 placed = place(shape.positions, instance.linear, instance.position)
                 _, nearest = cKDTree(pos[used]).query(placed)
+                # A copy joined by surface holds no locked vertex (rule_shapes), so its nearest rows add nothing here.
                 indices = used[nearest]
                 union |= locks[indices]
                 if first_indices is None:
@@ -249,6 +252,7 @@ def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, loc
                 options, union if np.any(union) else None)
             p, c, t, kept = stand_in.positions, stand_in.rgb, stand_in.tris, stand_in.kept
             shared.append(dict(objects=[int(i.object_name) for i in shape.instances], copies=len(shape.instances),
+                               joined=sum(isinstance(i, JoinedInstance) for i in shape.instances),
                                budget=budget, policy=('lock' if np.any(union) else policies[int(shape.instances[0].object_name)]),
                                locked_vertices=int(union.sum()), output_triangles=len(t),
                                stand_in=stand_in.kind, stand_ins=candidates,
@@ -261,8 +265,14 @@ def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, loc
                 if kept is not None:
                     placed[union[kept]] = pos[indices[kept[union[kept]]]].astype(np.float32)
                 faces = t[:, ::-1] if instance.mirrored else t
-                result = placed, c.copy(), faces, mat.copy()
-                lit = shade(*result) if shade is not None else result
+                own = mat
+                if isinstance(instance, JoinedInstance):
+                    sel = parts[single[int(instance.object_name)]][0]
+                    own = own_materials(placed, faces, mat, pos, tris[sel], labels[sel])
+                result = placed, c.copy(), faces, own.copy()
+                # Shaded in the shape's material groups, so every copy's corners come out in the order of the
+                # shape's one triangle list, which its copy meshes share.
+                lit = shade(*result, groups=mat) if shade is not None else result
                 if shapes is None:
                     emitted.append(lit)
                 else:
@@ -271,6 +281,31 @@ def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, loc
                 shapes.append(dict(positions=p, tris=t, materials=mat, rule=selected[int(shape.instances[0].object_name)],
                                    copies=copies))
     return emitted, consumed, shared
+
+
+def rule_shapes(candidates, rule, held):
+    """A rule's objects as shapes: exact matches, joined by surface when the rule's `shape` is "surface". A copy
+    joined by surface does not share the shape's vertices, so it cannot keep a locked border: a shape with a copy
+    in `held` (object ids with a locked border) stays exact."""
+    from .objects.instances import match_instances
+    from .objects.surface_match import merge
+
+    shapes = match_instances(candidates)
+    if rule.get('shape', 'exact') == 'exact':
+        return shapes
+    locked = [any(int(i.object_name) in held for i in shape.instances) for shape in shapes]
+    return merge([s for s, h in zip(shapes, locked) if not h]) + [s for s, h in zip(shapes, locked) if h]
+
+
+def own_materials(placed, faces, materials, pos, own_tris, own_labels):
+    """A copy joined by surface keeps its own materials: each shape material becomes the copy material that lies
+    nearest to most of that material's stamped triangles."""
+    from .geometry import majority
+    from .light import nearest_on_triangles
+
+    nearest, _ = nearest_on_triangles(placed[faces].mean(axis=1), np.arange(len(own_tris)), pos, own_tris)
+    found = np.asarray(own_labels)[nearest]
+    return majority(materials, found, int(materials.max()) + 1)[materials].astype(np.asarray(materials).dtype)
 
 
 def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocation, deviation, options, position_scale):

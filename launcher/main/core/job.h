@@ -101,16 +101,25 @@ job_range_run(void* ctx) {
 }
 
 /* `count` items cut at *core1_offset's share and run by job_run_steered():
- * core 1 the last ones, this core the first. Fewer than two run here. */
+ * core 1 the last ones, this core the first, each range's context in
+ * ranges[0] and [1], so a caller short of stack can keep them in scratch.
+ * Fewer than two run here. */
 static inline bool
-job_run_range(int16_t* core1_offset, job_range_fn_t fn, void* ctx, int count) {
+job_run_range_in(int16_t* core1_offset, job_range_fn_t fn, void* ctx, int count, job_range_t ranges[2]) {
+    _Static_assert(sizeof(job_range_t) <= JOB_CTX_MAX, "a range fits a job context");
     if (count < 2) {
         fn(ctx, 0, count);
         return false;
     }
     const int cut = count - job_share_core1_count(core1_offset, count);
-    job_range_t first = {fn, ctx, 0, cut};
-    const job_range_t second = {fn, ctx, cut, count};
-    _Static_assert(sizeof second <= JOB_CTX_MAX, "a range fits a job context");
-    return job_run_steered(core1_offset, job_range_run, &first, &second, sizeof second);
+    ranges[0] = (job_range_t){fn, ctx, 0, cut};
+    ranges[1] = (job_range_t){fn, ctx, cut, count};
+    return job_run_steered(core1_offset, job_range_run, &ranges[0], &ranges[1], sizeof ranges[1]);
+}
+
+/* job_run_range_in() with its ranges on this stack. */
+static inline bool
+job_run_range(int16_t* core1_offset, job_range_fn_t fn, void* ctx, int count) {
+    job_range_t ranges[2];
+    return job_run_range_in(core1_offset, fn, ctx, count, ranges);
 }
