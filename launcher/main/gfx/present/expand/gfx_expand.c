@@ -8,6 +8,7 @@
 #include "gfx/present/gfx_fb_guard.h"
 #include "gfx/present/gfx_internal.h"
 #include "gfx/present/gfx_present_guard.h"
+#include "math/scalar/mathi.h"
 
 #include <assert.h>
 #include <string.h>
@@ -45,24 +46,21 @@ gfx_half_seams(void) {
     return pixels == NULL ? NULL : (uint8_t*)(pixels + ((size_t)HALF_WIDTH * HALF_HEIGHT));
 }
 
-static void
-expand_frame(bool blended) {
+void
+gfx_expand_frame(bool blended, int first_row, int end_row) {
     GFX_PRESENT_GUARD();
     assert(current_mode.layout == GFX_LAYOUT_FULL_FB && half_image != NULL);
     frame_expanded = true;
     frame_blended = blended;
     gfx_fb_guard_set_available(false);
-    gfx_mark_all_dirty();
-}
-
-void
-gfx_expand_frame(void) {
-    expand_frame(false);
-}
-
-void
-gfx_expand_frame_blended(void) {
-    expand_frame(true);
+    const int beside = blended ? 1 : 0;
+    first_row = mathi_max(first_row - beside, 0);
+    end_row = mathi_min(end_row + beside, GFX_HEIGHT);
+    if (first_row == 0 && end_row == GFX_HEIGHT) {
+        gfx_mark_all_dirty();
+    } else if (first_row < end_row) {
+        gfx_mark_dirty(0, first_row, GFX_WIDTH, end_row - first_row);
+    }
 }
 
 bool

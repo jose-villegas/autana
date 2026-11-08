@@ -18,7 +18,10 @@
 #include "core/checkpoint.h"
 #include "core/tune.h"
 #include "image/pixel/rgb565.h"
+#include "math/linear/mat3f.h"
+#include "math/linear/mat4f.h"
 #include "render/context/render_context.h"
+#include "render/lod/r3d_lod.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_pipeline.h"
 #include "render/r3d_span.h"
@@ -269,8 +272,8 @@ test_set_up_per_cluster_counts_set_up_and_clipped_triangles(void) {
     r3d_pipeline_counts_t only = {0};
     uint16_t alone[UNLISTED] = {SENTINEL, SENTINEL, SENTINEL};
     r3d_pipeline_count_triangles(&mesh, &lens, second, 1, cs, &only, alone);
-    TEST_ASSERT_EQUAL_UINT16(SENTINEL, alone[0]);
-    TEST_ASSERT_EQUAL_UINT16(1, alone[1]);
+    TEST_ASSERT_EQUAL_UINT16(1, alone[0]); /* the one listed cluster's, by its place in the list */
+    TEST_ASSERT_EQUAL_UINT16(SENTINEL, alone[1]);
     TEST_ASSERT_EQUAL_INT(1, only.triangles_behind);
     TEST_ASSERT_EQUAL_INT(1, only.triangles_clipped);
     TEST_ASSERT_EQUAL_INT(0, only.triangles_set_up);
@@ -445,8 +448,9 @@ static const int16_t scene_corners[SCENE_QUADS][4][3] = {
 };
 static const fixture_camera_t scene_camera = {{0.0F, 0.0F, -300.0F}, {0.0F, 0.0F, 1.0F}, 0.5F, 1.0F};
 static const char* const CULL_VIEW = "cull";
-/* The cull view's colour for a culled cluster, as raster_cull_view.c paints it. */
+/* The cull view's colours for a culled and a drawn cluster, as raster_cull_view.c paints them. */
 static const uint32_t CULLED_RGB = 0x505050;
+static const uint32_t DRAWN_RGB = 0x3CC850;
 /* What scene_draw() clears to. */
 static const uint32_t CLEAR_RGB = 0x000000;
 static const int TRIANGLES_PER_QUAD = 2;
@@ -656,6 +660,240 @@ test_shaded_cull_view_dashes_culled_borders(void) {
     TEST_ASSERT_TRUE(dash_pixels_of(s, CULLED_RGB, true) > 0);
     TEST_ASSERT_EQUAL_INT(0, dash_pixels_of(s, CULLED_RGB, false));
     TEST_ASSERT_TRUE(pixels_of(s, CLEAR_RGB) < W * H); /* the screen door still shows */
+}
+
+/* A mesh with levels, laid out as the levels bake lays them: LOD_FINEST
+ * strips side by side in front of the camera, two triangles each, then
+ * LOD_COARSE strips each standing for LOD_MERGE of them, its group's, one
+ * triangle each so the levels' clusters differ in size. The root's first
+ * child holds the finest, its second the coarse. */
+#define LOD_FINEST      4
+#define LOD_MERGE       2
+#define LOD_COARSE      (LOD_FINEST / LOD_MERGE)
+#define LOD_CLUSTERS    (LOD_FINEST + LOD_COARSE)
+#define LOD_STRIP       40 /* a finest strip's width, in position ticks */
+#define LOD_HALF_HEIGHT 40
+#define LOD_LEFT        (-(LOD_FINEST * LOD_STRIP) / 2)
+#define LOD_NODES       3 /* the root, the finest leaf, the coarse leaf */
+#define LOD_GROUP_ERROR 1
+#define QUAD_CORNERS    4
+#define LOD_COARSE_TRIS 1
+#define LOD_TRIANGLES   ((LOD_FINEST * 2) + (LOD_COARSE * LOD_COARSE_TRIS))
+/* Two instances placed this far above and below the middle, apart on screen. */
+#define LOD_PAIR        2
+#define LOD_APART       45.0F
+/* A pick tolerance, in pixels, a group of LOD_GROUP_ERROR is within and one of UINT16_MAX is not. */
+#define LOD_TOLERANCE   4.0F
+/* Instances of it whose levels together overflow the view's clusters, while
+ * the level each draws, with a slot per instance, still fits. */
+#define LOD_CROWD       (RASTER_CULL_CLUSTERS_MAX / (LOD_FINEST + 1))
+
+typedef struct {
+    int16_t positions[LOD_CLUSTERS * QUAD_CORNERS][3];
+    uint8_t colors[LOD_CLUSTERS * QUAD_CORNERS][3];
+    uint16_t triangles[LOD_TRIANGLES][3];
+    r3d_lit_cluster_t clusters[LOD_CLUSTERS];
+    r3d_lit_node_t nodes[LOD_NODES];
+    r3d_lit_cluster_lod_t lod[LOD_CLUSTERS];
+    r3d_lit_lod_group_t groups[LOD_COARSE];
+    r3d_lit_mesh_t mesh;
+    r3d_instance_t* instances;
+    uint32_t* coarse; /* each instance's coarse bits, R3D_LOD_WORDS(LOD_COARSE) words */
+    mat4f_t model[LOD_PAIR];
+} lod_scene_t;
+
+static lod_scene_t* lod_now;
+
+static void
+lod_release(void) {
+    if (lod_now != NULL) {
+        free(lod_now->instances);
+        free(lod_now->coarse);
+        free(lod_now);
+        lod_now = NULL;
+    }
+    scene_release();
+}
+
+/* Strip `c` from x0 to x1: its four corners, and its cluster of `triangles`
+ * (two, or the first of them alone) from triangle `t`. */
+static void
+lod_strip(lod_scene_t* l, int c, int x0, int x1, int t, int triangles) {
+    const int corner_x[QUAD_CORNERS] = {x0, x1, x1, x0};
+    const int corner_y[QUAD_CORNERS] = {-LOD_HALF_HEIGHT, -LOD_HALF_HEIGHT, LOD_HALF_HEIGHT, LOD_HALF_HEIGHT};
+    box3s_t bounds = box3s_empty();
+    const int v0 = c * QUAD_CORNERS;
+    for (int k = 0; k < QUAD_CORNERS; k++) {
+        l->positions[v0 + k][0] = (int16_t)corner_x[k];
+        l->positions[v0 + k][1] = (int16_t)corner_y[k];
+        l->positions[v0 + k][2] = 0;
+        memset(l->colors[v0 + k], UINT8_MAX, sizeof l->colors[v0 + k]);
+        bounds = box3s_extend(bounds, vec3s_from_array(l->positions[v0 + k]));
+    }
+    const uint16_t first = (uint16_t)v0;
+    for (int k = 0; k < triangles; k++) {
+        l->triangles[t + k][0] = first;
+        l->triangles[t + k][1] = (uint16_t)(first + 1 + k);
+        l->triangles[t + k][2] = (uint16_t)(first + 2 + k);
+    }
+    l->clusters[c] = (r3d_lit_cluster_t){first, QUAD_CORNERS, (uint16_t)t, (uint16_t)triangles, bounds, true};
+}
+
+/* The cull view open, and `count` instances of the levelled mesh, each drawing its finest level. */
+static lod_scene_t*
+lod_open(int count) {
+    (void)scene_open();
+    lod_scene_t* l = calloc(1, sizeof *l);
+    TEST_ASSERT_NOT_NULL(l);
+    lod_now = l;
+    suite_set_test_cleanup(lod_release);
+    int t = 0;
+    for (int f = 0; f < LOD_FINEST; f++) {
+        lod_strip(l, f, LOD_LEFT + (f * LOD_STRIP), LOD_LEFT + ((f + 1) * LOD_STRIP), t, 2);
+        t += 2;
+        l->lod[f] = (r3d_lit_cluster_lod_t){R3D_LOD_NONE, (uint16_t)(f / LOD_MERGE)};
+    }
+    for (int g = 0; g < LOD_COARSE; g++) {
+        const int c = LOD_FINEST + g;
+        const int x0 = LOD_LEFT + (g * LOD_MERGE * LOD_STRIP);
+        lod_strip(l, c, x0, x0 + (LOD_MERGE * LOD_STRIP), t, LOD_COARSE_TRIS);
+        t += LOD_COARSE_TRIS;
+        l->lod[c] = (r3d_lit_cluster_lod_t){(uint16_t)g, R3D_LOD_NONE};
+        const box3s_t b = l->clusters[c].bounds;
+        const int16_t radius = (int16_t)((LOD_MERGE * LOD_STRIP) + LOD_HALF_HEIGHT);
+        l->groups[g] = (r3d_lit_lod_group_t){{{(int16_t)((b.lo.x + b.hi.x) / 2), 0, 0}, radius}, LOD_GROUP_ERROR};
+    }
+    box3s_t all = box3s_empty();
+    for (int c = 0; c < LOD_CLUSTERS; c++) {
+        all = box3s_union(all, l->clusters[c].bounds);
+    }
+    l->nodes[0] = (r3d_lit_node_t){all, 1, LOD_NODES - 1, false};
+    l->nodes[1] = (r3d_lit_node_t){all, 0, LOD_FINEST, true};
+    l->nodes[2] = (r3d_lit_node_t){all, LOD_FINEST, LOD_COARSE, true};
+    l->mesh = (r3d_lit_mesh_t){.positions = l->positions,
+                               .colors = l->colors,
+                               .triangles = l->triangles,
+                               .clusters = l->clusters,
+                               .nodes = l->nodes,
+                               .vertex_count = LOD_CLUSTERS * QUAD_CORNERS,
+                               .triangle_count = LOD_TRIANGLES,
+                               .cluster_count = LOD_CLUSTERS,
+                               .node_count = LOD_NODES,
+                               .position_scale = 1,
+                               .cluster_lod = l->lod,
+                               .lod_groups = l->groups,
+                               .lod_group_count = LOD_COARSE};
+    r3d_lit_mesh_find_levels(&l->mesh);
+    TEST_ASSERT_EQUAL_UINT16(LOD_FINEST, l->mesh.lod_coarse_first);
+    l->instances = calloc((size_t)count, sizeof *l->instances);
+    TEST_ASSERT_NOT_NULL(l->instances);
+    l->coarse = calloc((size_t)count * R3D_LOD_WORDS(LOD_COARSE), sizeof *l->coarse);
+    TEST_ASSERT_NOT_NULL(l->coarse);
+    for (int i = 0; i < count; i++) {
+        l->instances[i] = (r3d_instance_t){&l->mesh, NULL, NULL, &l->coarse[i * R3D_LOD_WORDS(LOD_COARSE)]};
+    }
+    return l;
+}
+
+static const raster_cull_t*
+lod_draw(lod_scene_t* l, int count) {
+    const render_view_t view = render_view_fixture_at(&scene_camera, (viewport_t){W, H, 0});
+    TEST_ASSERT_TRUE(render_context_draw(&scene_now->context, l->instances, count, &view, 0));
+    return scene_state(scene_now);
+}
+
+static int
+fates_total(const raster_cull_frame_t* frame) {
+    int total = 0;
+    for (int f = 0; f < RASTER_FATE_COUNT; f++) {
+        total += frame->clusters[f];
+    }
+    return total;
+}
+
+/* Only the level drawn has fates: the coarse strips the finest stand in for
+ * are not culled clusters, and the drawn ones keep theirs. */
+static void
+test_cull_view_counts_only_the_level_drawn(void) {
+    lod_scene_t* l = lod_open(1);
+    const raster_cull_t* state = lod_draw(l, 1);
+    TEST_ASSERT_EQUAL_INT(LOD_FINEST, state->clusters);
+    TEST_ASSERT_EQUAL_INT(LOD_FINEST * TRIANGLES_PER_QUAD, state->triangles);
+    const raster_cull_frame_t frame = raster_cull_frame(state);
+    TEST_ASSERT_EQUAL_INT(LOD_FINEST, fates_total(&frame));
+    TEST_ASSERT_EQUAL_INT(LOD_FINEST, frame.clusters[RASTER_FATE_DRAWN]);
+    TEST_ASSERT_EQUAL_INT(LOD_FINEST * TRIANGLES_PER_QUAD, frame.triangles_covering);
+}
+
+/* A pick that turns every group coarse: the coarse strips are the level
+ * drawn, and from behind and above the camera, where the strips face the
+ * spectator, the finest they stand for are not painted culled. */
+static void
+test_cull_view_paints_the_coarse_level_picked_and_not_the_finest(void) {
+    lod_scene_t* l = lod_open(1);
+    render_lod_settings_t* lod = &scene_now->context.settings.lod;
+    lod->tolerance_px = (float)INT16_MAX; /* every error within it */
+    lod->coverage_permille = INT16_MAX;   /* every group small enough */
+    lod->pick_every = 1;
+    set_cull_from(RASTER_CULL_FROM_CHASE);
+    const raster_cull_t* state = lod_draw(l, 1);
+    for (int c = 0; c < LOD_CLUSTERS; c++) {
+        TEST_ASSERT_EQUAL(c >= LOD_FINEST, r3d_lod_drawn(&l->mesh, c, l->instances[0].lod_coarse));
+    }
+    TEST_ASSERT_EQUAL_INT(LOD_COARSE, state->clusters);
+    TEST_ASSERT_EQUAL_INT(LOD_COARSE * LOD_COARSE_TRIS, state->triangles);
+    const raster_cull_frame_t frame = raster_cull_frame(state);
+    TEST_ASSERT_EQUAL_INT(LOD_COARSE, fates_total(&frame));
+    TEST_ASSERT_EQUAL_INT(0, frame.clusters[RASTER_FATE_CULLED]);
+    TEST_ASSERT_TRUE(pixels_of(scene_now, DRAWN_RGB) > 0);
+    TEST_ASSERT_EQUAL_INT(0, pixels_of(scene_now, CULLED_RGB));
+}
+
+/* Group 0 coarse and group 1 fine: each of two instances draws its coarse
+ * strip and group 1's two finest, three clusters of unequal size, so the
+ * second instance's triangles follow an odd count; every drawn triangle in
+ * sight is counted once. */
+static void
+test_cull_view_counts_each_drawn_triangle_once_after_an_odd_instance(void) {
+    lod_scene_t* l = lod_open(LOD_PAIR);
+    l->groups[1].error = UINT16_MAX;
+    render_lod_settings_t* lod = &scene_now->context.settings.lod;
+    lod->tolerance_px = LOD_TOLERANCE;
+    lod->coverage_permille = INT16_MAX; /* every group small enough */
+    lod->pick_every = 1;
+    for (int i = 0; i < LOD_PAIR; i++) {
+        l->model[i] = mat4f_identity();
+        l->model[i].m[1][MAT3F_AXES] = i == 0 ? -LOD_APART : LOD_APART;
+        l->instances[i].model = &l->model[i];
+    }
+    const raster_cull_t* state = lod_draw(l, LOD_PAIR);
+    for (int i = 0; i < LOD_PAIR; i++) {
+        for (int c = 0; c < LOD_CLUSTERS; c++) {
+            const bool drawn = c == LOD_FINEST || (c >= LOD_MERGE && c < LOD_FINEST);
+            TEST_ASSERT_EQUAL(drawn, r3d_lod_drawn(&l->mesh, c, l->instances[i].lod_coarse));
+        }
+    }
+    const int clusters = LOD_PAIR * (LOD_MERGE + 1);
+    const int triangles = LOD_PAIR * ((LOD_MERGE * 2) + LOD_COARSE_TRIS);
+    TEST_ASSERT_EQUAL_INT(clusters, state->clusters);
+    TEST_ASSERT_EQUAL_INT(triangles, state->triangles);
+    const raster_cull_frame_t frame = raster_cull_frame(state);
+    TEST_ASSERT_EQUAL_INT(clusters, fates_total(&frame));
+    TEST_ASSERT_EQUAL_INT(clusters, frame.clusters[RASTER_FATE_DRAWN]);
+    TEST_ASSERT_EQUAL_INT(triangles, frame.triangles_covering);
+}
+
+/* The view has room for the level each instance draws, not for every level
+ * its mesh holds: a crowd whose levels together overflow it still draws. */
+static void
+test_cull_view_has_room_for_the_levels_drawn_not_every_level(void) {
+    TEST_ASSERT_TRUE(LOD_CROWD * LOD_CLUSTERS > RASTER_CULL_CLUSTERS_MAX);
+    lod_scene_t* l = lod_open(LOD_CROWD);
+    const raster_cull_t* state = lod_draw(l, LOD_CROWD);
+    TEST_ASSERT_EQUAL_INT(LOD_CROWD * LOD_FINEST, state->clusters);
+    const raster_cull_frame_t frame = raster_cull_frame(state);
+    TEST_ASSERT_EQUAL_INT(LOD_CROWD * LOD_FINEST, fates_total(&frame));
+    TEST_ASSERT_TRUE(frame.clusters[RASTER_FATE_DRAWN] > 0);
 }
 
 /* The picture a context last drew, its colour then its depth. */
@@ -904,6 +1142,10 @@ run_raster_cull_view_suite(void) {
     RUN_TEST(test_cull_view_triangles_covering_counts_only_triangles_owning_pixels);
     RUN_TEST(test_cull_view_from_the_top_draws_again_with_every_cluster_and_the_same_counts);
     RUN_TEST(test_shaded_cull_view_dashes_culled_borders);
+    RUN_TEST(test_cull_view_counts_only_the_level_drawn);
+    RUN_TEST(test_cull_view_paints_the_coarse_level_picked_and_not_the_finest);
+    RUN_TEST(test_cull_view_counts_each_drawn_triangle_once_after_an_odd_instance);
+    RUN_TEST(test_cull_view_has_room_for_the_levels_drawn_not_every_level);
     RUN_TEST(test_observer_off_draws_every_view_as_a_straight_run);
     RUN_TEST(test_observer_at_a_spectator_pose_draws_that_spectator);
     RUN_TEST(test_a_checkpoint_neither_holds_nor_restores_the_observer);
