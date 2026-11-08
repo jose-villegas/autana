@@ -40,15 +40,23 @@ release_fixture(void) {
     active = NULL;
 }
 
-/* The copies drawn: every skinned renderer the scene keeps active. */
-static int
-copies_shown(const scene_t* scene) {
-    int shown = 0;
+/* The skinned copies the scene keeps active, and of them those holding
+ * their buffers, so drawn. */
+typedef struct {
+    int shown;
+    int drawn;
+} herd_count_t;
+
+static herd_count_t
+count_copies(const scene_t* scene) {
+    herd_count_t count = {0};
     for (int e = 0; e < scene->asset.entity_count; e++) {
-        shown += scene->skinned_renderers[e].internal_storage != NULL
-                 && entity_active(scene_row_entity(scene, (scene_row_t)e));
+        if (scene->skinned_renderers[e].bound && entity_active(scene_row_entity(scene, (scene_row_t)e))) {
+            count.shown++;
+            count.drawn += scene->skinned_renderers[e].internal_storage != NULL;
+        }
     }
-    return shown;
+    return count;
 }
 
 static void
@@ -59,15 +67,26 @@ test_herd_lap_cost(void) {
     const size_t internal_before = memory_free_bytes(MEMORY_INTERNAL);
     render_lab_test_enter(&active->saved, herd->key);
     suite_set_test_cleanup(release_fixture);
-    TEST_ASSERT_FALSE(handle_is_none(render_lab_test_loaded_scene("herd")));
+    const entity_t root = render_lab_test_loaded_scene("herd");
+    TEST_ASSERT_FALSE(handle_is_none(root));
     const render_lab_path_t path = herd->path();
     scene_row_t row;
     scene_t* scene = scene_entity_row(path.entity, &row);
     TEST_ASSERT_NOT_NULL(scene);
+    scene_animation_step(scene, 0); /* a shown copy takes its buffers on its first step */
     const int copies = *(const int*)herd->data;
-    TEST_ASSERT_EQUAL_INT(copies, copies_shown(scene));
-    ESP_LOGI(TAG, "herd_perf: n=%d internal_taken=%u internal_free=%u internal_largest=%u", copies,
-             (unsigned)(internal_before - memory_free_bytes(MEMORY_INTERNAL)),
+    const herd_count_t count = count_copies(scene);
+    TEST_ASSERT_EQUAL_INT(copies, count.shown);
+    TEST_ASSERT_GREATER_THAN_INT(0, count.drawn);
+    /* Copies whose buffers do not fit in internal RAM are reported and not
+     * drawn: the lap measures the copies drawn. */
+    scene_failure_t why = {0};
+    TEST_ASSERT_EQUAL(count.drawn < copies, scene_failure(root, &why));
+    if (count.drawn < copies) {
+        TEST_ASSERT_EQUAL_INT(SCENE_ERR_MEMORY, why.status);
+    }
+    ESP_LOGI(TAG, "herd_perf: n=%d drawn=%d internal_taken=%u internal_free=%u internal_largest=%u", copies,
+             count.drawn, (unsigned)(internal_before - memory_free_bytes(MEMORY_INTERNAL)),
              (unsigned)memory_free_bytes(MEMORY_INTERNAL), (unsigned)memory_largest_block(MEMORY_INTERNAL));
 
     const uint32_t lap_ms = animator_clip_duration_ms(path.entity, animator_current_clip(path.entity));

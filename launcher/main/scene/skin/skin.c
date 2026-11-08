@@ -1,4 +1,5 @@
-/* skin: each lit skin's colour and normal-palette block, and how it is lit. */
+/* skin: each skin's buffers, held only while its entity is active; its
+ * colour and normal-palette block, and how it is lit. */
 #include "scene/skin/skin.h"
 
 #include <stdio.h>
@@ -42,16 +43,11 @@ scene_skin_light_prepare(scene_t* scene, scene_row_t entity) {
     }
 }
 
-bool
-scene_skin_light_apply_mode(scene_t* scene, scene_row_t entity, scene_skinned_renderer_t* skin,
-                            skin_light_mode_t mode) {
-    if (skin->internal_storage == NULL) {
-        return false;
-    }
-    if (skin->light_mode == mode) {
-        return true;
-    }
-    if (mode == SKIN_LIGHT_TABLE && scene->light_table == NULL) {
+/* A skin holding its buffers counts as a user of the scene's light table
+ * while its mode is SKIN_LIGHT_TABLE; the first user allocates it. */
+static bool
+light_table_join(scene_t* scene) {
+    if (scene->light_table == NULL) {
         r3d_skin_light_table_t* table = scene_allocate(sizeof *table, MEMORY_INTERNAL);
         if (table == NULL) {
             return false;
@@ -59,11 +55,24 @@ scene_skin_light_apply_mode(scene_t* scene, scene_row_t entity, scene_skinned_re
         scene->light_table = table;
         scene->light_table_dirty = true;
     }
-    if (skin->light_mode == SKIN_LIGHT_TABLE) {
-        scene_skin_light_table_release(scene, entity);
+    scene->light_table_users++;
+    return true;
+}
+
+bool
+scene_skin_light_apply_mode(scene_t* scene, scene_row_t entity, scene_skinned_renderer_t* skin,
+                            skin_light_mode_t mode) {
+    if (!skin->bound) {
+        return false;
     }
-    if (mode == SKIN_LIGHT_TABLE) {
-        scene->light_table_users++;
+    if (skin->light_mode == mode) {
+        return true;
+    }
+    if (skin->internal_storage != NULL) {
+        if (mode == SKIN_LIGHT_TABLE && !light_table_join(scene)) {
+            return false;
+        }
+        scene_skin_light_table_release(scene, skin);
     }
     skin->light_mode = mode;
     scene->flags[entity] |= SCENE_FLAG_SKIN_DIRTY;
@@ -71,8 +80,8 @@ scene_skin_light_apply_mode(scene_t* scene, scene_row_t entity, scene_skinned_re
 }
 
 void
-scene_skin_light_table_release(scene_t* scene, scene_row_t entity) {
-    if (scene->skinned_renderers[entity].light_mode != SKIN_LIGHT_TABLE) {
+scene_skin_light_table_release(scene_t* scene, const scene_skinned_renderer_t* skin) {
+    if (skin->internal_storage == NULL || skin->light_mode != SKIN_LIGHT_TABLE) {
         return;
     }
     scene->light_table_users--;
@@ -80,6 +89,112 @@ scene_skin_light_table_release(scene_t* scene, scene_row_t entity) {
         memory_free(scene->light_table);
         scene->light_table = NULL;
         scene->world_lights.table = NULL;
+    }
+}
+
+bool
+scene_skin_take(scene_t* scene, scene_row_t entity, scene_skinned_renderer_t* skin) {
+    const size_t size = r3d_skin_output_bytes(&skin->bind);
+    size_t end = size;
+
+    struct {
+        size_t model, palette;
+    } layout;
+
+    SCENE_STORAGE_RESERVE(layout, end, model, mat4f_t, skin->skin.joint_count);
+    SCENE_STORAGE_RESERVE(layout, end, palette, mat4f_t, skin->skin.joint_count);
+    void* storage = memory_alloc(end, MEMORY_INTERNAL);
+    if (storage == NULL) {
+        return false;
+    }
+    if (scene->light_transfer != NULL && !scene_skin_light_allocate(skin)) {
+        memory_free(storage);
+        return false;
+    }
+    if (skin->light_mode == SKIN_LIGHT_TABLE && !light_table_join(scene)) {
+        memory_free(skin->light_storage);
+        skin->light_storage = NULL;
+        memory_free(storage);
+        return false;
+    }
+    skin->internal_storage = storage;
+    (void)r3d_skin_output_init(&skin->bind, storage, size, &skin->output);
+    skin->model = (mat4f_t*)(void*)((uint8_t*)storage + layout.model);
+    skin->palette = (mat4f_t*)(void*)((uint8_t*)storage + layout.palette);
+    const scene_animator_t* animator = &scene->animators[entity];
+    anim_pose_model(&animator->skeleton, &animator->layer.shown, skin->model);
+    r3d_skin_palette(&skin->skin, skin->model, skin->bind.position_scale, skin->palette);
+    r3d_skin_clusters(&skin->skin, &skin->bind, skin->palette, 0, skin->bind.cluster_count, &skin->output);
+    r3d_skin_refit_nodes(&skin->output);
+    if (skin->light_storage != NULL) {
+        skin->output.mesh.colors = skin->colors;
+    }
+    return true;
+}
+
+void
+scene_skin_give(scene_t* scene, scene_skinned_renderer_t* skin) {
+    scene_skin_light_table_release(scene, skin);
+    memory_free(skin->light_storage);
+    memory_free(skin->internal_storage);
+    skin->light_storage = NULL;
+    skin->internal_storage = NULL;
+    skin->colors = NULL;
+    skin->normal_palette = NULL;
+    skin->model = NULL;
+    skin->palette = NULL;
+    skin->output = (r3d_skin_output_t){0};
+}
+
+void
+scene_skin_show(scene_t* scene, scene_row_t entity) {
+    const scene_skinned_renderer_t* skin = &scene->skinned_renderers[entity];
+    scene_renderer_t* r = &scene->renderers[scene_renderer_index(scene, entity)];
+    r->mesh = skin->internal_storage != NULL ? skin->output.mesh : skin->bind;
+    scene_renderer_bound(r);
+    scene->flags[entity] |= SCENE_FLAG_SKIN_DIRTY;
+    scene->active_renderers_stale = true;
+}
+
+static void
+starve(scene_t* scene, scene_row_t entity, scene_skinned_renderer_t* skin) {
+    skin->starved = true;
+    scene->starved_count++;
+    scene->root->failure = scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, scene->asset.names[entity].name);
+    scene->active_renderers_stale = true;
+    (void)fprintf(stderr, "scene: no memory to skin %s; it is not drawn\n", scene->asset.names[entity].name);
+}
+
+void
+scene_skins_settle(scene_t* scene) {
+    if (!scene->skins_pending) {
+        return;
+    }
+    scene->skins_pending = false;
+    for (int i = 0; i < scene->staged_count; i++) {
+        const scene_row_t e = scene->staged[i];
+        scene_skinned_renderer_t* skin = &scene->skinned_renderers[e];
+        if (!skin->bound || skin->internal_storage != NULL || skin->starved || !(scene->flags[e] & SCENE_FLAG_ACTIVE)) {
+            continue;
+        }
+        if (scene_skin_take(scene, e, skin)) {
+            scene_skin_show(scene, e);
+        } else {
+            starve(scene, e, skin);
+        }
+    }
+}
+
+void
+scene_skin_deactivate(scene_t* scene, scene_row_t entity) {
+    scene_skinned_renderer_t* skin = &scene->skinned_renderers[entity];
+    if (skin->starved) {
+        skin->starved = false;
+        scene->starved_count--;
+    }
+    if (skin->internal_storage != NULL) {
+        scene_skin_give(scene, skin);
+        scene_skin_show(scene, entity);
     }
 }
 
