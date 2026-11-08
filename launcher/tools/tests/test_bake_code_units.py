@@ -1,11 +1,13 @@
 """A stage keyed by the units its entry functions reach (bake/code_units.py): every way code is reached
 counts, an edit nothing reaches keeps the key, and what the walk cannot follow counts more."""
 
+import ast
 import pathlib
 import sys
 import tempfile
 import textwrap
 import unittest
+from unittest import mock
 
 TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
@@ -36,8 +38,9 @@ class WalkCase(unittest.TestCase):
 
     def find(self, path, name, level):
         parts = name.split(".") if name else []
-        for candidate in (self.root.joinpath(*parts).with_suffix(".py"), self.root.joinpath(*parts, "__init__.py")):
-            if parts and candidate.is_file():
+        base = path.parents[level - 1] if level else self.root
+        for candidate in (base.joinpath(*parts).with_suffix(".py") if parts else None, base.joinpath(*parts, "__init__.py")):
+            if candidate is not None and candidate.is_file():
                 return candidate.resolve()
         return None
 
@@ -56,9 +59,7 @@ class WalkCase(unittest.TestCase):
         return names
 
     def key(self, entry="entry:main"):
-        units = self.walk(entry)[1]
-        return bake.digest(sorted(bake.digest(tokens) for tokens in
-                                  (bake.code_tokens(unit.path, *unit.lines) for unit in units) if tokens))
+        return bake.digest(sorted(bake.units_digests(self.walk(entry)[1])))
 
 
 class ReachTests(WalkCase):
@@ -118,6 +119,17 @@ class ReachTests(WalkCase):
                 return op(limit)
             """)
         self.assertTrue({"helpers:LIMIT", "helpers:scale"} <= self.kept())
+
+    def test_a_decorator_or_default_from_the_same_module_counts(self):
+        self.write(entry="""
+            LIMIT = 4
+            def traced(function):
+                return function
+            @traced
+            def main(limit=LIMIT):
+                return limit
+            """)
+        self.assertTrue({"entry:LIMIT", "entry:traced"} <= self.kept())
 
     def test_a_class_attribute_read_through_an_instance_counts(self):
         self.write(settings="""
@@ -216,6 +228,176 @@ class ReachTests(WalkCase):
         self.assertTrue({"entry:Scene", "entry:Scene.__init__", "entry:Scene.__call__"} <= self.kept())
 
 
+class ImportTests(WalkCase):
+    def test_an_import_inside_the_function_counts(self):
+        self.write(helpers="def compute():\n    return 1\n", entry="""
+            def main():
+                from helpers import compute
+                return compute()
+            """)
+        self.assertIn("helpers:compute", self.kept())
+
+    def test_import_a_b_and_import_a_b_as_c_count_what_they_call(self):
+        sub = "def far():\n    return 1\ndef other():\n    return 2\n"
+        for package_init in ("", "from pkg import sub\n"):
+            for spelling, call in (("import pkg.sub", "pkg.sub.far()"), ("import pkg.sub as s", "s.far()")):
+                with self.subTest(init=bool(package_init), spelling=spelling):
+                    self.write({"pkg.__init__": package_init, "pkg.sub": sub},
+                               entry=f"{spelling}\ndef main():\n    return {call}\n")
+                    self.assertIn("sub:far", self.kept())
+                    self.assertNotIn("sub:other", self.kept())
+
+    def test_import_a_b_counts_through_a_package_without_an_init(self):
+        self.write({"ns.sub": "def far():\n    return 1\n"}, entry="import ns.sub\ndef main():\n    return ns.sub.far()\n")
+        self.assertIn("sub:far", self.kept())
+
+    def test_relative_imports_reach_the_right_file(self):
+        self.write({"pkg.__init__": "", "pkg.inner.__init__": "", "pkg.helpers": "def up():\n    return 1\n",
+                    "pkg.inner.helpers": "def near():\n    return 2\n", "helpers": "def up():\n    return 3\n",
+                    "pkg.inner.entry": """
+            from .helpers import near
+            from ..helpers import up
+            def main():
+                return near() + up()
+            """})
+        units = self.walk("pkg/inner/entry:main")[1]
+        kept = {(unit.path.relative_to(self.root).as_posix(), sorted(unit.names)[0]) for unit in units if unit.names}
+        self.assertTrue({("pkg/inner/helpers.py", "near"), ("pkg/helpers.py", "up")} <= kept)
+        self.assertNotIn(("helpers.py", "up"), kept)
+
+    def test_every_import_of_a_name_counts(self):
+        self.write(fast="def blur():\n    return 1\n", slow="def blur():\n    return 2\n", entry="""
+            try:
+                from fast import blur
+            except ImportError:
+                from slow import blur
+            def main():
+                return blur()
+            """)
+        self.assertTrue({"fast:blur", "slow:blur"} <= self.kept())
+
+    def test_a_module_used_as_a_value_counts_all_of_it(self):
+        self.write(cpu="def render():\n    return 1\n", gpu="def render():\n    return 2\n", entry="""
+            import cpu, gpu
+            def main(kind):
+                return {"cpu": cpu, "gpu": gpu}[kind].render()
+            """)
+        self.assertTrue({"cpu:render", "gpu:render"} <= self.kept())
+
+    def test_a_name_a_stage_module_does_not_define_counts_that_module_and_is_reported(self):
+        self.write(lazy="""
+            def __getattr__(name):
+                return _impl
+            def _impl():
+                return 41
+            """, entry="import lazy\ndef main():\n    return lazy.thing()\n")
+        walk, units = self.walk()
+        self.assertIn("thing", [name for _, _, name in walk.unresolved])
+        self.assertIn("lazy:_impl", self.kept())
+
+
+class ImportTimeTests(WalkCase):
+    def test_a_statement_that_binds_no_name_or_writes_into_an_object_counts(self):
+        self.write(config="""
+            import os
+            class Cfg:
+                samples = 1
+            def patched():
+                return 2
+            os.environ["MODE"] = "egl"
+            Cfg.samples = 64
+            Cfg.render = patched
+            """, entry="import config\ndef main():\n    return config.Cfg.samples\n")
+        self.assertTrue({"config:?", "config:patched"} <= self.kept())
+
+    def test_code_a_decorator_or_subclass_registers_counts(self):
+        self.write(entry="""
+            REG = {}
+            def register(fn):
+                REG[fn.__name__] = fn
+                return fn
+            @register
+            def flat():
+                return 41
+            class Base:
+                kinds = []
+                def __init_subclass__(cls):
+                    Base.kinds.append(cls)
+            class Smooth(Base):
+                def shade(self):
+                    return 2
+            def main(kind):
+                return REG[kind](), Base.kinds
+            """)
+        self.assertTrue({"entry:flat", "entry:Smooth"} <= self.kept())
+
+    def test_moving_one_statement_past_another_re_keys(self):
+        self.write(entry="SCALE = 1.0\nSCALE = 2.0\ndef main():\n    return SCALE\n")
+        before = self.key()
+        self.write(entry="SCALE = 2.0\nSCALE = 1.0\ndef main():\n    return SCALE\n")
+        self.assertNotEqual(self.key(), before)
+
+
+class ClassTests(WalkCase):
+    def test_inherited_and_super_methods_count(self):
+        self.write(base="""
+            class Shader:
+                def __init__(self):
+                    self.n = 1
+                def light(self):
+                    return 1
+            """, entry="""
+            from base import Shader
+            class Flat(Shader):
+                def light(self):
+                    return super().light() + self.tone()
+                def tone(self):
+                    return 2
+            def main():
+                return Flat().light()
+            """)
+        self.assertTrue({"base:Shader", "base:Shader.__init__", "base:Shader.light", "entry:Flat.tone"} <= self.kept())
+
+    def test_properties_and_methods_named_in_the_class_body_count(self):
+        self.write(entry="""
+            class Box:
+                def _get(self):
+                    return 1
+                area = property(_get)
+                @property
+                def size(self):
+                    return 2
+                @staticmethod
+                def unit():
+                    return 3
+            def main(box):
+                return box.area, box.size, Box.unit()
+            """)
+        self.assertTrue({"entry:Box._get", "entry:Box.size", "entry:Box.unit"} <= self.kept())
+
+    def test_methods_another_packages_base_calls_count(self):
+        self.write(entry="""
+            import ast
+            class Visitor(ast.NodeVisitor):
+                def visit_Call(self, node):
+                    return 41
+            def main(tree):
+                return Visitor().visit(tree)
+            """)
+        self.assertIn("entry:Visitor.visit_Call", self.kept())
+
+    def test_a_global_read_only_in_a_nested_scope_counts(self):
+        self.write(entry="""
+            LIMIT = 3
+            SCALE = 2
+            def main(items):
+                def inner(x):
+                    return x * SCALE
+                return [inner(x) for x in items if x < LIMIT]
+            """)
+        self.assertTrue({"entry:LIMIT", "entry:SCALE"} <= self.kept())
+
+
 class CountsMoreTests(WalkCase):
     def test_a_name_the_walk_cannot_place_counts_its_whole_module_and_is_reported(self):
         self.write(entry="""
@@ -253,6 +435,14 @@ class CountsMoreTests(WalkCase):
         self.assertIn("helpers:Light.shade", self.kept())
         self.assertNotIn("helpers:Light.other", self.kept())
 
+    def test_a_getattr_on_a_module_counts_the_module_or_its_named_function(self):
+        self.write(shading="def shade_flat():\n    return 1\ndef other():\n    return 2\n", entry="""
+            import shading
+            def main(kind):
+                return getattr(shading, "shade_" + kind)(), getattr(shading, "shade_flat")
+            """)
+        self.assertTrue({"shading:shade_flat", "shading:other"} <= self.kept())
+
     def test_eval_or_globals_count_every_unit(self):
         for call in ("eval('x')", "globals()['x']"):
             with self.subTest(call=call):
@@ -287,6 +477,27 @@ class StageTests(unittest.TestCase):
                 units, unresolved = bake.stage_units(stage)
                 self.assertTrue(units)
                 self.assertEqual([(bake.relative(path), line, name) for path, line, name in unresolved], [])
+
+    def test_the_reference_functions_produce_calls_are_entries(self):
+        tree = ast.parse((TOOLS / "bake" / "produce.py").read_text(encoding="utf-8"))
+        entries = set(bake.STAGES["reference"])
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module in ("r3d.reference_set", "r3d.reference_render"):
+                for alias in node.names:
+                    self.assertIn(f"{node.module.replace('.', '/')}.py:{alias.name}", entries)
+
+    def test_an_edit_to_a_reached_helper_re_keys_the_reference_stage(self):
+        units = bake.stage_units("reference")[0]
+        helper = next(unit for unit in units if unit.path.name == "mesh_source.py" and unit.names == {"camera_path_poses"})
+        before = bake.digest(sorted(bake.units_digests(units)))
+        original = bake.line_tokens
+
+        def edited(path):
+            return tuple((line, kind, text + "_edited") if path == helper.path and line == helper.node.lineno
+                         and kind == "NAME" else (line, kind, text) for line, kind, text in original(path))
+
+        with mock.patch.object(bake, "line_tokens", edited):
+            self.assertNotEqual(bake.digest(sorted(bake.units_digests(units))), before)
 
     def test_the_reference_key_leaves_out_code_it_does_not_reach(self):
         kept = {(unit.path.name, unit.node.name) for unit in bake.stage_units("reference")[0]
