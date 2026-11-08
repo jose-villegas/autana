@@ -53,6 +53,8 @@ release_all(void) {
     (void)tune_reset(tune_shared(), TUNE_NAME(render, depth_fit));
     (void)tune_reset(tune_shared(), TUNE_NAME(render, batched));
     (void)tune_reset(tune_shared(), TUNE_NAME(render, lod_coverage_permille));
+    (void)tune_reset(tune_shared(), TUNE_NAME(render, lod_tolerance_millipx));
+    (void)tune_reset(tune_shared(), TUNE_NAME(render, lod_hysteresis_millipx));
     raster_rig_release();
 }
 
@@ -236,6 +238,29 @@ test_the_coverage_knob_overrides_only_the_coverage_cap(void) {
     TEST_ASSERT_EQUAL_INT(100, used.lod.coverage_permille);
 }
 
+/* The tolerance and hysteresis knobs, in thousandths of a pixel, change those fields of what a draw uses and no
+ * other, and a reset gives the caller's values back. */
+static void
+test_the_tolerance_knobs_override_the_pick_in_thousandths_of_a_pixel(void) {
+    raster_rig_t* r = open_rig();
+    render_settings_t set = RENDER_SETTINGS_DEFAULT;
+    set.lod = (render_lod_settings_t){3.0F, 0.25F, 100, 2};
+    r->raster.settings = &set;
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, lod_tolerance_millipx), 1500));
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, lod_hysteresis_millipx), 0));
+    render_settings_t used = raster_settings(&r->raster);
+    TEST_ASSERT_EQUAL_FLOAT(1.5F, used.lod.tolerance_px);
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, used.lod.hysteresis_px);
+    TEST_ASSERT_EQUAL_INT(100, used.lod.coverage_permille);
+    TEST_ASSERT_EQUAL_INT(2, used.lod.pick_every);
+    TEST_ASSERT_EQUAL_FLOAT(3.0F, set.lod.tolerance_px);
+    TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, lod_tolerance_millipx)));
+    TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, lod_hysteresis_millipx)));
+    used = raster_settings(&r->raster);
+    TEST_ASSERT_EQUAL_FLOAT(3.0F, used.lod.tolerance_px);
+    TEST_ASSERT_EQUAL_FLOAT(0.25F, used.lod.hysteresis_px);
+}
+
 enum { FIELDS = RENDER_SETTINGS_FIELD_COUNT, ROW_BYTES = ASSET_TABLE_NAME_SIZE + sizeof(int16_t), PACK_BYTES = 512 };
 
 static const char* const field_names[FIELDS + 1] = {
@@ -354,6 +379,7 @@ suite_render_settings(void) {
     RUN_TEST(test_an_override_beats_the_callers_value_until_a_reset_brings_it_back);
     RUN_TEST(test_each_field_and_each_knob_reach_only_their_own_slot);
     RUN_TEST(test_the_coverage_knob_overrides_only_the_coverage_cap);
+    RUN_TEST(test_the_tolerance_knobs_override_the_pick_in_thousandths_of_a_pixel);
     RUN_TEST(test_a_release_build_carries_no_override);
     RUN_TEST(test_a_packs_render_entry_reads_every_field);
     RUN_TEST(test_an_entry_missing_a_field_with_another_or_fixed_point_is_refused_unread);
