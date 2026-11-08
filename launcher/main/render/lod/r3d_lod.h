@@ -111,8 +111,14 @@ float r3d_lod_group_coverage(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
 /* The dither's levels: a 4x4 ordered screen door's thresholds. A blending
  * group's coarse clusters draw where the threshold is under its weight's
  * level, its fine ones where it is not, so the two never share a pixel. */
-#define R3D_LOD_DITHER_LEVELS    16
+#define R3D_LOD_DITHER_LEVELS    BAYER4_LEVELS
 #define R3D_LOD_DITHER_SHIFT     4
+_Static_assert((1 << R3D_LOD_DITHER_SHIFT) == R3D_LOD_DITHER_LEVELS, "a band's nibble holds one level");
+
+/* How many ramps ahead of its weight a group's blending bit is set, so a
+ * pick spread over lod.pick_every frames finds a group before its weight
+ * rises and never starts a blend partway through its ramp. */
+#define R3D_LOD_BLEND_LEAD 1.0F
 
 /* A cluster's dither band packed in a byte: drawn where lo <= level < hi,
  * lo the low nibble, hi R3D_LOD_DITHER_LEVELS less the high nibble. 0 is
@@ -127,10 +133,31 @@ r3d_lod_dither_hi(uint8_t band) {
     return R3D_LOD_DITHER_LEVELS - (band >> R3D_LOD_DITHER_SHIFT);
 }
 
+/* Whether a band draws no level. */
+static inline bool
+r3d_lod_dither_empty(uint8_t band) {
+    return r3d_lod_dither_lo(band) >= r3d_lod_dither_hi(band);
+}
+
+/* Whether an instance of `mesh` drawn with lod.blend `blend` dithers: it
+ * blends and has no morph targets to geomorph with. */
+static inline bool
+r3d_lod_dithers(const r3d_lit_mesh_t* mesh, int blend) {
+    return blend == RENDER_LOD_BLEND_ON && mesh->morph_delta == NULL;
+}
+
+/* The lens's linear part with its focal lengths divided out: position ticks
+ * to view units. */
+typedef struct {
+    mat4f_t view;
+    float units_per_tick; /* at least the model's largest scale */
+    float focal;          /* pixels a view unit spans at unit depth, the larger axis */
+} r3d_lod_view_t;
+
 /* One instance's blend through one lens; `enabled` false draws no blend. */
 typedef struct r3d_lod_morph {
-    mat4f_t view; /* the lens's linear part, focal lengths divided out */
-    float units_per_tick, scale, near_z;
+    r3d_lod_view_t view; /* set only when enabled */
+    float near_z;
     float enter, leave, ramp; /* pixels: whole at enter (leave for an arrived group), none ramp past it */
     /* The pick's arrived bits, or NULL: every group ramps from leave. Set when
      * a group turns fine, cleared `lod.blend_px` past the hysteresis band: an
@@ -143,10 +170,26 @@ typedef struct r3d_lod_morph {
     bool dither; /* a screen door stands in for the morph: r3d_lod_dither_band() */
 } r3d_lod_morph_t;
 
+/* Whether cluster `c` takes part in the blend: its parent group blends, so
+ * it fades out or morphs, or its own group does, so it fades in. One bit
+ * test or two, so a draw asks this before it weighs anything. */
+static inline bool
+r3d_lod_cluster_blends(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, int c) {
+    if (!morph->enabled || mesh->cluster_lod == NULL) {
+        return false;
+    }
+    const r3d_lit_cluster_lod_t lod = mesh->cluster_lod[c];
+    if (morph->blending == NULL) {
+        return lod.parent != R3D_LOD_NONE || lod.own != R3D_LOD_NONE;
+    }
+    return (lod.parent != R3D_LOD_NONE && r3d_lod_coarse(morph->blending, lod.parent))
+           || (lod.own != R3D_LOD_NONE && r3d_lod_coarse(morph->blending, lod.own));
+}
+
 /* The blend of `mesh` seen through `lens`, measured as the pick measures it,
  * its thresholds `pixels_per_output_pixel` times `lod`'s, drawn as `blend`
  * (render_lod_blend_t). Disabled for RENDER_LOD_BLEND_SWITCH; a mesh without
- * morph targets dithers. */
+ * morph targets dithers (r3d_lod_dithers()). */
 void r3d_lod_morph_init(r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
                         const render_lod_settings_t* lod, float pixels_per_output_pixel, const uint32_t* arrived,
                         int blend);

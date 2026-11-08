@@ -796,9 +796,11 @@ enum {
     WEIGHT_SLACK = 1,
 };
 
-#define SEARCH_FAR 1.0e6F
+#define SEARCH_FAR   1.0e6F
 /* Past a ramp's end by this share of the ramp, a weight is none whatever the float rounding. */
-#define PAST_RAMP  0.01F
+#define PAST_RAMP    0.01F
+/* A share of a span that stays clear of its far end by more than any rounding. */
+#define SHARE_INSIDE (1.0F - PAST_RAMP)
 
 /* A radius large enough that one error unit projects well under a pixel where the coverage ramps,
  * and two errors, the first within the leave and the second inside the ramp past it. */
@@ -1040,7 +1042,9 @@ test_the_blending_bit_is_set_where_the_blend_weighs_something(void) {
 
     enum { STEPS = 64 };
 
-    const float far = leave_px() + (LOD.blend_px * (1.0F + PAST_RAMP));
+    /* The bit leads the weight by R3D_LOD_BLEND_LEAD ramps. */
+    const float ahead = LOD.blend_px * (1.0F + R3D_LOD_BLEND_LEAD);
+    const float far = leave_px() + ahead + (LOD.blend_px * PAST_RAMP);
     for (int i = 0; i <= 2 * STEPS; i++) {
         const float share = (float)(i <= STEPS ? i : (2 * STEPS) - i) / (float)STEPS;
         const float px = far - (share * (far - (enter_px() * SHARE_HALF)));
@@ -1051,9 +1055,10 @@ test_the_blending_bit_is_set_where_the_blend_weighs_something(void) {
         const int weight = r3d_lod_coarse(coarse, WEIGHT_GROUP) ? 0 : weight_arrived_at(mesh, px, unread);
         const bool blending = r3d_lod_coarse(&arrived[BLENDING_WORD], WEIGHT_GROUP);
         const float whole = r3d_lod_coarse(arrived, WEIGHT_GROUP) ? leave_px() : enter_px();
-        if (weight > 0) {
+        const bool coarse_now = r3d_lod_coarse(coarse, WEIGHT_GROUP);
+        if (weight > 0 || (!coarse_now && px < whole + (ahead * SHARE_INSIDE))) {
             TEST_ASSERT_TRUE(blending);
-        } else if (r3d_lod_coarse(coarse, WEIGHT_GROUP) || px > whole + (LOD.blend_px * (1.0F + PAST_RAMP))) {
+        } else if (coarse_now || px > whole + ahead + (LOD.blend_px * PAST_RAMP)) {
             TEST_ASSERT_FALSE(blending);
         }
     }
@@ -1328,6 +1333,25 @@ test_the_pipeline_cull_keeps_both_levels_of_a_blending_group(void) {
         }
         TEST_ASSERT_TRUE(kept);
     }
+}
+
+/* A mesh whose levels share one tree, walked whole, keeps both levels of a
+ * blending group as the finest tree's walk and its cut do. */
+static void
+test_the_whole_tree_walk_keeps_both_levels_of_a_blending_group(void) {
+    const r3d_lit_mesh_t* mesh = levelled_mesh();
+    r3d_lit_mesh_t whole = *mesh;
+    whole.lod_finest_root = 0;
+    const r3d_lens_t lens = lens_at(WHOLE_IN_VIEW, NULL);
+    const uint32_t none[R3D_LOD_WORDS(GROUPS)] = {0};
+    const uint32_t blending[R3D_LOD_WORDS(GROUPS)] = {1U << WEIGHT_GROUP};
+    uint16_t apart[CLUSTERS];
+    uint16_t together[CLUSTERS];
+    const int count = cull_sorted(mesh, none, blending, apart);
+    TEST_ASSERT_EQUAL_INT(count,
+                          r3d_pipeline_cull_blending(&whole, &lens, none, blending, together, pipeline_work(), NULL));
+    qsort(together, (size_t)count, sizeof together[0], compare_cluster);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(apart, together, count);
 }
 
 /* The cull view's counted walk keeps what the frame's cull keeps with a
@@ -1622,6 +1646,7 @@ suite_r3d_lod(void) {
     RUN_TEST(test_the_dither_needs_no_morph_targets_and_the_switch_arm_has_no_band);
     RUN_TEST(test_a_blending_group_keeps_both_its_fine_clusters_and_those_simplified_from_it);
     RUN_TEST(test_the_pipeline_cull_keeps_both_levels_of_a_blending_group);
+    RUN_TEST(test_the_whole_tree_walk_keeps_both_levels_of_a_blending_group);
     RUN_TEST(test_the_counted_walk_keeps_both_levels_of_a_blending_group);
     RUN_TEST(test_the_pipeline_cull_without_blending_bits_is_the_plain_cull);
     RUN_TEST(test_the_pipeline_cull_drops_a_blending_group_s_clusters_under_a_coarse_parent);

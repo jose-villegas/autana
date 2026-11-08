@@ -367,6 +367,38 @@ def morph_blob(blob, levels):
     return morph_asset.encode(shifts, deltas.reshape(-1).tolist(), landing)
 
 
+def morph_targets(pos, clusters, entry):
+    """Each row's target in ticks as LMOR `entry` decodes it: its position plus
+    its delta times its cluster's step."""
+    from r3d import morph_asset
+    shifts, deltas, _ = morph_asset.decode(entry)
+    deltas = np.asarray(deltas, dtype=np.int64).reshape(-1, morph_asset.AXES)
+    target = np.asarray(pos, dtype=np.int64).copy()
+    for (first, count, *_), shift in zip(clusters, shifts):
+        target[first:first + count] += deltas[first:first + count] << shift
+    return target
+
+
+def cover_targets(mesh, entry):
+    """Grows `mesh`'s cluster and node boxes, in place, to hold the targets of
+    LMOR `entry` too, so a cull by those boxes keeps every cluster however far
+    it morphs. Returns whether a box grew."""
+    from r3d.octree import node_bounds
+    target = morph_targets(mesh.pos, mesh.clusters, entry)
+    grown = False
+    for c, (first, count, tb, tc, lo, hi, double) in enumerate(mesh.clusters):
+        rows = target[first:first + count]
+        if not len(rows):
+            continue
+        new_lo, new_hi = np.minimum(lo, rows.min(axis=0)), np.maximum(hi, rows.max(axis=0))
+        if np.any(new_lo != lo) or np.any(new_hi != hi):
+            mesh.clusters[c] = (first, count, tb, tc, new_lo, new_hi, double)
+            grown = True
+    if grown:
+        node_bounds(mesh.nodes, mesh.clusters)
+    return grown
+
+
 def morph_deltas(pos, target, clusters, parents):
     """(shift per cluster, int8 delta per row): the least shift that fits the
     largest move of every cluster under one parent group in an int8, and each
