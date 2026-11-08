@@ -514,6 +514,16 @@ def pinned_requirements(paths):
     return tuple(sorted(pins))
 
 
+def units_digests(units):
+    """A digest per file of its units' tokens in file order, so moving one statement past another counts."""
+    files, read = {}, {}
+    for unit in units:
+        if unit.path not in read:
+            read[unit.path] = line_tokens(unit.path)
+        files.setdefault(unit.path, []).extend(code_tokens(unit.path, *unit.lines, read[unit.path]))
+    return [digest(tokens) for tokens in files.values() if tokens]
+
+
 @functools.cache
 def tool_digest(stage):
     """The code of a stage by content alone: its files' tokens and the C they compile as a sorted list of
@@ -523,9 +533,7 @@ def tool_digest(stage):
     native = native_inputs(paths)
     pinned = {path: commit for path, commit in native.items() if (REPO / path).resolve() in submodules()}
     if all(":" in entry for entry in STAGES[stage]):
-        files = {path: line_tokens(path) for path in paths}
-        contents = [digest(tokens) for tokens in (code_tokens(unit.path, *unit.lines, files[unit.path])
-                                                  for unit in stage_units(stage)[0]) if tokens]
+        contents = units_digests(stage_units(stage)[0])
     else:
         contents = [digest(code_tokens(path)) for path in paths]
     contents += [value for path, value in native.items() if path not in pinned]
