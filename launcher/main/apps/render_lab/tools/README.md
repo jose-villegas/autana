@@ -50,6 +50,7 @@ and shake. The menu's WATER FILL sets the share of the tank's volume, 10 to
 | `water.two_core` | 1 (default) runs part of the particle passes, the surface field, its meshing and the shading on core 1, each cut to balance the two cores' times (`job_run_range()`); 0 keeps them on one core |
 | `water.red_black` | 1 (default) solves the pressure in red-black order, each colour split across both cores; 0 in index order on one core |
 | `water.samples_pct` | the surface field's density samples per cell, in hundredths (100 to 200, default 150): fewer mesh, build and draw fewer triangles and lose the smallest ripples |
+| `water.show_speed_mm_s` | the speed, in mm/s, a particle outside the surface needs to show in it (default 50): slower ones rest on the surface and would each hold a one-sample spike; drops and splash fly faster; 0 shows every one |
 | `water.plane` | 1 draws a plane at the fill's volume instead of flip3, its tilt following gravity's like a damped pendulum (`water.slosh_decihz`, `water.slosh_damping_pct`); much cheaper, but no crests or splash; 0 (default) is flip3 |
 
 Each frame, while the last one goes out to the panel:
@@ -244,7 +245,7 @@ engine page shows the [presentation GIFs](../../../../../docs/render/frame/Dynam
 
 ### Debug views
 
-`--view shaded|depth|tiles|motion|meshlets|cull|overdraw` selects the declared context view.
+`--view shaded|depth|tiles|meshlets|cull|overdraw` selects the declared context view.
 Depth and tiles show a lit-mesh scene's depth buffer, or that depth
 reduced to `RASTER_SHOW_TILE` squares. The depth is `raster_draw()`'s
 own buffer, unchanged; `raster_show()` only colours it and takes each

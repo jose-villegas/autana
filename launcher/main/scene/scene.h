@@ -46,7 +46,9 @@ entity_t scene_load_from(const asset_pack_t* pack, const char* id);
  * the root can be placed and enabled, and holds nothing to find. */
 entity_t scene_load_async(const char* id, pending_fn done, handle_t owner);
 pending_t scene_state(entity_t root);
-/* False unless the load FAILED; then `why` says why. */
+/* False unless the load FAILED, or a skinned entity's buffers did not fit
+ * when it became active (it is not drawn until it stops being active); then
+ * `why` says why. */
 bool scene_failure(entity_t root, scene_failure_t* why);
 /* Suppresses completion; before READY also frees partial work. READY keeps its scene. */
 void scene_cancel(entity_t root);

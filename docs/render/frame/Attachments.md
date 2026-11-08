@@ -27,7 +27,7 @@ $`d_{near}`$ is fitted each frame, apart from the clip plane:
 | Bound each kept cluster | `r3d_pipeline_cull()` | the least view depth of its box inside each frustum plane it crosses, the best of them (`box3f_plane_distance_min_inside()`) |
 | Fit | `raster.c` | the least bound, `inverse_depth_scale_fit()`: down to a power of two, never under `near_z` |
 | Draw | `r3d_lens_set_depth_near()` | each instance's lens encodes with it; the clip plane stays `near_z` |
-| Decode | `raster_depth_near()` | the scale the picture was drawn with, for readers such as motion vectors |
+| Decode | `raster_depth_near()` | the scale the picture was drawn with, for readers of depth |
 
 The bound looks only at the part of a box the frustum keeps. A cluster as
 large as a ground square reaching behind the eye still bounds the nearest
@@ -64,8 +64,7 @@ colour and depth, then any further attachment the caller lists in
 ```mermaid
 flowchart LR
     Begin["begin<br/><i>once per picture</i>"] --> Draw["draw each instance<br/><i>colour, depth, and the span writer<br/>an attachment chose for it</i>"]
-    Draw --> Resolve["resolve<br/><i>both cores, disjoint rows</i>"]
-    Resolve --> Show["raster_show()"] --> Upscale["raster_upscale()"]
+    Draw --> Show["raster_show()"] --> Upscale["raster_upscale()"]
 ```
 
 | Hook | When | What it may do |
@@ -73,8 +72,6 @@ flowchart LR
 | `clear` | the first instance of a picture, on its rows | start its pixels; the only hook colour and depth have |
 | `begin` | once per `raster_draw()`, before anything is drawn | read the `const render_view_t*` and the instances, keep its own state |
 | `writer` | once per instance | return a span writer, or none. The fill calls every writer after each span's colour and depth, with the span's depth, so each writes where that triangle won. With none, the fill runs exactly as without attachments, and the writers' code sits apart from it |
-| `drawn` | once each instance is drawn | read the lens, the kept clusters and their transformed vertices |
-| `resolve` | once every instance is drawn | turn what was written into the final map |
 | `show` | `raster_show()` | paint the colour from it |
 
 A writer finds the pixels its triangle won by their depth equalling the
@@ -82,38 +79,7 @@ triangle's, so where two instances meet at exactly the same depth the pixel
 takes the later one's write.
 
 A writer sees depth and one value per instance, or its base plus the mesh
-cluster or triangle index, as its `r3d_span_writer_t.step` says. A map that needs
-more, such as normals, rebuilds it from depth in its `resolve`.
-
-### Motion vectors
-
-`raster_motion.h`: for each pixel, the previous position of the point it
-shows minus this one, two signed bytes in half pixels of this picture.
-
-`RASTER_MOTION_UNKNOWN` marks a pixel nothing drew, the first picture, a
-point behind the previous camera, and motion past the range.
-
-The motion view along a flythrough, red for x and green for y:
-
-![The motion-vector view along a flythrough](../../images/render/sponza-motion-vectors.gif)
-
-An instance is known by its placement's address. One whose placement
-changed since the previous picture gets its own map, carrying the point to
-where the mesh was.
-
-Its state holds a previous placement and a map per instance, room the owner
-gives it with `raster_motion_reserve()` before a picture with more instances
-than it holds; a tag names at most `RASTER_MOTION_INSTANCES_MAX`.
-
-| Hook | Motion |
-|---|---|
-| `begin` | Builds this picture's lens and the previous camera's lens at this picture's size, so a size change between pictures needs nothing special |
-| `writer` | From the first instance that moved on, every triangle writes its instance's tag, 0 for anything still; before it, pixels keep the 0 they were cleared to. On a picture where nothing moved, nothing is written while drawing |
-| `resolve` | Takes each pixel back to the world through its depth, through the map its tag picks, and projects it through the previous lens |
-
-The caller owns a zeroed `raster_motion_t`, attaches `raster_motion_view()`,
-and calls `raster_motion_forget()` after a cut. The render context attaches
-it while the motion view is selected.
+cluster or triangle index, as its `r3d_span_writer_t.step` says.
 
 ### Meshlet IDs
 
@@ -129,5 +95,4 @@ The meshlets view along the same flythrough, one hue per cluster:
 | `clear` | Zeroes the map |
 | `begin` | Resets its next ID to one before each draw |
 | `writer` | Reserves each instance's cluster count and writes the reserved base plus the mesh's cluster index |
-| `resolve` | None: it needs no resolve pass |
 | `show` | Maps IDs to hues through a multiplicative hash; zero takes the clear colour |

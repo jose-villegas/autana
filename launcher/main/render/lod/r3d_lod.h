@@ -47,6 +47,14 @@ r3d_lod_any(const uint32_t* coarse, int groups) {
     return false;
 }
 
+/* Whether, with `any_coarse` false, every cluster drawn is known without a
+ * test: all of a mesh without levels, or the finest, which levels laid out
+ * apart (lod_finest_root set) put first, up to lod_coarse_first. */
+static inline bool
+r3d_lod_finest_untested(const r3d_lit_mesh_t* mesh, bool any_coarse) {
+    return !any_coarse && (mesh->lod_finest_root != 0 || mesh->cluster_lod == NULL);
+}
+
 /* Whether cluster `c` of `mesh` is drawn under `coarse`: when the group
  * simplified into it is coarse (or it is finest) and its own group is not.
  * A NULL `coarse` draws the finest level, as does a mesh without levels. */
@@ -63,6 +71,11 @@ r3d_lod_drawn(const r3d_lit_mesh_t* mesh, int c, const uint32_t* coarse) {
            && (lod.parent == R3D_LOD_NONE || !r3d_lod_coarse(coarse, lod.parent));
 }
 
+/* The clusters of `mesh` drawn under `coarse` (r3d_lod_drawn()), ascending,
+ * into `out`, which holds `room`; returns how many. Nothing coarse lists the
+ * finest level without testing each cluster. */
+int r3d_lod_list_drawn(const r3d_lit_mesh_t* mesh, const uint32_t* coarse, uint16_t* out, int room);
+
 /* The pixels group `group`'s error spans seen through `lens` (placed with
  * the instance's model), measured where its bounds come nearest the eye and
  * no nearer than the near plane. Scale is the model's largest. */
@@ -75,10 +88,10 @@ float r3d_lod_group_coverage(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
 
 /* Updates `coarse`, R3D_LOD_WORDS(mesh->lod_group_count) words, for one
  * frame seen through `lens`: coarse where a group's error projects within
- * `lod.tolerance_px` (`lod.hysteresis_px` either side of it, by the bit's
- * last state) and its radius covers at most `lod.coverage_permille`
- * thousandths of the picture's height. A parent never projects smaller than
- * its sources, in error or radius (r3d_lit_mesh.h checks), and a closing
- * pass sets coarse any source rounding left fine, so the cut never cracks. */
-void r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod,
+ * `lod.tolerance_px` (`lod.hysteresis_px` either side, by the bit's last
+ * state) and its radius covers at most `lod.coverage_permille` thousandths
+ * of the picture's height. Parents never project smaller than their sources
+ * (r3d_lit_mesh.h checks) and a closing pass sets coarse any source rounding
+ * left fine, so the cut never cracks. True when a bit changed. */
+bool r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod,
                   uint32_t* coarse);

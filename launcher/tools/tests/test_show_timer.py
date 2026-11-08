@@ -13,15 +13,15 @@ from build import packages  # noqa: E402
 
 
 @unittest.skipUnless(shutil.which("gcc"), "needs gcc")
-class ResolveTimerTests(unittest.TestCase):
-    def test_resolve_is_charged_only_with_a_hook(self):
+class ShowTimerTests(unittest.TestCase):
+    def test_show_is_charged_once(self):
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory)
             header = work / "profile/frame_cost.h"
             header.parent.mkdir(parents=True)
-            header.write_text('#include <string.h>\nextern int charges, shows;\n'
+            header.write_text('#include <string.h>\nextern int shows;\n'
                               '#define FRAME_COST_BEGIN(mark) ((void)0)\n'
-                              '#define FRAME_COST_END(mark, name) (charges += !strcmp(name, "r3d.resolve"), shows += !strcmp(name, "r3d.show"))\n')
+                              '#define FRAME_COST_END(mark, name) (shows += !strcmp(name, "r3d.show"))\n')
             source = work / "probe.c"
             source.write_text('''#include <assert.h>
 #include <stdlib.h>
@@ -29,12 +29,7 @@ class ResolveTimerTests(unittest.TestCase):
 #include "render/raster.h"
 #include "render/view/raster_show.h"
 #include "r3d_quad_mesh.h"
-int charges, shows;
-static void clear(const raster_attachment_t* a, const raster_t* r, void* pixels, size_t count) {
-    memset(pixels, 0, count * 2);
-}
-static void resolve(const raster_attachment_t* a, const raster_t* r,
-                    const gfx_target_t* rows, int index) {}
+int shows;
 int main(void) {
     const int16_t positions[4][3] = {{-4, -4, 0}, {4, -4, 0}, {4, 4, 0}, {-4, 4, 0}};
     r3d_quad_t quad;
@@ -43,21 +38,12 @@ int main(void) {
     raster_t r = {.width = 8, .height = 8, .instances = &instance, .instance_count = 1};
     const transformf_t pose = transformf_looking((vec3f_t){0, 0, 100}, (vec3f_t){0, 0, -100}, (vec3f_t){0, 1, 0});
     const render_view_t view = render_view_make(&pose, .5f, 1, (viewport_t){r.width, r.height, 0});
-    raster_attachment_t a = {.format = 2, .clear = clear, .resolve = resolve};
+    raster_attachment_t a = raster_depth_view(NULL);
     const raster_attachment_t* attachments[] = {&a};
     r.attachments = attachments;
     r.attachment_count = 1;
     r.scratch = malloc(raster_scratch_bytes(&r));
     raster_draw(&r, &view);
-    assert(charges == 1);
-    a.resolve = NULL;
-    raster_draw(&r, &view);
-    assert(charges == 1);
-    r.attachment_count = 0;
-    raster_draw(&r, &view);
-    assert(charges == 1);
-    a = raster_depth_view(NULL);
-    r.attachment_count = 1;
     raster_show(&r);
     assert(shows == 1);
     free(r.scratch);
