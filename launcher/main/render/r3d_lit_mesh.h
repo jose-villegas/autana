@@ -91,11 +91,19 @@ typedef struct {
     uint16_t lod_coarse_first; /* the first coarse cluster, with lod_finest_root set */
     /* Geomorph targets (render/lmor_format.h), or NULL: where each vertex
      * lands on the coarse surface of its cluster's parent group, as
-     * delta << shift ticks; morph_colors, the colour it takes there. */
-    const uint8_t* morph_shift;       /* one per cluster */
-    const int8_t (*morph_delta)[3];   /* one per vertex */
-    const uint8_t (*morph_colors)[3]; /* one per vertex, or NULL */
+     * delta << shift ticks; morph_landing, the coarse triangle and corner
+     * weights there, whose colours the vertex blends toward. */
+    const uint8_t* morph_shift;                  /* one per cluster */
+    const int8_t (*morph_delta)[3];              /* one per vertex */
+    const struct r3d_lit_landing* morph_landing; /* one per vertex, or NULL */
 } r3d_lit_mesh_t;
+
+/* Where a vertex lands on the coarse level: triangle `triangle`'s corners
+ * weighted weight[0], weight[1] and LMOR_WEIGHT_WHOLE minus both. */
+typedef struct r3d_lit_landing {
+    uint16_t triangle;
+    uint8_t weight[2];
+} r3d_lit_landing_t;
 
 /* The asset type of a lit mesh entry, and the bytes of its header. */
 #define R3D_LIT_MESH_ASSET        ASSET_TYPE('L', 'M', 'S', 'H')

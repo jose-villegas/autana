@@ -20,6 +20,7 @@
 #include "math/scalar/mathi.h"
 #include "profile/frame_laps.h"
 #include "render/code_layout.h"
+#include "render/lmor_format.h"
 #include "render/lod/r3d_lod.h"
 #include "render/r3d_triangle_tests.h"
 
@@ -387,11 +388,59 @@ morphed_position(const int16_t p[3], const int8_t d[3], float blend) {
 
 /* transform_cluster() for a cluster blending toward its parent's coarse
  * surface: the rarer case, one vertex at a time. */
-static __attribute__((noinline)) r3d_pipeline_rows_t
-transform_morphed(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const mat4f_t* screen, int cluster, int weight,
-                  r3d_pipeline_vertex_t* cs, uint32_t lo_bits, uint32_t hi_bits, bool boxed) {
-    const r3d_lit_cluster_t* c = &mesh->clusters[cluster];
+/* The cluster whose range holds triangle `t`: clusters own contiguous,
+ * ascending triangle ranges. */
+static int
+cluster_of_triangle(const r3d_lit_mesh_t* mesh, int t) {
+    int lo = 0;
+    int hi = mesh->cluster_count - 1;
+    while (lo < hi) {
+        const int mid = (lo + hi + 1) / 2;
+        if (mesh->clusters[mid].triangle_first <= t) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    return lo;
+}
+
+/* How far vertex `v` of `cluster`, at `weight`, moves toward its target,
+ * in ticks: its delta, plus where its landing point's corners move on the
+ * coarse level as that level blends toward its own parent, so the target
+ * is the coarse surface as drawn. R3D_LOD_MORPH_CHAIN levels deep. */
+static vec3f_t
+morph_offset(const r3d_lit_mesh_t* mesh, const r3d_lod_morph_t* morph, int v, int cluster, int weight, int depth) {
     const float blend = (float)weight * (float)(1U << mesh->morph_shift[cluster]) / (float)R3D_LOD_MORPH_ONE;
+    const int8_t* d = mesh->morph_delta[v];
+    vec3f_t out = {(float)d[0] * blend, (float)d[1] * blend, (float)d[2] * blend};
+    if (depth == 0 || morph == NULL || mesh->morph_landing == NULL) {
+        return out;
+    }
+    const r3d_lit_landing_t at = mesh->morph_landing[v];
+    const int under = cluster_of_triangle(mesh, at.triangle);
+    const int next = r3d_lod_morph_weight(morph, mesh, under);
+    if (next == 0) {
+        return out;
+    }
+    const uint16_t* corner = mesh->triangles[at.triangle];
+    const float w[3] = {(float)at.weight[0], (float)at.weight[1],
+                        (float)((int)LMOR_WEIGHT_WHOLE - at.weight[0] - at.weight[1])};
+    const float share = (float)weight / (float)R3D_LOD_MORPH_ONE / (float)LMOR_WEIGHT_WHOLE;
+    for (int k = 0; k < 3; k++) {
+        const vec3f_t o = morph_offset(mesh, morph, corner[k], under, next, depth - 1);
+        out.x += o.x * w[k] * share;
+        out.y += o.y * w[k] * share;
+        out.z += o.z * w[k] * share;
+    }
+    return out;
+}
+
+static __attribute__((noinline)) r3d_pipeline_rows_t
+transform_morphed(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lod_morph_t* morph,
+                  const mat4f_t* screen, int cluster, int weight, r3d_pipeline_vertex_t* cs, uint32_t lo_bits,
+                  uint32_t hi_bits, bool boxed) {
+    const r3d_lit_cluster_t* c = &mesh->clusters[cluster];
     int x0 = INT16_MAX;
     int x1 = INT16_MIN;
     int y0 = INT16_MAX;
@@ -399,7 +448,9 @@ transform_morphed(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const mat4
     float iz = 0.0F;
     bool unbounded = false;
     for (int v = c->vertex_first; v < c->vertex_first + c->vertex_count; v++) {
-        const vec3f_t l = mat4f_apply(screen, morphed_position(mesh->positions[v], mesh->morph_delta[v], blend));
+        const int16_t* at = mesh->positions[v];
+        const vec3f_t o = morph_offset(mesh, morph, v, cluster, weight, R3D_LOD_MORPH_CHAIN);
+        const vec3f_t l = mat4f_apply(screen, (vec3f_t){(float)at[0] + o.x, (float)at[1] + o.y, (float)at[2] + o.z});
         const float r = mathf_recip(l.z);
         const transform_projection_t p = transform_project(lens, l, r, lo_bits, hi_bits);
         transform_store(lens, &cs[v], l, p.b, p.inside_x, p.inside_y, p.iz, &y0, &y1, &unbounded, boxed, &x0, &x1, &iz);
@@ -420,7 +471,7 @@ transform_clusters(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d
         const int weight = morph != NULL ? r3d_lod_morph_weight(morph, mesh, clusters[i]) : 0;
         const r3d_pipeline_rows_t r =
             weight != 0
-                ? transform_morphed(mesh, lens, &screen, clusters[i], weight, cs, lo_bits, hi_bits, boxed)
+                ? transform_morphed(mesh, lens, morph, &screen, clusters[i], weight, cs, lo_bits, hi_bits, boxed)
                 : transform_cluster(mesh, lens, &screen, &mesh->clusters[clusters[i]], cs, lo_bits, hi_bits, boxed);
         if (rows != NULL) {
             rows[clusters[i]] = r;
@@ -660,13 +711,25 @@ cluster_skipped(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target, d
 
 /* A triangle with a corner behind the near plane or too far off screen to
  * snap is rebuilt from the mesh and clipped. */
-/* Vertex `v`'s colour, blended `weight` of R3D_LOD_MORPH_ONE toward its
- * morph target's when the mesh has colour targets. */
+/* Vertex `v`'s colour, blended `weight` of R3D_LOD_MORPH_ONE toward the
+ * mesh's colours where it lands on the coarse level, when it has landing
+ * points: from whichever colours the mesh draws with, a copy's set included. */
 static inline __attribute__((always_inline)) void
 morphed_colour(const r3d_lit_mesh_t* mesh, int v, int weight, uint8_t out[3]) {
     const uint8_t* from = mesh->colors[v];
+    if (weight == 0 || mesh->morph_landing == NULL) {
+        out[0] = from[0];
+        out[1] = from[1];
+        out[2] = from[2];
+        return;
+    }
+    const r3d_lit_landing_t at = mesh->morph_landing[v];
+    const uint16_t* corner = mesh->triangles[at.triangle];
+    const int w[3] = {at.weight[0], at.weight[1], (int)LMOR_WEIGHT_WHOLE - at.weight[0] - at.weight[1]};
     for (int k = 0; k < 3; k++) {
-        const int to = weight != 0 && mesh->morph_colors != NULL ? mesh->morph_colors[v][k] : from[k];
+        const int to = ((w[0] * mesh->colors[corner[0]][k]) + (w[1] * mesh->colors[corner[1]][k])
+                        + (w[2] * mesh->colors[corner[2]][k]) + ((int)LMOR_WEIGHT_WHOLE / 2))
+                       / (int)LMOR_WEIGHT_WHOLE;
         out[k] = (uint8_t)(from[k] + (((to - from[k]) * weight) / R3D_LOD_MORPH_ONE));
     }
 }

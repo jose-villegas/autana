@@ -45,10 +45,25 @@ config:
     bitWidth: 120
 ---
 packet-beta
-title Delta, 3 bytes a vertex after the shifts; a colour target is 3 bytes a vertex after the deltas
+title Delta, 3 bytes a vertex after the shifts
 0-0: "int8 x"
 1-1: "int8 y"
 2-2: "int8 z"
+```
+
+```mermaid
+---
+config:
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(3) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
+  packet:
+    bitsPerRow: 4
+    bitWidth: 120
+---
+packet-beta
+title Landing point, 4 bytes a vertex after the deltas, with LMOR_LANDING
+0-1: "uint16 triangle"
+2-2: "uint8 weight 0"
+3-3: "uint8 weight 1"
 ```
 
 | Part | At | Size |
@@ -56,7 +71,7 @@ title Delta, 3 bytes a vertex after the shifts; a colour target is 3 bytes a ver
 | Header | 0 | `LMOR_HEADER_SIZE` bytes |
 | Shifts | `LMOR_HEADER_SIZE` | `cluster_count` bytes, padded to 4 |
 | Deltas | after the shifts | `vertex_count × LMOR_AXES` bytes, padded to 4 |
-| Colour targets | after the deltas, with `LMOR_COLOURS` | `vertex_count × LMOR_AXES` bytes, padded to 4 |
+| Landing points | after the deltas, with `LMOR_LANDING` | `vertex_count × LMOR_LANDING_SIZE` bytes |
 
 | Rule | Detail |
 |---|---|
@@ -65,6 +80,6 @@ title Delta, 3 bytes a vertex after the shifts; a colour target is 3 bytes a ver
 | Counts | Cluster and vertex counts equal the mesh's, and the mesh has levels (`ASSET_ERR_FORMAT`) |
 | Size | Exactly the parts the flags name, with no trailing bytes (`ASSET_ERR_BOUNDS`) |
 | Target | A vertex's target in ticks is its position plus `delta << shift`, its cluster's shift at most `LMOR_SHIFT_MAX` (`ASSET_ERR_FORMAT`). A delta is -127 to 127, so mirroring an axis still fits |
-| Colours | `LMOR_COLOURS` only on a mesh with vertex colours (`ASSET_ERR_FORMAT`); a face-coloured or colourless mesh blends positions only |
+| Landing | `LMOR_LANDING` only on a mesh without face colours (`ASSET_ERR_FORMAT`). A landing point names a coarse triangle of the mesh and two corner weights, the third `LMOR_WEIGHT_WHOLE` minus both (`ASSET_ERR_FORMAT` past the triangle count or the whole). The draw blends a vertex's colour toward the colours there, from whichever colours the mesh draws with, a copy's set included |
 | No parent | A cluster without a parent group holds deltas of 0, never read |
 | Opening | `r3d_lit_mesh_morph_from_asset()` attaches validated targets; failure clears only the morph pointers. `r3d_lit_mesh_open()` resolves the sibling after the levels; absent means no blend |

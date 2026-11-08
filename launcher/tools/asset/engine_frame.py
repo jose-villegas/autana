@@ -68,9 +68,9 @@ def to_engine(kind, entry):
             *centre, radius, error = mesh_asset.LOD_GROUP.unpack_from(entry, at)
             mesh_asset.LOD_GROUP.pack_into(out, at, *_mirror_position(centre), radius, error)
     elif kind == morph_asset.TYPE:
-        shifts, deltas, colours = morph_asset.decode(entry)
+        shifts, deltas, landing = morph_asset.decode(entry)
         mirrored = [value * AXIS_SIGNS[index % AXIS_COUNT] for index, value in enumerate(deltas)]
-        return morph_asset.encode(shifts, mirrored, colours)
+        return morph_asset.encode(shifts, mirrored, landing)
     elif kind == scene_asset.TYPE:
         header = scene_asset.HEADER.unpack_from(entry)
         entities = header[1]
