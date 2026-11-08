@@ -90,6 +90,7 @@ class Allocation:
     tri_o: object = None
     object_names: tuple = ()
     material_names: tuple = ()
+    double_sided: frozenset = frozenset()  # material names drawn from both sides
     meshes: tuple = ()
     selection: object = None
     ceiling: object = None
@@ -206,7 +207,8 @@ def _mesh_passes(tris, labels, tri_o, triangles, reserved, selected, edges):
     return merged, policies
 
 
-def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, locks, deviation, options, shade, shapes=None):
+def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, locks, deviation, options, shade, shapes=None,
+                   double=()):
     from scipy.spatial import cKDTree
     from .objects.instances import place, source_objects
     from .objects.stand_ins import best_stand_in
@@ -249,7 +251,7 @@ def _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, loc
                 consumed.add(single[obj])
             stand_in, candidates = best_stand_in(shape.positions, rgb[first_indices], shape.triangles,
                 shape.materials, budget, colour_weight(shape.positions, shape.triangles, budget, deviation),
-                options, union if np.any(union) else None)
+                options, union if np.any(union) else None, double)
             p, c, t, kept = stand_in.positions, stand_in.rgb, stand_in.tris, stand_in.kept
             shared.append(dict(objects=[int(i.object_name) for i in shape.instances], copies=len(shape.instances),
                                joined=sum(isinstance(i, JoinedInstance) for i in shape.instances),
@@ -334,8 +336,10 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
                   meshes=[dict(object=allocation.object_names[obj], copies=1, budget=rule['triangles'], policy=policies[obj],
                                locked_vertices=int(locks[np.unique(tris[tri_o == obj])].sum())) for obj, rule in selected.items()])
     log(f"  scene requested triangles {requested}, ceiling {allocation.ceiling}")
+    double = [i for i, name in enumerate(allocation.material_names) if name in allocation.double_sided]
     emitted, consumed, shared = _shared_passes(pos, rgb, tris, labels, tri_o, selected, policies, parts, locks,
-                                       deviation, options, allocation.shade_shared or allocation.shade, allocation.shapes)
+                                       deviation, options, allocation.shade_shared or allocation.shade, allocation.shapes,
+                                       double)
     shared_objects = {obj for entry in shared for obj in entry['objects']}
     report['meshes'] = [row for obj, row in zip(selected, report['meshes']) if obj not in shared_objects]
     for entry in shared:
@@ -353,7 +357,8 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
             used, local = np.unique(tris[sel], return_inverse=True)
             local = local.reshape(-1, 3)
             stand_in, candidates = best_stand_in(pos[used], rgb[used], local, labels[sel], budget,
-                colour_weight(pos[used], local, budget, deviation), options, locks[used] if np.any(locks[used]) else None)
+                colour_weight(pos[used], local, budget, deviation), options, locks[used] if np.any(locks[used]) else None,
+                double)
             result = stand_in.positions, stand_in.rgb, stand_in.tris, stand_in.materials
         else:
             result = _run_pass(pos, rgb, tris[sel], labels[sel], budget, deviation, options,

@@ -221,16 +221,26 @@ and crops where pixels differ.
 
 #### Stand-ins
 
-Each carved shape tries regular edge simplification and a plane proxy at its
-own budget. The proxy joins nearby, parallel thin parts into double-sided
-rectangles and simplifies the remaining parts into the unused budget.
+Each carved shape tries three candidates at its own budget:
+
+| Candidate | Applies to | Geometry |
+|---|---|---|
+| `regular` | Every shape | Edge simplification of the whole shape. |
+| `plane` | Nearby, parallel thin parts (planks, slats) | Each joined group becomes a double-sided rectangle; the other parts are simplified into the unused budget. |
+| `sheet` | A thin closed slab (cloth, banners) | One of the slab's two sides, simplified as an open sheet, so its border keeps the slab's outline. |
+
+Simplifying a closed slab shrinks its outline, because nothing holds the rim.
+The sheet keeps one side, cut from the other at folds sharper than `FOLD_COS`.
+Its open border can only move along itself. Faces of a material that is not in
+`double_sided` get both windings, so the sheet is seen from behind; the sheet
+then simplifies to half the budget.
 
 Each candidate is drawn unlit from the cube's face, edge and corner directions.
 The mean CIE76 error against the source averages black and white backgrounds.
 Equal errors within `ERROR_TIE` favour regular simplification.
 
-Any locked vertex excludes the plane proxy. Without joinable plates, regular
-simplification runs alone and skips scoring. Copies share the chosen local
+Any locked vertex excludes the plane and the sheet. When neither applies,
+regular simplification runs alone and skips scoring. Copies share the chosen local
 geometry and retain their own placements.
 
 `r3d/objects/stand_ins.py` owns the thresholds:
@@ -243,13 +253,15 @@ geometry and retain their own placements.
 | `PARALLEL_COS` | 0.97 | Allow small differences in plate normals. |
 | `PLANE_SHARE` | 0.02 | Bound plane separation by the shape's diagonal. |
 | `TOUCH_SHARE` | 0.03 | Join plates separated by small gaps relative to that diagonal. |
+| `FOLD_COS` | 0.2 | Faces meeting at a fold sharper than about 78 degrees lie on different sides: a slab's rim meets its sides at about 90. |
+| `SIDE_SHARE` | 0.4 | A slab's two sides each hold at least this share of its area; the rim holds the rest. |
 | `ERROR_TIE` | 1e-9 | Keep candidate order for numerically equal errors. |
 
 Allocation mesh and pass rows include the choice:
 
 | Field | Meaning |
 |---|---|
-| `stand_in` | Chosen kind: `regular` or `plane`. |
+| `stand_in` | Chosen kind: `regular`, `plane` or `sheet`. |
 | `stand_ins` | Candidate rows in preference order. |
 | `stand_ins[].kind` | Candidate kind. |
 | `stand_ins[].triangles` | Emitted triangles per copy. |
