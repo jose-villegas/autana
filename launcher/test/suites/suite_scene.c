@@ -3582,20 +3582,25 @@ test_mesh_reader_refuses_levels_out_of_order(void) {
 }
 
 /* rig.mesh's levels with the morph entry beside them: a shift per cluster, an
- * int8 delta per axis per vertex, and per vertex the colour it takes. Each
- * part is padded to the entry's alignment. */
+ * int8 delta per axis per vertex, and per vertex the coarse triangle and two
+ * corner weights it lands on. The deltas are padded to the entry's alignment;
+ * the landing part is not. */
 enum {
     MORPH_ALIGN = 4,
     MORPH_VALUES = RIG_VERTICES * 3,
-    MORPH_COLOUR_BASE = 0x80,
     MORPH_CLUSTERS = 2,
     MORPH_SHIFTS_AT = LMOR_HEADER_SIZE,
     MORPH_DELTAS_AT = MORPH_SHIFTS_AT + MORPH_ALIGN * ((MORPH_CLUSTERS + MORPH_ALIGN - 1) / MORPH_ALIGN),
     MORPH_PART = MORPH_ALIGN * ((MORPH_VALUES + MORPH_ALIGN - 1) / MORPH_ALIGN),
-    MORPH_COLOURS_AT = MORPH_DELTAS_AT + MORPH_PART,
-    MORPH_PLAIN_BYTES = MORPH_COLOURS_AT,
-    MORPH_COLOURED_BYTES = MORPH_COLOURS_AT + MORPH_PART,
-    MORPH_UNKNOWN_FLAG = LMOR_COLOURS << 1,
+    MORPH_LANDING_AT = MORPH_DELTAS_AT + MORPH_PART,
+    MORPH_PLAIN_BYTES = MORPH_LANDING_AT,
+    MORPH_LANDED_BYTES = MORPH_LANDING_AT + RIG_VERTICES * LMOR_LANDING_SIZE,
+    MORPH_UNKNOWN_FLAG = LMOR_LANDING << 1,
+    MORPH_LANDING_TRIANGLE_AT = 0,
+    MORPH_LANDING_WEIGHT_AT = 2,
+    MORPH_LAST_VERTEX = RIG_VERTICES - 1,
+    MORPH_TRIANGLES = 2 * QUAD_TRIANGLES,
+    MORPH_LAST_TRIANGLE = MORPH_LAST_VERTEX % MORPH_TRIANGLES,
 };
 
 static uint8_t* morph_entry;
@@ -3607,23 +3612,34 @@ release_morph(void) {
     release_levelled();
 }
 
-/* The entry, sized for colours or not, with the marks the reader reports back. */
+/* Where vertex `v`'s landing point starts in the entry. */
+static size_t
+landing_at(int v) {
+    return MORPH_LANDING_AT + (size_t)v * LMOR_LANDING_SIZE;
+}
+
+/* The entry, with a landing part or not, and the marks the reader reports back. Vertex v lands on
+ * triangle v (wrapped to the mesh) with weights v and 1, well inside the whole. */
 static void
-make_morph_entry(bool colours) {
+make_morph_entry(bool landing) {
     free(morph_entry);
-    morph_entry = calloc(1, MORPH_COLOURED_BYTES);
+    morph_entry = calloc(1, MORPH_LANDED_BYTES);
     suite_set_test_cleanup(release_morph);
     TEST_ASSERT_NOT_NULL(morph_entry);
     _Static_assert(LMOR_AXES == 3, "MORPH_VALUES counts three axes");
     test_pack_put16(morph_entry + LMOR_AT_VERSION, LMOR_VERSION);
-    test_pack_put16(morph_entry + LMOR_AT_FLAGS, colours ? LMOR_COLOURS : 0);
+    test_pack_put16(morph_entry + LMOR_AT_FLAGS, landing ? LMOR_LANDING : 0);
     test_pack_put32(morph_entry + LMOR_AT_CLUSTER_COUNT, MORPH_CLUSTERS);
     test_pack_put32(morph_entry + LMOR_AT_VERTEX_COUNT, RIG_VERTICES);
     morph_entry[MORPH_SHIFTS_AT] = 1;
     morph_entry[MORPH_SHIFTS_AT + 1] = LMOR_SHIFT_MAX;
     for (int i = 0; i < MORPH_VALUES; i++) {
         morph_entry[MORPH_DELTAS_AT + i] = (uint8_t)(i + 1);
-        morph_entry[MORPH_COLOURS_AT + i] = (uint8_t)(MORPH_COLOUR_BASE + i);
+    }
+    for (int v = 0; v < RIG_VERTICES; v++) {
+        test_pack_put16(morph_entry + landing_at(v) + MORPH_LANDING_TRIANGLE_AT, (uint16_t)(v % MORPH_TRIANGLES));
+        morph_entry[landing_at(v) + MORPH_LANDING_WEIGHT_AT] = (uint8_t)v;
+        morph_entry[landing_at(v) + MORPH_LANDING_WEIGHT_AT + 1] = 1;
     }
 }
 
@@ -3641,23 +3657,35 @@ static void
 expect_no_morph(const r3d_lit_mesh_t* mesh) {
     TEST_ASSERT_NULL(mesh->morph_shift);
     TEST_ASSERT_NULL(mesh->morph_delta);
-    TEST_ASSERT_NULL(mesh->morph_colors);
+    TEST_ASSERT_NULL(mesh->morph_landing);
 }
 
 static void
 test_morph_reader_attaches_a_well_formed_entry(void) {
     r3d_lit_mesh_t mesh = levelled_mesh_for_morph();
-    for (int colours = 0; colours <= 1; colours++) {
-        make_morph_entry(colours != 0);
-        const asset_view_t view = {morph_entry, colours ? MORPH_COLOURED_BYTES : MORPH_PLAIN_BYTES};
+    for (int landing = 0; landing <= 1; landing++) {
+        make_morph_entry(landing != 0);
+        const asset_view_t view = {morph_entry, landing ? MORPH_LANDED_BYTES : MORPH_PLAIN_BYTES};
         TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_morph_from_asset(&view, &mesh));
         TEST_ASSERT_EQUAL_PTR(morph_entry + MORPH_SHIFTS_AT, mesh.morph_shift);
         TEST_ASSERT_EQUAL_PTR(morph_entry + MORPH_DELTAS_AT, mesh.morph_delta);
-        TEST_ASSERT_EQUAL_PTR(colours ? morph_entry + MORPH_COLOURS_AT : NULL, mesh.morph_colors);
+        TEST_ASSERT_EQUAL_PTR(landing ? morph_entry + MORPH_LANDING_AT : NULL, mesh.morph_landing);
         TEST_ASSERT_EQUAL_INT8(1, mesh.morph_delta[0][0]);
         TEST_ASSERT_EQUAL_INT8(MORPH_VALUES, mesh.morph_delta[RIG_VERTICES - 1][2]);
         TEST_ASSERT_EQUAL_UINT8(LMOR_SHIFT_MAX, mesh.morph_shift[MORPH_CLUSTERS - 1]);
     }
+}
+
+static void
+test_morph_reader_exposes_each_vertexs_landing_triangle_and_weights(void) {
+    r3d_lit_mesh_t mesh = levelled_mesh_for_morph();
+    make_morph_entry(true);
+    const asset_view_t view = {morph_entry, MORPH_LANDED_BYTES};
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_morph_from_asset(&view, &mesh));
+    TEST_ASSERT_EQUAL_UINT16(0, mesh.morph_landing[0].triangle);
+    TEST_ASSERT_EQUAL_UINT16(MORPH_LAST_TRIANGLE, mesh.morph_landing[MORPH_LAST_VERTEX].triangle);
+    TEST_ASSERT_EQUAL_UINT8(MORPH_LAST_VERTEX, mesh.morph_landing[MORPH_LAST_VERTEX].weight[0]);
+    TEST_ASSERT_EQUAL_UINT8(1, mesh.morph_landing[MORPH_LAST_VERTEX].weight[1]);
 }
 
 /* Each break of the entry, made to a copy of a good one; a refusal clears what an earlier success attached. */
@@ -3665,9 +3693,9 @@ static void
 test_morph_reader_refuses_malformed_entries_and_leaves_no_pointers(void) {
     r3d_lit_mesh_t mesh = levelled_mesh_for_morph();
     make_morph_entry(true);
-    uint8_t good[MORPH_COLOURED_BYTES];
+    uint8_t good[MORPH_LANDED_BYTES];
     memcpy(good, morph_entry, sizeof good);
-    const asset_view_t whole = {morph_entry, MORPH_COLOURED_BYTES};
+    const asset_view_t whole = {morph_entry, MORPH_LANDED_BYTES};
     TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_morph_from_asset(&whole, &mesh));
 
     static const struct {
@@ -3677,15 +3705,15 @@ test_morph_reader_refuses_malformed_entries_and_leaves_no_pointers(void) {
         int size;
         asset_status_t status;
     } breaks[] = {
-        {LMOR_AT_VERSION, LMOR_VERSION + 1, 2, MORPH_COLOURED_BYTES, ASSET_ERR_VERSION},
-        {LMOR_AT_FLAGS, MORPH_UNKNOWN_FLAG, 2, MORPH_COLOURED_BYTES, ASSET_ERR_FORMAT},
-        {LMOR_AT_FLAGS, LMOR_COLOURS | MORPH_UNKNOWN_FLAG, 2, MORPH_COLOURED_BYTES, ASSET_ERR_FORMAT},
-        {LMOR_AT_CLUSTER_COUNT, MORPH_CLUSTERS - 1, 4, MORPH_COLOURED_BYTES, ASSET_ERR_FORMAT},
-        {LMOR_AT_VERTEX_COUNT, RIG_VERTICES + 1, 4, MORPH_COLOURED_BYTES, ASSET_ERR_FORMAT},
-        {MORPH_SHIFTS_AT, LMOR_SHIFT_MAX + 1, 1, MORPH_COLOURED_BYTES, ASSET_ERR_FORMAT},
-        {MORPH_SHIFTS_AT + 1, UINT8_MAX, 1, MORPH_COLOURED_BYTES, ASSET_ERR_FORMAT},
-        {LMOR_AT_VERSION, LMOR_VERSION, 2, MORPH_COLOURED_BYTES - MORPH_ALIGN, ASSET_ERR_BOUNDS},
-        {LMOR_AT_VERSION, LMOR_VERSION, 2, MORPH_COLOURED_BYTES + MORPH_ALIGN, ASSET_ERR_BOUNDS},
+        {LMOR_AT_VERSION, LMOR_VERSION + 1, 2, MORPH_LANDED_BYTES, ASSET_ERR_VERSION},
+        {LMOR_AT_FLAGS, MORPH_UNKNOWN_FLAG, 2, MORPH_LANDED_BYTES, ASSET_ERR_FORMAT},
+        {LMOR_AT_FLAGS, LMOR_LANDING | MORPH_UNKNOWN_FLAG, 2, MORPH_LANDED_BYTES, ASSET_ERR_FORMAT},
+        {LMOR_AT_CLUSTER_COUNT, MORPH_CLUSTERS - 1, 4, MORPH_LANDED_BYTES, ASSET_ERR_FORMAT},
+        {LMOR_AT_VERTEX_COUNT, RIG_VERTICES + 1, 4, MORPH_LANDED_BYTES, ASSET_ERR_FORMAT},
+        {MORPH_SHIFTS_AT, LMOR_SHIFT_MAX + 1, 1, MORPH_LANDED_BYTES, ASSET_ERR_FORMAT},
+        {MORPH_SHIFTS_AT + 1, UINT8_MAX, 1, MORPH_LANDED_BYTES, ASSET_ERR_FORMAT},
+        {LMOR_AT_VERSION, LMOR_VERSION, 2, MORPH_LANDED_BYTES - 1, ASSET_ERR_BOUNDS},
+        {LMOR_AT_VERSION, LMOR_VERSION, 2, MORPH_LANDED_BYTES + MORPH_ALIGN, ASSET_ERR_BOUNDS},
         {LMOR_AT_VERSION, LMOR_VERSION, 2, MORPH_PLAIN_BYTES, ASSET_ERR_BOUNDS},
     };
 
@@ -3706,19 +3734,53 @@ test_morph_reader_refuses_malformed_entries_and_leaves_no_pointers(void) {
     }
 }
 
+/* Weights summing to exactly the whole are accepted; one past it is not. */
 static void
-test_morph_reader_refuses_colours_for_a_mesh_without_vertex_colours(void) {
+test_morph_reader_bounds_landing_weights_by_the_whole(void) {
     r3d_lit_mesh_t mesh = levelled_mesh_for_morph();
     make_morph_entry(true);
-    const asset_view_t view = {morph_entry, MORPH_COLOURED_BYTES};
+    const asset_view_t view = {morph_entry, MORPH_LANDED_BYTES};
+    const size_t weights = landing_at(MORPH_LAST_VERTEX) + MORPH_LANDING_WEIGHT_AT;
+    morph_entry[weights] = LMOR_WEIGHT_WHOLE - 1;
+    morph_entry[weights + 1] = 1;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_morph_from_asset(&view, &mesh));
-    mesh.colors = NULL;
+    morph_entry[weights + 1] = 2;
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, r3d_lit_mesh_morph_from_asset(&view, &mesh));
+    expect_no_morph(&mesh);
+    morph_entry[weights] = LMOR_WEIGHT_WHOLE;
+    morph_entry[weights + 1] = LMOR_WEIGHT_WHOLE;
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, r3d_lit_mesh_morph_from_asset(&view, &mesh));
+    expect_no_morph(&mesh);
+}
+
+static void
+test_morph_reader_refuses_a_landing_on_a_triangle_the_mesh_lacks(void) {
+    r3d_lit_mesh_t mesh = levelled_mesh_for_morph();
+    make_morph_entry(true);
+    const asset_view_t view = {morph_entry, MORPH_LANDED_BYTES};
+    const size_t triangle = landing_at(MORPH_LAST_VERTEX) + MORPH_LANDING_TRIANGLE_AT;
+    test_pack_put16(morph_entry + triangle, (uint16_t)(mesh.triangle_count - 1));
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_morph_from_asset(&view, &mesh));
+    TEST_ASSERT_EQUAL_UINT16(mesh.triangle_count - 1, mesh.morph_landing[MORPH_LAST_VERTEX].triangle);
+    test_pack_put16(morph_entry + triangle, (uint16_t)mesh.triangle_count);
+    TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, r3d_lit_mesh_morph_from_asset(&view, &mesh));
+    expect_no_morph(&mesh);
+}
+
+static void
+test_morph_reader_refuses_a_landing_for_a_face_coloured_mesh(void) {
+    r3d_lit_mesh_t mesh = levelled_mesh_for_morph();
+    make_morph_entry(true);
+    const asset_view_t view = {morph_entry, MORPH_LANDED_BYTES};
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_morph_from_asset(&view, &mesh));
+    static const uint16_t face_colour[1] = {0};
+    mesh.face_colors = face_colour;
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_FORMAT, r3d_lit_mesh_morph_from_asset(&view, &mesh));
     expect_no_morph(&mesh);
     make_morph_entry(false);
     const asset_view_t plain = {morph_entry, MORPH_PLAIN_BYTES};
     TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_morph_from_asset(&plain, &mesh));
-    TEST_ASSERT_NULL(mesh.morph_colors);
+    TEST_ASSERT_NULL(mesh.morph_landing);
 }
 
 static void
@@ -4969,7 +5031,10 @@ run_scene_suite(void) {
     RUN_TEST(test_mesh_open_resolves_optional_levels);
     RUN_TEST(test_morph_reader_attaches_a_well_formed_entry);
     RUN_TEST(test_morph_reader_refuses_malformed_entries_and_leaves_no_pointers);
-    RUN_TEST(test_morph_reader_refuses_colours_for_a_mesh_without_vertex_colours);
+    RUN_TEST(test_morph_reader_exposes_each_vertexs_landing_triangle_and_weights);
+    RUN_TEST(test_morph_reader_bounds_landing_weights_by_the_whole);
+    RUN_TEST(test_morph_reader_refuses_a_landing_on_a_triangle_the_mesh_lacks);
+    RUN_TEST(test_morph_reader_refuses_a_landing_for_a_face_coloured_mesh);
     RUN_TEST(test_morph_reader_refuses_a_mesh_without_levels);
     RUN_TEST(test_clip_bind_failure_names_the_first_rejected_clip);
     RUN_TEST(test_skinned_scene_draws_clip_output_and_reskins_from_bind);

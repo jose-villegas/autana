@@ -354,10 +354,10 @@ def morph_blob(blob, levels):
     from r3d import morph_asset
     from r3d.lod.morph import read_targets
     mesh = read_lit_mesh(blob, levels)
-    target, colours = read_targets(mesh)
+    target, landing = read_targets(mesh)
     shifts, deltas = morph_deltas(mesh.pos, target, mesh.clusters, [parent for _, parent in mesh.lod])
-    colours = None if colours is None else colours.reshape(-1).tolist()
-    return morph_asset.encode(shifts, deltas.reshape(-1).tolist(), colours)
+    landing = None if landing is None else [tuple(row) for row in landing.tolist()]
+    return morph_asset.encode(shifts, deltas.reshape(-1).tolist(), landing)
 
 
 def morph_deltas(pos, target, clusters, parents):

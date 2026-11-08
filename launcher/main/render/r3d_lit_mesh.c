@@ -11,6 +11,7 @@
 #include "render/lmor_format.h"
 
 /* The entry's bytes are the structs' own layout, written by lit_mesh.py. */
+_Static_assert(sizeof(r3d_lit_landing_t) == LMOR_LANDING_SIZE, "a landing point is LMOR_LANDING_SIZE bytes");
 _Static_assert(sizeof(r3d_lit_cluster_t) == 22 && offsetof(r3d_lit_cluster_t, bounds) == 8
                    && offsetof(r3d_lit_cluster_t, double_sided) == 20,
                "r3d_lit_cluster_t is not the layout lit_mesh.py writes");
@@ -248,7 +249,7 @@ asset_status_t
 r3d_lit_mesh_morph_from_asset(const asset_view_t* morph, r3d_lit_mesh_t* mesh) {
     mesh->morph_shift = NULL;
     mesh->morph_delta = NULL;
-    mesh->morph_colors = NULL;
+    mesh->morph_landing = NULL;
     const asset_status_t status =
         asset_entry_validate(*morph, LMOR_VERSION, LMOR_AT_VERSION, LMOR_HEADER_SIZE, ENTRY_ALIGNMENT);
     if (status != ASSET_OK) {
@@ -258,13 +259,13 @@ r3d_lit_mesh_morph_from_asset(const asset_view_t* morph, r3d_lit_mesh_t* mesh) {
     const uint32_t clusters = asset_read_u32(morph->data + LMOR_AT_CLUSTER_COUNT);
     const uint32_t vertices = asset_read_u32(morph->data + LMOR_AT_VERTEX_COUNT);
     if (mesh->cluster_lod == NULL || clusters != (uint32_t)mesh->cluster_count
-        || vertices != (uint32_t)mesh->vertex_count || (flags & ~LMOR_COLOURS) != 0
-        || ((flags & LMOR_COLOURS) != 0 && mesh->colors == NULL)) {
+        || vertices != (uint32_t)mesh->vertex_count || (flags & ~LMOR_LANDING) != 0
+        || ((flags & LMOR_LANDING) != 0 && mesh->face_colors != NULL)) {
         return ASSET_ERR_FORMAT;
     }
     const uint64_t deltas_at = LMOR_HEADER_SIZE + padded(clusters);
-    const uint64_t colours_at = deltas_at + padded((uint64_t)vertices * LMOR_AXES);
-    const uint64_t end = colours_at + ((flags & LMOR_COLOURS) != 0 ? padded((uint64_t)vertices * LMOR_AXES) : 0U);
+    const uint64_t landing_at = deltas_at + padded((uint64_t)vertices * LMOR_AXES);
+    const uint64_t end = landing_at + ((flags & LMOR_LANDING) != 0 ? (uint64_t)vertices * LMOR_LANDING_SIZE : 0U);
     if (end != morph->size) {
         return ASSET_ERR_BOUNDS;
     }
@@ -274,9 +275,16 @@ r3d_lit_mesh_morph_from_asset(const asset_view_t* morph, r3d_lit_mesh_t* mesh) {
             return ASSET_ERR_FORMAT;
         }
     }
+    const r3d_lit_landing_t* landing = (flags & LMOR_LANDING) != 0 ? (const void*)(morph->data + landing_at) : NULL;
+    for (uint32_t v = 0; landing != NULL && v < vertices; v++) {
+        if (landing[v].triangle >= mesh->triangle_count
+            || landing[v].weight[0] + landing[v].weight[1] > (int)LMOR_WEIGHT_WHOLE) {
+            return ASSET_ERR_FORMAT;
+        }
+    }
     mesh->morph_shift = shift;
     mesh->morph_delta = (const void*)(morph->data + deltas_at);
-    mesh->morph_colors = (flags & LMOR_COLOURS) != 0 ? (const void*)(morph->data + colours_at) : NULL;
+    mesh->morph_landing = landing;
     return ASSET_OK;
 }
 

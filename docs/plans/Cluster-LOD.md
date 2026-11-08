@@ -124,10 +124,14 @@ sibling ([`lod/morph.py`](../../launcher/tools/r3d/lod/morph.py)). The
 
 | Target | Rule |
 |---|---|
-| Kept vertex | The coarse vertex it became, matched within the group's error |
-| Removed vertex | The nearest point on the parent's coarse triangles facing its way |
-| Open border, or a position another parent's clusters share | Stays put, so clusters blending by different amounts never crack |
-| Colour | The coarse colour where the vertex lands; only meshes with vertex colours carry it |
+| Kept vertex | The coarse vertex it became: each coarse vertex claims the nearest fine one within the group's error, nearer pairs first |
+| Removed vertex | The nearest point on the parent's coarse triangles, one facing its way when such a point is within the group's error of the nearest |
+| Colour | The coarse colour where the vertex lands, from its landing point; meshes with face colours blend positions only |
+
+A border between groups is locked, so its vertices are kept and land on
+themselves: clusters blending by different amounts never crack. A target
+on a coarse level that is itself blending moves with it
+(`R3D_LOD_MORPH_CHAIN` levels), so the switch lands on the surface drawn.
 
 The table renders each path with the finest level, the pick's switches drawn
 as they are, and blended, scored as the coverage cap's is. Vertices blended

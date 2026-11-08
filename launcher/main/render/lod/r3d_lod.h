@@ -81,6 +81,9 @@ float r3d_lod_group_coverage(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
 #define R3D_LOD_MORPH_COVER_RAMP 0.25F
 /* A weight's whole: the transform's fixed-point unit. */
 #define R3D_LOD_MORPH_ONE        128
+/* Levels of coarse blending a target follows: a target on a level that is
+ * itself blending moves with it. */
+#define R3D_LOD_MORPH_CHAIN      2
 
 /* One instance's blend through one lens; `enabled` false draws no blend. */
 typedef struct r3d_lod_morph {

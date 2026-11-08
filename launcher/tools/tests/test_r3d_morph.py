@@ -16,7 +16,7 @@ from r3d import lit_mesh, mesh_asset, mesh_bundle, morph_asset
 from r3d.geometry import closest_point_on_triangles
 from r3d.lod import morph
 from r3d.lod.bake_levels import bake_lit_mesh, border_vertices
-from r3d.lod.morph import KEPT_SLACK_TICKS, kept_corners, open_border, read_targets, shared_positions
+from r3d.lod.morph import KEPT_SLACK_TICKS, kept_corners, landing_weights, read_targets
 from r3d.mesh_asset import LOD_NONE
 from test_r3d_lod_bake import wavy_grid
 
@@ -26,11 +26,12 @@ ROUNDING_TICKS = np.sqrt(AXES) / 2.0 + 1e-9
 Z_AXIS = 2
 TWO_CLUSTER_SHIFTS = [0, 3]
 THREE_ROWS = [1, -2, 3, -4, 5, -6, 7, 8, -9]
-THREE_COLOURS = [10, 20, 30, 40, 50, 60, 70, 80, 90]
+WHOLE = morph_asset.WEIGHT_WHOLE
+THREE_LANDING = [(0, 10, 20), (1, WHOLE, 0), (2, 0, WHOLE)]
 
 
-def entry(shifts=(0,), deltas=(1, 2, 3), colours=None):
-    return morph_asset.encode(list(shifts), list(deltas), colours)
+def entry(shifts=(0,), deltas=(1, 2, 3), landing=None):
+    return morph_asset.encode(list(shifts), list(deltas), landing)
 
 
 def patched_header(blob, version=None, flags=None, clusters=None, vertices=None):
@@ -42,16 +43,28 @@ def patched_header(blob, version=None, flags=None, clusters=None, vertices=None)
 
 
 class MorphCodecTests(unittest.TestCase):
-    def test_round_trip_without_colours(self):
+    def test_round_trip_without_landing(self):
         blob = entry(TWO_CLUSTER_SHIFTS, THREE_ROWS)
-        shifts, deltas, colours = morph_asset.decode(blob)
-        self.assertEqual((TWO_CLUSTER_SHIFTS, THREE_ROWS, None), (shifts, deltas, colours))
+        shifts, deltas, landing = morph_asset.decode(blob)
+        self.assertEqual((TWO_CLUSTER_SHIFTS, THREE_ROWS, None), (shifts, deltas, landing))
 
-    def test_round_trip_with_colours(self):
-        blob = entry(TWO_CLUSTER_SHIFTS, THREE_ROWS, THREE_COLOURS)
-        shifts, deltas, colours = morph_asset.decode(blob)
-        self.assertEqual((TWO_CLUSTER_SHIFTS, THREE_ROWS, THREE_COLOURS), (shifts, deltas, colours))
-        self.assertEqual(len(blob), len(entry(TWO_CLUSTER_SHIFTS, THREE_ROWS)) + len(THREE_COLOURS) + 3)
+    def test_round_trip_with_landing(self):
+        blob = entry(TWO_CLUSTER_SHIFTS, THREE_ROWS, THREE_LANDING)
+        shifts, deltas, landing = morph_asset.decode(blob)
+        self.assertEqual((TWO_CLUSTER_SHIFTS, THREE_ROWS, THREE_LANDING), (shifts, deltas, landing))
+        plain = len(entry(TWO_CLUSTER_SHIFTS, THREE_ROWS))
+        self.assertEqual(plain + len(THREE_LANDING) * morph_asset.LANDING_SIZE, len(blob))
+
+    def test_landing_constants_come_from_the_c_header(self):
+        self.assertEqual(morph_asset.LANDING, read_define(morph_asset.OWNER, "LMOR_LANDING"))
+        self.assertEqual(morph_asset.LANDING_SIZE, read_define(morph_asset.OWNER, "LMOR_LANDING_SIZE"))
+        self.assertEqual(morph_asset.LANDING_SIZE, morph_asset.LANDING_POINT.size)
+        self.assertEqual(WHOLE, read_define(morph_asset.OWNER, "LMOR_WEIGHT_WHOLE"))
+
+    def test_landing_weights_that_exceed_the_whole_are_refused(self):
+        morph_asset.encode([0], [0, 0, 0], [(0, WHOLE - 1, 1)])
+        with self.assertRaises(ValueError):
+            morph_asset.encode([0], [0, 0, 0], [(0, WHOLE, 1)])
 
     def test_layout_constants_come_from_the_c_header(self):
         self.assertEqual(morph_asset.HEADER.size, read_define(morph_asset.OWNER, "LMOR_HEADER_SIZE"))
@@ -59,7 +72,7 @@ class MorphCodecTests(unittest.TestCase):
         self.assertEqual(morph_asset.SHIFT_MAX, read_define(morph_asset.OWNER, "LMOR_SHIFT_MAX"))
 
     def test_decode_rejects_sizes_that_do_not_match_the_counts(self):
-        blob = entry(TWO_CLUSTER_SHIFTS, THREE_ROWS, THREE_COLOURS)
+        blob = entry(TWO_CLUSTER_SHIFTS, THREE_ROWS, THREE_LANDING)
         for bad in (blob[:morph_asset.HEADER.size - 1], blob[:-1], blob + bytes(morph_asset.ALIGN),
                     patched_header(blob, vertices=7), patched_header(blob, clusters=9)):
             with self.subTest(size=len(bad)), self.assertRaises(ValueError):
@@ -67,15 +80,15 @@ class MorphCodecTests(unittest.TestCase):
 
     def test_decode_rejects_unknown_flags_and_versions(self):
         blob = entry()
-        for bad in (patched_header(blob, flags=morph_asset.COLOURS << 1),
-                    patched_header(blob, flags=morph_asset.COLOURS | (morph_asset.COLOURS << 1)),
+        for bad in (patched_header(blob, flags=morph_asset.LANDING << 1),
+                    patched_header(blob, flags=morph_asset.LANDING | (morph_asset.LANDING << 1)),
                     patched_header(blob, version=morph_asset.VERSION + 1)):
             with self.subTest(header=bad[:morph_asset.HEADER.size]), self.assertRaises(ValueError):
                 morph_asset.decode(bad)
 
-    def test_a_flag_for_colours_the_entry_lacks_is_a_size_mismatch(self):
+    def test_a_flag_for_a_landing_part_the_entry_lacks_is_a_size_mismatch(self):
         with self.assertRaises(ValueError):
-            morph_asset.decode(patched_header(entry(), flags=morph_asset.COLOURS))
+            morph_asset.decode(patched_header(entry(), flags=morph_asset.LANDING))
 
     def test_deltas_below_the_symmetric_minimum_are_refused(self):
         self.assertEqual(morph_asset.DELTA_MIN, -morph_asset.DELTA_MAX)
@@ -93,9 +106,9 @@ class MorphCodecTests(unittest.TestCase):
             morph_asset.encode([morph_asset.SHIFT_MAX + 1], [0, 0, 0])
 
 
-def mesh_with(vertices, clusters):
-    """The LMSH header bytes `validate_mesh` reads: vertex and cluster counts."""
-    return mesh_asset.BLOB_HEADER.pack(vertices, 0, clusters, 0, 1, 0, 0, 0, 0, 0, 0)
+def mesh_with(vertices, clusters, triangles=0):
+    """The LMSH header bytes `validate_mesh` reads: vertex, triangle and cluster counts."""
+    return mesh_asset.BLOB_HEADER.pack(vertices, triangles, clusters, 0, 1, 0, 0, 0, 0, 0, 0)
 
 
 class MorphMeshBindingTests(unittest.TestCase):
@@ -107,14 +120,22 @@ class MorphMeshBindingTests(unittest.TestCase):
             with self.subTest(vertices=vertices, clusters=clusters), self.assertRaisesRegex(ValueError, "disagree"):
                 morph_asset.validate_mesh(blob, mesh_with(vertices, clusters))
 
+    def test_a_landing_triangle_must_exist_in_the_mesh(self):
+        blob = entry(TWO_CLUSTER_SHIFTS, THREE_ROWS, THREE_LANDING)
+        last = max(triangle for triangle, _, _ in THREE_LANDING)
+        counts = (len(THREE_ROWS) // AXES, len(TWO_CLUSTER_SHIFTS))
+        morph_asset.validate_mesh(blob, mesh_with(*counts, last + 1))
+        with self.assertRaisesRegex(ValueError, "triangle"):
+            morph_asset.validate_mesh(blob, mesh_with(*counts, last))
+
 
 class MorphEngineFrameTests(unittest.TestCase):
     def test_only_the_z_deltas_are_negated(self):
-        blob = entry(TWO_CLUSTER_SHIFTS, THREE_ROWS, THREE_COLOURS)
+        blob = entry(TWO_CLUSTER_SHIFTS, THREE_ROWS, THREE_LANDING)
         mirrored = engine_frame.to_engine(morph_asset.TYPE, blob)
-        shifts, deltas, colours = morph_asset.decode(mirrored)
+        shifts, deltas, landing = morph_asset.decode(mirrored)
         self.assertEqual(TWO_CLUSTER_SHIFTS, shifts)
-        self.assertEqual(THREE_COLOURS, colours)
+        self.assertEqual(THREE_LANDING, landing)
         for index, (before, after) in enumerate(zip(THREE_ROWS, deltas)):
             self.assertEqual(-before if index % AXES == Z_AXIS else before, after, f"delta {index}")
 
@@ -186,45 +207,61 @@ class MorphDeltaTests(unittest.TestCase):
 
 
 class CoarseTargetTests(unittest.TestCase):
-    """Two coarse triangles of a square in z = 0, SIZE ticks a side."""
+    """Two coarse triangles of a square in z = 0, SIZE ticks a side, numbered FIRST and FIRST + 1."""
 
     SIZE = 10.0
+    FIRST = 7
     CORNERS = np.array([[[0, 0, 0], [SIZE, 0, 0], [0, SIZE, 0]], [[SIZE, 0, 0], [SIZE, SIZE, 0], [0, SIZE, 0]]])
-    COLOURS = np.array([[[0, 0, 0], [100, 0, 0], [0, 100, 0]], [[100, 0, 0], [100, 100, 0], [0, 100, 0]]])
     UP = np.array([[0.0, 0.0, 1.0]])
     DOWN = -UP
+    REACH = 1.0
 
-    def coarse(self, colours=True):
-        return morph.Coarse(self.CORNERS, self.COLOURS if colours else None)
+    def coarse(self):
+        return morph.Coarse(self.CORNERS, [self.FIRST, self.FIRST + 1])
 
-    def test_a_row_on_a_coarse_corner_targets_that_corner_and_its_colour(self):
-        position, colour = self.coarse().targets(np.array([[10.0, 10.0, 0.0]]), self.UP)
+    def test_a_row_on_a_coarse_corner_lands_on_that_corner_of_its_triangle(self):
+        position, triangle, bary = self.coarse().land(np.array([[10.0, 10.0, 0.0]]), self.UP, self.REACH)
         np.testing.assert_array_equal([[10, 10, 0]], position)
-        np.testing.assert_array_equal([[100, 100, 0]], colour)
+        np.testing.assert_array_equal([self.FIRST + 1], triangle)
+        np.testing.assert_allclose([[0, 1, 0]], bary, atol=1e-9)
 
-    def test_a_row_off_the_surface_lands_on_it_with_the_colour_there(self):
-        position, colour = self.coarse().targets(np.array([[2.0, 3.0, 4.0]]), self.UP)
+    def test_a_row_off_the_surface_lands_on_it_with_the_weights_there(self):
+        position, triangle, bary = self.coarse().land(np.array([[2.0, 3.0, 4.0]]), self.UP, self.REACH)
         np.testing.assert_array_equal([[2, 3, 0]], position)
-        np.testing.assert_array_equal([[20, 30, 0]], colour)
+        np.testing.assert_array_equal([self.FIRST], triangle)
+        np.testing.assert_allclose([[0.5, 0.2, 0.3]], bary, atol=1e-9)
 
     def test_a_row_outside_the_surface_lands_on_its_nearest_edge(self):
-        position, _ = self.coarse(False).targets(np.array([[-5.0, 4.0, 2.0]]), self.UP)
+        position, triangle, _ = self.coarse().land(np.array([[-5.0, 4.0, 2.0]]), self.UP, self.REACH)
         np.testing.assert_array_equal([[0, 4, 0]], position)
+        np.testing.assert_array_equal([self.FIRST], triangle)
 
-    def test_colours_are_absent_when_the_coarse_level_has_none(self):
-        _, colour = self.coarse(False).targets(np.array([[2.0, 3.0, 4.0]]), self.UP)
-        self.assertIsNone(colour)
+    def test_every_row_gets_its_own_landing(self):
+        points = np.array([[2.0, 3.0, 4.0], [9.0, 9.0, 1.0]])
+        position, triangle, bary = self.coarse().land(points, np.repeat(self.UP, 2, axis=0), self.REACH)
+        np.testing.assert_array_equal([[2, 3, 0], [9, 9, 0]], position)
+        np.testing.assert_array_equal([self.FIRST, self.FIRST + 1], triangle)
+        self.assertEqual((2, 3), bary.shape)
 
-    def test_a_row_prefers_a_coarse_triangle_facing_its_way(self):
-        layers = np.array([[[0, 0, 0], [10, 0, 0], [0, 10, 0]], [[0, 0, 1], [0, 10, 1], [10, 0, 1]]], dtype=float)
-        c = morph.Coarse(layers, None)
-        # Nearer the sheet at z = 0, which faces up; a downward normal picks the sheet at z = 1 instead.
+    def layers(self):
+        sheets = np.array([[[0, 0, 0], [10, 0, 0], [0, 10, 0]], [[0, 0, 1], [0, 10, 1], [10, 0, 1]]], dtype=float)
+        return morph.Coarse(sheets, [self.FIRST, self.FIRST + 1])
+
+    def test_a_row_prefers_a_coarse_triangle_facing_its_way_within_reach(self):
+        # Nearer the sheet at z = 0, which faces up; the sheet at z = 1 faces down and is 0.2 ticks further.
         point = np.array([[2.0, 2.0, 0.4]])
-        self.assertEqual(0, c.targets(point, self.UP)[0][0, 2])
-        self.assertEqual(1, c.targets(point, self.DOWN)[0][0, 2])
+        up = self.layers().land(point, self.UP, self.REACH)
+        down = self.layers().land(point, self.DOWN, self.REACH)
+        self.assertEqual((0, self.FIRST), (up[0][0, 2], up[1][0]))
+        self.assertEqual((1, self.FIRST + 1), (down[0][0, 2], down[1][0]))
+
+    def test_the_nearest_triangle_wins_when_the_facing_one_is_beyond_reach(self):
+        point = np.array([[2.0, 2.0, 0.4]])
+        position, triangle, _ = self.layers().land(point, self.DOWN, 0.1)
+        self.assertEqual((0, self.FIRST), (position[0, 2], triangle[0]))
 
 
-class KeptAndBorderTests(unittest.TestCase):
+class KeptCornerTests(unittest.TestCase):
     REACH = 3.0
 
     def test_a_point_and_a_coarse_vertex_that_are_each_others_nearest_within_reach_are_one_vertex(self):
@@ -242,14 +279,32 @@ class KeptAndBorderTests(unittest.TestCase):
         corners = np.array([[0.0, 0.0, 2.0]])
         np.testing.assert_array_equal([-1, 0], kept_corners(points, corners, self.REACH))
 
+    def test_of_two_corners_near_one_point_the_nearer_claims_it_and_the_other_takes_its_next_point(self):
+        points = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 2.5]])
+        near, far = [0.0, 0.0, 0.5], [0.0, 0.0, 1.0]
+        np.testing.assert_array_equal([0, 1], kept_corners(points, np.array([near, far]), self.REACH))
+        np.testing.assert_array_equal([1, 0], kept_corners(points, np.array([far, near]), self.REACH))
+
+    def test_a_corner_with_no_unclaimed_point_within_reach_keeps_nothing(self):
+        points = np.array([[0.0, 0.0, 0.0]])
+        corners = np.array([[0.0, 0.0, 1.0], [0.0, 0.0, 0.5]])
+        np.testing.assert_array_equal([1], kept_corners(points, corners, self.REACH))
+
     def test_the_slack_past_the_error_is_positive(self):
         self.assertGreater(KEPT_SLACK_TICKS, 0)
 
-    def test_only_points_on_an_edge_one_triangle_uses_are_on_the_open_border(self):
-        quad = np.array([[0, 1, 2], [1, 3, 2]])
-        np.testing.assert_array_equal([True] * 4, open_border(quad, 4))
-        fan = np.array([[0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 4, 1]])
-        np.testing.assert_array_equal([False, True, True, True, True], open_border(fan, 5))
+
+class LandingWeightTests(unittest.TestCase):
+    def test_two_weights_out_of_the_whole_and_the_third_is_the_rest(self):
+        bary = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [0.5, 0.25, 0.25]])
+        first, second = landing_weights(bary)
+        self.assertEqual([WHOLE, 0, 0, round(WHOLE * 0.5)], first.tolist())
+        self.assertEqual([0, WHOLE, 0, round(WHOLE * 0.25)], second.tolist())
+
+    def test_rounding_never_pushes_the_pair_past_the_whole(self):
+        bary = np.array([[0.5, 0.5, 0.0], [1 / 3, 1 / 3, 1 / 3]])
+        first, second = landing_weights(bary)
+        self.assertLessEqual((first + second).max(), WHOLE)
 
 
 class PushedVertexTests(unittest.TestCase):
@@ -275,21 +330,31 @@ class PushedVertexTests(unittest.TestCase):
                    (first, first + 3, first + 1)]
         box = np.zeros(3)
         return SimpleNamespace(
-            pos=np.array(grid + coarse), rgb=None, tris=np.array(fine + pyramid),
+            pos=np.array(grid + coarse), rgb=None, face_colors=None, tris=np.array(fine + pyramid),
             clusters=[(0, first, 0, len(fine), box, box, False), (first, len(coarse), len(fine), len(pyramid), box, box, False)],
             lod=[(LOD_NONE, 0), (0, LOD_NONE)], groups=np.array([[self.SPACING, self.SPACING, 0, 20, self.PUSH]]))
 
     def test_a_kept_interior_vertex_lands_on_its_pushed_coarse_vertex(self):
         mesh = self.mesh()
-        target, _ = read_targets(mesh)
+        target, landing = read_targets(mesh)
         np.testing.assert_array_equal([self.SPACING, self.SPACING, self.PUSH], target[self.CENTRE])
+        self.assertEqual(len(mesh.pos), len(landing))
 
-    def test_the_rows_on_the_fine_patch_border_stay_put_and_the_coarse_cluster_targets_itself(self):
+    def test_the_kept_vertex_lands_on_a_coarse_triangle_with_its_whole_weight_on_the_apex(self):
         mesh = self.mesh()
-        target, _ = read_targets(mesh)
-        for row in range(len(mesh.pos)):
-            if row != self.CENTRE:
-                np.testing.assert_array_equal(mesh.pos[row], target[row], f"row {row}")
+        _, landing = read_targets(mesh)
+        triangle, first, second = (int(v) for v in landing[self.CENTRE])
+        self.assertIn(triangle, range(len(mesh.tris) - 4, len(mesh.tris)))
+        apex = len(mesh.pos) - 5
+        corner = list(mesh.tris[triangle]).index(apex)
+        self.assertEqual(WHOLE, [first, second, WHOLE - first - second][corner])
+
+    def test_a_face_coloured_mesh_has_no_landing(self):
+        mesh = self.mesh()
+        mesh.face_colors = np.zeros((len(mesh.tris), 3), dtype=int)
+        target, landing = read_targets(mesh)
+        self.assertIsNone(landing)
+        np.testing.assert_array_equal([self.SPACING, self.SPACING, self.PUSH], target[self.CENTRE])
 
 
 def parent_of(mesh):
@@ -305,6 +370,15 @@ def coarse_corners(mesh, group):
     return np.concatenate(out).astype(np.float64)
 
 
+def coarse_triangle_numbers(mesh, group):
+    """The mesh triangle numbers of the clusters simplified from `group`."""
+    out = []
+    for (first, count, tri_first, tri_count, *_), (own, _) in zip(mesh.clusters, mesh.lod):
+        if own == group:
+            out.extend(range(tri_first, tri_first + tri_count))
+    return out
+
+
 def distance_to_triangles(point, corners):
     rows = np.repeat(point[None].astype(np.float64), len(corners), axis=0)
     _, distance = closest_point_on_triangles(rows, corners[:, 0], corners[:, 1], corners[:, 2])
@@ -318,18 +392,16 @@ class BakedMorphTargetTests(unittest.TestCase):
         baked = bake_lit_mesh(points, rgb, triangles, double, lod=True)
         cls.blob, cls.levels_blob = lit_mesh.mesh_blob(baked), lit_mesh.lod_blob(baked)
         cls.mesh = lit_mesh.read_lit_mesh(cls.blob, cls.levels_blob)
-        cls.target, cls.colour = read_targets(cls.mesh)
+        cls.target, cls.landing = read_targets(cls.mesh)
         cls.plain = lit_mesh.bake_lit_mesh(points, rgb, triangles, double)
 
     def cluster_rows(self, c):
         first, count = self.mesh.clusters[c][:2]
         return np.arange(first, first + count)
 
-    def test_a_mesh_with_levels_has_a_target_and_colour_for_every_row(self):
+    def test_a_mesh_with_levels_has_a_target_and_landing_for_every_row(self):
         self.assertEqual(self.mesh.pos.shape, self.target.shape)
-        self.assertEqual(self.mesh.rgb.shape, self.colour.shape)
-        self.assertGreaterEqual(int(self.colour.min()), 0)
-        self.assertLessEqual(int(self.colour.max()), 255)
+        self.assertEqual((len(self.mesh.pos), AXES), self.landing.shape)
 
     def test_the_bundle_carries_a_morph_entry_only_with_levels(self):
         kinds = [kind for _, kind, _ in mesh_bundle.mesh_entries("m", self.plain)]
@@ -339,31 +411,31 @@ class BakedMorphTargetTests(unittest.TestCase):
         entries = mesh_bundle.mesh_entries("m", levelled)
         self.assertIn(("m.morph", morph_asset.TYPE), [(name, kind) for name, kind, _ in entries])
 
-    def stay_put_positions(self, parent):
-        """Positions that keep their place under `parent`: its fine patch's open border, and any shared one."""
-        members = [c for c, (_, p) in enumerate(self.mesh.lod) if p == parent]
-        tris = np.concatenate([self.cluster_triangles(c) for c in members])
-        places, ids = np.unique(self.mesh.pos[tris.reshape(-1)], axis=0, return_inverse=True)
-        edge = open_border(ids.reshape(-1, 3), len(places))
-        held = {tuple(p) for p in places[edge]}
-        return held | {tuple(p) for p in shared_positions(self.mesh, self.mesh.pos)}
-
-    def test_every_row_with_a_parent_targets_the_coarse_triangles_unless_its_place_is_held(self):
-        on_surface = held = 0
+    def test_every_row_with_a_parent_targets_a_point_on_the_parents_coarse_triangles(self):
+        checked = 0
         for c, (_, parent) in enumerate(self.mesh.lod):
             if parent == LOD_NONE:
                 continue
             corners = coarse_corners(self.mesh, parent)
-            stay = self.stay_put_positions(parent)
             for row in self.cluster_rows(c):
-                if distance_to_triangles(self.target[row], corners) <= ROUNDING_TICKS:
-                    on_surface += 1
-                    continue
-                self.assertIn(tuple(self.mesh.pos[row]), stay, f"cluster {c} row {row} is off the surface")
-                np.testing.assert_array_equal(self.mesh.pos[row], self.target[row])
-                held += 1
-        self.assertGreater(on_surface, 0)
-        self.assertGreater(held, 0)
+                self.assertLessEqual(distance_to_triangles(self.target[row], corners), ROUNDING_TICKS,
+                                     f"cluster {c} row {row} is off the surface")
+                checked += 1
+        self.assertGreater(checked, 0)
+
+    def test_every_landing_is_one_of_the_parents_coarse_triangles_with_valid_weights(self):
+        checked = 0
+        for c, (_, parent) in enumerate(self.mesh.lod):
+            if parent == LOD_NONE:
+                continue
+            numbers = set(coarse_triangle_numbers(self.mesh, parent))
+            for row in self.cluster_rows(c):
+                triangle, first, second = (int(v) for v in self.landing[row])
+                self.assertIn(triangle, numbers, f"cluster {c} row {row}")
+                self.assertGreaterEqual(min(first, second), 0)
+                self.assertLessEqual(first + second, WHOLE)
+                checked += 1
+        self.assertGreater(checked, 0)
 
     def test_a_cluster_without_a_parent_targets_itself(self):
         top = [c for c, (_, parent) in enumerate(self.mesh.lod) if parent == LOD_NONE]
@@ -402,38 +474,25 @@ class BakedMorphTargetTests(unittest.TestCase):
         first, tri_count = self.mesh.clusters[c][2:4]
         return self.mesh.tris[first:first + tri_count]
 
-    def test_rows_on_the_open_border_of_a_groups_fine_triangles_stay_where_they_are(self):
-        border_rows = moved_rows = 0
-        for group in range(len(self.mesh.groups)):
-            members = [c for c, (_, parent) in enumerate(self.mesh.lod) if parent == group]
-            tris = np.concatenate([self.cluster_triangles(c) for c in members])
-            _, ids = np.unique(self.mesh.pos[tris.reshape(-1)], axis=0, return_inverse=True)
-            edge = open_border(ids.reshape(-1, 3), int(ids.max()) + 1)
-            for row, vertex in zip(tris.reshape(-1), ids.reshape(-1)):
-                same = bool((self.target[row] == self.mesh.pos[row]).all())
-                if edge[vertex]:
-                    self.assertTrue(same, f"group {group} border row {row} moved")
-                    border_rows += 1
-                else:
-                    moved_rows += 0 if same else 1
-        self.assertGreater(border_rows, 0)
-        self.assertGreater(moved_rows, 0, "no interior row moves: the targets are all trivial")
+    def test_some_interior_row_moves_so_the_targets_are_not_all_trivial(self):
+        moved = sum(int((self.target[c_rows] != self.mesh.pos[c_rows]).any(axis=1).sum())
+                    for c_rows in (self.cluster_rows(c) for c in range(len(self.mesh.clusters))))
+        self.assertGreater(moved, 0)
 
-    def test_rows_at_one_position_decode_to_one_target_whatever_their_clusters_and_parents(self):
+    def test_rows_at_one_position_under_one_parent_decode_to_one_target_whatever_their_clusters(self):
         shifts, deltas, _ = morph_asset.decode(lit_mesh.morph_blob(self.blob, self.levels_blob))
         deltas = np.array(deltas).reshape(-1, AXES)
         decoded = {}
         shared = 0
         for c, (first, count, *_) in enumerate(self.mesh.clusters):
             for row in range(first, first + count):
-                at = tuple(self.mesh.pos[row])
+                at = (self.mesh.lod[c][1], *self.mesh.pos[row])
                 landed = tuple(self.mesh.pos[row] + deltas[row] * (1 << shifts[c]))
                 if at in decoded and decoded[at][0] != c:
                     shared += 1
                 first_landed = decoded.setdefault(at, (c, landed))[1]
                 self.assertEqual(first_landed, landed, f"cluster {c} row {row} at {at}")
         self.assertGreater(shared, 0)
-        self.assertGreater(len({parent for _, parent in self.mesh.lod}), 1)
 
     def test_clusters_under_one_parent_share_a_shift_in_the_blob(self):
         shifts, _, _ = morph_asset.decode(lit_mesh.morph_blob(self.blob, self.levels_blob))
@@ -444,7 +503,7 @@ class BakedMorphTargetTests(unittest.TestCase):
 
     def test_the_blob_round_trips_the_measured_targets_within_a_step(self):
         blob = lit_mesh.morph_blob(self.blob, self.levels_blob)
-        shifts, deltas, colours = morph_asset.decode(blob)
+        shifts, deltas, landing = morph_asset.decode(blob)
         morph_asset.validate_mesh(blob, self.blob)
         self.assertEqual(len(self.mesh.clusters), len(shifts))
         deltas = np.array(deltas).reshape(-1, AXES)
@@ -452,7 +511,7 @@ class BakedMorphTargetTests(unittest.TestCase):
             rows = slice(first, first + count)
             decoded = self.mesh.pos[rows] + deltas[rows] * (1 << shifts[c])
             self.assertLessEqual(np.abs(decoded - self.target[rows]).max(), (1 << shifts[c]) / 2)
-        np.testing.assert_array_equal(np.array(colours).reshape(-1, AXES), self.colour)
+        self.assertEqual([tuple(int(v) for v in row) for row in self.landing], landing)
 
 
 if __name__ == "__main__":
