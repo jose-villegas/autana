@@ -133,8 +133,7 @@ def thin_meshes(src, selected, thin, seed):
 def carve_selection(src, settings, variant):
     """The objects a bake may carve into copies, as {object id: rule}: the scene's own [[objects.meshes]] rules,
     then every repeated unit of the rest (objects/units.py), which relabels `src.tri_o` and `src.object_names`
-    with the units; a unit's rule has no budget until units.unit_budgets gives it one. Also the units' report
-    (None without geometry.simplify)."""
+    with the units. Also the units' report (None without geometry.simplify)."""
     from r3d.objects.units import repeated_units
 
     meshes = variant_meshes(settings.meshes, variant)
@@ -181,14 +180,6 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             double = np.array([src.names[material] in double_names for material in tri_m])
             seen = visible_triangles(visibility, scene, src.p, tri_v, double, intersector, rng)
         step["triangles_out"] = int(seen.sum())
-    rest_triangles = renderer.variant.triangles
-    if units_report is not None:
-        from r3d.objects.units import unit_budgets
-
-        with recorder.step("unit budgets", int(seen.sum())) as step:
-            selected, rest_triangles = unit_budgets(src.p, tri_v, src.tri_o, seen, selected, rest_triangles,
-                                                    units_report)
-            step["triangles_out"] = units_report.get("drawn_by_copies", 0)
         if settings.thin:
             thin = np.isin(tri_m, [index for index, name in enumerate(src.names) if name == settings.thin.material])
             seen &= ~thin | (rng.random(len(tri_v)) < settings.thin.keep)
@@ -243,7 +234,8 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
     with recorder.step("simplify", len(tris)) as step:
         if settings.simplify:
             steps = settings.simplify
-            positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, tri_mat, rest_triangles,
+            positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, tri_mat,
+                                                   renderer.variant.triangles,
                                                    allocation=Allocation(tri_o=np.concatenate(all_obj), object_names=src.object_names,
                                                                          material_names=src.names, meshes=meshes, selection=selected,
                                                                          ceiling=getattr(renderer.variant, 'ceiling', None),
