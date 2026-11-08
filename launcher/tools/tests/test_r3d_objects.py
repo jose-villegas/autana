@@ -847,3 +847,46 @@ class ObjectErrorTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class UnitBudgetTests(unittest.TestCase):
+    """A unit is budgeted on the rest's terms: what one simplifier pass keeps on all its seen copies."""
+
+    def scene(self):
+        """A large sphere of rest (object 0) and three copies of a small sphere (objects 1-3), one unit."""
+        from soup import sphere
+
+        big, big_tris = sphere(0)
+        small, small_tris = sphere(1)
+        p = np.concatenate([big * 10.0] + [small + [20.0 + 5.0 * k, 0.0, 0.0] for k in range(3)])
+        tri_v = np.concatenate([big_tris] + [small_tris + len(big) + k * len(small) for k in range(3)])
+        tri_o = np.repeat([0, 1, 2, 3], [len(big_tris)] + [len(small_tris)] * 3)
+        rule = dict(match=dict(object="lamp"), triangles=None, seam="free", shape="surface", surface_floor=0.0)
+        report = dict(units=[dict(anchor="lamp", copies=3, parts=1, source_triangles=len(small_tris))])
+        return p, tri_v, tri_o, {1: rule, 2: rule, 3: rule}, report
+
+    def test_units_take_what_the_pass_keeps_on_their_copies_and_the_rest_the_remainder(self):
+        from r3d.objects.units import MIN_COPY_TRIANGLES, unit_budgets
+
+        p, tri_v, tri_o, selected, report = self.scene()
+        triangles = 200
+        budgeted, rest = unit_budgets(p, tri_v, tri_o, np.ones(len(tri_v), dtype=bool), selected, triangles, report)
+        budget = report["units"][0]["budget"]
+        self.assertGreaterEqual(budget, MIN_COPY_TRIANGLES)
+        self.assertEqual(set(budgeted), {1, 2, 3})
+        self.assertTrue(all(rule is budgeted[1] and rule["triangles"] == budget for rule in budgeted.values()),
+                        "one rule, one budget, shared by every copy")
+        self.assertEqual(rest, triangles - 3 * budget, "the rest is charged every copy drawn")
+
+    def test_a_unit_seen_less_gets_less_and_below_its_card_stays_in_the_rest(self):
+        from r3d.objects.units import unit_budgets
+
+        p, tri_v, tri_o, selected, report = self.scene()
+        seen = np.ones(len(tri_v), dtype=bool)
+        unit_budgets(p, tri_v, tri_o, seen, selected, 200, report)
+        all_seen = report["units"][0]["budget"]
+        seen[np.isin(tri_o, [2, 3])] = False
+        unit_budgets(p, tri_v, tri_o, seen, selected, 200, report)
+        self.assertLess(report["units"][0]["budget"], all_seen, "hidden copies add no weight")
+        budgeted, rest = unit_budgets(p, tri_v, tri_o, np.ones(len(tri_v), dtype=bool), selected, 8, report)
+        self.assertEqual((budgeted, rest), ({}, 8))
