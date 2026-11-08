@@ -849,44 +849,25 @@ if __name__ == '__main__':
     unittest.main()
 
 
-class UnitBudgetTests(unittest.TestCase):
-    """A unit is budgeted on the rest's terms: what one simplifier pass keeps on all its seen copies."""
 
-    def scene(self):
-        """A large sphere of rest (object 0) and three copies of a small sphere (objects 1-3), one unit."""
+class RepeatedUnitTests(unittest.TestCase):
+    def test_every_copy_of_a_repeated_part_is_carved_at_its_source_detail_and_one_offs_stay(self):
         from soup import sphere
+        from r3d.objects.units import repeated_units
 
-        big, big_tris = sphere(0)
-        small, small_tris = sphere(1)
-        p = np.concatenate([big * 10.0] + [small + [20.0 + 5.0 * k, 0.0, 0.0] for k in range(3)])
-        tri_v = np.concatenate([big_tris] + [small_tris + len(big) + k * len(small) for k in range(3)])
-        tri_o = np.repeat([0, 1, 2, 3], [len(big_tris)] + [len(small_tris)] * 3)
-        rule = dict(match=dict(object="lamp"), triangles=None, seam="free", shape="surface", surface_floor=0.0)
-        report = dict(units=[dict(anchor="lamp", copies=3, parts=1, source_triangles=len(small_tris))])
-        return p, tri_v, tri_o, {1: rule, 2: rule, 3: rule}, report
-
-    def test_units_take_what_the_pass_keeps_on_their_copies_and_the_rest_the_remainder(self):
-        from r3d.objects.units import MIN_COPY_TRIANGLES, unit_budgets
-
-        p, tri_v, tri_o, selected, report = self.scene()
-        triangles = 200
-        budgeted, rest = unit_budgets(p, tri_v, tri_o, np.ones(len(tri_v), dtype=bool), selected, triangles, report)
-        budget = report["units"][0]["budget"]
-        self.assertGreaterEqual(budget, MIN_COPY_TRIANGLES)
-        self.assertEqual(set(budgeted), {1, 2, 3})
-        self.assertTrue(all(rule is budgeted[1] and rule["triangles"] == budget for rule in budgeted.values()),
-                        "one rule, one budget, shared by every copy")
-        self.assertEqual(rest, triangles - 3 * budget, "the rest is charged every copy drawn")
-
-    def test_a_unit_seen_less_gets_less_and_below_its_card_stays_in_the_rest(self):
-        from r3d.objects.units import unit_budgets
-
-        p, tri_v, tri_o, selected, report = self.scene()
-        seen = np.ones(len(tri_v), dtype=bool)
-        unit_budgets(p, tri_v, tri_o, seen, selected, 200, report)
-        all_seen = report["units"][0]["budget"]
-        seen[np.isin(tri_o, [2, 3])] = False
-        unit_budgets(p, tri_v, tri_o, seen, selected, 200, report)
-        self.assertLess(report["units"][0]["budget"], all_seen, "hidden copies add no weight")
-        budgeted, rest = unit_budgets(p, tri_v, tri_o, np.ones(len(tri_v), dtype=bool), selected, 8, report)
-        self.assertEqual((budgeted, rest), ({}, 8))
+        lamp, lamp_tris = sphere(1)
+        wall, wall_tris = sphere(0)
+        turn = Rotation.from_euler("z", 40, degrees=True).as_matrix()
+        copies = [lamp + [20.0, 0.0, 0.0], lamp @ turn.T + [30.0, 0.0, 0.0], lamp + [40.0, 5.0, 0.0]]
+        p = np.concatenate([wall * 10.0] + copies)
+        tri_v = np.concatenate([wall_tris] + [lamp_tris + len(wall) + k * len(lamp) for k in range(3)])
+        # The wall and the first lamp are one object: the part split frees the lamp.
+        tri_o = np.repeat([0, 0, 1, 2], [len(wall_tris)] + [len(lamp_tris)] * 3)
+        units = repeated_units(p, tri_v, np.zeros(len(tri_v), dtype=int), tri_o, ["street", "b", "c"])
+        carved = np.isin(units.tri_o, list(units.selected))
+        np.testing.assert_array_equal(carved, np.arange(len(tri_v)) >= len(wall_tris))
+        rules = {id(rule): rule for rule in units.selected.values()}
+        self.assertEqual(len(rules), 1, "one rule shared by the copies")
+        self.assertEqual(next(iter(rules.values()))["triangles"], len(lamp_tris))
+        self.assertEqual(units.report["units"], [dict(anchor=units.report["units"][0]["anchor"], copies=3, parts=1,
+                                                      source_triangles=len(lamp_tris))])

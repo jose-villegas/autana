@@ -20,7 +20,6 @@ from scipy.spatial import cKDTree
 
 from r3d.objects.instances import SourceObject, match_instances
 from r3d.objects.parts import part_labels, part_names
-from r3d.objects.stand_ins import RECTANGLE_TRIS
 from r3d.objects.surface_match import SURFACE_TOLERANCE, merge
 
 # A shape is carved when it has at least this many copies.
@@ -29,16 +28,13 @@ MIN_COPIES = 3
 UNIT_REACH = 2.0
 # A part joins a unit when it sits at its spot in at least this share of the anchor's copies.
 UNIT_SUPPORT = 0.6
-# A copy whose derived budget is below this many triangles stays in the rest: too few for its card, the
-# least a carved shape keeps (stand_ins.card).
-MIN_COPY_TRIANGLES = len(RECTANGLE_TRIS)
 
 
 @dataclass(frozen=True)
 class Units:
     tri_o: np.ndarray       # per source triangle: its object, or its unit (numbered after the objects)
     object_names: list      # the objects' names, then the units' (each named after its anchor part)
-    selected: dict          # unit id -> its carve rule, one rule shared by every copy of a unit, no budget yet
+    selected: dict          # unit id -> its carve rule, one rule shared by every copy of a unit
     report: dict
 
 
@@ -113,8 +109,9 @@ def vote(shapes, index, centre, diagonal, floor):
 
 def repeated_units(p, tri_v, tri_m, tri_o, object_names, floor=0.0, taken=()):
     """Split the objects not in `taken` (object ids a scene's own rules carve) into parts, grow repeated parts
-    into units and give every unit with MIN_COPIES copies a carve rule, one rule shared by its copies, its
-    triangles left for unit_budgets. `floor` is the source's reduction error, in source units: copies of one
+    into units and give every unit with MIN_COPIES copies a carve rule, one rule shared by its copies. A unit
+    keeps its source detail: its budget is a ceiling on detail, and its levels (each copy shape has its own,
+    shared by its copies) bring a far copy down at run time, as the frame's one tolerance picks. `floor` is the source's reduction error, in source units: copies of one
     reduced shape differ by up to that much."""
     p, tri_v, tri_m, tri_o = map(np.asarray, (p, tri_v, tri_m, tri_o))
     eligible = ~np.isin(tri_o, list(taken))
@@ -139,53 +136,12 @@ def repeated_units(p, tri_v, tri_m, tri_o, object_names, floor=0.0, taken=()):
     report.update(parts=len(names), shapes=len(shapes))
     for _, full in vote(shapes, index, centre, diagonal, floor):
         anchor = names[full[0][0]]
-        rule = dict(match=dict(object=anchor), triangles=None, seam="free", shape="surface", surface_floor=floor)
+        budget = int(source_tris[full[0]].sum())
+        rule = dict(match=dict(object=anchor), triangles=budget, seam="free", shape="surface", surface_floor=floor)
         for parts in full:
             selected[len(unit_names)] = rule
             out[np.isin(labels, parts)] = len(unit_names)
             unit_names.append(names[parts[0]])
         report["units"].append(dict(anchor=anchor, copies=len(full), parts=len(full[0]),
-                                    source_triangles=int(source_tris[full[0]].sum())))
+                                    source_triangles=budget))
     return Units(out, unit_names, selected, report)
-
-
-def unit_budgets(p, tri_v, tri_o, seen, selected, triangles, report):
-    """Each unit's per-copy budget, by the terms the rest is simplified on: one simplifier pass over the seen
-    triangles of the rest and of every unit's copies, at the variant's `triangles`, keeps some triangles on each
-    copy; a unit's budget is what it kept on all its copies over its copy count, as its one mesh is drawn at
-    every copy. A unit below MIN_COPY_TRIANGLES a copy is left to the rest. Returns the rules with budgets (the
-    scene's own rules as they are) and the rest's budget: `triangles` less what the units' copies draw."""
-    from r3d.geometry import weld_keeping
-    from r3d.meshopt import PERMISSIVE, REGULARIZE, simplify_with_update
-
-    units = {obj: rule for obj, rule in selected.items() if rule["triangles"] is None}
-    if not units:
-        return selected, triangles
-    rows = np.flatnonzero(np.asarray(seen) & ~np.isin(tri_o, [o for o in selected if o not in units]))
-    positions, welded = weld_keeping(p, tri_v[rows])
-    owner = np.empty(len(positions), dtype=np.int64)
-    owner[welded.ravel()] = np.repeat(tri_o[rows], 3)
-    _, _, kept_tris, kept = simplify_with_update(positions, np.zeros_like(positions), welded, triangles, 0.0,
-                                                 REGULARIZE | PERMISSIVE)
-    corners = owner[kept[kept_tris]]
-    # A kept triangle belongs to the object two of its corners do, else to its first corner's.
-    tri_owner = np.where(corners[:, 1] == corners[:, 2], corners[:, 1], corners[:, 0])
-    kept_by = np.bincount(tri_owner, minlength=int(tri_o.max()) + 1)
-    copies_of = {}
-    for obj, rule in units.items():
-        copies_of.setdefault(id(rule), []).append(obj)
-    out = {obj: rule for obj, rule in selected.items() if obj not in units}
-    drawn = 0
-    by_anchor = {row["anchor"]: row for row in report["units"]}
-    for objects in copies_of.values():
-        rule = units[objects[0]]
-        budget = round(int(kept_by[objects].sum()) / len(objects))
-        by_anchor[rule["match"]["object"]]["budget"] = budget
-        if budget < MIN_COPY_TRIANGLES:
-            continue
-        budgeted = {**rule, "triangles": budget}
-        out.update({obj: budgeted for obj in objects})
-        drawn += budget * len(objects)
-    report.update(probe_triangles=len(kept_tris), drawn_by_copies=drawn,
-                  copies=sum(row["copies"] for row in report["units"] if row["budget"] >= MIN_COPY_TRIANGLES))
-    return out, max(1, triangles - drawn)
