@@ -80,7 +80,8 @@ title Landing point, 4 bytes a vertex after the deltas, with LMOR_LANDING
 | Version | `LMOR_VERSION`; other versions return `ASSET_ERR_VERSION` |
 | Counts | Cluster and vertex counts equal the mesh's, and the mesh has levels (`ASSET_ERR_FORMAT`) |
 | Size | Exactly the parts the flags name, with no trailing bytes (`ASSET_ERR_BOUNDS`) |
-| Target | A vertex's target in ticks is its position plus `delta << shift`, its cluster's shift at most `LMOR_SHIFT_MAX` (`ASSET_ERR_FORMAT`). A delta is -127 to 127, so mirroring an axis still fits |
-| Landing | `LMOR_LANDING` only on a mesh without face colours (`ASSET_ERR_FORMAT`). A landing point names a coarse triangle of the mesh and two corner weights, the third `LMOR_WEIGHT_WHOLE` minus both (`ASSET_ERR_FORMAT` past the triangle count or the whole). The draw blends a vertex's colour toward the colours there, from whichever colours the mesh draws with, a copy's set included |
+| Target | A vertex's target in ticks is its position plus `delta << shift`, its cluster's shift at most `LMOR_SHIFT_MAX` (`ASSET_ERR_FORMAT`). A delta is -127 to 127, so negating one stays in int8 |
+| Landing | `LMOR_LANDING` only on a mesh without face colours (`ASSET_ERR_FORMAT`). A landing point names a coarse triangle of the mesh and two corner weights, the third `LMOR_WEIGHT_WHOLE` minus both (`ASSET_ERR_FORMAT` past the triangle count or the whole) |
+| Colour | The draw blends a vertex's colour toward the colours at its landing point, from whichever colours the mesh draws with, a copy's set included |
 | No parent | A cluster without a parent group holds deltas of 0, never read |
 | Opening | `r3d_lit_mesh_morph_from_asset()` attaches validated targets; failure clears only the morph pointers. `r3d_lit_mesh_open()` resolves the sibling after the levels; absent means no blend |
