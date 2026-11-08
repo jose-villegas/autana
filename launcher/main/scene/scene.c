@@ -167,7 +167,7 @@ static scene_failure_t
 open_lod_bits(scene_t* scene) {
     size_t words = 0;
     for (int i = 0; i < scene->renderer_count; i++) {
-        words += (size_t)R3D_LOD_WORDS(scene->renderers[i].mesh.lod_group_count);
+        words += 2U * (size_t)R3D_LOD_WORDS(scene->renderers[i].mesh.lod_group_count);
     }
     if (words == 0) {
         return scene_failure_make(SCENE_OK, ASSET_OK, scene->id);
@@ -182,7 +182,8 @@ open_lod_bits(scene_t* scene) {
         scene_renderer_t* r = &scene->renderers[i];
         r->lod_words = (uint16_t)R3D_LOD_WORDS(r->mesh.lod_group_count);
         r->lod_coarse = r->lod_words > 0 ? next : NULL;
-        next += r->lod_words;
+        r->lod_arrived = r->lod_words > 0 ? next + r->lod_words : NULL;
+        next += 2U * r->lod_words;
     }
     return scene_failure_make(SCENE_OK, ASSET_OK, scene->id);
 }
@@ -517,6 +518,7 @@ scene_renderer_set_mesh(scene_t* scene, scene_entity_t entity, const r3d_lit_mes
     /* Another mesh's groups are not these bits': start it at its finest. */
     if (r->lod_coarse != NULL) {
         memset(r->lod_coarse, 0, sizeof(uint32_t) * r->lod_words);
+        memset(r->lod_arrived, 0, sizeof(uint32_t) * r->lod_words);
     }
     return true;
 }

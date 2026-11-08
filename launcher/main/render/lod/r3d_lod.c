@@ -142,7 +142,8 @@ close_coarse(const r3d_lit_mesh_t* mesh, uint32_t* coarse) {
 
 void
 r3d_lod_morph_init(r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
-                   const render_lod_settings_t* lod, float pixels_per_output_pixel, bool enabled) {
+                   const render_lod_settings_t* lod, float pixels_per_output_pixel, const uint32_t* arrived,
+                   bool enabled) {
     const lod_view_t v = lod_view(lens);
     const float covered = ((float)lod->coverage_permille / (float)R3D_LOD_PERMILLE) * (float)lens->height;
     *morph = (r3d_lod_morph_t){
@@ -150,7 +151,9 @@ r3d_lod_morph_init(r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, const r3d
         .units_per_tick = v.units_per_tick,
         .scale = v.units_per_tick * v.focal,
         .near_z = lens->project.near_z,
+        .enter = (lod->tolerance_px - lod->hysteresis_px) * pixels_per_output_pixel,
         .leave = (lod->tolerance_px + lod->hysteresis_px) * pixels_per_output_pixel,
+        .arrived = arrived,
         .ramp = R3D_LOD_MORPH_PX * pixels_per_output_pixel,
         .covered = covered,
         .cover_ramp = covered * R3D_LOD_MORPH_COVER_RAMP,
@@ -182,11 +185,13 @@ group_morph_pixels(const r3d_lod_morph_t* morph, const r3d_lit_lod_group_t* g, f
 }
 
 static int
-group_morph_weight(const r3d_lod_morph_t* morph, const r3d_lit_lod_group_t* g) {
+group_morph_weight(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, uint16_t group) {
+    const r3d_lit_lod_group_t* g = &mesh->lod_groups[group];
     float radius_px = 0.0F;
     const float error_px = group_morph_pixels(morph, g, &radius_px);
-    const float weight = mathf_min(ramp_weight(error_px, morph->leave, morph->ramp),
-                                   ramp_weight(radius_px, morph->covered, morph->cover_ramp));
+    const float whole = morph->arrived == NULL || r3d_lod_coarse(morph->arrived, group) ? morph->leave : morph->enter;
+    const float weight =
+        mathf_min(ramp_weight(error_px, whole, morph->ramp), ramp_weight(radius_px, morph->covered, morph->cover_ramp));
     return (int)((weight * (float)R3D_LOD_MORPH_ONE) + 0.5F);
 }
 
@@ -196,7 +201,7 @@ r3d_lod_morph_weight(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, i
         return 0;
     }
     const uint16_t parent = mesh->cluster_lod[c].parent;
-    return parent == R3D_LOD_NONE ? 0 : group_morph_weight(morph, &mesh->lod_groups[parent]);
+    return parent == R3D_LOD_NONE ? 0 : group_morph_weight(morph, mesh, parent);
 }
 
 float
@@ -214,18 +219,22 @@ r3d_lod_morph_stacked_px(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mes
         const r3d_lit_lod_group_t* g = &mesh->lod_groups[lod.parent];
         float radius_px = 0.0F;
         const float error_px = group_morph_pixels(morph, g, &radius_px);
-        const float weight = (float)group_morph_weight(morph, g) / (float)R3D_LOD_MORPH_ONE;
+        const float weight = (float)group_morph_weight(morph, mesh, lod.parent) / (float)R3D_LOD_MORPH_ONE;
         most = mathf_max(most, weight * error_px);
     }
     return most;
 }
 
 void
-r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod, uint32_t* coarse) {
+r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod, uint32_t* coarse,
+             uint32_t* arrived) {
     const lod_view_t v = lod_view(lens);
     const float enter = lod->tolerance_px - lod->hysteresis_px;
     const float leave = lod->tolerance_px + lod->hysteresis_px;
     if (none_can_coarsen(mesh, &v, lens->project.near_z, leave)) {
+        for (int w = 0; arrived != NULL && w < R3D_LOD_WORDS(mesh->lod_group_count); w++) {
+            arrived[w] |= coarse[w];
+        }
         memset(coarse, 0, R3D_LOD_WORDS(mesh->lod_group_count) * sizeof *coarse);
         return;
     }
@@ -249,10 +258,19 @@ r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lo
             any = true;
         } else {
             *word &= ~bit;
+            if (arrived != NULL && was) {
+                arrived[g / R3D_LOD_WORD_BITS] |= bit;
+            } else if (arrived != NULL && !within(&at, error, leave + R3D_LOD_MORPH_PX)) {
+                arrived[g / R3D_LOD_WORD_BITS] &= ~bit;
+            }
         }
     }
     /* Nothing coarse closes to nothing. */
     if (any) {
         close_coarse(mesh, coarse);
+    }
+    /* A coarse group has not arrived, closed coarse or not. */
+    for (int w = 0; arrived != NULL && w < R3D_LOD_WORDS(mesh->lod_group_count); w++) {
+        arrived[w] &= ~coarse[w];
     }
 }

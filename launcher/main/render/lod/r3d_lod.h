@@ -70,6 +70,12 @@ float r3d_lod_group_pixels(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, i
  * so it never covers less than one of them. */
 float r3d_lod_group_coverage(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int group);
 
+/* Arrived bits (r3d_lod_pick()): set when a group turns fine, cleared once
+ * its error projects R3D_LOD_MORPH_PX past the hysteresis band, where its
+ * blend has faded out. An arrived group's blend fades from `leave`, where it
+ * switched; any other fine group's from `enter`, where it next switches; at
+ * the bit's change both are none, so the blend never jumps. */
+
 /* Geomorphing (render/lmor_format.h): a drawn cluster with a parent group
  * blends its vertices toward their targets on that group's coarse surface by
  * a weight from the group's projected error alone, with no state. The weight
@@ -89,7 +95,8 @@ float r3d_lod_group_coverage(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
 typedef struct r3d_lod_morph {
     mat4f_t view; /* the lens's linear part, focal lengths divided out */
     float units_per_tick, scale, near_z;
-    float leave, ramp;         /* pixels: whole at leave, none at leave + ramp */
+    float enter, leave, ramp;  /* pixels: whole at enter (leave for an arrived group), none ramp past it */
+    const uint32_t* arrived;   /* the pick's arrived bits, or NULL: every group ramps from leave */
     float covered, cover_ramp; /* pixels of radius: whole at covered, none at covered + cover_ramp */
     bool enabled;
 } r3d_lod_morph_t;
@@ -98,7 +105,8 @@ typedef struct r3d_lod_morph {
  * its thresholds `pixels_per_output_pixel` times `lod`'s. Disabled for a mesh
  * without morph targets or when `enabled` is false. */
 void r3d_lod_morph_init(r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
-                        const render_lod_settings_t* lod, float pixels_per_output_pixel, bool enabled);
+                        const render_lod_settings_t* lod, float pixels_per_output_pixel, const uint32_t* arrived,
+                        bool enabled);
 
 /* Cluster `c`'s weight toward its parent group's coarse surface, 0 to
  * R3D_LOD_MORPH_ONE; 0 without a parent or a blend. */
@@ -119,4 +127,4 @@ float r3d_lod_morph_stacked_px(const r3d_lod_morph_t* morph, const r3d_lit_mesh_
  * its sources, in error or radius (r3d_lit_mesh.h checks), and a closing
  * pass sets coarse any source rounding left fine, so the cut never cracks. */
 void r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod,
-                  uint32_t* coarse);
+                  uint32_t* coarse, uint32_t* arrived);
