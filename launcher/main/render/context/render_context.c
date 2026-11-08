@@ -348,6 +348,25 @@ generate(render_context_t* c, const render_view_t* view) {
     c->drawn_in_row = 0;
 }
 
+/* No row changed, but picks are owed (render_partial_picks_owed()): a
+ * census makes them, and true when one changed a cut or the depth scale,
+ * the census list then drawn over every row. */
+static bool
+census_changed(render_context_t* c, const render_view_t* view) {
+    raster_t* r = &c->raster;
+    if (!render_partial_picks_owed(&c->partial, raster_settings(r).lod.pick_every)) {
+        return false;
+    }
+    const float kept_near = raster_depth_near(r);
+    c->frame.stats = raster_census(r, view);
+    if (!c->frame.stats.levels_changed && raster_depth_near(r) == kept_near) {
+        r->pick_round++; /* the census took this frame's share */
+        return false;
+    }
+    raster_draw_culled(r, view);
+    return true;
+}
+
 /* The rows partial redraw plans, drawn; false when none changed, so the
  * picture stays as it is. A draw that changed its depth scale or a level
  * pick drew every row. */
@@ -357,8 +376,8 @@ draw_partial(render_context_t* c, const render_view_t* view) {
     const render_rows_t rows = render_partial_rows(&c->partial, r, view);
     render_partial_set_changed(&c->partial, NULL, -1);
     if (rows.first == rows.end) {
-        c->frame.unchanged = true;
-        return false;
+        c->frame.unchanged = !census_changed(c, view);
+        return !c->frame.unchanged;
     }
     const bool every_row = rows.first == 0 && rows.end == r->height;
     r->first_row = every_row ? 0 : rows.first;

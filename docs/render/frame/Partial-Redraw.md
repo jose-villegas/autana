@@ -13,7 +13,11 @@ flowchart LR
     Boxes["changed boxes<br/>where each object was and is"] --> Same{"same view, size,<br/>settings, instances?"}
     Same -->|"no"| Every["every row"]
     Same -->|"yes"| Rows["the rows the boxes cover<br/>through the view"]
-    Rows -->|"none"| Kept["nothing drawn<br/>or composed"]
+    Rows -->|"none"| Owed{"level picks<br/>owed?"}
+    Owed -->|"no"| Kept["nothing drawn<br/>or composed"]
+    Owed -->|"yes"| Census["cull, no draw"]
+    Census -->|"a cut changed"| Every
+    Census -->|"no"| Kept
     Rows --> Draw["draw those rows"] --> Scale{"depth scale or a<br/>level cut changed?"}
     Scale -->|"yes"| Every
     Scale -->|"no"| Up["upscale those rows,<br/>one more each side for a filter"]
@@ -41,6 +45,10 @@ and where it is now. A negative count means anything may have changed.
 Level picks ([Cluster-LOD](../../plans/Cluster-LOD.md)) are made in the
 cull, before the rows are drawn, so a pick that changed any cut is known in
 time to draw every row.
+
+Picks spread over `lod.pick_every` frames are owed for that many frames
+after a frame with rows to redraw. A frame in that window with no changed
+rows still culls, without drawing, and draws every row if a pick changed.
 
 ## Rows
 

@@ -68,6 +68,7 @@ raster_viewport(const raster_t* raster, int quarter) {
 
 typedef struct {
     int clusters, triangles; /* what survived culling */
+    bool levels_changed;     /* a level pick changed an instance's cut */
 } raster_stats_t;
 
 /* The most vertices and clusters any mesh the raster draws has: what its

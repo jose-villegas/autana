@@ -78,6 +78,7 @@ render_rows_t
 render_partial_rows(render_partial_t* p, const raster_t* raster, const render_view_t* view) {
     const render_rows_t every = {0, raster->height};
     if (!can_draw_over(p, raster, view)) {
+        p->still_frames = 0;
         return every;
     }
     r3d_lens_t lens;
@@ -88,12 +89,23 @@ render_partial_rows(render_partial_t* p, const raster_t* raster, const render_vi
         int box_first;
         int box_end;
         if (!box_rows(&lens, p->changed[i], &box_first, &box_end)) {
+            p->still_frames = 0;
             return every;
         }
         first = mathi_min(first, mathi_max(box_first, 0));
         end = mathi_max(end, mathi_min(box_end, raster->height));
     }
-    return first < end ? (render_rows_t){first, end} : (render_rows_t){0, 0};
+    if (first < end) {
+        p->still_frames = 0;
+        return (render_rows_t){first, end};
+    }
+    p->still_frames++;
+    return (render_rows_t){0, 0};
+}
+
+bool
+render_partial_picks_owed(const render_partial_t* p, int pick_every) {
+    return p->still_frames < pick_every;
 }
 
 void

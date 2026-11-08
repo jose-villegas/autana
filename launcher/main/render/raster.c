@@ -488,6 +488,7 @@ cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, r
         }
         culled += 1 + (size_t)instance->mesh->cluster_count;
     }
+    stats->levels_changed = work->levels_changed;
     return fit.depth_near < INFINITY ? fit.depth_near : view->lens.near_z;
 }
 
@@ -648,7 +649,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
 
 raster_stats_t
 raster_draw(const raster_t* raster, const render_view_t* view) {
-    raster_stats_t stats = {0, 0};
+    raster_stats_t stats = {0};
     draw_instances(raster, view, &stats);
     return stats;
 }
@@ -666,7 +667,7 @@ raster_stats_t
 raster_census(const raster_t* raster, const render_view_t* view) {
     assert(raster->instance_count > 0);
     assert_view_size(raster, view);
-    raster_stats_t stats = {0, 0};
+    raster_stats_t stats = {0};
     FRAME_COST_BEGIN(counted_from);
     draw_work_t* work = scratch_draw(raster);
     *work->buffers.depth_near = cull_instances(raster, view, false, &stats, work);
