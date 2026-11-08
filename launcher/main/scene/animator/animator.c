@@ -207,7 +207,7 @@ animator_set_clips(entity_t entity, const char* skeleton_id, const char* const* 
         status = count_curves(scene, a.root, ids, count, &curves, &failed);
     }
     scene_skinned_renderer_t* skin = &scene->skinned_renderers[row];
-    if (skin->internal_storage != NULL && skin->skin.joint_count != a.skeleton.joint_count) {
+    if (skin->bound && skin->skin.joint_count != a.skeleton.joint_count) {
         status = ASSET_ERR_FORMAT;
     }
     if (status != ASSET_OK) {
@@ -351,6 +351,6 @@ animator_seek(entity_t entity, animator_slot_t slot, uint32_t t_ms) {
     p->t_ms = t_ms;
     p->fraction = 0;
     a->dirty = true;
-    scene_animation_step(scene, 0);
+    scene_animation_repose(scene, 0);
     return true;
 }

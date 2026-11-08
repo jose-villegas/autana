@@ -329,7 +329,8 @@ open_skins(scene_t* scene) {
             && !animator_set_clips(scene_row_entity(scene, row->entity), row->skeleton, NULL, 0, &why)) {
             return why;
         }
-        if (!renderer_set_skin(scene_row_entity(scene, row->entity), row->skin, &why)) {
+        /* Its buffers wait for the first step that finds it active. */
+        if (!scene_renderer_bind_skin(scene, row->entity, row->skin, false, &why)) {
             return why;
         }
     }
@@ -597,7 +598,9 @@ scene_state(entity_t root) {
 bool
 scene_failure(entity_t root, scene_failure_t* why) {
     const scene_root_t* record = record_of(root);
-    if (record == NULL || record->state != PENDING_FAILED) {
+    const bool starved =
+        record != NULL && record->state == PENDING_READY && record->scene != NULL && record->scene->starved_count > 0;
+    if (record == NULL || (record->state != PENDING_FAILED && !starved)) {
         return false;
     }
     *why = record->failure;
