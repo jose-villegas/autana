@@ -439,6 +439,22 @@ class BakedMorphTargetTests(unittest.TestCase):
         entries = mesh_bundle.mesh_entries("m", levelled, morph=True)
         self.assertIn(("m.morph", morph_asset.TYPE), [(name, kind) for name, kind, _ in entries])
 
+    def test_the_bundle_boxes_hold_every_target_so_a_morphing_cluster_is_never_culled(self):
+        points, rgb, triangles, double = wavy_grid()
+        levelled = bake_lit_mesh(points, rgb, triangles, double, lod=True)
+        entries = {name: blob for name, _, blob in mesh_bundle.mesh_entries("m", levelled, morph=True)}
+        mesh = lit_mesh.read_lit_mesh(entries["m"], entries["m.lod"])
+        target = lit_mesh.morph_targets(mesh.pos, mesh.clusters, entries["m.morph"])
+        self.assertTrue(np.any(target != mesh.pos), "the fixture's targets move nothing")
+        for first, count, _, _, lo, hi, _ in mesh.clusters:
+            rows = target[first:first + count]
+            self.assertTrue(np.all(rows >= lo) and np.all(rows <= hi))
+        for node in mesh.nodes:
+            held = mesh.clusters[node["first"]:node["first"] + node["count"]] if node["leaf"] else                 mesh.nodes[node["first"]:node["first"] + node["count"]]
+            for part in held:
+                part_lo, part_hi = (part[4], part[5]) if node["leaf"] else (part["lo"], part["hi"])
+                self.assertTrue(np.all(part_lo >= node["lo"]) and np.all(part_hi <= node["hi"]))
+
     def test_every_row_with_a_parent_targets_a_point_on_the_parents_coarse_triangles(self):
         held = morph.shared_rows(self.mesh)
         self.assertTrue(held.any())

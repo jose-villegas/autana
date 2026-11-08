@@ -181,11 +181,12 @@ cull_cluster(const r3d_lit_mesh_t* mesh, int c, unsigned mask, const planef_t* p
 /* The clusters of a leaf the planes in `mask` keep, as cull_cluster(): all
  * of them when `every`, else those r3d_lod_drawn() draws under `lod_coarse`. */
 static int
-cull_leaf(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, bool every, const r3d_lit_node_t* leaf, unsigned mask,
-          const planef_t* planes, planef_t depth, uint16_t* out, int count, r3d_depth_fit_t* fit) {
+cull_leaf(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, const uint32_t* blending, bool every,
+          const r3d_lit_node_t* leaf, unsigned mask, const planef_t* planes, planef_t depth, uint16_t* out, int count,
+          r3d_depth_fit_t* fit) {
     for (int i = 0; i < leaf->count; i++) {
         const int c = leaf->first + i;
-        if (every || r3d_lod_drawn(mesh, c, lod_coarse)) {
+        if (every || r3d_lod_drawn_blending(mesh, c, lod_coarse, blending)) {
             count = cull_cluster(mesh, c, mask, planes, depth, out, count, fit);
         }
     }
@@ -270,7 +271,7 @@ r3d_pipeline_cull_blending(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, c
             top = push_children(mesh, lens, node, mask, stack, top);
             continue;
         }
-        count = cull_leaf(mesh, lod_coarse, every, node, mask, planes, depth, out, count, fit);
+        count = cull_leaf(mesh, lod_coarse, blending, every, node, mask, planes, depth, out, count, fit);
     }
     if (start != 0 && cut) {
         int tested = 0;
@@ -430,12 +431,42 @@ transform_morphed(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const mat4
         unbounded,   false,       (uint8_t)weight};
 }
 
-/* Marks cluster `c`'s rows with its dither band, if it has one. */
-static __attribute__((noinline)) void
-dither_rows(const r3d_lit_mesh_t* mesh, const r3d_lod_morph_t* morph, int c, r3d_pipeline_rows_t* rows) {
+/* Rows that bound nothing: a cluster whose dither band draws no level. */
+#define ROWS_NONE ((r3d_pipeline_rows_t){INT16_MAX, INT16_MAX, INT16_MIN, INT16_MIN, 0, false, true, 0})
+_Static_assert(R3D_LOD_MORPH_ONE <= UINT8_MAX, "a weight fits r3d_pipeline_rows_t.morph");
+
+/* Cluster `c`, which takes part in the blend: morphed by its weight, or
+ * transformed and marked with its dither band. A band that draws nothing
+ * skips the transform where rows are kept. Returns false to leave the
+ * cluster to the plain transform: weight none, or no rows to mark. */
+static __attribute__((noinline)) bool
+blend_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const mat4f_t* screen, const r3d_lod_morph_t* morph,
+              int c, r3d_pipeline_vertex_t* cs, r3d_pipeline_rows_t* rows, uint32_t lo_bits, uint32_t hi_bits,
+              bool boxed) {
+    if (!morph->dither) {
+        const int weight = r3d_lod_morph_weight(morph, mesh, c);
+        if (weight == 0) {
+            return false;
+        }
+        const r3d_pipeline_rows_t r = transform_morphed(mesh, lens, screen, c, weight, cs, lo_bits, hi_bits, boxed);
+        if (rows != NULL) {
+            rows[c] = r;
+        }
+        return true;
+    }
+    if (rows == NULL) {
+        return false;
+    }
     const uint8_t band = r3d_lod_dither_band(morph, mesh, c);
-    rows->dithered = band != 0;
-    rows->morph = band;
+    if (band != 0 && r3d_lod_dither_empty(band)) {
+        rows[c] = ROWS_NONE;
+        rows[c].morph = band;
+        return true;
+    }
+    rows[c] = transform_cluster(mesh, lens, screen, &mesh->clusters[c], cs, lo_bits, hi_bits, boxed);
+    rows[c].dithered = band != 0;
+    rows[c].morph = band;
+    return true;
 }
 
 static inline __attribute__((always_inline)) void
@@ -446,16 +477,16 @@ transform_clusters(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d
     const uint32_t lo_bits = mathf_bits(FAST_LO);
     const uint32_t hi_bits = mathf_bits(FAST_HI);
     for (int i = 0; i < count; i++) {
-        const int weight = morph != NULL ? r3d_lod_morph_weight(morph, mesh, clusters[i]) : 0;
-        const r3d_pipeline_rows_t r =
-            weight != 0
-                ? transform_morphed(mesh, lens, &screen, clusters[i], weight, cs, lo_bits, hi_bits, boxed)
-                : transform_cluster(mesh, lens, &screen, &mesh->clusters[clusters[i]], cs, lo_bits, hi_bits, boxed);
-        if (rows != NULL) {
-            rows[clusters[i]] = r;
-            if (morph != NULL && morph->dither) {
-                dither_rows(mesh, morph, clusters[i], &rows[clusters[i]]);
+        const int c = clusters[i];
+        if (morph != NULL && r3d_lod_cluster_blends(morph, mesh, c)) {
+            if (blend_cluster(mesh, lens, &screen, morph, c, cs, rows, lo_bits, hi_bits, boxed)) {
+                continue;
             }
+        }
+        const r3d_pipeline_rows_t r =
+            transform_cluster(mesh, lens, &screen, &mesh->clusters[c], cs, lo_bits, hi_bits, boxed);
+        if (rows != NULL) {
+            rows[c] = r;
         }
     }
 }

@@ -398,7 +398,7 @@ instance_lens(picture_lens_t* picture, const r3d_instance_t* instance, r3d_lens_
 
 static const uint32_t*
 dither_blending(const r3d_instance_t* instance, int blend) {
-    if (blend != RENDER_LOD_BLEND_ON || instance->lod_coarse == NULL || instance->mesh->morph_delta != NULL) {
+    if (instance->lod_coarse == NULL || !r3d_lod_dithers(instance->mesh, blend)) {
         return NULL;
     }
     const int groups = instance->mesh->lod_group_count;
@@ -477,14 +477,19 @@ raster_lod_dithering(const raster_t* raster, const r3d_instance_t* instance) {
     return dither_blending(instance, raster_settings(raster).lod.blend);
 }
 
+/* The settings measure in output pixels; `lens` draws at its fitted size:
+ * its pixels per output pixel. */
+static float
+drawn_scale(const r3d_lens_t* lens, const render_view_t* view) {
+    return mathf_max(lens->focal_x, lens->focal_y) / mathf_max(view->lens.fx, view->lens.fy);
+}
+
 void
 raster_lod_morph(const raster_t* raster, const render_view_t* view, const r3d_instance_t* instance,
                  const r3d_lens_t* lens, r3d_lod_morph_t* morph) {
-    /* The pick measures in output pixels; the lens draws at its fitted size. */
-    const float drawn = mathf_max(lens->focal_x, lens->focal_y) / mathf_max(view->lens.fx, view->lens.fy);
     const render_settings_t settings = raster_settings(raster);
     r3d_lod_morph_init(
-        morph, instance->mesh, lens, &settings.lod, drawn,
+        morph, instance->mesh, lens, &settings.lod, drawn_scale(lens, view),
         instance->lod_coarse != NULL ? r3d_lod_arrived(instance->lod_coarse, instance->mesh->lod_group_count) : NULL,
         instance->lod_coarse != NULL ? settings.lod.blend : RENDER_LOD_BLEND_SWITCH);
 }
@@ -492,8 +497,7 @@ raster_lod_morph(const raster_t* raster, const render_view_t* view, const r3d_in
 static level_pick_t
 level_pick_init(const raster_t* raster, picture_lens_t* picture, const render_view_t* view,
                 const render_lod_settings_t* lod) {
-    const r3d_lens_t* lens = picture_lens_at(picture, 1);
-    const float drawn = mathf_max(lens->focal_x, lens->focal_y) / mathf_max(view->lens.fx, view->lens.fy);
+    const float drawn = drawn_scale(picture_lens_at(picture, 1), view);
     level_pick_t pick = {raster->picks_levels, raster->pick_round, *lod};
     pick.lod.tolerance_px *= drawn;
     pick.lod.hysteresis_px *= drawn;
@@ -511,7 +515,7 @@ level_pick(const level_pick_t* pick, int index, const r3d_instance_t* instance, 
     const bool due = every <= 1 || pick->round == 0 || ((uint32_t)index + pick->round) % (uint32_t)every == 0;
     if (pick->picks && due && instance->lod_coarse != NULL && instance->mesh->lod_group_count > 0) {
         r3d_lod_pick(instance->mesh, lens, &pick->lod, instance->lod_coarse,
-                     pick->lod.blend != RENDER_LOD_BLEND_SWITCH
+                     pick->lod.blend == RENDER_LOD_BLEND_ON
                          ? r3d_lod_arrived(instance->lod_coarse, instance->mesh->lod_group_count)
                          : NULL);
     }

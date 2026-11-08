@@ -152,16 +152,20 @@ def decode(data):
 
 def mesh_entries(name, mesh, morph=False):
     """The LMSH of one assembled mesh, with levels its LLOD sibling, and with
-    `morph` too its LMOR sibling."""
-    from r3d.lit_mesh import mesh_blob, lod_blob, morph_blob
+    `morph` too its LMOR sibling; then the LMSH's boxes hold the targets too
+    (lit_mesh.cover_targets)."""
+    from r3d.lit_mesh import cover_targets, mesh_blob, lod_blob, morph_blob
     blob = mesh_blob(mesh)
-    entries = [(name, mesh_asset.TYPE, blob)]
     levels = lod_blob(mesh)
+    extra = []
     if levels is not None:
-        entries.append((lod_asset.name_for_mesh(name), lod_asset.TYPE, levels))
+        extra.append((lod_asset.name_for_mesh(name), lod_asset.TYPE, levels))
         if morph:
-            entries.append((morph_asset.name_for_mesh(name), morph_asset.TYPE, morph_blob(blob, levels)))
-    return entries
+            targets = morph_blob(blob, levels)
+            if cover_targets(mesh, targets):
+                blob = mesh_blob(mesh)
+            extra.append((morph_asset.name_for_mesh(name), morph_asset.TYPE, targets))
+    return [(name, mesh_asset.TYPE, blob)] + extra
 
 
 def read_mesh(entries, name):

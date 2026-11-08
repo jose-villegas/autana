@@ -3,15 +3,10 @@
 #include "math/geometry/box3f.h"
 #include "math/scalar/mathf.h"
 
+#include <assert.h>
 #include <string.h>
 
-/* The lens's linear part with its focal lengths divided out: position ticks
- * to view units. */
-typedef struct {
-    mat4f_t view;
-    float units_per_tick; /* at least the model's largest scale */
-    float focal;          /* pixels a view unit spans at unit depth, the larger axis */
-} lod_view_t;
+typedef r3d_lod_view_t lod_view_t;
 
 static lod_view_t
 lod_view(const r3d_lens_t* lens) {
@@ -54,9 +49,29 @@ group_pixels(const lod_view_t* v, const r3d_lit_lod_group_t* g, float nearest) {
     return (float)g->error * v->units_per_tick * v->focal / nearest;
 }
 
+/* Group `g`'s radius in pixels at `nearest`. */
+static float
+group_radius_pixels(const lod_view_t* v, const r3d_lit_lod_group_t* g, float nearest) {
+    return (float)g->bounds.radius * v->units_per_tick * v->focal / nearest;
+}
+
 static float
 group_coverage(const lod_view_t* v, const r3d_lit_lod_group_t* g, float nearest, int height) {
-    return (float)g->bounds.radius * v->units_per_tick * v->focal / (nearest * (float)height);
+    return group_radius_pixels(v, g, nearest) / (float)height;
+}
+
+/* The pick's limits in pixels, `scale` times `lod`'s: a group turns coarse
+ * under `enter`, stays coarse under `leave`, and its radius covers at most
+ * `covered`. */
+typedef struct {
+    float enter, leave, covered;
+} lod_limits_t;
+
+static lod_limits_t
+lod_limits(const render_lod_settings_t* lod, const r3d_lens_t* lens, float scale) {
+    return (lod_limits_t){(lod->tolerance_px - lod->hysteresis_px) * scale,
+                          (lod->tolerance_px + lod->hysteresis_px) * scale,
+                          ((float)lod->coverage_permille / (float)R3D_LOD_PERMILLE) * (float)lens->height};
 }
 
 float
@@ -144,22 +159,23 @@ void
 r3d_lod_morph_init(r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
                    const render_lod_settings_t* lod, float pixels_per_output_pixel, const uint32_t* arrived,
                    int blend) {
-    const lod_view_t v = lod_view(lens);
-    const float covered = ((float)lod->coverage_permille / (float)R3D_LOD_PERMILLE) * (float)lens->height;
+    if (blend != RENDER_LOD_BLEND_ON) {
+        *morph = (r3d_lod_morph_t){.enabled = false};
+        return;
+    }
+    const lod_limits_t limits = lod_limits(lod, lens, pixels_per_output_pixel);
     *morph = (r3d_lod_morph_t){
-        .view = v.view,
-        .units_per_tick = v.units_per_tick,
-        .scale = v.units_per_tick * v.focal,
+        .view = lod_view(lens),
         .near_z = lens->project.near_z,
-        .enter = (lod->tolerance_px - lod->hysteresis_px) * pixels_per_output_pixel,
-        .leave = (lod->tolerance_px + lod->hysteresis_px) * pixels_per_output_pixel,
+        .enter = limits.enter,
+        .leave = limits.leave,
         .arrived = arrived,
         .blending = arrived != NULL ? r3d_lod_blending(arrived, mesh->lod_group_count) : NULL,
         .ramp = lod->blend_px * pixels_per_output_pixel,
-        .covered = covered,
-        .cover_ramp = covered * R3D_LOD_MORPH_COVER_RAMP,
-        .enabled = blend == RENDER_LOD_BLEND_ON,
-        .dither = mesh->morph_delta == NULL,
+        .covered = limits.covered,
+        .cover_ramp = limits.covered * R3D_LOD_MORPH_COVER_RAMP,
+        .enabled = true,
+        .dither = r3d_lod_dithers(mesh, blend),
     };
 }
 
@@ -179,11 +195,9 @@ ramp_weight(float value, float whole, float ramp) {
  * the blend's pixels. */
 static float
 group_morph_pixels(const r3d_lod_morph_t* morph, const r3d_lit_lod_group_t* g, float* radius_px) {
-    const vec3f_t centre = mat4f_apply(&morph->view, vec3f_from_vec3s(g->bounds.centre, 1.0F));
-    const float distance = mathf_sqrt(vec3f_dot(centre, centre)) - ((float)g->bounds.radius * morph->units_per_tick);
-    const float nearest = mathf_max(distance, morph->near_z);
-    *radius_px = (float)g->bounds.radius * morph->scale / nearest;
-    return (float)g->error * morph->scale / nearest;
+    const float nearest = group_nearest(&morph->view, g, morph->near_z);
+    *radius_px = group_radius_pixels(&morph->view, g, nearest);
+    return group_pixels(&morph->view, g, nearest);
 }
 
 static int
@@ -265,38 +279,41 @@ set_bit(uint32_t* bits, int g, bool on) {
     bits[g / R3D_LOD_WORD_BITS] = on ? bits[g / R3D_LOD_WORD_BITS] | bit : bits[g / R3D_LOD_WORD_BITS] & ~bit;
 }
 
-/* Whether fine `group`'s blend weighs more than none, its error ramping from
- * `whole`: both its error and its radius inside their ramps, by
- * LOD_BOUND_SLACK more so the blend's own measure never finds one outside. */
+/* Whether fine `group`'s blend may weigh more than none by the next pick, its
+ * error ramping from `whole`: both its error and its radius inside their
+ * ramps and R3D_LOD_BLEND_LEAD more, by LOD_BOUND_SLACK more so the blend's
+ * own measure never finds one outside. */
 static bool
 blends(const reach_t* at, const r3d_lit_lod_group_t* group, float scale, float covered,
        const render_lod_settings_t* lod, float whole) {
     const float slack = 1.0F + LOD_BOUND_SLACK;
-    return within(at, (float)group->error * scale, (whole + lod->blend_px) * slack)
-           && within(at, (float)group->bounds.radius * scale, covered * (1.0F + R3D_LOD_MORPH_COVER_RAMP) * slack);
+    const float ramps = 1.0F + R3D_LOD_BLEND_LEAD;
+    return within(at, (float)group->error * scale, (whole + (lod->blend_px * ramps)) * slack)
+           && within(at, (float)group->bounds.radius * scale,
+                     covered * (1.0F + (R3D_LOD_MORPH_COVER_RAMP * ramps)) * slack);
 }
 
 void
 r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod, uint32_t* coarse,
              uint32_t* arrived) {
     const lod_view_t v = lod_view(lens);
-    const float enter = lod->tolerance_px - lod->hysteresis_px;
-    const float leave = lod->tolerance_px + lod->hysteresis_px;
+    const lod_limits_t limits = lod_limits(lod, lens, 1.0F);
+    const float enter = limits.enter;
+    const float leave = limits.leave;
     const int words = R3D_LOD_WORDS(mesh->lod_group_count);
     uint32_t* blending = arrived != NULL ? arrived + words : NULL;
-    /* With a blend, a group weighs something until its error is a ramp past leave. */
-    if (none_can_coarsen(mesh, &v, lens->project.near_z, leave + (arrived != NULL ? lod->blend_px : 0.0F))) {
-        for (int w = 0; arrived != NULL && w < words; w++) {
-            arrived[w] |= coarse[w];
-            blending[w] = 0;
-        }
-        memset(coarse, 0, words * sizeof *coarse);
+    /* With a blend, a group may weigh something until its error is past
+     * leave by a ramp and its lead; nearer than that, every bit clears. */
+    const float reach = arrived != NULL ? lod->blend_px * (1.0F + R3D_LOD_BLEND_LEAD) : 0.0F;
+    if (none_can_coarsen(mesh, &v, lens->project.near_z, leave + reach)) {
+        assert(arrived == NULL || arrived == coarse + words);
+        memset(coarse, 0, (size_t)(arrived != NULL ? R3D_LOD_STATE_SETS : 1) * (size_t)words * sizeof *coarse);
         return;
     }
     /* Per group, in the form within() takes: its error and its radius, each
      * times focal over units, against their limits times its nearest depth. */
     const float scale = v.units_per_tick * v.focal;
-    const float covered = ((float)lod->coverage_permille / (float)R3D_LOD_PERMILLE) * (float)lens->height;
+    const float covered = limits.covered;
     const float near_z = lens->project.near_z;
     bool any = false;
     bool changed = false;

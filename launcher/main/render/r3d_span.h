@@ -11,6 +11,7 @@
 #include <stdint.h>
 
 #include "gfx/target/gfx_target.h"
+#include "image/pixel/bayer.h"
 #include "render/render_view.h"
 
 /* Largest bounding-box side, in pixel centres, always filled flat; the camera gate and style apply only above it. */
@@ -48,7 +49,7 @@ typedef struct {
 } r3d_span_target_t;
 
 /* The screen mask's bit for pixel (x, y): its place in a 4x4 tile at absolute coordinates. */
-#define R3D_SPAN_SCREEN_SIDE 4
+#define R3D_SPAN_SCREEN_SIDE BAYER4_SIDE
 #define R3D_SPAN_SCREEN_BIT(x, y)                                                                                      \
     ((((y) & (R3D_SPAN_SCREEN_SIDE - 1)) * R3D_SPAN_SCREEN_SIDE) + ((x) & (R3D_SPAN_SCREEN_SIDE - 1)))
 
