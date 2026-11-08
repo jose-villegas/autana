@@ -131,7 +131,7 @@ class ReachTests(WalkCase):
             """)
         self.assertTrue({"entry:LIMIT", "entry:traced"} <= self.kept())
 
-    def test_a_class_attribute_read_through_an_instance_counts(self):
+    def test_a_class_attribute_read_through_an_instance_counts_the_class_and_its_methods(self):
         self.write(settings="""
             class Fit:
                 STEPS = 20
@@ -141,8 +141,7 @@ class ReachTests(WalkCase):
             def main(fit):
                 return fit.STEPS
             """)
-        self.assertIn("settings:Fit", self.kept())
-        self.assertNotIn("settings:Fit.unrelated", self.kept())
+        self.assertTrue({"settings:Fit", "settings:Fit.unrelated"} <= self.kept())
 
     def test_a_module_alias_two_hops_deep_counts(self):
         self.write({"pkg.__init__": "from pkg import sub\n", "pkg.sub": """
@@ -276,6 +275,41 @@ class ImportTests(WalkCase):
             """)
         self.assertTrue({"fast:blur", "slow:blur"} <= self.kept())
 
+    def test_a_name_bound_to_either_of_two_modules_counts_both(self):
+        self.write(cpu="def render():\n    return 1\n", gpu="def render():\n    return 2\n", entry="""
+            try:
+                import gpu as backend
+            except ImportError:
+                import cpu as backend
+            def main():
+                return backend.render()
+            """)
+        self.assertTrue({"cpu:render", "gpu:render"} <= self.kept())
+
+    def test_a_computed_sys_modules_lookup_counts_every_unit_and_a_foreign_one_none(self):
+        shading = "def shade_flat():\n    return 1\ndef other():\n    return 2\n"
+        self.write(shading=shading, entry="""
+            import sys
+            import shading
+            def main(kind):
+                return sys.modules["shad" + kind].shade_flat()
+            """)
+        self.assertIn("shading:other", self.kept())
+        self.write(shading=shading, entry="""
+            import sys
+            import shading
+            def main():
+                return sys.modules["shading"].shade_flat(), sys.modules.get("torch"), "numpy" in sys.modules
+            """)
+        self.assertTrue({"shading:shade_flat", "shading:other"} <= self.kept())
+        self.write(shading=shading, entry="""
+            import sys
+            import shading
+            def main():
+                return sys.modules.get("torch"), "numpy" in sys.modules
+            """)
+        self.assertNotIn("shading:other", self.kept())
+
     def test_a_module_used_as_a_value_counts_all_of_it(self):
         self.write(cpu="def render():\n    return 1\n", gpu="def render():\n    return 2\n", entry="""
             import cpu, gpu
@@ -330,6 +364,77 @@ class ImportTimeTests(WalkCase):
                 return REG[kind](), Base.kinds
             """)
         self.assertTrue({"entry:flat", "entry:Smooth"} <= self.kept())
+
+    def test_a_def_decorated_by_a_stage_objects_attribute_counts(self):
+        self.write(registry="""
+            class Registry:
+                def __init__(self):
+                    self.kinds = {}
+                def register(self, fn):
+                    self.kinds[fn.__name__] = fn
+                    return fn
+            shade = Registry()
+            """, entry="""
+            from registry import shade
+            @shade.register
+            def flat():
+                return 41
+            def main(kind):
+                return shade.kinds[kind]()
+            """)
+        self.assertIn("entry:flat", self.kept())
+
+    def test_a_class_body_statement_that_runs_at_import_counts(self):
+        self.write(entry="""
+            REG = {}
+            class Flat:
+                REG["flat"] = 41
+            def main(kind):
+                return REG[kind]
+            """)
+        self.assertIn("entry:Flat", self.kept())
+
+    def test_a_class_body_assignment_that_calls_stage_code_counts(self):
+        self.write(entry="""
+            REG = {}
+            def build():
+                REG["flat"] = 41
+                return 1
+            class Flat:
+                SIZE = build()
+            def main(kind):
+                return REG[kind]
+            """)
+        self.assertTrue({"entry:Flat", "entry:build"} <= self.kept())
+
+    def test_an_import_time_call_through_either_of_two_modules_counts(self):
+        self.write(gpu="def render():\n    return 1\n", cpu="""
+            REG = {}
+            def setup():
+                REG["cpu"] = 1
+                return 1
+            """, entry="""
+            try:
+                import gpu as backend
+            except ImportError:
+                import cpu as backend
+            READY = backend.setup()
+            def main():
+                return 1
+            """)
+        self.assertIn("cpu:setup", self.kept())
+
+    def test_a_default_argument_that_calls_stage_code_counts(self):
+        self.write(entry="""
+            REG = {}
+            def build():
+                REG["flat"] = 41
+            def unused(x=build()):
+                return x
+            def main(kind):
+                return REG[kind]
+            """)
+        self.assertTrue({"entry:unused", "entry:build"} <= self.kept())
 
     def test_moving_one_statement_past_another_re_keys(self):
         self.write(entry="SCALE = 1.0\nSCALE = 2.0\ndef main():\n    return SCALE\n")
@@ -386,6 +491,19 @@ class ClassTests(WalkCase):
             """)
         self.assertIn("entry:Visitor.visit_Call", self.kept())
 
+    def test_a_method_only_another_package_calls_counts(self):
+        self.write(entry="""
+            import io
+            class Source(io.RawIOBase):
+                pass
+            class Plain:
+                def read(self, size=-1):
+                    return b""
+            def main():
+                return io.BufferedReader(Plain())
+            """)
+        self.assertIn("entry:Plain.read", self.kept())
+
     def test_a_global_read_only_in_a_nested_scope_counts(self):
         self.write(entry="""
             LIMIT = 3
@@ -426,14 +544,14 @@ class CountsMoreTests(WalkCase):
             class Light:
                 def shade(self):
                     return 1
-                def other(self):
-                    return 2
+            def other():
+                return 2
             """, entry="""
             def main(thing):
                 return getattr(thing, "shade")()
             """)
         self.assertIn("helpers:Light.shade", self.kept())
-        self.assertNotIn("helpers:Light.other", self.kept())
+        self.assertNotIn("helpers:other", self.kept())
 
     def test_a_getattr_on_a_module_counts_the_module_or_its_named_function(self):
         self.write(shading="def shade_flat():\n    return 1\ndef other():\n    return 2\n", entry="""
