@@ -130,6 +130,22 @@ def thin_meshes(src, selected, thin, seed):
     return keep
 
 
+def carve_selection(src, settings, variant):
+    """The objects a bake carves into copies, as {object id: rule}: the scene's own [[objects.meshes]] rules,
+    then every repeated unit of the rest (objects/units.py), which relabels `src.tri_o` and `src.object_names`
+    with the units. Also the rest's triangle budget and the units' report (None without geometry.simplify)."""
+    from r3d.objects.units import repeated_units
+
+    meshes = variant_meshes(settings.meshes, variant)
+    selected = match_meshes(src.tri_o, src.tri_m, src.object_names, src.names, meshes) if meshes else {}
+    if not settings.simplify:
+        return selected, variant.triangles, None
+    units = repeated_units(src.p, src.tri_v, src.tri_m, src.tri_o, src.object_names, variant.triangles,
+                           settings.source["error"], taken=selected)
+    src.tri_o, src.object_names = units.tri_o, units.object_names
+    return {**selected, **units.selected}, units.rest_triangles, units.report
+
+
 def bake_geometry(job, scene, recorder=None, *, carve=False):
     """Everything a mesh needs before its colours are final: the source, its
     ray intersector and the simplified geometry with the colours a smooth bake
@@ -148,8 +164,10 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             src.tri_o = src.tri_o[keep]
             src.tri_v, src.tri_t, src.tri_m = tri_v, tri_t, tri_m
         step["triangles_out"] = len(tri_v)
+    with recorder.step("repeated units", len(tri_v)) as step:
+        selected, rest_triangles, units_report = carve_selection(src, settings, renderer.variant)
+        step["triangles_out"] = int(np.isin(src.tri_o, list(selected)).sum())
     meshes = variant_meshes(settings.meshes, renderer.variant)
-    selected = match_meshes(src.tri_o, tri_m, src.object_names, src.names, meshes) if meshes else {}
     carved_keep = thin_meshes(src, selected, settings.thin, settings.seed) if selected else None
     with recorder.step("visibility", len(tri_v)) as step:
         intersector = None
@@ -172,7 +190,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         step["triangles_out"] = int(seen.sum())
     shown_v, shown_m, shown_o = tri_v[seen], tri_m[seen], src.tri_o[seen]
     mesh_report = {}
-    shapes = [] if settings.meshes and carve else None
+    shapes = [] if selected and carve else None
     with recorder.step("light", len(shown_v)) as step:
         bounce = path_light_for(src, job, scene)
         if settings.simplify:
@@ -217,7 +235,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
     with recorder.step("simplify", len(tris)) as step:
         if settings.simplify:
             steps = settings.simplify
-            positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, tri_mat, renderer.variant.triangles,
+            positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, tri_mat, rest_triangles,
                                                    allocation=Allocation(tri_o=np.concatenate(all_obj), object_names=src.object_names,
                                                                          material_names=src.names, meshes=meshes, selection=selected,
                                                                          ceiling=getattr(renderer.variant, 'ceiling', None),
@@ -235,7 +253,8 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         step["triangles_out"] = len(tris)
     check_ceiling(len(tris), getattr(renderer.variant, 'ceiling', None))
     return SimpleNamespace(src=src, intersector=intersector, positions=positions, rgb=rgb, tris=tris, tri_double=tri_double,
-                           tri_mat=tri_mat, scale=scale, bounce=bounce, mesh_report=mesh_report, shapes=shapes)
+                           tri_mat=tri_mat, scale=scale, bounce=bounce, mesh_report=mesh_report, shapes=shapes,
+                           units_report=units_report)
 
 
 def shade_placed(src, job, scene, positions, rgb, tris, labels, intersector, bounce, *, preserve_corners=False,
