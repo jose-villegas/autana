@@ -752,6 +752,35 @@ release_spread_context(void) {
     release();
 }
 
+/* Two levelled instances at FAR_EYE in a context whose pick is spread over
+ * `every` frames, partial redraw as asked, and the destination it composes
+ * into; all freed by the cleanup. */
+static void
+open_spread(int every, bool partial) {
+    suite_set_test_cleanup(release_spread_context);
+    spread_placed = malloc(sizeof *spread_placed);
+    spread_context = malloc(sizeof *spread_context);
+    spread_destination = malloc(sizeof(uint16_t) * W * H);
+    TEST_ASSERT_NOT_NULL(spread_placed);
+    TEST_ASSERT_NOT_NULL(spread_context);
+    TEST_ASSERT_NOT_NULL(spread_destination);
+    const float depth[PLACED_MAX] = {FAR_EYE, FAR_EYE};
+    place(spread_placed, levelled_mesh(), PLACED_MAX, depth);
+    *spread_context = RENDER_CONTEXT_DEFAULT;
+    render_context_set_scale(spread_context, 100);
+    render_settings_t settings = spread_over(every);
+    settings.partial_redraw = partial;
+    render_context_set_settings(spread_context, &settings);
+}
+
+/* One frame of the spread context through `view`, drawn and composed. */
+static render_context_frame_t
+spread_frame(const render_view_t* view) {
+    TEST_ASSERT_TRUE(render_context_draw(spread_context, spread_placed->instances, PLACED_MAX, view, 0));
+    (void)render_context_compose(spread_context, spread_destination, NULL, NULL);
+    return render_context_frame(spread_context);
+}
+
 /* A render context's first frame picks every instance, however far the pick
  * is spread; the frames after it pick their share, and forgetting the scene
  * makes the next frame a first frame again. */
@@ -759,27 +788,16 @@ static void
 test_a_context_s_first_frame_picks_every_instance_of_a_spread_pick(void) {
     enum { EVERY = 4 };
 
-    const r3d_lit_mesh_t* mesh = levelled_mesh();
-    suite_set_test_cleanup(release_spread_context);
-    spread_placed = malloc(sizeof *spread_placed);
-    spread_context = malloc(sizeof *spread_context);
-    TEST_ASSERT_NOT_NULL(spread_placed);
-    TEST_ASSERT_NOT_NULL(spread_context);
-    const float depth[PLACED_MAX] = {FAR_EYE, FAR_EYE};
-    place(spread_placed, mesh, PLACED_MAX, depth);
-    *spread_context = RENDER_CONTEXT_DEFAULT;
-    render_context_set_scale(spread_context, 100);
-    const render_settings_t settings = spread_over(EVERY);
-    render_context_set_settings(spread_context, &settings);
+    open_spread(EVERY, false);
     const render_view_t view = axis_view();
-    TEST_ASSERT_TRUE(render_context_draw(spread_context, spread_placed->instances, PLACED_MAX, &view, 0));
+    (void)spread_frame(&view);
     const unsigned first = top_coarse(spread_placed, PLACED_MAX);
     memset(spread_placed->coarse, 0, sizeof spread_placed->coarse);
     /* Round 1 of 4: neither instance's share. */
-    TEST_ASSERT_TRUE(render_context_draw(spread_context, spread_placed->instances, PLACED_MAX, &view, 0));
+    (void)spread_frame(&view);
     const unsigned second = top_coarse(spread_placed, PLACED_MAX);
     render_context_forget(spread_context);
-    TEST_ASSERT_TRUE(render_context_draw(spread_context, spread_placed->instances, PLACED_MAX, &view, 0));
+    (void)spread_frame(&view);
     TEST_ASSERT_EQUAL_HEX(0x3, first);
     TEST_ASSERT_EQUAL_HEX(0x0, second);
     TEST_ASSERT_EQUAL_HEX(0x3, top_coarse(spread_placed, PLACED_MAX));
@@ -793,38 +811,21 @@ static void
 test_a_still_instance_that_switches_cut_on_a_still_frame_redraws_every_row(void) {
     enum { EVERY = 2 };
 
-    const r3d_lit_mesh_t* mesh = levelled_mesh();
-    suite_set_test_cleanup(release_spread_context);
-    spread_placed = malloc(sizeof *spread_placed);
-    spread_context = malloc(sizeof *spread_context);
-    TEST_ASSERT_NOT_NULL(spread_placed);
-    TEST_ASSERT_NOT_NULL(spread_context);
-    const float depth[PLACED_MAX] = {FAR_EYE, FAR_EYE};
-    place(spread_placed, mesh, PLACED_MAX, depth);
-    *spread_context = RENDER_CONTEXT_DEFAULT;
-    render_context_set_scale(spread_context, 100);
-    render_settings_t settings = spread_over(EVERY);
-    settings.partial_redraw = true;
-    render_context_set_settings(spread_context, &settings);
+    open_spread(EVERY, true);
     const render_view_t far = axis_view();
-    TEST_ASSERT_TRUE(render_context_draw(spread_context, spread_placed->instances, PLACED_MAX, &far, 0));
+    (void)spread_frame(&far);
     TEST_ASSERT_EQUAL_HEX(0x3, top_coarse(spread_placed, PLACED_MAX));
     const fixture_camera_t camera = {{0.0F, 0.0F, FAR_EYE - WHOLE_IN_VIEW}, {0.0F, 0.0F, 1.0F}, HALF_FOV_TAN, NEAR_Z};
     const render_view_t near = render_view_fixture_at(&camera, (viewport_t){W, H, 0});
-    TEST_ASSERT_TRUE(render_context_draw(spread_context, spread_placed->instances, PLACED_MAX, &near, 0));
+    (void)spread_frame(&near);
     TEST_ASSERT_EQUAL_HEX(0x1, top_coarse(spread_placed, PLACED_MAX)); /* instance 0 not yet picked */
-    spread_destination = malloc(sizeof(uint16_t) * W * H);
-    TEST_ASSERT_NOT_NULL(spread_destination);
     render_context_set_changed(spread_context, NULL, 0);
-    TEST_ASSERT_TRUE(render_context_draw(spread_context, spread_placed->instances, PLACED_MAX, &near, 0));
-    (void)render_context_compose(spread_context, spread_destination, NULL, NULL);
-    const render_context_frame_t owed = render_context_frame(spread_context);
+    const render_context_frame_t owed = spread_frame(&near);
     TEST_ASSERT_EQUAL_HEX(0x0, top_coarse(spread_placed, PLACED_MAX));
     TEST_ASSERT_FALSE(owed.unchanged);
     TEST_ASSERT_EQUAL_INT(H, owed.rows_end - owed.rows_first);
     render_context_set_changed(spread_context, NULL, 0);
-    TEST_ASSERT_TRUE(render_context_draw(spread_context, spread_placed->instances, PLACED_MAX, &near, 0));
-    TEST_ASSERT_TRUE(render_context_frame(spread_context).unchanged);
+    TEST_ASSERT_TRUE(spread_frame(&near).unchanged);
 }
 
 /* The counted walk tells the coarse clusters it keeps from the finest: none

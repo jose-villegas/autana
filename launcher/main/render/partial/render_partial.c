@@ -25,18 +25,16 @@ render_partial_set_changed(render_partial_t* partial, const box3f_t* boxes, int 
     partial->changed_count = count;
 }
 
+#define SAME_BYTES(field) (memcmp(&a->field, &b->field, sizeof a->field) == 0)
+
 /* Field by field: a view's padding is not part of what it shows. */
 static bool
 same_view(const render_view_t* a, const render_view_t* b) {
-    return memcmp(&a->position, &b->position, sizeof a->position) == 0
-           && memcmp(&a->screen_x, &b->screen_x, sizeof a->screen_x) == 0
-           && memcmp(&a->screen_y, &b->screen_y, sizeof a->screen_y) == 0
-           && memcmp(&a->forward, &b->forward, sizeof a->forward) == 0
-           && memcmp(&a->lens, &b->lens, sizeof a->lens) == 0 && a->viewport.width == b->viewport.width
-           && a->viewport.height == b->viewport.height && a->viewport.quarter == b->viewport.quarter
-           && a->present == b->present && a->small_fill.ceiling == b->small_fill.ceiling
-           && a->small_fill.gate == b->small_fill.gate && a->small_fill.style == b->small_fill.style
-           && a->skip_hidden == b->skip_hidden && memcmp(&a->shift, &b->shift, sizeof a->shift) == 0;
+    return SAME_BYTES(position) && SAME_BYTES(screen_x) && SAME_BYTES(screen_y) && SAME_BYTES(forward)
+           && SAME_BYTES(lens) && a->viewport.width == b->viewport.width && a->viewport.height == b->viewport.height
+           && a->viewport.quarter == b->viewport.quarter && a->present == b->present
+           && a->small_fill.ceiling == b->small_fill.ceiling && a->small_fill.gate == b->small_fill.gate
+           && a->small_fill.style == b->small_fill.style && a->skip_hidden == b->skip_hidden && SAME_BYTES(shift);
 }
 
 #define SAME_FIELD(field, type) &&a.field == b.field
