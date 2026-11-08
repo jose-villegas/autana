@@ -7,6 +7,7 @@
 #define r3d_span_triangle        hot_triangle
 #define r3d_span_triangle_solid  hot_triangle_solid
 #define r3d_span_triangle_write  hot_triangle_write
+#define r3d_span_screen_triangle hot_screen_triangle
 #define r3d_span_capped_triangle hot_capped_triangle
 #define r3d_span_hidden          hot_hidden
 #define r3d_span_plane_bound     hot_plane_bound

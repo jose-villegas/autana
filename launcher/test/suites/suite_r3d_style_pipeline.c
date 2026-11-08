@@ -4,6 +4,7 @@
 #define r3d_span_triangle              constant_r3d_span_triangle
 #define r3d_span_triangle_solid        constant_r3d_span_triangle_solid
 #define r3d_span_triangle_write        constant_r3d_span_triangle_write
+#define r3d_span_screen_triangle       constant_r3d_span_screen_triangle
 #define r3d_span_capped_triangle       constant_r3d_span_capped_triangle
 #define r3d_span_hidden                constant_r3d_span_hidden
 #define r3d_span_plane_bound           constant_r3d_span_plane_bound
@@ -167,7 +168,7 @@ test_styles_match_pipeline_colours(void) {
         expected.small_fill = actual.small_fill = &resolved;
         memset(pixels, 0, TEST_PIXELS * 4 * sizeof(*pixels));
         r3d_span_triangle(&expected, reference, reference + 1, reference + 2);
-        draw_in_front(&mesh, vertices, triangle, NULL, true, &actual, 0U, 0);
+        draw_in_front(&mesh, vertices, triangle, NULL, true, &actual, 0U, 0, 0);
         TEST_ASSERT_EQUAL_MEMORY(pixels, pixels + TEST_PIXELS * 2, TEST_PIXELS * 2 * sizeof(*pixels));
         int coloured = 0;
         for (int i = 0; i < TEST_PIXELS; i++) {
@@ -232,7 +233,7 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
                 r3d_span_triangle(expected, front, front + 1, front + 2);
             }
             draw_triangles(&mesh, &lens, &cluster, cluster.triangle_first, cluster.triangle_first + (mixed ? 2 : 1),
-                           transformed, actual, 0U, work, 0, 0);
+                           transformed, actual, 0U, work, 0, 0, 0);
             TEST_ASSERT_EQUAL_MEMORY(pixels, pixels + TEST_PIXELS * 2, TEST_PIXELS * 2 * sizeof(*pixels));
             int covered = 0;
             for (int i = 0; i < TEST_PIXELS; i++) {

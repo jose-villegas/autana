@@ -159,7 +159,10 @@ void
 r3d_lod_morph_init(r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
                    const render_lod_settings_t* lod, float pixels_per_output_pixel, const uint32_t* arrived,
                    int blend) {
-    if (blend != RENDER_LOD_BLEND_ON) {
+    const uint32_t* blending = arrived != NULL ? r3d_lod_blending(arrived, mesh->lod_group_count) : NULL;
+    /* Off, or no group blending: nothing weighs, and the transform and draw
+     * take their plain paths. */
+    if (blend != RENDER_LOD_BLEND_ON || (blending != NULL && !r3d_lod_any(blending, mesh->lod_group_count))) {
         *morph = (r3d_lod_morph_t){.enabled = false};
         return;
     }
@@ -170,7 +173,7 @@ r3d_lod_morph_init(r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, const r3d
         .enter = limits.enter,
         .leave = limits.leave,
         .arrived = arrived,
-        .blending = arrived != NULL ? r3d_lod_blending(arrived, mesh->lod_group_count) : NULL,
+        .blending = blending,
         .ramp = lod->blend_px * pixels_per_output_pixel,
         .covered = limits.covered,
         .cover_ramp = limits.covered * R3D_LOD_MORPH_COVER_RAMP,

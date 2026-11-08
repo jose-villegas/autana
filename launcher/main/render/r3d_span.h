@@ -37,9 +37,6 @@ typedef struct {
     const r3d_span_writer_t* writers; /* writer_count of them; none: colour and depth only */
     int writer_count;
     bool skip_hidden; /* render_view_t.skip_hidden: fills cap their depth, and writers follow */
-    /* A screen mask: bit R3D_SPAN_SCREEN_BIT(x, y) set draws that pixel of
-     * every fill and write, a clear bit skips it; 0 is no mask, the fast fills'. */
-    uint16_t screen_mask;
     const r3d_span_small_fill_t* small_fill;
 
     union {
@@ -123,3 +120,10 @@ void r3d_span_capped_triangle(const r3d_span_target_t* target, const r3d_span_ve
  * of their cost. */
 void r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                              const r3d_span_vertex_t* c, bool solid);
+
+/* Either fill, or with `write` the target's writers, through a screen mask:
+ * bit R3D_SPAN_SCREEN_BIT(x, y) set draws that pixel, a clear bit skips it.
+ * Capped as r3d_span_capped_triangle() when target->skip_hidden. The rarer
+ * path, for a level fading in over another; the fast fills test no mask. */
+void r3d_span_screen_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                              const r3d_span_vertex_t* c, const uint16_t* face, uint16_t mask, bool write);
