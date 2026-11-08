@@ -256,7 +256,7 @@ r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint
     /* Nothing coarse: level 0's tree, like a mesh without levels, holds only
      * what is drawn, so the walk tests no level and there is no cut. */
     const bool cut = lod_coarse != NULL && r3d_lod_any(lod_coarse, mesh->lod_group_count);
-    const bool every = !cut && (start != 0 || mesh->cluster_lod == NULL);
+    const bool every = r3d_lod_finest_untested(mesh, cut);
     stack[top++] = (walk_entry_t){(uint16_t)start, PLANE_FRUSTUM_ALL};
     int count = 0;
     while (top > 0) {

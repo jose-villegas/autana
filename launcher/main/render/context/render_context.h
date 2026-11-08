@@ -22,6 +22,7 @@
 typedef struct checkpoint checkpoint_t;
 #include "core/memory.h"
 #include "render/framegen/framegen.h"
+#include "render/partial/render_partial.h"
 #include "render/r3d_instance.h"
 #include "render/raster.h"
 #include "render/render_view.h"
@@ -52,6 +53,10 @@ typedef struct {
     int32_t draw_us, upscale_us;
     int32_t predicted_us;
     bool generated; /* warped from the last drawn frame, not drawn */
+    bool unchanged; /* partial redraw: nothing changed, nothing drawn or composed */
+    /* The destination rows [rows_first, rows_end) the last compose rewrote,
+     * at the view's destination size. */
+    int rows_first, rows_end;
 } render_context_frame_t;
 
 typedef struct {
@@ -105,6 +110,7 @@ typedef struct {
     int32_t shown_us;     /* the caller's budget per shown frame; the ladder's is per drawn frame */
     render_view_t kept_view;
     framegen_target_t framegen;
+    render_partial_t partial; /* render/partial: rows redrawn on a still camera */
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     /* Whether the last frame's debug view drew a second view, and from where. */
     bool observed;
@@ -164,6 +170,11 @@ void render_context_set_scale(render_context_t* context, int percent);
  * view, a camera cut or a new viewport draws the next frame. */
 void render_context_set_frame_generation(render_context_t* context, bool on);
 
+/* Partial redraw (render/partial, on with render_settings_t.partial_redraw):
+ * the next frame's changed boxes, world units, each where an object was and
+ * is now; a negative count changes everything. Each frame sets them anew. */
+void render_context_set_changed(render_context_t* context, const box3f_t* boxes, int count);
+
 /* Opts in: each frame draws at a step of `config` to hold its budget, chosen
  * by the stepped controller, or by the predictor when `model` is not NULL.
  * NULL `config` returns to the fixed scale. */
@@ -201,7 +212,9 @@ upscale_filter_t render_context_upscale_filter(const render_context_t* context);
 /* With `half`, expands a compatible draw into the half picture and
  * returns true, marking `half_seams` (when not NULL) through the upscale
  * filter; otherwise upscales into `destination` at the view's destination
- * size. Either path feeds its cost to dynamic resolution. */
+ * size. Either path feeds its cost to dynamic resolution. A NULL
+ * `destination` (no framebuffer) composes nothing, and the next compose
+ * writes every row. */
 bool render_context_compose(render_context_t* context, uint16_t* destination, uint16_t* half, uint8_t* half_seams);
 
 render_context_frame_t render_context_frame(const render_context_t* context);
