@@ -379,9 +379,14 @@ def load_import_settings(path):
     if lighting not in SKIN_LIGHTING:
         raise SettingsError(f"{path}: skin.lighting must be one of {', '.join(SKIN_LIGHTING)}")
     source = values["source"]
-    check_keys(source, ("path", "credit"), "source", optional=("clips",))
+    check_keys(source, ("path", "credit"), "source", optional=("clips", "error"))
     for name in ("path", "credit"):
         text(source[name], f"source.{name}")
+    # A reduced source moved no surface more than `error` (source units), so its copies of one shape differ by
+    # up to that much: the shape match allows it.
+    source["error"] = number(source.get("error", 0.0), "source.error")
+    if source["error"] < 0:
+        raise SettingsError("source.error must not be negative")
     source["path"] = (path.parent / source["path"]).resolve()
     if source["path"].suffix.lower() not in SOURCE_SUFFIXES:
         raise SettingsError(f"source.path has an unsupported extension; supported: {', '.join(SOURCE_SUFFIXES)}")

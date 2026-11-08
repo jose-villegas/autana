@@ -1,6 +1,8 @@
 [source]
 path = "source/bistro.obj"
 credit = "Amazon Lumberyard Bistro, exterior (Amazon Lumberyard; CC BY 4.0), from NVIDIA's Open Research Content Archive; reduced, see source/copyright.txt."
+# reduce_source.py moved no surface more than 5 cm (source/copyright.txt).
+error = 5.0
 
 [output]
 position_scale = 4

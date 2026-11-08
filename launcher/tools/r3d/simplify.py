@@ -127,7 +127,7 @@ def simplify(pos, rgb, tris, labels, triangles, reserved=(), *, colour_deviation
         options = REGULARIZE_LIGHT | PERMISSIVE
     labels = np.asarray(labels)
     parts, taken = [], np.zeros(len(tris), dtype=bool)
-    if allocation.meshes:
+    if allocation.meshes or allocation.selection:
         return _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocation,
                                 colour_deviation, options, position_scale)
     for group, share in reserved:
@@ -294,7 +294,8 @@ def rule_shapes(candidates, rule, held):
     if rule.get('shape', 'exact') == 'exact':
         return shapes
     locked = [any(int(i.object_name) in held for i in shape.instances) for shape in shapes]
-    return merge([s for s, h in zip(shapes, locked) if not h]) + [s for s, h in zip(shapes, locked) if h]
+    return (merge([s for s, h in zip(shapes, locked) if not h], floor=rule.get('surface_floor', 0.0)) +
+            [s for s, h in zip(shapes, locked) if h])
 
 
 def own_materials(placed, faces, materials, pos, own_tris, own_labels):
