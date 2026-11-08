@@ -62,10 +62,12 @@ r3d_lod_any(const uint32_t* coarse, int groups) {
 }
 
 /* Whether cluster `c` of `mesh` is drawn under `coarse`: when the group
- * simplified into it is coarse (or it is finest) and its own group is not.
- * A NULL `coarse` draws the finest level, as does a mesh without levels. */
+ * simplified into it is coarse (or it is finest), or blending in `blending`
+ * when not NULL (the dither draws both levels of a blending group), and the
+ * group it is in is not coarse. A NULL `coarse` draws the finest level, as
+ * does a mesh without levels. */
 static inline bool
-r3d_lod_drawn(const r3d_lit_mesh_t* mesh, int c, const uint32_t* coarse) {
+r3d_lod_drawn_blending(const r3d_lit_mesh_t* mesh, int c, const uint32_t* coarse, const uint32_t* blending) {
     if (mesh->cluster_lod == NULL) {
         return true;
     }
@@ -73,8 +75,15 @@ r3d_lod_drawn(const r3d_lit_mesh_t* mesh, int c, const uint32_t* coarse) {
     if (coarse == NULL) {
         return lod.own == R3D_LOD_NONE;
     }
-    return (lod.own == R3D_LOD_NONE || r3d_lod_coarse(coarse, lod.own))
+    return (lod.own == R3D_LOD_NONE || r3d_lod_coarse(coarse, lod.own)
+            || (blending != NULL && r3d_lod_coarse(blending, lod.own)))
            && (lod.parent == R3D_LOD_NONE || !r3d_lod_coarse(coarse, lod.parent));
+}
+
+/* r3d_lod_drawn_blending() of one level at a time. */
+static inline bool
+r3d_lod_drawn(const r3d_lit_mesh_t* mesh, int c, const uint32_t* coarse) {
+    return r3d_lod_drawn_blending(mesh, c, coarse, NULL);
 }
 
 /* The pixels group `group`'s error spans seen through `lens` (placed with
@@ -96,6 +105,25 @@ float r3d_lod_group_coverage(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
 /* A weight's whole: the transform's fixed-point unit. */
 #define R3D_LOD_MORPH_ONE        128
 
+/* The dither's levels: a 4x4 ordered screen door's thresholds. A blending
+ * group's coarse clusters draw where the threshold is under its weight's
+ * level, its fine ones where it is not, so the two never share a pixel. */
+#define R3D_LOD_DITHER_LEVELS    16
+#define R3D_LOD_DITHER_SHIFT     4
+
+/* A cluster's dither band packed in a byte: drawn where lo <= level < hi,
+ * lo the low nibble, hi R3D_LOD_DITHER_LEVELS less the high nibble. 0 is
+ * every level: not dithered. */
+static inline int
+r3d_lod_dither_lo(uint8_t band) {
+    return band & (R3D_LOD_DITHER_LEVELS - 1);
+}
+
+static inline int
+r3d_lod_dither_hi(uint8_t band) {
+    return R3D_LOD_DITHER_LEVELS - (band >> R3D_LOD_DITHER_SHIFT);
+}
+
 /* One instance's blend through one lens; `enabled` false draws no blend. */
 typedef struct r3d_lod_morph {
     mat4f_t view; /* the lens's linear part, focal lengths divided out */
@@ -109,18 +137,25 @@ typedef struct r3d_lod_morph {
     const uint32_t* blending;  /* after `arrived`, or NULL: a cluster under a group without one weighs none */
     float covered, cover_ramp; /* pixels of radius: whole at covered, none at covered + cover_ramp */
     bool enabled;
+    bool dither; /* a screen door stands in for the morph: r3d_lod_dither_band() */
 } r3d_lod_morph_t;
 
 /* The blend of `mesh` seen through `lens`, measured as the pick measures it,
- * its thresholds `pixels_per_output_pixel` times `lod`'s. Disabled for a mesh
- * without morph targets or when `enabled` is false. */
+ * its thresholds `pixels_per_output_pixel` times `lod`'s, drawn as `blend`
+ * (render_lod_blend_t). Disabled for RENDER_LOD_BLEND_SWITCH; a mesh without
+ * morph targets dithers. */
 void r3d_lod_morph_init(r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
                         const render_lod_settings_t* lod, float pixels_per_output_pixel, const uint32_t* arrived,
-                        bool enabled);
+                        int blend);
 
 /* Cluster `c`'s weight toward its parent group's coarse surface, 0 to
- * R3D_LOD_MORPH_ONE; 0 without a parent or a blend. */
+ * R3D_LOD_MORPH_ONE; 0 without a parent, without a blend, or dithered. */
 int r3d_lod_morph_weight(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, int c);
+
+/* Cluster `c`'s dither band, 0 when not dithered: from its parent group's
+ * level when that blends, as it fades out, up to its own group's when that
+ * blends, as it fades in. An empty band, lo above hi, is never drawn. */
+uint8_t r3d_lod_dither_band(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, int c);
 
 /* A bound, in the blend's pixels, on how far cluster `c`'s targets sit from
  * the coarse surface as it draws: its targets lie on its parent's coarse

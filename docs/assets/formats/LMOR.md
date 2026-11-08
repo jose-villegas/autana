@@ -1,6 +1,7 @@
 # LMOR v1 vertex morph targets
 
-Geomorph targets for a sibling [LMSH](LMSH.md) that has [LLOD](LLOD.md) levels, named `<mesh_id>.morph`.
+Geomorph targets for a sibling [LMSH](LMSH.md) that has [LLOD](LLOD.md) levels, named `<mesh_id>.morph`,
+baked only when the import sets `[geometry] morph = true`.
 Layout defines: [`render/lmor_format.h`](../../../launcher/main/render/lmor_format.h).
 
 Each vertex of a cluster with a parent group stores where it lands on that

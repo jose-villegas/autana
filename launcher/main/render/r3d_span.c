@@ -932,9 +932,82 @@ set_up_capped_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* con
     return true;
 }
 
+/* A float plane through three vertices' values, per subpixel from vertex a. */
+typedef struct {
+    float at, dx, dy;
+} screen_plane_t;
+
+static screen_plane_t
+screen_plane(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, float area2, float va,
+             float vb, float vc) {
+    const float ux = (float)(b->x - a->x);
+    const float uy = (float)(b->y - a->y);
+    const float wx = (float)(c->x - a->x);
+    const float wy = (float)(c->y - a->y);
+    return (screen_plane_t){va, (((vb - va) * wy) - ((vc - va) * uy)) / area2,
+                            (((vc - va) * ux) - ((vb - va) * wx)) / area2};
+}
+
+static inline float
+screen_value(const screen_plane_t* p, float x, float y) {
+    return p->at + (p->dx * x) + (p->dy * y);
+}
+
+/* A fill, or with `writing` the target's writers, through the target's
+ * screen mask: pixel centres tested against the edges as fill_small() does,
+ * so it covers what the walk would, and each attribute from a float plane.
+ * The rarer path, for a level fading in or out over another. */
+static __attribute__((noinline, cold)) void
+screen_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+            const r3d_span_vertex_t* c, const uint16_t* face, bool capped, bool writing) {
+    const recti_t box = r3d_span_window_box(target, r3d_span_extent_limits(a, b, c, 0, 0).centres);
+    const int32_t area2 = r3d_span_area2(a, b, c);
+    if (recti_is_empty(box) || area2 == 0 || r3d_span_stop_after != 0) {
+        return;
+    }
+    const bool positive = area2 > 0;
+    const r3d_span_vertex_t* p = positive ? b : c;
+    const r3d_span_vertex_t* q = positive ? c : b;
+    const small_edge_t e[TRIANGLE_VERTICES] = {small_edge(a, p), small_edge(p, q), small_edge(q, a)};
+    const float area = (float)area2;
+    const screen_plane_t z = screen_plane(a, b, c, area, a->z, b->z, c->z);
+    const screen_plane_t r = screen_plane(a, b, c, area, a->r, b->r, c->r);
+    const screen_plane_t g = screen_plane(a, b, c, area, a->g, b->g, c->g);
+    const screen_plane_t bl = screen_plane(a, b, c, area, a->b, b->b, c->b);
+    const uint16_t cap = capped ? r3d_span_depth_limit(mathf_max(a->z, mathf_max(b->z, c->z))) : R3D_DEPTH_NEAREST;
+    for (int y = box.y; y < recti_bottom(box); y++) {
+        const pixel_row_t row = pixel_row(target, y);
+        const float fy = (float)(row.centre - a->y);
+        for (int x = box.x, end = recti_right(box); x < end; x++) {
+            const int32_t cx = (x << R3D_SUBPIXEL_SHIFT) + HALF_PIXEL;
+            if (((target->screen_mask >> R3D_SPAN_SCREEN_BIT(x, y)) & 1U) == 0
+                || (small_side(&e[0], cx, row.centre) | small_side(&e[1], cx, row.centre)
+                    | small_side(&e[2], cx, row.centre))
+                       < 0) {
+                continue;
+            }
+            const float fx = (float)(cx - a->x);
+            const uint16_t depth = (uint16_t)mathi_min(
+                (int)(mathf_clamp(screen_value(&z, fx, fy), 0.0F, 1.0F) * (float)R3D_DEPTH_NEAREST), cap);
+            if (writing) {
+                write_span(target, y, x, x, (int32_t)depth << R3D_DEPTH_SHIFT, 0);
+            } else if (depth > row.depth[x]) {
+                row.depth[x] = depth;
+                row.color[x] = face != NULL ? *face
+                                            : r3d_span_pack_rgb(screen_value(&r, fx, fy), screen_value(&g, fx, fy),
+                                                                screen_value(&bl, fx, fy));
+            }
+        }
+    }
+}
+
 static inline __attribute__((always_inline)) void
 triangle_of(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
             const r3d_span_vertex_t* c, const uint16_t* face, bool capped) {
+    if (__builtin_expect(target->screen_mask != 0, 0)) {
+        screen_fill(target, a, b, c, face, capped, false);
+        return;
+    }
     const r3d_span_extent_t e = r3d_span_extent_limits(a, b, c, flat_max_rows, flat_max_width);
     const recti_t box = r3d_span_window_box(target, e.centres);
     if (recti_is_empty(box)) {
@@ -1007,6 +1080,10 @@ r3d_span_capped_triangle_impl(const r3d_span_target_t* target, const r3d_span_ve
 static inline __attribute__((always_inline)) void
 triangle_write_of(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                   const r3d_span_vertex_t* c, bool solid, bool capped) {
+    if (target->screen_mask != 0) {
+        screen_fill(target, a, b, c, NULL, capped, true);
+        return;
+    }
     const r3d_span_vertex_t* v0 = a;
     const r3d_span_vertex_t* v1 = b;
     const r3d_span_vertex_t* v2 = c;

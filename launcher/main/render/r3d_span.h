@@ -36,6 +36,9 @@ typedef struct {
     const r3d_span_writer_t* writers; /* writer_count of them; none: colour and depth only */
     int writer_count;
     bool skip_hidden; /* render_view_t.skip_hidden: fills cap their depth, and writers follow */
+    /* A screen mask: bit R3D_SPAN_SCREEN_BIT(x, y) set draws that pixel of
+     * every fill and write, a clear bit skips it; 0 is no mask, the fast fills'. */
+    uint16_t screen_mask;
     const r3d_span_small_fill_t* small_fill;
 
     union {
@@ -43,6 +46,11 @@ typedef struct {
         GFX_TARGET_STORAGE(GFX_ATTACHMENTS_MAX) rows_storage;
     };
 } r3d_span_target_t;
+
+/* The screen mask's bit for pixel (x, y): its place in a 4x4 tile at absolute coordinates. */
+#define R3D_SPAN_SCREEN_SIDE 4
+#define R3D_SPAN_SCREEN_BIT(x, y)                                                                                      \
+    ((((y) & (R3D_SPAN_SCREEN_SIDE - 1)) * R3D_SPAN_SCREEN_SIDE) + ((x) & (R3D_SPAN_SCREEN_SIDE - 1)))
 
 /* Colour and depth alone, rows [row0, row1) `width` wide, each buffer
  * starting at row0. */

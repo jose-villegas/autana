@@ -16,8 +16,8 @@
 /* lod.blend: how a group changes level (docs/plans/Cluster-LOD.md#the-blend). */
 typedef enum {
     RENDER_LOD_BLEND_SWITCH, /* at once */
-    RENDER_LOD_BLEND_MORPH,  /* its vertices move onto the coarse surface first */
-    RENDER_LOD_BLEND_DITHER, /* both levels draw through complementary masks */
+    RENDER_LOD_BLEND_ON,     /* a mesh with morph targets moves onto the coarse surface first; any other draws both
+                                levels through complementary masks */
     RENDER_LOD_BLEND_COUNT,
 } render_lod_blend_t;
 
@@ -29,7 +29,7 @@ typedef struct {
     float tolerance_px;  /* basic: the projected error a group may have and still draw coarse; more saves, pops more */
     float hysteresis_px; /* advanced: how far past the tolerance a coarse group's error goes before it turns fine */
     int coverage_permille; /* basic: the thousandths of the picture's height a coarse group may span; smaller pops less */
-    int blend; /* basic: a render_lod_blend_t; a blend softens each switch and costs time only while a group changes */
+    int blend; /* basic: 0 switches at once; 1 blends each switch, by morph where a mesh was imported with geometry.morph, else by dither */
     float blend_px; /* advanced: the error past a switch over which a blend fades out; longer is softer, moves more */
 } render_lod_settings_t;
 

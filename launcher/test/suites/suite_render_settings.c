@@ -131,7 +131,7 @@ test_the_default_is_every_setting_on_as_the_raster_drew_before(void) {
                                   .lod = {.tolerance_px = 2.0F,
                                           .hysteresis_px = 0.5F,
                                           .coverage_permille = 250,
-                                          .blend = RENDER_LOD_BLEND_MORPH,
+                                          .blend = RENDER_LOD_BLEND_ON,
                                           .blend_px = 0.25F}};
     assert_settings(&on, &RENDER_SETTINGS_DEFAULT);
     const render_settings_t bare = raster_settings(&r->raster);
@@ -226,7 +226,7 @@ static void
 test_the_coverage_knob_overrides_only_the_coverage_cap(void) {
     raster_rig_t* r = open_rig();
     render_settings_t set = RENDER_SETTINGS_DEFAULT;
-    set.lod = (render_lod_settings_t){3.0F, 0.25F, 100, RENDER_LOD_BLEND_DITHER, 0.5F};
+    set.lod = (render_lod_settings_t){3.0F, 0.25F, 100, RENDER_LOD_BLEND_ON, 0.5F};
     r->raster.settings = &set;
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, lod_coverage_permille), 500));
     render_settings_t used = raster_settings(&r->raster);
@@ -283,7 +283,7 @@ read_entry(int rows, const int16_t* values, int frac, render_settings_t* out) {
 static void
 test_a_packs_render_entry_reads_every_field(void) {
     static const int16_t values[FIELDS] = {
-        0, STEP, 0, (3 * STEP) + (STEP / 2), STEP / 4, 100 * STEP, RENDER_LOD_BLEND_DITHER * STEP, STEP / 2};
+        0, STEP, 0, (3 * STEP) + (STEP / 2), STEP / 4, 100 * STEP, RENDER_LOD_BLEND_ON * STEP, STEP / 2};
     render_settings_t read;
     TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
     TEST_ASSERT_FALSE(read.cull);
@@ -292,7 +292,7 @@ test_a_packs_render_entry_reads_every_field(void) {
     TEST_ASSERT_EQUAL_FLOAT(3.5F, read.lod.tolerance_px);
     TEST_ASSERT_EQUAL_FLOAT(0.25F, read.lod.hysteresis_px);
     TEST_ASSERT_EQUAL_INT(100, read.lod.coverage_permille);
-    TEST_ASSERT_EQUAL_INT(RENDER_LOD_BLEND_DITHER, read.lod.blend);
+    TEST_ASSERT_EQUAL_INT(RENDER_LOD_BLEND_ON, read.lod.blend);
     TEST_ASSERT_EQUAL_FLOAT(0.5F, read.lod.blend_px);
 }
 

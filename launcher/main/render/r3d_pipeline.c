@@ -11,6 +11,7 @@
 #include "collections/sort.h"
 #include "core/job.h"
 #include "display/viewport.h"
+#include "image/pixel/bayer.h"
 #include "math/geometry/box3f.h"
 #include "math/geometry/planef.h"
 #include "math/linear/mat3f.h"
@@ -210,11 +211,12 @@ group_run(const r3d_lit_mesh_t* mesh, int lo, uint16_t g) {
 /* Groups come in rising order, so each search starts where the last run
  * ended. */
 int
-r3d_pipeline_cull_cut(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, const planef_t* planes, planef_t depth,
-                      uint16_t* out, int count, r3d_depth_fit_t* fit, int* tested) {
+r3d_pipeline_cull_cut(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, const uint32_t* blending,
+                      const planef_t* planes, planef_t depth, uint16_t* out, int count, r3d_depth_fit_t* fit,
+                      int* tested) {
     int from = mesh->lod_coarse_first;
     for (int w = 0; w < R3D_LOD_WORDS(mesh->lod_group_count); w++) {
-        for (uint32_t bits = lod_coarse[w]; bits != 0; bits &= bits - 1U) {
+        for (uint32_t bits = lod_coarse[w] | (blending != NULL ? blending[w] : 0U); bits != 0; bits &= bits - 1U) {
             const uint16_t g = (uint16_t)((w * R3D_LOD_WORD_BITS) + __builtin_ctz(bits));
             int c = group_run(mesh, from, g);
             for (; c < mesh->cluster_count && mesh->cluster_lod[c].own == g; c++) {
@@ -233,6 +235,12 @@ r3d_pipeline_cull_cut(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, co
 int
 r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint32_t* lod_coarse, uint16_t* out,
                   r3d_pipeline_work_t* work, r3d_depth_fit_t* fit) {
+    return r3d_pipeline_cull_blending(mesh, lens, lod_coarse, NULL, out, work, fit);
+}
+
+int
+r3d_pipeline_cull_blending(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint32_t* lod_coarse,
+                           const uint32_t* blending, uint16_t* out, r3d_pipeline_work_t* work, r3d_depth_fit_t* fit) {
     planef_t* planes = work->cull.planes;
     r3d_lens_frustum(lens, planes);
     const planef_t depth = lens_depth_plane(lens);
@@ -244,7 +252,9 @@ r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint
     const int start = mesh->lod_finest_root;
     /* Nothing coarse: level 0's tree, like a mesh without levels, holds only
      * what is drawn, so the walk tests no level and there is no cut. */
-    const bool cut = lod_coarse != NULL && r3d_lod_any(lod_coarse, mesh->lod_group_count);
+    const bool cut = lod_coarse != NULL
+                     && (r3d_lod_any(lod_coarse, mesh->lod_group_count)
+                         || (blending != NULL && r3d_lod_any(blending, mesh->lod_group_count)));
     const bool every = !cut && (start != 0 || mesh->cluster_lod == NULL);
     stack[top++] = (walk_entry_t){(uint16_t)start, ALL_PLANES};
     int count = 0;
@@ -264,7 +274,7 @@ r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint
     }
     if (start != 0 && cut) {
         int tested = 0;
-        count = r3d_pipeline_cull_cut(mesh, lod_coarse, planes, depth, out, count, fit, &tested);
+        count = r3d_pipeline_cull_cut(mesh, lod_coarse, blending, planes, depth, out, count, fit, &tested);
     }
     return count;
 }
@@ -375,7 +385,7 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const mat4
     }
     FRAME_LAP("r3d.transform.cluster");
     return (r3d_pipeline_rows_t){
-        (int16_t)x0, (int16_t)y0, (int16_t)x1, (int16_t)y1, boxed ? r3d_span_depth_limit(iz) : 0, unbounded, 0};
+        (int16_t)x0, (int16_t)y0, (int16_t)x1, (int16_t)y1, boxed ? r3d_span_depth_limit(iz) : 0, unbounded, false, 0};
 }
 
 /* Cluster `cluster`'s step toward its morph targets at `weight`, in
@@ -416,8 +426,16 @@ transform_morphed(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const mat4
         transform_store(lens, &cs[v], l, p.b, p.inside_x, p.inside_y, p.iz, &y0, &y1, &unbounded, boxed, &x0, &x1, &iz);
     }
     return (r3d_pipeline_rows_t){
-        (int16_t)x0, (int16_t)y0,    (int16_t)x1, (int16_t)y1, boxed ? r3d_span_depth_limit(iz) : 0,
-        unbounded,   (uint8_t)weight};
+        (int16_t)x0, (int16_t)y0, (int16_t)x1,    (int16_t)y1, boxed ? r3d_span_depth_limit(iz) : 0,
+        unbounded,   false,       (uint8_t)weight};
+}
+
+/* Marks cluster `c`'s rows with its dither band, if it has one. */
+static __attribute__((noinline)) void
+dither_rows(const r3d_lit_mesh_t* mesh, const r3d_lod_morph_t* morph, int c, r3d_pipeline_rows_t* rows) {
+    const uint8_t band = r3d_lod_dither_band(morph, mesh, c);
+    rows->dithered = band != 0;
+    rows->morph = band;
 }
 
 static inline __attribute__((always_inline)) void
@@ -435,6 +453,9 @@ transform_clusters(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d
                 : transform_cluster(mesh, lens, &screen, &mesh->clusters[clusters[i]], cs, lo_bits, hi_bits, boxed);
         if (rows != NULL) {
             rows[clusters[i]] = r;
+            if (morph != NULL && morph->dither) {
+                dither_rows(mesh, morph, clusters[i], &rows[clusters[i]]);
+            }
         }
     }
 }
@@ -772,6 +793,36 @@ draw_morphed(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int cluster, co
                    cluster, weight);
 }
 
+/* The screen mask of a dither band: every pixel whose 4x4 threshold is inside it. */
+static uint16_t
+band_mask(uint8_t band) {
+    const int lo = r3d_lod_dither_lo(band);
+    const int hi = r3d_lod_dither_hi(band);
+    uint16_t mask = 0;
+    for (int y = 0; y < R3D_SPAN_SCREEN_SIDE; y++) {
+        for (int x = 0; x < R3D_SPAN_SCREEN_SIDE; x++) {
+            const int level = bayer4x4[y][x];
+            if (level >= lo && level < hi) {
+                mask |= (uint16_t)(1U << R3D_SPAN_SCREEN_BIT(x, y));
+            }
+        }
+    }
+    return mask;
+}
+
+/* A dithered cluster through its band's screen mask; nothing when the band is empty. */
+static __attribute__((noinline, cold)) void
+draw_dithered(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int cluster, const r3d_pipeline_vertex_t* cs,
+              const r3d_span_target_t* target, draw_mode_t mode, r3d_pipeline_work_t* work, uint8_t band, int first,
+              int end) {
+    r3d_span_target_t masked = *target;
+    masked.screen_mask = band_mask(band);
+    if (masked.screen_mask == 0) {
+        return;
+    }
+    draw_triangles(mesh, lens, &mesh->clusters[cluster], first, end, cs, &masked, mode, work, cluster, 0);
+}
+
 /* Each writer's value for this cluster and triangle, by its step. */
 static void
 retag(r3d_span_writer_t* writers, const r3d_span_writer_t* given, int count, uint32_t cluster, uint32_t triangle) {
@@ -809,6 +860,10 @@ draw_writing_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16
         const int step = per_triangle ? 1 : c->triangle_count;
         for (int t = c->triangle_first; t < end; t += step) {
             retag(writers, target->writers, target->writer_count, clusters[i], (uint32_t)t);
+            if (rows != NULL && rows[clusters[i]].dithered) {
+                draw_dithered(mesh, lens, clusters[i], cs, &writing, mode, work, rows[clusters[i]].morph, t, t + step);
+                continue;
+            }
             /* No DRAW_BOUNDED: one more live value puts this frame over stack_chain_gate. */
             draw_triangles(mesh, lens, c, t, t + step, cs, &writing, mode, work, clusters[i],
                            rows != NULL ? rows[clusters[i]].morph : 0);
@@ -841,6 +896,11 @@ draw_reading_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16
         }
         const r3d_lit_cluster_t* c = &mesh->clusters[clusters[i]];
         const draw_mode_t bounded = rows != NULL && !rows[clusters[i]].unbounded ? DRAW_BOUNDED : 0U;
+        if (rows != NULL && rows[clusters[i]].dithered) {
+            draw_dithered(mesh, lens, clusters[i], cs, target, mode | bounded, work, rows[clusters[i]].morph,
+                          c->triangle_first, c->triangle_first + c->triangle_count);
+            continue;
+        }
         if (rows != NULL && rows[clusters[i]].morph != 0) {
             draw_morphed(mesh, lens, clusters[i], cs, target, mode | bounded, work, rows[clusters[i]].morph);
             continue;

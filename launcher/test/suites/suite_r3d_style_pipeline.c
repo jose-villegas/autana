@@ -15,6 +15,7 @@
 #define r3d_pipeline_work_bytes        constant_r3d_pipeline_work_bytes
 #define r3d_pipeline_cull              constant_r3d_pipeline_cull
 #define r3d_pipeline_cull_cut          constant_r3d_pipeline_cull_cut
+#define r3d_pipeline_cull_blending     constant_r3d_pipeline_cull_blending
 #define r3d_pipeline_transform         constant_r3d_pipeline_transform
 #define r3d_pipeline_transform_morphed constant_r3d_pipeline_transform_morphed
 #define r3d_pipeline_transform_split   constant_r3d_pipeline_transform_split

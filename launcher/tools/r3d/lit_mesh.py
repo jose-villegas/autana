@@ -292,13 +292,15 @@ def validate_levels(lod, groups, clusters):
         lod_asset.encode(lod, groups)
 
 
-def write_lit_mesh(out_dir, name, positions, rgb, tris, double, recorder=None, colourless=False, mesh_builder=bake_lit_mesh, **options):
+def write_lit_mesh(out_dir, name, positions, rgb, tris, double, recorder=None, colourless=False, mesh_builder=bake_lit_mesh,
+                   morph=False, **options):
     """Writes <name>.bundle into out_dir, the pack entry main/render/
     r3d_lit_mesh.h reads. positions are model units, rgb 0..255 per vertex
     (None for a flat mesh), tris counter-clockwise seen from the front,
     double one flag per triangle; options, face_rgb among them, go to
     bake_lit_mesh. With colourless, colour columns are weld keys returned in
-    colour_keys or face_keys; neither colour array is written. Returns the baked mesh."""
+    colour_keys or face_keys; neither colour array is written. With morph, the
+    bundle carries morph targets (mesh_bundle.mesh_entries). Returns the baked mesh."""
     recorder = NULL_RECORDER if recorder is None else recorder
     with recorder.step("meshlets", len(tris)) as step:
         mesh = mesh_builder(positions, rgb, tris, double, **options)
@@ -309,7 +311,7 @@ def write_lit_mesh(out_dir, name, positions, rgb, tris, double, recorder=None, c
     with recorder.step("write", len(mesh.tris)):
         from r3d import mesh_bundle
         (pathlib.Path(out_dir) / f"{name}{mesh_bundle.SUFFIX}").write_bytes(
-            mesh_bundle.encode(mesh_bundle.mesh_entries(name, mesh), []))
+            mesh_bundle.encode(mesh_bundle.mesh_entries(name, mesh, morph), []))
     return mesh
 
 

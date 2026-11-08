@@ -159,7 +159,9 @@ levelled_mesh(void) {
 
 static r3d_pipeline_work_t*
 pipeline_work(void) {
-    work = malloc(r3d_pipeline_work_bytes());
+    if (work == NULL) {
+        work = malloc(r3d_pipeline_work_bytes());
+    }
     TEST_ASSERT_NOT_NULL(work);
     return work;
 }
@@ -665,7 +667,7 @@ static int
 weight_at(const r3d_lit_mesh_t* mesh, float eye, int cluster, bool enabled) {
     const r3d_lens_t lens = lens_at(eye, NULL);
     r3d_lod_morph_t morph;
-    r3d_lod_morph_init(&morph, mesh, &lens, &LOD, 1.0F, NULL, enabled);
+    r3d_lod_morph_init(&morph, mesh, &lens, &LOD, 1.0F, NULL, enabled ? RENDER_LOD_BLEND_ON : RENDER_LOD_BLEND_SWITCH);
     return r3d_lod_morph_weight(&morph, mesh, cluster);
 }
 
@@ -721,8 +723,8 @@ test_the_morph_thresholds_scale_with_the_pixels_per_output_pixel(void) {
     const float scale = 2.0F;
     const r3d_lens_t lens = lens_at(error_eye(mesh, scale * leave_px() * 0.75F), NULL);
     r3d_lod_morph_t one, two;
-    r3d_lod_morph_init(&one, mesh, &lens, &LOD, 1.0F, NULL, true);
-    r3d_lod_morph_init(&two, mesh, &lens, &LOD, scale, NULL, true);
+    r3d_lod_morph_init(&one, mesh, &lens, &LOD, 1.0F, NULL, RENDER_LOD_BLEND_ON);
+    r3d_lod_morph_init(&two, mesh, &lens, &LOD, scale, NULL, RENDER_LOD_BLEND_ON);
     TEST_ASSERT_EQUAL_INT(0, r3d_lod_morph_weight(&one, mesh, WEIGHT_CLUSTER));
     TEST_ASSERT_EQUAL_INT(R3D_LOD_MORPH_ONE, r3d_lod_morph_weight(&two, mesh, WEIGHT_CLUSTER));
 }
@@ -799,7 +801,7 @@ static int
 weight_arrived_at(const r3d_lit_mesh_t* mesh, float px, const uint32_t* arrived) {
     const r3d_lens_t lens = lens_at(error_eye(mesh, px), NULL);
     r3d_lod_morph_t morph;
-    r3d_lod_morph_init(&morph, mesh, &lens, &LOD, 1.0F, arrived, true);
+    r3d_lod_morph_init(&morph, mesh, &lens, &LOD, 1.0F, arrived, RENDER_LOD_BLEND_ON);
     return r3d_lod_morph_weight(&morph, mesh, WEIGHT_CLUSTER);
 }
 
@@ -912,6 +914,292 @@ test_without_arrived_bits_every_group_blends_whole_up_to_leave(void) {
     TEST_ASSERT_EQUAL_INT(0, weight_arrived_at(mesh, leave_px() + (LOD.blend_px * (1.0F + PAST_RAMP)), NULL));
 }
 
+/* The dither (RENDER_LOD_BLEND_ON for a mesh without morph targets). Group WEIGHT_GROUP blends: cluster
+ * WEIGHT_CLUSTER is a fine cluster under it, and the cluster simplified from it
+ * (whose `own` is the group) is its coarse level. */
+enum {
+    DITHER_SAMPLES = 48,
+    /* The group above the blending one, which never blends here. */
+    GROUP_ABOVE = FINEST_GROUPS,
+    /* A cluster under a group that does not blend here. */
+    OTHER_FINE_CLUSTER = CLUSTERS_PER_GROUP,
+    TOP_CLUSTER = CLUSTERS - 1,
+};
+
+static int
+coarse_level_cluster(const r3d_lit_mesh_t* mesh) {
+    for (int c = 0; c < mesh->cluster_count; c++) {
+        if (mesh->cluster_lod[c].own == WEIGHT_GROUP) {
+            return c;
+        }
+    }
+    TEST_FAIL_MESSAGE("no cluster is simplified from the blending group");
+    return -1;
+}
+
+/* Whether a band draws at `level`. */
+static bool
+band_covers(uint8_t band, int level) {
+    return level >= r3d_lod_dither_lo(band) && level < r3d_lod_dither_hi(band);
+}
+
+static int
+band_levels(uint8_t band) {
+    int n = 0;
+    for (int level = 0; level < R3D_LOD_DITHER_LEVELS; level++) {
+        n += band_covers(band, level) ? 1 : 0;
+    }
+    return n;
+}
+
+/* The morph arm's weight for the cluster at `px`, with group WEIGHT_GROUP blending. */
+static int
+blending_weight_at_px(const r3d_lit_mesh_t* mesh, float px, uint32_t* arrived) {
+    levelled->mesh.morph_delta = NO_DELTAS;
+    const int weight = weight_arrived_at(mesh, px, arrived);
+    levelled->mesh.morph_delta = NULL;
+    return weight;
+}
+
+static uint8_t
+dither_band_at_px(const r3d_lit_mesh_t* mesh, float px, const uint32_t* arrived, int blend, int c) {
+    const r3d_lens_t lens = lens_at(error_eye(mesh, px), NULL);
+    r3d_lod_morph_t morph;
+    r3d_lod_morph_init(&morph, mesh, &lens, &LOD, 1.0F, arrived, blend);
+    return r3d_lod_dither_band(&morph, mesh, c);
+}
+
+/* From the weight's whole through its ramp to none. */
+static float
+dither_sample_px(int i) {
+    const float first = enter_px() * SHARE_HALF;
+    const float last = enter_px() + (LOD.blend_px * (1.0F + PAST_RAMP));
+    return first + ((last - first) * (float)i / (float)(DITHER_SAMPLES - 1));
+}
+
+/* A group whose coarse level is empty, as a copy's drop-out level is: with
+ * nothing simplified from it, its fine cluster alone fades, from every level
+ * at no weight to none at the whole one, and never comes back as the weight grows. */
+static void
+test_a_group_with_an_empty_coarse_level_fades_its_fine_clusters_out(void) {
+    const r3d_lit_mesh_t* mesh = levelled_mesh();
+    const int coarse = coarse_level_cluster(mesh);
+    levelled->lod[coarse].own = R3D_LOD_NONE;
+    uint32_t arrived[BLEND_WORDS] = {0};
+    arrived[BLENDING_WORD] = 1U << WEIGHT_GROUP;
+    int last = R3D_LOD_DITHER_LEVELS + 1;
+    bool saw_gone = false;
+    for (int i = DITHER_SAMPLES - 1; i >= 0; i--) {
+        const float px = dither_sample_px(i);
+        const int weight = blending_weight_at_px(mesh, px, arrived);
+        const int levels = band_levels(dither_band_at_px(mesh, px, arrived, RENDER_LOD_BLEND_ON, WEIGHT_CLUSTER));
+        TEST_ASSERT_TRUE(levels <= last);
+        if (weight == 0) {
+            TEST_ASSERT_EQUAL_INT(R3D_LOD_DITHER_LEVELS, levels);
+        } else if (weight == R3D_LOD_MORPH_ONE) {
+            TEST_ASSERT_EQUAL_INT(0, levels);
+            saw_gone = true;
+        }
+        last = levels;
+    }
+    TEST_ASSERT_TRUE(saw_gone);
+}
+
+/* Under a blending parent and simplified from it, a cluster's bands never
+ * share a level and between them cover every one, at every weight. */
+static void
+test_the_dither_bands_of_a_blending_group_s_two_levels_cover_every_level_exactly_once(void) {
+    const r3d_lit_mesh_t* mesh = levelled_mesh();
+    const int coarse = coarse_level_cluster(mesh);
+    uint32_t arrived[BLEND_WORDS] = {0};
+    arrived[BLENDING_WORD] = 1U << WEIGHT_GROUP;
+    bool saw_whole = false;
+    bool saw_none = false;
+    bool saw_part = false;
+    for (int i = 0; i < DITHER_SAMPLES; i++) {
+        const float px = dither_sample_px(i);
+        const int weight = blending_weight_at_px(mesh, px, arrived);
+        const uint8_t fine_band = dither_band_at_px(mesh, px, arrived, RENDER_LOD_BLEND_ON, WEIGHT_CLUSTER);
+        const uint8_t coarse_band = dither_band_at_px(mesh, px, arrived, RENDER_LOD_BLEND_ON, coarse);
+        for (int level = 0; level < R3D_LOD_DITHER_LEVELS; level++) {
+            TEST_ASSERT_EQUAL_INT_MESSAGE(
+                1, (band_covers(fine_band, level) ? 1 : 0) + (band_covers(coarse_band, level) ? 1 : 0),
+                "a level is drawn by both the fine and the coarse cluster, or neither");
+        }
+        if (weight == R3D_LOD_MORPH_ONE) {
+            TEST_ASSERT_EQUAL_INT(R3D_LOD_DITHER_LEVELS, band_levels(coarse_band));
+            TEST_ASSERT_EQUAL_INT(0, band_levels(fine_band));
+            saw_whole = true;
+        } else if (weight == 0) {
+            TEST_ASSERT_EQUAL_INT(0, band_levels(coarse_band));
+            TEST_ASSERT_EQUAL_INT(R3D_LOD_DITHER_LEVELS, band_levels(fine_band));
+            saw_none = true;
+        } else {
+            saw_part = true;
+        }
+        TEST_ASSERT_INT_WITHIN(1, (weight * R3D_LOD_DITHER_LEVELS) / R3D_LOD_MORPH_ONE, band_levels(coarse_band));
+    }
+    TEST_ASSERT_TRUE(saw_whole && saw_none && saw_part);
+}
+
+static void
+test_the_coarse_cluster_covers_more_levels_as_the_blend_weight_grows(void) {
+    const r3d_lit_mesh_t* mesh = levelled_mesh();
+    const int coarse = coarse_level_cluster(mesh);
+    uint32_t arrived[BLEND_WORDS] = {0};
+    arrived[BLENDING_WORD] = 1U << WEIGHT_GROUP;
+    int previous_weight = R3D_LOD_MORPH_ONE + 1;
+    int previous_levels = R3D_LOD_DITHER_LEVELS + 1;
+    for (int i = 0; i < DITHER_SAMPLES; i++) {
+        const float px = dither_sample_px(i);
+        const int weight = blending_weight_at_px(mesh, px, arrived);
+        const int levels = band_levels(dither_band_at_px(mesh, px, arrived, RENDER_LOD_BLEND_ON, coarse));
+        TEST_ASSERT_TRUE(weight <= previous_weight);
+        TEST_ASSERT_TRUE(levels <= previous_levels);
+        previous_weight = weight;
+        previous_levels = levels;
+    }
+}
+
+/* Without a blending bit on its groups a cluster is drawn at every level. */
+static void
+test_a_cluster_whose_groups_do_not_blend_has_no_dither_band(void) {
+    const r3d_lit_mesh_t* mesh = levelled_mesh();
+    const int coarse = coarse_level_cluster(mesh);
+    uint32_t arrived[BLEND_WORDS] = {0};
+    const float mid_ramp = enter_px() + (LOD.blend_px * SHARE_HALF);
+    const int clusters[] = {WEIGHT_CLUSTER, coarse, OTHER_FINE_CLUSTER, TOP_CLUSTER};
+    for (size_t i = 0; i < sizeof clusters / sizeof clusters[0]; i++) {
+        TEST_ASSERT_EQUAL_HEX8(0, dither_band_at_px(mesh, mid_ramp, arrived, RENDER_LOD_BLEND_ON, clusters[i]));
+    }
+    arrived[BLENDING_WORD] = 1U << WEIGHT_GROUP;
+    TEST_ASSERT_NOT_EQUAL_UINT8(0, dither_band_at_px(mesh, mid_ramp, arrived, RENDER_LOD_BLEND_ON, WEIGHT_CLUSTER));
+    TEST_ASSERT_EQUAL_HEX8(0, dither_band_at_px(mesh, mid_ramp, arrived, RENDER_LOD_BLEND_ON, OTHER_FINE_CLUSTER));
+    TEST_ASSERT_EQUAL_HEX8(0, dither_band_at_px(mesh, mid_ramp, arrived, RENDER_LOD_BLEND_ON, TOP_CLUSTER));
+}
+
+/* The same blending state: a mesh with morph targets weighs the cluster and has no band, one without has a band and no weight. */
+static void
+test_the_dither_arm_has_no_morph_weight_and_the_morph_arm_no_dither_band(void) {
+    const r3d_lit_mesh_t* mesh = &morphing_levels()->mesh;
+    uint32_t arrived[BLEND_WORDS] = {0};
+    arrived[BLENDING_WORD] = 1U << WEIGHT_GROUP;
+    const float mid_ramp = enter_px() + (LOD.blend_px * SHARE_HALF);
+    const r3d_lens_t lens = lens_at(error_eye(mesh, mid_ramp), NULL);
+    r3d_lod_morph_t morph, dither;
+    r3d_lod_morph_init(&morph, mesh, &lens, &LOD, 1.0F, arrived, RENDER_LOD_BLEND_ON);
+    levelled->mesh.morph_delta = NULL;
+    r3d_lod_morph_init(&dither, mesh, &lens, &LOD, 1.0F, arrived, RENDER_LOD_BLEND_ON);
+    TEST_ASSERT_GREATER_THAN_INT(0, r3d_lod_morph_weight(&morph, mesh, WEIGHT_CLUSTER));
+    TEST_ASSERT_EQUAL_HEX8(0, r3d_lod_dither_band(&morph, mesh, WEIGHT_CLUSTER));
+    TEST_ASSERT_EQUAL_INT(0, r3d_lod_morph_weight(&dither, mesh, WEIGHT_CLUSTER));
+    TEST_ASSERT_NOT_EQUAL_UINT8(0, r3d_lod_dither_band(&dither, mesh, WEIGHT_CLUSTER));
+}
+
+/* The switch arm draws no blend, and the dither needs no morph targets. */
+static void
+test_the_dither_needs_no_morph_targets_and_the_switch_arm_has_no_band(void) {
+    const r3d_lit_mesh_t* mesh = levelled_mesh();
+    TEST_ASSERT_NULL(mesh->morph_delta);
+    uint32_t arrived[BLEND_WORDS] = {0};
+    arrived[BLENDING_WORD] = 1U << WEIGHT_GROUP;
+    const float mid_ramp = enter_px() + (LOD.blend_px * SHARE_HALF);
+    TEST_ASSERT_NOT_EQUAL_UINT8(0, dither_band_at_px(mesh, mid_ramp, arrived, RENDER_LOD_BLEND_ON, WEIGHT_CLUSTER));
+    TEST_ASSERT_EQUAL_HEX8(0, dither_band_at_px(mesh, mid_ramp, arrived, RENDER_LOD_BLEND_SWITCH, WEIGHT_CLUSTER));
+}
+
+/* The cut with group WEIGHT_GROUP blending: its fine clusters and those
+ * simplified from it are both drawn. */
+static void
+test_a_blending_group_keeps_both_its_fine_clusters_and_those_simplified_from_it(void) {
+    const r3d_lit_mesh_t* mesh = levelled_mesh();
+    const int coarse = coarse_level_cluster(mesh);
+    const uint32_t none[R3D_LOD_WORDS(GROUPS)] = {0};
+    const uint32_t blending[R3D_LOD_WORDS(GROUPS)] = {1U << WEIGHT_GROUP};
+    TEST_ASSERT_TRUE(r3d_lod_drawn_blending(mesh, WEIGHT_CLUSTER, none, blending));
+    TEST_ASSERT_TRUE(r3d_lod_drawn_blending(mesh, coarse, none, blending));
+    TEST_ASSERT_FALSE(r3d_lod_drawn_blending(mesh, coarse, none, NULL));
+    TEST_ASSERT_FALSE(r3d_lod_drawn_blending(mesh, coarse, none, none));
+    for (int c = 0; c < mesh->cluster_count; c++) {
+        if (c != coarse) {
+            TEST_ASSERT_EQUAL_INT(r3d_lod_drawn(mesh, c, none), r3d_lod_drawn_blending(mesh, c, none, blending));
+        }
+    }
+    const uint32_t above[R3D_LOD_WORDS(GROUPS)] = {(1U << WEIGHT_GROUP) | (1U << GROUP_ABOVE)};
+    TEST_ASSERT_FALSE(r3d_lod_drawn_blending(mesh, coarse, above, blending));
+    TEST_ASSERT_FALSE(r3d_lod_drawn_blending(mesh, WEIGHT_CLUSTER, above, blending));
+    TEST_ASSERT_FALSE(r3d_lod_drawn_blending(mesh, coarse, NULL, blending));
+}
+
+static int
+cull_sorted(const r3d_lit_mesh_t* mesh, const uint32_t* coarse, const uint32_t* blending, uint16_t* out) {
+    const r3d_lens_t lens = lens_at(WHOLE_IN_VIEW, NULL);
+    const int count = r3d_pipeline_cull_blending(mesh, &lens, coarse, blending, out, pipeline_work(), NULL);
+    qsort(out, (size_t)count, sizeof out[0], compare_cluster);
+    return count;
+}
+
+static void
+test_the_pipeline_cull_keeps_both_levels_of_a_blending_group(void) {
+    const r3d_lit_mesh_t* mesh = levelled_mesh();
+    const int coarse = coarse_level_cluster(mesh);
+    const uint32_t none[R3D_LOD_WORDS(GROUPS)] = {0};
+    const uint32_t blending[R3D_LOD_WORDS(GROUPS)] = {1U << WEIGHT_GROUP};
+    uint16_t plain[CLUSTERS];
+    uint16_t both[CLUSTERS];
+    const int fine_count = cull_sorted(mesh, none, NULL, plain);
+    TEST_ASSERT_EQUAL_INT(FINEST_CLUSTERS, fine_count);
+    const int count = cull_sorted(mesh, none, blending, both);
+    TEST_ASSERT_EQUAL_INT(fine_count + 1, count);
+    bool has_coarse = false;
+    for (int i = 0; i < count; i++) {
+        has_coarse = has_coarse || both[i] == coarse;
+    }
+    TEST_ASSERT_TRUE(has_coarse);
+    for (int c = 0; c < FINEST_CLUSTERS; c++) {
+        bool kept = false;
+        for (int i = 0; i < count; i++) {
+            kept = kept || both[i] == c;
+        }
+        TEST_ASSERT_TRUE(kept);
+    }
+}
+
+static void
+test_the_pipeline_cull_without_blending_bits_is_the_plain_cull(void) {
+    const r3d_lit_mesh_t* mesh = levelled_mesh();
+    const uint32_t cuts[][R3D_LOD_WORDS(GROUPS)] = {
+        {0}, {(1U << WEIGHT_GROUP) | (1U << (WEIGHT_GROUP + 1)) | (1U << GROUP_ABOVE)}};
+    const r3d_lens_t lens = lens_at(WHOLE_IN_VIEW, NULL);
+    for (size_t k = 0; k < sizeof cuts / sizeof cuts[0]; k++) {
+        uint16_t via_blending[CLUSTERS];
+        uint16_t plain[CLUSTERS];
+        const int count = cull_sorted(mesh, cuts[k], NULL, via_blending);
+        TEST_ASSERT_EQUAL_INT(count, r3d_pipeline_cull(mesh, &lens, cuts[k], plain, pipeline_work(), NULL));
+        qsort(plain, (size_t)count, sizeof plain[0], compare_cluster);
+        TEST_ASSERT_EQUAL_HEX16_ARRAY(plain, via_blending, count);
+    }
+}
+
+/* Group GROUP_ABOVE and the two groups under it coarse, WEIGHT_GROUP blending
+ * and the second group below too: nothing under the coarse group is drawn. */
+static void
+test_the_pipeline_cull_drops_a_blending_group_s_clusters_under_a_coarse_parent(void) {
+    const r3d_lit_mesh_t* mesh = levelled_mesh();
+    const int second = WEIGHT_GROUP + 1;
+    const uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {(1U << WEIGHT_GROUP) | (1U << second) | (1U << GROUP_ABOVE)};
+    const uint32_t blending[R3D_LOD_WORDS(GROUPS)] = {(1U << WEIGHT_GROUP) | (1U << second)};
+    uint16_t with[CLUSTERS];
+    uint16_t without[CLUSTERS];
+    const int count = cull_sorted(mesh, coarse, blending, with);
+    TEST_ASSERT_EQUAL_INT(count, cull_sorted(mesh, coarse, NULL, without));
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(without, with, count);
+    for (int i = 0; i < count; i++) {
+        const uint16_t parent = mesh->cluster_lod[with[i]].parent;
+        TEST_ASSERT_TRUE(parent == R3D_LOD_NONE || !r3d_lod_coarse(coarse, parent));
+    }
+}
+
 /* A mesh of two clusters to transform: the first finest in group 0, with morph
  * targets; the second the coarse cluster simplified from it, with no parent. */
 enum {
@@ -1011,7 +1299,7 @@ static int
 transform_morphed_at(const morphing_t* m, float eye, bool boxed, transformed_t* out) {
     const r3d_lens_t lens = lens_at(eye, NULL);
     r3d_lod_morph_t morph;
-    r3d_lod_morph_init(&morph, &m->mesh, &lens, &LOD, 1.0F, NULL, true);
+    r3d_lod_morph_init(&morph, &m->mesh, &lens, &LOD, 1.0F, NULL, RENDER_LOD_BLEND_ON);
     r3d_pipeline_transform_morphed(&m->mesh, &lens, &morph, BOTH_CLUSTERS, MORPH_CLUSTERS, out->cs, out->rows, boxed);
     return r3d_lod_morph_weight(&morph, &m->mesh, 0);
 }
@@ -1137,6 +1425,16 @@ suite_r3d_lod(void) {
     RUN_TEST(test_the_blending_bit_is_set_where_the_blend_weighs_something);
     RUN_TEST(test_a_group_without_its_blending_bit_weighs_none);
     RUN_TEST(test_without_arrived_bits_every_group_blends_whole_up_to_leave);
+    RUN_TEST(test_the_dither_bands_of_a_blending_group_s_two_levels_cover_every_level_exactly_once);
+    RUN_TEST(test_a_group_with_an_empty_coarse_level_fades_its_fine_clusters_out);
+    RUN_TEST(test_the_coarse_cluster_covers_more_levels_as_the_blend_weight_grows);
+    RUN_TEST(test_a_cluster_whose_groups_do_not_blend_has_no_dither_band);
+    RUN_TEST(test_the_dither_arm_has_no_morph_weight_and_the_morph_arm_no_dither_band);
+    RUN_TEST(test_the_dither_needs_no_morph_targets_and_the_switch_arm_has_no_band);
+    RUN_TEST(test_a_blending_group_keeps_both_its_fine_clusters_and_those_simplified_from_it);
+    RUN_TEST(test_the_pipeline_cull_keeps_both_levels_of_a_blending_group);
+    RUN_TEST(test_the_pipeline_cull_without_blending_bits_is_the_plain_cull);
+    RUN_TEST(test_the_pipeline_cull_drops_a_blending_group_s_clusters_under_a_coarse_parent);
     RUN_TEST(test_a_cluster_transformed_with_the_whole_weight_lands_on_its_targets);
     RUN_TEST(test_a_cluster_transformed_with_no_weight_matches_the_plain_transform_exactly);
     RUN_TEST(test_a_null_morph_transforms_as_the_plain_transform_does);

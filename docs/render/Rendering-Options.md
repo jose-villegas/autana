@@ -84,6 +84,7 @@ settings and take effect when the mesh is baked.
 |---|---|---|---|---|---|
 | [Cluster size](#culling-and-clusters) | cull granularity | mesh size in flash | 32 triangles | `geometry.meshlet_triangles` | [Meshlets](offline/Baked-Mesh.md#meshlets) |
 | [Bake variant](#bake-variants) | triangles and smooth colour for draw time | mesh size in flash | per scene | the mesh entry a renderer names | [Bake-Quality.md](offline/Bake-Quality.md) |
+| [Level morph](../plans/Cluster-LOD.md#the-blend) | morphed level switches for flash, in place of the dither | LMOR sibling in flash | off | `geometry.morph` | [LMOR.md](../assets/formats/LMOR.md) |
 | [Skinned lighting](#skinned-lighting) | per-vertex cycles for shading accuracy | a table per light set | direct | `[skin].lighting` | [Lighting modes](animation/Skinned-Lighting.md#lighting-modes) |
 
 ## Using the API
