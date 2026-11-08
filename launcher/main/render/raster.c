@@ -22,6 +22,8 @@ TUNE_OVERRIDE(render, cull, 1);
 TUNE_OVERRIDE(render, depth_fit, 1);
 /* Off draws one instance a batch. */
 TUNE_OVERRIDE(render, batched, 1);
+/* Set, overrides the app's partial redraw setting either way: the board compares both. */
+TUNE_OVERRIDE(render, partial_redraw, 1);
 /* Overrides lod.coverage_permille (INT32_MAX lifts the cap); coverage_table.py
  * sets it once per cap. */
 TUNE_OVERRIDE(render, lod_coverage_permille, INT32_MAX);
@@ -46,6 +48,7 @@ raster_settings(const raster_t* raster) {
     return (render_settings_t){tune_override(cull, s.cull) != 0,
                                tune_override(depth_fit, s.depth_fit) != 0,
                                tune_override(batched, s.batched) != 0,
+                               tune_override(partial_redraw, s.partial_redraw) != 0,
                                {px_override(tune_override(lod_tolerance_millipx, TUNE_UNSET), s.lod.tolerance_px),
                                 px_override(tune_override(lod_hysteresis_millipx, TUNE_UNSET), s.lod.hysteresis_px),
                                 tune_override(lod_coverage_permille, s.lod.coverage_permille),
@@ -112,17 +115,60 @@ typedef struct {
     r3d_lens_t lens;
 } picture_lens_t;
 
+/* The picture's planes in world units and the eye's reach that
+ * world_bounds_outside() takes. */
 typedef struct {
-    batch_t batch;
+    planef_t planes[PLANE_FRUSTUM_COUNT];
+    float eye_reach;
+    bool cull; /* the draw's settings.cull: off skips no instance */
+} world_cull_t;
+
+/* The pick a cull makes before each instance, in its picture's pixels: the
+ * settings' output pixels times what the picture's focal length is to the
+ * output's. */
+typedef struct {
+    bool picks;
+    uint32_t round; /* raster_t.pick_round */
+    render_lod_settings_t lod;
+} level_pick_t;
+
+/* One core's share of a cull: its own lens cache, pipeline work block,
+ * counts and depth fit; what both read is the job's. */
+typedef struct {
+    raster_stats_t stats;
+    r3d_depth_fit_t fit;
+} cull_half_t;
+
+typedef struct {
+    const raster_t* raster;
+    const render_view_t* view;
+    bool fitted;
+    render_settings_t settings;
+    world_cull_t world;
+    level_pick_t pick;
+    const raster_buffers_t* buffers;
+    cull_half_t halves[2]; /* [0] this core's first instances, [1] core 1's last */
+    job_range_t ranges[2]; /* job_run_range_in()'s */
+} cull_job_t;
+
+typedef struct {
+    union {
+        batch_t batch;
+        cull_job_t cull; /* the cull's, done before the first batch */
+    };
+
     picture_lens_t picture; /* the draw's, kept here so it is off the stack the slices run on */
     slice_t mine, other;
     r3d_span_target_t targets[2];
     r3d_span_small_fill_t small_fill;
-    bool skip_hidden; /* the view's */
+    bool skip_hidden;       /* the view's */
+    int first_row, end_row; /* the rows this draw redraws */
+    bool levels_changed;    /* a level pick this draw changed an instance's cut */
     raster_buffers_t buffers;
 } draw_work_t;
 
 _Static_assert(sizeof(slice_t) <= JOB_CTX_MAX, "slice_t must fit JOB_CTX_MAX");
+_Static_assert(sizeof(cull_job_t) <= sizeof(batch_t), "the cull's job takes no scratch beyond the batch's");
 _Static_assert(_Alignof(draw_work_t) <= R3D_PIPELINE_WORK_ALIGNMENT, "draw work alignment");
 
 static void
@@ -164,9 +210,21 @@ raster_attachment_clear_u16(const raster_attachment_t* self, const raster_t* ras
     memset(pixels, 0, count * sizeof(uint16_t));
 }
 
-static const raster_attachment_t color_attachment = {GFX_PIXEL_FORMAT, clear_color, NULL, NULL, NULL, NULL, NULL};
-static const raster_attachment_t depth_attachment = {IMAGE_U16, raster_attachment_clear_u16, NULL, NULL, NULL, NULL,
-                                                     NULL};
+raster_attachment_t
+raster_attachment_ids(void (*begin)(const raster_attachment_t*, const raster_t*, const render_view_t*),
+                      bool (*writer)(const raster_attachment_t*, int, r3d_span_writer_t*),
+                      void (*show)(const raster_attachment_t*, const raster_t*, const gfx_target_t*, int),
+                      void* state) {
+    return (raster_attachment_t){.format = IMAGE_U16,
+                                 .clear = raster_attachment_clear_u16,
+                                 .begin = begin,
+                                 .writer = writer,
+                                 .show = show,
+                                 .state = state};
+}
+
+static const raster_attachment_t color_attachment = {.format = GFX_PIXEL_FORMAT, .clear = clear_color};
+static const raster_attachment_t depth_attachment = {.format = IMAGE_U16, .clear = raster_attachment_clear_u16};
 _Static_assert(R3D_DEPTH_EMPTY == 0, "depth is cleared with memset");
 
 /* Colour, depth, then the caller's, in the order raster_picture() lays them. */
@@ -259,22 +317,6 @@ draw_slice(void* ctx) {
                           b->rows + item->cluster_base, target, b->work[s->work_index]);
     }
     FRAME_LAP_END();
-}
-
-static void
-resolve_slice(void* ctx) {
-    const slice_t* s = ctx;
-    const raster_t* r = s->raster;
-    const raster_buffers_t b = raster_carve(r);
-    GFX_TARGET_STORAGE(GFX_ATTACHMENTS_MAX) storage;
-    gfx_target_t* rows = &storage.target;
-    gfx_target_window(rows, &b.picture, s->first, s->first + s->count);
-    for (int i = GFX_ATTACHMENT_FURTHER; i < rows->count; i++) {
-        const raster_attachment_t* a = attachment_at(r, i);
-        if (a->resolve != NULL) {
-            a->resolve(a, r, rows, i);
-        }
-    }
 }
 
 /* An upscale job's rows: its own type, so the draw's slice_t stays small. */
@@ -412,14 +454,6 @@ world_bounds_outside(box3f_t box, const planef_t planes[PLANE_FRUSTUM_COUNT], fl
     return box3f_outside_planes(grown, planes, PLANE_FRUSTUM_COUNT, &mask);
 }
 
-/* The picture's planes in world units and the eye's reach that
- * world_bounds_outside() takes. */
-typedef struct {
-    planef_t planes[PLANE_FRUSTUM_COUNT];
-    float eye_reach;
-    bool cull; /* the draw's settings.cull: off skips no instance */
-} world_cull_t;
-
 static void
 world_cull_init(world_cull_t* world, picture_lens_t* picture, const render_view_t* view, bool cull) {
     world->cull = cull;
@@ -434,15 +468,6 @@ world_cull_skips(const world_cull_t* world, const r3d_instance_t* instance) {
     return world->cull && instance->world_bounds != NULL
            && world_bounds_outside(*instance->world_bounds, world->planes, world->eye_reach);
 }
-
-/* The pick a cull makes before each instance, in its picture's pixels: the
- * settings' output pixels times what the picture's focal length is to the
- * output's. */
-typedef struct {
-    bool picks;
-    uint32_t round; /* raster_t.pick_round */
-    render_lod_settings_t lod;
-} level_pick_t;
 
 static level_pick_t
 level_pick_init(const raster_t* raster, picture_lens_t* picture, const render_view_t* view,
@@ -459,46 +484,95 @@ level_pick_init(const raster_t* raster, picture_lens_t* picture, const render_vi
  * cut as whole as any, and its next pick comes before its draw. Spread over
  * frames, instance `index` picks in the frames its share comes round, and
  * every instance in round 0. */
-static void
+static bool
 level_pick(const level_pick_t* pick, int index, const r3d_instance_t* instance, const r3d_lens_t* lens) {
     const int every = pick->lod.pick_every;
     const bool due = every <= 1 || pick->round == 0 || ((uint32_t)index + pick->round) % (uint32_t)every == 0;
     if (pick->picks && due && instance->lod_coarse != NULL && instance->mesh->lod_group_count > 0) {
-        r3d_lod_pick(instance->mesh, lens, &pick->lod, instance->lod_coarse);
+        return r3d_lod_pick(instance->mesh, lens, &pick->lod, instance->lod_coarse);
     }
+    return false;
 }
 
-/* Culls every instance into the census list and returns the depth scale
- * the picture is drawn with: the fit of the nearest bound of what was kept,
- * and near_z when nothing was. The fit's power of two keeps the scale still
- * while the bound drifts, so ties do not flip from frame to frame, and the
- * same at every size. Not inlined, so the world planes stay off the
- * draw's stack. */
-static __attribute__((noinline)) float
-cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, raster_stats_t* stats,
-               draw_work_t* work) {
-    uint16_t* culled = work->buffers.culled;
-    const render_settings_t settings = raster_settings(raster);
-    r3d_depth_fit_t fit = {view->lens.near_z, INFINITY};
+/* Culls instances [from, to) into their places in the census list: an
+ * instance's list starts after every earlier one's count and clusters. */
+static void
+cull_slice(void* ctx, int from, int to) {
+    cull_job_t* job = ctx;
+    const raster_t* raster = job->raster;
+    const int half = from == 0 ? 0 : 1;
+    cull_half_t* mine = &job->halves[half];
+    r3d_pipeline_work_t* block = job->buffers->work[half];
+    uint16_t* culled = job->buffers->culled;
+    for (int i = 0; i < from; i++) {
+        culled += 1 + (size_t)raster->instances[i].mesh->cluster_count;
+    }
     picture_lens_t picture;
-    picture_lens_init(&picture, raster, view, fitted);
-    world_cull_t world;
-    world_cull_init(&world, &picture, view, settings.cull);
-    const level_pick_t pick = level_pick_init(raster, &picture, view, &settings.lod);
-    for (int i = 0; i < raster->instance_count; i++) {
+    picture_lens_init(&picture, raster, job->view, job->fitted);
+    for (int i = from; i < to; i++) {
         const r3d_instance_t* instance = &raster->instances[i];
-        if (world_cull_skips(&world, instance)) {
+        if (world_cull_skips(&job->world, instance)) {
             culled[0] = 0;
         } else {
             r3d_lens_t lens;
             instance_lens(&picture, instance, &lens);
-            level_pick(&pick, i, instance, &lens);
-            culled[0] = (uint16_t)cull_instance(instance, settings.cull, &lens, culled + 1, stats,
-                                                work->buffers.work[0], settings.depth_fit ? &fit : NULL);
+            mine->stats.levels_changed |= level_pick(&job->pick, i, instance, &lens);
+            culled[0] = (uint16_t)cull_instance(instance, job->settings.cull, &lens, culled + 1, &mine->stats, block,
+                                                job->settings.depth_fit ? &mine->fit : NULL);
         }
         culled += 1 + (size_t)instance->mesh->cluster_count;
     }
-    return fit.depth_near < INFINITY ? fit.depth_near : view->lens.near_z;
+}
+
+/* Sets up the cull's job in the draw's scratch: what both cores read, and
+ * each one's empty counts and depth fit. Out of line, so none of it is on
+ * the stack the steered cull runs from. */
+static __attribute__((noinline)) void
+cull_begin(draw_work_t* work, const raster_t* raster, const render_view_t* view, bool fitted) {
+    cull_job_t* job = &work->cull;
+    job->raster = raster;
+    job->view = view;
+    job->fitted = fitted;
+    job->settings = raster_settings(raster);
+    job->buffers = &work->buffers;
+    picture_lens_t* picture = &work->picture;
+    picture_lens_init(picture, raster, view, fitted);
+    world_cull_init(&job->world, picture, view, job->settings.cull);
+    job->pick = level_pick_init(raster, picture, view, &job->settings.lod);
+    for (int h = 0; h < 2; h++) {
+        job->halves[h] = (cull_half_t){{0}, {view->lens.near_z, INFINITY}};
+    }
+}
+
+/* Adds both cores' counts and level changes to `stats` and returns the
+ * nearer depth fit, or near_z when nothing was kept. */
+static __attribute__((noinline)) float
+cull_end(const cull_job_t* job, raster_stats_t* stats, float near_z) {
+    float depth_near = INFINITY;
+    for (int h = 0; h < 2; h++) {
+        stats->clusters += job->halves[h].stats.clusters;
+        stats->triangles += job->halves[h].stats.triangles;
+        stats->levels_changed |= job->halves[h].stats.levels_changed;
+        depth_near = mathf_min(depth_near, job->halves[h].fit.depth_near);
+    }
+    return depth_near < INFINITY ? depth_near : near_z;
+}
+
+/* Culls every instance into the census list, both cores each a range of
+ * instances, and returns the depth scale the picture is drawn with: the fit
+ * of the nearest bound of what was kept, and near_z when nothing was. The
+ * fit's power of two keeps the scale still while the bound drifts, so ties
+ * do not flip from frame to frame, and the same at every size. Inlined with
+ * its job in the draw's scratch, it adds nothing to the draw's frame. */
+static inline __attribute__((always_inline)) float
+cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, raster_stats_t* stats,
+               draw_work_t* work) {
+    cull_begin(work, raster, view, fitted);
+    int16_t* share = raster->split != NULL ? &raster->split->cull_offset : NULL;
+    (void)job_run_range_in(share, cull_slice, &work->cull, raster->instance_count, work->cull.ranges);
+    const float depth_near = cull_end(&work->cull, stats, view->lens.near_z);
+    work->levels_changed = stats->levels_changed; /* a draw on this census reads it */
+    return depth_near;
 }
 
 /* The writers of the attachments that write while instance `index` is
@@ -522,6 +596,12 @@ scratch_draw(const raster_t* raster) {
     draw_work_t* work = b.draw;
     work->buffers = b;
     return work;
+}
+
+bool
+raster_drew_every_row(const raster_t* raster) {
+    const draw_work_t* work = scratch_draw(raster);
+    return work->first_row == 0 && work->end_row == raster->height;
 }
 
 /* Draws batch `index`: one transform fork/join over every item's clusters,
@@ -557,15 +637,22 @@ draw_batch(const raster_t* raster, int index, draw_work_t* work) {
 
     FRAME_COST_BEGIN(drawn_from);
     FRAME_LAP("r3d.draw.split");
-    const int mid = r3d_pipeline_draw_split(batch->parts, batch->count, raster->height, job_share_permille(draw_share));
+    /* Some rows only (render/partial): split at their middle, steering nothing. */
+    const int top = work->first_row;
+    const int bottom = work->end_row;
+    const bool every_row = top == 0 && bottom == raster->height;
+    draw_share = every_row ? draw_share : NULL;
+    const int mid =
+        every_row ? r3d_pipeline_draw_split(batch->parts, batch->count, raster->height, job_share_permille(draw_share))
+                  : (top + bottom) / 2;
     mine->work_index = 1;
     other->work_index = 0;
     mine->target = &work->targets[1];
     other->target = &work->targets[0];
     mine->first = mid;
-    mine->count = raster->height - mid;
-    other->first = 0;
-    other->count = mid;
+    mine->count = bottom - mid;
+    other->first = top;
+    other->count = mid - top;
     FRAME_LAP_END();
     job_run_steered(draw_share, draw_slice, mine, other, sizeof *mine);
     FRAME_LAP_SINCE("r3d.draw.wait");
@@ -588,18 +675,23 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     assert_view_size(raster, view);
     draw_work_t* work = scratch_draw(raster);
     /* Every instance is culled before any is drawn: they share one depth scale. */
+    const float kept_near = *work->buffers.depth_near;
     if (stats != NULL) {
         FRAME_COST_BEGIN(culled_from);
         *work->buffers.depth_near = cull_instances(raster, view, true, stats, work);
         FRAME_COST_END(culled_from, "r3d.cull");
     }
-    bool resolves = false;
+    /* Kept rows hold depth at the last draw's scale and the cuts it drew: a
+     * new scale, or a level pick that changed a cut, redraws them all. */
+    const bool some_rows =
+        raster->first_row < raster->end_row && *work->buffers.depth_near == kept_near && !work->levels_changed;
+    work->first_row = some_rows ? mathi_max(raster->first_row, 0) : 0;
+    work->end_row = some_rows ? mathi_min(raster->end_row, raster->height) : raster->height;
     for (int i = 0; i < raster->attachment_count; i++) {
         const raster_attachment_t* a = raster->attachments[i];
         if (a->begin != NULL) {
             a->begin(a, raster, view);
         }
-        resolves = resolves || a->resolve != NULL;
     }
     r3d_span_small_fill_resolve(&work->small_fill, view->small_fill);
     work->skip_hidden = view->skip_hidden;
@@ -636,20 +728,11 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
         }
         draw_batch(raster, index, work);
     }
-    if (resolves) {
-        FRAME_COST_BEGIN(resolved_from);
-        int16_t* share = raster->split != NULL ? &raster->split->resolve_offset : NULL;
-        const int mid = job_share_core1_count(share, raster->height);
-        work->mine = (slice_t){.raster = raster, .first = mid, .count = raster->height - mid};
-        work->other = (slice_t){.raster = raster, .count = mid};
-        job_run_steered(share, resolve_slice, &work->mine, &work->other, sizeof work->mine);
-        FRAME_COST_END(resolved_from, "r3d.resolve");
-    }
 }
 
 raster_stats_t
 raster_draw(const raster_t* raster, const render_view_t* view) {
-    raster_stats_t stats = {0, 0};
+    raster_stats_t stats = {0};
     draw_instances(raster, view, &stats);
     return stats;
 }
@@ -667,7 +750,7 @@ raster_stats_t
 raster_census(const raster_t* raster, const render_view_t* view) {
     assert(raster->instance_count > 0);
     assert_view_size(raster, view);
-    raster_stats_t stats = {0, 0};
+    raster_stats_t stats = {0};
     FRAME_COST_BEGIN(counted_from);
     draw_work_t* work = scratch_draw(raster);
     *work->buffers.depth_near = cull_instances(raster, view, false, &stats, work);
@@ -707,6 +790,23 @@ raster_upscale(raster_t* raster, uint16_t* destination, int width, int height) {
 }
 
 void
+raster_destination_rows(const raster_t* raster, int height, int* first, int* end) {
+    /* A filtered row reads its source row's neighbours: one more each side. */
+    const int from = raster->first_row - 1;
+    const int to = raster->end_row + 1;
+    const uint16_t* rows = raster->upscale.rows;
+    int y = 0;
+    while (y < height && rows[y] < from) {
+        y++;
+    }
+    *first = y;
+    while (y < height && rows[y] < to) {
+        y++;
+    }
+    *end = y;
+}
+
+void
 raster_upscale_picture(raster_t* raster, const gfx_target_t* picture, uint16_t* destination, uint8_t* seams, int width,
                        int height) {
     assert(raster->upscaled && destination != NULL);
@@ -726,15 +826,25 @@ raster_upscale_picture(raster_t* raster, const gfx_target_t* picture, uint16_t* 
         upscale_init_blends(&raster->upscale, rows + height);
     }
     int16_t* share = raster->split != NULL ? &raster->split->upscale_offset : NULL;
-    const int mid = job_share_core1_count(share, height);
+    int top = 0;
+    int bottom = height;
+    if (raster->first_row < raster->end_row) {
+        raster_destination_rows(raster, height, &top, &bottom);
+        share = NULL;
+    }
+    const int mid = top + job_share_core1_count(share, bottom - top);
     upscale_slice_t mine = {.raster = raster,
                             .first = mid,
-                            .count = height - mid,
+                            .count = bottom - mid,
                             .destination = destination,
                             .seams = seams,
                             .picture = picture};
-    const upscale_slice_t other = {
-        .raster = raster, .count = mid, .destination = destination, .seams = seams, .picture = picture};
+    const upscale_slice_t other = {.raster = raster,
+                                   .first = top,
+                                   .count = mid - top,
+                                   .destination = destination,
+                                   .seams = seams,
+                                   .picture = picture};
     job_run_steered(share, upscale_slice, &mine, &other, sizeof mine);
     FRAME_COST_END(upscaled_from, "r3d.upscale");
 }

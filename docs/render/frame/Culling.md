@@ -16,7 +16,7 @@ flowchart LR
     subgraph Offline["offline, at the bake"]
         Vis["visibility<br/><i>triangles no camera<br/>pose sees</i>"]
     end
-    subgraph Census["the cull, core 0"]
+    subgraph Census["the cull, both cores"]
         direction TB
         Inst["instance<br/><i>its world box, then<br/>its root box under its model</i>"] --> Node["node<br/><i>box against the planes<br/>its parent crossed</i>"]
         Node --> Cluster["cluster<br/><i>box against<br/>the leaf's planes</i>"]
@@ -98,8 +98,9 @@ with the walk's nodes visited and cut and its clusters tested and kept.
 ## The cull, seen
 
 The cull view ([raster_cull_view.h](../../../launcher/main/render/view/raster_cull_view.h))
-paints every cluster in the colour of its fate this frame. Seen from the camera
-only drawn clusters show, so it redraws from a spectator.
+paints every cluster in the colour of its fate this frame: of a mesh with
+levels, only the clusters its level pick chose. Seen from the camera only drawn
+clusters show, so it redraws from a spectator.
 
 | Fate | Colour | The cluster |
 |---|---|---|

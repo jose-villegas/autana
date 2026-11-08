@@ -10,26 +10,18 @@
 #include "core/memory.h"
 #include "core/timing.h"
 #include "core/tune.h"
-#include "esp_log.h"
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 #include "render/view/raster_boxes.h"
 #include "render/view/raster_copies.h"
 #include "render/view/raster_cull_view.h"
 #include "render/view/raster_meshlets.h"
-#include "render/view/raster_motion.h"
 #include "render/view/raster_overdraw.h"
 #include "render/view/raster_show.h"
 
 static const render_debug_view_t views[] = {
     {.name = "depth", .attachment = raster_depth_view},
     {.name = "tiles", .attachment = raster_depth_tiles_view},
-    {.name = "motion",
-     .state_bytes = sizeof(raster_motion_t),
-     .attachment = raster_motion_view,
-     .reserve = raster_motion_reserve_view,
-     .release = raster_motion_release_view,
-     .checkpoint = raster_motion_checkpoint},
     {.name = "meshlets", .state_bytes = sizeof(raster_meshlets_t), .attachment = raster_meshlets_view},
     {.name = "cull",
      .state_bytes = sizeof(raster_cull_t),
@@ -102,15 +94,11 @@ render_context_drop_scratch(render_context_t* c) {
     c->scratch = NULL;
     c->scratch_bytes = 0;
     c->raster.scratch = NULL;
+    render_partial_forget(&c->partial); /* the picture went with it */
 }
 
-/* The view's state and what its row reserved in it. */
 static void
 free_view_state(render_context_t* c) {
-    const render_debug_view_t* row = render_context_debug_view(c->debug_view);
-    if (row != NULL && row->release != NULL && c->debug_view_state != NULL) {
-        row->release(c->debug_view_state);
-    }
     memory_free(c->debug_view_state);
     c->debug_view_state = NULL;
 }
@@ -141,6 +129,7 @@ forget_costs(render_context_t* c) {
 
 void
 render_context_forget(render_context_t* c) {
+    render_partial_forget(&c->partial);
     raster_split_forget(&c->split);
     c->raster.pick_round = 0; /* the first frame picks every instance */
     c->kept = false;
@@ -158,6 +147,11 @@ render_context_set_frame_generation(render_context_t* c, bool on) {
     if (!on) {
         framegen_target_free(&c->framegen);
     }
+}
+
+void
+render_context_set_changed(render_context_t* c, const box3f_t* boxes, int count) {
+    render_partial_set_changed(&c->partial, boxes, count);
 }
 
 void
@@ -194,10 +188,6 @@ render_context_set_debug_view(render_context_t* c, int view) {
     if (c->debug_view == view && (view == RENDER_DEBUG_VIEW_SHADED || c->raster.attachment_count != 0)) {
         return;
     }
-    if (view != RENDER_DEBUG_VIEW_SHADED && view == c->refused_view) {
-        return;
-    }
-    c->refused_view = RENDER_DEBUG_VIEW_SHADED;
     free_view_state(c);
     c->debug_view = RENDER_DEBUG_VIEW_SHADED;
     c->raster.attachment_count = 0;
@@ -220,26 +210,6 @@ render_context_set_debug_view(render_context_t* c, int view) {
 #else
     (void)c;
     (void)view;
-#endif
-}
-
-/* Room in the view's state for `count` instances, or the view detached and
- * refused until another view is asked for. Not inlined: the draw's own frame
- * stays as small as before, under the deepest raster chain. */
-static __attribute__((noinline)) void
-reserve_view(render_context_t* c, int count) {
-#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    const render_debug_view_t* row = render_context_debug_view(c->debug_view);
-    if (row == NULL || row->reserve == NULL || row->reserve(c->debug_view_state, count)) {
-        return;
-    }
-    ESP_LOGE("render", "debug view %s: no room for %d instances; drawing shaded", row->name, count);
-    const int refused = c->debug_view;
-    render_context_set_debug_view(c, RENDER_DEBUG_VIEW_SHADED);
-    c->refused_view = refused;
-#else
-    (void)c;
-    (void)count;
 #endif
 }
 
@@ -378,6 +348,48 @@ generate(render_context_t* c, const render_view_t* view) {
     c->drawn_in_row = 0;
 }
 
+/* No row changed, but picks are owed (render_partial_picks_owed()): a
+ * census makes them, and true when one changed a cut or the depth scale,
+ * the census list then drawn over every row. */
+static bool
+census_changed(render_context_t* c, const render_view_t* view) {
+    raster_t* r = &c->raster;
+    if (!render_partial_picks_owed(&c->partial, raster_settings(r).lod.pick_every)) {
+        return false;
+    }
+    const float kept_near = raster_depth_near(r);
+    c->frame.stats = raster_census(r, view);
+    if (!c->frame.stats.levels_changed && raster_depth_near(r) == kept_near) {
+        r->pick_round++; /* the census took this frame's share */
+        return false;
+    }
+    raster_draw_culled(r, view);
+    return true;
+}
+
+/* The rows partial redraw plans, drawn; false when none changed, so the
+ * picture stays as it is. A draw that changed its depth scale or a level
+ * pick drew every row. */
+static bool
+draw_partial(render_context_t* c, const render_view_t* view) {
+    raster_t* r = &c->raster;
+    const render_rows_t rows = render_partial_rows(&c->partial, r, view);
+    render_partial_set_changed(&c->partial, NULL, -1);
+    if (rows.first == rows.end) {
+        c->frame.unchanged = !census_changed(c, view);
+        return !c->frame.unchanged;
+    }
+    const bool every_row = rows.first == 0 && rows.end == r->height;
+    r->first_row = every_row ? 0 : rows.first;
+    r->end_row = every_row ? 0 : rows.end;
+    c->frame.stats = raster_draw(r, view);
+    if (raster_drew_every_row(r)) {
+        r->first_row = 0;
+        r->end_row = 0;
+    }
+    return true;
+}
+
 bool
 render_context_draw(render_context_t* c, const r3d_instance_t* instances, int count, const render_view_t* view,
                     uint16_t clear) {
@@ -389,6 +401,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
         return true;
     }
     c->frame.generated = false;
+    c->frame.unchanged = false;
     c->kept = false;
     if (c->drawn_in_row < FRAMEGEN_RETRY_DRAWN) {
         c->drawn_in_row++;
@@ -401,7 +414,6 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     r->settings = &c->settings;
     r->instances = instances;
     r->instance_count = count;
-    reserve_view(c, count);
     r->width = step < 0 ? view->viewport.width * c->scale_percent / 100 : c->ladder.steps[step].width;
     r->height = step < 0 ? view->viewport.height * c->scale_percent / 100 : c->ladder.steps[step].height;
     r->present = view->present;
@@ -416,10 +428,19 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     }
     c->frame.width = r->width;
     c->frame.height = r->height;
+    r->first_row = 0;
+    r->end_row = 0;
     if (c->policy == RENDER_FIXED && !c->generating) {
         /* Off: the plain draw, nothing timed or chosen, unless frame generation needs the drawn cost. */
-        c->frame.stats = raster_draw(r, view);
+        const bool partial = raster_settings(r).partial_redraw;
+        if (partial && !draw_partial(c, view)) {
+            return true;
+        }
+        if (!partial) {
+            c->frame.stats = raster_draw(r, view);
+        }
     } else {
+        render_partial_forget(&c->partial);
         const int64_t began_us = timing_now_us();
         if (c->policy == RENDER_PREDICTED) {
             /* Culled once: the census prices the frame and the draw reuses its list. */
@@ -449,6 +470,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
 #endif
     c->kept = true;
     c->kept_view = *view;
+    render_partial_kept(&c->partial, r, view);
     return true;
 }
 
@@ -472,6 +494,23 @@ render_context_upscale_filter(const render_context_t* c) {
     return c->raster.upscale.filter;
 }
 
+/* The destination rows this compose rewrites, at the view's destination size,
+ * from the rows of a compose `height` tall. */
+static void
+compose_rows(render_context_t* c, int height) {
+    const raster_t* r = &c->raster;
+    int first = 0;
+    int end = height;
+    if (c->frame.unchanged) {
+        end = 0;
+    } else if (r->first_row < r->end_row) {
+        raster_destination_rows(r, height, &first, &end);
+    }
+    const int per = r->destination_height / height;
+    c->frame.rows_first = first * per;
+    c->frame.rows_end = end * per;
+}
+
 bool
 render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* half, uint8_t* half_seams) {
     const raster_t* r = &c->raster;
@@ -480,10 +519,25 @@ render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* hal
     const bool expanded = half != NULL && size.width != r->destination_width;
     destination = expanded ? half : destination;
     uint8_t* seams = expanded ? half_seams : NULL;
+    if (destination == NULL) {
+        (void)render_partial_composed(&c->partial, NULL);
+        return false;
+    }
+    if (!render_partial_composed(&c->partial, destination)) {
+        c->frame.unchanged = false;
+        c->raster.first_row = 0;
+        c->raster.end_row = 0;
+    }
     if (c->policy == RENDER_FIXED && !c->generating) {
-        raster_upscale_picture(&c->raster, NULL, destination, seams, size.width, size.height);
+        compose_rows(c, size.height);
+        if (!c->frame.unchanged) {
+            raster_upscale_picture(&c->raster, NULL, destination, seams, size.width, size.height);
+        }
         return expanded;
     }
+    render_partial_forget(&c->partial); /* a generated or resized picture is not the one kept */
+    c->frame.rows_first = 0;
+    c->frame.rows_end = r->destination_height;
     const int64_t began_us = timing_now_us();
     GFX_TARGET_STORAGE(GFX_ATTACHMENT_FURTHER) generated;
     gfx_target_of_color_depth(&generated.target, c->framegen.colour, c->framegen.depth, c->framegen.width,
@@ -568,10 +622,7 @@ render_context_checkpoint_capture(checkpoint_t* saved, render_context_t* context
     checkpoint_capture(saved, context->scratch, context->scratch_bytes);
     const render_debug_view_t* row = render_context_debug_view(context->debug_view);
     if (row != NULL) {
-        checkpoint_capture_at(saved, &context->debug_view_state, row->checkpoint == NULL ? row->state_bytes : 0);
-        if (row->checkpoint != NULL) {
-            row->checkpoint(saved, context->debug_view_state);
-        }
+        checkpoint_capture_at(saved, &context->debug_view_state, row->state_bytes);
     }
     const size_t bytes = (size_t)context->framegen.width * context->framegen.height * sizeof(uint16_t);
     checkpoint_capture_at(saved, &context->framegen.colour, bytes);

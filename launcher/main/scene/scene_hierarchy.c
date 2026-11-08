@@ -77,6 +77,7 @@ world_from_parent(const scene_t* scene, scene_row_t entity) {
 
 void
 scene_renderer_bound(scene_renderer_t* r) {
+    r->changed = true;
     if (r->mesh.node_count > 0) {
         r->world_bounds = r3d_lit_mesh_world_bounds(&r->mesh, r->placed ? &r->model : NULL);
     }
@@ -86,7 +87,10 @@ static void
 list_active_renderers(scene_t* scene) {
     scene->active_renderer_count = 0;
     for (int i = 0; i < scene->renderer_count; i++) {
-        if ((scene->flags[scene->renderers[i].entity] & SCENE_FLAG_ACTIVE) != 0) {
+        const scene_row_t e = scene->renderers[i].entity;
+        /* A skin settled without its buffers did not fit: it is not drawn. */
+        const bool starved = scene->skinned_renderers[e].starved;
+        if ((scene->flags[e] & SCENE_FLAG_ACTIVE) != 0 && !starved) {
             scene->active_renderers[scene->active_renderer_count++] = (uint16_t)i;
         }
     }
@@ -95,6 +99,7 @@ list_active_renderers(scene_t* scene) {
 
 void
 scene_resolve(scene_t* scene) {
+    scene_skins_settle(scene);
     if (scene->active_renderers_stale) {
         list_active_renderers(scene);
     }
@@ -131,6 +136,11 @@ scene_hierarchy_update_active(scene_t* scene, scene_row_t entity) {
             scene->flags[e] ^= SCENE_FLAG_ACTIVE;
             scene->flags[e] |= SCENE_FLAG_CHANGED;
             scene->active_renderers_stale = true;
+            /* A skin holds its buffers only while ACTIVE. */
+            scene->skins_pending |= active && scene->skinned_renderers[e].bound;
+            if (!active) {
+                scene_skin_deactivate(scene, (scene_row_t)e);
+            }
         }
     }
 }

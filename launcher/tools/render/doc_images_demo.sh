@@ -139,7 +139,6 @@ demo_gif ${ID}-fitted-full --scene "$ID" --object "${FULL}_fitted_full"
 demo_gif ${ID}-flat-fitted --scene "$ID" --object "${FULL}_flat_fitted"
 demo_gif ${ID}-depth --scene "$ID" --object "$SHOWCASE" --view depth
 demo_gif ${ID}-tiles --scene "$ID" --object "$SHOWCASE" --view tiles
-demo_gif ${ID}-motion-vectors --scene "$ID" --object "$SHOWCASE" --view motion
 demo_gif ${ID}-meshlets --scene "$ID" --object "$SHOWCASE" --view meshlets
 # One still of each view the renderer declares, at the pose the GIFs end on:
 # View-Modes' gallery. A --view it does not know makes it list them.

@@ -140,14 +140,18 @@ close_coarse(const r3d_lit_mesh_t* mesh, uint32_t* coarse) {
     }
 }
 
-void
+bool
 r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod, uint32_t* coarse) {
     const lod_view_t v = lod_view(lens);
     const float enter = lod->tolerance_px - lod->hysteresis_px;
     const float leave = lod->tolerance_px + lod->hysteresis_px;
     if (none_can_coarsen(mesh, &v, lens->project.near_z, leave)) {
+        bool had = false;
+        for (int w = 0; w < R3D_LOD_WORDS(mesh->lod_group_count); w++) {
+            had |= coarse[w] != 0;
+        }
         memset(coarse, 0, R3D_LOD_WORDS(mesh->lod_group_count) * sizeof *coarse);
-        return;
+        return had;
     }
     /* Per group, in the form within() takes: its error and its radius, each
      * times focal over units, against their limits times its nearest depth. */
@@ -175,4 +179,5 @@ r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lo
     if (any && changed) {
         close_coarse(mesh, coarse);
     }
+    return changed;
 }
