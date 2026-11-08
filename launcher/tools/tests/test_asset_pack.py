@@ -293,6 +293,7 @@ class RenderSettingsPackTests(unittest.TestCase):
             kind, data = parse_pack(build_pack.pack_bytes([root])["app"])[render_asset.ENTRY]
             self.assertEqual(kind, render_asset.TYPE)
             self.assertEqual(table_asset.decode(data), ({"cull": [0], "depth_fit": [16], "batched": [16],
+                                                    "partial_redraw": [16],
                                                     "lod.tolerance_px": [32],
                                                     "lod.hysteresis_px": [8], "lod.coverage_permille": [4000],
                                                     "lod.pick_every": [64]}, 4))
