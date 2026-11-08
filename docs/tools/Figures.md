@@ -18,7 +18,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [overview](#overview) | 15 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
-| [render](#render) | 128 | 2 | 0 |
+| [render](#render) | 130 | 4 | 0 |
 | [ui](#ui) | 62 | 0 | 0 |
 
 ## anim
@@ -238,6 +238,8 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/import-light.png"><img src="../images/render/import-light.png" width="160" alt=""></a> | Albedo against the fitted bake | [render/scene/Scene-Files](../render/scene/Scene-Files.md) | not declared yet |
 | <a href="../images/render/import-mesh-contact.png"><img src="../images/render/import-mesh-contact.png" width="160" alt=""></a> | A pillar's contact with the floor under weld, lock and free | [render/offline/Mesh-Import](../render/offline/Mesh-Import.md) | not declared yet |
 | <a href="../images/render/lod-blend-dither.png"><img src="../images/render/lod-blend-dither.png" width="160" alt=""></a> | The 4x4 screen door at five points of the ramp past leave: coarse and fine pixels | [render/frame/Levels-of-Detail](../render/frame/Levels-of-Detail.md) | [blend_figures.py](../../launcher/tools/r3d/lod/blend_figures.py) |
+| <a href="../images/render/lod-blend-pop.gif"><img src="figure-thumbnails/render/lod-blend-pop.gif" width="160" alt=""></a> | The same square played through the frames around the pop: finest, switch and dither | [render/frame/Levels-of-Detail](../render/frame/Levels-of-Detail.md) | [blend_render_figures.py](../../launcher/tools/r3d/lod/blend_render_figures.py) |
+| <a href="../images/render/lod-blend-pop.png"><img src="../images/render/lod-blend-pop.png" width="160" alt=""></a> | The square where a switch pops most on the fitted Sponza path, switched and dithered, before and at the pop | [render/frame/Levels-of-Detail](../render/frame/Levels-of-Detail.md) | [blend_render_figures.py](../../launcher/tools/r3d/lod/blend_render_figures.py) |
 | <a href="../images/render/lod-blend-weight.png"><img src="../images/render/lod-blend-weight.png" width="160" alt=""></a> | Coarse share of what is drawn as one group's error projects across its switches, walking in and out, blended and switched | [render/frame/Levels-of-Detail](../render/frame/Levels-of-Detail.md) | [blend_figures.py](../../launcher/tools/r3d/lod/blend_figures.py) |
 | <a href="../images/render/lod-settings.png"><img src="../images/render/lod-settings.png" width="160" alt=""></a> | The hysteresis band and the coverage cap, from the default values | [render/Render-Settings](../render/Render-Settings.md) | not declared yet |
 | <a href="../images/render/meshlet-build.gif"><img src="figure-thumbnails/render/meshlet-build.gif" width="160" alt=""></a> | The clusterizer cutting a small flat patch into meshlets, one per step | [render/offline/Baked-Mesh](../render/offline/Baked-Mesh.md) | not declared yet |

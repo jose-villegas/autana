@@ -51,7 +51,7 @@ def render(renderer, args, sets, out):
     run = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
     if run.returncode:
         raise SystemExit(f"{' '.join(command)} failed:\n{run.stderr[-2000:]}")
-    return read_video(out / "path.avi")[1]
+    return list(read_video(out / "path.avi")[1])
 
 
 def luma(frame):
