@@ -15,7 +15,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from asset import engine_frame
 from r3d import lit_mesh, mesh_asset, lod_asset
-from r3d.lod.bake_levels import bake_lit_mesh
+from r3d.lod.bake_levels import SAMPLE_CANDIDATES, Triangles, bake_lit_mesh
 from r3d.geometry import closest_point_on_triangles
 from r3d.lod import pick
 from r3d.lit_mesh import MAX_TRIANGLES, MAX_VERTICES
@@ -334,6 +334,18 @@ def farthest_from(points, corners):
                                                 *(np.tile(corners[:, k], (len(points[i:i + 64]), 1)) for k in range(3)))[1]
                      for i in range(0, len(points), 64)]
     return max(float(d.reshape(-1, len(corners)).min(axis=1).max()) for d in bary_distance)
+
+
+class TrianglesTest(unittest.TestCase):
+    def test_farthest_matches_every_triangle_tried_even_past_the_nearest_middles(self):
+        rng = np.random.default_rng(7)
+        # A long sliver along x, and small triangles 10 off it: their middles lie nearer its ends than its own.
+        small = (np.stack([np.linspace(0, 100, SAMPLE_CANDIDATES * 4), np.full(SAMPLE_CANDIDATES * 4, 60.0),
+                           np.zeros(SAMPLE_CANDIDATES * 4)], axis=1)[:, None] + rng.uniform(-1, 1, (SAMPLE_CANDIDATES * 4, 3, 3)))
+        sliver = np.array([[[0, 50, 0], [100, 50, 0], [100, 51, 0]], [[0, 50, 0], [100, 51, 0], [0, 51, 0]]], float)
+        corners = np.concatenate([small, sliver])
+        points = np.stack([np.linspace(0, 100, 101), np.full(101, 50.5), np.full(101, 0.5)], axis=1)
+        self.assertAlmostEqual(Triangles(corners).farthest(points), farthest_from(points, corners), places=6)
 
 
 class ThinSlabErrorTest(unittest.TestCase):
