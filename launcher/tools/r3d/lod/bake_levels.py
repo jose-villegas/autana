@@ -13,8 +13,8 @@ border stays where the finer level put it, and neighbours never crack. A
 coarse vertex takes its colour from the nearest level-0 point facing its way,
 one colour per cluster, and a flat triangle from the nearest to its middle.
 
-A group's error is at least the farthest its coarse clusters lie from the
-level-0 triangles under them, either way. clusterlod's own error measures distance off the input's
+A group's error is at least the farthest each coarse cluster lies from the
+level-0 triangles it stands for, either way. clusterlod's own error measures distance off the input's
 planes, so an outline that shrinks within its own plane (a thin slab's rim
 folding in) costs it nothing.
 
@@ -161,13 +161,26 @@ class Triangles:
         return farthest
 
 
-def surface_gap(level0, coarse, everything):
-    """How far coarse triangles (N x 3 x 3) lie from the level-0 triangles under them, either way: every level-0
-    vertex to the coarse triangles, and every coarse vertex to `everything`, the side's level-0 Triangles (a
-    nearer level-0 triangle elsewhere can only understate a bulge, which the push already bounds)."""
-    level0 = np.unique(np.asarray(level0, dtype=np.float64).reshape(-1, 3), axis=0)
-    coarse = np.asarray(coarse, dtype=np.float64)
-    return max(Triangles(coarse).farthest(level0), everything.farthest(np.unique(coarse.reshape(-1, 3), axis=0)))
+def surface_gap(level0, outputs, everything):
+    """How far a group's coarse clusters lie from the level-0 triangles under them, either way, and which output
+    stands for each level-0 cluster. `level0` maps level-0 cluster ids to their triangles (T x 3 x 3), `outputs`
+    lists each coarse cluster's triangles and `everything` holds the side's level-0 Triangles. Each level-0 cluster
+    goes to the output nearest its middle and is measured against that output alone, so a cluster drawn in its place
+    stands within the error whichever siblings are drawn beside it; each coarse vertex is measured against
+    `everything` (a nearer level-0 triangle elsewhere can only understate a bulge, which the push already bounds)."""
+    ids = sorted(level0)
+    owner = np.repeat(np.arange(len(outputs)), [len(t) for t in outputs])
+    middles = cKDTree(np.concatenate(outputs).mean(axis=1))
+    nearest = owner[middles.query(np.array([level0[c].reshape(-1, 3).mean(axis=0) for c in ids]))[1]]
+    gap, under = 0.0, [[] for _ in outputs]
+    for c, o in zip(ids, nearest):
+        under[o].append(c)
+    for o, corners in enumerate(outputs):
+        if under[o]:
+            points = np.unique(np.concatenate([level0[c] for c in under[o]]).reshape(-1, 3), axis=0)
+            gap = max(gap, Triangles(corners).farthest(points))
+    coarse = np.unique(np.concatenate(outputs).reshape(-1, 3), axis=0)
+    return max(gap, everything.farthest(coarse)), [frozenset(u) for u in under]
 
 
 class Level0:
@@ -320,12 +333,13 @@ def side_levels(levels, welded, wt, tris, face, member, side, group_base):
                              np.concatenate([drawn[c] for c in inputs]),
                              np.concatenate([corner_ids[c] for c in outputs]), error)
         level0 = frozenset().union(*(under[c] for c in inputs))
-        error = max(error, surface_gap(welded[np.concatenate([corner_ids[c] for c in sorted(level0)])], moved,
-                                       everything))
+        parts = np.cumsum([len(corner_ids[c]) for c in outputs])[:-1]
+        gap, shares = surface_gap({c: welded[corner_ids[c]] for c in level0}, np.split(moved, parts), everything)
+        error = max(error, gap)
         at = 0
-        for c in outputs:
+        for k, c in enumerate(outputs):
             drawn[c] = moved[at:at + len(corner_ids[c])]
-            under[c] = level0
+            under[c] = shares[k]
             at += len(corner_ids[c])
             coarse.append({"double": side, "corners": drawn[c], "own": group_id(g),
                            "parent": group_id(levels.cluster_group[c])})

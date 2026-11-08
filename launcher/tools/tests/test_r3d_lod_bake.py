@@ -320,15 +320,6 @@ def cluster_triangles(mesh, clusters):
     return np.concatenate([mesh.pos[mesh.tris[c[2]:c[2] + c[3]]] for c in clusters]).astype(np.float64)
 
 
-def level0_under(mesh, group):
-    """The finest clusters a group's coarse clusters stand for, through every group simplified into it."""
-    out = set()
-    for c, (own, parent) in enumerate(mesh.lod):
-        if parent == group:
-            out |= {c} if own == LOD_NONE else level0_under(mesh, own)
-    return out
-
-
 def farthest_from(points, corners):
     bary_distance = [closest_point_on_triangles(np.repeat(points[i:i + 64], len(corners), axis=0),
                                                 *(np.tile(corners[:, k], (len(points[i:i + 64]), 1)) for k in range(3)))[1]
@@ -349,11 +340,17 @@ class TrianglesTest(unittest.TestCase):
 
 
 class ThinSlabErrorTest(unittest.TestCase):
-    def test_every_level0_vertex_under_a_group_lies_within_its_error_of_its_coarse_clusters(self):
+    def test_every_cut_draws_within_its_error_of_level0_either_way(self):
         mesh = read_back(bake_lit_mesh(*thin_slab(), position_scale=1, lod=True))
-        self.assertGreater(len(mesh.groups), 0)
-        for g, row in enumerate(mesh.groups):
-            level0 = cluster_triangles(mesh, [mesh.clusters[c] for c in sorted(level0_under(mesh, g))])
-            coarse = cluster_triangles(mesh, [c for c, (own, _) in zip(mesh.clusters, mesh.lod) if own == g])
-            gap = farthest_from(np.unique(level0.reshape(-1, 3), axis=0), coarse)
-            self.assertGreaterEqual(row[4] + ROUNDING_TICKS, gap, f"group {g}")
+        error = np.array([row[4] for row in mesh.groups], dtype=np.float64)
+        own = np.array([0.0 if o == LOD_NONE else error[o] for o, _ in mesh.lod])
+        parent = np.array([np.inf if p == LOD_NONE else error[p] for _, p in mesh.lod])
+        level0 = cluster_triangles(mesh, [c for c, (o, _) in zip(mesh.clusters, mesh.lod) if o == LOD_NONE])
+        self.assertGreater(len(error), 0)
+        for cut in np.unique(error):
+            drawn = cluster_triangles(mesh, [c for c, o, p in zip(mesh.clusters, own, parent) if o <= cut < p])
+            gap = max(farthest_from(np.unique(level0.reshape(-1, 3), axis=0), drawn),
+                      farthest_from(np.unique(drawn.reshape(-1, 3), axis=0), level0))
+            self.assertGreaterEqual(cut + ROUNDING_TICKS, gap, f"cut {cut}")
+
+
