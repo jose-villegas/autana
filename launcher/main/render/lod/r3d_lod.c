@@ -3,6 +3,7 @@
 #include "math/geometry/box3f.h"
 #include "math/scalar/mathf.h"
 
+#include <assert.h>
 #include <string.h>
 
 /* The lens's linear part with its focal lengths divided out: position ticks
@@ -180,4 +181,19 @@ r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lo
         close_coarse(mesh, coarse);
     }
     return changed;
+}
+
+int
+r3d_lod_list_drawn(const r3d_lit_mesh_t* mesh, const uint32_t* coarse, uint16_t* out, int room) {
+    const bool every = r3d_lod_finest_untested(mesh, coarse != NULL && r3d_lod_any(coarse, mesh->lod_group_count));
+    const int count = !every || mesh->cluster_lod == NULL ? mesh->cluster_count : mesh->lod_coarse_first;
+    int drawn = 0;
+    for (int c = 0; c < count; c++) {
+        if (every || r3d_lod_drawn(mesh, c, coarse)) {
+            assert(drawn < room);
+            out[drawn++] = (uint16_t)c;
+        }
+    }
+    (void)room;
+    return drawn;
 }
