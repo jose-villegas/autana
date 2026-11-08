@@ -150,6 +150,7 @@ typedef struct {
 } draw_work_t;
 
 _Static_assert(sizeof(slice_t) <= JOB_CTX_MAX, "slice_t must fit JOB_CTX_MAX");
+_Static_assert(sizeof(cull_job_t) <= sizeof(batch_t), "the cull's job takes no scratch beyond the batch's");
 _Static_assert(_Alignof(draw_work_t) <= R3D_PIPELINE_WORK_ALIGNMENT, "draw work alignment");
 
 static void
