@@ -757,7 +757,8 @@ release_spread_context(void) {
  * into; all freed by the cleanup. */
 static void
 open_spread(int every, bool partial) {
-    suite_set_test_cleanup(release_spread_context);
+    const r3d_lit_mesh_t* mesh = levelled_mesh();
+    suite_set_test_cleanup(release_spread_context); /* after the mesh's own: it frees the mesh too */
     spread_placed = malloc(sizeof *spread_placed);
     spread_context = malloc(sizeof *spread_context);
     spread_destination = malloc(sizeof(uint16_t) * W * H);
@@ -765,7 +766,7 @@ open_spread(int every, bool partial) {
     TEST_ASSERT_NOT_NULL(spread_context);
     TEST_ASSERT_NOT_NULL(spread_destination);
     const float depth[PLACED_MAX] = {FAR_EYE, FAR_EYE};
-    place(spread_placed, levelled_mesh(), PLACED_MAX, depth);
+    place(spread_placed, mesh, PLACED_MAX, depth);
     *spread_context = RENDER_CONTEXT_DEFAULT;
     render_context_set_scale(spread_context, 100);
     render_settings_t settings = spread_over(every);
