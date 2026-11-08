@@ -22,11 +22,20 @@
 #include "render/settings/render_settings.h"
 
 /* The thousandths of `lod.coverage_permille`: 1000 is the picture's whole height. */
-#define R3D_LOD_PERMILLE      1000
+#define R3D_LOD_PERMILLE            1000
 
-#define R3D_LOD_WORD_BITS     32
+#define R3D_LOD_WORD_BITS           32
 /* The words of coarse bits a mesh's groups need. */
-#define R3D_LOD_WORDS(groups) (((groups) + R3D_LOD_WORD_BITS - 1) / R3D_LOD_WORD_BITS)
+#define R3D_LOD_WORDS(groups)       (((groups) + R3D_LOD_WORD_BITS - 1) / R3D_LOD_WORD_BITS)
+/* An instance's level state: its coarse bits, then as many arrived bits
+ * (r3d_lod_pick()) for the blend. */
+#define R3D_LOD_STATE_WORDS(groups) (2 * R3D_LOD_WORDS(groups))
+
+/* The arrived bits of the state whose coarse bits are `coarse`. */
+static inline uint32_t*
+r3d_lod_arrived(uint32_t* coarse, int groups) {
+    return coarse + R3D_LOD_WORDS(groups);
+}
 
 static inline bool
 r3d_lod_coarse(const uint32_t* coarse, uint16_t group) {
@@ -70,33 +79,25 @@ float r3d_lod_group_pixels(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, i
  * so it never covers less than one of them. */
 float r3d_lod_group_coverage(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int group);
 
-/* Arrived bits (r3d_lod_pick()): set when a group turns fine, cleared once
- * its error projects R3D_LOD_MORPH_PX past the hysteresis band, where its
- * blend has faded out. An arrived group's blend fades from `leave`, where it
- * switched; any other fine group's from `enter`, where it next switches; at
- * the bit's change both are none, so the blend never jumps. */
-
 /* Geomorphing (render/lmor_format.h): a drawn cluster with a parent group
- * blends its vertices toward their targets on that group's coarse surface by
- * a weight from the group's projected error alone, with no state. The weight
- * is whole wherever the pick can switch the group (up to the tolerance plus
- * the hysteresis), so a switch moves nothing, and falls to none over
- * R3D_LOD_MORPH_PX more; for the coverage cap, whole at the cap,
- * none R3D_LOD_MORPH_COVER_RAMP of it above. The lesser weight is drawn. */
-#define R3D_LOD_MORPH_PX         1.0F
+ * blends toward its targets on that group's coarse surface. The weight is
+ * whole at the group's next switch, so a switch moves nothing, and none
+ * `lod.blend_px` past it; for the coverage cap, whole at the cap, none
+ * R3D_LOD_MORPH_COVER_RAMP of it above. The lesser weight is drawn. */
 #define R3D_LOD_MORPH_COVER_RAMP 0.25F
 /* A weight's whole: the transform's fixed-point unit. */
 #define R3D_LOD_MORPH_ONE        128
-/* Levels of coarse blending a target follows: a target on a level that is
- * itself blending moves with it. */
-#define R3D_LOD_MORPH_CHAIN      2
 
 /* One instance's blend through one lens; `enabled` false draws no blend. */
 typedef struct r3d_lod_morph {
     mat4f_t view; /* the lens's linear part, focal lengths divided out */
     float units_per_tick, scale, near_z;
-    float enter, leave, ramp;  /* pixels: whole at enter (leave for an arrived group), none ramp past it */
-    const uint32_t* arrived;   /* the pick's arrived bits, or NULL: every group ramps from leave */
+    float enter, leave, ramp; /* pixels: whole at enter (leave for an arrived group), none ramp past it */
+    /* The pick's arrived bits, or NULL: every group ramps from leave. Set when
+     * a group turns fine, cleared `lod.blend_px` past the hysteresis band: an
+     * arrived group ramps from leave, where it came through, any other from
+     * enter, where it turns coarse. Both weigh none where the bit changes. */
+    const uint32_t* arrived;
     float covered, cover_ramp; /* pixels of radius: whole at covered, none at covered + cover_ramp */
     bool enabled;
 } r3d_lod_morph_t;
@@ -120,11 +121,11 @@ int r3d_lod_morph_weight(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mes
 float r3d_lod_morph_stacked_px(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, int c);
 
 /* Updates `coarse`, R3D_LOD_WORDS(mesh->lod_group_count) words, for one
- * frame seen through `lens`: coarse where a group's error projects within
- * `lod.tolerance_px` (`lod.hysteresis_px` either side of it, by the bit's
- * last state) and its radius covers at most `lod.coverage_permille`
- * thousandths of the picture's height. A parent never projects smaller than
- * its sources, in error or radius (r3d_lit_mesh.h checks), and a closing
- * pass sets coarse any source rounding left fine, so the cut never cracks. */
+ * frame through `lens`: coarse where a group's error projects within
+ * `lod.tolerance_px` (± `lod.hysteresis_px` by the bit's last state) and its
+ * radius covers at most `lod.coverage_permille` of the picture's height.
+ * Parents never project smaller than their sources and a closing pass sets
+ * coarse what rounding left fine, so the cut never cracks. `arrived`, as many
+ * words or NULL, keeps the bits the blend reads. */
 void r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod,
                   uint32_t* coarse, uint32_t* arrived);

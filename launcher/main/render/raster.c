@@ -25,19 +25,18 @@ TUNE_OVERRIDE(render, batched, 1);
 /* Overrides lod.coverage_permille (INT32_MAX lifts the cap); coverage_table.py
  * sets it once per cap. */
 TUNE_OVERRIDE(render, lod_coverage_permille, INT32_MAX);
-/* 0 draws level switches without the geomorph blend (render/lod/r3d_lod.h),
- * to score what it buys. */
-#define RASTER_LOD_MORPH_ON 1
-TUNE(render, lod_morph, RASTER_LOD_MORPH_ON, 0, RASTER_LOD_MORPH_ON);
+/* Overrides lod.blend; morph_table.py sets it once per arm. */
+TUNE_OVERRIDE(render, lod_blend, RENDER_LOD_BLEND_COUNT - 1);
 
 render_settings_t
 raster_settings(const raster_t* raster) {
     const render_settings_t s = raster->settings != NULL ? *raster->settings : RENDER_SETTINGS_DEFAULT;
-    return (render_settings_t){
-        tune_override(cull, s.cull) != 0,
-        tune_override(depth_fit, s.depth_fit) != 0,
-        tune_override(batched, s.batched) != 0,
-        {s.lod.tolerance_px, s.lod.hysteresis_px, tune_override(lod_coverage_permille, s.lod.coverage_permille)}};
+    return (render_settings_t){tune_override(cull, s.cull) != 0,
+                               tune_override(depth_fit, s.depth_fit) != 0,
+                               tune_override(batched, s.batched) != 0,
+                               {s.lod.tolerance_px, s.lod.hysteresis_px,
+                                tune_override(lod_coverage_permille, s.lod.coverage_permille),
+                                tune_override(lod_blend, s.lod.blend), s.lod.blend_px}};
 }
 
 /* One instance of a batch: its lens, the clusters culling kept, where its
@@ -442,7 +441,10 @@ raster_pick_levels(const raster_t* raster, const render_view_t* view) {
         }
         r3d_lens_t lens;
         instance_lens(&picture, instance, &lens);
-        r3d_lod_pick(instance->mesh, &lens, &settings.lod, instance->lod_coarse, instance->lod_arrived);
+        r3d_lod_pick(instance->mesh, &lens, &settings.lod, instance->lod_coarse,
+                     settings.lod.blend != RENDER_LOD_BLEND_SWITCH
+                         ? r3d_lod_arrived(instance->lod_coarse, instance->mesh->lod_group_count)
+                         : NULL);
     }
 }
 
@@ -452,8 +454,10 @@ raster_lod_morph(const raster_t* raster, const render_view_t* view, const r3d_in
     /* The pick measures in output pixels; the lens draws at its fitted size. */
     const float drawn = mathf_max(lens->focal_x, lens->focal_y) / mathf_max(view->lens.fx, view->lens.fy);
     const render_settings_t settings = raster_settings(raster);
-    r3d_lod_morph_init(morph, instance->mesh, lens, &settings.lod, drawn, instance->lod_arrived,
-                       lod_morph != 0 && instance->lod_coarse != NULL);
+    r3d_lod_morph_init(
+        morph, instance->mesh, lens, &settings.lod, drawn,
+        instance->lod_coarse != NULL ? r3d_lod_arrived(instance->lod_coarse, instance->mesh->lod_group_count) : NULL,
+        settings.lod.blend == RENDER_LOD_BLEND_MORPH && instance->lod_coarse != NULL);
 }
 
 /* Culls every instance into the census list and returns the depth scale

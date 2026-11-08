@@ -20,6 +20,5 @@ typedef struct {
     const r3d_lit_mesh_t* mesh;
     const mat4f_t* model;        /* NULL: drawn as it is */
     const box3f_t* world_bounds; /* NULL: culled from the mesh's own root */
-    uint32_t* lod_coarse;        /* R3D_LOD_WORDS(mesh->lod_group_count) words, or NULL: the finest level */
-    uint32_t* lod_arrived;       /* as many words, or NULL: the blend ramps every group from the band's top */
+    uint32_t* lod_coarse;        /* R3D_LOD_STATE_WORDS(mesh->lod_group_count) words, or NULL: the finest level */
 } r3d_instance_t;

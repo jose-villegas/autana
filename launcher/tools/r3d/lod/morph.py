@@ -7,8 +7,9 @@ Targets are measured from the mesh as written, its LMSH and LLOD, so every
 mesh with levels gets them the same way. The simplifier keeps a subset of
 the finer vertices, so each coarse vertex claims the fine vertex it was
 kept from. A removed one goes to the nearest point on its parent group's
-coarse triangles, preferring those facing its way. A border between groups
-is locked, so its vertices are kept and land on themselves. A row also keeps
+coarse triangles, preferring those facing its way. A position that
+clusters under different parents share stays put wherever those clusters
+can be drawn together, so they never crack. A row also keeps
 where it lands, a coarse triangle and its corner weights, so the draw blends
 its colour toward the coarse colour there from whichever colours the mesh
 draws with, a copy's colour set included.
@@ -106,6 +107,60 @@ def kept_corners(points, corners, reach):
     return found
 
 
+def above(mesh):
+    """Each group's ancestors and itself: a coarse group's sources are coarse
+    too (render/lod/r3d_lod.h), so a group is coarse whenever one of these is."""
+    up = {}
+    for own, parent in mesh.lod:
+        if own != LOD_NONE and parent != LOD_NONE:
+            up.setdefault(own, set()).add(parent)
+    found = {}
+
+    def walk(group):
+        if group not in found:
+            found[group] = {group}
+            for parent in up.get(group, ()):
+                found[group] |= walk(parent)
+        return found[group]
+
+    for group in range(len(mesh.groups)):
+        walk(group)
+    return found
+
+
+def shared_rows(mesh):
+    """Rows at a position that rows of another cluster share, where the two
+    clusters can be drawn in one frame under different parents: blending by
+    different weights there would crack, so these rows stay put. A cluster is
+    drawn only while its own group is coarse and its parent fine, so two
+    never meet when one's own group is its partner's parent or above it."""
+    ancestors = above(mesh)
+    cluster = np.zeros(len(mesh.pos), dtype=np.int64)
+    for index, (first, count, *_) in enumerate(mesh.clusters):
+        cluster[first:first + count] = index
+    _, place = np.unique(np.asarray(mesh.pos), axis=0, return_inverse=True)
+    place = place.reshape(-1)
+    order = np.argsort(place, kind="stable")
+    bounds = np.flatnonzero(np.diff(place[order])) + 1
+    held = np.zeros(len(mesh.pos), dtype=bool)
+
+    def apart(a, b):
+        own_a, parent_a = mesh.lod[a]
+        own_b, parent_b = mesh.lod[b]
+        return ((own_b != LOD_NONE and parent_a != LOD_NONE and own_b in ancestors[parent_a])
+                or (own_a != LOD_NONE and parent_b != LOD_NONE and own_a in ancestors[parent_b]))
+
+    for rows in np.split(order, bounds):
+        if len(rows) < 2:
+            continue
+        for i, a in enumerate(rows):
+            for b in rows[i + 1:]:
+                ca, cb = cluster[a], cluster[b]
+                if mesh.lod[ca][1] != mesh.lod[cb][1] and not apart(ca, cb):
+                    held[a] = held[b] = True
+    return held
+
+
 def read_targets(mesh):
     """(positions, landing or None) per vertex row of a read mesh with levels
     (lit_mesh.read_lit_mesh): the target, and the coarse triangle and two
@@ -142,4 +197,6 @@ def read_targets(mesh):
             _, triangle, bary = surface.land(moved, normals, reach)
             first, second = landing_weights(bary)
             landing[rows] = np.c_[triangle, first, second][at]
+    held = shared_rows(mesh)
+    target[held] = pos[held]
     return target, landing

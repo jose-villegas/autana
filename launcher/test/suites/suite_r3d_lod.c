@@ -578,7 +578,7 @@ test_the_pick_keeps_the_bits_of_an_instance_culled_whole(void) {
     const float depth[INSTANCES] = {FAR_EYE, -FAR_EYE};
     mat4f_t models[INSTANCES];
     box3f_t boxes[INSTANCES];
-    uint32_t coarse[INSTANCES][R3D_LOD_WORDS(GROUPS)] = {{0}};
+    uint32_t coarse[INSTANCES][R3D_LOD_STATE_WORDS(GROUPS)] = {{0}};
     r3d_instance_t instances[INSTANCES];
     for (int i = 0; i < INSTANCES; i++) {
         transformf_t pose = transformf_identity();
@@ -635,7 +635,7 @@ enum {
 
 /* A radius large enough that one error unit projects well under a pixel where the coverage ramps,
  * and two errors, the first within the leave and the second inside the ramp past it. */
-enum { WIDE_RADIUS = 40, ERROR_SMALL = 5, ERROR_RAMPING = 7 };
+enum { WIDE_RADIUS = 160, ERROR_SMALL = 20 };
 
 /* Shares of a ramp, from whole (0) to none (1), the weights are read at. */
 #define SHARE_QUARTER        0.25F
@@ -705,11 +705,11 @@ test_the_morph_weight_falls_from_whole_to_none_over_a_pixel_past_the_pick_leave_
     TEST_ASSERT_EQUAL_INT(R3D_LOD_MORPH_ONE,
                           weight_at(mesh, error_eye(mesh, leave_px() - PAST_RAMP), WEIGHT_CLUSTER, true));
     for (size_t i = 0; i < sizeof shares / sizeof shares[0]; i++) {
-        const float px = leave_px() + (shares[i] * R3D_LOD_MORPH_PX);
+        const float px = leave_px() + (shares[i] * LOD.blend_px);
         TEST_ASSERT_INT_WITHIN(WEIGHT_SLACK, ramp_weight_at(shares[i]),
                                weight_at(mesh, error_eye(mesh, px), WEIGHT_CLUSTER, true));
     }
-    const float past = leave_px() + (R3D_LOD_MORPH_PX * (1.0F + PAST_RAMP));
+    const float past = leave_px() + (LOD.blend_px * (1.0F + PAST_RAMP));
     TEST_ASSERT_EQUAL_INT(0, weight_at(mesh, error_eye(mesh, past), WEIGHT_CLUSTER, true));
     TEST_ASSERT_EQUAL_INT(0, weight_at(mesh, error_eye(mesh, leave_px() * 4.0F), WEIGHT_CLUSTER, true));
 }
@@ -757,10 +757,13 @@ test_the_lesser_of_the_error_and_coverage_weights_is_drawn(void) {
     levelled->groups[WEIGHT_GROUP].error = ERROR_SMALL;
     TEST_ASSERT_TRUE(r3d_lod_group_pixels(mesh, &lens, WEIGHT_GROUP) <= leave_px());
     TEST_ASSERT_INT_WITHIN(WEIGHT_SLACK, by_cover, weight_at(mesh, eye, WEIGHT_CLUSTER, true));
-    levelled->groups[WEIGHT_GROUP].error = ERROR_RAMPING;
+    /* The least error past the ramp's middle, where its weight drops below the coverage's. */
+    while (r3d_lod_group_pixels(mesh, &lens, WEIGHT_GROUP) <= leave_px() + (SHARE_HALF * LOD.blend_px)) {
+        levelled->groups[WEIGHT_GROUP].error++;
+    }
     const float px = r3d_lod_group_pixels(mesh, &lens, WEIGHT_GROUP);
-    TEST_ASSERT_TRUE(px > leave_px() && px < leave_px() + R3D_LOD_MORPH_PX);
-    const int by_error = ramp_weight_at((px - leave_px()) / R3D_LOD_MORPH_PX);
+    TEST_ASSERT_TRUE(px > leave_px() && px < leave_px() + LOD.blend_px);
+    const int by_error = ramp_weight_at((px - leave_px()) / LOD.blend_px);
     TEST_ASSERT_TRUE(by_error < by_cover);
     TEST_ASSERT_INT_WITHIN(WEIGHT_SLACK, by_error, weight_at(mesh, eye, WEIGHT_CLUSTER, true));
 }
@@ -775,6 +778,92 @@ test_there_is_no_morph_weight_without_a_parent_without_morph_data_or_when_disabl
     TEST_ASSERT_EQUAL_INT(0, weight_at(mesh, eye, WEIGHT_CLUSTER, false));
     levelled->mesh.morph_delta = NULL;
     TEST_ASSERT_EQUAL_INT(0, weight_at(mesh, eye, WEIGHT_CLUSTER, true));
+}
+
+static float
+enter_px(void) {
+    return TOLERANCE - HYSTERESIS;
+}
+
+/* Picks at the eye where group WEIGHT_GROUP's error projects `px`, keeping `coarse` and `arrived`. */
+static void
+pick_at_px(const r3d_lit_mesh_t* mesh, float px, uint32_t* coarse, uint32_t* arrived) {
+    const r3d_lens_t lens = lens_at(error_eye(mesh, px), NULL);
+    r3d_lod_pick(mesh, &lens, &LOD, coarse, arrived);
+}
+
+static int
+weight_arrived_at(const r3d_lit_mesh_t* mesh, float px, const uint32_t* arrived) {
+    const r3d_lens_t lens = lens_at(error_eye(mesh, px), NULL);
+    r3d_lod_morph_t morph;
+    r3d_lod_morph_init(&morph, mesh, &lens, &LOD, 1.0F, arrived, true);
+    return r3d_lod_morph_weight(&morph, mesh, WEIGHT_CLUSTER);
+}
+
+static void
+test_a_group_turning_fine_has_its_arrived_bit_set(void) {
+    const r3d_lit_mesh_t* mesh = &morphing_levels()->mesh;
+    uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
+    uint32_t arrived[R3D_LOD_WORDS(GROUPS)] = {0};
+    pick_at_px(mesh, enter_px() * SHARE_HALF, coarse, arrived);
+    TEST_ASSERT_TRUE(r3d_lod_coarse(coarse, WEIGHT_GROUP));
+    TEST_ASSERT_FALSE(r3d_lod_coarse(arrived, WEIGHT_GROUP));
+    pick_at_px(mesh, leave_px() + (LOD.blend_px * SHARE_HALF), coarse, arrived);
+    TEST_ASSERT_FALSE(r3d_lod_coarse(coarse, WEIGHT_GROUP));
+    TEST_ASSERT_TRUE(r3d_lod_coarse(arrived, WEIGHT_GROUP));
+}
+
+static void
+test_the_arrived_bit_clears_once_the_error_projects_past_leave_and_the_morph_ramp(void) {
+    const r3d_lit_mesh_t* mesh = &morphing_levels()->mesh;
+    uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
+    uint32_t arrived[R3D_LOD_WORDS(GROUPS)] = {0};
+    pick_at_px(mesh, enter_px() * SHARE_HALF, coarse, arrived);
+    pick_at_px(mesh, leave_px() + (LOD.blend_px * SHARE_HALF), coarse, arrived);
+    TEST_ASSERT_TRUE(r3d_lod_coarse(arrived, WEIGHT_GROUP));
+    pick_at_px(mesh, leave_px() + (LOD.blend_px * (1.0F - PAST_RAMP)), coarse, arrived);
+    TEST_ASSERT_TRUE(r3d_lod_coarse(arrived, WEIGHT_GROUP));
+    pick_at_px(mesh, leave_px() + (LOD.blend_px * (1.0F + PAST_RAMP)), coarse, arrived);
+    TEST_ASSERT_FALSE(r3d_lod_coarse(coarse, WEIGHT_GROUP));
+    TEST_ASSERT_FALSE(r3d_lod_coarse(arrived, WEIGHT_GROUP));
+}
+
+static void
+test_a_coarse_group_never_has_its_arrived_bit(void) {
+    const r3d_lit_mesh_t* mesh = &morphing_levels()->mesh;
+    uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
+    uint32_t arrived[R3D_LOD_WORDS(GROUPS)] = {0};
+    arrived[0] = 1U << WEIGHT_GROUP;
+    pick_at_px(mesh, enter_px() * SHARE_HALF, coarse, arrived);
+    TEST_ASSERT_TRUE(r3d_lod_coarse(coarse, WEIGHT_GROUP));
+    TEST_ASSERT_FALSE(r3d_lod_coarse(arrived, WEIGHT_GROUP));
+}
+
+static void
+test_an_arrived_group_blends_whole_up_to_leave_and_any_other_from_enter(void) {
+    const r3d_lit_mesh_t* mesh = &morphing_levels()->mesh;
+    const uint32_t arrived[R3D_LOD_WORDS(GROUPS)] = {1U << WEIGHT_GROUP};
+    const uint32_t none[R3D_LOD_WORDS(GROUPS)] = {0};
+    TEST_ASSERT_TRUE(leave_px() - enter_px() > LOD.blend_px);
+    TEST_ASSERT_EQUAL_INT(R3D_LOD_MORPH_ONE, weight_arrived_at(mesh, enter_px(), arrived));
+    TEST_ASSERT_EQUAL_INT(R3D_LOD_MORPH_ONE, weight_arrived_at(mesh, enter_px(), none));
+    TEST_ASSERT_EQUAL_INT(R3D_LOD_MORPH_ONE, weight_arrived_at(mesh, leave_px(), arrived));
+    TEST_ASSERT_EQUAL_INT(0, weight_arrived_at(mesh, leave_px(), none));
+    const float half = enter_px() + (LOD.blend_px * SHARE_HALF);
+    TEST_ASSERT_INT_WITHIN(WEIGHT_SLACK, ramp_weight_at(SHARE_HALF), weight_arrived_at(mesh, half, none));
+    TEST_ASSERT_EQUAL_INT(R3D_LOD_MORPH_ONE, weight_arrived_at(mesh, half, arrived));
+    const float past = leave_px() + (LOD.blend_px * SHARE_HALF);
+    TEST_ASSERT_INT_WITHIN(WEIGHT_SLACK, ramp_weight_at(SHARE_HALF), weight_arrived_at(mesh, past, arrived));
+}
+
+static void
+test_without_arrived_bits_every_group_blends_whole_up_to_leave(void) {
+    const r3d_lit_mesh_t* mesh = &morphing_levels()->mesh;
+    TEST_ASSERT_EQUAL_INT(R3D_LOD_MORPH_ONE, weight_arrived_at(mesh, leave_px(), NULL));
+    TEST_ASSERT_EQUAL_INT(R3D_LOD_MORPH_ONE, weight_arrived_at(mesh, enter_px(), NULL));
+    TEST_ASSERT_INT_WITHIN(WEIGHT_SLACK, ramp_weight_at(SHARE_HALF),
+                           weight_arrived_at(mesh, leave_px() + (LOD.blend_px * SHARE_HALF), NULL));
+    TEST_ASSERT_EQUAL_INT(0, weight_arrived_at(mesh, leave_px() + (LOD.blend_px * (1.0F + PAST_RAMP)), NULL));
 }
 
 /* A mesh of two clusters to transform: the first finest in group 0, with morph
@@ -869,7 +958,7 @@ static const uint16_t BOTH_CLUSTERS[MORPH_CLUSTERS] = {0, 1};
 /* The eye at which the first cluster's weight is `share` of the way down its error ramp. */
 static float
 morph_eye(const morphing_t* m, float share) {
-    return error_eye(&m->mesh, leave_px() + (share * R3D_LOD_MORPH_PX));
+    return error_eye(&m->mesh, leave_px() + (share * LOD.blend_px));
 }
 
 static int
@@ -995,6 +1084,11 @@ suite_r3d_lod(void) {
     RUN_TEST(test_the_morph_weight_falls_over_a_quarter_of_the_cap_above_the_coverage_cap);
     RUN_TEST(test_the_lesser_of_the_error_and_coverage_weights_is_drawn);
     RUN_TEST(test_there_is_no_morph_weight_without_a_parent_without_morph_data_or_when_disabled);
+    RUN_TEST(test_a_group_turning_fine_has_its_arrived_bit_set);
+    RUN_TEST(test_the_arrived_bit_clears_once_the_error_projects_past_leave_and_the_morph_ramp);
+    RUN_TEST(test_a_coarse_group_never_has_its_arrived_bit);
+    RUN_TEST(test_an_arrived_group_blends_whole_up_to_leave_and_any_other_from_enter);
+    RUN_TEST(test_without_arrived_bits_every_group_blends_whole_up_to_leave);
     RUN_TEST(test_a_cluster_transformed_with_the_whole_weight_lands_on_its_targets);
     RUN_TEST(test_a_cluster_transformed_with_no_weight_matches_the_plain_transform_exactly);
     RUN_TEST(test_a_null_morph_transforms_as_the_plain_transform_does);

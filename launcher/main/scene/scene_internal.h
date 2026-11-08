@@ -116,10 +116,9 @@ typedef struct {
     mat4f_t model;
     box3f_t world_bounds; /* the mesh's root box through `model`, kept with it */
     scene_entity_t entity;
-    bool placed;           /* false while the transform is the identity: drawn as it is */
-    uint16_t lod_words;    /* the coarse bits held for the mesh opened: R3D_LOD_WORDS of its groups */
-    uint32_t* lod_coarse;  /* into the scene's lod_bits, or NULL without levels */
-    uint32_t* lod_arrived; /* the pick's arrived bits, lod_words more after lod_coarse */
+    bool placed;          /* false while the transform is the identity: drawn as it is */
+    uint16_t lod_words;   /* R3D_LOD_WORDS of the opened mesh's groups; its arrived bits follow */
+    uint32_t* lod_coarse; /* into the scene's lod_bits, or NULL without levels */
 } scene_renderer_t;
 
 /* Sets `r`'s world box from its mesh and model; call after either changes,

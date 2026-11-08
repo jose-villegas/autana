@@ -41,6 +41,8 @@ that field's table in the asset.
 | `lod.tolerance_px` | `2.0` | basic | the projected error a group may have and still draw coarse; more saves, pops more |
 | `lod.hysteresis_px` | `0.5` | advanced | how far past the tolerance a coarse group's error goes before it turns fine |
 | `lod.coverage_permille` | `250` | basic | the thousandths of the picture's height a coarse group may span; smaller pops less |
+| `lod.blend` | `1` | basic | a render_lod_blend_t; a blend softens each switch and costs time only while a group changes |
+| `lod.blend_px` | `0.25` | advanced | the error past a switch over which a blend fades out; longer is softer, moves more |
 <!-- /generated: render-settings -->
 
 ## cull
