@@ -1,6 +1,6 @@
 /*
  * r3d_lod: which level of a mesh's clusters an instance draws
- * (docs/plans/Cluster-LOD.md). Once per instance every lod.pick_every frames, r3d_lod_pick()
+ * (docs/render/frame/Levels-of-Detail.md). Once per instance every lod.pick_every frames, r3d_lod_pick()
  * sets one bit per group: coarse when the group's error, projected at its
  * bounds' nearest point, is within the tolerance and its bounds' radius,
  * projected there, spans at most a share of the picture's height. The

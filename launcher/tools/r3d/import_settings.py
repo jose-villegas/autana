@@ -22,7 +22,7 @@ from gltf.gltf_read import ASSET_SUFFIXES
 
 U16_MAX = (1 << 16) - 1
 MESHLET_TRIANGLES = 32
-# A baked mesh carries its levels of detail (docs/plans/Cluster-LOD.md) unless its geometry says lod = false.
+# A baked mesh carries its levels of detail (docs/render/frame/Levels-of-Detail.md) unless its geometry says lod = false.
 LOD = True
 # Morph targets (an LMOR sibling) only where geometry says morph = true: the
 # blend morphs those meshes and dithers the rest, which costs no bytes.

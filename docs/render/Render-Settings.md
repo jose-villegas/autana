@@ -121,7 +121,7 @@ generation off, and costs nothing when it does not apply.
 
 ## lod
 
-The [LOD pick](../plans/Cluster-LOD.md), once a frame per instance, draws a group's coarser
+The [LOD pick](frame/Levels-of-Detail.md), once a frame per instance, draws a group's coarser
 level when its projected error is within `tolerance_px` and its radius spans at most
 `coverage_permille` thousandths of the picture's height.
 
@@ -131,7 +131,7 @@ fine one turns coarse only once it is that far under, so a still camera never fl
 ![The hysteresis band and the coverage cap, from the default values](../images/render/lod-settings.png)
 
 These change which clusters draw, so they change pixels. A larger tolerance saves triangles and
-pops more; [Cluster-LOD.md](../plans/Cluster-LOD.md) scores each coverage cap.
+pops more; [Levels-of-Detail.md](frame/Levels-of-Detail.md) scores each coverage cap.
 
 ## The render asset
 

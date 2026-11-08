@@ -6,7 +6,7 @@ Layout defines: [`render/lmor_format.h`](../../../launcher/main/render/lmor_form
 
 Each vertex of a cluster with a parent group stores where it lands on that
 group's coarse surface. The transform blends it there as the group nears its
-switch ([Cluster-LOD.md](../../plans/Cluster-LOD.md#the-blend)).
+switch ([Levels-of-Detail.md](../frame/Levels-of-Detail.md#the-blend)).
 
 ```mermaid
 ---
