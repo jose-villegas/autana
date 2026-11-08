@@ -130,20 +130,34 @@ class Triangles:
 
     def __init__(self, corners):
         self.corners = np.asarray(corners, dtype=np.float64)
-        self.tree = cKDTree(self.corners.mean(axis=1))
+        middles = self.corners.mean(axis=1)
+        self.tree = cKDTree(middles)
+        # No point of a triangle lies farther than this from its middle.
+        self.reach = float(np.linalg.norm(self.corners - middles[:, None], axis=2).max(initial=0.0))
+
+    def nearest(self, points, rows):
+        """Per point, its distance to the nearest of the triangles `rows[i]` (N x k)."""
+        k = rows.shape[1]
+        a, b, c = (self.corners[rows.reshape(-1), i] for i in range(3))
+        _, distance = closest_point_on_triangles(np.repeat(points, k, axis=0), a, b, c)
+        return distance.reshape(-1, k).min(axis=1)
 
     def farthest(self, points):
-        """The farthest of `points` (N x 3) from its nearest triangle. Each point tries the SAMPLE_CANDIDATES
-        triangles whose middles lie nearest: missing the nearest can only overstate the distance."""
+        """The farthest of `points` (N x 3) from its nearest triangle. The SAMPLE_CANDIDATES triangles whose
+        middles lie nearest bound each point's distance from above; points are then settled exactly, largest
+        bound first, against every triangle whose middle lies within bound + reach, until no bound is left
+        above the farthest settled."""
+        points = np.asarray(points, dtype=np.float64)
         k = min(SAMPLE_CANDIDATES, len(self.corners))
         near = np.asarray(self.tree.query(points, k=k)[1]).reshape(len(points), k)
-        a, b, c = self.corners[:, 0], self.corners[:, 1], self.corners[:, 2]
+        bound = np.concatenate([self.nearest(points[s:s + PUSH_CHUNK], near[s:s + PUSH_CHUNK])
+                                for s in range(0, len(points), PUSH_CHUNK)])
         farthest = 0.0
-        for start in range(0, len(points), PUSH_CHUNK):
-            rows = near[start:start + PUSH_CHUNK].reshape(-1)
-            q = np.repeat(points[start:start + PUSH_CHUNK], k, axis=0)
-            _, distance = closest_point_on_triangles(q, a[rows], b[rows], c[rows])
-            farthest = max(farthest, float(distance.reshape(-1, k).min(axis=1).max()))
+        for i in np.argsort(bound)[::-1]:
+            if bound[i] <= farthest:
+                break
+            rows = np.asarray(self.tree.query_ball_point(points[i], bound[i] + self.reach))
+            farthest = max(farthest, float(self.nearest(points[i:i + 1], rows[None])[0]) if len(rows) else bound[i])
         return farthest
 
 
