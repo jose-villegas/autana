@@ -240,7 +240,7 @@ pick_along_the_path(const r3d_lit_mesh_t* mesh, pose_check_t check) {
     uint32_t ever_coarse = 0, ever_fine = 0;
     for (int p = 0; p < poses; p++) {
         const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
-        r3d_lod_pick(mesh, &lens, &LOD, coarse);
+        r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL);
         check(mesh, &lens, coarse);
         ever_coarse |= coarse[0];
         ever_fine |= ~coarse[0];
@@ -292,7 +292,7 @@ test_every_finest_cluster_is_drawn_at_exactly_one_level_along_the_path(void) {
     bool drew_top = false, drew_finest = false;
     for (int p = 0; p < poses; p++) {
         const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
-        r3d_lod_pick(mesh, &lens, &LOD, coarse);
+        r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL);
         for (int f = 0; f < FINEST_CLUSTERS; f++) {
             TEST_ASSERT_EQUAL_INT(1, levels_drawn(mesh, f, coarse));
         }
@@ -314,7 +314,7 @@ test_a_group_s_bit_follows_its_projected_error_within_the_hysteresis_band(void) 
     const int poses = 2 * steps;
     for (int p = 0; p < poses; p++) {
         const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
-        r3d_lod_pick(mesh, &lens, &LOD, coarse);
+        r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL);
         for (int g = 0; g < GROUPS; g++) {
             const float px = r3d_lod_group_pixels(mesh, &lens, g);
             const bool capped = r3d_lod_group_coverage(mesh, &lens, g) > COVERAGE_MAX;
@@ -333,13 +333,13 @@ static float
 top_turns_fine(const r3d_lit_mesh_t* mesh, uint32_t* coarse) {
     float d = FAR_EYE;
     r3d_lens_t lens = lens_at(d, NULL);
-    r3d_lod_pick(mesh, &lens, &LOD, coarse);
+    r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL);
     TEST_ASSERT_TRUE(r3d_lod_coarse(coarse, TOP_GROUP));
     while (r3d_lod_coarse(coarse, TOP_GROUP)) {
         TEST_ASSERT_TRUE(d > NEAR_EYE);
         d *= STEP;
         lens = lens_at(d, NULL);
-        r3d_lod_pick(mesh, &lens, &LOD, coarse);
+        r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL);
     }
     TEST_ASSERT_TRUE(r3d_lod_group_pixels(mesh, &lens, TOP_GROUP) > TOLERANCE + HYSTERESIS);
     return d;
@@ -354,10 +354,10 @@ test_a_camera_backing_off_a_switch_by_less_than_the_band_does_not_switch_back(vo
     const r3d_lens_t lens = lens_at(top_turns_fine(mesh, coarse) / STEP, NULL);
     const float back = r3d_lod_group_pixels(mesh, &lens, TOP_GROUP);
     TEST_ASSERT_TRUE(back > TOLERANCE - HYSTERESIS && back <= TOLERANCE + HYSTERESIS);
-    r3d_lod_pick(mesh, &lens, &LOD, coarse);
+    r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL);
     const uint32_t held = coarse[0];
     TEST_ASSERT_FALSE(r3d_lod_coarse(coarse, TOP_GROUP));
-    r3d_lod_pick(mesh, &lens, &LOD, coarse);
+    r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL);
     TEST_ASSERT_EQUAL_HEX32(held, coarse[0]);
 }
 
@@ -409,8 +409,8 @@ test_the_least_error_skips_only_poses_that_pick_nothing_coarse(void) {
     const int steps = steps_in();
     for (int p = 0; p < 2 * steps; p++) {
         const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
-        r3d_lod_pick(mesh, &lens, &LOD, coarse);
-        r3d_lod_pick(&bounded, &lens, &LOD, skipping);
+        r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL);
+        r3d_lod_pick(&bounded, &lens, &LOD, skipping, NULL);
         TEST_ASSERT_EQUAL_HEX32_ARRAY(coarse, skipping, R3D_LOD_WORDS(GROUPS));
         if (p == steps) {
             TEST_ASSERT_EQUAL_HEX32(0, skipping[0]);
@@ -467,7 +467,7 @@ test_a_parent_turning_coarse_takes_an_out_of_order_source_with_it(void) {
     uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
     const r3d_lens_t lens = lens_at(FAR_EYE, NULL);
     TEST_ASSERT_TRUE(r3d_lod_group_pixels(mesh, &lens, 0) > TOLERANCE + HYSTERESIS);
-    r3d_lod_pick(mesh, &lens, &LOD, coarse);
+    r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL);
     TEST_ASSERT_TRUE(r3d_lod_coarse(coarse, TOP_GROUP));
     TEST_ASSERT_TRUE(r3d_lod_coarse(coarse, 0));
     for (int f = 0; f < FINEST_CLUSTERS; f++) {
@@ -555,7 +555,7 @@ test_the_finest_tree_walk_and_the_cut_keep_what_the_whole_walk_keeps(void) {
     bool cut_drawn = false;
     for (int p = 0; p < 2 * steps; p++) {
         const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
-        r3d_lod_pick(mesh, &lens, &LOD, coarse);
+        r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL);
         uint16_t apart[CLUSTERS], together[CLUSTERS];
         const int count = r3d_pipeline_cull(mesh, &lens, coarse, apart, w, NULL);
         TEST_ASSERT_EQUAL_INT(count, r3d_pipeline_cull(&whole, &lens, coarse, together, w, NULL));
@@ -665,7 +665,7 @@ static int
 weight_at(const r3d_lit_mesh_t* mesh, float eye, int cluster, bool enabled) {
     const r3d_lens_t lens = lens_at(eye, NULL);
     r3d_lod_morph_t morph;
-    r3d_lod_morph_init(&morph, mesh, &lens, &LOD, 1.0F, enabled);
+    r3d_lod_morph_init(&morph, mesh, &lens, &LOD, 1.0F, NULL, enabled);
     return r3d_lod_morph_weight(&morph, mesh, cluster);
 }
 
@@ -721,8 +721,8 @@ test_the_morph_thresholds_scale_with_the_pixels_per_output_pixel(void) {
     const float scale = 2.0F;
     const r3d_lens_t lens = lens_at(error_eye(mesh, scale * leave_px() * 0.75F), NULL);
     r3d_lod_morph_t one, two;
-    r3d_lod_morph_init(&one, mesh, &lens, &LOD, 1.0F, true);
-    r3d_lod_morph_init(&two, mesh, &lens, &LOD, scale, true);
+    r3d_lod_morph_init(&one, mesh, &lens, &LOD, 1.0F, NULL, true);
+    r3d_lod_morph_init(&two, mesh, &lens, &LOD, scale, NULL, true);
     TEST_ASSERT_EQUAL_INT(0, r3d_lod_morph_weight(&one, mesh, WEIGHT_CLUSTER));
     TEST_ASSERT_EQUAL_INT(R3D_LOD_MORPH_ONE, r3d_lod_morph_weight(&two, mesh, WEIGHT_CLUSTER));
 }
@@ -876,7 +876,7 @@ static int
 transform_morphed_at(const morphing_t* m, float eye, bool boxed, transformed_t* out) {
     const r3d_lens_t lens = lens_at(eye, NULL);
     r3d_lod_morph_t morph;
-    r3d_lod_morph_init(&morph, &m->mesh, &lens, &LOD, 1.0F, true);
+    r3d_lod_morph_init(&morph, &m->mesh, &lens, &LOD, 1.0F, NULL, true);
     r3d_pipeline_transform_morphed(&m->mesh, &lens, &morph, BOTH_CLUSTERS, MORPH_CLUSTERS, out->cs, out->rows, boxed);
     return r3d_lod_morph_weight(&morph, &m->mesh, 0);
 }

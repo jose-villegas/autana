@@ -21,7 +21,7 @@ pick_host(const r3d_lit_cluster_lod_t* cluster_lod, int clusters, const r3d_lit_
     memcpy(lens.m.m, rows, sizeof lens.m.m);
     lens.project.near_z = near_z;
     const render_lod_settings_t lod = {tolerance_px, hysteresis_px, coverage_permille};
-    r3d_lod_pick(&mesh, &lens, &lod, coarse);
+    r3d_lod_pick(&mesh, &lens, &lod, coarse, NULL);
     for (int c = 0; c < clusters; c++) {
         drawn[c] = r3d_lod_drawn(&mesh, c, coarse) ? 1U : 0U;
     }

@@ -442,7 +442,7 @@ raster_pick_levels(const raster_t* raster, const render_view_t* view) {
         }
         r3d_lens_t lens;
         instance_lens(&picture, instance, &lens);
-        r3d_lod_pick(instance->mesh, &lens, &settings.lod, instance->lod_coarse);
+        r3d_lod_pick(instance->mesh, &lens, &settings.lod, instance->lod_coarse, instance->lod_arrived);
     }
 }
 
@@ -452,7 +452,7 @@ raster_lod_morph(const raster_t* raster, const render_view_t* view, const r3d_in
     /* The pick measures in output pixels; the lens draws at its fitted size. */
     const float drawn = mathf_max(lens->focal_x, lens->focal_y) / mathf_max(view->lens.fx, view->lens.fy);
     const render_settings_t settings = raster_settings(raster);
-    r3d_lod_morph_init(morph, instance->mesh, lens, &settings.lod, drawn,
+    r3d_lod_morph_init(morph, instance->mesh, lens, &settings.lod, drawn, instance->lod_arrived,
                        lod_morph != 0 && instance->lod_coarse != NULL);
 }
 
