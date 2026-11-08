@@ -27,16 +27,19 @@ TUNE_OVERRIDE(render, partial_redraw, 1);
 /* Overrides lod.coverage_permille (INT32_MAX lifts the cap); coverage_table.py
  * sets it once per cap. */
 TUNE_OVERRIDE(render, lod_coverage_permille, INT32_MAX);
+/* Overrides lod.pick_every; 1 picks every instance every frame. */
+TUNE_OVERRIDE(render, lod_pick_every, R3D_LOD_PICK_EVERY_MAX);
 
 render_settings_t
 raster_settings(const raster_t* raster) {
     const render_settings_t s = raster->settings != NULL ? *raster->settings : RENDER_SETTINGS_DEFAULT;
-    return (render_settings_t){
-        tune_override(cull, s.cull) != 0,
-        tune_override(depth_fit, s.depth_fit) != 0,
-        tune_override(batched, s.batched) != 0,
-        tune_override(partial_redraw, s.partial_redraw) != 0,
-        {s.lod.tolerance_px, s.lod.hysteresis_px, tune_override(lod_coverage_permille, s.lod.coverage_permille)}};
+    return (render_settings_t){tune_override(cull, s.cull) != 0,
+                               tune_override(depth_fit, s.depth_fit) != 0,
+                               tune_override(batched, s.batched) != 0,
+                               tune_override(partial_redraw, s.partial_redraw) != 0,
+                               {s.lod.tolerance_px, s.lod.hysteresis_px,
+                                tune_override(lod_coverage_permille, s.lod.coverage_permille),
+                                tune_override(lod_pick_every, s.lod.pick_every)}};
 }
 
 /* One instance of a batch: its lens, the clusters culling kept, where its
@@ -107,6 +110,7 @@ typedef struct {
     r3d_span_small_fill_t small_fill;
     bool skip_hidden;       /* the view's */
     int first_row, end_row; /* the rows this draw redraws */
+    bool levels_changed;    /* a level pick this draw changed an instance's cut */
     raster_buffers_t buffers;
 } draw_work_t;
 
@@ -150,6 +154,19 @@ raster_attachment_clear_u16(const raster_attachment_t* self, const raster_t* ras
     (void)self;
     (void)raster;
     memset(pixels, 0, count * sizeof(uint16_t));
+}
+
+raster_attachment_t
+raster_attachment_ids(void (*begin)(const raster_attachment_t*, const raster_t*, const render_view_t*),
+                      bool (*writer)(const raster_attachment_t*, int, r3d_span_writer_t*),
+                      void (*show)(const raster_attachment_t*, const raster_t*, const gfx_target_t*, int),
+                      void* state) {
+    return (raster_attachment_t){.format = IMAGE_U16,
+                                 .clear = raster_attachment_clear_u16,
+                                 .begin = begin,
+                                 .writer = writer,
+                                 .show = show,
+                                 .state = state};
 }
 
 static const raster_attachment_t color_attachment = {.format = GFX_PIXEL_FORMAT, .clear = clear_color};
@@ -406,25 +423,38 @@ world_cull_skips(const world_cull_t* world, const r3d_instance_t* instance) {
            && world_bounds_outside(*instance->world_bounds, world->planes, world->eye_reach);
 }
 
-/* An instance culled whole keeps the bits it last had, a cut as whole as any:
- * it is not drawn, and the frame it comes back in picks again before its draw. */
-void
-raster_pick_levels(const raster_t* raster, const render_view_t* view) {
-    picture_lens_t picture;
-    picture_lens_init(&picture, raster, view, false);
-    world_cull_t world;
-    const render_settings_t settings = raster_settings(raster);
-    world_cull_init(&world, &picture, view, settings.cull);
-    for (int i = 0; i < raster->instance_count; i++) {
-        const r3d_instance_t* instance = &raster->instances[i];
-        if (instance->lod_coarse == NULL || instance->mesh->lod_group_count == 0
-            || world_cull_skips(&world, instance)) {
-            continue;
-        }
-        r3d_lens_t lens;
-        instance_lens(&picture, instance, &lens);
-        r3d_lod_pick(instance->mesh, &lens, &settings.lod, instance->lod_coarse);
+/* The pick a cull makes before each instance, in its picture's pixels: the
+ * settings' output pixels times what the picture's focal length is to the
+ * output's. */
+typedef struct {
+    bool picks;
+    uint32_t round; /* raster_t.pick_round */
+    render_lod_settings_t lod;
+} level_pick_t;
+
+static level_pick_t
+level_pick_init(const raster_t* raster, picture_lens_t* picture, const render_view_t* view,
+                const render_lod_settings_t* lod) {
+    const r3d_lens_t* lens = picture_lens_at(picture, 1);
+    const float drawn = mathf_max(lens->focal_x, lens->focal_y) / mathf_max(view->lens.fx, view->lens.fy);
+    level_pick_t pick = {raster->picks_levels, raster->pick_round, *lod};
+    pick.lod.tolerance_px *= drawn;
+    pick.lod.hysteresis_px *= drawn;
+    return pick;
+}
+
+/* An instance culled whole is not picked: it keeps the bits it last had, a
+ * cut as whole as any, and its next pick comes before its draw. Spread over
+ * frames, instance `index` picks in the frames its share comes round, and
+ * every instance in round 0. */
+static bool
+level_pick(const level_pick_t* pick, int index, const r3d_instance_t* instance, const r3d_lens_t* lens) {
+    const int every = pick->lod.pick_every;
+    const bool due = every <= 1 || pick->round == 0 || ((uint32_t)index + pick->round) % (uint32_t)every == 0;
+    if (pick->picks && due && instance->lod_coarse != NULL && instance->mesh->lod_group_count > 0) {
+        return r3d_lod_pick(instance->mesh, lens, &pick->lod, instance->lod_coarse);
     }
+    return false;
 }
 
 /* Culls every instance into the census list and returns the depth scale
@@ -443,6 +473,7 @@ cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, r
     picture_lens_init(&picture, raster, view, fitted);
     world_cull_t world;
     world_cull_init(&world, &picture, view, settings.cull);
+    const level_pick_t pick = level_pick_init(raster, &picture, view, &settings.lod);
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];
         if (world_cull_skips(&world, instance)) {
@@ -450,6 +481,7 @@ cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, r
         } else {
             r3d_lens_t lens;
             instance_lens(&picture, instance, &lens);
+            work->levels_changed |= level_pick(&pick, i, instance, &lens);
             culled[0] = (uint16_t)cull_instance(instance, settings.cull, &lens, culled + 1, stats,
                                                 work->buffers.work[0], settings.depth_fit ? &fit : NULL);
         }
@@ -479,6 +511,12 @@ scratch_draw(const raster_t* raster) {
     draw_work_t* work = b.draw;
     work->buffers = b;
     return work;
+}
+
+bool
+raster_drew_every_row(const raster_t* raster) {
+    const draw_work_t* work = scratch_draw(raster);
+    return work->first_row == 0 && work->end_row == raster->height;
 }
 
 /* Draws batch `index`: one transform fork/join over every item's clusters,
@@ -553,13 +591,16 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     draw_work_t* work = scratch_draw(raster);
     /* Every instance is culled before any is drawn: they share one depth scale. */
     const float kept_near = *work->buffers.depth_near;
+    work->levels_changed = false;
     if (stats != NULL) {
         FRAME_COST_BEGIN(culled_from);
         *work->buffers.depth_near = cull_instances(raster, view, true, stats, work);
         FRAME_COST_END(culled_from, "r3d.cull");
     }
-    /* Kept rows hold depth at the last draw's scale: a new one redraws them all. */
-    const bool some_rows = raster->first_row < raster->end_row && *work->buffers.depth_near == kept_near;
+    /* Kept rows hold depth at the last draw's scale and the cuts it drew: a
+     * new scale, or a level pick that changed a cut, redraws them all. */
+    const bool some_rows =
+        raster->first_row < raster->end_row && *work->buffers.depth_near == kept_near && !work->levels_changed;
     work->first_row = some_rows ? mathi_max(raster->first_row, 0) : 0;
     work->end_row = some_rows ? mathi_min(raster->end_row, raster->height) : raster->height;
     for (int i = 0; i < raster->attachment_count; i++) {

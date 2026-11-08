@@ -27,7 +27,7 @@ class PipelineFrameTableTests(unittest.TestCase):
         stages = [text.get_text() for text in save.call_args_list[0].args[0].axes[0].get_legend().get_texts()]
         self.assertIn("cull", stages)
         self.assertNotIn("transform", stages)
-        self.assertEqual(len(dynres_report.stages_table(splits).splitlines()), 6)
+        self.assertEqual(sum(line.startswith("|") for line in dynres_report.stages_table(splits).splitlines()), 4)
 
     def test_views_add_their_difference_in_report_order(self):
         with tempfile.TemporaryDirectory() as directory:

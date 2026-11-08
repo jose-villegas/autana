@@ -14,7 +14,7 @@ flowchart LR
     Same -->|"no"| Every["every row"]
     Same -->|"yes"| Rows["the rows the boxes cover<br/>through the view"]
     Rows -->|"none"| Kept["nothing drawn<br/>or composed"]
-    Rows --> Draw["draw those rows"] --> Scale{"depth scale<br/>moved?"}
+    Rows --> Draw["draw those rows"] --> Scale{"depth scale or a<br/>level cut changed?"}
     Scale -->|"yes"| Every
     Scale -->|"no"| Up["upscale those rows,<br/>one more each side for a filter"]
 ```
@@ -36,9 +36,11 @@ and where it is now. A negative count means anything may have changed.
 | More than `RENDER_PARTIAL_CHANGES_MAX` boxes, or a negative count | the changes are not known |
 | A box corner at or behind the near plane | its rows cannot be bounded |
 | The draw refitted its depth scale | kept rows hold depth at the old scale |
+| A level pick changed an instance's cut | picks spread over frames may land on a still frame, and the kept rows hold the old cut |
 
-A still instance's level picks ([Cluster-LOD](../../plans/Cluster-LOD.md))
-do not change under a still view, so they never change a row no box covers.
+Level picks ([Cluster-LOD](../../plans/Cluster-LOD.md)) are made in the
+cull, before the rows are drawn, so a pick that changed any cut is known in
+time to draw every row.
 
 ## Rows
 

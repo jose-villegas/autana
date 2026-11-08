@@ -36,14 +36,23 @@ struct raster {
     camera_present_t present;
     upscale_t upscale;     /* maps retained in `scratch`, rebuilt when size changes */
     raster_split_t* split; /* optional feedback retained between continuous frames */
-    void* scratch;         /* raster_scratch_bytes() of it */
+    /* The frame's own view: culling first sets each instance's level coarse
+     * bits (render/lod/r3d_lod.h), measured in the view's output pixels
+     * whatever size the picture is drawn at. A second view of the frame
+     * leaves it off and draws the levels the frame picked. */
+    bool picks_levels;
+    /* The frame's count, which share of the instances a spread pick takes;
+     * round 0, a scene's or view's first frame, picks every instance. */
+    uint32_t pick_round;
+    void* scratch; /* raster_scratch_bytes() of it */
     /* Drawn beside colour and depth, at most GFX_ATTACHMENTS_FURTHER_MAX. */
     const raster_attachment_t* const* attachments;
     int attachment_count;
     const render_settings_t* settings; /* NULL draws with RENDER_SETTINGS_DEFAULT */
     /* Rows [first_row, end_row) a draw redraws over what the last one left,
      * and the destination rows they reach an upscale; equal is every row
-     * (render/partial). A draw whose depth scale moved redraws every row. */
+     * (render/partial). A draw whose depth scale moved, or whose level picks
+     * changed a cut, redraws every row. */
     int first_row, end_row;
 };
 
@@ -80,18 +89,14 @@ uint16_t* raster_depth(const raster_t* raster);
  * fits it to the nearest bound of what it kept, never under the view's
  * near_z, so far surfaces keep their depth steps (r3d_lens_set_depth_near()). */
 float raster_depth_near(const raster_t* raster);
+/* Whether the last draw redrew every row, asked to or not (first_row). */
+bool raster_drew_every_row(const raster_t* raster);
 
 /* Everything a raster works in (per-vertex, per-cluster, the census list,
  * the picture's attachments and the upscale maps) as one block, from its
  * instances' meshes and size: the caller obtains it once, from any memory,
  * so none of it has to live in internal RAM. */
 size_t raster_scratch_bytes(const raster_t* raster);
-
-/* Sets each instance's level coarse bits (render/lod/r3d_lod.h) for the
- * frame seen through `view`, measured in its output pixels whatever size the
- * picture is drawn at. Once a frame, before drawing: a draw only reads the
- * bits, so a second view of the same frame draws the levels this one picked. */
-void raster_pick_levels(const raster_t* raster, const render_view_t* view);
 
 /* Draws every instance through the picture basis and fit in `view`. */
 raster_stats_t raster_draw(const raster_t* raster, const render_view_t* view);

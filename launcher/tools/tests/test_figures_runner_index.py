@@ -85,11 +85,10 @@ class IndexCommandTests(unittest.TestCase):
         self.assertIn(f"changed {figure_index.PAGE}", out)
         self.assertEqual(self.page(), PAGE)
 
-    def test_check_exits_0_once_written_though_an_image_is_shown_nowhere(self):
+    def test_check_exits_1_once_written_while_an_image_is_shown_nowhere(self):
         self.run_main()
-        status, out, err = self.run_main("--check")
-        self.assertEqual((status, out), (0, ""))
-        self.assertIn("shown nowhere docs/images/math/loose.png", err)
+        status, out, _ = self.run_main("--check")
+        self.assertEqual((status, out), (1, "shown nowhere docs/images/math/loose.png\n"))
 
     def test_the_page_names_the_script_that_declares_an_image_and_says_so_when_none_does(self):
         self.run_main()

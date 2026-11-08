@@ -62,7 +62,7 @@ Each frame, while the last one goes out to the panel:
 | Its surface, as triangles | `math/geometry/iso_surface.h` `iso_surface_nets()` |
 | Shading per vertex, encoded through a table | the scene; `r3d_skin_light_encode()` |
 | Clusters and a tree the raster walks | `render/dynamic/r3d_dynamic_mesh.h` |
-| Drawn as the water entity | `scene_renderer_set_mesh()` |
+| Drawn as the water entity | `renderer_set_mesh()` |
 
 ![The water scene's swing](../../../../../docs/images/overview/render-lab-water.gif)
 
@@ -244,7 +244,7 @@ engine page shows the [presentation GIFs](../../../../../docs/render/frame/Dynam
 
 ### Debug views
 
-`--view shaded|depth|tiles|motion|meshlets|cull|overdraw` selects the declared context view.
+`--view shaded|depth|tiles|meshlets|cull|overdraw` selects the declared context view.
 Depth and tiles show a lit-mesh scene's depth buffer, or that depth
 reduced to `RASTER_SHOW_TILE` squares. The depth is `raster_draw()`'s
 own buffer, unchanged; `raster_show()` only colours it and takes each

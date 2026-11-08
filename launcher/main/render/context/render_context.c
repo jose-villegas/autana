@@ -131,6 +131,7 @@ void
 render_context_forget(render_context_t* c) {
     render_partial_forget(&c->partial);
     raster_split_forget(&c->split);
+    c->raster.pick_round = 0; /* the first frame picks every instance */
     c->kept = false;
     forget_costs(c); /* a new scene or view measures its own */
 }
@@ -273,6 +274,7 @@ draw_second_view(render_context_t* c) {
             note_observed(c, observer, &second);
         }
         c->raster.split = NULL;
+        c->raster.picks_levels = false;
         if (listed) {
             raster_draw_culled(&c->raster, &second);
         } else {
@@ -281,6 +283,7 @@ draw_second_view(render_context_t* c) {
             (void)tune_set(tune_shared(), TUNE_NAME(render, cull), culled);
         }
         c->raster.split = &c->split;
+        c->raster.picks_levels = true;
         listed = false;
     }
 }
@@ -346,8 +349,8 @@ generate(render_context_t* c, const render_view_t* view) {
 }
 
 /* The rows partial redraw plans, drawn; false when none changed, so the
- * picture stays as it is. A draw that had to change its depth scale drew
- * every row. */
+ * picture stays as it is. A draw that changed its depth scale or a level
+ * pick drew every row. */
 static bool
 draw_partial(render_context_t* c, const render_view_t* view) {
     raster_t* r = &c->raster;
@@ -360,9 +363,8 @@ draw_partial(render_context_t* c, const render_view_t* view) {
     const bool every_row = rows.first == 0 && rows.end == r->height;
     r->first_row = every_row ? 0 : rows.first;
     r->end_row = every_row ? 0 : rows.end;
-    const float kept_near = raster_depth_near(r);
     c->frame.stats = raster_draw(r, view);
-    if (raster_depth_near(r) != kept_near) {
+    if (raster_drew_every_row(r)) {
         r->first_row = 0;
         r->end_row = 0;
     }
@@ -389,6 +391,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     const int step = current_step(c);
     raster_t* r = &c->raster;
     r->split = &c->split;
+    r->picks_levels = true;
     r->settings = &c->settings;
     r->instances = instances;
     r->instance_count = count;
@@ -406,7 +409,6 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     }
     c->frame.width = r->width;
     c->frame.height = r->height;
-    raster_pick_levels(r, view);
     r->first_row = 0;
     r->end_row = 0;
     if (c->policy == RENDER_FIXED && !c->generating) {
@@ -439,6 +441,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
         }
         c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
     }
+    r->pick_round++;
     c->frame.step = current_step(c);
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     if (r->attachment_count != 0) {

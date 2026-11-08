@@ -8,6 +8,7 @@
 #include "esp_log.h"
 
 #include "render/context/render_context.h"
+#include "scene/camera/camera.h"
 #include "scene/scene_internal.h"
 
 #pragma GCC diagnostic error "-Wdouble-promotion"
@@ -39,24 +40,19 @@ scene_set_paused(bool pause) {
     stepped = false;
 }
 
-bool
-scene_activate(scene_t* scene, name_hash_t camera) {
-    const int index = scene_camera_index(scene, camera);
-    if (index < 0) {
-        return false;
-    }
-    active = (active_t){scene, index};
+void
+scene_draw_activate(scene_t* scene, int camera) {
+    active = (active_t){scene, camera};
     drawn_count = -1;
     render_context_forget(render_context_main());
     refused = false;
     rendered = false;
     stepped = false;
     expanded = false;
-    return true;
 }
 
 void
-scene_deactivate(void) {
+camera_deactivate(void) {
     active = (active_t){NULL, 0};
     rendered = false;
     stepped = false;
@@ -66,19 +62,19 @@ scene_deactivate(void) {
 void
 scene_draw_forget(const scene_t* scene) {
     if (active.scene == scene) {
-        scene_deactivate();
+        camera_deactivate();
     }
 }
 
 void
 scene_draw_release(void) {
-    scene_deactivate();
+    camera_deactivate();
     render_context_release(render_context_main());
     paused = false;
 }
 
 void
-scene_camera_cut(const scene_t* scene, scene_entity_t entity) {
+scene_draw_camera_cut(const scene_t* scene, scene_row_t entity) {
     if (active.scene == scene && scene->cameras[active.camera].entity == entity) {
         render_context_forget(render_context_main());
     }
@@ -89,14 +85,18 @@ active_camera(void) {
     return &active.scene->cameras[active.camera];
 }
 
-bool
-scene_active_camera(scene_t** scene, scene_entity_t* entity) {
-    if (active.scene == NULL) {
-        return false;
+entity_t
+camera_active(void) {
+    return active.scene == NULL ? ENTITY_NONE : scene_row_entity(active.scene, active_camera()->entity);
+}
+
+void
+camera_cut(entity_t camera) {
+    scene_row_t row;
+    const scene_t* scene = scene_entity_row(camera, &row);
+    if (scene != NULL) {
+        scene_draw_camera_cut(scene, row);
     }
-    *scene = active.scene;
-    *entity = active_camera()->entity;
-    return true;
 }
 
 /* The active renderers with something to draw, as the raster draws them;
@@ -138,8 +138,22 @@ fill_changed(scene_t* scene, int count) {
     return changes;
 }
 
+/* The active camera's view from its entity's world. Its own frame, gone
+ * before the draw: the pose and the world walk stay off the draw's stack. */
+static __attribute__((noinline)) render_view_t
+active_view(const scene_t* scene, const scene_camera_t* camera, viewport_t viewport) {
+    const transformf_t pose = scene_row_world(scene->root, camera->entity);
+    return lens_view(&camera->lens, &pose, viewport);
+}
+
 box3f_t
-scene_bounds(scene_t* scene) {
+scene_bounds(entity_t entity) {
+    scene_row_t row;
+    const scene_root_t* record = scene_entity_lookup(entity, &row);
+    scene_t* scene = record == NULL ? NULL : record->scene;
+    if (scene == NULL) {
+        return box3f_empty();
+    }
     scene_resolve(scene);
     box3f_t bounds = box3f_empty();
     for (int i = 0; i < scene->active_renderer_count; i++) {
@@ -160,12 +174,11 @@ draw_active(int quarter, int width, int height) {
     if (count == 0) {
         return;
     }
-    const render_view_t view =
-        camera_view(&camera->lens, &scene->locals[camera->entity], (viewport_t){width, height, quarter});
+    const render_view_t view = active_view(scene, camera, (viewport_t){width, height, quarter});
     render_context_set_changed(render_context_main(), changed, fill_changed(scene, count));
     rendered = render_context_draw(render_context_main(), scene->instances, count, &view, camera->clear);
     if (!rendered && !refused) {
-        ESP_LOGE("scene", "no memory to draw '%s'; it stays blank", scene->id);
+        ESP_LOGE("scene", "no memory to draw '%s'; it stays blank", scene->root->id);
         refused = true;
     }
 }
@@ -176,9 +189,11 @@ scene_render(uint32_t dt_ms, int quarter, int width, int height) {
         return;
     }
     stepped = true;
-    for (int i = 0; i < scene_loaded_count(); i++) {
-        scene_t* scene = scene_loaded_at(i);
-        scene_animation_step(scene, dt_ms);
+    for (int i = 0; i < SCENE_ROOTS_MAX; i++) {
+        scene_t* scene = scene_ready_at(i);
+        if (scene != NULL) {
+            scene_animation_step(scene, dt_ms);
+        }
     }
     if (active.scene != NULL) {
         draw_active(quarter, width, height);
@@ -214,8 +229,12 @@ scene_draw_checkpoint_capture(checkpoint_t* saved) {
     CHECKPOINT_CAPTURE(saved, stepped);
     CHECKPOINT_CAPTURE(saved, rendered);
     CHECKPOINT_CAPTURE(saved, refused);
-    for (int i = 0; i < scene_loaded_count(); i++) {
-        scene_checkpoint_capture(saved, scene_loaded_at(i));
+    scene_world_checkpoint_capture(saved);
+    for (int i = 0; i < SCENE_ROOTS_MAX; i++) {
+        scene_t* scene = scene_ready_at(i);
+        if (scene != NULL) {
+            scene_checkpoint_capture(saved, scene);
+        }
     }
 }
 #endif
