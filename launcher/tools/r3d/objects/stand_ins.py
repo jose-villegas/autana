@@ -61,6 +61,39 @@ def _frame(points):
     return centre, axes, local.min(axis=0), local.max(axis=0)
 
 
+def _rectangle(positions, rgb, tris, materials, faces):
+    """The faces' best-fit rectangle across their two longest axes, seen from both sides: corners, their colour
+    (the faces' vertices' mean), its triangles from 0 and their material (the faces' most common)."""
+    vertices = np.unique(tris[faces])
+    centre, axes, low, high = _frame(positions[vertices])
+    corners = np.array([[0., low[1], low[2]], [0., high[1], low[2]], [0., high[1], high[2]], [0., low[1], high[2]]])
+    values, counts = np.unique(materials[faces], return_counts=True)
+    return (corners @ axes.T + centre, np.tile(rgb[vertices].mean(axis=0), (len(corners), 1)), RECTANGLE_TRIS,
+            np.full(len(RECTANGLE_TRIS), values[np.argmax(counts)]))
+
+
+def _joined(pieces):
+    """Pieces of (positions, rgb, tris from 0, materials) as one mesh."""
+    out_t, at = [], 0
+    for p, _c, t, _m in pieces:
+        out_t.append(t + at)
+        at += len(p)
+    return (np.concatenate([piece[0] for piece in pieces]), np.concatenate([piece[1] for piece in pieces]),
+            np.concatenate(out_t), np.concatenate([piece[3] for piece in pieces]))
+
+
+def card(positions, rgb, tris, materials, budget, weight, options, lock):
+    """A rectangle per connected part, or one for the whole shape when the budget holds fewer: what is left of
+    a small closed shape the simplifier collapses to nothing."""
+    if (lock is not None and np.any(lock)) or len(RECTANGLE_TRIS) > budget:
+        return None
+    parts = object_groups(positions, tris, np.arange(len(tris)))
+    groups = [np.flatnonzero(parts == part) for part in np.unique(parts)]
+    if len(groups) * len(RECTANGLE_TRIS) > budget:
+        groups = [np.arange(len(tris))]
+    return StandIn('card', *_joined([_rectangle(positions, rgb, tris, materials, faces) for faces in groups]), None)
+
+
 def plane(positions, rgb, tris, materials, budget, weight, options, lock):
     if lock is not None and np.any(lock):
         return None
@@ -93,32 +126,20 @@ def plane(positions, rgb, tris, materials, budget, weight, options, lock):
     groups = [group for group in groups if len(group) >= 2]
     if not groups or len(groups) * len(RECTANGLE_TRIS) > budget:
         return None
-    out_p, out_c, out_t, out_m = [], [], [], []
+    pieces = []
     remaining = np.ones(len(tris), dtype=bool)
     for group in groups:
         faces = np.concatenate([plates[i][0] for i in group])
-        vertices = np.unique(tris[faces])
         remaining[faces] = False
-        centre, axes, low, high = _frame(positions[vertices])
-        corners = np.array([[0., low[1], low[2]], [0., high[1], low[2]],
-                            [0., high[1], high[2]], [0., low[1], high[2]]])
-        out_p.append(corners @ axes.T + centre)
-        out_c.append(np.tile(rgb[vertices].mean(axis=0), (len(corners), 1)))
-        out_t.append(RECTANGLE_TRIS + sum(len(p) for p in out_p[:-1]))
-        values, counts = np.unique(materials[faces], return_counts=True)
-        out_m.append(np.full(len(RECTANGLE_TRIS), values[np.argmax(counts)]))
+        pieces.append(_rectangle(positions, rgb, tris, materials, faces))
     if np.any(remaining):
         used, local = np.unique(tris[remaining], return_inverse=True)
         rest = regular(positions[used], rgb[used], local.reshape(-1, 3), materials[remaining],
                        max(1, budget - len(groups) * len(RECTANGLE_TRIS)), weight, options, None)
-        out_t.append(rest.tris + sum(len(p) for p in out_p))
-        out_p.append(rest.positions)
-        out_c.append(rest.rgb)
-        out_m.append(rest.materials)
-    if sum(len(t) for t in out_t) > budget:
+        pieces.append((rest.positions, rest.rgb, rest.tris, rest.materials))
+    if sum(len(piece[2]) for piece in pieces) > budget:
         return None
-    return StandIn('plane', np.concatenate(out_p), np.concatenate(out_c), np.concatenate(out_t),
-                   np.concatenate(out_m), None)
+    return StandIn('plane', *_joined(pieces), None)
 
 
 def _draw(mesh, query, origins, directions):
@@ -160,7 +181,13 @@ CANDIDATES = (regular, plane)
 def best_stand_in(positions, rgb, tris, materials, budget, weight, options, lock):
     source = StandIn('source', positions, rgb, tris, materials, np.arange(len(positions)))
     candidates = [candidate for bake in CANDIDATES
-                  if (candidate := bake(positions, rgb, tris, materials, budget, weight, options, lock)) is not None]
+                  if (candidate := bake(positions, rgb, tris, materials, budget, weight, options, lock)) is not None
+                  and len(candidate.tris)]
+    # A small closed shape can collapse to nothing in every candidate: its card is what is left of it.
+    if not candidates:
+        last = card(positions, rgb, tris, materials, budget, weight, options, lock)
+        candidates = [last if last is not None else regular(positions, rgb, tris, materials, budget, weight,
+                                                             options, lock)]
     errors = [view_error(source, candidate) for candidate in candidates] if len(candidates) > 1 else [None]
     chosen = 0
     for i in range(1, len(candidates)):
