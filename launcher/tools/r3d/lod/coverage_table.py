@@ -24,15 +24,15 @@ import numpy as np
 
 ROOT = pathlib.Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
+sys.path.insert(0, str(ROOT / "launcher/tools"))
 from check_avi import read_video  # noqa: E402
 from generated_blocks import replace_block  # noqa: E402
+from r3d.lod.pick import PERMILLE, UNCAPPED  # noqa: E402
 from render_temporal import temporal_change  # noqa: E402
 
 TUNABLE = "render.lod_coverage_permille"
-PERMILLE = 1000
 FINEST = 0
-# Every cap the table lists; the largest a tunable holds lifts the cap.
-UNCAPPED = 2**31 - 1
+# Every cap the table lists.
 CAPS = (UNCAPPED, 500, 250, 100)
 PERCENTILE = 95
 BLOCK = "lod-coverage"

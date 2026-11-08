@@ -52,7 +52,7 @@ Hoppe's<sup>[[111]](../Citations.md#hoppe-1997)</sup>; the floor of half a pixel
 | Pick, histogram, exact tolerance | [`lod/pick.py`](../../launcher/tools/r3d/lod/pick.py) | host |
 | Replay over a camera path | [`lod/lod_replay.py`](../../launcher/tools/r3d/lod/lod_replay.py) | host |
 | Levels in the baked mesh | [`lod/bake_levels.py`](../../launcher/tools/r3d/lod/bake_levels.py), [`r3d_lit_mesh.h`](../../launcher/main/render/r3d_lit_mesh.h) | built |
-| Pick at a tolerance, with hysteresis and a coverage cap, once a frame in output pixels | [`r3d_lod_pick()`](../../launcher/main/render/lod/r3d_lod.h), run by `raster_pick_levels()`; its coarse bits live per scene renderer, and the cluster walk only reads them | built |
+| Pick at a tolerance, with hysteresis and a coverage cap, in output pixels, each instance every `lod.pick_every` frames and all of them on a scene's first frame | [`r3d_lod_pick()`](../../launcher/main/render/lod/r3d_lod.h), run by the main view's cull just before each instance (`raster_t.picks_levels`); its coarse bits live per scene renderer, and the cluster walk only reads them | built |
 | Histogram from the last frame, steering the tolerance to a budget | `r3d_lod.c` | not built |
 | Tolerance per pose baked for the path; the fit trained on it | bake stage | not built |
 
@@ -73,14 +73,14 @@ mesh is rebaked; the histogram is built from the last frame's clusters in view,
 a frame late.
 
 **The pick's hysteresis.** A group turns coarse once its projected error falls
-`R3D_LOD_HYSTERESIS_PX` below the tolerance and turns fine again once it
+the [`lod.hysteresis_px`](../render/Render-Settings.md#lod) setting below the tolerance and turns fine again once it
 rises that far above, so a still camera never flickers between levels. A
 coarse group's parent bounds hold its own, so its finer groups are always
 coarse too; a closing pass sets coarse any source float rounding left fine
 far off, so the cut stays crack-free whatever the floats do.
 
 **The coverage cap.** A group whose radius, projected where its error is,
-spans more than `R3D_LOD_COVERAGE_PERMILLE` thousandths of the picture's
+spans more than the settings' `lod.coverage_permille` thousandths of the picture's
 height stays fine, whatever its error. A large coarse group shows its
 simplified surface over much of the screen, and its colours, sampled from the
 nearest level-0 surface, shimmer under a slow camera drift where the
@@ -91,17 +91,17 @@ and scores it against cap 0, the finest level. Blocks popping is
 frame-to-frame change beyond the finest level's own (render_temporal.py's
 measure); triangles are those submitted, against the finest level's.
 
-<!-- generated: lod-coverage sha256=4855e966b49f151d1d1af951e227554d290e8018633391fa0d6d7e3d6cb96a44 -->
+<!-- generated: lod-coverage sha256=c00f806b82117544844c4f01a5e0640694835f3ce1b4d93ef43b030d5b99d876 -->
 | Path | Cap | Blocks popping | Mean difference /255 | Triangles, mean | Triangles, p95 |
 |---|---|---|---|---|---|
-| Sponza | none | 0.1618% | 0.251 | -13.5% | -14.7% |
-| Sponza | 50% | 0.0932% | 0.071 | -11.7% | -11.4% |
-| Sponza | 25% | 0.0932% | 0.071 | -11.7% | -11.4% |
-| Sponza | 10% | 0.0913% | 0.067 | -11.1% | -11.4% |
-| Bistro | none | 0.2316% | 0.178 | -15.7% | -18.2% |
-| Bistro | 50% | 0.2023% | 0.140 | -13.8% | -17.4% |
-| Bistro | 25% | 0.1718% | 0.105 | -10.7% | -13.6% |
-| Bistro | 10% | 0.0518% | 0.033 | -4.8% | -5.4% |
+| Sponza | none | 0.0516% | 0.041 | -6.6% | -6.8% |
+| Sponza | 50% | 0.0516% | 0.041 | -6.6% | -6.8% |
+| Sponza | 25% | 0.0516% | 0.041 | -6.6% | -6.8% |
+| Sponza | 10% | 0.0495% | 0.037 | -5.7% | -6.8% |
+| Bistro | none | 0.1663% | 0.155 | -10.7% | -11.5% |
+| Bistro | 50% | 0.1268% | 0.104 | -8.6% | -10.6% |
+| Bistro | 25% | 0.0952% | 0.062 | -6.6% | -7.6% |
+| Bistro | 10% | 0.0437% | 0.028 | -4.6% | -4.5% |
 <!-- /generated: lod-coverage -->
 
 ```sh

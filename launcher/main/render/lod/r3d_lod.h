@@ -1,6 +1,6 @@
 /*
  * r3d_lod: which level of a mesh's clusters an instance draws
- * (docs/plans/Cluster-LOD.md). Once per instance a frame, r3d_lod_pick()
+ * (docs/plans/Cluster-LOD.md). Once per instance every lod.pick_every frames, r3d_lod_pick()
  * sets one bit per group: coarse when the group's error, projected at its
  * bounds' nearest point, is within the tolerance and its bounds' radius,
  * projected there, spans at most a share of the picture's height. The
@@ -8,7 +8,7 @@
  * box test.
  *
  * A coarse group's bit only ever stays or clears within a band of
- * R3D_LOD_HYSTERESIS_PX around the tolerance, so a camera holding still at
+ * `lod.hysteresis_px` around `lod.tolerance_px`, so a camera holding still at
  * a switch does not flicker. The bits persist from frame to frame with the
  * instance; all clear is a valid start, every cluster finest.
  */
@@ -19,26 +19,17 @@
 
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_pipeline.h"
+#include "render/settings/render_settings.h"
 
-/* The projected error, in pixels, a group may have and still be drawn
- * coarse; fixed until a frame budget sets it. */
-#define R3D_LOD_TOLERANCE_PX      2.0F
-/* A coarse group stays coarse until its error passes the tolerance by this
- * much, and a fine one turns coarse once it is this much under. */
-#define R3D_LOD_HYSTERESIS_PX     0.5F
+/* The thousandths of `lod.coverage_permille`: 1000 is the picture's whole height. */
+#define R3D_LOD_PERMILLE       1000
 
-/* The thousandths of the picture's height a group's projected radius may
- * span and still be drawn coarse; R3D_LOD_UNCAPPED lifts the cap. A large
- * coarse group shows its simplified surface over much of the screen, where a
- * slow camera drift reads its point-sampled colours as popping
- * (docs/plans/Cluster-LOD.md, the coverage cap). */
-#define R3D_LOD_COVERAGE_PERMILLE 250
-#define R3D_LOD_PERMILLE          1000
-#define R3D_LOD_UNCAPPED          INT32_MAX
+/* The most frames lod.pick_every may spread the pick over. */
+#define R3D_LOD_PICK_EVERY_MAX 8
 
-#define R3D_LOD_WORD_BITS         32
+#define R3D_LOD_WORD_BITS      32
 /* The words of coarse bits a mesh's groups need. */
-#define R3D_LOD_WORDS(groups)     (((groups) + R3D_LOD_WORD_BITS - 1) / R3D_LOD_WORD_BITS)
+#define R3D_LOD_WORDS(groups)  (((groups) + R3D_LOD_WORD_BITS - 1) / R3D_LOD_WORD_BITS)
 
 static inline bool
 r3d_lod_coarse(const uint32_t* coarse, uint16_t group) {
@@ -84,9 +75,10 @@ float r3d_lod_group_coverage(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
 
 /* Updates `coarse`, R3D_LOD_WORDS(mesh->lod_group_count) words, for one
  * frame seen through `lens`: coarse where a group's error projects within
- * `tolerance_px` and its radius covers at most `coverage_max` of the
- * picture's height. A parent never projects smaller than its sources, in
- * error or radius (r3d_lit_mesh.h checks), and a closing pass sets coarse any
- * source rounding left fine, so the cut never cracks. */
-void r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, float tolerance_px, float coverage_max,
+ * `lod.tolerance_px` (`lod.hysteresis_px` either side of it, by the bit's
+ * last state) and its radius covers at most `lod.coverage_permille`
+ * thousandths of the picture's height. A parent never projects smaller than
+ * its sources, in error or radius (r3d_lit_mesh.h checks), and a closing
+ * pass sets coarse any source rounding left fine, so the cut never cracks. */
+void r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod,
                   uint32_t* coarse);

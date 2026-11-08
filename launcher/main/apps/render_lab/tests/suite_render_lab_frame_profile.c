@@ -28,7 +28,7 @@
 #include "profile/frame_cost.h"
 #include "render/context/render_context.h"
 #include "render/view/raster_cull_view.h"
-#include "scene/scene_internal.h"
+#include "scene/animator/animator.h"
 #include "testkit/cleanup.h"
 #include "unity.h"
 
@@ -152,9 +152,9 @@ write_cull_counts(pose_line_t* out) {
  * counts, then FRAME_PROFILE_REPLAY_DRAWS shaded frames for their frame-cost
  * report. */
 static void
-replay_pose(scene_t* scene, scene_entity_t entity, uint32_t duration_ms, int32_t path_ms, const char* row,
+replay_pose(entity_t scene, entity_t entity, uint32_t duration_ms, int32_t path_ms, const char* row,
             const char* quarter, pose_line_t* out) {
-    TEST_ASSERT_TRUE(scene_animator_seek(scene, entity, SCENE_ANIMATOR_CURRENT, (uint32_t)path_ms % duration_ms));
+    TEST_ASSERT_TRUE(animator_seek(entity, ANIMATOR_CURRENT, (uint32_t)path_ms % duration_ms));
     show_view(render_context_debug_view_named("cull"));
     (void)render_lab_test_frame_dt(0, false, NULL);
     write_cull_counts(out);
@@ -186,8 +186,8 @@ scenario_take(void) {
 
 /* The scenario's path as the render lab shows it, in the current quarter, its clip from the start. */
 typedef struct {
-    scene_t* scene;
-    scene_entity_t entity;
+    entity_t scene;
+    entity_t entity;
     uint32_t duration_ms;
 } scenario_path_t;
 
@@ -248,22 +248,21 @@ enter_scenario(void) {
     render_lab_test_enter(&saved, scenario->scene->key);
     suite_set_test_cleanup(release_fixture);
     test_hold_quarter(r3d_perf_quarters[quarter_index].quarter);
-    scene_t* scene = render_lab_test_loaded_scene(scenario->pack == NULL ? SPONZA_SCENE : scenario->pack);
-    TEST_ASSERT_NOT_NULL(scene);
-    const scene_entity_t entity =
-        scene_find(scene, name_hash(scenario->entity == NULL ? sponza_cameras[0] : scenario->entity));
-    TEST_ASSERT_NOT_EQUAL(SCENE_ENTITY_NONE, entity);
+    entity_t scene = render_lab_test_loaded_scene(scenario->pack == NULL ? SPONZA_SCENE : scenario->pack);
+    TEST_ASSERT_FALSE(handle_is_none(scene));
+    const entity_t entity =
+        entity_find(scene, name_hash(scenario->entity == NULL ? sponza_cameras[0] : scenario->entity));
+    TEST_ASSERT_FALSE(handle_is_none(entity));
     const capybara_take_t* take = scenario->take;
     if (take != NULL) {
         send(CAPYBARA_VIEW_COMMAND, take->view);
-        TEST_ASSERT_TRUE(scene_animator_seek(scene, entity, SCENE_ANIMATOR_CURRENT, 0));
+        TEST_ASSERT_TRUE(animator_seek(entity, ANIMATOR_CURRENT, 0));
         send(CAPYBARA_CLIP_COMMAND, take->blend_ms);
     }
-    TEST_ASSERT_TRUE(scene_animator_seek(scene, entity, SCENE_ANIMATOR_CURRENT, 0));
-    const int clip = scene->animators[entity].layer.current.clip;
-    const uint32_t duration_ms = take != NULL && take->blend_ms > 0
-                                     ? (uint32_t)take->blend_ms
-                                     : scene_animator_clip_duration_ms(scene, entity, clip);
+    TEST_ASSERT_TRUE(animator_seek(entity, ANIMATOR_CURRENT, 0));
+    const int clip = animator_current_clip(entity);
+    const uint32_t duration_ms =
+        take != NULL && take->blend_ms > 0 ? (uint32_t)take->blend_ms : animator_clip_duration_ms(entity, clip);
     TEST_ASSERT_GREATER_THAN_UINT32(0, duration_ms);
     return (scenario_path_t){scene, entity, duration_ms};
 }

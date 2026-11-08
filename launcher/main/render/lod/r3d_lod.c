@@ -141,11 +141,10 @@ close_coarse(const r3d_lit_mesh_t* mesh, uint32_t* coarse) {
 }
 
 void
-r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, float tolerance_px, float coverage_max,
-             uint32_t* coarse) {
+r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod, uint32_t* coarse) {
     const lod_view_t v = lod_view(lens);
-    const float enter = tolerance_px - R3D_LOD_HYSTERESIS_PX;
-    const float leave = tolerance_px + R3D_LOD_HYSTERESIS_PX;
+    const float enter = lod->tolerance_px - lod->hysteresis_px;
+    const float leave = lod->tolerance_px + lod->hysteresis_px;
     if (none_can_coarsen(mesh, &v, lens->project.near_z, leave)) {
         memset(coarse, 0, R3D_LOD_WORDS(mesh->lod_group_count) * sizeof *coarse);
         return;
@@ -153,9 +152,10 @@ r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, float tolerance
     /* Per group, in the form within() takes: its error and its radius, each
      * times focal over units, against their limits times its nearest depth. */
     const float scale = v.units_per_tick * v.focal;
-    const float covered = coverage_max * (float)lens->height;
+    const float covered = ((float)lod->coverage_permille / (float)R3D_LOD_PERMILLE) * (float)lens->height;
     const float near_z = lens->project.near_z;
     bool any = false;
+    bool changed = false;
     for (int g = 0; g < mesh->lod_group_count; g++) {
         const r3d_lit_lod_group_t* group = &mesh->lod_groups[g];
         const vec3f_t centre = mat4f_apply(&v.view, vec3f_from_vec3s(group->bounds.centre, 1.0F));
@@ -164,16 +164,15 @@ r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, float tolerance
         const uint32_t bit = 1U << (g % R3D_LOD_WORD_BITS);
         uint32_t* word = &coarse[g / R3D_LOD_WORD_BITS];
         const bool was = (*word & bit) != 0;
-        if ((within(&at, error, enter) || (was && within(&at, error, leave)))
-            && within(&at, (float)group->bounds.radius * scale, covered)) {
-            *word |= bit;
-            any = true;
-        } else {
-            *word &= ~bit;
-        }
+        const bool coarse_now = (within(&at, error, enter) || (was && within(&at, error, leave)))
+                                && within(&at, (float)group->bounds.radius * scale, covered);
+        *word = coarse_now ? *word | bit : *word & ~bit;
+        any |= coarse_now;
+        changed |= coarse_now != was;
     }
-    /* Nothing coarse closes to nothing. */
-    if (any) {
+    /* Nothing coarse closes to nothing, and bits that did not change are as
+     * closed as the frame that last closed them left them. */
+    if (any && changed) {
         close_coarse(mesh, coarse);
     }
 }

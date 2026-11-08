@@ -31,7 +31,7 @@ PROBE_SOURCES = (pathlib.Path(__file__).with_name("playback_figures_probe.c"), *
 
 # The scripts' clip indices, into the three clips named on the command line.
 FIRST, SECOND, THIRD = range(3)
-CURRENT_SLOT = 0  # scene_animator_slot_t's SCENE_ANIMATOR_CURRENT
+CURRENT_SLOT = 0  # animator_slot_t's ANIMATOR_CURRENT
 LOOP, CLAMP = 0, 1  # the probe's wrap line
 FRAME_MS = 20
 BLEND_MS = 400
