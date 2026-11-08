@@ -64,6 +64,14 @@ r3d_lod_any(const uint32_t* coarse, int groups) {
     return false;
 }
 
+/* Whether, with `any_coarse` false, every cluster drawn is known without a
+ * test: all of a mesh without levels, or the finest, which levels laid out
+ * apart (lod_finest_root set) put first, up to lod_coarse_first. */
+static inline bool
+r3d_lod_finest_untested(const r3d_lit_mesh_t* mesh, bool any_coarse) {
+    return !any_coarse && (mesh->lod_finest_root != 0 || mesh->cluster_lod == NULL);
+}
+
 /* Whether cluster `c` of `mesh` is drawn under `coarse`: when the group
  * simplified into it is coarse (or it is finest), or blending in `blending`
  * when not NULL (the dither draws both levels of a blending group), and the
@@ -88,6 +96,13 @@ static inline bool
 r3d_lod_drawn(const r3d_lit_mesh_t* mesh, int c, const uint32_t* coarse) {
     return r3d_lod_drawn_blending(mesh, c, coarse, NULL);
 }
+
+/* The clusters of `mesh` drawn under `coarse` and `blending`
+ * (r3d_lod_drawn_blending()), ascending, into `out`, which holds `room`;
+ * returns how many. Nothing coarse or blending lists the finest level
+ * without testing each cluster. */
+int r3d_lod_list_drawn(const r3d_lit_mesh_t* mesh, const uint32_t* coarse, const uint32_t* blending, uint16_t* out,
+                       int room);
 
 /* The pixels group `group`'s error spans seen through `lens` (placed with
  * the instance's model), measured where its bounds come nearest the eye and

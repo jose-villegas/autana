@@ -256,7 +256,7 @@ r3d_pipeline_cull_blending(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, c
     const bool cut = lod_coarse != NULL
                      && (r3d_lod_any(lod_coarse, mesh->lod_group_count)
                          || (blending != NULL && r3d_lod_any(blending, mesh->lod_group_count)));
-    const bool every = !cut && (start != 0 || mesh->cluster_lod == NULL);
+    const bool every = r3d_lod_finest_untested(mesh, cut);
     stack[top++] = (walk_entry_t){(uint16_t)start, ALL_PLANES};
     int count = 0;
     while (top > 0) {

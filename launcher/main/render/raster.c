@@ -418,18 +418,7 @@ cull_instance(const r3d_instance_t* instance, bool culls, const r3d_lens_t* lens
     if (culls) {
         visible = r3d_pipeline_cull_blending(mesh, lens, instance->lod_coarse, blending, out, work, fit);
     } else {
-        /* Nothing coarse or blending: every cluster of a mesh without levels,
-         * or the finest, which levels laid out apart put first. */
-        const bool every = (instance->lod_coarse == NULL
-                            || (!r3d_lod_any(instance->lod_coarse, mesh->lod_group_count)
-                                && (blending == NULL || !r3d_lod_any(blending, mesh->lod_group_count))))
-                           && (mesh->lod_finest_root != 0 || mesh->cluster_lod == NULL);
-        const int count = !every || mesh->cluster_lod == NULL ? mesh->cluster_count : mesh->lod_coarse_first;
-        for (int i = 0; i < count; i++) {
-            if (every || r3d_lod_drawn_blending(mesh, i, instance->lod_coarse, blending)) {
-                out[visible++] = (uint16_t)i;
-            }
-        }
+        visible = r3d_lod_list_drawn(mesh, instance->lod_coarse, blending, out, mesh->cluster_count);
     }
     stats->clusters += visible;
     for (int i = 0; i < visible; i++) {
