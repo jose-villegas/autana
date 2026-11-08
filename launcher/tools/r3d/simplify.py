@@ -370,7 +370,7 @@ def _simplify_meshes(pos, rgb, tris, labels, tri_o, triangles, reserved, allocat
             result = _run_pass(pos, rgb, tris[sel], labels[sel], budget, deviation, options,
                                locks if np.any(locks) else None)
         shade = (allocation.shade_shared or allocation.shade) if carved else allocation.shade
-        if shade is not None and np.any(np.isin(tri_o[sel], list(selected))):
+        if shade is not None and len(result[2]) and np.any(np.isin(tri_o[sel], list(selected))):
             result = shade(*result)
         entry = dict(objects=[allocation.object_names[obj] for obj in objects], copies=1, budget=budget,
                      output_triangles=len(result[2]), locked_vertices=int(locks[np.unique(tris[sel])].sum()),
