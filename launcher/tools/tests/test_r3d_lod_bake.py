@@ -19,7 +19,7 @@ from r3d.lod.bake_levels import bake_lit_mesh
 from r3d.geometry import closest_point_on_triangles
 from r3d.lod import pick
 from r3d.lit_mesh import MAX_TRIANGLES, MAX_VERTICES
-from r3d.lod.bake_levels import INT16_MAX, push_outward, quantised_groups, surface_gap, within_format
+from r3d.lod.bake_levels import INT16_MAX, push_outward, quantised_groups, within_format
 from r3d.mesh_asset import LOD_ENCLOSE_MARGIN, LOD_NONE
 import test_r3d_lod
 
@@ -320,12 +320,28 @@ def cluster_triangles(mesh, clusters):
     return np.concatenate([mesh.pos[mesh.tris[c[2]:c[2] + c[3]]] for c in clusters]).astype(np.float64)
 
 
+def level0_under(mesh, group):
+    """The finest clusters a group's coarse clusters stand for, through every group simplified into it."""
+    out = set()
+    for c, (own, parent) in enumerate(mesh.lod):
+        if parent == group:
+            out |= {c} if own == LOD_NONE else level0_under(mesh, own)
+    return out
+
+
+def farthest_from(points, corners):
+    bary_distance = [closest_point_on_triangles(np.repeat(points[i:i + 64], len(corners), axis=0),
+                                                *(np.tile(corners[:, k], (len(points[i:i + 64]), 1)) for k in range(3)))[1]
+                     for i in range(0, len(points), 64)]
+    return max(float(d.reshape(-1, len(corners)).min(axis=1).max()) for d in bary_distance)
+
+
 class ThinSlabErrorTest(unittest.TestCase):
-    def test_each_group_error_holds_how_far_its_coarse_clusters_lie_from_the_finer_ones(self):
+    def test_every_level0_vertex_under_a_group_lies_within_its_error_of_its_coarse_clusters(self):
         mesh = read_back(bake_lit_mesh(*thin_slab(), position_scale=1, lod=True))
         self.assertGreater(len(mesh.groups), 0)
         for g, row in enumerate(mesh.groups):
-            fine = cluster_triangles(mesh, [c for c, (_, parent) in zip(mesh.clusters, mesh.lod) if parent == g])
+            level0 = cluster_triangles(mesh, [mesh.clusters[c] for c in sorted(level0_under(mesh, g))])
             coarse = cluster_triangles(mesh, [c for c, (own, _) in zip(mesh.clusters, mesh.lod) if own == g])
-            gap = surface_gap(fine, coarse)
+            gap = farthest_from(np.unique(level0.reshape(-1, 3), axis=0), coarse)
             self.assertGreaterEqual(row[4] + ROUNDING_TICKS, gap, f"group {g}")
