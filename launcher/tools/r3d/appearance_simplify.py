@@ -39,7 +39,7 @@ from r3d import log  # noqa: E402
 from r3d.geometry import closest_point_on_triangles, triangle_areas  # noqa: E402
 from r3d.fit.copies import check_hidden_copies, hidden_copy_pixels, joined, placed_copies  # noqa: E402
 from r3d.fit import gbuffer  # noqa: E402
-from r3d.import_settings import load_scene, match_meshes  # noqa: E402
+from r3d.import_settings import load_scene, match_meshes, thinned_triangles  # noqa: E402
 from r3d.lit_mesh import finest_triangles, read_lit_mesh  # noqa: E402
 from r3d.cost_model import load as load_cost  # noqa: E402
 from r3d.poses import camera_basis, read_poses  # noqa: E402
@@ -979,7 +979,8 @@ def main(argv=None):
         if source is not None and job is not None and job.settings.curves:
             from r3d.thin.thin_parts import thin_triangles
 
-            source_exclude = thin_triangles(source.p, source.tri_v, job.renderer.variant.triangles)
+            source_exclude = thin_triangles(source.p, source.tri_v, job.renderer.variant.triangles,
+                                            thinned_triangles(job.settings.thin, source.tri_m, source.names))
         carved = None
         if copies is not None:
             carved = np.zeros(len(source.object_names), dtype=bool)

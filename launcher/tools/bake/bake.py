@@ -965,7 +965,6 @@ def seed(found, cache, lock=None, made=None):
     return rows
 
 
-
 def seed_chain(paths, starts, poses, cache, lock=None, made=None):
     """seed() in rounds: a fit's key names its start's bytes and a levels bake's its fit's, so each round's
     rows key the next. Fails as seed() does once a round keys nothing new."""
@@ -976,6 +975,7 @@ def seed_chain(paths, starts, poses, cache, lock=None, made=None):
         if all(bake.key is not None for bake in found) or keyed.keys() <= starts.keys():
             return seed(found, cache, lock, made)
         starts = {**starts, **keyed}
+
 
 def from_run(row, suffix, cache):
     """(the locked file from the CI run that made it, before main publishes it, or None; why not)."""

@@ -42,7 +42,7 @@ static const int32_t value_max[ATTRIBUTES] = {DEPTH_MAX, 65280, 65280, 65280};
 #define SMALL_GRAIN_MIDPOINT   (((2 * SMALL_GRAIN_GREEN_STEP * SMALL_GRAIN_RB_MAX) + (int)RGB565_G6_MAX + 1) / 2)
 #define SMALL_FILL_WALK        (-1)
 #define TRIANGLE_VERTICES      3
-#define COVERAGE_DEPTH_WRITE   (R3D_SPAN_COVERAGE_FULL + 1U)
+#define COVERAGE_OPAQUE        (R3D_SPAN_COVERAGE_FULL + 1U)
 
 TUNE_OWNER(r3d_span);
 TUNE_HOT(r3d_span, flat_max_rows, R3D_SPAN_FLAT_MAX_ROWS, 0, 8);
@@ -496,7 +496,7 @@ walk_rows_of(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTR
     } else if (f->shading == FILL_FACE) {
         carried_rows(target, f, row, y0, y1, &left, &right, 1, false, capped, coverage);
     } else {
-        carried_rows(target, f, row, y0, y1, &left, &right, ATTRIBUTES, false, capped, COVERAGE_DEPTH_WRITE);
+        carried_rows(target, f, row, y0, y1, &left, &right, ATTRIBUTES, false, capped, COVERAGE_OPAQUE);
     }
     *left_edge = left;
     *right_edge = right;
@@ -505,14 +505,14 @@ walk_rows_of(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTR
 static RENDER_IRAM_ATTR void
 walk_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBUTES], int y0, int y1, edge_t* left_edge,
           edge_t* right_edge) {
-    walk_rows_of(target, f, row, y0, y1, left_edge, right_edge, false, COVERAGE_DEPTH_WRITE);
+    walk_rows_of(target, f, row, y0, y1, left_edge, right_edge, false, COVERAGE_OPAQUE);
 }
 
 /* The walk of a scene that skips hidden clusters, its depth capped. */
 static RENDER_SKIP_ATTR void
 walk_capped_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBUTES], int y0, int y1,
                  edge_t* left_edge, edge_t* right_edge) {
-    walk_rows_of(target, f, row, y0, y1, left_edge, right_edge, true, COVERAGE_DEPTH_WRITE);
+    walk_rows_of(target, f, row, y0, y1, left_edge, right_edge, true, COVERAGE_OPAQUE);
 }
 
 /* The walk of a coverage-mixed fill: off the draw path's IRAM, so the opaque walks carry no coverage test. */
@@ -536,9 +536,9 @@ static __attribute__((noinline)) void
 writer_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBUTES], int y0, int y1, edge_t* left,
             edge_t* right, bool capped) {
     if (f->shading == FILL_FLAT) {
-        flat_rows(target, f, y0, y1, left, right, true, COVERAGE_DEPTH_WRITE);
+        flat_rows(target, f, y0, y1, left, right, true, COVERAGE_OPAQUE);
     } else {
-        carried_rows(target, f, row, y0, y1, left, right, 1, true, capped, COVERAGE_DEPTH_WRITE);
+        carried_rows(target, f, row, y0, y1, left, right, 1, true, capped, COVERAGE_OPAQUE);
     }
 }
 
@@ -776,7 +776,7 @@ fill_small_of(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const
 static __attribute__((noinline)) void
 fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
            const r3d_span_vertex_t* c, bool positive, recti_t box, const uint16_t* face) {
-    fill_small_of(target, a, b, c, positive, box, face, COVERAGE_DEPTH_WRITE);
+    fill_small_of(target, a, b, c, positive, box, face, COVERAGE_OPAQUE);
 }
 
 static __attribute__((noinline)) void
@@ -1058,7 +1058,7 @@ triangle_of(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r
 static RENDER_IRAM_ATTR void
 r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                        const r3d_span_vertex_t* c, const uint16_t* face) {
-    triangle_of(target, a, b, c, face, false, COVERAGE_DEPTH_WRITE);
+    triangle_of(target, a, b, c, face, false, COVERAGE_OPAQUE);
 }
 
 /* The fill of a view that skips hidden clusters, its depth capped. Noinline:
@@ -1067,7 +1067,7 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
 static RENDER_SKIP_ATTR __attribute__((noinline)) void
 r3d_span_capped_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                               const r3d_span_vertex_t* c, const uint16_t* face) {
-    triangle_of(target, a, b, c, face, true, COVERAGE_DEPTH_WRITE);
+    triangle_of(target, a, b, c, face, true, COVERAGE_OPAQUE);
 }
 
 /* The fill's own setup, depth plane only: the same path, box, plane and
@@ -1119,7 +1119,7 @@ triangle_write_of(const r3d_span_target_t* target, const r3d_span_vertex_t* a, c
                       mathi_clamp(r3d_span_first_centre(v1->y), box.y, recti_bottom(box)),
                       recti_bottom(box),
                       (area2 > 0) != odd};
-    walk(target, &f, &w, true, capped, COVERAGE_DEPTH_WRITE);
+    walk(target, &f, &w, true, capped, COVERAGE_OPAQUE);
 }
 
 void

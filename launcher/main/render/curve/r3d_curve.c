@@ -193,9 +193,8 @@ curve_in_view(const r3d_curve_t* curve, const r3d_lens_t* lens, const r3d_span_t
                    rectf_from_edges(0.0F, (float)target->rows.first_row - R3D_CURVE_MIN_WIDTH_PX, (float)lens->width,
                                     (float)gfx_target_end_row(&target->rows) + R3D_CURVE_MIN_WIDTH_PX),
                    planes);
-    const box3f_t box = {{curve->lo[0], curve->lo[1], curve->lo[2]}, {curve->hi[0], curve->hi[1], curve->hi[2]}};
-    unsigned mask = (1U << PLANE_FRUSTUM_COUNT) - 1U;
-    return !box3f_outside_planes(box, planes, PLANE_FRUSTUM_COUNT, &mask);
+    unsigned mask = PLANE_FRUSTUM_ALL;
+    return !box3f_outside_planes(box3f_from_box3s(r3d_curve_box(curve), 1.0F), planes, PLANE_FRUSTUM_COUNT, &mask);
 }
 
 /* Each curve's knots follow the last curve's, at least two, every knot's tube inside the curve's box. */

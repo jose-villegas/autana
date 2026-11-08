@@ -4,7 +4,7 @@ This is the sole thin-part rule. Attribute protection must use it only when
 geometry.curves is off; protection and curve extraction never act together.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -43,17 +43,24 @@ def budget_side(positions, triangles, budget):
     return float(np.sqrt(triangle_areas(np.asarray(positions), np.asarray(triangles)).sum() / budget))
 
 
-def thin_parts_at(positions, triangles, budget):
+def thin_parts_at(positions, triangles, budget, owned=None):
     """find_thin_parts at the side of the start `budget`, on the positions rounded to float32 first: the bake and the
-    fit load the source at different precisions and must pick the same parts."""
+    fit load the source at different precisions and must pick the same parts. Triangles in the `owned` mask belong
+    to another step (material thinning) and are never searched; the side still counts every triangle."""
     positions = np.asarray(positions, dtype=np.float32).astype(np.float64)
-    return find_thin_parts(positions, triangles, budget_side(positions, triangles, budget))
+    triangles = np.asarray(triangles)
+    side = budget_side(positions, triangles, budget)
+    if owned is None or not np.any(owned):
+        return find_thin_parts(positions, triangles, side)
+    rest = np.flatnonzero(~np.asarray(owned))
+    return [replace(part, triangles=rest[part.triangles])
+            for part in find_thin_parts(positions, triangles[rest], side)]
 
 
-def thin_triangles(positions, triangles, budget):
+def thin_triangles(positions, triangles, budget, owned=None):
     """Which of `triangles` thin_parts_at() takes for curves."""
     mask = np.zeros(len(triangles), dtype=bool)
-    for part in thin_parts_at(positions, triangles, budget):
+    for part in thin_parts_at(positions, triangles, budget, owned):
         mask[part.triangles] = True
     return mask
 

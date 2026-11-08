@@ -473,7 +473,7 @@ world_bounds_outside(box3f_t box, const planef_t planes[PLANE_FRUSTUM_COUNT], fl
     }
     const float s = reach * WORLD_SLACK;
     const box3f_t grown = {vec3f_sub(box.lo, (vec3f_t){s, s, s}), vec3f_add(box.hi, (vec3f_t){s, s, s})};
-    unsigned mask = (1U << PLANE_FRUSTUM_COUNT) - 1U;
+    unsigned mask = PLANE_FRUSTUM_ALL;
     return box3f_outside_planes(grown, planes, PLANE_FRUSTUM_COUNT, &mask);
 }
 

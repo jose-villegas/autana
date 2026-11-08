@@ -318,8 +318,42 @@ class ThinCurvesTests(unittest.TestCase):
             source.p, source.tri_v, source.tri_t = p, t, t
             source.tri_m = source.tri_o = np.zeros(len(t), dtype=int)
             source.uv = np.zeros((len(p), 2))
-            with mock.patch.object(mesh_import, 'load_source', return_value=source),                     self.assertRaisesRegex(ValueError, 'every shown triangle is thin'):
+            with mock.patch.object(mesh_import, 'load_source', return_value=source), \
+                    self.assertRaisesRegex(ValueError, 'every shown triangle is thin'):
                 mesh_import.bake_geometry(job, None)
+
+    def test_a_thinned_material_is_never_searched_for_curves(self):
+        from r3d import mesh_import
+        from r3d.import_settings import albedo_jobs, load_import_settings, thinned_triangles
+        from r3d.thin.thin_parts import thin_triangles
+
+        wire, body = soup.box((4.5, 4.5, 310)), soup.box((50, 50, 50))
+        p, t = wire.vertices, wire.faces
+        rest, rest_t = body.vertices + [125, 0, 0], body.faces
+        names = ['wire', 'surface']
+        tri_m = np.concatenate([np.zeros(len(t), dtype=int), np.ones(len(rest_t), dtype=int)])
+        triangles = np.concatenate([t, rest_t + len(p)])
+        source = SimpleNamespace(p=np.concatenate([p, rest]), tri_v=triangles, tri_t=triangles, tri_m=tri_m,
+                                 names=names, tri_o=np.zeros(len(tri_m), dtype=int), object_names=['object'],
+                                 materials={name: {'Kd': (1, 1, 1)} for name in names}, textures=[None] * len(names), colors=None,
+                                 uv=np.zeros((len(p) + len(rest), 2)))
+        for keep, triangles_out in ((0, len(rest_t)), (1, len(tri_m))):
+            with self.subTest(keep=keep), tempfile.TemporaryDirectory() as folder:
+                path = pathlib.Path(folder) / 'mesh.import.toml'
+                path.write_text('[source]\npath = "mesh.obj"\ncredit = "test"\n[output]\n'
+                                f'[geometry]\ncurves = true\nthin = {{ material = "wire", keep = {keep} }}\n'
+                                'simplify = { dense_edge = 1000, props = [], props_share = 0.3, '
+                                'seal_seams = true, colour_deviation = 1.0 }\n'
+                                '[[variants]]\nname = "mesh"\ntriangles = 8\n')
+                job, = albedo_jobs(load_import_settings(path))
+                with mock.patch.object(mesh_import, 'load_source', return_value=source), \
+                        mock.patch.object(mesh_import, 'simplify', side_effect=lambda p, c, t, m, *a, **k: (p, c, t, m)):
+                    geometry = mesh_import.bake_geometry(job, None)
+                self.assertEqual(len(geometry.curves), 0)
+                self.assertEqual(len(geometry.tris), triangles_out)
+                owned = thinned_triangles(job.settings.thin, tri_m, names)
+                self.assertFalse(thin_triangles(source.p, triangles, job.renderer.variant.triangles, owned).any())
+                self.assertTrue(thin_triangles(source.p, triangles, job.renderer.variant.triangles).any())
 
     def test_a_radius_that_exceeds_its_box_once_rounded_is_refused(self):
         # Ties round to even: 1.5 rounds up to 2 and the knot's tick to its even neighbour, so the rounded tube ends
