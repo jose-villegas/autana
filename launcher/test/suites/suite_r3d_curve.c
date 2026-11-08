@@ -153,6 +153,23 @@ test_curve_end_on(void) {
     TEST_ASSERT_NOT_EQUAL(RED, color[MID * SIZE + MID - 1]);
 }
 
+/* A pole tapering away from the camera shows its near end: one square, not a wedge narrowing to the far radius. */
+static void
+test_curve_end_on_taper_draws_the_near_square(void) {
+    const r3d_span_target_t target = fixture();
+    const r3d_curve_knot_t knots[] = {{0, 0, FAR_Z, WIDE_RADIUS, RED}, {0, 0, FAR_Z * 3, WIDE_RADIUS, RED}};
+    draw(&target, knots, 2);
+    const int half = WIDE_RADIUS * SCALE / FAR_Z;
+    const int corner = half - 1;
+    for (int y = MID - corner; y <= MID + corner; y++) {
+        for (int x = MID - corner; x <= MID + corner; x++) {
+            TEST_ASSERT_EQUAL_HEX16(RED, color[(y * SIZE) + x]);
+            TEST_ASSERT_EQUAL_UINT16(depth[(MID * SIZE) + MID], depth[(y * SIZE) + x]);
+        }
+    }
+    TEST_ASSERT_EQUAL_HEX16(BACKGROUND, color[(MID * SIZE) + MID + half + 1]);
+}
+
 static void
 test_curve_near_crossing(void) {
     const r3d_span_target_t target = fixture();
@@ -297,6 +314,7 @@ run_r3d_curve_suite(void) {
     RUN_TEST(test_curve_wide_segment);
     RUN_TEST(test_curve_occlusion);
     RUN_TEST(test_curve_end_on);
+    RUN_TEST(test_curve_end_on_taper_draws_the_near_square);
     RUN_TEST(test_curve_near_crossing);
     RUN_TEST(test_curve_cover_solid_parity);
     RUN_TEST(test_curve_joint);

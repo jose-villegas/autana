@@ -141,18 +141,24 @@ segment(const knot_t* from, const knot_t* to, float radius_scale, const r3d_lens
     const float length = hypotf(dx, dy);
     const float ar = a.radius * radius_scale / a.point.z;
     const float br = b.radius * radius_scale / b.point.z;
-    const float ah = fmaxf(ar, R3D_CURVE_MIN_WIDTH_PX * CURVE_HALF);
-    const float bh = fmaxf(br, R3D_CURVE_MIN_WIDTH_PX * CURVE_HALF);
+    float ah = fmaxf(ar, R3D_CURVE_MIN_WIDTH_PX * CURVE_HALF);
+    float bh = fmaxf(br, R3D_CURVE_MIN_WIDTH_PX * CURVE_HALF);
     const float coverage = fminf(1.0F, (ar + br) / (ah + bh));
     if ((coverage < 1.0F) != covered) {
         return;
     }
-    const float ux = length >= CURVE_SKIP_PX ? dx / length : 1.0F;
-    const float uy = length >= CURVE_SKIP_PX ? dy / length : 0.0F;
-    const float ex = length >= CURVE_SKIP_PX ? bx : ax;
-    const float ey = length >= CURVE_SKIP_PX ? by : ay;
-    const float az = fminf(1.0F, lens->depth_near / a.point.z);
-    const float bz = fminf(1.0F, lens->depth_near / b.point.z);
+    float az = fminf(1.0F, lens->depth_near / a.point.z);
+    float bz = fminf(1.0F, lens->depth_near / b.point.z);
+    const bool end_on = length < CURVE_SKIP_PX;
+    if (end_on) {
+        /* Both ends on one pixel: one square as wide as the wider end, at the nearer end's depth. */
+        ah = bh = fmaxf(ah, bh);
+        az = bz = fmaxf(az, bz);
+    }
+    const float ux = end_on ? 1.0F : dx / length;
+    const float uy = end_on ? 0.0F : dy / length;
+    const float ex = end_on ? ax : bx;
+    const float ey = end_on ? ay : by;
     corner_t corners[CLIPPED_CORNERS] = {
         {ax - (ux * ah) - (uy * ah), ay - (uy * ah) + (ux * ah), az},
         {ax - (ux * ah) + (uy * ah), ay - (uy * ah) - (ux * ah), az},
