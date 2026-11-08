@@ -282,7 +282,8 @@ test_the_drawn_list_holds_what_each_cluster_s_test_draws(void) {
     expect_the_list_is_what_drawn_keeps(mesh, clear);
     expect_the_list_is_what_drawn_keeps(mesh, NULL);
     r3d_lit_mesh_t mixed = *mesh;
-    mixed.lod_finest_root = 0;
+    mixed.lod_finest_root = 0; /* one tree for every level: no first coarse cluster either */
+    mixed.lod_coarse_first = 0;
     expect_the_list_is_what_drawn_keeps(&mixed, clear);
     expect_the_list_is_what_drawn_keeps(&mixed, NULL);
 }
