@@ -13,9 +13,7 @@ void
 scene_animation_release(scene_t* scene) {
     for (int e = 0; e < scene->asset.entity_count; e++) {
         scene_free_kept(scene->animators[e].storage);
-        scene_skin_light_table_release(scene, (scene_row_t)e);
-        memory_free(scene->skinned_renderers[e].light_storage);
-        memory_free(scene->skinned_renderers[e].internal_storage);
+        scene_skin_give(scene, &scene->skinned_renderers[e]);
         scene->animators[e] = (scene_animator_t){0};
         scene->skinned_renderers[e] = (scene_skinned_renderer_t){0};
     }
@@ -188,7 +186,7 @@ skin_stage_prepare(scene_t* scene, uint32_t dt_ms) {
 }
 
 void
-scene_animation_step(scene_t* scene, uint32_t dt_ms) {
+scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
     if (scene->animator_count == 0) {
         return;
     }
@@ -208,6 +206,12 @@ scene_animation_step(scene_t* scene, uint32_t dt_ms) {
             scene_renderer_bound(&scene->renderers[scene_renderer_index(scene, e)]);
         }
     }
+}
+
+void
+scene_animation_step(scene_t* scene, uint32_t dt_ms) {
+    scene_skins_settle(scene);
+    scene_animation_repose(scene, dt_ms);
 }
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
