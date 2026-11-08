@@ -16,7 +16,9 @@ on:
         type: boolean
         default: false
 
-concurrency: nightly-perf
+concurrency:
+  group: nightly-perf
+  queue: max
 permissions:
   contents: write
   actions: read
@@ -246,6 +248,7 @@ jobs:
     concurrency:
       group: board-ci-alarm
       cancel-in-progress: false
+      queue: max
     permissions:
       issues: write
       actions: read

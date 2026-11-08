@@ -268,8 +268,9 @@ def render_restart(path, records, caption, markdown, regenerate):
             + 'These words were Q2.28 (mis-encoded). Each case loads the coefficients, then restarts the codec state machine (REG00: resets with CSM off, '
             + 'resets cleared, CSM on) before measuring.\n\n'
             + caption(path, regenerate, 'replies')
-            + markdown(['Owner', 'Case', 'Path', 'Hz', 'Measured minus bypass (dB)', 'Designed (dB)', 'Error (dB)'], rows)
-            + '\n' + '\n\n'.join(verdicts) + '\n')
+            + '\n\n'.join(verdicts) + '\n\n'
+            + details(markdown(['Owner', 'Case', 'Path', 'Hz', 'Measured minus bypass (dB)', 'Designed (dB)', 'Error (dB)'],
+                               rows)))
 
 
 def render_csd(path, records, caption, markdown, regenerate):

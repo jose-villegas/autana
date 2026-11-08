@@ -1,5 +1,5 @@
 /*
- * scene_draw.c stand-ins for host tools that run the scene without drawing: with no scene_activate() no scene is
+ * scene_draw.c stand-ins for host tools that run the scene without drawing: with no camera_activate() no scene is
  * active, where scene_draw.c's versions do nothing too; linking scene_draw.c needs the whole renderer source
  * list. Any drawing call still fails to link. scene_host.py lists this beside the scene sources.
  * The render context scene.c lends its scratch to is stood in for the same reason: without drawing there is no
@@ -33,7 +33,16 @@ void
 scene_draw_release(void) {}
 
 void
-scene_camera_cut(const scene_t* scene, scene_entity_t entity) {
+scene_draw_camera_cut(const scene_t* scene, scene_row_t entity) {
     (void)scene;
     (void)entity;
 }
+
+void
+scene_draw_activate(scene_t* scene, int camera) {
+    (void)scene;
+    (void)camera;
+}
+
+void
+camera_deactivate(void) {}
