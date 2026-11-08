@@ -487,6 +487,60 @@ test_a_curve_nearer_than_every_cluster_lowers_the_depth_fit(void) {
     }
 }
 
+#define ACROSS_EYE_DIST 64 /* a power of two: the depth scale steps by them */
+#define ACROSS_Z        (ACROSS_EYE_DIST - CAMERA_BACK)
+
+/* The half width of the view at the plane z: the eye's distance to it times the lens's tangent. */
+#define VIEW_HALF_AT(z) ((int)(EYE_TO(z) * HALF_FOV_TAN))
+
+/* The depth scale of a wall and, over it, the near line's ribbon centred on x = cx in the plane z. */
+static float
+depth_fit_with_near_line_at(scene_t* s, int cx, int z) {
+    const line_t line = {
+        (int16_t)(cx - NEAR_LINE_HALF), 0, (int16_t)(cx + NEAR_LINE_HALF), 0, (int16_t)z, NEAR_THICK, RED};
+    part_lines(&s->curve[0], &line, 1);
+    place(s, 0, &s->wall, NULL);
+    place(s, 1, &s->curve[0], NULL);
+    scene_raster(s, 2, false);
+    draw(s);
+    return raster_depth_near(&s->raster);
+}
+
+static void
+test_a_curve_box_outside_the_view_leaves_the_depth_fit_to_the_clusters(void) {
+    scene_t* s = scene_open();
+    const float alone = wall_alone_depth_near(s);
+    /* The whole box, near face and far face alike, is past the side plane. */
+    const int aside = (2 * VIEW_HALF_AT(NEAR_LINE_Z)) + NEAR_LINE_HALF + NEAR_THICK;
+    TEST_ASSERT_EQUAL_FLOAT(alone, depth_fit_with_near_line_at(s, aside, NEAR_LINE_Z));
+    TEST_ASSERT_TRUE(depth_fit_with_near_line_at(s, 0, NEAR_LINE_Z) < alone);
+}
+
+static void
+test_a_curve_box_across_a_side_plane_lowers_the_fit_only_as_far_as_its_visible_part(void) {
+    scene_t* s = scene_open();
+    const float alone = wall_alone_depth_near(s);
+    const float whole = depth_fit_with_near_line_at(s, 0, ACROSS_Z);
+    /* The box's side face lies one past the side plane's reach at the line's own depth: its near edge is outside the
+     * view, so the nearest part in view is where the plane meets the box's far face, past the next scale step. */
+    const int across = VIEW_HALF_AT(ACROSS_Z) + 1 + NEAR_LINE_HALF + NEAR_THICK;
+    const float cut = depth_fit_with_near_line_at(s, across, ACROSS_Z);
+    TEST_ASSERT_TRUE(cut < alone);
+    TEST_ASSERT_TRUE_MESSAGE(cut > whole, "what is outside the view does not count");
+}
+
+static void
+test_with_the_depth_fit_off_a_nearer_curve_leaves_the_unfitted_scale(void) {
+    scene_t* s = scene_open();
+    const float fitted = depth_fit_with_near_line_at(s, 0, NEAR_LINE_Z);
+    TEST_ASSERT_TRUE(fitted > NEAR_Z);
+    render_settings_t off = RENDER_SETTINGS_DEFAULT;
+    off.depth_fit = false;
+    s->raster.settings = &off;
+    draw(s);
+    TEST_ASSERT_EQUAL_FLOAT(NEAR_Z, raster_depth_near(&s->raster));
+}
+
 void
 suite_raster_curves(void) {
     RUN_TEST(test_a_faded_curve_mixes_once_over_a_wall_however_many_batches_draw);
@@ -499,6 +553,9 @@ suite_raster_curves(void) {
     RUN_TEST(test_opaque_and_faded_curves_of_two_instances_draw_the_same_in_either_order);
     RUN_TEST(test_a_curve_behind_the_wall_leaves_the_depth_fit_where_the_clusters_put_it);
     RUN_TEST(test_a_curve_nearer_than_every_cluster_lowers_the_depth_fit);
+    RUN_TEST(test_a_curve_box_outside_the_view_leaves_the_depth_fit_to_the_clusters);
+    RUN_TEST(test_a_curve_box_across_a_side_plane_lowers_the_fit_only_as_far_as_its_visible_part);
+    RUN_TEST(test_with_the_depth_fit_off_a_nearer_curve_leaves_the_unfitted_scale);
 }
 
 SUITE_REGISTER(suite_raster_curves);
