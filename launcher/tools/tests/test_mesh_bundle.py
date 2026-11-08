@@ -24,7 +24,7 @@ from r3d.import_settings import MESHLET_TRIANGLES, albedo_jobs, load_import_sett
 from tests.test_r3d_bake import canonical
 
 
-def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, triangles=None):
+def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, triangles=None, name=None):
     p = np.asarray(positions) if positions is not None else np.array([[0., 0, 0], [4, 0, 0], [0, 4, 0]])
     t = np.asarray(triangles) if triangles is not None else np.array([[0, 1, 2]])
     rgb = np.full(p.shape, 80)
@@ -47,8 +47,8 @@ def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, t
                           settings=SimpleNamespace(meshlet_triangles=MESHLET_TRIANGLES, double_sided=[], lod=lod))
     scene = SimpleNamespace(objects=[obj], renderers=[job], lights=[])
     with mock.patch.object(mesh_import, 'flat_colours', side_effect=[np.full((1, 3), value) for value in (80, 80, 81, 82)]):
-        mesh_import.write_baked(job, scene, pathlib.Path(directory), job.asset_name, geometry=geometry)
-    return (pathlib.Path(directory) / (job.asset_name + mesh_bundle.SUFFIX)).read_bytes(), copies, geometry, job, scene
+        mesh_import.write_baked(job, scene, pathlib.Path(directory), name or job.asset_name, geometry=geometry)
+    return (pathlib.Path(directory) / ((name or job.asset_name) + mesh_bundle.SUFFIX)).read_bytes(), copies, geometry, job, scene
 
 
 
@@ -133,6 +133,12 @@ class MeshBundleTests(unittest.TestCase):
             self.assertEqual([row for row in before if row[0] not in changed],
                              [row for row in after if row[0] not in changed])
             self.assertEqual(placed, copies)
+
+    def test_a_start_written_under_a_long_variant_name_names_its_shapes_from_the_asset(self):
+        with tempfile.TemporaryDirectory() as directory:
+            baked = mesh_bundle.decode(bundle_fixture(directory)[0])[1]
+            named = mesh_bundle.decode(bundle_fixture(directory, name="a_fitted_variant_name")[0])[1]
+        self.assertEqual([row['mesh'] for row in named], [row['mesh'] for row in baked])
 
     def test_repeated_bakes_are_byte_identical(self):
         with tempfile.TemporaryDirectory() as directory:

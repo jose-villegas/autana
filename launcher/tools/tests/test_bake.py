@@ -595,8 +595,11 @@ class StageTests(unittest.TestCase):
 
         job, scene = fitted_job()
         inputs = reference_inputs(job, scene)
-        recipe = bake.reference_recipe(inputs, TOOL_KEYS, bake.Poses({}))
         fields = {field.name for field in dataclasses.fields(ReferenceInputs)}
+        unprobed = bake.reference_recipe(inputs, TOOL_KEYS, bake.Poses({}))
+        self.assertEqual(set(unprobed) - {"sources"}, fields - {"probes"}, "unset probes changed the key")
+        inputs = dataclasses.replace(inputs, probes=types.SimpleNamespace(spacing=None, face=8))
+        recipe = bake.reference_recipe(inputs, TOOL_KEYS, bake.Poses({}))
         self.assertEqual(set(recipe) - {"sources"}, fields)
         brighter = dataclasses.replace(inputs, tonemap_white=inputs.tonemap_white * 2)
         self.assertNotEqual(bake.digest(recipe), bake.digest(bake.reference_recipe(brighter, TOOL_KEYS, bake.Poses({}))))

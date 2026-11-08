@@ -8,13 +8,8 @@ the start's bytes and the reference set (training, held-out and pruning poses), 
 import pathlib
 
 from r3d import mesh_bundle, mesh_asset, log
+from r3d.reference_set import PATH_COVERAGE, PATH_HELD_OUT, PATH_TRAINING, PROBE_HELD_OUT, PROBE_TRAINING
 
-# The reference set's files the fit reads (fitted_variant.prepare_references writes them): the training
-# (poses, references) pairs, the poses the prune counts shown pixels over, and the held-out poses the
-# copy-coverage gate checks.
-TRAINING = (("train.txt", "reference"), ("train_landscape.txt", "reference_landscape"))
-COVERAGE = "coverage.txt"
-HELD_OUT = "held_out.txt"
 # A carved start's rest is fitted with the reference G-buffer terms (fit/gbuffer.py) at these weights: the front
 # term pushes it behind the copies, the depth term holds it to the source's surface. Picked on street_fitted: front
 # 1e4 cuts the hidden copy pixels about tenfold; depth 30 then lowers held-out dE, heavier depth raised it.
@@ -41,16 +36,29 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     start.write_bytes(mesh_bundle.encode([(job.asset_name, mesh_asset.TYPE, rest)], []))
     out = work / "fitted"
     steps = min(recipe.steps, 8) if smoke else recipe.steps
+    shaping = job.settings.fit
     command = ["--scene", str(scene_path), "--start", str(start)]
-    for poses, reference in TRAINING:
-        command += ["--poses", str(inputs / poses), "--reference", str(inputs / reference)]
+    # The path's sets that exist (a camera without a path has none), then the probes'; the prune keeps what the
+    # path shows before what only a probe does.
+    for poses, reference in (*PATH_TRAINING, PROBE_TRAINING):
+        if (inputs / poses).is_file():
+            command += ["--poses", str(inputs / poses), "--reference", str(inputs / reference)]
+    for poses in (PATH_COVERAGE, PROBE_TRAINING[0]):
+        if (inputs / poses).is_file():
+            command += ["--coverage-poses", str(inputs / poses)]
+    # A fit shaped by the import counts its holes over the held-out views; settle picks its budget by them.
+    for poses, reference in (PATH_HELD_OUT, PROBE_HELD_OUT):
+        if (shaping.probes or shaping.budget) and (inputs / poses).is_file():
+            command += ["--held-out-poses", str(inputs / poses), "--held-out-reference", str(inputs / reference)]
+    if shaping.budget is not None and shaping.budget.policy == "settle":
+        command += ["--settle", str(shaping.budget.step), str(shaping.budget.settle)]
     command += ["--out", str(out), "--budget", str(recipe.budget if budget is None else budget),
-                "--coverage-poses", str(inputs / COVERAGE), "--steps", str(steps), "--batch", str(recipe.batch),
+                "--steps", str(steps), "--batch", str(recipe.batch),
                 "--laplacian", str(recipe.laplacian), "--normal-weight", str(recipe.normal_weight),
                 "--object", job.object.name, "--surface-weight", str(recipe.surface_weight),
                 "--surface-margin", str(recipe.surface_margin)]
     if copies:
-        command += ["--copies", str(bundle), "--copy-poses", str(inputs / HELD_OUT),
+        command += ["--copies", str(bundle), "--copy-poses", str(inputs / PATH_HELD_OUT[0]),
                     "--front-weight", str(FRONT_WEIGHT), "--depth-weight", str(DEPTH_WEIGHT)]
     if cost_weight:
         command += ["--cost-model", str(pathlib.Path(__file__).parents[1] / "board_cost_weights.txt"),

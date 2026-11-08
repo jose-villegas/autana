@@ -561,9 +561,9 @@ def blend_key(settings, tools):
 
 def import_recipe(settings, tools):
     """An import's settings without paths and its sources by content: a credit line or a moved file does not
-    rebake, and a .blend counts by its export's key."""
+    rebake, and a .blend counts by its export's key. Its `fit` shapes only fits, so only fit keys count it."""
     recipe = {name: canonical(value) for name, value in vars(settings).items()
-              if name not in ("path", "source", "out_dir", "mesh_dir", "named", "variants")}
+              if name not in ("path", "source", "out_dir", "mesh_dir", "named", "variants", "fit")}
     return recipe, {"blend": blend_key(settings, tools)} if is_blend(settings) else source_digest(settings)
 
 
@@ -584,14 +584,21 @@ def mesh_recipe(job, scene, tools, poses=None, unavailable=None):
     return recipe
 
 
-def fit_recipe(fit):
-    """The fit's parsed settings; an optional one left unset (None) is left out, so adding one re-keys nothing."""
-    return {name: value for name, value in vars(fit).items() if value is not None}
+def fit_recipe(fit, shaping=None):
+    """The renderer's fit and the import's fit `shaping` (geometry.probes, geometry.budget); an unset one is left
+    out, so a mesh that sets neither keeps its key."""
+    recipe = dict(vars(fit))
+    shaped = {name: canonical(value) for name, value in (vars(shaping).items() if shaping is not None else ())
+              if value is not None}
+    if shaped:
+        recipe["shaping"] = shaped
+    return recipe
 
 
 def reference_recipe(inputs, tools, poses=None, unavailable=None):
     """A fit's reference set by every field of its reference_set.ReferenceInputs: the import as a mesh counts
-    it, the camera by its lens and sampled poses, the rest as parsed."""
+    it, the camera by its lens and sampled poses (a camera without a path has none: its views are all probes),
+    probes only when set, the rest as parsed."""
     recipe = {}
     for field in dataclasses.fields(inputs):
         value = getattr(inputs, field.name)
@@ -600,10 +607,16 @@ def reference_recipe(inputs, tools, poses=None, unavailable=None):
         elif field.name == "camera":
             scene = inputs.scene()
             camera = camera_inputs(scene)
+            if scene.camera.component.path is None and inputs.probes is not None:
+                recipe["camera"] = camera
+                continue
             camera["poses"] = {name: poses.digest(scene.camera.component, inputs.poses[field], inputs.size, tools, unavailable)
                                for name, field in (("train", "train_every_ms"),
                                                    ("coverage", "coverage_every_ms"))}
             recipe["camera"] = camera
+        elif field.name == "probes":
+            if value is not None:
+                recipe["probes"] = canonical(value)
         else:
             recipe[field.name] = canonical(value)
     return recipe
@@ -625,7 +638,7 @@ def stage_keys(job, scene, tools, starts=None, poses=None):
         reference = None if unavailable else digest(["reference", recipe, tools["reference"]])
         start_sha256 = None if starts is None else starts.get(start)
         fit = None if start_sha256 is None or reference is None else digest(
-            ["fit", reference, start_sha256, fit_recipe(job.renderer.fit), tools["fit"]])
+            ["fit", reference, start_sha256, fit_recipe(job.renderer.fit, job.settings.fit), tools["fit"]])
         fit_sha256 = None if starts is None or fit is None else starts.get(fit)
         levels = None if fit_sha256 is None else digest(
             ["levels", fit_sha256, start_sha256, (job.settings.lod, job.settings.meshlet_triangles), tools["levels"]])
