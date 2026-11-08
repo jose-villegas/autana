@@ -13,7 +13,7 @@
 /* Each field, then its tier and what it trades: docs/render/Render-Settings.md
  * reads these lines. Basic is for any app; advanced needs the renderer's
  * workings to judge. */
-/* lod.blend: how a group changes level (docs/plans/Cluster-LOD.md#the-blend). */
+/* lod.blend: how a group changes level (docs/render/frame/Levels-of-Detail.md#the-blend). */
 typedef enum {
     RENDER_LOD_BLEND_SWITCH, /* at once */
     RENDER_LOD_BLEND_ON,     /* a mesh with morph targets moves onto the coarse surface first; any other draws both
@@ -39,7 +39,7 @@ typedef struct {
     bool depth_fit;            /* advanced: depth steps go where the kept scene is, not to near_z; needs cull */
     bool batched;              /* advanced: one transform and one draw fork/join a batch, not an instance */
     bool partial_redraw;       /* basic: a still camera redraws only the rows that moved; the picture is the same */
-    render_lod_settings_t lod; /* which level of a mesh's clusters an instance draws (docs/plans/Cluster-LOD.md) */
+    render_lod_settings_t lod; /* the level pick (docs/render/frame/Levels-of-Detail.md) */
 } render_settings_t;
 
 /* RENDER_SETTINGS_DEFAULT, from default.render.toml beside this header. */

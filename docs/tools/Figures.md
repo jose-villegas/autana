@@ -18,7 +18,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [overview](#overview) | 15 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
-| [render](#render) | 126 | 0 | 0 |
+| [render](#render) | 128 | 2 | 0 |
 | [ui](#ui) | 62 | 0 | 0 |
 
 ## anim
@@ -237,6 +237,8 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/import-face-samples.png"><img src="../images/render/import-face-samples.png" width="160" alt=""></a> | One fixed face sample against adaptive, then adaptive against the flat fit | [render/scene/Scene-Files](../render/scene/Scene-Files.md) | not declared yet |
 | <a href="../images/render/import-light.png"><img src="../images/render/import-light.png" width="160" alt=""></a> | Albedo against the fitted bake | [render/scene/Scene-Files](../render/scene/Scene-Files.md) | not declared yet |
 | <a href="../images/render/import-mesh-contact.png"><img src="../images/render/import-mesh-contact.png" width="160" alt=""></a> | A pillar's contact with the floor under weld, lock and free | [render/offline/Mesh-Import](../render/offline/Mesh-Import.md) | not declared yet |
+| <a href="../images/render/lod-blend-dither.png"><img src="../images/render/lod-blend-dither.png" width="160" alt=""></a> | The 4x4 screen door at five points of the ramp past leave: coarse and fine pixels | [render/frame/Levels-of-Detail](../render/frame/Levels-of-Detail.md) | [blend_figures.py](../../launcher/tools/r3d/lod/blend_figures.py) |
+| <a href="../images/render/lod-blend-weight.png"><img src="../images/render/lod-blend-weight.png" width="160" alt=""></a> | Coarse share of what is drawn as one group's error projects across its switches, walking in and out, blended and switched | [render/frame/Levels-of-Detail](../render/frame/Levels-of-Detail.md) | [blend_figures.py](../../launcher/tools/r3d/lod/blend_figures.py) |
 | <a href="../images/render/lod-settings.png"><img src="../images/render/lod-settings.png" width="160" alt=""></a> | The hysteresis band and the coverage cap, from the default values | [render/Render-Settings](../render/Render-Settings.md) | not declared yet |
 | <a href="../images/render/meshlet-build.gif"><img src="figure-thumbnails/render/meshlet-build.gif" width="160" alt=""></a> | The clusterizer cutting a small flat patch into meshlets, one per step | [render/offline/Baked-Mesh](../render/offline/Baked-Mesh.md) | not declared yet |
 | <a href="../images/render/meshlets/meshlet-size-trade.png"><img src="../images/render/meshlets/meshlet-size-trade.png" width="160" alt=""></a> | Clusters and submitted triangles against the meshlet size | [render/offline/Baked-Mesh](../render/offline/Baked-Mesh.md) | not declared yet |

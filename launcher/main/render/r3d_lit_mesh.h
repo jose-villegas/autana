@@ -46,7 +46,7 @@ typedef struct {
     bool leaf;
 } r3d_lit_node_t;
 
-/* Levels of detail (docs/plans/Cluster-LOD.md): a mesh may carry coarser
+/* Levels of detail (docs/render/frame/Levels-of-Detail.md): a mesh may carry coarser
  * clusters beside its finest ones, each simplified from a group of finer
  * clusters with the group's border kept. A group is drawn coarse when its
  * error, projected, is small enough (render/r3d_lod.h); then its clusters
