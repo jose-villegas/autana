@@ -49,6 +49,11 @@ struct raster {
     const raster_attachment_t* const* attachments;
     int attachment_count;
     const render_settings_t* settings; /* NULL draws with RENDER_SETTINGS_DEFAULT */
+    /* Rows [first_row, end_row) a draw redraws over what the last one left,
+     * and the destination rows they reach an upscale; equal is every row
+     * (render/partial). A draw whose depth scale moved, or whose level picks
+     * changed a cut, redraws every row. */
+    int first_row, end_row;
 };
 
 /* What a draw uses: the raster's settings, under any development override. */
@@ -63,6 +68,7 @@ raster_viewport(const raster_t* raster, int quarter) {
 
 typedef struct {
     int clusters, triangles; /* what survived culling */
+    bool levels_changed;     /* a level pick changed an instance's cut */
 } raster_stats_t;
 
 /* The most vertices and clusters any mesh the raster draws has: what its
@@ -84,6 +90,8 @@ uint16_t* raster_depth(const raster_t* raster);
  * fits it to the nearest bound of what it kept, never under the view's
  * near_z, so far surfaces keep their depth steps (r3d_lens_set_depth_near()). */
 float raster_depth_near(const raster_t* raster);
+/* Whether the last draw redrew every row, asked to or not (first_row). */
+bool raster_drew_every_row(const raster_t* raster);
 
 /* Everything a raster works in (per-vertex, per-cluster, the census list,
  * the picture's attachments and the upscale maps) as one block, from its
@@ -124,6 +132,10 @@ resolution_step_t raster_compose_size(const raster_t* raster);
 /* Fills `destination` from what was last drawn, both cores taking
  * half the destination rows. The destination is at least the drawn size. */
 void raster_upscale(raster_t* raster, uint16_t* destination, int width, int height);
+/* The destination rows [first, end) of `height` an upscale of rows
+ * [first_row, end_row) rewrites, the rows a filter reads beside them
+ * included; the row map is the last upscale's. */
+void raster_destination_rows(const raster_t* raster, int height, int* first, int* end);
 /* raster_upscale() of `picture` (colour and depth at the drawn size; NULL is
  * what was last drawn) through raster->upscale.filter, marking `seams`
  * (GFX_SEAM_BYTES of the destination size) where it blends; NULL marks none. */

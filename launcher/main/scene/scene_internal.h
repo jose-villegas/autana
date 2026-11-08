@@ -130,8 +130,10 @@ typedef struct {
     r3d_lit_mesh_t mesh;
     mat4f_t model;
     box3f_t world_bounds; /* the mesh's root box through `model`, kept with it */
+    box3f_t drawn_bounds; /* world_bounds when last drawn (render/partial) */
     scene_row_t entity;
     bool placed;          /* false while the transform is the identity: drawn as it is */
+    bool changed;         /* its mesh or model changed since it was last drawn (render/partial) */
     uint16_t lod_words;   /* R3D_LOD_WORDS of the opened mesh's groups; its arrived bits follow */
     uint32_t* lod_coarse; /* into the scene's lod_bits, or NULL without levels */
 } scene_renderer_t;

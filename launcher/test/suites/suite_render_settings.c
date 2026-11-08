@@ -92,15 +92,9 @@ draw(render_context_t* c, raster_rig_t* r) {
 /* Field by field: the struct has padding, whose bytes mean nothing. */
 static void
 assert_settings(const render_settings_t* expected, const render_settings_t* actual) {
-    TEST_ASSERT_EQUAL(expected->cull, actual->cull);
-    TEST_ASSERT_EQUAL(expected->depth_fit, actual->depth_fit);
-    TEST_ASSERT_EQUAL(expected->batched, actual->batched);
-    TEST_ASSERT_EQUAL_FLOAT(expected->lod.tolerance_px, actual->lod.tolerance_px);
-    TEST_ASSERT_EQUAL_FLOAT(expected->lod.hysteresis_px, actual->lod.hysteresis_px);
-    TEST_ASSERT_EQUAL_INT(expected->lod.coverage_permille, actual->lod.coverage_permille);
-    TEST_ASSERT_EQUAL_INT(expected->lod.pick_every, actual->lod.pick_every);
-    TEST_ASSERT_EQUAL_INT(expected->lod.blend, actual->lod.blend);
-    TEST_ASSERT_EQUAL_FLOAT(expected->lod.blend_px, actual->lod.blend_px);
+#define ASSERT_FIELD(field, type) TEST_ASSERT_TRUE_MESSAGE(expected->field == actual->field, #field);
+    RENDER_SETTINGS_FIELDS(ASSERT_FIELD)
+#undef ASSERT_FIELD
 }
 
 static void
@@ -125,10 +119,12 @@ cull_off(void) {
 static void
 test_the_default_is_every_setting_on_as_the_raster_drew_before(void) {
     raster_rig_t* r = open_rig();
-    /* Before settings, the raster always culled, fitted depth and batched. */
+    /* Before settings, the raster always culled, fitted depth and batched;
+     * partial redraw draws the same picture. */
     const render_settings_t on = {.cull = true,
                                   .depth_fit = true,
                                   .batched = true,
+                                  .partial_redraw = true,
                                   .lod = {.tolerance_px = 2.0F,
                                           .hysteresis_px = 0.5F,
                                           .coverage_permille = 250,
@@ -222,6 +218,22 @@ test_a_release_build_carries_no_override(void) {
     TEST_ASSERT_EQUAL_INT(1, tune_override(knob, 1));
 }
 
+/* The partial redraw knob turns it on or off whatever the caller set, and a
+ * reset gives the caller's value back. */
+static void
+test_the_partial_redraw_knob_overrides_the_callers_value(void) {
+    raster_rig_t* r = open_rig();
+    render_settings_t set = RENDER_SETTINGS_DEFAULT;
+    r->raster.settings = &set;
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, partial_redraw), 1));
+    TEST_ASSERT_TRUE(raster_settings(&r->raster).partial_redraw);
+    set.partial_redraw = true;
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, partial_redraw), 0));
+    TEST_ASSERT_FALSE(raster_settings(&r->raster).partial_redraw);
+    TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, partial_redraw)));
+    TEST_ASSERT_TRUE(raster_settings(&r->raster).partial_redraw);
+}
+
 /* The coverage cap's knob changes that field of what a draw uses and no other, and a reset gives the caller's
  * value back. */
 static void
@@ -244,16 +256,10 @@ test_the_coverage_knob_overrides_only_the_coverage_cap(void) {
 
 enum { FIELDS = RENDER_SETTINGS_FIELD_COUNT, ROW_BYTES = ASSET_TABLE_NAME_SIZE + sizeof(int16_t), PACK_BYTES = 512 };
 
-static const char* const field_names[FIELDS + 1] = {"cull",
-                                                    "depth_fit",
-                                                    "batched",
-                                                    "lod.tolerance_px",
-                                                    "lod.hysteresis_px",
-                                                    "lod.coverage_permille",
-                                                    "lod.pick_every",
-                                                    "lod.blend",
-                                                    "lod.blend_px",
-                                                    "fog"};
+/* Every field's row name in struct order, then one no field has. */
+#define FIELD_NAME(field, type) #field,
+static const char* const field_names[FIELDS + 1] = {RENDER_SETTINGS_FIELDS(FIELD_NAME) "fog"};
+#undef FIELD_NAME
 #define STEP (1 << RENDER_SETTINGS_FRAC_BITS)
 
 /* Opens into `opened` a pack whose render entry has the first `rows` of
@@ -293,12 +299,14 @@ read_entry(int rows, const int16_t* values, int frac, render_settings_t* out) {
 static void
 test_a_packs_render_entry_reads_every_field(void) {
     static const int16_t values[FIELDS] = {
-        0, STEP, 0, (3 * STEP) + (STEP / 2), STEP / 4, 100 * STEP, 2 * STEP, RENDER_LOD_BLEND_ON * STEP, STEP / 2};
+        0,       STEP, 0, STEP, (3 * STEP) + (STEP / 2), STEP / 4, 100 * STEP, 2 * STEP, RENDER_LOD_BLEND_ON * STEP,
+        STEP / 2};
     render_settings_t read;
     TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
     TEST_ASSERT_FALSE(read.cull);
     TEST_ASSERT_TRUE(read.depth_fit);
     TEST_ASSERT_FALSE(read.batched);
+    TEST_ASSERT_TRUE(read.partial_redraw);
     TEST_ASSERT_EQUAL_FLOAT(3.5F, read.lod.tolerance_px);
     TEST_ASSERT_EQUAL_FLOAT(0.25F, read.lod.hysteresis_px);
     TEST_ASSERT_EQUAL_INT(100, read.lod.coverage_permille);
@@ -391,6 +399,7 @@ suite_render_settings(void) {
     RUN_TEST(test_an_override_beats_the_callers_value_until_a_reset_brings_it_back);
     RUN_TEST(test_each_field_and_each_knob_reach_only_their_own_slot);
     RUN_TEST(test_the_coverage_knob_overrides_only_the_coverage_cap);
+    RUN_TEST(test_the_partial_redraw_knob_overrides_the_callers_value);
     RUN_TEST(test_a_release_build_carries_no_override);
     RUN_TEST(test_a_packs_render_entry_reads_every_field);
     RUN_TEST(test_a_blend_outside_its_values_or_range_is_refused_unread);
