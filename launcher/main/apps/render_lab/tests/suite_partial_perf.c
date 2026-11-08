@@ -27,7 +27,8 @@
 #include "hash/crc32.h"
 #include "math/stats/statsi.h"
 #include "render/context/render_context.h"
-#include "scene/scene_internal.h"
+#include "scene/animator/animator.h"
+#include "scene/entity/entity.h"
 #include "testkit/cleanup.h"
 #include "unity.h"
 
@@ -79,30 +80,30 @@ send(const char* command) {
 /* The capybara galloping on the spot from its first frame, seen from home. */
 static void
 start_gallop(void) {
-    scene_t* scene = render_lab_test_loaded_scene(CAPYBARA_SCENE);
-    TEST_ASSERT_NOT_NULL(scene);
+    const entity_t scene = render_lab_test_loaded_scene(CAPYBARA_SCENE);
+    TEST_ASSERT_FALSE(handle_is_none(scene));
     send("view " CAPYBARA_VIEW_HOME);
     char command[ASSET_NAME_MAX];
     TEST_ASSERT_TRUE(snprintf(command, sizeof command, CAPYBARA_CLIP_COMMAND, CAPYBARA_CLIP_CUT_MS) > 0);
     send(command);
-    const scene_entity_t subject = scene_find(scene, name_hash(CAPYBARA_SUBJECT));
-    TEST_ASSERT_TRUE(scene_animator_seek(scene, subject, SCENE_ANIMATOR_CURRENT, 0));
+    const entity_t subject = entity_find(scene, name_hash(CAPYBARA_SUBJECT));
+    TEST_ASSERT_TRUE(animator_seek(subject, ANIMATOR_CURRENT, 0));
 }
 
 /* The water scene as it opens, its camera still: nothing to set. */
 static void
 start_water(void) {
-    TEST_ASSERT_NOT_NULL(render_lab_test_loaded_scene(scene_water.key));
+    TEST_ASSERT_FALSE(handle_is_none(render_lab_test_loaded_scene(scene_water.key)));
 }
 
 /* The flythrough from its start: the camera moves every frame. */
 static void
 start_flythrough(void) {
-    scene_t* scene = render_lab_test_loaded_scene(SPONZA_SCENE);
-    TEST_ASSERT_NOT_NULL(scene);
-    const scene_entity_t camera = scene_find(scene, name_hash(sponza_cameras[0]));
-    TEST_ASSERT_NOT_EQUAL(SCENE_ENTITY_NONE, camera);
-    TEST_ASSERT_TRUE(scene_animator_seek(scene, camera, SCENE_ANIMATOR_CURRENT, 0));
+    const entity_t scene = render_lab_test_loaded_scene(SPONZA_SCENE);
+    TEST_ASSERT_FALSE(handle_is_none(scene));
+    const entity_t camera = entity_find(scene, name_hash(sponza_cameras[0]));
+    TEST_ASSERT_FALSE(handle_is_none(camera));
+    TEST_ASSERT_TRUE(animator_seek(camera, ANIMATOR_CURRENT, 0));
 }
 
 static const scenario_t scenarios[] = {
