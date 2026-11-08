@@ -36,6 +36,7 @@ typedef struct r3d_span_target {
     const r3d_span_writer_t* writers; /* writer_count of them; none: colour and depth only */
     int writer_count;
     bool skip_hidden; /* render_view_t.skip_hidden: fills cap their depth, and writers follow */
+    uint16_t clear;   /* the colour behind empty depth, which a coverage fill mixes over */
     const r3d_span_small_fill_t* small_fill;
 
     union {
@@ -117,6 +118,7 @@ void r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_ver
 
 #define R3D_SPAN_COVERAGE_FULL UINT8_MAX
 
-/* Depth tested and mixed by coverage with rgb565be_mix; writes no depth. */
+/* `color` mixed by `coverage` over what is behind it, where depth tested; the depth stays, but an empty pixel
+ * takes the mix over target->clear and the triangle's depth, so it is shown. */
 void r3d_span_triangle_cover(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-                             const r3d_span_vertex_t* c, unsigned coverage);
+                             const r3d_span_vertex_t* c, uint16_t color, unsigned coverage);

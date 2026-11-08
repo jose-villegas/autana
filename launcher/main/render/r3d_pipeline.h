@@ -105,6 +105,11 @@ int r3d_pipeline_cull_cut(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse
 int r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint32_t* lod_coarse, uint16_t* out,
                       r3d_pipeline_work_t* work, r3d_depth_fit_t* fit);
 
+/* Lowers `fit` as r3d_pipeline_cull() does for each of a mesh's curve boxes the lens's frustum keeps, so curves,
+ * drawn after the clusters, stay inside the depth scale too. */
+void r3d_pipeline_fit_curves(r3d_curve_set_t set, const r3d_lens_t* lens, r3d_pipeline_work_t* work,
+                             r3d_depth_fit_t* fit);
+
 /* The screen box a cluster's vertices span and the nearest depth its fill
  * can write, for a caller drawing only some rows, or over depth already
  * drawn, to skip it whole. A cluster with a vertex behind the near plane or

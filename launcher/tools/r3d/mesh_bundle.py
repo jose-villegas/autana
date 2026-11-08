@@ -8,6 +8,7 @@ from asset.asset_pack import NAME_BYTES, PackError, build_pack, parse_pack
 from build.name_hash import name_hash
 from r3d import lcol_asset, lod_asset, mesh_asset
 from r3d.lcol_asset import NAME_SUFFIX
+from r3d.thin import curve_format
 
 SUFFIX = ".bundle"
 MANIFEST = "copies"
@@ -177,6 +178,7 @@ def rename_rest(entries, copies, name):
         return entries
     names = {old: name}
     for key, _, _ in entries:
-        if key.startswith(old) and key[len(old):] in (lcol_asset.NAME_SUFFIX, lod_asset.NAME_SUFFIX):
+        if key.startswith(old) and key[len(old):] in (lcol_asset.NAME_SUFFIX, lod_asset.NAME_SUFFIX,
+                                                      curve_format.NAME_SUFFIX):
             names[key] = lcol_asset.sibling_name(name, key[len(old):])
     return [(names.get(key, key), kind, blob) for key, kind, blob in entries]

@@ -14,6 +14,15 @@ def triangle_areas(p, tris):
     return 0.5 * np.linalg.norm(np.cross(p[tris[:, 1]] - p[tris[:, 0]], p[tris[:, 2]] - p[tris[:, 0]]), axis=1)
 
 
+def principal_frame(points):
+    """The centre of `points`, their principal axes as columns by rising extent, and the points in those axes."""
+    centre = points.mean(axis=0)
+    _, axes = np.linalg.eigh((points - centre).T @ (points - centre))
+    local = (points - centre) @ axes
+    order = np.argsort(np.ptp(local, axis=0))
+    return centre, axes[:, order], local[:, order]
+
+
 def compact(p, tris):
     used, inverse = np.unique(tris, return_inverse=True)
     return p[used], inverse.reshape(-1, 3)

@@ -13,7 +13,7 @@ THIN_LENGTH_PER_SIDE = 0.75
 THIN_SLENDERNESS_MIN = 11.0
 WELD_CELLS_PER_SIDE = 1000
 # Width is measured across the part's own centreline, not its straight box: a cable sagging between two walls is as
-# thin as a taut one. The centreline runs through stations THIN_WIDTH_PER_SIDE long down the long axis, from
+# thin as a taut one. The centreline runs through stations one width limit long down the long axis, from
 # WIDTH_SAMPLES_PER_STATION area samples each.
 WIDTH_SAMPLES_PER_STATION = 32
 WIDTH_SAMPLE_SEED = 0
@@ -38,8 +38,24 @@ def budget_side(positions, triangles, budget):
     """Area-equivalent triangle side at the source's start budget."""
     if budget <= 0:
         raise ValueError("triangle budget must be positive")
-    a, b, c = np.asarray(positions)[np.asarray(triangles)].transpose(1, 0, 2)
-    return float(np.sqrt(np.linalg.norm(np.cross(b - a, c - a), axis=1).sum() / (2 * budget)))
+    from r3d.geometry import triangle_areas
+
+    return float(np.sqrt(triangle_areas(np.asarray(positions), np.asarray(triangles)).sum() / budget))
+
+
+def thin_parts_at(positions, triangles, budget):
+    """find_thin_parts at the side of the start `budget`, on the positions rounded to float32 first: the bake and the
+    fit load the source at different precisions and must pick the same parts."""
+    positions = np.asarray(positions, dtype=np.float32).astype(np.float64)
+    return find_thin_parts(positions, triangles, budget_side(positions, triangles, budget))
+
+
+def thin_triangles(positions, triangles, budget):
+    """Which of `triangles` thin_parts_at() takes for curves."""
+    mask = np.zeros(len(triangles), dtype=bool)
+    for part in thin_parts_at(positions, triangles, budget):
+        mask[part.triangles] = True
+    return mask
 
 
 def centreline_width(positions, triangles, rows, centre, axes, station):
@@ -80,6 +96,7 @@ def find_thin_parts(positions, triangles, side):
     if not np.isfinite(side) or side <= 0:
         raise ValueError("budget side must be finite and positive")
     positions, triangles = np.asarray(positions), np.asarray(triangles)
+    from r3d.geometry import principal_frame, triangle_areas
     from r3d.simplify import object_groups
 
     if not len(triangles):
@@ -90,20 +107,16 @@ def find_thin_parts(positions, triangles, side):
     for group in np.unique(groups):
         rows = np.flatnonzero(groups == group)
         points = np.unique(positions[triangles[rows]].reshape(-1, 3), axis=0)
-        centre = points.mean(axis=0)
-        _, axes = np.linalg.eigh((points - centre).T @ (points - centre))
-        axes = axes[:, ::-1]
-        extents = np.ptp((points - centre) @ axes, axis=0)
+        centre, axes, local = principal_frame(points)
+        axes, extents = axes[:, ::-1], np.ptp(local, axis=0)[::-1]
         limit = side * THIN_WIDTH_PER_SIDE
         if extents[0] < side * THIN_LENGTH_PER_SIDE:
             continue
         width = extents[1]
         if width > limit:
-            corners = positions[triangles[rows]]
-            area = np.linalg.norm(np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0]), axis=1).sum()
             # A tube `limit` across has pi * limit of surface per unit of its length: with more, no centreline is
             # that thin, and the samples are not drawn.
-            if area / 2 <= np.pi * limit * extents[0]:
+            if triangle_areas(positions, triangles[rows]).sum() <= np.pi * limit * extents[0]:
                 width = centreline_width(positions, triangles, rows, centre, axes, limit)
         if width <= limit and extents[0] >= THIN_SLENDERNESS_MIN * width:
             result.append(ThinPart(np.asarray(rows), centre, axes, extents, width))

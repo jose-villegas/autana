@@ -9,7 +9,7 @@ from scipy.sparse.csgraph import connected_components
 
 from render.colour_maths import lab
 from r3d import log
-from r3d.geometry import bounds_diagonal, closest_point_on_triangles
+from r3d.geometry import bounds_diagonal, closest_point_on_triangles, principal_frame
 from r3d.meshopt import simplify_with_update
 from r3d.objects.contact import _surface_border
 from r3d.ray_query import RayQuery
@@ -53,11 +53,7 @@ def regular(positions, rgb, tris, materials, budget, weight, options, lock):
 
 
 def _frame(points):
-    centre = points.mean(axis=0)
-    _, axes = np.linalg.eigh((points - centre).T @ (points - centre))
-    local = (points - centre) @ axes
-    order = np.argsort(np.ptp(local, axis=0))
-    axes, local = axes[:, order], local[:, order]
+    centre, axes, local = principal_frame(points)
     return centre, axes, local.min(axis=0), local.max(axis=0)
 
 

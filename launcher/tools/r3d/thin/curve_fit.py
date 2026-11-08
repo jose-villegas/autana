@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from r3d.geometry import triangle_areas
 from r3d.surface_samples import area_samples
 
 CURVE_TOLERANCE_PER_WIDTH = 0.15
@@ -37,7 +38,7 @@ def fit_curve(positions, triangles, part):
         raise ValueError("a curve needs a nonzero surface width")
     source = SimpleNamespace(p=np.asarray(positions), tri_v=np.asarray(triangles))
     corners = source.p[source.tri_v[part.triangles]]
-    area = np.linalg.norm(np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0]), axis=1).sum() / 2
+    area = triangle_areas(source.p, source.tri_v[part.triangles]).sum()
     count = max(MIN_BINS * CURVE_LIGHT_RING, int(np.ceil(area / (width / SAMPLES_PER_WIDTH) ** 2)))
     samples, _ = area_samples(source, part.triangles, count, np.random.default_rng(SAMPLE_SEED))
     local = (samples - part.centre) @ part.axes

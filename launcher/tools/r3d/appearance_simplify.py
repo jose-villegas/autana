@@ -976,13 +976,10 @@ def main(argv=None):
 
             source, job = source_for(scene, args.object, lit=False)
         source_exclude = None
-        if source is not None and getattr(getattr(job, "settings", None), "curves", False):
-            from r3d.thin.thin_parts import budget_side, find_thin_parts
+        if source is not None and job is not None and job.settings.curves:
+            from r3d.thin.thin_parts import thin_triangles
 
-            side = budget_side(source.p, source.tri_v, job.renderer.variant.triangles)
-            source_exclude = np.zeros(len(source.tri_v), dtype=bool)
-            for part in find_thin_parts(source.p, source.tri_v, side):
-                source_exclude[part.triangles] = True
+            source_exclude = thin_triangles(source.p, source.tri_v, job.renderer.variant.triangles)
         carved = None
         if copies is not None:
             carved = np.zeros(len(source.object_names), dtype=bool)

@@ -49,9 +49,6 @@ word(const uint8_t* data, int index) {
  * do not fit the entry, or sit off a 4-byte boundary the structs need. */
 static const void*
 array_at(const asset_view_t* asset, uint32_t offset, uint32_t count, uint32_t bytes) {
-    if (offset == 0 && count == 0) {
-        return asset->data + (HEADER_WORDS * sizeof(uint32_t));
-    }
     if (offset % 4U != 0 || offset < HEADER_WORDS * 4U) {
         return NULL;
     }
@@ -307,30 +304,6 @@ sibling_name(const char* mesh_id, const char* suffix, char out[ASSET_NAME_MAX]) 
     return ASSET_OK;
 }
 
-/* Each curve's knots follow the last curve's, at least two, every knot's tube inside the curve's box. */
-static bool
-curves_are_inside(const r3d_curve_set_t* set, unsigned knots) {
-    unsigned end = 0;
-    for (int i = 0; i < set->curve_count; i++) {
-        const r3d_curve_t* row = &set->curves[i];
-        if (row->first != end || row->count < 2 || (unsigned)row->first + row->count > knots) {
-            return false;
-        }
-        end = (unsigned)row->first + row->count;
-        for (unsigned k = row->first; k < end; k++) {
-            const r3d_curve_knot_t* knot = &set->knots[k];
-            const int16_t position[3] = {knot->x, knot->y, knot->z};
-            for (int axis = 0; axis < 3; axis++) {
-                if ((int)position[axis] - knot->radius < row->lo[axis]
-                    || (int)position[axis] + knot->radius > row->hi[axis]) {
-                    return false;
-                }
-            }
-        }
-    }
-    return end == knots;
-}
-
 /* Out of line: its name and view stay off the stack the levels' walk adds to. */
 static __attribute__((noinline)) asset_status_t
 open_curves(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh) {
@@ -350,24 +323,13 @@ open_curves(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh) {
     if (status != ASSET_OK) {
         return status;
     }
-    const size_t header = R3D_CURVE_HEADER_WORDS * sizeof(uint16_t);
-    if (asset.size < header || asset_read_u16(asset.data + (2 * sizeof(uint16_t))) != 0
-        || asset_read_u16(asset.data + (3 * sizeof(uint16_t))) != 0) {
-        return ASSET_ERR_FORMAT;
+    r3d_curve_set_t set;
+    status = r3d_curve_set_from_asset(asset, &set);
+    if (status != ASSET_OK) {
+        return status;
     }
-    const unsigned count = asset_read_u16(asset.data);
-    const unsigned knots = asset_read_u16(asset.data + sizeof(uint16_t));
-    const size_t at = header + (count * sizeof(r3d_curve_t));
-    if (at + (knots * sizeof(r3d_curve_knot_t)) != asset.size) {
-        return ASSET_ERR_BOUNDS;
-    }
-    const r3d_curve_set_t built = {(const r3d_curve_t*)(asset.data + header),
-                                   (const r3d_curve_knot_t*)(asset.data + at), (int)count};
-    if (!curves_are_inside(&built, knots)) {
-        return ASSET_ERR_BOUNDS;
-    }
-    mesh->curves = built.curves;
-    mesh->curve_count = (uint16_t)count;
+    mesh->curves = set.curves;
+    mesh->curve_count = (uint16_t)set.curve_count;
     return ASSET_OK;
 }
 

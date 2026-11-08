@@ -410,15 +410,19 @@ curve_slice(const slice_t* s) {
     FRAME_LAP("r3d.curve.setup");
     target->skip_hidden = false;
     target->writer_count = 0;
-    for (int i = 0; i < s->raster->instance_count; i++) {
-        const r3d_instance_t* instance = &s->raster->instances[i];
-        if (instance->mesh->curve_count > 0) {
-            picture_lens_make(&work->picture, instance->mesh->position_scale, lens);
-            if (instance->model != NULL) {
-                r3d_lens_place(lens, instance->model, instance->mesh->position_scale);
+    target->clear = s->raster->clear;
+    /* Every opaque segment before any faded one, which mixes over what is behind it without hiding it. */
+    for (int covered = 0; covered < 2; covered++) {
+        for (int i = 0; i < s->raster->instance_count; i++) {
+            const r3d_instance_t* instance = &s->raster->instances[i];
+            if (instance->mesh->curve_count > 0) {
+                picture_lens_make(&work->picture, instance->mesh->position_scale, lens);
+                if (instance->model != NULL) {
+                    r3d_lens_place(lens, instance->model, instance->mesh->position_scale);
+                }
+                r3d_lens_set_depth_near(lens, *s->buffers->depth_near);
+                r3d_curve_draw(r3d_lit_mesh_curves(instance->mesh), lens, target, covered != 0);
             }
-            r3d_lens_set_depth_near(lens, *s->buffers->depth_near);
-            r3d_curve_draw(r3d_lit_mesh_curves(instance->mesh), lens, target);
         }
     }
     FRAME_LAP_END();
@@ -537,9 +541,9 @@ cull_slice(void* ctx, int from, int to) {
             level_pick(&job->pick, i, instance, &lens);
             culled[0] = (uint16_t)cull_instance(instance, job->settings.cull, &lens, culled + 1, &mine->stats, block,
                                                 job->settings.depth_fit ? &mine->fit : NULL);
-        }
-        if (instance->mesh->curve_count > 0) {
-            mine->fit.depth_near = job->view->lens.near_z;
+            if (job->settings.depth_fit && instance->mesh->curve_count > 0) {
+                r3d_pipeline_fit_curves(r3d_lit_mesh_curves(instance->mesh), &lens, block, &mine->fit);
+            }
         }
         culled += 1 + (size_t)instance->mesh->cluster_count;
     }
