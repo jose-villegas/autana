@@ -2,13 +2,12 @@
 same picture the board draws, trained with it, and the copy-coverage gate on what the fit made of the rest.
 
 A copy mesh is local and colourless; each copy row places it under its own transform with its own colour
-set (mesh_import.write_shape). The fit trains one shape-local point table per copy mesh, shared by every
-copy of it, and each copy's colour set; copies are never pruned. write_copies rebuilds the copy meshes from
-what the fit made of them.
+set (mesh_import.write_shape). The fit trains each copy's colour set and holds every copy where the start
+placed it: a trained shape moved slabs of the rest over copies it hid. Copies are never pruned. write_copies
+rebuilds the copy meshes with the fit's colours.
 """
 
 import pathlib
-from typing import NamedTuple
 
 import numpy as np
 
@@ -22,24 +21,8 @@ from r3d.lit_mesh import finest, rgb888
 # that hides copies as the rest-only fit did (+0.10, +1.40) fails; a fit that hides fewer lowers them.
 HIDDEN_MEAN_GROWTH = 0.0007
 HIDDEN_WORST_GROWTH = 0.010
-# The copy table's guard: its laplacian drift weighs as the rest's does, and past COPY_GUARD_MARGIN of its local
-# edge scale a point is pulled back with weight COPY_GUARD_WEIGHT. Copy points step at COPY_POSITION_RATE of the
-# rest's rate. Picked on atrium_fitted_full's fabric: a margin of 1 or 20 scored worse than 3.
-COPY_GUARD_WEIGHT = 0.3
-COPY_GUARD_MARGIN = 3.0
-COPY_POSITION_RATE = 1.0
 # The bundle the fit writes its copies into, beside the fitted rest.
 COPIES_FILE = "copies.bundle"
-
-
-class Copies(NamedTuple):
-    """Every copy of a start bundle placed, and the shape-local table its points come from."""
-    mesh: object           # FitMesh: every placed copy, in the rest's units, drawn after the rest
-    local: np.ndarray      # (P, 3) shape-local points, one block per copy mesh, shared by its copies
-    gather: np.ndarray     # (Q,) per point of mesh, its row of local
-    matrix: np.ndarray     # (Q, 3, 3) per point of mesh, its copy's matrix
-    position: np.ndarray   # (Q, 3) per point of mesh, its copy's position
-    edges: np.ndarray      # (E, 2) the copy meshes' edges, into local
 
 
 def _copy_meshes(entries, rows):
@@ -64,68 +47,51 @@ def placed_copies(bundle, flat):
     mesh's finest clusters as the bundle stores them, their own vertices with positions welded, one colour per
     vertex, or per triangle when `flat`. None when the bundle has no copies. No weld by value, so a copy's
     vertices and triangles are the ones a mesh without levels holds."""
-    copies = fit_copies(bundle, flat)
-    return None if copies is None else copies.mesh
-
-
-def fit_copies(bundle, flat):
-    """placed_copies' mesh with the table the fit trains (Copies), or None when the bundle has no copies."""
-    from r3d.appearance_simplify import FitMesh, point_edges
+    from r3d.appearance_simplify import FitMesh
 
     entries, rows = mesh_bundle.decode(pathlib.Path(bundle).read_bytes())
     if not rows:
         return None
     data = {name: blob for name, _kind, blob in entries}
     points, rgb, tris, double, vertex_point = [], [], [], [], []
-    gather, matrix, position, table, edges = [], [], [], [], []
-    point_count = vertex_count = table_count = 0
+    point_count = vertex_count = 0
     for name, mesh, vertices, faces, sided, renumber, local, welded in _copy_meshes(entries, rows):
         encoding, _count, sets = lcol_asset.decode(data[lcol_asset.name_for_mesh(name)])
         if (encoding == lcol_asset.RGB565) != flat:
             raise ValueError(f"copy mesh {name} is {'flat' if encoding == lcol_asset.RGB565 else 'smooth'} "
                              f"and its rest is not")
-        table.append(local)
-        edges.append(point_edges(renumber[mesh.tris[faces]], welded) + table_count)
         for row in (row for row in rows if row["mesh"] == name):
             colours = sets[row["colour_set"]]
-            colours = rgb888(np.frombuffer(colours, "<u2"))[faces] if flat \
-                else np.frombuffer(colours, "u1").reshape(-1, 3)[vertices]
+            colours = rgb888(np.frombuffer(colours, "<u2"))[faces] if flat                 else np.frombuffer(colours, "u1").reshape(-1, 3)[vertices]
             linear, offset = np.asarray(row["matrix"], dtype=np.float64), np.asarray(row["position"], dtype=np.float64)
             points.append(local @ linear.T + offset)
-            gather.append(np.arange(len(local)) + table_count)
-            matrix.append(np.broadcast_to(linear, (len(local), 3, 3)))
-            position.append(np.broadcast_to(offset, (len(local), 3)))
             rgb.append(colours / 255.0)
             tris.append(renumber[mesh.tris[faces]] + vertex_count)
             double.append(sided)
             vertex_point.append(welded + point_count)
             point_count += len(local)
             vertex_count += len(welded)
-        table_count += len(local)
-    mesh = FitMesh(np.concatenate(points), np.concatenate(rgb), np.concatenate(tris), np.concatenate(double), 1,
+    return FitMesh(np.concatenate(points), np.concatenate(rgb), np.concatenate(tris), np.concatenate(double), 1,
                    np.concatenate(vertex_point), flat)
-    return Copies(mesh, np.concatenate(table), np.concatenate(gather), np.concatenate(matrix),
-                  np.concatenate(position), np.concatenate(edges))
 
 
 def write_copies(start, copies, job, out_dir, recorder=None):
-    """The start bundle's copy meshes rebuilt from what the fit made of `copies` (Copies, trained) into
-    out_dir/COPIES_FILE, with the start's copy rows: one mesh per copy mesh from its block of the table, its
-    copies' colour sets from their trained colours."""
+    """The start bundle's copy meshes rebuilt with the colours the fit trained on `copies` (placed_copies'
+    FitMesh) into out_dir/COPIES_FILE, with the start's copy rows: each copy mesh's shape as the start holds it,
+    its copies' colour sets from their trained colours."""
     from r3d.mesh_import import copy_mesh_entries
 
     entries, rows = mesh_bundle.decode(pathlib.Path(start).read_bytes())
-    out, at, colour_at = [], 0, 0
+    out, colour_at = [], 0
     for name, mesh, vertices, faces, sided, renumber, local, welded in _copy_meshes(entries, rows):
         corners = renumber[mesh.tris[faces]]
-        positions = copies.local[at + welded[corners]].reshape(-1, 3)
-        at += len(local)
+        positions = local[welded[corners]].reshape(-1, 3)
         sets = {}
         for row in (row for row in rows if row["mesh"] == name):
-            count = len(faces) if copies.mesh.flat else len(vertices)
-            block = np.clip(np.rint(copies.mesh.rgb[colour_at:colour_at + count] * 255.0), 0, 255)
+            count = len(faces) if copies.flat else len(vertices)
+            block = np.clip(np.rint(copies.rgb[colour_at:colour_at + count] * 255.0), 0, 255)
             colour_at += count
-            sets[row["colour_set"]] = block if copies.mesh.flat else block[corners].reshape(-1, 3)
+            sets[row["colour_set"]] = block if copies.flat else block[corners].reshape(-1, 3)
         keys = np.concatenate([sets[k] for k in sorted(sets)], axis=1)
         out += copy_mesh_entries(job, name, positions, keys, sided, {"position_scale": mesh.position_scale},
                                  recorder)

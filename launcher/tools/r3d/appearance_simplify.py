@@ -37,8 +37,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import log  # noqa: E402
 from r3d.geometry import closest_point_on_triangles, triangle_areas  # noqa: E402
-from r3d.fit.copies import (COPY_GUARD_MARGIN, COPY_GUARD_WEIGHT, COPY_POSITION_RATE, check_hidden_copies,  # noqa: E402
-                            fit_copies, hidden_copy_pixels, joined, write_copies)
+from r3d.fit.copies import (check_hidden_copies, hidden_copy_pixels, joined, placed_copies,  # noqa: E402
+                            write_copies)
 from r3d.fit import gbuffer  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402
 from r3d.lit_mesh import finest_triangles, read_lit_mesh  # noqa: E402
@@ -731,9 +731,8 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     Both learning rates decay tenfold over the run.
     Seam holds pin border points that start near another part to its moving
     triangles by default; `seam_margin=0` turns them off.
-    `copies` (Copies, fit/copies.py) is drawn after the mesh and trained with it: its shape-local table, under
-    the rest's laplacian and an envelope past COPY_GUARD_MARGIN edge scales, and its colours; returned as
-    Copies, or None without copies.
+    `copies` (a FitMesh, fit/copies.py) is drawn after the mesh where it stands and its colours are trained
+    with it; returned with those colours, or None without copies.
     The front and depth terms (fit/gbuffer.py) need the source and `carved`, one flag per source triangle drawn
     as a copy. With them, a pixel where the source shows a copy and the fit draws the rest gives the rest no
     colour gradient: a gap in a copy's outline is not the rest's colour to learn."""
@@ -744,7 +743,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     rng = np.random.default_rng(seed)
     diagonal = float(np.linalg.norm(points0.max(axis=0) - points0.min(axis=0)))
     renderers = {}
-    drawn = joined(mesh, None if copies is None else copies.mesh)
+    drawn = joined(mesh, copies)
 
     def renderer_for(index):
         """The renderer at view `index`'s size: a reference of either
@@ -772,22 +771,13 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
 
     as_tensor = lambda values: torch.as_tensor(np.ascontiguousarray(values), dtype=torch.float32, device=device)
     if copies is not None:
-        local = as_tensor(copies.local).requires_grad_(True)
-        copy_colours = as_tensor(copies.mesh.rgb).requires_grad_(True)
-        copy_gather = torch.as_tensor(copies.gather, device=device)
-        copy_matrix, copy_position = as_tensor(copies.matrix), as_tensor(copies.position)
-        copy_edges = torch.as_tensor(copies.edges, device=device)
-        local_start = local.detach().clone()
-        local_rest = uniform_laplacian(local_start, copy_edges)
-        local_scale = vertex_scale(local_start, copy_edges)
-
-    def placed_copies():
-        return torch.einsum("nij,nj->ni", copy_matrix, local[copy_gather]) + copy_position
+        copy_points = as_tensor(copies.points)
+        copy_colours = as_tensor(copies.rgb).requires_grad_(True)
 
     def with_copies(points, colours):
         if copies is None:
             return points, colours
-        return torch.cat([points, placed_copies()]), torch.cat([colours, copy_colours])
+        return torch.cat([points, copy_points]), torch.cat([colours, copy_colours])
 
     matrices = [torch.as_tensor(view[0], dtype=torch.float32, device=device) for view in views]
     targets = [torch.as_tensor(view[1], device=device) for view in views]
@@ -817,7 +807,6 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
                                       dtype=start.dtype, device=device)
     adam = torch.optim.Adam([{"params": [delta], "lr": lr_position * diagonal}, {"params": [colours], "lr": lr_colour}])
     if copies is not None:
-        adam.add_param_group({"params": [local], "lr": lr_position * diagonal * COPY_POSITION_RATE})
         adam.add_param_group({"params": [copy_colours], "lr": lr_colour})
     schedule = torch.optim.lr_scheduler.LambdaLR(adam, lambda step: 0.1 ** (step / max(steps, 1)))
     history = torch.empty(steps, device=device)
@@ -872,10 +861,6 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
             surface = surface_weight * surface_loss(samples, reference[nearest], face_normals[nearest],
                                                      sample_scale, surface_margin)
         loss = error + laplacian * drift + cost_weight * predicted + surface + front_weight * front + depth_weight * depth
-        if copies is not None:
-            copy_drift = ((uniform_laplacian(local, copy_edges) - local_rest) / local_scale).pow(2).sum(dim=1).mean()
-            envelope = ((local - local_start).norm(dim=1, keepdim=True) / local_scale - COPY_GUARD_MARGIN)
-            loss = loss + laplacian * copy_drift + COPY_GUARD_WEIGHT * envelope.clamp_min(0).pow(2).mean()
         loss.backward()
         adam.step()
         schedule.step()
@@ -894,8 +879,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
                 f"{time.time() - started:.1f} s")
     points = held_positions()
     as_array = lambda values: values.detach().cpu().numpy().astype(np.float64)
-    trained = None if copies is None else copies._replace(
-        mesh=copies.mesh._replace(points=as_array(placed_copies()), rgb=as_array(copy_colours)), local=as_array(local))
+    trained = None if copies is None else copies._replace(rgb=as_array(copy_colours))
     return as_array(points), as_array(colours), history.cpu().tolist(), trained
 
 
@@ -984,10 +968,9 @@ def main(argv=None):
     name = start.stem
     mesh = start_mesh(start)
     log(f"start: {len(mesh.tris)} {'flat' if mesh.flat else 'smooth'} triangles, {len(mesh.points)} positions")
-    copies = None if args.copies is None else fit_copies(args.copies, mesh.flat)
+    copies = None if args.copies is None else placed_copies(args.copies, mesh.flat)
     if copies is not None:
-        log(f"copies: {len(copies.mesh.tris)} triangles drawn and trained with the start, {len(copies.local)} "
-            f"shape-local points")
+        log(f"copies: {len(copies.tris)} triangles drawn with the start, their colours trained")
     pairs = list(zip(args.poses, args.reference))
     shots = [[pair] for pair in pairs] if args.per_shot else [pairs]
     for index, shot in enumerate(shots):
@@ -1022,7 +1005,7 @@ def main(argv=None):
         fitted = fitted._replace(points=points, rgb=rgb)
         kept = np.arange(len(fit_start.tris))
         if args.budget is not None:
-            shown = coverage(joined(fitted, None if trained is None else trained.mesh), coverage_views if args.coverage_poses else views,
+            shown = coverage(joined(fitted, trained), coverage_views if args.coverage_poses else views,
                              coverage_size if args.coverage_poses else size)[:len(fitted.tris)]
             pruned, kept = prune(fitted, shown, args.budget)
             log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: {np.count_nonzero(shown == 0)} never shown")
