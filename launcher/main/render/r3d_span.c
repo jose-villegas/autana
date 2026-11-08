@@ -353,14 +353,14 @@ fill_solid(uint16_t* depth, uint16_t* color, int count, int32_t z, int32_t dz, u
 #endif
 
 #define GOURAUD_VALUES(value, step)                                                                                    \
-    int32_t z = (int32_t)value[0];                                                                                     \
-    int32_t r = (int32_t)value[1];                                                                                     \
-    int32_t g = (int32_t)value[2];                                                                                     \
-    int32_t b = (int32_t)value[3];                                                                                     \
-    const int32_t dz = step[0];                                                                                        \
-    const int32_t dr = step[1];                                                                                        \
-    const int32_t dg = step[2];                                                                                        \
-    const int32_t db = step[3];
+    int32_t z = (int32_t)(value)[0];                                                                                   \
+    int32_t r = (int32_t)(value)[1];                                                                                   \
+    int32_t g = (int32_t)(value)[2];                                                                                   \
+    int32_t b = (int32_t)(value)[3];                                                                                   \
+    const int32_t dz = (step)[0];                                                                                      \
+    const int32_t dr = (step)[1];                                                                                      \
+    const int32_t dg = (step)[2];                                                                                      \
+    const int32_t db = (step)[3];
 
 /* Packing after the depth test bounds live temporaries to the register window.
  * On Xtensa, disabling scheduling saves 2.267 million instructions per pose
@@ -1090,9 +1090,9 @@ set_up_masked(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_
         colour_gradients(&p, a, b, c, g);
     } else {
         const uint32_t rgb = rgb565be_to_rgb888(*face);
-        g->base[1] = (int32_t)((rgb >> (2 * CHAR_BIT)) * R3D_SPAN_COLOR_SCALE);
-        g->base[2] = (int32_t)(((rgb >> CHAR_BIT) & UINT8_MAX) * R3D_SPAN_COLOR_SCALE);
-        g->base[3] = (int32_t)((rgb & UINT8_MAX) * R3D_SPAN_COLOR_SCALE);
+        g->base[1] = (int32_t)((float)(rgb >> (2 * CHAR_BIT)) * R3D_SPAN_COLOR_SCALE);
+        g->base[2] = (int32_t)((float)((rgb >> CHAR_BIT) & UINT8_MAX) * R3D_SPAN_COLOR_SCALE);
+        g->base[3] = (int32_t)((float)(rgb & UINT8_MAX) * R3D_SPAN_COLOR_SCALE);
     }
     f->shading = FILL_GOURAUD;
     g->in_range = false;
