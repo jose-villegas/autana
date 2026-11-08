@@ -77,12 +77,12 @@ def render(renderer, args, sets, assets, out):
 def blend_shares(rows):
     """(blended vertices %, frames with a stacked blend %, stacked vertices %, most stacked px)."""
     total = sum(int(r["vertices_transformed"]) for r in rows)
-    morphed = sum(int(r["vertices_morphed"]) for r in rows)
+    blended = sum(int(r["vertices_blended"]) for r in rows)
     stacked = sum(int(r["vertices_stacked"]) for r in rows)
     frames = sum(int(r["vertices_stacked"]) > 0 for r in rows)
     most = max((int(r["stacked_centipixels"]) for r in rows), default=0) / CENTI
     share = (lambda n: 100.0 * n / total) if total else (lambda n: 0.0)
-    return share(morphed), 100.0 * frames / max(len(rows), 1), share(stacked), most
+    return share(blended), 100.0 * frames / max(len(rows), 1), share(stacked), most
 
 
 def arms(variants, ramps):
@@ -90,7 +90,8 @@ def arms(variants, ramps):
     out = [("switches", SWITCHES, variants[0][1])]
     for ramp in ramps:
         at = "" if ramp is None else f" {ramp:g} px"
-        out += [(f"blend{at}, {name}", blended("on", ramp), assets) for name, assets in variants]
+        out += [(f"blend{at}" + (f", {name}" if len(variants) > 1 else ""), blended("on", ramp), assets)
+                for name, assets in variants]
     return out
 
 

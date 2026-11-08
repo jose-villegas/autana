@@ -9,16 +9,16 @@
 
 #define ALL_PLANES ((1u << PLANE_FRUSTUM_COUNT) - 1u)
 
-/* A leaf's clusters that the levels draw and the planes keep, into `out`;
- * how many. */
+/* A leaf's clusters that the levels draw (both levels of a blending group)
+ * and the planes keep, into `out`; how many. */
 static int
 keep_leaf(const r3d_lit_mesh_t* mesh, const r3d_lit_node_t* node, unsigned mask, const uint32_t* lod_coarse,
-          const planef_t* planes, uint16_t* out, r3d_pipeline_counts_t* counts) {
+          const uint32_t* blending, const planef_t* planes, uint16_t* out, r3d_pipeline_counts_t* counts) {
     int count = 0;
     for (int i = 0; i < node->count; i++) {
         const int c = node->first + i;
         unsigned cluster_mask = mask;
-        if (!r3d_lod_drawn(mesh, c, lod_coarse)) {
+        if (!r3d_lod_drawn_blending(mesh, c, lod_coarse, blending)) {
             continue;
         }
         if (cluster_mask == 0
@@ -35,8 +35,9 @@ keep_leaf(const r3d_lit_mesh_t* mesh, const r3d_lit_node_t* node, unsigned mask,
 /* r3d_pipeline_cull()'s tests without its nearest-first order, which no count
  * depends on; the cull-view suite holds the two to the same clusters. */
 int
-r3d_pipeline_cull_counted(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint32_t* lod_coarse, uint16_t* out,
-                          r3d_pipeline_count_walk_t* walk, r3d_pipeline_counts_t* counts) {
+r3d_pipeline_cull_counted(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint32_t* lod_coarse,
+                          const uint32_t* blending, uint16_t* out, r3d_pipeline_count_walk_t* walk,
+                          r3d_pipeline_counts_t* counts) {
     r3d_lens_frustum(lens, walk->planes);
     int top = 0;
     walk->node[top] = (uint16_t)mesh->lod_finest_root;
@@ -60,12 +61,13 @@ r3d_pipeline_cull_counted(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, co
             }
             continue;
         }
-        count += keep_leaf(mesh, node, mask, lod_coarse, walk->planes, &out[count], counts);
+        count += keep_leaf(mesh, node, mask, lod_coarse, blending, walk->planes, &out[count], counts);
     }
     if (mesh->lod_finest_root != 0 && lod_coarse != NULL) {
         const int before = count;
         int tested = 0;
-        count = r3d_pipeline_cull_cut(mesh, lod_coarse, NULL, walk->planes, (planef_t){0}, out, count, NULL, &tested);
+        count =
+            r3d_pipeline_cull_cut(mesh, lod_coarse, blending, walk->planes, (planef_t){0}, out, count, NULL, &tested);
         counts->clusters_tested += tested;
         for (int i = before; i < count; i++) {
             counts->triangles_submitted += mesh->clusters[out[i]].triangle_count;

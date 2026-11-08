@@ -89,13 +89,17 @@ size_t raster_scratch_bytes(const raster_t* raster);
  * bits, so a second view of the same frame draws the levels this one picked. */
 void raster_pick_levels(const raster_t* raster, const render_view_t* view);
 
-/* The geomorph blend (render/lod/r3d_lod.h) of `instance` drawn through
- * `lens` for `view`: off for an instance that picks no levels, or with the
- * render.lod_morph knob at 0. */
+/* The level blend (render/lod/r3d_lod.h) of `instance` drawn through
+ * `lens` for `view`: off for an instance that picks no levels, or with
+ * render.lod.blend switching. */
 struct r3d_lens;
 struct r3d_lod_morph;
 void raster_lod_morph(const raster_t* raster, const render_view_t* view, const r3d_instance_t* instance,
                       const struct r3d_lens* lens, struct r3d_lod_morph* morph);
+
+/* The blending bits whose groups `instance` dithers, drawing both levels,
+ * or NULL where it draws one level. */
+const uint32_t* raster_lod_dithering(const raster_t* raster, const r3d_instance_t* instance);
 
 /* Draws every instance through the picture basis and fit in `view`. */
 raster_stats_t raster_draw(const raster_t* raster, const render_view_t* view);

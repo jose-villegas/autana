@@ -84,7 +84,7 @@ report_pose(const char* scene, const char* bake, uint32_t t_ms, variant_t varian
     r3d_pipeline_counts_t n = {0};
     r3d_pipeline_count_walk_t* walk = memory_alloc(sizeof(*walk), MEMORY_APP);
     TEST_ASSERT_NOT_NULL(walk);
-    TEST_ASSERT_EQUAL_INT(visible, r3d_pipeline_cull_counted(mesh, lens, NULL, b.culled + 1, walk, &n));
+    TEST_ASSERT_EQUAL_INT(visible, r3d_pipeline_cull_counted(mesh, lens, NULL, NULL, b.culled + 1, walk, &n));
     memory_free(walk);
     r3d_pipeline_transform(mesh, lens, b.culled + 1, visible, b.cs, b.rows, false);
     r3d_pipeline_count_triangles(mesh, lens, b.culled + 1, visible, b.cs, &n, NULL);
