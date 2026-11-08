@@ -44,7 +44,8 @@ def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, t
                           kind='mesh_renderer', animator=None)
     renderer = SimpleNamespace(face_samples=(1, 1, 1, None) if flat else None, bake=True, fit=fit)
     job = SimpleNamespace(object=obj, renderer=renderer, asset_name='hall.atrium',
-                          settings=SimpleNamespace(meshlet_triangles=MESHLET_TRIANGLES, double_sided=[], lod=lod))
+                          settings=SimpleNamespace(meshlet_triangles=MESHLET_TRIANGLES, double_sided=[], lod=lod,
+                                                    fit=SimpleNamespace(probes=None, budget=None)))
     scene = SimpleNamespace(objects=[obj], renderers=[job], lights=[])
     with mock.patch.object(mesh_import, 'flat_colours', side_effect=[np.full((1, 3), value) for value in (80, 80, 81, 82)]):
         mesh_import.write_baked(job, scene, pathlib.Path(directory), name or job.asset_name, geometry=geometry)
@@ -244,6 +245,29 @@ class MeshBundleTests(unittest.TestCase):
             before, after = parse_pack(data), parse_pack(target.read_bytes())
             self.assertNotEqual(before.pop(job.asset_name), after.pop(job.asset_name))
             self.assertEqual(before, after)
+
+    def test_a_path_less_fit_checks_its_copies_over_the_probes_held_out_faces(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work = pathlib.Path(directory)
+            data, _, _, job, scene = bundle_fixture(directory)
+            start = work / (job.asset_name + '.start' + mesh_bundle.SUFFIX)
+            start.write_bytes(data)
+            (work / 'probes_held_out.txt').write_text('')
+            job.renderer.variant = SimpleNamespace(name='fixture')
+            job.renderer.fit = SimpleNamespace(steps=1, batch=1, laplacian=0, normal_weight=0,
+                                               surface_weight=0, surface_margin=0, budget=1)
+            asked = []
+
+            def fit_main(args):
+                asked.append(args[args.index('--copy-poses') + 1])
+                raw = pathlib.Path(args[args.index('--start') + 1])
+                out = pathlib.Path(args[args.index('--out') + 1])
+                out.mkdir()
+                (out / raw.name).write_bytes(raw.read_bytes())
+            with mock.patch.dict(sys.modules, {'r3d.appearance_simplify': SimpleNamespace(main=fit_main)}):
+                stage.fit(work / 'scene.scene.toml', scene, job, work, start=start,
+                          target=work / (job.asset_name + mesh_bundle.SUFFIX))
+            self.assertEqual(asked, [str(work / 'probes_held_out.txt')], "a camera with no path had no copy gate")
 
 
 class FitCopiesTests(unittest.TestCase):

@@ -58,7 +58,10 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
                 "--object", job.object.name, "--surface-weight", str(recipe.surface_weight),
                 "--surface-margin", str(recipe.surface_margin)]
     if copies:
-        command += ["--copies", str(bundle), "--copy-poses", str(inputs / PATH_HELD_OUT[0]),
+        # The copy gate checks the path's held-out views, or the probes' when the camera has no path.
+        path_less = not (inputs / PATH_HELD_OUT[0]).is_file() and (inputs / PROBE_HELD_OUT[0]).is_file()
+        copy_poses = inputs / (PROBE_HELD_OUT if path_less else PATH_HELD_OUT)[0]
+        command += ["--copies", str(bundle), "--copy-poses", str(copy_poses),
                     "--front-weight", str(FRONT_WEIGHT), "--depth-weight", str(DEPTH_WEIGHT)]
     if cost_weight:
         command += ["--cost-model", str(pathlib.Path(__file__).parents[1] / "board_cost_weights.txt"),
