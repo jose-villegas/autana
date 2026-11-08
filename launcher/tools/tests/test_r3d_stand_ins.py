@@ -106,13 +106,47 @@ def test_shared_copies():
     rule = dict(triangles=BUDGET)
     shapes = []
     with patch.object(ray_query, 'VARIANT', 'scalar_rgb'):
-        emitted, consumed, rows = _shared_passes(pos, rgb, tris, labels, owners, {0: rule, 1: rule},
+        emitted, consumed, rows, fallen = _shared_passes(pos, rgb, tris, labels, owners, {0: rule, 1: rule},
             {0: 'free', 1: 'free'}, [(owners == i, BUDGET) for i in range(2)],
             np.zeros(len(pos), dtype=bool), 1., PERMISSIVE, None, shapes)
     assert not emitted
     assert consumed == {0, 1}
+    assert not fallen
     assert rows[0]['stand_in'] == 'plane'
     assert rows[0]['stand_ins'][1]['chosen']
     copies = shapes[0]['copies']
     np.testing.assert_allclose(copies[1][1][0] - copies[0][1][0], np.broadcast_to(offset, copies[0][1][0].shape), atol=1e-6)
     assert len(copies[0][1][2]) <= BUDGET
+
+
+
+def lamp():
+    """A small lamp: a closed post and a closed head, apart."""
+    post, head = box([0.1, 0.1, 1.0]), box([0.4, 0.4, 0.2])
+    head.apply_translation([1.0, 0.0, 1.0])
+    mesh = concatenate([post, head])
+    return mesh.vertices, np.full_like(mesh.vertices, 180.), mesh.faces, np.zeros(len(mesh.faces), dtype=int)
+
+
+def test_a_shape_every_candidate_empties_keeps_its_card():
+    # The simplifier collapses some small non-manifold shapes to nothing at a few triangles (Bistro's street
+    # lights at four); here it is made to.
+    data = lamp()
+    budget = len(stand_ins.RECTANGLE_TRIS)
+    empty = lambda *a: stand_ins.StandIn('regular', np.zeros((0, 3)), np.zeros((0, 3)), np.zeros((0, 3), dtype=int),
+                                         np.zeros(0, dtype=int), np.zeros(0, dtype=int))
+    with patch.object(stand_ins, 'CANDIDATES', (empty, stand_ins.plane)):
+        result, rows = choose(data, budget)
+    assert result.kind == 'card'
+    assert len(result.tris) == budget
+    source = np.asarray(data[0])
+    assert np.ptp(result.positions, axis=0).max() > 0.5 * np.ptp(source, axis=0).max(), "it spans the lamp"
+    assert rows == [dict(kind='card', triangles=budget, error=None, chosen=True)]
+
+
+def test_a_card_per_part_while_the_budget_holds_them():
+    data = lamp()
+    rectangle = len(stand_ins.RECTANGLE_TRIS)
+    assert len(stand_ins.card(*data, 2 * rectangle, WEIGHT, PERMISSIVE, None).tris) == 2 * rectangle
+    assert len(stand_ins.card(*data, 2 * rectangle - 1, WEIGHT, PERMISSIVE, None).tris) == rectangle
+    assert stand_ins.card(*data, rectangle - 1, WEIGHT, PERMISSIVE, None) is None

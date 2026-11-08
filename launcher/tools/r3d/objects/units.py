@@ -20,6 +20,7 @@ from scipy.spatial import cKDTree
 
 from r3d.objects.instances import SourceObject, match_instances
 from r3d.objects.object_error import part_labels, part_names
+from r3d.objects.stand_ins import RECTANGLE_TRIS
 from r3d.objects.surface_match import SURFACE_TOLERANCE, merge
 
 # A shape is carved when it has at least this many copies.
@@ -28,8 +29,9 @@ MIN_COPIES = 3
 UNIT_REACH = 2.0
 # A part joins a unit when it sits at its spot in at least this share of the anchor's copies.
 UNIT_SUPPORT = 0.6
-# A copy whose derived budget is below this many triangles stays in the rest: too few to keep its shape.
-MIN_COPY_TRIANGLES = 4
+# A copy whose derived budget is below this many triangles stays in the rest: too few for its card, the
+# least a carved shape keeps (stand_ins.card).
+MIN_COPY_TRIANGLES = len(RECTANGLE_TRIS)
 
 
 @dataclass(frozen=True)
