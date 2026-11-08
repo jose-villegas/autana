@@ -27,14 +27,22 @@
 #define R3D_LOD_WORD_BITS           32
 /* The words of coarse bits a mesh's groups need. */
 #define R3D_LOD_WORDS(groups)       (((groups) + R3D_LOD_WORD_BITS - 1) / R3D_LOD_WORD_BITS)
-/* An instance's level state: its coarse bits, then as many arrived bits
- * (r3d_lod_pick()) for the blend. */
-#define R3D_LOD_STATE_WORDS(groups) (2 * R3D_LOD_WORDS(groups))
+/* An instance's level state, R3D_LOD_STATE_SETS sets of bits: its coarse
+ * bits, then the blend's arrived and blending bits (r3d_lod_pick()). */
+#define R3D_LOD_STATE_SETS          3
+#define R3D_LOD_STATE_WORDS(groups) (R3D_LOD_STATE_SETS * R3D_LOD_WORDS(groups))
 
-/* The arrived bits of the state whose coarse bits are `coarse`. */
+/* The arrived bits of the state whose coarse bits are `coarse`; the
+ * blending bits follow them (r3d_lod_blending()). */
 static inline uint32_t*
 r3d_lod_arrived(uint32_t* coarse, int groups) {
     return coarse + R3D_LOD_WORDS(groups);
+}
+
+/* The blending bits after `arrived`: groups whose blend weighs more than none. */
+static inline const uint32_t*
+r3d_lod_blending(const uint32_t* arrived, int groups) {
+    return arrived + R3D_LOD_WORDS(groups);
 }
 
 static inline bool
@@ -98,6 +106,7 @@ typedef struct r3d_lod_morph {
      * arrived group ramps from leave, where it came through, any other from
      * enter, where it turns coarse. Both weigh none where the bit changes. */
     const uint32_t* arrived;
+    const uint32_t* blending;  /* after `arrived`, or NULL: a cluster under a group without one weighs none */
     float covered, cover_ramp; /* pixels of radius: whole at covered, none at covered + cover_ramp */
     bool enabled;
 } r3d_lod_morph_t;
@@ -124,8 +133,8 @@ float r3d_lod_morph_stacked_px(const r3d_lod_morph_t* morph, const r3d_lit_mesh_
  * frame through `lens`: coarse where a group's error projects within
  * `lod.tolerance_px` (± `lod.hysteresis_px` by the bit's last state) and its
  * radius covers at most `lod.coverage_permille` of the picture's height.
- * Parents never project smaller than their sources and a closing pass sets
- * coarse what rounding left fine, so the cut never cracks. `arrived`, as many
- * words or NULL, keeps the bits the blend reads. */
+ * Parents never project smaller than sources and a closing pass sets
+ * coarse what rounding left fine, so the cut never cracks. `arrived`, twice
+ * as many words or NULL, keeps the blend's arrived and blending bits. */
 void r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod,
                   uint32_t* coarse, uint32_t* arrived);

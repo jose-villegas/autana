@@ -154,6 +154,7 @@ r3d_lod_morph_init(r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, const r3d
         .enter = (lod->tolerance_px - lod->hysteresis_px) * pixels_per_output_pixel,
         .leave = (lod->tolerance_px + lod->hysteresis_px) * pixels_per_output_pixel,
         .arrived = arrived,
+        .blending = arrived != NULL ? r3d_lod_blending(arrived, mesh->lod_group_count) : NULL,
         .ramp = lod->blend_px * pixels_per_output_pixel,
         .covered = covered,
         .cover_ramp = covered * R3D_LOD_MORPH_COVER_RAMP,
@@ -201,7 +202,10 @@ r3d_lod_morph_weight(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, i
         return 0;
     }
     const uint16_t parent = mesh->cluster_lod[c].parent;
-    return parent == R3D_LOD_NONE ? 0 : group_morph_weight(morph, mesh, parent);
+    if (parent == R3D_LOD_NONE || (morph->blending != NULL && !r3d_lod_coarse(morph->blending, parent))) {
+        return 0;
+    }
+    return group_morph_weight(morph, mesh, parent);
 }
 
 float
@@ -225,17 +229,38 @@ r3d_lod_morph_stacked_px(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mes
     return most;
 }
 
+static void
+set_bit(uint32_t* bits, int g, bool on) {
+    const uint32_t bit = 1U << (g % R3D_LOD_WORD_BITS);
+    bits[g / R3D_LOD_WORD_BITS] = on ? bits[g / R3D_LOD_WORD_BITS] | bit : bits[g / R3D_LOD_WORD_BITS] & ~bit;
+}
+
+/* Whether fine `group`'s blend weighs more than none, its error ramping from
+ * `whole`: both its error and its radius inside their ramps, by
+ * LOD_BOUND_SLACK more so the blend's own measure never finds one outside. */
+static bool
+blends(const reach_t* at, const r3d_lit_lod_group_t* group, float scale, float covered,
+       const render_lod_settings_t* lod, float whole) {
+    const float slack = 1.0F + LOD_BOUND_SLACK;
+    return within(at, (float)group->error * scale, (whole + lod->blend_px) * slack)
+           && within(at, (float)group->bounds.radius * scale, covered * (1.0F + R3D_LOD_MORPH_COVER_RAMP) * slack);
+}
+
 void
 r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod, uint32_t* coarse,
              uint32_t* arrived) {
     const lod_view_t v = lod_view(lens);
     const float enter = lod->tolerance_px - lod->hysteresis_px;
     const float leave = lod->tolerance_px + lod->hysteresis_px;
-    if (none_can_coarsen(mesh, &v, lens->project.near_z, leave)) {
-        for (int w = 0; arrived != NULL && w < R3D_LOD_WORDS(mesh->lod_group_count); w++) {
+    const int words = R3D_LOD_WORDS(mesh->lod_group_count);
+    uint32_t* blending = arrived != NULL ? arrived + words : NULL;
+    /* With a blend, a group weighs something until its error is a ramp past leave. */
+    if (none_can_coarsen(mesh, &v, lens->project.near_z, leave + (arrived != NULL ? lod->blend_px : 0.0F))) {
+        for (int w = 0; arrived != NULL && w < words; w++) {
             arrived[w] |= coarse[w];
+            blending[w] = 0;
         }
-        memset(coarse, 0, R3D_LOD_WORDS(mesh->lod_group_count) * sizeof *coarse);
+        memset(coarse, 0, words * sizeof *coarse);
         return;
     }
     /* Per group, in the form within() takes: its error and its radius, each
@@ -263,6 +288,11 @@ r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lo
             } else if (arrived != NULL && !within(&at, error, leave + lod->blend_px)) {
                 arrived[g / R3D_LOD_WORD_BITS] &= ~bit;
             }
+            if (blending != NULL) {
+                set_bit(blending, g,
+                        blends(&at, group, scale, covered, lod,
+                               (arrived[g / R3D_LOD_WORD_BITS] & bit) != 0 ? leave : enter));
+            }
         }
     }
     /* Nothing coarse closes to nothing. */
@@ -270,7 +300,8 @@ r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lo
         close_coarse(mesh, coarse);
     }
     /* A coarse group has not arrived, closed coarse or not. */
-    for (int w = 0; arrived != NULL && w < R3D_LOD_WORDS(mesh->lod_group_count); w++) {
+    for (int w = 0; arrived != NULL && w < words; w++) {
         arrived[w] &= ~coarse[w];
+        blending[w] &= ~coarse[w];
     }
 }

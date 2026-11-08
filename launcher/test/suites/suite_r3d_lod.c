@@ -780,6 +780,9 @@ test_there_is_no_morph_weight_without_a_parent_without_morph_data_or_when_disabl
     TEST_ASSERT_EQUAL_INT(0, weight_at(mesh, eye, WEIGHT_CLUSTER, true));
 }
 
+/* The arrived bits, then the blending bits, as the pick keeps them. */
+enum { BLEND_WORDS = (R3D_LOD_STATE_SETS - 1) * R3D_LOD_WORDS(GROUPS), BLENDING_WORD = R3D_LOD_WORDS(GROUPS) };
+
 static float
 enter_px(void) {
     return TOLERANCE - HYSTERESIS;
@@ -804,7 +807,7 @@ static void
 test_a_group_turning_fine_has_its_arrived_bit_set(void) {
     const r3d_lit_mesh_t* mesh = &morphing_levels()->mesh;
     uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
-    uint32_t arrived[R3D_LOD_WORDS(GROUPS)] = {0};
+    uint32_t arrived[BLEND_WORDS] = {0};
     pick_at_px(mesh, enter_px() * SHARE_HALF, coarse, arrived);
     TEST_ASSERT_TRUE(r3d_lod_coarse(coarse, WEIGHT_GROUP));
     TEST_ASSERT_FALSE(r3d_lod_coarse(arrived, WEIGHT_GROUP));
@@ -817,7 +820,7 @@ static void
 test_the_arrived_bit_clears_once_the_error_projects_past_leave_and_the_morph_ramp(void) {
     const r3d_lit_mesh_t* mesh = &morphing_levels()->mesh;
     uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
-    uint32_t arrived[R3D_LOD_WORDS(GROUPS)] = {0};
+    uint32_t arrived[BLEND_WORDS] = {0};
     pick_at_px(mesh, enter_px() * SHARE_HALF, coarse, arrived);
     pick_at_px(mesh, leave_px() + (LOD.blend_px * SHARE_HALF), coarse, arrived);
     TEST_ASSERT_TRUE(r3d_lod_coarse(arrived, WEIGHT_GROUP));
@@ -832,7 +835,7 @@ static void
 test_a_coarse_group_never_has_its_arrived_bit(void) {
     const r3d_lit_mesh_t* mesh = &morphing_levels()->mesh;
     uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
-    uint32_t arrived[R3D_LOD_WORDS(GROUPS)] = {0};
+    uint32_t arrived[BLEND_WORDS] = {0};
     arrived[0] = 1U << WEIGHT_GROUP;
     pick_at_px(mesh, enter_px() * SHARE_HALF, coarse, arrived);
     TEST_ASSERT_TRUE(r3d_lod_coarse(coarse, WEIGHT_GROUP));
@@ -842,8 +845,11 @@ test_a_coarse_group_never_has_its_arrived_bit(void) {
 static void
 test_an_arrived_group_blends_whole_up_to_leave_and_any_other_from_enter(void) {
     const r3d_lit_mesh_t* mesh = &morphing_levels()->mesh;
-    const uint32_t arrived[R3D_LOD_WORDS(GROUPS)] = {1U << WEIGHT_GROUP};
-    const uint32_t none[R3D_LOD_WORDS(GROUPS)] = {0};
+    uint32_t arrived[BLEND_WORDS] = {0};
+    uint32_t none[BLEND_WORDS] = {0};
+    arrived[0] = 1U << WEIGHT_GROUP;
+    arrived[BLENDING_WORD] = 1U << WEIGHT_GROUP;
+    none[BLENDING_WORD] = 1U << WEIGHT_GROUP;
     TEST_ASSERT_TRUE(leave_px() - enter_px() > LOD.blend_px);
     TEST_ASSERT_EQUAL_INT(R3D_LOD_MORPH_ONE, weight_arrived_at(mesh, enter_px(), arrived));
     TEST_ASSERT_EQUAL_INT(R3D_LOD_MORPH_ONE, weight_arrived_at(mesh, enter_px(), none));
@@ -854,6 +860,46 @@ test_an_arrived_group_blends_whole_up_to_leave_and_any_other_from_enter(void) {
     TEST_ASSERT_EQUAL_INT(R3D_LOD_MORPH_ONE, weight_arrived_at(mesh, half, arrived));
     const float past = leave_px() + (LOD.blend_px * SHARE_HALF);
     TEST_ASSERT_INT_WITHIN(WEIGHT_SLACK, ramp_weight_at(SHARE_HALF), weight_arrived_at(mesh, past, arrived));
+}
+
+/* Along a walk in and back out over the switches, the pick's blending bit is
+ * set wherever the blend, measured without it, weighs more than none, and
+ * clear on a coarse group or one whose error projects past its ramp. */
+static void
+test_the_blending_bit_is_set_where_the_blend_weighs_something(void) {
+    const r3d_lit_mesh_t* mesh = &morphing_levels()->mesh;
+    uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
+    uint32_t arrived[BLEND_WORDS] = {0};
+
+    enum { STEPS = 64 };
+
+    const float far = leave_px() + (LOD.blend_px * (1.0F + PAST_RAMP));
+    for (int i = 0; i <= 2 * STEPS; i++) {
+        const float share = (float)(i <= STEPS ? i : (2 * STEPS) - i) / (float)STEPS;
+        const float px = far - (share * (far - (enter_px() * SHARE_HALF)));
+        pick_at_px(mesh, px, coarse, arrived);
+        uint32_t unread[BLEND_WORDS];
+        memcpy(unread, arrived, sizeof unread);
+        memset(&unread[BLENDING_WORD], 0xFF, sizeof(uint32_t) * R3D_LOD_WORDS(GROUPS));
+        const int weight = r3d_lod_coarse(coarse, WEIGHT_GROUP) ? 0 : weight_arrived_at(mesh, px, unread);
+        const bool blending = r3d_lod_coarse(&arrived[BLENDING_WORD], WEIGHT_GROUP);
+        const float whole = r3d_lod_coarse(arrived, WEIGHT_GROUP) ? leave_px() : enter_px();
+        if (weight > 0) {
+            TEST_ASSERT_TRUE(blending);
+        } else if (r3d_lod_coarse(coarse, WEIGHT_GROUP) || px > whole + (LOD.blend_px * (1.0F + PAST_RAMP))) {
+            TEST_ASSERT_FALSE(blending);
+        }
+    }
+}
+
+/* Without its blending bit a group's clusters weigh none, its error inside the ramp or not. */
+static void
+test_a_group_without_its_blending_bit_weighs_none(void) {
+    const r3d_lit_mesh_t* mesh = &morphing_levels()->mesh;
+    uint32_t arrived[BLEND_WORDS] = {0};
+    TEST_ASSERT_EQUAL_INT(0, weight_arrived_at(mesh, enter_px(), arrived));
+    arrived[BLENDING_WORD] = 1U << WEIGHT_GROUP;
+    TEST_ASSERT_EQUAL_INT(R3D_LOD_MORPH_ONE, weight_arrived_at(mesh, enter_px(), arrived));
 }
 
 static void
@@ -1088,6 +1134,8 @@ suite_r3d_lod(void) {
     RUN_TEST(test_the_arrived_bit_clears_once_the_error_projects_past_leave_and_the_morph_ramp);
     RUN_TEST(test_a_coarse_group_never_has_its_arrived_bit);
     RUN_TEST(test_an_arrived_group_blends_whole_up_to_leave_and_any_other_from_enter);
+    RUN_TEST(test_the_blending_bit_is_set_where_the_blend_weighs_something);
+    RUN_TEST(test_a_group_without_its_blending_bit_weighs_none);
     RUN_TEST(test_without_arrived_bits_every_group_blends_whole_up_to_leave);
     RUN_TEST(test_a_cluster_transformed_with_the_whole_weight_lands_on_its_targets);
     RUN_TEST(test_a_cluster_transformed_with_no_weight_matches_the_plain_transform_exactly);
