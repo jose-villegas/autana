@@ -378,12 +378,20 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const mat4
         (int16_t)x0, (int16_t)y0, (int16_t)x1, (int16_t)y1, boxed ? r3d_span_depth_limit(iz) : 0, unbounded, 0};
 }
 
-/* A position blended `blend` of the way to its morph target: `blend` is
- * the weight over R3D_LOD_MORPH_ONE times the cluster's 1 << shift. */
+/* Cluster `cluster`'s step toward its morph targets at `weight`, in
+ * R3D_LOD_MORPH_ONEths of a delta tick: the weight times its 1 << shift. */
+static inline int32_t
+morph_step(const r3d_lit_mesh_t* mesh, int cluster, int weight) {
+    return (int32_t)weight << mesh->morph_shift[cluster];
+}
+
+/* A position `step` of the way to its morph target, in fixed point:
+ * R3D_LOD_MORPH_ONE units to a tick, so the lerp is integer. */
 static inline __attribute__((always_inline)) vec3f_t
-morphed_position(const int16_t p[3], const int8_t d[3], float blend) {
-    return (vec3f_t){(float)p[0] + ((float)d[0] * blend), (float)p[1] + ((float)d[1] * blend),
-                     (float)p[2] + ((float)d[2] * blend)};
+morphed_position(const int16_t p[3], const int8_t d[3], int32_t step) {
+    return (vec3f_t){(float)((p[0] * R3D_LOD_MORPH_ONE) + (d[0] * step)),
+                     (float)((p[1] * R3D_LOD_MORPH_ONE) + (d[1] * step)),
+                     (float)((p[2] * R3D_LOD_MORPH_ONE) + (d[2] * step))};
 }
 
 /* transform_cluster() for a cluster blending toward its parent's coarse
@@ -392,7 +400,9 @@ static __attribute__((noinline)) r3d_pipeline_rows_t
 transform_morphed(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const mat4f_t* screen, int cluster, int weight,
                   r3d_pipeline_vertex_t* cs, uint32_t lo_bits, uint32_t hi_bits, bool boxed) {
     const r3d_lit_cluster_t* c = &mesh->clusters[cluster];
-    const float blend = (float)weight * (float)(1U << mesh->morph_shift[cluster]) / (float)R3D_LOD_MORPH_ONE;
+    const int32_t step = morph_step(mesh, cluster, weight);
+    const float unit = 1.0F / (float)R3D_LOD_MORPH_ONE;
+    const mat4f_t fixed = mat4f_scale_columns(*screen, (vec3f_t){unit, unit, unit});
     int x0 = INT16_MAX;
     int x1 = INT16_MIN;
     int y0 = INT16_MAX;
@@ -400,7 +410,7 @@ transform_morphed(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const mat4
     float iz = 0.0F;
     bool unbounded = false;
     for (int v = c->vertex_first; v < c->vertex_first + c->vertex_count; v++) {
-        const vec3f_t l = mat4f_apply(screen, morphed_position(mesh->positions[v], mesh->morph_delta[v], blend));
+        const vec3f_t l = mat4f_apply(&fixed, morphed_position(mesh->positions[v], mesh->morph_delta[v], step));
         const float r = mathf_recip(l.z);
         const transform_projection_t p = transform_project(lens, l, r, lo_bits, hi_bits);
         transform_store(lens, &cs[v], l, p.b, p.inside_x, p.inside_y, p.iz, &y0, &y1, &unbounded, boxed, &x0, &x1, &iz);
@@ -689,15 +699,15 @@ draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
              bool double_sided, const r3d_span_target_t* target, r3d_pipeline_work_t* work, int cluster, int weight) {
     FRAME_LAP("r3d.draw.clip");
     clip_vertex_t* in = work->clip.poly;
-    const float blend =
-        weight != 0 ? (float)weight * (float)(1U << mesh->morph_shift[cluster]) / (float)R3D_LOD_MORPH_ONE : 0.0F;
+    const int32_t step = weight != 0 ? morph_step(mesh, cluster, weight) : 0;
+    const float unit = 1.0F / (float)R3D_LOD_MORPH_ONE;
     for (int k = 0; k < 3; k++) {
         uint8_t rgb[3] = {0, 0, 0};
         if (face_color == NULL) {
             morphed_colour(mesh, tri[k], weight, rgb);
         }
         const int16_t* at = mesh->positions[tri[k]];
-        const vec3f_t p = weight != 0 ? morphed_position(at, mesh->morph_delta[tri[k]], blend)
+        const vec3f_t p = weight != 0 ? vec3f_scale(morphed_position(at, mesh->morph_delta[tri[k]], step), unit)
                                       : (vec3f_t){(float)at[0], (float)at[1], (float)at[2]};
         const vec3f_t l = mat4f_apply(&lens->m, p);
         in[k] = (clip_vertex_t){l.x, l.y, l.z, rgb[0], rgb[1], rgb[2]};
