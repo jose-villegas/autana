@@ -200,8 +200,7 @@ def quantised_groups(sphere, error, sources):
     for g in range(len(sphere)):
         centre = np.rint(sphere[g, :3]).astype(np.int64)
         shift = np.linalg.norm(sphere[g, :3] - centre)
-        # The push moves a vertex by at most the error, outward of the sphere clusterlod measured.
-        radius = int(np.ceil(sphere[g, 3] + shift + error[g]))
+        radius = int(np.ceil(sphere[g, 3] + shift))
         err = int(np.ceil(error[g]))
         for s in sources[g]:
             kept[g] &= kept[s]
@@ -316,7 +315,8 @@ def side_levels(levels, welded, wt, tris, face, member, side, group_base):
             at += len(corner_ids[c])
             coarse.append({"double": side, "corners": drawn[c], "own": group_id(g),
                            "parent": group_id(levels.cluster_group[c])})
-        spheres.append(levels.own_sphere[outputs[0]])
+        # The push moves a vertex by at most clusterlod's own error, outward of the sphere it measured.
+        spheres.append(levels.own_sphere[outputs[0]] + (0, 0, 0, levels.own_error[outputs[0]]))
         errors.append(error)
         sources.append(sorted({group_id(levels.cluster_refined[c]) for c in inputs} - {LOD_NONE}))
     return entries, coarse, (spheres, errors, sources)
