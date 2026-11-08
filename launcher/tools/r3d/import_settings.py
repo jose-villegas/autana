@@ -22,6 +22,9 @@ from gltf.gltf_read import ASSET_SUFFIXES
 
 U16_MAX = (1 << 16) - 1
 MESHLET_TRIANGLES = 32
+# A probe face's square size in pixels when geometry.probes names none.
+PROBE_FACE = 192
+BUDGET_POLICIES = ("constant", "settle")
 # A baked mesh carries its levels of detail (docs/plans/Cluster-LOD.md) unless its geometry says lod = false.
 LOD = True
 SCENE_OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_conventions.h"
@@ -158,11 +161,6 @@ FIT_GROUPS = {
     "optimise": ("steps", "batch", "laplacian", "normal_weight", "surface_weight", "surface_margin"),
 }
 FIT_KEYS = tuple(key for keys in FIT_GROUPS.values() for key in keys)
-# Optional: absent, its attribute is None, which a fit's bake key leaves out.
-FIT_PROBES_KEYS = ("spacing", "face")
-# A table budget names a policy; an integer is the constant budget.
-BUDGET_POLICIES = ("settle",)
-SETTLE_KEYS = ("policy", "max", "step", "settle")
 
 
 def load_fit(value, variant, where):
@@ -177,8 +175,7 @@ def load_fit(value, variant, where):
         for key in keys:
             if key in value:
                 raise SettingsError(f"{where}.{key} moved to {where}.{group}.{key}")
-    check_keys(value, FIT_GROUPS, where, optional=("probes",))
-    probes = value.get("probes")
+    check_keys(value, FIT_GROUPS, where)
     values = {}
     for group, keys in FIT_GROUPS.items():
         table = value[group]
@@ -186,11 +183,9 @@ def load_fit(value, variant, where):
         values.update(table)
     if variant.triangles is None:
         raise SettingsError(f"{where} needs the variant's triangles, the budget its start is simplified to")
-    fit = SimpleNamespace(**{key: values[key] for key in FIT_KEYS}, settle=None, probes=None)
-    if isinstance(values["budget"], dict):
-        fit.budget, fit.settle = settle_budget(values["budget"], f"{where}.prune.budget")
+    fit = SimpleNamespace(**{key: values[key] for key in FIT_KEYS})
     for key in ("budget", "train_every_ms", "held_out_every_ms", "coverage_every_ms", "steps", "batch"):
-        setattr(fit, key, count(getattr(fit, key), f"{where}.{key}"))
+        setattr(fit, key, count(values[key], f"{where}.{key}"))
     fit.size = pixel_size(values["size"], f"{where}.poses.size")
     fit.laplacian = number(values["laplacian"], f"{where}.laplacian")
     fit.normal_weight = number(values["normal_weight"], f"{where}.normal_weight")
@@ -201,26 +196,7 @@ def load_fit(value, variant, where):
         setattr(fit, key, value)
     if fit.budget > variant.triangles:
         raise SettingsError(f"{where}.budget cannot exceed the variant's triangles")
-    if probes is not None:
-        check_keys(probes, FIT_PROBES_KEYS, f"{where}.probes")
-        fit.probes = SimpleNamespace(spacing=number(probes["spacing"], f"{where}.probes.spacing"),
-                                     face=count(probes["face"], f"{where}.probes.face"))
-        if fit.probes.spacing <= 0:
-            raise SettingsError(f"{where}.probes.spacing must be positive")
     return fit
-
-
-def settle_budget(table, where):
-    """(max, settle): a budget the fit settles on, from `step` triangles up to `max` in `step`s, stopping
-    at the first step whose held-out holes fall by less than the `settle` share of the step before."""
-    check_keys(table, SETTLE_KEYS, where)
-    policy = text(table["policy"], f"{where}.policy")
-    if policy not in BUDGET_POLICIES:
-        raise SettingsError(f"{where}.policy must be one of {', '.join(BUDGET_POLICIES)}")
-    settle = SimpleNamespace(step=count(table["step"], f"{where}.step"), share=number(table["settle"], f"{where}.settle"))
-    if not 0 <= settle.share < 1:
-        raise SettingsError(f"{where}.settle must be at least 0 and below 1")
-    return count(table["max"], f"{where}.max"), settle
 
 
 def load_variant(value, steps, where):
@@ -295,7 +271,8 @@ def load_process(process, steps):
 
 def load_geometry(table, steps):
     """The optional steps that decide which source triangles remain."""
-    check_keys(table, (), "geometry", optional=("alpha_mask", "thin", "simplify", "meshlet_triangles", "lod"))
+    check_keys(table, (), "geometry", optional=("alpha_mask", "thin", "simplify", "meshlet_triangles", "lod", "probes",
+                                                "budget"))
     steps.meshlet_triangles = count(table.get("meshlet_triangles", MESHLET_TRIANGLES), "geometry.meshlet_triangles")
     steps.lod = boolean(table.get("lod", LOD), "geometry.lod")
     if not 4 <= steps.meshlet_triangles <= 256:
@@ -320,9 +297,45 @@ def load_geometry(table, steps):
             colour_deviation=number(simplify["colour_deviation"], "geometry.simplify.colour_deviation"))
         if steps.simplify.colour_deviation <= 0:
             raise SettingsError("geometry.simplify.colour_deviation must be above 0")
+    steps.fit = SimpleNamespace(probes=load_probes(table["probes"]) if "probes" in table else None,
+                                budget=load_budget(table["budget"]) if "budget" in table else None)
+    if (steps.fit.probes or steps.fit.budget) and not steps.simplify:
+        raise SettingsError("geometry.probes and geometry.budget shape a fit, which needs geometry.simplify")
+
+
+def load_probes(table, where="geometry.probes"):
+    """Extra fit views from probes spread through the camera's region (r3d/fit/probes.py): `spacing`
+    world units apart (the probes' own default without it), each face `face` pixels square."""
+    check_keys(table, (), where, optional=("spacing", "face"))
+    probes = SimpleNamespace(spacing=number(table["spacing"], f"{where}.spacing") if "spacing" in table else None,
+                             face=count(table.get("face", PROBE_FACE), f"{where}.face"))
+    if probes.spacing is not None and probes.spacing <= 0:
+        raise SettingsError(f"{where}.spacing must be positive")
+    return probes
+
+
+def load_budget(table, where="geometry.budget"):
+    """How each fitted renderer's prune budget is chosen: `constant` is its fit.prune.budget; `settle` tries
+    `step`, 2 `step`, ... up to it and stops at the first whose held-out holes fall by less than the `settle`
+    share of the step before."""
+    policy = text(table.get("policy"), f"{where}.policy")
+    if policy not in BUDGET_POLICIES:
+        raise SettingsError(f"{where}.policy must be one of {', '.join(BUDGET_POLICIES)}")
+    if policy == "constant":
+        check_keys(table, ("policy",), where)
+        return SimpleNamespace(policy=policy)
+    check_keys(table, ("policy", "step", "settle"), where)
+    budget = SimpleNamespace(policy=policy, step=count(table["step"], f"{where}.step"),
+                             settle=number(table["settle"], f"{where}.settle"))
+    if not 0 <= budget.settle < 1:
+        raise SettingsError(f"{where}.settle must be at least 0 and below 1")
+    return budget
 
 
 SEAM_POLICIES = ("weld", "lock", "free")
+# How a rule's objects are matched into shapes: by vertices and triangles, or also by surface
+# (objects/surface_match.py), so copies whose triangles or materials differ share one shape.
+SHAPE_MATCHES = ("exact", "surface")
 
 
 def load_object_meshes(table):
@@ -335,7 +348,7 @@ def load_object_meshes(table):
         raise SettingsError("objects.meshes must be an array of tables")
     for index, rule in enumerate(rules):
         where = f"objects.meshes[{index}]"
-        check_keys(rule, ("match", "triangles"), where, optional=("seam", "variants", "min_triangles"))
+        check_keys(rule, ("match", "triangles"), where, optional=("seam", "variants", "min_triangles", "shape"))
         match = rule["match"]
         check_keys(match, (), f"{where}.match", optional=("material", "object"))
         if len(match) != 1:
@@ -351,6 +364,8 @@ def load_object_meshes(table):
             raise SettingsError(f"{where}.min_triangles cannot exceed its triangles")
         if "seam" in rule and rule["seam"] not in SEAM_POLICIES:
             raise SettingsError(f"{where}.seam must be one of {', '.join(SEAM_POLICIES)}")
+        if "shape" in rule and rule["shape"] not in SHAPE_MATCHES:
+            raise SettingsError(f"{where}.shape must be one of {', '.join(SHAPE_MATCHES)}")
     return rules
 
 
@@ -420,7 +435,7 @@ def load_import_settings(path):
     check_keys(output, (), "output", optional=("name", "position_scale"))
     materials = values.get("materials", {})
     check_keys(materials, (), "materials", optional=("double_sided",))
-    steps = SimpleNamespace(seed=0, seed_given=False, alpha_keep=None, thin=None, simplify=None)
+    steps = SimpleNamespace(seed=0, seed_given=False, alpha_keep=None, thin=None, simplify=None, fit=None)
     load_process(values.get("process", {}), steps)
     load_geometry(values.get("geometry", {}), steps)
     if steps.seed_given and not steps.thin:
@@ -455,7 +470,7 @@ def load_import_settings(path):
         double_sided=set(strings(materials.get("double_sided", []), "materials.double_sided")), seed=steps.seed,
         alpha_keep=steps.alpha_keep, thin=steps.thin, simplify=steps.simplify, named=("variants" in values),
         meshes=meshes,
-        meshlet_triangles=steps.meshlet_triangles, lod=steps.lod,
+        meshlet_triangles=steps.meshlet_triangles, lod=steps.lod, fit=steps.fit,
         variants=variants, skin_lighting=lighting)
 
 
@@ -830,8 +845,9 @@ def load_scene(path):
     sources = {item.renderer.visibility.source for item in jobs if item.renderer.visibility}
     camera_path = cameras[0].component.path if cameras else None
     for item in jobs:
-        if item.renderer.fit and camera_path is None:
-            raise SettingsError(f"scene.objects {item.object.name!r} mesh_renderer.fit needs the scene camera path")
+        if item.renderer.fit and camera_path is None and item.settings.fit.probes is None:
+            raise SettingsError(f"scene.objects {item.object.name!r} mesh_renderer.fit needs the scene camera path "
+                                "or its import's geometry.probes")
     bounced = bool(bake and bake.indirect and any(item.renderer.indirect for item in jobs if item.renderer.bake))
     if bake and bake.ao:
         scaled = any(light["type"] == "ambient" for light in lights) or (bake.ao.indirect and bounced)

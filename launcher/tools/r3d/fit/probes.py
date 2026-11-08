@@ -1,30 +1,21 @@
-"""Fit views from probes spread through a region, beside the camera path's (experiment).
+"""Fit views from probes spread through a region, beside the camera path's (geometry.probes in an import).
 
-    python -m r3d.fit.probes select SCENE.scene.toml --object NAME --work DIR --start START --spacing S [--face PX]
-    python -m r3d.fit.probes render SCENE.scene.toml --object NAME --work DIR
-
-Run from launcher/tools. DIR holds the path's coverage poses (reference_set.prepare_references); START is the fit's start.
 `select` puts one jittered probe in every `spacing`-sized cell of the scene camera's region (the source's bounds
 without one), moves probes out of geometry and drops those still inside, gives each probe six 90 degree cube
-faces, and keeps faces greedily by the start triangles they show that neither the path nor a kept face shows yet.
-It writes `probes.txt` (kept faces), `probes_held_out.txt` (faces of a second seed, scored only) and
-`probes.json` (every probe, where it moved and why it was dropped). `render` traces their references.
+faces, and keeps faces greedily by the source triangles they show that neither the path nor a kept face shows
+yet. Shown sets are traced on the source alone, so the probes, like the rest of a reference set, never depend on
+the start. Probes reach surface seen from somewhere off the path, never surface seen from nowhere.
 
-Inside geometry is the DDGI probe classification: a probe whose rays hit back faces more than BACKFACE of the time
-is inside, and one too near a front face would clip its views. Either moves at most RELOCATE of a cell first.
+Inside geometry is DDGI's probe classification and relocation (Majercik et al. 2021): a probe whose rays hit back
+faces more than BACKFACE of the time is inside, and one too near a front face would clip its views. Either moves at
+most RELOCATE of a cell first. The pick is lazy greedy maximum coverage (Minoux 1978).
 """
 
-import argparse
 import heapq
-import json
-import pathlib
-import sys
 
 import numpy as np
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
-
-from r3d import log  # noqa: E402
+from r3d.poses import camera_rays
 
 RAYS = 32
 BACKFACE = 0.25
@@ -32,22 +23,37 @@ RELOCATE = 0.45
 JITTER = 0.4
 # Nearest front face a probe may have, in near planes: nearer, its faces clip the surface into holes.
 MIN_FRONT_NEARS = 2.0
+# Probe spacing without geometry.probes.spacing, in near planes: while imports keep their source's units, the
+# camera's near plane is the one length every scene states; a world-unit constant once imports share one unit.
+PROBE_SPACING_NEAR_PLANES = 32.0
+# Most probes a region gets; a finer spacing widens to stay under it.
+PROBE_COUNT_MAX = 1024
 # Cube face field: tan of 45 degrees.
 FACE_LENS = 1.0
 # Off vertical, so camera_basis (world +y up) has a right vector for the up and down faces.
 VERTICAL_NUDGE = 1e-4
 FACES = ((1, 0, 0), (-1, 0, 0), (0, 1, VERTICAL_NUDGE), (0, -1, VERTICAL_NUDGE), (0, 0, 1), (0, 0, -1))
-FACE_NAMES = ("+x", "-x", "+y", "-y", "+z", "-z")
-# Pixels a triangle needs in a face before the face counts it as shown.
+# Pixels a triangle needs in a view before the view counts it as shown.
 MIN_PIXELS = 4
 # Greedy selection stops when a face adds less than this share of the first face's gain.
 PLATEAU = 0.01
+# Square pixels a face is traced at to choose it; the kept faces render at geometry.probes.face.
 SELECT_SIZE = 96
 HELD_OUT_FACES = 48
 
 
+def spacing_for(lo, hi, spacing, near):
+    """The probe spacing: `spacing`, or PROBE_SPACING_NEAR_PLANES near planes without one, widened until the box
+    lo..hi holds at most PROBE_COUNT_MAX cells."""
+    spacing = PROBE_SPACING_NEAR_PLANES * near if spacing is None else spacing
+    extent = np.maximum(np.asarray(hi, dtype=float) - np.asarray(lo, dtype=float), 0.0)
+    while np.prod(np.maximum(np.ceil(extent / spacing), 1)) > PROBE_COUNT_MAX:
+        spacing *= 2 ** (1 / 3)
+    return spacing
+
+
 def probe_points(lo, hi, spacing, seed):
-    """One point per `spacing` cell of the box lo..hi, jittered inside its cell."""
+    """(one point per `spacing` cell of the box lo..hi, jittered inside its cell; the cell's shortest side)."""
     lo, hi = np.asarray(lo, dtype=float), np.asarray(hi, dtype=float)
     cells = np.maximum(np.ceil((hi - lo) / spacing).astype(int), 1)
     step = (hi - lo) / cells
@@ -64,31 +70,30 @@ def sphere_directions(count):
     return np.stack([np.cos(azimuth) * np.sin(polar), np.cos(polar), np.sin(azimuth) * np.sin(polar)], axis=1)
 
 
+def face_normals(positions, tris):
+    a, b, c = (positions[tris[:, k]] for k in range(3))
+    normals = np.cross(b - a, c - a)
+    return normals / np.maximum(np.linalg.norm(normals, axis=1, keepdims=True), 1e-30)
+
+
 def probe_hits(query, normals, points):
     """Per probe and ray: hit, distance, and whether the hit face's back is toward the probe."""
     directions = sphere_directions(RAYS)
-    origins = np.repeat(points, RAYS, axis=0)
     rays = np.tile(directions, (len(points), 1))
-    hit, distance, tri = query.first_hits(origins, rays)
+    hit, distance, tri = query.first_hits(np.repeat(points, RAYS, axis=0), rays)
     back = hit & (np.einsum("ij,ij->i", normals[np.where(hit, tri, 0)], rays) > 0)
     shape = (len(points), RAYS)
     return hit.reshape(shape), np.where(hit, distance, np.inf).reshape(shape), back.reshape(shape), directions
 
 
-def classify(positions, tris, points, cell, near):
+def classify(query, normals, points, cell, near):
     """(moved points, state per probe: "kept", "inside" or "near"), moving each probe at most RELOCATE * cell
     through its nearest back face, or away from a front face nearer than MIN_FRONT_NEARS near planes, then testing
     again."""
-    from r3d.ray_query import RayQuery
-
-    a, b, c = (positions[tris[:, k]] for k in range(3))
-    normals = np.cross(b - a, c - a)
-    normals /= np.maximum(np.linalg.norm(normals, axis=1, keepdims=True), 1e-30)
-    query = RayQuery(positions, tris)
     min_front = MIN_FRONT_NEARS * near
-    moved = points.copy()
+    moved = np.array(points, dtype=float)
     hit, distance, back, directions = probe_hits(query, normals, moved)
-    for i in range(len(points)):
+    for i in range(len(moved)):
         if back[i].mean() > BACKFACE:
             ray = np.argmin(np.where(back[i], distance[i], np.inf))
             moved[i] += directions[ray] * min(distance[i, ray] + min_front, RELOCATE * cell)
@@ -108,29 +113,15 @@ def cube_poses(points):
     return [np.concatenate([point, np.asarray(face, dtype=float)]) for point in points for face in FACES]
 
 
-def shown_sets(mesh, poses, size, near):
-    """Per pose, the start triangles it shows at MIN_PIXELS or more, at a square `size` with the cube lens."""
-    from r3d.appearance_simplify import projection, visible
-    import torch
-
-    views = [(projection(pose[:3], pose[3:], size, size, FACE_LENS, near),) for pose in poses]
+def shown(query, triangles, poses, width, height, lens):
+    """Per pose, the triangles it shows at MIN_PIXELS or more, one ray per pixel."""
     sets = []
-    for ids in visible(mesh, views, (size, size)):
-        counts = torch.bincount(ids[ids >= 0], minlength=len(mesh.tris))
-        sets.append(torch.nonzero(counts >= MIN_PIXELS).flatten().cpu().numpy())
+    for pose in poses:
+        origins, directions = camera_rays(width, height, lens, pose[:3], pose[3:6], 1)
+        hit, _, tri = query.first_hits(origins, directions)
+        counts = np.bincount(tri[hit], minlength=triangles)
+        sets.append(np.flatnonzero(counts >= MIN_PIXELS))
     return sets
-
-
-def path_shown(mesh, poses_path):
-    """The start triangles the path's coverage poses show at MIN_PIXELS or more."""
-    from r3d.appearance_simplify import pose_views, visible
-    import torch
-
-    views, size = pose_views(poses_path, 1)
-    seen = torch.zeros(len(mesh.tris), dtype=torch.int64, device="cuda")
-    for ids in visible(mesh, views, size):
-        seen += torch.bincount(ids[ids >= 0], minlength=len(mesh.tris)) >= MIN_PIXELS
-    return (seen > 0).cpu().numpy()
 
 
 def greedy_faces(sets, seen, plateau=PLATEAU, limit=None):
@@ -154,110 +145,32 @@ def greedy_faces(sets, seen, plateau=PLATEAU, limit=None):
     return picked, gains
 
 
-def drawn_mesh(start, asset_name, work):
-    """(the start as drawn, its fitted triangle count): a carved start bundle's rest with its copies after it."""
-    from r3d.appearance_simplify import start_mesh
-    from r3d import mesh_bundle
-    from r3d.fit.copies import joined, placed_copies
+def select(positions, tris, region, near, spacing, seed, path=None):
+    """(training poses, held-out poses, record): the kept cube faces of probes in `region` (lo, hi), or the
+    source's bounds when None, beside what the `path` views ((width, height, lens, poses), or None) show. The
+    held-out faces come from a second seed and start from nothing shown."""
+    from r3d.ray_query import RayQuery
 
-    start = pathlib.Path(start)
-    if start.suffix != mesh_bundle.SUFFIX:
-        mesh = start_mesh(start)
-        return mesh, len(mesh.tris)
-    entries, _ = mesh_bundle.decode(start.read_bytes())
-    rest_path = pathlib.Path(work) / f"{asset_name}.rest.mesh"
-    rest_path.write_bytes(next(data for name, kind, data in entries if name == asset_name))
-    rest = start_mesh(rest_path)
-    return joined(rest, placed_copies(start, rest.flat)), len(rest.tris)
-
-
-def select(scene_path, object_name, work, spacing, face, seed, start):
-    from r3d.fitted_variant import placed_variant
-    from r3d.import_settings import load_scene
-    from r3d.reference_render import source_for
-    from r3d.reference_set import poses_text
-
-    work = pathlib.Path(work)
-    scene = load_scene(scene_path)
-    job = placed_variant(scene, object_name)
-    near = scene.camera.component.near_z
-    source, _ = source_for(scene, job.object.name, lit=False)
-    positions, tris = source.p, source.tri_v
-    lo, hi = scene.region if scene.region is not None else (positions.min(axis=0), positions.max(axis=0))
-    mesh, fitted = drawn_mesh(start, job.asset_name, work)
-    seen = path_shown(mesh, work / "coverage.txt")
-    seen[fitted:] = True  # copies are drawn, never fitted or pruned
-    log(f"path shows {np.count_nonzero(seen[:fitted])} of {fitted} start triangles")
-    record = {"spacing": spacing, "face": face, "seed": seed, "region": [list(map(float, lo)), list(map(float, hi))],
-              "start_triangles": fitted, "path_shown": int(np.count_nonzero(seen[:fitted]))}
-    held_out = []
-    for role, role_seed in (("train", seed), ("held_out", seed + 1)):
+    positions, tris = np.asarray(positions, dtype=float), np.asarray(tris)
+    lo, hi = region if region is not None else (positions.min(axis=0), positions.max(axis=0))
+    spacing = spacing_for(lo, hi, spacing, near)
+    query, normals = RayQuery(positions, tris), face_normals(positions, tris)
+    seen = np.zeros(len(tris), bool)
+    if path is not None:
+        for triangles in shown(query, len(tris), path[3], *path[:3]):
+            seen[triangles] = True
+    record = {"spacing": spacing, "region": [list(map(float, lo)), list(map(float, hi))],
+              "triangles": len(tris), "path_shown": int(np.count_nonzero(seen))}
+    kept = {}
+    for role, role_seed, start, limit in (("train", seed, seen, None),
+                                          ("held_out", seed + 1, np.zeros_like(seen), HELD_OUT_FACES)):
         points, cell = probe_points(lo, hi, spacing, role_seed)
-        moved, state = classify(positions, tris, points, cell, near)
-        live = np.flatnonzero(state == "kept")
-        poses = cube_poses(moved[live])
-        sets = shown_sets(mesh, poses, SELECT_SIZE, near)
-        start_seen = seen if role == "train" else np.arange(len(seen)) >= fitted
-        picked, gains = greedy_faces(sets, start_seen, limit=None if role == "train" else HELD_OUT_FACES)
-        log(f"{role}: {len(points)} probes, {np.count_nonzero(state == 'inside')} inside, "
-            f"{np.count_nonzero(state == 'near')} near, {len(live)} live; {len(picked)} of {len(poses)} faces kept")
-        faces = {(int(live[i // 6]), i % 6): gain for i, gain in zip(picked, gains)}
-        record[role] = {
-            "probes": [{"grid": list(map(float, points[p])), "at": list(map(float, moved[p])), "state": str(state[p]),
-                        "faces": [FACE_NAMES[k] for k in range(6) if (p, k) in faces],
-                        "gains": [faces[p, k] for k in range(6) if (p, k) in faces]} for p in range(len(points))],
-            "picked": [[int(live[i // 6]), FACE_NAMES[i % 6], g] for i, g in zip(picked, gains)],
-            "shown_after": int(np.count_nonzero(start_seen[:fitted])) + int(sum(gains))}
-        kept_poses = [poses[i] for i in picked]
-        name = "probes.txt" if role == "train" else "probes_held_out.txt"
-        (work / name).write_text(poses_text(face, face, FACE_LENS, near, kept_poses))
-        if role == "held_out":
-            held_out = kept_poses
-    (work / "probes.json").write_text(json.dumps(record) + "\n")
-    return record
-
-
-def render(scene_path, object_name, work):
-    from r3d.fitted_variant import placed_variant
-    from r3d.import_settings import load_scene
-    from r3d.reference_render import render_sets
-    from r3d.reference_set import reference_inputs
-
-    work = pathlib.Path(work)
-    scene = load_scene(scene_path)
-    job = placed_variant(scene, object_name)
-    from r3d.poses import read_poses
-
-    sets = [(work / "probes.txt", work / "reference_probes"),
-            (work / "probes_held_out.txt", work / "reference_probes_held_out")]
-    sets = [(poses, out) for poses, out in sets
-            if len(list(out.glob("*.png"))) != len(read_poses(poses)[4])]
-    if sets:
-        render_sets(reference_inputs(job, scene), sets)
-
-
-def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("step", choices=("select", "render"))
-    parser.add_argument("scene")
-    parser.add_argument("--object", required=True)
-    parser.add_argument("--work", required=True)
-    parser.add_argument("--spacing", type=float)
-    parser.add_argument("--face", type=int, default=192)
-    parser.add_argument("--seed", type=int, default=1)
-    parser.add_argument("--start", help="the fit's start mesh or carved start bundle")
-    args = parser.parse_args(argv)
-    if args.step == "select":
-        if not args.spacing or args.spacing <= 0:
-            parser.error("select needs a positive --spacing")
-        if not args.start:
-            parser.error("select needs --start")
-        select(pathlib.Path(args.scene).resolve(), args.object, args.work, args.spacing, args.face, args.seed,
-               args.start)
-    else:
-        render(pathlib.Path(args.scene).resolve(), args.object, args.work)
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+        moved, state = classify(query, normals, points, cell, near)
+        poses = cube_poses(moved[state == "kept"])
+        picked, gains = greedy_faces(shown(query, len(tris), poses, SELECT_SIZE, SELECT_SIZE, FACE_LENS), start,
+                                     limit=limit)
+        kept[role] = [poses[i] for i in picked]
+        record[role] = {"probes": len(points), "inside": int(np.count_nonzero(state == "inside")),
+                        "near": int(np.count_nonzero(state == "near")), "faces": len(poses), "kept": len(picked),
+                        "shown_after": int(np.count_nonzero(start)) + int(sum(gains))}
+    return kept["train"], kept["held_out"], record
