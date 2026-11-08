@@ -7,8 +7,6 @@
 #include "render/lod/r3d_lod.h"
 #include "render/r3d_triangle_tests.h"
 
-#define ALL_PLANES ((1u << PLANE_FRUSTUM_COUNT) - 1u)
-
 /* A leaf's clusters that the levels draw and the planes keep, into `out`;
  * how many. */
 static int
@@ -40,7 +38,7 @@ r3d_pipeline_cull_counted(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, co
     r3d_lens_frustum(lens, walk->planes);
     int top = 0;
     walk->node[top] = (uint16_t)mesh->lod_finest_root;
-    walk->mask[top++] = (uint8_t)ALL_PLANES;
+    walk->mask[top++] = (uint8_t)PLANE_FRUSTUM_ALL;
     int count = 0;
     while (top > 0) {
         top--;

@@ -345,6 +345,15 @@ def variant_meshes(rules, variant):
     return resolved
 
 
+def thinned_triangles(thin, labels, material_names):
+    """Which triangles `geometry.thin` thins: every one of its material, before the keep draw."""
+    import numpy as np
+
+    if not thin:
+        return np.zeros(len(labels), dtype=bool)
+    return np.isin(labels, [index for index, name in enumerate(material_names) if name == thin.material])
+
+
 def match_meshes(tri_o, labels, object_names, material_names, rules):
     """Resolve mesh rules once per source object; overlapping budgets are ambiguous."""
     selected = {}

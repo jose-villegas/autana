@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "asset/asset_pack.h"
+#include "math/geometry/box3s.h"
+#include "math/linear/vec_convert.h"
 typedef struct r3d_lens r3d_lens_t;
 typedef struct r3d_span_target r3d_span_target_t;
 
@@ -29,6 +31,12 @@ typedef struct {
 #define R3D_CURVE_NAME_SUFFIX  ".crv"
 #define R3D_CURVE_HEADER_WORDS 4
 #define R3D_CURVE_VERSION      1
+
+/* A row's box, in the mesh's position ticks. */
+static inline box3s_t
+r3d_curve_box(const r3d_curve_t* curve) {
+    return (box3s_t){vec3s_from_array(curve->lo), vec3s_from_array(curve->hi)};
+}
 
 /* An LCRV entry's rows, their knots right after them. */
 static inline r3d_curve_set_t

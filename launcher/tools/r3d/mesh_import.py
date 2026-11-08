@@ -27,7 +27,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from r3d import lcol_asset, mesh_bundle, mesh_asset, log  # noqa: E402
 from r3d.geometry import compact, corner_normals, weld_keeping  # noqa: E402
 from r3d.import_settings import (  # noqa: E402
-    SettingsError, albedo_jobs, match_meshes, variant_meshes, load_import_settings, load_scene,
+    SettingsError, albedo_jobs, match_meshes, thinned_triangles, variant_meshes, load_import_settings, load_scene,
 )
 from r3d.light import (  # noqa: E402
     drop_masked,
@@ -151,7 +151,8 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             src.tri_o = src.tri_o[keep]
             src.tri_v, src.tri_t, src.tri_m = tri_v, tri_t, tri_m
         step["triangles_out"] = len(tri_v)
-    curve_parts = thin_parts_at(src.p, tri_v, renderer.variant.triangles) if settings.curves else []
+    thinned = thinned_triangles(settings.thin, tri_m, src.names)
+    curve_parts = thin_parts_at(src.p, tri_v, renderer.variant.triangles, thinned) if settings.curves else []
     excluded = np.zeros(len(tri_v), dtype=bool)
     for part in curve_parts:
         excluded[part.triangles] = True
@@ -171,8 +172,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         step["triangles_out"] = int(seen.sum())
     with recorder.step("thin", int(seen.sum())) as step:
         if settings.thin:
-            thin = np.isin(tri_m, [index for index, name in enumerate(src.names) if name == settings.thin.material])
-            seen &= ~thin | (rng.random(len(tri_v)) < settings.thin.keep)
+            seen &= ~thinned | (rng.random(len(tri_v)) < settings.thin.keep)
         if selected:
             carved = np.isin(src.tri_o, list(selected))
             seen[carved] = carved_keep[carved]

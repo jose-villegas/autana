@@ -406,9 +406,7 @@ static box3f_t
 mesh_bounds(const r3d_lit_mesh_t* mesh) {
     box3f_t box = box3f_from_box3s(mesh->nodes[0].bounds, 1.0F);
     for (int i = 0; i < mesh->curve_count; i++) {
-        const r3d_curve_t* curve = &mesh->curves[i];
-        box = box3f_extend(box, (vec3f_t){curve->lo[0], curve->lo[1], curve->lo[2]});
-        box = box3f_extend(box, (vec3f_t){curve->hi[0], curve->hi[1], curve->hi[2]});
+        box = box3f_union(box, box3f_from_box3s(r3d_curve_box(&mesh->curves[i]), 1.0F));
     }
     const float units = 1.0F / (float)mesh->position_scale;
     return (box3f_t){vec3f_scale(box.lo, units), vec3f_scale(box.hi, units)};
@@ -425,8 +423,7 @@ r3d_lit_mesh_bounding_sphere(const r3d_lit_mesh_t* mesh) {
         furthest = fmaxf(furthest, vec3f_dot(d, d));
     }
     for (int i = 0; i < mesh->curve_count; i++) {
-        const r3d_curve_t* curve = &mesh->curves[i];
-        const box3s_t box = {vec3s_from_array(curve->lo), vec3s_from_array(curve->hi)};
+        const box3s_t box = r3d_curve_box(&mesh->curves[i]);
         for (int k = 0; k < BOX3_CORNERS; k++) {
             const vec3f_t d = vec3f_sub(vec3f_from_vec3s(box3s_corner(box, k), units), mid);
             furthest = fmaxf(furthest, vec3f_dot(d, d));

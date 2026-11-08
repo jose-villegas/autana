@@ -15,6 +15,9 @@ enum {
     PLANE_FRUSTUM_COUNT,
 };
 
+/* A mask holding every frustum plane. */
+#define PLANE_FRUSTUM_ALL ((1U << PLANE_FRUSTUM_COUNT) - 1U)
+
 #define MATH_DEFINE_PLANE(P, V, R, M, L, T, OPS)                                                                       \
     typedef struct {                                                                                                   \
         V##_t normal;                                                                                                  \
