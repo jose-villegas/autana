@@ -24,6 +24,7 @@
 #include "render/context/render_context.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/raster.h"
+#include "render/raster_internal.h"
 #include "render/view/raster_copies.h"
 #include "render/view/raster_meshlets.h"
 #include "render/view/raster_overdraw.h"
@@ -471,7 +472,19 @@ test_copies_take_their_first_instance_and_each_shape_its_own_id(void) {
     for (int i = 0; i < MESHES; i++) {
         instances[i] = (r3d_instance_t){.mesh = &meshes[i]};
     }
-    const raster_t raster = {.instances = instances, .instance_count = MESHES};
+    /* The census's share of a scratch, holding the drawn list a census of
+     * these instances would: each in place. */
+    raster_t raster = {.instances = instances, .instance_count = MESHES};
+    raster.scratch = malloc(raster_culled_bytes(&raster));
+    TEST_ASSERT_NOT_NULL(raster.scratch);
+    raster_buffers_t* const b = malloc(sizeof *b);
+    TEST_ASSERT_NOT_NULL(b);
+    *b = raster_carve(&raster);
+    *b->drawn_count = MESHES;
+    for (int i = 0; i < MESHES; i++) {
+        b->drawn[i] = &instances[i];
+    }
+    free(b);
     raster_copies_t state = {0};
     const raster_attachment_t view = raster_copies_view(&state);
     const render_view_t frame_view = render_view_fixture_at(&raster_rig_camera, (viewport_t){W, H, 0});
@@ -483,6 +496,7 @@ test_copies_take_their_first_instance_and_each_shape_its_own_id(void) {
         TEST_ASSERT_EQUAL_UINT32(expected[i], out.value);
     }
     TEST_ASSERT_TRUE(raster_meshlets_color(2) != raster_meshlets_color(3));
+    free(raster.scratch);
 }
 
 /* The wall alone covers the corner; the centre is covered by both quads, and

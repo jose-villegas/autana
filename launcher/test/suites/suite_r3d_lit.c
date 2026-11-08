@@ -2093,11 +2093,11 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
     /* The census holds its depth scale, the drawn list and every drawn
      * instance's slot and takes whole cache ways, so the parts after it keep
      * the cache sets they have without it. */
-    TEST_ASSERT_TRUE(raster_culled_bytes(&raster) >= RASTER_DRAWN_AT
-                                                         + (sizeof(r3d_instance_t) * raster_drawn_capacity(&raster))
-                                                         + (sizeof(uint16_t) * raster_culled_length(&raster)));
+    const raster_lengths_t lengths = raster_lengths(&raster);
+    TEST_ASSERT_TRUE(raster_culled_bytes(&raster) >= raster_culled_at(lengths) + (sizeof(uint16_t) * lengths.culled));
     TEST_ASSERT_TRUE((const char*)b->drawn == (const char*)b->depth_near + RASTER_DRAWN_AT);
-    TEST_ASSERT_TRUE((const char*)b->culled == (const char*)(b->drawn + raster_drawn_capacity(&raster)));
+    TEST_ASSERT_TRUE((const char*)b->copies >= (const char*)(b->drawn + lengths.drawn));
+    TEST_ASSERT_TRUE((const char*)b->culled == (const char*)(b->copies + lengths.copies));
     TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)(((const char*)b->cs - (const char*)b->depth_near) % RASTER_CACHE_WAY));
     raster.width /= 2;
     raster.height /= 2;
@@ -2363,6 +2363,7 @@ test_batched_copies_draw_what_one_instance_at_a_time_draws(void) {
     saved_batched = *tune_find(tune_shared(), TUNE_NAME(render, batched))->value;
     batched_changed = true;
     (void)tune_set(tune_shared(), TUNE_NAME(render, batched), 0);
+    (void)raster_census(&raster, &view); /* batches run over its drawn list */
     TEST_ASSERT_EQUAL_INT(1 + BATCH_COPIES, batch_count(&raster));
     raster_draw(&raster, &view);
     memcpy(want, raster_color(&raster), sizeof(*want) * W * H);

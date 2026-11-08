@@ -34,7 +34,8 @@ typedef struct {
     r3d_pipeline_work_t* work[2]; /* one block per row slice */
     float* depth_near;            /* the census's depth scale, which a draw from its list encodes with */
     int* drawn_count;             /* entries of `drawn` the census culled */
-    r3d_instance_t* drawn;        /* raster_drawn_capacity() entries: each instance, a batch's as the copies it kept */
+    const r3d_instance_t** drawn; /* raster_drawn_capacity() entries: each instance, a batch's as the copies it kept */
+    r3d_instance_t* copies;       /* raster_lengths_t.copies entries: the kept copies the drawn list points at */
     uint16_t* culled;             /* raster_culled_length() entries */
     void* draw;                   /* raster-owned instance and slice state */
 
@@ -44,24 +45,50 @@ typedef struct {
     }; /* raster_picture(), every row */
 } raster_buffers_t;
 
-/* Where the census's drawn list starts, past its depth scale and count. */
-#define RASTER_DRAWN_AT                                                                                                \
-    ((sizeof(float) + sizeof(int) + _Alignof(r3d_instance_t) - 1) / _Alignof(r3d_instance_t) * _Alignof(r3d_instance_t))
+/* What the census's share of the scratch holds, from one walk of the
+ * instances: drawn list entries, batch copies and census list entries. */
+typedef struct {
+    size_t drawn;
+    size_t copies;
+    size_t culled;
+} raster_lengths_t;
 
-/* The census's share of the scratch block: its depth scale, its drawn list and
- * raster_culled_length() entries, rounded up to whole cache ways. */
+raster_lengths_t raster_lengths(const raster_t* raster);
+
+/* Where the census's drawn list starts, past its depth scale and count. */
+#define RASTER_DRAWN_AT mathi_size_ceil(sizeof(float) + sizeof(int), _Alignof(r3d_instance_t*))
+
+/* Where the kept copies start, past the drawn list of `lengths`. */
+static inline size_t
+raster_copies_at(raster_lengths_t lengths) {
+    return mathi_size_ceil(RASTER_DRAWN_AT + (sizeof(r3d_instance_t*) * lengths.drawn), _Alignof(r3d_instance_t));
+}
+
+/* Where the census list starts, past the kept copies of `lengths`. */
+static inline size_t
+raster_culled_at(raster_lengths_t lengths) {
+    return raster_copies_at(lengths) + (sizeof(r3d_instance_t) * lengths.copies);
+}
+
+/* The census's share of the scratch block: its depth scale, its drawn list,
+ * the copies it keeps and raster_culled_length() entries, rounded up to whole
+ * cache ways. */
+static inline size_t
+raster_culled_bytes_of(raster_lengths_t lengths) {
+    return mathi_size_ceil(raster_culled_at(lengths) + (sizeof(uint16_t) * lengths.culled), RASTER_CACHE_WAY);
+}
+
 static inline size_t
 raster_culled_bytes(const raster_t* raster) {
-    return mathi_size_ceil(RASTER_DRAWN_AT + (sizeof(r3d_instance_t) * raster_drawn_capacity(raster))
-                               + (sizeof(uint16_t) * raster_culled_length(raster)),
-                           RASTER_CACHE_WAY);
+    return raster_culled_bytes_of(raster_lengths(raster));
 }
 
 /* Consecutive instances drawn with one transform and one draw fork/join:
  * as many as fit the buffers sized for the largest mesh, up to this many. */
 #define RASTER_BATCH_INSTANCES 16
 
-/* The end of the batch that starts at instance `first`: past each following
+/* The end of the batch that starts at entry `first` of the last census's
+ * drawn list (raster_drawn()): past each following
  * instance while their vertices and clusters fit those buffers, at most
  * RASTER_BATCH_INSTANCES, and one with render.batched off. */
 int raster_batch_end(const raster_t* raster, int first);
@@ -78,9 +105,11 @@ raster_carve(const raster_t* raster) {
     raster_buffers_t b;
     b.depth_near = (float*)p;
     b.drawn_count = (int*)(p + sizeof(float));
-    b.drawn = (r3d_instance_t*)(p + RASTER_DRAWN_AT);
-    b.culled = (uint16_t*)(p + RASTER_DRAWN_AT + (sizeof(r3d_instance_t) * raster_drawn_capacity(raster)));
-    p += raster_culled_bytes(raster);
+    const raster_lengths_t lengths = raster_lengths(raster);
+    b.drawn = (const r3d_instance_t**)(p + RASTER_DRAWN_AT);
+    b.copies = (r3d_instance_t*)(p + raster_copies_at(lengths));
+    b.culled = (uint16_t*)(p + raster_culled_at(lengths));
+    p += raster_culled_bytes_of(lengths);
     b.cs = (r3d_pipeline_vertex_t*)p;
     p += sizeof(r3d_pipeline_vertex_t) * (size_t)raster_vertex_capacity(raster);
     b.rows = (r3d_pipeline_rows_t*)p;

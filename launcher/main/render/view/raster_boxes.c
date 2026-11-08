@@ -41,14 +41,14 @@ raster_boxes_overlay(void* state, int width, int height) {
     raster_lines_depth(&depth, raster, width, height, BEHIND_KEEP[behind]);
     const raster_lines_depth_t* tested = behind == RASTER_BOXES_BEHIND_FULL ? NULL : &depth;
     int count;
-    const r3d_instance_t* drawn = raster_drawn(raster, &count);
+    const r3d_instance_t* const* drawn = raster_drawn(raster, &count);
     for (int i = 0; i < count; i++) {
         int shape_copies;
         const int shape = raster_copies_shape(raster, i, &shape_copies);
         if (shape_copies < copies) {
             continue;
         }
-        const r3d_instance_t* instance = &drawn[i];
+        const r3d_instance_t* instance = drawn[i];
         r3d_lens_t lens;
         r3d_lens_init(&lens, &seen, instance->mesh->position_scale);
         r3d_instance_place(instance, &lens);

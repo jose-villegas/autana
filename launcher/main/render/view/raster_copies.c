@@ -11,9 +11,9 @@ raster_copies_shape(const raster_t* raster, int i, int* copies) {
     int first = -1;
     *copies = 0;
     int count;
-    const r3d_instance_t* drawn = raster_drawn(raster, &count);
+    const r3d_instance_t* const* drawn = raster_drawn(raster, &count);
     for (int j = 0; j < count; j++) {
-        if (drawn[j].mesh->positions == drawn[i].mesh->positions) {
+        if (drawn[j]->mesh->positions == drawn[i]->mesh->positions) {
             first = first < 0 ? j : first;
             ++*copies;
         }

@@ -66,7 +66,7 @@ drawn_count(const raster_t* raster) {
 static const r3d_instance_t*
 raster_drawn_at(const raster_t* raster, int i) {
     int count;
-    return &raster_drawn(raster, &count)[i];
+    return raster_drawn(raster, &count)[i];
 }
 
 /* Each instance's drawn clusters into s->drawn, the level each instance
