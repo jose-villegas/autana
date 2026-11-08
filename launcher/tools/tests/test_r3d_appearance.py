@@ -1187,15 +1187,14 @@ class AppearanceFitTests(unittest.TestCase):
 
         size = (48, 40)
         matrix = projection([0.0, 0.0, 3.0], [0.0, 0.0, -1.0], 24, 20, 0.62, 0.5)
-        shown = self.card(1.0, half=0.6, rgb=0.1)
+        shown = self.card(1.0, half=0.6, rgb=0.3)
         target = draw(Renderer(shown.tris, shown.double, shown.vertex_point, size, "cuda"), shown.points, shown.rgb,
                       matrix)
         copy = self.copy_of(self.card(1.0, half=0.5, rgb=0.5))
         _points, _rgb, _history, trained = optimise(self.card(-1.0, half=0.2), [(matrix, target)], size, steps=200,
-                                                    batch=1, lr_position=0.01, lr_colour=0.05, laplacian=0.0,
+                                                    batch=1, lr_position=0.01, lr_colour=0.01, laplacian=0.0,
                                                     report=0, seam_margin=0, copies=copy)
-        # Edge vertices also draw over the black background, so the mean, not every vertex, meets the target.
-        self.assertLess(np.abs(trained.mesh.rgb - 0.1).mean(), 0.05, "the copy's colours trained to the target")
+        np.testing.assert_allclose(trained.mesh.rgb, shown.rgb[0, 0], atol=0.01, err_msg="the copy's colours trained")
         spread = lambda points: np.abs(points[:, :2]).max()
         self.assertGreater(spread(trained.local), spread(copy.local) + 0.05, "the copy's table grew to the target")
         placed = np.einsum('nij,nj->ni', trained.matrix, trained.local[trained.gather]) + trained.position
