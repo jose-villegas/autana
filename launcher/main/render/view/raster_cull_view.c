@@ -112,10 +112,11 @@ writer(const raster_attachment_t* self, int instance, r3d_span_writer_t* out) {
 
 /* Without culling, every cluster the levels draw is kept; how many. */
 static int
-keep_drawn(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, uint16_t* kept, r3d_pipeline_counts_t* counts) {
+keep_drawn(const r3d_lit_mesh_t* mesh, const uint32_t* lod_coarse, const uint32_t* blending, uint16_t* kept,
+           r3d_pipeline_counts_t* counts) {
     int count = 0;
     for (int c = 0; c < mesh->cluster_count; c++) {
-        if (r3d_lod_drawn(mesh, c, lod_coarse)) {
+        if (r3d_lod_drawn_blending(mesh, c, lod_coarse, blending)) {
             kept[count++] = (uint16_t)c;
             counts->triangles_submitted += mesh->clusters[c].triangle_count;
         }
@@ -148,16 +149,19 @@ count_frame(raster_cull_t* s, const raster_t* raster) {
             r3d_lens_place(&lens, instance->model, mesh->position_scale);
         }
         uint16_t* kept = b.culled;
-        const int count =
-            culls ? r3d_pipeline_cull_counted(mesh, &lens, instance->lod_coarse, kept, &s->walk, &s->frame.counts)
-                  : keep_drawn(mesh, instance->lod_coarse, kept, &s->frame.counts);
+        const uint32_t* blending = raster_lod_dithering(raster, instance);
+        const int count = culls ? r3d_pipeline_cull_counted(mesh, &lens, instance->lod_coarse, blending, kept, &s->walk,
+                                                            &s->frame.counts)
+                                : keep_drawn(mesh, instance->lod_coarse, blending, kept, &s->frame.counts);
         r3d_lod_morph_t morph;
         raster_lod_morph(raster, &s->camera, instance, &lens, &morph);
         r3d_pipeline_transform_morphed(mesh, &lens, &morph, kept, count, b.cs, NULL, false);
         for (int k = 0; k < count; k++) {
             const int vertices = mesh->clusters[kept[k]].vertex_count;
             s->frame.counts.vertices_transformed += vertices;
-            s->frame.counts.vertices_morphed += r3d_lod_morph_weight(&morph, mesh, kept[k]) != 0 ? vertices : 0;
+            const bool blended =
+                r3d_lod_morph_weight(&morph, mesh, kept[k]) != 0 || r3d_lod_dither_band(&morph, mesh, kept[k]) != 0;
+            s->frame.counts.vertices_blended += blended ? vertices : 0;
             const float stacked = r3d_lod_morph_stacked_px(&morph, mesh, kept[k]);
             if (stacked > 0.0F) {
                 s->frame.counts.vertices_stacked += vertices;

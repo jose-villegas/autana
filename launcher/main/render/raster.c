@@ -357,7 +357,6 @@ instance_lens(picture_lens_t* picture, const r3d_instance_t* instance, r3d_lens_
     }
 }
 
-/* The blending bits the dither draws both levels of, or NULL for one level. */
 static const uint32_t*
 dither_blending(const r3d_instance_t* instance, int blend) {
     if (blend != RENDER_LOD_BLEND_ON || instance->lod_coarse == NULL || instance->mesh->morph_delta != NULL) {
@@ -464,6 +463,11 @@ raster_pick_levels(const raster_t* raster, const render_view_t* view) {
                          ? r3d_lod_arrived(instance->lod_coarse, instance->mesh->lod_group_count)
                          : NULL);
     }
+}
+
+const uint32_t*
+raster_lod_dithering(const raster_t* raster, const r3d_instance_t* instance) {
+    return dither_blending(instance, raster_settings(raster).lod.blend);
 }
 
 void

@@ -608,11 +608,11 @@ test_the_counted_walk_counts_the_coarse_clusters_it_keeps(void) {
     uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
     uint16_t out[CLUSTERS];
     r3d_pipeline_counts_t fine = {0};
-    TEST_ASSERT_EQUAL_INT(FINEST_CLUSTERS, r3d_pipeline_cull_counted(mesh, &lens, coarse, out, walk, &fine));
+    TEST_ASSERT_EQUAL_INT(FINEST_CLUSTERS, r3d_pipeline_cull_counted(mesh, &lens, coarse, NULL, out, walk, &fine));
     TEST_ASSERT_EQUAL_INT(0, fine.clusters_coarse);
     coarse[0] = (1U << GROUPS) - 1U;
     r3d_pipeline_counts_t top = {0};
-    TEST_ASSERT_EQUAL_INT(1, r3d_pipeline_cull_counted(mesh, &lens, coarse, out, walk, &top));
+    TEST_ASSERT_EQUAL_INT(1, r3d_pipeline_cull_counted(mesh, &lens, coarse, NULL, out, walk, &top));
     TEST_ASSERT_EQUAL_INT(1, top.clusters_coarse);
     free(walk);
 }
@@ -1165,6 +1165,27 @@ test_the_pipeline_cull_keeps_both_levels_of_a_blending_group(void) {
     }
 }
 
+/* The cull view's counted walk keeps what the frame's cull keeps with a
+ * group blending: both its levels, counting the coarse one. */
+static void
+test_the_counted_walk_keeps_both_levels_of_a_blending_group(void) {
+    const r3d_lit_mesh_t* mesh = levelled_mesh();
+    r3d_pipeline_count_walk_t* walk = malloc(sizeof *walk);
+    TEST_ASSERT_NOT_NULL(walk);
+    const r3d_lens_t lens = lens_at(WHOLE_IN_VIEW, NULL);
+    const uint32_t none[R3D_LOD_WORDS(GROUPS)] = {0};
+    const uint32_t blending[R3D_LOD_WORDS(GROUPS)] = {1U << WEIGHT_GROUP};
+    uint16_t culled[CLUSTERS];
+    uint16_t counted[CLUSTERS];
+    const int count = cull_sorted(mesh, none, blending, culled);
+    r3d_pipeline_counts_t counts = {0};
+    TEST_ASSERT_EQUAL_INT(count, r3d_pipeline_cull_counted(mesh, &lens, none, blending, counted, walk, &counts));
+    qsort(counted, (size_t)count, sizeof counted[0], compare_cluster);
+    TEST_ASSERT_EQUAL_UINT16_ARRAY(culled, counted, count);
+    TEST_ASSERT_EQUAL_INT(1, counts.clusters_coarse);
+    free(walk);
+}
+
 static void
 test_the_pipeline_cull_without_blending_bits_is_the_plain_cull(void) {
     const r3d_lit_mesh_t* mesh = levelled_mesh();
@@ -1433,6 +1454,7 @@ suite_r3d_lod(void) {
     RUN_TEST(test_the_dither_needs_no_morph_targets_and_the_switch_arm_has_no_band);
     RUN_TEST(test_a_blending_group_keeps_both_its_fine_clusters_and_those_simplified_from_it);
     RUN_TEST(test_the_pipeline_cull_keeps_both_levels_of_a_blending_group);
+    RUN_TEST(test_the_counted_walk_keeps_both_levels_of_a_blending_group);
     RUN_TEST(test_the_pipeline_cull_without_blending_bits_is_the_plain_cull);
     RUN_TEST(test_the_pipeline_cull_drops_a_blending_group_s_clusters_under_a_coarse_parent);
     RUN_TEST(test_a_cluster_transformed_with_the_whole_weight_lands_on_its_targets);
