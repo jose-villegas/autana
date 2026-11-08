@@ -24,6 +24,7 @@ typedef struct {
     bool cull;                 /* basic: skips clusters and world boxes outside the picture */
     bool depth_fit;            /* advanced: depth steps go where the kept scene is, not to near_z; needs cull */
     bool batched;              /* advanced: one transform and one draw fork/join a batch, not an instance */
+    bool partial_redraw;       /* basic: a still camera redraws only the rows that moved; the picture is the same */
     render_lod_settings_t lod; /* which level of a mesh's clusters an instance draws (docs/plans/Cluster-LOD.md) */
 } render_settings_t;
 

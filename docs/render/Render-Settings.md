@@ -16,7 +16,7 @@ flowchart LR
     Asset["the app's pack: entry render<br/>set by the shell at start"] --> Settings
     App["app<br/>render_context_set_settings()"] --> Settings["the context's settings<br/>render_context_settings() reads them back"]
     Settings --> Pick{"knob set?<br/>development builds only"}
-    Knob["TUNE render.cull, render.depth_fit,<br/>render.batched, render.lod_coverage_permille,<br/>render.lod_pick_every"] -->|SET| Pick
+    Knob["TUNE render.cull, render.depth_fit,<br/>render.batched, render.partial_redraw,<br/>render.lod_coverage_permille, render.lod_pick_every"] -->|SET| Pick
     Knob -->|RESET| Unset["unset"]
     Unset --> Pick
     Pick -->|"no"| Frame["the frame draws with<br/>raster_settings()"]
@@ -38,6 +38,7 @@ that field's table in the asset.
 | `cull` | `true` | basic | skips clusters and world boxes outside the picture |
 | `depth_fit` | `true` | advanced | depth steps go where the kept scene is, not to near_z; needs cull |
 | `batched` | `true` | advanced | one transform and one draw fork/join a batch, not an instance |
+| `partial_redraw` | `true` | basic | a still camera redraws only the rows that moved; the picture is the same |
 | `lod.tolerance_px` | `2.0` | basic | the projected error a group may have and still draw coarse; more saves, pops more |
 | `lod.hysteresis_px` | `0.5` | advanced | how far past the tolerance a coarse group's error goes before it turns fine |
 | `lod.coverage_permille` | `250` | basic | the thousandths of the picture's height a coarse group may span; smaller pops less |
@@ -108,6 +109,13 @@ off ([the captures](data/batched-board.log)):
 <!-- /generated: render-settings-batched -->
 
 Off is only for measuring.
+
+## partial_redraw
+
+While the camera holds still, a frame redraws only the rows the changed
+objects cover, and the picture is the one a full redraw gives
+([how](frame/Partial-Redraw.md)). It applies at the fixed scale with frame
+generation off, and costs nothing when it does not apply.
 
 ## lod
 
