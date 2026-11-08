@@ -26,8 +26,9 @@ from r3d.geometry import closest_point_on_triangles
 from r3d.objects.surface_match import FLOOR_CAP, SURFACE_TOLERANCE, limit, merge, nearest, surface
 from soup import subdivided
 from r3d.objects.object_error import (PLANAR_AREA_SHARE, PLANAR_DEGREES, SHEET_DEGREES, SHEET_GROWTH, SKY, Parts,
-                                      cell, common_prefix, object_rows, part_labels, part_names, planar_parts, read,
-                                      nearest_source, report_body, rows_for, shape_rows, sheet_triangles, write)
+                                      cell, common_prefix, object_rows, planar_parts, read, nearest_source,
+                                      report_body, rows_for, shape_rows, sheet_triangles, write)
+from r3d.objects.parts import part_labels, part_names
 from r3d.objects.objects_report import main, masked_objects
 from r3d.mesh_import import load_source
 from test_r3d_import import camera, renderer, write_import, write_scene
