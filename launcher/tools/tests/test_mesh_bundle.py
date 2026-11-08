@@ -225,41 +225,19 @@ class MeshBundleTests(unittest.TestCase):
     def test_the_fit_bakes_levels_when_the_import_asks_for_them(self):
         for lod in (False, True):
             with self.subTest(lod=lod), tempfile.TemporaryDirectory() as directory:
-                work = pathlib.Path(directory)
-                data, _, _, job, scene = bundle_fixture(directory)
-                job.settings.lod = lod
-                start = work / (job.asset_name + '.start' + mesh_bundle.SUFFIX)
-                start.write_bytes(data)
-                job.renderer.variant = SimpleNamespace(name='fixture')
-                job.renderer.fit = SimpleNamespace(steps=1, batch=1, laplacian=0, normal_weight=0,
-                                                   surface_weight=0, surface_margin=0, budget=1)
                 asked = []
-
-                def fit_main(args):
-                    asked.append('--lod' in args)
-                    raw = pathlib.Path(args[args.index('--start') + 1])
-                    out = pathlib.Path(args[args.index('--out') + 1])
-                    out.mkdir()
-                    (out / raw.name).write_bytes(raw.read_bytes())
-                with mock.patch.dict(sys.modules, {'r3d.appearance_simplify': SimpleNamespace(main=fit_main)}):
-                    stage.fit(work / 'scene.scene.toml', scene, job, work, start=start,
-                              target=work / (job.asset_name + mesh_bundle.SUFFIX))
+                run_fit(directory, lambda args: asked.append('--lod' in args) or keep_start(args), lod=lod)
                 self.assertEqual(asked, [False])
 
     def test_fit_changes_only_the_rest_of_a_start_bundle(self):
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory)
-            data, _, _, job, scene = bundle_fixture(directory)
-            start = work / (job.asset_name + '.start' + mesh_bundle.SUFFIX)
-            start.write_bytes(data)
-            job.renderer.variant = SimpleNamespace(name='fixture')
-            job.renderer.fit = SimpleNamespace(steps=1, batch=1, laplacian=0, normal_weight=0,
-                                               surface_weight=0, surface_margin=0, budget=1)
-            target = work / (job.asset_name + mesh_bundle.SUFFIX)
+            fixture_job = bundle_fixture(directory)[3]
+
             def fit_main(args):
                 raw = pathlib.Path(args[args.index('--start') + 1])
                 self.assertEqual(raw.suffix, '.bundle')
-                self.assertEqual(args[args.index('--copies') + 1], str(start))
+                self.assertEqual(args[args.index('--copies') + 1], str(start_path(work, fixture_job)))
                 self.assertEqual(args[args.index('--copy-poses') + 1], str(work / 'held_out.txt'))
                 products, copied = mesh_bundle.decode(raw.read_bytes())
                 blob = bytearray(products[0][2])
@@ -267,35 +245,49 @@ class MeshBundleTests(unittest.TestCase):
                 out = pathlib.Path(args[args.index('--out') + 1])
                 out.mkdir()
                 (out / raw.name).write_bytes(mesh_bundle.encode([(products[0][0], mesh_asset.TYPE, blob)], copied))
-            with mock.patch.dict(sys.modules, {'r3d.appearance_simplify': SimpleNamespace(main=fit_main)}):
-                stage.fit(work / 'scene.scene.toml', scene, job, work, start=start, target=target)
+            data, job, target = run_fit(directory, fit_main)
             before, after = parse_pack(data), parse_pack(target.read_bytes())
             self.assertNotEqual(before.pop(job.asset_name), after.pop(job.asset_name))
             self.assertEqual(before, after)
 
     def test_a_path_less_fit_checks_its_copies_over_the_probes_held_out_faces(self):
         with tempfile.TemporaryDirectory() as directory:
-            work = pathlib.Path(directory)
-            data, _, _, job, scene = bundle_fixture(directory)
-            start = work / (job.asset_name + '.start' + mesh_bundle.SUFFIX)
-            start.write_bytes(data)
-            (work / 'probes_held_out.txt').write_text('')
-            job.renderer.variant = SimpleNamespace(name='fixture')
-            job.renderer.fit = SimpleNamespace(steps=1, batch=1, laplacian=0, normal_weight=0,
-                                               surface_weight=0, surface_margin=0, budget=1)
             asked = []
+            run_fit(directory, lambda args: asked.append(args[args.index('--copy-poses') + 1]) or keep_start(args),
+                    files=['probes_held_out.txt'])
+            self.assertEqual(asked, [str(pathlib.Path(directory) / 'probes_held_out.txt')],
+                             "a camera with no path had no copy gate")
 
-            def fit_main(args):
-                asked.append(args[args.index('--copy-poses') + 1])
-                raw = pathlib.Path(args[args.index('--start') + 1])
-                out = pathlib.Path(args[args.index('--out') + 1])
-                out.mkdir()
-                (out / raw.name).write_bytes(raw.read_bytes())
-            with mock.patch.dict(sys.modules, {'r3d.appearance_simplify': SimpleNamespace(main=fit_main)}):
-                stage.fit(work / 'scene.scene.toml', scene, job, work, start=start,
-                          target=work / (job.asset_name + mesh_bundle.SUFFIX))
-            self.assertEqual(asked, [str(work / 'probes_held_out.txt')], "a camera with no path had no copy gate")
 
+def start_path(work, job):
+    return work / (job.asset_name + '.start' + mesh_bundle.SUFFIX)
+
+
+def keep_start(args):
+    """A fit that writes its start back unchanged."""
+    raw = pathlib.Path(args[args.index('--start') + 1])
+    out = pathlib.Path(args[args.index('--out') + 1])
+    out.mkdir()
+    (out / raw.name).write_bytes(raw.read_bytes())
+
+
+def run_fit(directory, fit_main, lod=None, files=()):
+    """Runs the fit stage on the fixture's start with `fit_main` standing in for the fit, after writing each of
+    `files` empty into the work folder; returns the start's bytes, the job and the fitted bundle."""
+    work = pathlib.Path(directory)
+    data, _, _, job, scene = bundle_fixture(directory)
+    if lod is not None:
+        job.settings.lod = lod
+    start_path(work, job).write_bytes(data)
+    for name in files:
+        (work / name).write_text('')
+    job.renderer.variant = SimpleNamespace(name='fixture')
+    job.renderer.fit = SimpleNamespace(steps=1, batch=1, laplacian=0, normal_weight=0,
+                                       surface_weight=0, surface_margin=0, budget=1)
+    target = work / (job.asset_name + mesh_bundle.SUFFIX)
+    with mock.patch.dict(sys.modules, {'r3d.appearance_simplify': SimpleNamespace(main=fit_main)}):
+        stage.fit(work / 'scene.scene.toml', scene, job, work, start=start_path(work, job), target=target)
+    return data, job, target
 
 class FitCopiesTests(unittest.TestCase):
     """The fit draws a carved start's copies where the board does, and gates what the fit did to them."""
