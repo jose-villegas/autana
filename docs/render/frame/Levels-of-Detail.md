@@ -126,6 +126,13 @@ stateDiagram-v2
 
 ![The 4x4 screen door at five points of the ramp past leave: coarse and fine pixels](../../images/render/lod-blend-dither.png)
 
+The fitted Sponza path's worst pop, switched and dithered, each beside its
+difference from the finest level:
+
+![The square where a switch pops most on the fitted Sponza path, switched and dithered, before and at the pop](../../images/render/lod-blend-pop.png)
+
+![The same square played through the frames around the pop: finest, switch and dither](../../images/render/lod-blend-pop.gif)
+
 | Morph target | Rule |
 |---|---|
 | Kept vertex | the coarse vertex it became; nearer pairs claim first |
@@ -136,13 +143,13 @@ stateDiagram-v2
 Blended per path against the finest level. Stacked vertices are those whose
 target's own level was blending too, so the target sits off its neighbour.
 
-<!-- generated: lod-morph sha256=181835e03a8ae40e24cfa00c828da591239361edca3205076227b72b85d697fa -->
+<!-- generated: lod-morph sha256=13ac2dd45108c862682f0abf5ad3351aca84842b3805d84df2b238d33e230f14 -->
 | Path | Arm | Blocks popping | Mean difference /255 | Vertices blended | Frames stacked | Vertices stacked | Stacked, most px |
 |---|---|---|---|---|---|---|---|
-| Bistro | switches | 0.1718% | 0.105 | 0.0% | 0.0% | 0.00% | 0.00 |
-| Bistro | blend, position | 0.1904% | 0.113 | 22.4% | 9.9% | 0.57% | 0.45 |
-| Sponza | switches | 0.0937% | 0.071 | 0.0% | 0.0% | 0.00% | 0.00 |
-| Sponza | blend, position | 0.1720% | 0.110 | 10.6% | 86.5% | 6.63% | 1.25 |
+| Sponza | switches | 0.0933% | 0.071 | 0.0% | 0.0% | 0.00% | 0.00 |
+| Sponza | blend | 0.0979% | 0.077 | 3.4% | 0.0% | 0.00% | 0.00 |
+| Bistro | switches | 0.1720% | 0.105 | 0.0% | 0.0% | 0.00% | 0.00 |
+| Bistro | blend | 0.1846% | 0.127 | 9.1% | 0.0% | 0.00% | 0.00 |
 <!-- /generated: lod-morph -->
 
 ```sh
