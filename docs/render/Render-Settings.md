@@ -38,7 +38,7 @@ that field's table in the asset.
 | `cull` | `true` | basic | skips clusters and world boxes outside the picture |
 | `depth_fit` | `true` | advanced | depth steps go where the kept scene is, not to near_z; needs cull |
 | `batched` | `true` | advanced | one transform and one draw fork/join a batch, not an instance |
-| `partial_redraw` | `false` | basic | a still camera redraws only the rows that moved; the picture is the same |
+| `partial_redraw` | `true` | basic | a still camera redraws only the rows that moved; the picture is the same |
 | `lod.tolerance_px` | `2.0` | basic | the projected error a group may have and still draw coarse; more saves, pops more |
 | `lod.hysteresis_px` | `0.5` | advanced | how far past the tolerance a coarse group's error goes before it turns fine |
 | `lod.coverage_permille` | `250` | basic | the thousandths of the picture's height a coarse group may span; smaller pops less |

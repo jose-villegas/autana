@@ -2944,6 +2944,7 @@ test_a_predicted_draw_is_the_fixed_draw_at_the_step_it_chose(void) {
 
         render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
         render_context_set_scale(render_context_main(), 100 * LADDER[cases[i].chosen].width / SIZE);
+        render_context_forget(render_context_main()); /* drawn whole, not over the predicted picture */
         frame(0);
         const render_context_frame_t fixed = render_context_frame(render_context_main());
         TEST_ASSERT_EQUAL_INT(drawn.width, fixed.width);

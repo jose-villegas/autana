@@ -47,10 +47,11 @@ same_settings(render_settings_t a, render_settings_t b) {
 /* Whether the kept picture is this one's but for the changed boxes. */
 static bool
 can_draw_over(const render_partial_t* p, const raster_t* raster, const render_view_t* view) {
-    return raster_settings(raster).partial_redraw && p->kept && p->changed_count >= 0 && raster->attachment_count == 0
-           && raster->width == p->width && raster->height == p->height && raster->instance_count == p->instance_count
-           && raster->clear == p->clear && raster->upscale.filter == p->filter
-           && same_settings(raster_settings(raster), p->settings) && same_view(view, &p->view);
+    return raster_settings(raster).partial_redraw && p->kept && p->composed && p->changed_count >= 0
+           && raster->attachment_count == 0 && raster->width == p->width && raster->height == p->height
+           && raster->instance_count == p->instance_count && raster->clear == p->clear
+           && raster->upscale.filter == p->filter && same_settings(raster_settings(raster), p->settings)
+           && same_view(view, &p->view);
 }
 
 /* Rows [first, end) `box` covers in the raster, or false when a corner is
@@ -119,6 +120,15 @@ render_partial_kept(render_partial_t* p, const raster_t* raster, const render_vi
     p->clear = raster->clear;
     p->filter = raster->upscale.filter;
     p->settings = raster_settings(raster);
+    p->composed = false;
+}
+
+bool
+render_partial_composed(render_partial_t* p, const uint16_t* destination) {
+    const bool there = destination == p->destination;
+    p->destination = destination;
+    p->composed = true;
+    return there;
 }
 
 void

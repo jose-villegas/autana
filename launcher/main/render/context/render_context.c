@@ -519,6 +519,15 @@ render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* hal
     const bool expanded = half != NULL && size.width != r->destination_width;
     destination = expanded ? half : destination;
     uint8_t* seams = expanded ? half_seams : NULL;
+    if (destination == NULL) {
+        (void)render_partial_composed(&c->partial, NULL);
+        return false;
+    }
+    if (!render_partial_composed(&c->partial, destination)) {
+        c->frame.unchanged = false;
+        c->raster.first_row = 0;
+        c->raster.end_row = 0;
+    }
     if (c->policy == RENDER_FIXED && !c->generating) {
         compose_rows(c, size.height);
         if (!c->frame.unchanged) {

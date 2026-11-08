@@ -5,7 +5,7 @@ redraws and recomposes only the rows where something changed. The rest of the
 picture stays as the last frame left it, and the result is the same picture a
 full redraw gives.
 
-It is on with the `partial_redraw` render setting
+It is on by default, with the `partial_redraw` render setting
 ([Render-Settings.md](../Render-Settings.md#partial_redraw)).
 
 ```mermaid
@@ -41,6 +41,7 @@ and where it is now. A negative count means anything may have changed.
 | A box corner at or behind the near plane | its rows cannot be bounded |
 | The draw refitted its depth scale | kept rows hold depth at the old scale |
 | A level pick changed an instance's cut | picks spread over frames may land on a still frame, and the kept rows hold the old cut |
+| The last picture went to another destination, or none (no framebuffer) | the kept rows are not in this one; the compose writes every row |
 
 Level picks ([Cluster-LOD](../../plans/Cluster-LOD.md)) are made in the
 cull, before the rows are drawn, so a pick that changed any cut is known in

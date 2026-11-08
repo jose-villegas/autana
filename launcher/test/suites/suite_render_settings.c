@@ -119,13 +119,13 @@ cull_off(void) {
 static void
 test_the_default_is_every_setting_on_as_the_raster_drew_before(void) {
     raster_rig_t* r = open_rig();
-    /* Before settings, the raster always culled, fitted depth, batched and
-     * drew every row. */
+    /* Before settings, the raster always culled, fitted depth and batched;
+     * partial redraw draws the same picture. */
     const render_settings_t on = {
         .cull = true,
         .depth_fit = true,
         .batched = true,
-        .partial_redraw = false,
+        .partial_redraw = true,
         .lod = {.tolerance_px = 2.0F, .hysteresis_px = 0.5F, .coverage_permille = 250, .pick_every = 4}};
     assert_settings(&on, &RENDER_SETTINGS_DEFAULT);
     const render_settings_t bare = raster_settings(&r->raster);

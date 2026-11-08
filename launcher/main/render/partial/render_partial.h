@@ -38,8 +38,10 @@ typedef struct {
     upscale_filter_t filter;
     render_settings_t settings;
     box3f_t changed[RENDER_PARTIAL_CHANGES_MAX];
-    int changed_count; /* -1: more than fit, or the set itself changed */
-    int still_frames;  /* frames since one with rows to redraw */
+    int changed_count;           /* -1: more than fit, or the set itself changed */
+    int still_frames;            /* frames since one with rows to redraw */
+    const uint16_t* destination; /* where the last picture was composed */
+    bool composed;               /* the last draw was composed there */
 } render_partial_t;
 
 /* This frame's changed boxes, world units, each where an object was and is
@@ -57,6 +59,11 @@ bool render_partial_picks_owed(const render_partial_t* partial, int pick_every);
 
 /* The draw of `raster` through `view` left a whole picture. */
 void render_partial_kept(render_partial_t* partial, const raster_t* raster, const render_view_t* view);
+
+/* The picture is being composed into `destination`; false when its kept
+ * rows are not there (a first or another destination), so every row is
+ * composed. A draw left uncomposed draws every row next frame. */
+bool render_partial_composed(render_partial_t* partial, const uint16_t* destination);
 
 /* The picture is not to be drawn over: the next frame draws every row. */
 void render_partial_forget(render_partial_t* partial);

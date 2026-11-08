@@ -158,7 +158,7 @@ test_a_new_view_or_unknown_changes_redraw_every_row(void) {
     TEST_ASSERT_EQUAL_INT(H, rows(frame(r, &view, pair->many, RENDER_PARTIAL_CHANGES_MAX + 1)));
 }
 
-/* Off, as RENDER_SETTINGS_DEFAULT has it: a held card still redraws every row. */
+/* Off: a held card still redraws every row. */
 static void
 test_off_redraws_every_row(void) {
     raster_rig_t* r = open_pair(false);
@@ -169,11 +169,34 @@ test_off_redraws_every_row(void) {
     TEST_ASSERT_EQUAL_INT(H, rows(frame(r, &view, &held, 0)));
 }
 
+/* The kept rows are where the last picture was composed: after a draw
+ * composed nowhere (no framebuffer), or into another destination, a held
+ * card's frame recomposes every row. */
+static void
+test_a_draw_composed_nowhere_or_elsewhere_recomposes_every_row(void) {
+    raster_rig_t* r = open_pair(true);
+    const render_view_t view = render_view_fixture_at(&raster_rig_camera, (viewport_t){W, H, 0});
+    place_card(r, card_path[0]);
+    (void)frame(r, &view, NULL, -1);
+    const box3f_t held = card_box(r);
+    render_context_t* c = &pair->context[0];
+    render_context_set_changed(c, &held, 0);
+    TEST_ASSERT_TRUE(render_context_draw(c, r->instance, RASTER_RIG_QUADS, &view, 0));
+    TEST_ASSERT_FALSE(render_context_compose(c, NULL, NULL, NULL));
+    TEST_ASSERT_EQUAL_INT(H, rows(frame(r, &view, &held, 0)));
+    render_context_set_changed(c, &held, 0);
+    TEST_ASSERT_TRUE(render_context_draw(c, r->instance, RASTER_RIG_QUADS, &view, 0));
+    (void)render_context_compose(c, pair->last, NULL, NULL);
+    TEST_ASSERT_EQUAL_INT(H, rows(render_context_frame(c)));
+    TEST_ASSERT_EQUAL_MEMORY(pair->destination[1], pair->last, sizeof pair->last);
+}
+
 void
 run_render_partial_suite(void) {
     RUN_TEST(test_a_moving_card_redraws_only_its_rows_and_matches_a_full_redraw);
     RUN_TEST(test_a_new_view_or_unknown_changes_redraw_every_row);
     RUN_TEST(test_off_redraws_every_row);
+    RUN_TEST(test_a_draw_composed_nowhere_or_elsewhere_recomposes_every_row);
 }
 
 SUITE_REGISTER(run_render_partial_suite);
