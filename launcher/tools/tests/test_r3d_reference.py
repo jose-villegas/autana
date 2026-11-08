@@ -299,6 +299,28 @@ class BounceReferenceTests(unittest.TestCase):
             reference.render_poses(SimpleNamespace(bounce=object()), None, None, [None] * 3, 8, 8, 1., 1, '.', workers=4)
 
 
+def render_one_set(job, **patches):
+    """`reference_render.render_sets` over one look-down pose of `job`, with each named attribute of reference_render
+    patched by its keyword arguments (render_poses returns no work unless given); returns the patches by name."""
+    import contextlib
+    import io
+    import tempfile
+    from unittest.mock import patch
+    from r3d import reference_render
+    from r3d.fitted_variant import poses_text
+
+    patches.setdefault("render_poses", {"return_value": (0, 1)})
+    inputs = SimpleNamespace(job=lambda: job, scene=lambda: None)
+    with tempfile.TemporaryDirectory() as directory, contextlib.ExitStack() as stack:
+        poses = pathlib.Path(directory) / "poses.txt"
+        poses.write_text(poses_text(2, 2, 1.0, 0.01, [LOOK_DOWN.tolist()]))
+        stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+        mocks = {name: stack.enter_context(patch.object(reference_render, name, **kwargs))
+                 for name, kwargs in patches.items()}
+        reference_render.render_sets(inputs, [(poses, pathlib.Path(directory) / "out")])
+    return mocks
+
+
 @unittest.skipIf(np is None, "needs NumPy")
 class RepeatTests(unittest.TestCase):
     """A reference set is the fit's target, and a fit magnifies a one-pixel change into a different mesh, so the set
@@ -325,12 +347,8 @@ class RepeatTests(unittest.TestCase):
         self.assertEqual(renders[0].tobytes(), renders[1].tobytes())
 
     def test_a_set_traces_on_the_bake_variant_and_never_asks_for_the_gpu(self):
-        import contextlib
-        import io
-        import tempfile
         from unittest.mock import patch
-        from r3d import ray_query, reference_render
-        from r3d.fitted_variant import poses_text
+        from r3d import ray_query
         from tests.test_r3d_path_bake import corridor
 
         def variant_of(call, at):
@@ -339,45 +357,23 @@ class RepeatTests(unittest.TestCase):
             return given or ray_query.VARIANT
 
         job = SimpleNamespace(settings=SimpleNamespace(alpha_keep=None))
-        inputs = SimpleNamespace(job=lambda: job, scene=lambda: None)
-        with tempfile.TemporaryDirectory() as directory, contextlib.ExitStack() as stack:
-            poses = pathlib.Path(directory) / "poses.txt"
-            poses.write_text(poses_text(2, 2, 1.0, 0.01, [LOOK_DOWN.tolist()]))
-            stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
-            stack.enter_context(patch.object(reference_render, "load_source", return_value=corridor()))
-            query = stack.enter_context(patch.object(reference_render, "RayQuery"))
-            light = stack.enter_context(patch.object(reference_render, "path_light_for"))
-            stack.enter_context(patch.object(ray_query, "trace_variant", side_effect=AssertionError("asked for the GPU")))
-            stack.enter_context(patch.object(reference_render, "render_poses", return_value=(0, 1)))
-            reference_render.render_sets(inputs, [(poses, pathlib.Path(directory) / "out")])
-        self.assertEqual(variant_of(query.call_args, 2), ray_query.VARIANT)
-        self.assertEqual(variant_of(light.call_args, 3), ray_query.VARIANT)
+        gpu = patch.object(ray_query, "trace_variant", side_effect=AssertionError("asked for the GPU"))
+        with gpu:
+            mocks = render_one_set(job, load_source={"return_value": corridor()}, RayQuery={}, path_light_for={})
+        self.assertEqual(variant_of(mocks["RayQuery"].call_args, 2), ray_query.VARIANT)
+        self.assertEqual(variant_of(mocks["path_light_for"].call_args, 3), ray_query.VARIANT)
 
     def test_the_bounced_light_cache_is_dropped_even_when_a_pose_fails(self):
         import contextlib
-        import io
-        import tempfile
-        from unittest.mock import patch
-        from r3d import mesh_source, reference_render
-        from r3d.fitted_variant import poses_text
+        from r3d import mesh_source
 
         self.addCleanup(mesh_source.PATH_LIGHTS.clear)
-        inputs = SimpleNamespace(job=lambda: None, scene=lambda: None)
         for failure in (None, RuntimeError("pose failed")):
             mesh_source.PATH_LIGHTS["cached"] = object()
-            with tempfile.TemporaryDirectory() as directory, contextlib.ExitStack() as stack:
-                poses = pathlib.Path(directory) / "poses.txt"
-                poses.write_text(poses_text(2, 2, 1.0, 0.01, [LOOK_DOWN.tolist()]))
-                stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
-                stack.enter_context(patch.object(reference_render, "lit_source", return_value=object()))
-                stack.enter_context(patch.object(reference_render, "render_poses", side_effect=failure,
-                                                 return_value=(0, 1)))
-                sets = [(poses, pathlib.Path(directory) / "out")]
-                if failure is None:
-                    reference_render.render_sets(inputs, sets)
-                else:
-                    with self.assertRaisesRegex(RuntimeError, "pose failed"):
-                        reference_render.render_sets(inputs, sets)
+            raised = contextlib.nullcontext() if failure is None else self.assertRaisesRegex(RuntimeError, "pose failed")
+            with raised:
+                render_one_set(None, lit_source={"return_value": object()},
+                               render_poses={"side_effect": failure, "return_value": (0, 1)})
             self.assertEqual(mesh_source.PATH_LIGHTS, {}, failure)
 
 
