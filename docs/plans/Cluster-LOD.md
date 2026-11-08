@@ -110,6 +110,11 @@ python launcher/tools/r3d/lod/coverage_table.py --script launcher/main/apps/rend
     --render Bistro "--scene bistro-fitted-full --no-hud --frames 900 --dt 33" --doc docs/plans/Cluster-LOD.md
 ```
 
+**Gate:** with the levels a pose picks, no more of the rest's hidden surface
+may show than at the finest level, and
+[`test_sky_through_walls.py`](../../launcher/main/apps/render_lab/tools/tests/test_sky_through_walls.py)
+must find no more holed frames than at the finest level.
+
 ## The blend
 
 A fine group blends toward its parent's coarse surface as the parent nears
@@ -117,28 +122,36 @@ its switch, so the switch itself moves nothing: a geomorph<sup>[[116]](../Citati
 whose weight follows the parent's projected error<sup>[[117]](../Citations.md#strugar-2009)</sup>.
 The weight is whole at the switch the group meets next and fades to none
 [`lod.blend_px`](../render/Render-Settings.md#lod) past it; the coverage cap fades it over
-`R3D_LOD_MORPH_COVER_RAMP` of the cap. Each vertex's target is in the mesh's
+[`R3D_LOD_MORPH_COVER_RAMP`](../../launcher/main/render/lod/r3d_lod.h) of the cap. Each vertex's target is in the mesh's
 [LMOR](../assets/formats/LMOR.md) sibling
 ([`lod/morph.py`](../../launcher/tools/r3d/lod/morph.py)). The
 [`lod.blend`](../render/Render-Settings.md#lod) setting turns blending on
 or leaves a plain switch. Only a mesh imported with `[geometry] morph = true`
-carries targets and morphs; any other dithers, at no cost in bytes.
+carries targets and morphs; any other dithers.
 
 The hysteresis band puts the two switches apart, so the pick keeps two more
-bits per group. *Arrived* is set when the group turns fine and cleared once
-its error is `lod.blend_px` past the band. An arrived group fades from the
-band's top, where it came through; any other fine group from the bottom,
-where it turns coarse. Both weights are none where the bit changes.
-*Blending* is set while a fine group's weight is above none, so a cluster
-under any other group pays one bit test for the blend.
+bits per group ([`R3D_LOD_STATE_SETS`](../../launcher/main/render/lod/r3d_lod.h)
+sets in all). *Arrived* marks the switch a fine group came through, so its
+weight fades from the band's top; any other fine group's fades from the
+bottom. *Blending* is set while the weight is above none, so a cluster under
+any other group pays one bit test.
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    Coarse --> Arrived: error past leave, turns fine
+    Arrived --> Fine: error past leave + blend_px
+    Fine --> Coarse: error under enter
+    Arrived --> Coarse: error under enter
+    note right of Arrived: blending while error is within leave + blend_px
+    note right of Fine: blending while error is within enter + blend_px
+```
 
 | Blend | Draws during a blend | Flash |
 |---|---|---|
 | Switch (`lod.blend = 0`) | One level | none |
 | Morph (`geometry.morph`) | The fine level, moved toward the coarse surface | the LMOR sibling |
 | Dither (any other mesh) | Both levels through complementary 4×4 ordered screen doors, the coarse where the threshold is under the weight | none |
-
-Blending keeps three bit sets per instance, not one.
 
 The dither draws the coarse clusters of each blending group as well, each
 through its own band of thresholds, so the two levels never share a pixel.
@@ -174,8 +187,3 @@ python launcher/tools/r3d/lod/morph_table.py --script launcher/main/apps/render_
     --render Sponza "--scene sponza-fitted-full --no-hud --frames 1101 --dt 33" \
     --render Bistro "--scene bistro-fitted-full --no-hud --frames 900 --dt 33" --doc docs/plans/Cluster-LOD.md
 ```
-
-**Gate before the runtime ships:** with the levels a pose picks, no more of
-the rest's hidden surface may show than at the finest level, and
-[`test_sky_through_walls.py`](../../launcher/main/apps/render_lab/tools/tests/test_sky_through_walls.py)
-must find no more holed frames than at the finest level.
