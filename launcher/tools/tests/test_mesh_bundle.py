@@ -54,6 +54,15 @@ def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, t
     return (pathlib.Path(directory) / (job.asset_name + mesh_bundle.SUFFIX)).read_bytes(), copies, geometry, job, scene
 
 
+def write_fit_copies(out, start, rest, change=None):
+    """What a fit writes beside its rest: the start's copy meshes and rows as COPIES_FILE, each entry through
+    `change` (name, kind, data) -> data when given."""
+    from r3d.fit.copies import COPIES_FILE
+
+    entries, rows = mesh_bundle.decode(pathlib.Path(start).read_bytes())
+    entries = [(n, k, d if change is None else change(n, k, d)) for n, k, d in entries if n != rest]
+    (pathlib.Path(out) / COPIES_FILE).write_bytes(mesh_bundle.encode(entries, rows))
+
 
 class MeshBundleTests(unittest.TestCase):
     def test_a_start_with_two_shapes_sums_meshlets_over_every_mesh_and_writes_one_file(self):
@@ -233,12 +242,13 @@ class MeshBundleTests(unittest.TestCase):
                     out = pathlib.Path(args[args.index('--out') + 1])
                     out.mkdir()
                     (out / raw.name).write_bytes(raw.read_bytes())
+                    write_fit_copies(out, start, job.asset_name)
                 with mock.patch.dict(sys.modules, {'r3d.appearance_simplify': SimpleNamespace(main=fit_main)}):
                     stage.fit(work / 'scene.scene.toml', scene, job, work, start=start,
                               target=work / (job.asset_name + mesh_bundle.SUFFIX))
                 self.assertEqual(asked, [False])
 
-    def test_fit_changes_only_the_rest_of_a_start_bundle(self):
+    def test_fit_changes_only_the_rest_and_the_copies_the_fit_wrote(self):
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory)
             data, _, _, job, scene = bundle_fixture(directory)
@@ -259,10 +269,19 @@ class MeshBundleTests(unittest.TestCase):
                 out = pathlib.Path(args[args.index('--out') + 1])
                 out.mkdir()
                 (out / raw.name).write_bytes(mesh_bundle.encode([(products[0][0], mesh_asset.TYPE, blob)], copied))
+                # The fit's copies: the start's, the first colour sets' last byte changed.
+                def change(name, kind, data):
+                    if kind != lcol_asset.TYPE or fit_copies:
+                        return data
+                    fit_copies.append(name)
+                    return data[:-1] + bytes([data[-1] ^ 1])
+                write_fit_copies(out, start, job.asset_name, change)
+            fit_copies = []
             with mock.patch.dict(sys.modules, {'r3d.appearance_simplify': SimpleNamespace(main=fit_main)}):
                 stage.fit(work / 'scene.scene.toml', scene, job, work, start=start, target=target)
             before, after = parse_pack(data), parse_pack(target.read_bytes())
-            self.assertNotEqual(before.pop(job.asset_name), after.pop(job.asset_name))
+            for name in (job.asset_name, *fit_copies):
+                self.assertNotEqual(before.pop(name), after.pop(name))
             self.assertEqual(before, after)
 
 
@@ -328,6 +347,43 @@ class FitCopiesTests(unittest.TestCase):
             start.write_bytes(bundle_fixture(directory, flat=True)[0])
             with self.assertRaisesRegex(ValueError, "flat"):
                 placed_copies(start, flat=False)
+
+    def test_the_copy_table_places_every_copy_from_one_shared_block_per_copy_mesh(self):
+        from r3d.fit.copies import fit_copies
+
+        with tempfile.TemporaryDirectory() as directory:
+            data, copies, _geometry, _job, _scene = bundle_fixture(directory)
+            start = pathlib.Path(directory) / ('start' + mesh_bundle.SUFFIX)
+            start.write_bytes(data)
+            table = fit_copies(start, False)
+        placed = np.einsum('nij,nj->ni', table.matrix, table.local[table.gather]) + table.position
+        np.testing.assert_allclose(placed, table.mesh.points, atol=1e-9)
+        # Two plain copies share one mesh's block and the mirrored copy has its own: three points each.
+        self.assertEqual((len(table.local), len(table.mesh.points)), (6, 9))
+        self.assertEqual(len(table.edges), 6)
+        self.assertTrue((table.edges < len(table.local)).all())
+
+    def test_copies_written_back_untrained_place_and_colour_as_the_start(self):
+        from r3d.fit.copies import COPIES_FILE, fit_copies, placed_copies, write_copies
+
+        for flat in (False, True):
+            with self.subTest(flat=flat), tempfile.TemporaryDirectory() as directory:
+                data, _copies, _geometry, job, _scene = bundle_fixture(directory, flat=flat)
+                start = pathlib.Path(directory) / ('start' + mesh_bundle.SUFFIX)
+                start.write_bytes(data)
+                written = write_copies(start, fit_copies(start, flat), job, directory)
+                self.assertEqual(written.name, COPIES_FILE)
+                entries, rows = mesh_bundle.decode(written.read_bytes())
+                self.assertEqual(rows, mesh_bundle.decode(data)[1])
+                start_entries = mesh_bundle.decode(data)[0]
+                rest = [row for row in start_entries if row[0] == job.asset_name]
+                again = pathlib.Path(directory) / ('again' + mesh_bundle.SUFFIX)
+                again.write_bytes(mesh_bundle.encode(rest + entries, rows))
+                before, after = placed_copies(start, flat), placed_copies(again, flat)
+                drawn = lambda m: sorted(map(tuple, np.round(np.concatenate(
+                    [m.points[m.vertex_point[m.tris]].reshape(-1, 3), np.repeat(m.rgb, 3, axis=0) if flat
+                     else m.rgb[m.tris].reshape(-1, 3)], axis=1), 6)))
+                self.assertEqual(drawn(before), drawn(after))
 
     def test_joined_copies_index_their_own_vertices_and_points_after_the_rest(self):
         from r3d.fit.copies import joined

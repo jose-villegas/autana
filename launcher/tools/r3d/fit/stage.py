@@ -25,9 +25,10 @@ DEPTH_WEIGHT = 30.0
 def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False, target=None, inputs=None,
         start=None):
     """Fit `start` (the variant's start in `inputs` when None) to the reference set in `inputs` (`work` when
-    None) and write the renderer's mesh to `target`. A carved start bundle fits its rest with its copies drawn,
-    and passes the copy-coverage gate over the held-out poses; its copies are written back unchanged."""
+    None) and write the renderer's mesh to `target`. A carved start bundle fits its rest and its copies
+    together, and passes the copy-coverage gate over the held-out poses; the bundle carries the fitted copies."""
     from r3d.appearance_simplify import main as fit_main
+    from r3d.fit.copies import COPIES_FILE
 
     renderer = job.renderer
     variant, recipe = renderer.variant, renderer.fit
@@ -59,9 +60,11 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     if target is None:
         target = pathlib.Path(work) / f"{job.asset_name}.bundle"
     fitted_entries, _ = mesh_bundle.decode((out / start.name).read_bytes())
-    fitted = next(data for name, kind, data in fitted_entries if name == job.asset_name)
-    target.write_bytes(mesh_bundle.encode([(name, kind, fitted if name == job.asset_name else data)
-                                           for name, kind, data in bundle_entries], copies))
+    if copies:
+        fitted_entries += mesh_bundle.decode((out / COPIES_FILE).read_bytes())[0]
+    fitted = {name: data for name, kind, data in fitted_entries}
+    target.write_bytes(mesh_bundle.encode([(name, kind, fitted.get(name, data)) for name, kind, data in bundle_entries],
+                                          copies))
     log(f"wrote {target}")
     return target
 

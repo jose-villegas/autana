@@ -308,6 +308,24 @@ def write_baked(job, scene, out_dir, name, geometry=None, recorder=None):
     return mesh
 
 
+def copy_mesh_entries(job, mesh_id, corners, keys, double, scale, recorder=None):
+    """A copy mesh's bundle entries: its local corners (one row per triangle corner, three per triangle) baked
+    colourless with the renderer's levels, and its colour sets, `keys` holding one 0..255 RGB column triple per
+    set, per corner, or per triangle when the renderer samples faces."""
+    tris = np.arange(len(corners)).reshape(-1, 3)
+    faces = job.renderer.face_samples
+    mesh = build_lit_mesh(corners, None if faces else keys, tris, double, face_rgb=keys if faces else None,
+                          colourless=True, recorder=recorder, mesh_builder=bake_lit_mesh,
+                          meshlet_triangles=job.settings.meshlet_triangles, lod=job.settings.lod, **scale)
+    keys = mesh.face_keys if faces else mesh.colour_keys
+    channels = lcol_asset.STRIDES[lcol_asset.RGB888]
+    sets = [panel_colour(keys[:, k:k + channels]).tobytes() if faces else keys[:, k:k + channels].astype('u1').tobytes()
+            for k in range(0, keys.shape[1], channels)]
+    encoding = lcol_asset.RGB565 if faces else lcol_asset.RGB888
+    return mesh_bundle.mesh_entries(mesh_id, mesh) + [
+        (lcol_asset.name_for_mesh(mesh_id), lcol_asset.TYPE, lcol_asset.encode(encoding, len(keys), sets))]
+
+
 def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
     """One local mesh per handedness and double-sided mask (copies joined by surface keep their own materials,
     which may differ in sidedness), with colour sets following its baked array order."""
@@ -325,7 +343,6 @@ def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
         reflect = np.diag([-1 if mirrored else 1, 1, 1])
         p, _, t, labels = lit
         local = place(p[t].reshape(-1, 3) - first.position, first.linear.T, 0.0) * np.diag(reflect)
-        tris = np.arange(len(local)).reshape(-1, 3)
         double = np.isin(labels, double_sided).astype(int)
         colours = []
         for instance, (p, rgb, t, labels) in copies:
@@ -335,20 +352,8 @@ def write_shape(job, scene, out_dir, name, geometry, shape, recorder):
                 colours.append(flat_colours(job, scene, placed, job.renderer.face_samples))
             else:
                 colours.append(rgb[t].reshape(-1, 3))
-        keys = np.concatenate(colours, axis=1)
-        mesh = build_lit_mesh(local, None if job.renderer.face_samples else keys,
-                              tris, double, face_rgb=keys if job.renderer.face_samples else None,
-                              colourless=True, recorder=recorder, mesh_builder=bake_lit_mesh,
-                              meshlet_triangles=job.settings.meshlet_triangles, lod=job.settings.lod,
-                              **geometry.scale)
-        encoding = lcol_asset.RGB565 if job.renderer.face_samples else lcol_asset.RGB888
-        keys = mesh.face_keys if job.renderer.face_samples else mesh.colour_keys
-        channels = lcol_asset.STRIDES[lcol_asset.RGB888]
-        sets = [panel_colour(keys[:, k:k + channels]).tobytes() if job.renderer.face_samples
-                else keys[:, k:k + channels].astype('u1').tobytes() for k in range(0, keys.shape[1], channels)]
-        entries.extend(mesh_bundle.mesh_entries(mesh_id, mesh))
-        entries.append((lcol_asset.name_for_mesh(mesh_id), lcol_asset.TYPE,
-                        lcol_asset.encode(encoding, len(keys), sets)))
+        entries += copy_mesh_entries(job, mesh_id, local, np.concatenate(colours, axis=1), double, geometry.scale,
+                                     recorder)
         for index, (instance, _) in enumerate(copies):
             rows.append(dict(name=mesh_bundle.copy_name(job.object.name if job.object else name, mesh_id, index), mesh=mesh_id,
                              matrix=(instance.linear @ reflect).tolist(), position=instance.position.tolist(),
