@@ -13,7 +13,6 @@
 typedef struct {
     int16_t top_offset[RASTER_SPLIT_INSTANCES]; /* draw: core 1 takes the top rows */
     int16_t transform_offset[RASTER_SPLIT_INSTANCES];
-    int16_t resolve_offset;
     int16_t upscale_offset;
     int16_t cull_offset; /* core 1 culls the last instances */
 } raster_split_t;

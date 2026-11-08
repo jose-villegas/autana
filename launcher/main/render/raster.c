@@ -192,9 +192,21 @@ raster_attachment_clear_u16(const raster_attachment_t* self, const raster_t* ras
     memset(pixels, 0, count * sizeof(uint16_t));
 }
 
-static const raster_attachment_t color_attachment = {GFX_PIXEL_FORMAT, clear_color, NULL, NULL, NULL, NULL, NULL};
-static const raster_attachment_t depth_attachment = {IMAGE_U16, raster_attachment_clear_u16, NULL, NULL, NULL, NULL,
-                                                     NULL};
+raster_attachment_t
+raster_attachment_ids(void (*begin)(const raster_attachment_t*, const raster_t*, const render_view_t*),
+                      bool (*writer)(const raster_attachment_t*, int, r3d_span_writer_t*),
+                      void (*show)(const raster_attachment_t*, const raster_t*, const gfx_target_t*, int),
+                      void* state) {
+    return (raster_attachment_t){.format = IMAGE_U16,
+                                 .clear = raster_attachment_clear_u16,
+                                 .begin = begin,
+                                 .writer = writer,
+                                 .show = show,
+                                 .state = state};
+}
+
+static const raster_attachment_t color_attachment = {.format = GFX_PIXEL_FORMAT, .clear = clear_color};
+static const raster_attachment_t depth_attachment = {.format = IMAGE_U16, .clear = raster_attachment_clear_u16};
 _Static_assert(R3D_DEPTH_EMPTY == 0, "depth is cleared with memset");
 
 /* Colour, depth, then the caller's, in the order raster_picture() lays them. */
@@ -287,22 +299,6 @@ draw_slice(void* ctx) {
                           b->rows + item->cluster_base, target, b->work[s->work_index]);
     }
     FRAME_LAP_END();
-}
-
-static void
-resolve_slice(void* ctx) {
-    const slice_t* s = ctx;
-    const raster_t* r = s->raster;
-    const raster_buffers_t b = raster_carve(r);
-    GFX_TARGET_STORAGE(GFX_ATTACHMENTS_MAX) storage;
-    gfx_target_t* rows = &storage.target;
-    gfx_target_window(rows, &b.picture, s->first, s->first + s->count);
-    for (int i = GFX_ATTACHMENT_FURTHER; i < rows->count; i++) {
-        const raster_attachment_t* a = attachment_at(r, i);
-        if (a->resolve != NULL) {
-            a->resolve(a, r, rows, i);
-        }
-    }
 }
 
 /* An upscale job's rows: its own type, so the draw's slice_t stays small. */
@@ -649,13 +645,11 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
         *work->buffers.depth_near = cull_instances(raster, view, true, stats, work);
         FRAME_COST_END(culled_from, "r3d.cull");
     }
-    bool resolves = false;
     for (int i = 0; i < raster->attachment_count; i++) {
         const raster_attachment_t* a = raster->attachments[i];
         if (a->begin != NULL) {
             a->begin(a, raster, view);
         }
-        resolves = resolves || a->resolve != NULL;
     }
     r3d_span_small_fill_resolve(&work->small_fill, view->small_fill);
     work->skip_hidden = view->skip_hidden;
@@ -691,15 +685,6 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
             culled += 1 + (size_t)mesh->cluster_count;
         }
         draw_batch(raster, index, work);
-    }
-    if (resolves) {
-        FRAME_COST_BEGIN(resolved_from);
-        int16_t* share = raster->split != NULL ? &raster->split->resolve_offset : NULL;
-        const int mid = job_share_core1_count(share, raster->height);
-        work->mine = (slice_t){.raster = raster, .first = mid, .count = raster->height - mid};
-        work->other = (slice_t){.raster = raster, .count = mid};
-        job_run_steered(share, resolve_slice, &work->mine, &work->other, sizeof work->mine);
-        FRAME_COST_END(resolved_from, "r3d.resolve");
     }
 }
 
