@@ -81,7 +81,7 @@ scene keeps in PSRAM, and the render context's scratch, are taken from it:
 |---|---|
 | The scene's block, resident mesh arrays, its animators' storage | the app arena |
 | The raster scratch block | the app arena |
-| Skinning output, skin light storage, light tables | the internal heap |
+| Skinning output and skin light storage, while the skin's entity is active; light tables | the internal heap |
 | A development debug view's state | the PSRAM heap |
 
 - `scene_release()` frees the heap pieces only. Arena memory goes back when
@@ -104,7 +104,7 @@ flowchart LR
     Worlds --> Mesh["Meshes and<br/>transforms"]
     Mesh --> Lights["Record lights"]
     Lights --> Anim["Bind animators"]
-    Anim --> Skins["Attach skins<br/>allocate lit storage"]
+    Anim --> Skins["Check skins<br/>(blocks wait for activity)"]
     Skins --> Ready["Register scene"]
     Worlds & Mesh & Lights & Anim & Skins -. failure .-> Cleanup["Release components<br/>and scene"]
 ```
