@@ -3766,14 +3766,14 @@ test_mask_round_trip_and_old_mesh(void) {
     TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_mask_from_asset(&entry, &mesh));
     TEST_ASSERT_EQUAL_PTR((const uint8_t*)mask + LMSK_HEADER_SIZE, mesh.mask_uvs);
     TEST_ASSERT_EQUAL_INT(QUAD_VERTICES, mesh.mask_vertex_first);
-    TEST_ASSERT_EQUAL_INT(MASK_TEST_ROWS, mesh.mask_row_count);
+    TEST_ASSERT_EQUAL_INT(MASK_TEST_ROWS, mesh.mask.row_count);
     TEST_ASSERT_EQUAL_UINT16((LMSK_MASK_WIDTH << LMSK_UV_FRACTION_BITS) - 1, mesh.mask_uvs[0][0]);
     r3d_lit_cluster_t* source_clusters = (void*)(uintptr_t)mesh.clusters;
     for (int present = 0; present <= 1; present++) {
         source_clusters[1].masked = present != 0;
         const asset_pack_t pack = mask_pack(present ? mask : NULL);
         TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(&pack, "cards", &mesh));
-        TEST_ASSERT_EQUAL_INT(present ? MASK_TEST_ROWS : 0, mesh.mask_row_count);
+        TEST_ASSERT_EQUAL_INT(present ? MASK_TEST_ROWS : 0, mesh.mask.row_count);
         TEST_ASSERT_EQUAL_INT(present, mesh.mask_uvs != NULL);
         TEST_ASSERT_EQUAL_INT(RIG_VERTICES, mesh.vertex_count);
     }
@@ -3793,7 +3793,7 @@ test_mask_keeps_old_mesh_name_capacity(void) {
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_open(&pack, fx.bytes, size));
     r3d_lit_mesh_t mesh;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, r3d_lit_mesh_open(&pack, name, &mesh));
-    TEST_ASSERT_NULL(mesh.mask_rows);
+    TEST_ASSERT_NULL(mesh.mask.rows);
 }
 
 static void
@@ -3865,7 +3865,7 @@ test_mask_rejects_size(void) {
         const asset_view_t entry = {(const void*)mask, (uint32_t)size};
         TEST_ASSERT_EQUAL_INT(ASSET_ERR_BOUNDS, r3d_lit_mesh_mask_from_asset(&entry, &mesh));
         TEST_ASSERT_NULL(mesh.mask_uvs);
-        TEST_ASSERT_NULL(mesh.mask_rows);
+        TEST_ASSERT_NULL(mesh.mask.rows);
     }
 }
 

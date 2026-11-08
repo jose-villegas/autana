@@ -21,6 +21,7 @@
 #include "math/geometry/spheref.h"
 #include "math/geometry/spheres.h"
 #include "math/linear/mat4f.h"
+#include "render/r3d_span.h"
 
 typedef struct {
     uint16_t vertex_first, vertex_count;
@@ -82,8 +83,7 @@ typedef struct {
     int lod_group_count;
     const uint16_t (*mask_uvs)[2];
     int mask_vertex_first;
-    const uint32_t* mask_rows;
-    int mask_row_count;
+    r3d_span_mask_t mask; /* rows NULL: no cluster is masked */
     /* Position ticks: the least error of any group, which bounds when the
      * pick can skip a pose (render/lod/r3d_lod.h); 0 never skips. */
     uint16_t lod_error_least;

@@ -14,11 +14,13 @@
 #define MASK_DEPTH    ((uint16_t)(R3D_DEPTH_NEAREST / 2))
 
 static uint16_t* pixels;
+static r3d_span_mask_t checker; /* rows inside pixels */
 
 static void
 cleanup(void) {
     free(pixels);
     pixels = NULL;
+    checker = (r3d_span_mask_t){0};
 }
 
 static r3d_span_target_t
@@ -34,9 +36,8 @@ fixture(void) {
             mask[y] |= (uint32_t)((x + y) % 2) << x;
         }
     }
-    r3d_span_target_t target = r3d_span_target(pixels, depth, MASK_SIDE, 0, MASK_SIDE);
-    target.mask_rows = mask;
-    target.mask_row_count = MASK_SIDE;
+    const r3d_span_target_t target = r3d_span_target(pixels, depth, MASK_SIDE, 0, MASK_SIDE);
+    checker = (r3d_span_mask_t){mask, MASK_SIDE};
     return target;
 }
 
@@ -52,13 +53,10 @@ draw_checker(const r3d_span_target_t* target, int shading) {
     static const int corners[][3] = {{0, 1, 2}, {0, 2, 3}};
     for (int t = 0; t < (int)(sizeof corners / sizeof corners[0]); t++) {
         const r3d_span_vertex_t *a = &quad[corners[t][0]], *b = &quad[corners[t][1]], *c = &quad[corners[t][2]];
-        if (shading == 0) {
-            r3d_span_triangle(target, a, b, c);
-        } else if (shading == 1) {
-            r3d_span_triangle_solid(target, a, b, c, MASK_COLOR);
-        } else {
-            r3d_span_capped_triangle(target, a, b, c, NULL);
-        }
+        const uint16_t color = MASK_COLOR;
+        r3d_span_target_t view = *target;
+        view.skip_hidden = shading == 2;
+        r3d_span_masked_triangle(&view, &checker, a, b, c, shading == 1 ? &color : NULL);
     }
 }
 

@@ -35,8 +35,6 @@ typedef struct r3d_span_writer r3d_span_writer_t;
 typedef struct {
     const r3d_span_writer_t* writers; /* writer_count of them; none: colour and depth only */
     int writer_count;
-    const uint32_t* mask_rows;
-    int mask_row_count;
     bool skip_hidden; /* render_view_t.skip_hidden: fills cap their depth, and writers follow */
     const r3d_span_small_fill_t* small_fill;
 
@@ -108,6 +106,20 @@ void r3d_span_triangle_solid(const r3d_span_target_t* target, const r3d_span_ver
  * behind drawn depth relies on. */
 void r3d_span_capped_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                               const r3d_span_vertex_t* c, const uint16_t* face);
+
+/* An LMSK atlas as a fill reads it: one 1-bit word per atlas row, a pixel
+ * kept where its u bit is set in the row its v picks. */
+typedef struct {
+    const uint32_t* rows;
+    int row_count;
+} r3d_span_mask_t;
+
+/* Either fill, `face` NULL or its colour, keeping only the pixels `mask`
+ * keeps at the vertices' u, v; capped as r3d_span_capped_triangle() when
+ * target->skip_hidden. The target's writers follow each kept run inside it:
+ * no r3d_span_triangle_write() after it. */
+void r3d_span_masked_triangle(const r3d_span_target_t* target, const r3d_span_mask_t* mask, const r3d_span_vertex_t* a,
+                              const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, const uint16_t* face);
 
 /* Right after either fill of the same triangle into the same target: its
  * writers over the pixels it covers. `solid` must say whether that fill used a
