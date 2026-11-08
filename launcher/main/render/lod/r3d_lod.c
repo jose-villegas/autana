@@ -273,10 +273,13 @@ r3d_lod_morph_stacked_px(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mes
     return most;
 }
 
-static void
+/* Sets group `g`'s bit in `bits` to `on`; whether it changed. */
+static bool
 set_bit(uint32_t* bits, int g, bool on) {
     const uint32_t bit = 1U << (g % R3D_LOD_WORD_BITS);
-    bits[g / R3D_LOD_WORD_BITS] = on ? bits[g / R3D_LOD_WORD_BITS] | bit : bits[g / R3D_LOD_WORD_BITS] & ~bit;
+    const uint32_t before = bits[g / R3D_LOD_WORD_BITS];
+    bits[g / R3D_LOD_WORD_BITS] = on ? before | bit : before & ~bit;
+    return bits[g / R3D_LOD_WORD_BITS] != before;
 }
 
 /* Whether fine `group`'s blend may weigh more than none by the next pick, its
@@ -293,7 +296,7 @@ blends(const reach_t* at, const r3d_lit_lod_group_t* group, float scale, float c
                      covered * (1.0F + (R3D_LOD_MORPH_COVER_RAMP * ramps)) * slack);
 }
 
-void
+bool
 r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod, uint32_t* coarse,
              uint32_t* arrived) {
     const lod_view_t v = lod_view(lens);
@@ -307,8 +310,13 @@ r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lo
     const float reach = arrived != NULL ? lod->blend_px * (1.0F + R3D_LOD_BLEND_LEAD) : 0.0F;
     if (none_can_coarsen(mesh, &v, lens->project.near_z, leave + reach)) {
         assert(arrived == NULL || arrived == coarse + words);
-        memset(coarse, 0, (size_t)(arrived != NULL ? R3D_LOD_STATE_SETS : 1) * (size_t)words * sizeof *coarse);
-        return;
+        const int state = (arrived != NULL ? R3D_LOD_STATE_SETS : 1) * words;
+        bool had = false;
+        for (int w = 0; w < state; w++) {
+            had |= coarse[w] != 0;
+        }
+        memset(coarse, 0, (size_t)state * sizeof *coarse);
+        return had;
     }
     /* Per group, in the form within() takes: its error and its radius, each
      * times focal over units, against their limits times its nearest depth. */
@@ -316,7 +324,8 @@ r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lo
     const float covered = limits.covered;
     const float near_z = lens->project.near_z;
     bool any = false;
-    bool changed = false;
+    bool changed = false;       /* a coarse bit */
+    bool blend_changed = false; /* an arrived or blending bit */
     for (int g = 0; g < mesh->lod_group_count; g++) {
         const r3d_lit_lod_group_t* group = &mesh->lod_groups[g];
         const vec3f_t centre = mat4f_apply(&v.view, vec3f_from_vec3s(group->bounds.centre, 1.0F));
@@ -331,12 +340,16 @@ r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lo
         any |= coarse_now;
         changed |= coarse_now != was;
         if (!coarse_now && arrived != NULL) {
-            if (was) {
-                arrived[g / R3D_LOD_WORD_BITS] |= bit;
-            } else if (!within(&at, error, leave + lod->blend_px)) {
+            const uint32_t before = arrived[g / R3D_LOD_WORD_BITS];
+            /* Past leave by a ramp it has arrived nowhere, even turning fine
+             * this pick: setting the bit would only clear it on the next. */
+            if (!within(&at, error, leave + lod->blend_px)) {
                 arrived[g / R3D_LOD_WORD_BITS] &= ~bit;
+            } else if (was) {
+                arrived[g / R3D_LOD_WORD_BITS] |= bit;
             }
-            set_bit(
+            blend_changed |= before != arrived[g / R3D_LOD_WORD_BITS];
+            blend_changed |= set_bit(
                 blending, g,
                 blends(&at, group, scale, covered, lod, (arrived[g / R3D_LOD_WORD_BITS] & bit) != 0 ? leave : enter));
         }
@@ -348,7 +361,11 @@ r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lo
     }
     /* A coarse group has not arrived, closed coarse or not. */
     for (int w = 0; arrived != NULL && w < words; w++) {
-        arrived[w] &= ~coarse[w];
-        blending[w] &= ~coarse[w];
+        const uint32_t kept_arrived = arrived[w] & ~coarse[w];
+        const uint32_t kept_blending = blending[w] & ~coarse[w];
+        blend_changed |= kept_arrived != arrived[w] || kept_blending != blending[w];
+        arrived[w] = kept_arrived;
+        blending[w] = kept_blending;
     }
+    return changed || blend_changed;
 }
