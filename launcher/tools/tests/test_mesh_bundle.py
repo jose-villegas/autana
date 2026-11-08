@@ -348,30 +348,15 @@ class FitCopiesTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "flat"):
                 placed_copies(start, flat=False)
 
-    def test_the_copy_table_places_every_copy_from_one_shared_block_per_copy_mesh(self):
-        from r3d.fit.copies import fit_copies
-
-        with tempfile.TemporaryDirectory() as directory:
-            data, copies, _geometry, _job, _scene = bundle_fixture(directory)
-            start = pathlib.Path(directory) / ('start' + mesh_bundle.SUFFIX)
-            start.write_bytes(data)
-            table = fit_copies(start, False)
-        placed = np.einsum('nij,nj->ni', table.matrix, table.local[table.gather]) + table.position
-        np.testing.assert_allclose(placed, table.mesh.points, atol=1e-9)
-        # Two plain copies share one mesh's block and the mirrored copy has its own: three points each.
-        self.assertEqual((len(table.local), len(table.mesh.points)), (6, 9))
-        self.assertEqual(len(table.edges), 6)
-        self.assertTrue((table.edges < len(table.local)).all())
-
     def test_copies_written_back_untrained_place_and_colour_as_the_start(self):
-        from r3d.fit.copies import COPIES_FILE, fit_copies, placed_copies, write_copies
+        from r3d.fit.copies import COPIES_FILE, placed_copies, write_copies
 
         for flat in (False, True):
             with self.subTest(flat=flat), tempfile.TemporaryDirectory() as directory:
                 data, _copies, _geometry, job, _scene = bundle_fixture(directory, flat=flat)
                 start = pathlib.Path(directory) / ('start' + mesh_bundle.SUFFIX)
                 start.write_bytes(data)
-                written = write_copies(start, fit_copies(start, flat), job, directory)
+                written = write_copies(start, placed_copies(start, flat), job, directory)
                 self.assertEqual(written.name, COPIES_FILE)
                 entries, rows = mesh_bundle.decode(written.read_bytes())
                 self.assertEqual(rows, mesh_bundle.decode(data)[1])

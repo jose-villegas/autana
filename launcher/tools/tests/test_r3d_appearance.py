@@ -1114,13 +1114,6 @@ class AppearanceFitTests(unittest.TestCase):
         return FitMesh(positions, np.full((len(positions), 3), rgb), tris, np.zeros(len(tris), dtype=int), 1,
                        np.arange(len(positions)))
 
-    def copy_of(self, card):
-        """`card` as one copy placed where it stands: its own table, an identity transform."""
-        from r3d.fit.copies import Copies
-
-        return Copies(card, card.points.copy(), np.arange(len(card.points)), np.broadcast_to(np.eye(3), (len(card.points), 3, 3)),
-                      np.zeros((len(card.points), 3)), point_edges(card.tris, card.vertex_point))
-
     def test_copies_drawn_in_front_hide_the_rest_from_the_fit(self):
         from r3d.appearance_simplify import Renderer, optimise
 
@@ -1131,7 +1124,7 @@ class AppearanceFitTests(unittest.TestCase):
                       np.zeros_like(rest.rgb), matrix)
         fits = {copies is None: optimise(rest, [(matrix, target)], size, steps=20, batch=1, lr_position=0.0,
                                          lr_colour=0.05, laplacian=0.0, report=0, seam_margin=0, copies=copies)[1]
-                for copies in (None, self.copy_of(copy))}
+                for copies in (None, (copy))}
         self.assertLess(fits[True].max(), 0.4, "without copies the rest is fitted to the target")
         np.testing.assert_array_equal(fits[False], rest.rgb, "a rest behind a copy is not fitted")
 
@@ -1182,7 +1175,7 @@ class AppearanceFitTests(unittest.TestCase):
                         laplacian=0.0, report=0, seam_margin=0, copies=copies, source=source, carved=carved,
                         **weights)[0]
 
-    def test_copies_train_their_colours_and_shared_shape_with_the_rest(self):
+    def test_copies_train_their_colours_where_they_stand(self):
         from r3d.appearance_simplify import Renderer, optimise
 
         size = (48, 40)
@@ -1190,17 +1183,14 @@ class AppearanceFitTests(unittest.TestCase):
         shown = self.card(1.0, half=0.6, rgb=0.3)
         target = draw(Renderer(shown.tris, shown.double, shown.vertex_point, size, "cuda"), shown.points, shown.rgb,
                       matrix)
-        copy = self.copy_of(self.card(1.0, half=0.5, rgb=0.5))
+        copy = self.card(1.0, half=0.5, rgb=0.5)
         _points, _rgb, _history, trained = optimise(self.card(-1.0, half=0.2), [(matrix, target)], size, steps=200,
                                                     batch=1, lr_position=0.01, lr_colour=0.01, laplacian=0.0,
                                                     report=0, seam_margin=0, copies=copy, surface_weight=1e-3,
                                                     surface_margin=0.25,
                                                     source=SimpleNamespace(p=shown.points, tri_v=shown.tris))
-        np.testing.assert_allclose(trained.mesh.rgb, shown.rgb[0, 0], atol=0.01, err_msg="the copy's colours trained")
-        spread = lambda points: np.abs(points[:, :2]).max()
-        self.assertGreater(spread(trained.local), spread(copy.local) + 0.05, "the copy's table grew to the target")
-        placed = np.einsum('nij,nj->ni', trained.matrix, trained.local[trained.gather]) + trained.position
-        np.testing.assert_allclose(trained.mesh.points, placed, atol=1e-6)
+        np.testing.assert_allclose(trained.rgb, shown.rgb[0, 0], atol=0.01, err_msg="the copy's colours trained")
+        np.testing.assert_array_equal(trained.points, copy.points, "the copy stands where the start placed it")
 
     def test_where_the_source_shows_a_copy_the_rest_drawn_through_its_gap_learns_no_colour(self):
         from r3d.appearance_simplify import Renderer, optimise
@@ -1217,7 +1207,7 @@ class AppearanceFitTests(unittest.TestCase):
         away.points[:, 0] += 5.0
         fit = lambda **buffers: optimise(rest, [(matrix, target)], size, steps=50, batch=1, lr_position=0.0,
                                          lr_colour=0.05, laplacian=0.0, report=0, seam_margin=0,
-                                         copies=self.copy_of(away), **buffers)[1]
+                                         copies=(away), **buffers)[1]
         np.testing.assert_array_equal(fit(source=source, carved=carved, depth_weight=1.0), rest.rgb)
         self.assertGreater(fit().min(), 0.6, "without the source's buffers the rest learns the copy's colour")
 
@@ -1227,7 +1217,7 @@ class AppearanceFitTests(unittest.TestCase):
         carved = np.ones(len(copy.tris), dtype=bool)
         # The rest takes the copy's colour, so the colour term alone has no reason to move it.
         points = {weight: self.gbuffer_fit(self.card(0.5, half=0.5, rgb=0.2), copy, source, carved,
-                                           copies=self.copy_of(copy), front_weight=weight)
+                                           copies=(copy), front_weight=weight)
                   for weight in (0.0, 10.0)}
         # In front means nearer than the copy's distance 3 by more than IN_FRONT of it, z above 0.3.
         self.assertGreater(points[0.0][:, 2].min(), 0.3, "the colour term alone leaves the rest in front")
