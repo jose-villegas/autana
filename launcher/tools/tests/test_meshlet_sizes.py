@@ -142,7 +142,7 @@ class MeshletReportTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("gcc"), "needs gcc")
     def test_assertion_after_cull_switch_restores_the_prior_setting(self):
         source = (TOOLS.parents[1] / "launcher/main/apps/render_lab/tests/suite_sponza_perf.c").read_text()
-        body = source[source.index("static int32_t saved_cull;"):source.index("static raster_motion_t* motion;")]
+        body = source[source.index("static int32_t saved_cull;"):source.index("/* The full bake placed by a model matrix")]
         content = (TOOLS.parents[1] / "launcher/main/apps/render_lab/scene_baked_variant.h").read_text()
         bakes = content.replace("#pragma once", "")
         with tempfile.TemporaryDirectory() as directory:

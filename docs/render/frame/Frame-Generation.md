@@ -7,8 +7,8 @@ next update<sup>[[97]](../../Citations.md#mark-1997)</sup>. The warp
 extrapolates rather than interpolates, so it adds no frame of
 latency<sup>[[98]](../../Citations.md#meta-asw-2016)</sup>.
 
-The view is the camera's exact pose at that update, so a scene whose objects
-do not move on their own needs no per-pixel motion vectors. `render/framegen/` holds the warp, and the render
+The view is the camera's exact pose at that update, which is all a scene
+whose objects do not move on their own needs. `render/framegen/` holds the warp, and the render
 context runs it: `render_context_set_frame_generation()` turns it on.
 
 ```mermaid
@@ -111,7 +111,11 @@ scored beside it.
 Bistro along its whole path at 184x224: where repeating the frame jumps
 (turns and fast passes), the generated frame stays close to the true one.
 
-![Bistro: mean dE of the generated frame against the true one along the path](../../images/render/framegen-bistro-path.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../images/render/framegen-bistro-path-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="../../images/render/framegen-bistro-path.png">
+  <img alt="Bistro: mean dE of the generated frame against the true one along the path" src="../../images/render/framegen-bistro-path.png">
+</picture>
 
 The frame with the most holes that are not pinholes, and the frame the
 generated one strays from most, against the true frame, with where they
@@ -226,7 +230,11 @@ The floor of one frame's budget keeps a slow generated frame from starving
 the drawn one. The drawn frame's budget against the generated frame's cost,
 with this board's generated frames marked:
 
-![A drawn frame's budget against the generated frame's cost](../../images/render/framegen-pricing.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../images/render/framegen-pricing-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="../../images/render/framegen-pricing.png">
+  <img alt="A drawn frame's budget against the generated frame's cost" src="../../images/render/framegen-pricing.png">
+</picture>
 
 The budget sets the trade. At the same budget the saving buys resolution: the
 drawn frame gets more than one frame's time and draws a finer step. At a
@@ -305,15 +313,8 @@ framegen_example_generated(const render_context_t* context) {
 ## Moving objects
 
 The warp moves everything with the camera, so an object moving on its own
-lands where it was. What it would need, not built:
-
-- A rigid object: one map per moved instance, which the
-  [motion-vector attachment](Attachments.md#motion-vectors) already builds
-  from the previous transform, taking only its own pixels.
-- A skinned one: a map per bone. Each triangle writes its dominant bone to a
-  tag plane, and each pixel moves by that bone's change over the step.
-- Tags written only for the moving instances keep the cost to the object's
-  pixels, not the whole frame's.
+lands where it was. A scene with such objects leaves frame generation off and
+draws every frame.
 
 ## Reproducing
 

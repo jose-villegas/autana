@@ -1,7 +1,7 @@
 # Camera
 
 A scene camera is two things stored apart: a pose, which is the transform of the entity that
-carries it, and a lens, the `camera_t` in `scene/camera/camera.h`. This page says where each
+carries it, and a lens, the `lens_t` in `scene/camera/lens.h`. This page says where each
 lives and how a frame gets its view.
 
 | Part | Holds | Lives in |
@@ -11,18 +11,18 @@ lives and how a frame gets its view.
 
 ```mermaid
 flowchart LR
-    E["camera entity<br/>transform"] -->|"pose"| V["camera_view()"]
-    L["camera_t lens"] -->|"fov, near, present, small fill, shift"| V
+    E["camera entity<br/>transform"] -->|"pose"| V["lens_view()"]
+    L["lens_t lens"] -->|"fov, near, present, small fill, shift"| V
     P["viewport"] --> V
     V --> R["render_view_t"]
 ```
 
 ## From scene to view
 
-`camera_view(camera, pose, viewport)`
-([`camera.c:5`](../../../launcher/main/scene/camera/camera.c#L5)) builds the frame's `render_view_t`
+`lens_view(camera, pose, viewport)`
+([`lens.c:6`](../../../launcher/main/scene/camera/lens.c#L6)) builds the frame's `render_view_t`
 from the pose, field of view and near distance, then copies the lens's `present` and
-`small_fill` onto it. `scene_camera_lens()` reads a camera by its name's `name_hash()`; `SCENE_CAMERA_FIRST` selects the first.
+`small_fill` onto it. `camera_lens(entity)` reads a camera's lens; `camera_first(root)` finds a scene's first camera.
 
 The field of view is stored as the tangent of half the *shorter* picture side
 (`half_fov_short_tan`). `render_view_refit()` reprojects a retained pose through a new
@@ -30,7 +30,7 @@ viewport.
 
 ### Lens shift
 
-`scene_camera_set_shift()` moves the optical centre off the picture's middle: an
+`camera_set_shift()` moves the optical centre off the picture's middle: an
 off-axis frustum, the camera's *lens shift*. The shift runs along the camera's right
 and up, in picture short sides, so it holds through quarter turns and render sizes.
 
@@ -41,8 +41,8 @@ and up, in picture short sides, so it holds through quarter turns and render siz
 
 ## Which lens fields animate
 
-Two fields are exposed to animation, listed in `CAMERA_FIELDS`
-([`camera.c:12`](../../../launcher/main/scene/camera/camera.c#L17)):
+Two fields are exposed to animation, listed in `LENS_FIELDS`
+([`lens.c:17`](../../../launcher/main/scene/camera/lens.c#L17)):
 
 | Field | Type | Meaning |
 |---|---|---|
@@ -55,10 +55,10 @@ Two fields are exposed to animation, listed in `CAMERA_FIELDS`
 
 The binder gets a table of targets, each with component references. Every entity gets its
 transform as component 0. An entity that carries a camera gets a second reference at
-`components[entity * 2 + 1]`, pointing at `&CAMERA_FIELDS` and that camera's `lens`, and its
-`component_count` becomes 2 ([`scene_animation.c:38`](../../../launcher/main/scene/scene_animation.c#L38)).
+`components[entity * 2 + 1]`, pointing at `&LENS_FIELDS` and that camera's `lens`, and its
+`component_count` becomes 2 ([`animator.c:45`](../../../launcher/main/scene/animator/animator.c#L45)).
 A clip then names `ANIM_COMPONENT_CAMERA` (`CAMR`) and a field by name; the track format and
 the glTF pointer it comes from are in [Animation tracks](../animation/Animation-Tracks.md).
 
-To make another lens field animatable, add an `ANIM_FIELD(camera_t, field, type)` row beside
+To make another lens field animatable, add an `ANIM_FIELD(lens_t, field, type)` row beside
 the struct; nothing in the binder changes.

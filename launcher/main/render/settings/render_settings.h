@@ -29,6 +29,7 @@ typedef struct {
     float tolerance_px;  /* basic: the projected error a group may have and still draw coarse; more saves, pops more */
     float hysteresis_px; /* advanced: how far past the tolerance a coarse group's error goes before it turns fine */
     int coverage_permille; /* basic: the thousandths of the picture's height a coarse group may span; smaller pops less */
+    int pick_every; /* advanced: the frames the pick is spread over, a scene's first frame picking all; more saves, switches later */
     int blend; /* basic: 0 switches at once; 1 blends each switch, by morph where a mesh was imported with geometry.morph, else by dither */
     float blend_px; /* advanced: the error past a switch over which a blend fades out; longer is softer, moves more */
 } render_lod_settings_t;

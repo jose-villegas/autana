@@ -20,11 +20,13 @@ from test_r3d_import import SIMPLIFY, VARIANT, renderer, write_import
 from test_r3d_objects import POINTS, TRIANGLES, obj_text
 from r3d.lit_mesh import read_lit_mesh
 from r3d.objects.instances import Instance
+from r3d.process_budget import StepRecorder
 from r3d.import_settings import MESHLET_TRIANGLES, albedo_jobs, load_import_settings
 from tests.test_r3d_bake import canonical
 
 
-def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, triangles=None):
+def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, triangles=None, materials=(0, 0, 0),
+                   shapes=1, recorder=None):
     p = np.asarray(positions) if positions is not None else np.array([[0., 0, 0], [4, 0, 0], [0, 4, 0]])
     t = np.asarray(triangles) if triangles is not None else np.array([[0, 1, 2]])
     rgb = np.full(p.shape, 80)
@@ -36,23 +38,37 @@ def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, t
         at = np.array([index * 8., 0, 0])
         instance = Instance(str(index), linear, at, mirrored, 0.)
         faces = t[:, ::-1] if mirrored else t
-        copies.append((instance, (p @ linear.T + at, rgb + index, faces, labels)))
+        copies.append((instance, (p @ linear.T + at, rgb + index, faces, np.full(len(t), materials[index]))))
     shape = dict(positions=p, tris=t, materials=labels, rule=rule, copies=copies)
     geometry = SimpleNamespace(positions=p, rgb=rgb, tris=t, tri_double=labels, tri_mat=labels,
-                               scale={}, shapes=[shape], src=SimpleNamespace(names=['prop'], object_names=['a', 'b', 'c']))
+                               scale={}, shapes=[dict(shape, rule={**rule, 'triangles': 1 + k}) for k in range(shapes)],
+                               src=SimpleNamespace(names=['prop', 'leaf'], object_names=['a', 'b', 'c']))
     obj = SimpleNamespace(name='atrium', matrix=np.diag([2., 3, 4]).tolist(), position=[5., 6, 7],
                           kind='mesh_renderer', animator=None)
     renderer = SimpleNamespace(face_samples=(1, 1, 1, None) if flat else None, bake=True, fit=fit)
     job = SimpleNamespace(object=obj, renderer=renderer, asset_name='hall.atrium',
-                          settings=SimpleNamespace(meshlet_triangles=MESHLET_TRIANGLES, double_sided=[], lod=lod, morph=False))
+                          settings=SimpleNamespace(meshlet_triangles=MESHLET_TRIANGLES, double_sided=['leaf'], lod=lod, morph=False))
     scene = SimpleNamespace(objects=[obj], renderers=[job], lights=[])
     with mock.patch.object(mesh_import, 'flat_colours', side_effect=[np.full((1, 3), value) for value in (80, 80, 81, 82)]):
-        mesh_import.write_baked(job, scene, pathlib.Path(directory), job.asset_name, geometry=geometry)
+        mesh_import.write_baked(job, scene, pathlib.Path(directory), job.asset_name, geometry=geometry, recorder=recorder)
     return (pathlib.Path(directory) / (job.asset_name + mesh_bundle.SUFFIX)).read_bytes(), copies, geometry, job, scene
 
 
 
 class MeshBundleTests(unittest.TestCase):
+    def test_a_start_with_two_shapes_sums_meshlets_over_every_mesh_and_writes_one_file(self):
+        recorder = StepRecorder(probe=lambda gpu: (100, None), interval=None)
+        with tempfile.TemporaryDirectory() as directory:
+            data, _, geometry, job, _ = bundle_fixture(directory, shapes=2, recorder=recorder)
+            written = sorted(path.name for path in pathlib.Path(directory).iterdir())
+        meshes = [name for name, kind, _ in mesh_bundle.decode(data)[0] if kind == mesh_asset.TYPE]
+        # The rest mesh, then each shape's plain and mirrored copy mesh, one triangle each.
+        self.assertEqual(len(meshes), 5)
+        self.assertEqual(written, [job.asset_name + mesh_bundle.SUFFIX])
+        rest = len(geometry.tris)
+        self.assertEqual([(row['step'], row['triangles_in'], row['triangles_out']) for row in recorder.rows],
+                         [('meshlets', len(meshes) * rest, len(meshes) * rest), ('write', rest, rest)])
+
     def test_manifest_has_plain_names_without_hashes(self):
         with tempfile.TemporaryDirectory() as directory:
             data = bundle_fixture(directory)[0]
@@ -94,6 +110,16 @@ class MeshBundleTests(unittest.TestCase):
                     self.assertEqual(sets[row['colour_set']], packed)
             self.assertTrue(all(row["owner"] == job.object.name for row in manifest))
             self.assertEqual([row["source"] for row in manifest], geometry.src.object_names)
+
+    def test_copies_whose_materials_differ_in_sidedness_get_their_own_mesh(self):
+        # Copies joined by surface keep their own materials; a double-sided one cannot share a single-sided mesh.
+        with tempfile.TemporaryDirectory() as directory:
+            data = bundle_fixture(directory, materials=(0, 1, 0))[0]
+        entries, manifest = mesh_bundle.decode(data)
+        meshes = [row['mesh'] for row in manifest]
+        self.assertEqual(len(set(meshes)), 3)
+        double = {row["mesh"]: {c[-1] for c in mesh_bundle.read_mesh(entries, row["mesh"]).clusters} for row in manifest}
+        self.assertEqual([double[mesh] for mesh in meshes], [{False}, {True}, {False}])
 
     def test_smooth_shapes_have_one_set_per_copy(self):
         self.check_products(False)
@@ -178,15 +204,15 @@ class MeshBundleTests(unittest.TestCase):
 
     def test_a_fitted_renderer_s_start_bakes_its_rest_without_levels_and_its_copies_with_them(self):
         baked = []
-        real = mesh_import.write_lit_mesh
+        real = mesh_import.build_lit_mesh
 
-        def recording(out_dir, name, *args, **options):
-            baked.append((name, options["lod"]))
-            return real(out_dir, name, *args, **options)
-        with tempfile.TemporaryDirectory() as directory, mock.patch.object(mesh_import, "write_lit_mesh", recording):
-            _, _, _, job, _ = bundle_fixture(directory, lod=True, fit=SimpleNamespace())
-        self.assertEqual(baked[0], (job.asset_name, False))
-        self.assertTrue(len(baked) > 1 and all(lod for _, lod in baked[1:]))
+        def recording(*args, **options):
+            baked.append(options["lod"])
+            return real(*args, **options)
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(mesh_import, "build_lit_mesh", recording):
+            bundle_fixture(directory, lod=True, fit=SimpleNamespace())
+        self.assertFalse(baked[0])
+        self.assertTrue(len(baked) > 1 and all(baked[1:]))
 
     def test_the_fit_bakes_levels_when_the_import_asks_for_them(self):
         for lod in (False, True):
