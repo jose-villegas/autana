@@ -40,6 +40,7 @@ typedef struct {
     box3f_t changed[RENDER_PARTIAL_CHANGES_MAX];
     int changed_count;           /* -1: more than fit, or the set itself changed */
     int still_frames;            /* frames since one with rows to redraw */
+    const gfx_color_t* picture;  /* where the scratch held it: the meshes' sizes place it */
     const uint16_t* destination; /* where the last picture was composed */
     bool composed;               /* the last draw was composed there */
 } render_partial_t;

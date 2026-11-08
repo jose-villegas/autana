@@ -31,6 +31,8 @@ scene_shell_compose(uint32_t dt_ms) {
     } else if (target.pixels != NULL) {
         gfx_mark_dirty(0, frame.rows_first, GFX_WIDTH, frame.rows_end - frame.rows_first);
         render_context_overlay(render_context_main(), GFX_WIDTH, GFX_HEIGHT);
+        /* The UI paints over this framebuffer: the next compose writes every row. */
+        (void)render_context_compose(render_context_main(), NULL, NULL, NULL);
     }
 }
 

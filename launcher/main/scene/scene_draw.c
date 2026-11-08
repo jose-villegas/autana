@@ -6,6 +6,7 @@
 #include <stdlib.h>
 
 #include "esp_log.h"
+#include "hash/name_hash64.h"
 
 #include "render/context/render_context.h"
 #include "scene/camera/camera.h"
@@ -19,8 +20,9 @@ typedef struct {
 } active_t;
 
 static active_t active;
-/* The last frame's drawn count, and this frame's changed boxes (render/partial). */
-static int drawn_count = -1;
+/* The renderers the last frame drew, hashed (0 before one), and this
+ * frame's changed boxes (render/partial). */
+static name_hash64_t drawn_set;
 static box3f_t changed[RENDER_PARTIAL_CHANGES_MAX];
 static bool paused;
 static bool expanded;
@@ -43,7 +45,7 @@ scene_set_paused(bool pause) {
 void
 scene_draw_activate(scene_t* scene, int camera) {
     active = (active_t){scene, camera};
-    drawn_count = -1;
+    drawn_set = 0;
     render_context_forget(render_context_main());
     refused = false;
     rendered = false;
@@ -115,17 +117,18 @@ fill_instances(scene_t* scene) {
 }
 
 /* Where each changed renderer was and is, for partial redraw; -1 when the
- * drawn set changed or more changed than fit. Every drawn renderer's box is
- * kept as where it was drawn. */
+ * drawn set changed (a renderer left or joined) or more changed than fit.
+ * Every drawn renderer's box is kept as where it was drawn. */
 static int
-fill_changed(scene_t* scene, int count) {
-    int changes = count == drawn_count ? 0 : -1;
-    drawn_count = count;
+fill_changed(scene_t* scene) {
+    int changes = 0;
+    name_hash64_t set = NAME_HASH64_OFFSET_BASIS;
     for (int i = 0; i < scene->active_renderer_count; i++) {
         scene_renderer_t* r = &scene->renderers[scene->active_renderers[i]];
         if (r->mesh.node_count == 0) {
             continue;
         }
+        set = name_hash64_n(set, &scene->active_renderers[i], sizeof scene->active_renderers[i]);
         if (r->changed && changes >= 0) {
             changes = changes < RENDER_PARTIAL_CHANGES_MAX ? changes : -1;
             if (changes >= 0) {
@@ -135,7 +138,9 @@ fill_changed(scene_t* scene, int count) {
         r->changed = false;
         r->drawn_bounds = r->world_bounds;
     }
-    return changes;
+    const bool same = set == drawn_set;
+    drawn_set = set;
+    return same ? changes : -1;
 }
 
 /* The active camera's view from its entity's world. Its own frame, gone
@@ -175,7 +180,7 @@ draw_active(int quarter, int width, int height) {
         return;
     }
     const render_view_t view = active_view(scene, camera, (viewport_t){width, height, quarter});
-    render_context_set_changed(render_context_main(), changed, fill_changed(scene, count));
+    render_context_set_changed(render_context_main(), changed, fill_changed(scene));
     rendered = render_context_draw(render_context_main(), scene->instances, count, &view, camera->clear);
     if (!rendered && !refused) {
         ESP_LOGE("scene", "no memory to draw '%s'; it stays blank", scene->root->id);

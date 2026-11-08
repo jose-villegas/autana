@@ -22,7 +22,7 @@ TUNE_OVERRIDE(render, cull, 1);
 TUNE_OVERRIDE(render, depth_fit, 1);
 /* Off draws one instance a batch. */
 TUNE_OVERRIDE(render, batched, 1);
-/* 1 turns partial redraw on whatever the app's settings say: the board compares both. */
+/* Set, overrides the app's partial redraw setting either way: the board compares both. */
 TUNE_OVERRIDE(render, partial_redraw, 1);
 /* Overrides lod.coverage_permille (INT32_MAX lifts the cap); coverage_table.py
  * sets it once per cap. */

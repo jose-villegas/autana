@@ -51,7 +51,7 @@ can_draw_over(const render_partial_t* p, const raster_t* raster, const render_vi
            && raster->attachment_count == 0 && raster->width == p->width && raster->height == p->height
            && raster->instance_count == p->instance_count && raster->clear == p->clear
            && raster->upscale.filter == p->filter && same_settings(raster_settings(raster), p->settings)
-           && same_view(view, &p->view);
+           && same_view(view, &p->view) && raster_color(raster) == p->picture;
 }
 
 /* Rows [first, end) `box` covers in the raster, or false when a corner is
@@ -120,6 +120,7 @@ render_partial_kept(render_partial_t* p, const raster_t* raster, const render_vi
     p->clear = raster->clear;
     p->filter = raster->upscale.filter;
     p->settings = raster_settings(raster);
+    p->picture = raster_color(raster);
     p->composed = false;
 }
 

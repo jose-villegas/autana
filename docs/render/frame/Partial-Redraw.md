@@ -34,14 +34,17 @@ and where it is now. A negative count means anything may have changed.
 | Cause | Why |
 |---|---|
 | A new view, size, clear colour or instance count | the kept picture is of something else |
+| A drawn object left as another joined | the boxes say where the new one is, not where the old one was drawn |
+| A mesh of another size took an instance's place | the raster's scratch now holds its picture elsewhere |
 | Any render setting changed | settings may change pixels anywhere |
 | A debug view | it painted its own colours over the picture |
-| Dynamic resolution or frame generation on | each frame may draw at another size or be warped |
+| Dynamic resolution or frame generation on, or on last frame | each frame may draw at another size or be warped |
 | More than `RENDER_PARTIAL_CHANGES_MAX` boxes, or a negative count | the changes are not known |
 | A box corner at or behind the near plane | its rows cannot be bounded |
 | The draw refitted its depth scale | kept rows hold depth at the old scale |
 | A level pick changed an instance's cut | picks spread over frames may land on a still frame, and the kept rows hold the old cut |
 | The last picture went to another destination, or none (no framebuffer) | the kept rows are not in this one; the compose writes every row |
+| The shell composed into the framebuffer, not the half picture | the app and its UI paint the framebuffer after the compose; the compose writes every row |
 
 Level picks ([Cluster-LOD](../../plans/Cluster-LOD.md)) are made in the
 cull, before the rows are drawn, so a pick that changed any cut is known in
@@ -60,3 +63,7 @@ cores, and the upscale rewrites the destination rows they reach.
 
 `render_context_frame()` reports what a frame recomposed: `unchanged` when it
 drew nothing, else destination rows `[rows_first, rows_end)`.
+
+An expanded frame presents only those rows from the half picture. The UI,
+replayed over the panel, marks the bands whose own content changed, so
+text that changes over a held picture still reaches the panel.

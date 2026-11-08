@@ -700,24 +700,27 @@ hash_band_entries(int row0, int row1) {
     return h;
 }
 
-/* The UI's own half of band mode's per-band dirty decision: marks a band
+/* The UI's own half of the per-band dirty decision in band mode and in an
+ * expanded frame, whose picture may leave most rows clean: marks a band
  * dirty (gfx_mark_dirty(), gfx_present.c) exactly when what would replay into it
  * changed since last frame, at that band's own full width: an entry's own
  * rect narrower than the band is not tracked per-entry here, only per-band. */
 static void
 mark_changed_ui_bands(void) {
     const gfx_mode_t* const mode = gfx_mode_current();
-    if (mode->layout != GFX_LAYOUT_BANDS) {
+    const bool bands = mode->layout == GFX_LAYOUT_BANDS;
+    if (!bands && !gfx_frame_expanded()) {
         return;
     }
-    const int band_count = mode->height / mode->band_height;
+    const int band_height = bands ? mode->band_height : GFX_BAND_HEIGHT;
+    const int band_count = mode->height / band_height;
 
     for (int b = 0; b < band_count && b < UI_BAND_HASH_MAX; b++) {
-        const int row0 = b * mode->band_height;
-        const uint64_t h = hash_band_entries(row0, row0 + mode->band_height);
+        const int row0 = b * band_height;
+        const uint64_t h = hash_band_entries(row0, row0 + band_height);
         const bool overflow = (ui_band_overflow & (UINT32_C(1) << b)) != 0;
         if (overflow || h != ui_band_hash[b]) {
-            gfx_mark_dirty(0, row0, mode->width, mode->band_height);
+            gfx_mark_dirty(0, row0, mode->width, band_height);
             ui_band_hash[b] = overflow ? 0 : h;
         }
     }

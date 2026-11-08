@@ -535,6 +535,7 @@ render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* hal
         }
         return expanded;
     }
+    render_partial_forget(&c->partial); /* a generated or resized picture is not the one kept */
     c->frame.rows_first = 0;
     c->frame.rows_end = r->destination_height;
     const int64_t began_us = timing_now_us();

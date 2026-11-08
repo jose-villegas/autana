@@ -1461,6 +1461,27 @@ test_a_child_moved_alone_stays_in_its_parents_frame(void) {
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(2.0F));
 }
 
+/* One renderer leaving as another joins keeps the drawn count, but the
+ * frame cannot know where the one that left was drawn: every row. */
+static void
+test_a_renderer_swapped_for_another_redraws_every_row(void) {
+    fixture();
+    entity_t scene = show("test_pair");
+    const entity_t red = entity_find(scene, name_hash("red"));
+    const entity_t green = entity_find(scene, name_hash("green"));
+    entity_set_enabled(green, false);
+    frame(16);
+    frame(16);
+    TEST_ASSERT_TRUE(render_context_frame(render_context_main()).unchanged);
+    entity_set_enabled(red, false);
+    entity_set_enabled(green, true);
+    frame(16);
+    const render_context_frame_t swapped = render_context_frame(render_context_main());
+    TEST_ASSERT_FALSE(swapped.unchanged);
+    TEST_ASSERT_EQUAL_INT(SIZE, swapped.rows_end - swapped.rows_first);
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(0.0F));
+}
+
 static void
 test_a_disabled_parent_hides_its_children_and_keeps_their_own_flags(void) {
     fixture();
@@ -3122,6 +3143,23 @@ test_blended_expand_blends_within_seams_and_doubles_across_them(void) {
         check_scattered_seams(3, line, seams + GFX_SEAM_PITCH(HALF_WIDTH), row);
     }
     free(row);
+}
+
+/* The shell's composed framebuffer, as the app and its UI then paint it:
+ * the next frame, nothing moved, still shows the scene. */
+static void
+test_a_framebuffer_painted_over_after_compose_shows_the_scene_next_frame(void) {
+    expanded_fixture();
+    render_context_set_scale(render_context_main(), 100);
+    const size_t centre = ((size_t)(GFX_HEIGHT / 2) * GFX_WIDTH) + (GFX_WIDTH / 2);
+    scene_shell_render(16);
+    scene_shell_compose(16);
+    TEST_ASSERT_FALSE(gfx_frame_expanded());
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), gfx_framebuffer()[centre]);
+    gfx_framebuffer()[centre] = SENTINEL;
+    scene_shell_render(16);
+    scene_shell_compose(16);
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), gfx_framebuffer()[centre]);
 }
 
 static void
@@ -6117,6 +6155,7 @@ run_scene_suite(void) {
     RUN_TEST(test_paused_or_empty_expanded_scene_retains_its_picture);
     RUN_TEST(test_expanded_scene_in_separate_picture_matches_upscale);
     RUN_TEST(test_expanded_frame_lifecycle_and_raw_draw_guard);
+    RUN_TEST(test_a_framebuffer_painted_over_after_compose_shows_the_scene_next_frame);
     RUN_TEST(test_blended_expand_blends_within_seams_and_doubles_across_them);
     RUN_TEST(test_expanded_overlay_resets_and_restores_clip);
     RUN_TEST(test_ui_replay_over_expanded_scene_matches_full_frame);
@@ -6204,6 +6243,7 @@ run_scene_suite(void) {
     RUN_TEST(test_a_child_is_drawn_where_its_parent_places_it);
     RUN_TEST(test_a_child_moved_alone_stays_in_its_parents_frame);
     RUN_TEST(test_a_disabled_parent_hides_its_children_and_keeps_their_own_flags);
+    RUN_TEST(test_a_renderer_swapped_for_another_redraws_every_row);
     RUN_TEST(test_an_entity_knows_its_parent_its_ancestors_and_its_world);
     RUN_TEST(test_a_camera_with_a_parent_is_refused);
     RUN_TEST(test_a_mirrored_transform_is_refused_by_name);
