@@ -774,7 +774,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     if copies is not None:
         local = as_tensor(copies.local).requires_grad_(True)
         copy_colours = as_tensor(copies.mesh.rgb).requires_grad_(True)
-        gather = torch.as_tensor(copies.gather, device=device)
+        copy_gather = torch.as_tensor(copies.gather, device=device)
         copy_matrix, copy_position = as_tensor(copies.matrix), as_tensor(copies.position)
         copy_edges = torch.as_tensor(copies.edges, device=device)
         local_start = local.detach().clone()
@@ -782,7 +782,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         local_scale = vertex_scale(local_start, copy_edges)
 
     def placed_copies():
-        return torch.einsum("nij,nj->ni", copy_matrix, local[gather]) + copy_position
+        return torch.einsum("nij,nj->ni", copy_matrix, local[copy_gather]) + copy_position
 
     def with_copies(points, colours):
         if copies is None:

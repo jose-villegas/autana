@@ -1193,7 +1193,9 @@ class AppearanceFitTests(unittest.TestCase):
         copy = self.copy_of(self.card(1.0, half=0.5, rgb=0.5))
         _points, _rgb, _history, trained = optimise(self.card(-1.0, half=0.2), [(matrix, target)], size, steps=200,
                                                     batch=1, lr_position=0.01, lr_colour=0.01, laplacian=0.0,
-                                                    report=0, seam_margin=0, copies=copy)
+                                                    report=0, seam_margin=0, copies=copy, surface_weight=1e-3,
+                                                    surface_margin=0.25,
+                                                    source=SimpleNamespace(p=shown.points, tri_v=shown.tris))
         np.testing.assert_allclose(trained.mesh.rgb, shown.rgb[0, 0], atol=0.01, err_msg="the copy's colours trained")
         spread = lambda points: np.abs(points[:, :2]).max()
         self.assertGreater(spread(trained.local), spread(copy.local) + 0.05, "the copy's table grew to the target")
