@@ -40,7 +40,7 @@ from docs import plot_style  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402
 from r3d.light import drop_masked  # noqa: E402
 from r3d.objects.instances import MATCH_TOLERANCE, bounds_diagonal, match_instances, place, source_objects  # noqa: E402
-from r3d.objects.object_error import part_labels, part_names  # noqa: E402
+from r3d.objects.parts import part_labels, part_names  # noqa: E402
 from r3d.objects.surface_match import SURFACE_TOLERANCE, JoinedInstance, merge  # noqa: E402
 from r3d.mesh_import import load_source  # noqa: E402
 
@@ -73,7 +73,7 @@ def masked_objects(src, settings):
 
 
 def split_parts(objects):
-    """Every object's connected parts as objects of their own, named as object_error.part_names names them."""
+    """Every object's connected parts as objects of their own, named as parts.part_names names them."""
     parts = []
     for obj in objects:
         owner = np.zeros(len(obj.triangles), dtype=int)
