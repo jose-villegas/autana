@@ -4,7 +4,6 @@
 #define r3d_span_triangle              constant_r3d_span_triangle
 #define r3d_span_triangle_solid        constant_r3d_span_triangle_solid
 #define r3d_span_triangle_write        constant_r3d_span_triangle_write
-#define r3d_span_screen_triangle       constant_r3d_span_screen_triangle
 #define r3d_span_capped_triangle       constant_r3d_span_capped_triangle
 #define r3d_span_hidden                constant_r3d_span_hidden
 #define r3d_span_plane_bound           constant_r3d_span_plane_bound
