@@ -1,78 +1,67 @@
 # Levels of detail
 
-A baked mesh carries coarser levels of its clusters. The main view's cull
-picks, per instance, which level each cluster group draws by its error in
-output pixels, and the blend softens each switch. The `[geometry] lod` import
-setting turns levels off; level 0 is then the baked meshlets.
+A baked mesh carries coarser levels of its clusters; the cull picks a level per
+cluster group by its error in output pixels, and the blend hides the switch.
+
+```mermaid
+flowchart LR
+    subgraph Host["host, at bake"]
+        direction LR
+        Fit[fitted mesh] --> Levels[levels<br/>clusterlod] --> Bake[outward push,<br/>LLOD records]
+    end
+    subgraph Board["board, every frame"]
+        direction LR
+        Pick[pick<br/>per instance] --> Cull[cull walk] --> Blend[draw:<br/>switch, morph or dither]
+    end
+    Host --> Board
+```
 
 | Piece | Where | Runs |
 |---|---|---|
 | Levels of a mesh | [`lod/levels.py`](../../../launcher/tools/r3d/lod/levels.py), [`lod/clusterlod.cpp`](../../../launcher/tools/r3d/lod/clusterlod.cpp) | host |
 | Levels in the baked mesh | [`lod/bake_levels.py`](../../../launcher/tools/r3d/lod/bake_levels.py), [`r3d_lit_mesh.h`](../../../launcher/main/render/r3d_lit_mesh.h), [LLOD](../../assets/formats/LLOD.md) | bake |
-| Pick, with hysteresis and a coverage cap | [`r3d_lod_pick()`](../../../launcher/main/render/lod/r3d_lod.h), run by the main view's cull just before each instance (`raster_t.picks_levels`) | board |
-| Blend: morph or dither | [`r3d_lod.h`](../../../launcher/main/render/lod/r3d_lod.h), targets in [LMOR](../../assets/formats/LMOR.md) | board |
-| Histogram, exact tolerance for a budget | [`lod/pick.py`](../../../launcher/tools/r3d/lod/pick.py) | host |
-| Replay over a camera path | [`lod/lod_replay.py`](../../../launcher/tools/r3d/lod/lod_replay.py) | host |
+| Pick | [`r3d_lod_pick()`](../../../launcher/main/render/lod/r3d_lod.h), from the main view's cull (`raster_t.picks_levels`) | board |
+| Blend | [`r3d_lod.h`](../../../launcher/main/render/lod/r3d_lod.h), morph targets in [LMOR](../../assets/formats/LMOR.md) | board |
+| Tolerance for a budget | [`lod/pick.py`](../../../launcher/tools/r3d/lod/pick.py), [`lod/lod_replay.py`](../../../launcher/tools/r3d/lod/lod_replay.py) | host |
 
 ## The levels
 
-The fitted mesh's welded positions are split into clusters, which are
-grouped, simplified with each group's border locked, and split again until a
-group no longer simplifies<sup>[[54]](../../Citations.md#karis-2021)</sup>
+Clusters are grouped, simplified with each group's border locked, and split
+again until a group no longer simplifies<sup>[[54]](../../Citations.md#karis-2021)</sup>
 (meshoptimizer's<sup>[[11]](../../Citations.md#meshoptimizer)</sup> `clusterlod`).
-Level 0 holds the fitted mesh's triangles in `clusterlod`'s own clusters.
-A fit starts from a mesh without levels; a CPU levels stage builds the
-hierarchy from its fitted bytes.
 
-Levels simplify positions only, so a strip of one colour is not simplified on
-its own. Each coarser cluster samples its colours from the nearest level-0
-surface facing its way.
+```mermaid
+flowchart TB
+    Root[cluster tree root] --> Oct[octree over level 0]
+    Root --> Runs[coarse clusters,<br/>one run per group]
+    Oct -. "cull walks it" .-> Cut[the cut]
+    Runs -. "only the cut's groups" .-> Cut
+```
 
-[`lod/bake_levels.py`](../../../launcher/tools/r3d/lod/bake_levels.py)
-builds one hierarchy per sidedness, with the positions the two share locked.
-It pushes each coarse vertex inside a group's border outward, up to the
-group's error, so a coarse level never sits inside the finer surface it
-replaces. Group spheres and errors are rounded outward into position ticks;
-[LLOD.md](../../assets/formats/LLOD.md) states their ordering rules.
-
-The cluster tree's root has two children:
-- an octree over level 0 alone, built as a mesh without levels builds its own;
-- a run of the coarse clusters in the order of the group simplified into each.
-
-The cull walks level 0's octree, then takes the cut's coarse clusters from
-each coarse group's run, so a frame never visits a coarse cluster it does not
-draw.
+| Rule | Why |
+|---|---|
+| Level 0 is `clusterlod`'s own clusters of the fitted mesh | one tree; a fit starts without levels |
+| Positions only; a coarse cluster samples colour from the nearest level-0 surface facing its way | a one-colour strip is not simplified alone |
+| One hierarchy per sidedness, shared positions locked | the two meet without a crack |
+| Coarse vertices pushed outward up to the group's error | a coarse level never sits inside the surface it replaces |
+| Spheres and errors rounded outward into position ticks | ordering holds after rounding ([LLOD](../../assets/formats/LLOD.md)) |
+| `[geometry] lod = false` | no levels; level 0 is the baked meshlets |
 
 ## The pick
 
-A cluster is drawn when its own error, projected at its sphere, is at most the
-tolerance in pixels and its group's error is above it. Every cluster of a
-group shares the group's sphere and error, so neighbours change level together
-and leave no crack. The rest mesh is one hierarchy, its groups spanning objects
-where they weld; each copy shape has its own, shared by its copies.
+| Rule | Effect |
+|---|---|
+| A cluster draws when its error ≤ tolerance < its group's error, each projected at the group's sphere | neighbours in a group switch together: no crack |
+| Coarse below `tolerance − hysteresis_px`, fine above `tolerance + hysteresis_px` | a still camera never flickers |
+| A group whose radius spans more than `coverage_permille` of the height stays fine | no large coarse patch shimmering under drift |
+| A coarse group's finer groups are coarse too; a closing pass fixes float rounding | the cut stays crack-free |
+| Each instance every `lod.pick_every` frames, all on a scene's first | the cull walk only reads the bits |
 
-Each instance is picked every `lod.pick_every` frames, and all of them on a
-scene's first frame. The coarse bits live per scene renderer; the cluster walk
-only reads them.
+Settings: [`lod.*`](../Render-Settings.md#lod). The rest mesh is one
+hierarchy across welded objects; each copy shape has its own, shared by its copies.
 
-**Hysteresis.** A group turns coarse once its projected error falls
-the [`lod.hysteresis_px`](../Render-Settings.md#lod) setting below the tolerance and turns fine again once it
-rises that far above, so a still camera never flickers between levels. A
-coarse group's parent bounds hold its own, so its finer groups are always
-coarse too; a closing pass sets coarse any source float rounding left fine
-far off, so the cut stays crack-free whatever the floats do.
-
-**Coverage cap.** A group whose radius, projected where its error is,
-spans more than the settings' `lod.coverage_permille` thousandths of the picture's
-height stays fine, whatever its error. A large coarse group shows its
-simplified surface over much of the screen, and its colours, sampled from the
-nearest level-0 surface, shimmer under a slow camera drift where the
-geometric error alone says nothing changed. A parent's bounds hold its
-sources', so it never covers less than one of them, and the cap keeps a
-coarse parent's sources coarse. The table renders each cap along the paths
-and scores it against cap 0, the finest level. Blocks popping is
-frame-to-frame change beyond the finest level's own (render_temporal.py's
-measure); triangles are those submitted, against the finest level's.
+Each coverage cap along the paths, against the finest level. Blocks popping is
+frame-to-frame change beyond the finest level's own; triangles are those submitted.
 
 <!-- generated: lod-coverage sha256=c00f806b82117544844c4f01a5e0640694835f3ce1b4d93ef43b030d5b99d876 -->
 | Path | Cap | Blocks popping | Mean difference /255 | Triangles, mean | Triangles, p95 |
@@ -93,65 +82,36 @@ python launcher/tools/r3d/lod/coverage_table.py --script HOST_RENDER.sh \
     --render Bistro "--scene bistro-fitted-full --no-hud --frames 900 --dt 33" --doc docs/render/frame/Levels-of-Detail.md
 ```
 
-**Gate:** with the levels a pose picks, no more of the rest's hidden surface
-may show than at the finest level, and
-the sky-through-walls test over each path
-must find no more holed frames than at the finest level.
+**Gate:** at the levels a pose picks, no more hidden surface shows and the
+sky-through-walls test finds no more holed frames than at the finest level.
 
 ## The budget
 
-The board picks at the fixed [`lod.tolerance_px`](../Render-Settings.md#lod).
-One tolerance for the whole frame keeps the cut crack-free. It is also the cut
-that meets a triangle budget at the least error: the allocation Wimmer and
-Schmalstieg derive per object<sup>[[110]](../../Citations.md#wimmer-1998)</sup>,
-here over clusters. Refining by screen-space error is
-Hoppe's<sup>[[111]](../../Citations.md#hoppe-1997)</sup>; the floor of half a
-pixel is this tree's choice.
-
-[`pick.py`](../../../launcher/tools/r3d/lod/pick.py) finds the tolerance for a
-budget from a histogram of log-spaced tolerance bins. Each cluster in view adds
-its triangles at the bin where it starts to be drawn and removes them at the
-bin where its group takes over; the prefix sum is the triangle count at every
-bin edge.
-
-Culling a coarser cluster's box can keep it where its finer clusters were
-culled, so the count can rise with the tolerance. The histogram then lands at
-or after the least tolerance within budget, still within it.
+The board picks at a fixed `lod.tolerance_px`. One tolerance per frame is also
+the cut that meets a triangle budget at the least error<sup>[[110]](../../Citations.md#wimmer-1998)</sup>
+by screen-space error<sup>[[111]](../../Citations.md#hoppe-1997)</sup>.
+`pick.py` finds that tolerance from a histogram of log-spaced bins;
+`lod_replay.py` scores it along a path against the exact one.
 
 ```sh
 python launcher/tools/r3d/lod/lod_replay.py SCENE.scene.toml --object NAME --out DIR [--budgets N,...] [--segment T0 T1]
 ```
 
-It writes poses.csv, summary.md and lod.png to DIR. Per pose and over the
-path, it reports the finest level's triangles in view, what fixed tolerances
-draw, and for each budget:
-- the histogram's tolerance against the exact one;
-- the triangles drawn at each;
-- the terminal share: drawn triangles whose group cannot be simplified
-  further, which no budget removes.
-
 ## The blend
 
-A fine group blends toward its parent's coarse surface as the parent nears
-its switch, so the switch itself moves nothing: a geomorph<sup>[[116]](../../Citations.md#hoppe-1996)</sup>
-whose weight follows the parent's projected error<sup>[[117]](../../Citations.md#strugar-2009)</sup>.
-The weight is whole at the switch the group meets next and fades to none
-[`lod.blend_px`](../Render-Settings.md#lod) past it; the coverage cap fades it over
-[`R3D_LOD_MORPH_COVER_RAMP`](../../../launcher/main/render/lod/r3d_lod.h) of the cap. Each vertex's target is in the mesh's
-[LMOR](../../assets/formats/LMOR.md) sibling
-([`lod/morph.py`](../../../launcher/tools/r3d/lod/morph.py)). The
-[`lod.blend`](../Render-Settings.md#lod) setting turns blending on
-or leaves a plain switch. Only a mesh imported with `[geometry] morph = true`
-carries targets and morphs; any other dithers.
+A fine group blends toward its parent's coarse surface as the parent nears its
+switch, so the switch itself moves nothing<sup>[[116]](../../Citations.md#hoppe-1996)</sup><sup>[[117]](../../Citations.md#strugar-2009)</sup>.
+
+| Blend | When | Draws during a blend | Flash |
+|---|---|---|---|
+| Switch | `lod.blend = 0` | one level | none |
+| Dither | default | both levels through complementary 4×4 screen doors | none |
+| Morph | `[geometry] morph = true` | the fine level, moved toward the coarse surface | the LMOR sibling ([`lod/morph.py`](../../../launcher/tools/r3d/lod/morph.py)) |
 
 ![Coarse share of what is drawn as one group's error projects across its switches, walking in and out, blended and switched](../../images/render/lod-blend-weight.png)
 
-The hysteresis band puts the two switches apart, so the pick keeps two more
-bits per group ([`R3D_LOD_STATE_SETS`](../../../launcher/main/render/lod/r3d_lod.h)
-sets in all). *Arrived* marks the switch a fine group came through, so its
-weight fades from the band's top; any other fine group's fades from the
-bottom. *Blending* is set while the weight is above none, so a cluster under
-any other group pays one bit test.
+The weight is whole at the next switch and fades to none `lod.blend_px` past
+it. Two more bits per group track it ([`R3D_LOD_STATE_SETS`](../../../launcher/main/render/lod/r3d_lod.h)):
 
 ```mermaid
 stateDiagram-v2
@@ -164,33 +124,17 @@ stateDiagram-v2
     note right of Fine: blending while error is within enter + blend_px
 ```
 
-| Blend | Draws during a blend | Flash |
-|---|---|---|
-| Switch (`lod.blend = 0`) | One level | none |
-| Morph (`geometry.morph`) | The fine level, moved toward the coarse surface | the LMOR sibling |
-| Dither (any other mesh) | Both levels through complementary 4×4 ordered screen doors, the coarse where the threshold is under the weight | none |
-
-The dither draws the coarse clusters of each blending group as well, each
-through its own band of thresholds, so the two levels never share a pixel.
-
 ![The 4x4 screen door at five points of the ramp past leave: coarse and fine pixels](../../images/render/lod-blend-dither.png)
 
-| Target | Rule |
+| Morph target | Rule |
 |---|---|
-| Kept vertex | The coarse vertex it became: each coarse vertex claims the nearest fine one within the group's error, nearer pairs first |
-| Removed vertex | The nearest point on the parent's coarse triangles, one facing its way when such a point is within the group's error of the nearest |
-| Colour | The coarse colour where the vertex lands, from its landing point; meshes with face colours blend positions only |
-| Shared position | Stays put when clusters under different parents that can be drawn together share it, so clusters blending by different amounts never crack |
+| Kept vertex | the coarse vertex it became; nearer pairs claim first |
+| Removed vertex | the nearest point on the parent's coarse triangles facing its way |
+| Colour | the coarse colour where it lands; face-colour meshes blend positions only |
+| Shared position | stays put across clusters under different parents, so no crack |
 
-Two clusters are never drawn together when one's own group is the other's
-parent or above it. Clusters under one parent share a shift, so the rows
-they share move as one.
-
-The table renders each path with the finest level, the pick's switches drawn
-as they are, and blended, scored as the coverage cap's is. Vertices blended
-is the share of transformed vertices with a weight above none. Stacked are
-those whose target's own level was blending too, so the target sits off the
-surface drawn next to it; the last column is the most pixels that put one off.
+Blended per path against the finest level. Stacked vertices are those whose
+target's own level was blending too, so the target sits off its neighbour.
 
 <!-- generated: lod-morph sha256=181835e03a8ae40e24cfa00c828da591239361edca3205076227b72b85d697fa -->
 | Path | Arm | Blocks popping | Mean difference /255 | Vertices blended | Frames stacked | Vertices stacked | Stacked, most px |
