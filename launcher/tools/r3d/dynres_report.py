@@ -100,8 +100,7 @@ def ms(us):
     return f"{us / 1000:.1f}"
 
 
-STAGES = (("cull", "r3d.cull"), ("transform", "r3d.transform"), ("draw", "r3d.draw"),
-          ("resolve", "r3d.resolve"), ("upscale", "r3d.upscale"))
+STAGES = (("cull", "r3d.cull"), ("transform", "r3d.transform"), ("draw", "r3d.draw"), ("upscale", "r3d.upscale"))
 SPAN_STAGES = ("setup", "edges", "carry", "fill")
 STAGE_FIGURE = "dynamic-resolution-stages.png"
 ONE_CORE_FIGURE = "dynamic-resolution-one-core.png"

@@ -2211,14 +2211,25 @@ test_cull_off_keeps_every_cluster(void) {
 
 /* The raster at size `z` of `sizes`, drawn directly and then from a census
  * taken at the next size: the same picture, depth and survivors. */
-/* The census at `size`, its view in a frame of its own: kept out of the
- * caller's, whose raster_draw() chain is the suite's deepest stack. */
+/* `camera`'s view of `raster` into `out`, in a frame popped before the census runs. */
+static __attribute__((noinline)) void
+census_view_into(render_view_t* out, const fixture_camera_t* camera, const raster_t* raster) {
+    *out = render_view_fixture(camera, raster, 0);
+}
+
+/* The census at `size`, its view on the heap: the census's steered cull
+ * counts against the main task like raster_draw()'s chain, the suite's
+ * deepest stack. */
 static __attribute__((noinline)) raster_stats_t
 census_at(raster_t* raster, const fixture_camera_t* camera, const int size[2]) {
     raster->width = size[0];
     raster->height = size[1];
-    const render_view_t census_view = render_view_fixture(camera, raster, 0);
-    return raster_census(raster, &census_view);
+    render_view_t* census_view = malloc(sizeof *census_view);
+    TEST_ASSERT_NOT_NULL(census_view);
+    census_view_into(census_view, camera, raster);
+    const raster_stats_t stats = raster_census(raster, census_view);
+    free(census_view);
+    return stats;
 }
 
 static void

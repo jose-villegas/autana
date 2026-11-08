@@ -75,10 +75,10 @@ float r3d_lod_group_coverage(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
 
 /* Updates `coarse`, R3D_LOD_WORDS(mesh->lod_group_count) words, for one
  * frame seen through `lens`: coarse where a group's error projects within
- * `lod.tolerance_px` (`lod.hysteresis_px` either side of it, by the bit's
- * last state) and its radius covers at most `lod.coverage_permille`
- * thousandths of the picture's height. A parent never projects smaller than
- * its sources, in error or radius (r3d_lit_mesh.h checks), and a closing
- * pass sets coarse any source rounding left fine, so the cut never cracks. */
-void r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod,
+ * `lod.tolerance_px` (`lod.hysteresis_px` either side, by the bit's last
+ * state) and its radius covers at most `lod.coverage_permille` thousandths
+ * of the picture's height. Parents never project smaller than their sources
+ * (r3d_lit_mesh.h checks) and a closing pass sets coarse any source rounding
+ * left fine, so the cut never cracks. True when a bit changed. */
+bool r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod,
                   uint32_t* coarse);

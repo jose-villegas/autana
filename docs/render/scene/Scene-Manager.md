@@ -47,12 +47,24 @@ finds its record by slot range, so its cost does not depend on the scene.
 
 A scene holds packed component arrays indexed by a row: the entity's index
 in the SCNE entry. Attaching clips allocates the animator's bindings and pose
-buffers in PSRAM; attaching a skin allocates its model matrices, palette and
-output mesh together in internal RAM. Lit colors and the world-space normal
-palette use a separate internal RAM block when a skin is attached and the
-scene has directional lights or nonzero ambient. A baked-only scene reserves
-no runtime-light storage. The first light allocates every existing skin's
-block transactionally; attachment failure preserves the scene.
+buffers in PSRAM. A skin's model matrices, palette and output mesh share one
+internal RAM block. Lit colors and the world-space normal palette use a
+second when the scene has directional lights or nonzero ambient. A baked-only
+scene reserves no runtime-light storage.
+
+A skin holds both blocks only while its entity is active, so memory follows
+the copies shown, not the copies loaded:
+
+| When | What the skin does |
+|---|---|
+| The scene loads | checks the skin; takes no blocks |
+| The first step or read that finds it active | takes them, skinned in its animator's current pose, and relights |
+| It stops being active | gives them back at once; its renderer reads the bind mesh |
+| Its blocks do not fit | it is not drawn, and `scene_failure()` names it, until it stops being active |
+
+`renderer_set_skin()` takes an active entity's blocks at once and keeps its
+old skin when they do not fit. The first light allocates every held skin's
+lit block transactionally; attachment failure preserves the scene.
 
 | Array | One per | Holds |
 |---|---|---|
