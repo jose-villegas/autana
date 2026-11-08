@@ -131,19 +131,20 @@ def thin_meshes(src, selected, thin, seed):
 
 
 def carve_selection(src, settings, variant):
-    """The objects a bake carves into copies, as {object id: rule}: the scene's own [[objects.meshes]] rules,
+    """The objects a bake may carve into copies, as {object id: rule}: the scene's own [[objects.meshes]] rules,
     then every repeated unit of the rest (objects/units.py), which relabels `src.tri_o` and `src.object_names`
-    with the units. Also the rest's triangle budget and the units' report (None without geometry.simplify)."""
+    with the units; a unit's rule has no budget until units.unit_budgets gives it one. Also the units' report
+    (None without geometry.simplify)."""
     from r3d.objects.units import repeated_units
 
     meshes = variant_meshes(settings.meshes, variant)
     selected = match_meshes(src.tri_o, src.tri_m, src.object_names, src.names, meshes) if meshes else {}
     if not settings.simplify:
-        return selected, variant.triangles, None
-    units = repeated_units(src.p, src.tri_v, src.tri_m, src.tri_o, src.object_names, variant.triangles,
-                           settings.source["error"], taken=selected)
+        return selected, None
+    units = repeated_units(src.p, src.tri_v, src.tri_m, src.tri_o, src.object_names, settings.source["error"],
+                           taken=selected)
     src.tri_o, src.object_names = units.tri_o, units.object_names
-    return {**selected, **units.selected}, units.rest_triangles, units.report
+    return {**selected, **units.selected}, units.report
 
 
 def bake_geometry(job, scene, recorder=None, *, carve=False):
@@ -165,7 +166,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             src.tri_v, src.tri_t, src.tri_m = tri_v, tri_t, tri_m
         step["triangles_out"] = len(tri_v)
     with recorder.step("repeated units", len(tri_v)) as step:
-        selected, rest_triangles, units_report = carve_selection(src, settings, renderer.variant)
+        selected, units_report = carve_selection(src, settings, renderer.variant)
         step["triangles_out"] = int(np.isin(src.tri_o, list(selected)).sum())
     meshes = variant_meshes(settings.meshes, renderer.variant)
     carved_keep = thin_meshes(src, selected, settings.thin, settings.seed) if selected else None
@@ -180,7 +181,14 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             double = np.array([src.names[material] in double_names for material in tri_m])
             seen = visible_triangles(visibility, scene, src.p, tri_v, double, intersector, rng)
         step["triangles_out"] = int(seen.sum())
-    with recorder.step("thin", int(seen.sum())) as step:
+    rest_triangles = renderer.variant.triangles
+    if units_report is not None:
+        from r3d.objects.units import unit_budgets
+
+        with recorder.step("unit budgets", int(seen.sum())) as step:
+            selected, rest_triangles = unit_budgets(src.p, tri_v, src.tri_o, seen, selected, rest_triangles,
+                                                    units_report)
+            step["triangles_out"] = units_report.get("drawn_by_copies", 0)
         if settings.thin:
             thin = np.isin(tri_m, [index for index, name in enumerate(src.names) if name == settings.thin.material])
             seen &= ~thin | (rng.random(len(tri_v)) < settings.thin.keep)

@@ -991,9 +991,14 @@ def main(argv=None):
             source, job = source_for(scene, args.object, lit=False)
         carved = None
         if copies is not None:
+            from r3d import mesh_bundle
             from r3d.mesh_import import carve_selection
 
-            carved = np.isin(source.tri_o, list(carve_selection(source, job.settings, job.renderer.variant)[0]))
+            # The units' names (carve_selection relabels the source with them); the start's copy rows say which
+            # the bake carved.
+            carve_selection(source, job.settings, job.renderer.variant)
+            shown = {row["source"] for row in mesh_bundle.decode(pathlib.Path(args.copies).read_bytes())[1]}
+            carved = np.isin(np.asarray(source.object_names)[source.tri_o], list(shown))
         fit_start = fitted
         cost = None if args.cost_model is None else load_cost(args.cost_model)[0]
         points, rgb, history, trained = optimise(fitted, views, size, args.steps, args.batch, args.lr_position, args.lr_colour,
