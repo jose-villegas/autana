@@ -245,7 +245,7 @@ engine page shows the [presentation GIFs](../../../../../docs/render/frame/Dynam
 
 ### Debug views
 
-`--view shaded|depth|tiles|motion|meshlets|cull|overdraw` selects the declared context view.
+`--view shaded|depth|tiles|meshlets|cull|overdraw` selects the declared context view.
 Depth and tiles show a lit-mesh scene's depth buffer, or that depth
 reduced to `RASTER_SHOW_TILE` squares. The depth is `raster_draw()`'s
 own buffer, unchanged; `raster_show()` only colours it and takes each
