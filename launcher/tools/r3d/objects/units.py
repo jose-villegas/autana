@@ -118,6 +118,9 @@ def repeated_units(p, tri_v, tri_m, tri_o, object_names, triangles, floor=0.0, t
     copies of one reduced shape differ by up to that much."""
     p, tri_v, tri_m, tri_o = map(np.asarray, (p, tri_v, tri_m, tri_o))
     eligible = ~np.isin(tri_o, list(taken))
+    if not eligible.any():
+        return Units(tri_o, list(object_names), {}, triangles, dict(parts=0, shapes=0, units=[],
+                                                                  carved_source_triangles=0, copies=0))
     labels, _ = part_labels(p, tri_v, tri_o)
     names, _, _ = part_names(labels, tri_o, object_names)
     rows = np.flatnonzero(eligible)
