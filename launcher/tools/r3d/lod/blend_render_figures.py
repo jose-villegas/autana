@@ -1,13 +1,15 @@
-"""The level switch the blend softens, on a scene's camera path: Levels-of-Detail.md's render figures.
+"""The level switches the blend softens, on a camera closing in on one detail: Levels-of-Detail.md's render figures.
 
     python launcher/tools/r3d/lod/blend_render_figures.py --script HOST_RENDER.sh --render "RENDERER ARGS"         --morph MESH [--morph ...] --out DIR
 
 Renders the path at the finest level, with the pick's switches drawn as they are (lod.blend switch) and blended
 (lod.blend on, which dithers a mesh without morph targets), and blended again with each --morph mesh given its
-morph targets (morph_packs.py), then finds the window where a switch pops most: the
-frame and the square whose frame-to-frame change differs most from the finest level's, on luma averaged over the
-screen door's tile (morph_table.py's worst pop). lod-blend-pop.gif plays that square through the frames around
-it, the finest level beside each arm; lod-blend-pop.png is the frame before and the frame of the pop, with each arm's difference from the finest level.
+morph targets (morph_packs.py). lod-blend-pop.gif plays the whole path, the middle of each arm's frame side by
+side, so each level switch shows as the camera closes in; the producer draws at a coarse lod.tolerance_px so
+each switch is large enough to see. lod-blend-pop.png zooms on the frame and square
+of that middle whose frame-to-frame change differs most from the finest level's, on luma averaged over the screen door's tile
+(morph_table.py's worst pop): the frame before and the frame of the pop, with each arm's difference from the
+finest level.
 """
 import argparse
 import os
@@ -34,7 +36,8 @@ from render_compare import captioned  # noqa: E402
 
 PRODUCER = Producer(area="render", needs=("host", "bakes"),
                     run=("--script", "launcher/main/apps/render_lab/tools/render_lab_render_host.sh",
-                         "--render", "--scene sponza-fitted-full --no-hud --frames 1101 --dt 33",
+                         "--render", "--scene sponza-fitted-full --camera lion --no-hud --frames 303 --dt 33"
+                                     " --set render.lod.tolerance_px=16",
                          "--morph", "sponza.atrium_fitted_full", "--out", "{out}"),
                     outputs=("lod-blend-pop.gif", "lod-blend-pop.png"))
 
@@ -42,8 +45,9 @@ ARMS = (("finest", FINEST, False), ("switch", SWITCHES, False), ("dither", blend
         ("morph", blended("on", None), True))  # (name, settings, reads the morph packs)
 CROP = POP_SQUARE  # pixels a side of the square shown
 ZOOM = 4  # each shown pixel's side in the figures
-AROUND = 8  # frames shown before and after the pop
-FRAME_MS = 100  # each GIF frame, slowed so the pop can be seen
+VIEW = 224  # pixels a side of the middle of each frame the GIF plays
+STRIDE = 3  # path frames per GIF frame
+FRAME_MS = 100  # each GIF frame, slowed so each switch can be seen
 DIFFERENCE_GAIN = 4  # the difference panels' brightness per level of difference
 
 
@@ -62,6 +66,13 @@ def render(renderer, args, sets, out, assets=None):
 def crop(frame, top, left):
     square = np.asarray(frame)[top:top + CROP, left:left + CROP]
     return Image.fromarray(square.astype(np.uint8)).resize((CROP * ZOOM, CROP * ZOOM), Image.NEAREST)
+
+
+def middle(frame):
+    """The VIEW square at the frame's middle, where the camera looks."""
+    pixels = np.asarray(frame)
+    top, left = (pixels.shape[0] - VIEW) // 2, (pixels.shape[1] - VIEW) // 2
+    return Image.fromarray(pixels[top:top + VIEW, left:left + VIEW].astype(np.uint8))
 
 
 def difference(frame, finest, top, left):
@@ -103,11 +114,11 @@ def main():
         packs = morph_packs(args.morph, work / "morph-packs")
         videos = {name: render(renderer, args.render, sets, work / name, packs if morph else None)
                   for name, sets, morph in ARMS}
+    videos = {name: [middle(frame) for frame in video] for name, video in videos.items()}
     finest, switch = videos["finest"], videos["switch"]
     _, t, top, left = worst_pop(finest, switch, AVERAGED)
-    first, end = max(t - AROUND, 0), min(t + AROUND + 1, len(finest))
-    frames = [row([captioned(crop(video[i], top, left), f"{name} {i}") for name, video in videos.items()])
-              for i in range(first, end)]
+    frames = [row([captioned(video[i], f"{name} {i}") for name, video in videos.items()])
+              for i in range(0, len(finest), STRIDE)]
     args.out.mkdir(parents=True, exist_ok=True)
     save_gif(frames, args.out / "lod-blend-pop.gif", FRAME_MS)
     sheet = []
