@@ -149,6 +149,13 @@ void r3d_pipeline_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const
                        const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows,
                        const r3d_span_target_t* target, r3d_pipeline_work_t* work);
 
+/* r3d_pipeline_draw() for an instance in a blend: the clusters whose `rows`
+ * carry a weight toward their morph targets or a dither band are drawn so.
+ * Kept apart, so the plain draw tests no blend. */
+void r3d_pipeline_draw_blended(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
+                               const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows,
+                               const r3d_span_target_t* target, r3d_pipeline_work_t* work);
+
 /* One mesh's visible clusters as the splits weigh them; several parts are
  * drawn as one, their clusters in part order. `rows` as transformed, or NULL
  * where only the transform split reads the part. */
