@@ -27,7 +27,10 @@ HASH_HEX_DIGITS = 8
 def shape_id(mesh, rule, first):
     """A bounded shape id, stable under output ordering and copy count."""
     key = name_hash(json.dumps([mesh, rule, first], sort_keys=True))
-    result = f"{mesh.split('.', 1)[0]}.{key:0{HASH_HEX_DIGITS}x}"
+    suffix = f".{key:0{HASH_HEX_DIGITS}x}"
+    # The hash names the shape; the stem only helps a reader, so a long one gives way to the colours suffix.
+    room = NAME_BYTES - 1 - len((suffix + NAME_SUFFIX).encode("ascii"))
+    result = mesh.split(".", 1)[0][:max(room, 0)] + suffix
     if len((result + NAME_SUFFIX).encode("ascii")) >= NAME_BYTES:
         raise PackError(f"shape id {result!r} leaves no room for its colours")
     return result

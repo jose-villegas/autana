@@ -53,6 +53,8 @@ def bake_pixels(card, query, positions, triangles, uv, tri_uv, texture, keep_alp
 
 
 def bake_card(card, positions, triangles, uv, tri_uv, texture, keep_alpha, *, query=None):
+    if not np.any(card['hi'] > card['lo']):
+        return None  # no extent: nothing to cover, and no texel size to measure one
     query = RayQuery(positions, triangles) if query is None else query
     card = dict(card, texel_size=card.get('texel_size', max(card['hi'] - card['lo']) / CARD_MASK_WIDTH))
     mask, _, _ = bake_pixels(card, query, positions, triangles, uv, tri_uv, texture, keep_alpha)

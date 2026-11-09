@@ -56,6 +56,15 @@ def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, t
 
 
 class MeshBundleTests(unittest.TestCase):
+    def test_a_long_material_stem_shortens_to_leave_room_for_colours(self):
+        from asset.asset_pack import NAME_BYTES
+        long = "x" * NAME_BYTES + ".DoubleSided"
+        first, second = (mesh_bundle.shape_id(long, {"material": long}, index) for index in range(2))
+        for name in (first, second):
+            self.assertLess(len((name + lcol_asset.NAME_SUFFIX).encode("ascii")), NAME_BYTES)
+            self.assertTrue(name.startswith("x"))
+        self.assertNotEqual(first, second)
+
     def test_a_start_with_two_shapes_sums_meshlets_over_every_mesh_and_writes_one_file(self):
         recorder = StepRecorder(probe=lambda gpu: (100, None), interval=None)
         with tempfile.TemporaryDirectory() as directory:
