@@ -53,7 +53,7 @@ raster_settings(const raster_t* raster) {
 typedef struct {
     const r3d_lit_mesh_t* mesh;
     r3d_lens_t lens;
-    r3d_lod_morph_t morph;
+    const r3d_lod_morph_t* morph; /* NULL: it blends nothing, the plain transform and draw */
     const uint16_t* visible;
     int visible_count;
     int vertex_base, cluster_base;
@@ -85,6 +85,8 @@ typedef struct {
     batch_item_t items[RASTER_BATCH_INSTANCES];
     r3d_pipeline_part_t parts[RASTER_BATCH_INSTANCES];
     int count;
+    /* Apart from the items, so a frame that blends nothing never reads them. */
+    r3d_lod_morph_t morphs[RASTER_BATCH_INSTANCES];
 } batch_t;
 
 typedef struct {
@@ -177,9 +179,9 @@ transform_slice(void* ctx) {
         const int lo = mathi_max(s->first, start) - start;
         const int hi = mathi_min(end, start + item->visible_count) - start;
         if (lo < hi) {
-            r3d_pipeline_transform_morphed(item->mesh, &item->lens, item->morph.enabled ? &item->morph : NULL,
-                                           item->visible + lo, hi - lo, b.cs + item->vertex_base,
-                                           b.rows + item->cluster_base, ((const draw_work_t*)b.draw)->skip_hidden);
+            r3d_pipeline_transform_morphed(item->mesh, &item->lens, item->morph, item->visible + lo, hi - lo,
+                                           b.cs + item->vertex_base, b.rows + item->cluster_base,
+                                           ((const draw_work_t*)b.draw)->skip_hidden);
         }
         start += item->visible_count;
     }
@@ -308,9 +310,14 @@ draw_slice(void* ctx) {
         const batch_item_t* item = &s->batch->items[k];
         target->writers = item->writers;
         target->writer_count = item->writer_count;
-        (item->morph.enabled ? r3d_pipeline_draw_blended : r3d_pipeline_draw)(
-            item->mesh, &item->lens, item->visible, item->visible_count, b->cs + item->vertex_base,
-            b->rows + item->cluster_base, target, b->work[s->work_index]);
+        if (item->morph == NULL) {
+            r3d_pipeline_draw(item->mesh, &item->lens, item->visible, item->visible_count, b->cs + item->vertex_base,
+                              b->rows + item->cluster_base, target, b->work[s->work_index]);
+        } else {
+            r3d_pipeline_draw_blended(item->mesh, &item->lens, item->visible, item->visible_count,
+                                      b->cs + item->vertex_base, b->rows + item->cluster_base, target,
+                                      b->work[s->work_index], item->morph->dither);
+        }
     }
     FRAME_LAP_END();
 }
@@ -746,10 +753,11 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
                 item->mesh = mesh;
                 instance_lens(picture, instance, &item->lens);
                 r3d_lens_set_depth_near(&item->lens, *work->buffers.depth_near);
+                item->morph = NULL;
                 if (blends) {
-                    raster_lod_morph(raster, view, instance, &item->lens, &item->morph);
-                } else {
-                    item->morph.enabled = false;
+                    r3d_lod_morph_t* morph = &batch->morphs[batch->count - 1];
+                    raster_lod_morph(raster, view, instance, &item->lens, morph);
+                    item->morph = morph->enabled ? morph : NULL;
                 }
                 item->visible = culled + 1;
                 item->visible_count = culled[0];

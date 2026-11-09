@@ -409,7 +409,7 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const mat4
     }
     FRAME_LAP("r3d.transform.cluster");
     return (r3d_pipeline_rows_t){
-        (int16_t)x0, (int16_t)y0, (int16_t)x1, (int16_t)y1, boxed ? r3d_span_depth_limit(iz) : 0, unbounded, false, 0};
+        (int16_t)x0, (int16_t)y0, (int16_t)x1, (int16_t)y1, boxed ? r3d_span_depth_limit(iz) : 0, unbounded, 0};
 }
 
 /* Cluster `cluster`'s step toward its morph targets at `weight`, in
@@ -450,12 +450,12 @@ transform_morphed(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const mat4
         transform_store(lens, &cs[v], l, p.b, p.inside_x, p.inside_y, p.iz, &y0, &y1, &unbounded, boxed, &x0, &x1, &iz);
     }
     return (r3d_pipeline_rows_t){
-        (int16_t)x0, (int16_t)y0, (int16_t)x1,    (int16_t)y1, boxed ? r3d_span_depth_limit(iz) : 0,
-        unbounded,   false,       (uint8_t)weight};
+        (int16_t)x0, (int16_t)y0,    (int16_t)x1, (int16_t)y1, boxed ? r3d_span_depth_limit(iz) : 0,
+        unbounded,   (uint8_t)weight};
 }
 
 /* Rows that bound nothing: a cluster whose dither band draws no level. */
-#define ROWS_NONE ((r3d_pipeline_rows_t){INT16_MAX, INT16_MAX, INT16_MIN, INT16_MIN, 0, false, true, 0})
+#define ROWS_NONE ((r3d_pipeline_rows_t){INT16_MAX, INT16_MAX, INT16_MIN, INT16_MIN, 0, false, 0})
 _Static_assert(R3D_LOD_MORPH_ONE <= UINT8_MAX, "a weight fits r3d_pipeline_rows_t.morph");
 
 /* Cluster `c`, which takes part in the blend: morphed by its weight, or
@@ -487,7 +487,6 @@ blend_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const mat4f_t*
         return true;
     }
     rows[c] = transform_cluster(mesh, lens, screen, &mesh->clusters[c], cs, lo_bits, hi_bits, boxed);
-    rows[c].dithered = band != 0;
     rows[c].morph = band;
     return true;
 }
@@ -860,6 +859,10 @@ draw_triangles(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit
     }
 }
 
+/* How a draw treats a cluster whose rows carry a nonzero `morph`: the plain
+ * draw never looks, the blended one reads it as a dither band or a weight. */
+typedef enum { BLEND_NONE, BLEND_MORPH, BLEND_DITHER } blend_t;
+
 /* The screen mask of a dither band: every pixel whose 4x4 threshold is inside it. */
 static uint16_t
 band_mask(uint8_t band) {
@@ -877,19 +880,21 @@ band_mask(uint8_t band) {
     return mask;
 }
 
-/* Triangles [first, end) of a cluster in a blend, kept out of the hot draw's
- * code: through its dither band's screen door, nothing when the band draws no
- * pixel, or moved toward its morph targets, colours included. */
-static __attribute__((noinline, cold)) void
+/* Triangles [first, end) of a cluster in a blend: through its dither band's
+ * screen door, nothing when the band draws no pixel, or moved toward its morph
+ * targets, colours included. Inlined only into r3d_pipeline_draw_blended(),
+ * the plain draw's copies passing BLEND_NONE, so it adds no frame to the
+ * draw's stack chain. */
+static inline __attribute__((always_inline)) void
 draw_blended(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int cluster, const r3d_pipeline_vertex_t* cs,
              const r3d_pipeline_rows_t* r, const r3d_span_target_t* target, draw_mode_t mode, r3d_pipeline_work_t* work,
-             int first, int end) {
-    const uint16_t screen = r->dithered ? band_mask(r->morph) : 0U;
-    if (r->dithered && screen == 0) {
+             int first, int end, bool dither) {
+    const uint16_t screen = dither ? band_mask(r->morph) : 0U;
+    if (dither && screen == 0) {
         return;
     }
     draw_triangles(mesh, lens, &mesh->clusters[cluster], first, end, cs, target, mode, work, cluster,
-                   r->dithered ? 0 : r->morph, screen);
+                   dither ? 0 : r->morph, screen);
 }
 
 /* Each writer's value for this cluster and triangle, by its step. */
@@ -907,7 +912,7 @@ retag(r3d_span_writer_t* writers, const r3d_span_writer_t* given, int count, uin
 static inline __attribute__((always_inline)) void
 draw_writing_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
                 const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
-                draw_mode_t mode, r3d_pipeline_work_t* work, bool blends) {
+                draw_mode_t mode, r3d_pipeline_work_t* work, blend_t blend) {
     assert(target->writer_count <= GFX_ATTACHMENTS_FURTHER_MAX);
     r3d_span_writer_t writers[GFX_ATTACHMENTS_FURTHER_MAX];
     r3d_span_target_t writing = *target;
@@ -929,8 +934,9 @@ draw_writing_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16
         const int step = per_triangle ? 1 : c->triangle_count;
         for (int t = c->triangle_first; t < end; t += step) {
             retag(writers, target->writers, target->writer_count, clusters[i], (uint32_t)t);
-            if (blends && rows != NULL && rows[clusters[i]].morph != 0) {
-                draw_blended(mesh, lens, clusters[i], cs, &rows[clusters[i]], &writing, mode, work, t, t + step);
+            if (blend != BLEND_NONE && rows != NULL && rows[clusters[i]].morph != 0) {
+                draw_blended(mesh, lens, clusters[i], cs, &rows[clusters[i]], &writing, mode, work, t, t + step,
+                             blend == BLEND_DITHER);
                 continue;
             }
             /* No DRAW_BOUNDED: one more live value puts this frame over stack_chain_gate. */
@@ -944,7 +950,7 @@ draw_writing(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
              const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
              r3d_pipeline_work_t* work) {
     draw_writing_of(mesh, lens, clusters, count, cs, rows, target,
-                    DRAW_WRITES | (target->skip_hidden ? DRAW_SKIPPING : 0U), work, false);
+                    DRAW_WRITES | (target->skip_hidden ? DRAW_SKIPPING : 0U), work, BLEND_NONE);
 }
 
 /* Keep once-per-draw plane setup in flash to preserve the hot-path IRAM budget. */
@@ -957,16 +963,16 @@ build_guard_planes(const r3d_lens_t* lens, r3d_pipeline_work_t* work) {
 static inline __attribute__((always_inline)) void
 draw_reading_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
                 const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
-                draw_mode_t mode, r3d_pipeline_work_t* work, bool blends) {
+                draw_mode_t mode, r3d_pipeline_work_t* work, blend_t blend) {
     for (int i = 0; i < count; i++) {
         if (rows != NULL && cluster_skipped(&rows[clusters[i]], target, mode)) {
             continue;
         }
         const r3d_lit_cluster_t* c = &mesh->clusters[clusters[i]];
         const draw_mode_t bounded = rows != NULL && !rows[clusters[i]].unbounded ? DRAW_BOUNDED : 0U;
-        if (blends && rows != NULL && rows[clusters[i]].morph != 0) {
+        if (blend != BLEND_NONE && rows != NULL && rows[clusters[i]].morph != 0) {
             draw_blended(mesh, lens, clusters[i], cs, &rows[clusters[i]], target, mode | bounded, work,
-                         c->triangle_first, c->triangle_first + c->triangle_count);
+                         c->triangle_first, c->triangle_first + c->triangle_count, blend == BLEND_DITHER);
             continue;
         }
         draw_triangles(mesh, lens, c, c->triangle_first, c->triangle_first + c->triangle_count, cs, target,
@@ -978,7 +984,7 @@ static RENDER_IRAM_ATTR __attribute__((noinline)) void
 draw_reading(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
              const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
              r3d_pipeline_work_t* work) {
-    draw_reading_of(mesh, lens, clusters, count, cs, rows, target, 0U, work, false);
+    draw_reading_of(mesh, lens, clusters, count, cs, rows, target, 0U, work, BLEND_NONE);
 }
 
 /* The read-only draw of a view that skips hidden clusters. */
@@ -986,7 +992,7 @@ static RENDER_SKIP_ATTR __attribute__((noinline)) void
 draw_reading_skipping(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
                       const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
                       r3d_pipeline_work_t* work) {
-    draw_reading_of(mesh, lens, clusters, count, cs, rows, target, DRAW_SKIPPING, work, false);
+    draw_reading_of(mesh, lens, clusters, count, cs, rows, target, DRAW_SKIPPING, work, BLEND_NONE);
 }
 
 /* Chooses once per draw whether the target's writers follow each fill, and
@@ -1010,12 +1016,13 @@ r3d_pipeline_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint
 void __attribute__((noinline, cold))
 r3d_pipeline_draw_blended(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
                           const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows,
-                          const r3d_span_target_t* target, r3d_pipeline_work_t* work) {
+                          const r3d_span_target_t* target, r3d_pipeline_work_t* work, bool dither) {
     build_guard_planes(lens, work);
     const draw_mode_t skipping = target->skip_hidden ? DRAW_SKIPPING : 0U;
+    const blend_t blend = dither ? BLEND_DITHER : BLEND_MORPH;
     if (target->writer_count != 0) {
-        draw_writing_of(mesh, lens, clusters, count, cs, rows, target, DRAW_WRITES | skipping, work, true);
+        draw_writing_of(mesh, lens, clusters, count, cs, rows, target, DRAW_WRITES | skipping, work, blend);
     } else {
-        draw_reading_of(mesh, lens, clusters, count, cs, rows, target, skipping, work, true);
+        draw_reading_of(mesh, lens, clusters, count, cs, rows, target, skipping, work, blend);
     }
 }
