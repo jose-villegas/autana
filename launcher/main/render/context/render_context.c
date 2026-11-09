@@ -410,6 +410,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     const int step = current_step(c);
     raster_t* r = &c->raster;
     r->split = &c->split;
+    r->steer = &c->steer;
     r->picks_levels = true;
     r->settings = &c->settings;
     r->instances = instances;

@@ -110,7 +110,7 @@ merged(const r3d_lit_lod_group_t* inner, int first, int count) {
         const int reach = abs(inner[i].bounds.centre.x - x) + inner[i].bounds.radius + R3D_LOD_ENCLOSE_MARGIN;
         radius = reach > radius ? reach : radius;
     }
-    return (r3d_lit_lod_group_t){{{x, 0, 0}, (int16_t)radius}, (uint16_t)(inner[first].error * ERROR_GROWTH)};
+    return (r3d_lit_lod_group_t){{{x, 0, 0}, (int16_t)radius}, (uint16_t)(inner[first].error * ERROR_GROWTH), 0};
 }
 
 static const r3d_lit_mesh_t*
@@ -121,7 +121,7 @@ levelled_mesh(void) {
     r3d_lit_lod_group_t* g = levelled->groups;
     for (int i = 0; i < FINEST_GROUPS; i++) {
         const int16_t x = (int16_t)((2 * i - (FINEST_GROUPS - 1)) * FINEST_SPACING / 2);
-        g[i] = (r3d_lit_lod_group_t){{{x, 0, 0}, FINEST_RADIUS}, FINEST_ERROR};
+        g[i] = (r3d_lit_lod_group_t){{{x, 0, 0}, FINEST_RADIUS}, FINEST_ERROR, 0};
     }
     for (int i = 0; i < MIDDLE_GROUPS; i++) {
         g[FINEST_GROUPS + i] = merged(g, i * MERGE, MERGE);
@@ -241,7 +241,7 @@ pick_along_the_path(const r3d_lit_mesh_t* mesh, pose_check_t check) {
     uint32_t ever_coarse = 0, ever_fine = 0;
     for (int p = 0; p < poses; p++) {
         const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
-        r3d_lod_pick(mesh, &lens, &LOD, coarse);
+        r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL);
         check(mesh, &lens, coarse);
         ever_coarse |= coarse[0];
         ever_fine |= ~coarse[0];
@@ -338,7 +338,7 @@ test_every_finest_cluster_is_drawn_at_exactly_one_level_along_the_path(void) {
     bool drew_top = false, drew_finest = false;
     for (int p = 0; p < poses; p++) {
         const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
-        r3d_lod_pick(mesh, &lens, &LOD, coarse);
+        r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL);
         for (int f = 0; f < FINEST_CLUSTERS; f++) {
             TEST_ASSERT_EQUAL_INT(1, levels_drawn(mesh, f, coarse));
         }
@@ -360,7 +360,7 @@ test_a_group_s_bit_follows_its_projected_error_within_the_hysteresis_band(void) 
     const int poses = 2 * steps;
     for (int p = 0; p < poses; p++) {
         const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
-        r3d_lod_pick(mesh, &lens, &LOD, coarse);
+        r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL);
         for (int g = 0; g < GROUPS; g++) {
             const float px = r3d_lod_group_pixels(mesh, &lens, g);
             const bool capped = r3d_lod_group_coverage(mesh, &lens, g) > COVERAGE_MAX;
@@ -379,13 +379,13 @@ static float
 top_turns_fine(const r3d_lit_mesh_t* mesh, uint32_t* coarse) {
     float d = FAR_EYE;
     r3d_lens_t lens = lens_at(d, NULL);
-    r3d_lod_pick(mesh, &lens, &LOD, coarse);
+    r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL);
     TEST_ASSERT_TRUE(r3d_lod_coarse(coarse, TOP_GROUP));
     while (r3d_lod_coarse(coarse, TOP_GROUP)) {
         TEST_ASSERT_TRUE(d > NEAR_EYE);
         d *= STEP;
         lens = lens_at(d, NULL);
-        r3d_lod_pick(mesh, &lens, &LOD, coarse);
+        r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL);
     }
     TEST_ASSERT_TRUE(r3d_lod_group_pixels(mesh, &lens, TOP_GROUP) > TOLERANCE + HYSTERESIS);
     return d;
@@ -400,10 +400,10 @@ test_a_camera_backing_off_a_switch_by_less_than_the_band_does_not_switch_back(vo
     const r3d_lens_t lens = lens_at(top_turns_fine(mesh, coarse) / STEP, NULL);
     const float back = r3d_lod_group_pixels(mesh, &lens, TOP_GROUP);
     TEST_ASSERT_TRUE(back > TOLERANCE - HYSTERESIS && back <= TOLERANCE + HYSTERESIS);
-    r3d_lod_pick(mesh, &lens, &LOD, coarse);
+    r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL);
     const uint32_t held = coarse[0];
     TEST_ASSERT_FALSE(r3d_lod_coarse(coarse, TOP_GROUP));
-    r3d_lod_pick(mesh, &lens, &LOD, coarse);
+    r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL);
     TEST_ASSERT_EQUAL_HEX32(held, coarse[0]);
 }
 
@@ -419,12 +419,12 @@ test_a_pick_reports_whether_it_changed_a_bit(void) {
         const r3d_lens_t lens = lens_at(d, NULL);
         uint32_t before[R3D_LOD_WORDS(GROUPS)];
         memcpy(before, coarse, sizeof before);
-        const bool changed = r3d_lod_pick(mesh, &lens, &LOD, coarse);
+        const bool changed = r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL);
         if (memcmp(before, coarse, sizeof before) != 0) {
             TEST_ASSERT_TRUE(changed);
             changes++;
         }
-        TEST_ASSERT_FALSE(r3d_lod_pick(mesh, &lens, &LOD, coarse));
+        TEST_ASSERT_FALSE(r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL));
     }
     TEST_ASSERT_TRUE(changes > 1); /* the fly-in crossed switches */
 }
@@ -477,8 +477,8 @@ test_the_least_error_skips_only_poses_that_pick_nothing_coarse(void) {
     const int steps = steps_in();
     for (int p = 0; p < 2 * steps; p++) {
         const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
-        r3d_lod_pick(mesh, &lens, &LOD, coarse);
-        r3d_lod_pick(&bounded, &lens, &LOD, skipping);
+        r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL);
+        r3d_lod_pick(&bounded, &lens, &LOD, skipping, NULL);
         TEST_ASSERT_EQUAL_HEX32_ARRAY(coarse, skipping, R3D_LOD_WORDS(GROUPS));
         if (p == steps) {
             TEST_ASSERT_EQUAL_HEX32(0, skipping[0]);
@@ -535,7 +535,7 @@ test_a_parent_turning_coarse_takes_an_out_of_order_source_with_it(void) {
     uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
     const r3d_lens_t lens = lens_at(FAR_EYE, NULL);
     TEST_ASSERT_TRUE(r3d_lod_group_pixels(mesh, &lens, 0) > TOLERANCE + HYSTERESIS);
-    r3d_lod_pick(mesh, &lens, &LOD, coarse);
+    r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL);
     TEST_ASSERT_TRUE(r3d_lod_coarse(coarse, TOP_GROUP));
     TEST_ASSERT_TRUE(r3d_lod_coarse(coarse, 0));
     for (int f = 0; f < FINEST_CLUSTERS; f++) {
@@ -623,7 +623,7 @@ test_the_finest_tree_walk_and_the_cut_keep_what_the_whole_walk_keeps(void) {
     bool cut_drawn = false;
     for (int p = 0; p < 2 * steps; p++) {
         const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
-        r3d_lod_pick(mesh, &lens, &LOD, coarse);
+        r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL);
         uint16_t apart[CLUSTERS], together[CLUSTERS];
         const int count = r3d_pipeline_cull(mesh, &lens, coarse, apart, w, NULL);
         TEST_ASSERT_EQUAL_INT(count, r3d_pipeline_cull(&whole, &lens, coarse, together, w, NULL));
@@ -894,6 +894,208 @@ test_the_counted_walk_counts_the_coarse_clusters_it_keeps(void) {
     free(walk);
 }
 
+/* Triangles a cluster of each level holds in the budget's tests: fewer at
+ * each coarser level, though more than half, so a merge still saves. */
+enum { FINEST_TRIANGLES = 8, MIDDLE_TRIANGLES = 6, UPPER_TRIANGLES = 5, TOP_TRIANGLES = 4 };
+
+/* The levelled mesh with its clusters' triangles and each group's saves, as
+ * the levels bake writes them: the triangles of the clusters a group holds
+ * less those of the clusters simplified from it. */
+static const r3d_lit_mesh_t*
+counted_mesh(void) {
+    const r3d_lit_mesh_t* mesh = levelled_mesh();
+    for (int c = 0; c < CLUSTERS; c++) {
+        const uint16_t own = levelled->lod[c].own;
+        levelled->clusters[c].triangle_count = own == R3D_LOD_NONE   ? FINEST_TRIANGLES
+                                               : own < FINEST_GROUPS ? MIDDLE_TRIANGLES
+                                               : own < TOP_GROUP     ? UPPER_TRIANGLES
+                                                                     : TOP_TRIANGLES;
+    }
+    for (int g = 0; g < GROUPS; g++) {
+        levelled->groups[g].saves = 0;
+    }
+    for (int c = 0; c < CLUSTERS; c++) {
+        const r3d_lit_cluster_lod_t lod = levelled->lod[c];
+        const int16_t triangles = (int16_t)levelled->clusters[c].triangle_count;
+        if (lod.parent != R3D_LOD_NONE) {
+            levelled->groups[lod.parent].saves = (int16_t)(levelled->groups[lod.parent].saves + triangles);
+        }
+        if (lod.own != R3D_LOD_NONE) {
+            levelled->groups[lod.own].saves = (int16_t)(levelled->groups[lod.own].saves - triangles);
+        }
+    }
+    r3d_lit_mesh_find_levels(&levelled->mesh);
+    return mesh;
+}
+
+/* The triangles `mesh` draws under `coarse`. */
+static int
+drawn_triangles(const r3d_lit_mesh_t* mesh, const uint32_t* coarse) {
+    uint16_t listed[CLUSTERS];
+    const int count = r3d_lod_list_drawn(mesh, coarse, listed, CLUSTERS);
+    int triangles = 0;
+    for (int i = 0; i < count; i++) {
+        triangles += mesh->clusters[listed[i]].triangle_count;
+    }
+    return triangles;
+}
+
+/* The triangles `histogram` predicts at bin edge `edge`: the finest, less
+ * the saves of every bin below it. */
+static int
+predicted_at(const r3d_lod_histogram_t* histogram, int edge) {
+    int triangles = histogram->finest;
+    for (int b = 0; b < edge; b++) {
+        triangles -= histogram->saves[b];
+    }
+    return triangles;
+}
+
+/* At every pose of the path and every bin edge past the first, the triangles
+ * the histogram predicts are those a fresh pick at that edge's tolerance
+ * draws, hysteresis aside: the histogram is the cut's triangle count as a
+ * function of the tolerance. */
+static void
+test_the_histogram_predicts_the_triangles_a_pick_at_each_bin_edge_draws(void) {
+    const r3d_lit_mesh_t* mesh = counted_mesh();
+    const int steps = steps_in();
+    int checked = 0;
+    for (int p = 0; p < steps; p++) {
+        const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
+        uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
+        r3d_lod_histogram_t histogram = {{0}, 0};
+        r3d_lod_pick(mesh, &lens, &LOD, coarse, &histogram);
+        TEST_ASSERT_EQUAL_INT(FINEST_CLUSTERS * FINEST_TRIANGLES, histogram.finest);
+        for (int edge = 1; edge <= R3D_LOD_BINS; edge++) {
+            render_lod_settings_t at = LOD;
+            at.tolerance_px = r3d_lod_bin_edge(edge);
+            at.hysteresis_px = 0.0F;
+            uint32_t fresh[R3D_LOD_WORDS(GROUPS)] = {0};
+            r3d_lod_pick(mesh, &lens, &at, fresh, NULL);
+            TEST_ASSERT_EQUAL_INT_MESSAGE(drawn_triangles(mesh, fresh), predicted_at(&histogram, edge), "edge");
+            checked += predicted_at(&histogram, edge) < histogram.finest ? 1 : 0;
+        }
+    }
+    TEST_ASSERT_GREATER_THAN_INT(0, checked); /* some edge along the path draws coarse */
+}
+
+/* A round's histogram: its finest triangles and saves at two bins, one
+ * below the floor and one above it. */
+enum { SEEN_FINEST = 1000, BELOW_BIN = 10, BELOW_SAVES = 300, ABOVE_BIN = 20, ABOVE_SAVES = 400, FLOOR_EDGE = 14 };
+
+/* Ends a round of the histogram above, split across both cores, that drew `drawn`. */
+static void
+steer_round(r3d_lod_steer_t* steer, int budget, int drawn) {
+    steer->halves[0].finest = SEEN_FINEST / 2;
+    steer->halves[1].finest = SEEN_FINEST - (SEEN_FINEST / 2);
+    steer->halves[0].saves[BELOW_BIN] = BELOW_SAVES;
+    steer->halves[1].saves[ABOVE_BIN] = ABOVE_SAVES;
+    r3d_lod_steer_frame(steer, r3d_lod_bin_edge(FLOOR_EDGE), budget, drawn, true);
+}
+
+/* The steer takes the least edge past the floor whose predicted triangles,
+ * both cores' histograms summed, fit the budget; the floor when it fits
+ * there; the last edge, marked over, when none does. What the round drew
+ * against what was predicted scales the prediction. */
+static void
+test_the_steer_takes_the_least_edge_past_the_floor_within_the_budget(void) {
+    const float floor_px = r3d_lod_bin_edge(FLOOR_EDGE);
+    const int at_floor = SEEN_FINEST - BELOW_SAVES; /* BELOW_BIN is under the floor */
+    const int above = at_floor - ABOVE_SAVES;
+    r3d_lod_steer_t steer;
+    r3d_lod_steer_reset(&steer, floor_px);
+    steer_round(&steer, at_floor, at_floor);
+    TEST_ASSERT_EQUAL_INT(-1, steer.bin);
+    TEST_ASSERT_EQUAL_FLOAT(floor_px, steer.tolerance_px);
+    r3d_lod_steer_reset(&steer, floor_px);
+    steer_round(&steer, above, at_floor);
+    TEST_ASSERT_EQUAL_INT(ABOVE_BIN + 1, steer.bin);
+    TEST_ASSERT_EQUAL_FLOAT(r3d_lod_bin_edge(ABOVE_BIN + 1), steer.tolerance_px);
+    TEST_ASSERT_FALSE(steer.over);
+    r3d_lod_steer_reset(&steer, floor_px);
+    steer_round(&steer, above - 1, at_floor);
+    TEST_ASSERT_EQUAL_INT(R3D_LOD_BINS, steer.bin);
+    TEST_ASSERT_TRUE(steer.over);
+    /* Culling drew half the prediction: the floor's prediction, halved, fits. */
+    r3d_lod_steer_reset(&steer, floor_px);
+    steer_round(&steer, at_floor / 2, at_floor / 2);
+    TEST_ASSERT_EQUAL_INT(-1, steer.bin);
+    /* The round's counts start again empty. */
+    TEST_ASSERT_EQUAL_INT(0, steer.halves[0].finest + steer.halves[1].finest + steer.frames);
+}
+
+/* Over the budget the tolerance rises in one round; under it, it falls a
+ * bin a round down to the floor. */
+static void
+test_the_steer_rises_at_once_and_falls_a_bin_a_round(void) {
+    const int above = SEEN_FINEST - BELOW_SAVES - ABOVE_SAVES;
+    r3d_lod_steer_t steer;
+    r3d_lod_steer_reset(&steer, r3d_lod_bin_edge(FLOOR_EDGE));
+    steer_round(&steer, above, SEEN_FINEST - BELOW_SAVES);
+    TEST_ASSERT_EQUAL_INT(ABOVE_BIN + 1, steer.bin);
+    for (int bin = ABOVE_BIN; bin > FLOOR_EDGE; bin--) {
+        steer_round(&steer, SEEN_FINEST, above);
+        TEST_ASSERT_EQUAL_INT(bin, steer.bin);
+    }
+    steer_round(&steer, SEEN_FINEST, above);
+    TEST_ASSERT_EQUAL_INT(-1, steer.bin); /* the edge at the floor is the floor */
+}
+
+/* Rounds the camera holds still for, and the rounds a hold may take to settle. */
+enum { HOLD_ROUNDS = 12, SETTLE_ROUNDS = 3 };
+
+/* One steered round of the levelled mesh through `lens`: a pick at the
+ * steer's tolerance, which fills the histogram, its drawn triangles, then
+ * the steer. Returns the bin it leaves. */
+static int
+steered_round(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint32_t* coarse, r3d_lod_steer_t* steer,
+              int budget) {
+    render_lod_settings_t lod = LOD;
+    lod.tolerance_px = steer->tolerance_px;
+    r3d_lod_pick(mesh, lens, &lod, coarse, &steer->halves[0]);
+    r3d_lod_steer_frame(steer, LOD.tolerance_px, budget, drawn_triangles(mesh, coarse), true);
+    return steer->bin;
+}
+
+/* Along the path in and out, a steered pick never swings back to a bin it
+ * just left (A, B, A), and held still at a pose it settles within
+ * SETTLE_ROUNDS rounds and stays. */
+static void
+test_a_steered_tolerance_settles_and_does_not_swing_along_the_path(void) {
+    const r3d_lit_mesh_t* mesh = counted_mesh();
+    const int budget = (FINEST_CLUSTERS * FINEST_TRIANGLES) / 2;
+    const int steps = steps_in();
+    r3d_lod_steer_t steer;
+    r3d_lod_steer_reset(&steer, LOD.tolerance_px);
+    uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
+    int before = -2, last = -2, swings = 0, moved = 0;
+    for (int p = 0; p < 2 * steps; p++) {
+        const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
+        const int bin = steered_round(mesh, &lens, coarse, &steer, budget);
+        if (bin != last) {
+            swings += bin == before ? 1 : 0;
+            moved++;
+            before = last;
+            last = bin;
+        }
+    }
+    TEST_ASSERT_EQUAL_INT(0, swings);
+    TEST_ASSERT_GREATER_THAN_INT(2, moved); /* the path does steer */
+    for (int p = 0; p < steps; p += steps / 8) {
+        const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
+        int settled = -2;
+        for (int round = 0; round < HOLD_ROUNDS; round++) {
+            const int bin = steered_round(mesh, &lens, coarse, &steer, budget);
+            if (round == SETTLE_ROUNDS) {
+                settled = bin;
+            }
+            if (round > SETTLE_ROUNDS) {
+                TEST_ASSERT_EQUAL_INT_MESSAGE(settled, bin, "a held camera's tolerance moved");
+            }
+        }
+    }
+}
+
 void
 suite_r3d_lod(void) {
     RUN_TEST(test_a_coarse_group_keeps_every_group_simplified_into_it_coarse);
@@ -919,6 +1121,10 @@ suite_r3d_lod(void) {
     RUN_TEST(test_a_context_s_first_frame_picks_every_instance_of_a_spread_pick);
     RUN_TEST(test_a_still_instance_that_switches_cut_on_a_still_frame_redraws_every_row);
     RUN_TEST(test_the_counted_walk_counts_the_coarse_clusters_it_keeps);
+    RUN_TEST(test_the_histogram_predicts_the_triangles_a_pick_at_each_bin_edge_draws);
+    RUN_TEST(test_the_steer_takes_the_least_edge_past_the_floor_within_the_budget);
+    RUN_TEST(test_the_steer_rises_at_once_and_falls_a_bin_a_round);
+    RUN_TEST(test_a_steered_tolerance_settles_and_does_not_swing_along_the_path);
 }
 
 SUITE_REGISTER(suite_r3d_lod);

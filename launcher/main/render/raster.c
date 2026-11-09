@@ -29,17 +29,19 @@ TUNE_OVERRIDE(render, partial_redraw, 1);
 TUNE_OVERRIDE(render, lod_coverage_permille, INT32_MAX);
 /* Overrides lod.pick_every; 1 picks every instance every frame. */
 TUNE_OVERRIDE(render, lod_pick_every, R3D_LOD_PICK_EVERY_MAX);
+/* Overrides lod.triangle_budget; the board's budget sweep sets it once per budget. */
+TUNE_OVERRIDE(render, lod_triangle_budget, INT32_MAX);
 
 render_settings_t
 raster_settings(const raster_t* raster) {
     const render_settings_t s = raster->settings != NULL ? *raster->settings : RENDER_SETTINGS_DEFAULT;
-    return (render_settings_t){tune_override(cull, s.cull) != 0,
-                               tune_override(depth_fit, s.depth_fit) != 0,
-                               tune_override(batched, s.batched) != 0,
-                               tune_override(partial_redraw, s.partial_redraw) != 0,
-                               {s.lod.tolerance_px, s.lod.hysteresis_px,
-                                tune_override(lod_coverage_permille, s.lod.coverage_permille),
-                                tune_override(lod_pick_every, s.lod.pick_every)}};
+    return (render_settings_t){
+        tune_override(cull, s.cull) != 0,
+        tune_override(depth_fit, s.depth_fit) != 0,
+        tune_override(batched, s.batched) != 0,
+        tune_override(partial_redraw, s.partial_redraw) != 0,
+        {s.lod.tolerance_px, s.lod.hysteresis_px, tune_override(lod_coverage_permille, s.lod.coverage_permille),
+         tune_override(lod_pick_every, s.lod.pick_every), tune_override(lod_triangle_budget, s.lod.triangle_budget)}};
 }
 
 /* One instance of a batch: its lens, the clusters culling kept, where its
@@ -115,8 +117,10 @@ typedef struct {
  * output's. */
 typedef struct {
     bool picks;
-    uint32_t round; /* raster_t.pick_round */
-    render_lod_settings_t lod;
+    uint32_t round;            /* raster_t.pick_round */
+    render_lod_settings_t lod; /* tolerance_px the steer's, when it steers */
+    float floor_px;            /* lod.tolerance_px in these pixels */
+    r3d_lod_steer_t* steer;    /* set when picking within a triangle budget */
 } level_pick_t;
 
 /* One core's share of a cull: its own lens cache, pipeline work block,
@@ -452,9 +456,16 @@ level_pick_init(const raster_t* raster, picture_lens_t* picture, const render_vi
                 const render_lod_settings_t* lod) {
     const r3d_lens_t* lens = picture_lens_at(picture, 1);
     const float drawn = mathf_max(lens->focal_x, lens->focal_y) / mathf_max(view->lens.fx, view->lens.fy);
-    level_pick_t pick = {raster->picks_levels, raster->pick_round, *lod};
-    pick.lod.tolerance_px *= drawn;
+    level_pick_t pick = {raster->picks_levels, raster->pick_round, *lod, lod->tolerance_px * drawn, NULL};
+    pick.lod.tolerance_px = pick.floor_px;
     pick.lod.hysteresis_px *= drawn;
+    if (pick.picks && raster->steer != NULL && lod->triangle_budget > 0) {
+        pick.steer = raster->steer;
+        if (pick.round == 0) {
+            r3d_lod_steer_reset(pick.steer, pick.floor_px);
+        }
+        pick.lod.tolerance_px = pick.steer->tolerance_px;
+    }
     return pick;
 }
 
@@ -463,11 +474,18 @@ level_pick_init(const raster_t* raster, picture_lens_t* picture, const render_vi
  * frames, instance `index` picks in the frames its share comes round, and
  * every instance in round 0. */
 static bool
-level_pick(const level_pick_t* pick, int index, const r3d_instance_t* instance, const r3d_lens_t* lens) {
+level_pick(const level_pick_t* pick, int index, const r3d_instance_t* instance, const r3d_lens_t* lens,
+           r3d_lod_histogram_t* histogram) {
     const int every = pick->lod.pick_every;
     const bool due = every <= 1 || pick->round == 0 || ((uint32_t)index + pick->round) % (uint32_t)every == 0;
-    if (pick->picks && due && instance->lod_coarse != NULL && instance->mesh->lod_group_count > 0) {
-        return r3d_lod_pick(instance->mesh, lens, &pick->lod, instance->lod_coarse);
+    if (!pick->picks || !due) {
+        return false;
+    }
+    if (instance->lod_coarse != NULL && instance->mesh->lod_group_count > 0) {
+        return r3d_lod_pick(instance->mesh, lens, &pick->lod, instance->lod_coarse, histogram);
+    }
+    if (histogram != NULL) {
+        histogram->finest += r3d_lod_finest_triangles(instance->mesh); /* drawn whatever the tolerance */
     }
     return false;
 }
@@ -494,7 +512,8 @@ cull_slice(void* ctx, int from, int to) {
         } else {
             r3d_lens_t lens;
             instance_lens(&picture, instance, &lens);
-            mine->stats.levels_changed |= level_pick(&job->pick, i, instance, &lens);
+            mine->stats.levels_changed |= level_pick(&job->pick, i, instance, &lens,
+                                                     job->pick.steer != NULL ? &job->pick.steer->halves[half] : NULL);
             culled[0] = (uint16_t)cull_instance(instance, job->settings.cull, &lens, culled + 1, &mine->stats, block,
                                                 job->settings.depth_fit ? &mine->fit : NULL);
         }
@@ -536,6 +555,15 @@ cull_end(const cull_job_t* job, raster_stats_t* stats, float near_z) {
     return depth_near < INFINITY ? depth_near : near_z;
 }
 
+/* Ends the frame's share of a steered pick's round: the round is done once
+ * every instance has had its turn. */
+static __attribute__((noinline)) void
+steer_end(const level_pick_t* pick, int drawn) {
+    const int every = pick->lod.pick_every;
+    const bool done = every <= 1 || pick->round == 0 || pick->steer->frames + 1 >= every;
+    r3d_lod_steer_frame(pick->steer, pick->floor_px, pick->lod.triangle_budget, drawn, done);
+}
+
 /* Culls every instance into the census list, both cores each a range of
  * instances, and returns the depth scale the picture is drawn with: the fit
  * of the nearest bound of what was kept, and near_z when nothing was. The
@@ -549,6 +577,9 @@ cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, r
     int16_t* share = raster->split != NULL ? &raster->split->cull_offset : NULL;
     (void)job_run_range_in(share, cull_slice, &work->cull, raster->instance_count, work->cull.ranges);
     const float depth_near = cull_end(&work->cull, stats, view->lens.near_z);
+    if (work->cull.pick.steer != NULL) {
+        steer_end(&work->cull.pick, stats->triangles);
+    }
     work->levels_changed = stats->levels_changed; /* a draw on this census reads it */
     return depth_near;
 }

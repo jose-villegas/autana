@@ -18,6 +18,7 @@ typedef struct {
     float hysteresis_px; /* advanced: how far past the tolerance a coarse group's error goes before it turns fine */
     int coverage_permille; /* basic: the thousandths of the picture's height a coarse group may span; smaller pops less */
     int pick_every; /* advanced: the frames the pick is spread over, a scene's first frame picking all; more saves, switches later */
+    int triangle_budget; /* basic: the triangles a frame aims to draw, the tolerance rising past tolerance_px to keep within; 0 never rises */
 } render_lod_settings_t;
 
 typedef struct {

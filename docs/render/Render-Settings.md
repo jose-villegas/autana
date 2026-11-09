@@ -43,6 +43,7 @@ that field's table in the asset.
 | `lod.hysteresis_px` | `0.5` | advanced | how far past the tolerance a coarse group's error goes before it turns fine |
 | `lod.coverage_permille` | `250` | basic | the thousandths of the picture's height a coarse group may span; smaller pops less |
 | `lod.pick_every` | `4` | advanced | the frames the pick is spread over, a scene's first frame picking all; more saves, switches later |
+| `lod.triangle_budget` | `0` | basic | the triangles a frame aims to draw, the tolerance rising past tolerance_px to keep within; 0 never rises |
 <!-- /generated: render-settings -->
 
 ## cull

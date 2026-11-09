@@ -121,12 +121,15 @@ test_the_default_is_every_setting_on_as_the_raster_drew_before(void) {
     raster_rig_t* r = open_rig();
     /* Before settings, the raster always culled, fitted depth and batched;
      * partial redraw draws the same picture. */
-    const render_settings_t on = {
-        .cull = true,
-        .depth_fit = true,
-        .batched = true,
-        .partial_redraw = true,
-        .lod = {.tolerance_px = 2.0F, .hysteresis_px = 0.5F, .coverage_permille = 250, .pick_every = 4}};
+    const render_settings_t on = {.cull = true,
+                                  .depth_fit = true,
+                                  .batched = true,
+                                  .partial_redraw = true,
+                                  .lod = {.tolerance_px = 2.0F,
+                                          .hysteresis_px = 0.5F,
+                                          .coverage_permille = 250,
+                                          .pick_every = 4,
+                                          .triangle_budget = 0}};
     assert_settings(&on, &RENDER_SETTINGS_DEFAULT);
     const render_settings_t bare = raster_settings(&r->raster);
     assert_settings(&on, &bare);
@@ -236,7 +239,7 @@ static void
 test_the_coverage_knob_overrides_only_the_coverage_cap(void) {
     raster_rig_t* r = open_rig();
     render_settings_t set = RENDER_SETTINGS_DEFAULT;
-    set.lod = (render_lod_settings_t){3.0F, 0.25F, 100, 2};
+    set.lod = (render_lod_settings_t){3.0F, 0.25F, 100, 2, 7};
     r->raster.settings = &set;
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, lod_coverage_permille), 500));
     render_settings_t used = raster_settings(&r->raster);
@@ -244,6 +247,7 @@ test_the_coverage_knob_overrides_only_the_coverage_cap(void) {
     TEST_ASSERT_EQUAL_FLOAT(3.0F, used.lod.tolerance_px);
     TEST_ASSERT_EQUAL_FLOAT(0.25F, used.lod.hysteresis_px);
     TEST_ASSERT_EQUAL_INT(2, used.lod.pick_every);
+    TEST_ASSERT_EQUAL_INT(7, used.lod.triangle_budget);
     TEST_ASSERT_EQUAL_INT(100, set.lod.coverage_permille);
     TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, lod_coverage_permille)));
     used = raster_settings(&r->raster);

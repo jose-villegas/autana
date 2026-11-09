@@ -79,7 +79,8 @@ typedef struct {
 
 typedef struct {
     raster_split_t split;
-    raster_t raster; /* keeps its upscale maps from frame to frame */
+    r3d_lod_steer_t steer; /* the pick's tolerance within lod.triangle_budget */
+    raster_t raster;       /* keeps its upscale maps from frame to frame */
     void* scratch;
     size_t scratch_bytes;
     memory_take_fn take; /* where the scratch comes from; NULL is the heap */
