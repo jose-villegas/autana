@@ -169,11 +169,24 @@ error_bin(float px_squared) {
     return bin < R3D_LOD_BINS ? bin : -1;
 }
 
-/* Adds group `group`'s saves at the bin its error, `error` in the form
- * within() takes, projects to at `at`'s nearest depth, in the histogram's
- * pixels. */
+/* Adds `mesh`'s finest triangles to `histogram`, if there is one. */
 static void
-histogram_add(r3d_lod_histogram_t* histogram, const r3d_lit_lod_group_t* group, const reach_t* at, float error) {
+histogram_add_finest(r3d_lod_histogram_t* histogram, const r3d_lit_mesh_t* mesh) {
+    if (histogram != NULL) {
+        histogram->finest += r3d_lod_finest_triangles(mesh);
+    }
+}
+
+/* Adds group `group`'s saves to `histogram`, if there is one, at the bin
+ * its error, `error` in the form within() takes, projects to at `at`'s
+ * nearest depth, in the histogram's pixels. A group whose radius spans past
+ * `covered` never turns coarse, so saves nothing; `coarse_now` says it did. */
+static void
+histogram_add(r3d_lod_histogram_t* histogram, const r3d_lit_lod_group_t* group, const reach_t* at, float error,
+              bool coarse_now, float radius, float covered) {
+    if (histogram == NULL || !(coarse_now || within(at, radius, covered))) {
+        return;
+    }
     const float nearest = mathf_max(mathf_sqrt(at->distance_squared) - at->radius, at->near_z);
     const float px = error * histogram->unit / nearest;
     const int bin = error_bin(px * px);
@@ -188,9 +201,8 @@ r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lo
     const lod_view_t v = lod_view(lens);
     const float enter = lod->tolerance_px - lod->hysteresis_px;
     const float leave = lod->tolerance_px + lod->hysteresis_px;
-    if (histogram != NULL) {
-        histogram->finest += r3d_lod_finest_triangles(mesh);
-    } else if (none_can_coarsen(mesh, &v, lens->project.near_z, leave)) {
+    histogram_add_finest(histogram, mesh);
+    if (histogram == NULL && none_can_coarsen(mesh, &v, lens->project.near_z, leave)) {
         bool had = false;
         for (int w = 0; w < R3D_LOD_WORDS(mesh->lod_group_count); w++) {
             had |= coarse[w] != 0;
@@ -217,10 +229,7 @@ r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lo
         const bool coarse_now =
             (within(&at, error, enter) || (was && within(&at, error, leave))) && within(&at, radius, covered);
         *word = coarse_now ? *word | bit : *word & ~bit;
-        /* A group too large to turn coarse saves nothing at any tolerance. */
-        if (histogram != NULL && (coarse_now || within(&at, radius, covered))) {
-            histogram_add(histogram, group, &at, error);
-        }
+        histogram_add(histogram, group, &at, error, coarse_now, radius, covered);
         any |= coarse_now;
         changed |= coarse_now != was;
     }

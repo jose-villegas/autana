@@ -898,6 +898,15 @@ test_the_counted_walk_counts_the_coarse_clusters_it_keeps(void) {
  * each coarser level, though more than half, so a merge still saves. */
 enum { FINEST_TRIANGLES = 8, MIDDLE_TRIANGLES = 6, UPPER_TRIANGLES = 5, TOP_TRIANGLES = 4 };
 
+/* The triangles a cluster whose own group is `own` holds. */
+static int
+level_triangles(uint16_t own) {
+    if (own == R3D_LOD_NONE) {
+        return FINEST_TRIANGLES;
+    }
+    return own < FINEST_GROUPS ? MIDDLE_TRIANGLES : (own < TOP_GROUP ? UPPER_TRIANGLES : TOP_TRIANGLES);
+}
+
 /* The levelled mesh with its clusters' triangles and each group's saves, as
  * the levels bake writes them: the triangles of the clusters a group holds
  * less those of the clusters simplified from it. */
@@ -905,11 +914,7 @@ static const r3d_lit_mesh_t*
 counted_mesh(void) {
     const r3d_lit_mesh_t* mesh = levelled_mesh();
     for (int c = 0; c < CLUSTERS; c++) {
-        const uint16_t own = levelled->lod[c].own;
-        levelled->clusters[c].triangle_count = own == R3D_LOD_NONE   ? FINEST_TRIANGLES
-                                               : own < FINEST_GROUPS ? MIDDLE_TRIANGLES
-                                               : own < TOP_GROUP     ? UPPER_TRIANGLES
-                                                                     : TOP_TRIANGLES;
+        levelled->clusters[c].triangle_count = (uint16_t)level_triangles(levelled->lod[c].own);
     }
     for (int g = 0; g < GROUPS; g++) {
         levelled->groups[g].saves = 0;
