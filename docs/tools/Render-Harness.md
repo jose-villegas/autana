@@ -56,6 +56,9 @@ more than once; edges behind the drawn depth are left out, and
 
 `--set owner.name=value` sets any registered tunable before drawing; repeat it
 for several values. Invalid names, values and ranges fail the render.
+`--set render.FIELD=value` sets a render setting instead, as a pack's
+`.render.toml` would (`render.lod.tolerance_px=4`); FIELD is a dotted name of
+[`RENDER_SETTINGS_FIELDS`](../../launcher/main/render/settings/render_settings_default.h).
 The viewer compiles hot tunables live. `--tunables` prints every registered
 tunable with its default and range on stderr. It exits without rendering.
 
