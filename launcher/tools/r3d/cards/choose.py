@@ -111,6 +111,8 @@ def card_from(centre, normal, points, epsilon):
     c = projected.mean(axis=0)
     _, _, axes = np.linalg.svd(projected - c, full_matrices=False)
     a = axes[0] - (axes[0] @ normal) * normal
+    if np.linalg.norm(a) <= AXIS_ALIGNMENT_MIN:
+        a = plane_axes(normal)[0]  # samples in a line along the normal: no spread to follow
     a /= np.linalg.norm(a)
     b = np.cross(normal, a)
     xy = np.column_stack([(projected - c) @ a, (projected - c) @ b])

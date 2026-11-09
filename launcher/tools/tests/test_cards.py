@@ -9,7 +9,7 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from r3d.cards import CARD_EPSILON, CANDIDATE_MIN_SAMPLES, SAMPLES_PER_TRIANGLE
-from r3d.cards.choose import choose_cards, split_cards
+from r3d.cards.choose import card_from, choose_cards, split_cards
 from r3d.cards.bake import bake_card, corner_colours
 from r3d import mask_asset, mesh_bundle, mesh_import
 from r3d.obj import Texture
@@ -167,6 +167,23 @@ class CardTests(unittest.TestCase):
         self.assertEqual(mask.shape, (CARD_MASK_WIDTH // 2,) * 2)
         np.testing.assert_allclose(trimmed['hi'] - trimmed['lo'], SIDE / 2)
         self.assertTrue(mask.all())
+
+    def test_samples_in_a_line_along_the_normal_still_give_a_card_plane(self):
+        normal = np.eye(3)[0]
+        points = np.outer(np.linspace(-CARD_EPSILON, CARD_EPSILON, SUBDIVISIONS), normal)
+        card = card_from(np.zeros(3), normal, points, CARD_EPSILON)
+        for axis in (card['a'], card['b']):
+            self.assertTrue(np.all(np.isfinite(axis)))
+            self.assertAlmostEqual(float(np.linalg.norm(axis)), 1.0)
+            self.assertAlmostEqual(float(axis @ normal), 0.0)
+
+    def test_a_card_with_no_extent_bakes_to_nothing(self):
+        p, t = quads()
+        uv = p[:, :2] / SIDE + 0.5
+        card = dict(choose_cards(p, t)[0])
+        card['hi'] = card['lo'].copy()
+        with np.errstate(all='raise'):
+            self.assertIsNone(bake_card(card, p, t, uv, t, None, 0.5))
 
     def test_long_card_splits(self):
         from r3d.cards import CARD_MAX_SIDE
