@@ -17,19 +17,32 @@ from .geometry import closest_point_on_triangles, distinct_corners, triangle_are
 from .import_settings import LIGHT_FIELDS
 
 
+ALPHA_POINTS = np.array([[1 / 3, 1 / 3, 1 / 3], [0.6, 0.2, 0.2], [0.2, 0.6, 0.2], [0.2, 0.2, 0.6]])
+OPAQUE_ALPHA_MIN = 0.99
+
+
+def has_alpha(texture):
+    """Whether a material's texture cuts anything out."""
+    return texture is not None and texture.levels[0][..., 3].min() <= OPAQUE_ALPHA_MIN
+
+
+def triangle_alpha(uv, tri_t, texture):
+    """Each triangle's mean texture alpha over ALPHA_POINTS, its centre and three points towards its corners."""
+    alpha = np.zeros(len(tri_t))
+    for b in ALPHA_POINTS:
+        tuv = (uv[tri_t] * b[None, :, None]).sum(axis=1)
+        alpha += texture.sample(tuv, np.full(len(tri_t), 2.0))[:, 3]
+    return alpha / len(ALPHA_POINTS)
+
+
 def drop_masked(p, uv, tri_v, tri_t, tri_m, textures, keep_alpha=0.5):
     """Alpha-tested cards (leaves, chains) keep only triangles mostly opaque."""
     keep = np.ones(len(tri_v), dtype=bool)
-    bary = np.array([[1 / 3, 1 / 3, 1 / 3], [0.6, 0.2, 0.2], [0.2, 0.6, 0.2], [0.2, 0.2, 0.6]])
     for m, tex in enumerate(textures):
         sel = np.nonzero(tri_m == m)[0]
-        if tex is None or len(sel) == 0 or tex.levels[0][..., 3].min() > 0.99:
+        if len(sel) == 0 or not has_alpha(tex):
             continue
-        alpha = np.zeros(len(sel))
-        for b in bary:
-            tuv = (uv[tri_t[sel]] * b[None, :, None]).sum(axis=1)
-            alpha += tex.sample(tuv, np.full(len(sel), 2.0))[:, 3]
-        keep[sel] = alpha / len(bary) >= keep_alpha
+        keep[sel] = triangle_alpha(uv, tri_t[sel], tex) >= keep_alpha
     keep &= triangle_areas(p, tri_v) > 1e-6
     log(f"masked/degenerate triangles dropped: {np.count_nonzero(~keep)}")
     result = (tri_v[keep], tri_t[keep], tri_m[keep])
