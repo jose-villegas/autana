@@ -488,7 +488,7 @@ r3d_pipeline_draw_split(const r3d_pipeline_part_t* parts, int part_count, int he
     return draw_split_row(weight, height, top_permille);
 }
 
-static r3d_span_vertex_t
+static inline __attribute__((always_inline)) r3d_span_vertex_t
 project(const r3d_lens_t* lens, const clip_vertex_t* v) {
     /* Scaling by 16 is exact: (16*x)*r == x*(16*r), and (d/16)*(16*r) == d*r,
      * so lens-space clip vertices and the screen rows snap and encode depth alike. */
@@ -522,7 +522,7 @@ fan_mask(r3d_pipeline_work_t* work, int i) {
 }
 
 /* One Sutherland-Hodgman pass (Sutherland and Hodgman 1974): the polygon's part on the plane's inside. */
-static int
+static inline __attribute__((always_inline)) int
 clip_to_plane(const planef_t* p, const clip_vertex_t* in, int n, clip_vertex_t* out) {
     int m = 0;
     for (int i = 0; i < n; i++) {
@@ -681,7 +681,7 @@ draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
 
 /* rebuild() of a masked triangle, through work->clip.mask's atlas: apart, so
  * the opaque one tests no mask. */
-static __attribute__((noinline, cold)) void
+static RENDER_TAIL_ATTR __attribute__((noinline)) void
 draw_masked_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* tri, const uint16_t* face_color,
                     bool double_sided, const r3d_span_target_t* target, r3d_pipeline_work_t* work) {
     rebuild(mesh, lens, tri, face_color, double_sided, target, work, true);
@@ -723,7 +723,7 @@ face_color_of(const r3d_lit_mesh_t* mesh, int t) {
  * own (here idle) buffer, and its arguments few enough to pass in registers,
  * so none of them sits on a stack stack_chain_gate bounds. A masked fill
  * takes its writers and its cap from the target, so it needs no mode. */
-static __attribute__((noinline)) void
+static RENDER_TAIL_ATTR __attribute__((noinline)) void
 draw_masked_in_front(const r3d_lit_mesh_t* mesh, const r3d_lit_cluster_t* c, int t,
                      const r3d_pipeline_vertex_t* const v[3], const r3d_span_target_t* target,
                      r3d_pipeline_work_t* work) {
@@ -773,8 +773,9 @@ draw_triangles_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_
     }
 }
 
-/* Out of line and in flash: the masked fill stays out of the hot draw's IRAM. */
-static __attribute__((noinline)) void
+/* Out of line and at the flash tail: the masked fill stays out of the hot
+ * draw's IRAM and away from its flash neighbours. */
+static RENDER_TAIL_ATTR __attribute__((noinline)) void
 draw_masked(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_cluster_t* c, int first, int end,
             const r3d_pipeline_vertex_t* cs, const r3d_span_target_t* target, draw_mode_t mode,
             r3d_pipeline_work_t* work) {

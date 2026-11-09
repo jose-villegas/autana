@@ -22,11 +22,16 @@
 /* The draw path's copies for a view that skips clusters behind drawn depth
  * (render_view_t.skip_hidden), placed with the draw path. IRAM is granted per
  * measured ms saved per KB, the largest free internal block noted with it.
- * IRAM budget: 4576 B */
+ * IRAM budget: 4572 B */
 #define RENDER_SKIP_ATTR RENDER_IRAM_ATTR
+/* Flash code off the hot draw (a masked fill's): linker.lf places it after
+ * all other flash text, so it never sits between the per-triangle flash
+ * functions and moves their cache placement. */
+#define RENDER_TAIL_ATTR __attribute__((section(".render_tail.text")))
 #else
 /* A host build has no instruction cache to place code in. */
 #define CODE_ENTRY_OFFSET(slots)
 #define RENDER_IRAM_ATTR
 #define RENDER_SKIP_ATTR
+#define RENDER_TAIL_ATTR
 #endif

@@ -519,7 +519,7 @@ masked_runs(const r3d_span_target_t* target, int y, const row_span_t* span, int 
     }
 }
 
-static void
+static RENDER_TAIL_ATTR void
 masked_span(const r3d_span_target_t* target, const fill_t* f, const uint32_t row[ATTRIBUTES], int y, int column,
             const row_span_t* span, bool capped) {
     const int count = span->last - span->first;
@@ -1077,7 +1077,7 @@ set_up_capped_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* con
 /* A masked triangle's fill: its depth and colour planes as the opaque fill
  * sets them up, capped when the target skips hidden clusters; then the mask's
  * affine u, v planes, and Gouraud spans always. */
-static __attribute__((noinline)) bool
+static RENDER_TAIL_ATTR __attribute__((noinline)) bool
 set_up_masked(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[TRIANGLE_VERTICES], recti_t box,
               int y_anchor, const uint16_t* face, fill_t* f, gradients_t* g, mask_planes_t* uv) {
     if (!set_up_fill(target, v, box, y_anchor, face, f, g)) {
@@ -1254,7 +1254,7 @@ r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t
 /* Apart from triangle_of(), so the opaque fills keep their own code: no
  * small fill (a small triangle's pixels still need the mask), never flat,
  * capped as the target says. */
-void
+RENDER_TAIL_ATTR void
 r3d_span_masked_triangle(const r3d_span_target_t* target, const r3d_span_mask_t* mask, const r3d_span_vertex_t* a,
                          const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, const uint16_t* face) {
     const r3d_span_extent_t e = r3d_span_extent_limits(a, b, c, flat_max_rows, flat_max_width);
