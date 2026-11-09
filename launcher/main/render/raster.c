@@ -407,7 +407,9 @@ dither_blending(const r3d_instance_t* instance, int blend) {
         return NULL;
     }
     const int groups = instance->mesh->lod_group_count;
-    return r3d_lod_blending(r3d_lod_arrived(instance->lod_coarse, groups), groups);
+    const uint32_t* blending = r3d_lod_blending(r3d_lod_arrived(instance->lod_coarse, groups), groups);
+    /* No group blending this frame: the plain cull, as with lod.blend off. */
+    return r3d_lod_any(blending, groups) ? blending : NULL;
 }
 
 static int
