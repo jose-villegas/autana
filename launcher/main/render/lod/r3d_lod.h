@@ -201,6 +201,11 @@ r3d_lod_cluster_blends(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh,
            || (lod.own != R3D_LOD_NONE && r3d_lod_coarse(morph->blending, lod.own));
 }
 
+/* Reorders `clusters` so those that blend nothing come first, in their own
+ * order, and returns how many: the plain transform and draw take them, the
+ * blend's copies only the rest. */
+int r3d_lod_morph_partition(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, uint16_t* clusters, int count);
+
 /* The blend of `mesh` seen through `lens`, measured as the pick measures it,
  * its thresholds `pixels_per_output_pixel` times `lod`'s, drawn as `blend`
  * (render_lod_blend_t). Disabled for RENDER_LOD_BLEND_SWITCH; a mesh without
