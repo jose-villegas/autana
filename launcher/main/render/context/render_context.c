@@ -360,12 +360,12 @@ generate(render_context_t* c, const render_view_t* view) {
 static bool
 census_changed(render_context_t* c, const render_view_t* view) {
     raster_t* r = &c->raster;
-    if (!render_partial_picks_owed(&c->partial, raster_settings(r).lod.pick_every)) {
+    if (!render_partial_picks_owed(&c->partial, raster_pick_every(r))) {
         return false;
     }
     const float kept_near = raster_depth_near(r);
     c->frame.stats = raster_census(r, view);
-    if (!c->frame.stats.levels_changed && raster_depth_near(r) == kept_near) {
+    if (!raster_levels_changed(r) && raster_depth_near(r) == kept_near) {
         r->pick_round++; /* the census took this frame's share */
         return false;
     }
@@ -396,20 +396,9 @@ draw_partial(render_context_t* c, const render_view_t* view) {
     return true;
 }
 
-bool
-render_context_draw(render_context_t* c, const r3d_instance_t* instances, int count, const render_view_t* view,
-                    uint16_t clear) {
-    const r3d_batch_draw_t* batches = c->batches;
-    const int batch_count = c->batch_count;
-    c->batches = NULL;
-    c->batch_count = 0;
-#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    c->observed = false;
-#endif
-    if (can_generate(c, view)) {
-        generate(c, view);
-        return true;
-    }
+/* The frame's bookkeeping as a draw begins: nothing generated, kept or unchanged yet. */
+static __attribute__((noinline)) void
+begin_draw(render_context_t* c) {
     c->frame.generated = false;
     c->frame.unchanged = false;
     c->kept = false;
@@ -417,6 +406,11 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
         c->drawn_in_row++;
     }
     c->frame.predicted_us = 0;
+}
+
+/* Aims the raster at this frame's instances, size and destination. */
+static __attribute__((noinline)) void
+aim_raster(render_context_t* c, const r3d_instance_t* instances, int count, const render_view_t* view, uint16_t clear) {
     const int step = current_step(c);
     raster_t* r = &c->raster;
     r->split = &c->split;
@@ -424,8 +418,10 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     r->settings = &c->settings;
     r->instances = instances;
     r->instance_count = count;
-    r->batches = batches;
-    r->batch_count = batch_count;
+    r->batches = c->batches; /* the batches set for this draw, which takes them */
+    r->batch_count = c->batch_count;
+    c->batches = NULL;
+    c->batch_count = 0;
     r->width = step < 0 ? view->viewport.width * c->scale_percent / 100 : c->ladder.steps[step].width;
     r->height = step < 0 ? view->viewport.height * c->scale_percent / 100 : c->ladder.steps[step].height;
     r->present = view->present;
@@ -434,43 +430,86 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     r->upscaled = true; /* render_context_compose() names the picture */
     r->destination_width = view->viewport.width;
     r->destination_height = view->viewport.height;
+}
+
+/* Off: the plain draw, nothing timed or chosen, unless frame generation needs the drawn cost.
+ * False when the partial redraw found nothing to draw. */
+static bool
+draw_fixed(render_context_t* c, const render_view_t* view) {
+    raster_t* r = &c->raster;
+    const bool partial = raster_partial_redraw(r);
+    if (partial && !draw_partial(c, view)) {
+        return false;
+    }
+    if (!partial) {
+        c->frame.stats = raster_draw(r, view);
+    }
+    return true;
+}
+
+/* The draw the resolution policy times, choosing the size first when it predicts. */
+static void
+draw_timed(render_context_t* c, const render_view_t* view) {
+    raster_t* r = &c->raster;
+    render_partial_forget(&c->partial);
+    const int64_t began_us = timing_now_us();
+    if (c->policy == RENDER_PREDICTED) {
+        /* Culled once: the census prices the frame and the draw reuses its list. */
+        c->frame.stats = raster_census(r, view);
+        const int32_t elapsed_us = c->chose_at_us == 0 ? 0 : (int32_t)(began_us - c->chose_at_us);
+        c->chose_at_us = began_us;
+        const int chosen =
+            resolution_predict_choose(&c->predict, policy_config(c), c->frame.stats.triangles, elapsed_us);
+        c->frame.predicted_us = (int32_t)c->predict.chosen_us;
+        r->width = c->ladder.steps[chosen].width;
+        r->height = raster_present_size(c->ladder.steps[chosen], r->present).height;
+        c->frame.width = r->width;
+        c->frame.height = r->height;
+        raster_draw_culled(r, view);
+    } else {
+        c->frame.stats = raster_draw(r, view);
+    }
+    c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
+}
+
+/* Records the drawn frame so the next one can reuse it. Not inlined: a leaf
+ * off the draw's deepest chain, keeping its frame out of the draw's. */
+static __attribute__((noinline)) void
+keep_frame(render_context_t* c, const render_view_t* view) {
+    c->kept = true;
+    c->kept_view = *view;
+    render_partial_kept(&c->partial, &c->raster, view);
+}
+
+bool
+render_context_draw(render_context_t* c, const r3d_instance_t* instances, int count, const render_view_t* view,
+                    uint16_t clear) {
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    c->observed = false;
+#endif
+    if (can_generate(c, view)) {
+        c->batches = NULL; /* a generated frame draws none, so the next draw sets its own */
+        c->batch_count = 0;
+        generate(c, view);
+        return true;
+    }
+    begin_draw(c);
+    aim_raster(c, instances, count, view, clear);
     fit_scratch(c);
     if (c->scratch == NULL) {
         return false;
     }
+    raster_t* r = &c->raster;
     c->frame.width = r->width;
     c->frame.height = r->height;
     r->first_row = 0;
     r->end_row = 0;
     if (c->policy == RENDER_FIXED && !c->generating) {
-        /* Off: the plain draw, nothing timed or chosen, unless frame generation needs the drawn cost. */
-        const bool partial = raster_settings(r).partial_redraw;
-        if (partial && !draw_partial(c, view)) {
+        if (!draw_fixed(c, view)) {
             return true;
         }
-        if (!partial) {
-            c->frame.stats = raster_draw(r, view);
-        }
     } else {
-        render_partial_forget(&c->partial);
-        const int64_t began_us = timing_now_us();
-        if (c->policy == RENDER_PREDICTED) {
-            /* Culled once: the census prices the frame and the draw reuses its list. */
-            c->frame.stats = raster_census(r, view);
-            const int32_t elapsed_us = c->chose_at_us == 0 ? 0 : (int32_t)(began_us - c->chose_at_us);
-            c->chose_at_us = began_us;
-            const int chosen =
-                resolution_predict_choose(&c->predict, policy_config(c), c->frame.stats.triangles, elapsed_us);
-            c->frame.predicted_us = (int32_t)c->predict.chosen_us;
-            r->width = c->ladder.steps[chosen].width;
-            r->height = raster_present_size(c->ladder.steps[chosen], r->present).height;
-            c->frame.width = r->width;
-            c->frame.height = r->height;
-            raster_draw_culled(r, view);
-        } else {
-            c->frame.stats = raster_draw(r, view);
-        }
-        c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
+        draw_timed(c, view);
     }
     r->pick_round++;
     c->frame.step = current_step(c);
@@ -480,9 +519,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
         raster_show(r);
     }
 #endif
-    c->kept = true;
-    c->kept_view = *view;
-    render_partial_kept(&c->partial, r, view);
+    keep_frame(c, view);
     return true;
 }
 
@@ -575,6 +612,16 @@ render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* hal
 render_context_frame_t
 render_context_frame(const render_context_t* c) {
     return c->frame;
+}
+
+int
+render_context_rows_first(const render_context_t* c) {
+    return c->frame.rows_first;
+}
+
+int
+render_context_rows_end(const render_context_t* c) {
+    return c->frame.rows_end;
 }
 
 bool

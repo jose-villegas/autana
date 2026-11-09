@@ -80,39 +80,40 @@ raster_culled_bytes_of(raster_lengths_t lengths) {
 /* raster_culled_bytes_of() for `raster`'s instances and batches. */
 size_t raster_culled_bytes(const raster_t* raster);
 
+/* The census's head: the start of `raster`'s scratch block (raster_carve()). */
 static inline raster_census_head_t*
-raster_census_head(const raster_buffers_t* b) {
-    return (raster_census_head_t*)(void*)b->depth_near;
+raster_census_head(const raster_t* raster) {
+    return (raster_census_head_t*)raster->scratch;
 }
 
-/* Places `b`'s kept copies for `raster`'s instances and batches in its head
+/* Places the kept copies for `raster`'s instances and batches in its head
  * and returns them. A census does this before filling them. */
 static inline r3d_batch_draw_t*
-raster_buffers_place(const raster_t* raster, const raster_buffers_t* b) {
+raster_census_place(const raster_t* raster) {
     r3d_batch_draw_t* copies =
-        (r3d_batch_draw_t*)((uintptr_t)b->depth_near + raster_census_copies_at(raster_lengths(raster)));
-    raster_census_head(b)->copies = copies;
+        (r3d_batch_draw_t*)((uintptr_t)raster->scratch + raster_census_copies_at(raster_lengths(raster)));
+    raster_census_head(raster)->copies = copies;
     return copies;
 }
 
 /* The kept copy entry `i` of the drawn list is, or NULL: the list is each
  * of `raster`'s instances, then the copies the last census kept. */
 static inline const r3d_batch_draw_t*
-raster_buffers_drawn_copy(const raster_t* raster, const raster_buffers_t* b, int i) {
-    return i < raster->instance_count ? NULL : &raster_census_head(b)->copies[i - raster->instance_count];
+raster_census_copy(const raster_t* raster, int i) {
+    return i < raster->instance_count ? NULL : &raster_census_head(raster)->copies[i - raster->instance_count];
 }
 
 /* Entry `i` of the drawn list: instance `i`, or a kept copy as an instance of its own. */
 static inline const r3d_instance_t*
-raster_buffers_drawn_at(const raster_t* raster, const raster_buffers_t* b, int i) {
+raster_census_entry(const raster_t* raster, int i) {
     return i < raster->instance_count ? &raster->instances[i]
-                                      : &raster_census_head(b)->copies[i - raster->instance_count].instance;
+                                      : &raster_census_head(raster)->copies[i - raster->instance_count].instance;
 }
 
 /* The drawn list's length: the instances and the copies kept. */
 static inline int
-raster_buffers_drawn_count(const raster_t* raster, const raster_buffers_t* b) {
-    return raster->instance_count + raster_census_head(b)->copy_count;
+raster_census_count(const raster_t* raster) {
+    return raster->instance_count + raster_census_head(raster)->copy_count;
 }
 
 /* Consecutive instances drawn with one transform and one draw fork/join:

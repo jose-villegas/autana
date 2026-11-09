@@ -2094,7 +2094,7 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
      * copies, and takes whole cache ways, so the parts after it keep the
      * cache sets they have without it. */
     const raster_lengths_t lengths = raster_lengths(&raster);
-    const r3d_batch_draw_t* copies = raster_buffers_place(&raster, b);
+    const r3d_batch_draw_t* copies = raster_census_place(&raster);
     TEST_ASSERT_TRUE((const char*)b->culled == (const char*)b->depth_near + RASTER_CULLED_AT);
     TEST_ASSERT_TRUE((const char*)copies >= (const char*)(b->culled + lengths.culled));
     TEST_ASSERT_TRUE(raster_culled_bytes(&raster)

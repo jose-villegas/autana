@@ -126,7 +126,7 @@ fill_instances(scene_t* scene, int* batches) {
 /* Where each changed renderer was and is, for partial redraw; -1 when the
  * drawn set changed (a renderer left or joined) or more changed than fit.
  * Every drawn renderer's box is kept as where it was drawn. */
-static int
+static __attribute__((noinline)) int
 fill_changed(scene_t* scene) {
     int changes = 0;
     name_hash64_t set = NAME_HASH64_OFFSET_BASIS;

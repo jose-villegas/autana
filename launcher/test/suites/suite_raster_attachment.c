@@ -477,12 +477,8 @@ test_copies_take_their_first_instance_and_each_shape_its_own_id(void) {
     raster_t raster = {.instances = instances, .instance_count = MESHES};
     raster.scratch = malloc(raster_culled_bytes(&raster));
     TEST_ASSERT_NOT_NULL(raster.scratch);
-    raster_buffers_t* const b = malloc(sizeof *b);
-    TEST_ASSERT_NOT_NULL(b);
-    *b = raster_carve(&raster);
-    (void)raster_buffers_place(&raster, b);
-    raster_census_head(b)->copy_count = 0;
-    free(b);
+    (void)raster_census_place(&raster);
+    raster_census_head(&raster)->copy_count = 0;
     raster_copies_t state = {0};
     const raster_attachment_t view = raster_copies_view(&state);
     const render_view_t frame_view = render_view_fixture_at(&raster_rig_camera, (viewport_t){W, H, 0});
