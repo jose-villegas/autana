@@ -51,6 +51,30 @@ render_host_set_tunable(const char* name, int32_t value) {
     return true;
 }
 
+/* The main context's render settings, as an app's pack sets them on a board:
+ * RENDER_SETTINGS_DEFAULT with each --set render.FIELD=value applied. */
+#define SETTINGS_PREFIX "render."
+static render_settings_t settings = RENDER_SETTINGS_DEFAULT;
+static bool settings_set;
+
+/* Sets `field`, a RENDER_SETTINGS_FIELDS name such as lod.tolerance_px, from
+ * `text`; false when no field has that name or the text is not its value. */
+static bool
+set_setting(const char* field, const char* text) {
+    char* end = NULL;
+#define PARSE_bool(text)  (strtol((text), &end, 10) != 0)
+#define PARSE_float(text) strtof((text), &end)
+#define PARSE_int(text)   (int)strtol((text), &end, 10)
+#define SET_FIELD(name, type)                                                                                          \
+    if (strcmp(field, #name) == 0) {                                                                                   \
+        settings.name = PARSE_##type(text);                                                                            \
+        return end != text && *end == '\0';                                                                            \
+    }
+    RENDER_SETTINGS_FIELDS(SET_FIELD)
+#undef SET_FIELD
+    return false;
+}
+
 bool
 render_host_set_tunable_text(const char* assignment) {
     char name[TUNE_NAME_MAX + 1];
@@ -62,6 +86,16 @@ render_host_set_tunable_text(const char* assignment) {
     const size_t length = (size_t)(equal - assignment);
     memcpy(name, assignment, length);
     name[length] = '\0';
+    const size_t prefix = sizeof SETTINGS_PREFIX - 1;
+    /* render.lod.tolerance_px is a settings field; render.lod_blend a tunable. */
+    if (strncmp(name, SETTINGS_PREFIX, prefix) == 0 && strchr(name + prefix, '.') != NULL) {
+        if (!set_setting(name + prefix, equal + 1)) {
+            fprintf(stderr, "render_host: unknown render setting or bad value: %s\n", assignment);
+            return false;
+        }
+        settings_set = true;
+        return true;
+    }
     int32_t value;
     if (!tune_parse_value(equal + 1, &value)) {
         fprintf(stderr, "render_host: invalid tunable value %s\n", equal + 1);
@@ -233,7 +267,7 @@ static int
 usage(const char* argv0) {
     fprintf(stderr,
             "usage: %s [--quarter N] [--panel] [--frames N] [--dt N] [-o PATH] [--video PATH]\n"
-            "       [--set owner.name=value ...] [--tunables] [--crop]\n"
+            "       [--set owner.name=value ...] [--set render.FIELD=value ...] [--tunables] [--crop]\n"
             "       docs/tools/Render-Harness.md lists options; the scene may take more.\n",
             argv0);
     return 2;
@@ -431,6 +465,9 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
         fprintf(stderr, "%s: setup failed\n", host.provider->name);
         release();
         return false;
+    }
+    if (settings_set) {
+        render_context_set_settings(render_context_main(), &settings);
     }
 
     if (gfx_readback_begin() != GFX_READBACK_READY) {
