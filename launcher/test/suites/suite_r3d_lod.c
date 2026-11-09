@@ -256,6 +256,51 @@ pick_along_the_path(const r3d_lit_mesh_t* mesh, pose_check_t check) {
     TEST_ASSERT_EQUAL_HEX32(every, ever_fine & every);
 }
 
+/* r3d_lod_list_drawn() of `mesh` under `coarse` lists, in order, the clusters
+ * r3d_lod_drawn() keeps one by one. */
+static void
+expect_the_list_is_what_drawn_keeps(const r3d_lit_mesh_t* mesh, const uint32_t* coarse) {
+    uint16_t want[CLUSTERS], listed[CLUSTERS];
+    int count = 0;
+    for (int c = 0; c < mesh->cluster_count; c++) {
+        if (r3d_lod_drawn(mesh, c, coarse)) {
+            want[count++] = (uint16_t)c;
+        }
+    }
+    TEST_ASSERT_EQUAL_INT(count, r3d_lod_list_drawn(mesh, coarse, listed, CLUSTERS));
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(want, listed, count);
+}
+
+static void
+lists_what_drawn_keeps(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint32_t* coarse) {
+    (void)lens;
+    expect_the_list_is_what_drawn_keeps(mesh, coarse);
+}
+
+/* Every cut along the path, nothing coarse (the list's fast path) and no
+ * bits at all, with the levels laid out apart and not. */
+static void
+test_the_drawn_list_holds_what_each_cluster_s_test_draws(void) {
+    const r3d_lit_mesh_t* mesh = levelled_mesh();
+    pick_along_the_path(mesh, lists_what_drawn_keeps);
+    const uint32_t clear[R3D_LOD_WORDS(GROUPS)] = {0};
+    expect_the_list_is_what_drawn_keeps(mesh, clear);
+    expect_the_list_is_what_drawn_keeps(mesh, NULL);
+    r3d_lit_mesh_t mixed = *mesh;
+    mixed.lod_finest_root = 0; /* one tree for every level: no first coarse cluster either */
+    mixed.lod_coarse_first = 0;
+    expect_the_list_is_what_drawn_keeps(&mixed, clear);
+    expect_the_list_is_what_drawn_keeps(&mixed, NULL);
+    r3d_lit_mesh_t plain = *mesh; /* no levels: every cluster */
+    plain.cluster_lod = NULL;
+    plain.lod_groups = NULL;
+    plain.lod_group_count = 0;
+    plain.lod_finest_root = 0;
+    plain.lod_coarse_first = 0;
+    expect_the_list_is_what_drawn_keeps(&plain, NULL);
+    expect_the_list_is_what_drawn_keeps(&plain, clear);
+}
+
 static void
 parents_coarse_keep_children_coarse(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint32_t* coarse) {
     (void)lens;
@@ -365,6 +410,28 @@ test_a_camera_backing_off_a_switch_by_less_than_the_band_does_not_switch_back(vo
     TEST_ASSERT_FALSE(r3d_lod_coarse(coarse, TOP_GROUP));
     r3d_lod_pick(mesh, &lens, &LOD, coarse);
     TEST_ASSERT_EQUAL_HEX32(held, coarse[0]);
+}
+
+/* Flying in from FAR_EYE, a pick that changes a bit says so, and the same
+ * pick again under a still camera changes nothing and says so: what partial
+ * redraw reads to redraw every row (render/partial). */
+static void
+test_a_pick_reports_whether_it_changed_a_bit(void) {
+    const r3d_lit_mesh_t* mesh = levelled_mesh();
+    uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
+    int changes = 0;
+    for (float d = FAR_EYE; d > NEAR_EYE; d *= STEP) {
+        const r3d_lens_t lens = lens_at(d, NULL);
+        uint32_t before[R3D_LOD_WORDS(GROUPS)];
+        memcpy(before, coarse, sizeof before);
+        const bool changed = r3d_lod_pick(mesh, &lens, &LOD, coarse);
+        if (memcmp(before, coarse, sizeof before) != 0) {
+            TEST_ASSERT_TRUE(changed);
+            changes++;
+        }
+        TEST_ASSERT_FALSE(r3d_lod_pick(mesh, &lens, &LOD, coarse));
+    }
+    TEST_ASSERT_TRUE(changes > 1); /* the fly-in crossed switches */
 }
 
 /* Through `lens`, no group projects larger than its parent: neither its
@@ -719,6 +786,7 @@ test_a_pick_spread_over_frames_picks_each_instance_in_its_own_frame(void) {
 
 static render_context_t* spread_context;
 static placed_t* spread_placed;
+static uint16_t* spread_destination; /* W by H, what a partial frame composes into */
 
 static void
 release_spread_context(void) {
@@ -728,8 +796,40 @@ release_spread_context(void) {
         spread_context = NULL;
     }
     free(spread_placed);
+    free(spread_destination);
     spread_placed = NULL;
+    spread_destination = NULL;
     release();
+}
+
+/* Two levelled instances at FAR_EYE in a context whose pick is spread over
+ * `every` frames, partial redraw as asked, and the destination it composes
+ * into; all freed by the cleanup. */
+static void
+open_spread(int every, bool partial) {
+    const r3d_lit_mesh_t* mesh = levelled_mesh();
+    suite_set_test_cleanup(release_spread_context); /* after the mesh's own: it frees the mesh too */
+    spread_placed = malloc(sizeof *spread_placed);
+    spread_context = malloc(sizeof *spread_context);
+    spread_destination = malloc(sizeof(uint16_t) * W * H);
+    TEST_ASSERT_NOT_NULL(spread_placed);
+    TEST_ASSERT_NOT_NULL(spread_context);
+    TEST_ASSERT_NOT_NULL(spread_destination);
+    const float depth[PLACED_MAX] = {FAR_EYE, FAR_EYE};
+    place(spread_placed, mesh, PLACED_MAX, depth);
+    *spread_context = RENDER_CONTEXT_DEFAULT;
+    render_context_set_scale(spread_context, 100);
+    render_settings_t settings = spread_over(every);
+    settings.partial_redraw = partial;
+    render_context_set_settings(spread_context, &settings);
+}
+
+/* One frame of the spread context through `view`, drawn and composed. */
+static render_context_frame_t
+spread_frame(const render_view_t* view) {
+    TEST_ASSERT_TRUE(render_context_draw(spread_context, spread_placed->instances, PLACED_MAX, view, 0));
+    (void)render_context_compose(spread_context, spread_destination, NULL, NULL);
+    return render_context_frame(spread_context);
 }
 
 /* A render context's first frame picks every instance, however far the pick
@@ -739,30 +839,44 @@ static void
 test_a_context_s_first_frame_picks_every_instance_of_a_spread_pick(void) {
     enum { EVERY = 4 };
 
-    const r3d_lit_mesh_t* mesh = levelled_mesh();
-    suite_set_test_cleanup(release_spread_context);
-    spread_placed = malloc(sizeof *spread_placed);
-    spread_context = malloc(sizeof *spread_context);
-    TEST_ASSERT_NOT_NULL(spread_placed);
-    TEST_ASSERT_NOT_NULL(spread_context);
-    const float depth[PLACED_MAX] = {FAR_EYE, FAR_EYE};
-    place(spread_placed, mesh, PLACED_MAX, depth);
-    *spread_context = RENDER_CONTEXT_DEFAULT;
-    render_context_set_scale(spread_context, 100);
-    const render_settings_t settings = spread_over(EVERY);
-    render_context_set_settings(spread_context, &settings);
+    open_spread(EVERY, false);
     const render_view_t view = axis_view();
-    TEST_ASSERT_TRUE(render_context_draw(spread_context, spread_placed->instances, PLACED_MAX, &view, 0));
+    (void)spread_frame(&view);
     const unsigned first = top_coarse(spread_placed, PLACED_MAX);
     memset(spread_placed->coarse, 0, sizeof spread_placed->coarse);
     /* Round 1 of 4: neither instance's share. */
-    TEST_ASSERT_TRUE(render_context_draw(spread_context, spread_placed->instances, PLACED_MAX, &view, 0));
+    (void)spread_frame(&view);
     const unsigned second = top_coarse(spread_placed, PLACED_MAX);
     render_context_forget(spread_context);
-    TEST_ASSERT_TRUE(render_context_draw(spread_context, spread_placed->instances, PLACED_MAX, &view, 0));
+    (void)spread_frame(&view);
     TEST_ASSERT_EQUAL_HEX(0x3, first);
     TEST_ASSERT_EQUAL_HEX(0x0, second);
     TEST_ASSERT_EQUAL_HEX(0x3, top_coarse(spread_placed, PLACED_MAX));
+}
+
+/* Partial redraw with the pick spread over two frames: the camera flies in
+ * to where the top group turns fine, and that frame picks only instance 1.
+ * The next frame nothing moves, yet instance 0's pick is owed: it switches
+ * cut, and every row redraws. Then nothing is owed and nothing redraws. */
+static void
+test_a_still_instance_that_switches_cut_on_a_still_frame_redraws_every_row(void) {
+    enum { EVERY = 2 };
+
+    open_spread(EVERY, true);
+    const render_view_t far = axis_view();
+    (void)spread_frame(&far);
+    TEST_ASSERT_EQUAL_HEX(0x3, top_coarse(spread_placed, PLACED_MAX));
+    const fixture_camera_t camera = {{0.0F, 0.0F, FAR_EYE - WHOLE_IN_VIEW}, {0.0F, 0.0F, 1.0F}, HALF_FOV_TAN, NEAR_Z};
+    const render_view_t near = render_view_fixture_at(&camera, (viewport_t){W, H, 0});
+    (void)spread_frame(&near);
+    TEST_ASSERT_EQUAL_HEX(0x1, top_coarse(spread_placed, PLACED_MAX)); /* instance 0 not yet picked */
+    render_context_set_changed(spread_context, NULL, 0);
+    const render_context_frame_t owed = spread_frame(&near);
+    TEST_ASSERT_EQUAL_HEX(0x0, top_coarse(spread_placed, PLACED_MAX));
+    TEST_ASSERT_FALSE(owed.unchanged);
+    TEST_ASSERT_EQUAL_INT(H, owed.rows_end - owed.rows_first);
+    render_context_set_changed(spread_context, NULL, 0);
+    TEST_ASSERT_TRUE(spread_frame(&near).unchanged);
 }
 
 /* The counted walk tells the coarse clusters it keeps from the finest: none
@@ -789,8 +903,10 @@ void
 suite_r3d_lod(void) {
     RUN_TEST(test_a_coarse_group_keeps_every_group_simplified_into_it_coarse);
     RUN_TEST(test_every_finest_cluster_is_drawn_at_exactly_one_level_along_the_path);
+    RUN_TEST(test_the_drawn_list_holds_what_each_cluster_s_test_draws);
     RUN_TEST(test_a_group_s_bit_follows_its_projected_error_within_the_hysteresis_band);
     RUN_TEST(test_a_camera_backing_off_a_switch_by_less_than_the_band_does_not_switch_back);
+    RUN_TEST(test_a_pick_reports_whether_it_changed_a_bit);
     RUN_TEST(test_a_group_never_projects_larger_than_its_parent_under_a_stretched_turned_model);
     RUN_TEST(test_a_group_covering_more_than_the_cap_stays_fine_whatever_its_error);
     RUN_TEST(test_the_least_error_skips_only_poses_that_pick_nothing_coarse);
@@ -806,6 +922,7 @@ suite_r3d_lod(void) {
     RUN_TEST(test_a_cull_that_does_not_pick_levels_leaves_every_bit);
     RUN_TEST(test_a_pick_spread_over_frames_picks_each_instance_in_its_own_frame);
     RUN_TEST(test_a_context_s_first_frame_picks_every_instance_of_a_spread_pick);
+    RUN_TEST(test_a_still_instance_that_switches_cut_on_a_still_frame_redraws_every_row);
     RUN_TEST(test_the_counted_walk_counts_the_coarse_clusters_it_keeps);
 }
 

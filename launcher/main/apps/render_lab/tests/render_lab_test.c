@@ -6,6 +6,7 @@
 #include "apps/render_lab/render_lab_dynres.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "core/timing.h"
+#include "core/tune.h"
 #include "frame/test_frame.h"
 #include "gfx_shared_state.h"
 #include "render/context/render_context.h"
@@ -41,6 +42,8 @@ render_lab_test_enter(render_lab_test_t* saved, const char* scene) {
     render_lab_start_camera = NULL;
     render_lab_show_hud = false;
     test_hold_quarter(DISPLAY_DEFAULT_QUARTER);
+    /* Suites price whole draws, a still or paused one too; the partial A/B turns it on itself. */
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, partial_redraw), 0));
     app_render_lab.enter();
 }
 
@@ -54,6 +57,7 @@ render_lab_test_exit(const render_lab_test_t* saved) {
     render_lab_start_scene_key = saved->scene;
     render_lab_start_camera = saved->camera;
     render_lab_show_hud = saved->hud;
+    (void)tune_reset(tune_shared(), TUNE_NAME(render, partial_redraw));
     test_release_quarter();
 }
 

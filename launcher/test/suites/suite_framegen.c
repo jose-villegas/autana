@@ -240,6 +240,32 @@ test_a_generated_frame_composes_from_its_own_picture(void) {
     release_target();
 }
 
+/* Frame generation turned off after a generated frame: the destination
+ * holds the warped picture, so the next drawn frame, its view and its
+ * objects held, recomposes every row. */
+static void
+test_a_frame_drawn_after_generation_is_turned_off_recomposes_every_row(void) {
+    raster_rig_t* r = open_rig();
+    render_context_t* c = open_context();
+    const render_view_t drawn = render_view_fixture(&raster_rig_camera, &r->raster, 0);
+    const render_view_t now = stepped_view(r);
+    TEST_ASSERT_FALSE(show(c, r, &drawn, BUDGET_US));
+    TEST_ASSERT_TRUE(show(c, r, &now, BUDGET_US));
+    render_context_set_frame_generation(c, false);
+    render_context_set_dynamic_resolution(c, NULL, NULL, 0);
+    render_context_set_scale(c, 100);
+    render_settings_t settings = RENDER_SETTINGS_DEFAULT;
+    settings.partial_redraw = true;
+    render_context_set_settings(c, &settings);
+    render_context_set_changed(c, NULL, 0);
+    TEST_ASSERT_TRUE(render_context_draw(c, r->instance, RASTER_RIG_QUADS, &drawn, 0));
+    (void)render_context_compose(c, destination, NULL, NULL);
+    const render_context_frame_t f = render_context_frame(c);
+    TEST_ASSERT_FALSE(f.unchanged);
+    TEST_ASSERT_EQUAL_INT(H, f.rows_end - f.rows_first);
+    release_target();
+}
+
 /* A drawn frame's budget with frame generation on: the shown frames' budgets
  * less what the generated ones cost, and never less than one frame's. */
 static void
@@ -299,6 +325,7 @@ run_framegen_suite(void) {
     RUN_TEST(test_a_warp_to_a_moved_camera_puts_the_card_where_a_draw_does);
     RUN_TEST(test_the_fill_completes_the_target_and_keeps_the_drawn_frame);
     RUN_TEST(test_a_generated_frame_composes_from_its_own_picture);
+    RUN_TEST(test_a_frame_drawn_after_generation_is_turned_off_recomposes_every_row);
     RUN_TEST(test_dynamic_resolution_prices_a_drawn_frame_with_the_one_generated_from_it);
     RUN_TEST(test_frames_are_generated_only_while_a_generated_one_costs_less);
 }

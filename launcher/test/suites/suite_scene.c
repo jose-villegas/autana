@@ -1467,6 +1467,27 @@ test_a_child_moved_alone_stays_in_its_parents_frame(void) {
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(2.0F));
 }
 
+/* One renderer leaving as another joins keeps the drawn count, but the
+ * frame cannot know where the one that left was drawn: every row. */
+static void
+test_a_renderer_swapped_for_another_redraws_every_row(void) {
+    fixture();
+    entity_t scene = show("test_pair");
+    const entity_t red = entity_find(scene, name_hash("red"));
+    const entity_t green = entity_find(scene, name_hash("green"));
+    entity_set_enabled(green, false);
+    frame(16);
+    frame(16);
+    TEST_ASSERT_TRUE(render_context_frame(render_context_main()).unchanged);
+    entity_set_enabled(red, false);
+    entity_set_enabled(green, true);
+    frame(16);
+    const render_context_frame_t swapped = render_context_frame(render_context_main());
+    TEST_ASSERT_FALSE(swapped.unchanged);
+    TEST_ASSERT_EQUAL_INT(SIZE, swapped.rows_end - swapped.rows_first);
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(0.0F));
+}
+
 static void
 test_a_disabled_parent_hides_its_children_and_keeps_their_own_flags(void) {
     fixture();
@@ -2950,6 +2971,7 @@ test_a_predicted_draw_is_the_fixed_draw_at_the_step_it_chose(void) {
 
         render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
         render_context_set_scale(render_context_main(), 100 * LADDER[cases[i].chosen].width / SIZE);
+        render_context_forget(render_context_main()); /* drawn whole, not over the predicted picture */
         frame(0);
         const render_context_frame_t fixed = render_context_frame(render_context_main());
         TEST_ASSERT_EQUAL_INT(drawn.width, fixed.width);
@@ -3046,7 +3068,7 @@ expanded_picture(void) {
     TEST_ASSERT_NOT_NULL(half.half_pixels);
     TEST_ASSERT_TRUE(half.half_pixels != half.pixels);
     TEST_ASSERT_TRUE(scene_compose(16, 0, &half));
-    gfx_expand_frame();
+    gfx_expand_frame(false, 0, GFX_HEIGHT);
     TEST_ASSERT_TRUE(gfx_frame_expanded());
     for (int y = 0; y < GFX_HEIGHT; y++) {
         gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
@@ -3100,7 +3122,7 @@ test_blended_expand_blends_within_seams_and_doubles_across_them(void) {
     const gfx_color_t* line = half + HALF_WIDTH;
 
     memset(seams, 0, GFX_SEAM_BYTES(HALF_WIDTH, HALF_HEIGHT));
-    gfx_expand_frame_blended();
+    gfx_expand_frame(true, 0, GFX_HEIGHT);
     gfx_read_panel_row(2, row);
     TEST_ASSERT_EQUAL_HEX16(line[0], row[0]);
     TEST_ASSERT_EQUAL_HEX16(line[HALF_WIDTH - 1], row[GFX_WIDTH - 1]);
@@ -3110,7 +3132,7 @@ test_blended_expand_blends_within_seams_and_doubles_across_them(void) {
     }
 
     memset(seams, UINT8_MAX, GFX_SEAM_BYTES(HALF_WIDTH, HALF_HEIGHT));
-    gfx_expand_frame_blended();
+    gfx_expand_frame(true, 0, GFX_HEIGHT);
     gfx_read_panel_row(2, row);
     for (int x = 0; x < GFX_WIDTH; x++) {
         TEST_ASSERT_EQUAL_HEX16(line[x / 2], row[x]);
@@ -3122,11 +3144,28 @@ test_blended_expand_blends_within_seams_and_doubles_across_them(void) {
         for (size_t i = 0; i < GFX_SEAM_BYTES(HALF_WIDTH, HALF_HEIGHT); i++) {
             seams[i] = (uint8_t)rand();
         }
-        gfx_expand_frame_blended();
+        gfx_expand_frame(true, 0, GFX_HEIGHT);
         check_scattered_seams(2, line, seams + GFX_SEAM_PITCH(HALF_WIDTH), row);
         check_scattered_seams(3, line, seams + GFX_SEAM_PITCH(HALF_WIDTH), row);
     }
     free(row);
+}
+
+/* The shell's composed framebuffer, as the app and its UI then paint it:
+ * the next frame, nothing moved, still shows the scene. */
+static void
+test_a_framebuffer_painted_over_after_compose_shows_the_scene_next_frame(void) {
+    expanded_fixture();
+    render_context_set_scale(render_context_main(), 100);
+    const size_t centre = ((size_t)(GFX_HEIGHT / 2) * GFX_WIDTH) + (GFX_WIDTH / 2);
+    scene_shell_render(16);
+    scene_shell_compose(16);
+    TEST_ASSERT_FALSE(gfx_frame_expanded());
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), gfx_framebuffer()[centre]);
+    gfx_framebuffer()[centre] = SENTINEL;
+    scene_shell_render(16);
+    scene_shell_compose(16);
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), gfx_framebuffer()[centre]);
 }
 
 static void
@@ -3134,7 +3173,7 @@ test_expanded_frame_lifecycle_and_raw_draw_guard(void) {
     expanded_fixture();
     gfx_color_t* half = gfx_half_picture();
     half[0] = 0x1234;
-    gfx_expand_frame();
+    gfx_expand_frame(false, 0, GFX_HEIGHT);
     TEST_ASSERT_TRUE(gfx_frame_expanded());
     TEST_ASSERT_TRUE(gfx_region_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT));
     const unsigned trips = gfx_fb_guard_trips_for_test();
@@ -3147,11 +3186,11 @@ test_expanded_frame_lifecycle_and_raw_draw_guard(void) {
     TEST_ASSERT_TRUE(gfx_frame_expanded());
     gfx_present_wait();
     TEST_ASSERT_FALSE(gfx_frame_expanded());
-    gfx_expand_frame();
+    gfx_expand_frame(false, 0, GFX_HEIGHT);
     gfx_mode_exit();
     TEST_ASSERT_FALSE(gfx_frame_expanded());
     TEST_ASSERT_NOT_NULL(gfx_half_picture());
-    gfx_expand_frame();
+    gfx_expand_frame(false, 0, GFX_HEIGHT);
     gfx_reset_for_test();
     TEST_ASSERT_FALSE(gfx_frame_expanded());
     TEST_ASSERT_TRUE(gfx_init());
@@ -3187,7 +3226,7 @@ check_half_composed(render_context_t* c, int quarter, const scene_target_t* targ
     TEST_ASSERT_TRUE(raster_fits_half_picture(&c->raster));
     raster_upscale(&c->raster, fx.held, GFX_WIDTH / 2, GFX_HEIGHT / 2);
     TEST_ASSERT_TRUE(scene_compose(0, quarter, target));
-    gfx_expand_frame();
+    gfx_expand_frame(false, 0, GFX_HEIGHT);
     for (int y = 0; y < GFX_HEIGHT; y++) {
         gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
         for (int x = 0; x < GFX_WIDTH; x++) {
@@ -3393,7 +3432,7 @@ static void
 test_expanded_overlay_resets_and_restores_clip(void) {
     expanded_fixture();
     TEST_ASSERT_NOT_NULL(gfx_half_picture());
-    gfx_expand_frame();
+    gfx_expand_frame(false, 0, GFX_HEIGHT);
     const recti_t narrow = {GFX_WIDTH / 4, GFX_HEIGHT / 4, GFX_WIDTH / 4, GFX_HEIGHT / 4};
     draw_set_clip(narrow.x, narrow.y, narrow.w, narrow.h);
     gfx_set_frame_overlay(clip_overlay);
@@ -3421,7 +3460,7 @@ test_ui_replay_over_expanded_scene_matches_full_frame(void) {
             scene_render(0, 0, GFX_WIDTH, GFX_HEIGHT);
             const scene_target_t half = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture(), NULL};
             TEST_ASSERT_TRUE(scene_compose(0, 0, &half));
-            gfx_expand_frame();
+            gfx_expand_frame(false, 0, GFX_HEIGHT);
             gfx_set_frame_overlay(ui_replay_band);
             const unsigned trips = gfx_fb_guard_trips_for_test();
             ui_init();
@@ -3499,7 +3538,7 @@ test_expanded_frame_without_ui_does_not_replay_the_previous_hud(void) {
     scene_render(0, 0, GFX_WIDTH, GFX_HEIGHT);
     const scene_target_t half = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture(), NULL};
     TEST_ASSERT_TRUE(scene_compose(0, 0, &half));
-    gfx_expand_frame();
+    gfx_expand_frame(false, 0, GFX_HEIGHT);
     gfx_set_frame_overlay(ui_replay_band);
     ui_init();
     build_expanded_ui(UI_TEXT_OUTLINED);
@@ -3507,7 +3546,7 @@ test_expanded_frame_without_ui_does_not_replay_the_previous_hud(void) {
     scene_render(0, 0, GFX_WIDTH, GFX_HEIGHT);
     ui_clear_band_overlay();
     TEST_ASSERT_TRUE(scene_compose(0, 0, &half));
-    gfx_expand_frame();
+    gfx_expand_frame(false, 0, GFX_HEIGHT);
     for (int y = 0; y < GFX_HEIGHT; y++) {
         gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
     }
@@ -6299,6 +6338,7 @@ run_scene_suite(void) {
     RUN_TEST(test_paused_or_empty_expanded_scene_retains_its_picture);
     RUN_TEST(test_expanded_scene_in_separate_picture_matches_upscale);
     RUN_TEST(test_expanded_frame_lifecycle_and_raw_draw_guard);
+    RUN_TEST(test_a_framebuffer_painted_over_after_compose_shows_the_scene_next_frame);
     RUN_TEST(test_blended_expand_blends_within_seams_and_doubles_across_them);
     RUN_TEST(test_expanded_overlay_resets_and_restores_clip);
     RUN_TEST(test_ui_replay_over_expanded_scene_matches_full_frame);
@@ -6386,6 +6426,7 @@ run_scene_suite(void) {
     RUN_TEST(test_a_child_is_drawn_where_its_parent_places_it);
     RUN_TEST(test_a_child_moved_alone_stays_in_its_parents_frame);
     RUN_TEST(test_a_disabled_parent_hides_its_children_and_keeps_their_own_flags);
+    RUN_TEST(test_a_renderer_swapped_for_another_redraws_every_row);
     RUN_TEST(test_an_entity_knows_its_parent_its_ancestors_and_its_world);
     RUN_TEST(test_a_camera_with_a_parent_is_refused);
     RUN_TEST(test_a_mirrored_transform_is_refused_by_name);
