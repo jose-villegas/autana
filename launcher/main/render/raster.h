@@ -71,7 +71,7 @@ raster_viewport(const raster_t* raster, int quarter) {
 }
 
 typedef struct {
-    int clusters, triangles; /* what survived culling */
+    int clusters, triangles; /* what culling kept, after the level cut: lod.triangle_budget counts these */
     bool levels_changed;     /* a level pick changed an instance's cut */
 } raster_stats_t;
 

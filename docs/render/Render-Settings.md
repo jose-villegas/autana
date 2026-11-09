@@ -132,6 +132,22 @@ fine one turns coarse only once it is that far under, so a still camera never fl
 These change which clusters draw, so they change pixels. A larger tolerance saves triangles and
 pops more; [Cluster-LOD.md](../plans/Cluster-LOD.md) scores each coverage cap.
 
+With `triangle_budget` set, the tolerance rises from `tolerance_px` until the frame fits
+([the steer](../plans/Cluster-LOD.md)).
+
+**What the budget counts:** the triangles of every lit-mesh cluster the cull keeps, after the
+level cut and before any triangle is drawn. That is `raster_stats_t.triangles`, which the frame
+reports as its triangles.
+
+| Triangles | Counted |
+|---|---|
+| A kept cluster's, at the level the cut draws | yes |
+| A kept cluster's that face away or fall outside the picture | yes: the count comes before the span fill |
+| Clusters of a level the cut does not draw | no |
+| Clusters and instances the cull drops | no |
+| Anything drawn that is not a lit-mesh cluster | no |
+| The import's [`[[variants]].triangles`](offline/Mesh-Import.md#variants-triangles) | no: a ceiling on the detail a mesh holds, not a frame's cost |
+
 ## The render asset
 
 Settings are authored in a `NAME.render.toml`, one key per field, a struct field's under its own table. The engine's
