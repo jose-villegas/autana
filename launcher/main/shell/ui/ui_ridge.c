@@ -1181,6 +1181,30 @@ bake_what_is_tuned(void) {
     ridge->tuned_at = TUNE_GENERATION(ridge);
 }
 
+/* The rest height of every column: the loaded curve, else a level line. */
+static void
+fill_rigid(void) {
+    if (curve != NULL) {
+        ridge_motion_extend(curve, RIDGE_CURVE_POINTS, ridge->rigid, RIDGE_EXTRA);
+        return;
+    }
+    for (int i = 0; i < RIDGE_COLUMNS; i++) {
+        ridge->rigid[i] = level_height;
+    }
+}
+
+/* A new ridge starts held landscape, ambient, with the shake seeded. */
+static void
+start_landscape(void) {
+    ridge->attitude.pose = POSE_LANDSCAPE;
+    ridge->attitude.level = POSE_LANDSCAPE;
+    ridge->attitude.steady_level = POSE_LANDSCAPE;
+    ridge->pose_on_screen = POSE_LANDSCAPE;
+    ridge->pose_step = POSE_STEP_LANDSCAPE;
+    ridge->shake_seed = 0x9e3779b9U;
+    ridge->ambient = true;
+}
+
 static void
 allocate_once(void) {
     ui_ridge_load();
@@ -1195,23 +1219,11 @@ allocate_once(void) {
     memset(ridge, 0, sizeof *ridge);
     spring_line_init(&ridge->line, ridge->offset, ridge->velocity, RIDGE_COLUMNS, spring_tension, spring_stiffness,
                      spring_damping);
-    if (curve != NULL) {
-        ridge_motion_extend(curve, RIDGE_CURVE_POINTS, ridge->rigid, RIDGE_EXTRA);
-    } else {
-        for (int i = 0; i < RIDGE_COLUMNS; i++) {
-            ridge->rigid[i] = level_height;
-        }
-    }
+    fill_rigid();
     memcpy(ridge->heights, ridge->rigid, sizeof ridge->heights);
     apply_theme();
     bake_what_is_tuned();
-    ridge->attitude.pose = POSE_LANDSCAPE;
-    ridge->attitude.level = POSE_LANDSCAPE;
-    ridge->attitude.steady_level = POSE_LANDSCAPE;
-    ridge->pose_on_screen = POSE_LANDSCAPE;
-    ridge->pose_step = POSE_STEP_LANDSCAPE;
-    ridge->shake_seed = 0x9e3779b9U;
-    ridge->ambient = true;
+    start_landscape();
 }
 
 void
