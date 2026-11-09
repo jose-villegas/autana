@@ -117,6 +117,16 @@ class LodAssetTests(unittest.TestCase):
             self.assertEqual(levels(seeded, job.asset_name, True, job.settings.meshlet_triangles,
                                     start=start.read_bytes()), kept)
             self.assertEqual(kept, levels(target.read_bytes(), job.asset_name, True, job.settings.meshlet_triangles))
+            # A fit whose kept copy holds an LLOD this tool no longer reads levels the same: only its rest is read.
+            from asset.asset_pack import build_pack, parse_pack
+            packed = parse_pack(target.read_bytes())
+            older = lod_asset.HEADER.pack(lod_asset.VERSION - 1, 1, 0)
+            packed[lod_asset.name_for_mesh(copies[0]["mesh"])] = (lod_asset.TYPE, older)
+            older_fit = build_pack(sorted((name, kind, blob) for name, (kind, blob) in packed.items()))
+            with self.assertRaisesRegex(ValueError, "LLOD version"):
+                mesh_bundle.decode(older_fit)
+            self.assertEqual(levels(older_fit, job.asset_name, True, job.settings.meshlet_triangles,
+                                    start=start.read_bytes()), kept)
 
     def test_bundle_entry_id_is_part_of_the_mesh_key(self):
         import copy
