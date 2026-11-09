@@ -238,6 +238,19 @@ dither_level(int weight) {
     return ((2 * weight * R3D_LOD_DITHER_LEVELS) + R3D_LOD_MORPH_ONE - 1) / (2 * R3D_LOD_MORPH_ONE);
 }
 
+int
+r3d_lod_morph_partition(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, uint16_t* clusters, int count) {
+    int plain = 0;
+    for (int i = 0; i < count; i++) {
+        if (!r3d_lod_cluster_blends(morph, mesh, clusters[i])) {
+            const uint16_t c = clusters[i];
+            clusters[i] = clusters[plain];
+            clusters[plain++] = c;
+        }
+    }
+    return plain;
+}
+
 uint8_t
 r3d_lod_dither_band(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, int c) {
     if (!morph->enabled || !morph->dither || mesh->cluster_lod == NULL) {

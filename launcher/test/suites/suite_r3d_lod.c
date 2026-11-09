@@ -1743,6 +1743,142 @@ test_a_part_weight_puts_a_vertex_between_where_it_is_and_its_target(void) {
     TEST_ASSERT_INT_WITHIN(R3D_SUBPIXEL, (fine.cs[0].sx + target.cs[0].sx) / 2, blended.cs[0].sx);
 }
 
+/* Three triangles in a blend: the first finest in group 0, morphing or fading
+ * out; the second simplified from group 0, fading in; the third in no group,
+ * drawn plain. They overlap at different depths. */
+enum {
+    DRAWN_CLUSTERS = 3,
+    DRAWN_VERTICES = 9,
+    DRAWN_PLAIN = 2, /* the cluster in no group */
+    DRAWN_HALF = 10, /* ticks: each triangle's half width */
+};
+
+typedef struct {
+    int16_t positions[DRAWN_VERTICES][3];
+    uint8_t colors[DRAWN_VERTICES][3];
+    uint16_t triangles[DRAWN_CLUSTERS][3];
+    int8_t delta[DRAWN_VERTICES][3];
+    uint8_t shift[DRAWN_CLUSTERS];
+    r3d_lit_cluster_t clusters[DRAWN_CLUSTERS];
+    r3d_lit_node_t nodes[1];
+    r3d_lit_cluster_lod_t lod[DRAWN_CLUSTERS];
+    r3d_lit_lod_group_t groups[1];
+    r3d_lit_mesh_t mesh;
+    r3d_pipeline_vertex_t cs[DRAWN_VERTICES];
+    r3d_pipeline_rows_t rows[DRAWN_CLUSTERS];
+    gfx_color_t color[2][W * H]; /* the whole list through the blend's copies, then split */
+    uint16_t depth[2][W * H];
+} drawn_blend_t;
+
+static drawn_blend_t* drawn;
+
+static void
+release_drawn(void) {
+    free(drawn);
+    drawn = NULL;
+    release();
+}
+
+static drawn_blend_t*
+drawn_blend(bool morph_targets) {
+    drawn = calloc(1, sizeof *drawn);
+    suite_set_test_cleanup(release_drawn);
+    TEST_ASSERT_NOT_NULL(drawn);
+    box3s_t bounds = box3s_empty();
+    for (int c = 0; c < DRAWN_CLUSTERS; c++) {
+        const int x = (c - 1) * DRAWN_HALF / 2;
+        const int16_t corners[3][3] = {
+            {(int16_t)(x - DRAWN_HALF), -DRAWN_HALF, (int16_t)c},
+            {(int16_t)(x + DRAWN_HALF), -DRAWN_HALF, (int16_t)c},
+            {(int16_t)x, DRAWN_HALF, (int16_t)c},
+        };
+        for (int k = 0; k < 3; k++) {
+            const int v = (c * 3) + k;
+            memcpy(drawn->positions[v], corners[k], sizeof corners[k]);
+            drawn->colors[v][c] = UINT8_MAX;
+            drawn->delta[v][0] = (int8_t)(k - 1);
+            bounds = box3s_extend(bounds, vec3s_from_array(drawn->positions[v]));
+        }
+        drawn->triangles[c][0] = (uint16_t)(c * 3);
+        drawn->triangles[c][1] = (uint16_t)((c * 3) + 1);
+        drawn->triangles[c][2] = (uint16_t)((c * 3) + 2);
+        drawn->shift[c] = MORPH_SHIFT;
+    }
+    for (int c = 0; c < DRAWN_CLUSTERS; c++) {
+        drawn->clusters[c] = (r3d_lit_cluster_t){(uint16_t)(c * 3), 3, (uint16_t)c, 1, bounds, true};
+    }
+    drawn->nodes[0] = (r3d_lit_node_t){bounds, 0, DRAWN_CLUSTERS, true};
+    drawn->lod[0] = (r3d_lit_cluster_lod_t){R3D_LOD_NONE, 0};
+    drawn->lod[1] = (r3d_lit_cluster_lod_t){0, R3D_LOD_NONE};
+    drawn->lod[DRAWN_PLAIN] = (r3d_lit_cluster_lod_t){R3D_LOD_NONE, R3D_LOD_NONE};
+    drawn->groups[0] = (r3d_lit_lod_group_t){{{0, 0, 0}, MORPH_GROUP_RADIUS}, MORPH_GROUP_ERROR};
+    drawn->mesh = (r3d_lit_mesh_t){.positions = drawn->positions,
+                                   .colors = drawn->colors,
+                                   .triangles = drawn->triangles,
+                                   .clusters = drawn->clusters,
+                                   .nodes = drawn->nodes,
+                                   .vertex_count = DRAWN_VERTICES,
+                                   .triangle_count = DRAWN_CLUSTERS,
+                                   .cluster_count = DRAWN_CLUSTERS,
+                                   .node_count = 1,
+                                   .position_scale = 1,
+                                   .cluster_lod = drawn->lod,
+                                   .lod_groups = drawn->groups,
+                                   .lod_group_count = 1,
+                                   .morph_shift = morph_targets ? drawn->shift : NULL,
+                                   .morph_delta = morph_targets ? drawn->delta : NULL};
+    for (int p = 0; p < 2; p++) {
+        for (int i = 0; i < W * H; i++) {
+            drawn->depth[p][i] = R3D_DEPTH_EMPTY;
+        }
+    }
+    return drawn;
+}
+
+/* An instance in a blend draws the same pixels whether its whole list takes
+ * the blend's copies or only the clusters that blend do, the rest the plain
+ * transform and draw: by morph, and by dither. */
+static void
+test_a_blending_instance_draws_the_same_pixels_with_its_plain_clusters_split_off(void) {
+    for (int morph_targets = 0; morph_targets <= 1; morph_targets++) {
+        drawn_blend_t* d = drawn_blend(morph_targets != 0);
+        const r3d_lit_mesh_t* mesh = &d->mesh;
+        const r3d_lens_t lens = lens_at(error_eye(mesh, leave_px() + (SHARE_HALF * LOD.blend_px)), NULL);
+        r3d_lod_morph_t morph;
+        r3d_lod_morph_init(&morph, mesh, &lens, &LOD, 1.0F, NULL, RENDER_LOD_BLEND_ON);
+        TEST_ASSERT_TRUE(morph.enabled);
+        TEST_ASSERT_EQUAL(morph_targets == 0, morph.dither);
+        static const uint16_t ORDER[DRAWN_CLUSTERS] = {0, DRAWN_PLAIN, 1};
+
+        r3d_span_target_t whole = r3d_span_target(d->color[0], d->depth[0], W, 0, H);
+        r3d_pipeline_transform_morphed(mesh, &lens, &morph, ORDER, DRAWN_CLUSTERS, d->cs, d->rows, false);
+        r3d_pipeline_draw_blended(mesh, &lens, ORDER, DRAWN_CLUSTERS, d->cs, d->rows, &whole, pipeline_work(),
+                                  morph.dither);
+
+        uint16_t list[DRAWN_CLUSTERS];
+        memcpy(list, ORDER, sizeof list);
+        const int plain = r3d_lod_morph_partition(&morph, mesh, list, DRAWN_CLUSTERS);
+        TEST_ASSERT_EQUAL_INT(1, plain);
+        TEST_ASSERT_EQUAL_UINT16(DRAWN_PLAIN, list[0]);
+        r3d_span_target_t split = r3d_span_target(d->color[1], d->depth[1], W, 0, H);
+        r3d_pipeline_transform(mesh, &lens, list, plain, d->cs, d->rows, false);
+        r3d_pipeline_transform_morphed(mesh, &lens, &morph, list + plain, DRAWN_CLUSTERS - plain, d->cs, d->rows,
+                                       false);
+        r3d_pipeline_draw(mesh, &lens, list, plain, d->cs, d->rows, &split, pipeline_work());
+        r3d_pipeline_draw_blended(mesh, &lens, list + plain, DRAWN_CLUSTERS - plain, d->cs, d->rows, &split,
+                                  pipeline_work(), morph.dither);
+
+        int covered = 0;
+        for (int i = 0; i < W * H; i++) {
+            covered += d->depth[0][i] != R3D_DEPTH_EMPTY;
+        }
+        TEST_ASSERT_GREATER_THAN_INT(0, covered);
+        TEST_ASSERT_EQUAL_HEX16_ARRAY(d->depth[0], d->depth[1], W * H);
+        TEST_ASSERT_EQUAL_HEX16_ARRAY(d->color[0], d->color[1], W * H);
+        release_drawn();
+    }
+}
+
 void
 suite_r3d_lod(void) {
     RUN_TEST(test_a_coarse_group_keeps_every_group_simplified_into_it_coarse);
@@ -1797,6 +1933,7 @@ suite_r3d_lod(void) {
     RUN_TEST(test_a_cluster_transformed_with_no_weight_matches_the_plain_transform_exactly);
     RUN_TEST(test_a_null_morph_transforms_as_the_plain_transform_does);
     RUN_TEST(test_a_part_weight_puts_a_vertex_between_where_it_is_and_its_target);
+    RUN_TEST(test_a_blending_instance_draws_the_same_pixels_with_its_plain_clusters_split_off);
 }
 
 SUITE_REGISTER(suite_r3d_lod);
