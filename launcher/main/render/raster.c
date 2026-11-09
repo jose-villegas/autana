@@ -285,6 +285,7 @@ draw_slice(void* ctx) {
     gfx_target_window(&target->rows, &b->picture, s->first, s->first + s->count);
     target->small_fill = &((const draw_work_t*)b->draw)->small_fill;
     target->skip_hidden = ((const draw_work_t*)b->draw)->skip_hidden;
+    target->screen_mask = 0; /* every pixel drawn: no screen tile */
 
     if (s->clear) {
         const size_t pixels = (size_t)s->count * (size_t)r->width;

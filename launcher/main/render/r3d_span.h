@@ -40,6 +40,10 @@ typedef struct {
     const r3d_span_writer_t* writers; /* writer_count of them; none: colour and depth only */
     int writer_count;
     bool skip_hidden; /* render_view_t.skip_hidden: fills cap their depth, and writers follow */
+    /* A screen tile R3D_SPAN_SCREEN_TILE pixels square, bit (y % tile) * tile + (x % tile)
+     * set where pixels are drawn. 0 draws every pixel; any other value sends every
+     * triangle of r3d_pipeline_draw() through the masked fill. */
+    uint16_t screen_mask;
     const r3d_span_small_fill_t* small_fill;
 
     union {
@@ -99,9 +103,13 @@ typedef struct {
     float r, g, b; /* 0..255 */
 } r3d_span_vertex_t;
 
+/* The side of r3d_span_target_t.screen_mask's tile, in pixels. */
+#define R3D_SPAN_SCREEN_TILE 4
+
 /* A masked triangle's mask: its atlas, and its vertices' LMSK 12.4 texel
  * coordinates in the order the fill takes them. Apart from the vertex, so an
- * opaque triangle's vertices carry none. */
+ * opaque triangle's vertices carry none. No atlas: the target's screen_mask
+ * instead, and no u, v. */
 typedef struct {
     const lmsk_atlas_t* atlas;
     float u[R3D_SPAN_TRIANGLE_VERTICES], v[R3D_SPAN_TRIANGLE_VERTICES];
@@ -119,7 +127,8 @@ void r3d_span_capped_triangle(const r3d_span_target_t* target, const r3d_span_ve
                               const r3d_span_vertex_t* c, const uint16_t* face);
 
 /* Either fill, `face` NULL or its colour, keeping only the pixels `mask`'s
- * atlas keeps at its u, v; capped as r3d_span_capped_triangle() when
+ * atlas keeps at its u, v, or without an atlas the target's screen_mask
+ * keeps; capped as r3d_span_capped_triangle() when
  * target->skip_hidden. The target's writers follow each kept run inside it:
  * no r3d_span_triangle_write() after it. */
 void r3d_span_masked_triangle(const r3d_span_target_t* target, const r3d_span_mask_t* mask, const r3d_span_vertex_t* a,

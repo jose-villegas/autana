@@ -23,7 +23,7 @@
 
 /* The span fills, `count` pixels from `value` stepping `step` a pixel: the
  * depth-tested Gouraud fill, and the same fill keeping only pixels whose bit
- * of `row_word` at u >> R3D_SPAN_MASK_SHIFT is set, u stepping `du`. Shared
+ * of `row_word` at (u >> R3D_SPAN_MASK_SHIFT) % LMSK_MASK_WIDTH is set, u stepping `du`. Shared
  * so the board suite times the fills the draw path runs. `count` is at least 1. */
 void r3d_span_fill_gouraud(uint16_t* depth, uint16_t* color, int count, const uint32_t value[R3D_SPAN_ATTRIBUTES],
                            const int32_t step[R3D_SPAN_ATTRIBUTES]);
