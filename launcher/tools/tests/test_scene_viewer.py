@@ -254,7 +254,8 @@ path = { animation = "fly.anim.toml", node = "camera" }
 
     def test_unknown_camera_and_invalid_options_fail(self):
         for args, word in ((["--camera", "absent"], "absent"), (["--view", "invalid"], "invalid"),
-                           (["--size", "80x64junk"], "--size"), (["--object"], "needs a value")):
+                           (["--size", "80x64junk"], "--size"), (["--curves", "yes"], "--curves"),
+                           (["--object"], "needs a value")):
             with self.subTest(args=args):
                 run, _ = self.render(*args)
                 self.assertNotEqual(run.returncode, 0)

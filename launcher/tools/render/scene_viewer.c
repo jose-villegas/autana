@@ -82,8 +82,7 @@ options(int argc, char** argv) {
             small_fill = (small_fill_t){(uint8_t)ceiling, (uint8_t)gate, (small_fill_style_t)style};
         } else if (strcmp(flag, "--curves") == 0) {
             if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
-                fprintf(stderr, "scene_viewer: --curves is on or off
-");
+                fprintf(stderr, "scene_viewer: --curves is on or off\n");
                 return false;
             }
             curves = strcmp(value, "on") == 0;
