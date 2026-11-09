@@ -127,12 +127,13 @@ stateDiagram-v2
 
 ![The 4x4 screen door at five points of the ramp past leave: coarse and fine pixels](../../images/render/lod-blend-dither.png)
 
-The fitted Sponza path where a switch pops most, played through the frames
-around it: finest, switch, dither and morph.
+A camera closing in on a carved relief down the fitted Sponza atrium:
+finest, switch, dither and morph. It is drawn at `lod.tolerance_px = 16`, so
+each switch is large enough to see.
 
-![The square where a switch pops most on the fitted Sponza path, played through the frames around the pop: finest, switch, dither and morph](../../images/render/lod-blend-pop.gif)
+![A camera closing in on a carved relief in the fitted Sponza atrium: finest, switch, dither and morph side by side](../../images/render/lod-blend-pop.gif)
 
-![That square before and at the pop, switched, dithered and morphed, each beside its difference from the finest level](../../images/render/lod-blend-pop.png)
+![The square where a switch pops most on that approach, before and at the pop, switched, dithered and morphed, each beside its difference from the finest level](../../images/render/lod-blend-pop.png)
 
 | Morph target | Rule |
 |---|---|
