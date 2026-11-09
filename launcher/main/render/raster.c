@@ -537,6 +537,10 @@ expand_batch(const world_cull_t* world, const r3d_batch_draw_t* draw, r3d_batch_
  * batches' locals stay off the cull's frame. */
 static __attribute__((noinline)) void
 expand_batches(const raster_t* raster, const world_cull_t* world, const raster_buffers_t* buffers) {
+    raster_census_head(buffers)->copy_count = 0;
+    if (raster->batch_count == 0) {
+        return; /* placing the copies walks every instance */
+    }
     r3d_batch_draw_t* copies = raster_buffers_place(raster, buffers);
     int count = 0;
     for (int i = 0; i < raster->batch_count; i++) {
