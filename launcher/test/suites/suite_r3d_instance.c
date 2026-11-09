@@ -435,18 +435,23 @@ test_a_world_box_with_no_model_is_the_root_box_in_model_units(void) {
     box3f_expect_within(0.0F, want, r3d_lit_mesh_world_bounds(&q.mesh, NULL));
 }
 
+/* The model that doubles, turns by twice `half_angle` about z and moves by (5, 6, 7). */
+static mat4f_t
+doubled_turned_moved(float half_angle) {
+    transformf_t pose = transformf_identity();
+    transformf_set_rotation(&pose, (quatf_t){0.0F, 0.0F, sinf(half_angle), cosf(half_angle)});
+    transformf_set_scale(&pose, (vec3f_t){2.0F, 2.0F, 2.0F});
+    transformf_set_position(&pose, (vec3f_t){5.0F, 6.0F, 7.0F});
+    return transformf_compute_matrix(&pose);
+}
+
 /* An eighth of a turn about z, doubled and moved: the quad's corners land on
  * a diamond, and the box holds all four, not only the corners of its own box. */
 static void
 test_a_world_box_through_a_model_holds_every_transformed_corner(void) {
     quad_t q;
     make_quad(&q, 255, 0, 0, 3);
-    transformf_t pose = transformf_identity();
-    const float half_angle = 0.39269908F /* an eighth of pi */;
-    transformf_set_rotation(&pose, (quatf_t){0.0F, 0.0F, sinf(half_angle), cosf(half_angle)});
-    transformf_set_scale(&pose, (vec3f_t){2.0F, 2.0F, 2.0F});
-    transformf_set_position(&pose, (vec3f_t){5.0F, 6.0F, 7.0F});
-    const mat4f_t model = transformf_compute_matrix(&pose);
+    const mat4f_t model = doubled_turned_moved(0.39269908F /* an eighth of pi */);
     const float root_half = sqrtf(0.5F); /* x - y and x + y over both, from 1 to 5 */
     const box3f_t want = {{2.0F * root_half + 5.0F, 2.0F * root_half + 6.0F, 7.0F},
                           {10.0F * root_half + 5.0F, 10.0F * root_half + 6.0F, 7.0F}};
@@ -513,12 +518,7 @@ test_a_world_box_holds_a_curve_box_outside_the_root_box(void) {
 static void
 test_a_world_box_through_a_model_holds_a_curve_box_outside_the_root_box(void) {
     const r3d_lit_mesh_t mesh = mesh_with_a_curve_box();
-    transformf_t pose = transformf_identity();
-    const float half_angle = 0.78539816F /* a quarter of pi */;
-    transformf_set_rotation(&pose, (quatf_t){0.0F, 0.0F, sinf(half_angle), cosf(half_angle)});
-    transformf_set_scale(&pose, (vec3f_t){2.0F, 2.0F, 2.0F});
-    transformf_set_position(&pose, (vec3f_t){5.0F, 6.0F, 7.0F});
-    const mat4f_t model = transformf_compute_matrix(&pose);
+    const mat4f_t model = doubled_turned_moved(0.78539816F /* a quarter of pi */);
     const box3f_t box = r3d_lit_mesh_world_bounds(&mesh, &model);
     const float slack = 1e-4F;
     for (int k = 0; k < BOX3_CORNERS; k++) {

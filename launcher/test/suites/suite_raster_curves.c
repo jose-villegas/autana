@@ -205,6 +205,24 @@ expect_only(const gfx_color_t* picture, gfx_color_t a, gfx_color_t b) {
     }
 }
 
+/* The scene's picture holds only `a` and `b`, and shows `b`. */
+static void
+expect_shows(const scene_t* s, gfx_color_t a, gfx_color_t b) {
+    expect_only(raster_color(&s->raster), a, b);
+    TEST_ASSERT_GREATER_THAN_INT(0, count_of(raster_color(&s->raster), b));
+}
+
+/* A scene with the wall as instance 0 and one straight line, `width` wide in `color`, as instance 1. */
+static scene_t*
+line_over_wall(int width, gfx_color_t color) {
+    scene_t* s = scene_open();
+    const line_t line = {-LINE_HALF, 0, LINE_HALF, 0, LINE_Z, width, color};
+    part_lines(&s->curve[0], &line, 1);
+    place(s, 0, &s->wall, NULL);
+    place(s, 1, &s->curve[0], NULL);
+    return s;
+}
+
 /* The share of a ribbon's colour that mixes in over what is behind it: its true width over the least one drawn. */
 static uint8_t
 faded_share(const scene_t* s, int radius, int distance) {
@@ -217,46 +235,31 @@ faded_share(const scene_t* s, int radius, int distance) {
 
 static void
 test_a_faded_curve_mixes_once_over_a_wall_however_many_batches_draw(void) {
-    scene_t* s = scene_open();
-    const line_t line = {-LINE_HALF, 0, LINE_HALF, 0, LINE_Z, THIN, FADED};
-    part_lines(&s->curve[0], &line, 1);
-    place(s, 0, &s->wall, NULL);
-    place(s, 1, &s->curve[0], NULL);
+    scene_t* s = line_over_wall(THIN, FADED);
     place(s, 2, &s->curve[1], NULL);
     scene_raster(s, 3, false);
     TEST_ASSERT_TRUE_MESSAGE(raster_batch_end(&s->raster, 0) < 3, "the instances draw in one batch");
     draw(s);
     const gfx_color_t mixed = rgb565be_mix(WALL, FADED, faded_share(s, THIN, EYE_TO(LINE_Z)));
     TEST_ASSERT_TRUE(mixed != WALL && mixed != FADED);
-    expect_only(raster_color(&s->raster), WALL, mixed);
-    TEST_ASSERT_GREATER_THAN_INT(0, count_of(raster_color(&s->raster), mixed));
+    expect_shows(s, WALL, mixed);
 }
 
 static void
 test_a_curve_behind_a_nearer_cluster_is_hidden(void) {
-    scene_t* s = scene_open();
-    const line_t line = {-LINE_HALF, 0, LINE_HALF, 0, LINE_Z, THICK, RED};
-    part_lines(&s->curve[0], &line, 1);
-    place(s, 0, &s->wall, NULL);
-    place(s, 1, &s->curve[0], NULL);
+    scene_t* s = line_over_wall(THICK, RED);
     place(s, 2, &s->card, NULL);
     scene_raster(s, 3, false);
     draw(s);
-    expect_only(raster_color(&s->raster), WALL, CARD);
-    TEST_ASSERT_GREATER_THAN_INT(0, count_of(raster_color(&s->raster), CARD));
+    expect_shows(s, WALL, CARD);
 }
 
 static void
 test_a_curve_in_front_of_a_farther_cluster_shows(void) {
-    scene_t* s = scene_open();
-    const line_t line = {-LINE_HALF, 0, LINE_HALF, 0, LINE_Z, THICK, RED};
-    part_lines(&s->curve[0], &line, 1);
-    place(s, 0, &s->wall, NULL);
-    place(s, 1, &s->curve[0], NULL);
+    scene_t* s = line_over_wall(THICK, RED);
     scene_raster(s, 2, false);
     draw(s);
-    expect_only(raster_color(&s->raster), WALL, RED);
-    TEST_ASSERT_GREATER_THAN_INT(0, count_of(raster_color(&s->raster), RED));
+    expect_shows(s, WALL, RED);
 }
 
 typedef struct {
@@ -402,6 +405,25 @@ expect_ribbon_over_ribbon(const scene_t* s, const gfx_color_t* picture) {
         0, count_of(picture, rgb565be_mix(RED, FADED, faded_share(s, THIN, EYE_TO(NEAR_FADED_Z)))));
 }
 
+/* Draws the scene, checks the near faded ribbon mixes over the far opaque one, and keeps a copy of the picture. */
+static gfx_color_t*
+ribbon_over_ribbon(scene_t* s) {
+    draw(s);
+    gfx_color_t* before = malloc(PIXELS * sizeof(*before));
+    TEST_ASSERT_NOT_NULL(before);
+    memcpy(before, raster_color(&s->raster), PIXELS * sizeof(*before));
+    expect_ribbon_over_ribbon(s, before);
+    return before;
+}
+
+/* Draws the scene again and checks it gives `before`, which it frees. */
+static void
+expect_drawn_again(scene_t* s, gfx_color_t* before) {
+    draw(s);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(before, raster_color(&s->raster), PIXELS);
+    free(before);
+}
+
 static void
 test_opaque_and_faded_curves_of_one_mesh_draw_the_same_in_either_declaration_order(void) {
     scene_t* s = scene_open();
@@ -411,16 +433,10 @@ test_opaque_and_faded_curves_of_one_mesh_draw_the_same_in_either_declaration_ord
     part_lines(&s->curve[1], faded_first, 2);
     place(s, 0, &s->curve[0], NULL);
     scene_raster(s, 1, false);
-    draw(s);
-    gfx_color_t* before = malloc(PIXELS * sizeof(*before));
-    TEST_ASSERT_NOT_NULL(before);
-    memcpy(before, raster_color(&s->raster), PIXELS * sizeof(*before));
-    expect_ribbon_over_ribbon(s, before);
+    gfx_color_t* before = ribbon_over_ribbon(s);
 
     place(s, 0, &s->curve[1], NULL);
-    draw(s);
-    TEST_ASSERT_EQUAL_HEX16_ARRAY(before, raster_color(&s->raster), PIXELS);
-    free(before);
+    expect_drawn_again(s, before);
 }
 
 static void
@@ -431,17 +447,11 @@ test_opaque_and_faded_curves_of_two_instances_draw_the_same_in_either_order(void
     place(s, 0, &s->curve[0], NULL);
     place(s, 1, &s->curve[1], NULL);
     scene_raster(s, 2, false);
-    draw(s);
-    gfx_color_t* before = malloc(PIXELS * sizeof(*before));
-    TEST_ASSERT_NOT_NULL(before);
-    memcpy(before, raster_color(&s->raster), PIXELS * sizeof(*before));
-    expect_ribbon_over_ribbon(s, before);
+    gfx_color_t* before = ribbon_over_ribbon(s);
 
     place(s, 0, &s->curve[1], NULL);
     place(s, 1, &s->curve[0], NULL);
-    draw(s);
-    TEST_ASSERT_EQUAL_HEX16_ARRAY(before, raster_color(&s->raster), PIXELS);
-    free(before);
+    expect_drawn_again(s, before);
 }
 
 /* The depth scale the picture was drawn with after a wall alone. */

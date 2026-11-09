@@ -55,9 +55,9 @@ def flips(frames):
     return count
 
 
-def busiest(count):
-    """The top-left corner of the WINDOW holding the most flips."""
-    width, height = WINDOW
+def busiest(count, window=WINDOW):
+    """The top-left corner of the `window` (width, height) holding the most counted pixels."""
+    width, height = window
     total = count.cumsum(0).cumsum(1)
     total = np.pad(total, ((1, 0), (1, 0)))
     sums = total[height:, width:] - total[:-height, width:] - total[height:, :-width] + total[:-height, :-width]

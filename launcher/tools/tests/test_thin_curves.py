@@ -89,6 +89,24 @@ def lcrv(ranges=((0, 2), (2, 2)), knots=TICK_KNOTS, version=VERSION, reserved=0,
             + b"".join(KNOT.pack(*knot) for knot in knots) + extra)
 
 
+def bake_curves(folder, source, geometry=''):
+    """Bakes `source` with curves on and an eight-triangle start, the simplifier passing triangles through: its job
+    and its geometry. `geometry` adds lines to the import's [geometry] table."""
+    from r3d import mesh_import
+    from r3d.import_settings import albedo_jobs, load_import_settings
+
+    path = pathlib.Path(folder) / 'mesh.import.toml'
+    path.write_text('[source]\npath = "mesh.obj"\ncredit = "test"\n[output]\n'
+                    f'[geometry]\ncurves = true\n{geometry}'
+                    'simplify = { dense_edge = 1000, props = [], props_share = 0.3, '
+                    'seal_seams = true, colour_deviation = 1.0 }\n'
+                    '[[variants]]\nname = "mesh"\ntriangles = 8\n')
+    job, = albedo_jobs(load_import_settings(path))
+    with mock.patch.object(mesh_import, 'load_source', return_value=source), \
+            mock.patch.object(mesh_import, 'simplify', side_effect=lambda p, c, t, m, *a, **k: (p, c, t, m)):
+        return job, mesh_import.bake_geometry(job, None)
+
+
 class Open:
     """An intersector with nothing in the way."""
 
@@ -278,7 +296,6 @@ class ThinCurvesTests(unittest.TestCase):
 
     def test_start_excludes_curve_triangles(self):
         from r3d import mesh_import
-        from r3d.import_settings import albedo_jobs, load_import_settings
         from r3d.thin import curve_asset
         from r3d import mesh_bundle, mesh_asset
 
@@ -293,17 +310,8 @@ class ThinCurvesTests(unittest.TestCase):
                                  materials={'surface': {'Kd': (1, 1, 1)}}, textures=[None], colors=None,
                                  uv=np.zeros((len(p) + len(rest), 2)), tri_t=np.concatenate([t, rest_t + len(p)]))
         with tempfile.TemporaryDirectory() as folder:
-            path = pathlib.Path(folder) / 'mesh.import.toml'
-            path.write_text('[source]\npath = "mesh.obj"\ncredit = "test"\n[output]\n'
-                            '[geometry]\ncurves = true\n'
-                            'simplify = { dense_edge = 1000, props = [], props_share = 0.3, '
-                            'seal_seams = true, colour_deviation = 1.0 }\n'
-                            '[[variants]]\nname = "mesh"\ntriangles = 8\n')
-            job, = albedo_jobs(load_import_settings(path))
+            job, geometry = bake_curves(folder, source)
             self.assertEqual(job.asset_path.suffix, mesh_bundle.SUFFIX)
-            with mock.patch.object(mesh_import, 'load_source', return_value=source), \
-                    mock.patch.object(mesh_import, 'simplify', side_effect=lambda p, c, t, m, *a, **k: (p, c, t, m)):
-                geometry = mesh_import.bake_geometry(job, None)
             self.assertEqual(len(geometry.curves), 1)
             self.assertEqual(len(geometry.tris), len(rest_t))
             self.assertGreaterEqual(geometry.positions[:, 0].min(), 100)
@@ -324,7 +332,7 @@ class ThinCurvesTests(unittest.TestCase):
 
     def test_a_thinned_material_is_never_searched_for_curves(self):
         from r3d import mesh_import
-        from r3d.import_settings import albedo_jobs, load_import_settings, thinned_triangles
+        from r3d.import_settings import thinned_triangles
         from r3d.thin.thin_parts import thin_triangles
 
         wire, body = soup.box((4.5, 4.5, 310)), soup.box((50, 50, 50))
@@ -339,16 +347,7 @@ class ThinCurvesTests(unittest.TestCase):
                                  uv=np.zeros((len(p) + len(rest), 2)))
         for keep, triangles_out in ((0, len(rest_t)), (1, len(tri_m))):
             with self.subTest(keep=keep), tempfile.TemporaryDirectory() as folder:
-                path = pathlib.Path(folder) / 'mesh.import.toml'
-                path.write_text('[source]\npath = "mesh.obj"\ncredit = "test"\n[output]\n'
-                                f'[geometry]\ncurves = true\nthin = {{ material = "wire", keep = {keep} }}\n'
-                                'simplify = { dense_edge = 1000, props = [], props_share = 0.3, '
-                                'seal_seams = true, colour_deviation = 1.0 }\n'
-                                '[[variants]]\nname = "mesh"\ntriangles = 8\n')
-                job, = albedo_jobs(load_import_settings(path))
-                with mock.patch.object(mesh_import, 'load_source', return_value=source), \
-                        mock.patch.object(mesh_import, 'simplify', side_effect=lambda p, c, t, m, *a, **k: (p, c, t, m)):
-                    geometry = mesh_import.bake_geometry(job, None)
+                job, geometry = bake_curves(folder, source, f'thin = {{ material = "wire", keep = {keep} }}\n')
                 self.assertEqual(len(geometry.curves), 0)
                 self.assertEqual(len(geometry.tris), triangles_out)
                 owned = thinned_triangles(job.settings.thin, tri_m, names)
