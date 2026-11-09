@@ -113,23 +113,31 @@ ribbon_misses_rows(const corner_t corners[QUAD_CORNERS], const r3d_span_target_t
     return above || below;
 }
 
+/* Cuts the segment a-b at the near plane; false when both ends lie in front of it. */
+static bool
+clip_near(knot_t* a, knot_t* b, float near) {
+    if (a->point.z < near && b->point.z < near) {
+        return false;
+    }
+    if (a->point.z < near) {
+        *a = knot_between(*a, *b, (near - a->point.z) / (b->point.z - a->point.z));
+        a->point.z = near;
+    }
+    if (b->point.z < near) {
+        *b = knot_between(*b, *a, (near - b->point.z) / (a->point.z - b->point.z));
+        b->point.z = near;
+    }
+    return true;
+}
+
 /* Out of line: the curve loop's knots stay off the ribbon's clip and fill. */
 static __attribute__((noinline)) void
 segment(const knot_t* from, const knot_t* to, float radius_scale, const r3d_lens_t* lens,
         const r3d_span_target_t* target, bool covered) {
     knot_t a = *from;
     knot_t b = *to;
-    const float near = lens->project.near_z;
-    if (a.point.z < near && b.point.z < near) {
+    if (!clip_near(&a, &b, lens->project.near_z)) {
         return;
-    }
-    if (a.point.z < near) {
-        a = knot_between(a, b, (near - a.point.z) / (b.point.z - a.point.z));
-        a.point.z = near;
-    }
-    if (b.point.z < near) {
-        b = knot_between(b, a, (near - b.point.z) / (a.point.z - b.point.z));
-        b.point.z = near;
     }
     /* Lens space already points y down the picture, as r3d_pipeline's vertices take it. */
     const float ax = lens->project.cx + (a.point.x / a.point.z);

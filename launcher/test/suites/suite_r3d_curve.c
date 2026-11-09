@@ -258,6 +258,24 @@ test_curve_above_the_axis_draws_above_the_middle(void) {
     }
 }
 
+/* Sets `curve`'s box to the one its knots' radii reach. */
+static void
+fit_box(r3d_curve_t* curve, const r3d_curve_knot_t* knots) {
+    for (int axis = 0; axis < 3; axis++) {
+        curve->lo[axis] = INT16_MAX;
+        curve->hi[axis] = INT16_MIN;
+    }
+    for (int k = curve->first; k < curve->first + curve->count; k++) {
+        const int16_t p[3] = {knots[k].x, knots[k].y, knots[k].z};
+        for (int axis = 0; axis < 3; axis++) {
+            const int lo = p[axis] - (int)knots[k].radius;
+            const int hi = p[axis] + (int)knots[k].radius;
+            curve->lo[axis] = (int16_t)(lo < curve->lo[axis] ? lo : curve->lo[axis]);
+            curve->hi[axis] = (int16_t)(hi > curve->hi[axis] ? hi : curve->hi[axis]);
+        }
+    }
+}
+
 /* Each core draws its own rows and skips the curves and ribbons outside them: two halves drawn apart give the
  * picture one whole target gives, for curves with boxes of their own crossing and grazing the seam. */
 static void
@@ -269,19 +287,7 @@ test_curve_slices_match_the_whole_picture(void) {
                                       {SEGMENT_HALF_LENGTH, -FADE_RADIUS, FAR_Z, FADE_RADIUS, BLUE}};
     r3d_curve_t curves[] = {{0, 2, {0}, {0}}, {2, 2, {0}, {0}}};
     for (int c = 0; c < 2; c++) {
-        for (int axis = 0; axis < 3; axis++) {
-            curves[c].lo[axis] = INT16_MAX;
-            curves[c].hi[axis] = INT16_MIN;
-        }
-        for (int k = curves[c].first; k < curves[c].first + curves[c].count; k++) {
-            const int16_t p[3] = {knots[k].x, knots[k].y, knots[k].z};
-            for (int axis = 0; axis < 3; axis++) {
-                const int lo = p[axis] - (int)knots[k].radius;
-                const int hi = p[axis] + (int)knots[k].radius;
-                curves[c].lo[axis] = (int16_t)(lo < curves[c].lo[axis] ? lo : curves[c].lo[axis]);
-                curves[c].hi[axis] = (int16_t)(hi > curves[c].hi[axis] ? hi : curves[c].hi[axis]);
-            }
-        }
+        fit_box(&curves[c], knots);
     }
     const r3d_curve_set_t set = {curves, knots, 2};
     const r3d_lens_t camera = lens();
