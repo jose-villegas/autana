@@ -354,12 +354,12 @@ generate(render_context_t* c, const render_view_t* view) {
 static bool
 census_changed(render_context_t* c, const render_view_t* view) {
     raster_t* r = &c->raster;
-    if (!render_partial_picks_owed(&c->partial, raster_settings(r).lod.pick_every)) {
+    if (!render_partial_picks_owed(&c->partial, raster_pick_every(r))) {
         return false;
     }
     const float kept_near = raster_depth_near(r);
     c->frame.stats = raster_census(r, view);
-    if (!c->frame.stats.levels_changed && raster_depth_near(r) == kept_near) {
+    if (!raster_levels_changed(r) && raster_depth_near(r) == kept_near) {
         r->pick_round++; /* the census took this frame's share */
         return false;
     }
@@ -391,7 +391,7 @@ draw_partial(render_context_t* c, const render_view_t* view) {
 }
 
 /* The frame's bookkeeping as a draw begins: nothing generated, kept or unchanged yet. */
-static void
+static __attribute__((noinline)) void
 begin_draw(render_context_t* c) {
     c->frame.generated = false;
     c->frame.unchanged = false;
@@ -403,7 +403,7 @@ begin_draw(render_context_t* c) {
 }
 
 /* Aims the raster at this frame's instances, size and destination. */
-static void
+static __attribute__((noinline)) void
 aim_raster(render_context_t* c, const r3d_instance_t* instances, int count, const render_view_t* view, uint16_t clear) {
     const int step = current_step(c);
     raster_t* r = &c->raster;
@@ -427,7 +427,7 @@ aim_raster(render_context_t* c, const r3d_instance_t* instances, int count, cons
 static bool
 draw_fixed(render_context_t* c, const render_view_t* view) {
     raster_t* r = &c->raster;
-    const bool partial = raster_settings(r).partial_redraw;
+    const bool partial = raster_partial_redraw(r);
     if (partial && !draw_partial(c, view)) {
         return false;
     }
@@ -462,21 +462,13 @@ draw_timed(render_context_t* c, const render_view_t* view) {
     c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
 }
 
-/* Records the drawn frame so the next one can reuse it. */
-static void
+/* Records the drawn frame so the next one can reuse it. Not inlined: a leaf
+ * off the draw's deepest chain, keeping its frame out of the draw's. */
+static __attribute__((noinline)) void
 keep_frame(render_context_t* c, const render_view_t* view) {
-    raster_t* r = &c->raster;
-    r->pick_round++;
-    c->frame.step = current_step(c);
-#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    if (r->attachment_count != 0) {
-        draw_second_view(c);
-        raster_show(r);
-    }
-#endif
     c->kept = true;
     c->kept_view = *view;
-    render_partial_kept(&c->partial, r, view);
+    render_partial_kept(&c->partial, &c->raster, view);
 }
 
 bool
@@ -507,6 +499,14 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     } else {
         draw_timed(c, view);
     }
+    r->pick_round++;
+    c->frame.step = current_step(c);
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    if (r->attachment_count != 0) {
+        draw_second_view(c);
+        raster_show(r);
+    }
+#endif
     keep_frame(c, view);
     return true;
 }
@@ -600,6 +600,16 @@ render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* hal
 render_context_frame_t
 render_context_frame(const render_context_t* c) {
     return c->frame;
+}
+
+int
+render_context_rows_first(const render_context_t* c) {
+    return c->frame.rows_first;
+}
+
+int
+render_context_rows_end(const render_context_t* c) {
+    return c->frame.rows_end;
 }
 
 bool
