@@ -120,9 +120,11 @@ int r3d_pipeline_cull_blending(const r3d_lit_mesh_t* mesh, const r3d_lens_t* len
 typedef struct {
     int16_t x0, y0, x1, y1; /* 1/R3D_SUBPIXEL pixels */
     uint16_t depth;         /* no depth its fill writes is nearer */
-    bool unbounded : 1;
-    bool dithered  : 1; /* drawn through the screen door of its dither band, held in `morph` */
-    uint8_t morph;      /* the weight it was transformed with toward its morph targets, 0 to R3D_LOD_MORPH_ONE */
+    bool unbounded;
+    /* 0 drawn plain; else in a blend: its dither band (r3d_lod_dither_band()) where
+     * the instance dithers, else the weight it was transformed with toward its
+     * morph targets, up to R3D_LOD_MORPH_ONE. */
+    uint8_t morph;
 } r3d_pipeline_rows_t;
 
 /* True when every pixel of `target` under a cluster's box already holds
@@ -150,11 +152,11 @@ void r3d_pipeline_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const
                        const r3d_span_target_t* target, r3d_pipeline_work_t* work);
 
 /* r3d_pipeline_draw() for an instance in a blend: the clusters whose `rows`
- * carry a weight toward their morph targets or a dither band are drawn so.
- * Kept apart, so the plain draw tests no blend. */
+ * carry a dither band, with `dither`, or else a weight toward their morph
+ * targets are drawn so. Kept apart, so the plain draw tests no blend. */
 void r3d_pipeline_draw_blended(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
                                const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows,
-                               const r3d_span_target_t* target, r3d_pipeline_work_t* work);
+                               const r3d_span_target_t* target, r3d_pipeline_work_t* work, bool dither);
 
 /* One mesh's visible clusters as the splits weigh them; several parts are
  * drawn as one, their clusters in part order. `rows` as transformed, or NULL
