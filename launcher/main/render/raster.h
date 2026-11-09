@@ -11,7 +11,6 @@
 #include <stdint.h>
 
 #include "gfx/target/gfx_target.h"
-#include "render/lod/r3d_lod.h"
 #include "render/r3d_instance.h"
 #include "render/raster_attachment.h"
 #include "render/raster_split.h"
@@ -45,9 +44,9 @@ struct raster {
     /* The frame's count, which share of the instances a spread pick takes;
      * round 0, a scene's or view's first frame, picks every instance. */
     uint32_t pick_round;
-    /* With lod.triangle_budget set, steers the pick's tolerance from round
+    /* With lod.triangle_budget_k set, steers the pick's tolerance from round
      * to round; NULL picks at lod.tolerance_px. */
-    r3d_lod_steer_t* steer;
+    struct r3d_lod_steer* steer;
     void* scratch; /* raster_scratch_bytes() of it */
     /* Drawn beside colour and depth, at most GFX_ATTACHMENTS_FURTHER_MAX. */
     const raster_attachment_t* const* attachments;
@@ -71,7 +70,7 @@ raster_viewport(const raster_t* raster, int quarter) {
 }
 
 typedef struct {
-    int clusters, triangles; /* what culling kept, after the level cut: lod.triangle_budget counts these */
+    int clusters, triangles; /* what culling kept, after the level cut: lod.triangle_budget_k counts these */
     bool levels_changed;     /* a level pick changed an instance's cut */
 } raster_stats_t;
 

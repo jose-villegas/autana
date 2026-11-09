@@ -963,7 +963,7 @@ test_the_histogram_predicts_the_triangles_a_pick_at_each_bin_edge_draws(void) {
     for (int p = 0; p < steps; p++) {
         const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
         uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
-        r3d_lod_histogram_t histogram = {{0}, 0};
+        r3d_lod_histogram_t histogram = {{0}, 0, 1.0F};
         r3d_lod_pick(mesh, &lens, &LOD, coarse, &histogram);
         TEST_ASSERT_EQUAL_INT(FINEST_CLUSTERS * FINEST_TRIANGLES, histogram.finest);
         for (int edge = 1; edge <= R3D_LOD_BINS; edge++) {
@@ -995,8 +995,8 @@ steer_round(r3d_lod_steer_t* steer, int budget, int drawn) {
 
 /* The steer takes the least edge past the floor whose predicted triangles,
  * both cores' histograms summed, fit the budget; the floor when it fits
- * there; the last edge, marked over, when none does. What the round drew
- * against what was predicted scales the prediction. */
+ * there; the last edge when none does, though never below the floor. What
+ * the round drew against what was predicted scales the prediction. */
 static void
 test_the_steer_takes_the_least_edge_past_the_floor_within_the_budget(void) {
     const float floor_px = r3d_lod_bin_edge(FLOOR_EDGE);
@@ -1011,11 +1011,16 @@ test_the_steer_takes_the_least_edge_past_the_floor_within_the_budget(void) {
     steer_round(&steer, above, at_floor);
     TEST_ASSERT_EQUAL_INT(ABOVE_BIN + 1, steer.bin);
     TEST_ASSERT_EQUAL_FLOAT(r3d_lod_bin_edge(ABOVE_BIN + 1), steer.tolerance_px);
-    TEST_ASSERT_FALSE(steer.over);
     r3d_lod_steer_reset(&steer, floor_px);
     steer_round(&steer, above - 1, at_floor);
     TEST_ASSERT_EQUAL_INT(R3D_LOD_BINS, steer.bin);
-    TEST_ASSERT_TRUE(steer.over);
+    TEST_ASSERT_EQUAL_FLOAT(r3d_lod_bin_edge(R3D_LOD_BINS), steer.tolerance_px);
+    /* Out of reach with the floor past the last edge: the floor. */
+    const float high_floor = 2.0F * r3d_lod_bin_edge(R3D_LOD_BINS);
+    r3d_lod_steer_reset(&steer, high_floor);
+    steer.halves[0].finest = SEEN_FINEST;
+    r3d_lod_steer_frame(&steer, high_floor, SEEN_FINEST / 2, SEEN_FINEST, true);
+    TEST_ASSERT_EQUAL_FLOAT(high_floor, steer.tolerance_px);
     /* Culling drew half the prediction: the floor's prediction, halved, fits. */
     r3d_lod_steer_reset(&steer, floor_px);
     steer_round(&steer, at_floor / 2, at_floor / 2);
@@ -1052,6 +1057,7 @@ steered_round(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint32_t* coar
               int budget) {
     render_lod_settings_t lod = LOD;
     lod.tolerance_px = steer->tolerance_px;
+    steer->halves[0].unit = 1.0F;
     r3d_lod_pick(mesh, lens, &lod, coarse, &steer->halves[0]);
     r3d_lod_steer_frame(steer, LOD.tolerance_px, budget, drawn_triangles(mesh, coarse), true);
     return steer->bin;
@@ -1091,9 +1097,113 @@ test_a_steered_tolerance_settles_and_does_not_swing_along_the_path(void) {
             }
             if (round > SETTLE_ROUNDS) {
                 TEST_ASSERT_EQUAL_INT_MESSAGE(settled, bin, "a held camera's tolerance moved");
+                TEST_ASSERT_TRUE(steer.settled);
             }
         }
     }
+}
+
+/* Errors bin in the setting's pixels: a picture drawn at twice the scale,
+ * its histogram's unit a half, bins as the setting's picture does, and at
+ * unit 2 every save sits a whole octave, two bins, further up. */
+static void
+test_the_histogram_bins_errors_in_the_setting_s_pixels(void) {
+    const r3d_lit_mesh_t* mesh = counted_mesh();
+    const int steps = steps_in();
+    int compared = 0;
+    for (int p = 0; p < steps; p++) {
+        const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
+        r3d_lod_histogram_t once = {{0}, 0, 1.0F};
+        r3d_lod_histogram_t twice = {{0}, 0, 2.0F};
+        uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
+        r3d_lod_pick(mesh, &lens, &LOD, coarse, &once);
+        memset(coarse, 0, sizeof coarse);
+        r3d_lod_pick(mesh, &lens, &LOD, coarse, &twice);
+        for (int b = 1; b + 2 < R3D_LOD_BINS; b++) {
+            TEST_ASSERT_EQUAL_INT_MESSAGE(once.saves[b], twice.saves[b + 2], "bin");
+            compared += once.saves[b] != 0 ? 1 : 0;
+        }
+    }
+    TEST_ASSERT_GREATER_THAN_INT(0, compared);
+}
+
+/* A steered census spread over two frames: a steer never started (or below
+ * the floor) starts at the floor; round 1 counts only instance 1's finest
+ * triangles, and the round ends on round 2, instance 0's turn, empty again. */
+static void
+test_a_steered_census_counts_each_instance_once_a_round(void) {
+    enum { EVERY = 2 };
+
+    const r3d_lit_mesh_t* mesh = counted_mesh();
+    placed_t* p = malloc(sizeof *p);
+    void* scratch = malloc(picked_scratch_bytes(mesh));
+    TEST_ASSERT_NOT_NULL(p);
+    TEST_ASSERT_NOT_NULL(scratch);
+    const float depth[PLACED_MAX] = {FAR_EYE, FAR_EYE};
+    place(p, mesh, PLACED_MAX, depth);
+    render_settings_t settings = spread_over(EVERY);
+    settings.lod.triangle_budget_k = 1;
+    r3d_lod_steer_t steer;
+    memset(&steer, 0, sizeof steer);
+    raster_t raster = {.instances = p->instances,
+                       .instance_count = PLACED_MAX,
+                       .width = W,
+                       .height = H,
+                       .picks_levels = true,
+                       .pick_round = 1,
+                       .steer = &steer,
+                       .scratch = scratch,
+                       .settings = &settings};
+    const render_view_t view = axis_view();
+    (void)raster_census(&raster, &view);
+    const float started = steer.tolerance_px;
+    const int one_round = steer.halves[0].finest + steer.halves[1].finest;
+    const int one_frame = steer.frames;
+    raster.pick_round = 2;
+    (void)raster_census(&raster, &view);
+    free(scratch);
+    free(p);
+    TEST_ASSERT_EQUAL_FLOAT(LOD.tolerance_px, started);
+    TEST_ASSERT_EQUAL_INT(r3d_lod_finest_triangles(mesh), one_round);
+    TEST_ASSERT_EQUAL_INT(1, one_frame);
+    TEST_ASSERT_EQUAL_INT(0, steer.frames);
+    TEST_ASSERT_EQUAL_INT(0, steer.halves[0].finest + steer.halves[1].finest);
+}
+
+/* With partial redraw, a camera held still stops picking once its owed
+ * share has run, unless the steer moved its tolerance: then censuses run on
+ * until a round keeps it, so the moved tolerance reaches every instance. */
+static void
+test_a_steer_that_moved_owes_picks_while_the_camera_holds_still(void) {
+    enum { EVERY = 2 };
+
+    open_spread(EVERY, true);
+    render_settings_t settings = spread_over(EVERY);
+    settings.partial_redraw = true;
+    settings.lod.triangle_budget_k = 1;
+    render_context_set_settings(spread_context, &settings);
+    const render_view_t view = axis_view();
+    (void)spread_frame(&view);
+    for (int still = 0; still <= EVERY; still++) {
+        render_context_set_changed(spread_context, NULL, 0);
+        (void)spread_frame(&view);
+    }
+    const uint32_t rested = spread_context->raster.pick_round;
+    render_context_set_changed(spread_context, NULL, 0);
+    (void)spread_frame(&view);
+    TEST_ASSERT_EQUAL_UINT32(rested, spread_context->raster.pick_round);
+    spread_context->steer.settled = false; /* as a round that moved the tolerance leaves it */
+    int censuses = 0;
+    for (int still = 0; still < 2 * EVERY; still++) {
+        const uint32_t before = spread_context->raster.pick_round;
+        render_context_set_changed(spread_context, NULL, 0);
+        (void)spread_frame(&view);
+        censuses += spread_context->raster.pick_round != before ? 1 : 0;
+    }
+    /* Picks ran on to the end of the round, which kept the tolerance, and no further. */
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(1, censuses);
+    TEST_ASSERT_LESS_OR_EQUAL_INT(EVERY, censuses);
+    TEST_ASSERT_TRUE(spread_context->steer.settled);
 }
 
 void
@@ -1125,6 +1235,9 @@ suite_r3d_lod(void) {
     RUN_TEST(test_the_steer_takes_the_least_edge_past_the_floor_within_the_budget);
     RUN_TEST(test_the_steer_rises_at_once_and_falls_a_bin_a_round);
     RUN_TEST(test_a_steered_tolerance_settles_and_does_not_swing_along_the_path);
+    RUN_TEST(test_the_histogram_bins_errors_in_the_setting_s_pixels);
+    RUN_TEST(test_a_steered_census_counts_each_instance_once_a_round);
+    RUN_TEST(test_a_steer_that_moved_owes_picks_while_the_camera_holds_still);
 }
 
 SUITE_REGISTER(suite_r3d_lod);

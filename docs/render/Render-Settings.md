@@ -16,7 +16,7 @@ flowchart LR
     Asset["the app's pack: entry render<br/>set by the shell at start"] --> Settings
     App["app<br/>render_context_set_settings()"] --> Settings["the context's settings<br/>render_context_settings() reads them back"]
     Settings --> Pick{"knob set?<br/>development builds only"}
-    Knob["TUNE render.cull, render.depth_fit,<br/>render.batched, render.partial_redraw,<br/>render.lod_coverage_permille, render.lod_pick_every,<br/>render.lod_triangle_budget"] -->|SET| Pick
+    Knob["TUNE render.cull, render.depth_fit,<br/>render.batched, render.partial_redraw,<br/>render.lod_coverage_permille, render.lod_pick_every,<br/>render.lod_triangle_budget_k"] -->|SET| Pick
     Knob -->|RESET| Unset["unset"]
     Unset --> Pick
     Pick -->|"no"| Frame["the frame draws with<br/>raster_settings()"]
@@ -43,7 +43,7 @@ that field's table in the asset.
 | `lod.hysteresis_px` | `0.5` | advanced | how far past the tolerance a coarse group's error goes before it turns fine |
 | `lod.coverage_permille` | `250` | basic | the thousandths of the picture's height a coarse group may span; smaller pops less |
 | `lod.pick_every` | `4` | advanced | the frames the pick is spread over, a scene's first frame picking all; more saves, switches later |
-| `lod.triangle_budget` | `0` | basic | the triangles a frame aims to draw, the tolerance rising past tolerance_px to keep within; 0 never rises |
+| `lod.triangle_budget_k` | `0` | basic | the thousands of triangles a frame aims to draw, the tolerance rising past tolerance_px to keep within; 0 never rises |
 <!-- /generated: render-settings -->
 
 ## cull
@@ -132,8 +132,9 @@ fine one turns coarse only once it is that far under, so a still camera never fl
 These change which clusters draw, so they change pixels. A larger tolerance saves triangles and
 pops more; [Cluster-LOD.md](../plans/Cluster-LOD.md) scores each coverage cap.
 
-With `triangle_budget` set, the tolerance rises from `tolerance_px` until the frame fits
-([the steer](../plans/Cluster-LOD.md)).
+With `triangle_budget_k` set, the tolerance rises from `tolerance_px` until the frame fits
+([the steer](../plans/Cluster-LOD.md)). The budget is in thousands of triangles, because a
+setting's row holds at most 2047.
 
 **What the budget counts:** the triangles of every lit-mesh cluster the cull keeps, after the
 level cut and before any triangle is drawn. That is `raster_stats_t.triangles`, which the frame

@@ -296,7 +296,7 @@ class RenderSettingsPackTests(unittest.TestCase):
                                                     "partial_redraw": [16],
                                                     "lod.tolerance_px": [32],
                                                     "lod.hysteresis_px": [8], "lod.coverage_permille": [4000],
-                                                    "lod.pick_every": [64], "lod.triangle_budget": [0]}, 4))
+                                                    "lod.pick_every": [64], "lod.triangle_budget_k": [0]}, 4))
 
     def test_each_app_pack_has_its_own_render_entry_whichever_root_selects_it(self):
         with tempfile.TemporaryDirectory() as directory:

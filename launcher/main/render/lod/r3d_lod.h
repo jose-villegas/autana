@@ -12,7 +12,7 @@
  * a switch does not flicker. The bits persist from frame to frame with the
  * instance; all clear is a valid start, every cluster finest.
  *
- * With `lod.triangle_budget` set, the tolerance the pick uses is steered:
+ * With `lod.triangle_budget_k` set, the tolerance the pick uses is steered:
  * each pick adds what its groups would save drawn coarse to a histogram over
  * their projected error, and when a round of picks has seen every instance,
  * r3d_lod_steer_frame() reads off the least tolerance, from `lod.tolerance_px` up,
@@ -107,16 +107,17 @@ float r3d_lod_group_coverage(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
 typedef struct {
     int32_t saves[R3D_LOD_BINS];
     int32_t finest;
+    float unit; /* lod.tolerance_px's pixels per picture pixel: errors bin in the setting's */
 } r3d_lod_histogram_t;
 
 /* The steering a raster keeps from round to round. */
-typedef struct {
-    float tolerance_px;            /* the pick's, at least the floor */
+typedef struct r3d_lod_steer {
+    float tolerance_px;            /* the pick's in lod.tolerance_px's pixels, at least the floor */
     int bin;                       /* the bin edge tolerance_px sits at, or -1 at the floor */
     r3d_lod_histogram_t halves[2]; /* this round's, one per core of the cull */
     int64_t drawn;                 /* triangles the round's frames drew */
     int frames;                    /* frames in the round so far */
-    bool over;                     /* the last round's budget was out of reach */
+    bool settled;                  /* the last round kept the tolerance: no picks are owed to it */
 } r3d_lod_steer_t;
 
 /* The tolerance bin edge `edge` stands for, 0 .. R3D_LOD_BINS: bin
@@ -138,7 +139,7 @@ void r3d_lod_steer_reset(r3d_lod_steer_t* steer, float floor_px);
  * what the frames drew over what was predicted at the tolerance they drew
  * with, choose the least edge past `floor_px` within `budget`; the
  * tolerance rises to it at once but falls at most a bin a round, so a view
- * held still settles rather than swings. Pixels are the histogram's. */
+ * held still settles rather than swings. Pixels are lod.tolerance_px's. */
 void r3d_lod_steer_frame(r3d_lod_steer_t* steer, float floor_px, int budget, int drawn, bool round_done);
 
 /* Updates `coarse`, R3D_LOD_WORDS(mesh->lod_group_count) words, for one

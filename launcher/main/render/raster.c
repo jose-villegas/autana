@@ -29,19 +29,20 @@ TUNE_OVERRIDE(render, partial_redraw, 1);
 TUNE_OVERRIDE(render, lod_coverage_permille, INT32_MAX);
 /* Overrides lod.pick_every; 1 picks every instance every frame. */
 TUNE_OVERRIDE(render, lod_pick_every, R3D_LOD_PICK_EVERY_MAX);
-/* Overrides lod.triangle_budget; the board's budget sweep sets it once per budget. */
-TUNE_OVERRIDE(render, lod_triangle_budget, INT32_MAX);
+/* Overrides lod.triangle_budget_k. */
+TUNE_OVERRIDE(render, lod_triangle_budget_k, INT32_MAX);
 
 render_settings_t
 raster_settings(const raster_t* raster) {
     const render_settings_t s = raster->settings != NULL ? *raster->settings : RENDER_SETTINGS_DEFAULT;
-    return (render_settings_t){
-        tune_override(cull, s.cull) != 0,
-        tune_override(depth_fit, s.depth_fit) != 0,
-        tune_override(batched, s.batched) != 0,
-        tune_override(partial_redraw, s.partial_redraw) != 0,
-        {s.lod.tolerance_px, s.lod.hysteresis_px, tune_override(lod_coverage_permille, s.lod.coverage_permille),
-         tune_override(lod_pick_every, s.lod.pick_every), tune_override(lod_triangle_budget, s.lod.triangle_budget)}};
+    return (render_settings_t){tune_override(cull, s.cull) != 0,
+                               tune_override(depth_fit, s.depth_fit) != 0,
+                               tune_override(batched, s.batched) != 0,
+                               tune_override(partial_redraw, s.partial_redraw) != 0,
+                               {s.lod.tolerance_px, s.lod.hysteresis_px,
+                                tune_override(lod_coverage_permille, s.lod.coverage_permille),
+                                tune_override(lod_pick_every, s.lod.pick_every),
+                                tune_override(lod_triangle_budget_k, s.lod.triangle_budget_k)}};
 }
 
 /* One instance of a batch: its lens, the clusters culling kept, where its
@@ -119,7 +120,7 @@ typedef struct {
     bool picks;
     uint32_t round;            /* raster_t.pick_round */
     render_lod_settings_t lod; /* tolerance_px the steer's, when it steers */
-    float floor_px;            /* lod.tolerance_px in these pixels */
+    float floor_px;            /* lod.tolerance_px, the steer's floor, in its own pixels */
     r3d_lod_steer_t* steer;    /* set when picking within a triangle budget */
 } level_pick_t;
 
@@ -456,16 +457,19 @@ level_pick_init(const raster_t* raster, picture_lens_t* picture, const render_vi
                 const render_lod_settings_t* lod) {
     const r3d_lens_t* lens = picture_lens_at(picture, 1);
     const float drawn = mathf_max(lens->focal_x, lens->focal_y) / mathf_max(view->lens.fx, view->lens.fy);
-    level_pick_t pick = {raster->picks_levels, raster->pick_round, *lod, lod->tolerance_px * drawn, NULL};
-    pick.lod.tolerance_px = pick.floor_px;
-    pick.lod.hysteresis_px *= drawn;
-    if (pick.picks && raster->steer != NULL && lod->triangle_budget > 0) {
+    level_pick_t pick = {raster->picks_levels, raster->pick_round, *lod, lod->tolerance_px, NULL};
+    if (pick.picks && raster->steer != NULL && lod->triangle_budget_k > 0) {
         pick.steer = raster->steer;
-        if (pick.round == 0) {
+        /* A steer below the floor was never started, or the floor rose past it. */
+        if (pick.round == 0 || pick.steer->tolerance_px < pick.floor_px) {
             r3d_lod_steer_reset(pick.steer, pick.floor_px);
         }
         pick.lod.tolerance_px = pick.steer->tolerance_px;
+        pick.steer->halves[0].unit = 1.0F / drawn;
+        pick.steer->halves[1].unit = pick.steer->halves[0].unit;
     }
+    pick.lod.tolerance_px *= drawn;
+    pick.lod.hysteresis_px *= drawn;
     return pick;
 }
 
@@ -561,7 +565,7 @@ static __attribute__((noinline)) void
 steer_end(const level_pick_t* pick, int drawn) {
     const int every = pick->lod.pick_every;
     const bool done = every <= 1 || pick->round == 0 || pick->steer->frames + 1 >= every;
-    r3d_lod_steer_frame(pick->steer, pick->floor_px, pick->lod.triangle_budget, drawn, done);
+    r3d_lod_steer_frame(pick->steer, pick->floor_px, pick->lod.triangle_budget_k * RENDER_LOD_BUDGET_UNIT, drawn, done);
 }
 
 /* Culls every instance into the census list, both cores each a range of

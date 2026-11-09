@@ -129,7 +129,7 @@ test_the_default_is_every_setting_on_as_the_raster_drew_before(void) {
                                           .hysteresis_px = 0.5F,
                                           .coverage_permille = 250,
                                           .pick_every = 4,
-                                          .triangle_budget = 0}};
+                                          .triangle_budget_k = 0}};
     assert_settings(&on, &RENDER_SETTINGS_DEFAULT);
     const render_settings_t bare = raster_settings(&r->raster);
     assert_settings(&on, &bare);
@@ -247,7 +247,7 @@ test_the_coverage_knob_overrides_only_the_coverage_cap(void) {
     TEST_ASSERT_EQUAL_FLOAT(3.0F, used.lod.tolerance_px);
     TEST_ASSERT_EQUAL_FLOAT(0.25F, used.lod.hysteresis_px);
     TEST_ASSERT_EQUAL_INT(2, used.lod.pick_every);
-    TEST_ASSERT_EQUAL_INT(7, used.lod.triangle_budget);
+    TEST_ASSERT_EQUAL_INT(7, used.lod.triangle_budget_k);
     TEST_ASSERT_EQUAL_INT(100, set.lod.coverage_permille);
     TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, lod_coverage_permille)));
     used = raster_settings(&r->raster);

@@ -22,7 +22,7 @@ class RenderAssetTests(unittest.TestCase):
         self.assertEqual(render_asset.load(self.settings("batched = false\n")),
                          {"cull": True, "depth_fit": True, "batched": False, "partial_redraw": True, "lod.tolerance_px": 2.0,
                           "lod.hysteresis_px": 0.5, "lod.coverage_permille": 250, "lod.pick_every": 4,
-                          "lod.triangle_budget": 0})
+                          "lod.triangle_budget_k": 0})
         lod = render_asset.load(self.settings("[lod]\ncoverage_permille = 100\n"))
         self.assertEqual(lod["lod.coverage_permille"], 100)
 
@@ -31,7 +31,12 @@ class RenderAssetTests(unittest.TestCase):
         self.assertEqual((list(rows.items()), frac), ([("cull", [0]), ("depth_fit", [16]), ("batched", [16]),
                                                   ("partial_redraw", [16]), ("lod.tolerance_px", [32]), ("lod.hysteresis_px", [8]),
                                                   ("lod.coverage_permille", [4000]), ("lod.pick_every", [64]),
-                                                  ("lod.triangle_budget", [0])], 4))
+                                                  ("lod.triangle_budget_k", [0])], 4))
+
+    def test_a_frame_s_triangle_budget_bakes_in_thousands(self):
+        # A row holds 2047 at most; a budget of tens of thousands of triangles fits only in thousands.
+        rows, frac = table_asset.decode(render_asset.bake(self.settings("[lod]\ntriangle_budget_k = 32\n")))
+        self.assertEqual(rows["lod.triangle_budget_k"], [32 << frac])
 
     def test_an_unknown_key_or_another_type_is_refused(self):
         for text, message in (("fog = true\n", "fog is not a render setting"),

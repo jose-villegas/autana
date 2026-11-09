@@ -348,13 +348,16 @@ generate(render_context_t* c, const render_view_t* view) {
     c->drawn_in_row = 0;
 }
 
-/* No row changed, but picks are owed (render_partial_picks_owed()): a
- * census makes them, and true when one changed a cut or the depth scale,
+/* No row changed, but picks are owed (render_partial_picks_owed(), or a
+ * steer that moved its tolerance last round and has yet to see it drawn):
+ * a census makes them, and true when one changed a cut or the depth scale,
  * the census list then drawn over every row. */
 static bool
 census_changed(render_context_t* c, const render_view_t* view) {
     raster_t* r = &c->raster;
-    if (!render_partial_picks_owed(&c->partial, raster_settings(r).lod.pick_every)) {
+    const render_lod_settings_t lod = raster_settings(r).lod;
+    const bool steering = lod.triangle_budget_k > 0 && !c->steer.settled;
+    if (!steering && !render_partial_picks_owed(&c->partial, lod.pick_every)) {
         return false;
     }
     const float kept_near = raster_depth_near(r);
