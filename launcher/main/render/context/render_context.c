@@ -390,16 +390,9 @@ draw_partial(render_context_t* c, const render_view_t* view) {
     return true;
 }
 
-bool
-render_context_draw(render_context_t* c, const r3d_instance_t* instances, int count, const render_view_t* view,
-                    uint16_t clear) {
-#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    c->observed = false;
-#endif
-    if (can_generate(c, view)) {
-        generate(c, view);
-        return true;
-    }
+/* The frame's bookkeeping as a draw begins: nothing generated, kept or unchanged yet. */
+static void
+begin_draw(render_context_t* c) {
     c->frame.generated = false;
     c->frame.unchanged = false;
     c->kept = false;
@@ -407,6 +400,11 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
         c->drawn_in_row++;
     }
     c->frame.predicted_us = 0;
+}
+
+/* Aims the raster at this frame's instances, size and destination. */
+static void
+aim_raster(render_context_t* c, const r3d_instance_t* instances, int count, const render_view_t* view, uint16_t clear) {
     const int step = current_step(c);
     raster_t* r = &c->raster;
     r->split = &c->split;
@@ -422,44 +420,52 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     r->upscaled = true; /* render_context_compose() names the picture */
     r->destination_width = view->viewport.width;
     r->destination_height = view->viewport.height;
-    fit_scratch(c);
-    if (c->scratch == NULL) {
+}
+
+/* Off: the plain draw, nothing timed or chosen, unless frame generation needs the drawn cost.
+ * False when the partial redraw found nothing to draw. */
+static bool
+draw_fixed(render_context_t* c, const render_view_t* view) {
+    raster_t* r = &c->raster;
+    const bool partial = raster_settings(r).partial_redraw;
+    if (partial && !draw_partial(c, view)) {
         return false;
     }
-    c->frame.width = r->width;
-    c->frame.height = r->height;
-    r->first_row = 0;
-    r->end_row = 0;
-    if (c->policy == RENDER_FIXED && !c->generating) {
-        /* Off: the plain draw, nothing timed or chosen, unless frame generation needs the drawn cost. */
-        const bool partial = raster_settings(r).partial_redraw;
-        if (partial && !draw_partial(c, view)) {
-            return true;
-        }
-        if (!partial) {
-            c->frame.stats = raster_draw(r, view);
-        }
-    } else {
-        render_partial_forget(&c->partial);
-        const int64_t began_us = timing_now_us();
-        if (c->policy == RENDER_PREDICTED) {
-            /* Culled once: the census prices the frame and the draw reuses its list. */
-            c->frame.stats = raster_census(r, view);
-            const int32_t elapsed_us = c->chose_at_us == 0 ? 0 : (int32_t)(began_us - c->chose_at_us);
-            c->chose_at_us = began_us;
-            const int chosen =
-                resolution_predict_choose(&c->predict, policy_config(c), c->frame.stats.triangles, elapsed_us);
-            c->frame.predicted_us = (int32_t)c->predict.chosen_us;
-            r->width = c->ladder.steps[chosen].width;
-            r->height = raster_present_size(c->ladder.steps[chosen], r->present).height;
-            c->frame.width = r->width;
-            c->frame.height = r->height;
-            raster_draw_culled(r, view);
-        } else {
-            c->frame.stats = raster_draw(r, view);
-        }
-        c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
+    if (!partial) {
+        c->frame.stats = raster_draw(r, view);
     }
+    return true;
+}
+
+/* The draw the resolution policy times, choosing the size first when it predicts. */
+static void
+draw_timed(render_context_t* c, const render_view_t* view) {
+    raster_t* r = &c->raster;
+    render_partial_forget(&c->partial);
+    const int64_t began_us = timing_now_us();
+    if (c->policy == RENDER_PREDICTED) {
+        /* Culled once: the census prices the frame and the draw reuses its list. */
+        c->frame.stats = raster_census(r, view);
+        const int32_t elapsed_us = c->chose_at_us == 0 ? 0 : (int32_t)(began_us - c->chose_at_us);
+        c->chose_at_us = began_us;
+        const int chosen =
+            resolution_predict_choose(&c->predict, policy_config(c), c->frame.stats.triangles, elapsed_us);
+        c->frame.predicted_us = (int32_t)c->predict.chosen_us;
+        r->width = c->ladder.steps[chosen].width;
+        r->height = raster_present_size(c->ladder.steps[chosen], r->present).height;
+        c->frame.width = r->width;
+        c->frame.height = r->height;
+        raster_draw_culled(r, view);
+    } else {
+        c->frame.stats = raster_draw(r, view);
+    }
+    c->frame.draw_us = (int32_t)(timing_now_us() - began_us);
+}
+
+/* Records the drawn frame so the next one can reuse it. */
+static void
+keep_frame(render_context_t* c, const render_view_t* view) {
+    raster_t* r = &c->raster;
     r->pick_round++;
     c->frame.step = current_step(c);
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
@@ -471,6 +477,37 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     c->kept = true;
     c->kept_view = *view;
     render_partial_kept(&c->partial, r, view);
+}
+
+bool
+render_context_draw(render_context_t* c, const r3d_instance_t* instances, int count, const render_view_t* view,
+                    uint16_t clear) {
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    c->observed = false;
+#endif
+    if (can_generate(c, view)) {
+        generate(c, view);
+        return true;
+    }
+    begin_draw(c);
+    aim_raster(c, instances, count, view, clear);
+    fit_scratch(c);
+    if (c->scratch == NULL) {
+        return false;
+    }
+    raster_t* r = &c->raster;
+    c->frame.width = r->width;
+    c->frame.height = r->height;
+    r->first_row = 0;
+    r->end_row = 0;
+    if (c->policy == RENDER_FIXED && !c->generating) {
+        if (!draw_fixed(c, view)) {
+            return true;
+        }
+    } else {
+        draw_timed(c, view);
+    }
+    keep_frame(c, view);
     return true;
 }
 
