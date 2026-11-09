@@ -10,10 +10,9 @@ LIGHT_GAMMA = read_define(LIGHT_OWNER,
                           "R3D_SKIN_LIGHT_GAMMA")
 
 import numpy as np
-from scipy.spatial import cKDTree
 
 from . import log
-from .geometry import closest_point_on_triangles, distinct_corners, triangle_areas
+from .geometry import distinct_corners, nearest_triangles, triangle_areas, triangle_search
 from .import_settings import LIGHT_FIELDS
 
 
@@ -167,27 +166,6 @@ def albedo_from_uv(texture, kd, uv, lod):
     return texture.sample(uv, lod)[:, :3] * np.array(kd)
 
 
-def nearest_on_triangles(points, sel, p, tri_v):
-    """For each point, the triangle of `sel` nearest to it and the barycentric
-    coordinates of the nearest point on that triangle."""
-    a, b, c = p[tri_v[sel, 0]], p[tri_v[sel, 1]], p[tri_v[sel, 2]]
-    tree = cKDTree((a + b + c) / 3)
-    k = min(16, len(sel))
-    _, cand = tree.query(points, k=k)
-    cand = cand.reshape(len(points), k)
-    best_d = np.full(len(points), np.inf)
-    best_bary = np.zeros((len(points), 3))
-    best_tri = np.zeros(len(points), dtype=np.int64)
-    for j in range(k):
-        t = cand[:, j]
-        bary, d = closest_point_on_triangles(points, a[t], b[t], c[t])
-        better = d < best_d
-        best_d[better] = d[better]
-        best_bary[better] = bary[better]
-        best_tri[better] = t[better]
-    return sel[best_tri], best_bary
-
-
 def sample_albedo(points, spacing, m, p, uv, tri_v, tri_t, tri_m, textures, kd, colors=None):
     """Linear albedo of material m at points on its surface: its texture or colour, times the source's linear vertex
     colours (indexed like p) where it has them."""
@@ -195,7 +173,9 @@ def sample_albedo(points, spacing, m, p, uv, tri_v, tri_t, tri_m, textures, kd, 
     tex = textures[m]
     if tex is None and colors is None:
         return albedo_from_uv(None, kd, points, None)
-    tris, bary = nearest_on_triangles(points, sel, p, tri_v)
+    corners = p[tri_v[sel]]
+    tris, bary, _ = nearest_triangles(points, triangle_search(corners))
+    tris = sel[tris]
     if tex is None:
         albedo = albedo_from_uv(None, kd, points, None)
     else:
