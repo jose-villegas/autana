@@ -300,10 +300,9 @@ def rule_shapes(candidates, rule, held):
 def own_materials(placed, faces, materials, pos, own_tris, own_labels):
     """A copy joined by surface keeps its own materials: each shape material becomes the copy material that lies
     nearest to most of that material's stamped triangles."""
-    from .geometry import majority
-    from .light import nearest_on_triangles
+    from .geometry import majority, nearest_triangles, triangle_search
 
-    nearest, _ = nearest_on_triangles(placed[faces].mean(axis=1), np.arange(len(own_tris)), pos, own_tris)
+    nearest = nearest_triangles(placed[faces].mean(axis=1), triangle_search(pos[own_tris]))[0]
     found = np.asarray(own_labels)[nearest]
     return majority(materials, found, int(materials.max()) + 1)[materials].astype(np.asarray(materials).dtype)
 
