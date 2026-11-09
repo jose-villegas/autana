@@ -18,7 +18,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [overview](#overview) | 15 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
-| [render](#render) | 128 | 2 | 0 |
+| [render](#render) | 129 | 2 | 0 |
 | [ui](#ui) | 62 | 0 | 0 |
 
 ## anim
@@ -236,6 +236,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/render/gpu/bake-indirect-compare.png"><img src="../images/render/gpu/bake-indirect-compare.png" width="160" alt=""></a> | Reference, direct-light bake and indirect bake, with error heatmaps | [render/offline/Bake-Quality](../render/offline/Bake-Quality.md) | not declared yet |
 | <a href="../images/render/gpu/bake-indirect-look.png"><img src="../images/render/gpu/bake-indirect-look.png" width="160" alt=""></a> | Physical reference and each look's own, with the bakes and their error heatmaps | [render/offline/Bake-Quality](../render/offline/Bake-Quality.md) | not declared yet |
 | <a href="../images/render/gpu/bake-steps.png"><img src="../images/render/gpu/bake-steps.png" width="160" alt=""></a> | Bake steps | [render/offline/README](../render/offline/README.md) | not declared yet |
+| <a href="../images/render/import-curves.png"><img src="../images/render/import-curves.png" width="160" alt=""></a> | the same Bistro bake without its curves and with them: the cables over the street come back | [render/offline/Mesh-Import](../render/offline/Mesh-Import.md) | not declared yet |
 | <a href="../images/render/import-face-samples.png"><img src="../images/render/import-face-samples.png" width="160" alt=""></a> | One fixed face sample against adaptive, then adaptive against the flat fit | [render/scene/Scene-Files](../render/scene/Scene-Files.md) | not declared yet |
 | <a href="../images/render/import-light.png"><img src="../images/render/import-light.png" width="160" alt=""></a> | Albedo against the fitted bake | [render/scene/Scene-Files](../render/scene/Scene-Files.md) | not declared yet |
 | <a href="../images/render/import-mesh-contact.png"><img src="../images/render/import-mesh-contact.png" width="160" alt=""></a> | A pillar's contact with the floor under weld, lock and free | [render/offline/Mesh-Import](../render/offline/Mesh-Import.md) | not declared yet |
