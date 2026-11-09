@@ -24,8 +24,9 @@
 #include <stdint.h>
 
 #include "render/r3d_lit_mesh.h"
-#include "render/r3d_pipeline.h"
 #include "render/settings/render_settings.h"
+
+typedef struct r3d_lens r3d_lens_t; /* r3d_pipeline.h */
 
 /* The thousandths of `lod.coverage_permille`: 1000 is the picture's whole height. */
 #define R3D_LOD_PERMILLE       1000

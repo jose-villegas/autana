@@ -4,6 +4,7 @@
 #include "math/scalar/float_bits.h"
 #include "math/scalar/mathf.h"
 #include "math/scalar/mathi.h"
+#include "render/r3d_pipeline.h"
 
 #include <assert.h>
 #include <math.h>
