@@ -18,6 +18,7 @@ import sys
 
 import numpy as np
 from PIL import Image
+from depth_figures import busiest
 from render_compare import still_sheet
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -71,15 +72,6 @@ def frames(host, assets, args, side):
     return [frame.astype(np.int16) for frame in read_video(video)[1]]
 
 
-def busiest(count):
-    """The top-left corner of the WINDOW holding the most changed pixels."""
-    width, height = WINDOW
-    total = np.pad(count.cumsum(0).cumsum(1), ((1, 0), (1, 0)))
-    sums = total[height:, width:] - total[:-height, width:] - total[height:, :-width] + total[:-height, :-width]
-    y, x = np.unravel_index(np.argmax(sums), sums.shape)
-    return int(x), int(y)
-
-
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--scene", required=True, type=pathlib.Path)
@@ -99,7 +91,7 @@ def main(argv=None):
     clips = {SIDES[0]: frames(host, args.work / "bare", args, "bare"), SIDES[1]: frames(host, assets, args, "curves")}
     changed = [(np.abs(a - b).sum(2) > CHANGE) for a, b in zip(*clips.values())]
     k = max(range(len(changed)), key=lambda i: int(changed[i].sum()))
-    x, y = busiest(changed[k].astype(int))
+    x, y = busiest(changed[k].astype(int), WINDOW)
     width, height = WINDOW
     cut = {side: Image.fromarray(clip[k][y:y + height, x:x + width].astype(np.uint8))
            .resize((width * ZOOM, height * ZOOM), Image.NEAREST) for side, clip in clips.items()}
