@@ -393,6 +393,13 @@ draw_partial(render_context_t* c, const render_view_t* view) {
 bool
 render_context_draw(render_context_t* c, const r3d_instance_t* instances, int count, const render_view_t* view,
                     uint16_t clear) {
+    return render_context_draw_batched(c, instances, count, NULL, 0, view, clear);
+}
+
+bool
+render_context_draw_batched(render_context_t* c, const r3d_instance_t* instances, int count,
+                            const r3d_batch_draw_t* batches, int batch_count, const render_view_t* view,
+                            uint16_t clear) {
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     c->observed = false;
 #endif
@@ -414,6 +421,8 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     r->settings = &c->settings;
     r->instances = instances;
     r->instance_count = count;
+    r->batches = batches;
+    r->batch_count = batch_count;
     r->width = step < 0 ? view->viewport.width * c->scale_percent / 100 : c->ladder.steps[step].width;
     r->height = step < 0 ? view->viewport.height * c->scale_percent / 100 : c->ladder.steps[step].height;
     r->present = view->present;

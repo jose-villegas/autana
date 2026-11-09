@@ -198,6 +198,11 @@ void render_context_print_debug_views(FILE* out);
 bool render_context_draw(render_context_t* context, const r3d_instance_t* instances, int count,
                          const render_view_t* view, uint16_t clear);
 
+/* render_context_draw() with `batch_count` batches drawn after the instances. */
+bool render_context_draw_batched(render_context_t* context, const r3d_instance_t* instances, int count,
+                                 const r3d_batch_draw_t* batches, int batch_count, const render_view_t* view,
+                                 uint16_t clear);
+
 /* What the next frame draws with; the context keeps its own copy, and
  * RENDER_SETTINGS_DEFAULT until set. A development override goes on top of
  * them in the draw (raster_settings()), never into them, so

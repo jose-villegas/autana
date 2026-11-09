@@ -34,8 +34,8 @@ typedef struct {
     r3d_pipeline_work_t* work[2]; /* one block per row slice */
     float* depth_near;            /* the census's depth scale, which a draw from its list encodes with */
     int* drawn_count;             /* entries of `drawn` the census culled */
-    const r3d_instance_t** drawn; /* raster_drawn_capacity() entries: each instance, a batch's as the copies it kept */
-    r3d_instance_t* copies;       /* raster_lengths_t.copies entries: the kept copies the drawn list points at */
+    const r3d_instance_t** drawn; /* raster_drawn_capacity() entries: each instance, then the copies kept */
+    r3d_batch_draw_t* copies;     /* raster_lengths_t.copies entries: the kept copies the drawn list points at */
     uint16_t* culled;             /* raster_culled_length() entries */
     void* draw;                   /* raster-owned instance and slice state */
 
@@ -61,13 +61,13 @@ raster_lengths_t raster_lengths(const raster_t* raster);
 /* Where the kept copies start, past the drawn list of `lengths`. */
 static inline size_t
 raster_copies_at(raster_lengths_t lengths) {
-    return mathi_size_ceil(RASTER_DRAWN_AT + (sizeof(r3d_instance_t*) * lengths.drawn), _Alignof(r3d_instance_t));
+    return mathi_size_ceil(RASTER_DRAWN_AT + (sizeof(r3d_instance_t*) * lengths.drawn), _Alignof(r3d_batch_draw_t));
 }
 
 /* Where the census list starts, past the kept copies of `lengths`. */
 static inline size_t
 raster_culled_at(raster_lengths_t lengths) {
-    return raster_copies_at(lengths) + (sizeof(r3d_instance_t) * lengths.copies);
+    return raster_copies_at(lengths) + (sizeof(r3d_batch_draw_t) * lengths.copies);
 }
 
 /* The census's share of the scratch block: its depth scale, its drawn list,
@@ -81,6 +81,14 @@ raster_culled_bytes_of(raster_lengths_t lengths) {
 static inline size_t
 raster_culled_bytes(const raster_t* raster) {
     return raster_culled_bytes_of(raster_lengths(raster));
+}
+
+/* The kept copy drawn `entry` of `b` is, or NULL: the copies, and nothing
+ * else of the drawn list, lie between b->copies and b->culled. */
+static inline const r3d_batch_draw_t*
+raster_buffers_copy(const raster_buffers_t* b, const r3d_instance_t* entry) {
+    const uintptr_t at = (uintptr_t)entry;
+    return at >= (uintptr_t)b->copies && at < (uintptr_t)b->culled ? (const r3d_batch_draw_t*)entry : NULL;
 }
 
 /* Consecutive instances drawn with one transform and one draw fork/join:
@@ -107,7 +115,7 @@ raster_carve(const raster_t* raster) {
     b.drawn_count = (int*)(p + sizeof(float));
     const raster_lengths_t lengths = raster_lengths(raster);
     b.drawn = (const r3d_instance_t**)(p + RASTER_DRAWN_AT);
-    b.copies = (r3d_instance_t*)(p + raster_copies_at(lengths));
+    b.copies = (r3d_batch_draw_t*)(p + raster_copies_at(lengths));
     b.culled = (uint16_t*)(p + raster_culled_at(lengths));
     p += raster_culled_bytes_of(lengths);
     b.cs = (r3d_pipeline_vertex_t*)p;

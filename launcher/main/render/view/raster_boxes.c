@@ -51,7 +51,7 @@ raster_boxes_overlay(void* state, int width, int height) {
         const r3d_instance_t* instance = drawn[i];
         r3d_lens_t lens;
         r3d_lens_init(&lens, &seen, instance->mesh->position_scale);
-        r3d_instance_place(instance, &lens);
+        raster_drawn_place(raster, instance, &lens);
         const gfx_color_t color = raster_meshlets_color(1U + (uint32_t)shape);
         raster_lines_box(&lens, tested, box3f_from_box3s(instance->mesh->nodes[0].bounds, 1.0F), color);
     }

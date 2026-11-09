@@ -14,6 +14,7 @@
 #include "core/pending.h"
 #include "hash/name_hash.h"
 #include "math/linear/mat3f.h"
+#include "render/batch/r3d_batch.h"
 #include "render/lod/r3d_lod.h"
 #include "render/r3d_instance.h"
 #include "render/skin/r3d_skin_light.h"
@@ -261,10 +262,11 @@ struct scene {
     transformf_t* locals;
     scene_animator_t* animators;
     scene_skinned_renderer_t* skinned_renderers;
-    r3d_instance_t* instances; /* one per renderer: what the raster draws this frame */
-    r3d_batch_t* batches;      /* one per SCNE batch, its renderer's */
-    r3d_copy_chunk_t* chunks;  /* every batch's chunks, internal RAM: what the cull reads first */
-    uint16_t* world_slots;     /* one per entity: its index in `worlds`, or SCENE_WORLD_SLOT_NONE when childless */
+    r3d_instance_t* instances;     /* one per renderer: what the raster draws this frame */
+    r3d_batch_t* batches;          /* one per SCNE batch, its renderer's */
+    r3d_batch_draw_t* batch_draws; /* one per SCNE batch: what the raster draws of it this frame */
+    r3d_copy_chunk_t* chunks;      /* every batch's chunks, internal RAM: what the cull reads first */
+    uint16_t* world_slots;         /* one per entity: its index in `worlds`, or SCENE_WORLD_SLOT_NONE when childless */
     int world_count;
     mat4f_t* worlds;             /* one per entity with children, in entity order */
     scene_row_t* world_entities; /* the entity each of `worlds` belongs to */

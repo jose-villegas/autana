@@ -198,7 +198,7 @@ count_frame(raster_cull_t* s, const raster_t* raster) {
         const r3d_lit_mesh_t* mesh = instance->mesh;
         r3d_lens_t lens;
         raster_lens(raster, &s->camera, mesh->position_scale, &lens);
-        r3d_instance_place(instance, &lens);
+        raster_drawn_place(raster, instance, &lens);
         const uint16_t* kept = &s->drawn[w.at + 1];
         int count = s->drawn[w.at];
         if (culls) {
@@ -421,12 +421,13 @@ world_bounds(const raster_t* raster) {
     box3f_t bounds = box3f_empty();
     for (int i = 0; i < drawn_count(raster); i++) {
         const r3d_instance_t* instance = raster_drawn_at(raster, i);
-        mat4f_t copy;
+        mat4f_t placed;
         const mat4f_t* model = instance->model;
-        if (instance->batch != NULL) {
-            copy = r3d_batch_copy_model(instance->batch, instance->copy);
-            copy = model != NULL ? mat4f_mul_affine(*model, copy) : copy;
-            model = &copy;
+        const r3d_batch_draw_t* copy = raster_drawn_copy(raster, instance);
+        if (copy != NULL) {
+            placed = r3d_batch_copy_model(copy->batch, copy->copy);
+            placed = model != NULL ? mat4f_mul_affine(*model, placed) : placed;
+            model = &placed;
         }
         bounds = box3f_union(bounds, r3d_lit_mesh_world_bounds(instance->mesh, model));
     }
@@ -708,7 +709,7 @@ raster_cull_overlay(void* state, int width, int height) {
         const r3d_instance_t* instance = raster_drawn_at(raster, i);
         r3d_lens_t lens;
         r3d_lens_init(&lens, &seen, instance->mesh->position_scale);
-        r3d_instance_place(instance, &lens);
+        raster_drawn_place(raster, instance, &lens);
         level_boxes(s, &lens, instance->mesh);
     }
     if (s->spectated) {

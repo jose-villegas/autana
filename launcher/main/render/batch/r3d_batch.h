@@ -8,7 +8,9 @@
 
 #include "math/geometry/spheref.h"
 #include "math/linear/mat4f.h"
+#include "render/r3d_instance.h"
 #include "render/r3d_lit_mesh.h"
+#include "render/r3d_pipeline.h"
 
 /* A batch's copies in runs of this many, each run a chunk with one sphere. */
 #define R3D_BATCH_CHUNK_COPIES 16
@@ -48,6 +50,16 @@ typedef struct {
     uint16_t copy_count, chunk_count, lod_words;
 } r3d_batch_t;
 
+/* A batch drawn: `instance` places every copy by its model and culls them
+ * whole by its world box; its coarse bits are unread, each copy has its own
+ * in the batch. Kept by the raster's cull as one copy, `instance` is that
+ * copy's (its coarse bits, no world box) and `copy` names it. */
+typedef struct {
+    r3d_instance_t instance;
+    const r3d_batch_t* batch;
+    int copy;
+} r3d_batch_draw_t;
+
 /* The chunks a batch of `copies` holds. */
 int r3d_batch_chunks(int copies);
 
@@ -65,5 +77,9 @@ float r3d_batch_copy_radius(const r3d_lit_mesh_t* mesh);
 /* Chunk `chunk`'s sphere, the batch's frame: every copy's within it. */
 spheref_t r3d_batch_chunk_sphere(const r3d_batch_t* batch, int chunk);
 
-/* `mesh` with copy `copy`'s colour set in place of set 0. */
-r3d_lit_mesh_t r3d_batch_copy_mesh(const r3d_batch_t* batch, const r3d_lit_mesh_t* mesh, int copy);
+/* `mesh` with copy `copy`'s colour set in place of set 0, into `out`. */
+void r3d_batch_copy_mesh(const r3d_batch_t* batch, const r3d_lit_mesh_t* mesh, int copy, r3d_lit_mesh_t* out);
+
+/* r3d_lens_place() for kept copy `draw`: the batch's model, then the copy's
+ * own placement. */
+void r3d_batch_copy_place(const r3d_batch_draw_t* draw, r3d_lens_t* lens);

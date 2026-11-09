@@ -655,7 +655,7 @@ place(placed_t* p, const r3d_lit_mesh_t* mesh, int count, const float* depth) {
         transformf_set_position(&pose, (vec3f_t){0.0F, 0.0F, depth[i]});
         p->models[i] = transformf_compute_matrix(&pose);
         p->boxes[i] = r3d_lit_mesh_world_bounds(mesh, &p->models[i]);
-        p->instances[i] = (r3d_instance_t){mesh, &p->models[i], &p->boxes[i], p->coarse[i], NULL, 0};
+        p->instances[i] = (r3d_instance_t){mesh, &p->models[i], &p->boxes[i], p->coarse[i]};
     }
 }
 
@@ -713,7 +713,7 @@ test_the_pick_keeps_the_bits_of_an_instance_culled_whole(void) {
 /* The scratch picked_in_round() draws in. */
 static size_t
 picked_scratch_bytes(const r3d_lit_mesh_t* mesh) {
-    r3d_instance_t instances[PLACED_MAX] = {{mesh, NULL, NULL, NULL, NULL, 0}, {mesh, NULL, NULL, NULL, NULL, 0}};
+    r3d_instance_t instances[PLACED_MAX] = {{mesh, NULL, NULL, NULL}, {mesh, NULL, NULL, NULL}};
     const raster_t raster = {.instances = instances, .instance_count = PLACED_MAX, .width = W, .height = H};
     return raster_scratch_bytes(&raster);
 }

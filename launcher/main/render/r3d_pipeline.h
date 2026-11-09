@@ -67,10 +67,6 @@ void r3d_lens_fit(r3d_lens_t* lens, int width, int height);
  * Call it after r3d_lens_init(), with the position scale of the mesh drawn. */
 void r3d_lens_place(r3d_lens_t* lens, const mat4f_t* model, int position_scale);
 
-/* r3d_lens_place() for where `instance` draws its mesh: its model, a batch's
- * copy by the model and then its own placement, or nothing without either. */
-void r3d_instance_place(const r3d_instance_t* instance, r3d_lens_t* lens);
-
 /* Caller-owned workspace, reusable between culling and drawing. Concurrent
  * draws each need their own block, aligned as malloc provides. */
 typedef struct r3d_pipeline_work r3d_pipeline_work_t;

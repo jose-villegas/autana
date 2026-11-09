@@ -11,6 +11,7 @@
 #include <stdint.h>
 
 #include "gfx/target/gfx_target.h"
+#include "render/batch/r3d_batch.h"
 #include "render/r3d_instance.h"
 #include "render/raster_attachment.h"
 #include "render/raster_split.h"
@@ -27,6 +28,10 @@ struct raster {
      * census slot. */
     const r3d_instance_t* instances;
     int instance_count;
+    /* Drawn after the instances, each as the copies its cull keeps; none
+     * with a count of 0. */
+    const r3d_batch_draw_t* batches;
+    int batch_count;
     int width, height; /* the size drawn at */
     uint16_t clear;    /* in the pixel format r3d_span.h describes */
     /* With upscaling, colour is not cleared: raster_upscale() supplies the
@@ -108,13 +113,19 @@ raster_stats_t raster_draw(const raster_t* raster, const render_view_t* view);
  * rasters must keep the census size. */
 size_t raster_culled_length(const raster_t* raster);
 /* The census's drawn list holds at most this many: one for each instance,
- * and one for each copy of an instance's batch. */
+ * and one for each copy of each batch. */
 size_t raster_drawn_capacity(const raster_t* raster);
-/* What the last census drew from, `*count` of them: each instance without a
- * batch where it was handed over, in order, and in a batch's place each copy
- * its spheres kept, as an instance of its own (its batch and copy set, no
- * world box). Writers and views number instances in this list. */
+/* What the last census drew from, `*count` of them: each instance where it
+ * was handed over, in order, then each copy of each batch its spheres kept,
+ * as an instance of its own. Writers and views number instances in this list. */
 const r3d_instance_t* const* raster_drawn(const raster_t* raster, int* count);
+
+/* The kept copy `entry` of raster_drawn() is, or NULL for an instance. */
+const r3d_batch_draw_t* raster_drawn_copy(const raster_t* raster, const r3d_instance_t* entry);
+
+/* r3d_lens_place() for where drawn `entry` sits: its model, and a kept copy's
+ * own placement after it. */
+void raster_drawn_place(const raster_t* raster, const r3d_instance_t* entry, r3d_lens_t* lens);
 raster_stats_t raster_census(const raster_t* raster, const render_view_t* view);
 void raster_draw_culled(const raster_t* raster, const render_view_t* view);
 

@@ -46,15 +46,23 @@ r3d_batch_chunk_sphere(const r3d_batch_t* batch, int chunk) {
     return (spheref_t){batch->chunks[chunk].centre, batch->chunks[chunk].reach + batch->copy_radius};
 }
 
-r3d_lit_mesh_t
-r3d_batch_copy_mesh(const r3d_batch_t* batch, const r3d_lit_mesh_t* mesh, int copy) {
-    r3d_lit_mesh_t view = *mesh;
+void
+r3d_batch_copy_mesh(const r3d_batch_t* batch, const r3d_lit_mesh_t* mesh, int copy, r3d_lit_mesh_t* out) {
+    *out = *mesh;
     const uint32_t at = (uint32_t)batch->places[copy].colour_set * batch->colour_stride;
-    if (view.colors != NULL) {
-        view.colors += at;
+    if (out->colors != NULL) {
+        out->colors += at;
     }
-    if (view.face_colors != NULL) {
-        view.face_colors += at;
+    if (out->face_colors != NULL) {
+        out->face_colors += at;
     }
-    return view;
+}
+
+void
+r3d_batch_copy_place(const r3d_batch_draw_t* draw, r3d_lens_t* lens) {
+    mat4f_t model = r3d_batch_copy_model(draw->batch, draw->copy);
+    if (draw->instance.model != NULL) {
+        model = mat4f_mul_affine(*draw->instance.model, model);
+    }
+    r3d_lens_place(lens, &model, draw->instance.mesh->position_scale);
 }

@@ -2624,7 +2624,8 @@ test_a_batch_draws_its_copies_from_one_renderer(void) {
     TEST_ASSERT_TRUE((uintptr_t)r->mesh.colors >= begin
                      && (uintptr_t)(r->mesh.colors + (LCOL_TEST_SETS * r->mesh.vertex_count)) <= end);
     TEST_ASSERT_TRUE((uintptr_t)r->batch->places >= begin && (uintptr_t)(r->batch->places + BATCH_COPIES) <= end);
-    const r3d_lit_mesh_t second = r3d_batch_copy_mesh(r->batch, &r->mesh, 1);
+    r3d_lit_mesh_t second;
+    r3d_batch_copy_mesh(r->batch, &r->mesh, 1, &second);
     TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, second.colors[0][1]);
     TEST_ASSERT_FALSE(renderer_set_mesh(entity_find(root, name_hash("copies")), &r->mesh));
     TEST_ASSERT_TRUE(camera_activate(camera_first(root)));
@@ -3158,7 +3159,7 @@ test_the_scratch_is_the_finest_steps_raster_block(void) {
     entity_t scene = show("test_pair");
     r3d_instance_t* instances = fx.instances;
     for (int i = 0; i < INSTANCES_MAX; i++) {
-        instances[i] = (r3d_instance_t){&columns(scene)->renderers[0].mesh, NULL, NULL, NULL, NULL, 0};
+        instances[i] = (r3d_instance_t){&columns(scene)->renderers[0].mesh, NULL, NULL, NULL};
     }
     const resolution_config_t config = resolution_config(LADDER, 3, 3, 2000);
     render_context_t* c = render_context_main();

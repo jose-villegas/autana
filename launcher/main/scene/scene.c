@@ -53,7 +53,8 @@ static const struct {
              PART(lights, PER_ENTITY),
              PART(staged, PER_ENTITY),
              PART(active_renderers, PER_RENDERER),
-             PART(batches, PER_BATCH)};
+             PART(batches, PER_BATCH),
+             PART(batch_draws, PER_BATCH)};
 
 /* Carves the scene's arrays after its header, each on its own alignment, and
  * points them into `scene`'s block; a NULL scene only measures. Returns the
