@@ -55,20 +55,6 @@ static const unsigned FATE_KEEP[RASTER_FATE_COUNT] = {
 
 #define BITS           (sizeof(uint32_t) * CHAR_BIT)
 
-/* The census's drawn list: what the frame drew, a batch's copies each an instance. */
-static int
-drawn_count(const raster_t* raster) {
-    int count;
-    (void)raster_drawn(raster, &count);
-    return count;
-}
-
-static const r3d_instance_t*
-raster_drawn_at(const raster_t* raster, int i) {
-    int count;
-    return raster_drawn(raster, &count)[i];
-}
-
 /* Each instance's drawn clusters into s->drawn, the level each instance
  * drew this frame, and how many clusters and triangles that is. */
 static void
@@ -76,7 +62,7 @@ list_drawn(raster_cull_t* s, const raster_t* raster) {
     int at = 0;
     s->clusters = 0;
     s->triangles = 0;
-    for (int i = 0; i < drawn_count(raster); i++) {
+    for (int i = 0; i < raster_drawn_count(raster); i++) {
         const r3d_instance_t* instance = raster_drawn_at(raster, i);
         const r3d_lit_mesh_t* mesh = instance->mesh;
         assert(at < RASTER_CULL_CLUSTERS_MAX);
@@ -193,12 +179,12 @@ count_frame(raster_cull_t* s, const raster_t* raster) {
     const raster_buffers_t b = raster_carve(raster);
     const bool culls = raster_settings(raster).cull; /* whether the frame culled at all */
     drawn_at_t w = {0};
-    for (int i = 0; i < drawn_count(raster); i++) {
+    for (int i = 0; i < raster_drawn_count(raster); i++) {
         const r3d_instance_t* instance = raster_drawn_at(raster, i);
         const r3d_lit_mesh_t* mesh = instance->mesh;
         r3d_lens_t lens;
         raster_lens(raster, &s->camera, mesh->position_scale, &lens);
-        raster_drawn_place(raster, instance, &lens);
+        raster_drawn_place(raster, i, &lens);
         const uint16_t* kept = &s->drawn[w.at + 1];
         int count = s->drawn[w.at];
         if (culls) {
@@ -268,7 +254,7 @@ place_tag(const raster_cull_t* s, const raster_t* raster, uint32_t tag, bool clu
         drawn_at_t w = {0};
         uint32_t first = 0;
         int i = 0;
-        for (; i < drawn_count(raster); i++) {
+        for (; i < raster_drawn_count(raster); i++) {
             const r3d_lit_mesh_t* mesh = raster_drawn_at(raster, i)->mesh;
             const uint32_t span = (uint32_t)(clusters ? mesh->cluster_count : mesh->triangle_count);
             if (wanted < first + span) {
@@ -278,7 +264,7 @@ place_tag(const raster_cull_t* s, const raster_t* raster, uint32_t tag, bool clu
             first += span;
             walk_next(s, &w);
         }
-        if (i == drawn_count(raster)) {
+        if (i == raster_drawn_count(raster)) {
             return false;
         }
     }
@@ -297,7 +283,7 @@ static void
 pair_triangles(raster_cull_t* s, const raster_t* raster) {
     drawn_at_t w = {0};
     uint32_t first = 0;
-    for (int i = 0; i < drawn_count(raster); i++) {
+    for (int i = 0; i < raster_drawn_count(raster); i++) {
         const r3d_lit_mesh_t* mesh = raster_drawn_at(raster, i)->mesh;
         assert(w.pair + ((s->drawn[w.at] + 1) / 2) <= RASTER_CULL_CLUSTERS_MAX / 2);
         for (int j = 0; j < s->drawn[w.at]; j++) {
@@ -346,7 +332,7 @@ tally(raster_cull_t* s, const raster_t* raster) {
     mark_covered(s, raster);
     drawn_at_t w = {0};
     uint32_t first = 0;
-    for (int i = 0; i < drawn_count(raster); i++) {
+    for (int i = 0; i < raster_drawn_count(raster); i++) {
         const r3d_lit_mesh_t* mesh = raster_drawn_at(raster, i)->mesh;
         for (int j = 0; j < s->drawn[w.at]; j++) {
             const r3d_lit_cluster_t* cluster = &mesh->clusters[s->drawn[w.at + 1 + j]];
@@ -409,7 +395,7 @@ find_nodes_of(raster_cull_t* s, const r3d_lit_mesh_t* mesh, drawn_at_t w) {
 static void
 find_nodes(raster_cull_t* s, const raster_t* raster) {
     drawn_at_t w = {0};
-    for (int i = 0; i < drawn_count(raster); i++) {
+    for (int i = 0; i < raster_drawn_count(raster); i++) {
         find_nodes_of(s, raster_drawn_at(raster, i)->mesh, w);
         walk_next(s, &w);
     }
@@ -419,11 +405,11 @@ find_nodes(raster_cull_t* s, const raster_t* raster) {
 static box3f_t
 world_bounds(const raster_t* raster) {
     box3f_t bounds = box3f_empty();
-    for (int i = 0; i < drawn_count(raster); i++) {
+    for (int i = 0; i < raster_drawn_count(raster); i++) {
         const r3d_instance_t* instance = raster_drawn_at(raster, i);
         mat4f_t placed;
         const mat4f_t* model = instance->model;
-        const r3d_batch_draw_t* copy = raster_drawn_copy(raster, instance);
+        const r3d_batch_draw_t* copy = raster_drawn_copy(raster, i);
         if (copy != NULL) {
             placed = r3d_batch_copy_model(copy->batch, copy->copy);
             placed = model != NULL ? mat4f_mul_affine(*model, placed) : placed;
@@ -471,7 +457,7 @@ list_clusters(const raster_cull_t* s, const raster_t* raster, bool culled) {
     *buffers.depth_near = s->spectator.lens.near_z;
     uint16_t* list = buffers.culled;
     drawn_at_t w = {0};
-    for (int i = 0; i < drawn_count(raster); i++) {
+    for (int i = 0; i < raster_drawn_count(raster); i++) {
         const r3d_lit_mesh_t* mesh = raster_drawn_at(raster, i)->mesh;
         int count = 0;
         for (int j = 0; j < s->drawn[w.at]; j++) {
@@ -705,11 +691,11 @@ raster_cull_overlay(void* state, int width, int height) {
     const raster_t* raster = s->raster;
     render_view_t seen = s->spectated ? s->spectator : s->camera;
     render_view_refit(&seen, (viewport_t){width, height, seen.viewport.quarter});
-    for (int i = 0; level > 0 && i < drawn_count(raster); i++) {
+    for (int i = 0; level > 0 && i < raster_drawn_count(raster); i++) {
         const r3d_instance_t* instance = raster_drawn_at(raster, i);
         r3d_lens_t lens;
         r3d_lens_init(&lens, &seen, instance->mesh->position_scale);
-        raster_drawn_place(raster, instance, &lens);
+        raster_drawn_place(raster, i, &lens);
         level_boxes(s, &lens, instance->mesh);
     }
     if (s->spectated) {

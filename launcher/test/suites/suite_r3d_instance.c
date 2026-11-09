@@ -77,7 +77,7 @@ typedef struct {
     uint16_t* color;
     uint16_t* depth;
     raster_stats_t stats;
-    int drawn_count; /* raster_drawn()'s */
+    int drawn_count; /* raster_drawn_count()'s */
     void* scratch;   /* the caller frees it */
 } drawn_t;
 
@@ -98,7 +98,7 @@ draw_with(const r3d_instance_t* instances, int count, const r3d_batch_draw_t* ba
     out.stats = raster_draw(&raster, &frame_view);
     out.color = raster_color(&raster);
     out.depth = raster_depth(&raster);
-    (void)raster_drawn(&raster, &out.drawn_count);
+    out.drawn_count = raster_drawn_count(&raster);
     return out;
 }
 

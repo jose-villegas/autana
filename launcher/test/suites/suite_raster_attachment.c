@@ -473,7 +473,7 @@ test_copies_take_their_first_instance_and_each_shape_its_own_id(void) {
         instances[i] = (r3d_instance_t){.mesh = &meshes[i]};
     }
     /* The census's share of a scratch, holding the drawn list a census of
-     * these instances would: each in place. */
+     * these instances would: each in place, no copies kept. */
     raster_t raster = {.instances = instances, .instance_count = MESHES};
     raster.scratch = malloc(raster_culled_bytes(&raster));
     TEST_ASSERT_NOT_NULL(raster.scratch);
@@ -481,10 +481,7 @@ test_copies_take_their_first_instance_and_each_shape_its_own_id(void) {
     TEST_ASSERT_NOT_NULL(b);
     *b = raster_carve(&raster);
     (void)raster_buffers_place(&raster, b);
-    *raster_buffers_drawn_count(b) = MESHES;
-    for (int i = 0; i < MESHES; i++) {
-        raster_buffers_drawn(b)[i] = &instances[i];
-    }
+    raster_census_head(b)->copy_count = 0;
     free(b);
     raster_copies_t state = {0};
     const raster_attachment_t view = raster_copies_view(&state);

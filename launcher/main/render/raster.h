@@ -112,20 +112,17 @@ raster_stats_t raster_draw(const raster_t* raster, const render_view_t* view);
  * Upscaled rasters may change render size with a fixed destination; other
  * rasters must keep the census size. */
 size_t raster_culled_length(const raster_t* raster);
-/* The census's drawn list holds at most this many: one for each instance,
- * and one for each copy of each batch. */
-size_t raster_drawn_capacity(const raster_t* raster);
-/* What the last census drew from, `*count` of them: each instance where it
- * was handed over, in order, then each copy of each batch its spheres kept,
- * as an instance of its own. Writers and views number instances in this list. */
-const r3d_instance_t* const* raster_drawn(const raster_t* raster, int* count);
-
-/* The kept copy `entry` of raster_drawn() is, or NULL for an instance. */
-const r3d_batch_draw_t* raster_drawn_copy(const raster_t* raster, const r3d_instance_t* entry);
-
-/* r3d_lens_place() for where drawn `entry` sits: its model, and a kept copy's
+/* How many the last census drew from: each instance where it was handed
+ * over, in order, then each copy of each batch its spheres kept, as an
+ * instance of its own. Writers and views number instances in this list. */
+int raster_drawn_count(const raster_t* raster);
+/* Entry `i` of that list. */
+const r3d_instance_t* raster_drawn_at(const raster_t* raster, int i);
+/* The kept copy entry `i` is, or NULL for an instance. */
+const r3d_batch_draw_t* raster_drawn_copy(const raster_t* raster, int i);
+/* r3d_lens_place() for where entry `i` sits: its model, and a kept copy's
  * own placement after it. */
-void raster_drawn_place(const raster_t* raster, const r3d_instance_t* entry, r3d_lens_t* lens);
+void raster_drawn_place(const raster_t* raster, int i, r3d_lens_t* lens);
 raster_stats_t raster_census(const raster_t* raster, const render_view_t* view);
 void raster_draw_culled(const raster_t* raster, const render_view_t* view);
 
