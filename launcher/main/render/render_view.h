@@ -49,6 +49,10 @@ typedef struct {
      * geometry; elsewhere the test costs more than it skips, so it is off
      * unless a scene turns it on. It changes no pixel the view keeps. */
     bool skip_hidden;
+    /* Draw the meshes' curves (an LCRV sibling's ribbons) and fit depth to
+     * their boxes. Off by default: a view that leaves it off spends nothing
+     * on them, whatever the meshes carry. */
+    bool curves;
     /* The lens shift: the optical centre's offset from the picture's middle,
      * along the camera's right and up, in picture short sides. Zero looks
      * straight ahead; a window onto a fixed rectangle moves the eye and shifts

@@ -182,10 +182,17 @@ scene_raster(scene_t* s, int count, bool upscaled) {
     TEST_ASSERT_NOT_NULL(s->raster.scratch);
 }
 
+/* A frame through a view that has its curves on, or off. */
+static void
+draw_with_curves(scene_t* s, bool curves) {
+    s->view = render_view_fixture(&CAMERA, &s->raster, 0);
+    s->view.curves = curves;
+    (void)raster_draw(&s->raster, &s->view);
+}
+
 static void
 draw(scene_t* s) {
-    s->view = render_view_fixture(&CAMERA, &s->raster, 0);
-    (void)raster_draw(&s->raster, &s->view);
+    draw_with_curves(s, true);
 }
 
 static int
@@ -550,6 +557,17 @@ test_with_the_depth_fit_off_a_nearer_curve_leaves_the_unfitted_scale(void) {
     TEST_ASSERT_EQUAL_FLOAT(NEAR_Z, raster_depth_near(&s->raster));
 }
 
+static void
+test_with_the_view_s_curves_off_a_nearer_curve_draws_nothing_and_leaves_the_depth_fit(void) {
+    scene_t* s = scene_open();
+    const float alone = wall_alone_depth_near(s);
+    TEST_ASSERT_TRUE(depth_fit_with_near_line_at(s, 0, NEAR_LINE_Z) < alone);
+    TEST_ASSERT_GREATER_THAN_INT(0, count_of(raster_color(&s->raster), RED));
+    draw_with_curves(s, false);
+    TEST_ASSERT_EQUAL_FLOAT(alone, raster_depth_near(&s->raster));
+    TEST_ASSERT_EQUAL_INT(0, count_of(raster_color(&s->raster), RED));
+}
+
 void
 suite_raster_curves(void) {
     RUN_TEST(test_a_faded_curve_mixes_once_over_a_wall_however_many_batches_draw);
@@ -565,6 +583,7 @@ suite_raster_curves(void) {
     RUN_TEST(test_a_curve_box_outside_the_view_leaves_the_depth_fit_to_the_clusters);
     RUN_TEST(test_a_curve_box_across_a_side_plane_lowers_the_fit_only_as_far_as_its_visible_part);
     RUN_TEST(test_with_the_depth_fit_off_a_nearer_curve_leaves_the_unfitted_scale);
+    RUN_TEST(test_with_the_view_s_curves_off_a_nearer_curve_draws_nothing_and_leaves_the_depth_fit);
 }
 
 SUITE_REGISTER(suite_raster_curves);

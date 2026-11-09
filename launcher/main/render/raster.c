@@ -150,6 +150,7 @@ typedef struct {
     r3d_span_target_t targets[2];
     r3d_span_small_fill_t small_fill;
     bool skip_hidden;       /* the view's */
+    bool curves;            /* the view's: draw the meshes' curves after their clusters */
     int first_row, end_row; /* the rows this draw redraws */
     bool levels_changed;    /* a level pick this draw changed an instance's cut */
     raster_buffers_t buffers;
@@ -307,7 +308,7 @@ draw_slice(void* ctx) {
                           b->rows + item->cluster_base, target, b->work[s->work_index]);
     }
     FRAME_LAP_END();
-    if (s->last) {
+    if (s->last && ((const draw_work_t*)b->draw)->curves) {
         curve_slice(s);
     }
 }
@@ -538,7 +539,7 @@ cull_slice(void* ctx, int from, int to) {
             mine->stats.levels_changed |= level_pick(&job->pick, i, instance, &lens);
             culled[0] = (uint16_t)cull_instance(instance, job->settings.cull, &lens, culled + 1, &mine->stats, block,
                                                 job->settings.depth_fit ? &mine->fit : NULL);
-            if (job->settings.depth_fit && instance->mesh->curve_count > 0) {
+            if (job->settings.depth_fit && job->view->curves && instance->mesh->curve_count > 0) {
                 r3d_pipeline_fit_curves(r3d_lit_mesh_curves(instance->mesh), &lens, block, &mine->fit);
             }
         }
@@ -718,6 +719,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     }
     r3d_span_small_fill_resolve(&work->small_fill, view->small_fill);
     work->skip_hidden = view->skip_hidden;
+    work->curves = view->curves;
     /* A list drawn with no census, or rewritten without its scale, fails here. */
     assert(*work->buffers.depth_near >= view->lens.near_z);
     uint16_t* culled = work->buffers.culled;

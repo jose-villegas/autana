@@ -64,6 +64,11 @@ bool render_lab_budget_set_ms(int budget_ms);
 bool render_lab_framegen_on(void);
 bool render_lab_framegen_set_on(bool on);
 
+/* The tunable render_lab.curves, the menu's CURVES toggle: 1 draws the curves
+ * a mesh's bake carries (render_view_t.curves), 0, the default, skips them. */
+bool render_lab_curves_on(void);
+bool render_lab_curves_set_on(bool on);
+
 /* The tunable render_lab.orbit_ms: 0 holds an orbiting camera where it is
  * steered; otherwise it also turns once about its subject every orbit_ms. */
 int render_lab_orbit_ms(void);

@@ -149,6 +149,8 @@ curves = true
 
 ![the same Bistro bake without its curves and with them: the cables over the street come back](../../images/render/import-curves.png)
 
+A view draws them only when its camera turns curves on; they are off by default.
+
 Detection measures parts against the start's triangle budget, so every
 variant needs `triangles`. The material that [`thin`](#thin) thins out is
 never searched, so its parts stay triangles. An object whose shown triangles
