@@ -21,7 +21,6 @@
 
 #define SIZE           64
 #define PIXELS         (SIZE * SIZE)
-#define MID            (SIZE / 2)
 
 #define CLEAR          RGB565BE(0x102030)
 #define WALL           RGB565BE(0x008000)

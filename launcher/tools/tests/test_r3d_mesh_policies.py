@@ -241,7 +241,7 @@ class MeshPolicyTests(unittest.TestCase):
         src = SimpleNamespace(p=points, tri_v=faces, tri_t=None, uv=None, tri_m=np.zeros(len(faces), dtype=int),
                               tri_o=np.repeat([0, 1], len(t)), names=['plain'], object_names=['vase_a', 'vase_b'],
                               textures=[None], materials={}, colors=None)
-        settings = SimpleNamespace(seed=0, position_scale=None, alpha_keep=None, thin=None, double_sided=set(),
+        settings = SimpleNamespace(seed=0, position_scale=None, alpha_keep=None, thin=None, curves=False, double_sided=set(),
                      meshes=[{'match': {'object': 'vase*'}, 'triangles': 40}],
                      simplify=SimpleNamespace(dense_edge=10, props=set(), props_share=0, seal_seams=False, colour_deviation=1))
         job = SimpleNamespace(settings=settings, renderer=SimpleNamespace(visibility=None, variant=SimpleNamespace(name="mesh", triangles=80, objects_scale=1.0)),
