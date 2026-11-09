@@ -2,15 +2,16 @@
 against the same picture the board draws, and the copy-coverage gate on what the fit made of the rest.
 
 A copy mesh is local and colourless; each copy row places it under its own transform with its own colour
-set (mesh_import.write_shape). The fit draws every placed copy, frozen: copies are never moved, recoloured
-or pruned.
+set (mesh_import.write_shape). The fit draws every placed copy but masked ones (drawn_copies), frozen: copies
+are never moved, recoloured or pruned.
 """
 
 import pathlib
 
 import numpy as np
 
-from r3d import lcol_asset, mesh_bundle
+from r3d import lcol_asset, mask_asset, mesh_bundle
+from asset.asset_pack import PackError
 from r3d.fit.gbuffer import IN_FRONT, distance, reference_buffers
 from r3d.lit_mesh import finest, rgb888
 
@@ -22,6 +23,19 @@ HIDDEN_MEAN_GROWTH = 0.0007
 HIDDEN_WORST_GROWTH = 0.010
 
 
+def drawn_copies(entries, rows):
+    """The copy rows the fit draws. A masked shape (cards) is left out: the fit's references hide the material it
+    replaces (reference_render.lit_source), so the fit sees the surfaces it is later drawn over."""
+    names = {name for name, _kind, _blob in entries}
+
+    def masked(mesh):
+        try:
+            return mask_asset.name_for_mesh(mesh) in names
+        except PackError:
+            return False
+    return [row for row in rows if not masked(row["mesh"])]
+
+
 def placed_copies(bundle, flat):
     """Every copy in a start bundle placed under its transform, as one FitMesh in the rest's units: a copy
     mesh's finest clusters as the bundle stores them, their own vertices with positions welded, one colour per
@@ -30,6 +44,7 @@ def placed_copies(bundle, flat):
     from r3d.appearance_simplify import FitMesh
 
     entries, rows = mesh_bundle.decode(pathlib.Path(bundle).read_bytes())
+    rows = drawn_copies(entries, rows)
     if not rows:
         return None
     data = {name: blob for name, _kind, blob in entries}

@@ -8,6 +8,7 @@ the start's bytes and the reference set (training, held-out and pruning poses), 
 import pathlib
 
 from r3d import mesh_bundle, mesh_asset, log
+from r3d.fit.copies import drawn_copies
 
 # The reference set's files the fit reads (fitted_variant.prepare_references writes them): the training
 # (poses, references) pairs, the poses the prune counts shown pixels over, and the held-out poses the
@@ -49,7 +50,7 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
                 "--laplacian", str(recipe.laplacian), "--normal-weight", str(recipe.normal_weight),
                 "--object", job.object.name, "--surface-weight", str(recipe.surface_weight),
                 "--surface-margin", str(recipe.surface_margin)]
-    if copies:
+    if drawn_copies(bundle_entries, copies):
         command += ["--copies", str(bundle), "--copy-poses", str(inputs / HELD_OUT),
                     "--front-weight", str(FRONT_WEIGHT), "--depth-weight", str(DEPTH_WEIGHT)]
     if cost_weight:
