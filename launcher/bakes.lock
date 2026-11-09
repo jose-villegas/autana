@@ -159,23 +159,14 @@ size = 501648
 seeded = true
 
 [[bake]]
-output = "sponza.atrium_fitted.bundle"
-source = "launcher/demo/sponza/sponza.scene.toml"
-key = "722a82db4a8e530ecca2060482eaeb2a4df79b5102ce8f24785ffc637714f0f6"
-sha256 = "6205c10e160eaa78b850513e35eea2ea699623633e9ca82be6a512bebcd4ef66"
-size = 260750
-run = 42589041174
-host = "Linux x86_64"
-
-[[bake]]
 output = "sponza.atrium_fitted.fit.bundle"
 source = "launcher/demo/sponza/sponza.scene.toml"
 key = "ae092be828a914c67d71168fd2d390d376152ffb4982e36f6e2a3e225cd511e8"
-sha256 = "d6b6ee5517183ce9fd36e94dd5b8f56eafb4b0db400daa92d0b516316b7b3409"
-size = 152638
-run = 42533075785
+sha256 = "e3b70b180241ffafa7b9a27089910d5f39ee2e1f2cc7ccc3db7fdf7345ea590c"
+size = 153646
+run = 42597535112
 host = "Linux x86_64"
-gpu = "NVIDIA GeForce RTX 5080 Laptop GPU"
+gpu = "NVIDIA GeForce RTX 2060"
 
 [[bake]]
 output = "sponza.atrium_fitted.start.bundle"
@@ -186,23 +177,14 @@ size = 221166
 seeded = true
 
 [[bake]]
-output = "sponza.atrium_fitted_full.bundle"
-source = "launcher/demo/sponza/sponza.scene.toml"
-key = "cb6a876c571333832a77fc1a843fcc78389d69133992354fc0aff98dcf1ddf09"
-sha256 = "db3b4746fe3735f94f0e5aeddabd897b96cdfe11ea12d5c88335cfc467cfbe36"
-size = 509272
-run = 42589041174
-host = "Linux x86_64"
-
-[[bake]]
 output = "sponza.atrium_fitted_full.fit.bundle"
 source = "launcher/demo/sponza/sponza.scene.toml"
 key = "3834f1b7a0c5274b4657da8cb5e5fbe8f83be1b5a10eaf7479b649b478798b16"
-sha256 = "2d2df4d4fefb3e6b329865ade1687aa2f29de7f83e21d1c3003d512b00fa3491"
-size = 298984
-run = 42533075785
+sha256 = "b945601c351d582d310ff6053ff8398b59d89456adb6628a953466e91ebf4c13"
+size = 299048
+run = 42597535112
 host = "Linux x86_64"
-gpu = "NVIDIA GeForce RTX 5080 Laptop GPU"
+gpu = "NVIDIA GeForce RTX 2060"
 
 [[bake]]
 output = "sponza.atrium_fitted_full.start.bundle"
@@ -221,23 +203,14 @@ size = 445100
 seeded = true
 
 [[bake]]
-output = "sponza.atrium_flat_fitted.bundle"
-source = "launcher/demo/sponza/sponza.scene.toml"
-key = "3bf5fdfc2b11f2ec5f02c7e4a214f079d19761b222daea8ac31f67ca0e9e2ff2"
-sha256 = "3d55f6de0a9b4929a427597e648157994e70cba2bbc21efc77a9fd91a3bb2019"
-size = 448280
-run = 42589041174
-host = "Linux x86_64"
-
-[[bake]]
 output = "sponza.atrium_flat_fitted.fit.bundle"
 source = "launcher/demo/sponza/sponza.scene.toml"
 key = "9e367404571b6dc4dbb8c38de4845a318cc5a8b6f17fdb0385478d55a35cc12f"
-sha256 = "4a862646a9617fa3ba2a75a6b6f14160affdcd53f6e14543f6905bba96f0900b"
-size = 252232
-run = 42533075785
+sha256 = "f48faf6753d6fbabd4e8a1db6c2872984fcd790ecd522e781467cc2003ac11ab"
+size = 252200
+run = 42597535112
 host = "Linux x86_64"
-gpu = "NVIDIA GeForce RTX 5080 Laptop GPU"
+gpu = "NVIDIA GeForce RTX 2060"
 
 [[bake]]
 output = "sponza.atrium_flat_fitted.start.bundle"
