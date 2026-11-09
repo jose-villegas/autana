@@ -39,11 +39,11 @@ FRAME_COUNT_SIZE = (1, 1)
 # Per scene, the holed frames of its current bake: the ceiling a rebake must not go above.
 MOST_HOLED_FRAMES = {
     "sponza": 12,
-    "sponza-lite": 43,
+    "sponza-lite": 13,
     "sponza-flat": 12,
-    "sponza-fitted": 19,
-    "sponza-fitted-full": 16,
-    "sponza-flat-fitted": 25,
+    "sponza-fitted": 17,
+    "sponza-fitted-full": 22,
+    "sponza-flat-fitted": 22,
 }
 
 

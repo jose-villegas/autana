@@ -1,8 +1,10 @@
 """Plain triangle-mesh arithmetic shared by the other modules."""
 
 import math
+from dataclasses import dataclass
 
 import numpy as np
+from scipy.spatial import cKDTree
 
 
 def bounds_diagonal(positions):
@@ -101,6 +103,64 @@ def closest_point_on_triangles(q, a, b, c):
         done |= cond
     point = bary[:, 0:1] * a + bary[:, 1:2] * b + bary[:, 2:3] * c
     return bary, np.linalg.norm(point - q, axis=1)
+
+
+# Centroids an upper bound is taken from; queries searched in one go, as every candidate pair is held at once.
+SEEDS = 4
+QUERY_CHUNK = 4096
+
+
+@dataclass(frozen=True)
+class TriangleSearch:
+    """Triangles `corners` (n, 3, 3), their centroid tree, and groups of one size (so a huge triangle does not widen
+    every ball) as (centroid tree, triangles, distance from each centroid to its farthest corner)."""
+    corners: np.ndarray
+    tree: cKDTree
+    groups: tuple
+
+
+def triangle_search(corners):
+    """The nearest-triangle lookup for triangles `corners`."""
+    corners = np.asarray(corners, dtype=np.float64)
+    centre = corners.mean(axis=1)
+    radius = np.linalg.norm(corners - centre[:, None], axis=2).max(axis=1)
+    size = np.floor(np.log2(np.maximum(radius, 1e-30))).astype(int)
+    groups = (np.flatnonzero(size == i) for i in np.unique(size))
+    return TriangleSearch(corners, cKDTree(centre), tuple((cKDTree(centre[chosen]), chosen, radius[chosen])
+                                                          for chosen in groups))
+
+
+def nearest_triangles(points, search):
+    """For each point, the nearest triangle of `search` (exact), the barycentrics of the nearest point on it and the
+    distance to it. A triangle within d has its centroid within d plus its radius: all the candidates once any gives d."""
+    points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    parts = [nearest_chunk(points[i:i + QUERY_CHUNK], search) for i in range(0, max(len(points), 1), QUERY_CHUNK)]
+    return tuple(np.concatenate(part) for part in zip(*parts))
+
+
+def nearest_chunk(points, search):
+    corners = search.corners
+    tri, bary, best = np.zeros(len(points), dtype=int), np.zeros((len(points), 3)), np.full(len(points), np.inf)
+
+    def consider(query, found):
+        """Keep each query's nearer of its best triangle so far and the triangles `found` for it."""
+        here, distance = closest_point_on_triangles(points[query], *(corners[found, k] for k in range(3)))
+        first = np.lexsort((distance, query))
+        first = first[np.r_[True, query[first[1:]] != query[first[:-1]]][:len(first)]]
+        update = first[distance[first] < best[query[first]]]
+        tri[query[update]], bary[query[update]], best[query[update]] = found[update], here[update], distance[update]
+
+    k = min(SEEDS, len(corners))
+    seeds = search.tree.query(points, k=k)[1].reshape(len(points), k)
+    for column in seeds.T:
+        consider(np.arange(len(points)), column)
+    for tree, owner, radius in search.groups:
+        balls = tree.query_ball_point(points, best + radius.max(), return_sorted=False)
+        query = np.repeat(np.arange(len(points)), [len(ball) for ball in balls])
+        found = np.concatenate([[], *balls]).astype(int)
+        keep = np.linalg.norm(points[query] - tree.data[found], axis=1) - radius[found] <= best[query]
+        consider(query[keep], owner[found[keep]])
+    return tri, bary, best
 
 
 def majority(parts, values, count):
