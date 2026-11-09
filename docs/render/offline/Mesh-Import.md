@@ -132,9 +132,15 @@ also changes what the simplifier keeps elsewhere.
 
 #### cards
 
-`geometry.cards` draws one source material as double-sided masked quads.
-It requires `alpha_mask`; that material cannot also have `thin` or an
-`objects.meshes` rule. Cards bypass simplification and have no coarser LOD.
+`geometry.alpha_mask` enables automatic double-sided masked cards, even without
+`geometry.cards`. Cards bypass simplification and have no coarser LOD.
+
+| Decision | Rule |
+|---|---|
+| Candidate | A cut-out texture with at least `CARD_SEE_THROUGH_MIN` of its triangles below `keep_alpha` in mean alpha. |
+| Accepted | Baked cards represent at least `CARD_COVERED_MIN` of the opaque surface's area-weighted samples, inside their slabs, rectangles and set mask texels. |
+| Ordinary geometry | Non-candidates and rejected candidates remain fitted geometry. Thinned or carved materials are skipped. |
+| Overrides | `never` excludes a material; `always` bypasses both thresholds but rejects thinned or carved materials. Unknown names and names in both lists are errors. |
 
 The greedy billboard cloud follows Décoret et al. 2003, with an area cost,
 a per-card floor and a nonpositive-score stop.<sup>[[116]](../../Citations.md#decoret-2003)</sup>
@@ -145,7 +151,8 @@ Path choice requires that size; the named clip changes only the animation.
 
 | Key | Meaning | Default |
 |---|---|---|
-| `material` | Source material to replace. | Required. |
+| `never` | Material names to keep as geometry. | `[]`. |
+| `always` | Material names to force into cards. | `[]`. |
 | `choice` | `geometry` or `path`. | `geometry`. |
 | `path` | Camera `.anim.toml`, relative to this settings file; required only for `path`. | Absent. |
 | `epsilon` | Plane slab half-depth, in model units. | `5.0`, provisional. |

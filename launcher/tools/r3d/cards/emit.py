@@ -4,7 +4,7 @@ import numpy as np
 
 from r3d import log
 from r3d.cards.bake import bake_card, corner_colours
-from r3d.cards.choose import choose_cards
+from r3d.cards.choose import choose_cards, samples
 from r3d.mask_asset import HEADER, ROW, UV, UV_FRACTION_BITS
 from r3d.light import albedo_from_uv
 from r3d.objects.instances import Instance
@@ -19,6 +19,7 @@ SIDE_PERCENTILES = dict(min=0, median=50, p90=90, max=100)
 def make_shape(src, material, settings, seed, keep_alpha, *, path=None, occluder=None):
     from r3d.cards.choose import split_cards
 
+    name = src.names[material]
     ids = np.flatnonzero(src.tri_m == material)
     triangles, tri_uv = src.tri_v[ids], src.tri_t[ids]
     selected = choose_cards(src.p, triangles, seed=seed, epsilon=settings.epsilon, area_cost=settings.area_cost,
@@ -33,15 +34,28 @@ def make_shape(src, material, settings, seed, keep_alpha, *, path=None, occluder
     query = RayQuery(src.p, triangles)
     positions, colours, masks, uvs = [], [], [], []
     rows = []
+    points, _, area = samples(src.p, triangles, np.random.default_rng(seed), uv=src.uv, tri_uv=tri_uv,
+                              texture=src.textures[material], keep_alpha=keep_alpha)
+    represented = np.zeros(len(points), bool)
     for card in cards:
         baked = bake_card(card, src.p, triangles, src.uv, tri_uv, src.textures[material], keep_alpha, query=query)
         if baked is None:
             continue
         card, mask, albedo, coverage = baked
+        relative = points - card['c']
+        depth = relative @ card['n']
+        projected = np.column_stack([relative @ card['a'], relative @ card['b']])
+        inside = ((depth >= card['depth'][0] - settings.epsilon) &
+                  (depth <= card['depth'][1] + settings.epsilon) &
+                  (projected >= card['lo']).all(axis=1) & (projected <= card['hi']).all(axis=1))
+        texels = ((projected[inside] - card['lo']) / (card['hi'] - card['lo']) *
+                  np.array(mask.shape[::-1])).astype(int)
+        texels = np.minimum(texels, np.array(mask.shape[::-1]) - 1)
+        represented[inside] |= mask[texels[:, 1], texels[:, 0]]
         xy = card['lo'] + QUAD_CORNERS * (card['hi'] - card['lo'])
         positions.append(card['c'] + xy[:, :1] * card['a'] + xy[:, 1:] * card['b'])
         rgb = corner_colours(mask, albedo, coverage)
-        kd = src.materials.get(settings.material, {}).get('Kd', (1.0, 1.0, 1.0))
+        kd = src.materials.get(name, {}).get('Kd', (1.0, 1.0, 1.0))
         colours.append(rgb * (np.asarray(kd) if src.textures[material] is not None else
                               albedo_from_uv(None, kd, rgb, None)))
         height, width = mask.shape
@@ -52,6 +66,7 @@ def make_shape(src, material, settings, seed, keep_alpha, *, path=None, occluder
     count = len(positions)
     report = dict(candidates=len(selected), split_cards=len(cards), cards=count,
                   triangles=count * len(QUAD_TRIANGLES), splits=splits, long_sides=distribution,
+                  covered=float(area[represented].sum() / area.sum()) if area.sum() else 0.0,
                   mask_rows=len(rows), mask_bytes=(HEADER.size + count * len(QUAD_CORNERS) * UV.size +
                                                    len(rows) * ROW.size) if count else 0)
     log(f"cards: {len(selected)} selected, {len(cards)} after splitting, {count} baked, "
@@ -65,6 +80,6 @@ def make_shape(src, material, settings, seed, keep_alpha, *, path=None, occluder
     normal = np.repeat([card['n'] for card in masks], len(QUAD_CORNERS), axis=0)
     instance = Instance(str(src.tri_o[ids[0]]), np.eye(3), np.zeros(3), False, 0.0)
     shape = dict(positions=p, tris=t, materials=labels, normals=normal, albedo=np.concatenate(colours),
-                 mask_uvs=np.asarray(uvs), mask_rows=rows, name=settings.material, rule=dict(match=dict(material=settings.material)),
+                 mask_uvs=np.asarray(uvs), mask_rows=rows, name=name, rule=dict(match=dict(material=name)),
                  copies=[(instance, (p, None, t, labels))])
     return shape, report

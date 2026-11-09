@@ -124,8 +124,11 @@ class AlphaReferenceTests(unittest.TestCase):
         from types import SimpleNamespace as NS
         _, origins, directions = checker_rays()
         card = self.source.names[self.source.tri_m[0]]
-        job = NS(settings=NS(alpha_keep=KEEP_ALPHA, cards=NS(material=card)))
-        with patch.object(reference_render, 'load_source', return_value=self.source),                 patch.object(reference_render, 'path_light_for', return_value=None):
+        job = NS(settings=NS(alpha_keep=KEEP_ALPHA, seed=0, thin=None, meshes=[],
+                             cards=NS(choice="geometry", never=[], always=[card],
+                                      epsilon=CARD_Z, area_cost=0.0)))
+        with patch.object(reference_render, 'load_source', return_value=self.source),                 patch.object(reference_render, 'path_light_for', return_value=None), \
+                patch('r3d.cards.emit.make_shape', return_value=({}, {'covered': 1.0})):
             source = reference_render.lit_source(job, NS(), variant=VARIANT, hide_cards=True)
         where, rays, _ = reference_render.drawn_hits(source, [], origins, directions)
         np.testing.assert_array_equal(rays, np.arange(len(origins)))

@@ -58,7 +58,8 @@ class ReferenceInputs:
     poses: dict                   # the fit recipe's POSE_SPACING fields
 
     def job(self):
-        return SimpleNamespace(settings=self.settings, bake=self.bake)
+        return SimpleNamespace(settings=self.settings, bake=self.bake,
+                               renderer=SimpleNamespace(fit=SimpleNamespace(size=self.size)))
 
     def scene(self):
         return SimpleNamespace(lights=self.lights, indirect=self.indirect, tonemap_white=self.tonemap_white,

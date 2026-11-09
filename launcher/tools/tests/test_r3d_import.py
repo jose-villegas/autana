@@ -134,36 +134,38 @@ class ImportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             plain = load_import_settings(write_import(directory))
             settings = load_import_settings(write_import(directory, body=
-                '[process]\nseed = 3\n[geometry]\nalpha_mask = { keep_alpha = 0.5 }\ncards = { material = "m" }\n'))
+                '[process]\nseed = 3\n[geometry]\nalpha_mask = { keep_alpha = 0.5 }\n'))
         self.assertFalse(hasattr(plain, "cards"))
-        self.assertEqual(vars(settings.cards), dict(material="m", choice="geometry",
+        self.assertEqual(vars(settings.cards), dict(never=[], always=[], choice="geometry",
                          epsilon=CARD_EPSILON, area_cost=CARD_AREA_COST))
         self.assertEqual(settings.seed, 3)
+
+    def test_cards_overlapping_overrides_are_an_error(self):
+        self.rejects("both never and always", '[geometry]\nalpha_mask = { keep_alpha = 0.5 }\n'
+                     'cards = { never = ["m"], always = ["m"] }\n')
 
     def test_cards_path_is_relative_to_settings(self):
         with tempfile.TemporaryDirectory() as directory:
             settings = load_import_settings(write_import(directory, body=
                 '[geometry]\nalpha_mask = { keep_alpha = 0.5 }\n'
-                'cards = { material = "m", choice = "path", path = "fly.anim.toml", epsilon = 2.0, area_cost = 0.1 }\n'))
+                'cards = { choice = "path", path = "fly.anim.toml", epsilon = 2.0, area_cost = 0.1 }\n'))
             self.assertEqual(settings.cards.path, pathlib.Path(directory) / "fly.anim.toml")
             self.assertEqual((settings.cards.epsilon, settings.cards.area_cost), (2.0, 0.1))
 
     def test_cards_reject_invalid_settings(self):
         prefix = '[geometry]\nalpha_mask = { keep_alpha = 0.5 }\n'
         cases = (
-            ('cards = { material = "m", choice = "path" }', "geometry.cards.path"),
-            ('cards = { material = "m", path = "fly.anim.toml" }', "geometry.cards.path"),
-            ('cards = { material = "m", choice = "other" }', "geometry.cards.choice"),
-            ('cards = { material = "m", epsilon = 0 }', "geometry.cards.epsilon"),
-            ('cards = { material = "m", area_cost = -1 }', "geometry.cards.area_cost"),
-            ('cards = { material = "m", typo = 1 }', "geometry.cards.typo"),
-            ('cards = {}', "geometry.cards.material"),
-            ('cards = { material = "m" }\nthin = { material = "m", keep = 0.5 }', "material m is drawn by cards"),
+            ('cards = { choice = "path" }', "geometry.cards.path"),
+            ('cards = { path = "fly.anim.toml" }', "geometry.cards.path"),
+            ('cards = { choice = "other" }', "geometry.cards.choice"),
+            ('cards = { epsilon = 0 }', "geometry.cards.epsilon"),
+            ('cards = { area_cost = -1 }', "geometry.cards.area_cost"),
+            ('cards = { typo = 1 }', "geometry.cards.typo"),
         )
         for body, message in cases:
             with self.subTest(body=body):
                 self.rejects(message, prefix + body + '\n')
-        self.rejects("cards needs geometry.alpha_mask", '[geometry]\ncards = { material = "m" }\n')
+        self.rejects("cards needs geometry.alpha_mask", '[geometry]\ncards = {}\n')
 
     def test_old_scene_owned_keys_name_each_new_home(self):
         cases = (

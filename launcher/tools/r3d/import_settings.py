@@ -277,12 +277,12 @@ def load_geometry(table, steps, directory=None):
         alpha_mask = table["alpha_mask"]
         check_keys(alpha_mask, ("keep_alpha",), "geometry.alpha_mask")
         steps.alpha_keep = number(alpha_mask["keep_alpha"], "geometry.alpha_mask.keep_alpha")
-    if "cards" in table:
+    if "cards" in table or steps.alpha_keep is not None:
         from r3d.cards import CARD_EPSILON, CARD_AREA_COST
 
-        cards = table["cards"]
+        cards = table.get("cards", {})
         where = "geometry.cards"
-        check_keys(cards, ("material",), where, optional=("choice", "path", "epsilon", "area_cost"))
+        check_keys(cards, (), where, optional=("choice", "path", "epsilon", "area_cost", "never", "always"))
         if steps.alpha_keep is None:
             raise SettingsError("geometry.cards needs geometry.alpha_mask")
         choice = text(cards.get("choice", "geometry"), f"{where}.choice")
@@ -298,7 +298,11 @@ def load_geometry(table, steps, directory=None):
             raise SettingsError(f"{where}.epsilon must be positive")
         if cost < 0:
             raise SettingsError(f"{where}.area_cost must be nonnegative")
-        steps.cards = SimpleNamespace(material=text(cards["material"], f"{where}.material"),
+        never = strings(cards.get("never", []), f"{where}.never")
+        always = strings(cards.get("always", []), f"{where}.always")
+        if set(never) & set(always):
+            raise SettingsError("geometry.cards names a material in both never and always")
+        steps.cards = SimpleNamespace(never=never, always=always,
                                       choice=choice, epsilon=epsilon, area_cost=cost)
         if choice == "path":
             steps.cards.path = (directory / text(cards["path"], f"{where}.path")).resolve()
@@ -426,8 +430,8 @@ def load_import_settings(path):
     steps = SimpleNamespace(seed=0, seed_given=False, alpha_keep=None, thin=None, simplify=None)
     load_process(values.get("process", {}), steps)
     load_geometry(values.get("geometry", {}), steps, path.parent)
-    if steps.seed_given and not steps.thin and not hasattr(steps, "cards"):
-        raise SettingsError("process.seed needs geometry.thin or geometry.cards")
+    if steps.seed_given and not steps.thin and steps.alpha_keep is None:
+        raise SettingsError("process.seed needs geometry.thin or geometry.alpha_mask")
     if "variants" in values:
         variants = values["variants"]
         if not isinstance(variants, list) or not variants:
@@ -446,11 +450,6 @@ def load_import_settings(path):
             raise SettingsError("geometry.simplify needs variants, each with its triangles budget")
         variants = [SimpleNamespace(name=text(output.get("name"), "output.name"), triangles=None)]
     meshes = load_object_meshes(values.get("objects", {}))
-    if hasattr(steps, "cards"):
-        material = steps.cards.material
-        if steps.thin and steps.thin.material == material or any(
-                "material" in rule["match"] and fnmatchcase(material, rule["match"]["material"]) for rule in meshes):
-            raise SettingsError(f"material {material} is drawn by cards")
     if meshes and not steps.simplify:
         raise SettingsError("objects.meshes needs geometry.simplify")
     for index, rule in enumerate(meshes):
