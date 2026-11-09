@@ -1098,15 +1098,13 @@ set_up_capped_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* con
     return true;
 }
 
-/* A masked triangle's fill: its depth and colour planes as the opaque fill
- * sets them up, capped when the target skips hidden clusters; then the mask's
- * affine u, v planes, and Gouraud spans always. */
+/* What a masked triangle's fill adds to the planes set_up_fill() has set:
+ * depth capped when the target skips hidden clusters, the mask's affine u, v
+ * planes, and Gouraud spans always. Called after set_up_fill(), not from it,
+ * so the two frames never stack on the fill's stack chain. */
 static RENDER_TAIL_ATTR __attribute__((noinline)) bool
 set_up_masked(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[TRIANGLE_VERTICES], recti_t box,
-              int y_anchor, const uint16_t* face, fill_t* f, gradients_t* g, mask_planes_t* uv) {
-    if (!set_up_fill(target, v, box, y_anchor, face, f, g)) {
-        return false;
-    }
+              const uint16_t* face, fill_t* f, gradients_t* g, mask_planes_t* uv) {
     const r3d_span_vertex_t* a = v[0];
     const r3d_span_vertex_t* b = v[1];
     const r3d_span_vertex_t* c = v[2];
@@ -1301,8 +1299,8 @@ r3d_span_masked_triangle(const r3d_span_target_t* target, const r3d_span_mask_t*
     gradients_t g = {0};
     f.g = &g;
     mask_planes_t uv = {.given = mask, .screen = target->screen_mask};
-    if (!set_up_masked(target, (const r3d_span_vertex_t* const[TRIANGLE_VERTICES]){a, b, c}, box, y_anchor, face, &f,
-                       &g, &uv)
+    const r3d_span_vertex_t* const v[TRIANGLE_VERTICES] = {a, b, c};
+    if (!set_up_fill(target, v, box, y_anchor, face, &f, &g) || !set_up_masked(target, v, box, face, &f, &g, &uv)
         || r3d_span_stop_after == 1) {
         return;
     }
