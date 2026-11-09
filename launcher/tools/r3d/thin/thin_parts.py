@@ -129,17 +129,19 @@ def find_thin_parts(positions, triangles, side):
             result.append(ThinPart(np.asarray(rows), centre, axes, extents, width))
     if not result:
         return []
-    from r3d.geometry import TriangleProximity
+    from r3d.geometry import triangle_search
 
-    proximity = TriangleProximity(positions[triangles])
-    return [part for part in result if not resting(part, positions, triangles, proximity)]
+    search = triangle_search(positions[triangles])
+    return [part for part in result if not resting(part, positions, triangles, search)]
 
 
-def resting(part, positions, triangles, proximity):
-    """Whether `part` lies along the other triangles, by RESTING_SHARE and its reach; `proximity` holds them all."""
+def resting(part, positions, triangles, search):
+    """Whether `part` lies along the other triangles, by RESTING_SHARE and its reach; `search` holds them all."""
     reach = RESTING_REACH_PER_WIDTH * part.width
     own = np.zeros(len(triangles), dtype=bool)
     own[part.triangles] = True
     points = positions[np.unique(triangles[part.triangles])]
-    near = [not own[proximity.within(point, reach)].all() for point in points]
+    from r3d.geometry import triangles_within
+
+    near = [not own[triangles_within(search, point, reach)].all() for point in points]
     return bool(np.mean(near) >= RESTING_SHARE)

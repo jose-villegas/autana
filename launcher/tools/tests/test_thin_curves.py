@@ -174,15 +174,15 @@ class ThinCurvesTests(unittest.TestCase):
         shape = beside(soup.box((4.5, 4.5, 310)), (4000, 4000), 2.75, *specks)
         self.assertEqual(find_thin_parts(shape.vertices, shape.faces, SIDE), [])
 
-    def test_proximity_finds_what_a_full_search_finds(self):
-        from r3d.geometry import TriangleProximity, closest_point_on_triangles
+    def test_triangles_within_finds_what_a_full_search_finds(self):
+        from r3d.geometry import closest_point_on_triangles, triangle_search, triangles_within
         rng = np.random.default_rng(3)
         corners = rng.random((300, 3, 3)) * 100
         corners[:5] *= 40
-        proximity = TriangleProximity(corners)
+        search = triangle_search(corners)
         for point in rng.random((40, 3)) * 100:
             _, distance = closest_point_on_triangles(np.broadcast_to(point, (len(corners), 3)), *corners.transpose(1, 0, 2))
-            np.testing.assert_array_equal(proximity.within(point, 6.0), np.flatnonzero(distance <= 6.0))
+            np.testing.assert_array_equal(triangles_within(search, point, 6.0), np.flatnonzero(distance <= 6.0))
 
     def test_bars_flush_with_each_other_rest(self):
         left, right = soup.box((4.5, 4.5, 310)), soup.box((4.5, 4.5, 310))

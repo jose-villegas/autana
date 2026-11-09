@@ -5,7 +5,7 @@ from itertools import combinations
 
 import numpy as np
 
-from r3d.geometry import TriangleProximity
+from r3d.geometry import triangle_search, triangles_within
 from r3d.lit_mesh import POSITION_SCALE
 from r3d.repair import seal_tolerance
 
@@ -20,10 +20,10 @@ class Contact:
 
 
 def _surface_border(pos, vertices, faces, tolerance):
-    proximity = TriangleProximity(pos[faces])
+    search = triangle_search(pos[faces])
     source, target, unshared = set(), set(), False
     for vertex in vertices:
-        near = proximity.within(pos[vertex], tolerance)
+        near = triangles_within(search, pos[vertex], tolerance)
         if len(near):
             source.add(int(vertex))
             shared = np.any(np.all(pos[faces[near]].astype(np.float32) == pos[vertex].astype(np.float32), axis=2))
