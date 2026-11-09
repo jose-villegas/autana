@@ -29,6 +29,7 @@ stays in the mesh, and so does the material that
 
 | Stage | Behaviour |
 |---|---|
+| Switch | A view draws curves only with `render_view_t.curves` on (`camera_set_curves()`); off, the default, skips their draw and their depth fit |
 | Runtime | After all triangle clusters, cull curve boxes and draw near-clipped camera-facing ribbons in each row band: every opaque segment first, then the faded ones. The depth fit counts the curve boxes |
 | Width | Draw at least one picture pixel; an end-on segment draws one square, as wide as its wider end |
 | Coverage | Subpixel ribbons fade by true width / drawn width, depth-tested, mixing over what is behind; they write depth only over empty depth, mixed with the clear colour, so upscaling shows them. Solid ribbons write depth |

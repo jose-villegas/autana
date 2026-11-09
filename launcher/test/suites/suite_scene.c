@@ -3354,6 +3354,25 @@ test_camera_skip_hidden_setter_changes_no_pixel(void) {
     TEST_ASSERT_EQUAL_MEMORY(fx.held, raster_color(&context->raster), SIZE * SIZE * sizeof(*fx.held));
 }
 
+/* Off by default; only a camera takes it, and its views carry it to the raster. */
+static void
+test_camera_curves_setter(void) {
+    expanded_fixture();
+    entity_t scene = loaded_root(0);
+    const entity_t camera = entity_find(scene, name_hash("camera"));
+    const lens_t* lens = camera_lens(camera_first(scene));
+    TEST_ASSERT_FALSE(lens->curves);
+    TEST_ASSERT_FALSE(camera_set_curves(entity_find(scene, name_hash("red")), true));
+    TEST_ASSERT_FALSE(camera_set_curves(ENTITY_NONE, true));
+    TEST_ASSERT_FALSE(lens->curves);
+    TEST_ASSERT_TRUE(camera_set_curves(camera, true));
+    TEST_ASSERT_TRUE(lens->curves);
+    const transformf_t pose = transformf_identity();
+    TEST_ASSERT_TRUE(lens_view(lens, &pose, (viewport_t){SIZE, SIZE, 0}).curves);
+    TEST_ASSERT_TRUE(camera_set_curves(camera, false));
+    TEST_ASSERT_FALSE(lens_view(lens, &pose, (viewport_t){SIZE, SIZE, 0}).curves);
+}
+
 static void
 test_camera_small_fill_default_setter_and_view(void) {
     expanded_fixture();
@@ -6164,6 +6183,7 @@ run_scene_suite(void) {
     RUN_TEST(test_camera_present_default_setter_and_dynamic_size);
     RUN_TEST(test_camera_small_fill_default_setter_and_view);
     RUN_TEST(test_camera_skip_hidden_setter_changes_no_pixel);
+    RUN_TEST(test_camera_curves_setter);
     RUN_TEST(test_camera_small_fill_changes_scene_pixels);
     RUN_TEST(test_non_half_compose_upscales_to_the_full_destination);
     RUN_TEST(test_failed_half_allocation_keeps_full_upscale_unexpanded);

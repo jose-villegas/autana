@@ -17,6 +17,7 @@ TUNE(render_lab, layout, RENDER_LAB_LAYOUT_FULL, RENDER_LAB_LAYOUT_FULL, RENDER_
 TUNE(render_lab, orbit_ms, 0, 0, RENDER_LAB_ORBIT_MAX_MS);
 TUNE_SETTING(render_lab, upscale, UPSCALE_FILTER_NEAREST, UPSCALE_FILTER_NEAREST, UPSCALE_FILTER_SURFACE);
 TUNE_SETTING(render_lab, framegen, 0, 0, 1);
+TUNE_SETTING(render_lab, curves, 0, 0, 1);
 
 int
 render_lab_debug_view(void) {
@@ -110,7 +111,8 @@ render_lab_upscale_select(int index) {
 
 bool
 render_lab_apply_camera_settings(entity_t camera) {
-    return camera_set_present(camera, render_lab_present()) && camera_set_small_fill(camera, render_lab_small_fill());
+    return camera_set_present(camera, render_lab_present()) && camera_set_small_fill(camera, render_lab_small_fill())
+           && camera_set_curves(camera, render_lab_curves_on());
 }
 
 resolution_step_t
@@ -135,6 +137,16 @@ render_lab_framegen_on(void) {
 bool
 render_lab_framegen_set_on(bool on) {
     return TUNE_SETTING_SET(framegen, on ? 1 : 0);
+}
+
+bool
+render_lab_curves_on(void) {
+    return curves != 0;
+}
+
+bool
+render_lab_curves_set_on(bool on) {
+    return TUNE_SETTING_SET(curves, on ? 1 : 0);
 }
 
 int

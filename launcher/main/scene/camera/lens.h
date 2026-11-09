@@ -11,6 +11,7 @@ typedef struct {
     camera_present_t present;
     small_fill_t small_fill;
     bool skip_hidden; /* render_view_t.skip_hidden */
+    bool curves;      /* render_view_t.curves */
     vec2f_t shift;    /* render_view_t.shift */
 } lens_t;
 

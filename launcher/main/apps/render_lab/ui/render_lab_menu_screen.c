@@ -10,6 +10,7 @@
 #define SCENE_LABEL       "SCENE:"
 #define VARIANT_LABEL     "VARIANT:"
 #define DYNAMIC_RES_LABEL "DYNAMIC RES"
+#define CURVES_LABEL      "CURVES"
 
 /* The hint is a footer window across the canvas bottom, outside the scrolled
  * rows, so a dropdown list opened over them leaves it showing unless the list
@@ -80,6 +81,11 @@ render_lab_menu_screen_draw(const render_lab_menu_screen_state_t* state) {
     ui_row_centre(MENU_BTN_W, UI_ROW_HEIGHT);
     if (ui_toggle(ui_next(), DYNAMIC_RES_LABEL, &dynamic)) {
         (void)render_lab_dynres_set_on(dynamic);
+    }
+    bool curves = render_lab_curves_on();
+    ui_row_centre(MENU_BTN_W, UI_ROW_HEIGHT);
+    if (ui_toggle(ui_next(), CURVES_LABEL, &curves)) {
+        (void)render_lab_curves_set_on(curves);
     }
 
     draw_hint();

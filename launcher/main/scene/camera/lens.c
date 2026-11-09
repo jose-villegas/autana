@@ -8,6 +8,7 @@ lens_view(const lens_t* lens, const transformf_t* pose, viewport_t viewport) {
     view.present = lens->present;
     view.small_fill = lens->small_fill;
     view.skip_hidden = lens->skip_hidden;
+    view.curves = lens->curves;
     if (lens->shift.x != 0.0F || lens->shift.y != 0.0F) {
         render_view_set_shift(&view, lens->shift);
     }

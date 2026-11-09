@@ -95,3 +95,13 @@ camera_set_skip_hidden(entity_t camera, bool skip) {
     found->skip_hidden = skip;
     return true;
 }
+
+bool
+camera_set_curves(entity_t camera, bool curves) {
+    lens_t* found = camera_of(camera);
+    if (found == NULL) {
+        return false;
+    }
+    found->curves = curves;
+    return true;
+}
