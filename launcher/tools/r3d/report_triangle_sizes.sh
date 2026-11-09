@@ -93,6 +93,7 @@ CFLAGS="-std=c11 -Wall -Wextra -Werror -Wno-unused-parameter -O2"
     "$MAIN_DIR/asset/asset_file.c" \
     "$MAIN_DIR/render/render_view.c" \
     "$MAIN_DIR/render/r3d_lit_mesh.c" \
+    "$MAIN_DIR/render/curve/r3d_curve.c" \
     "$BUILD_DIR/r3d_pipeline_counted.o" \
     "$MAIN_DIR/render/r3d_span.c" \
     -lm -o "$OUT_BIN"

@@ -46,7 +46,7 @@ class ObjectBudgetTests(unittest.TestCase):
                      sample=lambda coords, lod: np.column_stack([np.ones((len(coords), 3)), coords[:, 0]]))
         src = NS(p=p, uv=uv, tri_v=t, tri_t=tt, tri_m=o.copy(), tri_o=o.copy(),
                  object_names=['near', 'far'], names=['plain', 'leaf'], textures=[texture, texture])
-        settings = NS(seed=5, position_scale=None, alpha_keep=0.5, double_sided=[],
+        settings = NS(seed=5, position_scale=None, alpha_keep=0.5, curves=False, double_sided=[],
                       thin=NS(material='leaf', keep=0.7),
                       simplify=NS(dense_edge=0.5, seal_seams=True, colour_deviation=1, props=set(), props_share=0),
                       meshes=[{'match': {'object': 'far'}, 'triangles': 100}])

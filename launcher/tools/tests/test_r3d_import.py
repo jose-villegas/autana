@@ -797,7 +797,7 @@ def triangle_source(p):
 class BakeStepTests(unittest.TestCase):
     def test_the_bake_culls_with_the_renderers_visibility_only(self):
         own = SimpleNamespace(source="camera_path")
-        settings = SimpleNamespace(seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=None, double_sided=set(), meshes=[])
+        settings = SimpleNamespace(seed=1, position_scale=None, alpha_keep=None, thin=None, curves=False, simplify=None, double_sided=set(), meshes=[])
         source = triangle_source(np.zeros((3, 3)))
         seen = []
         with mock.patch.object(mesh_import, "load_source", return_value=source), \
@@ -812,7 +812,7 @@ class BakeStepTests(unittest.TestCase):
 
     def test_the_simplifier_gets_the_imports_colour_deviation(self):
         steps = SimpleNamespace(dense_edge=10.0, props=set(), props_share=0.3, seal_seams=True, colour_deviation=2.5)
-        settings = SimpleNamespace(seed=1, position_scale=None, alpha_keep=None, thin=None, simplify=steps, double_sided=set(), meshes=[])
+        settings = SimpleNamespace(seed=1, position_scale=None, alpha_keep=None, thin=None, curves=False, simplify=steps, double_sided=set(), meshes=[])
         p = np.array([[0.0, 0, 0], [1, 0, 0], [0, 1, 0]])
         source = triangle_source(p)
         given = {}
