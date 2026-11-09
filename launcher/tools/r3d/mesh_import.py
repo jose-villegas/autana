@@ -149,32 +149,37 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         step["triangles_out"] = len(src.tri_v)
     scale = {} if settings.position_scale is None else {"position_scale": settings.position_scale}
     tri_v, tri_t, tri_m = src.tri_v, src.tri_t, src.tri_m
-    card_shape, card_report = None, None
+    accepted_cards, card_report = [], None
     # The replaced material leaves the geometry but keeps casting light: the light bake's occluders and bounce
     # source hold it, so the surfaces the cards are drawn over keep its shadows.
     light_only = None
     cards = getattr(settings, "cards", None)
     if cards is not None:
+        from r3d.cards import decide
         from r3d.cards.emit import make_shape
         from r3d.cards.path import camera_path
 
-        if cards.material not in src.names:
-            raise SettingsError(f"geometry.cards.material {cards.material!r} is not a source material")
-        material = src.names.index(cards.material)
-        selected_cards = tri_m == material
-        rules = match_meshes(src.tri_o, tri_m, src.object_names, src.names, settings.meshes) if settings.meshes else {}
-        if any(obj in rules for obj in src.tri_o[selected_cards]):
-            raise SettingsError(f"material {cards.material} is drawn by cards")
-        with recorder.step("cards", int(selected_cards.sum())) as step:
-            path = camera_path(cards.path, scene, renderer) if cards.choice == "path" else None
-            occluder = RayQuery(src.p, tri_v[~selected_cards]) if path and (~selected_cards).any() else None
-            card_shape, card_report = make_shape(src, material, cards, settings.seed, settings.alpha_keep,
-                                                 path=path, occluder=occluder)
-            step["triangles_out"] = card_report['triangles']
-        light_only = tri_v[selected_cards], tri_t[selected_cards], tri_m[selected_cards]
-        tri_v, tri_t, tri_m = tri_v[~selected_cards], tri_t[~selected_cards], tri_m[~selected_cards]
-        src.tri_o = src.tri_o[~selected_cards]
-        src.tri_v, src.tri_t, src.tri_m = tri_v, tri_t, tri_m
+        path = camera_path(cards.path, scene, renderer) if cards.choice == "path" else None
+
+        def make(material):
+            other = tri_m != material
+            occluder = RayQuery(src.p, tri_v[other]) if path and other.any() else None
+            return make_shape(src, material, cards, settings.seed, settings.alpha_keep,
+                              path=path, occluder=occluder)
+
+        with recorder.step("cards", len(tri_v)) as step:
+            accepted_cards, card_report = decide.carded(src, settings, make)
+            step["triangles_out"] = sum(report['triangles'] for _, _, report in accepted_cards)
+        for name, report in card_report.items():
+            share = "always" if report['forced'] else f"{report['see_through']:.3f}"
+            log(f"cards: {name}: see-through={share}, covered={report['covered']:.3f}, "
+                f"accepted={report['accepted']}")
+        selected_cards = np.isin(tri_m, [material for material, _, _ in accepted_cards])
+        if selected_cards.any():
+            light_only = tri_v[selected_cards], tri_t[selected_cards], tri_m[selected_cards]
+            tri_v, tri_t, tri_m = tri_v[~selected_cards], tri_t[~selected_cards], tri_m[~selected_cards]
+            src.tri_o = src.tri_o[~selected_cards]
+            src.tri_v, src.tri_t, src.tri_m = tri_v, tri_t, tri_m
     with recorder.step("alpha mask", len(tri_v)) as step:
         if settings.alpha_keep is not None:
             tri_v, tri_t, tri_m, keep = drop_masked(src.p, src.uv, tri_v, tri_t, tri_m, src.textures, settings.alpha_keep)
@@ -257,7 +262,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         tri_mat = np.concatenate(all_mat) if all_mat else np.empty(0, dtype=int)
         step["triangles_out"] = len(tris)
     ceiling = getattr(renderer.variant, 'ceiling', None)
-    card_triangles = card_report['triangles'] if card_report is not None else 0
+    card_triangles = sum(report['triangles'] for _, _, report in accepted_cards)
     check_ceiling(card_triangles, ceiling)
     available = None if ceiling is None else ceiling - card_triangles
     with recorder.step("simplify", len(tris)) as step:
@@ -280,7 +285,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             rgb = np.clip(np.round(rgb), 0, 255).astype(np.int64)
             tri_double = np.isin(tri_mat, [index for index, name in enumerate(src.names) if name in double_names]).astype(np.int64)
         step["triangles_out"] = len(tris)
-    if card_shape is not None:
+    for _, card_shape, _ in accepted_cards:
         p, albedo = card_shape['positions'], card_shape['albedo']
         if job.bake:
             radiance = light(p, card_shape['normals'], np.ones(len(p), bool), intersector, scene.lights,
@@ -298,7 +303,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         if 'ceiling' in mesh_report:
             mesh_report['ceiling'] = ceiling
         mesh_report['scene_total'] = mesh_report['output_triangles'] = (
-            mesh_report.get('scene_total', len(tris)) + card_report['triangles'])
+            mesh_report.get('scene_total', len(tris)) + card_triangles)
     check_ceiling(mesh_report.get('scene_total', len(tris)), ceiling)
     return SimpleNamespace(src=src, intersector=occluder, positions=positions, rgb=rgb, tris=tris, tri_double=tri_double,
                            tri_mat=tri_mat, scale=scale, bounce=bounce, mesh_report=mesh_report, shapes=shapes)

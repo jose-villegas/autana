@@ -13,7 +13,6 @@ seed = 1
 
 [geometry]
 alpha_mask = { keep_alpha = 0.5 }
-cards = { material = "leaf" }
 simplify = { dense_edge = 45.0, props = [], props_share = 0.0, seal_seams = true, colour_deviation = 1.0 }
 
 # Free-standing props share one mesh per repeated shape; each copy draws

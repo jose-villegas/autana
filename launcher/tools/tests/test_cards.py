@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 
@@ -19,6 +20,8 @@ SIDE = CARD_EPSILON * 12
 SEEDS = range(3)
 SUBDIVISIONS = int(np.ceil(np.sqrt(CANDIDATE_MIN_SAMPLES)))
 NORMAL_TOLERANCE = 0.02
+CHECKER_TEXELS = mask_asset.MASK_WIDTH
+CHECKER_BLOCK = CHECKER_TEXELS // 2
 
 
 def quads(crossed=False):
@@ -38,9 +41,9 @@ def quads(crossed=False):
 def leaf_import(root, p, t):
     """A checkered leaf quad grid replaced by cards and one solid triangle above it, as an import in `root`."""
     from PIL import Image
-    checker = np.zeros((8, 8, 4), dtype=np.uint8)
+    checker = np.zeros((CHECKER_TEXELS, CHECKER_TEXELS, 4), dtype=np.uint8)
     checker[..., :3] = [64, 128, 192]
-    checker[..., 3] = (np.indices(checker.shape[:2]).sum(axis=0) % 2) * 255
+    checker[..., 3] = ((np.indices(checker.shape[:2]) // CHECKER_BLOCK).sum(axis=0) % 2) * 255
     Image.fromarray(checker).save(root / 'leaf.png')
     (root / 'source.mtl').write_text('newmtl leaf\nKd 1 1 1\nmap_Kd leaf.png\nnewmtl solid\nKd 1 1 1\n')
     lines = ['mtllib source.mtl'] + ['v ' + ' '.join(map(str, row)) for row in p]
@@ -52,11 +55,131 @@ def leaf_import(root, p, t):
     (root / 'source.obj').write_text('\n'.join(lines))
     settings_path = root / 'mesh.import.toml'
     settings_path.write_text('[source]\npath = "source.obj"\ncredit = "synthetic"\n'
-        '[output]\nname = "mesh"\n[geometry]\nalpha_mask = { keep_alpha = 0.5 }\ncards = { material = "leaf" }\n')
+        '[output]\nname = "mesh"\n[geometry]\nalpha_mask = { keep_alpha = 0.5 }\n')
     return settings_path
 
 
 class CardTests(unittest.TestCase):
+    def import_fixture(self):
+        from r3d.import_settings import load_import_settings
+        from r3d.mesh_source import load_source
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        settings = load_import_settings(leaf_import(pathlib.Path(directory.name), *quads()))
+        return settings, load_source(settings)
+
+    def test_alpha_mask_alone_cards_leaf(self):
+        from r3d.import_settings import albedo_jobs
+        settings, src = self.import_fixture()
+        for seed in SEEDS:
+            settings.seed = seed
+            geometry = mesh_import.bake_geometry(albedo_jobs(settings)[0], None, carve=True)
+            report = geometry.mesh_report['cards']
+            self.assertEqual(set(report), {'leaf'})
+            self.assertTrue(report['leaf']['accepted'])
+            self.assertEqual([shape['name'] for shape in geometry.shapes], ['leaf'])
+            self.assertNotIn(src.names.index('leaf'), geometry.tri_mat)
+        leaf = src.tri_m == src.names.index('leaf')
+        other = len(src.names)
+        src.names.append('other_leaf')
+        src.textures.append(src.textures[src.names.index('leaf')])
+        src.tri_v = np.concatenate([src.tri_v, src.tri_v[leaf] + len(src.p)])
+        src.tri_t = np.concatenate([src.tri_t, src.tri_t[leaf] + len(src.uv)])
+        src.p = np.concatenate([src.p, src.p + [SIDE * 2, 0, 0]])
+        src.uv = np.concatenate([src.uv, src.uv])
+        src.tri_m = np.concatenate([src.tri_m, np.full(leaf.sum(), other)])
+        src.tri_o = np.concatenate([src.tri_o, src.tri_o[leaf]])
+        with patch.object(mesh_import, 'load_source', return_value=src):
+            geometry = mesh_import.bake_geometry(albedo_jobs(settings)[0], None, carve=True)
+        self.assertEqual(set(geometry.mesh_report['cards']), {'leaf', 'other_leaf'})
+        self.assertEqual({shape['name'] for shape in geometry.shapes}, {'leaf', 'other_leaf'})
+        self.assertEqual(geometry.mesh_report['scene_total'],
+                         len(geometry.tris) + sum(report['triangles'] for report in geometry.mesh_report['cards'].values()))
+
+    def test_fringe_box_is_not_a_candidate(self):
+        from r3d.cards.decide import candidates
+        settings, src = self.import_fixture()
+        box = soup.box([SIDE] * 3)
+        src.p, src.tri_v = box.vertices, box.faces
+        src.tri_t = np.tile(np.arange(3), (len(src.tri_v), 1))
+        src.uv = np.array([[0.25, 0.25], [0.75, 0.25], [0.5, 0.75]])
+        src.tri_m = np.full(len(src.tri_v), src.names.index('leaf'))
+        src.tri_o = np.zeros(len(src.tri_v), int)
+        texture = src.textures[src.names.index('leaf')]
+        pixels = np.ones_like(texture.levels[0])
+        pixels[[0, -1], :, 3] = 0
+        pixels[:, [0, -1], 3] = 0
+        texture.levels = [pixels]
+        self.assertEqual(candidates(src, settings), [])
+
+    def test_low_coverage_stays_geometry(self):
+        from r3d.cards import CARD_COVERED_MIN, decide
+        from r3d.import_settings import albedo_jobs
+        settings, _ = self.import_fixture()
+        with patch.object(decide, 'CARD_COVERED_MIN', 1 + CARD_COVERED_MIN):
+            geometry = mesh_import.bake_geometry(albedo_jobs(settings)[0], None, carve=True)
+        self.assertFalse(geometry.mesh_report['cards']['leaf']['accepted'])
+        self.assertFalse(geometry.shapes)
+        self.assertIn(geometry.src.names.index('leaf'), geometry.tri_mat)
+
+    def test_never_keeps_passing_leaf(self):
+        from r3d.import_settings import albedo_jobs
+        settings, _ = self.import_fixture()
+        settings.cards.never = ['leaf']
+        geometry = mesh_import.bake_geometry(albedo_jobs(settings)[0], None, carve=True)
+        self.assertEqual(geometry.mesh_report['cards'], {})
+        self.assertFalse(geometry.shapes)
+        self.assertIn(geometry.src.names.index('leaf'), geometry.tri_mat)
+
+    def test_always_overrides_failed_coverage(self):
+        from r3d.cards import CARD_COVERED_MIN, decide
+        from r3d.import_settings import albedo_jobs
+        settings, _ = self.import_fixture()
+        settings.cards.always = ['leaf']
+        with patch.object(decide, 'CARD_COVERED_MIN', 1 + CARD_COVERED_MIN):
+            geometry = mesh_import.bake_geometry(albedo_jobs(settings)[0], None, carve=True)
+        self.assertTrue(geometry.mesh_report['cards']['leaf']['accepted'])
+        self.assertTrue(geometry.mesh_report['cards']['leaf']['forced'])
+
+    def test_unknown_override_is_an_error(self):
+        from r3d.cards.decide import candidates
+        from r3d.import_settings import SettingsError
+        settings, src = self.import_fixture()
+        for key in ('never', 'always'):
+            setattr(settings.cards, key, ['absent'])
+            with self.assertRaisesRegex(SettingsError, 'source lacks'):
+                candidates(src, settings)
+            setattr(settings.cards, key, [])
+
+    def test_always_carved_is_an_error(self):
+        from r3d.cards.decide import candidates
+        from r3d.import_settings import SettingsError
+        settings, src = self.import_fixture()
+        settings.cards.always = ['leaf']
+        settings.meshes = [dict(match=dict(material='leaf'))]
+        with self.assertRaisesRegex(SettingsError, 'drawn by cards'):
+            candidates(src, settings)
+        settings.meshes = []
+        settings.thin = SimpleNamespace(material='leaf')
+        with self.assertRaisesRegex(SettingsError, 'drawn by cards'):
+            candidates(src, settings)
+
+    def test_camera_hidden_is_exactly_accepted_materials(self):
+        from r3d.cards import CARD_COVERED_MIN, decide
+        from r3d.reference_render import camera_hidden
+        settings, src = self.import_fixture()
+        leaf = src.tri_m == src.names.index('leaf')
+        np.testing.assert_array_equal(camera_hidden(src, settings), leaf)
+        from r3d import reference_render
+        with patch.object(reference_render, 'load_source', return_value=src) as load:
+            source = reference_render.lit_source(SimpleNamespace(settings=settings), None, lit=False, hide_cards=True)
+        load.assert_called_once_with(settings, np.float64)
+        np.testing.assert_array_equal(source.camera_hidden, leaf)
+        with patch.object(decide, 'CARD_COVERED_MIN', 1 + CARD_COVERED_MIN):
+            self.assertFalse(camera_hidden(src, settings).any())
+        settings.cards.never = ['leaf']
+        self.assertFalse(camera_hidden(src, settings).any())
+
     def test_one_flat_quad_and_crossed_quads(self):
         for seed in SEEDS:
             for crossed in (False, True):
@@ -137,8 +260,12 @@ class CardTests(unittest.TestCase):
             settings_file = root / 'mesh.import.toml'
             settings_file.write_text('[source]\npath = "mesh.obj"\ncredit = "synthetic"\n'
                 '[output]\nname = "mesh"\n[geometry]\nalpha_mask = { keep_alpha = 0.5 }\n'
-                'cards = { material = "leaf", choice = "path", path = "fly.anim.toml" }\n')
+                'cards = { choice = "path", path = "fly.anim.toml" }\n')
             settings = load_import_settings(settings_file)
+            from r3d.reference_set import ReferenceInputs
+            reference = SimpleNamespace(settings=settings, bake=None, size=renderer.fit.size)
+            job = ReferenceInputs.job(reference)
+            self.assertEqual(camera_path(clip, scene, job.renderer)[:4], path[:4])
             before = source_digest(settings)
             keys.write_text(keys.read_text().replace(f'[0, 0, {SIDE}]', f'[0, 0, {SIDE * 2}]'))
             self.assertNotEqual(before, source_digest(settings))
@@ -278,8 +405,15 @@ class CardTests(unittest.TestCase):
             with mock.patch.object(mesh_import, 'RayQuery', side_effect=ray_query),                     mock.patch.object(mesh_import, 'shade_lit', side_effect=shade_lit),                     mock.patch.object(mesh_import, 'light', side_effect=lambda p, *rest, **kw: np.ones((len(p), 3))),                     mock.patch.object(mesh_import, 'path_light_for',
                                       side_effect=lambda src, *rest: bounced.append(len(src.tri_v))):
                 geometry = mesh_import.bake_geometry(job, scene, carve=True)
+        from r3d.light import triangle_alpha
+        from r3d.mesh_source import load_source
+        with tempfile.TemporaryDirectory() as directory:
+            source = load_source(load_import_settings(leaf_import(pathlib.Path(directory), p, t)))
+        material = source.names.index('leaf')
+        ids = source.tri_m == material
+        opaque = triangle_alpha(source.uv, source.tri_t[ids], source.textures[material]) >= settings.alpha_keep
         solid = 1
-        self.assertEqual(built[:2], [solid, solid + 2 * SUBDIVISIONS ** 2])
+        self.assertEqual(built[:2], [solid, solid + int(opaque.sum())])
         self.assertEqual(bounced, [built[1]])
         self.assertTrue(shaded)
         self.assertTrue(all(query is geometry.intersector for query in shaded))
@@ -300,7 +434,8 @@ class CardTests(unittest.TestCase):
             shape, report = make_shape(src, src.names.index('leaf'), settings.cards, settings.seed, settings.alpha_keep)
             job = albedo_jobs(settings)[0]
             geometry = mesh_import.bake_geometry(job, None, carve=True)
-            self.assertEqual(report, geometry.mesh_report['cards'])
+            self.assertEqual(report, {key: value for key, value in geometry.mesh_report['cards']['leaf'].items()
+                                      if key in report})
             # A bundle name as long as a shape id can carry: the cards' id is named after their material instead.
             name = 'm' * (mesh_bundle.NAME_BYTES - len(mesh_bundle.NAME_SUFFIX) - mesh_bundle.HASH_HEX_DIGITS - 1)
             mesh_import.write_baked(job, None, root, name, geometry)
@@ -327,12 +462,13 @@ class CardTests(unittest.TestCase):
             lines += ['f ' + ' '.join(str(i + len(p) + 1) for i in tri) for tri in t]
             (root / 'source.obj').write_text('\n'.join(lines))
             settings_path.write_text('[source]\npath = "source.obj"\ncredit = "synthetic"\n[output]\n'
-                '[geometry]\nalpha_mask = { keep_alpha = 0.5 }\ncards = { material = "leaf" }\n'
+                '[geometry]\nalpha_mask = { keep_alpha = 0.5 }\n'
                 f'simplify = {{ dense_edge = {SIDE}, props = [], props_share = 0.0, seal_seams = false, colour_deviation = 1.0 }}\n'
                 f'[[variants]]\nname = "mesh"\ntriangles = {len(t)}\nceiling = {len(t)}\n')
             limited = albedo_jobs(load_import_settings(settings_path))[0]
             geometry = mesh_import.bake_geometry(limited, None, carve=True)
-            self.assertEqual(geometry.mesh_report['cards'], report)
+            self.assertEqual(report, {key: value for key, value in geometry.mesh_report['cards']['leaf'].items()
+                                      if key in report})
             self.assertLessEqual(geometry.mesh_report['scene_total'], limited.renderer.variant.ceiling)
             self.assertGreater(len(geometry.tris), 0)
 

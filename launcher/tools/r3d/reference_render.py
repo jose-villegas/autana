@@ -156,9 +156,9 @@ def device_picture(linear, covered, tonemap_white, background):
 def source_for(scene, name=None, lit=True, hide_cards=False):
     """The full-detail source of the scene object `name` (the first mesh renderer
     when None), alpha-tested per hit with that renderer's bake lighting; returns it with
-    the object's job. `lit=False` skips the ray queries and the
-    bounced-light tracer, which only the bake backend uses, and loads float32 textures.
-    `hide_cards` hides the `geometry.cards` material from camera rays only (see lit_source)."""
+    the object's job. `lit=False` skips lighting queries and the bounced-light tracer,
+    which only the bake backend uses. Textures are float32 unless selecting cards, whose masks still need rays.
+    `hide_cards` hides the materials accepted by `geometry.cards` from camera rays only (see lit_source)."""
     named = [item for item in scene.renderers if name in (None, item.object.name)]
     if not named:
         raise ValueError(f"the scene places no mesh renderer named {name!r}")
@@ -167,11 +167,13 @@ def source_for(scene, name=None, lit=True, hide_cards=False):
 
 def lit_source(job, scene, lit=True, variant=None, hide_cards=False):
     """The full-detail source of `job`, alpha-tested per hit with bake lighting, traced on `variant` (`ray_query.VARIANT`
-    when None); see source_for. With `hide_cards`, camera rays pass the `geometry.cards` material, which still
+    when None); see source_for. With `hide_cards`, camera rays pass the materials accepted by `geometry.cards`, which still
     shadows, occludes and bounces light: the fit then sees the surfaces the cards are drawn over."""
     settings = job.settings
-    source = load_source(settings, np.float64 if lit else np.float32)
-    source.camera_hidden = camera_hidden(source, settings) if hide_cards else np.zeros(len(source.tri_v), bool)
+    selecting_cards = hide_cards and getattr(settings, "cards", None) is not None
+    source = load_source(settings, np.float64 if lit or selecting_cards else np.float32)
+    source.camera_hidden = (camera_hidden(source, settings, scene, getattr(job, "renderer", None))
+                            if hide_cards else np.zeros(len(source.tri_v), bool))
     source.alpha_test = AlphaTest(source, settings.alpha_keep) if settings.alpha_keep is not None else None
     source.corner_normals = corner_normals(source.p, source.tri_v)
     source.twin = coincident_faces(source.p, source.tri_v)[0]
@@ -182,12 +184,25 @@ def lit_source(job, scene, lit=True, variant=None, hide_cards=False):
     return source
 
 
-def camera_hidden(source, settings):
-    """Per source triangle, whether it is of the material `geometry.cards` replaces."""
+def camera_hidden(source, settings, scene=None, renderer=None):
+    """Per source triangle, whether accepted cards replace its material."""
     cards = getattr(settings, "cards", None)
     if cards is None:
         return np.zeros(len(source.tri_v), bool)
-    return source.tri_m == source.names.index(cards.material)
+    from r3d.cards import decide
+    from r3d.cards.emit import make_shape
+    from r3d.cards.path import camera_path
+
+    path = camera_path(cards.path, scene, renderer) if cards.choice == "path" else None
+
+    def make(material):
+        other = source.tri_m != material
+        occluder = RayQuery(source.p, source.tri_v[other]) if path and other.any() else None
+        return make_shape(source, material, cards, settings.seed, settings.alpha_keep,
+                          path=path, occluder=occluder)
+
+    accepted, _ = decide.carded(source, settings, make)
+    return np.isin(source.tri_m, [material for material, _, _ in accepted])
 
 
 def render_sets(inputs, sets, samples=4):
@@ -317,7 +332,7 @@ def main(argv=None):
                         help="also write each pose's local occlusion factor as NNNN.occlusion.png (white is open) and "
                              ".npy; the scene must set [bake].ao")
     parser.add_argument("--hide-cards", action="store_true",
-                        help="camera rays pass the geometry.cards material, which still shadows and bounces light, "
+                        help="camera rays pass materials accepted by geometry.cards, which still shadow and bounce light, "
                              "as in the fit's references")
     parser.add_argument("--backend", choices=("bake", "mitsuba"), default="bake",
                         help="bake: the scene's bake lighting (default); mitsuba: a path-traced reference")
