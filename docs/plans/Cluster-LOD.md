@@ -1,6 +1,6 @@
 # Cluster level of detail
 
-**Status:** approved; the host replay, the baked levels and the pick at a fixed tolerance are built; the budget is not.
+**Status:** approved; the host replay, the baked levels, the pick at a fixed tolerance and the triangle budget are built.
 
 The fitted mesh's welded positions are split into clusters, which are
 grouped, simplified with each group's border locked, and split again until a
@@ -36,14 +36,30 @@ copies.
 **The budget.** One tolerance for the whole frame keeps the cut crack-free.
 It is also the cut that meets a triangle budget at the least error: the
 allocation Wimmer and Schmalstieg derive per object<sup>[[110]](../Citations.md#wimmer-1998)</sup>,
-here over clusters. The run-time pick will find it from a histogram of
-log-spaced tolerance bins ([`pick.py`](../../launcher/tools/r3d/lod/pick.py)).
-Each cluster in view adds its triangles at the bin where it starts to be drawn
-and removes them at the bin where its group takes over. The prefix sum is then
-the triangle count at every bin edge. Culling a coarser cluster's box can keep
-it where its finer clusters were culled, so the count can rise with the
-tolerance; the histogram then lands at or after the least tolerance within
-budget, still within it. Refining by screen-space error is
+here over clusters. The host replay finds it from a histogram of
+log-spaced tolerance bins ([`pick.py`](../../launcher/tools/r3d/lod/pick.py)):
+each cluster in view adds its triangles at the bin where it starts to be drawn
+and removes them at the bin where its group takes over, and the prefix sum is
+the triangle count at every bin edge.
+
+The device does the same per group, not per cluster. With `lod.triangle_budget`
+set, each pick adds a group's `saves` (LLOD) at the half-octave bin its error
+projects to, and the instance's finest triangles once. When a round of picks
+has seen every instance, the finest less the saves below each edge is the
+count there, scaled by what the round drew over what it predicted, which takes
+in culling. The steer takes the least edge within budget, from
+`lod.tolerance_px` up. It rises at once and falls a bin a round, so a held
+view settles.
+
+```mermaid
+flowchart LR
+    Pick["pick: each group's saves<br/>at its error's bin"] --> Hist["histogram,<br/>one per core"]
+    Hist --> Steer["round done:<br/>least edge within budget"]
+    Drawn["triangles drawn"] --> Steer
+    Steer -->|"next round's tolerance"| Pick
+```
+
+Refining by screen-space error is
 Hoppe's<sup>[[111]](../Citations.md#hoppe-1997)</sup>; the floor of half a pixel is this tree's choice.
 
 | Piece | Where | State |
@@ -53,7 +69,7 @@ Hoppe's<sup>[[111]](../Citations.md#hoppe-1997)</sup>; the floor of half a pixel
 | Replay over a camera path | [`lod/lod_replay.py`](../../launcher/tools/r3d/lod/lod_replay.py) | host |
 | Levels in the baked mesh | [`lod/bake_levels.py`](../../launcher/tools/r3d/lod/bake_levels.py), [`r3d_lit_mesh.h`](../../launcher/main/render/r3d_lit_mesh.h) | built |
 | Pick at a tolerance, with hysteresis and a coverage cap, in output pixels, each instance every `lod.pick_every` frames and all of them on a scene's first frame | [`r3d_lod_pick()`](../../launcher/main/render/lod/r3d_lod.h), run by the main view's cull just before each instance (`raster_t.picks_levels`); its coarse bits live per scene renderer, and the cluster walk only reads them | built |
-| Histogram from the last frame, steering the tolerance to a budget | `r3d_lod.c` | not built |
+| Histogram over a round of picks, steering the tolerance to `lod.triangle_budget` | [`r3d_lod_steer_frame()`](../../launcher/main/render/lod/r3d_lod.h), its state per scene renderer (`raster_t.steer`) | built |
 | Tolerance per pose baked for the path; the fit trained on it | bake stage | not built |
 
 ```sh
