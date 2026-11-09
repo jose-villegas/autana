@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "render/lod/r3d_lod.h"
+#include "render/r3d_pipeline.h"
 
 /* Updates `coarse` as r3d_lod_pick() does and writes 1 into drawn[c] for
  * each cluster r3d_lod_drawn() keeps, else 0. `rows` is the lens matrix,
