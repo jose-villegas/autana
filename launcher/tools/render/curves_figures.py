@@ -23,7 +23,7 @@ from render_compare import still_sheet
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
-from docs.figures import save_png  # noqa: E402
+from docs.figures import ASSET_DIR_ENV, save_png  # noqa: E402
 from r3d import mesh_bundle  # noqa: E402
 from r3d.scene_name import scene_id  # noqa: E402
 from r3d.thin import curve_format  # noqa: E402
@@ -68,7 +68,7 @@ def frames(host, assets, args, side):
         subprocess.run([str(host), "--scene", scene_id(args.scene), *objects, "--camera", args.camera,
                         "--frames", str(FRAMES), "--dt", str(FRAME_MS), "--video", str(video),
                         "-o", str(args.work / f"{side}.bmp")],
-                       check=True, stdout=log, stderr=subprocess.STDOUT, env={**os.environ, "AUTANA_ASSET_DIR": str(assets)})
+                       check=True, stdout=log, stderr=subprocess.STDOUT, env={**os.environ, ASSET_DIR_ENV: str(assets)})
     return [frame.astype(np.int16) for frame in read_video(video)[1]]
 
 

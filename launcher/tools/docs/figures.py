@@ -65,6 +65,8 @@ def probe_into_folder(description, sources, *arguments):
 
 
 SCENE_VIEWER = ROOT / "launcher/tools/render/scene_viewer.sh"
+# The variable a host renderer reads its asset folder from (launcher/main/asset/asset_store.h).
+ASSET_DIR_ENV = "AUTANA_ASSET_DIR"  # magic: the C side names it in a header Python cannot include
 
 
 def render_scene(scene, *flags, log):
