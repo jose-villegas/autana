@@ -973,7 +973,7 @@ def main(argv=None):
         if args.surface_weight or copies is not None:
             from r3d.reference_render import source_for
 
-            source, job = source_for(scene, args.object, lit=False)
+            source, job = source_for(scene, args.object, lit=False, hide_cards=True)
         carved = None
         if copies is not None:
             carved = np.zeros(len(source.object_names), dtype=bool)

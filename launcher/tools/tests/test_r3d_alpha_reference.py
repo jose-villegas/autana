@@ -120,6 +120,21 @@ class AlphaReferenceTests(unittest.TestCase):
         np.testing.assert_array_equal(faces < 2, [True, False, False, True])
 
     @needs_mitsuba
+    def test_hidden_cards_pass_camera_rays_and_still_block_light(self):
+        from types import SimpleNamespace as NS
+        _, origins, directions = checker_rays()
+        card = self.source.names[self.source.tri_m[0]]
+        job = NS(settings=NS(alpha_keep=KEEP_ALPHA, cards=NS(material=card)))
+        with patch.object(reference_render, 'load_source', return_value=self.source),                 patch.object(reference_render, 'path_light_for', return_value=None):
+            source = reference_render.lit_source(job, NS(), variant=VARIANT, hide_cards=True)
+        where, rays, _ = reference_render.drawn_hits(source, [], origins, directions)
+        np.testing.assert_array_equal(rays, np.arange(len(origins)))
+        np.testing.assert_allclose(where[:, 2], PLANE_Z, atol=1e-6)
+        _, lit_rays, lit_faces = source.intersector.first_hit(origins, directions)
+        np.testing.assert_array_equal(lit_rays, np.arange(len(origins)))
+        np.testing.assert_array_equal(lit_faces < 2, [True, False, False, True])
+
+    @needs_mitsuba
     def test_lit_source_keeps_triangles_and_attaches_the_same_filter(self):
         from types import SimpleNamespace as NS
         job = NS(settings=NS(alpha_keep=KEEP_ALPHA))

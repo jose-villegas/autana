@@ -101,6 +101,13 @@ def fidelity_poses(scene, object_name, frames, dt):
                             number_format=".9g")
 
 
+def with_triangles(src, tri_v, tri_t, tri_m):
+    """`src` holding other triangles over the same vertices, UVs and materials."""
+    other = SimpleNamespace(**vars(src))
+    other.tri_v, other.tri_t, other.tri_m = tri_v, tri_t, tri_m
+    return other
+
+
 def visible_triangles(visibility, scene, p, tri_v, double, intersector, rng):
     """Which source triangles the camera can see, by visibility's source."""
     if visibility.source == "camera_path":
@@ -143,6 +150,9 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
     scale = {} if settings.position_scale is None else {"position_scale": settings.position_scale}
     tri_v, tri_t, tri_m = src.tri_v, src.tri_t, src.tri_m
     card_shape, card_report = None, None
+    # The replaced material leaves the geometry but keeps casting light: the light bake's occluders and bounce
+    # source hold it, so the surfaces the cards are drawn over keep its shadows.
+    light_only = None
     cards = getattr(settings, "cards", None)
     if cards is not None:
         from r3d.cards.emit import make_shape
@@ -161,12 +171,15 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
             card_shape, card_report = make_shape(src, material, cards, settings.seed, settings.alpha_keep,
                                                  path=path, occluder=occluder)
             step["triangles_out"] = card_report['triangles']
+        light_only = tri_v[selected_cards], tri_t[selected_cards], tri_m[selected_cards]
         tri_v, tri_t, tri_m = tri_v[~selected_cards], tri_t[~selected_cards], tri_m[~selected_cards]
         src.tri_o = src.tri_o[~selected_cards]
         src.tri_v, src.tri_t, src.tri_m = tri_v, tri_t, tri_m
     with recorder.step("alpha mask", len(tri_v)) as step:
         if settings.alpha_keep is not None:
             tri_v, tri_t, tri_m, keep = drop_masked(src.p, src.uv, tri_v, tri_t, tri_m, src.textures, settings.alpha_keep)
+            if light_only is not None:
+                light_only = drop_masked(src.p, src.uv, *light_only, src.textures, settings.alpha_keep)[:3]
             src.tri_o = src.tri_o[keep]
             src.tri_v, src.tri_t, src.tri_m = tri_v, tri_t, tri_m
         step["triangles_out"] = len(tri_v)
@@ -178,6 +191,10 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         visibility = renderer.visibility
         if visibility or job.bake:
             intersector = RayQuery(src.p, tri_v) if len(tri_v) else None
+        # Visibility is the drawn geometry's own; light also meets the replaced material.
+        light_src = src if light_only is None else with_triangles(src, *(np.concatenate([a, b]) for a, b in
+                                                                         zip((tri_v, tri_t, tri_m), light_only)))
+        occluder = intersector if light_only is None or not job.bake else RayQuery(src.p, light_src.tri_v)
         double_names = settings.double_sided
         seen = np.ones(len(tri_v), dtype=bool)
         if visibility:
@@ -196,7 +213,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
     mesh_report = {}
     shapes = [] if settings.meshes and carve else None
     with recorder.step("light", len(shown_v)) as step:
-        bounce = path_light_for(src, job, scene)
+        bounce = path_light_for(light_src, job, scene)
         if settings.simplify:
             log("splitting evenly")
             wp, wt = weld_keeping(src.p, shown_v)
@@ -221,7 +238,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         for material, owners, mp, mt in parts:
             double = src.names[material] in double_names
             if job.bake and not np.all(np.isin(owners, list(selected))):
-                vpos, vrgb, vtris, owners = shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce,
+                vpos, vrgb, vtris, owners = shade_lit(src, job, scene, material, mp, mt, double, occluder, bounce,
                                                          labels=owners)
             else:
                 vpos, vrgb, vtris = shade_unlit(src, material, mp, mt)
@@ -252,9 +269,9 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
                                                                          material_names=src.names, meshes=meshes, selection=selected,
                                                                          ceiling=available,
                                                                          shade=(lambda p, c, t, m, **kw: shade_placed(src, job, scene, p, c, t, m,
-                                                                                                             intersector, bounce, **kw)) if job.bake else None,
+                                                                                                             occluder, bounce, **kw)) if job.bake else None,
                                                                          shade_shared=(lambda p, c, t, m, **kw: shade_placed(src, job, scene, p, c, t, m,
-                                                                                                             intersector, bounce, preserve_corners=True, **kw))
+                                                                                                             occluder, bounce, preserve_corners=True, **kw))
                                                                                       if job.bake and carve else None,
                                                                          report=mesh_report, shapes=shapes),
                                                    reserved=[(frozenset(i for i, name in enumerate(src.names) if name in steps.props),
@@ -283,7 +300,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         mesh_report['scene_total'] = mesh_report['output_triangles'] = (
             mesh_report.get('scene_total', len(tris)) + card_report['triangles'])
     check_ceiling(mesh_report.get('scene_total', len(tris)), ceiling)
-    return SimpleNamespace(src=src, intersector=intersector, positions=positions, rgb=rgb, tris=tris, tri_double=tri_double,
+    return SimpleNamespace(src=src, intersector=occluder, positions=positions, rgb=rgb, tris=tris, tri_double=tri_double,
                            tri_mat=tri_mat, scale=scale, bounce=bounce, mesh_report=mesh_report, shapes=shapes)
 
 

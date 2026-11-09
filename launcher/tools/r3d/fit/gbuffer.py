@@ -1,5 +1,6 @@
 """The reference G-buffer of the fit and the two losses on it: depth and "a copy shows here", per training view,
-from the full-detail source: masked sources are traced per hit, opaque sources rasterised.
+from the full-detail source as camera rays see it (reference_render.lit_source): masked or hidden sources are
+traced per hit, opaque sources rasterised.
 
 The front loss is the copy-coverage gate's measure made soft: wherever the source shows a copy and the fitted
 rest is drawn in front of it, it pushes the rest back behind. The depth loss holds the rest to the source's own
@@ -61,11 +62,16 @@ def reference_buffers(source, carved, matrices, sizes, device="cuda"):
     from r3d.appearance_simplify import Renderer
 
     alpha = getattr(source, "alpha_test", None)
+    alpha = alpha if alpha is not None and alpha.masked.any() else None
+    hidden = getattr(source, "camera_hidden", None)
+    hidden = hidden if hidden is not None and hidden.any() else None
     query = None
-    if alpha is not None and alpha.masked.any():
+    if alpha is not None or hidden is not None:
         from r3d.ray_query import RayQuery
 
-        query = RayQuery(source.p, source.tri_v, hit_filter=alpha)
+        shown = lambda hits, where: ((True if hidden is None else ~hidden[hits]) &
+                                     (True if alpha is None else alpha(hits, where)))
+        query = RayQuery(source.p, source.tri_v, hit_filter=shown)
     points = torch.as_tensor(source.p, dtype=torch.float32, device=device)
     carved = torch.as_tensor(carved, device=device)
     renders, depth, copy = {}, [], []

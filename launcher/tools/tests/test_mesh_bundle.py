@@ -329,6 +329,14 @@ class FitCopiesTests(unittest.TestCase):
         np.testing.assert_array_equal(vertices[placed.tris], faces)
         self.assertEqual(len(placed.vertex_point), len(vertices))
 
+    def test_the_fit_leaves_masked_copies_out(self):
+        from r3d import mask_asset
+        from r3d.fit.copies import drawn_copies
+        entries = [(name, mesh_asset.TYPE, b"") for name in ("shape.a", "cards.b")]
+        entries.append((mask_asset.name_for_mesh("cards.b"), mask_asset.TYPE, b""))
+        rows = [{"mesh": "shape.a"}, {"mesh": "cards.b"}, {"mesh": "shape.a"}]
+        self.assertEqual(drawn_copies(entries, rows), [rows[0], rows[2]])
+
     def test_copies_must_be_shaded_as_their_rest_is(self):
         from r3d.fit.copies import placed_copies
 

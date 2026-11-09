@@ -35,6 +35,27 @@ def quads(crossed=False):
     return p, t
 
 
+def leaf_import(root, p, t):
+    """A checkered leaf quad grid replaced by cards and one solid triangle above it, as an import in `root`."""
+    from PIL import Image
+    checker = np.zeros((8, 8, 4), dtype=np.uint8)
+    checker[..., :3] = [64, 128, 192]
+    checker[..., 3] = (np.indices(checker.shape[:2]).sum(axis=0) % 2) * 255
+    Image.fromarray(checker).save(root / 'leaf.png')
+    (root / 'source.mtl').write_text('newmtl leaf\nKd 1 1 1\nmap_Kd leaf.png\nnewmtl solid\nKd 1 1 1\n')
+    lines = ['mtllib source.mtl'] + ['v ' + ' '.join(map(str, row)) for row in p]
+    lines += ['vt ' + ' '.join(map(str, row)) for row in (p[:, :2] / SIDE + 0.5)]
+    lines += ['o leaf_object', 'usemtl leaf']
+    lines += ['f ' + ' '.join(f'{i + 1}/{i + 1}' for i in tri) for tri in t]
+    lines += ['o solid_object', 'usemtl solid', f'v 0 0 {SIDE}', f'v {SIDE} 0 {SIDE}',
+              f'v 0 {SIDE} {SIDE}', 'f ' + ' '.join(str(len(p) + i) for i in (1, 2, 3))]
+    (root / 'source.obj').write_text('\n'.join(lines))
+    settings_path = root / 'mesh.import.toml'
+    settings_path.write_text('[source]\npath = "source.obj"\ncredit = "synthetic"\n'
+        '[output]\nname = "mesh"\n[geometry]\nalpha_mask = { keep_alpha = 0.5 }\ncards = { material = "leaf" }\n')
+    return settings_path
+
+
 class CardTests(unittest.TestCase):
     def test_one_flat_quad_and_crossed_quads(self):
         for seed in SEEDS:
@@ -234,6 +255,36 @@ class CardTests(unittest.TestCase):
             empty = bake_card(card, p, t, np.tile([0.25, 0.5], (len(p), 1)), t, tex, 0.5)
             self.assertIsNone(empty)
 
+    def test_the_replaced_material_still_casts_light_but_not_visibility(self):
+        from unittest import mock
+        from r3d.import_settings import load_import_settings, albedo_jobs
+        p, t = quads()
+        built, shaded, bounced = [], [], []
+
+        def ray_query(points, tris, *rest, **options):
+            built.append(len(tris))
+            return mock.Mock(name=f"query of {len(tris)}")
+
+        def shade_lit(src, job, scene, material, mp, mt, double, intersector, bounce, *, labels, **options):
+            shaded.append(intersector)
+            return (*mesh_import.shade_unlit(src, material, mp, mt), labels)
+
+        with tempfile.TemporaryDirectory() as directory:
+            settings = load_import_settings(leaf_import(pathlib.Path(directory), p, t))
+            job = albedo_jobs(settings)[0]
+            job = SimpleNamespace(settings=job.settings, renderer=job.renderer,
+                                  bake=SimpleNamespace(ray_offset=0.0, ao=None, indirect=None))
+            scene = SimpleNamespace(lights=[], indirect=SimpleNamespace(intensity=1.0), tonemap_white=1.0)
+            with mock.patch.object(mesh_import, 'RayQuery', side_effect=ray_query),                     mock.patch.object(mesh_import, 'shade_lit', side_effect=shade_lit),                     mock.patch.object(mesh_import, 'light', side_effect=lambda p, *rest, **kw: np.ones((len(p), 3))),                     mock.patch.object(mesh_import, 'path_light_for',
+                                      side_effect=lambda src, *rest: bounced.append(len(src.tri_v))):
+                geometry = mesh_import.bake_geometry(job, scene, carve=True)
+        solid = 1
+        self.assertEqual(built[:2], [solid, solid + 2 * SUBDIVISIONS ** 2])
+        self.assertEqual(bounced, [built[1]])
+        self.assertTrue(shaded)
+        self.assertTrue(all(query is geometry.intersector for query in shaded))
+        self.assertEqual(geometry.intersector._mock_name, f"query of {built[1]}")
+
     def test_import_emits_masked_shape_and_atlas(self):
         from PIL import Image
         from r3d.cards.emit import make_shape
@@ -243,21 +294,7 @@ class CardTests(unittest.TestCase):
         p, t = quads()
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)
-            checker = np.zeros((8, 8, 4), dtype=np.uint8)
-            checker[..., :3] = [64, 128, 192]
-            checker[..., 3] = (np.indices(checker.shape[:2]).sum(axis=0) % 2) * 255
-            Image.fromarray(checker).save(root / 'leaf.png')
-            (root / 'source.mtl').write_text('newmtl leaf\nKd 1 1 1\nmap_Kd leaf.png\nnewmtl solid\nKd 1 1 1\n')
-            lines = ['mtllib source.mtl'] + ['v ' + ' '.join(map(str, row)) for row in p]
-            lines += ['vt ' + ' '.join(map(str, row)) for row in (p[:, :2] / SIDE + 0.5)]
-            lines += ['o leaf_object', 'usemtl leaf']
-            lines += ['f ' + ' '.join(f'{i + 1}/{i + 1}' for i in tri) for tri in t]
-            lines += ['o solid_object', 'usemtl solid', f'v 0 0 {SIDE}', f'v {SIDE} 0 {SIDE}',
-                      f'v 0 {SIDE} {SIDE}', 'f ' + ' '.join(str(len(p) + i) for i in (1, 2, 3))]
-            (root / 'source.obj').write_text('\n'.join(lines))
-            settings_path = root / 'mesh.import.toml'
-            settings_path.write_text('[source]\npath = "source.obj"\ncredit = "synthetic"\n'
-                '[output]\nname = "mesh"\n[geometry]\nalpha_mask = { keep_alpha = 0.5 }\ncards = { material = "leaf" }\n')
+            settings_path = leaf_import(root, p, t)
             settings = load_import_settings(settings_path)
             src = load_source(settings)
             shape, report = make_shape(src, src.names.index('leaf'), settings.cards, settings.seed, settings.alpha_keep)
@@ -286,7 +323,7 @@ class CardTests(unittest.TestCase):
             self.assertEqual(first, 0)
             self.assertEqual(rows, shape['mask_rows'])
 
-            lines = lines[:-4] + ['v ' + ' '.join(map(str, row)) for row in p + [0, 0, SIDE]]
+            lines = (root / 'source.obj').read_text().splitlines()[:-4] + ['v ' + ' '.join(map(str, row)) for row in p + [0, 0, SIDE]]
             lines += ['f ' + ' '.join(str(i + len(p) + 1) for i in tri) for tri in t]
             (root / 'source.obj').write_text('\n'.join(lines))
             settings_path.write_text('[source]\npath = "source.obj"\ncredit = "synthetic"\n[output]\n'
