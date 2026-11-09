@@ -219,6 +219,11 @@ bool render_context_compose(render_context_t* context, uint16_t* destination, ui
 
 render_context_frame_t render_context_frame(const render_context_t* context);
 
+/* The destination rows [rows_first, rows_end) the last compose rewrote, as in
+ * render_context_frame(), without copying the whole frame onto a deep stack. */
+int render_context_rows_first(const render_context_t* context);
+int render_context_rows_end(const render_context_t* context);
+
 /* Whether the debug view draws lines over the composed picture: a caller
  * then composes at full size, not into a half picture. */
 bool render_context_has_overlay(const render_context_t* context);

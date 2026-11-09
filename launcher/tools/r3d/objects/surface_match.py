@@ -9,9 +9,8 @@ from dataclasses import dataclass, replace
 from itertools import permutations, product
 
 import numpy as np
-from scipy.spatial import cKDTree
 
-from r3d.geometry import closest_point_on_triangles, triangle_areas
+from r3d.geometry import TriangleSearch, nearest_triangles, triangle_areas, triangle_search
 from r3d.objects.instances import Instance, place, rigid_fit, symmetric_eigen
 from r3d.surface_samples import uniform_barycentric
 
@@ -32,10 +31,6 @@ ICP_SAMPLES = 150
 ICP_ITERATIONS = 16
 # Refinement stops once an iteration shrinks the largest sample distance by less than 1 %.
 CONVERGED = 0.99
-# Dense points on every triangle for the nearest-triangle lookup, at most diagonal / DENSITY from any surface point.
-DENSITY = 20
-# Dense points fetched per query in one vectorised call before falling back to a full ball.
-BALL_POINTS = 8
 SEED = 1
 
 
@@ -57,14 +52,12 @@ class Surface:
     feature: np.ndarray
     samples: np.ndarray
     vertices: np.ndarray
-    tree: cKDTree
-    owner: np.ndarray
-    spacing: float
+    search: TriangleSearch
 
 
 def surface(positions, triangles):
-    """Area moments, seeded area-weighted samples and a dense lookup of a shape's nonzero-area triangles, or None
-    for a shape without area."""
+    """Area moments, seeded area-weighted samples and a nearest-triangle lookup of a shape's nonzero-area triangles,
+    or None for a shape without area."""
     positions, triangles = np.asarray(positions, dtype=np.float64), np.asarray(triangles)
     areas = triangle_areas(positions, triangles)
     corners, areas = positions[triangles[areas > 0]], areas[areas > 0]
@@ -86,48 +79,14 @@ def surface(positions, triangles):
     rng = np.random.default_rng(SEED)
     picked = rng.choice(len(areas), SURFACE_SAMPLES, p=areas / total)
     samples = np.einsum('nk,nki->ni', uniform_barycentric(rng, SURFACE_SAMPLES), corners[picked])
-    edge = np.linalg.norm(corners - np.roll(corners, 1, axis=1), axis=2).max(axis=1)
-    steps = np.maximum(np.ceil(edge * DENSITY / max(diagonal, 1e-12)), 1).astype(int)
-    # Any surface point lies within its triangle's longest edge over its steps of a dense point.
-    spacing = float((edge / steps).max())
-    points, owner = [], []
-    for m in np.unique(steps):
-        chosen = np.flatnonzero(steps == m)
-        for i in range(m + 1):
-            for j in range(m + 1 - i):
-                u, v = i / m, j / m
-                points.append(corners[chosen, 0] * (1 - u - v) + corners[chosen, 1] * u + corners[chosen, 2] * v)
-                owner.append(chosen)
-    return Surface(corners, total, centre, axes, diagonal, feature, samples, vertices, cKDTree(np.concatenate(points)),
-                   np.concatenate(owner), spacing)
+    return Surface(corners, total, centre, axes, diagonal, feature, samples, vertices,
+                   triangle_search(corners))
 
 
 def nearest(points, target):
-    """Distance from each point to target's surface, and the closest surface point. A point's closest triangle
-    holds a dense point within its distance to the nearest dense point plus the spacing, so the triangles owning
-    the dense points in that ball are all the candidates."""
-    reach, _ = target.tree.query(points)
-    k = min(BALL_POINTS, target.tree.n)
-    bound = reach + target.spacing
-    distance, index = target.tree.query(points, k=k, distance_upper_bound=float(bound.max()))
-    distance, index = distance.reshape(len(points), k), index.reshape(len(points), k)
-    inside = distance <= bound[:, None]
-    query, found = np.nonzero(inside)
-    found = index[query, found]
-    # A ball holding more than BALL_POINTS dense points is listed in full.
-    full = np.flatnonzero(inside[:, -1]) if k < target.tree.n else ()
-    if len(full):
-        balls = target.tree.query_ball_point(points[full], bound[full])
-        query = np.concatenate([query, np.repeat(full, [len(ball) for ball in balls])])
-        found = np.concatenate([found, np.concatenate(balls).astype(int)])
-    key = np.unique(query * len(target.corners) + target.owner[found])
-    pairs = np.column_stack([key // len(target.corners), key % len(target.corners)])
-    a, b, c = (target.corners[pairs[:, 1], k] for k in range(3))
-    bary, distance = closest_point_on_triangles(points[pairs[:, 0]], a, b, c)
-    first = np.lexsort((distance, pairs[:, 0]))
-    first = first[np.r_[True, pairs[first[1:], 0] != pairs[first[:-1], 0]]]
-    closest = bary[first, :1] * a[first] + bary[first, 1:2] * b[first] + bary[first, 2:] * c[first]
-    return distance[first], closest
+    """Distance from each point to target's surface, and the closest surface point."""
+    tri, bary, distance = nearest_triangles(points, target.search)
+    return distance, np.einsum('ni,nij->nj', bary, target.corners[tri])
 
 
 def limit(a, b, tolerance, floor):
@@ -148,8 +107,7 @@ def surface_fit(rep, other, tolerance, floor=0.0):
     for frame in START_FRAMES:
         linear = place(place(rep.axes, frame.T, 0.0), other.axes, 0.0)
         position = rep.centre - place(other.centre[None], linear, 0.0)[0]
-        # Screened on the dense points alone: over the surface distance by at most the spacing.
-        gap = rep.tree.query(place(screen, linear, position))[0].max()
+        gap = nearest_triangles(place(screen, linear, position), rep.search)[2].max()
         starts.append((gap, len(starts), linear, position))
     starts.sort(key=lambda start: start[:2])
     for gap, _, linear, position in starts[:STARTS_KEPT]:

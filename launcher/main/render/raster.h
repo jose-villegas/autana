@@ -59,6 +59,11 @@ struct raster {
 /* What a draw uses: the raster's settings, under any development override. */
 render_settings_t raster_settings(const raster_t* raster);
 
+/* Two of raster_settings() alone, for callers deep in the draw's stack, where
+ * the whole settings struct would cost a frame. */
+bool raster_partial_redraw(const raster_t* raster);
+int raster_pick_every(const raster_t* raster);
+
 /* The viewport a view frames: destination size when upscaled, otherwise drawn size. */
 static inline viewport_t
 raster_viewport(const raster_t* raster, int quarter) {
@@ -68,7 +73,6 @@ raster_viewport(const raster_t* raster, int quarter) {
 
 typedef struct {
     int clusters, triangles; /* what survived culling */
-    bool levels_changed;     /* a level pick changed an instance's cut */
 } raster_stats_t;
 
 /* The most vertices and clusters any mesh the raster draws has: what its
@@ -90,6 +94,9 @@ uint16_t* raster_depth(const raster_t* raster);
  * fits it to the nearest bound of what it kept, never under the view's
  * near_z, so far surfaces keep their depth steps (r3d_lens_set_depth_near()). */
 float raster_depth_near(const raster_t* raster);
+
+/* Whether a level pick in the last cull (draw or census) changed an instance's cut. */
+bool raster_levels_changed(const raster_t* raster);
 /* Whether the last draw redrew every row, asked to or not (first_row). */
 bool raster_drew_every_row(const raster_t* raster);
 
