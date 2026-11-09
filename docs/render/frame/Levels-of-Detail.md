@@ -78,6 +78,7 @@ frame-to-frame change beyond the finest level's own; triangles are those submitt
 
 ```sh
 python launcher/tools/r3d/lod/coverage_table.py --script HOST_RENDER.sh \
+    --morph sponza.atrium_fitted_full --morph bistro.street_fitted_full \
     --render Sponza "--scene sponza-fitted-full --no-hud --frames 1101 --dt 33" \
     --render Bistro "--scene bistro-fitted-full --no-hud --frames 900 --dt 33" --doc docs/render/frame/Levels-of-Detail.md
 ```
@@ -126,12 +127,12 @@ stateDiagram-v2
 
 ![The 4x4 screen door at five points of the ramp past leave: coarse and fine pixels](../../images/render/lod-blend-dither.png)
 
-The fitted Sponza path's worst pop, switched and dithered, each beside its
-difference from the finest level:
+The fitted Sponza path where a switch pops most, played through the frames
+around it: finest, switch, dither and morph.
 
-![The square where a switch pops most on the fitted Sponza path, switched and dithered, before and at the pop](../../images/render/lod-blend-pop.png)
+![The square where a switch pops most on the fitted Sponza path, played through the frames around the pop: finest, switch, dither and morph](../../images/render/lod-blend-pop.gif)
 
-![The same square played through the frames around the pop: finest, switch and dither](../../images/render/lod-blend-pop.gif)
+![That square before and at the pop, switched, dithered and morphed, each beside its difference from the finest level](../../images/render/lod-blend-pop.png)
 
 | Morph target | Rule |
 |---|---|
@@ -140,20 +141,26 @@ difference from the finest level:
 | Colour | the coarse colour where it lands; face-colour meshes blend positions only |
 | Shared position | stays put across clusters under different parents, so no crack |
 
-Blended per path against the finest level. Stacked vertices are those whose
-target's own level was blending too, so the target sits off its neighbour.
+Each path against the finest level; the morph rows add morph targets to the
+locked meshes. The 4×4 columns average luma over the screen door's tile, where
+a dither reads as its blend; the worst pop is each arm's peak where the switch
+pops most. Stacked vertices are those whose target's own level was blending
+too, so the target sits off its neighbour.
 
-<!-- generated: lod-morph sha256=13ac2dd45108c862682f0abf5ad3351aca84842b3805d84df2b238d33e230f14 -->
-| Path | Arm | Blocks popping | Mean difference /255 | Vertices blended | Frames stacked | Vertices stacked | Stacked, most px |
-|---|---|---|---|---|---|---|---|
-| Sponza | switches | 0.0933% | 0.071 | 0.0% | 0.0% | 0.00% | 0.00 |
-| Sponza | blend | 0.0979% | 0.077 | 3.4% | 0.0% | 0.00% | 0.00 |
-| Bistro | switches | 0.1720% | 0.105 | 0.0% | 0.0% | 0.00% | 0.00 |
-| Bistro | blend | 0.1846% | 0.127 | 9.1% | 0.0% | 0.00% | 0.00 |
+<!-- generated: lod-morph sha256=87f23f47c072bb8c837692afff35df110550d12bf8335efa5eb5163c6825b3b2 -->
+| Path | Arm | Blocks popping | Mean difference /255 | 4×4 | Worst switch pop /255 | 4×4 | Vertices blended | Frames stacked | Vertices stacked | Stacked, most px |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Sponza | switches | 0.0933% | 0.071 | 0.054 | 4.69 | 3.63 | 0.0% | 0.0% | 0.00% | 0.00 |
+| Sponza | blend, dither | 0.0979% | 0.077 | 0.059 | 3.82 | 3.63 | 3.4% | 0.0% | 0.00% | 0.00 |
+| Sponza | blend, morph | 0.1000% | 0.075 | 0.058 | 3.88 | 3.63 | 2.0% | 4.1% | 0.05% | 0.26 |
+| Bistro | switches | 0.1720% | 0.105 | 0.080 | 7.31 | 5.17 | 0.0% | 0.0% | 0.00% | 0.00 |
+| Bistro | blend, dither | 0.1846% | 0.127 | 0.096 | 7.31 | 5.17 | 9.1% | 0.0% | 0.00% | 0.00 |
+| Bistro | blend, morph | 0.2016% | 0.128 | 0.098 | 7.31 | 5.17 | 5.0% | 9.9% | 0.41% | 0.45 |
 <!-- /generated: lod-morph -->
 
 ```sh
 python launcher/tools/r3d/lod/morph_table.py --script HOST_RENDER.sh \
+    --morph sponza.atrium_fitted_full --morph bistro.street_fitted_full \
     --render Sponza "--scene sponza-fitted-full --no-hud --frames 1101 --dt 33" \
     --render Bistro "--scene bistro-fitted-full --no-hud --frames 900 --dt 33" --doc docs/render/frame/Levels-of-Detail.md
 ```
