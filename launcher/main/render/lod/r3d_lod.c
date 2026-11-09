@@ -299,9 +299,11 @@ blends(const reach_t* at, const r3d_lit_lod_group_t* group, float scale, float c
                      covered * (1.0F + (R3D_LOD_MORPH_COVER_RAMP * ramps)) * slack);
 }
 
-bool
-r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod, uint32_t* coarse,
-             uint32_t* arrived) {
+/* Inlined into one copy per caller, so a literal NULL `arrived` keeps no
+ * blend state. */
+static inline __attribute__((always_inline)) bool
+pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod, uint32_t* coarse,
+     uint32_t* arrived) {
     const lod_view_t v = lod_view(lens);
     const lod_limits_t limits = lod_limits(lod, lens, 1.0F);
     const float enter = limits.enter;
@@ -373,9 +375,16 @@ r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lo
     return changed || blend_changed;
 }
 
-int
-r3d_lod_list_drawn(const r3d_lit_mesh_t* mesh, const uint32_t* coarse, const uint32_t* blending, uint16_t* out,
-                   int room) {
+bool
+r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod, uint32_t* coarse,
+             uint32_t* arrived) {
+    return arrived == NULL ? pick(mesh, lens, lod, coarse, NULL) : pick(mesh, lens, lod, coarse, arrived);
+}
+
+/* Inlined into one copy per caller, so a literal NULL `blending` tests no
+ * blend. */
+static inline __attribute__((always_inline)) int
+list_drawn(const r3d_lit_mesh_t* mesh, const uint32_t* coarse, const uint32_t* blending, uint16_t* out, int room) {
     const bool any = coarse != NULL
                      && (r3d_lod_any(coarse, mesh->lod_group_count)
                          || (blending != NULL && r3d_lod_any(blending, mesh->lod_group_count)));
@@ -390,4 +399,10 @@ r3d_lod_list_drawn(const r3d_lit_mesh_t* mesh, const uint32_t* coarse, const uin
     }
     (void)room;
     return drawn;
+}
+
+int
+r3d_lod_list_drawn(const r3d_lit_mesh_t* mesh, const uint32_t* coarse, const uint32_t* blending, uint16_t* out,
+                   int room) {
+    return blending == NULL ? list_drawn(mesh, coarse, NULL, out, room) : list_drawn(mesh, coarse, blending, out, room);
 }

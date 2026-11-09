@@ -177,9 +177,9 @@ transform_slice(void* ctx) {
         const int lo = mathi_max(s->first, start) - start;
         const int hi = mathi_min(end, start + item->visible_count) - start;
         if (lo < hi) {
-            r3d_pipeline_transform_morphed(item->mesh, &item->lens, &item->morph, item->visible + lo, hi - lo,
-                                           b.cs + item->vertex_base, b.rows + item->cluster_base,
-                                           ((const draw_work_t*)b.draw)->skip_hidden);
+            r3d_pipeline_transform_morphed(item->mesh, &item->lens, item->morph.enabled ? &item->morph : NULL,
+                                           item->visible + lo, hi - lo, b.cs + item->vertex_base,
+                                           b.rows + item->cluster_base, ((const draw_work_t*)b.draw)->skip_hidden);
         }
         start += item->visible_count;
     }
@@ -308,8 +308,9 @@ draw_slice(void* ctx) {
         const batch_item_t* item = &s->batch->items[k];
         target->writers = item->writers;
         target->writer_count = item->writer_count;
-        r3d_pipeline_draw(item->mesh, &item->lens, item->visible, item->visible_count, b->cs + item->vertex_base,
-                          b->rows + item->cluster_base, target, b->work[s->work_index]);
+        (item->morph.enabled ? r3d_pipeline_draw_blended : r3d_pipeline_draw)(
+            item->mesh, &item->lens, item->visible, item->visible_count, b->cs + item->vertex_base,
+            b->rows + item->cluster_base, target, b->work[s->work_index]);
     }
     FRAME_LAP_END();
 }
@@ -402,7 +403,7 @@ instance_lens(picture_lens_t* picture, const r3d_instance_t* instance, r3d_lens_
 
 static const uint32_t*
 dither_blending(const r3d_instance_t* instance, int blend) {
-    if (instance->lod_coarse == NULL || !r3d_lod_dithers(instance->mesh, blend)) {
+    if (blend != RENDER_LOD_BLEND_ON || instance->lod_coarse == NULL || !r3d_lod_dithers(instance->mesh, blend)) {
         return NULL;
     }
     const int groups = instance->mesh->lod_group_count;
@@ -415,7 +416,9 @@ cull_instance(const r3d_instance_t* instance, bool culls, const r3d_lens_t* lens
     const r3d_lit_mesh_t* mesh = instance->mesh;
     const uint32_t* blending = dither_blending(instance, blend);
     int visible = 0;
-    if (culls) {
+    if (culls && blending == NULL) {
+        visible = r3d_pipeline_cull(mesh, lens, instance->lod_coarse, out, work, fit);
+    } else if (culls) {
         visible = r3d_pipeline_cull_blending(mesh, lens, instance->lod_coarse, blending, out, work, fit);
     } else {
         visible = r3d_lod_list_drawn(mesh, instance->lod_coarse, blending, out, mesh->cluster_count);
@@ -723,6 +726,8 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     batch_t* batch = &work->batch;
     picture_lens_t* picture = &work->picture;
     picture_lens_init(picture, raster, view, true);
+    /* Off, no instance blends: the morph state is set up only when it may. */
+    const bool blends = raster_settings(raster).lod.blend == RENDER_LOD_BLEND_ON;
     for (int first = 0, index = 0; first < raster->instance_count; index++) {
         const int end = raster_batch_end(raster, first);
         int vertices = 0;
@@ -739,7 +744,11 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
                 item->mesh = mesh;
                 instance_lens(picture, instance, &item->lens);
                 r3d_lens_set_depth_near(&item->lens, *work->buffers.depth_near);
-                raster_lod_morph(raster, view, instance, &item->lens, &item->morph);
+                if (blends) {
+                    raster_lod_morph(raster, view, instance, &item->lens, &item->morph);
+                } else {
+                    item->morph.enabled = false;
+                }
                 item->visible = culled + 1;
                 item->visible_count = culled[0];
                 item->vertex_base = vertices;
