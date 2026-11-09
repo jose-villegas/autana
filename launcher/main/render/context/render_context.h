@@ -111,6 +111,9 @@ typedef struct {
     render_view_t kept_view;
     framegen_target_t framegen;
     render_partial_t partial; /* render/partial: rows redrawn on a still camera */
+    /* render_context_set_batches()'s, which the next draw takes. */
+    const r3d_batch_draw_t* batches;
+    int batch_count;
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     /* Whether the last frame's debug view drew a second view, and from where. */
     bool observed;
@@ -175,6 +178,10 @@ void render_context_set_frame_generation(render_context_t* context, bool on);
  * is now; a negative count changes everything. Each frame sets them anew. */
 void render_context_set_changed(render_context_t* context, const box3f_t* boxes, int count);
 
+/* The next draw's `count` batches, drawn after its instances; a draw with
+ * none set draws none. */
+void render_context_set_batches(render_context_t* context, const r3d_batch_draw_t* batches, int count);
+
 /* Opts in: each frame draws at a step of `config` to hold its budget, chosen
  * by the stepped controller, or by the predictor when `model` is not NULL.
  * NULL `config` returns to the fixed scale. */
@@ -197,11 +204,6 @@ void render_context_print_debug_views(FILE* out);
 /* Draws `count` instances through `view`; false when there is no scratch for it. */
 bool render_context_draw(render_context_t* context, const r3d_instance_t* instances, int count,
                          const render_view_t* view, uint16_t clear);
-
-/* render_context_draw() with `batch_count` batches drawn after the instances. */
-bool render_context_draw_batched(render_context_t* context, const r3d_instance_t* instances, int count,
-                                 const r3d_batch_draw_t* batches, int batch_count, const render_view_t* view,
-                                 uint16_t clear);
 
 /* What the next frame draws with; the context keeps its own copy, and
  * RENDER_SETTINGS_DEFAULT until set. A development override goes on top of

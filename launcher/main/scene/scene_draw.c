@@ -189,8 +189,8 @@ draw_active(int quarter, int width, int height) {
     }
     const render_view_t view = active_view(scene, camera, (viewport_t){width, height, quarter});
     render_context_set_changed(render_context_main(), changed, fill_changed(scene));
-    rendered = render_context_draw_batched(render_context_main(), scene->instances, count, scene->batch_draws, batches,
-                                           &view, camera->clear);
+    render_context_set_batches(render_context_main(), scene->batch_draws, batches);
+    rendered = render_context_draw(render_context_main(), scene->instances, count, &view, camera->clear);
     if (!rendered && !refused) {
         ESP_LOGE("scene", "no memory to draw '%s'; it stays blank", scene->root->id);
         refused = true;

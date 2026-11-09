@@ -480,9 +480,10 @@ test_copies_take_their_first_instance_and_each_shape_its_own_id(void) {
     raster_buffers_t* const b = malloc(sizeof *b);
     TEST_ASSERT_NOT_NULL(b);
     *b = raster_carve(&raster);
-    *b->drawn_count = MESHES;
+    (void)raster_buffers_place(&raster, b);
+    *raster_buffers_drawn_count(b) = MESHES;
     for (int i = 0; i < MESHES; i++) {
-        b->drawn[i] = &instances[i];
+        raster_buffers_drawn(b)[i] = &instances[i];
     }
     free(b);
     raster_copies_t state = {0};

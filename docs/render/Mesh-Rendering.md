@@ -114,7 +114,7 @@ flowchart TB
         Cull["r3d_pipeline_cull()<br/><i>walk the tree, nearest first;<br/>bound each kept box's depth</i>"] --> Scale
         Scale["inverse_depth_scale_fit()<br/><i>the depth scale</i>"]
     end
-    Census --> List["the scratch block's census<br/><i>depth scale, drawn list, kept copies, culled list;<br/>fixed offset across render sizes</i>"]
+    Census --> List["the scratch block's census<br/><i>head, culled list, drawn list, kept copies;<br/>fixed offset across render sizes</i>"]
     View --> Draw
     Size["the render size"] --> Draw
     List --> Draw
@@ -229,10 +229,11 @@ The layer allocates nothing. Raster draw work owns the resolved camera
 settings and per-side spread table, shared read-only by the row workers.
 
 Per-vertex and per-cluster buffers, the census list, picture
-[attachments](frame/Attachments.md#attachments) and upscale maps share one block. The census comes first: its depth scale,
-the drawn list (a pointer to each instance in place, then to each copy the
-cull keeps), the kept copies, then the culled list, at an offset independent of render size;
-storage is padded for picture attachments. Writers and views number
+[attachments](frame/Attachments.md#attachments) and upscale maps share one block. The census comes first, at an offset
+independent of render size: a head (depth scale, drawn count, where the drawn
+list is), the culled list, the drawn list (a pointer to each instance in place,
+then to each copy the cull keeps), then the kept copies. Storage is padded for
+picture attachments. Writers and views number
 instances in the drawn list (`raster_drawn()`).
 
 `raster_carve()` in `raster_internal.h` states the layout once, and

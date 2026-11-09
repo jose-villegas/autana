@@ -2090,14 +2090,17 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
     TEST_ASSERT_EQUAL_UINT32((uint32_t)bytes, (uint32_t)(total + padding));
     TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_target_color(&b->picture, 0) % 4);
     TEST_ASSERT_EQUAL_UINT32(0, (uintptr_t)gfx_target_depth(&b->picture, 0) % 4);
-    /* The census holds its depth scale, the drawn list and every drawn
-     * instance's slot and takes whole cache ways, so the parts after it keep
-     * the cache sets they have without it. */
+    /* The census holds its head, every drawn instance's slot, the drawn list
+     * and the kept copies, and takes whole cache ways, so the parts after it
+     * keep the cache sets they have without it. */
     const raster_lengths_t lengths = raster_lengths(&raster);
-    TEST_ASSERT_TRUE(raster_culled_bytes(&raster) >= raster_culled_at(lengths) + (sizeof(uint16_t) * lengths.culled));
-    TEST_ASSERT_TRUE((const char*)b->drawn == (const char*)b->depth_near + RASTER_DRAWN_AT);
-    TEST_ASSERT_TRUE((const char*)b->copies >= (const char*)(b->drawn + lengths.drawn));
-    TEST_ASSERT_TRUE((const char*)b->culled == (const char*)(b->copies + lengths.copies));
+    const r3d_batch_draw_t* copies = raster_buffers_place(&raster, b);
+    const r3d_instance_t** drawn = raster_buffers_drawn(b);
+    TEST_ASSERT_TRUE((const char*)b->culled == (const char*)b->depth_near + RASTER_CULLED_AT);
+    TEST_ASSERT_TRUE((const char*)drawn >= (const char*)(b->culled + lengths.culled));
+    TEST_ASSERT_TRUE((const char*)copies >= (const char*)(drawn + lengths.drawn));
+    TEST_ASSERT_TRUE(raster_culled_bytes(&raster)
+                     >= (size_t)((const char*)(copies + lengths.copies) - (const char*)b->depth_near));
     TEST_ASSERT_EQUAL_UINT32(0, (uint32_t)(((const char*)b->cs - (const char*)b->depth_near) % RASTER_CACHE_WAY));
     raster.width /= 2;
     raster.height /= 2;

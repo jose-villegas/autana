@@ -155,6 +155,12 @@ render_context_set_changed(render_context_t* c, const box3f_t* boxes, int count)
 }
 
 void
+render_context_set_batches(render_context_t* c, const r3d_batch_draw_t* batches, int count) {
+    c->batches = batches;
+    c->batch_count = count;
+}
+
+void
 render_context_set_scale(render_context_t* c, int percent) {
     assert(percent > 0 && percent <= 100);
     c->scale_percent = percent;
@@ -393,13 +399,10 @@ draw_partial(render_context_t* c, const render_view_t* view) {
 bool
 render_context_draw(render_context_t* c, const r3d_instance_t* instances, int count, const render_view_t* view,
                     uint16_t clear) {
-    return render_context_draw_batched(c, instances, count, NULL, 0, view, clear);
-}
-
-bool
-render_context_draw_batched(render_context_t* c, const r3d_instance_t* instances, int count,
-                            const r3d_batch_draw_t* batches, int batch_count, const render_view_t* view,
-                            uint16_t clear) {
+    const r3d_batch_draw_t* batches = c->batches;
+    const int batch_count = c->batch_count;
+    c->batches = NULL;
+    c->batch_count = 0;
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     c->observed = false;
 #endif
