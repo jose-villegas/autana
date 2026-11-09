@@ -120,7 +120,7 @@ static void
 test_the_default_is_every_setting_on_as_the_raster_drew_before(void) {
     raster_rig_t* r = open_rig();
     /* Before settings, the raster always culled, fitted depth and batched;
-     * partial redraw draws the same picture. */
+     * partial redraw draws the same picture; LOD switches at once, as it did. */
     const render_settings_t on = {.cull = true,
                                   .depth_fit = true,
                                   .batched = true,
@@ -129,7 +129,7 @@ test_the_default_is_every_setting_on_as_the_raster_drew_before(void) {
                                           .hysteresis_px = 0.5F,
                                           .coverage_permille = 250,
                                           .pick_every = 4,
-                                          .blend = RENDER_LOD_BLEND_ON,
+                                          .blend = RENDER_LOD_BLEND_SWITCH,
                                           .blend_px = 0.25F}};
     assert_settings(&on, &RENDER_SETTINGS_DEFAULT);
     const render_settings_t bare = raster_settings(&r->raster);

@@ -105,9 +105,9 @@ switch, so the switch itself moves nothing<sup>[[116]](../../Citations.md#hoppe-
 
 | Blend | When | Draws during a blend | Flash |
 |---|---|---|---|
-| Switch | `lod.blend = 0` | one level | none |
-| Dither | default | both levels through complementary 4×4 screen doors | none |
-| Morph | `[geometry] morph = true` | the fine level, moved toward the coarse surface | the LMOR sibling ([`lod/morph.py`](../../../launcher/tools/r3d/lod/morph.py)) |
+| Switch | default (`lod.blend = 0`) | one level | none |
+| Dither | `lod.blend = 1` | both levels through complementary 4×4 screen doors | none |
+| Morph | `lod.blend = 1`, `[geometry] morph = true` | the fine level, moved toward the coarse surface | the LMOR sibling ([`lod/morph.py`](../../../launcher/tools/r3d/lod/morph.py)) |
 
 ![Coarse share of what is drawn as one group's error projects across its switches, walking in and out, blended and switched](../../images/render/lod-blend-weight.png)
 
