@@ -315,7 +315,7 @@ The GPU stage yields green when bakes are queued or running.
 Every Bakes GPU completion triggers a fresh image check.
 
 The plan waits for two polls without queued, waiting or running jobs carrying
-`gpu` in either GPU workflow. Hosted jobs waiting for a later marker do not count.
+`gpu` in the doc-images GPU workflow. Bakes GPU fits run beside the board night. Hosted jobs waiting for a later marker do not count.
 
 This check requires a host GPU runner marker fresh within `GPU_HOST_MARKER_DAYS`.
 Otherwise it reports “GPU runner not on this host” and continues.
