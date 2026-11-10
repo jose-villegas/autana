@@ -614,13 +614,17 @@ class StageTests(unittest.TestCase):
                 self.assertTrue(units)
                 self.assertEqual([(bake.relative(path), line, name) for path, line, name in unresolved], [])
 
-    def test_the_reference_functions_produce_calls_are_entries(self):
+    def test_the_reference_producers_are_entries_and_unpacking_only_consumes_bytes(self):
         tree = ast.parse((TOOLS / "bake" / "produce.py").read_text(encoding="utf-8"))
         entries = set(bake.STAGES["reference"])
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.module in ("r3d.reference_set", "r3d.reference_render"):
                 for alias in node.names:
-                    self.assertIn(f"{node.module.replace('.', '/')}.py:{alias.name}", entries)
+                    entry = f"{node.module.replace('.', '/')}.py:{alias.name}"
+                    if alias.name == "unpack_references":
+                        self.assertNotIn(entry, entries)
+                    else:
+                        self.assertIn(entry, entries)
 
     def test_an_edit_to_a_reached_helper_re_keys_the_reference_stage(self):
         units = bake.stage_units("reference")[0]

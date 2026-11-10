@@ -591,6 +591,16 @@ class StageTests(unittest.TestCase):
         self.assertNotEqual(keys["fit"], bake.stage_keys(job, scene, TOOL_KEYS, AnyStart("f" * 64))["fit"])
         self.assertIsNone(bake.stage_keys(job, scene, TOOL_KEYS)["fit"])
 
+    def test_a_fit_waits_for_reference_bytes_and_counts_them_independently_of_its_start(self):
+        job, scene = fitted_job()
+        keys = bake.stage_keys(job, scene, TOOL_KEYS)
+        starts = {keys["start"]: START_SHA256}
+        self.assertIsNone(bake.stage_keys(job, scene, TOOL_KEYS, starts)["fit"])
+        locked = bake.stage_keys(job, scene, TOOL_KEYS, {**starts, keys["reference"]: REFERENCE_SHA256})
+        changed = bake.stage_keys(job, scene, TOOL_KEYS, {**starts, keys["reference"]: MADE_SHA256})
+        self.assertEqual(locked["start_sha256"], changed["start_sha256"])
+        self.assertNotEqual(locked["fit"], changed["fit"])
+
     def test_the_reference_key_counts_every_field_its_render_reads(self):
         from r3d.fitted_variant import ReferenceInputs, reference_inputs
 
@@ -660,7 +670,8 @@ class FittedBakeCase(unittest.TestCase):
 
     def level(self, sha256):
         fit = self.fit(sha256)
-        return next(item for item in self.bakes({self.start.key: sha256, fit.key: FIT_SHA256})
+        starts = {self.start.key: sha256, self.reference.key: REFERENCE_SHA256, fit.key: FIT_SHA256}
+        return next(item for item in self.bakes(starts)
                     if item.kind == "levels")
 
     def command(self, argv, lock, made=None, mesh_cpu_vendor=None, cpu=None):
@@ -711,6 +722,16 @@ class CarvedBakeTests(FittedBakeCase):
         changed = [item for item in self.bakes(AnyStart(MADE_SHA256)) if item.kind == "fit"]
         self.assertTrue(set(item.key for item in fits).isdisjoint(item.key for item in changed))
 
+    def test_renderers_with_the_same_reference_inputs_share_one_bake_and_output(self):
+        found = self.bakes(AnyStart())
+        fits = [item for item in found if item.kind == "fit"]
+        references = [item for item in found if item.kind == "reference"]
+        self.assertEqual(len(fits), len(self.names))
+        self.assertEqual(references, [self.reference])
+        self.assertTrue(all(item.reference is references[0] for item in fits))
+        self.assertEqual(references[0].suffix, bake.REFERENCE_SUFFIX)
+        self.assertFalse(references[0].packed)
+
 
 class FittedBakeTests(FittedBakeCase):
     """The bake, lock and list commands over a tree with one fitted renderer, and the keys it gives."""
@@ -724,6 +745,38 @@ class FittedBakeTests(FittedBakeCase):
             made[self.fit(sha256).key] = row_of(self.fit(sha256), FIT_SHA256, run=RUN)
             made[self.level(sha256).key] = row_of(self.level(sha256), FIT_SHA256, run=RUN)
         return self.command(["lock", "--from-run", str(RUN)], lock, made)
+
+    def test_produce_fit_fetches_the_locked_start_and_unpacks_the_locked_reference(self):
+        from r3d import reference_set
+        from test_r3d_reference import write_reference_tree
+
+        source = self.root / "references"
+        source.mkdir()
+        expected = write_reference_tree(source)
+        reference = self.root / self.reference.output
+        reference.write_bytes(reference_set.pack_references(source))
+        start = self.root / self.start.output
+        start.write_bytes(b"locked start bundle")
+        lock = {item.key: produce.record(item, path, self.cache)
+                for item, path in ((self.start, start), (self.reference, reference))}
+        fit = next(item for item in self.bakes(bake.locked_starts(lock)) if item.kind == "fit")
+        # Local makes differ, so only the lock supplies the bytes the fit names.
+        for item, path in ((self.start, start), (self.reference, reference)):
+            path.write_bytes(b"other locally made bytes")
+            produce.record(item, path, self.cache)
+
+        def fit_stage(scene_path, scene, job, work, *, target, inputs, start):
+            self.assertEqual((scene_path, scene.path, job.asset_name),
+                             (fit.scene.path, fit.scene.path, fit.job.asset_name))
+            self.assertEqual(start.read_bytes(), b"locked start bundle")
+            self.assertEqual({path.relative_to(inputs).as_posix(): path.read_bytes()
+                              for path in inputs.rglob("*") if path.is_file()}, expected)
+            target.write_bytes(b"fitted bundle")
+
+        with mock.patch("r3d.fit.stage.fit", side_effect=fit_stage) as stage:
+            row = produce.produce_fit(fit, self.cache, lock)
+        stage.assert_called_once()
+        self.assertEqual(bake.cached(row, fit.suffix, self.cache).read_bytes(), b"fitted bundle")
 
     def test_a_seeded_start_is_replaced_by_the_runs_make_in_the_key_of_its_fit(self):
         done = self.lock_from_run(self.locked(SEEDED_SHA256, seeded=True))
@@ -753,26 +806,37 @@ class FittedBakeTests(FittedBakeCase):
     def test_a_start_made_by_the_mesh_pass_keys_its_fit_in_the_fit_pass(self):
         done = self.command(["bake"], {})
         self.assertEqual(done.code, 0, done.err)
-        self.assertEqual([item.key for item in done.produced], [self.start.key, self.fit(MADE_SHA256).key, self.level(MADE_SHA256).key])
+        self.assertEqual([item.key for item in done.produced],
+                         [self.start.key, self.reference.key, self.fit(MADE_SHA256).key, self.level(MADE_SHA256).key])
+        fitted = next(item for item in done.produced if item.kind == "fit")
+        self.assertEqual(fitted.stages["reference_sha256"], REFERENCE_SHA256)
 
     def test_the_locks_start_bytes_win_over_bytes_made_again_here_in_the_key_of_its_fit(self):
         """--again makes a locked start once more, with other bytes; its fit is still keyed on the lock's."""
         done = self.command(["bake", "--again"], self.locked(LOCKED_SHA256, run=RUN))
-        self.assertEqual(done.code, 0, done.err)
+        self.assertEqual(done.code, 1)
+        self.assertIn(self.start.output, done.err)
+        self.assertIn("made again with other bytes", done.err)
         self.assertIn(f"sha256 {MADE_SHA256}", done.out)
-        self.assertEqual([item.key for item in done.produced], [self.start.key, self.fit(LOCKED_SHA256).key, self.level(LOCKED_SHA256).key])
+        self.assertEqual([item.key for item in done.produced],
+                         [self.start.key, self.reference.key, self.fit(LOCKED_SHA256).key, self.level(LOCKED_SHA256).key])
+
+    def test_making_again_with_the_locked_bytes_succeeds(self):
+        done = self.command(["bake", "--again"], self.locked(MADE_SHA256, run=RUN))
+        self.assertEqual(done.code, 0, done.err)
+        self.assertIn("the same bytes as the lock", done.out)
 
     def test_a_bake_prunes_first_and_only_a_run_made_again_renders_fresh_references(self):
         with mock.patch.object(produce, "prune_references") as prune:
             plain = self.command(["bake"], self.locked(LOCKED_SHA256, run=RUN))
             again = self.command(["bake", "--again"], self.locked(LOCKED_SHA256, run=RUN))
         self.assertEqual([call.args for call in prune.call_args_list], [(self.cache,), (self.cache,)])
-        def fits(done):
-            return [fresh for item, fresh in zip(done.produced, done.fresh) if item.kind == "fit"]
+        def references(done):
+            return [fresh for item, fresh in zip(done.produced, done.fresh) if item.kind == "reference"]
 
-        self.assertEqual(fits(plain), [None])
-        self.assertEqual(len(fits(again)), 1)
-        self.assertIsNotNone(fits(again)[0], "a run made again gives its fits a folder of its own")
+        self.assertEqual(references(plain), [])
+        self.assertEqual(len(references(again)), 1)
+        self.assertIsNotNone(references(again)[0], "a run made again gives its reference sets a folder of its own")
 
     def test_a_locked_start_is_not_made_and_keys_its_fit(self):
         done = self.command(["bake"], self.locked(LOCKED_SHA256, run=RUN))
@@ -785,7 +849,7 @@ class FittedBakeTests(FittedBakeCase):
                 done = self.command(argv, {})
                 self.assertEqual(done.code, 1)
                 self.assertIn(fit_output, done.err)
-                self.assertIn("is not locked", done.err)
+                self.assertIn("are not locked", done.err)
                 self.assertEqual(done.produced, [])
 
     def test_levels_whose_fit_is_not_locked_are_skipped_naming_the_fit_and_the_run_goes_on(self):
@@ -913,8 +977,9 @@ class PosesTests(FittedBakeCase):
         moved = bake.Poses({})
         after = self.keys(moved)
         self.assertNotEqual({row["poses"] for row in rows.used.values()}, {row["poses"] for row in moved.used.values()})
-        for stage in ("start", "reference", "fit"):
+        for stage in ("start", "reference"):
             self.assertNotEqual(before[stage], after[stage])
+        self.assertEqual(before["fit"], after["fit"], "the locked input bytes stay the same")
         self.job.renderer.visibility.every_ms += 1
         spaced = self.keys()
         self.assertNotEqual(after["start"], spaced["start"])
@@ -934,11 +999,11 @@ class PosesTests(FittedBakeCase):
         self.assertEqual(before, self.keys())
         path.animation = write_camera_clip(self.root, name="different", reach=2.0, props=("still",))
         moved = self.keys()
-        self.assertTrue(all(before[stage] != moved[stage] for stage in ("start", "reference", "fit")))
+        self.assertTrue(all(before[stage] != moved[stage] for stage in ("start", "reference")))
         path.animation = write_camera_clip(self.root, name="node", reach=3.0, node="other")
         path.node = "other"
         still = self.keys()
-        self.assertTrue(all(moved[stage] != still[stage] for stage in ("start", "reference", "fit")))
+        self.assertTrue(all(moved[stage] != still[stage] for stage in ("start", "reference")))
 
     def test_bad_clip_naming_fails_load(self):
         from anim import clip_name
@@ -1059,7 +1124,8 @@ class CpuVendorTests(FittedBakeCase):
 
     def made(self, start_cpu, fit_cpu=None):
         """A run's makes: the start mesh on `start_cpu` and its fit on `fit_cpu`; None leaves the CPU out."""
-        made = {self.start.key: row_of(self.start, MADE_SHA256, run=RUN, **({"cpu_vendor": start_cpu} if start_cpu else {}))}
+        made = {item.key: row_of(item, sha256, run=RUN, **({"cpu_vendor": start_cpu} if start_cpu else {}))
+                for item, sha256 in ((self.start, MADE_SHA256), (self.reference, REFERENCE_SHA256))}
         fit = self.fit(MADE_SHA256)
         made[fit.key] = row_of(fit, FIT_SHA256, run=RUN, **({"cpu_vendor": fit_cpu} if fit_cpu else {}))
         made[self.level(MADE_SHA256).key] = row_of(self.level(MADE_SHA256), FIT_SHA256, run=RUN)
@@ -1073,6 +1139,15 @@ class CpuVendorTests(FittedBakeCase):
         self.assertEqual(done.code, 1)
         self.assertFalse(done.written, "a refused run writes no lock")
         for named in (f"run {RUN}", self.start.output, self.INTEL, self.AMD, "re-run the failed Bakes CPU job"):
+            self.assertIn(named, done.err)
+
+    def test_a_run_whose_reference_was_made_on_another_vendor_is_refused_naming_it(self):
+        made = self.made(self.AMD)
+        made[self.reference.key]["cpu_vendor"] = self.INTEL
+        done = self.lock(made, self.AMD)
+        self.assertEqual(done.code, 1)
+        self.assertFalse(done.written)
+        for named in (f"run {RUN}", self.reference.output, self.INTEL, self.AMD):
             self.assertIn(named, done.err)
 
     def test_a_run_that_names_no_vendor_is_refused(self):
@@ -1163,6 +1238,7 @@ class FitGpuTests(FittedBakeCase):
     def test_a_locked_fit_keeps_the_gpu_its_run_made_it_on(self):
         fit = self.fit(MADE_SHA256)
         made = {self.start.key: row_of(self.start, MADE_SHA256, run=RUN, cpu_vendor="AuthenticAMD"),
+                self.reference.key: row_of(self.reference, REFERENCE_SHA256, run=RUN, cpu_vendor="AuthenticAMD"),
                 fit.key: row_of(fit, FIT_SHA256, run=RUN, gpu=self.GPU),
                 self.level(MADE_SHA256).key: row_of(self.level(MADE_SHA256), FIT_SHA256, run=RUN)}
         done = self.command(["lock", "--from-run", str(RUN)], {}, made, mesh_cpu_vendor="AuthenticAMD")
@@ -1282,7 +1358,7 @@ class KeptWorkTests(FittedBakeCase):
             from bake import bake, produce
             root, lock_sha, last = pathlib.Path(sys.argv[2]), sys.argv[3], sys.argv[4]
             lock = {item.key: {"output": item.output, "key": item.key, "sha256": lock_sha, "run": 1}
-                    for item in bake.bakes([root], {}) if item.kind == "mesh"}
+                    for item in bake.bakes([root], {}) if item.kind in ("mesh", "reference")}
 
             def stub(item, cache, lock=None, blender=None, fresh_references=None):
                 if item.output == last:
@@ -1392,7 +1468,8 @@ class LockTests(unittest.TestCase):
     def waiting_fit(self):
         """A fit whose start, key "k" * 64, the lock does not have yet: its own key is unknown."""
         return bake.Bake(output="two.bundle", source=self.tree, holder="two", kind="fit", key=None,
-                         suffix=bake.BUNDLE_SUFFIX, tree=self.root / "two.bundle", stages={"start": "k" * 64})
+                         suffix=bake.BUNDLE_SUFFIX, tree=self.root / "two.bundle",
+                         stages={"start": "k" * 64, "reference": "r" * 64, "reference_sha256": REFERENCE_SHA256})
 
     def test_a_run_locks_a_start_while_its_fit_waits_naming_the_fit(self):
         start = bake_of("k" * 64, self.tree)
@@ -1420,12 +1497,12 @@ class LockTests(unittest.TestCase):
                         suffix=bake.BUNDLE_SUFFIX, tree=self.root / "two.bundle",
                         stages={"start": "k" * 64, "start_sha256": self.row["sha256"]}, start=start)
         bake.store(self.tree, self.row, bake.BUNDLE_SUFFIX, self.cache)
-        path = produce.start_file(fit, self.cache, {"k" * 64: self.row})
+        path = produce.input_file(fit, self.cache, {"k" * 64: self.row})
         self.assertEqual(path.read_bytes(), self.tree.read_bytes())
         other = {"k" * 64: {**self.row, "sha256": "e" * 64}}
         for lock, cache in (({}, self.root / "empty"), (other, self.root / "empty")):
             with self.assertRaisesRegex(bake.BakeMissing, "two.bundle: its start k+ with sha256 .* is neither locked"):
-                produce.start_file(fit, cache, lock)
+                produce.input_file(fit, cache, lock)
 
     def fit_of_start_made_here(self, start_sha256):
         """A fit naming `start_sha256`, whose start this cache made (no lock row) with the bytes of the tree's file."""
@@ -1437,12 +1514,12 @@ class LockTests(unittest.TestCase):
 
     def test_a_start_made_in_this_cache_with_the_named_sha_is_used_without_a_lock_row(self):
         fit = self.fit_of_start_made_here(self.row["sha256"])
-        self.assertEqual(produce.start_file(fit, self.cache, {}).read_bytes(), self.tree.read_bytes())
+        self.assertEqual(produce.input_file(fit, self.cache, {}).read_bytes(), self.tree.read_bytes())
 
     def test_a_start_made_in_this_cache_with_another_sha_is_refused(self):
         fit = self.fit_of_start_made_here("e" * 64)
         with self.assertRaisesRegex(bake.BakeMissing, "two.bundle: its start k+ with sha256 e+ is neither locked"):
-            produce.start_file(fit, self.cache, {})
+            produce.input_file(fit, self.cache, {})
 
     def test_one_seed_from_a_run_locks_the_start_and_carries_the_fits_bytes(self):
         start = bake_of("k" * 64, self.tree)
