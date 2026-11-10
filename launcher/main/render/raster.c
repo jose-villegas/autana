@@ -69,24 +69,39 @@ typedef struct {
     r3d_span_writer_t writers[GFX_ATTACHMENTS_FURTHER_MAX];
 } batch_item_t;
 
+/* Whether `mesh` fits a batch past `*vertices` and `*clusters`, within the
+ * capacities; moves them past it when it does. */
+static inline __attribute__((always_inline)) bool
+batch_fits(const r3d_lit_mesh_t* mesh, int vertex_capacity, int cluster_capacity, int* vertices, int* clusters) {
+    if (*vertices + mesh->vertex_count > vertex_capacity || *clusters + mesh->cluster_count > cluster_capacity) {
+        return false;
+    }
+    *vertices += mesh->vertex_count;
+    *clusters += mesh->cluster_count;
+    return true;
+}
+
 int
 raster_batch_end(const raster_t* raster, int first) {
     const int most = raster_settings(raster).batched ? RASTER_BATCH_INSTANCES : 1;
     const int vertex_capacity = raster_vertex_capacity(raster);
     const int cluster_capacity = raster_cluster_capacity(raster);
-    /* A batch holds instances or kept copies, never both. */
-    const int count = first < raster->instance_count ? raster->instance_count : raster_census_count(raster);
     int vertices = 0;
     int clusters = 0;
     int end = first;
-    while (end < count && end - first < most) {
-        const r3d_lit_mesh_t* mesh = raster_census_entry(raster, end)->mesh;
-        if (vertices + mesh->vertex_count > vertex_capacity || clusters + mesh->cluster_count > cluster_capacity) {
-            break;
+    /* A batch holds instances or kept copies, never both. */
+    if (first < raster->instance_count) {
+        while (end < raster->instance_count && end - first < most
+               && batch_fits(raster->instances[end].mesh, vertex_capacity, cluster_capacity, &vertices, &clusters)) {
+            end++;
         }
-        vertices += mesh->vertex_count;
-        clusters += mesh->cluster_count;
-        end++;
+    } else {
+        const int count = raster_census_count(raster);
+        while (end < count && end - first < most
+               && batch_fits(raster_census_copy(raster, end)->instance.mesh, vertex_capacity, cluster_capacity,
+                             &vertices, &clusters)) {
+            end++;
+        }
     }
     return end;
 }
