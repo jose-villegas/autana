@@ -22,6 +22,7 @@
 typedef struct checkpoint checkpoint_t;
 #include "core/memory.h"
 #include "render/framegen/framegen.h"
+#include "render/lod/r3d_lod.h"
 #include "render/partial/render_partial.h"
 #include "render/r3d_instance.h"
 #include "render/raster.h"
@@ -79,7 +80,8 @@ typedef struct {
 
 typedef struct {
     raster_split_t split;
-    raster_t raster; /* keeps its upscale maps from frame to frame */
+    r3d_lod_steer_t steer; /* the pick's tolerance within lod.triangle_budget */
+    raster_t raster;       /* keeps its upscale maps from frame to frame */
     void* scratch;
     size_t scratch_bytes;
     memory_take_fn take; /* where the scratch comes from; NULL is the heap */
@@ -218,6 +220,11 @@ upscale_filter_t render_context_upscale_filter(const render_context_t* context);
 bool render_context_compose(render_context_t* context, uint16_t* destination, uint16_t* half, uint8_t* half_seams);
 
 render_context_frame_t render_context_frame(const render_context_t* context);
+
+/* The destination rows [rows_first, rows_end) the last compose rewrote, as in
+ * render_context_frame(), without copying the whole frame onto a deep stack. */
+int render_context_rows_first(const render_context_t* context);
+int render_context_rows_end(const render_context_t* context);
 
 /* Whether the debug view draws lines over the composed picture: a caller
  * then composes at full size, not into a half picture. */

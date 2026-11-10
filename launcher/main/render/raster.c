@@ -29,17 +29,40 @@ TUNE_OVERRIDE(render, partial_redraw, 1);
 TUNE_OVERRIDE(render, lod_coverage_permille, INT32_MAX);
 /* Overrides lod.pick_every; 1 picks every instance every frame. */
 TUNE_OVERRIDE(render, lod_pick_every, R3D_LOD_PICK_EVERY_MAX);
+/* Overrides lod.triangle_budget. */
+TUNE_OVERRIDE(render, lod_triangle_budget, INT32_MAX);
 
 render_settings_t
 raster_settings(const raster_t* raster) {
     const render_settings_t s = raster->settings != NULL ? *raster->settings : RENDER_SETTINGS_DEFAULT;
-    return (render_settings_t){tune_override(cull, s.cull) != 0,
-                               tune_override(depth_fit, s.depth_fit) != 0,
-                               tune_override(batched, s.batched) != 0,
-                               tune_override(partial_redraw, s.partial_redraw) != 0,
-                               {s.lod.tolerance_px, s.lod.hysteresis_px,
-                                tune_override(lod_coverage_permille, s.lod.coverage_permille),
-                                tune_override(lod_pick_every, s.lod.pick_every)}};
+    return (render_settings_t){
+        tune_override(cull, s.cull) != 0,
+        tune_override(depth_fit, s.depth_fit) != 0,
+        tune_override(batched, s.batched) != 0,
+        tune_override(partial_redraw, s.partial_redraw) != 0,
+        {s.lod.tolerance_px, s.lod.hysteresis_px, tune_override(lod_coverage_permille, s.lod.coverage_permille),
+         tune_override(lod_pick_every, s.lod.pick_every), tune_override(lod_triangle_budget, s.lod.triangle_budget)}};
+}
+
+bool
+raster_partial_redraw(const raster_t* raster) {
+    const bool set =
+        raster->settings != NULL ? raster->settings->partial_redraw : RENDER_SETTINGS_DEFAULT.partial_redraw;
+    return tune_override(partial_redraw, set) != 0;
+}
+
+int
+raster_pick_every(const raster_t* raster) {
+    const int set =
+        raster->settings != NULL ? raster->settings->lod.pick_every : RENDER_SETTINGS_DEFAULT.lod.pick_every;
+    return tune_override(lod_pick_every, set);
+}
+
+int
+raster_triangle_budget(const raster_t* raster) {
+    const int set =
+        raster->settings != NULL ? raster->settings->lod.triangle_budget : RENDER_SETTINGS_DEFAULT.lod.triangle_budget;
+    return tune_override(lod_triangle_budget, set);
 }
 
 /* One instance of a batch: its lens, the clusters culling kept, where its
@@ -115,8 +138,10 @@ typedef struct {
  * output's. */
 typedef struct {
     bool picks;
-    uint32_t round; /* raster_t.pick_round */
-    render_lod_settings_t lod;
+    uint32_t round;            /* raster_t.pick_round */
+    render_lod_settings_t lod; /* tolerance_px the steer's, when it steers */
+    float floor_px;            /* lod.tolerance_px, the steer's floor, in its own pixels */
+    r3d_lod_steer_t* steer;    /* set when picking within a triangle budget */
 } level_pick_t;
 
 /* One core's share of a cull: its own lens cache, pipeline work block,
@@ -124,6 +149,7 @@ typedef struct {
 typedef struct {
     raster_stats_t stats;
     r3d_depth_fit_t fit;
+    bool levels_changed; /* a level pick changed an instance's cut */
 } cull_half_t;
 
 typedef struct {
@@ -268,6 +294,12 @@ uint16_t*
 raster_depth(const raster_t* raster) {
     const raster_buffers_t b = raster_carve(raster);
     return gfx_target_depth(&b.picture, 0);
+}
+
+bool
+raster_levels_changed(const raster_t* raster) {
+    const draw_work_t* work = raster_carve(raster).draw;
+    return work->levels_changed;
 }
 
 float
@@ -452,7 +484,17 @@ level_pick_init(const raster_t* raster, picture_lens_t* picture, const render_vi
                 const render_lod_settings_t* lod) {
     const r3d_lens_t* lens = picture_lens_at(picture, 1);
     const float drawn = mathf_max(lens->focal_x, lens->focal_y) / mathf_max(view->lens.fx, view->lens.fy);
-    level_pick_t pick = {raster->picks_levels, raster->pick_round, *lod};
+    level_pick_t pick = {raster->picks_levels, raster->pick_round, *lod, lod->tolerance_px, NULL};
+    if (pick.picks && raster->steer != NULL && lod->triangle_budget > 0) {
+        pick.steer = raster->steer;
+        /* A steer below the floor was never started, or the floor rose past it. */
+        if (pick.round == 0 || pick.steer->tolerance_px < pick.floor_px) {
+            r3d_lod_steer_reset(pick.steer, pick.floor_px);
+        }
+        pick.lod.tolerance_px = pick.steer->tolerance_px;
+        pick.steer->halves[0].unit = 1.0F / drawn;
+        pick.steer->halves[1].unit = pick.steer->halves[0].unit;
+    }
     pick.lod.tolerance_px *= drawn;
     pick.lod.hysteresis_px *= drawn;
     return pick;
@@ -463,11 +505,18 @@ level_pick_init(const raster_t* raster, picture_lens_t* picture, const render_vi
  * frames, instance `index` picks in the frames its share comes round, and
  * every instance in round 0. */
 static bool
-level_pick(const level_pick_t* pick, int index, const r3d_instance_t* instance, const r3d_lens_t* lens) {
+level_pick(const level_pick_t* pick, int index, const r3d_instance_t* instance, const r3d_lens_t* lens,
+           r3d_lod_histogram_t* histogram) {
     const int every = pick->lod.pick_every;
     const bool due = every <= 1 || pick->round == 0 || ((uint32_t)index + pick->round) % (uint32_t)every == 0;
-    if (pick->picks && due && instance->lod_coarse != NULL && instance->mesh->lod_group_count > 0) {
-        return r3d_lod_pick(instance->mesh, lens, &pick->lod, instance->lod_coarse);
+    if (!pick->picks || !due) {
+        return false;
+    }
+    if (instance->lod_coarse != NULL && instance->mesh->lod_group_count > 0) {
+        return r3d_lod_pick(instance->mesh, lens, &pick->lod, instance->lod_coarse, histogram);
+    }
+    if (histogram != NULL) {
+        histogram->finest += r3d_lod_finest_triangles(instance->mesh); /* drawn whatever the tolerance */
     }
     return false;
 }
@@ -494,7 +543,8 @@ cull_slice(void* ctx, int from, int to) {
         } else {
             r3d_lens_t lens;
             instance_lens(&picture, instance, &lens);
-            mine->stats.levels_changed |= level_pick(&job->pick, i, instance, &lens);
+            mine->levels_changed |= level_pick(&job->pick, i, instance, &lens,
+                                               job->pick.steer != NULL ? &job->pick.steer->halves[half] : NULL);
             culled[0] = (uint16_t)cull_instance(instance, job->settings.cull, &lens, culled + 1, &mine->stats, block,
                                                 job->settings.depth_fit ? &mine->fit : NULL);
         }
@@ -518,22 +568,32 @@ cull_begin(draw_work_t* work, const raster_t* raster, const render_view_t* view,
     world_cull_init(&job->world, picture, view, job->settings.cull);
     job->pick = level_pick_init(raster, picture, view, &job->settings.lod);
     for (int h = 0; h < 2; h++) {
-        job->halves[h] = (cull_half_t){{0}, {view->lens.near_z, INFINITY}};
+        job->halves[h] = (cull_half_t){{0}, {view->lens.near_z, INFINITY}, false};
     }
 }
 
-/* Adds both cores' counts and level changes to `stats` and returns the
- * nearer depth fit, or near_z when nothing was kept. */
+/* Adds both cores' counts to `stats`, ORs their level changes into
+ * `levels_changed`, and returns the nearer depth fit, or near_z when nothing
+ * was kept. */
 static __attribute__((noinline)) float
-cull_end(const cull_job_t* job, raster_stats_t* stats, float near_z) {
+cull_end(const cull_job_t* job, raster_stats_t* stats, bool* levels_changed, float near_z) {
     float depth_near = INFINITY;
     for (int h = 0; h < 2; h++) {
         stats->clusters += job->halves[h].stats.clusters;
         stats->triangles += job->halves[h].stats.triangles;
-        stats->levels_changed |= job->halves[h].stats.levels_changed;
+        *levels_changed |= job->halves[h].levels_changed;
         depth_near = mathf_min(depth_near, job->halves[h].fit.depth_near);
     }
     return depth_near < INFINITY ? depth_near : near_z;
+}
+
+/* Ends the frame's share of a steered pick's round: the round is done once
+ * every instance has had its turn. */
+static __attribute__((noinline)) void
+steer_end(const level_pick_t* pick, int drawn) {
+    const int every = pick->lod.pick_every;
+    const bool done = every <= 1 || pick->round == 0 || pick->steer->frames + 1 >= every;
+    r3d_lod_steer_frame(pick->steer, pick->floor_px, pick->lod.triangle_budget, drawn, done);
 }
 
 /* Culls every instance into the census list, both cores each a range of
@@ -548,8 +608,11 @@ cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, r
     cull_begin(work, raster, view, fitted);
     int16_t* share = raster->split != NULL ? &raster->split->cull_offset : NULL;
     (void)job_run_range_in(share, cull_slice, &work->cull, raster->instance_count, work->cull.ranges);
-    const float depth_near = cull_end(&work->cull, stats, view->lens.near_z);
-    work->levels_changed = stats->levels_changed; /* a draw on this census reads it */
+    work->levels_changed = false; /* a draw on this census reads it */
+    const float depth_near = cull_end(&work->cull, stats, &work->levels_changed, view->lens.near_z);
+    if (work->cull.pick.steer != NULL) {
+        steer_end(&work->cull.pick, stats->triangles);
+    }
     return depth_near;
 }
 
@@ -580,6 +643,32 @@ bool
 raster_drew_every_row(const raster_t* raster) {
     const draw_work_t* work = scratch_draw(raster);
     return work->first_row == 0 && work->end_row == raster->height;
+}
+
+/* Splits the rows this draw redraws between the two cores' slices, and
+ * returns the share to steer by: the split's own, or NULL for some rows only
+ * (render/partial), which split at their middle and steer nothing. Not
+ * inlined: its locals stay off the draw chain's frame. */
+static __attribute__((noinline)) int16_t*
+plan_draw_rows(const raster_t* raster, draw_work_t* work, int16_t* draw_share) {
+    slice_t* mine = &work->mine;
+    slice_t* other = &work->other;
+    const int top = work->first_row;
+    const int bottom = work->end_row;
+    const bool every_row = top == 0 && bottom == raster->height;
+    draw_share = every_row ? draw_share : NULL;
+    const int mid = every_row ? r3d_pipeline_draw_split(work->batch.parts, work->batch.count, raster->height,
+                                                        job_share_permille(draw_share))
+                              : (top + bottom) / 2;
+    mine->work_index = 1;
+    other->work_index = 0;
+    mine->target = &work->targets[1];
+    other->target = &work->targets[0];
+    mine->first = mid;
+    mine->count = bottom - mid;
+    other->first = top;
+    other->count = mid - top;
+    return draw_share;
 }
 
 /* Draws batch `index`: one transform fork/join over every item's clusters,
@@ -615,22 +704,7 @@ draw_batch(const raster_t* raster, int index, draw_work_t* work) {
 
     FRAME_COST_BEGIN(drawn_from);
     FRAME_LAP("r3d.draw.split");
-    /* Some rows only (render/partial): split at their middle, steering nothing. */
-    const int top = work->first_row;
-    const int bottom = work->end_row;
-    const bool every_row = top == 0 && bottom == raster->height;
-    draw_share = every_row ? draw_share : NULL;
-    const int mid =
-        every_row ? r3d_pipeline_draw_split(batch->parts, batch->count, raster->height, job_share_permille(draw_share))
-                  : (top + bottom) / 2;
-    mine->work_index = 1;
-    other->work_index = 0;
-    mine->target = &work->targets[1];
-    other->target = &work->targets[0];
-    mine->first = mid;
-    mine->count = bottom - mid;
-    other->first = top;
-    other->count = mid - top;
+    draw_share = plan_draw_rows(raster, work, draw_share);
     FRAME_LAP_END();
     job_run_steered(draw_share, draw_slice, mine, other, sizeof *mine);
     FRAME_LAP_SINCE("r3d.draw.wait");
