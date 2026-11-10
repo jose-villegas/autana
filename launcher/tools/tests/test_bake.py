@@ -756,6 +756,12 @@ class FittedBakeTests(FittedBakeCase):
         self.assertIn(f"sha256 {MADE_SHA256}", done.out)
         self.assertEqual([item.key for item in done.produced], [self.start.key, self.fit(LOCKED_SHA256).key, self.level(LOCKED_SHA256).key])
 
+    def test_a_seeded_start_made_again_here_keys_its_fit_on_the_bytes_made(self):
+        """A seeded row's bytes were carried over, not made by its key's code: the start made here replaces them."""
+        done = self.command(["bake", "--again"], self.locked(SEEDED_SHA256, seeded=True))
+        self.assertEqual(done.code, 0, done.err)
+        self.assertEqual([item.key for item in done.produced], [self.start.key, self.fit(MADE_SHA256).key, self.level(MADE_SHA256).key])
+
     def test_a_bake_prunes_first_and_only_a_run_made_again_renders_fresh_references(self):
         with mock.patch.object(produce, "prune_references") as prune:
             plain = self.command(["bake"], self.locked(LOCKED_SHA256, run=RUN))
