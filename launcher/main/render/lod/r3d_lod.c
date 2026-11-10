@@ -275,6 +275,35 @@ edge_past(float px) {
     return edge;
 }
 
+/* The least edge from `past_floor` whose prediction in `at_edge`, scaled
+ * by `kept`, fits `budget`: -1 when the floor's fits, the coarsest edge when
+ * none does. */
+static int
+edge_within(const int64_t* at_edge, int past_floor, float kept, int budget) {
+    if ((float)at_edge[mathi_max(past_floor - 1, 0)] * kept <= (float)budget) {
+        return -1;
+    }
+    for (int edge = past_floor; edge < R3D_LOD_BINS; edge++) {
+        if ((float)at_edge[edge] * kept <= (float)budget) {
+            return edge;
+        }
+    }
+    return R3D_LOD_BINS; /* out of reach */
+}
+
+/* The bin a steer at `from` moves to when `fits` is the least that fits: it
+ * rises at once, and falls a bin a round once a bin lower than that fits; one
+ * that only just fits is held, so a camera closing in does not dip and climb
+ * back. */
+static int
+steered_bin(int fits, int from, int past_floor) {
+    if (fits >= from) {
+        return fits;
+    }
+    const int bin = fits < from - 1 ? from - 1 : from;
+    return bin >= 0 && bin < past_floor ? -1 : bin;
+}
+
 void
 r3d_lod_steer_frame(r3d_lod_steer_t* steer, float floor_px, int budget, int drawn, bool round_done) {
     steer->drawn += drawn;
@@ -295,22 +324,7 @@ r3d_lod_steer_frame(r3d_lod_steer_t* steer, float floor_px, int budget, int draw
      * the tolerance the round drew with. */
     const int64_t was = at_edge[mathi_max(edge_past(steer->tolerance_px) - 1, 0)];
     const float kept = was > 0 ? (float)steer->drawn / ((float)steer->frames * (float)was) : 1.0F;
-    int bin = -1;
-    if ((float)at_edge[mathi_max(past_floor - 1, 0)] * kept > (float)budget) {
-        bin = R3D_LOD_BINS; /* out of reach: the coarsest edge */
-        for (int edge = past_floor; edge < R3D_LOD_BINS; edge++) {
-            if ((float)at_edge[edge] * kept <= (float)budget) {
-                bin = edge;
-                break;
-            }
-        }
-    }
-    if (bin < steer->bin) {
-        /* falls a bin a round, once a bin lower than that fits: one that only
-         * just fits is held, so a camera closing in does not dip and climb back */
-        bin = bin < steer->bin - 1 ? steer->bin - 1 : steer->bin;
-        bin = bin >= 0 && bin < past_floor ? -1 : bin;
-    }
+    const int bin = steered_bin(edge_within(at_edge, past_floor, kept, budget), steer->bin, past_floor);
     steer->settled = bin == steer->bin;
     steer->bin = bin;
     steer->tolerance_px = bin < 0 ? floor_px : mathf_max(r3d_lod_bin_edge(bin), floor_px);

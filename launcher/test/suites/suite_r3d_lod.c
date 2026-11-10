@@ -966,6 +966,38 @@ predicted_at(const r3d_lod_histogram_t* histogram, int edge) {
  * steered tolerance, the cap rising with it. The risen cap is whole
  * thousandths, so the prediction lies between the picks at the cap rounded
  * down and a thousandth more. */
+typedef struct {
+    int checked; /* edges whose prediction draws coarse */
+    int capped;  /* edges where the floor's cap draws more than the risen one */
+} edge_tally_t;
+
+/* Checks the prediction at bin edge `edge` of `histogram`, filled by a pick
+ * at `floor` through `lens`, against fresh picks at that edge. */
+static void
+check_edge(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* floor,
+           const r3d_lod_histogram_t* histogram, int edge, edge_tally_t* tally) {
+    render_lod_settings_t at = *floor;
+    at.tolerance_px = r3d_lod_bin_edge(edge);
+    at.hysteresis_px = 0.0F;
+    const r3d_lod_steer_t steer = {.tolerance_px = at.tolerance_px};
+    at.coverage_permille = r3d_lod_steer_coverage(&steer, floor->tolerance_px, floor->coverage_permille);
+    uint32_t fresh[R3D_LOD_WORDS(GROUPS)] = {0};
+    r3d_lod_pick(mesh, lens, &at, fresh, NULL);
+    render_lod_settings_t over = at;
+    over.coverage_permille++;
+    uint32_t wider[R3D_LOD_WORDS(GROUPS)] = {0};
+    r3d_lod_pick(mesh, lens, &over, wider, NULL);
+    const int predicted = predicted_at(histogram, edge);
+    TEST_ASSERT_TRUE_MESSAGE(predicted <= drawn_triangles(mesh, fresh), "edge");
+    TEST_ASSERT_TRUE_MESSAGE(predicted >= drawn_triangles(mesh, wider), "edge");
+    tally->checked += predicted < histogram->finest ? 1 : 0;
+    /* The same edge with the floor's cap draws more: the risen cap let a group turn. */
+    at.coverage_permille = floor->coverage_permille;
+    uint32_t held[R3D_LOD_WORDS(GROUPS)] = {0};
+    r3d_lod_pick(mesh, lens, &at, held, NULL);
+    tally->capped += drawn_triangles(mesh, held) > drawn_triangles(mesh, fresh) ? 1 : 0;
+}
+
 static void
 test_the_histogram_predicts_the_triangles_a_pick_at_each_bin_edge_draws(void) {
     const r3d_lit_mesh_t* mesh = counted_mesh();
@@ -975,7 +1007,7 @@ test_the_histogram_predicts_the_triangles_a_pick_at_each_bin_edge_draws(void) {
     for (size_t c = 0; c < sizeof caps / sizeof caps[0]; c++) {
         render_lod_settings_t floor = LOD;
         floor.coverage_permille = caps[c];
-        int checked = 0, capped = 0;
+        edge_tally_t tally = {0, 0};
         for (int p = 0; p < steps; p++) {
             const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
             uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
@@ -983,33 +1015,14 @@ test_the_histogram_predicts_the_triangles_a_pick_at_each_bin_edge_draws(void) {
             r3d_lod_pick(mesh, &lens, &floor, coarse, &histogram);
             TEST_ASSERT_EQUAL_INT(FINEST_CLUSTERS * FINEST_TRIANGLES, histogram.finest);
             for (int edge = 1; edge <= R3D_LOD_BINS; edge++) {
-                if (r3d_lod_bin_edge(edge) < floor.tolerance_px) {
-                    continue;
+                if (r3d_lod_bin_edge(edge) >= floor.tolerance_px) {
+                    check_edge(mesh, &lens, &floor, &histogram, edge, &tally);
                 }
-                render_lod_settings_t at = floor;
-                at.tolerance_px = r3d_lod_bin_edge(edge);
-                at.hysteresis_px = 0.0F;
-                const r3d_lod_steer_t steer = {.tolerance_px = at.tolerance_px};
-                at.coverage_permille = r3d_lod_steer_coverage(&steer, floor.tolerance_px, floor.coverage_permille);
-                uint32_t fresh[R3D_LOD_WORDS(GROUPS)] = {0};
-                r3d_lod_pick(mesh, &lens, &at, fresh, NULL);
-                render_lod_settings_t over = at;
-                over.coverage_permille++;
-                uint32_t wider[R3D_LOD_WORDS(GROUPS)] = {0};
-                r3d_lod_pick(mesh, &lens, &over, wider, NULL);
-                TEST_ASSERT_TRUE_MESSAGE(predicted_at(&histogram, edge) <= drawn_triangles(mesh, fresh), "edge");
-                TEST_ASSERT_TRUE_MESSAGE(predicted_at(&histogram, edge) >= drawn_triangles(mesh, wider), "edge");
-                checked += predicted_at(&histogram, edge) < histogram.finest ? 1 : 0;
-                /* The same edge with the floor's cap draws more: the risen cap let a group turn. */
-                at.coverage_permille = floor.coverage_permille;
-                uint32_t held[R3D_LOD_WORDS(GROUPS)] = {0};
-                r3d_lod_pick(mesh, &lens, &at, held, NULL);
-                capped += drawn_triangles(mesh, held) > drawn_triangles(mesh, fresh) ? 1 : 0;
             }
         }
-        TEST_ASSERT_GREATER_THAN_INT(0, checked); /* some edge along the path draws coarse */
+        TEST_ASSERT_GREATER_THAN_INT(0, tally.checked); /* some edge along the path draws coarse */
         if (caps[c] == TIGHT_COVERAGE_PERMILLE) {
-            TEST_ASSERT_GREATER_THAN_INT(0, capped); /* and the tight cap binds somewhere */
+            TEST_ASSERT_GREATER_THAN_INT(0, tally.capped); /* and the tight cap binds somewhere */
         }
     }
 }
@@ -1122,6 +1135,44 @@ steered_round(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint32_t* coar
     return steer->bin;
 }
 
+/* Steers along the path in and out; returns how often the bin moved, and
+ * counts into `swings` each return to a bin left within SETTLE_ROUNDS rounds. */
+static int
+steer_along_the_path(const r3d_lit_mesh_t* mesh, uint32_t* coarse, r3d_lod_steer_t* steer, int budget, int* swings) {
+    const int steps = steps_in();
+    int before = -2, last = -2, held = 0, moved = 0;
+    for (int p = 0; p < 2 * steps; p++) {
+        const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
+        const int bin = steered_round(mesh, &lens, coarse, steer, budget);
+        held++;
+        if (bin != last) {
+            *swings += bin == before && held <= SETTLE_ROUNDS ? 1 : 0;
+            moved++;
+            before = last;
+            last = bin;
+            held = 0;
+        }
+    }
+    return moved;
+}
+
+/* Holds the camera at `lens` for HOLD_ROUNDS rounds: the bin settles within
+ * SETTLE_ROUNDS and stays. */
+static void
+hold_settles(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint32_t* coarse, r3d_lod_steer_t* steer, int budget) {
+    int settled = -2;
+    for (int round = 0; round < HOLD_ROUNDS; round++) {
+        const int bin = steered_round(mesh, lens, coarse, steer, budget);
+        if (round == SETTLE_ROUNDS) {
+            settled = bin;
+        }
+        if (round > SETTLE_ROUNDS) {
+            TEST_ASSERT_EQUAL_INT_MESSAGE(settled, bin, "a held camera's tolerance moved");
+            TEST_ASSERT_TRUE(steer->settled);
+        }
+    }
+}
+
 /* Along the path in and out, a steered pick never swings back to a bin it
  * left within SETTLE_ROUNDS rounds (A, B, A), and held still at a pose it
  * settles within SETTLE_ROUNDS rounds and stays. */
@@ -1133,34 +1184,13 @@ test_a_steered_tolerance_settles_and_does_not_swing_along_the_path(void) {
     r3d_lod_steer_t steer;
     r3d_lod_steer_reset(&steer, LOD.tolerance_px);
     uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
-    int before = -2, last = -2, held = 0, swings = 0, moved = 0;
-    for (int p = 0; p < 2 * steps; p++) {
-        const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
-        const int bin = steered_round(mesh, &lens, coarse, &steer, budget);
-        held++;
-        if (bin != last) {
-            swings += bin == before && held <= SETTLE_ROUNDS ? 1 : 0;
-            moved++;
-            before = last;
-            last = bin;
-            held = 0;
-        }
-    }
+    int swings = 0;
+    const int moved = steer_along_the_path(mesh, coarse, &steer, budget, &swings);
     TEST_ASSERT_EQUAL_INT(0, swings);
     TEST_ASSERT_GREATER_THAN_INT(2, moved); /* the path does steer */
     for (int p = 0; p < steps; p += steps / 8) {
         const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
-        int settled = -2;
-        for (int round = 0; round < HOLD_ROUNDS; round++) {
-            const int bin = steered_round(mesh, &lens, coarse, &steer, budget);
-            if (round == SETTLE_ROUNDS) {
-                settled = bin;
-            }
-            if (round > SETTLE_ROUNDS) {
-                TEST_ASSERT_EQUAL_INT_MESSAGE(settled, bin, "a held camera's tolerance moved");
-                TEST_ASSERT_TRUE(steer.settled);
-            }
-        }
+        hold_settles(mesh, &lens, coarse, &steer, budget);
     }
 }
 
