@@ -563,6 +563,25 @@ level_pick(const level_pick_t* pick, int index, const r3d_instance_t* instance, 
     return false;
 }
 
+/* Picks instance `i`'s level and culls it, seen through `picture`, into
+ * `kept` and core `half`'s counts and depth fit; returns how many it kept. */
+static uint16_t
+cull_seen(cull_job_t* job, picture_lens_t* picture, int half, int i, uint16_t* kept) {
+    const r3d_instance_t* instance = &job->raster->instances[i];
+    cull_half_t* mine = &job->halves[half];
+    r3d_pipeline_work_t* block = job->buffers->work[half];
+    r3d_lens_t lens;
+    instance_lens(picture, instance, &lens);
+    mine->levels_changed |=
+        level_pick(&job->pick, i, instance, &lens, job->pick.steer != NULL ? &job->pick.steer->halves[half] : NULL);
+    const uint16_t count = (uint16_t)cull_instance(instance, job->settings.cull, &lens, kept, &mine->stats, block,
+                                                   job->settings.depth_fit ? &mine->fit : NULL);
+    if (job->settings.depth_fit && job->view->curves && instance->mesh->curve_count > 0) {
+        r3d_pipeline_fit_curves(r3d_lit_mesh_curves(instance->mesh), &lens, block, &mine->fit);
+    }
+    return count;
+}
+
 /* Culls instances [from, to) into their places in the census list: an
  * instance's list starts after every earlier one's count and clusters. */
 static void
@@ -570,8 +589,6 @@ cull_slice(void* ctx, int from, int to) {
     cull_job_t* job = ctx;
     const raster_t* raster = job->raster;
     const int half = from == 0 ? 0 : 1;
-    cull_half_t* mine = &job->halves[half];
-    r3d_pipeline_work_t* block = job->buffers->work[half];
     uint16_t* culled = job->buffers->culled;
     for (int i = 0; i < from; i++) {
         culled += 1 + (size_t)raster->instances[i].mesh->cluster_count;
@@ -583,15 +600,7 @@ cull_slice(void* ctx, int from, int to) {
         if (world_cull_skips(&job->world, instance)) {
             culled[0] = 0;
         } else {
-            r3d_lens_t lens;
-            instance_lens(&picture, instance, &lens);
-            mine->levels_changed |= level_pick(&job->pick, i, instance, &lens,
-                                               job->pick.steer != NULL ? &job->pick.steer->halves[half] : NULL);
-            culled[0] = (uint16_t)cull_instance(instance, job->settings.cull, &lens, culled + 1, &mine->stats, block,
-                                                job->settings.depth_fit ? &mine->fit : NULL);
-            if (job->settings.depth_fit && job->view->curves && instance->mesh->curve_count > 0) {
-                r3d_pipeline_fit_curves(r3d_lit_mesh_curves(instance->mesh), &lens, block, &mine->fit);
-            }
+            culled[0] = cull_seen(job, &picture, half, i, culled + 1);
         }
         culled += 1 + (size_t)instance->mesh->cluster_count;
     }
