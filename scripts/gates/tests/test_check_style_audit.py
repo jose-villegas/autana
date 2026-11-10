@@ -761,6 +761,13 @@ void f(void) {
         })
         self.assertEqual(findings, [])
 
+    def test_home_inside_a_name_is_not_a_path(self):
+        findings = self.audit("PERSONAL-PATH", {
+            "docs/render/data/capture.log": "test_real_time_frame_profile/capybara/home/portrait:PASS\n"
+                                            "cd " + "/".join(["", "home", "jdoe", "esp"]) + "\n",
+        })
+        self.assertEqual(len(findings), 1)
+
     def test_utf8_read_as_cp1252_is_flagged(self):
         mangled = {"middle dot": "\u00b7", "arrow": "\u2192", "e acute": "\u00e9", "check": "\u2713"}
         text = "".join(f"{name}: {char.encode('utf-8').decode('cp1252', errors='replace')}\n"
