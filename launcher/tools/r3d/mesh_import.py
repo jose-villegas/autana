@@ -48,7 +48,7 @@ from r3d.ray_query import RayQuery  # noqa: E402
 from r3d.scene_name import SUFFIX  # noqa: E402
 from r3d.thin.thin_parts import thin_parts_at
 from r3d.thin.curve_fit import fit_curve, light_curve
-from r3d.thin import curve_asset
+from r3d.thin import curve_asset, curve_format
 from r3d.simplify import Allocation, check_ceiling, densify, simplify  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
@@ -323,7 +323,7 @@ def write_baked(job, scene, out_dir, name, geometry=None, recorder=None):
     copies = []
     curves = getattr(geometry, "curves", None)
     if curves:
-        entries.append((curve_asset.name_for_mesh(name), curve_asset.TYPE,
+        entries.append((lcol_asset.sibling_name(name, curve_format.NAME_SUFFIX), curve_asset.TYPE,
                         curve_asset.write_curves(curves, mesh.position_scale,
                                                  scene.tonemap_white if job.bake else 0.0)))
     for shape in getattr(geometry, "shapes", None) or ():

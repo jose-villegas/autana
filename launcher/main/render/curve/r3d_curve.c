@@ -19,15 +19,6 @@ enum { SCREEN_LEFT, SCREEN_RIGHT, SCREEN_TOP, SCREEN_BOTTOM, SCREEN_PLANES };
 #define CURVE_SKIP_PX 1.0F
 #define CURVE_HALF    0.5F
 
-enum {
-    HEADER_BYTES = R3D_CURVE_HEADER_WORDS * sizeof(uint16_t),
-    AT_COUNT = 0,
-    AT_KNOTS = sizeof(uint16_t),
-    AT_VERSION = 2 * sizeof(uint16_t),
-    AT_RESERVED = 3 * sizeof(uint16_t),
-    ENTRY_ALIGNMENT = sizeof(uint16_t),
-};
-
 _Static_assert(sizeof(r3d_curve_t) == 16, "LCRV curve row layout");
 _Static_assert(sizeof(r3d_curve_knot_t) == 10, "LCRV knot row layout");
 
@@ -238,21 +229,22 @@ curves_are_inside(r3d_curve_set_t set, unsigned knots) {
 asset_status_t
 r3d_curve_set_from_asset(asset_view_t asset, r3d_curve_set_t* out) {
     *out = (r3d_curve_set_t){0};
-    asset_status_t status = asset_entry_validate(asset, R3D_CURVE_VERSION, AT_VERSION, HEADER_BYTES, ENTRY_ALIGNMENT);
+    asset_status_t status = asset_entry_validate(asset, R3D_CURVE_VERSION, R3D_CURVE_AT_VERSION, R3D_CURVE_HEADER_SIZE,
+                                                 R3D_CURVE_ENTRY_ALIGNMENT);
     if (status != ASSET_OK) {
         return status;
     }
-    if (asset_read_u16(asset.data + AT_RESERVED) != 0) {
+    if (asset_read_u16(asset.data + R3D_CURVE_AT_RESERVED) != 0) {
         return ASSET_ERR_FORMAT;
     }
-    const unsigned count = asset_read_u16(asset.data + AT_COUNT);
-    const unsigned knots = asset_read_u16(asset.data + AT_KNOTS);
-    const size_t at = HEADER_BYTES + (count * sizeof(r3d_curve_t));
+    const unsigned count = asset_read_u16(asset.data + R3D_CURVE_AT_COUNT);
+    const unsigned knots = asset_read_u16(asset.data + R3D_CURVE_AT_KNOT_COUNT);
+    const size_t at = R3D_CURVE_HEADER_SIZE + (count * sizeof(r3d_curve_t));
     if (at + (knots * sizeof(r3d_curve_knot_t)) != asset.size) {
         return ASSET_ERR_BOUNDS;
     }
     const r3d_curve_set_t set =
-        r3d_curve_set_at((const r3d_curve_t*)(const void*)(asset.data + HEADER_BYTES), (int)count);
+        r3d_curve_set_at((const r3d_curve_t*)(const void*)(asset.data + R3D_CURVE_HEADER_SIZE), (int)count);
     if (!curves_are_inside(set, knots)) {
         return ASSET_ERR_BOUNDS;
     }

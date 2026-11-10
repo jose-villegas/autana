@@ -26,11 +26,16 @@ typedef struct {
 } r3d_curve_set_t;
 
 /* Narrower ribbons fade by their true width divided by this drawn width. */
-#define R3D_CURVE_MIN_WIDTH_PX 1.0F
-#define R3D_CURVE_ASSET        ASSET_TYPE('L', 'C', 'R', 'V')
-#define R3D_CURVE_NAME_SUFFIX  ".crv"
-#define R3D_CURVE_HEADER_WORDS 4
-#define R3D_CURVE_VERSION      1
+#define R3D_CURVE_MIN_WIDTH_PX    1.0F
+#define R3D_CURVE_ASSET           ASSET_TYPE('L', 'C', 'R', 'V')
+#define R3D_CURVE_NAME_SUFFIX     ".crv"
+#define R3D_CURVE_HEADER_SIZE     8U
+#define R3D_CURVE_AT_COUNT        0U /* the curve rows */
+#define R3D_CURVE_AT_KNOT_COUNT   2U
+#define R3D_CURVE_AT_VERSION      4U
+#define R3D_CURVE_AT_RESERVED     6U /* zero */
+#define R3D_CURVE_ENTRY_ALIGNMENT 2U
+#define R3D_CURVE_VERSION         1
 
 /* A row's box, in the mesh's position ticks. */
 static inline box3s_t

@@ -2,20 +2,13 @@
 
 import numpy as np
 
-from asset.asset_pack import NAME_BYTES, PackError
+from asset.asset_pack import PackError
 from r3d.thin.curve_fit import Curve
 from r3d.mesh_bundle import U16_MAX
-from r3d.thin.curve_format import CURVE, HEADER, KNOT, NAME_SUFFIX, TYPE, VERSION
+from r3d.thin.curve_format import CURVE, HEADER, KNOT, TYPE, VERSION
 
 I16_MIN, I16_MAX = -(1 << 15), (1 << 15) - 1
 SRGB_MAX = (1 << 8) - 1
-
-
-def name_for_mesh(name):
-    result = name + NAME_SUFFIX
-    if len(result.encode("ascii")) >= NAME_BYTES:
-        raise PackError(f"mesh id {name!r} leaves no room for its curves")
-    return result
 
 
 def write_curves(curves, position_scale, tonemap_white=0.0):
