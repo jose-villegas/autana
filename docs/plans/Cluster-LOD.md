@@ -70,6 +70,16 @@ flowchart LR
     Steer -->|"next round's tolerance,<br/>cap risen with it"| Pick
 ```
 
+A placement with a drop limit has one more level above its coarsest: it
+draws nothing (`r3d_lod_pick_drop()`). It drops once its whole bound's
+radius, projected at the bound's nearest point, is within the lesser of the
+tolerance and the limit. The limit is in thousandths of the picture's
+height, 0 never dropping, with the groups' hysteresis band.
+
+The limit belongs to the placement, not the mesh: the same shape may be safe
+to drop freestanding and not in a wall opening. In the histogram, a dropped
+placement saves its coarsest cut at its radius error.
+
 Refining by screen-space error is
 Hoppe's<sup>[[111]](../Citations.md#hoppe-1997)</sup>; the floor is `lod.tolerance_px`, and a
 steered floor is at least the first bin's edge.
