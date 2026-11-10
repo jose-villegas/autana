@@ -765,9 +765,10 @@ void f(void) {
         findings = self.audit("PERSONAL-PATH", {
             "docs/render/data/capture.log": "test_real_time_frame_profile/capybara/home/portrait:PASS\n"
                                             "cd " + "/".join(["", "home", "jdoe", "esp"]) + "\n"
-                                            "cd " + "/".join(["", "mnt", "c", "Users", "jdoe"]) + "\n",
+                                            "cd " + "/".join(["", "mnt", "c", "Users", "jdoe"]) + "\n"
+                                            "gcc -I" + "/".join(["", "home", "jdoe", "include"]) + "\n",
         })
-        self.assertEqual(len(findings), 2)
+        self.assertEqual(len(findings), 3)
 
     def test_utf8_read_as_cp1252_is_flagged(self):
         mangled = {"middle dot": "\u00b7", "arrow": "\u2192", "e acute": "\u00e9", "check": "\u2713"}
