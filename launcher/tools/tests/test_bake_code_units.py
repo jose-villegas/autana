@@ -108,6 +108,29 @@ class ReachTests(WalkCase):
             """)
         self.assertIn("helpers:traced", self.kept())
 
+    def test_a_class_or_def_decorated_from_another_package_and_never_reached_is_left_out(self):
+        self.write(helpers="""
+            import dataclasses
+            import functools
+            @dataclasses.dataclass(frozen=True)
+            class Unused:
+                \"\"\"A docstring and a pass do nothing at import.\"\"\"
+                size: int
+                pass
+                def grow(self):
+                    return self.size * 2
+            @functools.cache
+            def cached():
+                return 2
+            def used():
+                return 1
+            """, entry="""
+            from helpers import used
+            def main():
+                return used()
+            """)
+        self.assertTrue({"helpers:Unused", "helpers:Unused.grow", "helpers:cached"}.isdisjoint(self.kept()))
+
     def test_a_default_argument_counts_and_so_does_a_constant_read_only_there(self):
         self.write(helpers="""
             LIMIT = 4
@@ -460,6 +483,38 @@ class ImportTimeTests(WalkCase):
         self.write(entry="SCALE = 2.0\nSCALE = 1.0\ndef main():\n    return SCALE\n")
         self.assertNotEqual(self.key(), before)
 
+    def test_moving_a_function_to_another_module_keeps_the_key(self):
+        scale, offset = "def scale(x):\n    return x * 3\n", "def offset(x):\n    return x + 1\n"
+        self.write(entry="from helpers import scale\nfrom other import offset\ndef main():\n    return offset(scale(2))\n",
+                   helpers=scale, other=offset)
+        before = self.key()
+        self.write(entry="from other import offset, scale\ndef main():\n    return offset(scale(2))\n",
+                   helpers="", other=offset + scale)
+        self.assertEqual(self.key(), before)
+
+    def test_moving_a_function_next_to_a_different_constant_re_keys(self):
+        scale = "def scale(x):\n    return x * K\n"
+        self.write(entry="from helpers import scale\ndef main():\n    return scale(2)\n",
+                   helpers="K = 3\n" + scale, other="K = 4\n")
+        before = self.key()
+        self.write(entry="from other import scale\ndef main():\n    return scale(2)\n",
+                   helpers="K = 3\n", other="K = 4\n" + scale)
+        self.assertNotEqual(self.key(), before)
+
+    def test_swapping_two_defs_of_one_name_re_keys(self):
+        one, two = "def f():\n    return 1\n", "def f():\n    return 2\n"
+        self.write(entry=one + two + "def main():\n    return f()\n")
+        before = self.key()
+        self.write(entry=two + one + "def main():\n    return f()\n")
+        self.assertNotEqual(self.key(), before)
+
+    def test_moving_a_method_to_another_class_re_keys(self):
+        run, main = "    def run(self):\n        return 1\n", "def main():\n    return A().run()\n"
+        self.write(entry="class A:\n" + run + "class B:\n    pass\n" + main)
+        before = self.key()
+        self.write(entry="class A:\n    pass\nclass B:\n" + run + main)
+        self.assertNotEqual(self.key(), before)
+
 
 class ClassTests(WalkCase):
     def test_inherited_and_super_methods_count(self):
@@ -607,20 +662,22 @@ class CountsMoreTests(WalkCase):
 class StageTests(unittest.TestCase):
     def test_every_stage_keyed_by_functions_places_every_name_it_reaches(self):
         staged = [stage for stage, entries in bake.STAGES.items() if all(":" in entry for entry in entries)]
-        self.assertIn("reference", staged)
+        self.assertEqual({"mesh", "reference", "fit", "levels"} - set(staged), set())
         for stage in staged:
             with self.subTest(stage=stage):
                 units, unresolved = bake.stage_units(stage)
                 self.assertTrue(units)
                 self.assertEqual([(bake.relative(path), line, name) for path, line, name in unresolved], [])
 
-    def test_the_reference_functions_produce_calls_are_entries(self):
+    def test_every_function_produce_calls_from_a_stage_module_is_its_entry(self):
         tree = ast.parse((TOOLS / "bake" / "produce.py").read_text(encoding="utf-8"))
-        entries = set(bake.STAGES["reference"])
+        entries = {entry.partition(":")[0]: stage for stage, names in bake.STAGES.items() for entry in names
+                   if ":" in entry}
         for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module in ("r3d.reference_set", "r3d.reference_render"):
+            module = f"{node.module.replace('.', '/')}.py" if isinstance(node, ast.ImportFrom) and node.module else None
+            if module in entries:
                 for alias in node.names:
-                    self.assertIn(f"{node.module.replace('.', '/')}.py:{alias.name}", entries)
+                    self.assertIn(f"{module}:{alias.name}", bake.STAGES[entries[module]])
 
     def test_an_edit_to_a_reached_helper_re_keys_the_reference_stage(self):
         units = bake.stage_units("reference")[0]
