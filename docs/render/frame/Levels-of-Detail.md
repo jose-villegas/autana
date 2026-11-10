@@ -22,6 +22,7 @@ flowchart LR
 | Levels in the baked mesh | [`lod/bake_levels.py`](../../../launcher/tools/r3d/lod/bake_levels.py), [`r3d_lit_mesh.h`](../../../launcher/main/render/r3d_lit_mesh.h), [LLOD](../../assets/formats/LLOD.md) | bake |
 | Pick | [`r3d_lod_pick()`](../../../launcher/main/render/lod/r3d_lod.h), from the main view's cull (`raster_t.picks_levels`) | board |
 | Blend | [`r3d_lod.h`](../../../launcher/main/render/lod/r3d_lod.h), morph targets in [LMOR](../../assets/formats/LMOR.md) | board |
+| Steer to `lod.triangle_budget` | [`r3d_lod_steer_frame()`](../../../launcher/main/render/lod/r3d_lod.h), its state per scene renderer (`raster_t.steer`) | board |
 | Tolerance for a budget | [`lod/pick.py`](../../../launcher/tools/r3d/lod/pick.py), [`lod/lod_replay.py`](../../../launcher/tools/r3d/lod/lod_replay.py) | host |
 
 ## The levels
@@ -88,11 +89,34 @@ sky-through-walls test finds no more holed frames than at the finest level.
 
 ## The budget
 
-The board picks at a fixed `lod.tolerance_px`. One tolerance per frame is also
-the cut that meets a triangle budget at the least error<sup>[[110]](../../Citations.md#wimmer-1998)</sup>
-by screen-space error<sup>[[111]](../../Citations.md#hoppe-1997)</sup>.
-`pick.py` finds that tolerance from a histogram of log-spaced bins;
-`lod_replay.py` scores it along a path against the exact one.
+One tolerance per frame is also the cut that meets a triangle budget at the
+least error<sup>[[110]](../../Citations.md#wimmer-1998)</sup>, refining by
+screen-space error<sup>[[111]](../../Citations.md#hoppe-1997)</sup>; the floor
+is `lod.tolerance_px`. With `lod.triangle_budget` set, each pick adds a group's
+`saves` (LLOD) at the half-octave bin its error projects to, and the
+instance's finest triangles once.
+
+When a round of picks has seen every instance, the finest less the saves below
+each edge is the count there, scaled by what the round drew over what it
+predicted, which takes in culling. The steer takes the least edge within
+budget, from `lod.tolerance_px` up. It rises at once and falls a bin a round,
+so a held view settles; with partial redraw, a still view keeps picking until
+a round leaves the tolerance where it was.
+
+```mermaid
+flowchart LR
+    Pick["pick: each group's saves<br/>at its error's bin"] --> Hist["histogram,<br/>one per core"]
+    Hist --> Steer["round done:<br/>least edge within budget"]
+    Drawn["triangles drawn"] --> Steer
+    Steer -->|"next round's tolerance"| Pick
+```
+
+Errors bin, and the tolerance is kept, in `lod.tolerance_px`'s pixels, so a
+picture drawn at another size steers the same. A rise can overshoot by a bin
+or more: the round after it still draws some instances at the old cut, and
+falling one bin a round brings the tolerance back down. On the host,
+`pick.py` finds the tolerance from the same bins and `lod_replay.py` scores
+it along a path against the exact one.
 
 ```sh
 python launcher/tools/r3d/lod/lod_replay.py SCENE.scene.toml --object NAME --out DIR [--budgets N,...] [--segment T0 T1]

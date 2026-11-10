@@ -30,6 +30,7 @@ typedef struct {
     float hysteresis_px; /* advanced: how far past the tolerance a coarse group's error goes before it turns fine */
     int coverage_permille; /* basic: the thousandths of the picture's height a coarse group may span; smaller pops less */
     int pick_every; /* advanced: the frames the pick is spread over, a scene's first frame picking all; more saves, switches later */
+    int triangle_budget; /* basic: the triangles a frame aims to draw, the tolerance rising past tolerance_px to keep within; 0 never rises */
     int blend; /* basic: 0 switches at once; 1 blends each switch, by morph where a mesh was imported with geometry.morph, else by dither */
     float blend_px; /* advanced: the error past a switch over which a blend fades out; longer is softer, moves more */
 } render_lod_settings_t;
@@ -46,7 +47,7 @@ typedef struct {
 #include "render/settings/render_settings_default.h"
 
 /* The pack entry a .pack.toml's `render` key bakes: a TABL with one row per field,
- * each value in 1/2^RENDER_SETTINGS_FRAC_BITS steps. */
+ * a float in 1/2^RENDER_SETTINGS_FRAC_BITS steps, a bool or an int as itself. */
 #define RENDER_SETTINGS_ENTRY     "render"
 #define RENDER_SETTINGS_FRAC_BITS 4
 

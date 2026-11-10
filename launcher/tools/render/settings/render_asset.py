@@ -10,8 +10,8 @@ render_settings.h), a field of a struct field under that struct's table, as
 `[lod]` for `lod`. default.render.toml, in the same folder as that header,
 sets every one; another file lists only the values it changes, and the rest
 come from the default. An unknown key or a value of another type than its
-field is an error. A table row holds a value in 1/2^RENDER_SETTINGS_FRAC_BITS
-steps, so a float or an int must be a multiple of one.
+field is an error. A table row holds a float in 1/2^RENDER_SETTINGS_FRAC_BITS
+steps, so it must be a multiple of one, and a bool or an int as itself.
 
 Run as above, it writes the header that holds RENDER_SETTINGS_DEFAULT.
 """
@@ -121,11 +121,13 @@ def nested(values, kinds, prefix=""):
 def bake(path):
     """The RENDER_SETTINGS_ENTRY bytes of a settings file."""
     rows = {}
+    kinds = fields()
     for key, value in load(path).items():
-        steps = float(value) * (1 << FRAC_BITS)
+        scale = 1 << FRAC_BITS if kinds[key][0] == "float" else 1
+        steps = float(value) * scale
         if steps != int(steps) or not table_asset.VALUE_MIN <= steps <= table_asset.VALUE_MAX:
-            raise ValueError(f"{key} = {value}: not a multiple of 1/{1 << FRAC_BITS} below "
-                             f"{table_asset.VALUE_MAX >> FRAC_BITS}")
+            raise ValueError(f"{key} = {value}: not a multiple of 1/{scale} "
+                             f"from {table_asset.VALUE_MIN / scale:g} to {table_asset.VALUE_MAX / scale:g}")
         rows[key] = [int(steps)]
     return table_asset.encode(rows, FRAC_BITS)
 

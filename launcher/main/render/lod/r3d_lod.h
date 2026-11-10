@@ -11,6 +11,12 @@
  * `lod.hysteresis_px` around `lod.tolerance_px`, so a camera holding still at
  * a switch does not flicker. The bits persist from frame to frame with the
  * instance; all clear is a valid start, every cluster finest.
+ *
+ * With `lod.triangle_budget` set, the tolerance the pick uses is steered:
+ * each pick adds what its groups would save drawn coarse to a histogram over
+ * their projected error, and when a round of picks has seen every instance,
+ * r3d_lod_steer_frame() reads off the least tolerance, from `lod.tolerance_px` up,
+ * that draws within the budget.
  */
 #pragma once
 
@@ -18,8 +24,9 @@
 #include <stdint.h>
 
 #include "render/r3d_lit_mesh.h"
-#include "render/r3d_pipeline.h"
 #include "render/settings/render_settings.h"
+
+typedef struct r3d_lens r3d_lens_t; /* r3d_pipeline.h */
 
 /* The thousandths of `lod.coverage_permille`: 1000 is the picture's whole height. */
 #define R3D_LOD_PERMILLE            1000
@@ -230,11 +237,62 @@ uint8_t r3d_lod_dither_band(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* 
  * measurement: it walks every cluster. */
 float r3d_lod_morph_stacked_px(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, int c);
 
+/* The histogram's bins: half octaves of projected error from
+ * 2^R3D_LOD_BIN_LEAST_LOG2 to 2^R3D_LOD_BIN_MOST_LOG2 pixels. */
+#define R3D_LOD_BIN_LEAST_LOG2  (-6)
+#define R3D_LOD_BIN_MOST_LOG2   8
+#define R3D_LOD_BINS_PER_OCTAVE 2
+#define R3D_LOD_BINS            ((R3D_LOD_BIN_MOST_LOG2 - R3D_LOD_BIN_LEAST_LOG2) * R3D_LOD_BINS_PER_OCTAVE)
+
+/* What a round of picks saw: per bin, the triangles the groups whose error
+ * projects there save drawn coarse (r3d_lit_lod_group_t.saves), and the
+ * finest triangles of every instance picked. Error below the first bin
+ * counts in it; error past the last, or a group too large to turn coarse,
+ * counts nowhere. */
+typedef struct {
+    int32_t saves[R3D_LOD_BINS];
+    int32_t finest;
+    float unit; /* lod.tolerance_px's pixels per picture pixel: errors bin in the setting's */
+} r3d_lod_histogram_t;
+
+/* The steering a raster keeps from round to round. */
+typedef struct r3d_lod_steer {
+    float tolerance_px;            /* the pick's in lod.tolerance_px's pixels, at least the floor */
+    int bin;                       /* the bin edge tolerance_px sits at, or -1 at the floor */
+    r3d_lod_histogram_t halves[2]; /* this round's, one per core of the cull */
+    int64_t drawn;                 /* triangles the round's frames drew */
+    int frames;                    /* frames in the round so far */
+    bool settled;                  /* the last round kept the tolerance: no picks are owed to it */
+} r3d_lod_steer_t;
+
+/* The tolerance bin edge `edge` stands for, 0 .. R3D_LOD_BINS: bin
+ * `edge`'s lower bound, R3D_LOD_BINS the last one's upper. */
+float r3d_lod_bin_edge(int edge);
+
+/* The finest level's triangles of `mesh`: all of a mesh without levels. */
+static inline int
+r3d_lod_finest_triangles(const r3d_lit_mesh_t* mesh) {
+    return mesh->cluster_lod != NULL ? mesh->lod_finest_triangles : mesh->triangle_count;
+}
+
+/* A steer at `floor_px`, its round empty: a scene's or view's first. */
+void r3d_lod_steer_reset(r3d_lod_steer_t* steer, float floor_px);
+
+/* Ends a frame of the round: adds the triangles it drew and, once the round
+ * has seen every instance (`round_done`), sets the tolerance for the next
+ * round and empties it. The predicted triangles at each edge, scaled by
+ * what the frames drew over what was predicted at the tolerance they drew
+ * with, choose the least edge past `floor_px` within `budget`; the
+ * tolerance rises to it at once but falls at most a bin a round, so a view
+ * held still settles rather than swings. Pixels are lod.tolerance_px's. */
+void r3d_lod_steer_frame(r3d_lod_steer_t* steer, float floor_px, int budget, int drawn, bool round_done);
+
 /* Updates `coarse`, R3D_LOD_WORDS(mesh->lod_group_count) words, for one
  * frame through `lens`: coarse where a group's error projects within
  * `lod.tolerance_px` (± `lod.hysteresis_px` by the bit's last state) and its
  * radius covers at most `lod.coverage_permille` of the picture's height; a
  * closing pass keeps the cut crack-free. `arrived`, twice as many words or
- * NULL, keeps the blend's bits. True when any bit changed. */
+ * NULL, keeps the blend's bits; a `histogram` takes the saves. True when any
+ * bit changed. */
 bool r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod,
-                  uint32_t* coarse, uint32_t* arrived);
+                  uint32_t* coarse, uint32_t* arrived, r3d_lod_histogram_t* histogram);

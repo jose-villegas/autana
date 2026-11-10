@@ -7,6 +7,7 @@
 #include <string.h>
 
 #include "render/lod/r3d_lod.h"
+#include "render/r3d_pipeline.h"
 
 /* Updates `coarse` as r3d_lod_pick() does and writes 1 into drawn[c] for
  * each cluster r3d_lod_drawn() keeps, else 0. `rows` is the lens matrix,
@@ -25,7 +26,7 @@ pick_host(const r3d_lit_cluster_lod_t* cluster_lod, int clusters, const r3d_lit_
                                        .hysteresis_px = hysteresis_px,
                                        .coverage_permille = coverage_permille,
                                        .pick_every = 1};
-    r3d_lod_pick(&mesh, &lens, &lod, coarse, NULL);
+    r3d_lod_pick(&mesh, &lens, &lod, coarse, NULL, NULL);
     for (int c = 0; c < clusters; c++) {
         drawn[c] = r3d_lod_drawn(&mesh, c, coarse) ? 1U : 0U;
     }

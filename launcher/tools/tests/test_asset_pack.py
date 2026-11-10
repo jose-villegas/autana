@@ -292,12 +292,12 @@ class RenderSettingsPackTests(unittest.TestCase):
             write(root / "app" / "app.pack.toml", 'render = "fast.render.toml"\n')
             kind, data = parse_pack(build_pack.pack_bytes([root])["app"])[render_asset.ENTRY]
             self.assertEqual(kind, render_asset.TYPE)
-            self.assertEqual(table_asset.decode(data), ({"cull": [0], "depth_fit": [16], "batched": [16],
-                                                    "partial_redraw": [16],
+            self.assertEqual(table_asset.decode(data), ({"cull": [0], "depth_fit": [1], "batched": [1],
+                                                    "partial_redraw": [1],
                                                     "lod.tolerance_px": [32],
-                                                    "lod.hysteresis_px": [8], "lod.coverage_permille": [4000],
-                                                    "lod.pick_every": [64], "lod.blend": [16],
-                                                    "lod.blend_px": [4]}, 4))
+                                                    "lod.hysteresis_px": [8], "lod.coverage_permille": [250],
+                                                    "lod.pick_every": [4], "lod.triangle_budget": [0],
+                                                    "lod.blend": [0], "lod.blend_px": [4]}, 4))
 
     def test_each_app_pack_has_its_own_render_entry_whichever_root_selects_it(self):
         with tempfile.TemporaryDirectory() as directory:
