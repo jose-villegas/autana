@@ -139,10 +139,11 @@ raster_carve(const raster_t* raster) {
     b.depth_near = (float*)p;
     b.culled = (uint16_t*)(p + RASTER_CULLED_AT);
     p += raster_culled_bytes(raster);
+    const raster_capacity_t capacity = raster_capacity(raster);
     b.cs = (r3d_pipeline_vertex_t*)p;
-    p += sizeof(r3d_pipeline_vertex_t) * (size_t)raster_vertex_capacity(raster);
+    p += sizeof(r3d_pipeline_vertex_t) * (size_t)capacity.vertices;
     b.rows = (r3d_pipeline_rows_t*)p;
-    p += sizeof(r3d_pipeline_rows_t) * (size_t)raster_cluster_capacity(raster);
+    p += sizeof(r3d_pipeline_rows_t) * (size_t)capacity.clusters;
     raster_picture(raster, &b.picture);
     p = (uintptr_t)gfx_target_carve(&b.picture, (void*)p);
     b.upscale = (uint16_t*)p;

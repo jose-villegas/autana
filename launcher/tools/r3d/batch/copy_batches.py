@@ -9,6 +9,7 @@ import math
 import pathlib
 import struct
 import sys
+from array import array
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 from build.c_header import read_define
@@ -31,7 +32,8 @@ RIGID_TOLERANCE = 1e-4
 
 
 def f32(value):
-    return struct.unpack("<f", struct.pack("<f", value))[0]
+    """`value` rounded to the nearest float32."""
+    return array("f", [value])[0]
 
 
 def f32_up(value):

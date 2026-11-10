@@ -86,8 +86,11 @@ typedef struct {
 
 /* The most vertices and clusters any mesh the raster draws has: what its
  * scratch block holds room for. */
-int raster_vertex_capacity(const raster_t* raster);
-int raster_cluster_capacity(const raster_t* raster);
+typedef struct {
+    int vertices, clusters;
+} raster_capacity_t;
+
+raster_capacity_t raster_capacity(const raster_t* raster);
 
 /* The picture's attachments, colour and depth then `attachments`, over
  * every row, not yet carved. */

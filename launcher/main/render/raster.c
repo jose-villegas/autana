@@ -93,8 +93,9 @@ batch_fits(const r3d_lit_mesh_t* mesh, int vertex_capacity, int cluster_capacity
 int
 raster_batch_end(const raster_t* raster, int first) {
     const int most = raster_settings(raster).batched ? RASTER_BATCH_INSTANCES : 1;
-    const int vertex_capacity = raster_vertex_capacity(raster);
-    const int cluster_capacity = raster_cluster_capacity(raster);
+    const raster_capacity_t capacity = raster_capacity(raster);
+    const int vertex_capacity = capacity.vertices;
+    const int cluster_capacity = capacity.clusters;
     int vertices = 0;
     int clusters = 0;
     int end = first;
@@ -193,14 +194,21 @@ typedef struct {
     slice_t mine, other;
     r3d_span_target_t targets[2];
     r3d_span_small_fill_t small_fill;
-    bool skip_hidden;       /* the view's */
-    int first_row, end_row; /* the rows this draw redraws */
-    bool levels_changed;    /* a level pick this draw changed an instance's cut */
-    raster_buffers_t buffers;
-    /* A kept copy's item's mesh: its own, with its colour set. Last, so the
-     * fields before it stay in reach of the draw's loads. */
-    r3d_lit_mesh_t copy_meshes[RASTER_BATCH_INSTANCES];
+    bool skip_hidden;         /* the view's */
+    int first_row, end_row;   /* the rows this draw redraws */
+    bool levels_changed;      /* a level pick this draw changed an instance's cut */
+    raster_buffers_t buffers; /* last: its picture storage's size varies */
 } draw_work_t;
+
+/* A kept copy's item's mesh, RASTER_BATCH_INSTANCES of them: its own, with
+ * its colour set. After the draw's work in the scratch block, so the work's
+ * fields stay in reach of the draw's loads. */
+static inline r3d_lit_mesh_t*
+copy_meshes(draw_work_t* work) {
+    return (r3d_lit_mesh_t*)(work + 1);
+}
+
+_Static_assert(sizeof(draw_work_t) % _Alignof(r3d_lit_mesh_t) == 0, "copy meshes follow the draw's work");
 
 _Static_assert(sizeof(slice_t) <= JOB_CTX_MAX, "slice_t must fit JOB_CTX_MAX");
 _Static_assert(sizeof(cull_job_t) <= sizeof(batch_t), "the cull's job takes no scratch beyond the batch's");
@@ -382,26 +390,21 @@ upscale_slice(void* ctx) {
     }
 }
 
-int
-raster_vertex_capacity(const raster_t* raster) {
-    int most = 0;
-    for (int i = 0; i < raster->instance_count; i++) {
-        most = mathi_max(most, raster->instances[i].mesh->vertex_count);
-    }
-    for (int i = 0; i < raster->batch_count; i++) {
-        most = mathi_max(most, raster->batches[i].instance.mesh->vertex_count);
-    }
-    return most;
+/* `most` grown to hold `mesh`. */
+static inline raster_capacity_t
+capacity_with(raster_capacity_t most, const r3d_lit_mesh_t* mesh) {
+    return (raster_capacity_t){mathi_max(most.vertices, mesh->vertex_count),
+                               mathi_max(most.clusters, mesh->cluster_count)};
 }
 
-int
-raster_cluster_capacity(const raster_t* raster) {
-    int most = 0;
+raster_capacity_t
+raster_capacity(const raster_t* raster) {
+    raster_capacity_t most = {0, 0};
     for (int i = 0; i < raster->instance_count; i++) {
-        most = mathi_max(most, raster->instances[i].mesh->cluster_count);
+        most = capacity_with(most, raster->instances[i].mesh);
     }
     for (int i = 0; i < raster->batch_count; i++) {
-        most = mathi_max(most, raster->batches[i].instance.mesh->cluster_count);
+        most = capacity_with(most, raster->batches[i].instance.mesh);
     }
     return most;
 }
@@ -409,7 +412,8 @@ raster_cluster_capacity(const raster_t* raster) {
 size_t
 raster_scratch_bytes(const raster_t* raster) {
     assert(raster->instance_count + raster->batch_count > 0); /* with nothing to draw it would clear nothing */
-    return (size_t)((uintptr_t)raster_carve(raster).draw - (uintptr_t)raster->scratch) + sizeof(draw_work_t);
+    return (size_t)((uintptr_t)raster_carve(raster).draw - (uintptr_t)raster->scratch) + sizeof(draw_work_t)
+           + (sizeof(r3d_lit_mesh_t) * RASTER_BATCH_INSTANCES);
 }
 
 /* The view's lens fitted to the size drawn at, so a render scaled more
@@ -860,7 +864,7 @@ batch_add(const raster_t* raster, draw_work_t* work, int first, const r3d_instan
             item->mesh = mesh;
             instance_lens(&work->picture, instance, NULL, &item->lens);
         } else {
-            copy_aim(&work->picture, copy, item, &work->copy_meshes[batch->count - 1]);
+            copy_aim(&work->picture, copy, item, &copy_meshes(work)[batch->count - 1]);
         }
         r3d_lens_set_depth_near(&item->lens, *work->buffers.depth_near);
         item->visible = culled + 1;

@@ -17,6 +17,7 @@ from gltf import gltf_write
 from r3d import build_pack, mesh_asset, scene_asset
 from r3d.import_settings import load_scene
 from r3d.gltf_skin import mat_from_trs, transform_vector
+from test_copy_batches import rotation
 from test_r3d_import import renderer, write_import
 
 POINT = (2, 3, -7)
@@ -114,12 +115,7 @@ class EngineFrameTests(unittest.TestCase):
         scene = load_scene(source)
         rows = []
         for i, (axis, angle) in enumerate((((1, 0, 0), 0.7), ((0, 1, 0), -2.1), ((0.6, 0, 0.8), 2.9))):
-            x, y, z = axis
-            c, s, t = math.cos(angle), math.sin(angle), 1 - math.cos(angle)
-            matrix = [[t * x * x + c, t * x * y - s * z, t * x * z + s * y],
-                      [t * x * y + s * z, t * y * y + c, t * y * z - s * x],
-                      [t * x * z - s * y, t * y * z + s * x, t * z * z + c]]
-            rows.append({"name": f"c{i}", "mesh": "mesh", "matrix": matrix, "position": [1.0 + i, -2.0 * i, 3.0 + 4 * i],
+            rows.append({"name": f"c{i}", "mesh": "mesh", "matrix": rotation(axis, angle), "position": [1.0 + i, -2.0 * i, 3.0 + 4 * i],
                          "colour_set": 0})
         source_entry = scene_asset.encode(build_pack.expand_copies(scene, {"mesh": rows}))
         before = scene_asset.decode(source_entry)["batches"][0]["copies"]
