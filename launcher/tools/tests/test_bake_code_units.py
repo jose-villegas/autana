@@ -108,7 +108,7 @@ class ReachTests(WalkCase):
             """)
         self.assertIn("helpers:traced", self.kept())
 
-    def test_a_class_or_def_decorated_from_another_package_and_never_reached_is_left_out(self):
+    def test_a_class_or_def_decorated_by_the_standard_library_and_never_reached_is_left_out(self):
         self.write(helpers="""
             import dataclasses
             import functools
@@ -483,14 +483,65 @@ class ImportTimeTests(WalkCase):
         self.write(entry="SCALE = 2.0\nSCALE = 1.0\ndef main():\n    return SCALE\n")
         self.assertNotEqual(self.key(), before)
 
-    def test_moving_a_function_to_another_module_keeps_the_key(self):
-        scale, offset = "def scale(x):\n    return x * 3\n", "def offset(x):\n    return x + 1\n"
-        self.write(entry="from helpers import scale\nfrom other import offset\ndef main():\n    return offset(scale(2))\n",
-                   helpers=scale, other=offset)
+    def test_swapping_two_defs_a_stage_decorator_registers_re_keys(self):
+        head = "PASSES = []\ndef register(f):\n    PASSES.append(f)\n    return f\n"
+        a, b = "@register\ndef a(x):\n    return x + 1\n", "@register\ndef b(x):\n    return x * 2\n"
+        main = "def main(x):\n    for f in PASSES:\n        x = f(x)\n    return x\n"
+        self.write(entry=head + a + b + main)
         before = self.key()
-        self.write(entry="from other import offset, scale\ndef main():\n    return offset(scale(2))\n",
-                   helpers="", other=offset + scale)
-        self.assertEqual(self.key(), before)
+        self.write(entry=head + b + a + main)
+        self.assertNotEqual(self.key(), before)
+
+    def test_swapping_two_subclasses_a_base_registers_re_keys(self):
+        base = ("class Base:\n    registry = []\n    def __init_subclass__(cls):\n"
+                "        Base.registry.append(cls)\n")
+        a, b = "class A(Base):\n    size = 1\n", "class B(Base):\n    size = 2\n"
+        main = "def main():\n    return [c.size for c in Base.registry]\n"
+        self.write(entry=base + a + b + main)
+        before = self.key()
+        self.write(entry=base + b + a + main)
+        self.assertNotEqual(self.key(), before)
+
+    def test_a_def_registered_on_a_stage_function_counts(self):
+        self.write(entry="""
+            import functools
+            @functools.singledispatch
+            def process(x):
+                return x
+            @process.register(int)
+            def _(x):
+                return x + 1
+            def main():
+                return process(2)
+            """)
+        before = self.key()
+        self.write(entry=(self.root / "entry.py").read_text().replace("x + 1", "x + 5"))
+        self.assertNotEqual(self.key(), before)
+
+    def test_a_decorator_from_a_package_outside_the_standard_library_counts(self):
+        self.write(entry="""
+            from fastlib import jit
+            @jit
+            def unused():
+                return 2
+            def main():
+                return 1
+            """)
+        self.assertIn("entry:unused", self.kept())
+
+    def test_moving_a_def_past_a_rebind_its_default_reads_re_keys(self):
+        f = "def f(x=K):\n    return x\n"
+        self.write(entry="K = 1\n" + f + "K = 2\ndef main():\n    return f()\n")
+        before = self.key()
+        self.write(entry="K = 1\nK = 2\n" + f + "def main():\n    return f()\n")
+        self.assertNotEqual(self.key(), before)
+
+    def test_moving_a_class_past_a_rebind_its_body_reads_re_keys(self):
+        c = "class C:\n    size = K\n"
+        self.write(entry="K = 1\n" + c + "K = 2\ndef main():\n    return C.size\n")
+        before = self.key()
+        self.write(entry="K = 1\nK = 2\n" + c + "def main():\n    return C.size\n")
+        self.assertNotEqual(self.key(), before)
 
     def test_moving_a_function_next_to_a_different_constant_re_keys(self):
         scale = "def scale(x):\n    return x * K\n"

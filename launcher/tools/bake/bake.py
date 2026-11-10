@@ -60,14 +60,12 @@ clone. Standard library only; Python 3.12 or later.
 
 import argparse
 import ast
-import collections
 import concurrent.futures
 import dataclasses
 import fnmatch
 import functools
 import hashlib
 import io
-import itertools
 import json
 import multiprocessing
 import os
@@ -516,32 +514,14 @@ def pinned_requirements(paths):
     return tuple(sorted(pins))
 
 
-def bound_twice(path):
-    """The names a module's top level binds more than once, whose order decides which one holds."""
-    body = [node for node in module_facts(path)[0].body if not isinstance(node, (ast.Import, ast.ImportFrom))]
-    counts = collections.Counter(name for node in body for name in code_units.stored(node))
-    return {name for name, count in counts.items() if count > 1}
-
-
 def units_digests(units):
-    """A digest per file of its module statements' tokens in file order, so moving one statement past another
-    counts, and one per function and per class with its methods wherever it lives, so moving a def to another
-    module keeps the key (what it reads is reached either way). A def whose name its module binds twice stays in
-    the file's order."""
-    blocks, read = {}, {}
+    """A digest per file of its units' tokens in file order, so moving one statement past another counts."""
+    files, read = {}, {}
     for unit in units:
         if unit.path not in read:
-            read[unit.path] = line_tokens(unit.path), bound_twice(unit.path)
-        tokens, twice = read[unit.path]
-        name = unit.owner or getattr(unit.node, "name", None)
-        own = name is not None and name not in twice
-        block = (unit.path, name) if own else (unit.path, None)
-        kept = code_tokens(unit.path, *unit.lines, tokens)
-        if own and not blocks.get(block):
-            # Its first line also closes the code before it, which is not its own.
-            kept = list(itertools.dropwhile(lambda token: token[0] == "DEDENT", kept))
-        blocks.setdefault(block, []).extend(kept)
-    return [digest(tokens) for tokens in blocks.values() if tokens]
+            read[unit.path] = line_tokens(unit.path)
+        files.setdefault(unit.path, []).extend(code_tokens(unit.path, *unit.lines, read[unit.path]))
+    return [digest(tokens) for tokens in files.values() if tokens]
 
 
 @functools.cache
