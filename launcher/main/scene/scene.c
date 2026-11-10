@@ -178,7 +178,7 @@ static scene_failure_t
 open_lod_bits(scene_t* scene) {
     size_t words = 0;
     for (int i = 0; i < scene->renderer_count; i++) {
-        words += (size_t)r3d_lod_words(&scene->renderers[i].mesh);
+        words += (size_t)R3D_LOD_WORDS(scene->renderers[i].mesh.lod_group_count);
     }
     if (words == 0) {
         return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
@@ -191,7 +191,7 @@ open_lod_bits(scene_t* scene) {
     uint32_t* next = scene->lod_bits;
     for (int i = 0; i < scene->renderer_count; i++) {
         scene_renderer_t* r = &scene->renderers[i];
-        r->lod_words = (uint16_t)r3d_lod_words(&r->mesh);
+        r->lod_words = (uint16_t)R3D_LOD_WORDS(r->mesh.lod_group_count);
         r->lod_coarse = r->lod_words > 0 ? next : NULL;
         next += r->lod_words;
     }

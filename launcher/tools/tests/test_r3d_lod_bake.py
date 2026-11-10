@@ -196,6 +196,12 @@ class DevicePickTest(unittest.TestCase):
         self.assertTrue(seen & finest and seen - finest, "the path draws only one kind of level")
 
     def test_the_device_and_view_agree_when_a_placed_mesh_may_drop(self):
+        self.assert_drop_pick(pick.DROP_PERMILLE_MAX)
+
+    def test_the_device_and_view_agree_below_the_tolerance(self):
+        self.assert_drop_pick(1)
+
+    def assert_drop_pick(self, permille):
         if not hasattr(BakedLevelsTest, "levelled"):
             BakedLevelsTest.setUpClass()
         mesh = BakedLevelsTest.levelled
@@ -221,17 +227,20 @@ class DevicePickTest(unittest.TestCase):
             eye = middle + np.array([0, 0, -distance * extent])
             clip = test_r3d_lod.clip_looking(eye, middle, test_r3d_lod.WIDE_LENS)
             baseline = pick.view(placed, eye, clip, FOCAL_PX, NEAR)
-            v = pick.view(placed, eye, clip, FOCAL_PX, NEAR, {0})
+            v = pick.view(placed, eye, clip, FOCAL_PX, NEAR, {0: permille}, height=HEIGHT_PX)
             tau = pick.TOLERANCE_PX
             rows = np.ascontiguousarray(lens_rows(eye, middle, model, SHIFT), dtype=np.float32)
             native_pixels = pick._device_library().pick_host_drop_pixels(
                 root.ctypes.data_as(ctypes.c_void_p), rows.ctypes.data_as(ctypes.c_void_p),
                 ctypes.c_float(FOCAL_PX), ctypes.c_float(FOCAL_PX), ctypes.c_float(NEAR))
-            self.assertAlmostEqual(native_pixels, v.drop_px[0], delta=BOUNDARY_PX)
+            if native_pixels <= permille / pick.PERMILLE * HEIGHT_PX:
+                self.assertAlmostEqual(native_pixels, v.drop_px[0], delta=BOUNDARY_PX)
+            else:
+                self.assertTrue(np.isinf(v.drop_px[0]))
             _, actual = pick.device_pick(mesh.lod, mesh.groups, rows,
                                          (FOCAL_PX, FOCAL_PX), NEAR, HEIGHT_PX,
                                          tolerance_px=tau, hysteresis_px=0, coverage_permille=pick.UNCAPPED,
-                                         drops=True, root=root)
+                                         drop_permille=permille, root=root)
             expected = pick.drawn(v, tau)
             np.testing.assert_array_equal(actual, expected)
             seen.add(bool(actual.any()))
@@ -240,7 +249,8 @@ class DevicePickTest(unittest.TestCase):
                                         tolerance_px=tau, hysteresis_px=0, coverage_permille=pick.UNCAPPED)
             np.testing.assert_array_equal(plain, pick.drawn(baseline, tau))
             np.testing.assert_array_equal(baseline.group_px, pick.view(placed, eye, clip, FOCAL_PX, NEAR, set()).group_px)
-            self.assertEqual(pick.triangles_at(v, np.inf), 0)
+            if np.isfinite(v.drop_px[0]):
+                self.assertEqual(pick.triangles_at(v, np.inf), 0)
             if v.drop_px[0] <= pick.TAU_CEILING_PX:
                 self.assertEqual(pick.triangles_at(v, pick.tau_from_histogram(v, 0)), 0)
         self.assertEqual(seen, {False, True})

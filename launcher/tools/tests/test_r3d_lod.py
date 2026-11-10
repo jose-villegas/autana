@@ -276,9 +276,10 @@ class ReplayTest(unittest.TestCase):
         rows = [dict(mesh="shape", name=name, first="scene shape", matrix=np.eye(3), position=np.zeros(3))
                 for name in ("copy a", "copy b")]
         placed = lod_replay.placed_meshes(shapes, rows, "rest", np.eye(3), np.zeros(3))
-        self.assertEqual(lod_replay.drop_indices(placed, ["scene shape"]), {1, 2})
-        self.assertEqual(lod_replay.drop_indices(placed, ["copy b"]), {2})
-        self.assertEqual(lod_replay.drop_indices(placed, []), set())
+        self.assertEqual(lod_replay.drop_indices(placed, ["scene shape"]),
+                         {1: pick.DROP_PERMILLE_MAX, 2: pick.DROP_PERMILLE_MAX})
+        self.assertEqual(lod_replay.drop_indices(placed, ["copy b=1"]), {2: 1})
+        self.assertEqual(lod_replay.drop_indices(placed, []), {})
         with self.assertRaisesRegex(ValueError, "unknown --drops names"):
             lod_replay.drop_indices(placed, ["missing"])
 

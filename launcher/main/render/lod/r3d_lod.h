@@ -23,7 +23,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "render/r3d_lit_mesh.h"
+#include "render/r3d_instance.h"
 #include "render/settings/render_settings.h"
 
 typedef struct r3d_lens r3d_lens_t; /* r3d_pipeline.h */
@@ -43,18 +43,17 @@ r3d_lod_coarse(const uint32_t* coarse, uint16_t group) {
     return ((coarse[group / R3D_LOD_WORD_BITS] >> (group % R3D_LOD_WORD_BITS)) & 1U) != 0;
 }
 
-/* The words of coarse bits `mesh` needs: its groups', and one more when it
- * may drop, which holds whether it is dropped. */
+/* Group words, plus a dropped word when the placement has a limit. */
 static inline int
-r3d_lod_words(const r3d_lit_mesh_t* mesh) {
-    return R3D_LOD_WORDS(mesh->lod_group_count) + (mesh->lod_drops ? 1 : 0);
+r3d_lod_words(int groups, int drop_permille) {
+    return R3D_LOD_WORDS(groups) + (drop_permille != 0 ? 1 : 0);
 }
 
-/* Whether `mesh`, under `coarse`, draws nothing: its drop error, its whole
- * bound's radius, is within the tolerance (r3d_lod_pick()). */
+/* Whether the placement draws nothing under its persistent drop state. */
 static inline bool
-r3d_lod_dropped(const r3d_lit_mesh_t* mesh, const uint32_t* coarse) {
-    return mesh->lod_drops && coarse != NULL && coarse[R3D_LOD_WORDS(mesh->lod_group_count)] != 0;
+r3d_lod_dropped(const r3d_instance_t* instance) {
+    return instance->lod_drop_permille != 0 && instance->lod_coarse != NULL
+           && instance->lod_coarse[R3D_LOD_WORDS(instance->mesh->lod_group_count)] != 0;
 }
 
 /* `mesh`'s drop error through `lens` in pixels: its whole bound's radius,
@@ -178,3 +177,9 @@ int r3d_lod_steer_coverage(float tolerance_px, float floor_px, int permille);
  * cracks. True when a bit changed. A `histogram` takes the saves. */
 bool r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod,
                   uint32_t* coarse, r3d_lod_histogram_t* histogram);
+
+/* Picks the extra dropped word within the lesser of tolerance and the
+ * placement's height share, with lod.hysteresis_px either side. Zero leaves
+ * the word untouched. Returns whether it changed; histogram takes the save. */
+bool r3d_lod_pick_drop(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod,
+                       int drop_permille, uint32_t* coarse, r3d_lod_histogram_t* histogram);

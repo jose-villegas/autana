@@ -2,7 +2,7 @@
 """Replay runtime cluster LOD over a fitted renderer's camera path, host only.
 
     lod_replay.py SCENE.scene.toml --object NAME --out DIR
-        [--bundle BUNDLE] [--budgets N,...] [--every-ms N] [--size W H] [--segment T0 T1] [--drops NAME [NAME ...]]
+        [--bundle BUNDLE] [--budgets N,...] [--every-ms N] [--size W H] [--segment T0 T1] [--drops NAME[=PERMILLE] [NAME[=PERMILLE] ...]]
 
 Builds the cluster levels (levels.py) of the locked fit's rest mesh, welded
 and position-only, and of each copy shape, which every copy of it shares.
@@ -77,11 +77,18 @@ def placed_meshes(shapes, rows, rest_name, matrix, position):
 
 def drop_indices(placed, names):
     """Placement indices selected by bundle mesh, copy or source shape name."""
-    requested = set(names)
-    unknown = requested.difference(name for placement in placed for name in placement.names)
+    requested = {}
+    for entry in names:
+        name, separator, value = entry.partition("=")
+        permille = int(value) if separator else pick.DROP_PERMILLE_MAX
+        if not 0 <= permille <= pick.DROP_PERMILLE_MAX:
+            raise ValueError("drop permille outside placement range")
+        requested[name] = permille
+    unknown = set(requested).difference(name for placement in placed for name in placement.names)
     if unknown:
         raise ValueError("unknown --drops names: " + ", ".join(sorted(unknown)))
-    return {i for i, placement in enumerate(placed) if requested.intersection(placement.names)}
+    return {i: requested[name] for i, placement in enumerate(placed)
+            for name in requested if name in placement.names}
 
 
 def terminal_triangles(v, tau):
@@ -102,11 +109,12 @@ def pose_row(v, time_ms, budgets):
         row[f"b{budget}_terminal"] = terminal_triangles(v, histogram)
     if v.drop_px:
         for tau in FIXED_TAUS_PX:
-            row[f"at_{tau:g}px_dropped"] = int(np.count_nonzero(np.asarray(v.drop_px) <= tau))
+            row[f"at_{tau:g}px_dropped"] = int(np.count_nonzero(
+                (np.asarray(v.drop_px) <= tau) & np.isfinite(v.drop_px)))
         for budget in budgets:
             for method in ("exact", "histogram"):
                 row[f"b{budget}_{method}_dropped"] = int(np.count_nonzero(
-                    np.asarray(v.drop_px) <= row[f"b{budget}_tau_{method}"]))
+                    (np.asarray(v.drop_px) <= row[f"b{budget}_tau_{method}"]) & np.isfinite(v.drop_px)))
     return row
 
 
@@ -217,7 +225,8 @@ def main(argv=None):
     except ValueError as error:
         parser.error(str(error))
     focal = focal_px(width, height, lens)
-    views = [pick.view(placed, pose[:3], projection(pose[:3], pose[3:], width, height, lens, near), focal, near, drops)
+    views = [pick.view(placed, pose[:3], projection(pose[:3], pose[3:], width, height, lens, near),
+                       focal, near, drops, height=height)
              for pose in poses]
     budgets = args.budgets or sorted({int(share * max(int(v.triangles[v.finest].sum()) for v in views))
                                       for share in DEFAULT_BUDGET_SHARES})

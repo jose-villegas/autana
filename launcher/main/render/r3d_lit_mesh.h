@@ -95,9 +95,6 @@ typedef struct {
     uint16_t lod_finest_root;
     uint16_t lod_coarse_first; /* the first coarse cluster, with lod_finest_root set */
     int lod_finest_triangles;  /* the finest level's, with cluster_lod set */
-    /* Whether, far enough off, it draws nothing: the empty level above its
-     * coarsest (render/lod/r3d_lod.h). */
-    bool lod_drops;
 } r3d_lit_mesh_t;
 
 /* The asset type of a lit mesh entry, and the bytes of its header. */

@@ -44,6 +44,7 @@ SETTINGS = render_asset.load(render_asset.DEFAULT)
 TOLERANCE_PX = SETTINGS["lod.tolerance_px"]
 HYSTERESIS_PX = SETTINGS["lod.hysteresis_px"]
 COVERAGE_PERMILLE = SETTINGS["lod.coverage_permille"]
+DROP_PERMILLE_MAX = read_define(MAIN / "render" / "r3d_instance.h", "R3D_LOD_DROP_PERMILLE_MAX")
 PERMILLE = read_define(LOD_HEADER, "R3D_LOD_PERMILLE")
 # The most a tunable holds: no coverage cap.
 UNCAPPED = 2**31 - 1
@@ -96,7 +97,7 @@ def projected_px(spheres, errors, eye, focal, near):
         return np.where(errors == 0, 0.0, errors * focal / np.maximum(distance, near))
 
 
-def view(placements, eye, clip, focal, near, drops=frozenset()):
+def view(placements, eye, clip, focal, near, drops=None, height=None):
     """The in-view clusters of every placed mesh at one pose."""
     parts, drop_px = [], []
     for index, placed in enumerate(placements):
@@ -105,10 +106,13 @@ def view(placements, eye, clip, focal, near, drops=frozenset()):
         own, scale = placed_spheres(levels.own_sphere[shown], placed)
         parent, _ = placed_spheres(levels.parent_sphere[shown], placed)
         group = projected_px(parent, levels.parent_error[shown] * scale, eye, focal, near)
-        if index in drops:
+        if drops and drops.get(index, 0):
             lo, hi = levels.cluster_box[:, 0].min(0), levels.cluster_box[:, 1].max(0)
             root, _ = placed_spheres(np.r_[(lo + hi) / 2, np.linalg.norm(hi - lo) / 2][None], placed)
             empty = projected_px(root, root[:, 3], eye, focal, near)[0]
+            picture_height = height if height is not None else 2 * focal / np.linalg.norm(clip[1, :3])
+            limit = drops[index] / PERMILLE * picture_height
+            empty = empty if empty <= limit else np.inf
             group = np.where(np.isinf(group), empty, group)
             drop_px.append(empty if shown.any() else np.nan)
         parts.append(View(levels.cluster_triangles[shown],
@@ -181,7 +185,7 @@ def _device_library():
                                find_compiler("CC", ("cc", "gcc", "clang"), "C"),
                                flags=[f"-I{root}" for root in packages.include_roots()],
                                depends=(LOD_HEADER, render / "r3d_lit_mesh.h", render / "r3d_pipeline.h",
-                                        render_asset.HEADER),
+                                        render / "r3d_instance.h", render_asset.HEADER),
                                libraries=["-lm"], log=log)
         _device.pick_host.restype = None
         _device.pick_host_drop_pixels.restype = ctypes.c_float
@@ -189,29 +193,29 @@ def _device_library():
 
 
 def device_pick(lod, groups, rows, focal, near, height, tolerance_px=TOLERANCE_PX, hysteresis_px=HYSTERESIS_PX,
-                coverage_permille=COVERAGE_PERMILLE, coarse=None, drops=False, root=None):
+                coverage_permille=COVERAGE_PERMILLE, coarse=None, drop_permille=0, root=None):
     """(coarse, drawn): the device's pick over a read mesh's `lod` pairs and
     `groups` rows (lit_mesh.read_lit_mesh) seen through the lens matrix `rows`
     (4 x 4, position ticks to lens space, focal lengths applied to its first
     two rows), from the bits `coarse` of the frame before, all clear when
     None. `focal` is (x, y) in pixels; `height` is the picture's, which
-    `coverage_permille` is thousandths of. With `drops`, `root` is its local
-    tick box (2 x 3); a dropped mesh returns every drawn flag clear."""
-    if drops and root is None:
-        raise ValueError("a mesh that may drop needs its root box")
+    `coverage_permille` is thousandths of. With `drop_permille`, `root` is its local
+    tick box (2 x 3); a dropped placement returns every drawn flag clear."""
+    if drop_permille and root is None:
+        raise ValueError("a placement with a drop limit needs its root box")
     bound = np.ascontiguousarray(root if root is not None else np.zeros((2, 3)), dtype=np.int16)
     if bound.shape != (2, 3):
         raise ValueError("root must be a 2 x 3 tick box")
-    words = _device_library().pick_host_words(ctypes.c_int(len(groups)), ctypes.c_bool(drops))
+    words = _device_library().pick_host_words(ctypes.c_int(len(groups)), ctypes.c_int(drop_permille))
     coarse = np.zeros(words, dtype=np.uint32) if coarse is None else np.array(coarse, dtype=np.uint32)
     if coarse.shape != (words,):
-        raise ValueError("coarse words must match the mesh including its dropped word")
+        raise ValueError("coarse words must match the placement including its dropped word")
     pairs = b"".join(CLUSTER_LOD.pack(*pair) for pair in lod)
     records = b"".join(LOD_GROUP.pack(*(int(v) for v in row)) for row in groups)
     lens = np.ascontiguousarray(rows, dtype=np.float32)
     drawn = np.zeros(len(lod), dtype=np.uint8)
     _device_library().pick_host(pairs, ctypes.c_int(len(lod)), records, ctypes.c_int(len(groups)),
-                                bound.ctypes.data_as(ctypes.c_void_p), ctypes.c_bool(drops),
+                                bound.ctypes.data_as(ctypes.c_void_p), ctypes.c_int(drop_permille),
                                 lens.ctypes.data_as(ctypes.c_void_p), ctypes.c_float(focal[0]),
                                 ctypes.c_float(focal[1]), ctypes.c_float(near), ctypes.c_int(height),
                                 ctypes.c_float(tolerance_px), ctypes.c_float(hysteresis_px),

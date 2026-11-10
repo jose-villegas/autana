@@ -224,15 +224,18 @@ r3d_lod_drop_pixels(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens) {
     return error / mathf_max(mathf_sqrt(at.distance_squared) - at.radius, at.near_z);
 }
 
-/* Picks whether `mesh`, which may drop, draws nothing: its whole bound's
- * radius, its drop error, projected within the tolerance, in the band the
- * groups' bits keep. In `histogram` its coarsest cut's triangles are one
- * save at that error. Returns whether the dropped word changed. */
-static bool
-pick_drop(const r3d_lit_mesh_t* mesh, const lod_view_t* v, float near_z, float enter, float leave, uint32_t* coarse,
-          r3d_lod_histogram_t* histogram) {
+bool
+r3d_lod_pick_drop(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod,
+                  int drop_permille, uint32_t* coarse, r3d_lod_histogram_t* histogram) {
+    if (drop_permille == 0) {
+        return false;
+    }
+    const lod_view_t v = lod_view(lens);
+    const float limit = mathf_min(lod->tolerance_px, (float)drop_permille / R3D_LOD_PERMILLE * lens->height);
+    const float enter = limit - lod->hysteresis_px;
+    const float leave = limit + lod->hysteresis_px;
     reach_t at;
-    const float error = drop_reach(mesh, v, near_z, &at);
+    const float error = drop_reach(mesh, &v, lens->project.near_z, &at);
     uint32_t* word = &coarse[R3D_LOD_WORDS(mesh->lod_group_count)];
     const bool was = *word != 0;
     const bool dropped = within(&at, error, enter) || (was && within(&at, error, leave));
@@ -242,6 +245,7 @@ pick_drop(const r3d_lit_mesh_t* mesh, const lod_view_t* v, float near_z, float e
         for (int g = 0; g < mesh->lod_group_count; g++) {
             coarsest -= mesh->lod_groups[g].saves;
         }
+        /* Bin the save at the error, without clamping it to the limit. */
         histogram_save(histogram, &at, error, coarsest);
     }
     return dropped != was;
@@ -254,15 +258,13 @@ r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lo
     const float enter = lod->tolerance_px - lod->hysteresis_px;
     const float leave = lod->tolerance_px + lod->hysteresis_px;
     histogram_add_finest(histogram, mesh);
-    const bool drop_changed =
-        mesh->lod_drops && pick_drop(mesh, &v, lens->project.near_z, enter, leave, coarse, histogram);
     if (histogram == NULL && none_can_coarsen(mesh, &v, lens->project.near_z, leave)) {
         bool had = false;
         for (int w = 0; w < R3D_LOD_WORDS(mesh->lod_group_count); w++) {
             had |= coarse[w] != 0;
         }
         memset(coarse, 0, R3D_LOD_WORDS(mesh->lod_group_count) * sizeof *coarse);
-        return had || drop_changed;
+        return had;
     }
     /* Per group, in the form within() takes: its error and its radius, each
      * times focal over units, against their limits times its nearest depth. */
@@ -292,7 +294,7 @@ r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lo
     if (any && changed) {
         close_coarse(mesh, coarse);
     }
-    return changed || drop_changed;
+    return changed;
 }
 
 int

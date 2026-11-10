@@ -514,7 +514,7 @@ scene_open(void) {
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(cullview, paint), RASTER_CULL_PAINT_FATES));
     for (int i = 0; i < SCENE_QUADS; i++) {
         r3d_quad_init(&s->quad[i], scene_corners[i]);
-        s->instance[i] = (r3d_instance_t){&s->quad[i].mesh, NULL, NULL, NULL};
+        s->instance[i] = (r3d_instance_t){&s->quad[i].mesh, NULL, NULL, NULL, 0};
     }
     s->quad[SCENE_AWAY].cluster.double_sided = false;
     s->context = s->straight = RENDER_CONTEXT_DEFAULT;
@@ -790,7 +790,7 @@ lod_open(int count) {
     l->coarse = calloc((size_t)count * R3D_LOD_WORDS(LOD_COARSE), sizeof *l->coarse);
     TEST_ASSERT_NOT_NULL(l->coarse);
     for (int i = 0; i < count; i++) {
-        l->instances[i] = (r3d_instance_t){&l->mesh, NULL, NULL, &l->coarse[i * R3D_LOD_WORDS(LOD_COARSE)]};
+        l->instances[i] = (r3d_instance_t){&l->mesh, NULL, NULL, &l->coarse[i * R3D_LOD_WORDS(LOD_COARSE)], 0};
     }
     return l;
 }

@@ -10,9 +10,8 @@
 #include "render/r3d_pipeline.h"
 
 int
-pick_host_words(int group_count, bool drops) {
-    const r3d_lit_mesh_t mesh = {.lod_group_count = group_count, .lod_drops = drops};
-    return r3d_lod_words(&mesh);
+pick_host_words(int group_count, int drop_permille) {
+    return r3d_lod_words(group_count, drop_permille);
 }
 
 /* Updates `coarse` as r3d_lod_pick() does and writes 1 into drawn[c] for
@@ -20,11 +19,11 @@ pick_host_words(int group_count, bool drops) {
  * row-major, 16 floats: position ticks to lens space, as r3d_lens_t.m. */
 void
 pick_host(const r3d_lit_cluster_lod_t* cluster_lod, int clusters, const r3d_lit_lod_group_t* groups, int group_count,
-          const box3s_t* root, bool drops, const float* rows, float focal_x, float focal_y, float near_z, int height,
-          float tolerance_px, float hysteresis_px, int coverage_permille, uint32_t* coarse, uint8_t* drawn) {
+          const box3s_t* root, int drop_permille, const float* rows, float focal_x, float focal_y, float near_z,
+          int height, float tolerance_px, float hysteresis_px, int coverage_permille, uint32_t* coarse,
+          uint8_t* drawn) {
     const r3d_lit_node_t node = {.bounds = *root};
     const r3d_lit_mesh_t mesh = {.nodes = &node,
-                                 .lod_drops = drops,
                                  .cluster_count = clusters,
                                  .cluster_lod = cluster_lod,
                                  .lod_groups = groups,
@@ -38,8 +37,10 @@ pick_host(const r3d_lit_cluster_lod_t* cluster_lod, int clusters, const r3d_lit_
                                        .coverage_permille = coverage_permille,
                                        .pick_every = 1};
     r3d_lod_pick(&mesh, &lens, &lod, coarse, NULL);
+    r3d_lod_pick_drop(&mesh, &lens, &lod, drop_permille, coarse, NULL);
+    const r3d_instance_t instance = {.mesh = &mesh, .lod_coarse = coarse, .lod_drop_permille = drop_permille};
     for (int c = 0; c < clusters; c++) {
-        drawn[c] = !r3d_lod_dropped(&mesh, coarse) && r3d_lod_drawn(&mesh, c, coarse) ? 1U : 0U;
+        drawn[c] = !r3d_lod_dropped(&instance) && r3d_lod_drawn(&mesh, c, coarse) ? 1U : 0U;
     }
 }
 

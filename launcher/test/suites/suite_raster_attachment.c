@@ -199,7 +199,7 @@ place_trio(trio_t* t, unsigned culled, bool by_box) {
         if (out && by_box) {
             t->box[k] = (box3f_t){{TRIO_FAR, -TRIO_HALF, -TRIO_HALF}, {TRIO_FAR + 2 * TRIO_HALF, TRIO_HALF, TRIO_HALF}};
         }
-        t->instance[k] = (r3d_instance_t){&t->quad[k].mesh, NULL, out && !by_box ? NULL : &t->box[k], NULL};
+        t->instance[k] = (r3d_instance_t){&t->quad[k].mesh, NULL, out && !by_box ? NULL : &t->box[k], NULL, 0};
     }
     /* A batch holds instances up to the largest mesh's vertices and clusters,
      * so this one, always off to the right and so never walked, is declared
@@ -209,7 +209,7 @@ place_trio(trio_t* t, unsigned culled, bool by_box) {
     t->quad[TRIO].mesh.vertex_count = TRIO * 4;
     t->quad[TRIO].mesh.cluster_count = TRIO;
     t->box[TRIO] = (box3f_t){{TRIO_FAR, -TRIO_HALF, -TRIO_HALF}, {TRIO_FAR + 2 * TRIO_HALF, TRIO_HALF, TRIO_HALF}};
-    t->instance[TRIO] = (r3d_instance_t){&t->quad[TRIO].mesh, NULL, &t->box[TRIO], NULL};
+    t->instance[TRIO] = (r3d_instance_t){&t->quad[TRIO].mesh, NULL, &t->box[TRIO], NULL, 0};
 }
 
 /* Draws the trio with `culled` out of it right after a frame that kept all
@@ -423,7 +423,7 @@ test_copies_share_a_hue_and_a_shape_drawn_once_is_grey(void) {
     copy.colors = red;
     mat4f_t shifted = mat4f_identity();
     shifted.m[0][MAT3F_AXES] = COPY_SHIFT;
-    const r3d_instance_t three[] = {r->instance[0], r->instance[1], {&copy, &shifted, NULL, NULL}};
+    const r3d_instance_t three[] = {r->instance[0], r->instance[1], {&copy, &shifted, NULL, NULL, 0}};
     r->raster.instances = three;
     r->raster.instance_count = 3;
     raster_rig_attach(r, one, 1);
