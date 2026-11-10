@@ -3709,8 +3709,8 @@ levelled_quads(void) {
     test_pack_put32(levelled_entry + LLOD_AT_CLUSTER_COUNT, 2);
     const r3d_lit_cluster_lod_t lod[] = {{R3D_LOD_NONE, 0}, {0, 1}};
     memcpy(levelled_entry + LEVELS_AT, lod, sizeof lod);
-    const r3d_lit_lod_group_t inner = {{{0, 0, 0}, 1}, 1};
-    const r3d_lit_lod_group_t outer = {{{0, 0, 0}, 1 + 1 + R3D_LOD_ENCLOSE_MARGIN}, 2};
+    const r3d_lit_lod_group_t inner = {{{0, 0, 0}, 1}, 1, 0};
+    const r3d_lit_lod_group_t outer = {{{0, 0, 0}, 1 + 1 + R3D_LOD_ENCLOSE_MARGIN}, 2, 0};
     memcpy(levelled_entry + INNER_GROUP, &inner, sizeof inner);
     memcpy(levelled_entry + OUTER_GROUP, &outer, sizeof outer);
     return (asset_view_t){levelled_entry, LEVELLED_BYTES};

@@ -79,8 +79,8 @@ def to_engine(kind, entry):
         groups_at = lod_asset.HEADER.size + len(pairs) * mesh_asset.CLUSTER_LOD.size
         for index in range(len(groups)):
             at = groups_at + index * mesh_asset.LOD_GROUP.size
-            *centre, radius, error = mesh_asset.LOD_GROUP.unpack_from(entry, at)
-            mesh_asset.LOD_GROUP.pack_into(out, at, *_mirror_position(centre), radius, error)
+            *centre, radius, error, saves = mesh_asset.LOD_GROUP.unpack_from(entry, at)
+            mesh_asset.LOD_GROUP.pack_into(out, at, *_mirror_position(centre), radius, error, saves)
     elif kind == scene_asset.TYPE:
         header = scene_asset.HEADER.unpack_from(entry)
         entities = header[1]

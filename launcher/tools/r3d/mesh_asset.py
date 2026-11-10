@@ -20,7 +20,7 @@ CLUSTER = struct.Struct("<4H6hBx")
 NODE = struct.Struct("<6hHBB")
 # A cluster's own and parent group; a group's bounds (centre and radius, ticks) and error (ticks).
 CLUSTER_LOD = struct.Struct("<2H")
-LOD_GROUP = struct.Struct("<4hH")
+LOD_GROUP = struct.Struct("<4hHh")
 LOD_NONE = read_define(MESH_HEADER, "R3D_LOD_NONE")
 LOD_ENCLOSE_MARGIN = read_define(MESH_HEADER, "R3D_LOD_ENCLOSE_MARGIN")
 

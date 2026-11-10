@@ -49,11 +49,13 @@ PERMILLE = read_define(LOD_HEADER, "R3D_LOD_PERMILLE")
 UNCAPPED = 2**31 - 1
 WORD_BITS = read_define(LOD_HEADER, "R3D_LOD_WORD_BITS")
 
-# Below half a pixel a coarser level saves too little to be worth its pop; this tree's choice.
-TAU_FLOOR_PX = 0.5
-# The histogram's bins, log-spaced from the floor to the coarsest tolerance it steers to.
-TAU_CEILING_PX = 64.0
-TAU_BINS = 32
+# The device's steer: it never picks below lod.tolerance_px, and its
+# histogram's bin edges are half octaves up to 2^R3D_LOD_BIN_MOST_LOG2.
+TAU_FLOOR_PX = TOLERANCE_PX
+BIN_LEAST_LOG2 = read_define(LOD_HEADER, "R3D_LOD_BIN_LEAST_LOG2")
+BIN_MOST_LOG2 = read_define(LOD_HEADER, "R3D_LOD_BIN_MOST_LOG2")
+BINS_PER_OCTAVE = read_define(LOD_HEADER, "R3D_LOD_BINS_PER_OCTAVE")
+TAU_CEILING_PX = 2.0 ** BIN_MOST_LOG2
 
 
 class Placed(NamedTuple):
@@ -139,7 +141,9 @@ def tau_exact(v, budget):
 
 
 def bin_edges():
-    return TAU_FLOOR_PX * (TAU_CEILING_PX / TAU_FLOOR_PX) ** (np.arange(TAU_BINS + 1) / TAU_BINS)
+    """The tolerances the device's steer takes: the floor, then every bin edge past it."""
+    edges = 2.0 ** (BIN_LEAST_LOG2 + np.arange((BIN_MOST_LOG2 - BIN_LEAST_LOG2) * BINS_PER_OCTAVE + 1) / BINS_PER_OCTAVE)
+    return np.r_[TAU_FLOOR_PX, edges[edges > TAU_FLOOR_PX]]
 
 
 def tau_from_histogram(v, budget):
@@ -148,11 +152,11 @@ def tau_from_histogram(v, budget):
     tau rises it is within one bin of tau_exact; where culling makes it rise,
     the bins can skip a dip between two edges, so it can land later."""
     edges = bin_edges()
-    totals = np.zeros(TAU_BINS + 2, dtype=np.int64)
+    totals = np.zeros(len(edges) + 1, dtype=np.int64)
     # A cluster draws from the first edge at or above its own error until the first edge at or above its group's.
     np.add.at(totals, np.searchsorted(edges, v.own_px, side="left"), v.triangles)
     np.add.at(totals, np.searchsorted(edges, v.group_px, side="left"), -v.triangles)
-    totals = np.cumsum(totals)[:TAU_BINS + 1]
+    totals = np.cumsum(totals)[:len(edges)]
     meets = np.flatnonzero(totals <= budget)
     return float(edges[meets[0]] if len(meets) else edges[-1])
 
