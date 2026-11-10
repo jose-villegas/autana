@@ -5,8 +5,8 @@
 Renders the path at the finest level, with the pick's switches drawn as they are (lod.blend switch) and blended
 (lod.blend on, which dithers a mesh without morph targets), and blended again with each --morph mesh given its
 morph targets (morph_packs.py). lod-blend-pop.gif plays the whole path, the middle of each arm's frame side by
-side, so each level switch shows as the camera closes in; the producer draws at a coarse lod.tolerance_px so
-each switch is large enough to see. lod-blend-pop.png zooms on the frame and square
+side, so each level switch shows as the camera closes in; a coarse lod.tolerance_px in --render makes each
+switch large enough to see. lod-blend-pop.png zooms on the frame and square
 of that middle whose frame-to-frame change differs most from the finest level's, on luma averaged over the screen door's tile
 (morph_table.py's worst pop): the frame before and the frame of the pop, with each arm's difference from the
 finest level.
@@ -29,17 +29,9 @@ sys.path.insert(0, str(HERE.parents[1] / "render"))
 from check_avi import read_video  # noqa: E402
 from coverage_table import ROOT, build  # noqa: E402
 from docs.figures import save_gif, save_png  # noqa: E402
-from docs.producer import Producer  # noqa: E402
 from morph_packs import morph_packs  # noqa: E402
 from morph_table import AVERAGED, FINEST, POP_SQUARE, SWITCHES, blended, worst_pop  # noqa: E402
 from render_compare import captioned  # noqa: E402
-
-PRODUCER = Producer(area="render", needs=("host", "bakes"),
-                    run=("--script", "launcher/main/apps/render_lab/tools/render_lab_render_host.sh",
-                         "--render", "--scene sponza-fitted-full --camera lion --no-hud --frames 303 --dt 33"
-                                     " --set render.lod.tolerance_px=16",
-                         "--morph", "sponza.atrium_fitted_full", "--out", "{out}"),
-                    outputs=("lod-blend-pop.gif", "lod-blend-pop.png"))
 
 ARMS = (("finest", FINEST, False), ("switch", SWITCHES, False), ("dither", blended("on", None), False),
         ("morph", blended("on", None), True))  # (name, settings, reads the morph packs)

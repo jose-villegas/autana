@@ -1,12 +1,22 @@
 #include "render/lod/r3d_lod.h"
 
 #include "math/geometry/box3f.h"
+#include "math/scalar/float_bits.h"
 #include "math/scalar/mathf.h"
+#include "math/scalar/mathi.h"
+#include "render/r3d_pipeline.h"
 
 #include <assert.h>
+#include <math.h>
 #include <string.h>
 
 typedef r3d_lod_view_t lod_view_t;
+
+/* A half octave of error is an octave of its square, whose float exponent
+ * names the bin. */
+_Static_assert(R3D_LOD_BINS_PER_OCTAVE == 2, "error_bin() reads half octaves off the squared error's exponent");
+/* The ratio of a bin's upper edge to its lower: 2^(1/R3D_LOD_BINS_PER_OCTAVE). */
+#define BIN_RATIO 1.41421356F
 
 static lod_view_t
 lod_view(const r3d_lens_t* lens) {
@@ -312,11 +322,56 @@ blends(const reach_t* at, const r3d_lit_lod_group_t* group, float scale, float c
                      covered * (1.0F + (R3D_LOD_MORPH_COVER_RAMP * ramps)) * slack);
 }
 
+float
+r3d_lod_bin_edge(int edge) {
+    return ldexpf((edge % R3D_LOD_BINS_PER_OCTAVE) != 0 ? BIN_RATIO : 1.0F,
+                  R3D_LOD_BIN_LEAST_LOG2 + (edge / R3D_LOD_BINS_PER_OCTAVE));
+}
+
+/* The bin of a group whose error projects to sqrt(px_squared) pixels, or -1
+ * past the last: below the first edge counts in the first. */
+static int
+error_bin(float px_squared) {
+    const float least = r3d_lod_bin_edge(0);
+    if (px_squared < least * least) {
+        return 0;
+    }
+    /* px_squared is in [2^(exponent - 1), 2^exponent) */
+    const int bin = mathf_exponent(px_squared) - 1 - (R3D_LOD_BIN_LEAST_LOG2 * R3D_LOD_BINS_PER_OCTAVE);
+    return bin < R3D_LOD_BINS ? bin : -1;
+}
+
+/* Adds `mesh`'s finest triangles to `histogram`, if there is one. */
+static void
+histogram_add_finest(r3d_lod_histogram_t* histogram, const r3d_lit_mesh_t* mesh) {
+    if (histogram != NULL) {
+        histogram->finest += r3d_lod_finest_triangles(mesh);
+    }
+}
+
+/* Adds group `group`'s saves to `histogram`, if there is one, at the bin
+ * its error, `error` in the form within() takes, projects to at `at`'s
+ * nearest depth, in the histogram's pixels. A group whose radius spans past
+ * `covered` never turns coarse, so saves nothing; `coarse_now` says it did. */
+static void
+histogram_add(r3d_lod_histogram_t* histogram, const r3d_lit_lod_group_t* group, const reach_t* at, float error,
+              bool coarse_now, float radius, float covered) {
+    if (histogram == NULL || !(coarse_now || within(at, radius, covered))) {
+        return;
+    }
+    const float nearest = mathf_max(mathf_sqrt(at->distance_squared) - at->radius, at->near_z);
+    const float px = error * histogram->unit / nearest;
+    const int bin = error_bin(px * px);
+    if (bin >= 0) {
+        histogram->saves[bin] += group->saves;
+    }
+}
+
 /* Inlined into one copy per caller, so a literal NULL `arrived` keeps no
  * blend state. */
 static inline __attribute__((always_inline)) bool
 pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod, uint32_t* coarse,
-     uint32_t* arrived) {
+     uint32_t* arrived, r3d_lod_histogram_t* histogram) {
     const lod_view_t v = lod_view(lens);
     const lod_limits_t limits = lod_limits(lod, lens, 1.0F);
     const float enter = limits.enter;
@@ -326,7 +381,8 @@ pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settin
     /* With a blend, a group may weigh something until its error is past
      * leave by a ramp and its lead; nearer than that, every bit clears. */
     const float reach = arrived != NULL ? lod->blend_px * (1.0F + R3D_LOD_BLEND_LEAD) : 0.0F;
-    if (none_can_coarsen(mesh, &v, lens->project.near_z, leave + reach)) {
+    histogram_add_finest(histogram, mesh);
+    if (histogram == NULL && none_can_coarsen(mesh, &v, lens->project.near_z, leave + reach)) {
         assert(arrived == NULL || arrived == coarse + words);
         const int state = (arrived != NULL ? R3D_LOD_STATE_SETS : 1) * words;
         bool had = false;
@@ -352,9 +408,11 @@ pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settin
         const uint32_t bit = 1U << (g % R3D_LOD_WORD_BITS);
         uint32_t* word = &coarse[g / R3D_LOD_WORD_BITS];
         const bool was = (*word & bit) != 0;
-        const bool coarse_now = (within(&at, error, enter) || (was && within(&at, error, leave)))
-                                && within(&at, (float)group->bounds.radius * scale, covered);
+        const float radius = (float)group->bounds.radius * scale;
+        const bool coarse_now =
+            (within(&at, error, enter) || (was && within(&at, error, leave))) && within(&at, radius, covered);
         *word = coarse_now ? *word | bit : *word & ~bit;
+        histogram_add(histogram, group, &at, error, coarse_now, radius, covered);
         any |= coarse_now;
         changed |= coarse_now != was;
         if (!coarse_now && arrived != NULL) {
@@ -390,8 +448,9 @@ pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settin
 
 bool
 r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod, uint32_t* coarse,
-             uint32_t* arrived) {
-    return arrived == NULL ? pick(mesh, lens, lod, coarse, NULL) : pick(mesh, lens, lod, coarse, arrived);
+             uint32_t* arrived, r3d_lod_histogram_t* histogram) {
+    return arrived == NULL ? pick(mesh, lens, lod, coarse, NULL, histogram)
+                           : pick(mesh, lens, lod, coarse, arrived, histogram);
 }
 
 /* Inlined into one copy per caller, so a literal NULL `blending` tests no
@@ -418,4 +477,63 @@ int
 r3d_lod_list_drawn(const r3d_lit_mesh_t* mesh, const uint32_t* coarse, const uint32_t* blending, uint16_t* out,
                    int room) {
     return blending == NULL ? list_drawn(mesh, coarse, NULL, out, room) : list_drawn(mesh, coarse, blending, out, room);
+}
+
+void
+r3d_lod_steer_reset(r3d_lod_steer_t* steer, float floor_px) {
+    memset(steer, 0, sizeof *steer);
+    steer->tolerance_px = floor_px;
+    steer->bin = -1;
+}
+
+/* The least edge, 0 .. R3D_LOD_BINS + 1, past `px`. */
+static int
+edge_past(float px) {
+    int edge = 0;
+    while (edge <= R3D_LOD_BINS && r3d_lod_bin_edge(edge) <= px) {
+        edge++;
+    }
+    return edge;
+}
+
+void
+r3d_lod_steer_frame(r3d_lod_steer_t* steer, float floor_px, int budget, int drawn, bool round_done) {
+    steer->drawn += drawn;
+    steer->frames++;
+    if (!round_done) {
+        return;
+    }
+    /* at_edge[e]: the triangles predicted at bin edge e's tolerance, the
+     * finest less the saves of every bin wholly within it; a tolerance
+     * between edges predicts its lower edge's. */
+    int64_t at_edge[R3D_LOD_BINS + 1];
+    at_edge[0] = (int64_t)steer->halves[0].finest + steer->halves[1].finest;
+    for (int b = 0; b < R3D_LOD_BINS; b++) {
+        at_edge[b + 1] = at_edge[b] - steer->halves[0].saves[b] - steer->halves[1].saves[b];
+    }
+    const int past_floor = edge_past(floor_px);
+    /* What culling and the cut's lag leave of the prediction, measured at
+     * the tolerance the round drew with. */
+    const int64_t was = at_edge[mathi_max(edge_past(steer->tolerance_px) - 1, 0)];
+    const float kept = was > 0 ? (float)steer->drawn / ((float)steer->frames * (float)was) : 1.0F;
+    int bin = -1;
+    if ((float)at_edge[mathi_max(past_floor - 1, 0)] * kept > (float)budget) {
+        bin = R3D_LOD_BINS; /* out of reach: the coarsest edge */
+        for (int edge = past_floor; edge < R3D_LOD_BINS; edge++) {
+            if ((float)at_edge[edge] * kept <= (float)budget) {
+                bin = edge;
+                break;
+            }
+        }
+    }
+    if (bin < steer->bin - 1) {
+        bin = steer->bin - 1; /* falls a bin a round */
+        bin = bin >= 0 && bin < past_floor ? -1 : bin;
+    }
+    steer->settled = bin == steer->bin;
+    steer->bin = bin;
+    steer->tolerance_px = bin < 0 ? floor_px : mathf_max(r3d_lod_bin_edge(bin), floor_px);
+    memset(steer->halves, 0, sizeof steer->halves);
+    steer->drawn = 0;
+    steer->frames = 0;
 }

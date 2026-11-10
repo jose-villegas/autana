@@ -18,8 +18,8 @@ _Static_assert(sizeof(r3d_lit_cluster_t) == 22 && offsetof(r3d_lit_cluster_t, bo
 _Static_assert(sizeof(r3d_lit_node_t) == 16 && offsetof(r3d_lit_node_t, first) == 12
                    && offsetof(r3d_lit_node_t, leaf) == 15,
                "r3d_lit_node_t is not the layout lit_mesh.py writes");
-_Static_assert(sizeof(r3d_lit_cluster_lod_t) == 4 && sizeof(r3d_lit_lod_group_t) == 10
-                   && offsetof(r3d_lit_lod_group_t, error) == 8,
+_Static_assert(sizeof(r3d_lit_cluster_lod_t) == 4 && sizeof(r3d_lit_lod_group_t) == 12
+                   && offsetof(r3d_lit_lod_group_t, error) == 8 && offsetof(r3d_lit_lod_group_t, saves) == 10,
                "the LOD records are not the layout lit_mesh.py writes");
 
 enum {
@@ -187,6 +187,12 @@ void
 r3d_lit_mesh_find_levels(r3d_lit_mesh_t* mesh) {
     mesh->lod_finest_root = 0;
     mesh->lod_coarse_first = 0;
+    mesh->lod_finest_triangles = 0;
+    for (int c = 0; mesh->cluster_lod != NULL && c < mesh->cluster_count; c++) {
+        if (mesh->cluster_lod[c].own == R3D_LOD_NONE) {
+            mesh->lod_finest_triangles += mesh->clusters[c].triangle_count;
+        }
+    }
     const r3d_lit_node_t* root = &mesh->nodes[0];
     const int first = mesh->cluster_lod == NULL ? -1 : coarse_run_first(mesh);
     if (first < 0 || root->leaf || root->count != 2 || !subtree_is(mesh, root->first, true)
@@ -205,6 +211,7 @@ r3d_lit_mesh_levels_from_asset(const asset_view_t* levels, r3d_lit_mesh_t* mesh)
     mesh->lod_error_least = 0;
     mesh->lod_finest_root = 0;
     mesh->lod_coarse_first = 0;
+    mesh->lod_finest_triangles = 0;
     const asset_status_t status =
         asset_entry_validate(*levels, LLOD_VERSION, LLOD_AT_VERSION, LLOD_HEADER_SIZE, ENTRY_ALIGNMENT);
     if (status != ASSET_OK) {
