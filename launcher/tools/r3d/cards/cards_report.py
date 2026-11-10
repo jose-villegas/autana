@@ -57,7 +57,7 @@ def table(data):
         if tuple(reader.fieldnames or ()) != FIELDS:
             raise ValueError(f'{data}: expected fields {FIELDS}')
         rows = list(reader)
-    lines = ['| Material | See-through | Covered | Carded | Triangles replaced | Card triangles |',
+    lines = ['| Material | See-through | Covered | Carded | Triangles without cards | Card triangles |',
              '|---|---:|---:|---|---:|---:|']
     for row in rows[:-1]:
         name = row['material'].replace('|', '\\|').replace('\n', ' ')
@@ -67,7 +67,7 @@ def table(data):
                      f"{'yes' if row['accepted'] == str(True) else 'no'} | {row['replaced']} | {row['cards']} |")
     scene = rows[-1]
     lines += ['', f"requested {scene['triangles']}, ceiling {scene['ceiling'] or 'none'}, "
-                  f"rest budget {scene['budget']}, emitted {scene['scene_total']}", '']
+                  f"rest budget {scene['budget']}, emitted by the unlit import {scene['scene_total']}", '']
     return '\n'.join(lines)
 
 
