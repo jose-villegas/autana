@@ -444,6 +444,9 @@ copy_aim(picture_lens_t* picture, const r3d_batch_draw_t* copy, batch_item_t* it
     instance_lens(picture, &copy->instance, copy, &item->lens);
 }
 
+/* The cull's per-instance helpers below are inlined into each caller: the
+ * batches call some of them too, and out of line they would cost the
+ * instances' loop a call each. */
 static inline __attribute__((always_inline)) int
 cull_instance(const r3d_instance_t* instance, bool culls, const r3d_lens_t* lens, uint16_t* out, raster_stats_t* stats,
               r3d_pipeline_work_t* work, r3d_depth_fit_t* fit) {
@@ -471,7 +474,7 @@ cull_instance(const r3d_instance_t* instance, bool culls, const r3d_lens_t* lens
  * picture's lens at a position scale of 1 through r3d_lens_frustum(), once
  * grown by WORLD_SLACK; `eye_reach` is the view position's largest
  * coordinate, in magnitude. */
-static bool
+static inline __attribute__((always_inline)) bool
 world_bounds_outside(box3f_t box, const planef_t planes[PLANE_FRUSTUM_COUNT], float eye_reach) {
     const float coords[] = {box.lo.x, box.lo.y, box.lo.z, box.hi.x, box.hi.y, box.hi.z};
     float reach = eye_reach;
@@ -493,7 +496,7 @@ world_cull_init(world_cull_t* world, picture_lens_t* picture, const render_view_
 }
 
 /* Whether culling skips `instance` whole: its world box is outside the picture. */
-static bool
+static inline __attribute__((always_inline)) bool
 world_cull_skips(const world_cull_t* world, const r3d_instance_t* instance) {
     return world->cull && instance->world_bounds != NULL
            && world_bounds_outside(*instance->world_bounds, world->planes, world->eye_reach);
@@ -580,7 +583,7 @@ level_pick_init(const raster_t* raster, picture_lens_t* picture, const render_vi
  * cut as whole as any, and its next pick comes before its draw. Spread over
  * frames, instance `index` picks in the frames its share comes round, and
  * every instance in round 0. */
-static bool
+static inline __attribute__((always_inline)) bool
 level_pick(const level_pick_t* pick, int index, const r3d_instance_t* instance, const r3d_lens_t* lens) {
     const int every = pick->lod.pick_every;
     const bool due = every <= 1 || pick->round == 0 || ((uint32_t)index + pick->round) % (uint32_t)every == 0;
@@ -590,26 +593,8 @@ level_pick(const level_pick_t* pick, int index, const r3d_instance_t* instance, 
     return false;
 }
 
-/* Culls drawn entry `i`, `instance`, kept copy `copy` when not NULL, into
- * `culled`; returns past its entry. Inlined into each of cull_slice()'s
- * loops, so the instances' loop is the one a batch-less scene always ran. */
-static inline __attribute__((always_inline)) uint16_t*
-cull_entry(cull_job_t* job, picture_lens_t* picture, cull_half_t* mine, r3d_pipeline_work_t* block, int i,
-           const r3d_instance_t* instance, const r3d_batch_draw_t* copy, uint16_t* culled) {
-    if (world_cull_skips(&job->world, instance)) {
-        culled[0] = 0;
-    } else {
-        r3d_lens_t lens;
-        instance_lens(picture, instance, copy, &lens);
-        mine->levels_changed |= level_pick(&job->pick, i, instance, &lens);
-        culled[0] = (uint16_t)cull_instance(instance, job->settings.cull, &lens, culled + 1, &mine->stats, block,
-                                            job->settings.depth_fit ? &mine->fit : NULL);
-    }
-    return culled + 1 + (size_t)instance->mesh->cluster_count;
-}
-
-/* Culls drawn entries [from, to) into their places in the census list: an
- * entry's list starts after every earlier one's count and clusters. */
+/* Culls instances [from, to) into their places in the census list: an
+ * instance's list starts after every earlier one's count and clusters. */
 static void
 cull_slice(void* ctx, int from, int to) {
     cull_job_t* job = ctx;
@@ -618,22 +603,24 @@ cull_slice(void* ctx, int from, int to) {
     cull_half_t* mine = &job->halves[half];
     r3d_pipeline_work_t* block = job->buffers->work[half];
     uint16_t* culled = job->buffers->culled;
-    int i = 0;
-    for (; i < mathi_min(from, raster->instance_count); i++) {
-        culled += 1 + (size_t)raster->instances[i].mesh->cluster_count;
-    }
-    for (; i < from; i++) {
-        culled += 1 + (size_t)raster_census_copy(raster, i)->instance.mesh->cluster_count;
+    for (int i = 0; i < from; i++) {
+        culled += 1 + (size_t)raster_census_entry(raster, i)->mesh->cluster_count;
     }
     picture_lens_t picture;
     picture_lens_init(&picture, raster, job->view, job->fitted);
-    const int instances_end = mathi_min(to, raster->instance_count);
-    for (; i < instances_end; i++) {
-        culled = cull_entry(job, &picture, mine, block, i, &raster->instances[i], NULL, culled);
-    }
-    for (; i < to; i++) {
+    for (int i = from; i < to; i++) {
         const r3d_batch_draw_t* copy = raster_census_copy(raster, i);
-        culled = cull_entry(job, &picture, mine, block, i, &copy->instance, copy, culled);
+        const r3d_instance_t* instance = copy == NULL ? &raster->instances[i] : &copy->instance;
+        if (world_cull_skips(&job->world, instance)) {
+            culled[0] = 0;
+        } else {
+            r3d_lens_t lens;
+            instance_lens(&picture, instance, copy, &lens);
+            mine->levels_changed |= level_pick(&job->pick, i, instance, &lens);
+            culled[0] = (uint16_t)cull_instance(instance, job->settings.cull, &lens, culled + 1, &mine->stats, block,
+                                                job->settings.depth_fit ? &mine->fit : NULL);
+        }
+        culled += 1 + (size_t)instance->mesh->cluster_count;
     }
 }
 
