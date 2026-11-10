@@ -64,14 +64,15 @@ bin a round then brings the tolerance back down.
 
 ```mermaid
 flowchart LR
-    Pick["pick: each group's saves<br/>at its error's bin"] --> Hist["histogram,<br/>one per core"]
+    Pick["pick: each group's saves at the bin of<br/>max(error, radius × floor / cap)"] --> Hist["histogram,<br/>one per core"]
     Hist --> Steer["round done:<br/>least edge within budget"]
     Drawn["triangles drawn"] --> Steer
-    Steer -->|"next round's tolerance"| Pick
+    Steer -->|"next round's tolerance,<br/>cap risen with it"| Pick
 ```
 
 Refining by screen-space error is
-Hoppe's<sup>[[111]](../Citations.md#hoppe-1997)</sup>; the floor is `lod.tolerance_px`.
+Hoppe's<sup>[[111]](../Citations.md#hoppe-1997)</sup>; the floor is `lod.tolerance_px`, and a
+steered floor is at least the first bin's edge.
 
 | Piece | Where | State |
 |---|---|---|

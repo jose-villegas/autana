@@ -145,11 +145,11 @@ void r3d_lod_steer_reset(r3d_lod_steer_t* steer, float floor_px);
  * held still settles rather than swings. Pixels are lod.tolerance_px's. */
 void r3d_lod_steer_frame(r3d_lod_steer_t* steer, float floor_px, int budget, int drawn, bool round_done);
 
-/* lod.coverage_permille, `permille` at `floor_px`, at the steer's
- * tolerance: in proportion to it, so a group too large to turn coarse at
- * the floor turns coarse once the budget asks enough. The floor itself, or
- * no floor, keeps `permille`. */
-int r3d_lod_steer_coverage(const r3d_lod_steer_t* steer, float floor_px, int permille);
+/* lod.coverage_permille, `permille` at `floor_px` (above 0), at a steered
+ * `tolerance_px`: in proportion to it, so a group too large to turn coarse
+ * at the floor turns coarse once the budget asks enough. The floor itself
+ * keeps `permille`. */
+int r3d_lod_steer_coverage(float tolerance_px, float floor_px, int permille);
 
 /* Updates `coarse`, R3D_LOD_WORDS(mesh->lod_group_count) words, for one
  * frame seen through `lens`: coarse where a group's error projects within

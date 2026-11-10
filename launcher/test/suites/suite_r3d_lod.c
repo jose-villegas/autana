@@ -979,8 +979,7 @@ check_edge(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_
     render_lod_settings_t at = *floor;
     at.tolerance_px = r3d_lod_bin_edge(edge);
     at.hysteresis_px = 0.0F;
-    const r3d_lod_steer_t steer = {.tolerance_px = at.tolerance_px};
-    at.coverage_permille = r3d_lod_steer_coverage(&steer, floor->tolerance_px, floor->coverage_permille);
+    at.coverage_permille = r3d_lod_steer_coverage(at.tolerance_px, floor->tolerance_px, floor->coverage_permille);
     uint32_t fresh[R3D_LOD_WORDS(GROUPS)] = {0};
     r3d_lod_pick(mesh, lens, &at, fresh, NULL);
     render_lod_settings_t over = at;
@@ -1128,7 +1127,7 @@ steered_round(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint32_t* coar
               int budget) {
     render_lod_settings_t lod = LOD;
     lod.tolerance_px = steer->tolerance_px;
-    lod.coverage_permille = r3d_lod_steer_coverage(steer, LOD.tolerance_px, LOD.coverage_permille);
+    lod.coverage_permille = r3d_lod_steer_coverage(steer->tolerance_px, LOD.tolerance_px, LOD.coverage_permille);
     steer->halves[0].unit = 1.0F;
     r3d_lod_pick(mesh, lens, &lod, coarse, &steer->halves[0]);
     r3d_lod_steer_frame(steer, LOD.tolerance_px, budget, drawn_triangles(mesh, coarse), true);
@@ -1218,6 +1217,28 @@ test_the_histogram_bins_errors_in_the_setting_s_pixels(void) {
     TEST_ASSERT_GREATER_THAN_INT(0, compared);
 }
 
+/* A raster of the levelled mesh placed twice, far off, steered by `steer`
+ * within a budget, at pick round 1; `p` and `scratch` hold its instances. */
+static raster_t
+steered_raster(const r3d_lit_mesh_t* mesh, placed_t* p, void* scratch, render_settings_t* settings,
+               r3d_lod_steer_t* steer) {
+    TEST_ASSERT_NOT_NULL(p);
+    TEST_ASSERT_NOT_NULL(scratch);
+    const float depth[PLACED_MAX] = {FAR_EYE, FAR_EYE};
+    place(p, mesh, PLACED_MAX, depth);
+    settings->lod.triangle_budget = 1000;
+    memset(steer, 0, sizeof *steer);
+    return (raster_t){.instances = p->instances,
+                      .instance_count = PLACED_MAX,
+                      .width = W,
+                      .height = H,
+                      .picks_levels = true,
+                      .pick_round = 1,
+                      .steer = steer,
+                      .scratch = scratch,
+                      .settings = settings};
+}
+
 /* A steered census spread over two frames: a steer never started (or below
  * the floor) starts at the floor; round 1 counts only instance 1's finest
  * triangles, and the round ends on round 2, instance 0's turn, empty again. */
@@ -1228,23 +1249,9 @@ test_a_steered_census_counts_each_instance_once_a_round(void) {
     const r3d_lit_mesh_t* mesh = counted_mesh();
     placed_t* p = malloc(sizeof *p);
     void* scratch = malloc(picked_scratch_bytes(mesh));
-    TEST_ASSERT_NOT_NULL(p);
-    TEST_ASSERT_NOT_NULL(scratch);
-    const float depth[PLACED_MAX] = {FAR_EYE, FAR_EYE};
-    place(p, mesh, PLACED_MAX, depth);
     render_settings_t settings = spread_over(EVERY);
-    settings.lod.triangle_budget = 1000;
     r3d_lod_steer_t steer;
-    memset(&steer, 0, sizeof steer);
-    raster_t raster = {.instances = p->instances,
-                       .instance_count = PLACED_MAX,
-                       .width = W,
-                       .height = H,
-                       .picks_levels = true,
-                       .pick_round = 1,
-                       .steer = &steer,
-                       .scratch = scratch,
-                       .settings = &settings};
+    raster_t raster = steered_raster(mesh, p, scratch, &settings, &steer);
     const render_view_t view = axis_view();
     (void)raster_census(&raster, &view);
     const float started = steer.tolerance_px;
@@ -1259,6 +1266,30 @@ test_a_steered_census_counts_each_instance_once_a_round(void) {
     TEST_ASSERT_EQUAL_INT(1, one_frame);
     TEST_ASSERT_EQUAL_INT(0, steer.frames);
     TEST_ASSERT_EQUAL_INT(0, steer.halves[0].finest + steer.halves[1].finest);
+}
+
+/* With lod.tolerance_px at 0 a steer starts at the first bin's edge, the
+ * least floor the coverage cap can rise from, and its cap there is the
+ * setting's own. */
+static void
+test_a_steer_under_a_zero_tolerance_starts_at_the_first_edge(void) {
+    const r3d_lit_mesh_t* mesh = counted_mesh();
+    placed_t* p = malloc(sizeof *p);
+    void* scratch = malloc(picked_scratch_bytes(mesh));
+    render_settings_t settings = spread_over(1);
+    settings.lod.tolerance_px = 0.0F;
+    r3d_lod_steer_t steer;
+    raster_t raster = steered_raster(mesh, p, scratch, &settings, &steer);
+    settings.lod.triangle_budget = INT32_MAX; /* within budget: the round leaves it at its floor */
+    raster.pick_round = 0;
+    const render_view_t view = axis_view();
+    (void)raster_census(&raster, &view);
+    free(scratch);
+    free(p);
+    TEST_ASSERT_EQUAL_FLOAT(r3d_lod_bin_edge(0), steer.tolerance_px);
+    TEST_ASSERT_EQUAL_INT(
+        settings.lod.coverage_permille,
+        r3d_lod_steer_coverage(steer.tolerance_px, r3d_lod_bin_edge(0), settings.lod.coverage_permille));
 }
 
 /* With partial redraw, a camera held still stops picking once its owed
@@ -1329,6 +1360,7 @@ suite_r3d_lod(void) {
     RUN_TEST(test_a_steered_tolerance_settles_and_does_not_swing_along_the_path);
     RUN_TEST(test_the_histogram_bins_errors_in_the_setting_s_pixels);
     RUN_TEST(test_a_steered_census_counts_each_instance_once_a_round);
+    RUN_TEST(test_a_steer_under_a_zero_tolerance_starts_at_the_first_edge);
     RUN_TEST(test_a_steer_that_moved_owes_picks_while_the_camera_holds_still);
 }
 

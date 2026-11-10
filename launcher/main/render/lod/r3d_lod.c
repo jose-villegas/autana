@@ -334,10 +334,7 @@ r3d_lod_steer_frame(r3d_lod_steer_t* steer, float floor_px, int budget, int draw
 }
 
 int
-r3d_lod_steer_coverage(const r3d_lod_steer_t* steer, float floor_px, int permille) {
-    if (floor_px <= 0.0F) {
-        return permille;
-    }
-    const float risen = (float)permille * (steer->tolerance_px / floor_px);
+r3d_lod_steer_coverage(float tolerance_px, float floor_px, int permille) {
+    const float risen = (float)permille * (tolerance_px / floor_px);
     return risen < (float)INT32_MAX ? (int)risen : INT32_MAX;
 }
