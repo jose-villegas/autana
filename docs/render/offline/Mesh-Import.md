@@ -148,12 +148,26 @@ also changes what the simplifier keeps elsewhere.
 | Spare capacity | The rest spends its full request, respending the replaced material's triangles on other geometry. |
 | Runtime | The [LOD pick](../Render-Settings.md#lod) spends what the frame frees. |
 
-<!-- generated: sponza-atrium-fitted-full-cards sha256=75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070 -->
+Sponza's fitted atrium:
 
+<!-- generated: sponza-atrium-fitted-full-cards sha256=a1113d208fded659d57eb29574a9d54bc0f9671162b2027145efb70efdddc7c7 -->
+| Material | See-through | Covered | Carded | Triangles without cards | Card triangles |
+|---|---:|---:|---|---:|---:|
+| leaf | 47.7% | 84.5% | yes | 16435 | 170 |
+
+requested 25491, ceiling 30000, rest budget 25491, emitted by the unlit import 29338
 <!-- /generated: sponza-atrium-fitted-full-cards -->
 
-<!-- generated: bistro-street-fitted-full-cards sha256=75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070 -->
+Bistro's fitted street:
 
+<!-- generated: bistro-street-fitted-full-cards sha256=deed441451c87cd58f1fa0a16a94bd820807e42d720611ff051d7865aa547995 -->
+| Material | See-through | Covered | Carded | Triangles without cards | Card triangles |
+|---|---:|---:|---|---:|---:|
+| MASTER_Glass_Dirty_MASKED | 100.0% | 0.0% | no | 0 | 0 |
+| Paris_LiquorBottle_01_Labels | 100.0% | 0.0% | no | 0 | 0 |
+| MASTER_Forge_Metal | 99.1% | 2.4% | no | 4 | 0 |
+
+requested 33178, ceiling 34500, rest budget 33178, emitted by the unlit import 34310
 <!-- /generated: bistro-street-fitted-full-cards -->
 
 The greedy billboard cloud follows Décoret et al. 2003, with an area cost,

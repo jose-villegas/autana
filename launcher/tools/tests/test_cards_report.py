@@ -65,10 +65,10 @@ def test_cards_report_table(tmp_path):
     assert cards_report.main([str(data), '--table', str(output)]) == 0
     text = output.read_text()
     leaf, total = rows
-    assert '| Material | See-through | Covered | Carded | Triangles replaced | Card triangles |' in text
+    assert '| Material | See-through | Covered | Carded | Triangles without cards | Card triangles |' in text
     assert (f"| leaf\\|branch | always | {leaf['covered']:.1%} | yes | {leaf['replaced']} | {leaf['cards']} |") in text
     assert (f"requested {total['triangles']}, ceiling {total['ceiling']}, "
-            f"rest budget {total['budget']}, emitted {total['scene_total']}") in text
+            f"rest budget {total['budget']}, emitted by the unlit import {total['scene_total']}") in text
 
 
 def test_cards_report_rejected_candidate(tmp_path):
