@@ -76,9 +76,10 @@ raster_triangle_budget(const raster_t* raster) {
  * vertices and cluster rows start in the shared buffers, and its writers. */
 typedef struct {
     const r3d_lit_mesh_t* mesh;
+    const r3d_instance_t* instance; /* whose blend batch_blend() sets up */
     r3d_lens_t lens;
     const r3d_lod_morph_t* morph; /* NULL: it blends nothing, the plain transform and draw */
-    const uint16_t* visible;
+    uint16_t* visible;            /* reordered in place when it blends: the plain ones first */
     int visible_count;
     int plain_count; /* visible's first, which blend nothing; those after take the blend's copies */
     int vertex_base, cluster_base;
@@ -188,6 +189,7 @@ typedef struct {
     bool skip_hidden;       /* the view's */
     int first_row, end_row; /* the rows this draw redraws */
     bool levels_changed;    /* a level pick this draw changed an instance's cut */
+    bool blends;            /* lod.blend is on: each instance's blend is set up */
     raster_buffers_t buffers;
 } draw_work_t;
 
@@ -785,16 +787,26 @@ assert_view_size(const raster_t* raster, const render_view_t* view) {
     assert(view->viewport.height == picture.height);
 }
 
-/* An instance's blend this frame: its morph state and, when it blends, its
- * kept `clusters` with the plain ones first. Kept out of the draw, so the
- * draw's frame on the stack chain is the same with lod.blend off. */
+/* Whether lod.blend is on, read apart so the settings stay off the draw's frame. */
+static __attribute__((noinline)) bool
+blend_on(const raster_t* raster) {
+    return raster_settings(raster).lod.blend == RENDER_LOD_BLEND_ON;
+}
+
+/* Each item's blend this frame, from the picture's raster and view: its
+ * morph state and, when it blends, its kept clusters with the plain ones
+ * first. Called once a batch, so the draw's frame on the stack chain is the
+ * same as with lod.blend off. */
 static __attribute__((noinline, cold)) void
-item_blend(const raster_t* raster, const render_view_t* view, const r3d_instance_t* instance, batch_item_t* item,
-           r3d_lod_morph_t* morph, uint16_t* clusters) {
-    raster_lod_morph(raster, view, instance, &item->lens, morph);
-    if (morph->enabled) {
-        item->morph = morph;
-        item->plain_count = r3d_lod_morph_partition(morph, item->mesh, clusters, item->visible_count);
+batch_blend(const picture_lens_t* picture, batch_t* batch) {
+    for (int k = 0; k < batch->count; k++) {
+        batch_item_t* item = &batch->items[k];
+        r3d_lod_morph_t* morph = &batch->morphs[k];
+        raster_lod_morph(picture->raster, picture->view, item->instance, &item->lens, morph);
+        if (morph->enabled) {
+            item->morph = morph;
+            item->plain_count = r3d_lod_morph_partition(morph, item->mesh, item->visible, item->visible_count);
+        }
     }
 }
 
@@ -833,7 +845,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     picture_lens_t* picture = &work->picture;
     picture_lens_init(picture, raster, view, true);
     /* Off, no instance blends: the morph state is set up only when it may. */
-    const bool blends = raster_settings(raster).lod.blend == RENDER_LOD_BLEND_ON;
+    work->blends = blend_on(raster);
     for (int first = 0, index = 0; first < raster->instance_count; index++) {
         const int end = raster_batch_end(raster, first);
         int vertices = 0;
@@ -854,15 +866,16 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
                 item->visible = culled + 1;
                 item->visible_count = culled[0];
                 item->plain_count = culled[0];
-                if (blends) {
-                    item_blend(raster, view, instance, item, &batch->morphs[batch->count - 1], culled + 1);
-                }
+                item->instance = instance;
                 item->vertex_base = vertices;
                 item->cluster_base = clusters;
             }
             vertices += mesh->vertex_count;
             clusters += mesh->cluster_count;
             culled += 1 + (size_t)mesh->cluster_count;
+        }
+        if (work->blends) {
+            batch_blend(picture, batch);
         }
         draw_batch(raster, index, work);
     }
