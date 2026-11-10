@@ -3334,22 +3334,30 @@ test_camera_small_fill_changes_scene_pixels(void) {
     }
 }
 
-/* Off by default; a camera that skips hidden clusters draws the same pixels. */
-static void
-test_camera_skip_hidden_setter_changes_no_pixel(void) {
+/* A camera's on/off lens flag at the lens_t byte FIELD: off by default, and SET refuses a
+ * non-camera and no entity without turning it on. Returns the scene's camera. */
+static entity_t
+camera_flag_off_by_default(bool (*set)(entity_t, bool), size_t field) {
     expanded_fixture();
     entity_t scene = loaded_root(0);
     const entity_t camera = entity_find(scene, name_hash("camera"));
-    const lens_t* lens = camera_lens(camera_first(scene));
-    TEST_ASSERT_FALSE(lens->skip_hidden);
-    TEST_ASSERT_FALSE(camera_set_skip_hidden(entity_find(scene, name_hash("red")), true));
-    TEST_ASSERT_FALSE(camera_set_skip_hidden(ENTITY_NONE, true));
-    TEST_ASSERT_FALSE(lens->skip_hidden);
+    const bool* flag = (const bool*)((const char*)camera_lens(camera) + field);
+    TEST_ASSERT_FALSE(*flag);
+    TEST_ASSERT_FALSE(set(entity_find(scene, name_hash("red")), true));
+    TEST_ASSERT_FALSE(set(ENTITY_NONE, true));
+    TEST_ASSERT_FALSE(*flag);
+    return camera;
+}
+
+/* Off by default; a camera that skips hidden clusters draws the same pixels. */
+static void
+test_camera_skip_hidden_setter_changes_no_pixel(void) {
+    const entity_t camera = camera_flag_off_by_default(camera_set_skip_hidden, offsetof(lens_t, skip_hidden));
     render_context_t* context = render_context_main();
     scene_render(0, 0, SIZE, SIZE);
     memcpy(fx.held, raster_color(&context->raster), SIZE * SIZE * sizeof(*fx.held));
     TEST_ASSERT_TRUE(camera_set_skip_hidden(camera, true));
-    TEST_ASSERT_TRUE(lens->skip_hidden);
+    TEST_ASSERT_TRUE(camera_lens(camera)->skip_hidden);
     scene_render(0, 0, SIZE, SIZE);
     TEST_ASSERT_EQUAL_MEMORY(fx.held, raster_color(&context->raster), SIZE * SIZE * sizeof(*fx.held));
 }
@@ -3357,17 +3365,10 @@ test_camera_skip_hidden_setter_changes_no_pixel(void) {
 /* Off by default; only a camera takes it, and its views carry it to the raster. */
 static void
 test_camera_curves_setter(void) {
-    expanded_fixture();
-    entity_t scene = loaded_root(0);
-    const entity_t camera = entity_find(scene, name_hash("camera"));
-    const lens_t* lens = camera_lens(camera_first(scene));
-    TEST_ASSERT_FALSE(lens->curves);
-    TEST_ASSERT_FALSE(camera_set_curves(entity_find(scene, name_hash("red")), true));
-    TEST_ASSERT_FALSE(camera_set_curves(ENTITY_NONE, true));
-    TEST_ASSERT_FALSE(lens->curves);
-    TEST_ASSERT_TRUE(camera_set_curves(camera, true));
-    TEST_ASSERT_TRUE(lens->curves);
+    const entity_t camera = camera_flag_off_by_default(camera_set_curves, offsetof(lens_t, curves));
+    const lens_t* lens = camera_lens(camera);
     const transformf_t pose = transformf_identity();
+    TEST_ASSERT_TRUE(camera_set_curves(camera, true));
     TEST_ASSERT_TRUE(lens_view(lens, &pose, (viewport_t){SIZE, SIZE, 0}).curves);
     TEST_ASSERT_TRUE(camera_set_curves(camera, false));
     TEST_ASSERT_FALSE(lens_view(lens, &pose, (viewport_t){SIZE, SIZE, 0}).curves);
