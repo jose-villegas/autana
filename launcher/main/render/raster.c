@@ -428,6 +428,9 @@ static int
 cull_instance(const r3d_instance_t* instance, bool culls, const r3d_lens_t* lens, uint16_t* out, raster_stats_t* stats,
               r3d_pipeline_work_t* work, r3d_depth_fit_t* fit) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
+    if (r3d_lod_dropped(mesh, instance->lod_coarse)) {
+        return 0; /* draws nothing: its walk skipped, as one culled whole */
+    }
     int visible = 0;
     if (culls) {
         visible = r3d_pipeline_cull(mesh, lens, instance->lod_coarse, out, work, fit);
@@ -550,11 +553,8 @@ cull_slice(void* ctx, int from, int to) {
             instance_lens(&picture, instance, &lens);
             mine->levels_changed |= level_pick(&job->pick, i, instance, &lens,
                                                job->pick.steer != NULL ? &job->pick.steer->halves[half] : NULL);
-            /* A dropped instance draws nothing, its walk skipped as one culled whole. */
-            culled[0] = r3d_lod_dropped(instance->mesh, instance->lod_coarse)
-                            ? 0
-                            : (uint16_t)cull_instance(instance, job->settings.cull, &lens, culled + 1, &mine->stats,
-                                                      block, job->settings.depth_fit ? &mine->fit : NULL);
+            culled[0] = (uint16_t)cull_instance(instance, job->settings.cull, &lens, culled + 1, &mine->stats, block,
+                                                job->settings.depth_fit ? &mine->fit : NULL);
         }
         culled += 1 + (size_t)instance->mesh->cluster_count;
     }
