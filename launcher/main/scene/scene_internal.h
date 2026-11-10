@@ -130,8 +130,10 @@ typedef struct {
     r3d_lit_mesh_t mesh;
     mat4f_t model;
     box3f_t world_bounds; /* the mesh's root box through `model`, kept with it */
+    box3f_t drawn_bounds; /* world_bounds when last drawn (render/partial) */
     scene_row_t entity;
     bool placed;          /* false while the transform is the identity: drawn as it is */
+    bool changed;         /* its mesh or model changed since it was last drawn (render/partial) */
     uint16_t lod_words;   /* the coarse bits held for the mesh opened: R3D_LOD_WORDS of its groups */
     uint32_t* lod_coarse; /* into the scene's lod_bits, or NULL without levels */
 } scene_renderer_t;
@@ -176,6 +178,10 @@ typedef struct {
     mat3f_t* normal_palette;
     void* light_storage;
     bool lighting_valid;
+    /* bound: a skin is attached. Its buffers (internal_storage, light_storage)
+     * exist only while its entity is ACTIVE; starved: they did not fit when it
+     * became ACTIVE, so it is not drawn until it stops being ACTIVE. */
+    bool bound, starved;
     skin_light_mode_t light_mode;
 } scene_skinned_renderer_t;
 
@@ -231,7 +237,9 @@ struct scene {
     r3d_skin_light_table_t* light_table;
     int light_table_users;
     bool light_table_dirty;
-    uint8_t* flags; /* one per entity: SCENE_FLAG_* */
+    bool skins_pending; /* a bound skin may be ACTIVE without its buffers */
+    int starved_count;  /* skins whose buffers did not fit; root->failure says which */
+    uint8_t* flags;     /* one per entity: SCENE_FLAG_* */
     scene_renderer_t* renderers;
     void* resident; /* mesh arrays (positions, triangles, colours), deduplicated; NULL when absent */
     scene_camera_t* cameras;
@@ -332,12 +340,32 @@ void scene_animation_release(scene_t* scene);
 /* An animator or light now exists on `entity`: adds it to `staged` once. A
  * skin needs its entity's skeleton animator, so its entity is staged already. */
 void scene_stage_add(scene_t* scene, scene_row_t entity);
+/* Settles the skins' buffers, then advances and skins. */
 void scene_animation_step(scene_t* scene, uint32_t dt_ms);
+/* The same without settling: a seek re-poses what is shown and takes no buffers. */
+void scene_animation_repose(scene_t* scene, uint32_t dt_ms);
 /* Animates staged[first, first + count). */
 void scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms);
 bool scene_skin_light_apply_mode(scene_t* scene, scene_row_t entity, scene_skinned_renderer_t* skin,
                                  skin_light_mode_t mode);
-void scene_skin_light_table_release(scene_t* scene, scene_row_t entity);
+void scene_skin_light_table_release(scene_t* scene, const scene_skinned_renderer_t* skin);
+/* Attaches the skin `id` to the row's renderer. With `take` an ACTIVE row
+ * takes its buffers now, and on SCENE_ERR_MEMORY keeps its old skin; without,
+ * they wait for scene_skins_settle(). */
+bool scene_renderer_bind_skin(scene_t* scene, scene_row_t row, const char* id, bool take, scene_failure_t* why);
+/* Takes the skin's buffers and skins them in its animator's shown pose; false,
+ * with nothing taken, when they do not fit. */
+bool scene_skin_take(scene_t* scene, scene_row_t entity, scene_skinned_renderer_t* skin);
+/* Frees the skin's buffers, if it holds them. */
+void scene_skin_give(scene_t* scene, scene_skinned_renderer_t* skin);
+/* Points the entity's renderer at its skin's output, or at the bind mesh when
+ * it holds no buffers, and marks it for a re-skin and relight. */
+void scene_skin_show(scene_t* scene, scene_row_t entity);
+/* Takes the buffers of every ACTIVE skin without them; one that does not fit
+ * is starved and reported through scene_failure(). */
+void scene_skins_settle(scene_t* scene);
+/* The entity stopped being ACTIVE: its skin gives its buffers back. */
+void scene_skin_deactivate(scene_t* scene, scene_row_t entity);
 bool scene_skin_light_allocate(scene_skinned_renderer_t* skin);
 void scene_skin_light_prepare(scene_t* scene, scene_row_t entity);
 bool scene_light_color_fits(vec3f_t linear_rgb);

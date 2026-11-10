@@ -178,9 +178,10 @@ def assemble(q, col, entries, position_scale, leaf_triangles, max_depth, groups=
     node_bounds(nodes, out.clusters)
     out.nodes = nodes
     out.lod = None if groups is None else [(e["own"], e["parent"]) for e in ordered]
-    out.groups = None if groups is None else np.asarray(groups, dtype=np.int64).reshape(-1, 5)
+    out.groups = None if groups is None else with_saves(out.lod, np.asarray(groups, dtype=np.int64).reshape(-1, 5),
+                                                         out.clusters)
     validate(out.pos, out.rgb, out.tris, out.clusters, out.nodes, out.face_colors)
-    validate_levels(out.lod, out.groups, len(out.clusters))
+    validate_levels(out.lod, out.groups, out.clusters)
     return out
 
 
@@ -295,13 +296,24 @@ def validate(pos, rgb, tris, clusters, nodes, face_colors=None):
     assert len(nodes) <= MAX_NODES
 
 
+def with_saves(lod, groups, clusters):
+    """Group rows (centre, radius, error) with each one's saves column
+    (lod_asset.group_saves()) from the clusters' triangle counts."""
+    from r3d import lod_asset
+    saves = lod_asset.group_saves(lod, [c[3] for c in clusters], len(groups))
+    return np.column_stack([groups, np.asarray(saves, dtype=np.int64)])
+
+
 def validate_levels(lod, groups, clusters):
-    """Check the level records with their entry-format owner."""
+    """Check the level records with their entry-format owner, each group's
+    saves among them."""
     from r3d import lod_asset
     if lod is None:
         assert groups is None
     else:
-        assert len(lod) == clusters
+        assert len(lod) == len(clusters)
+        assert np.array_equal(np.asarray(groups)[:, 5], lod_asset.group_saves(lod, [c[3] for c in clusters],
+                                                                               len(groups))), "group saves are stale"
         lod_asset.encode(lod, groups)
 
 
@@ -410,7 +422,7 @@ def read_lit_mesh(path, levels=None, mask=None):
         lod_asset.validate_mesh(levels, blob)
         mesh.lod, groups = lod_asset.decode(levels)
         mesh.groups = np.asarray(groups, dtype=np.int64)
-        validate_levels(mesh.lod, mesh.groups, clusters)
+        validate_levels(mesh.lod, mesh.groups, mesh.clusters)
     mesh.mask_vertex_first = 0
     mesh.mask_uvs = mesh.mask_rows = None
     if mask is not None:

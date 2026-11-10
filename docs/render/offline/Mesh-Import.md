@@ -146,7 +146,7 @@ also changes what the simplifier keeps elsewhere.
 |---|---|
 | Ceiling | Card triangles are paid first; the rest gets `min(triangles, ceiling - cards)`. Cards bind only when request + cards exceeds the ceiling. |
 | Spare capacity | The rest spends its full request, respending the replaced material's triangles on other geometry. |
-| Runtime | The [LOD pick](../Render-Settings.md#lod) spends what the frame frees. |
+| Runtime | The LOD pick spends what the frame frees, up to [`lod.triangle_budget`](../Render-Settings.md#lod). |
 
 Sponza's fitted atrium:
 

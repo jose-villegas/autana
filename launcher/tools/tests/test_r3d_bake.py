@@ -20,7 +20,8 @@ try:
     import numpy as np
     from tests import soup
 
-    from r3d.geometry import closest_point_on_triangles, triangle_areas, weld
+    from r3d import geometry
+    from r3d.geometry import closest_point_on_triangles, nearest_triangles, triangle_areas, triangle_search, weld
     from r3d.light import adaptive_sample_counts, face_colours, light, merge_matching_colours, to_srgb8
     from r3d import lit_mesh, rebake
     from r3d.lit_mesh import (MESHLET_TRIANGLES, POSITION_SCALE, WELD_PER_TICK, bake_lit_mesh, read_lit_mesh, validate,
@@ -75,6 +76,27 @@ class SplitTests(unittest.TestCase):
                 or {out_p[a][1], out_p[b][1]} <= {0.0} or {out_p[a][1], out_p[b][1]} <= {2.0}
             if not boundary:
                 self.assertIn((b, a), edges, "an inner edge has no neighbour across it: a T-junction")
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class NearestTrianglesTests(unittest.TestCase):
+    def test_nearest_is_the_closest_triangle(self):
+        # Slivers next to coarse triangles: the centroid of a long thin triangle sits far from most of its area.
+        rng = np.random.default_rng(3)
+        points = np.vstack([rng.random((40, 3)) * [10, 1, 0.2], [[0, 0, 0], [10, 0, 0], [10, 0.01, 0], [0, 0.02, 1]]])
+        triangles = np.vstack([rng.integers(0, 40, (60, 3)), [[40, 41, 42], [40, 42, 43], [41, 42, 43]]])
+        triangles = triangles[(np.diff(np.sort(triangles, axis=1), axis=1) > 0).all(axis=1)]
+        corners = points[triangles]
+        queries = rng.random((300, 3)) * [12, 3, 2] - [1, 1, 0.5]
+        brute = np.array([closest_point_on_triangles(queries, *np.broadcast_to(t[:, None], (3, len(queries), 3)))[1]
+                          for t in corners])
+        with mock.patch.object(geometry, 'QUERY_CHUNK', 64):
+            tri, bary, distance = nearest_triangles(queries, triangle_search(corners))
+        np.testing.assert_allclose(distance, brute.min(axis=0), atol=1e-12)
+        np.testing.assert_allclose(brute[tri, np.arange(len(queries))], distance, atol=1e-12)
+        point = np.einsum('ni,nij->nj', bary, corners[tri])
+        np.testing.assert_allclose(np.linalg.norm(point - queries, axis=1), distance, atol=1e-9)
+
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -278,15 +300,9 @@ def banded_plane(cells=40, size=400.0):
 def against_plane(pos, rgb, sp, sc, st):
     """(mean colour difference, uncovered): for each input vertex the simplified surface's colour at the nearest
     point, over the vertices the surface still covers, and how many it no longer does."""
-    n, m = len(pos), len(st)
-    q = np.repeat(pos, m, axis=0)
-    a, b, c = (np.tile(sp[st[:, k]], (n, 1)) for k in range(3))
-    bary, distance = closest_point_on_triangles(q, a, b, c)
-    distance = distance.reshape(n, m)
-    k = distance.argmin(axis=1)
-    w = bary.reshape(n, m, 3)[np.arange(n), k]
-    colour = (w[:, :, None] * sc[st[k]]).sum(axis=1)
-    covered = distance[np.arange(n), k] < 1e-3
+    tri, bary, distance = nearest_triangles(pos, triangle_search(sp[st]))
+    colour = np.einsum('ni,nij->nj', bary, sc[st[tri]])
+    covered = distance < 1e-3
     return np.abs(colour - rgb)[covered].mean(), int((~covered).sum())
 
 

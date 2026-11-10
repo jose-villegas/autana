@@ -14,7 +14,7 @@ flowchart LR
     end
     subgraph Both["both cores, shares steered by time"]
         direction LR
-        Xf[transform] --> Fill[clip and<br/>span fill] --> Res[resolve] --> Up[compose<br/>and upscale]
+        Xf[transform] --> Fill[clip and<br/>span fill] --> Up[compose<br/>and upscale]
     end
     subgraph C1["core 1"]
         Present[present<br/>over QSPI]
@@ -29,7 +29,6 @@ flowchart LR
 | Cull | 0 | node and cluster bounds, the camera → kept clusters | `r3d.cull`, or `r3d.census` when the size is predicted | [Culling.md](Culling.md) |
 | Transform | both, by cluster share | kept clusters, the lens → screen vertices, each cluster's rows | `r3d.transform` | [Mesh-Rendering.md](../Mesh-Rendering.md#on-both-cores) |
 | Clip and span fill | both, by row share | triangles → colour, depth, each attachment's pixels | `r3d.draw` | [Coverage.md](Coverage.md), [Culling.md](Culling.md#per-triangle) |
-| Resolve | both, disjoint rows | depth, an attachment's pixels → its map; only when a view's attachment resolves | `r3d.resolve` | [Attachments.md](Attachments.md#attachments) |
 | View modes | both | depth, an attachment → colour; development builds | `r3d.show` | [View-Modes.md](View-Modes.md) |
 | Compose and upscale | both, by row share | the picture → the framebuffer, or a half picture | `r3d.upscale` | [gfx/Targets-and-Modes.md](../../gfx/Targets-and-Modes.md#expanded-frames) |
 | Frame generation | both | the last picture and depth → a warped frame between renders | its own rows | [Frame-Generation.md](Frame-Generation.md) |
@@ -40,11 +39,12 @@ flowchart LR
 | [Mesh-Rendering.md](../Mesh-Rendering.md) | The raster: one frame, the render context, both cores, memory |
 | [Culling.md](Culling.md) | Every cull stage in order, from the bake's visibility to the per-triangle tests, what each keeps and costs |
 | [Coverage.md](Coverage.md) | Which pixels a triangle fills, and small fill: cheaper draws for triangles a few pixels wide |
-| [Attachments.md](Attachments.md) | The depth buffer, and the extra per-pixel maps a draw can write: motion vectors, meshlet IDs |
+| [Attachments.md](Attachments.md) | The depth buffer, and the extra per-pixel maps a draw can write: meshlet IDs |
 | [Overdraw.md](Overdraw.md) | The overdraw view: how many triangles reach each pixel, how to read it and what a layer costs |
 | [View-Modes.md](View-Modes.md) | Every development-build view at one pose, and the hooks a view row may carry |
 | [Dynamic-Resolution.md](Dynamic-Resolution.md) | The render size picked per frame to hold a budget: the stepped controller and the predictor |
 | [Frame-Generation.md](Frame-Generation.md) | Frames warped from the last render to the next camera pose, shown between renders |
+| [Partial-Redraw.md](Partial-Redraw.md) | A still camera redrawing only the rows where something changed |
 
 ## Where the time goes
 
@@ -69,7 +69,7 @@ are split into their sub-stages, the laps named after the code they time:
 The dropdown has each debug view's hatched bar, what it adds, and every stage
 in ms.
 
-<!-- generated: pipeline-frame-stages sha256=538b89d11b0d1848624538f798415fcf88a773d2002afe049dacad2a9d778afc -->
+<!-- generated: pipeline-frame-stages sha256=7a1f85356db571bfc2cfb369b70d45e594ad8dbdafe34e1b8bb2ccbc3d93549b -->
 ![Frame stages as shipped](../../images/render/pipeline-frame-stages.png)
 
 ![Inside transform and draw](../../images/render/pipeline-frame-stages.sub-stages.png)
@@ -109,21 +109,18 @@ Board ms per frame from a perf-scope image, mean of 79 lap windows. A parent is 
 
 ![Frame stages with the tiles view](../../images/render/pipeline-frame-stages.tiles.png)
 
-![Frame stages with the motion view](../../images/render/pipeline-frame-stages.motion.png)
-
 ![Frame stages with the meshlets view](../../images/render/pipeline-frame-stages.meshlets.png)
 
-| Stage | As shipped | Share | depth view adds | tiles view adds | motion view adds | meshlets view adds |
-|---|---|---|---|---|---|---|
-| r3d.cull | 0.76 | 1% | +0.01 | +0.00 | +0.02 | +0.01 |
-| r3d.transform | 4.87 | 10% | +0.10 | +0.02 | +0.22 | +0.02 |
-| r3d.draw | 41.94 | 82% | +0.25 | +0.20 | +1.85 | +23.89 |
-| r3d.resolve | not run | not run | +0.00 | +0.00 | +14.29 | +0.00 |
-| r3d.show | not run | not run | +6.89 | +4.60 | +9.05 | +10.21 |
-| present.wait | 0.00 | 0% | +0.00 | +0.00 | +0.00 | +0.00 |
-| r3d.upscale | 2.59 | 5% | +0.16 | +0.17 | +0.16 | +0.16 |
-| frame.rest | 1.07 | 2% | +0.06 | +0.05 | +0.11 | +0.12 |
-| total | 51.23 | 100% | +7.47 | +5.04 | +25.70 | +34.40 |
+| Stage | As shipped | Share | depth view adds | tiles view adds | meshlets view adds |
+|---|---|---|---|---|---|
+| r3d.cull | 0.76 | 1% | +0.01 | +0.00 | +0.01 |
+| r3d.transform | 4.87 | 10% | +0.10 | +0.02 | +0.02 |
+| r3d.draw | 41.94 | 82% | +0.25 | +0.20 | +23.89 |
+| r3d.show | not run | not run | +6.89 | +4.60 | +10.21 |
+| present.wait | 0.00 | 0% | +0.00 | +0.00 | +0.00 |
+| r3d.upscale | 2.59 | 5% | +0.16 | +0.17 | +0.16 |
+| frame.rest | 1.07 | 2% | +0.06 | +0.05 | +0.12 |
+| total | 51.23 | 100% | +7.47 | +5.04 | +34.40 |
 
 Board ms per frame, mean of 78 to 79 report windows per capture; a view adds the difference between its capture and the scene as shipped. Not captured: cull, boxes, overdraw, copies.
 

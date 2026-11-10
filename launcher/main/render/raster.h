@@ -44,15 +44,29 @@ struct raster {
     /* The frame's count, which share of the instances a spread pick takes;
      * round 0, a scene's or view's first frame, picks every instance. */
     uint32_t pick_round;
+    /* With lod.triangle_budget set, steers the pick's tolerance from round
+     * to round; NULL picks at lod.tolerance_px. */
+    struct r3d_lod_steer* steer;
     void* scratch; /* raster_scratch_bytes() of it */
     /* Drawn beside colour and depth, at most GFX_ATTACHMENTS_FURTHER_MAX. */
     const raster_attachment_t* const* attachments;
     int attachment_count;
     const render_settings_t* settings; /* NULL draws with RENDER_SETTINGS_DEFAULT */
+    /* Rows [first_row, end_row) a draw redraws over what the last one left,
+     * and the destination rows they reach an upscale; equal is every row
+     * (render/partial). A draw whose depth scale moved, or whose level picks
+     * changed a cut, redraws every row. */
+    int first_row, end_row;
 };
 
 /* What a draw uses: the raster's settings, under any development override. */
 render_settings_t raster_settings(const raster_t* raster);
+
+/* Two of raster_settings() alone, for callers deep in the draw's stack, where
+ * the whole settings struct would cost a frame. */
+bool raster_partial_redraw(const raster_t* raster);
+int raster_pick_every(const raster_t* raster);
+int raster_triangle_budget(const raster_t* raster);
 
 /* The viewport a view frames: destination size when upscaled, otherwise drawn size. */
 static inline viewport_t
@@ -62,7 +76,7 @@ raster_viewport(const raster_t* raster, int quarter) {
 }
 
 typedef struct {
-    int clusters, triangles; /* what survived culling */
+    int clusters, triangles; /* what culling kept, after the level cut: lod.triangle_budget counts these */
 } raster_stats_t;
 
 /* The most vertices and clusters any mesh the raster draws has: what its
@@ -84,6 +98,11 @@ uint16_t* raster_depth(const raster_t* raster);
  * fits it to the nearest bound of what it kept, never under the view's
  * near_z, so far surfaces keep their depth steps (r3d_lens_set_depth_near()). */
 float raster_depth_near(const raster_t* raster);
+
+/* Whether a level pick in the last cull (draw or census) changed an instance's cut. */
+bool raster_levels_changed(const raster_t* raster);
+/* Whether the last draw redrew every row, asked to or not (first_row). */
+bool raster_drew_every_row(const raster_t* raster);
 
 /* Everything a raster works in (per-vertex, per-cluster, the census list,
  * the picture's attachments and the upscale maps) as one block, from its
@@ -112,6 +131,10 @@ resolution_step_t raster_compose_size(const raster_t* raster);
 /* Fills `destination` from what was last drawn, both cores taking
  * half the destination rows. The destination is at least the drawn size. */
 void raster_upscale(raster_t* raster, uint16_t* destination, int width, int height);
+/* The destination rows [first, end) of `height` an upscale of rows
+ * [first_row, end_row) rewrites, the rows a filter reads beside them
+ * included; the row map is the last upscale's. */
+void raster_destination_rows(const raster_t* raster, int height, int* first, int* end);
 /* raster_upscale() of `picture` (colour and depth at the drawn size; NULL is
  * what was last drawn) through raster->upscale.filter, marking `seams`
  * (GFX_SEAM_BYTES of the destination size) where it blends; NULL marks none. */

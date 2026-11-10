@@ -190,6 +190,15 @@ def read_mesh(entries, name):
     return read_lit_mesh(blobs[name], blobs.get(lod_asset.name_for_mesh(name)), mask)
 
 
+def read_one_mesh(data, name):
+    """Mesh `name` of the bundle `data`, with its LLOD sibling if any, decoding no other entry: a fit's rest
+    beside the copies its start kept, which may hold an older LLOD."""
+    entries = parse_pack(data)
+    if name not in entries or entries[name][0] != mesh_asset.TYPE:
+        raise PackError(f"mesh bundle has no mesh {name}")
+    return read_mesh([(key, kind, blob) for key, (kind, blob) in entries.items()], name)
+
+
 def rest_name(entries, copies):
     """The unique mesh not used as a copy prototype."""
     shapes = {row["mesh"] for row in copies}
