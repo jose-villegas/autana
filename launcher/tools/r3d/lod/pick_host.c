@@ -38,9 +38,9 @@ pick_host(const r3d_lit_cluster_lod_t* cluster_lod, int clusters, const r3d_lit_
                                        .pick_every = 1};
     r3d_lod_pick(&mesh, &lens, &lod, coarse, NULL);
     r3d_lod_pick_drop(&mesh, &lens, &lod, drop_permille, coarse, NULL);
-    const r3d_instance_t instance = {.mesh = &mesh, .lod_coarse = coarse, .lod_drop_permille = drop_permille};
+    const bool dropped = r3d_lod_dropped(&mesh, drop_permille, coarse);
     for (int c = 0; c < clusters; c++) {
-        drawn[c] = !r3d_lod_dropped(&instance) && r3d_lod_drawn(&mesh, c, coarse) ? 1U : 0U;
+        drawn[c] = !dropped && r3d_lod_drawn(&mesh, c, coarse) ? 1U : 0U;
     }
 }
 

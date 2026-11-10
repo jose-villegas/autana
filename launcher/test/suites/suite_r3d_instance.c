@@ -112,7 +112,7 @@ static void
 test_a_mesh_with_no_model_draws_where_it_is(void) {
     quad_t red;
     make_quad(&red, 255, 0, 0, 0);
-    const r3d_instance_t one = {&red.mesh, NULL, NULL, NULL, 0};
+    const r3d_instance_t one = {&red.mesh, NULL, NULL, NULL};
     const drawn_t drawn = draw(&one, 1);
     TEST_ASSERT_NOT_EQUAL_HEX16(CLEAR, pixel(drawn.color, 0.0F));
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(drawn.color, 3.0F));
@@ -125,8 +125,8 @@ test_two_instances_appear_at_their_own_models(void) {
     quad_t green;
     make_quad(&red, 255, 0, 0, 0);
     make_quad(&green, 0, 255, 0, 0);
-    const r3d_instance_t red_alone = {&red.mesh, NULL, NULL, NULL, 0};
-    const r3d_instance_t green_alone = {&green.mesh, NULL, NULL, NULL, 0};
+    const r3d_instance_t red_alone = {&red.mesh, NULL, NULL, NULL};
+    const r3d_instance_t green_alone = {&green.mesh, NULL, NULL, NULL};
     drawn_t alone = draw(&red_alone, 1);
     const uint16_t red_pixel = pixel(alone.color, 0.0F);
     free(alone.scratch);
@@ -137,7 +137,7 @@ test_two_instances_appear_at_their_own_models(void) {
 
     const mat4f_t left = placed(-3.0F, 0.0F, 1.0F);
     const mat4f_t right = placed(3.0F, 0.0F, 1.0F);
-    const r3d_instance_t both[] = {{&red.mesh, &left, NULL, NULL, 0}, {&green.mesh, &right, NULL, NULL, 0}};
+    const r3d_instance_t both[] = {{&red.mesh, &left, NULL, NULL}, {&green.mesh, &right, NULL, NULL}};
     const drawn_t drawn = draw(both, 2);
     TEST_ASSERT_EQUAL_HEX16(red_pixel, pixel(drawn.color, -3.0F));
     TEST_ASSERT_EQUAL_HEX16(green_pixel, pixel(drawn.color, 3.0F));
@@ -162,7 +162,7 @@ test_position_ticks_keep_a_placed_instance_in_model_units(void) {
     ticks.node.bounds = ticks.cluster.bounds;
     ticks.mesh.position_scale = POSITION_SCALE;
     const mat4f_t model = placed(3.0F, 0.0F, 1.0F);
-    const r3d_instance_t reference = {&unit.mesh, &model, NULL, NULL, 0}, scaled = {&ticks.mesh, &model, NULL, NULL, 0};
+    const r3d_instance_t reference = {&unit.mesh, &model, NULL, NULL}, scaled = {&ticks.mesh, &model, NULL, NULL};
     const drawn_t expected = draw(&reference, 1);
     const drawn_t actual = draw(&scaled, 1);
     TEST_ASSERT_NOT_EQUAL_HEX16(CLEAR, pixel(actual.color, 3.0F));
@@ -199,8 +199,8 @@ test_a_scale_widens_an_instance_about_its_position(void) {
     make_quad(&red, 255, 0, 0, 0);
     /* 1.5 units from the centre is outside the unit quad and inside a scale of 2. */
     const mat4f_t doubled_at = placed(0.0F, 0.0F, 2.0F);
-    const r3d_instance_t plain = {&red.mesh, NULL, NULL, NULL, 0};
-    const r3d_instance_t doubled = {&red.mesh, &doubled_at, NULL, NULL, 0};
+    const r3d_instance_t plain = {&red.mesh, NULL, NULL, NULL};
+    const r3d_instance_t doubled = {&red.mesh, &doubled_at, NULL, NULL};
     drawn_t drawn = draw(&plain, 1);
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(drawn.color, 1.5F));
     free(drawn.scratch);
@@ -217,8 +217,8 @@ test_a_rotation_turns_an_instance_about_its_position(void) {
     transformf_t pose = transformf_identity();
     transformf_set_rotation(&pose, (quatf_t){0, 1, 0, 0});
     const mat4f_t half_turn = transformf_compute_matrix(&pose);
-    const r3d_instance_t as_built = {&offset.mesh, NULL, NULL, NULL, 0};
-    const r3d_instance_t turned = {&offset.mesh, &half_turn, NULL, NULL, 0};
+    const r3d_instance_t as_built = {&offset.mesh, NULL, NULL, NULL};
+    const r3d_instance_t turned = {&offset.mesh, &half_turn, NULL, NULL};
     drawn_t drawn = draw(&as_built, 1);
     TEST_ASSERT_NOT_EQUAL_HEX16(CLEAR, pixel(drawn.color, 3.0F));
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(drawn.color, -3.0F));
@@ -236,8 +236,8 @@ test_a_nearer_instance_covers_a_farther_one_whichever_is_drawn_first(void) {
     make_quad(&red, 255, 0, 0, 0);
     make_quad(&green, 0, 255, 0, 0);
     const mat4f_t nearer = placed(0.0F, -2.0F, 1.0F);
-    const r3d_instance_t near_first[] = {{&green.mesh, &nearer, NULL, NULL, 0}, {&red.mesh, NULL, NULL, NULL, 0}};
-    const r3d_instance_t far_first[] = {{&red.mesh, NULL, NULL, NULL, 0}, {&green.mesh, &nearer, NULL, NULL, 0}};
+    const r3d_instance_t near_first[] = {{&green.mesh, &nearer, NULL, NULL}, {&red.mesh, NULL, NULL, NULL}};
+    const r3d_instance_t far_first[] = {{&red.mesh, NULL, NULL, NULL}, {&green.mesh, &nearer, NULL, NULL}};
     drawn_t drawn = draw(near_first, 2);
     const uint16_t first = pixel(drawn.color, 0.0F);
     free(drawn.scratch);
@@ -292,8 +292,8 @@ test_world_boxes_keep_every_copy_s_pixels_depth_and_clusters(void) {
     for (int i = 0; i < COPIES; i++) {
         const r3d_lit_mesh_t* mesh = i % 2 == 0 ? &unit->mesh : &ticks->mesh;
         boxes[i] = r3d_lit_mesh_world_bounds(mesh, &models[i]);
-        tested[i] = (r3d_instance_t){mesh, &models[i], NULL, NULL, 0};
-        boxed[i] = (r3d_instance_t){mesh, &models[i], &boxes[i], NULL, 0};
+        tested[i] = (r3d_instance_t){mesh, &models[i], NULL, NULL};
+        boxed[i] = (r3d_instance_t){mesh, &models[i], &boxes[i], NULL};
     }
     const drawn_t expected = draw(tested, COPIES);
     const drawn_t actual = draw(boxed, COPIES);
@@ -318,7 +318,7 @@ test_an_instance_whose_world_box_is_off_screen_is_skipped(void) {
     quad_t red;
     make_quad(&red, 255, 0, 0, 0);
     const box3f_t behind = {{-1.0F, -1.0F, -30.0F}, {1.0F, 1.0F, -20.0F}};
-    const r3d_instance_t boxed = {&red.mesh, NULL, &behind, NULL, 0};
+    const r3d_instance_t boxed = {&red.mesh, NULL, &behind, NULL};
     const drawn_t drawn = draw(&boxed, 1);
     TEST_ASSERT_EQUAL_INT(0, drawn.stats.clusters);
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(drawn.color, 0.0F));
@@ -344,12 +344,12 @@ static void
 test_a_world_box_wholly_outside_one_plane_skips_its_instance(void) {
     quad_t red;
     make_quad(&red, 255, 0, 0, 0);
-    const r3d_instance_t plain = {&red.mesh, NULL, NULL, NULL, 0};
+    const r3d_instance_t plain = {&red.mesh, NULL, NULL, NULL};
     const drawn_t seen = draw(&plain, 1);
     TEST_ASSERT_EQUAL_INT(1, seen.stats.clusters);
     free(seen.scratch);
     for (size_t i = 0; i < sizeof OUTSIDE / sizeof OUTSIDE[0]; i++) {
-        const r3d_instance_t boxed = {&red.mesh, NULL, &OUTSIDE[i].box, NULL, 0};
+        const r3d_instance_t boxed = {&red.mesh, NULL, &OUTSIDE[i].box, NULL};
         const drawn_t drawn = draw(&boxed, 1);
         TEST_ASSERT_EQUAL_INT_MESSAGE(0, drawn.stats.clusters, OUTSIDE[i].side);
         TEST_ASSERT_EQUAL_INT_MESSAGE(0, drawn.stats.triangles, OUTSIDE[i].side);
@@ -375,7 +375,7 @@ test_a_world_box_straddling_a_plane_keeps_the_instance_and_its_pixels(void) {
         transformf_set_position(&pose, (vec3f_t){EDGES[i].x, EDGES[i].y, 0.0F});
         const mat4f_t model = transformf_compute_matrix(&pose);
         const box3f_t box = r3d_lit_mesh_world_bounds(&red.mesh, &model);
-        const r3d_instance_t unboxed = {&red.mesh, &model, NULL, NULL, 0}, boxed = {&red.mesh, &model, &box, NULL, 0};
+        const r3d_instance_t unboxed = {&red.mesh, &model, NULL, NULL}, boxed = {&red.mesh, &model, &box, NULL};
         const drawn_t expected = draw(&unboxed, 1);
         const drawn_t actual = draw(&boxed, 1);
         TEST_ASSERT_EQUAL_INT_MESSAGE(1, expected.stats.clusters, EDGES[i].side);
@@ -387,7 +387,7 @@ test_a_world_box_straddling_a_plane_keeps_the_instance_and_its_pixels(void) {
         free(actual.scratch);
     }
     const box3f_t across_near = {{-0.1F, -0.1F, -9.5F}, {0.1F, 0.1F, -8.5F}};
-    const r3d_instance_t boxed = {&red.mesh, NULL, &across_near, NULL, 0};
+    const r3d_instance_t boxed = {&red.mesh, NULL, &across_near, NULL};
     const drawn_t drawn = draw(&boxed, 1);
     TEST_ASSERT_EQUAL_INT(1, drawn.stats.clusters);
     TEST_ASSERT_NOT_EQUAL_HEX16(CLEAR, pixel(drawn.color, 0.0F));
@@ -409,7 +409,7 @@ static void
 test_with_culling_off_an_off_screen_world_box_does_not_skip(void) {
     quad_t red;
     make_quad(&red, 255, 0, 0, 0);
-    const r3d_instance_t boxed = {&red.mesh, NULL, &OUTSIDE[0].box, NULL, 0};
+    const r3d_instance_t boxed = {&red.mesh, NULL, &OUTSIDE[0].box, NULL};
     const tune_entry_t* entry = tune_find(tune_shared(), TUNE_NAME(render, cull));
     TEST_ASSERT_NOT_NULL(entry);
     saved_cull = *entry->value;

@@ -63,7 +63,7 @@ static stage_us_t
 time_stages(const raster_t* raster, const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int* visible) {
     const raster_buffers_t b = raster_carve(raster);
     raster_t drawn = *raster;
-    const r3d_instance_t instance = {mesh, NULL, NULL, NULL, 0};
+    const r3d_instance_t instance = {mesh, NULL, NULL, NULL};
     drawn.instances = &instance;
     stage_us_t us = {INT64_MAX, INT64_MAX, INT64_MAX, INT64_MAX};
     for (int run = 0; run < CULL_COST_RUNS; run++) {
@@ -136,7 +136,7 @@ measure_family(const scene_baked_t* family) {
     r3d_lit_mesh_t halved = mesh;
     halved.clusters = halved_clusters;
 
-    const r3d_instance_t instance = {&mesh, NULL, NULL, NULL, 0};
+    const r3d_instance_t instance = {&mesh, NULL, NULL, NULL};
     const resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
     raster_t raster = {.instances = &instance,
                        .instance_count = 1,

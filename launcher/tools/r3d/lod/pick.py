@@ -44,7 +44,7 @@ SETTINGS = render_asset.load(render_asset.DEFAULT)
 TOLERANCE_PX = SETTINGS["lod.tolerance_px"]
 HYSTERESIS_PX = SETTINGS["lod.hysteresis_px"]
 COVERAGE_PERMILLE = SETTINGS["lod.coverage_permille"]
-DROP_PERMILLE_MAX = read_define(MAIN / "render" / "r3d_instance.h", "R3D_LOD_DROP_PERMILLE_MAX")
+DROP_PERMILLE_MAX = read_define(LOD_HEADER, "R3D_LOD_DROP_PERMILLE_MAX")
 PERMILLE = read_define(LOD_HEADER, "R3D_LOD_PERMILLE")
 # The most a tunable holds: no coverage cap.
 UNCAPPED = 2**31 - 1
@@ -185,7 +185,7 @@ def _device_library():
                                find_compiler("CC", ("cc", "gcc", "clang"), "C"),
                                flags=[f"-I{root}" for root in packages.include_roots()],
                                depends=(LOD_HEADER, render / "r3d_lit_mesh.h", render / "r3d_pipeline.h",
-                                        render / "r3d_instance.h", render_asset.HEADER),
+                                        render_asset.HEADER),
                                libraries=["-lm"], log=log)
         _device.pick_host.restype = None
         _device.pick_host_drop_pixels.restype = ctypes.c_float

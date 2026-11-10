@@ -23,7 +23,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "render/r3d_instance.h"
+#include "render/r3d_lit_mesh.h"
 #include "render/settings/render_settings.h"
 
 typedef struct r3d_lens r3d_lens_t; /* r3d_pipeline.h */
@@ -43,17 +43,22 @@ r3d_lod_coarse(const uint32_t* coarse, uint16_t group) {
     return ((coarse[group / R3D_LOD_WORD_BITS] >> (group % R3D_LOD_WORD_BITS)) & 1U) != 0;
 }
 
-/* Group words, plus a dropped word when the placement has a limit. */
+/* A placement's drop limit, lod_drop_permille: thousandths of the
+ * picture's height (R3D_LOD_PERMILLE), the most a byte holds; 0 never drops. */
+#define R3D_LOD_DROP_PERMILLE_MAX 255
+
+/* The coarse words a placement of a mesh with `groups` needs: its groups',
+ * and with a drop limit one more, which holds whether it is dropped. */
 static inline int
 r3d_lod_words(int groups, int drop_permille) {
     return R3D_LOD_WORDS(groups) + (drop_permille != 0 ? 1 : 0);
 }
 
-/* Whether the placement draws nothing under its persistent drop state. */
+/* Whether a placement of `mesh` under `drop_permille` and `coarse` draws
+ * nothing: r3d_lod_pick_drop() set its dropped word. */
 static inline bool
-r3d_lod_dropped(const r3d_instance_t* instance) {
-    return instance->lod_drop_permille != 0 && instance->lod_coarse != NULL
-           && instance->lod_coarse[R3D_LOD_WORDS(instance->mesh->lod_group_count)] != 0;
+r3d_lod_dropped(const r3d_lit_mesh_t* mesh, int drop_permille, const uint32_t* coarse) {
+    return drop_permille != 0 && coarse != NULL && coarse[R3D_LOD_WORDS(mesh->lod_group_count)] != 0;
 }
 
 /* `mesh`'s drop error through `lens` in pixels: its whole bound's radius,

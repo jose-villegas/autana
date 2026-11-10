@@ -16,14 +16,9 @@
 #include "math/linear/mat4f.h"
 #include "render/r3d_lit_mesh.h"
 
-#define R3D_LOD_DROP_PERMILLE_MAX 255
-
 typedef struct {
     const r3d_lit_mesh_t* mesh;
     const mat4f_t* model;        /* NULL: drawn as it is */
     const box3f_t* world_bounds; /* NULL: culled from the mesh's own root */
     uint32_t* lod_coarse;        /* R3D_LOD_WORDS(mesh->lod_group_count) words, or NULL: the finest level */
-    /* Thousandths of picture height; 0 never drops. With a limit, lod_coarse
-     * holds one extra word after the groups for the dropped state. */
-    uint8_t lod_drop_permille;
 } r3d_instance_t;

@@ -2985,7 +2985,7 @@ test_the_scratch_is_the_finest_steps_raster_block(void) {
     entity_t scene = show("test_pair");
     r3d_instance_t* instances = fx.instances;
     for (int i = 0; i < INSTANCES_MAX; i++) {
-        instances[i] = (r3d_instance_t){&columns(scene)->renderers[0].mesh, NULL, NULL, NULL, 0};
+        instances[i] = (r3d_instance_t){&columns(scene)->renderers[0].mesh, NULL, NULL, NULL};
     }
     const resolution_config_t config = resolution_config(LADDER, 3, 3, 2000);
     render_context_t* c = render_context_main();

@@ -643,7 +643,7 @@ enum { PLACED_MAX = 2 };
 typedef struct {
     mat4f_t models[PLACED_MAX];
     box3f_t boxes[PLACED_MAX];
-    uint32_t coarse[PLACED_MAX][R3D_LOD_WORDS(GROUPS) + 1]; /* and the dropped word, for a placement with a limit */
+    uint32_t coarse[PLACED_MAX][R3D_LOD_WORDS(GROUPS)];
     r3d_instance_t instances[PLACED_MAX];
 } placed_t;
 
@@ -656,7 +656,7 @@ place(placed_t* p, const r3d_lit_mesh_t* mesh, int count, const float* depth) {
         transformf_set_position(&pose, (vec3f_t){0.0F, 0.0F, depth[i]});
         p->models[i] = transformf_compute_matrix(&pose);
         p->boxes[i] = r3d_lit_mesh_world_bounds(mesh, &p->models[i]);
-        p->instances[i] = (r3d_instance_t){mesh, &p->models[i], &p->boxes[i], p->coarse[i], 0};
+        p->instances[i] = (r3d_instance_t){mesh, &p->models[i], &p->boxes[i], p->coarse[i]};
     }
 }
 
@@ -714,7 +714,7 @@ test_the_pick_keeps_the_bits_of_an_instance_culled_whole(void) {
 /* The scratch picked_in_round() draws in. */
 static size_t
 picked_scratch_bytes(const r3d_lit_mesh_t* mesh) {
-    r3d_instance_t instances[PLACED_MAX] = {{mesh, NULL, NULL, NULL, 0}, {mesh, NULL, NULL, NULL, 0}};
+    r3d_instance_t instances[PLACED_MAX] = {{mesh, NULL, NULL, NULL}, {mesh, NULL, NULL, NULL}};
     const raster_t raster = {.instances = instances, .instance_count = PLACED_MAX, .width = W, .height = H};
     return raster_scratch_bytes(&raster);
 }
@@ -778,40 +778,6 @@ test_a_pick_spread_over_frames_picks_each_instance_in_its_own_frame(void) {
     TEST_ASSERT_EQUAL_HEX(0x2, rounds[1]);
     TEST_ASSERT_EQUAL_HEX(0x1, rounds[2]);
     TEST_ASSERT_EQUAL_HEX(0x2, rounds[3]);
-}
-
-static void
-test_a_dropped_instance_skips_its_census_and_reports_a_changed_level(void) {
-    r3d_lit_mesh_t mesh = *levelled_mesh();
-    const float depth[PLACED_MAX] = {FAR_EYE, WHOLE_IN_VIEW};
-
-    render_settings_t settings = spread_over(1);
-    const r3d_lens_t far = lens_at(FAR_EYE, NULL);
-    settings.lod.tolerance_px = r3d_lod_drop_pixels(&mesh, &far) + settings.lod.hysteresis_px;
-    settings.partial_redraw = true;
-    raster_t raster = {
-        .instance_count = PLACED_MAX, .width = W, .height = H, .picks_levels = true, .settings = &settings};
-    work = malloc(sizeof(placed_t) + picked_scratch_bytes(&mesh));
-    TEST_ASSERT_NOT_NULL(work);
-    placed_t* placed = work;
-    place(placed, &mesh, PLACED_MAX, depth);
-    for (int i = 0; i < PLACED_MAX; i++) {
-        const r3d_lens_t lens = lens_at(depth[i], NULL);
-        r3d_lod_pick(&mesh, &lens, &settings.lod, placed->coarse[i], NULL);
-    }
-    placed->instances[0].lod_drop_permille = R3D_LOD_DROP_PERMILLE_MAX;
-    raster.instances = placed->instances;
-    raster.scratch = placed + 1;
-    const render_view_t view = axis_view();
-    (void)raster_census(&raster, &view);
-    const raster_buffers_t buffers = raster_carve(&raster);
-    TEST_ASSERT_TRUE(r3d_lod_dropped(&placed->instances[0]));
-    TEST_ASSERT_FALSE(r3d_lod_dropped(&placed->instances[1]));
-    TEST_ASSERT_EQUAL_UINT16(0, buffers.culled[0]);
-    TEST_ASSERT_GREATER_THAN_UINT16(0, buffers.culled[1 + CLUSTERS]);
-    TEST_ASSERT_TRUE(raster_levels_changed(&raster));
-    (void)raster_census(&raster, &view);
-    TEST_ASSERT_FALSE(raster_levels_changed(&raster));
 }
 
 static render_context_t* spread_context;
@@ -1012,9 +978,7 @@ test_the_drop_bit_follows_the_root_error_without_changing_group_bits(void) {
         r3d_lod_pick(plain, &lens, &lod, groups, NULL);
         TEST_ASSERT_EQUAL_HEX32_ARRAY(groups, coarse, R3D_LOD_WORDS(GROUPS));
         const float pixels = r3d_lod_drop_pixels(&mesh, &lens);
-        const r3d_instance_t instance = {
-            .mesh = &mesh, .lod_coarse = coarse, .lod_drop_permille = R3D_LOD_DROP_PERMILLE_MAX};
-        const bool drop = r3d_lod_dropped(&instance);
+        const bool drop = r3d_lod_dropped(&mesh, R3D_LOD_DROP_PERMILLE_MAX, coarse);
         TEST_ASSERT_TRUE(drop ? pixels <= lod.tolerance_px + lod.hysteresis_px
                               : pixels > lod.tolerance_px - lod.hysteresis_px);
         dropped += drop ? 1 : 0;
@@ -1036,8 +1000,7 @@ test_zero_drop_limit_leaves_the_next_word_untouched(void) {
         TEST_ASSERT_EQUAL_HEX32(sentinel, coarse[R3D_LOD_WORDS(GROUPS)]);
         TEST_ASSERT_FALSE(r3d_lod_pick_drop(mesh, &lens, &LOD, 0, coarse, NULL));
         TEST_ASSERT_EQUAL_HEX32(sentinel, coarse[R3D_LOD_WORDS(GROUPS)]);
-        const r3d_instance_t instance = {.mesh = mesh, .lod_coarse = coarse};
-        TEST_ASSERT_FALSE(r3d_lod_dropped(&instance));
+        TEST_ASSERT_FALSE(r3d_lod_dropped(mesh, 0, coarse));
     }
 }
 
@@ -1052,14 +1015,13 @@ test_the_placement_drop_limit_bounds_the_tolerance_band(void) {
     render_lod_settings_t lod = LOD;
     lod.tolerance_px = limit * TOLERANCE_MULTIPLE;
     uint32_t coarse[R3D_LOD_WORDS(GROUPS) + 1] = {0};
-    const r3d_instance_t instance = {.mesh = mesh, .lod_coarse = coarse, .lod_drop_permille = permille};
     int between = 0;
     int dropped = 0;
     for (int p = 0; p < 2 * steps_in(); p++) {
         const r3d_lens_t lens = lens_at(eye_at(p, steps_in()), NULL);
         r3d_lod_pick_drop(mesh, &lens, &lod, permille, coarse, NULL);
         const float pixels = r3d_lod_drop_pixels(mesh, &lens);
-        const bool drop = r3d_lod_dropped(&instance);
+        const bool drop = r3d_lod_dropped(mesh, permille, coarse);
         TEST_ASSERT_TRUE(drop ? pixels <= limit + lod.hysteresis_px : pixels > limit - lod.hysteresis_px);
         if (pixels > limit + lod.hysteresis_px && pixels < lod.tolerance_px - lod.hysteresis_px) {
             TEST_ASSERT_FALSE(drop);
@@ -1069,29 +1031,6 @@ test_the_placement_drop_limit_bounds_the_tolerance_band(void) {
     }
     TEST_ASSERT_GREATER_THAN_INT(0, between);
     TEST_ASSERT_GREATER_THAN_INT(0, dropped);
-}
-
-static void
-test_zero_drop_limit_keeps_the_census_and_the_extra_word(void) {
-    const r3d_lit_mesh_t* mesh = levelled_mesh();
-    const float depth[PLACED_MAX] = {FAR_EYE, WHOLE_IN_VIEW};
-    work = malloc(sizeof(placed_t) + picked_scratch_bytes(mesh));
-    TEST_ASSERT_NOT_NULL(work);
-    placed_t* placed = work;
-    place(placed, mesh, PLACED_MAX, depth);
-    const raster_t raster = {.instances = placed->instances,
-                             .instance_count = PLACED_MAX,
-                             .width = W,
-                             .height = H,
-                             .picks_levels = true,
-                             .scratch = placed + 1};
-    const render_view_t view = axis_view();
-    const raster_stats_t baseline = raster_census(&raster, &view);
-    placed->coarse[0][R3D_LOD_WORDS(GROUPS)] = UINT32_MAX;
-    const raster_stats_t actual = raster_census(&raster, &view);
-    TEST_ASSERT_EQUAL_INT(baseline.clusters, actual.clusters);
-    TEST_ASSERT_EQUAL_INT(baseline.triangles, actual.triangles);
-    TEST_ASSERT_EQUAL_HEX32(UINT32_MAX, placed->coarse[0][R3D_LOD_WORDS(GROUPS)]);
 }
 
 static void
@@ -1493,9 +1432,7 @@ suite_r3d_lod(void) {
     RUN_TEST(test_the_drop_bit_follows_the_root_error_without_changing_group_bits);
     RUN_TEST(test_zero_drop_limit_leaves_the_next_word_untouched);
     RUN_TEST(test_the_placement_drop_limit_bounds_the_tolerance_band);
-    RUN_TEST(test_zero_drop_limit_keeps_the_census_and_the_extra_word);
     RUN_TEST(test_the_drop_histogram_saves_the_coarsest_cut_at_the_root_error);
-    RUN_TEST(test_a_dropped_instance_skips_its_census_and_reports_a_changed_level);
     RUN_TEST(test_a_coarse_group_keeps_every_group_simplified_into_it_coarse);
     RUN_TEST(test_every_finest_cluster_is_drawn_at_exactly_one_level_along_the_path);
     RUN_TEST(test_the_drawn_list_holds_what_each_cluster_s_test_draws);

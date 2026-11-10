@@ -428,9 +428,6 @@ static int
 cull_instance(const r3d_instance_t* instance, bool culls, const r3d_lens_t* lens, uint16_t* out, raster_stats_t* stats,
               r3d_pipeline_work_t* work, r3d_depth_fit_t* fit) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
-    if (r3d_lod_dropped(instance)) {
-        return 0; /* draws nothing: its walk skipped, as one culled whole */
-    }
     int visible = 0;
     if (culls) {
         visible = r3d_pipeline_cull(mesh, lens, instance->lod_coarse, out, work, fit);
@@ -520,17 +517,13 @@ level_pick(const level_pick_t* pick, int index, const r3d_instance_t* instance, 
     if (!pick->picks || !due) {
         return false;
     }
-    bool changed = false;
     if (instance->lod_coarse != NULL && instance->mesh->lod_group_count > 0) {
-        changed = r3d_lod_pick(instance->mesh, lens, &pick->lod, instance->lod_coarse, histogram);
-    } else if (histogram != NULL) {
+        return r3d_lod_pick(instance->mesh, lens, &pick->lod, instance->lod_coarse, histogram);
+    }
+    if (histogram != NULL) {
         histogram->finest += r3d_lod_finest_triangles(instance->mesh); /* drawn whatever the tolerance */
     }
-    if (instance->lod_coarse != NULL && instance->lod_drop_permille != 0) {
-        changed |= r3d_lod_pick_drop(instance->mesh, lens, &pick->lod, instance->lod_drop_permille,
-                                     instance->lod_coarse, histogram);
-    }
-    return changed;
+    return false;
 }
 
 /* Culls instances [from, to) into their places in the census list: an
