@@ -117,10 +117,12 @@ typedef struct {
     /* Whether the last frame's debug view drew a second view, and from where. */
     bool observed;
     transformf_t observed_from;
-    /* Last: a checkpoint holds the bytes before `observing` only. What
+    /* A checkpoint holds the bytes before `observing` only. What
      * render_context_set_observer() was given is input, like the view pick. */
     bool observing;
     transformf_t observer;
+    /* The debug view's second draw's view: here, not on the draw's stack. */
+    render_view_t second;
 #endif
 } render_context_t;
 
