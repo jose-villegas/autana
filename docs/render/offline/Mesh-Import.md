@@ -142,6 +142,20 @@ also changes what the simplifier keeps elsewhere.
 | Ordinary geometry | Non-candidates and rejected candidates remain fitted geometry. Thinned or carved materials are skipped. |
 | Overrides | `never` excludes a material; `always` bypasses both thresholds but rejects thinned or carved materials. Unknown names and names in both lists are errors. |
 
+| Budget | Rule |
+|---|---|
+| Ceiling | Card triangles are paid first; the rest gets `min(triangles, ceiling - cards)`. Cards bind only when request + cards exceeds the ceiling. |
+| Spare capacity | The rest spends its full request, respending the replaced material's triangles on other geometry. |
+| Runtime | The [LOD pick](../Render-Settings.md#lod) spends what the frame frees. |
+
+<!-- generated: sponza-atrium-fitted-full-cards sha256=75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070 -->
+
+<!-- /generated: sponza-atrium-fitted-full-cards -->
+
+<!-- generated: bistro-street-fitted-full-cards sha256=75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070 -->
+
+<!-- /generated: bistro-street-fitted-full-cards -->
+
 The greedy billboard cloud follows Décoret et al. 2003, with an area cost,
 a per-card floor and a nonpositive-score stop.<sup>[[116]](../../Citations.md#decoret-2003)</sup>
 

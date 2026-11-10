@@ -269,6 +269,7 @@ def bake_geometry(job, scene, recorder=None, *, carve=False):
         if settings.simplify:
             steps = settings.simplify
             budget = renderer.variant.triangles if available is None else min(renderer.variant.triangles, available)
+            mesh_report['rest_budget'] = budget
             positions, rgb, tris, tri_mat = simplify(positions, rgb.astype(np.float64), tris, tri_mat, budget,
                                                    allocation=Allocation(tri_o=np.concatenate(all_obj), object_names=src.object_names,
                                                                          material_names=src.names, meshes=meshes, selection=selected,
