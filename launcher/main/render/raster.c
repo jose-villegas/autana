@@ -356,18 +356,14 @@ upscale_slice(void* ctx) {
     }
 }
 
-/* The mesh of instance `i`, the batches' after the instances'. */
-static const r3d_lit_mesh_t*
-mesh_at(const raster_t* raster, int i) {
-    return i < raster->instance_count ? raster->instances[i].mesh
-                                      : raster->batches[i - raster->instance_count].instance.mesh;
-}
-
 int
 raster_vertex_capacity(const raster_t* raster) {
     int most = 0;
-    for (int i = 0; i < raster->instance_count + raster->batch_count; i++) {
-        most = mathi_max(most, mesh_at(raster, i)->vertex_count);
+    for (int i = 0; i < raster->instance_count; i++) {
+        most = mathi_max(most, raster->instances[i].mesh->vertex_count);
+    }
+    for (int i = 0; i < raster->batch_count; i++) {
+        most = mathi_max(most, raster->batches[i].instance.mesh->vertex_count);
     }
     return most;
 }
@@ -375,8 +371,11 @@ raster_vertex_capacity(const raster_t* raster) {
 int
 raster_cluster_capacity(const raster_t* raster) {
     int most = 0;
-    for (int i = 0; i < raster->instance_count + raster->batch_count; i++) {
-        most = mathi_max(most, mesh_at(raster, i)->cluster_count);
+    for (int i = 0; i < raster->instance_count; i++) {
+        most = mathi_max(most, raster->instances[i].mesh->cluster_count);
+    }
+    for (int i = 0; i < raster->batch_count; i++) {
+        most = mathi_max(most, raster->batches[i].instance.mesh->cluster_count);
     }
     return most;
 }
@@ -604,8 +603,11 @@ cull_slice(void* ctx, int from, int to) {
     cull_half_t* mine = &job->halves[half];
     r3d_pipeline_work_t* block = job->buffers->work[half];
     uint16_t* culled = job->buffers->culled;
-    for (int i = 0; i < from; i++) {
-        culled += 1 + (size_t)raster_census_entry(raster, i)->mesh->cluster_count;
+    for (int i = 0; i < mathi_min(from, raster->instance_count); i++) {
+        culled += 1 + (size_t)raster->instances[i].mesh->cluster_count;
+    }
+    for (int i = raster->instance_count; i < from; i++) {
+        culled += 1 + (size_t)raster_census_copy(raster, i)->instance.mesh->cluster_count;
     }
     picture_lens_t picture;
     picture_lens_init(&picture, raster, job->view, job->fitted);
