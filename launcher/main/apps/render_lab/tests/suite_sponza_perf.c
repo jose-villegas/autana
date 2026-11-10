@@ -431,6 +431,7 @@ test_sponza_frame_cost_along_the_flythrough(void) {
     static const perf_budget_t showcase_budget[R3D_PERF_QUARTER_COUNT] = {{41877, 53439}, {39437, 49049}};
     static const perf_budget_t cull_off_budget[R3D_PERF_QUARTER_COUNT] = {{61138, 67896}, {58104, 66246}};
     const scene_baked_variant_t showcase = showcase_bake();
+    TEST_ASSERT_EQUAL_INT_MESSAGE(SCENE_BAKED_FITTED_FULL, showcase, "the showcase budgets are fitted full's");
     const r3d_instance_t shown = {&meshes[showcase], NULL, NULL, NULL};
     report_frame_cost(sponza_bakes[showcase], sponza_bakes[showcase], &shown, NULL, NULL, showcase_budget);
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, cull), 0));

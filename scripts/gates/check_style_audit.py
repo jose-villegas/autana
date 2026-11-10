@@ -762,10 +762,11 @@ def rule_package_config(root, path, text):
 # The ESP-IDF branch matches any drive path that names an esp-idf checkout,
 # not one installer's folder layout. It stays off root-anchored paths: the
 # portable $HOME/esp/esp-idf default and github.com/espressif/esp-idf both
-# contain the name and are fine. /home and /Users start a path only where no
-# name runs into them: a test named capybara/home/portrait is not a path.
+# contain the name and are fine. /home starts a path only where no name runs
+# into it (a test named capybara/home/portrait is not a path); /Users counts
+# anywhere, so a WSL /mnt/c/Users/<name> path is caught.
 PERSONAL_PATH = re.compile(
-    r"C:\\Users\\[A-Za-z0-9][A-Za-z0-9_.-]*|(?<![\w.-])/(?:home|Users)/[A-Za-z0-9][A-Za-z0-9_.-]*"
+    r"C:\\Users\\[A-Za-z0-9][A-Za-z0-9_.-]*|(?<![\w.-])/home/[A-Za-z0-9][A-Za-z0-9_.-]*|/Users/[A-Za-z0-9][A-Za-z0-9_.-]*"
     r"|(?<![\w/])[A-Za-z]:[\\/][^\s\"'`;|()]*?esp-idf[\w.-]*")
 
 
