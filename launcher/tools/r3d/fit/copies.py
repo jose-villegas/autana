@@ -28,13 +28,13 @@ def placed_copies(bundle, flat):
     from r3d.appearance_simplify import FitMesh
 
     entries, rows = mesh_bundle.decode(pathlib.Path(bundle).read_bytes())
-    from r3d.thin import curve_asset
+    from r3d.thin import curve_asset, curve_format
 
     curves = None
     for name, kind, blob in entries:
         if kind == curve_asset.TYPE:
             mesh_blob = next(data for mesh_name, mesh_kind, data in entries
-                             if mesh_name == name.removesuffix(curve_asset.NAME_SUFFIX))
+                             if mesh_name == name.removesuffix(curve_format.NAME_SUFFIX))
             scale = mesh_asset.BLOB_HEADER.unpack_from(mesh_blob)[mesh_asset.POSITION_SCALE_INDEX]
             tube = placed_curves(curve_asset.read_curves(blob, scale), flat)
             curves = tube if curves is None else joined(curves, tube)

@@ -15,7 +15,8 @@ from r3d.thin.curve_format import CURVE, HEADER, KNOT, NAME_SUFFIX, VERSION
 from r3d.thin.thin_parts import (THIN_LENGTH_PER_SIDE, THIN_SLENDERNESS_MIN, WELD_CELLS_PER_SIDE, ThinPart, budget_side,
                                  find_thin_parts, thin_parts_at)
 from r3d.thin.curve_fit import CURVE_LIGHT_RING, CURVE_LIGHT_SPAN, TUBE_SIDES, Curve, fit_curve, light_curve
-from r3d.thin.curve_asset import I16_MAX, name_for_mesh, read_curves, write_curves
+from r3d.lcol_asset import sibling_name
+from r3d.thin.curve_asset import I16_MAX, read_curves, write_curves
 from r3d.import_settings import SettingsError, load_geometry
 from r3d.light import LIGHT_GAMMA
 from tests import soup
@@ -376,9 +377,9 @@ class ThinCurvesTests(unittest.TestCase):
 
     def test_a_mesh_id_with_no_room_for_its_curves_is_refused(self):
         room = NAME_BYTES - 1 - len(NAME_SUFFIX)
-        self.assertEqual(name_for_mesh("m" * room), "m" * room + NAME_SUFFIX)
-        with self.assertRaisesRegex(PackError, "no room"):
-            name_for_mesh("m" * (room + 1))
+        self.assertEqual(sibling_name("m" * room, NAME_SUFFIX), "m" * room + NAME_SUFFIX)
+        with self.assertRaisesRegex(PackError, "does not fit"):
+            sibling_name("m" * (room + 1), NAME_SUFFIX)
 
     def test_a_valid_entry_reads_back(self):
         self.assertEqual(len(read_curves(lcrv(), TICKS)), 2)

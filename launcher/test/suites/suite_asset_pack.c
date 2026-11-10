@@ -111,8 +111,7 @@ release(fixture_t* f) {
 static void
 test_mesh_open_finds_curve_sibling(void) {
     fixture_t f = fixture();
-    const uint32_t curve_bytes =
-        R3D_CURVE_HEADER_WORDS * sizeof(uint16_t) + sizeof(r3d_curve_t) + 2 * sizeof(r3d_curve_knot_t);
+    const uint32_t curve_bytes = R3D_CURVE_HEADER_SIZE + sizeof(r3d_curve_t) + 2 * sizeof(r3d_curve_knot_t);
     test_pack_t built = test_pack_begin(f.pack, BUFFER_BYTES, 2);
     memcpy(test_pack_add(&built, "tri", R3D_LIT_MESH_ASSET, f.entry_size), f.entry, f.entry_size);
     uint8_t* data = test_pack_add(&built, "tri" R3D_CURVE_NAME_SUFFIX, R3D_CURVE_ASSET, curve_bytes);
@@ -121,8 +120,8 @@ test_mesh_open_finds_curve_sibling(void) {
     test_pack_put16(data + 2 * sizeof(uint16_t), R3D_CURVE_VERSION);
     r3d_curve_t row = {.count = 2, .lo = {-1, -1, -1}, .hi = {11, 1, 1}};
     r3d_curve_knot_t knots[] = {{0, 0, 0, 1, 0}, {10, 0, 0, 1, 0}};
-    memcpy(data + R3D_CURVE_HEADER_WORDS * sizeof(uint16_t), &row, sizeof row);
-    memcpy(data + R3D_CURVE_HEADER_WORDS * sizeof(uint16_t) + sizeof row, knots, sizeof knots);
+    memcpy(data + R3D_CURVE_HEADER_SIZE, &row, sizeof row);
+    memcpy(data + R3D_CURVE_HEADER_SIZE + sizeof row, knots, sizeof knots);
     f.total = test_pack_finish(&built);
     asset_pack_t pack;
     r3d_lit_mesh_t mesh;
@@ -132,16 +131,16 @@ test_mesh_open_finds_curve_sibling(void) {
     TEST_ASSERT_EQUAL_INT(1, curves.curve_count);
     TEST_ASSERT_EQUAL_UINT16(2, curves.curves[0].count);
     TEST_ASSERT_EQUAL_INT16(10, curves.knots[1].x);
-    TEST_ASSERT_EQUAL_PTR(data + R3D_CURVE_HEADER_WORDS * sizeof(uint16_t), curves.curves);
+    TEST_ASSERT_EQUAL_PTR(data + R3D_CURVE_HEADER_SIZE, curves.curves);
     release(&f);
 }
 
 /* An LCRV entry of two curves of two knots each, field by field, so a test breaks one and nothing else; a spare
  * knot after them is the one an entry that counts it owns no row of. */
-enum { CURVES = 2, KNOTS = 4, SPARE_KNOTS = 1, CURVE_HEADER_BYTES = R3D_CURVE_HEADER_WORDS * sizeof(uint16_t) };
+enum { CURVES = 2, KNOTS = 4, SPARE_KNOTS = 1, CURVE_HEADER_BYTES = R3D_CURVE_HEADER_SIZE };
 
 typedef struct {
-    uint16_t header[R3D_CURVE_HEADER_WORDS]; /* curves, knots, version, reserved */
+    uint16_t header[R3D_CURVE_HEADER_SIZE / sizeof(uint16_t)]; /* curves, knots, version, reserved */
     r3d_curve_t rows[CURVES];
     r3d_curve_knot_t knots[KNOTS + SPARE_KNOTS];
 } curve_entry_t;
