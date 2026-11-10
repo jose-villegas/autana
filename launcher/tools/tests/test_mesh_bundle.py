@@ -133,7 +133,7 @@ class MeshBundleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             data, _, _, job, _ = bundle_fixture(folder)
             entries, copies = mesh_bundle.decode(data)
-            entry = lod_asset.encode([(mesh_asset.LOD_NONE, 0)], [(0, 0, 0, 1, 0)])
+            entry = lod_asset.encode([(mesh_asset.LOD_NONE, 0)], [(0, 0, 0, 1, 0, 0)])
             entries.append((lod_asset.name_for_mesh(job.asset_name), b"TEST", entry))
             with self.assertRaisesRegex(PackError, "LLOD"):
                 mesh_bundle.decode(mesh_bundle.encode(entries, copies))
