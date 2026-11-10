@@ -4,8 +4,8 @@ A unit is a top-level function, a class header (its decorators, bases and body w
 a module-level statement. The walk starts at the entry functions and at what runs on import with an effect
 the walk cannot see the reader of: a statement that binds no name (not a docstring or `pass`), an assignment
 to a subscript or attribute, and a decorator, assignment, default argument or class body statement that calls
-the stage's own code. A decorator from another package, such as dataclass or functools.cache, registers nothing
-of the stage's. From there it follows:
+the stage's own code. A decorator counts unless it is Python's own (a builtin, or the standard library's, such
+as dataclass or functools.cache). From there it follows:
 
 - a name, global or imported anywhere in the unit, to its definitions, through every import of it;
 - `module.name` through module aliases however many hops deep, and a module used as a value to all of it;
@@ -22,6 +22,7 @@ import builtins
 import dataclasses
 import pathlib
 import symtable
+import sys
 
 DEFS = (ast.FunctionDef, ast.AsyncFunctionDef)
 ASSIGNS = (ast.Assign, ast.AnnAssign, ast.AugAssign)
@@ -54,7 +55,7 @@ class Unit:
 
 def class_effects(node):
     """Whether a class body does something at import the walk cannot see the reader of: a statement that binds no
-    name or writes into an object, or one in a nested class (decorators count where they call the stage)."""
+    name or writes into an object, or one in a nested class (Walk counts the decorators)."""
     return any(
         False if isinstance(item, DEFS) else class_effects(item) if isinstance(item, ast.ClassDef)
         else not stored(item) or stores_into_objects(item) if isinstance(item, ASSIGNS) else not inert(item)
@@ -115,16 +116,20 @@ class Module:
         self.table = symtable.symtable(source, str(path), "exec")
         # name -> every target an import anywhere in the module binds it to: ("module", file or None, dotted)
         # or ("name", file of the module or None, name).
-        self.imports, self.stars = {}, []
+        # name -> the top-level package of every import of it (None for a relative import).
+        self.imports, self.stars, self.packages = {}, [], {}
         for node in ast.walk(self.tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     # `import a.b` binds `a`, and `a.b` is an attribute of it.
                     dotted = alias.name if alias.asname else alias.name.split(".")[0]
                     self.bind(alias.asname or dotted, ("module", find_module(dotted, 0), dotted))
+                    self.packages.setdefault(alias.asname or dotted, set()).add(alias.name.split(".")[0])
             elif isinstance(node, ast.ImportFrom):
                 base = find_module(node.module or "", node.level)
                 for alias in node.names:
+                    package = node.module.split(".")[0] if node.module and not node.level else None
+                    self.packages.setdefault(alias.asname or alias.name, set()).add(package)
                     if (node.module, alias.name, node.level) == ("sys", "modules", 0):
                         self.bind(alias.asname or alias.name, ("module", None, "sys.modules"))
                         continue
@@ -226,10 +231,24 @@ class Walk:
         for unit in self.everything():
             if unit.owner is None and any(self.calls_stage(unit.path, call.func) for call in self.import_calls(unit)):
                 unit.always = True
-            # A decorator runs at import and may register what it wraps when it is the stage's own code.
+            # A decorator runs at import and may register what it wraps, unless it is Python's own.
             if isinstance(unit.node, (*DEFS, ast.ClassDef)) and unit.owner is None and any(
-                    self.calls_stage(unit.path, d.func if isinstance(d, ast.Call) else d) for d in decorators(unit.node)):
+                    not self.from_python(unit.path, d) for d in decorators(unit.node)):
                 unit.always = True
+
+    def from_python(self, path, decorator):
+        """Whether a decorator is Python's own: rooted at a builtin or at names imported only from the standard
+        library, with no call into the stage inside it (`dataclass`, `functools.cache`, `property`)."""
+        root = decorator.func if isinstance(decorator, ast.Call) else decorator
+        while isinstance(root, ast.Attribute):
+            root = root.value
+        module = self.modules[path]
+        if not isinstance(root, ast.Name) or (path, root.id) in self.top or module.stars:
+            return False
+        packages = module.packages.get(root.id)
+        python = root.id in BUILTINS if packages is None else packages <= sys.stdlib_module_names
+        inner = [call for call in ast.walk(decorator) if isinstance(call, ast.Call) and call is not decorator]
+        return python and not any(self.calls_stage(path, call.func) for call in inner)
 
     @staticmethod
     def import_calls(unit):
