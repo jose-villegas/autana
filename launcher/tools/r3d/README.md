@@ -210,9 +210,8 @@ stage instead of being lit again. Every `--poses`/`--reference` pair trains
 one mesh together (the path-averaged mesh); `--per-shot` trains one per
 pair, for a mesh swapped as the camera moves through each segment.
 
-The fit produces identical bytes for identical inputs on the same GPU model
-in the pinned environment. A different GPU may produce different bytes.
-Per-pixel gathers accumulate gradients with fixed-point integer sums;
+The fit produces identical bytes for identical inputs in the pinned
+environment, on any GPU model. Per-pixel gathers accumulate gradients with fixed-point integer sums;
 integer addition is order-independent. Their integer scatter locally relaxes
 torch's deterministic algorithm flag and restores it on return. The fit's
 scoped cuBLAS workspace and algorithm settings are also restored on return.
@@ -318,6 +317,11 @@ It does not trace on the GPU: OptiX does not promise the same acceleration struc
 triangles<sup>[[116]](../../../docs/Citations.md#nvidia-optix-bvh-repeat)</sup>. On some GPUs a shadow ray grazing an edge
 hits or misses by the build, now and then a pixel, and the fit makes that pixel a different mesh. The CPU is slower
 than the GPU, paid once per reference key: the fits that read a set share it.
+
+Since a set differs between CPU vendors, the bake locks it: the CPU Bakes job renders it and packs what the fit reads
+(`pack_references`: the training pictures and normals and the pose files) into `<entry>.reference.tar.xz`, and a
+fit's key names those bytes, as it names its start's ([Bakes](../../../docs/assets/Bakes.md)). Every GPU host fits
+from the same set.
 
 The path-traced backend still runs on `cuda_ad_rgb` where it loads a scene. Under WSL 2 the Windows driver ships only
 an OptiX loader stub: Dr.Jit loads OptiX

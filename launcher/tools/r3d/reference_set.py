@@ -1,10 +1,19 @@
 """Prepare source reference sets and the inputs their keys describe."""
 
 import dataclasses
+import io
 import pathlib
+import tarfile
 from types import SimpleNamespace
 
 POSE_SPACING = ("train_every_ms", "held_out_every_ms", "coverage_every_ms")
+# A reference set's files: each (poses, references) pair the fit trains on, the poses its prune counts shown pixels
+# over, and the held-out pair that scores a fit.
+TRAINING = (("train.txt", "reference"), ("train_landscape.txt", "reference_landscape"))
+COVERAGE = "coverage.txt"
+HELD_OUT = ("held_out.txt", "reference_held_out")
+# What a packed set (pack_references) holds of a reference: the picture the fit compares and its normals.
+PACKED_SUFFIXES = (".png", ".normal.npy")
 
 
 def poses_text(width, height, lens, near, poses):
@@ -83,11 +92,34 @@ def prepare_references(inputs, work):
     work.mkdir(parents=True, exist_ok=True)
     w, h, lens, near, poses = camera_path_poses(scene, visibility, spacing.train_every_ms, either_way_up=False)
     training, held_out = split_poses(spacing, poses)
-    (work / "train.txt").write_text(poses_text(w, h, lens, near, training))
-    (work / "held_out.txt").write_text(poses_text(w, h, lens, near, held_out))
-    (work / "train_landscape.txt").write_text(poses_text(h, w, lens, near, training))
-    (work / "coverage.txt").write_text(poses_text(*camera_path_poses(scene, visibility, spacing.coverage_every_ms)))
-    render_sets(inputs, [(work / poses, work / reference) for poses, reference in
-                         (("train.txt", "reference"), ("train_landscape.txt", "reference_landscape"),
-                          ("held_out.txt", "reference_held_out"))])
+    (portrait, _), (landscape, _) = TRAINING
+    (work / portrait).write_text(poses_text(w, h, lens, near, training))
+    (work / HELD_OUT[0]).write_text(poses_text(w, h, lens, near, held_out))
+    (work / landscape).write_text(poses_text(h, w, lens, near, training))
+    (work / COVERAGE).write_text(poses_text(*camera_path_poses(scene, visibility, spacing.coverage_every_ms)))
+    render_sets(inputs, [(work / poses, work / reference) for poses, reference in TRAINING + (HELD_OUT,)])
     return len(training)
+
+
+def pack_references(work):
+    """The files of the reference set in `work` that a fit reads, as one .tar.xz: the pose files and each training
+    reference's picture and normals. The held-out references are left out: they score a fit, not make it. Names
+    are sorted and carry no time or owner, so the same files pack to the same bytes."""
+    work = pathlib.Path(work)
+    names = sorted([poses for poses, _ in TRAINING] + [COVERAGE, HELD_OUT[0]]) + sorted(
+        f"{folder}/{path.name}" for _, folder in TRAINING for path in (work / folder).iterdir()
+        if path.name.endswith(PACKED_SUFFIXES))
+    packed = io.BytesIO()
+    with tarfile.open(fileobj=packed, mode="w:xz", format=tarfile.USTAR_FORMAT) as tar:
+        for name in names:
+            data = (work / name).read_bytes()
+            info = tarfile.TarInfo(name)
+            info.size, info.mode = len(data), 0o644
+            tar.addfile(info, io.BytesIO(data))
+    return packed.getvalue()
+
+
+def unpack_references(data, work):
+    """A packed reference set (pack_references) into the folder `work`, laid out as prepare_references writes it."""
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:xz") as tar:
+        tar.extractall(work, filter="data")

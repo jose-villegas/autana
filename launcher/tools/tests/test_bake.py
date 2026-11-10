@@ -41,6 +41,7 @@ LOCKED_SHA256 = "1" * 64
 MADE_SHA256 = "2" * 64
 SEEDED_SHA256 = "3" * 64
 FIT_SHA256 = "4" * 64
+REFERENCE_SHA256 = "5" * 64
 RUN = 9
 FIT_STEPS = 20  # the steps FIT sets
 
@@ -640,7 +641,8 @@ class FittedBakeCase(unittest.TestCase):
         self.root = pathlib.Path(self.directory.name)
         self.cache = self.root / "cache"
         self.scene_path = write_fitted_tree(self.root, self.names)
-        self.start = next(item for item in self.bakes({}) if not item.packed)
+        self.start = next(item for item in self.bakes({}) if item.kind == "mesh" and not item.packed)
+        self.reference = next(item for item in self.bakes({}) if item.kind == "reference")
 
     def tearDown(self):
         self.directory.cleanup()
@@ -670,7 +672,7 @@ class FittedBakeCase(unittest.TestCase):
         def stub(item, cache, lock=None, blender=None, fresh_references=None):
             produced.append(item)
             fresh.append(fresh_references)
-            return row_of(item, MADE_SHA256 if item.kind == "mesh" else FIT_SHA256)
+            return row_of(item, {"mesh": MADE_SHA256, "reference": REFERENCE_SHA256}.get(item.kind, FIT_SHA256))
 
         out, err = io.StringIO(), io.StringIO()
         with mock.patch.object(bake, "read_lock_tables",
@@ -687,7 +689,10 @@ class FittedBakeCase(unittest.TestCase):
                                      mesh_cpu_vendor=kwargs.get("mesh_cpu_vendor"))
 
     def locked(self, sha256, **fields):
-        return {item.key: row_of(item, sha256, **fields) for item in self.bakes({}) if item.kind == "mesh"}
+        """The lock holding each start with the bytes `sha256` and each reference set with REFERENCE_SHA256."""
+        found = self.bakes({})
+        return {**{item.key: row_of(item, REFERENCE_SHA256) for item in found if item.kind == "reference"},
+                **{item.key: row_of(item, sha256, **fields) for item in found if item.kind == "mesh"}}
 
 
 class CarvedBakeTests(FittedBakeCase):
@@ -713,7 +718,8 @@ class FittedBakeTests(FittedBakeCase):
     def lock_from_run(self, lock):
         """`lock --from-run` where a run made the start with MADE_SHA256 and the fit of every start there
         could be: the rows it writes."""
-        made = {self.start.key: row_of(self.start, MADE_SHA256, run=RUN)}
+        made = {self.start.key: row_of(self.start, MADE_SHA256, run=RUN),
+                self.reference.key: row_of(self.reference, REFERENCE_SHA256, run=RUN)}
         for sha256 in (LOCKED_SHA256, SEEDED_SHA256, MADE_SHA256):
             made[self.fit(sha256).key] = row_of(self.fit(sha256), FIT_SHA256, run=RUN)
             made[self.level(sha256).key] = row_of(self.level(sha256), FIT_SHA256, run=RUN)
