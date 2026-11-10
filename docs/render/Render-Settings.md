@@ -143,6 +143,7 @@ reports as its triangles.
 |---|---|
 | A kept cluster's, at the level the cut draws | yes |
 | A kept cluster's that face away or fall outside the picture | yes: the count comes before the span fill |
+| A kept masked cluster's, whatever its mask keeps | yes: it is a lit-mesh cluster |
 | Clusters of a level the cut does not draw | no |
 | Clusters and instances the cull drops | no |
 | Anything drawn that is not a lit-mesh cluster | no |
