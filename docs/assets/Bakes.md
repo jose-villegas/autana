@@ -48,7 +48,7 @@ A fit's reference set is traced on the CPU, as a mesh is, since the GPU's ray
 tracing may build a different tree each time
 ([Reference on the CPU](../../launcher/tools/r3d/README.md#reference-on-the-cpu)).
 It is a bake of its own, made by the CPU job and locked like the start, since
-it does not repeat across CPU vendors.
+its bytes differ between CPU models, even two generations of one vendor.
 
 A fit reads only locked bytes, so it repeats exactly on any GPU model. Its row
 names the `gpu` that made it. The Bakes GPU run's `runner` input picks the

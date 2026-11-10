@@ -312,13 +312,13 @@ recipe weight and a margin in each triangle's start edge scale;
 ### Reference on the CPU
 
 A reference set traces its rays and bounced light on `llvm_ad_rgb` (`ray_query.VARIANT`), as mesh bakes do, so a set
-made again repeats byte for byte on one kind of host; its bytes differ between CPU vendors by an ulp ([isa.py](isa.py)).
+made again repeats byte for byte on one kind of host; its bytes differ between CPU vendors by an ulp ([isa.py](isa.py)), and between CPU models of one vendor.
 It does not trace on the GPU: OptiX does not promise the same acceleration structure from the same
 triangles<sup>[[116]](../../../docs/Citations.md#nvidia-optix-bvh-repeat)</sup>. On some GPUs a shadow ray grazing an edge
 hits or misses by the build, now and then a pixel, and the fit makes that pixel a different mesh. The CPU is slower
 than the GPU, paid once per reference key: the fits that read a set share it.
 
-Since a set differs between CPU vendors, the bake locks it: the CPU Bakes job renders it and packs what the fit reads
+Since a set differs between CPU models, the bake locks it: the CPU Bakes job renders it and packs what the fit reads
 (`pack_references`: the training pictures and normals and the pose files) into `<entry>.reference.tar.xz`, and a
 fit's key names those bytes, as it names its start's ([Bakes](../../../docs/assets/Bakes.md)). Every GPU host fits
 from the same set.
