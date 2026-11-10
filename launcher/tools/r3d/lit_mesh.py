@@ -22,6 +22,7 @@ from r3d.mesh_asset import BLOB_HEADER, CLUSTER, LOD_NONE, NODE, TYPE  # noqa: E
 from r3d.geometry import distinct_corners
 from r3d.process_budget import NULL_RECORDER
 from r3d.meshopt import build_meshlets  # noqa: E402
+from r3d import mesh_bundle
 from r3d.import_settings import MESHLET_TRIANGLES
 from r3d.octree import build_octree, flatten_octree, node_bounds  # noqa: E402
 
@@ -313,9 +314,8 @@ def write_lit_mesh(out_dir, name, positions, rgb, tris, double, recorder=None, *
     recorder = NULL_RECORDER if recorder is None else recorder
     mesh = build_lit_mesh(positions, rgb, tris, double, recorder=recorder, **options)
     with recorder.step("write", len(mesh.tris)):
-        from r3d import mesh_bundle
         (pathlib.Path(out_dir) / f"{name}{mesh_bundle.SUFFIX}").write_bytes(
-            mesh_bundle.encode(mesh_bundle.mesh_entries(name, mesh), []))
+            mesh_bundle.encode(bundle_entries(name, mesh), []))
     return mesh
 
 
@@ -360,12 +360,28 @@ def lod_blob(mesh):
     return None if mesh.lod is None else lod_asset.encode(mesh.lod, mesh.groups)
 
 
+def bundle_entries(name, mesh):
+    """A bundle's entries for one assembled mesh: its LMSH and optional levels sibling."""
+    from r3d import lod_asset
+    entries = [(name, TYPE, mesh_blob(mesh))]
+    levels = lod_blob(mesh)
+    if levels is not None:
+        entries.append((lod_asset.name_for_mesh(name), lod_asset.TYPE, levels))
+    return entries
+
+
+def read_bundle_mesh(entries, name):
+    """A bundle mesh read together with its optional LLOD sibling."""
+    from r3d import lod_asset
+    blobs = {key: blob for key, _, blob in entries}
+    return read_lit_mesh(blobs[name], blobs.get(lod_asset.name_for_mesh(name)))
+
+
 def read_lit_mesh(path, levels=None):
     """Reads a <name>.bundle back into what bake_lit_mesh returns."""
     if not isinstance(path, (bytes, bytearray)):
-        from r3d import mesh_bundle
         entries, copies = mesh_bundle.decode(pathlib.Path(path).read_bytes())
-        return mesh_bundle.read_mesh(entries, mesh_bundle.rest_name(entries, copies))
+        return read_bundle_mesh(entries, mesh_bundle.rest_name(entries, copies))
     blob = path
     vertices, triangles, clusters, nodes, scale, *at = BLOB_HEADER.unpack_from(blob)
     pos_at, col_at, tri_at, cl_at, node_at, face_at = at

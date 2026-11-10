@@ -144,23 +144,6 @@ def decode(data):
     return [(name, kind, blob) for name, (kind, blob) in sorted(entries.items())], copies
 
 
-def mesh_entries(name, mesh):
-    """The LMSH and optional levels sibling of one assembled mesh."""
-    from r3d.lit_mesh import mesh_blob, lod_blob
-    entries = [(name, mesh_asset.TYPE, mesh_blob(mesh))]
-    levels = lod_blob(mesh)
-    if levels is not None:
-        entries.append((lod_asset.name_for_mesh(name), lod_asset.TYPE, levels))
-    return entries
-
-
-def read_mesh(entries, name):
-    """Read a bundle mesh together with its optional LLOD sibling."""
-    from r3d.lit_mesh import read_lit_mesh
-    blobs = {key: blob for key, _, blob in entries}
-    return read_lit_mesh(blobs[name], blobs.get(lod_asset.name_for_mesh(name)))
-
-
 def rest_name(entries, copies):
     """The unique mesh not used as a copy prototype."""
     shapes = {row["mesh"] for row in copies}
