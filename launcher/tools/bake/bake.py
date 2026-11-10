@@ -143,6 +143,8 @@ GLB_SUFFIX = ".glb"
 KINDS = ("blend", "mesh", "reference", "fit", "levels", "sound")
 # The kinds that trace rays on the CPU, whose bytes differ between CPU vendors (LOCK's mesh_cpu_vendor).
 TRACED_KINDS = ("mesh", "reference")
+# What a fit whose key waits for its inputs asks for, when the same run would make it.
+BAKE_INPUTS_FIRST = "bake its start and reference set first: bake.py bake --kind mesh, then --kind reference"
 SOUND_SUFFIX = ".sond"
 def entry_file(entry):
     return (TOOLS / entry.partition(":")[0]).resolve()
@@ -1232,7 +1234,7 @@ def _mesh_rows(found, cache, lock, blender, again, keep):
     unique = {}
     for item in found:
         if item.key is None:
-            raise BakeMissing(describe(item, unlocked(item), "bake its start first: bake.py bake --kind mesh"))
+            raise BakeMissing(describe(item, unlocked(item), BAKE_INPUTS_FIRST))
         unique.setdefault(item.key, item)
     rows = {key: row for key in unique if not again and (row := produce.made(key, cache))}
     for row in rows.values():
@@ -1372,7 +1374,7 @@ def main(argv=None):
                             print(f"skipped {bake.output}: {unlocked(bake)}")
                             continue
                         if bake.key is None:
-                            raise BakeMissing(describe(bake, unlocked(bake), "bake its start first: bake.py bake --kind mesh"))
+                            raise BakeMissing(describe(bake, unlocked(bake), BAKE_INPUTS_FIRST))
                         row = keep((None if args.again else produce.made(bake.key, cache)) or produce.produce(
                             bake, cache, lock, args.blender,
                             fresh_references and fresh_references.name))
