@@ -65,7 +65,6 @@ class GpuQueueTests(unittest.TestCase):
             with self.subTest(workflow=workflow):
                 quiet = workflow in schedule.QUIET_HOST_WORKFLOWS
                 self.assertEqual(self.run_main(workflow, 'ready'), (0, quiet))
-                self.assertEqual(self.run_main(workflow, 'quiet')[0], 0 if quiet else 1)
         self.assertNotIn(schedule.BAKES_WORKFLOW, schedule.QUIET_HOST_WORKFLOWS)
 
     def test_cpu_share_is_the_top_cpus_and_never_empty(self):

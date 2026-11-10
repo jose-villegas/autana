@@ -7,7 +7,7 @@ python3 scripts/lib/local_schedule.py ready || status=$?
 deferred=$(python3 -c 'from scripts.lib.local_schedule import EXIT_DEFERRED; print(EXIT_DEFERRED)')
 if [ "$status" -eq "$deferred" ]; then exit 0; fi
 [ "$status" -eq 0 ] || exit "$status"
-if ! python3 scripts/lib/local_schedule.py quiet; then
+if ! python3 -c 'import os, sys; from scripts.lib.local_schedule import quiet_host; sys.exit(not quiet_host(os.environ["GPU_WORKFLOW"]))'; then
     exec python3 scripts/lib/local_schedule.py start -- "$@"
 fi
 hang_seconds=$(python3 -c 'from scripts.lib.local_schedule import NIGHT_STEP_HANG_SECONDS; print(NIGHT_STEP_HANG_SECONDS)')

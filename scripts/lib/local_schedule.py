@@ -172,7 +172,7 @@ def gpu_ready(clock=None, board_held=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("marker", "wait", "ready", "quiet", "start"))
+    parser.add_argument("mode", choices=("marker", "wait", "ready", "start"))
     parser.add_argument("--start", choices=STARTS, default="NIGHT_START",
                         help="the local start a marker waits for")
     parser.add_argument("command", nargs=argparse.REMAINDER)
@@ -195,8 +195,6 @@ def main():
             clock.sleep(min(QUEUE_POLL_SECONDS, remaining))
         return 0
     workflow = os.environ["GPU_WORKFLOW"]
-    if args.mode == "quiet":
-        return 0 if quiet_host(workflow) else 1
     if args.mode == "ready":
         refresh_gpu_host(os.environ.get("RUNNER_NAME") or "local", clock)
         if workflow == DOC_IMAGES_WORKFLOW and gpu_pending((BAKES_WORKFLOW,)):
