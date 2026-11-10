@@ -23,6 +23,48 @@ from tests.r3d_env import needs_mitsuba  # noqa: E402
 from tests.test_r3d_path_bake import needs_llvm  # noqa: E402
 
 
+def write_reference_tree(work):
+    from r3d import reference_set
+
+    expected = {name: name.encode() for name in
+                [poses for poses, _ in reference_set.TRAINING] + [reference_set.COVERAGE, reference_set.HELD_OUT[0]]}
+    for _, folder in reference_set.TRAINING:
+        for suffix in (".png", ".normal.npy"):
+            name = f"{folder}/frame{suffix}"
+            expected[name] = name.encode()
+    for name, data in expected.items():
+        path = work / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+    for _, folder in reference_set.TRAINING + (reference_set.HELD_OUT,):
+        path = work / folder
+        path.mkdir(exist_ok=True)
+        (path / "frame.linear.npy").write_bytes(b"linear light")
+    (work / reference_set.HELD_OUT[1] / "frame.png").write_bytes(b"held out picture")
+    return expected
+
+
+class PackedReferencesTests(unittest.TestCase):
+    def test_only_fit_inputs_round_trip_with_identical_bytes_despite_file_times(self):
+        import os
+        import tempfile
+        from r3d import reference_set
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            work, unpacked = root / "source", root / "unpacked"
+            work.mkdir()
+            expected = write_reference_tree(work)
+            packed = reference_set.pack_references(work)
+            self.assertEqual(reference_set.pack_references(work), packed)
+            for path in work.rglob("*"):
+                os.utime(path, (0, 0))
+            self.assertEqual(reference_set.pack_references(work), packed)
+            reference_set.unpack_references(packed, unpacked)
+            self.assertEqual({path.relative_to(unpacked).as_posix(): path.read_bytes()
+                              for path in unpacked.rglob("*") if path.is_file()}, expected)
+
+
 def square(z=0.0, up=True):
     """The quad -2 < x, y < 2 at height `z`, wound to face +z, or -z when not `up`."""
     corners = [[-2.0, -2.0, z], [2.0, -2.0, z], [2.0, 2.0, z], [-2.0, 2.0, z]]
