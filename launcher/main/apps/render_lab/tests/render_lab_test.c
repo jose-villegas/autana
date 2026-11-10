@@ -5,11 +5,15 @@
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_dynres.h"
 #include "apps/render_lab/render_lab_view.h"
+#include "collections/strbuf.h"
 #include "core/timing.h"
 #include "core/tune.h"
+#include "esp_log.h"
 #include "frame/test_frame.h"
+#include "frame_profile.h"
 #include "gfx_shared_state.h"
 #include "render/context/render_context.h"
+#include "scene/animator/animator.h"
 #include "scene/scene_internal.h"
 #include "scene/scene_shell.h"
 #include "ui/ui.h"
@@ -88,6 +92,44 @@ render_lab_test_frame_dt(uint32_t dt_ms, bool switching, const input_t* input) {
     }
     test_present();
     return render_us;
+}
+
+void
+render_lab_test_show_view(int view) {
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render_lab, view), view));
+    render_context_set_debug_view(render_context_main(), view);
+    TEST_ASSERT_EQUAL_INT(view, render_context_main()->debug_view);
+}
+
+/* The cull view's counts of the frame just drawn, in a frame of their own
+ * that is gone before the next draw. */
+static __attribute__((noinline)) void
+write_cull_counts(render_lab_test_pose_t* out) {
+    const raster_cull_t* cull = render_context_debug_view_state(render_context_main());
+    TEST_ASSERT_NOT_NULL(cull);
+    const raster_cull_frame_t f = raster_cull_frame(cull);
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, f.counts.nodes_visited, "the cull view did not draw");
+    strbuf_t line = strbuf_make(out->counts, sizeof out->counts);
+#define COUNT_PAIR(name, member) strbuf_appendf(&line, "%s" #name "=%d", line.length == 0 ? "" : " ", f.member);
+    RASTER_CULL_FRAME_FIELDS(COUNT_PAIR)
+}
+
+void
+render_lab_test_replay_pose(const char* tag, entity_t entity, uint32_t duration_ms, int32_t path_ms, const char* row,
+                            const char* quarter, render_lab_test_pose_t* out) {
+    TEST_ASSERT_TRUE(animator_seek(entity, ANIMATOR_CURRENT, (uint32_t)path_ms % duration_ms));
+    render_lab_test_show_view(render_context_debug_view_named("cull"));
+    (void)render_lab_test_frame_dt(0, false, NULL);
+    write_cull_counts(out);
+    render_lab_test_show_view(RENDER_DEBUG_VIEW_SHADED);
+    (void)render_lab_test_frame_dt(0, false, NULL);
+    (void)frame_cost_take_report(1, out->report, sizeof out->report);
+    for (int i = 0; i < FRAME_PROFILE_REPLAY_DRAWS; i++) {
+        (void)render_lab_test_frame_dt(0, false, NULL);
+    }
+    (void)frame_cost_take_report(FRAME_PROFILE_REPLAY_DRAWS, out->report, sizeof out->report);
+    ESP_LOGI(tag, FRAME_PROFILE_REPLAY " " FRAME_PROFILE_QUARTER "%s", row, (int)path_ms, out->counts, out->report,
+             quarter);
 }
 
 #endif
