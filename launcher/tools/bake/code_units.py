@@ -2,9 +2,10 @@
 
 A unit is a top-level function, a class header (its decorators, bases and body without methods), a method, or
 a module-level statement. The walk starts at the entry functions and at what runs on import with an effect
-the walk cannot see the reader of: a statement that binds no name, an assignment to a subscript or attribute,
-a decorated def or class, and an assignment, default argument or class body statement that calls the stage's
-own code. From there it follows:
+the walk cannot see the reader of: a statement that binds no name (not a docstring or `pass`), an assignment
+to a subscript or attribute, and a decorator, assignment, default argument or class body statement that calls
+the stage's own code. A decorator from another package, such as dataclass or functools.cache, registers nothing
+of the stage's. From there it follows:
 
 - a name, global or imported anywhere in the unit, to its definitions, through every import of it;
 - `module.name` through module aliases however many hops deep, and a module used as a value to all of it;
@@ -52,12 +53,25 @@ class Unit:
 
 
 def class_effects(node):
-    """Whether a class body does something at import the walk cannot see the reader of: a decorator on the
-    class or a method, a statement that binds no name or writes into an object, or one in a nested class."""
-    return bool(node.decorator_list) or any(
-        bool(item.decorator_list) if isinstance(item, DEFS) else class_effects(item) if isinstance(item, ast.ClassDef)
-        else not stored(item) or stores_into_objects(item) if isinstance(item, ASSIGNS) else True
+    """Whether a class body does something at import the walk cannot see the reader of: a statement that binds no
+    name or writes into an object, or one in a nested class (decorators count where they call the stage)."""
+    return any(
+        False if isinstance(item, DEFS) else class_effects(item) if isinstance(item, ast.ClassDef)
+        else not stored(item) or stores_into_objects(item) if isinstance(item, ASSIGNS) else not inert(item)
         for item in node.body)
+
+
+def inert(node):
+    """A statement that does nothing: `pass`, or a constant on its own (a docstring, `...`)."""
+    return isinstance(node, ast.Pass) or isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant)
+
+
+def decorators(node):
+    """The decorators a def or class runs at import: its own, its methods' and its nested classes'."""
+    yield from node.decorator_list
+    for item in node.body if isinstance(node, ast.ClassDef) else []:
+        if isinstance(item, (*DEFS, ast.ClassDef)):
+            yield from decorators(item)
 
 
 def import_time(node):
@@ -131,8 +145,7 @@ class Module:
             if isinstance(node, (ast.Import, ast.ImportFrom)) or is_main_guard(node):
                 continue
             if isinstance(node, DEFS):
-                # A decorator runs at import and may register what it wraps.
-                yield Unit(self.path, node, {node.name}, always=bool(node.decorator_list))
+                yield Unit(self.path, node, {node.name})
             elif isinstance(node, ast.ClassDef):
                 body = [item for item in node.body if not isinstance(item, DEFS)]
                 yield Unit(self.path, node, {node.name}, attributes=set().union(set(), *map(stored, body)),
@@ -143,7 +156,7 @@ class Module:
                 names = stored(node)
                 yield Unit(self.path, node, names, always=not names or stores_into_objects(node))
             else:
-                yield Unit(self.path, node, stored(node), always=True)
+                yield Unit(self.path, node, stored(node), always=not inert(node))
 
     def scope(self, unit):
         """The symbol table of a def or class unit."""
@@ -212,6 +225,10 @@ class Walk:
         # whether or not its name is read: an assignment, a default argument, a class body statement.
         for unit in self.everything():
             if unit.owner is None and any(self.calls_stage(unit.path, call.func) for call in self.import_calls(unit)):
+                unit.always = True
+            # A decorator runs at import and may register what it wraps when it is the stage's own code.
+            if isinstance(unit.node, (*DEFS, ast.ClassDef)) and unit.owner is None and any(
+                    self.calls_stage(unit.path, d.func if isinstance(d, ast.Call) else d) for d in decorators(unit.node)):
                 unit.always = True
 
     @staticmethod
