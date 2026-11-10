@@ -231,7 +231,8 @@ r3d_lod_pick_drop(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const rend
         return false;
     }
     const lod_view_t v = lod_view(lens);
-    const float limit = mathf_min(lod->tolerance_px, (float)drop_permille / R3D_LOD_PERMILLE * lens->height);
+    const float limit =
+        mathf_min(lod->tolerance_px, ((float)drop_permille / (float)R3D_LOD_PERMILLE) * (float)lens->height);
     const float enter = limit - lod->hysteresis_px;
     const float leave = limit + lod->hysteresis_px;
     reach_t at;
