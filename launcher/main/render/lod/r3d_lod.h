@@ -102,9 +102,11 @@ float r3d_lod_group_coverage(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
 
 /* What a round of picks saw: per bin, the triangles the groups whose error
  * projects there save drawn coarse (r3d_lit_lod_group_t.saves), and the
- * finest triangles of every instance picked. Error below the first bin
- * counts in it; error past the last, or a group too large to turn coarse,
- * counts nowhere. */
+ * finest triangles of every instance picked. A group counts at the least
+ * tolerance that turns it coarse: its error, or the tolerance whose
+ * coverage cap (r3d_lod_steer_coverage()) its radius fits, whichever is
+ * more. Below the first bin counts in it; past the last, or under a cap
+ * of 0, nowhere. */
 typedef struct {
     int32_t saves[R3D_LOD_BINS];
     int32_t finest;
@@ -142,6 +144,12 @@ void r3d_lod_steer_reset(r3d_lod_steer_t* steer, float floor_px);
  * tolerance rises to it at once but falls at most a bin a round, so a view
  * held still settles rather than swings. Pixels are lod.tolerance_px's. */
 void r3d_lod_steer_frame(r3d_lod_steer_t* steer, float floor_px, int budget, int drawn, bool round_done);
+
+/* lod.coverage_permille, `permille` at `floor_px` (above 0), at a steered
+ * `tolerance_px`: in proportion to it, so a group too large to turn coarse
+ * at the floor turns coarse once the budget asks enough. The floor itself
+ * keeps `permille`. */
+int r3d_lod_steer_coverage(float tolerance_px, float floor_px, int permille);
 
 /* Updates `coarse`, R3D_LOD_WORDS(mesh->lod_group_count) words, for one
  * frame seen through `lens`: coarse where a group's error projects within
