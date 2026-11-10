@@ -488,6 +488,26 @@ scene_entry_size(const scene_spec_t* s) {
            + parents_size(s->entity_count);
 }
 
+/* Writes the header of an entry with `counts` rows of `sizes` bytes in each
+ * part, each part 4-aligned, and its offsets into `offsets`; returns the
+ * entry's size. A NULL entry only measures. */
+static uint32_t
+put_scene_header(uint8_t* entry, const uint16_t* counts, const size_t* sizes, uint32_t* offsets) {
+    uint32_t at = SCENE_ASSET_HEADER_SIZE;
+    if (entry != NULL) {
+        test_pack_put16(entry, SCENE_ASSET_VERSION);
+    }
+    for (int i = 0; i < SCENE_ASSET_PART_COUNT; i++) {
+        offsets[i] = at;
+        if (entry != NULL) {
+            test_pack_put16(entry + SCENE_ASSET_AT_COUNTS + i * sizeof(uint16_t), counts[i]);
+            test_pack_put32(entry + SCENE_ASSET_AT_OFFSETS + i * sizeof(uint32_t), at);
+        }
+        at += (uint32_t)mathi_size_ceil(counts[i] * sizes[i], sizeof(uint32_t));
+    }
+    return at;
+}
+
 static void
 make_scene_entry_with_skin(uint8_t* entry, const scene_spec_t* s, const skin_fixture_options_t* options) {
     const uint16_t skins = s->skinned;
@@ -509,14 +529,8 @@ make_scene_entry_with_skin(uint8_t* entry, const scene_spec_t* s, const skin_fix
         sizeof(scene_asset_light_t),    sizeof(scene_asset_skinned_renderer_t),
         sizeof(scene_asset_animator_t), ASSET_NAME_MAX,
         sizeof(scene_asset_settings_t), sizeof(uint16_t)};
-    uint32_t offsets[SCENE_ASSET_PART_COUNT], at = SCENE_ASSET_HEADER_SIZE;
-    test_pack_put16(entry, SCENE_ASSET_VERSION);
-    for (int i = 0; i < SCENE_ASSET_PART_COUNT; i++) {
-        offsets[i] = at;
-        test_pack_put16(entry + SCENE_ASSET_AT_COUNTS + i * sizeof(uint16_t), counts[i]);
-        test_pack_put32(entry + SCENE_ASSET_AT_OFFSETS + i * sizeof(uint32_t), at);
-        at += counts[i] * sizes[i];
-    }
+    uint32_t offsets[SCENE_ASSET_PART_COUNT];
+    (void)put_scene_header(entry, counts, sizes, offsets);
     for (int i = 0; i < s->entity_count; i++) {
         put_name(entry + offsets[SCENE_ASSET_NAMES] + sizeof(scene_asset_name_t) * i, s->entities[i].name);
         memcpy(entry + offsets[SCENE_ASSET_TRANSFORMS] + sizeof(scene_asset_transform_t) * i, &s->entities[i].at,
@@ -1917,31 +1931,32 @@ test_authored_rows_and_refusals(void) {
     void* buffer = NULL;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_file_open(getenv("AUTANA_SCENE_PROBE"), &pack, &buffer));
     asset_view_t entry;
-    scene_asset_t asset;
+    scene_asset_t* const asset = malloc(sizeof *asset);
+    TEST_ASSERT_NOT_NULL(asset);
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(&pack, "authored", SCENE_ASSET, &entry));
-    TEST_ASSERT_EQUAL_INT(ASSET_OK, scene_asset_open(entry, &asset));
-    TEST_ASSERT_EQUAL_INT(2, asset.light_count);
-    TEST_ASSERT_EQUAL_INT(2, asset.skinned_renderer_count);
-    TEST_ASSERT_EQUAL_INT(2, asset.animator_count);
-    TEST_ASSERT_EQUAL_FLOAT(1.5F, asset.lights[0].intensity);
-    TEST_ASSERT_EQUAL_FLOAT(0.5F, asset.settings->tonemap_white);
-    TEST_ASSERT_EQUAL_STRING("authored.first.skin", asset.skinned_renderers[0].skin);
-    TEST_ASSERT_EQUAL_STRING("walk", asset.clips[1]);
-    TEST_ASSERT_EQUAL_STRING("first", asset.names[1].name);
-    TEST_ASSERT_EQUAL_HEX32(name_hash("first"), asset.names[1].hash); /* the tools' hash is the device's */
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, scene_asset_open(entry, asset));
+    TEST_ASSERT_EQUAL_INT(2, asset->light_count);
+    TEST_ASSERT_EQUAL_INT(2, asset->skinned_renderer_count);
+    TEST_ASSERT_EQUAL_INT(2, asset->animator_count);
+    TEST_ASSERT_EQUAL_FLOAT(1.5F, asset->lights[0].intensity);
+    TEST_ASSERT_EQUAL_FLOAT(0.5F, asset->settings->tonemap_white);
+    TEST_ASSERT_EQUAL_STRING("authored.first.skin", asset->skinned_renderers[0].skin);
+    TEST_ASSERT_EQUAL_STRING("walk", asset->clips[1]);
+    TEST_ASSERT_EQUAL_STRING("first", asset->names[1].name);
+    TEST_ASSERT_EQUAL_HEX32(name_hash("first"), asset->names[1].hash); /* the tools' hash is the device's */
     uint8_t* bytes = (uint8_t*)(uintptr_t)entry.data;
-    const uint32_t light = (const uint8_t*)asset.lights - entry.data;
-    const uint32_t skin = (const uint8_t*)asset.skinned_renderers - entry.data;
-    const uint32_t animator = (const uint8_t*)asset.animators - entry.data;
-    const uint32_t settings = (const uint8_t*)asset.settings - entry.data;
+    const uint32_t light = (const uint8_t*)asset->lights - entry.data;
+    const uint32_t skin = (const uint8_t*)asset->skinned_renderers - entry.data;
+    const uint32_t animator = (const uint8_t*)asset->animators - entry.data;
+    const uint32_t settings = (const uint8_t*)asset->settings - entry.data;
     const breakage_t changes[] = {
-        {"light entity", light, 2, asset.entity_count, false, ASSET_ERR_FORMAT},
-        {"skin entity", skin, 2, asset.entity_count, false, ASSET_ERR_FORMAT},
-        {"animator entity", animator, 2, asset.entity_count, false, ASSET_ERR_FORMAT},
+        {"light entity", light, 2, asset->entity_count, false, ASSET_ERR_FORMAT},
+        {"skin entity", skin, 2, asset->entity_count, false, ASSET_ERR_FORMAT},
+        {"animator entity", animator, 2, asset->entity_count, false, ASSET_ERR_FORMAT},
         {"fewer transforms", SCENE_ASSET_AT_COUNTS + SCENE_ASSET_TRANSFORMS * sizeof(uint16_t), 2,
-         asset.entity_count - 1, false, ASSET_ERR_FORMAT},
+         asset->entity_count - 1, false, ASSET_ERR_FORMAT},
         {"more transforms", SCENE_ASSET_AT_COUNTS + SCENE_ASSET_TRANSFORMS * sizeof(uint16_t), 2,
-         asset.entity_count + 1, false, ASSET_ERR_FORMAT},
+         asset->entity_count + 1, false, ASSET_ERR_FORMAT},
         {"no settings", SCENE_ASSET_AT_COUNTS + SCENE_ASSET_SETTINGS * sizeof(uint16_t), 2, 0, false, ASSET_ERR_FORMAT},
         {"two settings", SCENE_ASSET_AT_COUNTS + SCENE_ASSET_SETTINGS * sizeof(uint16_t), 2, 2, false,
          ASSET_ERR_FORMAT},
@@ -1953,11 +1968,11 @@ test_authored_rows_and_refusals(void) {
         {"overflow clips", animator + offsetof(scene_asset_animator_t, first_clip), 4, UINT32_MAX, false,
          ASSET_ERR_FORMAT},
         {"light pad", light + offsetof(scene_asset_light_t, pad), 1, 1, false, ASSET_ERR_FORMAT},
-        {"two lights", light + sizeof(scene_asset_light_t), 2, asset.lights[0].entity, false, ASSET_ERR_FORMAT},
+        {"two lights", light + sizeof(scene_asset_light_t), 2, asset->lights[0].entity, false, ASSET_ERR_FORMAT},
         {"skin pad", skin + offsetof(scene_asset_skinned_renderer_t, pad), 2, 1, false, ASSET_ERR_FORMAT},
-        {"two skins", skin + sizeof(scene_asset_skinned_renderer_t), 2, asset.skinned_renderers[0].entity, false,
+        {"two skins", skin + sizeof(scene_asset_skinned_renderer_t), 2, asset->skinned_renderers[0].entity, false,
          ASSET_ERR_FORMAT},
-        {"two animators", animator + sizeof(scene_asset_animator_t), 2, asset.animators[0].entity, false,
+        {"two animators", animator + sizeof(scene_asset_animator_t), 2, asset->animators[0].entity, false,
          ASSET_ERR_FORMAT},
         {"default clip", animator + offsetof(scene_asset_animator_t, default_clip), 2, 1, false, ASSET_ERR_FORMAT},
         {"animator pad", animator + offsetof(scene_asset_animator_t, pad), 1, 1, false, ASSET_ERR_FORMAT},
@@ -1973,7 +1988,7 @@ test_authored_rows_and_refusals(void) {
     for (size_t i = 0; i < sizeof entities / sizeof entities[0]; i++) {
         uint16_t saved;
         memcpy(&saved, bytes + entities[i], sizeof saved);
-        test_pack_put16(bytes + entities[i], asset.entity_count - 1);
+        test_pack_put16(bytes + entities[i], asset->entity_count - 1);
         TEST_ASSERT_EQUAL_INT(ASSET_OK, open_entry(bytes, entry.size));
         test_pack_put16(bytes + entities[i], saved);
     }
@@ -1993,6 +2008,7 @@ test_authored_rows_and_refusals(void) {
     test_pack_put16(bytes + animator + offsetof(scene_asset_animator_t, default_clip), SCENE_ASSET_DEFAULT_CLIP_NONE);
     TEST_ASSERT_EQUAL_INT(ASSET_OK, open_entry(bytes, entry.size));
     asset_file_release(buffer);
+    free(asset);
 }
 
 static void
@@ -2502,6 +2518,164 @@ test_lcol_instances_and_refusals(void) {
             make_lcol_pack(&cases[i], encoding, message);
             assert_lcol_scene(&cases[i], message);
         }
+    }
+}
+
+/* A batch: one renderer of "red" drawing two copies at test_pair's red and
+ * green places, the second in LCOL set 1, so the picture is test_pair's. */
+enum { BATCH_COPIES = 2, BATCH_ENTITIES = 2, BATCH_REACH = 2, BATCH_LARGEST_W = 3 };
+
+/* A change to one field of the batch scene: `width` bytes of `value` at
+ * `at` in part `part`; `at` SIZE_MAX changes nothing. */
+typedef struct {
+    const char* id;
+    int part;
+    size_t at;
+    uint32_t value;
+    int width;
+    uint16_t turns; /* the turn rows the header states */
+} batch_case_t;
+
+static void
+put_batch_rows(uint8_t* entry, const uint32_t* offsets, uint16_t turn_count) {
+    static const scene_asset_transform_t at[BATCH_ENTITIES] = {CAMERA_AT(0), IDENTITY};
+    static const char* const names[BATCH_ENTITIES] = {"camera", "copies"};
+    for (int i = 0; i < BATCH_ENTITIES; i++) {
+        put_name(entry + offsets[SCENE_ASSET_NAMES] + sizeof(scene_asset_name_t) * i, names[i]);
+        memcpy(entry + offsets[SCENE_ASSET_TRANSFORMS] + sizeof(scene_asset_transform_t) * i, &at[i], sizeof at[i]);
+        test_pack_put16(entry + offsets[SCENE_ASSET_PARENTS] + sizeof(uint16_t) * i, SCENE_ASSET_PARENT_ROOT);
+    }
+    const scene_asset_renderer_t renderer = {.entity = 1, .colour_set = 0, .mesh = "red"};
+    const scene_asset_camera_t camera = {.half_fov_short_tan = 1.0F, .near_z = 1.0F, .clear_rgb = CLEAR_RGB};
+    const scene_asset_settings_t settings = {.ambient_color = SKIN_OPTIONS.ambient};
+    const scene_asset_batch_t batch = {.renderer = 0, .copy_count = BATCH_COPIES};
+    const r3d_copy_chunk_t chunk = {{BATCH_REACH, 0.0F, 0.0F}, BATCH_REACH};
+    const r3d_copy_place_t places[BATCH_COPIES] = {{{-R3D_COPY_STEPS, 0, 0}, 0}, {{R3D_COPY_STEPS, 0, 0}, 1}};
+    const r3d_copy_turn_t turns[BATCH_COPIES] = {{{0, 0, 0}, BATCH_LARGEST_W}, {{0, 0, 0}, BATCH_LARGEST_W}};
+    memcpy(entry + offsets[SCENE_ASSET_RENDERERS], &renderer, sizeof renderer);
+    memcpy(entry + offsets[SCENE_ASSET_CAMERAS], &camera, sizeof camera);
+    memcpy(entry + offsets[SCENE_ASSET_SETTINGS], &settings, sizeof settings);
+    memcpy(entry + offsets[SCENE_ASSET_BATCHES], &batch, sizeof batch);
+    memcpy(entry + offsets[SCENE_ASSET_CHUNKS], &chunk, sizeof chunk);
+    memcpy(entry + offsets[SCENE_ASSET_PLACES], places, sizeof places);
+    memcpy(entry + offsets[SCENE_ASSET_TURNS], turns, sizeof(r3d_copy_turn_t) * turn_count);
+}
+
+static void
+make_batch_entry(test_pack_t* pack, const batch_case_t* spec) {
+    const uint16_t counts[SCENE_ASSET_PART_COUNT] = {[SCENE_ASSET_NAMES] = BATCH_ENTITIES,
+                                                     [SCENE_ASSET_TRANSFORMS] = BATCH_ENTITIES,
+                                                     [SCENE_ASSET_RENDERERS] = 1,
+                                                     [SCENE_ASSET_CAMERAS] = 1,
+                                                     [SCENE_ASSET_SETTINGS] = 1,
+                                                     [SCENE_ASSET_PARENTS] = BATCH_ENTITIES,
+                                                     [SCENE_ASSET_BATCHES] = 1,
+                                                     [SCENE_ASSET_CHUNKS] = 1,
+                                                     [SCENE_ASSET_PLACES] = BATCH_COPIES,
+                                                     [SCENE_ASSET_TURNS] = spec->turns};
+    const size_t sizes[SCENE_ASSET_PART_COUNT] = {[SCENE_ASSET_NAMES] = sizeof(scene_asset_name_t),
+                                                  [SCENE_ASSET_TRANSFORMS] = sizeof(scene_asset_transform_t),
+                                                  [SCENE_ASSET_RENDERERS] = sizeof(scene_asset_renderer_t),
+                                                  [SCENE_ASSET_CAMERAS] = sizeof(scene_asset_camera_t),
+                                                  [SCENE_ASSET_SETTINGS] = sizeof(scene_asset_settings_t),
+                                                  [SCENE_ASSET_PARENTS] = sizeof(uint16_t),
+                                                  [SCENE_ASSET_BATCHES] = sizeof(scene_asset_batch_t),
+                                                  [SCENE_ASSET_CHUNKS] = sizeof(r3d_copy_chunk_t),
+                                                  [SCENE_ASSET_PLACES] = sizeof(r3d_copy_place_t),
+                                                  [SCENE_ASSET_TURNS] = sizeof(r3d_copy_turn_t)};
+    uint32_t offsets[SCENE_ASSET_PART_COUNT];
+    uint8_t* entry = test_pack_add(pack, "test_batch", SCENE_ASSET, put_scene_header(NULL, counts, sizes, offsets));
+    (void)put_scene_header(entry, counts, sizes, offsets);
+    put_batch_rows(entry, offsets, spec->turns);
+    if (spec->at != SIZE_MAX) {
+        uint8_t* byte = entry + offsets[spec->part] + spec->at;
+        if (spec->width == sizeof(uint32_t)) {
+            test_pack_put32(byte, spec->value);
+        } else {
+            test_pack_put16(byte, (uint16_t)spec->value);
+        }
+    }
+}
+
+static void
+make_batch_pack(const batch_case_t* spec) {
+    test_pack_t pack = test_pack_begin(fx.bytes, PACK_MAX, 3);
+    uint8_t* mesh = test_pack_add(&pack, "red", R3D_LIT_MESH_ASSET, QUAD_BYTES);
+    make_quad_entry(mesh, UINT8_MAX, 0, 0, 1);
+    test_pack_put32(mesh + MESH_COLOURS_WORD * sizeof(uint32_t), 0);
+    make_batch_entry(&pack, spec);
+    const lcol_case_t colours = {0};
+    make_lcol_entry(&pack, &colours, LCOL_ENCODING_RGB888);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, test_pack_finish(&pack)), spec->id);
+}
+
+static void
+test_a_batch_draws_its_copies_from_one_renderer(void) {
+    fixture();
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
+    TEST_ASSERT_NOT_NULL(fx.lent);
+    (void)scene_set_take(lend);
+    const batch_case_t spec = {.id = "valid", .at = SIZE_MAX, .turns = BATCH_COPIES};
+    make_batch_pack(&spec);
+    const entity_t root = load("test_batch");
+    const scene_t* scene = columns(root);
+    TEST_ASSERT_EQUAL_INT(1, scene->renderer_count);
+    const scene_renderer_t* r = &scene->renderers[0];
+    TEST_ASSERT_NOT_NULL(r->batch);
+    TEST_ASSERT_EQUAL_INT(BATCH_COPIES, r->batch->copy_count);
+    TEST_ASSERT_EQUAL_INT(LCOL_TEST_SETS, r->colour_sets);
+    /* Both colour sets resident in one span, set 1 a mesh's colours after set 0; the places too. */
+    const uintptr_t begin = (uintptr_t)scene->resident;
+    const uintptr_t end = begin + fx.lent_last_size;
+    TEST_ASSERT_TRUE((uintptr_t)r->mesh.colors >= begin
+                     && (uintptr_t)(r->mesh.colors + (LCOL_TEST_SETS * r->mesh.vertex_count)) <= end);
+    TEST_ASSERT_TRUE((uintptr_t)r->batch->places >= begin && (uintptr_t)(r->batch->places + BATCH_COPIES) <= end);
+    r3d_lit_mesh_t second;
+    r3d_batch_copy_mesh(r->batch, &r->mesh, 1, &second);
+    TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, second.colors[0][1]);
+    TEST_ASSERT_FALSE(renderer_set_mesh(entity_find(root, name_hash("copies")), &r->mesh));
+    TEST_ASSERT_TRUE(camera_activate(camera_first(root)));
+    render_context_set_scale(render_context_main(), 100);
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x00FF00), pixel(4.0F));
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(8.0F));
+}
+
+static void
+assert_batch_refused(const batch_case_t* spec) {
+    scene_unload_all();
+    make_batch_pack(spec);
+    scene_failure_t why;
+    TEST_ASSERT_TRUE_MESSAGE(fails(scene_load_from(&fx.pack, "test_batch"), &why), spec->id);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(SCENE_ERR_ASSET, why.status, spec->id);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_ERR_FORMAT, why.asset, spec->id);
+}
+
+static void
+test_batch_refusals(void) {
+    enum { U16 = sizeof(uint16_t), U32 = sizeof(uint32_t) };
+
+    const uint32_t minus_one = 0xBF800000U, infinity = 0x7F800000U; /* float bits */
+    const batch_case_t cases[] = {
+        {"renderer beyond", SCENE_ASSET_BATCHES, offsetof(scene_asset_batch_t, renderer), 1, U16, BATCH_COPIES},
+        {"no copies", SCENE_ASSET_BATCHES, offsetof(scene_asset_batch_t, copy_count), 0, U16, BATCH_COPIES},
+        {"fewer copies", SCENE_ASSET_BATCHES, offsetof(scene_asset_batch_t, copy_count), 1, U16, BATCH_COPIES},
+        {"first copy", SCENE_ASSET_BATCHES, offsetof(scene_asset_batch_t, first_copy), 1, U32, BATCH_COPIES},
+        {"first chunk", SCENE_ASSET_BATCHES, offsetof(scene_asset_batch_t, first_chunk), 1, U32, BATCH_COPIES},
+        {"negative reach", SCENE_ASSET_CHUNKS, offsetof(r3d_copy_chunk_t, reach), minus_one, U32, BATCH_COPIES},
+        {"infinite centre", SCENE_ASSET_CHUNKS, offsetof(r3d_copy_chunk_t, centre), infinity, U32, BATCH_COPIES},
+        {"largest beyond w", SCENE_ASSET_TURNS, offsetof(r3d_copy_turn_t, largest), BATCH_LARGEST_W + 1, U16,
+         BATCH_COPIES},
+        {"set beyond the colours", SCENE_ASSET_PLACES,
+         sizeof(r3d_copy_place_t) + offsetof(r3d_copy_place_t, colour_set), LCOL_TEST_SETS, U16, BATCH_COPIES},
+        {"renderer's own set", SCENE_ASSET_RENDERERS, offsetof(scene_asset_renderer_t, colour_set), 1, U16,
+         BATCH_COPIES},
+        {"fewer turns", 0, SIZE_MAX, 0, 0, BATCH_COPIES - 1},
+    };
+    fixture();
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        assert_batch_refused(&cases[i]);
     }
 }
 
@@ -3695,8 +3869,8 @@ levelled_quads(void) {
     test_pack_put32(levelled_entry + LLOD_AT_CLUSTER_COUNT, 2);
     const r3d_lit_cluster_lod_t lod[] = {{R3D_LOD_NONE, 0}, {0, 1}};
     memcpy(levelled_entry + LEVELS_AT, lod, sizeof lod);
-    const r3d_lit_lod_group_t inner = {{{0, 0, 0}, 1}, 1};
-    const r3d_lit_lod_group_t outer = {{{0, 0, 0}, 1 + 1 + R3D_LOD_ENCLOSE_MARGIN}, 2};
+    const r3d_lit_lod_group_t inner = {{{0, 0, 0}, 1}, 1, 0};
+    const r3d_lit_lod_group_t outer = {{{0, 0, 0}, 1 + 1 + R3D_LOD_ENCLOSE_MARGIN}, 2, 0};
     memcpy(levelled_entry + INNER_GROUP, &inner, sizeof inner);
     memcpy(levelled_entry + OUTER_GROUP, &outer, sizeof outer);
     return (asset_view_t){levelled_entry, LEVELLED_BYTES};
@@ -6388,6 +6562,8 @@ run_scene_suite(void) {
     RUN_TEST(test_a_name_hashing_to_none_is_refused);
     RUN_TEST(test_finds_compare_name_hashes);
     RUN_TEST(test_lcol_instances_and_refusals);
+    RUN_TEST(test_a_batch_draws_its_copies_from_one_renderer);
+    RUN_TEST(test_batch_refusals);
     RUN_TEST(test_the_active_camera_draws_its_scenes_renderers);
     RUN_TEST(test_a_disabled_entity_is_not_drawn_and_enabling_it_draws_it_again);
     RUN_TEST(test_a_runtime_mesh_is_drawn_in_place_of_the_loaded_one);

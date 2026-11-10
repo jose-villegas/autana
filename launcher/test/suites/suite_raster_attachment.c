@@ -24,6 +24,7 @@
 #include "render/context/render_context.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/raster.h"
+#include "render/raster_internal.h"
 #include "render/view/raster_copies.h"
 #include "render/view/raster_meshlets.h"
 #include "render/view/raster_overdraw.h"
@@ -335,10 +336,12 @@ test_cluster_values_and_constant_writers(void) {
     TEST_ASSERT_TRUE(seen[0] > 0 && seen[1] > 0);
     TEST_ASSERT_EQUAL_UINT32(17, base);
 
-    const raster_buffers_t buffers = raster_carve(&r->raster);
+    raster_buffers_t* const buffers = malloc(sizeof *buffers);
+    TEST_ASSERT_NOT_NULL(buffers);
+    *buffers = raster_carve(&r->raster);
     memset(raster_depth(&r->raster), 0, sizeof(uint16_t) * W * H);
     for (int k = 0; k < 2; k++) {
-        raster_attachment_clear_u16(both[k], &r->raster, buffers.picture.attachment[GFX_ATTACHMENT_FURTHER + k].pixels,
+        raster_attachment_clear_u16(both[k], &r->raster, buffers->picture.attachment[GFX_ATTACHMENT_FURTHER + k].pixels,
                                     W * H);
     }
     r3d_span_writer_t writers[2] = {0};
@@ -346,14 +349,12 @@ test_cluster_values_and_constant_writers(void) {
         TEST_ASSERT_TRUE(both[k]->writer(both[k], 0, &writers[k]));
         writers[k].attachment = GFX_ATTACHMENT_FURTHER + k;
     }
-    r3d_span_target_t* target = malloc(sizeof(*target));
-    TEST_ASSERT_NOT_NULL(target);
-    *target = (r3d_span_target_t){.writers = writers, .writer_count = 2, .small_fill = &r3d_span_small_fill_default};
-    gfx_target_window(&target->rows, &buffers.picture, 0, H);
+    r3d_span_target_t target = {.writers = writers, .writer_count = 2, .small_fill = &r3d_span_small_fill_default};
+    gfx_target_window(&target.rows, &buffers->picture, 0, H);
     raster_lens(&r->raster, &r->view, 1, &r->lens);
     const uint16_t visible = 1;
-    r3d_pipeline_transform(&r->quad[0].mesh, &r->lens, &visible, 1, buffers.cs, buffers.rows, false);
-    r3d_pipeline_draw(&r->quad[0].mesh, &r->lens, &visible, 1, buffers.cs, buffers.rows, target, buffers.work[0]);
+    r3d_pipeline_transform(&r->quad[0].mesh, &r->lens, &visible, 1, buffers->cs, buffers->rows, false);
+    r3d_pipeline_draw(&r->quad[0].mesh, &r->lens, &visible, 1, buffers->cs, buffers->rows, &target, buffers->work[0]);
     int drawn = 0;
     for (int p = 0; p < W * H; p++) {
         const bool won = raster_depth(&r->raster)[p] != 0;
@@ -364,7 +365,7 @@ test_cluster_values_and_constant_writers(void) {
     TEST_ASSERT_TRUE(drawn > 0);
     TEST_ASSERT_EQUAL_UINT32(17, writers[0].value);
     TEST_ASSERT_EQUAL_UINT32(17, writers[1].value);
-    free(target);
+    free(buffers);
     free(clusters);
 }
 
@@ -422,11 +423,13 @@ test_copies_share_a_hue_and_a_shape_drawn_once_is_grey(void) {
         TEST_ASSERT_EQUAL_UINT16(RASTER_COPIES_UNIQUE, ids[p]);
     }
     static const uint8_t red[4][3] = {{255, 0, 0}, {255, 0, 0}, {255, 0, 0}, {255, 0, 0}};
-    r3d_lit_mesh_t copy = *r->instance[1].mesh;
-    copy.colors = red;
+    r3d_lit_mesh_t* const copy = malloc(sizeof *copy);
+    TEST_ASSERT_NOT_NULL(copy);
+    *copy = *r->instance[1].mesh;
+    copy->colors = red;
     mat4f_t shifted = mat4f_identity();
     shifted.m[0][MAT3F_AXES] = COPY_SHIFT;
-    const r3d_instance_t three[] = {r->instance[0], r->instance[1], {&copy, &shifted, NULL, NULL}};
+    const r3d_instance_t three[] = {r->instance[0], r->instance[1], {copy, &shifted, NULL, NULL}};
     r->raster.instances = three;
     r->raster.instance_count = 3;
     raster_rig_attach(r, one, 1);
@@ -452,6 +455,7 @@ test_copies_share_a_hue_and_a_shape_drawn_once_is_grey(void) {
     TEST_ASSERT_EQUAL_UINT16(0, ((const uint16_t*)raster_rig_attachment(r, 0))[0]);
     raster_show(&r->raster);
     TEST_ASSERT_EQUAL_UINT16(r->raster.clear, raster_color(&r->raster)[0]);
+    free(copy);
 }
 
 /* Each mesh its own view, as each renderer holds: a shape drawn once, a shape
@@ -468,7 +472,13 @@ test_copies_take_their_first_instance_and_each_shape_its_own_id(void) {
     for (int i = 0; i < MESHES; i++) {
         instances[i] = (r3d_instance_t){.mesh = &meshes[i]};
     }
-    const raster_t raster = {.instances = instances, .instance_count = MESHES};
+    /* The census's share of a scratch, holding the drawn list a census of
+     * these instances would: each in place, no copies kept. */
+    raster_t raster = {.instances = instances, .instance_count = MESHES};
+    raster.scratch = malloc(raster_culled_bytes(&raster));
+    TEST_ASSERT_NOT_NULL(raster.scratch);
+    (void)raster_census_place(&raster);
+    raster_census_head(&raster)->copy_count = 0;
     raster_copies_t state = {0};
     const raster_attachment_t view = raster_copies_view(&state);
     const render_view_t frame_view = render_view_fixture_at(&raster_rig_camera, (viewport_t){W, H, 0});
@@ -480,6 +490,7 @@ test_copies_take_their_first_instance_and_each_shape_its_own_id(void) {
         TEST_ASSERT_EQUAL_UINT32(expected[i], out.value);
     }
     TEST_ASSERT_TRUE(raster_meshlets_color(2) != raster_meshlets_color(3));
+    free(raster.scratch);
 }
 
 /* The wall alone covers the corner; the centre is covered by both quads, and

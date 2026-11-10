@@ -67,6 +67,11 @@ typedef struct {
 typedef struct {
     spheres_t bounds; /* position ticks; holds the bounds of every group simplified into it */
     uint16_t error;   /* position ticks; at least that of every group simplified into it */
+    /* Triangles drawn fewer when the group turns coarse: those of the
+     * clusters it holds less those simplified from it. A parent's add to
+     * its sources', so a cut's triangles are the finest less the saves of
+     * its coarse groups. */
+    int16_t saves;
 } r3d_lit_lod_group_t;
 
 typedef struct {
@@ -94,6 +99,7 @@ typedef struct {
      * (r3d_lit_mesh_find_levels()). */
     uint16_t lod_finest_root;
     uint16_t lod_coarse_first; /* the first coarse cluster, with lod_finest_root set */
+    int lod_finest_triangles;  /* the finest level's, with cluster_lod set */
 } r3d_lit_mesh_t;
 
 /* The asset type of a lit mesh entry, and the bytes of its header. */
@@ -109,7 +115,8 @@ asset_status_t r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t
  * as the levels bake lays them: the root's two children, the first holding
  * only finest clusters and the second only coarse ones, and the coarse
  * clusters after the finest in the order of the group simplified into each.
- * Any other layout sets both 0, and the walk covers the whole tree. */
+ * Any other layout sets both 0, and the walk covers the whole tree. Also
+ * sets lod_finest_triangles. */
 void r3d_lit_mesh_find_levels(r3d_lit_mesh_t* mesh);
 
 /* A failed sibling clears only the levels; the geometry remains loaded. */
@@ -146,3 +153,6 @@ spheref_t r3d_lit_mesh_bounding_sphere(const r3d_lit_mesh_t* mesh);
 /* The box of the root node's bounds carried through `model` (NULL: as it is),
  * in world units: it holds every vertex where the instance sits. */
 box3f_t r3d_lit_mesh_world_bounds(const r3d_lit_mesh_t* mesh, const mat4f_t* model);
+
+/* The box that holds `box` carried through `model` (NULL: as it is). */
+box3f_t r3d_box_placed(box3f_t box, const mat4f_t* model);

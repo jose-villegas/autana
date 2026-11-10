@@ -761,7 +761,7 @@ lod_open(int count) {
         l->lod[c] = (r3d_lit_cluster_lod_t){(uint16_t)g, R3D_LOD_NONE};
         const box3s_t b = l->clusters[c].bounds;
         const int16_t radius = (int16_t)((LOD_MERGE * LOD_STRIP) + LOD_HALF_HEIGHT);
-        l->groups[g] = (r3d_lit_lod_group_t){{{(int16_t)((b.lo.x + b.hi.x) / 2), 0, 0}, radius}, LOD_GROUP_ERROR};
+        l->groups[g] = (r3d_lit_lod_group_t){{{(int16_t)((b.lo.x + b.hi.x) / 2), 0, 0}, radius}, LOD_GROUP_ERROR, 0};
     }
     box3s_t all = box3s_empty();
     for (int c = 0; c < LOD_CLUSTERS; c++) {

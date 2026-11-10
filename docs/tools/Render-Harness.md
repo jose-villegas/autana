@@ -201,7 +201,7 @@ The [night order](../../launcher/tools/perf/README.md#nightly-scoped-chain)
 owns the marker, bake priority and board-plan handoff. The hosted job
 only fingerprints. Every Bakes GPU completion triggers a fresh check.
 
-GPU stages wait for active board locks, then take heavy and run to completion.
+The doc-images GPU stage waits for active board locks, then takes heavy and runs to completion.
 A board claimed between these steps waits for heavy before building.
 Human reservations do not block the GPU stage.
 
