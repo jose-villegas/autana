@@ -766,7 +766,7 @@ def rule_package_config(root, path, text):
 # it, or after a short flag such as -I: a test named capybara/home/portrait is
 # not a path. /Users counts anywhere, so WSL's /mnt/c/Users/<name> is caught.
 PERSONAL_PATH = re.compile(
-    r"C:\\Users\\[A-Za-z0-9][A-Za-z0-9_.-]*|(?:(?<![\w.~-])|(?<=-[A-Za-z]))/home/[A-Za-z0-9][A-Za-z0-9_.-]*|/Users/[A-Za-z0-9][A-Za-z0-9_.-]*"
+    r"C:\\Users\\[A-Za-z0-9][A-Za-z0-9_.-]*|(?:(?<![\w.~-])|(?<=(?<![\w.-])-[A-Za-z]))/home/[A-Za-z0-9][A-Za-z0-9_.-]*|/Users/[A-Za-z0-9][A-Za-z0-9_.-]*"
     r"|(?<![\w/])[A-Za-z]:[\\/][^\s\"'`;|()]*?esp-idf[\w.-]*")
 
 
