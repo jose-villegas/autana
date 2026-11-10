@@ -1779,6 +1779,23 @@ test_rsqrt_device_mantissas_and_normal_exponent_edges(void) {
 }
 #endif
 
+/* The exponent matches frexpf's over every normal exponent, at a power of
+ * two and just below the next. */
+static void
+test_scalar_exponent_matches_frexpf_across_the_normal_range(void) {
+    for (int e = FLT_MIN_EXP; e <= FLT_MAX_EXP; e++) {
+        const float low = ldexpf(0.5F, e);
+        int expected = 0;
+        (void)frexpf(low, &expected);
+        TEST_ASSERT_EQUAL_INT(expected, mathf_exponent(low));
+        if (e < FLT_MAX_EXP) {
+            const float high = nextafterf(ldexpf(1.0F, e), 0.0F);
+            (void)frexpf(high, &expected);
+            TEST_ASSERT_EQUAL_INT(expected, mathf_exponent(high));
+        }
+    }
+}
+
 static void
 test_scalar_half_and_absolute_value(void) {
     static const float half = 0.5F;
@@ -2113,6 +2130,7 @@ suite_math_numbers(void) {
     RUN_TEST(test_integer_half_chords_floor);
     RUN_TEST(test_integer_half_chords_round);
     RUN_TEST(test_integer_half_chords_int16_radius_edges);
+    RUN_TEST(test_scalar_exponent_matches_frexpf_across_the_normal_range);
     RUN_TEST(test_scalar_half_and_absolute_value);
 #if !defined(ESP_PLATFORM) || (defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP)
     RUN_TEST(test_recip_approx_mantissas_and_normal_exponent_edges);
