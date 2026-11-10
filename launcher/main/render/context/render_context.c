@@ -348,13 +348,15 @@ generate(render_context_t* c, const render_view_t* view) {
     c->drawn_in_row = 0;
 }
 
-/* No row changed, but picks are owed (render_partial_picks_owed()): a
- * census makes them, and true when one changed a cut or the depth scale,
+/* No row changed, but picks are owed (render_partial_picks_owed(), or a
+ * steer that moved its tolerance last round and has yet to see it drawn):
+ * a census makes them, and true when one changed a cut or the depth scale,
  * the census list then drawn over every row. */
 static bool
 census_changed(render_context_t* c, const render_view_t* view) {
     raster_t* r = &c->raster;
-    if (!render_partial_picks_owed(&c->partial, raster_pick_every(r))) {
+    const bool steering = raster_triangle_budget(r) > 0 && !c->steer.settled;
+    if (!steering && !render_partial_picks_owed(&c->partial, raster_pick_every(r))) {
         return false;
     }
     const float kept_near = raster_depth_near(r);
@@ -408,6 +410,7 @@ aim_raster(render_context_t* c, const r3d_instance_t* instances, int count, cons
     const int step = current_step(c);
     raster_t* r = &c->raster;
     r->split = &c->split;
+    r->steer = &c->steer;
     r->picks_levels = true;
     r->settings = &c->settings;
     r->instances = instances;
