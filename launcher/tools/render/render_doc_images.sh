@@ -423,6 +423,15 @@ for data in docs/render/data/*-object-error.csv; do
 done
 # --orphans scans this runner: bistro-street-fitted-full-object-error.png, sponza-atrium-fitted-full-object-error.png
 
+# Each fitted scene's card candidates against its triangle ceiling, from the rows
+# cards_report.py --docs keeps beside the page.
+for data in docs/render/data/*-cards.csv; do
+    [ -f "$data" ] || continue
+    stem=$(basename "$data" .csv)
+    run "$PYTHON" launcher/tools/r3d/cards/cards_report.py "$data" \
+        --table "$OUT/tables/$stem.md" > "$WORK/$stem.log"
+done
+
 # Each picture's frame cost in each framebuffer layout, from the scene and
 # boot animation captures beside the render pages.
 run "$PYTHON" launcher/tools/render/layout_costs.py --mesh docs/render/data/layout-mesh-board.log \
