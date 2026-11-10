@@ -43,13 +43,16 @@ and removes them at the bin where its group takes over, and the prefix sum is
 the triangle count at every bin edge.
 
 The device does the same per group, not per cluster. With `lod.triangle_budget`
-set, each pick adds a group's `saves` (LLOD) at the half-octave bin its error
-projects to, and the instance's finest triangles once. When a round of picks
+set, each pick adds a group's `saves` (LLOD) at the half-octave bin of the
+least tolerance that turns it coarse, and the instance's finest triangles once.
+That is its projected error, or the tolerance whose coverage cap its radius
+fits: steered, the cap rises in proportion to the tolerance. When a round of picks
 has seen every instance, the finest less the saves below each edge is the
 count there, scaled by what the round drew over what it predicted, which takes
 in culling. The steer takes the least edge within budget, from
-`lod.tolerance_px` up. It rises at once and falls a bin a round, so a held
-view settles.
+`lod.tolerance_px` up. It rises at once and falls a bin a round, and only
+once the edge two below fits, so a held view settles and a closing camera
+does not dip and climb back.
 
 Errors bin, and the tolerance is kept, in `lod.tolerance_px`'s pixels, so a
 picture drawn at another size steers the same. With partial redraw, a still

@@ -958,8 +958,9 @@ predicted_at(const r3d_lod_histogram_t* histogram, int edge) {
 
 /* At every pose of the path and every bin edge past the first, the triangles
  * the histogram predicts are those a fresh pick at that edge's tolerance
- * draws, hysteresis aside: the histogram is the cut's triangle count as a
- * function of the tolerance. */
+ * and coverage cap draws, hysteresis aside: the histogram is the cut's
+ * triangle count as a function of the steered tolerance, the cap rising with
+ * it. */
 static void
 test_the_histogram_predicts_the_triangles_a_pick_at_each_bin_edge_draws(void) {
     const r3d_lit_mesh_t* mesh = counted_mesh();
@@ -975,6 +976,8 @@ test_the_histogram_predicts_the_triangles_a_pick_at_each_bin_edge_draws(void) {
             render_lod_settings_t at = LOD;
             at.tolerance_px = r3d_lod_bin_edge(edge);
             at.hysteresis_px = 0.0F;
+            const r3d_lod_steer_t steer = {.tolerance_px = at.tolerance_px};
+            at.coverage_permille = r3d_lod_steer_coverage(&steer, LOD.tolerance_px, LOD.coverage_permille);
             uint32_t fresh[R3D_LOD_WORDS(GROUPS)] = {0};
             r3d_lod_pick(mesh, &lens, &at, fresh, NULL);
             TEST_ASSERT_EQUAL_INT_MESSAGE(drawn_triangles(mesh, fresh), predicted_at(&histogram, edge), "edge");
@@ -1051,17 +1054,41 @@ test_the_steer_rises_at_once_and_falls_a_bin_a_round(void) {
     TEST_ASSERT_EQUAL_INT(-1, steer.bin); /* the edge at the floor is the floor */
 }
 
+/* A bin lower that only just fits holds the steer; one more below lets it
+ * fall the one bin: a camera closing in does not dip a bin and climb back. */
+static void
+test_the_steer_holds_where_only_the_next_bin_down_fits(void) {
+    enum { HOLD_SAVES = 100 };
+
+    const int above = SEEN_FINEST - BELOW_SAVES - ABOVE_SAVES;
+    r3d_lod_steer_t steer;
+    r3d_lod_steer_reset(&steer, r3d_lod_bin_edge(FLOOR_EDGE));
+    steer_round(&steer, above, SEEN_FINEST - BELOW_SAVES);
+    TEST_ASSERT_EQUAL_INT(ABOVE_BIN + 1, steer.bin);
+    /* HOLD_SAVES a bin further down: there the edge one below fits, the one under it does not. */
+    steer.halves[0].saves[ABOVE_BIN - 1] = HOLD_SAVES;
+    steer_round(&steer, SEEN_FINEST - BELOW_SAVES - HOLD_SAVES, above - HOLD_SAVES);
+    TEST_ASSERT_EQUAL_INT(ABOVE_BIN + 1, steer.bin);
+    TEST_ASSERT_TRUE(steer.settled);
+    /* And as much again a bin below that: two edges down fit, so it falls one. */
+    steer.halves[0].saves[ABOVE_BIN - 1] = HOLD_SAVES;
+    steer.halves[0].saves[ABOVE_BIN - 2] = HOLD_SAVES;
+    steer_round(&steer, SEEN_FINEST - BELOW_SAVES - HOLD_SAVES, above - (2 * HOLD_SAVES));
+    TEST_ASSERT_EQUAL_INT(ABOVE_BIN, steer.bin);
+}
+
 /* Rounds the camera holds still for, and the rounds a hold may take to settle. */
 enum { HOLD_ROUNDS = 12, SETTLE_ROUNDS = 3 };
 
 /* One steered round of the levelled mesh through `lens`: a pick at the
- * steer's tolerance, which fills the histogram, its drawn triangles, then
+ * steer's tolerance and coverage cap, which fills the histogram, its drawn triangles, then
  * the steer. Returns the bin it leaves. */
 static int
 steered_round(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint32_t* coarse, r3d_lod_steer_t* steer,
               int budget) {
     render_lod_settings_t lod = LOD;
     lod.tolerance_px = steer->tolerance_px;
+    lod.coverage_permille = r3d_lod_steer_coverage(steer, LOD.tolerance_px, LOD.coverage_permille);
     steer->halves[0].unit = 1.0F;
     r3d_lod_pick(mesh, lens, &lod, coarse, &steer->halves[0]);
     r3d_lod_steer_frame(steer, LOD.tolerance_px, budget, drawn_triangles(mesh, coarse), true);
@@ -1069,8 +1096,8 @@ steered_round(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint32_t* coar
 }
 
 /* Along the path in and out, a steered pick never swings back to a bin it
- * just left (A, B, A), and held still at a pose it settles within
- * SETTLE_ROUNDS rounds and stays. */
+ * left within SETTLE_ROUNDS rounds (A, B, A), and held still at a pose it
+ * settles within SETTLE_ROUNDS rounds and stays. */
 static void
 test_a_steered_tolerance_settles_and_does_not_swing_along_the_path(void) {
     const r3d_lit_mesh_t* mesh = counted_mesh();
@@ -1079,15 +1106,17 @@ test_a_steered_tolerance_settles_and_does_not_swing_along_the_path(void) {
     r3d_lod_steer_t steer;
     r3d_lod_steer_reset(&steer, LOD.tolerance_px);
     uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
-    int before = -2, last = -2, swings = 0, moved = 0;
+    int before = -2, last = -2, held = 0, swings = 0, moved = 0;
     for (int p = 0; p < 2 * steps; p++) {
         const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
         const int bin = steered_round(mesh, &lens, coarse, &steer, budget);
+        held++;
         if (bin != last) {
-            swings += bin == before ? 1 : 0;
+            swings += bin == before && held <= SETTLE_ROUNDS ? 1 : 0;
             moved++;
             before = last;
             last = bin;
+            held = 0;
         }
     }
     TEST_ASSERT_EQUAL_INT(0, swings);
@@ -1239,6 +1268,7 @@ suite_r3d_lod(void) {
     RUN_TEST(test_the_histogram_predicts_the_triangles_a_pick_at_each_bin_edge_draws);
     RUN_TEST(test_the_steer_takes_the_least_edge_past_the_floor_within_the_budget);
     RUN_TEST(test_the_steer_rises_at_once_and_falls_a_bin_a_round);
+    RUN_TEST(test_the_steer_holds_where_only_the_next_bin_down_fits);
     RUN_TEST(test_a_steered_tolerance_settles_and_does_not_swing_along_the_path);
     RUN_TEST(test_the_histogram_bins_errors_in_the_setting_s_pixels);
     RUN_TEST(test_a_steered_census_counts_each_instance_once_a_round);

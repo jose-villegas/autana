@@ -492,6 +492,7 @@ level_pick_init(const raster_t* raster, picture_lens_t* picture, const render_vi
             r3d_lod_steer_reset(pick.steer, pick.floor_px);
         }
         pick.lod.tolerance_px = pick.steer->tolerance_px;
+        pick.lod.coverage_permille = r3d_lod_steer_coverage(pick.steer, pick.floor_px, lod->coverage_permille);
         pick.steer->halves[0].unit = 1.0F / drawn;
         pick.steer->halves[1].unit = pick.steer->halves[0].unit;
     }
