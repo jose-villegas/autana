@@ -129,8 +129,9 @@ lens_depth_plane(const r3d_lens_t* lens) {
 }
 
 /* Children go on the stack farthest first, so the nearest pops first and
- * the walk visits leaves roughly front to back. */
-static int
+ * the walk visits leaves roughly front to back. Inlined into each walk: the
+ * blending copy made GCC call it from the plain one. */
+static inline __attribute__((always_inline)) int
 push_children(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_node_t* node, unsigned mask,
               walk_entry_t* stack, int top) {
     child_depth_t order[R3D_LIT_NODE_CHILDREN_MAX];
@@ -743,7 +744,7 @@ draw_clipped(const r3d_lens_t* lens, bool double_sided, const uint16_t* face_col
     }
 }
 
-static inline bool
+static inline __attribute__((always_inline)) bool
 rows_miss_target(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target) {
     return !r->unbounded
            && (r->y1 < target->rows.first_row * R3D_SUBPIXEL
