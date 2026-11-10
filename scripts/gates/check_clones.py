@@ -235,9 +235,17 @@ def registration_only(pair):
     return pair["fragment"] != rest and len(C_TOKENS.findall(rest)) < MIN_TOKENS // 2
 
 
+def periodic(pair):
+    """Whether a fragment matches itself shifted by at most half its lines: a run of rows repeating a short
+    period, such as a list of table entries or switch cases, which has no owner to extract."""
+    first, second = pair["firstFile"], pair["secondFile"]
+    return (first["name"] == second["name"]
+            and 2 * abs(second["start"] - first["start"]) <= first["end"] - first["start"])
+
+
 def filter_pairs(pairs):
     def keep(pair):
-        if registration_only(pair):
+        if registration_only(pair) or periodic(pair):
             return False
         first, second = pair["firstFile"], pair["secondFile"]
         same_range = (first["name"] == second["name"]
