@@ -571,10 +571,6 @@ enum {
 
 typedef unsigned draw_mode_t;
 
-/* Where a triangle's mask comes from: none (the opaque fills), its cluster's
- * atlas, or the target's screen tile. */
-typedef enum { MASK_NONE, MASK_ATLAS, MASK_SCREEN } mask_source_t;
-
 /* One triangle, then the target's writers over it with DRAW_WRITES; a
  * masked one's writers follow inside its fill. */
 static inline __attribute__((always_inline)) void
@@ -601,7 +597,7 @@ fill_triangle(const r3d_span_target_t* target, const r3d_span_mask_t* mask, cons
 
 static inline __attribute__((always_inline)) void
 draw_clipped(const r3d_lens_t* lens, bool double_sided, const uint16_t* face_color, const r3d_span_target_t* target,
-             r3d_pipeline_work_t* work, mask_source_t source) {
+             r3d_pipeline_work_t* work, bool masked) {
     clip_vertex_t* poly = work->clip.poly;
     const int n = clip_to_guard(work, 3);
     if (n < 3) {
@@ -619,8 +615,7 @@ draw_clipped(const r3d_lens_t* lens, bool double_sided, const uint16_t* face_col
         return;
     }
     for (int i = 1; i + 1 < n; i++) {
-        r3d_span_mask_t* mask = source == MASK_ATLAS ? fan_mask(work, i) : NULL;
-        mask = source == MASK_SCREEN ? &work->clip.mask : mask;
+        r3d_span_mask_t* mask = masked ? fan_mask(work, i) : NULL;
         fill_triangle(target, mask, &s[0], &s[i], &s[i + 1], face_color,
                       (target->writer_count != 0 ? DRAW_WRITES : 0U) | (target->skip_hidden ? DRAW_SKIPPING : 0U));
     }
@@ -660,7 +655,7 @@ cluster_skipped(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target, d
  * corners and their u, v for its fan's masks. */
 static inline __attribute__((always_inline)) void
 rebuild(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* tri, const uint16_t* face_color,
-        bool double_sided, const r3d_span_target_t* target, r3d_pipeline_work_t* work, mask_source_t source) {
+        bool double_sided, const r3d_span_target_t* target, r3d_pipeline_work_t* work, bool masked) {
     FRAME_LAP("r3d.draw.clip");
     clip_vertex_t* in = work->clip.poly;
     for (int k = 0; k < 3; k++) {
@@ -668,21 +663,21 @@ rebuild(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* tri,
         const uint8_t* rgb = face_color == NULL ? mesh->colors[tri[k]] : (const uint8_t[3]){0, 0, 0};
         const vec3f_t l = mat4f_apply(&lens->m, (vec3f_t){(float)p[0], (float)p[1], (float)p[2]});
         in[k] = (clip_vertex_t){l.x, l.y, l.z, rgb[0], rgb[1], rgb[2]};
-        if (source == MASK_ATLAS) {
+        if (masked) {
             const uint16_t* uv = mesh->mask_uvs[tri[k] - mesh->mask_vertex_first];
             work->clip.source[k] = l;
             work->clip.source_u[k] = uv[0];
             work->clip.source_v[k] = uv[1];
         }
     }
-    draw_clipped(lens, double_sided, face_color, target, work, source);
+    draw_clipped(lens, double_sided, face_color, target, work, masked);
     FRAME_LAP("r3d.draw.cluster");
 }
 
 static __attribute__((noinline, cold)) void
 draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* tri, const uint16_t* face_color,
              bool double_sided, const r3d_span_target_t* target, r3d_pipeline_work_t* work) {
-    rebuild(mesh, lens, tri, face_color, double_sided, target, work, MASK_NONE);
+    rebuild(mesh, lens, tri, face_color, double_sided, target, work, false);
 }
 
 /* rebuild() of a masked triangle, through work->clip.mask's atlas: apart, so
@@ -690,15 +685,7 @@ draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
 static RENDER_TAIL_ATTR __attribute__((noinline)) void
 draw_masked_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* tri, const uint16_t* face_color,
                     bool double_sided, const r3d_span_target_t* target, r3d_pipeline_work_t* work) {
-    rebuild(mesh, lens, tri, face_color, double_sided, target, work, MASK_ATLAS);
-}
-
-/* rebuild() through the target's screen tile. */
-static RENDER_TAIL_ATTR __attribute__((noinline)) void
-draw_screen_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* tri, const uint16_t* face_color,
-                    bool double_sided, const r3d_span_target_t* target, r3d_pipeline_work_t* work) {
-    work->clip.mask.atlas = NULL;
-    rebuild(mesh, lens, tri, face_color, double_sided, target, work, MASK_SCREEN);
+    rebuild(mesh, lens, tri, face_color, double_sided, target, work, true);
 }
 
 static inline __attribute__((always_inline)) void
@@ -718,7 +705,7 @@ draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3
     for (int k = 0; k < 3; k++) {
         const uint8_t* rgb = face_color == NULL ? mesh->colors[tri[k]] : (const uint8_t[3]){0, 0, 0};
         s[k] = (r3d_span_vertex_t){v[k]->sx, v[k]->sy, v[k]->iz, rgb[0], rgb[1], rgb[2]};
-        if (mask != NULL && mask->atlas != NULL) {
+        if (mask != NULL) {
             const uint16_t* uv = mesh->mask_uvs[tri[k] - mesh->mask_vertex_first];
             mask->u[k] = uv[0];
             mask->v[k] = uv[1];
@@ -742,7 +729,7 @@ draw_masked_in_front(const r3d_lit_mesh_t* mesh, const r3d_lit_cluster_t* c, int
                      const r3d_pipeline_vertex_t* const v[3], const r3d_span_target_t* target,
                      r3d_pipeline_work_t* work) {
     const uint16_t* face_color = face_color_of(mesh, t);
-    work->clip.mask.atlas = c->masked ? &mesh->mask : NULL;
+    work->clip.mask.atlas = &mesh->mask;
     draw_in_front(mesh, v, mesh->triangles[t], face_color, c->double_sided, &work->clip.mask, target, 0U,
                   work->clip.projected);
 }
@@ -752,9 +739,9 @@ draw_masked_in_front(const r3d_lit_mesh_t* mesh, const r3d_lit_cluster_t* c, int
  * bounds. */
 static inline __attribute__((always_inline)) void
 draw_one_in_front(const r3d_lit_mesh_t* mesh, const r3d_lit_cluster_t* c, int t,
-                  const r3d_pipeline_vertex_t* const v[3], mask_source_t source, const r3d_span_target_t* target,
+                  const r3d_pipeline_vertex_t* const v[3], bool masked, const r3d_span_target_t* target,
                   draw_mode_t mode, r3d_pipeline_work_t* work) {
-    if (source != MASK_NONE) {
+    if (masked) {
         draw_masked_in_front(mesh, c, t, v, target, work);
         return;
     }
@@ -767,21 +754,19 @@ draw_one_in_front(const r3d_lit_mesh_t* mesh, const r3d_lit_cluster_t* c, int t,
 /* Triangles first to end - 1 of one cluster, through `mask` when it is masked. */
 static inline __attribute__((always_inline)) void
 draw_triangles_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_cluster_t* c, int first, int end,
-                  const r3d_pipeline_vertex_t* cs, mask_source_t source, const r3d_span_target_t* target,
-                  draw_mode_t mode, r3d_pipeline_work_t* work) {
+                  const r3d_pipeline_vertex_t* cs, bool masked, const r3d_span_target_t* target, draw_mode_t mode,
+                  r3d_pipeline_work_t* work) {
     for (int t = first; t < end; t++) {
         const uint16_t* tri = mesh->triangles[t];
         const uint16_t* face_color = face_color_of(mesh, t);
         const r3d_pipeline_vertex_t* const v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
         /* Cluster-owned vertices all passed near and range tests with DRAW_BOUNDED. */
         if ((mode & DRAW_BOUNDED) != 0 || (v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F)) {
-            draw_one_in_front(mesh, c, t, v, source, target, mode, work);
+            draw_one_in_front(mesh, c, t, v, masked, target, mode, work);
         } else if (v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F) {
-            if (source == MASK_ATLAS) {
+            if (masked) {
                 work->clip.mask.atlas = &mesh->mask;
                 draw_masked_rebuilt(mesh, lens, tri, face_color, c->double_sided, target, work);
-            } else if (source == MASK_SCREEN) {
-                draw_screen_rebuilt(mesh, lens, tri, face_color, c->double_sided, target, work);
             } else {
                 draw_rebuilt(mesh, lens, tri, face_color, c->double_sided, target, work);
             }
@@ -795,7 +780,7 @@ static RENDER_TAIL_ATTR __attribute__((noinline)) void
 draw_masked(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_cluster_t* c, int first, int end,
             const r3d_pipeline_vertex_t* cs, const r3d_span_target_t* target, draw_mode_t mode,
             r3d_pipeline_work_t* work) {
-    draw_triangles_of(mesh, lens, c, first, end, cs, MASK_ATLAS, target, mode, work);
+    draw_triangles_of(mesh, lens, c, first, end, cs, true, target, mode, work);
 }
 
 static inline __attribute__((always_inline)) void
@@ -805,7 +790,7 @@ draw_triangles(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit
     if (c->masked) {
         draw_masked(mesh, lens, c, first, end, cs, target, mode, work);
     } else {
-        draw_triangles_of(mesh, lens, c, first, end, cs, MASK_NONE, target, mode, work);
+        draw_triangles_of(mesh, lens, c, first, end, cs, false, target, mode, work);
     }
 }
 
@@ -844,12 +829,11 @@ draw_writing_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16
          * hot one's. */
         const int end = c->triangle_first + c->triangle_count;
         const int step = per_triangle ? 1 : c->triangle_count;
-        const mask_source_t source = c->masked ? MASK_ATLAS : target->screen_mask != 0 ? MASK_SCREEN : MASK_NONE;
         for (int t = c->triangle_first; t < end; t += step) {
             retag(writers, target->writers, target->writer_count, clusters[i], (uint32_t)t);
             /* No DRAW_BOUNDED: one more live value puts this frame over stack_chain_gate. The mask
              * is chosen here, not by draw_masked(): its frame would put a masked chain over too. */
-            draw_triangles_of(mesh, lens, c, t, t + step, cs, source, &writing, mode, work);
+            draw_triangles_of(mesh, lens, c, t, t + step, cs, c->masked, &writing, mode, work);
         }
     }
 }
@@ -899,26 +883,8 @@ draw_reading_skipping(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const 
     draw_reading_of(mesh, lens, clusters, count, cs, rows, target, DRAW_SKIPPING, work);
 }
 
-/* A target with a screen tile: every triangle through the masked fill, a
- * masked cluster's through its own atlas. At the flash tail, so the opaque
- * draws keep their code and placement. */
-static RENDER_TAIL_ATTR __attribute__((noinline)) void
-draw_screen(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
-            const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
-            r3d_pipeline_work_t* work) {
-    const draw_mode_t mode = target->skip_hidden ? DRAW_SKIPPING : 0U;
-    for (int i = 0; i < count; i++) {
-        if (rows != NULL && cluster_skipped(&rows[clusters[i]], target, mode)) {
-            continue;
-        }
-        const r3d_lit_cluster_t* c = &mesh->clusters[clusters[i]];
-        draw_triangles_of(mesh, lens, c, c->triangle_first, c->triangle_first + c->triangle_count, cs,
-                          c->masked ? MASK_ATLAS : MASK_SCREEN, target, mode, work);
-    }
-}
-
 /* Chooses once per draw whether the target's writers follow each fill, and
- * whether a screen tile masks it, and whether clusters behind drawn depth are skipped. */
+ * whether clusters behind drawn depth are skipped. */
 void
 r3d_pipeline_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
                   const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
@@ -926,8 +892,6 @@ r3d_pipeline_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint
     build_guard_planes(lens, work);
     if (target->writer_count != 0) {
         draw_writing(mesh, lens, clusters, count, cs, rows, target, work);
-    } else if (target->screen_mask != 0) {
-        draw_screen(mesh, lens, clusters, count, cs, rows, target, work);
     } else if (target->skip_hidden) {
         draw_reading_skipping(mesh, lens, clusters, count, cs, rows, target, work);
     } else {

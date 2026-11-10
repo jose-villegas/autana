@@ -229,13 +229,11 @@ span_start(const gradients_t* g, uint32_t carried, int k, int skip, int count, i
 
 typedef enum { FILL_FLAT, FILL_FACE, FILL_GOURAUD } shading_t;
 
-/* A masked fill's atlas and its u and v planes, from x_origin and y_origin;
- * without an atlas, the target's screen tile. */
+/* A masked fill's atlas and its u and v planes, from x_origin and y_origin. */
 typedef struct {
     plane_step_t u, v;
     int x_origin, y_origin;
     const r3d_span_mask_t* given;
-    uint16_t screen;
 } mask_planes_t;
 
 typedef struct {
@@ -466,29 +464,10 @@ fill_carried_span(const r3d_span_target_t* target, const fill_t* f, const uint32
     }
 }
 
-/* Row y's word of a screen tile: its row of R3D_SPAN_SCREEN_TILE bits
- * repeated across the word, so bit x % LMSK_MASK_WIDTH is the tile's bit at x. */
-_Static_assert(LMSK_MASK_WIDTH % R3D_SPAN_SCREEN_TILE == 0, "a screen tile row repeats evenly across a row word");
-_Static_assert(R3D_SPAN_SCREEN_TILE* R3D_SPAN_SCREEN_TILE == sizeof(uint16_t) * CHAR_BIT,
-               "a screen tile fills screen_mask's 16 bits");
-
-static uint32_t
-screen_row_word(uint16_t screen, int y) {
-    const uint32_t row_bits = (1U << R3D_SPAN_SCREEN_TILE) - 1U;
-    const uint32_t row = ((uint32_t)screen >> (((uint32_t)y % R3D_SPAN_SCREEN_TILE) * R3D_SPAN_SCREEN_TILE)) & row_bits;
-    return row * (UINT32_MAX / row_bits);
-}
-
 /* The mask's u at the span's first pixel and its step, both clamped so the last pixel stays inside the mask. */
 static void
 mask_u_range(const fill_t* f, int y, const row_span_t* span, int count, int32_t* u_first, int32_t* du) {
     const mask_planes_t* uv = f->uv;
-    if (uv->given->atlas == NULL) {
-        /* The screen tile's row word repeats across x, so u is x itself. */
-        *u_first = (int32_t)((uint32_t)span->first << R3D_SPAN_MASK_SHIFT);
-        *du = 1 << R3D_SPAN_MASK_SHIFT;
-        return;
-    }
     const int64_t x = span->first - uv->x_origin;
     const int64_t dy = y - uv->y_origin;
     const int64_t u_at = (int64_t)uv->u.base + (x * uv->u.dx) + (dy * uv->u.dy);
@@ -506,9 +485,6 @@ mask_u_range(const fill_t* f, int y, const row_span_t* span, int count, int32_t*
 static uint32_t
 mask_row_word(const fill_t* f, int y, const row_span_t* span, int count) {
     const mask_planes_t* uv = f->uv;
-    if (uv->given->atlas == NULL) {
-        return screen_row_word(uv->screen, y);
-    }
     const int64_t x = span->first - uv->x_origin;
     const int64_t dy = y - uv->y_origin;
     const int64_t v = (int64_t)uv->v.base + (x * uv->v.dx) + (dy * uv->v.dy) + ((int64_t)(count / 2) * uv->v.dx);
@@ -1113,16 +1089,12 @@ set_up_masked(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[
     }
     const r3d_span_mask_t* m = uv->given;
     uv->x_origin = box.x;
-    if (m->atlas != NULL) {
-        plane_t p;
-        if (!plane_of(a, b, c, box.x, box.y, &p)) {
-            return false;
-        }
-        uv->u =
-            plane_step(&p, m->u[0] * R3D_SPAN_MASK_SCALE, m->u[1] * R3D_SPAN_MASK_SCALE, m->u[2] * R3D_SPAN_MASK_SCALE);
-        uv->v =
-            plane_step(&p, m->v[0] * R3D_SPAN_MASK_SCALE, m->v[1] * R3D_SPAN_MASK_SCALE, m->v[2] * R3D_SPAN_MASK_SCALE);
+    plane_t p;
+    if (!plane_of(a, b, c, box.x, box.y, &p)) {
+        return false;
     }
+    uv->u = plane_step(&p, m->u[0] * R3D_SPAN_MASK_SCALE, m->u[1] * R3D_SPAN_MASK_SCALE, m->u[2] * R3D_SPAN_MASK_SCALE);
+    uv->v = plane_step(&p, m->v[0] * R3D_SPAN_MASK_SCALE, m->v[1] * R3D_SPAN_MASK_SCALE, m->v[2] * R3D_SPAN_MASK_SCALE);
     /* set_up_fill() has left Gouraud colour planes at box.y; a face
      * colour becomes the bases of planes that do not step. */
     if (face != NULL) {
@@ -1298,7 +1270,7 @@ r3d_span_masked_triangle(const r3d_span_target_t* target, const r3d_span_mask_t*
     const int y_anchor = mathi_clamp(e.centres.y, -1, gfx_target_end_row(&target->rows) + 1);
     gradients_t g = {0};
     f.g = &g;
-    mask_planes_t uv = {.given = mask, .screen = target->screen_mask};
+    mask_planes_t uv = {.given = mask};
     const r3d_span_vertex_t* const v[TRIANGLE_VERTICES] = {a, b, c};
     if (!set_up_fill(target, v, box, y_anchor, face, &f, &g) || !set_up_masked(target, v, box, face, &f, &g, &uv)
         || r3d_span_stop_after == 1) {

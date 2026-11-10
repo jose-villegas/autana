@@ -33,7 +33,7 @@
 
 /* Fills the pipeline asked for, counted on their way to the real ones. */
 typedef struct {
-    int plain, solid, capped, screen;
+    int plain, solid, capped;
 } fill_counts_t;
 
 static fill_counts_t fills;
@@ -59,32 +59,20 @@ counted_capped_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t
     constant_r3d_span_capped_triangle(target, a, b, c, face);
 }
 
-/* A masked fill without an atlas: the target's screen tile. */
-static void
-counted_masked_triangle(const r3d_span_target_t* target, const r3d_span_mask_t* mask, const r3d_span_vertex_t* a,
-                        const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, const uint16_t* face) {
-    fills.screen += mask->atlas == NULL;
-    constant_r3d_span_masked_triangle(target, mask, a, b, c, face);
-}
-
 /* The pipeline calls the counting fills; the suite's own calls reach the real ones. */
 #undef r3d_span_triangle
 #undef r3d_span_triangle_solid
 #undef r3d_span_capped_triangle
-#undef r3d_span_masked_triangle
 #define r3d_span_triangle        counted_triangle
 #define r3d_span_triangle_solid  counted_triangle_solid
 #define r3d_span_capped_triangle counted_capped_triangle
-#define r3d_span_masked_triangle counted_masked_triangle
 #include "render/r3d_pipeline.c"
 #undef r3d_span_triangle
 #undef r3d_span_triangle_solid
 #undef r3d_span_capped_triangle
-#undef r3d_span_masked_triangle
 #define r3d_span_triangle        constant_r3d_span_triangle
 #define r3d_span_triangle_solid  constant_r3d_span_triangle_solid
 #define r3d_span_capped_triangle constant_r3d_span_capped_triangle
-#define r3d_span_masked_triangle constant_r3d_span_masked_triangle
 #include "render/r3d_span.c"
 #include "suites.h"
 #include "unity.h"
@@ -656,7 +644,7 @@ test_rows_change_no_pixel_of_a_draw(void) {
 /* Every fill the draw asked for, whichever kind. */
 static int
 fills_total(void) {
-    return fills.plain + fills.solid + fills.capped + fills.screen;
+    return fills.plain + fills.solid + fills.capped;
 }
 
 /* The wall scene's triangles: the wall has two, the clear cluster two, the
@@ -704,7 +692,7 @@ test_a_writing_draw_reaches_no_fill_for_a_hidden_cluster_only_when_skipping(void
 /* One cluster of the bounded scene drawn alone, with no rows so none is
  * skipped. */
 static void
-draw_one_cluster_counting_fills_through(int cluster, bool writes, bool skipping, uint16_t screen_mask) {
+draw_one_cluster_counting_fills(int cluster, bool writes, bool skipping) {
     cleanup();
     scene_open();
     build_bounded_scene();
@@ -715,14 +703,8 @@ draw_one_cluster_counting_fills_through(int cluster, bool writes, bool skipping,
     r3d_span_writer_t writer;
     r3d_span_target_t target = scene_target(0, SCENE_H, writes ? &writer : NULL);
     target.skip_hidden = skipping;
-    target.screen_mask = screen_mask;
     memset(&fills, 0, sizeof fills);
     r3d_pipeline_draw(&mesh, &lens, &only, 1, scene->cs, NULL, &target, work);
-}
-
-static void
-draw_one_cluster_counting_fills(int cluster, bool writes, bool skipping) {
-    draw_one_cluster_counting_fills_through(cluster, writes, skipping, 0);
 }
 
 /* The capped fill runs for every triangle when skipping, the plain one when
@@ -738,25 +720,6 @@ test_skipping_selects_the_capped_fill_in_front_and_clipped(void) {
             draw_one_cluster_counting_fills(clusters[k], writes, false);
             TEST_ASSERT_GREATER_THAN(0, fills.plain);
             TEST_ASSERT_EQUAL_INT(fills.plain, fills_total());
-        }
-    }
-}
-
-/* A 4x4 checker: tile rows 1010, 0101, 1010, 0101. */
-#define SCREEN_CHECKER 0x5A5AU
-
-/* A target with a screen tile sends every triangle through the masked fill,
- * in front and clipped, with writers or skipping or neither. */
-static void
-test_a_screen_tile_sends_every_fill_through_the_mask(void) {
-    static const int clusters[] = {BOUNDED_QUAD, ACROSS_NEAR, OFF_RANGE};
-    for (size_t k = 0; k < sizeof clusters / sizeof clusters[0]; k++) {
-        for (int writes = 0; writes <= 1; writes++) {
-            for (int skipping = 0; skipping <= 1; skipping++) {
-                draw_one_cluster_counting_fills_through(clusters[k], writes, skipping, SCREEN_CHECKER);
-                TEST_ASSERT_GREATER_THAN(0, fills.screen);
-                TEST_ASSERT_EQUAL_INT(fills.screen, fills_total());
-            }
         }
     }
 }
@@ -936,7 +899,6 @@ run_r3d_style_pipeline_suite(void) {
     RUN_TEST(test_skipping_selects_the_capped_fill_in_front_and_clipped);
     RUN_TEST(test_bounded_rows_skip_the_per_triangle_depth_test);
     RUN_TEST(test_a_clipped_masked_fan_takes_the_source_u_v_where_each_corner_lies);
-    RUN_TEST(test_a_screen_tile_sends_every_fill_through_the_mask);
 }
 
 SUITE_REGISTER(run_r3d_style_pipeline_suite);
