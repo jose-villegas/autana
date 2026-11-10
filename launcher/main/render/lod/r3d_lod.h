@@ -12,7 +12,7 @@
  * a switch does not flicker. The bits persist from frame to frame with the
  * instance; all clear is a valid start, every cluster finest.
  *
- * With `lod.triangle_budget_k` set, the tolerance the pick uses is steered:
+ * With `lod.triangle_budget` set, the tolerance the pick uses is steered:
  * each pick adds what its groups would save drawn coarse to a histogram over
  * their projected error, and when a round of picks has seen every instance,
  * r3d_lod_steer_frame() reads off the least tolerance, from `lod.tolerance_px` up,

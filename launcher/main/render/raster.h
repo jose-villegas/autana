@@ -44,7 +44,7 @@ struct raster {
     /* The frame's count, which share of the instances a spread pick takes;
      * round 0, a scene's or view's first frame, picks every instance. */
     uint32_t pick_round;
-    /* With lod.triangle_budget_k set, steers the pick's tolerance from round
+    /* With lod.triangle_budget set, steers the pick's tolerance from round
      * to round; NULL picks at lod.tolerance_px. */
     struct r3d_lod_steer* steer;
     void* scratch; /* raster_scratch_bytes() of it */
@@ -66,7 +66,7 @@ render_settings_t raster_settings(const raster_t* raster);
  * the whole settings struct would cost a frame. */
 bool raster_partial_redraw(const raster_t* raster);
 int raster_pick_every(const raster_t* raster);
-int raster_triangle_budget_k(const raster_t* raster);
+int raster_triangle_budget(const raster_t* raster);
 
 /* The viewport a view frames: destination size when upscaled, otherwise drawn size. */
 static inline viewport_t
@@ -76,7 +76,7 @@ raster_viewport(const raster_t* raster, int quarter) {
 }
 
 typedef struct {
-    int clusters, triangles; /* what culling kept, after the level cut: lod.triangle_budget_k counts these */
+    int clusters, triangles; /* what culling kept, after the level cut: lod.triangle_budget counts these */
 } raster_stats_t;
 
 /* The most vertices and clusters any mesh the raster draws has: what its

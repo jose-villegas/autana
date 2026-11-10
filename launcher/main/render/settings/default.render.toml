@@ -11,4 +11,4 @@ tolerance_px = 2.0
 hysteresis_px = 0.5
 coverage_permille = 250
 pick_every = 4
-triangle_budget_k = 0
+triangle_budget = 0

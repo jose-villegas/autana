@@ -1147,7 +1147,7 @@ test_a_steered_census_counts_each_instance_once_a_round(void) {
     const float depth[PLACED_MAX] = {FAR_EYE, FAR_EYE};
     place(p, mesh, PLACED_MAX, depth);
     render_settings_t settings = spread_over(EVERY);
-    settings.lod.triangle_budget_k = 1;
+    settings.lod.triangle_budget = 1000;
     r3d_lod_steer_t steer;
     memset(&steer, 0, sizeof steer);
     raster_t raster = {.instances = p->instances,
@@ -1185,7 +1185,7 @@ test_a_steer_that_moved_owes_picks_while_the_camera_holds_still(void) {
     open_spread(EVERY, true);
     render_settings_t settings = spread_over(EVERY);
     settings.partial_redraw = true;
-    settings.lod.triangle_budget_k = 1;
+    settings.lod.triangle_budget = 1000;
     render_context_set_settings(spread_context, &settings);
     const render_view_t view = axis_view();
     (void)spread_frame(&view);

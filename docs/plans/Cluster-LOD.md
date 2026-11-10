@@ -42,7 +42,7 @@ each cluster in view adds its triangles at the bin where it starts to be drawn
 and removes them at the bin where its group takes over, and the prefix sum is
 the triangle count at every bin edge.
 
-The device does the same per group, not per cluster. With `lod.triangle_budget_k`
+The device does the same per group, not per cluster. With `lod.triangle_budget`
 set, each pick adds a group's `saves` (LLOD) at the half-octave bin its error
 projects to, and the instance's finest triangles once. When a round of picks
 has seen every instance, the finest less the saves below each edge is the
@@ -77,7 +77,7 @@ Hoppe's<sup>[[111]](../Citations.md#hoppe-1997)</sup>; the floor is `lod.toleran
 | Replay over a camera path | [`lod/lod_replay.py`](../../launcher/tools/r3d/lod/lod_replay.py) | host |
 | Levels in the baked mesh | [`lod/bake_levels.py`](../../launcher/tools/r3d/lod/bake_levels.py), [`r3d_lit_mesh.h`](../../launcher/main/render/r3d_lit_mesh.h) | built |
 | Pick at a tolerance, with hysteresis and a coverage cap, in output pixels, each instance every `lod.pick_every` frames and all of them on a scene's first frame | [`r3d_lod_pick()`](../../launcher/main/render/lod/r3d_lod.h), run by the main view's cull just before each instance (`raster_t.picks_levels`); its coarse bits live per scene renderer, and the cluster walk only reads them | built |
-| Histogram over a round of picks, steering the tolerance to `lod.triangle_budget_k` | [`r3d_lod_steer_frame()`](../../launcher/main/render/lod/r3d_lod.h), its state per scene renderer (`raster_t.steer`) | built |
+| Histogram over a round of picks, steering the tolerance to `lod.triangle_budget` | [`r3d_lod_steer_frame()`](../../launcher/main/render/lod/r3d_lod.h), its state per scene renderer (`raster_t.steer`) | built |
 | Tolerance per pose baked for the path; the fit trained on it | bake stage | not built |
 
 ```sh

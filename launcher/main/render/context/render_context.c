@@ -355,7 +355,7 @@ generate(render_context_t* c, const render_view_t* view) {
 static bool
 census_changed(render_context_t* c, const render_view_t* view) {
     raster_t* r = &c->raster;
-    const bool steering = raster_triangle_budget_k(r) > 0 && !c->steer.settled;
+    const bool steering = raster_triangle_budget(r) > 0 && !c->steer.settled;
     if (!steering && !render_partial_picks_owed(&c->partial, raster_pick_every(r))) {
         return false;
     }

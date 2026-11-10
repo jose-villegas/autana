@@ -129,7 +129,7 @@ test_the_default_is_every_setting_on_as_the_raster_drew_before(void) {
                                           .hysteresis_px = 0.5F,
                                           .coverage_permille = 250,
                                           .pick_every = 4,
-                                          .triangle_budget_k = 0}};
+                                          .triangle_budget = 0}};
     assert_settings(&on, &RENDER_SETTINGS_DEFAULT);
     const render_settings_t bare = raster_settings(&r->raster);
     assert_settings(&on, &bare);
@@ -247,7 +247,7 @@ test_the_coverage_knob_overrides_only_the_coverage_cap(void) {
     TEST_ASSERT_EQUAL_FLOAT(3.0F, used.lod.tolerance_px);
     TEST_ASSERT_EQUAL_FLOAT(0.25F, used.lod.hysteresis_px);
     TEST_ASSERT_EQUAL_INT(2, used.lod.pick_every);
-    TEST_ASSERT_EQUAL_INT(7, used.lod.triangle_budget_k);
+    TEST_ASSERT_EQUAL_INT(7, used.lod.triangle_budget);
     TEST_ASSERT_EQUAL_INT(100, set.lod.coverage_permille);
     TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, lod_coverage_permille)));
     used = raster_settings(&r->raster);
@@ -298,7 +298,7 @@ read_entry(int rows, const int16_t* values, int frac, render_settings_t* out) {
 
 static void
 test_a_packs_render_entry_reads_every_field(void) {
-    static const int16_t values[FIELDS] = {0, STEP, 0, STEP, (3 * STEP) + (STEP / 2), STEP / 4, 100 * STEP, 2 * STEP};
+    static const int16_t values[FIELDS] = {0, 1, 0, 1, (3 * STEP) + (STEP / 2), STEP / 4, 100, 2, 12000};
     render_settings_t read;
     TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
     TEST_ASSERT_FALSE(read.cull);
@@ -309,6 +309,7 @@ test_a_packs_render_entry_reads_every_field(void) {
     TEST_ASSERT_EQUAL_FLOAT(0.25F, read.lod.hysteresis_px);
     TEST_ASSERT_EQUAL_INT(100, read.lod.coverage_permille);
     TEST_ASSERT_EQUAL_INT(2, read.lod.pick_every);
+    TEST_ASSERT_EQUAL_INT(12000, read.lod.triangle_budget); /* an int is held as itself, past 2047 */
 }
 
 static void
