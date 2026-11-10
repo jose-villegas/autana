@@ -877,6 +877,26 @@ batch_add(const raster_t* raster, draw_work_t* work, int first, const r3d_instan
     return culled + 1 + (size_t)mesh->cluster_count;
 }
 
+/* Draw entries first..end-1 into the work's batch: instances, or kept copies,
+ * never both. Returns the culled list past theirs. */
+static inline __attribute__((always_inline)) uint16_t*
+batch_fill(const raster_t* raster, draw_work_t* work, int first, int end, uint16_t* culled) {
+    int vertices = 0;
+    int clusters = 0;
+    work->batch.count = 0;
+    if (first < raster->instance_count) {
+        for (int i = first; i < end; i++) {
+            culled = batch_add(raster, work, i, &raster->instances[i], NULL, culled, &vertices, &clusters);
+        }
+    } else {
+        for (int i = first; i < end; i++) {
+            const r3d_batch_draw_t* copy = raster_census_copy(raster, i);
+            culled = batch_add(raster, work, i, &copy->instance, copy, culled, &vertices, &clusters);
+        }
+    }
+    return culled;
+}
+
 /* A NULL stats pointer uses the census list; otherwise each instance is
  * culled. Inlining keeps the draw chain to one entry's stack frame. */
 static inline __attribute__((always_inline)) void
@@ -908,7 +928,6 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     /* A list drawn with no census, or rewritten without its scale, fails here. */
     assert(*work->buffers.depth_near >= view->lens.near_z);
     uint16_t* culled = work->buffers.culled;
-    batch_t* batch = &work->batch;
     picture_lens_init(&work->picture, raster, view, true);
     /* The first batch clears the picture, so it runs with nothing kept too.
      * The count is read where the census wrote it, held in no register. */
@@ -916,19 +935,8 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     int index = 0;
     do {
         const int end = raster_batch_end(raster, first);
-        int vertices = 0;
-        int clusters = 0;
-        batch->count = 0;
-        if (first < raster->instance_count) {
-            for (; first < end; first++) {
-                culled = batch_add(raster, work, first, &raster->instances[first], NULL, culled, &vertices, &clusters);
-            }
-        } else {
-            for (; first < end; first++) {
-                const r3d_batch_draw_t* copy = raster_census_copy(raster, first);
-                culled = batch_add(raster, work, first, &copy->instance, copy, culled, &vertices, &clusters);
-            }
-        }
+        culled = batch_fill(raster, work, first, end, culled);
+        first = end;
         draw_batch(raster, index, work);
         index++;
     } while (first < raster_census_count(raster));

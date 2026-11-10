@@ -10,7 +10,8 @@
 #include "math/linear/mat4f.h"
 #include "render/r3d_instance.h"
 #include "render/r3d_lit_mesh.h"
-#include "render/r3d_pipeline.h"
+
+typedef struct r3d_lens r3d_lens_t; /* r3d_pipeline.h */
 
 /* A batch's copies in runs of this many, each run a chunk with one sphere. */
 #define R3D_BATCH_CHUNK_COPIES 16

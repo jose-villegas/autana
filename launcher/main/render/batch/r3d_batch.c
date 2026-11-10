@@ -3,6 +3,7 @@
 
 #include "math/linear/quatf.h"
 #include "math/scalar/mathf.h"
+#include "render/r3d_pipeline.h"
 
 int
 r3d_batch_chunks(int copies) {
