@@ -1305,12 +1305,13 @@ def main(argv=None):
                 if args.kind not in (None, kind):
                     continue
                 if kind in ("fit", "levels") and made_starts:
-                    # A fit's key names its start's bytes: the lock's, else those this run just made.
-                    found = bakes(paths, {**made_starts, **starts}, poses)
+                    # A fit's key names its start's bytes: the lock's, else those this run just made, which
+                    # also replace a seeded row's carried-over bytes (locked_starts).
+                    found = bakes(paths, locked_starts(lock, made_starts), poses)
                 selected = [bake for bake in found if to_make(bake, kind)]
                 if kind == "mesh":
                     made_rows = _mesh_rows(selected, cache, lock, args.blender, args.again, keep)
-                    made_starts.update({bake.key: row["sha256"] for bake, row in zip(selected, made_rows) if not bake.packed})
+                    made_starts.update({bake.key: row for bake, row in zip(selected, made_rows) if not bake.packed})
                     rows.extend(made_rows)
                 else:
                     for bake in selected:
@@ -1325,7 +1326,7 @@ def main(argv=None):
                             fresh_references and fresh_references.name))
                         rows.append(row)
                         if not bake.packed:
-                            made_starts[bake.key] = row["sha256"]
+                            made_starts[bake.key] = row
             for row in rows:
                 locked = lock.get(row["key"])
                 versus = "" if locked is None else (

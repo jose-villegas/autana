@@ -33,7 +33,7 @@ scene_storage_carve(size_t* end, size_t bytes, size_t align) {
 }
 
 /* What one of the scene's arrays is counted in. */
-enum { PER_RENDERER, PER_CAMERA, PER_ENTITY, PER_COUNT };
+enum { PER_RENDERER, PER_CAMERA, PER_ENTITY, PER_BATCH, PER_COUNT };
 
 #define PART(member, per)                                                                                              \
     {offsetof(scene_t, member), sizeof *((scene_t*)0)->member, _Alignof(__typeof__(*((scene_t*)0)->member)), per}
@@ -42,10 +42,19 @@ enum { PER_RENDERER, PER_CAMERA, PER_ENTITY, PER_COUNT };
 static const struct {
     size_t member, size, align;
     int per;
-} PARTS[] = {PART(renderers, PER_RENDERER), PART(cameras, PER_CAMERA),           PART(flags, PER_ENTITY),
-             PART(locals, PER_ENTITY),      PART(world_slots, PER_ENTITY),       PART(instances, PER_RENDERER),
-             PART(animators, PER_ENTITY),   PART(skinned_renderers, PER_ENTITY), PART(lights, PER_ENTITY),
-             PART(staged, PER_ENTITY),      PART(active_renderers, PER_RENDERER)};
+} PARTS[] = {PART(renderers, PER_RENDERER),
+             PART(cameras, PER_CAMERA),
+             PART(flags, PER_ENTITY),
+             PART(locals, PER_ENTITY),
+             PART(world_slots, PER_ENTITY),
+             PART(instances, PER_RENDERER),
+             PART(animators, PER_ENTITY),
+             PART(skinned_renderers, PER_ENTITY),
+             PART(lights, PER_ENTITY),
+             PART(staged, PER_ENTITY),
+             PART(active_renderers, PER_RENDERER),
+             PART(batches, PER_BATCH),
+             PART(batch_draws, PER_BATCH)};
 
 /* Carves the scene's arrays after its header, each on its own alignment, and
  * points them into `scene`'s block; a NULL scene only measures. Returns the
@@ -54,7 +63,8 @@ static size_t
 place(const scene_asset_t* asset, scene_t* scene) {
     const size_t counts[PER_COUNT] = {[PER_RENDERER] = (size_t)asset->renderer_count + asset->skinned_renderer_count,
                                       [PER_CAMERA] = asset->camera_count,
-                                      [PER_ENTITY] = asset->entity_count};
+                                      [PER_ENTITY] = asset->entity_count,
+                                      [PER_BATCH] = asset->batch_count};
     size_t end = sizeof(scene_t);
     for (size_t i = 0; i < sizeof PARTS / sizeof *PARTS; i++) {
         const size_t at = scene_storage_carve(&end, PARTS[i].size * counts[PARTS[i].per], PARTS[i].align);
@@ -172,13 +182,21 @@ scene_report(scene_failure_t* why, scene_status_t status, asset_status_t asset, 
     return status == SCENE_OK;
 }
 
+/* The meshes a renderer draws: one, or its batch's copies. */
+static size_t
+drawn_copies(const scene_renderer_t* r) {
+    return r->batch != NULL ? r->batch->copy_count : 1U;
+}
+
 /* One block of coarse bits for the meshes with levels, each renderer's
- * words its own, all clear: every mesh starts at its finest. */
+ * words its own and each copy's its own, all clear: every mesh starts at its
+ * finest. */
 static scene_failure_t
 open_lod_bits(scene_t* scene) {
     size_t words = 0;
     for (int i = 0; i < scene->renderer_count; i++) {
-        words += (size_t)R3D_LOD_WORDS(scene->renderers[i].mesh.lod_group_count);
+        const scene_renderer_t* r = &scene->renderers[i];
+        words += (size_t)R3D_LOD_WORDS(r->mesh.lod_group_count) * drawn_copies(r);
     }
     if (words == 0) {
         return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
@@ -191,9 +209,63 @@ open_lod_bits(scene_t* scene) {
     uint32_t* next = scene->lod_bits;
     for (int i = 0; i < scene->renderer_count; i++) {
         scene_renderer_t* r = &scene->renderers[i];
-        r->lod_words = (uint16_t)R3D_LOD_WORDS(r->mesh.lod_group_count);
+        const int copy_words = R3D_LOD_WORDS(r->mesh.lod_group_count);
+        r->lod_words = (uint32_t)copy_words * (uint32_t)drawn_copies(r);
         r->lod_coarse = r->lod_words > 0 ? next : NULL;
+        if (r->batch != NULL) {
+            r->batch->lod_coarse = r->lod_coarse;
+            r->batch->lod_words = (uint16_t)copy_words;
+        }
         next += r->lod_words;
+    }
+    return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
+}
+
+/* The copies of each batch: its renderer's mesh, opened at colour set 0,
+ * checked against every copy's set; its chunks into internal RAM, the cull's
+ * first read. */
+static scene_failure_t
+open_batches(scene_t* scene, const asset_pack_t* pack) {
+    const scene_asset_t* asset = &scene->asset;
+    if (asset->batch_count == 0) {
+        return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
+    }
+    scene->chunks = scene_allocate(sizeof *scene->chunks * asset->chunk_count, MEMORY_INTERNAL);
+    if (scene->chunks == NULL) {
+        return scene_failure_make(SCENE_ERR_MEMORY, ASSET_OK, scene->root->id);
+    }
+    memcpy(scene->chunks, asset->chunks, sizeof *scene->chunks * asset->chunk_count);
+    for (int i = 0; i < asset->batch_count; i++) {
+        const scene_asset_batch_t* row = &asset->batches[i];
+        scene_renderer_t* r = &scene->renderers[row->renderer];
+        const char* mesh = asset->renderers[row->renderer].mesh;
+        uint16_t sets = 0;
+        for (int c = 0; c < row->copy_count; c++) {
+            sets = asset->places[row->first_copy + c].colour_set >= sets
+                       ? (uint16_t)(asset->places[row->first_copy + c].colour_set + 1U)
+                       : sets;
+        }
+        /* The highest set opens only when every lower one is there too. */
+        r3d_lit_mesh_t highest = r->mesh;
+        highest.colors = NULL;
+        highest.face_colors = NULL;
+        const asset_status_t status = asset->renderers[row->renderer].colour_set != 0
+                                          ? ASSET_ERR_FORMAT
+                                          : r3d_lit_mesh_open_colours(pack, mesh, (uint16_t)(sets - 1U), &highest);
+        if (status != ASSET_OK) {
+            return scene_failure_make(SCENE_ERR_ASSET, status, mesh);
+        }
+        r3d_batch_t* batch = &scene->batches[i];
+        *batch = (r3d_batch_t){.chunks = scene->chunks + row->first_chunk,
+                               .places = asset->places + row->first_copy,
+                               .turns = asset->turns + row->first_copy,
+                               .colour_stride =
+                                   (uint32_t)(r->mesh.colors != NULL ? r->mesh.vertex_count : r->mesh.triangle_count),
+                               .copy_radius = r3d_batch_copy_radius(&r->mesh),
+                               .copy_count = row->copy_count,
+                               .chunk_count = (uint16_t)r3d_batch_chunks(row->copy_count)};
+        r->batch = batch;
+        r->colour_sets = sets;
     }
     return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
 }
@@ -219,8 +291,10 @@ open_meshes(scene_t* scene, const asset_pack_t* pack) {
         if (status != ASSET_OK) {
             return scene_failure_make(SCENE_ERR_ASSET, status, mesh);
         }
+        scene->renderers[i].colour_sets = 1;
     }
-    return open_lod_bits(scene);
+    const scene_failure_t batches = open_batches(scene, pack);
+    return batches.status != SCENE_OK ? batches : open_lod_bits(scene);
 }
 
 static const char*
@@ -353,6 +427,7 @@ free_columns(scene_t* scene) {
     scene_animation_release(scene);
     memory_free(scene->light_transfer);
     memory_free(scene->lod_bits);
+    memory_free(scene->chunks);
     scene_hierarchy_release(scene);
     scene_free_kept(scene->resident);
     scene_free_kept(scene);

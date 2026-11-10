@@ -43,6 +43,33 @@ def _mirror_matrix(matrix, column_signs):
                  for column, value in enumerate(matrix[row * width:(row + 1) * width]))
 
 
+def _mirror_turn(rotation, largest):
+    """A smallest-three turn row mirrored: the quaternion's signs, then all of
+    them flipped when that leaves the largest component negative."""
+    signs = ROTATION_SIGNS if ROTATION_SIGNS[largest] > 0 else tuple(-sign for sign in ROTATION_SIGNS)
+    kept = [sign for index, sign in enumerate(signs) if index != largest]
+    return tuple(value * sign for value, sign in zip(rotation, kept))
+
+
+def _mirror_batches(entry, out, header):
+    """Each copy's chunk centre, place offset and turn row in the engine frame."""
+    parts = scene_asset.PARTS
+    count = dict(zip(parts, header[1:1 + len(parts)]))
+    offset = dict(zip(parts, header[1 + len(parts):]))
+    for part, mirror in (("chunks", lambda centre_x, centre_y, centre_z, reach:
+                          (*_mirror_point(centre_x, centre_y, centre_z), reach)),
+                         ("places", lambda x, y, z, colour_set: (*_mirror_position((x, y, z)), colour_set)),
+                         ("turns", lambda x, y, z, largest: (*_mirror_turn((x, y, z), largest), largest))):
+        row = scene_asset.ROWS[parts.index(part)]
+        for index in range(count[part]):
+            at = offset[part] + index * row.size
+            row.pack_into(out, at, *mirror(*row.unpack_from(entry, at)))
+
+
+def _mirror_point(*point):
+    return tuple(value * sign for value, sign in zip(point, AXIS_SIGNS))
+
+
 def to_engine(kind, entry):
     """A source entry mirrored once into the engine frame, preserving its layout; an image, table or sound entry has no frame and comes back as it is."""
     if kind in FRAMELESS:
@@ -92,6 +119,7 @@ def to_engine(kind, entry):
             matrix = _mirror_matrix(values[:matrix_width], AXIS_SIGNS)
             position = [value * sign for value, sign in zip(values[matrix_width:], AXIS_SIGNS)]
             scene_asset.TRANSFORM.pack_into(out, at, *matrix, *position)
+        _mirror_batches(entry, out, header)
     elif kind == skeleton_asset.TYPE:
         joints = skeleton_asset.decode(entry)
         *_, rest_at = skeleton_asset.HEADER.unpack_from(entry)
