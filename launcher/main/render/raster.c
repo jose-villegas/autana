@@ -742,6 +742,19 @@ assert_view_size(const raster_t* raster, const render_view_t* view) {
     assert(view->viewport.height == picture.height);
 }
 
+/* An instance's blend this frame: its morph state and, when it blends, its
+ * kept `clusters` with the plain ones first. Kept out of the draw, so the
+ * draw's frame on the stack chain is the same with lod.blend off. */
+static __attribute__((noinline, cold)) void
+item_blend(const raster_t* raster, const render_view_t* view, const r3d_instance_t* instance, batch_item_t* item,
+           r3d_lod_morph_t* morph, uint16_t* clusters) {
+    raster_lod_morph(raster, view, instance, &item->lens, morph);
+    if (morph->enabled) {
+        item->morph = morph;
+        item->plain_count = r3d_lod_morph_partition(morph, item->mesh, clusters, item->visible_count);
+    }
+}
+
 /* A NULL stats pointer uses the census list; otherwise each instance is
  * culled. Inlining keeps the draw chain to one entry's stack frame. */
 static inline __attribute__((always_inline)) void
@@ -799,12 +812,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
                 item->visible_count = culled[0];
                 item->plain_count = culled[0];
                 if (blends) {
-                    r3d_lod_morph_t* morph = &batch->morphs[batch->count - 1];
-                    raster_lod_morph(raster, view, instance, &item->lens, morph);
-                    if (morph->enabled) {
-                        item->morph = morph;
-                        item->plain_count = r3d_lod_morph_partition(morph, mesh, culled + 1, culled[0]);
-                    }
+                    item_blend(raster, view, instance, item, &batch->morphs[batch->count - 1], culled + 1);
                 }
                 item->vertex_base = vertices;
                 item->cluster_base = clusters;
