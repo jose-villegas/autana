@@ -10,7 +10,6 @@ where the curves change the most pixels, cut to the WINDOW holding most of them,
 curves, enlarged without smoothing.
 """
 
-import argparse
 import os
 import pathlib
 import subprocess
@@ -18,7 +17,7 @@ import sys
 
 import numpy as np
 from PIL import Image
-from depth_figures import busiest
+from depth_figures import busiest, scene_parser
 from render_compare import still_sheet
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -55,13 +54,7 @@ def frames(host, assets, args, side, curves):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--scene", required=True, type=pathlib.Path)
-    parser.add_argument("--object", required=True, action="append", help="a renderer to draw; repeat for more")
-    parser.add_argument("--camera", required=True)
-    parser.add_argument("--out", required=True, type=pathlib.Path)
-    parser.add_argument("--work", required=True, type=pathlib.Path)
-    args = parser.parse_args(argv)
+    args = scene_parser(__doc__).parse_args(argv)
     args.work.mkdir(parents=True, exist_ok=True)
     host, assets = host_and_assets(args.scene, args.work)
     clips = {side: frames(host, assets, args, f"curves-{state}", state) for side, state in zip(SIDES, ("off", "on"))}
