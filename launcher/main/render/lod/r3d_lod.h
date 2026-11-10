@@ -23,6 +23,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "image/pixel/bayer.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/settings/render_settings.h"
 

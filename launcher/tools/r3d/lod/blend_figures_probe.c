@@ -12,6 +12,7 @@
 #include "image/pixel/bayer.h"
 #include "math/text/math_text.h"
 #include "render/lod/r3d_lod.h"
+#include "render/r3d_pipeline.h"
 #include "render/settings/render_settings_default.h"
 
 /* The group, in position ticks: a point-sized one, so only its error moves
@@ -30,7 +31,7 @@
 
 enum { FINE_CLUSTER, COARSE_CLUSTER, CLUSTERS };
 
-static const r3d_lit_lod_group_t GROUPS[1] = {{{{0, 0, 0}, GROUP_RADIUS}, GROUP_ERROR}};
+static const r3d_lit_lod_group_t GROUPS[1] = {{{{0, 0, 0}, GROUP_RADIUS}, GROUP_ERROR, 0}};
 /* The fine cluster belongs to the group; the coarse one was simplified from it. */
 static const r3d_lit_cluster_lod_t LODS[CLUSTERS] = {{R3D_LOD_NONE, 0}, {0, R3D_LOD_NONE}};
 static const r3d_lit_cluster_t BOXES[CLUSTERS] = {{0}, {0}};

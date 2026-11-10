@@ -1611,7 +1611,7 @@ morphing_mesh(void) {
     morphing->nodes[0] = (r3d_lit_node_t){bounds, 0, MORPH_CLUSTERS, true};
     morphing->lod[0] = (r3d_lit_cluster_lod_t){R3D_LOD_NONE, 0};
     morphing->lod[1] = (r3d_lit_cluster_lod_t){0, R3D_LOD_NONE};
-    morphing->groups[0] = (r3d_lit_lod_group_t){{{0, 0, 0}, MORPH_GROUP_RADIUS}, MORPH_GROUP_ERROR};
+    morphing->groups[0] = (r3d_lit_lod_group_t){{{0, 0, 0}, MORPH_GROUP_RADIUS}, MORPH_GROUP_ERROR, 0};
     morphing->mesh = (r3d_lit_mesh_t){.positions = morphing->positions,
                                       .clusters = morphing->clusters,
                                       .nodes = morphing->nodes,
@@ -1811,7 +1811,7 @@ drawn_blend(bool morph_targets) {
     drawn->lod[0] = (r3d_lit_cluster_lod_t){R3D_LOD_NONE, 0};
     drawn->lod[1] = (r3d_lit_cluster_lod_t){0, R3D_LOD_NONE};
     drawn->lod[DRAWN_PLAIN] = (r3d_lit_cluster_lod_t){R3D_LOD_NONE, R3D_LOD_NONE};
-    drawn->groups[0] = (r3d_lit_lod_group_t){{{0, 0, 0}, MORPH_GROUP_RADIUS}, MORPH_GROUP_ERROR};
+    drawn->groups[0] = (r3d_lit_lod_group_t){{{0, 0, 0}, MORPH_GROUP_RADIUS}, MORPH_GROUP_ERROR, 0};
     drawn->mesh = (r3d_lit_mesh_t){.positions = drawn->positions,
                                    .colors = drawn->colors,
                                    .triangles = drawn->triangles,
@@ -1922,7 +1922,7 @@ counted_mesh(void) {
 static int
 drawn_triangles(const r3d_lit_mesh_t* mesh, const uint32_t* coarse) {
     uint16_t listed[CLUSTERS];
-    const int count = r3d_lod_list_drawn(mesh, coarse, listed, CLUSTERS);
+    const int count = r3d_lod_list_drawn(mesh, coarse, NULL, listed, CLUSTERS);
     int triangles = 0;
     for (int i = 0; i < count; i++) {
         triangles += mesh->clusters[listed[i]].triangle_count;
