@@ -155,6 +155,13 @@ render_context_set_changed(render_context_t* c, const box3f_t* boxes, int count)
 }
 
 void
+render_context_set_batches(render_context_t* c, const r3d_batch_draw_t* batches, int count) {
+    c->raster.batches = batches; /* the raster keeps them, so its census reads them after the draw */
+    c->raster.batch_count = count;
+    c->batches_set = true;
+}
+
+void
 render_context_set_scale(render_context_t* c, int percent) {
     assert(percent > 0 && percent <= 100);
     c->scale_percent = percent;
@@ -480,6 +487,11 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     c->observed = false;
 #endif
+    if (!c->batches_set) {
+        c->raster.batches = NULL; /* none set for this draw */
+        c->raster.batch_count = 0;
+    }
+    c->batches_set = false;
     if (can_generate(c, view)) {
         generate(c, view);
         return true;

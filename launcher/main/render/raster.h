@@ -11,6 +11,7 @@
 #include <stdint.h>
 
 #include "gfx/target/gfx_target.h"
+#include "render/batch/r3d_batch.h"
 #include "render/r3d_instance.h"
 #include "render/raster_attachment.h"
 #include "render/raster_split.h"
@@ -27,20 +28,24 @@ struct raster {
      * census slot. */
     const r3d_instance_t* instances;
     int instance_count;
+    /* Drawn after the instances, each as the copies its cull keeps; none
+     * with a count of 0. */
+    const r3d_batch_draw_t* batches;
+    int batch_count;
     int width, height; /* the size drawn at */
     uint16_t clear;    /* in the pixel format r3d_span.h describes */
     /* With upscaling, colour is not cleared: raster_upscale() supplies the
      * clear colour wherever depth says nothing was drawn. */
     bool upscaled;
-    int destination_width, destination_height;
-    camera_present_t present;
-    upscale_t upscale;     /* maps retained in `scratch`, rebuilt when size changes */
-    raster_split_t* split; /* optional feedback retained between continuous frames */
     /* The frame's own view: culling first sets each instance's level coarse
      * bits (render/lod/r3d_lod.h), measured in the view's output pixels
      * whatever size the picture is drawn at. A second view of the frame
      * leaves it off and draws the levels the frame picked. */
     bool picks_levels;
+    int destination_width, destination_height;
+    camera_present_t present;
+    upscale_t upscale;     /* maps retained in `scratch`, rebuilt when size changes */
+    raster_split_t* split; /* optional feedback retained between continuous frames */
     /* The frame's count, which share of the instances a spread pick takes;
      * round 0, a scene's or view's first frame, picks every instance. */
     uint32_t pick_round;
@@ -81,8 +86,11 @@ typedef struct {
 
 /* The most vertices and clusters any mesh the raster draws has: what its
  * scratch block holds room for. */
-int raster_vertex_capacity(const raster_t* raster);
-int raster_cluster_capacity(const raster_t* raster);
+typedef struct {
+    int vertices, clusters;
+} raster_capacity_t;
+
+raster_capacity_t raster_capacity(const raster_t* raster);
 
 /* The picture's attachments, colour and depth then `attachments`, over
  * every row, not yet carved. */
@@ -118,6 +126,17 @@ raster_stats_t raster_draw(const raster_t* raster, const render_view_t* view);
  * Upscaled rasters may change render size with a fixed destination; other
  * rasters must keep the census size. */
 size_t raster_culled_length(const raster_t* raster);
+/* How many the last census drew from: each instance where it was handed
+ * over, in order, then each copy of each batch its spheres kept, as an
+ * instance of its own. Writers and views number instances in this list. */
+int raster_drawn_count(const raster_t* raster);
+/* Entry `i` of that list. */
+const r3d_instance_t* raster_drawn_at(const raster_t* raster, int i);
+/* The kept copy entry `i` is, or NULL for an instance. */
+const r3d_batch_draw_t* raster_drawn_copy(const raster_t* raster, int i);
+/* r3d_lens_place() for where entry `i` sits: its model, and a kept copy's
+ * own placement after it. */
+void raster_drawn_place(const raster_t* raster, int i, r3d_lens_t* lens);
 raster_stats_t raster_census(const raster_t* raster, const render_view_t* view);
 void raster_draw_culled(const raster_t* raster, const render_view_t* view);
 

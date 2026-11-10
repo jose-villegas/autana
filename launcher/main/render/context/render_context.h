@@ -105,6 +105,7 @@ typedef struct {
      * `framegen`. */
     bool generating;
     bool kept;
+    bool batches_set;     /* render_context_set_batches() since the last draw; else the next draws none */
     int32_t generated_us; /* the last generated frame's warp, fill and compose; 0 before one */
     int32_t drawn_us;     /* the last drawn frame's draw and compose; 0 before one */
     int drawn_in_row;     /* drawn frames since the last generated one */
@@ -176,6 +177,10 @@ void render_context_set_frame_generation(render_context_t* context, bool on);
  * the next frame's changed boxes, world units, each where an object was and
  * is now; a negative count changes everything. Each frame sets them anew. */
 void render_context_set_changed(render_context_t* context, const box3f_t* boxes, int count);
+
+/* The next draw's `count` batches, drawn after its instances; a draw with
+ * none set draws none. */
+void render_context_set_batches(render_context_t* context, const r3d_batch_draw_t* batches, int count);
 
 /* Opts in: each frame draws at a step of `config` to hold its budget, chosen
  * by the stepped controller, or by the predictor when `model` is not NULL.
