@@ -161,6 +161,21 @@ options, each by where it stops paying.
 | The camera's swing, a still camera at its start, and a pool of copies | `launcher/demo/stress/` |
 | Each preset's sizes, by the renderer's own limits | [`tests/suite_stress_preset.c`](../tests/suite_stress_preset.c) |
 | Each preset's corner in a render, by the cull counts | [`tools/tests/test_stress_corners.py`](tests/test_stress_corners.py) |
+| Each preset's stage times on the board | [`tests/suite_stress_perf.c`](../tests/suite_stress_perf.c) |
+| A preset A/B's change, scaled to each scene's stage times | [`tools/stress_predict.py`](stress_predict.py) |
+
+The `run_stress_perf_suite` suite replays poses along each preset's swing, one
+quarter, the way the frame profile replays its own. Every line has the cull
+counts and the r3d.cull, transform, draw and upscale times; all presets
+take under two minutes. `stress_predict.py` reads two builds' captures and
+predicts each scene's frame change: per stage, the presets' B/A ratio less
+one, times the scene's own stage time.
+
+```sh
+autana suite run_stress_perf_suite --flash --perf-scope --runs 2 --out a.log
+python launcher/main/apps/render_lab/tools/stress_predict.py --a a.log --b b.log \
+    --scenes docs/render/data/frame-profile-1-board.log
+```
 
 `render_lab_render --view cull --counts FILE` writes the cull view's counts
 (`raster_cull_frame_t`), one CSV row a frame; `--camera still` holds the
