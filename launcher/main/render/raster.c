@@ -517,7 +517,7 @@ level_pick(const level_pick_t* pick, int index, const r3d_instance_t* instance, 
     if (!pick->picks || !due) {
         return false;
     }
-    if (instance->lod_coarse != NULL && instance->mesh->lod_group_count > 0) {
+    if (instance->lod_coarse != NULL && (instance->mesh->lod_group_count > 0 || instance->mesh->lod_drops)) {
         return r3d_lod_pick(instance->mesh, lens, &pick->lod, instance->lod_coarse, histogram);
     }
     if (histogram != NULL) {
@@ -550,8 +550,11 @@ cull_slice(void* ctx, int from, int to) {
             instance_lens(&picture, instance, &lens);
             mine->levels_changed |= level_pick(&job->pick, i, instance, &lens,
                                                job->pick.steer != NULL ? &job->pick.steer->halves[half] : NULL);
-            culled[0] = (uint16_t)cull_instance(instance, job->settings.cull, &lens, culled + 1, &mine->stats, block,
-                                                job->settings.depth_fit ? &mine->fit : NULL);
+            /* A dropped instance draws nothing, its walk skipped as one culled whole. */
+            culled[0] = r3d_lod_dropped(instance->mesh, instance->lod_coarse)
+                            ? 0
+                            : (uint16_t)cull_instance(instance, job->settings.cull, &lens, culled + 1, &mine->stats,
+                                                      block, job->settings.depth_fit ? &mine->fit : NULL);
         }
         culled += 1 + (size_t)instance->mesh->cluster_count;
     }

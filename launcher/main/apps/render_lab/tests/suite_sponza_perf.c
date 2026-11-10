@@ -106,9 +106,9 @@ bench_open(const r3d_instance_t* instance) {
     suite_add_test_cleanup(bench_close);
     b->panel = memory_alloc(sizeof(gfx_color_t) * PANEL_PIXELS, MEMORY_APP);
     b->instance = *instance;
-    if (b->instance.lod_coarse == NULL && instance->mesh->lod_group_count > 0) {
+    if (b->instance.lod_coarse == NULL && r3d_lod_words(instance->mesh) > 0) {
         /* All clear, as a scene's renderer starts: the finest level until a draw picks. */
-        const size_t words = R3D_LOD_WORDS(instance->mesh->lod_group_count);
+        const size_t words = (size_t)r3d_lod_words(instance->mesh);
         b->coarse = memory_alloc(words * sizeof(*b->coarse), MEMORY_INTERNAL);
         TEST_ASSERT_NOT_NULL(b->coarse);
         memset(b->coarse, 0, words * sizeof(*b->coarse));

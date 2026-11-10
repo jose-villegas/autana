@@ -44,7 +44,7 @@ renderer_set_mesh(entity_t entity, const r3d_lit_mesh_t* mesh) {
         return false;
     }
     scene_renderer_t* r = &scene->renderers[i];
-    if (R3D_LOD_WORDS(mesh->lod_group_count) > r->lod_words) {
+    if (r3d_lod_words(mesh) > r->lod_words) {
         return false;
     }
     r->mesh = *mesh;

@@ -20,5 +20,5 @@ typedef struct {
     const r3d_lit_mesh_t* mesh;
     const mat4f_t* model;        /* NULL: drawn as it is */
     const box3f_t* world_bounds; /* NULL: culled from the mesh's own root */
-    uint32_t* lod_coarse;        /* R3D_LOD_WORDS(mesh->lod_group_count) words, or NULL: the finest level */
+    uint32_t* lod_coarse;        /* r3d_lod_words(mesh) words, or NULL: the finest level */
 } r3d_instance_t;

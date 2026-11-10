@@ -642,7 +642,7 @@ enum { PLACED_MAX = 2 };
 typedef struct {
     mat4f_t models[PLACED_MAX];
     box3f_t boxes[PLACED_MAX];
-    uint32_t coarse[PLACED_MAX][R3D_LOD_WORDS(GROUPS)];
+    uint32_t coarse[PLACED_MAX][R3D_LOD_WORDS(GROUPS) + 1]; /* and the dropped word, for a mesh that may drop */
     r3d_instance_t instances[PLACED_MAX];
 } placed_t;
 

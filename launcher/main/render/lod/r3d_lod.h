@@ -43,6 +43,24 @@ r3d_lod_coarse(const uint32_t* coarse, uint16_t group) {
     return ((coarse[group / R3D_LOD_WORD_BITS] >> (group % R3D_LOD_WORD_BITS)) & 1U) != 0;
 }
 
+/* The words of coarse bits `mesh` needs: its groups', and one more when it
+ * may drop, which holds whether it is dropped. */
+static inline int
+r3d_lod_words(const r3d_lit_mesh_t* mesh) {
+    return R3D_LOD_WORDS(mesh->lod_group_count) + (mesh->lod_drops ? 1 : 0);
+}
+
+/* Whether `mesh`, under `coarse`, draws nothing: its drop error, its whole
+ * bound's radius, is within the tolerance (r3d_lod_pick()). */
+static inline bool
+r3d_lod_dropped(const r3d_lit_mesh_t* mesh, const uint32_t* coarse) {
+    return mesh->lod_drops && coarse != NULL && coarse[R3D_LOD_WORDS(mesh->lod_group_count)] != 0;
+}
+
+/* `mesh`'s drop error through `lens` in pixels: its whole bound's radius,
+ * projected at the bound's nearest depth. */
+float r3d_lod_drop_pixels(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens);
+
 /* Whether any of a mesh's `groups` is coarse in `coarse`. */
 static inline bool
 r3d_lod_any(const uint32_t* coarse, int groups) {
