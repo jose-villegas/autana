@@ -506,12 +506,13 @@ matching reference views.
 ## Frame timing profiles
 
 `run_sponza_perf_suite` measures fixed camera poses at the spacing in
-`SPONZA_PERF_POSE_EVERY_MS`. Each frame-cost row reports mean, worst,
-median and p95 before presentation, with stage splits at those same poses.
+`SPONZA_PERF_POSE_EVERY_MS`: the showcase bake with culling on and off, and
+the full bake placed by a moving model. Each frame-cost row reports mean,
+worst, median and p95 before presentation, with stage splits at those same poses.
 The pixel-equivalence checks in that suite and the camera checks in
 `suite_sponza.c` use `SPONZA_POSE_EVERY_MS`.
 
-`run_render_lab_frame_profile_suite` plays each Sponza scene's camera clip,
+`run_render_lab_frame_profile_suite` plays each fitted Sponza scene's camera clip,
 Bistro fitted-full's camera clip and the capybara gallop for one clip period in each perf quarter. It times
 update, render, compose and present with the HUD hidden.
 

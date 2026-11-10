@@ -1,9 +1,10 @@
 /*
- * Device-only suite: what a frame of each Sponza bake costs, the way
+ * Device-only suite: what a frame of the Sponza showcase bake costs with
+ * culling on and off, and of the full bake placed by a moving model, the way
  * scene_sponza.c renders it (half resolution, upscaled), at evenly spaced
- * points of the flythrough; and, for the full bake at the flythrough's
- * start, where one core's draw spends its time stage by stage, whether its
- * two halves slow each other on both cores, and what an empty frame costs.
+ * points of the flythrough. Also each bake's draw stage by stage, and, for
+ * the full bake at the flythrough's start, whether its two halves slow each
+ * other on both cores and what an empty frame costs.
  * The panel transfer is not included.
  *
  * Runs under DEVICE_BUILD only - needs PSRAM, core 1 and a clock.
@@ -425,23 +426,14 @@ test_sponza_frame_cost_along_the_flythrough(void) {
     suite_add_test_cleanup(restore_culling);
     TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, cull)));
     /* Worst of a 5-seed capture on A308 (before and after its move), 20E8 and
-     * 2124, + 1%; per quarter, portrait then landscape. */
-    static const perf_budget_t bake_budgets[SCENE_BAKED_VARIANT_COUNT][R3D_PERF_QUARTER_COUNT] = {
-        [SCENE_BAKED_FULL] = {{41041, 52072}, {38765, 47432}},
-        [SCENE_BAKED_FLAT] = {{32168, 41332}, {31418, 38734}},
-        [SCENE_BAKED_LITE] = {{33499, 39169}, {31676, 36473}},
-        [SCENE_BAKED_FITTED] = {{32882, 40125}, {30706, 37015}},
-        [SCENE_BAKED_FITTED_FULL] = {{41877, 53439}, {39437, 49049}},
-        [SCENE_BAKED_FLAT_FITTED] = {{32106, 42281}, {30639, 38662}},
-    };
+     * 2124, + 1%; per quarter, portrait then landscape. The showcase's pair is
+     * what a meshlet size capture reads; the frame profile times the bakes. */
+    static const perf_budget_t showcase_budget[R3D_PERF_QUARTER_COUNT] = {{41877, 53439}, {39437, 49049}};
     static const perf_budget_t cull_off_budget[R3D_PERF_QUARTER_COUNT] = {{61138, 67896}, {58104, 66246}};
-    for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
-        const r3d_instance_t instance = {&meshes[i], NULL, NULL, NULL};
-        report_frame_cost(sponza_bakes[i], sponza_bakes[i], &instance, NULL, NULL, bake_budgets[i]);
-    }
-    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, cull), 0));
     const scene_baked_variant_t showcase = showcase_bake();
     const r3d_instance_t shown = {&meshes[showcase], NULL, NULL, NULL};
+    report_frame_cost(sponza_bakes[showcase], sponza_bakes[showcase], &shown, NULL, NULL, showcase_budget);
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, cull), 0));
     report_frame_cost("cull_off", sponza_bakes[showcase], &shown, NULL, NULL, cull_off_budget);
     TEST_PASS();
 }
