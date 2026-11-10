@@ -945,6 +945,9 @@ drawn_triangles(const r3d_lit_mesh_t* mesh, const uint32_t* coarse) {
     return triangles;
 }
 
+/* A coverage cap tight enough to hold the levelled mesh's groups fine near the floor. */
+#define TIGHT_COVERAGE_PERMILLE 10
+
 /* The triangles `histogram` predicts at bin edge `edge`: the finest, less
  * the saves of every bin below it. */
 static int
@@ -956,35 +959,59 @@ predicted_at(const r3d_lod_histogram_t* histogram, int edge) {
     return triangles;
 }
 
-/* At every pose of the path and every bin edge past the first, the triangles
- * the histogram predicts are those a fresh pick at that edge's tolerance
- * and coverage cap draws, hysteresis aside: the histogram is the cut's
- * triangle count as a function of the steered tolerance, the cap rising with
- * it. */
+/* At every pose of the path and every bin edge from the floor up, the
+ * steer's whole reach, the triangles the histogram predicts are those a
+ * fresh pick at that edge's tolerance and coverage cap draws, hysteresis
+ * aside: the histogram is the cut's triangle count as a function of the
+ * steered tolerance, the cap rising with it. The risen cap is whole
+ * thousandths, so the prediction lies between the picks at the cap rounded
+ * down and a thousandth more. */
 static void
 test_the_histogram_predicts_the_triangles_a_pick_at_each_bin_edge_draws(void) {
     const r3d_lit_mesh_t* mesh = counted_mesh();
     const int steps = steps_in();
-    int checked = 0;
-    for (int p = 0; p < steps; p++) {
-        const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
-        uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
-        r3d_lod_histogram_t histogram = {{0}, 0, 1.0F};
-        r3d_lod_pick(mesh, &lens, &LOD, coarse, &histogram);
-        TEST_ASSERT_EQUAL_INT(FINEST_CLUSTERS * FINEST_TRIANGLES, histogram.finest);
-        for (int edge = 1; edge <= R3D_LOD_BINS; edge++) {
-            render_lod_settings_t at = LOD;
-            at.tolerance_px = r3d_lod_bin_edge(edge);
-            at.hysteresis_px = 0.0F;
-            const r3d_lod_steer_t steer = {.tolerance_px = at.tolerance_px};
-            at.coverage_permille = r3d_lod_steer_coverage(&steer, LOD.tolerance_px, LOD.coverage_permille);
-            uint32_t fresh[R3D_LOD_WORDS(GROUPS)] = {0};
-            r3d_lod_pick(mesh, &lens, &at, fresh, NULL);
-            TEST_ASSERT_EQUAL_INT_MESSAGE(drawn_triangles(mesh, fresh), predicted_at(&histogram, edge), "edge");
-            checked += predicted_at(&histogram, edge) < histogram.finest ? 1 : 0;
+    /* The engine's cap, and one so tight that it, not the error, holds groups fine near the floor. */
+    const int caps[] = {LOD.coverage_permille, TIGHT_COVERAGE_PERMILLE};
+    for (size_t c = 0; c < sizeof caps / sizeof caps[0]; c++) {
+        render_lod_settings_t floor = LOD;
+        floor.coverage_permille = caps[c];
+        int checked = 0, capped = 0;
+        for (int p = 0; p < steps; p++) {
+            const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
+            uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
+            r3d_lod_histogram_t histogram = {{0}, 0, 1.0F};
+            r3d_lod_pick(mesh, &lens, &floor, coarse, &histogram);
+            TEST_ASSERT_EQUAL_INT(FINEST_CLUSTERS * FINEST_TRIANGLES, histogram.finest);
+            for (int edge = 1; edge <= R3D_LOD_BINS; edge++) {
+                if (r3d_lod_bin_edge(edge) < floor.tolerance_px) {
+                    continue;
+                }
+                render_lod_settings_t at = floor;
+                at.tolerance_px = r3d_lod_bin_edge(edge);
+                at.hysteresis_px = 0.0F;
+                const r3d_lod_steer_t steer = {.tolerance_px = at.tolerance_px};
+                at.coverage_permille = r3d_lod_steer_coverage(&steer, floor.tolerance_px, floor.coverage_permille);
+                uint32_t fresh[R3D_LOD_WORDS(GROUPS)] = {0};
+                r3d_lod_pick(mesh, &lens, &at, fresh, NULL);
+                render_lod_settings_t over = at;
+                over.coverage_permille++;
+                uint32_t wider[R3D_LOD_WORDS(GROUPS)] = {0};
+                r3d_lod_pick(mesh, &lens, &over, wider, NULL);
+                TEST_ASSERT_TRUE_MESSAGE(predicted_at(&histogram, edge) <= drawn_triangles(mesh, fresh), "edge");
+                TEST_ASSERT_TRUE_MESSAGE(predicted_at(&histogram, edge) >= drawn_triangles(mesh, wider), "edge");
+                checked += predicted_at(&histogram, edge) < histogram.finest ? 1 : 0;
+                /* The same edge with the floor's cap draws more: the risen cap let a group turn. */
+                at.coverage_permille = floor.coverage_permille;
+                uint32_t held[R3D_LOD_WORDS(GROUPS)] = {0};
+                r3d_lod_pick(mesh, &lens, &at, held, NULL);
+                capped += drawn_triangles(mesh, held) > drawn_triangles(mesh, fresh) ? 1 : 0;
+            }
+        }
+        TEST_ASSERT_GREATER_THAN_INT(0, checked); /* some edge along the path draws coarse */
+        if (caps[c] == TIGHT_COVERAGE_PERMILLE) {
+            TEST_ASSERT_GREATER_THAN_INT(0, capped); /* and the tight cap binds somewhere */
         }
     }
-    TEST_ASSERT_GREATER_THAN_INT(0, checked); /* some edge along the path draws coarse */
 }
 
 /* A round's histogram: its finest triangles and saves at two bins, one
