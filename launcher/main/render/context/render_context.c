@@ -156,8 +156,9 @@ render_context_set_changed(render_context_t* c, const box3f_t* boxes, int count)
 
 void
 render_context_set_batches(render_context_t* c, const r3d_batch_draw_t* batches, int count) {
-    c->batches = batches;
-    c->batch_count = count;
+    c->raster.batches = batches; /* the raster keeps them, so its census reads them after the draw */
+    c->raster.batch_count = count;
+    c->batches_set = true;
 }
 
 void
@@ -418,10 +419,6 @@ aim_raster(render_context_t* c, const r3d_instance_t* instances, int count, cons
     r->settings = &c->settings;
     r->instances = instances;
     r->instance_count = count;
-    r->batches = c->batches; /* the batches set for this draw, which takes them */
-    r->batch_count = c->batch_count;
-    c->batches = NULL;
-    c->batch_count = 0;
     r->width = step < 0 ? view->viewport.width * c->scale_percent / 100 : c->ladder.steps[step].width;
     r->height = step < 0 ? view->viewport.height * c->scale_percent / 100 : c->ladder.steps[step].height;
     r->present = view->present;
@@ -487,9 +484,12 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     c->observed = false;
 #endif
+    if (!c->batches_set) {
+        c->raster.batches = NULL; /* none set for this draw */
+        c->raster.batch_count = 0;
+    }
+    c->batches_set = false;
     if (can_generate(c, view)) {
-        c->batches = NULL; /* a generated frame draws none, so the next draw sets its own */
-        c->batch_count = 0;
         generate(c, view);
         return true;
     }

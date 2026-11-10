@@ -74,7 +74,8 @@ raster_batch_end(const raster_t* raster, int first) {
     const int most = raster_settings(raster).batched ? RASTER_BATCH_INSTANCES : 1;
     const int vertex_capacity = raster_vertex_capacity(raster);
     const int cluster_capacity = raster_cluster_capacity(raster);
-    const int count = raster_census_count(raster);
+    /* A batch holds instances or kept copies, never both. */
+    const int count = first < raster->instance_count ? raster->instance_count : raster_census_count(raster);
     int vertices = 0;
     int clusters = 0;
     int end = first;
@@ -781,6 +782,39 @@ assert_view_size(const raster_t* raster, const render_view_t* view) {
     assert(view->viewport.height == picture.height);
 }
 
+/* Adds drawn entry `first`, `instance`, kept copy `copy` when not NULL, to
+ * the draw's batch when its census list at `culled` kept any of it, at
+ * `*vertices` and `*clusters` into the batch, and moves those past it;
+ * returns past its list. Inlined into each of the draw's two loops, so an
+ * instances' batch draws as a batch-less scene always did. */
+static inline __attribute__((always_inline)) uint16_t*
+batch_add(const raster_t* raster, draw_work_t* work, int first, const r3d_instance_t* instance,
+          const r3d_batch_draw_t* copy, uint16_t* culled, int* vertices, int* clusters) {
+    batch_t* batch = &work->batch;
+    const r3d_lit_mesh_t* mesh = instance->mesh;
+    /* A writer may number clusters across every instance, so it sees
+     * this one even when it kept nothing; that one's slot is reused. */
+    batch_item_t* item = &batch->items[batch->count];
+    item->writer_count = instance_writers(raster, first, item->writers);
+    if (culled[0] > 0) {
+        batch->count++;
+        if (copy == NULL) {
+            item->mesh = mesh;
+            instance_lens(&work->picture, instance, NULL, &item->lens);
+        } else {
+            copy_aim(&work->picture, copy, item, &work->copy_meshes[batch->count - 1]);
+        }
+        r3d_lens_set_depth_near(&item->lens, *work->buffers.depth_near);
+        item->visible = culled + 1;
+        item->visible_count = culled[0];
+        item->vertex_base = *vertices;
+        item->cluster_base = *clusters;
+    }
+    *vertices += mesh->vertex_count;
+    *clusters += mesh->cluster_count;
+    return culled + 1 + (size_t)mesh->cluster_count;
+}
+
 /* A NULL stats pointer uses the census list; otherwise each instance is
  * culled. Inlining keeps the draw chain to one entry's stack frame. */
 static inline __attribute__((always_inline)) void
@@ -813,8 +847,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     assert(*work->buffers.depth_near >= view->lens.near_z);
     uint16_t* culled = work->buffers.culled;
     batch_t* batch = &work->batch;
-    picture_lens_t* picture = &work->picture;
-    picture_lens_init(picture, raster, view, true);
+    picture_lens_init(&work->picture, raster, view, true);
     /* The first batch clears the picture, so it runs with nothing kept too.
      * The count is read where the census wrote it, held in no register. */
     int first = 0;
@@ -823,31 +856,16 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
         const int end = raster_batch_end(raster, first);
         int vertices = 0;
         int clusters = 0;
-        for (batch->count = 0; first < end; first++) {
-            const r3d_batch_draw_t* copy = raster_census_copy(raster, first);
-            const r3d_instance_t* instance = copy == NULL ? &raster->instances[first] : &copy->instance;
-            const r3d_lit_mesh_t* mesh = instance->mesh;
-            /* A writer may number clusters across every instance, so it sees
-             * this one even when it kept nothing; that one's slot is reused. */
-            batch_item_t* item = &batch->items[batch->count];
-            item->writer_count = instance_writers(raster, first, item->writers);
-            if (culled[0] > 0) {
-                batch->count++;
-                if (copy == NULL) {
-                    item->mesh = mesh;
-                    instance_lens(picture, instance, NULL, &item->lens);
-                } else {
-                    copy_aim(picture, copy, item, &work->copy_meshes[batch->count - 1]);
-                }
-                r3d_lens_set_depth_near(&item->lens, *work->buffers.depth_near);
-                item->visible = culled + 1;
-                item->visible_count = culled[0];
-                item->vertex_base = vertices;
-                item->cluster_base = clusters;
+        batch->count = 0;
+        if (first < raster->instance_count) {
+            for (; first < end; first++) {
+                culled = batch_add(raster, work, first, &raster->instances[first], NULL, culled, &vertices, &clusters);
             }
-            vertices += mesh->vertex_count;
-            clusters += mesh->cluster_count;
-            culled += 1 + (size_t)mesh->cluster_count;
+        } else {
+            for (; first < end; first++) {
+                const r3d_batch_draw_t* copy = raster_census_copy(raster, first);
+                culled = batch_add(raster, work, first, &copy->instance, copy, culled, &vertices, &clusters);
+            }
         }
         draw_batch(raster, index, work);
         index++;

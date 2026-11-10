@@ -103,6 +103,7 @@ typedef struct {
      * `framegen`. */
     bool generating;
     bool kept;
+    bool batches_set;     /* render_context_set_batches() since the last draw; else the next draws none */
     int32_t generated_us; /* the last generated frame's warp, fill and compose; 0 before one */
     int32_t drawn_us;     /* the last drawn frame's draw and compose; 0 before one */
     int drawn_in_row;     /* drawn frames since the last generated one */
@@ -111,9 +112,6 @@ typedef struct {
     render_view_t kept_view;
     framegen_target_t framegen;
     render_partial_t partial; /* render/partial: rows redrawn on a still camera */
-    /* render_context_set_batches()'s, which the next draw takes. */
-    const r3d_batch_draw_t* batches;
-    int batch_count;
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
     /* Whether the last frame's debug view drew a second view, and from where. */
     bool observed;

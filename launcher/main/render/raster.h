@@ -37,15 +37,15 @@ struct raster {
     /* With upscaling, colour is not cleared: raster_upscale() supplies the
      * clear colour wherever depth says nothing was drawn. */
     bool upscaled;
-    int destination_width, destination_height;
-    camera_present_t present;
-    upscale_t upscale;     /* maps retained in `scratch`, rebuilt when size changes */
-    raster_split_t* split; /* optional feedback retained between continuous frames */
     /* The frame's own view: culling first sets each instance's level coarse
      * bits (render/lod/r3d_lod.h), measured in the view's output pixels
      * whatever size the picture is drawn at. A second view of the frame
      * leaves it off and draws the levels the frame picked. */
     bool picks_levels;
+    int destination_width, destination_height;
+    camera_present_t present;
+    upscale_t upscale;     /* maps retained in `scratch`, rebuilt when size changes */
+    raster_split_t* split; /* optional feedback retained between continuous frames */
     /* The frame's count, which share of the instances a spread pick takes;
      * round 0, a scene's or view's first frame, picks every instance. */
     uint32_t pick_round;
