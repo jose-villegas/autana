@@ -2,10 +2,12 @@
 the groups keep the format's ordering after rounding to ticks, coarse vertices only move outward, and the
 engine frame mirrors the group records."""
 
+import ctypes
 import pathlib
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 
 import numpy as np
 from scipy.spatial.transform import Rotation
@@ -192,6 +194,56 @@ class DevicePickTest(unittest.TestCase):
             seen.update(np.flatnonzero(drawn).tolist())
         finest = set(np.flatnonzero(lit_mesh.finest(mesh)).tolist())
         self.assertTrue(seen & finest and seen - finest, "the path draws only one kind of level")
+
+    def test_the_device_and_view_agree_when_a_placed_mesh_may_drop(self):
+        if not hasattr(BakedLevelsTest, "levelled"):
+            BakedLevelsTest.setUpClass()
+        mesh = BakedLevelsTest.levelled
+        own, parent = np.asarray(mesh.lod).T
+        groups = np.asarray(mesh.groups)
+        spheres = groups[:, :4].astype(float)
+        errors = groups[:, 4].astype(float)
+        levels = SimpleNamespace(
+            cluster_box=np.array([[c[4], c[5]] for c in mesh.clusters]),
+            cluster_triangles=np.array([c[3] for c in mesh.clusters]),
+            cluster_refined=np.where(own == LOD_NONE, -1, own),
+            own_sphere=spheres[np.where(own == LOD_NONE, 0, own)],
+            own_error=np.where(own == LOD_NONE, 0, errors[np.where(own == LOD_NONE, 0, own)]),
+            parent_sphere=spheres[np.where(parent == LOD_NONE, 0, parent)],
+            parent_error=np.where(parent == LOD_NONE, np.inf, errors[np.where(parent == LOD_NONE, 0, parent)]))
+        model = TURN * SCALE
+        placed = [pick.Placed(levels, model, SHIFT)]
+        root = np.array([mesh.nodes[0]["lo"], mesh.nodes[0]["hi"]], dtype=np.int16)
+        middle = root.mean(axis=0) @ model.T + SHIFT
+        extent = np.ptp(root, axis=0).max() * SCALE
+        seen = set()
+        for distance in np.r_[EYES, EYES[::-1]]:
+            eye = middle + np.array([0, 0, -distance * extent])
+            clip = test_r3d_lod.clip_looking(eye, middle, test_r3d_lod.WIDE_LENS)
+            baseline = pick.view(placed, eye, clip, FOCAL_PX, NEAR)
+            v = pick.view(placed, eye, clip, FOCAL_PX, NEAR, {0})
+            tau = pick.TOLERANCE_PX
+            rows = np.ascontiguousarray(lens_rows(eye, middle, model, SHIFT), dtype=np.float32)
+            native_pixels = pick._device_library().pick_host_drop_pixels(
+                root.ctypes.data_as(ctypes.c_void_p), rows.ctypes.data_as(ctypes.c_void_p),
+                ctypes.c_float(FOCAL_PX), ctypes.c_float(FOCAL_PX), ctypes.c_float(NEAR))
+            self.assertAlmostEqual(native_pixels, v.drop_px[0], delta=BOUNDARY_PX)
+            _, actual = pick.device_pick(mesh.lod, mesh.groups, rows,
+                                         (FOCAL_PX, FOCAL_PX), NEAR, HEIGHT_PX,
+                                         tolerance_px=tau, hysteresis_px=0, coverage_permille=pick.UNCAPPED,
+                                         drops=True, root=root)
+            expected = pick.drawn(v, tau)
+            np.testing.assert_array_equal(actual, expected)
+            seen.add(bool(actual.any()))
+            _, plain = pick.device_pick(mesh.lod, mesh.groups, rows,
+                                        (FOCAL_PX, FOCAL_PX), NEAR, HEIGHT_PX,
+                                        tolerance_px=tau, hysteresis_px=0, coverage_permille=pick.UNCAPPED)
+            np.testing.assert_array_equal(plain, pick.drawn(baseline, tau))
+            np.testing.assert_array_equal(baseline.group_px, pick.view(placed, eye, clip, FOCAL_PX, NEAR, set()).group_px)
+            self.assertEqual(pick.triangles_at(v, np.inf), 0)
+            if v.drop_px[0] <= pick.TAU_CEILING_PX:
+                self.assertEqual(pick.triangles_at(v, pick.tau_from_histogram(v, 0)), 0)
+        self.assertEqual(seen, {False, True})
 
 
 class QuantisedGroupsTest(unittest.TestCase):

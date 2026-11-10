@@ -22,6 +22,7 @@
 #include "render/context/render_context.h"
 #include "render/lod/r3d_lod.h"
 #include "render/r3d_pipeline.h"
+#include "render/raster_internal.h"
 #include "render/view/r3d_pipeline_count.h"
 
 #define W 64
@@ -779,6 +780,40 @@ test_a_pick_spread_over_frames_picks_each_instance_in_its_own_frame(void) {
     TEST_ASSERT_EQUAL_HEX(0x2, rounds[3]);
 }
 
+static void
+test_a_dropped_instance_skips_its_census_and_reports_a_changed_level(void) {
+    r3d_lit_mesh_t mesh = *levelled_mesh();
+    const float depth[PLACED_MAX] = {FAR_EYE, WHOLE_IN_VIEW};
+
+    render_settings_t settings = spread_over(1);
+    const r3d_lens_t far = lens_at(FAR_EYE, NULL);
+    settings.lod.tolerance_px = r3d_lod_drop_pixels(&mesh, &far) + settings.lod.hysteresis_px;
+    settings.partial_redraw = true;
+    raster_t raster = {
+        .instance_count = PLACED_MAX, .width = W, .height = H, .picks_levels = true, .settings = &settings};
+    work = malloc(sizeof(placed_t) + picked_scratch_bytes(&mesh));
+    TEST_ASSERT_NOT_NULL(work);
+    placed_t* placed = work;
+    place(placed, &mesh, PLACED_MAX, depth);
+    for (int i = 0; i < PLACED_MAX; i++) {
+        const r3d_lens_t lens = lens_at(depth[i], NULL);
+        r3d_lod_pick(&mesh, &lens, &settings.lod, placed->coarse[i], NULL);
+    }
+    mesh.lod_drops = true;
+    raster.instances = placed->instances;
+    raster.scratch = placed + 1;
+    const render_view_t view = axis_view();
+    (void)raster_census(&raster, &view);
+    const raster_buffers_t buffers = raster_carve(&raster);
+    TEST_ASSERT_TRUE(r3d_lod_dropped(&mesh, placed->coarse[0]));
+    TEST_ASSERT_FALSE(r3d_lod_dropped(&mesh, placed->coarse[1]));
+    TEST_ASSERT_EQUAL_UINT16(0, buffers.culled[0]);
+    TEST_ASSERT_GREATER_THAN_UINT16(0, buffers.culled[1 + CLUSTERS]);
+    TEST_ASSERT_TRUE(raster_levels_changed(&raster));
+    (void)raster_census(&raster, &view);
+    TEST_ASSERT_FALSE(raster_levels_changed(&raster));
+}
+
 static render_context_t* spread_context;
 static placed_t* spread_placed;
 static uint16_t* spread_destination; /* W by H, what a partial frame composes into */
@@ -957,6 +992,73 @@ predicted_at(const r3d_lod_histogram_t* histogram, int edge) {
         triangles -= histogram->saves[b];
     }
     return triangles;
+}
+
+static void
+test_the_drop_bit_follows_the_root_error_without_changing_group_bits(void) {
+    const r3d_lit_mesh_t* plain = levelled_mesh();
+    r3d_lit_mesh_t mesh = *plain;
+    mesh.lod_drops = true;
+    uint32_t coarse[R3D_LOD_WORDS(GROUPS) + 1] = {0};
+    uint32_t groups[R3D_LOD_WORDS(GROUPS)] = {0};
+    render_lod_settings_t lod = LOD;
+    const r3d_lens_t far = lens_at(FAR_EYE, NULL);
+    lod.tolerance_px = r3d_lod_drop_pixels(&mesh, &far) + lod.hysteresis_px;
+    int dropped = 0;
+    const int poses = 2 * steps_in();
+    for (int p = 0; p < poses; p++) {
+        const r3d_lens_t lens = lens_at(eye_at(p, steps_in()), NULL);
+        r3d_lod_pick(&mesh, &lens, &lod, coarse, NULL);
+        r3d_lod_pick(plain, &lens, &lod, groups, NULL);
+        TEST_ASSERT_EQUAL_HEX32_ARRAY(groups, coarse, R3D_LOD_WORDS(GROUPS));
+        const float pixels = r3d_lod_drop_pixels(&mesh, &lens);
+        const bool drop = r3d_lod_dropped(&mesh, coarse);
+        TEST_ASSERT_TRUE(drop ? pixels <= lod.tolerance_px + lod.hysteresis_px
+                              : pixels > lod.tolerance_px - lod.hysteresis_px);
+        dropped += drop ? 1 : 0;
+    }
+    TEST_ASSERT_GREATER_THAN_INT(0, dropped);
+    TEST_ASSERT_LESS_THAN_INT(poses, dropped);
+}
+
+static void
+test_a_mesh_that_cannot_drop_leaves_the_next_word_untouched(void) {
+    const r3d_lit_mesh_t* mesh = levelled_mesh();
+    const uint32_t sentinel = UINT32_MAX;
+    uint32_t coarse[R3D_LOD_WORDS(GROUPS) + 1] = {0};
+    coarse[R3D_LOD_WORDS(GROUPS)] = sentinel;
+    TEST_ASSERT_EQUAL_INT(R3D_LOD_WORDS(GROUPS), r3d_lod_words(mesh));
+    for (int p = 0; p < 2 * steps_in(); p++) {
+        const r3d_lens_t lens = lens_at(eye_at(p, steps_in()), NULL);
+        r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL);
+        TEST_ASSERT_EQUAL_HEX32(sentinel, coarse[R3D_LOD_WORDS(GROUPS)]);
+        TEST_ASSERT_FALSE(r3d_lod_dropped(mesh, coarse));
+    }
+}
+
+static void
+test_the_drop_histogram_saves_the_coarsest_cut_at_the_root_error(void) {
+    const r3d_lit_mesh_t* plain = counted_mesh();
+    r3d_lit_mesh_t mesh = *plain;
+    mesh.lod_drops = true;
+    TEST_ASSERT_EQUAL_INT(R3D_LOD_WORDS(GROUPS) + 1, r3d_lod_words(&mesh));
+    const r3d_lens_t lens = lens_at(WHOLE_IN_VIEW, NULL);
+    uint32_t coarse[R3D_LOD_WORDS(GROUPS) + 1] = {0};
+    r3d_lod_histogram_t histogram = {{0}, 0, 1.0F};
+    r3d_lod_histogram_t baseline = {{0}, 0, 1.0F};
+    r3d_lod_pick(&mesh, &lens, &LOD, coarse, &histogram);
+    r3d_lod_pick(plain, &lens, &LOD, coarse, &baseline);
+    const float pixels = r3d_lod_drop_pixels(&mesh, &lens);
+    TEST_ASSERT_TRUE(pixels < r3d_lod_bin_edge(R3D_LOD_BINS));
+    TEST_ASSERT_EQUAL_INT(0, predicted_at(&histogram, R3D_LOD_BINS));
+    int checked = 0;
+    for (int edge = 1; edge <= R3D_LOD_BINS; edge++) {
+        if (r3d_lod_bin_edge(edge) < pixels) {
+            TEST_ASSERT_EQUAL_INT(predicted_at(&baseline, edge), predicted_at(&histogram, edge));
+            checked++;
+        }
+    }
+    TEST_ASSERT_GREATER_THAN_INT(0, checked);
 }
 
 /* At every pose of the path and every bin edge from the floor up, the
@@ -1330,6 +1432,10 @@ test_a_steer_that_moved_owes_picks_while_the_camera_holds_still(void) {
 
 void
 suite_r3d_lod(void) {
+    RUN_TEST(test_the_drop_bit_follows_the_root_error_without_changing_group_bits);
+    RUN_TEST(test_a_mesh_that_cannot_drop_leaves_the_next_word_untouched);
+    RUN_TEST(test_the_drop_histogram_saves_the_coarsest_cut_at_the_root_error);
+    RUN_TEST(test_a_dropped_instance_skips_its_census_and_reports_a_changed_level);
     RUN_TEST(test_a_coarse_group_keeps_every_group_simplified_into_it_coarse);
     RUN_TEST(test_every_finest_cluster_is_drawn_at_exactly_one_level_along_the_path);
     RUN_TEST(test_the_drawn_list_holds_what_each_cluster_s_test_draws);

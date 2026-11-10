@@ -2,7 +2,7 @@
 """Replay runtime cluster LOD over a fitted renderer's camera path, host only.
 
     lod_replay.py SCENE.scene.toml --object NAME --out DIR
-        [--bundle BUNDLE] [--budgets N,...] [--every-ms N] [--size W H] [--segment T0 T1]
+        [--bundle BUNDLE] [--budgets N,...] [--every-ms N] [--size W H] [--segment T0 T1] [--drops NAME [NAME ...]]
 
 Builds the cluster levels (levels.py) of the locked fit's rest mesh, welded
 and position-only, and of each copy shape, which every copy of it shares.
@@ -67,11 +67,21 @@ def placements(bundle, rest_name, matrix, position):
 def placed_meshes(shapes, rows, rest_name, matrix, position):
     """The rest, then each copy row's shape under the row's transform; all under the renderer's
     (`matrix`, `position`), applied after the row's."""
-    placed = [pick.Placed(shapes[rest_name], matrix, position)]
+    placed = [pick.Placed(shapes[rest_name], matrix, position, (rest_name,))]
     for row in rows:
         local = np.asarray(row["matrix"], dtype=np.float64)
-        placed.append(pick.Placed(shapes[row["mesh"]], matrix @ local, matrix @ np.asarray(row["position"]) + position))
+        placed.append(pick.Placed(shapes[row["mesh"]], matrix @ local, matrix @ np.asarray(row["position"]) + position,
+                                  tuple(row[key] for key in ("mesh", "name", "first", "source") if row.get(key))))
     return placed
+
+
+def drop_indices(placed, names):
+    """Placement indices selected by bundle mesh, copy or source shape name."""
+    requested = set(names)
+    unknown = requested.difference(name for placement in placed for name in placement.names)
+    if unknown:
+        raise ValueError("unknown --drops names: " + ", ".join(sorted(unknown)))
+    return {i for i, placement in enumerate(placed) if requested.intersection(placement.names)}
 
 
 def terminal_triangles(v, tau):
@@ -90,6 +100,13 @@ def pose_row(v, time_ms, budgets):
         row[f"b{budget}_exact"] = pick.triangles_at(v, exact)
         row[f"b{budget}_histogram"] = pick.triangles_at(v, histogram)
         row[f"b{budget}_terminal"] = terminal_triangles(v, histogram)
+    if v.drop_px:
+        for tau in FIXED_TAUS_PX:
+            row[f"at_{tau:g}px_dropped"] = int(np.count_nonzero(np.asarray(v.drop_px) <= tau))
+        for budget in budgets:
+            for method in ("exact", "histogram"):
+                row[f"b{budget}_{method}_dropped"] = int(np.count_nonzero(
+                    np.asarray(v.drop_px) <= row[f"b{budget}_tau_{method}"]))
     return row
 
 
@@ -120,6 +137,10 @@ def summary_rows(rows, budgets):
                  f"{unspent.mean():.1%} / {unspent.max():.1%}" if steered.any() else "-"),
                 (f"budget {budget}: terminal share of drawn, mean / max",
                  f"{terminal.sum() / max(drawn.sum(), 1):.1%} / {np.max(terminal / np.maximum(drawn, 1)):.1%}")]
+    for key in rows[0]:
+        if key.endswith("_dropped"):
+            counts = np.array([row[key] for row in rows])
+            out.append((f"{key}: copies per frame, mean / max", f"{counts.mean():.1f} / {counts.max()}"))
     return out
 
 
@@ -165,6 +186,7 @@ def main(argv=None):
     parser.add_argument("--every-ms", type=int, default=DEFAULT_EVERY_MS)
     parser.add_argument("--size", type=int, nargs=2)
     parser.add_argument("--segment", type=float, nargs=2)
+    parser.add_argument("--drops", nargs="+", default=[], help="placed mesh or carved shape names that may drop")
     args = parser.parse_args(argv)
     if args.every_ms <= 0:
         parser.error("--every-ms must be positive")
@@ -189,8 +211,13 @@ def main(argv=None):
         bundle = args.bundle
     placed = placements(bundle, job.asset_name, np.asarray(job.object.matrix, dtype=np.float64),
                            np.asarray(job.object.position, dtype=np.float64))
+    placed[0] = placed[0]._replace(names=(*placed[0].names, job.object.name))
+    try:
+        drops = drop_indices(placed, args.drops)
+    except ValueError as error:
+        parser.error(str(error))
     focal = focal_px(width, height, lens)
-    views = [pick.view(placed, pose[:3], projection(pose[:3], pose[3:], width, height, lens, near), focal, near)
+    views = [pick.view(placed, pose[:3], projection(pose[:3], pose[3:], width, height, lens, near), focal, near, drops)
              for pose in poses]
     budgets = args.budgets or sorted({int(share * max(int(v.triangles[v.finest].sum()) for v in views))
                                       for share in DEFAULT_BUDGET_SHARES})

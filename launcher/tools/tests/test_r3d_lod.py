@@ -271,6 +271,29 @@ class ReplayTest(unittest.TestCase):
         np.testing.assert_allclose(chair.matrix @ local + chair.position, renderer @ (turn @ local + [1, 0, 0]) + offset)
         np.testing.assert_allclose(rest.matrix @ local + rest.position, renderer @ local + offset)
 
+    def test_drop_names_select_all_copies_of_a_shape_or_one_named_copy(self):
+        shapes = dict(rest="rest levels", shape="shape levels")
+        rows = [dict(mesh="shape", name=name, first="scene shape", matrix=np.eye(3), position=np.zeros(3))
+                for name in ("copy a", "copy b")]
+        placed = lod_replay.placed_meshes(shapes, rows, "rest", np.eye(3), np.zeros(3))
+        self.assertEqual(lod_replay.drop_indices(placed, ["scene shape"]), {1, 2})
+        self.assertEqual(lod_replay.drop_indices(placed, ["copy b"]), {2})
+        self.assertEqual(lod_replay.drop_indices(placed, []), set())
+        with self.assertRaisesRegex(ValueError, "unknown --drops names"):
+            lod_replay.drop_indices(placed, ["missing"])
+
+    def test_drop_rows_count_copies_at_each_reported_tolerance(self):
+        v = pick.View(np.array([10]), np.array([0.0]), np.array([2.0]), np.array([True]), (2.0,))
+        dropped = lod_replay.pose_row(v, 0, [0])
+        self.assertEqual(dropped["b0_histogram_dropped"], 1)
+        self.assertEqual(dropped["b0_histogram"], 0)
+        self.assertEqual(dropped["at_2px_dropped"], 1)
+        hidden = lod_replay.pose_row(v._replace(drop_px=(np.nan,)), 0, [0])
+        self.assertEqual(hidden["b0_exact_dropped"], 0)
+        self.assertEqual(hidden.keys(), dropped.keys())
+        plain = lod_replay.pose_row(v._replace(drop_px=()), 0, [0])
+        self.assertEqual(plain, {key: value for key, value in dropped.items() if not key.endswith("_dropped")})
+
     def test_out_inside_the_repository_is_refused(self):
         with self.assertRaises(SystemExit):
             lod_replay.main(["missing.scene.toml", "--object", "x", "--out", str(lod_replay.REPO / "out")])

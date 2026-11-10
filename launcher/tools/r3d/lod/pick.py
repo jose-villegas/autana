@@ -63,14 +63,16 @@ class Placed(NamedTuple):
     levels: object
     matrix: np.ndarray
     position: np.ndarray
+    names: tuple = ()
 
 
 class View(NamedTuple):
-    """Every in-view cluster of one pose, over all placed meshes."""
+    """Every in-view cluster of one pose, plus droppable placements' root errors (NaN outside the view)."""
     triangles: np.ndarray  # per cluster
     own_px: np.ndarray     # its own error, projected; 0 on the finest level
-    group_px: np.ndarray   # its group's, projected; inf on a terminal group
+    group_px: np.ndarray   # its group's, projected; terminal groups use the drop error or inf
     finest: np.ndarray     # whether it is a finest-level cluster
+    drop_px: tuple = ()    # one projected root radius per droppable placement
 
 
 def placed_boxes(boxes, placed):
@@ -94,24 +96,31 @@ def projected_px(spheres, errors, eye, focal, near):
         return np.where(errors == 0, 0.0, errors * focal / np.maximum(distance, near))
 
 
-def view(placements, eye, clip, focal, near):
+def view(placements, eye, clip, focal, near, drops=frozenset()):
     """The in-view clusters of every placed mesh at one pose."""
-    parts = []
-    for placed in placements:
+    parts, drop_px = [], []
+    for index, placed in enumerate(placements):
         levels = placed.levels
         shown = clusters_in_view(placed_boxes(levels.cluster_box, placed), clip)
         own, scale = placed_spheres(levels.own_sphere[shown], placed)
         parent, _ = placed_spheres(levels.parent_sphere[shown], placed)
+        group = projected_px(parent, levels.parent_error[shown] * scale, eye, focal, near)
+        if index in drops:
+            lo, hi = levels.cluster_box[:, 0].min(0), levels.cluster_box[:, 1].max(0)
+            root, _ = placed_spheres(np.r_[(lo + hi) / 2, np.linalg.norm(hi - lo) / 2][None], placed)
+            empty = projected_px(root, root[:, 3], eye, focal, near)[0]
+            group = np.where(np.isinf(group), empty, group)
+            drop_px.append(empty if shown.any() else np.nan)
         parts.append(View(levels.cluster_triangles[shown],
                           projected_px(own, levels.own_error[shown] * scale, eye, focal, near),
-                          projected_px(parent, levels.parent_error[shown] * scale, eye, focal, near),
+                          group,
                           levels.cluster_refined[shown] < 0))
-    return View(*(np.concatenate(column) for column in zip(*parts)))
+    return View(*(np.concatenate(column) for column in zip(*(part[:4] for part in parts))), tuple(drop_px))
 
 
 def drawn(v, tau):
     """Whether each in-view cluster is drawn at `tau`; a terminal group's
-    clusters stay drawn at any tau."""
+    clusters stay drawn until their placement drops."""
     return (v.own_px <= tau) & ((tau < v.group_px) | np.isinf(v.group_px))
 
 
@@ -175,24 +184,34 @@ def _device_library():
                                         render_asset.HEADER),
                                libraries=["-lm"], log=log)
         _device.pick_host.restype = None
+        _device.pick_host_drop_pixels.restype = ctypes.c_float
     return _device
 
 
 def device_pick(lod, groups, rows, focal, near, height, tolerance_px=TOLERANCE_PX, hysteresis_px=HYSTERESIS_PX,
-                coverage_permille=COVERAGE_PERMILLE, coarse=None):
+                coverage_permille=COVERAGE_PERMILLE, coarse=None, drops=False, root=None):
     """(coarse, drawn): the device's pick over a read mesh's `lod` pairs and
     `groups` rows (lit_mesh.read_lit_mesh) seen through the lens matrix `rows`
     (4 x 4, position ticks to lens space, focal lengths applied to its first
     two rows), from the bits `coarse` of the frame before, all clear when
     None. `focal` is (x, y) in pixels; `height` is the picture's, which
-    `coverage_permille` is thousandths of."""
-    words = (len(groups) + WORD_BITS - 1) // WORD_BITS
+    `coverage_permille` is thousandths of. With `drops`, `root` is its local
+    tick box (2 x 3); a dropped mesh returns every drawn flag clear."""
+    if drops and root is None:
+        raise ValueError("a mesh that may drop needs its root box")
+    bound = np.ascontiguousarray(root if root is not None else np.zeros((2, 3)), dtype=np.int16)
+    if bound.shape != (2, 3):
+        raise ValueError("root must be a 2 x 3 tick box")
+    words = _device_library().pick_host_words(ctypes.c_int(len(groups)), ctypes.c_bool(drops))
     coarse = np.zeros(words, dtype=np.uint32) if coarse is None else np.array(coarse, dtype=np.uint32)
+    if coarse.shape != (words,):
+        raise ValueError("coarse words must match the mesh including its dropped word")
     pairs = b"".join(CLUSTER_LOD.pack(*pair) for pair in lod)
     records = b"".join(LOD_GROUP.pack(*(int(v) for v in row)) for row in groups)
     lens = np.ascontiguousarray(rows, dtype=np.float32)
     drawn = np.zeros(len(lod), dtype=np.uint8)
     _device_library().pick_host(pairs, ctypes.c_int(len(lod)), records, ctypes.c_int(len(groups)),
+                                bound.ctypes.data_as(ctypes.c_void_p), ctypes.c_bool(drops),
                                 lens.ctypes.data_as(ctypes.c_void_p), ctypes.c_float(focal[0]),
                                 ctypes.c_float(focal[1]), ctypes.c_float(near), ctypes.c_int(height),
                                 ctypes.c_float(tolerance_px), ctypes.c_float(hysteresis_px),
