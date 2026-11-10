@@ -62,7 +62,7 @@ r3d_lens_place(r3d_lens_t* lens, const mat4f_t* model, int position_scale) {
     for (int row = 0; row < MAT3F_AXES; row++) {
         placed.m[row][MAT3F_AXES] *= (float)position_scale;
     }
-    lens->m = mat4f_mul_affine(lens->m, placed);
+    mat4f_post_mul_affine(&lens->m, &placed);
 }
 
 #define ALL_PLANES ((1u << PLANE_FRUSTUM_COUNT) - 1u)
