@@ -1553,7 +1553,7 @@ class LockTests(unittest.TestCase):
         with mock.patch.dict("os.environ", {bake.CACHE_VARIABLE: str(self.cache)}):
             self.assertEqual(bake.default_cache(), self.cache)
 
-    def test_a_rekeyed_output_keeps_the_bytes_its_stale_row_locked(self):
+    def test_a_rekeyed_output_keeps_the_bytes_its_stale_row_locked_and_the_run_that_made_them(self):
         refit = b"LMSH refit"
         stale = {**self.row, "key": "o" * 64, "sha256": hashlib.sha256(refit).hexdigest(), "size": len(refit), "run": 5}
         bake.place(refit, bake.cached(stale, bake.BUNDLE_SUFFIX, self.cache))
@@ -1566,7 +1566,7 @@ class LockTests(unittest.TestCase):
             self.assertEqual(bake.main(["lock", "--seed", "--cache", str(self.cache)]), 0)
         network.assert_not_called()
         self.assertEqual(written[0], [{"output": "one.bundle", "source": "a.scene.toml", "key": "k" * 64,
-                                       "sha256": stale["sha256"], "size": len(refit), "seeded": True}])
+                                       "sha256": stale["sha256"], "size": len(refit), "run": 5, "seeded": True}])
 
     def test_check_says_which_rows_are_seeded(self):
         found = [bake_of("k" * 64, self.tree)]

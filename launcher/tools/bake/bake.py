@@ -115,6 +115,8 @@ CACHE_VARIABLE = "AUTANA_BAKE_CACHE"
 # bake is reproducible only on one kind of host, and "gpu" the GPU a fit was made on, since a fit is
 # reproducible only on that GPU model; a seeded row has neither.
 ROW_FIELDS = ("output", "source", "key", "sha256", "size", "run", "host", "gpu", "seeded")
+# What a seeded row carries over from the row whose bytes it takes: the bytes and where they were made.
+CARRIED_FIELDS = ("output", "source", "sha256", "size", "run", "host", "gpu")
 POSE_FIELDS = ("key", "poses", "count", "clip", "host")
 CPUINFO = pathlib.Path("/proc/cpuinfo")
 NVIDIA_SMI_NAME = ("nvidia-smi", "--query-gpu=name", "--format=csv,noheader")
@@ -932,7 +934,8 @@ def seed(found, cache, lock=None, made=None):
     """Rows marked seeded, whose bytes are carried over, not made by the code their key names; a run
     that makes the key again writes a row without the mark. A key `lock` holds a made row for keeps
     it, as with a run's make. A re-keyed output carries the bytes of the row `lock` holds for it
-    under its old key, so what a run made outlives the re-key (its file fetched as any locked file).
+    under its old key, so what a run made outlives the re-key: it keeps the run that made the bytes,
+    whose uploads supply them until main publishes them.
     Otherwise the bytes are the tree's own file, or once the tree has none the seeded row's."""
     lock = lock or {}
     needed = {bake.key for bake in found}
@@ -949,7 +952,7 @@ def seed(found, cache, lock=None, made=None):
         carried = previous.get(bake.output) if held is None else (None if bake.tree.is_file() else held)
         if carried is not None:
             fetch_all([bake], {bake.key: carried}, cache)
-            rows.append({**{name: carried[name] for name in ("output", "source", "sha256", "size")},
+            rows.append({**{name: carried[name] for name in CARRIED_FIELDS if name in carried},
                          "key": bake.key, "seeded": True})
             continue
         if not bake.tree.is_file():
