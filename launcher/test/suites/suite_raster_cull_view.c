@@ -736,7 +736,7 @@ lod_strip(lod_scene_t* l, int c, int x0, int x1, int t, int triangles) {
         l->triangles[t + k][1] = (uint16_t)(first + 1 + k);
         l->triangles[t + k][2] = (uint16_t)(first + 2 + k);
     }
-    l->clusters[c] = (r3d_lit_cluster_t){first, QUAD_CORNERS, (uint16_t)t, (uint16_t)triangles, bounds, true};
+    l->clusters[c] = (r3d_lit_cluster_t){first, QUAD_CORNERS, (uint16_t)t, (uint16_t)triangles, bounds, true, false};
 }
 
 /* The cull view open, and `count` instances of the levelled mesh, each drawing its finest level. */
