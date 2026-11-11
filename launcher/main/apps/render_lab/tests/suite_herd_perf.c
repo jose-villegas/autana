@@ -71,7 +71,7 @@ test_herd_turn_cost(void) {
     const entity_t root = lab_test_loaded_scene("herd");
     TEST_ASSERT_FALSE(handle_is_none(root));
     scene_row_t row;
-    scene_t* scene = scene_entity_row(root, &row);
+    scene_t* scene = scene_entity_row(herd->path().entity, &row); /* a row of a copy: the root is not one */
     TEST_ASSERT_NOT_NULL(scene);
     scene_animation_step(scene, 0); /* a shown copy takes its buffers on its first step */
     const int copies = *(const int*)herd->data;
