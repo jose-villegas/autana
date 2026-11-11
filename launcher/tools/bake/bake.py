@@ -128,12 +128,12 @@ GPU_QUERY_TIMEOUT_S = 10
 # the code that function and the closure's import-time statements reach (see stage_units).
 STAGES = {
     "poses": ("anim/track_host.py",),
-    "mesh": ("r3d/mesh_import.py",),
+    "mesh": ("r3d/mesh_import.py:write_baked",),
     "reference": ("r3d/reference_set.py:prepare_references", "r3d/reference_set.py:pack_references",
                   "r3d/reference_set.py:reference_inputs", "r3d/reference_set.py:canonical",
                   "r3d/reference_render.py:render_sets"),
-    "fit": ("r3d/fit/stage.py", "r3d/appearance_simplify.py"),
-    "levels": ("r3d/lod/levels_stage.py",),
+    "fit": ("r3d/fit/stage.py:fit", "r3d/reference_set.py:unpack_references"),
+    "levels": ("r3d/lod/levels_stage.py:levels",),
     "blend": ("gltf/blend_skin_to_glb.py",),
     "sound": ("audio/sound_import.py",),
 }
@@ -201,7 +201,7 @@ def digest(value):
 
 def git_lines(*args):
     return subprocess.run(["git", "-C", str(REPO), *args], check=True, capture_output=True,
-                          text=True).stdout.splitlines()
+                          text=True, stdin=subprocess.DEVNULL).stdout.splitlines()
 
 
 @functools.cache
