@@ -68,26 +68,6 @@ lab_t render_lab = {
 
 LAB_REGISTER(render_lab);
 
-static void
-render_lab_enter(void) {
-    lab_enter(&render_lab);
-}
-
-static void
-render_lab_frame(uint32_t dt_ms, const input_t* input) {
-    lab_frame(&render_lab, dt_ms, input);
-}
-
-static void
-render_lab_update(uint32_t dt_ms, const input_t* input) {
-    lab_update(&render_lab, dt_ms, input);
-}
-
-static void
-render_lab_exit(void) {
-    lab_exit(&render_lab);
-}
-
 /* "render scenes", "render scene <key>" and "render pose <ms> | play" are the
  * lab's (lab_console()); "render fly" flies the scene (render_lab_fly.h).
  * Other words go to the showing scene's console hook, if it has one. */

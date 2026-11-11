@@ -5,13 +5,14 @@
  * its entry on, and draws the scene title, fps and status over it.
  *
  * The app owns one lab_t, hands it its scenes and any hooks, registers it
- * once (LAB_REGISTER()), and forwards its app_t callbacks to lab_enter(),
- * lab_update(), lab_frame() and lab_exit(). Every hook is optional, so the
+ * once (LAB_REGISTER()), which provides its app_t callbacks. Every hook is optional, so the
  * least a lab needs is its view tunables, its console word and its scenes:
  *
  *     LAB_VIEW(my_view, "my_lab");
  *     lab_t my_lab = {.view = &my_view, .console_word = "my", .scenes = scenes, .scene_count = 2};
  *     LAB_REGISTER(my_lab);
+ *     app_t my_app = {.enter = my_lab_enter, .frame = my_lab_frame,
+ *                     .update = my_lab_update, .exit = my_lab_exit};
  */
 #pragma once
 
@@ -89,9 +90,13 @@ typedef struct {
 /* Sets the lab's reply prefix, once, before the console runs. */
 void lab_register(lab_t* lab);
 
-/* Registers a static lab_t before app_main(), like APP_REGISTER. */
+/* Registers a static lab_t and defines its app_t callbacks. */
 #define LAB_REGISTER(symbol)                                                                                           \
-    __attribute__((constructor)) static void symbol##_lab_register(void) { lab_register(&symbol); }
+    __attribute__((constructor)) static void symbol##_lab_register(void) { lab_register(&symbol); }                    \
+    static void symbol##_enter(void) { lab_enter(&symbol); }                                                           \
+    static void symbol##_frame(uint32_t dt_ms, const input_t* input) { lab_frame(&symbol, dt_ms, input); }             \
+    static void symbol##_update(uint32_t dt_ms, const input_t* input) { lab_update(&symbol, dt_ms, input); }           \
+    static void symbol##_exit(void) { lab_exit(&symbol); }
 
 void lab_enter(lab_t* lab);
 void lab_update(lab_t* lab, uint32_t dt_ms, const input_t* input);
