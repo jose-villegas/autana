@@ -5,6 +5,7 @@
 
 #include <math.h>
 
+#include "math/scalar/float_bits.h"
 #include "math/scalar/mathf.h"
 
 /* Codes per unit of depth at z: code_max scale / z^2. */
@@ -22,7 +23,5 @@ inverse_depth_scale_fit(float near_z, float nearest_z) {
     if (!(nearest_z > near_z)) {
         return near_z;
     }
-    int exponent;
-    (void)frexpf(nearest_z, &exponent);
-    return mathf_max(near_z, ldexpf(0.5F, exponent));
+    return mathf_max(near_z, ldexpf(0.5F, mathf_exponent(nearest_z)));
 }

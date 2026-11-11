@@ -10,8 +10,10 @@ int
 raster_copies_shape(const raster_t* raster, int i, int* copies) {
     int first = -1;
     *copies = 0;
-    for (int j = 0; j < raster->instance_count; j++) {
-        if (raster->instances[j].mesh->positions == raster->instances[i].mesh->positions) {
+    const int count = raster_drawn_count(raster);
+    const void* positions = raster_drawn_at(raster, i)->mesh->positions;
+    for (int j = 0; j < count; j++) {
+        if (raster_drawn_at(raster, j)->mesh->positions == positions) {
             first = first < 0 ? j : first;
             ++*copies;
         }
@@ -23,7 +25,7 @@ static void
 begin(const raster_attachment_t* self, const raster_t* raster, const render_view_t* view) {
     (void)view;
     raster_copies_t* state = self->state;
-    assert(raster->instance_count < RASTER_COPIES_UNIQUE);
+    assert(raster_drawn_count(raster) < RASTER_COPIES_UNIQUE);
     state->raster = raster;
 }
 

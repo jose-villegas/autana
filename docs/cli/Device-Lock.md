@@ -165,10 +165,11 @@ lapses or its owner dies. Another caller may take the board immediately.
 
 ## Heavy host work
 
-Every firmware compile and full GPU stage takes the host's `heavy` key.
+Every firmware compile and the doc-images GPU stage take the host's `heavy` key.
+A Bakes GPU fit takes none: it runs beside builds on half the host's CPUs.
 It uses the board lock's FIFO tickets, heartbeat, stale recovery and holds.
 Flash writes and captures do not take heavy.
-Builds and flashes during a GPU stage wait `DEFAULT_LOCK_WAIT_SECONDS`
+Builds and flashes during a doc-images stage wait `DEFAULT_LOCK_WAIT_SECONDS`
 (600 s, `scripts/lib/autana_config.py`), then exit busy naming the heavy holder.
 
 ```sh

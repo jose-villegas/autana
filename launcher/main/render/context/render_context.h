@@ -22,6 +22,7 @@
 typedef struct checkpoint checkpoint_t;
 #include "core/memory.h"
 #include "render/framegen/framegen.h"
+#include "render/lod/r3d_lod.h"
 #include "render/partial/render_partial.h"
 #include "render/r3d_instance.h"
 #include "render/raster.h"
@@ -79,7 +80,8 @@ typedef struct {
 
 typedef struct {
     raster_split_t split;
-    raster_t raster; /* keeps its upscale maps from frame to frame */
+    r3d_lod_steer_t steer; /* the pick's tolerance within lod.triangle_budget */
+    raster_t raster;       /* keeps its upscale maps from frame to frame */
     void* scratch;
     size_t scratch_bytes;
     memory_take_fn take; /* where the scratch comes from; NULL is the heap */
@@ -103,6 +105,7 @@ typedef struct {
      * `framegen`. */
     bool generating;
     bool kept;
+    bool batches_set;     /* render_context_set_batches() since the last draw; else the next draws none */
     int32_t generated_us; /* the last generated frame's warp, fill and compose; 0 before one */
     int32_t drawn_us;     /* the last drawn frame's draw and compose; 0 before one */
     int drawn_in_row;     /* drawn frames since the last generated one */
@@ -175,6 +178,10 @@ void render_context_set_frame_generation(render_context_t* context, bool on);
  * is now; a negative count changes everything. Each frame sets them anew. */
 void render_context_set_changed(render_context_t* context, const box3f_t* boxes, int count);
 
+/* The next draw's `count` batches, drawn after its instances; a draw with
+ * none set draws none. */
+void render_context_set_batches(render_context_t* context, const r3d_batch_draw_t* batches, int count);
+
 /* Opts in: each frame draws at a step of `config` to hold its budget, chosen
  * by the stepped controller, or by the predictor when `model` is not NULL.
  * NULL `config` returns to the fixed scale. */
@@ -218,6 +225,11 @@ upscale_filter_t render_context_upscale_filter(const render_context_t* context);
 bool render_context_compose(render_context_t* context, uint16_t* destination, uint16_t* half, uint8_t* half_seams);
 
 render_context_frame_t render_context_frame(const render_context_t* context);
+
+/* The destination rows [rows_first, rows_end) the last compose rewrote, as in
+ * render_context_frame(), without copying the whole frame onto a deep stack. */
+int render_context_rows_first(const render_context_t* context);
+int render_context_rows_end(const render_context_t* context);
 
 /* Whether the debug view draws lines over the composed picture: a caller
  * then composes at full size, not into a half picture. */
