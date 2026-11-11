@@ -18,6 +18,7 @@ try:
     from r3d import appearance_simplify, reference_set
     from r3d.appearance_simplify import FitMesh, prune, settle, settled
     from r3d.fit import probes
+    from r3d.geometry import face_normals
 except ImportError:
     np = None
 
@@ -80,7 +81,7 @@ class ProbeInsideTests(unittest.TestCase):
         from r3d.ray_query import RayQuery
 
         positions, tris = closed_box(1.0)
-        query, normals = RayQuery(positions, tris, "scalar_rgb"), probes.face_normals(positions, tris)
+        query, normals = RayQuery(positions, tris, "scalar_rgb"), face_normals(positions, tris)[0]
         near = 0.1
         points = np.array([[0.0, 0.0, 0.0], [1.0 + 0.05, 0.0, 0.0], [3.0, 0.0, 0.0]])
         moved, state = probes.classify(query, normals, points, cell=1.0, near=near)
@@ -95,7 +96,7 @@ class ProbeInsideTests(unittest.TestCase):
         query = RayQuery(positions, tris, "scalar_rgb")
         poses = probes.cube_poses(np.array([[3.0, 0.0, 0.0]]))
         sets = probes.shown(query, len(tris), poses, 16, 16, probes.FACE_LENS)
-        facing = probes.face_normals(positions, tris) @ np.array([1.0, 0.0, 0.0]) > 0.5
+        facing = face_normals(positions, tris)[0] @ np.array([1.0, 0.0, 0.0]) > 0.5
         self.assertEqual(set(sets[1].tolist()), set(np.flatnonzero(facing).tolist()), "the -x face missed the wall")
         self.assertEqual(len(sets[0]), 0, "the +x face, looking away, showed the box")
 
@@ -235,10 +236,6 @@ class PrepareReferencesTests(unittest.TestCase):
                 count = reference_set.prepare_references(inputs, work)
             written = sorted(p.name for p in work.iterdir())
         return count, written, [[(p.name, r.name) for p, r in sets] for sets in rendered]
-
-    def test_a_scene_with_neither_a_path_nor_probes_is_refused(self):
-        with self.assertRaises(ValueError):
-            self.prepare(None)
 
     def test_without_a_path_only_the_probe_files_are_written_and_rendered_and_counted(self):
         count, written, rendered = self.prepare(self.PROBES)

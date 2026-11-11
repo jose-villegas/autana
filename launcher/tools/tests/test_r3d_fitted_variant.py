@@ -339,7 +339,8 @@ class SweepTests(unittest.TestCase):
             target = work / "target.bundle"
             (work / start_name).write_bytes(fitted_bytes)
             with unittest.mock.patch.dict(sys.modules, {"r3d.appearance_simplify": SimpleNamespace(main=fitter)}):
-                stage.fit("scene.toml", None, job, work, target=target, inputs=work, start=work / start_name)
+                stage.fit("scene.toml", SimpleNamespace(camera=SimpleNamespace(component=SimpleNamespace(path="path"))),
+                          job, work, target=target, inputs=work, start=work / start_name)
             self.assertEqual(target.read_bytes(), fitted_bytes)
 
     def test_reference_inputs_read_fit_pose_size_for_any_visibility(self):

@@ -145,24 +145,23 @@ class ImportTests(unittest.TestCase):
         rule = '[[objects.meshes]]\nmatch = { material = "m" }\ntriangles = 4\nvariants = { other = 2 }\n'
         self.rejects(r"objects\.meshes\[0\]\.variants\.other names no variant", SIMPLIFY + rule + VARIANT)
 
-    def test_probes_and_a_budget_policy_read_closed_and_need_a_fitted_import(self):
+    def test_probes_and_a_budget_read_closed_and_need_a_fitted_import(self):
         geometry = SIMPLIFY.removeprefix("[geometry]\n")
         with tempfile.TemporaryDirectory() as directory:
-            body = ('[geometry]\nprobes = { face = 64 }\nbudget = { policy = "settle", step = 2, settle = 0.05 }\n'
+            body = ('[geometry]\nprobes = { face = 64 }\nbudget = { step = 2, settle = 0.05 }\n'
                     + geometry + VARIANT)
             settings = load_import_settings(write_import(directory, output='[output]\n', body=body))
             self.assertEqual(vars(settings.fit.probes), {"spacing": None, "face": 64})
-            self.assertEqual(vars(settings.fit.budget), {"policy": "settle", "step": 2, "settle": 0.05})
+            self.assertEqual(vars(settings.fit.budget), {"step": 2, "settle": 0.05})
         with tempfile.TemporaryDirectory() as directory:
             settings = load_import_settings(write_import(directory, output='[output]\n', body=SIMPLIFY + VARIANT))
             self.assertEqual(vars(settings.fit), {"probes": None, "budget": None})
         for pattern, shaping in (("geometry.probes.spacing must be positive", "probes = { spacing = 0.0 }"),
                                  ("geometry.probes.typo", "probes = { typo = 1 }"),
-                                 ("geometry.budget.policy must be one of", 'budget = { policy = "knee" }'),
-                                 ("geometry.budget.step is required", 'budget = { policy = "settle", settle = 0.1 }'),
-                                 ("geometry.budget.step", 'budget = { policy = "constant", step = 2 }'),
+                                 ("geometry.budget.policy", 'budget = { policy = "settle", step = 2, settle = 0.1 }'),
+                                 ("geometry.budget.step is required", 'budget = { settle = 0.1 }'),
                                  ("settle must be at least 0 and below 1",
-                                  'budget = { policy = "settle", step = 2, settle = 1.0 }')):
+                                  'budget = { step = 2, settle = 1.0 }')):
             with self.subTest(shaping=shaping):
                 self.rejects(pattern, f"[geometry]\n{shaping}\n" + geometry + VARIANT)
         self.rejects("needs geometry.simplify", '[geometry]\nprobes = { spacing = 2.0 }\n')
@@ -1061,15 +1060,14 @@ class LocalSourceTests(unittest.TestCase):
                 return start, reference_digest(job, scene), fit_key(job, scene), job
 
         start, reference, fit, job = keys("")
-        self.assertNotIn("shaping", bake.fit_recipe(job.renderer.fit, job.settings.fit))
-        self.assertEqual(bake.fit_recipe(job.renderer.fit, job.settings.fit), dict(vars(job.renderer.fit)))
+        self.assertEqual(bake.fit_recipe(job.renderer.fit, job.settings.fit.budget), dict(vars(job.renderer.fit)))
         probed = keys("probes = { spacing = 2.0 }\n")
         self.assertEqual(probed[0], start, "probes moved the start's key")
         self.assertNotEqual(probed[1], reference, "probes left the reference key alone")
         self.assertNotEqual(probed[2], fit)
         self.assertNotEqual(keys("probes = { spacing = 3.0 }\n")[1], probed[1], "the spacing is not in the key")
-        settling = keys('budget = { policy = "settle", step = 2, settle = 0.1 }\n')
-        self.assertEqual(settling[:2], (start, reference), "a budget policy moved the start or reference key")
+        settling = keys('budget = { step = 2, settle = 0.1 }\n')
+        self.assertEqual(settling[:2], (start, reference), "a budget moved the start or reference key")
         self.assertNotEqual(settling[2], fit)
 
     def test_the_camera_clip_s_keys_and_nothing_else_of_its_file_stamp_recipe_and_reference(self):

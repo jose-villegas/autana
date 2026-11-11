@@ -78,7 +78,7 @@ one only a probe shows, so probes add surface after the path's surface is kept.
 A hole pixel is one where the fit shows the clear colour and the reference is
 more than `HOLE_DE` from it. With either import setting the fit writes the
 held-out holes of each budget it tried to `holes.json`, beside `stretch.json`.
-[`geometry.budget`](Mesh-Import.md#budget) with `settle` keeps the budget where
+[`geometry.budget`](Mesh-Import.md#budget) keeps the budget where
 those holes stop falling.
 
 ## Cost model

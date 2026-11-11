@@ -23,8 +23,6 @@ from gltf.gltf_read import ASSET_SUFFIXES
 U16_MAX = (1 << 16) - 1
 MESHLET_TRIANGLES = 32
 # A probe face's square size in pixels when geometry.probes names none.
-PROBE_FACE = 192
-BUDGET_POLICIES = ("constant", "settle")
 # A baked mesh carries its levels of detail (docs/plans/Cluster-LOD.md) unless its geometry says lod = false.
 LOD = True
 SCENE_OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_conventions.h"
@@ -305,27 +303,21 @@ def load_geometry(table, steps):
 
 def load_probes(table, where="geometry.probes"):
     """Extra fit views from probes spread through the camera's region (r3d/fit/probes.py): `spacing`
-    world units apart (the probes' own default without it), each face `face` pixels square."""
+    world units apart, each face `face` pixels square; an unset one is the probes' own default."""
     check_keys(table, (), where, optional=("spacing", "face"))
     probes = SimpleNamespace(spacing=number(table["spacing"], f"{where}.spacing") if "spacing" in table else None,
-                             face=count(table.get("face", PROBE_FACE), f"{where}.face"))
+                             face=count(table["face"], f"{where}.face") if "face" in table else None)
     if probes.spacing is not None and probes.spacing <= 0:
         raise SettingsError(f"{where}.spacing must be positive")
     return probes
 
 
 def load_budget(table, where="geometry.budget"):
-    """How each fitted renderer's prune budget is chosen: `constant` is its fit.prune.budget; `settle` tries
-    `step`, 2 `step`, ... up to it and stops at the first whose held-out holes fall by less than the `settle`
-    share of the step before."""
-    policy = text(table.get("policy"), f"{where}.policy")
-    if policy not in BUDGET_POLICIES:
-        raise SettingsError(f"{where}.policy must be one of {', '.join(BUDGET_POLICIES)}")
-    if policy == "constant":
-        check_keys(table, ("policy",), where)
-        return SimpleNamespace(policy=policy)
-    check_keys(table, ("policy", "step", "settle"), where)
-    budget = SimpleNamespace(policy=policy, step=count(table["step"], f"{where}.step"),
+    """A settled prune budget: each fitted renderer tries `step`, 2 `step`, ... up to its fit.prune.budget and
+    stops at the first whose held-out holes fall by less than the `settle` share of the step before. Without
+    geometry.budget the prune keeps fit.prune.budget."""
+    check_keys(table, ("step", "settle"), where)
+    budget = SimpleNamespace(step=count(table["step"], f"{where}.step"),
                              settle=number(table["settle"], f"{where}.settle"))
     if not 0 <= budget.settle < 1:
         raise SettingsError(f"{where}.settle must be at least 0 and below 1")

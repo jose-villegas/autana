@@ -15,6 +15,7 @@ import heapq
 
 import numpy as np
 
+from r3d.geometry import face_normals
 from r3d.poses import camera_rays
 
 # Rays each probe casts to classify itself.
@@ -45,6 +46,8 @@ PLATEAU = 0.01
 SELECT_SIZE = 96
 # Faces the held-out set keeps, to count holes over without fitting on them.
 HELD_OUT_FACES = 48
+# A kept face's square size in pixels without geometry.probes.face.
+PROBE_FACE = 192
 
 
 def spacing_for(lo, hi, spacing, near):
@@ -73,12 +76,6 @@ def sphere_directions(count):
     polar = np.arccos(1 - 2 * i / count)
     azimuth = np.pi * (1 + 5 ** 0.5) * i
     return np.stack([np.cos(azimuth) * np.sin(polar), np.cos(polar), np.sin(azimuth) * np.sin(polar)], axis=1)
-
-
-def face_normals(positions, tris):
-    a, b, c = (positions[tris[:, k]] for k in range(3))
-    normals = np.cross(b - a, c - a)
-    return normals / np.maximum(np.linalg.norm(normals, axis=1, keepdims=True), 1e-30)
 
 
 def probe_hits(query, normals, points):
@@ -159,7 +156,7 @@ def select(positions, tris, region, near, spacing, seed, path=None):
     positions, tris = np.asarray(positions, dtype=float), np.asarray(tris)
     lo, hi = region if region is not None else (positions.min(axis=0), positions.max(axis=0))
     spacing = spacing_for(lo, hi, spacing, near)
-    query, normals = RayQuery(positions, tris), face_normals(positions, tris)
+    query, normals = RayQuery(positions, tris), face_normals(positions, tris)[0]
     seen = np.zeros(len(tris), bool)
     if path is not None:
         for triangles in shown(query, len(tris), path[3], *path[:3]):

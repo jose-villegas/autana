@@ -38,19 +38,21 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
     steps = min(recipe.steps, 8) if smoke else recipe.steps
     shaping = job.settings.fit
     command = ["--scene", str(scene_path), "--start", str(start)]
-    # The path's sets that exist (a camera without a path has none), then the probes'; the prune keeps what the
-    # path shows before what only a probe does.
-    for poses, reference in (*PATH_TRAINING, PROBE_TRAINING):
-        if (inputs / poses).is_file():
-            command += ["--poses", str(inputs / poses), "--reference", str(inputs / reference)]
-    for poses in (PATH_COVERAGE, PROBE_TRAINING[0]):
-        if (inputs / poses).is_file():
-            command += ["--coverage-poses", str(inputs / poses)]
+    # The path's sets when the camera has a path, then the probes' when the import sets them; the prune keeps
+    # what the path shows before what only a probe does.
+    path, probed = scene.camera.component.path is not None, shaping.probes is not None
+    training = (PATH_TRAINING if path else ()) + ((PROBE_TRAINING,) if probed else ())
+    coverage = ((PATH_COVERAGE,) if path else ()) + ((PROBE_TRAINING[0],) if probed else ())
+    held_out = ((PATH_HELD_OUT,) if path else ()) + ((PROBE_HELD_OUT,) if probed else ())
+    for poses, reference in training:
+        command += ["--poses", str(inputs / poses), "--reference", str(inputs / reference)]
+    for poses in coverage:
+        command += ["--coverage-poses", str(inputs / poses)]
     # A fit shaped by the import counts its holes over the held-out views; settle picks its budget by them.
-    for poses, reference in (PATH_HELD_OUT, PROBE_HELD_OUT):
-        if (shaping.probes or shaping.budget) and (inputs / poses).is_file():
+    if probed or shaping.budget is not None:
+        for poses, reference in held_out:
             command += ["--held-out-poses", str(inputs / poses), "--held-out-reference", str(inputs / reference)]
-    if shaping.budget is not None and shaping.budget.policy == "settle":
+    if shaping.budget is not None:
         command += ["--settle", str(shaping.budget.step), str(shaping.budget.settle)]
     command += ["--out", str(out), "--budget", str(recipe.budget if budget is None else budget),
                 "--steps", str(steps), "--batch", str(recipe.batch),
@@ -59,9 +61,7 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
                 "--surface-margin", str(recipe.surface_margin)]
     if copies:
         # The copy gate checks the path's held-out views, or the probes' when the camera has no path.
-        path_less = not (inputs / PATH_HELD_OUT[0]).is_file() and (inputs / PROBE_HELD_OUT[0]).is_file()
-        copy_poses = inputs / (PROBE_HELD_OUT if path_less else PATH_HELD_OUT)[0]
-        command += ["--copies", str(bundle), "--copy-poses", str(copy_poses),
+        command += ["--copies", str(bundle), "--copy-poses", str(inputs / held_out[0][0]),
                     "--front-weight", str(FRONT_WEIGHT), "--depth-weight", str(DEPTH_WEIGHT)]
     if cost_weight:
         command += ["--cost-model", str(pathlib.Path(__file__).parents[1] / "board_cost_weights.txt"),

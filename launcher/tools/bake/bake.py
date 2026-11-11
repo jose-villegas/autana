@@ -631,14 +631,12 @@ def mesh_recipe(job, scene, tools, poses=None, unavailable=None):
     return recipe
 
 
-def fit_recipe(fit, shaping=None):
-    """The renderer's fit and the import's fit `shaping` (geometry.probes, geometry.budget); an unset one is left
-    out, so a mesh that sets neither keeps its key."""
+def fit_recipe(fit, settle=None):
+    """The renderer's fit and the import's `settle` (geometry.budget), left out when unset so a mesh without it
+    keeps its key; geometry.probes reaches the fit through the reference key."""
     recipe = dict(vars(fit))
-    shaped = {name: canonical(value) for name, value in (vars(shaping).items() if shaping is not None else ())
-              if value is not None}
-    if shaped:
-        recipe["shaping"] = shaped
+    if settle is not None:
+        recipe["settle"] = canonical(settle)
     return recipe
 
 
@@ -685,7 +683,7 @@ def stage_keys(job, scene, tools, starts=None, poses=None):
         reference = None if unavailable else digest(["reference", recipe, tools["reference"]])
         start_sha256 = None if starts is None else starts.get(start)
         fit = None if start_sha256 is None or reference is None else digest(
-            ["fit", reference, start_sha256, fit_recipe(job.renderer.fit, job.settings.fit), tools["fit"]])
+            ["fit", reference, start_sha256, fit_recipe(job.renderer.fit, job.settings.fit.budget), tools["fit"]])
         fit_sha256 = None if starts is None or fit is None else starts.get(fit)
         levels = None if fit_sha256 is None else digest(
             ["levels", fit_sha256, start_sha256, (job.settings.lod, job.settings.meshlet_triangles), tools["levels"]])

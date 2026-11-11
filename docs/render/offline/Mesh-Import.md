@@ -118,7 +118,7 @@ Every Geometry table opts its step in; without it the step does not run.
 | `geometry.thin` | `material`, `keep` | Keeps a share of one material's triangles. | Off. | None / fewer triangles. | [thin](#thin) |
 | `geometry.simplify` | `dense_edge`, `seal_seams`, `colour_deviation` | Splits long edges and simplifies each variant to its budget, colour steering the collapses; can seal seams. | Off. | Seconds / set by the budget. | [simplify](#simplify) |
 | `geometry.probes` | `spacing`, `face` | Adds fit views from probes spread through the camera's region, for surface the path never shows. | Off. | Minutes / more triangles kept. | [probes](#probes) |
-| `geometry.budget` | `policy`, `step`, `settle` | Lets each fitted renderer settle on a prune budget below its own by held-out holes. | `constant`. | A prune per step / fewer triangles. | [budget](#budget) |
+| `geometry.budget` | `step`, `settle` | Lets each fitted renderer settle on a prune budget below its own by held-out holes. | The renderer's `fit.prune.budget`. | A prune per step / fewer triangles. | [budget](#budget) |
 
 #### probes
 
@@ -141,11 +141,11 @@ what the path shows before what only a probe shows; see
 
 #### budget
 
-`geometry.budget` chooses how each fitted renderer prunes. `constant` prunes to
-the renderer's `fit.prune.budget`. `settle` tries `step`, 2 `step`, and so on up
-to that budget, counting hole pixels over the held-out views. It keeps the first
-budget whose holes fall by less than the `settle` share of its own to the next,
-or that has none.
+`geometry.budget` lets each fitted renderer prune to less than its
+`fit.prune.budget`, which it keeps without one. The fit tries `step`, 2 `step`,
+and so on up to that budget, counting hole pixels over the held-out views. It
+keeps the first budget whose holes fall by less than the `settle` share of its
+own to the next, or that has none.
 
 #### alpha_mask
 
