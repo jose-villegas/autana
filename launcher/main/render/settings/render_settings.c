@@ -28,6 +28,11 @@ render_settings_read(const asset_pack_t* pack, render_settings_t* out) {
         read.field = FROM_##type(*value);                                                                              \
     }
     RENDER_SETTINGS_FIELDS(READ_FIELD)
+    if (status == ASSET_OK
+        && (read.lod.blend < 0 || read.lod.blend >= RENDER_LOD_BLEND_COUNT || !(read.lod.blend_px > 0.0F)
+            || read.lod.blend_px > RENDER_LOD_BLEND_PX_MAX)) {
+        status = ASSET_ERR_FORMAT;
+    }
     if (status == ASSET_OK) {
         *out = read;
     }

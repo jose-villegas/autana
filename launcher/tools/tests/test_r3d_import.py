@@ -145,6 +145,13 @@ class ImportTests(unittest.TestCase):
         rule = '[[objects.meshes]]\nmatch = { material = "m" }\ntriangles = 4\nvariants = { other = 2 }\n'
         self.rejects(r"objects\.meshes\[0\]\.variants\.other names no variant", SIMPLIFY + rule + VARIANT)
 
+    def test_morph_targets_are_off_unless_asked_and_need_levels(self):
+        with tempfile.TemporaryDirectory() as directory:
+            plain = load_import_settings(write_import(directory))
+            asked = load_import_settings(write_import(directory, body='[geometry]\nmorph = true\n'))
+        self.assertEqual((plain.morph, asked.morph), (False, True))
+        self.rejects("geometry.morph needs geometry.lod", '[geometry]\nlod = false\nmorph = true\n')
+
     def test_a_seed_requires_the_geometry_step_that_draws_it(self):
         self.rejects("process.seed needs geometry.thin", '[process]\nseed = 3\n')
 

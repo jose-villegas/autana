@@ -56,7 +56,8 @@ static const unsigned FATE_KEEP[RASTER_FATE_COUNT] = {
 #define BITS           (sizeof(uint32_t) * CHAR_BIT)
 
 /* Each instance's drawn clusters into s->drawn, the level each instance
- * drew this frame, and how many clusters and triangles that is. */
+ * drew this frame (both levels of a group it dithers), and how many
+ * clusters and triangles that is. */
 static void
 list_drawn(raster_cull_t* s, const raster_t* raster) {
     int at = 0;
@@ -67,7 +68,8 @@ list_drawn(raster_cull_t* s, const raster_t* raster) {
         const r3d_lit_mesh_t* mesh = instance->mesh;
         assert(at < RASTER_CULL_CLUSTERS_MAX);
         const int head = at++;
-        const int count = r3d_lod_list_drawn(mesh, instance->lod_coarse, &s->drawn[at], RASTER_CULL_CLUSTERS_MAX - at);
+        const int count = r3d_lod_list_drawn(mesh, instance->lod_coarse, raster_lod_dithering(raster, instance),
+                                             &s->drawn[at], RASTER_CULL_CLUSTERS_MAX - at);
         for (int k = 0; k < count; k++) {
             s->triangles += mesh->clusters[s->drawn[at + k]].triangle_count;
         }
@@ -166,6 +168,35 @@ keep_drawn(const r3d_lit_mesh_t* mesh, const uint16_t* drawn, int count, r3d_pip
     counts->clusters_coarse += r3d_pipeline_count_coarse(mesh, drawn, count);
 }
 
+/* Hundredths: the unit the stacked-blend bound is counted in. */
+#define RASTER_CULL_CENTI 100.0F
+
+/* Kept cluster `cluster`'s vertices: transformed, and blended or stacked by `morph`. */
+static void
+count_vertices(r3d_pipeline_counts_t* counts, const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, int cluster) {
+    const int vertices = mesh->clusters[cluster].vertex_count;
+    counts->vertices_transformed += vertices;
+    const bool blended =
+        r3d_lod_morph_weight(morph, mesh, cluster) != 0 || r3d_lod_dither_band(morph, mesh, cluster) != 0;
+    counts->vertices_blended += blended ? vertices : 0;
+    const float stacked = r3d_lod_morph_stacked_px(morph, mesh, cluster);
+    if (stacked > 0.0F) {
+        counts->vertices_stacked += vertices;
+        counts->stacked_centipixels = mathi_max(counts->stacked_centipixels, (int)(stacked * RASTER_CULL_CENTI));
+    }
+}
+
+/* The fates of the instance at `w`'s `count` kept clusters: hidden where set
+ * up, else not set up. */
+static void
+mark_set_up(raster_cull_t* s, const drawn_at_t* w, const uint16_t* kept, int count) {
+    for (int k = 0; k < count; k++) {
+        const int j = index_in(s, w->at, kept[k]);
+        assert(j >= 0);
+        s->fate[w->base + j] = s->set_up[k] != 0 ? RASTER_FATE_HIDDEN : RASTER_FATE_NOT_SET_UP;
+    }
+}
+
 /* After the camera's draw, which picked each instance's level, its drawn
  * clusters are listed, and its scratch lists and vertices are free: each
  * instance is culled, counted and transformed again into them, through the
@@ -189,17 +220,19 @@ count_frame(raster_cull_t* s, const raster_t* raster) {
         int count = s->drawn[w.at];
         if (culls) {
             kept = b.culled;
-            count = r3d_pipeline_cull_counted(mesh, &lens, instance->lod_coarse, b.culled, &s->walk, &s->frame.counts);
+            count = r3d_pipeline_cull_counted(mesh, &lens, instance->lod_coarse, raster_lod_dithering(raster, instance),
+                                              b.culled, &s->walk, &s->frame.counts);
         } else {
             keep_drawn(mesh, kept, count, &s->frame.counts);
         }
-        r3d_pipeline_transform(mesh, &lens, kept, count, b.cs, NULL, false);
-        r3d_pipeline_count_triangles(mesh, &lens, kept, count, b.cs, &s->frame.counts, s->set_up);
+        r3d_lod_morph_t morph;
+        raster_lod_morph(raster, &s->camera, instance, &lens, &morph);
+        r3d_pipeline_transform_morphed(mesh, &lens, &morph, kept, count, b.cs, NULL, false);
         for (int k = 0; k < count; k++) {
-            const int j = index_in(s, w.at, kept[k]);
-            assert(j >= 0);
-            s->fate[w.base + j] = s->set_up[k] != 0 ? RASTER_FATE_HIDDEN : RASTER_FATE_NOT_SET_UP;
+            count_vertices(&s->frame.counts, &morph, mesh, kept[k]);
         }
+        r3d_pipeline_count_triangles(mesh, &lens, kept, count, b.cs, &s->frame.counts, s->set_up);
+        mark_set_up(s, &w, kept, count);
         walk_next(s, &w);
     }
 }

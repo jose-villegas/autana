@@ -278,11 +278,11 @@ reference_small(const r3d_span_target_t* target, const r3d_span_vertex_t v[TRIAN
               : r3d_span_pack_rgb((v[0].r + v[1].r + v[2].r) * third, (v[0].g + v[1].g + v[2].g) * third,
                                   (v[0].b + v[1].b + v[2].b) * third);
     const uint16_t z = (uint16_t)(mathf_clamp((v[0].z + v[1].z + v[2].z) * third, 0.0F, 1.0F) * R3D_DEPTH_NEAREST);
-    small_edge_t edges[TRIANGLE_VERTICES];
+    r3d_span_edge_t edges[TRIANGLE_VERTICES];
     uint16_t colors[TRIANGLE_VERTICES];
     int32_t total = area > 0 ? area : -area;
     for (int k = 0; k < TRIANGLE_VERTICES; k++) {
-        edges[k] = small_edge(v + order[k], v + order[(k + 1) % TRIANGLE_VERTICES]);
+        edges[k] = r3d_span_edge(v + order[k], v + order[(k + 1) % TRIANGLE_VERTICES]);
         total -= edges[k].bias;
         const r3d_span_vertex_t* opposite = v + order[(k + 2) % TRIANGLE_VERTICES];
         colors[k] = r3d_span_pack_rgb(opposite->r, opposite->g, opposite->b);
@@ -292,7 +292,8 @@ reference_small(const r3d_span_target_t* target, const r3d_span_vertex_t v[TRIAN
         for (int x = box.x; x < recti_right(box); x++) {
             int32_t edge[TRIANGLE_VERTICES];
             for (int k = 0; k < TRIANGLE_VERTICES; k++) {
-                edge[k] = small_side(edges + k, x * R3D_SUBPIXEL + HALF_PIXEL, y * R3D_SUBPIXEL + HALF_PIXEL);
+                edge[k] = r3d_span_side(edges + k, x * R3D_SUBPIXEL + R3D_SPAN_HALF_PIXEL,
+                                        y * R3D_SUBPIXEL + R3D_SPAN_HALF_PIXEL);
             }
             uint16_t* depth = gfx_target_depth(&target->rows, y) + x;
             if ((edge[0] | edge[1] | edge[2]) < 0 || z <= *depth) {
@@ -394,14 +395,14 @@ test_dither_equal_packed_colours_and_equal_edges_use_flat(void) {
     draw_triangle(&expected, v, false);
     TEST_ASSERT_EQUAL_MEMORY(pixels + TEST_PIXELS * 2, pixels, TEST_PIXELS * 2 * sizeof(*pixels));
     memset(pixels, 0, TEST_PIXELS * 4 * sizeof(*pixels));
-    const int centre = (ORACLE_MAX_SIDE / 2) * R3D_SUBPIXEL + HALF_PIXEL;
+    const int centre = (ORACLE_MAX_SIDE / 2) * R3D_SUBPIXEL + R3D_SPAN_HALF_PIXEL;
     const int reach = (R3D_SPAN_SMALL_MAX_SIDE + 1) * R3D_SUBPIXEL;
     v[0] = (r3d_span_vertex_t){centre + reach, centre, 0.5F, UINT8_MAX, 0, 0};
     v[1] = (r3d_span_vertex_t){centre, centre + 1, 0.5F, 0, UINT8_MAX, 0};
     v[2] = (r3d_span_vertex_t){centre - reach + 1, centre - 1, 0.5F, 0, 0, UINT8_MAX};
     for (int edge = 0; edge < TRIANGLE_VERTICES; edge++) {
-        const small_edge_t line = small_edge(v + edge, v + (edge + 1) % TRIANGLE_VERTICES);
-        TEST_ASSERT_EQUAL_INT(reach - 1, small_side(&line, centre, centre));
+        const r3d_span_edge_t line = r3d_span_edge(v + edge, v + (edge + 1) % TRIANGLE_VERTICES);
+        TEST_ASSERT_EQUAL_INT(reach - 1, r3d_span_side(&line, centre, centre));
     }
     resolve_fill((small_fill_t){ORACLE_MAX_SIDE, 0, SMALL_FILL_DITHER});
     draw_triangle(&actual, v, false);

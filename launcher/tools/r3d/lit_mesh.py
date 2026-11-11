@@ -321,13 +321,14 @@ def build_lit_mesh(positions, rgb, tris, double, recorder=None, colourless=False
     return mesh
 
 
-def write_lit_mesh(out_dir, name, positions, rgb, tris, double, recorder=None, **options):
-    """build_lit_mesh's mesh written alone as <name>.bundle into out_dir; returns the mesh."""
+def write_lit_mesh(out_dir, name, positions, rgb, tris, double, recorder=None, morph=None, **options):
+    """build_lit_mesh's mesh written alone as <name>.bundle into out_dir, with `morph` its morph targets
+    too (bundle_entries); returns the mesh."""
     recorder = NULL_RECORDER if recorder is None else recorder
     mesh = build_lit_mesh(positions, rgb, tris, double, recorder=recorder, **options)
     with recorder.step("write", len(mesh.tris)):
         (pathlib.Path(out_dir) / f"{name}{mesh_bundle.SUFFIX}").write_bytes(
-            mesh_bundle.encode(bundle_entries(name, mesh), []))
+            mesh_bundle.encode(bundle_entries(name, mesh, morph), []))
     return mesh
 
 
@@ -366,20 +367,82 @@ def mesh_blob(mesh):
     return head + body
 
 
+def morph_targets(pos, clusters, entry):
+    """Each row's target in ticks as LMOR `entry` decodes it: its position plus
+    its delta times its cluster's step."""
+    from r3d import morph_asset
+    shifts, deltas, _ = morph_asset.decode(entry)
+    deltas = np.asarray(deltas, dtype=np.int64).reshape(-1, morph_asset.AXES)
+    target = np.asarray(pos, dtype=np.int64).copy()
+    for (first, count, *_), shift in zip(clusters, shifts):
+        target[first:first + count] += deltas[first:first + count] << shift
+    return target
+
+
+def cover_targets(mesh, entry):
+    """Grows `mesh`'s cluster and node boxes, in place, to hold the targets of
+    LMOR `entry` too, so a cull by those boxes keeps every cluster however far
+    it morphs. Returns whether a box grew."""
+    from r3d.octree import node_bounds
+    target = morph_targets(mesh.pos, mesh.clusters, entry)
+    grown = False
+    for c, (first, count, tb, tc, lo, hi, double) in enumerate(mesh.clusters):
+        rows = target[first:first + count]
+        if not len(rows):
+            continue
+        new_lo, new_hi = np.minimum(lo, rows.min(axis=0)), np.maximum(hi, rows.max(axis=0))
+        if np.any(new_lo != lo) or np.any(new_hi != hi):
+            mesh.clusters[c] = (first, count, tb, tc, new_lo, new_hi, double)
+            grown = True
+    if grown:
+        node_bounds(mesh.nodes, mesh.clusters)
+    return grown
+
+
+def morph_deltas(pos, target, clusters, parents):
+    """(shift per cluster, int8 delta per row): the least shift that fits the
+    largest move of every cluster under one parent group in an int8, and each
+    move rounded to it. Clusters under one parent share their shift, so rows
+    they share land on one target."""
+    from r3d import morph_asset
+    move = np.asarray(target, dtype=np.int64) - np.asarray(pos, dtype=np.int64)
+    reach = {}
+    for (first, count, *_), parent in zip(clusters, parents):
+        reach[parent] = max(reach.get(parent, 0), int(np.abs(move[first:first + count]).max(initial=0)))
+    shifts, deltas = [], np.zeros_like(move)
+    for (first, count, *_), parent in zip(clusters, parents):
+        shift = 0
+        while (reach[parent] + (1 << shift >> 1)) >> shift > morph_asset.DELTA_MAX:
+            shift += 1
+        half = (1 << shift) >> 1
+        deltas[first:first + count] = np.clip(np.floor_divide(move[first:first + count] + half, 1 << shift),
+                                              morph_asset.DELTA_MIN, morph_asset.DELTA_MAX)
+        shifts.append(shift)
+    return shifts, deltas
+
+
 def lod_blob(mesh):
     """The sibling LLOD bytes, or None for a mesh without levels."""
     from r3d import lod_asset
     return None if mesh.lod is None else lod_asset.encode(mesh.lod, mesh.groups)
 
 
-def bundle_entries(name, mesh):
-    """A bundle's entries for one assembled mesh: its LMSH and optional levels sibling."""
-    from r3d import lod_asset
-    entries = [(name, TYPE, mesh_blob(mesh))]
+def bundle_entries(name, mesh, morph=None):
+    """A bundle's entries for one assembled mesh: its LMSH, with levels its LLOD sibling, and with `morph`
+    (lod/morph.py's morph_blob) its LMOR sibling too; then the LMSH's boxes hold the targets too
+    (cover_targets). Passed in, so the stages that read meshes do not key on the morph code."""
+    from r3d import lod_asset, morph_asset
+    blob = mesh_blob(mesh)
     levels = lod_blob(mesh)
+    extra = []
     if levels is not None:
-        entries.append((lod_asset.name_for_mesh(name), lod_asset.TYPE, levels))
-    return entries
+        extra.append((lod_asset.name_for_mesh(name), lod_asset.TYPE, levels))
+        if morph is not None:
+            targets = morph(blob, levels)
+            if cover_targets(mesh, targets):
+                blob = mesh_blob(mesh)
+            extra.append((morph_asset.name_for_mesh(name), morph_asset.TYPE, targets))
+    return [(name, TYPE, blob)] + extra
 
 
 def read_bundle_mesh(entries, name):

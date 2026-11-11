@@ -6,7 +6,7 @@ import struct
 
 from asset.asset_pack import NAME_BYTES, PackError, build_pack, parse_pack
 from build.name_hash import name_hash
-from r3d import lcol_asset, lod_asset, mesh_asset
+from r3d import lcol_asset, lod_asset, mesh_asset, morph_asset
 from r3d.lcol_asset import NAME_SUFFIX
 
 SUFFIX = ".bundle"
@@ -135,6 +135,12 @@ def decode(data):
             if mesh is None or mesh[0] != mesh_asset.TYPE or not name.endswith(lod_asset.NAME_SUFFIX):
                 raise PackError("LLOD sibling has no LMSH")
             lod_asset.validate_mesh(blob, mesh[1])
+        if kind == morph_asset.TYPE:
+            mesh = entries.get(name.removesuffix(morph_asset.NAME_SUFFIX))
+            if (mesh is None or mesh[0] != mesh_asset.TYPE or not name.endswith(morph_asset.NAME_SUFFIX)
+                    or lod_asset.name_for_mesh(name.removesuffix(morph_asset.NAME_SUFFIX)) not in entries):
+                raise PackError("LMOR sibling has no LMSH with levels")
+            morph_asset.validate_mesh(blob, mesh[1])
     for row in copies:
         mesh = entries.get(row["mesh"])
         colours = entries.get(lcol_asset.name_for_mesh(row["mesh"]))
@@ -160,6 +166,7 @@ def rename_rest(entries, copies, name):
         return entries
     names = {old: name}
     for key, _, _ in entries:
-        if key.startswith(old) and key[len(old):] in (lcol_asset.NAME_SUFFIX, lod_asset.NAME_SUFFIX):
+        if key.startswith(old) and key[len(old):] in (lcol_asset.NAME_SUFFIX, lod_asset.NAME_SUFFIX,
+                                                         morph_asset.NAME_SUFFIX):
             names[key] = lcol_asset.sibling_name(name, key[len(old):])
     return [(names.get(key, key), kind, blob) for key, kind, blob in entries]

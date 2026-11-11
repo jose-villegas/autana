@@ -28,7 +28,7 @@ signed_area2(int32_t ax, int32_t ay, int32_t bx, int32_t by, int32_t cx, int32_t
 /* True when the bounding box holds no pixel centre inside the target, so
  * the rasterizer would fill nothing: most of these are triangles smaller
  * than a pixel falling between centres. */
-static inline bool
+static inline __attribute__((always_inline)) bool
 misses_every_centre(const r3d_pipeline_vertex_t* a, const r3d_pipeline_vertex_t* b, const r3d_pipeline_vertex_t* c,
                     const r3d_span_target_t* target) {
     const recti_t box = r3d_span_centres(r3d_span_min3(a->sx, b->sx, c->sx), r3d_span_min3(a->sy, b->sy, c->sy),

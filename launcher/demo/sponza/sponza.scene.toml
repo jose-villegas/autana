@@ -50,6 +50,15 @@ background = 0x9CC0E6
 path = { animation = "tour.anim.toml", node = "camera" }
 
 [[objects]]
+name = "lion"
+
+[objects.camera]
+half_fov_short_tan = 0.62
+near_z = 6.0
+background = 0x9CC0E6
+path = { animation = "lion.anim.toml", node = "camera" }
+
+[[objects]]
 name = "atrium_fitted_full"
 
 [objects.mesh_renderer]
