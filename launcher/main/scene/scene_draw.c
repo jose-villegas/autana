@@ -101,16 +101,23 @@ camera_cut(entity_t camera) {
     }
 }
 
-/* The active renderers with something to draw, as the raster draws them;
+/* The active renderers with something to draw, as the raster draws them:
+ * the instances, returning their count, and the batches, `*batches` of them;
  * scene_resolve() has listed them. */
 static int
-fill_instances(scene_t* scene) {
+fill_instances(scene_t* scene, int* batches) {
     int count = 0;
+    *batches = 0;
     for (int i = 0; i < scene->active_renderer_count; i++) {
         const scene_renderer_t* r = &scene->renderers[scene->active_renderers[i]];
-        if (r->mesh.node_count > 0) {
-            scene->instances[count++] =
-                (r3d_instance_t){&r->mesh, r->placed ? &r->model : NULL, &r->world_bounds, r->lod_coarse};
+        if (r->mesh.node_count == 0) {
+            continue;
+        }
+        const r3d_instance_t instance = {&r->mesh, r->placed ? &r->model : NULL, &r->world_bounds, r->lod_coarse};
+        if (r->batch != NULL) {
+            scene->batch_draws[(*batches)++] = (r3d_batch_draw_t){instance, r->batch, 0};
+        } else {
+            scene->instances[count++] = instance;
         }
     }
     return count;
@@ -119,7 +126,7 @@ fill_instances(scene_t* scene) {
 /* Where each changed renderer was and is, for partial redraw; -1 when the
  * drawn set changed (a renderer left or joined) or more changed than fit.
  * Every drawn renderer's box is kept as where it was drawn. */
-static int
+static __attribute__((noinline)) int
 fill_changed(scene_t* scene) {
     int changes = 0;
     name_hash64_t set = NAME_HASH64_OFFSET_BASIS;
@@ -175,12 +182,14 @@ draw_active(int quarter, int width, int height) {
     scene_t* scene = active.scene;
     const scene_camera_t* camera = active_camera();
     scene_resolve(scene);
-    const int count = fill_instances(scene);
-    if (count == 0) {
+    int batches;
+    const int count = fill_instances(scene, &batches);
+    if (count + batches == 0) {
         return;
     }
     const render_view_t view = active_view(scene, camera, (viewport_t){width, height, quarter});
     render_context_set_changed(render_context_main(), changed, fill_changed(scene));
+    render_context_set_batches(render_context_main(), scene->batch_draws, batches);
     rendered = render_context_draw(render_context_main(), scene->instances, count, &view, camera->clear);
     if (!rendered && !refused) {
         ESP_LOGE("scene", "no memory to draw '%s'; it stays blank", scene->root->id);

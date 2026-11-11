@@ -17,12 +17,13 @@ name: Bakes GPU
 #
 # `runner` picks the self-hosted runner by a label of its own; the default
 # `gpu` is the runner the night queue uses. Any runner makes a fit's locked
-# bytes; each lock row names the GPU that made it. Runs on different runners
-# do not wait for each other; each runner takes its host's heavy lock.
+# bytes; each lock row names the GPU that made it. Runs on different runners do
+# not wait for each other. A fit waits for no board and takes no heavy lock: it
+# runs beside builds and board jobs on its host, on a CPU share
+# (scripts/ci/gpu_stage.sh).
 #
 # Each fit is kept the moment it is made: in the runner's cache, where a later
-# dispatch finds it, and in the upload, which runs whatever fails after, a lost
-# heavy lock too. A rerun's attempt uploads under its own name and first takes
+# dispatch finds it, and in the upload, which runs whatever fails after. A rerun's attempt uploads under its own name and first takes
 # the fits its run's earlier attempts uploaded on the same GPU model, which
 # matters when the rerun lands on another runner than the cache's.
 
