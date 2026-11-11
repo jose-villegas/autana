@@ -1,4 +1,12 @@
-/* Stress stage costs at paused poses, in both quarters and fixed render sizes. */
+/*
+ * The stage costs of each stress preset, on the board only: each preset's
+ * own count of poses evenly along its camera swing, replayed paused as the
+ * frame profile replays its poses, in both quarters (the uniform presets at
+ * fixed render sizes too). Every line carries the cull view's counts and
+ * the r3d stage times in the frame profile's format. Quick on purpose, so
+ * an A/B of a render change can run it before the full frame profile
+ * confirms it. Logged only; nothing is pegged.
+ */
 
 #include "suites.h"
 #ifdef DEVICE_BUILD

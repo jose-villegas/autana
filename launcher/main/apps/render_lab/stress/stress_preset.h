@@ -20,8 +20,8 @@ typedef enum {
     STRESS_SURFACE_WAVE,   /* the bands run up it, pushing it out: the mesh made again every frame */
     STRESS_SURFACE_NOISY,  /* neighbouring vertices at opposite colours: every triangle's corners far apart */
     STRESS_SURFACE_MIXED,
-    STRESS_SURFACE_UNIFORM,
-    STRESS_SURFACE_STATIC,
+    STRESS_SURFACE_UNIFORM,   /* one colour at every corner: zero colour steps, filled uniform */
+    STRESS_SURFACE_STATIC,    /* the pack's own static mesh asset per copy, nothing generated */
     STRESS_SURFACE_TWO_SIDED, /* banded, and drawn from both sides: nothing faces away */
 } stress_surface_t;
 
@@ -37,7 +37,7 @@ typedef struct {
     stress_layout_t layout;
     int coverage_percent; /* how much of the picture's short side the arrangement spans */
     stress_surface_t surface;
-    int perf_poses;
+    int perf_poses; /* poses the stress perf suite replays along the swing */
 } stress_params_t;
 
 /* X(ID, key, surface): each preset, its key the scene key's suffix and its
