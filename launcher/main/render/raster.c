@@ -130,8 +130,6 @@ typedef struct {
     batch_item_t items[RASTER_BATCH_INSTANCES];
     r3d_pipeline_part_t parts[RASTER_BATCH_INSTANCES];
     int count;
-    /* Apart from the items, so a frame that blends nothing never reads them. */
-    r3d_lod_morph_t morphs[RASTER_BATCH_INSTANCES];
 } batch_t;
 
 typedef struct {
@@ -222,6 +220,16 @@ copy_meshes(draw_work_t* work) {
 }
 
 _Static_assert(sizeof(draw_work_t) % _Alignof(r3d_lit_mesh_t) == 0, "copy meshes follow the draw's work");
+
+/* Each item's blend, RASTER_BATCH_INSTANCES of them, after the copy meshes:
+ * out of the draw's work, so its fields sit where a draw that blends nothing
+ * has them, and a frame that blends nothing never reads them. */
+static inline r3d_lod_morph_t*
+batch_morphs(draw_work_t* work) {
+    return (r3d_lod_morph_t*)(copy_meshes(work) + RASTER_BATCH_INSTANCES);
+}
+
+_Static_assert(sizeof(r3d_lit_mesh_t) % _Alignof(r3d_lod_morph_t) == 0, "the blends follow the copy meshes");
 
 _Static_assert(sizeof(slice_t) <= JOB_CTX_MAX, "slice_t must fit JOB_CTX_MAX");
 _Static_assert(sizeof(cull_job_t) <= sizeof(batch_t), "the cull's job takes no scratch beyond the batch's");
@@ -440,7 +448,7 @@ size_t
 raster_scratch_bytes(const raster_t* raster) {
     assert(raster->instance_count + raster->batch_count > 0); /* with nothing to draw it would clear nothing */
     return (size_t)((uintptr_t)raster_carve(raster).draw - (uintptr_t)raster->scratch) + sizeof(draw_work_t)
-           + (sizeof(r3d_lit_mesh_t) * RASTER_BATCH_INSTANCES);
+           + (sizeof(r3d_lit_mesh_t) * RASTER_BATCH_INSTANCES) + (sizeof(r3d_lod_morph_t) * RASTER_BATCH_INSTANCES);
 }
 
 /* The view's lens fitted to the size drawn at, so a render scaled more
@@ -928,10 +936,10 @@ blend_on(const raster_t* raster) {
  * first. Called once a batch, so the draw's frame on the stack chain is the
  * same as with lod.blend off. */
 static __attribute__((noinline, cold)) void
-batch_blend(const picture_lens_t* picture, batch_t* batch) {
+batch_blend(const picture_lens_t* picture, batch_t* batch, r3d_lod_morph_t* morphs) {
     for (int k = 0; k < batch->count; k++) {
         batch_item_t* item = &batch->items[k];
-        r3d_lod_morph_t* morph = &batch->morphs[k];
+        r3d_lod_morph_t* morph = &morphs[k];
         raster_lod_morph(picture->raster, picture->view, item->instance, &item->lens, morph);
         if (morph->enabled) {
             item->morph = morph;
@@ -1039,7 +1047,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
         culled = batch_fill(raster, work, first, end, culled);
         first = end;
         if (work->blends) {
-            batch_blend(&work->picture, &work->batch);
+            batch_blend(&work->picture, &work->batch, batch_morphs(work));
         }
         draw_batch(raster, index, work);
         index++;
