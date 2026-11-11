@@ -14,6 +14,7 @@
 #define PHYSICS_TEST_FRAMES   3
 #define PHYSICS_TEST_SENTINEL 0xFFFFFF
 #define PHYSICS_STAGE_COMMAND "scene " PHYSICS_STAGE_KEY
+#define PHYSICS_FB_PIXELS     (GFX_FRAMEBUFFER_BYTES / sizeof(gfx_color_t))
 
 static lab_test_t saved;
 static bool entered;
@@ -46,6 +47,17 @@ leave(size_t arena, size_t internal, size_t heap) {
     TEST_ASSERT_EQUAL_UINT(heap, memory_free_bytes(MEMORY_APP));
 }
 
+/* Pixels of the framebuffer that are not the UI background. */
+static size_t
+pixels_off_background(void) {
+    const gfx_color_t* fb = gfx_framebuffer();
+    size_t off = 0;
+    for (size_t i = 0; i < PHYSICS_FB_PIXELS; i++) {
+        off += fb[i] != RGB565BE(UI_BACKGROUND);
+    }
+    return off;
+}
+
 static void
 test_stage_draws_background_and_releases_memory(void) {
     fixture();
@@ -55,14 +67,29 @@ test_stage_draws_background_and_releases_memory(void) {
     draw_clear(RGB565BE(PHYSICS_TEST_SENTINEL));
     enter();
     TEST_ASSERT_EQUAL_PTR(&scene_physics_stage, lab_current(&physics_lab));
-    TEST_ASSERT_EQUAL_HEX16(RGB565BE(UI_BACKGROUND), gfx_framebuffer()[0]);
     test_send_stats_reset();
     for (int frame = 0; frame < PHYSICS_TEST_FRAMES; frame++) {
         (void)lab_test_frame(false, NULL);
-        TEST_ASSERT_EQUAL_HEX16(RGB565BE(UI_BACKGROUND), gfx_framebuffer()[0]);
+        TEST_ASSERT_EQUAL_size_t(0, pixels_off_background());
     }
     TEST_ASSERT_GREATER_THAN_INT64(0, test_send_stats().bytes);
     leave(arena, internal, heap);
+}
+
+/* The BOOT menu draws over the stage; closing it leaves the bare stage. */
+static void
+test_closing_the_menu_restores_the_stage(void) {
+    fixture();
+    const input_t boot = {.boot = {.pressed = true}};
+    enter();
+    (void)lab_test_frame(false, NULL);
+    (void)lab_test_frame(false, &boot);
+    TEST_ASSERT_TRUE(lab_menu_open(&physics_lab));
+    TEST_ASSERT_GREATER_THAN_size_t(0, pixels_off_background());
+    (void)lab_test_frame(false, &boot);
+    TEST_ASSERT_FALSE(lab_menu_open(&physics_lab));
+    TEST_ASSERT_EQUAL_size_t(0, pixels_off_background());
+    release_fixture();
 }
 
 static void
@@ -88,6 +115,7 @@ void
 run_physics_lab_suite(void) {
 #ifdef DEVICE_BUILD
     RUN_TEST(test_stage_draws_background_and_releases_memory);
+    RUN_TEST(test_closing_the_menu_restores_the_stage);
     RUN_TEST(test_console_lists_stage_and_switches_without_leaking);
 #endif
 }

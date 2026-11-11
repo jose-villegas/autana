@@ -7,12 +7,14 @@
 static void
 stage_enter(const lab_scene_t* self) {
     (void)self;
-    draw_clear(RGB565BE(UI_BACKGROUND));
 }
 
+/* Nothing composes under an empty stage, so each frame repaints it: the
+ * BOOT menu and the HUD leave nothing behind. */
 static void
 stage_frame(uint32_t dt_ms) {
     (void)dt_ms;
+    draw_clear(RGB565BE(UI_BACKGROUND));
 }
 
 static void
