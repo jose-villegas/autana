@@ -6,6 +6,7 @@
 #include <stdlib.h>
 
 #include "esp_log.h"
+#include "hash/name_hash64.h"
 
 #include "render/context/render_context.h"
 #include "scene/camera/camera.h"
@@ -19,11 +20,17 @@ typedef struct {
 } active_t;
 
 static active_t active;
+/* The renderers the last frame drew, hashed (0 before one), and this
+ * frame's changed boxes (render/partial). */
+static name_hash64_t drawn_set;
+static box3f_t changed[RENDER_PARTIAL_CHANGES_MAX];
 static bool paused;
 static bool expanded;
 static bool stepped;  /* scene_render() ran, and scene_compose() has not yet */
 static bool rendered; /* it drew, and scene_compose() has not upscaled it */
 static bool refused;  /* the context had no scratch for the active camera, logged once */
+/* The active camera's view: here, not on the draw's stack. */
+static render_view_t drawn_view;
 
 bool
 scene_has_active_camera(void) {
@@ -40,6 +47,7 @@ scene_set_paused(bool pause) {
 void
 scene_draw_activate(scene_t* scene, int camera) {
     active = (active_t){scene, camera};
+    drawn_set = 0;
     render_context_forget(render_context_main());
     refused = false;
     rendered = false;
@@ -95,27 +103,62 @@ camera_cut(entity_t camera) {
     }
 }
 
-/* The active renderers with something to draw, as the raster draws them;
+/* The active renderers with something to draw, as the raster draws them:
+ * the instances, returning their count, and the batches, `*batches` of them;
  * scene_resolve() has listed them. */
 static int
-fill_instances(scene_t* scene) {
+fill_instances(scene_t* scene, int* batches) {
     int count = 0;
+    *batches = 0;
     for (int i = 0; i < scene->active_renderer_count; i++) {
         const scene_renderer_t* r = &scene->renderers[scene->active_renderers[i]];
-        if (r->mesh.node_count > 0) {
-            scene->instances[count++] =
-                (r3d_instance_t){&r->mesh, r->placed ? &r->model : NULL, &r->world_bounds, r->lod_coarse};
+        if (r->mesh.node_count == 0) {
+            continue;
+        }
+        const r3d_instance_t instance = {&r->mesh, r->placed ? &r->model : NULL, &r->world_bounds, r->lod_coarse};
+        if (r->batch != NULL) {
+            scene->batch_draws[(*batches)++] = (r3d_batch_draw_t){instance, r->batch, 0};
+        } else {
+            scene->instances[count++] = instance;
         }
     }
     return count;
 }
 
-/* The active camera's view from its entity's world. Its own frame, gone
- * before the draw: the pose and the world walk stay off the draw's stack. */
-static __attribute__((noinline)) render_view_t
+/* Where each changed renderer was and is, for partial redraw; -1 when the
+ * drawn set changed (a renderer left or joined) or more changed than fit.
+ * Every drawn renderer's box is kept as where it was drawn. */
+static __attribute__((noinline)) int
+fill_changed(scene_t* scene) {
+    int changes = 0;
+    name_hash64_t set = NAME_HASH64_OFFSET_BASIS;
+    for (int i = 0; i < scene->active_renderer_count; i++) {
+        scene_renderer_t* r = &scene->renderers[scene->active_renderers[i]];
+        if (r->mesh.node_count == 0) {
+            continue;
+        }
+        set = name_hash64_n(set, &scene->active_renderers[i], sizeof scene->active_renderers[i]);
+        if (r->changed && changes >= 0) {
+            changes = changes < RENDER_PARTIAL_CHANGES_MAX ? changes : -1;
+            if (changes >= 0) {
+                changed[changes++] = box3f_union(r->drawn_bounds, r->world_bounds);
+            }
+        }
+        r->changed = false;
+        r->drawn_bounds = r->world_bounds;
+    }
+    const bool same = set == drawn_set;
+    drawn_set = set;
+    return same ? changes : -1;
+}
+
+/* The active camera's view from its entity's world, into `drawn_view`. Its own
+ * frame, gone before the draw: the pose and the world walk stay off the
+ * draw's stack. */
+static __attribute__((noinline)) void
 active_view(const scene_t* scene, const scene_camera_t* camera, viewport_t viewport) {
     const transformf_t pose = scene_row_world(scene->root, camera->entity);
-    return lens_view(&camera->lens, &pose, viewport);
+    drawn_view = lens_view(&camera->lens, &pose, viewport);
 }
 
 box3f_t
@@ -142,12 +185,15 @@ draw_active(int quarter, int width, int height) {
     scene_t* scene = active.scene;
     const scene_camera_t* camera = active_camera();
     scene_resolve(scene);
-    const int count = fill_instances(scene);
-    if (count == 0) {
+    int batches;
+    const int count = fill_instances(scene, &batches);
+    if (count + batches == 0) {
         return;
     }
-    const render_view_t view = active_view(scene, camera, (viewport_t){width, height, quarter});
-    rendered = render_context_draw(render_context_main(), scene->instances, count, &view, camera->clear);
+    active_view(scene, camera, (viewport_t){width, height, quarter});
+    render_context_set_changed(render_context_main(), changed, fill_changed(scene));
+    render_context_set_batches(render_context_main(), scene->batch_draws, batches);
+    rendered = render_context_draw(render_context_main(), scene->instances, count, &drawn_view, camera->clear);
     if (!rendered && !refused) {
         ESP_LOGE("scene", "no memory to draw '%s'; it stays blank", scene->root->id);
         refused = true;
@@ -182,7 +228,7 @@ scene_compose(uint32_t dt_ms, int quarter, const scene_target_t* target) {
     if (!stepped) {
         scene_render(dt_ms, quarter, target->width, target->height);
     }
-    if (rendered && target->pixels != NULL) {
+    if (rendered) {
         expanded =
             render_context_compose(render_context_main(), target->pixels, target->half_pixels, target->half_seams);
     }

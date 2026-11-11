@@ -1,4 +1,4 @@
-"""LLOD v1 mesh levels; layout constants belong to render/llod_format.h."""
+"""LLOD v2 mesh levels; layout constants belong to render/llod_format.h."""
 import pathlib
 from build.c_header import read_define
 from r3d.lcol_asset import sibling_name
@@ -40,6 +40,18 @@ def decode(entry):
         if inner[4] > outer[4] or room < 0 or distance > room * room:
             raise ValueError("LLOD group does not hold one simplified into it")
     return pairs, rows
+
+
+def group_saves(cluster_lod, triangle_counts, group_count):
+    """Per group, the triangles drawn fewer when it turns coarse: those of
+    the clusters it holds (parent) less those simplified from it (own)."""
+    saves = [0] * group_count
+    for (own, parent), triangles in zip(cluster_lod, triangle_counts):
+        if parent != LOD_NONE:
+            saves[parent] += int(triangles)
+        if own != LOD_NONE:
+            saves[own] -= int(triangles)
+    return saves
 
 
 def encode(cluster_lod, groups):

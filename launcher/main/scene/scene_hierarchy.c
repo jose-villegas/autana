@@ -75,11 +75,28 @@ world_from_parent(const scene_t* scene, scene_row_t entity) {
     return mat4f_mul_affine(scene->worlds[scene->world_slots[parent]], local);
 }
 
+/* The box of every chunk's sphere of batch `batch`, where `model` puts it.
+ * Not inlined: a renderer with no batch keeps its frame. */
+static __attribute__((noinline)) box3f_t
+batch_world_bounds(const r3d_batch_t* batch, const mat4f_t* model) {
+    box3f_t local = box3f_empty();
+    for (int c = 0; c < batch->chunk_count; c++) {
+        const spheref_t s = r3d_batch_chunk_sphere(batch, c);
+        const vec3f_t reach = {s.radius, s.radius, s.radius};
+        local = box3f_union(local, (box3f_t){vec3f_sub(s.centre, reach), vec3f_add(s.centre, reach)});
+    }
+    return r3d_box_placed(local, model);
+}
+
 void
 scene_renderer_bound(scene_renderer_t* r) {
-    if (r->mesh.node_count > 0) {
-        r->world_bounds = r3d_lit_mesh_world_bounds(&r->mesh, r->placed ? &r->model : NULL);
+    r->changed = true;
+    if (r->mesh.node_count == 0) {
+        return;
     }
+    const mat4f_t* model = r->placed ? &r->model : NULL;
+    r->world_bounds =
+        r->batch == NULL ? r3d_lit_mesh_world_bounds(&r->mesh, model) : batch_world_bounds(r->batch, model);
 }
 
 static void

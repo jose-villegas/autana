@@ -4,8 +4,6 @@ import dataclasses
 import pathlib
 from types import SimpleNamespace
 
-# Each set records its tracing backend independently of its pixel key.
-TRACED_ON = "traced_on.txt"
 POSE_SPACING = ("train_every_ms", "held_out_every_ms", "coverage_every_ms")
 # The path's sets and the probes' (poses file, references folder): what a fit trains on and is held out against.
 PATH_TRAINING = (("train.txt", "reference"), ("train_landscape.txt", "reference_landscape"))
@@ -89,9 +87,8 @@ def reference_inputs(job, scene):
 def prepare_references(inputs, work):
     """The reference set of `inputs` into `work`: the training, held-out and pruning poses sampled from the
     camera path, the probes' training and held-out faces when the import sets probes (a camera without a path
-    has only those), the references of every training and held-out set with their normals, and in `TRACED_ON`
-    the Mitsuba variant they were traced on, for the record: the reference key names the light model, not the
-    device. Returns the training views."""
+    has only those) and the references of every training and held-out set with their normals.
+    Returns the training views."""
     from r3d.mesh_source import camera_path_poses
     from r3d.reference_render import render_sets
 
@@ -115,8 +112,7 @@ def prepare_references(inputs, work):
     if inputs.probes is not None:
         count += probe_poses(inputs, work, path)
         sets += [PROBE_TRAINING, PROBE_HELD_OUT]
-    variant = render_sets(inputs, [(work / poses, work / reference) for poses, reference in sets])
-    (work / TRACED_ON).write_text(variant + "\n")
+    render_sets(inputs, [(work / poses, work / reference) for poses, reference in sets])
     return count
 
 

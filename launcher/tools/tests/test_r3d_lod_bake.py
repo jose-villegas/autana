@@ -137,8 +137,8 @@ class BakedLevelsTest(unittest.TestCase):
         groups_at = lod_asset.HEADER.size + clusters * mesh_asset.CLUSTER_LOD.size
         for index in range(groups):
             at = groups_at + index * mesh_asset.LOD_GROUP.size
-            *centre, radius, error = mesh_asset.LOD_GROUP.unpack_from(blob, at)
-            self.assertEqual((*engine_frame._mirror_position(centre), radius, error),
+            *centre, radius, error, saves = mesh_asset.LOD_GROUP.unpack_from(blob, at)
+            self.assertEqual((*engine_frame._mirror_position(centre), radius, error, saves),
                              mesh_asset.LOD_GROUP.unpack_from(mirrored, at))
 
 
