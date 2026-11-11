@@ -90,9 +90,10 @@ struct r3d_pipeline_work {
             r3d_span_vertex_t projected[CLIP_VERTEX_MAX];
             planef_t planes[PLANE_FRUSTUM_COUNT];
             /* A draw with writers: the target it fills, retagged per cluster
-             * or triangle. Here, not on the draw's stack. */
-            r3d_span_target_t writing;
+             * or triangle. Here, not on the draw's stack; the target last, as
+             * its rows end in a flexible array. */
             r3d_span_writer_t writers[GFX_ATTACHMENTS_FURTHER_MAX];
+            r3d_span_target_t writing;
         } clip;
     };
 };
