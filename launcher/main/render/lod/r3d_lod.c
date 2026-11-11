@@ -251,13 +251,6 @@ r3d_lod_morph_weight(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, i
     return blending_weight(morph, mesh, mesh->cluster_lod[c].parent);
 }
 
-/* The levels a weight covers: those whose threshold, at the middle of its
- * step, is under it. */
-static int
-dither_level(int weight) {
-    return ((2 * weight * R3D_LOD_DITHER_LEVELS) + R3D_LOD_MORPH_ONE - 1) / (2 * R3D_LOD_MORPH_ONE);
-}
-
 int
 r3d_lod_morph_partition(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, uint16_t* clusters, int count) {
     int plain = 0;
@@ -279,9 +272,9 @@ r3d_lod_dither_band(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, in
     const r3d_lit_cluster_lod_t lod = mesh->cluster_lod[c];
     /* A cluster simplified from a group still fine is drawn only while that group blends. */
     const bool fading_in = lod.own != R3D_LOD_NONE && r3d_lod_coarse(morph->blending, lod.own);
-    const int lo = dither_level(blending_weight(morph, mesh, lod.parent));
-    const int hi =
-        fading_in ? dither_level(r3d_lod_morph_group_weight(morph, mesh, lod.own, NULL)) : R3D_LOD_DITHER_LEVELS;
+    const int lo = bayer_level(blending_weight(morph, mesh, lod.parent), R3D_LOD_MORPH_ONE);
+    const int hi = fading_in ? bayer_level(r3d_lod_morph_group_weight(morph, mesh, lod.own, NULL), R3D_LOD_MORPH_ONE)
+                             : R3D_LOD_DITHER_LEVELS;
     if (lo >= hi) {
         return (uint8_t)((R3D_LOD_DITHER_LEVELS - 1) | ((R3D_LOD_DITHER_LEVELS - 1) << R3D_LOD_DITHER_SHIFT));
     }
