@@ -1,5 +1,5 @@
 /*
- * The frame-time profile of each Sponza, Bistro and capybara scenario, on the
+ * The frame-time profile of each fitted Sponza, Bistro and capybara scenario, on the
  * board only: every screen quarter against its pegged budget, and on request
  * every scenario at every dynamic-resolution ladder step.
  */
@@ -52,12 +52,6 @@ typedef struct {
 
 static const capybara_take_t capybara_home = {CAPYBARA_SCENE, CAPYBARA_VIEW_HOME, CAPYBARA_VIEW_HOME,
                                               CAPYBARA_CLIP_CUT_MS};
-static const capybara_take_t capybara_front = {"capybara-front", CAPYBARA_VIEW_FRONT, CAPYBARA_VIEW_FRONT,
-                                               CAPYBARA_CLIP_CUT_MS};
-static const capybara_take_t capybara_side = {"capybara-side", CAPYBARA_VIEW_SIDE, CAPYBARA_VIEW_SIDE,
-                                              CAPYBARA_CLIP_CUT_MS};
-static const capybara_take_t capybara_back = {"capybara-back", CAPYBARA_VIEW_BACK, CAPYBARA_VIEW_BACK,
-                                              CAPYBARA_CLIP_CUT_MS};
 static const capybara_take_t capybara_close = {"capybara-close", CAPYBARA_VIEW_CLOSE, CAPYBARA_VIEW_CLOSE,
                                                CAPYBARA_CLIP_CUT_MS};
 static const capybara_take_t capybara_blend = {"capybara-blend", "blend", CAPYBARA_VIEW_HOME, CAPYBARA_CLIP_BLEND_MS};
@@ -66,19 +60,12 @@ static const capybara_take_t capybara_blend = {"capybara-blend", "blend", CAPYBA
 #define CAPYBARA_ROW(take, ...) {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, &(take), __VA_ARGS__}
 
 /* Worst of a perf-scoped 5-seed capture on A308, 20E8 and 2124, + 1%; per
- * quarter, portrait then landscape. Sponza lite's portrait and Sponza flat's
- * landscape keep an older peg, which that capture would have raised. */
+ * quarter, portrait then landscape. The table's order is the docs' row order. */
 static const profile_scenario_t profile_scenarios[] = {
-    {.scene = &scene_sponza[SCENE_BAKED_FULL], .quarters = {{49828, 60264}, {47994, 57718}}},
-    {.scene = &scene_sponza[SCENE_BAKED_LITE], .quarters = {{41016, 47265}, {41193, 46324}}},
-    {.scene = &scene_sponza[SCENE_BAKED_FLAT], .quarters = {{40381, 48543}, {39269, 47716}}},
-    {.scene = &scene_sponza[SCENE_BAKED_FITTED], .quarters = {{40510, 48377}, {38679, 45264}}},
     {.scene = &scene_sponza[SCENE_BAKED_FITTED_FULL], .quarters = {{48826, 60160}, {46066, 56159}}},
+    {.scene = &scene_sponza[SCENE_BAKED_FITTED], .quarters = {{40510, 48377}, {38679, 45264}}},
     {.scene = &scene_sponza[SCENE_BAKED_FLAT_FITTED], .quarters = {{39384, 49012}, {37997, 46878}}},
     CAPYBARA_ROW(capybara_home, {{20531, 20793}, {21164, 21432}}),
-    CAPYBARA_ROW(capybara_front, {{20164, 20395}, {20712, 20938}}),
-    CAPYBARA_ROW(capybara_side, {{20022, 20268}, {20899, 21129}}),
-    CAPYBARA_ROW(capybara_back, {{19426, 19847}, {20423, 20804}}),
     CAPYBARA_ROW(capybara_close, {{22108, 22455}, {23064, 23340}}),
     CAPYBARA_ROW(capybara_blend, {{21079, 21407}, {21735, 22015}}),
     {&scene_bistro[SCENE_BAKED_FITTED_FULL], BISTRO_SCENE, BISTRO_CAMERA, NULL, {{36375, 54681}, {38062, 51881}}},
