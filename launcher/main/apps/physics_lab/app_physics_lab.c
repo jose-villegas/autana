@@ -30,10 +30,7 @@ APP_CONSOLE(PHYSICS_LAB_WORD, physics_lab_console);
 app_t app_physics_lab = {
     .name = "Physics Lab",
     .summary = "Physics components",
-    .enter = physics_lab_enter,
-    .frame = physics_lab_frame,
-    .update = physics_lab_update,
-    .exit = physics_lab_exit,
+    LAB_APP_CALLBACKS(physics_lab),
     .home_gesture = true,
     .console = APP_CONSOLE_PTR(physics_lab_console),
 };

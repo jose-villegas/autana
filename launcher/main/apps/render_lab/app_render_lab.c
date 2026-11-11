@@ -93,10 +93,7 @@ render_lab_diagnostic_json(char* out, size_t len) {
 app_t app_render_lab = {
     .name = "Render Lab",
     .summary = "Baked mesh flythroughs",
-    .enter = render_lab_enter,
-    .frame = render_lab_frame,
-    .update = render_lab_update,
-    .exit = render_lab_exit,
+    LAB_APP_CALLBACKS(render_lab),
     .home_gesture = true,
 #if CONFIG_LAUNCHER_DEVELOPMENT
     .diagnostic_json = render_lab_diagnostic_json,

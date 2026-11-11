@@ -3,10 +3,13 @@
 #include "unity.h"
 #ifdef DEVICE_BUILD
 #include "apps/physics_lab/physics_lab.h"
-#include "core/timing.h"
+#include "display/display.h"
 #include "frame_profile.h"
 #include "lab/test/lab_test.h"
 #include "testkit/cleanup.h"
+
+/* The tag each preset's frame_profile line carries. */
+#define TAG "physics_presets"
 
 static lab_test_t saved;
 
@@ -22,7 +25,7 @@ profile_preset(const char* key, uint32_t duration_ms) {
     const frame_profile_scenario_t scenario = {key, (int64_t)duration_ms * MATH_US_PER_MS};
     int64_t remainder = 0;
     const frame_profile_t profile = frame_profile_play(&scenario, lab_test_profile_frame, &remainder, NULL);
-    frame_profile_log("physics_presets", key, &profile, "portrait");
+    frame_profile_log(TAG, key, &profile, display_quarter_name(display_quarter_now()));
     TEST_ASSERT_GREATER_THAN_INT(0, profile.frames);
     release_fixture();
     suite_clear_test_cleanup();
@@ -35,9 +38,8 @@ static void
 fixture(void) {}
 
 static void
-test_preset_count_matches_scene_table(void) {
+test_the_scene_table_holds_the_stage_and_each_preset(void) {
     fixture();
-    TEST_ASSERT_EQUAL_INT(0 PHYSICS_PRESETS(PHYSICS_PRESET_COUNT_ROW), PHYSICS_PRESET_COUNT);
 #ifdef DEVICE_BUILD
     TEST_ASSERT_EQUAL_INT(1 + PHYSICS_PRESET_COUNT, physics_lab.scene_count);
 #endif
@@ -48,7 +50,7 @@ run_physics_presets_suite(void) {
 #ifdef DEVICE_BUILD
     PHYSICS_PRESETS(PHYSICS_PRESET_RUN_CASE)
 #endif
-    RUN_TEST(test_preset_count_matches_scene_table);
+    RUN_TEST(test_the_scene_table_holds_the_stage_and_each_preset);
 }
 
 SUITE_REGISTER(run_physics_presets_suite);

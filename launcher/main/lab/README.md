@@ -11,8 +11,7 @@ tunables, its console word and its scenes:
 LAB_VIEW(my_view, "my_lab");
 lab_t my_lab = {.view = &my_view, .console_word = "my", .scenes = scenes, .scene_count = 2};
 LAB_REGISTER(my_lab);
-app_t my_app = {.enter = my_lab_enter, .frame = my_lab_frame,
-                .update = my_lab_update, .exit = my_lab_exit};
+app_t my_app = {.name = "My Lab", LAB_APP_CALLBACKS(my_lab)};
 ```
 
 | File | Owns |

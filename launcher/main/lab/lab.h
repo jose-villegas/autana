@@ -5,14 +5,14 @@
  * its entry on, and draws the scene title, fps and status over it.
  *
  * The app owns one lab_t, hands it its scenes and any hooks, registers it
- * once (LAB_REGISTER()), which provides its app_t callbacks. Every hook is optional, so the
- * least a lab needs is its view tunables, its console word and its scenes:
+ * once (LAB_REGISTER()), which defines its app_t callbacks (LAB_APP_CALLBACKS()).
+ * Every hook is optional, so the least a lab needs is its view tunables, its
+ * console word and its scenes:
  *
  *     LAB_VIEW(my_view, "my_lab");
  *     lab_t my_lab = {.view = &my_view, .console_word = "my", .scenes = scenes, .scene_count = 2};
  *     LAB_REGISTER(my_lab);
- *     app_t my_app = {.enter = my_lab_enter, .frame = my_lab_frame,
- *                     .update = my_lab_update, .exit = my_lab_exit};
+ *     app_t my_app = {.name = "My Lab", LAB_APP_CALLBACKS(my_lab)};
  */
 #pragma once
 
@@ -97,6 +97,10 @@ void lab_register(lab_t* lab);
     static void symbol##_frame(uint32_t dt_ms, const input_t* input) { lab_frame(&symbol, dt_ms, input); }             \
     static void symbol##_update(uint32_t dt_ms, const input_t* input) { lab_update(&symbol, dt_ms, input); }           \
     static void symbol##_exit(void) { lab_exit(&symbol); }
+
+/* The app_t fields LAB_REGISTER(symbol) defines, for the lab's app_t initializer. */
+#define LAB_APP_CALLBACKS(symbol)                                                                                      \
+    .enter = symbol##_enter, .frame = symbol##_frame, .update = symbol##_update, .exit = symbol##_exit
 
 void lab_enter(lab_t* lab);
 void lab_update(lab_t* lab, uint32_t dt_ms, const input_t* input);
