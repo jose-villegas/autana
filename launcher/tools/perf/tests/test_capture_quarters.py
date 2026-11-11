@@ -52,6 +52,6 @@ class CaptureQuarters(unittest.TestCase):
             for log in re.findall(r'ESP_LOGI\(.*?\);', text, re.S):
                 with self.subTest(suite=suite, log=log):
                     if not any(stage in log for stage in non_render):
-                        self.assertIn('R3D_PERF_QUARTER_FORMAT', log)
+                        self.assertIn('LAB_PERF_QUARTER_FORMAT', log)
             for stage in re.findall(r'report_stage\(f, (\w+),', text):
                 self.assertIn(stage, stages)
