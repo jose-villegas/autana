@@ -29,6 +29,10 @@ void lab_test_exit(const lab_test_t* saved);
  * the app's frame, presented. Returns the render's microseconds. */
 int64_t lab_test_frame_dt(uint32_t dt_ms, bool switching, const input_t* input);
 
+/* A frame_profile_frame_fn: advances by wall microseconds; ctx points to
+ * the carried sub-millisecond remainder, initially zero. */
+int64_t lab_test_profile_frame(void* ctx, int64_t dt_us);
+
 /* Inline, so it adds no stack frame to the deepest test chains. */
 static inline int64_t
 lab_test_frame(bool switching, const input_t* input) {
