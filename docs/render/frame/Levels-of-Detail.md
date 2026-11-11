@@ -129,7 +129,7 @@ python launcher/tools/r3d/lod/lod_replay.py SCENE.scene.toml --object NAME --out
 ## The blend
 
 A fine group blends toward its parent's coarse surface as the parent nears its
-switch, so the switch itself moves nothing<sup>[[116]](../../Citations.md#hoppe-1996)</sup><sup>[[117]](../../Citations.md#strugar-2009)</sup>.
+switch, so the switch itself moves nothing<sup>[[117]](../../Citations.md#hoppe-1996)</sup><sup>[[118]](../../Citations.md#strugar-2009)</sup>.
 
 | Blend | When | Draws during a blend | Flash |
 |---|---|---|---|
