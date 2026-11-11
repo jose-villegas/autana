@@ -161,6 +161,11 @@ small flat triangles still enter their size and colour-mode bins.
 | Field | Meaning |
 |---|---|
 | `pixels_face`, `pixels_uniform`, `pixels_shaded` | covered centres of set-up triangles in each mode, clipped to the screen, before depth tests; overlapping triangles each contribute |
+| `render_width`, `render_height`, `render_pixels` | render picture dimensions and area |
+| `output_width`, `output_height`, `output_pixels` | last compose destination dimensions and area, including half-picture composition |
+| `quarter` | camera quarter in panel coordinates |
+| `upscale_kept_pixels`, `upscale_doubled_pixels`, `upscale_mapped_pixels`, `upscale_blocks_pixels` | output area attributed to the selected upscale path |
+| `upscale_surface_pixels` | kept-width output area using surface filtering rather than scanlines |
 | `vertices_transformed` | sum of kept clusters' vertex ranges, including vertices their triangles do not use |
 | `clusters_off_frustum` | tested, drawn-level clusters rejected by their own frustum test |
 | `nodes_cut` | rejected subtrees, including leaf nodes; not a count of their descendants |

@@ -93,6 +93,7 @@ static void
 test_every_preset_has_its_row(void) {
     for (int i = 0; i < STRESS_PRESET_COUNT; i++) {
         TEST_ASSERT_GREATER_THAN_INT(0, stress_presets[i].cuts);
+        TEST_ASSERT_GREATER_THAN_INT(0, stress_presets[i].perf_poses);
         TEST_ASSERT_GREATER_THAN_INT(0, stress_presets[i].copies);
         TEST_ASSERT_GREATER_THAN_INT(0, stress_presets[i].coverage_percent);
     }
@@ -357,8 +358,29 @@ test_mixed_copies_split_colour_modes(void) {
     }
 }
 
+static void
+test_uniform_presets_have_equal_corner_colours_and_large_coverage(void) {
+    const stress_preset_t presets[] = {STRESS_UNIFORM_MID, STRESS_UNIFORM_FULL};
+    for (int i = 0; i < (int)(sizeof presets / sizeof presets[0]); i++) {
+        const stress_params_t* p = &stress_presets[presets[i]];
+        fixture_begin(p, 1);
+        r3d_dynamic_source_t source;
+        TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &source));
+        for (int t = 0; t < source.triangle_count; t++) {
+            TEST_ASSERT_EQUAL_INT(0, corner_spread(&source, t));
+        }
+        TEST_ASSERT_EQUAL_INT(1, p->copies);
+        TEST_ASSERT_EQUAL_INT(STRESS_LAYOUT_STACK, p->layout);
+        TEST_ASSERT_GREATER_THAN_FLOAT((float)SMALL_FILL_CEILING_MAX, stress_cut_px(p, DEFAULT_SHORT_PX));
+        release();
+    }
+    TEST_ASSERT_GREATER_THAN_INT(stress_presets[STRESS_UNIFORM_MID].coverage_percent,
+                                 stress_presets[STRESS_UNIFORM_FULL].coverage_percent);
+}
+
 void
 run_stress_preset_suite(void) {
+    RUN_TEST(test_uniform_presets_have_equal_corner_colours_and_large_coverage);
     RUN_TEST(test_mixed_copies_split_colour_modes);
     RUN_TEST(test_every_preset_has_its_row);
     RUN_TEST(test_every_preset_mesh_is_whole_and_repeats);

@@ -1,8 +1,4 @@
-/*
- * stress_preset: deterministic stress meshes and copy layouts, sized to
- * expose renderer costs. Mixed copies cycle through tessellations and
- * colour modes; per-frame surfaces rebuild with time.
- */
+/* stress_preset: deterministic copy layouts and generated surfaces for renderer workloads. */
 #pragma once
 
 #include <stdbool.h>
@@ -24,6 +20,8 @@ typedef enum {
     STRESS_SURFACE_WAVE,   /* the bands run up it, pushing it out: the mesh made again every frame */
     STRESS_SURFACE_NOISY,  /* neighbouring vertices at opposite colours: every triangle's corners far apart */
     STRESS_SURFACE_MIXED,
+    STRESS_SURFACE_UNIFORM,
+    STRESS_SURFACE_STATIC,
     STRESS_SURFACE_TWO_SIDED, /* banded, and drawn from both sides: nothing faces away */
 } stress_surface_t;
 
@@ -39,6 +37,7 @@ typedef struct {
     stress_layout_t layout;
     int coverage_percent; /* how much of the picture's short side the arrangement spans */
     stress_surface_t surface;
+    int perf_poses;
 } stress_params_t;
 
 /* X(ID, key, surface): each preset, its key the scene key's suffix and its
@@ -53,7 +52,10 @@ typedef struct {
     X(PER_FRAME, "per-frame", WAVE)                                                                                    \
     X(TWO_SIDED, "two-sided", TWO_SIDED)                                                                               \
     X(NOISY_TINY, "noisy-tiny", NOISY)                                                                                 \
-    X(MIX, "mix", MIXED)
+    X(MIX, "mix", MIXED)                                                                                               \
+    X(STATIC_COPIES, "static-copies", STATIC)                                                                          \
+    X(UNIFORM_MID, "uniform-mid", UNIFORM)                                                                             \
+    X(UNIFORM_FULL, "uniform-full", UNIFORM)
 
 #define STRESS_PRESET_ID(id_, ...) STRESS_##id_,
 

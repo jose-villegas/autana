@@ -1219,8 +1219,28 @@ test_overlay_draws_the_frustum_from_the_observer(void) {
 }
 #endif
 
+static void
+test_compose_counts_can_describe_the_shaded_half_picture(void) {
+    const raster_t raster = {
+        .width = W / 2,
+        .height = H / 2,
+        .upscale = {.destination_width = W, .destination_height = H, .filter = UPSCALE_FILTER_SURFACE}};
+    raster_cull_frame_t frame = {0};
+    raster_cull_frame_compose(&frame, &raster, (resolution_step_t){W / 2, H / 2});
+    TEST_ASSERT_EQUAL_INT(W * H / 4, frame.render_pixels);
+    TEST_ASSERT_EQUAL_INT(W * H / 4, frame.output_pixels);
+    TEST_ASSERT_EQUAL_INT(frame.output_pixels, frame.upscale_kept_pixels);
+    TEST_ASSERT_EQUAL_INT(frame.output_pixels, frame.upscale_surface_pixels);
+    TEST_ASSERT_EQUAL_INT(0, frame.upscale_doubled_pixels);
+    raster_cull_frame_compose(&frame, &raster, (resolution_step_t){W, H});
+    TEST_ASSERT_EQUAL_INT(W * H, frame.output_pixels);
+    TEST_ASSERT_EQUAL_INT(frame.output_pixels, frame.upscale_doubled_pixels);
+    TEST_ASSERT_EQUAL_INT(0, frame.upscale_surface_pixels);
+}
+
 void
 run_raster_cull_view_suite(void) {
+    RUN_TEST(test_compose_counts_can_describe_the_shaded_half_picture);
     RUN_TEST(test_counted_cull_returns_the_list_cull_returns);
     RUN_TEST(test_counted_cull_counts_agree_with_the_list);
     RUN_TEST(test_counted_cull_cuts_a_mesh_wholly_outside_the_frustum);

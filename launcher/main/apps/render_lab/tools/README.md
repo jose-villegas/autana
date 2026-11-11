@@ -138,12 +138,11 @@ Source: `water-stages-board.log`
 
 ### Stress
 
-The Stress family is one generated shape, shown in copies before a camera
-that swings round them. Each preset is the case where a render option should
-lose, beside one where it should win. Hierarchical Z-buffer visibility was
-tested on one module replicated on a grid<sup>[[112]](../../../../../docs/Citations.md#greene-1993)</sup>;
-here the copies are generated at run time, and what is judged is r3d's render
-options, each by where it stops paying.
+The Stress family repeats a generated primitive or static pack mesh before a
+swinging camera. Each preset exposes where a render option wins or loses.
+
+Repeated geometry exercises hierarchical visibility<sup>[[112]](../../../../../docs/Citations.md#greene-1993)</sup>;
+the presets vary the copies' geometry, layout and colour modes.
 
 | Scene key | As the swing starts | Made of | Loss case of |
 |---|---|---|---|
@@ -155,6 +154,9 @@ options, each by where it stops paying.
 | `stress-two-sided` | ![Stress two-sided: a wall of cubes drawn from both sides](../../../../../docs/images/overview/render-lab-stress-two-sided.png) | a wall of closed cubes drawn from both sides | backface cull: half of each cube faces away and none of it is skipped |
 | `stress-noisy-tiny` | ![Stress noisy tiny: cylinders end on, their fans of slivers](../../../../../docs/images/overview/render-lab-stress-noisy-tiny.png) | many small cylinders end on, each end a fan of slivers whose corners are far apart in colour | the small-fill gate: every sliver is tested and none passes |
 | `stress-mix` | ![Stress mix: planes with several tessellations and colour modes](../../../../../docs/images/overview/render-lab-stress-mix.png) | copies cycling through tessellations; a named share of triangles has equal corner colours | a single triangle size or colour mode standing for a scene's draw cost |
+| `stress-static-copies` | ![Static triangle copies](../../../../../docs/images/overview/render-lab-stress-static-copies.png) | the stress pack's LMSH triangle, retained in each renderer | static asset residency and small transform batches |
+| `stress-uniform-mid` | ![Uniform plane with intermediate coverage](../../../../../docs/images/overview/render-lab-stress-uniform-mid.png) | equal-colour large triangles | intermediate uniform fill without shaded pixels |
+| `stress-uniform-full` | ![Uniform plane covering the view](../../../../../docs/images/overview/render-lab-stress-uniform-full.png) | equal-colour large triangles spanning the view | uniform fill beyond the water workload at full-width render sizes |
 
 | Part | Owner |
 |---|---|
@@ -169,9 +171,21 @@ options, each by where it stops paying.
 | Each preset's stage times on the board | [`tests/suite_stress_perf.c`](../tests/suite_stress_perf.c) |
 | Stage cost model and held-out scoring | [`tools/stress_predict.py`](stress_predict.py) |
 
-The `run_stress_perf_suite` suite replays poses along each preset's swing,
-one quarter. Every line carries cull counts and r3d stage times.
-`STRESS_PERF_POSES` in the suite owns its sampling density.
+The `run_stress_perf_suite` suite replays both `r3d_perf_quarters` along each
+preset's swing. `stress_presets[].perf_poses` owns sampling density.
+Uniform presets also replay the full and half-height render_lab ladder steps.
+
+Their default-size replay uses the double framebuffer layout, exercising
+full-output doubled copying. Ladder replays use the full framebuffer layout
+and surface filtering, exercising kept-width composition.
+
+Each pose draws one counted frame, one warm frame and `FRAME_PROFILE_REPLAY_DRAWS`
+measured frames. The pose counts and size loops in the suite own its frame
+budget; its warm runtime target is under a minute.
+
+Static copies retain the pack's mesh and its scene-owned PSRAM arrays.
+Dynamic copies also use PSRAM and the same packed-int16 transform loop;
+`vertices_transformed` therefore serves both without a storage-kind split.
 
 `stress_predict.py` fits `stage_ms = c + Σ β_k x_k` separately for cull,
 transform, draw and upscale, each on its own inputs below, with every `β_k ≥ 0`
@@ -188,11 +202,21 @@ These sources motivate the inputs; this tool's additive fit and gate are local c
 | r3d.cull | `nodes_visited`, `nodes_cut`, `clusters_tested`, `clusters_off_frustum`, `clusters_kept` |
 | r3d.transform | `clusters_kept`, `vertices_transformed` |
 | r3d.draw | `sized_*` (size bin × FACE/UNIFORM/SHADED), `pixels_face`, `pixels_uniform`, `pixels_shaded`, `triangles_facing_away`, `triangles_missed`, `triangles_behind`, `triangles_clipped` |
-| r3d.upscale | none: a constant |
+| r3d.upscale | `render_pixels`, `output_pixels`, `upscale_kept_pixels`, `upscale_doubled_pixels`, `upscale_mapped_pixels`, `upscale_blocks_pixels`, `upscale_surface_pixels` |
 
-The fit uses every replay pose in every supplied stress capture, keeping only
-the last duplicate pose within each capture. The report names each input the
-training never varies.
+Upscale reads the render picture and writes the compose picture, which can
+be half the panel size. Width selects kept, doubled, block or mapped copying;
+surface filtering adds depth tests and blends on kept-width rows.
+
+The `upscale_*_pixels` fields describe the selected path's output work.
+Quarter rotates camera axes before rasterization; upscale itself traverses
+panel-native rows. Quarter is capture metadata rather than a categorical cost.
+
+Replay composition counts describe the timed shaded draw; the cull overlay's
+full-size composition is separate. Each line records both sizes and quarter.
+
+Training accepts only `stress-*` rows, keeping the last duplicate pose in each
+capture. The report names each input that never varies in training.
 
 The plain table lists measured and predicted means and pose-wise p95 errors
 for every scene and stage, plus frame. Each row passes when the 95th percentile
@@ -220,9 +244,10 @@ python launcher/main/apps/render_lab/tools/stress_predict.py \
     --layout-a layout-a.log --layout-b layout-b.log
 ```
 
-`--scene KEY ...` selects scene rows; `--quarter` selects the stress captures'
-quarter and `--scene-quarter` the scenes', `--quarter`'s when omitted.
-Delta, noise and layout pairs use the poses both captures replayed, by row and path time. A nonzero exit
+`--scene KEY ...` selects scene rows. `--quarter` selects stress quarters
+(`all` by default); `--scene-quarter` selects held-out quarters (`portrait`
+by default). Pose keys include row, time, quarter and render dimensions.
+Delta, noise and layout pairs use the poses both captures replayed. A nonzero exit
 means a scoring row failed; missing fields or unmatched poses are errors.
 
 A scene that takes another value of an input the training never varied fails

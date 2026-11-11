@@ -119,7 +119,13 @@ __attribute__((noinline)) void
 render_lab_test_add_cull_counts(int64_t sums[RENDER_LAB_TEST_COUNTS]) {
     const raster_cull_t* cull = render_context_debug_view_state(render_context_main());
     TEST_ASSERT_NOT_NULL(cull);
-    const raster_cull_frame_t f = raster_cull_frame(cull);
+    raster_cull_frame_t f = raster_cull_frame(cull);
+    const raster_t* raster = &render_context_main()->raster;
+    const resolution_step_t output = gfx_half_picture() != NULL
+                                         ? raster_compose_size(raster)
+                                         : (resolution_step_t){raster->destination_width, raster->destination_height};
+    /* The counted overlay composes full size; stage times describe the shaded compose. */
+    raster_cull_frame_compose(&f, raster, output);
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, f.counts.nodes_visited, "the cull view did not draw");
     int i = 0;
 #define ADD_COUNT(name, member) sums[i++] += f.member;

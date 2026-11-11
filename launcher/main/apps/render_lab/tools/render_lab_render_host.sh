@@ -74,6 +74,9 @@ stress-big-tris|--quarter 1 --no-hud --scene stress-big-tris --frames 2|448x368|
 stress-per-frame|--quarter 1 --no-hud --scene stress-per-frame --frames 2|448x368|nopin
 stress-two-sided|--quarter 1 --no-hud --scene stress-two-sided --frames 2|448x368|nopin
 stress-mix|--quarter 1 --no-hud --scene stress-mix --frames 2|448x368|nopin
+stress-static-copies|--quarter 1 --no-hud --scene stress-static-copies --frames 2|448x368|nopin
+stress-uniform-mid|--quarter 1 --no-hud --scene stress-uniform-mid --frames 2|448x368|nopin
+stress-uniform-full|--quarter 1 --no-hud --scene stress-uniform-full --frames 2|448x368|nopin
 stress-noisy-tiny|--quarter 1 --no-hud --scene stress-noisy-tiny --frames 2|448x368|nopin
 "
 

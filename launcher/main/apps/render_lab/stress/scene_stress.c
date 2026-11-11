@@ -1,8 +1,4 @@
-/*
- * scene_stress: shared dynamic meshes for the preset's copy pool, placed
- * before the camera's swing. Mixed copies cycle through tessellations;
- * a per-frame surface rebuilds its mesh each update.
- */
+/* scene_stress: static assets or shared generated meshes in a copy pool before a camera swing. */
 
 #include "apps/render_lab/stress/scene_stress.h"
 
@@ -19,6 +15,7 @@
 #include "draw/draw.h"
 #include "esp_log.h"
 #include "image/pixel/rgb565.h"
+#include "math/scalar/math_const.h"
 #include "render/context/render_context.h"
 #include "scene/animator/animator.h"
 #include "scene/camera/camera.h"
@@ -119,6 +116,21 @@ build(void) {
     return true;
 }
 
+/* The asset's longest side becomes one unit, centred like a generated primitive. */
+static transformf_t
+static_shape(void) {
+    const r3d_lit_mesh_t* asset = renderer_mesh(slots[0]);
+    const box3f_t box = r3d_lit_mesh_world_bounds(asset, NULL);
+    const vec3f_t span = vec3f_sub(box.hi, box.lo);
+    const float width = fmaxf(span.x, fmaxf(span.y, span.z));
+    transformf_t shape = transformf_identity();
+    transformf_set_scale(&shape, (vec3f_t){1.0F / width, 1.0F / width, 1.0F / width});
+    transformf_set_rotation(&shape, quatf_from_axis_angle(vec3f_unit_y(), MATH_PI));
+    const vec3f_t centre = quatf_rotate(shape.rotation, vec3f_add(box.lo, box.hi));
+    transformf_set_position(&shape, vec3f_scale(centre, -0.5F / width));
+    return shape;
+}
+
 /* The arrangement is sized to where the camera's swing starts, and turned
  * about the origin's up so its +z faces it there. */
 static void
@@ -133,7 +145,11 @@ place_copies(void) {
         const bool used = i < shown->copies;
         entity_set_enabled(slots[i], used);
         if (used) {
-            const transformf_t place = stress_copy_place(shown, i, seen);
+            transformf_t place = stress_copy_place(shown, i, seen);
+            if (shown->surface == STRESS_SURFACE_STATIC) {
+                const transformf_t shape = static_shape();
+                place = transformf_compose(&place, &shape);
+            }
             transform_set_local(slots[i], transformf_compose(&facing, &place));
         }
     }
@@ -162,7 +178,7 @@ load(void) {
         return false;
     }
     viewer = render_lab_start_camera == NULL ? camera : entity_find(loaded, name_hash(render_lab_start_camera));
-    if (!find_pool() || !take_mesh()) {
+    if (!find_pool() || (shown->surface != STRESS_SURFACE_STATIC && !take_mesh())) {
         fail("no memory for stress");
         return false;
     }
@@ -170,7 +186,7 @@ load(void) {
         fail("too few stress copies");
         return false;
     }
-    if (!build()) {
+    if (shown->surface != STRESS_SURFACE_STATIC && !build()) {
         fail("stress mesh did not fit");
         return false;
     }

@@ -28,6 +28,10 @@ import host_render  # noqa: E402
 PRESETS = HERE.parents[1] / "stress" / "stress_preset.h"
 TABLE = HERE.parents[1] / "stress" / "stress_preset.c"
 FRAMES = 2
+WATER_UNIFORM_PIXELS = 41700
+EXISTING_UNIFORM_PIXELS = 5300
+STATIC_COPY = HERE.parents[5] / "launcher/demo/stress/slot.obj"
+STATIC_VERTICES = sum(line.startswith("v ") for line in STATIC_COPY.read_text().splitlines())
 
 
 def preset_copies():
@@ -62,10 +66,10 @@ class StressCorners(unittest.TestCase):
         self.assertEqual(0, run.returncode, run.stderr[-2000:])
         return [(dump / ("%04d.raw" % i)).read_bytes() for i in (FRAMES - 1, FRAMES)]
 
-    def counts(self, key):
+    def counts(self, key, *options):
         """The last frame's counts of preset `key`, by name."""
         rows = self.out / (key + ".csv")
-        run = subprocess.run([str(self.binary), "--quarter", "1", "--no-hud", "--frames", str(FRAMES), "--scene",
+        run = subprocess.run([str(self.binary), "--quarter", "1", "--no-hud", "--frames", str(FRAMES), *options, "--scene",
                               "stress-" + key, "--view", "cull", "--counts", str(rows), "-o",
                               str(self.out / (key + ".bmp"))], capture_output=True, text=True, timeout=120)
         self.assertEqual(0, run.returncode, run.stderr[-2000:])
@@ -74,7 +78,8 @@ class StressCorners(unittest.TestCase):
         return {name: int(value) for name, value in last.items()}
 
     def test_every_preset_is_held_here(self):
-        self.assertEqual({"open", "stack", "tiny-copies", "big-tris", "per-frame", "two-sided", "noisy-tiny", "mix"}, set(preset_copies()))
+        self.assertEqual({"open", "stack", "tiny-copies", "big-tris", "per-frame", "two-sided", "noisy-tiny", "mix",
+                          "static-copies", "uniform-mid", "uniform-full"}, set(preset_copies()))
 
     def assert_all_in_view(self, c):
         """Nothing culled: every cluster tested is kept, and no node is cut."""
@@ -85,6 +90,36 @@ class StressCorners(unittest.TestCase):
         c = self.counts(key)
         self.assertGreater(c["triangles_submitted"], 0)
         self.assertEqual(c["triangles_submitted"], c["triangles_covering"])
+
+    def test_static_copies_keep_the_pack_mesh(self):
+        c = self.counts("static-copies")
+        self.assertGreater(c["clusters_kept"], 0)
+        self.assertEqual(0, c["triangles_facing_away"])
+        self.assertEqual(c["triangles_submitted"], c["triangles_covering"])
+        self.assertEqual(c["triangles_submitted"], c["clusters_kept"])
+        self.assertEqual(c["vertices_transformed"], STATIC_VERTICES * c["clusters_kept"])
+        self.assertGreater(self.counts("open")["triangles_submitted"], c["triangles_submitted"])
+
+    def test_uniform_area_spans_water_without_shaded_pixels(self):
+        middle = self.counts("uniform-mid", "--size", "368x224")
+        full = self.counts("uniform-full", "--size", "368x224")
+        for c in (middle, full):
+            self.assertGreater(c["pixels_uniform"], 0)
+            self.assertEqual(0, c["pixels_shaded"])
+            self.assertEqual(0, c["pixels_face"])
+            self.assertGreater(c["sized_uniform_more"], 0)
+        self.assertGreater(full["pixels_uniform"], WATER_UNIFORM_PIXELS)
+        self.assertGreater(middle["pixels_uniform"], EXISTING_UNIFORM_PIXELS)
+        self.assertLess(middle["pixels_uniform"], WATER_UNIFORM_PIXELS)
+
+    def test_upscale_counts_describe_actual_compose(self):
+        half = self.counts("uniform-mid")
+        wide = self.counts("uniform-mid", "--size", "368x224")
+        self.assertEqual(184 * 224, half["render_pixels"])
+        self.assertEqual(368 * 448, half["output_pixels"])
+        self.assertEqual(368 * 224, wide["render_pixels"])
+        self.assertEqual(368 * 448, wide["output_pixels"])
+        self.assertEqual(wide["output_pixels"], wide["upscale_kept_pixels"])
 
     def test_mix_fills_every_uniform_and_shaded_size_bin(self):
         c = self.counts("mix")

@@ -15,7 +15,7 @@ is stale, so rerun it after changing an image or the pages that show one.
 | [input](#input) | 11 | 0 | 0 |
 | [kinematics](#kinematics) | 5 | 1 | 0 |
 | [math](#math) | 25 | 25 | 0 |
-| [overview](#overview) | 16 | 0 | 0 |
+| [overview](#overview) | 19 | 0 | 0 |
 | [physics](#physics) | 2 | 0 | 0 |
 | [power](#power) | 2 | 0 | 0 |
 | [render](#render) | 126 | 0 | 0 |
@@ -138,8 +138,11 @@ is stale, so rerun it after changing an image or the pages that show one.
 | <a href="../images/overview/render-lab-stress-open.png"><img src="../images/overview/render-lab-stress-open.png" width="160" alt=""></a> | Stress open: a wall of planes side by side | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-per-frame.png"><img src="../images/overview/render-lab-stress-per-frame.png" width="160" alt=""></a> | Stress per frame: one plane with a wave running over it | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-stack.png"><img src="../images/overview/render-lab-stress-stack.png" width="160" alt=""></a> | Stress stack: planes one behind another | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
+| <a href="../images/overview/render-lab-stress-static-copies.png"><img src="../images/overview/render-lab-stress-static-copies.png" width="160" alt=""></a> | Static triangle copies | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-tiny-copies.png"><img src="../images/overview/render-lab-stress-tiny-copies.png" width="160" alt=""></a> | Stress tiny copies: many small spheres | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-stress-two-sided.png"><img src="../images/overview/render-lab-stress-two-sided.png" width="160" alt=""></a> | Stress two-sided: a wall of cubes drawn from both sides | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
+| <a href="../images/overview/render-lab-stress-uniform-full.png"><img src="../images/overview/render-lab-stress-uniform-full.png" width="160" alt=""></a> | Uniform plane covering the view | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
+| <a href="../images/overview/render-lab-stress-uniform-mid.png"><img src="../images/overview/render-lab-stress-uniform-mid.png" width="160" alt=""></a> | Uniform plane with intermediate coverage | [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/render-lab-water.gif"><img src="figure-thumbnails/overview/render-lab-water.gif" width="160" alt=""></a> | Water in a glass tank, seen from slightly above, sloshing as the board rocks side to side, splashing as it flips over and straight back twice, then settling | [README](../../README.md), [launcher/main/apps/render_lab/tools/README](../../launcher/main/apps/render_lab/tools/README.md) | not declared yet |
 | <a href="../images/overview/sand-menu.png"><img src="../images/overview/sand-menu.png" width="160" alt=""></a> | Falling Sand title screen | [sand/README](../sand/README.md) | not declared yet |
 | <a href="../images/overview/sand-simulation.gif"><img src="figure-thumbnails/overview/sand-simulation.gif" width="160" alt=""></a> | A volcano spilling toward a lake beside growing and burning trees as the board turns | [README](../../README.md) | not declared yet |

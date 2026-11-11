@@ -97,8 +97,8 @@ class StressPredictTest(unittest.TestCase):
                 path.write_text("\n".join(lines))
                 return str(path)
             training = ((0, 0), (1, 0), (0, 1), (2, 3))
-            a = capture("stress", training)
-            b = capture("stress", training, 1)
+            a = capture("stress-open", training)
+            b = capture("stress-open", training, 1)
             scenes_a = capture("scene", ((3, 4), (2, 1)))
             scenes_b = capture("scene", ((3, 4), (2, 1)), 1)
             output = io.StringIO()
@@ -117,6 +117,51 @@ class StressPredictTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "no frame_replay lines in portrait"):
                     predict.main(["--a", a, "--scenes", landscape])
                 self.assertEqual(predict.main(["--a", a, "--scenes", landscape, "--scene-quarter", "landscape"]), 0)
+
+    def test_upscale_inputs_explain_size_and_path_independently(self):
+        names = ("render_pixels", "output_pixels", "upscale_kept_pixels", "upscale_doubled_pixels",
+                 "upscale_mapped_pixels", "upscale_blocks_pixels", "upscale_surface_pixels")
+        self.assertEqual(set(names), set(predict.STAGE_INPUTS["r3d.upscale"]))
+        training = []
+        for i in range(len(names) + 1):
+            item = pose(0)
+            item["counts"] = dict.fromkeys(predict.TERMS, 0)
+            if i:
+                item["counts"][names[i - 1]] = 10
+            item["stages"]["r3d.upscale"] = 2 + sum(
+                (col + 1) * item["counts"][name] for col, name in enumerate(names))
+            training.append(item)
+        model = predict.fit(training)
+        np.testing.assert_allclose(model["weights"]["r3d.upscale"], [2, *range(1, len(names) + 1)])
+
+    def test_loader_keeps_quarters_and_render_sizes_in_training(self):
+        from build.c_header import read_define
+        replay = read_define(predict.ROOT / "launcher/test/frame_profile.h", "FRAME_PROFILE_REPLAY")
+        with tempfile.TemporaryDirectory() as folder:
+            path = pathlib.Path(folder) / "stress.log"
+            lines = []
+            for quarter, width in (("portrait", 184), ("landscape", 184), ("portrait", 368)):
+                counts = dict.fromkeys(predict.TERMS, 0)
+                counts.update(render_width=width, render_height=224)
+                fields = " ".join(f"{key}={value}" for key, value in counts.items())
+                stages = "  ".join(f"{stage} 1.00/0.00" for stage in predict.STAGES)
+                lines.append(replay % ("stress-open", 0, fields, stages + " | total 4.00")
+                             + f" quarter={quarter}")
+            path.write_text("\n".join([*lines, lines[0]]))
+            self.assertEqual(3, len(predict.load([path], "all")))
+            self.assertEqual(2, len(predict.load([path], "portrait")))
+
+    def test_cli_rejects_scene_rows_in_training(self):
+        from build.c_header import read_define
+        replay = read_define(predict.ROOT / "launcher/test/frame_profile.h", "FRAME_PROFILE_REPLAY")
+        with tempfile.TemporaryDirectory() as folder:
+            path = pathlib.Path(folder) / "scene.log"
+            fields = " ".join(f"{name}=0" for name in predict.TERMS)
+            stages = "  ".join(f"{stage} 1.00/0.00" for stage in predict.STAGES)
+            path.write_text(replay % ("water", 0, fields, stages + " | total 4.00") + " quarter=portrait")
+            with contextlib.redirect_stdout(io.StringIO()):
+                with self.assertRaisesRegex(ValueError, "non-stress training"):
+                    predict.main(["--a", str(path), "--scenes", str(path)])
 
     def test_loader_rejects_missing_counts(self):
         with tempfile.TemporaryDirectory() as folder:

@@ -20,7 +20,8 @@ STAGE_INPUTS = {
     "r3d.transform": ("clusters_kept", "vertices_transformed"),
     "r3d.draw": (*size_fields(), "pixels_face", "pixels_uniform", "pixels_shaded", "triangles_facing_away",
                  "triangles_missed", "triangles_behind", "triangles_clipped"),
-    "r3d.upscale": (),
+    "r3d.upscale": ("render_pixels", "output_pixels", "upscale_kept_pixels", "upscale_doubled_pixels",
+                    "upscale_mapped_pixels", "upscale_blocks_pixels", "upscale_surface_pixels"),
 }
 TERMS = tuple(dict.fromkeys(name for names in STAGE_INPUTS.values() for name in names))
 PERCENTILE = 95
@@ -29,13 +30,15 @@ PERCENT = 100
 SUPPORT_TOLERANCE = 1e-7
 
 
-def load(paths, quarter, rows=(), names=TERMS):
+def load(paths, quarter, rows=(), names=TERMS, *, stress_only=False):
     found = []
     for path in paths:
-        poses = {(p["row"], p["t_ms"]): p
+        poses = {pose_key(p): p
                  for p in replays(path.read_text(encoding="utf-8", errors="replace"))
-                 if p["quarter"] == quarter and (not rows or p["row"] in rows)}
+                 if (quarter == "all" or p["quarter"] == quarter) and (not rows or p["row"] in rows)}
         for pose in poses.values():
+            if stress_only and not pose["row"].startswith("stress-"):
+                raise ValueError(f"{path}: non-stress training row: {pose['row']}")
             missing = set(names) - pose["counts"].keys()
             if missing:
                 raise ValueError(f"{path}: {pose['row']}: missing counts: {', '.join(sorted(missing))}")
@@ -49,6 +52,11 @@ def load(paths, quarter, rows=(), names=TERMS):
     if not found:
         raise ValueError(f"{paths}: no frame_replay lines in {quarter}")
     return found
+
+
+def pose_key(pose):
+    return (pose["row"], pose["t_ms"], pose.get("quarter"),
+            pose["counts"].get("render_width"), pose["counts"].get("render_height"))
 
 
 def design(poses, names):
@@ -90,10 +98,9 @@ def with_frame(values):
 
 
 def paired(a, b):
-    """The poses both captures replayed, by (scene, path time): a frame profile's
-    peak poses are each run's own, its path poses shared."""
+    """Shared poses by row, time, quarter and render size; unmatched peaks drop."""
     def keyed(poses):
-        return {(p["row"], p["t_ms"]): p for p in poses}
+        return {pose_key(p): p for p in poses}
     left, right = keyed(a), keyed(b)
     if len(left) != len(a) or len(right) != len(b):
         raise ValueError("paired captures require unique pose keys; supply one capture per arm")
@@ -186,10 +193,10 @@ def arguments(argv):
     for option in ("b", "scenes", "scenes-a", "scenes-b", "noise-a", "noise-b", "layout-a", "layout-b"):
         parser.add_argument("--" + option, nargs="+", type=pathlib.Path)
     parser.add_argument("--scene", nargs="+", default=[])
-    parser.add_argument("--quarter", default="portrait")
-    parser.add_argument("--scene-quarter", help="the held-out scenes' quarter (default: --quarter)")
+    parser.add_argument("--quarter", default="all")
+    parser.add_argument("--scene-quarter", help="the held-out scenes' quarter (default: portrait)")
     args = parser.parse_args(argv)
-    args.scene_quarter = args.scene_quarter or args.quarter
+    args.scene_quarter = args.scene_quarter or "portrait"
     for first, second in (("noise_a", "noise_b"), ("layout_a", "layout_b"), ("scenes_a", "scenes_b")):
         if bool(getattr(args, first)) != bool(getattr(args, second)):
             parser.error(f"--{first.replace('_', '-')} and --{second.replace('_', '-')} are a pair")
@@ -206,7 +213,7 @@ def arguments(argv):
 
 def main(argv=None):
     args = arguments(argv)
-    model = fit(load(args.a, args.quarter))
+    model = fit(load(args.a, args.quarter, stress_only=True))
     lines, judged = model_lines(model, "A"), []
     scenes = load(args.scenes or args.scenes_a, args.scene_quarter, args.scene)
     rows = score(model, scenes)
@@ -217,7 +224,7 @@ def main(argv=None):
         floors = noise_floor(load(args.noise_a, args.quarter), load(args.noise_b, args.quarter))
         lines.append("Same-build p95 absolute noise floor (ms): " + " ".join(f"{s}={v:.6f}" for s, v in floors.items()))
     if args.b:
-        other = fit(load(args.b, args.quarter))
+        other = fit(load(args.b, args.quarter, stress_only=True))
         lines.extend(model_lines(other, "B"))
         scene_a = load(args.scenes_a, args.scene_quarter, args.scene)
         scene_b = load(args.scenes_b, args.scene_quarter, args.scene)

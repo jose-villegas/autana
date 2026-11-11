@@ -712,7 +712,36 @@ raster_cull_overlay(void* state, int width, int height) {
     }
 }
 
+void
+raster_cull_frame_compose(raster_cull_frame_t* frame, const raster_t* raster, resolution_step_t output) {
+    const upscale_t* scale = &raster->upscale;
+    const upscale_path_t path = upscale_path_for(raster->width, raster->height, output.width, output.height);
+    frame->render_width = raster->width;
+    frame->render_height = raster->height;
+    frame->render_pixels = raster->width * raster->height;
+    frame->output_width = output.width;
+    frame->output_height = output.height;
+    frame->output_pixels = output.width * output.height;
+    frame->upscale_kept_pixels = path == UPSCALE_KEPT ? frame->output_pixels : 0;
+    frame->upscale_doubled_pixels = path == UPSCALE_DOUBLED ? frame->output_pixels : 0;
+    frame->upscale_mapped_pixels = path == UPSCALE_MAPPED ? frame->output_pixels : 0;
+    frame->upscale_blocks_pixels = path == UPSCALE_BLOCKS ? frame->output_pixels : 0;
+    frame->upscale_surface_pixels =
+        path == UPSCALE_KEPT && scale->filter == UPSCALE_FILTER_SURFACE && raster->present != CAMERA_PRESENT_SCANLINE
+            ? frame->output_pixels
+            : 0;
+}
+
 raster_cull_frame_t
 raster_cull_frame(const raster_cull_t* state) {
-    return state->frame;
+    raster_cull_frame_t frame = state->frame;
+    if (state->raster != NULL && state->raster->width > 0 && state->raster->height > 0) {
+        const upscale_t* scale = &state->raster->upscale;
+        if (scale->destination_width > 0 && scale->destination_height > 0) {
+            raster_cull_frame_compose(&frame, state->raster,
+                                      (resolution_step_t){scale->destination_width, scale->destination_height});
+        }
+        frame.quarter = state->camera.viewport.quarter;
+    }
+    return frame;
 }
