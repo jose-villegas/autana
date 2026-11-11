@@ -368,6 +368,68 @@ histogram_add(r3d_lod_histogram_t* histogram, const r3d_lit_lod_group_t* group, 
     }
 }
 
+/* Clears `state` words of level state; whether any bit was set. */
+static inline __attribute__((always_inline)) bool
+clear_state(uint32_t* state, int words) {
+    bool had = false;
+    for (int w = 0; w < words; w++) {
+        had |= state[w] != 0;
+    }
+    memset(state, 0, (size_t)words * sizeof *state);
+    return had;
+}
+
+/* Whether a group at `at`, of `error` and `radius` in the form within()
+ * takes, is coarse this pick: inside enter, or inside leave if it `was`,
+ * with its radius inside the cap. */
+static inline __attribute__((always_inline)) bool
+turns_coarse(const reach_t* at, float error, float radius, bool was, const lod_limits_t* limits) {
+    const bool inside = within(at, error, limits->enter) || (was && within(at, error, limits->leave));
+    return inside && within(at, radius, limits->covered);
+}
+
+/* Fine group `g`'s arrived and blending bits, `was` its coarse bit before
+ * this pick; whether either changed. */
+static inline __attribute__((always_inline)) bool
+blend_bits(uint32_t* arrived, uint32_t* blending, int g, bool was, const reach_t* at, const r3d_lit_lod_group_t* group,
+           float scale, const lod_limits_t* limits, const render_lod_settings_t* lod) {
+    const float error = (float)group->error * scale;
+    bool changed = false;
+    /* Past leave by a ramp it has arrived nowhere, even turning fine this
+     * pick: setting the bit would only clear it on the next. */
+    if (!within(at, error, limits->leave + lod->blend_px)) {
+        changed |= set_bit(arrived, g, false);
+    } else if (was) {
+        changed |= set_bit(arrived, g, true);
+    }
+    const bool has_arrived = r3d_lod_coarse(arrived, (uint16_t)g);
+    return changed
+           | set_bit(blending, g,
+                     blends(at, group, scale, limits->covered, lod, has_arrived ? limits->leave : limits->enter));
+}
+
+/* A coarse group has not arrived, closed coarse or not; whether a bit cleared. */
+static inline __attribute__((always_inline)) bool
+drop_coarse_blends(const uint32_t* coarse, uint32_t* arrived, uint32_t* blending, int words) {
+    bool changed = false;
+    for (int w = 0; w < words; w++) {
+        changed |= ((arrived[w] | blending[w]) & coarse[w]) != 0;
+        arrived[w] &= ~coarse[w];
+        blending[w] &= ~coarse[w];
+    }
+    return changed;
+}
+
+/* Whether no group of `mesh` can turn coarse this pick, nor with a blend
+ * weigh anything: a group may until its error is past leave by a ramp and
+ * its lead. Then every bit clears. */
+static inline __attribute__((always_inline)) bool
+all_fine(const r3d_lit_mesh_t* mesh, const lod_view_t* v, const r3d_lens_t* lens, const lod_limits_t* limits,
+         const render_lod_settings_t* lod, bool blends) {
+    const float reach = blends ? lod->blend_px * (1.0F + R3D_LOD_BLEND_LEAD) : 0.0F;
+    return none_can_coarsen(mesh, v, lens->project.near_z, limits->leave + reach);
+}
+
 /* Inlined into one copy per caller, so a literal NULL `arrived` keeps no
  * blend state. */
 static inline __attribute__((always_inline)) bool
@@ -375,60 +437,34 @@ pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settin
      uint32_t* arrived, r3d_lod_histogram_t* histogram) {
     const lod_view_t v = lod_view(lens);
     const lod_limits_t limits = lod_limits(lod, lens, 1.0F);
-    const float enter = limits.enter;
-    const float leave = limits.leave;
     const int words = R3D_LOD_WORDS(mesh->lod_group_count);
     uint32_t* blending = arrived != NULL ? arrived + words : NULL;
-    /* With a blend, a group may weigh something until its error is past
-     * leave by a ramp and its lead; nearer than that, every bit clears. */
-    const float reach = arrived != NULL ? lod->blend_px * (1.0F + R3D_LOD_BLEND_LEAD) : 0.0F;
+    const int sets = arrived != NULL ? R3D_LOD_STATE_SETS : 1;
     histogram_add_finest(histogram, mesh);
-    if (histogram == NULL && none_can_coarsen(mesh, &v, lens->project.near_z, leave + reach)) {
+    if (histogram == NULL && all_fine(mesh, &v, lens, &limits, lod, arrived != NULL)) {
         assert(arrived == NULL || arrived == coarse + words);
-        const int state = (arrived != NULL ? R3D_LOD_STATE_SETS : 1) * words;
-        bool had = false;
-        for (int w = 0; w < state; w++) {
-            had |= coarse[w] != 0;
-        }
-        memset(coarse, 0, (size_t)state * sizeof *coarse);
-        return had;
+        return clear_state(coarse, sets * words);
     }
     /* Per group, in the form within() takes: its error and its radius, each
      * times focal over units, against their limits times its nearest depth. */
     const float scale = v.units_per_tick * v.focal;
-    const float covered = limits.covered;
-    const float near_z = lens->project.near_z;
     bool any = false;
     bool changed = false;       /* a coarse bit */
     bool blend_changed = false; /* an arrived or blending bit */
     for (int g = 0; g < mesh->lod_group_count; g++) {
         const r3d_lit_lod_group_t* group = &mesh->lod_groups[g];
         const vec3f_t centre = mat4f_apply(&v.view, vec3f_from_vec3s(group->bounds.centre, 1.0F));
-        const reach_t at = {vec3f_dot(centre, centre), (float)group->bounds.radius * v.units_per_tick, near_z};
+        const reach_t at = {vec3f_dot(centre, centre), (float)group->bounds.radius * v.units_per_tick,
+                            lens->project.near_z};
         const float error = (float)group->error * scale;
-        const uint32_t bit = 1U << (g % R3D_LOD_WORD_BITS);
-        uint32_t* word = &coarse[g / R3D_LOD_WORD_BITS];
-        const bool was = (*word & bit) != 0;
         const float radius = (float)group->bounds.radius * scale;
-        const bool coarse_now =
-            (within(&at, error, enter) || (was && within(&at, error, leave))) && within(&at, radius, covered);
-        *word = coarse_now ? *word | bit : *word & ~bit;
-        histogram_add(histogram, group, &at, error, radius, covered, lod->tolerance_px);
+        const bool was = r3d_lod_coarse(coarse, (uint16_t)g);
+        const bool coarse_now = turns_coarse(&at, error, radius, was, &limits);
+        changed |= set_bit(coarse, g, coarse_now);
+        histogram_add(histogram, group, &at, error, radius, limits.covered, lod->tolerance_px);
         any |= coarse_now;
-        changed |= coarse_now != was;
-        if (!coarse_now && arrived != NULL) {
-            const uint32_t before = arrived[g / R3D_LOD_WORD_BITS];
-            /* Past leave by a ramp it has arrived nowhere, even turning fine
-             * this pick: setting the bit would only clear it on the next. */
-            if (!within(&at, error, leave + lod->blend_px)) {
-                arrived[g / R3D_LOD_WORD_BITS] &= ~bit;
-            } else if (was) {
-                arrived[g / R3D_LOD_WORD_BITS] |= bit;
-            }
-            blend_changed |= before != arrived[g / R3D_LOD_WORD_BITS];
-            blend_changed |= set_bit(
-                blending, g,
-                blends(&at, group, scale, covered, lod, (arrived[g / R3D_LOD_WORD_BITS] & bit) != 0 ? leave : enter));
+        if (arrived != NULL && !coarse_now) {
+            blend_changed |= blend_bits(arrived, blending, g, was, &at, group, scale, &limits, lod);
         }
     }
     /* Nothing coarse closes to nothing, and bits that did not change are as
@@ -436,13 +472,8 @@ pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settin
     if (any && changed) {
         close_coarse(mesh, coarse);
     }
-    /* A coarse group has not arrived, closed coarse or not. */
-    for (int w = 0; arrived != NULL && w < words; w++) {
-        const uint32_t kept_arrived = arrived[w] & ~coarse[w];
-        const uint32_t kept_blending = blending[w] & ~coarse[w];
-        blend_changed |= kept_arrived != arrived[w] || kept_blending != blending[w];
-        arrived[w] = kept_arrived;
-        blending[w] = kept_blending;
+    if (arrived != NULL) {
+        blend_changed |= drop_coarse_blends(coarse, arrived, blending, words);
     }
     return changed || blend_changed;
 }
