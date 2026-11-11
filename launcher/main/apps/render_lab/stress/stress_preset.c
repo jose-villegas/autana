@@ -1,7 +1,6 @@
 #include "apps/render_lab/stress/stress_preset.h"
 
 #include <math.h>
-#include <string.h>
 
 #include "math/geometry/primitive_mesh.h"
 #include "math/scalar/math_const.h"
@@ -245,6 +244,9 @@ band(float up, float turns) {
  * the whole range. */
 static float
 shade(const stress_params_t* p, int v, vec3f_t at, float turns) {
+    if (p->surface == STRESS_SURFACE_MIXED) {
+        return ((v / 3) % STRESS_MIX_UNIFORM_PERIOD) == 0 || v % 3 == 0 ? 0.0F : 1.0F;
+    }
     if (p->surface == STRESS_SURFACE_UNIFORM) {
         return 0.0F;
     }
@@ -255,30 +257,31 @@ shade(const stress_params_t* p, int v, vec3f_t at, float turns) {
 }
 
 static void
+colour_card(int vertex_count, const stress_buffers_t* b) {
+    for (int v = 0; v < vertex_count; v++) {
+        const vec3f_t at = b->positions[v];
+        const int tx = (int)floorf((at.x + 0.5F) * STRESS_CARD_TEXTURE_SIZE);
+        const int ty = (int)floorf((at.y + 0.5F) * STRESS_CARD_TEXTURE_SIZE);
+        for (int c = 0; c < 3; c++) {
+            b->colors[v][c] = (uint8_t)(STRESS_CARD_COLOUR_BASE
+                                        + rng_hash(STRESS_CARD_TEXTURE_SEED, (uint32_t)tx, (uint32_t)ty, (uint32_t)c)
+                                              % STRESS_CARD_COLOUR_RANGE);
+        }
+    }
+}
+
+static void
 colour_and_wave(const stress_params_t* p, uint32_t t_ms, int vertex_count, const stress_buffers_t* b) {
+    if (p->surface == STRESS_SURFACE_CARD) {
+        colour_card(vertex_count, b);
+        return;
+    }
     const bool per_frame = stress_per_frame(p);
     const float turns = per_frame ? (float)(t_ms % STRESS_WAVE_PERIOD_MS) / (float)STRESS_WAVE_PERIOD_MS : 0.0F;
     const bool noisy = p->surface == STRESS_SURFACE_NOISY;
     const uint8_t* low = noisy ? stress_noise_low : stress_colour_low;
     const uint8_t* high = noisy ? stress_noise_high : stress_colour_high;
     for (int v = 0; v < vertex_count; v++) {
-        if (p->surface == STRESS_SURFACE_MIXED) {
-            const bool uniform = ((v / 3) % STRESS_MIX_UNIFORM_PERIOD) == 0;
-            memcpy(b->colors[v], uniform || v % 3 == 0 ? stress_colour_low : stress_colour_high, sizeof b->colors[v]);
-            continue;
-        }
-        if (p->surface == STRESS_SURFACE_CARD) {
-            const vec3f_t at = b->positions[v];
-            const int tx = (int)floorf((at.x + 0.5F) * STRESS_CARD_TEXTURE_SIZE);
-            const int ty = (int)floorf((at.y + 0.5F) * STRESS_CARD_TEXTURE_SIZE);
-            for (int c = 0; c < 3; c++) {
-                b->colors[v][c] =
-                    (uint8_t)(STRESS_CARD_COLOUR_BASE
-                              + rng_hash(STRESS_CARD_TEXTURE_SEED, (uint32_t)tx, (uint32_t)ty, (uint32_t)c)
-                                    % STRESS_CARD_COLOUR_RANGE);
-            }
-            continue;
-        }
         const float s = shade(p, v, b->positions[v], turns);
         for (int c = 0; c < 3; c++) {
             b->colors[v][c] = (uint8_t)lroundf((float)low[c] + ((float)(high[c] - low[c]) * s));
