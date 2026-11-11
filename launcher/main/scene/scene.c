@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "asset/asset_id.h"
 #include "asset/asset_store.h"
 #include "core/memory.h"
 #include "esp_log.h"
@@ -155,47 +156,20 @@ instantiate(const scene_asset_t* asset) {
     return scene;
 }
 
-/* The separator in a scene id that names its pack. */
-#define SCENE_ID_PACK_SEPARATOR '/'
-
-/* A scene id's parts: its pack's name, the id's first `pack_length` bytes,
- * and the scene's entry there. */
-typedef struct {
-    size_t pack_length;
-    const char* scene; /* within the id split */
-} scene_id_t;
-
-/* Splits `id` as scene_load() reads it; false for an id it refuses. */
-static bool
-scene_id_split(const char* id, scene_id_t* out) {
-    const char* separator = strchr(id, SCENE_ID_PACK_SEPARATOR);
-    out->scene = separator == NULL ? id : separator + 1;
-    out->pack_length = separator == NULL ? strlen(id) : (size_t)(separator - id);
-    return out->pack_length > 0 && out->pack_length < ASSET_NAME_MAX && out->scene[0] != '\0'
-           && strlen(out->scene) < ASSET_NAME_MAX && strchr(out->scene, SCENE_ID_PACK_SEPARATOR) == NULL;
-}
-
-/* The pack name `parts` finds in `id`, into `out`. */
-static void
-copy_pack_name(char out[ASSET_NAME_MAX], const char* id, scene_id_t parts) {
-    (void)memcpy(out, id, parts.pack_length);
-    out[parts.pack_length] = '\0';
-}
-
-/* Requests the pack `parts` names in `id`. Kept out of line, as is
- * request_pack_async(), so the copy of the name is off the stack while the
- * scene opens. */
+/* Requests the pack `parts` names in `id`; a bare id names a pack of its own
+ * name. Kept out of line, as is request_pack_async(), so the copy of the name
+ * is off the stack while the scene opens. */
 static __attribute__((noinline)) handle_t
-request_pack(const char* id, scene_id_t parts) {
+request_pack(const char* id, asset_id_t parts) {
     char pack[ASSET_NAME_MAX];
-    copy_pack_name(pack, id, parts);
+    asset_id_pack(id, parts, id, pack);
     return asset_store_load(pack);
 }
 
 static __attribute__((noinline)) handle_t
-request_pack_async(const char* id, scene_id_t parts, entity_t root) {
+request_pack_async(const char* id, asset_id_t parts, entity_t root) {
     char pack[ASSET_NAME_MAX];
-    copy_pack_name(pack, id, parts);
+    asset_id_pack(id, parts, id, pack);
     return asset_store_load_async(pack, NULL, root);
 }
 
@@ -616,10 +590,10 @@ scene_load_from(const asset_pack_t* pack, const char* id) {
 
 entity_t
 scene_load(const char* id) {
-    scene_id_t parts;
-    const bool named = scene_id_split(id, &parts);
+    asset_id_t parts;
+    const bool named = asset_id_split(id, &parts);
     /* The record holds the scene's entry; its load holds the pack. */
-    scene_root_t* record = claim(named ? parts.scene : id);
+    scene_root_t* record = claim(named ? parts.name : id);
     if (record == NULL) {
         return ENTITY_NONE;
     }
@@ -642,9 +616,9 @@ record_of(entity_t root) {
 
 entity_t
 scene_load_async(const char* id, pending_fn done, handle_t owner) {
-    scene_id_t parts;
-    const bool named = scene_id_split(id, &parts);
-    scene_root_t* record = claim(named ? parts.scene : id);
+    asset_id_t parts;
+    const bool named = asset_id_split(id, &parts);
+    scene_root_t* record = claim(named ? parts.name : id);
     if (record == NULL) {
         return ENTITY_NONE;
     }
