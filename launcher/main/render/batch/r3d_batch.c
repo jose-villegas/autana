@@ -63,7 +63,7 @@ void
 r3d_batch_copy_place(const r3d_batch_draw_t* draw, r3d_lens_t* lens) {
     mat4f_t model = r3d_batch_copy_model(draw->batch, draw->copy);
     if (draw->instance.model != NULL) {
-        model = mat4f_mul_affine(*draw->instance.model, model);
+        mat4f_pre_mul_affine(draw->instance.model, &model);
     }
     r3d_lens_place(lens, &model, draw->instance.mesh->position_scale);
 }

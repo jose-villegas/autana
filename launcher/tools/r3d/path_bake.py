@@ -8,7 +8,7 @@ adds it from shadow rays. The mean of the cosine-weighted radiance is the irradi
 returns, so the albedo of the surface being baked multiplies it once.
 
 Mitsuba's variant is process-wide, so this runs on the variant of the ray queries beside it, `ray_query.VARIANT`
-unless the caller names one (`ray_query.trace_variant`).
+unless the caller names one.
 """
 import numpy as np
 

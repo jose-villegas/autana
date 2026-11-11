@@ -77,6 +77,28 @@
         return out;                                                                                                    \
     }                                                                                                                  \
                                                                                                                        \
+    /* a = a * b in place, as P_mul_affine: row r of the product reads row r of a only. */                             \
+    static inline void P##_post_mul_affine(P##_t* a, const P##_t* b) {                                                 \
+        for (int r = 0; r < 3; r++) {                                                                                  \
+            const T row[4] = {a->m[r][0], a->m[r][1], a->m[r][2], a->m[r][3]};                                         \
+            for (int c = 0; c < 4; c++) {                                                                              \
+                const T dot = P##_row_dot_column3(row, b, c);                                                          \
+                a->m[r][c] = c == 3 ? OPS##_add(dot, row[3]) : dot;                                                    \
+            }                                                                                                          \
+        }                                                                                                              \
+    }                                                                                                                  \
+                                                                                                                       \
+    /* b = a * b in place, as P_mul_affine: column c of the product reads column c of b only. */                       \
+    static inline void P##_pre_mul_affine(const P##_t* a, P##_t* b) {                                                  \
+        for (int c = 0; c < 4; c++) {                                                                                  \
+            const V##_t column = {b->m[0][c], b->m[1][c], b->m[2][c]};                                                 \
+            for (int r = 0; r < 3; r++) {                                                                              \
+                const T dot = V##_dot((V##_t){a->m[r][0], a->m[r][1], a->m[r][2]}, column);                            \
+                b->m[r][c] = c == 3 ? OPS##_add(dot, a->m[r][3]) : dot;                                                \
+            }                                                                                                          \
+        }                                                                                                              \
+    }                                                                                                                  \
+                                                                                                                       \
     /* M * p with w = 1, no perspective divide: for r in 0..2, */                                                      \
     /*   p'[r] = m[r][0]*px + m[r][1]*py + m[r][2]*pz + m[r][3]. `m` is read only. */                                  \
     static inline V##_t P##_apply(const P##_t* m, V##_t p) {                                                           \

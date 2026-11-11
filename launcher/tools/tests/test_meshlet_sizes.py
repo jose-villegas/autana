@@ -161,6 +161,7 @@ static void (*cleanup)(void);
 static void suite_add_test_cleanup(void (*fn)(void)) { cleanup = fn; }
 #define TEST_ASSERT_NOT_NULL(p) do { if ((p) == 0) longjmp(aborted, 1); } while (0)
 #define TEST_ASSERT_TRUE(c) TEST_ASSERT_NOT_NULL(c)
+#define TEST_ASSERT_EQUAL_INT_MESSAGE(e, a, m) TEST_ASSERT_TRUE((e) == (a))
 #define TEST_PASS() ((void)0)
 #define ESP_LOGI(...) ((void)0)
 ''' + bakes + '''
@@ -170,7 +171,7 @@ static const int meshes[SCENE_BAKED_VARIANT_COUNT];
 static const char* const sponza_bakes[SCENE_BAKED_VARIANT_COUNT] = {[0 ... SCENE_BAKED_VARIANT_COUNT - 1] = "renderer"};
 typedef struct { const int* mesh; void* model; } r3d_instance_t;
 static void open_the_meshes(void) {}
-static int showcase_bake(void) { return 0; }
+static int showcase_bake(void) { return SCENE_BAKED_FITTED_FULL; }
 static void report_frame_cost(const char* label, const char* object_name, const r3d_instance_t* instance, ...) {
     /* An allocation assertion aborts the measured pass after culling is switched off. */
     TEST_ASSERT_NOT_NULL(strcmp(label, "cull_off") ? instance : 0);

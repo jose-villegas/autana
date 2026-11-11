@@ -648,11 +648,16 @@ level_pick_init(const raster_t* raster, picture_lens_t* picture, const render_vi
     level_pick_t pick = {raster->picks_levels, raster->pick_round, *lod, lod->tolerance_px, NULL};
     if (pick.picks && raster->steer != NULL && lod->triangle_budget > 0) {
         pick.steer = raster->steer;
+        /* The steer's floor is at least the first bin's edge: the cap rises
+         * from it, and the steer can fall back to it. */
+        pick.floor_px = mathf_max(pick.floor_px, r3d_lod_bin_edge(0));
         /* A steer below the floor was never started, or the floor rose past it. */
         if (pick.round == 0 || pick.steer->tolerance_px < pick.floor_px) {
             r3d_lod_steer_reset(pick.steer, pick.floor_px);
         }
         pick.lod.tolerance_px = pick.steer->tolerance_px;
+        pick.lod.coverage_permille =
+            r3d_lod_steer_coverage(pick.steer->tolerance_px, pick.floor_px, lod->coverage_permille);
         pick.steer->halves[0].unit = 1.0F / drawn;
         pick.steer->halves[1].unit = pick.steer->halves[0].unit;
     }
