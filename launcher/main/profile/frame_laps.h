@@ -27,7 +27,7 @@
 #include "collections/strbuf.h"
 
 /* Distinct lap names, across every core. */
-#define FRAME_LAPS_NAMES      16
+#define FRAME_LAPS_NAMES      24
 #define FRAME_LAPS_CORES      2
 #define FRAME_LAPS_NAME_MAX   24
 
@@ -37,6 +37,11 @@
 
 /* A lap's place in the name table plus one; 0 is no lap. */
 typedef uint8_t frame_laps_slot_t;
+
+/* The slot of a name the full table refused: it runs no lap, and the report
+ * counts it dropped. */
+#define FRAME_LAPS_SLOT_REFUSED ((frame_laps_slot_t)UINT8_MAX)
+_Static_assert(FRAME_LAPS_NAMES < FRAME_LAPS_SLOT_REFUSED, "a refused slot is past every name's");
 
 typedef struct {
     uint64_t cycles[FRAME_LAPS_NAMES];
@@ -70,11 +75,12 @@ frame_laps_charge_since(frame_laps_core_t* core, uint32_t now, frame_laps_slot_t
 
 /* "lap N ns", one lap's own cost, then "cpuN name ms/starts ..." for each
  * core: its laps that ran, in ms per frame to the microsecond and starts per
- * frame, cores apart by " | "; then forgets the window. A lap still running
- * keeps running. Returns the line's length, 0 for no laps. */
+ * frame, cores apart by " | ", and " +N dropped" for `dropped` lap call
+ * sites the full name table refused; then forgets the window. A lap still
+ * running keeps running. Returns the line's length, 0 for no laps. */
 static inline int
 frame_laps_report(frame_laps_core_t cores[], int core_count, const char* const names[], uint32_t frames,
-                  uint32_t cycles_per_us, uint32_t lap_cycles, char* out, size_t out_size) {
+                  uint32_t cycles_per_us, uint32_t lap_cycles, int dropped, char* out, size_t out_size) {
     strbuf_t line = strbuf_make(out, out_size);
     bool any = false;
     for (int c = 0; c < core_count; c++) {
@@ -99,6 +105,9 @@ frame_laps_report(frame_laps_core_t cores[], int core_count, const char* const n
             cores[c].starts[i] = 0;
         }
     }
+    if (any && dropped > 0) {
+        strbuf_appendf(&line, " +%d dropped", dropped);
+    }
     return (int)line.length;
 }
 
@@ -113,7 +122,8 @@ frame_laps_report(frame_laps_core_t cores[], int core_count, const char* const n
 
 extern frame_laps_core_t frame_laps_cores[FRAME_LAPS_CORES];
 
-/* The slot of `name`, adding it on first sight; 0 once the table is full. */
+/* The slot of `name`, adding it on first sight; FRAME_LAPS_SLOT_REFUSED
+ * once the table is full. */
 frame_laps_slot_t frame_laps_slot(const char* name);
 
 /* The window's laps as ms per frame, from the frame task between frames,
@@ -122,12 +132,14 @@ int frame_laps_take_report(uint32_t frames, char* out, size_t out_size);
 
 static inline __attribute__((always_inline)) void
 frame_laps_to(frame_laps_slot_t next) {
-    frame_laps_switch(&frame_laps_cores[esp_cpu_get_core_id()], esp_cpu_get_cycle_count(), next);
+    frame_laps_switch(&frame_laps_cores[esp_cpu_get_core_id()], esp_cpu_get_cycle_count(),
+                      next == FRAME_LAPS_SLOT_REFUSED ? 0 : next);
 }
 
 static inline __attribute__((always_inline)) void
 frame_laps_since(frame_laps_slot_t slot) {
-    frame_laps_charge_since(&frame_laps_cores[esp_cpu_get_core_id()], esp_cpu_get_cycle_count(), slot);
+    frame_laps_charge_since(&frame_laps_cores[esp_cpu_get_core_id()], esp_cpu_get_cycle_count(),
+                            slot == FRAME_LAPS_SLOT_REFUSED ? 0 : slot);
 }
 
 /* Each call site finds its name's slot once. */

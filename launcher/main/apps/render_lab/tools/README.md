@@ -27,7 +27,7 @@ entry, so the frame hook changes the next frame without reloading the scene.
 ### Menu
 
 The BOOT menu has a SCENE dropdown of scene families (`family` in
-`render_lab_scene_t`), then a VARIANT dropdown when the family has several scenes (Sponza's
+`lab_scene_t`), then a VARIANT dropdown when the family has several scenes (Sponza's
 bakes, from `variant`), then the rows the showing scene declares in its
 `controls` (Capybara's CLIP and BLEND). Order in `scenes[]` is the order of every list, and
 index 0 (Sponza Fitted Full) is the scene a start with no key shows. Console
@@ -169,24 +169,25 @@ camera, so a frame differs from the last only where the mesh moved.
 ### Herd
 
 The Herd family is N skinned capybaras on the capybara's meadow, each playing
-its own clip at its own phase, while the camera laps them at a fixed radius,
-looking at their centre. Copies stand on rings inside and outside the lap, so
-over one lap each is near, far, off the frame and behind the camera in turn:
-the per-copy costs of posing, skinning and culling all show.
+its own clip at its own phase. One finger orbits the camera round the copies
+shown, as in the Capybara scene; zoomed in, copies fall off the frame and
+behind the camera, so the per-copy costs of posing, skinning and culling all
+show.
 
 | Scene key | Copies shown |
 |---|---|
 | `herd-1` | the centre one |
-| `herd-4` | centre, near, behind the lap and at the frame's side |
+| `herd-4` | centre, near, far out and to the side |
 | `herd-8` | the whole pool |
 
-![Herd 8: eight capybaras over one lap of the camera](../../../../../docs/images/overview/render-lab-herd.gif)
+![Herd 8: eight capybaras over one turn of the camera](../../../../../docs/images/overview/render-lab-herd.gif)
 
 | Part | Owner |
 |---|---|
 | Sizes: each ID, key and copy count | `herd/scene_herd.h` `HERD_SIZES` |
-| The pool, each copy's place and clip, and the camera's lap | `launcher/demo/capybara/herd.scene.toml`, `lap.keys.toml` |
-| Each size's copies, and a lap's frame and animation-step cost | [`tests/suite_herd_perf.c`](../tests/suite_herd_perf.c) |
+| The pool, and each copy's place and clip | `launcher/demo/capybara/herd.scene.toml` |
+| The camera, orbited round the copies shown | [`lab/lab_orbit.h`](../../../lab/lab_orbit.h) |
+| Each size's copies, and a turn's frame and animation-step cost | [`tests/suite_herd_perf.c`](../tests/suite_herd_perf.c) |
 
 ### Small fill
 
@@ -511,7 +512,7 @@ of a scene pack's bake. The sheets use the poses named on the command line.
 
 ## Perf capture quarters
 
-The render perf suites use the shared `tests/r3d_perf_quarters.h` table.
+The render perf suites use the shared lab table `lab/test/lab_perf_quarters.h`.
 Every timed render window runs with an explicit portrait or landscape
 viewport; full-frame windows hold the display quarter. Rows include
 `quarter=portrait` or `quarter=landscape`.
