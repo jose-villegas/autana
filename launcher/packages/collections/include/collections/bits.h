@@ -6,7 +6,9 @@
 #include <stdint.h>
 
 #define BITS8_BYTES(count)  (((size_t)(count) + 7U) / 8U)
-#define BITS32_WORDS(count) (((size_t)(count) + 31U) / 32U)
+/* The bits one uint32_t word holds. */
+#define BITS32_WORD_BITS    32
+#define BITS32_WORDS(count) (((size_t)(count) + BITS32_WORD_BITS - 1U) / BITS32_WORD_BITS)
 
 static inline bool
 bits8_get(const uint8_t* bits, size_t index) {
