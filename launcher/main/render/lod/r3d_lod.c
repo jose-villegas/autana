@@ -171,8 +171,7 @@ close_coarse(const r3d_lit_mesh_t* mesh, uint32_t* coarse) {
 
 void
 r3d_lod_morph_init(r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
-                   const render_lod_settings_t* lod, float pixels_per_output_pixel, const uint32_t* arrived,
-                   int blend) {
+                   const render_lod_settings_t* lod, const uint32_t* arrived, int blend) {
     const uint32_t* blending = arrived != NULL ? r3d_lod_blending(arrived, mesh->lod_group_count) : NULL;
     /* Off, or no group blending: nothing weighs, and the transform and draw
      * take their plain paths. */
@@ -180,7 +179,7 @@ r3d_lod_morph_init(r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, const r3d
         *morph = (r3d_lod_morph_t){.enabled = false};
         return;
     }
-    const lod_limits_t limits = lod_limits(lod, lens, pixels_per_output_pixel);
+    const lod_limits_t limits = lod_limits(lod, lens, 1.0F);
     *morph = (r3d_lod_morph_t){
         .view = lod_view(lens),
         .near_z = lens->project.near_z,
@@ -188,7 +187,7 @@ r3d_lod_morph_init(r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, const r3d
         .leave = limits.leave,
         .arrived = arrived,
         .blending = blending,
-        .ramp = lod->blend_px * pixels_per_output_pixel,
+        .ramp = lod->blend_px,
         .covered = limits.covered,
         .cover_ramp = limits.covered * R3D_LOD_MORPH_COVER_RAMP,
         .enabled = true,
@@ -510,6 +509,7 @@ void
 r3d_lod_steer_reset(r3d_lod_steer_t* steer, float floor_px) {
     memset(steer, 0, sizeof *steer);
     steer->tolerance_px = floor_px;
+    steer->picked_tolerance_px = floor_px;
     steer->bin = -1;
 }
 

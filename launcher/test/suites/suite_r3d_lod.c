@@ -972,7 +972,7 @@ static int
 weight_at(const r3d_lit_mesh_t* mesh, float eye, int cluster, bool enabled) {
     const r3d_lens_t lens = lens_at(eye, NULL);
     r3d_lod_morph_t morph;
-    r3d_lod_morph_init(&morph, mesh, &lens, &LOD, 1.0F, NULL, enabled ? RENDER_LOD_BLEND_ON : RENDER_LOD_BLEND_SWITCH);
+    r3d_lod_morph_init(&morph, mesh, &lens, &LOD, NULL, enabled ? RENDER_LOD_BLEND_ON : RENDER_LOD_BLEND_SWITCH);
     return r3d_lod_morph_weight(&morph, mesh, cluster);
 }
 
@@ -1028,8 +1028,12 @@ test_the_morph_thresholds_scale_with_the_pixels_per_output_pixel(void) {
     const float scale = 2.0F;
     const r3d_lens_t lens = lens_at(error_eye(mesh, scale * leave_px() * 0.75F), NULL);
     r3d_lod_morph_t one, two;
-    r3d_lod_morph_init(&one, mesh, &lens, &LOD, 1.0F, NULL, RENDER_LOD_BLEND_ON);
-    r3d_lod_morph_init(&two, mesh, &lens, &LOD, scale, NULL, RENDER_LOD_BLEND_ON);
+    r3d_lod_morph_init(&one, mesh, &lens, &LOD, NULL, RENDER_LOD_BLEND_ON);
+    render_lod_settings_t scaled = LOD;
+    scaled.tolerance_px *= scale;
+    scaled.hysteresis_px *= scale;
+    scaled.blend_px *= scale;
+    r3d_lod_morph_init(&two, mesh, &lens, &scaled, NULL, RENDER_LOD_BLEND_ON);
     TEST_ASSERT_EQUAL_INT(0, r3d_lod_morph_weight(&one, mesh, WEIGHT_CLUSTER));
     TEST_ASSERT_EQUAL_INT(R3D_LOD_MORPH_ONE, r3d_lod_morph_weight(&two, mesh, WEIGHT_CLUSTER));
 }
@@ -1106,7 +1110,7 @@ static int
 weight_arrived_at(const r3d_lit_mesh_t* mesh, float px, const uint32_t* arrived) {
     const r3d_lens_t lens = lens_at(error_eye(mesh, px), NULL);
     r3d_lod_morph_t morph;
-    r3d_lod_morph_init(&morph, mesh, &lens, &LOD, 1.0F, arrived, RENDER_LOD_BLEND_ON);
+    r3d_lod_morph_init(&morph, mesh, &lens, &LOD, arrived, RENDER_LOD_BLEND_ON);
     return r3d_lod_morph_weight(&morph, mesh, WEIGHT_CLUSTER);
 }
 
@@ -1298,7 +1302,7 @@ static uint8_t
 dither_band_at_px(const r3d_lit_mesh_t* mesh, float px, const uint32_t* arrived, int blend, int c) {
     const r3d_lens_t lens = lens_at(error_eye(mesh, px), NULL);
     r3d_lod_morph_t morph;
-    r3d_lod_morph_init(&morph, mesh, &lens, &LOD, 1.0F, arrived, blend);
+    r3d_lod_morph_init(&morph, mesh, &lens, &LOD, arrived, blend);
     return r3d_lod_dither_band(&morph, mesh, c);
 }
 
@@ -1420,9 +1424,9 @@ test_the_dither_arm_has_no_morph_weight_and_the_morph_arm_no_dither_band(void) {
     const float mid_ramp = enter_px() + (LOD.blend_px * SHARE_HALF);
     const r3d_lens_t lens = lens_at(error_eye(mesh, mid_ramp), NULL);
     r3d_lod_morph_t morph, dither;
-    r3d_lod_morph_init(&morph, mesh, &lens, &LOD, 1.0F, arrived, RENDER_LOD_BLEND_ON);
+    r3d_lod_morph_init(&morph, mesh, &lens, &LOD, arrived, RENDER_LOD_BLEND_ON);
     levelled->mesh.morph_delta = NULL;
-    r3d_lod_morph_init(&dither, mesh, &lens, &LOD, 1.0F, arrived, RENDER_LOD_BLEND_ON);
+    r3d_lod_morph_init(&dither, mesh, &lens, &LOD, arrived, RENDER_LOD_BLEND_ON);
     TEST_ASSERT_GREATER_THAN_INT(0, r3d_lod_morph_weight(&morph, mesh, WEIGHT_CLUSTER));
     TEST_ASSERT_EQUAL_HEX8(0, r3d_lod_dither_band(&morph, mesh, WEIGHT_CLUSTER));
     TEST_ASSERT_EQUAL_INT(0, r3d_lod_morph_weight(&dither, mesh, WEIGHT_CLUSTER));
@@ -1672,7 +1676,7 @@ static int
 transform_morphed_at(const morphing_t* m, float eye, bool boxed, transformed_t* out) {
     const r3d_lens_t lens = lens_at(eye, NULL);
     r3d_lod_morph_t morph;
-    r3d_lod_morph_init(&morph, &m->mesh, &lens, &LOD, 1.0F, NULL, RENDER_LOD_BLEND_ON);
+    r3d_lod_morph_init(&morph, &m->mesh, &lens, &LOD, NULL, RENDER_LOD_BLEND_ON);
     r3d_pipeline_transform_morphed(&m->mesh, &lens, &morph, BOTH_CLUSTERS, MORPH_CLUSTERS, out->cs, out->rows, boxed);
     return r3d_lod_morph_weight(&morph, &m->mesh, 0);
 }
@@ -1869,7 +1873,7 @@ test_a_blending_instance_draws_the_same_pixels_with_its_plain_clusters_split_off
         const r3d_lit_mesh_t* mesh = &d->mesh;
         const r3d_lens_t lens = lens_at(error_eye(mesh, leave_px() + (SHARE_HALF * LOD.blend_px)), NULL);
         r3d_lod_morph_t morph;
-        r3d_lod_morph_init(&morph, mesh, &lens, &LOD, 1.0F, NULL, RENDER_LOD_BLEND_ON);
+        r3d_lod_morph_init(&morph, mesh, &lens, &LOD, NULL, RENDER_LOD_BLEND_ON);
         TEST_ASSERT_TRUE(morph.enabled);
         TEST_ASSERT_EQUAL(morph_targets == 0, morph.dither);
         static const uint16_t ORDER[DRAWN_CLUSTERS] = {0, DRAWN_PLAIN, 1};
@@ -2248,6 +2252,45 @@ steered_raster(const r3d_lit_mesh_t* mesh, placed_t* p, void* scratch, render_se
                       .settings = settings};
 }
 
+static void
+test_a_budgeted_morph_uses_the_pick_limits_before_the_steer_moves(void) {
+    const r3d_lit_mesh_t* mesh = &morphing_levels()->mesh;
+    placed_t* p = malloc(sizeof *p);
+    void* scratch = malloc(picked_scratch_bytes(mesh));
+    render_settings_t settings = spread_over(1);
+    settings.lod.blend = RENDER_LOD_BLEND_ON;
+    r3d_lod_steer_t* steer = malloc(sizeof *steer);
+    TEST_ASSERT_NOT_NULL(steer);
+    raster_t raster = steered_raster(mesh, p, scratch, &settings, steer);
+    settings.lod.triangle_budget = INT32_MAX;
+    const float tolerance = r3d_lod_bin_edge(FLOOR_EDGE + 2);
+    const float enter = tolerance - settings.lod.hysteresis_px;
+    r3d_lod_steer_reset(steer, settings.lod.tolerance_px);
+    steer->tolerance_px = tolerance;
+    steer->bin = FLOOR_EDGE + 2;
+    const float depth[PLACED_MAX] = {error_eye(mesh, enter + settings.lod.blend_px * SHARE_HALF), FAR_EYE};
+    place(p, mesh, PLACED_MAX, depth);
+    const render_view_t view = axis_view();
+    (void)raster_census(&raster, &view);
+    TEST_ASSERT_NOT_EQUAL_FLOAT(tolerance, steer->tolerance_px);
+    r3d_lens_t lens;
+    r3d_lens_init(&lens, &view, 1);
+    r3d_lens_fit(&lens, raster.width, raster.height);
+    r3d_lens_place(&lens, &p->models[0], 1);
+    r3d_lod_morph_t morph;
+    raster_lod_morph(&raster, &view, &p->instances[0], &lens, &morph);
+    TEST_ASSERT_EQUAL_FLOAT(enter, morph.enter);
+    const uint32_t* blending = r3d_lod_blending(r3d_lod_arrived(p->coarse[0], GROUPS), GROUPS);
+    TEST_ASSERT_TRUE(r3d_lod_coarse(blending, WEIGHT_GROUP));
+    TEST_ASSERT_EQUAL(r3d_lod_coarse(blending, WEIGHT_GROUP), r3d_lod_morph_weight(&morph, mesh, WEIGHT_CLUSTER) > 0);
+    lens = lens_at(error_eye(mesh, enter), NULL);
+    raster_lod_morph(&raster, &view, &p->instances[0], &lens, &morph);
+    TEST_ASSERT_EQUAL_INT(R3D_LOD_MORPH_ONE, r3d_lod_morph_weight(&morph, mesh, WEIGHT_CLUSTER));
+    free(steer);
+    free(scratch);
+    free(p);
+}
+
 /* A steered census spread over two frames: a steer never started (or below
  * the floor) starts at the floor; round 1 counts only instance 1's finest
  * triangles, and the round ends on round 2, instance 0's turn, empty again. */
@@ -2399,6 +2442,7 @@ suite_r3d_lod(void) {
     RUN_TEST(test_the_steer_holds_where_only_the_next_bin_down_fits);
     RUN_TEST(test_a_steered_tolerance_settles_and_does_not_swing_along_the_path);
     RUN_TEST(test_the_histogram_bins_errors_in_the_setting_s_pixels);
+    RUN_TEST(test_a_budgeted_morph_uses_the_pick_limits_before_the_steer_moves);
     RUN_TEST(test_a_steered_census_counts_each_instance_once_a_round);
     RUN_TEST(test_a_steer_under_a_zero_tolerance_starts_at_the_first_edge);
     RUN_TEST(test_a_steer_that_moved_owes_picks_while_the_camera_holds_still);

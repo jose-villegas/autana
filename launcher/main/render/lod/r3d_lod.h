@@ -215,12 +215,11 @@ r3d_lod_cluster_blends(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh,
 int r3d_lod_morph_partition(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, uint16_t* clusters, int count);
 
 /* The blend of `mesh` seen through `lens`, measured as the pick measures it,
- * its thresholds `pixels_per_output_pixel` times `lod`'s, drawn as `blend`
+ * `lod` already in the picture's pixels, drawn as `blend`
  * (render_lod_blend_t). Disabled for RENDER_LOD_BLEND_SWITCH; a mesh without
  * morph targets dithers (r3d_lod_dithers()). */
 void r3d_lod_morph_init(r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
-                        const render_lod_settings_t* lod, float pixels_per_output_pixel, const uint32_t* arrived,
-                        int blend);
+                        const render_lod_settings_t* lod, const uint32_t* arrived, int blend);
 
 /* Cluster `c`'s weight toward its parent group's coarse surface, 0 to
  * R3D_LOD_MORPH_ONE; 0 without a parent, without a blend, or dithered. */
@@ -260,7 +259,9 @@ typedef struct {
 
 /* The steering a raster keeps from round to round. */
 typedef struct r3d_lod_steer {
-    float tolerance_px;            /* the pick's in lod.tolerance_px's pixels, at least the floor */
+    float tolerance_px;        /* the pick's in lod.tolerance_px's pixels, at least the floor */
+    float picked_tolerance_px; /* current picture, before steering the next pick */
+    int picked_coverage_permille;
     int bin;                       /* the bin edge tolerance_px sits at, or -1 at the floor */
     r3d_lod_histogram_t halves[2]; /* this round's, one per core of the cull */
     int64_t drawn;                 /* triangles the round's frames drew */
