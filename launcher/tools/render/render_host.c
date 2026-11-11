@@ -65,7 +65,7 @@ set_setting(const char* field, const char* text) {
 #define PARSE_bool(text)  (strtol((text), &end, 10) != 0)
 #define PARSE_float(text) strtof((text), &end)
 #define PARSE_int(text)   (int)strtol((text), &end, 10)
-#define SET_FIELD(name, type)                                                                                          \
+#define SET_FIELD(name, type, valid)                                                                                   \
     if (strcmp(field, #name) == 0) {                                                                                   \
         settings.name = PARSE_##type(text);                                                                            \
         return end != text && *end == '\0';                                                                            \
