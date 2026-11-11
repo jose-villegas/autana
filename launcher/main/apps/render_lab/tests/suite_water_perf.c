@@ -3,9 +3,8 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
-#include "apps/render_lab/render_lab_scene.h"
+#include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/scene_water.h"
-#include "apps/render_lab/tests/r3d_perf_quarters.h"
 #include "apps/render_lab/tests/render_lab_test.h"
 #include "apps/render_lab/tests/water_perf_log.h"
 #include "core/memory.h"
@@ -13,6 +12,9 @@
 #include "core/tune.h"
 #include "display/display.h"
 #include "esp_log.h"
+#include "lab/lab_scene.h"
+#include "lab/test/lab_perf_quarters.h"
+#include "lab/test/lab_test.h"
 #include "profile/frame_cost.h"
 #include "render/context/render_context.h"
 #include "testkit/bench.h"
@@ -72,14 +74,14 @@ typedef struct {
     char counts[RENDER_LAB_TEST_COUNTS_MAX];
 } water_phases_t;
 
-static render_lab_test_t saved;
+static lab_test_t saved;
 static water_row_t row;
 static char* report;
 static water_phases_t* phases;
 
 static void
 release_fixture(void) {
-    render_lab_test_exit(&saved);
+    lab_test_exit(&saved);
     if (playing != NULL && playing->tune != NULL) {
         (void)tune_reset(tune_shared(), playing->tune);
     }
@@ -155,7 +157,7 @@ play(const water_config_t* config) {
     playing = config;
     TEST_ASSERT_TRUE(config->tune == NULL || tune_set(tune_shared(), config->tune, config->value));
     heap(config->name, WATER_PERF_BEFORE);
-    render_lab_test_enter(&saved, scene_water.key);
+    lab_test_enter(&saved, &render_lab, scene_water.key);
     suite_set_test_cleanup(release_phases);
     TEST_ASSERT_TRUE(app_render_lab.console->handle("water tour"));
     const int capacity = (int)(scene_water_tour_length_ms() / WATER_PERF_FRAME_MS);
@@ -165,7 +167,7 @@ play(const water_config_t* config) {
     report = memory_alloc(FRAME_COST_REPORT_MAX, MEMORY_INTERNAL);
     TEST_ASSERT_TRUE(row.frame_us != NULL && row.update_us != NULL && row.draw_us != NULL && report != NULL);
     /* Untimed: the tour's upright refill. */
-    (void)render_lab_test_frame_dt(0, false, NULL);
+    (void)lab_test_frame_dt(0, false, NULL);
     (void)scene_water_take_stats();
     (void)frame_cost_take_report(0, report, 0);
     heap(config->name, WATER_PERF_RUNNING);
@@ -181,7 +183,7 @@ play(const water_config_t* config) {
             start_ms = f * WATER_PERF_FRAME_MS;
         }
         const int64_t start = timing_now_us();
-        const int64_t draw_us = render_lab_test_frame_dt(WATER_PERF_FRAME_MS, false, NULL);
+        const int64_t draw_us = lab_test_frame_dt(WATER_PERF_FRAME_MS, false, NULL);
         const int64_t frame_us = timing_now_us() - start;
         const scene_water_stats_t s = scene_water_take_stats();
         row.frame_us[row.frames] = (int32_t)frame_us;
@@ -201,9 +203,9 @@ play(const water_config_t* config) {
 static void
 count_base_tour(void) {
     playing = &configs[0];
-    render_lab_test_enter(&saved, scene_water.key);
+    lab_test_enter(&saved, &render_lab, scene_water.key);
     TEST_ASSERT_TRUE(app_render_lab.console->handle("water tour"));
-    (void)render_lab_test_frame_dt(0, false, NULL);
+    (void)lab_test_frame_dt(0, false, NULL);
     render_lab_test_show_view(render_context_debug_view_named("cull"));
     const int capacity = (int)(scene_water_tour_length_ms() / WATER_PERF_FRAME_MS);
     int k = 0;
@@ -211,7 +213,7 @@ count_base_tour(void) {
         if (k + 1 < phases->count && f * WATER_PERF_FRAME_MS >= phases->phase[k + 1].start_ms) {
             k++;
         }
-        (void)render_lab_test_frame_dt(WATER_PERF_FRAME_MS, false, NULL);
+        (void)lab_test_frame_dt(WATER_PERF_FRAME_MS, false, NULL);
         render_lab_test_add_cull_counts(phases->phase[k].sums);
         phases->phase[k].frames++;
     }
@@ -220,7 +222,7 @@ count_base_tour(void) {
     for (int i = 0; i < phases->count; i++) {
         const water_phase_t* p = &phases->phase[i];
         render_lab_test_write_counts(p->sums, p->frames, phases->counts, sizeof phases->counts);
-        ESP_LOGI(TAG, FRAME_PROFILE_REPLAY R3D_PERF_QUARTER_FORMAT, scene_water.key, (int)p->start_ms, phases->counts,
+        ESP_LOGI(TAG, FRAME_PROFILE_REPLAY LAB_PERF_QUARTER_FORMAT, scene_water.key, (int)p->start_ms, phases->counts,
                  p->report, quarter);
     }
 }

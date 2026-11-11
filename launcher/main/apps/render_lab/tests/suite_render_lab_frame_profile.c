@@ -10,12 +10,11 @@
 #include <stdio.h>
 #include "apps/render_lab/baked_families.h"
 #include "apps/render_lab/capybara_content.h"
+#include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_dynres.h"
-#include "apps/render_lab/render_lab_scene.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/scene_baked.h"
 #include "apps/render_lab/sponza_content.h"
-#include "apps/render_lab/tests/r3d_perf_quarters.h"
 #include "apps/render_lab/tests/render_lab_test.h"
 #include "collections/strbuf.h"
 #include "core/memory.h"
@@ -24,6 +23,9 @@
 #include "esp_log.h"
 #include "frame/test_frame.h"
 #include "frame_profile.h"
+#include "lab/lab_scene.h"
+#include "lab/test/lab_perf_quarters.h"
+#include "lab/test/lab_test.h"
 #include "perf_budget.h"
 #include "profile/frame_cost.h"
 #include "render/context/render_context.h"
@@ -43,11 +45,11 @@ typedef struct {
 } capybara_take_t;
 
 typedef struct {
-    const render_lab_scene_t* scene;
+    const lab_scene_t* scene;
     const char* pack;
     const char* entity;
     const capybara_take_t* take;
-    perf_budget_t quarters[R3D_PERF_QUARTER_COUNT];
+    perf_budget_t quarters[LAB_PERF_QUARTER_COUNT];
 } profile_scenario_t;
 
 static const capybara_take_t capybara_home = {CAPYBARA_SCENE, CAPYBARA_VIEW_HOME, CAPYBARA_VIEW_HOME,
@@ -84,14 +86,14 @@ static const char* TAG = "render_lab_profile";
 #define DYNRES_STEPS_LINE_BYTES  (sizeof DYNRES_STEPS_LINE + 64)
 #define DYNRES_STEPS_FRAME_BYTES sizeof(" -2147483648:-2147483648:-2147483648:-2147483648")
 
-static render_lab_test_t saved;
+static lab_test_t saved;
 static frame_profile_trace_t played; /* the row playing now, freed with the fixture */
 
 static void
 release_fixture(void) {
     frame_profile_trace_free(&played);
     render_lab_test_show_view(RENDER_DEBUG_VIEW_SHADED);
-    render_lab_test_exit(&saved);
+    lab_test_exit(&saved);
 }
 
 static int64_t
@@ -101,7 +103,7 @@ whole_frame(void* ctx, int64_t dt_us) {
     const uint32_t dt_ms = (uint32_t)(step_us / MATH_US_PER_MS);
     *remainder_us = step_us % MATH_US_PER_MS;
     const int64_t start = timing_now_us();
-    (void)render_lab_test_frame_dt(dt_ms, false, NULL);
+    (void)lab_test_frame_dt(dt_ms, false, NULL);
     return timing_now_us() - start;
 }
 
@@ -143,7 +145,7 @@ release_report(void) {
 static __attribute__((noinline)) void
 report_path(const scenario_path_t* path, const frame_profile_t* p) {
     const char* row = scenario_row();
-    const char* quarter = r3d_perf_quarters[quarter_index].name;
+    const char* quarter = lab_perf_quarters[quarter_index].name;
     frame_profile_log(TAG, row, p, quarter);
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, p->frames, "frame profile failed");
     const int count = frame_profile_peaks(&played, NULL, 0);
@@ -177,10 +179,10 @@ send(const char* format, ...) {
 
 static scenario_path_t
 enter_scenario(void) {
-    render_lab_test_enter(&saved, scenario->scene->key);
+    lab_test_enter(&saved, &render_lab, scenario->scene->key);
     suite_set_test_cleanup(release_fixture);
-    test_hold_quarter(r3d_perf_quarters[quarter_index].quarter);
-    entity_t scene = render_lab_test_loaded_scene(scenario->pack == NULL ? SPONZA_SCENE : scenario->pack);
+    test_hold_quarter(lab_perf_quarters[quarter_index].quarter);
+    entity_t scene = lab_test_loaded_scene(scenario->pack == NULL ? SPONZA_SCENE : scenario->pack);
     TEST_ASSERT_FALSE(handle_is_none(scene));
     const entity_t entity =
         entity_find(scene, name_hash(scenario->entity == NULL ? sponza_cameras[0] : scenario->entity));
@@ -202,7 +204,7 @@ enter_scenario(void) {
 /* The played profile against its budget, in a frame of its own for the same reason. */
 static __attribute__((noinline)) void
 judge_profile(const frame_profile_t* p) {
-    r3d_perf_budget(scenario_row(), &r3d_perf_quarters[quarter_index], p->frame_us.avg, p->frame_us.p95,
+    lab_perf_budget(scenario_row(), &lab_perf_quarters[quarter_index], p->frame_us.avg, p->frame_us.p95,
                     &scenario->quarters[quarter_index], true);
 }
 
@@ -247,7 +249,7 @@ log_step_frames(const step_frame_t* frames, int count, resolution_step_t size) {
             strbuf_appendf(&text, DYNRES_STEPS_FRAME, (int)f->whole_us, (int)f->draw_us, (int)f->upscale_us,
                            (int)f->triangles);
         }
-        ESP_LOGI(TAG, "%s" R3D_PERF_QUARTER_FORMAT, line, r3d_perf_quarters[quarter_index].name);
+        ESP_LOGI(TAG, "%s" LAB_PERF_QUARTER_FORMAT, line, lab_perf_quarters[quarter_index].name);
     }
     memory_free(line);
 }
@@ -265,10 +267,10 @@ test_dynres_steps(void) {
     const resolution_step_t size = render_lab_ladder[ladder_step];
     const resolution_config_t pinned = resolution_config(&size, 1, 1, RENDER_LAB_BUDGET_MAX_MS * MATH_US_PER_MS);
     render_context_set_dynamic_resolution(render_context_main(), &pinned, NULL, 0);
-    (void)render_lab_test_frame_dt(0, false, NULL); /* warm-up, not sampled */
+    (void)lab_test_frame_dt(0, false, NULL); /* warm-up, not sampled */
     for (int i = 0; i < frames; i++) {
         const int64_t start = timing_now_us();
-        (void)render_lab_test_frame_dt(DYNRES_STEPS_FRAME_DT_MS, false, NULL);
+        (void)lab_test_frame_dt(DYNRES_STEPS_FRAME_DT_MS, false, NULL);
         const int32_t whole_us = (int32_t)(timing_now_us() - start);
         const render_context_frame_t f = render_context_frame(render_context_main());
         TEST_ASSERT_EQUAL_INT(0, f.step);
@@ -285,10 +287,10 @@ void
 run_render_lab_frame_profile_suite(void) {
 #ifdef DEVICE_BUILD
     for (size_t i = 0; i < sizeof profile_scenarios / sizeof profile_scenarios[0]; i++) {
-        for (quarter_index = 0; quarter_index < R3D_PERF_QUARTER_COUNT; quarter_index++) {
+        for (quarter_index = 0; quarter_index < LAB_PERF_QUARTER_COUNT; quarter_index++) {
             scenario = &profile_scenarios[i];
             RUN_TEST_CASE(test_real_time_frame_profile, scenario->scene->key, scenario_take(),
-                          r3d_perf_quarters[quarter_index].name);
+                          lab_perf_quarters[quarter_index].name);
         }
     }
 #endif

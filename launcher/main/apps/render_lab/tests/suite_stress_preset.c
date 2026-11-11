@@ -18,11 +18,12 @@
 #include "anim/anim_transform.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/stress/stress_preset.h"
-#include "apps/render_lab/tests/r3d_perf_quarters.h"
 #include "asset/asset_store.h"
 #include "core/memory.h"
 #include "gfx/gfx.h"
 #include "image/pixel/rgb565.h"
+#include "lab/lab_view.h"
+#include "lab/test/lab_perf_quarters.h"
 #include "math/scalar/math_const.h"
 #include "render/dynamic/r3d_dynamic_mesh.h"
 #include "render/r3d_pipeline.h"
@@ -36,7 +37,7 @@ static const stress_framing_t framing = {10.0F, 0.5F};
 static const stress_framing_t other_framing = {3.0F, 1.25F};
 
 /* The picture's short side at render_lab's default render scale. */
-#define DEFAULT_SHORT_PX          (GFX_WIDTH * RENDER_LAB_SCALE_UNIT / RENDER_LAB_SCALE_DEFAULT)
+#define DEFAULT_SHORT_PX          (GFX_WIDTH * LAB_SCALE_UNIT / LAB_SCALE_DEFAULT)
 
 /* A per-frame wave's quarter period in: far enough along that every vertex moves. */
 #define WAVE_LATER_MS             500
@@ -450,10 +451,9 @@ test_card_has_holes_colour_steps_and_scene_size_bins(void) {
     }
     TEST_ASSERT_GREATER_THAN_INT(source.triangle_count / 2, stepped);
     const transformf_t pose = transformf_looking((vec3f_t){0, 0, framing.distance}, vec3f_back(), vec3f_unit_y());
-    const render_view_t view =
-        render_view_make(&pose, framing.half_fov_short_tan, TEST_NEAR_Z,
-                         (viewport_t){DEFAULT_SHORT_PX, GFX_HEIGHT * RENDER_LAB_SCALE_UNIT / RENDER_LAB_SCALE_DEFAULT,
-                                      DISPLAY_PORTRAIT});
+    const render_view_t view = render_view_make(
+        &pose, framing.half_fov_short_tan, TEST_NEAR_Z,
+        (viewport_t){DEFAULT_SHORT_PX, GFX_HEIGHT * LAB_SCALE_UNIT / LAB_SCALE_DEFAULT, DISPLAY_PORTRAIT});
     const r3d_pipeline_counts_t counts = count_copies(p, &view);
     for (int bin = 0; bin < R3D_SIZES_BINS; bin++) {
         TEST_ASSERT_GREATER_THAN_INT(0, counts.triangles_sized[R3D_SIZES_SHADED][bin]);
@@ -481,9 +481,9 @@ count_pose(const stress_params_t* p, int pose_index, int quarter) {
     const uint32_t t_ms = (uint32_t)((uint64_t)f.duration_ms * (uint32_t)pose_index / (uint32_t)p->perf_poses);
     const float seconds = (float)t_ms / STRESS_TEST_MS_PER_SECOND;
     const transformf_t pose = anim_transform_sample(&f.path, seconds);
-    const render_view_t view = render_view_make(
-        &pose, framing.half_fov_short_tan, TEST_NEAR_Z,
-        (viewport_t){DEFAULT_SHORT_PX, GFX_HEIGHT * RENDER_LAB_SCALE_UNIT / RENDER_LAB_SCALE_DEFAULT, quarter});
+    const render_view_t view =
+        render_view_make(&pose, framing.half_fov_short_tan, TEST_NEAR_Z,
+                         (viewport_t){DEFAULT_SHORT_PX, GFX_HEIGHT * LAB_SCALE_UNIT / LAB_SCALE_DEFAULT, quarter});
     return count_copies(p, &view);
 }
 
@@ -491,11 +491,11 @@ static void
 test_culled_fraction_sweeps_from_visible_to_mostly_off_frustum(void) {
     const stress_params_t* p = &stress_presets[STRESS_CULLED];
     camera_fixture(p);
-    for (int quarter = 0; quarter < (int)R3D_PERF_QUARTER_COUNT; quarter++) {
+    for (int quarter = 0; quarter < (int)LAB_PERF_QUARTER_COUNT; quarter++) {
         float low = 1.0F;
         float high = 0.0F;
         for (int i = 0; i < p->perf_poses; i++) {
-            const r3d_pipeline_counts_t counts = count_pose(p, i, r3d_perf_quarters[quarter].quarter);
+            const r3d_pipeline_counts_t counts = count_pose(p, i, lab_perf_quarters[quarter].quarter);
             if (counts.clusters_tested == 0) {
                 continue;
             }
@@ -513,14 +513,14 @@ static void
 test_near_plane_sweeps_behind_and_clipped_triangles(void) {
     const stress_params_t* p = &stress_presets[STRESS_NEAR];
     camera_fixture(p);
-    for (int quarter = 0; quarter < (int)R3D_PERF_QUARTER_COUNT; quarter++) {
-        const r3d_pipeline_counts_t first = count_pose(p, 0, r3d_perf_quarters[quarter].quarter);
+    for (int quarter = 0; quarter < (int)LAB_PERF_QUARTER_COUNT; quarter++) {
+        const r3d_pipeline_counts_t first = count_pose(p, 0, lab_perf_quarters[quarter].quarter);
         TEST_ASSERT_EQUAL_INT(0, first.triangles_behind);
         TEST_ASSERT_EQUAL_INT(0, first.triangles_clipped);
         int behind = 0;
         int clipped = 0;
         for (int i = 0; i < p->perf_poses; i++) {
-            const r3d_pipeline_counts_t counts = count_pose(p, i, r3d_perf_quarters[quarter].quarter);
+            const r3d_pipeline_counts_t counts = count_pose(p, i, lab_perf_quarters[quarter].quarter);
             behind = counts.triangles_behind > behind ? counts.triangles_behind : behind;
             clipped = counts.triangles_clipped > clipped ? counts.triangles_clipped : clipped;
         }

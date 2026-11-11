@@ -27,7 +27,7 @@ entry, so the frame hook changes the next frame without reloading the scene.
 ### Menu
 
 The BOOT menu has a SCENE dropdown of scene families (`family` in
-`render_lab_scene_t`), then a VARIANT dropdown when the family has several scenes (Sponza's
+`lab_scene_t`), then a VARIANT dropdown when the family has several scenes (Sponza's
 bakes, from `variant`), then the rows the showing scene declares in its
 `controls` (Capybara's CLIP and BLEND). Order in `scenes[]` is the order of every list, and
 index 0 (Sponza Fitted Full) is the scene a start with no key shows. Console
@@ -197,7 +197,7 @@ traverses the stacked surfaces. Their sweeps are claims of
 | Each preset's stage times on the board | [`tests/suite_stress_perf.c`](../tests/suite_stress_perf.c) |
 | Stage cost model and held-out scoring | [`tools/stress_predict.py`](stress_predict.py) |
 
-The `run_stress_perf_suite` suite replays both `r3d_perf_quarters` along each
+The `run_stress_perf_suite` suite replays both `lab_perf_quarters` along each
 preset's swing. `stress_presets[].perf_poses` owns sampling density.
 Uniform presets also replay the full and half-height render_lab ladder steps.
 
@@ -612,7 +612,7 @@ of a scene pack's bake. The sheets use the poses named on the command line.
 
 ## Perf capture quarters
 
-The render perf suites use the shared `tests/r3d_perf_quarters.h` table.
+The render perf suites use the shared lab table `lab/test/lab_perf_quarters.h`.
 Every timed render window runs with an explicit portrait or landscape
 viewport; full-frame windows hold the display quarter. Rows include
 `quarter=portrait` or `quarter=landscape`.

@@ -11,13 +11,14 @@
 #include "suites.h"
 #ifdef DEVICE_BUILD
 #include <limits.h>
+#include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_dynres.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/stress/scene_stress.h"
-#include "apps/render_lab/tests/r3d_perf_quarters.h"
 #include "apps/render_lab/tests/render_lab_test.h"
 #include "core/tune.h"
 #include "frame/test_frame.h"
+#include "lab/test/lab_perf_quarters.h"
 #include "render/context/render_context.h"
 #include "scene/animator/animator.h"
 #include "testkit/cleanup.h"
@@ -28,9 +29,9 @@ static const char* TAG = "stress_perf";
 /* Additional sizes use the ladder's full-width and half-height steps. */
 #define STRESS_PERF_WIDE_STEP 3
 
-static render_lab_test_t saved;
-static const render_lab_scene_t* preset;
-static const r3d_perf_quarter_t* quarter;
+static lab_test_t saved;
+static const lab_scene_t* preset;
+static const lab_perf_quarter_t* quarter;
 static int size_step;
 static int saved_filter;
 static int saved_layout;
@@ -40,29 +41,28 @@ release_fixture(void) {
     render_lab_test_show_view(RENDER_DEBUG_VIEW_SHADED);
     render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render_lab, upscale), saved_filter));
-    render_lab_test_exit(&saved);
+    lab_test_exit(&saved);
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render_lab, layout), saved_layout));
 }
 
 static void
 test_stress_stages(void) {
     saved_filter = render_lab_upscale_selected();
-    saved_layout = render_lab_layout();
+    saved_layout = (int)lab_view_layout(&render_lab_view_tunables);
     const stress_params_t* params = preset->data;
-    const int layout =
-        params->surface == STRESS_SURFACE_UNIFORM && size_step < 0 ? RENDER_LAB_LAYOUT_DOUBLE : RENDER_LAB_LAYOUT_FULL;
+    const int layout = params->surface == STRESS_SURFACE_UNIFORM && size_step < 0 ? LAB_LAYOUT_DOUBLE : LAB_LAYOUT_FULL;
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render_lab, layout), layout));
-    render_lab_test_enter(&saved, preset->key);
+    lab_test_enter(&saved, &render_lab, preset->key);
     suite_set_test_cleanup(release_fixture);
     test_hold_quarter(quarter->quarter);
-    (void)render_lab_test_frame_dt(0, false, NULL);
+    (void)lab_test_frame_dt(0, false, NULL);
     if (size_step >= 0) {
         const resolution_step_t size = render_lab_ladder[size_step];
         const resolution_config_t one = resolution_config(&size, 1, 1, INT32_MAX);
         render_context_set_dynamic_resolution(render_context_main(), &one, NULL, 0);
         TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render_lab, upscale), UPSCALE_FILTER_SURFACE));
     }
-    const render_lab_path_t path = preset->path();
+    const lab_path_t path = preset->path();
     TEST_ASSERT_FALSE_MESSAGE(handle_is_none(path.scene), "the stress scene did not load");
     const entity_t camera = path.entity;
     TEST_ASSERT_FALSE(handle_is_none(camera));
@@ -86,8 +86,8 @@ run_stress_perf_suite(void) {
         const stress_params_t* params = preset->data;
         const int sizes[] = {-1, 0, STRESS_PERF_WIDE_STEP};
         const int size_count = params->surface == STRESS_SURFACE_UNIFORM ? (int)(sizeof sizes / sizeof sizes[0]) : 1;
-        for (int q = 0; q < (int)R3D_PERF_QUARTER_COUNT; q++) {
-            quarter = &r3d_perf_quarters[q];
+        for (int q = 0; q < (int)LAB_PERF_QUARTER_COUNT; q++) {
+            quarter = &lab_perf_quarters[q];
             for (int s = 0; s < size_count; s++) {
                 size_step = sizes[s];
                 RUN_TEST_CASE(test_stress_stages, preset->key, quarter->name,

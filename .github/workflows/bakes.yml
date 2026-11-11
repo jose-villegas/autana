@@ -83,8 +83,7 @@ jobs:
         run: |
           version=$(sed -n 's/^BLENDER_VERSION = (\(.*\))$/\1/p' launcher/tools/gltf/blend_skin_to_glb.py | tr -d ' ' | tr , .)
           series=${version%.*}
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libxkbcommon0 libsm6
+          sudo sh scripts/ci/apt_install.sh -y --no-install-recommends libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libxkbcommon0 libsm6
           curl -fsSL "https://download.blender.org/release/Blender$series/blender-$version-linux-x64.tar.xz" | tar -xJ -C "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/blender-$version-linux-x64" >> "$GITHUB_PATH"
 
@@ -101,8 +100,7 @@ jobs:
         if: steps.missing.outputs.mesh != '0'
         run: |
           pip install -r launcher/tools/r3d/requirements.txt
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends llvm
+          sudo sh scripts/ci/apt_install.sh -y --no-install-recommends llvm
 
       - name: Install the sound requirements
         if: steps.missing.outputs.sound != '0'

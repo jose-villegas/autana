@@ -30,6 +30,7 @@
 #include "gfx/gfx.h"
 #include "image/pixel/rgb565.h"
 #include "input/motion/gravity.h"
+#include "lab/lab_scene.h"
 #include "math/geometry/iso_surface.h"
 #include "math/scalar/math_const.h"
 #include "math/scalar/mathf.h"
@@ -42,7 +43,6 @@
 #include "render/dynamic/r3d_dynamic_mesh.h"
 #include "render/skin/r3d_skin_light.h"
 #include "render_lab.h"
-#include "render_lab_scene.h"
 #include "render_lab_view.h"
 #include "scene/camera/camera.h"
 #include "scene/renderer/renderer.h"
@@ -248,49 +248,48 @@ scene_water_take_stats(void) {
     return taken;
 }
 
-static char failure[RENDER_LAB_STATUS_LEN];
+static char failure[LAB_STATUS_LEN];
 
 static void
 fail(const char* what) {
-    render_lab_scene_fail(TAG, failure, sizeof failure, what);
+    lab_scene_fail(TAG, failure, sizeof failure, what);
 }
 
 static bool
 allocate(void) {
     flip3_config_t config = {box, box.z / (float)WATER_CELLS_DEEP, 1};
-    void* grid = render_lab_scene_take(flip3_grid_bytes(&config));
+    void* grid = lab_scene_take(flip3_grid_bytes(&config));
     /* One particle to learn the seed lattice, then room for the most water
      * the slider allows; the grid is the same at any particle count. */
-    if (grid == NULL || !flip3_init(&water, &config, grid, render_lab_scene_take(flip3_particle_bytes(&config)))) {
+    if (grid == NULL || !flip3_init(&water, &config, grid, lab_scene_take(flip3_particle_bytes(&config)))) {
         return false;
     }
     config.max_particles = ((water.seed_count * WATER_FILL_MAX) + WATER_PERCENT - 1) / WATER_PERCENT;
-    if (!flip3_init(&water, &config, grid, render_lab_scene_take(flip3_particle_bytes(&config)))) {
+    if (!flip3_init(&water, &config, grid, lab_scene_take(flip3_particle_bytes(&config)))) {
         return false;
     }
     const float most = (float)WATER_SAMPLES_PCT_MAX / (float)WATER_PERCENT;
-    field = render_lab_scene_take(sizeof(float) * flip3_field_count(&water, most));
+    field = lab_scene_take(sizeof(float) * flip3_field_count(&water, most));
     if (field == NULL) {
         return false;
     }
     surface_field = flip3_field(&water, most, field);
-    through = render_lab_scene_take(sizeof(float) * (size_t)(surface_field.nx * surface_field.ny));
-    positions = render_lab_scene_take(sizeof(vec3f_t) * WATER_MAX_VERTICES);
-    normals = render_lab_scene_take(sizeof(vec3f_t) * WATER_MAX_VERTICES);
-    colors = render_lab_scene_take(sizeof(uint8_t[3]) * WATER_MAX_VERTICES);
-    triangles = render_lab_scene_take(sizeof(uint16_t[3]) * WATER_MAX_TRIANGLES);
+    through = lab_scene_take(sizeof(float) * (size_t)(surface_field.nx * surface_field.ny));
+    positions = lab_scene_take(sizeof(vec3f_t) * WATER_MAX_VERTICES);
+    normals = lab_scene_take(sizeof(vec3f_t) * WATER_MAX_VERTICES);
+    colors = lab_scene_take(sizeof(uint8_t[3]) * WATER_MAX_VERTICES);
+    triangles = lab_scene_take(sizeof(uint16_t[3]) * WATER_MAX_TRIANGLES);
     for (int half = 0; half < 2; half++) {
-        scratch[half] =
-            render_lab_scene_take(sizeof(int32_t) * iso_surface_scratch_count(surface_field.ny, surface_field.nz));
+        scratch[half] = lab_scene_take(sizeof(int32_t) * iso_surface_scratch_count(surface_field.ny, surface_field.nz));
     }
-    transfer = render_lab_scene_take(sizeof *transfer);
-    batch = render_lab_scene_take(sizeof *batch);
+    transfer = lab_scene_take(sizeof *transfer);
+    batch = lab_scene_take(sizeof *batch);
     if (transfer != NULL) {
         r3d_skin_light_transfer_build(WATER_TONEMAP_NONE, transfer);
     }
     const r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(WATER_MAX_VERTICES, WATER_MAX_TRIANGLES);
     const size_t mesh_bytes = r3d_dynamic_mesh_bytes(capacity);
-    void* mesh_block = render_lab_scene_take(mesh_bytes);
+    void* mesh_block = lab_scene_take(mesh_bytes);
     return through != NULL && transfer != NULL && batch != NULL && positions != NULL && normals != NULL
            && colors != NULL && triangles != NULL && scratch[0] != NULL && scratch[1] != NULL && mesh_block != NULL
            && r3d_dynamic_mesh_init(&surface, mesh_block, mesh_bytes, capacity, WATER_TICKS_PER_MM);
@@ -619,12 +618,12 @@ apply_view(void) {
 }
 
 static void
-scene_water_enter(const render_lab_scene_t* self) {
+scene_water_enter(const lab_scene_t* self) {
     (void)self;
     draw_clear(RGB565BE(UI_BACKGROUND));
     failure[0] = '\0';
     box = (vec3f_t){BOARD_SCREEN_WIDTH_MM, BOARD_SCREEN_HEIGHT_MM, WATER_TANK_DEPTH_MM};
-    tank_scene = render_lab_scene_load(TAG, failure, sizeof failure, WATER_SCENE, "water");
+    tank_scene = lab_scene_load(TAG, failure, sizeof failure, WATER_SCENE, "water");
     if (handle_is_none(tank_scene)) {
         return;
     }
@@ -732,7 +731,7 @@ scene_water_frame(uint32_t dt_ms) {
 
 static inline const char*
 water_status(void) {
-    static char buf[RENDER_LAB_STATUS_LEN];
+    static char buf[LAB_STATUS_LEN];
     if (failure[0] != '\0') {
         return failure;
     }
@@ -751,7 +750,7 @@ fill_in_range(int percent, console_reply_fn reply) {
     if (percent >= WATER_FILL_MIN && percent <= WATER_FILL_MAX) {
         return true;
     }
-    char line[RENDER_LAB_STATUS_LEN];
+    char line[LAB_STATUS_LEN];
     if (snprintf(line, sizeof line, "RENDER_ERR water fill is %d to %d", WATER_FILL_MIN, WATER_FILL_MAX) >= 0) {
         reply(line);
     }
@@ -773,7 +772,7 @@ script_ms(void) {
 static inline bool
 scene_water_console(const char* args, console_reply_fn reply) {
     int percent;
-    char line[RENDER_LAB_STATUS_LEN];
+    char line[LAB_STATUS_LEN];
     if (sscanf(args, "water fill %d", &percent) == 1) {
         if (!fill_in_range(percent, reply)) {
             return true;
@@ -799,7 +798,7 @@ scene_water_controls(int width) {
     if (snprintf(label, sizeof label, WATER_FILL_LABEL, fill_percent) < 0) {
         label[0] = '\0';
     }
-    render_lab_menu_caption(width, label);
+    lab_menu_caption(width, label);
     /* The slider moves in whole steps, so it counts steps, not percent. */
     ui_row_centre(width, UI_ROW_HEIGHT);
     int steps = fill_percent / WATER_FILL_STEP;
@@ -809,13 +808,13 @@ scene_water_controls(int width) {
     }
 }
 
-const render_lab_scene_t scene_water = {.name = "Water",
-                                        .key = WATER_SCENE,
-                                        .family = "Water",
-                                        .enter = scene_water_enter,
-                                        .frame = scene_water_frame,
-                                        .exit = scene_water_exit,
-                                        .status = RENDER_LAB_SCENE_DEV(water_status),
-                                        .update = scene_water_update,
-                                        .controls = scene_water_controls,
-                                        .console = RENDER_LAB_SCENE_DEV(scene_water_console)};
+const lab_scene_t scene_water = {.name = "Water",
+                                 .key = WATER_SCENE,
+                                 .family = "Water",
+                                 .enter = scene_water_enter,
+                                 .frame = scene_water_frame,
+                                 .exit = scene_water_exit,
+                                 .status = LAB_SCENE_DEV(water_status),
+                                 .update = scene_water_update,
+                                 .controls = scene_water_controls,
+                                 .console = LAB_SCENE_DEV(scene_water_console)};
