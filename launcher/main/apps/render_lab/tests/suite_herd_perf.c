@@ -1,8 +1,9 @@
 /* Device suite: each herd size shows its first N capybaras and hides the
  * rest, every one shown drawn, and what a turn of the camera round them
  * costs: the whole frame, and the animation step (posing and skinning every
- * copy shown) alone, with the internal heap the herd leaves, the skin buffers
- * MEMORY_FAST placed in external RAM, and the copies in view on average.
+ * copy shown) alone, with the internal heap the herd leaves, the copies whose
+ * skin buffers MEMORY_FAST placed in external RAM, and the copies in view on
+ * average.
  * Logged per size and quarter, no budget yet; the slope over N is the cost of
  * one more skinned copy. */
 #include "suites.h"
@@ -57,12 +58,18 @@ release_fixture(void) {
     active = NULL;
 }
 
-/* The skinned copies the scene keeps active. */
+/* The skinned copies the scene keeps active and, in `external`, those of
+ * them whose skin buffers MEMORY_FAST put in external RAM. */
 static int
-shown_copies(const scene_t* scene) {
+shown_copies(const scene_t* scene, int* external) {
     int shown = 0;
+    *external = 0;
     for (int e = 0; e < scene->asset.entity_count; e++) {
-        shown += scene->skinned_renderers[e].bound && entity_active(scene_row_entity(scene, (scene_row_t)e));
+        const scene_skinned_renderer_t* skinned = &scene->skinned_renderers[e];
+        if (skinned->bound && entity_active(scene_row_entity(scene, (scene_row_t)e))) {
+            shown++;
+            *external += memory_in_psram(skinned->storage);
+        }
     }
     return shown;
 }
@@ -116,7 +123,6 @@ test_herd_turn_cost(void) {
     TEST_ASSERT_NOT_NULL(active);
     *active = (fixture_t){0};
     const size_t internal_before = memory_free_bytes(MEMORY_INTERNAL);
-    const memory_fallbacks_t fell_before = memory_fast_fallbacks(); /* the scene takes its buffers from here on */
     lab_test_enter(&active->saved, &render_lab, herd->key);
     suite_set_test_cleanup(release_fixture);
     TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render_lab, orbit_ms), HERD_PERF_TURN_MS));
@@ -127,14 +133,13 @@ test_herd_turn_cost(void) {
     TEST_ASSERT_NOT_NULL(scene);
     const int copies = *(const int*)herd->data;
     scene_animation_step(scene, 0); /* a shown copy takes its buffers on its first step */
-    const memory_fallbacks_t fell = memory_fast_fallbacks();
-    TEST_ASSERT_EQUAL_INT(copies, shown_copies(scene));
+    int external = 0;
+    TEST_ASSERT_EQUAL_INT(copies, shown_copies(scene, &external));
     TEST_ASSERT_EQUAL_INT(0, scene->starved_count);
     ESP_LOGI(TAG, "herd_perf: n=%d internal_taken=%u internal_free=%u internal_largest=%u", copies,
              (unsigned)(internal_before - memory_free_bytes(MEMORY_INTERNAL)),
              (unsigned)memory_free_bytes(MEMORY_INTERNAL), (unsigned)memory_largest_block(MEMORY_INTERNAL));
-    ESP_LOGI(TAG, "herd_perf: n=%d fast_fallbacks=%u fast_fallback_bytes=%u", copies,
-             (unsigned)(fell.count - fell_before.count), (unsigned)(fell.bytes - fell_before.bytes));
+    ESP_LOGI(TAG, "herd_perf: n=%d copies_in_external_ram=%d", copies, external);
 
     for (int i = -1; i < HERD_PERF_SAMPLES; i++) {
         const int64_t start = timing_now_us();
