@@ -2,9 +2,11 @@
 #pragma once
 #ifdef DEVICE_BUILD
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include "app/app.h"
 #include "app/app_console.h"
+#include "render/view/raster_cull_view.h"
 #include "scene/scene.h"
 
 #define RENDER_LAB_TEST_FRAME_MS 16
@@ -27,6 +29,22 @@ const char* render_lab_test_step_name(int step);
 /* Shows debug view `view` from the next draw on: the scene applies
  * render_lab.view after it draws, so the context is set here as well. */
 void render_lab_test_show_view(int view);
+
+/* The cull view's counts, one per RASTER_CULL_FRAME_FIELDS entry, and the
+ * longest "name=value ..." line of them. */
+#define RENDER_LAB_TEST_COUNT_ONE(name, member)   +1
+#define RENDER_LAB_TEST_COUNT_BYTES(name, member) char name[sizeof(" " #name "=-9223372036854775808")];
+
+enum { RENDER_LAB_TEST_COUNTS = 0 RASTER_CULL_FRAME_FIELDS(RENDER_LAB_TEST_COUNT_ONE) };
+
+#define RENDER_LAB_TEST_COUNTS_MAX sizeof(struct { RASTER_CULL_FRAME_FIELDS(RENDER_LAB_TEST_COUNT_BYTES) char end; })
+
+/* Adds the counts of the frame the cull view just drew to `sums`. */
+void render_lab_test_add_cull_counts(int64_t sums[RENDER_LAB_TEST_COUNTS]);
+
+/* Writes `sums` over `frames` frames, each its rounded mean, as one count
+ * line into `out`. */
+void render_lab_test_write_counts(const int64_t sums[RENDER_LAB_TEST_COUNTS], int frames, char* out, size_t size);
 
 /* Draws the pose `path_ms` along `entity`'s current clip of `duration_ms`,
  * paused there (dt 0): one frame through the cull view for its counts, then

@@ -70,6 +70,9 @@ Each frame, while the last one goes out to the panel:
 `run_water_perf_suite` plays the tour ([`tests/suite_water_perf.c`](../tests/suite_water_perf.c))
 under each experiment's tunables and times every stage of the update, `flip3_step()`'s
 own stages and r3d's; [`tools/water_tables.py`](water_tables.py) turns its capture into tables.
+It then plays the base tour once more through the cull view, untimed, and logs one
+`frame_replay` line per phase: its mean counts and its timed report, so
+`stress_predict.py --scenes` scores water too (`--scene-quarter landscape`).
 
 <!-- generated: water-stages check: python launcher/main/apps/render_lab/tools/water_tables.py --check -->
 ### Measured stages
@@ -217,7 +220,8 @@ python launcher/main/apps/render_lab/tools/stress_predict.py \
     --layout-a layout-a.log --layout-b layout-b.log
 ```
 
-`--scene KEY ...` selects scene rows; `--quarter` selects the capture quarter.
+`--scene KEY ...` selects scene rows; `--quarter` selects the stress captures'
+quarter and `--scene-quarter` the scenes', `--quarter`'s when omitted.
 Delta, noise and layout pairs require identical pose keys. A nonzero exit
 means a scoring row failed; missing fields or unmatched poses are errors.
 

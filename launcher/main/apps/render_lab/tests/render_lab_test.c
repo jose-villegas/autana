@@ -106,25 +106,34 @@ render_lab_test_show_view(int view) {
 }
 
 /* A replayed pose's log line parts, too big for the stack its draws run on. */
-#define POSE_COUNT_BYTES(name, member) char name[sizeof(" " #name "=-2147483648")];
-
 typedef struct {
-    char counts[sizeof(struct { RASTER_CULL_FRAME_FIELDS(POSE_COUNT_BYTES) char end; })];
+    int64_t sums[RENDER_LAB_TEST_COUNTS];
+    char counts[RENDER_LAB_TEST_COUNTS_MAX];
     char report[FRAME_COST_REPORT_MAX];
 } pose_line_t;
 
 static pose_line_t* pose_line;
 
-/* The cull view's counts of the frame just drawn, in a frame of their own
- * that is gone before the next draw. */
-static __attribute__((noinline)) void
-write_cull_counts(pose_line_t* out) {
+/* In a frame of its own that is gone before the next draw. */
+__attribute__((noinline)) void
+render_lab_test_add_cull_counts(int64_t sums[RENDER_LAB_TEST_COUNTS]) {
     const raster_cull_t* cull = render_context_debug_view_state(render_context_main());
     TEST_ASSERT_NOT_NULL(cull);
     const raster_cull_frame_t f = raster_cull_frame(cull);
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, f.counts.nodes_visited, "the cull view did not draw");
-    strbuf_t line = strbuf_make(out->counts, sizeof out->counts);
-#define COUNT_PAIR(name, member) strbuf_appendf(&line, "%s" #name "=%d", line.length == 0 ? "" : " ", f.member);
+    int i = 0;
+#define ADD_COUNT(name, member) sums[i++] += f.member;
+    RASTER_CULL_FRAME_FIELDS(ADD_COUNT)
+}
+
+void
+render_lab_test_write_counts(const int64_t sums[RENDER_LAB_TEST_COUNTS], int frames, char* out, size_t size) {
+    TEST_ASSERT_GREATER_THAN_INT(0, frames);
+    strbuf_t line = strbuf_make(out, size);
+    int i = 0;
+#define COUNT_PAIR(name, member)                                                                                       \
+    strbuf_appendf(&line, "%s" #name "=%lld", line.length == 0 ? "" : " ",                                             \
+                   (long long)((sums[i++] + (frames / 2)) / frames));
     RASTER_CULL_FRAME_FIELDS(COUNT_PAIR)
 }
 
@@ -140,7 +149,9 @@ render_lab_test_replay_pose(const char* tag, entity_t entity, uint32_t duration_
     TEST_ASSERT_TRUE(animator_seek(entity, ANIMATOR_CURRENT, (uint32_t)path_ms % duration_ms));
     render_lab_test_show_view(render_context_debug_view_named("cull"));
     (void)render_lab_test_frame_dt(0, false, NULL);
-    write_cull_counts(out);
+    memset(out->sums, 0, sizeof out->sums);
+    render_lab_test_add_cull_counts(out->sums);
+    render_lab_test_write_counts(out->sums, 1, out->counts, sizeof out->counts);
     render_lab_test_show_view(RENDER_DEBUG_VIEW_SHADED);
     (void)render_lab_test_frame_dt(0, false, NULL);
     (void)frame_cost_take_report(1, out->report, sizeof out->report);

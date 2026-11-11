@@ -73,15 +73,15 @@ class StressPredictTest(unittest.TestCase):
         header = predict.ROOT / "launcher/test/frame_profile.h"
         replay = read_define(header, "FRAME_PROFILE_REPLAY")
         with tempfile.TemporaryDirectory() as folder:
-            def capture(name, points, change=0):
+            def capture(name, points, change=0, quarter="portrait"):
                 lines = []
                 for t, (x, y) in enumerate(points):
                     counts = dict.fromkeys(predict.TERMS, 0)
                     counts.update(clusters_kept=x, vertices_transformed=y)
                     fields = " ".join(f"{key}={value}" for key, value in counts.items())
                     stages = "  ".join(f"{stage} {2 + 3*x + 5*y + change*x:.6f}/0.00" for stage in predict.STAGES)
-                    lines.append(replay % (name, t, fields, stages + " | total 1.00") + " quarter=portrait")
-                path = pathlib.Path(folder) / f"{name}-{change}.log"
+                    lines.append(replay % (name, t, fields, stages + " | total 1.00") + f" quarter={quarter}")
+                path = pathlib.Path(folder) / f"{name}-{change}-{quarter}.log"
                 path.write_text("\n".join(lines))
                 return str(path)
             training = ((0, 0), (1, 0), (0, 1), (2, 3))
@@ -100,6 +100,11 @@ class StressPredictTest(unittest.TestCase):
             self.assertIn("not seen", text)
             self.assertIn("Same-build p95 absolute noise floor", text)
             self.assertTrue(text.rstrip().endswith("every stage and every scene passes."))
+            landscape = capture("water", ((3, 4), (2, 1)), quarter="landscape")
+            with contextlib.redirect_stdout(io.StringIO()):
+                with self.assertRaisesRegex(ValueError, "no frame_replay lines in portrait"):
+                    predict.main(["--a", a, "--scenes", landscape])
+                self.assertEqual(predict.main(["--a", a, "--scenes", landscape, "--scene-quarter", "landscape"]), 0)
 
     def test_loader_rejects_missing_counts(self):
         with tempfile.TemporaryDirectory() as folder:

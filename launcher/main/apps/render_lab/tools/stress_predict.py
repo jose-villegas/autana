@@ -188,7 +188,9 @@ def arguments(argv):
         parser.add_argument("--" + option, nargs="+", type=pathlib.Path)
     parser.add_argument("--scene", nargs="+", default=[])
     parser.add_argument("--quarter", default="portrait")
+    parser.add_argument("--scene-quarter", help="the held-out scenes' quarter (default: --quarter)")
     args = parser.parse_args(argv)
+    args.scene_quarter = args.scene_quarter or args.quarter
     for first, second in (("noise_a", "noise_b"), ("layout_a", "layout_b"), ("scenes_a", "scenes_b")):
         if bool(getattr(args, first)) != bool(getattr(args, second)):
             parser.error(f"--{first.replace('_', '-')} and --{second.replace('_', '-')} are a pair")
@@ -207,7 +209,7 @@ def main(argv=None):
     args = arguments(argv)
     model = fit(load(args.a, args.quarter))
     lines, judged = model_lines(model, "A"), []
-    scenes = load(args.scenes or args.scenes_a, args.quarter, args.scene)
+    scenes = load(args.scenes or args.scenes_a, args.scene_quarter, args.scene)
     rows = score(model, scenes)
     lines.extend(table_lines(rows, "Absolute"))
     judged.extend(rows)
@@ -218,8 +220,8 @@ def main(argv=None):
     if args.b:
         other = fit(load(args.b, args.quarter))
         lines.extend(model_lines(other, "B"))
-        scene_a = load(args.scenes_a, args.quarter, args.scene)
-        scene_b = load(args.scenes_b, args.quarter, args.scene)
+        scene_a = load(args.scenes_a, args.scene_quarter, args.scene)
+        scene_b = load(args.scenes_b, args.scene_quarter, args.scene)
         absolute_b = score(other, scene_b)
         lines.extend(table_lines(absolute_b, "Absolute B"))
         judged.extend(absolute_b)
