@@ -50,9 +50,9 @@ The raster brackets are `r3d.census`, `r3d.cull`, `r3d.transform`,
 
 | Lap | What it times |
 |---|---|
-| `split` | setting up both cores' share, and joining their counts after |
+| `split` | the frame core alone: expanding batches into their kept copies and setting up the cull, then joining both cores' counts |
 | `pick` | each instance's level pick |
-| `walk` | each instance's cluster cull |
+| `walk` | each instance's world-box test, lens and cluster cull |
 | `wait` | the frame core waiting for the other core's share |
 
 `r3d.show` paints the selected debug view before upscale.

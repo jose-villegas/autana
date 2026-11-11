@@ -645,23 +645,15 @@ level_pick(const level_pick_t* pick, int index, const r3d_instance_t* instance, 
     return false;
 }
 
-/* A lap of the cull's `phase`, named under the bracket timing it:
- * r3d.cull when the cull feeds a draw (its lens fitted to the size drawn),
- * r3d.census when it only prices the frame (unfitted). */
-#define CULL_LAP(fitted, phase)                                                                                        \
+/* Lap `lap` (FRAME_LAP or FRAME_LAP_SINCE) of the cull's `phase`, named
+ * under the bracket timing it: r3d.cull when the cull feeds a draw (its lens
+ * fitted to the size drawn), r3d.census when it only prices the frame. */
+#define CULL_LAP(lap, fitted, phase)                                                                                   \
     do {                                                                                                               \
         if (fitted) {                                                                                                  \
-            FRAME_LAP("r3d.cull." phase);                                                                              \
+            lap("r3d.cull." phase);                                                                                    \
         } else {                                                                                                       \
-            FRAME_LAP("r3d.census." phase);                                                                            \
-        }                                                                                                              \
-    } while (0)
-#define CULL_LAP_SINCE(fitted, phase)                                                                                  \
-    do {                                                                                                               \
-        if (fitted) {                                                                                                  \
-            FRAME_LAP_SINCE("r3d.cull." phase);                                                                        \
-        } else {                                                                                                       \
-            FRAME_LAP_SINCE("r3d.census." phase);                                                                      \
+            lap("r3d.census." phase);                                                                                  \
         }                                                                                                              \
     } while (0)
 
@@ -670,7 +662,7 @@ level_pick(const level_pick_t* pick, int index, const r3d_instance_t* instance, 
 static void
 cull_slice(void* ctx, int from, int to) {
     cull_job_t* job = ctx;
-    CULL_LAP(job->fitted, "walk");
+    CULL_LAP(FRAME_LAP, job->fitted, "walk");
     const raster_t* raster = job->raster;
     const int half = from == 0 ? 0 : 1;
     cull_half_t* mine = &job->halves[half];
@@ -692,10 +684,10 @@ cull_slice(void* ctx, int from, int to) {
         } else {
             r3d_lens_t lens;
             instance_lens(&picture, instance, copy, &lens);
-            CULL_LAP(job->fitted, "pick");
+            CULL_LAP(FRAME_LAP, job->fitted, "pick");
             mine->levels_changed |= level_pick(&job->pick, i, instance, &lens,
                                                job->pick.steer != NULL ? &job->pick.steer->halves[half] : NULL);
-            CULL_LAP(job->fitted, "walk");
+            CULL_LAP(FRAME_LAP, job->fitted, "walk");
             culled[0] = (uint16_t)cull_instance(instance, job->settings.cull, &lens, culled + 1, &mine->stats, block,
                                                 job->settings.depth_fit ? &mine->fit : NULL);
         }
@@ -759,13 +751,13 @@ steer_end(const level_pick_t* pick, int drawn) {
 static inline __attribute__((always_inline)) float
 cull_instances(const raster_t* raster, const render_view_t* view, bool fitted, raster_stats_t* stats,
                draw_work_t* work) {
-    CULL_LAP(fitted, "split");
+    CULL_LAP(FRAME_LAP, fitted, "split");
     cull_begin(work, raster, view, fitted);
     int16_t* share = raster->split != NULL ? &raster->split->cull_offset : NULL;
     FRAME_LAP_END();
     (void)job_run_range_in(share, cull_slice, &work->cull, work->cull.drawn_count, work->cull.ranges);
-    CULL_LAP_SINCE(fitted, "wait");
-    CULL_LAP(fitted, "split");
+    CULL_LAP(FRAME_LAP_SINCE, fitted, "wait");
+    CULL_LAP(FRAME_LAP, fitted, "split");
     work->levels_changed = false; /* a draw on this census reads it */
     const float depth_near = cull_end(&work->cull, stats, &work->levels_changed, view->lens.near_z);
     if (work->cull.pick.steer != NULL) {
