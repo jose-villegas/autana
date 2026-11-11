@@ -7,7 +7,7 @@ A and B are stress_perf captures of two builds (tests/suite_stress_perf.c).
 Each preset's change in a stage is its B mean over its A mean, over every
 replayed pose of every capture given. A scene's predicted change is the sum,
 over the r3d stages, of that ratio less one times the scene's own stage
-time: from the replayed poses of a frame profile capture, or from the
+time, all in one quarter: from the replayed poses of a frame profile capture, or from the
 frame-cost windows of any log's lines that hold TEXT (--window). The last
 column pools every preset: each stage's B sum over its A sum.
 """
@@ -25,16 +25,20 @@ STAGES = ("r3d.cull", "r3d.transform", "r3d.draw", "r3d.upscale")
 POOLED = "all"
 
 
-def preset_stages(paths):
-    """{preset: {stage: [ms per replayed pose]}} over every capture."""
+def preset_stages(paths, quarter):
+    """{preset: {stage: [ms per replayed pose]}} over every capture, in `quarter`. A pose a
+    capture replays twice (the harness reruns a case) counts once, as its last replay."""
     found = {}
     for path in paths:
-        for pose in replays(pathlib.Path(path).read_text(encoding="utf-8", errors="replace")):
-            stages = found.setdefault(pose["row"], {})
+        poses = {(pose["row"], pose["t_ms"]): pose
+                 for pose in replays(pathlib.Path(path).read_text(encoding="utf-8", errors="replace"))
+                 if pose["quarter"] == quarter}
+        for (row, _), pose in poses.items():
+            stages = found.setdefault(row, {})
             for stage in STAGES:
                 stages.setdefault(stage, []).append(pose["stages"].get(stage, 0.0))
     if not found:
-        raise SystemExit(f"{' '.join(map(str, paths))}: no frame_replay lines")
+        raise SystemExit(f"{' '.join(map(str, paths))}: no frame_replay lines in {quarter}")
     return found
 
 
@@ -100,7 +104,7 @@ def main(argv=None):
     scenes = scene_stages(args.scenes, args.window, set(args.scene), args.quarter)
     if hasattr(sys.stdout, "reconfigure"):  # a console's code page may lack the arrow
         sys.stdout.reconfigure(encoding="utf-8")
-    sys.stdout.write(report(ratios(preset_stages(args.a), preset_stages(args.b)), scenes))
+    sys.stdout.write(report(ratios(preset_stages(args.a, args.quarter), preset_stages(args.b, args.quarter)), scenes))
 
 
 if __name__ == "__main__":

@@ -16,10 +16,10 @@ from build.c_header import read_define
 REPLAY = read_define(ROOT / "launcher/test/frame_profile.h", "FRAME_PROFILE_REPLAY") + " quarter=%s"
 
 
-def replay(row, cull, transform, draw, upscale, quarter="portrait"):
+def replay(row, cull, transform, draw, upscale, quarter="portrait", t=0):
     report = (f"r3d.cull {cull:.2f}/0.0  r3d.transform {transform:.2f}/0.0  r3d.draw {draw:.2f}/0.0  "
               f"r3d.upscale {upscale:.2f}/0.0 | total 1.00")
-    return "I (1) stress_perf: " + REPLAY % (row, 0, "nodes_visited=1", report, quarter) + "\n"
+    return "I (1) stress_perf: " + REPLAY % (row, t, "nodes_visited=1", report, quarter) + "\n"
 
 
 class StressPredictTest(unittest.TestCase):
@@ -37,7 +37,7 @@ class StressPredictTest(unittest.TestCase):
         b = self.write("b.log", replay("stress-open", 0.5, 2.0, 9.0, 1.0))
         scenes = self.write("scenes.log", replay("sponza", 2.0, 4.0, 30.0, 2.5)
                             + replay("sponza", 2.0, 4.0, 30.0, 2.5, quarter="landscape"))
-        table = stress_predict.ratios(stress_predict.preset_stages([a]), stress_predict.preset_stages([b]))
+        table = stress_predict.ratios(stress_predict.preset_stages([a], "portrait"), stress_predict.preset_stages([b], "portrait"))
         stages = stress_predict.scene_stages([scenes], [], set(), "portrait")
         # cull halves (-1.0 ms of sponza's 2.0), draw drops a tenth (-3.0 of 30.0).
         self.assertAlmostEqual(stress_predict.predict(table["stress-open"], stages["sponza"]), -4.0)
@@ -54,16 +54,18 @@ class StressPredictTest(unittest.TestCase):
     def test_the_pooled_change_is_each_stage_sum_over_sum_not_a_mean_of_ratios(self):
         a = self.write("a.log", replay("stress-open", 1.0, 1.0, 1.0, 1.0) + replay("stress-stack", 1.0, 1.0, 9.0, 1.0))
         b = self.write("b.log", replay("stress-open", 1.0, 1.0, 2.0, 1.0) + replay("stress-stack", 1.0, 1.0, 9.0, 1.0))
-        table = stress_predict.ratios(stress_predict.preset_stages([a]), stress_predict.preset_stages([b]))
+        table = stress_predict.ratios(stress_predict.preset_stages([a], "portrait"), stress_predict.preset_stages([b], "portrait"))
         # open's draw doubles and stack's holds: pooled 11/10, where a mean of ratios would be 1.5.
         self.assertEqual(table[stress_predict.POOLED]["r3d.draw"], (10.0, 11.0))
         self.assertEqual(list(table)[-1], stress_predict.POOLED)
 
-    def test_every_pose_of_every_capture_counts_toward_a_preset_mean(self):
+    def test_every_pose_of_every_capture_in_the_quarter_counts_once(self):
         a = [self.write("a1.log", replay("stress-open", 1, 2, 4, 1)),
-             self.write("a2.log", replay("stress-open", 1, 2, 8, 1) + replay("stress-open", 1, 2, 12, 1))]
-        stages = stress_predict.preset_stages(a)
-        self.assertEqual(stages["stress-open"]["r3d.draw"], [4.0, 8.0, 12.0])
+             self.write("a2.log", replay("stress-open", 1, 2, 8, 1) + replay("stress-open", 1, 2, 12, 1, t=500)
+                        + replay("stress-open", 1, 2, 20, 1) + replay("stress-open", 1, 2, 99, 1, "landscape"))]
+        stages = stress_predict.preset_stages(a, "portrait")
+        # a2's pose at t=0 is replayed twice (a rerun case): only its last replay counts.
+        self.assertEqual(sorted(stages["stress-open"]["r3d.draw"]), [4.0, 12.0, 20.0])
 
     def test_scene_rows_keep_only_the_named_rows_in_the_asked_quarter(self):
         scenes = self.write("scenes.log", replay("sponza", 1, 1, 30, 1) + replay("sponza", 1, 1, 50, 1, "landscape")
@@ -97,7 +99,7 @@ class StressPredictTest(unittest.TestCase):
     def test_a_capture_with_no_replays_or_a_window_with_no_match_fails(self):
         empty = self.write("empty.log", "I (1) boot\n")
         with self.assertRaisesRegex(SystemExit, "no frame_replay lines"):
-            stress_predict.preset_stages([empty])
+            stress_predict.preset_stages([empty], "portrait")
         log = self.write("water.log", "x config=base row=rest no window here\n")
         with self.assertRaisesRegex(SystemExit, "no frame-cost window"):
             stress_predict.scene_stages([], [("water", log, "config=base")], set(), "portrait")
@@ -106,7 +108,7 @@ class StressPredictTest(unittest.TestCase):
         a = self.write("a.log", replay("stress-open", 1, 1, 1, 1))
         b = self.write("b.log", replay("stress-stack", 1, 1, 1, 1))
         with self.assertRaisesRegex(SystemExit, "stress-open, stress-stack"):
-            stress_predict.ratios(stress_predict.preset_stages([a]), stress_predict.preset_stages([b]))
+            stress_predict.ratios(stress_predict.preset_stages([a], "portrait"), stress_predict.preset_stages([b], "portrait"))
 
 
 if __name__ == "__main__":

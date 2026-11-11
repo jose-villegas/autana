@@ -38,9 +38,9 @@ test_stress_stages(void) {
     render_lab_test_enter(&saved, preset->key);
     suite_set_test_cleanup(release_fixture);
     test_hold_quarter(quarter->quarter);
-    const entity_t scene = render_lab_test_loaded_scene(STRESS_SCENE);
-    TEST_ASSERT_FALSE_MESSAGE(handle_is_none(scene), "the stress scene did not load");
-    const entity_t camera = entity_find(scene, name_hash(STRESS_CAMERA));
+    const render_lab_path_t path = preset->path();
+    TEST_ASSERT_FALSE_MESSAGE(handle_is_none(path.scene), "the stress scene did not load");
+    const entity_t camera = path.entity;
     TEST_ASSERT_FALSE(handle_is_none(camera));
     TEST_ASSERT_TRUE(animator_seek(camera, ANIMATOR_CURRENT, 0));
     const uint32_t duration_ms = animator_clip_duration_ms(camera, animator_current_clip(camera));

@@ -30,7 +30,9 @@
 
 static const char* TAG = "stress";
 
-/* The copies' names, numbered from 0. */
+/* The scene's id and pack, its camera, and its copies' names, numbered from 0. */
+#define STRESS_SCENE          "stress"
+#define STRESS_CAMERA         "camera"
 #define STRESS_SLOT_FORMAT    "slot_%02d"
 
 /* The longest copy name STRESS_SLOT_FORMAT makes, with its terminator. */
