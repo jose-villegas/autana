@@ -8,6 +8,7 @@
 #define r3d_span_hidden              constant_r3d_span_hidden
 #define r3d_span_plane_bound         constant_r3d_span_plane_bound
 #define r3d_span_plane_in_range      constant_r3d_span_plane_in_range
+#define r3d_span_uniform             constant_uniform
 #define r3d_span_stop_after          constant_r3d_span_stop_after
 #define r3d_lens_init                constant_r3d_lens_init
 #define r3d_lens_fit                 constant_r3d_lens_fit

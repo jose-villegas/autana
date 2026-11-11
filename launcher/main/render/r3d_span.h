@@ -10,6 +10,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "build/build_variant.h"
 #include "gfx/target/gfx_target.h"
 #include "render/render_view.h"
 
@@ -114,3 +115,8 @@ void r3d_span_capped_triangle(const r3d_span_target_t* target, const r3d_span_ve
  * of their cost. */
 void r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                              const r3d_span_vertex_t* c, bool solid);
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+/* Whether the fill's quantized colour planes have no steps. */
+bool r3d_span_uniform(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c);
+#endif

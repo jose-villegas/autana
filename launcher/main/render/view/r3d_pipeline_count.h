@@ -15,6 +15,9 @@
 typedef struct {
     int nodes_visited, nodes_cut; /* nodes the walk reached; those whose box dropped their subtree */
     int clusters_tested, clusters_kept;
+    int clusters_off_frustum; /* tested clusters rejected by the frustum; nodes_cut counts subtrees */
+    int vertices_transformed;
+    int pixels[R3D_SIZES_MODES];
     int clusters_coarse;       /* the kept ones from a coarser level than the finest */
     int triangles_submitted;   /* every triangle of the kept clusters */
     int triangles_behind;      /* every corner behind the near plane */

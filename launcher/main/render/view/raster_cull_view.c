@@ -181,7 +181,12 @@ count_frame(raster_cull_t* s, const raster_t* raster) {
     drawn_at_t w = {0};
     for (int i = 0; i < raster_drawn_count(raster); i++) {
         const r3d_instance_t* instance = raster_drawn_at(raster, i);
-        const r3d_lit_mesh_t* mesh = instance->mesh;
+        r3d_lit_mesh_t counted_mesh = *instance->mesh;
+        const r3d_batch_draw_t* copy = raster_drawn_copy(raster, i);
+        if (copy != NULL) {
+            r3d_batch_copy_mesh(copy->batch, instance->mesh, copy->copy, &counted_mesh);
+        }
+        const r3d_lit_mesh_t* mesh = &counted_mesh;
         r3d_lens_t lens;
         raster_lens(raster, &s->camera, mesh->position_scale, &lens);
         raster_drawn_place(raster, i, &lens);

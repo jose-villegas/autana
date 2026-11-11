@@ -254,6 +254,63 @@ test_triangles_are_sorted_into_exactly_one_fate_each(void) {
 }
 
 static void
+test_counted_pixels_are_clipped_centres_and_zero_without_setup(void) {
+    const r3d_lens_t lens = lens_for(&looking_at_origin);
+    r3d_lit_mesh_t mesh = sort_mesh();
+    r3d_lit_cluster_t cluster = sort_clusters[0];
+    cluster.triangle_count = 1;
+    cluster.double_sided = true;
+    mesh.clusters = &cluster;
+    const uint16_t kept[] = {0};
+    const int side = R3D_SIZES_SMALL_MAX * R3D_SUBPIXEL;
+    const r3d_pipeline_vertex_t cs[SORT_VERTICES] = {{0, 0, 1.0F}, {side, 0, 1.0F}, {0, side, 1.0F}};
+    r3d_pipeline_counts_t counts = {0};
+    r3d_pipeline_count_triangles(&mesh, &lens, kept, 0, cs, &counts, NULL);
+    TEST_ASSERT_EQUAL_INT(0, counts.pixels[R3D_SIZES_FACE]);
+    r3d_pipeline_count_triangles(&mesh, &lens, kept, 1, cs, &counts, NULL);
+    const int expected = R3D_SIZES_SMALL_MAX * (R3D_SIZES_SMALL_MAX - 1) / 2;
+    TEST_ASSERT_EQUAL_INT(expected, counts.pixels[R3D_SIZES_FACE]);
+    TEST_ASSERT_EQUAL_INT(cluster.vertex_count, counts.vertices_transformed);
+    TEST_ASSERT_EQUAL_INT(1, counts.triangles_sized[R3D_SIZES_FACE][R3D_SIZES_MORE]);
+    TEST_ASSERT_EQUAL_INT(0, counts.pixels[R3D_SIZES_UNIFORM]);
+    TEST_ASSERT_EQUAL_INT(0, counts.pixels[R3D_SIZES_SHADED]);
+    r3d_lens_t clipped = lens;
+    clipped.width = R3D_SIZES_SMALL_MAX / 2;
+    r3d_pipeline_counts_t partial = {0};
+    r3d_pipeline_count_triangles(&mesh, &clipped, kept, 1, cs, &partial, NULL);
+    TEST_ASSERT_EQUAL_INT(expected - 1, partial.pixels[R3D_SIZES_FACE]);
+}
+
+static void
+test_uniform_mode_uses_quantized_colour_steps(void) {
+    const int side = R3D_SUBPIXEL * 2 * (UINT8_MAX + 1);
+    const r3d_span_vertex_t a = {0, 0, 1.0F, 0, 0, 0};
+    r3d_span_vertex_t b = {side, 0, 1.0F, 1, 0, 0};
+    const r3d_span_vertex_t c = {0, side, 1.0F, 0, 0, 0};
+    TEST_ASSERT_TRUE(r3d_span_uniform(&a, &b, &c));
+    b.r = UINT8_MAX;
+    TEST_ASSERT_FALSE(r3d_span_uniform(&a, &b, &c));
+}
+
+static void
+test_off_frustum_clusters_and_subtrees_are_separate(void) {
+    r3d_lit_mesh_t mesh = tree_mesh();
+    r3d_lit_node_t leaf = tree_nodes[0];
+    leaf.first = 0;
+    leaf.count = mesh.cluster_count;
+    leaf.leaf = true;
+    mesh.nodes = &leaf;
+    mesh.node_count = 1;
+    const r3d_lens_t lens = lens_for(&looking_at_origin);
+    uint16_t kept[3];
+    r3d_pipeline_counts_t counts = {0};
+    TEST_ASSERT_EQUAL_INT(2, r3d_pipeline_cull_counted(&mesh, &lens, NULL, kept, count_walk(), &counts));
+    TEST_ASSERT_EQUAL_INT(1, counts.clusters_off_frustum);
+    TEST_ASSERT_EQUAL_INT(0, counts.nodes_cut);
+    TEST_ASSERT_EQUAL_INT(counts.clusters_tested, counts.clusters_kept + counts.clusters_off_frustum);
+}
+
+static void
 test_size_modes_follow_face_and_corner_colours_in_both_windings(void) {
     const uint16_t kept[] = {0};
     const r3d_lens_t lens = lens_for(&looking_at_origin);
@@ -879,6 +936,7 @@ test_cull_view_paints_the_coarse_level_picked_and_not_the_finest(void) {
     TEST_ASSERT_EQUAL_INT(LOD_COARSE * LOD_COARSE_TRIS, state->triangles);
     const raster_cull_frame_t frame = raster_cull_frame(state);
     TEST_ASSERT_EQUAL_INT(LOD_COARSE, fates_total(&frame));
+    TEST_ASSERT_EQUAL_INT(frame.counts.clusters_tested, frame.counts.clusters_kept + frame.counts.clusters_off_frustum);
     TEST_ASSERT_EQUAL_INT(0, frame.clusters[RASTER_FATE_CULLED]);
     TEST_ASSERT_TRUE(pixels_of(scene_now, DRAWN_RGB) > 0);
     TEST_ASSERT_EQUAL_INT(0, pixels_of(scene_now, CULLED_RGB));
@@ -1166,6 +1224,9 @@ run_raster_cull_view_suite(void) {
     RUN_TEST(test_counted_cull_returns_the_list_cull_returns);
     RUN_TEST(test_counted_cull_counts_agree_with_the_list);
     RUN_TEST(test_counted_cull_cuts_a_mesh_wholly_outside_the_frustum);
+    RUN_TEST(test_uniform_mode_uses_quantized_colour_steps);
+    RUN_TEST(test_off_frustum_clusters_and_subtrees_are_separate);
+    RUN_TEST(test_counted_pixels_are_clipped_centres_and_zero_without_setup);
     RUN_TEST(test_size_modes_follow_face_and_corner_colours_in_both_windings);
     RUN_TEST(test_triangles_are_sorted_into_exactly_one_fate_each);
     RUN_TEST(test_set_up_per_cluster_counts_set_up_and_clipped_triangles);

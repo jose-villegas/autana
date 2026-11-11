@@ -164,38 +164,66 @@ options, each by where it stops paying.
 | Each preset's corner in a render, by the cull counts | [`tools/tests/test_stress_corners.py`](tests/test_stress_corners.py) |
 | Scene mean triangle bins | [`tools/scene_triangle_bins.py`](scene_triangle_bins.py), [`scene-triangle-bins.json`](../../../../../docs/render/data/scene-triangle-bins.json) |
 | Each preset's stage times on the board | [`tests/suite_stress_perf.c`](../tests/suite_stress_perf.c) |
-| A preset A/B's stage scaling and fitted draw costs | [`tools/stress_predict.py`](stress_predict.py) |
+| Stage cost model and held-out scoring | [`tools/stress_predict.py`](stress_predict.py) |
 
 The `run_stress_perf_suite` suite replays poses along each preset's swing,
 one quarter. Every line carries cull counts and r3d stage times.
 `STRESS_PERF_POSES` in the suite owns its sampling density.
 
-`stress_predict.py` scales each scene's stage times by each preset's B/A
-change and by the pooled change. With `--bins`, its extra column uses pooled
-cull, transform and upscale scaling plus a fitted draw change.
+`stress_predict.py` fits `stage_ms = c + Σ β_k x_k` separately for cull,
+transform, draw and upscale, using each stress replay pose's counts and times.
+Frame predictions sum the stages; scene poses are held out of fitting.
 
-The draw fit solves Δdraw = Σ mean set-up triangles × δ over all presets,
-using A's replay counts. It prints each fitted δ in ms per triangle, drops
-empty bins and merges dependent bins under a shared cost, reporting both.
+Primitive and pixel work have distinct costs.<sup>[[116]](../../../../../docs/Citations.md#funkhouser-1993)</sup>
+Software rasterization also depends on triangle size and pixel work.<sup>[[117]](../../../../../docs/Citations.md#laine-2011)</sup>
+Separate task estimates follow the rendering-time framework of Wimmer and Wonka.<sup>[[118]](../../../../../docs/Citations.md#wimmer-2003)</sup>
+These sources motivate the inputs; this tool's additive fit and gate are local choices.
 
-The fit screens a change; the scene's own capture confirms it. Without
-`--bins`, the predictor uses stage scaling for draw too.
+| Input | Count fields |
+|---|---|
+| Kept geometry | `clusters_kept`, `vertices_transformed` |
+| Triangle setup | `sized_*`: size bin × FACE/UNIFORM/SHADED |
+| Pixel work | `pixels_face`, `pixels_uniform`, `pixels_shaded` |
+| Frustum rejection | `clusters_off_frustum`, `nodes_cut` |
+| Triangle rejection | `triangles_facing_away`, `triangles_missed`, `triangles_behind`, `triangles_clipped` |
+
+Least squares uses every replay pose in every supplied stress capture, keeping
+only the last duplicate pose within each capture. Empty, constant and dependent
+terms drop in field order after column scaling; the report names each one.
+
+The plain table lists measured and predicted means and pose-wise p95 errors
+for every scene and stage, plus frame. Each row passes when the 95th percentile
+of `abs(predicted - measured) / abs(measured)` is at most 10%.
+
+With two stress arms, each scene pose's predicted delta is `B(x_A) - A(x_A)`.
+Measured deltas pair scene arms by row and path time. The delta tolerance is
+`max(10% * abs(measured delta), same-build noise)` per pose.
+
+`--noise-a` and `--noise-b` supply a same-build replay pair. Each stage's noise
+floor is the p95 absolute paired difference over those poses, in ms; frame uses
+paired sums. The report prints these floors. Zero error at zero time passes.
+
+A layout pair reports each preset's mean signed and p95 absolute stage change.
+A change is seen when its p95 exceeds the same-build floor. Use matching poses,
+settings and build for noise captures; only layout seed differs in layout arms.
 
 ```sh
-python launcher/main/apps/render_lab/tools/stress_predict.py --a a.log --b b.log \
-    --scenes docs/render/data/frame-profile-1-board.log \
-    --bins docs/render/data/scene-triangle-bins.json
-python launcher/main/apps/render_lab/tools/scene_triangle_bins.py
+python launcher/main/apps/render_lab/tools/stress_predict.py --a stress-a.log \
+    --scenes scenes-a.log
+python launcher/main/apps/render_lab/tools/stress_predict.py \
+    --a stress-a.log --b stress-b.log \
+    --scenes-a scenes-a.log --scenes-b scenes-b.log \
+    --noise-a repeat-a.log --noise-b repeat-b.log \
+    --layout-a layout-a.log --layout-b layout-b.log
 ```
 
-The generator builds the host renderer and averages its counted bins over
-sampled path frames in portrait (`--quarter 0`). Its default scene list is
-data in the script; `--scene KEY FRAMES` selects other scenes and durations.
+`--scene KEY ...` selects scene rows; `--quarter` selects the capture quarter.
+Delta, noise and layout pairs require identical pose keys. A nonzero exit
+means a scoring row failed; missing fields or unmatched poses are errors.
 
-`--console KEY "FRAME:WORDS"` supplies scene commands; the default water
-entry starts its tour. `--renderer PATH` reuses a built renderer and
-`--out PATH` selects the JSON destination. The file records frame counts,
-frame steps and commands, with no machine information.
+A scene that violates a dropped term's training relation fails with that term
+named. Captures must include every model count and stage on each replay line.
+The offline `scene_triangle_bins.py` summary is separate from model fitting.
 
 `render_lab_render --view cull --counts FILE` writes every
 `RASTER_CULL_FRAME_FIELDS` count per frame. The `sized_*` fields use

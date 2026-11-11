@@ -1,190 +1,241 @@
-"""Predict authored scenes' frame change from a stress preset A/B.
-
-    python stress_predict.py --a A.log [A2.log ...] --b B.log [B2.log ...] \
-        --scenes frame-profile.log [--window NAME LOG TEXT] [--scene ROW ...]
-
-A and B are stress_perf captures of two builds (tests/suite_stress_perf.c).
-Each preset's change in a stage is its B mean over its A mean, over every
-replayed pose of every capture given. A scene's predicted change is the sum,
-over the r3d stages, of that ratio less one times the scene's own stage
-time, all in one quarter: from the replayed poses of a frame profile capture, or from the
-frame-cost windows of any log's lines that hold TEXT (--window). The last
-column pools every preset: each stage's B sum over its A sum. With --bins,
-the bins column scales the other pooled stages and fits draw changes to
-set-up triangle counts from A's replay lines. Empty bins drop; bins the
-presets cannot distinguish share a fitted cost and are listed as merged.
-"""
+"""Fit stage costs on stress replay poses and score held-out scene poses."""
 import argparse
-import json
 import pathlib
-import statistics
 import sys
 
 import numpy as np
 
-sys.path[:0] = [str(pathlib.Path(__file__).resolve().parents[4] / "tools" / "perf"),
-                str(pathlib.Path(__file__).resolve().parents[4] / "tools")]
-from frame_cost import frame_cost_window
+ROOT = pathlib.Path(__file__).resolve().parents[5]
+sys.path[:0] = [str(ROOT / "launcher/tools/perf"), str(ROOT / "launcher/tools")]
 from frame_profile import replays
 from render.cull_counts import size_fields
 
-BIN_FIELDS = size_fields()
-
 STAGES = ("r3d.cull", "r3d.transform", "r3d.draw", "r3d.upscale")
-POOLED = "all"
+FRAME = "frame"
+ALL_STAGES = (*STAGES, FRAME)
+TERMS = ("clusters_kept", "vertices_transformed", *size_fields(),
+         "pixels_face", "pixels_uniform", "pixels_shaded", "clusters_off_frustum", "nodes_cut",
+         "triangles_facing_away", "triangles_missed", "triangles_behind", "triangles_clipped")
+PERCENTILE = 95
+ERROR_LIMIT = 0.10
+PERCENT = 100
+SUPPORT_TOLERANCE = 1e-7
 
 
-def preset_stages(paths, quarter):
-    """{preset: {stage: [ms per replayed pose]}} over every capture, in `quarter`. A pose a
-    capture replays twice (the harness reruns a case) counts once, as its last replay."""
-    found = {}
+def load(paths, quarter, rows=(), names=TERMS):
+    found = []
     for path in paths:
-        poses = {(pose["row"], pose["t_ms"]): pose
-                 for pose in replays(pathlib.Path(path).read_text(encoding="utf-8", errors="replace"))
-                 if pose["quarter"] == quarter}
-        for (row, _), pose in poses.items():
-            stages = found.setdefault(row, {})
-            for stage in STAGES:
-                stages.setdefault(stage, []).append(pose["stages"].get(stage, 0.0))
+        poses = {(p["row"], p["t_ms"]): p
+                 for p in replays(path.read_text(encoding="utf-8", errors="replace"))
+                 if p["quarter"] == quarter and (not rows or p["row"] in rows)}
+        for pose in poses.values():
+            missing = set(names) - pose["counts"].keys()
+            if missing:
+                raise ValueError(f"{path}: {pose['row']}: missing counts: {', '.join(sorted(missing))}")
+            absent = set(STAGES) - pose["stages"].keys()
+            if absent:
+                raise ValueError(f"{path}: {pose['row']}: missing stages: {', '.join(sorted(absent))}")
+        found.extend(poses.values())
+    missing_rows = set(rows) - {p["row"] for p in found}
+    if missing_rows:
+        raise ValueError(f"missing scene rows: {', '.join(sorted(missing_rows))}")
     if not found:
-        raise SystemExit(f"{' '.join(map(str, paths))}: no frame_replay lines in {quarter}")
+        raise ValueError(f"{paths}: no frame_replay lines in {quarter}")
     return found
 
 
-def ratios(a, b):
-    """{preset: {stage: (A mean ms, B mean ms)}}, with the pooled row last."""
-    missing = sorted(set(a) ^ set(b))
-    if missing:
-        raise SystemExit(f"presets in one arm only: {', '.join(missing)}")
-    table = {preset: {stage: (statistics.mean(a[preset][stage]), statistics.mean(b[preset][stage]))
-                      for stage in STAGES} for preset in a}
-    table[POOLED] = {stage: (sum(row[stage][0] for row in table.values()),
-                             sum(row[stage][1] for row in table.values())) for stage in STAGES}
-    return table
+def design(poses, names):
+    return np.array([[1.0, *(p["counts"][name] for name in names)] for p in poses], dtype=float)
 
 
-def scene_stages(frame_logs, windows, rows, quarter):
-    """{scene: {stage: mean ms}}: frame-profile rows in `quarter`, then each --window."""
-    scenes = {}
-    for path in frame_logs:
-        poses = {}
-        for pose in replays(pathlib.Path(path).read_text(encoding="utf-8", errors="replace")):
-            if pose["quarter"] == quarter and (not rows or pose["row"] in rows):
-                poses.setdefault(pose["row"], []).append(pose["stages"])
-        for row, found in poses.items():
-            scenes.setdefault(row, []).extend(found)
-    for name, path, text in windows:
-        found = [window["brackets"] for line in pathlib.Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
-                 if text in line and (window := frame_cost_window(line)) is not None]
-        if not found:
-            raise SystemExit(f"{path}: no frame-cost window on a line holding {text!r}")
-        scenes[name] = [{stage: avg for stage, (avg, _) in brackets.items()} for brackets in found]
-    return {scene: {stage: statistics.mean(s.get(stage, 0.0) for s in found) for stage in STAGES}
-            for scene, found in scenes.items()}
+def independent_columns(matrix, names):
+    kept, notes = [0], []
+    for col, name in enumerate(names, 1):
+        trial = matrix[:, [*kept, col]]
+        if np.linalg.matrix_rank(trial) == len(kept) + 1:
+            kept.append(col)
+        else:
+            reason = "empty" if not np.any(matrix[:, col]) else "constant/dependent"
+            notes.append(f"dropped {reason} term {name}")
+    return kept, notes
 
 
-def predict(change, scene):
-    """The scene's frame change in ms: each stage's ratio less one times the scene's stage time.
-    A stage the presets never spend time on in A has no ratio and adds nothing."""
-    return sum((b / a - 1.0) * scene[stage] for stage, (a, b) in change.items() if a > 0)
+def fit(poses, names=TERMS):
+    matrix = design(poses, names)
+    scales = np.maximum(np.max(np.abs(matrix), axis=0), 1)
+    normalized = matrix / scales
+    kept, notes = independent_columns(normalized, names)
+    basis = normalized[:, kept]
+    weights = {stage: np.linalg.lstsq(basis, [p["stages"][stage] for p in poses], rcond=None)[0]
+               / scales[kept] for stage in STAGES}
+    return {"names": names, "kept": kept, "weights": weights, "notes": notes, "scales": scales,
+            "relations": np.linalg.lstsq(basis, normalized, rcond=None)[0]}
 
 
-def preset_bins(paths, quarter):
-    """Mean bin counts over the same deduplicated replay poses as the stage means."""
-    found = {}
-    for path in paths:
-        poses = {(pose["row"], pose["t_ms"]): pose for pose in replays(path.read_text(encoding="utf-8"))
-                 if pose["quarter"] == quarter}
-        for (row, _), pose in poses.items():
-            missing = set(BIN_FIELDS) - pose["counts"].keys()
-            if missing:
-                raise ValueError(f"{path}: {row}: missing bins: {', '.join(sorted(missing))}")
-            found.setdefault(row, []).append(pose["counts"])
-    return {row: {name: statistics.mean(p[name] for p in poses) for name in BIN_FIELDS}
-            for row, poses in found.items()}
+def estimates(model, poses):
+    matrix = design(poses, model["names"])
+    return {stage: matrix[:, model["kept"]] @ model["weights"][stage] for stage in STAGES}
 
 
-def fit_bins(counts, changes, names=BIN_FIELDS):
-    """Signed least squares; empty columns drop and dependent columns share a cost."""
-    rows = list(changes)
-    active = [name for name in names if any(counts[row].get(name, 0) for row in rows)]
-    notes = [f"dropped empty bin {name}" for name in names if name not in active]
-    if not active:
-        return {}, notes
-    design = np.array([[counts[row][name] for name in active] for row in rows], dtype=float)
-    groups = [[i] for i in range(len(active))]
-    # Equal costs are the identifiable model when the observations cannot separate bins.
-    while np.linalg.matrix_rank(design) < len(groups):
-        _, _, vectors = np.linalg.svd(design, full_matrices=True)
-        null = vectors[-1]
-        first, second = sorted((int(np.argmax(null)), int(np.argmin(null))))
-        groups[first] += groups.pop(second)
-        design[:, first] += design[:, second]
-        design = np.delete(design, second, axis=1)
-    costs = np.linalg.lstsq(design, [changes[row] for row in rows], rcond=None)[0]
-    weights = {}
-    for group, cost in zip(groups, costs):
-        members = [active[i] for i in group]
-        weights.update((name, float(cost)) for name in members)
-        if len(members) > 1:
-            notes.append("merged bins: " + ", ".join(members))
-    return weights, notes
+def unsupported_terms(model, poses):
+    matrix = design(poses, model["names"]) / model["scales"]
+    residual = matrix - matrix[:, model["kept"]] @ model["relations"]
+    return [name for col, name in enumerate(model["names"], 1)
+            if np.any(np.abs(residual[:, col]) > SUPPORT_TOLERANCE)]
 
 
-def draw_delta(counts, weights):
-    """Scene draw change in ms from mean set-up triangles and ms per triangle."""
-    return sum(counts[name] * cost for name, cost in weights.items())
+def stage_values(poses):
+    return {stage: np.array([p["stages"][stage] for p in poses]) for stage in STAGES}
 
 
-def predict_bins(change, stages, counts, weights):
-    return predict({stage: times for stage, times in change.items() if stage != "r3d.draw"}, stages) + draw_delta(counts, weights)
+def with_frame(values):
+    return {**values, FRAME: sum(values[stage] for stage in STAGES)}
 
 
-def report(table, scenes, bins=None, weights=None, notes=()):
-    lines = ["| Preset | " + " | ".join(f"{s} A → B ms" for s in STAGES) + " |",
-             "|---|" + "---:|" * len(STAGES)]
-    for preset, change in table.items():
-        lines.append(f"| {preset} | " + " | ".join(f"{a:.3f} → {b:.3f}" for a, b in change.values()) + " |")
-    columns = [*table, *(["bins"] if bins is not None else [])]
-    lines += ["", "| Scene | " + " | ".join(columns) + " |", "|---|" + "---:|" * len(columns)]
-    for scene, stages in scenes.items():
-        lines.append(f"| {scene} | " + " | ".join(f"{predict(change, stages):+.2f}" for change in table.values())
-                     + (f" | {predict_bins(table[POOLED], stages, bins[scene], weights):+.2f}" if bins is not None else "")
-                     + " |")
-    if weights is not None:
-        lines += ["", "| Bin | δ ms/triangle |", "|---|---:|"]
-        lines += [f"| {name} | {cost:+.8f} |" for name, cost in weights.items()]
-        lines += ["", *notes]
-    return "\n".join(lines) + "\n"
+def paired(a, b):
+    def keyed(poses):
+        return {(p["row"], p["t_ms"]): p for p in poses}
+    left, right = keyed(a), keyed(b)
+    if len(left) != len(a) or len(right) != len(b):
+        raise ValueError("paired captures require unique pose keys; supply one capture per arm")
+    if left.keys() != right.keys():
+        raise ValueError("capture pose keys differ (scene, path time)")
+    return [left[key] for key in sorted(left)], [right[key] for key in sorted(left)]
+
+
+def noise_floor(a, b):
+    left, right = paired(a, b)
+    av, bv = with_frame(stage_values(left)), with_frame(stage_values(right))
+    return {stage: float(np.percentile(np.abs(bv[stage] - av[stage]), PERCENTILE)) for stage in ALL_STAGES}
+
+
+def score_row(stage, scene, measured, predicted, floor, unsupported):
+    denominator = np.maximum(np.abs(measured), floor / ERROR_LIMIT)
+    absolute = np.abs(predicted - measured)
+    errors = np.divide(absolute, denominator, out=np.full_like(absolute, np.inf), where=denominator > 0)
+    errors[(denominator == 0) & (absolute <= SUPPORT_TOLERANCE)] = 0
+    p95 = float(np.percentile(errors, PERCENTILE))
+    return {"stage": stage, "scene": scene, "measured": float(np.mean(measured)),
+            "predicted": float(np.mean(predicted)), "error": PERCENT * p95,
+            "pass": p95 <= ERROR_LIMIT + SUPPORT_TOLERANCE and not unsupported,
+            "unsupported": unsupported}
+
+
+def scene_scores(scene, poses, predicted, measured, floors, models):
+    selected = [i for i, p in enumerate(poses) if p["row"] == scene]
+    subset = [poses[i] for i in selected]
+    unsupported = sorted(set(name for model in models for name in unsupported_terms(model, subset)))
+    return [score_row(stage, scene, measured[stage][selected], predicted[stage][selected],
+                      floors.get(stage, 0), unsupported) for stage in ALL_STAGES]
+
+
+def score(model, scenes, other=None, scenes_b=None, floors=None):
+    if other is not None:
+        scenes, scenes_b = paired(scenes, scenes_b)
+    predicted, measured = estimates(model, scenes), stage_values(scenes)
+    models = [model]
+    if other is not None:
+        predicted_b, measured_b = estimates(other, scenes), stage_values(scenes_b)
+        predicted = {stage: predicted_b[stage] - predicted[stage] for stage in STAGES}
+        measured = {stage: measured_b[stage] - measured[stage] for stage in STAGES}
+        models.append(other)
+    pv, mv = with_frame(predicted), with_frame(measured)
+    return [row for scene in sorted({p["row"] for p in scenes})
+            for row in scene_scores(scene, scenes, pv, mv, floors or {}, models)]
+
+
+def layout_rows(a, b, floors):
+    left, right = paired(a, b)
+    av, bv = with_frame(stage_values(left)), with_frame(stage_values(right))
+    rows = []
+    for preset in sorted({p["row"] for p in left}):
+        selected = [i for i, pose in enumerate(left) if pose["row"] == preset]
+        for stage in ALL_STAGES:
+            changes = (bv[stage] - av[stage])[selected]
+            magnitude = float(np.percentile(np.abs(changes), PERCENTILE))
+            rows.append({"stage": stage, "scene": preset, "change": float(np.mean(changes)),
+                         "p95": magnitude, "floor": floors[stage],
+                         "seen": "seen" if magnitude > floors[stage] + SUPPORT_TOLERANCE else "not seen"})
+    return rows
+
+
+def model_lines(model, label):
+    lines = [f"Model {label}: stage_ms = c + sum(beta * count)", *model["notes"],
+             "stage term beta_ms"]
+    terms = ("intercept", *model["names"])
+    for stage in STAGES:
+        lines.extend(f"{stage} {terms[col]} {weight:.9g}"
+                     for col, weight in zip(model["kept"], model["weights"][stage]))
+    return lines
+
+
+def table_lines(rows, label):
+    lines = [label, "stage scene measured_mean_ms predicted_mean_ms p95_error_% result"]
+    lines.extend(f"{r['stage']} {r['scene']} {r['measured']:.6f} {r['predicted']:.6f} "
+                 f"{r['error']:.3f} {'PASS' if r['pass'] else 'FAIL'}" for r in rows)
+    unsupported = sorted({name for r in rows for name in r["unsupported"]})
+    if unsupported:
+        lines.append("Unfitted terms outside training relations: " + ", ".join(unsupported))
+    frame_ok = all(r["pass"] for r in rows if r["stage"] == FRAME)
+    lines.append(f"{label} frame rule: {'PASS' if frame_ok else 'FAIL'}")
+    return lines
+
+
+def arguments(argv):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--a", nargs="+", required=True, type=pathlib.Path, help="stress training captures")
+    for option in ("b", "scenes", "scenes-a", "scenes-b", "noise-a", "noise-b", "layout-a", "layout-b"):
+        parser.add_argument("--" + option, nargs="+", type=pathlib.Path)
+    parser.add_argument("--scene", nargs="+", default=[])
+    parser.add_argument("--quarter", default="portrait")
+    args = parser.parse_args(argv)
+    for first, second in (("noise_a", "noise_b"), ("layout_a", "layout_b"), ("scenes_a", "scenes_b")):
+        if bool(getattr(args, first)) != bool(getattr(args, second)):
+            parser.error(f"--{first.replace('_', '-')} and --{second.replace('_', '-')} are a pair")
+    if args.b and not args.scenes_a:
+        parser.error("--b requires --scenes-a and --scenes-b for measured deltas")
+    if (args.b or args.layout_a) and not args.noise_a:
+        parser.error("delta and layout scoring require --noise-a and --noise-b (same-build pair)")
+    if args.scenes_a and not args.b:
+        parser.error("--scenes-a/--scenes-b require --b")
+    if not (args.scenes or args.scenes_a):
+        parser.error("supply held-out --scenes or --scenes-a/--scenes-b")
+    return args
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--a", nargs="+", required=True, type=pathlib.Path)
-    parser.add_argument("--b", nargs="+", required=True, type=pathlib.Path)
-    parser.add_argument("--scenes", nargs="*", default=[], type=pathlib.Path, help="frame profile captures")
-    parser.add_argument("--scene", nargs="*", default=[], help="frame profile rows to keep; all when omitted")
-    parser.add_argument("--window", nargs=3, action="append", default=[], metavar=("NAME", "LOG", "TEXT"))
-    parser.add_argument("--quarter", default="portrait")
-    parser.add_argument("--bins", type=pathlib.Path, help="scene mean triangle bins JSON")
-    args = parser.parse_args(argv)
-    scenes = scene_stages(args.scenes, args.window, set(args.scene), args.quarter)
-    if hasattr(sys.stdout, "reconfigure"):  # a console's code page may lack the arrow
-        sys.stdout.reconfigure(encoding="utf-8")
-    table = ratios(preset_stages(args.a, args.quarter), preset_stages(args.b, args.quarter))
-    bins, weights, notes = None, None, []
-    if args.bins:
-        if args.quarter != "portrait":
-            raise ValueError("scene bins require portrait captures")
-        data = json.loads(args.bins.read_text(encoding="utf-8"))
-        if data["quarter"] != 0:
-            raise ValueError("scene bins require quarter 0")
-        bins = data["scenes"]
-        counts = preset_bins(args.a, args.quarter)
-        weights, notes = fit_bins(counts, {row: change["r3d.draw"][1] - change["r3d.draw"][0]
-                                         for row, change in table.items() if row != POOLED})
-    sys.stdout.write(report(table, scenes, bins, weights, notes))
+    args = arguments(argv)
+    model = fit(load(args.a, args.quarter))
+    lines, judged = model_lines(model, "A"), []
+    scenes = load(args.scenes or args.scenes_a, args.quarter, args.scene)
+    rows = score(model, scenes)
+    lines.extend(table_lines(rows, "Absolute"))
+    judged.extend(rows)
+    floors = {}
+    if args.noise_a:
+        floors = noise_floor(load(args.noise_a, args.quarter), load(args.noise_b, args.quarter))
+        lines.append("Same-build p95 absolute noise floor (ms): " + " ".join(f"{s}={v:.6f}" for s, v in floors.items()))
+    if args.b:
+        other = fit(load(args.b, args.quarter))
+        lines.extend(model_lines(other, "B"))
+        scene_a = load(args.scenes_a, args.quarter, args.scene)
+        scene_b = load(args.scenes_b, args.quarter, args.scene)
+        absolute_b = score(other, scene_b)
+        lines.extend(table_lines(absolute_b, "Absolute B"))
+        judged.extend(absolute_b)
+        rows = score(model, scene_a, other, scene_b, floors)
+        lines.extend(table_lines(rows, "Option-flip delta"))
+        judged.extend(rows)
+    if args.layout_a:
+        layouts = layout_rows(load(args.layout_a, args.quarter), load(args.layout_b, args.quarter), floors)
+        lines.append("Layout: stage preset mean_change_ms p95_abs_change_ms noise_ms result")
+        lines.extend(f"{r['stage']} {r['scene']} {r['change']:+.6f} {r['p95']:.6f} {r['floor']:.6f} {r['seen']}"
+                     for r in layouts)
+    passed = all(r["pass"] for r in judged)
+    lines.append(f"Verdict: {'PASS' if passed else 'FAIL'} — every stage and every scene {'passes' if passed else 'does not pass'}.")
+    print("\n".join(lines))
+    return 0 if passed else 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

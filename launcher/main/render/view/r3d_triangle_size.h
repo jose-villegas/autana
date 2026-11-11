@@ -1,10 +1,7 @@
 /*
  * r3d_triangle_size: a triangle on screen by how many pixel centres it
- * covers, counted by the top-left rule from its corners, so any version of
- * the pipeline means the same; and by how its colour is filled. The counted
- * pipeline (r3d_pipeline_count.h) bins every triangle it sets up this way,
- * and the triangle_sizes tool bins a mesh's from a pose. Development builds
- * only, like every render/view/ file.
+ * covers under the top-left rule and its fill colour mode. Development
+ * views and host tools share these bins.
  */
 #pragma once
 
@@ -12,10 +9,12 @@
 
 #include "math/geometry/recti.h"
 
+#define R3D_SIZES_SMALL_MAX 4
+
 enum { R3D_SIZES_ZERO, R3D_SIZES_ONE, R3D_SIZES_TWO_TO_FOUR, R3D_SIZES_MORE, R3D_SIZES_BINS };
 
-/* A face colour (r3d_span_triangle_solid), three equal corner colours, so
- * no colour step across it, or corners that differ. */
+/* A face colour (r3d_span_triangle_solid), zero quantized colour steps, or
+ * stepped colour from the draw's lit corners. */
 enum { R3D_SIZES_FACE, R3D_SIZES_UNIFORM, R3D_SIZES_SHADED, R3D_SIZES_MODES };
 
 /* X(name, mode, bin) for every mode and bin; optional leading arguments
@@ -48,3 +47,6 @@ recti_t r3d_size_centre_box(const r3d_size_point_t v[3]);
 /* The size bin of a triangle winding positive (r3d_size_area2() > 0) whose
  * centre box `box` touches a `width` x `height` screen. */
 int r3d_size_bin(const r3d_size_point_t v[3], recti_t box, int width, int height);
+
+/* Exact covered centres, clipped to the screen. */
+int r3d_size_pixels(const r3d_size_point_t v[3], recti_t box, int width, int height);

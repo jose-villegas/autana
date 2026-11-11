@@ -11,6 +11,7 @@
 #define r3d_span_hidden          hot_hidden
 #define r3d_span_plane_bound     hot_plane_bound
 #define r3d_span_plane_in_range  hot_plane_in_range
+#define r3d_span_uniform         hot_uniform
 #define r3d_span_stop_after      hot_stop_after
 #include "render/r3d_span.c"
 #undef r3d_span_triangle

@@ -73,6 +73,11 @@ typedef struct {
     X(nodes_cut, counts.nodes_cut)                                                                                     \
     X(clusters_tested, counts.clusters_tested)                                                                         \
     X(clusters_kept, counts.clusters_kept)                                                                             \
+    X(clusters_off_frustum, counts.clusters_off_frustum)                                                               \
+    X(vertices_transformed, counts.vertices_transformed)                                                               \
+    X(pixels_face, counts.pixels[R3D_SIZES_FACE])                                                                      \
+    X(pixels_uniform, counts.pixels[R3D_SIZES_UNIFORM])                                                                \
+    X(pixels_shaded, counts.pixels[R3D_SIZES_SHADED])                                                                  \
     X(clusters_coarse, counts.clusters_coarse)                                                                         \
     X(clusters_not_set_up, clusters[RASTER_FATE_NOT_SET_UP])                                                           \
     X(clusters_hidden, clusters[RASTER_FATE_HIDDEN])                                                                   \

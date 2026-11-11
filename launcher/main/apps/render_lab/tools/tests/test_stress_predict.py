@@ -1,162 +1,116 @@
-"""stress_predict reads stress_perf captures in the frame profile's replay format and scales each
-preset's stage change by a scene's stage times."""
+"""Pose-level linear stage fitting and held-out scoring."""
 import contextlib
 import io
-import json
 import pathlib
 import sys
 import tempfile
 import unittest
 
-ROOT = pathlib.Path(__file__).resolve().parents[6]
-TOOLS = pathlib.Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(TOOLS), str(ROOT / "launcher/tools"), str(ROOT / "launcher/tools/perf")]
-import stress_predict
-from build.c_header import read_define
+import numpy as np
 
-REPLAY = read_define(ROOT / "launcher/test/frame_profile.h", "FRAME_PROFILE_REPLAY") + " quarter=%s"
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+import stress_predict as predict
 
 
-def replay(row, cull, transform, draw, upscale, quarter="portrait", t=0, counts="nodes_visited=1"):
-    report = (f"r3d.cull {cull:.2f}/0.0  r3d.transform {transform:.2f}/0.0  r3d.draw {draw:.2f}/0.0  "
-              f"r3d.upscale {upscale:.2f}/0.0 | total 1.00")
-    return "I (1) stress_perf: " + REPLAY % (row, t, counts, report, quarter) + "\n"
+def pose(x, y=0, row="scene", t=0):
+    return {"row": row, "t_ms": t, "counts": {"x": x, "y": y},
+            "stages": {stage: 2 + 3 * x + 5 * y for stage in predict.STAGES}}
 
 
 class StressPredictTest(unittest.TestCase):
-    def setUp(self):
-        self.folder = tempfile.TemporaryDirectory()
-        self.addCleanup(self.folder.cleanup)
+    def test_exact_model_recovers_intercept_and_coefficients_and_passes(self):
+        training = [pose(x, y) for x, y in ((0, 0), (1, 0), (0, 1), (2, 3))]
+        model = predict.fit(training, ("x", "y"))
+        np.testing.assert_allclose(model["weights"]["r3d.draw"], [2, 3, 5])
+        rows = predict.score(model, [pose(3, 4)])
+        self.assertTrue(all(row["pass"] for row in rows))
+        self.assertEqual(rows[-1]["stage"], "frame")
 
-    def write(self, name, text):
-        path = pathlib.Path(self.folder.name) / name
-        path.write_text(text, encoding="utf-8")
-        return path
+    def test_missing_term_fails_and_names_it(self):
+        model = predict.fit([pose(x) for x in range(4)], ("x", "y"))
+        rows = predict.score(model, [pose(1, 8)])
+        self.assertFalse(all(row["pass"] for row in rows))
+        self.assertIn("y", " ".join(model["notes"]))
+        self.assertIn("y", " ".join(rows[0]["unsupported"]))
 
-    def test_bin_fit_recovers_signed_costs_and_predicts_scene(self):
-        counts = {"p": {"x": 2, "y": 1}, "q": {"x": 1, "y": 3}}
-        weights, notes = stress_predict.fit_bins(counts, {"p": -1, "q": 2}, ["x", "y", "empty"])
-        self.assertAlmostEqual(weights["x"], -1)
-        self.assertAlmostEqual(weights["y"], 1)
-        self.assertNotIn("empty", weights)
-        self.assertTrue(any("empty" in note for note in notes))
-        self.assertAlmostEqual(stress_predict.draw_delta({"x": 4, "y": 7}, weights), 3)
+    def test_dependent_terms_drop_without_changing_identifiable_prediction(self):
+        model = predict.fit([pose(x, 2 * x) for x in range(4)], ("x", "y"))
+        self.assertTrue(any("dependent" in note for note in model["notes"]))
+        self.assertTrue(all(row["pass"] for row in predict.score(model, [pose(5, 10)])))
+        self.assertFalse(all(row["pass"] for row in predict.score(model, [pose(5, 9)])))
 
-    def test_indistinguishable_bins_are_merged_and_reported(self):
-        counts = {"p": {"x": 2, "y": 4}, "q": {"x": 3, "y": 6}}
-        weights, notes = stress_predict.fit_bins(counts, {"p": 6, "q": 9}, ["x", "y"])
-        self.assertAlmostEqual(stress_predict.draw_delta(counts["p"], weights), 6)
-        self.assertTrue(any("merged" in note for note in notes))
+    def test_p95_uses_pose_errors_instead_of_error_of_means(self):
+        model = predict.fit([pose(x) for x in range(4)], ("x",))
+        scenes = [pose(1, t=t) for t in range(20)]
+        for item in scenes[:2]:
+            item["stages"]["r3d.draw"] *= 2
+        rows = predict.score(model, scenes)
+        self.assertFalse(next(r for r in rows if r["stage"] == "r3d.draw")["pass"])
 
-    def test_dependent_bins_merge_without_losing_identifiable_changes(self):
-        counts = {"p": {"x": 2, "y": 0, "z": 1}, "q": {"x": 0, "y": 2, "z": 1}}
-        weights, notes = stress_predict.fit_bins(counts, {"p": 1, "q": 7}, ["x", "y", "z"])
-        for row, expected in (("p", 1), ("q", 7)):
-            self.assertAlmostEqual(stress_predict.draw_delta(counts[row], weights), expected)
-        self.assertTrue(any("merged" in note for note in notes))
+    def test_delta_uses_a_counts_and_noise_floor(self):
+        a = [pose(x) for x in range(4)]
+        b = [pose(x) for x in range(4)]
+        for item in b:
+            item["stages"] = {stage: value + item["counts"]["x"] for stage, value in item["stages"].items()}
+        scene_a, scene_b = [pose(2)], [pose(99)]
+        scene_b[0]["stages"] = {stage: 10 for stage in predict.STAGES}
+        rows = predict.score(predict.fit(a, ("x",)), scene_a, predict.fit(b, ("x",)), scene_b,
+                             {stage: 0.01 for stage in (*predict.STAGES, "frame")})
+        self.assertTrue(all(row["pass"] for row in rows))
+        self.assertAlmostEqual(rows[0]["predicted"], 2)
 
-    def test_bins_cli_adds_fitted_draw_to_other_pooled_stages(self):
-        x, y = stress_predict.BIN_FIELDS[:2]
-        def counts(a, b):
-            return " ".join(f"{name}={a if name == x else b if name == y else 0}"
-                            for name in stress_predict.BIN_FIELDS)
-        a = self.write("a.log", replay("p", 1, 2, 10, 1, counts=counts(2, 1))
-                       + replay("q", 1, 2, 10, 1, counts=counts(1, 3)))
-        b = self.write("b.log", replay("p", 0.5, 2, 9, 1, counts=counts(2, 1))
-                       + replay("q", 0.5, 2, 12, 1, counts=counts(1, 3)))
-        scenes = self.write("scenes.log", replay("scene", 4, 6, 99, 3))
-        bins = self.write("bins.json", json.dumps({"quarter": 0, "scenes": {"scene": {x: 4, y: 7}}}))
-        output = io.StringIO()
-        with contextlib.redirect_stdout(output):
-            stress_predict.main(["--a", str(a), "--b", str(b), "--scenes", str(scenes), "--bins", str(bins)])
-        text = output.getvalue()
-        self.assertIn("| Scene | p | q | all | bins |", text)
-        self.assertTrue(next(line for line in text.splitlines() if line.startswith("| scene |")).endswith("| +1.00 |"))
-        self.assertIn("dropped empty bin", text)
-        self.assertIn(f"| {x} | -1.00000000 |", text)
+    def test_layout_pair_without_shift_is_not_seen(self):
+        a = [pose(1, row="stress", t=t) for t in range(3)]
+        rows = predict.layout_rows(a, a, {stage: 0.01 for stage in (*predict.STAGES, "frame")})
+        self.assertTrue(all(row["seen"] == "not seen" for row in rows))
 
-    def test_bins_require_replay_bin_counts(self):
-        a = self.write("a.log", replay("p", 1, 2, 10, 1))
-        with self.assertRaisesRegex(ValueError, "missing bins"):
-            stress_predict.preset_bins([a], "portrait")
+    def test_pair_requires_identical_pose_keys(self):
+        with self.assertRaisesRegex(ValueError, "pose keys"):
+            predict.paired([pose(1)], [pose(1, t=1)])
 
-    def test_a_scene_moves_by_each_stage_ratio_times_its_own_stage_time(self):
-        a = self.write("a.log", replay("stress-open", 1.0, 2.0, 10.0, 1.0) + replay("stress-open", 1.0, 2.0, 10.0, 1.0))
-        b = self.write("b.log", replay("stress-open", 0.5, 2.0, 9.0, 1.0))
-        scenes = self.write("scenes.log", replay("sponza", 2.0, 4.0, 30.0, 2.5)
-                            + replay("sponza", 2.0, 4.0, 30.0, 2.5, quarter="landscape"))
-        table = stress_predict.ratios(stress_predict.preset_stages([a], "portrait"), stress_predict.preset_stages([b], "portrait"))
-        stages = stress_predict.scene_stages([scenes], [], set(), "portrait")
-        # cull halves (-1.0 ms of sponza's 2.0), draw drops a tenth (-3.0 of 30.0).
-        self.assertAlmostEqual(stress_predict.predict(table["stress-open"], stages["sponza"]), -4.0)
-        self.assertAlmostEqual(stress_predict.predict(table[stress_predict.POOLED], stages["sponza"]), -4.0)
+    def test_cli_scores_each_scene_stage_frame_delta_and_layout(self):
+        from build.c_header import read_define
+        header = predict.ROOT / "launcher/test/frame_profile.h"
+        replay = read_define(header, "FRAME_PROFILE_REPLAY")
+        with tempfile.TemporaryDirectory() as folder:
+            def capture(name, points, change=0):
+                lines = []
+                for t, (x, y) in enumerate(points):
+                    counts = dict.fromkeys(predict.TERMS, 0)
+                    counts.update(clusters_kept=x, vertices_transformed=y)
+                    fields = " ".join(f"{key}={value}" for key, value in counts.items())
+                    stages = "  ".join(f"{stage} {2 + 3*x + 5*y + change*x:.6f}/0.00" for stage in predict.STAGES)
+                    lines.append(replay % (name, t, fields, stages + " | total 1.00") + " quarter=portrait")
+                path = pathlib.Path(folder) / f"{name}-{change}.log"
+                path.write_text("\n".join(lines))
+                return str(path)
+            training = ((0, 0), (1, 0), (0, 1), (2, 3))
+            a = capture("stress", training)
+            b = capture("stress", training, 1)
+            scenes_a = capture("scene", ((3, 4), (2, 1)))
+            scenes_b = capture("scene", ((3, 4), (2, 1)), 1)
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                result = predict.main(["--a", a, "--b", b, "--scenes-a", scenes_a, "--scenes-b", scenes_b,
+                                       "--noise-a", a, "--noise-b", a, "--layout-a", a, "--layout-b", a])
+            self.assertEqual(result, 0)
+            text = output.getvalue()
+            self.assertIn("Absolute frame rule: PASS", text)
+            self.assertIn("Option-flip delta frame rule: PASS", text)
+            self.assertIn("not seen", text)
+            self.assertIn("Same-build p95 absolute noise floor", text)
+            self.assertTrue(text.rstrip().endswith("every stage and every scene passes."))
 
-    def test_a_window_scene_averages_the_lines_that_hold_its_text(self):
-        log = self.write("water.log", "x config=base row=rest ms/frame avg/worst: r3d.draw 12.00/1.0 | total 9\n"
-                                      "x config=base row=tilt ms/frame avg/worst: r3d.draw 14.00/1.0 | total 9\n"
-                                      "x config=other row=tilt ms/frame avg/worst: r3d.draw 99.00/1.0 | total 9\n")
-        stages = stress_predict.scene_stages([], [("water", log, "config=base")], set(), "portrait")
-        self.assertEqual(stages["water"]["r3d.draw"], 13.0)
-        self.assertEqual(stages["water"]["r3d.cull"], 0.0)
-
-    def test_the_pooled_change_is_each_stage_sum_over_sum_not_a_mean_of_ratios(self):
-        a = self.write("a.log", replay("stress-open", 1.0, 1.0, 1.0, 1.0) + replay("stress-stack", 1.0, 1.0, 9.0, 1.0))
-        b = self.write("b.log", replay("stress-open", 1.0, 1.0, 2.0, 1.0) + replay("stress-stack", 1.0, 1.0, 9.0, 1.0))
-        table = stress_predict.ratios(stress_predict.preset_stages([a], "portrait"), stress_predict.preset_stages([b], "portrait"))
-        # open's draw doubles and stack's holds: pooled 11/10, where a mean of ratios would be 1.5.
-        self.assertEqual(table[stress_predict.POOLED]["r3d.draw"], (10.0, 11.0))
-        self.assertEqual(list(table)[-1], stress_predict.POOLED)
-
-    def test_every_pose_of_every_capture_in_the_quarter_counts_once(self):
-        a = [self.write("a1.log", replay("stress-open", 1, 2, 4, 1)),
-             self.write("a2.log", replay("stress-open", 1, 2, 8, 1) + replay("stress-open", 1, 2, 12, 1, t=500)
-                        + replay("stress-open", 1, 2, 20, 1) + replay("stress-open", 1, 2, 99, 1, "landscape"))]
-        stages = stress_predict.preset_stages(a, "portrait")
-        # a2's pose at t=0 is replayed twice (a rerun case): only its last replay counts.
-        self.assertEqual(sorted(stages["stress-open"]["r3d.draw"]), [4.0, 12.0, 20.0])
-
-    def test_scene_rows_keep_only_the_named_rows_in_the_asked_quarter(self):
-        scenes = self.write("scenes.log", replay("sponza", 1, 1, 30, 1) + replay("sponza", 1, 1, 50, 1, "landscape")
-                            + replay("capybara", 1, 1, 6, 1))
-        kept = stress_predict.scene_stages([scenes], [], {"sponza"}, "portrait")
-        self.assertEqual(list(kept), ["sponza"])
-        self.assertEqual(kept["sponza"]["r3d.draw"], 30.0)
-        self.assertEqual(set(stress_predict.scene_stages([scenes], [], set(), "portrait")), {"sponza", "capybara"})
-        self.assertEqual(stress_predict.scene_stages([scenes], [], set(), "landscape")["sponza"]["r3d.draw"], 50.0)
-
-    def test_a_stage_with_no_time_in_a_adds_nothing(self):
-        change = {"r3d.cull": (0.0, 0.5), "r3d.transform": (2.0, 1.0), "r3d.draw": (1.0, 1.0), "r3d.upscale": (1.0, 1.0)}
-        scene = {"r3d.cull": 3.0, "r3d.transform": 4.0, "r3d.draw": 9.0, "r3d.upscale": 9.0}
-        self.assertAlmostEqual(stress_predict.predict(change, scene), -2.0)
-
-    def test_the_report_lists_presets_then_pooled_and_signs_each_scene(self):
-        a = self.write("a.log", replay("stress-open", 1.0, 2.0, 10.0, 1.0) + replay("stress-stack", 1.0, 2.0, 10.0, 1.0))
-        b = self.write("b.log", replay("stress-open", 0.5, 2.0, 10.0, 1.0) + replay("stress-stack", 1.0, 2.0, 11.0, 1.0))
-        scenes = self.write("scenes.log", replay("sponza", 2.0, 4.0, 30.0, 2.5))
-        water = self.write("water.log", "x config=base row=rest ms/frame avg/worst: r3d.draw 10.00/1.0 | total 9\n")
-        out = io.StringIO()
-        with contextlib.redirect_stdout(out):
-            stress_predict.main(["--a", str(a), "--b", str(b), "--scenes", str(scenes),
-                                 "--window", "water", str(water), "config=base"])
-        lines = out.getvalue().splitlines()
-        self.assertEqual([line.split(" | ")[0] for line in lines[2:5]], ["| stress-open", "| stress-stack", "| all"])
-        self.assertIn("| Scene | stress-open | stress-stack | all |", lines)
-        self.assertIn("| sponza | -1.00 | +3.00 | +1.00 |", lines)
-        self.assertIn("| water | +0.00 | +1.00 | +0.50 |", lines)
-
-    def test_a_capture_with_no_replays_or_a_window_with_no_match_fails(self):
-        empty = self.write("empty.log", "I (1) boot\n")
-        with self.assertRaisesRegex(SystemExit, "no frame_replay lines"):
-            stress_predict.preset_stages([empty], "portrait")
-        log = self.write("water.log", "x config=base row=rest no window here\n")
-        with self.assertRaisesRegex(SystemExit, "no frame-cost window"):
-            stress_predict.scene_stages([], [("water", log, "config=base")], set(), "portrait")
-
-    def test_a_preset_in_one_arm_only_fails(self):
-        a = self.write("a.log", replay("stress-open", 1, 1, 1, 1))
-        b = self.write("b.log", replay("stress-stack", 1, 1, 1, 1))
-        with self.assertRaisesRegex(SystemExit, "stress-open, stress-stack"):
-            stress_predict.ratios(stress_predict.preset_stages([a], "portrait"), stress_predict.preset_stages([b], "portrait"))
+    def test_loader_rejects_missing_counts(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = pathlib.Path(folder) / "capture.log"
+            from build.c_header import read_define
+            header = predict.ROOT / "launcher/test/frame_profile.h"
+            line = read_define(header, "FRAME_PROFILE_REPLAY") % (
+                "stress", 0, "x=1", "r3d.cull 1.00/1.00 | total 1.00")
+            path.write_text(line + " quarter=portrait\n")
+            with self.assertRaisesRegex(ValueError, "missing counts.*y"):
+                predict.load([path], "portrait", names=("x", "y"))
 
 
 if __name__ == "__main__":

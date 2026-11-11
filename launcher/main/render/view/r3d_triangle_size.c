@@ -37,12 +37,12 @@ clamp_int(int v, int lo, int hi) {
     return v < lo ? lo : (v > hi ? hi : v);
 }
 
-/* The centres a positive-winding triangle owns, stopping past 4. */
+/* The centres a positive-winding triangle owns, up to the requested limit. */
 static int
-count_centres(const r3d_size_point_t v[3], recti_t b, int width, int height) {
+count_centres(const r3d_size_point_t v[3], recti_t b, int width, int height, int limit) {
     int covered = 0;
-    for (int y = clamp_int(b.y, 0, height); y < clamp_int(recti_bottom(b), 0, height) && covered <= 4; y++) {
-        for (int x = clamp_int(b.x, 0, width); x < clamp_int(recti_right(b), 0, width) && covered <= 4; x++) {
+    for (int y = clamp_int(b.y, 0, height); y < clamp_int(recti_bottom(b), 0, height) && covered < limit; y++) {
+        for (int x = clamp_int(b.x, 0, width); x < clamp_int(recti_right(b), 0, width) && covered < limit; x++) {
             const float px = (float)x + 0.5F;
             const float py = (float)y + 0.5F;
             covered += owns(v[0], v[1], px, py) && owns(v[1], v[2], px, py) && owns(v[2], v[0], px, py);
@@ -53,9 +53,14 @@ count_centres(const r3d_size_point_t v[3], recti_t b, int width, int height) {
 
 int
 r3d_size_bin(const r3d_size_point_t v[3], recti_t box, int width, int height) {
-    const int covered = recti_is_empty(box) ? 0 : count_centres(v, box, width, height);
-    return covered == 0   ? R3D_SIZES_ZERO
-           : covered == 1 ? R3D_SIZES_ONE
-           : covered <= 4 ? R3D_SIZES_TWO_TO_FOUR
-                          : R3D_SIZES_MORE;
+    const int covered = recti_is_empty(box) ? 0 : count_centres(v, box, width, height, R3D_SIZES_SMALL_MAX + 1);
+    return covered == 0                     ? R3D_SIZES_ZERO
+           : covered == 1                   ? R3D_SIZES_ONE
+           : covered <= R3D_SIZES_SMALL_MAX ? R3D_SIZES_TWO_TO_FOUR
+                                            : R3D_SIZES_MORE;
+}
+
+int
+r3d_size_pixels(const r3d_size_point_t v[3], recti_t box, int width, int height) {
+    return count_centres(v, box, width, height, width * height);
 }
