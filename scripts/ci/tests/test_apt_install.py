@@ -13,6 +13,18 @@ SCRIPT = ROOT / 'scripts/ci/apt_install.sh'
 RUNNER_SOURCES = ('Types: deb\nURIs: http://azure.archive.ubuntu.com/ubuntu/\nSuites: noble noble-updates\n\n'
                   'Types: deb\nURIs: http://security.ubuntu.com/ubuntu/\nSuites: noble-security\n')
 
+# An apt-get that logs each call to $CALLS and fails the first $FAIL_UPDATES updates and $FAIL_INSTALLS installs.
+STUB = '''#!/bin/sh
+echo "$*" >> "$CALLS"
+for verb in update install; do
+    case "$*" in *" $verb"*)
+        n=$(grep -c " $verb" "$CALLS")
+        if [ $verb = update ]; then limit=$FAIL_UPDATES; else limit=$FAIL_INSTALLS; fi
+        [ "$n" -gt "$limit" ] || exit 100;;
+    esac
+done
+'''
+
 
 def setting(name):
     return re.search(rf'^{name}=(\S+)', SCRIPT.read_text(), re.M).group(1)
@@ -20,8 +32,8 @@ def setting(name):
 
 @unittest.skipUnless(shutil.which('sh') and os.name != 'nt', 'needs a POSIX shell')
 class AptInstallTests(unittest.TestCase):
-    def run_script(self, failing_updates):
-        """Runs the script with an apt-get whose first `failing_updates` updates fail; returns its calls and sources."""
+    def run_script(self, failing_updates=0, failing_installs=0):
+        """Runs the script with an apt-get whose first updates and installs fail as asked; returns its calls and sources."""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             sources = root / 'etc/apt/sources.list.d/ubuntu.sources'
@@ -29,36 +41,46 @@ class AptInstallTests(unittest.TestCase):
             sources.write_text(RUNNER_SOURCES)
             stub = root / 'bin/apt-get'
             stub.parent.mkdir()
-            stub.write_text('#!/bin/sh\necho "$*" >> "$CALLS"\ncase "$*" in *" update")\n'
-                            '  n=$(grep -c " update$" "$CALLS"); [ "$n" -gt "$FAILING" ] || exit 100;;\nesac\n')
+            stub.write_text(STUB)
             stub.chmod(0o755)
             env = dict(os.environ, PATH=f'{stub.parent}{os.pathsep}{os.environ["PATH"]}', APT_DIR=str(root),
-                       CALLS=str(root / 'calls'), FAILING=str(failing_updates))
+                       CALLS=str(root / 'calls'), FAIL_UPDATES=str(failing_updates),
+                       FAIL_INSTALLS=str(failing_installs))
             result = subprocess.run(['sh', str(SCRIPT), '-y', 'libportaudio2'], env=env, capture_output=True, text=True)
             calls = (root / 'calls').read_text().splitlines()
             return result, calls, sources.read_text()
 
+    def verbs(self, calls):
+        return [call.split()[2] for call in calls]
+
+    def assert_fell_back(self, sources):
+        self.assertIn(f'URIs: {setting("FALLBACK_MIRROR")}/\n', sources)
+        self.assertNotIn('azure', sources)
+        self.assertIn('http://security.ubuntu.com/ubuntu/', sources)
+
     def test_every_call_retries_and_installs_with_fix_missing(self):
-        result, calls, sources = self.run_script(0)
+        result, calls, sources = self.run_script()
         self.assertEqual(result.returncode, 0, result.stderr)
         retries = f'-o Acquire::Retries={setting("APT_RETRIES")}'
         self.assertEqual(calls, [f'{retries} update', f'{retries} install --fix-missing -y libportaudio2'])
         self.assertEqual(sources, RUNNER_SOURCES)
 
     def test_a_failed_update_moves_the_runner_mirror_to_the_fallback_and_installs(self):
-        result, calls, sources = self.run_script(1)
+        result, calls, sources = self.run_script(failing_updates=1)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual([call.split()[-1] for call in calls], ['update', 'update', 'libportaudio2'])
-        fallback = setting('FALLBACK_MIRROR')
-        self.assertIn(f'URIs: {fallback}/\n', sources)
-        self.assertNotIn('azure', sources)
-        self.assertIn('http://security.ubuntu.com/ubuntu/', sources)
+        self.assertEqual(self.verbs(calls), ['update', 'update', 'install'])
+        self.assert_fell_back(sources)
+
+    def test_a_failed_download_after_a_good_update_falls_back_too(self):
+        result, calls, sources = self.run_script(failing_installs=1)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.verbs(calls), ['update', 'install', 'update', 'install'])
+        self.assert_fell_back(sources)
 
     def test_the_fallback_failing_too_fails_the_step(self):
-        result, calls, _ = self.run_script(2)
+        result, calls, _ = self.run_script(failing_installs=2)
         self.assertNotEqual(result.returncode, 0)
-        self.assertNotIn('install', ' '.join(calls))
-
+        self.assertEqual(self.verbs(calls), ['update', 'install', 'update', 'install'])
 
 if __name__ == '__main__':
     unittest.main()
