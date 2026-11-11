@@ -222,6 +222,10 @@ transform, draw and upscale, each on its own inputs below, with every `β_k ≥ 
 (non-negative least squares). Frame predictions sum the stages; scene poses
 are held out of fitting.
 
+The fit does not predict scenes within the 10% rule. It under-predicts draw,
+misses cull's per-call cost and never trains the doubled, mapped or blocks
+upscale paths. The stress suite is a quick pre-check; scenes stay in every perf check.
+
 Primitive and pixel work have distinct costs.<sup>[[117]](../../../../../docs/Citations.md#funkhouser-1993)</sup>
 Software rasterization also depends on triangle size and pixel work.<sup>[[118]](../../../../../docs/Citations.md#laine-2011)</sup>
 Separate task estimates follow the rendering-time framework of Wimmer and Wonka.<sup>[[119]](../../../../../docs/Citations.md#wimmer-2003)</sup>
