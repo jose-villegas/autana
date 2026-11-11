@@ -182,12 +182,12 @@ typedef struct r3d_lod_morph {
     r3d_lod_view_t view; /* set only when enabled */
     float near_z;
     float enter, leave, ramp; /* pixels: whole at enter (leave for an arrived group), none ramp past it */
-    /* The pick's arrived bits, or NULL: every group ramps from leave. Set when
+    /* The pick's arrived bits. Set when
      * a group turns fine, cleared `lod.blend_px` past the hysteresis band: an
      * arrived group ramps from leave, where it came through, any other from
      * enter, where it turns coarse. Both weigh none where the bit changes. */
     const uint32_t* arrived;
-    const uint32_t* blending;  /* after `arrived`, or NULL: a cluster under a group without one weighs none */
+    const uint32_t* blending;  /* after `arrived`: a cluster under a group without one weighs none */
     float covered, cover_ramp; /* pixels of radius: whole at covered, none at covered + cover_ramp */
     bool enabled;
     bool dither; /* a screen door stands in for the morph: r3d_lod_dither_band() */
@@ -202,9 +202,6 @@ r3d_lod_cluster_blends(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh,
         return false;
     }
     const r3d_lit_cluster_lod_t lod = mesh->cluster_lod[c];
-    if (morph->blending == NULL) {
-        return lod.parent != R3D_LOD_NONE || lod.own != R3D_LOD_NONE;
-    }
     return (lod.parent != R3D_LOD_NONE && r3d_lod_coarse(morph->blending, lod.parent))
            || (lod.own != R3D_LOD_NONE && r3d_lod_coarse(morph->blending, lod.own));
 }
@@ -216,7 +213,7 @@ int r3d_lod_morph_partition(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* 
 
 /* The blend of `mesh` seen through `lens`, measured as the pick measures it,
  * `lod` already in the picture's pixels, drawn as `blend`
- * (render_lod_blend_t). Disabled for RENDER_LOD_BLEND_SWITCH; a mesh without
+ * (render_lod_blend_t), with `state` present when blending. Disabled for RENDER_LOD_BLEND_SWITCH; a mesh without
  * morph targets dithers (r3d_lod_dithers()). */
 void r3d_lod_morph_init(r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
                         const render_lod_settings_t* lod, const uint32_t* state, int blend);

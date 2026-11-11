@@ -620,7 +620,7 @@ raster_lod_morph(const raster_t* raster, const render_view_t* view, const r3d_in
     const render_settings_t settings = raster_settings(raster);
     const render_lod_settings_t lod = picture_lod_settings(raster, &settings.lod, drawn_scale(lens, view), false);
     r3d_lod_morph_init(morph, instance->mesh, lens, &lod, instance->lod_coarse,
-                       instance->lod_coarse != NULL ? settings.lod.blend : RENDER_LOD_BLEND_SWITCH);
+                       instance->lod_coarse != NULL && settings.lod.blend == RENDER_LOD_BLEND_ON);
 }
 
 /* Whether culling skips a sphere, in world units, whole. */
