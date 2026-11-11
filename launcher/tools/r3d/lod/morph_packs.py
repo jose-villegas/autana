@@ -17,6 +17,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 TOOLS = HERE.parents[1]
 sys.path.insert(0, str(TOOLS))
 from r3d import lod_asset, mesh_asset, mesh_bundle, morph_asset  # noqa: E402
+from r3d.lod.morph import morph_blob  # noqa: E402
 
 ROOT = TOOLS.parents[1]
 BAKE = TOOLS / "bake/bake.py"
@@ -29,7 +30,7 @@ def with_morph(data):
     names = {name for name, _, _ in entries}
     levelled = [name for name, kind, _ in entries if kind == mesh_asset.TYPE
                 and lod_asset.name_for_mesh(name) in names and morph_asset.name_for_mesh(name) not in names]
-    rebuilt = {name: mesh_bundle.mesh_entries(name, mesh_bundle.read_mesh(entries, name), True) for name in levelled}
+    rebuilt = {name: mesh_bundle.mesh_entries(name, mesh_bundle.read_mesh(entries, name), morph_blob) for name in levelled}
     replaced = {row[0] for rows in rebuilt.values() for row in rows}
     return mesh_bundle.encode([row for row in entries if row[0] not in replaced]
                               + [row for rows in rebuilt.values() for row in rows], copies)

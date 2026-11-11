@@ -150,18 +150,19 @@ def decode(data):
     return [(name, kind, blob) for name, (kind, blob) in sorted(entries.items())], copies
 
 
-def mesh_entries(name, mesh, morph=False):
+def mesh_entries(name, mesh, morph=None):
     """The LMSH of one assembled mesh, with levels its LLOD sibling, and with
-    `morph` too its LMOR sibling; then the LMSH's boxes hold the targets too
-    (lit_mesh.cover_targets)."""
-    from r3d.lit_mesh import cover_targets, mesh_blob, lod_blob, morph_blob
+    `morph` (lod/morph.py's morph_blob) its LMOR sibling too; then the LMSH's
+    boxes hold the targets too (lit_mesh.cover_targets). Passed in, so the
+    stages that read meshes do not key on the morph code."""
+    from r3d.lit_mesh import cover_targets, mesh_blob, lod_blob
     blob = mesh_blob(mesh)
     levels = lod_blob(mesh)
     extra = []
     if levels is not None:
         extra.append((lod_asset.name_for_mesh(name), lod_asset.TYPE, levels))
-        if morph:
-            targets = morph_blob(blob, levels)
+        if morph is not None:
+            targets = morph(blob, levels)
             if cover_targets(mesh, targets):
                 blob = mesh_blob(mesh)
             extra.append((morph_asset.name_for_mesh(name), morph_asset.TYPE, targets))
