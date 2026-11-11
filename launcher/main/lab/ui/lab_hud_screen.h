@@ -1,5 +1,5 @@
 /*
- * render_lab_hud_screen: the face drawing for a scene title and, in a
+ * lab_hud_screen: the face drawing for a scene title and, in a
  * development or host build, the fps readout and scene status.
  *
  * The caller owns the timing and supplies every value this screen draws.
@@ -20,7 +20,7 @@ typedef struct {
      * say. NULL for none. */
     const char* status;
 #endif
-} render_lab_hud_screen_state_t;
+} lab_hud_screen_state_t;
 
 /* Caller brackets drawing with the appropriate ui_begin()/ui_end() pair. */
-void render_lab_hud_screen_draw(const render_lab_hud_screen_state_t* state);
+void lab_hud_screen_draw(const lab_hud_screen_state_t* state);

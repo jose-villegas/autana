@@ -98,8 +98,7 @@ jobs:
       - name: Install the tool requirements and ffmpeg
         run: |
           pip install $(find launcher/tools -name requirements.txt -printf '-r %p ')
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg llvm
+          sudo sh scripts/ci/apt_install.sh -y --no-install-recommends ffmpeg llvm
           ffmpeg -version | head -1
 
       # Exit 1 means an image or table changed, or an image is an orphan; an orphan or any exit
