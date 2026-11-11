@@ -11,6 +11,8 @@ indirect lab_frame : scene_baked_enter scene_capybara_enter scene_baked_exit sce
 indirect lab_frame : render_lab_dynres_apply app_render_lab.c:frame_begin app_render_lab.c:leave_scene
 indirect lab_enter : scene_baked_enter scene_capybara_enter render_lab_dynres_apply
 indirect lab_exit : scene_baked_exit scene_capybara_exit app_render_lab.c:leave_scene
+indirect lab.c:enter_scene : scene_baked_enter scene_capybara_enter render_lab_dynres_apply
+indirect lab.c:exit_scene : scene_baked_exit scene_capybara_exit app_render_lab.c:leave_scene
 indirect lab_frame : scene_baked_status
 indirect lab_frame : scene_capybara_frame capybara_status
 indirect lab_update : scene_capybara_steer render_lab_fly_frame
