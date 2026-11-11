@@ -408,6 +408,18 @@ assert_colours_close(uint16_t want_be, uint16_t got_be) {
     TEST_ASSERT_LESS_OR_EQUAL_UINT(DOOR_CHANNEL_SLACK, channel_gap(rgb565_b5(want), rgb565_b5(got)));
 }
 
+/* Pixel `i`, filled by a plain draw, as `from` filled it: the same depth, and
+ * the face colour or a close one. */
+static void
+check_door_pixel(door_entry_t entry, int i, const door_canvas_t* from) {
+    TEST_ASSERT_INT_WITHIN(DOOR_DEPTH_SLACK, canvases[CANVAS_PLAIN].depth[i], from->depth[i]);
+    if (entry == DOOR_ENTRY_SOLID || entry == DOOR_ENTRY_CAPPED_SOLID) {
+        TEST_ASSERT_EQUAL_HEX16(DOOR_FACE, from->color[i]);
+    } else {
+        assert_colours_close(canvases[CANVAS_PLAIN].color[i], from->color[i]);
+    }
+}
+
 /* Draws `entry` plain, through `door` and through its complement, and checks the
  * pixels. Returns how many pixels the door itself filled. */
 static int
@@ -439,15 +451,8 @@ check_door_partition(door_entry_t entry, uint16_t door) {
             TEST_ASSERT_EQUAL_INT_MESSAGE(0, in_door && !bit_open ? 1 : 0, "a door filled a pixel whose bit is set");
             TEST_ASSERT_EQUAL_INT_MESSAGE(0, in_rest && bit_open ? 1 : 0,
                                           "the complement filled an open pixel of the door");
-            if (!want) {
-                continue;
-            }
-            const door_canvas_t* from = in_door ? &canvases[CANVAS_DOOR] : &canvases[CANVAS_REST];
-            TEST_ASSERT_INT_WITHIN(DOOR_DEPTH_SLACK, canvases[CANVAS_PLAIN].depth[i], from->depth[i]);
-            if (entry == DOOR_ENTRY_SOLID || entry == DOOR_ENTRY_CAPPED_SOLID) {
-                TEST_ASSERT_EQUAL_HEX16(DOOR_FACE, from->color[i]);
-            } else {
-                assert_colours_close(canvases[CANVAS_PLAIN].color[i], from->color[i]);
+            if (want) {
+                check_door_pixel(entry, i, in_door ? &canvases[CANVAS_DOOR] : &canvases[CANVAS_REST]);
             }
         }
     }

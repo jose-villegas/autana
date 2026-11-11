@@ -236,6 +236,14 @@ scene_shell_compose(uint32_t dt_ms) {
     (void)dt_ms;
 }
 
+/* Render settings where a provider did not link the renderer: none to set.
+ * render_host_settings.c's own definition replaces this. */
+__attribute__((weak)) bool
+render_host_apply_settings(const render_settings_t* settings) {
+    (void)settings;
+    return false;
+}
+
 /* The shell's app exit where a provider did not link the scene manager: no scene to unload. scene/scene.c's own
  * definition replaces this, and takes the render context with it. */
 __attribute__((weak)) void
@@ -466,8 +474,11 @@ render_host_open(const frame_provider_t* provider, int argc, char** argv, int* e
         release();
         return false;
     }
-    if (settings_set) {
-        render_context_set_settings(render_context_main(), &settings);
+    if (settings_set && !render_host_apply_settings(&settings)) {
+        fprintf(stderr, "%s: --set render.FIELD needs the renderer linked (autana::render_host)\n",
+                host.provider->name);
+        release();
+        return false;
     }
 
     if (gfx_readback_begin() != GFX_READBACK_READY) {

@@ -891,8 +891,29 @@ draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3
     fill_triangle(target, &s[0], &s[1], &s[2], face_color, mode, screen);
 }
 
-/* Triangles first to end - 1 of one cluster; `blends` is a literal, so each
- * copy calls one near-plane rebuild, the blended one reading work->clip.blend. */
+/* A triangle wholly in front of the near plane; `blends` is a literal, so
+ * the plain copy passes no weight and no screen. */
+static inline __attribute__((always_inline)) void
+draw_whole(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3], const uint16_t* tri,
+           const uint16_t* face_color, bool double_sided, const r3d_span_target_t* target, draw_mode_t mode,
+           const r3d_pipeline_work_t* work, bool blends) {
+    draw_in_front(mesh, v, tri, face_color, double_sided, target, mode, blends ? work->clip.blend.weight : 0,
+                  blends ? work->clip.blend.screen : 0U);
+}
+
+/* A triangle the near plane cuts, rebuilt; `blends` is a literal, so each
+ * copy calls one rebuild, the blended one reading work->clip.blend. */
+static inline __attribute__((always_inline)) void
+draw_cut_by_near(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* tri, const uint16_t* face_color,
+                 bool double_sided, const r3d_span_target_t* target, r3d_pipeline_work_t* work, bool blends) {
+    if (!blends) {
+        draw_rebuilt(mesh, lens, tri, face_color, double_sided, target, work);
+    } else {
+        draw_rebuilt_blended(mesh, lens, tri, face_color, double_sided, target, work);
+    }
+}
+
+/* Triangles first to end - 1 of one cluster. */
 static inline __attribute__((always_inline)) void
 draw_triangles(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_cluster_t* c, int first, int end,
                const r3d_pipeline_vertex_t* cs, const r3d_span_target_t* target, draw_mode_t mode,
@@ -903,14 +924,9 @@ draw_triangles(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit
         const r3d_pipeline_vertex_t* const v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
         /* Cluster-owned vertices all passed near and range tests with DRAW_BOUNDED. */
         if ((mode & DRAW_BOUNDED) != 0 || (v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F)) {
-            draw_in_front(mesh, v, tri, face_color, c->double_sided, target, mode, blends ? work->clip.blend.weight : 0,
-                          blends ? work->clip.blend.screen : 0U);
+            draw_whole(mesh, v, tri, face_color, c->double_sided, target, mode, work, blends);
         } else if (v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F) {
-            if (!blends) {
-                draw_rebuilt(mesh, lens, tri, face_color, c->double_sided, target, work);
-            } else {
-                draw_rebuilt_blended(mesh, lens, tri, face_color, c->double_sided, target, work);
-            }
+            draw_cut_by_near(mesh, lens, tri, face_color, c->double_sided, target, work, blends);
         }
     }
 }
