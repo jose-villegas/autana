@@ -12,10 +12,7 @@ sys.path.insert(0, str(ROOT / "launcher/tools"))
 from render.cull_counts import size_fields
 
 BIN_FIELDS = size_fields()
-DEFAULT_FRAMES = 600
 FRAME_DT_MS = 16
-DEFAULT_SCENES = ("sponza", "sponza-fitted-full", "bistro-fitted-full", "capybara", "water")
-DEFAULT_COMMANDS = {"water": ["0:water tour"]}
 RENDER_SCRIPT = pathlib.Path(__file__).with_name("render_lab_render_host.sh")
 DEFAULT_OUTPUT = ROOT / "docs/render/data/scene-triangle-bins.json"
 
@@ -53,15 +50,15 @@ def generate(binary, scenes, folder, commands):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--scene", action="append", nargs=2, metavar=("KEY", "FRAMES"))
+    parser.add_argument("--scene", action="append", nargs=2, metavar=("KEY", "FRAMES"), required=True)
     parser.add_argument("--console", action="append", nargs=2, metavar=("KEY", "COMMAND"), default=[])
     parser.add_argument("--renderer", type=pathlib.Path)
     parser.add_argument("--out", type=pathlib.Path, default=DEFAULT_OUTPUT)
     args = parser.parse_args(argv)
-    scenes = [(key, int(frames)) for key, frames in args.scene] if args.scene else [(s, DEFAULT_FRAMES) for s in DEFAULT_SCENES]
+    scenes = [(key, int(frames)) for key, frames in args.scene]
     if any(frames <= 0 for _, frames in scenes) or len(dict(scenes)) != len(scenes):
         parser.error("scene keys must be unique and frame counts positive")
-    commands = {key: list(values) for key, values in DEFAULT_COMMANDS.items()}
+    commands = {}
     for key, command in args.console:
         commands.setdefault(key, []).append(command)
     with tempfile.TemporaryDirectory(prefix="scene_triangle_bins_") as directory:

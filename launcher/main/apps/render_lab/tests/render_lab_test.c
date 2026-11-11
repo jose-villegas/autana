@@ -14,6 +14,7 @@
 #include "render/context/render_context.h"
 #include "render/view/raster_cull_view.h"
 #include "scene/animator/animator.h"
+#include "testkit/cleanup.h"
 #include "unity.h"
 
 const char*
@@ -42,13 +43,15 @@ typedef struct {
 static pose_line_t* pose_line;
 
 static void
+release_pose_line(void) {
+    memory_free(pose_line);
+    pose_line = NULL;
+}
+
+static void
 add_frame_counts(int64_t sums[RENDER_LAB_TEST_COUNTS], raster_cull_frame_t* f) {
     const raster_t* raster = &render_context_main()->raster;
-    const resolution_step_t output = gfx_half_picture() != NULL
-                                         ? raster_compose_size(raster)
-                                         : (resolution_step_t){raster->destination_width, raster->destination_height};
-    /* The counted overlay composes full size; stage times describe the shaded compose. */
-    raster_cull_frame_compose(f, raster, output);
+    raster_cull_frame_compose(f, raster);
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, f->counts.nodes_visited, "the cull view did not draw");
     int i = 0;
 #define ADD_COUNT(name, member) sums[i++] += f->member;
@@ -78,7 +81,7 @@ render_lab_test_write_counts(const int64_t sums[RENDER_LAB_TEST_COUNTS], int fra
 void
 render_lab_test_replay_pose(const char* tag, entity_t entity, uint32_t duration_ms, int32_t path_ms, const char* row,
                             const char* quarter) {
-    /* Static, so a failed assertion's jump leaves it for the next pose to reuse. */
+    suite_add_test_cleanup(release_pose_line);
     if (pose_line == NULL) {
         pose_line = memory_alloc(sizeof *pose_line, MEMORY_INTERNAL);
     }
@@ -101,8 +104,7 @@ render_lab_test_replay_pose(const char* tag, entity_t entity, uint32_t duration_
     add_frame_counts(out->sums, &out->frame);
     render_lab_test_write_counts(out->sums, 1, out->counts, sizeof out->counts);
     ESP_LOGI(tag, FRAME_PROFILE_REPLAY LAB_PERF_QUARTER_FORMAT, row, (int)path_ms, out->counts, out->report, quarter);
-    memory_free(pose_line);
-    pose_line = NULL;
+    release_pose_line();
 }
 
 #endif

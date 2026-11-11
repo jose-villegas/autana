@@ -61,10 +61,9 @@ typedef enum { RASTER_CULL_PASS_CAMERA, RASTER_CULL_PASS_CULLED, RASTER_CULL_PAS
 typedef struct {
     r3d_pipeline_counts_t counts;
     int transform_batches;
-    int render_width, render_height, render_pixels;
-    int output_width, output_height, output_pixels, quarter;
-    int upscale_kept_pixels, upscale_doubled_pixels, upscale_mapped_pixels, upscale_blocks_pixels;
-    int upscale_surface_pixels;
+    int render_width, render_height;
+    int output_width, output_height, quarter;
+    int upscale_path, upscale_surface;
     int triangles_covering; /* own at least one pixel of the picture */
     int clusters[RASTER_FATE_COUNT];
 } raster_cull_frame_t;
@@ -77,16 +76,11 @@ typedef struct {
     X(transform_batches, transform_batches)                                                                            \
     X(render_width, render_width)                                                                                      \
     X(render_height, render_height)                                                                                    \
-    X(render_pixels, render_pixels)                                                                                    \
     X(output_width, output_width)                                                                                      \
     X(output_height, output_height)                                                                                    \
-    X(output_pixels, output_pixels)                                                                                    \
+    X(upscale_path, upscale_path)                                                                                      \
+    X(upscale_surface, upscale_surface)                                                                                \
     X(quarter, quarter)                                                                                                \
-    X(upscale_kept_pixels, upscale_kept_pixels)                                                                        \
-    X(upscale_doubled_pixels, upscale_doubled_pixels)                                                                  \
-    X(upscale_mapped_pixels, upscale_mapped_pixels)                                                                    \
-    X(upscale_blocks_pixels, upscale_blocks_pixels)                                                                    \
-    X(upscale_surface_pixels, upscale_surface_pixels)                                                                  \
     X(nodes_visited, counts.nodes_visited)                                                                             \
     X(nodes_cut, counts.nodes_cut)                                                                                     \
     X(clusters_tested, counts.clusters_tested)                                                                         \
@@ -155,8 +149,8 @@ bool raster_cull_second_view(void* state, const raster_t* raster, const transfor
 /* Lines over the composed picture, `width` by `height` from (0, 0). */
 void raster_cull_overlay(void* state, int width, int height);
 
-/* Fill work from the last draw and an explicit compose size; overlays and shaded draws can compose differently. */
-void raster_cull_frame_compose(raster_cull_frame_t* frame, const raster_t* raster, resolution_step_t output);
+/* Fill work from the last draw and its selected upscale maps. */
+void raster_cull_frame_compose(raster_cull_frame_t* frame, const raster_t* raster);
 
 /* The last frame's counts. */
 raster_cull_frame_t raster_cull_frame(const raster_cull_t* state);

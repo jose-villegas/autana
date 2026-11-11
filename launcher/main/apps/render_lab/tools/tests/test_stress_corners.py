@@ -24,6 +24,7 @@ import unittest
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import host_render  # noqa: E402
+sys.path.insert(0, str(HERE.parents[5] / "launcher/tools"))
 
 PRESETS = HERE.parents[1] / "stress" / "stress_preset.h"
 TABLE = HERE.parents[1] / "stress" / "stress_preset.c"
@@ -115,11 +116,12 @@ class StressCorners(unittest.TestCase):
     def test_upscale_counts_describe_actual_compose(self):
         half = self.counts("uniform-mid")
         wide = self.counts("uniform-mid", "--size", "368x224")
-        self.assertEqual(184 * 224, half["render_pixels"])
-        self.assertEqual(368 * 448, half["output_pixels"])
-        self.assertEqual(368 * 224, wide["render_pixels"])
-        self.assertEqual(368 * 448, wide["output_pixels"])
-        self.assertEqual(wide["output_pixels"], wide["upscale_kept_pixels"])
+        self.assertEqual(184 * 224, half["render_width"] * half["render_height"])
+        self.assertEqual(368 * 448, half["output_width"] * half["output_height"])
+        self.assertEqual(368 * 224, wide["render_width"] * wide["render_height"])
+        self.assertEqual(368 * 448, wide["output_width"] * wide["output_height"])
+        from render.cull_counts import UPSCALE_PATHS
+        self.assertEqual("kept", UPSCALE_PATHS[wide["upscale_path"]])
 
     def test_mix_fills_every_uniform_and_shaded_size_bin(self):
         c = self.counts("mix")

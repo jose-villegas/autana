@@ -77,6 +77,9 @@ stress-mix|--quarter 1 --no-hud --scene stress-mix --frames 2|448x368|nopin
 stress-static-copies|--quarter 1 --no-hud --scene stress-static-copies --frames 2|448x368|nopin
 stress-uniform-mid|--quarter 1 --no-hud --scene stress-uniform-mid --frames 2|448x368|nopin
 stress-uniform-full|--quarter 1 --no-hud --scene stress-uniform-full --frames 2|448x368|nopin
+stress-card|--quarter 1 --no-hud --scene stress-card --frames 2|448x368|nopin
+stress-culled|--quarter 1 --no-hud --scene stress-culled --frames 2|448x368|nopin
+stress-near|--quarter 1 --no-hud --scene stress-near --frames 2|448x368|nopin
 stress-noisy-tiny|--quarter 1 --no-hud --scene stress-noisy-tiny --frames 2|448x368|nopin
 "
 

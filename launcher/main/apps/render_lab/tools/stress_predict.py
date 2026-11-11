@@ -9,7 +9,7 @@ from scipy.optimize import nnls
 ROOT = pathlib.Path(__file__).resolve().parents[5]
 sys.path[:0] = [str(ROOT / "launcher/tools/perf"), str(ROOT / "launcher/tools")]
 from frame_profile import replays
-from render.cull_counts import size_fields
+from render.cull_counts import size_fields, upscale_counts
 
 STAGES = ("r3d.cull", "r3d.transform", "r3d.draw", "r3d.upscale")
 FRAME = "frame"
@@ -39,6 +39,11 @@ def load(paths, quarter, rows=(), names=TERMS, *, stress_only=False):
         for pose in kept:
             if stress_only and not pose["row"].startswith("stress-"):
                 raise ValueError(f"{path}: non-stress training row: {pose['row']}")
+            if set(names) & set(STAGE_INPUTS["r3d.upscale"]):
+                try:
+                    pose["counts"].update(upscale_counts(pose["counts"]))
+                except KeyError as error:
+                    raise ValueError(f"{path}: {pose['row']}: missing or invalid compose count: {error}") from error
             missing = set(names) - pose["counts"].keys()
             if missing:
                 raise ValueError(f"{path}: {pose['row']}: missing counts: {', '.join(sorted(missing))}")
@@ -98,15 +103,16 @@ def with_frame(values):
 
 
 def paired(a, b):
-    """Shared poses by row, time, quarter and render size; unmatched peaks drop."""
+    """Shared poses by row, time, quarter and render size, requiring each scene."""
     def keyed(poses):
         return {pose_key(p): p for p in poses}
     left, right = keyed(a), keyed(b)
     if len(left) != len(a) or len(right) != len(b):
         raise ValueError("paired captures require unique pose keys; supply one capture per arm")
     shared = sorted(left.keys() & right.keys())
-    if not shared:
-        raise ValueError("captures share no pose (scene, path time)")
+    missing = {p["row"] for p in (*a, *b)} - {key[0] for key in shared}
+    if not shared or missing:
+        raise ValueError(f"captures share no pose for scenes: {', '.join(sorted(missing))}")
     return [left[key] for key in shared], [right[key] for key in shared]
 
 

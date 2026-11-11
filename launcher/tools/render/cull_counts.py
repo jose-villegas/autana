@@ -14,6 +14,28 @@ LINE_WIDTH = 1.4
 SIZE_PREFIX = "sized_"
 
 
+def enum_value(enum, prefix, name, source=CULL_HEADER):
+    """A named value's place in its owning header's enum."""
+    text = pathlib.Path(source).read_text(encoding="utf-8")
+    body = re.search(r"typedef enum(?: __attribute__\(\(\w+\)\))? \{(.*?)\} " + enum + ";", text, re.S)[1]
+    return re.findall(prefix + r"(\w+)", body).index(name)
+
+
+UPSCALE_HEADER = ROOT / "launcher/main/render/upscale.h"
+UPSCALE_PATHS = {enum_value("upscale_path_t", "UPSCALE_", name, UPSCALE_HEADER): name.lower()
+                 for name in ("MAPPED", "KEPT", "DOUBLED", "BLOCKS")}
+
+
+def upscale_counts(counts):
+    """Model areas derived from the recorded compose dimensions and selected path."""
+    render = counts["render_width"] * counts["render_height"]
+    output = counts["output_width"] * counts["output_height"]
+    path = UPSCALE_PATHS[counts["upscale_path"]]
+    return {"render_pixels": render, "output_pixels": output,
+            **{f"upscale_{name}_pixels": output if name == path else 0 for name in UPSCALE_PATHS.values()},
+            "upscale_surface_pixels": output if counts["upscale_surface"] else 0}
+
+
 def fields(source=CULL_HEADER):
     """Every count's name, in the order the view lists them."""
     text = pathlib.Path(source).read_text(encoding="utf-8")

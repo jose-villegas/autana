@@ -109,8 +109,6 @@ float raster_depth_near(const raster_t* raster);
 
 /* Whether a level pick in the last cull (draw or census) changed an instance's cut. */
 bool raster_levels_changed(const raster_t* raster);
-/* Transform fork/joins run by the last draw, including empty batches. */
-int raster_transform_batches(const raster_t* raster);
 /* Whether the last draw redrew every row, asked to or not (first_row). */
 bool raster_drew_every_row(const raster_t* raster);
 

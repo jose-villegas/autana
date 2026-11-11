@@ -10,6 +10,9 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import stress_predict as predict
+from render.cull_counts import UPSCALE_HEADER, enum_value, upscale_counts
+
+UPSCALE_MAPPED = enum_value("upscale_path_t", "UPSCALE_", "MAPPED", UPSCALE_HEADER)
 
 
 def pose(x, y=0, row="scene", t=0):
@@ -77,6 +80,23 @@ class StressPredictTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "share no pose"):
             predict.paired([pose(1)], [pose(1, t=1)])
 
+    def test_upscale_inputs_derive_from_dimensions_and_selected_path(self):
+        for path in ("KEPT", "DOUBLED", "MAPPED", "BLOCKS"):
+            value = enum_value("upscale_path_t", "UPSCALE_", path,
+                               predict.ROOT / "launcher/main/render/upscale.h")
+            counts = upscale_counts(dict(render_width=12, render_height=8, output_width=24,
+                                         output_height=16, upscale_path=value, upscale_surface=path == "KEPT"))
+            self.assertEqual(96, counts["render_pixels"])
+            self.assertEqual(384, counts["output_pixels"])
+            for other in ("kept", "doubled", "mapped", "blocks"):
+                self.assertEqual(384 if other == path.lower() else 0, counts[f"upscale_{other}_pixels"])
+            self.assertEqual(384 if path == "KEPT" else 0, counts["upscale_surface_pixels"])
+
+    def test_pair_rejects_a_scene_without_shared_poses(self):
+        with self.assertRaisesRegex(ValueError, "share no pose.*missing"):
+            predict.paired([pose(1), pose(1, row="missing")],
+                           [pose(1), pose(1, row="missing", t=1)])
+
     def test_cli_scores_each_scene_stage_frame_delta_and_layout(self):
         from build.c_header import read_define
         header = predict.ROOT / "launcher/test/frame_profile.h"
@@ -86,6 +106,8 @@ class StressPredictTest(unittest.TestCase):
                 lines = []
                 for t, (x, y) in enumerate(points):
                     counts = dict.fromkeys(predict.TERMS, 0)
+                    counts.update(render_width=0, render_height=0, output_width=0, output_height=0,
+                                  upscale_path=UPSCALE_MAPPED, upscale_surface=0)
                     counts.update(clusters_kept=x, vertices_transformed=y, pixels_shaded=y)
                     fields = " ".join(f"{key}={value}" for key, value in counts.items())
                     beta = {"clusters_kept": 3 + change, "vertices_transformed": 5, "pixels_shaded": 4}
@@ -143,6 +165,8 @@ class StressPredictTest(unittest.TestCase):
             lines = []
             for t, values in enumerate(((1, 1, 3), (8, 1, 3), (1, 8, 3), (1, 1, 24))):
                 counts = dict.fromkeys(predict.TERMS, 0)
+                counts.update(render_width=0, render_height=0, output_width=0, output_height=0,
+                              upscale_path=UPSCALE_MAPPED, upscale_surface=0)
                 counts.update(zip(names, values))
                 fields = " ".join(f"{key}={value}" for key, value in counts.items())
                 cost = 2 + sum((i + 1) * counts[name] for i, name in enumerate(names))
@@ -170,6 +194,8 @@ class StressPredictTest(unittest.TestCase):
             lines = []
             for quarter, width in (("portrait", 184), ("landscape", 184), ("portrait", 368)):
                 counts = dict.fromkeys(predict.TERMS, 0)
+                counts.update(render_width=0, render_height=0, output_width=0, output_height=0,
+                              upscale_path=UPSCALE_MAPPED, upscale_surface=0)
                 counts.update(render_width=width, render_height=224)
                 fields = " ".join(f"{key}={value}" for key, value in counts.items())
                 stages = "  ".join(f"{stage} 1.00/0.00" for stage in predict.STAGES)

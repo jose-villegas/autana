@@ -26,7 +26,7 @@ const stress_params_t stress_presets[STRESS_PRESET_COUNT] = {
                           STRESS_CAMERA, 6},
     [STRESS_TWO_SIDED] = {STRESS_SHAPE_CUBE, 4, 16, STRESS_LAYOUT_WALL, 60, STRESS_SURFACE_OF(TWO_SIDED), STRESS_CAMERA,
                           6},
-    [STRESS_MIX] = {STRESS_SHAPE_PLANE, 2, 16, STRESS_LAYOUT_WALL, 80, STRESS_SURFACE_OF(MIX), STRESS_CAMERA, 6},
+    [STRESS_MIX] = {STRESS_SHAPE_GRID, 2, 16, STRESS_LAYOUT_WALL, 80, STRESS_SURFACE_OF(MIX), STRESS_CAMERA, 6},
     [STRESS_NOISY_TINY] = {STRESS_SHAPE_CYLINDER, 16, 36, STRESS_LAYOUT_WALL, 75, STRESS_SURFACE_OF(NOISY_TINY),
                            STRESS_CAMERA, 6},
     [STRESS_STATIC_COPIES] = {STRESS_SHAPE_PLANE, 1, 64, STRESS_LAYOUT_WALL, 80, STRESS_SURFACE_OF(STATIC_COPIES),
@@ -35,7 +35,7 @@ const stress_params_t stress_presets[STRESS_PRESET_COUNT] = {
                             STRESS_CAMERA, 4},
     [STRESS_UNIFORM_FULL] = {STRESS_SHAPE_PLANE, 2, 1, STRESS_LAYOUT_STACK, 160, STRESS_SURFACE_OF(UNIFORM_FULL),
                              STRESS_CAMERA, 4},
-    [STRESS_CARD] = {STRESS_SHAPE_PLANE, 16, 16, STRESS_LAYOUT_WALL, 140, STRESS_SURFACE_OF(CARD), STRESS_CAMERA, 4},
+    [STRESS_CARD] = {STRESS_SHAPE_CARD, 16, 16, STRESS_LAYOUT_WALL, 140, STRESS_SURFACE_OF(CARD), STRESS_CAMERA, 4},
     [STRESS_CULLED] = {STRESS_SHAPE_PLANE, 16, 1, STRESS_LAYOUT_WALL, 80, STRESS_SURFACE_OF(CULLED),
                        STRESS_CAMERA_CULLED, 8},
     [STRESS_NEAR] = {STRESS_SHAPE_SPHERE, 24, 4, STRESS_LAYOUT_STACK, 80, STRESS_SURFACE_OF(NEAR), STRESS_CAMERA_NEAR,
@@ -46,7 +46,7 @@ stress_params_t
 stress_copy_params(const stress_params_t* p, int copy) {
     static const int cuts[STRESS_MIX_LEVELS] = {2, 8, 24, 48};
     stress_params_t result = *p;
-    if (p->surface == STRESS_SURFACE_MIXED) {
+    if (p->shape == STRESS_SHAPE_GRID) {
         result.cuts = cuts[copy % STRESS_MIX_LEVELS];
     }
     return result;
@@ -149,18 +149,12 @@ static void
 card_corner(const stress_params_t* p, const stress_buffers_t* b, int v, int x, int y) {
     const vec3f_t at = {card_coordinate(x, y, p->cuts), card_coordinate(y, x, p->cuts), 0.0F};
     b->positions[v] = at;
-    const int tx = (int)floorf((at.x + 0.5F) * STRESS_CARD_TEXTURE_SIZE);
-    const int ty = (int)floorf((at.y + 0.5F) * STRESS_CARD_TEXTURE_SIZE);
-    for (int c = 0; c < 3; c++) {
-        b->colors[v][c] = (uint8_t)(STRESS_CARD_COLOUR_BASE
-                                    + rng_hash(STRESS_CARD_TEXTURE_SEED, (uint32_t)tx, (uint32_t)ty, (uint32_t)c)
-                                          % STRESS_CARD_COLOUR_RANGE);
-    }
 }
+
+static const uint8_t quad_corners[6][2] = {{0, 0}, {1, 0}, {1, 1}, {0, 0}, {1, 1}, {0, 1}};
 
 static void
 make_card(const stress_params_t* p, const stress_buffers_t* b) {
-    static const uint8_t corners[6][2] = {{0, 0}, {1, 0}, {1, 1}, {0, 0}, {1, 1}, {0, 1}};
     int t = 0;
     for (int cell = 0; cell < p->cuts * p->cuts; cell++) {
         const int x = cell % p->cuts;
@@ -170,7 +164,7 @@ make_card(const stress_params_t* p, const stress_buffers_t* b) {
         }
         for (int k = 0; k < 6; k++) {
             const int v = 3 * t + k;
-            card_corner(p, b, v, x + corners[k][0], y + corners[k][1]);
+            card_corner(p, b, v, x + quad_corners[k][0], y + quad_corners[k][1]);
             b->triangles[t + k / 3][k % 3] = (uint16_t)v;
         }
         t += 2;
@@ -180,16 +174,16 @@ make_card(const stress_params_t* p, const stress_buffers_t* b) {
 /* The preset's shape's counts. */
 static primitive_counts_t
 counts_of(const stress_params_t* p) {
-    if (p->surface == STRESS_SURFACE_CARD) {
-        const int triangles = card_triangles(p->cuts);
-        return (primitive_counts_t){3 * triangles, triangles};
-    }
-    if (p->surface == STRESS_SURFACE_MIXED) {
-        const int triangles = 2 * p->cuts * p->cuts;
-        return (primitive_counts_t){3 * triangles, triangles};
-    }
     const shapes_t s = shapes_of(p);
     switch (p->shape) {
+        case STRESS_SHAPE_CARD: {
+            const int triangles = card_triangles(p->cuts);
+            return (primitive_counts_t){3 * triangles, triangles};
+        }
+        case STRESS_SHAPE_GRID: {
+            const int triangles = 2 * p->cuts * p->cuts;
+            return (primitive_counts_t){3 * triangles, triangles};
+        }
         case STRESS_SHAPE_PLANE: return primitive_plane_counts(&s.plane);
         case STRESS_SHAPE_SPHERE: return primitive_sphere_counts(&s.sphere);
         case STRESS_SHAPE_CUBE: return primitive_cube_counts(&s.cube);
@@ -208,16 +202,35 @@ stress_triangle_count(const stress_params_t* p) {
     return counts_of(p).triangles;
 }
 
+static void
+make_mixed(const stress_params_t* p, const stress_buffers_t* b) {
+    for (int t = 0; t < stress_triangle_count(p); t++) {
+        const int cell = t / 2;
+        for (int k = 0; k < 3; k++) {
+            const int v = (3 * t) + k;
+            const uint8_t* corner = quad_corners[(3 * (t % 2)) + k];
+            b->positions[v] = (vec3f_t){((float)((cell % p->cuts) + corner[0]) / (float)p->cuts) - 0.5F,
+                                        ((float)((cell / p->cuts) + corner[1]) / (float)p->cuts) - 0.5F, 0.0F};
+            b->triangles[t][k] = (uint16_t)v;
+        }
+    }
+}
+
 static bool
-make(const stress_params_t* p, primitive_mesh_t* m) {
+make(const stress_params_t* p, const stress_buffers_t* b, primitive_mesh_t* m) {
     const shapes_t s = shapes_of(p);
     switch (p->shape) {
+        case STRESS_SHAPE_GRID: make_mixed(p, b); break;
+        case STRESS_SHAPE_CARD: make_card(p, b); break;
         case STRESS_SHAPE_PLANE: return primitive_plane(&s.plane, m);
         case STRESS_SHAPE_SPHERE: return primitive_sphere(&s.sphere, m);
         case STRESS_SHAPE_CUBE: return primitive_cube(&s.cube, m);
         case STRESS_SHAPE_CYLINDER: return primitive_cylinder(&s.cylinder, m);
+        default: return false;
     }
-    return false;
+    m->vertex_count = stress_vertex_count(p);
+    m->triangle_count = stress_triangle_count(p);
+    return true;
 }
 
 /* The wave's height at a vertex `up` of the way from the shape's bottom to
@@ -249,6 +262,23 @@ colour_and_wave(const stress_params_t* p, uint32_t t_ms, int vertex_count, const
     const uint8_t* low = noisy ? stress_noise_low : stress_colour_low;
     const uint8_t* high = noisy ? stress_noise_high : stress_colour_high;
     for (int v = 0; v < vertex_count; v++) {
+        if (p->surface == STRESS_SURFACE_MIXED) {
+            const bool uniform = ((v / 3) % STRESS_MIX_UNIFORM_PERIOD) == 0;
+            memcpy(b->colors[v], uniform || v % 3 == 0 ? stress_colour_low : stress_colour_high, sizeof b->colors[v]);
+            continue;
+        }
+        if (p->surface == STRESS_SURFACE_CARD) {
+            const vec3f_t at = b->positions[v];
+            const int tx = (int)floorf((at.x + 0.5F) * STRESS_CARD_TEXTURE_SIZE);
+            const int ty = (int)floorf((at.y + 0.5F) * STRESS_CARD_TEXTURE_SIZE);
+            for (int c = 0; c < 3; c++) {
+                b->colors[v][c] =
+                    (uint8_t)(STRESS_CARD_COLOUR_BASE
+                              + rng_hash(STRESS_CARD_TEXTURE_SEED, (uint32_t)tx, (uint32_t)ty, (uint32_t)c)
+                                    % STRESS_CARD_COLOUR_RANGE);
+            }
+            continue;
+        }
         const float s = shade(p, v, b->positions[v], turns);
         for (int c = 0; c < 3; c++) {
             b->colors[v][c] = (uint8_t)lroundf((float)low[c] + ((float)(high[c] - low[c]) * s));
@@ -261,40 +291,13 @@ colour_and_wave(const stress_params_t* p, uint32_t t_ms, int vertex_count, const
     }
 }
 
-static void
-make_mixed(const stress_params_t* p, const stress_buffers_t* b) {
-    static const uint8_t corners[6][2] = {{0, 0}, {1, 0}, {1, 1}, {0, 0}, {1, 1}, {0, 1}};
-    for (int t = 0; t < stress_triangle_count(p); t++) {
-        const int cell = t / 2;
-        for (int k = 0; k < 3; k++) {
-            const int v = (3 * t) + k;
-            const uint8_t* corner = corners[(3 * (t % 2)) + k];
-            b->positions[v] = (vec3f_t){((float)((cell % p->cuts) + corner[0]) / (float)p->cuts) - 0.5F,
-                                        ((float)((cell / p->cuts) + corner[1]) / (float)p->cuts) - 0.5F, 0.0F};
-            const bool uniform = (t % STRESS_MIX_UNIFORM_PERIOD) == 0;
-            memcpy(b->colors[v], uniform || k == 0 ? stress_colour_low : stress_colour_high, sizeof b->colors[v]);
-            b->triangles[t][k] = (uint16_t)v;
-        }
-    }
-}
-
 bool
 stress_source(const stress_params_t* p, uint32_t t_ms, const stress_buffers_t* b, r3d_dynamic_source_t* out) {
     primitive_mesh_t m = {b->positions, stress_vertex_count(p), b->triangles, stress_triangle_count(p), 0, 0};
-    if (p->surface == STRESS_SURFACE_MIXED) {
-        make_mixed(p, b);
-        m.vertex_count = stress_vertex_count(p);
-        m.triangle_count = stress_triangle_count(p);
-    } else if (p->surface == STRESS_SURFACE_CARD) {
-        make_card(p, b);
-        m.vertex_count = stress_vertex_count(p);
-        m.triangle_count = stress_triangle_count(p);
-    } else if (!make(p, &m)) {
+    if (!make(p, b, &m)) {
         return false;
     }
-    if (p->surface != STRESS_SURFACE_MIXED && p->surface != STRESS_SURFACE_CARD) {
-        colour_and_wave(p, t_ms, m.vertex_count, b);
-    }
+    colour_and_wave(p, t_ms, m.vertex_count, b);
     *out = (r3d_dynamic_source_t){b->positions,     (const uint8_t (*)[3])b->colors,
                                   m.vertex_count,   (const uint16_t (*)[3])b->triangles,
                                   m.triangle_count, p->surface == STRESS_SURFACE_TWO_SIDED};
@@ -352,6 +355,8 @@ float
 stress_cut_px(const stress_params_t* p, int short_px) {
     const float width = (float)short_px * (float)p->coverage_percent / STRESS_PERCENT * copy_share(p);
     switch (p->shape) {
+        case STRESS_SHAPE_GRID:
+        case STRESS_SHAPE_CARD:
         case STRESS_SHAPE_PLANE:
         case STRESS_SHAPE_CUBE: return width / (float)p->cuts;
         case STRESS_SHAPE_SPHERE: return MATH_PI * width / (float)sphere_segments(p->cuts);

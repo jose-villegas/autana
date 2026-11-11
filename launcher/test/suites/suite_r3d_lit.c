@@ -2326,16 +2326,6 @@ test_a_census_list_steps_by_each_instances_own_mesh(void) {
 
 enum { BATCH_COPIES = 6 };
 
-/* The batches a draw of `raster` runs. */
-static int
-batch_count(const raster_t* raster) {
-    int batches = 0;
-    for (int first = 0; first < raster->instance_count; first = raster_batch_end(raster, first)) {
-        batches++;
-    }
-    return batches;
-}
-
 /* A large mesh and copies of a small one: the copies fit one batch beside
  * the buffers sized for the large mesh, and draw the same picture and depth
  * as one fork/join per instance (render.batched off). */
@@ -2365,23 +2355,44 @@ test_batched_copies_draw_what_one_instance_at_a_time_draws(void) {
     batched_changed = true;
     (void)tune_set(tune_shared(), TUNE_NAME(render, batched), 0);
     (void)raster_census(&raster, &view); /* batches run over its drawn list */
-    TEST_ASSERT_EQUAL_INT(1 + BATCH_COPIES, batch_count(&raster));
+    TEST_ASSERT_EQUAL_INT(1 + BATCH_COPIES, raster_batch_count(&raster));
     raster_draw(&raster, &view);
-    TEST_ASSERT_EQUAL_INT(batch_count(&raster), raster_transform_batches(&raster));
     memcpy(want, raster_color(&raster), sizeof(*want) * W * H);
     memcpy(want + (W * H), raster_depth(&raster), sizeof(*want) * W * H);
     (void)tune_reset(tune_shared(), TUNE_NAME(render, batched));
     /* The large mesh alone, then as many copies a batch as its clusters hold. */
     const int per_batch = mathi_min(BATCH_COPIES, wall->mesh.cluster_count / card->mesh.cluster_count);
     TEST_ASSERT_EQUAL_INT(1 + per_batch, raster_batch_end(&raster, 1));
-    TEST_ASSERT_LESS_THAN_INT(1 + BATCH_COPIES, batch_count(&raster));
+    TEST_ASSERT_LESS_THAN_INT(1 + BATCH_COPIES, raster_batch_count(&raster));
     raster_draw(&raster, &view);
-    TEST_ASSERT_EQUAL_INT(batch_count(&raster), raster_transform_batches(&raster));
     raster_cull_frame_t frame = {0};
-    raster_cull_frame_compose(&frame, &raster, (resolution_step_t){W, H});
-    TEST_ASSERT_EQUAL_INT(batch_count(&raster), frame.transform_batches);
+    raster_cull_frame_compose(&frame, &raster);
+    TEST_ASSERT_EQUAL_INT(raster_batch_count(&raster), frame.transform_batches);
     TEST_ASSERT_EQUAL_HEX16_ARRAY(want, raster_color(&raster), W * H);
     TEST_ASSERT_EQUAL_HEX16_ARRAY(want + (W * H), raster_depth(&raster), W * H);
+}
+
+static void
+test_batch_count_keeps_empty_batches_and_the_clearing_draw(void) {
+    parts_t* const p = parts_buffer(&shared_parts);
+    build_wall_and_stack(p);
+    const r3d_instance_t instances[] = {{.mesh = &p->mesh}, {.mesh = &p->mesh}};
+    raster_t raster = census_raster(instances, 2);
+    const fixture_camera_t camera = camera_down_plus_z(10000.0F, -400, 1.0F);
+    const render_view_t view = render_view_fixture(&camera, &raster, 0);
+    saved_batched = *tune_find(tune_shared(), TUNE_NAME(render, batched))->value;
+    batched_changed = true;
+    (void)tune_set(tune_shared(), TUNE_NAME(render, batched), 0);
+    const raster_stats_t stats = raster_draw(&raster, &view);
+    TEST_ASSERT_EQUAL_INT(0, stats.clusters);
+    TEST_ASSERT_EQUAL_INT(2, raster_batch_count(&raster));
+    const r3d_batch_t empty = {0};
+    const r3d_batch_draw_t batch = {.instance = {.mesh = &p->mesh}, .batch = &empty};
+    raster.instance_count = 0;
+    raster.batch_count = 1;
+    raster.batches = &batch;
+    (void)raster_draw(&raster, &view);
+    TEST_ASSERT_EQUAL_INT(1, raster_batch_count(&raster));
 }
 
 /* A destination the raster's own size is a copy of it, taking
@@ -2990,6 +3001,7 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_a_census_list_draws_what_raster_draw_draws_at_any_size);
     RUN_TEST(test_a_census_list_steps_by_each_instances_own_mesh);
     RUN_TEST(test_batched_copies_draw_what_one_instance_at_a_time_draws);
+    RUN_TEST(test_batch_count_keeps_empty_batches_and_the_clearing_draw);
     RUN_TEST(test_a_destination_of_the_same_size_is_a_copy);
     RUN_TEST(test_a_fractional_destination_upscales_a_drawn_frame);
     RUN_TEST(test_a_tile_holds_its_minimum_depth_not_its_maximum);

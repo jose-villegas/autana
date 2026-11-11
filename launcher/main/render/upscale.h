@@ -58,9 +58,6 @@ typedef struct {
     uint16_t* blends; /* per destination row, UPSCALE_BLEND; built by upscale_init_blends() */
 } upscale_t;
 
-/* The row-copy path for positive dimensions, with output no smaller than source. */
-upscale_path_t upscale_path_for(int source_width, int source_height, int destination_width, int destination_height);
-
 /* Builds maps for one source and destination size. The caller retains map storage. */
 bool upscale_init(upscale_t* scale, int source_width, int source_height, int destination_width, int destination_height,
                   uint16_t* columns, uint16_t* rows);

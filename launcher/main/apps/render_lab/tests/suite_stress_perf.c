@@ -26,9 +26,6 @@
 
 static const char* TAG = "stress_perf";
 
-/* Additional sizes use the ladder's full-width and half-height steps. */
-#define STRESS_PERF_WIDE_STEP 3
-
 static lab_test_t saved;
 static const lab_scene_t* preset;
 static const lab_perf_quarter_t* quarter;
@@ -83,7 +80,7 @@ run_stress_perf_suite(void) {
     for (int i = 0; i < STRESS_PRESET_COUNT; i++) {
         preset = &scene_stress[i];
         const stress_params_t* params = preset->data;
-        const int sizes[] = {-1, 0, STRESS_PERF_WIDE_STEP};
+        const int sizes[] = {-1, RENDER_LAB_STEP_FULL, RENDER_LAB_STEP_HALF_HEIGHT};
         const int size_count = params->surface == STRESS_SURFACE_UNIFORM ? (int)(sizeof sizes / sizeof sizes[0]) : 1;
         for (int q = 0; q < (int)LAB_PERF_QUARTER_COUNT; q++) {
             quarter = &lab_perf_quarters[q];

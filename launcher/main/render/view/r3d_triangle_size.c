@@ -2,6 +2,8 @@
 
 #include <math.h>
 
+#include "math/scalar/mathi.h"
+
 static float
 edge(r3d_size_point_t a, r3d_size_point_t b, float px, float py) {
     return ((b.x - a.x) * (py - a.y)) - ((b.y - a.y) * (px - a.x));
@@ -32,17 +34,19 @@ r3d_size_centre_box(const r3d_size_point_t v[3]) {
         first_centre(fmaxf(v[0].x, fmaxf(v[1].x, v[2].x))), first_centre(fmaxf(v[0].y, fmaxf(v[1].y, v[2].y))));
 }
 
-static int
-clamp_int(int v, int lo, int hi) {
-    return v < lo ? lo : (v > hi ? hi : v);
-}
-
-/* The centres a positive-winding triangle owns, up to the requested limit. */
+/* Covered centres of either winding, up to the requested limit. */
 static int
 count_centres(const r3d_size_point_t v[3], recti_t b, int width, int height, int limit) {
+    r3d_size_point_t positive[3];
+    if (r3d_size_area2(v[0], v[1], v[2]) < 0.0F) {
+        positive[0] = v[0];
+        positive[1] = v[2];
+        positive[2] = v[1];
+        v = positive;
+    }
     int covered = 0;
-    for (int y = clamp_int(b.y, 0, height); y < clamp_int(recti_bottom(b), 0, height) && covered < limit; y++) {
-        for (int x = clamp_int(b.x, 0, width); x < clamp_int(recti_right(b), 0, width) && covered < limit; x++) {
+    for (int y = mathi_clamp(b.y, 0, height); y < mathi_clamp(recti_bottom(b), 0, height) && covered < limit; y++) {
+        for (int x = mathi_clamp(b.x, 0, width); x < mathi_clamp(recti_right(b), 0, width) && covered < limit; x++) {
             const float px = (float)x + 0.5F;
             const float py = (float)y + 0.5F;
             covered += owns(v[0], v[1], px, py) && owns(v[1], v[2], px, py) && owns(v[2], v[0], px, py);
@@ -52,12 +56,16 @@ count_centres(const r3d_size_point_t v[3], recti_t b, int width, int height, int
 }
 
 int
-r3d_size_bin(const r3d_size_point_t v[3], recti_t box, int width, int height) {
-    const int covered = recti_is_empty(box) ? 0 : count_centres(v, box, width, height, R3D_SIZES_SMALL_MAX + 1);
+r3d_size_bin_of(int covered) {
     return covered == 0                     ? R3D_SIZES_ZERO
            : covered == 1                   ? R3D_SIZES_ONE
            : covered <= R3D_SIZES_SMALL_MAX ? R3D_SIZES_TWO_TO_FOUR
                                             : R3D_SIZES_MORE;
+}
+
+int
+r3d_size_bin(const r3d_size_point_t v[3], recti_t box, int width, int height) {
+    return r3d_size_bin_of(count_centres(v, box, width, height, R3D_SIZES_SMALL_MAX + 1));
 }
 
 int

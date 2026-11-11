@@ -311,6 +311,20 @@ test_off_frustum_clusters_and_subtrees_are_separate(void) {
 }
 
 static void
+test_size_pixels_accepts_either_winding(void) {
+    enum { SIDE = 4, COVERED = SIDE * (SIDE - 1) / 2 };
+
+    r3d_size_point_t points[] = {{0, 0}, {SIDE, 0}, {0, SIDE}};
+    const recti_t box = r3d_size_centre_box(points);
+    TEST_ASSERT_EQUAL_INT(COVERED, r3d_size_pixels(points, box, SIDE, SIDE));
+    const r3d_size_point_t swap = points[1];
+    points[1] = points[2];
+    points[2] = swap;
+    TEST_ASSERT_EQUAL_INT(COVERED, r3d_size_pixels(points, box, SIDE, SIDE));
+    TEST_ASSERT_EQUAL_INT(R3D_SIZES_MORE, r3d_size_bin_of(COVERED));
+}
+
+static void
 test_size_modes_follow_face_and_corner_colours_in_both_windings(void) {
     const uint16_t kept[] = {0};
     const r3d_lens_t lens = lens_for(&looking_at_origin);
@@ -1221,21 +1235,28 @@ test_overlay_draws_the_frustum_from_the_observer(void) {
 
 static void
 test_compose_counts_can_describe_the_shaded_half_picture(void) {
-    const raster_t raster = {
-        .width = W / 2,
-        .height = H / 2,
-        .upscale = {.destination_width = W, .destination_height = H, .filter = UPSCALE_FILTER_SURFACE}};
+    raster_t raster = {.width = W / 2,
+                       .height = H / 2,
+                       .upscale = {.destination_width = W / 2,
+                                   .destination_height = H / 2,
+                                   .path = UPSCALE_KEPT,
+                                   .filter = UPSCALE_FILTER_SURFACE}};
     raster_cull_frame_t frame = {0};
-    raster_cull_frame_compose(&frame, &raster, (resolution_step_t){W / 2, H / 2});
-    TEST_ASSERT_EQUAL_INT(W * H / 4, frame.render_pixels);
-    TEST_ASSERT_EQUAL_INT(W * H / 4, frame.output_pixels);
-    TEST_ASSERT_EQUAL_INT(frame.output_pixels, frame.upscale_kept_pixels);
-    TEST_ASSERT_EQUAL_INT(frame.output_pixels, frame.upscale_surface_pixels);
-    TEST_ASSERT_EQUAL_INT(0, frame.upscale_doubled_pixels);
-    raster_cull_frame_compose(&frame, &raster, (resolution_step_t){W, H});
-    TEST_ASSERT_EQUAL_INT(W * H, frame.output_pixels);
-    TEST_ASSERT_EQUAL_INT(frame.output_pixels, frame.upscale_doubled_pixels);
-    TEST_ASSERT_EQUAL_INT(0, frame.upscale_surface_pixels);
+    raster_cull_frame_compose(&frame, &raster);
+    TEST_ASSERT_EQUAL_INT(W / 2, frame.render_width);
+    TEST_ASSERT_EQUAL_INT(H / 2, frame.render_height);
+    TEST_ASSERT_EQUAL_INT(W / 2, frame.output_width);
+    TEST_ASSERT_EQUAL_INT(H / 2, frame.output_height);
+    TEST_ASSERT_EQUAL_INT(UPSCALE_KEPT, frame.upscale_path);
+    TEST_ASSERT_TRUE(frame.upscale_surface);
+    raster.upscale.destination_width = W;
+    raster.upscale.destination_height = H;
+    raster.upscale.path = UPSCALE_DOUBLED;
+    raster_cull_frame_compose(&frame, &raster);
+    TEST_ASSERT_EQUAL_INT(W, frame.output_width);
+    TEST_ASSERT_EQUAL_INT(H, frame.output_height);
+    TEST_ASSERT_EQUAL_INT(UPSCALE_DOUBLED, frame.upscale_path);
+    TEST_ASSERT_FALSE(frame.upscale_surface);
 }
 
 void
@@ -1247,6 +1268,7 @@ run_raster_cull_view_suite(void) {
     RUN_TEST(test_uniform_mode_uses_quantized_colour_steps);
     RUN_TEST(test_off_frustum_clusters_and_subtrees_are_separate);
     RUN_TEST(test_counted_pixels_are_clipped_centres_and_zero_without_setup);
+    RUN_TEST(test_size_pixels_accepts_either_winding);
     RUN_TEST(test_size_modes_follow_face_and_corner_colours_in_both_windings);
     RUN_TEST(test_triangles_are_sorted_into_exactly_one_fate_each);
     RUN_TEST(test_set_up_per_cluster_counts_set_up_and_clipped_triangles);

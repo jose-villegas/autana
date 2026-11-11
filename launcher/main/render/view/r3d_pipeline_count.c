@@ -129,15 +129,10 @@ count_triangle(const r3d_lit_mesh_t* mesh, const uint16_t* tri, const r3d_pipeli
     for (int k = 0; k < 3; k++) {
         points[k] = (r3d_size_point_t){(float)v[k]->sx / (float)R3D_SUBPIXEL, (float)v[k]->sy / (float)R3D_SUBPIXEL};
     }
-    if (r3d_size_area2(points[0], points[1], points[2]) < 0.0F) {
-        const r3d_size_point_t swap = points[1];
-        points[1] = points[2];
-        points[2] = swap;
-    }
-    const int bin = r3d_size_bin(points, r3d_size_centre_box(points), screen->rows.attachment[0].width,
-                                 screen->rows.attachment[0].height);
-    counts->pixels[mode] += r3d_size_pixels(points, r3d_size_centre_box(points), screen->rows.attachment[0].width,
-                                            screen->rows.attachment[0].height);
+    const int covered = r3d_size_pixels(points, r3d_size_centre_box(points), screen->rows.attachment[0].width,
+                                        screen->rows.attachment[0].height);
+    const int bin = r3d_size_bin_of(covered);
+    counts->pixels[mode] += covered;
     counts->triangles_sized[mode][bin]++;
     counts->triangles_set_up++;
     return true;

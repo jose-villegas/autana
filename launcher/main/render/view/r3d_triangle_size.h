@@ -44,9 +44,11 @@ float r3d_size_area2(r3d_size_point_t a, r3d_size_point_t b, r3d_size_point_t c)
 /* The pixel centres inside the corners' bounding box. */
 recti_t r3d_size_centre_box(const r3d_size_point_t v[3]);
 
-/* The size bin of a triangle winding positive (r3d_size_area2() > 0) whose
- * centre box `box` touches a `width` x `height` screen. */
+/* The size bin of an exact covered-centre count. */
+int r3d_size_bin_of(int covered);
+
+/* The size bin of either winding, clipped to the screen. */
 int r3d_size_bin(const r3d_size_point_t v[3], recti_t box, int width, int height);
 
-/* Exact covered centres, clipped to the screen. */
+/* Exact covered centres of either winding, clipped to the screen. */
 int r3d_size_pixels(const r3d_size_point_t v[3], recti_t box, int width, int height);

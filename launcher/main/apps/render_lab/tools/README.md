@@ -157,7 +157,7 @@ the presets vary the copies' geometry, layout and colour modes.
 | `stress-static-copies` | ![Static triangle copies](../../../../../docs/images/overview/render-lab-stress-static-copies.png) | the stress pack's LMSH triangle, retained in each renderer | static asset residency and small transform batches |
 | `stress-uniform-mid` | ![Uniform plane with intermediate coverage](../../../../../docs/images/overview/render-lab-stress-uniform-mid.png) | equal-colour large triangles | intermediate uniform fill without shaded pixels |
 | `stress-uniform-full` | ![Uniform plane covering the view](../../../../../docs/images/overview/render-lab-stress-uniform-full.png) | equal-colour large triangles spanning the view | uniform fill beyond the water workload at full-width render sizes |
-| `stress-card` | ![Card copies with ragged edges and sampled colours](../../../../../docs/images/overview/render-lab-stress-card.png) | static copies of a perforated quad with uneven tessellation and procedural texture samples at its corners | scene-like small triangles with irregular edges and colour steps |
+| `stress-card` | ![Card copies with ragged edges and sampled colours](../../../../../docs/images/overview/render-lab-stress-card.png) | copies sharing a generated perforated quad with uneven tessellation and procedural texture samples at its corners | scene-like small triangles with irregular edges and colour steps |
 | `stress-culled` | ![Plane before the camera turns away](../../../../../docs/images/overview/render-lab-stress-culled.png) | a tessellated plane and a camera pitching beyond its edge | varying cluster rejection by the frustum |
 | `stress-near` | ![Spheres along the camera path](../../../../../docs/images/overview/render-lab-stress-near.png) | stacked spheres and a camera passing through their front surfaces | triangles behind and crossing the near plane |
 
@@ -173,12 +173,7 @@ Regenerate the card means with:
 python launcher/main/apps/render_lab/tools/scene_triangle_bins.py --scene stress-card 600 --out docs/render/data/stress-triangle-bins.json
 ```
 
-| Path mean, share of set-up triangles | Zero pixels | One pixel | Two to four | More than four |
-|---|---:|---:|---:|---:|
-| `sponza` | 5.6% | 8.0% | 17.1% | 69.2% |
-| `sponza-fitted-full` | 7.1% | 10.5% | 23.2% | 59.1% |
-| `bistro-fitted-full` | 12.4% | 17.1% | 29.5% | 41.0% |
-| `stress-card` | 7.3% | 16.8% | 37.6% | 38.2% |
+Card path means are in [`stress-triangle-bins.json`](../../../../../docs/render/data/stress-triangle-bins.json).
 
 The culled camera samples each quarter's frustum edge; the near camera
 traverses the stacked surfaces. Their sweeps are claims of
@@ -217,56 +212,28 @@ Static copies retain the pack's mesh and its scene-owned PSRAM arrays.
 Dynamic copies also use PSRAM and the same packed-int16 transform loop;
 `vertices_transformed` therefore serves both without a storage-kind split.
 
-`stress_predict.py` fits `stage_ms = c + Σ β_k x_k` separately for cull,
-transform, draw and upscale, each on its own inputs below, with every `β_k ≥ 0`
-(non-negative least squares). Frame predictions sum the stages; scene poses
-are held out of fitting.
+`stress_predict.py` is a diagnostic stage-delta reader. Its per-stage inputs
+are owned by `STAGE_INPUTS` in [stress_predict.py](stress_predict.py).
 
 The fit does not predict scenes within the 10% rule. It under-predicts draw,
 misses cull's per-call cost and never trains the doubled, mapped or blocks
 upscale paths. The stress suite is a quick pre-check; scenes stay in every perf check.
 
-Primitive and pixel work have distinct costs.<sup>[[117]](../../../../../docs/Citations.md#funkhouser-1993)</sup>
-Software rasterization also depends on triangle size and pixel work.<sup>[[118]](../../../../../docs/Citations.md#laine-2011)</sup>
-Separate task estimates follow the rendering-time framework of Wimmer and Wonka.<sup>[[119]](../../../../../docs/Citations.md#wimmer-2003)</sup>
-These sources motivate the inputs; this tool's additive fit and gate are local choices.
-
-| Stage | Count fields (`STAGE_INPUTS`) |
+| Flags | Input or selection |
 |---|---|
-| r3d.cull | `nodes_visited`, `nodes_cut`, `clusters_tested`, `clusters_off_frustum`, `clusters_kept` |
-| r3d.transform | `transform_batches`, `clusters_kept`, `vertices_transformed` |
-| r3d.draw | `sized_*` (size bin × FACE/UNIFORM/SHADED), `pixels_face`, `pixels_uniform`, `pixels_shaded`, `triangles_facing_away`, `triangles_missed`, `triangles_behind`, `triangles_clipped` |
-| r3d.upscale | `render_pixels`, `output_pixels`, `upscale_kept_pixels`, `upscale_doubled_pixels`, `upscale_mapped_pixels`, `upscale_blocks_pixels`, `upscale_surface_pixels` |
+| `--a`, `--scenes` | stress training capture and held-out scene capture |
+| `--b`, `--scenes-a`, `--scenes-b` | second stress arm and paired scene arms for stage deltas |
+| `--noise-a`, `--noise-b` | same-build pair for the measured noise floor |
+| `--layout-a`, `--layout-b` | matching poses with different layout seeds |
+| `--scene KEY ...` | selected scene rows |
+| `--quarter`, `--scene-quarter` | training and held-out quarters |
 
-Upscale reads the render picture and writes the compose picture, which can
-be half the panel size. Width selects kept, doubled, block or mapped copying;
-surface filtering adds depth tests and blends on kept-width rows.
+Pairs require shared pose keys for every scene. Captures must contain every
+model count and stage; unsupported inputs and failed scoring rows fail the run.
 
-The `upscale_*_pixels` fields describe the selected path's output work.
-Quarter rotates camera axes before rasterization; upscale itself traverses
-panel-native rows. Quarter is capture metadata rather than a categorical cost.
-
-Replay composition counts describe the timed shaded draw; the cull overlay's
-full-size composition is separate. Each line records both sizes and quarter.
-
-Training accepts only `stress-*` rows, keeping the last duplicate pose in each
-capture. The report names each input that never varies in training.
-
-The plain table lists measured and predicted means and pose-wise p95 errors
-for every scene and stage, plus frame. Each row passes when the 95th percentile
-of `abs(predicted - measured) / abs(measured)` is at most 10%.
-
-With two stress arms, each scene pose's predicted delta is `B(x_A) - A(x_A)`.
-Measured deltas pair scene arms by row and path time; each arm's own peak poses drop. The delta tolerance is
-`max(10% * abs(measured delta), same-build noise)` per pose.
-
-`--noise-a` and `--noise-b` supply a same-build replay pair. Each stage's noise
-floor is the p95 absolute paired difference over those poses, in ms; frame uses
-paired sums. The report prints these floors. Zero error at zero time passes.
-
-A layout pair reports each preset's mean signed and p95 absolute stage change.
-A change is seen when its p95 exceeds the same-build floor. Use matching poses,
-settings and build for noise captures; only layout seed differs in layout arms.
+Replay counts describe the timed shaded compose. `render_width/height` and
+`output_width/height` give its sizes; `upscale_path` is `upscale_path_t`, and
+`upscale_surface` records surface filtering. The scorer derives pixel areas.
 
 ```sh
 python launcher/main/apps/render_lab/tools/stress_predict.py --a stress-a.log \
@@ -277,16 +244,6 @@ python launcher/main/apps/render_lab/tools/stress_predict.py \
     --noise-a repeat-a.log --noise-b repeat-b.log \
     --layout-a layout-a.log --layout-b layout-b.log
 ```
-
-`--scene KEY ...` selects scene rows. `--quarter` selects stress quarters
-(`all` by default); `--scene-quarter` selects held-out quarters (`portrait`
-by default). Pose keys include row, time, quarter and render dimensions.
-Delta, noise and layout pairs use the poses both captures replayed. A nonzero exit
-means a scoring row failed; missing fields or unmatched poses are errors.
-
-A scene that takes another value of an input the training never varied fails
-with that input named. Captures must include every model count and stage on each replay line.
-The offline `scene_triangle_bins.py` summary is separate from model fitting.
 
 `render_lab_render --view cull --counts FILE` writes every
 `RASTER_CULL_FRAME_FIELDS` count per frame. The `sized_*` fields use

@@ -25,11 +25,6 @@ size_triangle(point_t v[3], bool double_sided, int width, int height, r3d_sizes_
     if (area2 == 0.0F || (!double_sided && area2 > 0.0F)) {
         return; /* front faces wind negative on screen */
     }
-    if (area2 < 0.0F) {
-        const point_t t = v[1];
-        v[1] = v[2];
-        v[2] = t;
-    }
     const recti_t b = r3d_size_centre_box(v);
     if (recti_right(b) <= 0 || b.x >= width || recti_bottom(b) <= 0 || b.y >= height) {
         return;

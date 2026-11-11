@@ -76,7 +76,7 @@ find_pool(void) {
 
 static int
 mesh_count(void) {
-    return shown->surface == STRESS_SURFACE_MIXED ? STRESS_MIX_LEVELS : 1;
+    return shown->shape == STRESS_SHAPE_GRID ? STRESS_MIX_LEVELS : 1;
 }
 
 static bool
@@ -139,13 +139,13 @@ place_copies(void) {
     const stress_framing_t seen = {sqrtf(vec3f_dot(eye, eye)), lens->half_fov_short_tan};
     transformf_t facing = transformf_identity();
     transformf_set_rotation(&facing, quatf_from_axis_angle(vec3f_unit_y(), atan2f(eye.x, eye.z)));
+    const transformf_t shape = shown->surface == STRESS_SURFACE_STATIC ? static_shape() : transformf_identity();
     for (int i = 0; i < pool; i++) {
         const bool used = i < shown->copies;
         entity_set_enabled(slots[i], used);
         if (used) {
             transformf_t place = stress_copy_place(shown, i, seen);
             if (shown->surface == STRESS_SURFACE_STATIC) {
-                const transformf_t shape = static_shape();
                 place = transformf_compose(&place, &shape);
             }
             transform_set_local(slots[i], transformf_compose(&facing, &place));
