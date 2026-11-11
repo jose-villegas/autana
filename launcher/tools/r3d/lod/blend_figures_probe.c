@@ -59,12 +59,12 @@ static void
 print_step(const r3d_lit_mesh_t* mesh, const render_lod_settings_t* lod, float distance, uint32_t* state, bool first) {
     const r3d_lens_t lens = lens_at(distance);
     uint32_t* arrived = r3d_lod_arrived(state, 1);
-    r3d_lod_pick(mesh, &lens, lod, state, arrived, NULL);
+    r3d_lod_pick(mesh, &lens, lod, state, true, NULL);
     r3d_lit_mesh_t morphing = *mesh;
     morphing.morph_delta = NO_DELTAS;
     r3d_lod_morph_t morph, dither;
-    r3d_lod_morph_init(&morph, &morphing, &lens, lod, arrived, RENDER_LOD_BLEND_ON);
-    r3d_lod_morph_init(&dither, mesh, &lens, lod, arrived, RENDER_LOD_BLEND_ON);
+    r3d_lod_morph_init(&morph, &morphing, &lens, lod, state, RENDER_LOD_BLEND_ON);
+    r3d_lod_morph_init(&dither, mesh, &lens, lod, state, RENDER_LOD_BLEND_ON);
     printf("%s{\"px\": %s, \"coarse\": %d, \"arrived\": %d, \"blending\": %d, \"weight\": %d, \"fine_band\": %d, "
            "\"coarse_band\": %d}",
            first ? "" : ", ", mathf_text(r3d_lod_group_pixels(mesh, &lens, 0)).chars, r3d_lod_coarse(state, 0),

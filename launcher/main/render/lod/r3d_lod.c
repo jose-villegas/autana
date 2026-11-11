@@ -171,7 +171,8 @@ close_coarse(const r3d_lit_mesh_t* mesh, uint32_t* coarse) {
 
 void
 r3d_lod_morph_init(r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
-                   const render_lod_settings_t* lod, const uint32_t* arrived, int blend) {
+                   const render_lod_settings_t* lod, const uint32_t* state, int blend) {
+    const uint32_t* arrived = state != NULL ? state + R3D_LOD_WORDS(mesh->lod_group_count) : NULL;
     const uint32_t* blending = arrived != NULL ? r3d_lod_blending(arrived, mesh->lod_group_count) : NULL;
     /* Off, or no group blending: nothing weighs, and the transform and draw
      * take their plain paths. */
@@ -436,7 +437,6 @@ pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settin
     const int sets = arrived != NULL ? R3D_LOD_STATE_SETS : 1;
     histogram_add_finest(histogram, mesh);
     if (histogram == NULL && all_fine(mesh, &v, lens, &limits, lod, arrived != NULL)) {
-        assert(arrived == NULL || arrived == coarse + words);
         return clear_state(coarse, sets * words);
     }
     /* Per group, in the form within() takes: its error and its radius, each
@@ -473,10 +473,10 @@ pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settin
 }
 
 bool
-r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod, uint32_t* coarse,
-             uint32_t* arrived, r3d_lod_histogram_t* histogram) {
-    return arrived == NULL ? pick(mesh, lens, lod, coarse, NULL, histogram)
-                           : pick(mesh, lens, lod, coarse, arrived, histogram);
+r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod, uint32_t* state,
+             bool blend, r3d_lod_histogram_t* histogram) {
+    return blend ? pick(mesh, lens, lod, state, r3d_lod_arrived(state, mesh->lod_group_count), histogram)
+                 : pick(mesh, lens, lod, state, NULL, histogram);
 }
 
 /* Inlined into one copy per caller, so a literal NULL `blending` tests no
