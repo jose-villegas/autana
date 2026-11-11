@@ -94,8 +94,7 @@ suite's tunable that each row sets to the showcase's shipped meshlet size: the
 suite's p95 ceilings, pegged on shipped bakes, then gate only bakes of that size.
 Preparation copies the tracked tree into
 `launcher/tools/results/meshlet-sizes/tree` and re-clusters the showcase's cached
-bake through `rebake.py`, without building firmware or accessing the board. The
-other bakes keep the shipped size, so the suite's budgets for them hold.
+bake through `rebake.py`, without building firmware or accessing the board.
 
 Packs read meshes from the bake cache by the lock, so a row puts its size's
 bakes in the cache and points the tree's `bakes.lock` at them. Install a row,
