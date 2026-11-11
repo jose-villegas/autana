@@ -265,6 +265,20 @@ test_a_fast_block_past_on_chip_ram_falls_back_and_is_counted(void) {
     TEST_ASSERT_EQUAL_size_t(before.bytes + bytes, after.bytes);
 }
 
+/* A block that would leave less than MEMORY_FAST_INTERNAL_RESERVE free on
+ * chip goes to external RAM, though on-chip RAM could still give it. */
+static void
+test_a_fast_block_that_would_eat_the_reserve_falls_back(void) {
+    const size_t free_on_chip = memory_free_bytes(MEMORY_INTERNAL);
+    TEST_ASSERT_GREATER_THAN_size_t(MEMORY_FAST_INTERNAL_RESERVE, free_on_chip);
+    const size_t bytes = free_on_chip - MEMORY_FAST_INTERNAL_RESERVE + 1;
+    TEST_ASSERT_GREATER_OR_EQUAL_size_t(bytes, memory_largest_block(MEMORY_INTERNAL));
+    void* block = memory_alloc(bytes, MEMORY_FAST);
+    TEST_ASSERT_NOT_NULL(block);
+    TEST_ASSERT_TRUE(memory_in_psram(block));
+    memory_free(block);
+}
+
 /* Fast fails only when neither RAM can give the block. */
 static void
 test_a_fast_block_past_both_rams_fails_uncounted(void) {
@@ -409,6 +423,7 @@ suite_memory(void) {
     RUN_TEST(test_a_block_of_one_kind_leaves_the_other_pools_budget_alone);
     RUN_TEST(test_a_fast_block_that_fits_on_chip_lands_there);
     RUN_TEST(test_a_fast_block_past_on_chip_ram_falls_back_and_is_counted);
+    RUN_TEST(test_a_fast_block_that_would_eat_the_reserve_falls_back);
     RUN_TEST(test_a_fast_block_past_both_rams_fails_uncounted);
     RUN_TEST(test_every_kind_reports_a_total_no_smaller_than_its_free_space_or_largest_block);
     RUN_TEST(test_a_kinds_total_is_its_pools_capacity_while_a_block_is_held);
