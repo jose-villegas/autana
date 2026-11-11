@@ -134,6 +134,8 @@ pops more; [Cluster-LOD.md](../plans/Cluster-LOD.md) scores each coverage cap.
 
 With `triangle_budget` set, the tolerance rises from `tolerance_px` until the frame fits
 ([the steer](../plans/Cluster-LOD.md)). The budget is in triangles, at most 32767.
+The coverage cap rises with it, in proportion: `coverage_permille` is the cap at
+`tolerance_px`, so a budget can turn coarse the large groups the cap holds fine there.
 
 **What the budget counts:** the triangles of every lit-mesh cluster the cull keeps, after the
 level cut and before any triangle is drawn. That is `raster_stats_t.triangles`, which the frame

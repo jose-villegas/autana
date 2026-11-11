@@ -62,7 +62,7 @@ r3d_lens_place(r3d_lens_t* lens, const mat4f_t* model, int position_scale) {
     for (int row = 0; row < MAT3F_AXES; row++) {
         placed.m[row][MAT3F_AXES] *= (float)position_scale;
     }
-    lens->m = mat4f_mul_affine(lens->m, placed);
+    mat4f_post_mul_affine(&lens->m, &placed);
 }
 
 #define ALL_PLANES ((1u << PLANE_FRUSTUM_COUNT) - 1u)
@@ -92,6 +92,11 @@ struct r3d_pipeline_work {
             r3d_span_mask_t mask; /* a masked triangle's atlas and u, v; atlas NULL when it is not masked */
             vec3f_t source[R3D_SPAN_TRIANGLE_VERTICES]; /* a masked clipped triangle's corners, before clipping */
             float source_u[R3D_SPAN_TRIANGLE_VERTICES], source_v[R3D_SPAN_TRIANGLE_VERTICES];
+            /* A draw with writers: the target it fills, retagged per cluster
+             * or triangle. Here, not on the draw's stack; the target last, as
+             * its rows end in a flexible array. */
+            r3d_span_writer_t writers[GFX_ATTACHMENTS_FURTHER_MAX];
+            r3d_span_target_t writing;
         } clip;
     };
 };
@@ -811,9 +816,10 @@ draw_writing_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16
                 const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
                 draw_mode_t mode, r3d_pipeline_work_t* work) {
     assert(target->writer_count <= GFX_ATTACHMENTS_FURTHER_MAX);
-    r3d_span_writer_t writers[GFX_ATTACHMENTS_FURTHER_MAX];
-    r3d_span_target_t writing = *target;
-    writing.writers = writers;
+    r3d_span_writer_t* writers = work->clip.writers;
+    r3d_span_target_t* writing = &work->clip.writing;
+    *writing = *target;
+    writing->writers = writers;
     bool per_triangle = false;
     for (int k = 0; k < target->writer_count; k++) {
         writers[k] = target->writers[k];
@@ -833,7 +839,7 @@ draw_writing_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16
             retag(writers, target->writers, target->writer_count, clusters[i], (uint32_t)t);
             /* No DRAW_BOUNDED: one more live value puts this frame over stack_chain_gate. The mask
              * is chosen here, not by draw_masked(): its frame would put a masked chain over too. */
-            draw_triangles_of(mesh, lens, c, t, t + step, cs, c->masked, &writing, mode, work);
+            draw_triangles_of(mesh, lens, c, t, t + step, cs, c->masked, writing, mode, work);
         }
     }
 }

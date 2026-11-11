@@ -153,10 +153,12 @@ lod_is_ordered(const r3d_lit_mesh_t* mesh) {
 }
 
 /* Whether every cluster under `node` is finest, or with `finest` false,
- * every one coarse. */
+ * every one coarse. A tree deeper than R3D_LIT_TREE_DEPTH_MAX is neither:
+ * the walk's stack holds R3D_LIT_WALK_DEEPEST, the least that walks a tree
+ * within it, so it stays small on the open's stack. */
 static bool
 subtree_is(const r3d_lit_mesh_t* mesh, int node, bool finest) {
-    uint16_t stack[R3D_LIT_WALK_STACK_MAX];
+    uint16_t stack[R3D_LIT_WALK_DEEPEST];
     int top = 0;
     stack[top++] = (uint16_t)node;
     while (top > 0) {
@@ -166,7 +168,7 @@ subtree_is(const r3d_lit_mesh_t* mesh, int node, bool finest) {
                 if ((mesh->cluster_lod[n->first + i].own == R3D_LOD_NONE) != finest) {
                     return false;
                 }
-            } else if (top < R3D_LIT_WALK_STACK_MAX) {
+            } else if (top < R3D_LIT_WALK_DEEPEST) {
                 stack[top++] = (uint16_t)(n->first + i);
             } else {
                 return false;

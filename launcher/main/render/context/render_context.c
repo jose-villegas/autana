@@ -274,19 +274,19 @@ draw_second_view(render_context_t* c) {
     const tune_entry_t* culling = tune_find(tune_shared(), TUNE_NAME(render, cull));
     const int32_t culled = *culling->value;
     const transformf_t* observer = c->observing ? &c->observer : NULL;
-    render_view_t second;
+    render_view_t* second = &c->second;
     bool listed = false;
-    while (row->second_view(c->debug_view_state, &c->raster, observer, &second, &listed)) {
+    while (row->second_view(c->debug_view_state, &c->raster, observer, second, &listed)) {
         if (!c->observed) {
-            note_observed(c, observer, &second);
+            note_observed(c, observer, second);
         }
         c->raster.split = NULL;
         c->raster.picks_levels = false;
         if (listed) {
-            raster_draw_culled(&c->raster, &second);
+            raster_draw_culled(&c->raster, second);
         } else {
             (void)tune_set(tune_shared(), TUNE_NAME(render, cull), 0);
-            (void)raster_draw(&c->raster, &second);
+            (void)raster_draw(&c->raster, second);
             (void)tune_set(tune_shared(), TUNE_NAME(render, cull), culled);
         }
         c->raster.split = &c->split;
@@ -671,12 +671,12 @@ render_context_observer_pose(const render_context_t* c, transformf_t* out) {
     return c->observed;
 }
 
-/* The context's bytes a checkpoint holds: all but the observer, which ends it. */
+/* The context's bytes a checkpoint holds: all but the observer and the
+ * second view, which end it. */
 #define CARRIED_BYTES offsetof(render_context_t, observing)
-_Static_assert(offsetof(render_context_t, observer) + sizeof(((render_context_t*)0)->observer)
-                       + _Alignof(render_context_t)
+_Static_assert(offsetof(render_context_t, second) + sizeof(((render_context_t*)0)->second) + _Alignof(render_context_t)
                    > sizeof(render_context_t),
-               "the observer ends render_context_t: a checkpoint holds the bytes before it");
+               "the second view ends render_context_t: a checkpoint holds the bytes before the observer");
 
 void
 render_context_checkpoint_capture(checkpoint_t* saved, render_context_t* context) {

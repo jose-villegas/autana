@@ -94,6 +94,7 @@ from http_get import get
 
 from build import packages  # noqa: E402
 from build.c_header import read_define  # noqa: E402
+from bake import code_units  # noqa: E402
 from c_lexer import c_code  # noqa: E402
 from r3d.mesh_bundle import SUFFIX as BUNDLE_SUFFIX
 from r3d.import_settings import BLEND_SUFFIX, SettingsError, content_checksum, source_digest  # noqa: E402
@@ -121,11 +122,13 @@ CPUINFO = pathlib.Path("/proc/cpuinfo")
 NVIDIA_SMI_NAME = ("nvidia-smi", "--query-gpu=name", "--format=csv,noheader")
 GPU_QUERY_TIMEOUT_S = 10
 # Each stage's entry scripts. Its code is their import closure (see stage_files), the C and the
-# submodules its files compile, and the requirements beside them.
+# submodules its files compile, and the requirements beside them. An entry named `file.py:function` keys only
+# the code that function and the closure's import-time statements reach (see stage_units).
 STAGES = {
     "poses": ("anim/track_host.py",),
     "mesh": ("r3d/mesh_import.py",),
-    "reference": ("r3d/reference_render.py", "r3d/reference_set.py"),
+    "reference": ("r3d/reference_set.py:prepare_references", "r3d/reference_set.py:reference_inputs",
+                  "r3d/reference_set.py:canonical", "r3d/reference_render.py:render_sets"),
     "fit": ("r3d/fit/stage.py", "r3d/appearance_simplify.py"),
     "levels": ("r3d/lod/levels_stage.py",),
     "blend": ("gltf/blend_skin_to_glb.py",),
@@ -136,7 +139,11 @@ GLB_SUFFIX = ".glb"
 # The order kinds are made in: a mesh reads the export of its .blend.
 KINDS = ("blend", "mesh", "fit", "levels", "sound")
 SOUND_SUFFIX = ".sond"
-ENTRIES = {(TOOLS / entry).resolve() for entries in STAGES.values() for entry in entries}
+def entry_file(entry):
+    return (TOOLS / entry.partition(":")[0]).resolve()
+
+
+ENTRIES = {entry_file(entry) for entries in STAGES.values() for entry in entries}
 REQUIREMENTS_NAME = "requirements.txt"
 REQUIREMENTS_GLOB = "requirements*.txt"
 C_SUFFIXES = (".c", ".cc", ".cpp", ".h", ".hpp")
@@ -334,9 +341,9 @@ def string_statement_spans(tree):
             and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str)]
 
 
-def code_tokens(path):
-    """A file's tokens without comments, docstrings, blank lines, layout or import plumbing: the same
-    on every Python from 3.12, and wherever the file lives."""
+def line_tokens(path):
+    """(line, kind, text) of a file's tokens that carry code: no comments, docstrings, blank lines or import
+    plumbing."""
     tree = module_facts(path)[0]
     skipped = plumbing_lines(tree)
     strings = string_statement_spans(tree)
@@ -348,9 +355,21 @@ def code_tokens(path):
                 continue
             if any(start <= token.start < end for start, end in strings):
                 continue
-            if kind == "NEWLINE" and (not kept or kept[-1][0] in SHAPE_TOKENS):
-                continue
-            kept.append([kind, "" if kind in SHAPE_TOKENS else token.string])
+            kept.append((token.start[0], kind, "" if kind in SHAPE_TOKENS else token.string))
+    return tuple(kept)
+
+
+def code_tokens(path, lines=None, skip=(), tokens=None):
+    """A file's tokens, or those of lines `lines` (first, last) outside the `skip` spans, without comments,
+    docstrings, blank lines, layout or import plumbing: the same on every Python from 3.12, and wherever the
+    file lives. `tokens` is the file's line_tokens when the caller has them."""
+    kept = []
+    for line, kind, text in tokens or line_tokens(path):
+        if lines is not None and not (lines[0] <= line <= lines[1] and not any(a <= line <= b for a, b in skip)):
+            continue
+        if kind == "NEWLINE" and (not kept or kept[-1][0] in SHAPE_TOKENS):
+            continue
+        kept.append([kind, text])
     return kept
 
 
@@ -366,9 +385,24 @@ def c_content(path):
 def stage_files(stage):
     """The files whose code makes `stage`'s output: its entries' closure, stopping at another stage's
     entry script, whose key or output the stage already names."""
-    own = {(TOOLS / entry).resolve() for entry in STAGES[stage]}
-    stop = {(TOOLS / entry).resolve() for entries in STAGES.values() for entry in entries} - own
-    return closure(STAGES[stage], stop)
+    own = {entry_file(entry) for entry in STAGES[stage]}
+    return closure(sorted({str(path.relative_to(TOOLS)) for path in own}), ENTRIES - own)
+
+
+@functools.cache
+def stage_units(stage):
+    """The units (code_units.Unit) of `stage`'s files its entry functions reach, and the names the walk could
+    not place (each counts its whole module)."""
+    paths = stage_files(stage)
+    roots = [TOOLS, *dict.fromkeys(directory for path in paths for directory in module_facts(path)[2])]
+
+    def find(path, name, level):
+        package = ".".join(path.relative_to(TOOLS).parts[:-1]) if path.is_relative_to(TOOLS) else ""
+        return module_file(name, package, level, roots)
+
+    walk = code_units.Walk(paths, find)
+    entries = [(entry_file(entry), entry.partition(":")[2]) for entry in STAGES[stage]]
+    return walk.units(entries), walk.unresolved
 
 
 def c_includes(sources, include_dirs):
@@ -481,6 +515,16 @@ def pinned_requirements(paths):
     return tuple(sorted(pins))
 
 
+def units_digests(units):
+    """A digest per file of its units' tokens in file order, so moving one statement past another counts."""
+    files, read = {}, {}
+    for unit in units:
+        if unit.path not in read:
+            read[unit.path] = line_tokens(unit.path)
+        files.setdefault(unit.path, []).extend(code_tokens(unit.path, *unit.lines, read[unit.path]))
+    return [digest(tokens) for tokens in files.values() if tokens]
+
+
 @functools.cache
 def tool_digest(stage):
     """The code of a stage by content alone: its files' tokens and the C they compile as a sorted list of
@@ -489,7 +533,10 @@ def tool_digest(stage):
     paths = stage_files(stage)
     native = native_inputs(paths)
     pinned = {path: commit for path, commit in native.items() if (REPO / path).resolve() in submodules()}
-    contents = [digest(code_tokens(path)) for path in paths]
+    if all(":" in entry for entry in STAGES[stage]):
+        contents = units_digests(stage_units(stage)[0])
+    else:
+        contents = [digest(code_tokens(path)) for path in paths]
     contents += [value for path, value in native.items() if path not in pinned]
     return digest([sorted(contents), pinned, [list(pin) for pin in requirement_pins(stage)]])
 
