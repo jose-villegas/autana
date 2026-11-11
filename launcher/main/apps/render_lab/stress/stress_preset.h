@@ -1,10 +1,7 @@
 /*
- * stress_preset: the stress scene's corners. Each preset is one shape,
- * tessellated, shown in some number of copies laid out in front of the
- * camera, chosen so that one render option's cost shows: where it should
- * lose, beside a preset where it should win. Pure: what each copy is made of
- * and where it stands, from the preset and the camera's framing, so a host
- * test holds every preset to its corner. scene_stress.c shows them.
+ * stress_preset: deterministic stress meshes and copy layouts, sized to
+ * expose renderer costs. Mixed copies cycle through tessellations and
+ * colour modes; per-frame surfaces rebuild with time.
  */
 #pragma once
 
@@ -23,9 +20,10 @@ typedef enum {
 } stress_shape_t;
 
 typedef enum {
-    STRESS_SURFACE_BANDED,    /* still colour bands up the copy, each triangle's corners close */
-    STRESS_SURFACE_WAVE,      /* the bands run up it, pushing it out: the mesh made again every frame */
-    STRESS_SURFACE_NOISY,     /* neighbouring vertices at opposite colours: every triangle's corners far apart */
+    STRESS_SURFACE_BANDED, /* still colour bands up the copy, each triangle's corners close */
+    STRESS_SURFACE_WAVE,   /* the bands run up it, pushing it out: the mesh made again every frame */
+    STRESS_SURFACE_NOISY,  /* neighbouring vertices at opposite colours: every triangle's corners far apart */
+    STRESS_SURFACE_MIXED,
     STRESS_SURFACE_TWO_SIDED, /* banded, and drawn from both sides: nothing faces away */
 } stress_surface_t;
 
@@ -54,7 +52,8 @@ typedef struct {
     X(BIG_TRIS, "big-tris", BANDED)                                                                                    \
     X(PER_FRAME, "per-frame", WAVE)                                                                                    \
     X(TWO_SIDED, "two-sided", TWO_SIDED)                                                                               \
-    X(NOISY_TINY, "noisy-tiny", NOISY)
+    X(NOISY_TINY, "noisy-tiny", NOISY)                                                                                 \
+    X(MIX, "mix", MIXED)
 
 #define STRESS_PRESET_ID(id_, ...) STRESS_##id_,
 
@@ -111,3 +110,8 @@ transformf_t stress_copy_place(const stress_params_t* p, int copy, stress_framin
  * whose short side is `short_px`, seen square on: the size the preset's
  * triangles are drawn at. */
 float stress_cut_px(const stress_params_t* p, int short_px);
+
+/* Mixed copies cycle through tessellations; half their triangles have equal corner colours. */
+#define STRESS_MIX_LEVELS         4
+#define STRESS_MIX_UNIFORM_PERIOD 2
+stress_params_t stress_copy_params(const stress_params_t* p, int copy);

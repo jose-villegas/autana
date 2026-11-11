@@ -74,7 +74,7 @@ class StressCorners(unittest.TestCase):
         return {name: int(value) for name, value in last.items()}
 
     def test_every_preset_is_held_here(self):
-        self.assertEqual({"open", "stack", "tiny-copies", "big-tris", "per-frame", "two-sided", "noisy-tiny"}, set(preset_copies()))
+        self.assertEqual({"open", "stack", "tiny-copies", "big-tris", "per-frame", "two-sided", "noisy-tiny", "mix"}, set(preset_copies()))
 
     def assert_all_in_view(self, c):
         """Nothing culled: every cluster tested is kept, and no node is cut."""
@@ -85,6 +85,13 @@ class StressCorners(unittest.TestCase):
         c = self.counts(key)
         self.assertGreater(c["triangles_submitted"], 0)
         self.assertEqual(c["triangles_submitted"], c["triangles_covering"])
+
+    def test_mix_fills_every_uniform_and_shaded_size_bin(self):
+        c = self.counts("mix")
+        for mode in ("uniform", "shaded"):
+            for size in ("zero", "one", "two_to_four", "more"):
+                self.assertGreater(c[f"sized_{mode}_{size}"], 0, f"{mode}/{size}")
+        self.assertEqual(c["triangles_set_up"], sum(value for name, value in c.items() if name.startswith("sized_")))
 
     def test_open_hides_and_culls_nothing(self):
         c = self.counts("open")

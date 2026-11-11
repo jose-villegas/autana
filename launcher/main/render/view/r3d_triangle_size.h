@@ -18,20 +18,21 @@ enum { R3D_SIZES_ZERO, R3D_SIZES_ONE, R3D_SIZES_TWO_TO_FOUR, R3D_SIZES_MORE, R3D
  * no colour step across it, or corners that differ. */
 enum { R3D_SIZES_FACE, R3D_SIZES_UNIFORM, R3D_SIZES_SHADED, R3D_SIZES_MODES };
 
-/* X(name, mode, bin) for every mode and bin: the counts' field names. */
-#define R3D_SIZES_FIELDS(X)                                                                                            \
-    X(face_zero, R3D_SIZES_FACE, R3D_SIZES_ZERO)                                                                       \
-    X(face_one, R3D_SIZES_FACE, R3D_SIZES_ONE)                                                                         \
-    X(face_two_to_four, R3D_SIZES_FACE, R3D_SIZES_TWO_TO_FOUR)                                                         \
-    X(face_more, R3D_SIZES_FACE, R3D_SIZES_MORE)                                                                       \
-    X(uniform_zero, R3D_SIZES_UNIFORM, R3D_SIZES_ZERO)                                                                 \
-    X(uniform_one, R3D_SIZES_UNIFORM, R3D_SIZES_ONE)                                                                   \
-    X(uniform_two_to_four, R3D_SIZES_UNIFORM, R3D_SIZES_TWO_TO_FOUR)                                                   \
-    X(uniform_more, R3D_SIZES_UNIFORM, R3D_SIZES_MORE)                                                                 \
-    X(shaded_zero, R3D_SIZES_SHADED, R3D_SIZES_ZERO)                                                                   \
-    X(shaded_one, R3D_SIZES_SHADED, R3D_SIZES_ONE)                                                                     \
-    X(shaded_two_to_four, R3D_SIZES_SHADED, R3D_SIZES_TWO_TO_FOUR)                                                     \
-    X(shaded_more, R3D_SIZES_SHADED, R3D_SIZES_MORE)
+/* X(name, mode, bin) for every mode and bin; optional leading arguments
+ * let a containing field table pass its visitor through. */
+#define R3D_SIZES_FIELDS(X, ...)                                                                                       \
+    X(__VA_ARGS__ face_zero, R3D_SIZES_FACE, R3D_SIZES_ZERO)                                                           \
+    X(__VA_ARGS__ face_one, R3D_SIZES_FACE, R3D_SIZES_ONE)                                                             \
+    X(__VA_ARGS__ face_two_to_four, R3D_SIZES_FACE, R3D_SIZES_TWO_TO_FOUR)                                             \
+    X(__VA_ARGS__ face_more, R3D_SIZES_FACE, R3D_SIZES_MORE)                                                           \
+    X(__VA_ARGS__ uniform_zero, R3D_SIZES_UNIFORM, R3D_SIZES_ZERO)                                                     \
+    X(__VA_ARGS__ uniform_one, R3D_SIZES_UNIFORM, R3D_SIZES_ONE)                                                       \
+    X(__VA_ARGS__ uniform_two_to_four, R3D_SIZES_UNIFORM, R3D_SIZES_TWO_TO_FOUR)                                       \
+    X(__VA_ARGS__ uniform_more, R3D_SIZES_UNIFORM, R3D_SIZES_MORE)                                                     \
+    X(__VA_ARGS__ shaded_zero, R3D_SIZES_SHADED, R3D_SIZES_ZERO)                                                       \
+    X(__VA_ARGS__ shaded_one, R3D_SIZES_SHADED, R3D_SIZES_ONE)                                                         \
+    X(__VA_ARGS__ shaded_two_to_four, R3D_SIZES_SHADED, R3D_SIZES_TWO_TO_FOUR)                                         \
+    X(__VA_ARGS__ shaded_more, R3D_SIZES_SHADED, R3D_SIZES_MORE)
 
 /* A corner in pixels; pixel i's centre is at i + 0.5. */
 typedef struct {

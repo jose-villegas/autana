@@ -73,6 +73,7 @@ stress-tiny-copies|--quarter 1 --no-hud --scene stress-tiny-copies --frames 2|44
 stress-big-tris|--quarter 1 --no-hud --scene stress-big-tris --frames 2|448x368|nopin
 stress-per-frame|--quarter 1 --no-hud --scene stress-per-frame --frames 2|448x368|nopin
 stress-two-sided|--quarter 1 --no-hud --scene stress-two-sided --frames 2|448x368|nopin
+stress-mix|--quarter 1 --no-hud --scene stress-mix --frames 2|448x368|nopin
 stress-noisy-tiny|--quarter 1 --no-hud --scene stress-noisy-tiny --frames 2|448x368|nopin
 "
 
