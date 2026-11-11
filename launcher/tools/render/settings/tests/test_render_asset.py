@@ -4,6 +4,7 @@ import pathlib
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import render_asset  # noqa: E402
@@ -59,6 +60,16 @@ class RenderAssetTests(unittest.TestCase):
         for body in ("bool cull, batched; /* basic: x */", "bool cull;"):
             with self.subTest(body=body), self.assertRaisesRegex(ValueError, "its own line"):
                 render_asset.fields(f"typedef struct {{\n    {body}\n}} render_settings_t;")
+
+    def test_generated_fields_carry_their_ranges(self):
+        header = render_asset.header()
+        self.assertIn("X(lod.blend, int, value >= 0 && value < RENDER_LOD_BLEND_COUNT)", header)
+        self.assertIn("X(lod.blend_px, float, value > 0.0F && value <= RENDER_LOD_BLEND_PX_MAX)", header)
+        self.assertIn("X(lod.tolerance_px, float, true)", header)
+        text = render_asset.DEFAULT.read_text(encoding="utf-8")
+        text += '\n[ranges."lod.tolerance_px"]\nmin = 1.0\nmax = 2.0\n'
+        with mock.patch.object(render_asset, "DEFAULT", self.settings(text)):
+            self.assertIn("X(lod.tolerance_px, float, value >= 1.0F && value <= 2.0F)", render_asset.header())
 
     def test_the_generated_default_matches_the_tree(self):
         header = render_asset.SETTINGS / "render_settings_default.h"
