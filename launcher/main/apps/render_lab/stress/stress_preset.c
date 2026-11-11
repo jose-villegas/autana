@@ -177,11 +177,11 @@ make_mixed(const stress_params_t* p, const stress_buffers_t* b) {
     for (int t = 0; t < stress_triangle_count(p); t++) {
         const int cell = t / 2;
         for (int k = 0; k < 3; k++) {
-            const int v = 3 * t + k;
-            const uint8_t* corner = corners[3 * (t % 2) + k];
-            b->positions[v] = (vec3f_t){(float)(cell % p->cuts + corner[0]) / (float)p->cuts - 0.5F,
-                                        (float)(cell / p->cuts + corner[1]) / (float)p->cuts - 0.5F, 0.0F};
-            const bool uniform = t % STRESS_MIX_UNIFORM_PERIOD == 0;
+            const int v = (3 * t) + k;
+            const uint8_t* corner = corners[(3 * (t % 2)) + k];
+            b->positions[v] = (vec3f_t){((float)((cell % p->cuts) + corner[0]) / (float)p->cuts) - 0.5F,
+                                        ((float)((cell / p->cuts) + corner[1]) / (float)p->cuts) - 0.5F, 0.0F};
+            const bool uniform = (t % STRESS_MIX_UNIFORM_PERIOD) == 0;
             memcpy(b->colors[v], uniform || k == 0 ? stress_colour_low : stress_colour_high, sizeof b->colors[v]);
             b->triangles[t][k] = (uint16_t)v;
         }
