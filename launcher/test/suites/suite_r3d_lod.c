@@ -1753,9 +1753,9 @@ test_a_cluster_transformed_with_the_whole_weight_lands_on_its_targets(void) {
         transform_plain_at(&m->reference, eye, boxed != 0, &direct);
         expect_same_vertices(direct.cs, blended.cs, 0, MORPH_FIRST_VERTICES);
         expect_same_rows(&direct.rows[0], &blended.rows[0]);
-        TEST_ASSERT_EQUAL_UINT8(R3D_LOD_MORPH_ONE, blended.rows[0].morph);
+        TEST_ASSERT_EQUAL_UINT8(R3D_LOD_MORPH_ONE, blended.rows[0].blend);
         expect_same_vertices(direct.cs, blended.cs, MORPH_FIRST_VERTICES, MORPH_VERTICES - MORPH_FIRST_VERTICES);
-        TEST_ASSERT_EQUAL_UINT8(0, blended.rows[1].morph);
+        TEST_ASSERT_EQUAL_UINT8(0, blended.rows[1].blend);
     }
 }
 
@@ -1771,7 +1771,7 @@ test_a_cluster_transformed_with_no_weight_matches_the_plain_transform_exactly(vo
         transform_plain_at(&m->mesh, eye, boxed != 0, &plain);
         TEST_ASSERT_EQUAL_MEMORY(plain.cs, blended.cs, sizeof plain.cs);
         TEST_ASSERT_EQUAL_MEMORY(plain.rows, blended.rows, sizeof plain.rows);
-        TEST_ASSERT_EQUAL_UINT8(0, blended.rows[0].morph);
+        TEST_ASSERT_EQUAL_UINT8(0, blended.rows[0].blend);
     }
 }
 
@@ -1798,7 +1798,7 @@ test_a_part_weight_puts_a_vertex_between_where_it_is_and_its_target(void) {
     transformed_t blended, fine, target;
     const int weight = transform_morphed_at(m, eye, false, &blended);
     TEST_ASSERT_INT_WITHIN(WEIGHT_SLACK, R3D_LOD_MORPH_ONE / 2, weight);
-    TEST_ASSERT_EQUAL_UINT8(weight, blended.rows[0].morph);
+    TEST_ASSERT_EQUAL_UINT8(weight, blended.rows[0].blend);
     transform_plain_at(&m->mesh, eye, false, &fine);
     transform_plain_at(&m->reference, eye, false, &target);
     TEST_ASSERT_TRUE(target.cs[0].sx > fine.cs[0].sx + R3D_SUBPIXEL);
