@@ -435,6 +435,15 @@ ui_end_commands(void) {
 }
 
 bool
+ui_end_if_unsettled(void) {
+    if (ui_face_settle()) {
+        return false;
+    }
+    ui_end_commands();
+    return true;
+}
+
+bool
 ui_end(uint32_t background_rgb) {
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
     finish_band_stats();

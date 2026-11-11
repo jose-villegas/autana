@@ -16,7 +16,7 @@
 #   --dev       build the DEVELOPMENT image (build.dev/) instead of the
 #               release one (build/): development-only logging and
 #               instrumentation (frame timings, the screenshot listener)
-#               plus the Diagnostics app, but no test suites. See below.
+#               plus the Self Test app, but no test suites. See below.
 #   --diag      build the DIAGNOSTICS image (build.diag/): everything --dev
 #               gets you, plus the on-device test suites and Diagnostics' own
 #               button for running them. See below.
@@ -61,16 +61,16 @@
 # CONFIG_LAUNCHER_DEVELOPMENT and CONFIG_LAUNCHER_SELFTEST answer different
 # questions; the first is "does this build carry anything meant only for a
 # developer at the console" (frame timings, the screenshot listener, and the
-# Diagnostics app, whose folder main/CMakeLists.txt excludes unless it is
+# Self Test app, whose folder main/CMakeLists.txt excludes unless it is
 # set), the second is "does this build carry the on-device test suites",
-# which also brings Diagnostics' own button for re-running them. SELFTEST
+# which also brings Self Test's own button for re-running them. SELFTEST
 # `select`s DEVELOPMENT, so a diag build gets both; DEVELOPMENT alone does
 # not pull SELFTEST in (see main/Kconfig.projbuild). --dev and --diag are
 # what expose that same independence here, rather than only ever being able
 # to get instrumentation bundled with the test harness's own footprint:
 # every suite linked in, and run at boot before the shell starts, which is
 # fine on a bench and unwanted just to watch a frame-timing log line or pull
-# a screenshot. Note the Diagnostics app carries its own side effects in
+# a screenshot. Note the Self Test app carries its own side effects in
 # EITHER build: entering it re-runs POST, cycling the audio rail; that is
 # the cost of the way in being compiled at all, not of the test suites.
 

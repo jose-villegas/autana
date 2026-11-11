@@ -298,8 +298,8 @@ test_text_aligns_to_either_edge_or_the_centre(void) {
     const mu_Rect r = {20, 40, 200, 30};
     const int w = draw_font_text_width(draw_font_ui(), "ABC", -1, 2);
 
-    TEST_ASSERT_EQUAL_INT(r.x, text_pos_in(r, "ABC", UI_ALIGN_LEFT).x);
-    TEST_ASSERT_EQUAL_INT(r.x + r.w - w, text_pos_in(r, "ABC", UI_ALIGN_RIGHT).x);
+    TEST_ASSERT_EQUAL_INT(r.x, text_pos_in(r, "ABC", UI_ALIGN_START).x);
+    TEST_ASSERT_EQUAL_INT(r.x + r.w - w, text_pos_in(r, "ABC", UI_ALIGN_END).x);
     TEST_ASSERT_EQUAL_INT(r.x + (r.w - w) / 2, text_pos_in(r, "ABC", UI_ALIGN_CENTRE).x);
 }
 

@@ -21,6 +21,18 @@ static unsigned window_ordinal;
 static bool window_open;
 /* ui_row_centre()'s width for the current row; 0 for the window's width. */
 static int row_w;
+/* ui_row_cells()' shift right that centres its rows; 0 outside cells. */
+static int cells_x;
+/* How far an aligned scroll window's flow sits below its top. */
+static int window_lead;
+/* The open window's alignment, when it is an aligned scroll window. */
+static bool window_aligned;
+static ui_align_t window_align;
+/* Some aligned window this frame sat off where its own flow now puts it. */
+static bool unsettled;
+
+static void close_window(void);
+static int aligned_lead(const mu_Container* cnt, ui_align_t align);
 static mu_Id tap_id;
 static bool tap_released;
 static bool toggle_preview;
@@ -85,18 +97,23 @@ ui_face_begin(const input_t* input) {
     theme = ui_theme_from_style(ui_context()->style);
     window_ordinal = 0;
     window_open = false;
+    window_aligned = false;
+    unsettled = false;
     row_w = 0;
     id_count = 0;
     disabled_depth = color_depth = scale_depth = alpha_depth = 0;
     imbalance = false;
 }
 
+bool
+ui_face_settle(void) {
+    close_window();
+    return !unsettled;
+}
+
 void
 ui_face_end(void) {
-    if (window_open) {
-        mu_end_window(ui_context());
-        window_open = false;
-    }
+    close_window();
     if (disabled_depth != 0 || color_depth != 0 || scale_depth != 0 || alpha_depth != 0) {
         face_misuse();
     }
@@ -114,6 +131,11 @@ ui_theme(const ui_theme_t* t) {
     }
     theme = UI_THEME_FROM_FACE(t);
     UI_FACE_COST_END(face_from, "ui.face");
+}
+
+void
+ui_corner_radius(int radius) {
+    theme.corner_radius = radius > 0 ? radius : 0;
 }
 
 /* The innermost recorded slot of a scope `depth` deep, or -1 with none open;
@@ -168,8 +190,29 @@ visible_label_length(const char* label) {
     return end ? (int)(end - label) : -1;
 }
 
+/* `rows_only`: a window that scrolls down only, whose content is never
+ * counted wider than the window, so microui never reserves a sideways bar.
+ * One would narrow the body, overflowing content that just fit, and the two
+ * bars would then hold each other up for good. */
+/* Ends the open window; an aligned one checks the lead it used against the
+ * flow it has just measured. */
 static void
-open_window(recti_t r) {
+close_window(void) {
+    if (!window_open) {
+        return;
+    }
+    mu_Context* ctx = ui_context();
+    mu_Container* cnt = mu_get_current_container(ctx);
+    mu_end_window(ctx);
+    window_open = false;
+    if (window_aligned && aligned_lead(cnt, window_align) != window_lead) {
+        unsettled = true;
+    }
+    window_aligned = false;
+}
+
+static void
+open_window(recti_t r, bool rows_only) {
     char name[UI_FACE_NAME_MAX];
     const int length = snprintf(name, sizeof name, UI_FACE_WINDOW_NAME_FORMAT, window_ordinal++);
     if (length < 0 || (size_t)length >= sizeof name) {
@@ -179,11 +222,19 @@ open_window(recti_t r) {
     row_w = 0;
     mu_Context* ctx = ui_context();
     UI_FACE_COST_BEGIN(backend_from);
-    if (window_open) {
-        mu_end_window(ctx);
-    }
+    close_window();
+    cells_x = 0;
+    window_lead = 0;
     mu_Container* cnt = mu_get_container(ctx, name);
     cnt->rect = ui_mu_from_recti(r);
+    /* microui sizes this frame's scrollbars against last frame's body; a
+     * new window has none, would take both bars, and settle frames later. */
+    if (cnt->body.w == 0 && cnt->body.h == 0) {
+        cnt->body = cnt->rect;
+    }
+    if (rows_only) {
+        cnt->content_size.x = mu_min(cnt->content_size.x, r.w - (2 * ctx->style->padding));
+    }
     window_open = mu_begin_window_ex(ctx, name, cnt->rect, UI_FACE_WINDOW_FLAGS) != 0;
     UI_FACE_COST_END(backend_from, "ui.backend");
 }
@@ -191,14 +242,14 @@ open_window(recti_t r) {
 void
 ui_screen(void) {
     UI_FACE_COST_BEGIN(face_from);
-    open_window((recti_t){0, 0, ui_width(), ui_height()});
+    open_window((recti_t){0, 0, ui_width(), ui_height()}, false);
     UI_FACE_COST_END(face_from, "ui.face");
 }
 
 void
 ui_window(recti_t r) {
     UI_FACE_COST_BEGIN(face_from);
-    open_window(r);
+    open_window(r, false);
     UI_FACE_COST_END(face_from, "ui.face");
 }
 
@@ -206,18 +257,42 @@ ui_window(recti_t r) {
 void
 ui_scroll_window(recti_t r) {
     UI_FACE_COST_BEGIN(face_from);
-    open_window(r);
+    mu_Context* ctx = ui_context();
+    open_window(r, true);
     UI_FACE_COST_BEGIN(backend_from);
     if (window_open) {
-        mu_get_current_container(ui_context())->scroll.x = 0;
+        mu_get_current_container(ctx)->scroll.x = 0;
     }
     UI_FACE_COST_END(backend_from, "ui.backend");
     UI_FACE_COST_END(face_from, "ui.face");
 }
 
+/* The slack below last frame's flow, shared out by `align`: none while the
+ * flow overflows, so it starts at the top and scrolls. */
+static int
+aligned_lead(const mu_Container* cnt, ui_align_t align) {
+    const int inner_h = cnt->body.h - (2 * ui_context()->style->padding);
+    const int slack = inner_h - cnt->content_size.y;
+    if (cnt->content_size.y <= 0 || slack <= 0) {
+        return 0;
+    }
+    return align == UI_ALIGN_END ? slack : align == UI_ALIGN_CENTRE ? slack / 2 : 0;
+}
+
+void
+ui_scroll_window_aligned(recti_t r, ui_align_t align) {
+    ui_scroll_window(r);
+    if (window_open) {
+        window_aligned = true;
+        window_align = align;
+        window_lead = aligned_lead(mu_get_current_container(ui_context()), align);
+    }
+}
+
 static void
 row(int w, int h) {
     row_w = w;
+    cells_x = 0;
     UI_FACE_COST_BEGIN(backend_from);
     const int widths[] = {-1};
     if (window_open) {
@@ -240,6 +315,27 @@ ui_row_centre(int w, int h) {
     UI_FACE_COST_END(face_from, "ui.face");
 }
 
+void
+ui_row_cells(int cols, int h) {
+    UI_FACE_COST_BEGIN(face_from);
+    row_w = 0;
+    cells_x = 0;
+    if (window_open && cols > 0 && cols <= MU_MAX_WIDTHS) {
+        mu_Context* ctx = ui_context();
+        const int inner_w = mu_get_current_container(ctx)->body.w - (2 * ctx->style->padding);
+        const int gaps = (cols - 1) * ctx->style->spacing;
+        const int w = (inner_w - gaps) / cols;
+        int widths[MU_MAX_WIDTHS];
+        for (int i = 0; i < cols; i++) {
+            widths[i] = w;
+        }
+        mu_layout_row(ctx, cols, widths, h);
+        /* What the share leaves over, split either side. */
+        cells_x = (inner_w - ((cols * w) + gaps)) / 2;
+    }
+    UI_FACE_COST_END(face_from, "ui.face");
+}
+
 recti_t
 ui_next(void) {
     UI_FACE_COST_BEGIN(face_from);
@@ -251,6 +347,8 @@ ui_next(void) {
         result.x += (result.w - row_w) / 2;
         result.w = row_w;
     }
+    result.x += cells_x;
+    result.y += window_lead;
     UI_FACE_COST_END(face_from, "ui.face");
     return result;
 }
@@ -423,10 +521,10 @@ ui_text_height(void) {
     return h;
 }
 
-UI_FACE_TEXT(ui_text, UI_ALIGN_LEFT, text)
-UI_FACE_TEXT(ui_text_right, UI_ALIGN_RIGHT, text)
+UI_FACE_TEXT(ui_text, UI_ALIGN_START, text)
+UI_FACE_TEXT(ui_text_right, UI_ALIGN_END, text)
 UI_FACE_TEXT(ui_text_centre, UI_ALIGN_CENTRE, text)
-UI_FACE_TEXT(ui_caption, UI_ALIGN_LEFT, caption)
+UI_FACE_TEXT(ui_caption, UI_ALIGN_START, caption)
 UI_FACE_TEXT(ui_caption_centre, UI_ALIGN_CENTRE, caption)
 
 void

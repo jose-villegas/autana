@@ -179,6 +179,11 @@ bool ui_slider_int(mu_Context* ctx, int* value, int lo, int hi, int step);
 void ui_face_init(void);
 void ui_face_begin(const input_t* input);
 void ui_face_end(void);
+/* Text this frame drew wider than its clip; ui_clipped_text() reads it. */
+extern int ui_text_clipped;
+/* Closes the open window; false if an aligned scroll window this frame was
+ * placed off where its own flow now puts it. */
+bool ui_face_settle(void);
 
 /* Closes the frame's command list: the open face window, microui's frame and
  * the pointer frame. Every ui_end*() starts with it; a test reading the list

@@ -149,6 +149,12 @@ int ui_height(void);
  * frame) it bins as ui_end_for_bands() does and returns true. */
 bool ui_end(uint32_t background_rgb);
 
+/* After the frame's last window: if an aligned scroll window sat off where
+ * its own flow now puts it (its first frame, or a resize), closes the frame
+ * unpainted and returns true, and the caller builds the frame again, which
+ * lands it. Otherwise returns false and the frame goes on to ui_end(). */
+bool ui_end_if_unsettled(void);
+
 /* ui_end() over a backdrop that is drawn, not a colour. `paint_backdrop`
  * paints the whole screen and is called only when the UI itself changed; a
  * backdrop that animates draws its own changes before this call, and the
@@ -206,6 +212,9 @@ typedef struct {
 
 /* The palette for the rest of the frame; NULL restores the shell look. */
 void ui_theme(const ui_theme_t* theme);
+/* Buttons and tiles for the rest of the frame: flat faces with corners
+ * rounded by `radius`; 0, the default, is the bevelled face. */
+void ui_corner_radius(int radius);
 
 /* A rect `w` wide and `h` tall at `y`, centred in a canvas `canvas_w` wide:
  * fixed-width content, where ui_row() spans the canvas. `w` is not clamped;
@@ -224,12 +233,25 @@ ui_centered_rect(int canvas_w, int w, int h, int y) {
  * close at the next window verb or ui_end(). */
 void ui_screen(void);
 void ui_window(recti_t r);
+
+/* Where content shorter than its box sits along the box: text along its
+ * line, a scroll window's flow down the window. */
+typedef enum { UI_ALIGN_START, UI_ALIGN_CENTRE, UI_ALIGN_END } ui_align_t;
+
 /* A window whose flowed rows scroll vertically once they overflow `r`. */
 void ui_scroll_window(recti_t r);
+/* ui_scroll_window() whose flow, while it fits, sits at `align` down the
+ * window; flow that overflows starts at the top and scrolls. Placed from
+ * the previous frame's flow height, like microui's own clip; see
+ * ui_end_if_unsettled() for a frame that must land the first time. */
+void ui_scroll_window_aligned(recti_t r, ui_align_t align);
 /* Flow: ui_next() hands out the rows the window's width wide, or `w` wide and
  * centred after ui_row_centre(), each row below the last. */
 void ui_row(int h);
 void ui_row_centre(int w, int h);
+/* Flow in cells: ui_next() hands out cells `h` tall left to right, `cols` to
+ * a row, the window's width shared out among them, until the next row verb. */
+void ui_row_cells(int cols, int h);
 recti_t ui_next(void);
 
 bool ui_button(recti_t r, const char* label);
@@ -251,6 +273,10 @@ bool ui_dropdown(recti_t r, const char* label, int* index, const char* const* na
 #define UI_DROPDOWN_CLOSE_FRAMES 4
 bool ui_dropdown_icons(recti_t r, const char* label, int* index, const char* const* names, const image_t* const* icons,
                        int count);
+
+/* How many strings this frame were wider than the space they were drawn
+ * in, and clipped: what a layout test asserts is none. */
+int ui_clipped_text(void);
 
 /* One line's height at the current theme's text scale. */
 int ui_text_height(void);

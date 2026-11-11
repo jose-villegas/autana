@@ -39,6 +39,39 @@ scroll_example(scroll_example_t* s) {
 | ![scroll, portrait](../images/ui/scroll.png) | ![scroll, landscape](../images/ui/scroll-landscape.png) |
 <!-- /generated: ui-scroll-renders -->
 
+## Aligning short content
+
+`ui_scroll_window_aligned(r, align)` places rows that fit at the window's
+start, centre or end (`UI_ALIGN_START`, `UI_ALIGN_CENTRE`, `UI_ALIGN_END`).
+Rows that overflow start at the top and scroll, whatever the alignment.
+
+The window places its rows from the height they took on the frame before,
+as microui does with its clip. So its first frame, and the first after
+its rows or its size change, is laid out at the start. A screen that must
+be right the first time it is painted calls `ui_end_if_unsettled()` after
+its last window: if that frame was off, it closes the frame unpainted and
+returns true, and the screen builds the frame again.
+
+```c fragment
+ui_begin(input);
+draw_screen();
+if (ui_end_if_unsettled()) {
+    ui_begin(NULL);
+    draw_screen();
+}
+ui_end(UI_BACKGROUND);
+```
+
+A tap released on the frame that was off aimed at rows that were not
+there; build the second time without input, as above, to drop it.
+
+## Cells
+
+`ui_row_cells(cols, h)` flows cells `h` tall, `cols` to a row: the window's
+width is shared out among them, the rows centred across it, until the next
+row verb. A grid of choices is one `ui_row_cells()` and a `ui_next()` per
+choice.
+
 ## A drag or a press
 
 On content that can scroll, a finger that comes down is not yet a press: it
@@ -63,7 +96,8 @@ scrolling.
 ## Windows
 
 `ui_screen()` is a window the size of the canvas, `ui_window(r)` one at
-`r`, and `ui_scroll_window(r)` one that scrolls. A window closes at the next
+`r`, and `ui_scroll_window(r)` one that scrolls; `ui_scroll_window_aligned()`
+is the same window with its short content placed. A window closes at the next
 window call or at `ui_end()`, so a title bar at a fixed rect followed by a
 window below it is the usual screen.
 

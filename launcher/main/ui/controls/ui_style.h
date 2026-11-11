@@ -125,6 +125,38 @@ ui_bezel_spans(mu_Rect r, mu_Color face, bool sunken, ui_span_t* out, int max) {
     return ui_frame_spans(r, face, UI_BEZEL_THICKNESS, sunken ? shadow : lit, sunken ? lit : shadow, out, max);
 }
 
+/* The most rows a rounded face spends: one per corner row, top and bottom,
+ * and the middle. */
+#define UI_ROUND_RADIUS_MAX 24
+#define UI_ROUND_MAX_SPANS  ((2 * UI_ROUND_RADIUS_MAX) + 1)
+
+/* A flat face with its corners rounded by `radius`, as rows: each row a
+ * quarter circle in from the edge, the middle one span. Pixel-centre
+ * sampled, so the corner is the same at every radius. */
+static inline int
+ui_round_spans(mu_Rect r, mu_Color face, int radius, ui_span_t* out, int max) {
+    const int rad = mu_min(mu_min(radius, UI_ROUND_RADIUS_MAX), mu_min(r.w, r.h) / 2);
+    if (max < UI_ROUND_MAX_SPANS || r.w <= 0 || r.h <= 0) {
+        return 0;
+    }
+    int n = 0;
+    for (int y = 0; y < rad; y++) {
+        /* The row's centre sits d/2 above the circle's centre. */
+        const int d = (2 * (rad - y)) - 1;
+        const int under = (4 * rad * rad) - (d * d);
+        int root = 0;
+        while ((root + 1) * (root + 1) <= under) {
+            root++;
+        }
+        const int inset = rad - ((root + 1) / 2);
+        const mu_Rect row = {r.x + inset, r.y + y, r.w - (2 * inset), 1};
+        out[n++] = (ui_span_t){row, face};
+        out[n++] = (ui_span_t){(mu_Rect){row.x, r.y + r.h - 1 - y, row.w, 1}, face};
+    }
+    out[n++] = (ui_span_t){(mu_Rect){r.x, r.y + rad, r.w, r.h - (2 * rad)}, face};
+    return n;
+}
+
 /*
  * Text
  *

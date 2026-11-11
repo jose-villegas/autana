@@ -2,6 +2,7 @@
 #include "launcher_home_render_setup.h"
 
 #include <stdio.h>
+#include <string.h>
 
 #include "app/app.h"
 #include "gfx/gfx.h"
@@ -14,9 +15,13 @@ static app_t fixture_alpha = {.name = "Alpha", .summary = "The first fixture row
 static app_t fixture_beta = {.name = "Beta", .summary = "The second fixture row"};
 static app_t fixture_gamma = {.name = "Gamma", .summary = "The third fixture row"};
 
-#define ROWS_MAX 16
+#define ROWS_MAX       16
+
+/* A stated row's name, its ":kind" cut off. */
+#define NAME_MAX_BYTES 64
 
 static app_t stated[ROWS_MAX];
+static char names[ROWS_MAX][NAME_MAX_BYTES];
 static int stated_count;
 
 static void
@@ -26,13 +31,39 @@ register_fixture(void) {
     app_register(&fixture_gamma);
 }
 
+/* What "Name:kind" may say after the colon; with no colon it is an app. */
+static const struct {
+    const char* word;
+    app_kind_t kind;
+} KINDS[] = {{"lab", APP_KIND_LAB}, {"system", APP_KIND_SYSTEM}};
+
 bool
-launcher_home_render_add_row(const char* name) {
+launcher_home_render_add_row(const char* stated_row) {
     if (stated_count >= ROWS_MAX) {
         fprintf(stderr, "at most %d rows\n", ROWS_MAX);
         return false;
     }
-    stated[stated_count++].name = name;
+    char* name = names[stated_count];
+    if (snprintf(name, NAME_MAX_BYTES, "%s", stated_row) >= NAME_MAX_BYTES) {
+        fprintf(stderr, "row name longer than %d bytes: %s\n", NAME_MAX_BYTES - 1, stated_row);
+        return false;
+    }
+    app_t* row = &stated[stated_count];
+    *row = (app_t){.name = name};
+    char* word = strrchr(name, ':');
+    if (word != NULL) {
+        *word++ = '\0';
+        size_t k = 0;
+        while (k < sizeof KINDS / sizeof KINDS[0] && strcmp(KINDS[k].word, word) != 0) {
+            k++;
+        }
+        if (k == sizeof KINDS / sizeof KINDS[0]) {
+            fprintf(stderr, "unknown kind '%s' in row '%s': lab or system\n", word, stated_row);
+            return false;
+        }
+        row->kind = KINDS[k].kind;
+    }
+    stated_count++;
     return true;
 }
 

@@ -1816,7 +1816,6 @@
 3	launcher/main/scene/scene_draw.c:173	scene_render
 3	launcher/main/ui/ui.c:209	paint_canvas
 3	launcher/main/ui/ui_build.c:180	styled_draw_frame
-3	launcher/main/shell/ui/ui_launcher_draw.c:38	draw_app_rows
 3	launcher/main/ui/input/ui_pointer.c:48	step_drag
 3	launcher/main/shell/ui/ui_ridge.c:265	backdrop_pixel
 3	launcher/main/shell/ui/ui_ridge.c:146	clamp_int

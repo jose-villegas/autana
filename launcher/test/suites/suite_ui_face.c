@@ -35,6 +35,8 @@
 /* More rows than any canvas holds, so a scroll window overflows. */
 #define OVERFLOW_ROWS     12
 #define STRAY_SCROLL_X    7
+/* A button wraps at a space, so its overflow is one word. */
+#define OVERFLOW_WORD     "Anunbrokenlabelfarwiderthananytile"
 static const recti_t BOX = {40, 100, 240, 60};
 static const recti_t SECOND = {40, 240, 240, 60};
 static const char* const NAMES[] = {"One", "Two", "Three"};
@@ -76,9 +78,19 @@ fixture(void) {
     reports = 0;
 }
 
+/* A face window's first frame sizes its scrollbars against its own rect, not
+ * microui's empty body; the reference window starts the same way. */
+static void
+seed_reference(recti_t r) {
+    mu_Container* cnt = mu_get_container(ui_context(), "Reference");
+    cnt->rect = ui_mu_from_recti(r);
+    cnt->body = cnt->rect;
+}
+
 static void
 begin_legacy(void) {
     ui_begin(NULL);
+    seed_reference((recti_t){0, 0, ui_width(), ui_height()});
     TEST_ASSERT_TRUE(ui_begin_screen(ui_context(), "Reference", WINDOW_FLAGS));
 }
 
@@ -219,9 +231,7 @@ emit_legacy(verb_t verb) {
         case VERB_CAPTION:
         case VERB_CAPTION_CENTRE: {
             const bool centre = verb == VERB_TEXT_CENTRE || verb == VERB_CAPTION_CENTRE;
-            const ui_align_t align = verb == VERB_TEXT_RIGHT ? UI_ALIGN_RIGHT
-                                     : centre                ? UI_ALIGN_CENTRE
-                                                             : UI_ALIGN_LEFT;
+            const ui_align_t align = verb == VERB_TEXT_RIGHT ? UI_ALIGN_END : centre ? UI_ALIGN_CENTRE : UI_ALIGN_START;
             const bool caption = verb == VERB_CAPTION || verb == VERB_CAPTION_CENTRE;
             ui_text_in(ctx, r, "Go", caption ? t.caption : t.text, t.text_scale, align);
             break;
@@ -339,6 +349,7 @@ static void
 test_ui_window_commands(void) {
     fixture();
     ui_begin(NULL);
+    seed_reference(BOX);
     TEST_ASSERT_TRUE(mu_begin_window_ex(ui_context(), "Reference", ui_mu_from_recti(BOX), WINDOW_FLAGS));
     mu_draw_rect(ui_context(), ui_mu_from_recti(BOX), ui_rgb(FACE_RGB));
     end_legacy();
@@ -428,6 +439,7 @@ static void
 test_ui_scroll_window_commands(void) {
     fixture();
     ui_begin(NULL);
+    seed_reference((recti_t){0, 0, ui_width(), ui_height()});
     TEST_ASSERT_TRUE(ui_begin_screen(ui_context(), "Reference", WINDOW_FLAGS));
     mu_get_current_container(ui_context())->scroll.x = 0;
     for (int i = 0; i < OVERFLOW_ROWS; i++) {
@@ -465,6 +477,155 @@ test_ui_scroll_window_scrolls_vertically(void) {
     TEST_ASSERT_EQUAL_INT(0, cnt->scroll.x);
     draw_overflowing_rows();
     end_face();
+}
+
+/* Rows that fill a scroll window's width on its first frame keep it: a new
+ * window reserves no scrollbar it does not need. */
+static void
+test_a_new_scroll_window_reserves_no_scrollbar(void) {
+    fixture();
+    const recti_t canvas = {0, 0, ui_width(), ui_height()};
+    ui_begin(NULL);
+    ui_scroll_window(canvas);
+    ui_row(UI_ROW_HEIGHT);
+    const recti_t row = ui_next();
+    end_face();
+    TEST_ASSERT_EQUAL_INT(canvas.w - (2 * UI_PADDING), row.w);
+}
+
+#define ALIGNED_ROWS 2
+
+/* The first and last of ALIGNED_ROWS rows in an aligned scroll window over
+ * the canvas, built `frames` times; `settled` reports the last frame. */
+static void
+aligned_rows(ui_align_t align, int rows, int frames, recti_t* first, recti_t* last, bool* settled) {
+    const recti_t canvas = {0, 0, ui_width(), ui_height()};
+    for (int f = 0; f < frames; f++) {
+        ui_begin(NULL);
+        ui_scroll_window_aligned(canvas, align);
+        for (int i = 0; i < rows; i++) {
+            ui_row(UI_ROW_HEIGHT);
+            const recti_t r = ui_next();
+            *first = i == 0 ? r : *first;
+            *last = r;
+        }
+        *settled = !ui_end_if_unsettled();
+        if (*settled) {
+            end_face();
+        }
+    }
+}
+
+/* Flow shorter than the window sits at its start, centre or end once the
+ * window has measured it. */
+static void
+test_an_aligned_scroll_window_places_short_flow(void) {
+    const int top = UI_PADDING;
+    const int bottom = ui_height() - UI_PADDING;
+    recti_t first;
+    recti_t last;
+    bool settled;
+
+    fixture();
+    aligned_rows(UI_ALIGN_START, ALIGNED_ROWS, 2, &first, &last, &settled);
+    TEST_ASSERT_TRUE(settled);
+    TEST_ASSERT_EQUAL_INT(top, first.y);
+
+    fixture();
+    aligned_rows(UI_ALIGN_CENTRE, ALIGNED_ROWS, 2, &first, &last, &settled);
+    TEST_ASSERT_TRUE(settled);
+    TEST_ASSERT_GREATER_THAN_INT(top, first.y);
+    TEST_ASSERT_INT_WITHIN(1, first.y - top, bottom - recti_bottom(last));
+
+    fixture();
+    aligned_rows(UI_ALIGN_END, ALIGNED_ROWS, 2, &first, &last, &settled);
+    TEST_ASSERT_TRUE(settled);
+    TEST_ASSERT_EQUAL_INT(bottom, recti_bottom(last));
+}
+
+/* Flow taller than the window starts at the top and scrolls, whatever the
+ * alignment asked for. */
+static void
+test_overflowing_flow_starts_at_the_top_whatever_the_alignment(void) {
+    recti_t first;
+    recti_t last;
+    bool settled;
+    fixture();
+    aligned_rows(UI_ALIGN_END, OVERFLOW_ROWS, 2, &first, &last, &settled);
+    TEST_ASSERT_TRUE(settled);
+    TEST_ASSERT_EQUAL_INT(UI_PADDING, first.y);
+}
+
+/* A window's first frame has no flow measured yet: that frame is unsettled
+ * and closes unpainted, and building it again lands it. */
+static void
+test_an_aligned_window_is_unsettled_only_until_measured(void) {
+    recti_t first;
+    recti_t last;
+    bool settled;
+    fixture();
+    aligned_rows(UI_ALIGN_CENTRE, ALIGNED_ROWS, 1, &first, &last, &settled);
+    TEST_ASSERT_FALSE_MESSAGE(settled, "the first frame cannot know its flow");
+    TEST_ASSERT_EQUAL_INT(UI_PADDING, first.y);
+    aligned_rows(UI_ALIGN_CENTRE, ALIGNED_ROWS, 1, &first, &last, &settled);
+    TEST_ASSERT_TRUE_MESSAGE(settled, "the second frame lands");
+    TEST_ASSERT_GREATER_THAN_INT(UI_PADDING, first.y);
+}
+
+#define CELL_COLS  3
+#define CELL_COUNT 4
+
+/* Cells share the window's width, `cols` to a row and centred, wrap to the
+ * next row, and end at the next row verb. */
+static void
+test_cells_share_the_window_width(void) {
+    fixture();
+    begin_face();
+    ui_row_cells(CELL_COLS, UI_ROW_HEIGHT);
+    recti_t cells[CELL_COUNT];
+    for (int i = 0; i < CELL_COUNT; i++) {
+        cells[i] = ui_next();
+    }
+    ui_row(UI_ROW_HEIGHT);
+    const recti_t after = ui_next();
+    end_face();
+
+    const int inner_w = ui_width() - (2 * UI_PADDING);
+    for (int i = 1; i < CELL_COUNT; i++) {
+        TEST_ASSERT_EQUAL_INT(cells[0].w, cells[i].w);
+        TEST_ASSERT_EQUAL_INT(UI_ROW_HEIGHT, cells[i].h);
+    }
+    TEST_ASSERT_EQUAL_INT(cells[0].y, cells[CELL_COLS - 1].y);
+    TEST_ASSERT_EQUAL_INT(recti_right(cells[0]) + UI_ROW_GAP, cells[1].x);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(cells[0].x, cells[CELL_COLS].x, "the next row starts under the first");
+    TEST_ASSERT_GREATER_THAN_INT(recti_bottom(cells[0]), cells[CELL_COLS].y);
+    TEST_ASSERT_INT_WITHIN_MESSAGE(1, cells[0].x - UI_PADDING, ui_width() - UI_PADDING - recti_right(cells[2]),
+                                   "a full row is centred");
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(inner_w - CELL_COLS, (CELL_COLS * cells[0].w) + ((CELL_COLS - 1) * UI_ROW_GAP));
+    TEST_ASSERT_EQUAL_INT_MESSAGE(inner_w, after.w, "a row after the cells spans the window");
+}
+
+/* A button's label too wide for one line splits at a space, line one above
+ * line two; text that fits clips nothing, text that cannot is counted. */
+static void
+test_a_button_label_wraps_at_a_space_and_clipping_is_counted(void) {
+    const recti_t narrow = {BOX.x, BOX.y, 120, 120};
+    fixture();
+    begin_face();
+    (void)ui_button(narrow, "Falling Sand");
+    end_face();
+    recti_t one;
+    recti_t two;
+    TEST_ASSERT_TRUE(ui_probe_text("Falling", &one));
+    TEST_ASSERT_TRUE(ui_probe_text("Sand", &two));
+    TEST_ASSERT_GREATER_THAN_INT(recti_bottom(one) - 1, two.y);
+    TEST_ASSERT_EQUAL_INT(0, ui_clipped_text());
+
+    fixture();
+    begin_face();
+    (void)ui_button(narrow, OVERFLOW_WORD);
+    end_face();
+    TEST_ASSERT_GREATER_THAN_INT(0, ui_clipped_text());
 }
 
 typedef enum { ID_DUPLICATE, ID_WINDOWS, ID_HIDDEN, ID_DYNAMIC, ID_STABLE } identity_t;
@@ -669,7 +830,7 @@ label_clip(verb_t verb) {
     begin_face();
     ui_theme(&THEME);
     switch (verb) {
-        case VERB_BUTTON: (void)ui_button(BOX, OVERFLOW_LABEL); break;
+        case VERB_BUTTON: (void)ui_button(BOX, OVERFLOW_WORD); break;
         case VERB_BUTTON_ICON: (void)ui_button_icon(BOX, OVERFLOW_LABEL, &ICON); break;
         case VERB_TILE: (void)ui_tile(BOX, OVERFLOW_LABEL, false); break;
         default: {
@@ -680,7 +841,7 @@ label_clip(verb_t verb) {
     }
     end_face();
     recti_t clip = recti_empty();
-    TEST_ASSERT_TRUE(ui_probe_text_clip(OVERFLOW_LABEL, &clip));
+    TEST_ASSERT_TRUE(ui_probe_text_clip(verb == VERB_BUTTON ? OVERFLOW_WORD : OVERFLOW_LABEL, &clip));
     return clip;
 }
 
@@ -1651,6 +1812,12 @@ run_ui_face_suite(void) {
     RUN_TEST(test_ui_row_centre_ends_with_window);
     RUN_TEST(test_ui_scroll_window_commands);
     RUN_TEST(test_ui_scroll_window_scrolls_vertically);
+    RUN_TEST(test_a_new_scroll_window_reserves_no_scrollbar);
+    RUN_TEST(test_an_aligned_scroll_window_places_short_flow);
+    RUN_TEST(test_overflowing_flow_starts_at_the_top_whatever_the_alignment);
+    RUN_TEST(test_an_aligned_window_is_unsettled_only_until_measured);
+    RUN_TEST(test_cells_share_the_window_width);
+    RUN_TEST(test_a_button_label_wraps_at_a_space_and_clipping_is_counted);
     RUN_TEST(test_identity_duplicate_label);
     RUN_TEST(test_identity_two_windows);
     RUN_TEST(test_identity_hidden_labels);
