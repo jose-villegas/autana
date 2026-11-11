@@ -134,13 +134,14 @@ none_can_coarsen(const r3d_lit_mesh_t* mesh, const lod_view_t* v, float near_z, 
 /* Sets coarse every group simplified into a coarse one, until none is left
  * fine under a coarse parent. The ordering r3d_lit_mesh.h checks makes this
  * a pass that changes nothing, short of float rounding far off; then the cut
- * still never draws a group both coarse and fine. */
+ * still never draws a group both coarse and fine. Only coarse clusters have
+ * a group of their own, so levels laid out apart start at the first. */
 static void
 close_coarse(const r3d_lit_mesh_t* mesh, uint32_t* coarse) {
     bool changed = true;
     for (int pass = 0; changed && pass < mesh->lod_group_count; pass++) {
         changed = false;
-        for (int c = 0; c < mesh->cluster_count; c++) {
+        for (int c = mesh->lod_coarse_first; c < mesh->cluster_count; c++) {
             const r3d_lit_cluster_lod_t lod = mesh->cluster_lod[c];
             if (lod.own != R3D_LOD_NONE && lod.parent != R3D_LOD_NONE && r3d_lod_coarse(coarse, lod.parent)
                 && !r3d_lod_coarse(coarse, lod.own)) {
