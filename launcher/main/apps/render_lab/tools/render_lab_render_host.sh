@@ -5,7 +5,7 @@
 #   ./launcher/main/apps/render_lab/tools/render_lab_render_host.sh [-o <dir>]
 #
 # Each declared render starts on one scene (--scene) via
-# render_lab_start_scene_key and steps 16 ms frames, full-framebuffer
+# render_lab.start_key and steps 16 ms frames, full-framebuffer
 # layout. Landscape is the shipping orientation, so it leads; a panel-native
 # render is the shape tools/render/render_diff.sh compares a device capture against.
 #
@@ -28,7 +28,7 @@ main/input/mapping/orbit_motion_touch.c
 main/input/motion/gravity.c
 main/apps/render_lab/tools/render_lab_render_host.c
 $(CDPATH= cd -- "$SCRIPT_DIR/../../../../" &&
-    find main/apps/render_lab \( -type d \( -name tools -o -name tests \) -prune \) -o \
+    find main/apps/render_lab main/lab \( -type d \( -name tools -o -name tests -o -name test \) -prune \) -o \
         \( -type f -name '*.c' ! -name 'suite_*.c' -print \) | LC_ALL=C sort)
 "
 scene_defines="-DCONFIG_LAUNCHER_DEVELOPMENT=0"

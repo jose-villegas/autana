@@ -26,6 +26,9 @@ flowchart TB
             Boot["boot/<br/><i>the startup animation</i>"]
             Selftest["selftest/<br/><i>power-on self test, the on-board suite runner</i>"]:::hw
         end
+        subgraph LabRow["the lab shell"]
+            Lab["lab/<br/><i>scene picker, HUD, orbit camera, suite fixtures for lab apps</i>"]
+        end
         subgraph R4["the app contract"]
             App["app/<br/><i>callbacks, the app list, the app arena</i>"]
         end
@@ -84,7 +87,7 @@ flowchart TB
         Packages["launcher/packages/<br/><i>first-party libraries, the graph below</i>"]
     end
 
-    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9 --> PowerRow --> R10 --> R11 --> R12 --> R13 --> ConsoleRow --> R14 --> R15 --> R16 --> R17
+    R1 --> R2 --> R3 --> LabRow --> R4 --> R5 --> R6 --> R7 --> R8 --> R9 --> PowerRow --> R10 --> R11 --> R12 --> R13 --> ConsoleRow --> R14 --> R15 --> R16 --> R17
     Shell -.->|"calls through app/app.h"| Apps
 ```
 
@@ -99,7 +102,7 @@ flowchart TB
 | Rule | What it means | Enforced by |
 |---|---|---|
 | Includes are layer-qualified | `"gfx/gfx.h"`, not `"gfx.h"`, even inside one folder, so an app reaching past `ui` into `gfx` shows at the line that does it | the style audit |
-| Apps use the engine, the platform and the app contract | an app under `apps/` includes nothing else of the system band; a system app under `shell/apps/` is part of the shell | SYSTEM-BAND |
+| Apps use the engine, the platform, the lab shell and the app contract | an app under `apps/` includes nothing else of the system band; a system app under `shell/apps/` is part of the shell | SYSTEM-BAND |
 | The UI backend stays inside `ui/` | outside it, no firmware source includes microui or a header that reaches it, so a screen sees only `ui/ui.h` and a backend swap touches `ui/` alone | UI-BACKEND |
 | `core/`, `build/` and the packages are the base | see [the base](#the-base) | PACKAGE-INCLUDE, PACKAGE-REQUIRES, PACKAGE-CONFIG |
 | Every drawing path ends in gfx | nothing else allocates pixels; how a draw call becomes panel pixels is [Gfx](../gfx/README.md#the-path), and `render/` sits above `gfx/` because it draws into gfx's [render targets](../gfx/Targets-and-Modes.md#render-targets) | the layer order |
