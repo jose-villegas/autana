@@ -554,7 +554,7 @@ test_the_closing_pass_visits_every_cluster_when_levels_are_not_laid_out_apart(vo
     levelled->groups[0].error = UINT16_MAX;
     const r3d_lens_t lens = lens_at(FAR_EYE, NULL);
     uint32_t apart[R3D_LOD_WORDS(GROUPS)] = {0};
-    r3d_lod_pick(mesh, &lens, &LOD, apart, NULL);
+    r3d_lod_pick(mesh, &lens, &LOD, apart, NULL, NULL);
     TEST_ASSERT_TRUE(r3d_lod_coarse(apart, 0));
     const r3d_lit_cluster_lod_t owner = levelled->lod[FINEST_CLUSTERS];
     levelled->lod[FINEST_CLUSTERS] = levelled->lod[0];
@@ -563,7 +563,7 @@ test_the_closing_pass_visits_every_cluster_when_levels_are_not_laid_out_apart(vo
     TEST_ASSERT_EQUAL_INT(0, mesh->lod_coarse_first);
     TEST_ASSERT_EQUAL_INT(0, mesh->lod_finest_root);
     uint32_t together[R3D_LOD_WORDS(GROUPS)] = {0};
-    r3d_lod_pick(mesh, &lens, &LOD, together, NULL);
+    r3d_lod_pick(mesh, &lens, &LOD, together, NULL, NULL);
     TEST_ASSERT_TRUE(r3d_lod_coarse(together, TOP_GROUP));
     TEST_ASSERT_TRUE(r3d_lod_coarse(together, 0));
     TEST_ASSERT_EQUAL_HEX32_ARRAY(apart, together, R3D_LOD_WORDS(GROUPS));
