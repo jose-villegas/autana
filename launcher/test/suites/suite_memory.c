@@ -238,6 +238,41 @@ test_a_request_past_its_kinds_budget_fails_and_spares_the_other_pool(void) {
     }
 }
 
+/* A fast block stays on-chip while it fits there, uncounted. */
+static void
+test_a_fast_block_that_fits_on_chip_lands_there(void) {
+    const memory_fallbacks_t before = memory_fast_fallbacks();
+    void* block = memory_alloc(SMALL_BYTES, MEMORY_FAST);
+    TEST_ASSERT_NOT_NULL(block);
+    TEST_ASSERT_FALSE(memory_in_psram(block));
+    memory_free(block);
+    TEST_ASSERT_EQUAL_UINT32(before.count, memory_fast_fallbacks().count);
+}
+
+/* One past what on-chip RAM can give lands in external RAM instead of
+ * failing, and is counted with its bytes. */
+static void
+test_a_fast_block_past_on_chip_ram_falls_back_and_is_counted(void) {
+    const memory_fallbacks_t before = memory_fast_fallbacks();
+    const size_t bytes = memory_free_bytes(MEMORY_INTERNAL) + 1;
+    void* block = memory_alloc(bytes, MEMORY_FAST);
+    TEST_ASSERT_NOT_NULL(block);
+    TEST_ASSERT_TRUE(memory_in_psram(block));
+    const memory_fallbacks_t after = memory_fast_fallbacks();
+    memory_dump(MEMORY_FAST);
+    memory_free(block);
+    TEST_ASSERT_EQUAL_UINT32(before.count + 1, after.count);
+    TEST_ASSERT_EQUAL_size_t(before.bytes + bytes, after.bytes);
+}
+
+/* Fast fails only when neither RAM can give the block. */
+static void
+test_a_fast_block_past_both_rams_fails_uncounted(void) {
+    const memory_fallbacks_t before = memory_fast_fallbacks();
+    TEST_ASSERT_NULL(memory_alloc(memory_free_bytes(MEMORY_FAST) + 1, MEMORY_FAST));
+    TEST_ASSERT_EQUAL_UINT32(before.count, memory_fast_fallbacks().count);
+}
+
 static void
 test_a_block_of_one_kind_leaves_the_other_pools_budget_alone(void) {
     for (size_t i = 0; i < sizeof SEPARATE_POOLS / sizeof SEPARATE_POOLS[0]; i++) {
@@ -372,6 +407,9 @@ suite_memory(void) {
     RUN_TEST(test_only_a_psram_block_reads_as_in_psram);
     RUN_TEST(test_a_request_past_its_kinds_budget_fails_and_spares_the_other_pool);
     RUN_TEST(test_a_block_of_one_kind_leaves_the_other_pools_budget_alone);
+    RUN_TEST(test_a_fast_block_that_fits_on_chip_lands_there);
+    RUN_TEST(test_a_fast_block_past_on_chip_ram_falls_back_and_is_counted);
+    RUN_TEST(test_a_fast_block_past_both_rams_fails_uncounted);
     RUN_TEST(test_every_kind_reports_a_total_no_smaller_than_its_free_space_or_largest_block);
     RUN_TEST(test_a_kinds_total_is_its_pools_capacity_while_a_block_is_held);
     RUN_TEST(test_freeing_null_and_dumping_change_nothing);

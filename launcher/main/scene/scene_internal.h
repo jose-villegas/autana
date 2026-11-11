@@ -188,12 +188,12 @@ typedef struct {
     r3d_skin_output_t output;
     mat4f_t* model;
     mat4f_t* palette;
-    void* internal_storage;
+    void* storage;
     uint8_t (*colors)[R3D_SKIN_LIGHT_CHANNELS];
     mat3f_t* normal_palette;
     void* light_storage;
     bool lighting_valid;
-    /* bound: a skin is attached. Its buffers (internal_storage, light_storage)
+    /* bound: a skin is attached. Its buffers (storage, light_storage)
      * exist only while its entity is ACTIVE; starved: they did not fit when it
      * became ACTIVE, so it is not drawn until it stops being ACTIVE. */
     bool bound, starved;

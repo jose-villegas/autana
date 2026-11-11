@@ -134,6 +134,7 @@ Reserve and framebuffer sizes come from source headers, flash size from the buil
 |---|---|
 | Where does an ordinary allocation up to 64 KB go? | internal RAM if there is room, PSRAM otherwise |
 | How do I force a placement? | `memory_alloc()` with `MEMORY_INTERNAL` or `MEMORY_DMA`; it never falls back |
+| How do I get internal RAM without failing when it is full? | `memory_alloc()` with `MEMORY_FAST`: internal first, PSRAM when it does not fit, each fallback counted in `memory_dump()` |
 | Why did a DMA buffer fail? | free bytes are not enough; compare [the largest block](#dma-memory-and-the-largest-block) |
 | Why did the task crash on entering a function? | a large local overran the [task stack](#task-stacks-are-not-the-heap) |
 | What can I read right now? | `autana heap`, POST, `HEAPMARK`; see [Measuring memory](#measuring-memory) |
@@ -143,8 +144,9 @@ Reserve and framebuffer sizes come from source headers, flash size from the buil
 | Mechanism | Effect |
 |---|---|
 | `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536` | ordinary allocations up to that size **try** internal RAM first, with PSRAM fallback; a preference, not a guarantee |
-| `memory_alloc()` | requests the named kind explicitly and never falls back to another kind |
+| `memory_alloc()` | requests the named kind explicitly; only `MEMORY_FAST` falls back to another kind |
 | `memory_alloc(MEMORY_INTERNAL)` | required internal placement |
+| `memory_alloc(MEMORY_FAST)` | internal placement when it fits, PSRAM otherwise; `memory_fast_fallbacks()` and `memory_dump()` show what fell back and where |
 | `memory_alloc(MEMORY_DMA)` | the panel's buffers |
 | App arena (`launcher/main/app/app_arena.h`) | explicit external placement; its reservation shrinks the PSRAM heap before apps allocate |
 
