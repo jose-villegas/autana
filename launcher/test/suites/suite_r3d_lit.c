@@ -420,6 +420,13 @@ check_door_pixel(door_entry_t entry, int i, const door_canvas_t* from) {
     }
 }
 
+/* A pixel fills through the door only where its bit is open, and through the complement only where it is not. */
+static void
+check_door_bit(bool bit_open, bool in_door, bool in_rest) {
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, in_door && !bit_open ? 1 : 0, "a door filled a pixel whose bit is set");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, in_rest && bit_open ? 1 : 0, "the complement filled an open pixel of the door");
+}
+
 /* Draws `entry` plain, through `door` and through its complement, and checks the
  * pixels. Returns how many pixels the door itself filled. */
 static int
@@ -447,10 +454,7 @@ check_door_partition(door_entry_t entry, uint16_t door) {
                                           "the two doors did not fill what a plain draw fills");
             plain_covered += want ? 1 : 0;
             door_covered += in_door ? 1 : 0;
-            const bool bit_open = ((door >> R3D_SPAN_SCREEN_BIT(x, y)) & 1U) != 0;
-            TEST_ASSERT_EQUAL_INT_MESSAGE(0, in_door && !bit_open ? 1 : 0, "a door filled a pixel whose bit is set");
-            TEST_ASSERT_EQUAL_INT_MESSAGE(0, in_rest && bit_open ? 1 : 0,
-                                          "the complement filled an open pixel of the door");
+            check_door_bit(((door >> R3D_SPAN_SCREEN_BIT(x, y)) & 1U) != 0, in_door, in_rest);
             if (want) {
                 check_door_pixel(entry, i, in_door ? &canvases[CANVAS_DOOR] : &canvases[CANVAS_REST]);
             }
