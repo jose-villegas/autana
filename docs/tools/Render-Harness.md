@@ -142,11 +142,11 @@ verifies recorded content, while the render check detects stale measurements.
 The image script rewrites blocks by default; --check reports
 changed doc-path#block-name and exits 1. The refresh PR includes changed tables
 and images together. `render_doc_images.sh --stage gpu` rebuilds fitted comparisons and sweeps in
-the WSL CUDA environment; the board stage consumes a perf capture. Both use
+the WSL CUDA environment; the board stage consumes a board capture. Both use
 this writer.
 
-`--stage board` takes one `--capture PATH` per board run, all from the same
-diagnostics image, and uses their median; `--check` reports without writing.
+`--stage board` takes one `--capture PATH` per board run of
+`run_sponza_bakes_suite`, all from the same diagnostics image, and uses their median; `--check` reports without writing.
 It rejects missing variants, missing or repeated per-pose timings, failed
 suites and mismatched build identities, and rewrites the board tables and
 `launcher/tools/r3d/board_cost_weights.txt`. Refresh the GPU stage after the
