@@ -22,7 +22,6 @@ from gltf.gltf_read import ASSET_SUFFIXES
 
 U16_MAX = (1 << 16) - 1
 MESHLET_TRIANGLES = 32
-# A probe face's square size in pixels when geometry.probes names none.
 # A baked mesh carries its levels of detail (docs/plans/Cluster-LOD.md) unless its geometry says lod = false.
 LOD = True
 SCENE_OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_conventions.h"
