@@ -64,7 +64,7 @@ r3d_lens_place(r3d_lens_t* lens, const mat4f_t* model, int position_scale) {
     for (int row = 0; row < MAT3F_AXES; row++) {
         placed.m[row][MAT3F_AXES] *= (float)position_scale;
     }
-    lens->m = mat4f_mul_affine(lens->m, placed);
+    mat4f_post_mul_affine(&lens->m, &placed);
 }
 
 #define ALL_PLANES ((1u << PLANE_FRUSTUM_COUNT) - 1u)
@@ -98,6 +98,12 @@ struct r3d_pipeline_work {
                 int cluster, weight;
                 uint16_t screen;
             } blend;
+
+            /* A draw with writers: the target it fills, retagged per cluster
+             * or triangle. Here, not on the draw's stack; the target last, as
+             * its rows end in a flexible array. */
+            r3d_span_writer_t writers[GFX_ATTACHMENTS_FURTHER_MAX];
+            r3d_span_target_t writing;
         } clip;
     };
 };
@@ -876,7 +882,11 @@ draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3
               const uint16_t* face_color, bool double_sided, const r3d_span_target_t* target, draw_mode_t mode,
               int weight, uint16_t screen) {
     FRAME_LAP("r3d.draw.tests");
-    if (misses_every_centre(v[0], v[1], v[2], target)) {
+    /* The writing draw takes the test inline, which keeps its frame at its
+     * stack chain's budget; the reading draws leave it to the compiler, whose
+     * choice keeps their triangle loop as tight. */
+    if ((mode & DRAW_WRITES) != 0 ? misses_every_centre_inlined(v[0], v[1], v[2], target)
+                                  : misses_every_centre(v[0], v[1], v[2], target)) {
         FRAME_LAP("r3d.draw.cluster");
         return;
     }
@@ -996,9 +1006,10 @@ draw_writing_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16
                 const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
                 draw_mode_t mode, r3d_pipeline_work_t* work, blend_t blend) {
     assert(target->writer_count <= GFX_ATTACHMENTS_FURTHER_MAX);
-    r3d_span_writer_t writers[GFX_ATTACHMENTS_FURTHER_MAX];
-    r3d_span_target_t writing = *target;
-    writing.writers = writers;
+    r3d_span_writer_t* writers = work->clip.writers;
+    r3d_span_target_t* writing = &work->clip.writing;
+    *writing = *target;
+    writing->writers = writers;
     bool per_triangle = false;
     for (int k = 0; k < target->writer_count; k++) {
         writers[k] = target->writers[k];
@@ -1017,12 +1028,12 @@ draw_writing_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16
         for (int t = c->triangle_first; t < end; t += step) {
             retag(writers, target->writers, target->writer_count, clusters[i], (uint32_t)t);
             if (blend != BLEND_NONE) {
-                draw_blended(mesh, lens, clusters[i], cs, &rows[clusters[i]], &writing, mode, work, t, t + step,
+                draw_blended(mesh, lens, clusters[i], cs, &rows[clusters[i]], writing, mode, work, t, t + step,
                              blend == BLEND_DITHER);
                 continue;
             }
             /* No DRAW_BOUNDED: one more live value puts this frame over stack_chain_gate. */
-            draw_triangles(mesh, lens, c, t, t + step, cs, &writing, mode, work, false);
+            draw_triangles(mesh, lens, c, t, t + step, cs, writing, mode, work, false);
         }
     }
 }
