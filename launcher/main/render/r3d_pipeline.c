@@ -836,7 +836,9 @@ rebuilt_corners(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16
     }
 }
 
-static __attribute__((noinline, cold)) void
+/* Flattened: the blended copy shares its clip and projection, and a cold
+ * function would otherwise call them rather than take them inline. */
+static __attribute__((noinline, cold, flatten)) void
 draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* tri, const uint16_t* face_color,
              bool double_sided, const r3d_span_target_t* target, r3d_pipeline_work_t* work) {
     FRAME_LAP("r3d.draw.clip");
