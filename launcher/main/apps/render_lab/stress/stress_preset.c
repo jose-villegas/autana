@@ -137,15 +137,12 @@ card_triangles(int cuts) {
 
 static float
 card_coordinate(int at, int across, int cuts) {
-    const float jitter = at == 0 || at == cuts
-                             ? 0.0F
-                             : STRESS_CARD_JITTER
-                                   * ((float)(rng_hash(STRESS_CARD_TEXTURE_SEED, (uint32_t)at, (uint32_t)across, 0)
-                                              % STRESS_CARD_TEXTURE_SIZE)
-                                          / (float)(STRESS_CARD_TEXTURE_SIZE - 1)
-                                      - 0.5F);
-    const float u = 2.0F * ((float)at + jitter) / (float)cuts - 1.0F;
-    return 0.5F * u * fabsf(u);
+    const uint32_t texel =
+        rng_hash(STRESS_CARD_TEXTURE_SEED, (uint32_t)at, (uint32_t)across, 0) % STRESS_CARD_TEXTURE_SIZE;
+    const float sample = ((float)texel / (float)(STRESS_CARD_TEXTURE_SIZE - 1)) - 0.5F;
+    const float jitter = at == 0 || at == cuts ? 0.0F : STRESS_CARD_JITTER * sample;
+    const float u = (2.0F * ((float)at + jitter) / (float)cuts) - 1.0F;
+    return (0.5F * u) * fabsf(u);
 }
 
 static void

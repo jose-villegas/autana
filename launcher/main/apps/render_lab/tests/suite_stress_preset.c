@@ -449,8 +449,7 @@ test_card_has_holes_colour_steps_and_scene_size_bins(void) {
         stepped += corner_spread(&source, t) > SMALL_FILL_GATE_FAST;
     }
     TEST_ASSERT_GREATER_THAN_INT(source.triangle_count / 2, stepped);
-    const transformf_t pose =
-        transformf_looking((vec3f_t){0, 0, framing.distance}, (vec3f_t){0, 0, -1}, vec3f_unit_y());
+    const transformf_t pose = transformf_looking((vec3f_t){0, 0, framing.distance}, vec3f_back(), vec3f_unit_y());
     const render_view_t view =
         render_view_make(&pose, framing.half_fov_short_tan, TEST_NEAR_Z,
                          (viewport_t){DEFAULT_SHORT_PX, GFX_HEIGHT * RENDER_LAB_SCALE_UNIT / RENDER_LAB_SCALE_DEFAULT,
