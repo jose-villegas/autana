@@ -23,7 +23,7 @@
 #include "ui/ui.h"
 #include "ui/ui_canvas_marks.h"
 
-enum { UI_COMMAND_IMAGE = MU_COMMAND_MAX, UI_COMMAND_SWATCHES };
+enum { UI_COMMAND_IMAGE = MU_COMMAND_MAX, UI_COMMAND_SWATCHES, UI_COMMAND_ROUND_RECT };
 
 typedef struct {
     mu_BaseCommand base;
@@ -31,6 +31,15 @@ typedef struct {
     mu_Color color;
     const image_t* image;
 } ui_image_command_t;
+
+/* A flat face with rounded corners: one command, filled in panel rows after
+ * the transform, so a turned screen still writes rows, not columns. */
+typedef struct {
+    mu_BaseCommand base;
+    mu_Rect rect;
+    mu_Color color;
+    int radius;
+} ui_round_command_t;
 
 typedef struct {
     mu_BaseCommand base;

@@ -231,21 +231,18 @@ test_a_seventh_app_starts_the_grid_at_the_top(void) {
     TEST_ASSERT_EQUAL_INT(top, tile(0).y);
 }
 
-/* A tile's face: its one span as wide as the tile, between the rows that
- * round its corners. */
+/* A tile's face: the one rounded face command at its rect. */
 static uint32_t
 tile_face_rgb(recti_t r) {
     mu_Command* cmd = NULL;
     while (mu_next_command(ui_context(), &cmd)) {
-        if (cmd->type != MU_COMMAND_RECT) {
-            continue;
-        }
-        const mu_Rect c = cmd->rect.rect;
-        if (c.x == r.x && c.w == r.w && c.y > r.y && c.y + c.h < recti_bottom(r)) {
-            return ui_rgb_value(cmd->rect.color);
+        const ui_round_command_t* face = (const ui_round_command_t*)cmd;
+        if (cmd->type == UI_COMMAND_ROUND_RECT && memcmp(&face->rect, &r, sizeof r) == 0) {
+            TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, face->radius, "a home tile's corners are rounded");
+            return ui_rgb_value(face->color);
         }
     }
-    TEST_FAIL_MESSAGE("a tile draws a full-width face");
+    TEST_FAIL_MESSAGE("a tile draws one rounded face");
     return 0;
 }
 

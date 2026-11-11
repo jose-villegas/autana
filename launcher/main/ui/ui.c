@@ -213,6 +213,21 @@ draw_command(const mu_Command* cmd) {
             break;
         }
 
+        case UI_COMMAND_ROUND_RECT: {
+            const ui_round_command_t* face = (const ui_round_command_t*)cmd;
+            const mu_Rect r = ui_transform_mu_rect(t, face->rect);
+            /* An integer scale scales the corner with the face. */
+            const int radius = face->radius * (r.w + r.h) / (face->rect.w + face->rect.h);
+            const gfx_color_t color = mu_color_to_gfx(face->color);
+            for (int row = 0; row < radius; row++) {
+                const int inset = ui_round_inset(radius, r.h, row);
+                draw_rect(r.x + inset, r.y + row, r.w - (2 * inset), 1, color);
+                draw_rect(r.x + inset, r.y + r.h - 1 - row, r.w - (2 * inset), 1, color);
+            }
+            draw_rect(r.x, r.y + radius, r.w, r.h - (2 * radius), color);
+            break;
+        }
+
         case UI_COMMAND_SWATCHES: {
             const ui_swatch_command_t* grid = (const ui_swatch_command_t*)cmd;
             for (int row = 0; row < grid->rows; row++) {
@@ -613,9 +628,11 @@ command_row_range(const mu_Command* cmd, int* y0, int* y1) {
             return true;
         }
         case UI_COMMAND_IMAGE:
-        case UI_COMMAND_SWATCHES: {
-            const mu_Rect rect = cmd->type == UI_COMMAND_IMAGE ? ((const ui_image_command_t*)cmd)->rect
-                                                               : ((const ui_swatch_command_t*)cmd)->rect;
+        case UI_COMMAND_SWATCHES:
+        case UI_COMMAND_ROUND_RECT: {
+            const mu_Rect rect = cmd->type == UI_COMMAND_IMAGE      ? ((const ui_image_command_t*)cmd)->rect
+                                 : cmd->type == UI_COMMAND_SWATCHES ? ((const ui_swatch_command_t*)cmd)->rect
+                                                                    : ((const ui_round_command_t*)cmd)->rect;
             const mu_Rect r = ui_transform_mu_rect(t, rect);
             *y0 = r.y;
             *y1 = r.y + r.h;

@@ -121,9 +121,12 @@ begin_control(mu_Context* ctx, mu_Id mid, mu_Rect r, bool enabled, bool selected
     const bool on_accent = enabled && selected;
     const mu_Color face = on_accent ? theme->accent_face : theme->button_face;
     if (theme->corner_radius > 0) {
-        ui_span_t spans[UI_ROUND_MAX_SPANS];
-        const mu_Color lit = c.pressed ? ui_shade(face, UI_BEZEL_HIGHLIGHT) : face;
-        draw_spans(ctx, spans, ui_round_spans(r, lit, theme->corner_radius, spans, UI_ROUND_MAX_SPANS));
+        ui_round_command_t* cmd = ui_push_clipped_command(ctx, UI_COMMAND_ROUND_RECT, sizeof *cmd, r);
+        if (cmd != NULL) {
+            cmd->rect = r;
+            cmd->color = c.pressed ? ui_shade(face, UI_BEZEL_HIGHLIGHT) : face;
+            cmd->radius = mu_min(theme->corner_radius, mu_min(r.w, r.h) / 2);
+        }
     } else {
         ui_span_t spans[UI_BEZEL_MAX_SPANS];
         draw_spans(ctx, spans, ui_bezel_spans(r, face, c.pressed, spans, UI_BEZEL_MAX_SPANS));
