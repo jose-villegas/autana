@@ -7,6 +7,7 @@ from which the draw blends toward the colours the mesh draws with."""
 import pathlib
 import struct
 
+from asset.asset_pack import padded
 from build.c_header import read_define
 from r3d.lcol_asset import sibling_name
 from r3d.mesh_asset import checked_struct, BLOB_HEADER
@@ -33,15 +34,11 @@ def name_for_mesh(mesh):
     return sibling_name(mesh, NAME_SUFFIX)
 
 
-def _padded(size):
-    return size + (-size % ALIGN)
-
-
 def sizes(clusters, vertices, landing):
     """Byte offsets of the shifts, deltas and landing points, and the entry's size."""
     shifts_at = HEADER.size
-    deltas_at = shifts_at + _padded(clusters)
-    landing_at = deltas_at + _padded(vertices * AXES)
+    deltas_at = shifts_at + padded(clusters, ALIGN)
+    landing_at = deltas_at + padded(vertices * AXES, ALIGN)
     end = landing_at + (vertices * LANDING_SIZE if landing else 0)
     return shifts_at, deltas_at, landing_at, end
 

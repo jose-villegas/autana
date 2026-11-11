@@ -433,19 +433,19 @@ class BakedMorphTargetTests(unittest.TestCase):
         self.assertEqual((len(self.mesh.pos), AXES), self.landing.shape)
 
     def test_the_bundle_carries_a_morph_entry_only_when_asked_and_with_levels(self):
-        kinds = [kind for _, kind, _ in mesh_bundle.mesh_entries("m", self.plain, morph=True)]
+        kinds = [kind for _, kind, _ in mesh_bundle.mesh_entries("m", self.plain, morph=morph.morph_blob)]
         self.assertNotIn(morph_asset.TYPE, kinds)
         points, rgb, triangles, double = wavy_grid()
         levelled = bake_lit_mesh(points, rgb, triangles, double, lod=True)
         unasked = [kind for _, kind, _ in mesh_bundle.mesh_entries("m", levelled)]
         self.assertNotIn(morph_asset.TYPE, unasked)
-        entries = mesh_bundle.mesh_entries("m", levelled, morph=True)
+        entries = mesh_bundle.mesh_entries("m", levelled, morph=morph.morph_blob)
         self.assertIn(("m.morph", morph_asset.TYPE), [(name, kind) for name, kind, _ in entries])
 
     def test_the_bundle_boxes_hold_every_target_so_a_morphing_cluster_is_never_culled(self):
         points, rgb, triangles, double = wavy_grid()
         levelled = bake_lit_mesh(points, rgb, triangles, double, lod=True)
-        entries = {name: blob for name, _, blob in mesh_bundle.mesh_entries("m", levelled, morph=True)}
+        entries = {name: blob for name, _, blob in mesh_bundle.mesh_entries("m", levelled, morph=morph.morph_blob)}
         mesh = lit_mesh.read_lit_mesh(entries["m"], entries["m.lod"])
         target = lit_mesh.morph_targets(mesh.pos, mesh.clusters, entries["m.morph"])
         self.assertTrue(np.any(target != mesh.pos), "the fixture's targets move nothing")
@@ -532,7 +532,7 @@ class BakedMorphTargetTests(unittest.TestCase):
         self.assertGreater(moved, 0)
 
     def test_rows_at_one_position_under_one_parent_decode_to_one_target_whatever_their_clusters(self):
-        shifts, deltas, _ = morph_asset.decode(lit_mesh.morph_blob(self.blob, self.levels_blob))
+        shifts, deltas, _ = morph_asset.decode(morph.morph_blob(self.blob, self.levels_blob))
         deltas = np.array(deltas).reshape(-1, AXES)
         decoded = {}
         shared = 0
@@ -547,7 +547,7 @@ class BakedMorphTargetTests(unittest.TestCase):
         self.assertGreater(shared, 0)
 
     def test_no_two_clusters_drawable_together_leave_a_gap_at_a_shared_position(self):
-        shifts, deltas, _ = morph_asset.decode(lit_mesh.morph_blob(self.blob, self.levels_blob))
+        shifts, deltas, _ = morph_asset.decode(morph.morph_blob(self.blob, self.levels_blob))
         deltas = np.array(deltas).reshape(-1, AXES)
         ancestors = morph.above(self.mesh)
         at = {}
@@ -577,14 +577,14 @@ class BakedMorphTargetTests(unittest.TestCase):
         self.assertGreater(same, 0)
 
     def test_clusters_under_one_parent_share_a_shift_in_the_blob(self):
-        shifts, _, _ = morph_asset.decode(lit_mesh.morph_blob(self.blob, self.levels_blob))
+        shifts, _, _ = morph_asset.decode(morph.morph_blob(self.blob, self.levels_blob))
         by_parent = {}
         for shift, (_, parent) in zip(shifts, self.mesh.lod):
             by_parent.setdefault(parent, set()).add(shift)
         self.assertTrue(all(len(found) == 1 for found in by_parent.values()))
 
     def test_the_blob_round_trips_the_measured_targets_within_a_step(self):
-        blob = lit_mesh.morph_blob(self.blob, self.levels_blob)
+        blob = morph.morph_blob(self.blob, self.levels_blob)
         shifts, deltas, landing = morph_asset.decode(blob)
         morph_asset.validate_mesh(blob, self.blob)
         self.assertEqual(len(self.mesh.clusters), len(shifts))

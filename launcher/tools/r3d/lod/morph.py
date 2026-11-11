@@ -18,7 +18,9 @@ draws with, a copy's colour set included.
 import numpy as np
 from scipy.spatial import cKDTree
 
+from r3d import morph_asset
 from r3d.geometry import closest_point_on_triangles
+from r3d.lit_mesh import morph_deltas, read_lit_mesh
 from r3d.mesh_asset import LOD_NONE
 
 # Coarse triangles tried for each row, nearest middle first.
@@ -200,3 +202,13 @@ def read_targets(mesh):
     held = shared_rows(mesh)
     target[held] = pos[held]
     return target, landing
+
+
+def morph_blob(blob, levels):
+    """The sibling LMOR bytes of LMSH `blob` with LLOD `levels`, measured
+    from the mesh as it is written."""
+    mesh = read_lit_mesh(blob, levels)
+    target, landing = read_targets(mesh)
+    shifts, deltas = morph_deltas(mesh.pos, target, mesh.clusters, [parent for _, parent in mesh.lod])
+    landing = None if landing is None else [tuple(row) for row in landing.tolist()]
+    return morph_asset.encode(shifts, deltas.reshape(-1).tolist(), landing)

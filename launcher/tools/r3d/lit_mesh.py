@@ -320,8 +320,8 @@ def build_lit_mesh(positions, rgb, tris, double, recorder=None, colourless=False
     return mesh
 
 
-def write_lit_mesh(out_dir, name, positions, rgb, tris, double, recorder=None, morph=False, **options):
-    """build_lit_mesh's mesh written alone as <name>.bundle into out_dir, with morph its morph targets
+def write_lit_mesh(out_dir, name, positions, rgb, tris, double, recorder=None, morph=None, **options):
+    """build_lit_mesh's mesh written alone as <name>.bundle into out_dir, with `morph` its morph targets
     too (mesh_bundle.mesh_entries); returns the mesh."""
     recorder = NULL_RECORDER if recorder is None else recorder
     mesh = build_lit_mesh(positions, rgb, tris, double, recorder=recorder, **options)
@@ -365,18 +365,6 @@ def mesh_blob(mesh):
     head = BLOB_HEADER.pack(len(mesh.pos), len(mesh.tris), len(mesh.clusters), len(mesh.nodes), mesh.position_scale,
                             *(offsets[key] for key, _ in arrays))
     return head + body
-
-
-def morph_blob(blob, levels):
-    """The sibling LMOR bytes of LMSH `blob` with LLOD `levels`
-    (lod/morph.py), measured from the mesh as it is written."""
-    from r3d import morph_asset
-    from r3d.lod.morph import read_targets
-    mesh = read_lit_mesh(blob, levels)
-    target, landing = read_targets(mesh)
-    shifts, deltas = morph_deltas(mesh.pos, target, mesh.clusters, [parent for _, parent in mesh.lod])
-    landing = None if landing is None else [tuple(row) for row in landing.tolist()]
-    return morph_asset.encode(shifts, deltas.reshape(-1).tolist(), landing)
 
 
 def morph_targets(pos, clusters, entry):
