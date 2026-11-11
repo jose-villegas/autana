@@ -61,7 +61,7 @@ def scene_stages(frame_logs, windows, rows, quarter):
         for row, found in poses.items():
             scenes.setdefault(row, []).extend(found)
     for name, path, text in windows:
-        found = [window["brackets"] for line in pathlib.Path(path).read_text(encoding="utf-8").splitlines()
+        found = [window["brackets"] for line in pathlib.Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
                  if text in line and (window := frame_cost_window(line)) is not None]
         if not found:
             raise SystemExit(f"{path}: no frame-cost window on a line holding {text!r}")
@@ -71,7 +71,8 @@ def scene_stages(frame_logs, windows, rows, quarter):
 
 
 def predict(change, scene):
-    """The scene's frame change in ms: each stage's ratio less one times the scene's stage time."""
+    """The scene's frame change in ms: each stage's ratio less one times the scene's stage time.
+    A stage the presets never spend time on in A has no ratio and adds nothing."""
     return sum((b / a - 1.0) * scene[stage] for stage, (a, b) in change.items() if a > 0)
 
 
@@ -97,7 +98,8 @@ def main(argv=None):
     parser.add_argument("--quarter", default="portrait")
     args = parser.parse_args(argv)
     scenes = scene_stages(args.scenes, args.window, set(args.scene), args.quarter)
-    sys.stdout.reconfigure(encoding="utf-8")
+    if hasattr(sys.stdout, "reconfigure"):  # a console's code page may lack the arrow
+        sys.stdout.reconfigure(encoding="utf-8")
     sys.stdout.write(report(ratios(preset_stages(args.a), preset_stages(args.b)), scenes))
 
 

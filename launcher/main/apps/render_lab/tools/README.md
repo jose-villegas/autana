@@ -166,13 +166,14 @@ options, each by where it stops paying.
 
 The `run_stress_perf_suite` suite replays poses along each preset's swing, one
 quarter, the way the frame profile replays its own. Every line has the cull
-counts and the r3d.cull, transform, draw and upscale times; all presets
-take under two minutes. `stress_predict.py` reads two builds' captures and
-predicts each scene's frame change: per stage, the presets' B/A ratio less
-one, times the scene's own stage time.
+counts and the r3d stage times. `stress_predict.py` reads two builds'
+captures and predicts each scene's frame change: per stage, the presets' B/A
+ratio less one, times the scene's own stage time. That predicts a cull change
+well; a transform or draw change is only screened, since a preset is one
+kind of triangle and a scene is a mix.
 
 ```sh
-autana suite run_stress_perf_suite --flash --perf-scope --runs 2 --out a.log
+autana suite run_stress_perf_suite --flash --perf-scope --out a.log
 python launcher/main/apps/render_lab/tools/stress_predict.py --a a.log --b b.log \
     --scenes docs/render/data/frame-profile-1-board.log
 ```

@@ -10,4 +10,8 @@
 #include "apps/render_lab/render_lab_scene.h"
 #include "apps/render_lab/stress/stress_preset.h"
 
+/* The scene's id and pack, and its swinging camera. */
+#define STRESS_SCENE  "stress"
+#define STRESS_CAMERA "camera"
+
 extern const render_lab_scene_t scene_stress[STRESS_PRESET_COUNT];
