@@ -452,8 +452,8 @@ check_door_partition(door_entry_t entry, uint16_t door) {
             TEST_ASSERT_FALSE_MESSAGE(in_door && in_rest, "a pixel was filled through both a door and its complement");
             TEST_ASSERT_EQUAL_INT_MESSAGE(want, in_door || in_rest,
                                           "the two doors did not fill what a plain draw fills");
-            plain_covered += want ? 1 : 0;
-            door_covered += in_door ? 1 : 0;
+            plain_covered += (int)want;
+            door_covered += (int)in_door;
             check_door_bit(((door >> R3D_SPAN_SCREEN_BIT(x, y)) & 1U) != 0, in_door, in_rest);
             if (want) {
                 check_door_pixel(entry, i, in_door ? &canvases[CANVAS_DOOR] : &canvases[CANVAS_REST]);
