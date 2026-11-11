@@ -46,7 +46,15 @@ brackets compile to nothing.
 
 The raster brackets are `r3d.census`, `r3d.cull`, `r3d.transform`,
 `r3d.draw`, `r3d.show` and `r3d.upscale`. Clip and span fill are inside
-`r3d.draw`.
+`r3d.draw`. Laps split the cull, under `r3d.cull` or `r3d.census`:
+
+| Lap | What it times |
+|---|---|
+| `split` | the frame core alone: expanding batches into their kept copies and setting up the cull, then joining both cores' counts |
+| `pick` | each instance's level pick |
+| `walk` | each instance's world-box test, lens and cluster cull |
+| `wait` | the frame core waiting for the other core's share |
+
 `r3d.show` paints the selected debug view before upscale.
 The shell brackets presentation as `present`; when the frame loop overlaps the send
 with the next update, the bracket is `present.wait`, the time the frame waits

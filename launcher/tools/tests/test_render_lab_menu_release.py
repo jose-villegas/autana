@@ -2,7 +2,8 @@
 
 The host tests build only the development side of a build-variant gate, so
 an option gated out of release passes them unseen. These read the source
-instead: the menu screen and every scene's `.controls` draw no option
+instead: the lab's menu screen, Render Lab's own rows and every scene's
+`.controls` draw no option
 behind an #if, and no `.controls` is wrapped in a macro that a release
 turns to NULL. A declaration a release drops fails the release build itself.
 """
@@ -10,8 +11,9 @@ import pathlib
 import re
 import unittest
 
-RENDER_LAB = pathlib.Path(__file__).resolve().parents[2] / "main/apps/render_lab"
-MENU_SCREEN = RENDER_LAB / "ui/render_lab_menu_screen.c"
+MAIN = pathlib.Path(__file__).resolve().parents[2] / "main"
+RENDER_LAB = MAIN / "apps/render_lab"
+MENU_SCREENS = (MAIN / "lab/ui/lab_menu_screen.c", RENDER_LAB / "ui/render_lab_settings.c")
 
 CONDITIONAL_RE = re.compile(r"^\s*#\s*if", re.MULTILINE)
 # A scene's hook, not a copy of one read through `->`.
@@ -32,9 +34,11 @@ def scene_controls():
 
 
 class MenuInReleaseTests(unittest.TestCase):
-    def test_the_menu_screen_gates_no_option(self):
-        self.assertIsNone(CONDITIONAL_RE.search(MENU_SCREEN.read_text(encoding="utf-8")),
-                          f"{MENU_SCREEN.name} has an #if: every menu option stays in release")
+    def test_the_menu_screens_gate_no_option(self):
+        for screen in MENU_SCREENS:
+            with self.subTest(file=screen.name):
+                self.assertIsNone(CONDITIONAL_RE.search(screen.read_text(encoding="utf-8")),
+                                  f"{screen.name} has an #if: every menu option stays in release")
 
     def test_every_scene_control_is_drawn_in_every_build(self):
         found = list(scene_controls())

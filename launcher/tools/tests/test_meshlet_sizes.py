@@ -165,7 +165,7 @@ static void suite_add_test_cleanup(void (*fn)(void)) { cleanup = fn; }
 #define TEST_PASS() ((void)0)
 #define ESP_LOGI(...) ((void)0)
 ''' + bakes + '''
-enum { R3D_PERF_QUARTER_COUNT = 2 };
+enum { LAB_PERF_QUARTER_COUNT = 2 };
 typedef struct { int mean_goal_us, p95_ceiling_us; } perf_budget_t;
 static const int meshes[SCENE_BAKED_VARIANT_COUNT];
 static const char* const sponza_bakes[SCENE_BAKED_VARIANT_COUNT] = {[0 ... SCENE_BAKED_VARIANT_COUNT - 1] = "renderer"};
