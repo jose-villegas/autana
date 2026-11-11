@@ -124,10 +124,10 @@ Every Geometry table opts its step in; without it the step does not run.
 
 `geometry.probes` adds fit views from probes, for a fitted renderer whose camera
 can leave its path. One jittered probe sits in every `spacing` cell of the scene
-camera's region, or of the source's bounds without one. Probes inside geometry
-are dropped and those against a wall moved off it<sup>[[116]](../../Citations.md#majercik-2021)</sup>. Each probe has six 90 degree
+camera's region, or of the source's bounds without one. Probes against a wall
+are moved off it, and those still inside geometry are dropped<sup>[[117]](../../Citations.md#majercik-2021)</sup>. Each probe has six 90 degree
 cube faces, `face` pixels square. A face is kept while it shows source triangles
-that the path and the faces kept before it do not<sup>[[117]](../../Citations.md#minoux-1978)</sup>.
+that the path and the faces kept before it do not<sup>[[118]](../../Citations.md#minoux-1978)</sup>.
 
 | Key | What it is | Default |
 |---|---|---|
@@ -144,7 +144,8 @@ what the path shows before what only a probe shows; see
 `geometry.budget` chooses how each fitted renderer prunes. `constant` prunes to
 the renderer's `fit.prune.budget`. `settle` tries `step`, 2 `step`, and so on up
 to that budget, counting hole pixels over the held-out views. It keeps the first
-budget whose holes fall by less than the `settle` share of its own to the next.
+budget whose holes fall by less than the `settle` share of its own to the next,
+or that has none.
 
 #### alpha_mask
 

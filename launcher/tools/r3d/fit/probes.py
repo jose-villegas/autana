@@ -17,9 +17,13 @@ import numpy as np
 
 from r3d.poses import camera_rays
 
+# Rays each probe casts to classify itself.
 RAYS = 32
+# Share of those rays hitting back faces past which the probe is inside geometry.
 BACKFACE = 0.25
+# Farthest a probe moves off a wall or out of geometry, as a share of its cell.
 RELOCATE = 0.45
+# Largest offset of a probe from its cell centre, as a share of the cell.
 JITTER = 0.4
 # Nearest front face a probe may have, in near planes: nearer, its faces clip the surface into holes.
 MIN_FRONT_NEARS = 2.0
@@ -39,6 +43,7 @@ MIN_PIXELS = 4
 PLATEAU = 0.01
 # Square pixels a face is traced at to choose it; the kept faces render at geometry.probes.face.
 SELECT_SIZE = 96
+# Faces the held-out set keeps, to count holes over without fitting on them.
 HELD_OUT_FACES = 48
 
 
