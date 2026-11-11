@@ -1,4 +1,4 @@
-"""Carved products retain copy lighting and expand into placed renderers."""
+"""Carved products retain copy lighting and pack into one batch a shape."""
 
 import pathlib
 import sys
@@ -13,6 +13,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import numpy as np
 from r3d.fit import stage
 from r3d import build_pack, lcol_asset, lod_asset, mesh_bundle, mesh_import, mesh_asset, scene_asset, rebake
+from r3d.batch import copy_batches
 from build.name_hash import name_hash
 from asset.asset_pack import NAME_BYTES, PackError, build_pack as encode_pack, parse_pack
 from test_scene_asset import SceneFiles
@@ -131,7 +132,7 @@ class MeshBundleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             data, _, _, job, _ = bundle_fixture(folder)
             entries, copies = mesh_bundle.decode(data)
-            entry = lod_asset.encode([(mesh_asset.LOD_NONE, 0)], [(0, 0, 0, 1, 0)])
+            entry = lod_asset.encode([(mesh_asset.LOD_NONE, 0)], [(0, 0, 0, 1, 0, 0)])
             entries.append((lod_asset.name_for_mesh(job.asset_name), b"TEST", entry))
             with self.assertRaisesRegex(PackError, "LLOD"):
                 mesh_bundle.decode(mesh_bundle.encode(entries, copies))
@@ -365,21 +366,40 @@ class BundlePackTests(SceneFiles):
         path.write_bytes(mesh_bundle.encode(entries, copies))
         return self.scene(renderer('a.import.toml', extra='variant = "a"\n')), path
 
-    def test_pack_expands_copies_with_hashed_names(self):
+    def test_pack_draws_each_shapes_copies_from_one_batch(self):
         source, bundle = self.bundle_scene()
         entries = parse_pack(build_pack.pack_bytes([source])['hall'])
         products, copies = mesh_bundle.decode(bundle.read_bytes())
         self.assertEqual(set(entries), {'hall', *(name for name, _, _ in products)})
         self.assertNotIn(mesh_bundle.MANIFEST, entries)
         scene = scene_asset.decode(entries['hall'][1])
-        self.assertEqual(len(scene['renderers']), 1 + len(copies))
-        for copy, entity, rendered in zip(copies, scene['entities'][1:], scene['renderers'][1:]):
-            self.assertEqual(entity['name'], copy['name'])
-            self.assertEqual(entity['name_hash'], name_hash(copy['name']))
-            self.assertEqual(entity['matrix'], copy['matrix'])
-            self.assertEqual(entity['position'], copy['position'])
-            self.assertEqual(rendered['mesh'], copy['mesh'])
-            self.assertEqual(rendered['colour_set'], copy['colour_set'])
+        shapes = sorted({copy['mesh'] for copy in copies})
+        # The authored renderer, then one entity and renderer a shape: no entity a copy.
+        self.assertEqual(len(scene['entities']), 1 + len(shapes))
+        self.assertEqual(sorted(r['mesh'] for r in scene['renderers'][1:]), shapes)
+        self.assertEqual(len(scene['batches']), len(shapes))
+        for batch in scene['batches']:
+            renderer = scene['renderers'][batch['renderer']]
+            entity = scene['entities'][renderer['entity']]
+            self.assertEqual(entity['parent'], 0)
+            self.assertEqual(entity['name'], build_pack.batch_name(scene['entities'][0]['name'], renderer['mesh']))
+            authored = [c for c in copies if c['mesh'] == renderer['mesh']]
+            self.assertEqual(len(batch['copies']), len(authored))
+            # Each authored copy comes back once, within a step of its chunk's reach, which
+            # its batch's extent bounds, turned as it was and with its own colours.
+            extent = max(max(c['position'][a] for c in authored) - min(c['position'][a] for c in authored)
+                         for a in range(3))
+            step = extent / copy_batches.STEPS
+            unmatched = list(batch['copies'])
+            for copy in authored:
+                found = next((d for d in unmatched if d[2] == copy['colour_set']
+                              and all(abs(a - b) <= step + 1e-5 * max(1.0, abs(a))
+                                      for a, b in zip(copy['position'], d[1]))), None)
+                self.assertIsNotNone(found, copy['name'])
+                unmatched.remove(found)
+                for row, expected in zip(found[0], copy['matrix']):
+                    for a, b in zip(row, expected):
+                        self.assertAlmostEqual(a, b, delta=1e-3)
 
     def test_pack_validates_copy_colour_sets_before_discarding_the_manifest(self):
         source, bundle = self.bundle_scene()

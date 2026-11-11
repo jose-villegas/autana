@@ -338,7 +338,8 @@ def validate_colour_sets(rows):
         if kind != scene_asset.TYPE:
             continue
         scene = scene_asset.decode(data)
-        for row in scene["renderers"] + scene["skinned_renderers"]:
+        copy_sets = {batch["renderer"]: {colour_set for *_, colour_set in batch["copies"]} for batch in scene["batches"]}
+        for index, row in enumerate(scene["renderers"] + scene["skinned_renderers"]):
             if row["mesh"] not in entries:
                 raise SettingsError(f"{name}: renderer mesh is missing")
             mesh_kind, mesh = entries[row["mesh"]]
@@ -362,18 +363,30 @@ def validate_colour_sets(rows):
             else:
                 if colors is None or colors[0] != lcol_asset.TYPE:
                     raise SettingsError(f"{name}: colour set requires an LCOL entry")
-                lcol_asset.validate_mesh(colors[1], mesh, row["colour_set"])
+                for colour_set in copy_sets.get(index, {row["colour_set"]}):
+                    lcol_asset.validate_mesh(colors[1], mesh, colour_set)
+
+
+IDENTITY = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+
+
+def batch_name(owner, mesh):
+    """The entity of `owner`'s copies of `mesh`: as its copies were named, less their number."""
+    return mesh_bundle.copy_name(owner, mesh, "copies")
 
 
 def expand_copies(scene, copies):
+    """`scene` with each renderer's bundle copies as batches: one child renderer a shape, at the owner's frame."""
     objects, renderers = list(scene.objects), list(scene.renderers)
     for item in scene.renderers:
+        shapes = {}
         for row in copies.get(item.asset_name, ()):
-            obj = SimpleNamespace(name=row["name"], matrix=row["matrix"], position=row["position"],
+            shapes.setdefault(row["mesh"], []).append(row)
+        for mesh, rows in shapes.items():
+            obj = SimpleNamespace(name=batch_name(item.object.name, mesh), matrix=IDENTITY, position=[0.0, 0.0, 0.0],
                                   parent=item.object.name, kind="mesh_renderer", animator=None)
             objects.append(obj)
-            renderers.append(SimpleNamespace(object=obj, asset_name=row["mesh"],
-                                             renderer=SimpleNamespace(colour_set=row["colour_set"])))
+            renderers.append(SimpleNamespace(object=obj, asset_name=mesh, renderer=SimpleNamespace(copies=rows)))
     return SimpleNamespace(**(vars(scene) | dict(objects=objects, renderers=renderers)))
 
 

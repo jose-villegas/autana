@@ -1,16 +1,18 @@
 """CPU levels stage: rebake a fit's rest mesh beside its start's copy entries."""
 from r3d import mesh_bundle, lod_asset
-from r3d.lit_mesh import bundle_entries, finest_triangles, read_bundle_mesh
+from r3d.lit_mesh import bundle_entries, finest_triangles, read_bundle_mesh, read_one_bundle_mesh
 from r3d.lod.bake_levels import bake_lit_mesh
 
 
 def levels(data, name, lod, meshlet_triangles, start=None, **options):
     """The bundle `data` with its rest `name` rebaked with levels. Every other entry and the copy rows come from
     `start`, the bytes the fit began from, when given: the fit only moves the rest, so a fit that kept a start's
-    copies, levelled or not, gives the same bundle."""
-    entries, copies = mesh_bundle.decode(data)
-    mesh = read_bundle_mesh(entries, name)
-    if start is not None:
+    copies, levelled or not, in this LLOD or an older one, gives the same bundle."""
+    if start is None:
+        entries, copies = mesh_bundle.decode(data)
+        mesh = read_bundle_mesh(entries, name)
+    else:
+        mesh = read_one_bundle_mesh(data, name)
         entries, copies = mesh_bundle.decode(start)
         entries = mesh_bundle.rename_rest(entries, copies, name)
     q, rgb, tris, double, face = finest_triangles(mesh)
