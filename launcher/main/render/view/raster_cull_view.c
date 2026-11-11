@@ -179,7 +179,7 @@ count_vertices(r3d_pipeline_counts_t* counts, const r3d_lod_morph_t* morph, cons
     const bool blended =
         r3d_lod_morph_weight(morph, mesh, cluster) != 0 || r3d_lod_dither_band(morph, mesh, cluster) != 0;
     counts->vertices_blended += blended ? vertices : 0;
-    const float stacked = r3d_lod_morph_stacked_px(morph, mesh, cluster);
+    const float stacked = r3d_pipeline_count_stacked_px(morph, mesh, cluster);
     if (stacked > 0.0F) {
         counts->vertices_stacked += vertices;
         counts->stacked_centipixels = mathi_max(counts->stacked_centipixels, (int)(stacked * RASTER_CULL_CENTI));

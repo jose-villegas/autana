@@ -476,7 +476,7 @@ transform_morphed(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const mat4
 
 /* Rows that bound nothing: a cluster whose dither band draws no level. */
 #define ROWS_NONE ((r3d_pipeline_rows_t){INT16_MAX, INT16_MAX, INT16_MIN, INT16_MIN, 0, false, 0})
-_Static_assert(R3D_LOD_MORPH_ONE <= UINT8_MAX, "a weight fits r3d_pipeline_rows_t.morph");
+_Static_assert(R3D_LOD_MORPH_ONE <= UINT8_MAX, "a weight fits r3d_pipeline_rows_t.blend");
 
 /* Cluster `c`, which takes part in the blend: morphed by its weight, or
  * transformed and marked with its dither band. A band that draws nothing
@@ -503,11 +503,11 @@ blend_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const mat4f_t*
     const uint8_t band = r3d_lod_dither_band(morph, mesh, c);
     if (band != 0 && r3d_lod_dither_empty(band)) {
         rows[c] = ROWS_NONE;
-        rows[c].morph = band;
+        rows[c].blend = band;
         return true;
     }
     rows[c] = transform_cluster(mesh, lens, screen, &mesh->clusters[c], cs, lo_bits, hi_bits, boxed);
-    rows[c].morph = band;
+    rows[c].blend = band;
     return true;
 }
 
@@ -949,7 +949,7 @@ draw_triangles(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit
     }
 }
 
-/* How a draw treats a cluster whose rows carry a nonzero `morph`: the plain
+/* How a draw treats a cluster whose rows carry a nonzero `blend`: the plain
  * draw never looks, the blended one reads it as a dither band or a weight. */
 typedef enum { BLEND_NONE, BLEND_MORPH, BLEND_DITHER } blend_t;
 
@@ -979,14 +979,14 @@ static inline __attribute__((always_inline)) void
 draw_blended(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int cluster, const r3d_pipeline_vertex_t* cs,
              const r3d_pipeline_rows_t* r, const r3d_span_target_t* target, draw_mode_t mode, r3d_pipeline_work_t* work,
              int first, int end, bool dither) {
-    /* A zero `morph` draws plain here too, so the blended copies hold no plain one. */
-    const bool banded = dither && r->morph != 0;
-    const uint16_t screen = banded ? band_mask(r->morph) : 0U;
+    /* A zero `blend` draws plain here too, so the blended copies hold no plain one. */
+    const bool banded = dither && r->blend != 0;
+    const uint16_t screen = banded ? band_mask(r->blend) : 0U;
     if (banded && screen == 0) {
         return;
     }
     work->clip.blend.cluster = cluster;
-    work->clip.blend.weight = dither ? 0 : r->morph;
+    work->clip.blend.weight = dither ? 0 : r->blend;
     work->clip.blend.screen = screen;
     draw_triangles(mesh, lens, &mesh->clusters[cluster], first, end, cs, target, mode, work, true);
 }

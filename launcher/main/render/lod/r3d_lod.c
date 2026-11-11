@@ -7,8 +7,10 @@
 #include "render/r3d_pipeline.h"
 
 #include <assert.h>
+
 #include <math.h>
 #include <string.h>
+#include "collections/bits.h"
 
 typedef r3d_lod_view_t lod_view_t;
 
@@ -169,16 +171,19 @@ close_coarse(const r3d_lit_mesh_t* mesh, uint32_t* coarse) {
 
 void
 r3d_lod_morph_init(r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
-                   const render_lod_settings_t* lod, float pixels_per_output_pixel, const uint32_t* arrived,
-                   int blend) {
-    const uint32_t* blending = arrived != NULL ? r3d_lod_blending(arrived, mesh->lod_group_count) : NULL;
-    /* Off, or no group blending: nothing weighs, and the transform and draw
-     * take their plain paths. */
-    if (blend != RENDER_LOD_BLEND_ON || (blending != NULL && !r3d_lod_any(blending, mesh->lod_group_count))) {
+                   const render_lod_settings_t* lod, const uint32_t* state, int blend) {
+    if (blend != RENDER_LOD_BLEND_ON) {
         *morph = (r3d_lod_morph_t){.enabled = false};
         return;
     }
-    const lod_limits_t limits = lod_limits(lod, lens, pixels_per_output_pixel);
+    assert(state != NULL);
+    const uint32_t* arrived = state + R3D_LOD_WORDS(mesh->lod_group_count);
+    const uint32_t* blending = r3d_lod_blending(arrived, mesh->lod_group_count);
+    if (!r3d_lod_any(blending, mesh->lod_group_count)) {
+        *morph = (r3d_lod_morph_t){.enabled = false};
+        return;
+    }
+    const lod_limits_t limits = lod_limits(lod, lens, 1.0F);
     *morph = (r3d_lod_morph_t){
         .view = lod_view(lens),
         .near_z = lens->project.near_z,
@@ -186,7 +191,7 @@ r3d_lod_morph_init(r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, const r3d
         .leave = limits.leave,
         .arrived = arrived,
         .blending = blending,
-        .ramp = lod->blend_px * pixels_per_output_pixel,
+        .ramp = lod->blend_px,
         .covered = limits.covered,
         .cover_ramp = limits.covered * R3D_LOD_MORPH_COVER_RAMP,
         .enabled = true,
@@ -215,12 +220,15 @@ group_morph_pixels(const r3d_lod_morph_t* morph, const r3d_lit_lod_group_t* g, f
     return group_pixels(&morph->view, g, nearest);
 }
 
-static int
-group_morph_weight(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, uint16_t group) {
+int
+r3d_lod_morph_group_weight(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, uint16_t group, float* pixels) {
     const r3d_lit_lod_group_t* g = &mesh->lod_groups[group];
     float radius_px = 0.0F;
     const float error_px = group_morph_pixels(morph, g, &radius_px);
-    const float whole = morph->arrived == NULL || r3d_lod_coarse(morph->arrived, group) ? morph->leave : morph->enter;
+    if (pixels != NULL) {
+        *pixels = error_px;
+    }
+    const float whole = r3d_lod_coarse(morph->arrived, group) ? morph->leave : morph->enter;
     const float weight =
         mathf_min(ramp_weight(error_px, whole, morph->ramp), ramp_weight(radius_px, morph->covered, morph->cover_ramp));
     return (int)((weight * (float)R3D_LOD_MORPH_ONE) + 0.5F);
@@ -229,10 +237,10 @@ group_morph_weight(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, uin
 /* Group `group`'s weight when it blends, else 0. */
 static int
 blending_weight(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, uint16_t group) {
-    if (group == R3D_LOD_NONE || (morph->blending != NULL && !r3d_lod_coarse(morph->blending, group))) {
+    if (group == R3D_LOD_NONE || !r3d_lod_coarse(morph->blending, group)) {
         return 0;
     }
-    return group_morph_weight(morph, mesh, group);
+    return r3d_lod_morph_group_weight(morph, mesh, group, NULL);
 }
 
 int
@@ -241,13 +249,6 @@ r3d_lod_morph_weight(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, i
         return 0;
     }
     return blending_weight(morph, mesh, mesh->cluster_lod[c].parent);
-}
-
-/* The levels a weight covers: those whose threshold, at the middle of its
- * step, is under it. */
-static int
-dither_level(int weight) {
-    return ((2 * weight * R3D_LOD_DITHER_LEVELS) + R3D_LOD_MORPH_ONE - 1) / (2 * R3D_LOD_MORPH_ONE);
 }
 
 int
@@ -270,44 +271,14 @@ r3d_lod_dither_band(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, in
     }
     const r3d_lit_cluster_lod_t lod = mesh->cluster_lod[c];
     /* A cluster simplified from a group still fine is drawn only while that group blends. */
-    const bool fading_in =
-        lod.own != R3D_LOD_NONE && morph->blending != NULL && r3d_lod_coarse(morph->blending, lod.own);
-    const int lo = dither_level(blending_weight(morph, mesh, lod.parent));
-    const int hi = fading_in ? dither_level(group_morph_weight(morph, mesh, lod.own)) : R3D_LOD_DITHER_LEVELS;
+    const bool fading_in = lod.own != R3D_LOD_NONE && r3d_lod_coarse(morph->blending, lod.own);
+    const int lo = bayer_level(blending_weight(morph, mesh, lod.parent), R3D_LOD_MORPH_ONE);
+    const int hi = fading_in ? bayer_level(r3d_lod_morph_group_weight(morph, mesh, lod.own, NULL), R3D_LOD_MORPH_ONE)
+                             : R3D_LOD_DITHER_LEVELS;
     if (lo >= hi) {
         return (uint8_t)((R3D_LOD_DITHER_LEVELS - 1) | ((R3D_LOD_DITHER_LEVELS - 1) << R3D_LOD_DITHER_SHIFT));
     }
     return (uint8_t)(lo | ((R3D_LOD_DITHER_LEVELS - hi) << R3D_LOD_DITHER_SHIFT));
-}
-
-float
-r3d_lod_morph_stacked_px(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, int c) {
-    if (r3d_lod_morph_weight(morph, mesh, c) == 0) {
-        return 0.0F;
-    }
-    const uint16_t parent = mesh->cluster_lod[c].parent;
-    float most = 0.0F;
-    for (int k = 0; k < mesh->cluster_count; k++) {
-        const r3d_lit_cluster_lod_t lod = mesh->cluster_lod[k];
-        if (lod.own != parent || lod.parent == R3D_LOD_NONE) {
-            continue;
-        }
-        const r3d_lit_lod_group_t* g = &mesh->lod_groups[lod.parent];
-        float radius_px = 0.0F;
-        const float error_px = group_morph_pixels(morph, g, &radius_px);
-        const float weight = (float)group_morph_weight(morph, mesh, lod.parent) / (float)R3D_LOD_MORPH_ONE;
-        most = mathf_max(most, weight * error_px);
-    }
-    return most;
-}
-
-/* Sets group `g`'s bit in `bits` to `on`; whether it changed. */
-static bool
-set_bit(uint32_t* bits, int g, bool on) {
-    const uint32_t bit = 1U << (g % R3D_LOD_WORD_BITS);
-    const uint32_t before = bits[g / R3D_LOD_WORD_BITS];
-    bits[g / R3D_LOD_WORD_BITS] = on ? before | bit : before & ~bit;
-    return bits[g / R3D_LOD_WORD_BITS] != before;
 }
 
 /* Whether fine `group`'s blend may weigh more than none by the next pick, its
@@ -400,14 +371,14 @@ blend_bits(uint32_t* arrived, uint32_t* blending, int g, bool was, const reach_t
     /* Past leave by a ramp it has arrived nowhere, even turning fine this
      * pick: setting the bit would only clear it on the next. */
     if (!within(at, error, limits->leave + lod->blend_px)) {
-        changed |= set_bit(arrived, g, false);
+        changed |= bits32_put(arrived, g, false);
     } else if (was) {
-        changed |= set_bit(arrived, g, true);
+        changed |= bits32_put(arrived, g, true);
     }
     const bool has_arrived = r3d_lod_coarse(arrived, (uint16_t)g);
     return changed
-           | set_bit(blending, g,
-                     blends(at, group, scale, limits->covered, lod, has_arrived ? limits->leave : limits->enter));
+           | bits32_put(blending, g,
+                        blends(at, group, scale, limits->covered, lod, has_arrived ? limits->leave : limits->enter));
 }
 
 /* A coarse group has not arrived, closed coarse or not; whether a bit cleared. */
@@ -444,7 +415,6 @@ pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settin
     const int sets = arrived != NULL ? R3D_LOD_STATE_SETS : 1;
     histogram_add_finest(histogram, mesh);
     if (histogram == NULL && all_fine(mesh, &v, lens, &limits, lod, arrived != NULL)) {
-        assert(arrived == NULL || arrived == coarse + words);
         return clear_state(coarse, sets * words);
     }
     /* Per group, in the form within() takes: its error and its radius, each
@@ -462,7 +432,7 @@ pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settin
         const float radius = (float)group->bounds.radius * scale;
         const bool was = r3d_lod_coarse(coarse, (uint16_t)g);
         const bool coarse_now = turns_coarse(&at, error, radius, was, &limits);
-        changed |= set_bit(coarse, g, coarse_now);
+        changed |= bits32_put(coarse, g, coarse_now);
         histogram_add(histogram, group, &at, error, radius, limits.covered, lod->tolerance_px);
         any |= coarse_now;
         if (arrived != NULL && !coarse_now) {
@@ -481,10 +451,10 @@ pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settin
 }
 
 bool
-r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod, uint32_t* coarse,
-             uint32_t* arrived, r3d_lod_histogram_t* histogram) {
-    return arrived == NULL ? pick(mesh, lens, lod, coarse, NULL, histogram)
-                           : pick(mesh, lens, lod, coarse, arrived, histogram);
+r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod, uint32_t* state,
+             bool blend, r3d_lod_histogram_t* histogram) {
+    return blend ? pick(mesh, lens, lod, state, r3d_lod_arrived(state, mesh->lod_group_count), histogram)
+                 : pick(mesh, lens, lod, state, NULL, histogram);
 }
 
 /* Inlined into one copy per caller, so a literal NULL `blending` tests no
@@ -517,6 +487,7 @@ void
 r3d_lod_steer_reset(r3d_lod_steer_t* steer, float floor_px) {
     memset(steer, 0, sizeof *steer);
     steer->tolerance_px = floor_px;
+    steer->picked_tolerance_px = floor_px;
     steer->bin = -1;
 }
 
