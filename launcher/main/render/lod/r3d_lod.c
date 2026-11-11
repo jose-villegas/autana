@@ -220,11 +220,14 @@ group_morph_pixels(const r3d_lod_morph_t* morph, const r3d_lit_lod_group_t* g, f
     return group_pixels(&morph->view, g, nearest);
 }
 
-static int
-group_morph_weight(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, uint16_t group) {
+int
+r3d_lod_morph_group_weight(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, uint16_t group, float* pixels) {
     const r3d_lit_lod_group_t* g = &mesh->lod_groups[group];
     float radius_px = 0.0F;
     const float error_px = group_morph_pixels(morph, g, &radius_px);
+    if (pixels != NULL) {
+        *pixels = error_px;
+    }
     const float whole = r3d_lod_coarse(morph->arrived, group) ? morph->leave : morph->enter;
     const float weight =
         mathf_min(ramp_weight(error_px, whole, morph->ramp), ramp_weight(radius_px, morph->covered, morph->cover_ramp));
@@ -237,7 +240,7 @@ blending_weight(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, uint16
     if (group == R3D_LOD_NONE || !r3d_lod_coarse(morph->blending, group)) {
         return 0;
     }
-    return group_morph_weight(morph, mesh, group);
+    return r3d_lod_morph_group_weight(morph, mesh, group, NULL);
 }
 
 int
@@ -277,32 +280,12 @@ r3d_lod_dither_band(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, in
     /* A cluster simplified from a group still fine is drawn only while that group blends. */
     const bool fading_in = lod.own != R3D_LOD_NONE && r3d_lod_coarse(morph->blending, lod.own);
     const int lo = dither_level(blending_weight(morph, mesh, lod.parent));
-    const int hi = fading_in ? dither_level(group_morph_weight(morph, mesh, lod.own)) : R3D_LOD_DITHER_LEVELS;
+    const int hi =
+        fading_in ? dither_level(r3d_lod_morph_group_weight(morph, mesh, lod.own, NULL)) : R3D_LOD_DITHER_LEVELS;
     if (lo >= hi) {
         return (uint8_t)((R3D_LOD_DITHER_LEVELS - 1) | ((R3D_LOD_DITHER_LEVELS - 1) << R3D_LOD_DITHER_SHIFT));
     }
     return (uint8_t)(lo | ((R3D_LOD_DITHER_LEVELS - hi) << R3D_LOD_DITHER_SHIFT));
-}
-
-float
-r3d_lod_morph_stacked_px(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, int c) {
-    if (r3d_lod_morph_weight(morph, mesh, c) == 0) {
-        return 0.0F;
-    }
-    const uint16_t parent = mesh->cluster_lod[c].parent;
-    float most = 0.0F;
-    for (int k = 0; k < mesh->cluster_count; k++) {
-        const r3d_lit_cluster_lod_t lod = mesh->cluster_lod[k];
-        if (lod.own != parent || lod.parent == R3D_LOD_NONE) {
-            continue;
-        }
-        const r3d_lit_lod_group_t* g = &mesh->lod_groups[lod.parent];
-        float radius_px = 0.0F;
-        const float error_px = group_morph_pixels(morph, g, &radius_px);
-        const float weight = (float)group_morph_weight(morph, mesh, lod.parent) / (float)R3D_LOD_MORPH_ONE;
-        most = mathf_max(most, weight * error_px);
-    }
-    return most;
 }
 
 /* Whether fine `group`'s blend may weigh more than none by the next pick, its

@@ -218,6 +218,10 @@ int r3d_lod_morph_partition(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* 
 void r3d_lod_morph_init(r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
                         const render_lod_settings_t* lod, const uint32_t* state, int blend);
 
+/* Enabled morph's weight for `group`, whether its blending bit is set or
+ * not; `pixels`, when present, receives its projected error. */
+int r3d_lod_morph_group_weight(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, uint16_t group, float* pixels);
+
 /* Cluster `c`'s weight toward its parent group's coarse surface, 0 to
  * R3D_LOD_MORPH_ONE; 0 without a parent, without a blend, or dithered. */
 int r3d_lod_morph_weight(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, int c);
@@ -226,13 +230,6 @@ int r3d_lod_morph_weight(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mes
  * level when that blends, as it fades out, up to its own group's when that
  * blends, as it fades in. An empty band, lo above hi, is never drawn. */
 uint8_t r3d_lod_dither_band(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, int c);
-
-/* A bound, in the blend's pixels, on how far cluster `c`'s targets sit from
- * the coarse surface as it draws: its targets lie on its parent's coarse
- * clusters unblended, while those clusters may be blending toward their own
- * parent. 0 when `c` is not blending or its target level is not. For
- * measurement: it walks every cluster. */
-float r3d_lod_morph_stacked_px(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, int c);
 
 /* The histogram's bins: half octaves of projected error from
  * 2^R3D_LOD_BIN_LEAST_LOG2 to 2^R3D_LOD_BIN_MOST_LOG2 pixels. */

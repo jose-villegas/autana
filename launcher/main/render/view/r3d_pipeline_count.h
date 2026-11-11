@@ -24,7 +24,7 @@ typedef struct {
     int vertices_transformed;  /* every vertex of the kept clusters */
     int vertices_blended;      /* those morphing or dithered between two levels (render/lod/r3d_lod.h) */
     int vertices_stacked;      /* those whose targets' level is itself blending */
-    int stacked_centipixels;   /* the most r3d_lod_morph_stacked_px() of any, hundredths of a pixel */
+    int stacked_centipixels;   /* the most r3d_pipeline_count_stacked_px() of any, hundredths of a pixel */
 } r3d_pipeline_counts_t;
 
 /* The pending nodes of a counted walk and the frustum it tests them against. */
@@ -52,3 +52,10 @@ int r3d_pipeline_count_coarse(const r3d_lit_mesh_t* mesh, const uint16_t* cluste
 void r3d_pipeline_count_triangles(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters,
                                   int count, const r3d_pipeline_vertex_t* cs, r3d_pipeline_counts_t* counts,
                                   uint16_t* set_up);
+
+/* A bound, in the blend's pixels, on how far cluster `c`'s targets sit from
+ * the coarse surface as it draws: its targets lie on its parent's coarse
+ * clusters unblended, while those clusters may be blending toward their own
+ * parent. 0 when `c` is not blending or its target level is not. For
+ * measurement: it walks every cluster. */
+float r3d_pipeline_count_stacked_px(const struct r3d_lod_morph* morph, const r3d_lit_mesh_t* mesh, int c);
