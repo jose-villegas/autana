@@ -33,10 +33,10 @@ SUPPORT_TOLERANCE = 1e-7
 def load(paths, quarter, rows=(), names=TERMS, *, stress_only=False):
     found = []
     for path in paths:
-        poses = {pose_key(p): p
-                 for p in replays(path.read_text(encoding="utf-8", errors="replace"))
-                 if (quarter == "all" or p["quarter"] == quarter) and (not rows or p["row"] in rows)}
-        for pose in poses.values():
+        kept = [p for p in replays(path.read_text(encoding="utf-8", errors="replace"))
+                if (quarter == "all" or p["quarter"] == quarter) and (not rows or p["row"] in rows)]
+        # Every line is checked, a rerun pose's too, before a rerun counts once.
+        for pose in kept:
             if stress_only and not pose["row"].startswith("stress-"):
                 raise ValueError(f"{path}: non-stress training row: {pose['row']}")
             missing = set(names) - pose["counts"].keys()
@@ -45,7 +45,7 @@ def load(paths, quarter, rows=(), names=TERMS, *, stress_only=False):
             absent = set(STAGES) - pose["stages"].keys()
             if absent:
                 raise ValueError(f"{path}: {pose['row']}: missing stages: {', '.join(sorted(absent))}")
-        found.extend(poses.values())
+        found.extend({pose_key(p): p for p in kept}.values())
     missing_rows = set(rows) - {p["row"] for p in found}
     if missing_rows:
         raise ValueError(f"missing scene rows: {', '.join(sorted(missing_rows))}")

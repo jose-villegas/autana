@@ -163,6 +163,17 @@ class StressPredictTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "non-stress training"):
                     predict.main(["--a", str(path), "--scenes", str(path)])
 
+    def test_loader_checks_a_rerun_pose_s_every_line(self):
+        from build.c_header import read_define
+        line = read_define(predict.ROOT / "launcher/test/frame_profile.h", "FRAME_PROFILE_REPLAY")
+        whole = " ".join(f"{stage} 1.00/1.00" for stage in predict.STAGES)
+        with tempfile.TemporaryDirectory() as folder:
+            path = pathlib.Path(folder) / "capture.log"
+            path.write_text("\n".join(line % ("water", 0, "x=1", stages + " | total 1.00") + " quarter=portrait"
+                                      for stages in ("r3d.cull 1.00/1.00", whole)))
+            with self.assertRaisesRegex(ValueError, "missing stages"):
+                predict.load([path], "portrait", names=("x",))
+
     def test_loader_rejects_missing_counts(self):
         with tempfile.TemporaryDirectory() as folder:
             path = pathlib.Path(folder) / "capture.log"
