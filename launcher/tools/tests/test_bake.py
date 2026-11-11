@@ -804,27 +804,34 @@ class FittedBakeTests(FittedBakeCase):
         self.assertIn(self.fit(MADE_SHA256).output, done.err)
 
     def test_a_start_made_by_the_mesh_pass_keys_its_fit_in_the_fit_pass(self):
-        done = self.command(["bake"], {})
-        self.assertEqual(done.code, 0, done.err)
-        self.assertEqual([item.key for item in done.produced],
-                         [self.start.key, self.reference.key, self.fit(MADE_SHA256).key, self.level(MADE_SHA256).key])
+        done = self.bake_keys_fit_on(["bake"], {}, MADE_SHA256)
         fitted = next(item for item in done.produced if item.kind == "fit")
         self.assertEqual(fitted.stages["reference_sha256"], REFERENCE_SHA256)
 
     def test_the_locks_start_bytes_win_over_bytes_made_again_here_in_the_key_of_its_fit(self):
-        """--again makes a locked start once more, with other bytes; its fit is still keyed on the lock's."""
-        done = self.command(["bake", "--again"], self.locked(LOCKED_SHA256, run=RUN))
-        self.assertEqual(done.code, 1)
+        """--again makes a locked start once more, with other bytes; its fit is still keyed on the lock's, and the
+        run fails naming the start."""
+        done = self.bake_keys_fit_on(["bake", "--again"], self.locked(LOCKED_SHA256, run=RUN), LOCKED_SHA256, code=1)
         self.assertIn(self.start.output, done.err)
         self.assertIn("made again with other bytes", done.err)
         self.assertIn(f"sha256 {MADE_SHA256}", done.out)
-        self.assertEqual([item.key for item in done.produced],
-                         [self.start.key, self.reference.key, self.fit(LOCKED_SHA256).key, self.level(LOCKED_SHA256).key])
 
     def test_making_again_with_the_locked_bytes_succeeds(self):
         done = self.command(["bake", "--again"], self.locked(MADE_SHA256, run=RUN))
         self.assertEqual(done.code, 0, done.err)
         self.assertIn("the same bytes as the lock", done.out)
+
+    def test_a_seeded_start_made_again_here_keys_its_fit_on_the_bytes_made(self):
+        """A seeded row's bytes were carried over, not made by its key's code: the start made here replaces them."""
+        self.bake_keys_fit_on(["bake", "--again"], self.locked(SEEDED_SHA256, seeded=True), MADE_SHA256)
+
+    def bake_keys_fit_on(self, args, locked, sha256, code=0):
+        """ARGS over LOCKED make the start and reference set, then a fit and level keyed on start bytes SHA256."""
+        done = self.command(args, locked)
+        self.assertEqual(done.code, code, done.err)
+        self.assertEqual([item.key for item in done.produced],
+                         [self.start.key, self.reference.key, self.fit(sha256).key, self.level(sha256).key])
+        return done
 
     def test_a_bake_prunes_first_and_only_a_run_made_again_renders_fresh_references(self):
         with mock.patch.object(produce, "prune_references") as prune:

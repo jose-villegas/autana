@@ -1360,12 +1360,13 @@ def main(argv=None):
                 if args.kind not in (None, kind):
                     continue
                 if kind in ("fit", "levels") and made_starts:
-                    # A fit's key names its start's bytes: the lock's, else those this run just made.
-                    found = bakes(paths, {**made_starts, **starts}, poses)
+                    # A fit's key names its start's bytes: the lock's, else those this run just made, which
+                    # also replace a seeded row's carried-over bytes (locked_starts).
+                    found = bakes(paths, locked_starts(lock, made_starts), poses)
                 selected = [bake for bake in found if to_make(bake, kind)]
                 if kind == "mesh":
                     made_rows = _mesh_rows(selected, cache, lock, args.blender, args.again, keep)
-                    made_starts.update({bake.key: row["sha256"] for bake, row in zip(selected, made_rows) if not bake.packed})
+                    made_starts.update({bake.key: row for bake, row in zip(selected, made_rows) if not bake.packed})
                     rows.extend(made_rows)
                 else:
                     for bake in selected:
@@ -1380,14 +1381,14 @@ def main(argv=None):
                             fresh_references and fresh_references.name))
                         rows.append(row)
                         if not bake.packed:
-                            made_starts[bake.key] = row["sha256"]
+                            made_starts[bake.key] = row
             differ = []
             for row in rows:
                 locked = lock.get(row["key"])
                 versus = "" if locked is None else (
                     "; the same bytes as the lock" if locked["sha256"] == row["sha256"]
                     else f"; differs from the lock's {locked['sha256']}, which keeps its row")
-                if locked is not None and locked["sha256"] != row["sha256"]:
+                if locked is not None and not locked.get("seeded") and locked["sha256"] != row["sha256"]:
                     differ.append(f"  {row['output']}  key {row['key']}: made {row['sha256']}, locked {locked['sha256']}")
                 print(f"made {row['output']}  key {row['key']}  sha256 {row['sha256']}{versus}")
             if args.again and differ:

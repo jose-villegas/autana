@@ -9,7 +9,7 @@ from build.c_header import read_define
 class LodAssetTests(unittest.TestCase):
     def test_round_trip_and_c_owner(self):
         pairs = [(mesh_asset.LOD_NONE, 0), (0, mesh_asset.LOD_NONE)]
-        groups = [(0, 0, 0, 4, 2)]
+        groups = [(0, 0, 0, 4, 2, 0)]
         blob = lod_asset.encode(pairs, groups)
         self.assertEqual(lod_asset.decode(blob), (pairs, groups))
         self.assertEqual(lod_asset.HEADER.size, read_define(lod_asset.OWNER, "LLOD_HEADER_SIZE"))
@@ -25,7 +25,7 @@ class LodAssetTests(unittest.TestCase):
                 mesh_asset.checked_struct(owner, "LLOD", lod_asset.HEADER_FIELDS)
 
     def test_header_and_mesh_refusals(self):
-        blob = lod_asset.encode([(mesh_asset.LOD_NONE, 0)], [(0, 0, 0, 4, 2)])
+        blob = lod_asset.encode([(mesh_asset.LOD_NONE, 0)], [(0, 0, 0, 4, 2, 0)])
         mesh = mesh_asset.BLOB_HEADER.pack(0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0)
         lod_asset.validate_mesh(blob, mesh)
         wrong = mesh_asset.BLOB_HEADER.pack(0, 0, 2, 0, 1, 0, 0, 0, 0, 0, 0)
@@ -117,6 +117,16 @@ class LodAssetTests(unittest.TestCase):
             self.assertEqual(levels(seeded, job.asset_name, True, job.settings.meshlet_triangles,
                                     start=start.read_bytes()), kept)
             self.assertEqual(kept, levels(target.read_bytes(), job.asset_name, True, job.settings.meshlet_triangles))
+            # A fit whose kept copy holds an LLOD this tool no longer reads levels the same: only its rest is read.
+            from asset.asset_pack import build_pack, parse_pack
+            packed = parse_pack(target.read_bytes())
+            older = lod_asset.HEADER.pack(lod_asset.VERSION - 1, 1, 0)
+            packed[lod_asset.name_for_mesh(copies[0]["mesh"])] = (lod_asset.TYPE, older)
+            older_fit = build_pack(sorted((name, kind, blob) for name, (kind, blob) in packed.items()))
+            with self.assertRaisesRegex(ValueError, "LLOD version"):
+                mesh_bundle.decode(older_fit)
+            self.assertEqual(levels(older_fit, job.asset_name, True, job.settings.meshlet_triangles,
+                                    start=start.read_bytes()), kept)
 
     def test_bundle_entry_id_is_part_of_the_mesh_key(self):
         import copy
