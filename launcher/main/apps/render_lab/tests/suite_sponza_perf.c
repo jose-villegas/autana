@@ -332,7 +332,7 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
     b->report = memory_alloc(FRAME_COST_REPORT_MAX, MEMORY_INTERNAL);
     char* report = b->report;
     TEST_ASSERT_NOT_NULL(report);
-    (void)frame_cost_take_report(1, report, FRAME_COST_REPORT_MAX);
+    frame_cost_take_clear();
     const int capacity = (int)((period + SPONZA_PERF_POSE_EVERY_MS - 1) / SPONZA_PERF_POSE_EVERY_MS);
     TEST_ASSERT_GREATER_THAN_INT(0, capacity);
     b->frame_us = memory_alloc((size_t)capacity * sizeof *b->frame_us, MEMORY_APP);

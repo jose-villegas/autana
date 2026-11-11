@@ -93,7 +93,7 @@ render_lab_test_replay_pose(const char* tag, entity_t entity, uint32_t duration_
     out->frame = raster_cull_frame(cull);
     render_lab_test_show_view(RENDER_DEBUG_VIEW_SHADED);
     (void)lab_test_frame_dt(0, false, NULL);
-    (void)frame_cost_take_report(1, out->report, sizeof out->report);
+    frame_cost_take_clear(); /* forget whatever ran before */
     for (int i = 0; i < FRAME_PROFILE_REPLAY_DRAWS; i++) {
         (void)lab_test_frame_dt(0, false, NULL);
     }
