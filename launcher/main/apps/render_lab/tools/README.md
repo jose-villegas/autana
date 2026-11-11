@@ -151,36 +151,60 @@ options, each by where it stops paying.
 | `stress-per-frame` | ![Stress per frame: one plane with a wave running over it](../../../../../docs/images/overview/render-lab-stress-per-frame.png) | one plane made again every frame, a wave running over it | the mesh build, every frame |
 | `stress-two-sided` | ![Stress two-sided: a wall of cubes drawn from both sides](../../../../../docs/images/overview/render-lab-stress-two-sided.png) | a wall of closed cubes drawn from both sides | backface cull: half of each cube faces away and none of it is skipped |
 | `stress-noisy-tiny` | ![Stress noisy tiny: cylinders end on, their fans of slivers](../../../../../docs/images/overview/render-lab-stress-noisy-tiny.png) | many small cylinders end on, each end a fan of slivers whose corners are far apart in colour | the small-fill gate: every sliver is tested and none passes |
+| `stress-mix` | ![Stress mix: planes with several tessellations and colour modes](../../../../../docs/images/overview/render-lab-stress-mix.png) | copies cycling through tessellations; a named share of triangles has equal corner colours | a single triangle size or colour mode standing for a scene's draw cost |
 
 | Part | Owner |
 |---|---|
 | Presets: each ID, key and surface | `stress/stress_preset.h` `STRESS_PRESETS` |
 | Each preset's shape, copies and layout | `stress/stress_preset.c` `stress_presets` |
 | Each copy's shape | `math/geometry/primitive_mesh.h` |
-| One mesh every copy draws | `render/dynamic/r3d_dynamic_mesh.h` |
+| Shared dynamic meshes for the copies | `render/dynamic/r3d_dynamic_mesh.h` |
 | The camera's swing, a still camera at its start, and a pool of copies | `launcher/demo/stress/` |
 | Each preset's sizes, by the renderer's own limits | [`tests/suite_stress_preset.c`](../tests/suite_stress_preset.c) |
 | Each preset's corner in a render, by the cull counts | [`tools/tests/test_stress_corners.py`](tests/test_stress_corners.py) |
+| Scene mean triangle bins | [`tools/scene_triangle_bins.py`](scene_triangle_bins.py), [`scene-triangle-bins.json`](../../../../../docs/render/data/scene-triangle-bins.json) |
 | Each preset's stage times on the board | [`tests/suite_stress_perf.c`](../tests/suite_stress_perf.c) |
-| A preset A/B's change, scaled to each scene's stage times | [`tools/stress_predict.py`](stress_predict.py) |
+| A preset A/B's stage scaling and fitted draw costs | [`tools/stress_predict.py`](stress_predict.py) |
 
-The `run_stress_perf_suite` suite replays poses along each preset's swing, one
-quarter, the way the frame profile replays its own. Every line has the cull
-counts and the r3d stage times. `stress_predict.py` reads two builds'
-captures and predicts each scene's frame change: per stage, the presets' B/A
-ratio less one, times the scene's own stage time. That predicts a cull change
-well; a transform or draw change is only screened, since a preset is one
-kind of triangle and a scene is a mix.
+The `run_stress_perf_suite` suite replays poses along each preset's swing,
+one quarter. Every line carries cull counts and r3d stage times.
+`STRESS_PERF_POSES` in the suite owns its sampling density.
+
+`stress_predict.py` scales each scene's stage times by each preset's B/A
+change and by the pooled change. With `--bins`, its extra column uses pooled
+cull, transform and upscale scaling plus a fitted draw change.
+
+The draw fit solves Δdraw = Σ mean set-up triangles × δ over all presets,
+using A's replay counts. It prints each fitted δ in ms per triangle, drops
+empty bins and merges dependent bins under a shared cost, reporting both.
+
+The fit screens a change; the scene's own capture confirms it. Without
+`--bins`, the predictor uses stage scaling for draw too.
 
 ```sh
-autana suite run_stress_perf_suite --flash --perf-scope --out a.log
 python launcher/main/apps/render_lab/tools/stress_predict.py --a a.log --b b.log \
-    --scenes docs/render/data/frame-profile-1-board.log
+    --scenes docs/render/data/frame-profile-1-board.log \
+    --bins docs/render/data/scene-triangle-bins.json
+python launcher/main/apps/render_lab/tools/scene_triangle_bins.py
 ```
 
-`render_lab_render --view cull --counts FILE` writes the cull view's counts
-(`raster_cull_frame_t`), one CSV row a frame; `--camera still` holds the
-camera, so a frame differs from the last only where the mesh moved.
+The generator builds the host renderer and averages its counted bins over
+sampled path frames in portrait (`--quarter 0`). Its default scene list is
+data in the script; `--scene KEY FRAMES` selects other scenes and durations.
+
+`--console KEY "FRAME:WORDS"` supplies scene commands; the default water
+entry starts its tour. `--renderer PATH` reuses a built renderer and
+`--out PATH` selects the JSON destination. The file records frame counts,
+frame steps and commands, with no machine information.
+
+`render_lab_render --view cull --counts FILE` writes every
+`RASTER_CULL_FRAME_FIELDS` count per frame. The `sized_*` fields use
+`R3D_SIZES_FIELDS`: face, uniform and shaded modes, each split by covered
+pixel centres. Their sum is `triangles_set_up`; clipped triangles stay separate.
+
+`--camera still` holds the camera, so a frame differs from the last only
+where the mesh moved. Mixed copies share meshes by tessellation;
+`STRESS_MIX_UNIFORM_PERIOD` owns their equal-colour share.
 
 ### Small fill
 

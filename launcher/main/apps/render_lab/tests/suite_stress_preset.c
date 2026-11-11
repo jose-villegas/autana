@@ -7,7 +7,6 @@
 
 #include <float.h>
 #include <math.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include "testkit/cleanup.h"
@@ -16,6 +15,7 @@
 
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/stress/stress_preset.h"
+#include "core/memory.h"
 #include "gfx/gfx.h"
 #include "image/pixel/rgb565.h"
 #include "math/scalar/math_const.h"
@@ -47,11 +47,11 @@ static fixture_t f;
 static void
 fixture_end(void) {
     for (int i = 0; i < 2; i++) {
-        free(f.at[i].positions);
-        free(f.at[i].colors);
-        free(f.at[i].triangles);
+        memory_free(f.at[i].positions);
+        memory_free(f.at[i].colors);
+        memory_free(f.at[i].triangles);
     }
-    free(f.mesh_block);
+    memory_free(f.mesh_block);
     memset(&f, 0, sizeof f);
 }
 
@@ -61,8 +61,9 @@ fixture_begin(const stress_params_t* p) {
     const size_t vertices = (size_t)stress_vertex_count(p);
     const size_t triangles = (size_t)stress_triangle_count(p);
     for (int i = 0; i < 2; i++) {
-        f.at[i] = (stress_buffers_t){malloc(sizeof(vec3f_t) * vertices), malloc(sizeof(uint8_t[3]) * vertices),
-                                     malloc(sizeof(uint16_t[3]) * triangles)};
+        f.at[i] = (stress_buffers_t){memory_alloc(sizeof(vec3f_t) * vertices, MEMORY_PSRAM),
+                                     memory_alloc(sizeof(uint8_t[3]) * vertices, MEMORY_PSRAM),
+                                     memory_alloc(sizeof(uint16_t[3]) * triangles, MEMORY_PSRAM)};
         TEST_ASSERT_NOT_NULL(f.at[i].positions);
         TEST_ASSERT_NOT_NULL(f.at[i].colors);
         TEST_ASSERT_NOT_NULL(f.at[i].triangles);
@@ -115,23 +116,26 @@ test_every_preset_mesh_is_whole_and_repeats(void) {
 
 /* One dynamic mesh holds a copy, in as many clusters as its triangles fill. */
 static void
+assert_mesh_fits(const stress_params_t* p) {
+    fixture_begin(p);
+    r3d_dynamic_source_t source;
+    TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &source));
+    const r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(source.vertex_count, source.triangle_count);
+    const size_t bytes = r3d_dynamic_mesh_bytes(capacity);
+    f.mesh_block = memory_alloc(bytes, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(f.mesh_block);
+    r3d_dynamic_mesh_t mesh;
+    TEST_ASSERT_TRUE(r3d_dynamic_mesh_init(&mesh, f.mesh_block, bytes, capacity, STRESS_TICKS_PER_UNIT));
+    TEST_ASSERT_TRUE(r3d_dynamic_mesh_build(&mesh, &source));
+    const int clusters = (source.triangle_count + R3D_DYNAMIC_CLUSTER_TRIANGLES - 1) / R3D_DYNAMIC_CLUSTER_TRIANGLES;
+    TEST_ASSERT_EQUAL_INT(clusters, mesh.built_clusters);
+    release();
+}
+
+static void
 test_every_preset_mesh_fits_a_dynamic_mesh(void) {
     for (int i = 0; i < STRESS_PRESET_COUNT; i++) {
-        const stress_params_t* p = &stress_presets[i];
-        fixture_begin(p);
-        r3d_dynamic_source_t source;
-        TEST_ASSERT_TRUE(stress_source(p, 0, &f.at[0], &source));
-        const r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(source.vertex_count, source.triangle_count);
-        const size_t bytes = r3d_dynamic_mesh_bytes(capacity);
-        f.mesh_block = malloc(bytes);
-        TEST_ASSERT_NOT_NULL(f.mesh_block);
-        r3d_dynamic_mesh_t mesh;
-        TEST_ASSERT_TRUE(r3d_dynamic_mesh_init(&mesh, f.mesh_block, bytes, capacity, STRESS_TICKS_PER_UNIT));
-        TEST_ASSERT_TRUE(r3d_dynamic_mesh_build(&mesh, &source));
-        const int clusters =
-            (source.triangle_count + R3D_DYNAMIC_CLUSTER_TRIANGLES - 1) / R3D_DYNAMIC_CLUSTER_TRIANGLES;
-        TEST_ASSERT_EQUAL_INT(clusters, mesh.built_clusters);
-        release();
+        assert_mesh_fits(&stress_presets[i]);
     }
 }
 
@@ -142,7 +146,7 @@ test_a_per_frame_mesh_fits_all_through_its_wave(void) {
     fixture_begin(p);
     const r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(stress_vertex_count(p), stress_triangle_count(p));
     const size_t bytes = r3d_dynamic_mesh_bytes(capacity);
-    f.mesh_block = malloc(bytes);
+    f.mesh_block = memory_alloc(bytes, MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(f.mesh_block);
     r3d_dynamic_mesh_t mesh;
     TEST_ASSERT_TRUE(r3d_dynamic_mesh_init(&mesh, f.mesh_block, bytes, capacity, STRESS_TICKS_PER_UNIT));
@@ -328,8 +332,28 @@ test_noisy_tiny_slivers_are_gated_and_fail_the_gate(void) {
     release();
 }
 
+static void
+test_mixed_copies_fit_and_split_colour_modes(void) {
+    for (int copy = 0; copy < STRESS_MIX_LEVELS; copy++) {
+        const stress_params_t p = stress_copy_params(&stress_presets[STRESS_MIX], copy);
+        fixture_begin(&p);
+        r3d_dynamic_source_t source;
+        TEST_ASSERT_TRUE(stress_source(&p, 0, &f.at[0], &source));
+        int uniform = 0;
+        for (int t = 0; t < source.triangle_count; t++) {
+            const uint16_t* tri = source.triangles[t];
+            uniform += memcmp(source.colors[tri[0]], source.colors[tri[1]], sizeof source.colors[0]) == 0
+                       && memcmp(source.colors[tri[0]], source.colors[tri[2]], sizeof source.colors[0]) == 0;
+        }
+        TEST_ASSERT_EQUAL_INT(source.triangle_count / STRESS_MIX_UNIFORM_PERIOD, uniform);
+        release();
+        assert_mesh_fits(&p);
+    }
+}
+
 void
 run_stress_preset_suite(void) {
+    RUN_TEST(test_mixed_copies_fit_and_split_colour_modes);
     RUN_TEST(test_every_preset_has_its_row);
     RUN_TEST(test_every_preset_mesh_is_whole_and_repeats);
     RUN_TEST(test_every_preset_mesh_fits_a_dynamic_mesh);

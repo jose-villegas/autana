@@ -64,6 +64,8 @@ typedef struct {
     int clusters[RASTER_FATE_COUNT];
 } raster_cull_frame_t;
 
+#define RASTER_CULL_SIZE_FIELD(X, name, mode, bin) X(sized_##name, counts.triangles_sized[mode][bin])
+
 /* Each count by its name, X(name, member of raster_cull_frame_t): the one
  * order and spelling every listing of the counts uses. */
 #define RASTER_CULL_FRAME_FIELDS(X)                                                                                    \
@@ -81,7 +83,8 @@ typedef struct {
     X(triangles_missed, counts.triangles_missed)                                                                       \
     X(triangles_facing_away, counts.triangles_facing_away)                                                             \
     X(triangles_set_up, counts.triangles_set_up)                                                                       \
-    X(triangles_covering, triangles_covering)
+    X(triangles_covering, triangles_covering)                                                                          \
+    R3D_SIZES_FIELDS(RASTER_CULL_SIZE_FIELD, X, )
 
 typedef struct {
     raster_cull_from_t from;

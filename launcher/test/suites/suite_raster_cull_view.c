@@ -254,6 +254,34 @@ test_triangles_are_sorted_into_exactly_one_fate_each(void) {
 }
 
 static void
+test_size_modes_follow_face_and_corner_colours_in_both_windings(void) {
+    const uint16_t kept[] = {0};
+    const r3d_lens_t lens = lens_for(&looking_at_origin);
+    uint8_t colors[SORT_VERTICES][3] = {0};
+    r3d_lit_cluster_t cluster = sort_clusters[0];
+    cluster.triangle_count = 1;
+    cluster.double_sided = true;
+    r3d_lit_mesh_t mesh = sort_mesh();
+    mesh.clusters = &cluster;
+    mesh.colors = (const uint8_t (*)[3])colors;
+    r3d_pipeline_vertex_t cs[SORT_VERTICES];
+    r3d_pipeline_transform(&mesh, &lens, kept, 1, cs, NULL, false);
+    for (int winding = 0; winding < 2; winding++) {
+        for (int mode = 0; mode < R3D_SIZES_MODES; mode++) {
+            colors[1][0] = mode == R3D_SIZES_UNIFORM ? 0 : UINT8_MAX;
+            mesh.face_colors = mode == R3D_SIZES_FACE ? sort_colors : NULL;
+            r3d_pipeline_counts_t counts = {0};
+            r3d_pipeline_count_triangles(&mesh, &lens, kept, 1, cs, &counts, NULL);
+            TEST_ASSERT_EQUAL_INT(1, counts.triangles_set_up);
+            TEST_ASSERT_EQUAL_INT(1, counts.triangles_sized[mode][R3D_SIZES_MORE]);
+        }
+        const r3d_pipeline_vertex_t swap = cs[0];
+        cs[0] = cs[2];
+        cs[2] = swap;
+    }
+}
+
+static void
 test_set_up_per_cluster_counts_set_up_and_clipped_triangles(void) {
     enum { UNLISTED = 3, SENTINEL = 0xABCD };
 
@@ -585,6 +613,13 @@ test_cull_view_frame_counts_the_walk_and_the_sort_of_every_instance(void) {
     scene_t* s = scene_open();
     scene_draw(s);
     const r3d_pipeline_counts_t c = raster_cull_frame(scene_state(s)).counts;
+    int sized = 0;
+    for (int mode = 0; mode < R3D_SIZES_MODES; mode++) {
+        for (int bin = 0; bin < R3D_SIZES_BINS; bin++) {
+            sized += c.triangles_sized[mode][bin];
+        }
+    }
+    TEST_ASSERT_EQUAL_INT(c.triangles_set_up, sized);
     const int survivors = SCENE_QUADS - 1;
     TEST_ASSERT_EQUAL_INT(survivors, c.clusters_kept);
     TEST_ASSERT_EQUAL_INT(survivors, c.clusters_tested);
@@ -1131,6 +1166,7 @@ run_raster_cull_view_suite(void) {
     RUN_TEST(test_counted_cull_returns_the_list_cull_returns);
     RUN_TEST(test_counted_cull_counts_agree_with_the_list);
     RUN_TEST(test_counted_cull_cuts_a_mesh_wholly_outside_the_frustum);
+    RUN_TEST(test_size_modes_follow_face_and_corner_colours_in_both_windings);
     RUN_TEST(test_triangles_are_sorted_into_exactly_one_fate_each);
     RUN_TEST(test_set_up_per_cluster_counts_set_up_and_clipped_triangles);
     RUN_TEST(test_triangle_sort_adds_to_the_counts_it_is_given);

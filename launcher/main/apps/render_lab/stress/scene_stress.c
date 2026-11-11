@@ -1,8 +1,7 @@
 /*
- * scene_stress: loads the stress pack, makes the preset's mesh into one
- * dynamic mesh every copy draws, places the copies the preset asks for
- * before the camera's swing and hides the rest of the pool; see
- * scene_stress.h. A per-frame preset makes its mesh again each update.
+ * scene_stress: shared dynamic meshes for the preset's copy pool, placed
+ * before the camera's swing. Mixed copies cycle through tessellations;
+ * a per-frame surface rebuilds its mesh each update.
  */
 
 #include "apps/render_lab/stress/scene_stress.h"
@@ -44,8 +43,8 @@ static entity_t camera; /* the swing the copies are placed for */
 static entity_t viewer; /* the camera shown: the one the start named, else the swing */
 static entity_t* slots; /* the pool's copies, in name order */
 static int pool;
-static stress_buffers_t buffers;
-static r3d_dynamic_mesh_t mesh;
+static stress_buffers_t buffers[STRESS_MIX_LEVELS];
+static r3d_dynamic_mesh_t mesh[STRESS_MIX_LEVELS];
 static uint32_t wave_ms;
 
 /* What the panel says in place of the triangle count when the scene could not load. */
@@ -80,29 +79,42 @@ find_pool(void) {
     return true;
 }
 
-static bool
-take_mesh(void) {
-    const int vertices = stress_vertex_count(shown);
-    const int triangles = stress_triangle_count(shown);
-    buffers = (stress_buffers_t){render_lab_scene_take(sizeof(vec3f_t) * (size_t)vertices),
-                                 render_lab_scene_take(sizeof(uint8_t[3]) * (size_t)vertices),
-                                 render_lab_scene_take(sizeof(uint16_t[3]) * (size_t)triangles)};
-    const r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(vertices, triangles);
-    const size_t bytes = r3d_dynamic_mesh_bytes(capacity);
-    void* block = render_lab_scene_take(bytes);
-    return buffers.positions != NULL && buffers.colors != NULL && buffers.triangles != NULL && block != NULL
-           && r3d_dynamic_mesh_init(&mesh, block, bytes, capacity, STRESS_TICKS_PER_UNIT);
+static int
+mesh_count(void) {
+    return shown->surface == STRESS_SURFACE_MIXED ? STRESS_MIX_LEVELS : 1;
 }
 
-/* Makes the mesh at `wave_ms` and hands it to every copy shown, which takes its bounds from it. */
+static bool
+take_mesh(void) {
+    for (int i = 0; i < mesh_count(); i++) {
+        const stress_params_t p = stress_copy_params(shown, i);
+        const int vertices = stress_vertex_count(&p);
+        const int triangles = stress_triangle_count(&p);
+        buffers[i] = (stress_buffers_t){render_lab_scene_take(sizeof(vec3f_t) * (size_t)vertices),
+                                        render_lab_scene_take(sizeof(uint8_t[3]) * (size_t)vertices),
+                                        render_lab_scene_take(sizeof(uint16_t[3]) * (size_t)triangles)};
+        const r3d_dynamic_capacity_t capacity = r3d_dynamic_capacity_for(vertices, triangles);
+        const size_t bytes = r3d_dynamic_mesh_bytes(capacity);
+        void* block = render_lab_scene_take(bytes);
+        if (buffers[i].positions == NULL || buffers[i].colors == NULL || buffers[i].triangles == NULL || block == NULL
+            || !r3d_dynamic_mesh_init(&mesh[i], block, bytes, capacity, STRESS_TICKS_PER_UNIT)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static bool
 build(void) {
-    r3d_dynamic_source_t source;
-    if (!stress_source(shown, wave_ms, &buffers, &source) || !r3d_dynamic_mesh_build(&mesh, &source)) {
-        return false;
+    for (int i = 0; i < mesh_count(); i++) {
+        const stress_params_t p = stress_copy_params(shown, i);
+        r3d_dynamic_source_t source;
+        if (!stress_source(&p, wave_ms, &buffers[i], &source) || !r3d_dynamic_mesh_build(&mesh[i], &source)) {
+            return false;
+        }
     }
     for (int i = 0; i < shown->copies; i++) {
-        (void)renderer_set_mesh(slots[i], &mesh.mesh);
+        (void)renderer_set_mesh(slots[i], &mesh[i % mesh_count()].mesh);
     }
     return true;
 }

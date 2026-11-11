@@ -1,6 +1,7 @@
 #include "apps/render_lab/stress/stress_preset.h"
 
 #include <math.h>
+#include <string.h>
 
 #include "math/geometry/primitive_mesh.h"
 #include "math/scalar/math_const.h"
@@ -20,8 +21,19 @@ const stress_params_t stress_presets[STRESS_PRESET_COUNT] = {
     [STRESS_BIG_TRIS] = {STRESS_SHAPE_PLANE, 2, 1, STRESS_LAYOUT_WALL, 100, STRESS_SURFACE_OF(BIG_TRIS)},
     [STRESS_PER_FRAME] = {STRESS_SHAPE_PLANE, 24, 1, STRESS_LAYOUT_WALL, 80, STRESS_SURFACE_OF(PER_FRAME)},
     [STRESS_TWO_SIDED] = {STRESS_SHAPE_CUBE, 4, 16, STRESS_LAYOUT_WALL, 60, STRESS_SURFACE_OF(TWO_SIDED)},
+    [STRESS_MIX] = {STRESS_SHAPE_PLANE, 2, 16, STRESS_LAYOUT_WALL, 80, STRESS_SURFACE_OF(MIX)},
     [STRESS_NOISY_TINY] = {STRESS_SHAPE_CYLINDER, 16, 36, STRESS_LAYOUT_WALL, 75, STRESS_SURFACE_OF(NOISY_TINY)},
 };
+
+stress_params_t
+stress_copy_params(const stress_params_t* p, int copy) {
+    static const int cuts[STRESS_MIX_LEVELS] = {2, 8, 24, 48};
+    stress_params_t result = *p;
+    if (p->surface == STRESS_SURFACE_MIXED) {
+        result.cuts = cuts[copy % STRESS_MIX_LEVELS];
+    }
+    return result;
+}
 
 /* The share of its cell a wall copy fills: the rest is the gap that keeps
  * copies apart, so nothing on a wall covers anything. */
@@ -85,6 +97,10 @@ shapes_of(const stress_params_t* p) {
 /* The preset's shape's counts. */
 static primitive_counts_t
 counts_of(const stress_params_t* p) {
+    if (p->surface == STRESS_SURFACE_MIXED) {
+        const int triangles = 2 * p->cuts * p->cuts;
+        return (primitive_counts_t){3 * triangles, triangles};
+    }
     const shapes_t s = shapes_of(p);
     switch (p->shape) {
         case STRESS_SHAPE_PLANE: return primitive_plane_counts(&s.plane);
@@ -155,13 +171,36 @@ colour_and_wave(const stress_params_t* p, uint32_t t_ms, int vertex_count, const
     }
 }
 
+static void
+make_mixed(const stress_params_t* p, const stress_buffers_t* b) {
+    static const uint8_t corners[6][2] = {{0, 0}, {1, 0}, {1, 1}, {0, 0}, {1, 1}, {0, 1}};
+    for (int t = 0; t < stress_triangle_count(p); t++) {
+        const int cell = t / 2;
+        for (int k = 0; k < 3; k++) {
+            const int v = 3 * t + k;
+            const uint8_t* corner = corners[3 * (t % 2) + k];
+            b->positions[v] = (vec3f_t){(float)(cell % p->cuts + corner[0]) / (float)p->cuts - 0.5F,
+                                        (float)(cell / p->cuts + corner[1]) / (float)p->cuts - 0.5F, 0.0F};
+            const bool uniform = t % STRESS_MIX_UNIFORM_PERIOD == 0;
+            memcpy(b->colors[v], uniform || k == 0 ? stress_colour_low : stress_colour_high, sizeof b->colors[v]);
+            b->triangles[t][k] = (uint16_t)v;
+        }
+    }
+}
+
 bool
 stress_source(const stress_params_t* p, uint32_t t_ms, const stress_buffers_t* b, r3d_dynamic_source_t* out) {
     primitive_mesh_t m = {b->positions, stress_vertex_count(p), b->triangles, stress_triangle_count(p), 0, 0};
-    if (!make(p, &m)) {
+    if (p->surface == STRESS_SURFACE_MIXED) {
+        make_mixed(p, b);
+        m.vertex_count = stress_vertex_count(p);
+        m.triangle_count = stress_triangle_count(p);
+    } else if (!make(p, &m)) {
         return false;
     }
-    colour_and_wave(p, t_ms, m.vertex_count, b);
+    if (p->surface != STRESS_SURFACE_MIXED) {
+        colour_and_wave(p, t_ms, m.vertex_count, b);
+    }
     *out = (r3d_dynamic_source_t){b->positions,     (const uint8_t (*)[3])b->colors,
                                   m.vertex_count,   (const uint16_t (*)[3])b->triangles,
                                   m.triangle_count, p->surface == STRESS_SURFACE_TWO_SIDED};

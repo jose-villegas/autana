@@ -11,13 +11,23 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 CULL_VIEW = ROOT / "launcher/main/render/view/raster_cull_view.c"
 CULL_HEADER = ROOT / "launcher/main/render/view/raster_cull_view.h"
 LINE_WIDTH = 1.4
+SIZE_PREFIX = "sized_"
 
 
 def fields(source=CULL_HEADER):
     """Every count's name, in the order the view lists them."""
     text = pathlib.Path(source).read_text(encoding="utf-8")
     body = re.search(r"#define RASTER_CULL_FRAME_FIELDS\(X\)((?:.*\\\n)*.*)", text)[1]
-    return re.findall(r"X\((\w+),", body)
+    names = re.findall(r"X\((\w+),", body)
+    if "R3D_SIZES_FIELDS" in body:
+        sizes = (pathlib.Path(source).parent / "r3d_triangle_size.h").read_text(encoding="utf-8")
+        names.extend(SIZE_PREFIX + name for name in re.findall(r"X\(__VA_ARGS__ (\w+),", sizes))
+    return names
+
+
+def size_fields():
+    """Triangle size fields in their shared frame-field order."""
+    return tuple(name for name in fields() if name.startswith(SIZE_PREFIX))
 
 
 def fates(source=CULL_VIEW):

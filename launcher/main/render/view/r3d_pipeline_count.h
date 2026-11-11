@@ -10,6 +10,7 @@
 
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_pipeline.h"
+#include "render/view/r3d_triangle_size.h"
 
 typedef struct {
     int nodes_visited, nodes_cut; /* nodes the walk reached; those whose box dropped their subtree */
@@ -21,6 +22,7 @@ typedef struct {
     int triangles_missed;      /* no pixel centre inside: off the screen or between centres */
     int triangles_facing_away; /* single-sided, back-facing */
     int triangles_set_up;      /* handed to r3d_span whole */
+    int triangles_sized[R3D_SIZES_MODES][R3D_SIZES_BINS];
 } r3d_pipeline_counts_t;
 
 /* The pending nodes of a counted walk and the frustum it tests them against. */

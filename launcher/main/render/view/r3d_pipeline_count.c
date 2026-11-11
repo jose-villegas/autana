@@ -1,6 +1,7 @@
 #include "render/view/r3d_pipeline_count.h"
 
 #include <assert.h>
+#include <string.h>
 
 #include "math/geometry/box3f.h"
 #include "math/geometry/planef.h"
@@ -91,7 +92,7 @@ r3d_pipeline_count_coarse(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, 
  * when it reaches r3d_span. The cull-view suite holds the set-up count to
  * the triangles the draw fills. */
 static bool
-count_triangle(const r3d_pipeline_vertex_t* const v[3], bool double_sided, const r3d_span_target_t* screen,
+count_triangle(const r3d_pipeline_vertex_t* const v[3], int mode, bool double_sided, const r3d_span_target_t* screen,
                r3d_pipeline_counts_t* counts) {
     if (!(v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F)) {
         const bool clipped = v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F;
@@ -106,6 +107,18 @@ count_triangle(const r3d_pipeline_vertex_t* const v[3], bool double_sided, const
         counts->triangles_facing_away++;
         return false;
     }
+    r3d_size_point_t points[3];
+    for (int k = 0; k < 3; k++) {
+        points[k] = (r3d_size_point_t){(float)v[k]->sx / (float)R3D_SUBPIXEL, (float)v[k]->sy / (float)R3D_SUBPIXEL};
+    }
+    if (r3d_size_area2(points[0], points[1], points[2]) < 0.0F) {
+        const r3d_size_point_t swap = points[1];
+        points[1] = points[2];
+        points[2] = swap;
+    }
+    const int bin = r3d_size_bin(points, r3d_size_centre_box(points), screen->rows.attachment[0].width,
+                                 screen->rows.attachment[0].height);
+    counts->triangles_sized[mode][bin]++;
     counts->triangles_set_up++;
     return true;
 }
@@ -120,7 +133,13 @@ r3d_pipeline_count_triangles(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
         for (int t = c->triangle_first; t < c->triangle_first + c->triangle_count; t++) {
             const uint16_t* tri = mesh->triangles[t];
             const r3d_pipeline_vertex_t* const v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
-            reached += count_triangle(v, c->double_sided, &screen, counts) ? 1 : 0;
+            const bool uniform = mesh->colors != NULL
+                                 && memcmp(mesh->colors[tri[0]], mesh->colors[tri[1]], sizeof mesh->colors[0]) == 0
+                                 && memcmp(mesh->colors[tri[0]], mesh->colors[tri[2]], sizeof mesh->colors[0]) == 0;
+            const int mode = mesh->face_colors != NULL ? R3D_SIZES_FACE
+                             : uniform                 ? R3D_SIZES_UNIFORM
+                                                       : R3D_SIZES_SHADED;
+            reached += count_triangle(v, mode, c->double_sided, &screen, counts) ? 1 : 0;
         }
         if (set_up != NULL) {
             set_up[i] = (uint16_t)reached;

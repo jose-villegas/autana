@@ -139,6 +139,22 @@ The frame's own cull and draw count nothing; `r3d_pipeline_cull_counted()` and
 `r3d_pipeline_count_triangles()` count beside them. `scene_viewer.sh --view cull
 --counts FILE` writes the counts per frame.
 
+`RASTER_CULL_FRAME_FIELDS` owns the CSV and replay field names. Its
+`sized_*` fields count set-up triangles through `R3D_SIZES_FIELDS` in
+[r3d_triangle_size.h](../../../launcher/main/render/view/r3d_triangle_size.h).
+
+| Field component | Meaning |
+|---|---|
+| `face` | a mesh with per-face colours |
+| `uniform` | three equal corner colours |
+| `shaded` | differing corner colours |
+| `zero`, `one`, `two_to_four`, `more` | pixel centres covered by the triangle under the top-left rule |
+
+The bins sum to `triangles_set_up`. They use the pipeline's snapped screen
+corners, wound positive, with pixel centres at i + 0.5. Clipped triangles
+remain in `triangles_clipped` and do not enter these bins.
+
+
 Bistro along its camera path:
 
 ![Bistro's cull along its path](../../images/render/cull-bistro-sheet.png)

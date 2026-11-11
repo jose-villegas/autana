@@ -2,6 +2,7 @@
 preset's stage change by a scene's stage times."""
 import contextlib
 import io
+import json
 import pathlib
 import sys
 import tempfile
@@ -16,10 +17,10 @@ from build.c_header import read_define
 REPLAY = read_define(ROOT / "launcher/test/frame_profile.h", "FRAME_PROFILE_REPLAY") + " quarter=%s"
 
 
-def replay(row, cull, transform, draw, upscale, quarter="portrait", t=0):
+def replay(row, cull, transform, draw, upscale, quarter="portrait", t=0, counts="nodes_visited=1"):
     report = (f"r3d.cull {cull:.2f}/0.0  r3d.transform {transform:.2f}/0.0  r3d.draw {draw:.2f}/0.0  "
               f"r3d.upscale {upscale:.2f}/0.0 | total 1.00")
-    return "I (1) stress_perf: " + REPLAY % (row, t, "nodes_visited=1", report, quarter) + "\n"
+    return "I (1) stress_perf: " + REPLAY % (row, t, counts, report, quarter) + "\n"
 
 
 class StressPredictTest(unittest.TestCase):
@@ -31,6 +32,53 @@ class StressPredictTest(unittest.TestCase):
         path = pathlib.Path(self.folder.name) / name
         path.write_text(text, encoding="utf-8")
         return path
+
+    def test_bin_fit_recovers_signed_costs_and_predicts_scene(self):
+        counts = {"p": {"x": 2, "y": 1}, "q": {"x": 1, "y": 3}}
+        weights, notes = stress_predict.fit_bins(counts, {"p": -1, "q": 2}, ["x", "y", "empty"])
+        self.assertAlmostEqual(weights["x"], -1)
+        self.assertAlmostEqual(weights["y"], 1)
+        self.assertNotIn("empty", weights)
+        self.assertTrue(any("empty" in note for note in notes))
+        self.assertAlmostEqual(stress_predict.draw_delta({"x": 4, "y": 7}, weights), 3)
+
+    def test_indistinguishable_bins_are_merged_and_reported(self):
+        counts = {"p": {"x": 2, "y": 4}, "q": {"x": 3, "y": 6}}
+        weights, notes = stress_predict.fit_bins(counts, {"p": 6, "q": 9}, ["x", "y"])
+        self.assertAlmostEqual(stress_predict.draw_delta(counts["p"], weights), 6)
+        self.assertTrue(any("merged" in note for note in notes))
+
+    def test_dependent_bins_merge_without_losing_identifiable_changes(self):
+        counts = {"p": {"x": 2, "y": 0, "z": 1}, "q": {"x": 0, "y": 2, "z": 1}}
+        weights, notes = stress_predict.fit_bins(counts, {"p": 1, "q": 7}, ["x", "y", "z"])
+        for row, expected in (("p", 1), ("q", 7)):
+            self.assertAlmostEqual(stress_predict.draw_delta(counts[row], weights), expected)
+        self.assertTrue(any("merged" in note for note in notes))
+
+    def test_bins_cli_adds_fitted_draw_to_other_pooled_stages(self):
+        x, y = stress_predict.BIN_FIELDS[:2]
+        def counts(a, b):
+            return " ".join(f"{name}={a if name == x else b if name == y else 0}"
+                            for name in stress_predict.BIN_FIELDS)
+        a = self.write("a.log", replay("p", 1, 2, 10, 1, counts=counts(2, 1))
+                       + replay("q", 1, 2, 10, 1, counts=counts(1, 3)))
+        b = self.write("b.log", replay("p", 0.5, 2, 9, 1, counts=counts(2, 1))
+                       + replay("q", 0.5, 2, 12, 1, counts=counts(1, 3)))
+        scenes = self.write("scenes.log", replay("scene", 4, 6, 99, 3))
+        bins = self.write("bins.json", json.dumps({"quarter": 0, "scenes": {"scene": {x: 4, y: 7}}}))
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            stress_predict.main(["--a", str(a), "--b", str(b), "--scenes", str(scenes), "--bins", str(bins)])
+        text = output.getvalue()
+        self.assertIn("| Scene | p | q | all | bins |", text)
+        self.assertTrue(next(line for line in text.splitlines() if line.startswith("| scene |")).endswith("| +1.00 |"))
+        self.assertIn("dropped empty bin", text)
+        self.assertIn(f"| {x} | -1.00000000 |", text)
+
+    def test_bins_require_replay_bin_counts(self):
+        a = self.write("a.log", replay("p", 1, 2, 10, 1))
+        with self.assertRaisesRegex(ValueError, "missing bins"):
+            stress_predict.preset_bins([a], "portrait")
 
     def test_a_scene_moves_by_each_stage_ratio_times_its_own_stage_time(self):
         a = self.write("a.log", replay("stress-open", 1.0, 2.0, 10.0, 1.0) + replay("stress-open", 1.0, 2.0, 10.0, 1.0))
