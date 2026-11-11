@@ -12,10 +12,12 @@ from unittest import mock
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from anim import tracks_asset
-from asset.engine_frame import INT16_MIN, POSITION
+from asset.engine_frame import INT16_MIN, POSITION, to_engine
 from gltf import gltf_write
 from r3d import build_pack, mesh_asset, scene_asset
+from r3d.import_settings import load_scene
 from r3d.gltf_skin import mat_from_trs, transform_vector
+from test_copy_batches import rotation
 from test_r3d_import import renderer, write_import
 
 POINT = (2, 3, -7)
@@ -104,6 +106,26 @@ class EngineFrameTests(unittest.TestCase):
                 for column in range(3):
                     self.assertEqual(after["matrix"][row][column],
                                      MIRROR[row] * before["matrix"][row][column] * MIRROR[column])
+
+    def test_batch_copies_are_mirror_placement_mirror(self):
+        # Turned about every axis and off every axis, so a row left in the source frame shows.
+        source = self.root / "probe.scene.toml"
+        write_import(self.root)
+        source.write_text(renderer())
+        scene = load_scene(source)
+        rows = []
+        for i, (axis, angle) in enumerate((((1, 0, 0), 0.7), ((0, 1, 0), -2.1), ((0.6, 0, 0.8), 2.9))):
+            rows.append({"name": f"c{i}", "mesh": "mesh", "matrix": rotation(axis, angle), "position": [1.0 + i, -2.0 * i, 3.0 + 4 * i],
+                         "colour_set": 0})
+        source_entry = scene_asset.encode(build_pack.expand_copies(scene, {"mesh": rows}))
+        before = scene_asset.decode(source_entry)["batches"][0]["copies"]
+        after = scene_asset.decode(to_engine(scene_asset.TYPE, source_entry))["batches"][0]["copies"]
+        for (matrix, position, _), (mirrored, moved, _) in zip(before, after):
+            for axis in range(3):
+                self.assertAlmostEqual(moved[axis], MIRROR[axis] * position[axis], places=5)
+                for column in range(3):
+                    self.assertAlmostEqual(mirrored[axis][column], MIRROR[axis] * matrix[axis][column] * MIRROR[column],
+                                           places=5)
 
     def test_cubic_translation_and_rotation_tangents_are_mirrored(self):
         channels = [
