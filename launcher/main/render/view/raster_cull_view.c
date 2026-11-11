@@ -716,6 +716,7 @@ void
 raster_cull_frame_compose(raster_cull_frame_t* frame, const raster_t* raster, resolution_step_t output) {
     const upscale_t* scale = &raster->upscale;
     const upscale_path_t path = upscale_path_for(raster->width, raster->height, output.width, output.height);
+    frame->transform_batches = raster->scratch != NULL ? raster_transform_batches(raster) : 0;
     frame->render_width = raster->width;
     frame->render_height = raster->height;
     frame->render_pixels = raster->width * raster->height;

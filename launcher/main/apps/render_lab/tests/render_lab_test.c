@@ -33,6 +33,7 @@ render_lab_test_show_view(int view) {
 
 /* A replayed pose's log line parts, too big for the stack its draws run on. */
 typedef struct {
+    raster_cull_frame_t frame;
     int64_t sums[RENDER_LAB_TEST_COUNTS];
     char counts[RENDER_LAB_TEST_COUNTS_MAX];
     char report[FRAME_COST_REPORT_MAX];
@@ -40,22 +41,27 @@ typedef struct {
 
 static pose_line_t* pose_line;
 
-/* In a frame of its own that is gone before the next draw. */
-__attribute__((noinline)) void
-render_lab_test_add_cull_counts(int64_t sums[RENDER_LAB_TEST_COUNTS]) {
-    const raster_cull_t* cull = render_context_debug_view_state(render_context_main());
-    TEST_ASSERT_NOT_NULL(cull);
-    raster_cull_frame_t f = raster_cull_frame(cull);
+static void
+add_frame_counts(int64_t sums[RENDER_LAB_TEST_COUNTS], raster_cull_frame_t* f) {
     const raster_t* raster = &render_context_main()->raster;
     const resolution_step_t output = gfx_half_picture() != NULL
                                          ? raster_compose_size(raster)
                                          : (resolution_step_t){raster->destination_width, raster->destination_height};
     /* The counted overlay composes full size; stage times describe the shaded compose. */
-    raster_cull_frame_compose(&f, raster, output);
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, f.counts.nodes_visited, "the cull view did not draw");
+    raster_cull_frame_compose(f, raster, output);
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, f->counts.nodes_visited, "the cull view did not draw");
     int i = 0;
-#define ADD_COUNT(name, member) sums[i++] += f.member;
+#define ADD_COUNT(name, member) sums[i++] += f->member;
     RASTER_CULL_FRAME_FIELDS(ADD_COUNT)
+}
+
+/* In a frame of its own that is gone before the next draw. */
+__attribute__((noinline)) void
+render_lab_test_add_cull_counts(int64_t sums[RENDER_LAB_TEST_COUNTS]) {
+    const raster_cull_t* cull = render_context_debug_view_state(render_context_main());
+    TEST_ASSERT_NOT_NULL(cull);
+    raster_cull_frame_t frame = raster_cull_frame(cull);
+    add_frame_counts(sums, &frame);
 }
 
 void
@@ -82,8 +88,9 @@ render_lab_test_replay_pose(const char* tag, entity_t entity, uint32_t duration_
     render_lab_test_show_view(render_context_debug_view_named("cull"));
     (void)lab_test_frame_dt(0, false, NULL);
     memset(out->sums, 0, sizeof out->sums);
-    render_lab_test_add_cull_counts(out->sums);
-    render_lab_test_write_counts(out->sums, 1, out->counts, sizeof out->counts);
+    const raster_cull_t* cull = render_context_debug_view_state(render_context_main());
+    TEST_ASSERT_NOT_NULL(cull);
+    out->frame = raster_cull_frame(cull);
     render_lab_test_show_view(RENDER_DEBUG_VIEW_SHADED);
     (void)lab_test_frame_dt(0, false, NULL);
     (void)frame_cost_take_report(1, out->report, sizeof out->report);
@@ -91,6 +98,8 @@ render_lab_test_replay_pose(const char* tag, entity_t entity, uint32_t duration_
         (void)lab_test_frame_dt(0, false, NULL);
     }
     (void)frame_cost_take_report(FRAME_PROFILE_REPLAY_DRAWS, out->report, sizeof out->report);
+    add_frame_counts(out->sums, &out->frame);
+    render_lab_test_write_counts(out->sums, 1, out->counts, sizeof out->counts);
     ESP_LOGI(tag, FRAME_PROFILE_REPLAY LAB_PERF_QUARTER_FORMAT, row, (int)path_ms, out->counts, out->report, quarter);
     memory_free(pose_line);
     pose_line = NULL;

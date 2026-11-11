@@ -60,6 +60,7 @@ typedef enum { RASTER_CULL_PASS_CAMERA, RASTER_CULL_PASS_CULLED, RASTER_CULL_PAS
 /* One frame's counts, every instance summed, from the camera. */
 typedef struct {
     r3d_pipeline_counts_t counts;
+    int transform_batches;
     int render_width, render_height, render_pixels;
     int output_width, output_height, output_pixels, quarter;
     int upscale_kept_pixels, upscale_doubled_pixels, upscale_mapped_pixels, upscale_blocks_pixels;
@@ -73,6 +74,7 @@ typedef struct {
 /* Each count by its name, X(name, member of raster_cull_frame_t): the one
  * order and spelling every listing of the counts uses. */
 #define RASTER_CULL_FRAME_FIELDS(X)                                                                                    \
+    X(transform_batches, transform_batches)                                                                            \
     X(render_width, render_width)                                                                                      \
     X(render_height, render_height)                                                                                    \
     X(render_pixels, render_pixels)                                                                                    \
@@ -153,7 +155,7 @@ bool raster_cull_second_view(void* state, const raster_t* raster, const transfor
 /* Lines over the composed picture, `width` by `height` from (0, 0). */
 void raster_cull_overlay(void* state, int width, int height);
 
-/* Fill composition work for an explicit output size; counted overlays and shaded draws can compose differently. */
+/* Fill work from the last draw and an explicit compose size; overlays and shaded draws can compose differently. */
 void raster_cull_frame_compose(raster_cull_frame_t* frame, const raster_t* raster, resolution_step_t output);
 
 /* The last frame's counts. */

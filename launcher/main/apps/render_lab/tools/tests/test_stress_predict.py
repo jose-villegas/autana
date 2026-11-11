@@ -134,6 +134,34 @@ class StressPredictTest(unittest.TestCase):
         model = predict.fit(training)
         np.testing.assert_allclose(model["weights"]["r3d.upscale"], [2, *range(1, len(names) + 1)])
 
+    def test_transform_batches_are_loaded_and_scored_independently(self):
+        from build.c_header import read_define
+        replay = read_define(predict.ROOT / "launcher/test/frame_profile.h", "FRAME_PROFILE_REPLAY")
+        names = ("transform_batches", "clusters_kept", "vertices_transformed")
+        with tempfile.TemporaryDirectory() as folder:
+            path = pathlib.Path(folder) / "stress.log"
+            lines = []
+            for t, values in enumerate(((1, 1, 3), (8, 1, 3), (1, 8, 3), (1, 1, 24))):
+                counts = dict.fromkeys(predict.TERMS, 0)
+                counts.update(zip(names, values))
+                fields = " ".join(f"{key}={value}" for key, value in counts.items())
+                cost = 2 + sum((i + 1) * counts[name] for i, name in enumerate(names))
+                stages = "  ".join(f"{stage} {cost if stage == 'r3d.transform' else 1:.2f}/0.00"
+                                    for stage in predict.STAGES)
+                lines.append(replay % ("stress-open", t, fields, stages + f" | total {cost + 3:.2f}") + " quarter=portrait")
+            path.write_text("\n".join(lines))
+            training = predict.load([path], "all", stress_only=True)
+            self.assertEqual(8, training[1]["counts"]["transform_batches"])
+            model = predict.fit(training)
+            self.assertEqual(names, model["inputs"]["r3d.transform"])
+            np.testing.assert_allclose(model["weights"]["r3d.transform"], [2, 1, 2, 3])
+            held = training[0].copy()
+            held["counts"] = {**held["counts"], "transform_batches": 4}
+            held["stages"] = {**held["stages"], "r3d.transform": 17}
+            scored = next(row for row in predict.score(model, [held]) if row["stage"] == "r3d.transform")
+            self.assertTrue(scored["pass"])
+            self.assertAlmostEqual(17, scored["predicted"])
+
     def test_loader_keeps_quarters_and_render_sizes_in_training(self):
         from build.c_header import read_define
         replay = read_define(predict.ROOT / "launcher/test/frame_profile.h", "FRAME_PROFILE_REPLAY")

@@ -25,6 +25,7 @@
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_span_internal.h"
 #include "render/raster_internal.h"
+#include "render/view/raster_cull_view.h"
 #include "render/view/raster_show.h"
 
 #define W 64
@@ -2366,6 +2367,7 @@ test_batched_copies_draw_what_one_instance_at_a_time_draws(void) {
     (void)raster_census(&raster, &view); /* batches run over its drawn list */
     TEST_ASSERT_EQUAL_INT(1 + BATCH_COPIES, batch_count(&raster));
     raster_draw(&raster, &view);
+    TEST_ASSERT_EQUAL_INT(batch_count(&raster), raster_transform_batches(&raster));
     memcpy(want, raster_color(&raster), sizeof(*want) * W * H);
     memcpy(want + (W * H), raster_depth(&raster), sizeof(*want) * W * H);
     (void)tune_reset(tune_shared(), TUNE_NAME(render, batched));
@@ -2374,6 +2376,10 @@ test_batched_copies_draw_what_one_instance_at_a_time_draws(void) {
     TEST_ASSERT_EQUAL_INT(1 + per_batch, raster_batch_end(&raster, 1));
     TEST_ASSERT_LESS_THAN_INT(1 + BATCH_COPIES, batch_count(&raster));
     raster_draw(&raster, &view);
+    TEST_ASSERT_EQUAL_INT(batch_count(&raster), raster_transform_batches(&raster));
+    raster_cull_frame_t frame = {0};
+    raster_cull_frame_compose(&frame, &raster, (resolution_step_t){W, H});
+    TEST_ASSERT_EQUAL_INT(batch_count(&raster), frame.transform_batches);
     TEST_ASSERT_EQUAL_HEX16_ARRAY(want, raster_color(&raster), W * H);
     TEST_ASSERT_EQUAL_HEX16_ARRAY(want + (W * H), raster_depth(&raster), W * H);
 }

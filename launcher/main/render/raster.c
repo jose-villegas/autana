@@ -194,6 +194,7 @@ typedef struct {
     slice_t mine, other;
     r3d_span_target_t targets[2];
     r3d_span_small_fill_t small_fill;
+    int transform_batches;
     bool skip_hidden;         /* the view's */
     int first_row, end_row;   /* the rows this draw redraws */
     bool levels_changed;      /* a level pick this draw changed an instance's cut */
@@ -790,6 +791,11 @@ scratch_draw(const raster_t* raster) {
     return work;
 }
 
+int
+raster_transform_batches(const raster_t* raster) {
+    return scratch_draw(raster)->transform_batches;
+}
+
 bool
 raster_drew_every_row(const raster_t* raster) {
     const draw_work_t* work = scratch_draw(raster);
@@ -826,6 +832,7 @@ plan_draw_rows(const raster_t* raster, draw_work_t* work, int16_t* draw_share) {
  * then one draw fork/join in which each core draws every item in its rows. */
 static inline __attribute__((always_inline)) void
 draw_batch(const raster_t* raster, int index, draw_work_t* work) {
+    work->transform_batches++;
     batch_t* batch = &work->batch;
     int count = 0;
     for (int k = 0; k < batch->count; k++) {
@@ -957,6 +964,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     picture_lens_init(&work->picture, raster, view, true);
     /* The first batch clears the picture, so it runs with nothing kept too.
      * The count is read where the census wrote it, held in no register. */
+    work->transform_batches = 0;
     int first = 0;
     int index = 0;
     do {

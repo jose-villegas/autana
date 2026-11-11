@@ -17,7 +17,7 @@ ALL_STAGES = (*STAGES, FRAME)
 # Each stage's own work: what a stage does sets the counts it is fitted on.
 STAGE_INPUTS = {
     "r3d.cull": ("nodes_visited", "nodes_cut", "clusters_tested", "clusters_off_frustum", "clusters_kept"),
-    "r3d.transform": ("clusters_kept", "vertices_transformed"),
+    "r3d.transform": ("transform_batches", "clusters_kept", "vertices_transformed"),
     "r3d.draw": (*size_fields(), "pixels_face", "pixels_uniform", "pixels_shaded", "triangles_facing_away",
                  "triangles_missed", "triangles_behind", "triangles_clipped"),
     "r3d.upscale": ("render_pixels", "output_pixels", "upscale_kept_pixels", "upscale_doubled_pixels",

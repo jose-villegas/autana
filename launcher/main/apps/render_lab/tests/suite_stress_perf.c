@@ -50,8 +50,7 @@ test_stress_stages(void) {
     saved_filter = render_lab_upscale_selected();
     saved_layout = (int)lab_view_layout(&render_lab_view_tunables);
     const stress_params_t* params = preset->data;
-    const int layout = params->surface == STRESS_SURFACE_UNIFORM && size_step < 0 ? LAB_LAYOUT_DOUBLE : LAB_LAYOUT_FULL;
-    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render_lab, layout), layout));
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render_lab, layout), LAB_LAYOUT_FULL));
     lab_test_enter(&saved, &render_lab, preset->key);
     suite_set_test_cleanup(release_fixture);
     test_hold_quarter(quarter->quarter);

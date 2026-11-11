@@ -201,9 +201,13 @@ The `run_stress_perf_suite` suite replays both `lab_perf_quarters` along each
 preset's swing. `stress_presets[].perf_poses` owns sampling density.
 Uniform presets also replay the full and half-height render_lab ladder steps.
 
-Their default-size replay uses the double framebuffer layout, exercising
-full-output doubled copying. Ladder replays use the full framebuffer layout
-and surface filtering, exercising kept-width composition.
+Every row uses `LAB_LAYOUT_FULL`, composing from the half picture when it fits.
+Double-buffer presentation runs asynchronously on core 1 and can delay the
+transform worker's fork/join.
+
+`transform_batches` counts the shaded draw's transform fork/joins in
+`draw_batch()`, including empty batches. Each pays the split, worker dispatch,
+cluster work and join; picture clearing belongs to `r3d.draw`.
 
 Each pose draws one counted frame, one warm frame and `FRAME_PROFILE_REPLAY_DRAWS`
 measured frames. The pose counts and size loops in the suite own its frame
@@ -226,7 +230,7 @@ These sources motivate the inputs; this tool's additive fit and gate are local c
 | Stage | Count fields (`STAGE_INPUTS`) |
 |---|---|
 | r3d.cull | `nodes_visited`, `nodes_cut`, `clusters_tested`, `clusters_off_frustum`, `clusters_kept` |
-| r3d.transform | `clusters_kept`, `vertices_transformed` |
+| r3d.transform | `transform_batches`, `clusters_kept`, `vertices_transformed` |
 | r3d.draw | `sized_*` (size bin × FACE/UNIFORM/SHADED), `pixels_face`, `pixels_uniform`, `pixels_shaded`, `triangles_facing_away`, `triangles_missed`, `triangles_behind`, `triangles_clipped` |
 | r3d.upscale | `render_pixels`, `output_pixels`, `upscale_kept_pixels`, `upscale_doubled_pixels`, `upscale_mapped_pixels`, `upscale_blocks_pixels`, `upscale_surface_pixels` |
 
