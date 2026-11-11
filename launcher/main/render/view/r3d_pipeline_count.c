@@ -129,3 +129,23 @@ r3d_pipeline_count_triangles(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
         }
     }
 }
+
+float
+r3d_pipeline_count_stacked_px(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, int c) {
+    if (r3d_lod_morph_weight(morph, mesh, c) == 0) {
+        return 0.0F;
+    }
+    const uint16_t parent = mesh->cluster_lod[c].parent;
+    float most = 0.0F;
+    for (int k = 0; k < mesh->cluster_count; k++) {
+        const r3d_lit_cluster_lod_t lod = mesh->cluster_lod[k];
+        if (lod.own != parent || lod.parent == R3D_LOD_NONE) {
+            continue;
+        }
+        float error_px = 0.0F;
+        const float weight =
+            (float)r3d_lod_morph_group_weight(morph, mesh, lod.parent, &error_px) / (float)R3D_LOD_MORPH_ONE;
+        most = mathf_max(most, weight * error_px);
+    }
+    return most;
+}

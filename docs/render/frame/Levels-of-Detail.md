@@ -1,7 +1,7 @@
 # Levels of detail
 
 A baked mesh carries coarser levels of its clusters; the cull picks a level per
-cluster group by its error in output pixels, and the blend hides the switch.
+cluster group by its error in output pixels, and a blend can soften the switch.
 
 ```mermaid
 flowchart LR
@@ -11,7 +11,8 @@ flowchart LR
     end
     subgraph Board["board, every frame"]
         direction LR
-        Pick[pick<br/>per instance] --> Cull[cull walk] --> Blend[draw:<br/>switch, morph or dither]
+        Pick[pick<br/>per instance] --> Cull[cull walk<br/>both levels where dithered] --> Split[plain and<br/>blending clusters apart]
+        Split --> Transform[transform<br/>morph moves vertices] --> Draw[draw<br/>dither through screen doors]
     end
     Host --> Board
 ```
@@ -140,7 +141,8 @@ switch, so the switch itself moves nothing<sup>[[117]](../../Citations.md#hoppe-
 ![Coarse share of what is drawn as one group's error projects across its switches, walking in and out, blended and switched](../../images/render/lod-blend-weight.png)
 
 The weight is whole at the next switch and fades to none `lod.blend_px` past
-it. Two more bits per group track it ([`R3D_LOD_STATE_SETS`](../../../launcher/main/render/lod/r3d_lod.h)):
+it. Two more bits per group track it, held by every instance whatever
+`lod.blend` is ([`R3D_LOD_STATE_SETS`](../../../launcher/main/render/lod/r3d_lod.h)):
 
 ```mermaid
 stateDiagram-v2
@@ -149,8 +151,8 @@ stateDiagram-v2
     Arrived --> Fine: error past leave + blend_px
     Fine --> Coarse: error under enter
     Arrived --> Coarse: error under enter
-    note right of Arrived: blending while error is within leave + blend_px
-    note right of Fine: blending while error is within enter + blend_px
+    note right of Arrived: weight above none while error is within leave + blend_px
+    note right of Fine: weight above none while error is within enter + blend_px
 ```
 
 ![The 4x4 screen door at five points of the ramp past leave: coarse and fine pixels](../../images/render/lod-blend-dither.png)
@@ -173,19 +175,26 @@ each switch is large enough to see.
 Each path against the finest level; the morph rows add morph targets to the
 locked meshes. The 4×4 columns average luma over the screen door's tile, where
 a dither reads as its blend; the worst pop is each arm's peak where the switch
-pops most. Stacked vertices are those whose target's own level was blending
+pops most, scored only at frames whose coarse clusters drawn change. Each
+group's blending bit is set one ramp ([`R3D_LOD_BLEND_LEAD`](../../../launcher/main/render/lod/r3d_lod.h)) before its
+weight rises, so a pick spread over frames never starts a blend partway. Stacked vertices are those whose target's own level was blending
 too, so the target sits off its neighbour.
 
-<!-- generated: lod-morph sha256=87f23f47c072bb8c837692afff35df110550d12bf8335efa5eb5163c6825b3b2 -->
+<!-- generated: lod-morph sha256=e811a72f821ffd2dc64fe0303253bcc294036f832337348a0317f277697f3879 -->
 | Path | Arm | Blocks popping | Mean difference /255 | 4×4 | Worst switch pop /255 | 4×4 | Vertices blended | Frames stacked | Vertices stacked | Stacked, most px |
 |---|---|---|---|---|---|---|---|---|---|---|
-| Sponza | switches | 0.0933% | 0.071 | 0.054 | 4.69 | 3.63 | 0.0% | 0.0% | 0.00% | 0.00 |
-| Sponza | blend, dither | 0.0979% | 0.077 | 0.059 | 3.82 | 3.63 | 3.4% | 0.0% | 0.00% | 0.00 |
-| Sponza | blend, morph | 0.1000% | 0.075 | 0.058 | 3.88 | 3.63 | 2.0% | 4.1% | 0.05% | 0.26 |
-| Bistro | switches | 0.1720% | 0.105 | 0.080 | 7.31 | 5.17 | 0.0% | 0.0% | 0.00% | 0.00 |
-| Bistro | blend, dither | 0.1846% | 0.127 | 0.096 | 7.31 | 5.17 | 9.1% | 0.0% | 0.00% | 0.00 |
-| Bistro | blend, morph | 0.2016% | 0.128 | 0.098 | 7.31 | 5.17 | 5.0% | 9.9% | 0.41% | 0.45 |
+| Sponza | switches | 0.1085% | 0.075 | 0.058 | 6.03 | 6.01 | 0.0% | 0.0% | 0.00% | 0.00 |
+| Sponza | blend, dither | 0.1173% | 0.084 | 0.064 | 3.69 | 2.68 | 4.0% | 0.0% | 0.00% | 0.00 |
+| Sponza | blend, morph | 0.1196% | 0.082 | 0.063 | 3.19 | 2.47 | 2.5% | 2.3% | 0.03% | 0.26 |
+| Bistro | switches | 0.1537% | 0.087 | 0.075 | 4.88 | 3.78 | 0.0% | 0.0% | 0.00% | 0.00 |
+| Bistro | blend, dither | 0.2015% | 0.128 | 0.108 | 4.88 | 3.78 | 10.0% | 0.0% | 0.00% | 0.00 |
+| Bistro | blend, morph | 0.1967% | 0.121 | 0.104 | 4.88 | 3.78 | 5.4% | 0.0% | 0.00% | 0.00 |
 <!-- /generated: lod-morph -->
+
+Today the blend wins at Sponza's worst switch, whose peak falls from 6.03 to
+3.69 dithered and 3.19 morphed. It loses slightly on blocks popping and on the
+mean difference in both scenes, and Bistro's worst switch pops the same in
+every arm.
 
 ```sh
 python launcher/tools/r3d/lod/morph_table.py --script HOST_RENDER.sh \

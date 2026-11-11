@@ -124,7 +124,7 @@ typedef struct {
     /* 0 drawn plain; else in a blend: its dither band (r3d_lod_dither_band()) where
      * the instance dithers, else the weight it was transformed with toward its
      * morph targets, up to R3D_LOD_MORPH_ONE. */
-    uint8_t morph;
+    uint8_t blend;
 } r3d_pipeline_rows_t;
 
 /* True when every pixel of `target` under a cluster's box already holds

@@ -243,7 +243,7 @@ pick_along_the_path(const r3d_lit_mesh_t* mesh, pose_check_t check) {
     uint32_t ever_coarse = 0, ever_fine = 0;
     for (int p = 0; p < poses; p++) {
         const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
-        r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL, NULL);
+        r3d_lod_pick(mesh, &lens, &LOD, coarse, false, NULL);
         check(mesh, &lens, coarse);
         ever_coarse |= coarse[0];
         ever_fine |= ~coarse[0];
@@ -340,7 +340,7 @@ test_every_finest_cluster_is_drawn_at_exactly_one_level_along_the_path(void) {
     bool drew_top = false, drew_finest = false;
     for (int p = 0; p < poses; p++) {
         const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
-        r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL, NULL);
+        r3d_lod_pick(mesh, &lens, &LOD, coarse, false, NULL);
         for (int f = 0; f < FINEST_CLUSTERS; f++) {
             TEST_ASSERT_EQUAL_INT(1, levels_drawn(mesh, f, coarse));
         }
@@ -362,7 +362,7 @@ test_a_group_s_bit_follows_its_projected_error_within_the_hysteresis_band(void) 
     const int poses = 2 * steps;
     for (int p = 0; p < poses; p++) {
         const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
-        r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL, NULL);
+        r3d_lod_pick(mesh, &lens, &LOD, coarse, false, NULL);
         for (int g = 0; g < GROUPS; g++) {
             const float px = r3d_lod_group_pixels(mesh, &lens, g);
             const bool capped = r3d_lod_group_coverage(mesh, &lens, g) > COVERAGE_MAX;
@@ -381,13 +381,13 @@ static float
 top_turns_fine(const r3d_lit_mesh_t* mesh, uint32_t* coarse) {
     float d = FAR_EYE;
     r3d_lens_t lens = lens_at(d, NULL);
-    r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL, NULL);
+    r3d_lod_pick(mesh, &lens, &LOD, coarse, false, NULL);
     TEST_ASSERT_TRUE(r3d_lod_coarse(coarse, TOP_GROUP));
     while (r3d_lod_coarse(coarse, TOP_GROUP)) {
         TEST_ASSERT_TRUE(d > NEAR_EYE);
         d *= STEP;
         lens = lens_at(d, NULL);
-        r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL, NULL);
+        r3d_lod_pick(mesh, &lens, &LOD, coarse, false, NULL);
     }
     TEST_ASSERT_TRUE(r3d_lod_group_pixels(mesh, &lens, TOP_GROUP) > TOLERANCE + HYSTERESIS);
     return d;
@@ -402,10 +402,10 @@ test_a_camera_backing_off_a_switch_by_less_than_the_band_does_not_switch_back(vo
     const r3d_lens_t lens = lens_at(top_turns_fine(mesh, coarse) / STEP, NULL);
     const float back = r3d_lod_group_pixels(mesh, &lens, TOP_GROUP);
     TEST_ASSERT_TRUE(back > TOLERANCE - HYSTERESIS && back <= TOLERANCE + HYSTERESIS);
-    r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL, NULL);
+    r3d_lod_pick(mesh, &lens, &LOD, coarse, false, NULL);
     const uint32_t held = coarse[0];
     TEST_ASSERT_FALSE(r3d_lod_coarse(coarse, TOP_GROUP));
-    r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL, NULL);
+    r3d_lod_pick(mesh, &lens, &LOD, coarse, false, NULL);
     TEST_ASSERT_EQUAL_HEX32(held, coarse[0]);
 }
 
@@ -421,12 +421,12 @@ test_a_pick_reports_whether_it_changed_a_bit(void) {
         const r3d_lens_t lens = lens_at(d, NULL);
         uint32_t before[R3D_LOD_WORDS(GROUPS)];
         memcpy(before, coarse, sizeof before);
-        const bool changed = r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL, NULL);
+        const bool changed = r3d_lod_pick(mesh, &lens, &LOD, coarse, false, NULL);
         if (memcmp(before, coarse, sizeof before) != 0) {
             TEST_ASSERT_TRUE(changed);
             changes++;
         }
-        TEST_ASSERT_FALSE(r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL, NULL));
+        TEST_ASSERT_FALSE(r3d_lod_pick(mesh, &lens, &LOD, coarse, false, NULL));
     }
     TEST_ASSERT_TRUE(changes > 1); /* the fly-in crossed switches */
 }
@@ -479,8 +479,8 @@ test_the_least_error_skips_only_poses_that_pick_nothing_coarse(void) {
     const int steps = steps_in();
     for (int p = 0; p < 2 * steps; p++) {
         const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
-        r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL, NULL);
-        r3d_lod_pick(&bounded, &lens, &LOD, skipping, NULL, NULL);
+        r3d_lod_pick(mesh, &lens, &LOD, coarse, false, NULL);
+        r3d_lod_pick(&bounded, &lens, &LOD, skipping, false, NULL);
         TEST_ASSERT_EQUAL_HEX32_ARRAY(coarse, skipping, R3D_LOD_WORDS(GROUPS));
         if (p == steps) {
             TEST_ASSERT_EQUAL_HEX32(0, skipping[0]);
@@ -537,7 +537,7 @@ test_a_parent_turning_coarse_takes_an_out_of_order_source_with_it(void) {
     uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
     const r3d_lens_t lens = lens_at(FAR_EYE, NULL);
     TEST_ASSERT_TRUE(r3d_lod_group_pixels(mesh, &lens, 0) > TOLERANCE + HYSTERESIS);
-    r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL, NULL);
+    r3d_lod_pick(mesh, &lens, &LOD, coarse, false, NULL);
     TEST_ASSERT_TRUE(r3d_lod_coarse(coarse, TOP_GROUP));
     TEST_ASSERT_TRUE(r3d_lod_coarse(coarse, 0));
     for (int f = 0; f < FINEST_CLUSTERS; f++) {
@@ -554,7 +554,7 @@ test_the_closing_pass_visits_every_cluster_when_levels_are_not_laid_out_apart(vo
     levelled->groups[0].error = UINT16_MAX;
     const r3d_lens_t lens = lens_at(FAR_EYE, NULL);
     uint32_t apart[R3D_LOD_WORDS(GROUPS)] = {0};
-    r3d_lod_pick(mesh, &lens, &LOD, apart, NULL, NULL);
+    r3d_lod_pick(mesh, &lens, &LOD, apart, false, NULL);
     TEST_ASSERT_TRUE(r3d_lod_coarse(apart, 0));
     const r3d_lit_cluster_lod_t owner = levelled->lod[FINEST_CLUSTERS];
     levelled->lod[FINEST_CLUSTERS] = levelled->lod[0];
@@ -563,7 +563,7 @@ test_the_closing_pass_visits_every_cluster_when_levels_are_not_laid_out_apart(vo
     TEST_ASSERT_EQUAL_INT(0, mesh->lod_coarse_first);
     TEST_ASSERT_EQUAL_INT(0, mesh->lod_finest_root);
     uint32_t together[R3D_LOD_WORDS(GROUPS)] = {0};
-    r3d_lod_pick(mesh, &lens, &LOD, together, NULL, NULL);
+    r3d_lod_pick(mesh, &lens, &LOD, together, false, NULL);
     TEST_ASSERT_TRUE(r3d_lod_coarse(together, TOP_GROUP));
     TEST_ASSERT_TRUE(r3d_lod_coarse(together, 0));
     TEST_ASSERT_EQUAL_HEX32_ARRAY(apart, together, R3D_LOD_WORDS(GROUPS));
@@ -649,7 +649,7 @@ test_the_finest_tree_walk_and_the_cut_keep_what_the_whole_walk_keeps(void) {
     bool cut_drawn = false;
     for (int p = 0; p < 2 * steps; p++) {
         const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
-        r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL, NULL);
+        r3d_lod_pick(mesh, &lens, &LOD, coarse, false, NULL);
         uint16_t apart[CLUSTERS], together[CLUSTERS];
         const int count = r3d_pipeline_cull(mesh, &lens, coarse, apart, w, NULL);
         TEST_ASSERT_EQUAL_INT(count, r3d_pipeline_cull(&whole, &lens, coarse, together, w, NULL));
@@ -968,11 +968,27 @@ eye_for(group_measure_t measure, const r3d_lit_mesh_t* mesh, int group, float ta
     return far_eye;
 }
 
+static void
+blend_state_from_bits(uint32_t* state, const r3d_lit_mesh_t* mesh, const uint32_t* coarse, const uint32_t* arrived) {
+    const size_t bytes = sizeof *state * R3D_LOD_WORDS(mesh->lod_group_count);
+    memset(state, 0, bytes);
+    if (coarse != NULL) {
+        memcpy(state, coarse, bytes);
+    }
+    if (arrived != NULL) {
+        memcpy(state + R3D_LOD_WORDS(mesh->lod_group_count), arrived, bytes * (R3D_LOD_STATE_SETS - 1));
+    } else {
+        memset(state + R3D_LOD_WORDS(mesh->lod_group_count), 0xFF, bytes * (R3D_LOD_STATE_SETS - 1));
+    }
+}
+
 static int
 weight_at(const r3d_lit_mesh_t* mesh, float eye, int cluster, bool enabled) {
     const r3d_lens_t lens = lens_at(eye, NULL);
     r3d_lod_morph_t morph;
-    r3d_lod_morph_init(&morph, mesh, &lens, &LOD, 1.0F, NULL, enabled ? RENDER_LOD_BLEND_ON : RENDER_LOD_BLEND_SWITCH);
+    uint32_t state_morph[R3D_LOD_STATE_WORDS(GROUPS)];
+    blend_state_from_bits(state_morph, mesh, NULL, NULL);
+    r3d_lod_morph_init(&morph, mesh, &lens, &LOD, state_morph, enabled ? RENDER_LOD_BLEND_ON : RENDER_LOD_BLEND_SWITCH);
     return r3d_lod_morph_weight(&morph, mesh, cluster);
 }
 
@@ -1028,8 +1044,16 @@ test_the_morph_thresholds_scale_with_the_pixels_per_output_pixel(void) {
     const float scale = 2.0F;
     const r3d_lens_t lens = lens_at(error_eye(mesh, scale * leave_px() * 0.75F), NULL);
     r3d_lod_morph_t one, two;
-    r3d_lod_morph_init(&one, mesh, &lens, &LOD, 1.0F, NULL, RENDER_LOD_BLEND_ON);
-    r3d_lod_morph_init(&two, mesh, &lens, &LOD, scale, NULL, RENDER_LOD_BLEND_ON);
+    uint32_t state_one[R3D_LOD_STATE_WORDS(GROUPS)];
+    blend_state_from_bits(state_one, mesh, NULL, NULL);
+    r3d_lod_morph_init(&one, mesh, &lens, &LOD, state_one, RENDER_LOD_BLEND_ON);
+    render_lod_settings_t scaled = LOD;
+    scaled.tolerance_px *= scale;
+    scaled.hysteresis_px *= scale;
+    scaled.blend_px *= scale;
+    uint32_t state_two[R3D_LOD_STATE_WORDS(GROUPS)];
+    blend_state_from_bits(state_two, mesh, NULL, NULL);
+    r3d_lod_morph_init(&two, mesh, &lens, &scaled, state_two, RENDER_LOD_BLEND_ON);
     TEST_ASSERT_EQUAL_INT(0, r3d_lod_morph_weight(&one, mesh, WEIGHT_CLUSTER));
     TEST_ASSERT_EQUAL_INT(R3D_LOD_MORPH_ONE, r3d_lod_morph_weight(&two, mesh, WEIGHT_CLUSTER));
 }
@@ -1099,14 +1123,22 @@ enter_px(void) {
 static void
 pick_at_px(const r3d_lit_mesh_t* mesh, float px, uint32_t* coarse, uint32_t* arrived) {
     const r3d_lens_t lens = lens_at(error_eye(mesh, px), NULL);
-    r3d_lod_pick(mesh, &lens, &LOD, coarse, arrived, NULL);
+    uint32_t state[R3D_LOD_STATE_WORDS(GROUPS)];
+    blend_state_from_bits(state, mesh, coarse, arrived);
+    r3d_lod_pick(mesh, &lens, &LOD, state, arrived != NULL, NULL);
+    memcpy(coarse, state, sizeof *state * R3D_LOD_WORDS(GROUPS));
+    if (arrived != NULL) {
+        memcpy(arrived, r3d_lod_arrived(state, GROUPS), sizeof *state * BLEND_WORDS);
+    }
 }
 
 static int
 weight_arrived_at(const r3d_lit_mesh_t* mesh, float px, const uint32_t* arrived) {
     const r3d_lens_t lens = lens_at(error_eye(mesh, px), NULL);
     r3d_lod_morph_t morph;
-    r3d_lod_morph_init(&morph, mesh, &lens, &LOD, 1.0F, arrived, RENDER_LOD_BLEND_ON);
+    uint32_t state_morph[R3D_LOD_STATE_WORDS(GROUPS)];
+    blend_state_from_bits(state_morph, mesh, NULL, arrived);
+    r3d_lod_morph_init(&morph, mesh, &lens, &LOD, state_morph, RENDER_LOD_BLEND_ON);
     return r3d_lod_morph_weight(&morph, mesh, WEIGHT_CLUSTER);
 }
 
@@ -1186,10 +1218,10 @@ test_a_pick_flipping_only_a_blend_bit_reports_a_change(void) {
         const r3d_lens_t lens = lens_at(error_eye(mesh, walk[i]), NULL);
         uint32_t before[R3D_LOD_STATE_WORDS(GROUPS)];
         memcpy(before, state, sizeof before);
-        const bool changed = r3d_lod_pick(mesh, &lens, &LOD, coarse, coarse + R3D_LOD_WORDS(GROUPS), NULL);
+        const bool changed = r3d_lod_pick(mesh, &lens, &LOD, coarse, true, NULL);
         TEST_ASSERT_EQUAL(memcmp(before, state, sizeof before) != 0, changed);
         blend_only += changed && memcmp(before, state, sizeof coarse[0] * R3D_LOD_WORDS(GROUPS)) == 0;
-        TEST_ASSERT_FALSE(r3d_lod_pick(mesh, &lens, &LOD, coarse, coarse + R3D_LOD_WORDS(GROUPS), NULL));
+        TEST_ASSERT_FALSE(r3d_lod_pick(mesh, &lens, &LOD, coarse, true, NULL));
     }
     TEST_ASSERT_TRUE(blend_only > 0); /* the walk past the ramp flipped blend bits alone */
 }
@@ -1238,7 +1270,7 @@ test_a_group_without_its_blending_bit_weighs_none(void) {
 }
 
 static void
-test_without_arrived_bits_every_group_blends_whole_up_to_leave(void) {
+test_arrived_groups_blend_whole_up_to_leave(void) {
     const r3d_lit_mesh_t* mesh = &morphing_levels()->mesh;
     TEST_ASSERT_EQUAL_INT(R3D_LOD_MORPH_ONE, weight_arrived_at(mesh, leave_px(), NULL));
     TEST_ASSERT_EQUAL_INT(R3D_LOD_MORPH_ONE, weight_arrived_at(mesh, enter_px(), NULL));
@@ -1298,7 +1330,9 @@ static uint8_t
 dither_band_at_px(const r3d_lit_mesh_t* mesh, float px, const uint32_t* arrived, int blend, int c) {
     const r3d_lens_t lens = lens_at(error_eye(mesh, px), NULL);
     r3d_lod_morph_t morph;
-    r3d_lod_morph_init(&morph, mesh, &lens, &LOD, 1.0F, arrived, blend);
+    uint32_t state_morph[R3D_LOD_STATE_WORDS(GROUPS)];
+    blend_state_from_bits(state_morph, mesh, NULL, arrived);
+    r3d_lod_morph_init(&morph, mesh, &lens, &LOD, state_morph, blend);
     return r3d_lod_dither_band(&morph, mesh, c);
 }
 
@@ -1420,9 +1454,13 @@ test_the_dither_arm_has_no_morph_weight_and_the_morph_arm_no_dither_band(void) {
     const float mid_ramp = enter_px() + (LOD.blend_px * SHARE_HALF);
     const r3d_lens_t lens = lens_at(error_eye(mesh, mid_ramp), NULL);
     r3d_lod_morph_t morph, dither;
-    r3d_lod_morph_init(&morph, mesh, &lens, &LOD, 1.0F, arrived, RENDER_LOD_BLEND_ON);
+    uint32_t state_morph[R3D_LOD_STATE_WORDS(GROUPS)];
+    blend_state_from_bits(state_morph, mesh, NULL, arrived);
+    r3d_lod_morph_init(&morph, mesh, &lens, &LOD, state_morph, RENDER_LOD_BLEND_ON);
     levelled->mesh.morph_delta = NULL;
-    r3d_lod_morph_init(&dither, mesh, &lens, &LOD, 1.0F, arrived, RENDER_LOD_BLEND_ON);
+    uint32_t state_dither[R3D_LOD_STATE_WORDS(GROUPS)];
+    blend_state_from_bits(state_dither, mesh, NULL, arrived);
+    r3d_lod_morph_init(&dither, mesh, &lens, &LOD, state_dither, RENDER_LOD_BLEND_ON);
     TEST_ASSERT_GREATER_THAN_INT(0, r3d_lod_morph_weight(&morph, mesh, WEIGHT_CLUSTER));
     TEST_ASSERT_EQUAL_HEX8(0, r3d_lod_dither_band(&morph, mesh, WEIGHT_CLUSTER));
     TEST_ASSERT_EQUAL_INT(0, r3d_lod_morph_weight(&dither, mesh, WEIGHT_CLUSTER));
@@ -1672,7 +1710,9 @@ static int
 transform_morphed_at(const morphing_t* m, float eye, bool boxed, transformed_t* out) {
     const r3d_lens_t lens = lens_at(eye, NULL);
     r3d_lod_morph_t morph;
-    r3d_lod_morph_init(&morph, &m->mesh, &lens, &LOD, 1.0F, NULL, RENDER_LOD_BLEND_ON);
+    uint32_t state_morph[R3D_LOD_STATE_WORDS(GROUPS)];
+    blend_state_from_bits(state_morph, &m->mesh, NULL, NULL);
+    r3d_lod_morph_init(&morph, &m->mesh, &lens, &LOD, state_morph, RENDER_LOD_BLEND_ON);
     r3d_pipeline_transform_morphed(&m->mesh, &lens, &morph, BOTH_CLUSTERS, MORPH_CLUSTERS, out->cs, out->rows, boxed);
     return r3d_lod_morph_weight(&morph, &m->mesh, 0);
 }
@@ -1713,9 +1753,9 @@ test_a_cluster_transformed_with_the_whole_weight_lands_on_its_targets(void) {
         transform_plain_at(&m->reference, eye, boxed != 0, &direct);
         expect_same_vertices(direct.cs, blended.cs, 0, MORPH_FIRST_VERTICES);
         expect_same_rows(&direct.rows[0], &blended.rows[0]);
-        TEST_ASSERT_EQUAL_UINT8(R3D_LOD_MORPH_ONE, blended.rows[0].morph);
+        TEST_ASSERT_EQUAL_UINT8(R3D_LOD_MORPH_ONE, blended.rows[0].blend);
         expect_same_vertices(direct.cs, blended.cs, MORPH_FIRST_VERTICES, MORPH_VERTICES - MORPH_FIRST_VERTICES);
-        TEST_ASSERT_EQUAL_UINT8(0, blended.rows[1].morph);
+        TEST_ASSERT_EQUAL_UINT8(0, blended.rows[1].blend);
     }
 }
 
@@ -1731,7 +1771,7 @@ test_a_cluster_transformed_with_no_weight_matches_the_plain_transform_exactly(vo
         transform_plain_at(&m->mesh, eye, boxed != 0, &plain);
         TEST_ASSERT_EQUAL_MEMORY(plain.cs, blended.cs, sizeof plain.cs);
         TEST_ASSERT_EQUAL_MEMORY(plain.rows, blended.rows, sizeof plain.rows);
-        TEST_ASSERT_EQUAL_UINT8(0, blended.rows[0].morph);
+        TEST_ASSERT_EQUAL_UINT8(0, blended.rows[0].blend);
     }
 }
 
@@ -1758,7 +1798,7 @@ test_a_part_weight_puts_a_vertex_between_where_it_is_and_its_target(void) {
     transformed_t blended, fine, target;
     const int weight = transform_morphed_at(m, eye, false, &blended);
     TEST_ASSERT_INT_WITHIN(WEIGHT_SLACK, R3D_LOD_MORPH_ONE / 2, weight);
-    TEST_ASSERT_EQUAL_UINT8(weight, blended.rows[0].morph);
+    TEST_ASSERT_EQUAL_UINT8(weight, blended.rows[0].blend);
     transform_plain_at(&m->mesh, eye, false, &fine);
     transform_plain_at(&m->reference, eye, false, &target);
     TEST_ASSERT_TRUE(target.cs[0].sx > fine.cs[0].sx + R3D_SUBPIXEL);
@@ -1869,7 +1909,9 @@ test_a_blending_instance_draws_the_same_pixels_with_its_plain_clusters_split_off
         const r3d_lit_mesh_t* mesh = &d->mesh;
         const r3d_lens_t lens = lens_at(error_eye(mesh, leave_px() + (SHARE_HALF * LOD.blend_px)), NULL);
         r3d_lod_morph_t morph;
-        r3d_lod_morph_init(&morph, mesh, &lens, &LOD, 1.0F, NULL, RENDER_LOD_BLEND_ON);
+        uint32_t state_morph[R3D_LOD_STATE_WORDS(GROUPS)];
+        blend_state_from_bits(state_morph, mesh, NULL, NULL);
+        r3d_lod_morph_init(&morph, mesh, &lens, &LOD, state_morph, RENDER_LOD_BLEND_ON);
         TEST_ASSERT_TRUE(morph.enabled);
         TEST_ASSERT_EQUAL(morph_targets == 0, morph.dither);
         static const uint16_t ORDER[DRAWN_CLUSTERS] = {0, DRAWN_PLAIN, 1};
@@ -1990,11 +2032,11 @@ check_edge(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_
     at.hysteresis_px = 0.0F;
     at.coverage_permille = r3d_lod_steer_coverage(at.tolerance_px, floor->tolerance_px, floor->coverage_permille);
     uint32_t fresh[R3D_LOD_WORDS(GROUPS)] = {0};
-    r3d_lod_pick(mesh, lens, &at, fresh, NULL, NULL);
+    r3d_lod_pick(mesh, lens, &at, fresh, false, NULL);
     render_lod_settings_t over = at;
     over.coverage_permille++;
     uint32_t wider[R3D_LOD_WORDS(GROUPS)] = {0};
-    r3d_lod_pick(mesh, lens, &over, wider, NULL, NULL);
+    r3d_lod_pick(mesh, lens, &over, wider, false, NULL);
     const int predicted = predicted_at(histogram, edge);
     TEST_ASSERT_TRUE_MESSAGE(predicted <= drawn_triangles(mesh, fresh), "edge");
     TEST_ASSERT_TRUE_MESSAGE(predicted >= drawn_triangles(mesh, wider), "edge");
@@ -2002,7 +2044,7 @@ check_edge(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_
     /* The same edge with the floor's cap draws more: the risen cap let a group turn. */
     at.coverage_permille = floor->coverage_permille;
     uint32_t held[R3D_LOD_WORDS(GROUPS)] = {0};
-    r3d_lod_pick(mesh, lens, &at, held, NULL, NULL);
+    r3d_lod_pick(mesh, lens, &at, held, false, NULL);
     tally->capped += drawn_triangles(mesh, held) > drawn_triangles(mesh, fresh) ? 1 : 0;
 }
 
@@ -2020,7 +2062,7 @@ test_the_histogram_predicts_the_triangles_a_pick_at_each_bin_edge_draws(void) {
             const r3d_lens_t lens = lens_at(eye_at(p, steps), NULL);
             uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
             r3d_lod_histogram_t histogram = {{0}, 0, 1.0F};
-            r3d_lod_pick(mesh, &lens, &floor, coarse, NULL, &histogram);
+            r3d_lod_pick(mesh, &lens, &floor, coarse, false, &histogram);
             TEST_ASSERT_EQUAL_INT(FINEST_CLUSTERS * FINEST_TRIANGLES, histogram.finest);
             for (int edge = 1; edge <= R3D_LOD_BINS; edge++) {
                 if (r3d_lod_bin_edge(edge) >= floor.tolerance_px) {
@@ -2138,7 +2180,7 @@ steered_round(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint32_t* coar
     lod.tolerance_px = steer->tolerance_px;
     lod.coverage_permille = r3d_lod_steer_coverage(steer->tolerance_px, LOD.tolerance_px, LOD.coverage_permille);
     steer->halves[0].unit = 1.0F;
-    r3d_lod_pick(mesh, lens, &lod, coarse, NULL, &steer->halves[0]);
+    r3d_lod_pick(mesh, lens, &lod, coarse, false, &steer->halves[0]);
     r3d_lod_steer_frame(steer, LOD.tolerance_px, budget, drawn_triangles(mesh, coarse), true);
     return steer->bin;
 }
@@ -2215,9 +2257,9 @@ test_the_histogram_bins_errors_in_the_setting_s_pixels(void) {
         r3d_lod_histogram_t once = {{0}, 0, 1.0F};
         r3d_lod_histogram_t twice = {{0}, 0, 2.0F};
         uint32_t coarse[R3D_LOD_WORDS(GROUPS)] = {0};
-        r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL, &once);
+        r3d_lod_pick(mesh, &lens, &LOD, coarse, false, &once);
         memset(coarse, 0, sizeof coarse);
-        r3d_lod_pick(mesh, &lens, &LOD, coarse, NULL, &twice);
+        r3d_lod_pick(mesh, &lens, &LOD, coarse, false, &twice);
         for (int b = 1; b + 2 < R3D_LOD_BINS; b++) {
             TEST_ASSERT_EQUAL_INT_MESSAGE(once.saves[b], twice.saves[b + 2], "bin");
             compared += once.saves[b] != 0 ? 1 : 0;
@@ -2246,6 +2288,45 @@ steered_raster(const r3d_lit_mesh_t* mesh, placed_t* p, void* scratch, render_se
                       .steer = steer,
                       .scratch = scratch,
                       .settings = settings};
+}
+
+static void
+test_a_budgeted_morph_uses_the_pick_limits_before_the_steer_moves(void) {
+    const r3d_lit_mesh_t* mesh = &morphing_levels()->mesh;
+    placed_t* p = malloc(sizeof *p);
+    void* scratch = malloc(picked_scratch_bytes(mesh));
+    render_settings_t settings = spread_over(1);
+    settings.lod.blend = RENDER_LOD_BLEND_ON;
+    r3d_lod_steer_t* steer = malloc(sizeof *steer);
+    TEST_ASSERT_NOT_NULL(steer);
+    raster_t raster = steered_raster(mesh, p, scratch, &settings, steer);
+    settings.lod.triangle_budget = INT32_MAX;
+    const float tolerance = r3d_lod_bin_edge(FLOOR_EDGE + 2);
+    const float enter = tolerance - settings.lod.hysteresis_px;
+    r3d_lod_steer_reset(steer, settings.lod.tolerance_px);
+    steer->tolerance_px = tolerance;
+    steer->bin = FLOOR_EDGE + 2;
+    const float depth[PLACED_MAX] = {error_eye(mesh, enter + settings.lod.blend_px * SHARE_HALF), FAR_EYE};
+    place(p, mesh, PLACED_MAX, depth);
+    const render_view_t view = axis_view();
+    (void)raster_census(&raster, &view);
+    TEST_ASSERT_NOT_EQUAL_FLOAT(tolerance, steer->tolerance_px);
+    r3d_lens_t lens;
+    r3d_lens_init(&lens, &view, 1);
+    r3d_lens_fit(&lens, raster.width, raster.height);
+    r3d_lens_place(&lens, &p->models[0], 1);
+    r3d_lod_morph_t morph;
+    raster_lod_morph(&raster, &view, &p->instances[0], &lens, &morph);
+    TEST_ASSERT_EQUAL_FLOAT(enter, morph.enter);
+    const uint32_t* blending = r3d_lod_blending(r3d_lod_arrived(p->coarse[0], GROUPS), GROUPS);
+    TEST_ASSERT_TRUE(r3d_lod_coarse(blending, WEIGHT_GROUP));
+    TEST_ASSERT_EQUAL(r3d_lod_coarse(blending, WEIGHT_GROUP), r3d_lod_morph_weight(&morph, mesh, WEIGHT_CLUSTER) > 0);
+    lens = lens_at(error_eye(mesh, enter), NULL);
+    raster_lod_morph(&raster, &view, &p->instances[0], &lens, &morph);
+    TEST_ASSERT_EQUAL_INT(R3D_LOD_MORPH_ONE, r3d_lod_morph_weight(&morph, mesh, WEIGHT_CLUSTER));
+    free(steer);
+    free(scratch);
+    free(p);
 }
 
 /* A steered census spread over two frames: a steer never started (or below
@@ -2375,7 +2456,7 @@ suite_r3d_lod(void) {
     RUN_TEST(test_a_pick_flipping_only_a_blend_bit_reports_a_change);
     RUN_TEST(test_the_blending_bit_is_set_where_the_blend_weighs_something);
     RUN_TEST(test_a_group_without_its_blending_bit_weighs_none);
-    RUN_TEST(test_without_arrived_bits_every_group_blends_whole_up_to_leave);
+    RUN_TEST(test_arrived_groups_blend_whole_up_to_leave);
     RUN_TEST(test_the_dither_bands_of_a_blending_group_s_two_levels_cover_every_level_exactly_once);
     RUN_TEST(test_a_group_with_an_empty_coarse_level_fades_its_fine_clusters_out);
     RUN_TEST(test_the_coarse_cluster_covers_more_levels_as_the_blend_weight_grows);
@@ -2399,6 +2480,7 @@ suite_r3d_lod(void) {
     RUN_TEST(test_the_steer_holds_where_only_the_next_bin_down_fits);
     RUN_TEST(test_a_steered_tolerance_settles_and_does_not_swing_along_the_path);
     RUN_TEST(test_the_histogram_bins_errors_in_the_setting_s_pixels);
+    RUN_TEST(test_a_budgeted_morph_uses_the_pick_limits_before_the_steer_moves);
     RUN_TEST(test_a_steered_census_counts_each_instance_once_a_round);
     RUN_TEST(test_a_steer_under_a_zero_tolerance_starts_at_the_first_edge);
     RUN_TEST(test_a_steer_that_moved_owes_picks_while_the_camera_holds_still);
