@@ -619,10 +619,8 @@ raster_lod_morph(const raster_t* raster, const render_view_t* view, const r3d_in
                  const r3d_lens_t* lens, r3d_lod_morph_t* morph) {
     const render_settings_t settings = raster_settings(raster);
     const render_lod_settings_t lod = picture_lod_settings(raster, &settings.lod, drawn_scale(lens, view), false);
-    r3d_lod_morph_init(
-        morph, instance->mesh, lens, &lod,
-        instance->lod_coarse != NULL ? r3d_lod_arrived(instance->lod_coarse, instance->mesh->lod_group_count) : NULL,
-        instance->lod_coarse != NULL ? settings.lod.blend : RENDER_LOD_BLEND_SWITCH);
+    r3d_lod_morph_init(morph, instance->mesh, lens, &lod, instance->lod_coarse,
+                       instance->lod_coarse != NULL ? settings.lod.blend : RENDER_LOD_BLEND_SWITCH);
 }
 
 /* Whether culling skips a sphere, in world units, whole. */
@@ -726,10 +724,7 @@ level_pick(const level_pick_t* pick, int index, const r3d_instance_t* instance, 
     }
     if (instance->lod_coarse != NULL && instance->mesh->lod_group_count > 0) {
         return r3d_lod_pick(instance->mesh, lens, &pick->lod, instance->lod_coarse,
-                            pick->lod.blend == RENDER_LOD_BLEND_ON
-                                ? r3d_lod_arrived(instance->lod_coarse, instance->mesh->lod_group_count)
-                                : NULL,
-                            histogram);
+                            pick->lod.blend == RENDER_LOD_BLEND_ON, histogram);
     }
     if (histogram != NULL) {
         histogram->finest += r3d_lod_finest_triangles(instance->mesh); /* drawn whatever the tolerance */

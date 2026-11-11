@@ -219,7 +219,7 @@ int r3d_lod_morph_partition(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* 
  * (render_lod_blend_t). Disabled for RENDER_LOD_BLEND_SWITCH; a mesh without
  * morph targets dithers (r3d_lod_dithers()). */
 void r3d_lod_morph_init(r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
-                        const render_lod_settings_t* lod, const uint32_t* arrived, int blend);
+                        const render_lod_settings_t* lod, const uint32_t* state, int blend);
 
 /* Cluster `c`'s weight toward its parent group's coarse surface, 0 to
  * R3D_LOD_MORPH_ONE; 0 without a parent, without a blend, or dithered. */
@@ -297,12 +297,12 @@ void r3d_lod_steer_frame(r3d_lod_steer_t* steer, float floor_px, int budget, int
  * keeps `permille`. */
 int r3d_lod_steer_coverage(float tolerance_px, float floor_px, int permille);
 
-/* Updates `coarse`, R3D_LOD_WORDS(mesh->lod_group_count) words, for one
+/* Updates `state`, R3D_LOD_STATE_WORDS(mesh->lod_group_count) words, for one
  * frame through `lens`: coarse where a group's error projects within
  * `lod.tolerance_px` (± `lod.hysteresis_px` by the bit's last state) and its
  * radius covers at most `lod.coverage_permille` of the picture's height; a
- * closing pass keeps the cut crack-free. `arrived`, twice as many words or
- * NULL, keeps the blend's bits; a `histogram` takes the saves. True when any
+ * closing pass keeps the cut crack-free. With `blend` false only the coarse
+ * bits are read or written; a `histogram` takes the saves. True when any
  * bit changed. */
-bool r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod,
-                  uint32_t* coarse, uint32_t* arrived, r3d_lod_histogram_t* histogram);
+bool r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod, uint32_t* state,
+                  bool blend, r3d_lod_histogram_t* histogram);
