@@ -106,12 +106,14 @@ def tree_scenes():
 
 
 def fit_key(job, scene):
-    """A fit's bake key (bake/bake.py) with fixed tool digests: what its recipe alone decides."""
+    """A fit's bake key (bake/bake.py) with fixed tool digests: what its recipe alone decides. Its reference set's
+    bytes stand in as a digest of the reference key, as other inputs render other bytes."""
     from bake import bake
 
     tools = {stage: stage for stage in bake.STAGES}
-    start = bake.stage_keys(job, scene, tools)["start"]
-    return bake.stage_keys(job, scene, tools, {start: "5" * 64})["fit"]
+    keys = bake.stage_keys(job, scene, tools)
+    reference = hashlib.sha256(keys["reference"].encode()).hexdigest()
+    return bake.stage_keys(job, scene, tools, {keys["start"]: "5" * 64, keys["reference"]: reference})["fit"]
 
 
 class ImportTests(unittest.TestCase):
