@@ -12,10 +12,9 @@
 #ifdef DEVICE_BUILD
 #include <stdio.h>
 #include "apps/render_lab/capybara_content.h"
-#include "apps/render_lab/render_lab_scene.h"
+#include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/scene_baked.h"
 #include "apps/render_lab/sponza_content.h"
-#include "apps/render_lab/tests/render_lab_test.h"
 #include "core/memory.h"
 #include "core/timing.h"
 #include "core/tune.h"
@@ -25,6 +24,8 @@
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_mode.h"
 #include "hash/crc32.h"
+#include "lab/lab_scene.h"
+#include "lab/test/lab_test.h"
 #include "math/stats/statsi.h"
 #include "render/context/render_context.h"
 #include "scene/animator/animator.h"
@@ -42,12 +43,12 @@ static const char* TAG = "partial_perf";
 
 typedef struct {
     const char* name;
-    const render_lab_scene_t* scene;
+    const lab_scene_t* scene;
     void (*start)(void); /* puts the scenario at its first frame */
 } scenario_t;
 
 typedef struct {
-    render_lab_test_t saved;
+    lab_test_t saved;
     int32_t frame_us[PARTIAL_FRAMES];
     int32_t sorted_us[PARTIAL_FRAMES]; /* the percentile picks reorder it */
     uint32_t crc[2][PARTIAL_FRAMES];   /* full, then partial */
@@ -58,7 +59,7 @@ static fixture_t* active;
 static void
 release_fixture(void) {
     (void)tune_reset(tune_shared(), TUNE_NAME(render, partial_redraw));
-    render_lab_test_exit(&active->saved);
+    lab_test_exit(&active->saved);
     memory_free(active);
     active = NULL;
 }
@@ -80,7 +81,7 @@ send(const char* command) {
 /* The capybara galloping on the spot from its first frame, seen from home. */
 static void
 start_gallop(void) {
-    const entity_t scene = render_lab_test_loaded_scene(CAPYBARA_SCENE);
+    const entity_t scene = lab_test_loaded_scene(CAPYBARA_SCENE);
     TEST_ASSERT_FALSE(handle_is_none(scene));
     send("view " CAPYBARA_VIEW_HOME);
     char command[ASSET_NAME_MAX];
@@ -93,13 +94,13 @@ start_gallop(void) {
 /* The water scene as it opens, its camera still: nothing to set. */
 static void
 start_water(void) {
-    TEST_ASSERT_FALSE(handle_is_none(render_lab_test_loaded_scene(scene_water.key)));
+    TEST_ASSERT_FALSE(handle_is_none(lab_test_loaded_scene(scene_water.key)));
 }
 
 /* The flythrough from its start: the camera moves every frame. */
 static void
 start_flythrough(void) {
-    const entity_t scene = render_lab_test_loaded_scene(SPONZA_SCENE);
+    const entity_t scene = lab_test_loaded_scene(SPONZA_SCENE);
     TEST_ASSERT_FALSE(handle_is_none(scene));
     const entity_t camera = entity_find(scene, name_hash(sponza_cameras[0]));
     TEST_ASSERT_FALSE(handle_is_none(camera));
@@ -119,13 +120,13 @@ play(fixture_t* f, const scenario_t* s, bool partial) {
     s->start();
     render_context_forget(render_context_main());
     for (int i = 0; i < PARTIAL_WARMUP; i++) {
-        (void)render_lab_test_frame_dt(0, false, NULL);
+        (void)lab_test_frame_dt(0, false, NULL);
     }
     int64_t rows = 0;
     gfx_reset_strip_send_counts();
     for (int i = 0; i < PARTIAL_FRAMES; i++) {
         const int64_t began = timing_now_us();
-        (void)render_lab_test_frame_dt(PARTIAL_FRAME_DT_MS, false, NULL);
+        (void)lab_test_frame_dt(PARTIAL_FRAME_DT_MS, false, NULL);
         f->frame_us[i] = (int32_t)(timing_now_us() - began);
         f->crc[partial][i] = picture_crc();
         const render_context_frame_t r = render_context_frame(render_context_main());
@@ -155,7 +156,7 @@ test_partial_matches_full(void) {
         active = memory_alloc(sizeof *active, MEMORY_APP);
         TEST_ASSERT_NOT_NULL(active);
         *active = (fixture_t){0};
-        render_lab_test_enter(&active->saved, s->scene->key);
+        lab_test_enter(&active->saved, &render_lab, s->scene->key);
         suite_set_test_cleanup(release_fixture);
         test_hold_quarter(0);
         play(active, s, false);
