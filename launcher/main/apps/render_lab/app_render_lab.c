@@ -8,8 +8,6 @@
 
 #include "app/app.h"
 #include "app/app_arena.h"
-#include "apps/render_lab/ui/render_lab_hud_screen.h"
-#include "apps/render_lab/ui/render_lab_menu_screen.h"
 #include "build/build_variant.h"
 #include "console/render_lab_fly.h"
 #include "core/tune.h"
@@ -17,9 +15,11 @@
 #include "esp_log.h"
 #include "gfx/gfx.h"
 #include "image/pixel/rgb565.h"
+#include "lab/lab_scene.h"
+#include "lab/ui/lab_hud_screen.h"
+#include "lab/ui/lab_menu_screen.h"
 #include "render_lab.h"
 #include "render_lab_dynres.h"
-#include "render_lab_scene.h"
 #include "render_lab_view.h"
 #include "scene/animator/animator.h"
 #include "scene/scene.h"
@@ -31,21 +31,21 @@
 #define STRESS_SCENE_ENTRY(id_, ...) &scene_stress[STRESS_##id_],
 
 /* Index 0 is the scene a start with no key shows; a family's scenes keep this order in its dropdown. */
-static const render_lab_scene_t* const scenes[] = {&scene_sponza[SCENE_BAKED_FITTED_FULL],
-                                                   &scene_sponza[SCENE_BAKED_FITTED],
-                                                   &scene_sponza[SCENE_BAKED_FULL],
-                                                   &scene_sponza[SCENE_BAKED_LITE],
-                                                   &scene_sponza[SCENE_BAKED_FLAT],
-                                                   &scene_sponza[SCENE_BAKED_FLAT_FITTED],
-                                                   &scene_capybara,
-                                                   &scene_water,
-                                                   &scene_bistro[SCENE_BAKED_FITTED_FULL],
-                                                   &scene_bistro[SCENE_BAKED_FITTED],
-                                                   &scene_bistro[SCENE_BAKED_FULL],
-                                                   &scene_bistro[SCENE_BAKED_LITE],
-                                                   &scene_bistro[SCENE_BAKED_FLAT],
-                                                   &scene_bistro[SCENE_BAKED_FLAT_FITTED],
-                                                   STRESS_PRESETS(STRESS_SCENE_ENTRY)};
+static const lab_scene_t* const scenes[] = {&scene_sponza[SCENE_BAKED_FITTED_FULL],
+                                            &scene_sponza[SCENE_BAKED_FITTED],
+                                            &scene_sponza[SCENE_BAKED_FULL],
+                                            &scene_sponza[SCENE_BAKED_LITE],
+                                            &scene_sponza[SCENE_BAKED_FLAT],
+                                            &scene_sponza[SCENE_BAKED_FLAT_FITTED],
+                                            &scene_capybara,
+                                            &scene_water,
+                                            &scene_bistro[SCENE_BAKED_FITTED_FULL],
+                                            &scene_bistro[SCENE_BAKED_FITTED],
+                                            &scene_bistro[SCENE_BAKED_FULL],
+                                            &scene_bistro[SCENE_BAKED_LITE],
+                                            &scene_bistro[SCENE_BAKED_FLAT],
+                                            &scene_bistro[SCENE_BAKED_FLAT_FITTED],
+                                            STRESS_PRESETS(STRESS_SCENE_ENTRY)};
 #define SCENE_COUNT ((int)(sizeof(scenes) / sizeof(scenes[0])))
 static int current_scene_index;
 
@@ -65,7 +65,7 @@ scene_index_for_key(const char* key) {
     return 0;
 }
 
-static const render_lab_scene_t*
+static const lab_scene_t*
 current_scene(void) {
     return scenes[current_scene_index];
 }
@@ -252,7 +252,7 @@ static void
 draw_hud(const input_t* input) {
     ui_begin(input);
 
-    const render_lab_hud_screen_state_t state = {
+    const lab_hud_screen_state_t state = {
         .scene_title = current_scene()->name,
         .scene_title_alpha = scene_title_alpha(),
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
@@ -260,7 +260,7 @@ draw_hud(const input_t* input) {
         .status = current_scene()->status != NULL ? current_scene()->status() : NULL,
 #endif
     };
-    render_lab_hud_screen_draw(&state);
+    lab_hud_screen_draw(&state);
 
     /* The scene changes underneath the HUD every frame, so the overlay
      * must composite over the current scene without an opaque window. */
@@ -282,7 +282,7 @@ draw_menu(const input_t* input) {
     static const char* variants[SCENE_COUNT];
     int variant = 0;
     const int variant_count = family_variants(families[family], variants, &variant);
-    const render_lab_menu_screen_state_t state = {
+    const lab_menu_screen_state_t state = {
         .families = families,
         .family_count = family_count,
         .family = family,
@@ -291,7 +291,7 @@ draw_menu(const input_t* input) {
         .variant = variant,
         .controls = current_scene()->controls,
     };
-    const render_lab_menu_screen_result_t result = render_lab_menu_screen_draw(&state);
+    const lab_menu_screen_result_t result = lab_menu_screen_draw(&state);
 
     if (result.family_picked >= 0 && result.family_picked != family) {
         (void)request_variant(families[result.family_picked], 0);
@@ -400,15 +400,14 @@ render_lab_update(uint32_t dt_ms, const input_t* input) {
 }
 
 /* The showing scene's path, with no scene when it has none or has not loaded. */
-static render_lab_path_t
+static lab_path_t
 shown_path(void) {
-    return current_scene()->path == NULL ? (render_lab_path_t){ENTITY_NONE, ENTITY_NONE, NULL}
-                                         : current_scene()->path();
+    return current_scene()->path == NULL ? (lab_path_t){ENTITY_NONE, ENTITY_NONE, NULL} : current_scene()->path();
 }
 
 /* The path's clip, -1 when the scene has none or lacks the clip it names. */
 static int
-path_clip(const render_lab_path_t* path) {
+path_clip(const lab_path_t* path) {
     if (handle_is_none(path->scene) || path->clip == NULL) {
         return handle_is_none(path->scene) ? -1 : animator_current_clip(path->entity);
     }
@@ -422,14 +421,14 @@ path_clip(const render_lab_path_t* path) {
 
 uint32_t
 render_lab_path_duration_ms(void) {
-    const render_lab_path_t path = shown_path();
+    const lab_path_t path = shown_path();
     const int clip = path_clip(&path);
     return clip < 0 ? 0 : animator_clip_duration_ms(path.entity, clip);
 }
 
 bool
 render_lab_seek_path(uint32_t t_ms) {
-    const render_lab_path_t path = shown_path();
+    const lab_path_t path = shown_path();
     const int clip = path_clip(&path);
     const uint32_t duration_ms = render_lab_path_duration_ms();
     if (duration_ms == 0 || (clip != animator_current_clip(path.entity) && !animator_play(path.entity, clip, 0))) {
@@ -441,7 +440,7 @@ render_lab_seek_path(uint32_t t_ms) {
 /* "render pose <ms> | play": the reply to the words after "pose ". */
 static void
 pose_console(const char* rest) {
-    const render_lab_path_t path = shown_path();
+    const lab_path_t path = shown_path();
     const bool play = strcmp(rest, "play") == 0;
     char* end;
     const unsigned long t_ms = strtoul(rest, &end, 10);
@@ -525,7 +524,7 @@ app_t app_render_lab = {
 APP_REGISTER(app_render_lab);
 
 void
-render_lab_scene_fail(const char* tag, char* failure, size_t size, const char* what) {
+lab_scene_fail(const char* tag, char* failure, size_t size, const char* what) {
     ESP_LOGE(tag, "%s; the scene stays blank", what);
     if (snprintf(failure, size, "%s", what) < 0) {
         failure[0] = '\0';
@@ -539,15 +538,15 @@ fail_load(const char* tag, char* failure, size_t size, entity_t root, const char
     (void)scene_failure(root, &why);
     scene_release(root);
     const bool missing = why.asset == ASSET_ERR_NOT_FOUND || why.asset == ASSET_ERR_NO_PACK;
-    char what[RENDER_LAB_STATUS_LEN];
+    char what[LAB_STATUS_LEN];
     if (snprintf(what, sizeof what, missing ? "no %s pack: flash it" : "%s did not load", label) < 0) {
         what[0] = '\0';
     }
-    render_lab_scene_fail(tag, failure, size, what);
+    lab_scene_fail(tag, failure, size, what);
 }
 
 entity_t
-render_lab_scene_load(const char* tag, char* failure, size_t size, const char* id, const char* label) {
+lab_scene_load(const char* tag, char* failure, size_t size, const char* id, const char* label) {
     const entity_t root = scene_load(id);
     if (scene_state(root) == PENDING_READY) {
         return root;
@@ -557,6 +556,6 @@ render_lab_scene_load(const char* tag, char* failure, size_t size, const char* i
 }
 
 void*
-render_lab_scene_take(size_t bytes) {
+lab_scene_take(size_t bytes) {
     return app_arena_take(bytes, _Alignof(max_align_t));
 }

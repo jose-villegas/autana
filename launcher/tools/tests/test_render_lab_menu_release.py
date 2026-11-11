@@ -11,7 +11,7 @@ import re
 import unittest
 
 RENDER_LAB = pathlib.Path(__file__).resolve().parents[2] / "main/apps/render_lab"
-MENU_SCREEN = RENDER_LAB / "ui/render_lab_menu_screen.c"
+MENU_SCREEN = RENDER_LAB / "ui/lab_menu_screen.c"
 
 CONDITIONAL_RE = re.compile(r"^\s*#\s*if", re.MULTILINE)
 # A scene's hook, not a copy of one read through `->`.

@@ -1,6 +1,7 @@
 #include "apps/render_lab/render_lab_dynres.h"
 #include "apps/render_lab/render_lab_view.h"
-#include "apps/render_lab/ui/render_lab_menu_screen.h"
+#include "apps/render_lab/ui/render_lab_settings.h"
+#include "lab/ui/lab_menu_screen.h"
 
 #include "core/tune.h"
 #include "display/display.h"
@@ -176,8 +177,8 @@ test_small_fill_labels_fit_their_dropdown(void) {
             TEST_ASSERT_TRUE(render_lab_small_fill_select(i));
             const input_t input = {0};
             ui_begin(&input);
-            const render_lab_menu_screen_state_t state = {0};
-            (void)render_lab_menu_screen_draw(&state);
+            const lab_menu_screen_state_t state = {.settings = render_lab_settings_draw};
+            (void)lab_menu_screen_draw(&state);
             ui_probe_end_frame();
             recti_t dropdown;
             recti_t drawn;

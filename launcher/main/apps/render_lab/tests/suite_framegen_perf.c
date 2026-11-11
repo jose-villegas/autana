@@ -9,12 +9,12 @@
 #include <string.h>
 #include "apps/render_lab/baked_families.h"
 #include "apps/render_lab/render_lab_dynres.h"
-#include "apps/render_lab/render_lab_scene.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/scene_baked.h"
 #include "apps/render_lab/sponza_content.h"
-#include "apps/render_lab/tests/r3d_perf_quarters.h"
 #include "apps/render_lab/tests/render_lab_test.h"
+#include "lab/lab_scene.h"
+#include "lab/test/lab_perf_quarters.h"
 
 #include "core/timing.h"
 #include "esp_log.h"
@@ -50,7 +50,7 @@ static const char* TAG = "framegen";
     "framegen: %s %dx%d poses=%d frame_us=%d present_us=%d warp_us=%d/%d fill_us=%d compose_us=%d holes_pct=%d.%02d"
 
 typedef struct {
-    const render_lab_scene_t* scene;
+    const lab_scene_t* scene;
     const char* pack;
     const char* camera;
 } framegen_scenario_t;
@@ -76,7 +76,7 @@ static render_view_t
 view_at(entity_t scene, entity_t camera, const lens_t* lens, uint32_t t_ms) {
     TEST_ASSERT_TRUE(animator_seek(camera, ANIMATOR_CURRENT, t_ms));
     const transformf_t pose = transform_world(camera);
-    return lens_view(lens, &pose, (viewport_t){GFX_WIDTH, GFX_HEIGHT, r3d_perf_quarters[0].quarter});
+    return lens_view(lens, &pose, (viewport_t){GFX_WIDTH, GFX_HEIGHT, lab_perf_quarters[0].quarter});
 }
 
 typedef struct {
@@ -136,7 +136,7 @@ static scenario_path_t
 enter_path(void) {
     render_lab_test_enter(&saved, scenario->scene->key);
     suite_set_test_cleanup(release_fixture);
-    test_hold_quarter(r3d_perf_quarters[0].quarter);
+    test_hold_quarter(lab_perf_quarters[0].quarter);
     scenario_path_t path = {.scene = render_lab_test_loaded_scene(scenario->pack)};
     TEST_ASSERT_FALSE(handle_is_none(path.scene));
     const char* camera_name = scenario->camera == NULL ? sponza_cameras[0] : scenario->camera;

@@ -12,7 +12,6 @@
 #ifdef DEVICE_BUILD
 #include <stdio.h>
 #include "apps/render_lab/capybara_content.h"
-#include "apps/render_lab/render_lab_scene.h"
 #include "apps/render_lab/scene_baked.h"
 #include "apps/render_lab/sponza_content.h"
 #include "apps/render_lab/tests/render_lab_test.h"
@@ -25,6 +24,7 @@
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_mode.h"
 #include "hash/crc32.h"
+#include "lab/lab_scene.h"
 #include "math/stats/statsi.h"
 #include "render/context/render_context.h"
 #include "scene/animator/animator.h"
@@ -42,7 +42,7 @@ static const char* TAG = "partial_perf";
 
 typedef struct {
     const char* name;
-    const render_lab_scene_t* scene;
+    const lab_scene_t* scene;
     void (*start)(void); /* puts the scenario at its first frame */
 } scenario_t;
 

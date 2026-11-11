@@ -58,7 +58,7 @@ render_lab_dynres_stop(void) {
 
 const char*
 render_lab_dynres_size(void) {
-    static char size[RENDER_LAB_STATUS_LEN];
+    static char size[LAB_STATUS_LEN];
     const render_context_frame_t frame = render_context_frame(render_context_main());
     if (frame.step < 0 || snprintf(size, sizeof size, "%dx%d ", frame.width, frame.height) < 0) {
         size[0] = '\0';

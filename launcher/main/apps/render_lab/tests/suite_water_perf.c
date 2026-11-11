@@ -2,7 +2,6 @@
 #ifdef DEVICE_BUILD
 #include <math.h>
 #include <string.h>
-#include "apps/render_lab/render_lab_scene.h"
 #include "apps/render_lab/scene_water.h"
 #include "apps/render_lab/tests/render_lab_test.h"
 #include "apps/render_lab/tests/water_perf_log.h"
@@ -10,6 +9,7 @@
 #include "core/timing.h"
 #include "core/tune.h"
 #include "esp_log.h"
+#include "lab/lab_scene.h"
 #include "profile/frame_cost.h"
 #include "testkit/bench.h"
 #include "testkit/cleanup.h"

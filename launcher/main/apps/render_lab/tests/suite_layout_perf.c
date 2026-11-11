@@ -2,7 +2,6 @@
 #ifdef DEVICE_BUILD
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_view.h"
-#include "apps/render_lab/tests/r3d_perf_quarters.h"
 #include "apps/render_lab/tests/render_lab_test.h"
 #include "asset/asset_pack.h"
 #include "core/memory.h"
@@ -12,6 +11,7 @@
 #include "frame/test_frame.h"
 #include "gfx/gfx.h"
 #include "hash/crc32.h"
+#include "lab/test/lab_perf_quarters.h"
 #include "perf_layout_labels.h"
 #include "render/context/render_context.h"
 #include "render/raster_split.h"
@@ -157,12 +157,12 @@ sent_frame_crc(fixture_t* f) {
 static void
 report_row(const char* scene, const char* layout, const char* stage, int32_t* samples, const char* quarter) {
     const bench_stats_t stats = bench_stats_compute(samples, LAYOUT_SAMPLES);
-    ESP_LOGI(TAG, "%s:%s:%s mean %lldus p95 %lldus" R3D_PERF_QUARTER_FORMAT, scene, layout, stage, (long long)stats.avg,
+    ESP_LOGI(TAG, "%s:%s:%s mean %lldus p95 %lldus" LAB_PERF_QUARTER_FORMAT, scene, layout, stage, (long long)stats.avg,
              (long long)stats.p95, quarter);
 }
 
 static void
-measure(fixture_t* f, const char* scene, int layout, const r3d_perf_quarter_t* quarter) {
+measure(fixture_t* f, const char* scene, int layout, const lab_perf_quarter_t* quarter) {
     set_layout(layout);
     enter_app(f, scene, quarter->quarter);
     TEST_ASSERT_EQUAL_INT(layout, render_lab_layout());
@@ -191,7 +191,7 @@ measure(fixture_t* f, const char* scene, int layout, const r3d_perf_quarter_t* q
     }
     ESP_LOGI(TAG,
              "LAYOUT scene=%s layout=%s core1_share=%d crc=%08x internal_free=%u internal_largest=%u "
-             "psram_free=%u psram_largest=%u" R3D_PERF_QUARTER_FORMAT,
+             "psram_free=%u psram_largest=%u" LAB_PERF_QUARTER_FORMAT,
              scene, name, core1_share, (unsigned)crc, internal_free, internal_largest, psram_free, psram_largest,
              quarter->name);
     leave_app(f);
@@ -201,9 +201,9 @@ static void
 test_layout_frame_cost(void) {
     fixture_t* f = fixture();
     for (int s = 0; s < SCENE_KEY_COUNT; s++) {
-        for (size_t q = 0; q < R3D_PERF_QUARTER_COUNT; q++) {
+        for (size_t q = 0; q < LAB_PERF_QUARTER_COUNT; q++) {
             for (int layout = 0; layout < RENDER_LAB_LAYOUT_COUNT; layout++) {
-                measure(f, scene_keys[s], layout, &r3d_perf_quarters[q]);
+                measure(f, scene_keys[s], layout, &lab_perf_quarters[q]);
             }
         }
     }

@@ -33,7 +33,7 @@ static entity_t loaded;
 
 /* What the panel says in place of the triangle count when the scene could not
  * load; empty when it could. */
-static char failure[RENDER_LAB_STATUS_LEN];
+static char failure[LAB_STATUS_LEN];
 
 static void
 record_failure(const scene_failure_t* why) {
@@ -61,9 +61,9 @@ camera_entity(void) {
                        name_hash(render_lab_start_camera == NULL ? shown_family->camera : render_lab_start_camera));
 }
 
-render_lab_path_t
+lab_path_t
 scene_baked_path(void) {
-    return (render_lab_path_t){loaded, handle_is_none(loaded) ? ENTITY_NONE : camera_entity(), NULL};
+    return (lab_path_t){loaded, handle_is_none(loaded) ? ENTITY_NONE : camera_entity(), NULL};
 }
 
 static void
@@ -78,7 +78,7 @@ apply_settings(void) {
 }
 
 void
-scene_baked_enter(const render_lab_scene_t* self) {
+scene_baked_enter(const lab_scene_t* self) {
     const scene_baked_shown_t* shown = self->data;
     const scene_baked_t* family = shown->family;
     draw_clear(RGB565BE(UI_BACKGROUND));
@@ -126,7 +126,7 @@ scene_baked_frame(uint32_t dt_ms) {
 /* The size drawn at and the triangle count, or why the scene did not load. */
 static inline const char*
 scene_baked_status(void) {
-    static char buf[RENDER_LAB_STATUS_LEN];
+    static char buf[LAB_STATUS_LEN];
     if (failure[0] != '\0') {
         return failure;
     }

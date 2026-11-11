@@ -2,12 +2,12 @@
 #include "suites.h"
 #ifdef DEVICE_BUILD
 #include <stdio.h>
-#include "apps/render_lab/render_lab_clips.h"
 #include "apps/render_lab/tests/render_lab_test.h"
 #include "core/memory.h"
 #include "display/display.h"
 #include "frame/test_frame.h"
 #include "gfx_shared_state.h"
+#include "lab/lab_clips.h"
 #include "scene/scene_internal.h"
 #include "testkit/cleanup.h"
 #include "ui/layout/ui_transform.h"
@@ -81,7 +81,7 @@ test_scene_console_dispatch_and_repeated_exit_release_heap(void) {
         const char* playing = animator_clip_name(subject, animator->layer.current.clip);
         TEST_ASSERT_EQUAL_STRING("idle", playing);
         TEST_ASSERT_TRUE(app_render_lab.console->handle("clips"));
-        char command[ASSET_NAME_MAX + sizeof("clip  ") + RENDER_LAB_BLEND_TEXT_SIZE];
+        char command[ASSET_NAME_MAX + sizeof("clip  ") + LAB_CLIPS_BLEND_TEXT_SIZE];
         TEST_ASSERT_TRUE(snprintf(command, sizeof command, "clip gallop %d", DISPATCH_BLEND_MS) >= 0);
         TEST_ASSERT_TRUE(app_render_lab.console->handle(command));
         TEST_ASSERT_EQUAL_STRING("gallop", animator_clip_name(subject, animator->layer.current.clip));
@@ -113,8 +113,8 @@ test_boot_menu_draws_controls_only_for_animated_scene(void) {
         const input_t boot = {.boot = {.pressed = true}};
         render_lab_test_frame(false, &boot);
         render_lab_test_frame(false, NULL);
-        char blend[sizeof("BLEND:  ms") + RENDER_LAB_BLEND_TEXT_SIZE];
-        TEST_ASSERT_TRUE(snprintf(blend, sizeof blend, "BLEND: %d ms", RENDER_LAB_BLEND_DEFAULT_MS) >= 0);
+        char blend[sizeof("BLEND:  ms") + LAB_CLIPS_BLEND_TEXT_SIZE];
+        TEST_ASSERT_TRUE(snprintf(blend, sizeof blend, "BLEND: %d ms", LAB_CLIPS_BLEND_DEFAULT_MS) >= 0);
         recti_t drawn;
         TEST_ASSERT_TRUE(ui_probe_text("BOOT to close", &drawn));
         TEST_ASSERT_EQUAL_INT(i == 0, ui_probe_text("CLIP", &drawn));

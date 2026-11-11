@@ -12,9 +12,9 @@
 #include "app/app_arena.h"
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_dynres.h"
-#include "apps/render_lab/render_lab_scene.h"
 #include "apps/render_lab/scene_baked.h"
 #include "apps/render_lab/tests/render_lab_test.h"
+#include "lab/lab_scene.h"
 #include "render/context/render_context.h"
 #include "scene/scene_shell.h"
 
@@ -64,7 +64,7 @@ test_console_scene_requests_survive_expanded_frames(void) {
 /* Shows `key` through the console, as a menu tap would, and draws it twice. */
 static void
 show_scene(const char* key) {
-    char request[RENDER_LAB_STATUS_LEN];
+    char request[LAB_STATUS_LEN];
     TEST_ASSERT_GREATER_THAN_INT(0, snprintf(request, sizeof request, "scene %s", key));
     TEST_ASSERT_TRUE_MESSAGE(app_render_lab.console->handle(request), key);
     render_lab_test_frame(false, NULL);

@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define RENDER_LAB_STATUS_LEN 48
+#include "lab/lab_scene.h"
 
 extern const char* render_lab_start_scene_key;
 
@@ -26,3 +26,6 @@ uint32_t render_lab_path_duration_ms(void);
  * its clip first; a frame at dt 0 then draws that pose. False when the scene
  * has no path. */
 bool render_lab_seek_path(uint32_t t_ms);
+
+extern const lab_scene_t scene_capybara;
+extern const lab_scene_t scene_water;

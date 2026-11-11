@@ -14,7 +14,6 @@
 #include "apps/render_lab/capybara_content.h"
 
 #include "app/app.h"
-#include "apps/render_lab/render_lab_clips.h"
 #include "console/console_words.h"
 #include "core/tune.h"
 #include "display/display.h"
@@ -23,12 +22,13 @@
 #include "gfx/gfx.h"
 #include "input/mapping/orbit_motion_touch.h"
 #include "kinematics/orbit/orbit_motion.h"
+#include "lab/lab_clips.h"
+#include "lab/lab_scene.h"
 #include "math/scalar/math_const.h"
 #include "math/scalar/units.h"
 #include "render/context/render_context.h"
 #include "render_lab.h"
 #include "render_lab_dynres.h"
-#include "render_lab_scene.h"
 #include "render_lab_view.h"
 #include "scene/camera/camera.h"
 #include "scene/renderer/renderer.h"
@@ -83,7 +83,7 @@ static const capybara_view_t views[] = {
 static entity_t capybara;
 static entity_t camera_entity;
 static entity_t subject_entity;
-static render_lab_clips_t choice;
+static lab_clips_t choice;
 static orbit_motion_t orbit;
 static orbit_motion_touch_t touch;
 
@@ -92,7 +92,7 @@ static char failure[48];
 
 static void
 fail(const char* what) {
-    render_lab_scene_fail(TAG, failure, sizeof failure, what);
+    lab_scene_fail(TAG, failure, sizeof failure, what);
 }
 
 static void
@@ -124,18 +124,18 @@ frame_subject(void) {
 }
 
 static void
-scene_capybara_enter(const render_lab_scene_t* self) {
+scene_capybara_enter(const lab_scene_t* self) {
     (void)self;
     draw_clear(RGB565BE(UI_BACKGROUND));
     failure[0] = '\0';
-    capybara = render_lab_scene_load(TAG, failure, sizeof failure, CAPYBARA_SCENE, "capybara");
+    capybara = lab_scene_load(TAG, failure, sizeof failure, CAPYBARA_SCENE, "capybara");
     if (handle_is_none(capybara)) {
         return;
     }
     if (!frame_subject()) {
         return;
     }
-    if (!render_lab_clips_init(&choice, capybara, subject_entity, CAPYBARA_DEFAULT_CLIP)) {
+    if (!lab_clips_init(&choice, capybara, subject_entity, CAPYBARA_DEFAULT_CLIP)) {
         ESP_LOGW(TAG, "clip picker allocation failed");
     }
     place_camera();
@@ -149,7 +149,7 @@ scene_capybara_enter(const render_lab_scene_t* self) {
 
 static void
 scene_capybara_exit(void) {
-    render_lab_clips_destroy(&choice);
+    lab_clips_destroy(&choice);
     scene_release(capybara);
     capybara = ENTITY_NONE;
     subject_entity = ENTITY_NONE;
@@ -187,7 +187,7 @@ scene_capybara_frame(uint32_t dt_ms) {
 
 static inline const char*
 capybara_status(void) {
-    static char buf[RENDER_LAB_STATUS_LEN];
+    static char buf[LAB_STATUS_LEN];
     if (failure[0] != '\0') {
         return failure;
     }
@@ -231,28 +231,28 @@ view_reply(const char* args, console_reply_fn reply) {
 
 static inline bool
 scene_capybara_console(const char* args, console_reply_fn reply) {
-    return view_reply(args, reply) || render_lab_clips_reply(&choice, args, reply);
+    return view_reply(args, reply) || lab_clips_reply(&choice, args, reply);
 }
 
 static void
 scene_capybara_controls(int width) {
-    render_lab_clips_draw(width, &choice);
+    lab_clips_draw(width, &choice);
 }
 
 /* The subject, galloping. */
-static render_lab_path_t
+static lab_path_t
 capybara_path(void) {
-    return (render_lab_path_t){capybara, subject_entity, CAPYBARA_GALLOP};
+    return (lab_path_t){capybara, subject_entity, CAPYBARA_GALLOP};
 }
 
-const render_lab_scene_t scene_capybara = {.name = "Capybara",
-                                           .key = CAPYBARA_SCENE,
-                                           .family = "Capybara",
-                                           .enter = scene_capybara_enter,
-                                           .frame = scene_capybara_frame,
-                                           .exit = scene_capybara_exit,
-                                           .status = RENDER_LAB_SCENE_DEV(capybara_status),
-                                           .steer = scene_capybara_steer,
-                                           .controls = scene_capybara_controls,
-                                           .console = RENDER_LAB_SCENE_DEV(scene_capybara_console),
-                                           .path = capybara_path};
+const lab_scene_t scene_capybara = {.name = "Capybara",
+                                    .key = CAPYBARA_SCENE,
+                                    .family = "Capybara",
+                                    .enter = scene_capybara_enter,
+                                    .frame = scene_capybara_frame,
+                                    .exit = scene_capybara_exit,
+                                    .status = LAB_SCENE_DEV(capybara_status),
+                                    .steer = scene_capybara_steer,
+                                    .controls = scene_capybara_controls,
+                                    .console = LAB_SCENE_DEV(scene_capybara_console),
+                                    .path = capybara_path};

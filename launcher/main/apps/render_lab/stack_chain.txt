@@ -16,7 +16,7 @@ indirect render_lab_update : scene_capybara_steer
 indirect render_lab_console : scene_capybara_console
 indirect render_lab_path_duration_ms : scene_baked_path capybara_path
 indirect render_lab_seek_path : scene_baked_path capybara_path
-indirect render_lab_menu_screen_draw : scene_capybara_controls
+indirect lab_menu_screen_draw : scene_capybara_controls
 indirect ui_toggle_id : measure_text_height
 indirect render_lab_test_enter : render_lab_enter
 indirect render_lab_test_frame_dt : render_lab_update render_lab_frame
@@ -29,9 +29,9 @@ root test_scene_console_dispatch_and_repeated_exit_release_heap test
 root test_cleanup_finishes_present_without_tripping_guard test
 indirect test_scene_console_dispatch_and_repeated_exit_release_heap : render_lab_console
 indirect render_lab_test_exit : render_lab_exit
-indirect render_lab_clips_reply : console_reply_stdio suite_render_lab_clips.c:capture_reply
-indirect scene_capybara_console : console_reply_stdio suite_render_lab_clips.c:capture_reply
-indirect render_lab_clips.c:reply_line : console_reply_stdio suite_render_lab_clips.c:capture_reply
+indirect lab_clips_reply : console_reply_stdio suite_lab_clips.c:capture_reply
+indirect scene_capybara_console : console_reply_stdio suite_lab_clips.c:capture_reply
+indirect lab_clips.c:reply_line : console_reply_stdio suite_lab_clips.c:capture_reply
 
 root test_boot_menu_draws_controls_only_for_animated_scene test
 indirect render_context_draw : app_arena_take

@@ -3,9 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "apps/render_lab/capybara_content.h"
-#include "apps/render_lab/render_lab_scene.h"
 #include "apps/render_lab/render_lab_view.h"
-#include "apps/render_lab/tests/r3d_perf_quarters.h"
 #include "apps/render_lab/tests/render_lab_test.h"
 #include "apps/render_lab/tests/skin_perf_log.h"
 #include "core/job.h"
@@ -15,6 +13,8 @@
 #include "esp_log.h"
 #include "frame/test_frame.h"
 #include "gfx/gfx.h"
+#include "lab/lab_scene.h"
+#include "lab/test/lab_perf_quarters.h"
 #include "perf_budget.h"
 #include "render/context/render_context.h"
 #include "render/r3d_span_internal.h"
@@ -200,13 +200,13 @@ frame_cost(fixture_t* f, bool paused, bench_stats_t* render_stats, const char* q
     *render_stats = bench_stats_compute(f->render_us, PERF_SAMPLES);
     ESP_LOGI(TAG,
              SKIN_PERF_PREFIX " stage=" SKIN_PERF_STAGE_RENDER
-                              " paused=%d samples=%d joints=%d mean_us=%lld p95_us=%lld" R3D_PERF_QUARTER_FORMAT,
+                              " paused=%d samples=%d joints=%d mean_us=%lld p95_us=%lld" LAB_PERF_QUARTER_FORMAT,
              paused, PERF_SAMPLES, joints, (long long)render_stats->avg, (long long)render_stats->p95, quarter);
     const bench_stats_t stats = bench_stats_compute(f->elapsed_us, PERF_SAMPLES);
     TEST_ASSERT_GREATER_THAN_INT64(0, stats.avg);
     ESP_LOGI(TAG,
              SKIN_PERF_PREFIX " stage=" SKIN_PERF_STAGE_FRAME
-                              " paused=%d samples=%d joints=%d mean_us=%lld p95_us=%lld" R3D_PERF_QUARTER_FORMAT,
+                              " paused=%d samples=%d joints=%d mean_us=%lld p95_us=%lld" LAB_PERF_QUARTER_FORMAT,
              paused, PERF_SAMPLES, joints, (long long)stats.avg, (long long)stats.p95, quarter);
     return stats;
 }
@@ -234,13 +234,13 @@ report_stage_split(fixture_t* f, const char* quarter) {
         }
         r3d_span_stop_after = 0;
         mean[stop] = bench_stats_compute(f->render_us, PERF_SAMPLES).avg;
-        ESP_LOGI(TAG, "stage_split: capybara stop=%s render mean_us=%lld" R3D_PERF_QUARTER_FORMAT, names[stop],
+        ESP_LOGI(TAG, "stage_split: capybara stop=%s render mean_us=%lld" LAB_PERF_QUARTER_FORMAT, names[stop],
                  (long long)mean[stop], quarter);
     }
     context->split = split;
     ESP_LOGI(TAG,
              "stage_split: capybara both cores us/frame to_setup %lld edges %lld carry %lld fill "
-             "%lld" R3D_PERF_QUARTER_FORMAT,
+             "%lld" LAB_PERF_QUARTER_FORMAT,
              (long long)mean[1], (long long)(mean[2] - mean[1]), (long long)(mean[3] - mean[2]),
              (long long)(mean[0] - mean[3]), quarter);
 }
@@ -260,10 +260,10 @@ test_animation_and_frame_cost(void) {
     report_stage(f, SKIN_PERF_STAGE_ANIMATE, animate_slice, f->columns->staged_count, false, SKIN_PERF_CORES_ONE);
     report_stage(f, SKIN_PERF_STAGE_ANIMATE, animate_slice, f->columns->staged_count, true, SKIN_PERF_CORES_TWO);
     report_stage(f, SKIN_PERF_STAGE_ANIMATION_STEP, step, 1, false, SKIN_PERF_CORES_UNKNOWN);
-    for (size_t q = 0; q < R3D_PERF_QUARTER_COUNT; q++) {
-        const r3d_perf_quarter_t* quarter = &r3d_perf_quarters[q];
+    for (size_t q = 0; q < LAB_PERF_QUARTER_COUNT; q++) {
+        const lab_perf_quarter_t* quarter = &lab_perf_quarters[q];
         const resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
-        ESP_LOGI(TAG, "raster=%dx%d present=%d" R3D_PERF_QUARTER_FORMAT, size.width, size.height, render_lab_present(),
+        ESP_LOGI(TAG, "raster=%dx%d present=%d" LAB_PERF_QUARTER_FORMAT, size.width, size.height, render_lab_present(),
                  quarter->name);
         test_hold_quarter(quarter->quarter);
         bench_stats_t playing_render;
@@ -274,12 +274,12 @@ test_animation_and_frame_cost(void) {
         const int joints = f->columns->animators[f->subject_row].skeleton.joint_count;
         ESP_LOGI(TAG,
                  SKIN_PERF_PREFIX " stage=" SKIN_PERF_STAGE_RENDER_DELTA
-                                  " joints=%d mean_us=%lld p95_us=%lld" R3D_PERF_QUARTER_FORMAT,
+                                  " joints=%d mean_us=%lld p95_us=%lld" LAB_PERF_QUARTER_FORMAT,
                  joints, (long long)(playing_render.avg - paused_render.avg),
                  (long long)(playing_render.p95 - paused_render.p95), quarter->name);
         ESP_LOGI(TAG,
                  SKIN_PERF_PREFIX " stage=" SKIN_PERF_STAGE_FRAME_DELTA
-                                  " joints=%d mean_us=%lld p95_us=%lld" R3D_PERF_QUARTER_FORMAT,
+                                  " joints=%d mean_us=%lld p95_us=%lld" LAB_PERF_QUARTER_FORMAT,
                  joints, (long long)(playing.avg - paused.avg), (long long)(playing.p95 - paused.p95), quarter->name);
     }
 }
