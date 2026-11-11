@@ -1,16 +1,22 @@
 """Checks the fit's probe views (r3d/fit/probes.py), the path-first prune and the settle rule that picks a budget
 (r3d/appearance_simplify.py): placement, the inside test on a closed box, the greedy pick, and the ranking."""
 
+import contextlib
+import io
 import pathlib
 import sys
+import tempfile
 import unittest
+from types import SimpleNamespace
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 try:
     import numpy as np
 
-    from r3d.appearance_simplify import FitMesh, prune, settled
+    from r3d import appearance_simplify, reference_set
+    from r3d.appearance_simplify import FitMesh, prune, settle, settled
     from r3d.fit import probes
 except ImportError:
     np = None
@@ -127,6 +133,125 @@ class SettleTests(unittest.TestCase):
         self.assertEqual(settled([7], 0.5), 0)
         with self.assertRaises(ValueError):
             settled([], 0.05)
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class SettleSearchTests(unittest.TestCase):
+    """settle() prunes the fit to the budget the held-out holes pick; the hole count is faked per triangle count."""
+
+    COUNT = 10
+
+    def run_settle(self, holes_at, budget, steps, held_out=(("views", "size"),)):
+        mesh = FitMesh(np.zeros((3 * self.COUNT, 3)), np.zeros((3 * self.COUNT, 3)),
+                       np.arange(3 * self.COUNT).reshape(self.COUNT, 3), np.zeros(self.COUNT), 8,
+                       np.arange(3 * self.COUNT))
+        evaluated = []
+
+        def holes(drawn, *_rest):
+            evaluated.append(len(drawn.tris))
+            return holes_at[len(drawn.tris)]
+        with mock.patch.object(appearance_simplify, "hole_pixels", holes):
+            result = settle(mesh, None, np.arange(1, self.COUNT + 1), budget, steps, list(held_out), (0, 0, 0))
+        return result, evaluated
+
+    def test_without_steps_it_prunes_once_to_the_budget_and_does_not_search(self):
+        (mesh, kept, record), evaluated = self.run_settle({7: 5}, 7, None)
+        self.assertEqual((len(mesh.tris), len(kept), evaluated), (7, 7, [7]))
+        self.assertEqual(record, {"budgets": [7], "holes": [5], "budget": 7})
+
+    def test_without_held_out_views_it_prunes_once_and_records_nothing(self):
+        (mesh, kept, record), evaluated = self.run_settle({}, 8, None, held_out=())
+        self.assertEqual((len(mesh.tris), len(kept), record, evaluated), (8, 8, {}, []))
+
+    def test_the_search_tries_each_step_then_the_budget_even_off_the_step(self):
+        holes = {3: 100, 6: 60, 9: 30, 10: 0}
+        (mesh, _kept, record), evaluated = self.run_settle(holes, 10, (3, 0.05))
+        self.assertEqual(evaluated, [3, 6, 9, 10])
+        self.assertEqual(record, {"budgets": [3, 6, 9, 10], "holes": [100, 60, 30, 0], "budget": 10})
+        self.assertEqual(len(mesh.tris), 10)
+
+    def test_it_stops_at_the_plateau_and_returns_the_settled_budget_not_the_last_tried(self):
+        holes = {2: 100, 4: 50, 6: 49, 8: 0, 10: 0}
+        (mesh, kept, record), evaluated = self.run_settle(holes, 10, (2, 0.1))
+        self.assertEqual(evaluated, [2, 4, 6], "went on past the plateau")
+        self.assertEqual(record, {"budgets": [2, 4, 6], "holes": [100, 50, 49], "budget": 4})
+        self.assertEqual((len(mesh.tris), len(kept)), (4, 4), "returned the last budget tried")
+
+    def test_it_stops_when_a_budget_has_no_holes(self):
+        holes = {2: 100, 4: 0, 6: 0, 8: 0, 10: 0}
+        (mesh, _kept, record), evaluated = self.run_settle(holes, 10, (2, 0.1))
+        self.assertEqual((evaluated, len(mesh.tris), record["budget"]), ([2, 4], 4, 4))
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class FitArgumentTests(unittest.TestCase):
+    BASE = ["--scene", "s.toml", "--start", "a.bundle", "--poses", "p.txt", "--reference", "r", "--out", "o"]
+    HELD = ["--held-out-poses", "h.txt", "--held-out-reference", "h"]
+
+    def refused(self, *extra):
+        error = io.StringIO()
+        with contextlib.redirect_stderr(error), self.assertRaises(SystemExit):
+            appearance_simplify.main([*self.BASE, *extra])
+        return error.getvalue()
+
+    def test_held_out_poses_and_references_must_pair(self):
+        self.assertIn("--held-out-reference", self.refused("--held-out-poses", "h.txt"))
+        self.assertIn("--held-out-reference", self.refused("--held-out-reference", "h"))
+
+    def test_settle_needs_a_budget_held_out_poses_a_step_and_a_share_below_one(self):
+        for name, extra in (("no budget", [*self.HELD, "--settle", "5", "0.1"]),
+                            ("no held-out", ["--budget", "9", "--settle", "5", "0.1"]),
+                            ("step below 1", ["--budget", "9", *self.HELD, "--settle", "0.5", "0.1"]),
+                            ("share 1", ["--budget", "9", *self.HELD, "--settle", "5", "1"]),
+                            ("share negative", ["--budget", "9", *self.HELD, "--settle", "5", "-0.1"])):
+            with self.subTest(name):
+                self.assertIn("--settle needs", self.refused(*extra))
+
+    def test_a_share_of_zero_passes_the_settle_check(self):
+        error = io.StringIO()
+        with contextlib.redirect_stderr(error), self.assertRaises(Exception):
+            appearance_simplify.main([*self.BASE, "--budget", "9", *self.HELD, "--settle", "1", "0"])
+        self.assertNotIn("--settle needs", error.getvalue())
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class PrepareReferencesTests(unittest.TestCase):
+    PROBES = SimpleNamespace(face=8, spacing=1.0)
+
+    def prepare(self, probes, path=None):
+        camera = SimpleNamespace(path=path, region=None, near_z=0.1)
+        inputs = SimpleNamespace(scene=lambda: SimpleNamespace(camera=SimpleNamespace(component=camera)),
+                                 poses=dict(train_every_ms=1, held_out_every_ms=2, coverage_every_ms=1), size=(4, 4),
+                                 probes=probes, job=lambda: None)
+        rendered = []
+        with tempfile.TemporaryDirectory() as directory:
+            work = pathlib.Path(directory) / "work"
+            # Three path poses split into two training and one held out; three probe faces into one and two.
+            path_poses = (4, 4, 1.0, 0.1, [[0.0] * 6] * 3)
+            with mock.patch("r3d.reference_render.render_sets", lambda _inputs, sets: rendered.append(sets)), \
+                 mock.patch("r3d.reference_render.lit_source", lambda *a, **k: SimpleNamespace(p=None, tri_v=None)), \
+                 mock.patch("r3d.fit.probes.select", lambda *a: ([[1.0] * 6], [[2.0] * 6] * 2, {})), \
+                 mock.patch("r3d.mesh_source.camera_path_poses", lambda *a, **k: path_poses):
+                count = reference_set.prepare_references(inputs, work)
+            written = sorted(p.name for p in work.iterdir())
+        return count, written, [[(p.name, r.name) for p, r in sets] for sets in rendered]
+
+    def test_a_scene_with_neither_a_path_nor_probes_is_refused(self):
+        with self.assertRaises(ValueError):
+            self.prepare(None)
+
+    def test_without_a_path_only_the_probe_files_are_written_and_rendered_and_counted(self):
+        count, written, rendered = self.prepare(self.PROBES)
+        self.assertEqual(written, ["probes.json", "probes.txt", "probes_held_out.txt"])
+        self.assertEqual(rendered, [[("probes.txt", "reference_probes"),
+                                     ("probes_held_out.txt", "reference_probes_held_out")]])
+        self.assertEqual(count, 1)
+
+    def test_with_a_path_and_probes_the_count_adds_both_training_sets(self):
+        count, written, rendered = self.prepare(self.PROBES, path=object())
+        self.assertEqual(count, 2 + 1)
+        self.assertEqual([name for name, _ in rendered[0]],
+                         ["train.txt", "train_landscape.txt", "held_out.txt", "probes.txt", "probes_held_out.txt"])
 
 
 if __name__ == "__main__":
