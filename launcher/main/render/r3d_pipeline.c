@@ -876,7 +876,11 @@ draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3
               const uint16_t* face_color, bool double_sided, const r3d_span_target_t* target, draw_mode_t mode,
               int weight, uint16_t screen) {
     FRAME_LAP("r3d.draw.tests");
-    if (misses_every_centre(v[0], v[1], v[2], target)) {
+    /* The writing draw takes the test inline, which keeps its frame at its
+     * stack chain's budget; the reading draws leave it to the compiler, whose
+     * choice keeps their triangle loop as tight. */
+    if ((mode & DRAW_WRITES) != 0 ? misses_every_centre_inlined(v[0], v[1], v[2], target)
+                                  : misses_every_centre(v[0], v[1], v[2], target)) {
         FRAME_LAP("r3d.draw.cluster");
         return;
     }
