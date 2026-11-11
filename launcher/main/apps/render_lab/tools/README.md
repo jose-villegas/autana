@@ -180,10 +180,9 @@ python launcher/main/apps/render_lab/tools/scene_triangle_bins.py --scene stress
 | `bistro-fitted-full` | 12.4% | 17.1% | 29.5% | 41.0% |
 | `stress-card` | 7.3% | 16.8% | 37.6% | 38.2% |
 
-[`stress-coverage.json`](../../../../../docs/render/data/stress-coverage.json)
-records the presets' paused replay counts in both quarters and selected
-frame-profile replay poses. The culled camera samples each quarter's frustum
-edge; the near camera traverses the stacked surfaces.
+The culled camera samples each quarter's frustum edge; the near camera
+traverses the stacked surfaces. Their sweeps are claims of
+[`tests/suite_stress_preset.c`](../tests/suite_stress_preset.c).
 
 | Part | Owner |
 |---|---|
