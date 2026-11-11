@@ -7,9 +7,7 @@
 
 #include "render/r3d_span_internal.h"
 
-typedef struct {
-    float x, y;
-} point_t;
+typedef r3d_size_point_t point_t;
 
 static bool
 project(const r3d_lens_t* lens, const int16_t p[3], point_t* out) {
@@ -21,53 +19,9 @@ project(const r3d_lens_t* lens, const int16_t p[3], point_t* out) {
     return true;
 }
 
-static float
-edge(point_t a, point_t b, float px, float py) {
-    return ((b.x - a.x) * (py - a.y)) - ((b.y - a.y) * (px - a.x));
-}
-
-/* Top and left edges own their centres; the triangle winds positive. */
-static bool
-owns(point_t a, point_t b, float px, float py) {
-    const float w = edge(a, b, px, py);
-    const float dy = b.y - a.y;
-    return w > 0.0F || (w == 0.0F && (dy < 0.0F || (dy == 0.0F && b.x > a.x)));
-}
-
-static int
-first_centre(float lo) {
-    return (int)ceilf(lo - 0.5F);
-}
-
-static recti_t
-centre_box(const point_t v[3]) {
-    return recti_from_edges(
-        first_centre(fminf(v[0].x, fminf(v[1].x, v[2].x))), first_centre(fminf(v[0].y, fminf(v[1].y, v[2].y))),
-        first_centre(fmaxf(v[0].x, fmaxf(v[1].x, v[2].x))), first_centre(fmaxf(v[0].y, fmaxf(v[1].y, v[2].y))));
-}
-
-static int
-clamp_int(int v, int lo, int hi) {
-    return v < lo ? lo : (v > hi ? hi : v);
-}
-
-/* Counts the centres a positive-winding triangle owns, stopping past 4. */
-static long
-count_centres(const point_t v[3], recti_t b, int width, int height) {
-    long covered = 0;
-    for (int y = clamp_int(b.y, 0, height); y < clamp_int(recti_bottom(b), 0, height) && covered <= 4; y++) {
-        for (int x = clamp_int(b.x, 0, width); x < clamp_int(recti_right(b), 0, width) && covered <= 4; x++) {
-            const float px = (float)x + 0.5F;
-            const float py = (float)y + 0.5F;
-            covered += owns(v[0], v[1], px, py) && owns(v[1], v[2], px, py) && owns(v[2], v[0], px, py);
-        }
-    }
-    return covered;
-}
-
 static void
 size_triangle(point_t v[3], bool double_sided, int width, int height, r3d_sizes_t* s) {
-    const float area2 = edge(v[0], v[1], v[2].x, v[2].y);
+    const float area2 = r3d_size_area2(v[0], v[1], v[2]);
     if (area2 == 0.0F || (!double_sided && area2 > 0.0F)) {
         return; /* front faces wind negative on screen */
     }
@@ -76,22 +30,14 @@ size_triangle(point_t v[3], bool double_sided, int width, int height, r3d_sizes_
         v[1] = v[2];
         v[2] = t;
     }
-    const recti_t b = centre_box(v);
+    const recti_t b = r3d_size_centre_box(v);
     if (recti_right(b) <= 0 || b.x >= width || recti_bottom(b) <= 0 || b.y >= height) {
         return;
     }
     s->drawn++;
-    if (recti_is_empty(b)) {
-        s->box_empty++;
-        s->bins[R3D_SIZES_ZERO]++;
-        return;
-    }
-    s->box_two_by_two += (b.w <= 2 && b.h <= 2);
-    const long covered = count_centres(v, b, width, height);
-    s->bins[covered == 0   ? R3D_SIZES_ZERO
-            : covered == 1 ? R3D_SIZES_ONE
-            : covered <= 4 ? R3D_SIZES_TWO_TO_FOUR
-                           : R3D_SIZES_MORE]++;
+    s->box_empty += recti_is_empty(b);
+    s->box_two_by_two += !recti_is_empty(b) && b.w <= 2 && b.h <= 2;
+    s->bins[r3d_size_bin(v, b, width, height)]++;
 }
 
 void
