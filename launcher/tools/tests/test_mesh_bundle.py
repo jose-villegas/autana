@@ -50,7 +50,8 @@ def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, t
     job = SimpleNamespace(object=obj, renderer=renderer, asset_name='hall.atrium',
                           settings=SimpleNamespace(meshlet_triangles=MESHLET_TRIANGLES, double_sided=['leaf'], lod=lod,
                                                     fit=SimpleNamespace(probes=None, budget=None)))
-    scene = SimpleNamespace(objects=[obj], renderers=[job], lights=[])
+    scene = SimpleNamespace(objects=[obj], renderers=[job], lights=[],
+                            camera=SimpleNamespace(component=SimpleNamespace(path='path')))
     with mock.patch.object(mesh_import, 'flat_colours', side_effect=[np.full((1, 3), value) for value in (80, 80, 81, 82)]):
         mesh_import.write_baked(job, scene, pathlib.Path(directory), name or job.asset_name, geometry=geometry,
                                 recorder=recorder)
@@ -270,7 +271,7 @@ def run_fit(directory, fit_main, lod=None, path=True, shaping=None):
     fitted bundle."""
     work = pathlib.Path(directory)
     data, _, _, job, scene = bundle_fixture(directory)
-    scene.camera = SimpleNamespace(component=SimpleNamespace(path='path' if path else None))
+    scene.camera.component.path = 'path' if path else None
     if lod is not None:
         job.settings.lod = lod
     if shaping is not None:
