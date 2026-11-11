@@ -593,12 +593,34 @@ drawn_scale(const r3d_lens_t* lens, const render_view_t* view) {
     return mathf_max(lens->focal_x, lens->focal_y) / mathf_max(view->lens.fx, view->lens.fy);
 }
 
+/* The picture uses the current pick's limits even when its completed round
+ * has already steered the next pick. */
+static render_lod_settings_t
+picture_lod_settings(const raster_t* raster, const render_lod_settings_t* configured, float drawn, bool picking) {
+    render_lod_settings_t lod = *configured;
+    if (raster->steer != NULL && lod.triangle_budget > 0) {
+        r3d_lod_steer_t* steer = raster->steer;
+        if (picking) {
+            const float floor = mathf_max(lod.tolerance_px, r3d_lod_bin_edge(0));
+            steer->picked_tolerance_px = steer->tolerance_px;
+            steer->picked_coverage_permille = r3d_lod_steer_coverage(steer->tolerance_px, floor, lod.coverage_permille);
+        }
+        lod.tolerance_px = steer->picked_tolerance_px;
+        lod.coverage_permille = steer->picked_coverage_permille;
+    }
+    lod.tolerance_px *= drawn;
+    lod.hysteresis_px *= drawn;
+    lod.blend_px *= drawn;
+    return lod;
+}
+
 void
 raster_lod_morph(const raster_t* raster, const render_view_t* view, const r3d_instance_t* instance,
                  const r3d_lens_t* lens, r3d_lod_morph_t* morph) {
     const render_settings_t settings = raster_settings(raster);
+    const render_lod_settings_t lod = picture_lod_settings(raster, &settings.lod, drawn_scale(lens, view), false);
     r3d_lod_morph_init(
-        morph, instance->mesh, lens, &settings.lod, drawn_scale(lens, view),
+        morph, instance->mesh, lens, &lod,
         instance->lod_coarse != NULL ? r3d_lod_arrived(instance->lod_coarse, instance->mesh->lod_group_count) : NULL,
         instance->lod_coarse != NULL ? settings.lod.blend : RENDER_LOD_BLEND_SWITCH);
 }
@@ -683,15 +705,10 @@ level_pick_init(const raster_t* raster, picture_lens_t* picture, const render_vi
         if (pick.round == 0 || pick.steer->tolerance_px < pick.floor_px) {
             r3d_lod_steer_reset(pick.steer, pick.floor_px);
         }
-        pick.lod.tolerance_px = pick.steer->tolerance_px;
-        pick.lod.coverage_permille =
-            r3d_lod_steer_coverage(pick.steer->tolerance_px, pick.floor_px, lod->coverage_permille);
         pick.steer->halves[0].unit = 1.0F / drawn;
         pick.steer->halves[1].unit = pick.steer->halves[0].unit;
     }
-    pick.lod.tolerance_px *= drawn;
-    pick.lod.hysteresis_px *= drawn;
-    pick.lod.blend_px *= drawn;
+    pick.lod = picture_lod_settings(raster, lod, drawn, pick.steer != NULL);
     return pick;
 }
 
