@@ -51,6 +51,11 @@ class WaterTables(unittest.TestCase):
                 f"water {phase} {part}": value for phase in PHASES
                 for part, value in (("frame", 400000), ("update", 200002), ("draw", 9000))})
 
+    def test_a_window_that_dropped_brackets_fails(self):
+        lines = [l.replace("| total 208.60", "| total 208.60 +3 dropped") for l in capture((("base", 0),), 1000)]
+        with self.assertRaisesRegex(ValueError, "dropped brackets"):
+            water_tables.parse(lines)
+
     def test_perf_table_without_base_fails(self):
         with tempfile.TemporaryDirectory() as directory:
             source = pathlib.Path(directory) / "capture.log"
