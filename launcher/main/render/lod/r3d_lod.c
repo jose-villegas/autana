@@ -350,17 +350,18 @@ histogram_add_finest(r3d_lod_histogram_t* histogram, const r3d_lit_mesh_t* mesh)
 }
 
 /* Adds group `group`'s saves to `histogram`, if there is one, at the bin
- * its error, `error` in the form within() takes, projects to at `at`'s
- * nearest depth, in the histogram's pixels. A group whose radius spans past
- * `covered` never turns coarse, so saves nothing; `coarse_now` says it did. */
+ * of the least tolerance that turns it coarse at `at`'s nearest depth, in
+ * the histogram's pixels: its error, or the tolerance whose cap its radius
+ * fits, the cap rising with the tolerance as `covered` over `tolerance` (all
+ * in the form within() takes). Under a cap of 0 no tolerance turns it. */
 static void
 histogram_add(r3d_lod_histogram_t* histogram, const r3d_lit_lod_group_t* group, const reach_t* at, float error,
-              bool coarse_now, float radius, float covered) {
-    if (histogram == NULL || !(coarse_now || within(at, radius, covered))) {
+              float radius, float covered, float tolerance) {
+    if (histogram == NULL || covered <= 0.0F) {
         return;
     }
     const float nearest = mathf_max(mathf_sqrt(at->distance_squared) - at->radius, at->near_z);
-    const float px = error * histogram->unit / nearest;
+    const float px = mathf_max(error, radius * tolerance / covered) * histogram->unit / nearest;
     const int bin = error_bin(px * px);
     if (bin >= 0) {
         histogram->saves[bin] += group->saves;
@@ -412,7 +413,7 @@ pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settin
         const bool coarse_now =
             (within(&at, error, enter) || (was && within(&at, error, leave))) && within(&at, radius, covered);
         *word = coarse_now ? *word | bit : *word & ~bit;
-        histogram_add(histogram, group, &at, error, coarse_now, radius, covered);
+        histogram_add(histogram, group, &at, error, radius, covered, lod->tolerance_px);
         any |= coarse_now;
         changed |= coarse_now != was;
         if (!coarse_now && arrived != NULL) {
@@ -496,6 +497,35 @@ edge_past(float px) {
     return edge;
 }
 
+/* The least edge from `past_floor` whose prediction in `at_edge`, scaled
+ * by `kept`, fits `budget`: -1 when the floor's fits, the coarsest edge when
+ * none does. */
+static int
+edge_within(const int64_t* at_edge, int past_floor, float kept, int budget) {
+    if ((float)at_edge[mathi_max(past_floor - 1, 0)] * kept <= (float)budget) {
+        return -1;
+    }
+    for (int edge = past_floor; edge < R3D_LOD_BINS; edge++) {
+        if ((float)at_edge[edge] * kept <= (float)budget) {
+            return edge;
+        }
+    }
+    return R3D_LOD_BINS; /* out of reach */
+}
+
+/* The bin a steer at `from` moves to when `fits` is the least that fits: it
+ * rises at once, and falls a bin a round once a bin lower than that fits; one
+ * that only just fits is held, so a camera closing in does not dip and climb
+ * back. */
+static int
+steered_bin(int fits, int from, int past_floor) {
+    if (fits >= from) {
+        return fits;
+    }
+    const int bin = fits < from - 1 ? from - 1 : from;
+    return bin >= 0 && bin < past_floor ? -1 : bin;
+}
+
 void
 r3d_lod_steer_frame(r3d_lod_steer_t* steer, float floor_px, int budget, int drawn, bool round_done) {
     steer->drawn += drawn;
@@ -516,24 +546,17 @@ r3d_lod_steer_frame(r3d_lod_steer_t* steer, float floor_px, int budget, int draw
      * the tolerance the round drew with. */
     const int64_t was = at_edge[mathi_max(edge_past(steer->tolerance_px) - 1, 0)];
     const float kept = was > 0 ? (float)steer->drawn / ((float)steer->frames * (float)was) : 1.0F;
-    int bin = -1;
-    if ((float)at_edge[mathi_max(past_floor - 1, 0)] * kept > (float)budget) {
-        bin = R3D_LOD_BINS; /* out of reach: the coarsest edge */
-        for (int edge = past_floor; edge < R3D_LOD_BINS; edge++) {
-            if ((float)at_edge[edge] * kept <= (float)budget) {
-                bin = edge;
-                break;
-            }
-        }
-    }
-    if (bin < steer->bin - 1) {
-        bin = steer->bin - 1; /* falls a bin a round */
-        bin = bin >= 0 && bin < past_floor ? -1 : bin;
-    }
+    const int bin = steered_bin(edge_within(at_edge, past_floor, kept, budget), steer->bin, past_floor);
     steer->settled = bin == steer->bin;
     steer->bin = bin;
     steer->tolerance_px = bin < 0 ? floor_px : mathf_max(r3d_lod_bin_edge(bin), floor_px);
     memset(steer->halves, 0, sizeof steer->halves);
     steer->drawn = 0;
     steer->frames = 0;
+}
+
+int
+r3d_lod_steer_coverage(float tolerance_px, float floor_px, int permille) {
+    const float risen = (float)permille * (tolerance_px / floor_px);
+    return risen < (float)INT32_MAX ? (int)risen : INT32_MAX;
 }

@@ -298,6 +298,7 @@ def authored_entry():
         scene_asset.CLIP.pack(b"idle") + scene_asset.CLIP.pack(b"walk"),
         scene_asset.SETTINGS.pack(0.1, 0.2, 0.3, 0.4, 0.5),
         scene_asset.PARENT.pack(scene_asset.PARENT_ROOT) * 2]
+    parts += [b""] * (len(scene_asset.PARTS) - len(parts))  # no batches
     counts = [len(part) // row.size for part, row in zip(parts, scene_asset.ROWS)]
     offsets, at = [], HEADER.size
     for part in parts:

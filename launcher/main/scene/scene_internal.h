@@ -14,6 +14,7 @@
 #include "core/pending.h"
 #include "hash/name_hash.h"
 #include "math/linear/mat3f.h"
+#include "render/batch/r3d_batch.h"
 #include "render/lod/r3d_lod.h"
 #include "render/r3d_instance.h"
 #include "render/skin/r3d_skin_light.h"
@@ -75,6 +76,13 @@ typedef struct {
     char mesh[ASSET_NAME_MAX];
 } scene_asset_renderer_t;
 
+/* A renderer that draws copies of its mesh from the packed rows below
+ * (docs/assets/formats/SCNE.md#batches). */
+typedef struct {
+    uint16_t renderer, copy_count;
+    uint32_t first_copy, first_chunk; /* into places and turns, and into chunks */
+} scene_asset_batch_t;
+
 typedef struct {
     uint16_t entity, pad;
     float half_fov_short_tan, near_z;
@@ -109,6 +117,7 @@ typedef struct {
 typedef struct {
     uint16_t entity_count, renderer_count, camera_count;
     uint16_t light_count, skinned_renderer_count, animator_count, clip_count;
+    uint16_t batch_count, chunk_count, copy_count;
     const scene_asset_name_t* names;
     const scene_asset_transform_t* transforms;
     const scene_asset_renderer_t* renderers;
@@ -119,6 +128,10 @@ typedef struct {
     const char (*clips)[ASSET_NAME_MAX];
     const scene_asset_settings_t* settings;
     const uint16_t* parents; /* one per entity: SCENE_ASSET_PARENT_ROOT or a lower entity */
+    const scene_asset_batch_t* batches;
+    const r3d_copy_chunk_t* chunks;
+    const r3d_copy_place_t* places; /* copy_count */
+    const r3d_copy_turn_t* turns;   /* copy_count */
 } scene_asset_t;
 
 /* Checks every row once and returns the first failure: ASSET_ERR_VERSION,
@@ -132,10 +145,12 @@ typedef struct {
     box3f_t world_bounds; /* the mesh's root box through `model`, kept with it */
     box3f_t drawn_bounds; /* world_bounds when last drawn (render/partial) */
     scene_row_t entity;
-    bool placed;          /* false while the transform is the identity: drawn as it is */
-    bool changed;         /* its mesh or model changed since it was last drawn (render/partial) */
-    uint16_t lod_words;   /* R3D_LOD_WORDS of the opened mesh's groups; its arrived bits follow */
-    uint32_t* lod_coarse; /* into the scene's lod_bits, or NULL without levels */
+    bool placed;        /* false while the transform is the identity: drawn as it is */
+    bool changed;       /* its mesh or model changed since it was last drawn (render/partial) */
+    uint32_t lod_words; /* the level state held for the mesh opened: R3D_LOD_STATE_WORDS of its groups, a copy's each */
+    uint32_t* lod_coarse; /* into the scene's lod_bits, or NULL without levels; a batch's are its copies' */
+    r3d_batch_t* batch;   /* its copies, or NULL: it draws its mesh once */
+    uint16_t colour_sets; /* the sets its colour arrays hold from the one opened: 1, or its batch's highest plus one */
 } scene_renderer_t;
 
 /* Sets `r`'s world box from its mesh and model; call after either changes,
@@ -247,8 +262,11 @@ struct scene {
     transformf_t* locals;
     scene_animator_t* animators;
     scene_skinned_renderer_t* skinned_renderers;
-    r3d_instance_t* instances; /* one per renderer: what the raster draws this frame */
-    uint16_t* world_slots;     /* one per entity: its index in `worlds`, or SCENE_WORLD_SLOT_NONE when childless */
+    r3d_instance_t* instances;     /* one per renderer: what the raster draws this frame */
+    r3d_batch_t* batches;          /* one per SCNE batch, its renderer's */
+    r3d_batch_draw_t* batch_draws; /* one per SCNE batch: what the raster draws of it this frame */
+    r3d_copy_chunk_t* chunks;      /* every batch's chunks, internal RAM: what the cull reads first */
+    uint16_t* world_slots;         /* one per entity: its index in `worlds`, or SCENE_WORLD_SLOT_NONE when childless */
     int world_count;
     mat4f_t* worlds;             /* one per entity with children, in entity order */
     scene_row_t* world_entities; /* the entity each of `worlds` belongs to */

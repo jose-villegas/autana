@@ -163,3 +163,6 @@ spheref_t r3d_lit_mesh_bounding_sphere(const r3d_lit_mesh_t* mesh);
 /* The box of the root node's bounds carried through `model` (NULL: as it is),
  * in world units: it holds every vertex where the instance sits. */
 box3f_t r3d_lit_mesh_world_bounds(const r3d_lit_mesh_t* mesh, const mat4f_t* model);
+
+/* The box that holds `box` carried through `model` (NULL: as it is). */
+box3f_t r3d_box_placed(box3f_t box, const mat4f_t* model);
