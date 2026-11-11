@@ -299,6 +299,25 @@ test_lerp_rgb888_truncates_and_keeps_channels_apart(void) {
     TEST_ASSERT_EQUAL_HEX32(0x00FF00u, RGB888_LERP(0x00FF00u, 0x00FF00u, 7, 15));
 }
 
+static void
+test_bayer_level_scales_any_whole_with_half_levels_rounded_down(void) {
+    enum { WHOLE = 128, HALF_STEP = WHOLE / (2 * BAYER4_LEVELS) };
+
+    for (int level = 0; level < BAYER4_LEVELS; level++) {
+        const int tie = ((2 * level) + 1) * HALF_STEP;
+        TEST_ASSERT_EQUAL_INT(level, bayer_level(tie, WHOLE));
+        TEST_ASSERT_EQUAL_INT(level + 1, bayer_level(tie + 1, WHOLE));
+    }
+    TEST_ASSERT_EQUAL_INT(0, bayer_level(0, WHOLE));
+    TEST_ASSERT_EQUAL_INT(BAYER4_LEVELS, bayer_level(WHOLE, WHOLE));
+    TEST_ASSERT_EQUAL_INT(BAYER4_LEVELS, bayer_level(UINT32_MAX, UINT32_MAX));
+    TEST_ASSERT_EQUAL_INT(BAYER4_LEVELS / 2, bayer_level(UINT32_MAX / 2, UINT32_MAX));
+    for (int alpha = 0; alpha <= UINT8_MAX; alpha++) {
+        const int expected = alpha == UINT8_MAX ? BAYER4_LEVELS : (alpha + BAYER4_SIDE * 2) / BAYER4_LEVELS;
+        TEST_ASSERT_EQUAL_INT(expected, bayer_level(alpha, UINT8_MAX));
+    }
+}
+
 /* bayer_level() is the alpha->level scaling bayer_covers()
  * compares against the table, exposed so a caller with a whole row at one
  * alpha can compute it once. Pinning the two at EVERY alpha and cell is
@@ -306,7 +325,7 @@ test_lerp_rgb888_truncates_and_keeps_channels_apart(void) {
 static void
 test_dither_level_agrees_with_covers_at_every_alpha_and_cell(void) {
     for (int a = 0; a <= 255; a++) {
-        const int level = bayer_level((uint8_t)a);
+        const int level = bayer_level((uint8_t)a, UINT8_MAX);
         for (int y = 0; y < 4; y++) {
             for (int x = 0; x < 4; x++) {
                 TEST_ASSERT_EQUAL_MESSAGE(level > bayer4x4[y][x], bayer_covers(x, y, (uint8_t)a),
@@ -443,6 +462,7 @@ run_image_pixel_suite(void) {
     RUN_TEST(test_the_hue_wheel_has_no_seams);
     RUN_TEST(test_the_hue_wheel_runs_red_yellow_green_cyan_blue_magenta);
     RUN_TEST(test_lerp_rgb888_truncates_and_keeps_channels_apart);
+    RUN_TEST(test_bayer_level_scales_any_whole_with_half_levels_rounded_down);
     RUN_TEST(test_dither_level_agrees_with_covers_at_every_alpha_and_cell);
     RUN_TEST(test_alpha_zero_never_covers);
     RUN_TEST(test_alpha_255_always_covers);

@@ -92,7 +92,7 @@ draw(render_context_t* c, raster_rig_t* r) {
 /* Field by field: the struct has padding, whose bytes mean nothing. */
 static void
 assert_settings(const render_settings_t* expected, const render_settings_t* actual) {
-#define ASSERT_FIELD(field, type) TEST_ASSERT_TRUE_MESSAGE(expected->field == actual->field, #field);
+#define ASSERT_FIELD(field, type, valid) TEST_ASSERT_TRUE_MESSAGE(expected->field == actual->field, #field);
     RENDER_SETTINGS_FIELDS(ASSERT_FIELD)
 #undef ASSERT_FIELD
 }
@@ -259,7 +259,7 @@ test_the_coverage_knob_overrides_only_the_coverage_cap(void) {
 enum { FIELDS = RENDER_SETTINGS_FIELD_COUNT, ROW_BYTES = ASSET_TABLE_NAME_SIZE + sizeof(int16_t), PACK_BYTES = 512 };
 
 /* Every field's row name in struct order, then one no field has. */
-#define FIELD_NAME(field, type) #field,
+#define FIELD_NAME(field, type, valid) #field,
 static const char* const field_names[FIELDS + 1] = {RENDER_SETTINGS_FIELDS(FIELD_NAME) "fog"};
 #undef FIELD_NAME
 #define STEP (1 << RENDER_SETTINGS_FRAC_BITS)
