@@ -29,6 +29,8 @@ static bool expanded;
 static bool stepped;  /* scene_render() ran, and scene_compose() has not yet */
 static bool rendered; /* it drew, and scene_compose() has not upscaled it */
 static bool refused;  /* the context had no scratch for the active camera, logged once */
+/* The active camera's view: here, not on the draw's stack. */
+static render_view_t drawn_view;
 
 bool
 scene_has_active_camera(void) {
@@ -150,12 +152,13 @@ fill_changed(scene_t* scene) {
     return same ? changes : -1;
 }
 
-/* The active camera's view from its entity's world. Its own frame, gone
- * before the draw: the pose and the world walk stay off the draw's stack. */
-static __attribute__((noinline)) render_view_t
+/* The active camera's view from its entity's world, into `drawn_view`. Its own
+ * frame, gone before the draw: the pose and the world walk stay off the
+ * draw's stack. */
+static __attribute__((noinline)) void
 active_view(const scene_t* scene, const scene_camera_t* camera, viewport_t viewport) {
     const transformf_t pose = scene_row_world(scene->root, camera->entity);
-    return lens_view(&camera->lens, &pose, viewport);
+    drawn_view = lens_view(&camera->lens, &pose, viewport);
 }
 
 box3f_t
@@ -187,10 +190,10 @@ draw_active(int quarter, int width, int height) {
     if (count + batches == 0) {
         return;
     }
-    const render_view_t view = active_view(scene, camera, (viewport_t){width, height, quarter});
+    active_view(scene, camera, (viewport_t){width, height, quarter});
     render_context_set_changed(render_context_main(), changed, fill_changed(scene));
     render_context_set_batches(render_context_main(), scene->batch_draws, batches);
-    rendered = render_context_draw(render_context_main(), scene->instances, count, &view, camera->clear);
+    rendered = render_context_draw(render_context_main(), scene->instances, count, &drawn_view, camera->clear);
     if (!rendered && !refused) {
         ESP_LOGE("scene", "no memory to draw '%s'; it stays blank", scene->root->id);
         refused = true;

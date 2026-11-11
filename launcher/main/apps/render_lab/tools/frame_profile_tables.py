@@ -75,7 +75,7 @@ def path_chart(row, frames, poses, profile, out):
     save(fig, out)
 
 
-def timing_tables(data_dir, scenes, boards, peak_board, images, write_images, render_views=False):
+def timing_tables(data_dir, boards, peak_board, images, write_images, render_views=False):
     captures = ({board: data_dir / f"{PROFILE_PREFIX}{board}{BOARD_SUFFIX}.log" for board in boards}
                 if boards else {path.stem.removeprefix(PROFILE_PREFIX).removesuffix(BOARD_SUFFIX): path
                                 for path in sorted(data_dir.glob(PROFILE_GLOB))})
@@ -94,8 +94,7 @@ def timing_tables(data_dir, scenes, boards, peak_board, images, write_images, re
         if len(indexed) != len(entries):
             raise ValueError(f"{path}: duplicate profile")
         readings[board] = indexed
-    if scenes is None:
-        scenes = list(dict.fromkeys(row for row, quarter in next(iter(readings.values()))))
+    scenes = list(dict.fromkeys(row for row, quarter in next(iter(readings.values()))))
     lines = ["### Measured frame rate", "",
              f"Cells list {' / '.join(f'board {number}' for number in range(1, len(captures) + 1))}.",
              "Playback includes update, render, compose and present.", "",
@@ -140,7 +139,6 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", type=pathlib.Path, default=ROOT / DATA)
     parser.add_argument("--document", type=pathlib.Path, default=ROOT / DOCUMENT)
-    parser.add_argument("--scenes", help="comma-separated row order; defaults to capture order")
     parser.add_argument("--board", action="append", help="capture label in frame-profile-<label>-board.log; "
                         "defaults to every playback capture")
     parser.add_argument("--peak-board", required=True,
@@ -153,8 +151,7 @@ def main():
     args = parser.parse_args(argv)
     command = shlex.join(["python", SCRIPT, *(arg for arg in argv if arg not in ("--check", "--render-views")), "--check"])
     try:
-        body = timing_tables(args.data_dir, args.scenes.split(",") if args.scenes else None,
-                             args.board, args.peak_board, args.images.resolve(), not args.check,
+        body = timing_tables(args.data_dir, args.board, args.peak_board, args.images.resolve(), not args.check,
                              args.render_views and not args.check)
         changed = replace_block(args.document, BLOCK, body, check=args.check, command=command)
     except (OSError, ValueError) as error:

@@ -1,9 +1,10 @@
 /*
- * Device-only suite: what a frame of each Sponza bake costs, the way
+ * Device-only suite: what a frame of the Sponza showcase bake costs with
+ * culling on and off, and of the full bake placed by a moving model, the way
  * scene_sponza.c renders it (half resolution, upscaled), at evenly spaced
- * points of the flythrough; and, for the full bake at the flythrough's
- * start, where one core's draw spends its time stage by stage, whether its
- * two halves slow each other on both cores, and what an empty frame costs.
+ * points of the flythrough. Also each bake's draw stage by stage, and, for
+ * the full bake at the flythrough's start, whether its two halves slow each
+ * other on both cores and what an empty frame costs.
  * The panel transfer is not included.
  *
  * Runs under DEVICE_BUILD only - needs PSRAM, core 1 and a clock.
@@ -411,8 +412,9 @@ restore_culling(void) {
     (void)tune_set(tune_shared(), TUNE_NAME(render, cull), saved_cull);
 }
 
-void
-test_sponza_frame_cost_along_the_flythrough(void) {
+/* The meshes open and culling at its default, restored after the test. */
+static void
+open_with_default_culling(void) {
     /* Cache configuration trades internal RAM for speed, so a frame-cost
      * capture carries what it left. */
     ESP_LOGI(TAG, "internal heap: free %u largest %u" R3D_PERF_QUARTER_FORMAT,
@@ -424,24 +426,21 @@ test_sponza_frame_cost_along_the_flythrough(void) {
     saved_cull = *culling->value;
     suite_add_test_cleanup(restore_culling);
     TEST_ASSERT_TRUE(tune_reset(tune_shared(), TUNE_NAME(render, cull)));
+}
+
+void
+test_sponza_frame_cost_along_the_flythrough(void) {
+    open_with_default_culling();
     /* Worst of a 5-seed capture on A308 (before and after its move), 20E8 and
-     * 2124, + 1%; per quarter, portrait then landscape. */
-    static const perf_budget_t bake_budgets[SCENE_BAKED_VARIANT_COUNT][R3D_PERF_QUARTER_COUNT] = {
-        [SCENE_BAKED_FULL] = {{41041, 52072}, {38765, 47432}},
-        [SCENE_BAKED_FLAT] = {{32168, 41332}, {31418, 38734}},
-        [SCENE_BAKED_LITE] = {{33499, 39169}, {31676, 36473}},
-        [SCENE_BAKED_FITTED] = {{32882, 40125}, {30706, 37015}},
-        [SCENE_BAKED_FITTED_FULL] = {{41877, 53439}, {39437, 49049}},
-        [SCENE_BAKED_FLAT_FITTED] = {{32106, 42281}, {30639, 38662}},
-    };
+     * 2124, + 1%; per quarter, portrait then landscape. The showcase's pair is
+     * what a meshlet size capture reads; run_sponza_bakes_suite times every bake. */
+    static const perf_budget_t showcase_budget[R3D_PERF_QUARTER_COUNT] = {{41877, 53439}, {39437, 49049}};
     static const perf_budget_t cull_off_budget[R3D_PERF_QUARTER_COUNT] = {{61138, 67896}, {58104, 66246}};
-    for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
-        const r3d_instance_t instance = {&meshes[i], NULL, NULL, NULL};
-        report_frame_cost(sponza_bakes[i], sponza_bakes[i], &instance, NULL, NULL, bake_budgets[i]);
-    }
-    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, cull), 0));
     const scene_baked_variant_t showcase = showcase_bake();
+    TEST_ASSERT_EQUAL_INT_MESSAGE(SCENE_BAKED_FITTED_FULL, showcase, "the showcase budgets are fitted full's");
     const r3d_instance_t shown = {&meshes[showcase], NULL, NULL, NULL};
+    report_frame_cost(sponza_bakes[showcase], sponza_bakes[showcase], &shown, NULL, NULL, showcase_budget);
+    TEST_ASSERT_TRUE(tune_set(tune_shared(), TUNE_NAME(render, cull), 0));
     report_frame_cost("cull_off", sponza_bakes[showcase], &shown, NULL, NULL, cull_off_budget);
     TEST_PASS();
 }
@@ -460,8 +459,22 @@ test_sponza_frame_cost_placed(void) {
     TEST_PASS();
 }
 
+/* Every bake along the flythrough, unpegged: the docs' board stage
+ * (render_doc_images.sh --stage board) reads these rows. */
 void
-run_sponza_perf_suite(void) {
+test_sponza_bake_frame_costs(void) {
+    open_with_default_culling();
+    static const perf_budget_t unpegged[R3D_PERF_QUARTER_COUNT] = {{0}};
+    for (int i = 0; i < (int)SCENE_BAKED_VARIANT_COUNT; i++) {
+        const r3d_instance_t instance = {&meshes[i], NULL, NULL, NULL};
+        report_frame_cost(sponza_bakes[i], sponza_bakes[i], &instance, NULL, NULL, unpegged);
+    }
+    TEST_PASS();
+}
+
+/* `tests` once per perf quarter, with the scene loaded. */
+static void
+run_with_sponza(void (*tests)(void)) {
     sponza_suite_t loaded = sponza_suite_load();
     sponza = loaded.scene;
     pack = asset_store_loaded(loaded.load);
@@ -470,9 +483,7 @@ run_sponza_perf_suite(void) {
     (void)render_lab_apply_camera_settings(camera_entity);
     for (size_t q = 0; q < R3D_PERF_QUARTER_COUNT; q++) {
         perf_quarter = &r3d_perf_quarters[q];
-        RUN_TEST_CASE(test_sponza_draw_stage_breakdown, perf_quarter->name);
-        RUN_TEST_CASE(test_sponza_frame_cost_along_the_flythrough, perf_quarter->name);
-        RUN_TEST_CASE(test_sponza_frame_cost_placed, perf_quarter->name);
+        tests();
     }
     loaded = (sponza_suite_t){sponza, loaded.load, flythrough, loaded.arena_mark};
     sponza_suite_release(&loaded);
@@ -481,11 +492,38 @@ run_sponza_perf_suite(void) {
     flythrough = NULL;
 }
 
+static void
+perf_tests(void) {
+    RUN_TEST_CASE(test_sponza_draw_stage_breakdown, perf_quarter->name);
+    RUN_TEST_CASE(test_sponza_frame_cost_along_the_flythrough, perf_quarter->name);
+    RUN_TEST_CASE(test_sponza_frame_cost_placed, perf_quarter->name);
+}
+
+static void
+bake_tests(void) {
+    RUN_TEST_CASE(test_sponza_bake_frame_costs, perf_quarter->name);
+}
+
+void
+run_sponza_perf_suite(void) {
+    run_with_sponza(perf_tests);
+}
+
+void
+run_sponza_bakes_suite(void) {
+    run_with_sponza(bake_tests);
+}
+
 #else /* !DEVICE_BUILD */
 
 void
 run_sponza_perf_suite(void) {}
 
+void
+run_sponza_bakes_suite(void) {}
+
 #endif /* DEVICE_BUILD */
 
 SUITE_REGISTER(run_sponza_perf_suite);
+/* On request: the docs' board stage, not a perf check. */
+SUITE_REGISTER_ON_REQUEST(run_sponza_bakes_suite);

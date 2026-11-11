@@ -29,7 +29,7 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from r3d.reference_set import (ReferenceInputs, TRACED_ON, POSE_SPACING, canonical,
+from r3d.reference_set import (ReferenceInputs, POSE_SPACING, canonical,
                                poses_text, split_poses, reference_inputs, prepare_references)
 from r3d import log  # noqa: E402
 from r3d.import_settings import SettingsError, load_scene, source_digest  # noqa: E402
