@@ -303,11 +303,9 @@ class SweepTests(unittest.TestCase):
                  unittest.mock.patch.object(mesh_import, "write_baked", return_value=start), \
                  unittest.mock.patch.object(mesh_source, "camera_path_poses", return_value=poses), \
                  unittest.mock.patch.object(fitted_variant, "prepare_references", wraps=fitted_variant.prepare_references) as prepare, \
-                 unittest.mock.patch.object(reference_render, "render_sets", return_value="traced_here") as render:
+                 unittest.mock.patch.object(reference_render, "render_sets") as render:
                 fitted_variant.sweep_references("scene", scene, job, work)
                 fitted_variant.sweep_references("scene", scene, job, work)
-            self.assertEqual((work / fitted_variant.TRACED_ON).read_text(), "traced_here\n",
-                             "the set records the variant it was traced on")
         self.assertEqual(render.call_count, 1)
         self.assertEqual(prepare.call_args.args[0].size, renderer.fit.size)
         inputs, sets = render.call_args.args

@@ -18,12 +18,14 @@ typedef struct {
     float hysteresis_px; /* advanced: how far past the tolerance a coarse group's error goes before it turns fine */
     int coverage_permille; /* basic: the thousandths of the picture's height a coarse group may span; smaller pops less */
     int pick_every; /* advanced: the frames the pick is spread over, a scene's first frame picking all; more saves, switches later */
+    int triangle_budget; /* basic: the triangles a frame aims to draw, the tolerance rising past tolerance_px to keep within; 0 never rises */
 } render_lod_settings_t;
 
 typedef struct {
     bool cull;                 /* basic: skips clusters and world boxes outside the picture */
     bool depth_fit;            /* advanced: depth steps go where the kept scene is, not to near_z; needs cull */
     bool batched;              /* advanced: one transform and one draw fork/join a batch, not an instance */
+    bool partial_redraw;       /* basic: a still camera redraws only the rows that moved; the picture is the same */
     render_lod_settings_t lod; /* which level of a mesh's clusters an instance draws (docs/plans/Cluster-LOD.md) */
 } render_settings_t;
 
@@ -31,7 +33,7 @@ typedef struct {
 #include "render/settings/render_settings_default.h"
 
 /* The pack entry a .pack.toml's `render` key bakes: a TABL with one row per field,
- * each value in 1/2^RENDER_SETTINGS_FRAC_BITS steps. */
+ * a float in 1/2^RENDER_SETTINGS_FRAC_BITS steps, a bool or an int as itself. */
 #define RENDER_SETTINGS_ENTRY     "render"
 #define RENDER_SETTINGS_FRAC_BITS 4
 

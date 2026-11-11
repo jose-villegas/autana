@@ -1,4 +1,4 @@
-# LLOD v1 mesh levels
+# LLOD v2 mesh levels
 
 Levels for a sibling [LMSH](LMSH.md), named `<mesh_id>.lod`.
 Layout defines: [`render/llod_format.h`](../../../launcher/main/render/llod_format.h).
@@ -13,7 +13,7 @@ config:
 ---
 packet-beta
 title Header, 8 bytes at 0, one cell a byte
-0-1: "version = 1"
+0-1: "version = 2"
 2-3: "group_count"
 4-7: "cluster_count"
 ```
@@ -35,16 +35,17 @@ title Levels: cluster LOD, 4 bytes a cluster from byte 8
 ```mermaid
 ---
 config:
-  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
+  themeCSS: "g:nth-of-type(2) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(2) rect:nth-of-type(2) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(1) { fill: #e3e3e3 !important; } g:nth-of-type(3) rect:nth-of-type(2) { fill: #e3e3e3 !important; } .packetLabel { fill: #1b1b1b !important; }"
   packet:
     bitsPerRow: 8
     bitWidth: 100
 ---
 packet-beta
-title Levels: LOD group, 10 bytes a group after cluster records
+title Levels: LOD group, 12 bytes a group after cluster records
 0-5: "int16 centre[3]"
 6-7: "int16 radius"
 8-9: "uint16 error"
+10-11: "int16 saves"
 ```
 
 | Part | At | Size |
@@ -61,6 +62,7 @@ title Levels: LOD group, 10 bytes a group after cluster records
 | Size | Exactly header, cluster records, group records, with no trailing bytes (`ASSET_ERR_BOUNDS`); little-endian, 4-byte aligned entry |
 | Group ids | `own` is the group simplified into the cluster, `R3D_LOD_NONE` on a finest cluster; `parent` the group it belongs to, `R3D_LOD_NONE` when that group is never drawn coarse; each names a group or none (`ASSET_ERR_FORMAT`) |
 | Group bounds | centre, radius and error in position ticks; radius at least 0; where a cluster has both ids, its own group sits inside its parent with `R3D_LOD_ENCLOSE_MARGIN` (1) ticks to spare and has no larger error (`ASSET_ERR_FORMAT`), so a parent never projects smaller and the pick's cut cannot crack |
+| Group saves | the triangles of the clusters whose `parent` is the group less those whose `own` is: what the group drawn coarse draws fewer. The bake writes them and the bake's reader checks them against the clusters; the pick adds them to the budget's histogram |
 | Opening | `r3d_lit_mesh_levels_from_asset()` attaches validated levels to an already loaded mesh; failure clears only its level pointers and count |
 | Sibling | `r3d_lit_mesh_open()` resolves the sibling once; absent means finest only, any other failure clears the mesh and returns the error |
 | Layout | when the LMSH root has two children, the first holding only finest clusters and the second only coarse ones, and the coarse clusters follow the finest in the order of their `own` group, `r3d_lit_mesh_find_levels()` notes it: the cull walks the first child and takes each coarse group's clusters from that run. Any other layout is walked from the root |

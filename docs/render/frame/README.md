@@ -44,6 +44,7 @@ flowchart LR
 | [View-Modes.md](View-Modes.md) | Every development-build view at one pose, and the hooks a view row may carry |
 | [Dynamic-Resolution.md](Dynamic-Resolution.md) | The render size picked per frame to hold a budget: the stepped controller and the predictor |
 | [Frame-Generation.md](Frame-Generation.md) | Frames warped from the last render to the next camera pose, shown between renders |
+| [Partial-Redraw.md](Partial-Redraw.md) | A still camera redrawing only the rows where something changed |
 
 ## Where the time goes
 
