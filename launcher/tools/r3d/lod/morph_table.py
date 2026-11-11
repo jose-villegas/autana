@@ -20,7 +20,8 @@ targets' level was itself blending, with the most pixels that put them off
 the surface they meet. Beside the raw scores it gives each over luma averaged
 on the screen door's 4x4 tile, where a dither averages to its blend: the mean
 difference, and each arm's peak change in the square and frames where the
-switches pop most. With --doc it writes the table into the page's
+switches pop most, taken only next to a frame whose coarse clusters drawn
+change: a pop anywhere else is no level switch's. With --doc it writes the table into the page's
 generated block.
 """
 import argparse
@@ -70,6 +71,7 @@ def blended(name, ramp):
 BLOCK = "lod-morph"
 POP_SQUARE = 64  # pixels a side of the square a pop is measured over
 POP_AROUND = 15  # frames either side of the switches' worst pop over which each arm's own peak there is taken
+SWITCH_NEAR = 1  # frames from a change in the coarse clusters drawn within which a pop counts as a switch's
 RAW, AVERAGED = 1, TEMPORAL_BLOCK_SIDE  # luma per pixel, or over the screen door's tile, so a dither averages out
 
 
@@ -90,10 +92,18 @@ def square_changes(finest, arm, side):
         previous = (la, lb)
 
 
-def worst_pop(finest, arm, side):
-    """(change /255, frame, top, left) of the square and frame where `arm` pops most beyond the finest."""
+def switch_frames(rows):
+    """The frames whose coarse clusters drawn differ from the frame before's: where a level switch can show."""
+    return [f for f in range(1, len(rows)) if rows[f]["clusters_coarse"] != rows[f - 1]["clusters_coarse"]]
+
+
+def worst_pop(finest, arm, side, switches=None):
+    """(change /255, frame, top, left) of the square and frame where `arm` pops most beyond the finest; with
+    `switches`, only within SWITCH_NEAR frames of one of them, as a pop elsewhere is no level switch's."""
     best = (-1.0, 0, 0, 0)
     for t, (_, squares) in enumerate(square_changes(finest, arm, side), start=1):
+        if not near_switch(t, switches):
+            continue
         top, left = np.unravel_index(int(np.argmax(squares)), squares.shape)
         if squares[top, left] > best[0]:
             best = (float(squares[top, left]), t, int(top), int(left))
@@ -104,13 +114,18 @@ def frames(path):
     return read_video(path)[1]
 
 
-def pop_at(finest, arm, side, at):
-    """(mean difference /255, the arm's peak change /255 in the square of `at` within POP_AROUND frames of it)."""
+def near_switch(frame, switches):
+    return switches is None or any(abs(frame - f) <= SWITCH_NEAR for f in switches)
+
+
+def pop_at(finest, arm, side, at, switches):
+    """(mean difference /255, the arm's peak change /255 in the square of `at` within POP_AROUND frames of it, at
+    frames next to one of `switches`)."""
     _, t, top, left = at
     differences, peak = [], 0.0
     for frame, (difference, squares) in enumerate(square_changes(finest, arm, side), start=1):
         differences.append(difference)
-        if abs(frame - t) <= POP_AROUND:
+        if abs(frame - t) <= POP_AROUND and near_switch(frame, switches):
             peak = max(peak, float(squares[top, left]))
     return float(np.mean(differences)), peak
 
@@ -158,16 +173,20 @@ def table(renderer, renders, variants, ramps, work):
         first = variants[0][1]
         finest = work / label / "finest"
         render(renderer, args, FINEST, first, finest)
-        worst = {}
+        worst, switches = {}, None
         for arm, sets, assets in arms(variants, ramps):
             out = work / label / re.sub(r"[^\w.]+", "-", arm)
             rows = render(renderer, args, sets, assets, out)
             popping, difference = scored(finest / "path.avi", out / "path.avi")
             pops = []
+            # The switches come first: the frames their pick switches at, and their worst pop there, are where
+            # every arm is measured.
+            switches = switch_frames(rows) if switches is None else switches
             for side in (RAW, AVERAGED):
-                if side not in worst:  # the switches come first: their worst pop is where every arm is measured
-                    worst[side] = worst_pop(frames(finest / "path.avi"), frames(out / "path.avi"), side)
-                pops.append(pop_at(frames(finest / "path.avi"), frames(out / "path.avi"), side, worst[side]))
+                if side not in worst:
+                    worst[side] = worst_pop(frames(finest / "path.avi"), frames(out / "path.avi"), side, switches)
+                pops.append(pop_at(frames(finest / "path.avi"), frames(out / "path.avi"), side, worst[side],
+                                   switches))
             (out / "path.avi").unlink()
             vertices, frames_stacked, stacked, most = blend_shares(rows)
             lines.append(f"| {label} | {arm} | {popping:.4f}% | {difference:.3f} | {pops[1][0]:.3f} "
