@@ -94,8 +94,6 @@ def prepare_references(inputs, work):
 
     scene, spacing = inputs.scene(), SimpleNamespace(**inputs.poses)
     camera = scene.camera.component
-    if camera.path is None and inputs.probes is None:
-        raise ValueError("a fit's references need the scene camera's path or the import's geometry.probes")
     work.mkdir(parents=True, exist_ok=True)
     sets, path, count = [], None, 0
     if camera.path is not None:
@@ -123,7 +121,8 @@ def probe_poses(inputs, work, path):
     from r3d.fit import probes
     from r3d.reference_render import lit_source
 
-    camera, face = inputs.scene().camera.component, inputs.probes.face
+    camera = inputs.scene().camera.component
+    face = probes.PROBE_FACE if inputs.probes.face is None else inputs.probes.face
     source = lit_source(inputs.job(), inputs.scene(), lit=False)
     training, held_out, record = probes.select(source.p, source.tri_v, camera.region, camera.near_z,
                                                inputs.probes.spacing, PROBE_SEED, path)

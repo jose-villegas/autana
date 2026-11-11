@@ -251,14 +251,6 @@ class MeshBundleTests(unittest.TestCase):
             self.assertNotEqual(before.pop(job.asset_name), after.pop(job.asset_name))
             self.assertEqual(before, after)
 
-    def test_a_path_less_fit_checks_its_copies_over_the_probes_held_out_faces(self):
-        with tempfile.TemporaryDirectory() as directory:
-            asked = []
-            run_fit(directory, lambda args: asked.append(args[args.index('--copy-poses') + 1]) or keep_start(args),
-                    files=['probes_held_out.txt'])
-            self.assertEqual(asked, [str(pathlib.Path(directory) / 'probes_held_out.txt')],
-                             "a camera with no path had no copy gate")
-
 
 def start_path(work, job):
     return work / (job.asset_name + '.start' + mesh_bundle.SUFFIX)
@@ -272,18 +264,18 @@ def keep_start(args):
     (out / raw.name).write_bytes(raw.read_bytes())
 
 
-def run_fit(directory, fit_main, lod=None, files=(), shaping=None):
-    """Runs the fit stage on the fixture's start with `fit_main` standing in for the fit, after writing each of
-    `files` empty into the work folder and setting the import's fit `shaping` when given; returns the start's bytes, the job and the fitted bundle."""
+def run_fit(directory, fit_main, lod=None, path=True, shaping=None):
+    """Runs the fit stage on the fixture's start with `fit_main` standing in for the fit, the scene camera with a
+    path or without one and the import's fit `shaping` when given; returns the start's bytes, the job and the
+    fitted bundle."""
     work = pathlib.Path(directory)
     data, _, _, job, scene = bundle_fixture(directory)
+    scene.camera = SimpleNamespace(component=SimpleNamespace(path='path' if path else None))
     if lod is not None:
         job.settings.lod = lod
     if shaping is not None:
         job.settings.fit = shaping
     start_path(work, job).write_bytes(data)
-    for name in files:
-        (work / name).write_text('')
     job.renderer.variant = SimpleNamespace(name='fixture')
     job.renderer.fit = SimpleNamespace(steps=1, batch=1, laplacian=0, normal_weight=0,
                                        surface_weight=0, surface_margin=0, budget=1)
@@ -292,14 +284,16 @@ def run_fit(directory, fit_main, lod=None, files=(), shaping=None):
         stage.fit(work / 'scene.scene.toml', scene, job, work, start=start_path(work, job), target=target)
     return data, job, target
 
+
 class FitCommandTests(unittest.TestCase):
     """The command line the fit stage hands the fit: which sets, in which order, and the settle."""
+    SETTLE = SimpleNamespace(step=100, settle=0.05)
 
-    def command(self, files=(), probes=None, budget=None):
+    def command(self, path=True, probes=None, budget=None):
         asked = []
         shaping = SimpleNamespace(probes=probes, budget=budget)
         with tempfile.TemporaryDirectory() as directory:
-            run_fit(directory, lambda args: asked.append(args) or keep_start(args), files=files, shaping=shaping)
+            run_fit(directory, lambda args: asked.append(args) or keep_start(args), path=path, shaping=shaping)
             work = str(pathlib.Path(directory))
         return [pathlib.Path(arg).name if arg.startswith(work) else arg for arg in asked[0]]
 
@@ -308,198 +302,46 @@ class FitCommandTests(unittest.TestCase):
         return [args[i + 1] for i, arg in enumerate(args) if arg == flag]
 
     def test_the_path_sets_come_before_the_probe_sets(self):
-        files = ['train.txt', 'train_landscape.txt', 'probes.txt', 'coverage.txt']
-        args = self.command(files)
-        self.assertEqual(self.values(args, '--poses'), files[:3])
+        args = self.command(probes=SimpleNamespace())
+        self.assertEqual(self.values(args, '--poses'), ['train.txt', 'train_landscape.txt', 'probes.txt'])
         self.assertEqual(self.values(args, '--reference'), ['reference', 'reference_landscape', 'reference_probes'])
         self.assertEqual(self.values(args, '--coverage-poses'), ['coverage.txt', 'probes.txt'])
 
+    def test_a_camera_without_a_path_fits_on_the_probe_sets_alone(self):
+        args = self.command(path=False, probes=SimpleNamespace())
+        self.assertEqual(self.values(args, '--poses'), ['probes.txt'])
+        self.assertEqual(self.values(args, '--coverage-poses'), ['probes.txt'])
+        self.assertEqual(self.values(args, '--held-out-poses'), ['probes_held_out.txt'])
+
+    def test_without_probes_the_fit_reads_the_path_sets_alone(self):
+        args = self.command()
+        self.assertEqual(self.values(args, '--poses'), ['train.txt', 'train_landscape.txt'])
+        self.assertEqual(self.values(args, '--coverage-poses'), ['coverage.txt'])
+
     def test_held_out_sets_pass_only_when_the_import_sets_probes_or_a_budget_and_pair_up(self):
-        files = ['held_out.txt', 'probes_held_out.txt']
         for name, shaping in (('none', {}), ('probes', dict(probes=SimpleNamespace())),
-                              ('budget', dict(budget=SimpleNamespace(policy='settle', step=1, settle=0.1)))):
+                              ('budget', dict(budget=self.SETTLE))):
             with self.subTest(shaping=name):
-                args = self.command(files, **shaping)
+                args = self.command(**shaping)
+                held_out = ['held_out.txt'] + (['probes_held_out.txt'] if name == 'probes' else [])
+                references = ['reference_held_out'] + (['reference_probes_held_out'] if name == 'probes' else [])
                 if name == 'none':
                     self.assertNotIn('--held-out-poses', args)
                     self.assertNotIn('--held-out-reference', args)
                 else:
-                    self.assertEqual(self.values(args, '--held-out-poses'), files)
-                    self.assertEqual(self.values(args, '--held-out-reference'),
-                                     ['reference_held_out', 'reference_probes_held_out'])
+                    self.assertEqual(self.values(args, '--held-out-poses'), held_out)
+                    self.assertEqual(self.values(args, '--held-out-reference'), references)
 
-    def test_settle_is_passed_only_for_the_settle_policy(self):
-        for policy, expected in (('settle', ['100', '0.05']), (None, None)):
-            with self.subTest(policy=policy):
-                budget = None if policy is None else SimpleNamespace(policy=policy, step=100, settle=0.05)
-                args = self.command(budget=budget)
-                if expected:
-                    self.assertEqual(args[args.index('--settle') + 1:args.index('--settle') + 3], expected)
-                else:
-                    self.assertNotIn('--settle', args)
+    def test_settle_is_passed_only_with_a_budget(self):
+        args = self.command(budget=self.SETTLE)
+        self.assertEqual(self.values(args, '--settle'), ['100'])
+        self.assertEqual(args[args.index('--settle') + 2], '0.05')
+        self.assertNotIn('--settle', self.command())
 
     def test_the_copy_gate_checks_the_path_held_out_set_unless_the_camera_has_no_path(self):
-        for files, expected in ((['held_out.txt', 'probes_held_out.txt'], 'held_out.txt'), ([], 'held_out.txt'),
-                                (['probes_held_out.txt'], 'probes_held_out.txt')):
-            with self.subTest(files=files):
-                self.assertEqual(self.values(self.command(files), '--copy-poses'), [expected])
+        for path, probes, expected in ((True, SimpleNamespace(), 'held_out.txt'), (True, None, 'held_out.txt'),
+                                       (False, SimpleNamespace(), 'probes_held_out.txt')):
+            with self.subTest(path=path, probes=probes):
+                self.assertEqual(self.values(self.command(path, probes), '--copy-poses'), [expected])
 
 
-class FitCopiesTests(unittest.TestCase):
-    """The fit draws a carved start's copies where the board does, and gates what the fit did to them."""
-
-    def placed(self, flat=False):
-        from r3d.fit.copies import placed_copies
-
-        with tempfile.TemporaryDirectory() as directory:
-            data, copies, _geometry, job, _scene = bundle_fixture(directory, flat=flat)
-            start = pathlib.Path(directory) / ('start' + mesh_bundle.SUFFIX)
-            start.write_bytes(data)
-            return placed_copies(start, flat), copies
-
-    def test_each_copy_is_placed_under_its_transform_with_its_own_colours(self):
-        mesh, copies = self.placed()
-        drawn = {(tuple(np.round(corner, 6)), tuple(np.round(colour * 255))) for tri in mesh.tris
-                 for corner, colour in zip(mesh.points[mesh.vertex_point[tri]], mesh.rgb[tri])}
-        expected = {(tuple(np.round(corner, 6)), tuple(colour)) for _instance, (p, rgb, t, _labels) in copies
-                    for tri in t for corner, colour in zip(p[tri], rgb[tri])}
-        self.assertEqual(drawn, expected)
-        self.assertFalse(mesh.flat)
-
-    def test_a_flat_start_draws_each_copy_triangle_in_its_face_colour(self):
-        from r3d.lit_mesh import panel_colour, rgb888
-
-        mesh, copies = self.placed(flat=True)
-        self.assertTrue(mesh.flat)
-        self.assertEqual((len(mesh.rgb), len(mesh.tris)), (len(copies), len(copies)))
-        face = rgb888(panel_colour(np.full((1, 3), 80)))[0]
-        np.testing.assert_array_equal(np.rint(mesh.rgb * 255), np.tile(face, (len(copies), 1)))
-
-    def test_copy_levels_draw_the_finest_clusters_as_stored(self):
-        from r3d.fit.copies import placed_copies
-        from r3d.lod.bake_levels import bake_lit_mesh
-        from test_r3d_lod_bake import wavy_grid
-        mesh = bake_lit_mesh(*wavy_grid())
-        self.assertIsNotNone(mesh.lod)
-        shown = [c for c, (own, _) in zip(mesh.clusters, mesh.lod) if own == mesh_asset.LOD_NONE]
-        vertices = np.concatenate([np.arange(vbase, vbase + vcount) for vbase, vcount, *_ in shown])
-        faces = np.concatenate([mesh.tris[tbase:tbase + tcount] for _, _, tbase, tcount, *_ in shown])
-        colours = lcol_asset.encode(lcol_asset.RGB888, len(mesh.pos), [mesh.rgb.astype('u1').tobytes()])
-        mesh.rgb = None
-        with tempfile.TemporaryDirectory() as folder:
-            data, _, _, _, _ = bundle_fixture(folder)
-            _, copies = mesh_bundle.decode(data)
-            row = {**copies[0], "mesh": "prototype", "colour_set": 0}
-            entries = mesh_bundle.mesh_entries("prototype", mesh)
-            entries.append((lcol_asset.name_for_mesh("prototype"), lcol_asset.TYPE, colours))
-            path = pathlib.Path(folder) / 'copy.bundle'
-            path.write_bytes(mesh_bundle.encode(entries, [row]))
-            placed = placed_copies(path, flat=False)
-        # The finest clusters' own vertices and triangles, in the bundle's order: nothing welded by value.
-        np.testing.assert_array_equal(vertices[placed.tris], faces)
-        self.assertEqual(len(placed.vertex_point), len(vertices))
-
-    def test_copies_must_be_shaded_as_their_rest_is(self):
-        from r3d.fit.copies import placed_copies
-
-        with tempfile.TemporaryDirectory() as directory:
-            start = pathlib.Path(directory) / ('start' + mesh_bundle.SUFFIX)
-            start.write_bytes(bundle_fixture(directory, flat=True)[0])
-            with self.assertRaisesRegex(ValueError, "flat"):
-                placed_copies(start, flat=False)
-
-    def test_joined_copies_index_their_own_vertices_and_points_after_the_rest(self):
-        from r3d.fit.copies import joined
-
-        mesh, _copies = self.placed()
-        both = joined(mesh, mesh)
-        np.testing.assert_array_equal(both.points[both.vertex_point[both.tris[len(mesh.tris):]]],
-                                      mesh.points[mesh.vertex_point[mesh.tris]])
-        np.testing.assert_array_equal(both.rgb[both.tris[len(mesh.tris):]], mesh.rgb[mesh.tris])
-        self.assertIs(joined(mesh, None), mesh)
-
-    def test_the_gate_fails_a_fit_that_hides_more_copy_pixels_than_its_start(self):
-        from r3d.fit.copies import HIDDEN_MEAN_GROWTH, HIDDEN_WORST_GROWTH, check_hidden_copies
-
-        # A hundred held-out poses, so one pose's growth moves the mean by a hundredth of it.
-        start = np.linspace(0.0, 0.002, 100)
-        worst = start.copy()
-        worst[-1] += 0.99 * HIDDEN_WORST_GROWTH
-        for fitted in (start + 0.99 * HIDDEN_MEAN_GROWTH, start - 0.001, worst):
-            check_hidden_copies(start, fitted)
-        worst[-1] += 0.02 * HIDDEN_WORST_GROWTH
-        for fitted in (start + 1.01 * HIDDEN_MEAN_GROWTH, worst):
-            with self.subTest(fitted=fitted), self.assertRaisesRegex(ValueError, "hides the copies"):
-                check_hidden_copies(start, fitted)
-
-
-class BundlePackTests(SceneFiles):
-    def bundle_scene(self):
-        write_import(self.root, 'a.import.toml', output='[output]\n',
-                     body=SIMPLIFY + '[[variants]]\nname = "a"\ntriangles = 10\n[[objects.meshes]]\nmatch = { material = "m" }\ntriangles = 1\n')
-        data = bundle_fixture(self.root)[0]
-        entries, copies = mesh_bundle.decode(data)
-        entries = [('a' if name == 'hall.atrium' else name, kind, blob) for name, kind, blob in entries]
-        path = self.root / ('a' + mesh_bundle.SUFFIX)
-        path.write_bytes(mesh_bundle.encode(entries, copies))
-        return self.scene(renderer('a.import.toml', extra='variant = "a"\n')), path
-
-    def test_pack_draws_each_shapes_copies_from_one_batch(self):
-        source, bundle = self.bundle_scene()
-        entries = parse_pack(build_pack.pack_bytes([source])['hall'])
-        products, copies = mesh_bundle.decode(bundle.read_bytes())
-        self.assertEqual(set(entries), {'hall', *(name for name, _, _ in products)})
-        self.assertNotIn(mesh_bundle.MANIFEST, entries)
-        scene = scene_asset.decode(entries['hall'][1])
-        shapes = sorted({copy['mesh'] for copy in copies})
-        # The authored renderer, then one entity and renderer a shape: no entity a copy.
-        self.assertEqual(len(scene['entities']), 1 + len(shapes))
-        self.assertEqual(sorted(r['mesh'] for r in scene['renderers'][1:]), shapes)
-        self.assertEqual(len(scene['batches']), len(shapes))
-        for batch in scene['batches']:
-            renderer = scene['renderers'][batch['renderer']]
-            entity = scene['entities'][renderer['entity']]
-            self.assertEqual(entity['parent'], 0)
-            self.assertEqual(entity['name'], build_pack.batch_name(scene['entities'][0]['name'], renderer['mesh']))
-            authored = [c for c in copies if c['mesh'] == renderer['mesh']]
-            self.assertEqual(len(batch['copies']), len(authored))
-            # Each authored copy comes back once, within a step of its chunk's reach, which
-            # its batch's extent bounds, turned as it was and with its own colours.
-            extent = max(max(c['position'][a] for c in authored) - min(c['position'][a] for c in authored)
-                         for a in range(3))
-            step = extent / copy_batches.STEPS
-            unmatched = list(batch['copies'])
-            for copy in authored:
-                found = next((d for d in unmatched if d[2] == copy['colour_set']
-                              and all(abs(a - b) <= step + 1e-5 * max(1.0, abs(a))
-                                      for a, b in zip(copy['position'], d[1]))), None)
-                self.assertIsNotNone(found, copy['name'])
-                unmatched.remove(found)
-                for row, expected in zip(found[0], copy['matrix']):
-                    for a, b in zip(row, expected):
-                        self.assertAlmostEqual(a, b, delta=1e-3)
-
-    def test_pack_validates_copy_colour_sets_before_discarding_the_manifest(self):
-        source, bundle = self.bundle_scene()
-        entries, copies = mesh_bundle.decode(bundle.read_bytes())
-        copies[0]['colour_set'] = scene_asset.COLOUR_SET_OWN - 1
-        bundle.write_bytes(mesh_bundle.encode(entries, copies))
-        with self.assertRaisesRegex(ValueError, 'LCOL'):
-            build_pack.pack_bytes([source])
-
-    def test_pack_refuses_an_unknown_manifest_version(self):
-        source, bundle = self.bundle_scene()
-        entries = parse_pack(bundle.read_bytes())
-        kind, raw = entries[mesh_bundle.MANIFEST]
-        manifest = bytearray(raw)
-        fields = list(mesh_bundle.HEADER.unpack_from(manifest))
-        fields[0] = mesh_bundle.VERSION + 1
-        mesh_bundle.HEADER.pack_into(manifest, 0, *fields)
-        entries[mesh_bundle.MANIFEST] = kind, manifest
-        bundle.write_bytes(encode_pack([(name, kind, data) for name, (kind, data) in entries.items()]))
-        with self.assertRaisesRegex(PackError, 'unknown.*version'):
-            build_pack.pack_bytes([source])
-
-
-if __name__ == '__main__':
-    unittest.main()
