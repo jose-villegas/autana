@@ -172,11 +172,14 @@ close_coarse(const r3d_lit_mesh_t* mesh, uint32_t* coarse) {
 void
 r3d_lod_morph_init(r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
                    const render_lod_settings_t* lod, const uint32_t* state, int blend) {
-    const uint32_t* arrived = state != NULL ? state + R3D_LOD_WORDS(mesh->lod_group_count) : NULL;
-    const uint32_t* blending = arrived != NULL ? r3d_lod_blending(arrived, mesh->lod_group_count) : NULL;
-    /* Off, or no group blending: nothing weighs, and the transform and draw
-     * take their plain paths. */
-    if (blend != RENDER_LOD_BLEND_ON || (blending != NULL && !r3d_lod_any(blending, mesh->lod_group_count))) {
+    if (blend != RENDER_LOD_BLEND_ON) {
+        *morph = (r3d_lod_morph_t){.enabled = false};
+        return;
+    }
+    assert(state != NULL);
+    const uint32_t* arrived = state + R3D_LOD_WORDS(mesh->lod_group_count);
+    const uint32_t* blending = r3d_lod_blending(arrived, mesh->lod_group_count);
+    if (!r3d_lod_any(blending, mesh->lod_group_count)) {
         *morph = (r3d_lod_morph_t){.enabled = false};
         return;
     }
@@ -222,7 +225,7 @@ group_morph_weight(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, uin
     const r3d_lit_lod_group_t* g = &mesh->lod_groups[group];
     float radius_px = 0.0F;
     const float error_px = group_morph_pixels(morph, g, &radius_px);
-    const float whole = morph->arrived == NULL || r3d_lod_coarse(morph->arrived, group) ? morph->leave : morph->enter;
+    const float whole = r3d_lod_coarse(morph->arrived, group) ? morph->leave : morph->enter;
     const float weight =
         mathf_min(ramp_weight(error_px, whole, morph->ramp), ramp_weight(radius_px, morph->covered, morph->cover_ramp));
     return (int)((weight * (float)R3D_LOD_MORPH_ONE) + 0.5F);
@@ -231,7 +234,7 @@ group_morph_weight(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, uin
 /* Group `group`'s weight when it blends, else 0. */
 static int
 blending_weight(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, uint16_t group) {
-    if (group == R3D_LOD_NONE || (morph->blending != NULL && !r3d_lod_coarse(morph->blending, group))) {
+    if (group == R3D_LOD_NONE || !r3d_lod_coarse(morph->blending, group)) {
         return 0;
     }
     return group_morph_weight(morph, mesh, group);
@@ -272,8 +275,7 @@ r3d_lod_dither_band(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, in
     }
     const r3d_lit_cluster_lod_t lod = mesh->cluster_lod[c];
     /* A cluster simplified from a group still fine is drawn only while that group blends. */
-    const bool fading_in =
-        lod.own != R3D_LOD_NONE && morph->blending != NULL && r3d_lod_coarse(morph->blending, lod.own);
+    const bool fading_in = lod.own != R3D_LOD_NONE && r3d_lod_coarse(morph->blending, lod.own);
     const int lo = dither_level(blending_weight(morph, mesh, lod.parent));
     const int hi = fading_in ? dither_level(group_morph_weight(morph, mesh, lod.own)) : R3D_LOD_DITHER_LEVELS;
     if (lo >= hi) {

@@ -1270,7 +1270,7 @@ test_a_group_without_its_blending_bit_weighs_none(void) {
 }
 
 static void
-test_without_arrived_bits_every_group_blends_whole_up_to_leave(void) {
+test_arrived_groups_blend_whole_up_to_leave(void) {
     const r3d_lit_mesh_t* mesh = &morphing_levels()->mesh;
     TEST_ASSERT_EQUAL_INT(R3D_LOD_MORPH_ONE, weight_arrived_at(mesh, leave_px(), NULL));
     TEST_ASSERT_EQUAL_INT(R3D_LOD_MORPH_ONE, weight_arrived_at(mesh, enter_px(), NULL));
@@ -2456,7 +2456,7 @@ suite_r3d_lod(void) {
     RUN_TEST(test_a_pick_flipping_only_a_blend_bit_reports_a_change);
     RUN_TEST(test_the_blending_bit_is_set_where_the_blend_weighs_something);
     RUN_TEST(test_a_group_without_its_blending_bit_weighs_none);
-    RUN_TEST(test_without_arrived_bits_every_group_blends_whole_up_to_leave);
+    RUN_TEST(test_arrived_groups_blend_whole_up_to_leave);
     RUN_TEST(test_the_dither_bands_of_a_blending_group_s_two_levels_cover_every_level_exactly_once);
     RUN_TEST(test_a_group_with_an_empty_coarse_level_fades_its_fine_clusters_out);
     RUN_TEST(test_the_coarse_cluster_covers_more_levels_as_the_blend_weight_grows);
