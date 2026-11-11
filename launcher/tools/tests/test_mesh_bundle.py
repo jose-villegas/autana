@@ -19,7 +19,7 @@ from asset.asset_pack import NAME_BYTES, PackError, build_pack as encode_pack, p
 from test_scene_asset import SceneFiles
 from test_r3d_import import SIMPLIFY, VARIANT, renderer, write_import
 from test_r3d_objects import POINTS, TRIANGLES, obj_text
-from r3d.lit_mesh import read_lit_mesh
+from r3d.lit_mesh import bundle_entries, read_bundle_mesh, read_lit_mesh
 from r3d.objects.instances import Instance
 from r3d.process_budget import StepRecorder
 from r3d.import_settings import MESHLET_TRIANGLES, albedo_jobs, load_import_settings
@@ -119,7 +119,7 @@ class MeshBundleTests(unittest.TestCase):
         entries, manifest = mesh_bundle.decode(data)
         meshes = [row['mesh'] for row in manifest]
         self.assertEqual(len(set(meshes)), 3)
-        double = {row["mesh"]: {c[-1] for c in mesh_bundle.read_mesh(entries, row["mesh"]).clusters} for row in manifest}
+        double = {row["mesh"]: {c[-1] for c in read_bundle_mesh(entries, row["mesh"]).clusters} for row in manifest}
         self.assertEqual([double[mesh] for mesh in meshes], [{False}, {True}, {False}])
 
     def test_smooth_shapes_have_one_set_per_copy(self):
@@ -312,7 +312,7 @@ class FitCopiesTests(unittest.TestCase):
             data, _, _, _, _ = bundle_fixture(folder)
             _, copies = mesh_bundle.decode(data)
             row = {**copies[0], "mesh": "prototype", "colour_set": 0}
-            entries = mesh_bundle.mesh_entries("prototype", mesh)
+            entries = bundle_entries("prototype", mesh)
             entries.append((lcol_asset.name_for_mesh("prototype"), lcol_asset.TYPE, colours))
             path = pathlib.Path(folder) / 'copy.bundle'
             path.write_bytes(mesh_bundle.encode(entries, [row]))
