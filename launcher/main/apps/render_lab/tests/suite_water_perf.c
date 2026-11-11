@@ -131,9 +131,9 @@ play(const water_config_t* config) {
     /* Untimed: the tour's upright refill. */
     (void)lab_test_frame_dt(0, false, NULL);
     (void)scene_water_take_stats();
-    /* Empties the window (frames 0 would keep it): the first phase's report
-     * holds only its own frames, not the enter's or the previous config's. */
-    (void)frame_cost_take_report(1, report, 0);
+    /* The first phase's report holds only its own frames, not the enter's
+     * or the previous config's. */
+    frame_cost_take_clear();
     heap(config->name, WATER_PERF_RUNNING);
     /* A frame belongs to the phase it starts in, so a row closes, with its
      * frame_cost window, before the next phase's first frame. */

@@ -25,7 +25,6 @@ UPDATE = read_define(LOG_HEADER, "WATER_PERF_UPDATE")
 BEFORE, RUNNING, AFTER = (read_define(LOG_HEADER, "WATER_PERF_" + name) for name in ("BEFORE", "RUNNING", "AFTER"))
 BASE = "base"
 RUN_MARK = "RUN="
-DROPPED = " dropped"  # frame_cost_report() names the brackets refused a slot
 FIELD = re.compile(r"(\w+)=(\S+)")
 TRIPLE = ("mean", "p95", "worst")
 R3D = "r3d."
@@ -62,8 +61,8 @@ def parse(lines):
         if "frames" in fields and "frames" in row:
             raise ValueError(f"{fields['config']} {fields['row']} twice in one run: start each run with a {RUN_MARK} line")
         if window is not None:
-            if DROPPED in body:
-                raise ValueError(f"{fields['config']} {fields['row']}: its frame-cost window dropped brackets")
+            if window["dropped"]:
+                raise ValueError(f"{fields['config']} {fields['row']}: its frame-cost window dropped {window['dropped']} brackets")
             brackets = window["brackets"].items()
             row["scene"] = {name: avg for name, (avg, _) in brackets if name.startswith(SCENE) and name != UPDATE}
             row["r3d"] = {name: avg for name, (avg, _) in brackets if name.startswith(R3D)}
