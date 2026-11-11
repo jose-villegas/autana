@@ -21,12 +21,30 @@ typedef struct {
     int triangle_budget; /* basic: the triangles a frame aims to draw, the tolerance rising past tolerance_px to keep within; 0 never rises */
 } render_lod_settings_t;
 
+#define RENDER_ANIM_MID_PX        48
+#define RENDER_ANIM_FAR_PX        20
+#define RENDER_ANIM_MID_EVERY     2
+#define RENDER_ANIM_FAR_EVERY     4
+#define RENDER_ANIM_HYSTERESIS_PX 4
+#define RENDER_ANIM_EVERY_MIN     1
+#define RENDER_ANIM_EVERY_MAX     4
+#define RENDER_ANIM_PIXELS_MAX    4096
+
 typedef struct {
-    bool cull;                 /* basic: skips clusters and world boxes outside the picture */
-    bool depth_fit;            /* advanced: depth steps go where the kept scene is, not to near_z; needs cull */
-    bool batched;              /* advanced: one transform and one draw fork/join a batch, not an instance */
-    bool partial_redraw;       /* basic: a still camera redraws only the rows that moved; the picture is the same */
-    render_lod_settings_t lod; /* which level of a mesh's clusters an instance draws (docs/plans/Cluster-LOD.md) */
+    float mid_px;        /* basic: radius below which poses run at mid_every */
+    float far_px;        /* basic: radius below which poses run at far_every */
+    int mid_every;       /* basic: frames between mid-sized poses; 1 poses every frame */
+    int far_every;       /* basic: frames between far poses; 1 poses every frame */
+    float hysteresis_px; /* advanced: pixels past a tier boundary before switching */
+} render_anim_settings_t;
+
+typedef struct {
+    bool cull;                   /* basic: skips clusters and world boxes outside the picture */
+    bool depth_fit;              /* advanced: depth steps go where the kept scene is, not to near_z; needs cull */
+    bool batched;                /* advanced: one transform and one draw fork/join a batch, not an instance */
+    bool partial_redraw;         /* basic: a still camera redraws only the rows that moved; the picture is the same */
+    render_lod_settings_t lod;   /* which level of a mesh's clusters an instance draws (docs/plans/Cluster-LOD.md) */
+    render_anim_settings_t anim; /* how often skeleton poses follow projected radius */
 } render_settings_t;
 
 /* RENDER_SETTINGS_DEFAULT, from default.render.toml beside this header. */

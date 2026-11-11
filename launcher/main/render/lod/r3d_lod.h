@@ -23,6 +23,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "math/geometry/box3f.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/settings/render_settings.h"
 
@@ -82,6 +83,9 @@ r3d_lod_drawn(const r3d_lit_mesh_t* mesh, int c, const uint32_t* coarse) {
  * into `out`, which holds `room`; returns how many. Nothing coarse lists the
  * finest level without testing each cluster. */
 int r3d_lod_list_drawn(const r3d_lit_mesh_t* mesh, const uint32_t* coarse, uint16_t* out, int room);
+
+/* Projected radius of world bounds, zero outside the lens frustum. */
+float r3d_lod_bounds_pixels(box3f_t bounds, const r3d_lens_t* lens);
 
 /* The pixels group `group`'s error spans seen through `lens` (placed with
  * the instance's model), measured where its bounds come nearest the eye and

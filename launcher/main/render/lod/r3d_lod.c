@@ -51,13 +51,31 @@ lod_view(const r3d_lens_t* lens) {
     return out;
 }
 
+static float
+bounds_nearest(const lod_view_t* v, vec3f_t centre, float radius, float near_z) {
+    centre = mat4f_apply(&v->view, centre);
+    return mathf_max(mathf_sqrt(vec3f_dot(centre, centre)) - radius * v->units_per_tick, near_z);
+}
+
+float
+r3d_lod_bounds_pixels(box3f_t bounds, const r3d_lens_t* lens) {
+    planef_t planes[PLANE_FRUSTUM_COUNT];
+    r3d_lens_frustum(lens, planes);
+    unsigned mask = (1U << PLANE_FRUSTUM_COUNT) - 1U;
+    if (box3f_outside_planes(bounds, planes, PLANE_FRUSTUM_COUNT, &mask)) {
+        return 0.0F;
+    }
+    const lod_view_t v = lod_view(lens);
+    const vec3f_t extent = box3f_half_extent(bounds);
+    const float radius = mathf_sqrt(vec3f_dot(extent, extent));
+    return radius * v.units_per_tick * v.focal / bounds_nearest(&v, box3f_centre(bounds), radius, lens->project.near_z);
+}
+
 /* How far group `g`'s bounds come to the eye, no nearer than `near_z`: the
  * depth both its error and its radius project at. */
 static float
 group_nearest(const lod_view_t* v, const r3d_lit_lod_group_t* g, float near_z) {
-    const vec3f_t centre = mat4f_apply(&v->view, vec3f_from_vec3s(g->bounds.centre, 1.0F));
-    const float distance = mathf_sqrt(vec3f_dot(centre, centre)) - ((float)g->bounds.radius * v->units_per_tick);
-    return mathf_max(distance, near_z);
+    return bounds_nearest(v, vec3f_from_vec3s(g->bounds.centre, 1.0F), (float)g->bounds.radius, near_z);
 }
 
 static float

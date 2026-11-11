@@ -129,7 +129,12 @@ test_the_default_is_every_setting_on_as_the_raster_drew_before(void) {
                                           .hysteresis_px = 0.5F,
                                           .coverage_permille = 250,
                                           .pick_every = 4,
-                                          .triangle_budget = 0}};
+                                          .triangle_budget = 0},
+                                  .anim = {.mid_px = RENDER_ANIM_MID_PX,
+                                           .far_px = RENDER_ANIM_FAR_PX,
+                                           .mid_every = RENDER_ANIM_MID_EVERY,
+                                           .far_every = RENDER_ANIM_FAR_EVERY,
+                                           .hysteresis_px = RENDER_ANIM_HYSTERESIS_PX}};
     assert_settings(&on, &RENDER_SETTINGS_DEFAULT);
     const render_settings_t bare = raster_settings(&r->raster);
     assert_settings(&on, &bare);
@@ -254,7 +259,7 @@ test_the_coverage_knob_overrides_only_the_coverage_cap(void) {
     TEST_ASSERT_EQUAL_INT(100, used.lod.coverage_permille);
 }
 
-enum { FIELDS = RENDER_SETTINGS_FIELD_COUNT, ROW_BYTES = ASSET_TABLE_NAME_SIZE + sizeof(int16_t), PACK_BYTES = 512 };
+enum { FIELDS = RENDER_SETTINGS_FIELD_COUNT, ROW_BYTES = ASSET_TABLE_NAME_SIZE + sizeof(int16_t), PACK_BYTES = 1024 };
 
 /* Every field's row name in struct order, then one no field has. */
 #define FIELD_NAME(field, type) #field,
@@ -298,7 +303,20 @@ read_entry(int rows, const int16_t* values, int frac, render_settings_t* out) {
 
 static void
 test_a_packs_render_entry_reads_every_field(void) {
-    static const int16_t values[FIELDS] = {0, 1, 0, 1, (3 * STEP) + (STEP / 2), STEP / 4, 100, 2, 12000};
+    static const int16_t values[FIELDS] = {0,
+                                           1,
+                                           0,
+                                           1,
+                                           (3 * STEP) + (STEP / 2),
+                                           STEP / 4,
+                                           100,
+                                           2,
+                                           12000,
+                                           RENDER_ANIM_MID_PX * STEP,
+                                           RENDER_ANIM_FAR_PX * STEP,
+                                           RENDER_ANIM_MID_EVERY,
+                                           RENDER_ANIM_FAR_EVERY,
+                                           RENDER_ANIM_HYSTERESIS_PX * STEP};
     render_settings_t read;
     TEST_ASSERT_EQUAL(ASSET_OK, read_entry(FIELDS, values, RENDER_SETTINGS_FRAC_BITS, &read));
     TEST_ASSERT_FALSE(read.cull);

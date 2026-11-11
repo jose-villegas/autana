@@ -12,3 +12,10 @@ hysteresis_px = 0.5
 coverage_permille = 250
 pick_every = 4
 triangle_budget = 0
+
+[anim]
+mid_px = 48.0
+far_px = 20.0
+mid_every = 2
+far_every = 4
+hysteresis_px = 4.0

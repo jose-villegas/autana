@@ -172,6 +172,17 @@ slot_playhead(scene_animator_t* a, animator_slot_t slot) {
                : NULL;
 }
 
+static anim_playhead_t*
+settled_playhead(entity_t entity, animator_slot_t slot) {
+    scene_row_t row;
+    scene_t* scene = scene_entity_row(entity, &row);
+    scene_animator_t* a = scene == NULL ? NULL : animator_of(scene, row);
+    if (a != NULL && a->owed_ms != 0) {
+        scene_animation_repose(scene, 0);
+    }
+    return a == NULL ? NULL : slot_playhead(a, slot);
+}
+
 static int
 clip_count(const scene_t* scene, scene_row_t row) {
     return scene->animators[row].storage == NULL ? 0 : scene->animators[row].layer.clip_count;
@@ -231,6 +242,9 @@ animator_set_clips(entity_t entity, const char* skeleton_id, const char* const* 
     /* A taken block cannot be freed: rebinding a scene's clips abandons the
      * old storage to the lender until the scene's memory goes back. */
     scene_free_kept(old->storage);
+    a.phase = old->storage != NULL && old->root == ANIM_ROOT_SKELETON ? old->phase
+              : a.root == ANIM_ROOT_SKELETON                          ? scene->animation_phase++
+                                                                      : 0;
     a.dirty = true;
     scene->animators[row] = a;
     scene_stage_add(scene, row);
@@ -248,6 +262,9 @@ animator_play(entity_t entity, int clip, uint32_t blend_ms) {
     if (a == NULL || clip < 0 || clip >= a->layer.clip_count || (a->root == ANIM_ROOT_SCENE && blend_ms != 0)) {
         return false;
     }
+    if (a->owed_ms != 0) {
+        scene_animation_repose(scene, 0);
+    }
     anim_layer_play(&a->layer, (uint8_t)clip, blend_ms);
     a->layer.current.playhead.wrap = a->wrap;
     a->dirty = true;
@@ -256,25 +273,13 @@ animator_play(entity_t entity, int clip, uint32_t blend_ms) {
 
 bool
 animator_set_speed(entity_t entity, animator_slot_t slot, float speed) {
-    scene_row_t row;
-    scene_t* scene = scene_entity_row(entity, &row);
-    if (scene == NULL) {
-        return false;
-    }
-    scene_animator_t* a = animator_of(scene, row);
-    anim_playhead_t* p = a == NULL ? NULL : slot_playhead(a, slot);
+    anim_playhead_t* p = settled_playhead(entity, slot);
     return p != NULL && anim_playhead_set_speed(p, speed);
 }
 
 bool
 animator_set_paused(entity_t entity, animator_slot_t slot, bool paused) {
-    scene_row_t row;
-    scene_t* scene = scene_entity_row(entity, &row);
-    if (scene == NULL) {
-        return false;
-    }
-    scene_animator_t* a = animator_of(scene, row);
-    anim_playhead_t* p = a == NULL ? NULL : slot_playhead(a, slot);
+    anim_playhead_t* p = settled_playhead(entity, slot);
     if (p == NULL) {
         return false;
     }
@@ -348,6 +353,7 @@ animator_seek(entity_t entity, animator_slot_t slot, uint32_t t_ms) {
         return false;
     }
     scene_draw_camera_cut(scene, row);
+    a->owed_ms = 0;
     p->t_ms = t_ms;
     p->fraction = 0;
     a->dirty = true;

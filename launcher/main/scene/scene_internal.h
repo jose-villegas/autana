@@ -143,6 +143,7 @@ typedef struct {
     r3d_lit_mesh_t mesh;
     mat4f_t model;
     box3f_t world_bounds; /* the mesh's root box through `model`, kept with it */
+    float drawn_radius_px;
     box3f_t drawn_bounds; /* world_bounds when last drawn (render/partial) */
     scene_row_t entity;
     bool placed;          /* false while the transform is the identity: drawn as it is */
@@ -179,6 +180,8 @@ typedef struct {
     int* counts;
     uint8_t root;
     anim_wrap_t wrap;
+    uint32_t owed_ms, phase;
+    int interval, tier;
     bool dirty, posed;
 } scene_animator_t;
 
@@ -241,6 +244,7 @@ struct scene {
     scene_asset_t asset;
     scene_root_t* root;
     int renderer_count;
+    uint32_t animation_frame, animation_phase;
     int animator_count, skeleton_animator_count;
     int16_t animate_share, skin_share; /* core 1's, as core/job.h steers them */
     int light_count;

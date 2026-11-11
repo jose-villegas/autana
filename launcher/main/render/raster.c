@@ -42,7 +42,8 @@ raster_settings(const raster_t* raster) {
         tune_override(batched, s.batched) != 0,
         tune_override(partial_redraw, s.partial_redraw) != 0,
         {s.lod.tolerance_px, s.lod.hysteresis_px, tune_override(lod_coverage_permille, s.lod.coverage_permille),
-         tune_override(lod_pick_every, s.lod.pick_every), tune_override(lod_triangle_budget, s.lod.triangle_budget)}};
+         tune_override(lod_pick_every, s.lod.pick_every), tune_override(lod_triangle_budget, s.lod.triangle_budget)},
+        s.anim};
 }
 
 bool

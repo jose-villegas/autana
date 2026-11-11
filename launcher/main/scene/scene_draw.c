@@ -9,6 +9,8 @@
 #include "hash/name_hash64.h"
 
 #include "render/context/render_context.h"
+#include "render/lod/r3d_lod.h"
+#include "render/r3d_pipeline.h"
 #include "scene/camera/camera.h"
 #include "scene/scene_internal.h"
 
@@ -109,11 +111,19 @@ camera_cut(entity_t camera) {
 static int
 fill_instances(scene_t* scene, int* batches) {
     int count = 0;
+    r3d_lens_t lens;
+    r3d_lens_init(&lens, &drawn_view, 1);
+    for (int i = 0; i < scene->renderer_count; i++) {
+        scene->renderers[i].drawn_radius_px = 0.0F;
+    }
     *batches = 0;
     for (int i = 0; i < scene->active_renderer_count; i++) {
-        const scene_renderer_t* r = &scene->renderers[scene->active_renderers[i]];
+        scene_renderer_t* r = &scene->renderers[scene->active_renderers[i]];
         if (r->mesh.node_count == 0) {
             continue;
+        }
+        if (scene->skinned_renderers[r->entity].bound) {
+            r->drawn_radius_px = r3d_lod_bounds_pixels(r->world_bounds, &lens);
         }
         const r3d_instance_t instance = {&r->mesh, r->placed ? &r->model : NULL, &r->world_bounds, r->lod_coarse};
         if (r->batch != NULL) {
@@ -185,12 +195,12 @@ draw_active(int quarter, int width, int height) {
     scene_t* scene = active.scene;
     const scene_camera_t* camera = active_camera();
     scene_resolve(scene);
+    active_view(scene, camera, (viewport_t){width, height, quarter});
     int batches;
     const int count = fill_instances(scene, &batches);
     if (count + batches == 0) {
         return;
     }
-    active_view(scene, camera, (viewport_t){width, height, quarter});
     render_context_set_changed(render_context_main(), changed, fill_changed(scene));
     render_context_set_batches(render_context_main(), scene->batch_draws, batches);
     rendered = render_context_draw(render_context_main(), scene->instances, count, &drawn_view, camera->clear);

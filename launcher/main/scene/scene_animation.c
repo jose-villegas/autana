@@ -6,8 +6,49 @@
 #include "anim/anim_tracks_format.h"
 #include "core/job.h"
 #include "core/memory.h"
+#include "core/tune.h"
 #include "math/scalar/mathi.h"
+#include "render/context/render_context.h"
 #include "scene/scene_internal.h"
+
+TUNE_OWNER(anim);
+TUNE_OVERRIDE(anim, mid_px, RENDER_ANIM_PIXELS_MAX);
+TUNE_OVERRIDE(anim, far_px, RENDER_ANIM_PIXELS_MAX);
+TUNE_OVERRIDE(anim, mid_every, RENDER_ANIM_EVERY_MAX);
+TUNE_OVERRIDE(anim, far_every, RENDER_ANIM_EVERY_MAX);
+TUNE_OVERRIDE(anim, hysteresis_px, RENDER_ANIM_PIXELS_MAX);
+
+enum { ANIM_TIER_NEAR, ANIM_TIER_MID, ANIM_TIER_FAR };
+
+static int
+animation_interval(scene_t* scene, scene_row_t e) {
+    scene_animator_t* a = &scene->animators[e];
+    const render_anim_settings_t s = render_context_settings(render_context_main())->anim;
+    const float mid = mid_px == TUNE_UNSET ? s.mid_px : (float)mid_px;
+    const float far = far_px == TUNE_UNSET ? s.far_px : (float)far_px;
+    const float band = hysteresis_px == TUNE_UNSET ? s.hysteresis_px : (float)hysteresis_px;
+    const int renderer = scene_renderer_index(scene, e);
+    const float px = renderer < 0 ? 0.0F : scene->renderers[renderer].drawn_radius_px;
+    if (a->interval == 0) {
+        a->tier = px < far ? ANIM_TIER_FAR : px < mid ? ANIM_TIER_MID : ANIM_TIER_NEAR;
+    } else {
+        if (a->tier == ANIM_TIER_NEAR && px < mid - band) {
+            a->tier = ANIM_TIER_MID;
+        } else if (a->tier != ANIM_TIER_NEAR && px > mid + band) {
+            a->tier = ANIM_TIER_NEAR;
+        }
+        if (a->tier == ANIM_TIER_MID && px < far - band) {
+            a->tier = ANIM_TIER_FAR;
+        } else if (a->tier == ANIM_TIER_FAR && px > far + band) {
+            a->tier = ANIM_TIER_MID;
+        }
+    }
+    const int every = a->tier == ANIM_TIER_NEAR  ? RENDER_ANIM_EVERY_MIN
+                      : a->tier == ANIM_TIER_MID ? tune_override(mid_every, s.mid_every)
+                                                 : tune_override(far_every, s.far_every);
+    a->interval = mathi_clamp(every, RENDER_ANIM_EVERY_MIN, RENDER_ANIM_EVERY_MAX);
+    return a->interval;
+}
 
 void
 scene_animation_release(scene_t* scene) {
@@ -56,7 +97,14 @@ scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms) {
             || !(scene->flags[e] & SCENE_FLAG_ACTIVE)) {
             continue;
         }
-        a->posed = advance_animator(a, dt_ms);
+        const int interval = scene->skinned_renderers[e].bound ? animation_interval(scene, e) : RENDER_ANIM_EVERY_MIN;
+        const bool force = a->dirty || dt_ms == 0 || (scene->flags[e] & SCENE_FLAG_SKIN_DIRTY);
+        if (!force && (scene->animation_frame + a->phase) % (uint32_t)interval != 0) {
+            a->owed_ms += dt_ms;
+            continue;
+        }
+        a->posed = advance_animator(a, dt_ms + a->owed_ms) || force;
+        a->owed_ms = 0;
         if (!a->posed) {
             continue;
         }
@@ -151,17 +199,9 @@ skin_lights_changed(const scene_t* scene) {
 }
 
 static int
-skin_stage_prepare(scene_t* scene, uint32_t dt_ms) {
+skin_stage_prepare(scene_t* scene) {
     const int entities = scene->asset.entity_count;
     int clusters = 0;
-    for (int i = 0; i < scene->staged_count; i++) {
-        const scene_row_t e = scene->staged[i];
-        scene_animator_t* animator = &scene->animators[e];
-        if (animator->storage != NULL && animator->root == ANIM_ROOT_SCENE
-            && animator->layer.current.clip != ANIM_LAYER_CLIP_NONE && (scene->flags[e] & SCENE_FLAG_ACTIVE)) {
-            apply_property(scene, animator, dt_ms);
-        }
-    }
     const bool lights_dirty = skin_lights_changed(scene);
     scene->light_table_dirty |= lights_dirty;
     for (int i = 0; i < scene->staged_count; i++) {
@@ -190,8 +230,21 @@ scene_animation_repose(scene_t* scene, uint32_t dt_ms) {
     if (scene->animator_count == 0) {
         return;
     }
+    for (int i = 0; i < scene->staged_count; i++) {
+        const scene_row_t e = scene->staged[i];
+        scene_animator_t* animator = &scene->animators[e];
+        if (animator->storage != NULL && animator->root == ANIM_ROOT_SCENE
+            && animator->layer.current.clip != ANIM_LAYER_CLIP_NONE && (scene->flags[e] & SCENE_FLAG_ACTIVE)) {
+            apply_property(scene, animator, dt_ms);
+        }
+    }
+    if (skin_lights_changed(scene)) {
+        for (int i = 0; i < scene->staged_count; i++) {
+            scene->animators[scene->staged[i]].dirty = true;
+        }
+    }
     animate_entities(scene, dt_ms);
-    const int clusters = skin_stage_prepare(scene, dt_ms);
+    const int clusters = skin_stage_prepare(scene);
     if (clusters == 0) {
         return;
     }
@@ -212,6 +265,7 @@ void
 scene_animation_step(scene_t* scene, uint32_t dt_ms) {
     scene_skins_settle(scene);
     scene_animation_repose(scene, dt_ms);
+    scene->animation_frame++;
 }
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
