@@ -7,8 +7,10 @@
 #include "render/r3d_pipeline.h"
 
 #include <assert.h>
+
 #include <math.h>
 #include <string.h>
+#include "collections/bits.h"
 
 typedef r3d_lod_view_t lod_view_t;
 
@@ -301,15 +303,6 @@ r3d_lod_morph_stacked_px(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mes
     return most;
 }
 
-/* Sets group `g`'s bit in `bits` to `on`; whether it changed. */
-static bool
-set_bit(uint32_t* bits, int g, bool on) {
-    const uint32_t bit = 1U << (g % R3D_LOD_WORD_BITS);
-    const uint32_t before = bits[g / R3D_LOD_WORD_BITS];
-    bits[g / R3D_LOD_WORD_BITS] = on ? before | bit : before & ~bit;
-    return bits[g / R3D_LOD_WORD_BITS] != before;
-}
-
 /* Whether fine `group`'s blend may weigh more than none by the next pick, its
  * error ramping from `whole`: both its error and its radius inside their
  * ramps and R3D_LOD_BLEND_LEAD more, by LOD_BOUND_SLACK more so the blend's
@@ -400,14 +393,14 @@ blend_bits(uint32_t* arrived, uint32_t* blending, int g, bool was, const reach_t
     /* Past leave by a ramp it has arrived nowhere, even turning fine this
      * pick: setting the bit would only clear it on the next. */
     if (!within(at, error, limits->leave + lod->blend_px)) {
-        changed |= set_bit(arrived, g, false);
+        changed |= bits32_put(arrived, g, false);
     } else if (was) {
-        changed |= set_bit(arrived, g, true);
+        changed |= bits32_put(arrived, g, true);
     }
     const bool has_arrived = r3d_lod_coarse(arrived, (uint16_t)g);
     return changed
-           | set_bit(blending, g,
-                     blends(at, group, scale, limits->covered, lod, has_arrived ? limits->leave : limits->enter));
+           | bits32_put(blending, g,
+                        blends(at, group, scale, limits->covered, lod, has_arrived ? limits->leave : limits->enter));
 }
 
 /* A coarse group has not arrived, closed coarse or not; whether a bit cleared. */
@@ -462,7 +455,7 @@ pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settin
         const float radius = (float)group->bounds.radius * scale;
         const bool was = r3d_lod_coarse(coarse, (uint16_t)g);
         const bool coarse_now = turns_coarse(&at, error, radius, was, &limits);
-        changed |= set_bit(coarse, g, coarse_now);
+        changed |= bits32_put(coarse, g, coarse_now);
         histogram_add(histogram, group, &at, error, radius, limits.covered, lod->tolerance_px);
         any |= coarse_now;
         if (arrived != NULL && !coarse_now) {
