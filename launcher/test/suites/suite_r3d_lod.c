@@ -543,6 +543,30 @@ test_a_parent_turning_coarse_takes_an_out_of_order_source_with_it(void) {
     }
 }
 
+/* Levels not laid out apart: a cluster owning group 0 sits first among the
+ * finest ones. The closing pass still visits every cluster, so the parent
+ * turning coarse takes its source along as on the laid-out mesh. */
+static void
+test_the_closing_pass_visits_every_cluster_when_levels_are_not_laid_out_apart(void) {
+    const r3d_lit_mesh_t* mesh = levelled_mesh();
+    levelled->groups[0].error = UINT16_MAX;
+    const r3d_lens_t lens = lens_at(FAR_EYE, NULL);
+    uint32_t apart[R3D_LOD_WORDS(GROUPS)] = {0};
+    r3d_lod_pick(mesh, &lens, &LOD, apart, NULL);
+    TEST_ASSERT_TRUE(r3d_lod_coarse(apart, 0));
+    const r3d_lit_cluster_lod_t owner = levelled->lod[FINEST_CLUSTERS];
+    levelled->lod[FINEST_CLUSTERS] = levelled->lod[0];
+    levelled->lod[0] = owner;
+    r3d_lit_mesh_find_levels(&levelled->mesh);
+    TEST_ASSERT_EQUAL_INT(0, mesh->lod_coarse_first);
+    TEST_ASSERT_EQUAL_INT(0, mesh->lod_finest_root);
+    uint32_t together[R3D_LOD_WORDS(GROUPS)] = {0};
+    r3d_lod_pick(mesh, &lens, &LOD, together, NULL);
+    TEST_ASSERT_TRUE(r3d_lod_coarse(together, TOP_GROUP));
+    TEST_ASSERT_TRUE(r3d_lod_coarse(together, 0));
+    TEST_ASSERT_EQUAL_HEX32_ARRAY(apart, together, R3D_LOD_WORDS(GROUPS));
+}
+
 static void
 test_without_bits_a_levelled_mesh_walks_only_its_finest_clusters(void) {
     const r3d_lit_mesh_t* mesh = levelled_mesh();
@@ -1341,6 +1365,7 @@ suite_r3d_lod(void) {
     RUN_TEST(test_the_least_error_skips_only_poses_that_pick_nothing_coarse);
     RUN_TEST(test_a_group_s_error_projects_at_the_model_s_largest_scale);
     RUN_TEST(test_a_parent_turning_coarse_takes_an_out_of_order_source_with_it);
+    RUN_TEST(test_the_closing_pass_visits_every_cluster_when_levels_are_not_laid_out_apart);
     RUN_TEST(test_without_bits_a_levelled_mesh_walks_only_its_finest_clusters);
     RUN_TEST(test_a_mesh_without_levels_walks_every_cluster_whatever_its_bits);
     RUN_TEST(test_levels_laid_out_apart_start_the_walk_at_the_finest_clusters_tree);
