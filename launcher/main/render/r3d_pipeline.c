@@ -62,7 +62,7 @@ r3d_lens_place(r3d_lens_t* lens, const mat4f_t* model, int position_scale) {
     for (int row = 0; row < MAT3F_AXES; row++) {
         placed.m[row][MAT3F_AXES] *= (float)position_scale;
     }
-    lens->m = mat4f_mul_affine(lens->m, placed);
+    mat4f_post_mul_affine(&lens->m, &placed);
 }
 
 #define ALL_PLANES ((1u << PLANE_FRUSTUM_COUNT) - 1u)
@@ -89,6 +89,11 @@ struct r3d_pipeline_work {
             clip_vertex_t poly[CLIP_VERTEX_MAX], other[CLIP_VERTEX_MAX];
             r3d_span_vertex_t projected[CLIP_VERTEX_MAX];
             planef_t planes[PLANE_FRUSTUM_COUNT];
+            /* A draw with writers: the target it fills, retagged per cluster
+             * or triangle. Here, not on the draw's stack; the target last, as
+             * its rows end in a flexible array. */
+            r3d_span_writer_t writers[GFX_ATTACHMENTS_FURTHER_MAX];
+            r3d_span_target_t writing;
         } clip;
     };
 };
@@ -244,7 +249,7 @@ r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint
     /* Nothing coarse: level 0's tree, like a mesh without levels, holds only
      * what is drawn, so the walk tests no level and there is no cut. */
     const bool cut = lod_coarse != NULL && r3d_lod_any(lod_coarse, mesh->lod_group_count);
-    const bool every = !cut && (start != 0 || mesh->cluster_lod == NULL);
+    const bool every = r3d_lod_finest_untested(mesh, cut);
     stack[top++] = (walk_entry_t){(uint16_t)start, ALL_PLANES};
     int count = 0;
     while (top > 0) {
@@ -688,9 +693,10 @@ draw_writing_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16
                 const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
                 draw_mode_t mode, r3d_pipeline_work_t* work) {
     assert(target->writer_count <= GFX_ATTACHMENTS_FURTHER_MAX);
-    r3d_span_writer_t writers[GFX_ATTACHMENTS_FURTHER_MAX];
-    r3d_span_target_t writing = *target;
-    writing.writers = writers;
+    r3d_span_writer_t* writers = work->clip.writers;
+    r3d_span_target_t* writing = &work->clip.writing;
+    *writing = *target;
+    writing->writers = writers;
     bool per_triangle = false;
     for (int k = 0; k < target->writer_count; k++) {
         writers[k] = target->writers[k];
@@ -709,7 +715,7 @@ draw_writing_of(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16
         for (int t = c->triangle_first; t < end; t += step) {
             retag(writers, target->writers, target->writer_count, clusters[i], (uint32_t)t);
             /* No DRAW_BOUNDED: one more live value puts this frame over stack_chain_gate. */
-            draw_triangles(mesh, lens, c, t, t + step, cs, &writing, mode, work);
+            draw_triangles(mesh, lens, c, t, t + step, cs, writing, mode, work);
         }
     }
 }

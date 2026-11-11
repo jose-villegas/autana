@@ -1581,13 +1581,17 @@ class NightlyTests(unittest.TestCase):
                 args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=["20E8"],
                     data=self.args.data, out=self.root / "plan.json", marker=self.clock.now().isoformat(),
                     from_sha=None, max_steps=None, selftest_board="20E8")
+                asked = set()
                 def request(method, path):
                     if '/jobs?' in path:
                         return {"jobs": [dict(status="in_progress", labels=[schedule.GPU_LABEL])]}
+                    asked.add(path.split('/')[3])
                     return {"workflow_runs": [dict(id=1, status="in_progress")] if clock.now() < released else []}
                 with patch.object(chain, "read_last_night", return_value=None), \
                         patch.object(chain, "night_queue", return_value=[]):
                     chain.plan(args, clock, request=request)
+                # Only a quiet-host GPU workflow holds the board night; a running fit does not.
+                self.assertEqual(asked, set(schedule.QUIET_HOST_WORKFLOWS))
                 planned = json.loads(args.out.read_text())
                 self.assertTrue(planned["lanes"])
                 expected = released + timedelta(seconds=QUEUE_POLL_SECONDS)

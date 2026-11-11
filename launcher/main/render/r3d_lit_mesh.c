@@ -16,8 +16,8 @@ _Static_assert(sizeof(r3d_lit_cluster_t) == 22 && offsetof(r3d_lit_cluster_t, bo
 _Static_assert(sizeof(r3d_lit_node_t) == 16 && offsetof(r3d_lit_node_t, first) == 12
                    && offsetof(r3d_lit_node_t, leaf) == 15,
                "r3d_lit_node_t is not the layout lit_mesh.py writes");
-_Static_assert(sizeof(r3d_lit_cluster_lod_t) == 4 && sizeof(r3d_lit_lod_group_t) == 10
-                   && offsetof(r3d_lit_lod_group_t, error) == 8,
+_Static_assert(sizeof(r3d_lit_cluster_lod_t) == 4 && sizeof(r3d_lit_lod_group_t) == 12
+                   && offsetof(r3d_lit_lod_group_t, error) == 8 && offsetof(r3d_lit_lod_group_t, saves) == 10,
                "the LOD records are not the layout lit_mesh.py writes");
 
 enum {
@@ -143,10 +143,12 @@ lod_is_ordered(const r3d_lit_mesh_t* mesh) {
 }
 
 /* Whether every cluster under `node` is finest, or with `finest` false,
- * every one coarse. */
+ * every one coarse. A tree deeper than R3D_LIT_TREE_DEPTH_MAX is neither:
+ * the walk's stack holds R3D_LIT_WALK_DEEPEST, the least that walks a tree
+ * within it, so it stays small on the open's stack. */
 static bool
 subtree_is(const r3d_lit_mesh_t* mesh, int node, bool finest) {
-    uint16_t stack[R3D_LIT_WALK_STACK_MAX];
+    uint16_t stack[R3D_LIT_WALK_DEEPEST];
     int top = 0;
     stack[top++] = (uint16_t)node;
     while (top > 0) {
@@ -156,7 +158,7 @@ subtree_is(const r3d_lit_mesh_t* mesh, int node, bool finest) {
                 if ((mesh->cluster_lod[n->first + i].own == R3D_LOD_NONE) != finest) {
                     return false;
                 }
-            } else if (top < R3D_LIT_WALK_STACK_MAX) {
+            } else if (top < R3D_LIT_WALK_DEEPEST) {
                 stack[top++] = (uint16_t)(n->first + i);
             } else {
                 return false;
@@ -185,6 +187,12 @@ void
 r3d_lit_mesh_find_levels(r3d_lit_mesh_t* mesh) {
     mesh->lod_finest_root = 0;
     mesh->lod_coarse_first = 0;
+    mesh->lod_finest_triangles = 0;
+    for (int c = 0; mesh->cluster_lod != NULL && c < mesh->cluster_count; c++) {
+        if (mesh->cluster_lod[c].own == R3D_LOD_NONE) {
+            mesh->lod_finest_triangles += mesh->clusters[c].triangle_count;
+        }
+    }
     const r3d_lit_node_t* root = &mesh->nodes[0];
     const int first = mesh->cluster_lod == NULL ? -1 : coarse_run_first(mesh);
     if (first < 0 || root->leaf || root->count != 2 || !subtree_is(mesh, root->first, true)
@@ -203,6 +211,7 @@ r3d_lit_mesh_levels_from_asset(const asset_view_t* levels, r3d_lit_mesh_t* mesh)
     mesh->lod_error_least = 0;
     mesh->lod_finest_root = 0;
     mesh->lod_coarse_first = 0;
+    mesh->lod_finest_triangles = 0;
     const asset_status_t status =
         asset_entry_validate(*levels, LLOD_VERSION, LLOD_AT_VERSION, LLOD_HEADER_SIZE, ENTRY_ALIGNMENT);
     if (status != ASSET_OK) {
@@ -379,7 +388,11 @@ r3d_lit_mesh_bounding_sphere(const r3d_lit_mesh_t* mesh) {
 
 box3f_t
 r3d_lit_mesh_world_bounds(const r3d_lit_mesh_t* mesh, const mat4f_t* model) {
-    const box3f_t box = box3f_from_box3s(mesh->nodes[0].bounds, 1.0F / (float)mesh->position_scale);
+    return r3d_box_placed(box3f_from_box3s(mesh->nodes[0].bounds, 1.0F / (float)mesh->position_scale), model);
+}
+
+box3f_t
+r3d_box_placed(box3f_t box, const mat4f_t* model) {
     if (model == NULL) {
         return box;
     }

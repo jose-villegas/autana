@@ -483,6 +483,26 @@ scene_entry_size(const scene_spec_t* s) {
            + parents_size(s->entity_count);
 }
 
+/* Writes the header of an entry with `counts` rows of `sizes` bytes in each
+ * part, each part 4-aligned, and its offsets into `offsets`; returns the
+ * entry's size. A NULL entry only measures. */
+static uint32_t
+put_scene_header(uint8_t* entry, const uint16_t* counts, const size_t* sizes, uint32_t* offsets) {
+    uint32_t at = SCENE_ASSET_HEADER_SIZE;
+    if (entry != NULL) {
+        test_pack_put16(entry, SCENE_ASSET_VERSION);
+    }
+    for (int i = 0; i < SCENE_ASSET_PART_COUNT; i++) {
+        offsets[i] = at;
+        if (entry != NULL) {
+            test_pack_put16(entry + SCENE_ASSET_AT_COUNTS + i * sizeof(uint16_t), counts[i]);
+            test_pack_put32(entry + SCENE_ASSET_AT_OFFSETS + i * sizeof(uint32_t), at);
+        }
+        at += (uint32_t)mathi_size_ceil(counts[i] * sizes[i], sizeof(uint32_t));
+    }
+    return at;
+}
+
 static void
 make_scene_entry_with_skin(uint8_t* entry, const scene_spec_t* s, const skin_fixture_options_t* options) {
     const uint16_t skins = s->skinned;
@@ -504,14 +524,8 @@ make_scene_entry_with_skin(uint8_t* entry, const scene_spec_t* s, const skin_fix
         sizeof(scene_asset_light_t),    sizeof(scene_asset_skinned_renderer_t),
         sizeof(scene_asset_animator_t), ASSET_NAME_MAX,
         sizeof(scene_asset_settings_t), sizeof(uint16_t)};
-    uint32_t offsets[SCENE_ASSET_PART_COUNT], at = SCENE_ASSET_HEADER_SIZE;
-    test_pack_put16(entry, SCENE_ASSET_VERSION);
-    for (int i = 0; i < SCENE_ASSET_PART_COUNT; i++) {
-        offsets[i] = at;
-        test_pack_put16(entry + SCENE_ASSET_AT_COUNTS + i * sizeof(uint16_t), counts[i]);
-        test_pack_put32(entry + SCENE_ASSET_AT_OFFSETS + i * sizeof(uint32_t), at);
-        at += counts[i] * sizes[i];
-    }
+    uint32_t offsets[SCENE_ASSET_PART_COUNT];
+    (void)put_scene_header(entry, counts, sizes, offsets);
     for (int i = 0; i < s->entity_count; i++) {
         put_name(entry + offsets[SCENE_ASSET_NAMES] + sizeof(scene_asset_name_t) * i, s->entities[i].name);
         memcpy(entry + offsets[SCENE_ASSET_TRANSFORMS] + sizeof(scene_asset_transform_t) * i, &s->entities[i].at,
@@ -1462,6 +1476,27 @@ test_a_child_moved_alone_stays_in_its_parents_frame(void) {
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(2.0F));
 }
 
+/* One renderer leaving as another joins keeps the drawn count, but the
+ * frame cannot know where the one that left was drawn: every row. */
+static void
+test_a_renderer_swapped_for_another_redraws_every_row(void) {
+    fixture();
+    entity_t scene = show("test_pair");
+    const entity_t red = entity_find(scene, name_hash("red"));
+    const entity_t green = entity_find(scene, name_hash("green"));
+    entity_set_enabled(green, false);
+    frame(16);
+    frame(16);
+    TEST_ASSERT_TRUE(render_context_frame(render_context_main()).unchanged);
+    entity_set_enabled(red, false);
+    entity_set_enabled(green, true);
+    frame(16);
+    const render_context_frame_t swapped = render_context_frame(render_context_main());
+    TEST_ASSERT_FALSE(swapped.unchanged);
+    TEST_ASSERT_EQUAL_INT(SIZE, swapped.rows_end - swapped.rows_first);
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(0.0F));
+}
+
 static void
 test_a_disabled_parent_hides_its_children_and_keeps_their_own_flags(void) {
     fixture();
@@ -1891,34 +1926,35 @@ test_authored_rows_and_refusals(void) {
     void* buffer = NULL;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_file_open(getenv("AUTANA_SCENE_PROBE"), &pack, &buffer));
     asset_view_t entry;
-    scene_asset_t asset;
+    scene_asset_t* const asset = malloc(sizeof *asset);
+    TEST_ASSERT_NOT_NULL(asset);
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(&pack, "authored", SCENE_ASSET, &entry));
-    TEST_ASSERT_EQUAL_INT(ASSET_OK, scene_asset_open(entry, &asset));
-    TEST_ASSERT_EQUAL_INT(2, asset.light_count);
-    TEST_ASSERT_EQUAL_INT(2, asset.skinned_renderer_count);
-    TEST_ASSERT_EQUAL_INT(2, asset.animator_count);
-    TEST_ASSERT_EQUAL_FLOAT(1.5F, asset.lights[0].intensity);
-    TEST_ASSERT_EQUAL_FLOAT(0.5F, asset.settings->tonemap_white);
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, scene_asset_open(entry, asset));
+    TEST_ASSERT_EQUAL_INT(2, asset->light_count);
+    TEST_ASSERT_EQUAL_INT(2, asset->skinned_renderer_count);
+    TEST_ASSERT_EQUAL_INT(2, asset->animator_count);
+    TEST_ASSERT_EQUAL_FLOAT(1.5F, asset->lights[0].intensity);
+    TEST_ASSERT_EQUAL_FLOAT(0.5F, asset->settings->tonemap_white);
     /* Two skinned renderers of one import share its mesh and skin. */
-    TEST_ASSERT_EQUAL_STRING("mesh.skin", asset.skinned_renderers[0].skin);
-    TEST_ASSERT_EQUAL_STRING("mesh.skin", asset.skinned_renderers[1].skin);
-    TEST_ASSERT_EQUAL_STRING("mesh", asset.skinned_renderers[1].mesh);
-    TEST_ASSERT_EQUAL_STRING("walk", asset.clips[1]);
-    TEST_ASSERT_EQUAL_STRING("first", asset.names[1].name);
-    TEST_ASSERT_EQUAL_HEX32(name_hash("first"), asset.names[1].hash); /* the tools' hash is the device's */
+    TEST_ASSERT_EQUAL_STRING("mesh.skin", asset->skinned_renderers[0].skin);
+    TEST_ASSERT_EQUAL_STRING("mesh.skin", asset->skinned_renderers[1].skin);
+    TEST_ASSERT_EQUAL_STRING("mesh", asset->skinned_renderers[1].mesh);
+    TEST_ASSERT_EQUAL_STRING("walk", asset->clips[1]);
+    TEST_ASSERT_EQUAL_STRING("first", asset->names[1].name);
+    TEST_ASSERT_EQUAL_HEX32(name_hash("first"), asset->names[1].hash); /* the tools' hash is the device's */
     uint8_t* bytes = (uint8_t*)(uintptr_t)entry.data;
-    const uint32_t light = (const uint8_t*)asset.lights - entry.data;
-    const uint32_t skin = (const uint8_t*)asset.skinned_renderers - entry.data;
-    const uint32_t animator = (const uint8_t*)asset.animators - entry.data;
-    const uint32_t settings = (const uint8_t*)asset.settings - entry.data;
+    const uint32_t light = (const uint8_t*)asset->lights - entry.data;
+    const uint32_t skin = (const uint8_t*)asset->skinned_renderers - entry.data;
+    const uint32_t animator = (const uint8_t*)asset->animators - entry.data;
+    const uint32_t settings = (const uint8_t*)asset->settings - entry.data;
     const breakage_t changes[] = {
-        {"light entity", light, 2, asset.entity_count, false, ASSET_ERR_FORMAT},
-        {"skin entity", skin, 2, asset.entity_count, false, ASSET_ERR_FORMAT},
-        {"animator entity", animator, 2, asset.entity_count, false, ASSET_ERR_FORMAT},
+        {"light entity", light, 2, asset->entity_count, false, ASSET_ERR_FORMAT},
+        {"skin entity", skin, 2, asset->entity_count, false, ASSET_ERR_FORMAT},
+        {"animator entity", animator, 2, asset->entity_count, false, ASSET_ERR_FORMAT},
         {"fewer transforms", SCENE_ASSET_AT_COUNTS + SCENE_ASSET_TRANSFORMS * sizeof(uint16_t), 2,
-         asset.entity_count - 1, false, ASSET_ERR_FORMAT},
+         asset->entity_count - 1, false, ASSET_ERR_FORMAT},
         {"more transforms", SCENE_ASSET_AT_COUNTS + SCENE_ASSET_TRANSFORMS * sizeof(uint16_t), 2,
-         asset.entity_count + 1, false, ASSET_ERR_FORMAT},
+         asset->entity_count + 1, false, ASSET_ERR_FORMAT},
         {"no settings", SCENE_ASSET_AT_COUNTS + SCENE_ASSET_SETTINGS * sizeof(uint16_t), 2, 0, false, ASSET_ERR_FORMAT},
         {"two settings", SCENE_ASSET_AT_COUNTS + SCENE_ASSET_SETTINGS * sizeof(uint16_t), 2, 2, false,
          ASSET_ERR_FORMAT},
@@ -1930,11 +1966,11 @@ test_authored_rows_and_refusals(void) {
         {"overflow clips", animator + offsetof(scene_asset_animator_t, first_clip), 4, UINT32_MAX, false,
          ASSET_ERR_FORMAT},
         {"light pad", light + offsetof(scene_asset_light_t, pad), 1, 1, false, ASSET_ERR_FORMAT},
-        {"two lights", light + sizeof(scene_asset_light_t), 2, asset.lights[0].entity, false, ASSET_ERR_FORMAT},
+        {"two lights", light + sizeof(scene_asset_light_t), 2, asset->lights[0].entity, false, ASSET_ERR_FORMAT},
         {"skin pad", skin + offsetof(scene_asset_skinned_renderer_t, pad), 2, 1, false, ASSET_ERR_FORMAT},
-        {"two skins", skin + sizeof(scene_asset_skinned_renderer_t), 2, asset.skinned_renderers[0].entity, false,
+        {"two skins", skin + sizeof(scene_asset_skinned_renderer_t), 2, asset->skinned_renderers[0].entity, false,
          ASSET_ERR_FORMAT},
-        {"two animators", animator + sizeof(scene_asset_animator_t), 2, asset.animators[0].entity, false,
+        {"two animators", animator + sizeof(scene_asset_animator_t), 2, asset->animators[0].entity, false,
          ASSET_ERR_FORMAT},
         {"default clip", animator + offsetof(scene_asset_animator_t, default_clip), 2, 1, false, ASSET_ERR_FORMAT},
         {"animator pad", animator + offsetof(scene_asset_animator_t, pad), 1, 1, false, ASSET_ERR_FORMAT},
@@ -1950,7 +1986,7 @@ test_authored_rows_and_refusals(void) {
     for (size_t i = 0; i < sizeof entities / sizeof entities[0]; i++) {
         uint16_t saved;
         memcpy(&saved, bytes + entities[i], sizeof saved);
-        test_pack_put16(bytes + entities[i], asset.entity_count - 1);
+        test_pack_put16(bytes + entities[i], asset->entity_count - 1);
         TEST_ASSERT_EQUAL_INT(ASSET_OK, open_entry(bytes, entry.size));
         test_pack_put16(bytes + entities[i], saved);
     }
@@ -1970,6 +2006,7 @@ test_authored_rows_and_refusals(void) {
     test_pack_put16(bytes + animator + offsetof(scene_asset_animator_t, default_clip), SCENE_ASSET_DEFAULT_CLIP_NONE);
     TEST_ASSERT_EQUAL_INT(ASSET_OK, open_entry(bytes, entry.size));
     asset_file_release(buffer);
+    free(asset);
 }
 
 static void
@@ -2530,6 +2567,164 @@ test_lcol_instances_and_refusals(void) {
     }
 }
 
+/* A batch: one renderer of "red" drawing two copies at test_pair's red and
+ * green places, the second in LCOL set 1, so the picture is test_pair's. */
+enum { BATCH_COPIES = 2, BATCH_ENTITIES = 2, BATCH_REACH = 2, BATCH_LARGEST_W = 3 };
+
+/* A change to one field of the batch scene: `width` bytes of `value` at
+ * `at` in part `part`; `at` SIZE_MAX changes nothing. */
+typedef struct {
+    const char* id;
+    int part;
+    size_t at;
+    uint32_t value;
+    int width;
+    uint16_t turns; /* the turn rows the header states */
+} batch_case_t;
+
+static void
+put_batch_rows(uint8_t* entry, const uint32_t* offsets, uint16_t turn_count) {
+    static const scene_asset_transform_t at[BATCH_ENTITIES] = {CAMERA_AT(0), IDENTITY};
+    static const char* const names[BATCH_ENTITIES] = {"camera", "copies"};
+    for (int i = 0; i < BATCH_ENTITIES; i++) {
+        put_name(entry + offsets[SCENE_ASSET_NAMES] + sizeof(scene_asset_name_t) * i, names[i]);
+        memcpy(entry + offsets[SCENE_ASSET_TRANSFORMS] + sizeof(scene_asset_transform_t) * i, &at[i], sizeof at[i]);
+        test_pack_put16(entry + offsets[SCENE_ASSET_PARENTS] + sizeof(uint16_t) * i, SCENE_ASSET_PARENT_ROOT);
+    }
+    const scene_asset_renderer_t renderer = {.entity = 1, .colour_set = 0, .mesh = "red"};
+    const scene_asset_camera_t camera = {.half_fov_short_tan = 1.0F, .near_z = 1.0F, .clear_rgb = CLEAR_RGB};
+    const scene_asset_settings_t settings = {.ambient_color = SKIN_OPTIONS.ambient};
+    const scene_asset_batch_t batch = {.renderer = 0, .copy_count = BATCH_COPIES};
+    const r3d_copy_chunk_t chunk = {{BATCH_REACH, 0.0F, 0.0F}, BATCH_REACH};
+    const r3d_copy_place_t places[BATCH_COPIES] = {{{-R3D_COPY_STEPS, 0, 0}, 0}, {{R3D_COPY_STEPS, 0, 0}, 1}};
+    const r3d_copy_turn_t turns[BATCH_COPIES] = {{{0, 0, 0}, BATCH_LARGEST_W}, {{0, 0, 0}, BATCH_LARGEST_W}};
+    memcpy(entry + offsets[SCENE_ASSET_RENDERERS], &renderer, sizeof renderer);
+    memcpy(entry + offsets[SCENE_ASSET_CAMERAS], &camera, sizeof camera);
+    memcpy(entry + offsets[SCENE_ASSET_SETTINGS], &settings, sizeof settings);
+    memcpy(entry + offsets[SCENE_ASSET_BATCHES], &batch, sizeof batch);
+    memcpy(entry + offsets[SCENE_ASSET_CHUNKS], &chunk, sizeof chunk);
+    memcpy(entry + offsets[SCENE_ASSET_PLACES], places, sizeof places);
+    memcpy(entry + offsets[SCENE_ASSET_TURNS], turns, sizeof(r3d_copy_turn_t) * turn_count);
+}
+
+static void
+make_batch_entry(test_pack_t* pack, const batch_case_t* spec) {
+    const uint16_t counts[SCENE_ASSET_PART_COUNT] = {[SCENE_ASSET_NAMES] = BATCH_ENTITIES,
+                                                     [SCENE_ASSET_TRANSFORMS] = BATCH_ENTITIES,
+                                                     [SCENE_ASSET_RENDERERS] = 1,
+                                                     [SCENE_ASSET_CAMERAS] = 1,
+                                                     [SCENE_ASSET_SETTINGS] = 1,
+                                                     [SCENE_ASSET_PARENTS] = BATCH_ENTITIES,
+                                                     [SCENE_ASSET_BATCHES] = 1,
+                                                     [SCENE_ASSET_CHUNKS] = 1,
+                                                     [SCENE_ASSET_PLACES] = BATCH_COPIES,
+                                                     [SCENE_ASSET_TURNS] = spec->turns};
+    const size_t sizes[SCENE_ASSET_PART_COUNT] = {[SCENE_ASSET_NAMES] = sizeof(scene_asset_name_t),
+                                                  [SCENE_ASSET_TRANSFORMS] = sizeof(scene_asset_transform_t),
+                                                  [SCENE_ASSET_RENDERERS] = sizeof(scene_asset_renderer_t),
+                                                  [SCENE_ASSET_CAMERAS] = sizeof(scene_asset_camera_t),
+                                                  [SCENE_ASSET_SETTINGS] = sizeof(scene_asset_settings_t),
+                                                  [SCENE_ASSET_PARENTS] = sizeof(uint16_t),
+                                                  [SCENE_ASSET_BATCHES] = sizeof(scene_asset_batch_t),
+                                                  [SCENE_ASSET_CHUNKS] = sizeof(r3d_copy_chunk_t),
+                                                  [SCENE_ASSET_PLACES] = sizeof(r3d_copy_place_t),
+                                                  [SCENE_ASSET_TURNS] = sizeof(r3d_copy_turn_t)};
+    uint32_t offsets[SCENE_ASSET_PART_COUNT];
+    uint8_t* entry = test_pack_add(pack, "test_batch", SCENE_ASSET, put_scene_header(NULL, counts, sizes, offsets));
+    (void)put_scene_header(entry, counts, sizes, offsets);
+    put_batch_rows(entry, offsets, spec->turns);
+    if (spec->at != SIZE_MAX) {
+        uint8_t* byte = entry + offsets[spec->part] + spec->at;
+        if (spec->width == sizeof(uint32_t)) {
+            test_pack_put32(byte, spec->value);
+        } else {
+            test_pack_put16(byte, (uint16_t)spec->value);
+        }
+    }
+}
+
+static void
+make_batch_pack(const batch_case_t* spec) {
+    test_pack_t pack = test_pack_begin(fx.bytes, PACK_MAX, 3);
+    uint8_t* mesh = test_pack_add(&pack, "red", R3D_LIT_MESH_ASSET, QUAD_BYTES);
+    make_quad_entry(mesh, UINT8_MAX, 0, 0, 1);
+    test_pack_put32(mesh + MESH_COLOURS_WORD * sizeof(uint32_t), 0);
+    make_batch_entry(&pack, spec);
+    const lcol_case_t colours = {0};
+    make_lcol_entry(&pack, &colours, LCOL_ENCODING_RGB888);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_OK, asset_pack_open(&fx.pack, fx.bytes, test_pack_finish(&pack)), spec->id);
+}
+
+static void
+test_a_batch_draws_its_copies_from_one_renderer(void) {
+    fixture();
+    fx.lent = memory_alloc(LENT_BYTES, MEMORY_APP);
+    TEST_ASSERT_NOT_NULL(fx.lent);
+    (void)scene_set_take(lend);
+    const batch_case_t spec = {.id = "valid", .at = SIZE_MAX, .turns = BATCH_COPIES};
+    make_batch_pack(&spec);
+    const entity_t root = load("test_batch");
+    const scene_t* scene = columns(root);
+    TEST_ASSERT_EQUAL_INT(1, scene->renderer_count);
+    const scene_renderer_t* r = &scene->renderers[0];
+    TEST_ASSERT_NOT_NULL(r->batch);
+    TEST_ASSERT_EQUAL_INT(BATCH_COPIES, r->batch->copy_count);
+    TEST_ASSERT_EQUAL_INT(LCOL_TEST_SETS, r->colour_sets);
+    /* Both colour sets resident in one span, set 1 a mesh's colours after set 0; the places too. */
+    const uintptr_t begin = (uintptr_t)scene->resident;
+    const uintptr_t end = begin + fx.lent_last_size;
+    TEST_ASSERT_TRUE((uintptr_t)r->mesh.colors >= begin
+                     && (uintptr_t)(r->mesh.colors + (LCOL_TEST_SETS * r->mesh.vertex_count)) <= end);
+    TEST_ASSERT_TRUE((uintptr_t)r->batch->places >= begin && (uintptr_t)(r->batch->places + BATCH_COPIES) <= end);
+    r3d_lit_mesh_t second;
+    r3d_batch_copy_mesh(r->batch, &r->mesh, 1, &second);
+    TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, second.colors[0][1]);
+    TEST_ASSERT_FALSE(renderer_set_mesh(entity_find(root, name_hash("copies")), &r->mesh));
+    TEST_ASSERT_TRUE(camera_activate(camera_first(root)));
+    render_context_set_scale(render_context_main(), 100);
+    frame(16);
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), pixel(0.0F));
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0x00FF00), pixel(4.0F));
+    TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(8.0F));
+}
+
+static void
+assert_batch_refused(const batch_case_t* spec) {
+    scene_unload_all();
+    make_batch_pack(spec);
+    scene_failure_t why;
+    TEST_ASSERT_TRUE_MESSAGE(fails(scene_load_from(&fx.pack, "test_batch"), &why), spec->id);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(SCENE_ERR_ASSET, why.status, spec->id);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_ERR_FORMAT, why.asset, spec->id);
+}
+
+static void
+test_batch_refusals(void) {
+    enum { U16 = sizeof(uint16_t), U32 = sizeof(uint32_t) };
+
+    const uint32_t minus_one = 0xBF800000U, infinity = 0x7F800000U; /* float bits */
+    const batch_case_t cases[] = {
+        {"renderer beyond", SCENE_ASSET_BATCHES, offsetof(scene_asset_batch_t, renderer), 1, U16, BATCH_COPIES},
+        {"no copies", SCENE_ASSET_BATCHES, offsetof(scene_asset_batch_t, copy_count), 0, U16, BATCH_COPIES},
+        {"fewer copies", SCENE_ASSET_BATCHES, offsetof(scene_asset_batch_t, copy_count), 1, U16, BATCH_COPIES},
+        {"first copy", SCENE_ASSET_BATCHES, offsetof(scene_asset_batch_t, first_copy), 1, U32, BATCH_COPIES},
+        {"first chunk", SCENE_ASSET_BATCHES, offsetof(scene_asset_batch_t, first_chunk), 1, U32, BATCH_COPIES},
+        {"negative reach", SCENE_ASSET_CHUNKS, offsetof(r3d_copy_chunk_t, reach), minus_one, U32, BATCH_COPIES},
+        {"infinite centre", SCENE_ASSET_CHUNKS, offsetof(r3d_copy_chunk_t, centre), infinity, U32, BATCH_COPIES},
+        {"largest beyond w", SCENE_ASSET_TURNS, offsetof(r3d_copy_turn_t, largest), BATCH_LARGEST_W + 1, U16,
+         BATCH_COPIES},
+        {"set beyond the colours", SCENE_ASSET_PLACES,
+         sizeof(r3d_copy_place_t) + offsetof(r3d_copy_place_t, colour_set), LCOL_TEST_SETS, U16, BATCH_COPIES},
+        {"renderer's own set", SCENE_ASSET_RENDERERS, offsetof(scene_asset_renderer_t, colour_set), 1, U16,
+         BATCH_COPIES},
+        {"fewer turns", 0, SIZE_MAX, 0, 0, BATCH_COPIES - 1},
+    };
+    fixture();
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        assert_batch_refused(&cases[i]);
+    }
+}
+
 static void
 test_the_active_camera_draws_its_scenes_renderers(void) {
     fixture();
@@ -2996,6 +3191,7 @@ test_a_predicted_draw_is_the_fixed_draw_at_the_step_it_chose(void) {
 
         render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
         render_context_set_scale(render_context_main(), 100 * LADDER[cases[i].chosen].width / SIZE);
+        render_context_forget(render_context_main()); /* drawn whole, not over the predicted picture */
         frame(0);
         const render_context_frame_t fixed = render_context_frame(render_context_main());
         TEST_ASSERT_EQUAL_INT(drawn.width, fixed.width);
@@ -3092,7 +3288,7 @@ expanded_picture(void) {
     TEST_ASSERT_NOT_NULL(half.half_pixels);
     TEST_ASSERT_TRUE(half.half_pixels != half.pixels);
     TEST_ASSERT_TRUE(scene_compose(16, 0, &half));
-    gfx_expand_frame();
+    gfx_expand_frame(false, 0, GFX_HEIGHT);
     TEST_ASSERT_TRUE(gfx_frame_expanded());
     for (int y = 0; y < GFX_HEIGHT; y++) {
         gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
@@ -3146,7 +3342,7 @@ test_blended_expand_blends_within_seams_and_doubles_across_them(void) {
     const gfx_color_t* line = half + HALF_WIDTH;
 
     memset(seams, 0, GFX_SEAM_BYTES(HALF_WIDTH, HALF_HEIGHT));
-    gfx_expand_frame_blended();
+    gfx_expand_frame(true, 0, GFX_HEIGHT);
     gfx_read_panel_row(2, row);
     TEST_ASSERT_EQUAL_HEX16(line[0], row[0]);
     TEST_ASSERT_EQUAL_HEX16(line[HALF_WIDTH - 1], row[GFX_WIDTH - 1]);
@@ -3156,7 +3352,7 @@ test_blended_expand_blends_within_seams_and_doubles_across_them(void) {
     }
 
     memset(seams, UINT8_MAX, GFX_SEAM_BYTES(HALF_WIDTH, HALF_HEIGHT));
-    gfx_expand_frame_blended();
+    gfx_expand_frame(true, 0, GFX_HEIGHT);
     gfx_read_panel_row(2, row);
     for (int x = 0; x < GFX_WIDTH; x++) {
         TEST_ASSERT_EQUAL_HEX16(line[x / 2], row[x]);
@@ -3168,11 +3364,28 @@ test_blended_expand_blends_within_seams_and_doubles_across_them(void) {
         for (size_t i = 0; i < GFX_SEAM_BYTES(HALF_WIDTH, HALF_HEIGHT); i++) {
             seams[i] = (uint8_t)rand();
         }
-        gfx_expand_frame_blended();
+        gfx_expand_frame(true, 0, GFX_HEIGHT);
         check_scattered_seams(2, line, seams + GFX_SEAM_PITCH(HALF_WIDTH), row);
         check_scattered_seams(3, line, seams + GFX_SEAM_PITCH(HALF_WIDTH), row);
     }
     free(row);
+}
+
+/* The shell's composed framebuffer, as the app and its UI then paint it:
+ * the next frame, nothing moved, still shows the scene. */
+static void
+test_a_framebuffer_painted_over_after_compose_shows_the_scene_next_frame(void) {
+    expanded_fixture();
+    render_context_set_scale(render_context_main(), 100);
+    const size_t centre = ((size_t)(GFX_HEIGHT / 2) * GFX_WIDTH) + (GFX_WIDTH / 2);
+    scene_shell_render(16);
+    scene_shell_compose(16);
+    TEST_ASSERT_FALSE(gfx_frame_expanded());
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), gfx_framebuffer()[centre]);
+    gfx_framebuffer()[centre] = SENTINEL;
+    scene_shell_render(16);
+    scene_shell_compose(16);
+    TEST_ASSERT_EQUAL_HEX16(RGB565BE(0xFF0000), gfx_framebuffer()[centre]);
 }
 
 static void
@@ -3180,7 +3393,7 @@ test_expanded_frame_lifecycle_and_raw_draw_guard(void) {
     expanded_fixture();
     gfx_color_t* half = gfx_half_picture();
     half[0] = 0x1234;
-    gfx_expand_frame();
+    gfx_expand_frame(false, 0, GFX_HEIGHT);
     TEST_ASSERT_TRUE(gfx_frame_expanded());
     TEST_ASSERT_TRUE(gfx_region_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT));
     const unsigned trips = gfx_fb_guard_trips_for_test();
@@ -3193,11 +3406,11 @@ test_expanded_frame_lifecycle_and_raw_draw_guard(void) {
     TEST_ASSERT_TRUE(gfx_frame_expanded());
     gfx_present_wait();
     TEST_ASSERT_FALSE(gfx_frame_expanded());
-    gfx_expand_frame();
+    gfx_expand_frame(false, 0, GFX_HEIGHT);
     gfx_mode_exit();
     TEST_ASSERT_FALSE(gfx_frame_expanded());
     TEST_ASSERT_NOT_NULL(gfx_half_picture());
-    gfx_expand_frame();
+    gfx_expand_frame(false, 0, GFX_HEIGHT);
     gfx_reset_for_test();
     TEST_ASSERT_FALSE(gfx_frame_expanded());
     TEST_ASSERT_TRUE(gfx_init());
@@ -3233,7 +3446,7 @@ check_half_composed(render_context_t* c, int quarter, const scene_target_t* targ
     TEST_ASSERT_TRUE(raster_fits_half_picture(&c->raster));
     raster_upscale(&c->raster, fx.held, GFX_WIDTH / 2, GFX_HEIGHT / 2);
     TEST_ASSERT_TRUE(scene_compose(0, quarter, target));
-    gfx_expand_frame();
+    gfx_expand_frame(false, 0, GFX_HEIGHT);
     for (int y = 0; y < GFX_HEIGHT; y++) {
         gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
         for (int x = 0; x < GFX_WIDTH; x++) {
@@ -3439,7 +3652,7 @@ static void
 test_expanded_overlay_resets_and_restores_clip(void) {
     expanded_fixture();
     TEST_ASSERT_NOT_NULL(gfx_half_picture());
-    gfx_expand_frame();
+    gfx_expand_frame(false, 0, GFX_HEIGHT);
     const recti_t narrow = {GFX_WIDTH / 4, GFX_HEIGHT / 4, GFX_WIDTH / 4, GFX_HEIGHT / 4};
     draw_set_clip(narrow.x, narrow.y, narrow.w, narrow.h);
     gfx_set_frame_overlay(clip_overlay);
@@ -3467,7 +3680,7 @@ test_ui_replay_over_expanded_scene_matches_full_frame(void) {
             scene_render(0, 0, GFX_WIDTH, GFX_HEIGHT);
             const scene_target_t half = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture(), NULL};
             TEST_ASSERT_TRUE(scene_compose(0, 0, &half));
-            gfx_expand_frame();
+            gfx_expand_frame(false, 0, GFX_HEIGHT);
             gfx_set_frame_overlay(ui_replay_band);
             const unsigned trips = gfx_fb_guard_trips_for_test();
             ui_init();
@@ -3545,7 +3758,7 @@ test_expanded_frame_without_ui_does_not_replay_the_previous_hud(void) {
     scene_render(0, 0, GFX_WIDTH, GFX_HEIGHT);
     const scene_target_t half = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture(), NULL};
     TEST_ASSERT_TRUE(scene_compose(0, 0, &half));
-    gfx_expand_frame();
+    gfx_expand_frame(false, 0, GFX_HEIGHT);
     gfx_set_frame_overlay(ui_replay_band);
     ui_init();
     build_expanded_ui(UI_TEXT_OUTLINED);
@@ -3553,7 +3766,7 @@ test_expanded_frame_without_ui_does_not_replay_the_previous_hud(void) {
     scene_render(0, 0, GFX_WIDTH, GFX_HEIGHT);
     ui_clear_band_overlay();
     TEST_ASSERT_TRUE(scene_compose(0, 0, &half));
-    gfx_expand_frame();
+    gfx_expand_frame(false, 0, GFX_HEIGHT);
     for (int y = 0; y < GFX_HEIGHT; y++) {
         gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
     }
@@ -3702,8 +3915,8 @@ levelled_quads(void) {
     test_pack_put32(levelled_entry + LLOD_AT_CLUSTER_COUNT, 2);
     const r3d_lit_cluster_lod_t lod[] = {{R3D_LOD_NONE, 0}, {0, 1}};
     memcpy(levelled_entry + LEVELS_AT, lod, sizeof lod);
-    const r3d_lit_lod_group_t inner = {{{0, 0, 0}, 1}, 1};
-    const r3d_lit_lod_group_t outer = {{{0, 0, 0}, 1 + 1 + R3D_LOD_ENCLOSE_MARGIN}, 2};
+    const r3d_lit_lod_group_t inner = {{{0, 0, 0}, 1}, 1, 0};
+    const r3d_lit_lod_group_t outer = {{{0, 0, 0}, 1 + 1 + R3D_LOD_ENCLOSE_MARGIN}, 2, 0};
     memcpy(levelled_entry + INNER_GROUP, &inner, sizeof inner);
     memcpy(levelled_entry + OUTER_GROUP, &outer, sizeof outer);
     return (asset_view_t){levelled_entry, LEVELLED_BYTES};
@@ -6168,6 +6381,7 @@ run_scene_suite(void) {
     RUN_TEST(test_paused_or_empty_expanded_scene_retains_its_picture);
     RUN_TEST(test_expanded_scene_in_separate_picture_matches_upscale);
     RUN_TEST(test_expanded_frame_lifecycle_and_raw_draw_guard);
+    RUN_TEST(test_a_framebuffer_painted_over_after_compose_shows_the_scene_next_frame);
     RUN_TEST(test_blended_expand_blends_within_seams_and_doubles_across_them);
     RUN_TEST(test_expanded_overlay_resets_and_restores_clip);
     RUN_TEST(test_ui_replay_over_expanded_scene_matches_full_frame);
@@ -6219,6 +6433,8 @@ run_scene_suite(void) {
     RUN_TEST(test_a_name_hashing_to_none_is_refused);
     RUN_TEST(test_finds_compare_name_hashes);
     RUN_TEST(test_lcol_instances_and_refusals);
+    RUN_TEST(test_a_batch_draws_its_copies_from_one_renderer);
+    RUN_TEST(test_batch_refusals);
     RUN_TEST(test_the_active_camera_draws_its_scenes_renderers);
     RUN_TEST(test_a_disabled_entity_is_not_drawn_and_enabling_it_draws_it_again);
     RUN_TEST(test_a_runtime_mesh_is_drawn_in_place_of_the_loaded_one);
@@ -6257,6 +6473,7 @@ run_scene_suite(void) {
     RUN_TEST(test_a_child_is_drawn_where_its_parent_places_it);
     RUN_TEST(test_a_child_moved_alone_stays_in_its_parents_frame);
     RUN_TEST(test_a_disabled_parent_hides_its_children_and_keeps_their_own_flags);
+    RUN_TEST(test_a_renderer_swapped_for_another_redraws_every_row);
     RUN_TEST(test_an_entity_knows_its_parent_its_ancestors_and_its_world);
     RUN_TEST(test_a_camera_with_a_parent_is_refused);
     RUN_TEST(test_a_mirrored_transform_is_refused_by_name);
