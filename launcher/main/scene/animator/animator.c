@@ -183,7 +183,7 @@ pose_at_rest(scene_animator_t* a, scene_skinned_renderer_t* skin) {
     a->posed = true;
     anim_pose_rest(&a->skeleton, &a->layer.shown);
     anim_pose_rest(&a->skeleton, &a->layer.frozen);
-    if (skin->internal_storage != NULL) {
+    if (skin->storage != NULL) {
         anim_pose_model(&a->skeleton, &a->layer.shown, skin->model);
         r3d_skin_palette(&skin->skin, skin->model, skin->bind.position_scale, skin->palette);
     }
