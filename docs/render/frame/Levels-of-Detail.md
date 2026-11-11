@@ -92,23 +92,27 @@ sky-through-walls test finds no more holed frames than at the finest level.
 One tolerance per frame is also the cut that meets a triangle budget at the
 least error<sup>[[110]](../../Citations.md#wimmer-1998)</sup>, refining by
 screen-space error<sup>[[111]](../../Citations.md#hoppe-1997)</sup>; the floor
-is `lod.tolerance_px`. With `lod.triangle_budget` set, each pick adds a group's
-`saves` (LLOD) at the half-octave bin its error projects to, and the
-instance's finest triangles once.
+is `lod.tolerance_px`, and a steered floor is at least the first bin's edge.
+With `lod.triangle_budget` set, each pick adds a group's `saves` (LLOD) at the
+half-octave bin of the least tolerance that turns it coarse, and the
+instance's finest triangles once. That is its projected error, or the
+tolerance whose coverage cap its radius fits: steered, the cap rises in
+proportion to the tolerance.
 
 When a round of picks has seen every instance, the finest less the saves below
 each edge is the count there, scaled by what the round drew over what it
 predicted, which takes in culling. The steer takes the least edge within
 budget, from `lod.tolerance_px` up. It rises at once and falls a bin a round,
-so a held view settles; with partial redraw, a still view keeps picking until
+and only once the edge two below fits, so a held view settles and a closing
+camera does not dip and climb back; with partial redraw, a still view keeps picking until
 a round leaves the tolerance where it was.
 
 ```mermaid
 flowchart LR
-    Pick["pick: each group's saves<br/>at its error's bin"] --> Hist["histogram,<br/>one per core"]
+    Pick["pick: each group's saves at the bin of<br/>max(error, radius × floor / cap)"] --> Hist["histogram,<br/>one per core"]
     Hist --> Steer["round done:<br/>least edge within budget"]
     Drawn["triangles drawn"] --> Steer
-    Steer -->|"next round's tolerance"| Pick
+    Steer -->|"next round's tolerance,<br/>cap risen with it"| Pick
 ```
 
 Errors bin, and the tolerance is kept, in `lod.tolerance_px`'s pixels, so a

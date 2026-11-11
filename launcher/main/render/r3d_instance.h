@@ -6,7 +6,8 @@
  * an instance whose box is outside the picture skips its lens and its walk.
  * A mesh with levels of detail draws the level its coarse bits pick
  * (render/lod/r3d_lod.h), which persist from frame to frame; without them it
- * draws its finest.
+ * draws its finest. A batch of copies draws through r3d_batch_draw_t
+ * (render/batch/r3d_batch.h).
  */
 #pragma once
 

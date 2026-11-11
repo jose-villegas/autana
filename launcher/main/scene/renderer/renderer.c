@@ -44,7 +44,8 @@ renderer_set_mesh(entity_t entity, const r3d_lit_mesh_t* mesh) {
         return false;
     }
     scene_renderer_t* r = &scene->renderers[i];
-    if (R3D_LOD_WORDS(mesh->lod_group_count) > r->lod_words) {
+    /* A batch's colours, places and spheres are its mesh's. */
+    if (r->batch != NULL || (uint32_t)R3D_LOD_STATE_WORDS(mesh->lod_group_count) > r->lod_words) {
         return false;
     }
     r->mesh = *mesh;
