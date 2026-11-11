@@ -15,7 +15,7 @@ import numpy as np
 
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parents[1]))
-from docs.figures import ROOT, probe_into_folder  # noqa: E402
+from docs.figures import ROOT, probe_into_folder, rgb  # noqa: E402
 from docs.plot_style import FAINT, INK, LABEL_SIZE, MUTED, SLOTS, style_axes, subplots, save  # noqa: E402
 from docs.producer import Producer  # noqa: E402
 
@@ -101,10 +101,6 @@ def door_plot(data, out):
     fig.suptitle("Dither through the ramp past leave: coarse (orange) and fine (blue) never share a pixel",
                  fontsize=LABEL_SIZE + 1)
     save(fig, out / "lod-blend-dither.png")
-
-
-def rgb(colour):
-    return tuple(int(colour[i:i + 2], 16) for i in (1, 3, 5))
 
 
 def main():

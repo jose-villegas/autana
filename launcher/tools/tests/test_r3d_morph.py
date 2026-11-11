@@ -185,17 +185,20 @@ class MorphDeltaTests(unittest.TestCase):
         self.assertLessEqual(np.abs(move - deltas * step).max(), step / 2)
         self.assertLessEqual(np.abs(deltas).max(), morph_asset.DELTA_MAX)
 
-    def test_each_parent_group_picks_its_own_shift(self):
+    @staticmethod
+    def small_and_large_move(parents):
+        """Two one-vertex clusters under `parents`, one moving a tick and one four times DELTA_MAX."""
         pos = np.zeros((2, AXES), dtype=np.int64)
         target = np.array([[1, 0, 0], [morph_asset.DELTA_MAX * 4, 0, 0]])
-        shifts, deltas = lit_mesh.morph_deltas(pos, target, [(0, 1), (1, 1)], [0, 1])
+        return lit_mesh.morph_deltas(pos, target, [(0, 1), (1, 1)], parents)
+
+    def test_each_parent_group_picks_its_own_shift(self):
+        shifts, deltas = self.small_and_large_move([0, 1])
         self.assertEqual([0, 2], shifts)
         self.assertEqual([1, morph_asset.DELTA_MAX], deltas[:, 0].tolist())
 
     def test_clusters_under_one_parent_share_the_shift_of_the_largest_move(self):
-        pos = np.zeros((2, AXES), dtype=np.int64)
-        target = np.array([[1, 0, 0], [morph_asset.DELTA_MAX * 4, 0, 0]])
-        shifts, deltas = lit_mesh.morph_deltas(pos, target, [(0, 1), (1, 1)], [0, 0])
+        shifts, deltas = self.small_and_large_move([0, 0])
         self.assertEqual([2, 2], shifts)
         self.assertEqual([0, morph_asset.DELTA_MAX], deltas[:, 0].tolist())
 

@@ -382,6 +382,15 @@ transform_project(const r3d_lens_t* lens, vec3f_t l, float r, uint32_t lo_bits, 
                                     biased_inside_fast(mathf_bits(b.y), lo_bits, hi_bits), lens->depth_near * r};
 }
 
+/* Vertex `l`, in screen space, projected and stored at `out`, widening the
+ * cluster's rows, columns and depth. */
+static inline __attribute__((always_inline)) void
+transform_vertex(const r3d_lens_t* lens, r3d_pipeline_vertex_t* out, vec3f_t l, uint32_t lo_bits, uint32_t hi_bits,
+                 bool boxed, int* x0, int* x1, int* y0, int* y1, float* iz, bool* unbounded) {
+    const transform_projection_t p = transform_project(lens, l, mathf_recip(l.z), lo_bits, hi_bits);
+    transform_store(lens, out, l, p.b, p.inside_x, p.inside_y, p.iz, y0, y1, unbounded, boxed, x0, x1, iz);
+}
+
 static inline __attribute__((always_inline)) r3d_pipeline_rows_t
 transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const mat4f_t* screen, const r3d_lit_cluster_t* c,
                   r3d_pipeline_vertex_t* cs, uint32_t lo_bits, uint32_t hi_bits, bool boxed) {
@@ -411,9 +420,7 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const mat4
         FRAME_LAP("r3d.transform.apply");
         const vec3f_t l = transform_position(screen, mesh->positions[v]);
         FRAME_LAP("r3d.transform.project");
-        const float r = mathf_recip(l.z);
-        const transform_projection_t p = transform_project(lens, l, r, lo_bits, hi_bits);
-        transform_store(lens, &cs[v], l, p.b, p.inside_x, p.inside_y, p.iz, &y0, &y1, &unbounded, boxed, &x0, &x1, &iz);
+        transform_vertex(lens, &cs[v], l, lo_bits, hi_bits, boxed, &x0, &x1, &y0, &y1, &iz, &unbounded);
     }
     FRAME_LAP("r3d.transform.cluster");
     return (r3d_pipeline_rows_t){
@@ -453,9 +460,7 @@ transform_morphed(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const mat4
     bool unbounded = false;
     for (int v = c->vertex_first; v < c->vertex_first + c->vertex_count; v++) {
         const vec3f_t l = mat4f_apply(&fixed, morphed_position(mesh->positions[v], mesh->morph_delta[v], step));
-        const float r = mathf_recip(l.z);
-        const transform_projection_t p = transform_project(lens, l, r, lo_bits, hi_bits);
-        transform_store(lens, &cs[v], l, p.b, p.inside_x, p.inside_y, p.iz, &y0, &y1, &unbounded, boxed, &x0, &x1, &iz);
+        transform_vertex(lens, &cs[v], l, lo_bits, hi_bits, boxed, &x0, &x1, &y0, &y1, &iz, &unbounded);
     }
     return (r3d_pipeline_rows_t){
         (int16_t)x0, (int16_t)y0,    (int16_t)x1, (int16_t)y1, boxed ? r3d_span_depth_limit(iz) : 0,
