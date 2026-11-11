@@ -29,6 +29,7 @@ APP_CONSOLE(PHYSICS_LAB_WORD, physics_lab_console);
 
 app_t app_physics_lab = {
     .name = "Physics Lab",
+    .kind = APP_KIND_LAB,
     .summary = "Physics components",
     LAB_APP_CALLBACKS(physics_lab),
     .home_gesture = true,
