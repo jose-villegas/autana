@@ -12,3 +12,5 @@ hysteresis_px = 0.5
 coverage_permille = 250
 pick_every = 4
 triangle_budget = 0
+blend = 0
+blend_px = 0.25

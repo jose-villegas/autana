@@ -22,7 +22,7 @@ class RenderAssetTests(unittest.TestCase):
         self.assertEqual(render_asset.load(self.settings("batched = false\n")),
                          {"cull": True, "depth_fit": True, "batched": False, "partial_redraw": True, "lod.tolerance_px": 2.0,
                           "lod.hysteresis_px": 0.5, "lod.coverage_permille": 250, "lod.pick_every": 4,
-                          "lod.triangle_budget": 0})
+                          "lod.triangle_budget": 0, "lod.blend": 0, "lod.blend_px": 0.25})
         lod = render_asset.load(self.settings("[lod]\ncoverage_permille = 100\n"))
         self.assertEqual(lod["lod.coverage_permille"], 100)
 
@@ -31,7 +31,8 @@ class RenderAssetTests(unittest.TestCase):
         self.assertEqual((list(rows.items()), frac), ([("cull", [0]), ("depth_fit", [1]), ("batched", [1]),
                                                   ("partial_redraw", [1]), ("lod.tolerance_px", [32]), ("lod.hysteresis_px", [8]),
                                                   ("lod.coverage_permille", [250]), ("lod.pick_every", [4]),
-                                                  ("lod.triangle_budget", [0])], 4))
+                                                  ("lod.triangle_budget", [0]), ("lod.blend", [0]), ("lod.blend_px", [4])],
+                                                 4))
 
     def test_an_int_bakes_as_itself_up_to_a_row_s_most(self):
         for budget in (12000, table_asset.VALUE_MAX):

@@ -6,10 +6,13 @@
 #include <string.h>
 #include "asset/asset_bytes.h"
 #include "asset/asset_entry.h"
+#include "math/scalar/mathi.h"
 #include "render/lcol_format.h"
 #include "render/llod_format.h"
+#include "render/lmor_format.h"
 
 /* The entry's bytes are the structs' own layout, written by lit_mesh.py. */
+_Static_assert(sizeof(r3d_lit_landing_t) == LMOR_LANDING_SIZE, "a landing point is LMOR_LANDING_SIZE bytes");
 _Static_assert(sizeof(r3d_lit_cluster_t) == 22 && offsetof(r3d_lit_cluster_t, bounds) == 8
                    && offsetof(r3d_lit_cluster_t, double_sided) == 20,
                "r3d_lit_cluster_t is not the layout lit_mesh.py writes");
@@ -245,6 +248,49 @@ r3d_lit_mesh_levels_from_asset(const asset_view_t* levels, r3d_lit_mesh_t* mesh)
 }
 
 asset_status_t
+r3d_lit_mesh_morph_from_asset(const asset_view_t* morph, r3d_lit_mesh_t* mesh) {
+    mesh->morph_shift = NULL;
+    mesh->morph_delta = NULL;
+    mesh->morph_landing = NULL;
+    const asset_status_t status =
+        asset_entry_validate(*morph, LMOR_VERSION, LMOR_AT_VERSION, LMOR_HEADER_SIZE, ENTRY_ALIGNMENT);
+    if (status != ASSET_OK) {
+        return status;
+    }
+    const uint16_t flags = asset_read_u16(morph->data + LMOR_AT_FLAGS);
+    const uint32_t clusters = asset_read_u32(morph->data + LMOR_AT_CLUSTER_COUNT);
+    const uint32_t vertices = asset_read_u32(morph->data + LMOR_AT_VERTEX_COUNT);
+    if (mesh->cluster_lod == NULL || clusters != (uint32_t)mesh->cluster_count
+        || vertices != (uint32_t)mesh->vertex_count || (flags & ~LMOR_LANDING) != 0
+        || ((flags & LMOR_LANDING) != 0 && mesh->face_colors != NULL)) {
+        return ASSET_ERR_FORMAT;
+    }
+    const uint64_t deltas_at = LMOR_HEADER_SIZE + mathi_size_ceil(clusters, ENTRY_ALIGNMENT);
+    const uint64_t landing_at = deltas_at + mathi_size_ceil((size_t)vertices * LMOR_AXES, ENTRY_ALIGNMENT);
+    const uint64_t end = landing_at + ((flags & LMOR_LANDING) != 0 ? (uint64_t)vertices * LMOR_LANDING_SIZE : 0U);
+    if (end != morph->size) {
+        return ASSET_ERR_BOUNDS;
+    }
+    const uint8_t* shift = morph->data + LMOR_HEADER_SIZE;
+    for (uint32_t c = 0; c < clusters; c++) {
+        if (shift[c] > LMOR_SHIFT_MAX) {
+            return ASSET_ERR_FORMAT;
+        }
+    }
+    const r3d_lit_landing_t* landing = (flags & LMOR_LANDING) != 0 ? (const void*)(morph->data + landing_at) : NULL;
+    for (uint32_t v = 0; landing != NULL && v < vertices; v++) {
+        if (landing[v].triangle >= mesh->triangle_count
+            || landing[v].weight[0] + landing[v].weight[1] > (int)LMOR_WEIGHT_WHOLE) {
+            return ASSET_ERR_FORMAT;
+        }
+    }
+    mesh->morph_shift = shift;
+    mesh->morph_delta = (const void*)(morph->data + deltas_at);
+    mesh->morph_landing = landing;
+    return ASSET_OK;
+}
+
+asset_status_t
 r3d_lit_mesh_from_asset(const asset_view_t* asset, r3d_lit_mesh_t* mesh) {
     *mesh = (r3d_lit_mesh_t){0};
     const asset_status_t status = asset_entry_validate(*asset, ASSET_ENTRY_UNVERSIONED, ASSET_ENTRY_UNVERSIONED,
@@ -306,6 +352,20 @@ sibling_name(const char* mesh_id, const char* suffix, char out[ASSET_NAME_MAX]) 
     return ASSET_OK;
 }
 
+/* The mesh's sibling entry: its id with `suffix`, of `type`. One that is not `required` and is absent
+   leaves `entry` empty. */
+static asset_status_t
+open_sibling(const asset_pack_t* pack, const char* id, const char* suffix, uint32_t type, bool required,
+             asset_view_t* entry) {
+    *entry = (asset_view_t){0};
+    char name[ASSET_NAME_MAX];
+    asset_status_t status = sibling_name(id, suffix, name);
+    if (status == ASSET_OK) {
+        status = asset_pack_find(pack, name, type, entry);
+    }
+    return status == ASSET_ERR_NOT_FOUND && !required ? ASSET_OK : status;
+}
+
 asset_status_t
 r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh) {
     *mesh = (r3d_lit_mesh_t){0};
@@ -315,18 +375,16 @@ r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh
         return status;
     }
     status = r3d_lit_mesh_from_asset(&asset, mesh);
-    if (status != ASSET_OK) {
-        return status;
-    }
-    char name[ASSET_NAME_MAX];
-    status = sibling_name(id, LLOD_NAME_SUFFIX, name);
     if (status == ASSET_OK) {
-        status = asset_pack_find(pack, name, LLOD_ASSET, &asset);
-        if (status == ASSET_ERR_NOT_FOUND) {
-            return ASSET_OK;
-        }
+        status = open_sibling(pack, id, LLOD_NAME_SUFFIX, LLOD_ASSET, false, &asset);
+    }
+    if (status == ASSET_OK && asset.data != NULL) {
+        status = r3d_lit_mesh_levels_from_asset(&asset, mesh);
         if (status == ASSET_OK) {
-            status = r3d_lit_mesh_levels_from_asset(&asset, mesh);
+            status = open_sibling(pack, id, LMOR_NAME_SUFFIX, LMOR_ASSET, false, &asset);
+        }
+        if (status == ASSET_OK && asset.data != NULL) {
+            status = r3d_lit_mesh_morph_from_asset(&asset, mesh);
         }
     }
     if (status != ASSET_OK) {
@@ -337,14 +395,11 @@ r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh
 
 asset_status_t
 r3d_lit_mesh_open_colours(const asset_pack_t* pack, const char* mesh_id, uint16_t set, r3d_lit_mesh_t* mesh) {
-    char name[ASSET_NAME_MAX];
-    asset_status_t status = sibling_name(mesh_id, LCOL_NAME_SUFFIX, name);
-    if (status != ASSET_OK) {
-        return status;
-    }
     asset_view_t view;
-    status = asset_entry_open(pack, name, LCOL_ASSET, LCOL_VERSION, LCOL_AT_VERSION, LCOL_HEADER_SIZE, ENTRY_ALIGNMENT,
-                              &view);
+    asset_status_t status = open_sibling(pack, mesh_id, LCOL_NAME_SUFFIX, LCOL_ASSET, true, &view);
+    if (status == ASSET_OK) {
+        status = asset_entry_validate(view, LCOL_VERSION, LCOL_AT_VERSION, LCOL_HEADER_SIZE, ENTRY_ALIGNMENT);
+    }
     if (status != ASSET_OK) {
         return status;
     }

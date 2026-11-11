@@ -196,7 +196,7 @@ open_lod_bits(scene_t* scene) {
     size_t words = 0;
     for (int i = 0; i < scene->renderer_count; i++) {
         const scene_renderer_t* r = &scene->renderers[i];
-        words += (size_t)R3D_LOD_WORDS(r->mesh.lod_group_count) * drawn_copies(r);
+        words += (size_t)R3D_LOD_STATE_WORDS(r->mesh.lod_group_count) * drawn_copies(r);
     }
     if (words == 0) {
         return scene_failure_make(SCENE_OK, ASSET_OK, scene->root->id);
@@ -209,7 +209,7 @@ open_lod_bits(scene_t* scene) {
     uint32_t* next = scene->lod_bits;
     for (int i = 0; i < scene->renderer_count; i++) {
         scene_renderer_t* r = &scene->renderers[i];
-        const int copy_words = R3D_LOD_WORDS(r->mesh.lod_group_count);
+        const int copy_words = R3D_LOD_STATE_WORDS(r->mesh.lod_group_count);
         r->lod_words = (uint32_t)copy_words * (uint32_t)drawn_copies(r);
         r->lod_coarse = r->lod_words > 0 ? next : NULL;
         if (r->batch != NULL) {

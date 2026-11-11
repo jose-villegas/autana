@@ -48,7 +48,7 @@ def bundle_fixture(directory, flat=False, lod=False, fit=None, positions=None, t
                           kind='mesh_renderer', animator=None)
     renderer = SimpleNamespace(face_samples=(1, 1, 1, None) if flat else None, bake=True, fit=fit)
     job = SimpleNamespace(object=obj, renderer=renderer, asset_name='hall.atrium',
-                          settings=SimpleNamespace(meshlet_triangles=MESHLET_TRIANGLES, double_sided=['leaf'], lod=lod))
+                          settings=SimpleNamespace(meshlet_triangles=MESHLET_TRIANGLES, double_sided=['leaf'], lod=lod, morph=False))
     scene = SimpleNamespace(objects=[obj], renderers=[job], lights=[])
     with mock.patch.object(mesh_import, 'flat_colours', side_effect=[np.full((1, 3), value) for value in (80, 80, 81, 82)]):
         mesh_import.write_baked(job, scene, pathlib.Path(directory), job.asset_name, geometry=geometry, recorder=recorder)

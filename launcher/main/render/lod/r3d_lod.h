@@ -1,6 +1,6 @@
 /*
  * r3d_lod: which level of a mesh's clusters an instance draws
- * (docs/plans/Cluster-LOD.md). Once per instance every lod.pick_every frames, r3d_lod_pick()
+ * (docs/render/frame/Levels-of-Detail.md). Once per instance every lod.pick_every frames, r3d_lod_pick()
  * sets one bit per group: coarse when the group's error, projected at its
  * bounds' nearest point, is within the tolerance and its bounds' radius,
  * projected there, spans at most a share of the picture's height. The
@@ -23,20 +23,38 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "image/pixel/bayer.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/settings/render_settings.h"
 
 typedef struct r3d_lens r3d_lens_t; /* r3d_pipeline.h */
 
 /* The thousandths of `lod.coverage_permille`: 1000 is the picture's whole height. */
-#define R3D_LOD_PERMILLE       1000
+#define R3D_LOD_PERMILLE            1000
 
 /* The most frames lod.pick_every may spread the pick over. */
-#define R3D_LOD_PICK_EVERY_MAX 8
+#define R3D_LOD_PICK_EVERY_MAX      8
 
-#define R3D_LOD_WORD_BITS      32
+#define R3D_LOD_WORD_BITS           32
 /* The words of coarse bits a mesh's groups need. */
-#define R3D_LOD_WORDS(groups)  (((groups) + R3D_LOD_WORD_BITS - 1) / R3D_LOD_WORD_BITS)
+#define R3D_LOD_WORDS(groups)       (((groups) + R3D_LOD_WORD_BITS - 1) / R3D_LOD_WORD_BITS)
+/* An instance's level state, R3D_LOD_STATE_SETS sets of bits: its coarse
+ * bits, then the blend's arrived and blending bits (r3d_lod_pick()). */
+#define R3D_LOD_STATE_SETS          3
+#define R3D_LOD_STATE_WORDS(groups) (R3D_LOD_STATE_SETS * R3D_LOD_WORDS(groups))
+
+/* The arrived bits of the state whose coarse bits are `coarse`; the
+ * blending bits follow them (r3d_lod_blending()). */
+static inline uint32_t*
+r3d_lod_arrived(uint32_t* coarse, int groups) {
+    return coarse + R3D_LOD_WORDS(groups);
+}
+
+/* The blending bits after `arrived`: groups whose blend weighs more than none. */
+static inline const uint32_t*
+r3d_lod_blending(const uint32_t* arrived, int groups) {
+    return arrived + R3D_LOD_WORDS(groups);
+}
 
 static inline bool
 r3d_lod_coarse(const uint32_t* coarse, uint16_t group) {
@@ -63,10 +81,12 @@ r3d_lod_finest_untested(const r3d_lit_mesh_t* mesh, bool any_coarse) {
 }
 
 /* Whether cluster `c` of `mesh` is drawn under `coarse`: when the group
- * simplified into it is coarse (or it is finest) and its own group is not.
- * A NULL `coarse` draws the finest level, as does a mesh without levels. */
+ * simplified into it is coarse (or it is finest), or blending in `blending`
+ * when not NULL (the dither draws both levels of a blending group), and the
+ * group it is in is not coarse. A NULL `coarse` draws the finest level, as
+ * does a mesh without levels. */
 static inline bool
-r3d_lod_drawn(const r3d_lit_mesh_t* mesh, int c, const uint32_t* coarse) {
+r3d_lod_drawn_blending(const r3d_lit_mesh_t* mesh, int c, const uint32_t* coarse, const uint32_t* blending) {
     if (mesh->cluster_lod == NULL) {
         return true;
     }
@@ -74,14 +94,23 @@ r3d_lod_drawn(const r3d_lit_mesh_t* mesh, int c, const uint32_t* coarse) {
     if (coarse == NULL) {
         return lod.own == R3D_LOD_NONE;
     }
-    return (lod.own == R3D_LOD_NONE || r3d_lod_coarse(coarse, lod.own))
+    return (lod.own == R3D_LOD_NONE || r3d_lod_coarse(coarse, lod.own)
+            || (blending != NULL && r3d_lod_coarse(blending, lod.own)))
            && (lod.parent == R3D_LOD_NONE || !r3d_lod_coarse(coarse, lod.parent));
 }
 
-/* The clusters of `mesh` drawn under `coarse` (r3d_lod_drawn()), ascending,
- * into `out`, which holds `room`; returns how many. Nothing coarse lists the
- * finest level without testing each cluster. */
-int r3d_lod_list_drawn(const r3d_lit_mesh_t* mesh, const uint32_t* coarse, uint16_t* out, int room);
+/* r3d_lod_drawn_blending() of one level at a time. */
+static inline bool
+r3d_lod_drawn(const r3d_lit_mesh_t* mesh, int c, const uint32_t* coarse) {
+    return r3d_lod_drawn_blending(mesh, c, coarse, NULL);
+}
+
+/* The clusters of `mesh` drawn under `coarse` and `blending`
+ * (r3d_lod_drawn_blending()), ascending, into `out`, which holds `room`;
+ * returns how many. Nothing coarse or blending lists the finest level
+ * without testing each cluster. */
+int r3d_lod_list_drawn(const r3d_lit_mesh_t* mesh, const uint32_t* coarse, const uint32_t* blending, uint16_t* out,
+                       int room);
 
 /* The pixels group `group`'s error spans seen through `lens` (placed with
  * the instance's model), measured where its bounds come nearest the eye and
@@ -92,6 +121,122 @@ float r3d_lod_group_pixels(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, i
  * where r3d_lod_group_pixels() measures. A parent's bounds hold its sources',
  * so it never covers less than one of them. */
 float r3d_lod_group_coverage(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, int group);
+
+/* Geomorphing (render/lmor_format.h): a drawn cluster with a parent group
+ * blends toward its targets on that group's coarse surface. The weight is
+ * whole at the group's next switch, so a switch moves nothing, and none
+ * `lod.blend_px` past it; for the coverage cap, whole at the cap, none
+ * R3D_LOD_MORPH_COVER_RAMP of it above. The lesser weight is drawn. */
+#define R3D_LOD_MORPH_COVER_RAMP 0.25F
+/* A weight's whole: the transform's fixed-point unit. */
+#define R3D_LOD_MORPH_ONE        128
+
+/* The dither's levels: a 4x4 ordered screen door's thresholds. A blending
+ * group's coarse clusters draw where the threshold is under its weight's
+ * level, its fine ones where it is not, so the two never share a pixel. */
+#define R3D_LOD_DITHER_LEVELS    BAYER4_LEVELS
+#define R3D_LOD_DITHER_SHIFT     4
+_Static_assert((1 << R3D_LOD_DITHER_SHIFT) == R3D_LOD_DITHER_LEVELS, "a band's nibble holds one level");
+
+/* How many ramps ahead of its weight a group's blending bit is set, so a
+ * pick spread over lod.pick_every frames finds a group before its weight
+ * rises and never starts a blend partway through its ramp. */
+#define R3D_LOD_BLEND_LEAD 1.0F
+
+/* A cluster's dither band packed in a byte: drawn where lo <= level < hi,
+ * lo the low nibble, hi R3D_LOD_DITHER_LEVELS less the high nibble. 0 is
+ * every level: not dithered. */
+static inline int
+r3d_lod_dither_lo(uint8_t band) {
+    return band & (R3D_LOD_DITHER_LEVELS - 1);
+}
+
+static inline int
+r3d_lod_dither_hi(uint8_t band) {
+    return R3D_LOD_DITHER_LEVELS - (band >> R3D_LOD_DITHER_SHIFT);
+}
+
+/* Whether a band draws no level. */
+static inline bool
+r3d_lod_dither_empty(uint8_t band) {
+    return r3d_lod_dither_lo(band) >= r3d_lod_dither_hi(band);
+}
+
+/* Whether an instance of `mesh` drawn with lod.blend `blend` dithers: it
+ * blends and has no morph targets to geomorph with. */
+static inline bool
+r3d_lod_dithers(const r3d_lit_mesh_t* mesh, int blend) {
+    return blend == RENDER_LOD_BLEND_ON && mesh->morph_delta == NULL;
+}
+
+/* The lens's linear part with its focal lengths divided out: position ticks
+ * to view units. */
+typedef struct {
+    mat4f_t view;
+    float units_per_tick; /* at least the model's largest scale */
+    float focal;          /* pixels a view unit spans at unit depth, the larger axis */
+} r3d_lod_view_t;
+
+/* One instance's blend through one lens; `enabled` false draws no blend. */
+typedef struct r3d_lod_morph {
+    r3d_lod_view_t view; /* set only when enabled */
+    float near_z;
+    float enter, leave, ramp; /* pixels: whole at enter (leave for an arrived group), none ramp past it */
+    /* The pick's arrived bits, or NULL: every group ramps from leave. Set when
+     * a group turns fine, cleared `lod.blend_px` past the hysteresis band: an
+     * arrived group ramps from leave, where it came through, any other from
+     * enter, where it turns coarse. Both weigh none where the bit changes. */
+    const uint32_t* arrived;
+    const uint32_t* blending;  /* after `arrived`, or NULL: a cluster under a group without one weighs none */
+    float covered, cover_ramp; /* pixels of radius: whole at covered, none at covered + cover_ramp */
+    bool enabled;
+    bool dither; /* a screen door stands in for the morph: r3d_lod_dither_band() */
+} r3d_lod_morph_t;
+
+/* Whether cluster `c` takes part in the blend: its parent group blends, so
+ * it fades out or morphs, or its own group does, so it fades in. One bit
+ * test or two, so a draw asks this before it weighs anything. */
+static inline bool
+r3d_lod_cluster_blends(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, int c) {
+    if (!morph->enabled || mesh->cluster_lod == NULL) {
+        return false;
+    }
+    const r3d_lit_cluster_lod_t lod = mesh->cluster_lod[c];
+    if (morph->blending == NULL) {
+        return lod.parent != R3D_LOD_NONE || lod.own != R3D_LOD_NONE;
+    }
+    return (lod.parent != R3D_LOD_NONE && r3d_lod_coarse(morph->blending, lod.parent))
+           || (lod.own != R3D_LOD_NONE && r3d_lod_coarse(morph->blending, lod.own));
+}
+
+/* Reorders `clusters` so those that blend nothing come first, in their own
+ * order, and returns how many: the plain transform and draw take them, the
+ * blend's copies only the rest. */
+int r3d_lod_morph_partition(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, uint16_t* clusters, int count);
+
+/* The blend of `mesh` seen through `lens`, measured as the pick measures it,
+ * its thresholds `pixels_per_output_pixel` times `lod`'s, drawn as `blend`
+ * (render_lod_blend_t). Disabled for RENDER_LOD_BLEND_SWITCH; a mesh without
+ * morph targets dithers (r3d_lod_dithers()). */
+void r3d_lod_morph_init(r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens,
+                        const render_lod_settings_t* lod, float pixels_per_output_pixel, const uint32_t* arrived,
+                        int blend);
+
+/* Cluster `c`'s weight toward its parent group's coarse surface, 0 to
+ * R3D_LOD_MORPH_ONE; 0 without a parent, without a blend, or dithered. */
+int r3d_lod_morph_weight(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, int c);
+
+/* Cluster `c`'s dither band, 0 when not dithered: from its parent group's
+ * level when that blends, as it fades out, up to its own group's when that
+ * blends, as it fades in. An empty band, lo above hi, is never drawn. */
+uint8_t r3d_lod_dither_band(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, int c);
+
+/* A bound, in the blend's pixels, on how far cluster `c`'s targets sit from
+ * the coarse surface as it draws: its targets lie on its parent's coarse
+ * clusters unblended, while those clusters may be blending toward their own
+ * parent. 0 when `c` is not blending or its target level is not. For
+ * measurement: it walks every cluster. */
+float r3d_lod_morph_stacked_px(const r3d_lod_morph_t* morph, const r3d_lit_mesh_t* mesh, int c);
 
 /* The histogram's bins: half octaves of projected error from
  * 2^R3D_LOD_BIN_LEAST_LOG2 to 2^R3D_LOD_BIN_MOST_LOG2 pixels. */
@@ -152,11 +297,11 @@ void r3d_lod_steer_frame(r3d_lod_steer_t* steer, float floor_px, int budget, int
 int r3d_lod_steer_coverage(float tolerance_px, float floor_px, int permille);
 
 /* Updates `coarse`, R3D_LOD_WORDS(mesh->lod_group_count) words, for one
- * frame seen through `lens`: coarse where a group's error projects within
- * `lod.tolerance_px` (`lod.hysteresis_px` either side, by the bit's last
- * state) and its radius spans at most `lod.coverage_permille` thousandths
- * of the picture's height. Parents never project smaller than their sources
- * (r3d_lit_mesh.h) and a closing pass catches rounding, so the cut never
- * cracks. True when a bit changed. A `histogram` takes the saves. */
+ * frame through `lens`: coarse where a group's error projects within
+ * `lod.tolerance_px` (± `lod.hysteresis_px` by the bit's last state) and its
+ * radius covers at most `lod.coverage_permille` of the picture's height; a
+ * closing pass keeps the cut crack-free. `arrived`, twice as many words or
+ * NULL, keeps the blend's bits; a `histogram` takes the saves. True when any
+ * bit changed. */
 bool r3d_lod_pick(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const render_lod_settings_t* lod,
-                  uint32_t* coarse, r3d_lod_histogram_t* histogram);
+                  uint32_t* coarse, uint32_t* arrived, r3d_lod_histogram_t* histogram);
