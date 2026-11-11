@@ -196,6 +196,7 @@ HERD_SIZES(HERD_COPIES)
                     .enter = scene_herd_enter,                                                                         \
                     .frame = scene_herd_frame,                                                                         \
                     .exit = scene_herd_exit,                                                                           \
+                    .steer = scene_herd_steer,                                                                         \
                     .status = LAB_SCENE_DEV(scene_herd_status),                                                        \
                     .path = scene_herd_path},
 
